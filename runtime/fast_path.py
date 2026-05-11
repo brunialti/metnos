@@ -158,6 +158,51 @@ for fp in _FAST_PATTERNS:
         _PATTERN_INDEX[p] = fp
 
 
+# Prefissi UNDO safety-critical: query che INIZIANO con uno di questi
+# token (case-insensitive, dopo `_normalize`) routano deterministicamente
+# a `undo_last_turn` indipendentemente dal resto. Razionale: nessuna
+# semantica utente in cui "annulla X" / "undo X" non sia annullamento; al
+# contempo non possiamo elencare tutte le varianti possibili di X
+# (es. "annulla l'ultima azione", "annulla l'evento appena creato", ...).
+# Per i due verbi `annulla`/`undo` la sicurezza viene PRIMA della precisione:
+# meglio un fast-path occasionalmente over-confidente che lasciare il
+# PLANNER LLM scegliere `delete_events` distruttivo. Bug live turn 742b746d
+# (11/5/2026 sera): «annulla ultimo evento» con candidates
+# [delete_events, read_events, set_events, undo_last_turn, admin] -> per
+# fortuna PLANNER scelse undo_last_turn, ma in turn precedenti aveva
+# scelto delete_events su evento legittimo dell'utente. §7.9 deterministico.
+_UNDO_PREFIX_TOKENS = (
+    "annulla",  # IT: copre "annulla", "annulla X", "annulla l'ultimo X"
+    "annullare",
+    "annullo",
+    "undo",     # EN: copre "undo", "undo X", "undo last action"
+    "rollback",
+    "ripristina",
+    "revert",
+)
+
+
+def _undo_prefix_match(norm: str) -> bool:
+    """Ritorna True se `norm` inizia con uno dei prefissi UNDO seguito da
+    fine stringa o spazio. NON matcha sottostringhe casuali (es. "annulla"
+    dentro a "annullamento" o "undoubted"). Match esatto su token-boundary.
+    """
+    if not norm:
+        return False
+    for tok in _UNDO_PREFIX_TOKENS:
+        if norm == tok or norm.startswith(tok + " "):
+            return True
+    return False
+
+
+# Riusa la FastPattern UNDO gia' definita in `_FAST_PATTERNS` per il render.
+_UNDO_FALLBACK_FP: Optional[FastPattern] = None
+for _fp in _FAST_PATTERNS:
+    if _fp.executor == "undo_last_turn":
+        _UNDO_FALLBACK_FP = _fp
+        break
+
+
 _WEEKDAY_IT = ["lunedi'", "martedi'", "mercoledi'", "giovedi'",
                 "venerdi'", "sabato", "domenica"]
 _WEEKDAY_EN = ["Monday", "Tuesday", "Wednesday", "Thursday",
@@ -279,7 +324,13 @@ def try_fast_path(query: str, lang: str = "it",
         return None
     fp = _PATTERN_INDEX.get(norm)
     if fp is None:
-        return None
+        # Fallback safety-critical: prefisso UNDO (annulla/undo/...) cattura
+        # tutte le varianti non elencate in _UNDO_PATTERNS senza esplodere
+        # la tabella. Solo per il caso UNDO (semantica chiusa, non distruttiva).
+        if _UNDO_FALLBACK_FP is not None and _undo_prefix_match(norm):
+            fp = _UNDO_FALLBACK_FP
+        else:
+            return None
 
     args = dict(fp.args)
     # get_now accetta `timezone` con default UTC. Iniettiamo il default

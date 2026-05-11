@@ -239,24 +239,32 @@ def _dispatch_call(call):
     return 0, 1
 
 
-def _make_pattern_callable():
-    """Costruisce la callable signature `(plan, results) -> dict` che
-    `apply_pattern` invoca. Build descriptors via `build_undo_calls` poi
-    li INVOCA tramite `_dispatch_call` per chiudere il ciclo undo end-to-end.
-    Bug live turn 93ef8420 (11/5/2026): la versione precedente costruiva
-    descrittori e basta — undo dichiarava ok_count=#ids ma l'evento remoto
-    rimaneva. Ora dispatch effettivo. §2.8 no silent failure.
+def _make_pattern_callable(pattern_name_bound):
+    """Costruisce la callable `(plan, results) -> dict` per uno specifico
+    `pattern_name` registrato nel catalogo (`delete_events_by_id`,
+    `delete_messages_by_id`, ...). Il nome e' chiuso in closure: cosi' la
+    callable conosce sempre il proprio identificativo a build-time, senza
+    dover ricostruirlo da `plan` (che e' tipicamente vuoto per gli executor
+    skill-imported come set_events). Bug live turn 742b746d (11/5/2026 sera):
+    la versione precedente leggeva `plan["reverse_pattern"]` come fonte e,
+    quando assente (set_events registra `plan={}`), cadeva su
+    "delete_unknown_by_id" -> "unknown object in pattern" -> ok_count=0.
+    Build descriptors via `build_undo_calls` poi li INVOCA tramite
+    `_dispatch_call` per chiudere il ciclo undo end-to-end. §2.8 no silent
+    failure.
     """
     def _delete_by_id(plan, results):
-        pattern_name = (
-            (plan or {}).get("reverse_pattern")
-            or (plan or {}).get("_undo_pattern")
-            or "delete_unknown_by_id"
-        )
-        if isinstance(pattern_name, list):
-            cand = [n for n in pattern_name if isinstance(n, str)
+        # Fallback robusto sul `plan` se override esplicito (es. multistage
+        # reverse_pattern come list): rispettato in caso di varianti future.
+        pattern_name = pattern_name_bound
+        override = (plan or {}).get("reverse_pattern") or (plan or {}).get("_undo_pattern")
+        if isinstance(override, str) and override.startswith("delete_") and override.endswith("_by_id"):
+            pattern_name = override
+        elif isinstance(override, list):
+            cand = [n for n in override if isinstance(n, str)
                     and n.startswith("delete_") and n.endswith("_by_id")]
-            pattern_name = cand[0] if cand else "delete_unknown_by_id"
+            if cand:
+                pattern_name = cand[0]
         calls, err = build_undo_calls(pattern_name, results or {})
         if err:
             return {"ok": False, "error": err, "calls": [], "ok_count": 0, "fail_count": 0}
@@ -290,13 +298,14 @@ def register_delete_by_id_pattern(reverse_patterns):
         raise TypeError(
             "reverse_patterns module must expose PATTERNS: dict[str, callable]"
         )
-    callable_impl = _make_pattern_callable()
     added = []
     for object_plural in _OBJECT_REGISTRY:
         key = f"delete_{object_plural}_by_id"
         existing = patterns_dict.get(key)
         if existing is None:
-            patterns_dict[key] = callable_impl
+            # Una callable distinta per ogni key (closure su pattern_name)
+            # cosi' la callable conosce sempre il proprio nome.
+            patterns_dict[key] = _make_pattern_callable(key)
             added.append(key)
         # Else: gia' presente, idempotente (no-op).
     return added
