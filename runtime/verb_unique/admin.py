@@ -1000,6 +1000,64 @@ def _format_cli_instructions(domain: str, ctx: dict) -> str:
     )
 
 
+# ── Catalog-name guard helper (12/5/2026) ─────────────────────────────
+#
+# Bug 1f82a766 (11/5/2026): PLANNER ha invocato `admin(command_proposed=
+# "get_now", ...)`. admin ha passato l'argv a sudoer → subprocess.run(
+# ["get_now"]) → FileNotFoundError. Causa: admin trattava qualunque token
+# come potenziale binario. Difesa in profondita': se argv[0] (saltando
+# wrapper sudo/doas/pkexec) e' un executor del catalogo, e' un instradamento
+# errato del PLANNER, non un comando shell. Rejection chirurgica con
+# messaggio che indica il fix all'LLM (la carta vaglio sarebbe inutile).
+
+# Wrapper di privilegi: skip al fine di guardare il vero argv[0].
+_PRIV_WRAPPERS = frozenset({"sudo", "doas", "pkexec"})
+
+
+def _executor_name_in_argv(argv: list[str]) -> Optional[str]:
+    """Ritorna il nome dell'executor se argv[0] (saltando sudo/doas/pkexec)
+    matcha un executor presente nel catalogo runtime, altrimenti None.
+
+    Lookup deterministico O(N) sul catalogo importato lazy: rispetta i
+    rejected (synth scartati per affinity overlap / signature drift / GC).
+    Caching minimo per evitare reflection ripetuta nello stesso processo.
+    """
+    if not argv:
+        return None
+    # Salta wrapper sudo/doas/pkexec e i loro flag (-S, -u user, -E, ...)
+    i = 0
+    while i < len(argv) and argv[i] in _PRIV_WRAPPERS:
+        i += 1
+        # Skip flag dopo il wrapper
+        while i < len(argv) and argv[i].startswith("-"):
+            tok = argv[i]
+            i += 1
+            # -u <user>, -p <prompt> richiedono argomento successivo
+            if tok in ("-u", "-p", "-g", "-h", "-r", "-t", "-C", "-D"):
+                if i < len(argv):
+                    i += 1
+    if i >= len(argv):
+        return None
+    candidate = Path(argv[i]).name
+    if not candidate or "/" in candidate:
+        return None
+    # Lookup catalog via loader (lazy import + cache interna ADR 0099)
+    try:
+        from loader import load_catalog  # type: ignore
+        catalog = load_catalog()
+    except (ImportError, AttributeError, RuntimeError):
+        return None
+    executor = catalog.get(candidate)
+    if executor is None:
+        return None
+    # Verb_unique builtins (admin, sudoer) non sono "executor del catalogo"
+    # nel senso utile per questo guard: argv[0]=admin sarebbe ricorsivo e
+    # admin shell-literal e' gia' bloccato dal gate sintattico esistente.
+    if candidate in ("admin", "sudoer"):
+        return None
+    return candidate
+
+
 def invoke(*, intent: str, command_proposed: str,
            credentials_domain: str | None = None,
            actor_consent_token: str | None = None,
@@ -1033,6 +1091,41 @@ def invoke(*, intent: str, command_proposed: str,
     """
     audit_actor = actor or "host"
     argv = (command_proposed or "").split() if isinstance(command_proposed, str) else []
+
+    # ── Catalog-name guard (12/5/2026): se `argv[0]` (saltando i wrapper
+    # sudo/doas/pkexec) coincide con il nome di un executor del catalog,
+    # il PLANNER ha sbagliato strada: admin e' per UN comando shell
+    # privilegiato; gli executor del catalog (get_now, set_events, ...)
+    # si invocano direttamente come tool ordinari. subprocess.run(["get_now"])
+    # produrrebbe FileNotFoundError perche' non c'e' nessun binario "get_now"
+    # nel PATH. Rifiutiamo qui con messaggio chiaro, evitando di emettere
+    # una carta vaglio inutile (l'utente non puo' "approvare" qualcosa che
+    # non puo' funzionare). Determinismo §7.9.
+    catalog_hit = _executor_name_in_argv(argv)
+    if catalog_hit is not None:
+        return {
+            "ok": False,
+            "decision": "reject",
+            "signature": "",
+            "argv": argv,
+            "approval_required": False,
+            "approval_card": None,
+            "summary": (
+                f"`{catalog_hit}` e' un executor del catalogo, non un comando "
+                f"shell. Invocalo direttamente come tool (es. "
+                f"`{catalog_hit}(...)`) invece di passarlo come "
+                f"`command_proposed` ad admin. admin serve solo per comandi "
+                f"di sistema (mount, kill, systemctl, apt, ...)."
+            ),
+            "audit": {
+                "actor": audit_actor,
+                "user_text": intent or "",
+                "source": "planner_argv",
+                "argv": argv,
+                "gate": "catalog_name_rejected",
+                "catalog_name": catalog_hit,
+            },
+        }
 
     # ── ADR 0091 (5/5/2026): se il command_proposed contiene un placeholder
     # ${METNOS_<KIND>_CREDS} ma il dominio NON e' ancora salvato, NON emettere

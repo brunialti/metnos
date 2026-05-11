@@ -485,6 +485,14 @@ _QUERY_DEPENDENT_PRECURSORS = (
 # l'iniezione automatica di `admin` nel pool top-K. Il pianificatore
 # vede admin come tool ordinario, lo seleziona, il vaglio always-on
 # emette la carta dialog manager.
+#
+# Detection: word-boundary regex (12/5/2026). Match per substring naive
+# generava falsi positivi disastrosi (es. "ferma" matchava "conferma",
+# "afferma", "fermata"; "share" matchava "shared" e cosi' via; "kill"
+# matchava "skill"). Con `\b...\b` la condizione e' "token intero".
+# Gli hint multi-word (ip route, comando shell, log di sistema) restano
+# match come frase intera grazie a `\b` alle estremita'. Determinismo
+# §7.9: regex compilata, niente LLM.
 _TIME_INTENT_HINTS = (
     # Italiano
     "che ora", "che ore", "ora corrente", "data corrente", "che giorno",
@@ -495,9 +503,15 @@ _TIME_INTENT_HINTS = (
 )
 
 
+_TIME_INTENT_RE = re.compile(
+    r"\b(?:" + "|".join(re.escape(h) for h in _TIME_INTENT_HINTS) + r")\b",
+    re.IGNORECASE,
+)
+
+
 def _detect_time_intent(qlow: str) -> bool:
-    """True se la query chiede ora/data corrente. Match per substring."""
-    return any(h in qlow for h in _TIME_INTENT_HINTS)
+    """True se la query chiede ora/data corrente. Match word-boundary."""
+    return bool(_TIME_INTENT_RE.search(qlow or ""))
 
 
 _SHELL_INTENT_HINTS = (
@@ -508,25 +522,30 @@ _SHELL_INTENT_HINTS = (
     "kill", "uccidi", "termina", "killa", "ammazza",
     # systemctl / services
     "systemctl", "service", "servizio", "restart", "riavvia", "riavviare",
-    "start ", "avvia", "avviare", "stop ", "ferma",
+    "start", "avvia", "avviare", "stop", "ferma", "fermare", "fermo",
     # permissions
     "chmod", "chown", "permessi", "permission",
     # network
     "ifconfig", "ip route", "iptables", "rete", "network",
     # packages
-    "apt ", "apt-get", "pacchetto", "package", "installa", "installare",
+    "apt", "apt-get", "pacchetto", "package", "installa", "installare",
     # logs
     "journalctl", "syslog", "log di sistema",
     # generic shell verb
-    "comando shell", "shell command", "esegui ",
+    "comando shell", "shell command", "esegui",
+)
+
+
+_SHELL_INTENT_RE = re.compile(
+    r"\b(?:" + "|".join(re.escape(h) for h in _SHELL_INTENT_HINTS) + r")\b",
+    re.IGNORECASE,
 )
 
 
 def _detect_shell_intent(qlow: str) -> bool:
-    """True se la query contiene un marker shell-related. Match per
-    substring (i marker sono token short). Case-insensitive: caller
-    passa qlow gia' lower()."""
-    return any(h in qlow for h in _SHELL_INTENT_HINTS)
+    """True se la query contiene un marker shell-related come TOKEN INTERO
+    (word boundary). Case-insensitive."""
+    return bool(_SHELL_INTENT_RE.search(qlow or ""))
 
 
 def _query_has_marker(qlow, markers):
