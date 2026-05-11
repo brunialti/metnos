@@ -430,6 +430,11 @@ function add(cls, text, meta, persist, attachments, galleryInfo, htmlMode){
     addGallery(attachments, galleryInfo);
   }
   log.scrollTop = log.scrollHeight;
+  // Il body e' il vero scroll container (#log e' flex senza overflow): senza
+  // questo, dopo append il viewport non scorre e il messaggio appena inserito
+  // resta sotto la fold (specie su submit user). RAF garantisce che il layout
+  // sia stato calcolato prima dello scroll.
+  requestAnimationFrame(() => window.scrollTo({ top: document.body.scrollHeight, behavior: 'auto' }));
   if(persist !== false && (cls === 'me' || cls === 'bot' || cls === 'err')){
     pushHistory({ cls, text, meta: meta || '', ts: Date.now(),
                   attachments: attachments || null,
@@ -521,6 +526,11 @@ function renderLivePath(path, predicted){
   d.appendChild(row);
   log.appendChild(d);
   log.scrollTop = log.scrollHeight;
+  // Il body e' il vero scroll container (#log e' flex senza overflow): senza
+  // questo, dopo append il viewport non scorre e il messaggio appena inserito
+  // resta sotto la fold (specie su submit user). RAF garantisce che il layout
+  // sia stato calcolato prima dello scroll.
+  requestAnimationFrame(() => window.scrollTo({ top: document.body.scrollHeight, behavior: 'auto' }));
   return d;
 }
 
@@ -537,6 +547,11 @@ function addTool(tool, args){
   d.appendChild(sum);
   log.appendChild(d);
   log.scrollTop = log.scrollHeight;
+  // Il body e' il vero scroll container (#log e' flex senza overflow): senza
+  // questo, dopo append il viewport non scorre e il messaggio appena inserito
+  // resta sotto la fold (specie su submit user). RAF garantisce che il layout
+  // sia stato calcolato prima dello scroll.
+  requestAnimationFrame(() => window.scrollTo({ top: document.body.scrollHeight, behavior: 'auto' }));
   return d;
 }
 
@@ -557,6 +572,11 @@ function restoreHistory(){
   log.appendChild(sep);
   // poi mantieniamo lo scroll in fondo
   log.scrollTop = log.scrollHeight;
+  // Il body e' il vero scroll container (#log e' flex senza overflow): senza
+  // questo, dopo append il viewport non scorre e il messaggio appena inserito
+  // resta sotto la fold (specie su submit user). RAF garantisce che il layout
+  // sia stato calcolato prima dello scroll.
+  requestAnimationFrame(() => window.scrollTo({ top: document.body.scrollHeight, behavior: 'auto' }));
 }
 restoreHistory();
 
@@ -599,6 +619,11 @@ async function fetchServerHistory(){
       }
     }
     log.scrollTop = log.scrollHeight;
+  // Il body e' il vero scroll container (#log e' flex senza overflow): senza
+  // questo, dopo append il viewport non scorre e il messaggio appena inserito
+  // resta sotto la fold (specie su submit user). RAF garantisce che il layout
+  // sia stato calcolato prima dello scroll.
+  requestAnimationFrame(() => window.scrollTo({ top: document.body.scrollHeight, behavior: 'auto' }));
     // Avvia polling per gli in_flight turns
     if(turns.some(t => t.in_flight)) pollInFlight();
   } catch(e){
