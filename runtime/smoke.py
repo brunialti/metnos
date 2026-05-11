@@ -289,16 +289,27 @@ def _bow_intent_for_smoke(query: str) -> dict:
     sufficiente per le query del battery; non per pianificatore reale.
     """
     q = query.lower()
-    # Verb mapping
+    # Markers di calendario / appuntamenti (forte priorita': identificano
+    # univocamente il dominio events, anche se la query contiene "ora"
+    # come durata "per un ora").
+    calendar_terms = ("appuntament", "agenda", "riunion", "incontro",
+                       "meeting", "evento", "eventi", "calendar",
+                       "calendario", "scadenz", "deadline")
+    has_calendar = any(t in q for t in calendar_terms)
+    # Verb mapping. Ordine: priorita' decrescente. "fissa/prenota/book/
+    # schedule" → set (crea/aggiorna evento canonical).
     verb = None
     if any(t in q for t in ("trova", "cerca", "find", "search")):
         verb = "find"
     elif any(t in q for t in ("elenca", "lista", "list")):
         verb = "list"
+    elif any(t in q for t in ("fissa", "prenota", "book", "schedule")):
+        verb = "set"
     elif any(t in q for t in ("leggi", "read")):
         verb = "read"
-    elif any(t in q for t in ("ora", "data", "time", "now", "che ore")):
-        verb = "get"
+    elif has_calendar and any(t in q for t in ("crea", "create", "aggiungi", "add", "nuovo", "nuova", "new")):
+        # "crea evento" / "aggiungi appuntamento" → set (set_events canonical).
+        verb = "set"
     elif any(t in q for t in ("dove sono", "posizione", "location", "where am")):
         verb = "get"
     elif any(t in q for t in ("scarica", "download", "url", "https://", "http://")):
@@ -307,9 +318,18 @@ def _bow_intent_for_smoke(query: str) -> dict:
         verb = "describe"
     elif any(t in q for t in ("stato", "status", "salute", "health")):
         verb = "get"
-    # Object mapping
+    # NB: "ora/data/now/time" senza contesto calendario NON mappa verb=get:
+    # rank_with_intent verb=get senza object pesca get_file_dates/get_files_*
+    # (catalog order) bypassando get_now. Lasciamo che fallback BoW (rank
+    # plain) lavori via affinity di get_now. Regression rilevata 11/5/2026
+    # nella stessa sessione F4-F7. La branch "stato/status/salute" sopra
+    # rimane perche' lega a object=processes nel branch successivo.
+    # Object mapping. Markers di calendario detettati prima → obj=events
+    # con priorita' sui marker generici di "ora/data/time".
     obj = None
-    if any(t in q for t in ("file", "files")) and "url" not in q:
+    if has_calendar:
+        obj = "events"
+    elif any(t in q for t in ("file", "files")) and "url" not in q:
         obj = "files"
     elif "dir" in q or "/tmp" in q or "directory" in q:
         if verb == "list":
@@ -324,8 +344,12 @@ def _bow_intent_for_smoke(query: str) -> dict:
         obj = "processes"
     elif any(t in q for t in ("dove sono", "posizione", "location")):
         obj = "places"
-    elif any(t in q for t in ("ora", "data", "now", "time")):
-        obj = "events"
+    # NB: "ora/data/now/time" senza contesto calendario NON mappa a events.
+    # "che ora e?" / "che data e oggi" deve cadere nel fallback BoW (rank
+    # plain) per pickare get_now via affinity. Mapparlo a events forzerebbe
+    # rank_with_intent a candidare get_file_dates/get_files_metadata (primi
+    # get_* del catalog) e bypassare get_now. Regression introdotta+fixata
+    # nello stesso turno F4-F7 (11/5/2026).
     if not verb and not obj:
         return {}
     return {"verb": verb, "object": obj}

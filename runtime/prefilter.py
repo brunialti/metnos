@@ -72,6 +72,13 @@ _VERB_TO_CANONICAL = {
     "manda": "send", "mando": "send", "mandare": "send",
     "spedisci": "send", "spedisco": "send", "spedire": "send",
     "send": "send",
+    # set (create/update events, contacts, signatures, persons, credentials).
+    # "fissa"/"prenota" sono i verbi idiomatici per booking di un evento
+    # del calendario in IT; "book"/"schedule" in EN. Mappati a `set` perche'
+    # l'executor canonico Google Workspace e' `set_events` (crea o aggiorna).
+    "fissa": "set", "fisso": "set", "fissare": "set",
+    "prenota": "set", "prenoto": "set", "prenotare": "set",
+    "book": "set", "schedule": "set", "schedules": "set",
     # http get (verbo `fetch` rimosso 3/5/2026: HTTP GET = `get_urls`)
     "scarica": "get", "scarico": "get", "scaricare": "get",
     "fetch": "get", "download": "get", "wget": "get", "curl": "get",
@@ -147,7 +154,12 @@ _OBJECT_HINTS = {
     "texts":    ["testo", "testi", "text", "texts", "riga", "righe",
                   "line", "lines", "log"],
     "packages": ["package", "pacchetto", "pip", "apt", "package"],
-    "events":   ["evento", "eventi", "event", "calendar", "calendario"],
+    "events":   ["evento", "eventi", "event", "calendar", "calendario",
+                  "appuntamento", "appuntamenti", "appointment", "appointments",
+                  "riunione", "riunioni", "meeting", "meetings",
+                  "agenda", "incontro", "incontri",
+                  "scadenza", "scadenze", "deadline",
+                  "fissa", "prenota", "book", "schedule"],
     "contacts": ["contatto", "contatti", "contact", "rubrica"],
     "processes": ["processo", "processi", "process", "processes", "ps",
                    "task", "pid", "cpu", "ram", "memoria", "memory",
@@ -432,8 +444,12 @@ _OBJECT_PRIMARY_TOOLS = {
     "files":     ("find_files", "read_files"),
     "dirs":      ("list_dirs", "find_dirs"),
     "urls":      ("find_urls", "get_urls", "read_urls_html", "read_urls_pdf"),
-    "events":    ("read_messages",),  # eventi calendar passano oggi via mail
-    "contacts":  ("read_messages",),  # contatti idem (no executor dedicato)
+    # Calendar events (Google Workspace skill, importati 10/5/2026):
+    # set_events (crea/aggiorna), read_events (lettura), delete_events.
+    # Sostituisce il workaround stale `("read_messages",)` (mail come fallback).
+    "events":    ("set_events", "read_events", "delete_events"),
+    # Contatti Google Workspace (read_contacts dal skill):
+    "contacts":  ("read_contacts",),
     "images":    ("find_images_indices", "change_images", "find_files"),
     "packages":  ("find_packages",),  # canonical handcrafted name (no get_packages)
     "numbers":   (),  # niente primary, lascia al ranker
