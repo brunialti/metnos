@@ -905,6 +905,24 @@ class ChannelDaemon:
         if len(parts) != 3:
             return {"ok": False, "reason": "bad_callback_data", "data": data}
         _, proposal_id, action = parts
+        # E3 11/5/2026: special-case aggregato → invia link al form HTTP.
+        if proposal_id == "_aggregated" and action == "open_form":
+            try:
+                import os as _os
+                base = _os.environ.get(
+                    "METNOS_HTTP_BASE_URL", "http://127.0.0.1:8770",
+                )
+                url = f"{base}/admin/promotions/review"
+                self._send_text(
+                    msg.sender_id,
+                    f"Apri il form review: {url}",
+                    reply_to=msg.message_id,
+                )
+            except Exception as ex:  # noqa: BLE001
+                log.warning("aggregated open_form failed: %s", ex)
+                return {"ok": False, "reason": "open_form_error",
+                        "error": str(ex)}
+            return {"ok": True, "callback": "promoter_open_form"}
         if action == "ok":
             try:
                 import sys as _sys

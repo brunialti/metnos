@@ -990,6 +990,82 @@ async def admin_promotion_rollback(request: web.Request) -> web.Response:
     return web.json_response({"ok": True, **result})
 
 
+async def admin_promotions_review(request: web.Request) -> web.Response:
+    """GET /admin/promotions/review — form aggregator unico (E3, 11/5/2026).
+
+    Costruisce un dialog `get_inputs`-shape (ADR 0090) con 3 step-group
+    (Promossi, Da decidere, Bocciati recenti) e render HTML con
+    `promotions_review.html`. Se nessuna decisione in attesa, mostra una
+    pagina vuota con link di ritorno.
+    """
+    try:
+        from admin.promotions_review import build_review_dialog
+    except ImportError as ex:
+        log.exception("promotions_review import failed")
+        return _error(500, "internal_error", str(ex))
+    try:
+        dlg = build_review_dialog()
+    except Exception as ex:  # noqa: BLE001
+        log.exception("build_review_dialog failed")
+        return _error(500, "internal_error", str(ex))
+    flash = request.query.get("flash", "").strip()
+    return negotiate_collection(
+        request,
+        json_payload=dlg,
+        template="promotions_review.html",
+        template_ctx={
+            "dialog_id": dlg.get("dialog_id"),
+            "title": dlg.get("title"),
+            "description": dlg.get("description"),
+            "dialog": dlg.get("dialog") or [],
+            "groups": dlg.get("groups") or {},
+            "flash": flash,
+        },
+    )
+
+
+async def admin_promotions_review_submit(request: web.Request) -> web.Response:
+    """POST /admin/promotions/review — applica decisioni form review.
+
+    Il body e' `application/x-www-form-urlencoded` con la struttura:
+        promoted_grace__<id1> = "Conferma promozione" | "Rollback" | "Skip"
+        review_needed__<id2> = "Promuovi ora" | "Archivia" | "Skip"
+        archived__<id3> = "Conferma archiviazione" | "Resurrect a pending" | "Skip"
+        dialog_id = <hex16>  (opzionale, solo per audit)
+
+    Atomic apply via `apply_review_decisions`. Redirect a /admin/promotions
+    con flash message di summary.
+    """
+    try:
+        from admin.promotions_review import apply_review_decisions
+    except ImportError as ex:
+        log.exception("promotions_review import failed")
+        return _error(500, "internal_error", str(ex))
+    try:
+        form = await request.post()
+    except Exception as ex:  # noqa: BLE001
+        log.exception("form parse failed")
+        return _error(400, "bad_form", str(ex))
+    values: dict = {}
+    for k, v in form.items():
+        if k == "dialog_id":
+            continue
+        values[str(k)] = str(v)
+    try:
+        result = apply_review_decisions(values)
+    except Exception as ex:  # noqa: BLE001
+        log.exception("apply_review_decisions failed")
+        return _error(500, "internal_error", str(ex))
+    if "text/html" in request.headers.get("Accept", ""):
+        msg = urllib.parse.quote(
+            f"Review applicata: {result.get('applied', 0)} decisioni, "
+            f"{result.get('skipped', 0)} skip, "
+            f"{result.get('failed', 0)} errori."
+        )
+        raise web.HTTPFound(f"/admin/promotions?flash={msg}")
+    return web.json_response({"ok": True, **result})
+
+
 ROUTES = (
     ("GET",  "/admin/login",                      admin_login),
     ("POST", "/admin/login",                      admin_login),
@@ -1000,6 +1076,8 @@ ROUTES = (
     ("GET",  r"/admin/synth-proposals/{id}/evaluate", admin_synth_proposal_evaluate),
     ("POST", r"/admin/synth-proposals/{id}/evaluate", admin_synth_proposal_evaluate),
     ("GET",  "/admin/promotions",                 admin_promotions),
+    ("GET",  "/admin/promotions/review",          admin_promotions_review),
+    ("POST", "/admin/promotions/review",          admin_promotions_review_submit),
     ("POST", r"/admin/promotions/{id}/rollback",  admin_promotion_rollback),
     ("GET",  "/admin/executors",                  admin_executors),
     ("GET",  "/admin/executors/stats",            admin_executors_stats),

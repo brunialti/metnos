@@ -484,14 +484,19 @@ class TestPracticalExampleDeterministic(_BasePromoterTest):
             "verdict": "accept", "score": 5.0,
             "signals": {"call_freq_60d": 30, "eta_speedup": 2.5},
         }
-        out1 = ex_mod.render_practical_example(prop, verdict)
-        out2 = ex_mod.render_practical_example(prop, verdict)
+        # skip_llm=True per testare l'idempotenza del blocco deterministico
+        # senza dipendere da llamacpp (la parte LLM e' coperta dai test in
+        # test_promoter_v2_commentary.py).
+        out1 = ex_mod.render_practical_example(prop, verdict, skip_llm=True)
+        out2 = ex_mod.render_practical_example(prop, verdict, skip_llm=True)
         self.assertEqual(out1, out2)
         self.assertIn("Query", out1)
         self.assertIn("Pipeline OGGI", out1)
         self.assertIn("Pipeline NUOVA", out1)
         self.assertIn("Sostituisce", out1)
         self.assertIn("NON sostituisce", out1)
+        # La sezione perf savings (E2) e' sempre presente, deterministica.
+        self.assertIn("Stima risparmio", out1)
 
 
 # ─── 10. Practical example fallback su ETA vuoto ──────────────────────────
@@ -509,7 +514,7 @@ class TestPracticalExampleETAFallback(_BasePromoterTest):
         prop["path_steps"] = []  # forza fallback ETA
         verdict = {"verdict": "accept", "score": 5.0,
                     "signals": {"call_freq_60d": 0}}
-        out = ex_mod.render_practical_example(prop, verdict)
+        out = ex_mod.render_practical_example(prop, verdict, skip_llm=True)
         # ETA vuoto → "da definire" oppure "dati insufficienti".
         self.assertTrue("da definire" in out or "dati insufficienti" in out)
 

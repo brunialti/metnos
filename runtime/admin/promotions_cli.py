@@ -119,6 +119,54 @@ def cmd_rollback(args) -> int:
     return 0 if result.get("ok") else 1
 
 
+def cmd_review(args) -> int:
+    """Apre il form review come dialog interattivo terminal.
+
+    Stampa il dialog payload + raccoglie scelte da stdin (raw input);
+    submit chiama `apply_review_decisions`. Use case raro (Roberto
+    usa principalmente HTTP), ma utile per debugging headless.
+    """
+    from admin.promotions_review import (
+        apply_review_decisions, build_review_dialog,
+    )
+    dlg = build_review_dialog(max_per_group=args.max, archived_days=args.days)
+    steps = dlg.get("dialog") or []
+    if not steps:
+        print("(nessuna decisione in attesa)")
+        return 0
+    groups = dlg.get("groups") or {}
+    print(f"\nReview promozioni synth ({dlg.get('dialog_id')})")
+    print(f"  Promossi:        {groups.get('promoted_grace', {}).get('count', 0)}")
+    print(f"  Da decidere:     {groups.get('review_needed', {}).get('count', 0)}")
+    print(f"  Bocciati 7g:     {groups.get('archived', {}).get('count', 0)}")
+    print()
+    values: dict[str, str] = {}
+    for step in steps:
+        var = step.get("var") or ""
+        prompt = step.get("prompt") or ""
+        choices = (step.get("schema") or {}).get("choices") or []
+        default = step.get("default") or (choices[-1] if choices else "Skip")
+        print(f"\n{prompt}")
+        for i, c in enumerate(choices, 1):
+            marker = "*" if c == default else " "
+            print(f"  [{i}] {marker} {c}")
+        if args.yes:
+            # Modalita' non-interattiva: tutto skip.
+            values[var] = default
+            continue
+        raw = input(f"Scegli 1-{len(choices)} (default {default}): ").strip()
+        if not raw:
+            values[var] = default
+        elif raw.isdigit() and 1 <= int(raw) <= len(choices):
+            values[var] = choices[int(raw) - 1]
+        else:
+            values[var] = default
+    result = apply_review_decisions(values)
+    print()
+    print(json.dumps(result, ensure_ascii=False, indent=2, default=str))
+    return 0 if result.get("ok") else 1
+
+
 def _build_argparser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(
         prog="metnos-promotions",
@@ -140,6 +188,15 @@ def _build_argparser() -> argparse.ArgumentParser:
     p_rb = sub.add_parser("rollback", help="Annulla una promozione")
     p_rb.add_argument("id", help="proposal_id")
 
+    p_review = sub.add_parser("review",
+                               help="Form aggregator decisioni admin")
+    p_review.add_argument("--max", type=int, default=10,
+                            help="Max item per gruppo (default 10)")
+    p_review.add_argument("--days", type=int, default=7,
+                            help="Finestra archived in giorni (default 7)")
+    p_review.add_argument("--yes", action="store_true",
+                            help="Non interattivo: applica tutti i default (skip)")
+
     return ap
 
 
@@ -150,6 +207,7 @@ def main(argv: list[str] | None = None) -> int:
         "list": cmd_list,
         "show": cmd_show,
         "rollback": cmd_rollback,
+        "review": cmd_review,
     }
     return handlers[args.cmd](args)
 

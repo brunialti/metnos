@@ -106,8 +106,13 @@ class TestInlineKeyboard(_BaseDigestTest):
 class TestCap(_BaseDigestTest):
 
     def test_cap_n10_enforced(self):
+        # Disabilita aggregated mode (E3 11/5/2026) per testare il path
+        # per-item legacy con cap=10.
+        os.environ["METNOS_PROMOTER_DIGEST_AGGREGATED"] = "false"
         for i in range(15):
             self._seed_promoted_grace(f"cap_{i:02d}", "find_widgets")
+        # Pop PRIMA del patch cosi' il modulo fresco vede il patch.
+        sys.modules.pop("jobs.promoter_digest", None)
         with mock.patch(
             "jobs.promoter_digest._resolve_admin_recipient",
             return_value=("123456", None),
@@ -130,6 +135,7 @@ class TestCap(_BaseDigestTest):
 class TestIdempotency(_BaseDigestTest):
 
     def test_rerun_does_not_renotify(self):
+        # 1 item solo: sotto AGGREGATED_THRESHOLD=3, resta path per-item.
         self._seed_promoted_grace("idem_001", "find_widgets")
         sent_count = {"n": 0}
 
@@ -209,7 +215,12 @@ class TestMultiMessageSplit(_BaseDigestTest):
         self.assertEqual("".join(chunks), body)
 
     def test_long_body_triggers_multi_send(self):
-        """Body > 4000 → multipli send_to_admin call, keyboard solo all'ultimo."""
+        """Body > 4000 → multipli send_to_admin call, keyboard solo all'ultimo.
+
+        Disabilita aggregated (E3): l'aggregato manda UN messaggio piccolo,
+        non chunked. Questo test esercita lo split per-item legacy.
+        """
+        os.environ["METNOS_PROMOTER_DIGEST_AGGREGATED"] = "false"
         long_example = "lorem ipsum\n" * 800  # ~10kB
         self._seed_promoted_grace("multi_001", "find_widgets",
                                     example=long_example)
@@ -219,6 +230,7 @@ class TestMultiMessageSplit(_BaseDigestTest):
             sends.append((body, keyboard))
             return (True, None)
 
+        sys.modules.pop("jobs.promoter_digest", None)
         with mock.patch(
             "jobs.promoter_digest._resolve_admin_recipient",
             return_value=("123456", None),
@@ -233,6 +245,47 @@ class TestMultiMessageSplit(_BaseDigestTest):
         for body, kb in sends[:-1]:
             self.assertIsNone(kb)
         self.assertIsNotNone(sends[-1][1])
+
+
+# ─── 7. Aggregated mode triggers form link (E3, 11/5/2026) ────────────────
+
+
+class TestAggregatedMode(_BaseDigestTest):
+
+    def test_threshold_triggers_aggregated_message(self):
+        """3+ grace items → UN messaggio aggregato con bottone open_form."""
+        os.environ["METNOS_PROMOTER_DIGEST_AGGREGATED"] = "true"
+        for i in range(4):
+            self._seed_promoted_grace(f"agg_{i:02d}", "find_x")
+        sends: list[tuple[str, list[list[dict]] | None]] = []
+
+        def _send_mock(recipient, body, keyboard):
+            sends.append((body, keyboard))
+            return (True, None)
+
+        sys.modules.pop("jobs.promoter_digest", None)
+        with mock.patch(
+            "jobs.promoter_digest._resolve_admin_recipient",
+            return_value=("123456", None),
+        ), mock.patch(
+            "jobs.promoter_digest._send_to_admin", side_effect=_send_mock,
+        ):
+            from jobs.promoter_digest import task_promoter_digest
+            result = task_promoter_digest()
+        # UN solo messaggio.
+        self.assertEqual(len(sends), 1)
+        body, kb = sends[0]
+        self.assertIn("decisioni in attesa", body)
+        self.assertIn("Apri il form review", body)
+        # Keyboard col bottone open_form.
+        self.assertIsNotNone(kb)
+        flat = [b for row in kb for b in row]
+        self.assertTrue(any(b["data"] == "promoter:_aggregated:open_form"
+                              for b in flat))
+        self.assertEqual(result["metadata"]["mode"], "aggregated")
+        # Tutti i grace sono stati marcati notified.
+        from jobs.promoter_state import pending_notification
+        self.assertEqual(len(pending_notification()), 0)
 
 
 if __name__ == "__main__":

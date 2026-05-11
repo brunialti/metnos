@@ -280,6 +280,132 @@ def mark_rolled_back(proposal_id: str) -> None:
         conn.close()
 
 
+def mark_finalized(proposal_id: str) -> bool:
+    """Marca una row `promoted_grace` come `promoted_finalized`.
+
+    Usato dalla review form admin (E3) quando l'admin conferma una
+    promozione esplicitamente prima della grace expiry. Idempotente:
+    no-op se la row e' gia' finalized; ritorna False se la row e' in
+    altri stati o non esiste.
+    """
+    if not proposal_id:
+        return False
+    conn = _open()
+    try:
+        ensure_schema(conn)
+        row = conn.execute(
+            "SELECT state FROM proposal_promote WHERE proposal_id = ?",
+            (proposal_id,),
+        ).fetchone()
+        if row is None:
+            return False
+        cur = row["state"] or ""
+        if cur == "promoted_finalized":
+            return True
+        if cur != "promoted_grace":
+            return False
+        conn.execute(
+            "UPDATE proposal_promote SET state = 'promoted_finalized', "
+            "finalized_at = ? WHERE proposal_id = ?",
+            (_now_iso(), proposal_id),
+        )
+        conn.commit()
+        return True
+    finally:
+        conn.close()
+
+
+def resurrect_from_archive(proposal_id: str) -> bool:
+    """Riporta una proposta `archived` in stato `review_needed`.
+
+    Usato dalla review form admin (E3) quando l'admin contesta un
+    archive (es. evaluator reject discutibile). Idempotente: ritorna
+    False se la row non esiste o non e' in `archived`.
+    """
+    if not proposal_id:
+        return False
+    conn = _open()
+    try:
+        ensure_schema(conn)
+        row = conn.execute(
+            "SELECT state FROM proposal_promote WHERE proposal_id = ?",
+            (proposal_id,),
+        ).fetchone()
+        if row is None:
+            return False
+        if (row["state"] or "") != "archived":
+            return False
+        conn.execute(
+            "UPDATE proposal_promote SET state = 'review_needed', "
+            "needs_human_review = 1, archived_at = NULL "
+            "WHERE proposal_id = ?",
+            (proposal_id,),
+        )
+        conn.commit()
+        return True
+    finally:
+        conn.close()
+
+
+def archive_review_needed(proposal_id: str) -> bool:
+    """Marca una row `review_needed` come `archived` (admin decisione).
+
+    Usato dalla review form admin (E3) quando l'admin sceglie di
+    archiviare una proposta in attesa di revisione. Idempotente.
+    """
+    if not proposal_id:
+        return False
+    conn = _open()
+    try:
+        ensure_schema(conn)
+        row = conn.execute(
+            "SELECT state FROM proposal_promote WHERE proposal_id = ?",
+            (proposal_id,),
+        ).fetchone()
+        if row is None:
+            return False
+        cur = row["state"] or ""
+        if cur == "archived":
+            return True
+        if cur != "review_needed":
+            return False
+        conn.execute(
+            "UPDATE proposal_promote SET state = 'archived', "
+            "archived_at = ?, needs_human_review = 0 "
+            "WHERE proposal_id = ?",
+            (_now_iso(), proposal_id),
+        )
+        conn.commit()
+        return True
+    finally:
+        conn.close()
+
+
+def archived_within_days(days: int, *, limit: int = 200) -> list[dict]:
+    """Lista row `archived` con `archived_at >= now - days`.
+
+    Usato dalla review form per la sezione "Bocciati recenti".
+    """
+    if days <= 0:
+        return []
+    from datetime import timedelta
+    cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+    cutoff_iso = cutoff.strftime("%Y-%m-%dT%H:%M:%SZ")
+    conn = _open()
+    try:
+        ensure_schema(conn)
+        rows = conn.execute(
+            "SELECT * FROM proposal_promote "
+            "WHERE state = 'archived' AND archived_at IS NOT NULL "
+            "AND archived_at >= ? "
+            "ORDER BY archived_at DESC LIMIT ?",
+            (cutoff_iso, limit),
+        ).fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
 def expire_grace(now_iso: str | None = None) -> list[str]:
     """Promuove a `promoted_finalized` le proposte con `grace_until` < now.
 
@@ -398,4 +524,8 @@ __all__ = [
     "mark_notified",
     "mark_acked",
     "audit_append",
+    "mark_finalized",
+    "resurrect_from_archive",
+    "archive_review_needed",
+    "archived_within_days",
 ]
