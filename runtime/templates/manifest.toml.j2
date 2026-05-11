@@ -52,7 +52,7 @@ hint = [{% for h in cap.hint %}"{{ h }}"{% if not loop.last %}, {% endif %}{% en
 
 {% endfor %}
 
-reversible       = {{ reversible | tojson | lower }}
+revertible       = {{ reversible | tojson | lower }}
 {%- if reverse_pattern %}
 reverse_pattern  = "{{ reverse_pattern }}"
 {%- endif %}
