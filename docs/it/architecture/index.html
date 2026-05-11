@@ -1,0 +1,778 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Microprogettazione — Metnos</title>
+<meta name="description" content="Guida alla microprogettazione di Metnos: cosa sono executor, mnest, mnestoma, agent runtime, http_api; come si parlano fra loro; quindici documenti canonici v1.1 allineati al codice al 4 maggio 2026.">
+<meta name="keywords" content="Metnos, metnos, microprogettazione, architettura, executor, mnest, mnestoma, agent runtime, vaglio, synt, telos, http_api, multi-user, web crawler">
+<meta name="author" content="Roberto Brunialti">
+<meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large">
+<link rel="canonical" href="https://metnos.com/it/architecture/">
+<link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/">
+<link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/">
+<link rel="alternate" hreflang="x-default" href="https://metnos.com/en/architecture/">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://metnos.com/it/architecture/">
+<meta property="og:title" content="Microprogettazione — Metnos">
+<meta property="og:description" content="Guida didattica alla microprogettazione di Metnos: termini, mappa dei componenti, quattordici documenti canonici v1.1 allineati al codice.">
+<meta property="og:locale" content="it_IT">
+<meta property="og:locale:alternate" content="en_US">
+<meta property="og:site_name" content="Metnos">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="Microprogettazione — Metnos">
+<meta name="twitter:description" content="Quattordici componenti, una mappa, un glossario propedeutico.">
+<style>
+:root {
+  --navy: #1A477A;
+  --navy-light: #2B6CB0;
+  --sage: #548235;
+  --bronze: #A0522D;
+  --bg: #FAFBFC;
+  --text: #1a1a1a;
+  --border: #d0d7de;
+  --code-bg: #f6f8fa;
+  --muted: #64748B;
+}
+* { box-sizing: border-box; }
+body {
+  font-family: 'Segoe UI', Calibri, -apple-system, BlinkMacSystemFont, Roboto, sans-serif;
+  color: var(--text);
+  background: var(--bg);
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 40px 30px;
+  line-height: 1.65;
+  font-size: 11pt;
+}
+h1 {
+  color: var(--navy);
+  font-size: 22pt;
+  border-bottom: 3px solid var(--navy);
+  padding-bottom: 10px;
+  margin-top: 0;
+}
+h2 {
+  color: var(--navy-light);
+  font-size: 15pt;
+  margin-top: 38px;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 5px;
+}
+h3 {
+  color: var(--navy);
+  font-size: 12.5pt;
+  margin-top: 24px;
+}
+p { margin: 10px 0; }
+a { color: var(--navy); text-decoration: none; }
+a:hover { text-decoration: underline; }
+code {
+  font-family: Consolas, 'Courier New', monospace;
+  background: var(--code-bg);
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-size: 10pt;
+}
+.lead {
+  font-size: 12pt;
+  color: var(--navy);
+  border-left: 4px solid var(--sage);
+  padding-left: 14px;
+  margin: 22px 0;
+}
+.checkpoint {
+  border-left: 4px solid #16a34a;
+  background: #f0fdf4;
+  padding: 12px 18px;
+  margin: 22px 0;
+  border-radius: 0 6px 6px 0;
+  font-size: 10.5pt;
+  color: #14532d;
+}
+.checkpoint strong { color: #14532d; }
+.callout {
+  border-left: 4px solid #f59e0b;
+  background: #fef3c7;
+  padding: 12px 18px;
+  margin: 18px 0;
+  border-radius: 0 6px 6px 0;
+  font-size: 10.5pt;
+}
+.glossary {
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 18px 22px;
+  margin: 22px 0;
+}
+.glossary dt {
+  font-weight: 700;
+  color: var(--navy);
+  margin-top: 10px;
+  font-size: 11pt;
+}
+.glossary dt:first-child { margin-top: 0; }
+.glossary dd {
+  margin: 4px 0 0 0;
+  padding-left: 0;
+  font-size: 10.5pt;
+  color: var(--text);
+}
+.nav {
+  background:#fff;border-bottom:1px solid var(--border);
+  padding:10px 0;font-size:14px;margin:-40px -30px 20px -30px;
+}
+.nav-inner {
+  max-width:960px;margin:0 auto;padding:0 20px;
+  display:flex;justify-content:space-between;
+}
+.nav a { color:var(--navy);font-weight:500; }
+.nav .crumb { color:var(--muted); }
+.nav .crumb strong { color:var(--text); }
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 15px 0;
+  font-size: 10pt;
+}
+th {
+  background: var(--navy);
+  color: white;
+  padding: 8px 10px;
+  text-align: left;
+}
+td {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}
+tr:nth-child(even) td { background: #f0f4f8; }
+.status {
+  display: inline-block;
+  font-size: 9pt;
+  padding: 2px 10px;
+  border-radius: 12px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+}
+.status.tested        { background: #14532d; color: #ffffff; font-weight: 700; }
+.status.under-approval { background: #DCFCE7; color: #166534; border: 1px solid #16a34a; }
+.status.partial       { background: #fef3c7; color: #92400E; border: 1px solid #f59e0b; }
+figure.diagram {
+  margin: 24px 0;
+  text-align: center;
+}
+figure.diagram svg {
+  max-width: 100%;
+  height: auto;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 18px;
+}
+figure.diagram figcaption {
+  margin-top: 10px;
+  color: var(--muted);
+  font-size: 10pt;
+  font-style: italic;
+}
+.role-group {
+  margin: 18px 0 10px 0;
+  font-size: 11pt;
+  color: var(--bronze);
+  font-weight: 600;
+  letter-spacing: 0.3px;
+}
+.toc {
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 14px 22px;
+  margin: 22px 0;
+  font-size: 10.5pt;
+}
+.toc ol { margin: 4px 0 0 18px; padding: 0; }
+.toc li { margin: 3px 0; }
+footer {
+  margin-top: 50px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 9.5pt;
+}
+</style>
+</head>
+<body>
+<nav aria-label="Lingua" style="position:fixed;top:16px;right:20px;z-index:9999;font-family:'Segoe UI',Calibri,sans-serif;font-size:10pt;letter-spacing:2px;background:#FAFBFC;border:1px solid #d0d7de;border-radius:14px;padding:4px 10px;box-shadow:0 1px 4px rgba(0,0,0,0.04);">
+<a href="/it/architecture/" hreflang="it" lang="it" style="color:#1a1a1a;text-decoration:none;font-weight:700;padding:0 4px;border:none;">IT</a>
+<span style="color:#d0d7de;"> · </span>
+<a href="/en/architecture/" hreflang="en" lang="en" style="color:#64748B;text-decoration:none;padding:0 4px;border:none;">EN</a>
+</nav>
+
+<div class="nav">
+  <div class="nav-inner">
+    <a href="../index.html">← Indice documentazione</a>
+    <span class="crumb">docs &rsaquo; <strong>architecture/</strong></span>
+  </div>
+</div>
+
+<h1>Microprogettazione</h1>
+
+<p class="lead">
+Questa pagina &egrave; la <strong>guida d&rsquo;ingresso</strong> alla
+microprogettazione di Metnos. Non descrive il sistema dall&rsquo;alto
+&mdash; quello lo fa l&rsquo;<a href="../Metnos_Architettura_Intro_v1.html">Architettura
+&mdash; Introduzione</a> &mdash; ma ne mostra <em>i pezzi</em>: come si chiamano,
+cosa fanno, come si parlano fra loro. Procediamo dal generale al particolare,
+fissando i termini prima di usarli.
+</p>
+
+<div class="toc">
+  <strong>In questa pagina</strong>
+  <ol>
+    <li><a href="#cosa">Che cos&rsquo;&egrave; la microprogettazione</a></li>
+    <li><a href="#parole">Le quattro parole da conoscere prima</a></li>
+    <li><a href="#mappa">La mappa dei componenti</a></li>
+    <li><a href="#flusso">Come scorre una richiesta dell&rsquo;utente</a></li>
+    <li><a href="#canonici">I quindici documenti canonici</a></li>
+    <li><a href="#stato">Stato del sistema al 4 maggio 2026</a></li>
+    <li><a href="#convenzioni">Convenzioni di scrittura</a></li>
+  </ol>
+</div>
+
+<h2 id="cosa">1. Che cos&rsquo;&egrave; la microprogettazione</h2>
+
+<p>
+L&rsquo;architettura di Metnos vive su due piani.
+Il piano alto &mdash; chiamato <em>Livello 1</em> &mdash; descrive il sistema nel suo
+insieme: i quattro strati, gli organi, le leggi, i fini. Lo trovate nel file
+<a href="../Metnos_Architettura_Intro_v1.html"><code>Metnos_Architettura_Intro_v1.html</code></a>.
+</p>
+<p>
+Questa cartella &egrave; il piano basso, il <em>Livello 2</em>: un
+documento HTML per ogni componente, con il dettaglio sufficiente a scriverne
+il codice senza inventare nulla. Le scelte qui non sono opinioni
+&mdash; sono <em>contratti</em>: schema dei dati, firme delle funzioni,
+flag di sandbox, condizioni di errore. Quando il codice e il documento
+divergono, vince il documento e il codice si adegua, oppure il documento
+viene corretto subito (mai &laquo;dopo&raquo;).
+</p>
+<p>
+La regola di vita &egrave; semplice: <strong>nessun componente viene
+implementato prima che il suo HTML esista, sia approvato e parli la stessa
+lingua del codice gi&agrave; in casa</strong>.
+</p>
+
+<div class="checkpoint">
+<strong>Verifica.</strong> Prima di proseguire, dovete aver chiari due punti:
+(a) il Livello 1 spiega <em>cosa</em>, il Livello 2 spiega <em>come</em>;
+(b) i documenti del Livello 2 sono contratti, non bozze. Se uno di questi
+due punti non &egrave; ovvio, rileggete il paragrafo precedente prima di
+andare avanti.
+</div>
+
+<h2 id="parole">2. Le quattro parole da conoscere prima</h2>
+
+<p>
+Tutto Metnos gira intorno a quattro nomi. Definirli adesso vi risparmia
+mezz&rsquo;ora di confusione fra trenta righe.
+</p>
+
+<dl class="glossary">
+  <dt>executor</dt>
+  <dd>Una <em>capacit&agrave; eseguibile</em>: un piccolo programma che
+  fa una cosa sola e bene (leggere file, mandare una mail, calcolare un hash,
+  tradurre un OCR, scoprire URL nuovi su un sito). Ogni executor accetta liste
+  in ingresso e produce liste in uscita; ha un manifest che lo descrive, una
+  firma Ed25519 che lo autentica e un profilo di sandbox che lo confina. Il
+  pool corrente e&rsquo; di <strong>circa 46 executor</strong> fra scritti a
+  mano in <code>/opt/myclaw/executors/</code> e sintetizzati al volo in
+  <code>~/.local/share/metnos/executors/</code>.</dd>
+
+  <dt>mnest</dt>
+  <dd>Il <em>filo</em> che collega due executor quando sono stati attivati
+  insieme dal pianificatore. Non &egrave; un puntatore di codice, &egrave; una
+  traccia: nasce dal contesto, si rinforza con la ripetizione,
+  decade se non viene riusato. Il termine sostituisce il vecchio
+  <code>sinapsi</code> della stagione &laquo;neurale&raquo;.</dd>
+
+  <dt>mnestoma</dt>
+  <dd>Il <em>grafo emergente</em> di tutti i mnest. &Egrave; la memoria
+  associativa del sistema: vive su SQLite, viene curata da un
+  processo notturno (<em>ager</em>) e fornisce al pianificatore l&rsquo;intuizione
+  di &laquo;quale executor di solito segue quale&raquo;. La controparte
+  inglese del termine &egrave; <em>mnestome</em>.</dd>
+
+  <dt>agent runtime</dt>
+  <dd>Il <em>motore</em> che orchestra il tutto: riceve la richiesta
+  dell&rsquo;utente, la spezza in passi, sceglie gli executor, li lancia in
+  sandbox, raccoglie le osservazioni, decide il passo dopo. Implementa il
+  loop ReAct con tool-use nativo (Ollama + Qwen/Gemma) e si appoggia agli
+  altri componenti per le decisioni difficili (Vaglio per la sicurezza,
+  Synt per le capacit&agrave; mancanti, Telos per i fini).</dd>
+</dl>
+
+<div class="checkpoint">
+<strong>Verifica.</strong> Provate a completare a voce le frasi:
+&laquo;Un&rsquo;email viene mandata da un&hellip;&raquo;,
+&laquo;Quando due executor lavorano insieme spesso, fra loro nasce un&hellip;&raquo;,
+&laquo;Tutti questi fili insieme formano il&hellip;&raquo;,
+&laquo;Chi decide la sequenza dei passi &egrave; l&rsquo;&hellip;&raquo;.
+Se rispondete <em>executor, mnest, mnestoma, agent runtime</em>, potete
+proseguire.
+</div>
+
+<h2 id="mappa">3. La mappa dei componenti</h2>
+
+<p>
+Sono <strong>quindici</strong> componenti documentati. Lo schema sotto
+li raggruppa per ruolo: il bordo nero spesso &egrave; il motore centrale,
+le forme verdi i &laquo;servizi&raquo; che il motore consulta, le forme
+azzurre i &laquo;tessuti&raquo; che memorizzano lo stato, le forme color
+bronzo gli organi periferici verso l&rsquo;utente e verso l&rsquo;ambiente.
+Le frecce indicano chi <em>chiama</em> chi.
+</p>
+
+<figure class="diagram">
+<svg viewBox="0 0 880 540" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Mappa dei quattordici componenti di Metnos">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#64748B"/>
+    </marker>
+    <style>
+      .box { stroke: #64748B; stroke-width: 1; rx: 6; ry: 6; }
+      .core { fill: #1A477A; stroke: #0f2d4a; stroke-width: 2; }
+      .core text, text.core-t { fill: #fff; font-weight: 700; }
+      .judge { fill: #fef3c7; stroke: #92400E; }
+      .service { fill: #dcfce7; stroke: #16a34a; }
+      .memory { fill: #dbeafe; stroke: #1e40af; }
+      .channel { fill: #fde68a; stroke: #b45309; }
+      .telos { fill: #f3e8ff; stroke: #7e22ce; }
+      .lbl { font-family: 'Segoe UI', sans-serif; font-size: 11px; fill: #1a1a1a; text-anchor: middle; }
+      .lbl-sm { font-family: 'Segoe UI', sans-serif; font-size: 9.5px; fill: #475569; text-anchor: middle; }
+      .arrow { stroke: #64748B; stroke-width: 1.4; fill: none; marker-end: url(#arrow); }
+      .arrow-dashed { stroke: #94a3b8; stroke-width: 1.2; fill: none; stroke-dasharray: 4 3; marker-end: url(#arrow); }
+    </style>
+  </defs>
+
+  <!-- Telos in alto -->
+  <rect class="box telos" x="350" y="10" width="180" height="40"/>
+  <text x="440" y="35" class="lbl">telos &mdash; fini ultimi</text>
+
+  <!-- User / Channel a sinistra -->
+  <rect class="box channel" x="20" y="100" width="140" height="40"/>
+  <text x="90" y="125" class="lbl">channel (Telegram)</text>
+
+  <rect class="box channel" x="20" y="160" width="140" height="40"/>
+  <text x="90" y="185" class="lbl">pairing</text>
+
+  <rect class="box channel" x="20" y="220" width="140" height="40"/>
+  <text x="90" y="245" class="lbl">approval_ux</text>
+
+  <!-- Core: agent_runtime al centro -->
+  <rect class="box core" x="320" y="180" width="240" height="80"/>
+  <text x="440" y="208" class="lbl core-t" style="fill:#fff;">agent runtime</text>
+  <text x="440" y="228" class="lbl core-t" style="fill:#fff;font-size:10px;">loop ReAct &middot; pianificatore</text>
+  <text x="440" y="246" class="lbl core-t" style="fill:#fff;font-size:10px;">tool-use nativo</text>
+
+  <!-- Servizi del runtime: vaglio, synt, sandbox, policy -->
+  <rect class="box judge" x="610" y="100" width="140" height="40"/>
+  <text x="680" y="125" class="lbl">vaglio</text>
+
+  <rect class="box judge" x="610" y="160" width="140" height="40"/>
+  <text x="680" y="185" class="lbl">policy</text>
+
+  <rect class="box judge" x="610" y="220" width="140" height="40"/>
+  <text x="680" y="245" class="lbl">sandbox</text>
+
+  <rect class="box service" x="610" y="280" width="140" height="40"/>
+  <text x="680" y="305" class="lbl">synt</text>
+
+  <!-- Executor pool sotto il runtime -->
+  <rect class="box service" x="320" y="290" width="240" height="50"/>
+  <text x="440" y="312" class="lbl">executor (pool)</text>
+  <text x="440" y="328" class="lbl-sm">~46 fra hand-crafted e sintetizzati</text>
+
+  <!-- Scratchpad e mnestoma sotto -->
+  <rect class="box memory" x="200" y="380" width="160" height="50"/>
+  <text x="280" y="402" class="lbl">scratchpad</text>
+  <text x="280" y="418" class="lbl-sm">stato del turno</text>
+
+  <rect class="box memory" x="380" y="380" width="160" height="50"/>
+  <text x="460" y="402" class="lbl">mnest</text>
+  <text x="460" y="418" class="lbl-sm">tracce di co-attivazione</text>
+
+  <rect class="box memory" x="560" y="380" width="160" height="50"/>
+  <text x="640" y="402" class="lbl">mnestoma</text>
+  <text x="640" y="418" class="lbl-sm">grafo + ager</text>
+
+  <!-- Observability in basso a destra -->
+  <rect class="box service" x="760" y="380" width="100" height="50"/>
+  <text x="810" y="402" class="lbl">obs.</text>
+  <text x="810" y="418" class="lbl-sm">dashboard</text>
+
+  <!-- Frecce: telos governa il runtime -->
+  <path class="arrow-dashed" d="M440,52 L440,180"/>
+  <text x="455" y="120" class="lbl-sm" style="text-anchor:start;">orienta</text>
+
+  <!-- channel ↔ runtime -->
+  <path class="arrow" d="M160,120 L320,200"/>
+  <path class="arrow" d="M320,220 L160,180"/>
+
+  <!-- pairing → channel -->
+  <path class="arrow" d="M90,160 L90,140"/>
+
+  <!-- approval_ux ↔ runtime -->
+  <path class="arrow" d="M160,240 L320,240"/>
+
+  <!-- runtime → vaglio/policy/sandbox -->
+  <path class="arrow" d="M560,200 L610,135"/>
+  <path class="arrow" d="M560,220 L610,180"/>
+  <path class="arrow" d="M560,240 L610,240"/>
+
+  <!-- runtime → synt → executor -->
+  <path class="arrow" d="M560,260 L610,290"/>
+  <path class="arrow" d="M610,310 L560,310"/>
+
+  <!-- runtime → executor pool -->
+  <path class="arrow" d="M440,260 L440,290"/>
+
+  <!-- executor → mnest → mnestoma -->
+  <path class="arrow" d="M440,340 L440,380"/>
+  <path class="arrow" d="M540,405 L560,405"/>
+
+  <!-- runtime → scratchpad -->
+  <path class="arrow" d="M380,260 L300,380"/>
+
+  <!-- mnestoma → observability -->
+  <path class="arrow-dashed" d="M720,405 L760,405"/>
+</svg>
+<figcaption>Mappa dei componenti documentati. Tratto continuo: chiamata diretta. Tratto tratteggiato: orientamento o lettura.</figcaption>
+</figure>
+
+<p>
+Tre osservazioni utili per leggere lo schema.
+</p>
+
+<ol>
+  <li><strong>Il telos sta sopra a tutto</strong>: non &egrave; un servizio
+  che si chiama, &egrave; un&rsquo;orientazione. Il runtime pesa le
+  alternative anche in funzione dei fini dichiarati nell&rsquo;omonimo file
+  del workspace.</li>
+
+  <li><strong>Il vaglio &egrave; sempre prima dell&rsquo;esecuzione</strong>,
+  mai dopo. Una volta che un executor &egrave; partito non si torna indietro
+  in modo gratuito: l&rsquo;<em>undo</em> esiste, ma costa storia e blob di
+  backup.</li>
+
+  <li><strong>Il pool di executor &egrave; aperto</strong>: il synt pu&ograve;
+  comporne di nuovi mettendo in fila quelli esistenti, oppure (se non basta)
+  generandone uno ex novo, con firma e installazione automatica.</li>
+</ol>
+
+<h2 id="flusso">4. Come scorre una richiesta dell&rsquo;utente</h2>
+
+<p>
+Per fissare la mappa, seguiamo una richiesta semplice dall&rsquo;ingresso
+fino alla risposta: <em>&laquo;sposta in <code>~/Archivio/2026</code> i PDF di
+fatture arrivati questa settimana&raquo;</em>.
+</p>
+
+<ol>
+  <li><strong>Channel</strong>. Telegram riceve il messaggio dell&rsquo;utente.
+  Il daemon controlla che il mittente sia stato <em>pairato</em> con un
+  livello d&rsquo;autorizzazione sufficiente; in caso contrario il messaggio
+  viene scartato senza eco. Pairing significa &laquo;canale + sender ID
+  riconosciuto&raquo;: si ottiene rispondendo a un codice Ed25519 firmato
+  con TTL.</li>
+
+  <li><strong>Agent runtime &mdash; pianificazione</strong>. Il runtime
+  estrae l&rsquo;<em>intent</em> (verbo canonico: <code>move</code>;
+  oggetto: <code>files</code>; criterio: PDF allegati a fatture in finestra
+  &laquo;ultima settimana&raquo;), interroga il prefilter per ridurre il
+  catalogo agli executor pertinenti e prepara il primo passo del loop
+  ReAct.</li>
+
+  <li><strong>Vaglio &mdash; guardia + giudice</strong>. Prima di lanciare
+  l&rsquo;executor il Vaglio controlla due cose: che il percorso non sia
+  vietato (forbidden paths), che il comando shell non sia
+  irrecuperabile (<code>rm&nbsp;-rf</code> e simili). Per le operazioni
+  che cadono in zona grigia, il giudice rule-based assegna un punteggio
+  e, se sopra soglia, chiede una conferma all&rsquo;utente tramite
+  <em>carta a 3 righe</em> (cosa/dove/perch&eacute;).</li>
+
+  <li><strong>Sandbox + executor</strong>. Il runtime invoca
+  <code>read_messages</code> dentro <code>bwrap</code> con i flag derivati
+  dal manifest. L&rsquo;output torna come lista di <em>entries</em>; ogni
+  entry &egrave; un dizionario con il path del PDF e i metadati.</li>
+
+  <li><strong>Pipe</strong>. Il passo successivo &egrave;
+  <code>move_files</code>; riceve la lista del passo precedente con
+  <code>from_step:&nbsp;N</code>. La verit&agrave; sui dati vive nello
+  scratchpad: il pianificatore non vede l&rsquo;intera lista, ne vede una
+  vista sintetica che gli basta per decidere.</li>
+
+  <li><strong>Mnest + mnestoma</strong>. La coppia
+  <code>read_messages&nbsp;&rarr;&nbsp;move_files</code> rinforza una
+  traccia esistente nel grafo. Se non esiste, viene creata. L&rsquo;ager
+  notturno far&agrave; manutenzione: decadimento, fusioni, scarti.</li>
+
+  <li><strong>Risposta</strong>. Il runtime restituisce all&rsquo;utente,
+  via Telegram, il numero di file spostati e il primo motivo di scarto se
+  qualcosa &egrave; stato escluso. La <em>final_answer</em> include il
+  marker di troncamento se la lista di partenza era stata limitata da un cap.</li>
+</ol>
+
+<div class="checkpoint">
+<strong>Verifica.</strong> Provate a rispondere senza guardare i passi:
+chi parla con l&rsquo;utente? chi decide la sequenza? chi lancia gli
+executor? chi controlla che l&rsquo;operazione sia lecita? chi memorizza
+che le due capacit&agrave; sono andate a braccetto? Se le risposte sono
+<em>channel, agent runtime, agent runtime, vaglio, mnestoma</em>, allora
+la mappa &egrave; vostra.
+</div>
+
+<h2 id="canonici">5. I quindici documenti canonici</h2>
+
+<p>
+Sotto, i quindici documenti raggruppati per ruolo. La colonna
+<em>Stato</em> dice se il componente &egrave; <strong>tested</strong>
+(esiste nel codice e supera i test del modulo) oppure
+<strong>under approval</strong> (il design esiste, l&rsquo;implementazione
+&egrave; in corso o parziale). Tutti hanno la controparte inglese in
+<a href="../../en/architecture/"><code>/en/architecture/</code></a>.
+</p>
+
+<div class="role-group">Motore centrale</div>
+<table>
+<thead><tr><th style="width:22%">Componente</th><th>Cosa copre</th><th style="width:14%">Stato</th></tr></thead>
+<tbody>
+<tr>
+  <td><a href="agent_runtime.html"><code>agent_runtime</code></a></td>
+  <td>Loop ReAct, mode router, data piping fra step (<code>from_step:&nbsp;int</code> per liste, <code>{{stepN.field}}</code> per scalari), scratchpad, hook su mnestoma. &Egrave; il motore che chiama tutti gli altri.</td>
+  <td><span class="status tested">tested</span></td>
+</tr>
+<tr>
+  <td><a href="scratchpad.html"><code>scratchpad</code></a></td>
+  <td>Archivio temporaneo del turno: tiene le observation grandi senza occupare il contesto del pianificatore. Builtin <code>scratchpad_read</code> con <em>head/tail/range</em>.</td>
+  <td><span class="status tested">tested</span></td>
+</tr>
+</tbody>
+</table>
+
+<div class="role-group">Capacit&agrave; eseguibili e loro nascita</div>
+<table>
+<thead><tr><th style="width:22%">Componente</th><th>Cosa copre</th><th style="width:14%">Stato</th></tr></thead>
+<tbody>
+<tr>
+  <td><a href="executor.html"><code>executor</code></a></td>
+  <td>Introduzione didattica: cos'&egrave; un executor, anatomia in cinque file, manifesto firmato, recinto di esecuzione, ciclo di vita, tre origini (a mano / generato / di sistema). Tre esempi concreti. Per chi vuole capire, non per chi deve implementare. Pool a 55 al 6/5/2026.</td>
+  <td><span class="status tested">tested</span></td>
+</tr>
+<tr>
+  <td><a href="synt.html"><code>synt</code></a></td>
+  <td>Come nascono nuovi executor: pipeline a cinque stadi (<em>naming, signature, tests, description, code</em>), cascata reattiva (compose &rarr; generate) e introvertiva (dedupe, generalize, specialize).</td>
+  <td><span class="status tested">tested</span></td>
+</tr>
+</tbody>
+</table>
+
+<div class="role-group">Memoria associativa</div>
+<table>
+<thead><tr><th style="width:22%">Componente</th><th>Cosa copre</th><th style="width:14%">Stato</th></tr></thead>
+<tbody>
+<tr>
+  <td><a href="mnest.html"><code>mnest</code></a></td>
+  <td>La traccia di co-attivazione fra due executor: anatomia, lifecycle, decadimento, persistenza, proto-mnest. Sostituisce il vecchio <code>sinapsi</code>.</td>
+  <td><span class="status tested">tested</span></td>
+</tr>
+<tr>
+  <td><a href="mnestoma.html"><code>mnestoma</code></a></td>
+  <td>Il grafo emergente di tutti i mnest: schema dati SQLite, operazioni atomiche, ager notturno, snapshot. In EN il termine &egrave; <em>mnestome</em>.</td>
+  <td><span class="status under-approval">under approval</span></td>
+</tr>
+</tbody>
+</table>
+
+<div class="role-group">Sicurezza, regole, sandbox</div>
+<table>
+<thead><tr><th style="width:22%">Componente</th><th>Cosa copre</th><th style="width:14%">Stato</th></tr></thead>
+<tbody>
+<tr>
+  <td><a href="vaglio.html"><code>vaglio</code></a></td>
+  <td>Guardia binaria (forbidden paths, comandi shell quasi-irrecuperabili) e giudice graduato rule-based con soglia configurabile. Giudice LLM probabilistico rinviato a v1.2.</td>
+  <td><span class="status tested">tested</span></td>
+</tr>
+<tr>
+  <td><a href="policy.html"><code>policy</code></a></td>
+  <td>Capability registry: tredici capability canoniche, tabella autonomy &times; capability (ReadOnly / Supervised / Full), grants <em>per_target</em> persistenti, <code>effective_outcome</code> combinato.</td>
+  <td><span class="status tested">tested</span></td>
+</tr>
+<tr>
+  <td><a href="sandbox.html"><code>sandbox</code></a></td>
+  <td>Profilo <code>bwrap</code> derivato dal manifest: read-only del codice, isolamento di rete se nessuna capability lo richiede, fallback graceful se <code>bwrap</code> manca. Landlock rinviato a v1.2.</td>
+  <td><span class="status tested">tested</span></td>
+</tr>
+</tbody>
+</table>
+
+<div class="role-group">Canale verso l&rsquo;utente</div>
+<table>
+<thead><tr><th style="width:22%">Componente</th><th>Cosa copre</th><th style="width:14%">Stato</th></tr></thead>
+<tbody>
+<tr>
+  <td><a href="channel.html"><code>channel</code></a></td>
+  <td>Adattatore canale (<code>Protocol</code> con <code>send</code> / <code>poll</code>) e prima implementazione concreta: <code>TelegramChannel</code> con long-poll, persistenza <code>last_update_id</code>, daemon e systemd user unit. Multi-user: <code>send_to(chat_id, OutboundMessage)</code> + <code>/start &lt;token&gt;</code> per pairing guest.</td>
+  <td><span class="status tested">tested</span></td>
+</tr>
+<tr>
+  <td><a href="http_api.html"><code>http_api</code></a></td>
+  <td>Secondo server HTTP (porta 8770): canale agent uniforme su <code>POST /agent/turn</code> (SSE + JSON), dashboard <code>/admin</code> in htmx + Jinja2 + uPlot, gestione utenti, proposte introvertiva, scheduler runs. Auth via admin key (cookie 7g) o Bearer device.</td>
+  <td><span class="status tested">tested</span></td>
+</tr>
+<tr>
+  <td><a href="pairing.html"><code>pairing</code></a></td>
+  <td>Due percorsi: <code>/pair</code> con codici Ed25519 firmati per device tecnici e <code>/start &lt;token&gt;</code> short-lived per familiari/guest (multi-user, ADR&nbsp;0083). Registro <code>users.db</code> con host + guest, <code>user_channels</code>, <code>resolve_recipients</code>. Bootstrap automatico del host al primo run.</td>
+  <td><span class="status tested">tested</span></td>
+</tr>
+<tr>
+  <td><a href="approval_ux.html"><code>approval_ux</code></a></td>
+  <td>Carta a 3 righe per le richieste di conferma: <code>render_approval_card</code>, <code>ApprovalRequest</code>, modulazione full / medium / short per ricorrenza, dispatcher Telegram <code>approve:&lt;tok&gt;</code> / <code>reject:&lt;tok&gt;</code>.</td>
+  <td><span class="status tested">tested</span></td>
+</tr>
+</tbody>
+</table>
+
+<div class="role-group">Multilinguismo</div>
+<table>
+<thead><tr><th style="width:22%">Componente</th><th>Cosa copre</th><th style="width:14%">Stato</th></tr></thead>
+<tbody>
+<tr>
+  <td><a href="multilang.html"><code>multilang</code></a></td>
+  <td>Tre layer multilingua: prompt LLM (<code>runtime/prompts/&lt;lang&gt;/&lt;role&gt;.j2</code>), description executor (manifest TOML + companion JSON), messaggi user-facing (<code>i18n.sqlite</code>). Source-of-truth latest-wins: nessuna lingua canonica per costruzione, vince chi viene editato per ultimo. Comando admin <code>metnos-prompts add-language &lt;code&gt;</code>. Tier <code>frontier</code> opt-in per qualit&agrave; superiore.</td>
+  <td><span class="status under-approval">under approval</span></td>
+</tr>
+</tbody>
+</table>
+
+<div class="role-group">Visibilit&agrave; e fini</div>
+<table>
+<thead><tr><th style="width:22%">Componente</th><th>Cosa copre</th><th style="width:14%">Stato</th></tr></thead>
+<tbody>
+<tr>
+  <td><a href="observability.html"><code>observability</code></a></td>
+  <td>Dashboard statica HTML che aggrega le sei sorgenti dati di Metnos (mnestoma, pairings, turni, decisioni del Vaglio, scheduler, test framework). Generata on-demand: nessun server live, niente JavaScript.</td>
+  <td><span class="status tested">tested</span></td>
+</tr>
+<tr>
+  <td><a href="telos.html"><code>telos</code></a></td>
+  <td>Fini ultimi dell&rsquo;utente, funzione di allineamento, <em>bother budget</em> con quote di scheduler, telos di non-rinuncia (<code>t.coltivazione_strumenti</code>) e clausola di stop. Il file <code>TELOS.md</code> vive nel workspace.</td>
+  <td><span class="status tested">tested</span></td>
+</tr>
+</tbody>
+</table>
+
+<h2 id="stato">6. Stato del sistema al 4 maggio 2026</h2>
+
+<p>
+Le <strong>fasi 1 &ndash; 5 sono chiuse</strong>: scheletro POC, test framework
+SQLite a tre livelli, synt multistage validato 4/4 contro il 32% del prompt
+unico, reality check live su Telegram con 32 seed, Vaglio reale con
+guardia + giudice rule-based, sandbox <code>bwrap</code> con flag dal
+manifest, capability registry esteso. La <strong>fase 6 (voce)</strong>
+&egrave; in standby: si riusa un satellite proprietario gi&agrave; fatto,
+non &egrave; bloccante. La <strong>fase 7 (multidimensionale)</strong> &egrave;
+attiva: topic 1 sul client Rust per executor remoti ha tutte e dieci le
+decisioni chiuse e una roadmap MVP a cinque settimane; primo device
+remoto (PC Windows) gi&agrave; pairato end-to-end. La <strong>fase 8
+(stress logico)</strong> arriver&agrave; dopo la 7.
+</p>
+
+<p>
+La sessione del <strong>4 maggio 2026</strong> ha portato un blocco
+strutturale (ADR&nbsp;<code>0072&ndash;0084</code>) con tre macro-temi:
+<em>(a) prefilter pi&ugrave; affidabile</em> (adaptive re-rank intra-turno
+ranker-agnostic, primary tools per ogni object canonico, bench
+embedding-vs-token che conferma il token-based 92.3% Recall@5),
+<em>(b) introvertiva pi&ugrave; pulita</em> (filtri qualit&agrave;
+deterministici, short-circuit synth_request su already_in_catalog e
+canonical alias, scheduler gate user-activity), <em>(c) HTTP API
+Phase&nbsp;1 + multi-user + crawler web autenticato</em> (porta 8770 con
+admin dashboard htmx, registro <code>users.db</code> host+guest, pairing
+guest via <code>/start</code>, tre executor crawler nuovi
+<code>find_urls</code>/<code>read_urls_html</code>/<code>read_urls_pdf</code>
++ <code>login_session</code>, credenziali cifrate Fernet con master
+admin.key + scrub turn log, vaglio cross-user host gatekeeper).
+Registry ADR: <strong>85 entries</strong> (<code>0055</code> intenzionalmente
+skipped).
+</p>
+
+<p>
+Il pool di executor &egrave; ora <strong>~46 totali</strong> fra
+hand-crafted e sintetizzati. Verbi-produttori ortogonali a 5
+(<code>find</code> per pattern, <code>get</code> per id/stato,
+<code>read</code> per blob da sorgente, <code>list</code> per container,
+<code>filter</code> per riduzione). Vocabolario chiuso a
+<strong>22 azioni</strong> e <strong>13 oggetti</strong> (con
+<code>texts</code> e <code>signatures</code> di prima classe), pi&ugrave;
+qualifier in quattro famiglie: formato/codifica, operazione (incluso il
+nuovo <code>_loc</code>), granularit&agrave; di dominio
+(<code>_lines</code>/<code>_pages</code>/<code>_segments</code>) e
+safety policy. Centralizzato in <code>runtime/vocab.py</code>.
+</p>
+
+<h2 id="convenzioni">7. Convenzioni di scrittura</h2>
+
+<p>
+Ogni file di microprogettazione segue lo stesso template
+dell&rsquo;<a href="../Metnos_Architettura_Intro_v1.html">Architettura
+&mdash; Introduzione</a>:
+</p>
+
+<ul>
+  <li>palette navy / sage / bronze; CSS inline, niente dipendenze esterne;</li>
+  <li>title-page, indice numerato, capitoli con <code>id</code> stabili;</li>
+  <li>almeno una figura SVG inline (mai PNG: i diagrammi devono restare
+  ricercabili e leggibili in PDF stampato);</li>
+  <li>una sezione <em>Contratto</em> (Protocol + condizioni di errore),
+  una <em>Implementazioni</em>, una <em>Test di conformit&agrave;</em>;</li>
+  <li>sticky nav in alto con breadcrumb;</li>
+  <li>le regole prescrittive ai LLM seguono il pattern
+  <code>DEVI&nbsp;/&nbsp;NON&nbsp;DEVI&nbsp;/&nbsp;OK&nbsp;/&nbsp;ERRORE</code>,
+  quattro righe massimo;</li>
+  <li>nessun anglicismo gratuito quando esiste una resa italiana piana
+  (no <em>peer</em>, <em>trigger</em>, <em>plumbing</em>, <em>gate</em>);</li>
+  <li>nessun nome proprio di terzi: solo &laquo;Roberto&raquo; o generici
+  (<em>guest</em>, <em>ospite</em>, <em>familiare invitato</em>);</li>
+  <li>etichette di alternative come <strong>(a)/(b)/(c)</strong>, mai con
+  lettere greche.</li>
+</ul>
+
+<h2 id="legenda">Legenda stato</h2>
+
+<p>
+<span class="status tested">tested</span> &mdash; il componente ha codice
+in produzione e supera i test del modulo nel framework SQLite.<br>
+<span class="status under-approval">under approval</span> &mdash; il
+documento &egrave; completo, l&rsquo;implementazione &egrave; in corso o
+parziale.<br>
+<span class="status partial">partial</span> &mdash; concetto implementato
+solo in parte; il documento dichiara cosa manca e quando arriver&agrave;.
+</p>
+
+<h2>Continua a leggere</h2>
+<div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(260px, 1fr)); gap:14px; margin:16px 0 24px;">
+  <a href="../Metnos_Architettura_Intro_v1.html" style="display:block; padding:14px 16px; border:1px solid var(--border); border-radius:8px; background:white; color:inherit; text-decoration:none;"><span style="display:inline-block; padding:2px 9px; border-radius:10px; font-size:9pt; background:var(--code-bg); color:var(--muted); font-weight:500;">livello 1 &middot; 20 min</span><div style="color:var(--navy); font-size:11.5pt; font-weight:700; margin:8px 0 6px 0;">Architettura &mdash; Introduzione v1</div><div style="margin:0; color:var(--muted); font-size:10pt; line-height:1.5;">Il &laquo;cosa&raquo;: i quattro strati, l&rsquo;autonomy, il workspace, il flusso di una richiesta.</div></a>
+  <a href="../Metnos_Letteratura_Adattamenti_v1.html" style="display:block; padding:14px 16px; border:1px solid var(--border); border-radius:8px; background:white; color:inherit; text-decoration:none;"><span style="display:inline-block; padding:2px 9px; border-radius:10px; font-size:9pt; background:var(--code-bg); color:var(--muted); font-weight:500;">razionale &middot; 15 min</span><div style="color:var(--navy); font-size:11.5pt; font-weight:700; margin:8px 0 6px 0;">Letteratura &amp; Adattamenti</div><div style="margin:0; color:var(--muted); font-size:10pt; line-height:1.5;">Il &laquo;perch&eacute;&raquo;: la letteratura che ha informato le scelte di design.</div></a>
+  <a href="../Metnos_QuickTour_v1.html" style="display:block; padding:14px 16px; border:1px solid var(--border); border-radius:8px; background:white; color:inherit; text-decoration:none;"><span style="display:inline-block; padding:2px 9px; border-radius:10px; font-size:9pt; background:var(--code-bg); color:var(--muted); font-weight:500;">QuickTour &middot; 8 min</span><div style="color:var(--navy); font-size:11.5pt; font-weight:700; margin:8px 0 6px 0;">QuickTour</div><div style="margin:0; color:var(--muted); font-size:10pt; line-height:1.5;">Otto scene narrate: come Metnos si comporta in casi reali.</div></a>
+  <a href="../index.html" style="display:block; padding:14px 16px; border:1px solid var(--border); border-radius:8px; background:white; color:inherit; text-decoration:none;"><span style="display:inline-block; padding:2px 9px; border-radius:10px; font-size:9pt; background:var(--code-bg); color:var(--muted); font-weight:500;">home</span><div style="color:var(--navy); font-size:11.5pt; font-weight:700; margin:8px 0 6px 0;">&larr; Indice principale</div><div style="margin:0; color:var(--muted); font-size:10pt; line-height:1.5;">Tutti i documenti in un colpo solo.</div></a>
+</div>
+
+<footer>
+Metnos &mdash; microprogettazione, indice canonico v1.1. Aggiornato al
+4 maggio 2026. <code>${METNOS_HOME}/docs/it/architecture/</code>
+</footer>
+
+</body>
+</html>

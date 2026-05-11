@@ -1,0 +1,3120 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Metnos — Architettura: Introduzione v1.1</title>
+    <meta name="description" content="Il documento di Livello 1 di Metnos: cos'è un agente domestico senza apprendimento, come è fatto a quattro strati, cosa sono executor, mnest, mnestoma, tracce, ager, telos e vaglio. Riscritto dopo i due dialoghi galileiani di aprile 2026.">
+    <meta name="keywords" content="Metnos, Metnos, architettura, executor, mnest, mnestoma, traccia, ager, telos, vaglio, quattro strati, provider-agnostic, sei principi, network medicine, proattivo, self-hosted, topologia, libertà safety robustezza, assistente AI personale">
+    <meta name="author" content="Roberto Brunialti">
+    <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large">
+    <link rel="canonical" href="https://metnos.com/it/Metnos_Architettura_Intro_v1.html">
+    <link rel="alternate" hreflang="it" href="https://metnos.com/it/Metnos_Architettura_Intro_v1.html">
+    <link rel="alternate" hreflang="en" href="https://metnos.com/en/Metnos_Architecture_Intro_v1.html">
+    <link rel="alternate" hreflang="x-default" href="https://metnos.com/en/Metnos_Architecture_Intro_v1.html">
+    <meta property="og:type" content="article">
+    <meta property="og:url" content="https://metnos.com/it/Metnos_Architettura_Intro_v1.html">
+    <meta property="og:title" content="Metnos — Architettura: Introduzione v1.1">
+    <meta property="og:description" content="Un documento didattico di Livello 1: quattro strati, executor e mnestoma, tracce emergenti, telos e vaglio, sei principi. Dopo i due dialoghi galileiani.">
+    <meta property="og:locale" content="it_IT">
+    <meta property="og:locale:alternate" content="en_US">
+    <meta property="og:site_name" content="Metnos">
+    <meta name="twitter:card" content="summary">
+    <meta name="twitter:title" content="Metnos — Architettura: Introduzione v1.1">
+    <meta name="twitter:description" content="L'architettura di Metnos spiegata senza gergo: maggiordomo digitale, quattro strati, memoria emergente, proattività con freno.">
+    <style>
+:root {
+    --navy: #1A477A;
+    --navy-light: #2B6CB0;
+    --sage: #548235;
+    --bronze: #A0522D;
+    --plum: #6B21A8;
+    --bg: #FAFBFC;
+    --text: #1a1a1a;
+    --border: #d0d7de;
+    --code-bg: #f6f8fa;
+    --table-header: #1A477A;
+    --table-alt: #f0f4f8;
+    --note-bg: #dbeafe;
+    --note-border: #3b82f6;
+    --tip-bg: #dcfce7;
+    --tip-border: #16a34a;
+    --warn-bg: #fef3c7;
+    --warn-border: #f59e0b;
+    --danger-bg: #fee2e2;
+    --danger-border: #dc2626;
+    --muted: #64748B;
+}
+
+* { box-sizing: border-box; }
+
+body {
+    font-family: 'Segoe UI', Calibri, -apple-system, sans-serif;
+    font-size: 11pt;
+    line-height: 1.65;
+    color: var(--text);
+    background: var(--bg);
+    max-width: 960px;
+    margin: 0 auto;
+    padding: 40px 30px;
+}
+
+h1 {
+    color: var(--navy);
+    font-size: 20pt;
+    border-bottom: 3px solid var(--navy);
+    padding-bottom: 8px;
+    margin-top: 50px;
+    page-break-before: always;
+}
+h1:first-of-type { page-break-before: avoid; }
+
+h2 {
+    color: var(--navy-light);
+    font-size: 14pt;
+    margin-top: 30px;
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 4px;
+}
+
+h3 {
+    color: var(--navy);
+    font-size: 12pt;
+    margin-top: 20px;
+}
+
+p { margin: 10px 0; }
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 15px 0;
+    font-size: 10pt;
+    page-break-inside: avoid;
+}
+th {
+    background: var(--table-header);
+    color: white;
+    padding: 8px 10px;
+    text-align: left;
+    font-weight: 600;
+}
+td {
+    padding: 7px 10px;
+    border-bottom: 1px solid var(--border);
+    vertical-align: top;
+}
+tr:nth-child(even) td { background: var(--table-alt); }
+
+pre {
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 12px 16px;
+    overflow-x: auto;
+    font-size: 9.5pt;
+    line-height: 1.55;
+    page-break-inside: avoid;
+}
+code { font-family: Consolas, 'Courier New', monospace; }
+p code, li code, td code {
+    background: var(--code-bg);
+    padding: 1px 5px;
+    border-radius: 3px;
+    font-size: 9.5pt;
+}
+
+figure {
+    text-align: center;
+    margin: 24px 0;
+    page-break-inside: avoid;
+}
+figure svg {
+    max-width: 100%;
+    height: auto;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: white;
+    padding: 8px;
+}
+figcaption {
+    font-style: italic;
+    color: #555;
+    font-size: 9.5pt;
+    margin-top: 8px;
+}
+
+.callout {
+    border-left: 4px solid;
+    padding: 10px 16px;
+    margin: 15px 0;
+    border-radius: 0 4px 4px 0;
+    font-size: 10pt;
+    page-break-inside: avoid;
+}
+.callout.note { background: var(--note-bg); border-color: var(--note-border); }
+.callout.warning { background: var(--warn-bg); border-color: var(--warn-border); }
+.callout.tip { background: var(--tip-bg); border-color: var(--tip-border); }
+.callout.danger { background: var(--danger-bg); border-color: var(--danger-border); }
+
+.title-page { text-align: center; padding: 120px 0 60px; page-break-after: always; }
+.title-page h1 { font-size: 36pt; border: none; margin: 0; page-break-before: avoid; }
+.title-page .subtitle { font-size: 18pt; color: var(--navy-light); margin: 10px 0 40px; }
+.title-page .meta { font-size: 11pt; color: #666; }
+
+.toc { page-break-after: always; }
+.toc h2 { border: none; }
+.toc ol { font-size: 11pt; line-height: 2; }
+.toc a { color: var(--navy); text-decoration: none; }
+.toc a:hover { text-decoration: underline; }
+
+ul, ol { margin: 8px 0; padding-left: 24px; }
+li { margin-bottom: 4px; }
+
+.lead {
+    font-size: 12pt;
+    color: var(--navy);
+    border-left: 4px solid var(--sage);
+    padding-left: 14px;
+    margin: 18px 0;
+}
+
+.glossary-card {
+    background: white;
+    border: 1px solid var(--border);
+    border-left: 4px solid var(--navy);
+    border-radius: 0 6px 6px 0;
+    padding: 12px 16px;
+    margin: 10px 0;
+    font-size: 10.5pt;
+}
+.glossary-card strong { color: var(--navy); }
+
+.principle {
+    background: #F8FBF5;
+    border: 1px solid var(--sage);
+    border-radius: 8px;
+    padding: 12px 16px;
+    margin: 10px 0;
+    font-size: 10.5pt;
+}
+.principle .num {
+    display: inline-block;
+    background: var(--sage);
+    color: white;
+    font-weight: 700;
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    text-align: center;
+    line-height: 26px;
+    margin-right: 8px;
+}
+
+@media print {
+    body { max-width: none; padding: 0; font-size: 10pt; }
+    h1 { font-size: 16pt; }
+    h2 { font-size: 12pt; }
+    .title-page { padding: 80px 0 40px; }
+    .title-page h1 { font-size: 28pt; }
+}
+    </style>
+</head>
+<body>
+<!-- lang-switch -->
+<nav aria-label="Language" style="position:fixed;top:16px;right:20px;z-index:9999;font-family:'Segoe UI',Calibri,sans-serif;font-size:10pt;letter-spacing:2px;background:#FAFBFC;border:1px solid #d0d7de;border-radius:14px;padding:4px 10px;box-shadow:0 1px 4px rgba(0,0,0,0.04);">
+<a href="/it/Metnos_Architettura_Intro_v1.html" class="active" hreflang="it" lang="it" style="color:#1a1a1a;text-decoration:none;font-weight:700;padding:0 4px;border:none;">IT</a>
+<span style="color:#d0d7de;"> · </span>
+<a href="/en/Metnos_Architecture_Intro_v1.html" hreflang="en" lang="en" style="color:#64748B;text-decoration:none;padding:0 4px;border:none;">EN</a>
+</nav>
+
+
+<div style="background:#fff;border-bottom:1px solid #d0d7de;padding:10px 0;font-size:14px;position:sticky;top:0;z-index:10;margin-bottom:20px;">
+  <div style="max-width:960px;margin:0 auto;padding:0 20px;display:flex;justify-content:space-between;">
+    <a href="index.html" style="color:#1a477a;text-decoration:none;font-weight:500;">← Indice documentazione</a>
+    <span style="color:#8e8e93;">Fondamenti &rsaquo; <strong style="color:#1a1a1a;">Architettura</strong></span>
+  </div>
+</div>
+
+<div class="title-page">
+    <h1>Metnos</h1>
+    <div class="subtitle">Architettura &mdash; Introduzione</div>
+    <div class="meta">
+        Versione 1.1 &mdash; 24 aprile 2026<br>
+        Riferimento: Metnos v0.0.1 (design phase, pre-codice)<br>
+        Formato HTML self-contained &mdash; stampabile PDF<br>
+        <br>
+        Pubblico: chi vuole capire in 30 minuti cosa si sta costruendo,<br>
+        senza gergo ma senza ingenuità.
+    </div>
+</div>
+
+<div class="callout tip" style="font-size: 11pt; margin: 20px auto; max-width: 720px;">
+    <strong>Cosa è cambiato dalla v1.0.</strong> Questa v1.1 incorpora i due
+    dialoghi galileiani di aprile 2026 — il <em>Dialogo sui fini e i limiti</em>
+    (telos, vaglio, le 4 Leggi) e il <em>Dialogo sugli executor e la memoria
+    distribuita</em> (executor, mnest, mnestoma, tracce, ager) — e la
+    riflessione di fine aprile sulla <em>topologia self-hosted</em> (server
+    di casa, laptop come cliente, executor remoti come direzione futura) e
+    sul <em>frame tripartito di libertà / safety dell'identità / safety del
+    perimetro / robustezza</em>. Sei capitoli nuovi rispetto alla v1.0,
+    sette figure nuove, un linguaggio più didattico e meno gergoso. La
+    struttura a quattro strati, invariata, resta il filo conduttore.
+</div>
+
+<div class="toc">
+<h2>Indice</h2>
+<ol>
+    <li><a href="#cap1">Cos'&egrave; Metnos?</a></li>
+    <li><a href="#cap2">Perch&eacute; non bastano openclaw o zeroclaw</a></li>
+    <li><a href="#cap3">Quattro aggettivi, un sistema</a></li>
+    <li><a href="#cap4">Dove vive Metnos: la topologia reale</a></li>
+    <li><a href="#cap5">Libert&agrave;, safety, robustezza: tre assi, non due</a></li>
+    <li><a href="#cap6">Idea chiave: i quattro strati</a></li>
+    <li><a href="#cap7">Il flusso di una richiesta</a></li>
+    <li><a href="#cap8">L'interfaccia LLM, il pattern provider-agnostic</a></li>
+    <li><a href="#cap9">Executor, mnest, mnestoma: l'anatomia dell'agire e del ricordare</a></li>
+    <li><a href="#cap10">Tracce, ager, reversibilit&agrave;: come il sistema cresce e si disfa</a></li>
+    <li><a href="#cap11">Telos e Vaglio: proattivit&agrave; senza tirannia</a></li>
+    <li><a href="#cap12">I tre livelli di autonomia e il DM pairing</a></li>
+    <li><a href="#cap13">Il workspace: file markdown invece di codice</a></li>
+    <li><a href="#cap14">I sei principi</a></li>
+    <li><a href="#cap15">Struttura del repository</a></li>
+    <li><a href="#cap16">Come Metnos sa di funzionare: il testing</a></li>
+    <li><a href="#cap17">Cosa NON &egrave; Metnos</a></li>
+    <li><a href="#cap18">Roadmap &amp; approfondimenti</a></li>
+</ol>
+</div>
+
+
+<h1 id="cap1">1. Cos'&egrave; Metnos?</h1>
+
+<p class="lead">
+Metnos &egrave; un <strong>maggiordomo digitale per casa</strong>: un
+assistente AI che vive su un computer di famiglia, parla attraverso i canali
+che gi&agrave; usi (terminale, Telegram, in futuro voce), esegue azioni reali
+(leggere file, lanciare comandi, consultare il web) ma chiede il permesso
+prima di fare qualcosa di serio.
+</p>
+
+<p>
+L'analogia del maggiordomo &egrave; utile. Un buon maggiordomo:
+</p>
+
+<ul>
+    <li>vive nella tua casa (<em>self-hosted</em>: gira sul tuo server di casa, non sul cloud di un fornitore terzo &mdash; vedi cap. 4);</li>
+    <li>ha le chiavi di certe stanze ma non di tutte (<em>sandbox</em>: pu&ograve; toccare il
+    workspace, non <code>/etc</code> n&eacute; <code>~/.ssh</code>);</li>
+    <li>esegue compiti di routine da solo (cron, notifiche);</li>
+    <li>per decisioni importanti chiede conferma esplicita;</li>
+    <li>apre la porta solo a chi riconosce o a chi mostra un invito (<em>DM pairing</em>);</li>
+    <li>tiene un registro di tutto ci&ograve; che fa (<em>audit log</em>).</li>
+</ul>
+
+<div class="callout note">
+<strong>Due nomi, un progetto.</strong> <em>Metnos</em> &egrave; il nome del
+progetto e del dominio pubblico (<code>metnos.com</code>);
+<em>Metnos</em> &egrave; il nome del processo che gira sul PC
+(<code>${METNOS_HOME}/</code>, <code>myclaw-gateway.service</code>). Sono lo
+stesso sistema visto da due angolazioni: fuori come nome, dentro come codice.
+</div>
+
+<p>
+Tecnicamente &egrave; un processo Python &ge; 3.11 che gira a
+<code>${METNOS_HOME}/</code>, composto da quattro strati (gateway, policy,
+sandbox, workspace/tool). Ogni servizio AI (LLM, STT, TTS, embedding,
+speaker-ID) viene consumato tramite un'<a
+href="Metnos_Glossario_v1.html#llm-abstraction">interfaccia astratta</a>
+&mdash; Metnos &egrave; <em>provider-agnostic</em> per costruzione. Nel caso
+specifico dell'ambiente dell'autore l'interfaccia &egrave; realizzata da
+<code>suprastructure</code>, un package sibling preesistente; in un altro
+ambiente potrebbe essere realizzata da qualunque adapter equivalente.
+</p>
+
+<h2>Obiettivi espliciti</h2>
+
+<table>
+<thead><tr><th style="width:28%">Obiettivo</th><th>Cosa significa concretamente</th></tr></thead>
+<tbody>
+<tr><td><strong>Self-hosted</strong></td><td>Vive su una macchina sotto il controllo fisico e legale dell'utente (nel nostro caso il <code>metnos-server</code>). Il laptop e il telefono sono <em>clienti</em> che la interpellano, non la sede di Metnos. Il cloud resta una possibilit&agrave; opzionale (modelli linguistici remoti, canale Telegram), mai luogo di residenza. Vedi cap. 4 per la topologia per intero.</td></tr>
+<tr><td><strong>Sicuro di default</strong></td><td>Ascolto in locale (<code>127.0.0.1</code>), livello di autonomia <code>Supervised</code>, sandbox obbligatoria, percorsi vietati per costruzione, conferma esplicita per le azioni rischiose.</td></tr>
+<tr><td><strong>Multi-canale</strong></td><td>Stessa "mente", interfacce diverse: CLI, Telegram, poi Signal, voce, cruscotto web.</td></tr>
+<tr><td><strong>Estendibile</strong></td><td>Nuovi strumenti e canali senza riscrivere il nucleo: basta conformarsi a un <code>Protocol</code>.</td></tr>
+<tr><td><strong>Senza dipendenze obbligate</strong></td><td>Lo strato AI vive dietro un'<a href="Metnos_Glossario_v1.html#llm-abstraction">interfaccia astratta</a>: cambiare Claude con Ollama = una riga di configurazione, senza toccare il codice.</td></tr>
+<tr><td><strong>Senza apprendimento</strong></td><td>Metnos non addestra modelli. Non fa fine-tuning. Non fa RLHF. Cambia se stesso attraverso memoria esterna all'LLM (il <em>mnestoma</em>, cap. 9) e attraverso la proposta di nuovi executor filtrata dall'umano (cap. 11).</td></tr>
+</tbody>
+</table>
+
+
+<h1 id="cap2">2. Perch&eacute; non bastano openclaw o zeroclaw</h1>
+
+<p>
+Entrambi sono progetti <em>eccellenti</em> e sono stati la fonte di
+ispirazione primaria. Entrambi per&ograve; hanno tare che li rendono
+non-pronti per l'uso domestico qui sul mio PC:
+</p>
+
+<table>
+<thead><tr><th style="width:18%">Progetto</th><th>Punti forti</th><th>Limiti per il mio caso</th></tr></thead>
+<tbody>
+<tr>
+  <td><strong>openclaw</strong><br><span style="color:var(--muted);font-size:9pt;">TypeScript, Node 24+</span></td>
+  <td>Gateway-first design, 20+ canali, sandbox pluggable (Docker/SSH/OpenShell), skills registry, routing multi-agente</td>
+  <td>Stack Node estraneo ai miei progetti, default pi&ugrave; permissivi, sandbox orientate al cloud</td>
+</tr>
+<tr>
+  <td><strong>zeroclaw</strong><br><span style="color:var(--muted);font-size:9pt;">Rust 2024</span></td>
+  <td>Footprint minimo, livelli di autonomia, sandbox a strati (Landlock+Bubblewrap), DM pairing, auth criptato, 129+ test di sicurezza</td>
+  <td>Rust reintroduce uno stack separato; riscrive da zero il layer LLM/STT/TTS che io ho gi&agrave; risolto con un'interfaccia astratta e una sua implementazione (nel mio caso <code>suprastructure</code>)</td>
+</tr>
+</tbody>
+</table>
+
+<p>
+<strong>La decisione:</strong> prendere i <em>pattern</em> migliori di entrambi
+(gateway-first di openclaw, autonomy+pairing+sandbox-a-strati di zeroclaw) e
+reimplementarli in Python, dove:
+</p>
+<ol>
+    <li>posso riusare l'implementazione di <a href="Metnos_Glossario_v1.html#llm-abstraction">interfaccia LLM</a> che ho gi&agrave; pronta in casa;</li>
+    <li>Metnos &egrave; coerente con gli altri <a href="Metnos_Glossario_v1.html#sibling-agents">sibling agents</a> dell'ambiente (un solo linguaggio, convenzioni condivise);</li>
+    <li>posso alzare i default di sicurezza per il contesto domestico senza
+    combattere contro convenzioni cloud-native.</li>
+</ol>
+
+
+<h1 id="cap3">3. Quattro aggettivi, un sistema</h1>
+
+<p class="lead">
+Prima di entrare nella tecnica, fissiamo cosa Metnos deve <em>essere</em>.
+Quattro aggettivi, non in ordine di importanza ma in ordine di difficolt&agrave;
+crescente. Il quarto &egrave; la novit&agrave; della v1.1 delle prospettive:
+prima c'erano tre, ora sono quattro.
+</p>
+
+<table>
+<thead><tr><th style="width:18%">Aggettivo</th><th style="width:36%">Che cosa chiede al sistema</th><th>Antitesi &mdash; la tentazione opposta</th></tr></thead>
+<tbody>
+<tr>
+  <td><strong style="color:var(--sage)">Utile</strong></td>
+  <td>Fa cose reali per l'utente, non dimostra di essere intelligente. Legge il log, archivia la fattura, ricorda la scadenza.</td>
+  <td>Demo impressionante ma inutile; agente che parla benissimo e fa poco.</td>
+</tr>
+<tr>
+  <td><strong style="color:var(--navy)">Intelligente</strong></td>
+  <td>Quando tocca la lama dell'LLM lo fa bene: buoni prompt, buoni tool, contesto non rumoroso.</td>
+  <td>Agente cablato rigidamente a if/else che non sfrutta nulla della flessibilit&agrave; dei modelli linguistici.</td>
+</tr>
+<tr>
+  <td><strong style="color:var(--bronze)">Autonomo</strong></td>
+  <td>Decide da solo quando fare qualcosa senza disturbare, e quando invece fermarsi e chiedere.</td>
+  <td>Due estremi entrambi tossici: l'agente che chiede conferma per tutto, e l'agente che fa di testa sua senza fermarsi mai.</td>
+</tr>
+<tr>
+  <td><strong style="color:var(--plum)">Proattivo</strong></td>
+  <td>Anticipa, propone, ricorda. Non solo reagisce ma avvia.</td>
+  <td>L'agente passivo che aspetta sempre un prompt. &mdash; Ma anche, all'opposto, l'agente molesto che propone a raffica.</td>
+</tr>
+</tbody>
+</table>
+
+<p>
+Il quarto aggettivo &egrave; quello che alza l'asticella. Un agente solo
+reattivo &egrave; un chatbot con tool. Un agente proattivo deve avere un
+<em>motivo</em> per agire, e un <em>freno</em> per non esagerare. Motivo e
+freno sono il contenuto dei capitoli 9, 10 e 11.
+</p>
+
+<div class="callout note">
+<strong>Perch&eacute; "proattivo" &egrave; il pi&ugrave; difficile.</strong>
+Gli altri tre aggettivi si misurano sul singolo evento: &egrave; utile?
+&egrave; intelligente? &egrave; stato autonomo nella decisione? La
+proattivit&agrave; no: si misura sul comportamento nel tempo. Richiede che
+il sistema ricordi, noti pattern, abbia un'idea di cosa gli importa.
+Richiede, in una parola, una <em>memoria</em> e un <em>telos</em>.
+</div>
+
+
+<h1 id="cap4">4. Dove vive Metnos: la topologia reale</h1>
+
+<p class="lead">
+Metnos non vive sul laptop. Vive su un server Linux acceso
+ventiquattro ore su ventiquattro, e il laptop &mdash; come il telefono,
+come il browser di un dispositivo in viaggio &mdash; &egrave; un
+<em>cliente</em> che lo interpella. Questo capitolo, nuovo rispetto alla v1.0,
+spiega perch&eacute; &egrave; cos&igrave; e cosa ne consegue; in fondo apre
+la porta a una direzione futura importante: gli executor remoti.
+</p>
+
+<h2>Rileggere "local-first"</h2>
+
+<p>
+Il termine <em>local-first</em> ha nella letteratura (Kleppmann 2019) un
+significato preciso che mescola due propriet&agrave;: (a) i dati vivono
+sulla macchina dell'utente; (b) il sistema funziona anche offline. La v1.0
+aveva preso entrambe come obiettivo. Messo alla prova della vita reale di
+una famiglia, il quadro cambia.
+</p>
+
+<p>
+La propriet&agrave; che davvero conta &egrave; la (a): <strong>i dati e la
+logica non stanno in cloud di terzi</strong>. Il motivo &egrave; di
+sovranit&agrave;, di privacy, di assenza di vincoli al fornitore. La
+propriet&agrave;
+(b) &mdash; "funziona offline" &mdash; &egrave; per noi una mezza verit&agrave;:
+un agente che orchestra modelli linguistici, richieste al web e
+notifiche non &egrave; comunque utile senza rete. Se non c'&egrave;
+rete, anche il laptop &mdash; nell'ipotesi in cui Metnos vivesse l&igrave;
+&mdash; non potrebbe chiamare un modello linguistico, consultare una
+pagina web, mandare un messaggio.
+</p>
+
+<p>
+La v1.1 riformula il principio: Metnos &egrave; <strong>self-hosted</strong>,
+non "local-first" in senso stretto. Il dato e la logica vivono su una
+macchina sotto il tuo controllo fisico e legale &mdash; nel nostro caso
+<code>metnos-server</code>, il server di casa. Nessuna dipendenza da fornitori
+terzi, nessun canale obbligato verso server di terzi. La nuvola resta
+una possibilit&agrave; opzionale (modelli linguistici remoti, canale
+Telegram) ma mai come luogo di residenza.
+</p>
+
+<h2>Cinque topologie sul tavolo, una scelta</h2>
+
+<p>
+Pensare il problema bene significa enumerare le alternative prima di
+decidere. Cinque topologie erano (sono) plausibili per un agente
+domestico di questa forma:
+</p>
+
+<table>
+<thead><tr><th style="width:4%">#</th><th style="width:26%">Topologia</th><th>Vantaggi</th><th>Costi / perch&eacute; non va (per ora)</th></tr></thead>
+<tbody>
+<tr>
+  <td><strong>A</strong></td>
+  <td>Metnos su <code>metnos-server</code>, laptop = cliente.<br><em>Scelta attuale.</em></td>
+  <td>Coerenza totale (una sola istanza, un solo mnestoma, un solo registro d'audit). Isolamento serio (<code>bubblewrap</code>, <code>landlock</code>). Risorse adeguate per modelli linguistici locali. Proattivit&agrave; sempre desta: il cron lavora anche quando il laptop dorme.</td>
+  <td>Fuori dalla LAN serve un <em>overlay</em> di rete per raggiungerlo (&rarr; Headscale).</td>
+</tr>
+<tr>
+  <td>B</td>
+  <td>Metnos sul laptop, che chiama <code>metnos-server</code> come macchina dedicata ai modelli linguistici.</td>
+  <td>Metnos &egrave; "con te". Accesso diretto ai file del laptop.</td>
+  <td>Windows non ha un equivalente di <code>bubblewrap</code> / <code>systemd-run</code> / <code>landlock</code>: l'isolamento diventa debole. Il laptop dorme &rarr; la proattivit&agrave; muore con il coperchio chiuso. Memoria fragile (se perdi il laptop perdi tutto, salva la copia sincronizzata).</td>
+</tr>
+<tr>
+  <td>C</td>
+  <td>Due istanze (una per macchina), mnestoma sincronizzato.</td>
+  <td>Sempre disponibile, ovunque.</td>
+  <td>Sincronizzazione distribuita di un grafo di memoria: CRDT, conflitti, elezione del primario. Complessit&agrave; fuori scala per un agente domestico. Doppia superficie di attacco.</td>
+</tr>
+<tr>
+  <td>D</td>
+  <td>Metnos su <code>metnos-server</code>, laptop ridotto a terminale puro.</td>
+  <td>Massima semplicit&agrave;.</td>
+  <td>Alcune azioni utili richiedono risorse del laptop (catturare un'istantanea dello schermo, leggere un file non sincronizzato, pilotare un'applicazione Windows). D le lascia fuori.</td>
+</tr>
+<tr>
+  <td><strong>E</strong></td>
+  <td>Gateway su <code>metnos-server</code>, alcuni executor girano sul laptop (<em>executor remoti</em>).<br><em>Direzione futura.</em></td>
+  <td>Unica fonte di verit&agrave; (mente, memoria, regole su <code>metnos-server</code>), ma accesso alle risorse dei dispositivi dove serve.</td>
+  <td>Apre un abisso di considerazioni di sicurezza e affidabilit&agrave; (vedi pi&ugrave; sotto). Non &egrave; giusto affrontarle alla prima ora.</td>
+</tr>
+</tbody>
+</table>
+
+<p>
+La scelta pragmatica: <strong>A</strong> come base, con <strong>E</strong>
+come direzione esplicita verso cui Metnos pu&ograve; crescere.
+</p>
+
+<figure>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 500" width="100%" preserveAspectRatio="xMidYMid meet" style="font-family:'Segoe UI',Calibri,sans-serif; font-size:12px;">
+<defs>
+  <filter id="topo-shadow" x="-10%" y="-10%" width="120%" height="130%">
+    <feGaussianBlur in="SourceAlpha" stdDeviation="2"/>
+    <feOffset dx="0" dy="2" result="off"/>
+    <feComponentTransfer><feFuncA type="linear" slope="0.18"/></feComponentTransfer>
+    <feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge>
+  </filter>
+  <linearGradient id="topo-server" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0%" stop-color="#2B6CB0"/><stop offset="100%" stop-color="#1A477A"/>
+  </linearGradient>
+  <linearGradient id="topo-laptop" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0%" stop-color="#E9EFDB"/><stop offset="100%" stop-color="#B6C798"/>
+  </linearGradient>
+  <linearGradient id="topo-phone" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0%" stop-color="#F4E4D8"/><stop offset="100%" stop-color="#D4B398"/>
+  </linearGradient>
+  <marker id="topo-arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto">
+    <path d="M0,0 L10,5 L0,10 z" fill="#1A477A"/>
+  </marker>
+  <marker id="topo-arr-sage" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto">
+    <path d="M0,0 L10,5 L0,10 z" fill="#548235"/>
+  </marker>
+  <marker id="topo-arr-bronze" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto">
+    <path d="M0,0 L10,5 L0,10 z" fill="#A0522D"/>
+  </marker>
+</defs>
+
+<!-- Headscale overlay: largest dashed area containing everything reachable -->
+<rect x="30" y="80" width="900" height="360" rx="18" ry="18"
+      fill="#F8FBF5" stroke="#548235" stroke-width="1.6" stroke-dasharray="7 5" opacity="0.7"/>
+<text x="50" y="102" fill="#3F6212" font-size="11" font-weight="700" font-style="italic">
+  Overlay Headscale (WireGuard, self-hostato su metnos-server)
+</text>
+<text x="50" y="118" fill="#3F6212" font-size="10" font-style="italic">
+  mette tutti i device di Roberto nella stessa "LAN virtuale" anche fuori casa
+</text>
+
+<!-- LAN bubble: inner dashed box -->
+<rect x="140" y="155" width="520" height="220" rx="14" ry="14"
+      fill="#F4F7FB" stroke="#1A477A" stroke-width="1.4" stroke-dasharray="4 3" opacity="0.8"/>
+<text x="160" y="176" fill="#1A477A" font-size="10.5" font-weight="700" font-style="italic">
+  LAN di casa
+</text>
+
+<!-- metnos-server (center big) -->
+<rect x="330" y="215" width="280" height="130" rx="14" ry="14"
+      fill="url(#topo-server)" stroke="#0F2A47" stroke-width="2" filter="url(#topo-shadow)"/>
+<text x="470" y="243" text-anchor="middle" fill="white" font-size="15" font-weight="700">
+  metnos-server &mdash; nodo Linux
+</text>
+<text x="470" y="262" text-anchor="middle" fill="#E3ECF5" font-size="11" font-style="italic">
+  processo myclaw-gateway.service (systemd, hardened)
+</text>
+<line x1="345" y1="274" x2="595" y2="274" stroke="#E3ECF5" opacity="0.4"/>
+<text x="470" y="293" text-anchor="middle" fill="white" font-size="10.5">
+  gateway &middot; policy &middot; sandbox &middot; executors (seed)
+</text>
+<text x="470" y="310" text-anchor="middle" fill="white" font-size="10.5">
+  mnestoma &middot; telos/vaglio &middot; audit log
+</text>
+<text x="470" y="332" text-anchor="middle" fill="#B6E1FB" font-size="10" font-style="italic">
+  sempre acceso, sempre al corrente di tutto
+</text>
+
+<!-- Laptop @ casa (LAN) -->
+<rect x="170" y="230" width="130" height="75" rx="8" ry="8"
+      fill="url(#topo-laptop)" stroke="#3F6212" stroke-width="1.6"/>
+<text x="235" y="254" text-anchor="middle" fill="#3F6212" font-size="12" font-weight="700">
+  Laptop @ casa
+</text>
+<text x="235" y="272" text-anchor="middle" fill="#1F2937" font-size="10">
+  Windows
+</text>
+<text x="235" y="288" text-anchor="middle" fill="#1F2937" font-size="10">
+  CLI / dashboard
+</text>
+
+<line x1="300" y1="268" x2="328" y2="268" stroke="#1A477A" stroke-width="2" marker-end="url(#topo-arr)"/>
+<text x="316" y="260" text-anchor="middle" fill="#1A477A" font-size="9">LAN diretta</text>
+
+<!-- Laptop fuori casa (via Headscale) -->
+<rect x="45" y="370" width="160" height="75" rx="8" ry="8"
+      fill="url(#topo-laptop)" stroke="#3F6212" stroke-width="1.6" stroke-dasharray="3 2"/>
+<text x="125" y="394" text-anchor="middle" fill="#3F6212" font-size="12" font-weight="700">
+  Laptop @ fuori casa
+</text>
+<text x="125" y="412" text-anchor="middle" fill="#1F2937" font-size="10">
+  stesso client, overlay
+</text>
+<text x="125" y="428" text-anchor="middle" fill="#1F2937" font-size="10">
+  WireGuard attivo
+</text>
+
+<path d="M 200 400 Q 280 390 330 320" fill="none" stroke="#548235" stroke-width="2" stroke-dasharray="5 4" marker-end="url(#topo-arr-sage)"/>
+<text x="235" y="360" text-anchor="middle" fill="#3F6212" font-size="9" font-style="italic">overlay Headscale</text>
+
+<!-- Telegram cloud (top right) -->
+<g>
+<path d="M 720 90 q -10 -22 20 -24 q 10 -16 30 -10 q 14 -16 36 -8 q 22 -2 26 18 q 18 2 16 22 q 2 20 -20 22 q -14 14 -34 8 q -18 14 -36 2 q -22 4 -26 -14 q -18 0 -12 -16 z"
+      fill="#FBF6F1" stroke="#A0522D" stroke-width="1.4"/>
+<text x="770" y="105" text-anchor="middle" fill="#7C2D12" font-size="11" font-weight="700">
+  Telegram
+</text>
+<text x="770" y="121" text-anchor="middle" fill="#7C2D12" font-size="10">
+  api.telegram.org
+</text>
+</g>
+
+<!-- metnos-server outbound -> Telegram polling -->
+<path d="M 620 245 Q 710 180 750 130" fill="none" stroke="#A0522D" stroke-width="2" marker-end="url(#topo-arr-bronze)"/>
+<text x="705" y="205" text-anchor="middle" fill="#7C2D12" font-size="9" font-style="italic">bot polling (uscita, no porte aperte)</text>
+
+<!-- Phone (bottom right, via Telegram) -->
+<rect x="770" y="370" width="110" height="90" rx="10" ry="10"
+      fill="url(#topo-phone)" stroke="#7C2D12" stroke-width="1.6"/>
+<text x="825" y="396" text-anchor="middle" fill="#7C2D12" font-size="12" font-weight="700">
+  Telefono
+</text>
+<text x="825" y="414" text-anchor="middle" fill="#1F2937" font-size="10">
+  ovunque c'è rete
+</text>
+<text x="825" y="430" text-anchor="middle" fill="#1F2937" font-size="10">
+  parla al bot
+</text>
+<text x="825" y="446" text-anchor="middle" fill="#1F2937" font-size="10">
+  Telegram
+</text>
+
+<path d="M 770 395 Q 750 280 790 140" fill="none" stroke="#A0522D" stroke-width="1.6" stroke-dasharray="3 3" marker-end="url(#topo-arr-bronze)"/>
+<text x="740" y="300" text-anchor="middle" fill="#7C2D12" font-size="9" font-style="italic">via Telegram</text>
+
+<!-- Internet exterior for LLM (right edge) -->
+<rect x="745" y="225" width="180" height="100" rx="10" ry="10"
+      fill="white" stroke="#64748B" stroke-width="1.2" stroke-dasharray="4 3"/>
+<text x="835" y="252" text-anchor="middle" fill="#475569" font-size="11" font-weight="700">
+  Internet (opzionale)
+</text>
+<text x="835" y="272" text-anchor="middle" fill="#64748B" font-size="10">
+  Claude API, web fetch,
+</text>
+<text x="835" y="288" text-anchor="middle" fill="#64748B" font-size="10">
+  aggiornamenti
+</text>
+<text x="835" y="312" text-anchor="middle" fill="#64748B" font-size="10" font-style="italic">
+  usato solo se scelto
+</text>
+
+<line x1="610" y1="290" x2="745" y2="275" stroke="#64748B" stroke-width="1.4" stroke-dasharray="3 2" marker-end="url(#topo-arr)"/>
+<text x="680" y="270" text-anchor="middle" fill="#475569" font-size="9" font-style="italic">uscite controllate</text>
+
+<!-- Title -->
+<text x="480" y="36" text-anchor="middle" fill="#1A477A" font-size="14" font-weight="700">
+  La topologia di Metnos: un server al centro, client mobili attorno
+</text>
+<text x="480" y="56" text-anchor="middle" fill="#475569" font-size="11" font-style="italic">
+  self-hosted, non "sulla macchina da cui parli"
+</text>
+
+</svg>
+<figcaption>Figura 1 &mdash; La topologia reale di Metnos. Il processo vive su <code>metnos-server</code>, sempre acceso e con risorse adeguate; i client (laptop, telefono) lo raggiungono in LAN, via overlay <em>Headscale</em> self-hostato se fuori casa, o via Telegram se pi&ugrave; comodo. Non si esce mai dalla sovranit&agrave; dell'utente.</figcaption>
+</figure>
+
+<h2>I tre modi di parlare a Metnos</h2>
+
+<table>
+<thead><tr><th style="width:24%">Canale</th><th style="width:24%">Dove funziona</th><th>Come</th></tr></thead>
+<tbody>
+<tr>
+  <td><strong>CLI / cruscotto in LAN</strong></td>
+  <td>Laptop a casa, stessa rete di <code>metnos-server</code></td>
+  <td>Connessione diretta all'IP <code>metnos-server</code>. Latenza minima. Il canale di uso quotidiano.</td>
+</tr>
+<tr>
+  <td><strong>Overlay Headscale</strong></td>
+  <td>Laptop fuori casa, ovunque ci sia Internet</td>
+  <td>WireGuard fra pari verso <code>metnos-server</code>, come se fossi in LAN. Anche il piano di controllo (Headscale) gira su <code>metnos-server</code>: nessun server di coordinamento di terzi.</td>
+</tr>
+<tr>
+  <td><strong>Telegram</strong></td>
+  <td>Telefono, laptop di un amico, qualunque dispositivo con Telegram</td>
+  <td>Il bot interroga in uscita <code>metnos-server</code> &rarr; <code>api.telegram.org</code>: non servono porte aperte, non serve IP pubblico. Il contenuto passa per Telegram (compromesso noto: canale gi&agrave; nostro per scelta).</td>
+</tr>
+</tbody>
+</table>
+
+<p>
+C'&egrave; un quarto scenario &mdash; sei in aereo, la casa non ha rete per
+un'interruzione di corrente: nessun canale raggiunge <code>metnos-server</code>,
+Metnos &egrave; inattivo per te. &Egrave; un caso degradato accettabile,
+simmetrico a quello di qualsiasi servizio: senza rete non si fa molto.
+</p>
+
+<h2>Il gap dei file del laptop: strategia modulare</h2>
+
+<p>
+Molti dei file che vorrai far elaborare a Metnos nascono sul laptop
+Windows (fatture, foto, codice di lavoro), ma Metnos gira su
+<code>metnos-server</code>. Risolviamo il gap in modo <strong>modulare</strong>, a
+partire dalla soluzione pi&ugrave; semplice:
+</p>
+
+<table>
+<thead><tr><th style="width:20%">Livello</th><th style="width:30%">Strumento</th><th>Quando ha senso</th></tr></thead>
+<tbody>
+<tr>
+  <td><strong>0</strong> (dal primo giorno)</td>
+  <td><a href="https://syncthing.net/">Syncthing</a>: una cartella <code>~/metnos-share/</code> sul laptop, replicata in tempo reale su <code>metnos-server</code>.</td>
+  <td>Nessun server intermedio, sincronizzazione fra pari cifrata, funziona anche sotto Headscale. Metnos vede una cartella locale; non sa nulla della sincronizzazione che la tiene aggiornata.</td>
+</tr>
+<tr>
+  <td><strong>1</strong></td>
+  <td>Nextcloud self-hostato su <code>metnos-server</code>, applicazione desktop sul laptop.</td>
+  <td>Se e quando servono interfaccia web, versionamento, condivisione, applicazione mobile. Pi&ugrave; potente, pi&ugrave; lavoro iniziale.</td>
+</tr>
+<tr>
+  <td><strong>2</strong></td>
+  <td>Executor remoti (vedi sezione successiva).</td>
+  <td>Quando serve <em>agire</em> sul laptop, non solo vedere file. Per esempio: catturare un'istantanea dello schermo, pilotare un'applicazione Windows, leggere un file che non sta nella cartella condivisa.</td>
+</tr>
+</tbody>
+</table>
+
+<p>
+Si parte dal livello 0. Si sale solo quando la carenza si fa sentire in un
+caso concreto. La semplicit&agrave; (principio 6) prevale.
+</p>
+
+<h2>Executor remoti: direzione eccitante, in certi casi l'unica</h2>
+
+<p>
+L'opzione E della tabella sopra &egrave; la pi&ugrave; interessante
+strutturalmente. Al posto di pretendere che tutti i file finiscano nella
+cartella condivisa, si introduce un'idea semplice: <strong>gli executor
+non vivono tutti su <code>metnos-server</code></strong>. Alcuni girano sul
+laptop, sono esposti a <code>metnos-server</code> tramite l'overlay Headscale, e
+quando Metnos li invoca riceve il risultato come se fossero locali. Un
+unico gateway, un'unica regola, un unico mnestoma; <em>braccia</em>
+distribuite.
+</p>
+
+<p>
+Non &egrave; solo un'ottimizzazione. Per certi casi d'uso diventa
+<em>l'unica modalit&agrave; sensata</em>. L'esempio che fissa l'idea:
+riordinare un archivio fotografico di diecimila file sul laptop. La
+soluzione "sincronizza tutto su <code>metnos-server</code>, riordina, risincronizza
+indietro" comporta gigabyte di traffico, doppia occupazione del disco,
+finestre temporali in cui lo stesso file esiste in due stati su due
+macchine, il rischio concreto di conflitti durante l'operazione. Una
+rinominazione sul posto, eseguita direttamente sul laptop, risolve in un
+secondo ci&ograve; che la copia impiegherebbe minuti, senza sprecare
+spazio e senza rischio di divergenza. Esempi affini: portare in primo
+piano un'applicazione, leggere un file che per dimensioni o per natura
+non sta nella cartella condivisa, pulire una vecchia cartella scaricamenti,
+modificare i permessi di una gerarchia.
+</p>
+
+<h3>Il pattern "prima / dopo" per la reversibilit&agrave;</h3>
+
+<p>
+Il quinto principio (cap. 14) dice che ogni atto evolutivo &egrave;
+reversibile. Vale anche per le azioni remote: prima di eseguire
+un'operazione che modifica lo stato del laptop, Metnos conserva
+<em>su <code>metnos-server</code></em> un'istantanea del "prima" &mdash; solo
+quello che serve per tornare indietro, non i dati per intero quando non
+occorre. Per un blocco di rinominazioni foto il "prima" pu&ograve; essere
+un semplice elenco <code>(percorso_originale, nuovo_percorso, size, hash)</code>
+firmato e datato. Se Roberto dice "annulla", Metnos legge il manifest e
+manda al laptop lo stesso schema invertito. La duplicazione &egrave;
+minima (kilobyte, non gigabyte), la reversibilit&agrave; resta completa, e
+il registro d'audit su <code>metnos-server</code> conserva la traccia di entrambi i
+lati. Nei casi pi&ugrave; rischiosi (per esempio un'eliminazione
+definitiva), il manifest pu&ograve; essere promosso a istantanea dei soli
+file toccati, conservata finch&eacute; Roberto non dice "conferma".
+</p>
+
+<div class="callout danger">
+<strong>L'abisso di sicurezza degli executor remoti.</strong> Questa
+direzione &egrave; affascinante ma apre problemi non banali. Prima di
+scrivere una sola riga di codice in quella direzione vanno risolte
+almeno queste cinque questioni.
+
+<ol style="margin-top:8px;">
+<li><strong>Superficie sul dispositivo remoto.</strong> Il laptop deve
+esporre un punto di accesso RPC. Anche se vive solo dentro Headscale,
+&egrave; un'apertura. Serve un'autenticazione reciproca (mTLS oppure
+chiave precondivisa di WireGuard combinata con un gettone firmato per
+ogni chiamata).</li>
+
+<li><strong>Isolamento debole.</strong> Sul laptop Windows l'isolamento
+del processo &egrave; pi&ugrave; debole che su <code>metnos-server</code>.
+L'executor remoto deve essere un piccolo processo confinato, senza
+accesso all'intero filesystem dell'utente, con un elenco di operazioni
+consentite verificato anche <em>sul laptop</em> e non solo
+<em>su <code>metnos-server</code></em>.</li>
+
+<li><strong>Pairing del dispositivo.</strong> &Egrave; l'analogo del
+pairing dei mittenti su Telegram (DM pairing): un dispositivo non
+&egrave; fidato finch&eacute; Roberto non lo accoglie esplicitamente da
+un canale amministrativo gi&agrave; fidato. Un nuovo laptop non
+pu&ograve; far parlare di s&eacute; alla mente di Metnos prima di una
+cerimonia di ammissione firmata.</li>
+
+<li><strong>Rete intermittente, idempotenza, scadenze.</strong> Il
+gateway deve trattare ogni chiamata a un executor remoto come "pu&ograve;
+fallire a met&agrave;". Ogni azione remota che modifica lo stato deve
+essere idempotente (stesso identificativo di chiamata &rarr; stesso
+esito), tracciata in audit su entrambi i lati, ripetibile se servisse.</li>
+
+<li><strong>Deriva di versione.</strong> Il binario dell'executor remoto
+vive su un altro disco. Ogni rilascio &egrave; firmato; il gateway
+rifiuta chiamate a executor con versione sconosciuta; l'aggiornamento
+del manifest segue le stesse regole degli executor locali.</li>
+</ol>
+
+</div>
+
+<p>
+Per questo, anche se la direzione &egrave; inevitabile, non si fa tutto
+subito. La regola &egrave;: si introduce <em>un</em> executor remoto alla
+volta, motivato da un caso d'uso concreto che la cartella condivisa non
+riesce a coprire. Quel singolo executor nasce con tutte le garanzie della
+lista qui sopra e il suo contratto vive in un documento di
+microprogettazione dedicato. La roadmap (cap. 18) colloca il primo
+executor remoto come fase ideale 5+, ma quel numero non &egrave;
+intoccabile: se un caso d'uso prioritario lo richiede prima &mdash;
+riordinare le foto &egrave; il candidato pi&ugrave; naturale &mdash; la
+fase si anticipa; i requisiti di sicurezza no.
+</p>
+
+<div class="callout note">
+<strong>Due righe sul nome.</strong> "Local-first" come obiettivo
+&egrave; stato tolto dalla tabella del cap. 1 e sostituito con
+"Self-hosted". La differenza non &egrave; retorica: chi legge la v1.0
+pensa a un'applicazione che gira sul proprio computer; chi legge la v1.1
+sa che l'architettura ruota intorno a un server in casa sua, con i suoi
+dispositivi come clienti. Entrambe le formulazioni rispettano la sovranit&agrave;
+dell'utente; ma solo la seconda &egrave; quella che costruiremo.
+</div>
+
+<h2>Risorse hardware del <code>metnos-server</code>: cosa serve davvero</h2>
+
+<p>
+Il <code>metnos-server</code> ha un bisogno computazionale dominante: <em>tenere
+in casa il LLM <strong>tier wise</strong></em>, perch&eacute; quel tier
+genera nuovi executor (<a href="architecture/synt.html">synt</a> stadio 5
+&mdash; codice &mdash; nella pipeline multistage),
+giudica decisioni delicate, e su di esso si misura la qualit&agrave; del
+codice che entra nel pool. Gli altri tier (<em>fast</em> e <em>middle</em>)
+sono molto meno esigenti: un modello da 7-8B basta. La domanda concreta
+diventa: <em>che hardware serve per un wise locale di livello, e cosa cambia
+se lo deleghi a un provider online?</em>
+</p>
+
+<h3>L'hardware su cui &egrave; stato sviluppato il POC v1.1</h3>
+
+<p>
+A titolo esemplificativo, il setup di sviluppo del POC (<em>proof of concept</em>, il prototipo funzionante costruito per validare l'architettura prima della v1 stabile) al 26/4/2026:
+</p>
+
+<table>
+<thead><tr><th style="width:24%">Componente</th><th>Valore</th></tr></thead>
+<tbody>
+<tr><td><strong>CPU</strong></td><td>AMD Ryzen AI MAX+ 395 (16 core, 32 thread, architettura Zen 5 / Strix Halo)</td></tr>
+<tr><td><strong>iGPU</strong></td><td>AMD Radeon 8060S (gfx1151), accesso a memoria unificata</td></tr>
+<tr><td><strong>Memoria</strong></td><td>128&nbsp;GB unificata (CPU+GPU); ~96&nbsp;GB disponibili come VRAM al modello LLM</td></tr>
+<tr><td><strong>OS</strong></td><td>Ubuntu 24.04 LTS, kernel 7.0.x</td></tr>
+<tr><td><strong>Stack LLM</strong></td><td>llama.cpp con backend ROCm (per Gemma 4 26B come tier wise); Ollama (per Qwen 3:8b come tier fast)</td></tr>
+<tr><td><strong>Costo indicativo</strong></td><td>~&euro;2.000 a fine 2025 (mini-PC Strix Halo); attesa: scendere sotto &euro;1.500 entro fine 2026</td></tr>
+</tbody>
+</table>
+
+<p>
+La macchina &egrave; una <em>workstation home-grade</em>, non un server da
+datacenter. La caratteristica decisiva &egrave; la <em>memoria unificata</em>
+della piattaforma Strix Halo: un singolo modello da 16-30&nbsp;GB (Gemma 4 26B
+quantizzato Q4) carica in iGPU senza il salto di banda di un sistema
+discreto. Questo permette latenze nell'ordine delle decine di secondi anche
+con modelli di taglia "wise".
+</p>
+
+<h3>Misure reali sulla pipeline <em>synt.generate</em></h3>
+
+<p>
+Tre LLM hanno generato lo stesso executor <code>extract_email_addresses</code>
+(non banale: regex, dedupe, ordinamento). Stesso prompt, stesso schema
+tool-use, temperature 0:
+</p>
+
+<table>
+<thead><tr><th>Tier</th><th>Modello</th><th>Latenza</th><th>Tokens out</th><th>Costo</th><th>Esito (3/3 email estratte)</th></tr></thead>
+<tbody>
+<tr>
+  <td><strong>fast</strong></td>
+  <td><code>qwen3:8b</code> (Ollama, locale, ~5&nbsp;GB VRAM)</td>
+  <td>~5&nbsp;s</td>
+  <td>~200</td>
+  <td>0</td>
+  <td><strong>fallisce</strong>: il modello compila tutti i metadati del proposal (nome, descrizione, schema args, affinity) ma <em>omette il campo</em> <code>python_code</code> dal tool-call, anche con hint che lo dichiara obbligatorio. Conferma empirica della <em>quality floor</em>: un modello da 8B non e' un wise.</td>
+</tr>
+<tr>
+  <td><strong>wise locale</strong></td>
+  <td><code>gemma-4-26b</code> Q4_K_M (llama.cpp, ROCm, ~16&nbsp;GB VRAM)</td>
+  <td>~30&ndash;90&nbsp;s</td>
+  <td>~1500&ndash;4500</td>
+  <td>0</td>
+  <td><strong>OK 3/3</strong> con hint provider-specifico breve (vincolo: niente over-escape di raw string, niente triple-quote docstring). Senza hint, il modello inciampa nelle regex e il birth-test lo intercetta. La latenza varia molto per via del thinking interno.</td>
+</tr>
+<tr>
+  <td><strong>wise online</strong></td>
+  <td><code>claude-sonnet-4-6</code> (Anthropic API)</td>
+  <td>~13&nbsp;s</td>
+  <td>~800&ndash;1100</td>
+  <td>~&euro;0.016</td>
+  <td><strong>OK 3/3</strong> con hint provider-specifico breve (vincolo: regex semplice, niente lookbehind/lookahead). Senza hint, Claude tende a costruire regex troppo precise che rifiutano email a fine frase: 2/3 nel test.</td>
+</tr>
+<tr>
+  <td><strong>wise online</strong></td>
+  <td><code>gpt-5</code> (OpenAI API, reasoning model)</td>
+  <td>~35&nbsp;s</td>
+  <td>~3500</td>
+  <td>~&euro;0.17</td>
+  <td><strong>OK 3/3</strong> con hint provider-specifico (vincolo: <em>content e' stringa, non lista</em>: necessario perch&eacute; GPT senza hint metteva la lista direttamente in <code>content</code>). Costa ~10&times; Sonnet e impiega ~3&times; il tempo: il <em>reasoning</em> interno consuma ~3000 token. Sweet-spot per casi che richiedono ragionamento profondo, oversized per code-gen di routine.</td>
+</tr>
+</tbody>
+</table>
+
+<p>
+Lettura incrociata:
+</p>
+<ul>
+<li>su hardware Strix Halo + 96&nbsp;GB VRAM unificata, <strong>Gemma 4 26B come wise locale</strong> &egrave; un'opzione viva: latenza ~30&nbsp;s a generazione, costo zero, dati in casa. Per un utente che genera 5-10 nuovi executor al mese, parliamo di pochi minuti totali di latenza nel mese.</li>
+<li>su hardware pi&ugrave; modesto (laptop tipo, 16&nbsp;GB RAM, niente iGPU di livello) il wise locale non &egrave; raggiungibile e <strong>va delegato online</strong>: Claude Sonnet ~&euro;0.02 per generazione &times; 5-10/mese = pochi euro al mese.</li>
+<li>il <em>tier fast</em> (Qwen 3:8b o equivalente) gira benissimo su qualunque PC moderno: 5&nbsp;GB VRAM bastano. &Egrave; sempre locale, sempre in casa, sempre il default per le chiamate non critiche del runtime.</li>
+</ul>
+
+<div class="callout note">
+<strong>Profilo utente al primo lancio.</strong> Metnos in fase di
+installazione interroga l'hardware e propone una configurazione dei tre
+tier compatibile con le risorse trovate. Tre profili tipici:
+<em>(a)</em> setup completo locale (tipo l'autore): tutti i tier in casa;
+<em>(b)</em> setup fast locale + middle/wise online (laptop + API key
+Anthropic/OpenAI/&hellip;): la maggior parte degli utenti ricadr&agrave; qui;
+<em>(c)</em> setup interamente online (server casalingo modesto): tutti
+e tre i tier come provider esterni, con i costi rispettivi.
+La regola del wise quality floor (vedi
+<a href="architecture/synt.html#cap4">synt &sect;4.2</a>) impedisce di
+configurare un wise sotto-dimensionato: errore esplicito al boot, mai
+degradazione silenziosa.
+</div>
+
+<h1 id="cap5">5. Libert&agrave;, safety, robustezza: tre assi, non due</h1>
+
+<p class="lead">
+Un agente che fa tutto quello che vuole &egrave; pericoloso. Un agente
+che chiede conferma per tutto &egrave; inutile. Tra i due estremi non c'&egrave;
+una sola tensione, ce ne sono tre. La parola "sicurezza" le confonde
+tutte sotto un unico termine; questo capitolo le separa, perch&eacute;
+solo separate si possono trattare in modo onesto.
+</p>
+
+<h2>Tre parole, tre cose diverse</h2>
+
+<p>
+Distinguere all'inizio paga interessi per tutto il documento. Le tre
+parole che ci servono sono <em>safety dell'identit&agrave;</em>,
+<em>safety del perimetro</em> e <em>robustezza</em>. La prima &egrave;
+una sola cosa intera; la seconda ha un nucleo e un guscio; la terza
+&egrave; un asse a s&eacute;. Tutte e tre stanno in un certo rapporto con
+la libert&agrave; di Metnos, ma il rapporto cambia di natura. Il punto
+del capitolo &egrave; insegnare a riconoscere quale dei tre rapporti si
+sta esercitando in un momento dato, perch&eacute; applicarne il criterio
+sbagliato &egrave; un errore frequente di progetto.
+</p>
+
+<table>
+<thead><tr><th style="width:22%">Parola</th><th style="width:36%">Cosa protegge</th><th>Esempi di violazione</th></tr></thead>
+<tbody>
+<tr>
+  <td><strong style="color:var(--plum)">Safety dell'identit&agrave;</strong></td>
+  <td>Che chi parla, chi decide, chi esegue dentro Metnos sia <em>davvero Metnos</em>: l'utente fidato, il proprio LLM, i propri executor firmati, le proprie regole. Riguarda autenticazione, firme, pairing.</td>
+  <td>Una <em>prompt injection</em> nascosta in una pagina web convince l'LLM a rivelare un segreto. Una dipendenza compromessa diventa un executor. Un messaggio Telegram di uno sconosciuto non pairato impartisce un comando. Un executor remoto non autenticato invoca <code>rm -rf</code>.</td>
+</tr>
+<tr>
+  <td><strong style="color:var(--plum)">Safety del perimetro</strong></td>
+  <td>L'estensione di ci&ograve; che Metnos pu&ograve; vedere e toccare: cartelle, comandi shell, rete in uscita, dispositivi esterni. Riguarda il <em>recinto</em> dentro cui l'agente agisce.</td>
+  <td>Un executor con accesso all'intero filesystem cancella per sbaglio una cartella di sistema. Un comando shell senza confini tocca i file di un altro utente. Un'uscita di rete non controllata raggiunge un servizio non previsto.</td>
+</tr>
+<tr>
+  <td><strong style="color:var(--bronze)">Robustezza</strong></td>
+  <td>Che le azioni che Metnos compie davvero non corrompano, non perdano, non lascino strade chiuse. Riguarda gli effetti a valle, non la legittimit&agrave; di chi agisce.</td>
+  <td>Un blocco di rinominazioni fallisce a met&agrave; e lascia file in stato incoerente. Un cron dimenticato sovrascrive un file in uso. Un bug cancella la riga sbagliata di un csv. Un executor remoto perde la connessione e non torna indietro.</td>
+</tr>
+<tr>
+  <td><strong style="color:var(--sage)">Libert&agrave;</strong></td>
+  <td>La latitudine con cui Metnos agisce senza disturbare e senza chiedere conferma. Quanto Roberto tollera di non essere interpellato.</td>
+  <td>&mdash; (la libert&agrave; non &egrave; una cosa da violare; &egrave; una cosa che si concede male o si concede bene.)</td>
+</tr>
+</tbody>
+</table>
+
+<p>
+Tre cose, tre relazioni diverse con la libert&agrave;. La parte centrale
+di questo capitolo le esamina una alla volta.
+</p>
+
+<h2>Asse 1 &mdash; Libert&agrave; e safety dell'identit&agrave;: nessun compromesso</h2>
+
+<p>
+La safety dell'identit&agrave; non &egrave; un limite della libert&agrave;
+di Metnos: &egrave; la sua <strong>condizione preliminare</strong>. Se
+l'identit&agrave; cede &mdash; LLM dirottato da prompt injection,
+dipendenza maligna che si traveste da executor, comando ricevuto da uno
+sconosciuto credendolo l'utente &mdash; non c'&egrave; pi&ugrave; "Metnos
+che agisce liberamente": c'&egrave; qualcun altro, vestito da Metnos,
+che agisce al posto suo. La libert&agrave; di Metnos non pu&ograve;
+essere la libert&agrave; di un impostore.
+</p>
+
+<p>
+Per questo gli strumenti di safety dell'identit&agrave; non sono
+negoziabili. Non c'&egrave; un livello di autonomia che li allenta, non
+c'&egrave; un profilo di sandbox che li spegne, non c'&egrave; un
+caso d'uso che li giustifica:
+</p>
+
+<ul>
+<li><strong>Pairing dei mittenti</strong> (DM pairing, cap. 12): un
+nuovo utente non comanda finch&eacute; non &egrave; ammesso da un canale
+gi&agrave; fidato. Stesso principio per i dispositivi (cap. 4):
+un nuovo laptop non parla alla mente di Metnos prima di una cerimonia
+firmata.</li>
+
+<li><strong>Firme e manifest</strong> per ogni executor: il gateway
+rifiuta chiamate a versioni non riconosciute. Gli executor remoti
+seguono lo stesso trattamento.</li>
+
+<li><strong>Confine sui contenuti non fidati</strong>: tutto ci&ograve;
+che arriva dal web, da canali multi-utente, da file ricevuti &egrave;
+trattato come potenzialmente ostile. Le 4 Leggi (cap. 11) stabiliscono
+in modo esplicito che Metnos non segue istruzioni nascoste nei dati,
+solo quelle del proprio utente autenticato.</li>
+
+<li><strong>Autenticazione reciproca</strong> di ogni canale di
+comunicazione interno (mTLS o equivalente).</li>
+</ul>
+
+<p>
+Questi strumenti non riducono la libert&agrave;: la rendono possibile.
+Il paragone &egrave; con le serrature di casa. Una porta che si chiude
+non limita la libert&agrave; di chi vive dentro, limita quella di chi
+vorrebbe entrare senza essere invitato.
+</p>
+
+<h2>Asse 2 &mdash; Libert&agrave; e safety del perimetro: il vero compromesso</h2>
+
+<p>
+Sull'asse del perimetro il compromesso esiste, ed &egrave; serio.
+Allargare il recinto di Metnos &mdash; pi&ugrave; cartelle leggibili,
+pi&ugrave; comandi eseguibili, pi&ugrave; dispositivi pilotabili &mdash;
+amplia ci&ograve; che pu&ograve; fare per te, ma amplia
+contemporaneamente la superficie su cui un errore (suo o altrui)
+pu&ograve; manifestarsi: una prompt injection ha pi&ugrave; cose
+potenziali da chiedere; un bug di executor ha pi&ugrave; file da poter
+toccare; uno strumento "vedente" pu&ograve; finire per vedere troppo.
+Pi&ugrave; raggio d'azione, pi&ugrave; raggio dell'eventuale danno: i
+due crescono insieme.
+</p>
+
+<p>
+Metnos non risolve il compromesso fingendo che non esista, lo media in
+due livelli. C'&egrave; un <strong>nucleo duro</strong> che non si
+discute, e c'&egrave; un <strong>guscio modulabile</strong> intorno.
+</p>
+
+<h3>Il nucleo duro</h3>
+
+<p>
+Il nucleo &egrave; ci&ograve; che resta vietato anche al pi&ugrave;
+permissivo dei livelli di autonomia. Non si configura da YAML: vive nel
+codice e nelle Leggi, e per modificarlo serve un rito (revisione,
+firma, rilascio). Esempi:
+</p>
+
+<ul>
+<li><strong>Forbidden paths</strong> hard-coded: <code>~/.ssh</code>,
+<code>~/.gnupg</code>, le aree di sistema, la cassaforte dei segreti,
+<code>workspace/.audit/</code>. Anche il livello <code>Full</code> non
+li passa.</li>
+
+<li><strong>Sandbox tecnologica</strong>: ogni executor che tocca file o
+shell gira in <code>bubblewrap</code> o <code>systemd-run</code> con un
+profilo firmato. &Egrave; il <em>processo</em> stesso che non pu&ograve;
+uscire dai propri limiti, indipendentemente da quello che gli si chiede
+o gli si fa credere di dover fare.</li>
+
+<li><strong>Le 4 Leggi</strong>: divieto di azioni che rendano lo stato
+irrecuperabile, divieto di esfiltrare segreti, divieto di seguire
+istruzioni nascoste nei dati, divieto di operare al di fuori del proprio
+utente autenticato.</li>
+</ul>
+
+<p>
+Il nucleo &egrave; un piccolo cerchio. Dentro non si entra mai. Il fatto
+che sia piccolo &egrave; importante: tutto ci&ograve; che &egrave; nel
+nucleo paga il prezzo della rigidit&agrave;, e la rigidit&agrave; ha un
+costo &mdash; non si pu&ograve; rilassare quando un caso legittimo lo
+richiederebbe. Mettere troppe cose nel nucleo trasforma Metnos in un
+sistema chiuso che non sa pi&ugrave; aiutare.
+</p>
+
+<h3>Il guscio modulabile</h3>
+
+<p>
+Tutto ci&ograve; che sta fuori dal nucleo &egrave; il guscio: la
+latitudine d'azione che <em>si sceglie</em> di concedere a Metnos,
+modulabile per fascia. La modulazione avviene su tre leve, applicate
+insieme:
+</p>
+
+<ul>
+<li><strong>Livello di autonomia</strong> (cap. 12):
+<code>ReadOnly</code>, <code>Supervised</code>, <code>Full</code>.
+Definisce quali categorie di azioni Metnos pu&ograve; intraprendere
+senza chiedere conferma. La latitudine cresce per fiducia
+dimostrata.</li>
+
+<li><strong>Profilo di sandbox</strong> per executor: ogni executor
+dichiara nel proprio manifest il proprio profilo (quali percorsi pu&ograve;
+leggere, quali pu&ograve; scrivere, se pu&ograve; uscire in rete).
+Profili minimi per gli executor pi&ugrave; comuni; profili pi&ugrave;
+ampi solo dove necessario, dichiarati e firmati.</li>
+
+<li><strong>Soglia di approvazione caso per caso</strong>: anche dentro
+il livello <code>Full</code>, certe azioni (per esempio l'invio di un
+messaggio a terzi, o l'eliminazione definitiva di un file) restano
+soggette a conferma esplicita. La soglia non &egrave; binaria, &egrave;
+una funzione del rischio dell'azione e del livello di autonomia
+attivo.</li>
+</ul>
+
+<p>
+Il guscio si pu&ograve; allargare e restringere in vita. Si parte da
+configurazioni strette e si rilassa solo quando l'uso lo richiede e la
+storia lo giustifica. La direzione opposta &mdash; partire larghi e
+restringere "se succede qualcosa" &mdash; non si pratica: i guai sui
+gusci sono in larga parte irreversibili.
+</p>
+
+<h2>Asse 3 &mdash; Libert&agrave; e robustezza: asimmetria precauzionale</h2>
+
+<p>
+Sul terzo asse il compromesso ha forma diversa. La libert&agrave; di
+Metnos di agire senza chiedere conferma compete con il rischio di
+azioni che non si possono annullare. Anche qui c'&egrave; un principio
+preciso, ed &egrave; economico, non ideologico:
+</p>
+
+<div class="callout warning" style="font-size:11pt;">
+<strong>Asimmetria precauzionale.</strong> Nei casi di conflitto
+irriducibile fra libert&agrave; e robustezza, vince la robustezza. Il
+motivo &egrave; che i costi sono asimmetrici: le restrizioni di
+libert&agrave; sono recuperabili in tempo lineare; le perdite di
+robustezza in molti casi non lo sono affatto.
+</div>
+
+<table>
+<thead><tr><th style="width:28%">Tipo di errore</th><th style="width:38%">Esempio</th><th>Recuperabile?</th></tr></thead>
+<tbody>
+<tr>
+  <td>Perdita di robustezza</td>
+  <td>File importante eliminato in modo definitivo; messaggio inviato al capo; blocco di rinominazioni interrotto a met&agrave; in stato incoerente; cron che corre in parallelo a se stesso e raddoppia un effetto.</td>
+  <td><strong style="color:#B91C1C;">No</strong> (o solo a costo di copie esterne: se non c'erano, nulla).</td>
+</tr>
+<tr>
+  <td>Restrizione di libert&agrave;</td>
+  <td>Metnos chiede conferma per un'azione che era innocua; tace una proposta che sarebbe stata utile; aspetta a fare qualcosa che avrebbe potuto fare da s&eacute;.</td>
+  <td><strong style="color:#166534;">S&igrave;.</strong> Roberto approva, la soglia si aggiorna per la volta dopo, il bother budget registra lo schema e si trattiene dall'interpellarlo nei casi affini.</td>
+</tr>
+</tbody>
+</table>
+
+<p>
+La <strong>reversibilit&agrave;</strong> &egrave; il vero strumento che
+sposta l'equilibrio di questo asse, perch&eacute; rende quasi-recuperabile
+ci&ograve; che altrimenti non lo sarebbe. Una rinominazione &egrave; pi&ugrave;
+"libera" se Metnos conserva l'elenco dei vecchi nomi e sa applicarlo al
+contrario; uno spostamento di file &egrave; pi&ugrave; "libero" se la
+copia di sicurezza esiste; un'esecuzione &egrave; pi&ugrave; "libera" se
+&egrave; idempotente. Il quinto principio (cap. 14) lavora qui: la
+reversibilit&agrave; abbassa il costo del s&igrave;.
+</p>
+
+<p>
+L'asimmetria precauzionale non deve per&ograve; trasformarsi in
+paranoia. Un Metnos che blocca sempre per "non sapere mai cosa
+pu&ograve; andar male" &egrave; un agente inutile: il costo non &egrave;
+solo il "non-danno", &egrave; anche il "non-valore". Roberto non vuole
+il cugino che chiama ogni due minuti; non vuole nemmeno il maggiordomo
+che chiede permesso per spostare una sedia.
+</p>
+
+<h2>I freni dell'architettura, mappati sui tre assi</h2>
+
+<p>
+L'architettura distribuisce le contromisure in modo disomogeneo sui tre
+assi, ed &egrave; giusto cos&igrave;. Vale la pena vederlo in colonna.
+</p>
+
+<table>
+<thead><tr><th style="width:22%">Freno</th><th style="width:30%">Asse su cui agisce</th><th>Come</th></tr></thead>
+<tbody>
+<tr>
+  <td><strong>Costituzione (4 Leggi)</strong></td>
+  <td><strong style="color:var(--plum)">identit&agrave;</strong> + <strong style="color:var(--plum)">perimetro (nucleo)</strong> + <strong style="color:var(--bronze)">robustezza</strong></td>
+  <td>Confine duro, binario. Incastonata nei prompt di ogni chiamata LLM e replicata come check a runtime. Modificabile solo per rito.</td>
+</tr>
+<tr>
+  <td><strong>Sandbox + forbidden paths</strong></td>
+  <td><strong style="color:var(--plum)">perimetro (nucleo)</strong></td>
+  <td>Impedisce tecnicamente che il processo tocchi aree critiche, anche a fronte di LLM dirottato o bug di executor. &Egrave; il guscio fisico del nucleo.</td>
+</tr>
+<tr>
+  <td><strong>Pairing + firme + autenticazione reciproca</strong></td>
+  <td><strong style="color:var(--plum)">identit&agrave;</strong></td>
+  <td>Chi entra deve essere riconosciuto. Mittente, dispositivo, versione di executor, canale interno.</td>
+</tr>
+<tr>
+  <td><strong>Vaglio</strong></td>
+  <td><strong style="color:var(--plum)">identit&agrave;</strong> (guardia) + <strong style="color:var(--bronze)">robustezza</strong> (giudice)</td>
+  <td>La guardia &egrave; binaria sulle violazioni delle Leggi; il giudice &egrave; graduato sull'allineamento ai telos prima che un'azione produca effetti.</td>
+</tr>
+<tr>
+  <td><strong>Livelli di autonomia</strong></td>
+  <td><strong style="color:var(--sage)">libert&agrave;</strong> &harr; <strong style="color:var(--plum)">perimetro (guscio)</strong></td>
+  <td>ReadOnly / Supervised / Full. La latitudine cresce con la fiducia. &Egrave; la principale leva esplicita sul guscio.</td>
+</tr>
+<tr>
+  <td><strong>Reversibilit&agrave;</strong></td>
+  <td><strong style="color:var(--bronze)">robustezza</strong></td>
+  <td>Ogni mossa ha un opposto firmato. Il s&igrave; costa meno perch&eacute; l'errore &egrave; annullabile. Applicata anche agli executor remoti col modello "prima/dopo" (cap. 4).</td>
+</tr>
+<tr>
+  <td><strong>Bother budget + limiti di costo</strong></td>
+  <td><strong style="color:var(--sage)">libert&agrave;</strong> (in alto) + <strong style="color:var(--bronze)">robustezza</strong> (in basso)</td>
+  <td>La frizione cresce con la frequenza e con il costo cumulativo. Evita sia la molestia sia la corsa inflazionaria di azioni.</td>
+</tr>
+</tbody>
+</table>
+
+<figure>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 460" width="100%" preserveAspectRatio="xMidYMid meet" style="font-family:'Segoe UI',Calibri,sans-serif; font-size:12px;">
+<defs>
+  <linearGradient id="ax-plum" x1="0" y1="0" x2="1" y2="0">
+    <stop offset="0%" stop-color="#F4ECF7"/><stop offset="100%" stop-color="#6B21A8"/>
+  </linearGradient>
+  <linearGradient id="ax-bronze" x1="0" y1="0" x2="1" y2="0">
+    <stop offset="0%" stop-color="#FDF6EC"/><stop offset="100%" stop-color="#A0522D"/>
+  </linearGradient>
+  <linearGradient id="ax-sage" x1="0" y1="0" x2="1" y2="0">
+    <stop offset="0%" stop-color="#F1F6E8"/><stop offset="100%" stop-color="#548235"/>
+  </linearGradient>
+  <marker id="ax-arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+    <path d="M0,0 L10,5 L0,10 z" fill="#1A477A"/>
+  </marker>
+</defs>
+
+<text x="480" y="32" text-anchor="middle" fill="#1A477A" font-size="15" font-weight="700">
+  I tre assi della libert&agrave; di Metnos
+</text>
+<text x="480" y="52" text-anchor="middle" fill="#475569" font-size="11" font-style="italic">
+  ciascuno con un compromesso di natura diversa
+</text>
+
+<!-- Asse 1: identità (no trade-off) -->
+<rect x="60" y="90" width="840" height="80" rx="10" ry="10" fill="#F8F4FB" stroke="#6B21A8" stroke-width="1.4"/>
+<text x="80" y="115" fill="#6B21A8" font-size="12" font-weight="700">
+  Asse 1 &mdash; Libert&agrave; vs safety dell'identit&agrave;
+</text>
+<text x="80" y="134" fill="#3B0764" font-size="10.5" font-style="italic">
+  Nessun compromesso: la safety dell'identit&agrave; &egrave; la condizione preliminare della libert&agrave;.
+</text>
+<text x="80" y="155" fill="#1F2937" font-size="10">
+  Freni: pairing dei mittenti e dei dispositivi &middot; firme e manifest &middot; mTLS &middot; vaglio (guardia)
+</text>
+
+<!-- Asse 2: perimetro (trade-off reale, nucleo + guscio) -->
+<rect x="60" y="190" width="840" height="120" rx="10" ry="10" fill="#FBF7E6" stroke="#A16207" stroke-width="1.4"/>
+<text x="80" y="215" fill="#7C2D12" font-size="12" font-weight="700">
+  Asse 2 &mdash; Libert&agrave; vs safety del perimetro
+</text>
+<text x="80" y="234" fill="#7C2D12" font-size="10.5" font-style="italic">
+  Compromesso reale, mediato in due strati: un nucleo duro (irriducibile) e un guscio modulabile.
+</text>
+
+<!-- Nucleo duro -->
+<rect x="80" y="252" width="180" height="42" rx="6" ry="6" fill="#6B21A8" stroke="#3B0764"/>
+<text x="170" y="270" text-anchor="middle" fill="white" font-size="10.5" font-weight="700">Nucleo duro</text>
+<text x="170" y="286" text-anchor="middle" fill="#E9D5FF" font-size="9.5">forbidden paths &middot; sandbox &middot; Leggi</text>
+
+<!-- Guscio modulabile -->
+<rect x="280" y="252" width="600" height="42" rx="6" ry="6" fill="url(#ax-sage)" stroke="#3F6212" stroke-dasharray="3 2"/>
+<text x="580" y="270" text-anchor="middle" fill="#1F2937" font-size="10.5" font-weight="700">
+  Guscio modulabile (latitudine concessa)
+</text>
+<text x="580" y="286" text-anchor="middle" fill="#1F2937" font-size="9.5">
+  livelli di autonomia &middot; profilo di sandbox per executor &middot; soglie di approvazione
+</text>
+<line x1="280" y1="273" x2="875" y2="273" stroke="#1A477A" stroke-width="1" marker-end="url(#ax-arr)" opacity="0.0"/>
+<text x="290" y="248" fill="#3F6212" font-size="9" font-style="italic">si parte stretti, si allarga per uso</text>
+
+<!-- Asse 3: robustezza (asimmetria precauzionale) -->
+<rect x="60" y="330" width="840" height="100" rx="10" ry="10" fill="#FDF6EC" stroke="#A0522D" stroke-width="1.4"/>
+<text x="80" y="355" fill="#7C2D12" font-size="12" font-weight="700">
+  Asse 3 &mdash; Libert&agrave; vs robustezza
+</text>
+<text x="80" y="374" fill="#7C2D12" font-size="10.5" font-style="italic">
+  Asimmetria precauzionale: nei casi irriducibili vince la robustezza. La reversibilit&agrave; sposta l'equilibrio.
+</text>
+<text x="80" y="395" fill="#1F2937" font-size="10">
+  Freni: vaglio (giudice) &middot; reversibilit&agrave; di ogni atto evolutivo &middot; bother budget e limiti di costo cumulativo
+</text>
+</svg>
+<figcaption>Figura 2 &mdash; I tre assi della libert&agrave; di Metnos. Sull'asse 1 (identit&agrave;) non c'&egrave; compromesso: senza autenticazione la libert&agrave; non &egrave; neppure di Metnos. Sull'asse 2 (perimetro) il compromesso esiste ed &egrave; mediato da un nucleo duro e da un guscio modulabile. Sull'asse 3 (robustezza) vale l'asimmetria precauzionale, mitigata dalla reversibilit&agrave;.</figcaption>
+</figure>
+
+<h2>Chi vince, in pratica</h2>
+
+<ul>
+<li><strong>Forbidden path, violazione di Legge, mittente non pairato,
+executor senza firma</strong>: vincono identit&agrave; e nucleo del
+perimetro. Silenzio, audit, fine.</li>
+
+<li><strong>Azione esterna irreversibile</strong> (invio di un messaggio
+a terzi, eliminazione definitiva, modifica di file fuori workspace):
+vince la robustezza &mdash; Metnos chiede conferma esplicita, anche se
+il giudizio teleologico passerebbe.</li>
+
+<li><strong>Azione ordinaria reversibile</strong> dentro il workspace,
+proposta con alto allineamento ai telos: vince la libert&agrave; &mdash;
+Metnos agisce, traccia in audit, pronto ad annullare se Roberto non
+&egrave; d'accordo.</li>
+
+<li><strong>Accumulo anomalo</strong> di azioni o di costo: il <em>bother
+budget</em> alza la frizione senza che ci sia stata violazione, senza
+chiamare in causa nessuno dei freni di safety.</li>
+</ul>
+
+<div class="callout warning">
+<strong>La tentazione del paternalismo.</strong> La forza che spinge la
+robustezza al di l&agrave; dell'asimmetria precauzionale &egrave; il
+paternalismo: l'idea che nel dubbio sia sempre meglio bloccare "per il
+bene dell'utente". Il paternalismo &egrave; un fallimento di progetto
+travestito da prudenza. Metnos lo dice esplicitamente in
+<a href="architecture/telos.html">telos.html</a>: <em>Metnos si
+giudica, non giudica</em>. I telos valutano quello che Metnos sta per
+fare per te, non quello che tu fai. Un agente che inizia a giudicarti
+&egrave; rotto.
+</div>
+
+<div class="callout note">
+<strong>Perch&eacute; tre assi e non due.</strong> La v1.0 confondeva
+safety dell'identit&agrave; e safety del perimetro sotto un'unica
+voce. La conseguenza era che i ragionamenti sulla libert&agrave;
+slittavano: si finiva per dire "se vuoi pi&ugrave; libert&agrave; devi
+accettare meno safety", che &egrave; vero per il perimetro e falso per
+l'identit&agrave;. Il modo onesto di parlare di compromessi &egrave;
+nominarli con precisione e mostrare in quale direzione effettivamente
+tirano.
+</div>
+
+<div class="callout note">
+<strong>E gli executor remoti?</strong> La cornice di questo capitolo
+chiarisce perch&eacute; gli executor remoti (cap. 4) meritano attenzione
+strutturale senza essere esclusi per principio. Toccano tutti e tre gli
+assi: alzano il rischio sull'identit&agrave; (pi&ugrave; canali da
+autenticare &mdash; rispondiamo con pairing del dispositivo, mTLS,
+manifest firmato), allargano il perimetro (rispondiamo con elenchi di
+operazioni consentite verificati anche sul lato laptop) e alzano il
+rischio di robustezza (rete intermittente, operazioni non idempotenti
+&mdash; rispondiamo con idempotenza garantita, audit su entrambi i lati,
+modello "prima/dopo" per la reversibilit&agrave;). Tre assi, tre
+famiglie di risposte. Il cap. 4 sviluppa i tre per gli executor remoti
+nello specifico.
+</div>
+
+
+<h1 id="cap6">6. Idea chiave: i quattro strati</h1>
+
+<p class="lead">
+Metnos &egrave; una cipolla: l'esterno parla con il mondo, l'interno esegue.
+Ogni strato si fida solo di quello pi&ugrave; interno, concedendo meno
+privilegi man mano che si va verso il centro.
+</p>
+
+<figure>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 480" width="100%" preserveAspectRatio="xMidYMid meet" style="font-family:'Segoe UI',Calibri,sans-serif; font-size:13px;">
+<defs>
+  <filter id="shadow1" x="-10%" y="-10%" width="120%" height="130%">
+    <feGaussianBlur in="SourceAlpha" stdDeviation="2"/>
+    <feOffset dx="0" dy="2" result="off"/>
+    <feComponentTransfer><feFuncA type="linear" slope="0.2"/></feComponentTransfer>
+    <feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge>
+  </filter>
+  <linearGradient id="g-gw" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0%" stop-color="#D9E4F0"/><stop offset="100%" stop-color="#A9C3DE"/>
+  </linearGradient>
+  <linearGradient id="g-po" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0%" stop-color="#FDF3DC"/><stop offset="100%" stop-color="#E8C586"/>
+  </linearGradient>
+  <linearGradient id="g-sb" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0%" stop-color="#F4E4D8"/><stop offset="100%" stop-color="#D4B398"/>
+  </linearGradient>
+  <linearGradient id="g-ws" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0%" stop-color="#E9EFDB"/><stop offset="100%" stop-color="#B6C798"/>
+  </linearGradient>
+  <marker id="a1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+    <path d="M0,0 L10,5 L0,10 z" fill="#1A477A"/>
+  </marker>
+</defs>
+
+<rect x="40" y="40" width="840" height="400" rx="14" ry="14" fill="url(#g-gw)" stroke="#1A477A" stroke-width="2" filter="url(#shadow1)"/>
+<text x="70" y="70" fill="#1A477A" font-size="16" font-weight="700">Strato 1 — Gateway</text>
+<text x="70" y="90" fill="#334155" font-size="11">HTTP/WS/SSE su 127.0.0.1 · canali in ingresso · sessioni · webhook · cron</text>
+
+<rect x="90" y="115" width="740" height="300" rx="12" ry="12" fill="url(#g-po)" stroke="#B7791F" stroke-width="1.8"/>
+<text x="120" y="145" fill="#92400E" font-size="15" font-weight="700">Strato 2 — Policy (con Telos e Vaglio)</text>
+<text x="120" y="162" fill="#44403C" font-size="11">autonomy · approval gating · rate/cost · forbidden paths · pairing · guardia costituzionale · giudice teleologico</text>
+
+<rect x="150" y="190" width="620" height="200" rx="10" ry="10" fill="url(#g-sb)" stroke="#A0522D" stroke-width="1.8"/>
+<text x="180" y="220" fill="#7C2D12" font-size="15" font-weight="700">Strato 3 — Sandbox</text>
+<text x="180" y="237" fill="#44403C" font-size="11">bubblewrap · systemd-run hardened · (Docker opzionale)</text>
+
+<rect x="220" y="265" width="480" height="100" rx="8" ry="8" fill="url(#g-ws)" stroke="#548235" stroke-width="1.8"/>
+<text x="260" y="295" fill="#3F6212" font-size="15" font-weight="700">Strato 4 — Workspace, Executor, Mnestoma</text>
+<text x="260" y="313" fill="#1F2937" font-size="11">file markdown · executor (tool) · grafo di mnest · tracce · LLM via interfaccia</text>
+<text x="260" y="330" fill="#3F6212" font-size="10" font-style="italic">qui è dove l'agente "pensa", "agisce" e "ricorda"</text>
+
+<text x="10" y="240" fill="#1A477A" font-size="11" font-weight="600" transform="rotate(-90 20 240)">esterno / meno fidato</text>
+<text x="900" y="240" fill="#548235" font-size="11" font-weight="600" transform="rotate(-90 900 240)">interno / più privilegiato</text>
+
+</svg>
+<figcaption>Figura 3 &mdash; I quattro strati di Metnos. Ogni richiesta (sia essa venuta da un utente o nata da dentro, proattiva) attraversa tutti e quattro, in ordine, prima di produrre un effetto. Rispetto alla v1.0, lo strato 2 include esplicitamente Telos e Vaglio, e lo strato 4 include mnestoma ed executor.</figcaption>
+</figure>
+
+<h3>Strato 1 — Gateway</h3>
+<p>
+Un singolo processo FastAPI che espone HTTP/WebSocket/SSE su
+<code>127.0.0.1:42618</code>. Riceve messaggi dai canali, gestisce le
+sessioni, smista webhook, pianifica cron job. &Egrave; l'unico punto di
+contatto con il mondo. Non esegue mai direttamente comandi sensibili.
+</p>
+
+<p>
+Per <em>canale</em> intendiamo, dentro al codice, qualunque adattatore
+che converta un'interfaccia esterna (CLI locale, Telegram bot, voce, in
+futuro Signal o web) in un flusso di messaggi e risposte parlato al
+Gateway. Tecnicamente &egrave; un <code>Protocol</code> Python con due
+operazioni minime &mdash; <em>ricevi un messaggio in ingresso</em>,
+<em>consegna una risposta in uscita</em> &mdash; e una capacit&agrave;
+opzionale di rendere bottoni di approvazione (vedi
+<a href="architecture/channel.html">channel</a> e
+<a href="architecture/approval_ux.html">approval_ux</a>). La scelta di
+trattare il canale come adattatore &mdash; non come modulo distinto per
+ciascuna integrazione &mdash; &egrave; quella che permette di partire
+con due canali (CLI + Telegram) e aggiungerne altri senza toccare il
+nucleo.
+</p>
+
+<h3>Strato 2 — Policy (con Telos e Vaglio)</h3>
+<p>
+Il filtro di legalit&agrave; e di senso. Dato un evento &mdash; "utente X
+chiede di fare Y", oppure "Metnos vuole proporre Z" &mdash; risponde:
+<em>permesso</em>, <em>negato</em> o <em>permesso solo dopo approvazione</em>.
+Applica il livello di autonomia (cap. 12), i limiti di frequenza, i
+tetti di costo, i percorsi vietati, e invoca il <em>Vaglio</em>
+(cap. 11) quando serve: una
+guardia costituzionale che blocca violazioni delle Leggi, seguita, se la
+guardia tace, da un giudice teleologico che misura quanto l'azione
+&egrave; allineata ai <em>telos</em> dell'utente.
+</p>
+
+<h3>Strato 3 — Sandbox</h3>
+<p>
+Quando la policy dice "s&igrave;", l'azione non viene comunque eseguita a
+mano libera. Per i tool che toccano filesystem o shell si entra in
+<strong>bubblewrap</strong> (o <code>systemd-run</code> con hardening) con un
+profilo scelto dal livello di autonomia. Niente <code>subprocess.run</code>
+diretto, mai. Docker resta un'opzione futura per i casi che richiedono
+isolamento pi&ugrave; severo del kernel namespacing offerto da bubblewrap.
+</p>
+
+<h3>Strato 4 — Workspace, Executor, Mnestoma</h3>
+<p>
+Dentro la sandbox, un <em>executor</em> (capitolo 9) fa il suo lavoro:
+leggere un file dal <em>workspace</em> (<code>${METNOS_HOME}/workspace/</code>),
+chiamare un LLM via l'interfaccia astratta, scrivere una riga nell'audit
+log. Ogni volta che due executor collaborano, un <em>mnest</em> registra
+silenziosamente l'accaduto. L'insieme di tutti i mnest forma il
+<em>mnestoma</em>, la memoria relazionale del sistema.
+</p>
+
+
+<h1 id="cap7">7. Il flusso di una richiesta</h1>
+
+<p>
+Seguiamo un esempio concreto. Sei in giardino, scrivi da Telegram:
+<em>"dimmi cosa c'&egrave; nel log di stasera"</em>.
+</p>
+
+<figure>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 460" width="100%" preserveAspectRatio="xMidYMid meet" style="font-family:'Segoe UI',Calibri,sans-serif; font-size:12px;">
+<defs>
+  <marker id="a2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto">
+    <path d="M0,0 L10,5 L0,10 z" fill="#1A477A"/>
+  </marker>
+  <marker id="a2g" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto">
+    <path d="M0,0 L10,5 L0,10 z" fill="#548235"/>
+  </marker>
+  <marker id="a2r" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto">
+    <path d="M0,0 L10,5 L0,10 z" fill="#B7791F"/>
+  </marker>
+</defs>
+
+<rect x="10"  y="10" width="150" height="30" fill="#E3ECF5" stroke="#1A477A"/>
+<text x="85" y="30" text-anchor="middle" fill="#1A477A" font-weight="700">Utente / Canale</text>
+<rect x="170" y="10" width="150" height="30" fill="#E3ECF5" stroke="#1A477A"/>
+<text x="245" y="30" text-anchor="middle" fill="#1A477A" font-weight="700">Gateway</text>
+<rect x="330" y="10" width="150" height="30" fill="#FDF3DC" stroke="#B7791F"/>
+<text x="405" y="30" text-anchor="middle" fill="#92400E" font-weight="700">Policy</text>
+<rect x="490" y="10" width="150" height="30" fill="#F4E4D8" stroke="#A0522D"/>
+<text x="565" y="30" text-anchor="middle" fill="#7C2D12" font-weight="700">Sandbox</text>
+<rect x="650" y="10" width="150" height="30" fill="#E9EFDB" stroke="#548235"/>
+<text x="725" y="30" text-anchor="middle" fill="#3F6212" font-weight="700">Executor</text>
+<rect x="810" y="10" width="140" height="30" fill="#E9EFDB" stroke="#548235"/>
+<text x="880" y="30" text-anchor="middle" fill="#3F6212" font-weight="700">interfaccia LLM</text>
+
+<line x1="85"  y1="40" x2="85"  y2="430" stroke="#d0d7de" stroke-dasharray="3 4"/>
+<line x1="245" y1="40" x2="245" y2="430" stroke="#d0d7de" stroke-dasharray="3 4"/>
+<line x1="405" y1="40" x2="405" y2="430" stroke="#d0d7de" stroke-dasharray="3 4"/>
+<line x1="565" y1="40" x2="565" y2="430" stroke="#d0d7de" stroke-dasharray="3 4"/>
+<line x1="725" y1="40" x2="725" y2="430" stroke="#d0d7de" stroke-dasharray="3 4"/>
+<line x1="880" y1="40" x2="880" y2="430" stroke="#d0d7de" stroke-dasharray="3 4"/>
+
+<circle cx="85" cy="70" r="12" fill="#1A477A"/><text x="85" y="74" text-anchor="middle" fill="white" font-weight="700">1</text>
+<line x1="100" y1="70" x2="235" y2="70" stroke="#1A477A" stroke-width="1.8" marker-end="url(#a2)"/>
+<text x="165" y="62" text-anchor="middle" fill="#1A477A" font-size="10">"cosa c'è nel log stasera?"</text>
+
+<circle cx="245" cy="105" r="12" fill="#1A477A"/><text x="245" y="109" text-anchor="middle" fill="white" font-weight="700">2</text>
+<text x="255" y="108" fill="#334155" font-size="10">riconosce sender (pairing già fatto)</text>
+
+<line x1="260" y1="140" x2="395" y2="140" stroke="#B7791F" stroke-width="1.8" marker-end="url(#a2r)"/>
+<text x="325" y="132" text-anchor="middle" fill="#92400E" font-size="10">"vuole leggere un file"</text>
+
+<circle cx="405" cy="170" r="12" fill="#B7791F"/><text x="405" y="174" text-anchor="middle" fill="white" font-weight="700">4</text>
+<text x="415" y="173" fill="#44403C" font-size="10">autonomy=Supervised, path OK, Vaglio tace → permesso</text>
+
+<line x1="420" y1="205" x2="555" y2="205" stroke="#A0522D" stroke-width="1.8" marker-end="url(#a2)"/>
+<text x="490" y="197" text-anchor="middle" fill="#7C2D12" font-size="10">apri bwrap profilo read-only</text>
+
+<line x1="580" y1="240" x2="715" y2="240" stroke="#548235" stroke-width="1.8" marker-end="url(#a2g)"/>
+<text x="650" y="232" text-anchor="middle" fill="#3F6212" font-size="10">executor fs_read(/var/log/...)</text>
+
+<line x1="740" y1="275" x2="870" y2="275" stroke="#548235" stroke-width="1.8" marker-end="url(#a2g)"/>
+<text x="805" y="267" text-anchor="middle" fill="#3F6212" font-size="10">LLM: riassumi questo log</text>
+
+<line x1="870" y1="310" x2="740" y2="310" stroke="#548235" stroke-width="1.8" marker-end="url(#a2g)"/>
+<text x="805" y="302" text-anchor="middle" fill="#3F6212" font-size="10">riassunto (3 righe)</text>
+
+<line x1="710" y1="345" x2="260" y2="345" stroke="#1A477A" stroke-width="1.8" marker-end="url(#a2)"/>
+<text x="485" y="337" text-anchor="middle" fill="#1A477A" font-size="10">risposta + audit log + mnest aggiornato</text>
+
+<line x1="230" y1="380" x2="100" y2="380" stroke="#1A477A" stroke-width="1.8" marker-end="url(#a2)"/>
+<text x="165" y="372" text-anchor="middle" fill="#1A477A" font-size="10">messaggio Telegram</text>
+
+<rect x="20" y="405" width="930" height="25" rx="4" ry="4" fill="#dcfce7" stroke="#16a34a"/>
+<text x="30" y="422" fill="#14532d" font-size="10">
+Nota: se la richiesta fosse "cancella il log", la Policy (step 4) chiederebbe approvazione via canale prima di proseguire.
+</text>
+</svg>
+<figcaption>Figura 4 &mdash; Flusso di una richiesta "lettura log" da Telegram. Ogni passaggio di corsia significa attraversare uno strato. L'audit log (step 9) e l'aggiornamento del mnest sono impliciti in ogni esecuzione.</figcaption>
+</figure>
+
+<div class="callout note">
+<strong>Lo scratchpad: dove vivono le observation grandi.</strong> Quando
+un executor restituisce un risultato di dimensioni significative (un
+PDF estratto, un body HTML, un dump SQL), il runtime non lo riversa
+nel contesto del LLM &mdash; pagherebbe un costo che cresce a ogni passo
+successivo. Lo deposita invece in un'area di memoria del turno chiamata
+<em>scratchpad</em>, e mostra al LLM solo un sommario (testa + coda).
+Il LLM pu&ograve; chiedere il resto via un builtin
+<code>scratchpad_read</code> (modi <em>head</em>, <em>tail</em>,
+<em>range</em>, <em>full</em>): paghi solo i token che servono al passo
+in cui ti servono. Il dettaglio &egrave; al cap. 9 e nella
+microprogettazione <a href="architecture/scratchpad.html">scratchpad</a>.
+</div>
+
+<h2>La variante proattiva</h2>
+
+<p>
+C'&egrave; un secondo tipo di richiesta che non viene mai mostrata nei
+diagrammi classici degli agenti: la richiesta che <em>nasce da dentro</em>.
+Un cron, o il grafo delle proto-mnest (cap. 9), o una regolarit&agrave;
+notata da Metnos stesso, genera una proposta: "vuoi che archivi le foto di
+stasera come fai di solito?". Questa proposta entra nello strato 2 dal
+basso, non dal Gateway: prima passa per il Vaglio (cap. 11) che verifica se
+viola una Legge e se l'allineamento ai telos &egrave; sufficiente, e solo
+se supera l'uno e l'altro arriva al Gateway, che la inoltra al canale
+preferito dell'utente come notifica leggera. Se l'utente ignora, la
+proposta non si ripropone identica: viene registrata e il suo peso
+decresce.
+</p>
+
+<h3>Esempio canonico: presidiare una casella di posta</h3>
+
+<p>
+Un caso d'uso semplice e ricorrente della variante proattiva &egrave;
+<em>presidiare</em> una casella di posta del dominio (per esempio
+<code>metnos@metnos.com</code>): controllarla a un ritmo concordato,
+classificare i messaggi nuovi (richieste reali, conferme automatiche,
+spam mancato dal filtro, ecc.) e consegnare a Roberto un riassunto solo
+quando ha senso. Le quattro mosse minime:
+</p>
+
+<ol>
+<li><strong>Controllare</strong> a intervalli (es. una volta al giorno, mattina): un executor <code>imap_status</code> conta i messaggi non letti per cartella senza scaricarli.</li>
+<li><strong>Leggere</strong> e <strong>classificare</strong> solo se ci sono novit&agrave;: un executor <code>imap_fetch_headers</code> recupera intestazioni; un classificatore (LLM <em>local-fast</em>, vedi cap. 8) etichetta in tre o quattro categorie.</li>
+<li><strong>Riassumere</strong>: per i messaggi che meritano attenzione umana, un executor <code>summarize</code> produce due righe per ciascuno.</li>
+<li><strong>Consegnare</strong>: un executor <code>notify</code> manda il riassunto sul canale preferito di Roberto (Telegram, mail personale, voce). Il bother budget e il telos di discrezione regolano la frequenza.</li>
+</ol>
+
+<p>
+Le quattro mosse non sono una nuova categoria di design: sono una
+catena di executor invocata dallo <a href="architecture/executor.html#scheduler-builtin">
+<code>scheduler</code></a> (executor builtin, cap. 9 della microprogettazione
+executor) a un ritmo accettato una volta in fase di proposta. Vista dal
+mnestoma, &egrave; una traccia di quattro mnest che si rinforza ogni
+mattina; in tempi pi&ugrave; lunghi <em>synt</em> (cap. 9) pu&ograve;
+proporne una versione fusa, un singolo executor
+<code>email_morning_digest</code> che incorpora la catena. Le invocazioni
+programmate dallo scheduler consumano una quota separata dal bother budget
+delle proposte ad-hoc, perch&eacute; il consenso al ritmo &egrave;
+gi&agrave; stato dato.
+</p>
+
+
+<h1 id="cap8">8. L'interfaccia LLM, il pattern provider-agnostic</h1>
+
+<p class="lead">
+Metnos non parla mai direttamente con Claude, OpenAI, Ollama o qualunque
+altro fornitore di modelli linguistici. Parla con un'<strong>interfaccia
+astratta</strong> (tipicamente un <code>typing.Protocol</code>) che il
+registro risolve a runtime in un'implementazione concreta. Lo stesso vale
+per STT, TTS, embedding, speaker ID. &Egrave; il pattern che rende Metnos
+<em>provider-agnostic</em>: chi scrive Metnos non deve sapere quale modello
+girer&agrave; davvero, e chi amministra l'ambiente pu&ograve; cambiarlo con
+una riga di configurazione.
+</p>
+
+<p>Nel diagramma che segue, Metnos &egrave; un consumer tra i possibili
+altri: un <a href="Metnos_Glossario_v1.html#assistente-domotico">assistente
+domotico</a> per voce e controllo casa, ulteriori bot specializzati su
+domini ristretti. Tutti condividono la stessa astrazione. Nessuno riscrive
+il layer AI: lo <em>usa</em>.</p>
+
+<figure>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 480" width="100%" preserveAspectRatio="xMidYMid meet" style="font-family:'Segoe UI',Calibri,sans-serif; font-size:12px;">
+<defs>
+  <linearGradient id="gs-supra" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0%" stop-color="#E9EFDB"/><stop offset="100%" stop-color="#B6C798"/>
+  </linearGradient>
+  <linearGradient id="gs-Metnos" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0%" stop-color="#D9E4F0"/><stop offset="100%" stop-color="#A9C3DE"/>
+  </linearGradient>
+  <linearGradient id="gs-sibling" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0%" stop-color="#F4E4D8"/><stop offset="100%" stop-color="#D4B398"/>
+  </linearGradient>
+  <marker id="a3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto">
+    <path d="M0,0 L10,5 L0,10 z" fill="#548235"/>
+  </marker>
+</defs>
+
+<rect x="60" y="30" width="240" height="130" rx="10" ry="10" fill="url(#gs-Metnos)" stroke="#1A477A" stroke-width="2"/>
+<text x="180" y="56" text-anchor="middle" fill="#1A477A" font-size="15" font-weight="700">Metnos</text>
+<text x="180" y="76" text-anchor="middle" fill="#334155" font-size="10">gateway + agent + sandbox</text>
+<line x1="80" y1="88" x2="280" y2="88" stroke="#1A477A" stroke-dasharray="2 3" opacity="0.4"/>
+<text x="75" y="108" fill="#334155" font-size="10">· canali: CLI, Telegram</text>
+<text x="75" y="125" fill="#334155" font-size="10">· executor: fs, shell, web</text>
+<text x="75" y="142" fill="#334155" font-size="10">· workspace markdown</text>
+
+<rect x="340" y="30" width="220" height="130" rx="10" ry="10" fill="url(#gs-sibling)" stroke="#A0522D" stroke-width="1.8"/>
+<text x="450" y="56" text-anchor="middle" fill="#7C2D12" font-size="14" font-weight="700">assistente domotico</text>
+<text x="450" y="76" text-anchor="middle" fill="#44403C" font-size="10">(sibling agent, esempio)</text>
+<line x1="360" y1="88" x2="540" y2="88" stroke="#A0522D" stroke-dasharray="2 3" opacity="0.4"/>
+<text x="355" y="108" fill="#44403C" font-size="10">· wake-word → STT → LLM → TTS</text>
+<text x="355" y="125" fill="#44403C" font-size="10">· controllo domotica (MQTT)</text>
+
+<rect x="600" y="30" width="220" height="130" rx="10" ry="10" fill="url(#gs-sibling)" stroke="#A0522D" stroke-width="1.8"/>
+<text x="710" y="56" text-anchor="middle" fill="#7C2D12" font-size="14" font-weight="700">bot specializzato</text>
+<text x="710" y="76" text-anchor="middle" fill="#44403C" font-size="10">(sibling agent, esempio)</text>
+<line x1="620" y1="88" x2="800" y2="88" stroke="#A0522D" stroke-dasharray="2 3" opacity="0.4"/>
+<text x="615" y="108" fill="#44403C" font-size="10">· dominio ristretto</text>
+<text x="615" y="125" fill="#44403C" font-size="10">· un canale, pochi tool</text>
+
+<line x1="180" y1="160" x2="180" y2="220" stroke="#548235" stroke-width="2" marker-end="url(#a3)"/>
+<line x1="450" y1="160" x2="450" y2="220" stroke="#548235" stroke-width="2" marker-end="url(#a3)"/>
+<line x1="710" y1="160" x2="710" y2="220" stroke="#548235" stroke-width="2" marker-end="url(#a3)"/>
+<text x="195" y="195" fill="#548235" font-size="10" font-style="italic">registry.get(...)</text>
+
+<rect x="60" y="230" width="800" height="110" rx="12" ry="12" fill="url(#gs-supra)" stroke="#548235" stroke-width="2"/>
+<text x="460" y="258" text-anchor="middle" fill="#3F6212" font-size="16" font-weight="700">Interfaccia astratta (p.es. <tspan font-family="Consolas,monospace">suprastructure</tspan>)</text>
+<text x="460" y="278" text-anchor="middle" fill="#1F2937" font-size="11">hub di servizi AI &mdash; <code>typing.Protocol</code> + registry + implementazioni swappabili</text>
+<g>
+<rect x="90"  y="295" width="100" height="35" rx="6" ry="6" fill="white" stroke="#548235"/>
+<text x="140" y="317" text-anchor="middle" fill="#3F6212" font-size="11" font-weight="600">LLM</text>
+<rect x="210" y="295" width="100" height="35" rx="6" ry="6" fill="white" stroke="#548235"/>
+<text x="260" y="317" text-anchor="middle" fill="#3F6212" font-size="11" font-weight="600">STT</text>
+<rect x="330" y="295" width="100" height="35" rx="6" ry="6" fill="white" stroke="#548235"/>
+<text x="380" y="317" text-anchor="middle" fill="#3F6212" font-size="11" font-weight="600">TTS</text>
+<rect x="450" y="295" width="110" height="35" rx="6" ry="6" fill="white" stroke="#548235"/>
+<text x="505" y="317" text-anchor="middle" fill="#3F6212" font-size="11" font-weight="600">Embedding</text>
+<rect x="580" y="295" width="120" height="35" rx="6" ry="6" fill="white" stroke="#548235"/>
+<text x="640" y="317" text-anchor="middle" fill="#3F6212" font-size="11" font-weight="600">Speaker ID</text>
+<rect x="720" y="295" width="120" height="35" rx="6" ry="6" fill="white" stroke="#548235"/>
+<text x="780" y="317" text-anchor="middle" fill="#3F6212" font-size="11" font-weight="600">Model Registry</text>
+</g>
+
+<text x="460" y="370" text-anchor="middle" fill="#64748B" font-size="11" font-weight="600">Backend (intercambiabili via config)</text>
+<g>
+<rect x="60"  y="385" width="110" height="35" rx="5" ry="5" fill="#F4E4D8" stroke="#A0522D"/>
+<text x="115" y="407" text-anchor="middle" fill="#1F2937" font-size="10">Claude / Anthropic</text>
+<rect x="180" y="385" width="110" height="35" rx="5" ry="5" fill="#F4E4D8" stroke="#A0522D"/>
+<text x="235" y="407" text-anchor="middle" fill="#1F2937" font-size="10">OpenAI</text>
+<rect x="300" y="385" width="110" height="35" rx="5" ry="5" fill="#F4E4D8" stroke="#A0522D"/>
+<text x="355" y="407" text-anchor="middle" fill="#1F2937" font-size="10">llama.cpp / Ollama</text>
+<rect x="420" y="385" width="110" height="35" rx="5" ry="5" fill="#F4E4D8" stroke="#A0522D"/>
+<text x="475" y="407" text-anchor="middle" fill="#1F2937" font-size="10">faster-whisper</text>
+<rect x="540" y="385" width="110" height="35" rx="5" ry="5" fill="#F4E4D8" stroke="#A0522D"/>
+<text x="595" y="407" text-anchor="middle" fill="#1F2937" font-size="10">Piper</text>
+<rect x="660" y="385" width="110" height="35" rx="5" ry="5" fill="#F4E4D8" stroke="#A0522D"/>
+<text x="715" y="407" text-anchor="middle" fill="#1F2937" font-size="10">xtts-rocm</text>
+<rect x="780" y="385" width="80"  height="35" rx="5" ry="5" fill="#F4E4D8" stroke="#A0522D"/>
+<text x="820" y="407" text-anchor="middle" fill="#1F2937" font-size="10">&hellip;</text>
+</g>
+
+</svg>
+<figcaption>Figura 5 &mdash; Il pattern provider-agnostic. Metnos &egrave; un consumer fra altri possibili. Tutti parlano con la stessa interfaccia astratta; l'implementazione concreta (nel caso dell'autore, <code>suprastructure</code>) resta intercambiabile.</figcaption>
+</figure>
+
+<p>
+Il vantaggio concreto: un nuovo modello (es. Claude 4.7 quando sar&agrave;
+disponibile) si configura una volta sola nell'implementazione
+dell'interfaccia e tutti i consumer lo ereditano simultaneamente &mdash;
+Metnos compreso. Nessun codice da rifare, nessun deploy da coordinare.
+</p>
+
+<h2>Tre tier come concetto invariante: fast / middle / wise</h2>
+
+<p>
+Sopra l'interfaccia astratta, Metnos espone tre <em>tier</em> di chiamate
+LLM, indipendenti dal provider sottostante:
+</p>
+
+<table>
+<thead><tr><th style="width:14%">Tier</th><th style="width:42%">Quando si usa</th><th>Caratteristiche</th></tr></thead>
+<tbody>
+<tr>
+  <td><strong>fast</strong></td>
+  <td>pianificatore ReAct, riassunti scratchpad, classificazioni leggere &mdash; <em>tutte le chiamate non critiche</em>.</td>
+  <td>sempre locale, sempre disponibile, latenza ~1&nbsp;s. Es. <code>qwen3:8b</code> via Ollama.</td>
+</tr>
+<tr>
+  <td><strong>middle</strong></td>
+  <td>vaglio probabilistico, valutazione di proposte introvertive (futuro v1.2).</td>
+  <td>capacit&agrave; intermedia. Se non c'&egrave; un modello dedicato, il middle <em>rinvia verso l'alto</em> al wise (con un preambolo che ne cambia il ruolo).</td>
+</tr>
+<tr>
+  <td><strong>wise</strong></td>
+  <td>synt.generate (creazione di nuovi executor), giudizi delicati, decisioni con implicazioni di lungo periodo.</td>
+  <td>massima capacit&agrave; di ragionamento. Es. Gemma 4 26B in locale, oppure Claude Sonnet 4.6 / GPT-5 online.</td>
+</tr>
+</tbody>
+</table>
+
+<div class="callout note">
+<strong>Quality floor del wise &mdash; non degrada.</strong> Il tier wise ha
+una soglia di qualit&agrave; minima: o si configura un modello locale al
+livello di Gemma 4 26B o superiore, o si delega a un provider online noto
+(Anthropic, OpenAI, Google, Mistral). Mai degradare silenziosamente al fast:
+synt.generate produrrebbe codice scadente che inquina il pool. Errore
+esplicito al boot, mai degradazione invisibile.
+</div>
+
+<h2>Repertorio dei prompt addendum per provider</h2>
+
+<p>
+Ogni famiglia di modelli ha sue idiosincrasie scoperte solo con l'uso.
+Metnos mantiene un piccolo <em>repertorio</em> di addendum di prompt
+applicati automaticamente quando il chiamante segnala
+<em>for_code=True</em>. Tre regole di stile:
+<strong>brevi</strong> (una o due righe), <strong>prescrittivi</strong>
+(imperativo, niente esempi long-form), <strong>il "perch&eacute;" sta
+nelle memorie del progetto, mai nel prompt</strong>.
+</p>
+
+<p>
+Il repertorio vive in <code>runtime/prompts.toml</code> (default bundled,
+versionato col codice) ed &egrave; sovrascrivibile da
+<code>~/.config/metnos/prompts.toml</code> (override utente). Ogni hint
+matcha su <em>(provider, model_pattern, use_case)</em>; il primo match vince.
+Tre esempi di hint correnti, derivati da osservazione empirica:
+</p>
+
+<ul>
+<li><code>anthropic / claude-*</code>: <em>"Vincoli: codice fedele alla spec. Regex semplice. Niente lookbehind/lookahead."</em> &mdash; perch&eacute; Claude 4.x &egrave; pi&ugrave; letterale e tende a costruire regex troppo precise quando la spec non &egrave; esplicita sui boundary.</li>
+<li><code>llamacpp / gemma-4-*</code>: <em>"Vincoli: raw string r'...' con UN backslash. Niente triple-quote docstring."</em> &mdash; perch&eacute; Gemma 4 Q4 sovra-quota backslash dentro JSON tool-call.</li>
+<li><code>openai / gpt-5*</code>: <em>"Vincoli: content e' stringa (non lista). Codice fedele alla spec. Solo stdlib."</em> &mdash; perch&eacute; GPT-5 senza vincolo esplicito mette la lista direttamente nel campo <code>content</code>, violando la convenzione output dell'executor.</li>
+</ul>
+
+<p>
+Quando arriva un nuovo modello (Gemma 5, Claude Opus 4.7, GPT-6, &hellip;)
+si aggiunge una entry al repertorio sulla base di quello che si osserva
+nelle prime sintesi. Il <em>system prompt</em> di base e gli executor non
+cambiano: la sola leva che si tocca &egrave; il repertorio.
+</p>
+
+
+<h1 id="cap9">9. Executor, mnest, mnestoma: l'anatomia dell'agire e del ricordare</h1>
+
+<p class="lead">
+Qui entriamo nel cuore del secondo dialogo. Due domande che sembrano
+diverse ma sono la stessa: <em>come agisce Metnos?</em> e <em>come ricorda?</em>.
+La risposta &egrave; un piccolo vocabolario di cinque parole. Impararlo
+bene ora paga il resto del documento.
+</p>
+
+<div class="glossary-card">
+<strong>Executor.</strong> L'unit&agrave; atomica di azione. Una funzione
+pura, senza stato interno, invocabile in contesti diversi. Gli executor
+formano una <em>popolazione</em> di capacit&agrave;: <code>fs_read</code>,
+<code>web_fetch</code>, <code>ocr_image</code>, <code>telegram_send</code>,
+<code>archive_pdf</code>, e cos&igrave; via. Nel codice, un executor
+implementa il Protocol <code>Tool</code>. Nel disegno concettuale, un
+executor &egrave; un nodo del grafo di cui parliamo tra poco.
+</div>
+
+<div class="glossary-card">
+<strong>Mnest.</strong> Un legame registrato tra due executor che sono stati
+usati in sequenza con esito positivo. "Registrato" vuol dire annotato in
+una tabella: sorgente, destinazione, peso (quante volte), recency (quando
+l'ultima). I mnest nascono, crescono, decadono. Dal greco <em>m&nu;&eacute;sthai</em>:
+ricordare.
+</div>
+
+<div class="glossary-card">
+<strong>Mnestoma.</strong> Il grafo di tutti i mnest. Non &egrave; un
+database separato e non &egrave; un vector store: &egrave; una tabella
+semplice, letta e scritta ad ogni esecuzione. Ha due facce che non si
+escludono: la memoria del <em>fatto</em> (quello che &egrave; riuscito) e
+la memoria dell'<em>aspirazione</em> (quello che Metnos ha cercato di fare
+e non ha trovato &mdash; vedi proto-mnest).
+</div>
+
+<div class="glossary-card">
+<strong>Proto-mnest.</strong> Un legame incompiuto. Metnos voleva passare
+da un executor A a un executor B, ma B non esiste ancora. Il proto-mnest
+resta l&igrave;, in un registro separato, come cicatrice onesta di un
+desiderio mancato. Se lo stesso desiderio ricorre, diventa candidato per la
+proposta di un nuovo executor (capitolo 10).
+</div>
+
+<div class="glossary-card">
+<strong>Seed.</strong> L'insieme di circa venti executor elementari
+presenti al giorno zero (leggere file, scrivere file, invocare LLM,
+chiamare HTTP, inviare messaggi su un canale, &hellip;). Il seed &egrave;
+la grammatica minima. Il resto emerge dall'uso.
+</div>
+
+<div class="glossary-card">
+<strong>Synt.</strong> L'unico componente del sistema autorizzato a
+proporre un executor che non esisteva prima. Quando un proto-mnest
+ricorre, il synt prova prima a comporre la capacit&agrave; mancante con
+executor gi&agrave; firmati (cascata <em>compose</em>); se non basta,
+genera uno scheletro nuovo con il LLM <em>tier wise</em> (cascata
+<em>generate</em>) e lo presenta a Roberto per l'approvazione. Niente
+auto-modifica: ogni nuovo executor entra nel pool solo dopo firma
+umana. &Egrave; il principio 3 dei sei (cap.&nbsp;14): <em>generazione
+monocanale</em>. Vedi microprogettazione
+<a href="architecture/synt.html">synt</a>.
+</div>
+
+<figure>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 500" width="100%" preserveAspectRatio="xMidYMid meet" style="font-family:'Segoe UI',Calibri,sans-serif; font-size:12px;">
+<defs>
+  <marker id="mn-a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+    <path d="M0,0 L10,5 L0,10 z" fill="#1A477A"/>
+  </marker>
+  <marker id="mn-b" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+    <path d="M0,0 L10,5 L0,10 z" fill="#B91C1C"/>
+  </marker>
+  <linearGradient id="exec-g1" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0%" stop-color="#E9EFDB"/><stop offset="100%" stop-color="#B6C798"/>
+  </linearGradient>
+  <linearGradient id="exec-g2" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0%" stop-color="#D9E4F0"/><stop offset="100%" stop-color="#A9C3DE"/>
+  </linearGradient>
+  <linearGradient id="exec-g3" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0%" stop-color="#F4E4D8"/><stop offset="100%" stop-color="#DCC0A3"/>
+  </linearGradient>
+</defs>
+
+<text x="480" y="28" text-anchor="middle" fill="#1A477A" font-size="14" font-weight="700">Un piccolo mnestoma (istantanea)</text>
+
+<!-- Three clusters (tracks) -->
+<!-- Track 1: fatture (sage green) -->
+<ellipse cx="210" cy="200" rx="155" ry="110" fill="#F8FBF5" stroke="#548235" stroke-dasharray="5 4" stroke-width="1.5" opacity="0.8"/>
+<text x="210" y="100" text-anchor="middle" fill="#3F6212" font-size="11" font-style="italic">traccia "fatture"</text>
+
+<circle cx="160" cy="160" r="28" fill="url(#exec-g1)" stroke="#548235" stroke-width="1.5"/>
+<text x="160" y="164" text-anchor="middle" fill="#3F6212" font-size="10" font-weight="700">fs_read</text>
+<circle cx="260" cy="155" r="28" fill="url(#exec-g1)" stroke="#548235" stroke-width="1.5"/>
+<text x="260" y="159" text-anchor="middle" fill="#3F6212" font-size="10" font-weight="700">pdf_ext</text>
+<circle cx="170" cy="250" r="28" fill="url(#exec-g1)" stroke="#548235" stroke-width="1.5"/>
+<text x="170" y="254" text-anchor="middle" fill="#3F6212" font-size="10" font-weight="700">archive</text>
+<circle cx="270" cy="245" r="28" fill="url(#exec-g1)" stroke="#548235" stroke-width="1.5"/>
+<text x="270" y="249" text-anchor="middle" fill="#3F6212" font-size="10" font-weight="700">notify</text>
+
+<line x1="185" y1="162" x2="235" y2="157" stroke="#1A477A" stroke-width="3" marker-end="url(#mn-a)"/>
+<text x="210" y="148" text-anchor="middle" fill="#1A477A" font-size="9">18</text>
+<line x1="260" y1="180" x2="180" y2="225" stroke="#1A477A" stroke-width="2" marker-end="url(#mn-a)"/>
+<text x="235" y="210" text-anchor="middle" fill="#1A477A" font-size="9">12</text>
+<line x1="195" y1="252" x2="245" y2="247" stroke="#1A477A" stroke-width="2.2" marker-end="url(#mn-a)"/>
+<text x="220" y="267" text-anchor="middle" fill="#1A477A" font-size="9">15</text>
+
+<!-- Track 2: foto (blue) -->
+<ellipse cx="530" cy="200" rx="140" ry="100" fill="#F4F7FB" stroke="#1A477A" stroke-dasharray="5 4" stroke-width="1.5" opacity="0.8"/>
+<text x="530" y="110" text-anchor="middle" fill="#1A477A" font-size="11" font-style="italic">traccia "foto"</text>
+
+<circle cx="470" cy="170" r="28" fill="url(#exec-g2)" stroke="#1A477A" stroke-width="1.5"/>
+<text x="470" y="174" text-anchor="middle" fill="#1A477A" font-size="10" font-weight="700">exif</text>
+<circle cx="590" cy="170" r="28" fill="url(#exec-g2)" stroke="#1A477A" stroke-width="1.5"/>
+<text x="590" y="174" text-anchor="middle" fill="#1A477A" font-size="10" font-weight="700">face_id</text>
+<circle cx="530" cy="250" r="28" fill="url(#exec-g2)" stroke="#1A477A" stroke-width="1.5"/>
+<text x="530" y="254" text-anchor="middle" fill="#1A477A" font-size="10" font-weight="700">album</text>
+
+<line x1="498" y1="172" x2="562" y2="172" stroke="#1A477A" stroke-width="2.5" marker-end="url(#mn-a)"/>
+<text x="530" y="163" text-anchor="middle" fill="#1A477A" font-size="9">9</text>
+<line x1="480" y1="195" x2="515" y2="225" stroke="#1A477A" stroke-width="1.6" marker-end="url(#mn-a)"/>
+<text x="487" y="218" text-anchor="middle" fill="#1A477A" font-size="9">6</text>
+<line x1="580" y1="195" x2="545" y2="225" stroke="#1A477A" stroke-width="1.6" marker-end="url(#mn-a)"/>
+<text x="573" y="218" text-anchor="middle" fill="#1A477A" font-size="9">7</text>
+
+<!-- Track 3: email (bronze) - smaller and more distant -->
+<ellipse cx="820" cy="210" rx="115" ry="90" fill="#FBF6F1" stroke="#A0522D" stroke-dasharray="5 4" stroke-width="1.5" opacity="0.8"/>
+<text x="820" y="130" text-anchor="middle" fill="#7C2D12" font-size="11" font-style="italic">traccia "mail"</text>
+
+<circle cx="775" cy="195" r="28" fill="url(#exec-g3)" stroke="#A0522D" stroke-width="1.5"/>
+<text x="775" y="199" text-anchor="middle" fill="#7C2D12" font-size="10" font-weight="700">imap</text>
+<circle cx="870" cy="195" r="28" fill="url(#exec-g3)" stroke="#A0522D" stroke-width="1.5"/>
+<text x="870" y="199" text-anchor="middle" fill="#7C2D12" font-size="10" font-weight="700">draft</text>
+<circle cx="820" cy="265" r="28" fill="url(#exec-g3)" stroke="#A0522D" stroke-width="1.5" stroke-dasharray="3 3"/>
+<text x="820" y="269" text-anchor="middle" fill="#7C2D12" font-size="10" font-weight="700" font-style="italic">quar.</text>
+
+<line x1="803" y1="195" x2="842" y2="195" stroke="#1A477A" stroke-width="1.8" marker-end="url(#mn-a)"/>
+<text x="823" y="188" text-anchor="middle" fill="#1A477A" font-size="9">4</text>
+
+<!-- Proto-mnest: cross-cluster dashed red arrow (desiderio non soddisfatto) -->
+<path d="M 285 230 Q 350 320 430 260" fill="none" stroke="#B91C1C" stroke-width="2" stroke-dasharray="5 4" marker-end="url(#mn-b)"/>
+<text x="350" y="335" text-anchor="middle" fill="#B91C1C" font-size="10" font-style="italic">proto-mnest: "vorrei riconoscere anche volti nelle fatture" (5 tentativi falliti)</text>
+
+<!-- Legend -->
+<rect x="30" y="390" width="900" height="95" rx="6" ry="6" fill="#FAFBFC" stroke="#d0d7de"/>
+<text x="50" y="412" fill="#1A477A" font-size="11" font-weight="700">Come leggere la figura</text>
+
+<circle cx="60" cy="432" r="10" fill="url(#exec-g1)" stroke="#548235"/>
+<text x="80" y="436" fill="#334155" font-size="10">un executor (nodo)</text>
+
+<line x1="190" y1="432" x2="230" y2="432" stroke="#1A477A" stroke-width="2.5" marker-end="url(#mn-a)"/>
+<text x="245" y="436" fill="#334155" font-size="10">un mnest (arco con peso = numero di co-attivazioni)</text>
+
+<line x1="545" y1="432" x2="585" y2="432" stroke="#B91C1C" stroke-width="2" stroke-dasharray="5 4" marker-end="url(#mn-b)"/>
+<text x="600" y="436" fill="#7F1D1D" font-size="10">proto-mnest (desiderio non ancora soddisfatto)</text>
+
+<circle cx="60" cy="462" r="10" fill="url(#exec-g3)" stroke="#A0522D" stroke-dasharray="3 3"/>
+<text x="80" y="466" fill="#334155" font-size="10">executor in quarantena (basso peso, candidato ad archiviazione)</text>
+
+<ellipse cx="500" cy="462" rx="22" ry="10" fill="#F8FBF5" stroke="#548235" stroke-dasharray="5 4"/>
+<text x="530" y="466" fill="#334155" font-size="10">traccia (cluster emerso: nessuno l'ha disegnato)</text>
+</svg>
+<figcaption>Figura 6 &mdash; Un'istantanea di un piccolo mnestoma. Tre tracce emerse dall'uso (fatture, foto, mail), un proto-mnest che segnala un desiderio ancora senza executor, un nodo in quarantena. Nessuno ha disegnato questa struttura: &egrave; emersa dall'uso.</figcaption>
+</figure>
+
+<h2>Un esempio: la fattura che genera syntesi</h2>
+
+<p>
+Roberto riceve una fattura in PDF. Metnos la legge
+(<code>fs_read</code>), estrae il testo (<code>pdf_ext</code>), archivia
+(<code>archive</code>), notifica (<code>notify</code>). Ogni passaggio di
+mano tra due executor incrementa il peso del relativo mnest. Dopo un mese,
+la traccia "fatture" ha quattro nodi densamente connessi.
+</p>
+
+<p>
+Un giorno arriva una fattura che contiene solo un'immagine scansionata.
+<code>pdf_ext</code> restituisce stringa vuota. Metnos cerca un executor
+che sappia fare OCR. Non c'&egrave;. Registra un proto-mnest: "da
+<code>pdf_ext</code> vorrei andare a un ipotetico <code>ocr</code>, che
+non esiste". Dopo cinque fatture scansionate (tutte con lo stesso
+proto-mnest) il <em>synt</em> (cap. 10) propone all'utente: "sto incontrando
+ripetutamente PDF-immagine. Vuoi che provi a sintetizzare un executor
+<code>ocr_image</code>?". Se Roberto approva, nasce un executor nuovo.
+</p>
+
+<div class="callout note">
+<strong>Il sistema non apprende, il sistema cresce.</strong> Metnos non
+fa fine-tuning. Non modifica l'LLM. Modifica s&eacute; stesso cambiando la
+propria popolazione di executor e la propria topologia di mnest. La
+memoria &egrave; <em>fuori</em> dall'LLM e <em>dentro</em> il mnestoma. Ad
+ogni chiamata LLM, il mnestoma &egrave; una <em>voce al tavolo</em>: non
+genera ragionamento, ma porta il contesto della storia.
+</div>
+
+<h2>Il pool reale, oggi e domani</h2>
+
+<p>
+Al 26 aprile 2026 il pool seed di Metnos contiene <em>quattro</em>
+executor implementati a mano (<code>fs_read</code>,
+<code>fs_write</code>, <code>time_read</code>, <code>web_fetch</code>) e
+il <em>primo executor sintetizzato in autonomia dal synt</em>:
+<code>format_json</code>, nato in ~65&nbsp;s dalla cascata reattiva su un
+proto-mnest "vorrei stampare JSON in modo leggibile", controllato da quattro
+test che il sistema ha generato ed eseguito da solo, firmato dopo la
+conferma umana. Tre cluster di candidati sono in agenda &mdash; non
+nascono in anticipo, aspettano una richiesta vera che li renda utili:
+</p>
+
+<ul>
+<li><strong>Excel / spreadsheet CRUD</strong>: leggere, scrivere, filtrare fogli (.xlsx, .csv), convertire in JSON. Cluster denso, candidato naturale a generalizzazione introvertiva (un <code>tabular_read(format=auto)</code> parametrico al posto di tre executor specializzati).</li>
+<li><strong>Matematica spicciola</strong>: calcoli, conversioni di unit&agrave;, risoluzione di sistemi lineari, percentuali. Strumento deterministico per richieste aritmetiche, alternativa al "chiediamolo all'LLM".</li>
+<li><strong>Statistica descrittiva</strong>: somma/media/varianza, correlazione, regressione, t-test, istogrammi, rilevamento outlier. Si compone naturalmente con <code>xlsx_read</code> per analisi tabellari.</li>
+</ul>
+
+<p>
+Per ciascun cluster, il principio resta lo stesso: synt sintetizza il
+singolo executor quando una richiesta concreta lo richiede, e Roberto
+approva. Le installazioni Metnos di due utenti diversi, dopo sei mesi,
+avranno cassette degli attrezzi diverse, perch&eacute; tirate da richieste
+diverse.
+</p>
+
+<h2>La cascata della sintesi: prima comporre, poi generare</h2>
+
+<p>
+Quando un proto-mnest ricorre, il synt non salta subito a scrivere
+codice nuovo. Procede per gradi, in una cascata che mette al primo
+posto il riuso. Il principio &egrave; pratico, non estetico: una
+chiamata a un LLM frontier per generare uno scheletro di executor costa
+attorno all'euro; cercare una catena di executor gi&agrave; firmati che
+risolve la stessa cosa non costa nulla. Disciplina del costo e
+disciplina della libreria coincidono.
+</p>
+
+<ol>
+<li><strong>Comporre</strong>. Il synt scorre il pool degli executor
+attivi e prova a costruire una catena <em>A &rarr; B &rarr; C</em> che
+chiuda il proto-mnest. Se la trova, la propone come prima risposta:
+nessuna sintesi, nessun executor nuovo, solo un orchestrato di pezzi
+esistenti. Lascia per&ograve; una traccia: se la stessa composizione si
+ripete, &egrave; un segnale che varrebbe la pena promuoverla a executor
+unico (un piccolo proto-mnest verso una composizione, non verso un
+executor).</li>
+
+<li><strong>Generare</strong>. Solo se la composizione non esiste o
+&egrave; troppo lunga per restare leggibile, il synt entra nella
+pipeline multistage a cinque stadi (cap. 10, e
+<a href="architecture/synt.html#cap4">synt &sect;4.2.3</a>) e propone un nuovo
+executor. La generazione &egrave; il fallback, non il default.</li>
+</ol>
+
+<p>
+A questi due passi reattivi (che rispondono a una richiesta dentro il
+turno) si affiancano tre passi <em>introvertivi</em>, eseguiti
+nottetempo dall'<a href="#cap10">ager</a> sul mnestoma e sul pool
+firmato:
+</p>
+
+<ul>
+<li><strong>Fondere</strong> due executor con tracce sovrapposte e
+profili compatibili in uno solo che li copre entrambi (gi&agrave;
+previsto dal lifecycle &laquo;fuso&raquo; del cap. 6 della
+microprogettazione executor).</li>
+<li><strong>Generalizzare</strong> N executor specializzati con stessa
+forma in un executor parametrico pi&ugrave; ampio, quando le richieste
+ricorrenti rendono evidente la dimensione comune.</li>
+<li><strong>Specializzare</strong> un executor generale per un caso
+caldo, ma solo se la specializzazione produce un beneficio misurabile
+(non come ottimizzazione preventiva).</li>
+</ul>
+
+<p>
+Tutti i passi introvertivi sono proposte: arrivano a Roberto in modo
+batch, con la stessa pipeline di approvazione di un executor di
+sintesi reattiva. Niente si sposta nel pool senza firma. La libreria
+non degrada perch&eacute; ogni passo, prima di entrare, attraversa la
+guardia umana.
+</p>
+
+<div class="callout note">
+<strong>Telos: non lasciare inattuata una richiesta, se possibile.</strong>
+La cascata &egrave; il meccanismo che traduce in pratica un fine
+ultimo (cap. 11): quando una richiesta utente &egrave; dentro la
+costituzione e dentro il budget, il synt esaurisce le strategie
+disponibili (comporre, generare; nei tempi pi&ugrave; lunghi: fondere,
+generalizzare) prima di rispondere &laquo;non posso&raquo;. Il fallimento
+resta lecito ma motivato e tracciato, mai una rinuncia silenziosa.
+</div>
+
+
+<h1 id="cap10">10. Tracce, ager, reversibilit&agrave;: come il sistema cresce e si disfa</h1>
+
+<p class="lead">
+Un grafo che cresce per accumulo e non si disfa &egrave; una discarica.
+Metnos ha tre meccanismi per restare maneggiabile: emergenza di
+<em>tracce</em> (la struttura si auto-organizza), <em>ager</em>
+(invecchiamento per uso, non per calendario), <em>reversibilit&agrave;</em>
+(ogni mossa evolutiva ha il suo opposto).
+</p>
+
+<h2>Tracce: struttura che nessuno disegna</h2>
+
+<p>
+Su scala settimanale, un processo leggero misura la modularit&agrave; del
+grafo mnestoma &mdash; un'idea che arriva dalla <em>network medicine</em>:
+cluster di nodi con alta densit&agrave; interna e bassa densit&agrave;
+esterna sono <em>tracce</em> naturali. Metnos non le progetta, le rileva.
+"Fatture", "foto", "mail" nella figura 5 sono tre tracce emerse.
+</p>
+
+<p>
+Le tracce hanno due conseguenze concrete:
+</p>
+<ol>
+    <li><strong>Routing</strong>: quando Metnos entra in una conversazione,
+    sa quali tracce sono rilevanti e porta al tavolo solo i loro executor,
+    evitando che l'intero mnestoma affolli il prompt.</li>
+    <li><strong>Disciplina della fusione</strong>: due executor
+    possono essere proposti per essere fusi in uno pi&ugrave; generale, ma
+    solo se stanno nella <em>stessa</em> traccia. Le fusioni cross-traccia
+    sarebbero regressioni strutturali travestite da progresso.</li>
+</ol>
+
+<h2>Ager: il tempo dell'uso, non il tempo del calendario</h2>
+
+<p>
+<em>Ager</em> &mdash; dal latino <em>agere</em>, "agire" &mdash; &egrave;
+il nome che diamo al tempo interno del sistema. Se vai in vacanza un mese
+e spegni il computer, non vuoi trovare al ritorno Metnos invecchiato di un
+mese. Il tempo dell'ager &egrave; il tempo dell'uso: i cicli avanzano con
+le invocazioni, non con i giorni. Un sistema che dorme non invecchia.
+Sembra una sfumatura; non lo &egrave;. Il tuo mnestoma &egrave; legato a
+quanto lo hai usato, non a quanto tempo &egrave; passato.
+</p>
+
+<p>
+Ogni N invocazioni (50, 100 &mdash; il parametro &egrave; nel file di
+configurazione) l'ager:
+</p>
+<ul>
+    <li>decrementa linearmente il peso dei mnest non aggiornati di recente;</li>
+    <li>marca come "in quarantena" gli executor il cui uso &egrave; sceso
+    sotto una soglia;</li>
+    <li>propone all'utente l'archiviazione di executor e mnest in quarantena
+    da tempo.</li>
+</ul>
+
+<p>
+<em>Propone</em>, non esegue. L'ager non ha potere di decisione
+autonomo. Porta la lista, l'utente decide. Come ogni cosa in Metnos.
+</p>
+
+<h2>Reversibilit&agrave;: ogni mossa ha il suo opposto</h2>
+
+<p>
+Il quinto principio (cap. 14) dice: ogni atto evolutivo &egrave; reversibile,
+con motivazione scritta. Le operazioni hanno nomi specifici:
+</p>
+
+<figure>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 320" width="100%" preserveAspectRatio="xMidYMid meet" style="font-family:'Segoe UI',Calibri,sans-serif; font-size:12px;">
+<defs>
+  <marker id="life-a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto">
+    <path d="M0,0 L10,5 L0,10 z" fill="#1A477A"/>
+  </marker>
+  <marker id="life-b" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto">
+    <path d="M0,0 L10,5 L0,10 z" fill="#548235"/>
+  </marker>
+  <linearGradient id="life-seed" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0%" stop-color="#FDF3DC"/><stop offset="100%" stop-color="#E8C586"/>
+  </linearGradient>
+  <linearGradient id="life-live" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0%" stop-color="#E9EFDB"/><stop offset="100%" stop-color="#B6C798"/>
+  </linearGradient>
+  <linearGradient id="life-arch" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0%" stop-color="#D9E4F0"/><stop offset="100%" stop-color="#A9C3DE"/>
+  </linearGradient>
+</defs>
+
+<!-- Stati -->
+<rect x="30" y="110" width="140" height="70" rx="10" ry="10" fill="url(#life-seed)" stroke="#B7791F" stroke-width="1.6"/>
+<text x="100" y="138" text-anchor="middle" fill="#92400E" font-size="12" font-weight="700">Seed</text>
+<text x="100" y="156" text-anchor="middle" fill="#44403C" font-size="10">~20 executor</text>
+<text x="100" y="170" text-anchor="middle" fill="#44403C" font-size="10">al giorno zero</text>
+
+<rect x="220" y="110" width="150" height="70" rx="10" ry="10" fill="url(#life-live)" stroke="#548235" stroke-width="1.6"/>
+<text x="295" y="138" text-anchor="middle" fill="#3F6212" font-size="12" font-weight="700">Attivo</text>
+<text x="295" y="156" text-anchor="middle" fill="#1F2937" font-size="10">uso regolare</text>
+<text x="295" y="170" text-anchor="middle" fill="#1F2937" font-size="10">peso mnest crescente</text>
+
+<rect x="420" y="110" width="150" height="70" rx="10" ry="10" fill="url(#life-live)" stroke="#548235" stroke-width="1.6"/>
+<text x="495" y="138" text-anchor="middle" fill="#3F6212" font-size="12" font-weight="700">Fuso</text>
+<text x="495" y="156" text-anchor="middle" fill="#1F2937" font-size="10">E1 + E2 → E12</text>
+<text x="495" y="170" text-anchor="middle" fill="#1F2937" font-size="10">mnest superseded</text>
+
+<rect x="620" y="110" width="150" height="70" rx="10" ry="10" fill="url(#life-arch)" stroke="#1A477A" stroke-width="1.6" stroke-dasharray="4 3"/>
+<text x="695" y="138" text-anchor="middle" fill="#1A477A" font-size="12" font-weight="700">In quarantena</text>
+<text x="695" y="156" text-anchor="middle" fill="#334155" font-size="10">uso sotto soglia</text>
+<text x="695" y="170" text-anchor="middle" fill="#334155" font-size="10">proposto archiviare</text>
+
+<rect x="820" y="110" width="110" height="70" rx="10" ry="10" fill="#EDEDED" stroke="#64748B" stroke-width="1.4"/>
+<text x="875" y="138" text-anchor="middle" fill="#475569" font-size="12" font-weight="700">Archiviato</text>
+<text x="875" y="156" text-anchor="middle" fill="#475569" font-size="10">non attivo</text>
+<text x="875" y="170" text-anchor="middle" fill="#475569" font-size="10">ma conservato</text>
+
+<!-- Forward transitions (sage) -->
+<line x1="170" y1="135" x2="215" y2="135" stroke="#548235" stroke-width="2" marker-end="url(#life-b)"/>
+<text x="192" y="128" text-anchor="middle" fill="#3F6212" font-size="9">nasce / synt</text>
+
+<line x1="370" y1="135" x2="415" y2="135" stroke="#548235" stroke-width="2" marker-end="url(#life-b)"/>
+<text x="392" y="128" text-anchor="middle" fill="#3F6212" font-size="9">fusione</text>
+
+<line x1="370" y1="165" x2="615" y2="165" stroke="#1A477A" stroke-width="1.6" marker-end="url(#life-a)"/>
+<text x="492" y="180" text-anchor="middle" fill="#1A477A" font-size="9">non-uso → ager</text>
+
+<line x1="770" y1="145" x2="815" y2="145" stroke="#1A477A" stroke-width="2" marker-end="url(#life-a)"/>
+<text x="792" y="138" text-anchor="middle" fill="#1A477A" font-size="9">approva</text>
+
+<!-- Reverse transitions (red-ish / italic) -->
+<path d="M 420 200 Q 370 230 370 200" fill="none" stroke="#B91C1C" stroke-width="1.6" marker-end="url(#life-a)"/>
+<text x="392" y="245" text-anchor="middle" fill="#B91C1C" font-size="9" font-style="italic">defuse (motivazione obbligatoria)</text>
+
+<path d="M 620 200 Q 560 260 370 200" fill="none" stroke="#B91C1C" stroke-width="1.4" stroke-dasharray="4 3" marker-end="url(#life-a)"/>
+<text x="500" y="278" text-anchor="middle" fill="#B91C1C" font-size="9" font-style="italic">riabilita (uso ripreso)</text>
+
+<path d="M 820 200 Q 750 280 370 200" fill="none" stroke="#B91C1C" stroke-width="1.4" stroke-dasharray="4 3" marker-end="url(#life-a)"/>
+<text x="780" y="248" text-anchor="middle" fill="#B91C1C" font-size="9" font-style="italic">ripristina (con motivazione)</text>
+
+<!-- Titles top -->
+<text x="480" y="30" text-anchor="middle" fill="#1A477A" font-size="14" font-weight="700">Ciclo di vita di un executor</text>
+<text x="480" y="50" text-anchor="middle" fill="#475569" font-size="11" font-style="italic">verde: mosse evolutive · blu: passaggio del tempo (d'uso) · rosso: ritorni indietro</text>
+</svg>
+<figcaption>Figura 7 &mdash; Il ciclo di vita di un executor. Ogni freccia verde ha una corrispondente freccia rossa. Nessun atto evolutivo &egrave; una strada a senso unico; l'unica cosa che non torna indietro &egrave; la traccia in audit log.</figcaption>
+</figure>
+
+<table>
+<thead><tr><th style="width:26%">Mossa</th><th style="width:37%">Cosa fa</th><th>Come si torna indietro</th></tr></thead>
+<tbody>
+<tr><td><strong>Sintesi (synt)</strong></td><td>Crea un nuovo executor da un proto-mnest ricorrente, con approvazione umana.</td><td>Archivia l'executor; i mnest che lo coinvolgono vanno in stato "superseded".</td></tr>
+<tr><td><strong>Fusione</strong></td><td>Fonde E1 + E2 in un executor E12 pi&ugrave; generale, dentro la stessa traccia.</td><td><strong>Defuse</strong>: E12 viene dismesso, E1 e E2 tornano attivi, il loro mnest riprende ad aggiornarsi. Motivazione obbligatoria.</td></tr>
+<tr><td><strong>Archiviazione</strong></td><td>Marca come non-attivo un executor in quarantena da troppo tempo.</td><td><strong>Ripristino</strong>: l'executor torna attivo; il peso iniziale &egrave; basso, dovr&agrave; riguadagnarselo.</td></tr>
+<tr><td><strong>Freeze</strong></td><td>Dichiari freeze; Metnos salva un <em>mnestshot</em>, ferma ager e decadimento.</td><td><strong>Defrost</strong>: riparte esattamente dallo stato precedente. Il tempo, nel freeze, non &egrave; scorso.</td></tr>
+</tbody>
+</table>
+
+
+<h1 id="cap11">11. Telos e Vaglio: proattivit&agrave; senza tirannia</h1>
+
+<p class="lead">
+Un sistema proattivo che non si ferma &egrave; un sistema molesto. Un
+sistema proattivo che si ferma sempre non &egrave; proattivo. La
+coppia <em>telos + vaglio</em> &egrave; il meccanismo che regola questo
+equilibrio. I telos danno il <em>motivo</em> di proporre; il Vaglio decide
+se la proposta si merita davvero la tua attenzione.
+</p>
+
+<h2>Telos: i fini ultimi, scritti a mano</h2>
+
+<p>
+<code>TELOS.md</code> &egrave; uno dei cinque file del workspace (cap. 13).
+Contiene da tre a sette frasi brevi che descrivono cosa, nella vita
+quotidiana, l'utente vuole che Metnos <em>favorisca</em>. Non sono KPI.
+Sono tendenze morbide.
+</p>
+
+<pre>### TELOS.md (esempio)
+
+1. Liberare il mio tempo: preferisci ciò che riduce il mio carico manuale
+   ripetitivo.
+2. Ordine, non perfezione: meglio una casa di file a posto al 70% in
+   automatico, che uno sforzo continuo per averla perfetta.
+3. Nessuna sorpresa sulle spese: soglie chiare, notifiche tempestive.
+4. Solitudine protetta: non disturbarmi la sera dopo le 21, salvo urgenze
+   reali.
+5. Coltivare gli strumenti: se ti chiedo qualcosa che il tuo pool non sa
+   ancora fare, esaurisci le strategie di sintesi (comporre, generare,
+   chiedere) prima di rispondere "non posso". Il fallimento è lecito,
+   la rinuncia silenziosa no.</pre>
+
+<p>
+Ogni proposta spontanea di Metnos passa per una <em>funzione di
+allineamento</em>: quanto la proposta favorisce ciascun telos, pesato per
+la loro importanza relativa. Il risultato &egrave; un numero tra 0 e 1.
+Se &egrave; sopra la soglia, la proposta arriva. Se &egrave; sotto, resta
+muta e finisce in un registro di "proposte non fatte", utile per capire in
+retrospettiva se i telos pesavano davvero come credevi.
+</p>
+
+<div class="callout note">
+<strong>Metnos si giudica, non giudica.</strong> I telos valutano ci&ograve;
+che Metnos sta per fare <em>per</em> l'utente. Non valutano ci&ograve; che
+l'utente fa. Il sistema non &egrave; mai uno sguardo puntato sull'utente,
+&egrave; sempre uno sguardo puntato su s&eacute; stesso mentre agisce.
+</div>
+
+<h2>Vaglio: la guardia e il giudice</h2>
+
+<p>
+Prima che una proposta, spontanea o richiesta, arrivi all'utente, passa per
+il <em>Vaglio</em>. Il Vaglio ha due fasi in ordine fisso.
+</p>
+
+<figure>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 360" width="100%" preserveAspectRatio="xMidYMid meet" style="font-family:'Segoe UI',Calibri,sans-serif; font-size:12px;">
+<defs>
+  <marker id="v-a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto">
+    <path d="M0,0 L10,5 L0,10 z" fill="#1A477A"/>
+  </marker>
+  <marker id="v-red" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto">
+    <path d="M0,0 L10,5 L0,10 z" fill="#B91C1C"/>
+  </marker>
+  <marker id="v-green" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto">
+    <path d="M0,0 L10,5 L0,10 z" fill="#16A34A"/>
+  </marker>
+</defs>
+
+<!-- Input -->
+<rect x="30" y="130" width="160" height="60" rx="8" ry="8" fill="#FDF3DC" stroke="#B7791F"/>
+<text x="110" y="156" text-anchor="middle" fill="#92400E" font-size="12" font-weight="700">Proposta</text>
+<text x="110" y="174" text-anchor="middle" fill="#44403C" font-size="10">(spontanea o chiesta)</text>
+
+<!-- Guardia (binaria) -->
+<rect x="240" y="110" width="220" height="100" rx="10" ry="10" fill="#FEE2E2" stroke="#B91C1C" stroke-width="1.8"/>
+<text x="350" y="138" text-anchor="middle" fill="#7F1D1D" font-size="13" font-weight="700">Guardia costituzionale</text>
+<text x="350" y="158" text-anchor="middle" fill="#44403C" font-size="10">binaria: contraddice una Legge?</text>
+<text x="350" y="175" text-anchor="middle" fill="#44403C" font-size="10">se sì → BLOCK, fine</text>
+<text x="350" y="195" text-anchor="middle" fill="#7F1D1D" font-size="10" font-style="italic">non giudica, blocca</text>
+
+<line x1="190" y1="160" x2="235" y2="160" stroke="#1A477A" stroke-width="2" marker-end="url(#v-a)"/>
+
+<!-- Block path down -->
+<line x1="350" y1="210" x2="350" y2="290" stroke="#B91C1C" stroke-width="2" marker-end="url(#v-red)"/>
+<text x="360" y="250" fill="#B91C1C" font-size="10">BLOCK</text>
+<rect x="260" y="290" width="180" height="40" rx="6" ry="6" fill="#FEE2E2" stroke="#B91C1C"/>
+<text x="350" y="313" text-anchor="middle" fill="#7F1D1D" font-size="11" font-weight="700">negata, audit, fine</text>
+
+<!-- Giudice (graduato) -->
+<rect x="510" y="110" width="240" height="100" rx="10" ry="10" fill="#FEF3C7" stroke="#B7791F" stroke-width="1.8"/>
+<text x="630" y="138" text-anchor="middle" fill="#92400E" font-size="13" font-weight="700">Giudice teleologico</text>
+<text x="630" y="158" text-anchor="middle" fill="#44403C" font-size="10">graduato: allineamento ∈ [0,1]</text>
+<text x="630" y="175" text-anchor="middle" fill="#44403C" font-size="10">sopra soglia → pass; sotto → silenzio</text>
+<text x="630" y="195" text-anchor="middle" fill="#92400E" font-size="10" font-style="italic">LLM indipendente dal proponente</text>
+
+<line x1="460" y1="160" x2="505" y2="160" stroke="#16A34A" stroke-width="2" marker-end="url(#v-green)"/>
+<text x="482" y="150" text-anchor="middle" fill="#16A34A" font-size="9">passa</text>
+
+<!-- Output pass -->
+<rect x="800" y="130" width="140" height="60" rx="8" ry="8" fill="#DCFCE7" stroke="#16A34A"/>
+<text x="870" y="156" text-anchor="middle" fill="#14532D" font-size="12" font-weight="700">PASS</text>
+<text x="870" y="174" text-anchor="middle" fill="#166534" font-size="10">verso l'utente</text>
+
+<line x1="750" y1="160" x2="795" y2="160" stroke="#16A34A" stroke-width="2" marker-end="url(#v-green)"/>
+
+<!-- Output below threshold -->
+<line x1="630" y1="210" x2="630" y2="290" stroke="#B7791F" stroke-width="1.6" stroke-dasharray="3 3" marker-end="url(#v-a)"/>
+<rect x="520" y="290" width="240" height="40" rx="6" ry="6" fill="#FEF3C7" stroke="#B7791F"/>
+<text x="640" y="313" text-anchor="middle" fill="#92400E" font-size="11" font-weight="700">registrata, non mostrata (apprendimento dai silenzi)</text>
+
+<!-- Title -->
+<text x="480" y="30" text-anchor="middle" fill="#1A477A" font-size="14" font-weight="700">Vaglio a due fasi: la diarchia Leggi / Telos</text>
+<text x="480" y="50" text-anchor="middle" fill="#475569" font-size="11" font-style="italic">la Costituzione non giudica, la teleologia sì</text>
+<text x="480" y="70" text-anchor="middle" fill="#475569" font-size="10">l'ordine è fisso: prima la guardia, poi il giudice</text>
+</svg>
+<figcaption>Figura 8 &mdash; Il Vaglio a due fasi. Leggi (binarie) e telos (graduati) non si fondono in un unico numero. Una proposta bloccata dalla guardia non entra mai nel giudice; una che passa la guardia pu&ograve; comunque tacere per basso allineamento.</figcaption>
+</figure>
+
+<h3>Perch&eacute; due fasi e non una sola</h3>
+
+<p>
+Se mescolassi "&egrave; lecito?" e "quanto vale?" in un solo punteggio,
+otterresti il fenomeno che la letteratura chiama <em>auto-conferma del
+modello</em> (in inglese <em>self-enhancement bias</em>): il modello
+tende a giustificare le proprie proposte. Separare
+deontologia (binaria) e teleologia (graduata) &egrave; una scelta
+progettuale precisa. E c'&egrave; di pi&ugrave;: il giudice teleologico
+&egrave; un LLM <em>diverso</em> dal proponente &mdash; contesto separato,
+prompt separato, possibilmente provider separato. Indipendenza strutturale,
+non dichiarata.
+</p>
+
+<p>
+Il componente di microprogettazione dedicato &egrave; <a
+href="architecture/vaglio.html">vaglio.html</a>; quello dei fini &egrave;
+<a href="architecture/telos.html">telos.html</a>. L&igrave; ci sono le
+tipologie dati, i Protocol, i test di conformit&agrave;.
+</p>
+
+<h2>Bother budget: il costo di disturbare</h2>
+
+<p>
+Anche con l'allineamento alto, c'&egrave; una cosa che il Vaglio valuta: <em>quante
+proposte ho gi&agrave; fatto di recente?</em>. Il <em>bother budget</em>
+&egrave; un freno moltiplicativo che degrada l'allineamento quando Metnos
+ha gi&agrave; parlato troppo in una finestra temporale. &Egrave; la
+traduzione meccanica di "non essere il cugino che chiama a ogni pensiero".
+</p>
+
+
+<h1 id="cap12">12. I tre livelli di autonomia e il DM pairing</h1>
+
+<p>
+Concetti ripresi e adattati da zeroclaw. Ogni sessione gira a un
+<em>livello di autonomia</em> dichiarato; il livello determina
+<em>quanto</em> Metnos pu&ograve; fare prima di dover chiedere conferma.
+Ortogonale all'autonomia, il <em>pairing</em> distingue un familiare da
+uno sconosciuto su canali multi-utente come Telegram.
+</p>
+
+<h2>Livelli di autonomia</h2>
+
+<table>
+<thead><tr><th style="width:16%">Livello</th><th style="width:18%">Default per</th><th>Cosa pu&ograve; fare senza chiedere</th><th>Cosa richiede approvazione</th></tr></thead>
+<tbody>
+<tr>
+  <td><strong style="color:var(--sage)">ReadOnly</strong></td>
+  <td>Primi collegamenti, ospiti</td>
+  <td>Leggere file nel workspace, chiamare LLM, fare web search</td>
+  <td>Ogni scrittura, ogni comando shell, ogni invio messaggio esterno</td>
+</tr>
+<tr>
+  <td><strong style="color:var(--navy)">Supervised</strong><br><em style="color:var(--muted);font-size:9pt;">default</em></td>
+  <td>Uso quotidiano</td>
+  <td>Quanto sopra + scrittura nel workspace, comandi della shell allowlist, proposte via Vaglio sopra soglia</td>
+  <td>Scrittura fuori dal workspace, comandi non-allowlist, cost &gt; soglia, invio verso terzi</td>
+</tr>
+<tr>
+  <td><strong style="color:var(--bronze)">Full</strong></td>
+  <td>Sessioni amministrative esplicite</td>
+  <td>Quasi tutto dentro il dominio di casa</td>
+  <td>Azioni toccando forbidden paths (<code>/etc</code>, <code>~/.ssh</code>, ...): <em>sempre</em> negate, non approvabili</td>
+</tr>
+</tbody>
+</table>
+
+<div class="callout warning">
+<strong>Forbidden paths</strong> sono hard-coded nel codice, non configurabili via YAML.
+Anche <code>Full</code> non passa. Lista minima: <code>/etc</code>, <code>/root</code>,
+<code>~/.ssh</code>, <code>~/.aws</code>, <code>~/.config/claude</code>,
+<code>/var/backups</code>, cartelle di altri progetti in <code>/opt/</code>
+diverse da <code>Metnos</code>.
+</div>
+
+<h2>Il DM pairing</h2>
+
+<p class="lead">
+Un canale come Telegram &egrave; inerentemente multi-utente: chiunque
+conosca l'handle del bot pu&ograve; scrivergli. Il <strong>pairing</strong>
+&egrave; il meccanismo che distingue un familiare da un estraneo.
+</p>
+
+<figure>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 400" width="100%" preserveAspectRatio="xMidYMid meet" style="font-family:'Segoe UI',Calibri,sans-serif; font-size:12px;">
+<defs>
+  <marker id="a4" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+    <path d="M0,0 L10,5 L0,10 z" fill="#1A477A"/>
+  </marker>
+  <marker id="a4r" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+    <path d="M0,0 L10,5 L0,10 z" fill="#B91C1C"/>
+  </marker>
+</defs>
+
+<rect x="20"  y="30" width="140" height="40" rx="6" ry="6" fill="#FEE2E2" stroke="#B91C1C"/>
+<text x="90" y="48" text-anchor="middle" fill="#7F1D1D" font-weight="700">Sconosciuto</text>
+<text x="90" y="62" text-anchor="middle" fill="#7F1D1D" font-size="10">@nuovo_utente_telegram</text>
+
+<rect x="390" y="30" width="140" height="40" rx="6" ry="6" fill="#D9E4F0" stroke="#1A477A"/>
+<text x="460" y="48" text-anchor="middle" fill="#1A477A" font-weight="700">Metnos</text>
+<text x="460" y="62" text-anchor="middle" fill="#1A477A" font-size="10">gateway + pairing</text>
+
+<rect x="770" y="30" width="130" height="40" rx="6" ry="6" fill="#E9EFDB" stroke="#548235"/>
+<text x="835" y="48" text-anchor="middle" fill="#3F6212" font-weight="700">Roberto</text>
+<text x="835" y="62" text-anchor="middle" fill="#3F6212" font-size="10">canale admin (CLI)</text>
+
+<line x1="90"  y1="70" x2="90"  y2="380" stroke="#d0d7de" stroke-dasharray="3 4"/>
+<line x1="460" y1="70" x2="460" y2="380" stroke="#d0d7de" stroke-dasharray="3 4"/>
+<line x1="835" y1="70" x2="835" y2="380" stroke="#d0d7de" stroke-dasharray="3 4"/>
+
+<line x1="95" y1="100" x2="455" y2="100" stroke="#1A477A" stroke-width="1.6" marker-end="url(#a4)"/>
+<text x="275" y="92" text-anchor="middle" fill="#1A477A" font-size="10">"ciao, posso parlare con te?"</text>
+
+<line x1="455" y1="135" x2="95" y2="135" stroke="#1A477A" stroke-width="1.6" marker-end="url(#a4)"/>
+<text x="275" y="127" text-anchor="middle" fill="#1A477A" font-size="10">"non ti conosco. Codice: K7-DELTA-19"</text>
+
+<line x1="465" y1="170" x2="830" y2="170" stroke="#B7791F" stroke-width="1.6" marker-end="url(#a4)"/>
+<text x="645" y="162" text-anchor="middle" fill="#B7791F" font-size="10">notifica admin: "richiesta pairing K7-DELTA-19"</text>
+
+<line x1="830" y1="205" x2="465" y2="205" stroke="#548235" stroke-width="1.6" marker-end="url(#a4)"/>
+<text x="645" y="197" text-anchor="middle" fill="#3F6212" font-size="10">Metnos pairing approve telegram K7-DELTA-19 --as ospite</text>
+
+<rect x="20" y="230" width="880" height="30" rx="5" ry="5" fill="#dcfce7" stroke="#16a34a"/>
+<text x="460" y="250" text-anchor="middle" fill="#14532d" font-size="11" font-weight="600">
+dopo l'approvazione: @nuovo_utente_telegram è registrato come "ospite" (autonomy ReadOnly)
+</text>
+
+<line x1="95" y1="290" x2="455" y2="290" stroke="#1A477A" stroke-width="1.6" marker-end="url(#a4)"/>
+<text x="275" y="282" text-anchor="middle" fill="#1A477A" font-size="10">"che ore sono?"</text>
+
+<line x1="455" y1="325" x2="95" y2="325" stroke="#1A477A" stroke-width="1.6" marker-end="url(#a4)"/>
+<text x="275" y="317" text-anchor="middle" fill="#1A477A" font-size="10">"le 21:43 di martedì"</text>
+
+<line x1="95" y1="360" x2="455" y2="360" stroke="#B91C1C" stroke-width="1.6" marker-end="url(#a4r)" stroke-dasharray="4 3"/>
+<text x="275" y="352" text-anchor="middle" fill="#B91C1C" font-size="10">"elimina <code>~/.ssh/id_rsa</code>"</text>
+<text x="475" y="360" fill="#B91C1C" font-size="10">→ <code>~/.ssh</code> e' nella lista hard-coded dei forbidden path:</text>
+<text x="475" y="372" fill="#B91C1C" font-size="10">la richiesta e' negata senza chiedere a Roberto.</text>
+
+</svg>
+<figcaption>Figura 9 &mdash; Sequenza di pairing di un nuovo utente su Telegram. Finch&eacute; Roberto non approva, il nuovo sender non pu&ograve; fare nulla. Anche dopo, resta al livello pi&ugrave; basso (ReadOnly) di default.</figcaption>
+</figure>
+
+<div class="callout note">
+<strong>Pairing vs login.</strong> Il pairing identifica un
+<em>canale+sender</em>, non una persona fisica. Se lo stesso familiare ti
+scrive sia da Telegram che da Signal, sono due pairing separati. Ciascuno
+con il proprio livello di autonomia.
+</div>
+
+
+<h1 id="cap13">13. Il workspace: file markdown invece di codice</h1>
+
+<p>
+La "personalit&agrave;" di Metnos <strong>non</strong> &egrave; in un file
+Python. &Egrave; nel <code>workspace/</code>, in sei file markdown che
+Roberto pu&ograve; editare quando vuole senza restart. L'idea viene da
+openclaw/zeroclaw ed &egrave; azzeccata: la configurazione comportamentale
+&egrave; testo leggibile, non una struttura dati sepolta.
+</p>
+
+<table>
+<thead><tr><th style="width:18%">File</th><th>Contenuto</th></tr></thead>
+<tbody>
+<tr><td><code>IDENTITY.md</code></td><td>Chi &egrave; l'agente: nome, tono, lingua preferita, stile di risposta.</td></tr>
+<tr><td><code>USER.md</code></td><td>Chi &egrave; l'utente principale: abitudini, fuso orario, preferenze, vincoli.</td></tr>
+<tr><td><code>MEMORY.md</code></td><td>Fatti long-term: "la password del router &egrave; in Bitwarden", "il cane si chiama X". Distinto dal mnestoma, che &egrave; memoria relazionale di come funziona il <em>sistema</em>; <code>MEMORY.md</code> &egrave; memoria dichiarativa di fatti sul <em>mondo</em>.</td></tr>
+<tr><td><code>AGENTS.md</code></td><td>Regole di orchestrazione: quando delegare a un sibling agent, come i canali mappano a livelli di autonomia.</td></tr>
+<tr><td><code>SOUL.md</code></td><td>Principi operativi ad alto livello: "non mentire mai sulle azioni fatte", "se in dubbio, chiedi", "self-hosted prima che cloud".</td></tr>
+<tr><td><code>TELOS.md</code></td><td><strong>Novit&agrave; v1.1.</strong> Da 3 a 7 frasi brevi: i fini ultimi sui quali il Vaglio misura l'allineamento delle proposte spontanee. Non KPI, non elenchi: tendenze morbide (vedi cap. 11).</td></tr>
+</tbody>
+</table>
+
+<p>
+Questi file sono iniettati nel prompt di sistema a ogni chiamata LLM (con
+opportuno caching per non consumare token). Editarli &egrave; il modo
+primario di "riprogrammare" Metnos.
+</p>
+
+<p>
+L'audit log vive in <code>workspace/.audit/</code> come JSONL append-only:
+una riga per ogni tool call, con timestamp, sender, azione, esito, costo
+stimato. Ogni mossa evolutiva (synt, fusione, defuse, archiviazione,
+ripristino) vi lascia una riga. Questo &egrave; l'unico registro che
+<em>non</em> si disfa; la reversibilit&agrave; &egrave; nello stato, non
+nella storia.
+</p>
+
+
+<h1 id="cap14">14. I sei principi</h1>
+
+<p class="lead">
+Alla fine del secondo dialogo, Roberto si &egrave; imposto di contare i
+principi sulle dita. Il risultato &egrave; un vocabolario minimo che
+regge tutto il resto del documento. Se dovessi perdere tutto e dovessi
+ricostruire solo da sei frasi, sarebbero queste.
+</p>
+
+<div class="principle"><span class="num">1</span><strong>Monismo funzionale.</strong> Nel sistema c'&egrave; una sola classe di cose che agiscono: gli <em>executor</em>. Fungibili, senza stato interno. Tutto il resto &egrave; relazione, mantenimento, o supervisione esterna.</div>
+
+<div class="principle"><span class="num">2</span><strong>Memoria bifacciale.</strong> C'&egrave; una sola memoria, il <em>mnestoma</em>, con due facce: memoria del fatto (cosa &egrave; riuscito) e memoria dell'aspirazione (cosa Metnos ha cercato e non ha trovato). Le lacune non vengono dimenticate: sono il motore della crescita.</div>
+
+<div class="principle"><span class="num">3</span><strong>Generazione monocanale.</strong> La sola fonte strutturalmente generativa &egrave; il <em>synt</em>. Il synt propone: l'utente approva o rifiuta. Non c'&egrave; auto-modifica senza filtro umano.</div>
+
+<div class="principle"><span class="num">4</span><strong>Tempo dell'uso.</strong> Un solo orologio governa decadimento e <em>ager</em>, e non &egrave; l'orologio del calendario. Un sistema che dorme non invecchia. Il mnestoma &egrave; legato a quanto lo hai usato, non a quanto tempo &egrave; passato.</div>
+
+<div class="principle"><span class="num">5</span><strong>Reversibilit&agrave; totale.</strong> Ogni atto evolutivo (sintesi, fusione, defuse, archiviazione) &egrave; reversibile, con motivazione obbligatoria. Nessuna decisione &egrave; definitiva. Il filtro umano ne guadagna: dire s&igrave; costa meno quando si pu&ograve; tornare indietro.</div>
+
+<div class="principle"><span class="num">6</span><strong>Comprensibilit&agrave; come dovere.</strong> Se l'utente non capisce il sistema, il sistema non serve. La semplicit&agrave; non &egrave; estetica, &egrave; dovere del progettista. Questo vincolo &egrave; quello che ha scelto questi cinque principi precedenti su quaranta meccanismi possibili.</div>
+
+
+<h1 id="cap15">15. Struttura del repository</h1>
+
+<p class="lead">
+La separazione fra <em>codice</em>, <em>dati personali</em> e
+<em>configurazione</em> &egrave; il primo segnale che si pu&ograve; cogliere
+guardando l'albero delle directory. Tre radici si distinguono a colpo
+d'occhio: <code>src/myclaw/</code> contiene il codice immutabile (cambia
+solo con un commit); <code>workspace/</code> contiene la memoria viva
+dell'agente (mnestoma, audit, file markdown leggibili a mano) ed &egrave;
+il vero asse del backup; <code>config/</code> tiene le scelte d'esercizio,
+con i profili di sandbox come elemento esplicito.
+</p>
+
+<p>
+Dentro <code>src/myclaw/</code> ogni sotto-package corrisponde a un capitolo
+di questo documento: <code>gateway/</code> e <code>channels/</code>
+ricevono dal mondo, <code>agent_runtime/</code> ragiona,
+<code>executors/</code> agiscono, <code>sandbox/</code> e
+<code>policy/</code> contengono, <code>mnestoma/</code> ricorda,
+<code>vaglio/</code> giudica, <code>pairing/</code> riconosce le persone.
+La novit&agrave; v1.1 rispetto alla v1.0 sono i package
+<code>mnestoma/</code> e <code>vaglio/</code>, e il file
+<code>workspace/TELOS.md</code>: tutti gli altri esistevano gi&agrave;.
+La figura mostra anche il file <code>mnestoma.sqlite</code> sotto
+<code>workspace/</code>, che &egrave; il grafo persistente, e i tre
+<em>profili di sandbox</em> sotto <code>config/sandbox-profiles/</code>
+(<code>readonly</code>, <code>supervised</code>, <code>full</code>),
+che corrispondono ai tre livelli di autonomia del cap. 12.
+</p>
+
+<figure>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 520" width="100%" preserveAspectRatio="xMidYMid meet" style="font-family:'Segoe UI',Calibri,sans-serif; font-size:11px;" role="img" aria-labelledby="fig10-title fig10-desc">
+<title id="fig10-title">Layout del repository</title>
+<desc id="fig10-desc">Albero delle directory di METNOS_HOME, su tre radici. docs/ contiene la documentazione bilingue (it/, en/) e la cartella architecture/ con le microprogettazioni. workspace/ contiene i dati personali: IDENTITY.md, USER.md, MEMORY.md, AGENTS.md, SOUL.md, TELOS.md (novità v1.1), il file grafo mnestoma.sqlite, e la directory append-only .audit/ in JSONL. config/ contiene default.yaml, secrets.env, e la directory sandbox-profiles/ con tre profili (readonly, supervised, full). Sotto le directory dati, src/myclaw/ contiene otto sotto-package di codice: gateway, agent_runtime, channels, executors, sandbox, policy, mnestoma, pairing, più uno spazio riservato ai package futuri. systemd/ contiene il file di unit utente, e la radice di progetto contiene i file standard Python (pyproject.toml, VERSION, CHANGELOG.md, README.md, AGENTS.md).</desc>
+<defs>
+  <linearGradient id="dir1" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0%" stop-color="#E3ECF5"/><stop offset="100%" stop-color="#BFD3E6"/>
+  </linearGradient>
+  <linearGradient id="dir2" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0%" stop-color="#E9EFDB"/><stop offset="100%" stop-color="#C5D5A3"/>
+  </linearGradient>
+  <linearGradient id="dir3" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0%" stop-color="#F4E4D8"/><stop offset="100%" stop-color="#DCC0A3"/>
+  </linearGradient>
+  <linearGradient id="dir4" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0%" stop-color="#FDF3DC"/><stop offset="100%" stop-color="#EFD4A0"/>
+  </linearGradient>
+</defs>
+
+<rect x="30" y="20" width="860" height="50" rx="8" ry="8" fill="#1A477A" stroke="#0F2A47"/>
+<text x="460" y="50" text-anchor="middle" fill="white" font-size="15" font-weight="700">${METNOS_HOME}/</text>
+
+<rect x="30" y="95" width="270" height="135" rx="8" ry="8" fill="url(#dir1)" stroke="#1A477A"/>
+<text x="165" y="118" text-anchor="middle" fill="#1A477A" font-size="13" font-weight="700">docs/</text>
+<text x="45" y="140" fill="#334155" font-size="10.5">it/, en/  (bilingue)</text>
+<text x="45" y="158" fill="#334155" font-size="10.5">Metnos_Architettura_Intro_v1.html</text>
+<text x="45" y="176" fill="#334155" font-size="10.5">Metnos_Dialogo_v1.html, _Executor_v1</text>
+<text x="45" y="194" fill="#334155" font-size="10.5">architecture/</text>
+<text x="55" y="212" fill="#64748B" font-size="10" font-style="italic">  gateway, policy, tool, sandbox, ...</text>
+
+<rect x="320" y="95" width="270" height="135" rx="8" ry="8" fill="url(#dir2)" stroke="#548235"/>
+<text x="455" y="118" text-anchor="middle" fill="#3F6212" font-size="13" font-weight="700">workspace/</text>
+<text x="335" y="140" fill="#334155" font-size="10.5">IDENTITY.md · USER.md</text>
+<text x="335" y="158" fill="#334155" font-size="10.5">MEMORY.md · AGENTS.md</text>
+<text x="335" y="176" fill="#334155" font-size="10.5">SOUL.md · <strong>TELOS.md (novità v1.1)</strong></text>
+<text x="335" y="194" fill="#334155" font-size="10.5">mnestoma.sqlite (grafo, peso, recency)</text>
+<text x="335" y="212" fill="#334155" font-size="10.5">.audit/ (JSONL append-only)</text>
+
+<rect x="610" y="95" width="280" height="135" rx="8" ry="8" fill="url(#dir4)" stroke="#B7791F"/>
+<text x="750" y="118" text-anchor="middle" fill="#92400E" font-size="13" font-weight="700">config/</text>
+<text x="625" y="140" fill="#334155" font-size="10.5">default.yaml   (safe to ship)</text>
+<text x="625" y="158" fill="#334155" font-size="10.5">secrets.env    (chmod 600)</text>
+<text x="625" y="180" fill="#334155" font-size="10.5" font-weight="600">sandbox-profiles/</text>
+<text x="625" y="198" fill="#334155" font-size="10.5">  readonly.bwrap, supervised.bwrap,</text>
+<text x="625" y="214" fill="#334155" font-size="10.5">  full.bwrap</text>
+
+<rect x="30" y="255" width="860" height="175" rx="8" ry="8" fill="url(#dir3)" stroke="#A0522D" stroke-width="1.5"/>
+<text x="460" y="278" text-anchor="middle" fill="#7C2D12" font-size="13" font-weight="700">src/myclaw/</text>
+
+<rect x="50"  y="295" width="120" height="55" rx="6" ry="6" fill="white" stroke="#A0522D"/>
+<text x="110" y="315" text-anchor="middle" fill="#1A477A" font-size="11" font-weight="700">gateway/</text>
+<text x="110" y="333" text-anchor="middle" fill="#64748B" font-size="9.5">FastAPI, sessions</text>
+<text x="110" y="345" text-anchor="middle" fill="#64748B" font-size="9.5">webhook, cron</text>
+
+<rect x="180" y="295" width="120" height="55" rx="6" ry="6" fill="white" stroke="#A0522D"/>
+<text x="240" y="315" text-anchor="middle" fill="#1A477A" font-size="11" font-weight="700">agent_runtime/</text>
+<text x="240" y="333" text-anchor="middle" fill="#64748B" font-size="9.5">reasoning loop</text>
+<text x="240" y="345" text-anchor="middle" fill="#64748B" font-size="9.5">executor dispatch</text>
+
+<rect x="310" y="295" width="120" height="55" rx="6" ry="6" fill="white" stroke="#A0522D"/>
+<text x="370" y="315" text-anchor="middle" fill="#1A477A" font-size="11" font-weight="700">channels/</text>
+<text x="370" y="333" text-anchor="middle" fill="#64748B" font-size="9.5">Protocol Channel</text>
+<text x="370" y="345" text-anchor="middle" fill="#64748B" font-size="9.5">cli, telegram, ...</text>
+
+<rect x="440" y="295" width="120" height="55" rx="6" ry="6" fill="white" stroke="#A0522D"/>
+<text x="500" y="315" text-anchor="middle" fill="#1A477A" font-size="11" font-weight="700">executors/</text>
+<text x="500" y="333" text-anchor="middle" fill="#64748B" font-size="9.5">Protocol Tool</text>
+<text x="500" y="345" text-anchor="middle" fill="#64748B" font-size="9.5">fs, shell, web, ...</text>
+
+<rect x="570" y="295" width="120" height="55" rx="6" ry="6" fill="white" stroke="#A0522D"/>
+<text x="630" y="315" text-anchor="middle" fill="#1A477A" font-size="11" font-weight="700">sandbox/</text>
+<text x="630" y="333" text-anchor="middle" fill="#64748B" font-size="9.5">bwrap, systemd-run</text>
+<text x="630" y="345" text-anchor="middle" fill="#64748B" font-size="9.5">Docker (opz.)</text>
+
+<rect x="700" y="295" width="120" height="55" rx="6" ry="6" fill="white" stroke="#A0522D"/>
+<text x="760" y="315" text-anchor="middle" fill="#1A477A" font-size="11" font-weight="700">policy/</text>
+<text x="760" y="333" text-anchor="middle" fill="#64748B" font-size="9.5">autonomy, approval</text>
+<text x="760" y="345" text-anchor="middle" fill="#64748B" font-size="9.5">rate/cost limits</text>
+
+<rect x="50"  y="360" width="120" height="55" rx="6" ry="6" fill="white" stroke="#A0522D"/>
+<text x="110" y="380" text-anchor="middle" fill="#1A477A" font-size="11" font-weight="700">mnestoma/</text>
+<text x="110" y="398" text-anchor="middle" fill="#64748B" font-size="9.5">grafo, ager, synt</text>
+<text x="110" y="410" text-anchor="middle" fill="#64748B" font-size="9.5">sqlite + journal</text>
+
+<rect x="180" y="360" width="120" height="55" rx="6" ry="6" fill="white" stroke="#A0522D"/>
+<text x="240" y="380" text-anchor="middle" fill="#1A477A" font-size="11" font-weight="700">vaglio/</text>
+<text x="240" y="398" text-anchor="middle" fill="#64748B" font-size="9.5">guardia + giudice</text>
+<text x="240" y="410" text-anchor="middle" fill="#64748B" font-size="9.5">+ telos loader</text>
+
+<rect x="310" y="360" width="120" height="55" rx="6" ry="6" fill="white" stroke="#A0522D"/>
+<text x="370" y="380" text-anchor="middle" fill="#1A477A" font-size="11" font-weight="700">pairing/</text>
+<text x="370" y="398" text-anchor="middle" fill="#64748B" font-size="9.5">codici firmati</text>
+<text x="370" y="410" text-anchor="middle" fill="#64748B" font-size="9.5">approve/revoke</text>
+
+<rect x="440" y="360" width="380" height="55" rx="6" ry="6" fill="white" stroke="#A0522D" stroke-dasharray="4 3"/>
+<text x="630" y="380" text-anchor="middle" fill="#64748B" font-size="10" font-style="italic">spazio riservato ai package futuri</text>
+<text x="630" y="398" text-anchor="middle" fill="#64748B" font-size="10" font-style="italic">(observability/, cron/, tunnel/, ...)</text>
+
+<rect x="30" y="450" width="400" height="55" rx="8" ry="8" fill="url(#dir1)" stroke="#1A477A"/>
+<text x="230" y="473" text-anchor="middle" fill="#1A477A" font-size="12" font-weight="700">systemd/</text>
+<text x="230" y="492" text-anchor="middle" fill="#334155" font-size="10">myclaw-gateway.service (user unit, hardened)</text>
+
+<rect x="450" y="450" width="440" height="55" rx="8" ry="8" fill="url(#dir4)" stroke="#B7791F"/>
+<text x="670" y="473" text-anchor="middle" fill="#92400E" font-size="12" font-weight="700">pyproject.toml · VERSION · CHANGELOG.md · README.md · AGENTS.md</text>
+<text x="670" y="493" text-anchor="middle" fill="#64748B" font-size="10" font-style="italic">layout Python standard (PEP 518), ereditato da suprastructure</text>
+
+</svg>
+<figcaption>Figura 10 &mdash; Layout del repository (v1.1). Nuovi sotto-package rispetto alla v1.0: <code>mnestoma/</code> e <code>vaglio/</code>. La directory <code>workspace/</code> guadagna <code>TELOS.md</code> e il file grafo <code>mnestoma.sqlite</code>.</figcaption>
+</figure>
+
+
+<h1 id="cap16">16. Come Metnos sa di funzionare: il testing</h1>
+
+<p class="lead">
+Un sistema che cambia se stesso (synt che genera executor, mnestoma che
+cresce, vaglio che decide) e' privo di significato senza una rete di test
+che dica, momento per momento, &laquo;questa cosa fa ancora quello che
+deve&raquo;. La rete e' costruita per essere insieme leggera (tre comandi
+in tutto), strutturata (tre livelli) e abbastanza fitta da non lasciare
+fessure.
+</p>
+
+<h2>16.1 Tre livelli, un grafo, un solo DB</h2>
+
+<p>
+I test vivono in un singolo file SQLite, <code>runtime/testing/tests.db</code>,
+con tre tabelle: <code>modules</code>, <code>module_dependencies</code>,
+<code>test_cases</code>. Il grafo delle dipendenze fra moduli e' la cosa
+strutturalmente nuova: dichiara, per ciascun modulo (es.
+<code>agent_runtime</code>), chi usa chi. Da quel grafo derivano i
+<em>cluster</em>, e i livelli di test si organizzano come segue:
+</p>
+
+<table>
+<thead><tr><th style="width:14%">Livello</th><th style="width:30%">Cosa testa</th><th>Come si calcola</th></tr></thead>
+<tbody>
+<tr><td><strong>module</strong></td><td>Un singolo modulo in isolamento (o quanto piu' isolato possibile). Esempio: <code>vaglio</code> che blocca un forbidden path.</td><td>Tutti i case dichiarati con <code>level=module</code> per quel modulo.</td></tr>
+<tr><td><strong>cluster</strong></td><td>Il modulo + i suoi vicini diretti (in entrata e in uscita) nel grafo dipendenze. Esempio: cluster di <code>fs_read</code> include <code>agent_runtime</code> (chi lo invoca), <code>loader</code> (chi lo carica), <code>sign</code> (chi lo verifica), <code>test_runner</code> (chi esegue i birth-test).</td><td><code>cluster(X) = {X} &cup; vicini_diretti(X)</code> &mdash; calcolato dal runner ad ogni invocazione.</td></tr>
+<tr><td><strong>system</strong></td><td>End-to-end via <code>agent_runtime.run_turn()</code>: una query utente entra, il sistema risponde. Verifica anche <code>final_kind</code> e <code>final_message</code>.</td><td>Tutti i case con <code>level=system</code>; oggi 12, tutti sotto il modulo <code>agent_runtime</code>.</td></tr>
+</tbody>
+</table>
+
+<p>
+La distinzione &laquo;modulo vs cluster vs sistema&raquo; non e' un
+dogma: e' un compromesso pratico fra velocita' (i test module sono
+millisecondi) e fedelta' (i test system esercitano LLM reali e durano
+secondi). Quando si lavora su un modulo, si lancia il suo cluster e si
+itera; il giro completo del sistema si fa solo prima di chiudere una
+sessione.
+</p>
+
+<h2>16.2 Categorie di un test case</h2>
+
+<p>
+Ogni case ha una <em>categoria</em> dichiarativa che dice <em>che cosa</em>
+sta cercando di esercitare:
+</p>
+
+<ul>
+<li><strong>happy</strong>: il percorso felice atteso. Se questo e' rosso, qualcosa di base e' rotto.</li>
+<li><strong>edge</strong>: caso limite, input ai bordi del valido (es. timezone strano, file vuoto, query in lingua diversa).</li>
+<li><strong>failure</strong>: input invalido, deve fallire <em>correttamente</em> (errore strutturato, niente eccezioni propagate).</li>
+<li><strong>security</strong>: prova di violazione (forbidden path, scope, validation, sender non pairato, codice manomesso).</li>
+<li><strong>integration</strong>: piu' moduli del cluster esercitati insieme.</li>
+</ul>
+
+<h2>16.3 Tipi di esecuzione (test_kind)</h2>
+
+<p>
+Ortogonale alla categoria, c'e' il <em>kind</em>: come il runner esegue
+un test:
+</p>
+
+<ul>
+<li><strong>python</strong>: il <code>test_code</code> e' uno script Python che il runner scrive in un file temporaneo e lancia con <code>python3</code>. Le asserzioni sono <code>assert</code> in chiaro: se rosso, lo stderr porta il <code>traceback</code>.</li>
+<li><strong>birth</strong>: i birth-test dichiarativi nel manifest TOML di un executor (sezione <code>[[birth_tests]]</code>). Eseguiti dal modulo <code>test_runner.py</code> in ambiente sandbox.</li>
+<li><strong>shell</strong>: comando shell con exit-code atteso. Usato raramente, solo per verifiche di setup.</li>
+<li><strong>e2e</strong>: chiama <code>agent_runtime.run_turn(query)</code> e verifica <code>final_kind</code> + <code>final_message</code> (matcher su substring o regex).</li>
+</ul>
+
+<h2>16.4 Come si scrivono e come si caricano</h2>
+
+<p>
+La scrittura e' dichiarativa, in <code>runtime/testing/populate_cases.py</code>.
+Sezioni Python come <code>RUNTIME_PYTHON_CASES += [(modulo, nome, categoria, codice), &hellip;]</code>:
+ogni tupla diventa una riga della tabella <code>test_cases</code> in SQLite.
+Il caricamento e' <em>upsert</em> idempotente su <code>(module_id, name)</code>:
+si rilancia <code>populate_cases.py</code> ogni volta dopo una modifica e
+il DB si allinea senza duplicati.
+</p>
+
+<p>
+Il grafo dipendenze e' in <code>runtime/testing/seed_modules.py</code>:
+una lista di tuple <code>(modulo, kind, source_path, descrizione)</code>
+piu' una lista di archi <code>(consumer, dependency)</code>. Cambiare
+una dipendenza significa aggiungere un arco e ri-eseguire il seed: i
+cluster si ricalcolano da soli alla prossima invocazione del runner.
+</p>
+
+<h2>16.5 Come si eseguono</h2>
+
+<p>
+Un solo entry-point: <code>runtime/testing/runner.py</code>. Cinque modi:
+</p>
+
+<pre>
+python3 runtime/testing/runner.py summary               # JSON con stato globale
+python3 runtime/testing/runner.py module &lt;nome&gt;          # solo i test di quel modulo
+python3 runtime/testing/runner.py cluster &lt;nome&gt;         # modulo + vicini diretti
+python3 runtime/testing/runner.py level &lt;module|cluster|system&gt;
+python3 runtime/testing/runner.py all                   # tutto il sistema
+</pre>
+
+<p>
+Ogni riga di output e' una decisione binaria: <code>v</code> verde,
+<code>X</code> rosso. Per un test rosso, il runner stampa lo
+<code>stderr</code> dell'eseguibile e il <code>rc</code>. Niente
+&laquo;skipped&raquo; opachi: o passa, o non passa.
+</p>
+
+<h2>16.6 Disciplina di esecuzione</h2>
+
+<p>
+Tre regole non negoziabili (vedi le memorie <code>feedback_dev_iteration_protocol</code>
+e <code>feedback_test_failure_means_fix_code</code>):
+</p>
+
+<ol>
+<li><strong>Per ogni modifica modulo</strong>: aggiornare il DB test
+(<code>populate_cases.py</code>), eseguire prima <code>module &lt;X&gt;</code>,
+poi <code>cluster &lt;X&gt;</code>. Iterare finch&eacute; verde.
+Niente &laquo;commit incrociato&raquo; con test rossi.</li>
+
+<li><strong>Test rosso &rarr; fix codice</strong>, non test. Il test e'
+sbagliato solo se il caso descritto era esso stesso scorretto: in quel
+caso si riscrive il test, ma e' l'eccezione, non la regola. Distinzione
+necessaria fra bug di codice / bug di prompt LLM / bug di matcher /
+bug di test case.</li>
+
+<li><strong>Mai disabilitare un test rosso</strong> per &laquo;far
+passare il giro&raquo;. Ogni test rosso e' un'informazione che il sistema
+non si comporta come atteso: spegnere l'avviso e' peggio che lasciare il
+rosso visibile.</li>
+</ol>
+
+<h2>16.7 Stato attuale (27 aprile 2026, sera)</h2>
+
+<table>
+<thead><tr><th style="width:24%">Metrica</th><th>Valore</th></tr></thead>
+<tbody>
+<tr><td>Moduli registrati</td><td><strong>23</strong> (19 runtime + 4 executor)</td></tr>
+<tr><td>Dipendenze nel grafo</td><td><strong>30</strong></td></tr>
+<tr><td>Test case totali</td><td><strong>339</strong></td></tr>
+<tr><td>&mdash; livello module</td><td>305</td></tr>
+<tr><td>&mdash; livello cluster</td><td>22</td></tr>
+<tr><td>&mdash; livello system</td><td>12 (tutti su <code>agent_runtime</code>, e2e via <code>run_turn</code>)</td></tr>
+<tr><td>Esiti ultimo giro</td><td><strong>339 pass / 0 fail</strong> (giro chiuso 27/4 notte, fasi 1-2-3-4-5 chiuse a livello codice; resta la promozione di policy.html e sandbox.html a v1.1 TESTED a livello doc)</td></tr>
+<tr><td>Top moduli per casi</td><td><code>synt</code> (~80), <code>mnestoma</code> (~40), <code>agent_runtime</code> (~30 module + 12 system), <code>channels</code> (19), <code>vaglio</code> (13), <code>pairing</code> (9), <code>observability</code> (6)</td></tr>
+</tbody>
+</table>
+
+<div class="callout note">
+<strong>Aggiornamento dei numeri.</strong> Questa tabella va riaggiornata
+ad ogni chiusura di sessione. La fonte di verita' e'
+<code>python3 runtime/testing/runner.py summary</code> &mdash; il JSON che
+restituisce e' direttamente trascrivibile qui.
+</div>
+
+<h2>16.8 Limiti e rinvii</h2>
+
+<ul>
+<li><strong>Niente CI esterna</strong>: i test girano on-demand sul
+metnos-server. Non c'e' GitHub Actions o equivalente. La rete dei test
+e' il <em>safety net</em> dello sviluppatore singolo, non un cancello
+di pipeline.</li>
+
+<li><strong>Niente coverage tool</strong>: il numero di test e'
+volutamente sotto il numero di righe di codice. Si copre quel che
+e' importante, non si insegue una metrica.</li>
+
+<li><strong>Test system costosi</strong>: i 12 e2e usano LLM reali
+(Ollama in locale o Anthropic online via <code>llm_router</code>),
+pagano la latenza vera (~2-15 s per case). Si lanciano solo prima di
+chiudere; durante il loop di sviluppo si sta su module + cluster.</li>
+
+<li><strong>Niente test paralleli</strong>: il runner e' sequenziale.
+A 290 case, il giro completo dura ~5-7 minuti. Quando il numero
+crescera' significativamente, si valutera' un esecutore parallelo.</li>
+
+<li><strong>Niente test di stress nel grafo principale</strong>: lo
+stress vive in <code>runtime/stress/</code> (4 file, ~775 righe), va
+lanciato a parte. Esercita scenari di carico (D-tools wide, observation
+grandi, fail-mode injection, synt sotto pressione).</li>
+</ul>
+
+
+<h1 id="cap17">17. Cosa NON &egrave; Metnos</h1>
+
+<div class="callout danger">
+<strong>Scope discipline.</strong> La lista di ci&ograve; che <em>non</em>
+facciamo &egrave; importante quanto la lista di ci&ograve; che facciamo.
+Ogni tentazione di aggiungere un elemento di questa lista va respinta.
+</div>
+
+<ul>
+    <li><strong>Non &egrave; un framework generalista.</strong> openclaw
+    punta a essere piattaforma; Metnos &egrave; un agente per una casa.
+    Se serve un altro agente con regole diverse, se ne fa un'altra
+    istanza, non si astrae.</li>
+
+    <li><strong>Non &egrave; un hub di servizi AI.</strong> I servizi AI
+    stanno dietro un'<a
+    href="Metnos_Glossario_v1.html#llm-abstraction">interfaccia astratta</a>,
+    fornita da un adapter esterno. Se manca un servizio, lo si aggiunge
+    l&agrave;, non qui.</li>
+
+    <li><strong>Non addestra modelli.</strong> Niente fine-tuning, niente
+    RLHF, niente RAG con vector store indistinto. Il sistema cresce attraverso
+    mnestoma e synt (vedi cap.&nbsp;9), non attraverso modifiche all'LLM.</li>
+
+    <li><strong>Non supporta 20+ canali fin dall'inizio.</strong> Si parte con 2
+    (CLI + Telegram). Signal, WhatsApp, voce arrivano quando servono
+    davvero.</li>
+
+    <li><strong>Non &egrave; un cloud agent.</strong> Gira a casa. Accesso
+    remoto solo via overlay esplicito (Headscale self-hostato), o via il
+    canale Telegram quando comodo. Mai un'apertura non scelta.</li>
+
+    <li><strong>Non &egrave; un agente che gira sul laptop.</strong> Il
+    laptop &egrave; un <em>cliente</em> di Metnos, non la sua sede. Il
+    processo, la memoria e la regola vivono su <code>metnos-server</code>: una sola
+    istanza, un solo mnestoma, un solo registro d'audit. Vedi cap. 4 per
+    la spiegazione completa di questa scelta e per le quattro alternative
+    scartate.</li>
+
+    <li><strong>Non &egrave; un sostituto di un sistema di domotica.</strong>
+    Per il controllo vocale e la domotica c'&egrave; un
+    <a href="Metnos_Glossario_v1.html#assistente-domotico">assistente
+    domotico</a> dedicato. Metnos pu&ograve; <em>chiedergli</em>, non
+    duplicarlo.</li>
+
+    <li><strong>Non &egrave; un framework agentico generico</strong>
+    (langchain, llamaindex, crewai, ...). Quelle librerie possono essere
+    usate <em>dentro</em> un executor, mai come sostituto
+    dell'architettura.</li>
+
+    <li><strong>Non &egrave; un IDE n&eacute; un dev assistant.</strong> Non
+    scrive codice in altri progetti per conto dell'utente: al massimo ne
+    analizza con executor read-only. Per lavorare sul codice esiste
+    gi&agrave; Claude Code.</li>
+</ul>
+
+
+<h1 id="cap18">18. Roadmap &amp; approfondimenti</h1>
+
+<p>La roadmap &egrave; volutamente piccola. Passo uno alla volta, con il
+documento di microprogettazione che precede il codice.</p>
+
+<table>
+<thead><tr><th style="width:10%">Fase</th><th style="width:28%">Obiettivo</th><th>Gate</th><th style="width:14%">Stato</th></tr></thead>
+<tbody>
+<tr><td><strong>0</strong></td><td>Livello 1 completo (questo doc + dialoghi + glossario) e microprogettazione</td><td>22 doc v1.0 obsoletati il 24/4; <strong>undici canonici v1.1</strong> in <code>docs/it/architecture/</code> (executor, mnest, mnestoma, agent_runtime, scratchpad, synt, telos, vaglio, channel, pairing, observability). Dieci sono bilingui IT+EN al 27/4 sera; resta IT-only solo <code>observability.html</code>.</td><td><span style="background:#14532d;color:#fff;padding:2px 8px;border-radius:10px;font-size:9pt;font-weight:700;letter-spacing:1px;">FATTO</span></td></tr>
+<tr><td><strong>1</strong></td><td>POC scheletro: 4 executor firmati, runtime ReAct con tool-use nativo, sandbox base, test framework SQLite a tre livelli</td><td><code>executor.html</code>, <code>agent_runtime.html</code>, <code>scratchpad.html</code>, <code>mnest.html</code>, <code>mnestoma.html</code> tutti TESTED. Al 27/4 sera: <strong>300/300 test verdi su 20 moduli</strong>.</td><td><span style="background:#14532d;color:#fff;padding:2px 8px;border-radius:10px;font-size:9pt;font-weight:700;letter-spacing:1px;">FATTO</span></td></tr>
+<tr><td><strong>2</strong></td><td>Synt vivo (cascata reattiva: comporre + generare) + Vaglio reale + workspace markdown popolato</td><td><code>synt.html</code> + <em>synt-on-the-fly</em> in <code>agent_runtime</code> (compose-only); <code>vaglio.html</code> v1.1 TESTED (guardia binaria + giudice rule-based, giudice LLM rinviato a v1.2); <code>workspace/</code> con sei file canonici (TELOS.md popolato con i sette telos canonici).</td><td><span style="background:#14532d;color:#fff;padding:2px 8px;border-radius:10px;font-size:9pt;font-weight:700;letter-spacing:1px;">FATTO</span></td></tr>
+<tr><td><strong>3</strong></td><td>Telegram channel MVP + DM pairing</td><td><code>channel.html</code> v1.1 TESTED (Channel Protocol + TelegramChannel send + long-poll + ChannelDaemon + persistenza offset + systemd user unit); <code>pairing.html</code> v1.1 TESTED (codici Ed25519 firmati + registry SQLite + comando <code>/pair</code> + bootstrap automatico del default_chat_id).</td><td><span style="background:#14532d;color:#fff;padding:2px 8px;border-radius:10px;font-size:9pt;font-weight:700;letter-spacing:1px;">FATTO</span></td></tr>
+<tr><td><strong>4</strong></td><td>Mnestoma operativo (analitica + ispezione) + dashboard web minimale di osservabilita' + synt introvertive</td><td><strong>Mnestoma operativo &check;</strong>: API analitiche <code>top_active</code>, <code>executor_summary</code>, <code>audit_recent</code> + CLI ricca (<code>top</code>, <code>summary</code>, <code>audit</code>). <strong>Dashboard &check;</strong>: <code>observability.html</code> v1.1 TESTED, generatore HTML statico in <code>runtime/observability.py</code> (6/6 test verdi). <strong>Synt introvertive &check;</strong> (merge + generalize rule-based): <code>Synt.homeostasis()</code> + CLI <code>synt introvert</code>; coppie con Jaccard affinity &ge; 0.70 sullo stesso target_kind+capability propongono <em>merge</em>, cluster di &ge;3 executor con stesso prefix verb propongono <em>generalize</em>. Proposte loggate in audit, non auto-applicate. <strong>Specialize</strong> rimandato a v1.2 (richiede analisi pattern di mnest).</td><td><span style="background:#14532d;color:#fff;padding:2px 8px;border-radius:10px;font-size:9pt;font-weight:700;letter-spacing:1px;">FATTO</span></td></tr>
+<tr><td><strong>5</strong></td><td>Vaglio probabilistico (giudice LLM tier middle, contesto separato dal proponente, prompt sulle 4 Leggi) + sandbox vera (bubblewrap+landlock) + Capability Registry esteso + dispatcher dei callback Telegram (carta di approval interattiva)</td><td><strong>Vaglio LLM v1.1 (opt-in) &check;</strong>: <code>METNOS_JUDGE_KIND=llm-v1</code>, tier middle, contesto separato, prompt sulle 4 Leggi + sette telos, fallback graceful. <strong>Dispatcher callback Telegram &check;</strong>: <code>runtime/approval_registry.py</code> + estensione <code>TelegramChannel.poll</code> (callback_query) + <code>ChannelDaemon._handle_callback</code>. <strong>Sandbox bubblewrap &check;</strong>: <code>runtime/sandbox.py</code> deriva flag dal manifest, isola rete/utente/IPC, fallback graceful. <strong>Capability Registry esteso &check;</strong>: <code>runtime/policy.py</code> con 13 capability canoniche, tabella autonomy&times;capability (ReadOnly/Supervised/Full), grants per_target persistenti SQLite, <code>effective_outcome</code> combinato, CLI <code>policy registry|table|check|grants|revoke</code>. Tutti e quattro i gate del codice chiusi 27/4 notte. <em>Resta a livello doc</em>: promozione a v1.1 TESTED di <code>sandbox.html</code> (in corso) e <code>policy.html</code>; landlock rimandato a v1.2.</td><td><span style="background:#14532d;color:#fff;padding:2px 8px;border-radius:10px;font-size:9pt;font-weight:700;letter-spacing:1px;">FATTO</span></td></tr>
+<tr><td><strong>6</strong></td><td>Canale voce: TTS Piper + satelliti via protocollo myoming2 + Echo Alexa quando rilevati; arbitraggio fra dispositivi; <code>voice_say</code> come executor</td><td><code>voice_say</code> manifest + scelta TTS + arbitraggio satelliti</td><td>pianificata</td></tr>
+<tr><td><strong>7+</strong></td><td>Executor remoti via overlay Headscale (laptop Linux + Windows), micro-LLM dedicati per i tre tier locali, voce in input (whisper.cpp), policy multi-utente piu' ricca</td><td>valutato caso per caso</td><td>esplorativa</td></tr>
+</tbody>
+</table>
+
+<div class="callout note" style="font-size:10.5pt;">
+<strong>Aggiornamento post-POC (27 aprile 2026, sera).</strong> Il POC v1.1
+ha esercitato e chiuso le fasi 1, 2 e 3 della roadmap qui sopra; la fase 4
+e' partita la sera stessa con due dei tre obiettivi gi&agrave; in casa.
+Quattro executor firmati (<code>fs_read</code>, <code>fs_write</code>,
+<code>time_read</code>, <code>web_fetch</code>) girano dietro il loop di
+<a href="architecture/agent_runtime.html"><code>agent_runtime</code></a> con
+tool-use nativo Ollama (default <code>qwen3:8b</code>), data piping
+fra passi (<code>from_step: N</code> per liste, <code>{{stepN.field}}</code>
+per valori singoli), scratchpad per observation grandi,
+hook su mnestoma per registrare passaggi e proto-mnest. Il 27/4 si sono
+aggiunti: <em>synt-on-the-fly</em> dentro al pianificatore (compose-only su
+proto-mnest appena registrati), <a href="architecture/vaglio.html">Vaglio
+reale</a> (guardia binaria + giudice rule-based) al posto dello stub
+always-approve, channel <a href="architecture/channel.html">Telegram MVP</a>
+end-to-end (send + long-poll + daemon + persistenza offset + systemd unit),
+<a href="architecture/pairing.html">pairing</a> con codici Ed25519 firmati e
+registry SQLite, e in serata <a href="architecture/mnestoma.html">mnestoma
+operativo</a> (analitica + audit) + <a href="architecture/observability.html">dashboard
+statica</a> che chiudono due dei tre gate della fase 4. Reality check del
+seed pool 22&rarr;27 (cinque nuovi seed promossi:
+<code>pkg_install</code>/<code>uninstall</code>/<code>search</code>/<code>list_installed</code>
+cross-OS Linux+Windows e <code>geo_poi_search</code> via Overpass OSM).
+Bilinguismo: dieci canonici su undici sono ora pubblicati IT+EN
+(<code>observability</code> resta IT-only fino alla traduzione). A fine
+serata del 27/4 sono entrate anche le introvertive di
+<a href="architecture/synt.html">synt</a> (merge + generalize rule-based,
+specialize rimandato a v1.2): la fase 4 e' chiusa, restano solo i tre
+gate della fase 5. Il sistema oggi &egrave; testato in
+<strong>20 moduli, 28 dipendenze, 305 cases SQLite</strong>
+(birth + module + cluster + system) tutti verdi.
+</div>
+
+<h2>Continua a leggere</h2>
+<div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(260px, 1fr)); gap:14px; margin:16px 0 24px;">
+  <a href="Metnos_Dialogo_v1.html" style="display:block; padding:14px 16px; border:1px solid var(--border); border-radius:8px; background:white; color:inherit; text-decoration:none;">
+    <span style="display:inline-block; padding:2px 9px; border-radius:10px; font-size:9pt; background:var(--code-bg); color:var(--muted); font-weight:500;">dialogo · 40 min</span>
+    <div style="color:var(--navy); font-size:11.5pt; font-weight:700; margin:8px 0 6px 0;">Dialogo sui fini e sui limiti</div>
+    <div style="margin:0; color:var(--muted); font-size:10pt; line-height:1.5;">Il primo dialogo galileiano in quattro giornate: teleologia, 4 Leggi, vaglio, self-enhancement bias. Fondazione filosofica di telos e vaglio.</div>
+  </a>
+  <a href="Metnos_Dialogo_Executor_v1.html" style="display:block; padding:14px 16px; border:1px solid var(--border); border-radius:8px; background:white; color:inherit; text-decoration:none;">
+    <span style="display:inline-block; padding:2px 9px; border-radius:10px; font-size:9pt; background:var(--code-bg); color:var(--muted); font-weight:500;">dialogo · 45 min</span>
+    <div style="color:var(--navy); font-size:11.5pt; font-weight:700; margin:8px 0 6px 0;">Dialogo sugli executor e la memoria distribuita</div>
+    <div style="margin:0; color:var(--muted); font-size:10pt; line-height:1.5;">Il secondo dialogo, in quattro giornate: executor, mnest, mnestoma, tracce, ager, i sei principi. La fondazione tecnica di questa v1.1.</div>
+  </a>
+  <a href="Metnos_Letteratura_Adattamenti_v1.html" style="display:block; padding:14px 16px; border:1px solid var(--border); border-radius:8px; background:white; color:inherit; text-decoration:none;">
+    <span style="display:inline-block; padding:2px 9px; border-radius:10px; font-size:9pt; background:var(--code-bg); color:var(--muted); font-weight:500;">razionale · 15 min</span>
+    <div style="color:var(--navy); font-size:11.5pt; font-weight:700; margin:8px 0 6px 0;">Letteratura &amp; Adattamenti</div>
+    <div style="margin:0; color:var(--muted); font-size:10pt; line-height:1.5;">Il razionale dietro le scelte: 30+ riferimenti da Voyager a CoALA, mappati contro ogni decisione di design.</div>
+  </a>
+  <a href="architecture/" style="display:block; padding:14px 16px; border:1px solid var(--border); border-radius:8px; background:white; color:inherit; text-decoration:none;">
+    <span style="display:inline-block; padding:2px 9px; border-radius:10px; font-size:9pt; background:var(--code-bg); color:var(--muted); font-weight:500;">microprogettazione</span>
+    <div style="color:var(--navy); font-size:11.5pt; font-weight:700; margin:8px 0 6px 0;">Indice componenti</div>
+    <div style="margin:0; color:var(--muted); font-size:10pt; line-height:1.5;">L'indice della microprogettazione: undici canonici v1.1 (otto TESTED al 27/4 sera, dieci bilingui IT+EN), pi&ugrave; le tracce dei v1.0 obsoletati.</div>
+  </a>
+  <a href="index.html" style="display:block; padding:14px 16px; border:1px solid var(--border); border-radius:8px; background:white; color:inherit; text-decoration:none;">
+    <span style="display:inline-block; padding:2px 9px; border-radius:10px; font-size:9pt; background:var(--code-bg); color:var(--muted); font-weight:500;">home</span>
+    <div style="color:var(--navy); font-size:11.5pt; font-weight:700; margin:8px 0 6px 0;">← Indice documentazione</div>
+    <div style="margin:0; color:var(--muted); font-size:10pt; line-height:1.5;">Torna all'elenco di tutti i documenti e alle loro relazioni.</div>
+  </a>
+</div>
+
+<div class="callout tip">
+<strong>Versioning del documento.</strong> Questo &egrave; il
+<code>v1.1</code>. La v1.0 &egrave; archiviata nel repository. La v2
+arriver&agrave; quando la prima implementazione avr&agrave; rivelato cosa
+&egrave; sopravvissuto al passaggio dal testo al codice.
+</div>
+
+<hr>
+
+<p style="text-align:center; color:var(--muted); font-size:9.5pt; margin-top:40px;">
+Metnos &mdash; <em>Architettura: Introduzione</em> v1.1 &mdash; 2026-04-24<br>
+Ispirato a <a href="https://github.com/openclaw/openclaw">openclaw</a> e
+<a href="https://github.com/zeroclaw-labs/zeroclaw">zeroclaw</a>, costruito sopra
+<a href="Metnos_Glossario_v1.html#suprastructure">suprastructure</a>.<br>
+v1.1: incorpora il <em>Dialogo sui fini e sui limiti</em> (telos, vaglio, 4 Leggi)
+e il <em>Dialogo sugli executor e la memoria distribuita</em> (executor, mnest, mnestoma, tracce, ager).
+</p>
+
+</body>
+</html>

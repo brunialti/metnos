@@ -1,0 +1,535 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+
+<title>Metnos — progettare un assistente AI che sappia fermarsi</title>
+<meta name="description" content="Metnos è il processo di progettazione, documentato, di un assistente AI personale. Quattro strati, un valutatore indipendente, fini ultimi (telos), i limiti fra agire e sapere quando fermarsi. Un dialogo galileiano, un'architettura, un glossario — raccolti come un libro online. Provider-agnostic, costituzionale, scritto con cura prima di una riga di codice.">
+<meta name="keywords" content="Metnos, metnos, Metnos, my claw, my-claw, metnos AI, metnos assistente, Metnos assistente, assistente AI personale, assistente AI domestico, AI self-hosted, AI locale, AI on-premise, AI offline, AI privacy-first, provider-agnostic, astrazione LLM, architettura agenti, agente AI, AI costituzionale, etica AI, sicurezza AI, AI proattiva, self-enhancement bias, teleologia, deontologia, telos, hybris, dialogo galileiano, filosofia AI, memoria distribuita, executor, mnestome, mnest, network medicine AI, omeostasi AI, progettazione AI, specifica prima del codice, architettura software AI">
+<meta name="author" content="Roberto Brunialti">
+<meta name="robots" content="index, follow">
+
+<link rel="canonical" href="https://metnos.com/it/">
+<link rel="alternate" hreflang="en" href="https://metnos.com/en/">
+<link rel="alternate" hreflang="it" href="https://metnos.com/it/">
+<link rel="alternate" hreflang="x-default" href="https://metnos.com/en/">
+
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://metnos.com/it/">
+<meta property="og:title" content="Metnos — progettare un assistente AI che sappia fermarsi">
+<meta property="og:description" content="Il processo di progettazione, documentato, di un assistente AI personale. Un'architettura, un dialogo in quattro giornate sui fini e i limiti, un glossario — non il codice, ma ciò che viene prima.">
+<meta property="og:locale" content="it_IT">
+<meta property="og:locale:alternate" content="en_US">
+<meta property="og:site_name" content="Metnos">
+
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="Metnos — progettare un assistente AI che sappia fermarsi">
+<meta name="twitter:description" content="Prima del codice, la definizione. Un progetto documentato come un libro. Il design di un assistente AI personale, un dialogo galileiano sui suoi fini e limiti, l'architettura sottostante.">
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "WebSite",
+  "name": "Metnos",
+  "alternateName": "Metnos",
+  "url": "https://metnos.com/",
+  "description": "Un processo di progettazione, documentato, per un assistente AI personale — architettura, dialogo, glossario raccolti come un libro online.",
+  "author": { "@type": "Person", "name": "Roberto Brunialti" },
+  "inLanguage": ["it", "en"],
+  "keywords": "assistente AI, AI personale, architettura agenti, astrazione LLM, AI costituzionale, teleologia, dialogo galileiano, AI proattiva, telos, hybris"
+}
+</script>
+
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://metnos.com/">
+<meta property="og:title" content="Metnos — appunti sul progetto di un assistente">
+<meta property="og:description" content="Metnos è un progetto: definire, prima del codice, come dovrebbe essere fatto un assistente che valga la pena avere. I documenti contano più del codice: architettura, decisioni, un dialogo in quattro giornate sui fini e sui limiti.">
+<meta property="og:locale" content="it_IT">
+<meta property="og:site_name" content="Metnos">
+
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="Metnos — appunti sul progetto di un assistente">
+<meta name="twitter:description" content="Prima del codice, la definizione. Un progetto di assistente, documentato come un libro. Entra dal dialogo sui fini e i limiti.">
+
+<style>
+:root {
+  --paper: #FCFAF6;
+  --paper-warm: #F5F0E5;
+  --border-warm: #E0D5C0;
+  --ink: #2a2a2a;
+  --ink-dim: #5a5a5a;
+  --muted: #8a8378;
+  --navy: #1A477A;
+  --bronze: #A0522D;
+  --plum: #6B21A8;
+  --sage: #548235;
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body {
+  font-family: Georgia, Cambria, 'Times New Roman', serif;
+  color: var(--ink);
+  background: var(--paper);
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 90px 32px 60px;
+  line-height: 1.78;
+  font-size: 12.5pt;
+  font-weight: 400;
+}
+p { margin: 16px 0; text-align: justify; hyphens: auto; }
+a { color: var(--bronze); text-decoration: none; border-bottom: 1px solid rgba(160,82,45,0.3); transition: border-color .15s; }
+a:hover { border-bottom-color: var(--bronze); }
+em { color: var(--ink); }
+
+/* Hero */
+.hero { text-align: left; margin: 40px 0 70px; }
+.hero .eyebrow {
+  font-family: 'Segoe UI', Calibri, sans-serif;
+  font-size: 10pt;
+  letter-spacing: 3px;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 14px;
+}
+.hero h1 {
+  font-family: Georgia, serif;
+  font-size: 52pt;
+  font-weight: 400;
+  color: var(--ink);
+  margin: 0;
+  line-height: 1.05;
+  letter-spacing: -0.5px;
+}
+.hero .subtitle {
+  font-family: Georgia, serif;
+  font-style: italic;
+  font-size: 16pt;
+  color: var(--ink-dim);
+  margin-top: 22px;
+  max-width: 520px;
+  line-height: 1.4;
+}
+.hero .kleos {
+  font-family: Georgia, serif;
+  font-size: 13pt;
+  color: var(--bronze);
+  margin-top: 18px;
+  letter-spacing: 0.5px;
+}
+
+/* First paragraph ornamental */
+.opening::first-letter {
+  font-size: 42pt;
+  float: left;
+  line-height: 0.9;
+  padding: 8px 10px 0 0;
+  font-family: Georgia, serif;
+  color: var(--bronze);
+}
+
+/* Sections */
+section { margin: 50px 0; }
+section h2 {
+  font-family: Georgia, serif;
+  font-size: 14pt;
+  font-weight: 400;
+  font-style: italic;
+  color: var(--ink-dim);
+  margin-top: 40px;
+  margin-bottom: 14px;
+  border: none;
+  letter-spacing: 0.2px;
+}
+section h2::before {
+  content: "§ ";
+  color: var(--bronze);
+  font-style: normal;
+}
+
+/* Primary invitation — the Dialogo */
+.invitation {
+  background: var(--paper-warm);
+  border: 1px solid var(--border-warm);
+  border-radius: 4px;
+  padding: 36px 40px;
+  margin: 60px 0 40px;
+  text-align: center;
+}
+.invitation .ornament {
+  color: var(--bronze);
+  font-size: 18pt;
+  letter-spacing: 8px;
+  margin-bottom: 8px;
+}
+.invitation .intro {
+  font-family: 'Segoe UI', Calibri, sans-serif;
+  font-size: 9.5pt;
+  text-transform: uppercase;
+  letter-spacing: 3px;
+  color: var(--muted);
+  margin-bottom: 18px;
+}
+.invitation h3 {
+  font-family: Georgia, serif;
+  font-size: 24pt;
+  font-weight: 400;
+  color: var(--ink);
+  margin: 0 0 14px 0;
+  line-height: 1.2;
+}
+.invitation p {
+  text-align: center;
+  font-style: italic;
+  color: var(--ink-dim);
+  font-size: 13pt;
+  max-width: 480px;
+  margin: 14px auto 24px;
+}
+.invitation a.enter {
+  display: inline-block;
+  border: 1px solid var(--bronze);
+  border-bottom: 1px solid var(--bronze);
+  background: transparent;
+  color: var(--bronze);
+  padding: 11px 30px;
+  font-family: 'Segoe UI', Calibri, sans-serif;
+  font-size: 11pt;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  transition: background .15s, color .15s;
+}
+.invitation a.enter:hover { background: var(--bronze); color: var(--paper); }
+.invitation .meta {
+  font-family: 'Segoe UI', Calibri, sans-serif;
+  font-size: 9.5pt;
+  color: var(--muted);
+  margin-top: 18px;
+  letter-spacing: 0.5px;
+}
+
+/* Secondary entries */
+.secondary {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0;
+  border-top: 1px solid var(--border-warm);
+  border-bottom: 1px solid var(--border-warm);
+  margin: 40px 0;
+}
+.secondary a {
+  display: block;
+  padding: 22px 12px;
+  text-align: center;
+  color: var(--ink-dim);
+  border: none;
+  border-right: 1px solid var(--border-warm);
+  font-family: 'Segoe UI', Calibri, sans-serif;
+  transition: background .15s;
+}
+.secondary a:last-child { border-right: none; }
+.secondary a:hover { background: var(--paper-warm); color: var(--ink); border-bottom: none; }
+.secondary a .label {
+  font-family: Georgia, serif;
+  font-size: 12pt;
+  display: block;
+  margin-bottom: 4px;
+  color: var(--ink);
+  line-height: 1.25;
+}
+.secondary a .time {
+  font-size: 9pt;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  color: var(--muted);
+}
+
+/* Full index — simpler than cards */
+.toc { margin: 60px 0 30px; }
+.toc h2 {
+  margin-top: 50px;
+}
+.toc .group { margin: 22px 0 30px; }
+.toc .group-title {
+  font-family: 'Segoe UI', Calibri, sans-serif;
+  font-size: 9.5pt;
+  letter-spacing: 3px;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 14px;
+}
+.toc-item {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 16px;
+  padding: 12px 0;
+  border-bottom: 1px dotted var(--border-warm);
+  align-items: baseline;
+}
+.toc-item:last-child { border-bottom: none; }
+.toc-item .t {
+  font-family: Georgia, serif;
+  font-size: 12.5pt;
+  color: var(--ink);
+  border: none;
+}
+.toc-item .t:hover { color: var(--bronze); border-bottom: 1px solid var(--bronze); }
+.toc-item .d {
+  display: block;
+  font-family: Georgia, serif;
+  font-style: italic;
+  font-size: 11pt;
+  color: var(--ink-dim);
+  margin-top: 4px;
+}
+.toc-item .time {
+  font-family: 'Segoe UI', Calibri, sans-serif;
+  font-size: 9pt;
+  color: var(--muted);
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+/* External references */
+.references {
+  margin-top: 60px;
+  padding-top: 30px;
+  border-top: 1px solid var(--border-warm);
+  font-size: 11pt;
+}
+.references ul { padding-left: 22px; }
+.references li { margin-bottom: 10px; color: var(--ink-dim); }
+
+/* Footer */
+footer {
+  margin-top: 80px;
+  padding-top: 26px;
+  border-top: 1px solid var(--border-warm);
+  font-family: 'Segoe UI', Calibri, sans-serif;
+  font-size: 9.5pt;
+  color: var(--muted);
+  text-align: center;
+  letter-spacing: 0.5px;
+  line-height: 1.8;
+}
+
+/* Responsive */
+@media (max-width: 620px) {
+  body { padding: 50px 22px 40px; font-size: 12pt; }
+  .hero h1 { font-size: 38pt; }
+  .hero .subtitle { font-size: 14pt; }
+  .invitation { padding: 28px 24px; }
+  .invitation h3 { font-size: 20pt; }
+  .secondary { grid-template-columns: 1fr; }
+  .secondary a { border-right: none; border-bottom: 1px solid var(--border-warm); }
+  .secondary a:last-child { border-bottom: none; }
+}
+
+@media print {
+  body { max-width: none; padding: 0; font-size: 11pt; background: white; }
+  .hero h1 { font-size: 32pt; }
+  a { color: var(--ink); border: none; }
+  .invitation { background: white; }
+  .lang-switch { display: none; }
+}
+
+/* Language switcher — sempre in alto a destra */
+.lang-switch {
+  position: fixed; top: 18px; right: 24px;
+  z-index: 100;
+  font-family: 'Segoe UI', Calibri, sans-serif;
+  font-size: 10pt; letter-spacing: 2px;
+  background: var(--paper); border: 1px solid var(--border-warm);
+  border-radius: 14px; padding: 4px 10px;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.04);
+}
+.lang-switch a { color: var(--muted); border: none; padding: 0 4px; }
+.lang-switch a:hover { color: var(--bronze); }
+.lang-switch a.active { color: var(--ink); font-weight: 700; }
+.lang-switch .sep { color: var(--border-warm); }
+@media (max-width: 600px) {
+  .lang-switch { top: 10px; right: 10px; font-size: 9pt; padding: 3px 8px; }
+}
+</style>
+</head>
+<body>
+
+<nav class="lang-switch" aria-label="Language">
+  <a href="/it/" class="active" hreflang="it" lang="it">IT</a>
+  <span class="sep">·</span>
+  <a href="/en/" hreflang="en" lang="en">EN</a>
+</nav>
+
+<div class="hero">
+  <div class="eyebrow">un progetto</div>
+  <h1>Metnos</h1>
+  <div class="byline" style="font-family:'Georgia','Cambria',serif; font-style:italic; font-size:13pt; color:var(--muted); margin:4px 0 18px; letter-spacing:0.2px;">by Roberto Brunialti</div>
+  <div class="subtitle">Un assistente. E i tentativi di dargli dei limiti.</div>
+  <div class="kleos">μῆτις + νοῦς &mdash; <em>m&ecirc;tis</em> (saggezza che si adatta) + <em>no&ucirc;s</em> (intelletto che ragiona): le due forme greche della mente, riunite in un nome. <span style="color:var(--muted); font-size:10.5pt;">&middot; nome tecnico del progetto: <code style="background:transparent; font-family:Consolas,monospace;">metnos</code></span></div>
+</div>
+
+<section>
+  <p class="opening">Metnos è il progetto di un assistente: non un chatbot e nemmeno un "agente autonomo" nel senso in cui la parola si è ormai svuotata, ma un sistema pensato per fare al posto dell'utente &mdash; e insieme, con la stessa cura, per <em>sapere quando fermarsi</em>. La parte interessante, di quel sistema, non è il codice: è la definizione. Scrivere <em>prima</em> come dovrebbe essere fatto, quali limiti onora, con quale vocabolario si rivolge all'umano che lo usa. Questa è la parte che il codice, da solo, non potrebbe mai produrre.</p>
+</section>
+
+<section>
+  <h2>Il rispetto</h2>
+  <p>Idee vicine le hanno già esplorate <a href="https://github.com/openclaw/openclaw">openclaw</a> e <a href="https://github.com/zeroclaw-labs/zeroclaw">zeroclaw</a>. È da lì che questo progetto prende coraggio, ed è a loro che va, prima di tutto, il riconoscimento. Metnos non vuole essere un clone: è un punto di partenza per sperimentare alcune idee particolari &mdash; la distinzione fra <em>leggi</em> e <em>fini</em>, la separazione fra chi propone e chi giudica, la cura di non trasformare l'utilità in invadenza. Un terreno di prova, non una soluzione.</p>
+</section>
+
+<section>
+  <h2>Cosa trovi qui</h2>
+  <p>Non il codice. Quello, il codice buono, qualcuno lo scriverà meglio di me &mdash; e va bene così. Qui trovi i <em>documenti</em>: l'architettura, le decisioni, le giornate di riflessione. Il processo di definizione, non il prodotto. Chi legge questi testi riceve, a pensarci bene, un oggetto più durevole di qualsiasi implementazione: una serie di scelte motivate, e un modo per ragionare che si può riutilizzare altrove. E poi alla fine sì, anche il codice, ma quello giusto per assicurare me e il lettore che le idee devono trovare, prima o poi, una via per irrompere nella realtà.</p>
+</section>
+
+<section>
+  <h2>L'autore e la macchina</h2>
+  <p>Questo progetto è stato scritto con l'aiuto costante di un sistema di intelligenza artificiale. Gran parte delle frasi che stai leggendo, delle figure SVG dei documenti, delle tabelle, delle pagine di microprogettazione sono nate da un dialogo con una macchina che ha saputo tenermi la penna quando la mia si stancava. Non è solo una confessione: è il <em>senso</em> stesso del progetto. Metnos immagina un assistente che <em>dia le ali</em> a chi lo usa, permettendogli di concentrarsi sull'analisi e non sulla realizzazione. Costruirne la definizione con un assistente è già, in piccolo, una prova di concetto. Un esperimento ricorsivo.</p>
+</section>
+
+<section>
+  <h2>Dialoghi</h2>
+  <p>I dialoghi sono la traccia del pensiero dietro Metnos messa sotto pressione dell'obiezione: non trattati, non specifiche, ma idee costrette a rispondere a una controparte mai accomodante. La forma è galileiana &mdash; due voci, entrambe dell'autore, una delle quali rifiuta di concedere ragione facile. Non finzione: solo la struttura è dialogica, il contenuto è reale.</p>
+
+  <div class="invitation">
+    <div class="ornament">❦</div>
+
+    <h3>Dialogo sui fini e i limiti</h3>
+    <p>Roberto e L'Altro in quattro giornate. Da come nasce il bisogno di fini ultimi alla frase-cardine &mdash; <em>la Costituzione non giudica, la teleologia sì</em>.</p>
+    <a class="enter" href="Metnos_Dialogo_v1.html">Entra</a>
+    <div class="meta">riflessione &middot; 25 minuti di lettura</div>
+
+    <div style="color:var(--bronze); font-size:14pt; letter-spacing:6px; margin:38px 0 22px;">· · ·</div>
+
+    <h3>Dialogo sugli executor e sulla memoria distribuita</h3>
+    <p>Quattro giornate. Cosa può ricordare un sistema che non apprende; se Metnos sia un organismo, uno specchio, o un'ecologia; la forma emersa del mnestoma, letta attraverso la <em>network medicine</em>; e la verifica finale &mdash; i sei principi che tengono insieme il resto e la specifica tecnica come passo successivo. Executor, mnest, tracce, ager, il tavolo.</p>
+    <a class="enter" href="Metnos_Dialogo_Executor_v1.html">Entra</a>
+    <div class="meta">riflessione &middot; giornate I&ndash;IV &middot; completo</div>
+  </div>
+</section>
+
+<p style="text-align:center; color:var(--muted); font-size:11pt; font-style:italic; margin-top:40px;">
+Se ti interessa il <em>come</em> dopo il <em>perché</em>, quattro porte. La nota sul codice (<a href="code.html">Code</a>) risponde alla domanda <em>where is the beef?</em>
+</p>
+
+<div class="secondary">
+  <a href="Metnos_QuickTour_v1.html">
+    <span class="label">Quick tour &amp; Survival kit</span>
+    <span class="time">20 min</span>
+  </a>
+  <a href="Metnos_Architettura_Intro_v1.html">
+    <span class="label">Architettura</span>
+    <span class="time">20 min</span>
+  </a>
+  <a href="architecture/">
+    <span class="label">Microprogettazione</span>
+    <span class="time">componenti</span>
+  </a>
+  <a href="code.html">
+    <span class="label">Code</span>
+    <span class="time">nota</span>
+  </a>
+</div>
+
+<div class="toc">
+<h2>L'intero corpus</h2>
+
+<div class="group">
+  <div class="group-title">Per chiunque</div>
+  <div class="toc-item">
+    <div>
+      <a class="t" href="Metnos_QuickTour_v1.html">Quick tour &amp; Survival kit &mdash; Metnos in quindici-venti minuti</a>
+      <span class="d">Sette scene dalla vita reale (inclusa una di crescita organica: dodici richieste sulle foto che maturano in una proposta spontanea di due nuovi executor), un dialogo-tipo da terminale, mockup dell'interfaccia, come cresce e come invecchia, cosa chiede e cosa non farà mai, giorno 1, comandi essenziali, glossario mini. Zero gergo.</span>
+    </div>
+    <span class="time">20 min</span>
+  </div>
+</div>
+
+<div class="group">
+  <div class="group-title">Fondamenti</div>
+  <div class="toc-item">
+    <div>
+      <a class="t" href="Metnos_Architettura_Intro_v1.html">Architettura &mdash; Introduzione</a>
+      <span class="d">Cos'è Metnos, come è fatto, i quattro strati, i tre livelli di autonomia. Diagrammi SVG, stampabile in PDF.</span>
+    </div>
+    <span class="time">20 min</span>
+  </div>
+  <div class="toc-item">
+    <div>
+      <a class="t" href="Metnos_Letteratura_Adattamenti_v1.html">Letteratura e adattamenti</a>
+      <span class="d">Trenta riferimenti (Voyager, CoALA, MemGPT, Constitutional AI, &hellip;) mappati contro le decisioni di design.</span>
+    </div>
+    <span class="time">15 min</span>
+  </div>
+</div>
+
+<div class="group">
+  <div class="group-title">Giudizio e visione</div>
+  <div class="toc-item">
+    <div>
+      <a class="t" href="Metnos_Prospettive_Giudizio_v1.html">Prospettive e giudizio</a>
+      <span class="d">Il design analizzato da quattro ottiche esperte, sette critiche bloccanti, il piano di lavoro riordinato.</span>
+    </div>
+    <span class="time">20 min</span>
+  </div>
+  <div class="toc-item">
+    <div>
+      <a class="t" href="Metnos_Prospettive_Estese_v1.html">Prospettive estese</a>
+      <span class="d">Da assistente reattivo a intelligenza ambientale. Cinque famiglie di capacità, più <em>telos</em> come fondante.</span>
+    </div>
+    <span class="time">20 min</span>
+  </div>
+</div>
+
+<div class="group">
+  <div class="group-title">Riflessione</div>
+  <div class="toc-item">
+    <div>
+      <a class="t" href="Metnos_Dialogo_v1.html">Dialogo sui fini e i limiti</a>
+      <span class="d">Quattro giornate sulla proattività, i divieti e le tendenze, chi giudica il giudice, guardia e giudice. Con un prologo mitologico che legge Metnos come creatura a rischio di hybris.</span>
+    </div>
+    <span class="time">25 min</span>
+  </div>
+  <div class="toc-item">
+    <div>
+      <a class="t" href="Metnos_Dialogo_Executor_v1.html">Dialogo sugli executor e sulla memoria distribuita</a>
+      <span class="d">Secondo dialogo, completo in quattro giornate: memoria senza apprendimento (executor, mnest, mnestoma); organismo o specchio (le cinque fonti di creatività, il tavolo); la forma del tavolo (modularità, tracce, network medicine); regge? (ager, freeze, defuse, seme, i sei principi).</span>
+    </div>
+    <span class="time">I&ndash;IV · completo</span>
+  </div>
+</div>
+
+<div class="group">
+  <div class="group-title">Riferimento</div>
+  <div class="toc-item">
+    <div>
+      <a class="t" href="Metnos_Glossario_v1.html">Glossario</a>
+      <span class="d">Circa 35 voci in ordine alfabetico: termini tecnici, componenti, progetti esterni di ispirazione (openclaw, zeroclaw), concetti fondanti (telos, vaglio, interfaccia LLM, hybris). Punto di consultazione quando un termine di un doc non è chiaro.</span>
+    </div>
+    <span class="time">consulta</span>
+  </div>
+</div>
+
+<div class="group">
+  <div class="group-title">Microprogettazione &mdash; <a href="architecture/" style="font-family:inherit; font-size:inherit; border:none; color:var(--muted); text-transform:none; letter-spacing:0;">tutti i componenti</a></div>
+  <p style="font-style:italic; color:var(--ink-dim); font-size:11pt; margin-top:8px;">Un documento HTML per ogni componente dell'architettura. Regola: un componente non viene implementato prima che il suo HTML esista e sia approvato. Oggi sono <strong>quattordici canonici v1.1</strong>, allineati al codice al 1&deg; maggio 2026 e tutti bilingui IT+EN.</p>
+</div>
+</div>
+
+<div class="references">
+<h2 style="font-style:italic; font-weight:400; font-size:13pt; color:var(--ink-dim); border:none; margin-top:0;">Riferimenti esterni</h2>
+<ul>
+  <li><a href="https://github.com/openclaw/openclaw">openclaw/openclaw</a> &mdash; ispirazione: gateway-first, multi-canale, sandbox plug-in (TypeScript).</li>
+  <li><a href="https://github.com/zeroclaw-labs/zeroclaw">zeroclaw-labs/zeroclaw</a> &mdash; ispirazione: livelli di autonomia, sandbox a strati, trait-based (Rust).</li>
+</ul>
+</div>
+
+<footer>
+Metnos &middot; <code style="font-family:Consolas,monospace; background:transparent;">metnos.com</code><br>
+Contatti: <a href="mailto:metnos@metnos.com" style="color:inherit; border:none;">metnos@metnos.com</a>
+</footer>
+
+</body>
+</html>

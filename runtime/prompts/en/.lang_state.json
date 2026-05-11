@@ -1,0 +1,137 @@
+{
+  "classify_entries": {
+    "source_hash": null,
+    "source_lang": null,
+    "version_hash": "sha256:eb7a0c68ff6310eff82cf69161bd4cde8b95385a97377dd72e829185501a5f50"
+  },
+  "describe_entries_by_importance": {
+    "source_hash": null,
+    "source_lang": null,
+    "version_hash": "sha256:28a68cca98447fd1049a4f10591152765868d8aa353b993773724381fc6a2fa0"
+  },
+  "describe_entries_by_relevance": {
+    "source_hash": null,
+    "source_lang": null,
+    "version_hash": "sha256:6bc862c42ce6c031bc0b0950634773ca4fa24ab457ab8d9d857135e5836e0b8e"
+  },
+  "describe_entries_compact": {
+    "source_hash": null,
+    "source_lang": null,
+    "version_hash": "sha256:f1af8bef095c58eac4c32ce11fe4c3ed7d6d469329e787e2952dbba24d3ccde7"
+  },
+  "intent_extractor": {
+    "source_hash": null,
+    "source_lang": null,
+    "version_hash": "sha256:c606dfac0fc3cc2957fe8182918adaa6827a697b05d4cca9e89763ae8fdb88da"
+  },
+  "planner": {
+    "source_hash": "sha256:5916a4a34e0b7e9c74b4e9e669d3ad0fbdb9e2ad50d01188c77645190489ff2f",
+    "source_lang": "it",
+    "version_hash": "sha256:e1c7da82ff17b8c5e92f21e9b2cc98f69749bab3e82b3df78419aa772c7a78ad"
+  },
+  "synt_birth_tests": {
+    "source_hash": "sha256:b96bab07e06cc533b7b1f166f66a890cafb94a4fda625ee237e1bcb5fe613c77",
+    "source_lang": "it",
+    "version_hash": "sha256:28add6ef102bfd6523a7bea2a84d38f5a67837a5dfa2be8482df436495523f5d"
+  },
+  "synt_code": {
+    "source_hash": null,
+    "source_lang": null,
+    "version_hash": "sha256:943500d08ba3abf41cd01c3fbafff99b418756057134b2123d138d7a3358474f"
+  },
+  "synt_code_addendum_create": {
+    "source_hash": null,
+    "source_lang": null,
+    "version_hash": "sha256:b9866f8867f86ee8922f8bc386dd4b22f8a42d4e469da4dcf5fb88335151877d"
+  },
+  "synt_code_addendum_delete": {
+    "source_hash": null,
+    "source_lang": null,
+    "version_hash": "sha256:ec486d451a5780f7cbd777dde04e5aec571483bc58b66ec62c96ec837bff5183"
+  },
+  "synt_code_addendum_describe": {
+    "source_hash": null,
+    "source_lang": null,
+    "version_hash": "sha256:cfa39912c58cd4d98de365f3aea246466574d25c1407fbb754e0a13f7e790b2f"
+  },
+  "synt_code_addendum_extract": {
+    "source_hash": null,
+    "source_lang": null,
+    "version_hash": "sha256:eb96695a589f16d3d2e210b9b7b1ff550436aec048d722429d675f56d7b572b7"
+  },
+  "synt_code_addendum_filter": {
+    "source_hash": null,
+    "source_lang": null,
+    "version_hash": "sha256:70f160975565a0a75d91d1af0439d2e382a4e089a888cf6f882f192fe5750d17"
+  },
+  "synt_code_addendum_find": {
+    "source_hash": null,
+    "source_lang": null,
+    "version_hash": "sha256:8749391cdc32ef533c6544ca4cb0b6e1e7d546e590bfeeb538d3925125cc6ab6"
+  },
+  "synt_code_addendum_get": {
+    "source_hash": null,
+    "source_lang": null,
+    "version_hash": "sha256:0bf1e02b70ea1dab8a9f900f2c487ae9e0a57eb35abb4f20f0f48aa96d9872e3"
+  },
+  "synt_code_addendum_list": {
+    "source_hash": null,
+    "source_lang": null,
+    "version_hash": "sha256:6293faa3488cc45246f604298de3b7ecb77467c755afb6857a57ef08215f89f4"
+  },
+  "synt_code_addendum_move": {
+    "source_hash": null,
+    "source_lang": null,
+    "version_hash": "sha256:65bd2347af68787504ca22f6770b737914b66f244ef67b6b4c45472d4921a24d"
+  },
+  "synt_code_addendum_read": {
+    "source_hash": null,
+    "source_lang": null,
+    "version_hash": "sha256:9a8dce3ff848064802c3ddea13483f4c85324240bd42dff5c289abe516000f03"
+  },
+  "synt_code_addendum_send": {
+    "source_hash": null,
+    "source_lang": null,
+    "version_hash": "sha256:e14e0a8c06bcb1ef5d0188f99e7e0c0b2e2e16d3ca19785bc03671c0bebdf70e"
+  },
+  "synt_code_addendum_write": {
+    "source_hash": null,
+    "source_lang": null,
+    "version_hash": "sha256:9b1b83e53aebe78e9c3b5f0ffb327d52cb4002fcfe8ae1cb9eba66dbd1e19e80"
+  },
+  "synt_description": {
+    "source_hash": null,
+    "source_lang": null,
+    "version_hash": "sha256:748f8aac20400d1d65557d8984a9e04531ed08a79dcca83031f25d26d74f5a30"
+  },
+  "synt_generate": {
+    "source_hash": null,
+    "source_lang": null,
+    "version_hash": "sha256:39d9eb48572d892ca0e7cb7810145a6a18ca025a9ee9f6a82e8091b76449282e"
+  },
+  "synt_naming": {
+    "source_hash": null,
+    "source_lang": null,
+    "version_hash": "sha256:a89b323185530cd008a4d45bb648b52b3f0fed7705e7ea03e8774931f71b2f25"
+  },
+  "synt_signature": {
+    "source_hash": null,
+    "source_lang": null,
+    "version_hash": "sha256:0f7cfe414d02f2de3122e7fd17ccab26c318701138968e81d184f99c0ae4cd8b"
+  },
+  "synt_tests": {
+    "source_hash": null,
+    "source_lang": null,
+    "version_hash": "sha256:b3652bad034658a7bef03be4d02a1db729fe8530998a4bf605156a50989ffceb"
+  },
+  "vaglio": {
+    "source_hash": null,
+    "source_lang": null,
+    "version_hash": "sha256:26ca17d32cb248c04b1919086d4992f8ebccadec80af5e34ce37281b9d2cd7b0"
+  },
+  "web_rerank": {
+    "source_hash": null,
+    "source_lang": null,
+    "version_hash": "sha256:009e461ef302f9cf5afd7db31294c66e86b9aa9428abf5e80f158f64d21d6eb5"
+  }
+}

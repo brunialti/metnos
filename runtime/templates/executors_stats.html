@@ -1,0 +1,114 @@
+{% extends "base.html" %}
+{% block title %}Metnos admin · executor stats{% endblock %}
+{% block body %}
+<h1>Statistiche executor</h1>
+<p class="muted"><a href="/admin/executors">← lista executor</a> · <a href="/admin/executors/stats" hx-headers='{"Accept":"application/json"}'>JSON</a></p>
+
+<div class="section">
+  <h2>Counts per source × lifecycle</h2>
+  {% if not bar_rows %}
+    <p class="muted">nessun dato</p>
+  {% else %}
+    <table style="max-width:680px">
+      <thead>
+        <tr><th>source</th><th>lifecycle</th><th style="text-align:right">count</th><th>distribuzione</th></tr>
+      </thead>
+      <tbody>
+        {% for r in bar_rows %}
+        <tr>
+          <td><span class="chip">{{ r.source }}</span></td>
+          <td>
+            {% if r.lifecycle == "active" %}<span class="chip ok">{{ r.lifecycle }}</span>
+            {% elif r.lifecycle == "deprecated" %}<span class="chip warn">{{ r.lifecycle }}</span>
+            {% else %}<span class="chip bad">{{ r.lifecycle }}</span>{% endif %}
+          </td>
+          <td style="text-align:right;font-variant-numeric:tabular-nums">{{ r.count }}</td>
+          <td style="width:240px">
+            <div class="bar-track">
+              <div class="bar-fill {{ r.lifecycle }}" style="width:{{ r.pct|round(1) }}%"></div>
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% endif %}
+</div>
+
+<div class="section">
+  <h2>Eventi giornalieri (ultimi 30 g)</h2>
+  <p class="muted">una linea per coppia (source, event_kind). Hover per dettaglio.</p>
+  <div id="chart_daily" style="width:100%;height:280px"></div>
+  {% if not daily %}<p class="muted">nessun evento</p>{% endif %}
+</div>
+
+<style>
+.bar-track{background:#f0f0f0;height:14px;border-radius:.2rem;overflow:hidden}
+.bar-fill{height:100%}
+.bar-fill.active{background:#7cb86c}
+.bar-fill.deprecated{background:#d8a648}
+.bar-fill.archived{background:#c66060}
+.uplot-tooltip{position:absolute;pointer-events:none;background:#222;color:#fff;
+  padding:.3rem .5rem;border-radius:.2rem;font-size:.75em;white-space:pre;display:none;z-index:99}
+</style>
+
+<script>
+(function(){
+  const raw = {{ daily_json|safe }};
+  if(!Array.isArray(raw) || !raw.length) return;
+
+  // Aggrega: per ogni coppia (source, event_kind) → serie temporale.
+  // Asse X = giorni (ordered date string), 1 punto al giorno.
+  const dates = Array.from(new Set(raw.map(r => r.date))).sort();
+  const xs = dates.map(d => Math.floor(new Date(d + 'T00:00:00').getTime() / 1000));
+
+  // Genera chiavi serie
+  const seriesKeys = Array.from(new Set(raw.map(r => r.source + '·' + r.event_kind))).sort();
+  const seriesData = {}; // key → array di counts indicizzato per dates
+  for(const k of seriesKeys){
+    seriesData[k] = new Array(dates.length).fill(0);
+  }
+  for(const r of raw){
+    const k = r.source + '·' + r.event_kind;
+    const i = dates.indexOf(r.date);
+    if(i >= 0) seriesData[k][i] += r.n;
+  }
+
+  // Palette deterministica (cycle se >7 serie)
+  const palette = ['#3a4d6c','#7cb86c','#d8a648','#c66060','#7e6cb8','#48a8d8','#888'];
+  const seriesDefs = [{}];  // x axis spec
+  const dataArr = [xs];
+  let idx = 0;
+  for(const k of seriesKeys){
+    seriesDefs.push({
+      label: k,
+      stroke: palette[idx % palette.length],
+      width: 2,
+      points: { show: true, size: 5 },
+    });
+    dataArr.push(seriesData[k]);
+    idx++;
+  }
+
+  const el = document.getElementById('chart_daily');
+  const opts = {
+    width: el.clientWidth || 800,
+    height: 280,
+    series: seriesDefs,
+    axes: [
+      { stroke: '#888' },
+      { stroke: '#888', size: 40 },
+    ],
+    legend: { show: true },
+    cursor: { drag: { x: true, y: false } },
+  };
+  const u = new uPlot(opts, dataArr, el);
+
+  // Resize responsivo
+  window.addEventListener('resize', () => {
+    u.setSize({ width: el.clientWidth, height: 280 });
+  });
+})();
+</script>
+
+{% endblock %}

@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Metnos &mdash; Where is the beef (code)?</title>
+    <meta name="description" content="Una nota dell'autore di Metnos sul codice: perche' il codice non c'e' ancora, perche' la documentazione viene prima, stato di Metnos oggi, l'invito a leggere prima un dialogo.">
+    <meta name="keywords" content="Metnos, codice, repository pubblico, dialoghi, microprogettazione, AI coder, documentazione, Roberto Brunialti">
+    <meta name="author" content="Roberto Brunialti">
+    <meta name="robots" content="index, follow">
+    <link rel="canonical" href="https://metnos.com/it/code.html">
+    <link rel="alternate" hreflang="it" href="https://metnos.com/it/code.html">
+    <link rel="alternate" hreflang="en" href="https://metnos.com/en/code.html">
+    <link rel="alternate" hreflang="x-default" href="https://metnos.com/it/code.html">
+    <meta property="og:type" content="article">
+    <meta property="og:url" content="https://metnos.com/it/code.html">
+    <meta property="og:title" content="Metnos &mdash; Where is the beef (code)?">
+    <meta property="og:description" content="Perche' il codice non c'e' ancora, perche' la documentazione viene prima, stato di Metnos oggi, e l'invito a leggere prima un dialogo.">
+    <meta property="og:locale" content="it_IT">
+    <meta property="og:site_name" content="Metnos">
+    <meta name="twitter:card" content="summary">
+    <meta name="twitter:title" content="Metnos &mdash; Where is the beef (code)?">
+    <meta name="twitter:description" content="Una nota dell'autore: il codice c'e', funziona, ma non e' ancora pronto per un repository pubblico. Documentazione prima, dialoghi prima ancora.">
+    <style>
+:root {
+    --navy: #1A477A; --navy-light: #2B6CB0; --sage: #548235;
+    --bronze: #A0522D; --plum: #6B21A8;
+    --bg: #FAFBFC; --text: #1a1a1a;
+    --border: #d0d7de; --muted: #64748B;
+}
+* { box-sizing: border-box; }
+body { font-family: 'Segoe UI', Calibri, -apple-system, sans-serif; font-size: 12pt; line-height: 1.75; color: var(--text); background: var(--bg); max-width: 760px; margin: 0 auto; padding: 40px 30px; }
+h1, h2 { color: var(--navy); }
+h2 { font-size: 16pt; margin-top: 36px; border-bottom: 1px solid var(--border); padding-bottom: 6px; }
+p { margin: 14px 0; }
+.title-page { text-align: center; padding: 50px 0 24px; }
+.title-page h1 { font-size: 28pt; border: none; margin: 0; }
+.title-page .subtitle { font-size: 14pt; color: var(--navy-light); margin: 10px 0 22px; font-style: italic; }
+.title-page .meta { font-size: 11pt; color: var(--muted); }
+nav.lang { position: fixed; top: 16px; right: 20px; z-index: 9999; font-family: 'Segoe UI', Calibri, sans-serif; font-size: 10pt; letter-spacing: 2px; background: #FAFBFC; border: 1px solid #d0d7de; border-radius: 14px; padding: 4px 10px; box-shadow: 0 1px 4px rgba(0,0,0,0.04); }
+nav.lang a { padding: 0 4px; text-decoration: none; border: none; }
+nav.lang a.active { color: #1a1a1a; font-weight: 700; }
+nav.lang a:not(.active) { color: var(--muted); }
+.back { background: #fff; border-bottom: 1px solid var(--border); padding: 10px 0; font-size: 14px; margin-bottom: 16px; }
+.back .inner { max-width: 760px; margin: 0 auto; padding: 0 20px; display: flex; justify-content: space-between; }
+.back a { color: var(--navy); text-decoration: none; font-weight: 500; }
+.callout { border-left: 4px solid var(--sage); background: #f0fdf4; color: #14532d; padding: 14px 20px; margin: 28px 0; border-radius: 0 8px 8px 0; font-size: 11.5pt; }
+em.author { color: var(--plum); font-style: italic; }
+footer { margin-top: 60px; padding-top: 18px; border-top: 1px solid var(--border); font-size: 10.5pt; color: var(--muted); text-align: center; }
+footer a { color: inherit; text-decoration: none; }
+    </style>
+</head>
+<body>
+
+<nav class="lang">
+  <a href="/it/code.html" class="active" hreflang="it" lang="it">IT</a>
+  <span style="color:#d0d7de;"> &middot; </span>
+  <a href="/en/code.html" hreflang="en" lang="en">EN</a>
+</nav>
+
+<div class="back">
+  <div class="inner">
+    <a href="./">&larr; Indice del sito</a>
+    <span style="color:#8e8e93;">Metnos &rsaquo; <strong style="color:#1a1a1a;">Code</strong></span>
+  </div>
+</div>
+
+<div class="title-page">
+  <h1>Code</h1>
+  <div class="subtitle">una nota dell'autore</div>
+</div>
+
+<div class="callout">
+Se sei arrivato fin qui, sei interessato al codice. Anche io avrei fatto cos&igrave;. Ma questa volta il codice &egrave; la parte meno preziosa del progetto.
+</div>
+
+<h2>Where is the beef (code)?</h2>
+
+<p>Domanda giusta, dopo tutta questa filosofia. Il codice non &egrave; (ancora) qui, ed &egrave; per scelta. Ogni documento di questo sito sta <em>a monte</em> del codice: la regola interna &egrave; che un componente non si implementa prima che il suo HTML esista e sia approvato. Quando la definizione &egrave; abbastanza matura da rendere la costruzione un esercizio di fedelt&agrave; pi&ugrave; che di traduzione, il codice segue &mdash; e somiglia ai documenti, non viceversa.</p>
+
+<p>C'&egrave; anche un motivo pi&ugrave; forte per fermarsi qui. Le pagine di <a href="architecture/">microprogettazione</a> e l'<a href="Metnos_Architettura_Intro_v1.html">architettura</a> codificano decisioni; i <a href="Metnos_Dialogo_v1.html">dialoghi</a> mostrano come quelle decisioni sono state guadagnate. Se leggi prima il design, ricevi le conclusioni senza le obiezioni, i componenti senza le alternative scartate, i nomi senza la fatica di trovarli. Se leggi prima un dialogo, arrivi alle stesse decisioni con i dubbi ancora attaccati &mdash; che &egrave; quello che, pi&ugrave; avanti, ti permetter&agrave; di distinguere se una sorpresa del sistema &egrave; un bug o una conseguenza da accettare.</p>
+
+<p>Se stai per tuffarti nell'architettura o nella microprogettazione, leggi prima almeno un dialogo. Il resto della documentazione ti parler&agrave; una lingua pi&ugrave; ricca.</p>
+
+<h2>Quanto manca, davvero</h2>
+
+<p>Metnos &egrave; implementato. Funziona, ma non &egrave; ancora stato testato integralmente nella situazione naturale per cui &egrave; nato: la giornata quotidiana. L'infrastruttura &egrave; su misura, con molti livelli di astrazione. Mi resta un wrapper leggero da scrivere &mdash; quello che permetter&agrave; a chiunque di usare le proprie risorse, locali o online &mdash; e non &egrave; banale. Non c'&egrave; ancora un installer e, nonostante il codice sia sorprendentemente compatto, preparare l'ambiente non lo &egrave;.</p>
+
+<p>A partire dal corpus documentale &egrave; gi&agrave; possibile reimplementare Metnos. Probabilmente meglio di me, in compagnia di un AI coder &mdash; che durante questo progetto mi &egrave; sembrato moltiplicato dalle tecniche adottate, alcune delle quali frutto di scoperte sorprendenti. Per ogni riga di codice ci sono circa quattro o cinque righe di documentazione, pi&ugrave; un livello non pubblicato che raccoglie tutte le microdecisioni prese in itinere. La documentazione non &egrave; qualcosa di posticcio: &egrave; parte integrante del progetto.</p>
+
+<p><em class="author">Sono solo, o meglio: c'&egrave; sempre l'Altro che amplifica le mie capacit&agrave;.</em> Ma anche cos&igrave; non riesco a finalizzare l'ambiente e contemporaneamente a tenere insieme un repository pubblico sufficientemente accogliente. :-)</p>
+
+<p>Ancora un po' di pazienza, quindi.</p>
+
+<footer>
+Metnos &middot; <a href="./">metnos.com</a> &middot; contatti: <a href="mailto:metnos@metnos.com">metnos@metnos.com</a>
+</footer>
+
+</body>
+</html>

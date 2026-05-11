@@ -1,0 +1,919 @@
+"""http_routes_admin — endpoint /admin/* (collezioni read-only + azioni proposte).
+
+Tutte le rotte richiedono ruolo `admin` (la policy e' applicata a livello
+di middleware in `http_auth.auth_middleware`).
+"""
+from __future__ import annotations
+
+import json
+import sqlite3
+import time
+import urllib.parse
+from dataclasses import asdict
+from datetime import datetime, timezone
+from pathlib import Path
+
+from aiohttp import web
+
+import executor_aging
+import proposals_state
+import users
+from http_auth import (
+    ADMIN_COOKIE,
+    ADMIN_COOKIE_TTL_S,
+    issue_admin_cookie,
+)
+from http_render import negotiate_collection, render_template, serve_with_etag
+from logging_setup import get_logger
+
+log = get_logger(__name__)
+
+
+def _error(status: int, code: str, message: str) -> web.Response:
+    return web.json_response({"error": code, "message": message}, status=status)
+
+
+# --- /admin (root) -----------------------------------------------------------
+
+def _summary_proposals() -> dict:
+    """Conteggi per stato dalla tabella proposals_state."""
+    db = proposals_state.DB_PATH
+    if not db.exists():
+        return {"pending": 0, "dormant": 0, "applied": 0, "rejected": 0, "blocked": 0}
+    conn = sqlite3.connect(str(db))
+    try:
+        rows = conn.execute(
+            "SELECT state, COUNT(*) c FROM proposals_state GROUP BY state"
+        ).fetchall()
+    finally:
+        conn.close()
+    out = {"pending": 0, "dormant": 0, "applied": 0, "rejected": 0, "blocked": 0}
+    for state, c in rows:
+        out[state] = int(c)
+    return out
+
+
+def _summary_executors(catalog) -> dict:
+    total = len(catalog)
+    deprecated = sum(1 for e in catalog if e.lifecycle == "deprecated")
+    counts = executor_aging.counts_by_source_lifecycle()
+    handcrafted = sum(v.get("active", 0) for k, v in counts.items()
+                      if k.startswith("handcrafted"))
+    synth = sum(v.get("active", 0) for k, v in counts.items()
+                if k.startswith("synth"))
+    return {
+        "total": total, "handcrafted": handcrafted,
+        "synth": synth, "deprecated": deprecated,
+    }
+
+
+def _turn_log_dir() -> Path:
+    return Path.home() / ".local" / "share" / "metnos" / "turns"
+
+
+def _load_recent_turns(limit: int = 50) -> list[dict]:
+    """Ultimi `limit` turni, newest first, dai jsonl di TURN_LOG_DIR."""
+    out = []
+    d = _turn_log_dir()
+    if not d.exists():
+        return out
+    files = sorted(d.glob("*.jsonl"), reverse=True)
+    for fp in files:
+        for line in reversed(fp.read_text().splitlines()):
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                t = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            out.append(t)
+            if len(out) >= limit:
+                return out
+    return out
+
+
+def _summary_turns() -> dict:
+    """Snapshot ultime 24h."""
+    cutoff = time.time() - 86400.0
+    rows = _load_recent_turns(limit=200)
+    rows = [r for r in rows if (r.get("ts_start") or 0) >= cutoff]
+    if not rows:
+        return {"total": 0, "errors": 0, "median_ms": 0.0}
+    durations = [
+        max(0, int(((r.get("ts_end") or 0) - (r.get("ts_start") or 0)) * 1000))
+        for r in rows
+    ]
+    durations.sort()
+    median = durations[len(durations) // 2] if durations else 0
+    errors = sum(1 for r in rows if r.get("final_kind") == "error")
+    return {"total": len(rows), "errors": errors, "median_ms": float(median)}
+
+
+def _summary_runs() -> dict:
+    try:
+        from scheduler_v2 import client as sched_client
+        history = sched_client.history(limit=100)
+        tasks = sched_client.list_jobs()
+    except Exception as e:
+        log.debug("scheduler summary unavailable: %s", e)
+        return {"total_today": 0, "failures_today": 0, "tasks": 0}
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    total_today = sum(1 for r in history if (r.get("started_at") or "").startswith(today))
+    # v2 statuses: success, error, timeout, crashed
+    failures = sum(1 for r in history
+                    if (r.get("started_at") or "").startswith(today)
+                    and r.get("status") not in ("success", None, ""))
+    return {"total_today": total_today, "failures_today": failures, "tasks": len(tasks)}
+
+
+def _summary_users() -> dict:
+    """Snapshot utenti per dashboard."""
+    try:
+        users.init_db()
+        all_u = users.list_users()
+    except Exception as e:
+        log.debug("users summary unavailable: %s", e)
+        return {"hosts": 0, "guests": 0, "recent": []}
+    hosts = sum(1 for u in all_u if u["role"] == "host")
+    guests = sum(1 for u in all_u if u["role"] == "guest")
+    # Ultimi 5 con almeno un canale verified (= "pairati")
+    recent = []
+    for u in sorted(all_u, key=lambda x: x.get("created_at", ""), reverse=True):
+        try:
+            chans = users.list_channels(u["id"])
+        except Exception:
+            chans = []
+        verified = [c for c in chans if c.get("verified_at")]
+        if verified:
+            recent.append({
+                "name": u["name"],
+                "role": u["role"],
+                "channels": [c["channel"] for c in verified],
+            })
+        if len(recent) >= 5:
+            break
+    return {"hosts": hosts, "guests": guests, "recent": recent}
+
+
+def _summary_safety() -> dict:
+    try:
+        from safety.storage import SafetyStore
+        s = SafetyStore()
+        rows = list(s.all_signatures())
+        s.close()
+    except Exception as e:
+        log.debug("safety summary unavailable: %s", e)
+        return {"whitelist": 0, "blacklist": 0, "graylist": 0, "forbidden": 0}
+    out = {"whitelist": 0, "blacklist": 0, "graylist": 0, "forbidden": 0}
+    for r in rows:
+        out[r.kind] = out.get(r.kind, 0) + 1
+    return out
+
+
+async def admin_home(request: web.Request) -> web.Response:
+    """GET /admin — dashboard root."""
+    started = request.app.get("started_at", time.time())
+    catalog = request.app.get("catalog_provider", lambda: [])()
+    ctx = {
+        "version": "1.1",
+        "uptime_s": time.time() - started,
+        "turn_summary": _summary_turns(),
+        "proposals_summary": _summary_proposals(),
+        "executors_summary": _summary_executors(catalog),
+        "runs_summary": _summary_runs(),
+        "safety_summary": _summary_safety(),
+        "users_summary": _summary_users(),
+    }
+    body = render_template("dashboard.html", **ctx).encode("utf-8")
+    return web.Response(body=body, content_type="text/html")
+
+
+# --- /admin/proposals --------------------------------------------------------
+
+def _describe_proposal(kind: str, sig_key: str) -> str:
+    """Spiegazione user-readable di una proposta introvertiva.
+
+    Determinismo §7.9: parsing JSON-tagged sig_key + template i18n.
+    Niente LLM. Lingua corrente da `messages.get` (config.DEFAULT_LANG,
+    env METNOS_LANG). Fallback su template `MSG_PROP_UNKNOWN` se la shape
+    non matcha le 5 forme note (dedupe+legacy_orphan, dedupe generico,
+    generalize lista N, generalize lista vuota, specialize).
+    """
+    from messages import get as _msg
+    try:
+        parsed = json.loads(sig_key)
+    except (TypeError, ValueError):
+        return _msg("MSG_PROP_UNKNOWN", raw=sig_key[:80])
+    if not isinstance(parsed, list) or not parsed:
+        return _msg("MSG_PROP_UNKNOWN", raw=sig_key[:80])
+    head = parsed[0]
+    if head == "dedupe" and len(parsed) >= 4:
+        reason = parsed[1] or "duplicate"
+        a, b = parsed[2], parsed[3]
+        if reason == "legacy_orphan":
+            return _msg("MSG_PROP_DEDUPE_LEGACY", a=a, b=b)
+        return _msg("MSG_PROP_DEDUPE_GENERIC", a=a, b=b, reason=reason)
+    if head == "generalize" and len(parsed) >= 2:
+        seq = parsed[1]
+        if not isinstance(seq, list) or not seq:
+            return _msg("MSG_PROP_GENERALIZE_NOISE")
+        return _msg("MSG_PROP_GENERALIZE_SEQ",
+                    seq=" → ".join(str(s) for s in seq))
+    if head == "specialize" and len(parsed) >= 4:
+        exec_name, arg, val_json = parsed[1], parsed[2], parsed[3]
+        # val_json e' una stringa JSON-encoded del valore originale (es.
+        # '"/opt/myclaw"' o '["dates.semantic"]'). Decodifica per leggibilita',
+        # fallback al raw se invalida.
+        try:
+            val = json.loads(val_json)
+            val_disp = (val if isinstance(val, str)
+                        else json.dumps(val, ensure_ascii=False))
+        except (TypeError, ValueError):
+            val_disp = str(val_json)
+        return _msg("MSG_PROP_SPECIALIZE", exec=exec_name, arg=arg, val=val_disp)
+    return _msg("MSG_PROP_UNKNOWN", raw=sig_key[:80])
+
+
+def _list_proposals(kind_filter: str | None) -> list[dict]:
+    db = proposals_state.DB_PATH
+    if not db.exists():
+        return []
+    conn = sqlite3.connect(str(db))
+    conn.row_factory = sqlite3.Row
+    try:
+        if kind_filter:
+            rows = conn.execute(
+                "SELECT * FROM proposals_state WHERE kind = ? "
+                "ORDER BY last_seen DESC LIMIT 200",
+                (kind_filter,),
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                "SELECT * FROM proposals_state "
+                "ORDER BY last_seen DESC LIMIT 200"
+            ).fetchall()
+    finally:
+        conn.close()
+    out = []
+    for r in rows:
+        d = dict(r)
+        d["description"] = _describe_proposal(d.get("kind", ""), d.get("sig_key", ""))
+        out.append(d)
+    return out
+
+
+async def admin_proposals(request: web.Request) -> web.Response:
+    """GET /admin/proposals?kind={dedupe|generalize|specialize}"""
+    kind = request.query.get("kind", "").strip()
+    rows = _list_proposals(kind or None)
+    return negotiate_collection(
+        request,
+        json_payload={"rows": rows, "kind": kind, "total": len(rows)},
+        template="proposals.html",
+        template_ctx={"rows": rows, "kind": kind},
+    )
+
+
+async def admin_proposal_action(request: web.Request) -> web.Response:
+    """POST /admin/proposals/{sig_key}/{action}"""
+    sig_key = urllib.parse.unquote(request.match_info["sig_key"])
+    action = request.match_info["action"]
+    if action not in ("approve", "reject", "defer"):
+        return _error(400, "invalid_action", f"action must be approve|reject|defer, got {action}")
+    # `defer` semantica: marca dormant senza riscrivere come reject (per ora alias).
+    persisted = "approve" if action == "approve" else ("reject" if action == "reject" else "reject")
+    try:
+        row = proposals_state.mark_action(sig_key, persisted)
+    except Exception as e:
+        log.exception("proposal action failed")
+        return _error(500, "internal_error", str(e))
+    if row is None:
+        return _error(404, "not_found", f"proposal {sig_key} not found")
+
+    if "text/html" in request.headers.get("Accept", ""):
+        # Risposta htmx: una riga aggiornata da swappare al posto di quella corrente.
+        html = (
+            f'<tr><td colspan="7" class="muted">'
+            f"sig <code>{sig_key}</code>: {action} done · state={row.state}</td></tr>"
+        )
+        return web.Response(text=html, content_type="text/html")
+    return web.json_response({"ok": True, "sig_key": sig_key, "action": action,
+                              "state": row.state})
+
+
+# --- /admin/executors --------------------------------------------------------
+
+def _executors_rows(catalog) -> list[dict]:
+    """Mappa il catalog in righe serializzabili. `source` derivato dal path."""
+    from loader import SYNTHESIZED_EXECUTORS_DIR
+    out = []
+    synth_root = str(SYNTHESIZED_EXECUTORS_DIR)
+    for ex in sorted(catalog, key=lambda e: e.name):
+        src = "synth" if synth_root in str(ex.manifest_path) else "handcrafted"
+        out.append({
+            "name": ex.name,
+            "version": ex.version,
+            "lifecycle": ex.lifecycle,
+            "source": src,
+            "capabilities": [c.get("name", "") for c in (ex.capabilities or [])],
+            "revertible": bool(ex.revertible),
+            "deprecated_at": ex.deprecated_at,
+            "superseded_by": ex.superseded_by,
+        })
+    return out
+
+
+async def admin_executors(request: web.Request) -> web.Response:
+    """GET /admin/executors"""
+    catalog = request.app.get("catalog_provider", lambda: [])()
+    rows = _executors_rows(catalog)
+    return negotiate_collection(
+        request,
+        json_payload={"rows": rows, "total": len(rows)},
+        template="executors.html",
+        template_ctx={"rows": rows},
+    )
+
+
+async def admin_executors_stats(request: web.Request) -> web.Response:
+    """GET /admin/executors/stats — counts + daily events.
+
+    Negotiation Accept: html → grafici uPlot/CSS bar; json → payload raw.
+    """
+    counts = executor_aging.counts_by_source_lifecycle()
+    daily = executor_aging.daily_event_counts(days=30)
+    accept = request.headers.get("Accept", "")
+    want_html = "text/html" in accept and "application/json" not in accept
+    if want_html:
+        # Pre-elabora dati per il template (semplifica il JS).
+        # Bar chart: lista (source, lifecycle, count, max_for_source).
+        bar_rows = []
+        for source, by_lc in counts.items():
+            tot = sum(by_lc.values()) or 1
+            for lc in ("active", "deprecated", "archived"):
+                bar_rows.append({
+                    "source": source,
+                    "lifecycle": lc,
+                    "count": by_lc.get(lc, 0),
+                    "pct": 100.0 * by_lc.get(lc, 0) / tot,
+                })
+        html = render_template(
+            "executors_stats.html",
+            counts=counts,
+            bar_rows=bar_rows,
+            daily=daily,
+            daily_json=json.dumps(daily, default=str),
+        )
+        return web.Response(text=html, content_type="text/html")
+    payload = {
+        "counts_by_source_lifecycle": counts,
+        "daily_event_counts": daily,
+    }
+    body = json.dumps(payload, ensure_ascii=False, default=str).encode("utf-8")
+    return serve_with_etag(request, body, content_type="application/json")
+
+
+# --- /admin/runs -------------------------------------------------------------
+
+async def admin_runs(request: web.Request) -> web.Response:
+    """GET /admin/runs?limit=N"""
+    try:
+        limit = int(request.query.get("limit", "100"))
+    except ValueError:
+        limit = 100
+    try:
+        from scheduler_v2 import client as sched_client
+        rows = sched_client.history(limit=limit)
+    except Exception as e:
+        log.exception("scheduler history failed")
+        return _error(500, "internal_error", str(e))
+    # Normalizza per il template (compat v1 field names: task/ended_at/status):
+    # v2 usa entry_name, finished_at, status in {success,error,timeout,crashed,running}.
+    for r in rows:
+        r["task"] = r.get("entry_name") or r.get("task") or "-"
+        r["ended_at"] = r.get("finished_at") or r.get("ended_at")
+        # Mappa "success" → "ok" per il chip verde del template legacy.
+        if r.get("status") == "success":
+            r["status"] = "ok"
+        try:
+            dur_ms = r.get("duration_ms")
+            if dur_ms is not None:
+                r["duration_s"] = round(dur_ms / 1000.0, 2)
+            elif r.get("started_at") and r.get("ended_at"):
+                a = datetime.fromisoformat(r["started_at"].replace("Z", "+00:00"))
+                b = datetime.fromisoformat(r["ended_at"].replace("Z", "+00:00"))
+                r["duration_s"] = round((b - a).total_seconds(), 2)
+            else:
+                r["duration_s"] = None
+        except Exception:
+            r["duration_s"] = None
+    return negotiate_collection(
+        request,
+        json_payload={"rows": rows, "total": len(rows)},
+        template="runs.html",
+        template_ctx={"rows": rows},
+    )
+
+
+# --- /admin/builds -----------------------------------------------------------
+
+async def admin_builds(request: web.Request) -> web.Response:
+    """GET /admin/builds — lista delle build asincrone (ADR 0093).
+
+    Una riga per (base_path, idx) noto: stato (running/done/aborted/error/
+    interrupted), n_done/n_total, eta_s, age dell'ultimo update, unit_active.
+    """
+    try:
+        import build_orchestrator as _bo
+        rows_raw = _bo.list_active_builds()
+    except Exception as e:
+        log.exception("list_active_builds failed")
+        return _error(500, "internal_error", str(e))
+
+    rows = []
+    for r in rows_raw:
+        n_done = int(r.get("n_done") or 0)
+        n_total = int(r.get("n_total") or 0)
+        pct = (n_done / n_total * 100.0) if n_total > 0 else 0.0
+        rows.append({
+            "digest": r.get("digest", ""),
+            "base_path": r.get("base_path", ""),
+            "idx": r.get("idx", ""),
+            "state": r.get("state", "?"),
+            "n_done": n_done,
+            "n_total": n_total,
+            "pct": round(pct, 1),
+            "eta_s": r.get("eta_s"),
+            "errors": r.get("errors") or 0,
+            "started_at": r.get("started_at"),
+            "last_update": r.get("last_update"),
+            "last_update_age_s": r.get("last_update_age_s"),
+            "unit_active": bool(r.get("unit_active", False)),
+            "unit_name": r.get("unit_name", ""),
+            "duration_s": r.get("duration_s"),
+            "n_entries": r.get("n_entries"),
+            "model": r.get("model", ""),
+        })
+    return negotiate_collection(
+        request,
+        json_payload={"rows": rows, "total": len(rows)},
+        template="builds.html",
+        template_ctx={"rows": rows},
+    )
+
+
+# --- /admin/safety -----------------------------------------------------------
+
+async def admin_safety(request: web.Request) -> web.Response:
+    """GET /admin/safety?kind={whitelist|blacklist|graylist|forbidden}"""
+    kind = request.query.get("kind", "").strip()
+    try:
+        from safety.storage import SafetyStore
+        s = SafetyStore()
+        if kind:
+            rows = [asdict(r) for r in s.find_by_kind(kind)]
+        else:
+            rows = [asdict(r) for r in s.all_signatures()]
+        s.close()
+    except Exception as e:
+        log.exception("safety listing failed")
+        return _error(500, "internal_error", str(e))
+    return negotiate_collection(
+        request,
+        json_payload={"rows": rows, "kind": kind, "total": len(rows)},
+        template="safety.html",
+        template_ctx={"rows": rows, "kind": kind},
+    )
+
+
+# --- /admin/turns ------------------------------------------------------------
+
+async def admin_turns(request: web.Request) -> web.Response:
+    """GET /admin/turns?limit=N"""
+    try:
+        limit = int(request.query.get("limit", "50"))
+    except ValueError:
+        limit = 50
+    raw = _load_recent_turns(limit=limit)
+    rows = []
+    for t in raw:
+        steps = t.get("steps") or []
+        ts0 = t.get("ts_start") or 0
+        ts1 = t.get("ts_end") or 0
+        rows.append({
+            "turn_id": t.get("turn_id") or "",
+            "ts_start_iso": datetime.fromtimestamp(ts0, tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ") if ts0 else "",
+            "channel": t.get("channel") or "",
+            "actor": t.get("actor") or "",
+            "n_steps": len(steps),
+            "final_kind": t.get("final_kind") or "",
+            "elapsed_s": round(ts1 - ts0, 1) if (ts0 and ts1) else 0,
+            "user_query": t.get("user_query") or "",
+        })
+    return negotiate_collection(
+        request,
+        json_payload={"rows": rows, "total": len(rows)},
+        template="turns.html",
+        template_ctx={"rows": rows},
+    )
+
+
+# --- /admin/users (multi-user management, ADR 0083) -------------------------
+
+def _user_to_dict(u: dict) -> dict:
+    """Lightweight projection per HTML/JSON listing (escludi notes lunghe)."""
+    return {
+        "id": u["id"],
+        "name": u["name"],
+        "display_name": u.get("display_name"),
+        "role": u["role"],
+        "owner_user_id": u.get("owner_user_id"),
+        "autonomy_level": u["autonomy_level"],
+        "email": u.get("email"),
+        "created_at": u.get("created_at"),
+    }
+
+
+def _channels_for(user_id: str) -> list[dict]:
+    try:
+        return users.list_channels(user_id)
+    except Exception as e:
+        log.debug("channels list failed for %s: %s", user_id, e)
+        return []
+
+
+async def admin_users(request: web.Request) -> web.Response:
+    """GET /admin/users — tabella utenti.
+    POST /admin/users — crea user da form.
+    """
+    if request.method == "POST":
+        return await _admin_users_create(request)
+    try:
+        users.init_db()
+        all_u = users.list_users()
+    except Exception as e:
+        log.exception("users list failed")
+        return _error(500, "internal_error", str(e))
+    rows = []
+    for u in all_u:
+        d = _user_to_dict(u)
+        d["channels"] = [
+            {"channel": c["channel"],
+             "recipient_id": c.get("recipient_id"),
+             "verified": bool(c.get("verified_at"))}
+            for c in _channels_for(u["id"])
+        ]
+        rows.append(d)
+    return negotiate_collection(
+        request,
+        json_payload={"rows": rows, "total": len(rows)},
+        template="users.html",
+        template_ctx={"rows": rows},
+    )
+
+
+async def _admin_users_create(request: web.Request) -> web.Response:
+    body = await request.post()
+    name = (body.get("name") or "").strip()
+    role = (body.get("role") or "guest").strip()
+    autonomy = (body.get("autonomy_level") or "restricted").strip()
+    display_name = (body.get("display_name") or "").strip() or None
+    email = (body.get("email") or "").strip() or None
+    owner_user_id = (body.get("owner_user_id") or "").strip() or None
+    try:
+        users.init_db()
+        # Default owner: se role='guest' e nessun owner specificato, usa
+        # l'host bootstrappato (single-host policy).
+        if role == "guest" and not owner_user_id:
+            hosts = users.list_users(role="host")
+            if hosts:
+                owner_user_id = hosts[0]["id"]
+        u = users.create_user(
+            name,
+            display_name=display_name,
+            role=role,
+            owner_user_id=owner_user_id,
+            autonomy_level=autonomy,
+            email=email,
+        )
+    except ValueError as e:
+        return _error(400, "invalid_input", str(e))
+    except Exception as e:
+        log.exception("user create failed")
+        return _error(500, "internal_error", str(e))
+    if "text/html" in request.headers.get("Accept", ""):
+        raise web.HTTPFound(f"/admin/users/{u['id']}")
+    return web.json_response(_user_to_dict(u), status=201)
+
+
+async def admin_user_detail(request: web.Request) -> web.Response:
+    """GET /admin/users/{id} — dettaglio."""
+    user_id = request.match_info["id"]
+    try:
+        users.init_db()
+        u = users.get_user(user_id)
+    except Exception as e:
+        log.exception("user detail failed")
+        return _error(500, "internal_error", str(e))
+    if not u:
+        return _error(404, "not_found", f"user {user_id!r} not found")
+    chans = _channels_for(u["id"])
+    payload = {
+        **_user_to_dict(u),
+        "notes": u.get("notes"),
+        "channels": [
+            {**c, "verified": bool(c.get("verified_at"))} for c in chans
+        ],
+    }
+    if "text/html" in request.headers.get("Accept", ""):
+        html = render_template("user_detail.html", user=payload, channels=chans)
+        return web.Response(text=html, content_type="text/html")
+    return web.json_response(payload)
+
+
+async def admin_user_delete(request: web.Request) -> web.Response:
+    """POST /admin/users/{id}/delete."""
+    user_id = request.match_info["id"]
+    try:
+        ok = users.delete_user(user_id)
+    except Exception as e:
+        log.exception("user delete failed")
+        return _error(500, "internal_error", str(e))
+    if not ok:
+        return _error(404, "not_found", f"user {user_id!r} not found")
+    if "text/html" in request.headers.get("Accept", ""):
+        raise web.HTTPFound("/admin/users")
+    return web.json_response({"ok": True, "deleted": user_id})
+
+
+async def admin_user_update(request: web.Request) -> web.Response:
+    """POST /admin/users/{id}/update — aggiorna campi mutabili.
+
+    Form fields opzionali: display_name, email, autonomy_level, notes.
+    Stringa vuota su un campo = clear (NULL nel DB). Campo assente nel
+    body = invariato. Ritorna 303 redirect alla detail page (HTML) o
+    JSON dello user aggiornato.
+    """
+    user_id = request.match_info["id"]
+    body = await request.post()
+
+    def _field_or_unset(name: str):
+        # web.MultiDict: la chiave esiste solo se presente nel form.
+        if name not in body:
+            return ...
+        v = body.get(name)
+        if v is None:
+            return None
+        s = str(v).strip()
+        return s or None  # stringa vuota = clear (NULL)
+
+    kwargs = {
+        k: _field_or_unset(k)
+        for k in ("display_name", "email", "autonomy_level", "notes")
+    }
+    # Filtra i campi non presenti (sentinel ...)
+    kwargs = {k: v for k, v in kwargs.items() if v is not ...}
+
+    try:
+        users.init_db()
+        ok = users.update_user(user_id, **kwargs)
+    except ValueError as e:
+        return _error(400, "invalid_input", str(e))
+    except Exception as e:
+        log.exception("user update failed")
+        return _error(500, "internal_error", str(e))
+    if not ok:
+        return _error(404, "not_found", f"user {user_id!r} not found")
+
+    if "text/html" in request.headers.get("Accept", ""):
+        raise web.HTTPFound(f"/admin/users/{user_id}")
+    u = users.get_user(user_id)
+    return web.json_response(_user_to_dict(u))
+
+
+async def admin_user_pair_channel(request: web.Request) -> web.Response:
+    """POST /admin/users/{id}/channels/{channel}/pair."""
+    user_id = request.match_info["id"]
+    channel = request.match_info["channel"]
+    if channel not in users.CHANNELS:
+        return _error(400, "invalid_channel",
+                      f"channel must be one of {users.CHANNELS}")
+    try:
+        u = users.get_user(user_id)
+        if not u:
+            return _error(404, "not_found", f"user {user_id!r} not found")
+        token = users.issue_pairing_token(user_id, channel, ttl_s=3600)
+    except Exception as e:
+        log.exception("pair token issue failed")
+        return _error(500, "internal_error", str(e))
+    pair_url = ""
+    if channel == "http":
+        # Costruisci pair URL completo. Origin viene da X-Forwarded-Proto
+        # (Cloudflare) o request.scheme + Host header.
+        xfp = request.headers.get("X-Forwarded-Proto") or request.scheme
+        host = request.host
+        pair_url = f"{xfp}://{host}/pair/{token}"
+        instructions = (
+            f"Manda a {u['name']} questo URL (apre da browser/cellulare "
+            f"UNA VOLTA): {pair_url}"
+        )
+    elif channel == "telegram":
+        instructions = (
+            f"Manda a {u['name']} questo comando da inviare al bot Telegram "
+            f"di Metnos: /start {token}"
+        )
+    else:
+        instructions = f"Token monouso emesso per channel '{channel}': {token}"
+    if "text/html" in request.headers.get("Accept", ""):
+        html = render_template("user_pair.html", user=u, channel=channel,
+                                token=token, instructions=instructions,
+                                pair_url=pair_url)
+        return web.Response(text=html, content_type="text/html")
+    return web.json_response({"ok": True, "user_id": user_id,
+                              "channel": channel, "token": token,
+                              "pair_url": pair_url,
+                              "instructions": instructions})
+
+
+async def admin_user_remove_channel(request: web.Request) -> web.Response:
+    """POST /admin/users/{id}/channels/{channel}/remove."""
+    user_id = request.match_info["id"]
+    channel = request.match_info["channel"]
+    try:
+        ok = users.remove_channel(user_id, channel)
+    except Exception as e:
+        log.exception("remove channel failed")
+        return _error(500, "internal_error", str(e))
+    if not ok:
+        return _error(404, "not_found",
+                      f"channel {channel!r} not found for user {user_id!r}")
+    if "text/html" in request.headers.get("Accept", ""):
+        raise web.HTTPFound(f"/admin/users/{user_id}")
+    return web.json_response({"ok": True, "user_id": user_id,
+                              "channel": channel})
+
+
+async def admin_user_set_autonomy(request: web.Request) -> web.Response:
+    """POST /admin/users/{id}/autonomy."""
+    user_id = request.match_info["id"]
+    body = await request.post()
+    level = (body.get("autonomy_level") or "").strip()
+    if level not in users.AUTONOMY_LEVELS:
+        return _error(400, "invalid_input",
+                      f"autonomy_level must be one of {users.AUTONOMY_LEVELS}")
+    try:
+        ok = users.set_autonomy(user_id, level)
+    except ValueError as e:
+        return _error(400, "invalid_input", str(e))
+    except Exception as e:
+        log.exception("set autonomy failed")
+        return _error(500, "internal_error", str(e))
+    if not ok:
+        return _error(404, "not_found", f"user {user_id!r} not found")
+    if "text/html" in request.headers.get("Accept", ""):
+        raise web.HTTPFound(f"/admin/users/{user_id}")
+    return web.json_response({"ok": True, "user_id": user_id,
+                              "autonomy_level": level})
+
+
+_LOGIN_HTML = """<!doctype html>
+<html lang="it"><head><meta charset="utf-8"><title>Metnos admin · login</title>
+<style>
+body{font:14px system-ui;display:flex;align-items:center;justify-content:center;
+     min-height:80vh;margin:0;background:#fafafa}
+form{background:#fff;padding:1.5rem;border:1px solid #ddd;border-radius:.5rem;
+     min-width:340px}
+h1{font-size:1.1em;margin:0 0 1rem 0}
+input[type=password]{width:100%;padding:.5rem;font:inherit;font-family:monospace;
+     box-sizing:border-box;border:1px solid #ccc;border-radius:.3rem}
+button{margin-top:.7rem;padding:.5rem 1rem;font:inherit;cursor:pointer}
+.err{color:#c00;margin-top:.5rem;font-size:.9em}
+.muted{color:#888;font-size:.85em;margin-top:.7rem}
+</style></head><body>
+<form method="post" action="/admin/login">
+<h1>Metnos admin</h1>
+<input type="password" name="key" placeholder="admin key (hex)" autofocus required>
+<button type="submit">entra</button>
+__ERR__
+<div class="muted">la chiave e' in <code>~/.config/metnos/admin.key</code> sul host.</div>
+</form></body></html>"""
+
+
+async def admin_login(request: web.Request) -> web.Response:
+    """GET /admin/login — form HTML; POST /admin/login — verifica + cookie."""
+    admin_key = request.app.get("admin_key", "")
+    if request.method == "GET":
+        already = request.cookies.get(ADMIN_COOKIE, "")
+        if already:
+            from http_auth import verify_admin_cookie
+            if admin_key and verify_admin_cookie(already, admin_key):
+                raise web.HTTPFound("/admin")
+        return web.Response(
+            text=_LOGIN_HTML.replace("__ERR__", ""),
+            content_type="text/html",
+        )
+    # POST
+    body = await request.post()
+    submitted = (body.get("key") or "").strip()
+    import hmac as _hmac
+    if not (admin_key and submitted and
+            _hmac.compare_digest(submitted, admin_key)):
+        return web.Response(
+            text=_LOGIN_HTML.replace(
+                "__ERR__", '<div class="err">chiave non valida</div>'
+            ),
+            content_type="text/html",
+            status=401,
+        )
+    cookie_val = issue_admin_cookie(admin_key)
+    resp = web.HTTPFound("/admin")
+    resp.set_cookie(
+        ADMIN_COOKIE, cookie_val,
+        max_age=ADMIN_COOKIE_TTL_S,
+        httponly=True,
+        samesite="Strict",
+        path="/",
+    )
+    raise resp
+
+
+async def admin_logout(request: web.Request) -> web.Response:
+    """POST /admin/logout — clear cookie + redirect a /admin/login."""
+    resp = web.HTTPFound("/admin/login")
+    resp.del_cookie(ADMIN_COOKIE, path="/")
+    raise resp
+
+
+# --- /admin/synth-proposals/<id>/evaluate (ADR 0122) -------------------------
+
+_SYNT_PROPOSALS_DIR = Path.home() / ".local" / "share" / "metnos" / "synt_proposals"
+
+
+async def admin_synth_proposal_evaluate(request: web.Request) -> web.Response:
+    """POST/GET /admin/synth-proposals/{id}/evaluate — auto-evaluator.
+
+    Risolve `id` come stem o `proposal_id` dentro `~/.local/share/metnos/
+    synt_proposals/`. Ritorna JSON dell'`EvaluationResult` (o testo se
+    Accept: text/html). ADR 0122.
+    """
+    proposal_id = urllib.parse.unquote(request.match_info["id"])
+    target_path: Path | None = None
+    if _SYNT_PROPOSALS_DIR.exists():
+        for cand in _SYNT_PROPOSALS_DIR.glob("*.json"):
+            if "_archived" in cand.parts:
+                continue
+            try:
+                d = json.loads(cand.read_text(encoding="utf-8"))
+            except Exception:
+                continue
+            if d.get("id") == proposal_id or cand.stem == proposal_id:
+                target_path = cand
+                break
+    if target_path is None:
+        return _error(404, "not_found", f"synth proposal {proposal_id} not found")
+    try:
+        from proposal_evaluator import evaluate_proposal
+        result = evaluate_proposal(target_path, audit=True)
+    except Exception as e:
+        log.exception("proposal evaluator failed")
+        return _error(500, "internal_error", str(e))
+    payload = result.to_dict()
+    if "text/html" in request.headers.get("Accept", ""):
+        body = (
+            f'<div class="card"><h3>Evaluator — {payload["name"]}</h3>'
+            f'<p><strong>verdict</strong>: <code>{payload["verdict"]}</code> · '
+            f'<strong>score</strong>: {payload["score"]}</p>'
+            f'<p>{payload["rationale"]}</p>'
+            f'<details><summary>signals</summary>'
+            f'<pre>{json.dumps(payload, ensure_ascii=False, indent=2)}</pre>'
+            f'</details></div>'
+        )
+        return web.Response(text=body, content_type="text/html")
+    return web.json_response(payload)
+
+
+ROUTES = (
+    ("GET",  "/admin/login",                      admin_login),
+    ("POST", "/admin/login",                      admin_login),
+    ("POST", "/admin/logout",                     admin_logout),
+    ("GET",  "/admin",                            admin_home),
+    ("GET",  "/admin/proposals",                  admin_proposals),
+    ("POST", r"/admin/proposals/{sig_key}/{action:approve|reject|defer}", admin_proposal_action),
+    ("GET",  r"/admin/synth-proposals/{id}/evaluate", admin_synth_proposal_evaluate),
+    ("POST", r"/admin/synth-proposals/{id}/evaluate", admin_synth_proposal_evaluate),
+    ("GET",  "/admin/executors",                  admin_executors),
+    ("GET",  "/admin/executors/stats",            admin_executors_stats),
+    ("GET",  "/admin/runs",                       admin_runs),
+    ("GET",  "/admin/builds",                     admin_builds),
+    ("GET",  "/admin/safety",                     admin_safety),
+    ("GET",  "/admin/turns",                      admin_turns),
+    ("GET",  "/admin/users",                      admin_users),
+    ("POST", "/admin/users",                      admin_users),
+    ("GET",  "/admin/users/{id}",                 admin_user_detail),
+    ("POST", "/admin/users/{id}/delete",          admin_user_delete),
+    ("POST", "/admin/users/{id}/update",           admin_user_update),
+    ("POST", "/admin/users/{id}/autonomy",        admin_user_set_autonomy),
+    ("POST", r"/admin/users/{id}/channels/{channel}/pair",   admin_user_pair_channel),
+    ("POST", r"/admin/users/{id}/channels/{channel}/remove", admin_user_remove_channel),
+)

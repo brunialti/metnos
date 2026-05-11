@@ -1,0 +1,993 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Metnos &mdash; agent_runtime v1.1 (tested)</title>
+    <meta name="description" content="Microdesign of Metnos's planner: how it receives a user request, decides what to do, executes, replies. Canonical doc v1.1, tested by the POC on April 26, 2026.">
+    <meta name="keywords" content="agent_runtime, planner, ReAct, multistep, tool-use, scratchpad, data piping, mode router, vaglio, microdesign, metnos, Metnos">
+    <meta name="author" content="Roberto Brunialti">
+    <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large">
+    <link rel="canonical" href="https://metnos.com/en/architecture/agent_runtime.html">
+    <link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/agent_runtime.html">
+    <link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/agent_runtime.html">
+    <link rel="alternate" hreflang="x-default" href="https://metnos.com/en/architecture/agent_runtime.html">
+    <meta property="og:type" content="article">
+    <meta property="og:url" content="https://metnos.com/en/architecture/agent_runtime.html">
+    <meta property="og:title" content="Metnos &mdash; agent_runtime v1.1 (tested)">
+    <meta property="og:description" content="Metnos's planner. How it receives a request, decides what to do, replies. Tested microdesign.">
+    <meta property="og:locale" content="en_US">
+    <meta property="og:locale:alternate" content="it_IT">
+    <meta property="og:site_name" content="Metnos">
+    <meta name="twitter:card" content="summary">
+    <meta name="twitter:title" content="Metnos &mdash; agent_runtime v1.1 (tested)">
+    <meta name="twitter:description" content="Metnos's planner. How it receives a request, decides what to do, replies. Tested microdesign.">
+    <script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "TechArticle",
+  "headline": "Metnos — agent_runtime v1.1",
+  "description": "Microdesign of Metnos's planner: native tool-use, multistep ReAct, data piping, scratchpad, 3-tier LLM. Status: tested.",
+  "url": "https://metnos.com/en/architecture/agent_runtime.html",
+  "inLanguage": "en",
+  "isPartOf": {"@type": "WebSite", "name": "Metnos", "url": "https://metnos.com/"},
+  "author": {"@type": "Person", "name": "Roberto Brunialti"}
+}
+    </script>
+    <style>
+:root {
+    --navy: #1A477A; --navy-light: #2B6CB0; --sage: #548235;
+    --bronze: #A0522D; --plum: #6B21A8;
+    --bg: #FAFBFC; --text: #1a1a1a;
+    --border: #d0d7de; --code-bg: #f6f8fa;
+    --table-header: #1A477A; --table-alt: #f0f4f8;
+    --note-bg: #dbeafe; --note-border: #3b82f6;
+    --tip-bg: #dcfce7; --tip-border: #16a34a;
+    --warn-bg: #fef3c7; --warn-border: #f59e0b;
+    --danger-bg: #fee2e2; --danger-border: #dc2626;
+    --muted: #64748B;
+}
+* { box-sizing: border-box; }
+body { font-family: 'Segoe UI', Calibri, -apple-system, sans-serif; font-size: 11pt; line-height: 1.65; color: var(--text); background: var(--bg); max-width: 960px; margin: 0 auto; padding: 40px 30px; }
+h1 { color: var(--navy); font-size: 20pt; border-bottom: 3px solid var(--navy); padding-bottom: 8px; margin-top: 50px; }
+h1:first-of-type { margin-top: 0; }
+h2 { color: var(--navy-light); font-size: 14pt; margin-top: 28px; border-bottom: 1px solid var(--border); padding-bottom: 4px; }
+h3 { color: var(--navy); font-size: 12pt; margin-top: 18px; }
+p { margin: 10px 0; }
+table { width: 100%; border-collapse: collapse; margin: 15px 0; font-size: 10pt; }
+th { background: var(--table-header); color: white; padding: 8px 10px; text-align: left; font-weight: 600; }
+td { padding: 7px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+tr:nth-child(even) td { background: var(--table-alt); }
+pre { background: var(--code-bg); border: 1px solid var(--border); border-radius: 4px; padding: 12px 16px; overflow-x: auto; font-size: 9.5pt; line-height: 1.55; }
+code { font-family: Consolas, 'Courier New', monospace; }
+p code, li code, td code { background: var(--code-bg); padding: 1px 5px; border-radius: 3px; font-size: 9.5pt; }
+.callout { border-left: 4px solid; padding: 10px 16px; margin: 15px 0; border-radius: 0 4px 4px 0; font-size: 10pt; }
+.callout.note { background: var(--note-bg); border-color: var(--note-border); }
+.callout.tip { background: var(--tip-bg); border-color: var(--tip-border); }
+.callout.warning { background: var(--warn-bg); border-color: var(--warn-border); }
+.callout.danger { background: var(--danger-bg); border-color: var(--danger-border); }
+.title-page { text-align: center; padding: 60px 0 30px; }
+.title-page h1 { font-size: 32pt; border: none; margin: 0; }
+.title-page .subtitle { font-size: 16pt; color: var(--navy-light); margin: 10px 0 30px; }
+.title-page .meta { font-size: 11pt; color: #666; }
+.toc h2 { border: none; }
+.toc ol { font-size: 11pt; line-height: 1.9; }
+.toc a { color: var(--navy); text-decoration: none; }
+.toc a:hover { text-decoration: underline; }
+ul, ol { margin: 8px 0; padding-left: 24px; }
+li { margin-bottom: 4px; }
+.lead { font-size: 12pt; color: var(--navy); border-left: 4px solid var(--sage); padding-left: 14px; margin: 18px 0; }
+.example { background: #fff; border: 1px solid var(--border); border-left: 4px solid var(--bronze); border-radius: 0 4px 4px 0; padding: 12px 16px; margin: 14px 0; font-size: 10.5pt; }
+.example .ex-label { font-weight: 700; color: var(--bronze); font-size: 9.5pt; letter-spacing: 1px; text-transform: uppercase; }
+.status-banner { margin: 18px 0; border-left: 5px solid #16a34a; background: #dcfce7; color: #14532d; padding: 14px 20px; border-radius: 0 8px 8px 0; font-size: 11pt; line-height: 1.55; }
+.status-banner strong { color: #14532d; }
+.status-banner a { color: #14532d; text-decoration: underline; }
+.status-banner .status-chip { display: inline-block; background: #14532d; color: #fff; padding: 2px 10px; border-radius: 12px; font-size: 9.5pt; letter-spacing: 1px; font-weight: 700; margin-right: 6px; }
+.status-banner .seq { font-size: 9.5pt; color: #2d4a32; margin-top: 8px; }
+    </style>
+</head>
+<body>
+
+<div class="status-banner">
+<span class="status-chip">TESTED</span>
+<strong>&#10003; Microdesign v1.1 &mdash; aligned with the code as of 4 May 2026.</strong>
+The component has been built and tested at module and cluster level in POC v1.1 (test framework: <strong>cluster <code>agent_runtime</code> 109/109 green</strong>, system total 67/67 green at 1/5/2026), then extended on 4/5/2026 with fine-grained StepLog telemetry (5 sub-components: <code>intent_ms</code>, <code>prefilter_ms</code>, <code>vaglio_ms</code>, <code>exec_ms</code>, <code>rerank_ms</code> &mdash; ADR&nbsp;0080), an ANTI-COLLISION guard in the PLANNER prompt (ADR&nbsp;0079), a KNOWN PROJECT PATHS block read from <code>runtime/project_paths.json</code>, a KNOWN USERS block for multi-user (ADR&nbsp;0083), credential scrubbing in the turn log (ADR&nbsp;0082), and adaptive intra-turn re-rank (ADR&nbsp;0072). Implementation reference: <code>/opt/myclaw/runtime/agent_runtime.py</code>.
+<div class="seq">Status sequence of the microdesign: <em>under approval</em> &rarr; <em>approved</em> &rarr; <strong>tested</strong> &rarr; <em>implemented</em> (when the whole system is ready in production). Replaces version 1.0 of 24/4/2026, now obsolete.</div>
+</div>
+
+<nav aria-label="Language" style="position:fixed;top:16px;right:20px;z-index:9999;font-family:'Segoe UI',Calibri,sans-serif;font-size:10pt;letter-spacing:2px;background:#FAFBFC;border:1px solid #d0d7de;border-radius:14px;padding:4px 10px;box-shadow:0 1px 4px rgba(0,0,0,0.04);">
+<a href="/it/architecture/agent_runtime.html" hreflang="it" lang="it" style="color:#64748B;text-decoration:none;padding:0 4px;border:none;">IT</a>
+<span style="color:#d0d7de;"> &middot; </span>
+<a href="/en/architecture/agent_runtime.html" class="active" hreflang="en" lang="en" style="color:#1a1a1a;text-decoration:none;font-weight:700;padding:0 4px;border:none;">EN</a>
+</nav>
+
+<div style="background:#fff;border-bottom:1px solid #d0d7de;padding:10px 0;font-size:14px;position:sticky;top:0;z-index:10;margin-bottom:20px;">
+  <div style="max-width:960px;margin:0 auto;padding:0 20px;display:flex;justify-content:space-between;">
+    <a href="../index.html" style="color:#1a477a;text-decoration:none;font-weight:500;">&larr; Documentation index</a>
+    <span style="color:#8e8e93;">Microdesign &rsaquo; <strong style="color:#1a1a1a;">agent_runtime</strong></span>
+  </div>
+</div>
+
+<div class="title-page">
+    <h1>Metnos</h1>
+    <div class="subtitle"><code>agent_runtime</code> &mdash; the turn-by-turn planner</div>
+    <div class="meta">
+        Microdesign v1.1 &mdash; status <strong>TESTED</strong> (April 26, 2026)<br>
+        Validated by POC v1.1 with the 3-level SQLite test framework<br>
+        Audience: those who read to understand how Metnos works inside;<br>
+        those who implement or extend a runtime component.<br>
+        <br>
+        Reading time: 18 minutes.
+    </div>
+</div>
+
+<div class="callout" style="border-left:5px solid #16a34a;background:#dcfce7;color:#14532d;padding:14px 18px;border-radius:0 8px 8px 0;margin:18px 0;">
+<strong>Session update 4 May 2026.</strong> Six structural extensions
+from the ADR&nbsp;0072&ndash;0084 block, all non-blocking for the ReAct
+loop yet relevant to quality and diagnostics:
+<em>(0) adaptive intra-turn re-rank</em> &mdash;
+<code>runtime/adaptive_rerank.py</code> adds observation keywords to the
+prefilter candidates after every ok step, add-only, ranker-agnostic
+(ADR&nbsp;0072);
+<em>(1) PROJECT PATHS + ANTI-COLLISION</em> &mdash; the PLANNER prompt
+injects a block read from <code>runtime/project_paths.json</code> (e.g.
+<code>"metnos" = codebase at /opt/myclaw</code>) and a prescriptive guard
+against <code>request_new_executor</code> for names already in catalog or
+aliasing a canonical producer (ADR&nbsp;0079);
+<em>(2) KNOWN USERS</em> &mdash; <code>_render_users_known_block()</code>
+iterates <code>users.list_users()</code> and makes
+<code>to_user="lucia"</code> resolvable in <code>send_messages</code>
+(ADR&nbsp;0083);
+<em>(3) fine-grained StepLog telemetry</em> &mdash; five new fields
+(<code>intent_ms</code>, <code>prefilter_ms</code>, <code>vaglio_ms</code>,
+<code>exec_ms</code>, <code>rerank_ms</code>) for a turn breakdown
+readable from <code>bench_latency_breakdown.py</code> (ADR&nbsp;0080);
+<em>(4) credential scrubbing</em> &mdash; regex over
+<code>user_query</code> and <code>step.raw_args</code>/<code>resolved_args</code>:
+pwd/user become <code>&lt;REDACTED:cred&gt;</code> in the jsonl, with
+<code>redacted</code> + <code>n_redacted_fields</code> fields on the
+record (ADR&nbsp;0082);
+<em>(5) HTTP API channel</em> &mdash;
+<code>run_turn(channel="http")</code> invoked from
+<code>POST /agent/turn</code> in <a href="http_api.html"><code>http_api</code></a>
+with SSE Progress (events <code>thinking</code>/<code>progress</code>/<code>final</code>/<code>error</code>;
+<code>tool_call</code>/<code>tool_result</code> deferred to Phase 2).
+The 1/5 session sections (recurring scheduler, location request,
+multi-user step&nbsp;1) remain valid and are now backed by the
+deterministic prompt blocks above.
+</div>
+<div class="callout" style="border-left:5px solid #f59e0b;background:#fef3c7;color:#92400e;padding:14px 18px;border-radius:0 8px 8px 0;margin:18px 0;">
+<strong>Session 1 May 2026 (historical).</strong> Four structural
+extensions validated by the UC battery <strong>67/67 green</strong>
+(50 base + 15 edge + 2 process queries):
+<em>(a) theoretical frame "four forces + inertia"</em> &mdash; the system's
+behaviour reads as four orthogonal forces (<em>compositive</em> and
+<em>reactive</em> outward; <em>introspective</em> and <em>homeostatic</em>
+inward) with <em>inertia</em> as a separate scalar (thresholds, slowness,
+gates), never a fifth force;
+<em>(b) recurring scheduler MVP</em> &mdash; <code>runtime/scheduler.py</code>
++ <code>runtime/recurring_tasks.py</code> with CRUD over Telegram, seven
+builtin tools (<code>schedule_recurring</code>, <code>cancel_recurring</code>,
+<code>list_recurring</code>, <code>show_recurring</code>,
+<code>toggle_recurring</code>, <code>history_recurring</code>,
+<code>run_now_recurring</code>), callback registry by string key (ADR 0068),
+<code>times</code> + auto-cancel, <code>grace_window_minutes</code> for
+recover-missed, systemd user service <code>metnos-scheduler.service</code>;
+<em>(c) location request UX (PLANNER &sect;2-quater)</em> &mdash; when
+<code>get_location</code> returns <code>ok:false</code> on a location-relative
+query, the builtin tool <code>request_location_from_user</code> is invoked
+with an atomic pattern analogous to &sect;2-ter;
+<em>(d) multi-user step 1</em> &mdash; <code>pairing.actor</code> +
+<code>runtime/actor_resolver.py</code> with auto-assign host /
+<code>guest_&lt;id6&gt;</code> and end-to-end propagation (ADR 0035 MVP).
+Eight new ADRs (0061-0068) codify the session decisions.
+</div>
+
+<div class="toc">
+<h2>Index</h2>
+<ol>
+    <li><a href="#cap1">What it does: the story of one request</a></li>
+    <li><a href="#cap2">The loop of one turn, step by step</a></li>
+    <li><a href="#cap3">Modes: <em>local</em>, <em>online</em>, <em>hybrid</em></a></li>
+    <li><a href="#cap4">Three tiers of LLM: <em>fast</em>, <em>middle</em>, <em>wise</em></a></li>
+    <li><a href="#cap5">The pre-filter: choosing the sub-catalog</a></li>
+    <li><a href="#cap6">Native tool-use (no JSON parsing)</a></li>
+    <li><a href="#cap7">Data piping between steps: <code>from_step</code> and <code>{{stepN.field}}</code></a></li>
+    <li><a href="#cap8">Scratchpad for large observations</a></li>
+    <li><a href="#cap9">Vaglio of the plan</a></li>
+    <li><a href="#cap10">Safety caps and runtime guards</a></li>
+    <li><a href="#cap11">What it writes to logs</a></li>
+    <li><a href="#cap12">When things go wrong</a></li>
+    <li><a href="#cap13">What is deferred to v1.2+</a></li>
+</ol>
+</div>
+
+<h1 id="cap1">1. What it does: the story of one request</h1>
+
+<p class="lead">
+Imagine writing to Metnos: <em>&laquo;read the file ~/notes/diary.md and tell me the last three lines&raquo;</em>. From that moment on a <em>turn</em> begins. The planner &mdash; the module we describe here &mdash; receives the sentence, decides what to do, sets up the steps, and produces the answer.
+</p>
+
+<p>
+To understand what "deciding what to do" means, let us follow a concrete example. The request is the one above. The planner has no hardcoded logic that says "if the user says 'read a file' call fs_read"; the idea is different:
+</p>
+
+<ol>
+    <li>The planner looks at the <em>catalog of executors</em> available (small signed programs that know how to do one thing only: read a file, write one, make an HTTP call, read the clock, etc.).</li>
+    <li>It selects a subset relevant to the request (here the candidates will be fs_read, fs_write, web_fetch).</li>
+    <li>It passes those candidates to an LLM (a language model) as "tools" it can use.</li>
+    <li>The LLM reads the request and proposes the next step: "call fs_read with path=~/notes/diary.md and tail_bytes=N (N large enough to contain 3 lines)".</li>
+    <li>The planner validates the proposal (sandbox, args, constitutional vaglio), invokes the executor, collects the output.</li>
+    <li>It hands back to the LLM with: the original request + the output of the previous step.</li>
+    <li>The LLM says: "I have everything, the answer is: here are the last three lines of your diary".</li>
+    <li>The planner delivers that answer to the user, writes the log, ends the turn.</li>
+</ol>
+
+<p>
+The key point: <em>useful behaviour emerges from composition</em>, not from hardcoded rules. If tomorrow the user asks "fetch a page, save it to a file, and tell me how many bytes you wrote", the planner will compose web_fetch + fs_write + final_answer with no need for any special case. The same pipeline, a different request, a different sequence of steps.
+</p>
+
+<div class="callout note">
+<strong>What the planner does not do.</strong> It never directly resolves user requests. It does not read files, does not call URLs, does not write anything. All of that is done by the <em>executors</em> (specialised programs). The planner only decides <em>whom to call and with what arguments</em>, then collects the results.
+</p>
+</div>
+
+<h1 id="cap2">2. The loop of one turn, step by step</h1>
+
+<p>
+Now let us see the same path more precisely. A turn always has this structure:
+</p>
+
+<figure style="text-align: center; margin: 24px 0;">
+<svg viewBox="0 0 760 360" xmlns="http://www.w3.org/2000/svg" style="max-width: 100%; height: auto; border: 1px solid var(--border); border-radius: 6px; background: white; padding: 8px;">
+<style>.b{fill:#fff;stroke:#1A477A;stroke-width:1.5;rx:6;ry:6}.bl{fill:#dbeafe;stroke:#3b82f6}.bs{fill:#fef3c7;stroke:#f59e0b}.bg{fill:#dcfce7;stroke:#16a34a}.br{fill:#fee2e2;stroke:#dc2626}.t{font-family:'Segoe UI',sans-serif;font-size:11px;fill:#1a1a1a;text-anchor:middle;dominant-baseline:middle}.tL{font-size:10px;fill:#64748B}.a{stroke:#64748B;stroke-width:1.5;fill:none;marker-end:url(#ar)}</style>
+<defs><marker id="ar" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3 z" fill="#64748B"/></marker></defs>
+<rect class="b bl" x="20" y="20" width="120" height="40" /><text class="t" x="80" y="40">User query</text>
+<rect class="b" x="180" y="20" width="120" height="40" /><text class="t" x="240" y="40">Loader → Catalog</text>
+<rect class="b" x="340" y="20" width="120" height="40" /><text class="t" x="400" y="40">Mode + Tier</text>
+<rect class="b" x="500" y="20" width="120" height="40" /><text class="t" x="560" y="40">Pre-filter top-K</text>
+<path class="a" d="M140,40 L180,40"/><path class="a" d="M300,40 L340,40"/><path class="a" d="M460,40 L500,40"/>
+<rect class="b bs" x="640" y="100" width="100" height="50" /><text class="t" x="690" y="118">LLM</text><text class="t tL" x="690" y="135">native tool-use</text>
+<path class="a" d="M620,40 Q700,40 690,100"/>
+<rect class="b" x="490" y="170" width="180" height="50" /><text class="t" x="580" y="188">resolve refs + validate</text><text class="t tL" x="580" y="204">sandbox + vaglio + guard</text>
+<path class="a" d="M690,150 Q690,170 670,190"/>
+<rect class="b bg" x="320" y="170" width="140" height="50" /><text class="t" x="390" y="188">execute (subprocess)</text>
+<path class="a" d="M490,195 L460,195"/>
+<rect class="b" x="160" y="170" width="140" height="50" /><text class="t" x="230" y="188">observation</text><text class="t tL" x="230" y="204">→ scratchpad if &gt;4KB</text>
+<path class="a" d="M320,195 L300,195"/>
+<rect class="b" x="20" y="170" width="120" height="50" /><text class="t" x="80" y="188">history update</text>
+<path class="a" d="M160,195 L140,195"/>
+<path class="a" d="M80,170 Q40,150 40,40 L80,40 L80,20" />
+<text class="t tL" x="115" y="100">loop until final_answer</text>
+<rect class="b bg" x="20" y="280" width="160" height="50" /><text class="t" x="100" y="298">final_answer</text><text class="t tL" x="100" y="314">text for the user</text>
+<path class="a" d="M690,150 Q740,300 180,310"/>
+<rect class="b br" x="220" y="280" width="200" height="50" /><text class="t" x="320" y="298">cap reached / error</text><text class="t tL" x="320" y="314">final_kind = error / cap_*</text>
+<rect class="b" x="460" y="280" width="280" height="50" /><text class="t" x="600" y="298">turn JSONL log</text><text class="t tL" x="600" y="314">~/.local/share/metnos/turns/YYYY-MM-DD.jsonl</text>
+</svg>
+<figcaption style="font-style:italic;color:#555;font-size:9.5pt;margin-top:8px;">Flow of a turn: from the user query to the final log, with the multistep loop at the centre.</figcaption>
+</figure>
+
+<h3>Phase 0 &mdash; preparation</h3>
+<ul>
+    <li>The <em>catalog</em> is loaded: the loader discovers all executors on disk (folders under <code>executors/</code>); for each it verifies that the manifest is signed by the author's key and that the code digest matches. Those failing verification are discarded with a reason. The catalog lives in memory.</li>
+    <li>The <em>mode</em> is chosen (local/online/hybrid &mdash; see ch. 3) and the LLM <em>tier</em> (fast/middle/wise &mdash; see ch. 4).</li>
+    <li>A unique <code>turn_id</code> is generated to identify this turn in the logs.</li>
+</ul>
+
+<h3>Phase 1 &mdash; pre-filter</h3>
+<p>
+The <em>pre-filter</em> ranks the catalog by relevance to the user query and selects a subset: the top-K. Without a pre-filter, we would have to pass to the LLM all executors (potentially dozens or hundreds), and the quality of the choice would degrade together with the latency. The pre-filter solves the problem in a trivial yet effective way (see ch. 5).
+</p>
+
+<h3>Phase 2 &mdash; step loop</h3>
+<p>
+At this point the turn enters a loop. For each step:
+</p>
+<ol>
+    <li>The LLM is called passing: the user query, the sub-catalog (as native "tools"), and the history of observations from previous steps.</li>
+    <li>The LLM replies in one of two ways:
+        <ul>
+            <li><strong>tool_call</strong>: it wants to invoke an executor. It returns the name and arguments in structured form.</li>
+            <li><strong>text</strong>: it has everything it needs, it produces the final answer and stops.</li>
+        </ul>
+    </li>
+    <li>If it is a tool_call, the planner runs a series of checks:
+        <ol>
+            <li><em>Resolve from_step</em>: if the args contain <code>from_step: N</code> (reference to a list produced by an earlier step), the runtime retrieves the list from the scratchpad and injects it as <code>entries</code> (see ch. 7).</li>
+            <li><em>Resolve references</em>: if the args contain <code>{{stepN.field}}</code> (for non-list args, e.g. <code>content</code>, <code>dst_template</code>), it substitutes them with the real value (see ch. 7).</li>
+            <li><em>Validate</em>: do the args respect the JSON Schema declared in the executor's manifest?</li>
+            <li><em>Sandbox check</em>: is the requested path/host within the scope declared in the executor's hint?</li>
+            <li><em>Vaglio</em>: does the constitutional evaluator give the green light?</li>
+            <li><em>Guard duplicate read</em>: are we re-reading the same path/url as a previous step? If so, intercept and suggest the LLM to formulate the final_answer.</li>
+        </ol>
+    </li>
+    <li>If all checks pass, the executor is run as a <em>subprocess</em>. The observation (a JSON with <code>{ok, content?, metadata?, error?}</code>) returns to the planner.</li>
+    <li>If the observation is larger than a threshold (4 KB of JSON), it is saved to <em>scratchpad</em> and the LLM history gets a synthetic version with id + summary (see ch. 8).</li>
+    <li>The turn history grows by one step. The loop resumes from point 1.</li>
+</ol>
+
+<h3>Phase 3 &mdash; turn closure</h3>
+<p>
+The turn ends in one of the following ways:
+</p>
+<ul>
+    <li><code>final_kind = "answer"</code> &mdash; the LLM produced the final answer.</li>
+    <li><code>final_kind = "cap_steps"</code> &mdash; the step limit was exceeded (default 5).</li>
+    <li><code>final_kind = "cap_same_executor"</code> &mdash; the same executor was called too many times (default cap 2).</li>
+    <li><code>final_kind = "error"</code> &mdash; an external component is unreachable (e.g. Ollama down), or the catalog is empty, etc.</li>
+</ul>
+
+<p>
+In every case, the planner writes a complete JSONL record of the turn (see ch. 11) and returns <code>(log, final_message)</code>.
+</p>
+
+<div class="example">
+<div class="ex-label">Real example from the POC</div>
+<p>Query: <em>&laquo;fetch https://httpbin.org/uuid and tell me only the UUID&raquo;</em>.</p>
+<p>Step 1 &mdash; the LLM proposes <code>web_fetch(url=https://httpbin.org/uuid)</code>. Execution: returns JSON <code>{"uuid":"7c089d54-..."}</code>.</p>
+<p>Step 2 &mdash; the LLM reads the history, understands it has what it needs, produces final_answer: <code>"7c089d54-..."</code>.</p>
+<p>Total latency: 3.3 seconds (Qwen3:8b local). No pre-coding for "extract uuid": the LLM reasons over the JSON and extracts the field on its own.</p>
+</div>
+
+<h1 id="cap3">3. Modes: <em>local</em>, <em>online</em>, <em>hybrid</em></h1>
+
+<p>
+The planner works in three modes, chosen by configuration. The main difference among the three is <em>how many round-trips to the LLM</em> are needed to complete a turn and <em>where the LLM runs</em>.
+</p>
+
+<table>
+<tr><th>Mode</th><th>Loop</th><th>Typical LLM</th><th>When it makes sense</th></tr>
+<tr><td><code>local</code></td><td>multistep ReAct (one round-trip per step)</td><td>local (Ollama)</td><td>Default. Maximum privacy, zero cost, decent latency.</td></tr>
+<tr><td><code>online</code></td><td>single-shot (one round-trip for the whole plan)</td><td>frontier (Anthropic, OpenAI)</td><td>Complex tasks worth the money spent. A frontier model succeeds in one call where a local one would have needed five.</td></tr>
+<tr><td><code>hybrid</code></td><td>local by default; escalation to online for critical tasks</td><td>mixed</td><td>Balance of cost and quality. For domestic Metnos.</td></tr>
+</table>
+
+<p>
+The principle: <em>the shape of the loop follows from the per-call cost</em>. A free local LLM can afford to iterate; an expensive frontier LLM compresses everything into one call. Same planner, behaviour adapted to cost.
+</p>
+
+<p>
+In v1.1 we tested the <code>local</code> mode; <code>online</code> is wired as scaffolding (Anthropic provider stub) but not exercised; <code>hybrid</code> has the <code>ModeRouter</code> in place which in PoC always returns "local". Extensions will require: configuring an online provider + enabling the routing rules in <code>[runtime.hybrid]</code>.
+</p>
+
+<h1 id="cap4">4. Three tiers of LLM: <em>fast</em>, <em>middle</em>, <em>wise</em></h1>
+
+<p>
+Independently of the mode (which says <em>where</em> the LLM runs), the runtime exposes three <em>tiers</em>: three pointers to LLMs with different characteristics. Each runtime component picks the tier it needs.
+</p>
+
+<table>
+<tr><th>Tier</th><th>Characteristic</th><th>Candidate</th></tr>
+<tr><td><strong>fast &amp; furious</strong></td><td>Small, fast, always LOCAL, always available.</td><td><code>qwen3:8b</code> with <code>think=false</code></td></tr>
+<tr><td><strong>middle &amp; trustable</strong></td><td>Intermediate reasoning capacity.</td><td><code>gemma3:12b</code> local, or <code>claude-haiku-4-5</code> online.</td></tr>
+<tr><td><strong>slow &amp; wise</strong></td><td>Maximum reasoning capacity, accepts latency/cost.</td><td><code>claude-sonnet-4-6</code> online, or <code>qwen3:32b</code> with <code>think=true</code> on a powerful local.</td></tr>
+</table>
+
+<p>
+The standard planner uses <em>fast</em>. The constitutional vaglio (when real) will use <em>middle</em>. The synthesiser of new executors (synt) will use <em>wise</em>. When a section is missing from the configuration, the pointer aliases to the lower tier: middle &rarr; fast, wise &rarr; middle &rarr; fast. Never a crash, never an exception: the presence of <em>fast</em> alone guarantees operation.
+</p>
+
+<figure style="text-align: center; margin: 24px 0;">
+<svg viewBox="0 0 760 280" xmlns="http://www.w3.org/2000/svg" style="max-width: 100%; height: auto; border: 1px solid var(--border); border-radius: 6px; background: white; padding: 8px;">
+<style>.tt{font-family:'Segoe UI',sans-serif;text-anchor:middle;dominant-baseline:middle}.h{font-size:13px;font-weight:700;fill:#1A477A}.b{font-size:11px;fill:#1a1a1a}.s{font-size:10px;fill:#64748B}.box{stroke:#1A477A;stroke-width:1.5;rx:8;ry:8}.fast{fill:#dcfce7}.mid{fill:#fef3c7}.wise{fill:#dbeafe}</style>
+<text class="tt h" x="380" y="22">Three tiers, the same runtime</text>
+<rect class="box fast" x="40" y="50" width="220" height="180"/>
+<text class="tt h" x="150" y="76">fast &amp; furious</text>
+<text class="tt s" x="150" y="96">qwen3:8b · think=false</text>
+<text class="tt b" x="150" y="125">~700ms/call</text>
+<text class="tt s" x="150" y="145">always LOCAL</text>
+<text class="tt s" x="150" y="160">always available</text>
+<text class="tt b" x="150" y="195">used by: planner</text>
+<text class="tt s" x="150" y="212">scratchpad summariser</text>
+<rect class="box mid" x="280" y="50" width="220" height="180"/>
+<text class="tt h" x="390" y="76">middle &amp; trustable</text>
+<text class="tt s" x="390" y="96">gemma3:12b or haiku-4-5</text>
+<text class="tt b" x="390" y="125">~2-5s/call</text>
+<text class="tt s" x="390" y="145">local or online</text>
+<text class="tt s" x="390" y="160">intermediate reasoning</text>
+<text class="tt b" x="390" y="195">used by: real vaglio</text>
+<text class="tt s" x="390" y="212">synt.compose</text>
+<rect class="box wise" x="520" y="50" width="220" height="180"/>
+<text class="tt h" x="630" y="76">slow &amp; wise</text>
+<text class="tt s" x="630" y="96">claude-sonnet or qwen3:32b+think</text>
+<text class="tt b" x="630" y="125">5-30s/call</text>
+<text class="tt s" x="630" y="145">accepts latency/$</text>
+<text class="tt s" x="630" y="160">deep reflection</text>
+<text class="tt b" x="630" y="195">used by: synt.generate</text>
+<text class="tt s" x="630" y="212">delicate decisions</text>
+<text class="tt s" x="380" y="265">When a tier is not configured, it aliases to the lower tier (wise→middle→fast). Worst case: all point to fast.</text>
+</svg>
+<figcaption style="font-style:italic;color:#555;font-size:9.5pt;margin-top:8px;">The three tiers coexist in the runtime; each component picks the one it needs.</figcaption>
+</figure>
+
+<div class="callout tip">
+<strong>Specialisation even with a single model.</strong> If hardware allows only one local LLM, the three tiers point to the same one (e.g. all to qwen3:8b). Same model but the <em>system prompt</em> changes per tier: <em>fast</em> asks for direct action, <em>middle</em> asks to consider alternatives, <em>wise</em> activates <code>think=true</code> and asks for deep reflection. Same model, different roles, different outputs. The user obtains three points of view even with a single brain.
+</div>
+
+<p>
+Minimal config schema:
+</p>
+<pre>[runtime.llm.fast]
+provider = "ollama"
+model    = "qwen3:8b"
+think    = false
+
+[runtime.llm.middle]
+provider = "ollama"
+model    = "gemma3:12b"
+
+[runtime.llm.wise]
+provider = "anthropic"
+model    = "claude-sonnet-4-6"
+</pre>
+
+<p>
+In v1.1 the structure is implemented but full differentiation is not yet: in PoC the three pointers are identical (<code>qwen3:8b</code>) and the prompt is a single one. The per-tier prompt differentiation is deferred until we have a second backend or a use case that requires it.
+</p>
+
+<h1 id="cap5">5. The pre-filter: choosing the sub-catalog</h1>
+
+<p>
+With a catalog of 30+ executors, passing them all as "tools" to the LLM blows up the prompt and dilutes the attention. The pre-filter ranks by relevance and passes to the LLM only the most promising ones.
+</p>
+
+<h2>How it ranks</h2>
+<p>
+In v1.1 the ranking is <em>bag-of-words</em>: it tokenises the user query, tokenises the <code>affinity</code> declared in each manifest, sums the matches (matches on the affinity count double those on the description). Extracting the tokens means: lowercase, alphanumeric words, no accents.
+</p>
+
+<div class="example">
+<div class="ex-label">Example</div>
+<p>Query: <em>&laquo;fetch https://httpbin.org/get&raquo;</em>. Tokens: <code>{fetch, httpbin, org, get, https}</code>.</p>
+<p>Match against affinity of <code>web_fetch</code>: <code>web</code>, <code>http</code>, <code>url</code>, <code>fetch</code>, <code>scarica</code>, <code>leggi</code>, <code>pagina</code>, <code>api</code>, <code>rest</code>. Match: <code>fetch</code>. Score: 2.</p>
+<p>Match against affinity of <code>fs_read</code>: <code>fs</code>, <code>read</code>, <code>leggi</code>, <code>lettura</code>, <code>file</code>, ... No match. Score: 0.</p>
+<p>web_fetch wins with high confidence.</p>
+</div>
+
+<h2>Adaptive K</h2>
+<p>
+K (number of executors to pass to the LLM) is not fixed: it depends on the <em>confidence</em> with which the pre-filter distinguishes the top-1 from the others.
+</p>
+<ul>
+    <li>High confidence (top-1 well above) &rarr; small K (default <code>k_min=5</code>). No point in passing zero-score candidates.</li>
+    <li>Low confidence (close scores or all zero) &rarr; large K (default <code>k_max=40</code>). Let the LLM decide.</li>
+    <li>K is in any case capped at the number of executors with score &ge; 1 (no padding).</li>
+</ul>
+
+<p>
+Measured in the POC: pre-filter sub-millisecond up to 300+ executors; LLM Qwen3:8b chooses correctly up to K=200; latency grows linearly with K above 40. Practical sweet spot: K=20-40 (~3 seconds of LLM latency).
+</p>
+
+<p>
+The form with semantic embedding (local MiniLM model, ~100 MB) is deferred: the bag-of-words proved sufficient for the real cases of the POC.
+</p>
+
+<h1 id="cap6">6. Native tool-use (no JSON parsing)</h1>
+
+<p>
+Modern LLMs (Anthropic, OpenAI from the start; Ollama for Qwen 2.5/3, Llama 3.1+, Mistral, Gemma) support a <em>native</em> tool-calling protocol. The runtime declares the available tools in the API, each with its JSON Schema taken from the manifest. When the LLM decides to call a tool, it returns a structured field:
+</p>
+
+<pre>{
+  "tool_calls": [
+    {
+      "id": "call_abc123",
+      "function": {
+        "name": "fs_read",
+        "arguments": {"path": "/tmp/note.txt", "tail_bytes": 100}
+      }
+    }
+  ]
+}</pre>
+
+<p>
+It is <em>already a Python dict</em>, parsed by the HTTP protocol. No regex on text, no markdown blocks to extract, no edge cases of "the LLM forgot to close the brackets". When the LLM is ready for the final answer, it simply does not call any tool and produces only text: the planner recognises this as final_answer.
+</p>
+
+<div class="callout note">
+<strong>Consequence for manifests.</strong> The manifest of an executor declares the args in JSON Schema (section <code>[args]</code>) and that JSON Schema is passed directly to the provider as <code>parameters</code> of the tool. A single source of truth on the shape of the arguments, zero translation. See <a href="executor.html"><code>executor.html</code></a> for the manifest details.
+</div>
+
+<h1 id="cap7">7. Data piping between steps: <code>from_step</code> and <code>{{stepN.field}}</code></h1>
+
+<p>
+In multistep, the LLM at step N+1 needs to refer to the output of step N. Two distinct mechanisms, chosen based on the data type.
+</p>
+
+<h2>7.1 Lists: <code>from_step: N</code></h2>
+
+<p>
+For args that receive a <em>list of entries</em> (mail, files, web_results, etc.) produced by a previous step, the runtime exposes a dedicated arg <code>from_step: integer</code>. The LLM passes the number of the step that produced the list; the runtime retrieves it from the scratchpad and automatically injects <code>entries</code> into the kwargs before invoking the executor.
+</p>
+
+<div class="example">
+<div class="ex-label">Example: classify+filter+describe pipeline</div>
+<pre>// Step 1
+{ "tool": "read_messages", "args": { "account": "knowcastle", "time_window": "today" } }
+// observation handle: {ok: true, scratchpad_id, count: 12, list_field: "entries", schema: [...]}
+
+// Step 2 (proposed by the LLM)
+{ "tool": "classify_entries", "args": {
+    "from_step": 1,
+    "dimension": "relevance",
+    "pre_filter": true
+} }
+
+// The runtime retrieves entries from scratchpad[step1] and invokes:
+classify_entries(entries=[12 mails], dimension="relevance", pre_filter=true)</pre>
+</div>
+
+<p>
+The schema of tools that receive lists declares <strong>only</strong> <code>from_step: integer required</code>. <code>entries: array</code> is no longer exposed to the LLM: the schema-guided decoder emits an integer, not an array of dicts, and the problem of <em>inline data fabrication</em> (LLM concocting plausible dicts instead of consulting the scratchpad) disappears by construction.
+</p>
+
+<h2>7.2 Single values: <code>{{stepN.field}}</code></h2>
+
+<p>
+For args of NON-list type (strings, content, paths), the syntax remains the template placeholder:
+</p>
+<ul>
+    <li><code>N</code> is the step number (1-indexed: <code>step1</code> is the first).</li>
+    <li><code>field</code> is the key inside the observation of that step. It can be nested: <code>{{step1.metadata.path}}</code>, <code>{{step2.content}}</code>.</li>
+</ul>
+
+<div class="example">
+<div class="ex-label">Example: fetch and save</div>
+<pre>// Step 1
+{ "tool": "get_urls", "args": { "urls": ["https://httpbin.org/get"] } }
+// observation: {ok: true, content: "<JSON from httpbin>", metadata: {...}}
+
+// Step 2 (proposed by the LLM)
+{ "tool": "write_files", "args": {
+    "path": "/tmp/out.txt",
+    "content": "{{step1.content}}"
+} }
+
+// The runtime substitutes and invokes:
+write_files(path="/tmp/out.txt", content="<JSON from httpbin>")</pre>
+</div>
+
+<div class="callout warning">
+<strong>The syntax holds ONLY in the args.</strong> In the text of the final_answer write the actual values (e.g. "I wrote 173 bytes"); NEVER <code>{{step1.bytes_written}}</code>. The planner's prompt explicitly instructs the LLM about this limit. A violation of this rule was one of the bugs caught by the POC.
+</div>
+
+<p>
+The reference must be the <em>sole value</em> of the arg, not interpolated within longer strings (limit of v1.1).
+</p>
+
+<h2>History: from placeholder syntax to the <code>from_step</code> refactor</h2>
+<p>
+When the POC started without any data-piping mechanism, the LLM tried to invent a shell-style syntax (<code>$(web_fetch(...)['content'])</code>) that the runtime could not interpret: the file ended up containing that literal string instead of the data. The <code>{{stepN.field}}</code> syntax was the first solution, simple and zero-shot for Qwen3:8b.
+</p>
+
+<p>
+When the planner switched to Gemma 4 26B for native tool calling, a new problem emerged (<em>finding F1</em> on 2026-04-29): the schema-guided decoder, seeing <code>entries: array of object</code> in the schema, would fabricate plausible but fictitious dicts instead of emitting the placeholder string. The runtime's rejection forced a correct retry, but at a cost of 12-15s and hundreds of wasted tokens for each list step. Structural fix: separate the list case (<code>from_step: integer</code>, schema-coherent, no possibility of fabrication) from the single-value case (<code>{{stepN.field}}</code>, retro-compatible for content/path/template).
+</p>
+
+<h1 id="cap8">8. Scratchpad for large observations</h1>
+
+<p>
+When an executor returns a lot of content (a 100 KB file, a long HTML page, a verbose API body), passing it whole into the LLM history blows up the context. Cutting at 1500 characters loses useful information.
+</p>
+
+<p>
+The v1.1 solution: <em>scratchpad</em>. When an observation exceeds the threshold (4 KB of serialised JSON), the runtime saves it to a local SQLite (<code>~/.local/share/metnos/scratchpad.db</code>) and puts in the history a <em>synthetic</em> observation:
+</p>
+
+<pre>{
+  "ok": true,
+  "scratchpad_id": "eae04122bd704636",
+  "size_bytes": 14144,
+  "kind": "text",
+  "summary": "hello this is a test note\n\n[... 13900 characters omitted ...]\n\nINFO 2026-04-26 23:59:59 LAST_CRITICAL_EVENT\n",
+  "metadata": {"path": "/tmp/big_log.txt", "bytes": 14144, ...}
+}</pre>
+
+<p>
+The summary is a <em>smart truncation</em>: the first 500 characters + a placeholder with the number of characters omitted + the last 500. This way the LLM sees the start and end of the content.
+</p>
+
+<p>
+The LLM at the next step, seeing the summary, decides:
+</p>
+<ul>
+    <li>If the summary is enough, it formulates the final_answer.</li>
+    <li>If it needs more, it calls the builtin executor <code>scratchpad_read</code> with mode:
+        <ul>
+            <li><code>full</code>: the entire content (not recommended if very large).</li>
+            <li><code>head</code>: the first N characters (default 2000).</li>
+            <li><code>tail</code>: the last N characters.</li>
+            <li><code>range</code>: an interval <code>[start, end)</code>.</li>
+        </ul>
+    </li>
+</ul>
+
+<p>
+<code>scratchpad_read</code> is a builtin: it lives in the runtime, has no manifest on disk, is added to the tool catalog dynamically when active scratchpad entries exist in the current turn.
+</p>
+
+<p>
+Full details in the dedicated doc: <a href="scratchpad.html"><code>scratchpad.html</code></a>.
+</p>
+
+<h1 id="cap9">9. Vaglio of the plan</h1>
+
+<p>
+The vaglio is the constitutional evaluator: before a <code>tool_call</code>
+becomes action, it decides whether it is lawful. In multistep it runs between
+one step and the next; in single-shot it runs post-hoc on the entire plan.
+Since 27/4 the vaglio is <em>real</em> (no longer a stub) and works in two
+distinct phases as per ch.&nbsp;11 of the Architecture.
+</p>
+
+<h3>9.1 Guardia (binary)</h3>
+<p>
+Blocks violations of the 4 Laws. In v1.1 the encoded rules are:
+</p>
+<ul>
+    <li><strong>Forbidden paths</strong>: <code>~/.ssh</code>,
+        <code>/etc/passwd|shadow|sudoers</code>, <code>/root</code>,
+        <code>/boot</code>, <code>/sys</code>, <code>/proc</code>,
+        <code>/dev/sd*|nvme*</code>, <code>~/.aws/credentials</code>,
+        <code>~/.config/*/credentials.env</code>, <code>~/.gnupg</code>.
+        If even just MENTIONED in a tool argument, the action is denied.</li>
+    <li><strong>Quasi-irrecoverable shell commands</strong> (Law 1: no
+        irrecoverable state): <code>rm&nbsp;-rf /</code>, <code>rm&nbsp;-rf ~</code>,
+        <code>mkfs</code>, <code>dd&nbsp;of=/dev/...</code>, fork bomb, recursive
+        chmod 7XX on the root. Match only for executors with <code>capability:
+        code:exec</code>.</li>
+</ul>
+<p>
+The list does not relax with autonomy level: it is the "non-negotiable
+core" of ch.&nbsp;5. If the guardia stops, no score: the verdict is
+<code>blocked_by="guard"</code>.
+</p>
+
+<h3>9.2 Giudice (graduated)</h3>
+<p>
+If the guardia lets it through, the giudice measures the alignment of the
+action to the user's telos in [0,&nbsp;1]. Below the threshold
+<code>METNOS_JUDGE_THRESHOLD</code> (default 0.30, configurable via env)
+the action is denied with <code>blocked_by="judge"</code>. Above, it is
+approved.
+</p>
+<p>
+In v1.1 the giudice is <strong>rule-based</strong>: local heuristics,
+microseconds, zero cost. Base score 0.7, bonus if the <em>intent</em> mentions
+the executor name (signal of explicit intent), penalty for
+<code>..</code> in path (possible path traversal), penalty for keys in
+<code>args</code> with non-alphanumeric characters (anomaly). The <strong>LLM
+giudice</strong> (middle tier, separate context from the proposer to avoid
+self-confirmation) is deferred to v1.2: it requires middle tier configured +
+explicit budget. The deontology/teleology split is already in the right
+place, the giudice's implementation can evolve without touching the
+guardia.
+</p>
+
+<p>
+The <code>Verdict</code> exposed by the <code>vaglio</code> module contains
+<code>{approved, reason, score, blocked_by, judge_kind, ts}</code>. The JSONL
+log on <code>~/.local/share/metnos/vaglio/YYYY-MM.jsonl</code> records only
+the keys of <code>args</code> (not the values), for privacy.
+</p>
+
+<h1 id="cap10">10. Safety caps and runtime guards</h1>
+
+<p>
+The planner has three safety mechanisms against loops and ill-posed actions. They appeared in the POC as a response to real LLM behaviour, not as abstract concern.
+</p>
+
+<table>
+<tr><th>Mechanism</th><th>What it does</th><th>Default</th></tr>
+<tr><td><code>cap_steps</code></td><td>Maximum number of steps per turn.</td><td>5</td></tr>
+<tr><td><code>cap_same_executor</code></td><td>Limit of calls of the same executor in the turn.</td><td>2</td></tr>
+<tr><td><strong>guard duplicate read</strong></td><td>If the LLM re-invokes <code>fs_read</code>/<code>fs_write</code>/<code>web_fetch</code> with the same path/url as a previous step, the runtime does not re-execute: it returns an observation that says "you already have this data at step X, formulate the final_answer".</td><td>active</td></tr>
+</table>
+
+<p>
+The guard duplicate read emerged from the POC: without it, small LLMs (Qwen3:8b in particular) tended to re-read the same file with slightly different args hoping for a better result, ending up in cap_same. The guard intercepts upstream and unblocks the formulation.
+</p>
+
+<p>
+Exception: <code>scratchpad_read</code> is not subject to the guard, because calling it more than once with different mode/range on the same <code>scratchpad_id</code> is the normal use case.
+</p>
+
+<h1 id="cap11">11. What it writes to logs</h1>
+
+<p>
+For each turn the planner writes a JSONL line to <code>~/.local/share/metnos/turns/YYYY-MM-DD.jsonl</code> with:
+</p>
+
+<ul>
+    <li><code>turn_id</code> &mdash; uuid of the turn.</li>
+    <li><code>ts_start</code>, <code>ts_end</code> &mdash; Unix timestamps.</li>
+    <li><code>user_query</code> &mdash; original user text.</li>
+    <li><code>mode</code> &mdash; chosen mode (local/online/hybrid).</li>
+    <li><code>candidates</code> &mdash; names of the executors passed to the LLM after pre-filter.</li>
+    <li><code>steps</code> &mdash; list of steps with: number, llm in/out tokens, latency, tool called, raw and resolved args, validation/sandbox/vaglio outcome, result.</li>
+    <li><code>final_message</code> &mdash; final text to the user.</li>
+    <li><code>final_kind</code> &mdash; one of <code>answer | error | cap_steps | cap_same_executor</code>.</li>
+</ul>
+
+<p>
+JSONL append-only, one file per day. No automatic rotation in v1.1 (with normal use ~3 MB/month, negligible).
+</p>
+
+<h2>11.1 Writing into the mnestome</h2>
+
+<p>
+In parallel with the JSONL log, the planner updates the <a href="mnestome.html">mnestome</a>
+(SQLite, single file). Two simple hooks, activated only when there is observed
+piping between steps:
+</p>
+
+<ul>
+    <li><strong>mnest active</strong> &mdash; at the end of a step with <code>obs.ok = true</code>,
+        if the <code>raw_args</code> contained at least one resolved <code>{{stepM.field}}</code>
+        reference and executor M was real (not a proto, not scratchpad), it invokes
+        <code>Mnestoma.record_passing(src=executor_M, dst=current_executor, dst_exists=True)</code>.
+        The mnest grows or is born with bootstrap weight; every future passage reinforces it.</li>
+    <li><strong>proto-mnest</strong> &mdash; when the LLM calls a tool name that the
+        catalog does not contain (<code>nonexistent_executor</code>) and the <code>raw_args</code>
+        had references to previous steps, it invokes
+        <code>record_passing(src=executor_M, dst=desired_name, dst_exists=False,
+        desired_signature=...)</code>. The desired signature is inferred
+        conservatively from the requested tool name, args and turn context
+        (<code>build_desired_signature</code>).</li>
+</ul>
+
+<p>
+Without piping no mnest: the isolated invocation of a single executor does not
+represent a &laquo;passage between A and B&raquo; in the sense of ch. 2 of <a href="mnest.html">mnest</a>.
+The write is fail-safe: an error on the mnestome is logged (verbosely) but
+does not interrupt the turn.
+</p>
+
+<h3 id="cap11_1_1">11.1.1 Synt-on-the-fly: immediate suggestion to the planner</h3>
+
+<p>
+When a proto-mnest is just registered (the case above: nonexistent tool with
+piping from a previous step), the planner immediately tries a reactive
+synthesis <strong>compose-only</strong> by calling
+<code>Synt.react(req)</code> with <code>router=None</code> (the
+<em>generate</em> mode stays reserved for the nightly scheduler and the
+introspective cycles of ch. 11.2). The outcome of this call, if positive,
+is added to the observation as a <code>synt</code> field:
+</p>
+
+<ul>
+    <li>if <code>state == "composed"</code>: the composer found a chain of
+        signed executors that closes the proto-mnest. The observation carries
+        <code>{strategy: "compose", state: "composed", chain: [...], first_hop: "X",
+        suggestion: "Retry by invoking 'X' as the next step"}</code>.
+        The planner does not re-launch the first hop automatically: it lets
+        the LLM decide whether to follow the suggestion at the next step
+        (preserving ReAct discipline &mdash; the LLM remains the master of
+        the sequence).</li>
+    <li>if <code>state == "abandoned"</code> or <code>"rejected"</code>:
+        the observation carries <code>{state: "abandoned",
+        suggestion: "There is no executor available for this need,
+        look for another way"}</code>. Non-retreat telos: the planner
+        does not give up at the first error, it tells the LLM the road is
+        closed so it can search for another.</li>
+</ul>
+
+<p>
+Cost: one call to <code>Composer.find_chain()</code> (BFS on the mnestome,
+milliseconds) and a possible lock-check. No LLM, no budget.
+The call is fail-safe: any <code>synt</code> exception does not
+propagate and the observation remains the default one
+(<em>"nonexistent executor: X"</em>). See
+<code>runtime/agent_runtime.py:_try_synt_compose</code>.
+</p>
+
+<h2 id="cap11_2">11.2 Builtin scheduler</h2>
+
+<p>
+The <strong>scheduler</strong> is a <em>builtin</em> of the runtime, not an executor:
+it has no capability, is not signed, has no sandbox. It is a cron-style loop that runs
+recurring system tasks without user input. Three schedule supports:
+</p>
+
+<ul>
+    <li><code>daily@HH:MM</code> &mdash; every day at hour HH:MM (UTC), once.</li>
+    <li><code>every_N_minutes</code> &mdash; every N minutes since the last run (or immediately if never).</li>
+    <li><code>manual</code> &mdash; only via <code>scheduler run-now &lt;task&gt;</code>.</li>
+</ul>
+
+<p>State persisted in <code>workspace/.scheduler/state.sqlite</code> (table
+<code>tasks</code> with last_run_at + last_status, table <code>runs</code>
+append-only). The due-time check is idempotent: two ticks in the same slot
+do not run the task twice.</p>
+
+<p><strong>Built-in tasks registered by default</strong>:</p>
+
+<table>
+<thead><tr><th style="width:18%">Name</th><th style="width:18%">Schedule</th><th>What it does</th></tr></thead>
+<tbody>
+<tr><td><code>apply_ager</code></td><td><code>daily@04:00</code></td><td>Calls <a href="mnestome.html#cap6"><code>Mnestoma.apply_ager()</code></a>: decay + demote + proto purge on the mnestome.</td></tr>
+<tr><td><code>synt_suggest</code></td><td><code>daily@04:30</code></td><td>For each recurring proto-mnest (<code>uses&ge;3</code>, <code>weight&ge;0.30</code>) calls <a href="synt.html"><code>Synt.react()</code></a> in compose-only and logs the outcome.</td></tr>
+</tbody>
+</table>
+
+<p>
+The daemon loop (<code>scheduler daemon</code>) is a single process that runs
+<code>tick()</code> every 60s and goes idle. No concurrency, no inter-process
+locking: the scheduler in v1.1 is a singleton on <code>metnos-server</code>.
+The error policy is <em>"do not let the loop fall"</em>: every task exception
+is caught, marked in <code>last_status='error'</code> with traceback in
+<code>last_output</code>, and the tick continues onto the following tasks.
+</p>
+
+<p>
+The scheduler design as builtin is consistent with the decision in the
+<a href="../Metnos_Architecture_Intro_v1.html">Dialogue on executors</a>:
+system maintenance (decay, nightly synthesis) is part of the runtime,
+not an executor that the system "decides to call". See also the memory
+<em>builtin executors proposals</em> for the future builtin triad
+(scheduler, ager, snapshot).
+</p>
+
+<h2 id="cap11_2_1">11.2.1 User recurring tasks (May 1, 2026)</h2>
+
+<p>
+On top of the builtin scheduler runs <code>runtime/recurring_tasks.py</code>:
+the registry of recurring tasks defined by the user via the conversational
+channel (<em>"every five minutes check important mail"</em>). Seven builtin
+tools are callable by the PLANNER: <code>schedule_recurring</code>,
+<code>cancel_recurring</code>, <code>list_recurring</code>,
+<code>show_recurring</code>, <code>toggle_recurring</code>,
+<code>history_recurring</code>, <code>run_now_recurring</code>.
+</p>
+
+<p>
+Callback resolution is <em>by string key</em> (ADR 0068): the task persists
+the symbolic callback name; the dispatcher resolves it at runtime against
+a centralized registry. No serialization of <code>callable</code>, no stale
+references on daemon restart.
+</p>
+
+<p>
+<strong>Fine semantics</strong>: <code>times</code> governs the task
+lifetime (1 = one-shot, N = max executions, NULL = forever) with auto-cancel
+on completion; <code>grace_window_minutes</code> enables recover-missed with
+<code>created_at</code> as discriminator (a task created after the scheduled
+time does not fire retroactively); <code>is_due</code> applies the rule
+"<em>done=false &amp;&amp; time&gt;scheduled &amp;&amp; !new_post_target</em>".
+The daemon loop has re-entrancy lock + cooperative timeout + per-task
+try/except, supervised by <code>metnos-scheduler.service</code> (systemd
+user, <code>Restart=always</code>). Async-ready scaffolding (local refactor,
+not global): <code>_run_with_timeout</code> standalone,
+<code>_acquire_lock</code>/<code>_release_lock</code> abstract,
+<code>dispatch_callback</code> with coroutine detection + sync&rarr;async
+bridge.
+</p>
+
+<h2 id="cap11_2_2">11.2.2 Location request UX (PLANNER &sect;2-quater)</h2>
+
+<p>
+When <code>get_location</code> returns <code>ok:false</code> on a
+location-relative query (e.g. "the nearest pharmacy"), the PLANNER triggers
+the builtin tool <code>request_location_from_user</code>: an atomic dialog
+that asks the user for the location over the channel and resumes the plan
+on receipt. The pattern mirrors &sect;2-ter (atomic undo): a tool that
+halts and resumes the turn without intermediate steps polluting the history.
+ADRs 0061-0065 codify the "atomic dialog tool" pattern family.
+</p>
+
+<h2 id="cap11_2_3">11.2.3 Hybrid geo provider</h2>
+
+<p>
+<code>runtime/geo_provider.py</code> introduces the hybrid strategy
+<em>Google Places primary + Photon fallback</em>: Google's POI coverage is
+superior to OSM in observed real cases (live case: a pharmacy missing from
+OSM, present in Google), but Photon stays as fallback when Google is down
+or its key is unconfigured. The "OSS-first" policy is unchanged for other
+capabilities: for POIs, the coverage advantage justifies the exception.
+</p>
+
+<h2 id="cap11_2_4">11.2.4 Multi-user step 1: actor resolver</h2>
+
+<p>
+<code>runtime/actor_resolver.py</code> implements step 1 of ADR 0035 (host
++ guest model): each pairing exposes an <code>actor</code> field; new
+pairings get auto-assigned <code>host</code> (first one) or
+<code>guest_&lt;id6&gt;</code> (subsequent). The <code>actor</code> is
+propagated end-to-end across the turn (log, scratchpad, vaglio, scheduler)
+and is the discriminator for per-user decisions (telos, autonomy,
+scheduler quotas). The approval router stays single-channel in step 1;
+per-user channel separation enters step 2.
+</p>
+
+<h2 id="cap11_2_5">11.2.5 Centralized i18n DB</h2>
+
+<p>
+<code>runtime/i18n.py</code> + the timer daemon
+<code>runtime/i18n_translator.py</code> centralize user-facing texts and
+LLM-targeted prompts in a single SQLite DB
+(<code>~/.local/share/metnos/i18n.sqlite</code>). Auto-invalidation by
+<code>source_hash</code>: a text changes &rarr; all translations are
+regenerated. Two prompt templates: one for user-facing texts (middle tier,
+batched), one for LLM-targeted prompts (wise tier, 1-per-call for quality).
+Admin CLI in <code>runtime/admin/i18n_cli.py</code>. All runtime modules
+load strings via <code>i18n.t(code, lang, **kwargs)</code>; this supersedes
+the local tables in <code>runtime/messages.py</code> (which remains for
+internal non-user-facing templates).
+</p>
+
+<h2 id="cap11_2_7">11.2.7 Multilingual support (three layers + latest-wins)</h2>
+
+<p>
+The multilingual subsystem of Metnos lives across <strong>three
+layers</strong>: (1) LLM prompts in
+<code>runtime/prompts/&lt;lang&gt;/&lt;role&gt;.j2</code> (MiniJinja, 26 roles,
+ADR&nbsp;0092); (2) executor descriptions in TOML manifests
+(<code>[description].&lt;lang&gt;</code> table + companion
+<code>manifest.lang_state.json</code>); (3) user-facing messages in
+<code>i18n.sqlite</code> (118 standard keys + 79 migrated descriptions).
+The alignment discipline is <em>latest-wins</em>: no language is canonical
+by construction, the latest editor wins (<code>version_hash</code> +
+<code>source_hash</code> per resource). The nightly daemon
+<code>i18n_translator.run_loop()</code> regenerates candidates in
+<code>_pending/</code>; <code>metnos-prompts review</code> shows the diff,
+<code>mark-synced</code> promotes. Adding a new language is a single
+command: <code>metnos-prompts add-language fr</code>. See the canonical
+document <a href="multilang.html">multilang</a>.
+</p>
+
+<h2 id="cap11_2_6">11.2.6 Centralized config.py + logging_setup</h2>
+
+<p>
+<code>runtime/config.py</code> exposes 24 tunable constants and 11 paths
+with env override (<code>METNOS_HOME</code>, <code>METNOS_USER_DATA</code>,
+<code>METNOS_LOG_LEVEL</code>, etc.). <code>runtime/logging_setup.py</code>
+sets up a root logger <code>metnos.*</code> with stdout + rotating file.
+Companion clean-up: 54 occurrences of <code>except: pass</code> replaced
+with <code>log.warning + pass</code> across 17 modules. Still in TODO:
+migration of 19 legacy paths and 9 residual constants to <code>config.C</code>.
+</p>
+
+<h1 id="cap12">12. When things go wrong</h1>
+
+<p>
+The POC verified five typical failure modes. They became permanent test cases of the test framework.
+</p>
+
+<table>
+<tr><th>What breaks</th><th>What happens</th></tr>
+<tr><td>Ollama unreachable</td><td>The provider raises <code>ProviderError</code>; the planner ends the turn with <code>final_kind=error</code> and a clear message.</td></tr>
+<tr><td>Executor crashes (uncaught Python exception)</td><td>The subprocess exits with stderr, the runtime returns <code>{ok: false, error: "non-JSON output: …; stderr: …"}</code>.</td></tr>
+<tr><td>Executor code modified after signing</td><td>The loader rejects it at load time (digest mismatch). The executor never enters the catalog.</td></tr>
+<tr><td>Executor returns non-JSON stdout</td><td>The runtime detects it and returns <code>{ok: false, error: "non-JSON output"}</code>.</td></tr>
+<tr><td>Empty catalog</td><td>The turn ends cleanly with <code>final_kind=error</code>, message <code>"(empty catalog)"</code>.</td></tr>
+</table>
+
+<p>
+The principle: <em>do not let the system fall; always return a structured response</em>, even when it is an error. The user understands, the LLM at the next step (in multistep) can correct, downstream executors do not see strange input.
+</p>
+
+<h1 id="cap13">13. What is deferred to v1.2+</h1>
+
+<table>
+<tr><th>Feature</th><th>When it lands</th></tr>
+<tr><td>Real <code>online</code> mode</td><td>When an Anthropic provider with API key is configured.</td></tr>
+<tr><td><code>hybrid</code> mode with real escalation rules</td><td>When the vocabulary of <code>critical_capabilities</code> is decided and auto-routing is desired.</td></tr>
+<tr><td>Probabilistic vaglio (LLM-judge)</td><td>When the <code>constitution</code> v1.1 exists as reference.</td></tr>
+<tr><td>Auto-escalation of tier (fast &rarr; middle &rarr; wise if steps fail)</td><td>When at least two distinct tiers are configured and a use case motivates it.</td></tr>
+<tr><td>Per-tier prompt differentiation (fast/middle/wise) even with the same model</td><td>When the use case requires multiple points of view on the same situation.</td></tr>
+<tr><td>Parallel-tool-call within a turn</td><td>When a real case shows significant latency win. <strong>Binding constraint v1.2</strong>.</td></tr>
+<tr><td>Async approval (deferred execution with durable per_target grants)</td><td>When channel + scheduler require asynchronous interaction.</td></tr>
+<tr><td>Mnestome history-driven in the pre-filter (boost from history)</td><td>When the operational mnestome exists.</td></tr>
+<tr><td>Embedding (local MiniLM) in the pre-filter</td><td>When bag-of-words shows practical limits (not surfaced in the POC).</td></tr>
+<tr><td>Automatic replay of orphan turns from a crash</td><td>When executors are guaranteed idempotent.</td></tr>
+<tr><td>Automatic JSONL rotation</td><td>When the volume becomes relevant.</td></tr>
+</table>
+
+<h2>Closing notes</h2>
+
+<p>
+This document describes what the planner does <em>today</em>, validated by tests. The "deferred to v1.2" sections describe what we expect, not promises. When an extension lands, this doc will be updated exactly as POC v1.1 updated the previous version: rather than speculating on how it will be, we will write what works.
+</p>
+
+</body>
+</html>

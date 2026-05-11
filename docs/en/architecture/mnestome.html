@@ -1,0 +1,555 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Metnos &mdash; mnestome v1.1 (under approval)</title>
+    <meta name="description" content="Microdesign of the mnestome: the emergent graph that holds all mnests. Data schema, operations, snapshots, pruning, relations with executor and proto-mnest.">
+    <meta name="keywords" content="mnestome, mnestoma, graph, mnest, executor, ager, synt, snapshot, sqlite, microdesign, metnos">
+    <meta name="author" content="Roberto Brunialti">
+    <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large">
+    <link rel="canonical" href="https://metnos.com/en/architecture/mnestome.html">
+    <link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/mnestoma.html">
+    <link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/mnestome.html">
+    <link rel="alternate" hreflang="x-default" href="https://metnos.com/en/architecture/mnestome.html">
+    <meta property="og:type" content="article">
+    <meta property="og:url" content="https://metnos.com/en/architecture/mnestome.html">
+    <meta property="og:title" content="Metnos &mdash; mnestome v1.1 (under approval)">
+    <meta property="og:description" content="The emergent graph of all mnests: data schema, operations, snapshots, ager.">
+    <meta property="og:locale" content="en_US">
+    <meta property="og:locale:alternate" content="it_IT">
+    <meta property="og:site_name" content="Metnos">
+    <meta name="twitter:card" content="summary">
+    <meta name="twitter:title" content="Metnos &mdash; mnestome v1.1 (under approval)">
+    <script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "TechArticle",
+  "headline": "Metnos — mnestome v1.1",
+  "description": "Canonical microdesign of the mnestome: schema, operations, snapshots, pruning.",
+  "url": "https://metnos.com/en/architecture/mnestome.html",
+  "inLanguage": "en",
+  "isPartOf": {"@type": "WebSite", "name": "Metnos", "url": "https://metnos.com/"},
+  "author": {"@type": "Person", "name": "Roberto Brunialti"},
+  "about": "Metnos component: mnestome (canonical, new in v1.1)"
+}
+    </script>
+    <style>
+:root {
+    --navy: #1A477A; --navy-light: #2B6CB0; --sage: #548235;
+    --bronze: #A0522D; --plum: #6B21A8;
+    --bg: #FAFBFC; --text: #1a1a1a;
+    --border: #d0d7de; --code-bg: #f6f8fa;
+    --table-header: #1A477A; --table-alt: #f0f4f8;
+    --note-bg: #dbeafe; --note-border: #3b82f6;
+    --tip-bg: #dcfce7; --tip-border: #16a34a;
+    --warn-bg: #fef3c7; --warn-border: #f59e0b;
+    --danger-bg: #fee2e2; --danger-border: #dc2626;
+    --muted: #64748B;
+}
+* { box-sizing: border-box; }
+body { font-family: 'Segoe UI', Calibri, -apple-system, sans-serif; font-size: 11pt; line-height: 1.65; color: var(--text); background: var(--bg); max-width: 960px; margin: 0 auto; padding: 40px 30px; }
+h1 { color: var(--navy); font-size: 20pt; border-bottom: 3px solid var(--navy); padding-bottom: 8px; margin-top: 50px; page-break-before: always; }
+h1:first-of-type { page-break-before: avoid; }
+h2 { color: var(--navy-light); font-size: 14pt; margin-top: 30px; border-bottom: 1px solid var(--border); padding-bottom: 4px; }
+h3 { color: var(--navy); font-size: 12pt; margin-top: 20px; }
+p { margin: 10px 0; }
+table { width: 100%; border-collapse: collapse; margin: 15px 0; font-size: 10pt; page-break-inside: avoid; }
+th { background: var(--table-header); color: white; padding: 8px 10px; text-align: left; font-weight: 600; }
+td { padding: 7px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+tr:nth-child(even) td { background: var(--table-alt); }
+pre { background: var(--code-bg); border: 1px solid var(--border); border-radius: 4px; padding: 12px 16px; overflow-x: auto; font-size: 9.5pt; line-height: 1.55; page-break-inside: avoid; }
+code { font-family: Consolas, 'Courier New', monospace; }
+p code, li code, td code { background: var(--code-bg); padding: 1px 5px; border-radius: 3px; font-size: 9.5pt; }
+figure { text-align: center; margin: 24px 0; page-break-inside: avoid; }
+figure svg { max-width: 100%; height: auto; border: 1px solid var(--border); border-radius: 6px; background: white; padding: 8px; }
+figcaption { font-style: italic; color: #555; font-size: 9.5pt; margin-top: 8px; }
+.callout { border-left: 4px solid; padding: 10px 16px; margin: 15px 0; border-radius: 0 4px 4px 0; font-size: 10pt; page-break-inside: avoid; }
+.callout.note { background: var(--note-bg); border-color: var(--note-border); }
+.callout.tip { background: var(--tip-bg); border-color: var(--tip-border); }
+.callout.warning { background: var(--warn-bg); border-color: var(--warn-border); }
+.callout.danger { background: var(--danger-bg); border-color: var(--danger-border); }
+.title-page { text-align: center; padding: 80px 0 40px; page-break-after: always; }
+.title-page h1 { font-size: 32pt; border: none; margin: 0; page-break-before: avoid; }
+.title-page .subtitle { font-size: 16pt; color: var(--navy-light); margin: 10px 0 30px; }
+.title-page .meta { font-size: 11pt; color: #666; }
+.toc { page-break-after: always; }
+.toc h2 { border: none; }
+.toc ol { font-size: 11pt; line-height: 2; }
+.toc a { color: var(--navy); text-decoration: none; }
+.toc a:hover { text-decoration: underline; }
+ul, ol { margin: 8px 0; padding-left: 24px; }
+li { margin-bottom: 4px; }
+.lead { font-size: 12pt; color: var(--navy); border-left: 4px solid var(--sage); padding-left: 14px; margin: 18px 0; }
+@media print { body { max-width: none; padding: 0; font-size: 10pt; } h1 { font-size: 16pt; } h2 { font-size: 12pt; } .title-page { padding: 60px 0 30px; } .title-page h1 { font-size: 24pt; } }
+    </style>
+</head>
+<body>
+<div style="margin: 18px 0; border-left: 5px solid #16a34a; background: #dcfce7; color: #14532d; padding: 14px 20px; border-radius: 0 8px 8px 0; font-size: 11pt; font-family: 'Segoe UI', Calibri, -apple-system, sans-serif; line-height: 1.55;">
+<strong>Microdesign v1.1 &mdash; under approval; MVP code aligned as of 4 May 2026.</strong>
+Canonical doc approved after the 25/4/2026 end-to-end simulation, aligned with the <a href="../Metnos_Architecture_Intro_v1.html" style="color: #14532d; text-decoration: underline;">Architecture v1.1</a> and the <a href="../Metnos_Dialogue_Executors_v1.html" style="color: #14532d; text-decoration: underline;">Dialogue on executors and distributed memory</a>. Normative reference for implementation. <strong>New concept</strong> compared to the previous microdesign. Update 4/5/2026: the nightly <em>ager</em> (<code>apply_executor_ager</code>, <code>introvertiva_propose</code>, <code>introvertiva_apply</code>) is now gated by the &laquo;has the user interacted since the last run?&raquo; signal (ADR&nbsp;0074): a Metnos on holiday no longer deprecates executors for calendar inactivity. The introvertiva also has deterministic quality filters (ADR&nbsp;0077): vocab validator on <code>proposed_name</code>, skip of flow args (<code>entries</code>, <code>from_step</code>, <code>results</code>) and template values <code>{{stepN.field}}</code>, <code>min_uses</code> threshold raised from 3 to 10. Proposal volume goes 24 &rarr; 6 with much higher expected quality.
+</div>
+
+<nav aria-label="Language" style="position:fixed;top:16px;right:20px;z-index:9999;font-family:'Segoe UI',Calibri,sans-serif;font-size:10pt;letter-spacing:2px;background:#FAFBFC;border:1px solid #d0d7de;border-radius:14px;padding:4px 10px;box-shadow:0 1px 4px rgba(0,0,0,0.04);">
+<a href="/it/architecture/mnestoma.html" hreflang="it" lang="it" style="color:#64748B;text-decoration:none;padding:0 4px;border:none;">IT</a>
+<span style="color:#d0d7de;"> &middot; </span>
+<a href="/en/architecture/mnestome.html" class="active" hreflang="en" lang="en" style="color:#1a1a1a;text-decoration:none;font-weight:700;padding:0 4px;border:none;">EN</a>
+</nav>
+
+<div style="background:#fff;border-bottom:1px solid #d0d7de;padding:10px 0;font-size:14px;position:sticky;top:0;z-index:10;margin-bottom:20px;">
+  <div style="max-width:960px;margin:0 auto;padding:0 20px;display:flex;justify-content:space-between;">
+    <a href="../index.html" style="color:#1a477a;text-decoration:none;font-weight:500;">&larr; Documentation index</a>
+    <span style="color:#8e8e93;">Microdesign &rsaquo; <strong style="color:#1a1a1a;">mnestome</strong></span>
+  </div>
+</div>
+
+<div class="title-page">
+    <h1>Metnos</h1>
+    <div class="subtitle"><code>mnestome</code> &mdash; the emergent graph of all mnests</div>
+    <div class="meta">
+        Microdesign v1.1 &mdash; 24 April 2026<br>
+        Aligned with Architecture v1.1 (ch. 9, Figure 6) and the Dialogue on executors.<br>
+        New concept introduced by v1.1 (does not replace anything existing).<br>
+        <br>
+        Audience: whoever implements the data schema, the ager, the snapshots.<br>
+        Reading time: 16 minutes.
+    </div>
+</div>
+
+<div class="callout" style="border-left:5px solid #16a34a;background:#dcfce7;color:#14532d;padding:14px 18px;border-radius:0 8px 8px 0;margin:18px 0;">
+<strong>Session update May 1, 2026 (evening).</strong>
+<code>events.turn_id</code> refactor (ADR 0067): the mnestome events table
+adopts <code>turn_id</code> as the single discriminator, replacing the
+scattered identifiers (run_id / session_id / batch_id) used by the early
+versions of the introspective. Schema change with in-place migration;
+no user load lost, audit log preserved. The ager keeps running as the
+<code>apply_ager</code> task under the builtin scheduler
+(<a href="agent_runtime.html#cap11_2">agent_runtime &sect;11.2</a>) with
+schedule <code>daily@04:00</code>; on top of it, the introspective MVP
+(see <a href="synt.html">synt</a>) consumes the long-period signal via
+<code>diff_audit</code>.
+</div>
+
+<div class="toc">
+<h2>Contents</h2>
+<ol>
+    <li><a href="#cap1">Scope and boundaries</a></li>
+    <li><a href="#cap2">What the mnestome is</a></li>
+    <li><a href="#cap3">What the mnestome is NOT</a></li>
+    <li><a href="#cap4">Data schema</a></li>
+    <li><a href="#cap5">Operations: insert, query, update</a></li>
+    <li><a href="#cap6">The ager: how decay operates</a></li>
+    <li><a href="#cap7">Pruning, snapshots, archival</a></li>
+    <li><a href="#cap8">Linguistic variant: mnestome vs mnestoma</a></li>
+    <li><a href="#cap9">Bootstrap: the first mnestome</a></li>
+    <li><a href="#cap10">Observability and debugging</a></li>
+    <li><a href="#cap11">Open questions</a></li>
+</ol>
+</div>
+
+<h1 id="cap1">1. Scope and boundaries</h1>
+
+<p class="lead">
+This document defines the <em>mnestome</em>: the data structure that
+holds the set of all active <a href="mnest.html">mnests</a> and
+governs their lifecycle. It is the third of three canonical docs
+introduced by the <em>Dialogue on executors and distributed memory</em>
+(24 April 2026), and it is a new concept: the previous microdesign did
+not have it. Technically it is a weighted directed graph persisted in
+SQLite; ontologically it is <em>Metnos's relational memory</em>
+&mdash; what it remembers having done together.
+</p>
+
+<h2>Boundaries</h2>
+
+<p>The document covers:</p>
+<ul>
+<li>the data schema of the graph (tables, constraints, indexes);</li>
+<li>the atomic write and read operations;</li>
+<li>how the <em>ager</em> works and the pruning policy;</li>
+<li>the snapshot and backup strategy.</li>
+</ul>
+
+<p>It does not cover, and defers to other docs:</p>
+<ul>
+<li>the structure of a single mnest (see <a href="mnest.html">mnest.html</a>);</li>
+<li>the structure of a single executor (see <a href="executor.html">executor.html</a>);</li>
+<li>the synthesis pipeline (see <a href="executor.html#cap7">executor.html ch. 7</a> and <a href="../../it/architecture/synthesizer.html">synthesizer.html</a>, in Italian and pending rewrite);</li>
+<li>the LLM conversational memory (see <a href="../../it/architecture/memory.html">memory.html</a>, in Italian and pending rewrite).</li>
+</ul>
+
+<h1 id="cap2">2. What the mnestome is</h1>
+
+<p>
+The <strong>mnestome</strong> is a weighted directed graph in which:
+</p>
+<ul>
+<li>the <strong>nodes</strong> are <a href="executor.html">executors</a> (loaded or quarantined);</li>
+<li>the <strong>edges</strong> are <a href="mnest.html">mnests</a> (observed output passings between pairs of executors);</li>
+<li>there is a special sub-category of edges, the <em>proto-mnests</em>, in which the destination node is an unresolved desired name.</li>
+</ul>
+
+<p>
+The mnestome <strong>emerges</strong>. No one designs it a priori: it
+is born empty at first boot and forms turn after turn, while the
+gateway observes which executors pass output to which others. The
+shapes it takes reflect how the system is used: an &laquo;invoice
+archiving&raquo; user's mnestome has different clusters than a
+&laquo;daily news roundup&raquo; user's, even when the seed of
+executors is the same.
+</p>
+
+<div class="callout note">
+<strong>Why a graph, not a list.</strong> The &laquo;graph&raquo; shape
+captures a property the list would not: <em>operational proximity</em>.
+Two executors that often appear one after the other in the same turn
+are closer than two that never meet. The graph makes it explicit; the
+list hides it. Almost every Vaglio, ager and synt decision is easier
+to formulate in graph terms.
+</div>
+
+<h1 id="cap3">3. What the mnestome is NOT</h1>
+
+<p>
+The word &laquo;memory&raquo; in an AI agent has too many meanings. It
+is worth saying clearly what the mnestome is <em>not</em>:
+</p>
+
+<table>
+<thead><tr><th style="width:32%">What the mnestome is NOT</th><th>Where that concept lives, then</th></tr></thead>
+<tbody>
+<tr><td>The LLM's conversational memory (recent turns, in-token context).</td><td>In the <em>working memory</em> of the execution trace, see <a href="../../it/architecture/memory.html">memory.html</a> (in Italian and pending rewrite).</td></tr>
+<tr><td>The episodic memory of past conversations (what Roberto said yesterday).</td><td>In the <em>episodic memory</em>, indexed by sender. See <a href="../../it/architecture/memory.html">memory.html</a>.</td></tr>
+<tr><td>The semantic memory of facts about Roberto and his world (&laquo;the dog's name is Fido&raquo;).</td><td>In the <em>semantic memory</em>, extracted via reflection and approved by the user.</td></tr>
+<tr><td>The audit log of completed actions.</td><td>In <code>workspace/.audit/</code>, append-only, JSONL.</td></tr>
+<tr><td>The user's file workspace (notes, invoices, photos).</td><td>In <code>workspace/</code>, managed separately.</td></tr>
+<tr><td>The definition of capabilities (the individual executors).</td><td>In <code>workspace/executors/</code>, file by file.</td></tr>
+</tbody>
+</table>
+
+<p>
+The mnestome is the <em>observed relation</em> between executors: who
+worked with whom, how often, how recently. Nothing more.
+</p>
+
+<h1 id="cap4">4. Data schema</h1>
+
+<p>
+The mnestome lives in <code>workspace/.mnestome/mnest.sqlite</code>, a
+single SQLite file. The choice of SQLite is deliberate: zero services
+to start, zero external dependencies, trivial backup (file copy),
+proven reliability.
+</p>
+
+<h2>Table <code>executors</code></h2>
+
+<p>
+A lightweight replica of the manifest, in fast-read mode for gateway
+queries. The canonical manifest always remains
+<code>workspace/executors/&lt;name&gt;/manifest.toml</code>; this table
+is an index.
+</p>
+
+<pre><code>CREATE TABLE executors (
+  name           TEXT NOT NULL,
+  version        TEXT NOT NULL,
+  state          TEXT NOT NULL,        -- seed | active | quarantine | archived
+  loaded_at      TEXT NOT NULL,        -- ISO 8601
+  manifest_hash  TEXT NOT NULL,        -- blake3
+  PRIMARY KEY (name, version)
+);
+CREATE INDEX idx_executors_state ON executors(state);
+</code></pre>
+
+<h2>Table <code>mnests</code></h2>
+
+<pre><code>CREATE TABLE mnests (
+  id             TEXT PRIMARY KEY,     -- ULID
+  src_executor   TEXT NOT NULL,
+  src_version    TEXT NOT NULL,
+  dst_executor   TEXT NOT NULL,        -- canonical name OR desired name (proto)
+  dst_version    TEXT,                 -- NULL for proto
+  weight         REAL NOT NULL CHECK (weight BETWEEN 0 AND 1),
+  uses           INTEGER NOT NULL CHECK (uses &gt;= 1),
+  ts_first       TEXT NOT NULL,
+  ts_last        TEXT NOT NULL,
+  decay_lambda   REAL NOT NULL DEFAULT 0.018,
+  state          TEXT NOT NULL,        -- proto | active | decaying | superseded
+  tags           TEXT,                 -- JSON array
+  desired_sig    TEXT,                 -- JSON, only for proto
+  CHECK (ts_last &gt;= ts_first),
+  UNIQUE (src_executor, src_version, dst_executor, dst_version, state)
+);
+CREATE INDEX idx_mnests_dst    ON mnests(dst_executor);
+CREATE INDEX idx_mnests_src    ON mnests(src_executor);
+CREATE INDEX idx_mnests_weight ON mnests(weight DESC);
+CREATE INDEX idx_mnests_state  ON mnests(state);
+</code></pre>
+
+<h2>Table <code>events</code></h2>
+
+<p>
+Append-only, records every reinforcement or decay applied. Allows the
+weight trajectory of a mnest to be reconstructed and to be recomputed
+later if the formula changes.
+</p>
+
+<pre><code>CREATE TABLE events (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  mnest_id    TEXT NOT NULL,
+  ts          TEXT NOT NULL,
+  kind        TEXT NOT NULL,           -- reinforce | decay | state_change
+  delta       REAL,                    -- weight delta (NULL for state_change)
+  new_state   TEXT,                    -- only for state_change
+  reason      TEXT,                    -- e.g. "ager nightly", "synt approved"
+  FOREIGN KEY (mnest_id) REFERENCES mnests(id)
+);
+CREATE INDEX idx_events_mnest ON events(mnest_id);
+CREATE INDEX idx_events_ts    ON events(ts);
+</code></pre>
+
+<h2>View <code>v_mnestome</code></h2>
+
+<p>
+The &laquo;live&raquo; graph for read queries. Excludes
+<code>superseded</code> and shows <code>active</code> + <code>proto</code>:
+</p>
+
+<pre><code>CREATE VIEW v_mnestome AS
+SELECT id, src_executor, src_version, dst_executor, dst_version,
+       weight, uses, ts_last, state, tags, desired_sig
+FROM mnests
+WHERE state IN ('active', 'proto');
+</code></pre>
+
+<h1 id="cap5">5. Operations: insert, query, update</h1>
+
+<h2>Insert / reinforcement: <code>record_passing</code></h2>
+
+<p>
+The only write operation during a turn. Atomic per pair. Pseudocode:
+</p>
+
+<pre><code>def record_passing(src, dst, turn_ctx) -&gt; mnest_id:
+    with conn.transaction():
+        if dst.exists:
+            row = SELECT * FROM mnests
+                  WHERE src_executor = src.name AND src_version = src.version
+                    AND dst_executor = dst.name AND dst_version = dst.version
+                    AND state = 'active'
+            if row:
+                w = decay(row.weight, now() - row.ts_last, row.decay_lambda) + REINFORCE_DELTA
+                UPDATE mnests SET weight = clamp01(w), uses = uses + 1, ts_last = now()
+                INSERT INTO events (mnest_id, ts, kind, delta, reason)
+                       VALUES (row.id, now(), 'reinforce', REINFORCE_DELTA, turn_ctx.id)
+                return row.id
+            else:
+                id = ulid()
+                INSERT INTO mnests (id, src_*, dst_*, weight, uses, ts_first, ts_last, state, tags)
+                       VALUES (id, ..., BOOTSTRAP_WEIGHT, 1, now(), now(), 'active', tags)
+                INSERT INTO events (mnest_id, ts, kind, delta, reason)
+                       VALUES (id, now(), 'reinforce', BOOTSTRAP_WEIGHT, turn_ctx.id)
+                return id
+        else:
+            # proto-mnest
+            id = ulid()
+            desired = build_desired_signature(turn_ctx)
+            INSERT INTO mnests (..., dst_executor=dst.desired_name, dst_version=NULL,
+                                ..., state='proto', desired_sig=desired)
+            return id
+</code></pre>
+
+<h2>Main queries</h2>
+
+<table>
+<thead><tr><th style="width:30%">Query</th><th>Use</th></tr></thead>
+<tbody>
+<tr><td><code>top_k_outgoing(executor, k)</code></td><td>Given an executor, returns the <em>k</em> heaviest outgoing mnests.</td></tr>
+<tr><td><code>top_k_incoming(executor, k)</code></td><td>Given an executor, returns the <em>k</em> heaviest incoming mnests.</td></tr>
+<tr><td><code>walk(start, max_depth)</code></td><td>Weighted BFS from the starting node, up to a maximum depth. Used by the gateway to build the execution context.</td></tr>
+<tr><td><code>recurring_protos(min_uses, since)</code></td><td>List of proto-mnests that have crossed a recurrence threshold. Trigger of the synt.</td></tr>
+<tr><td><code>by_tag(tag)</code></td><td>All mnests with a given tag. Used by observability and the ager for clustering.</td></tr>
+<tr><td><code>decaying()</code></td><td>Mnests in decaying state. Used by the ager for archival proposals.</td></tr>
+</tbody>
+</table>
+
+<h2>State updates</h2>
+
+<p>
+State transitions are made by specific components (ager, synt, gateway
+in case of executor quarantine). All are accompanied by an
+<code>events</code> row with <code>kind = 'state_change'</code> and a
+mandatory <code>reason</code>; this is the principle of reversibility
+(ch. 14 of the Architecture): you do not change state without a trace
+of the why.
+</p>
+
+<h1 id="cap6">6. The ager: how decay operates</h1>
+
+<p>
+The <strong>ager</strong> is the process that applies decay and signals
+the state transitions that pure time requires. It runs once a day, in a
+night window (default: 04:00 local time), in a long but low-impact
+transaction:
+</p>
+
+<ol>
+<li><strong>Decay</strong>: for every <code>active</code> mnest, compute <code>weight_new = weight_old &middot; exp(-&lambda; &middot; &Delta;t)</code> where <code>&Delta;t</code> is the time elapsed since the last event. Update the weight and write a <code>decay</code>-kind <code>events</code> row.</li>
+<li><strong>Decay state</strong>: every mnest that falls below the <code>decay weight</code> threshold moves to <code>decaying</code>; it is signalled in the <em>proposals</em> channel to the gateway.</li>
+<li><strong>Archive proposal</strong>: every <code>decaying</code> mnest below <code>archive weight</code> with <code>ts_last &gt; 90 days</code> enters the list of archival proposals shown to Roberto.</li>
+<li><strong>Proto purge</strong>: every proto-mnest that falls below <code>min proto weight</code> is deleted (anti-noise).</li>
+<li><strong>Recurring proto detection</strong>: search proto-mnests with <code>uses &gt;= SYNTH_TRIGGER_USES</code> and <code>weight &gt;= SYNTH_TRIGGER_WEIGHT</code>; signal them to the synt as candidates for synthesis.</li>
+<li><strong>Snapshot</strong>: on the first of the month, copy the SQLite file into <code>workspace/.mnestome/snapshots/YYYY-MM.sqlite</code>.</li>
+</ol>
+
+<p>
+The ager is a pure example of a component that only does
+<em>maintenance</em>: it does not modify the structure of mnests, does
+not create executors, does not speak to the user. It proposes; the
+deciders are synt + Roberto, or the archival policy that the gateway
+applies in the next turn.
+</p>
+
+<h1 id="cap7">7. Pruning, snapshots, archival</h1>
+
+<h2>Monthly snapshot</h2>
+
+<p>
+On the first of the month (UTC), the ager produces a snapshot of the
+live file:
+</p>
+
+<pre><code>workspace/.mnestome/snapshots/2026-04.sqlite      # current month
+workspace/.mnestome/snapshots/2026-03.sqlite.zst  # older, compressed
+workspace/.mnestome/snapshots/2026-02.sqlite.zst
+...
+</code></pre>
+
+<p>
+The snapshot serves three purposes: rollback in case of corruption of
+the live file, historical analysis of the graph, trace for whoever
+wants to understand how Metnos &laquo;formed&raquo; over time.
+Snapshots older than 12 months are <code>.zst</code>-compressed but
+<em>never</em> deleted: history is a first-rate datum.
+</p>
+
+<h2>Live file pruning</h2>
+
+<p>
+The live file would stay up even when full, but for performance and
+cleanliness a periodic pruning helps:
+</p>
+
+<ul>
+<li><code>superseded</code> and <code>archived</code> mnests are moved to a <code>mnests_archive</code> table after 90 days (still in the same SQLite file);</li>
+<li>the <code>events</code> table is partitioned by year (tables <code>events_2026</code>, <code>events_2027</code>, ...). Only the current year is in the live schema; previous years move to a second SQLite file <code>events_history.sqlite</code>;</li>
+<li>SQLite's <code>VACUUM</code> runs monthly right after the snapshot.</li>
+</ul>
+
+<h2>Executor archival</h2>
+
+<p>
+When an executor moves to <code>archived</code>, its mnests move to
+<code>superseded</code> with <code>reason = 'executor archived'</code>;
+they remain readable, are excluded from the <code>v_mnestome</code>
+view, and after 90 days move to the archive table.
+</p>
+
+<h1 id="cap8">8. Linguistic variant: mnestome vs mnestoma</h1>
+
+<p>
+The term has two normative forms:
+</p>
+<ul>
+<li><strong>mnestome</strong> in English (biological suffix <em>-ome</em>, as in <em>microbiome</em>, <em>connectome</em>);</li>
+<li><strong>mnestoma</strong> in Italian (Latin suffix <em>-ma</em>, as in <em>diploma</em>, <em>poema</em>);</li>
+<li>the Greek root is shared: μνήστης / mn&#234;stis (the one who remembers).</li>
+</ul>
+
+<p>
+The double form is intentional and to be preserved. Translating
+<em>mnestoma</em> into <em>mnestome</em> in English gives the English
+reader the right reflex (the biological suffix evokes an emergent
+graph, like the microbiome). Translating <em>mnestome</em> into
+<em>mnestoma</em> in Italian follows the phonetic rule that avoids
+suffixes felt as incongruous (<em>mnestome</em> in Italian would sound
+like a verbal imperative, &laquo;you, memorise!&raquo;).
+</p>
+
+<h1 id="cap9">9. Bootstrap: the first mnestome</h1>
+
+<p>
+At first boot, the mnestome is empty. The question &laquo;then where
+do we start?&raquo; has three concrete answers:
+</p>
+
+<ol>
+<li><strong>Start empty.</strong> For most instances, the mnestome is empty at first boot and forms over a month of use. It is slow but correct: the user's specificity enters the graph's shape immediately.</li>
+<li><strong>Minimal seed (recommended).</strong> A seed of 12-15 known mnests, hard-coded in the repo, wires the most common passings between seed executors (e.g. <em>fs_read &rarr; pdf_extract</em>, <em>web_fetch &rarr; markdown_render</em>). They have <code>state = 'seed'</code> to distinguish them and weight <code>BOOTSTRAP_WEIGHT</code> (see <a href="mnest.html#cap6">mnest.html ch. 6</a>).</li>
+<li><strong>Import from snapshot.</strong> For migrations or sharing (future), a clean snapshot can be imported. Import goes through validation: the cited executors must exist and be signed.</li>
+</ol>
+
+<h1 id="cap10">10. Observability and debugging</h1>
+
+<p>
+The user can inspect the mnestome from the CLI (via the
+<code>Metnos mnestome</code> command):
+</p>
+
+<pre><code>Metnos mnestome list                        # all active mnests
+Metnos mnestome list --tag invoice          # filtered by tag
+Metnos mnestome top 20                      # the 20 heaviest
+Metnos mnestome graph executor fs_read      # neighbourhood of an executor
+Metnos mnestome proto                       # current proto-mnests
+Metnos mnestome history mnest_01HW...       # event history of a mnest
+Metnos mnestome snapshot --month 2026-03    # opens the monthly snapshot
+</code></pre>
+
+<p>
+The web dashboard (see <a href="../../it/architecture/observability.html">observability.html</a>,
+in Italian and pending rewrite) has a graphical view of the same
+content, with filters and drill-down. The transparency rule: the user
+can always know what Metnos thinks it knows.
+</p>
+
+<h1 id="cap11">11. Open questions</h1>
+
+<ol>
+<li><strong>Write concurrency.</strong> The gateway is a single process, so writes are naturally serial. When remote executors arrive in the future (ch. 4 of the Architecture), the gateway stays unique but calls may arrive from multiple turns in parallel. Is SQLite WAL enough? Open.</li>
+<li><strong>Schema migration.</strong> The SQLite file lives long. How do we manage schema migrations across Metnos versions? Numbered declarative migrations, Alembic-style? Open.</li>
+<li><strong>Snapshot privacy.</strong> Monthly snapshots contain executor names and tags, but no contents. The privacy surface is low, but if one wanted to share a snapshot for debug, a tag redaction function would be useful. To be designed if needed.</li>
+<li><strong>Integration with episodic memory.</strong> The mnestome and the episodic memory of conversations are kept separate by design (ch. 3). Does it make sense to have an explicit cross-reference (a mnest citing the turn_id that generated it)? The inverse (a turn citing the mnests it reinforced) is already in the audit. Open.</li>
+</ol>
+
+<hr>
+
+<div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(260px, 1fr)); gap:14px; margin:28px 0 24px;">
+  <a href="executor.html" style="display:block; padding:14px 16px; border:1px solid var(--border); border-radius:8px; background:white; color:inherit; text-decoration:none;">
+    <span style="display:inline-block; padding:2px 9px; border-radius:10px; font-size:9pt; background:var(--code-bg); color:var(--muted); font-weight:500;">first in the triad</span>
+    <div style="color:var(--navy); font-size:11.5pt; font-weight:700; margin:8px 0 6px 0;">executor</div>
+    <div style="margin:0; color:var(--muted); font-size:10pt; line-height:1.5;">The node of the mnestome.</div>
+  </a>
+  <a href="mnest.html" style="display:block; padding:14px 16px; border:1px solid var(--border); border-radius:8px; background:white; color:inherit; text-decoration:none;">
+    <span style="display:inline-block; padding:2px 9px; border-radius:10px; font-size:9pt; background:var(--code-bg); color:var(--muted); font-weight:500;">second in the triad</span>
+    <div style="color:var(--navy); font-size:11.5pt; font-weight:700; margin:8px 0 6px 0;">mnest</div>
+    <div style="margin:0; color:var(--muted); font-size:10pt; line-height:1.5;">The edge of the mnestome.</div>
+  </a>
+  <a href="../Metnos_Architecture_Intro_v1.html#cap9" style="display:block; padding:14px 16px; border:1px solid var(--border); border-radius:8px; background:white; color:inherit; text-decoration:none;">
+    <span style="display:inline-block; padding:2px 9px; border-radius:10px; font-size:9pt; background:var(--code-bg); color:var(--muted); font-weight:500;">level 1</span>
+    <div style="color:var(--navy); font-size:11.5pt; font-weight:700; margin:8px 0 6px 0;">Architecture, ch. 9</div>
+    <div style="margin:0; color:var(--muted); font-size:10pt; line-height:1.5;">The big picture.</div>
+  </a>
+  <a href="./" style="display:block; padding:14px 16px; border:1px solid var(--border); border-radius:8px; background:white; color:inherit; text-decoration:none;">
+    <span style="display:inline-block; padding:2px 9px; border-radius:10px; font-size:9pt; background:var(--code-bg); color:var(--muted); font-weight:500;">index</span>
+    <div style="color:var(--navy); font-size:11.5pt; font-weight:700; margin:8px 0 6px 0;">Microdesign</div>
+    <div style="margin:0; color:var(--muted); font-size:10pt; line-height:1.5;">All docs.</div>
+  </a>
+</div>
+
+<hr>
+<p style="text-align:center; color:var(--muted); font-size:9.5pt; margin-top:40px;">
+Metnos &mdash; <em>mnestome</em> microdesign v1.1 &mdash; 2026-04-24<br>
+New canonical doc (concept introduced by v1.1).
+</p>
+</body>
+</html>

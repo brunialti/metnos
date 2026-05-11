@@ -1,0 +1,119 @@
+# Manifest dell'executor `send_messages` — Metnos v1.1
+
+manifest_format = "1.0"
+
+name        = "send_messages"
+version     = "0.4.0"
+author      = "Roberto Brunialti <roberto.brunialti@metnos.com>"
+affinity    = ["send", "invia", "spedisci", "mail", "email", "mandare", "rispondere", "reply", "telegram", "messaggio", "manda a", "scrivi a"]
+revertible  = false
+lifecycle   = "active"
+
+[description]
+it = "Invia uno o piu' messaggi su mail (SMTPS) o Telegram. Vettoriale: la lista `messages` puo' contenere 1+ messaggi (max 50 per call, anti-spam guard). DUE MODI: (a) MAIL CLASSICO: ogni messaggio ha `to` (email|list), `subject`, `body`, opzionali `cc`, `bcc`, `body_html`, `attachments`. (b) MULTI-USER (4/5/2026, ADR 0083): usa `to_user` (name o user_id) + `via_channel` ('telegram'|'mail'|'auto', default 'auto'). Il name e' risolto in users.db: es. 'lucia' → user_id → recipient_id (chat_id Telegram o email). via_channel='auto' = primo canale verificato (telegram > mail > http). Cross-user policy: host puo' inviare ai propri guest; guest verso terzi richiede vaglio (ADR 0084). ALLEGATI (solo mail): attachments e' una lista di path o di dict {path, filename?, content_type?}. Cap 25 MB per messaggio. Backend mail: SMTP_SSL stdlib. Backend telegram: TelegramChannel.send_to. Best-effort: una send fallita non blocca le altre. CRITICAL IRREVERSIBILE: revertible=false. Per leggere/cercare mail usa read_messages."
+en = "Send one or more messages via mail (SMTPS) or Telegram. Vectorial: the list `messages` can contain 1+ messages (max 50 per call, anti-spam guard). TWO MODES: (a) CLASSIC MAIL: each message has `to` (email|list), `subject`, `body`, optional `cc`, `bcc`, `body_html`, `attachments`. (b) MULTI-USER (4/5/2026, ADR 0083): uses `to_user` (name or user_id) + `via_channel` ('telegram'|'mail'|'auto', default 'auto'). The name is resolved in users.db: e.g. 'lucia' → user_id → recipient_id (Telegram chat_id or email). via_channel='auto' = first verified channel (telegram > mail > http). Cross-user policy: host can send to their own guests; guest towards third parties requires vetting (ADR 0084). ATTACHMENTS (mail only): attachments is a list of paths or dicts {path, filename?, content_type?}. Cap 25 MB per message. Mail backend: SMTP_SSL stdlib. Telegram backend: TelegramChannel.send_to. Best-effort: one failed send does not block the others. CRITICAL IRREVERSIBLE: revertible=false. To read/search mail use read_messages."
+
+[code]
+files  = ["send_messages.py"]
+digest = "sha256:83b52249871d75347171e78fe47a0fe11354cff3f8549f33b2c42279608f7217"
+
+[args]
+type     = "object"
+required = ["messages"]
+
+[args.properties.to_user]
+
+[args.properties.to_user.description]
+it = "(Multi-user) Nome utente o user_id, oppure lista. Es. 'lucia' o ['lucia','marco']. Risolto via users.db. Top-level: applicato a tutti i messages che non hanno gia' un loro to_user."
+en = "(Multi-user) Username or user_id, or a list. E.g. 'lucia' or ['lucia','marco']. Resolved via users.db. Top-level: applied to all messages that do not already have their own to_user."
+
+[args.properties.via_channel]
+type        = "string"
+default     = "auto"
+
+[args.properties.via_channel.description]
+it = "(Multi-user) Canale di invio: 'telegram', 'mail', 'http', oppure 'auto' (default = primo canale verificato, ordine telegram > mail > http)."
+en = "(Multi-user) Sending channel: 'telegram', 'mail', 'http', or 'auto' (default = first verified channel, order telegram > mail > http)."
+
+[args.properties.messages]
+type        = "array"
+
+[args.properties.messages.description]
+it = "Lista di messaggi da inviare. Ogni elemento dict con campi: to, subject, body (vedi messages.items.properties). Max 50 per call."
+en = "List of messages to send. Each element is a dict with fields: to, subject, body (see messages.items.properties). Max 50 per call."
+
+[args.properties.messages.items]
+type     = "object"
+
+[args.properties.messages.items.properties.to]
+description = "(Mail) Destinatario singolo (string) o lista di destinatari email. Almeno uno fra `to` e `to_user` deve essere presente."
+
+[args.properties.messages.items.properties.to_user]
+description = "(Multi-user) Nome utente / user_id / '@chat_id'. Lista accettata. Alternativa per-message a `to`. Override del top-level `to_user`."
+
+[args.properties.messages.items.properties.via_channel]
+type        = "string"
+description = "(Multi-user, opzionale) Canale per QUESTO messaggio: 'telegram'|'mail'|'http'|'auto'. Override del top-level `via_channel`."
+
+[args.properties.messages.items.properties.subject]
+type        = "string"
+description = "Oggetto del messaggio."
+
+[args.properties.messages.items.properties.body]
+type        = "string"
+description = "Corpo testuale del messaggio. Almeno uno fra body e body_html deve essere presente."
+
+[args.properties.messages.items.properties.body_html]
+type        = "string"
+description = "Corpo HTML alternativo (opzionale)."
+
+[args.properties.messages.items.properties.cc]
+description = "CC singolo (string) o lista."
+
+[args.properties.messages.items.properties.bcc]
+description = "BCC singolo (string) o lista."
+
+[args.properties.messages.items.properties.attachments]
+type        = "array"
+description = "Lista di path file da allegare a QUESTO messaggio. Ogni elemento e' una stringa (path assoluto, ~ espanso) oppure un dict {path, filename?, content_type?}. Mime-type rilevato automaticamente; default application/octet-stream. Cap 25MB totali per messaggio. ESEMPIO: [\"/tmp/contratto.pdf\", \"/home/roberto/foto.jpg\"]. NB: attachments va DENTRO il singolo message, NON a top-level."
+[args.properties.attachments]
+type        = "array"
+
+[args.properties.attachments.description]
+it = "Shortcut: attachments applicati a TUTTI i messages della call (utile quando si invia un solo messaggio: si puo' mettere attachments al top-level invece di dentro il message). Stesso formato di messages.items.properties.attachments. Se un message ha gia' un suo attachments, quello vince e questo top-level viene ignorato per quel message."
+en = "Shortcut: attachments applied to ALL messages of the call (useful when sending a single message: attachments can be placed at the top-level instead of inside the message). Same format as messages.items.properties.attachments. If a message already has its own attachments, those prevail and this top-level is ignored for that message."
+
+[args.properties.account]
+type        = "string"
+default     = "metnos_system"
+
+[args.properties.account.description]
+it = "Account SMTP da usare. Valid: 'metnos_system' (metnos@metnos.com, default), 'metnos_roberto', 'mykleos'."
+en = "──────────────────────────────────────────── SMTP Account to use. Valid: 'metnos_system' (metnos@metnos.com, default), 'metnos_roberto', 'mykleos'. ────────────────────────────────────────────"
+
+[[capabilities]]
+name = "mail:send"
+hint = ["smtp.migadu.com", "authsmtp.securemail.pro"]
+
+[[capabilities]]
+name = "messaging:send"
+hint = ["api.telegram.org"]
+
+[[capabilities]]
+name = "fs:read"
+hint = ["~/.config/metnos/mail.env", "~/.config/mykleos/mail.env"]
+
+[[tests]]
+name   = "messages_non_lista"
+input  = { messages = "ciao" }
+expect = { ok = false, error_contains = "must be a list" }
+
+[[tests]]
+name   = "account_invalido"
+input  = { messages = [], account = "ghost" }
+expect = { ok = false, error_contains = "unknown account" }
+
+[[tests]]
+name   = "rate_limit_max_50"
+input  = { messages = [{to="a@b.c",subject="s",body="b"}, {to="a@b.c",subject="s",body="b"}, {to="a@b.c",subject="s",body="b"}, {to="a@b.c",subject="s",body="b"}, {to="a@b.c",subject="s",body="b"}, {to="a@b.c",subject="s",body="b"}, {to="a@b.c",subject="s",body="b"}, {to="a@b.c",subject="s",body="b"}, {to="a@b.c",subject="s",body="b"}, {to="a@b.c",subject="s",body="b"}, {to="a@b.c",subject="s",body="b"}, {to="a@b.c",subject="s",body="b"}, {to="a@b.c",subject="s",body="b"}, {to="a@b.c",subject="s",body="b"}, {to="a@b.c",subject="s",body="b"}, {to="a@b.c",subject="s",body="b"}, {to="a@b.c",subject="s",body="b"}, {to="a@b.c",subject="s",body="b"}, {to="a@b.c",subject="s",body="b"}, {to="a@b.c",subject="s",body="b"}, {to="a@b.c",subject="s",body="b"}, {to="a@b.c",subject="s",body="b"}, {to="a@b.c",subject="s",body="b"}, {to="a@b.c",subject="s",body="b"}, {to="a@b.c",subject="s",body="b"}, {to="a@b.c",subject="s",body="b"}, {to="a@b.c",subject="s",body="b"}, {to="a@b.c",subject="s",body="b"}, {to="a@b.c",subject="s",body="b"}, {to="a@b.c",subject="s",body="b"}, {to="a@b.c",subject="s",body="b"}, {to="a@b.c",subject="s",body="b"}, {to="a@b.c",subject="s",body="b"}, {to="a@b.c",subject="s",body="b"}, {to="a@b.c",subject="s",body="b"}, {to="a@b.c",subject="s",body="b"}, {to="a@b.c",subject="s",body="b"}, {to="a@b.c",subject="s",body="b"}, {to="a@b.c",subject="s",body="b"}, {to="a@b.c",subject="s",body="b"}, {to="a@b.c",subject="s",body="b"}, {to="a@b.c",subject="s",body="b"}, {to="a@b.c",subject="s",body="b"}, {to="a@b.c",subject="s",body="b"}, {to="a@b.c",subject="s",body="b"}, {to="a@b.c",subject="s",body="b"}, {to="a@b.c",subject="s",body="b"}, {to="a@b.c",subject="s",body="b"}, {to="a@b.c",subject="s",body="b"}, {to="a@b.c",subject="s",body="b"}, {to="a@b.c",subject="s",body="b"}] }
+expect = { ok = false, error_contains = "max 50" }

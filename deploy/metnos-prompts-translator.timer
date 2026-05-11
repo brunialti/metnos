@@ -1,0 +1,12 @@
+[Unit]
+Description=Metnos prompts auto-translator timer — ogni notte alle 04:30
+
+[Timer]
+OnCalendar=*-*-* 04:30:00
+AccuracySec=60
+# Persistent=true: se il sistema era down all'orario, esegue il job al
+# primo boot utile (evita gap di traduzione dopo reboot).
+Persistent=true
+
+[Install]
+WantedBy=timers.target

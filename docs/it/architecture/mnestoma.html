@@ -1,0 +1,562 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Metnos &mdash; mnestoma v1.1 (under approval)</title>
+    <meta name="description" content="Microprogettazione del mnestoma: il grafo emergente che raccoglie tutti i mnest. Schema dati, operazioni, snapshot, pruning, relazioni con executor e proto-mnest.">
+    <meta name="keywords" content="mnestoma, mnestome, grafo, mnest, executor, ager, synt, snapshot, sqlite, microprogettazione, metnos">
+    <meta name="author" content="Roberto Brunialti">
+    <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large">
+    <link rel="canonical" href="https://metnos.com/it/architecture/mnestoma.html">
+    <link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/mnestoma.html">
+    <link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/mnestome.html">
+    <link rel="alternate" hreflang="x-default" href="https://metnos.com/en/architecture/mnestome.html">
+    <meta property="og:type" content="article">
+    <meta property="og:url" content="https://metnos.com/it/architecture/mnestoma.html">
+    <meta property="og:title" content="Metnos &mdash; mnestoma v1.1 (under approval)">
+    <meta property="og:description" content="Il grafo emergente di tutti i mnest: schema dati, operazioni, snapshot, ager.">
+    <meta property="og:locale" content="it_IT">
+    <meta property="og:locale:alternate" content="en_US">
+    <meta property="og:site_name" content="Metnos">
+    <meta name="twitter:card" content="summary">
+    <meta name="twitter:title" content="Metnos &mdash; mnestoma v1.1 (under approval)">
+    <script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "TechArticle",
+  "headline": "Metnos — mnestoma v1.1",
+  "description": "Microprogettazione canonica del mnestoma: schema, operazioni, snapshot, pruning.",
+  "url": "https://metnos.com/it/architecture/mnestoma.html",
+  "inLanguage": "it",
+  "isPartOf": {"@type": "WebSite", "name": "Metnos", "url": "https://metnos.com/"},
+  "author": {"@type": "Person", "name": "Roberto Brunialti"},
+  "about": "Metnos component: mnestoma (canonical, new in v1.1)"
+}
+    </script>
+    <style>
+:root {
+    --navy: #1A477A; --navy-light: #2B6CB0; --sage: #548235;
+    --bronze: #A0522D; --plum: #6B21A8;
+    --bg: #FAFBFC; --text: #1a1a1a;
+    --border: #d0d7de; --code-bg: #f6f8fa;
+    --table-header: #1A477A; --table-alt: #f0f4f8;
+    --note-bg: #dbeafe; --note-border: #3b82f6;
+    --tip-bg: #dcfce7; --tip-border: #16a34a;
+    --warn-bg: #fef3c7; --warn-border: #f59e0b;
+    --danger-bg: #fee2e2; --danger-border: #dc2626;
+    --muted: #64748B;
+}
+* { box-sizing: border-box; }
+body { font-family: 'Segoe UI', Calibri, -apple-system, sans-serif; font-size: 11pt; line-height: 1.65; color: var(--text); background: var(--bg); max-width: 960px; margin: 0 auto; padding: 40px 30px; }
+h1 { color: var(--navy); font-size: 20pt; border-bottom: 3px solid var(--navy); padding-bottom: 8px; margin-top: 50px; page-break-before: always; }
+h1:first-of-type { page-break-before: avoid; }
+h2 { color: var(--navy-light); font-size: 14pt; margin-top: 30px; border-bottom: 1px solid var(--border); padding-bottom: 4px; }
+h3 { color: var(--navy); font-size: 12pt; margin-top: 20px; }
+p { margin: 10px 0; }
+table { width: 100%; border-collapse: collapse; margin: 15px 0; font-size: 10pt; page-break-inside: avoid; }
+th { background: var(--table-header); color: white; padding: 8px 10px; text-align: left; font-weight: 600; }
+td { padding: 7px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+tr:nth-child(even) td { background: var(--table-alt); }
+pre { background: var(--code-bg); border: 1px solid var(--border); border-radius: 4px; padding: 12px 16px; overflow-x: auto; font-size: 9.5pt; line-height: 1.55; page-break-inside: avoid; }
+code { font-family: Consolas, 'Courier New', monospace; }
+p code, li code, td code { background: var(--code-bg); padding: 1px 5px; border-radius: 3px; font-size: 9.5pt; }
+figure { text-align: center; margin: 24px 0; page-break-inside: avoid; }
+figure svg { max-width: 100%; height: auto; border: 1px solid var(--border); border-radius: 6px; background: white; padding: 8px; }
+figcaption { font-style: italic; color: #555; font-size: 9.5pt; margin-top: 8px; }
+.callout { border-left: 4px solid; padding: 10px 16px; margin: 15px 0; border-radius: 0 4px 4px 0; font-size: 10pt; page-break-inside: avoid; }
+.callout.note { background: var(--note-bg); border-color: var(--note-border); }
+.callout.tip { background: var(--tip-bg); border-color: var(--tip-border); }
+.callout.warning { background: var(--warn-bg); border-color: var(--warn-border); }
+.callout.danger { background: var(--danger-bg); border-color: var(--danger-border); }
+.title-page { text-align: center; padding: 80px 0 40px; page-break-after: always; }
+.title-page h1 { font-size: 32pt; border: none; margin: 0; page-break-before: avoid; }
+.title-page .subtitle { font-size: 16pt; color: var(--navy-light); margin: 10px 0 30px; }
+.title-page .meta { font-size: 11pt; color: #666; }
+.toc { page-break-after: always; }
+.toc h2 { border: none; }
+.toc ol { font-size: 11pt; line-height: 2; }
+.toc a { color: var(--navy); text-decoration: none; }
+.toc a:hover { text-decoration: underline; }
+ul, ol { margin: 8px 0; padding-left: 24px; }
+li { margin-bottom: 4px; }
+.lead { font-size: 12pt; color: var(--navy); border-left: 4px solid var(--sage); padding-left: 14px; margin: 18px 0; }
+@media print { body { max-width: none; padding: 0; font-size: 10pt; } h1 { font-size: 16pt; } h2 { font-size: 12pt; } .title-page { padding: 60px 0 30px; } .title-page h1 { font-size: 24pt; } }
+    </style>
+</head>
+<body>
+<div style="margin: 18px 0; border-left: 5px solid #16a34a; background: #dcfce7; color: #14532d; padding: 14px 20px; border-radius: 0 8px 8px 0; font-size: 11pt; font-family: 'Segoe UI', Calibri, -apple-system, sans-serif; line-height: 1.55;">
+<span style="display: inline-block; background: #14532d; color: #fff; padding: 2px 10px; border-radius: 12px; font-size: 9.5pt; letter-spacing: 1px; font-weight: 700; margin-right: 6px;">TESTED</span>
+<strong>Microprogettazione v1.1 &mdash; under approval; codice in stato MVP, allineato al 4 maggio 2026.</strong>
+Storage e operazioni implementati in <code>runtime/mnestoma.py</code>, esercitati da 20 test module + 6 cluster + integrazione end-to-end con <a href="agent_runtime.html" style="color: #14532d; text-decoration: underline;">agent_runtime</a>. Schema del cap. 4 verbatim, soglie del cap. 6 verbatim, ager di base del cap. 6 implementato come funzione invocabile. Totale sistema 67/67 verde (1/5/2026). Aggiornamento 4/5/2026: l'<em>ager</em> notturno (<code>apply_executor_ager</code>, <code>introvertiva_propose</code>, <code>introvertiva_apply</code>) e' ora gated dal segnale &laquo;c'e' stata interazione utente dall'ultima esecuzione?&raquo; (ADR&nbsp;0074): un Metnos in vacanza non deprezza executor per inattivit&agrave; calendariale. L'introvertiva ha inoltre filtri qualit&agrave; deterministici (ADR&nbsp;0077): vocab validator sui <code>proposed_name</code>, skip di flow args (<code>entries</code>, <code>from_step</code>, <code>results</code>) e di valori template <code>{{stepN.field}}</code>, soglia <code>min_uses</code> portata da 3 a 10. Volume proposte 24 &rarr; 6 con qualit&agrave; attesa molto pi&ugrave; alta.
+<div style="font-size: 9.5pt; color: #2d4a32; margin-top: 8px;">Stato nella sequenza: <em>under approval</em> &rarr; <em>approved</em> &rarr; <strong>tested</strong> &rarr; <em>implemented</em>. <strong>Delta POC rispetto al doc</strong>: (a) <code>events.mnest_id</code> con <code>ON DELETE CASCADE</code> per supportare il purge dei proto-mnest senza orfani; (b) DB path default <code>workspace/.mnestoma/mnest.sqlite</code>, override via env <code>MNESTOMA_DB_PATH</code> per test isolati; (c) le query interne (top_k, by_tag, walk) vanno dirette sulla tabella <code>mnests</code> filtrando per stato; la vista <code>v_mnestoma</code> resta come da microdesign per consultazione esterna. Snapshot mensile e archiviazione decaying ancora non automatizzati (richiedono lo scheduler builtin).</div>
+</div>
+
+<nav aria-label="Language" style="position:fixed;top:16px;right:20px;z-index:9999;font-family:'Segoe UI',Calibri,sans-serif;font-size:10pt;letter-spacing:2px;background:#FAFBFC;border:1px solid #d0d7de;border-radius:14px;padding:4px 10px;box-shadow:0 1px 4px rgba(0,0,0,0.04);">
+<a href="/it/architecture/mnestoma.html" class="active" hreflang="it" lang="it" style="color:#1a1a1a;text-decoration:none;font-weight:700;padding:0 4px;border:none;">IT</a>
+<span style="color:#d0d7de;"> &middot; </span>
+<a href="/en/architecture/mnestome.html" hreflang="en" lang="en" style="color:#64748B;text-decoration:none;padding:0 4px;border:none;">EN</a>
+</nav>
+
+<div style="background:#fff;border-bottom:1px solid #d0d7de;padding:10px 0;font-size:14px;position:sticky;top:0;z-index:10;margin-bottom:20px;">
+  <div style="max-width:960px;margin:0 auto;padding:0 20px;display:flex;justify-content:space-between;">
+    <a href="../index.html" style="color:#1a477a;text-decoration:none;font-weight:500;">&larr; Indice documentazione</a>
+    <span style="color:#8e8e93;">Microprogettazione &rsaquo; <strong style="color:#1a1a1a;">mnestoma</strong></span>
+  </div>
+</div>
+
+<div class="title-page">
+    <h1>Metnos</h1>
+    <div class="subtitle"><code>mnestoma</code> &mdash; il grafo emergente di tutti i mnest</div>
+    <div class="meta">
+        Microprogettazione v1.1 &mdash; 24 aprile 2026<br>
+        Allineata con Architettura v1.1 (cap. 9, Figura 6) e Dialogo sugli executor.<br>
+        Nuovo concetto introdotto dalla v1.1 (non sostituisce nulla di esistente).<br>
+        <br>
+        Pubblico: chi implementer&agrave; lo schema dati, l'ager, gli snapshot.<br>
+        Lettura: 16 minuti.
+    </div>
+</div>
+
+<div class="callout" style="border-left:5px solid #16a34a;background:#dcfce7;color:#14532d;padding:14px 18px;border-radius:0 8px 8px 0;margin:18px 0;">
+<strong>Aggiornamento sessione 1/5/2026 sera.</strong> Refactor
+<code>events.turn_id</code> (ADR 0067): la tabella eventi del mnestoma
+adotta <code>turn_id</code> come discriminante unico, sostituendo gli
+identificatori sparsi (run_id / session_id / batch_id) usati dalle prime
+versioni dell'introvertiva. Cambio di schema con migration in-place;
+nessun carico utente perso, audit log preservato. L'ager continua a girare
+come task <code>apply_ager</code> sotto lo scheduler builtin
+(<a href="agent_runtime.html#cap11_2">agent_runtime &sect;11.2</a>) con
+schedule <code>daily@04:00</code>; sopra di esso, l'introvertiva MVP (vedi
+<a href="synt.html">synt</a>) consuma il segnale di lungo periodo via
+<code>diff_audit</code>.
+</div>
+
+<div class="toc">
+<h2>Indice</h2>
+<ol>
+    <li><a href="#cap1">Scopo e confini</a></li>
+    <li><a href="#cap2">Cos'&egrave; il mnestoma</a></li>
+    <li><a href="#cap3">Cosa il mnestoma NON &egrave;</a></li>
+    <li><a href="#cap4">Schema dati</a></li>
+    <li><a href="#cap5">Operazioni: insert, query, update</a></li>
+    <li><a href="#cap6">L'ager: come opera il decadimento</a></li>
+    <li><a href="#cap7">Pruning, snapshot, archiviazione</a></li>
+    <li><a href="#cap8">Variante linguistica: mnestoma vs mnestome</a></li>
+    <li><a href="#cap9">Bootstrap: il primo mnestoma</a></li>
+    <li><a href="#cap10">Osservabilit&agrave; e debug</a></li>
+    <li><a href="#cap11">Domande aperte</a></li>
+</ol>
+</div>
+
+<h1 id="cap1">1. Scopo e confini</h1>
+
+<p class="lead">
+Questo documento definisce il <em>mnestoma</em>: la struttura dati che
+raccoglie l'insieme di tutti i <a href="mnest.html">mnest</a> attivi e
+ne governa il ciclo di vita. &Egrave; il terzo dei tre doc canonici
+introdotti dal <em>Dialogo sugli executor e la memoria distribuita</em>
+(24 aprile 2026), ed &egrave; un concetto nuovo: la microprogettazione
+precedente non lo aveva. Tecnicamente &egrave; un grafo orientato
+pesato persistito in SQLite; ontologicamente &egrave; <em>la memoria
+relazionale</em> di Metnos &mdash; ci&ograve; che ricorda di aver
+fatto insieme.
+</p>
+
+<h2>Confini</h2>
+
+<p>Il documento copre:</p>
+<ul>
+<li>lo schema dati del grafo (tabelle, vincoli, indici);</li>
+<li>le operazioni atomiche di scrittura e lettura;</li>
+<li>il funzionamento dell'<em>ager</em> e la politica di pruning;</li>
+<li>la strategia di snapshot e di backup.</li>
+</ul>
+
+<p>Non copre, e demanda altrove:</p>
+<ul>
+<li>la struttura del singolo mnest (vedi <a href="mnest.html">mnest.html</a>);</li>
+<li>la struttura del singolo executor (vedi <a href="executor.html">executor.html</a>);</li>
+<li>la pipeline di sintesi (vedi <a href="executor.html#cap7">executor.html cap. 7</a> e <a href="synthesizer.html">synthesizer.html</a>, da riscrivere);</li>
+<li>la memoria conversazionale dell'LLM (vedi <a href="memory.html">memory.html</a>, da riscrivere).</li>
+</ul>
+
+<h1 id="cap2">2. Cos'&egrave; il mnestoma</h1>
+
+<p>
+Il <strong>mnestoma</strong> &egrave; un grafo orientato pesato in cui:
+</p>
+<ul>
+<li>i <strong>nodi</strong> sono <a href="executor.html">executor</a> (caricati o quarantenati);</li>
+<li>gli <strong>archi</strong> sono <a href="mnest.html">mnest</a> (passaggi di output osservati fra coppie di executor);</li>
+<li>esiste una sotto-categoria di archi speciale, i <em>proto-mnest</em>, in cui il nodo destinazione &egrave; un nome desiderato non risolto.</li>
+</ul>
+
+<p>
+Il mnestoma <strong>emerge</strong>. Nessuno lo disegna a priori: nasce
+vuoto al primo avvio e si forma turno dopo turno, mentre il gateway
+osserva quali executor passano output a quali altri. Le forme che
+prende riflettono come il sistema viene usato: un mnestoma di un utente
+&laquo;archivio fatture&raquo; ha cluster diversi da quello di un
+utente &laquo;rassegna stampa quotidiana&raquo;, anche se il seed degli
+executor &egrave; lo stesso.
+</p>
+
+<div class="callout note">
+<strong>Perch&eacute; un grafo, non una lista.</strong> La forma
+&laquo;grafo&raquo; cattura una propriet&agrave; che la lista non
+catturerebbe: la <em>vicinanza operativa</em>. Due executor che
+compaiono spesso uno dopo l'altro nello stesso turno sono pi&ugrave;
+vicini di due che non si incontrano mai. Il grafo lo rende esplicito;
+la lista lo nasconde. Quasi tutte le decisioni di ager e synt sono
+gi&agrave; formulate in termini di grafo (test verdi al 27/4); il
+<a href="vaglio.html">Vaglio</a> rule-based v1.1 non legge ancora il
+mnestoma (giudizio locale per ora), il giudice LLM v1.2 lo user&agrave;
+come contesto.
+</div>
+
+<h1 id="cap3">3. Cosa il mnestoma NON &egrave;</h1>
+
+<p>
+La parola &laquo;memoria&raquo; in un agente AI ha troppi significati.
+Vale la pena dire chiaramente cosa il mnestoma <em>non</em> &egrave;:
+</p>
+
+<table>
+<thead><tr><th style="width:32%">Cosa il mnestoma NON &egrave;</th><th>Dov'&egrave; quel concetto, allora</th></tr></thead>
+<tbody>
+<tr><td>La memoria conversazionale dell'LLM (turni recenti, contesto in token).</td><td>Nel <em>working memory</em> dell'execution trace, vedi <a href="memory.html">memory.html</a> (da riscrivere).</td></tr>
+<tr><td>La memoria episodica delle conversazioni passate (cosa Roberto disse ieri).</td><td>Nella <em>episodic memory</em>, indicizzata per sender. Vedi <a href="memory.html">memory.html</a>.</td></tr>
+<tr><td>La memoria semantica dei fatti su Roberto e il suo mondo (&laquo;il cane si chiama Fido&raquo;).</td><td>Nella <em>semantic memory</em>, estratta via reflection e approvata dall'utente.</td></tr>
+<tr><td>L'audit log delle azioni svolte.</td><td>In <code>workspace/.audit/</code>, append-only, JSONL.</td></tr>
+<tr><td>Il workspace dei file dell'utente (note, fatture, foto).</td><td>In <code>workspace/</code>, gestito separatamente.</td></tr>
+<tr><td>La definizione delle capacit&agrave; (i singoli executor).</td><td>In <code>workspace/executors/</code>, file per file.</td></tr>
+</tbody>
+</table>
+
+<p>
+Il mnestoma &egrave; la <em>relazione</em> osservata fra executor: chi
+ha lavorato con chi, quanto spesso, quanto recentemente. Niente di
+pi&ugrave;.
+</p>
+
+<h1 id="cap4">4. Schema dati</h1>
+
+<p>
+Il mnestoma vive in <code>workspace/.mnestoma/mnest.sqlite</code>, un
+singolo file SQLite. La scelta di SQLite &egrave; deliberata: zero
+servizi da avviare, zero dipendenze esterne, backup banale (copia del
+file), affidabilit&agrave; provata.
+</p>
+
+<h2>Tabella <code>executors</code></h2>
+
+<p>
+Replica leggera del manifest, in lettura-veloce per le query del
+gateway. Il manifest canonico resta sempre <code>workspace/executors/&lt;nome&gt;/manifest.toml</code>;
+questa tabella &egrave; un indice.
+</p>
+
+<pre><code>CREATE TABLE executors (
+  name           TEXT NOT NULL,
+  version        TEXT NOT NULL,
+  state          TEXT NOT NULL,        -- seed | active | quarantine | archived
+  loaded_at      TEXT NOT NULL,        -- ISO 8601
+  manifest_hash  TEXT NOT NULL,        -- blake3
+  PRIMARY KEY (name, version)
+);
+CREATE INDEX idx_executors_state ON executors(state);
+</code></pre>
+
+<h2>Tabella <code>mnests</code></h2>
+
+<pre><code>CREATE TABLE mnests (
+  id             TEXT PRIMARY KEY,     -- ULID
+  src_executor   TEXT NOT NULL,
+  src_version    TEXT NOT NULL,
+  dst_executor   TEXT NOT NULL,        -- nome canonico O nome desiderato (proto)
+  dst_version    TEXT,                 -- NULL per proto
+  weight         REAL NOT NULL CHECK (weight BETWEEN 0 AND 1),
+  uses           INTEGER NOT NULL CHECK (uses &gt;= 1),
+  ts_first       TEXT NOT NULL,
+  ts_last        TEXT NOT NULL,
+  decay_lambda   REAL NOT NULL DEFAULT 0.018,
+  state          TEXT NOT NULL,        -- proto | active | decaying | superseded
+  tags           TEXT,                 -- JSON array
+  desired_sig    TEXT,                 -- JSON, solo per proto
+  CHECK (ts_last &gt;= ts_first),
+  UNIQUE (src_executor, src_version, dst_executor, dst_version, state)
+);
+CREATE INDEX idx_mnests_dst   ON mnests(dst_executor);
+CREATE INDEX idx_mnests_src   ON mnests(src_executor);
+CREATE INDEX idx_mnests_weight ON mnests(weight DESC);
+CREATE INDEX idx_mnests_state ON mnests(state);
+</code></pre>
+
+<h2>Tabella <code>events</code></h2>
+
+<p>
+Append-only, registra ogni rinforzo o decadimento applicato. Permette
+di ricostruire la traiettoria del peso di un mnest e di ricalcolare
+posteriormente in caso di cambio della formula.
+</p>
+
+<pre><code>CREATE TABLE events (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  mnest_id    TEXT NOT NULL,
+  ts          TEXT NOT NULL,
+  kind        TEXT NOT NULL,           -- reinforce | decay | state_change
+  delta       REAL,                    -- variazione del peso (NULL per state_change)
+  new_state   TEXT,                    -- solo per state_change
+  reason      TEXT,                    -- es. "ager nightly", "synt approved"
+  FOREIGN KEY (mnest_id) REFERENCES mnests(id)
+);
+CREATE INDEX idx_events_mnest ON events(mnest_id);
+CREATE INDEX idx_events_ts    ON events(ts);
+</code></pre>
+
+<h2>Vista <code>v_mnestoma</code></h2>
+
+<p>
+Il grafo &laquo;vivo&raquo; per le query di lettura. Esclude
+<code>superseded</code> e mostra <code>active</code> + <code>proto</code>:
+</p>
+
+<pre><code>CREATE VIEW v_mnestoma AS
+SELECT id, src_executor, src_version, dst_executor, dst_version,
+       weight, uses, ts_last, state, tags, desired_sig
+FROM mnests
+WHERE state IN ('active', 'proto');
+</code></pre>
+
+<h1 id="cap5">5. Operazioni: insert, query, update</h1>
+
+<h2>Insert / rinforzo: <code>record_passing</code></h2>
+
+<p>
+La sola operazione di scrittura in fase di turno. Atomica per coppia.
+Pseudocodice:
+</p>
+
+<pre><code>def record_passing(src, dst, turn_ctx) -&gt; mnest_id:
+    with conn.transaction():
+        if dst.exists:
+            row = SELECT * FROM mnests
+                  WHERE src_executor = src.name AND src_version = src.version
+                    AND dst_executor = dst.name AND dst_version = dst.version
+                    AND state = 'active'
+            if row:
+                w = decay(row.weight, now() - row.ts_last, row.decay_lambda) + REINFORCE_DELTA
+                UPDATE mnests SET weight = clamp01(w), uses = uses + 1, ts_last = now()
+                INSERT INTO events (mnest_id, ts, kind, delta, reason)
+                       VALUES (row.id, now(), 'reinforce', REINFORCE_DELTA, turn_ctx.id)
+                return row.id
+            else:
+                id = ulid()
+                INSERT INTO mnests (id, src_*, dst_*, weight, uses, ts_first, ts_last, state, tags)
+                       VALUES (id, ..., BOOTSTRAP_WEIGHT, 1, now(), now(), 'active', tags)
+                INSERT INTO events (mnest_id, ts, kind, delta, reason)
+                       VALUES (id, now(), 'reinforce', BOOTSTRAP_WEIGHT, turn_ctx.id)
+                return id
+        else:
+            # proto-mnest
+            id = ulid()
+            desired = build_desired_signature(turn_ctx)
+            INSERT INTO mnests (..., dst_executor=dst.desired_name, dst_version=NULL,
+                                ..., state='proto', desired_sig=desired)
+            return id
+</code></pre>
+
+<h2>Query principali</h2>
+
+<table>
+<thead><tr><th style="width:30%">Query</th><th>Uso</th></tr></thead>
+<tbody>
+<tr><td><code>top_k_outgoing(executor, k)</code></td><td>Dato un executor, restituisce i <em>k</em> mnest uscenti pi&ugrave; pesanti.</td></tr>
+<tr><td><code>top_k_incoming(executor, k)</code></td><td>Dato un executor, restituisce i <em>k</em> mnest entranti pi&ugrave; pesanti.</td></tr>
+<tr><td><code>walk(start, max_depth)</code></td><td>Visita BFS pesata dal nodo di partenza, fino a una profondit&agrave; massima. Usato dal gateway per costruire il context d'esecuzione.</td></tr>
+<tr><td><code>recurring_protos(min_uses, since)</code></td><td>Lista dei proto-mnest che hanno superato una soglia di ricorrenza. Innesco del synt.</td></tr>
+<tr><td><code>by_tag(tag)</code></td><td>Tutti i mnest con un tag dato. Usato dall'osservabilit&agrave; e dall'ager per cluster.</td></tr>
+<tr><td><code>decaying()</code></td><td>Mnest in stato decaying. Usato dall'ager per la propost &agrave; di archiviazione.</td></tr>
+</tbody>
+</table>
+
+<h2>Update di stato</h2>
+
+<p>
+Le transizioni di stato sono fatte da componenti specifici (ager, synt,
+gateway in caso di quarantena di un executor). Tutte sono accompagnate
+da una riga <code>events</code> con <code>kind = 'state_change'</code>
+e una <code>reason</code> obbligatoria; questo &egrave; il principio di
+reversibilit&agrave; (cap. 14 dell'Architettura): non si cambia stato
+senza traccia del perch&eacute;.
+</p>
+
+<h1 id="cap6">6. L'ager: come opera il decadimento</h1>
+
+<p>
+L'<strong>ager</strong> &egrave; il processo che applica il decadimento
+e segnala le transizioni di stato che il puro tempo richiede. Gira
+una volta al giorno, in finestra notturna (default: 04:00 ora locale),
+in una transazione lunga ma a basso impatto:
+</p>
+
+<ol>
+<li><strong>Decadimento</strong>: per ogni mnest <code>active</code>, calcola <code>weight_new = weight_old &middot; exp(-&lambda; &middot; &Delta;t)</code> dove <code>&Delta;t</code> &egrave; il tempo trascorso dall'ultimo evento. Aggiorna il peso e scrive una riga <code>events</code> di tipo <code>decay</code>.</li>
+<li><strong>Decay state</strong>: ogni mnest che scende sotto la soglia <code>decay weight</code> passa ad <code>decaying</code>; lo segnala nel canale di <em>proposte</em> al gateway.</li>
+<li><strong>Archive proposal</strong>: ogni mnest <code>decaying</code> che &egrave; sotto <code>archive weight</code> e con <code>ts_last &gt; 90 giorni</code> entra nella lista delle proposte di archiviazione mostrate a Roberto.</li>
+<li><strong>Proto purge</strong>: ogni proto-mnest che scende sotto <code>min proto weight</code> &egrave; eliminato (anti-rumore).</li>
+<li><strong>Recurring proto detection</strong>: cerca proto-mnest con <code>uses &gt;= SYNTH_TRIGGER_USES</code> e <code>weight &gt;= SYNTH_TRIGGER_WEIGHT</code>; li segnala al synt come candidati per la sintesi.</li>
+<li><strong>Snapshot</strong>: il primo del mese, copia il file SQLite in <code>workspace/.mnestoma/snapshots/YYYY-MM.sqlite</code>.</li>
+</ol>
+
+<p>
+L'ager &egrave; un esempio puro di componente che fa solo
+<em>manutenzione</em>: non modifica la struttura dei mnest, non crea
+executor, non parla con l'utente. Propone; chi decide &egrave; il
+synt + Roberto, oppure la policy di archiviazione che il gateway
+applica nel turno successivo.
+</p>
+
+<h1 id="cap7">7. Pruning, snapshot, archiviazione</h1>
+
+<h2>Snapshot mensile</h2>
+
+<p>
+Il primo dell'mese (UTC), l'ager produce uno snapshot del file vivo:
+</p>
+
+<pre><code>workspace/.mnestoma/snapshots/2026-04.sqlite      # snapshot del mese
+workspace/.mnestoma/snapshots/2026-03.sqlite.zst  # vecchio, compresso
+workspace/.mnestoma/snapshots/2026-02.sqlite.zst
+...
+</code></pre>
+
+<p>
+Lo snapshot serve a tre cose: rollback in caso di danneggiamento del
+file vivo, analisi storica del grafo, traccia per chi vuole capire
+come Metnos &laquo;si &egrave; formato&raquo; nel tempo. Snapshot
+oltre 12 mesi vengono compressi in <code>.zst</code> ma <em>mai</em>
+eliminati: la storia &egrave; un dato di prim'ordine.
+</p>
+
+<h2>Pruning del file vivo</h2>
+
+<p>
+Il file vivo si manterrebbe in piedi anche tutto pieno, ma per
+prestazioni e per pulizia conviene una potatura periodica:
+</p>
+
+<ul>
+<li>i mnest <code>superseded</code> e <code>archived</code> vengono spostati alla tabella <code>mnests_archive</code> dopo 90 giorni (sempre nello stesso file SQLite);</li>
+<li>la tabella <code>events</code> viene partizionata per anno (tabelle <code>events_2026</code>, <code>events_2027</code>, ...). Solo l'anno corrente &egrave; nello schema vivo; le precedenti vengono spostate in un secondo file SQLite <code>events_history.sqlite</code>;</li>
+<li>il <code>VACUUM</code> di SQLite gira mensilmente subito dopo lo snapshot.</li>
+</ul>
+
+<h2>Archiviazione di un executor</h2>
+
+<p>
+Quando un executor passa a <code>archived</code>, i suoi mnest passano
+a <code>superseded</code> con <code>reason = 'executor archived'</code>;
+restano leggibili, sono esclusi dalla vista <code>v_mnestoma</code>,
+e dopo 90 giorni vanno alla tabella di archivio.
+</p>
+
+<h1 id="cap8">8. Variante linguistica: mnestoma vs mnestome</h1>
+
+<p>
+Il termine ha due forme normative:
+</p>
+<ul>
+<li><strong>mnestoma</strong> in italiano (suffisso latino <em>-ma</em>, come in <em>diploma</em>, <em>poema</em>);</li>
+<li><strong>mnestome</strong> in inglese (suffisso biologico <em>-ome</em>, come in <em>microbiome</em>, <em>connectome</em>);</li>
+<li>la radice greca &egrave; comune: μνήστης / mn&#234;stis (chi ricorda).</li>
+</ul>
+
+<p>
+La doppia forma &egrave; intenzionale e va mantenuta. Tradurre
+<em>mnestoma</em> con <em>mnestome</em> in EN d&agrave; al lettore
+inglese il riflesso giusto (il suffisso biologico evoca un grafo
+emergente, come il microbiome). Tradurre <em>mnestome</em> con
+<em>mnestoma</em> in IT segue la regola fonetica italiana che evita
+suffissi sentiti come incongrui (<em>mnestome</em> in italiano
+sembrerebbe un imperativo verbale, &laquo;tu memorizzati!&raquo;).
+</p>
+
+<h1 id="cap9">9. Bootstrap: il primo mnestoma</h1>
+
+<p>
+Al primo avvio, il mnestoma &egrave; vuoto. La domanda &laquo;da dove
+si parte, allora?&raquo; ha tre risposte concrete:
+</p>
+
+<ol>
+<li><strong>Si parte dal vuoto.</strong> Per la maggior parte delle istanze, il mnestoma &egrave; vuoto al primo avvio e si forma in un mese di uso. &Egrave; lento ma corretto: la specificit&agrave; dell'utente entra subito nella forma del grafo.</li>
+<li><strong>Seed minimo (consigliato)</strong>. Esiste un seed di 12-15 mnest noti, codificati nel repo, che cablano i passaggi pi&ugrave; comuni fra gli executor seed (es. <em>fs_read &rarr; pdf_extract</em>, <em>web_fetch &rarr; markdown_render</em>). Hanno <code>state = 'seed'</code> per distinguerli e peso <code>BOOTSTRAP_WEIGHT</code> (vedi <a href="mnest.html#cap6">mnest.html cap. 6</a>).</li>
+<li><strong>Import da snapshot</strong>. Per migrazioni o per condivisione (futuro), si pu&ograve; importare uno snapshot pulito. L'import passa per una validazione: gli executor citati devono esistere e essere firmati.</li>
+</ol>
+
+<h1 id="cap10">10. Osservabilit&agrave; e debug</h1>
+
+<p>
+L'utente pu&ograve; ispezionare il mnestoma da CLI (tramite il comando
+<code>Metnos mnestoma</code>):
+</p>
+
+<pre><code>Metnos mnestoma list                        # tutti i mnest attivi
+Metnos mnestoma list --tag fattura          # filtrati per tag
+Metnos mnestoma top 20                      # i 20 pi&ugrave; pesanti
+Metnos mnestoma graph executor fs_read      # vicinato di un executor
+Metnos mnestoma proto                       # i proto-mnest correnti
+Metnos mnestoma history mnest_01HW...       # storia eventi di un mnest
+Metnos mnestoma snapshot --month 2026-03    # apre lo snapshot mensile
+</code></pre>
+
+<p>
+La dashboard web (vedi <a href="observability.html">observability.html</a>,
+da riscrivere) ha una vista grafica dello stesso contenuto, con filtri
+e drill-down. La regola di trasparenza: l'utente pu&ograve; sempre
+sapere cosa Metnos pensa di sapere.
+</p>
+
+<h1 id="cap11">11. Domande aperte</h1>
+
+<ol>
+<li><strong>Concorrenza in scrittura.</strong> Il gateway &egrave; un singolo processo, quindi le scritture sono naturalmente seriali. Quando in futuro arriveranno gli executor remoti (cap. 4 dell'Architettura), il gateway resta unico ma le chiamate possono arrivare da pi&ugrave; turni in parallelo. SQLite WAL basta? Aperta.</li>
+<li><strong>Schema migration.</strong> Il file SQLite vive a lungo. Come gestiamo le migrazioni dello schema fra versioni di Metnos? Migrazioni dichiarative numerate, tipo Alembic? Aperta.</li>
+<li><strong>Privacy degli snapshot.</strong> Gli snapshot mensili contengono nomi di executor e tag, ma non contenuti. La superficie di privacy &egrave; bassa, ma se si voglia condividere uno snapshot per debug servirebbe una funzione di redazione dei tag &laquo;personali&raquo;. Da progettare se serve.</li>
+<li><strong>Integrazione con la episodic memory.</strong> Il mnestoma e la memoria episodica delle conversazioni sono separati per scelta (cap. 3). Pu&ograve; aver senso un cross-reference esplicito (un mnest che cita il turn_id che lo ha generato)? L'inverso (un turno che cita i mnest che ha rinforzato) &egrave; gi&agrave; presente nell'audit. Aperta.</li>
+</ol>
+
+<hr>
+
+<div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(260px, 1fr)); gap:14px; margin:28px 0 24px;">
+  <a href="executor.html" style="display:block; padding:14px 16px; border:1px solid var(--border); border-radius:8px; background:white; color:inherit; text-decoration:none;">
+    <span style="display:inline-block; padding:2px 9px; border-radius:10px; font-size:9pt; background:var(--code-bg); color:var(--muted); font-weight:500;">primo della triade</span>
+    <div style="color:var(--navy); font-size:11.5pt; font-weight:700; margin:8px 0 6px 0;">executor</div>
+    <div style="margin:0; color:var(--muted); font-size:10pt; line-height:1.5;">Il nodo del mnestoma.</div>
+  </a>
+  <a href="mnest.html" style="display:block; padding:14px 16px; border:1px solid var(--border); border-radius:8px; background:white; color:inherit; text-decoration:none;">
+    <span style="display:inline-block; padding:2px 9px; border-radius:10px; font-size:9pt; background:var(--code-bg); color:var(--muted); font-weight:500;">secondo della triade</span>
+    <div style="color:var(--navy); font-size:11.5pt; font-weight:700; margin:8px 0 6px 0;">mnest</div>
+    <div style="margin:0; color:var(--muted); font-size:10pt; line-height:1.5;">L'arco del mnestoma.</div>
+  </a>
+  <a href="../Metnos_Architettura_Intro_v1.html#cap9" style="display:block; padding:14px 16px; border:1px solid var(--border); border-radius:8px; background:white; color:inherit; text-decoration:none;">
+    <span style="display:inline-block; padding:2px 9px; border-radius:10px; font-size:9pt; background:var(--code-bg); color:var(--muted); font-weight:500;">livello 1</span>
+    <div style="color:var(--navy); font-size:11.5pt; font-weight:700; margin:8px 0 6px 0;">Architettura, cap. 9</div>
+    <div style="margin:0; color:var(--muted); font-size:10pt; line-height:1.5;">Il quadro d'insieme.</div>
+  </a>
+  <a href="./" style="display:block; padding:14px 16px; border:1px solid var(--border); border-radius:8px; background:white; color:inherit; text-decoration:none;">
+    <span style="display:inline-block; padding:2px 9px; border-radius:10px; font-size:9pt; background:var(--code-bg); color:var(--muted); font-weight:500;">indice</span>
+    <div style="color:var(--navy); font-size:11.5pt; font-weight:700; margin:8px 0 6px 0;">Microprogettazione</div>
+    <div style="margin:0; color:var(--muted); font-size:10pt; line-height:1.5;">Tutti i doc.</div>
+  </a>
+</div>
+
+<hr>
+<p style="text-align:center; color:var(--muted); font-size:9.5pt; margin-top:40px;">
+Metnos &mdash; <em>mnestoma</em> microprogettazione v1.1 &mdash; 2026-04-24<br>
+Doc canonico nuovo (concetto introdotto dalla v1.1).
+</p>
+</body>
+</html>

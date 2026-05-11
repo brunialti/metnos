@@ -1,0 +1,501 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Metnos &mdash; mnest v1.1 (under approval)</title>
+    <meta name="description" content="Microdesign of the mnest: the trace of co-activation between two executors. Anatomy, proto-mnest, lifecycle, decay. Replaces synapse.html.">
+    <meta name="keywords" content="mnest, proto-mnest, co-activation, executor, decay, ager, mnestome, synapse, microdesign, metnos">
+    <meta name="author" content="Roberto Brunialti">
+    <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large">
+    <link rel="canonical" href="https://metnos.com/en/architecture/mnest.html">
+    <link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/mnest.html">
+    <link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/mnest.html">
+    <link rel="alternate" hreflang="x-default" href="https://metnos.com/en/architecture/mnest.html">
+    <meta property="og:type" content="article">
+    <meta property="og:url" content="https://metnos.com/en/architecture/mnest.html">
+    <meta property="og:title" content="Metnos &mdash; mnest v1.1 (under approval)">
+    <meta property="og:description" content="The trace of co-activation between two executors: anatomy, lifecycle, decay, persistence.">
+    <meta property="og:locale" content="en_US">
+    <meta property="og:locale:alternate" content="it_IT">
+    <meta property="og:site_name" content="Metnos">
+    <meta name="twitter:card" content="summary">
+    <meta name="twitter:title" content="Metnos &mdash; mnest v1.1 (under approval)">
+    <script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "TechArticle",
+  "headline": "Metnos — mnest v1.1",
+  "description": "Canonical microdesign of the mnest: anatomy, lifecycle, decay, persistence.",
+  "url": "https://metnos.com/en/architecture/mnest.html",
+  "inLanguage": "en",
+  "isPartOf": {"@type": "WebSite", "name": "Metnos", "url": "https://metnos.com/"},
+  "author": {"@type": "Person", "name": "Roberto Brunialti"},
+  "about": "Metnos component: mnest (canonical, replaces synapse)"
+}
+    </script>
+    <style>
+:root {
+    --navy: #1A477A; --navy-light: #2B6CB0; --sage: #548235;
+    --bronze: #A0522D; --plum: #6B21A8;
+    --bg: #FAFBFC; --text: #1a1a1a;
+    --border: #d0d7de; --code-bg: #f6f8fa;
+    --table-header: #1A477A; --table-alt: #f0f4f8;
+    --note-bg: #dbeafe; --note-border: #3b82f6;
+    --tip-bg: #dcfce7; --tip-border: #16a34a;
+    --warn-bg: #fef3c7; --warn-border: #f59e0b;
+    --danger-bg: #fee2e2; --danger-border: #dc2626;
+    --muted: #64748B;
+}
+* { box-sizing: border-box; }
+body { font-family: 'Segoe UI', Calibri, -apple-system, sans-serif; font-size: 11pt; line-height: 1.65; color: var(--text); background: var(--bg); max-width: 960px; margin: 0 auto; padding: 40px 30px; }
+h1 { color: var(--navy); font-size: 20pt; border-bottom: 3px solid var(--navy); padding-bottom: 8px; margin-top: 50px; page-break-before: always; }
+h1:first-of-type { page-break-before: avoid; }
+h2 { color: var(--navy-light); font-size: 14pt; margin-top: 30px; border-bottom: 1px solid var(--border); padding-bottom: 4px; }
+h3 { color: var(--navy); font-size: 12pt; margin-top: 20px; }
+p { margin: 10px 0; }
+table { width: 100%; border-collapse: collapse; margin: 15px 0; font-size: 10pt; page-break-inside: avoid; }
+th { background: var(--table-header); color: white; padding: 8px 10px; text-align: left; font-weight: 600; }
+td { padding: 7px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+tr:nth-child(even) td { background: var(--table-alt); }
+pre { background: var(--code-bg); border: 1px solid var(--border); border-radius: 4px; padding: 12px 16px; overflow-x: auto; font-size: 9.5pt; line-height: 1.55; page-break-inside: avoid; }
+code { font-family: Consolas, 'Courier New', monospace; }
+p code, li code, td code { background: var(--code-bg); padding: 1px 5px; border-radius: 3px; font-size: 9.5pt; }
+figure { text-align: center; margin: 24px 0; page-break-inside: avoid; }
+figure svg { max-width: 100%; height: auto; border: 1px solid var(--border); border-radius: 6px; background: white; padding: 8px; }
+figcaption { font-style: italic; color: #555; font-size: 9.5pt; margin-top: 8px; }
+.callout { border-left: 4px solid; padding: 10px 16px; margin: 15px 0; border-radius: 0 4px 4px 0; font-size: 10pt; page-break-inside: avoid; }
+.callout.note { background: var(--note-bg); border-color: var(--note-border); }
+.callout.tip { background: var(--tip-bg); border-color: var(--tip-border); }
+.callout.warning { background: var(--warn-bg); border-color: var(--warn-border); }
+.callout.danger { background: var(--danger-bg); border-color: var(--danger-border); }
+.title-page { text-align: center; padding: 80px 0 40px; page-break-after: always; }
+.title-page h1 { font-size: 32pt; border: none; margin: 0; page-break-before: avoid; }
+.title-page .subtitle { font-size: 16pt; color: var(--navy-light); margin: 10px 0 30px; }
+.title-page .meta { font-size: 11pt; color: #666; }
+.toc { page-break-after: always; }
+.toc h2 { border: none; }
+.toc ol { font-size: 11pt; line-height: 2; }
+.toc a { color: var(--navy); text-decoration: none; }
+.toc a:hover { text-decoration: underline; }
+ul, ol { margin: 8px 0; padding-left: 24px; }
+li { margin-bottom: 4px; }
+.lead { font-size: 12pt; color: var(--navy); border-left: 4px solid var(--sage); padding-left: 14px; margin: 18px 0; }
+@media print { body { max-width: none; padding: 0; font-size: 10pt; } h1 { font-size: 16pt; } h2 { font-size: 12pt; } .title-page { padding: 60px 0 30px; } .title-page h1 { font-size: 24pt; } }
+    </style>
+</head>
+<body>
+<div style="margin: 18px 0; border-left: 5px solid #16a34a; background: #dcfce7; color: #14532d; padding: 14px 20px; border-radius: 0 8px 8px 0; font-size: 11pt; font-family: 'Segoe UI', Calibri, -apple-system, sans-serif; line-height: 1.55;">
+<strong>&#10003; Microdesign v1.1 &mdash; aligned with the code as of 1 May 2026.</strong>
+Canonical doc approved after the 25/4/2026 end-to-end simulation, aligned with the <a href="../Metnos_Architecture_Intro_v1.html" style="color: #14532d; text-decoration: underline;">Architecture v1.1</a> and the <a href="../Metnos_Dialogue_Executors_v1.html" style="color: #14532d; text-decoration: underline;">Dialogue on executors and distributed memory</a>. Normative reference for implementation. Replaces the older <a href="../../it/architecture/synapse.html" style="color: #14532d; text-decoration: underline;">synapse.html</a> (deprecated, in Italian).
+</div>
+
+<nav aria-label="Language" style="position:fixed;top:16px;right:20px;z-index:9999;font-family:'Segoe UI',Calibri,sans-serif;font-size:10pt;letter-spacing:2px;background:#FAFBFC;border:1px solid #d0d7de;border-radius:14px;padding:4px 10px;box-shadow:0 1px 4px rgba(0,0,0,0.04);">
+<a href="/it/architecture/mnest.html" hreflang="it" lang="it" style="color:#64748B;text-decoration:none;padding:0 4px;border:none;">IT</a>
+<span style="color:#d0d7de;"> &middot; </span>
+<a href="/en/architecture/mnest.html" class="active" hreflang="en" lang="en" style="color:#1a1a1a;text-decoration:none;font-weight:700;padding:0 4px;border:none;">EN</a>
+</nav>
+
+<div style="background:#fff;border-bottom:1px solid #d0d7de;padding:10px 0;font-size:14px;position:sticky;top:0;z-index:10;margin-bottom:20px;">
+  <div style="max-width:960px;margin:0 auto;padding:0 20px;display:flex;justify-content:space-between;">
+    <a href="../index.html" style="color:#1a477a;text-decoration:none;font-weight:500;">&larr; Documentation index</a>
+    <span style="color:#8e8e93;">Microdesign &rsaquo; <strong style="color:#1a1a1a;">mnest</strong></span>
+  </div>
+</div>
+
+<div class="title-page">
+    <h1>Metnos</h1>
+    <div class="subtitle"><code>mnest</code> &mdash; the trace of co-activation between two executors</div>
+    <div class="meta">
+        Microdesign v1.1 &mdash; 24 April 2026<br>
+        Aligned with Architecture v1.1 (ch. 9) and the Dialogue on executors.<br>
+        Replaces <code>synapse.html</code> (renaming and redefinition).<br>
+        <br>
+        Audience: whoever implements the graph, the reinforcement, the decay.<br>
+        Reading time: 14 minutes.
+    </div>
+</div>
+
+<div class="toc">
+<h2>Contents</h2>
+<ol>
+    <li><a href="#cap1">Scope and boundaries</a></li>
+    <li><a href="#cap2">What a mnest is</a></li>
+    <li><a href="#cap3">Mnest vs. synapse</a></li>
+    <li><a href="#cap4">Anatomy of a mnest</a></li>
+    <li><a href="#cap5">Automatic generation</a></li>
+    <li><a href="#cap6">Reinforcement and decay</a></li>
+    <li><a href="#cap7">Lifecycle states</a></li>
+    <li><a href="#cap8">The proto-mnest</a></li>
+    <li><a href="#cap9">Who consults the mnests</a></li>
+    <li><a href="#cap10">Persistence and snapshots</a></li>
+    <li><a href="#cap11">Example: the invoice sequence</a></li>
+    <li><a href="#cap12">Open questions</a></li>
+</ol>
+</div>
+
+<h1 id="cap1">1. Scope and boundaries</h1>
+
+<p class="lead">
+This document defines <em>what a mnest is</em>: the trace, kept in the
+<a href="mnestome.html">mnestome</a>, of an output passing between two
+<a href="executor.html">executors</a>. It is the second of three
+canonical docs introduced by the <em>Dialogue on executors and
+distributed memory</em>. It replaces and redefines the older
+<a href="../../it/architecture/synapse.html">synapse.html</a>: the name
+changes (synapse &rarr; mnest) and so does the semantics (the synapse
+was a passive &laquo;concomitance&raquo;, the mnest is an
+<em>observed data passing</em>).
+</p>
+
+<h2>Boundaries</h2>
+
+<p>The document covers:</p>
+<ul>
+<li>the structural contract of a mnest (fields, constraints, transitions);</li>
+<li>when and how a mnest is born, reinforced, decays;</li>
+<li>the proto-mnest: how an unsatisfied desire is represented;</li>
+<li>persistence and snapshots.</li>
+</ul>
+
+<p>It does not cover, and defers to other docs:</p>
+<ul>
+<li>the global structure of the mnestome and its queries (see <a href="mnestome.html">mnestome.html</a>);</li>
+<li>the synthesis that uses recurring proto-mnests (see <a href="executor.html#cap7">executor.html, ch. 7</a>);</li>
+<li>Vaglio criteria (see <a href="../../it/architecture/vaglio.html">vaglio.html</a>, in Italian and pending rewrite);</li>
+<li>the phenomenology of decay (see <em>ager</em>, future doc).</li>
+</ul>
+
+<h1 id="cap2">2. What a mnest is</h1>
+
+<p>
+A <strong>mnest</strong> is a node of the mnestome that records a
+specific fact:
+</p>
+
+<div class="lead" style="font-size:11.5pt;">
+&laquo;In this turn, the output of executor <em>A</em> was passed as
+input to executor <em>B</em>, and <em>B</em> completed successfully.&raquo;
+</div>
+
+<p>
+A mnest is therefore a trace of <strong>observed co-activation</strong>:
+not an a-posteriori statistical inference, not a declaration of intent,
+but a statement that an event actually happened, recorded by the
+gateway at the end of the turn.
+</p>
+
+<p>
+From this all its important properties follow:
+</p>
+<ul>
+<li>It is <em>directed</em>: <em>A &rarr; B</em> is not the same as <em>B &rarr; A</em>.</li>
+<li>It is <em>weighted</em>: the more it recurs, the more the weight grows; with disuse, it decays.</li>
+<li>It is <em>time-anchored</em>: it carries the timestamp of the first and the latest use.</li>
+<li>It is <em>distinct per version pair</em>: <em>fs_read v1.0 &rarr; pdf_extract v2.0</em> is one mnest, <em>fs_read v1.0 &rarr; pdf_extract v3.0</em> is another.</li>
+</ul>
+
+<h1 id="cap3">3. Mnest vs. synapse</h1>
+
+<p>
+The previous microdesign (<a href="../../it/architecture/synapse.html">synapse.html</a>,
+now deprecated) called this entity <em>synapse</em> and described it as
+&laquo;a declared or observed link between neurons: when A fires, B
+tends to fire too&raquo;. The 2026-04-24 redefinition changes three
+things:
+</p>
+
+<table>
+<thead><tr><th style="width:30%">Aspect</th><th>Synapse (v1.0, deprecated)</th><th>Mnest (v1.1, canonical)</th></tr></thead>
+<tbody>
+<tr>
+  <td>What it records</td>
+  <td>A correlation of activations: &laquo;A on, then B on shortly after&raquo;.</td>
+  <td>A passing of data: &laquo;A's output was B's input&raquo;.</td>
+</tr>
+<tr>
+  <td>Generation</td>
+  <td>Inferred by statistical observation of co-occurrences across time windows.</td>
+  <td>Generated deterministically by the gateway at turn close: either the passing happened or it did not.</td>
+</tr>
+<tr>
+  <td>Meaning for synthesis</td>
+  <td>A strong synapse suggests a conceptual proximity.</td>
+  <td>A strong mnest toward an executor that does not exist (proto-mnest, ch. 8) is a concrete operational gap, not an analogy.</td>
+</tr>
+</tbody>
+</table>
+
+<p>
+The gain of the redefinition is that the mnest <em>sees data that
+moved</em>, not just events that fired. A mnest graph is a graph of real
+flows; a synapse graph was a graph of hints.
+</p>
+
+<h1 id="cap4">4. Anatomy of a mnest</h1>
+
+<p>
+A mnest, in serialised form, contains these mandatory fields:
+</p>
+
+<pre><code>{
+  "id":            "mnest_01HW...",       // ULID
+  "src_executor":  "fs_read",             // canonical name of the caller
+  "src_version":   "1.0.0",
+  "dst_executor":  "pdf_extract",         // canonical name of the callee
+  "dst_version":   "2.0.0",
+  "weight":        0.42,                  // [0..1], normalised
+  "uses":          17,                    // total use counter
+  "ts_first":      "2026-03-12T18:04:00Z",
+  "ts_last":       "2026-04-23T09:21:00Z",
+  "decay_lambda":  0.018,                 // /day, see ch. 6
+  "tags":          ["invoice", "pdf"],    // optional
+  "state":         "active"               // active | proto | decaying | superseded
+}
+</code></pre>
+
+<p>
+Three invariants always hold:
+</p>
+<ul>
+<li><code>(src_executor, src_version, dst_executor, dst_version)</code> is the key: at most one active mnest per tuple.</li>
+<li><code>weight</code> is always in <code>[0, 1]</code>, computed as an exponential function of recent uses (see formula in ch. 6).</li>
+<li><code>ts_last &gt;= ts_first</code>; <code>uses &gt;= 1</code>.</li>
+</ul>
+
+<h2>Tags, briefly</h2>
+
+<p>
+Tags are an optional addition that does not influence weight
+computation, but help the <em>ager</em> and the synt identify clusters
+of mnests living in the same application domain (e.g. &laquo;invoice&raquo;,
+&laquo;photo&raquo;, &laquo;work email&raquo;). Tags propagate from the
+turn context to the newborn mnest; the user can re-tag or clear them
+during review.
+</p>
+
+<h1 id="cap5">5. Automatic generation</h1>
+
+<p>
+A mnest is not declared, it is <em>observed</em>. The operational rule,
+applied by the gateway at the close of every turn:
+</p>
+
+<ol>
+<li>For every call pair <em>A &rarr; B</em> within the turn where <em>A</em>'s output was passed as <em>B</em>'s input:
+    <ol type="a">
+    <li>look up an active mnest with key <code>(A, ver_A, B, ver_B)</code>;</li>
+    <li>if it exists, increment <code>uses</code>, update <code>ts_last</code>, recompute the weight;</li>
+    <li>if not, create one with <code>uses=1</code>, initial <code>weight</code>, <code>state="active"</code>.</li>
+    </ol>
+</li>
+<li>If the turn included a request to pass <em>to an executor that does not exist</em>, record a <em>proto-mnest</em> instead (ch. 8).</li>
+<li>If the turn had a long chain (<em>A &rarr; B &rarr; C</em>), record two separate mnests: <em>A&rarr;B</em> and <em>B&rarr;C</em>. The mnestome does not represent arcs longer than one.</li>
+</ol>
+
+<div class="callout note">
+<strong>Why arcs of length one.</strong> Transitivity can be
+reconstructed on the fly by walking the graph, but the elementary
+datum must remain observational. Longer mnests would be inferences,
+not observations; introducing them would muddy the distinction in
+ch. 3.
+</div>
+
+<h1 id="cap6">6. Reinforcement and decay</h1>
+
+<p>
+The weight of a mnest is updated at every event by a formula with two
+components:
+</p>
+
+<pre><code>weight(t) = clamp01( weight(t-&Delta;t) * exp(-&lambda; * &Delta;t)  +  reinforcement(t) )</code></pre>
+
+<ul>
+<li><code>&Delta;t</code> is the time (in days) since the last update.</li>
+<li><code>&lambda;</code> is the <em>decay lambda</em>, parametrisable per tag (default <code>0.018/day</code>: half-life ~38 days).</li>
+<li><code>reinforcement(t)</code> is <code>+0.15</code> per use recorded in the current turn, saturated by <code>clamp01</code>.</li>
+</ul>
+
+<p>
+The curve is inspired by the Ebbinghaus model, but the value of
+<code>&lambda;</code> is conservative: at equal use, a mnest is never
+forgotten quickly. The gradualness avoids oscillations due to holiday
+periods, illness, distraction: when the user comes back, Metnos must
+remember.
+</p>
+
+<h2>Operational thresholds</h2>
+
+<table>
+<thead><tr><th style="width:22%">Threshold</th><th>Default</th><th>Effect</th></tr></thead>
+<tbody>
+<tr><td><strong>min proto weight</strong></td><td><code>0.05</code></td><td>Below this, the proto-mnest is removed (anti-noise).</td></tr>
+<tr><td><strong>decay weight</strong></td><td><code>0.20</code></td><td>Below this, the mnest enters <em>decaying</em>: the <em>ager</em> flags it.</td></tr>
+<tr><td><strong>archive weight</strong></td><td><code>0.05</code></td><td>Below this (and with uses ≥ 1 but ts_last ≥ 90 days ago), proposal of archival.</td></tr>
+<tr><td><strong>bootstrap weight</strong></td><td><code>0.30</code></td><td>Initial weight of seed mnests (created at first boot).</td></tr>
+</tbody>
+</table>
+
+<h1 id="cap7">7. Lifecycle states</h1>
+
+<table>
+<thead><tr><th style="width:18%">State</th><th>Meaning</th><th>Transitions</th></tr></thead>
+<tbody>
+<tr><td><code>proto</code></td><td>The mnest records a passing toward an executor that does not exist (see ch. 8): <code>dst_executor</code> points to an unresolved name.</td><td>&rarr; <code>active</code> when the missing executor is born; &rarr; deleted if weight falls below the proto threshold.</td></tr>
+<tr><td><code>active</code></td><td>&laquo;Normal&raquo; mnest: two real executors, recent use.</td><td>&rarr; <code>decaying</code> below the decay threshold; &rarr; <code>superseded</code> after a fusion.</td></tr>
+<tr><td><code>decaying</code></td><td>Weight below threshold, flagged by the ager. Still callable, but proposed for archival.</td><td>&rarr; <code>active</code> on resumed use; &rarr; archived (removed from the active graph, kept in the monthly snapshot).</td></tr>
+<tr><td><code>superseded</code></td><td>Replaced by a more recent mnest or by a fused executor (see <a href="executor.html#cap6">executor.html ch. 6</a>).</td><td>&rarr; archived after a grace period.</td></tr>
+</tbody>
+</table>
+
+<h1 id="cap8">8. The proto-mnest</h1>
+
+<p>
+The <strong>proto-mnest</strong> is a mnest in <code>proto</code>
+state: it records that, in a turn, Metnos wanted to pass the output of
+an executor to a second executor that <em>does not yet exist</em>. Its
+structure is almost identical to a normal mnest, with two differences:
+</p>
+
+<ul>
+<li><code>dst_executor</code> is a &laquo;desired name&raquo;, not a resolvable name (e.g. <code>extract_invoice_number</code>);</li>
+<li><code>dst_version</code> is <code>null</code>;</li>
+<li>a field <code>desired_signature</code> appears with the synthesis of the expected signature: what the executor should do, what output shape, what typical errors.</li>
+</ul>
+
+<pre><code>{
+  "id":             "mnest_01HW...",
+  "src_executor":   "fs_read",
+  "src_version":    "1.0.0",
+  "dst_executor":   "extract_invoice_number",   // does not exist
+  "dst_version":    null,
+  "desired_signature": {
+    "summary":   "Extract the invoice number from a PDF.",
+    "inputs":    ["bytes (pdf)"],
+    "outputs":   ["str (alphanumeric code)"],
+    "errors":    ["NotFound", "Unparseable"]
+  },
+  "weight":         0.34,
+  "uses":           4,
+  "state":          "proto"
+}
+</code></pre>
+
+<p>
+The difference from a &laquo;feature request&raquo; in the classical
+sense is important: the proto-mnest is not asked by the user, it is
+observed by the gateway. Roberto did not formulate the need: the need
+emerged from the fact that he would have wanted it more than once. The
+proto-mnest, when it recurs, is the trigger of synthesis (see
+<a href="executor.html#cap7">executor.html ch. 7</a>).
+</p>
+
+<h1 id="cap9">9. Who consults the mnests</h1>
+
+<table>
+<thead><tr><th style="width:24%">Component</th><th>What it looks for</th></tr></thead>
+<tbody>
+<tr><td><strong>Gateway (planner)</strong></td><td>Given an input, it offers the LLM a list of candidate executors ordered by the weight of mnests reaching them from the current context.</td></tr>
+<tr><td><strong>Vaglio</strong></td><td>To judge a spontaneous proposal: a strong mnest toward an action already taken in the past is a hint of telos alignment.</td></tr>
+<tr><td><strong>Synt</strong></td><td>Looks for proto-mnests that have crossed a recurrence threshold to trigger the synthesis pipeline.</td></tr>
+<tr><td><strong>Ager</strong></td><td>Walks the graph periodically to apply decay, flag the decaying ones, propose archival of superseded ones.</td></tr>
+<tr><td><strong>Observability</strong></td><td>The user can inspect the graph (list, filter by tag, top-k by weight) to see what Metnos &laquo;thinks it knows how to do together&raquo;.</td></tr>
+</tbody>
+</table>
+
+<h1 id="cap10">10. Persistence and snapshots</h1>
+
+<p>
+Mnests live in <code>workspace/.mnestome/mnest.sqlite</code>:
+</p>
+
+<ul>
+<li>a single <code>mnests</code> table with the fields from ch. 4 plus indexes on <code>(src_executor, dst_executor)</code> and <code>weight</code>;</li>
+<li>an append-only <code>events</code> table with individual reinforcements, to allow reconstruction of the weight history (useful for debugging and the ager);</li>
+<li>a <code>v_mnestome</code> view that projects the current state of the graph (active + proto), for read queries.</li>
+</ul>
+
+<p>
+The system takes a <strong>monthly snapshot</strong> of the SQLite file
+into <code>workspace/.mnestome/snapshots/YYYY-MM.sqlite</code>. The
+snapshot serves three purposes: rollback in case of corruption of the
+live file, historical analysis of the graph, trace for whoever wants to
+understand how Metnos moved over time. Snapshots older than 12 months
+are <code>.zst</code>-compressed but not deleted.
+</p>
+
+<h2>Backup</h2>
+
+<p>
+The live SQLite file is included in the nightly workspace backup
+under the same policies as the rest of
+the workspace. Losing the mnestome is not catastrophic (the system
+restarts empty and rebuilds from use) but it is one of the most
+precious data: it carries the operational history Metnos has learned
+to recognise.
+</p>
+
+<h1 id="cap11">11. Example: the invoice sequence</h1>
+
+<p>
+To pin the concepts down, here is a typical sequence of mnests that
+forms around the &laquo;archive a PDF invoice&raquo; flow:
+</p>
+
+<pre><code>1.  fs_read v1.0       &rarr;  pdf_extract v2.0       (weight 0.85, uses 47, "invoice")
+2.  pdf_extract v2.0   &rarr;  invoice_classify v1.0  (weight 0.78, uses 41, "invoice")
+3.  invoice_classify   &rarr;  workspace_save v1.0    (weight 0.81, uses 44, "invoice")
+
+# proto-mnest that recurs but is not yet an executor:
+4.  pdf_extract v2.0   &rarr;  extract_invoice_number (weight 0.34, uses 4, "invoice")
+</code></pre>
+
+<p>
+The fourth, if it keeps recurring, will lift its weight above the
+synthesis threshold and the <em>synt</em> will propose to Roberto the
+synthesis of the new executor <code>extract_invoice_number</code>. Once
+approved and signed, the proto-mnest will move to <code>active</code>
+with its <code>dst_version</code> made concrete.
+</p>
+
+<h1 id="cap12">12. Open questions</h1>
+
+<ol>
+<li><strong>Garbage collection of the SQLite file.</strong> When is space for archived mnests reclaimed in the live file? Never (full history) or periodically (for size)? Open.</li>
+<li><strong>LLM-suggested tags.</strong> The gateway can have the LLM suggest tags during turn close. How much to trust those tags? Should the user ratify them? Open.</li>
+<li><strong>Cross-sender mnests.</strong> When Metnos has multiple paired senders in the future (guests), are mnests per-sender or global? Likely global with a sender-of-origin tag, but to be decided.</li>
+<li><strong>Differentiated decay by category.</strong> Is it useful to have different <code>&lambda;</code> for side-effect-free vs side-effect-full executors? Open.</li>
+</ol>
+
+<hr>
+
+<div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(260px, 1fr)); gap:14px; margin:28px 0 24px;">
+  <a href="executor.html" style="display:block; padding:14px 16px; border:1px solid var(--border); border-radius:8px; background:white; color:inherit; text-decoration:none;">
+    <span style="display:inline-block; padding:2px 9px; border-radius:10px; font-size:9pt; background:var(--code-bg); color:var(--muted); font-weight:500;">first in the triad</span>
+    <div style="color:var(--navy); font-size:11.5pt; font-weight:700; margin:8px 0 6px 0;">executor</div>
+    <div style="margin:0; color:var(--muted); font-size:10pt; line-height:1.5;">The unit of code the mnest connects.</div>
+  </a>
+  <a href="mnestome.html" style="display:block; padding:14px 16px; border:1px solid var(--border); border-radius:8px; background:white; color:inherit; text-decoration:none;">
+    <span style="display:inline-block; padding:2px 9px; border-radius:10px; font-size:9pt; background:var(--code-bg); color:var(--muted); font-weight:500;">third in the triad</span>
+    <div style="color:var(--navy); font-size:11.5pt; font-weight:700; margin:8px 0 6px 0;">mnestome</div>
+    <div style="margin:0; color:var(--muted); font-size:10pt; line-height:1.5;">The emergent graph of all mnests.</div>
+  </a>
+  <a href="../Metnos_Architecture_Intro_v1.html#cap9" style="display:block; padding:14px 16px; border:1px solid var(--border); border-radius:8px; background:white; color:inherit; text-decoration:none;">
+    <span style="display:inline-block; padding:2px 9px; border-radius:10px; font-size:9pt; background:var(--code-bg); color:var(--muted); font-weight:500;">level 1</span>
+    <div style="color:var(--navy); font-size:11.5pt; font-weight:700; margin:8px 0 6px 0;">Architecture, ch. 9</div>
+    <div style="margin:0; color:var(--muted); font-size:10pt; line-height:1.5;">The big picture: executor, mnest, mnestome.</div>
+  </a>
+  <a href="./" style="display:block; padding:14px 16px; border:1px solid var(--border); border-radius:8px; background:white; color:inherit; text-decoration:none;">
+    <span style="display:inline-block; padding:2px 9px; border-radius:10px; font-size:9pt; background:var(--code-bg); color:var(--muted); font-weight:500;">index</span>
+    <div style="color:var(--navy); font-size:11.5pt; font-weight:700; margin:8px 0 6px 0;">Microdesign</div>
+    <div style="margin:0; color:var(--muted); font-size:10pt; line-height:1.5;">All docs.</div>
+  </a>
+</div>
+
+<hr>
+<p style="text-align:center; color:var(--muted); font-size:9.5pt; margin-top:40px;">
+Metnos &mdash; <em>mnest</em> microdesign v1.1 &mdash; 2026-04-24<br>
+New canonical doc. Replaces <code>synapse.html</code> (deprecated).
+</p>
+</body>
+</html>

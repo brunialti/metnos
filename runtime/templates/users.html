@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block title %}Metnos admin · users{% endblock %}
+{% block body %}
+<h1>Utenti ({{ rows|length }})</h1>
+
+<div class="section">
+  <h2>Crea nuovo guest</h2>
+  <form method="post" action="/admin/users" class="row" style="flex-wrap:wrap">
+    <label>name <input name="name" required pattern="[a-z0-9_]+" placeholder="lucia"></label>
+    <label>display_name <input name="display_name" placeholder="Lucia Rossi"></label>
+    <label>email <input name="email" type="email" placeholder="lucia@dominio.it"></label>
+    <label>role
+      <select name="role">
+        <option value="guest" selected>guest</option>
+        <option value="host">host</option>
+      </select>
+    </label>
+    <label>autonomy
+      <select name="autonomy_level">
+        <option value="restricted" selected>restricted</option>
+        <option value="read_only">read_only</option>
+        <option value="full">full</option>
+      </select>
+    </label>
+    <button class="btn" type="submit">crea</button>
+  </form>
+</div>
+
+<table>
+  <thead>
+    <tr><th>name</th><th>display</th><th>email</th><th>role</th><th>autonomy</th>
+        <th>channels</th><th>created</th><th>actions</th></tr>
+  </thead>
+  <tbody>
+  {% for u in rows %}
+    <tr>
+      <td><code>{{ u.name }}</code></td>
+      <td>{{ u.display_name or "-" }}</td>
+      <td>{% if u.email %}<a href="mailto:{{ u.email }}">{{ u.email }}</a>{% else %}<span class="muted">-</span>{% endif %}</td>
+      <td>
+        {% if u.role == "host" %}<span class="chip ok">{{ u.role }}</span>
+        {% else %}<span class="chip">{{ u.role }}</span>{% endif %}
+      </td>
+      <td>{{ u.autonomy_level }}</td>
+      <td>
+        {% for c in u.channels %}
+          {% if c.verified %}<span class="chip ok">{{ c.channel }}</span>
+          {% else %}<span class="chip warn">{{ c.channel }} pending</span>{% endif %}
+        {% else %}
+          <span class="muted">nessuno</span>
+        {% endfor %}
+      </td>
+      <td class="muted">{{ u.created_at }}</td>
+      <td>
+        <a class="btn" href="/admin/users/{{ u.id }}">dettaglio</a>
+      </td>
+    </tr>
+  {% else %}
+    <tr><td colspan="8" class="muted">nessun utente</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

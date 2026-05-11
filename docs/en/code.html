@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Metnos &mdash; Where is the beef (code)?</title>
+    <meta name="description" content="A note from the author of Metnos about the code: why the code is not here yet, why documentation comes first, where Metnos stands today, and an invitation to read a dialogue first.">
+    <meta name="keywords" content="Metnos, code, public repository, dialogues, microdesign, AI coder, documentation, Roberto Brunialti">
+    <meta name="author" content="Roberto Brunialti">
+    <meta name="robots" content="index, follow">
+    <link rel="canonical" href="https://metnos.com/en/code.html">
+    <link rel="alternate" hreflang="it" href="https://metnos.com/it/code.html">
+    <link rel="alternate" hreflang="en" href="https://metnos.com/en/code.html">
+    <link rel="alternate" hreflang="x-default" href="https://metnos.com/en/code.html">
+    <meta property="og:type" content="article">
+    <meta property="og:url" content="https://metnos.com/en/code.html">
+    <meta property="og:title" content="Metnos &mdash; Where is the beef (code)?">
+    <meta property="og:description" content="Why the code is not here yet, why documentation comes first, where Metnos stands today, and an invitation to read a dialogue first.">
+    <meta property="og:locale" content="en_US">
+    <meta property="og:locale:alternate" content="it_IT">
+    <meta property="og:site_name" content="Metnos">
+    <meta name="twitter:card" content="summary">
+    <meta name="twitter:title" content="Metnos &mdash; Where is the beef (code)?">
+    <meta name="twitter:description" content="A note from the author: the code exists and works, but it is not ready for a public repository yet. Documentation first, dialogues even sooner.">
+    <style>
+:root {
+    --navy: #1A477A; --navy-light: #2B6CB0; --sage: #548235;
+    --bronze: #A0522D; --plum: #6B21A8;
+    --bg: #FAFBFC; --text: #1a1a1a;
+    --border: #d0d7de; --muted: #64748B;
+}
+* { box-sizing: border-box; }
+body { font-family: 'Segoe UI', Calibri, -apple-system, sans-serif; font-size: 12pt; line-height: 1.75; color: var(--text); background: var(--bg); max-width: 760px; margin: 0 auto; padding: 40px 30px; }
+h1, h2 { color: var(--navy); }
+h2 { font-size: 16pt; margin-top: 36px; border-bottom: 1px solid var(--border); padding-bottom: 6px; }
+p { margin: 14px 0; }
+.title-page { text-align: center; padding: 50px 0 24px; }
+.title-page h1 { font-size: 28pt; border: none; margin: 0; }
+.title-page .subtitle { font-size: 14pt; color: var(--navy-light); margin: 10px 0 22px; font-style: italic; }
+.title-page .meta { font-size: 11pt; color: var(--muted); }
+nav.lang { position: fixed; top: 16px; right: 20px; z-index: 9999; font-family: 'Segoe UI', Calibri, sans-serif; font-size: 10pt; letter-spacing: 2px; background: #FAFBFC; border: 1px solid #d0d7de; border-radius: 14px; padding: 4px 10px; box-shadow: 0 1px 4px rgba(0,0,0,0.04); }
+nav.lang a { padding: 0 4px; text-decoration: none; border: none; }
+nav.lang a.active { color: #1a1a1a; font-weight: 700; }
+nav.lang a:not(.active) { color: var(--muted); }
+.back { background: #fff; border-bottom: 1px solid var(--border); padding: 10px 0; font-size: 14px; margin-bottom: 16px; }
+.back .inner { max-width: 760px; margin: 0 auto; padding: 0 20px; display: flex; justify-content: space-between; }
+.back a { color: var(--navy); text-decoration: none; font-weight: 500; }
+.callout { border-left: 4px solid var(--sage); background: #f0fdf4; color: #14532d; padding: 14px 20px; margin: 28px 0; border-radius: 0 8px 8px 0; font-size: 11.5pt; }
+em.author { color: var(--plum); font-style: italic; }
+footer { margin-top: 60px; padding-top: 18px; border-top: 1px solid var(--border); font-size: 10.5pt; color: var(--muted); text-align: center; }
+footer a { color: inherit; text-decoration: none; }
+    </style>
+</head>
+<body>
+
+<nav class="lang">
+  <a href="/it/code.html" hreflang="it" lang="it">IT</a>
+  <span style="color:#d0d7de;"> &middot; </span>
+  <a href="/en/code.html" class="active" hreflang="en" lang="en">EN</a>
+</nav>
+
+<div class="back">
+  <div class="inner">
+    <a href="./">&larr; Site index</a>
+    <span style="color:#8e8e93;">Metnos &rsaquo; <strong style="color:#1a1a1a;">Code</strong></span>
+  </div>
+</div>
+
+<div class="title-page">
+  <h1>Code</h1>
+  <div class="subtitle">a note from the author</div>
+</div>
+
+<div class="callout">
+If you've made it this far, you're interested in the code. I would have done the same. But this time the code is the least precious part of the project.
+</div>
+
+<h2>Where is the beef (code)?</h2>
+
+<p>A fair question after all this philosophy. The code is not (yet) here, and that is by design. Every document on this site is <em>upstream</em> of the code: the rule is that a component is not implemented before its HTML exists and has been approved. When the definition is ripe enough that building it becomes an exercise in fidelity rather than translation, the code follows &mdash; and looks like the documents, not the other way around.</p>
+
+<p>There is also a stronger reason to linger here. The <a href="architecture/">microdesign</a> pages and the <a href="Metnos_Architecture_Intro_v1.html">architecture</a> encode decisions; the <a href="Metnos_Dialogue_v1.html">dialogues</a> show how those decisions were earned. Read the design first and you receive conclusions without the objections, components without the rejected alternatives, names without the struggle to name them. Read a dialogue first and you arrive at the same decisions with the doubts still attached &mdash; which is what later lets you judge whether a surprise in the system is a bug or a consequence to accept.</p>
+
+<p>If you are about to dive into the architecture or the microdesign, read at least one dialogue first. The rest of the documentation will speak a richer language.</p>
+
+<h2>Where things stand today</h2>
+
+<p>Metnos is implemented. It works, but it has not yet been tested integrally in the natural setting it was born for: a daily life. The infrastructure is bespoke, with many layers of abstraction. I still need to write a thin wrapper that lets anyone use their own resources, local or online &mdash; not trivial. There is no installer and, despite the code being surprisingly compact, preparing the environment is not.</p>
+
+<p>From the documentary corpus it is already possible to re-implement Metnos. Probably better than I could, in the company of an AI coder &mdash; which during this project has felt multiplied by the techniques adopted, some of them the fruit of surprising discoveries. For each line of code there are roughly four to five lines of documentation, plus an unpublished layer that holds all the micro-decisions made along the way. Documentation here is not an afterthought: it is part of the project itself.</p>
+
+<p><em class="author">I am alone, or rather: there is always the Other who amplifies my capabilities.</em> Yet even so, I cannot finalise the environment and at the same time keep a public repository welcoming enough. :-)</p>
+
+<p>A little more patience, then.</p>
+
+<footer>
+Metnos &middot; <a href="./">metnos.com</a> &middot; contact: <a href="mailto:metnos@metnos.com">metnos@metnos.com</a>
+</footer>
+
+</body>
+</html>

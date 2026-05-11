@@ -1,0 +1,383 @@
+{
+  "decision": {
+    "recommended_tier": "wise",
+    "n_total": 0,
+    "n_valid": 0,
+    "n_individual_above": 0,
+    "individual_above_pct": 0.0,
+    "mean_wise": 0.0,
+    "mean_frontier": 0.0,
+    "delta": 0.0,
+    "lagging_prompts": [],
+    "threshold_satisfied": false
+  },
+  "threshold_pct": 0.8,
+  "individual_pct": 0.95,
+  "target_lang": "en",
+  "per_prompt": [
+    {
+      "role": "classify_entries",
+      "ok": false,
+      "wise": {
+        "score": 0.9058,
+        "cosine_sim": 0.8974,
+        "roundtrip_sim": 0.8926,
+        "placeholder_integrity": true
+      },
+      "frontier": {
+        "score": 0.0,
+        "error": "llm call returned empty/None (provider unreachable?)"
+      }
+    },
+    {
+      "role": "describe_entries_by_importance",
+      "ok": false,
+      "wise": {
+        "score": 0.7958,
+        "cosine_sim": 0.6858,
+        "roundtrip_sim": 0.8823,
+        "placeholder_integrity": true
+      },
+      "frontier": {
+        "score": 0.0,
+        "error": "llm call returned empty/None (provider unreachable?)"
+      }
+    },
+    {
+      "role": "describe_entries_by_relevance",
+      "ok": false,
+      "wise": {
+        "score": 0.8431,
+        "cosine_sim": 0.6862,
+        "roundtrip_sim": 1.0,
+        "placeholder_integrity": true
+      },
+      "frontier": {
+        "score": 0.0,
+        "error": "llm call returned empty/None (provider unreachable?)"
+      }
+    },
+    {
+      "role": "describe_entries_compact",
+      "ok": false,
+      "wise": {
+        "score": 0.8589,
+        "cosine_sim": 0.765,
+        "roundtrip_sim": 0.941,
+        "placeholder_integrity": true
+      },
+      "frontier": {
+        "score": 0.0,
+        "error": "llm call returned empty/None (provider unreachable?)"
+      }
+    },
+    {
+      "role": "intent_extractor",
+      "ok": false,
+      "wise": {
+        "score": 0.6638,
+        "cosine_sim": 0.3561,
+        "roundtrip_sim": 0.9644,
+        "placeholder_integrity": true
+      },
+      "frontier": {
+        "score": 0.0,
+        "error": "llm call returned empty/None (provider unreachable?)"
+      }
+    },
+    {
+      "role": "planner",
+      "ok": false,
+      "wise": {
+        "score": 0.6908,
+        "cosine_sim": 0.5412,
+        "roundtrip_sim": 0.8004,
+        "placeholder_integrity": true
+      },
+      "frontier": {
+        "score": 0.0,
+        "error": "llm call returned empty/None (provider unreachable?)"
+      }
+    },
+    {
+      "role": "synt_birth_tests",
+      "ok": false,
+      "wise": {
+        "score": 0.7775,
+        "cosine_sim": 0.5984,
+        "roundtrip_sim": 0.9456,
+        "placeholder_integrity": true
+      },
+      "frontier": {
+        "score": 0.0,
+        "error": "llm call returned empty/None (provider unreachable?)"
+      }
+    },
+    {
+      "role": "synt_code",
+      "ok": false,
+      "wise": {
+        "score": 0.8613,
+        "cosine_sim": 0.7974,
+        "roundtrip_sim": 0.9063,
+        "placeholder_integrity": true
+      },
+      "frontier": {
+        "score": 0.0,
+        "error": "llm call returned empty/None (provider unreachable?)"
+      }
+    },
+    {
+      "role": "synt_code_addendum_create",
+      "ok": false,
+      "wise": {
+        "score": 0.6137,
+        "cosine_sim": 0.774,
+        "roundtrip_sim": 0.3167,
+        "placeholder_integrity": true
+      },
+      "frontier": {
+        "score": 0.0,
+        "error": "llm call returned empty/None (provider unreachable?)"
+      }
+    },
+    {
+      "role": "synt_code_addendum_delete",
+      "ok": false,
+      "wise": {
+        "score": 0.8754,
+        "cosine_sim": 0.7953,
+        "roundtrip_sim": 0.9445,
+        "placeholder_integrity": true
+      },
+      "frontier": {
+        "score": 0.0,
+        "error": "llm call returned empty/None (provider unreachable?)"
+      }
+    },
+    {
+      "role": "synt_code_addendum_describe",
+      "ok": false,
+      "wise": {
+        "score": 0.7986,
+        "cosine_sim": 0.7443,
+        "roundtrip_sim": 0.816,
+        "placeholder_integrity": true
+      },
+      "frontier": {
+        "score": 0.0,
+        "error": "llm call returned empty/None (provider unreachable?)"
+      }
+    },
+    {
+      "role": "synt_code_addendum_extract",
+      "ok": false,
+      "wise": {
+        "score": 0.876,
+        "cosine_sim": 0.8606,
+        "roundtrip_sim": 0.8643,
+        "placeholder_integrity": true
+      },
+      "frontier": {
+        "score": 0.0,
+        "error": "llm call returned empty/None (provider unreachable?)"
+      }
+    },
+    {
+      "role": "synt_code_addendum_filter",
+      "ok": false,
+      "wise": {
+        "score": 0.5489,
+        "cosine_sim": 0.166,
+        "roundtrip_sim": 0.9147,
+        "placeholder_integrity": true
+      },
+      "frontier": {
+        "score": 0.0,
+        "error": "llm call returned empty/None (provider unreachable?)"
+      }
+    },
+    {
+      "role": "synt_code_addendum_find",
+      "ok": false,
+      "wise": {
+        "score": 0.5674,
+        "cosine_sim": 0.7447,
+        "roundtrip_sim": 0.2375,
+        "placeholder_integrity": true
+      },
+      "frontier": {
+        "score": 0.0,
+        "error": "llm call returned empty/None (provider unreachable?)"
+      }
+    },
+    {
+      "role": "synt_code_addendum_get",
+      "ok": false,
+      "wise": {
+        "score": 0.5684,
+        "cosine_sim": 0.2586,
+        "roundtrip_sim": 0.8477,
+        "placeholder_integrity": true
+      },
+      "frontier": {
+        "score": 0.0,
+        "error": "llm call returned empty/None (provider unreachable?)"
+      }
+    },
+    {
+      "role": "synt_code_addendum_list",
+      "ok": false,
+      "wise": {
+        "score": 0.299,
+        "cosine_sim": 0.2254,
+        "roundtrip_sim": 0.2157,
+        "placeholder_integrity": true
+      },
+      "frontier": {
+        "score": 0.0,
+        "error": "llm call returned empty/None (provider unreachable?)"
+      }
+    },
+    {
+      "role": "synt_code_addendum_move",
+      "ok": false,
+      "wise": {
+        "score": 0.8126,
+        "cosine_sim": 0.759,
+        "roundtrip_sim": 0.8328,
+        "placeholder_integrity": true
+      },
+      "frontier": {
+        "score": 0.0,
+        "error": "llm call returned empty/None (provider unreachable?)"
+      }
+    },
+    {
+      "role": "synt_code_addendum_read",
+      "ok": false,
+      "wise": {
+        "score": 0.7125,
+        "cosine_sim": 0.7481,
+        "roundtrip_sim": 0.8461,
+        "placeholder_integrity": false
+      },
+      "frontier": {
+        "score": 0.0,
+        "error": "llm call returned empty/None (provider unreachable?)"
+      }
+    },
+    {
+      "role": "synt_code_addendum_send",
+      "ok": false,
+      "wise": {
+        "score": 0.8718,
+        "cosine_sim": 0.8783,
+        "roundtrip_sim": 0.8315,
+        "placeholder_integrity": true
+      },
+      "frontier": {
+        "score": 0.0,
+        "error": "llm call returned empty/None (provider unreachable?)"
+      }
+    },
+    {
+      "role": "synt_code_addendum_write",
+      "ok": false,
+      "wise": {
+        "score": 0.4854,
+        "cosine_sim": 0.5315,
+        "roundtrip_sim": 0.2992,
+        "placeholder_integrity": true
+      },
+      "frontier": {
+        "score": 0.0,
+        "error": "llm call returned empty/None (provider unreachable?)"
+      }
+    },
+    {
+      "role": "synt_description",
+      "ok": false,
+      "wise": {
+        "score": 0.3758,
+        "cosine_sim": 0.393,
+        "roundtrip_sim": 0.1983,
+        "placeholder_integrity": true
+      },
+      "frontier": {
+        "score": 0.0,
+        "error": "llm call returned empty/None (provider unreachable?)"
+      }
+    },
+    {
+      "role": "synt_generate",
+      "ok": false,
+      "wise": {
+        "score": 0.4753,
+        "cosine_sim": 0.3229,
+        "roundtrip_sim": 0.5346,
+        "placeholder_integrity": true
+      },
+      "frontier": {
+        "score": 0.0,
+        "error": "llm call returned empty/None (provider unreachable?)"
+      }
+    },
+    {
+      "role": "synt_naming",
+      "ok": false,
+      "wise": {
+        "score": 0.5356,
+        "cosine_sim": 0.7498,
+        "roundtrip_sim": 0.1518,
+        "placeholder_integrity": true
+      },
+      "frontier": {
+        "score": 0.0,
+        "error": "llm call returned empty/None (provider unreachable?)"
+      }
+    },
+    {
+      "role": "synt_signature",
+      "ok": false,
+      "wise": {
+        "score": 0.5677,
+        "cosine_sim": 0.7,
+        "roundtrip_sim": 0.2943,
+        "placeholder_integrity": true
+      },
+      "frontier": {
+        "score": 0.0,
+        "error": "llm call returned empty/None (provider unreachable?)"
+      }
+    },
+    {
+      "role": "synt_tests",
+      "ok": false,
+      "wise": {
+        "score": 0.7336,
+        "cosine_sim": 0.6693,
+        "roundtrip_sim": 0.7472,
+        "placeholder_integrity": true
+      },
+      "frontier": {
+        "score": 0.0,
+        "error": "llm call returned empty/None (provider unreachable?)"
+      }
+    },
+    {
+      "role": "vaglio",
+      "ok": false,
+      "wise": {
+        "score": 0.6139,
+        "cosine_sim": 0.2954,
+        "roundtrip_sim": 0.9155,
+        "placeholder_integrity": true
+      },
+      "frontier": {
+        "score": 0.0,
+        "error": "llm call returned empty/None (provider unreachable?)"
+      }
+    }
+  ]
+}

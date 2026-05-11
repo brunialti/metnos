@@ -1,0 +1,794 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Metnos — prospettive estese v1</title>
+    <style>
+:root {
+    --navy: #1A477A; --navy-light: #2B6CB0; --sage: #548235;
+    --bronze: #A0522D; --plum: #6B21A8;
+    --bg: #FAFBFC; --text: #1a1a1a;
+    --border: #d0d7de; --code-bg: #f6f8fa;
+    --table-header: #1A477A; --table-alt: #f0f4f8;
+    --note-bg: #dbeafe; --note-border: #3b82f6;
+    --tip-bg: #dcfce7; --tip-border: #16a34a;
+    --warn-bg: #fef3c7; --warn-border: #f59e0b;
+    --danger-bg: #fee2e2; --danger-border: #dc2626;
+    --muted: #64748B;
+}
+* { box-sizing: border-box; }
+body {
+    font-family: 'Segoe UI', Calibri, -apple-system, sans-serif;
+    font-size: 11pt; line-height: 1.65; color: var(--text);
+    background: var(--bg); max-width: 960px; margin: 0 auto; padding: 40px 30px;
+}
+h1 { color: var(--navy); font-size: 20pt; border-bottom: 3px solid var(--navy); padding-bottom: 8px; margin-top: 50px; page-break-before: always; }
+h1:first-of-type { page-break-before: avoid; }
+h2 { color: var(--navy-light); font-size: 14pt; margin-top: 30px; border-bottom: 1px solid var(--border); padding-bottom: 4px; }
+h3 { color: var(--navy); font-size: 12pt; margin-top: 22px; }
+h4 { color: var(--bronze); font-size: 11.5pt; margin: 16px 0 6px 0; }
+p { margin: 10px 0; }
+table { width: 100%; border-collapse: collapse; margin: 15px 0; font-size: 10pt; page-break-inside: avoid; }
+th { background: var(--table-header); color: white; padding: 8px 10px; text-align: left; font-weight: 600; }
+td { padding: 7px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+tr:nth-child(even) td { background: var(--table-alt); }
+pre { background: var(--code-bg); border: 1px solid var(--border); border-radius: 4px; padding: 12px 16px; overflow-x: auto; font-size: 9.5pt; line-height: 1.55; page-break-inside: avoid; }
+code { font-family: Consolas, 'Courier New', monospace; }
+p code, li code, td code { background: var(--code-bg); padding: 1px 5px; border-radius: 3px; font-size: 9.5pt; }
+figure { text-align: center; margin: 24px 0; page-break-inside: avoid; }
+figure svg { max-width: 100%; height: auto; border: 1px solid var(--border); border-radius: 6px; background: white; padding: 8px; }
+figcaption { font-style: italic; color: #555; font-size: 9.5pt; margin-top: 8px; }
+.callout { border-left: 4px solid; padding: 10px 16px; margin: 15px 0; border-radius: 0 4px 4px 0; font-size: 10pt; page-break-inside: avoid; }
+.callout.note { background: var(--note-bg); border-color: var(--note-border); }
+.callout.tip { background: var(--tip-bg); border-color: var(--tip-border); }
+.callout.warning { background: var(--warn-bg); border-color: var(--warn-border); }
+.callout.danger { background: var(--danger-bg); border-color: var(--danger-border); }
+.title-page { text-align: center; padding: 120px 0 60px; page-break-after: always; }
+.title-page h1 { font-size: 36pt; border: none; margin: 0; page-break-before: avoid; }
+.title-page .subtitle { font-size: 18pt; color: var(--navy-light); margin: 10px 0 40px; }
+.title-page .meta { font-size: 11pt; color: #666; }
+.toc { page-break-after: always; }
+.toc h2 { border: none; }
+.toc ol { font-size: 11pt; line-height: 2; }
+.toc a { color: var(--navy); text-decoration: none; }
+.toc a:hover { text-decoration: underline; }
+ul, ol { margin: 8px 0; padding-left: 24px; }
+li { margin-bottom: 4px; }
+.lead { font-size: 12pt; color: var(--navy); border-left: 4px solid var(--sage); padding-left: 14px; margin: 18px 0; }
+.cap-card {
+    background:#fff; border:1px solid var(--border); border-left:4px solid var(--sage);
+    border-radius:0 8px 8px 0; padding:14px 20px; margin:18px 0;
+    page-break-inside: avoid;
+}
+.cap-card h3 { margin-top: 0; color: var(--sage); }
+.cap-card .badges { margin: 4px 0 10px 0; }
+.cap-card .b {
+    display:inline-block; font-size:9pt; padding:2px 9px;
+    border-radius:12px; font-weight:600; letter-spacing:.3px; margin-right:4px;
+}
+.b.new { background:#fef3c7; color:#92400e; }
+.b.cross { background:#e0e7ff; color:#3730a3; }
+.b.sensitive { background:#fee2e2; color:#991b1b; }
+.b.easy { background:#dcfce7; color:#166534; }
+.b.phase { background:#f0f4f8; color:#1a477a; }
+.sev { display:inline-block; font-size:9pt; padding:2px 9px; border-radius:10px; font-weight:600; }
+.sev-hi { background:#fee2e2; color:#991b1b; }
+.sev-md { background:#fef3c7; color:#92400e; }
+.sev-lo { background:#dcfce7; color:#166534; }
+@media print {
+    body { max-width: none; padding: 0; font-size: 10pt; }
+    h1 { font-size: 16pt; } h2 { font-size: 12pt; }
+    .title-page { padding: 80px 0 40px; }
+    .title-page h1 { font-size: 28pt; }
+    .cap-card { break-inside: avoid; }
+}
+    </style>
+</head>
+<body>
+<!-- lang-switch -->
+<nav aria-label="Language" style="position:fixed;top:16px;right:20px;z-index:9999;font-family:'Segoe UI',Calibri,sans-serif;font-size:10pt;letter-spacing:2px;background:#FAFBFC;border:1px solid #d0d7de;border-radius:14px;padding:4px 10px;box-shadow:0 1px 4px rgba(0,0,0,0.04);">
+<a href="/it/" hreflang="it" lang="it" style="color:#1a1a1a;text-decoration:none;font-weight:700;padding:0 4px;border:none;">IT</a>
+<span style="color:#d0d7de;"> · </span>
+<a href="/en/" hreflang="en" lang="en" style="color:#64748B;text-decoration:none;padding:0 4px;border:none;">EN</a>
+</nav>
+
+
+<div style="background:#fff;border-bottom:1px solid #d0d7de;padding:10px 0;font-size:14px;position:sticky;top:0;z-index:10;margin-bottom:20px;">
+  <div style="max-width:960px;margin:0 auto;padding:0 20px;display:flex;justify-content:space-between;">
+    <a href="index.html" style="color:#1a477a;text-decoration:none;font-weight:500;">← Indice documentazione</a>
+    <span style="color:#8e8e93;">docs &rsaquo; <strong style="color:#1a1a1a;">prospettive estese v1</strong></span>
+  </div>
+</div>
+
+<div class="title-page">
+    <h1>Metnos</h1>
+    <div class="subtitle">Prospettive estese &mdash; da assistente reattivo a intelligenza ambientale</div>
+    <div class="meta">
+        v1.0 &mdash; 22 aprile 2026<br>
+        Estende <a href="Metnos_Architettura_Intro_v1.html">Architettura Intro</a> e
+        <a href="Metnos_Prospettive_Giudizio_v1.html">Prospettive &amp; Giudizio</a>.<br>
+        Non sostituisce: aggiunge cinque famiglie di capacità che il design attuale non copre.
+    </div>
+</div>
+
+<div class="toc">
+<h2>Indice</h2>
+<ol>
+    <li><a href="#cap1">Perché questo doc: il salto di baricentro</a></li>
+    <li><a href="#cap2">Le cinque famiglie di capacità</a>
+        <ol style="list-style-type:lower-alpha;">
+            <li><a href="#cap2a">A. Percezione continua (indicizzazione in background)</a></li>
+            <li><a href="#cap2b">B. Agency multi-agente (dialogo con altri agenti)</a></li>
+            <li><a href="#cap2c">C. Modalità ombra (ascolto senza risposta)</a></li>
+            <li><a href="#cap2d">D. Proattività creativa (proporre riassetti)</a></li>
+            <li><a href="#cap2e">E. Capacità esterne (web, calendari)</a></li>
+            <li><a href="#cap2f">F. Telos &mdash; la funzione di allineamento</a></li>
+        </ol>
+    </li>
+    <li><a href="#cap3">La questione trasversale: identità del parlante</a></li>
+    <li><a href="#cap4">Tensioni costituzionali e Legge 0 estesa</a></li>
+    <li><a href="#cap5">Mapping: cosa aggiungere alla microprogettazione</a></li>
+    <li><a href="#cap6">Roadmap di fase</a></li>
+</ol>
+</div>
+
+<h1 id="cap1">1. Perché questo doc: il salto di baricentro</h1>
+
+<p class="lead">
+Metnos, come lo disegna l'architettura attuale, è un <strong>assistente
+reattivo</strong>: l'utente scrive, il gateway avvia un loop, il loop risponde.
+Questo documento introduce cinque famiglie di capacità che spostano il
+baricentro: da reattivo a <strong>ambientale</strong>. Metnos smette di
+rispondere soltanto e inizia a percepire, collaborare, osservare, proporre.
+</p>
+
+<p>Il design di base resta valido: i quattro strati, le quattro Leggi, l'audit,
+la memoria a tre livelli, l'autonomia graduata. Ma un sistema <em>ambientale</em>
+introduce elementi che la versione reattiva non prevede:</p>
+
+<ul>
+    <li>un secondo processo oltre al gateway (<strong>Indexer</strong>, long-running);</li>
+    <li>un quinto tipo di canale (<strong>AgentChannel</strong>, agente-agente);</li>
+    <li>un regime operativo nuovo (<strong>shadow mode</strong>: osservare senza rispondere);</li>
+    <li>una generalizzazione della reflection (<strong>ActionProposal</strong>, non solo <code>FactProposal</code>);</li>
+    <li>una mappatura <strong>sender &rarr; identità umana</strong>, più ricca del binding attuale.</li>
+</ul>
+
+<p>Questo doc stabilisce ciascuno di questi elementi al livello di
+<em>intento</em> e <em>tensione architetturale</em>. La microprogettazione
+concreta arriverà dopo, in nuovi HTML di Livello 2 che questo doc elenca al
+§5.</p>
+
+<figure>
+<svg viewBox="0 0 860 380" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Spazio delle capacità di Metnos: reattivo al centro, ambientale nelle bande esterne">
+  <defs>
+    <radialGradient id="pe-core" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#DCFCE7"/><stop offset="100%" stop-color="#86EFAC"/>
+    </radialGradient>
+    <radialGradient id="pe-r1" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#DBEAFE" stop-opacity="0.9"/><stop offset="100%" stop-color="#93C5FD" stop-opacity="0.6"/>
+    </radialGradient>
+    <radialGradient id="pe-r2" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#EDE4F7" stop-opacity="0.7"/><stop offset="100%" stop-color="#C4B5FD" stop-opacity="0.4"/>
+    </radialGradient>
+    <style>
+      .lbl-core { font: 700 14pt 'Segoe UI', sans-serif; fill: #14532D; }
+      .lbl-ring { font: 700 12pt 'Segoe UI', sans-serif; fill: #1A477A; }
+      .lbl-cap { font: 11pt 'Segoe UI', sans-serif; fill: #1A477A; }
+      .lbl-note { font: italic 9.5pt 'Segoe UI', sans-serif; fill: #555; }
+    </style>
+  </defs>
+
+  <!-- Ring 3 (esterno): ambientale -->
+  <ellipse cx="430" cy="190" rx="410" ry="170" fill="url(#pe-r2)" stroke="#7C3AED" stroke-width="1.5" stroke-dasharray="5 4"/>
+  <text x="430" y="38" class="lbl-ring" text-anchor="middle" fill="#6B21A8">ambientale</text>
+
+  <!-- Ring 2 (medio): percettivo + collaborativo -->
+  <ellipse cx="430" cy="190" rx="310" ry="130" fill="url(#pe-r1)" stroke="#2563EB" stroke-width="1.5" stroke-dasharray="5 4"/>
+  <text x="430" y="75" class="lbl-ring" text-anchor="middle">percettivo · collaborativo</text>
+
+  <!-- Core: reattivo -->
+  <ellipse cx="430" cy="190" rx="150" ry="80" fill="url(#pe-core)" stroke="#16A34A" stroke-width="2"/>
+  <text x="430" y="185" class="lbl-core" text-anchor="middle">reattivo (oggi)</text>
+  <text x="430" y="208" class="lbl-note" text-anchor="middle">gateway · loop · tool · channel</text>
+
+  <!-- Capability labels -->
+  <text x="160" y="165" class="lbl-cap" text-anchor="middle">A. Indexer</text>
+  <text x="160" y="183" class="lbl-note" text-anchor="middle">foto, file, voice-id</text>
+
+  <text x="700" y="165" class="lbl-cap" text-anchor="middle">B. AgentChannel</text>
+  <text x="700" y="183" class="lbl-note" text-anchor="middle">dialogo con altri agenti</text>
+
+  <text x="170" y="320" class="lbl-cap" text-anchor="middle" fill="#991B1B">C. Shadow mode</text>
+  <text x="170" y="338" class="lbl-note" text-anchor="middle">ascolta, non risponde</text>
+
+  <text x="430" y="340" class="lbl-cap" text-anchor="middle" fill="#6B21A8">D. ActionProposal</text>
+  <text x="430" y="358" class="lbl-note" text-anchor="middle">propone riassetti</text>
+
+  <text x="695" y="320" class="lbl-cap" text-anchor="middle">E. Tool esterni</text>
+  <text x="695" y="338" class="lbl-note" text-anchor="middle">web, calendari</text>
+</svg>
+<figcaption>Figura 1 &mdash; Lo spazio delle capacità. Al centro, ciò che l'architettura attuale copre. Nelle bande più chiare, le cinque famiglie nuove. Più ci si allontana dal centro, più aumentano la potenza e la responsabilità costituzionale.</figcaption>
+</figure>
+
+<h1 id="cap2">2. Le cinque famiglie di capacità</h1>
+
+<h2 id="cap2a">A. Percezione continua (indicizzazione in background)</h2>
+
+<div class="cap-card">
+<h3>Cosa include</h3>
+<div class="badges">
+    <span class="b new">componente nuovo</span>
+    <span class="b phase">fase 5-6</span>
+</div>
+<ul>
+    <li><strong>Dedup e censimento</strong> di file su filesystem e NAS (hash, tempo, dimensione, firma percettiva per immagini).</li>
+    <li><strong>Indice vettoriale di immagini</strong>: embedding di 1.000&ndash;100.000 foto con modello locale (CLIP o simile), retrieval per soggetto.</li>
+    <li><strong>Riconoscimento persone</strong> ricorrenti: cluster di volti per identità (senza nomi di default; la mappatura volto &rarr; nome è una memoria semantica che richiede approvazione).</li>
+    <li><strong>Voice ID</strong> via <a href="Metnos_Glossario_v1.html#suprastructure">suprastructure</a>: chi sta parlando al microfono diventa un <em>segnale</em> sul sender.</li>
+    <li><strong>Indicizzazione documenti testuali</strong>: ricerca semantica su PDF e markdown del workspace.</li>
+</ul>
+
+<h3>Perché non sta nel design attuale</h3>
+<p>L'architettura odierna è <strong>request-driven</strong>: tutto parte da un
+messaggio di un canale, passa per il loop, finisce con una risposta. Queste
+capacità sono <em>task-driven nel tempo</em>: un processo scansiona, aggiorna
+un indice, notifica quando succede qualcosa. È un modello diverso.</p>
+
+<h3>Cosa introduce</h3>
+<ul>
+    <li><strong>Indexer</strong>: un processo systemd separato con un proprio budget di CPU/IO, che scansiona sorgenti configurate (path, NAS mount, cartella foto), aggiorna un indice persistente (SQLite+VSS o equivalente), e pubblica eventi su una coda interna che il Gateway può consumare.</li>
+    <li><strong>Tool di retrieval</strong> sull'indice: <code>image_search(subject, date_range)</code>, <code>file_dedup_report(path)</code>, <code>voice_match(audio_clip)</code>. Sono tool normali, che leggono un indice, non lo costruiscono.</li>
+    <li><strong>Sorgenti</strong> dichiarate nel workspace (nuovo file <code>SOURCES.md</code>: dove l'Indexer può guardare, quali cartelle sono off-limits).</li>
+</ul>
+
+<h3>Decisioni non banali da fissare più tardi</h3>
+<ul>
+    <li>Indice vettoriale locale vs embedding via API: di base <strong>locale</strong> (niente dati sensibili verso cloud).</li>
+    <li>Face clustering: quando Metnos propone "è sempre la stessa persona?" &rarr; <code>ActionProposal</code> (vedi §2D).</li>
+    <li>Re-index incrementale vs full: incrementale, con scan full settimanale.</li>
+</ul>
+</div>
+
+<h2 id="cap2b">B. Agency multi-agente (dialogo con altri agenti)</h2>
+
+<div class="cap-card">
+
+<div class="callout note" style="margin-top:0;">
+<strong>Sibling agents.</strong> Metnos è pensato per <em>convivere</em> con
+altri agenti specializzati sullo stesso ambiente: tipicamente un
+<a href="Metnos_Glossario_v1.html#assistente-domotico">assistente domotico</a>
+che presidia wake-word, voce e controllo della casa (vedi anche il concetto
+generale di <a href="Metnos_Glossario_v1.html#sibling-agents">sibling agents</a>).
+Nell'ambiente dell'autore esiste già un assistente di questo tipo, parallelo
+a Metnos, che condivide la stessa astrazione sottostante per l'uso di
+modelli linguistici (<a href="Metnos_Glossario_v1.html#llm-abstraction">interfaccia
+LLM</a>). In altri ambienti il ruolo sarà ricoperto da un agente diverso: il
+pattern del dialogo inter-agente resta.
+</div>
+
+<h3>Cosa include</h3>
+<div class="badges">
+    <span class="b new">componente nuovo</span>
+    <span class="b cross">cross: channel + policy</span>
+    <span class="b phase">fase 6-7</span>
+</div>
+<ul>
+    <li>Metnos può <strong>chiedere all'assistente domotico</strong> "dammi gli eventi di calendario di domani" &mdash; perché è l'assistente domotico che ha già accesso a calendari, centralina di casa, servizi vocali.</li>
+    <li>Metnos può <strong>offrire all'assistente domotico</strong> capacità che possiede (es. "vuoi che ti cerchi un file sul NAS?") &mdash; perché su file e ricerca locale Metnos è più attrezzato.</li>
+    <li>L'assistente domotico può <strong>delegare</strong> a Metnos ciò che Metnos fa meglio (ricerca locale su file di famiglia, dedup, riassunti documentali).</li>
+    <li>Il tutto avviene su un canale dedicato, <em>non via Telegram</em>, con autenticazione reciproca.</li>
+</ul>
+
+<h3>Cosa introduce</h3>
+<ul>
+    <li><strong>AgentChannel</strong>: quinto tipo di <code>Channel</code> (oltre CLI, Telegram, voce, cron). Implementa il Protocol <code>Channel</code> esistente, ma il <code>sender</code> è un altro agente (es. <code>agent:home-assistant</code>), non un umano.</li>
+    <li><strong>Pairing simmetrico</strong>: non basta il <a href="architecture/pairing.html">pairing</a> umano-macchina attuale. Serve un pairing agente-agente con chiavi scambiate out-of-band (QR fisico o canale fidato preesistente).</li>
+    <li><strong>Vocabolario strutturato</strong>: gli agenti si parlano per intent JSON (<code>{intent: "query.calendar", date: "2026-04-23"}</code>), non in linguaggio naturale. Motivazione: determinismo, audit leggibile, niente ambiguità.</li>
+    <li><strong>Trust perimetrale</strong>: ciò che un altro agente chiede a Metnos viene valutato dalla Policy esattamente come una richiesta umana, con <em>autonomy</em> dedicata per l'agente remoto (<em>agent:&lt;nome&gt;:read_only</em>, <em>agent:&lt;nome&gt;:supervised</em>).</li>
+</ul>
+
+<h3>Domande aperte (da risolvere in microprogettazione)</h3>
+<ul>
+    <li><strong>Delega di autorità</strong>: se un altro agente chiede a Metnos "invia questa mail", chi approva? Risposta conservativa: sempre l'utente umano di myclaw. Nessun agente esterno può firmare approvazioni per conto dell'utente.</li>
+    <li><strong>Cicli</strong>: Metnos chiede all'altro agente, che chiede a Metnos, che&hellip; &rarr; TTL sui messaggi inter-agente, max 3 hop.</li>
+    <li><strong>Gossip</strong>: se nell'ambiente vivono più di due agenti, servirà un grafo con topologia dichiarata o basta peer-to-peer?</li>
+</ul>
+</div>
+
+<h2 id="cap2c">C. Modalità ombra (ascolto senza risposta)</h2>
+
+<div class="cap-card">
+<h3>Cosa include</h3>
+<div class="badges">
+    <span class="b sensitive">costituzionalmente delicato</span>
+    <span class="b new">regime nuovo</span>
+    <span class="b phase">fase 7+</span>
+</div>
+<ul>
+    <li>Metnos osserva una chat di famiglia Telegram (o WhatsApp, tramite bridge) <em>senza mai rispondere in quella chat</em>.</li>
+    <li>Estrae pattern rilevanti per l'utente: date, appuntamenti, nomi, file allegati.</li>
+    <li>Se coglie qualcosa, invia un messaggio <strong>privato</strong> all'utente: <em>"nella chat &lt;X&gt; qualcuno ha detto 'domenica 13'. Aggiungo al calendario?"</em>.</li>
+</ul>
+
+<h3>Perché è diverso dagli altri tool</h3>
+<p>Non è un tool. È un <strong>regime operativo</strong>: un modo in cui myc sta
+in una chat. Diverso da <em>non presente</em> (attuale), diverso da
+<em>interattivo</em> (attuale), simile a <em>lurker consapevole</em> nel
+vocabolario delle community online.</p>
+
+<h3>Cosa richiede costituzionalmente</h3>
+<ul>
+    <li><strong>Sotto-legge esplicita in <code>constitution.html</code></strong> dedicata allo shadow mode: default off, abilitabile chat per chat, richiede (a) whitelist scritta dall'utente, (b) notifica ai membri della chat in testa a ogni sessione (\"c'è un assistente che osserva&mdash;è mio\"), (c) non registrazione di contenuto che non riguarda l'utente proprietario.</li>
+    <li><strong>Due liste di filtri</strong>: cosa <em>interessa</em> (date, nomi, topic) e cosa <em>non osservare mai</em> (topic sensibili, mittenti in blacklist).</li>
+    <li><strong>Audit intensificato</strong>: ogni cosa che lo shadow mode <em>cattura</em> finisce nel journal con <code>kind="shadow_catch"</code>, ogni cosa che <em>ignora</em> non è registrata (altrimenti l'audit stesso viola la privacy di terzi).</li>
+</ul>
+
+<div class="callout danger">
+<strong>DECISIONE v1:</strong> lo shadow mode <em>non è inviato in produzione
+fino a quando la sotto-legge costituzionale non è scritta, firmata e
+collaudata</em>. Non è un'opzione di configurazione nascosta: è una capacità
+che richiede una versione della Costituzione bumped (1.0 &rarr; 2.0) e la
+firma esplicita di Roberto. Nel frattempo, può vivere come branch sperimentale
+in ambiente isolato.
+</div>
+</div>
+
+<h2 id="cap2d">D. Proattività creativa (proporre riassetti)</h2>
+
+<div class="cap-card">
+<h3>Cosa include</h3>
+<div class="badges">
+    <span class="b new">tipo nuovo</span>
+    <span class="b cross">cross: memory + neuron</span>
+    <span class="b phase">fase 4-5</span>
+</div>
+<ul>
+    <li><em>"Ho notato 1.400 foto senza tag. Propongo una tassonomia basata sui cluster di soggetti: vuoi vederla?"</em></li>
+    <li><em>"I file in ~/Documenti/lavoro/ seguono 4 convenzioni di naming diverse. Propongo unificare a &lt;anno&gt;-&lt;progetto&gt;-&lt;versione&gt;.pdf. 347 file coinvolti. Posso mostrarti il preview?"</em></li>
+    <li><em>"Il calendario di aprile ha 12 eventi senza luogo. Riesco a ricostruire il luogo per 9 di questi da mail correlate. Procedo?"</em></li>
+</ul>
+
+<h3>Cosa introduce</h3>
+<p>Oggi <a href="architecture/memory.html#cap6">memory §6</a> definisce la
+<em>reflection</em> come produttrice di <code>FactProposal</code>: la proposta
+di <em>ricordare</em> qualcosa. La proattività creativa è una generalizzazione:
+la reflection produce anche <strong><code>ActionProposal</code></strong>, la
+proposta di <em>fare</em> qualcosa di non banale (che coinvolga molti file,
+molti record, azioni ripetitive).</p>
+
+<pre><code>@dataclass
+class ActionProposal:
+    """Una proposta di azione di grande scala emersa da reflection."""
+    kind: Literal["restructure", "homogenize", "cleanup",
+                  "enrich", "classify", "consolidate"]
+    scope: str                        # "~/Documenti/lavoro/" etc
+    impact: ImpactReport              # quanti record/file toccati
+    rationale: str                    # perché myc propone questo
+    plan: list[PlannedAction]         # azioni concrete, step-by-step
+    reversibility: Literal["reversible", "reversible_with_cost", "irreversible"]
+    confidence: float                 # 0..1, quanta fiducia ha myc
+    created_at: datetime</code></pre>
+
+<h3>Differenze dalle approval esistenti</h3>
+<table>
+<thead><tr><th style="width:20%">Aspetto</th><th><code>ApprovalRequest</code> (oggi)</th><th><code>ActionProposal</code> (nuovo)</th></tr></thead>
+<tbody>
+<tr><td>Origine</td><td>Il loop sta per fare qualcosa, chiede permesso.</td><td>myc ha osservato dati, <em>propone</em> qualcosa che nessuno ha chiesto.</td></tr>
+<tr><td>Urgenza</td><td>Blocca il loop finché l'utente risponde.</td><td>Non blocca nulla. Rimane in un inbox proposte finché l'utente la guarda.</td></tr>
+<tr><td>Azione implicita</td><td>Se timeout: l'azione <em>non</em> succede.</td><td>Se timeout: la proposta <em>scade</em> senza conseguenze.</td></tr>
+<tr><td>UX</td><td>Bottoni Sì/No/Modifichiamo nel canale attivo.</td><td>Digest serale, inbox proposte, preview di esempio, accetta/rifiuta/ricevi meno di queste.</td></tr>
+</tbody>
+</table>
+
+<p>È una superficie UX nuova. Va dettagliata in un <code>proposal_ux.html</code>
+dedicato.</p>
+</div>
+
+<h2 id="cap2e">E. Capacità esterne (web, calendari)</h2>
+
+<div class="cap-card">
+<h3>Cosa include</h3>
+<div class="badges">
+    <span class="b easy">architetturalmente semplice</span>
+    <span class="b phase">fase 2-3</span>
+</div>
+<ul>
+    <li><strong>Web search</strong>: tool che consulta motori di ricerca o DuckDuckGo via API. Output testuale.</li>
+    <li><strong>Web fetch + summarize</strong>: parzialmente già in <code>tool.html</code>.</li>
+    <li><strong>Google / Apple Calendar</strong>: tool con OAuth. Read-first, write dietro approvazione.</li>
+    <li><strong>Delegabile a un sibling agent</strong>: se un altro agente in ambiente (es. l'assistente domotico) ha già i calendari configurati, Metnos non serve duplicare &mdash; glieli chiede (vedi §2B).</li>
+</ul>
+
+<h3>Perché è la più facile del pacchetto</h3>
+<p>Sono <em>tool</em> nel senso stretto del Protocol attuale. Implementano la
+stessa interfaccia di <code>fs_read</code> o <code>shell_exec</code>. Passano
+per Policy, approvazione, trace. Non introducono componenti architetturali
+nuovi.</p>
+
+<h3>Decisioni non banali</h3>
+<ul>
+    <li><strong>Costo</strong>: web search via API costa. Cap di budget dedicato per questa classe di tool, coordinato con <a href="architecture/policy.html#cap5">policy §5</a>.</li>
+    <li><strong>OAuth storage</strong>: token in keyring di sistema, non in file workspace.</li>
+    <li><strong>Quota rate-limit</strong>: rispetto dei provider esterni come vincolo Legge 0 (non sovraccaricare infrastrutture di terzi).</li>
+</ul>
+</div>
+
+<h2 id="cap2f">F. Telos &mdash; la funzione di allineamento</h2>
+
+<div class="cap-card">
+<h3>Cosa risolve</h3>
+<div class="badges">
+    <span class="b new">tipo nuovo</span>
+    <span class="b cross">cross: fondante per A, B, D</span>
+    <span class="b phase">fase 4-5</span>
+</div>
+<p>Le famiglie A, B e D generano <em>intenzioni non richieste</em>: l'indexer
+propone una tassonomia, un agente suggerisce una delega, la proattività
+propone un riassetto. Serve un criterio per dire <strong>quali di queste
+intenzioni hanno senso</strong>, senza chiedere all'utente di valutarle tutte.
+È la funzione di valutazione che l'agente proattivo, da solo, non ha.</p>
+
+<p>Il design reattivo non si pone il problema: l'utente chiede, myc esegue, la
+valutazione è implicita nella richiesta. L'agente proattivo è libero di
+proporre qualunque cosa &mdash; e senza un criterio diventa un generatore
+entusiasta di rumore.</p>
+
+<h3>Tre livelli di allineamento</h3>
+
+<h4>Livello 1 &mdash; I <em>fini ultimi</em> espliciti (TELOS.md)</h4>
+<p>Un sesto file nel workspace, accanto a IDENTITY, USER, MEMORY, AGENTS,
+SOUL. Scritto dall'utente, 3-7 frasi brevi. Non si raggiungono, si
+approssimano: sono aristotelici. Esempi tipo:</p>
+<ol>
+    <li>Liberare il mio tempo dalle incombenze ripetitive <em>(tempo)</em></li>
+    <li>Mantenere l'ordine dei miei dati digitali <em>(ordine)</em></li>
+    <li>Non farmi perdere scadenze importanti <em>(puntualità)</em></li>
+    <li>Proteggere la mia privacy e quella di chi mi è vicino <em>(protezione)</em></li>
+    <li>Sorprendermi utilmente, ma non interrompermi <em>(discrezione)</em></li>
+    <li>Non spendere più di quanto serve <em>(parsimonia)</em></li>
+</ol>
+<p>Ogni telos ha un peso (priorità in conflitto) e una soglia di attivazione.
+Sono revisionabili in ogni momento con rito firmato, come la Costituzione.</p>
+
+<div class="callout note">
+<strong>Leggi vs Telos.</strong> Le 4 Leggi dicono <em>cosa non fare mai</em> (sono
+negative, le scrive myc con l'utente, riguardano la sicurezza). I Telos dicono
+<em>verso cosa tendere</em> (sono positivi, li scrive l'utente da solo,
+riguardano l'utilità). Sono ortogonali.
+</div>
+
+<h4>Livello 2 &mdash; La funzione di allineamento</h4>
+<p>Ogni proposta viene valutata con un singolo scalare:</p>
+<pre><code>expected_alignment = Σᵢ (weightᵢ · fitᵢ) · urgency · confidence − bother_cost
+
+dove:
+  weightᵢ     = peso del telos i (dichiarato in TELOS.md)
+  fitᵢ        = quanto la proposta avvicina il telos i (0..1, stimato dall'LLM)
+  urgency     = pressione temporale (scadenze, eventi)
+  confidence  = fiducia di myc nella stima
+  bother_cost = costo del disturbare, cresce con la frequenza recente</code></pre>
+
+<p>Se <code>expected_alignment &lt; θ</code> → la proposta non arriva all'utente.
+Finisce in un journal interno che l'utente può ispezionare a volontà
+("proposte scartate oggi: 47"). Il threshold <code>θ</code> è un parametro,
+non una decisione morale.</p>
+
+<h4>Livello 3 &mdash; Apprendimento dai silenzi, non solo dai no</h4>
+<p>Il <code>TrustStore</code> (già in <a href="architecture/rl_offline.html">rl_offline</a>)
+si estende con un asse per-telos: se le proposte legate a <em>ordine</em>
+vengono accettate in 8/10 casi recenti, il peso effettivo di quel telos cresce.
+Se quelle legate a <em>parsimonia</em> vengono ignorate per 48 ore, il peso
+decresce. <strong>L'ignorare è un segnale</strong> &mdash; più debole di un "no",
+più forte di "non ancora vista".</p>
+
+<h3>Due trappole, due contromisure</h3>
+
+<table>
+<thead><tr><th style="width:22%">Trappola</th><th>Perché è pericolosa</th><th>Contromisura</th></tr></thead>
+<tbody>
+<tr>
+    <td><strong>Goodhart</strong></td>
+    <td>Se i telos sono misurabili con metriche troppo precise, myc ottimizza la metrica invece della sostanza.</td>
+    <td>I <code>fitᵢ</code> sono stimati dall'LLM con spiegazione testuale ("libera 2h/mese perché&hellip;"), non da contatori hardcoded. L'LLM giudica la sostanza.</td>
+</tr>
+<tr>
+    <td><strong>Paternalismo</strong></td>
+    <td>"Non spendere oltre X" come telos rischia di diventare giudizio morale sugli acquisti dell'utente.</td>
+    <td>I telos si applicano a <em>ciò che myc fa per l'utente</em>, non a <em>ciò che l'utente fa</em>. myc non giudica, si giudica. Questo va scritto esplicitamente in <code>constitution.html</code>.</td>
+</tr>
+</tbody>
+</table>
+
+<h3>Cosa introduce</h3>
+<ul>
+    <li><strong><code>TELOS.md</code></strong>: sesto file del workspace. Manifest schema in <code>workspace.html</code> da estendere.</li>
+    <li><strong><code>telos.html</code></strong> (microprogettazione nuova): schema, funzione di allineamento, bother budget, apprendimento dai silenzi, rito di revisione.</li>
+    <li><strong>Estensione di <code>memory.html §6</code></strong>: la reflection produce <code>ActionProposal</code> già pesate contro i telos, non grezze.</li>
+    <li><strong>Estensione di <code>rl_offline.html</code></strong>: <code>TrustStore</code> si arricchisce con <code>telos_fitness: dict[telos_id, EMA]</code>.</li>
+    <li><strong>Nota in <code>constitution.html</code></strong>: distinzione Leggi vs Telos, clausola anti-paternalismo.</li>
+</ul>
+
+<div class="callout tip">
+<strong>Perché questa famiglia è <em>fondante</em>, non accessoria.</strong>
+Senza telos, le famiglie A, B e D producono proposte che l'utente deve
+valutare tutte, manualmente. Con i telos, myc porta all'utente solo il
+filtrato. È la differenza fra un maggiordomo attento e un collega
+entusiasta. La famiglia F non si rilascia <em>dopo</em> le altre: si rilascia
+<strong>con</strong> la famiglia D, altrimenti la D stessa è inutilizzabile.
+</div>
+
+<div class="callout note">
+<strong>Traccia del processo decisionale.</strong> Questa famiglia è emersa
+il 22 aprile 2026 da una domanda posta durante la revisione della visione:
+<em>"come fa myc a capire se un servizio che ha pensato da solo ha senso,
+senza disturbare ogni volta l'utente con infinite proposte? Serve una linea
+guida, la definizione di fini ultimi."</em> &mdash; Roberto. Il nome
+<strong>telos</strong> è stato scelto perché evoca esattamente l'intenzione
+aristotelica: fini verso cui si tende, non obiettivi che si raggiungono. La
+distinzione Leggi/Telos come "cosa non fare" / "verso cosa tendere" (le prime
+negative e scritte con l'utente per sicurezza; i secondi positivi e scritti
+dall'utente per utilità) è il cardine concettuale.
+</div>
+
+<div class="callout warning">
+<strong>Nota del 22 aprile (ore successive).</strong> La stima dei <code>fit</code>
+della funzione di allineamento <em>non</em> può essere affidata all'LLM che
+ha generato la proposta: un LLM valuta i propri output in modo conforme
+(<em>self-enhancement bias</em>, Zheng 2023). Da questa osservazione è
+emerso un secondo componente, <a href="architecture/vaglio.html">Vaglio</a>,
+che garantisce indipendenza di contesto tra proponente e valutatore. Il
+Vaglio ha due fasi di natura diversa: <strong>Guardia</strong> costituzionale
+(deterministica, binaria) e <strong>Giudice</strong> teleologico (LLM
+indipendente, gradiente). Il principio che articola le due fasi è
+cristallizzato nella frase: <em>"La Costituzione non giudica, la teleologia
+sì."</em> &mdash; la Costituzione verifica e, se viola, blocca; altrimenti
+tace. Solo il giudizio teleologico produce un punteggio. La ricostruzione
+completa del ragionamento è nel <a href="Metnos_Dialogo_v1.html">Dialogo sui
+fini e i limiti</a>, Giornate III-IV.
+</div>
+</div>
+
+<h1 id="cap3">3. La questione trasversale: identità del parlante</h1>
+
+<p class="lead">
+Quattro delle cinque famiglie (A voice-id, B agent channel, C shadow mode, D
+proattività per-utente) condividono un bisogno che il design attuale copre
+male: <strong>sapere chi sta parlando</strong>.
+</p>
+
+<p>Oggi il binding è: <code>sender = "&lt;canale&gt;:&lt;handle&gt;"</code>
+(es. <code>telegram:@roberto</code>). La memoria episodic usa <code>sender</code>
+come chiave (decisione documentata nella review di coerenza §3.5, archiviata
+internamente). Questo è sufficiente per un utente singolo che usa sempre lo
+stesso canale.</p>
+
+<p>Appena entrano voice-id, agenti, casa condivisa, serve un livello in più:</p>
+
+<figure>
+<svg viewBox="0 0 780 260" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Dallo sender all'identità umana">
+  <defs>
+    <style>
+      .box { fill: #fff; stroke: #1A477A; stroke-width: 1.5; rx: 6; ry: 6; }
+      .lbl { font: 11pt 'Segoe UI', sans-serif; fill: #1a1a1a; }
+      .lblN { font: 700 11.5pt 'Segoe UI', sans-serif; fill: #1A477A; }
+      .lblS { font: 9.5pt 'Segoe UI', sans-serif; fill: #555; }
+    </style>
+    <marker id="pe-arr" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="#1A477A"/>
+    </marker>
+  </defs>
+
+  <rect x="20"  y="40"  width="200" height="40" class="box"/>
+  <text x="120" y="60"  class="lblN" text-anchor="middle">telegram:@roberto</text>
+  <text x="120" y="76"  class="lblS" text-anchor="middle">sender (canale)</text>
+
+  <rect x="20"  y="100" width="200" height="40" class="box"/>
+  <text x="120" y="120" class="lblN" text-anchor="middle">voice:spk_a3f1</text>
+  <text x="120" y="136" class="lblS" text-anchor="middle">sender (voce)</text>
+
+  <rect x="20"  y="160" width="200" height="40" class="box"/>
+  <text x="120" y="180" class="lblN" text-anchor="middle">cli:roberto</text>
+  <text x="120" y="196" class="lblS" text-anchor="middle">sender (terminale)</text>
+
+  <rect x="320" y="90"  width="180" height="80" fill="#DCFCE7" stroke="#16A34A" stroke-width="2" rx="8"/>
+  <text x="410" y="118" class="lblN" text-anchor="middle" fill="#166534">IdentityResolver</text>
+  <text x="410" y="138" class="lblS" text-anchor="middle">mapping evidenze &rarr; identità</text>
+  <text x="410" y="156" class="lblS" text-anchor="middle" font-style="italic">con confidence</text>
+
+  <rect x="590" y="100" width="170" height="60" class="box" style="stroke:#6B21A8; stroke-width:2;"/>
+  <text x="675" y="125" class="lblN" text-anchor="middle" fill="#6B21A8">identity:roberto</text>
+  <text x="675" y="143" class="lblS" text-anchor="middle">identità umana persistente</text>
+
+  <line x1="220" y1="60"  x2="320" y2="110" stroke="#1A477A" stroke-width="1.5" marker-end="url(#pe-arr)"/>
+  <line x1="220" y1="120" x2="320" y2="125" stroke="#1A477A" stroke-width="1.5" marker-end="url(#pe-arr)"/>
+  <line x1="220" y1="180" x2="320" y2="145" stroke="#1A477A" stroke-width="1.5" marker-end="url(#pe-arr)"/>
+  <line x1="500" y1="130" x2="590" y2="130" stroke="#1A477A" stroke-width="2" marker-end="url(#pe-arr)"/>
+
+  <text x="410" y="220" class="lblS" text-anchor="middle">Memoria episodic e semantica indicizzate per <tspan font-weight="700" fill="#6B21A8">identità</tspan>, non per sender.</text>
+  <text x="410" y="238" class="lblS" text-anchor="middle">Il sender resta come metadato dell'evidenza (quale canale ha portato il segnale).</text>
+</svg>
+<figcaption>Figura 2 &mdash; Identità umana come chiave primaria della memoria. Più evidenze sullo stesso umano si aggregano. Il binding multi-canale diventa naturale.</figcaption>
+</figure>
+
+<p>Questo introduce:</p>
+<ul>
+    <li><strong><code>IdentityResolver</code></strong>: componente nuovo che dato un sender ritorna un'<code>Identity</code> con confidence. Se confidence bassa, myc può chiedere: "scusa, sei Roberto o qualcun altro?".</li>
+    <li><strong>Revisione del fix §3.5</strong> della review di coerenza: episodic sarà indicizzata per <code>identity_id</code>, non <code>sender</code>. Il fix è stato corretto nella direzione giusta ma andrà raffinato.</li>
+    <li><strong>Multi-utente in casa</strong>: Roberto, il partner, i figli. Ciascuno ha la propria episodic. Memoria semantica condivisa per la casa, per-identità per ciò che è personale.</li>
+</ul>
+
+<div class="callout warning">
+<strong>DECISIONE DA CONFERMARE.</strong> Il design multi-utente è rimandato
+oltre fase 8, ma lo <code>IdentityResolver</code> nasce già in fase 4 come
+<em>singleton identity</em> (sempre Roberto). La struttura esiste, ma tratta
+un solo utente. Questo permette di introdurre voice-id senza rifattorizzare
+tutto dopo.
+</div>
+
+<h1 id="cap4">4. Tensioni costituzionali e Legge 0 estesa</h1>
+
+<p>Queste capacità introducono attriti con le 4 Leggi che il design attuale non
+può risolvere in-situ. Elenco le più importanti con verdetto provvisorio.</p>
+
+<table>
+<thead><tr><th style="width:28%">Tensione</th><th>Famiglia</th><th>Verdetto v1</th><th>Motivazione</th></tr></thead>
+<tbody>
+<tr>
+    <td>Ascoltare chat di terzi senza consenso esplicito</td>
+    <td>C. Shadow</td>
+    <td><span class="sev sev-hi">blocca</span></td>
+    <td>Sotto-legge dedicata obbligatoria prima del rilascio. Default off, whitelist scritta, notifica in chat.</td>
+</tr>
+<tr>
+    <td>Volti umani riconosciuti &rarr; etichettati con nome</td>
+    <td>A. Percezione</td>
+    <td><span class="sev sev-md">gate</span></td>
+    <td>Clustering OK (cluster_id). Associazione cluster &rarr; nome solo con <code>ActionProposal</code> approvata.</td>
+</tr>
+<tr>
+    <td>Voice ID su chiunque passa in microfono</td>
+    <td>A. Percezione</td>
+    <td><span class="sev sev-md">gate</span></td>
+    <td>Riconoscere solo voci <em>iscritte</em> nel workspace (enrollment esplicito). Voci sconosciute &rarr; <code>unknown_speaker</code>.</td>
+</tr>
+<tr>
+    <td>Un sibling agent delega azioni senza conferma dell'utente</td>
+    <td>B. Multi-agente</td>
+    <td><span class="sev sev-hi">blocca</span></td>
+    <td>Nessun agente esterno può firmare approvazioni per conto dell'utente. Richiesta inter-agente &rarr; loop approvazione standard.</td>
+</tr>
+<tr>
+    <td>Proposta di rinominare 300 file senza preview</td>
+    <td>D. Proattività</td>
+    <td><span class="sev sev-md">gate</span></td>
+    <td><code>ActionProposal</code> deve includere sempre: preview, impact count, piano di rollback. Senza questi, rigetto automatico.</td>
+</tr>
+<tr>
+    <td>Web search su topic sensibili (finanza, salute, minori)</td>
+    <td>E. Esterno</td>
+    <td><span class="sev sev-md">gate</span></td>
+    <td>Lista di topic dove la ricerca passa a supervised anche in full autonomy.</td>
+</tr>
+<tr>
+    <td>Indexer scansiona directory con file personali di altri conviventi</td>
+    <td>A. Percezione</td>
+    <td><span class="sev sev-hi">blocca</span></td>
+    <td>Sorgenti indicizzabili <strong>solo</strong> quelle dichiarate in <code>SOURCES.md</code>. Mai scoperta autonoma.</td>
+</tr>
+</tbody>
+</table>
+
+<div class="callout tip">
+<strong>La Legge 0 si estende, non si riscrive.</strong> Nessuna delle Leggi
+esistenti va riscritta. Serve aggiungere nel file costituzionale una sezione
+"estensioni applicative" che elenchi queste sotto-leggi specifiche &mdash; ognuna
+derivata da una Legge esistente. Il rito di modifica della Costituzione
+(firma, Merkle, verify all'avvio) copre automaticamente anche queste.
+</div>
+
+<h1 id="cap5">5. Mapping: cosa aggiungere alla microprogettazione</h1>
+
+<p>Questa sezione elenca i <em>nuovi</em> doc di Livello 2 che le cinque famiglie
+richiederanno. Non sostituisce l'ordine canonico di
+<a href="Metnos_Prospettive_Giudizio_v1.html#cap8">Prospettive &amp; Giudizio §8</a>,
+che resta valido fino a compimento. Li aggiunge in coda.</p>
+
+<table>
+<thead><tr><th style="width:5%">#</th><th style="width:22%">Nuovo doc</th><th>Cosa copre</th><th style="width:10%">Fase</th></tr></thead>
+<tbody>
+<tr><td>1</td><td><code>telos.html</code></td><td>TELOS.md, funzione di allineamento, bother budget, apprendimento dai silenzi. Fondante per le famiglie A, B, D.</td><td>4-5</td></tr>
+<tr><td>2</td><td><code>indexer.html</code></td><td>Processo long-running, scan, embedding, indici persistenti. Integra famiglia A.</td><td>5</td></tr>
+<tr><td>3</td><td><code>identity.html</code></td><td><code>IdentityResolver</code>, evidenze multi-canale, voice enrollment, confidence. Rende primario il concetto di identità umana.</td><td>4</td></tr>
+<tr><td>4</td><td><code>agent_channel.html</code></td><td>Quinto canale, pairing simmetrico, vocabolario inter-agente, delega. Integra famiglia B.</td><td>6</td></tr>
+<tr><td>5</td><td><code>shadow_mode.html</code></td><td>Regime di ascolto, sotto-legge costituzionale, filtri, audit intensificato. Integra famiglia C.</td><td>7+</td></tr>
+<tr><td>6</td><td><code>proposal_ux.html</code></td><td><code>ActionProposal</code>, inbox proposte, digest serale, preview. Integra famiglia D.</td><td>5</td></tr>
+<tr><td>7</td><td>estensioni a <code>tool.html</code></td><td>Tool web_search, calendar_read, calendar_write. Famiglia E &mdash; non serve un doc nuovo, basta un'appendice.</td><td>3</td></tr>
+<tr><td>8</td><td>estensioni a <code>constitution.html</code></td><td>Sezione "estensioni applicative" con le 7 sotto-leggi del §4 + clausola anti-paternalismo dei telos.</td><td>2</td></tr>
+<tr><td>9</td><td>estensioni a <code>workspace.html</code></td><td>Aggiunta del 6° file <code>TELOS.md</code> al manifest del workspace.</td><td>4</td></tr>
+<tr><td>10</td><td>estensioni a <code>memory.html</code> e <code>rl_offline.html</code></td><td>Reflection produce <code>ActionProposal</code> pesate contro telos. <code>TrustStore</code> aggiunge asse <code>telos_fitness</code>.</td><td>5</td></tr>
+</tbody>
+</table>
+
+<p>Cinque doc nuovi (<code>telos</code>, <code>indexer</code>, <code>identity</code>,
+<code>agent_channel</code>, <code>shadow_mode</code>, <code>proposal_ux</code>), quattro
+estensioni. Nessuno di questi blocca i 19 doc di microprogettazione già
+approvati. Nessuno di questi richiede di riscrivere un doc esistente.</p>
+
+<div class="callout note">
+<strong>Priorità naturale.</strong> I primi due da scrivere sono
+<code>telos.html</code> e <code>identity.html</code>. Il primo perché è
+fondante per tre famiglie (A, B, D): senza funzione di allineamento, la
+proattività è inutilizzabile. Il secondo perché sblocca quattro famiglie e
+richiede di raffinare il fix §3.5 della review di coerenza (episodic indicizzata
+per identità, non per sender). Tutti gli altri possono seguire in base alla
+fase.
+</div>
+
+<h1 id="cap6">6. Roadmap di fase</h1>
+
+<p>Le fasi di rilascio di <a href="Metnos_Neuroni_Memoria_v1.html">Neuroni &amp;
+Memoria §11</a> restano valide. Qui mappo le cinque famiglie sulle fasi, con
+priorità interna.</p>
+
+<table>
+<thead><tr><th style="width:6%">Fase</th><th style="width:28%">Focus esistente</th><th>Aggiunte da questo doc</th></tr></thead>
+<tbody>
+<tr><td><strong>1</strong></td><td>scheletro + CLI + shell sandboxata</td><td>&mdash;</td></tr>
+<tr><td><strong>2</strong></td><td>policy + workspace + audit</td><td>Estensione <code>constitution.html</code> con le 7 sotto-leggi</td></tr>
+<tr><td><strong>3</strong></td><td>Telegram + pairing</td><td>Tool web_search, calendar_read (famiglia E)</td></tr>
+<tr><td><strong>4</strong></td><td>memory + failover</td><td><code>identity.html</code> (singleton-identity iniziale), <code>telos.html</code> (contratto), TELOS.md nel workspace</td></tr>
+<tr><td><strong>5</strong></td><td>voce, tunnel, dashboard</td><td><code>indexer.html</code>, <code>proposal_ux.html</code>, attivazione funzione di allineamento (famiglie A+D+F insieme)</td></tr>
+<tr><td><strong>6</strong></td><td>neuroni, sintesi, sinapsi</td><td><code>agent_channel.html</code> (famiglia B)</td></tr>
+<tr><td><strong>7+</strong></td><td>maturazione</td><td><code>shadow_mode.html</code> (famiglia C, dopo collaudo e sotto-legge)</td></tr>
+</tbody>
+</table>
+
+<p>La fase 5 diventa così più densa: indexer e inbox proposte sono entrambi
+capacità d'uso quotidiano che cambiano la percezione del prodotto. È voluto:
+la fase 5 è il salto da "prompt &rarr; risposta" a "Metnos mi sorprende".</p>
+
+<div class="callout tip">
+<strong>Principio guida.</strong> Nessuna capacità di questo doc va costruita
+prima di aver completato la fase 1-2 dell'architettura di base. La tentazione
+di saltare avanti &mdash; specie su indexer e voice-id, che sono affascinanti &mdash; va
+resistita. Un Metnos reattivo solido è il prerequisito per un Metnos
+ambientale utile.
+</div>
+
+<hr>
+
+<h2>Continua a leggere</h2>
+<div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(260px, 1fr)); gap:14px; margin:16px 0 24px;">
+  <a href="Metnos_Architettura_Intro_v1.html" style="display:block; padding:14px 16px; border:1px solid var(--border); border-radius:8px; background:white; color:inherit; text-decoration:none;">
+    <span style="display:inline-block; padding:2px 9px; border-radius:10px; font-size:9pt; background:var(--code-bg); color:var(--muted); font-weight:500;">fondamenti · 20 min</span>
+    <div style="color:var(--navy); font-size:11.5pt; font-weight:700; margin:8px 0 6px 0;">Architettura — Introduzione v1</div>
+    <div style="margin:0; color:var(--muted); font-size:10pt; line-height:1.5;">Il "cosa" di base: questo doc lo estende, non lo riscrive.</div>
+  </a>
+  <a href="Metnos_Prospettive_Giudizio_v1.html" style="display:block; padding:14px 16px; border:1px solid var(--border); border-radius:8px; background:white; color:inherit; text-decoration:none;">
+    <span style="display:inline-block; padding:2px 9px; border-radius:10px; font-size:9pt; background:var(--code-bg); color:var(--muted); font-weight:500;">fondamenti · 20 min</span>
+    <div style="color:var(--navy); font-size:11.5pt; font-weight:700; margin:8px 0 6px 0;">Prospettive &amp; Giudizio v1</div>
+    <div style="margin:0; color:var(--muted); font-size:10pt; line-height:1.5;">Il giudizio che ha ordinato la microprogettazione. Questo doc apre un nuovo tronco.</div>
+  </a>
+  <a href="Metnos_QuickTour_v1.html" style="display:block; padding:14px 16px; border:1px solid var(--border); border-radius:8px; background:white; color:inherit; text-decoration:none;">
+    <span style="display:inline-block; padding:2px 9px; border-radius:10px; font-size:9pt; background:var(--code-bg); color:var(--muted); font-weight:500;">non tecnico · 5 min</span>
+    <div style="color:var(--navy); font-size:11.5pt; font-weight:700; margin:8px 0 6px 0;">Quick tour</div>
+    <div style="margin:0; color:var(--muted); font-size:10pt; line-height:1.5;">Per chi vuole prima capire <em>cosa</em> fa Metnos oggi.</div>
+  </a>
+  <a href="architecture/index.html" style="display:block; padding:14px 16px; border:1px solid var(--border); border-radius:8px; background:white; color:inherit; text-decoration:none;">
+    <span style="display:inline-block; padding:2px 9px; border-radius:10px; font-size:9pt; background:var(--code-bg); color:var(--muted); font-weight:500;">microprogettazione</span>
+    <div style="color:var(--navy); font-size:11.5pt; font-weight:700; margin:8px 0 6px 0;">Indice componenti</div>
+    <div style="margin:0; color:var(--muted); font-size:10pt; line-height:1.5;">I doc di Livello 2. I 6 nuovi doc del §5 verranno aggiunti qui.</div>
+  </a>
+</div>
+
+<hr>
+
+<p style="text-align:center; color:var(--muted); font-size:9.5pt; margin-top:40px;">
+Metnos &mdash; <em>Prospettive estese</em> v1.0 &mdash; 22 aprile 2026<br>
+Apre un secondo tronco di design: da reattivo ad ambientale. Non sostituisce nessun doc.
+</p>
+
+</body>
+</html>

@@ -1,0 +1,41 @@
+{
+  "_doc": "Mapping deterministico action skill -> verbo Metnos (vocabolario chiuso §2.2). Domain skill -> object Metnos plurale. `object_override` su un'action sostituisce l'object derivato dal domain (es. create-folder -> dirs invece che files). `qualifier` aggiunge un suffisso SOLO se il valore e' nei QUALIFIERS canonici di vocab.py. `exclude_reason` marca un'action come deliberatamente non tradotta.",
+
+  "actions": {
+    "list":          {"verb": "read",   "alt_verb": "list"},
+    "get":           {"verb": "get"},
+    "search":        {"verb": "find"},
+    "find":          {"verb": "find"},
+    "read":          {"verb": "read"},
+    "create":        {"verb": "set"},
+    "create-folder": {"verb": "create", "object_override": "dirs"},
+    "send":          {"verb": "send"},
+    "reply":         {"verb": "send"},
+    "update":        {"verb": "change"},
+    "modify":        {"verb": "change"},
+    "delete":        {"verb": "delete"},
+    "share":         {"verb": "set"},
+    "upload":        {"verb": "write"},
+    "download":      {"verb": "read"},
+    "append":        {"verb": "change"},
+    "labels":        {"exclude_reason": "Gmail labels: funzionalita' troppo specifica. _labels non e' qualifier canonico (vocab.QUALIFIERS); aggiungere un nuovo qualifier richiede approvazione esplicita (CLAUDE.md §2.2)."}
+  },
+
+  "domains": {
+    "calendar": "events",
+    "gmail":    "messages",
+    "mail":     "messages",
+    "drive":    "files",
+    "sheets":   "files",
+    "docs":     "files",
+    "contacts": "contacts",
+    "people":   "contacts"
+  },
+
+  "domain_qualifier": {
+    "sheets": "xlsx",
+    "docs":   "text"
+  },
+
+  "_note": "Il translator combina (verb, object, [domain_qualifier]) in `<verb>_<object>[_<domq>]`. I qualifier action-side sono stati rimossi (10/5/2026): `_reply`, `_share`, `_append`, `_labels` non sono in vocab.QUALIFIERS. Le collisioni risultanti (es. gmail.send + gmail.reply -> send_messages, sheets.update + sheets.append -> change_files_xlsx) producono rejection del 2° per 'name collision', registrato in audit JSONL."
+}

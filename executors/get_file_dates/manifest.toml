@@ -1,0 +1,58 @@
+# Manifest dell'executor `get_file_dates` — Metnos v1.1
+# Naming compositivo: verbo_oggetto. Vettoriale per costruzione.
+# Promosso a seed il 27 aprile 2026 sera.
+
+manifest_format = "1.0"
+
+name          = "get_file_dates"
+version       = "0.1.1"
+author        = "Roberto Brunialti <roberto.brunialti@metnos.com>"
+affinity      = ["data", "date", "exif", "scatto", "creazione", "foto", "image", "metadati", "metadata", "ordina", "fs"]
+lifecycle     = "deprecated"
+superseded_by = "get_files_metadata"
+
+[description]
+it = "[DEPRECATO 28/4/2026 — usare get_files_metadata con fields=['dates.semantic']] Arricchisce una lista di entries (file) con la 'data sensata' di ciascuno (EXIF/birth/mtime)."
+en = "[DEPRECATED 28/4/2026 — use get_files_metadata with fields=['dates.semantic']] Enriches a list of entries (files) with the 'sensible date' of each (EXIF/birth/mtime)."
+
+[code]
+files  = ["get_file_dates.py"]
+digest = "sha256:fb45511c4ec0a3b9df386f7d05e6d1bab6b0025cdaf8046fc71c5e7f2828317a"
+
+[args]
+type     = "object"
+required = ["entries"]
+
+[args.properties.entries]
+type        = "array"
+items       = { type = "object" }
+
+[args.properties.entries.description]
+it = "Lista di entries (dict). Ciascuna deve avere 'path' (o 'src'). Tipicamente proviene da list_dirs / find_files / filter_entries. I campi 'kind'/'mime' aiutano a decidere se tentare la lettura EXIF (solo per kind='image' o mime='image/*')."
+en = "List of entries (dict). Each must have 'path' (or 'src'). Typically comes from list_dirs / find_files / filter_entries. The 'kind'/'mime' fields help decide whether to attempt EXIF reading (only for kind='image' or mime='image/*')."
+
+[[capabilities]]
+name = "fs:read"
+hint = ["~/notes/**", "/tmp/**"]
+
+[[tests]]
+name   = "lista_vuota_ok"
+input  = { entries = [] }
+expect = { ok = true, ok_count_eq = 0, fail_count_eq = 0 }
+
+[[tests]]
+name     = "file_senza_exif_usa_mtime"
+setup    = "mkdir -p /tmp/metnos_test_dates && echo x > /tmp/metnos_test_dates/a.txt && touch -d '2024-06-15 12:00:00' /tmp/metnos_test_dates/a.txt"
+input    = { entries = [{path = "/tmp/metnos_test_dates/a.txt"}] }
+expect   = { ok = true, ok_count_eq = 1 }
+teardown = "rm -rf /tmp/metnos_test_dates"
+
+[[tests]]
+name     = "entry_senza_path_in_failed"
+input    = { entries = [{name = "no_path.jpg"}] }
+expect   = { ok = false, ok_count_eq = 0, fail_count_eq = 1 }
+
+[[tests]]
+name   = "args_invalidi_entries_non_lista"
+input  = { entries = "/tmp/foo" }
+expect = { ok = false, error_contains = "must be a list" }

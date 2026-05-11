@@ -1,0 +1,607 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Metnos — Perspectives and Judgement v1.1</title>
+    <meta name="description" content="The Metnos design assessed through four expert lenses (agentic programming, psychology, UI, AI/ML) and weighed against three goals: useful, intelligent, autonomous. 24 critiques, five verdicts, the seven blocking ones accepted, the updated work plan.">
+    <meta name="keywords" content="Metnos design review, agent architecture review, autonomy emergence, approval UX, ExecutionTrace, reasoning loop, eval harness, LLM self-judge">
+    <meta name="author" content="Roberto Brunialti">
+    <meta name="robots" content="index, follow">
+
+    <link rel="canonical" href="https://metnos.com/en/Metnos_Perspectives_Judgement_v1.html">
+    <link rel="alternate" hreflang="it" href="https://metnos.com/it/Metnos_Prospettive_Giudizio_v1.html">
+    <link rel="alternate" hreflang="en" href="https://metnos.com/en/Metnos_Perspectives_Judgement_v1.html">
+
+    <style>
+:root {
+    --navy: #1A477A; --navy-light: #2B6CB0; --sage: #548235;
+    --bronze: #A0522D; --plum: #6B21A8;
+    --bg: #FAFBFC; --text: #1a1a1a;
+    --border: #d0d7de; --code-bg: #f6f8fa;
+    --table-header: #1A477A; --table-alt: #f0f4f8;
+    --note-bg: #dbeafe; --note-border: #3b82f6;
+    --tip-bg: #dcfce7; --tip-border: #16a34a;
+    --warn-bg: #fef3c7; --warn-border: #f59e0b;
+    --danger-bg: #fee2e2; --danger-border: #dc2626;
+    --muted: #64748B;
+}
+* { box-sizing: border-box; }
+body {
+    font-family: 'Segoe UI', Calibri, -apple-system, sans-serif;
+    font-size: 11pt; line-height: 1.65; color: var(--text);
+    background: var(--bg); max-width: 960px; margin: 0 auto; padding: 40px 30px;
+}
+h1 { color: var(--navy); font-size: 20pt; border-bottom: 3px solid var(--navy); padding-bottom: 8px; margin-top: 50px; page-break-before: always; }
+h1:first-of-type { page-break-before: avoid; }
+h2 { color: var(--navy-light); font-size: 14pt; margin-top: 30px; border-bottom: 1px solid var(--border); padding-bottom: 4px; }
+h3 { color: var(--navy); font-size: 12pt; margin-top: 20px; }
+p { margin: 10px 0; }
+
+table { width: 100%; border-collapse: collapse; margin: 15px 0; font-size: 10pt; page-break-inside: avoid; }
+th { background: var(--table-header); color: white; padding: 8px 10px; text-align: left; font-weight: 600; }
+td { padding: 7px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+tr:nth-child(even) td { background: var(--table-alt); }
+
+pre { background: var(--code-bg); border: 1px solid var(--border); border-radius: 4px; padding: 12px 16px; overflow-x: auto; font-size: 9.5pt; line-height: 1.55; page-break-inside: avoid; }
+code { font-family: Consolas, 'Courier New', monospace; }
+p code, li code, td code { background: var(--code-bg); padding: 1px 5px; border-radius: 3px; font-size: 9.5pt; }
+
+.callout { border-left: 4px solid; padding: 10px 16px; margin: 15px 0; border-radius: 0 4px 4px 0; font-size: 10pt; page-break-inside: avoid; }
+.callout.note { background: var(--note-bg); border-color: var(--note-border); }
+.callout.tip { background: var(--tip-bg); border-color: var(--tip-border); }
+.callout.warning { background: var(--warn-bg); border-color: var(--warn-border); }
+.callout.danger { background: var(--danger-bg); border-color: var(--danger-border); }
+
+.title-page { text-align: center; padding: 120px 0 60px; page-break-after: always; }
+.title-page h1 { font-size: 36pt; border: none; margin: 0; page-break-before: avoid; }
+.title-page .subtitle { font-size: 18pt; color: var(--navy-light); margin: 10px 0 40px; }
+.title-page .meta { font-size: 11pt; color: #666; }
+
+.toc { page-break-after: always; }
+.toc h2 { border: none; }
+.toc ol { font-size: 11pt; line-height: 2; }
+.toc a { color: var(--navy); text-decoration: none; }
+.toc a:hover { text-decoration: underline; }
+
+ul, ol { margin: 8px 0; padding-left: 24px; }
+li { margin-bottom: 4px; }
+
+.lead { font-size: 12pt; color: var(--navy); border-left: 4px solid var(--sage); padding-left: 14px; margin: 18px 0; }
+
+.verdict { display: inline-block; padding: 2px 10px; border-radius: 10px; font-size: 9pt; font-weight: 700; letter-spacing: 0.3px; white-space: nowrap; }
+.v-must    { background: #dcfce7; color: #14532d; }
+.v-reinf   { background: #E5EBDA; color: #3F6212; }
+.v-defer   { background: #FDF3DC; color: #92400E; }
+.v-tension { background: #EDE4F7; color: #6B21A8; }
+.v-reject  { background: #fee2e2; color: #7F1D1D; }
+
+.persp {
+    padding: 14px 18px; border-radius: 8px; margin: 16px 0;
+    border-left: 5px solid; page-break-inside: avoid;
+}
+.persp h3 { margin-top: 0; color: inherit; }
+.p-agentic    { background: #F0F9FF; border-color: #0369A1; color: #0C4A6E; }
+.p-psych      { background: #FAF5FF; border-color: #7C3AED; color: #4C1D95; }
+.p-ui         { background: #FFF7ED; border-color: #EA580C; color: #7C2D12; }
+.p-ai         { background: #F0FDF4; border-color: #16A34A; color: #14532D; }
+
+.triangle {
+    display: grid; grid-template-columns: 1fr 1fr 1fr;
+    gap: 10px; margin: 20px 0; text-align: center;
+}
+.triangle .t-cell {
+    padding: 16px 12px; border-radius: 8px;
+    border: 2px solid;
+}
+.triangle .t-utile      { background: #DBEAFE; border-color: #2563EB; color: #1E3A8A; }
+.triangle .t-intell     { background: #E9EFDB; border-color: #548235; color: #3F6212; }
+.triangle .t-auto       { background: #EDE4F7; border-color: #7C3AED; color: #4C1D95; }
+.triangle h4 { margin: 0 0 6px; font-size: 12pt; }
+.triangle p  { margin: 0; font-size: 10pt; }
+
+@media print {
+    body { max-width: none; padding: 0; font-size: 10pt; }
+    h1 { font-size: 16pt; } h2 { font-size: 12pt; }
+    .title-page { padding: 80px 0 40px; }
+    .title-page h1 { font-size: 28pt; }
+}
+    </style>
+</head>
+<body>
+<!-- lang-switch -->
+<nav aria-label="Language" style="position:fixed;top:16px;right:20px;z-index:9999;font-family:'Segoe UI',Calibri,sans-serif;font-size:10pt;letter-spacing:2px;background:#FAFBFC;border:1px solid #d0d7de;border-radius:14px;padding:4px 10px;box-shadow:0 1px 4px rgba(0,0,0,0.04);">
+<a href="/it/Metnos_Prospettive_Giudizio_v1.html" hreflang="it" lang="it" style="color:#64748B;text-decoration:none;padding:0 4px;border:none;">IT</a>
+<span style="color:#d0d7de;"> · </span>
+<a href="/en/Metnos_Perspectives_Judgement_v1.html" hreflang="en" lang="en" style="color:#1a1a1a;text-decoration:none;font-weight:700;padding:0 4px;border:none;">EN</a>
+</nav>
+
+
+<div style="background:#fff;border-bottom:1px solid #d0d7de;padding:10px 0;font-size:14px;position:sticky;top:0;z-index:10;margin-bottom:20px;">
+  <div style="max-width:960px;margin:0 auto;padding:0 20px;display:flex;justify-content:space-between;">
+    <a href="index.html" style="color:#1a477a;text-decoration:none;font-weight:500;">← Documentation index</a>
+    <span style="color:#8e8e93;">Foundations &rsaquo; <strong style="color:#1a1a1a;">Perspectives &amp; Judgement</strong></span>
+  </div>
+</div>
+
+<div class="title-page">
+    <h1>Metnos</h1>
+    <div class="subtitle">Perspectives &amp; Judgement</div>
+    <div class="meta">
+        Version 1.1 &mdash; 22 April 2026 · <em>v1.1 adds §7-bis on proactivity as a cross-cutting lens</em><br>
+        The Metnos design analysed through <strong>four expert lenses</strong> (agentic<br>
+        programming, psychology, UI, AI) and weighed against four goals: <strong>useful, intelligent, autonomous, proactive</strong>.<br>
+        <br>
+        Audience: those who have to make priority calls. Closes the design cycle of phase 0.
+    </div>
+</div>
+
+<div class="toc">
+<h2>Contents</h2>
+<ol>
+    <li><a href="#cap1">Purpose and method</a></li>
+    <li><a href="#cap2">The four adjectives: useful, intelligent, autonomous, proactive</a></li>
+    <li><a href="#cap3">Four perspectives in brief</a></li>
+    <li><a href="#cap4">Consolidated judgement: 24 critiques, five verdicts</a></li>
+    <li><a href="#cap5">The seven blocking critiques (accepted)</a></li>
+    <li><a href="#cap6">The intractable tensions</a></li>
+    <li><a href="#cap7">The key observation: autonomy and proactivity are emergent</a></li>
+    <li><a href="#cap7b">7-bis. The proactive lens: how it re-reads the seven blockers</a></li>
+    <li><a href="#cap8">Updated work plan</a></li>
+</ol>
+</div>
+
+
+<h1 id="cap1">1. Purpose and method</h1>
+
+<p class="lead">
+The overall Metnos design was mature enough for critical review. I ran
+it through four expert lenses (agentic programming, psychology, UI, AI)
+and then weighed each point that emerged against the three declared goals
+of the product. This document consolidates both the analysis and the
+judgement, and closes phase 0 of design.
+</p>
+
+<p>
+The method: generate generous critiques from the four perspectives, then
+apply a pragmatic filter <em>"does this critique block
+usefulness/intelligence/autonomy? if yes I accept it, otherwise I weigh
+it"</em>. Five possible verdicts:
+</p>
+
+<table>
+<thead><tr><th style="width:22%">Verdict</th><th>Meaning</th></tr></thead>
+<tbody>
+<tr><td><span class="verdict v-must">blocking</span></td><td>Without this change, at least one of the three goals cannot be reached. Must be done.</td></tr>
+<tr><td><span class="verdict v-reinf">reinforcement</span></td><td>Not a new concept. Completes a piece of the existing design. Accepted.</td></tr>
+<tr><td><span class="verdict v-defer">defer</span></td><td>Useful, not blocking. Will be done, with an explicit gate to promote it when truly needed.</td></tr>
+<tr><td><span class="verdict v-tension">tension</span></td><td>Real problem not solvable. Managed, not eliminated. Explicit acceptance of the trade-off.</td></tr>
+<tr><td><span class="verdict v-reject">rejected</span></td><td>Evaluated, cost exceeds benefit. Rationale tracked.</td></tr>
+</tbody>
+</table>
+
+
+<h1 id="cap2">2. The four adjectives: useful, intelligent, autonomous, proactive</h1>
+
+<p>Before judging, we need to define. The four terms are not interchangeable.</p>
+
+<div class="triangle" style="grid-template-columns: 1fr 1fr 1fr 1fr;">
+  <div class="t-cell t-utile">
+    <h4>Useful</h4>
+    <p>Solves a real problem of Roberto's on the first try, without technical intervention.<br><em>Measured by: completed tasks / approvals requested.</em></p>
+  </div>
+  <div class="t-cell t-intell">
+    <h4>Intelligent</h4>
+    <p>Understands context, picks the right tool, handles the unexpected without falling into loops or generic replies.<br><em>Measured by: success rate on unseen cases + quality of "I don't know".</em></p>
+  </div>
+  <div class="t-cell t-auto">
+    <h4>Autonomous</h4>
+    <p>Acts on its own in predictable cases, asks for permission only when needed.<br><em>Measured by: successful actions / approvals requested.</em></p>
+  </div>
+  <div class="t-cell" style="background:#FFF7ED; border-color:#EA580C; color:#7C2D12;">
+    <h4>Proactive</h4>
+    <p>Initiates useful actions without being prompted, when the moment deserves it, without disturbing.<br><em>Measured by: proposals accepted / proposals issued; appropriate silence.</em></p>
+  </div>
+</div>
+
+<div class="callout tip">
+<strong>Autonomy ≠ proactivity.</strong> Autonomy is the <em>breadth of
+action</em> without asking, inside an already-assigned task; proactivity is
+the <em>initiative</em> on a task nobody assigned. An agent can be
+autonomous and reactive (does a lot without asking, but only when prompted
+&mdash; Claude with tool calling). It can be proactive and supervised
+(initiates things, but asks approval for everything &mdash; a Metnos in
+conservative mode). The two properties combine in a 2×2 matrix of distinct
+operational stances.
+</div>
+
+<div class="callout note">
+<strong>Why we add <em>proactive</em> here.</strong> The original phase-0
+review dealt with three adjectives. Family F of
+<a href="Metnos_Extended_Perspectives_v1.html#cap2f">Extended Perspectives</a>
+(<em>Telos</em>) and families A, B, D made proactivity a structural pillar
+of the project, no longer a side option. Whoever re-reads P&amp;J today
+must read it with four adjectives, not three. §7-bis applies the
+<em>proactive</em> lens to the seven original blocking critiques and
+identifies what changes.
+</div>
+
+
+<h1 id="cap3">3. Four perspectives in brief</h1>
+
+<div class="persp p-agentic">
+<h3>Agentic programming — "the reasoning loop is unspecified"</h3>
+<p>Clean 4-layer architecture, protocol-based, audit log as a feature. But
+missing: loop choice (ReAct? function calling? planner+executor?), state
+ownership in case of crash, tool idempotence, an <code>ExecutionTrace</code>
+as a first-class object, dry-run mode, and any test strategy. Without
+ExecutionTrace you will never stitch together audit + replay + Darwinian
+fitness + eval &mdash; because they are the same thing seen from different
+angles.</p>
+</div>
+
+<div class="persp p-psych">
+<h3>Psychology — "the biological metaphor invites blind trust"</h3>
+<p>The three-tier memory aligns with working/episodic/semantic. Darwinian
+selection has grounding in RL/ACT-R. The 4 Laws are transparent deontological
+ethics. But: "neuron" evokes intentionality (ELIZA effect amplified),
+approval fatigue empties the meaning of gates, automation bias grows with
+fitness. Capability creep in expectations: users will project "it gets
+ever smarter" and will be disappointed.</p>
+</div>
+
+<div class="persp p-ui">
+<h3>UI — "the approval flow is undocumented, and it is the critical point"</h3>
+<p>Documents visually coherent, good progressive disclosure. But the most
+delicate UX surface &mdash; the "want me to proceed?" in Telegram, in CLI,
+via voice &mdash; has no design. Status visibility during thinking is
+invisible. Audit JSONL is great for forensics and terrible for "what did
+my butler do today". A minimal (even sober) admin dashboard changes daily
+life more than ten new features.</p>
+</div>
+
+<div class="persp p-ai">
+<h3>AI / ML — "no eval harness, implicit cost model, empty synthesis prompt"</h3>
+<p>Explicit awareness of self-judge LLM limits and of indirect prompt
+injection. CoALA vocabulary adopted. But: no way to measure whether v0.2
+is better than v0.1 (need a mini eval, 15-20 scenarios). No cost model
+(order of magnitude: 1-3 €/day with Claude Sonnet on home use). Model
+tiering ignored: 60-80% of cost savable by putting gates on a local model
+and serious actions on frontier. The <em>synthesis prompt</em> for
+neurons &mdash; the piece that determines 80% of the success rate &mdash;
+is not specified.</p>
+</div>
+
+
+<h1 id="cap4">4. Consolidated judgement: 24 critiques, five verdicts</h1>
+
+<p>The complete table. Each row is a specific critique with verdict and destination in the work plan.</p>
+
+<table>
+<thead><tr><th style="width:4%">#</th><th style="width:22%">Critique</th><th style="width:12%">Perspective</th><th style="width:14%">Verdict</th><th>Where / when</th></tr></thead>
+<tbody>
+
+<tr><td>1</td><td>Reasoning loop unspecified</td><td>agentic + AI</td><td><span class="verdict v-must">blocking</span></td><td><code>agent_runtime.html</code></td></tr>
+<tr><td>2</td><td>Tool-call validation with schema + reject loop</td><td>AI</td><td><span class="verdict v-must">blocking</span></td><td><code>agent_runtime.html</code></td></tr>
+<tr><td>3</td><td>ExecutionTrace as first-class object</td><td>agentic + AI</td><td><span class="verdict v-must">blocking</span></td><td><code>agent_runtime.html</code></td></tr>
+<tr><td>4</td><td>Status visibility on every channel</td><td>UI</td><td><span class="verdict v-must">blocking</span></td><td><code>channel.html</code> (req.)</td></tr>
+<tr><td>5</td><td>Approval UX designed (batching, pause, revoke)</td><td>psychology + UI</td><td><span class="verdict v-must">blocking</span></td><td><code>approval_ux.html</code></td></tr>
+<tr><td>6</td><td>Minimal eval (15-20 YAML scenarios + harness)</td><td>AI</td><td><span class="verdict v-must">blocking</span></td><td><code>eval.html</code></td></tr>
+<tr><td>7</td><td>Model tiering + 5th operational Law</td><td>AI + agentic</td><td><span class="verdict v-must">blocking</span></td><td><code>policy.html</code> + <code>cost_tiering</code></td></tr>
+
+<tr><td>8</td><td>Anti-anthropomorphisation linguistic framing</td><td>psychology</td><td><span class="verdict v-reinf">reinforcement</span></td><td><code>constitution.html</code></td></tr>
+<tr><td>9</td><td>Explicit prompt structure + caching rules</td><td>AI</td><td><span class="verdict v-reinf">reinforcement</span></td><td><code>agent_runtime.html</code></td></tr>
+
+<tr><td>10</td><td>Minimal admin web UI (5 htmx views)</td><td>UI</td><td><span class="verdict v-defer">defer</span></td><td>phase 3-bis; gate: if JSONL never opened → promote to phase 1</td></tr>
+<tr><td>11</td><td>Long-memory retrieval strategy</td><td>AI</td><td><span class="verdict v-defer">defer</span></td><td>gate: &gt;4k tokens long → RAG</td></tr>
+<tr><td>12</td><td>MCP adoption</td><td>AI</td><td><span class="verdict v-defer">defer</span></td><td>gate: 3+ external MCP tools</td></tr>
+<tr><td>13</td><td>State persistence post-crash</td><td>agentic</td><td><span class="verdict v-defer">defer</span></td><td>phase 1 accepts "session lost"; gate: &gt;1×/week</td></tr>
+<tr><td>14</td><td>Formal neuron versioning (semver)</td><td>agentic</td><td><span class="verdict v-defer">defer</span></td><td>gate: &gt;20 neurons in library</td></tr>
+
+<tr><td>15</td><td>Anthropomorphisation → ELIZA</td><td>psychology</td><td><span class="verdict v-tension">tension</span></td><td>mitigated by #8 + "what you know about me" tool</td></tr>
+<tr><td>16</td><td>Automation bias with high fitness</td><td>psychology</td><td><span class="verdict v-tension">tension</span></td><td>mitigated by tutor mode in <code>approval_ux.html</code></td></tr>
+<tr><td>17</td><td>Cost of autonomy</td><td>psychology + AI</td><td><span class="verdict v-tension">tension</span></td><td>Roberto must know "Full mode 24h = X €"</td></tr>
+
+<tr><td>18</td><td>Formal pairing SLA as meta-doc</td><td>UI</td><td><span class="verdict v-reject">rejected</span></td><td>detail of <code>pairing.html</code></td></tr>
+<tr><td>19</td><td>Explicit mobile-first</td><td>UI</td><td><span class="verdict v-reject">rejected</span></td><td>it's testing, not design</td></tr>
+<tr><td>20</td><td>Docs search</td><td>UI</td><td><span class="verdict v-reject">rejected</span></td><td>trigger: &gt;15 docs (now 5)</td></tr>
+<tr><td>21</td><td>Synapse deadlock as dedicated design</td><td>agentic</td><td><span class="verdict v-reject">rejected</span></td><td>global timeout covers 95%</td></tr>
+<tr><td>22</td><td>Multimodal day-1</td><td>AI</td><td><span class="verdict v-reject">rejected</span></td><td>already deferred in the Survival Kit</td></tr>
+<tr><td>23</td><td>Multi-user family day-1</td><td>UI</td><td><span class="verdict v-reject">rejected</span></td><td>first release mono-principal; phase 3</td></tr>
+<tr><td>24</td><td>Fine cost model (TCO analysis)</td><td>AI</td><td><span class="verdict v-reject">rejected</span></td><td>order of magnitude suffices</td></tr>
+
+</tbody>
+</table>
+
+<p><strong>Totals:</strong> 7 blocking · 2 reinforcements · 5 deferred · 3 tensions · 7 rejected.</p>
+
+
+<h1 id="cap5">5. The seven blocking critiques (accepted)</h1>
+
+<p>These are the only <em>non-negotiable</em> changes. All others are at the edges.</p>
+
+<table>
+<thead><tr><th style="width:5%">#</th><th style="width:26%">What</th><th>Default choice + rationale</th></tr></thead>
+<tbody>
+<tr>
+  <td><strong>1</strong></td>
+  <td>Reasoning loop</td>
+  <td><strong>ReAct + provider-native function calling</strong> for phase 1.
+  Simple, tested, cache-friendly. Revisit in phase 5 considering CodeAct.</td>
+</tr>
+<tr>
+  <td><strong>2</strong></td>
+  <td>Tool-call validation</td>
+  <td>Every tool has a strict JSON Schema. The dispatcher validates
+  <em>before</em> executing. Validation error → "tool X exists but argument
+  Y is of type Z" reply reinjected to the LLM, max 2 attempts, then abandon
+  with user message.</td>
+</tr>
+<tr>
+  <td><strong>3</strong></td>
+  <td>ExecutionTrace first-class</td>
+  <td>Python object with: <code>id, session_id, channel, messages[],
+  tool_calls[], cost_tokens, cost_usd, wall_time_ms, outcome</code>. It is
+  the same structure used by audit log, dry-run/replay, Darwinian fitness,
+  eval. <strong>A single source of truth on "what happened".</strong></td>
+</tr>
+<tr>
+  <td><strong>4</strong></td>
+  <td>Status visibility</td>
+  <td>Every channel must display "thinking...", a typing indicator, and
+  update on tool change. Telegram: editable message; CLI: spinner with
+  tool-name; voice: courtesy prompt every second.</td>
+</tr>
+<tr>
+  <td><strong>5</strong></td>
+  <td>Approval UX</td>
+  <td><strong>Batching</strong>: "approve similar actions for 10 minutes".
+  <strong>Reading pause</strong>: the "ok" button enables after 3 seconds.
+  <strong>Revocation</strong>: an <code>/undo</code> command that stops
+  execution in progress. <strong>Tutor mode</strong>: every N consecutive
+  approvals, a mandatory "you check this one" prompt breaks the flow.</td>
+</tr>
+<tr>
+  <td><strong>6</strong></td>
+  <td>Minimal eval</td>
+  <td>15-20 YAML scenarios with input + oracle (expected reply or
+  criterion). A harness that runs them via reasoning-loop replay. Report:
+  success rate, p95 latency, cost. Re-run <em>on every commit</em> that
+  touches <code>agent_runtime/</code> or <code>policy/</code>.</td>
+</tr>
+<tr>
+  <td><strong>7</strong></td>
+  <td>Model tiering + budget</td>
+  <td>Two tiers: <em>local-fast</em> (local llama.cpp, &lt; 500 ms, free)
+  for policy gates + classification; <em>frontier</em> (Claude/Opus via
+  supra) for reasoning, synthesis, user reply. Budget: 2 €/day soft cap,
+  5 € hard cap. Notify at 80% consumption.</td>
+</tr>
+</tbody>
+</table>
+
+
+<h1 id="cap6">6. The intractable tensions</h1>
+
+<div class="callout warning">
+Not every critique has a solution. Some are <em>structural trade-offs</em>
+of the kind of system we are building. Declaring them here means they have
+been seen, weighed, and accepted with awareness.
+</div>
+
+<h3>Tension 1 — Warmth vs anthropomorphisation</h3>
+<p>If you kill the "butler" metaphor, you lose warmth and familiarity; if
+you let it run free, you slide into the ELIZA effect (users attributing
+consciousness and moral responsibility to the system).
+<strong>Choice:</strong> we keep the metaphor, we accept 70% mitigation via
+linguistic framing + "what you know about me" tool + tutor mode. We prefer
+warm-with-monitoring to cold-without-ambiguity.</p>
+
+<h3>Tension 2 — Historical reliability vs automation bias</h3>
+<p>The higher a neuron's fitness, the more the user stops checking its
+output. It is the paradox of quality-driven selection: it amplifies trust
+even where it shouldn't. <strong>Mitigation:</strong> tutor mode (forces
+periodic review even on "reliable" neurons), visual separation between
+"I did X" and "I did X because I've done it 40 times already". Doesn't
+solve, limits.</p>
+
+<h3>Tension 3 — Required autonomy vs cloud cost</h3>
+<p>The more autonomy the user wants, the more the system explores, the
+more it spends. <strong>Handling:</strong> explicit cost declaration
+before each autonomy upgrade (e.g. <code>Metnos session --level full --for 24h</code>
+shows "estimate: €3.50"). Budget becomes part of consent.</p>
+
+
+<h1 id="cap7">7. The key observation: autonomy and proactivity are emergent</h1>
+
+<p class="lead">
+Of the four adjectives, <strong>useful</strong> and <strong>intelligent</strong>
+are properties an agent can have independently. <strong>Autonomous</strong>
+and <strong>proactive</strong> are not: they emerge only if the first two
+are well calibrated <em>and</em> overlaid with specific mechanisms
+&mdash; the approval gates for autonomy, the <em>telos</em>-alignment
+function for proactivity. Neither one more point of usefulness nor one
+more of intelligence produces autonomy or proactivity on its own.
+</p>
+
+<p>
+<strong>Autonomy</strong> emerges from calibration of the gap between
+"does on its own" and "asks permission".<br>
+<strong>Proactivity</strong> emerges from calibration of the gap between
+"proposes" and "keeps quiet", regulated by the <em>telos</em>.
+</p>
+
+<p>Operational implication:</p>
+
+<ul>
+    <li>Points 1-4 and 6 (reasoning loop, tool validation, trace, status
+    visibility, eval) are <em>intelligence/usefulness prerequisites</em>.</li>
+    <li>Points 5 and 7 (approval UX, budget + tiering) are the only ones
+    that touch <em>directly</em> on autonomy.</li>
+    <li>If I had to spend 30 design hours total in a constrained world,
+    they would be: <strong>10h <code>agent_runtime.html</code>, 10h
+    <code>approval_ux.html</code>, 10h <code>eval.html</code></strong>.
+    Everything else emerges from those three foundations.</li>
+</ul>
+
+
+<h1 id="cap7b">7-bis. The proactive lens: how it re-reads the seven blockers</h1>
+
+<p class="lead">
+Proactivity, as a structural adjective, does not replace the seven blocking
+critiques &mdash; it re-reads them. None of them is to be dropped; some are
+<em>reinforced</em>, others are <em>extended</em>, one requires an implicit
+requirement to be added. A critique that was not in the original set also
+appears (the proposals inbox as a UX surface).
+</p>
+
+<table>
+<thead><tr><th style="width:4%">#</th><th style="width:24%">Original blocker</th><th>What changes under the proactive lens</th></tr></thead>
+<tbody>
+<tr>
+  <td>1</td>
+  <td>Reasoning loop</td>
+  <td>The choice does not change (ReAct + function calling), but a requirement is added: the loop must be startable <em>without</em> a user turn to activate it. Admissible triggers: cron, internal event (indexer), threshold on metrics (budget, suspicious activity). Documented as <em>agent-initiated turn</em> mode.</td>
+</tr>
+<tr>
+  <td>2</td>
+  <td>Tool-call validation</td>
+  <td>Unchanged. Applies identically to proactive turns.</td>
+</tr>
+<tr>
+  <td>3</td>
+  <td>ExecutionTrace first-class</td>
+  <td>Extended: the trace must record the <em>origin of the turn</em> (<code>source: user | cron | indexer | policy | reflection</code>). Without this distinction the audit cannot answer "who decided to start, this time?" &mdash; a crucial question for proactivity.</td>
+</tr>
+<tr>
+  <td>4</td>
+  <td>Status visibility</td>
+  <td>Extended: proactive turns (evening briefing, inbox proposals) must be <em>recognisable</em> as such in the channel &mdash; different iconography, explicit "spontaneous" tag. Never disguise proactivity as reply-to-request.</td>
+</tr>
+<tr>
+  <td>5</td>
+  <td>Approval UX</td>
+  <td>Reinforced: proactivity multiplies the approval surfaces. Beyond batching and tutor mode, a "proposals inbox" surface separate from blocking approvals is needed. The user must be able to reject <em>a class</em> of proposals (<em>"fewer of these, please"</em>), not only the single one.</td>
+</tr>
+<tr>
+  <td>6</td>
+  <td>Minimal eval</td>
+  <td>Extended: eval scenarios must cover <em>appropriate non-action</em>. "Metnos decides to propose nothing today" is a valid output and must be tested. An eval harness that only measures success rate on explicit requests is blind to rightful silences.</td>
+</tr>
+<tr>
+  <td>7</td>
+  <td>Model tiering + budget</td>
+  <td>Drastically reinforced: proactivity consumes without being requested. Budget becomes a <em>prerequisite</em> of proactivity, not an optional. Proposal: the proactive budget be a separate head from the reactive budget (e.g. 30% / 70%), with independent hard cap.</td>
+</tr>
+<tr>
+  <td><strong>8</strong></td>
+  <td><em>(new) Proposals inbox as UX surface</em></td>
+  <td>Not in the original set. Becomes blocking because without it the proactive fallout has nowhere to accumulate in a non-invasive way. Added to the plan: <code>proposal_ux.html</code> (already anticipated by Extended Perspectives §5).</td>
+</tr>
+</tbody>
+</table>
+
+<div class="callout tip">
+<strong>Re-reading the tensions.</strong> The three tensions (warmth /
+anthropomorphisation, automation bias, cost of autonomy) all amplify in
+the proactive regime: proactive warmth &rarr; more ELIZA, proactive
+fitness &rarr; more automation bias, proactivity &rarr; more autonomous
+spend. Existing mitigations (framing, tutor mode, cost declaration) stay
+valid but <em>do not scale on their own</em>. A fourth, constitutional
+one is needed: the <strong>appropriate-silence clause</strong> &mdash;
+the "don't disturb" telos is non-negotiable, not just high-priority.
+</div>
+
+<div class="callout warning">
+<strong>Constitutional consequence.</strong> The 5th "homeostasis" Law,
+currently under evaluation (see
+<a href="Metnos_Literature_Adaptations_v1.html#cap8">adaptation #3</a>),
+becomes a <em>prerequisite</em> if proactivity is structural. Without a
+self-imposed consumption limit, a proactive system diverges by
+construction. The Law is no longer optional: it must be written before
+the release of any proactive capability (phase 4-5).
+</div>
+
+
+<h1 id="cap8">8. Updated work plan</h1>
+
+<p>Before this judgement, phase 1 called for 4 classical microdesign docs:
+<code>gateway · channel · tool · sandbox</code>.</p>
+
+<p><strong>After this judgement</strong>, three <strong>cross-cutting
+docs</strong> must come first, and only then the four classical ones:</p>
+
+<h3>Binding order</h3>
+
+<table>
+<thead><tr><th style="width:8%">Order</th><th>Doc</th><th>Covers (blocking critiques)</th></tr></thead>
+<tbody>
+<tr><td><strong>1</strong></td><td><code>agent_runtime.html</code></td><td>#1 reasoning loop · #2 tool validation · #3 ExecutionTrace · #9 prompt structure</td></tr>
+<tr><td><strong>2</strong></td><td><code>approval_ux.html</code></td><td>#5 approval UX · mitigation of tensions 1 and 2</td></tr>
+<tr><td><strong>3</strong></td><td><code>eval.html</code></td><td>#6 eval harness</td></tr>
+<tr><td>4</td><td><code>gateway.html</code></td><td>(phase 1 classics) #4 status visibility in part</td></tr>
+<tr><td>5</td><td><code>channel.html</code></td><td>#4 status visibility complete</td></tr>
+<tr><td>6</td><td><code>tool.html</code></td><td>prerequisite for #2</td></tr>
+<tr><td>7</td><td><code>sandbox.html</code></td><td>&mdash;</td></tr>
+<tr><td>8+</td><td><code>policy.html</code> + <code>cost_tiering</code> (sub-section)</td><td>#7 tiering · #17 cost of autonomy</td></tr>
+</tbody>
+</table>
+
+<div class="callout note">
+<strong>Why this order:</strong> the 4 classics, written without the 3
+cross-cutters, would be <em>pattern-violators</em>. Each of their
+decisions would conflict with choices not yet made about the loop, about
+approval UX, about evaluation. Written in the right order, every classical
+doc can cite and conform to decisions already taken.
+</div>
+
+<h3>What does NOT change in the plan</h3>
+
+<ul>
+    <li>Level 1 (the current 5 foundation documents) stays unchanged.</li>
+    <li>The phased roadmap (§12 of <a href="Metnos_Neurons_Memory_v1.html">Neurons &amp; Memory</a>) stays unchanged.</li>
+    <li>The 4-layer architecture stays unchanged.</li>
+    <li>The 4 Laws stay unchanged (the 5th, homeostasis, is proposed but still <em>under evaluation</em>).</li>
+</ul>
+
+<hr>
+
+<h2>Keep reading</h2>
+<div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(260px, 1fr)); gap:14px; margin:16px 0 24px;">
+  <a href="Metnos_Architecture_Intro_v1.html" style="display:block; padding:14px 16px; border:1px solid var(--border); border-radius:8px; background:white; color:inherit; text-decoration:none;">
+    <span style="display:inline-block; padding:2px 9px; border-radius:10px; font-size:9pt; background:var(--code-bg); color:var(--muted); font-weight:500;">foundations · 20 min</span>
+    <div style="color:var(--navy); font-size:11.5pt; font-weight:700; margin:8px 0 6px 0;">Architecture — Introduction v1</div>
+    <div style="margin:0; color:var(--muted); font-size:10pt; line-height:1.5;">The system being judged. The four layers, autonomy, workspace — the content on which the seven blocking critiques rest.</div>
+  </a>
+  <a href="Metnos_Neurons_Memory_v1.html" style="display:block; padding:14px 16px; border:1px solid var(--border); border-radius:8px; background:white; color:inherit; text-decoration:none;">
+    <span style="display:inline-block; padding:2px 9px; border-radius:10px; font-size:9pt; background:var(--code-bg); color:var(--muted); font-weight:500;">extension · 30 min</span>
+    <div style="color:var(--navy); font-size:11.5pt; font-weight:700; margin:8px 0 6px 0;">Neurons, Synapses and Memory v1.1</div>
+    <div style="margin:0; color:var(--muted); font-size:10pt; line-height:1.5;">The critical extension where risks concentrate (anthropomorphisation, automation bias, capability creep): here Darwinian fitness is the pressure point.</div>
+  </a>
+  <a href="Metnos_Literature_Adaptations_v1.html" style="display:block; padding:14px 16px; border:1px solid var(--border); border-radius:8px; background:white; color:inherit; text-decoration:none;">
+    <span style="display:inline-block; padding:2px 9px; border-radius:10px; font-size:9pt; background:var(--code-bg); color:var(--muted); font-weight:500;">rationale · 15 min</span>
+    <div style="color:var(--navy); font-size:11.5pt; font-weight:700; margin:8px 0 6px 0;">Literature &amp; Adaptations</div>
+    <div style="margin:0; color:var(--muted); font-size:10pt; line-height:1.5;">The 10 pre-judgement adaptations. Many critiques here become more explicit: this doc and the judgement talk to each other.</div>
+  </a>
+  <a href="/it/architecture/" style="display:block; padding:14px 16px; border:1px solid var(--border); border-radius:8px; background:white; color:inherit; text-decoration:none;">
+    <span style="display:inline-block; padding:2px 9px; border-radius:10px; font-size:9pt; background:var(--code-bg); color:var(--muted); font-weight:500;">microdesign · in Italian</span>
+    <div style="color:var(--navy); font-size:11.5pt; font-weight:700; margin:8px 0 6px 0;">Component index</div>
+    <div style="margin:0; color:var(--muted); font-size:10pt; line-height:1.5;">The updated work plan: 3 cross-cutters (agent_runtime, approval_ux, eval) before the 4 classics. <em>English version not yet available.</em></div>
+  </a>
+  <a href="index.html" style="display:block; padding:14px 16px; border:1px solid var(--border); border-radius:8px; background:white; color:inherit; text-decoration:none;">
+    <span style="display:inline-block; padding:2px 9px; border-radius:10px; font-size:9pt; background:var(--code-bg); color:var(--muted); font-weight:500;">home</span>
+    <div style="color:var(--navy); font-size:11.5pt; font-weight:700; margin:8px 0 6px 0;">← Documentation index</div>
+    <div style="margin:0; color:var(--muted); font-size:10pt; line-height:1.5;">All documents at once.</div>
+  </a>
+</div>
+
+<hr>
+
+<p style="text-align:center; color:var(--muted); font-size:9.5pt; margin-top:40px;">
+Metnos &mdash; <em>Perspectives &amp; Judgement</em> v1.1 &mdash; 2026-04-22<br>
+Closes phase 0 of design. Opens phase 1 with a new order.<br>
+v1.1: added the fourth adjective (proactive) and the cross-cutting lens §7-bis.
+</p>
+
+</body>
+</html>

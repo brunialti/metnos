@@ -1,0 +1,41 @@
+{
+  "n_queries": 35,
+  "model": "gemma-4-26B-A4B-it-UD-Q4_K_M.gguf",
+  "endpoint": "http://127.0.0.1:8080",
+  "by_category": {
+    "new_executor": {
+      "correct": 18,
+      "total": 30,
+      "accuracy_pct": 60.0
+    },
+    "rejected": {
+      "correct": 0,
+      "total": 5,
+      "accuracy_pct": 0.0
+    }
+  },
+  "overall": {
+    "correct": 18,
+    "total": 35,
+    "accuracy_pct": 51.4
+  },
+  "avg_latency_s": 116.84,
+  "total_latency_s": 4089.4,
+  "total_in_tokens": 65973,
+  "total_out_tokens": 189150,
+  "abandon_distribution_by_stage": {
+    "1": {},
+    "2": {
+      "JSON parse failed": 3,
+      "revertible=true ma reverse_pattern=None non in catalogo ['swap_src_dst', 'delete": 1
+    },
+    "3": {
+      "JSON parse failed": 4
+    },
+    "4": {},
+    "5": {},
+    "rejected": 5,
+    "synthesized": 22,
+    "error": 0
+  }
+}

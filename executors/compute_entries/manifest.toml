@@ -1,0 +1,96 @@
+# Manifest dell'executor `compute_entries` — Metnos v1.1
+# Riduzione numerica di una lista di entries: max/min/avg/sum/count.
+
+manifest_format = "1.0"
+
+name        = "compute_entries"
+version     = "0.1.0"
+author      = "Roberto Brunialti <roberto.brunialti@metnos.com>"
+affinity        = ["compute", "calcola", "computa", "max", "min", "avg", "media", "average", "sum", "somma", "total", "totale", "count", "conta", "numero", "distinct", "distinti", "unique", "unici", "stats", "statistiche", "reduce"]
+revertible      = false
+lifecycle       = "active"
+
+[description]
+it = "Riduce una lista di entries a uno scalare applicando un'operazione su una chiave del dizionario. Spec: input lista di dict flat, key=nome chiave, op=operazione. Op supportate: max/min/avg/sum (numeric: somma/medie/estremi del valore della key, ignora entry senza key o non numeriche); count (numero entries; con key, conta solo quelle con valore non-null); count_distinct (numero valori distinti della key). Differenza con sort_entries: sort ritorna LISTA ordinata (top-K); compute ritorna SCALARE ridotto. Esempi: max bytes di una dir → compute_entries(key='total_bytes', op='max'); somma file_count di tutte le dir → compute_entries(key='file_count', op='sum'); media size mail → compute_entries(key='size', op='avg'); count distinct sender → compute_entries(key='from', op='count_distinct'). Output: {value: scalare, op, key, count_input, ignored_non_numeric}. Per ottenere ANCHE l'entry vincitrice (per max/min) usa return_entry=true: l'output include 'entry': {dict completo}."
+en = "Reduces a list of entries to a scalar by applying an operation on a dictionary key. Spec: input flat list of dicts, key=key name, op=operation. Supported ops: max/min/avg/sum (numeric: sum/average/extremes of the key value, ignores entries without key or non-numeric); count (number of entries; with key, counts only those with non-null values); count_distinct (number of distinct values of the key). Difference from sort_entries: sort returns an ordered LIST (top-K); compute returns a reduced SCALAR. Examples: max bytes of a dir → compute_entries(key='total_bytes', op='max'); sum file_count of all dirs → compute_entries(key='file_count', op='sum'); average mail size → compute_entries(key='size', op='avg'); count distinct sender → compute_entries(key='from', op='count_distinct'). Output: {value: scalar, op, key, count_input, ignored_non_numeric}. To ALSO obtain the winning entry (for max/min) use return_entry=true: the output includes 'entry': {complete dict}."
+
+[code]
+files  = ["compute_entries.py"]
+digest = "sha256:c7400076c22283140b4c516d3a2122fa58c269f79c277e161f8b47635fe00996"
+
+[args]
+type     = "object"
+required = ["entries", "op"]
+
+[args.properties.entries]
+type        = "array"
+
+[args.properties.entries.description]
+it = "Lista di dict omogenei. Tipicamente passata via from_step=N (il runtime espande dallo scratchpad)."
+en = "List of homogeneous dicts. Typically passed via from_step=N (the runtime expands from the scratchpad)."
+
+[args.properties.key]
+type        = "string"
+
+[args.properties.key.description]
+it = "Nome della chiave del dict su cui calcolare. Obbligatorio per max/min/avg/sum/count_distinct. Per op='count' senza key conta tutte le entries; con key conta solo quelle con valore non-null."
+en = "──────────────────────────────────────────── The name of the dict key on which to calculate. Mandatory for max/min/avg/sum/count_distinct. For op='count' without a key, it counts all entries; with a key, it counts only those with a non-null value. ────────────────────────────────────────────"
+
+[args.properties.op]
+type        = "string"
+enum        = ["max", "min", "avg", "sum", "count", "count_distinct"]
+
+[args.properties.op.description]
+it = "Operazione di riduzione. 'max'/'min'/'avg'/'sum' richiedono key con valore numerico (int/float). 'count' conta entries (con o senza key). 'count_distinct' conta valori unici della key."
+en = "Reduction operation. 'max'/'min'/'avg'/'sum' require a key with a numeric value (int/float). 'count' counts entries (with or without a key). 'count_distinct' counts unique values of the key."
+
+[args.properties.return_entry]
+type        = "boolean"
+default     = false
+
+[args.properties.return_entry.description]
+it = "Solo per op='max'/'min': se true, l'output include 'entry' = il dict completo della entry vincitrice (utile per scoprire QUALE elemento ha il max/min). Default false (ritorna solo il valore)."
+en = "Only for op='max'/'min': if true, the output includes 'entry' = the complete dict of the winning entry (useful for discovering WHICH element has the max/min). Default false (returns only the value)."
+
+[[capabilities]]
+name = "compute:pure"
+
+[[tests]]
+name   = "max_basic"
+input  = { entries = [{n = 5}, {n = 1}, {n = 9}, {n = 3}], key = "n", op = "max" }
+expect = { ok = true, field_eq = { value = 9 } }
+
+[[tests]]
+name   = "sum_floats"
+input  = { entries = [{x = 1.5}, {x = 2.5}, {x = 1.0}], key = "x", op = "sum" }
+expect = { ok = true, field_eq = { value = 5.0 } }
+
+[[tests]]
+name   = "avg"
+input  = { entries = [{x = 10}, {x = 20}, {x = 30}], key = "x", op = "avg" }
+expect = { ok = true, field_eq = { value = 20.0 } }
+
+[[tests]]
+name   = "count_with_key"
+input  = { entries = [{a = 1}, {b = 2}, {a = 3}], key = "a", op = "count" }
+expect = { ok = true, field_eq = { value = 2 } }
+
+[[tests]]
+name   = "count_distinct"
+input  = { entries = [{cat = "a"}, {cat = "b"}, {cat = "a"}, {cat = "c"}], key = "cat", op = "count_distinct" }
+expect = { ok = true, field_eq = { value = 3 } }
+
+[[tests]]
+name   = "ignored_non_numeric"
+input  = { entries = [{x = 1}, {x = "string"}, {x = 3}], key = "x", op = "sum" }
+expect = { ok = true, field_eq = { value = 4, ignored_non_numeric = 1 } }
+
+[[tests]]
+name   = "missing_op"
+input  = { entries = [{x = 1}], key = "x" }
+expect = { ok = false, error_contains = "op" }
+
+[[tests]]
+name   = "invalid_op"
+input  = { entries = [{x = 1}], key = "x", op = "median" }
+expect = { ok = false, error_contains = "invalid op" }

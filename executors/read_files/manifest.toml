@@ -1,0 +1,135 @@
+# Manifest dell'executor `fs_read` — Metnos v1.1
+# Schema versione 1.0. Deciso il 26 aprile 2026.
+# Questo file è firmato dalla chiave autore; la firma vive in `manifest.toml.sig`.
+
+manifest_format = "1.0"
+
+name        = "read_files"
+version     = "0.1.0"
+author      = "Roberto Brunialti <roberto.brunialti@metnos.com>"
+affinity    = ["fs", "read", "leggi", "lettura", "apri", "file", "documento", "testo", "contenuto"]
+
+# --- Codice -----------------------------------------------------------------
+# Il digest copre l'intero contenuto dei `files` in ordine di dichiarazione.
+# Il runtime calcola SHA-256(concat(file1, file2, …)) e confronta col valore
+# qui dichiarato. Mismatch → executor rifiutato.
+
+[description]
+it = "Legge il contenuto di un file dal filesystem locale e lo restituisce come testo o bytes. Supporta limite di dimensione e scelta di encoding."
+en = "Reads the content of a file from the local filesystem and returns it as text or bytes. Supports size limit and encoding selection."
+
+[code]
+files  = ["read_files.py"]
+digest = "sha256:e8c39fa1ac8835c4e4ee9352d0ff01ab0b05afe502ec06ec7cd38cdd85a1231e"  # sostituito al momento della firma
+
+# --- Argomenti accettati (JSON Schema, sottoinsieme v1.1) -------------------
+[args]
+type     = "object"
+required = ["path"]
+
+[args.properties.path]
+type        = "string"
+
+[args.properties.path.description]
+it = "Path assoluto del file da leggere. Path relativi sono risolti rispetto al working dir del runtime."
+en = "Absolute path of the file to read. Relative paths are resolved with respect to the runtime working dir."
+
+[args.properties.encoding]
+type        = "string"
+enum        = ["utf-8", "latin-1", "binary"]
+default     = "utf-8"
+
+[args.properties.encoding.description]
+it = "Encoding di lettura. Il valore 'binary' restituisce bytes invece che testo."
+en = "Reading encoding. The 'binary' value returns bytes instead of text."
+
+[args.properties.max_bytes]
+type        = "integer"
+minimum     = 1
+
+[args.properties.max_bytes.description]
+it = "Legge i PRIMI N bytes (dall'inizio del file). Mutuamente esclusivo con tail_bytes. Se omesso e tail_bytes omesso, legge il file intero."
+en = "Reads the FIRST N bytes (from the beginning of the file). Mutually exclusive with tail_bytes. If omitted and tail_bytes is omitted, reads the entire file."
+
+[args.properties.tail_bytes]
+type        = "integer"
+minimum     = 1
+
+[args.properties.tail_bytes.description]
+it = "Legge gli ULTIMI N bytes (dalla fine del file). Mutuamente esclusivo con max_bytes. Da usare quando l'utente chiede 'la fine', 'l'ultima parte', 'le ultime righe' di un file."
+en = "Reads the LAST N bytes (from the end of the file). Mutually exclusive with max_bytes. To be used when the user asks for 'the end', 'the last part', 'the last lines' of a file."
+
+[args.properties.offset]
+type        = "integer"
+minimum     = 0
+default     = 0
+
+# --- Capability richieste con scope hint ------------------------------------
+# `hint` è il "tetto massimo" tecnico che l'executor dichiara di voler toccare.
+# Lo scope effettivo a runtime è l'intersezione con i grant utente nel policy
+# center. L'utente può autorizzare meno, mai di più.
+
+[args.properties.offset.description]
+it = "Offset (in bytes) da cui iniziare la lettura. Default 0 (inizio). Combinato con max_bytes legge un range. Ignorato se tail_bytes e' specificato."
+en = "Offset (in bytes) from which to start reading. Default 0 (start). Combined with max_bytes, it reads a range. Ignored if tail_bytes is specified."
+
+[[capabilities]]
+name = "fs:read"
+hint = ["~/notes/**", "/tmp/**"]
+
+# --- Test di nascita (forma 1: dichiarativi nel manifest) -------------------
+# Il runtime esegue questi test quando l'executor viene installato. Setup e
+# teardown sono comandi shell opzionali per le fixture; input è il JSON degli
+# argomenti; expect contiene matcher su ok/error/contenuto.
+
+[[tests]]
+name     = "legge_file_utf8_esistente"
+setup    = "mkdir -p /tmp/metnos_test_fs_read && echo 'ciao mondo' > /tmp/metnos_test_fs_read/hello.txt"
+input    = { path = "/tmp/metnos_test_fs_read/hello.txt" }
+expect   = { ok = true, content_contains = "ciao mondo" }
+teardown = "rm -rf /tmp/metnos_test_fs_read"
+
+[[tests]]
+name   = "fallisce_su_file_assente"
+input  = { path = "/tmp/metnos_test_fs_read/non_esiste_xyz.txt" }
+expect = { ok = false, error_contains = "not found" }
+
+[[tests]]
+name     = "rispetta_max_bytes"
+setup    = "mkdir -p /tmp/metnos_test_fs_read && head -c 10000 /dev/urandom | base64 > /tmp/metnos_test_fs_read/big.txt"
+input    = { path = "/tmp/metnos_test_fs_read/big.txt", max_bytes = 100 }
+expect   = { ok = true, content_length_lte = 100 }
+teardown = "rm -rf /tmp/metnos_test_fs_read"
+
+[[tests]]
+name     = "legge_in_binary"
+setup    = "mkdir -p /tmp/metnos_test_fs_read && python3 -c 'open(\"/tmp/metnos_test_fs_read/bin.dat\", \"wb\").write(bytes([0,1,2]))'"
+input    = { path = "/tmp/metnos_test_fs_read/bin.dat", encoding = "binary" }
+expect   = { ok = true, metadata_field_eq = { bytes = 3 } }
+teardown = "rm -rf /tmp/metnos_test_fs_read"
+
+[[tests]]
+name   = "blocca_path_fuori_scope"
+input  = { path = "/etc/passwd" }
+expect = { ok = false, error_contains = "outside allowed scope" }
+
+[[tests]]
+name     = "tail_bytes_legge_dalla_fine"
+setup    = "mkdir -p /tmp/metnos_test_fs_read && printf 'AAAAA12345' > /tmp/metnos_test_fs_read/marker.txt"
+input    = { path = "/tmp/metnos_test_fs_read/marker.txt", tail_bytes = 5 }
+expect   = { ok = true, content_contains = "12345", metadata_field_eq = { read_mode = "tail" } }
+teardown = "rm -rf /tmp/metnos_test_fs_read"
+
+[[tests]]
+name     = "offset_legge_da_posizione"
+setup    = "mkdir -p /tmp/metnos_test_fs_read && printf 'ABCDEFGHIJ' > /tmp/metnos_test_fs_read/abc.txt"
+input    = { path = "/tmp/metnos_test_fs_read/abc.txt", offset = 3, max_bytes = 4 }
+expect   = { ok = true, content_contains = "DEFG", metadata_field_eq = { read_offset = 3, read_mode = "offset" } }
+teardown = "rm -rf /tmp/metnos_test_fs_read"
+
+[[tests]]
+name     = "max_bytes_e_tail_bytes_insieme_falliscono"
+setup    = "mkdir -p /tmp/metnos_test_fs_read && echo 'x' > /tmp/metnos_test_fs_read/x.txt"
+input    = { path = "/tmp/metnos_test_fs_read/x.txt", max_bytes = 5, tail_bytes = 5 }
+expect   = { ok = false, error_contains = "mutuamente esclusivi" }
+teardown = "rm -rf /tmp/metnos_test_fs_read"

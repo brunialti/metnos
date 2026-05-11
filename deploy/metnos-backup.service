@@ -1,0 +1,13 @@
+[Unit]
+Description=Metnos backup giornaliero su NAS (ultimi 20 gg)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/opt/myclaw/deploy/backup_nas.sh
+# Richiede mount NAS + rm su path NAS → runs as root.
+User=root
+WorkingDirectory=/opt/myclaw
+# Nota: il timer associato lancia questa unit ogni giorno alle 03:35
+# (5 min dopo suprastructure-backup per evitare contesa CIFS/CPU).

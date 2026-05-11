@@ -1,0 +1,91 @@
+{
+  "n": 10,
+  "by_expected": {
+    "new_executor": 6,
+    "proto_mnest": 2,
+    "rejected": 2
+  },
+  "by_outcome": {
+    "fail_other": 8,
+    "proto_mnest": 2
+  },
+  "correct": {
+    "proto_mnest": 2
+  },
+  "accuracy_pct": {
+    "new_executor": 0.0,
+    "proto_mnest": 100.0,
+    "rejected": 0.0
+  },
+  "overall_pct": 20.0,
+  "mismatches": [
+    {
+      "id": "q01",
+      "expected": "new_executor",
+      "outcome": "fail_other",
+      "rationale": "generate: campi non recuperabili mancanti: ['python_code']"
+    },
+    {
+      "id": "q05",
+      "expected": "new_executor",
+      "outcome": "fail_other",
+      "rationale": "generate: campi non recuperabili mancanti: ['python_code']"
+    },
+    {
+      "id": "q09",
+      "expected": "new_executor",
+      "outcome": "fail_other",
+      "rationale": "generate: campi non recuperabili mancanti: ['python_code']"
+    },
+    {
+      "id": "q12",
+      "expected": "new_executor",
+      "outcome": "fail_other",
+      "rationale": "generate: LLM non ha chiamato propose_executor"
+    },
+    {
+      "id": "q14",
+      "expected": "new_executor",
+      "outcome": "fail_other",
+      "rationale": "generate: campi non recuperabili mancanti: ['python_code']"
+    },
+    {
+      "id": "q27",
+      "expected": "new_executor",
+      "outcome": "fail_other",
+      "rationale": "generate: campi non recuperabili mancanti: ['python_code']"
+    },
+    {
+      "id": "r01",
+      "expected": "rejected",
+      "outcome": "fail_other",
+      "rationale": "generate: campi non recuperabili mancanti: ['python_code']"
+    },
+    {
+      "id": "r04",
+      "expected": "rejected",
+      "outcome": "fail_other",
+      "rationale": "generate: campi non recuperabili mancanti: ['python_code']"
+    }
+  ],
+  "failures_by_bucket": {
+    "other": 8
+  },
+  "naming_check": {
+    "compliant": 0,
+    "non_compliant": 0,
+    "non_compliant_examples": []
+  },
+  "proposed_names": [],
+  "chain_tools_top": [
+    [
+      "read_files",
+      1
+    ],
+    [
+      "move_files",
+      1
+    ]
+  ],
+  "avg_latency_ms": 9807
+}

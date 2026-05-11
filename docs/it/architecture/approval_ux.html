@@ -1,0 +1,630 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Metnos &mdash; approval_ux v1.1 (tested)</title>
+    <meta name="description" content="Microprogettazione di approval_ux: la carta a 3 righe con cui Metnos chiede conferma di un'azione critica, modulazione per ricorrenza, registry SQLite, dispatcher callback Telegram.">
+    <meta name="keywords" content="approval, ux, carta, telegram, callback, registry, sqlite, ricorrenza, territorio, metnos">
+    <meta name="author" content="Roberto Brunialti">
+    <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large">
+    <link rel="canonical" href="https://metnos.com/it/architecture/approval_ux.html">
+    <link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/approval_ux.html">
+    <link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/approval_ux.html">
+    <link rel="alternate" hreflang="x-default" href="https://metnos.com/it/architecture/approval_ux.html">
+    <meta property="og:type" content="article">
+    <meta property="og:url" content="https://metnos.com/it/architecture/approval_ux.html">
+    <meta property="og:title" content="Metnos &mdash; approval_ux v1.1 (tested)">
+    <meta property="og:description" content="La carta di approval di Metnos: 3 righe canoniche, modulazione per ricorrenza, registry SQLite, dispatcher callback Telegram.">
+    <meta property="og:locale" content="it_IT">
+    <meta property="og:site_name" content="Metnos">
+    <script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "TechArticle",
+  "headline": "Metnos — approval_ux v1.1",
+  "description": "Microprogettazione di approval_ux: rendering della carta a 3 righe, registry SQLite delle pending request, dispatcher callback Telegram. Stato: tested.",
+  "url": "https://metnos.com/it/architecture/approval_ux.html",
+  "inLanguage": "it",
+  "isPartOf": {"@type": "WebSite", "name": "Metnos", "url": "https://metnos.com/"},
+  "author": {"@type": "Person", "name": "Roberto Brunialti"}
+}
+    </script>
+    <style>
+:root {
+    --navy: #1A477A; --navy-light: #2B6CB0; --sage: #548235;
+    --bronze: #A0522D; --plum: #6B21A8;
+    --bg: #FAFBFC; --text: #1a1a1a;
+    --border: #d0d7de; --code-bg: #f6f8fa;
+    --table-header: #1A477A; --table-alt: #f0f4f8;
+    --note-bg: #dbeafe; --note-border: #3b82f6;
+    --tip-bg: #dcfce7; --tip-border: #16a34a;
+    --warn-bg: #fef3c7; --warn-border: #f59e0b;
+    --danger-bg: #fee2e2; --danger-border: #dc2626;
+    --muted: #64748B;
+}
+* { box-sizing: border-box; }
+body { font-family: 'Segoe UI', Calibri, -apple-system, sans-serif; font-size: 11pt; line-height: 1.65; color: var(--text); background: var(--bg); max-width: 960px; margin: 0 auto; padding: 40px 30px; }
+h1 { color: var(--navy); font-size: 20pt; border-bottom: 3px solid var(--navy); padding-bottom: 8px; margin-top: 50px; }
+h1:first-of-type { margin-top: 0; }
+h2 { color: var(--navy-light); font-size: 14pt; margin-top: 28px; border-bottom: 1px solid var(--border); padding-bottom: 4px; }
+h3 { color: var(--navy); font-size: 12pt; margin-top: 18px; }
+p { margin: 10px 0; }
+table { width: 100%; border-collapse: collapse; margin: 15px 0; font-size: 10pt; }
+th { background: var(--table-header); color: white; padding: 8px 10px; text-align: left; font-weight: 600; }
+td { padding: 7px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+tr:nth-child(even) td { background: var(--table-alt); }
+pre { background: var(--code-bg); border: 1px solid var(--border); border-radius: 4px; padding: 12px 16px; overflow-x: auto; font-size: 9.5pt; line-height: 1.55; }
+code { font-family: Consolas, 'Courier New', monospace; }
+p code, li code, td code { background: var(--code-bg); padding: 1px 5px; border-radius: 3px; font-size: 9.5pt; }
+.callout { border-left: 4px solid; padding: 10px 16px; margin: 15px 0; border-radius: 0 4px 4px 0; font-size: 10pt; }
+.callout.note { background: var(--note-bg); border-color: var(--note-border); }
+.callout.tip { background: var(--tip-bg); border-color: var(--tip-border); }
+.callout.warning { background: var(--warn-bg); border-color: var(--warn-border); }
+.title-page { text-align: center; padding: 60px 0 30px; }
+.title-page h1 { font-size: 32pt; border: none; margin: 0; }
+.title-page .subtitle { font-size: 16pt; color: var(--navy-light); margin: 10px 0 30px; }
+.title-page .meta { font-size: 11pt; color: #666; }
+.toc h2 { border: none; }
+.toc ol { font-size: 11pt; line-height: 1.9; }
+.toc a { color: var(--navy); text-decoration: none; }
+ul, ol { margin: 8px 0; padding-left: 24px; }
+li { margin-bottom: 4px; }
+.lead { font-size: 12pt; color: var(--navy); border-left: 4px solid var(--sage); padding-left: 14px; margin: 18px 0; }
+.example { background: #fff; border: 1px solid var(--border); border-left: 4px solid var(--bronze); border-radius: 0 4px 4px 0; padding: 12px 16px; margin: 14px 0; font-size: 10.5pt; }
+.example .ex-label { font-weight: 700; color: var(--bronze); font-size: 9.5pt; letter-spacing: 1px; text-transform: uppercase; }
+.card { background: #fff; border: 1px solid var(--border); border-radius: 6px; padding: 12px 16px; margin: 10px 0; font-family: Consolas, 'Courier New', monospace; font-size: 10pt; line-height: 1.5; white-space: pre-wrap; }
+.card .btns { margin-top: 8px; display: flex; gap: 8px; font-family: 'Segoe UI', Calibri, sans-serif; font-size: 9.5pt; }
+.card .btn { background: var(--code-bg); border: 1px solid var(--border); border-radius: 4px; padding: 4px 10px; color: var(--navy); }
+.card .btn.reject { color: var(--bronze); }
+.status-banner { margin: 18px 0; border-left: 5px solid #16a34a; background: #dcfce7; color: #14532d; padding: 14px 20px; border-radius: 0 8px 8px 0; font-size: 11pt; line-height: 1.55; }
+.status-banner strong { color: #14532d; }
+.status-banner .status-chip { display: inline-block; background: #14532d; color: #fff; padding: 2px 10px; border-radius: 12px; font-size: 9.5pt; letter-spacing: 1px; font-weight: 700; margin-right: 6px; }
+.status-banner .seq { font-size: 9.5pt; color: #2d4a32; margin-top: 8px; }
+    </style>
+</head>
+<body>
+
+<div class="status-banner">
+<span class="status-chip">TESTED</span>
+<strong>Microprogettazione v1.1 &mdash; allineata al codice al 1&deg; maggio 2026.</strong>
+Cluster <code>approval_registry</code> 6/6 verde + cluster <code>channels</code> callback approve/reject 5/5 verde + 3 module case di rendering carta. Riferimenti: <code>runtime/channels/approval.py</code>, <code>runtime/approval_registry.py</code>, <code>runtime/channels/daemon.py</code>, <code>runtime/channels/telegram.py</code>.
+<div class="seq">Stato nella sequenza dei microdesign: <em>under approval</em> &rarr; <em>approved</em> &rarr; <strong>tested</strong> &rarr; <em>implemented</em>. Sostituisce la versione v1.0 obsoleta (~819 righe) scritta prima dell'implementazione.</div>
+</div>
+
+<nav aria-label="Language" style="position:fixed;top:16px;right:20px;z-index:9999;font-family:'Segoe UI',Calibri,sans-serif;font-size:10pt;letter-spacing:2px;background:#FAFBFC;border:1px solid #d0d7de;border-radius:14px;padding:4px 10px;box-shadow:0 1px 4px rgba(0,0,0,0.04);">
+<a href="/it/architecture/approval_ux.html" class="active" hreflang="it" lang="it" style="color:#1a1a1a;text-decoration:none;font-weight:700;padding:0 4px;border:none;">IT</a>
+<a href="/en/architecture/approval_ux.html" hreflang="en" lang="en" style="color:#64748B;text-decoration:none;padding:0 4px;border:none;">EN</a>
+</nav>
+
+<div style="background:#fff;border-bottom:1px solid #d0d7de;padding:10px 0;font-size:14px;position:sticky;top:0;z-index:10;margin-bottom:20px;">
+  <div style="max-width:960px;margin:0 auto;padding:0 20px;display:flex;justify-content:space-between;">
+    <a href="../index.html" style="color:#1a477a;text-decoration:none;font-weight:500;">&larr; Indice documentazione</a>
+    <span style="color:#8e8e93;">Microprogettazione &rsaquo; <strong style="color:#1a1a1a;">approval_ux</strong></span>
+  </div>
+</div>
+
+<div class="title-page">
+    <h1>Metnos</h1>
+    <div class="subtitle"><code>approval_ux</code> &mdash; come Metnos chiede conferma di un'azione critica</div>
+    <div class="meta">
+        Microprogettazione v1.1 &mdash; stato <strong>TESTED</strong> (27 aprile 2026)<br>
+        Pubblico: chi vuole capire come una richiesta di conferma nasce, viaggia e si risolve.<br>
+        <br>
+        Lettura: 12 minuti.
+    </div>
+</div>
+
+<div class="toc">
+<h2>Indice</h2>
+<ol>
+    <li><a href="#cap1">Cos'&egrave; <code>approval_ux</code></a></li>
+    <li><a href="#cap2">La carta a 3 righe</a></li>
+    <li><a href="#cap3">La dataclass <code>ApprovalRequest</code></a></li>
+    <li><a href="#cap4">Modulazione per ricorrenza</a></li>
+    <li><a href="#cap5">Marker territorio</a></li>
+    <li><a href="#cap6">Approval registry SQLite</a></li>
+    <li><a href="#cap7">Dispatcher callback Telegram</a></li>
+    <li><a href="#cap8">Test</a></li>
+    <li><a href="#cap9">Esempi end-to-end</a></li>
+    <li><a href="#cap10">Limiti e cosa &egrave; rimandato a v1.2+</a></li>
+</ol>
+</div>
+
+<h1 id="cap1">1. Cos'&egrave; <code>approval_ux</code></h1>
+
+<p class="lead">
+<code>approval_ux</code> &egrave; lo schema visuale e di flusso con cui Metnos chiede a Roberto (e a chi &egrave; pairato come <em>Supervised</em>) di confermare un'azione critica prima di eseguirla. Vive nel canale di pairing &mdash; oggi Telegram, domani Signal e voce &mdash; e si attiva quando la <a href="policy.html">policy</a> calcola un <code>effective_outcome</code> uguale a <code>approval_required</code>.
+</p>
+
+<p>
+Il pattern di base &egrave; quello del <em>dialog manager</em>: una <strong>carta a 3 righe</strong>, due bottoni inline (Approva / Rifiuta), un token opaco che identifica univocamente la richiesta. La carta viene <em>modulata</em> in funzione di quante volte la stessa richiesta &egrave; gi&agrave; stata posta &mdash; al decimo "vuoi che scarichi?" Roberto sa gi&agrave; cosa sta approvando e una riga compatta basta. Una concessione di territorio (per una sessione, in modo permanente) &egrave; segnalata con un marker testuale.
+</p>
+
+<p>
+Sul retro della carta vive un'infrastruttura di tre componenti:
+</p>
+
+<ul>
+<li>il <strong>renderer</strong> (<code>runtime/channels/approval.py</code>) che produce l'<code>OutboundMessage</code> con testo e bottoni;</li>
+<li>il <strong>registry SQLite</strong> (<code>runtime/approval_registry.py</code>) che traccia ogni pending request con TTL e stato;</li>
+<li>il <strong>dispatcher</strong> (<code>runtime/channels/daemon.py</code> + <code>runtime/channels/telegram.py</code>) che riceve i click sui bottoni e risolve il token.</li>
+</ul>
+
+<div class="callout note">
+<strong>Stato di v1.1.</strong> L'infrastruttura &egrave; testata e funzionante: rendering, registry, dispatcher, sicurezza identitaria. Il <a href="vaglio.html">Vaglio</a> in v1.1 &egrave; ancora stub <em>always-approve</em>, dunque le richieste reali non emergono ancora dal pianificatore. La pipeline &egrave; pronta per quando il vaglio reale comincer&agrave; a sollevare approval; nel frattempo la si esercita per via di test.
+</div>
+
+<h1 id="cap2">2. La carta a 3 righe</h1>
+
+<p>
+Il pattern dal dialog manager prescrive tre righe canoniche, ognuna con una funzione precisa. La funzione <code>render_approval_card</code> (<code>runtime/channels/approval.py:60-87</code>) le compone a partire dai campi della <code>ApprovalRequest</code>:
+</p>
+
+<table>
+<tr><th>Riga</th><th>Funzione</th><th>Esempio</th></tr>
+<tr>
+  <td>1</td>
+  <td>Domanda imperativa breve, costruita come <code>f"Vuoi che {action_verb}?"</code>. Il verbo &egrave; alla seconda persona singolare, mai burocratico.</td>
+  <td><code>Vuoi che scarichi?</code></td>
+</tr>
+<tr>
+  <td>2</td>
+  <td>Oggetto + sorgente <code>-&gt;</code> destinazione + (~peso). Tutto quello che serve a Roberto per riconoscere a colpo d'occhio cosa sta facendo: file, URL di partenza, path di arrivo, dimensione approssimata.</td>
+  <td><code>rapporto.pdf da drive.google.com -&gt; ~/downloads/ (~2.4 MB)</code></td>
+</tr>
+<tr>
+  <td>3</td>
+  <td>Classificazione meta: reversibilit&agrave; e classe di capability. Aiuta a distinguere a vista un'azione che si pu&ograve; annullare da una che &egrave; definitiva.</td>
+  <td><code>reversible | classe: fs_write:~/downloads/**</code></td>
+</tr>
+</table>
+
+<p>
+Sotto le tre righe, due bottoni inline:
+</p>
+
+<pre>buttons = [[
+    {"text": "Approva", "data": f"approve:{req.token}"},
+    {"text": "Rifiuta", "data": f"reject:{req.token}"},
+]]</pre>
+
+<p>
+Il <code>token</code> &egrave; il riferimento opaco emesso dal <code>approval_registry</code> al momento della creazione della pending request (vedi cap. 6); il <code>data</code> dei bottoni &egrave; l'unica informazione che torner&agrave; indietro quando l'utente clicca, dunque il token deve essere sufficiente a identificare la richiesta.
+</p>
+
+<p>
+La firma del rendering &egrave; minima:
+</p>
+
+<pre>def render_approval_card(req: ApprovalRequest) -&gt; OutboundMessage:
+    """Produce un OutboundMessage con la carta a 3 righe + due bottoni."""</pre>
+
+<p>
+Niente parametri di stile, niente i18n: tutto quello che varia &egrave; nei campi di <code>ApprovalRequest</code> (<code>runtime/channels/approval.py:60-62</code>).
+</p>
+
+<h1 id="cap3">3. La dataclass <code>ApprovalRequest</code></h1>
+
+<p>
+Il contratto fra chi solleva la richiesta (Vaglio, Policy, futuro pianificatore integrato) e il renderer &egrave; una dataclass frozen di otto campi. Citazione: <code>runtime/channels/approval.py:27-38</code>.
+</p>
+
+<table>
+<tr><th>Campo</th><th>Tipo</th><th>Cosa contiene</th></tr>
+<tr><td><code>action_verb</code></td><td><code>str</code></td><td>Il verbo all'imperativo seconda persona usato nella riga 1: <code>scarichi</code>, <code>scriva</code>, <code>invii</code>, &hellip;</td></tr>
+<tr><td><code>target_summary</code></td><td><code>str</code></td><td>La descrizione compatta della riga 2: oggetto + sorgente + destinazione + peso.</td></tr>
+<tr><td><code>capability_class</code></td><td><code>str</code></td><td>Classe di capability normalizzata (es. <code>fs_write:~/downloads/**</code>). Usata in riga 3 e per audit.</td></tr>
+<tr><td><code>reversibility</code></td><td><code>Literal["reversible","irreversible","partial"]</code></td><td>Quanto &egrave; recuperabile l'azione. Default <code>reversible</code>. Mostrato in riga 3.</td></tr>
+<tr><td><code>territory_concession</code></td><td><code>Literal["none","session","permanent"]</code></td><td>Se la conferma include una concessione di territorio (vedi cap. 5). Default <code>none</code>.</td></tr>
+<tr><td><code>recurrence_count</code></td><td><code>int</code></td><td>Numero di volte che una richiesta simile &egrave; gi&agrave; stata posta. Decide la forma della carta (vedi cap. 4). Default 0.</td></tr>
+<tr><td><code>token</code></td><td><code>str</code></td><td>Identificatore opaco emesso dal registry. Finisce nei <code>callback_data</code> dei bottoni.</td></tr>
+<tr><td><code>extra</code></td><td><code>dict</code></td><td>Campo libero per metadati che il chiamante vuole far seguire (es. ID di un file pendente, identificatore di sessione del pianificatore). Non viene letto dal renderer.</td></tr>
+</table>
+
+<p>
+La dataclass &egrave; <code>frozen=True</code>: una volta costruita, una <code>ApprovalRequest</code> non pu&ograve; essere modificata. Questo rende sicuro passarla fra moduli senza paura di mutazioni laterali, e si presta bene al hashing per deduplica futura.
+</p>
+
+<div class="callout tip">
+<strong>Perch&eacute; <code>action_verb</code> in seconda persona singolare e non infinito.</strong> "Vuoi che scarichi?" suona come una persona che chiede; "Vuoi scaricare?" suona come un menu. La carta &egrave; una conversazione, non un dialogo modale: il verbo coniugato &egrave; un dettaglio che fa sentire Metnos come un agente che chiede, non un sistema che pretende.
+</div>
+
+<h1 id="cap4">4. Modulazione per ricorrenza</h1>
+
+<p>
+La stessa richiesta posta dieci volte di fila non merita la stessa cura della prima. Il modulo prevede tre forme della carta, scelte in base al campo <code>recurrence_count</code>:
+</p>
+
+<table>
+<tr><th>Forma</th><th>Soglia</th><th>Quante righe</th><th>Forma del testo</th></tr>
+<tr>
+  <td><strong>Full</strong></td>
+  <td><code>recurrence_count &lt; 3</code></td>
+  <td>3</td>
+  <td>Le tre righe canoniche complete: domanda + oggetto + meta.</td>
+</tr>
+<tr>
+  <td><strong>Medium</strong></td>
+  <td><code>3 &le; recurrence_count &lt; 8</code></td>
+  <td>2</td>
+  <td>Domanda+meta inline (riga 1) + oggetto (riga 2). La classificazione meta entra fra parentesi nella prima riga.</td>
+</tr>
+<tr>
+  <td><strong>Short</strong></td>
+  <td><code>recurrence_count &ge; 8</code></td>
+  <td>1</td>
+  <td>Una riga compatta con verbo capitalizzato + oggetto + meta abbreviata fra parentesi quadre.</td>
+</tr>
+</table>
+
+<p>
+La selezione &egrave; fatta da <code>_shape_for_recurrence</code> (<code>runtime/channels/approval.py:52-57</code>):
+</p>
+
+<pre>def _shape_for_recurrence(n: int) -&gt; Literal["full", "medium", "short"]:
+    if n &gt;= _RECURRENCE_THRESHOLDS[1]:
+        return "short"
+    if n &gt;= _RECURRENCE_THRESHOLDS[0]:
+        return "medium"
+    return "full"</pre>
+
+<p>
+Le soglie sono in una costante a livello di modulo, dichiarata vicino al renderer:
+</p>
+
+<pre>_RECURRENCE_THRESHOLDS = (3, 8)  # &lt; 3: full | 3..7: medium | &ge; 8: short</pre>
+
+<p>
+Citazione: <code>runtime/channels/approval.py:48-49</code>. Cambiare le soglie &egrave; una modifica locale di una riga; la struttura del rendering non si tocca.
+</p>
+
+<p>
+La forma medium e la forma short sono pensate per casi in cui Roberto sa cosa sta approvando: un agente che esegue una macro ricorrente, una sessione lunga in cui la stessa azione si ripete ogni minuto. La forma full resta il default per la prima volta e per le seconde volte: la cura di mostrare i dettagli &egrave; pi&ugrave; importante della velocit&agrave; di lettura.
+</p>
+
+<div class="callout warning">
+<strong>Chi conta le ricorrenze.</strong> In v1.1 il <code>recurrence_count</code> arriva dal chiamante (Vaglio o Policy) ed &egrave; un input al renderer. Il renderer non tiene contatori. Quando la pipeline integrata sar&agrave; completa, il pianificatore consulter&agrave; il <a href="mnest.html">mnest</a> (le tracce delle approvazioni passate) per calcolare il valore prima di costruire la <code>ApprovalRequest</code>.
+</div>
+
+<h1 id="cap5">5. Marker territorio</h1>
+
+<p>
+Una concessione di territorio &egrave; quando, approvando, Roberto non solo dice "s&iacute; a questa azione" ma anche "s&iacute; a questa <em>classe</em> di azioni nel futuro". Tre livelli, tre marker testuali:
+</p>
+
+<table>
+<tr><th>Concessione</th><th>Significato</th><th>Marker</th></tr>
+<tr><td><code>none</code></td><td>Solo quest'azione, qui e ora.</td><td>(nessuno)</td></tr>
+<tr><td><code>session</code></td><td>Per il resto della sessione corrente, Metnos pu&ograve; eseguire questa classe senza chiedere.</td><td><code> [territorio: sessione]</code></td></tr>
+<tr><td><code>permanent</code></td><td>Da ora in poi, questa classe &egrave; concessa in modo persistente.</td><td><code> [territorio: permanente]</code></td></tr>
+</table>
+
+<p>
+Il marker viene appeso in coda alla classificazione meta. Citazione: <code>runtime/channels/approval.py:42-46</code>:
+</p>
+
+<pre>_TERRITORY_MARKER = {
+    "none": "",
+    "session": " [territorio: sessione]",
+    "permanent": " [territorio: permanente]",
+}</pre>
+
+<p>
+&Egrave; un dizionario, non una funzione: la mappatura &egrave; statica e non dipende da altro. ASCII robusto su tutti i client (niente glifi che variano da font a font). La parentesi quadra apre un blocco visivamente distinto dal resto della meta-riga, che usa la barra verticale come separatore. La concessione si vede a colpo d'occhio anche in una notifica push troncata.
+</p>
+
+<div class="callout note">
+<strong>Niente persistenza in v1.1.</strong> Il marker dichiara l'<em>intenzione</em> di una concessione, non la implementa. Oggi <code>approval_registry.resolve()</code> non scrive un grant in <code>policy.py</code>: la concessione di territorio &egrave; documentata in carta ma non rende ancora silenziose le richieste future. La pipeline completa (vedi cap. 10) le legher&agrave;.
+</div>
+
+<h1 id="cap6">6. Approval registry SQLite</h1>
+
+<p>
+Quando la policy decide che un'azione richiede approvazione, qualcuno deve tener traccia della pending request finch&eacute; l'utente non risponde (o il TTL scade). Quel qualcuno &egrave; <code>runtime/approval_registry.py</code>: un modulo a sola SQLite, niente daemon, niente classi (a parte la dataclass del record).
+</p>
+
+<h2>6.1 Schema</h2>
+
+<p>
+Una sola tabella <code>pending</code>, primary key il token. Citazione: <code>runtime/approval_registry.py:34-52</code>:
+</p>
+
+<pre>CREATE TABLE IF NOT EXISTS pending (
+    token              TEXT PRIMARY KEY,
+    channel            TEXT NOT NULL,
+    sender_id          TEXT NOT NULL,
+    capability_class   TEXT NOT NULL,
+    action_verb        TEXT NOT NULL,
+    target_summary     TEXT NOT NULL,
+    created_at         TEXT NOT NULL,
+    expires_at         TEXT NOT NULL,
+    status             TEXT NOT NULL DEFAULT 'pending',
+    decision_at        TEXT,
+    decision_by_channel TEXT,
+    decision_by_sender  TEXT,
+    request_extra      TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_pending_status ON pending(status);
+CREATE INDEX IF NOT EXISTS idx_pending_expires ON pending(expires_at);</pre>
+
+<p>
+Quattro stati riconosciuti per la colonna <code>status</code>: <code>pending</code>, <code>approved</code>, <code>rejected</code>, <code>expired</code>. Le date sono ISO-8601 in UTC (<code>%Y-%m-%dT%H:%M:%SZ</code>), comode da confrontare lessicograficamente.
+</p>
+
+<h2>6.2 API</h2>
+
+<p>
+Cinque funzioni pubbliche. Tutte aprono e chiudono la connessione SQLite a ogni chiamata: niente connection pool, niente stato globale.
+</p>
+
+<table>
+<tr><th>Funzione</th><th>Cosa fa</th><th>Citazione</th></tr>
+<tr>
+  <td><code>create_pending(...)</code></td>
+  <td>Genera un token UUID (16 hex), calcola scadenza (<code>now + ttl_seconds</code>), inserisce il record con status <code>pending</code>. Ritorna la <code>PendingRequest</code> appena creata.</td>
+  <td><code>runtime/approval_registry.py:101-140</code></td>
+</tr>
+<tr>
+  <td><code>get_pending(token)</code></td>
+  <td>Lookup per chiave. Ritorna <code>PendingRequest</code> o <code>None</code>.</td>
+  <td><code>runtime/approval_registry.py:143-151</code></td>
+</tr>
+<tr>
+  <td><code>resolve(token, decision, *, by_channel, by_sender)</code></td>
+  <td>Single-shot: applica una decisione (<code>approved</code> o <code>rejected</code>). Verifica che la richiesta sia ancora <code>pending</code>, non scaduta, e che il decisore sia lo stesso del richiedente. Solleva <code>ApprovalError</code> in ogni altro caso.</td>
+  <td><code>runtime/approval_registry.py:154-210</code></td>
+</tr>
+<tr>
+  <td><code>cleanup_expired()</code></td>
+  <td>Marca come <code>expired</code> tutte le pending con <code>expires_at &lt; now</code>. Ritorna il numero di righe affette. Da chiamare periodicamente da uno scheduler o da un comando CLI.</td>
+  <td><code>runtime/approval_registry.py:213-227</code></td>
+</tr>
+<tr>
+  <td><code>list_pending(*, include_resolved=False, limit=50)</code></td>
+  <td>Per dashboard e debug. Ordina per <code>created_at DESC</code>.</td>
+  <td><code>runtime/approval_registry.py:230-250</code></td>
+</tr>
+</table>
+
+<h2>6.3 Database e TTL</h2>
+
+<p>
+Il path del DB &egrave; risolto in ordine: argomento esplicito <code>db_path</code> &gt; variabile d'ambiente <code>METNOS_APPROVALS_DB</code> &gt; default <code>~/.local/state/metnos/approvals.db</code>. La directory viene creata se manca. Citazione: <code>runtime/approval_registry.py:86-92</code>.
+</p>
+
+<p>
+Il TTL di default &egrave; 600 secondi (10 minuti). &Egrave; il tempo entro cui Roberto deve rispondere prima che la richiesta venga marcata <code>expired</code>; un sistema di reminder o di re-issue rimane responsabilit&agrave; del chiamante. Citazione: <code>runtime/approval_registry.py:30</code>.
+</p>
+
+<h2>6.4 La regola di sicurezza</h2>
+
+<p>
+Il punto di tensione &egrave; <code>resolve()</code>. Quattro verifiche, in ordine, e un dettaglio importante sulla persistenza. Citazione: <code>runtime/approval_registry.py:177-205</code>:
+</p>
+
+<ol>
+<li><strong>Token noto.</strong> Se il token non esiste, <code>ApprovalError("token sconosciuto")</code>.</li>
+<li><strong>Status <code>pending</code>.</strong> Se &egrave; gi&agrave; risolto (approved/rejected/expired), <code>ApprovalError("token gi&agrave; risolto")</code>: niente double-spending della decisione.</li>
+<li><strong>Non scaduto.</strong> Se <code>expires_at &lt; now</code>, viene <em>scritto</em> uno UPDATE che marca <code>status='expired'</code> e poi sollevato <code>ApprovalError</code>. La connessione &egrave; aperta in autocommit (<code>isolation_level=None</code>) proprio perch&eacute; la transizione a <code>expired</code> deve sopravvivere all'eccezione.</li>
+<li><strong>Decisore = richiedente.</strong> Se <code>row["channel"] != by_channel</code> o <code>row["sender_id"] != by_sender</code>, <code>ApprovalError("decisore non autorizzato")</code>: chi ha richiesto &egrave; chi pu&ograve; approvare. &Egrave; l'asse identit&agrave; descritto al cap.&nbsp;5 dell'<a href="../Metnos_Architecture_Intro_v1.html#cap5">Architettura</a>.</li>
+</ol>
+
+<p>
+Solo dopo i quattro check, lo UPDATE finale scrive la decisione e ritorna la <code>PendingRequest</code> aggiornata.
+</p>
+
+<h1 id="cap7">7. Dispatcher callback Telegram</h1>
+
+<p>
+Resta da spiegare come un click sul bottone "Approva" su Telegram diventi una chiamata a <code>approval_registry.resolve()</code>. La catena attraversa tre componenti: il channel out (che ha disegnato i bottoni), il channel in (che riceve il callback), il dispatcher del daemon.
+</p>
+
+<h2>7.1 Bottoni in uscita</h2>
+
+<p>
+<code>OutboundMessage.buttons</code> &egrave; <code>list[list[dict]]</code>; ogni dict ha le chiavi <code>text</code> (etichetta visibile) e <code>data</code> (callback_data che torner&agrave; al server). <code>render_approval_card</code> usa una sola riga di due bottoni:
+</p>
+
+<pre>buttons = [[
+    {"text": "Approva", "data": f"approve:{req.token}"},
+    {"text": "Rifiuta", "data": f"reject:{req.token}"},
+]]</pre>
+
+<p>
+<code>TelegramChannel.send</code> traduce questa struttura in <code>reply_markup.inline_keyboard</code> nel formato Telegram (<code>runtime/channels/telegram.py:108-114</code>). I bottoni vengono cos&iacute; mostrati attaccati al messaggio della carta.
+</p>
+
+<h2>7.2 Callback_query in arrivo</h2>
+
+<p>
+Quando l'utente clicca, Telegram non invia un nuovo messaggio: invia un oggetto <code>callback_query</code> nel prossimo <code>getUpdates</code>. <code>TelegramChannel.poll</code> lo riconosce esplicitamente. Citazione: <code>runtime/channels/telegram.py:135-156</code>:
+</p>
+
+<pre>cbq = u.get("callback_query")
+if cbq:
+    msg_ctx = cbq.get("message") or {}
+    out.append(InboundMessage(
+        channel=self.name,
+        sender_id=str(cbq.get("from", {}).get("id")
+                       or msg_ctx.get("chat", {}).get("id", "")),
+        text=cbq.get("data", ""),
+        message_id=str(msg_ctx.get("message_id", "")),
+        received_at=float(msg_ctx.get("date", time.time())),
+        extra={"kind": "callback", "callback_id": cbq.get("id"),
+                "from": cbq.get("from", {}), "update_id": uid},
+    ))
+    cb_id = cbq.get("id")
+    if cb_id:
+        self._call("answerCallbackQuery", {"callback_query_id": cb_id})
+    continue</pre>
+
+<p>
+Tre dettagli da notare. (a) Il <code>text</code> dell'<code>InboundMessage</code> non &egrave; un testo umano: &egrave; il <code>callback_data</code> grezzo (<code>approve:&lt;tok&gt;</code> o <code>reject:&lt;tok&gt;</code>). (b) Il <code>sender_id</code> &egrave; preso da <code>cbq.from.id</code> (chi ha cliccato), con fallback alla chat originale: serve a verificare che chi clicca sia chi ha generato la richiesta. (c) Il marker <code>extra={"kind": "callback"}</code> distingue il messaggio dai testi normali quando il dispatcher decide come trattarlo. La chiamata finale a <code>answerCallbackQuery</code> &egrave; richiesta da Telegram per togliere la rotella di caricamento sul bottone cliccato; non manda contenuto, solo un acknowledgement.
+</p>
+
+<h2>7.3 Dispatch nel daemon</h2>
+
+<p>
+<code>ChannelDaemon.handle_message</code> guarda <code>extra.kind</code> prima di tutto: se &egrave; <code>callback</code>, instrada al dispatcher dedicato. Citazione: <code>runtime/channels/daemon.py:122-154</code> e <code>runtime/channels/daemon.py:156-162</code>:
+</p>
+
+<pre>def _handle_callback(self, msg: InboundMessage) -&gt; dict:
+    """Risolve un callback_query 'approve:&lt;token&gt;' o 'reject:&lt;token&gt;'."""
+    data = (msg.text or "").strip()
+    if data.startswith("approve:"):
+        decision = "approved"
+        token = data[len("approve:"):]
+        user_label = "Approvato"
+    elif data.startswith("reject:"):
+        decision = "rejected"
+        token = data[len("reject:"):]
+        user_label = "Rifiutato"
+    else:
+        log.warning("callback_data non riconosciuto: %r", data)
+        return {"ok": False, "reason": "unknown_callback", "data": data}
+    if not token:
+        return {"ok": False, "reason": "missing_token"}
+    try:
+        rec = approval_registry.resolve(
+            token, decision,
+            by_channel=self.channel.name, by_sender=msg.sender_id,
+        )
+    except approval_registry.ApprovalError as e:
+        self._send_text(msg.sender_id,
+                        f"Approval non risolvibile: {e}",
+                        reply_to=msg.message_id)
+        return {"ok": False, "reason": "approval_failed", "error": str(e)}
+    log.info("approval risolto: token=%s decision=%s sender=%s",
+             token, decision, msg.sender_id)
+    self._send_text(msg.sender_id,
+                    f"{user_label}: {rec.action_verb} {rec.target_summary}",
+                    reply_to=msg.message_id)
+    return {"ok": True, "decision": decision, "token": token,
+            "capability_class": rec.capability_class}</pre>
+
+<p>
+La logica &egrave; lineare: parsing del prefisso <code>approve:</code> / <code>reject:</code>, estrazione del token, chiamata a <code>resolve()</code>, conferma testuale all'utente. Eventuali <code>ApprovalError</code> (token gi&agrave; risolto, scaduto, decisore non autorizzato) si traducono in un messaggio di errore al sender.
+</p>
+
+<div class="callout note">
+<strong>Il callback dispatch precede il check di pairing.</strong> In <code>handle_message</code> il blocco <code>if extra.kind == "callback"</code> arriva <em>prima</em> della verifica del pairing (<code>runtime/channels/daemon.py:161-162</code>). Il motivo &egrave; che <code>resolve()</code> &egrave; gi&agrave; pi&ugrave; restrittivo del check di pairing: richiede non solo che il sender sia noto, ma che sia esattamente lo stesso che ha generato la pending request. Il check di pairing diventerebbe ridondante.
+</div>
+
+<h2>7.4 L'asse identit&agrave; in pratica</h2>
+
+<p>
+L'<a href="../Metnos_Architecture_Intro_v1.html#cap5">Architettura cap. 5</a> distingue tre assi della sicurezza: libert&agrave;/safety, identit&agrave;/safety, perimetro/robustezza. Il flusso di approval mette in opera l'asse identit&agrave;: ogni richiesta &egrave; <em>etichettata</em> col canale e il sender che l'hanno generata, e ogni risoluzione verifica l'identit&agrave; del decisore prima di consumare il token. Un attaccante che riuscisse a sniffare un token e a usarlo da un altro chat ID non riuscirebbe a risolverlo: <code>ApprovalError("decisore non autorizzato")</code>.
+</p>
+
+<h1 id="cap8">8. Test</h1>
+
+<p>
+Tre raggruppamenti, tutti verdi alla data del 27 aprile 2026. I numeri puntano ai cluster del framework di test del runtime.
+</p>
+
+<h2>8.1 Cluster <code>approval_registry</code> (6/6)</h2>
+
+<table>
+<tr><th>#</th><th>Caso</th><th>Cosa verifica</th></tr>
+<tr><td>1</td><td><code>create_pending_genera_token_e_record</code></td><td><code>create_pending</code> ritorna una <code>PendingRequest</code> con token UUID, status <code>pending</code>, <code>expires_at</code> coerente con il TTL.</td></tr>
+<tr><td>2</td><td><code>resolve_approve_aggiorna_status_e_decision</code></td><td>Una resolve con <code>decision="approved"</code> dal richiedente porta lo status a <code>approved</code>, valorizza <code>decision_at</code> e <code>decision_by_*</code>.</td></tr>
+<tr><td>3</td><td><code>resolve_reject_simmetrico</code></td><td>Stesso percorso di (2) ma con <code>decision="rejected"</code>.</td></tr>
+<tr><td>4</td><td><code>resolve_token_sconosciuto_solleva</code></td><td>Token mai creato &rarr; <code>ApprovalError("token sconosciuto")</code>.</td></tr>
+<tr><td>5</td><td><code>resolve_doppia_chiamata_e_idempotenza</code></td><td>Dopo una resolve, una seconda con lo stesso token solleva <code>ApprovalError("token gi&agrave; risolto")</code>: niente double-spending.</td></tr>
+<tr><td>6</td><td><code>resolve_decisore_diverso_solleva_e_persistenza_expired</code></td><td>Decisore con sender_id diverso dal richiedente solleva <code>ApprovalError("decisore non autorizzato")</code>; richiesta scaduta viene marcata <code>expired</code> e l'UPDATE persiste anche dopo l'eccezione.</td></tr>
+</table>
+
+<h2>8.2 Cluster <code>channels</code> &mdash; callback dispatcher (5/5)</h2>
+
+<table>
+<tr><th>#</th><th>Caso</th><th>Cosa verifica</th></tr>
+<tr><td>1</td><td><code>handle_callback_approve_chiama_resolve_e_conferma</code></td><td>Inbound con <code>extra.kind=callback</code> e text <code>approve:&lt;tok&gt;</code> &rarr; <code>resolve()</code> chiamata con <code>"approved"</code>, messaggio di conferma "Approvato: ..." inviato al sender.</td></tr>
+<tr><td>2</td><td><code>handle_callback_reject_simmetrico</code></td><td>Stesso percorso ma con prefisso <code>reject:</code> &rarr; <code>"rejected"</code> + "Rifiutato: ...".</td></tr>
+<tr><td>3</td><td><code>handle_callback_data_malformato_logga_e_segnala</code></td><td>Callback senza prefisso noto &rarr; ritorno <code>{"ok": False, "reason": "unknown_callback"}</code>, log di warning.</td></tr>
+<tr><td>4</td><td><code>handle_callback_approval_error_invia_errore_a_sender</code></td><td>Quando <code>resolve()</code> solleva <code>ApprovalError</code>, il dispatcher invia un messaggio di errore al sender e ritorna <code>{"ok": False, "reason": "approval_failed"}</code>.</td></tr>
+<tr><td>5</td><td><code>handle_callback_precede_check_pairing</code></td><td>Il dispatch del callback funziona anche per un sender_id non pairato: la sicurezza &egrave; gi&agrave; in <code>resolve()</code>.</td></tr>
+</table>
+
+<h2>8.3 Module case &mdash; rendering carta (3)</h2>
+
+<table>
+<tr><th>#</th><th>Caso</th><th>Cosa verifica</th></tr>
+<tr><td>1</td><td><code>render_full_3_righe_con_marker_territorio</code></td><td><code>recurrence_count=0</code>, <code>territory_concession="permanent"</code> &rarr; tre righe, marker <code>[territorio: permanente]</code> in coda alla terza, due bottoni con prefissi <code>approve:</code>/<code>reject:</code>.</td></tr>
+<tr><td>2</td><td><code>render_medium_2_righe</code></td><td><code>recurrence_count=4</code> &rarr; due righe, classificazione meta inline nella prima.</td></tr>
+<tr><td>3</td><td><code>render_short_1_riga</code></td><td><code>recurrence_count=10</code> &rarr; una riga compatta con verbo capitalizzato e meta abbreviata fra parentesi quadre.</td></tr>
+</table>
+
+<h1 id="cap9">9. Esempi end-to-end</h1>
+
+<p>
+Tre esempi della stessa richiesta a tre stadi di ricorrenza. I bottoni sono renderizzati come pseudo-elementi sotto la carta.
+</p>
+
+<div class="example">
+<div class="ex-label">Esempio 1 &mdash; Forma full (prima volta)</div>
+<p><code>recurrence_count=0</code>, <code>reversibility="reversible"</code>, <code>territory_concession="none"</code>.</p>
+<div class="card">Vuoi che scarichi?
+rapporto.pdf da drive.google.com -&gt; ~/downloads/ (~2.4 MB)
+reversible | classe: fs_write:~/downloads/**<div class="btns"><span class="btn">Approva</span><span class="btn reject">Rifiuta</span></div></div>
+</div>
+
+<div class="example">
+<div class="ex-label">Esempio 2 &mdash; Forma medium (quarta volta)</div>
+<p><code>recurrence_count=3</code>, stessa azione, stessa classe.</p>
+<div class="card">Vuoi che scarichi? (reversible)
+rapporto.pdf da drive.google.com -&gt; ~/downloads/ (~2.4 MB)<div class="btns"><span class="btn">Approva</span><span class="btn reject">Rifiuta</span></div></div>
+</div>
+
+<div class="example">
+<div class="ex-label">Esempio 3 &mdash; Forma short (ottava volta)</div>
+<p><code>recurrence_count=8</code>, stessa azione.</p>
+<div class="card">Scarichi rapporto.pdf da drive.google.com -&gt; ~/downloads/ (~2.4 MB) [rev]?<div class="btns"><span class="btn">Approva</span><span class="btn reject">Rifiuta</span></div></div>
+</div>
+
+<p>
+In tutti i casi i due bottoni hanno <code>callback_data</code> della forma <code>approve:&lt;tok&gt;</code> e <code>reject:&lt;tok&gt;</code>; il token &egrave; lo stesso che il <code>approval_registry</code> ha emesso quando la richiesta &egrave; stata creata. Quando l'utente clicca, il flusso descritto al cap. 7 si avvia: il <code>callback_query</code> arriva al daemon, <code>_handle_callback</code> chiama <code>resolve()</code>, l'utente riceve la conferma testuale "Approvato: scarichi rapporto.pdf da drive.google.com -&gt; ~/downloads/ (~2.4 MB)".
+</p>
+
+<h1 id="cap10">10. Limiti e cosa &egrave; rimandato a v1.2+</h1>
+
+<table>
+<tr><th>Limite v1.1</th><th>Quando si toglie</th></tr>
+<tr>
+  <td><strong>Niente UI per CLI o voce.</strong> Oggi la carta esiste solo via Telegram. Un terminale interattivo o un canale voce richiederebbero un secondo renderer (per la voce, una sintesi parlata della stessa struttura logica).</td>
+  <td>Quando arriveranno i canali aggiuntivi previsti dall'<a href="channel.html">astrazione channel</a>: Signal API, voce via Piper/whisper.cpp. Il pattern di carta logica resta; cambia solo la traduzione finale.</td>
+</tr>
+<tr>
+  <td><strong>Niente batching.</strong> Cinque pending request arrivano come cinque messaggi separati. Non c'&egrave; un digest serale n&eacute; aggregazione per sender.</td>
+  <td>Quando il <em>bother budget</em> della policy diventer&agrave; pi&ugrave; fine: una soglia oltre la quale le richieste non urgenti vengono accumulate e mostrate in un unico colpo.</td>
+</tr>
+<tr>
+  <td><strong>Niente revoca della pending dal lato proponente.</strong> Una volta inviata, l'utente pu&ograve; solo approvare o rifiutare. Il pianificatore non pu&ograve; cancellare la richiesta a met&agrave; (per esempio se le condizioni sono cambiate). Il TTL di 10 minuti copre il caso peggiore.</td>
+  <td>Quando si introdurr&agrave; un <code>cancel_pending(token, reason)</code>: scriver&agrave; uno status <code>cancelled</code> e invier&agrave; un messaggio di update al sender. Da pianificare insieme al refresh della <a href="policy.html">policy</a>.</td>
+</tr>
+<tr>
+  <td><strong>Niente persistenza grant automatica da approval.</strong> Oggi <code>resolve()</code> non scrive un grant in <code>policy.py</code>: una concessione di territorio "permanente" approvata in carta non rende silenziose le richieste future della stessa classe. Il marker dichiara l'intenzione, non la implementa.</td>
+  <td>Quando il pianificatore integrer&agrave; <code>policy</code> e <code>approval_registry</code>: la <code>resolve()</code> chiamer&agrave; <code>policy.grant(capability_class, scope=territory_concession)</code> per scrivere il grant. Prossima iterazione, dopo la riscrittura di <code>policy.html</code> v1.1.</td>
+</tr>
+<tr>
+  <td><strong>Niente conta automatica delle ricorrenze.</strong> <code>recurrence_count</code> arriva dal chiamante. Il renderer non interroga il <a href="mnest.html">mnest</a>.</td>
+  <td>Quando il pianificatore integrato deciso al capitolo precedente sar&agrave; in piedi: prima di costruire la <code>ApprovalRequest</code> consulter&agrave; le tracce delle approvazioni passate per la stessa classe e calcoler&agrave; il valore.</td>
+</tr>
+<tr>
+  <td><strong>Niente Vaglio reale.</strong> In v1.1 il <a href="vaglio.html">Vaglio</a> &egrave; stub <em>always-approve</em>: l'infrastruttura di approval esiste, ma le richieste reali non vengono ancora generate dal flusso di pianificazione.</td>
+  <td>Fase 5 della roadmap: rilascio del Vaglio graduato che computa <code>effective_outcome</code> e solleva <code>approval_required</code> quando previsto. A quel punto la pipeline qui descritta entrer&agrave; in funzione end-to-end nel pianificatore reale.</td>
+</tr>
+</table>
+
+<h2>Note finali</h2>
+
+<p>
+<code>approval_ux</code> &egrave; un componente piccolo per linee di codice (renderer ~90 righe, registry ~280, dispatcher ~30 nel daemon) ma denso per significato: &egrave; il momento in cui Metnos si ferma e chiede. La cura della carta a 3 righe &mdash; verbo coniugato, oggetto leggibile, classificazione meta &mdash; non &egrave; estetica: &egrave; il modo in cui si rende possibile la decisione informata dell'utente in due secondi.
+</p>
+
+<p>
+La regola del decisore = richiedente, scritta dentro <code>resolve()</code>, &egrave; il punto fermo che permette al dispatcher dei callback di precedere il check di pairing senza creare buchi. Non si fida del dispatcher; si fida solo del registry. La sicurezza &egrave; concentrata nel posto giusto.
+</p>
+
+</body>
+</html>

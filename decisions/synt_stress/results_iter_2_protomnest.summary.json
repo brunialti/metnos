@@ -1,0 +1,30 @@
+{
+  "n": 30,
+  "by_expected": {
+    "new_executor": 0,
+    "proto_mnest": 30,
+    "rejected": 0
+  },
+  "by_outcome": {
+    "new_executor": 0,
+    "proto_mnest": 26,
+    "rejected": 0,
+    "synt_gap": 0,
+    "fail_other": 4
+  },
+  "correct": {
+    "new_executor": 0,
+    "proto_mnest": 26,
+    "rejected": 0
+  },
+  "accuracy_pct": {
+    "new_executor": 0.0,
+    "proto_mnest": 86.66666666666667,
+    "rejected": 0.0
+  },
+  "overall_correct": 26,
+  "overall_pct": 86.66666666666667,
+  "avg_latency_ms": 18373,
+  "total_in_tokens": 776906,
+  "total_out_tokens": 6815
+}

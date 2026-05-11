@@ -1,0 +1,21 @@
+[Unit]
+Description=Metnos HTTP API + admin dashboard (:8770)
+After=network.target
+StartLimitIntervalSec=120
+StartLimitBurst=5
+
+[Service]
+ExecStartPre=/bin/sh -c 'fuser -k 8770/tcp 2>/dev/null || true'
+ExecStart=/opt/suprastructure/.venv/bin/python /opt/myclaw/runtime/metnos_http_server.py --host 0.0.0.0 --port 8770
+User=roberto
+WorkingDirectory=/opt/myclaw
+Restart=on-failure
+RestartSec=10
+Environment=HOME=/home/roberto
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONPATH=/usr/lib/python3/dist-packages:/opt/myclaw/runtime:/opt/suprastructure/src
+Environment=METNOS_HTTP_HOST=0.0.0.0
+Environment=METNOS_HTTP_PORT=8770
+
+[Install]
+WantedBy=multi-user.target

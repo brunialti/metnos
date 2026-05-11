@@ -1,0 +1,101 @@
+# Manifest dell'executor `find_dirs` — Metnos v1.1
+# Walk ricorsivo dell'albero di directory con metadati aggregati per dir.
+
+manifest_format = "1.0"
+
+name        = "find_dirs"
+version     = "0.1.0"
+author      = "Roberto Brunialti <roberto.brunialti@metnos.com>"
+affinity        = ["find", "trova", "cerca", "list", "elenca", "search", "directory", "dirs", "cartelle", "folder", "folders", "subdir", "subdirs", "sottocartella", "sottocartelle", "tree", "albero", "walk", "stats", "statistiche", "popolose", "popolate", "size", "dimensione", "metadata", "metadati", "fs"]
+revertible      = false
+lifecycle       = "active"
+
+[description]
+it = "Walk ricorsivo dell'albero di directory a partire da base_path. Ritorna SOLO directory (mai file singoli) con metadati aggregati per ognuna: file_count (numero di file diretti, NON ricorsivo), total_bytes (somma byte dei file diretti), size_min (file piu' piccolo), size_max (file piu' grande), mtime (della dir stessa), name. Pensato per query come 'directory piu' popolose', 'directory piu' grandi', 'panoramica del sottoalbero', 'cartella con file piu' grossi': payload leggero anche su alberi grandi (mille directory ≈ 100KB invece di megabyte). Per la lista dei file contenuti in una dir specifica usa list_dirs(path, recursive=false) o find_files(base_path=path, patterns=...). Output: entries=[{path, name, file_count, total_bytes, size_min, size_max, mtime}]: per top-K (es. piu' popolose, piu' grandi) leggi le entries e formula direttamente la final_answer estraendo i K elementi col massimo del campo richiesto. Per filtraggio condizionale usa filter_entries. Truncation: dichiarata via truncated:true + truncated_what='directory' + used + cap_field='max_results' quando si raggiunge max_results."
+en = "Recursive walk of the directory tree starting from base_path. Returns ONLY directories (never individual files) with aggregated metadata for each: file_count (number of direct files, NOT recursive), total_bytes (sum of bytes of direct files), size_min (smallest file), size_max (largest file), mtime (of the directory itself), name. Designed for queries such as 'most populated directory', 'largest directory', 'subtree overview', 'folder with largest files': lightweight payload even on large trees (one thousand directories ≈ 100KB instead of megabytes). To list the files contained in a specific dir use list_dirs(path, recursive=false) or find_files(base_path=path, patterns=...). Output: entries=[{path, name, file_count, total_bytes, size_min, size_max, mtime}]: for top-K (e.g., most populated, largest) read the entries and formulate the final_answer directly by extracting the K elements with the maximum of the requested field. For conditional filtering use filter_entries. Truncation: declared via truncated:true + truncated_what='directory' + used + cap_field='max_results' when max_results is reached."
+
+[code]
+files  = ["find_dirs.py"]
+digest = "sha256:b7dd71ed0bc232373b5ee7b65e7646d29dc46846827629c66c7ea45372fa2c32"
+
+[args]
+type     = "object"
+required = ["base_path"]
+
+[args.properties.base_path]
+type        = "string"
+
+[args.properties.base_path.description]
+it = "Directory radice del walk. Path assoluto o ~ espandibile (es. '~', '/opt/myclaw'). Deve essere dentro lo scope di lettura concesso."
+en = "──────────────────────────────────────────── Walk root directory. Absolute path or expandable ~ (e.g., '~', '/opt/myclaw'). MUST be within the granted read scope. ────────────────────────────────────────────"
+
+[args.properties.recursive]
+type        = "boolean"
+default     = true
+
+[args.properties.recursive.description]
+it = "Se true (default), attraversa tutto l'albero discendente. Se false, ritorna solo la base_path con i suoi metadati immediati."
+en = "If true (default), traverse the entire descendant tree. If false, return only the base_path with its immediate metadata."
+
+[args.properties.max_depth]
+type        = "integer"
+minimum     = 0
+default     = 10
+
+[args.properties.max_depth.description]
+it = "Profondita' massima della ricorsione (livelli di sottocartelle). 0 = solo base_path. Default 10."
+en = "Maximum recursion depth (subfolder levels). 0 = only base_path. Default 10."
+
+[args.properties.max_results]
+type        = "integer"
+minimum     = 1
+default     = 1000
+
+[args.properties.max_results.description]
+it = "Tetto massimo di directory restituite. Default 1000. Quando raggiunto, l'output ha truncated=true e il runtime aggiunge un avviso al messaggio finale."
+en = "Maximum number of directories returned. Default 1000. When reached, the output has truncated=true and the runtime adds a warning to the final message."
+
+[args.properties.include_hidden]
+type        = "boolean"
+default     = false
+
+[args.properties.include_hidden.description]
+it = "Se true, include directory che iniziano con '.' (es. .git, .cache). Default false."
+en = "If true, include directories that start with '.' (e.g., .git, .cache). Default false."
+
+[[capabilities]]
+name = "fs:read"
+hint = ["~/**", "/opt/**", "/tmp/**"]
+
+[[tests]]
+name     = "walk_semplice"
+setup    = "mkdir -p /tmp/metnos_test_finddirs/a/aa /tmp/metnos_test_finddirs/b && echo 1 > /tmp/metnos_test_finddirs/a/x.txt && echo 2 > /tmp/metnos_test_finddirs/a/aa/y.txt && echo 3 > /tmp/metnos_test_finddirs/b/z.txt"
+input    = { base_path = "/tmp/metnos_test_finddirs" }
+expect   = { ok = true, metadata_field_eq = { count = 4 } }
+teardown = "rm -rf /tmp/metnos_test_finddirs"
+
+[[tests]]
+name     = "non_ricorsivo"
+setup    = "mkdir -p /tmp/metnos_test_finddirs/a && echo 1 > /tmp/metnos_test_finddirs/a/x.txt"
+input    = { base_path = "/tmp/metnos_test_finddirs", recursive = false }
+expect   = { ok = true, metadata_field_eq = { count = 1 } }
+teardown = "rm -rf /tmp/metnos_test_finddirs"
+
+[[tests]]
+name     = "max_results_tronca"
+setup    = "mkdir -p /tmp/metnos_test_finddirs/a /tmp/metnos_test_finddirs/b /tmp/metnos_test_finddirs/c"
+input    = { base_path = "/tmp/metnos_test_finddirs", max_results = 2 }
+expect   = { ok = true, metadata_field_eq = { count = 2, truncated = true } }
+teardown = "rm -rf /tmp/metnos_test_finddirs"
+
+[[tests]]
+name     = "exclude_hidden_default"
+setup    = "mkdir -p /tmp/metnos_test_finddirs/visible /tmp/metnos_test_finddirs/.hidden && echo 1 > /tmp/metnos_test_finddirs/visible/x.txt"
+input    = { base_path = "/tmp/metnos_test_finddirs" }
+expect   = { ok = true, metadata_field_eq = { count = 2 } }
+teardown = "rm -rf /tmp/metnos_test_finddirs"
+
+[[tests]]
+name   = "fallisce_su_base_path_inesistente"
+input  = { base_path = "/tmp/metnos_does_not_exist_xyz" }
+expect = { ok = false, error_contains = "not found" }

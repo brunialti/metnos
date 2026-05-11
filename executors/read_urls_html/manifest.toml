@@ -1,0 +1,69 @@
+# Manifest dell'executor `read_urls_html` — Metnos v1.1
+# Lettura del contenuto principale di pagine HTML (ADR 0081, 4/5/2026).
+
+manifest_format = "1.0"
+
+name        = "read_urls_html"
+version     = "0.1.0"
+timeout_s   = 300
+author      = "Roberto Brunialti <roberto.brunialti@metnos.com>"
+affinity    = ["read", "leggi", "html", "pagina", "page", "url", "urls", "web", "site", "article", "articolo", "news", "fetch", "scarica", "extract", "estrai", "testo", "content", "contenuto", "readability"]
+
+[description]
+it = "Scarica una lista di URL HTML e ritorna il contenuto principale come plain text deterministico (no LLM). Strip di <script>, <style>, <nav>, <header>, <footer>, <aside>, <form>, <noscript>; preferenza container <article> > <main> > <body> (heuristica readability-lite). Estrae meta: og:* (open graph), description, author, <time datetime=...>. Ritorna title, body_text trimmato a 50000 char, lang dell'<html>, fetched_at. Skippa Content-Type != 'text/html'. User-Agent fisso 'metnos-crawler/1.1 (+contact@metnos.com)'. Per siti autenticati: passa 'auth_cookies_file' come path a un Mozilla cookies.txt (vedi `login_session`). Esempio dopo find_urls: read_urls_html(from_step=1) → entries=[{url, title, body_text, meta:{...}, lang, fetched_at}]. Output: entries (stesso schema in input + body_text), ok_count, fail_count, failed=[{url, error}]."
+en = "Download a list of HTML URLs and return the main content as deterministic plain text (no LLM). Strip <script>, <style>, <nav>, <header>, <footer>, <aside>, <form>, <noscript>; preference container <article> > <main> > <body> (readability-lite heuristic). Extract meta: og:* (open graph), description, author, <time datetime=...>. Return title, body_text trimmed to 50000 char, lang of <html, fetched_at. Skip Content-Type != 'text/html'. Fixed User-Agent 'metnos-crawler/1.1 (+contact@metnos.com)'. For authenticated sites: pass 'auth_cookies_file' as a path to a Mozilla cookies.txt (see `login_session`). Example after find_urls: read_urls_html(from_step=1) → entries=[{url, title, body_text, meta:{...}, lang, fetched_at}]. Output: entries (same schema as input + body_text), ok_count, fail_count, failed=[{url, error}]."
+
+[code]
+files  = ["read_urls_html.py"]
+digest = "sha256:f9682c268f6c69f353cadc805b80980c64a9d3be06c2fba0c7c15ed246d4d97f"
+
+[args]
+type     = "object"
+required = ["urls"]
+
+[args.properties.urls]
+type        = "array"
+
+[args.properties.urls.description]
+it = "Lista di URL HTTP/HTTPS da leggere come HTML. Anche un singolo URL passato come array a 1 elemento. Esempio: ['https://news.example.org/articolo-1']. In pipeline ricevi via from_step dall'output di find_urls."
+en = "List of HTTP/HTTPS URLs to be read as HTML. Even a single URL passed as a 1-element array. Example: ['https://news.example.org/article-1']. In the pipeline, you receive this via from_step from the output of find_urls."
+
+[args.properties.auth_cookies_file]
+type        = "string"
+
+[args.properties.auth_cookies_file.description]
+it = "Path a un file Mozilla cookies.txt (formato Netscape). Tutti i cookie validi per gli URL passati vengono iniettati nelle Request. Esempio: '~/.config/metnos/cookies/web.spaggiari.eu.txt'."
+en = "Path to a Mozilla cookies.txt file (Netscape format). All cookies valid for the passed URLs are injected into the Requests. Example: '~/.config/metnos/cookies/web.spaggiari.eu.txt'."
+
+[args.properties.timeout_s]
+type        = "number"
+default     = 10.0
+minimum     = 1.0
+maximum     = 60.0
+
+[args.properties.timeout_s.description]
+it = "Timeout per singola richiesta HTTP, in secondi. Default 10.0."
+en = "Timeout for single HTTP request, in seconds. Default 10.0."
+
+[args.properties.max_bytes]
+type        = "integer"
+minimum     = 0
+default     = 2000000
+
+[args.properties.max_bytes.description]
+it = "Tetto sui byte letti per pagina. Default 2000000 (2 MB)."
+en = "Cap on bytes read per page. Default 2000000 (2 MB)."
+
+[[capabilities]]
+name = "network.read"
+hint = ["http://*", "https://*"]
+
+[[tests]]
+name   = "errore_se_urls_non_lista"
+input  = { urls = 123 }
+expect = { ok = false, error_contains = "list" }
+
+[[tests]]
+name   = "lista_vuota_ok"
+input  = { urls = [] }
+expect = { ok = true, metadata_field_eq = { ok_count = 0, fail_count = 0 } }

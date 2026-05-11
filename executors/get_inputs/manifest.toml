@@ -1,0 +1,107 @@
+# Manifest dell'executor `get_inputs` — Metnos v1.1
+# Naming compositivo: azione_oggetto. ADR 0090 (4-5/5/2026).
+# Object 16 di OBJECTS in vocab.py: `inputs` come oggetto-strumento per
+# raccolta dichiarativa di valori dall'utente in risposta a un dialogo.
+
+manifest_format = "1.0"
+
+name        = "get_inputs"
+version     = "0.1.0"
+author      = "Roberto Brunialti <roberto.brunialti@metnos.com>"
+affinity    = ["chiedi", "domanda", "dialogo", "dialog", "input", "inputs",
+                "form", "modulo", "prompt", "wizard", "configura",
+                "credenziali", "credentials", "conferma", "confirm",
+                "valori", "values", "risposta"]
+
+[description]
+it = "Apre un dialogo strutturato con l'utente per raccogliere uno o piu' valori. Il PLANNER dichiara le domande in `dialog`; il runtime + channel adapter le presentano all'utente (sequenziale in chat, oppure form unico in HTTP); l'utente risponde; al termine ritorna `values={var: value}`. USO CORRETTO: quando servono input strutturati che il PLANNER non puo' derivare da observation precedenti (credenziali, conferme di azioni distruttive, scelte multiple, configurazioni). NON CONFONDERE CON: `request_new_executor` (sintetizza un nuovo verbo riusabile), `admin` (esegue un comando shell singolo), `find_*`/`read_*` (leggono dati gia' esistenti). DEVI: passare `dialog` come lista di step `{var, prompt, schema: {kind, ...}, optional?}`; ogni `var` diventa una chiave del dict di output. DEVI: usare `schema.kind` ammessi: `text` (default), `credentials` (mask UI con `secret=true`), `yes_no`, `choice` (con `choices=[...]`), `choice_with_preview` (con `options=[{value,label,preview_image_path}]` per disambiguazione visiva con miniature), `multi_choice`, `number`, `date`, `file_path`, `location`. NON DEVI: chiedere valori che il PLANNER puo' derivare da observation precedenti dello stesso turno. NON DEVI: usare `yes_no` per conferme banali — riservalo ad azioni rischiose o destinazioni ambigue. Esempio credenziali: `dialog=[{var:'username', prompt:'Username:', schema:{kind:'text'}}, {var:'password', prompt:'Password:', schema:{kind:'credentials', secret:true}}]`. Esempio conferma azione: `dialog=[{var:'confirm', prompt:'Eliminare 234 file?', schema:{kind:'yes_no'}}]`. Esempio disambiguation visiva: `dialog=[{var:'chosen', prompt:'Quale Silvia?', schema:{kind:'choice_with_preview', options:[{value:'silvia_buffa', label:'Silvia Buffa (12)', preview_image_path:'/abs/p.jpg#bbox=10,20,100,150'}, ...]}}]`. Output: `{ok, decision in [input_required, completed, cancelled], dialog_id, step_index, step_total, values: {var: value}, expandable_caps: [{kind:'get_inputs_response', dialog_id}], final_message_hint}`. fmt='auto' decide form (HTTP, ≥3 step) o dialogue (Telegram/CLI); 'voice' e' stub."
+en = "Opens a structured dialogue with the user to collect one or more values. The PLANNER declares the questions in `dialog`; the runtime + channel adapter presents them to the user (sequential in chat, or a single form in HTTP); the user responds; upon completion, it returns `values={var: value}`. CORRECT USE: when structured inputs are needed that the PLANNER cannot derive from previous observations (credentials, confirmations of destructive actions, multiple choices, configurations). DO NOT CONFUSE WITH: `request_new_executor` (synthesizes a new reusable verb), `admin` (executes a single shell command), `find_*`/`read_*` (read already existing data). MUST: pass `dialog` as a list of steps `{var, prompt, schema: {kind, ...}, optional?}`; each `var` becomes a key in the output dict. MUST: use `schema.kind` allowed: `text` (default), `credentials` (mask UI with `secret=true`), `yes_no`, `choice` (with `choices=[...]`), `choice_with_preview` (with `options=[{value,label,preview_image_path}]` for visual disambiguation with thumbnails), `multi_choice`, `number`, `date`, `file_path`, `location`. MUST NOT: ask for values that the PLANNER can derive from previous observations of the same turn. MUST NOT: use `yes_no` for trivial confirmations — reserve it for risky actions or ambiguous destinations. Credentials example: `dialog=[{var:'username', prompt:'Username:', schema:{kind:'text'}}, {var:'password', prompt:'Password:', schema:{kind:'credentials', secret:true}}]`. Action confirmation example: `dialog=[{var:'confirm', prompt:'Eliminare 234 file?', schema:{kind:'yes_no'}}]`. Visual disambiguation example: `dialog=[{var:'chosen', prompt:'Which Silvia?', schema:{kind:'choice_with_preview', options:[{value:'silvia_buffa', label:'Silvia Buffa (12)', preview_image_path:'/abs/p.jpg#bbox=10,20,100,150'}, ...]}}]`. Output: `{ok, decision in [input_required, completed, cancelled], dialog_id, step_index, step_total, values: {var: value}, expandable_caps: [{kind:'get_inputs_response', dialog_id}], final_message_hint}`. fmt='auto' decides form (HTTP, ≥3 steps) or dialogue (Telegram/CLI); 'voice' is a stub."
+
+[code]
+files  = ["get_inputs.py"]
+digest = "sha256:d5fea1401af3700766791e8852bd64818562498f630e2e4105db6e2d99919089"
+
+[args]
+type     = "object"
+required = ["title", "dialog"]
+
+[args.properties.title]
+type        = "string"
+
+[args.properties.title.description]
+it = "Titolo del dialogo. 1 frase concisa, max 80 caratteri. Es. 'Credenziali per cifs_NAS', 'Conferma cancellazione', 'Configura backup notturno'."
+en = "Dialogue title. 1 concise sentence, max 80 characters. E.g., 'Credentials for cifs_NAS', 'Confirm deletion', 'Configure nightly backup'."
+
+[args.properties.description]
+type        = "string"
+
+[args.properties.description.description]
+it = "Descrizione opzionale (1-2 frasi) mostrata sotto al titolo. Spiega il contesto / l'effetto degli input. Es. 'Server CIFS · saranno cifrate.'"
+en = "──────────────────────────────────────────── Optional description (1-2 sentences) shown under the title. Explains the context / the effect of the inputs. E.g. 'CIFS Server · will be encrypted.' ────────────────────────────────────────────"
+
+[args.properties.dialog]
+type        = "array"
+items       = { type = "object" }
+
+[args.properties.dialog.description]
+it = "Lista degli step del dialogo. Ogni elemento e' un dict `{var, prompt, schema, optional?, default?}`. `var` e' un identificatore snake_case che diventa la chiave del dict di output. `prompt` e' la domanda mostrata all'utente (max 200 char). `schema.kind` definisce il tipo di input. Min 1 step, max 30. Ordine = ordine di presentazione nel dialogue."
+en = "List of dialogue steps. Each element is a dict `{var, prompt, schema, optional?, default?}`. `var` is a snake_case identifier that becomes the key of the output dict. `prompt` is the question shown to the user (max 200 char). `schema.kind` defines the input type. Min 1 step, max 30. Order = order of presentation in the dialogue."
+
+[args.properties.fmt]
+type        = "string"
+enum        = ["auto", "dialogue", "form", "voice"]
+default     = "auto"
+
+[args.properties.fmt.description]
+it = "Modalita' di rendering. 'auto' (default): form se ≥3 step su canale HTTP, altrimenti dialogue. 'dialogue': sequenziale in chat (Telegram/CLI). 'form': unico form HTTP standalone con URL `/agent/dialog/<dialog_id>/form`. 'voice': stub (oggi degrada a dialogue)."
+en = "Rendering modes. 'auto' (default): form if ≥3 steps on HTTP channel, otherwise dialogue. 'dialogue': sequential in chat (Telegram/CLI). 'form': single standalone HTTP form with URL `/agent/dialog/<dialog_id>/form`. 'voice': stub (currently degrades to dialogue)."
+
+[args.properties.actor]
+type        = "string"
+
+[args.properties.actor.description]
+it = "Opzionale. Identificatore logico dell'utente che riceve il dialogo (multi-user). Default 'host'. Il runtime lo deriva di norma dall'actor del turno; non e' necessario settarlo dal PLANNER."
+en = "Optional. Logical identifier of the user receiving the dialogue (multi-user). Default 'host'. The runtime normally derives it from the turn actor; it is not necessary to set it from the PLANNER."
+
+[args.properties.timeout_s]
+type        = "integer"
+minimum     = 1
+maximum     = 3600
+
+[args.properties.timeout_s.description]
+it = "Opzionale. TTL del dialogo in secondi. Default 3600 (1 h). Max 3600. Oltre, lo stato pendente viene scartato dal cleanup."
+en = "Optional. Dialogue TTL in seconds. Default 3600 (1 h). Max 3600. Beyond this, the pending state is discarded by the cleanup."
+
+[[capabilities]]
+name = "dialog.user_input"
+hint = []
+
+[[tests]]
+name   = "manca_dialog_fallisce"
+input  = { title = "test" }
+expect = { ok = false, error_contains = "dialog" }
+
+[[tests]]
+name   = "dialog_vuoto_fallisce"
+input  = { title = "test", dialog = [] }
+expect = { ok = false, error_contains = "almeno uno step" }
+
+[[tests]]
+name   = "var_duplicate_fallisce"
+input  = { title = "test", dialog = [{ var = "x", prompt = "?", schema = { kind = "text" } }, { var = "x", prompt = "??", schema = { kind = "text" } }] }
+expect = { ok = false, error_contains = "duplicate" }
+
+[[tests]]
+name   = "schema_kind_invalido_fallisce"
+input  = { title = "test", dialog = [{ var = "x", prompt = "?", schema = { kind = "weirdo" } }] }
+expect = { ok = false, error_contains = "kind" }
+
+[[tests]]
+name   = "happy_path_singolo_step_text"
+input  = { title = "Quale citta'?", dialog = [{ var = "city", prompt = "Citta':", schema = { kind = "text" } }] }
+expect = { ok = true, metadata_field_eq = { decision = "input_required", step_total = 1 } }
+
+[[tests]]
+name   = "happy_path_credenziali_due_step"
+input  = { title = "Credenziali NAS", dialog = [{ var = "username", prompt = "User:", schema = { kind = "text" } }, { var = "password", prompt = "Pwd:", schema = { kind = "credentials", secret = true } }] }
+expect = { ok = true, metadata_field_eq = { decision = "input_required", step_total = 2 } }

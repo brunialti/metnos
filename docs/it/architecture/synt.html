@@ -1,0 +1,1006 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Metnos &mdash; synt v1.1 (tested)</title>
+    <meta name="description" content="Microprogettazione di synt: il processo che fa nascere e maturare il pool degli executor. Cascata reattiva (comporre, generare) e introvertiva (fondere, generalizzare, specializzare). Telos di non-rinuncia.">
+    <meta name="keywords" content="synt, sintesi, cascata, comporre, generare, fondere, generalizzare, executor, mnest, telos, microprogettazione, metnos, Metnos">
+    <meta name="author" content="Roberto Brunialti">
+    <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large">
+    <link rel="canonical" href="https://metnos.com/it/architecture/synt.html">
+    <link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/synt.html">
+    <link rel="alternate" hreflang="x-default" href="https://metnos.com/it/architecture/synt.html">
+    <meta property="og:type" content="article">
+    <meta property="og:url" content="https://metnos.com/it/architecture/synt.html">
+    <meta property="og:title" content="Metnos &mdash; synt v1.1 (tested)">
+    <meta property="og:description" content="La cascata di sintesi: comporre prima, generare poi; in omeostasi notturna fondere, generalizzare, specializzare. Telos di non-rinuncia.">
+    <meta property="og:locale" content="it_IT">
+    <meta property="og:site_name" content="Metnos">
+    <meta name="twitter:card" content="summary">
+    <meta name="twitter:title" content="Metnos &mdash; synt v1.1 (tested)">
+    <script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "TechArticle",
+  "headline": "Metnos — synt v1.1",
+  "description": "Microprogettazione canonica di synt: cascata reattiva e introvertiva, telos di non-rinuncia.",
+  "url": "https://metnos.com/it/architecture/synt.html",
+  "inLanguage": "it",
+  "isPartOf": {"@type": "WebSite", "name": "Metnos", "url": "https://metnos.com/"},
+  "author": {"@type": "Person", "name": "Roberto Brunialti"},
+  "about": "Metnos component: synt (canonical, replaces synthesizer)"
+}
+    </script>
+    <style>
+:root {
+    --navy: #1A477A; --navy-light: #2B6CB0; --sage: #548235;
+    --bronze: #A0522D; --plum: #6B21A8;
+    --bg: #FAFBFC; --text: #1a1a1a;
+    --border: #d0d7de; --code-bg: #f6f8fa;
+    --table-header: #1A477A; --table-alt: #f0f4f8;
+    --note-bg: #dbeafe; --note-border: #3b82f6;
+    --tip-bg: #dcfce7; --tip-border: #16a34a;
+    --warn-bg: #fef3c7; --warn-border: #f59e0b;
+    --danger-bg: #fee2e2; --danger-border: #dc2626;
+    --muted: #64748B;
+}
+* { box-sizing: border-box; }
+body { font-family: 'Segoe UI', Calibri, -apple-system, sans-serif; font-size: 11pt; line-height: 1.65; color: var(--text); background: var(--bg); max-width: 960px; margin: 0 auto; padding: 40px 30px; }
+h1 { color: var(--navy); font-size: 20pt; border-bottom: 3px solid var(--navy); padding-bottom: 8px; margin-top: 50px; page-break-before: always; }
+h1:first-of-type { page-break-before: avoid; }
+h2 { color: var(--navy-light); font-size: 14pt; margin-top: 30px; border-bottom: 1px solid var(--border); padding-bottom: 4px; }
+h3 { color: var(--navy); font-size: 12pt; margin-top: 20px; }
+p { margin: 10px 0; }
+table { width: 100%; border-collapse: collapse; margin: 15px 0; font-size: 10pt; page-break-inside: avoid; }
+th { background: var(--table-header); color: white; padding: 8px 10px; text-align: left; font-weight: 600; }
+td { padding: 7px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+tr:nth-child(even) td { background: var(--table-alt); }
+pre { background: var(--code-bg); border: 1px solid var(--border); border-radius: 4px; padding: 12px 16px; overflow-x: auto; font-size: 9.5pt; line-height: 1.55; page-break-inside: avoid; }
+code { font-family: Consolas, 'Courier New', monospace; }
+p code, li code, td code { background: var(--code-bg); padding: 1px 5px; border-radius: 3px; font-size: 9.5pt; }
+figure { text-align: center; margin: 24px 0; page-break-inside: avoid; }
+figure svg { max-width: 100%; height: auto; border: 1px solid var(--border); border-radius: 6px; background: white; padding: 8px; }
+figcaption { font-style: italic; color: #555; font-size: 9.5pt; margin-top: 8px; }
+.callout { border-left: 4px solid; padding: 10px 16px; margin: 15px 0; border-radius: 0 4px 4px 0; font-size: 10pt; page-break-inside: avoid; }
+.callout.note { background: var(--note-bg); border-color: var(--note-border); }
+.callout.tip { background: var(--tip-bg); border-color: var(--tip-border); }
+.callout.warning { background: var(--warn-bg); border-color: var(--warn-border); }
+.callout.danger { background: var(--danger-bg); border-color: var(--danger-border); }
+.title-page { text-align: center; padding: 80px 0 40px; page-break-after: always; }
+.title-page h1 { font-size: 32pt; border: none; margin: 0; page-break-before: avoid; }
+.title-page .subtitle { font-size: 16pt; color: var(--navy-light); margin: 10px 0 30px; }
+.title-page .meta { font-size: 11pt; color: #666; }
+.toc { page-break-after: always; }
+.toc h2 { border: none; }
+.toc ol { font-size: 11pt; line-height: 2; }
+.toc a { color: var(--navy); text-decoration: none; }
+.toc a:hover { text-decoration: underline; }
+ul, ol { margin: 8px 0; padding-left: 24px; }
+li { margin-bottom: 4px; }
+.lead { font-size: 12pt; color: var(--navy); border-left: 4px solid var(--sage); padding-left: 14px; margin: 18px 0; }
+.decision { background: #FEF3C7; border: 1px solid #F59E0B; border-radius: 6px; padding: 10px 14px; margin: 14px 0; font-size: 10pt; }
+.decision strong { color: #92400E; }
+@media print { body { max-width: none; padding: 0; font-size: 10pt; } h1 { font-size: 16pt; } h2 { font-size: 12pt; } .title-page { padding: 60px 0 30px; } .title-page h1 { font-size: 24pt; } }
+    </style>
+</head>
+<body>
+<div style="margin: 18px 0; border-left: 5px solid #16a34a; background: #f0fdf4; color: #14532d; padding: 14px 20px; border-radius: 0 8px 8px 0; font-size: 11pt; font-family: 'Segoe UI', Calibri, -apple-system, sans-serif; line-height: 1.55;">
+<span style="display: inline-block; background: #15803d; color: #fff; padding: 2px 10px; border-radius: 12px; font-size: 9.5pt; letter-spacing: 1px; font-weight: 700; margin-right: 6px;">TESTED</span>
+<strong>Microprogettazione v1.1 &mdash; allineata al codice al 4 maggio 2026.</strong> <strong>Aggiornamento 28/4:</strong> il cuore LLM di <em>generate</em> e' stato riscritto come pipeline <em>multistage</em> a cinque stadi (vedi &sect;<a href="#cap4">4.2.3</a>); validazione su 35 query stress in corso (ADR <a href="../../decisions/0052-synt-multistage-validation-35-queries.md">0052</a>).
+Implementato in <code>runtime/synt.py</code> e <code>runtime/llm_router.py</code>: cascata <em>compose &rarr; generate</em>, profilo sandbox conservativo (stadio 4), birth-test livello 2 LLM-generated ed eseguiti (stadio 5), CLI di approval (<code>synt approve|reject &lt;id&gt;</code>, stadi 6+7), firma Ed25519 e installazione automatica nel pool. Primo executor sintetizzato end-to-end via Gemma 4 26B locale: <code>format_json</code>, ~65s wall, manifest firmato, <code>verify_executor()=ok</code>, smoke run pretty-printa JSON. <strong>Aggiornamento 27/4</strong>: integrazione <em>synt-on-the-fly</em> nel runtime (<code>agent_runtime.py:_try_synt_compose</code>) &mdash; quando il pianificatore incontra un executor inesistente con piping, chiama subito <code>Synt.react()</code> in compose-only e arricchisce l'observation con un suggerimento al LLM (vedi <a href="agent_runtime.html#cap11_1_1">agent_runtime &sect;11.1.1</a>). <strong>Aggiornamento 27/4 sera (fase 4)</strong>: introvertive <em>merge</em> e <em>generalize</em> implementate rule-based in <code>Synt.homeostasis()</code> + CLI <code>synt introvert</code>: trova coppie con stesso target_kind+capability e Jaccard affinity &ge; 0.70 (merge), e cluster di &ge;3 executor con stesso prefix verb (generalize). Le proposte non auto-applicate: vanno in audit, presentate a Roberto. <strong>Non in MVP</strong>: introvertive <em>specialize</em> (richiede analisi pattern di mnest, rimandata a v1.2), <em>revise</em>, judge LLM <em>interno di synt</em> (oggi stub fisso 0.5; distinto dal <a href="vaglio.html">vaglio</a> reale del runtime, che dal 27/4 e' rule-based vivo), profilo di sandbox stretto (oggi: derivato dagli import + AST scan).
+<div style="font-size: 9.5pt; color: #166534; margin-top: 8px;">Stato nella sequenza: <em>under approval</em> &rarr; <em>approved</em> &rarr; <em>reactive complete</em> &rarr; <em>introvertive added</em> &rarr; <strong>tested at scale</strong> &rarr; <em>implemented</em>. <strong>Delta POC rispetto al doc</strong>: (a) <code>react()</code> richiede un <code>proto_mnest</code> identificato (intent-only sara' aggiunto quando il pre-filter avra' embedding); (b) i lock sono persistiti su file JSON; (c) la formula R del cap. 6 e' verbatim ma <code>judge_score</code> e <code>similarity_penalty</code> sono stub costanti; (d) stadi 2 e 3 (Specifica + Scheletro) sono <strong>unificati in una sola chiamata LLM tier=wise</strong> via tool-use <code>propose_executor</code> &mdash; saranno separati quando arrivera' la UX di amend tra spec e codice; (e) stadio 5 fa il <em>livello 2</em> (LLM genera test, runner li esegue via subprocess); (f) stadio 6 e' un comando CLI (<code>synt approve</code>) in attesa di UX HTML.</div>
+</div>
+
+<nav aria-label="Language" style="position:fixed;top:16px;right:20px;z-index:9999;font-family:'Segoe UI',Calibri,sans-serif;font-size:10pt;letter-spacing:2px;background:#FAFBFC;border:1px solid #d0d7de;border-radius:14px;padding:4px 10px;box-shadow:0 1px 4px rgba(0,0,0,0.04);">
+<a href="/it/architecture/synt.html" class="active" hreflang="it" lang="it" style="color:#1a1a1a;text-decoration:none;font-weight:700;padding:0 4px;border:none;">IT</a>
+<span style="color:#d0d7de;"> &middot; </span>
+<a href="/en/architecture/synt.html" hreflang="en" lang="en" style="color:#64748B;text-decoration:none;padding:0 4px;border:none;">EN</a>
+</nav>
+
+<div style="background:#fff;border-bottom:1px solid #d0d7de;padding:10px 0;font-size:14px;position:sticky;top:0;z-index:10;margin-bottom:20px;">
+  <div style="max-width:960px;margin:0 auto;padding:0 20px;display:flex;justify-content:space-between;">
+    <a href="../index.html" style="color:#1a477a;text-decoration:none;font-weight:500;">&larr; Indice documentazione</a>
+    <span style="color:#8e8e93;">Microprogettazione &rsaquo; <strong style="color:#1a1a1a;">synt</strong></span>
+  </div>
+</div>
+
+<div class="title-page">
+    <h1>Metnos</h1>
+    <div class="subtitle"><code>synt</code> &mdash; come nasce e matura il pool degli executor</div>
+    <div class="meta">
+        Microprogettazione v1.1 &mdash; 25 aprile 2026<br>
+        Allineata con Architettura v1.1 (cap. 9 e 11) e con la triade canonica<br>
+        <a href="executor.html"><code>executor</code></a>, <a href="mnest.html"><code>mnest</code></a>, <a href="mnestoma.html"><code>mnestoma</code></a>.<br>
+        Sostituisce <code>synthesizer.html</code> (deprecato).<br>
+        <br>
+        Pubblico: chi implementer&agrave; il loop reattivo, l'omeostasi notturna,<br>i gate di approvazione e i controlli di costo.<br>
+        Lettura: 18 minuti.
+    </div>
+</div>
+
+<div class="callout" style="border-left:5px solid #16a34a;background:#dcfce7;color:#14532d;padding:14px 18px;border-radius:0 8px 8px 0;margin:18px 0;">
+<strong>Aggiornamento sessione 4/5/2026 &mdash; qualit&agrave;
+introvertiva + short-circuit synth_request.</strong> Tre interventi
+deterministici (CLAUDE.md &sect;7.9: codice deterministico &gt; LLM se
+equipotente) chiudono i buchi emersi dall'audit notturno 4/5/2026:
+<em>(a) filtri qualit&agrave; introvertiva</em> (ADR&nbsp;0077) &mdash;
+<code>_is_valid_proposed_name()</code> rifiuta nomi fuori dal vocab
+chiuso (booleani come <code>_True</code>/<code>_False</code>, doppi
+underscore, path letterali, qualifier alfanumerico-only);
+<code>_FLOW_ARGS = {"entries", "from_step", "results"}</code> skip
+specialize su args di pipeline; skip valori template
+<code>"{{stepN.field}}"</code>; bump <code>min_uses</code> default da
+3 a 10 (sotto e' rumore). Volume proposte 24 &rarr; 6 con qualit&agrave;
+attesa molto pi&ugrave; alta;
+<em>(b) short-circuit synth_request</em> (ADR&nbsp;0076) &mdash;
+<code>handle_synth_request</code> verifica
+<code>already_in_catalog</code> e <code>redirected</code> via
+<code>_find_canonical_alias</code> prima di invocare la pipeline 5
+stadi. <code>list_processes</code> &rarr; <code>get_processes</code>,
+<code>list_messages</code> &rarr; <code>read_messages</code>,
+<code>read_processes</code> &rarr; <code>get_processes</code>. Risparmio
+~150&nbsp;s/call;
+<em>(c) GC synth in collisione</em> (ADR&nbsp;0079) &mdash;
+<code>loader._gc_collisions</code> sposta in
+<code>/tmp/metnos_synth_gc_&lt;ts&gt;/</code> ogni synth con name
+collisione handcrafted (backup non distruttivo), idempotente.
+Disco non si gonfia di synth zombie. Le sezioni precedenti su
+introvertiva MVP (1/5/2026) restano valide e ora sono pi&ugrave; pulite.
+</div>
+<div class="callout" style="border-left:5px solid #f59e0b;background:#fef3c7;color:#92400e;padding:14px 18px;border-radius:0 8px 8px 0;margin:18px 0;">
+<strong>Sessione 1/5/2026 (storica) &mdash; introvertiva MVP.</strong>
+Il modulo <code>runtime/introvertiva.py</code> implementa l'MVP delle tre
+operazioni di &sect;5 (<em>fondere</em>/dedupe, <em>generalizzare</em>,
+<em>specializzare</em>) con <code>diff_audit</code> per il segnale di lungo
+periodo e quattro filtri rumore: <code>skip_smoke_channel</code>,
+<code>skip_X&rarr;X</code> (no-op self-mapping), <code>skip_default_manifest_value</code>,
+<code>only_active_catalog</code>. Refactor companion: <code>events.turn_id</code>
+sostituisce gli identificatori sparsi (ADR 0067). Sei smoke pytest verdi.
+Audit log JSONL append-only in
+<code>~/.local/share/metnos/introvertiva/audit.jsonl</code>. Le tre operazioni
+girano sotto la <em>forza introspettiva</em> nella nuova cornice teorica
+&laquo;quattro forze + inerzia&raquo; (vedi <a href="agent_runtime.html">agent_runtime</a>).
+</div>
+
+<div class="toc">
+<h2>Indice</h2>
+<ol>
+    <li><a href="#cap1">Scopo e confini</a></li>
+    <li><a href="#cap2">Cos'&egrave; synt</a></li>
+    <li><a href="#cap3">La cascata: visione d'insieme</a></li>
+    <li><a href="#cap4">Strategie reattive: comporre, generare</a></li>
+    <li><a href="#cap5">Strategie introvertive: fondere, generalizzare, specializzare</a></li>
+    <li><a href="#cap6">Pesatura: il punteggio R esteso</a></li>
+    <li><a href="#cap7">Il telos di non-rinuncia</a></li>
+    <li><a href="#cap8">Approvazione umana, budget, abbandono</a></li>
+    <li><a href="#cap9">Contratto Python</a></li>
+    <li><a href="#cap10">Audit e osservabilit&agrave;</a></li>
+    <li><a href="#cap11">Alternative considerate</a></li>
+    <li><a href="#cap12">Test di conformit&agrave;</a></li>
+    <li><a href="#cap13">Domande aperte</a></li>
+</ol>
+</div>
+
+<h1 id="cap1">1. Scopo e confini</h1>
+
+<p class="lead">
+Questo documento definisce <em>cosa fa synt</em>: il processo che, di fronte a una
+richiesta utente o a un pattern emerso nel <a href="mnestoma.html">mnestoma</a>, fa
+crescere e maturare il pool degli <a href="executor.html">executor</a> di Metnos.
+Non &egrave; un singolo loop: &egrave; una <strong>cascata</strong> di strategie
+ordinate per costo crescente, che onora il telos &laquo;coltivare gli
+strumenti&raquo; senza sprecare chiamate frontier e senza inquinare la libreria.
+</p>
+
+<h2>Confini</h2>
+
+<p>Il documento copre:</p>
+<ul>
+<li>la cascata di sintesi nelle sue cinque strategie (due reattive, tre introvertive);</li>
+<li>il punteggio R che pesa qualit&agrave;, costo e originalit&agrave; di una proposta;</li>
+<li>il rapporto fra synt e gate umano (sempre presente, mai bypassabile);</li>
+<li>il contratto Python e gli stati di una richiesta di sintesi.</li>
+</ul>
+
+<p>Non copre, e demanda altrove:</p>
+<ul>
+<li>la pipeline tecnica della <em>generazione</em> (firma, sandbox, test di nascita): vedi <a href="executor.html#cap7">executor.html cap. 7</a>;</li>
+<li>la struttura del mnestoma e dei proto-mnest: vedi <a href="mnest.html">mnest.html</a> e <a href="mnestoma.html">mnestoma.html</a>;</li>
+<li>la UX di approvazione (batching, revoca, tutor mode): vedi <code>approval_ux.html</code> (da riscrivere);</li>
+<li>il <em>cost tiering</em> degli LLM (locale vs frontier, tetti spendibili): vedi <code>policy.html</code> (da riscrivere).</li>
+</ul>
+
+<h1 id="cap2">2. Cos'&egrave; synt</h1>
+
+<p>
+<strong>synt</strong> &egrave; il <em>processo</em> (non un agente, non un oggetto)
+che ha un solo compito: <em>far esistere ci&ograve; che il pool non sa ancora
+fare</em>. Non scrive da zero ogni volta, non scrive solo da zero, e a volte non
+scrive affatto. La sua intelligenza sta nel sapere quando applicare quale
+strategia.
+</p>
+
+<div class="callout note">
+<strong>synt &ne; LLM frontier.</strong> &Egrave; un errore comune pensare che
+&laquo;sintesi&raquo; significhi &laquo;chiamare un modello costoso e farsi
+scrivere codice&raquo;. Nella maggior parte dei casi, sintetizzare significa
+<em>orchestrare ci&ograve; che gi&agrave; esiste</em>: una catena di executor
+attivi che chiude un proto-mnest. La generazione vera e propria &egrave;
+l'<em>eccezione documentata</em>, non il default.
+</div>
+
+<h2>Trigger</h2>
+
+<p>synt entra in azione in due modi distinti:</p>
+
+<table>
+<thead><tr><th style="width:24%">Modo</th><th>Innesco</th><th>Tempo</th></tr></thead>
+<tbody>
+<tr>
+  <td><strong>Reattivo</strong></td>
+  <td>Il gateway, durante un turno utente, registra un proto-mnest verso un executor che non esiste; oppure il pianificatore non trova nessun executor che soddisfi la richiesta.</td>
+  <td>Sincrono al turno (l'utente sta aspettando una risposta).</td>
+</tr>
+<tr>
+  <td><strong>Introvertivo</strong></td>
+  <td>L'<em>ager</em> nottetempo scorre il mnestoma e il pool firmato; trova proto-mnest ricorrenti, executor con tracce sovrapposte, famiglie di specializzati con stessa forma.</td>
+  <td>Asincrono, in omeostasi (notte, pause, basso carico).</td>
+</tr>
+</tbody>
+</table>
+
+<p>
+Le due modalit&agrave; condividono la stessa cascata di strategie ma si
+differenziano nei <em>tempi</em> (sincrono vs asincrono) e nel <em>tono</em>
+(rispondere vs proporre).
+</p>
+
+<h1 id="cap3">3. La cascata: visione d'insieme</h1>
+
+<figure>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 460" width="100%" preserveAspectRatio="xMidYMid meet" style="font-family:'Segoe UI',Calibri,sans-serif; font-size:11px;">
+<defs>
+  <linearGradient id="sx-react" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#DCFCE7"/><stop offset="100%" stop-color="#86EFAC"/></linearGradient>
+  <linearGradient id="sx-gen" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#FEF3C7"/><stop offset="100%" stop-color="#F8DC85"/></linearGradient>
+  <linearGradient id="sx-intr" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#EDE4F7"/><stop offset="100%" stop-color="#C4B5FD"/></linearGradient>
+  <linearGradient id="sx-out" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#D9E4F0"/><stop offset="100%" stop-color="#A9C3DE"/></linearGradient>
+  <linearGradient id="sx-end" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#FEE2E2"/><stop offset="100%" stop-color="#F6A5A5"/></linearGradient>
+  <marker id="sx-arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#1A477A"/></marker>
+  <marker id="sx-arr-r" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#B91C1C"/></marker>
+</defs>
+
+<text x="480" y="24" text-anchor="middle" fill="#1A477A" font-size="14" font-weight="700">La cascata di synt</text>
+<text x="480" y="42" text-anchor="middle" fill="#475569" font-size="10" font-style="italic">strategie ordinate per costo crescente</text>
+
+<!-- REATTIVO row -->
+<text x="80" y="80" fill="#1A477A" font-size="11" font-weight="700">REATTIVO</text>
+<text x="80" y="94" fill="#64748B" font-size="9" font-style="italic">turno utente</text>
+
+<!-- proto-mnest input -->
+<rect x="160" y="80" width="120" height="50" rx="8" fill="url(#sx-out)" stroke="#1A477A"/>
+<text x="220" y="100" text-anchor="middle" fill="#1A477A" font-weight="700" font-size="11">proto-mnest</text>
+<text x="220" y="116" text-anchor="middle" fill="#475569" font-size="10">(richiesta non chiusa)</text>
+
+<!-- compose -->
+<rect x="320" y="80" width="140" height="50" rx="8" fill="url(#sx-react)" stroke="#3F6212" stroke-width="1.5"/>
+<text x="390" y="100" text-anchor="middle" fill="#14532D" font-weight="700" font-size="12">1. Comporre</text>
+<text x="390" y="116" text-anchor="middle" fill="#1F2937" font-size="9">catena nel pool &mdash; zero LLM frontier</text>
+
+<!-- generate -->
+<rect x="500" y="80" width="140" height="50" rx="8" fill="url(#sx-gen)" stroke="#B7791F" stroke-width="1.5"/>
+<text x="570" y="100" text-anchor="middle" fill="#92400E" font-weight="700" font-size="12">2. Generare</text>
+<text x="570" y="116" text-anchor="middle" fill="#44403C" font-size="9">multistage 5 stadi &mdash; locale &euro;0</text>
+
+<!-- abandon -->
+<rect x="680" y="80" width="120" height="50" rx="8" fill="url(#sx-end)" stroke="#B91C1C"/>
+<text x="740" y="100" text-anchor="middle" fill="#7F1D1D" font-weight="700" font-size="11">Abbandono</text>
+<text x="740" y="116" text-anchor="middle" fill="#7F1D1D" font-size="9">motivato e tracciato</text>
+
+<!-- arrows reattivo -->
+<line x1="280" y1="105" x2="318" y2="105" stroke="#1A477A" stroke-width="2" marker-end="url(#sx-arr)"/>
+<line x1="460" y1="105" x2="498" y2="105" stroke="#1A477A" stroke-width="2" marker-end="url(#sx-arr)"/>
+<line x1="640" y1="105" x2="678" y2="105" stroke="#B91C1C" stroke-width="1.6" stroke-dasharray="4 3" marker-end="url(#sx-arr-r)"/>
+
+<text x="389" y="148" text-anchor="middle" fill="#3F6212" font-size="9" font-style="italic">se trova catena &rarr; orchestrato</text>
+<text x="569" y="148" text-anchor="middle" fill="#92400E" font-size="9" font-style="italic">se compose vuota &rarr; nuovo executor</text>
+<text x="739" y="148" text-anchor="middle" fill="#7F1D1D" font-size="9" font-style="italic">se max retry o budget</text>
+
+<!-- separator -->
+<line x1="40" y1="190" x2="920" y2="190" stroke="#cbd5e1" stroke-width="1" stroke-dasharray="4 4"/>
+
+<!-- INTROVERTIVO row -->
+<text x="80" y="220" fill="#6B21A8" font-size="11" font-weight="700">INTROVERTIVO</text>
+<text x="80" y="234" fill="#64748B" font-size="9" font-style="italic">omeostasi notturna</text>
+
+<!-- input from mnestoma -->
+<rect x="160" y="220" width="120" height="50" rx="8" fill="url(#sx-out)" stroke="#1A477A"/>
+<text x="220" y="240" text-anchor="middle" fill="#1A477A" font-weight="700" font-size="11">mnestoma + pool</text>
+<text x="220" y="256" text-anchor="middle" fill="#475569" font-size="9">(scorrimento periodico)</text>
+
+<!-- merge -->
+<rect x="320" y="220" width="140" height="50" rx="8" fill="url(#sx-intr)" stroke="#6B21A8" stroke-width="1.5"/>
+<text x="390" y="240" text-anchor="middle" fill="#4C1D95" font-weight="700" font-size="12">3. Fondere</text>
+<text x="390" y="256" text-anchor="middle" fill="#1F2937" font-size="9">A + B con tracce sovrapposte</text>
+
+<!-- generalize -->
+<rect x="480" y="220" width="160" height="50" rx="8" fill="url(#sx-intr)" stroke="#6B21A8" stroke-width="1.5"/>
+<text x="560" y="240" text-anchor="middle" fill="#4C1D95" font-weight="700" font-size="12">4. Generalizzare</text>
+<text x="560" y="256" text-anchor="middle" fill="#1F2937" font-size="9">N specializzati &rarr; uno parametrico</text>
+
+<!-- specialize -->
+<rect x="660" y="220" width="160" height="50" rx="8" fill="url(#sx-intr)" stroke="#6B21A8" stroke-width="1.5"/>
+<text x="740" y="240" text-anchor="middle" fill="#4C1D95" font-weight="700" font-size="12">5. Specializzare</text>
+<text x="740" y="256" text-anchor="middle" fill="#1F2937" font-size="9">caso caldo con beneficio misurato</text>
+
+<!-- proposals batch -->
+<rect x="320" y="320" width="500" height="60" rx="10" fill="#FFFBEA" stroke="#B7791F" stroke-width="1.8"/>
+<text x="570" y="343" text-anchor="middle" fill="#92400E" font-weight="700" font-size="13">Proposte in batch &rarr; gate umano (approval_ux)</text>
+<text x="570" y="362" text-anchor="middle" fill="#44403C" font-size="10">Roberto vede dossier con punteggio R, pu&ograve; approvare/emendare/scartare</text>
+
+<!-- arrows introvertivo -->
+<line x1="280" y1="245" x2="318" y2="245" stroke="#1A477A" stroke-width="2" marker-end="url(#sx-arr)"/>
+<path d="M 390 270 Q 390 295 470 318" fill="none" stroke="#1A477A" stroke-width="1.8" marker-end="url(#sx-arr)"/>
+<path d="M 560 270 Q 560 295 570 318" fill="none" stroke="#1A477A" stroke-width="1.8" marker-end="url(#sx-arr)"/>
+<path d="M 740 270 Q 740 295 670 318" fill="none" stroke="#1A477A" stroke-width="1.8" marker-end="url(#sx-arr)"/>
+
+<!-- principle bar -->
+<rect x="40" y="410" width="880" height="36" rx="8" fill="#F0FDF4" stroke="#16A34A" stroke-dasharray="3 3"/>
+<text x="480" y="433" text-anchor="middle" fill="#14532D" font-size="11" font-style="italic">Principio: ogni strategia &egrave; una proposta. Niente entra nel pool senza firma e senza gate umano.</text>
+</svg>
+<figcaption>Figura 1 &mdash; La cascata di synt. Riga superiore: due strategie reattive che rispondono a un proto-mnest dentro il turno. Riga inferiore: tre strategie introvertive che curano il pool nottetempo e arrivano a Roberto in batch.</figcaption>
+</figure>
+
+<h2>Le cinque strategie a colpo d'occhio</h2>
+
+<table>
+<thead><tr><th style="width:8%">#</th><th style="width:18%">Strategia</th><th style="width:14%">Tempo</th><th>Cosa fa, in una riga</th><th style="width:14%">Costo frontier</th></tr></thead>
+<tbody>
+<tr><td><strong>1</strong></td><td>Comporre</td><td>reattivo</td><td>Cerca una catena di executor attivi che chiude il proto-mnest.</td><td>0</td></tr>
+<tr><td><strong>2</strong></td><td>Generare</td><td>reattivo</td><td>Pipeline multistage a cinque stadi LLM (naming, signature, test, description, code) che produce un nuovo executor firmato (vedi &sect;<a href="#cap4">4.2.3</a>).</td><td>&euro;0 (locale)</td></tr>
+<tr><td><strong>3</strong></td><td>Fondere</td><td>introvertivo</td><td>Unisce due executor con tracce sovrapposte e profili compatibili.</td><td>~0.5 &euro;</td></tr>
+<tr><td><strong>4</strong></td><td>Generalizzare</td><td>introvertivo</td><td>Da N specializzati con stessa forma deriva un executor parametrico.</td><td>~1 &euro;</td></tr>
+<tr><td><strong>5</strong></td><td>Specializzare</td><td>introvertivo</td><td>Da uno generale deriva una versione mirata a un caso caldo.</td><td>~0.5 &euro;</td></tr>
+</tbody>
+</table>
+
+<div class="callout note">
+<strong>Due assi, non una lista lineare.</strong> Le strategie si distinguono su
+due dimensioni indipendenti: <em>quando</em> (reattivo / introvertivo) e
+<em>come</em> (riuso / creazione / trasformazione). Comporre &egrave; riuso
+puro; generare &egrave; creazione; fondere/generalizzare/specializzare sono
+trasformazioni del pool. La numerazione qui &egrave; un ordine espositivo, non
+una priorit&agrave; assoluta.
+</div>
+
+<h1 id="cap4">4. Strategie reattive: comporre, generare</h1>
+
+<h2>4.1 Comporre</h2>
+
+<p>
+La strategia di base. Quando un proto-mnest indica un buco operativo, synt prima
+guarda nel pool firmato. La domanda &egrave;: <em>esiste una catena
+A &rarr; B &rarr; C che, se eseguita in sequenza, copre il bisogno?</em> Se
+s&igrave;, synt non scrive codice nuovo: propone l'orchestrato.
+</p>
+
+<h3>Come si cerca la catena</h3>
+
+<p>
+Il mnestoma &egrave; un grafo diretto fra executor. Trovare una catena che
+collega l'input richiesto all'output desiderato &egrave; una visita guidata sul
+grafo. Tre criteri ordinano le candidate:
+</p>
+
+<ul>
+<li><strong>Lunghezza</strong>: catene pi&ugrave; corte sono preferite.</li>
+<li><strong>Peso medio dei mnest</strong>: catene di passaggi gi&agrave; verificati pesano pi&ugrave; di catene speculative.</li>
+<li><strong>Coerenza dei profili di sandbox</strong>: una catena che tocca tracce diverse del workspace &egrave; sospetta e va spiegata; una che resta dentro una traccia (vedi <a href="../Metnos_Architettura_Intro_v1.html#cap10">Architettura cap. 10</a>) &egrave; pi&ugrave; affidabile.</li>
+</ul>
+
+<h3>Cosa lascia una composizione riuscita</h3>
+
+<p>
+Quando synt risolve via composizione, registra nel mnestoma un <em>proto-mnest
+verso la composizione stessa</em>: un nodo virtuale che dice &laquo;ho appena
+usato A&rarr;B&rarr;C come fosse un singolo executor di nome
+<em>X</em>&raquo;. Se questo proto-mnest ricorre, diventa candidato di
+<strong>generalizzazione</strong> (cap. 5): un executor unico che incorpora la
+catena. La composizione &egrave; quindi una <em>palestra di generalizzazione</em>:
+ogni catena ripetuta &egrave; un suggerimento per il futuro.
+</p>
+
+<div class="decision">
+<strong>DECISIONE v1:</strong> la lunghezza massima di una catena di
+composizione &egrave; <strong>5 hop</strong>. Oltre, l'orchestrato diventa
+illeggibile e il rischio di errori a cascata supera il vantaggio del riuso.
+Synt salta a <em>generare</em>. La soglia &egrave; tunabile.
+</div>
+
+<h2>4.2 Generare</h2>
+
+<div class="callout note" style="margin-bottom:14px;">
+<strong>Aggiornamento 28 aprile 2026.</strong> Il <em>cuore LLM</em> della
+generazione (specifica + scheletro + test + descrizione + codice) e' stato
+riscritto come pipeline <em>multistage</em> a cinque stadi: vedi
+&sect;<a href="#cap4">4.2.3</a> piu' avanti. La pipeline a sette stadi
+descritta qui sotto resta valida come <em>quadro generale</em> (con i
+passi di profilo, approvazione, firma, installazione che la circondano);
+solo i tre passi LLM (2-3-5 dell'ordinamento storico) sono stati
+sostituiti dal multistage.
+</div>
+
+<p>
+Quando comporre non basta &mdash; perch&eacute; non esiste catena, perch&eacute;
+&egrave; troppo lunga, perch&eacute; un anello mancante &egrave; cruciale &mdash;
+synt entra nella pipeline a sette stadi descritta in
+<a href="executor.html#cap7">executor.html cap. 7</a>:
+</p>
+
+<ol>
+<li><strong>Pattern detect</strong>: l'<em>ager</em> conferma la ricorrenza del proto-mnest.</li>
+<li><strong>Specifica</strong>: una chiamata LLM frontier produce una specifica testuale (purpose, I/O, errori).</li>
+<li><strong>Scheletro</strong>: seconda chiamata frontier per il <code>main.py</code> e lo <code>schema.json</code>.</li>
+<li><strong>Profilo</strong>: synt calcola il profilo di sandbox pi&ugrave; stretto compatibile con i test.</li>
+<li><strong>Test di nascita</strong>: tutti devono passare con quel profilo.</li>
+<li><strong>Approvazione umana</strong>: <em>non bypassabile</em>, in nessun livello di autonomy.</li>
+<li><strong>Firma e installazione</strong>: HMAC, profile lock, executor entra nel pool.</li>
+</ol>
+
+<p>
+Generare costa: tipicamente 1&ndash;2 chiamate al tier <em>wise</em> + il tempo
+umano di approvazione. Il fatto che venga dopo <em>comporre</em> non &egrave;
+estetica: &egrave; risparmio reale.
+</p>
+
+<div class="callout note">
+<strong>Soglia di qualit&agrave; del tier wise.</strong> Lo stadio <em>codice</em>
+(stadio 5 della pipeline multistage di &sect;<a href="#cap4">4.2.3</a>) richiede
+un LLM al livello di <strong>Gemma 4 26B o superiore</strong>. Modelli pi&ugrave;
+piccoli (tipo qwen3:8b) producono codice fragile e hanno alta probabilit&agrave;
+di violare la convenzione. Gli stadi procedurali (1-4: naming, signature, test,
+description) usano il tier <em>middle</em>, sufficiente per lookup nel vocabolario
+chiuso e formati fissi. La regola e' codificata nel <em>tier resolver</em>
+(<code>runtime/llm_router.py</code>) come <em>quality floor</em>: se l'utente non
+ha un wise locale di livello, deve configurare un provider esterno (Anthropic,
+OpenAI, ecc.). Errore esplicito al boot, mai degradazione silenziosa al fast.
+</div>
+
+<h3>4.2.1 Misure reali sul POC (26 aprile 2026)</h3>
+
+<p>
+Primo executor sintetizzato end-to-end via tier wise = Gemma 4 26B locale (Q4_K_M
+su llama-server). Caso: <code>format_json</code> (formatta una stringa JSON con
+indentazione leggibile).
+</p>
+
+<table>
+<thead><tr><th style="width:32%">Stadio</th><th>Tempo</th><th>Note</th></tr></thead>
+<tbody>
+<tr><td><strong>1 Pattern detect</strong></td><td>~0 (caller)</td><td>chi chiama <code>react()</code> ha gi&agrave; il proto-mnest in mano.</td></tr>
+<tr><td><strong>2+3 Spec + Scheletro</strong></td><td><strong>~36s</strong></td><td>una sola chiamata LLM tier=wise via tool-use <code>propose_executor</code>; ~640 token in, ~1700 token out.</td></tr>
+<tr><td><strong>4 Profilo</strong></td><td>~ms</td><td>derivato da AST + import whitelist; profilo "pure" se nessun I/O esterno.</td></tr>
+<tr><td><strong>5 Birth-test livello 2</strong></td><td><strong>~28s + ~1s/test</strong></td><td>seconda chiamata LLM produce 3-5 test dichiarativi; runner esegue ognuno via subprocess.</td></tr>
+<tr><td><strong>6 Approval</strong></td><td>umano</td><td>oggi CLI (<code>synt approve|reject &lt;id&gt;</code>); UX HTML rimandata.</td></tr>
+<tr><td><strong>7 Firma + installazione</strong></td><td>~ms</td><td>Ed25519 via <code>runtime/sign.py</code>, executor copiato in <code>executors/&lt;name&gt;/</code>.</td></tr>
+</tbody>
+</table>
+
+<p>
+Latenza wall totale dello stadio LLM: ~64s per il primo executor non banale.
+&Egrave; tempo che il dialog manager comunica all'utente come "sto costruendo
+un nuovo componente per estendere le mie capacit&agrave;": una volta firmato,
+ogni successivo riuso e' pure code execution (~ms).
+</p>
+
+<div class="decision">
+<strong>Semplificazione del POC v1.1.</strong> Stadi 2 (Specifica) e 3
+(Scheletro) sono unificati in una sola chiamata LLM con tool-use
+<code>propose_executor</code>. Il doc canonico li tiene separati perch&eacute;
+in v1.2 introdurremo la <em>UX di amend</em> tra Specifica e Scheletro: Roberto
+potr&agrave; rivedere/correggere la spec prima della generazione del codice. Il
+tool unificato del POC e' una semplificazione esplicita, non una rinuncia al
+disegno.
+</div>
+
+<h3>4.2.2 Repertorio dei prompt provider-specifici</h3>
+
+<p>
+Ogni famiglia di modelli ha sue idiosincrasie scoperte solo con l'uso. Synt
+mantiene un <em>repertorio di addendum di prompt</em> applicati automaticamente
+agli stadi 2/3 quando il chiamante segnala <code>for_code=True</code>. Tre
+regole di stile, ratificate dopo i primi confronti reali:
+</p>
+
+<ul>
+<li><strong>Brevi</strong>: una o due righe, mai un paragrafo.</li>
+<li><strong>Prescrittivi</strong>: imperativo (<em>"Vincoli: X. Y. Z."</em>), niente esempi long-form, niente rationale.</li>
+<li><strong>Il <em>perch&eacute;</em> sta nelle memorie di progetto, NON nel prompt.</strong></li>
+</ul>
+
+<p>
+Il repertorio vive in <code>runtime/prompts.toml</code> (default bundled) ed
+e' sovrascrivibile da <code>~/.config/metnos/prompts.toml</code> (override
+utente). Schema TOML:
+</p>
+
+<pre><code>[[hint]]
+provider      = "anthropic"
+model_pattern = "claude-*"          # glob su prov.model
+use_case      = "code_gen"
+text          = "\\n\\nVincoli: codice fedele alla spec. Regex semplice. Niente lookbehind/lookahead."
+
+[[hint]]
+provider      = "llamacpp"
+model_pattern = "gemma-4-*"
+use_case      = "code_gen"
+text          = "\\n\\nVincoli: raw string r'...' con UN backslash. Niente triple-quote docstring."
+
+[[hint]]
+provider      = "ollama"
+model_pattern = "qwen3:*"
+use_case      = "code_gen"
+text          = "\\n\\nVincoli: compila python_code per intero (def invoke + def main). Mai vuoto."
+</code></pre>
+
+<p>
+Il primo match per <em>(provider, model_pattern, use_case)</em> vince. Quando
+arriva un nuovo modello (Gemma 5, Claude Opus 4.7, GPT-5, &hellip;) si
+aggiunge una entry sulla base di quello che si osserva nelle prime sintesi.
+Il <em>system prompt</em> di base e gli executor non cambiano: l'unica leva
+che si tocca e' il repertorio.
+</p>
+
+<h3>4.2.3 Pipeline multistage (28 aprile 2026)</h3>
+
+<p>
+Il single-prompt mostro che dovrebbe produrre nome, args, capabilita',
+test e codice tutti in una chiamata e' fragile: testato su 35 query non
+banali ha sintetizzato correttamente solo <strong>2 su 35 (5.7&thinsp;%)</strong>,
+e anche con un wise di livello frontier (Claude Sonnet 4.5) il tasso
+saliva soltanto al 40&thinsp;%. Il bottleneck era strutturale, non di
+modello: il prompt sovraffollato pretendeva troppe decisioni simultanee.
+</p>
+
+<p>
+La risposta architetturale &egrave; <strong>multistage</strong>: cinque
+stadi piccoli, ognuno con prompt focalizzato sul proprio compito,
+ordinati dal piu' procedurale (lookup nel vocabolario chiuso) al piu'
+creativo (codice). Lo skeleton del manifest si riempie progressivamente,
+e ogni stadio vede SOLO la fetta che gli serve &mdash; niente blob
+cumulativo.
+</p>
+
+<table>
+<thead><tr><th style="width:18%">Stadio</th><th style="width:14%">Tipo</th><th style="width:18%">Tier LLM</th><th>Output</th></tr></thead>
+<tbody>
+<tr><td><strong>1. Naming + classification</strong></td><td>procedurale</td><td>middle (Gemma 4 26B think=true)</td><td>nome <code>{azione}_{oggetto}[_qualifier]</code> dal vocabolario chiuso (20 azioni, 11 oggetti) + revertible/critical/target_kind. Se nessuna combinazione calza: rejection esplicita con motivo.</td></tr>
+<tr><td><strong>2. Signature</strong></td><td>procedurale</td><td>middle</td><td>args_schema (JSON Schema), capabilities (set chiuso), reverse_pattern dal catalogo (vedi <a href="undo.html">undo</a>).</td></tr>
+<tr><td><strong>3. Birth tests</strong></td><td>procedurale</td><td>middle</td><td>4-6 test in formato fisso (setup/input/expect/teardown), almeno: caso felice, lista vuota, args invalidi, edge dominio.</td></tr>
+<tr><td><strong>4. Description + affinity</strong></td><td>creativo</td><td>middle</td><td>description LLM-readable (2-5 frasi, una stringa) + 6-10 keyword di affinity per il composer.</td></tr>
+<tr><td><strong>5. Codice</strong></td><td>creativo + procedurale</td><td>wise (Gemma 4 26B think=true)</td><td><code>&lt;name&gt;.py</code> Python con <code>def invoke()</code>, conformita' alle convenzioni del runtime (<a href="messages.html">messages</a>, <a href="platform_policy.html">platform_policy</a>, helpers).</td></tr>
+</tbody>
+</table>
+
+<p>
+Il vocabolario chiuso compare SOLO nel prompt di stage 1; gli stadi
+successivi ricevono il name gia' deciso e lavorano nei loro confini. La
+descrizione del manifest non la scrive il developer ma l'LLM dello stage
+4 dedicato: la prosa nasce dove deve nascere, da chi sa farla.
+</p>
+
+<p>
+Risultati misurati sui 35 query del dataset di stress (28 aprile 2026):
+<strong>stadio 1 (naming + classification) raggiunge l'88.6&thinsp;% (31/35)</strong>
+sul prompt bilingue, contro il 5.7&thinsp;% del single-prompt monolitico
+(ADR <a href="../../decisions/0050-synt-stress-test-50-queries.md">0050</a>) e il
+~74&thinsp;% del primo multistage monolingue (ADR <a href="../../decisions/0052-synt-multistage-validation-35-queries.md">0052</a>).
+Le 4 escalation residue (resize, query SQL, validate YAML, crack) sono
+rejection esplicite per verbi semanticamente fuori vocabolario chiuso,
+non errori di sintesi: il vocabolario va eventualmente esteso solo se
+quei pattern ricorrono in casi reali (vedi ADR
+<a href="../../decisions/0053-synt-stage1-bilingual-mapping.md">0053</a>:
+&laquo;synonyms before vocabulary&raquo;).
+</p>
+
+<div class="callout note">
+<strong>Tempo di sintesi.</strong> Una sintesi end-to-end via multistage
+costa fra <strong>140 e 160 secondi</strong> wall-clock con il provider
+locale Gemma 4 26B (zero costo di rete). Ripartizione media osservata:
+stadio 1 ~13&thinsp;s, stadio 2 ~25&thinsp;s, stadio 3 ~35&thinsp;s,
+stadio 4 ~25&thinsp;s, stadio 5 ~45&thinsp;s. I 5 stadi si fanno in
+serie perche' ognuno dipende dallo skeleton arricchito dal precedente;
+il parallelismo rompe la regola &laquo;context minimo per stadio&raquo;.
+Una ricostruzione one-shot al frontier resta la soglia ultima da non
+superare: mai usare wise online quando il locale arriva.
+</div>
+
+<h1 id="cap5">5. Strategie introvertive: fondere, generalizzare, specializzare</h1>
+
+<p class="lead">
+Le strategie introvertive non rispondono a una richiesta puntuale: rispondono al
+bisogno strutturale di tenere piccolo, coerente e riusabile il pool. Girano
+nottetempo come parte dell'<em>omeostasi</em> dell'ager (vedi <a href="../Metnos_Architettura_Intro_v1.html#cap10">Architettura cap. 10</a>),
+con basso uso di CPU e LLM economici (tier <em>local-fast</em>).
+</p>
+
+<h2>5.1 Fondere</h2>
+
+<p>
+Quando due executor hanno tracce sovrapposte (peso dei mnest che li collegano
+&gt; soglia) e profili di sandbox compatibili, synt propone una fusione: un
+nuovo executor che li copre entrambi. Lo stato <em>fuso</em> nel lifecycle
+dell'executor (<a href="executor.html#cap6">cap. 6</a>) &egrave; previsto
+proprio per questo: i due originali restano caricati finch&eacute; ci sono mnest
+residui, poi vengono archiviati.
+</p>
+
+<p>
+Innesco tipico: due executor che fanno cose simili sotto nomi diversi
+(<code>archive_pdf</code> e <code>store_pdf</code>), magari nati in momenti
+diversi senza che synt li avesse correlati alla nascita.
+</p>
+
+<h2>5.2 Generalizzare</h2>
+
+<p>
+Quando N executor specializzati hanno la stessa forma (stesso schema I/O salvo
+una dimensione, stesso profilo di sandbox salvo un parametro), e quando i
+proto-mnest puntano alla loro famiglia su dimensioni nuove, synt propone un
+executor parametrico. La nuova versione prende come argomento esplicito quello
+che prima era ricodificato N volte.
+</p>
+
+<p>
+Esempio canonico: <code>order_image_file</code>, <code>order_audio_file</code>,
+<code>order_doc_file</code> &mdash; tutti riordinano file per data &mdash; vengono
+proposti come <code>order_file</code> con argomento <code>file_kind</code>. Una
+volta firmato il generalizzato, i tre specializzati vanno in stato
+<em>superseded</em> e progressivamente in <em>archiviato</em>.
+</p>
+
+<div class="callout warning">
+<strong>Generalizzazione non &egrave; refactoring opportunistico.</strong> La
+soglia per proporre una generalizzazione richiede:
+<em>(a)</em> almeno tre specializzati con shape coerente; <em>(b)</em> almeno
+un proto-mnest non coperto sulla stessa famiglia; <em>(c)</em> assenza di
+divergenza nei profili di sandbox che renderebbe il parametrico pi&ugrave;
+permissivo della somma. Se <em>(c)</em> fallisce, la proposta &egrave;
+sospesa: meglio tre executor stretti che uno largo.
+</div>
+
+<h2>5.3 Specializzare</h2>
+
+<p>
+La strategia inversa, ed &egrave; la pi&ugrave; rara. Da un executor generale,
+quando una sua invocazione su un caso specifico ricorre con altissima
+frequenza e ha un profilo di costo o latenza scomodo, synt propone una versione
+specializzata. La specializzazione vive accanto al generale, non lo sostituisce:
+il routing diventa &laquo;se argomento <em>X</em> &equiv; caso caldo, usa lo
+specializzato; altrimenti il generale&raquo;.
+</p>
+
+<p>
+Si applica solo se c'&egrave; un beneficio misurato: riduzione di latenza
+osservata, riduzione di costo, oppure semplificazione del profilo di sandbox.
+Non si specializza per ottimizzazione preventiva.
+</p>
+
+<h2>5.4 Confronto fra le tre</h2>
+
+<table>
+<thead><tr><th style="width:18%">Strategia</th><th>Direzione</th><th>Effetto sul pool</th><th>Trigger</th></tr></thead>
+<tbody>
+<tr><td><strong>Fondere</strong></td><td>N &rarr; 1</td><td>riduce il numero di executor</td><td>tracce sovrapposte, profili compatibili</td></tr>
+<tr><td><strong>Generalizzare</strong></td><td>N &rarr; 1 (parametrico)</td><td>riduce e copre nuove dimensioni</td><td>specializzati con shape coerente + proto-mnest sulla famiglia</td></tr>
+<tr><td><strong>Specializzare</strong></td><td>1 &rarr; 2 (gen + spec)</td><td>aggiunge un executor</td><td>caso caldo con beneficio misurato</td></tr>
+</tbody>
+</table>
+
+<h1 id="cap6">6. Pesatura: il punteggio R esteso</h1>
+
+<p>
+Ogni proposta di sintesi &mdash; qualunque strategia &mdash; produce un
+punteggio <code>R</code> &in; [0, 1] che synt calcola sui dati osservati e che
+Roberto vede nel dossier di approvazione. La formula consolida quella della
+microprogettazione precedente (<a href="synthesizer.html">synthesizer.html
+&sect;7.1</a>) e aggiunge una componente <em>strategy_cost</em> che premia le
+strategie pi&ugrave; economiche:
+</p>
+
+<pre><code>R = 0.35 &middot; det_pass_rate           # frazione test deterministici verdi
+  + 0.20 &middot; judge_score             # LLM-as-judge (local-fast) su rubrica costituzionale
+  + 0.15 &middot; cost_ratio              # clip(1 - cost_effettivo / stima, 0, 1)
+  &minus; 0.10 &middot; similarity_penalty      # cosine-sim embedding con pool esistente &gt; 0.85
+  + 0.10 &middot; coverage_bonus          # bonus se copre proto-mnest non coperti
+  + 0.10 &middot; strategy_cost_bonus     # 1 per comporre, 0.6 per fondere/specializzare,
+                                       # 0.4 per generalizzare, 0 per generare
+
+gate_threshold = 0.65                # DECISIONE v1
+</code></pre>
+
+<p>
+Il <em>strategy_cost_bonus</em> &egrave; la novit&agrave;: spinge synt verso le
+strategie meno costose a parit&agrave; di qualit&agrave;. Una composizione che
+chiude un proto-mnest con punteggio simile a una generazione vince per il bonus
+di strategia, com'&egrave; corretto.
+</p>
+
+<div class="decision">
+<strong>DECISIONE v1 (taratura).</strong> I pesi sopra sono prima approssimazione,
+da rivalutare dopo 30 sintesi reali sul sistema. La regola di calibrazione:
+nessuna strategia deve avere bonus tale da farla vincere quando &egrave;
+strutturalmente sbagliata (es. una composizione lunga 7 hop che vince su una
+generazione corretta solo per il bonus). Se questo accade, abbassare il bonus.
+</div>
+
+<h1 id="cap7">7. Il telos di non-rinuncia</h1>
+
+<p class="lead">
+La cascata non &egrave; solo disciplina di costo: &egrave; il meccanismo che
+onora il telos &laquo;coltivare gli strumenti&raquo;
+(<a href="../Metnos_Architettura_Intro_v1.html#cap11">Architettura cap. 11</a>):
+finch&eacute; una richiesta utente &egrave; dentro la costituzione e dentro il
+budget, synt esaurisce le strategie disponibili prima di rispondere
+&laquo;non posso&raquo;.
+</p>
+
+<p>
+Il telos vive in <code>TELOS.md</code> nel workspace, accanto agli altri:
+</p>
+
+<pre><code>5. Coltivare gli strumenti: se ti chiedo qualcosa che il tuo pool non sa
+   ancora fare, esaurisci le strategie di sintesi (comporre, generare,
+   chiedere) prima di rispondere "non posso". Il fallimento &egrave; lecito,
+   la rinuncia silenziosa no.</code></pre>
+
+<p>
+La differenza fra <em>fallimento</em> e <em>rinuncia</em> &egrave; tutta qui.
+Synt pu&ograve; arrivare alla conclusione che la richiesta non si pu&ograve;
+soddisfare nel budget, ma deve farlo dopo aver tentato la cascata, e deve
+spiegarlo: &laquo;ho provato a comporre con questi N executor, ho provato a
+generare con questa specifica, il test di nascita falliva sul caso X&raquo;. Un
+fallimento motivato &egrave; un dato per il futuro; una rinuncia silenziosa
+&egrave; un buco nel mnestoma.
+</p>
+
+<div class="callout warning">
+<strong>Non confondere non-rinuncia con testardaggine.</strong> Le soglie di
+abbandono restano valide: max 3 retry per stadio, sospensione di 24h per
+proto-mnest pattern-rifiutato, lock di 30 giorni per direzione interna
+rifiutata. La non-rinuncia &egrave; <em>esaurire la cascata</em>, non
+<em>insistere all'infinito</em>. Coraggio, non testardaggine.
+</div>
+
+<h1 id="cap8">8. Approvazione umana, budget, abbandono</h1>
+
+<h2>8.1 Gate umano: sempre, ovunque</h2>
+
+<p>
+Indipendentemente dalla strategia, ogni proposta di synt che produce o modifica
+un executor passa per il gate umano (vedi <code>approval_ux.html</code>, da
+riscrivere). Il principio &egrave; quello del <em>terzo dei sei principi
+dell'Architettura</em>: niente sintesi senza filtro umano, in nessun livello
+di autonomy.
+</p>
+
+<p>
+Una proposta di <strong>composizione</strong> &egrave; un caso a parte: synt non
+crea nessun nuovo artefatto firmato, solo orchestra l'esecuzione. Il gate umano
+in questo caso si applica al primo uso (Roberto vede &laquo;sto per chiamare
+A &rarr; B &rarr; C, va bene?&raquo;) e poi viene rilassato in modo simmetrico al
+livello di autonomy: in <em>Supervised</em> ogni invocazione della catena
+chiede conferma; in <em>Full</em>, dopo le prime 5 esecuzioni pulite, la
+conferma viene saltata.
+</p>
+
+<h2>8.2 Budget</h2>
+
+<table>
+<thead><tr><th style="width:24%">Tetto</th><th>Default</th><th>Comportamento al supero</th></tr></thead>
+<tbody>
+<tr><td><strong>Soft per richiesta</strong></td><td>2 &euro;</td><td>synt avvisa Roberto e chiede se proseguire.</td></tr>
+<tr><td><strong>Hard per richiesta</strong></td><td>5 &euro;</td><td>synt si ferma, registra abbandono per budget.</td></tr>
+<tr><td><strong>Hard al giorno</strong></td><td>20 &euro;</td><td>cap costituzionale (non superabile via config).</td></tr>
+</tbody>
+</table>
+
+<h2>8.3 Stati di una richiesta di sintesi</h2>
+
+<table>
+<thead><tr><th style="width:22%">Stato</th><th>Significato</th><th>Transizioni</th></tr></thead>
+<tbody>
+<tr><td><code>composing</code></td><td>Cerca catena nel pool.</td><td>&rarr; <code>composed</code> (catena trovata) oppure <code>generating</code>.</td></tr>
+<tr><td><code>composed</code></td><td>Catena proposta, in attesa del gate utente.</td><td>&rarr; <code>delivered</code> oppure <code>generating</code> se Roberto rifiuta.</td></tr>
+<tr><td><code>generating</code></td><td>Pipeline multistage a 5 stadi in corso.</td><td>&rarr; <code>born</code> (executor firmato) oppure <code>abandoned</code>.</td></tr>
+<tr><td><code>born</code></td><td>Executor firmato, in pool.</td><td>terminale.</td></tr>
+<tr><td><code>abandoned</code></td><td>Tutte le strategie esaurite, fallimento motivato.</td><td>terminale; lock di 24h sullo stesso scopo.</td></tr>
+<tr><td><code>proposed</code></td><td>Strategia introvertiva, in attesa di batch utente.</td><td>&rarr; <code>born</code>/<code>fused</code>/<code>generalized</code>/<code>specialized</code> oppure <code>rejected</code>.</td></tr>
+<tr><td><code>rejected</code></td><td>Roberto ha respinto la proposta introvertiva.</td><td>terminale; lock di 30 giorni sulla stessa direzione.</td></tr>
+</tbody>
+</table>
+
+<h1 id="cap9">9. Contratto Python</h1>
+
+<pre><code>from typing import Protocol, Literal
+from dataclasses import dataclass
+
+Strategy = Literal[
+    "compose", "generate",
+    "merge", "generalize", "specialize",
+]
+
+ProposalState = Literal[
+    "composing", "composed",
+    "generating", "born", "abandoned",
+    "proposed", "rejected",
+    "fused", "generalized", "specialized",
+]
+
+@dataclass(frozen=True)
+class SynthRequest:
+    """Una richiesta di sintesi, reattiva o introvertiva."""
+    request_id:    str
+    mode:          Literal["reactive", "introspective"]
+    proto_mnest:   str | None       # id del proto-mnest che innesca (reattivo)
+    target_intent: str              # NL: cosa serve fare
+    budget_cents:  int              # tetto frontier consumabile
+    capability_hint: list[str]      # capability gi&agrave; supposte
+
+@dataclass(frozen=True)
+class RewardBreakdown:
+    det_pass_rate:        float    # [0,1]
+    judge_score:          float    # [0,1]
+    judge_reasoning:      str
+    cost_ratio:           float    # [0,1]
+    similarity_penalty:   float    # [0,1] (col segno negativo nella formula)
+    coverage_bonus:       float    # [0,1]
+    strategy_cost_bonus:  float    # [0,1] dipende da Strategy
+    total:                float    # R aggregato
+
+@dataclass
+class SynthProposal:
+    """Una proposta concreta che synt presenta all'utente."""
+    request_id:   str
+    strategy:     Strategy
+    state:        ProposalState
+    artefact:     dict             # catena (compose) o executor candidato (generate/&hellip;)
+    reward:       RewardBreakdown
+    cost_cents:   int              # consumo finora
+    rationale:    str              # 2-3 righe NL: perch&eacute; questa strategia, qui
+
+class Synt(Protocol):
+    async def react(self, req: SynthRequest) -&gt; SynthProposal:
+        """Cascata reattiva: prima compone, poi genera, poi abbandona."""
+        ...
+
+    async def homeostasis(self, lookback_days: int = 30) -&gt; list[SynthProposal]:
+        """Scorre mnestoma e pool; ritorna 0..N proposte introvertive in batch."""
+        ...
+
+    async def revise(
+        self, request_id: str, feedback: str,
+        target_strategy: Strategy | None = None,
+    ) -&gt; SynthProposal:
+        """Riprende una proposta dopo feedback umano."""
+        ...
+
+# Errori (registrati e trasformati in stato, non propagati)
+class StrategyExhaustedError(Exception): ...
+class BudgetExceededError(Exception): ...
+class PolicyVetoError(Exception): ...
+class ConstitutionViolationError(Exception): ...
+</code></pre>
+
+<h1 id="cap10">10. Audit e osservabilit&agrave;</h1>
+
+<p>
+Ogni passo della cascata produce una riga JSONL in
+<code>workspace/.audit/synt/YYYY-MM-DD.jsonl</code>. Esempio per una composizione
+riuscita:
+</p>
+
+<pre><code>{
+  "ts":            "2026-04-25T22:14:33Z",
+  "request_id":    "01HX...",
+  "mode":          "reactive",
+  "proto_mnest":   "mnest_01HW...",
+  "strategy":      "compose",
+  "state":         "composed",
+  "chain":         ["fs_read", "pdf_extract", "invoice_classify", "workspace_save"],
+  "reward":        {"total": 0.78, "det_pass_rate": 0.95, "&hellip;": "&hellip;"},
+  "cost_cents":    0,
+  "duration_ms":   142
+}
+</code></pre>
+
+<p>
+Tre invarianti dell'audit di synt, che il loader e il runtime garantiscono:
+</p>
+<ol>
+<li><strong>Tracciabilit&agrave; completa</strong>: per ogni <code>request_id</code> esiste l'intera sequenza di stati attraversati, fino al terminale.</li>
+<li><strong>Decisioni motivate</strong>: ogni passaggio fra strategie include un <code>rationale</code> NL leggibile da Roberto a posteriori.</li>
+<li><strong>Costo registrato</strong>: la somma dei <code>cost_cents</code> di una richiesta non supera mai il <code>budget_cents</code> dichiarato; la riga finale lo certifica.</li>
+</ol>
+
+<h1 id="cap11">11. Alternative considerate</h1>
+
+<table>
+<thead><tr><th style="width:30%">Alternativa</th><th>Perch&eacute; scartata (o rimandata)</th></tr></thead>
+<tbody>
+<tr><td>Solo generazione, niente cascata</td><td>Default originale di <code>synthesizer.html</code> v1.0. Costoso e inquina il pool: ogni proto-mnest produce un nuovo executor anche quando una catena di executor esistenti basterebbe. Sostituito dalla cascata il 25/4/2026.</td></tr>
+<tr><td>Cascata estesa (anche cap. 5 reattivo)</td><td>Fondere/generalizzare/specializzare nel turno utente moltiplica il rischio: tre proposte concorrenti in parallelo, gate umano sotto pressione. Restano introvertivi.</td></tr>
+<tr><td>Generazione con N modelli in parallelo</td><td>3&times; il costo per piccola riduzione di varianza. Eventuale in v2 se l'hit-rate della pipeline scende sotto il 60%.</td></tr>
+<tr><td>Reward learning (RLHF) sui pesi di R</td><td>Richiede dataset di feedback umano firmato; sovradimensionato per uso domestico. La taratura manuale + revisione semestrale &egrave; pi&ugrave; trasparente.</td></tr>
+<tr><td>Composizione con LLM (planner)</td><td>Sostituisce la visita di grafo con una chiamata frontier che inventa la catena. Costoso e fragile: la visita &egrave; deterministica e ispezionabile, l'LLM no.</td></tr>
+<tr><td>Auto-merge senza gate</td><td>Una fusione che cambia profili di sandbox &egrave; un atto di sicurezza. Resta gated.</td></tr>
+</tbody>
+</table>
+
+<h1 id="cap12">12. Test di conformit&agrave;</h1>
+
+<table>
+<thead><tr><th style="width:38%">Invariante</th><th>Test</th></tr></thead>
+<tbody>
+<tr><td>La cascata reattiva tenta sempre comporre prima di generare</td><td>Iniezione di un proto-mnest risolvibile da catena nota &rarr; <code>strategy = compose</code> nel proposal, <code>cost_cents = 0</code> in chiamate frontier.</td></tr>
+<tr><td>Generare scatta solo se comporre fallisce</td><td>Proto-mnest senza catena possibile &rarr; transizione <code>composing &rarr; generating</code> in audit; <code>compose</code> non emesso come strategia finale.</td></tr>
+<tr><td>Catena max 5 hop</td><td>Forzare 6 hop &rarr; visita rifiuta la catena, fallback a generare.</td></tr>
+<tr><td>Gate umano non bypassabile</td><td>Mock di approval_ux che non viene chiamato &rarr; nessuno stato <code>born</code>/<code>fused</code>/&hellip; raggiunto.</td></tr>
+<tr><td>Budget hard rispettato</td><td>Richiesta con budget 0.10 &euro; &rarr; abbandono prima della seconda chiamata frontier; cost effettivo &le; 0.10 &euro;.</td></tr>
+<tr><td>R reproducibile</td><td>Replay con stesso seed &rarr; stesso R &plusmn; 0.01 (judge_score con tolleranza).</td></tr>
+<tr><td>Strategy cost bonus monotono</td><td>Per stessa qualit&agrave; (det_pass_rate, judge), R(compose) &gt; R(merge) &gt; R(specialize) &gt; R(generalize) &gt; R(generate).</td></tr>
+<tr><td>Lock 24h post-abbandono</td><td>Stesso target_intent entro 24h &rarr; SynthRequest rifiutata con stato <code>abandoned</code> immediato.</td></tr>
+<tr><td>Lock 30 giorni post-rejected interno</td><td>Direzione introvertiva rifiutata da Roberto &rarr; nessuna nuova proposta sulla stessa direzione per 30 giorni.</td></tr>
+<tr><td>Audit completo</td><td>Per ogni <code>request_id</code> con stato terminale, esistono in audit la riga iniziale e quella terminale, e tutti gli stati intermedi.</td></tr>
+<tr><td>Coerenza profili in fusione</td><td>Tentativo di fondere due executor con profili sandbox incompatibili (es. uno scrive su <code>~/Pictures/</code>, l'altro no) &rarr; proposta sospesa con motivazione.</td></tr>
+</tbody>
+</table>
+
+<h1 id="cap13">13. Domande aperte</h1>
+
+<ol>
+<li><strong>Casa dei tre passi introvertivi.</strong> Restano in <code>synt.html</code>, oppure migrano in un nuovo <code>consolidator.html</code>? La separazione potrebbe semplificare i contratti (synt = reattivo, consolidator = introvertivo) ma duplicherebbe parti di pesatura. Oggi: tutto qui. Aperta.</li>
+<li><strong>Tempi dell'omeostasi.</strong> Notte fissa o adattiva al carico? Per Metnos su <code>metnos-server</code> singolo utente la notte basta; per scenari multi-sender va rivisto. Aperta.</li>
+<li><strong>Composizioni rinforzate &rarr; promozione.</strong> Quante ricorrenze di una stessa catena triggerano una proposta di generalizzazione? Default tentativo: 5 in 30 giorni. Da calibrare.</li>
+<li><strong>Visita del grafo per comporre.</strong> Algoritmo: breadth-first sul mnestoma con pruning per peso minimo? A* con euristica di copertura I/O? Decisione aperta &mdash; per ora BFS semplice.</li>
+<li><strong>Revoca della firma.</strong> Quando Roberto rifiuta una proposta gi&agrave; <code>born</code> dopo n invocazioni, &egrave; un'archiviazione o una quarantena? Lifecycle dell'executor (cap. 6) ammette entrambi; criterio non ancora fissato.</li>
+<li><strong>Synt remoto.</strong> In topologia con executor remoti (Architettura cap. 4), la cascata gira su <code>metnos-server</code> o pu&ograve; spawnare composizioni che attraversano server e laptop? Aperta; default conservativo: tutto su <code>metnos-server</code>, executor remoti chiamati come ogni altro.</li>
+</ol>
+
+<hr>
+
+<div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(260px, 1fr)); gap:14px; margin:28px 0 24px;">
+  <a href="executor.html" style="display:block; padding:14px 16px; border:1px solid var(--border); border-radius:8px; background:white; color:inherit; text-decoration:none;">
+    <span style="display:inline-block; padding:2px 9px; border-radius:10px; font-size:9pt; background:var(--code-bg); color:var(--muted); font-weight:500;">canonico</span>
+    <div style="color:var(--navy); font-size:11.5pt; font-weight:700; margin:8px 0 6px 0;">executor</div>
+    <div style="margin:0; color:var(--muted); font-size:10pt; line-height:1.5;">L'unit&agrave; di codice che synt fa nascere o orchestra. Pipeline multistage 5 stadi al cap. 7 / &sect;4.2.3.</div>
+  </a>
+  <a href="mnest.html" style="display:block; padding:14px 16px; border:1px solid var(--border); border-radius:8px; background:white; color:inherit; text-decoration:none;">
+    <span style="display:inline-block; padding:2px 9px; border-radius:10px; font-size:9pt; background:var(--code-bg); color:var(--muted); font-weight:500;">canonico</span>
+    <div style="color:var(--navy); font-size:11.5pt; font-weight:700; margin:8px 0 6px 0;">mnest</div>
+    <div style="margin:0; color:var(--muted); font-size:10pt; line-height:1.5;">La traccia di co-attivazione che synt legge per decidere. Proto-mnest al cap. 8.</div>
+  </a>
+  <a href="../Metnos_Architettura_Intro_v1.html#cap9" style="display:block; padding:14px 16px; border:1px solid var(--border); border-radius:8px; background:white; color:inherit; text-decoration:none;">
+    <span style="display:inline-block; padding:2px 9px; border-radius:10px; font-size:9pt; background:var(--code-bg); color:var(--muted); font-weight:500;">livello 1</span>
+    <div style="color:var(--navy); font-size:11.5pt; font-weight:700; margin:8px 0 6px 0;">Architettura, cap. 9</div>
+    <div style="margin:0; color:var(--muted); font-size:10pt; line-height:1.5;">La cascata nel quadro d'insieme.</div>
+  </a>
+  <a href="../Metnos_Architettura_Intro_v1.html#cap11" style="display:block; padding:14px 16px; border:1px solid var(--border); border-radius:8px; background:white; color:inherit; text-decoration:none;">
+    <span style="display:inline-block; padding:2px 9px; border-radius:10px; font-size:9pt; background:var(--code-bg); color:var(--muted); font-weight:500;">livello 1</span>
+    <div style="color:var(--navy); font-size:11.5pt; font-weight:700; margin:8px 0 6px 0;">Architettura, cap. 11</div>
+    <div style="margin:0; color:var(--muted); font-size:10pt; line-height:1.5;">Telos e Vaglio: il telos di non-rinuncia.</div>
+  </a>
+  <a href="./" style="display:block; padding:14px 16px; border:1px solid var(--border); border-radius:8px; background:white; color:inherit; text-decoration:none;">
+    <span style="display:inline-block; padding:2px 9px; border-radius:10px; font-size:9pt; background:var(--code-bg); color:var(--muted); font-weight:500;">indice</span>
+    <div style="color:var(--navy); font-size:11.5pt; font-weight:700; margin:8px 0 6px 0;">Microprogettazione</div>
+    <div style="margin:0; color:var(--muted); font-size:10pt; line-height:1.5;">Tutti i doc.</div>
+  </a>
+</div>
+
+<hr>
+<p style="text-align:center; color:var(--muted); font-size:9.5pt; margin-top:40px;">
+Metnos &mdash; <em>synt</em> microprogettazione v1.1 &mdash; 2026-04-25<br>
+Doc canonico nuovo. Sostituisce <code>synthesizer.html</code> (deprecato).
+</p>
+</body>
+</html>

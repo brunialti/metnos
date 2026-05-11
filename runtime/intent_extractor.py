@@ -1,0 +1,126 @@
+#!/usr/bin/env python3
+"""intent_extractor.py — estrae verbo+oggetto canonici da una richiesta utente.
+
+Approccio: una chiamata LLM (gemma 4 26B fast/middle tier, think=False, ~500ms)
+con prompt minimo che chiede al modello di mappare la richiesta sul vocabolario
+chiuso di Metnos (20 verbi × 11 oggetti).
+
+Pipeline:
+    query → LLM → {verb, object, confidence}
+                → caller usa per filtrare candidates
+
+Vantaggi rispetto al lexicon match:
+- Robusto a variazioni di linguaggio (IT/EN, conjugazioni, sinonimi, idiomi).
+- Cross-language (gemma e' multilingue).
+- Non richiede manutenzione di un dizionario manuale.
+
+Latenza: ~500-800ms con gemma 4 26B think=False, num_predict=80.
+
+Failure mode:
+- LLM down → ritorna None, caller deve fall-back al lexicon.
+- LLM produce JSON malformato → parser tenta recupero best-effort, altrimenti None.
+- LLM produce verbo/oggetto fuori vocabolario → ritorna None (non si forza).
+"""
+from __future__ import annotations
+
+import json
+import re
+from typing import Optional
+
+from vocab import (
+    ACTIONS as VOCAB_VERBS,
+    OBJECTS as VOCAB_OBJECTS,
+    render_actions_inline as _vocab_verbs_inline,
+    render_objects_inline as _vocab_objects_inline,
+)
+from logging_setup import get_logger
+log = get_logger(__name__)
+
+import prompt_loader
+from config import DEFAULT_LANG
+
+# Prompt persistito in `runtime/prompts/<lang>/intent_extractor.j2` (ADR 0092 Phase 2).
+# Renderizzato lazy a ogni `extract_intent` call (cache MiniJinja built-in).
+
+
+_UNDO_PATTERNS = (
+    "annulla", "annullare", "annullo",
+    "undo", "revert", "rollback", "ripristina",
+    "torna indietro", "indietreggia", "anull",
+)
+
+
+def extract_intent(query: str, llm_call) -> Optional[dict]:
+    """Estrae verb+object dalla richiesta. Ritorna None se LLM o parsing fallisce.
+
+    Bypass deterministico per query di UNDO (annulla/undo/ripristina): il
+    closed vocab non contiene "undo" come verbo, e il LLM tipicamente mappa
+    "annulla" → "delete" (errato semanticamente). Ritorniamo verb=None per
+    forzare fallback al lexicon ranking + iniezione builtin di undo_last_turn.
+    """
+    if not query or not query.strip():
+        return None
+    q_lower = query.lower()
+    if any(p in q_lower for p in _UNDO_PATTERNS):
+        return None  # signal "no canonical verb" → caller usa fallback
+    prompt = prompt_loader.get(
+        "intent_extractor",
+        DEFAULT_LANG,
+        verbs_inline=_vocab_verbs_inline(),
+        objects_inline=_vocab_objects_inline(),
+    )
+    try:
+        res = llm_call(prompt, query, max_tokens=80, think=False)
+    except TypeError:
+        # llm_call non supporta think kwarg; tenta senza
+        try:
+            res = llm_call(prompt, query, max_tokens=80)
+        except Exception:
+            return None
+    except Exception:
+        return None
+    text = (res or {}).get("text") or ""
+    parsed = _parse_json(text)
+    if not parsed:
+        return None
+    verb = (parsed.get("verb") or "").strip().lower()
+    obj = (parsed.get("object") or "").strip().lower()
+    if verb not in VOCAB_VERBS:
+        verb = None
+    if obj not in VOCAB_OBJECTS:
+        obj = None
+    if not verb and not obj:
+        return None
+    return {"verb": verb, "object": obj}
+
+
+def _parse_json(text: str) -> Optional[dict]:
+    """Parser tollerante: tenta json.loads su tutto il blocco, poi su substring
+    `{...}` piu' lunga, poi su pattern verb/object esplicito."""
+    if not text:
+        return None
+    # 1. Pulisci markdown fence se presente
+    t = text.strip()
+    t = re.sub(r"^```[a-zA-Z]*\n?", "", t)
+    t = re.sub(r"\n?```\s*$", "", t)
+    # 2. Tenta parse diretto
+    try:
+        return json.loads(t)
+    except Exception as _e:  # silent swallow (auto-fixed)
+        log.warning("silent exception in %s: %s", __name__, _e)
+    # 3. Estrai oggetto JSON con regex
+    m = re.search(r"\{[^{}]*\}", t)
+    if m:
+        try:
+            return json.loads(m.group(0))
+        except Exception as _e:  # silent swallow (auto-fixed)
+            log.warning("silent exception in %s: %s", __name__, _e)
+    # 4. Pattern key:value separati
+    verb_m = re.search(r'"verb"\s*:\s*"([a-z]+)"', t)
+    obj_m = re.search(r'"object"\s*:\s*"([a-z]+)"', t)
+    if verb_m or obj_m:
+        return {
+            "verb": verb_m.group(1) if verb_m else None,
+            "object": obj_m.group(1) if obj_m else None,
+        }
+    return None

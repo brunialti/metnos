@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Metnos &mdash; http_api v1.1 (tested)</title>
+    <meta name="description" content="Metnos HTTP API microdesign: admin server + uniform agent channel on port 8770. Auth via admin key and bearer device, SSE on /agent/turn, htmx + Jinja2 + uPlot dashboard.">
+    <meta name="keywords" content="http api, metnos, admin dashboard, sse, htmx, jinja2, uplot, admin key, bearer, well-known, agent turn">
+    <meta name="author" content="Roberto Brunialti">
+    <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large">
+    <link rel="canonical" href="https://metnos.com/en/architecture/http_api.html">
+    <link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/http_api.html">
+    <link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/http_api.html">
+    <link rel="alternate" hreflang="x-default" href="https://metnos.com/en/architecture/http_api.html">
+    <meta property="og:type" content="article">
+    <meta property="og:url" content="https://metnos.com/en/architecture/http_api.html">
+    <meta property="og:title" content="Metnos &mdash; http_api v1.1 (tested)">
+    <meta property="og:description" content="Admin HTTP server + uniform agent channel. Port 8770. Admin key, htmx dashboard, SSE on /agent/turn.">
+    <meta property="og:locale" content="en_US">
+    <meta property="og:site_name" content="Metnos">
+    <style>
+:root {
+    --navy: #1A477A; --navy-light: #2B6CB0; --sage: #548235;
+    --bronze: #A0522D; --bg: #FAFBFC; --text: #1a1a1a;
+    --border: #d0d7de; --code-bg: #f6f8fa;
+    --note-bg: #dbeafe; --note-border: #3b82f6;
+    --tip-bg: #dcfce7; --tip-border: #16a34a;
+    --warn-bg: #fef3c7; --warn-border: #f59e0b;
+    --muted: #64748B;
+}
+* { box-sizing: border-box; }
+body { font-family: 'Segoe UI', Calibri, -apple-system, sans-serif; font-size: 11pt; line-height: 1.65; color: var(--text); background: var(--bg); max-width: 960px; margin: 0 auto; padding: 40px 30px; }
+h1 { color: var(--navy); font-size: 20pt; border-bottom: 3px solid var(--navy); padding-bottom: 8px; margin-top: 50px; }
+h1:first-of-type { margin-top: 0; }
+h2 { color: var(--navy-light); font-size: 14pt; margin-top: 28px; border-bottom: 1px solid var(--border); padding-bottom: 4px; }
+h3 { color: var(--navy); font-size: 12pt; margin-top: 18px; }
+p { margin: 10px 0; }
+table { width: 100%; border-collapse: collapse; margin: 15px 0; font-size: 10pt; }
+th { background: var(--navy); color: white; padding: 8px 10px; text-align: left; font-weight: 600; }
+td { padding: 7px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+tr:nth-child(even) td { background: #f0f4f8; }
+pre { background: var(--code-bg); border: 1px solid var(--border); border-radius: 4px; padding: 12px 16px; overflow-x: auto; font-size: 9.5pt; line-height: 1.55; }
+code { font-family: Consolas, 'Courier New', monospace; }
+p code, li code, td code { background: var(--code-bg); padding: 1px 5px; border-radius: 3px; font-size: 9.5pt; }
+.callout { border-left: 4px solid; padding: 10px 16px; margin: 15px 0; border-radius: 0 4px 4px 0; font-size: 10pt; }
+.callout.note { background: var(--note-bg); border-color: var(--note-border); }
+.callout.tip { background: var(--tip-bg); border-color: var(--tip-border); }
+.callout.warning { background: var(--warn-bg); border-color: var(--warn-border); }
+.title-page { text-align: center; padding: 60px 0 30px; }
+.title-page h1 { font-size: 32pt; border: none; margin: 0; }
+.title-page .subtitle { font-size: 16pt; color: var(--navy-light); margin: 10px 0 30px; }
+.title-page .meta { font-size: 11pt; color: #666; }
+.toc { border: 1px solid var(--border); border-radius: 8px; background: #fff; padding: 14px 22px; margin: 22px 0; }
+.toc h2 { border: none; margin-top: 0; }
+.toc ol { font-size: 11pt; line-height: 1.9; }
+.toc a { color: var(--navy); text-decoration: none; }
+ul, ol { margin: 8px 0; padding-left: 24px; }
+li { margin-bottom: 4px; }
+.lead { font-size: 12pt; color: var(--navy); border-left: 4px solid var(--sage); padding-left: 14px; margin: 18px 0; }
+.status-banner { margin: 18px 0; border-left: 5px solid #16a34a; background: #dcfce7; color: #14532d; padding: 14px 20px; border-radius: 0 8px 8px 0; font-size: 11pt; line-height: 1.55; }
+.status-banner strong { color: #14532d; }
+.status-banner .status-chip { display: inline-block; background: #14532d; color: #fff; padding: 2px 10px; border-radius: 12px; font-size: 9.5pt; letter-spacing: 1px; font-weight: 700; margin-right: 6px; }
+.status-banner .seq { font-size: 9.5pt; color: #2d4a32; margin-top: 8px; }
+    </style>
+</head>
+<body>
+
+<div class="status-banner">
+<span class="status-chip">TESTED</span>
+<strong>Microdesign v1.1 &mdash; aligned with code as of 4 May 2026.</strong>
+HTTP API Phase 1 (ADR&nbsp;0078) implemented and verified live. 12/12 tests green via <code>AioHTTPTestCase</code>. Implementation: <code>/opt/myclaw/runtime/metnos_http_server.py</code> + <code>http_auth.py</code> + <code>http_render.py</code> + <code>http_routes_agent.py</code> + <code>http_routes_admin.py</code> + 8 Jinja2 templates.
+<div class="seq">Status in the sequence: <em>under approval</em> &rarr; <em>approved</em> &rarr; <strong>tested</strong> &rarr; <em>implemented</em>. Canonical page created on 4 May 2026 (ADR&nbsp;0085). Sits alongside, not in place of, <a href="channel.html" style="color:#14532d;text-decoration:underline;"><code>channel</code></a> (Telegram remains the primary dialogue surface). See also <a href="pairing.html" style="color:#14532d;text-decoration:underline;"><code>pairing</code></a> (multi-user via <code>/start</code>).</div>
+</div>
+
+<nav aria-label="Language" style="position:fixed;top:16px;right:20px;z-index:9999;font-family:'Segoe UI',Calibri,sans-serif;font-size:10pt;letter-spacing:2px;background:#FAFBFC;border:1px solid #d0d7de;border-radius:14px;padding:4px 10px;box-shadow:0 1px 4px rgba(0,0,0,0.04);">
+<a href="/it/architecture/http_api.html" hreflang="it" lang="it" style="color:#64748B;text-decoration:none;padding:0 4px;border:none;">IT</a>
+<span style="color:#d0d7de;"> &middot; </span>
+<a href="/en/architecture/http_api.html" class="active" hreflang="en" lang="en" style="color:#1a1a1a;text-decoration:none;font-weight:700;padding:0 4px;border:none;">EN</a>
+</nav>
+
+<div style="background:#fff;border-bottom:1px solid #d0d7de;padding:10px 0;font-size:14px;position:sticky;top:0;z-index:10;margin-bottom:20px;">
+  <div style="max-width:960px;margin:0 auto;padding:0 20px;display:flex;justify-content:space-between;">
+    <a href="../index.html" style="color:#1a477a;text-decoration:none;font-weight:500;">&larr; Documentation index</a>
+    <span style="color:#8e8e93;">Microdesign &rsaquo; <strong style="color:#1a1a1a;">http_api</strong></span>
+  </div>
+</div>
+
+<div class="title-page">
+    <h1>Metnos</h1>
+    <div class="subtitle"><code>http_api</code> &mdash; admin server + uniform agent channel</div>
+    <div class="meta">
+        Microdesign v1.1 &mdash; status <strong>TESTED</strong> (4 May 2026)<br>
+        Audience: anyone who wants to talk to Metnos via HTTP/browser/curl.<br>
+        <br>
+        Reading: 12 minutes.
+    </div>
+</div>
+
+<div class="toc">
+<h2>Contents</h2>
+<ol>
+    <li><a href="#cap1">What it does: a second HTTP server</a></li>
+    <li><a href="#cap2">Phase 1 endpoints</a></li>
+    <li><a href="#cap3">Authentication and roles</a></li>
+    <li><a href="#cap4">Content negotiation + ETag</a></li>
+    <li><a href="#cap5">SSE on <code>/agent/turn</code></a></li>
+    <li><a href="#cap6">Dashboard <code>/admin</code> (htmx + uPlot)</a></li>
+    <li><a href="#cap7">Relationship with <code>channel</code> (Telegram) and <code>pairing</code></a></li>
+    <li><a href="#cap8">Limits and Phase 2 deferrals</a></li>
+</ol>
+</div>
+
+<h1 id="cap1">1. What it does: a second HTTP server</h1>
+
+<p class="lead">
+The <em>HTTP API</em> is the second Metnos server: listening on
+<strong>port 8770</strong>, separate from the remote-device pairing
+server (port 8765). It exposes three things: an <em>admin dashboard</em>
+in HTML for the host, a <em>uniform agent channel</em>
+(<code>POST /agent/turn</code>) for clients that prefer HTTP/SSE over
+Telegram, and node <em>discovery</em>
+(<code>/.well-known/metnos.json</code>) for the client side.
+</p>
+
+<p>
+Picking a second server (instead of stretching the pairing server or
+funnelling everything through Telegram) is driven by three constraints:
+<em>(a)</em> the admin UI must live in a browser tab, so the host doesn't
+have to open Telegram to manage users, scheduler, introvertiva proposals;
+<em>(b)</em> the HTTP agent channel is the foundation for the Rust client
+and for future integrations; <em>(c)</em> the pairing server is minimal by
+design (port 8765, register-device only) and shouldn't grow.
+</p>
+
+<p>
+Default bind: <code>127.0.0.1:8770</code>. To expose to the LAN, change
+the bind in config (Phase 2 plans self-signed cert pinned by fingerprint,
+reusing pairing material).
+</p>
+
+<h1 id="cap2">2. Phase 1 endpoints</h1>
+
+<table>
+<thead><tr><th style="width:8%">Method</th><th style="width:32%">Path</th><th style="width:14%">Role</th><th>Purpose</th></tr></thead>
+<tbody>
+<tr><td>GET</td><td><code>/agent/health</code></td><td>anonymous</td><td>Liveness + uptime + version.</td></tr>
+<tr><td>GET</td><td><code>/.well-known/metnos.json</code></td><td>anonymous</td><td>Discovery: name, channels, capabilities, admin-key fingerprint.</td></tr>
+<tr><td>POST</td><td><code>/agent/turn</code></td><td>user/admin</td><td>Run <code>run_turn</code>. SSE if <code>Accept: text/event-stream</code>, JSON otherwise.</td></tr>
+<tr><td>GET</td><td><code>/agent/devices/me</code></td><td>user</td><td>Caller device info (id, paired_at, autonomy).</td></tr>
+<tr><td>POST</td><td><code>/agent/register</code></td><td>anonymous</td><td>Register a device (pairing wrapper).</td></tr>
+<tr><td>GET</td><td><code>/admin</code></td><td>admin</td><td>Dashboard root (HTML).</td></tr>
+<tr><td>GET</td><td><code>/admin/proposals</code></td><td>admin</td><td>Introvertiva proposals table (filter <code>kind</code>).</td></tr>
+<tr><td>POST</td><td><code>/admin/proposals/{sig_key}/{approve|reject|defer}</code></td><td>admin</td><td>Action on a single proposal.</td></tr>
+<tr><td>GET</td><td><code>/admin/executors</code></td><td>admin</td><td>Catalog with lifecycle.</td></tr>
+<tr><td>GET</td><td><code>/admin/executors/stats</code></td><td>admin</td><td>Counts + daily events for uPlot.</td></tr>
+<tr><td>GET</td><td><code>/admin/runs</code></td><td>admin</td><td>Last N scheduler runs.</td></tr>
+<tr><td>GET</td><td><code>/admin/safety</code></td><td>admin</td><td>Safety signatures (ADR 0071).</td></tr>
+<tr><td>GET</td><td><code>/admin/turns</code></td><td>admin</td><td>Last N turns (jsonl).</td></tr>
+<tr><td>GET</td><td><code>/admin/users</code></td><td>admin</td><td>User table (host + guests).</td></tr>
+<tr><td>POST</td><td><code>/admin/users</code></td><td>admin</td><td>Create user from form (default <code>owner = host</code>).</td></tr>
+<tr><td>GET</td><td><code>/admin/users/{id}</code></td><td>admin</td><td>User detail.</td></tr>
+<tr><td>POST</td><td><code>/admin/users/{id}/delete</code></td><td>admin</td><td>Delete (cascade on <code>user_channels</code>).</td></tr>
+<tr><td>POST</td><td><code>/admin/users/{id}/autonomy</code></td><td>admin</td><td>Change <code>autonomy_level</code>.</td></tr>
+<tr><td>POST</td><td><code>/admin/users/{id}/channels/{channel}/pair</code></td><td>admin</td><td>Issue pairing token + instructions.</td></tr>
+<tr><td>POST</td><td><code>/admin/users/{id}/channels/{channel}/remove</code></td><td>admin</td><td>Unbind channel.</td></tr>
+</tbody>
+</table>
+
+<p>
+Collection routes (<code>/admin/proposals</code>,
+<code>/admin/executors</code>, <code>/admin/runs</code>,
+<code>/admin/safety</code>, <code>/admin/turns</code>,
+<code>/admin/users</code>) are <em>negotiation-driven</em> (see
+<a href="#cap4">section&nbsp;4</a>).
+</p>
+
+<h1 id="cap3">3. Authentication and roles</h1>
+
+<p>Three roles, in increasing privilege order:
+<code>anonymous</code>&nbsp;&lt;&nbsp;<code>user</code>&nbsp;&lt;&nbsp;<code>admin</code>.</p>
+
+<h2>Admin key</h2>
+
+<p>
+File <code>~/.config/metnos/admin.key</code> (mode 0600), 256-bit hex
+generated with <code>secrets.token_hex(32)</code> at first server boot.
+Logs only show the sha256 <em>fingerprint</em> (first 16 hex). The admin
+key also doubles as the master for credential encryption (see
+<a href="#cap7">section&nbsp;7</a> and ADR&nbsp;0082).
+</p>
+
+<p>
+Web login: <code>POST /admin/login</code> with the admin key in clear;
+response <em>set-cookie</em> with TTL 7 days (HttpOnly,
+SameSite=Strict). From CLI/curl: header
+<code>Authorization: Bearer &lt;admin.key&gt;</code>.
+</p>
+
+<h2>Device bearer token</h2>
+
+<p>
+The middleware compares the <code>Bearer</code> with the
+<code>public_key_b64</code> of every paired device (table
+<code>devices</code> from pairing). Match &rarr; role <code>user</code>.
+</p>
+
+<h2>LAN trusted + anonymous whitelist</h2>
+
+<ul>
+<li><strong>LAN</strong>: 127.0.0.0/8, 192.168.0.0/16, 10.0.0.0/8 &rarr; default role <code>user</code>, only when no Bearer was presented and failed.</li>
+<li><strong>Anonymous whitelist</strong>: <code>/agent/health</code>, <code>/agent/register</code>, <code>/.well-known/*</code>. Every other path requires at least <code>user</code>.</li>
+<li><strong>Admin gate</strong>: any path starting with <code>/admin/</code> requires role <code>admin</code>; otherwise 403.</li>
+</ul>
+
+<div class="callout note">
+The &laquo;LAN trusted&raquo; rule is a consequence of the self-hosted
+model: on a home network the threat surface is small, and the host wants
+curl/htmx without juggling headers. The policy degrades the moment the
+bind opens to WAN (Phase 2 with TLS).
+</div>
+
+<h1 id="cap4">4. Content negotiation + ETag</h1>
+
+<p>
+Collection routes inspect <code>Accept</code>: <code>text/html</code>
+&rarr; Jinja2 fragment (htmx-friendly); JSON otherwise. In both cases an
+<code>ETag</code> is computed (sha256 of the payload, first 16 hex). If
+the caller resends <code>If-None-Match</code> with the same value, the
+response is <code>304 Not Modified</code> with no body. Live smoke test
+verified 4 May 2026: ETag/304 round-trip OK.
+</p>
+
+<h1 id="cap5">5. SSE on <code>/agent/turn</code></h1>
+
+<p>
+When the client sends <code>Accept: text/event-stream</code>,
+<code>POST /agent/turn</code> opens a stream and installs an
+<code>_SSEProgress</code> (implements
+<code>runtime.progress.Progress</code>) that <code>run_turn</code> calls
+at every step. Events emitted:
+</p>
+
+<table>
+<thead><tr><th style="width:18%">Event</th><th>When</th><th>Payload</th></tr></thead>
+<tbody>
+<tr><td><code>thinking</code></td><td>Stream open + each ongoing LLM call</td><td><code>{"phase": "planner|intent|vaglio", "step": N}</code></td></tr>
+<tr><td><code>progress</code></td><td>User notes (long-op notify)</td><td><code>{"text": "..."}</code></td></tr>
+<tr><td><code>tool_call</code></td><td>Phase 2 &mdash; not emitted today</td><td><code>{"name", "args"}</code></td></tr>
+<tr><td><code>tool_result</code></td><td>Phase 2 &mdash; not emitted today</td><td><code>{"name", "ok", "preview"}</code></td></tr>
+<tr><td><code>final</code></td><td>Stream close with the final answer</td><td><code>{"final_answer", "n_steps", ...}</code></td></tr>
+<tr><td><code>error</code></td><td>Error caught by the turn</td><td><code>{"error_code", "message"}</code></td></tr>
+</tbody>
+</table>
+
+<p>
+<code>run_turn</code> runs in an executor thread (sync) while the main
+coroutine pumps events on the loop via
+<code>asyncio.run_coroutine_threadsafe</code>.
+</p>
+
+<div class="callout warning">
+<strong>Phase 1 limit.</strong> <code>tool_call</code> and
+<code>tool_result</code> are not emitted: the current
+<code>Progress</code> interface does not yet have these callbacks. Phase
+2 extends it.
+</div>
+
+<h1 id="cap6">6. Dashboard <code>/admin</code> (htmx + uPlot)</h1>
+
+<p>
+Frontend stack deliberately minimal: <strong>htmx</strong> +
+<strong>Jinja2</strong> + <strong>uPlot</strong> via CDN, no build step,
+no CSS framework. Compact templates (&lt;50 lines each) under
+<code>runtime/templates/</code>. Clean system-ui style, palette aligned
+with the rest of the canonical docs (navy / sage / bronze).
+</p>
+
+<p>Main pages (Jinja2 rendering + htmx fragments):</p>
+
+<ul>
+<li><code>dashboard.html</code> &mdash; overview: catalog count, last 5 turns, last 5 paired users, safety signatures count, average latency over the last 20 turns.</li>
+<li><code>executors.html</code> &mdash; catalog table with columns <em>name</em>, <em>kind</em> (handcrafted/synth), <em>lifecycle</em>, <em>uses_30d</em>, <em>last_used</em>.</li>
+<li><code>executor_stats.html</code> &mdash; uPlot chart with daily run counts per executor.</li>
+<li><code>proposals.html</code> &mdash; introvertiva proposals table with <em>approve / reject / defer</em> buttons.</li>
+<li><code>runs.html</code> &mdash; last scheduler runs (cron + recurring user tasks).</li>
+<li><code>safety.html</code> &mdash; safety signatures (ADR 0071).</li>
+<li><code>turns.html</code> &mdash; last N turns from the jsonl, credential scrub already applied (ADR 0082).</li>
+<li><code>users.html</code> &mdash; host + guest users table (see <a href="pairing.html">pairing</a>).</li>
+<li><code>user_detail.html</code>, <code>user_pair.html</code> &mdash; detail + issuance of pairing token.</li>
+</ul>
+
+<h1 id="cap7">7. Relationship with <code>channel</code> (Telegram) and <code>pairing</code></h1>
+
+<p>
+Telegram remains the primary dialogue channel (long-poll, low cost,
+mobile UX consistency). The HTTP API is the alternative channel for:
+</p>
+
+<ol>
+<li><strong>Host browser</strong>: <code>/admin</code> dashboard for administration (users, scheduler, introvertiva proposals, safety).</li>
+<li><strong>Rust client</strong> (phase 7): remote turn from a paired Windows/Linux PC, via <code>POST /agent/turn</code> with SSE.</li>
+<li><strong>curl/scripts</strong>: home automation shortcuts (<code>curl -H "Authorization: Bearer ..." http://localhost:8770/agent/turn</code>).</li>
+</ol>
+
+<p>
+A <code>run_turn</code> invoked via HTTP receives <code>channel="http"</code>;
+no formal Channel is registered in <code>channels.daemon</code> (the
+poll-based model is incompatible with request/response). For
+<a href="vaglio.html"><code>vaglio</code></a> and
+<a href="policy.html"><code>policy</code></a> the effect is equivalent:
+steps go through the same gates, the audit keeps
+<code>channel="http"</code> in the turn log.
+</p>
+
+<p>
+Multi-user (ADR&nbsp;0083): the HTTP API is the admin point for the
+<code>users.db</code> table. Guest pairing via
+<code>POST /admin/users/{id}/channels/telegram/pair</code>: the admin
+gets a short-lived token, hands it to the guest, the guest sends
+<code>/start &lt;token&gt;</code> to the bot. The flow is described in
+<a href="pairing.html"><code>pairing</code></a> section&nbsp;6.
+</p>
+
+<p>
+Credentials (ADR&nbsp;0082): the HTTP server admin key is also the
+master for symmetric encryption of
+<code>~/.config/metnos/credentials/&lt;domain&gt;.json.age</code>.
+Whoever controls <code>~/.config/metnos/admin.key</code> (mode 0600) can
+decrypt the credentials. Offline backup recommended.
+</p>
+
+<h1 id="cap8">8. Limits and Phase 2 deferrals</h1>
+
+<ul>
+<li><strong>TLS</strong>: port 8770 in clear for now. Phase 2 plans a self-signed cert pinned by fingerprint, reusing the pairing material.</li>
+<li><strong>Formal HTTPChannel</strong>: <code>/agent/turn</code> calls <code>run_turn</code> with <code>channel="http"</code> but does not register a Channel in the daemon. Not blocking in Phase 1.</li>
+<li><strong>Granular SSE events</strong>: <code>tool_call</code> / <code>tool_result</code> not emitted. <code>Progress</code> interface extension in Phase 2.</li>
+<li><strong>AppKey warnings</strong>: aiohttp 3.13 recommends <code>web.AppKey</code> instead of string keys. Cosmetic refactor, not blocking.</li>
+<li><strong>Single-instance gate</strong>: POSIX flock lockfile in <code>~/.local/state/metnos/http_server.lock</code> (same pattern as <code>agent_server</code>).</li>
+<li><strong>Rate-limit</strong>: none. On the LAN-only plan the surface is small; on WAN it will be added in Phase 2.</li>
+</ul>
+
+<div class="callout tip">
+<strong>Live smoke verified 4 May 2026.</strong>
+<code>GET /agent/health</code> &rarr; 200 <code>{ok:true, version:"1.1", uptime_s:...}</code>.
+<code>GET /.well-known/metnos.json</code> &rarr; 200 with admin-key fingerprint.
+<code>GET /admin</code> (no auth, from loopback) &rarr; 403.
+<code>GET /admin</code> (Bearer admin key) &rarr; 200 HTML dashboard.
+<code>If-None-Match</code> round-trip &rarr; 304.
+</div>
+
+<p style="margin-top:30px;color:var(--muted);font-size:9.5pt;">
+Code references: <code>/opt/myclaw/runtime/metnos_http_server.py</code> (entrypoint, factory, lock), <code>http_auth.py</code> (admin key + middleware), <code>http_render.py</code> (Accept negotiation + ETag), <code>http_routes_agent.py</code> (SSE, well-known, devices/me), <code>http_routes_admin.py</code> (read-only collections + actions), <code>runtime/templates/</code> (8+ Jinja2 files). Tests: <code>runtime/tests/test_http_server.py</code> (12 tests). Reference ADRs: 0078 (HTTP API Phase 1), 0082 (credentials), 0083 (multi-user), 0085 (docs alignment 4/5/2026).
+</p>
+
+</body>
+</html>

@@ -1,0 +1,282 @@
+{
+  "n_queries": 350,
+  "n_executors": 55,
+  "recall_at_k": {
+    "5": {
+      "token": 0.9057142857142857,
+      "embedding": 0.6342857142857142
+    },
+    "8": {
+      "token": 0.9171428571428571,
+      "embedding": 0.7657142857142857
+    },
+    "10": {
+      "token": 0.9257142857142857,
+      "embedding": 0.8285714285714286
+    }
+  },
+  "recall_full_at_k": {
+    "5": {
+      "token": 0.6171428571428571,
+      "embedding": 0.4342857142857143
+    },
+    "8": {
+      "token": 0.6342857142857142,
+      "embedding": 0.5371428571428571
+    },
+    "10": {
+      "token": 0.6571428571428571,
+      "embedding": 0.6028571428571429
+    }
+  },
+  "latency_ms": {
+    "token": {
+      "mean": 1.2920785056693214,
+      "p95": 1.373249921016395
+    },
+    "embedding": {
+      "mean": 4.006451722567102,
+      "p95": 6.32243393920362
+    }
+  },
+  "overlap_top5_mean": 1.5714285714285714,
+  "divergences_sample": [
+    {
+      "kind": "token_wins",
+      "query": "leggi /etc/passwd",
+      "gt": [
+        "read_files"
+      ],
+      "token5": [
+        "read_files",
+        "read_files_csv",
+        "read_files_ocr",
+        "read_files_xlsx",
+        "read_messages"
+      ],
+      "emb5": [
+        "admin",
+        "read_messages",
+        "move_files",
+        "read_files_ocr",
+        "send_messages"
+      ]
+    },
+    {
+      "kind": "token_wins",
+      "query": "leggi /tmp/metnos_e2e_note.txt",
+      "gt": [
+        "read_files"
+      ],
+      "token5": [
+        "read_files_ocr",
+        "read_files",
+        "read_files_csv",
+        "read_files_xlsx",
+        "read_urls_html"
+      ],
+      "emb5": [
+        "read_files_ocr",
+        "write_files",
+        "send_messages",
+        "read_files_xlsx",
+        "read_messages"
+      ]
+    },
+    {
+      "kind": "embed_wins",
+      "query": "stampa la mia foto profilo sulla stampante",
+      "gt": [
+        "find_files",
+        "get_files_metadata",
+        "move_files"
+      ],
+      "token5": [
+        "create_images_indices",
+        "delete_images_indices",
+        "find_images_indices",
+        "get_images_indices",
+        "change_images"
+      ],
+      "emb5": [
+        "get_files_metadata",
+        "create_images_indices",
+        "change_images",
+        "find_images_indices",
+        "read_files_ocr"
+      ]
+    },
+    {
+      "kind": "token_wins",
+      "query": "leggi /tmp/metnos_cluster_scratchpad_query.txt e dimmi cosa contiene la fine del file",
+      "gt": [
+        "read_files"
+      ],
+      "token5": [
+        "delete_files",
+        "read_files",
+        "delete_images_indices",
+        "read_files_ocr",
+        "read_files_csv"
+      ],
+      "emb5": [
+        "compute_files_loc",
+        "write_files",
+        "filter_entries",
+        "list_dirs",
+        "extract_files_zip"
+      ]
+    },
+    {
+      "kind": "token_wins",
+      "query": "leggi /tmp/metnos_cluster_scratchpad_big.txt",
+      "gt": [
+        "read_files"
+      ],
+      "token5": [
+        "read_files_ocr",
+        "read_files",
+        "read_files_csv",
+        "read_files_xlsx",
+        "read_urls_html"
+      ],
+      "emb5": [
+        "compute_files_loc",
+        "list_dirs",
+        "find_dirs",
+        "filter_entries",
+        "get_processes"
+      ]
+    },
+    {
+      "kind": "token_wins",
+      "query": "leggi /tmp/metnos_unit_tail.txt e dimmi gli ultimi 10 byte",
+      "gt": [
+        "read_files"
+      ],
+      "token5": [
+        "read_files_ocr",
+        "read_files",
+        "read_files_csv",
+        "read_files_xlsx",
+        "read_messages"
+      ],
+      "emb5": [
+        "compute_files_loc",
+        "find_dirs",
+        "filter_entries",
+        "delete_files",
+        "compress_files_gz"
+      ]
+    },
+    {
+      "kind": "token_wins",
+      "query": "leggi /tmp/metnos_edge_dup.txt, poi rileggi /tmp/metnos_edge_dup.txt, e riportami solo il contenuto",
+      "gt": [
+        "read_files"
+      ],
+      "token5": [
+        "read_files",
+        "read_files_ocr",
+        "read_files_csv",
+        "read_files_xlsx",
+        "read_urls_html"
+      ],
+      "emb5": [
+        "compress_dirs_gz",
+        "filter_entries",
+        "read_files_ocr",
+        "read_urls_html",
+        "extract_files_zip"
+      ]
+    },
+    {
+      "kind": "token_wins",
+      "query": "cerca tutte i file di tipo picture in /home/roberto/images ed ordinali in sottocartelle con il nome dell'anno. rinomina i file premettendo la data nel formato aammgg",
+      "gt": [
+        "filter_entries",
+        "move_files"
+      ],
+      "token5": [
+        "move_files",
+        "find_images_indices",
+        "find_files",
+        "change_images",
+        "move_messages"
+      ],
+      "emb5": [
+        "get_files_metadata",
+        "create_images_indices",
+        "find_images_indices",
+        "list_dirs",
+        "read_files_ocr"
+      ]
+    },
+    {
+      "kind": "token_wins",
+      "query": "cerca tutte i file di tipo picture in /home/roberto/images ed ordinali in sottocartelle con l'anno di creazione del file. rinomina i file premettendo la data nel formato aammgg",
+      "gt": [
+        "filter_entries",
+        "get_file_dates",
+        "move_files"
+      ],
+      "token5": [
+        "move_files",
+        "find_images_indices",
+        "find_files",
+        "change_images",
+        "move_messages"
+      ],
+      "emb5": [
+        "get_files_metadata",
+        "create_images_indices",
+        "list_dirs",
+        "find_images_indices",
+        "read_files_ocr"
+      ]
+    },
+    {
+      "kind": "token_wins",
+      "query": "elenca i file in /tmp e tieni solo i log piu' grandi di 1 MB",
+      "gt": [
+        "filter_entries",
+        "list_dirs"
+      ],
+      "token5": [
+        "list_dirs",
+        "find_files",
+        "filter_entries",
+        "read_files",
+        "write_files"
+      ],
+      "emb5": [
+        "find_dirs",
+        "compute_files_loc",
+        "read_files",
+        "compress_files_gz",
+        "login_session"
+      ]
+    },
+    {
+      "kind": "token_wins",
+      "query": "trova file PDF in /home/roberto e dimmi quanti ce ne sono",
+      "gt": [
+        "find_files"
+      ],
+      "token5": [
+        "get_files_metadata",
+        "find_files",
+        "get_file_dates",
+        "get_inputs",
+        "get_processes"
+      ],
+      "emb5": [
+        "read_urls_pdf",
+        "read_files_ocr",
+        "get_files_metadata",
+        "find_dirs",
+        "read_files_xlsx"
+      ]
+    }
+  ]
+}

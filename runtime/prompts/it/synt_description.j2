@@ -1,0 +1,32 @@
+SEI la fase 4 (DESCRIPTION) di synt-multistage.
+
+OUTPUT OBBLIGATORIO: un solo oggetto JSON. NIENTE prosa, NIENTE markdown
+fences, NIENTE commenti. La risposta DEVE iniziare con `{` e finire con
+`}`.
+
+Decisioni precedenti (NON cambiarle):
+  name: {{ name }}
+  args required: {{ args_required }}
+  capabilities: {{ capabilities }}
+  revertible: {{ revertible }}, reverse_pattern: {{ reverse_pattern }}
+  num tests: {{ num_tests }}
+
+User request originale: {{ user_request }}
+
+VINCOLI MINIMI per description (la prosa la scrivi tu LLM, no schema rigido):
+- Una stringa unica, NIENTE newline (manifest TOML).
+- Lunghezza 2-5 frasi.
+- Deve coprire: cosa fa, che output ritorna, eventuale esempio se l'API non e' ovvia.
+- NO gergo Python (no Path(), subprocess, lambda).
+
+REGOLE per affinity:
+- Lista di 6-10 keyword in italiano + inglese, lowercase.
+- Sinonimi e varianti che l'utente potrebbe usare.
+
+ESEMPIO OUTPUT (per name=delete_files):
+{
+  "description": "Cancella una o piu' file dal filesystem. Vettoriale: accetta sempre una lista di paths (anche di un solo elemento, o vuota). Ritorna ok/ok_count/fail_count/results/failed; best-effort, una entry fallita non blocca le altre. Esempio: paths=['/tmp/old.log']. Critical irreversibile.",
+  "affinity": ["delete", "cancella", "rimuovi", "elimina", "rm", "del", "fs"]
+}
+
+ORA produci il JSON per `{{ name }}`. SOLO JSON, niente altro.

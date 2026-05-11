@@ -1,0 +1,85 @@
+# Manifest dell'executor `fs_write` — Metnos v1.1
+# Critical (default): forza online in mode hybrid. Approval per_target.
+
+manifest_format = "1.0"
+
+name        = "write_files"
+version     = "0.2.0"
+author      = "Roberto Brunialti <roberto.brunialti@metnos.com>"
+affinity        = ["fs", "write", "scrittura", "file", "salva", "scrivi", "crea"]
+revertible      = true
+reverse_pattern = "delete_created_paths"
+lifecycle       = "active"
+
+[description]
+it = "Scrive testo o bytes (base64) in un file del filesystem locale. Supporta overwrite, append e fail_if_exists. Crea automaticamente le directory parent mancanti (mkdir -p) e le registra in dirs_created per supportare l'undo. Output: results=[{path, created, bytes_written, encoding, mode}], dirs_created=[parent dirs creati]."
+en = "Writes text or bytes (base64) to a file in the local filesystem. Supports overwrite, append, and fail_if_exists. Automatically creates missing parent directories (mkdir -p) and registers them in dirs_created to support undo. Output: results=[{path, created, bytes_written, encoding, mode}], dirs_created=[parent dirs created]."
+
+[code]
+files  = ["write_files.py"]
+digest = "sha256:d84aecf39c9d46430f89e180f846343eaf83e664fc663ad43a17d1795e8afc49"
+
+[args]
+type     = "object"
+required = ["path", "content"]
+
+[args.properties.path]
+type        = "string"
+
+[args.properties.path.description]
+it = "Path assoluto del file da scrivere."
+en = "Absolute path of the file to write."
+
+[args.properties.content]
+type        = "string"
+
+[args.properties.content.description]
+it = "Contenuto da scrivere (testo se encoding != 'binary', base64 se 'binary')."
+en = "Content to write (text if encoding != 'binary', base64 if 'binary')."
+
+[args.properties.encoding]
+type        = "string"
+enum        = ["utf-8", "latin-1", "binary"]
+default     = "utf-8"
+
+[args.properties.mode]
+type        = "string"
+enum        = ["overwrite", "append", "fail_if_exists"]
+default     = "overwrite"
+
+[[capabilities]]
+name = "fs:write"
+hint = ["~/notes/scratch/**", "/tmp/**"]
+
+[[tests]]
+name     = "scrive_file_nuovo_overwrite"
+setup    = "mkdir -p /tmp/metnos_test_write"
+input    = { path = "/tmp/metnos_test_write/hello.txt", content = "ciao mondo" }
+expect   = { ok = true, metadata_field_eq = { bytes_written = 10, mode = "overwrite" } }
+teardown = "rm -rf /tmp/metnos_test_write"
+
+[[tests]]
+name     = "fallisce_su_path_fuori_scope"
+input    = { path = "/etc/dovrei_fallire.txt", content = "x" }
+expect   = { ok = false, error_contains = "outside allowed scope" }
+
+[[tests]]
+name     = "fallisce_se_esiste_e_mode_fail"
+setup    = "mkdir -p /tmp/metnos_test_write && echo 'gia presente' > /tmp/metnos_test_write/esiste.txt"
+input    = { path = "/tmp/metnos_test_write/esiste.txt", content = "nuovo", mode = "fail_if_exists" }
+expect   = { ok = false, error_contains = "already exists" }
+teardown = "rm -rf /tmp/metnos_test_write"
+
+[[tests]]
+name     = "append_a_file_esistente"
+setup    = "mkdir -p /tmp/metnos_test_write && printf 'AB' > /tmp/metnos_test_write/append.txt"
+input    = { path = "/tmp/metnos_test_write/append.txt", content = "CD", mode = "append" }
+expect   = { ok = true, metadata_field_eq = { bytes_written = 2, mode = "append" } }
+teardown = "rm -rf /tmp/metnos_test_write"
+
+[[tests]]
+name     = "scrive_binary_da_base64"
+setup    = "mkdir -p /tmp/metnos_test_write"
+input    = { path = "/tmp/metnos_test_write/bin.dat", content = "AAEC", encoding = "binary" }
+expect   = { ok = true, metadata_field_eq = { bytes_written = 3, encoding = "binary" } }
+teardown = "rm -rf /tmp/metnos_test_write"

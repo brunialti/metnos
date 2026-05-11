@@ -1,0 +1,64 @@
+# Metnos — .gitignore
+# Lingua: italiano (§7.8). Convenzione: una riga per pattern, raggruppate per
+# motivo. Non escludere `*.sig` (firme executor parte del catalogo).
+
+# --- Python bytecode e cache ---------------------------------------------
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+
+# --- Virtualenv locali ----------------------------------------------------
+.venv*/
+venv/
+env/
+
+# --- Build artefatti Rust del client --------------------------------------
+client-rs/target/
+
+# --- Dipendenze JS / node_modules / wrangler ------------------------------
+node_modules/
+.wrangler/
+
+# --- Modelli LLM/VLM (decine di GB, scaricabili da install/manifest) ------
+models/
+
+# --- Log e backup runtime -------------------------------------------------
+*.log
+*.log.*
+data/*.log
+
+# --- Credenziali e segreti ------------------------------------------------
+# OAuth client secret Google, ecc.: NIENTE in repo.
+*.key
+*.secret
+*.pem
+*.p12
+.env
+.env.*
+client_secret_*.json
+~/.config/metnos/
+
+# --- Editor / IDE ---------------------------------------------------------
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+
+# --- Coverage / report locali ---------------------------------------------
+htmlcov/
+.coverage
+.coverage.*
+coverage.xml
+
+# --- SQLite ephemerals (WAL/SHM/backup) -----------------------------------
+*.sqlite-wal
+*.sqlite-shm
+*.db-wal
+*.db-shm
+*.bak.*
+
+# --- Note: ~/.local/share/metnos/ e ~/.cache/metnos/ vivono fuori da
+# /opt/myclaw, quindi non necessitano regole qui (sono outside-worktree).

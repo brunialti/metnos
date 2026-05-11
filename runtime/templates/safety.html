@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block title %}Metnos admin · safety signatures{% endblock %}
+{% block body %}
+<h1>Safety signatures ({{ rows|length }})</h1>
+<table>
+  <thead>
+    <tr><th>signature</th><th>kind</th><th>severity</th>
+        <th>source</th><th>uses</th><th>created</th></tr>
+  </thead>
+  <tbody>
+  {% for r in rows %}
+    <tr>
+      <td><code>{{ r.signature }}</code></td>
+      <td>
+        {% if r.kind == "whitelist" %}<span class="chip ok">{{ r.kind }}</span>
+        {% elif r.kind == "blacklist" %}<span class="chip warn">{{ r.kind }}</span>
+        {% elif r.kind == "forbidden" %}<span class="chip bad">{{ r.kind }}</span>
+        {% else %}<span class="chip">{{ r.kind }}</span>{% endif %}
+      </td>
+      <td>{{ r.severity or "-" }}</td>
+      <td><span class="chip">{{ r.source }}</span></td>
+      <td>{{ r.uses }}</td>
+      <td class="muted">{{ r.created_at }}</td>
+    </tr>
+  {% else %}
+    <tr><td colspan="6" class="muted">nessuna signature</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

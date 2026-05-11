@@ -1,0 +1,184 @@
+[
+  {
+    "name": "qwen3:8b (fast)",
+    "provider": "ollama",
+    "model": "qwen3:8b",
+    "wall_ms": 5719,
+    "in_tokens": 737,
+    "out_tokens": 193,
+    "tool_call_name": "propose_executor",
+    "executor_name": "extract_emails",
+    "code_lines": 0,
+    "code_chars": 0,
+    "validation": {
+      "ast_ok": true,
+      "convention_ok": false,
+      "imports": [],
+      "non_stdlib": [],
+      "smoke_returncode": null,
+      "smoke_stdout": "",
+      "smoke_stderr": "",
+      "smoke_ok_field": null,
+      "smoke_metadata": null,
+      "smoke_extracted": null,
+      "smoke_match_expected": false
+    },
+    "code": "",
+    "args": {
+      "name": "extract_emails",
+      "description": "Estrae tutti gli indirizzi email validi da un testo arbitrario, deduplicati e ordinati.",
+      "purpose": "L'executor riceve un testo libero e ne estrae tutti gli indirizzi email validi, rimuovendo eventuali duplicati e ordinandoli. Questo è utile per analisi di dati o gestione di contatti.",
+      "affinity": [
+        "email",
+        "extract",
+        "text",
+        "parse",
+        "data_analysis",
+        "contact_management"
+      ],
+      "args_schema": {
+        "properties": {
+          "text": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "text"
+        ],
+        "type": "object"
+      },
+      "output_summary": "Contiene una lista ordinata e deduplicata di indirizzi email validi estratti dal testo."
+    }
+  },
+  {
+    "name": "gemma-4-26B (wise locale)",
+    "provider": "llamacpp",
+    "model": "gemma-4-26B-A4B-it-UD-Q4_K_M.gguf",
+    "wall_ms": 30875,
+    "in_tokens": 654,
+    "out_tokens": 1441,
+    "tool_call_name": "propose_executor",
+    "executor_name": "extract_emails",
+    "code_lines": 31,
+    "code_chars": 857,
+    "validation": {
+      "ast_ok": true,
+      "convention_ok": true,
+      "imports": [
+        "json",
+        "re",
+        "sys"
+      ],
+      "non_stdlib": [],
+      "smoke_returncode": 0,
+      "smoke_stdout": "{\"ok\": true, \"content\": \"alice@example.com, bob@foo.org, carol@bar.io\", \"metadata\": {\"count\": 3}}",
+      "smoke_stderr": "",
+      "smoke_ok_field": true,
+      "smoke_metadata": {
+        "count": 3
+      },
+      "smoke_extracted": [
+        "alice@example.com",
+        "bob@foo.org",
+        "carol@bar.io"
+      ],
+      "smoke_match_expected": true
+    },
+    "code": "import re\nimport json\nimport sys\n\ndef invoke(args: dict) -> dict:\n    '''Extracts unique sorted emails from text.'''\n    text = args.get('text', '')\n    if not isinstance(text, str):\n        return {'ok': False, 'error': 'text must be a string'}\n    \n    pattern = r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}'\n    matches = re.findall(pattern, text)\n    unique_emails = sorted(list(set(matches)))\n    \n    return {\n        'ok': True,\n        'content': ', '.join(unique_emails),\n        'metadata': {'count': len(unique_emails)}\n    }\n\ndef main() -> None:\n    '''Main entry point.'''\n    try:\n        input_data = json.load(sys.stdin)\n        result = invoke(input_data)\n        sys.stdout.write(json.dumps(result))\n    except Exception as e:\n        sys.stdout.write(json.dumps({'ok': False, 'error': str(e)}))\n\nif __name__ == '__main__':\n    main()\n",
+    "args": {
+      "affinity": [
+        "email",
+        "extraction",
+        "regex",
+        "text_processing",
+        "parser"
+      ],
+      "args_schema": {
+        "properties": {
+          "text": {
+            "description": "The input text to search for emails.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "text"
+        ],
+        "type": "object"
+      },
+      "name": "extract_emails",
+      "output_summary": "content: comma-separated list of emails, metadata: count of emails found",
+      "purpose": "Extracts all valid email addresses from arbitrary text, deduplicates them, and returns them sorted."
+    }
+  },
+  {
+    "name": "claude-sonnet-4-6 (wise online)",
+    "provider": "anthropic",
+    "model": "claude-sonnet-4-6",
+    "wall_ms": 12553,
+    "in_tokens": 1299,
+    "out_tokens": 898,
+    "tool_call_name": "propose_executor",
+    "executor_name": "extract_emails",
+    "code_lines": 61,
+    "code_chars": 1615,
+    "validation": {
+      "ast_ok": true,
+      "convention_ok": true,
+      "imports": [
+        "json",
+        "re",
+        "sys"
+      ],
+      "non_stdlib": [],
+      "smoke_returncode": 0,
+      "smoke_stdout": "{\"ok\": true, \"content\": \"alice@example.com\\nbob@foo.org\\ncarol@bar.io\", \"metadata\": {\"count\": 3, \"emails\": [\"alice@example.com\", \"bob@foo.org\", \"carol@bar.io\"]}}",
+      "smoke_stderr": "",
+      "smoke_ok_field": true,
+      "smoke_metadata": {
+        "count": 3,
+        "emails": [
+          "alice@example.com",
+          "bob@foo.org",
+          "carol@bar.io"
+        ]
+      },
+      "smoke_extracted": [
+        "alice@example.com",
+        "bob@foo.org",
+        "carol@bar.io"
+      ],
+      "smoke_match_expected": true
+    },
+    "code": "\nimport re\nimport json\nimport sys\n\n\n# RFC-5321-inspired pattern (semplificato, no lookbehind/lookahead)\n_EMAIL_PATTERN = re.compile(\n    r\"[a-zA-Z0-9._%+\\-]+@[a-zA-Z0-9.\\-]+\\.[a-zA-Z]{2,}\"\n)\n\n\ndef invoke(args: dict) -> dict:\n    \"\"\"Estrae email valide da 'text', deduplicata e ordinate.\"\"\"\n    text = args.get(\"text\", \"\")\n\n    if not isinstance(text, str):\n        return {\"ok\": False, \"error\": \"'text' deve essere una stringa\"}\n\n    if not text.strip():\n        return {\"ok\": False, \"error\": \"'text' è vuoto o contiene solo spazi\"}\n\n    raw_matches: list[str] = _EMAIL_PATTERN.findall(text)\n\n    # Deduplicazione case-insensitive: conserva la forma originale della prima occorrenza\n    seen: set[str] = set()\n    unique: list[str] = []\n    for match in raw_matches:\n        key = match.lower()\n        if key not in seen:\n            seen.add(key)\n            unique.append(match)\n\n    emails_sorted: list[str] = sorted(unique, key=lambda e: e.lower())\n\n    content = \"\\n\".join(emails_sorted) if emails_sorted else \"\"\n\n    return {\n        \"ok\": True,\n        \"content\": content,\n        \"metadata\": {\n            \"count\": len(emails_sorted),\n            \"emails\": emails_sorted,\n        },\n    }\n\n\ndef main() -> None:\n    \"\"\"Legge JSON da stdin, chiama invoke(), scrive JSON su stdout.\"\"\"\n    raw = sys.stdin.read()\n    try:\n        args = json.loads(raw)\n    except json.JSONDecodeError as exc:\n        result = {\"ok\": False, \"error\": f\"JSON non valido in input: {exc}\"}\n    else:\n        result = invoke(args)\n    sys.stdout.write(json.dumps(result, ensure_ascii=False))\n\n\nif __name__ == \"__main__\":\n    main()\n",
+    "args": {
+      "name": "extract_emails",
+      "description": "Estrae tutti gli indirizzi email validi da un testo arbitrario, restituendoli deduplicati e ordinati alfabeticamente.",
+      "purpose": "Analizza un testo libero tramite espressione regolare e ne estrae tutti gli indirizzi email sintatticamente validi. Il risultato è una lista deduplicata e ordinata, utile per pipeline di data extraction o analisi di documenti.",
+      "affinity": [
+        "email",
+        "extract",
+        "text",
+        "parse",
+        "regex",
+        "address",
+        "scrape",
+        "filter",
+        "list",
+        "pattern"
+      ],
+      "args_schema": {
+        "type": "object",
+        "properties": {
+          "text": {
+            "type": "string",
+            "description": "Testo libero da cui estrarre gli indirizzi email"
+          }
+        },
+        "required": [
+          "text"
+        ]
+      },
+      "output_summary": "content: email estratte separate da newline (stringa vuota se nessuna trovata); metadata: {count: int, emails: [str, ...]}"
+    }
+  }
+]

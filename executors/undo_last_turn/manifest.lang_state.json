@@ -1,0 +1,26 @@
+{
+  "description": {
+    "it": {
+      "version_hash": "sha256:497fa376feac00fb5a7fbd3dbc6468b4c297faafc660f91796ad6324130a5288",
+      "source_lang": null,
+      "source_hash": null
+    },
+    "en": {
+      "source_lang": "it",
+      "source_hash": "sha256:497fa376feac00fb5a7fbd3dbc6468b4c297faafc660f91796ad6324130a5288",
+      "version_hash": "sha256:9acac139e6c51216828eaaa7fe78072dbaf4e662f9cadb4996bf2b2e90cb7bb3"
+    }
+  },
+  "args.log_path.description": {
+    "it": {
+      "version_hash": "sha256:2f6671c19e94e0fecbd7dc83c8e22e31a428454da8360ff7b50c8bbba76583fd",
+      "source_lang": null,
+      "source_hash": null
+    },
+    "en": {
+      "source_lang": "it",
+      "source_hash": "sha256:2f6671c19e94e0fecbd7dc83c8e22e31a428454da8360ff7b50c8bbba76583fd",
+      "version_hash": "sha256:c27b0e478d60ae318273c2f8266ba6b6a37e6761a8d47d18f4437a888cc990e7"
+    }
+  }
+}

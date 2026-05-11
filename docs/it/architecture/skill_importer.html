@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Metnos &mdash; skill importer (introduzione)</title>
+    <meta name="description" content="Come Metnos importa una skill esterna (formato agentskills.io) trasformandola in executor firmati. Pipeline a cinque stadi, sicurezza, esempi.">
+    <meta name="keywords" content="skill, skill importer, agentskills.io, executor, manifest, sandbox, sicurezza, Metnos">
+    <meta name="author" content="Roberto Brunialti">
+    <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large">
+    <link rel="canonical" href="https://metnos.com/it/architecture/skill_importer.html">
+    <link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/skill_importer.html">
+    <link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/skill_importer.html">
+    <link rel="alternate" hreflang="x-default" href="https://metnos.com/en/architecture/skill_importer.html">
+    <meta property="og:type" content="article">
+    <meta property="og:url" content="https://metnos.com/it/architecture/skill_importer.html">
+    <meta property="og:title" content="Metnos &mdash; skill importer (introduzione)">
+    <meta property="og:description" content="Come Metnos importa una skill esterna trasformandola in executor firmati.">
+    <meta property="og:locale" content="it_IT">
+    <meta property="og:locale:alternate" content="en_US">
+    <meta property="og:site_name" content="Metnos">
+    <meta name="twitter:card" content="summary">
+    <meta name="twitter:title" content="Metnos &mdash; skill importer (introduzione)">
+    <script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "TechArticle",
+  "headline": "Metnos — skill importer (introduzione)",
+  "description": "Come Metnos importa una skill esterna trasformandola in executor firmati.",
+  "url": "https://metnos.com/it/architecture/skill_importer.html",
+  "inLanguage": "it",
+  "isPartOf": {"@type": "WebSite", "name": "Metnos", "url": "https://metnos.com/"},
+  "author": {"@type": "Person", "name": "Roberto Brunialti"},
+  "about": "Metnos component: skill importer (introduzione didattica)"
+}
+    </script>
+    <style>
+:root {
+    --navy: #1A477A; --navy-light: #2B6CB0; --sage: #548235;
+    --bronze: #A0522D; --plum: #6B21A8;
+    --bg: #FAFBFC; --text: #1a1a1a;
+    --border: #d0d7de; --code-bg: #f6f8fa;
+    --table-header: #1A477A; --table-alt: #f0f4f8;
+    --note-bg: #dbeafe; --note-border: #3b82f6;
+    --tip-bg: #dcfce7; --tip-border: #16a34a;
+    --warn-bg: #fef3c7; --warn-border: #f59e0b;
+    --danger-bg: #fee2e2; --danger-border: #dc2626;
+    --muted: #64748B;
+}
+* { box-sizing: border-box; }
+body { font-family: 'Segoe UI', Calibri, -apple-system, sans-serif; font-size: 11pt; line-height: 1.65; color: var(--text); background: var(--bg); max-width: 960px; margin: 0 auto; padding: 40px 30px; }
+h1 { color: var(--navy); font-size: 20pt; border-bottom: 3px solid var(--navy); padding-bottom: 8px; margin-top: 50px; }
+h1:first-of-type { margin-top: 20px; }
+h2 { color: var(--navy-light); font-size: 14pt; margin-top: 30px; border-bottom: 1px solid var(--border); padding-bottom: 4px; }
+h3 { color: var(--navy); font-size: 12pt; margin-top: 20px; }
+p { margin: 10px 0; }
+table { width: 100%; border-collapse: collapse; margin: 15px 0; font-size: 10pt; }
+th { background: var(--table-header); color: white; padding: 8px 10px; text-align: left; font-weight: 600; }
+td { padding: 7px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+tr:nth-child(even) td { background: var(--table-alt); }
+pre { background: var(--code-bg); border: 1px solid var(--border); border-radius: 4px; padding: 12px 16px; overflow-x: auto; font-size: 9.5pt; line-height: 1.55; }
+code { font-family: Consolas, 'Courier New', monospace; }
+p code, li code, td code { background: var(--code-bg); padding: 1px 5px; border-radius: 3px; font-size: 9.5pt; }
+figure { text-align: center; margin: 24px 0; }
+figure svg { max-width: 100%; height: auto; border: 1px solid var(--border); border-radius: 6px; background: white; padding: 12px; }
+figcaption { font-style: italic; color: #555; font-size: 9.5pt; margin-top: 8px; }
+.callout { border-left: 4px solid; padding: 10px 16px; margin: 15px 0; border-radius: 0 4px 4px 0; font-size: 10pt; }
+.callout.note { background: var(--note-bg); border-color: var(--note-border); }
+.callout.tip { background: var(--tip-bg); border-color: var(--tip-border); }
+.callout.warning { background: var(--warn-bg); border-color: var(--warn-border); }
+.callout.danger { background: var(--danger-bg); border-color: var(--danger-border); }
+.toc h2 { border: none; }
+.toc ol { font-size: 11pt; line-height: 2; }
+.toc a { color: var(--navy); text-decoration: none; }
+.toc a:hover { text-decoration: underline; }
+ul, ol { margin: 8px 0; padding-left: 24px; }
+li { margin-bottom: 4px; }
+.lead { font-size: 12pt; color: var(--navy); border-left: 4px solid var(--sage); padding-left: 14px; margin: 18px 0; }
+.five-cols { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; margin: 18px 0; }
+.five-cols > div { background: white; border: 1px solid var(--border); border-radius: 6px; padding: 10px; font-size: 9pt; }
+.five-cols h4 { margin: 0 0 6px 0; font-size: 10pt; color: var(--navy); }
+@media (max-width: 720px) { .five-cols { grid-template-columns: 1fr; } }
+@media (max-width: 1024px) and (min-width: 721px) { .five-cols { grid-template-columns: 1fr 1fr; } }
+    </style>
+</head>
+<body>
+
+<div class="toc">
+<h2>Indice</h2>
+<ol>
+    <li><a href="#cap1">Cos'&egrave; una skill, in trenta secondi</a></li>
+    <li><a href="#cap2">Dal file SKILL al catalogo: la catena di montaggio</a></li>
+    <li><a href="#cap3">Cosa entra: tre sorgenti</a></li>
+    <li><a href="#cap4">Cosa esce: una cartella di executor firmati</a></li>
+    <li><a href="#cap5">I controlli che fanno fede</a></li>
+    <li><a href="#cap6">Credenziali e dialoghi con l'utente</a></li>
+    <li><a href="#cap7">Un esempio dall'inizio alla fine</a></li>
+    <li><a href="#cap8">Per andare pi&ugrave; a fondo</a></li>
+</ol>
+</div>
+
+<h1 id="cap1">1. Cos'&egrave; una skill, in trenta secondi</h1>
+
+<p class="lead">
+Una skill &egrave; la documentazione strutturata di come si usa un servizio
+(il calendario di Google, una casella di posta, un servizio meteo). Vive
+in un file di testo che si chiama <code>SKILL.md</code>, accompagnato da
+qualche piccolo script di supporto. Lo standard pubblico si chiama
+<em>agentskills.io</em>.
+</p>
+
+<p>
+Il file ha un'intestazione (nome, autore, versione, dipendenze) seguita
+da paragrafi: «cosa fa», «come si configura la prima volta», «esempi di
+invocazione». Niente di esotico: il formato &egrave; pensato per essere
+letto da un essere umano e poi, di passaggio, da un agente.
+</p>
+
+<p>
+Metnos sa <strong>importare</strong> una skill cos&igrave; com'&egrave;:
+legge il file, ne ricava una serie di executor in formato Metnos, e li
+mette nel catalogo come se fossero stati scritti a mano. Una volta
+importati, l'agente li chiama esattamente come gli altri, e l'utente
+non vede la differenza.
+</p>
+
+<div class="callout tip">
+<strong>Perch&eacute; non usare la skill com'&egrave;?</strong> Le skill
+non hanno firma digitale, non hanno un recinto di esecuzione,
+i loro script possono fare qualunque cosa. Eseguirle senza filtri sarebbe
+imprudente. Importarle in formato Metnos significa: stesso comportamento
+funzionale, ma dentro il recinto, con firma, con il manifest che dichiara
+cosa fanno e cosa non possono fare.
+</div>
+
+<h1 id="cap2">2. Dal file SKILL al catalogo: la catena di montaggio</h1>
+
+<p>
+L'importazione &egrave; una catena di cinque fasi, tutte automatiche.
+L'unico passo richiesto all'utente &egrave; il <em>via</em> iniziale:
+&laquo;importa la skill X&raquo;.
+</p>
+
+<div class="five-cols">
+  <div>
+    <h4 style="color:#1A477A;">1. Lettura</h4>
+    <p>Il parser legge <code>SKILL.md</code> e ricava la struttura: nome, autore, capabilities dichiarate, lista di sotto-comandi con i loro argomenti.</p>
+  </div>
+  <div>
+    <h4 style="color:#3b82f6;">2. Traduzione</h4>
+    <p>Ogni sotto-comando viene mappato sul vocabolario chiuso di Metnos (verbo + oggetto canonico): <code>calendar list</code> diventa <code>read_events</code>, <code>gmail send</code> diventa <code>send_messages</code>.</p>
+  </div>
+  <div>
+    <h4 style="color:#9333ea;">3. Generazione</h4>
+    <p>Per ciascun executor il generatore produce il file Python e il manifest TOML usando template fissi (Jinja). Solo la descrizione del manifest viene rifinita da un modello linguistico per la cura linguistica.</p>
+  </div>
+  <div>
+    <h4 style="color:#A0522D;">4. Controlli</h4>
+    <p>Cinque verifiche cumulative: nome nel vocabolario, niente sovrapposizione con executor esistenti, descrizione coerente con il codice, capability dichiarate sensate, contratto in entrata e in uscita valido.</p>
+  </div>
+  <div>
+    <h4 style="color:#16a34a;">5. Firma</h4>
+    <p>Il manifest viene firmato Ed25519. L'executor entra in una cartella sotto sorveglianza separata da quella degli executor scritti a mano. Il loader lo carica al riavvio.</p>
+  </div>
+</div>
+
+<p>
+Tra i cinque, solo il passo 3 (Generazione) si appoggia a un modello
+linguistico, e solo per due cose specifiche: la descrizione in italiano
+e inglese, e le otto-quindici parole chiave di affinit&agrave; che aiutano
+il pianificatore a scegliere lo strumento giusto. Tutto il resto &egrave;
+deterministico: stesso ingresso, stessa uscita.
+</p>
+
+<div class="callout note">
+<strong>Il vocabolario chiuso, una bussola.</strong> Metnos accetta 22
+azioni (read, find, set, send, delete, &hellip;) e 16 oggetti (files,
+messages, events, &hellip;). Una skill che parla di <em>append rows to
+spreadsheet</em> non genera <code>append_rows</code>: diventa
+<code>change_files_xlsx</code>. Una che parla di <em>label messages</em>
+non genera <code>label_messages</code>: viene rifiutata se non c'&egrave;
+un modo coerente di tradurla. La rigidit&agrave; del vocabolario protegge
+l'agente da nomi inventati o sinonimi: ogni domanda di lavoro viene
+indirizzata allo stesso strumento di sempre.
+</div>
+
+<h1 id="cap3">3. Cosa entra: tre sorgenti</h1>
+
+<p>
+La skill pu&ograve; arrivare da tre posti:
+</p>
+
+<ul>
+  <li><strong>Locale</strong>: un file <code>SKILL.md</code> sul disco
+  che hai gi&agrave; (di solito perch&eacute; lo stai sviluppando).</li>
+  <li><strong>agentskills.io</strong>: un indirizzo del tipo
+  <code>agentskills.io/&lt;autore&gt;/&lt;skill&gt;</code>; l'importatore
+  lo traduce nel corrispondente repository pubblico e scarica.</li>
+  <li><strong>GitHub diretto</strong>: l'URL completo di un repository
+  o di un file <code>SKILL.md</code> raw; in questo caso l'importatore
+  clona o scarica direttamente.</li>
+</ul>
+
+<p>
+Le skill scaricate vengono messe nella <em>cache</em> locale per sette
+giorni. Importare due volte la stessa skill nello stesso periodo non
+genera traffico: si attinge dalla copia gi&agrave; in cache.
+</p>
+
+<h1 id="cap4">4. Cosa esce: una cartella di executor firmati</h1>
+
+<p>
+Dopo l'importazione, sul disco compaiono una o pi&ugrave; cartelle, una
+per ogni sotto-comando della skill. Ognuna contiene gli stessi file che
+trovi in un executor scritto a mano: il file Python con la funzione
+<code>invoke</code>, il manifest TOML, la firma, il profilo del recinto.
+</p>
+
+<pre>~/.local/share/metnos/executors/_imports/google-workspace/
+  read_events/
+    read_events.py
+    manifest.toml
+    manifest.toml.sig
+    manifest.lang_state.json
+  set_events/
+    &hellip;
+  delete_events/
+    &hellip;
+  &hellip; (un'altra ventina, per Gmail, Drive, Sheets, Docs, Contatti)
+</pre>
+
+<p>
+La cartella di destinazione &egrave; <code>_imports/</code>, sotto la
+cartella degli executor sintetizzati. Questo separa visivamente quanto
+viene da fuori da quanto Metnos ha scritto da solo, e da quanto &egrave;
+stato scritto a mano. Tutti e tre i tipi finiscono per&ograve; nello
+stesso catalogo dell'agente, e tutti passano dagli stessi controlli al
+momento dell'uso.
+</p>
+
+<p>
+Nel manifest di un executor importato compare una sezione in pi&ugrave;,
+che dichiara la sua origine:
+</p>
+
+<pre>[provenance]
+synthesized    = true
+imported_from  = "agentskills.io/googleworkspace/calendar"
+source_version = "1.1.0"
+imported_at    = "2026-05-10T22:00:00Z"
+source_sha256  = "&lt;impronta digitale del file di origine&gt;"
+</pre>
+
+<p>
+&Egrave; l'unico segno che lo distingue da un executor scritto a mano.
+Tutto il resto &mdash; firma, recinto, vocabolario, contratto &mdash;
+&egrave; identico.
+</p>
+
+<h1 id="cap5">5. I controlli che fanno fede</h1>
+
+<p>
+Una skill importata non parte automaticamente come affidabile. Cinque
+controlli cumulativi decidono se ammetterla nel catalogo:
+</p>
+
+<table>
+<tr><th>Controllo</th><th>Cosa verifica</th><th>Cosa rifiuta</th></tr>
+<tr><td><strong>Nome canonico</strong></td><td>Il nome dell'executor &egrave; nella forma <code>verbo_oggetto</code> con verbo e oggetto del vocabolario.</td><td>Nomi di fantasia o inventati, sinonimi non riconosciuti.</td></tr>
+<tr><td><strong>Sovrapposizione di affinit&agrave;</strong></td><td>L'executor importato non condivide troppe parole chiave con uno gi&agrave; esistente.</td><td>Doppioni mascherati, executor che ruberebbero il lavoro a uno gi&agrave; presente.</td></tr>
+<tr><td><strong>Coerenza descrizione-codice</strong></td><td>Un modello linguistico controlla che ci&ograve; che il manifest promette sia ci&ograve; che il codice fa davvero.</td><td>Description ingannevoli, scollature semantiche.</td></tr>
+<tr><td><strong>Unicit&agrave; delle credenziali</strong></td><td>Se la skill richiede credenziali (chiave API, token), il loro <em>nome di legame</em> non &egrave; gi&agrave; preso da un'altra skill importata.</td><td>Collisioni invisibili che metterebbero un servizio sopra l'altro.</td></tr>
+<tr><td><strong>Asserzioni di instradamento</strong></td><td>Per ogni executor accettato, viene aggiunta una piccola batteria di domande prototipiche («elenca i miei appuntamenti di domani» dovr&agrave; pescare <code>read_events</code>).</td><td>Tool che si infilano nel mestiere di altri (regressioni di routing).</td></tr>
+</table>
+
+<p>
+I rifiuti vengono registrati in un registro di audit insieme alle
+motivazioni. Quando un sotto-comando di una skill viene rifiutato, gli
+altri della stessa skill continuano la corsa: l'importazione &egrave;
+parziale, mai un tutto-o-niente.
+</p>
+
+<div class="callout warning">
+<strong>Cosa NON viene fatto, oggi.</strong> L'importatore non esegue
+ancora l'analisi statica del codice degli script di supporto della
+skill. Una skill maliziosa che dichiara <em>leggo eventi</em> ma in
+realt&agrave; spedisce un file su un server remoto non viene catturata
+dai cinque controlli attuali. L'analisi statica &egrave; nella roadmap
+come «controllo zero», pre-import: un passaggio in pi&ugrave; che cerca
+chiamate di rete inaspettate, scritture fuori cartella, e altri segnali
+sospetti, e mostra all'utente una scheda di sintesi prima di chiedere
+l'autorizzazione finale.
+</div>
+
+<h1 id="cap6">6. Credenziali e dialoghi con l'utente</h1>
+
+<p>
+La maggior parte delle skill utili si appoggia a servizi che richiedono
+una <em>chiave di accesso</em>: una API key, un token OAuth, il file di
+sessione di un account. L'importatore non chiede mai queste cose in
+anticipo. La prima volta che l'agente prova a usare un executor che
+richiede credenziali e non le trova, succede questo:
+</p>
+
+<ol>
+  <li>L'executor risponde <code>decision = "needs_inputs"</code> con un
+  piccolo modulo di richiesta.</li>
+  <li>L'agente mostra all'utente quel modulo (in chat: testo
+  conversazionale; via web: un form HTML).</li>
+  <li>L'utente compila ci&ograve; che manca (file del client secret,
+  URL di redirezione, chiave API, &hellip;).</li>
+  <li>I valori vengono cifrati in una cassaforte locale
+  (<code>~/.local/share/metnos/credentials/</code>).</li>
+  <li>L'executor viene ri-invocato con gli stessi argomenti, e ora
+  trova le credenziali al posto loro.</li>
+</ol>
+
+<p>
+Le invocazioni successive non chiedono nulla. Se il token scade,
+l'executor segnala <code>error_class = "auth_required"</code> e il
+flusso ricomincia. <strong>Niente token nei file di configurazione,
+niente password nel codice.</strong>
+</p>
+
+<p>
+Per consultare cosa &egrave; gi&agrave; configurato senza vedere i
+valori, ci sono tre executor canonici:
+<code>find_credentials</code> (elenca i collegamenti configurati,
+solo i metadati), <code>set_credentials</code> (registra una credenziale
+nuova), <code>delete_credentials</code> (cancella un collegamento).
+I valori in chiaro non escono mai da quegli executor: il pianificatore
+e i suoi modelli vedono solo nome del collegamento, impronta digitale,
+data, e stato («configurato», «scaduto», «mancante»).
+</p>
+
+<h1 id="cap7">7. Un esempio dall'inizio alla fine</h1>
+
+<p>
+Roberto chiede: «importa la skill di Google Workspace».
+</p>
+
+<ol>
+  <li><strong>Comando</strong>: <code>metnos-skills import agentskills.io/googleworkspace/google-workspace</code></li>
+  <li><strong>Scaricamento</strong>: la skill &egrave; gi&agrave; nella cache locale (ultimo aggiornamento tre giorni fa); nessun traffico di rete.</li>
+  <li><strong>Lettura</strong>: il parser trova 24 sotto-comandi distribuiti su Gmail, Calendar, Drive, Sheets, Docs, Contatti.</li>
+  <li><strong>Traduzione</strong>: 21 sotto-comandi si traducono pulitamente in nomi canonici; tre vengono rifiutati (<code>gmail reply</code> collide con <code>send_messages</code>; <code>gmail labels</code> non ha qualifier canonico; <code>sheets append</code> collide con la sua <em>update</em>).</li>
+  <li><strong>Generazione</strong>: 21 cartelle di executor, ciascuna con file Python e manifest, vengono scritte sotto <code>_imports/google-workspace/</code>.</li>
+  <li><strong>Controlli</strong>: tutti i 21 passano i cinque cancelli. Per ognuno viene aggiunta un'asserzione di instradamento alla batteria di test.</li>
+  <li><strong>Firma</strong>: i 21 manifest sono firmati Ed25519.</li>
+  <li><strong>Pronto</strong>: Roberto chiede in chat «che appuntamenti ho domani?». Il pianificatore sceglie <code>read_events</code> (uno dei 21), che risponde <em>servono credenziali</em> e apre il modulo di richiesta. Roberto fornisce il client secret e l'URL di redirezione una sola volta; le invocazioni successive funzionano in silenzio.</li>
+</ol>
+
+<p>
+Tempo totale, escluso il setup di OAuth la prima volta: meno di tre
+minuti per ventuno strumenti nuovi.
+</p>
+
+<h1 id="cap8">8. Per andare pi&ugrave; a fondo</h1>
+
+<table>
+<tr><th>Per capire&hellip;</th><th>Leggi</th></tr>
+<tr><td>cos'&egrave; un executor e come &egrave; fatto</td><td><a href="executor.html">executor</a></td></tr>
+<tr><td>come il Synt scrive un executor da zero (alternativa all'import)</td><td><a href="synt.html">synt</a></td></tr>
+<tr><td>il recinto in cui gli executor importati eseguono</td><td><a href="sandbox.html">sandbox</a></td></tr>
+<tr><td>i controlli prima di ogni azione rischiosa</td><td><a href="vaglio.html">vaglio</a></td></tr>
+<tr><td>l'archivio decisionale (perch&eacute; importare invece di adottare lo standard)</td><td>ADR&nbsp;0123</td></tr>
+</table>
+
+<hr>
+<p style="text-align:center; color:var(--muted); font-size:9.5pt; margin-top:40px;">
+Metnos &mdash; <em>skill importer</em>, introduzione didattica
+</p>
+</body>
+</html>

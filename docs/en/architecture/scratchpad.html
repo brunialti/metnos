@@ -1,0 +1,407 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Metnos &mdash; scratchpad v1.1 (tested)</title>
+    <meta name="description" content="Microdesign of Metnos's scratchpad: the notepad where observations too large for the LLM conversation are parked, so the LLM can read them in slices.">
+    <meta name="keywords" content="scratchpad, observation, offload, sqlite, scratchpad_read, builtin executor, metnos">
+    <meta name="author" content="Roberto Brunialti">
+    <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large">
+    <link rel="canonical" href="https://metnos.com/en/architecture/scratchpad.html">
+    <link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/scratchpad.html">
+    <link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/scratchpad.html">
+    <link rel="alternate" hreflang="x-default" href="https://metnos.com/en/architecture/scratchpad.html">
+    <meta property="og:type" content="article">
+    <meta property="og:url" content="https://metnos.com/en/architecture/scratchpad.html">
+    <meta property="og:title" content="Metnos &mdash; scratchpad v1.1 (tested)">
+    <meta property="og:description" content="Metnos's scratchpad: temporary store for large observations, readable by the LLM in slices.">
+    <meta property="og:locale" content="en_GB">
+    <meta property="og:locale:alternate" content="it_IT">
+    <meta property="og:site_name" content="Metnos">
+    <meta name="twitter:card" content="summary">
+    <meta name="twitter:title" content="Metnos &mdash; scratchpad v1.1 (tested)">
+    <meta name="twitter:description" content="Metnos's scratchpad: temporary store for large observations, readable by the LLM in slices.">
+    <script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "TechArticle",
+  "headline": "Metnos — scratchpad v1.1",
+  "description": "Microdesign of the scratchpad: automatic offload of large observations, head+tail summary, scratchpad_read builtin. Status: tested.",
+  "url": "https://metnos.com/en/architecture/scratchpad.html",
+  "inLanguage": "en",
+  "isPartOf": {"@type": "WebSite", "name": "Metnos", "url": "https://metnos.com/"},
+  "author": {"@type": "Person", "name": "Roberto Brunialti"}
+}
+    </script>
+    <style>
+:root {
+    --navy: #1A477A; --navy-light: #2B6CB0; --sage: #548235;
+    --bronze: #A0522D; --plum: #6B21A8;
+    --bg: #FAFBFC; --text: #1a1a1a;
+    --border: #d0d7de; --code-bg: #f6f8fa;
+    --table-header: #1A477A; --table-alt: #f0f4f8;
+    --note-bg: #dbeafe; --note-border: #3b82f6;
+    --tip-bg: #dcfce7; --tip-border: #16a34a;
+    --warn-bg: #fef3c7; --warn-border: #f59e0b;
+    --danger-bg: #fee2e2; --danger-border: #dc2626;
+    --muted: #64748B;
+}
+* { box-sizing: border-box; }
+body { font-family: 'Segoe UI', Calibri, -apple-system, sans-serif; font-size: 11pt; line-height: 1.65; color: var(--text); background: var(--bg); max-width: 960px; margin: 0 auto; padding: 40px 30px; }
+h1 { color: var(--navy); font-size: 20pt; border-bottom: 3px solid var(--navy); padding-bottom: 8px; margin-top: 50px; }
+h1:first-of-type { margin-top: 0; }
+h2 { color: var(--navy-light); font-size: 14pt; margin-top: 28px; border-bottom: 1px solid var(--border); padding-bottom: 4px; }
+h3 { color: var(--navy); font-size: 12pt; margin-top: 18px; }
+p { margin: 10px 0; }
+table { width: 100%; border-collapse: collapse; margin: 15px 0; font-size: 10pt; }
+th { background: var(--table-header); color: white; padding: 8px 10px; text-align: left; font-weight: 600; }
+td { padding: 7px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+tr:nth-child(even) td { background: var(--table-alt); }
+pre { background: var(--code-bg); border: 1px solid var(--border); border-radius: 4px; padding: 12px 16px; overflow-x: auto; font-size: 9.5pt; line-height: 1.55; }
+code { font-family: Consolas, 'Courier New', monospace; }
+p code, li code, td code { background: var(--code-bg); padding: 1px 5px; border-radius: 3px; font-size: 9.5pt; }
+.callout { border-left: 4px solid; padding: 10px 16px; margin: 15px 0; border-radius: 0 4px 4px 0; font-size: 10pt; }
+.callout.note { background: var(--note-bg); border-color: var(--note-border); }
+.callout.tip { background: var(--tip-bg); border-color: var(--tip-border); }
+.callout.warning { background: var(--warn-bg); border-color: var(--warn-border); }
+.title-page { text-align: center; padding: 60px 0 30px; }
+.title-page h1 { font-size: 32pt; border: none; margin: 0; }
+.title-page .subtitle { font-size: 16pt; color: var(--navy-light); margin: 10px 0 30px; }
+.title-page .meta { font-size: 11pt; color: #666; }
+.toc h2 { border: none; }
+.toc ol { font-size: 11pt; line-height: 1.9; }
+.toc a { color: var(--navy); text-decoration: none; }
+ul, ol { margin: 8px 0; padding-left: 24px; }
+li { margin-bottom: 4px; }
+.lead { font-size: 12pt; color: var(--navy); border-left: 4px solid var(--sage); padding-left: 14px; margin: 18px 0; }
+.example { background: #fff; border: 1px solid var(--border); border-left: 4px solid var(--bronze); border-radius: 0 4px 4px 0; padding: 12px 16px; margin: 14px 0; font-size: 10.5pt; }
+.example .ex-label { font-weight: 700; color: var(--bronze); font-size: 9.5pt; letter-spacing: 1px; text-transform: uppercase; }
+.status-banner { margin: 18px 0; border-left: 5px solid #16a34a; background: #dcfce7; color: #14532d; padding: 14px 20px; border-radius: 0 8px 8px 0; font-size: 11pt; line-height: 1.55; }
+.status-banner strong { color: #14532d; }
+.status-banner .status-chip { display: inline-block; background: #14532d; color: #fff; padding: 2px 10px; border-radius: 12px; font-size: 9.5pt; letter-spacing: 1px; font-weight: 700; margin-right: 6px; }
+.status-banner .seq { font-size: 9.5pt; color: #2d4a32; margin-top: 8px; }
+    </style>
+</head>
+<body>
+
+<div class="status-banner">
+<span class="status-chip">TESTED</span>
+<strong>&#10003; Microdesign v1.1 &mdash; aligned with the code as of 4 May 2026.</strong>
+The component has been built and tested at module and cluster level in the v1.1 POC (cluster <code>scratchpad</code> 34/34 green, integrated into <code>agent_runtime</code>). Update 4/5/2026: the turn log now carries two new fields (<code>redacted: bool</code>, <code>n_redacted_fields: int</code>) produced by the credential scrub (ADR&nbsp;0082); the clear value of pwd/user is replaced with <code>&lt;REDACTED:cred&gt;</code> in <code>user_query</code>, <code>step.raw_args</code> and <code>step.resolved_args</code> before JSONL serialisation. Fine-grained StepLog telemetry (ADR&nbsp;0080) adds five optional fields (<code>intent_ms</code>, <code>prefilter_ms</code>, <code>vaglio_ms</code>, <code>exec_ms</code>, <code>rerank_ms</code>) to the step record.
+Implementation reference: <code>/opt/myclaw/runtime/scratchpad.py</code>.
+<div class="seq">Status in the microdesign sequence: <em>under approval</em> &rarr; <em>approved</em> &rarr; <strong>tested</strong> &rarr; <em>implemented</em>. Concept introduced in the POC of 26/4/2026 after the D-obs stress test (large observations) showed the need for a mechanism that separates <em>full observation</em> and <em>view in the LLM context</em>.</div>
+</div>
+
+<nav aria-label="Language" style="position:fixed;top:16px;right:20px;z-index:9999;font-family:'Segoe UI',Calibri,sans-serif;font-size:10pt;letter-spacing:2px;background:#FAFBFC;border:1px solid #d0d7de;border-radius:14px;padding:4px 10px;box-shadow:0 1px 4px rgba(0,0,0,0.04);">
+<a href="/it/architecture/scratchpad.html" hreflang="it" lang="it" style="color:#64748B;text-decoration:none;padding:0 4px;border:none;">IT</a>
+<span style="color:#d0d7de;"> &middot; </span>
+<a href="/en/architecture/scratchpad.html" class="active" hreflang="en" lang="en" style="color:#1a1a1a;text-decoration:none;font-weight:700;padding:0 4px;border:none;">EN</a>
+</nav>
+
+<div style="background:#fff;border-bottom:1px solid #d0d7de;padding:10px 0;font-size:14px;position:sticky;top:0;z-index:10;margin-bottom:20px;">
+  <div style="max-width:960px;margin:0 auto;padding:0 20px;display:flex;justify-content:space-between;">
+    <a href="../index.html" style="color:#1a477a;text-decoration:none;font-weight:500;">&larr; Documentation index</a>
+    <span style="color:#8e8e93;">Microdesign &rsaquo; <strong style="color:#1a1a1a;">scratchpad</strong></span>
+  </div>
+</div>
+
+<div class="title-page">
+    <h1>Metnos</h1>
+    <div class="subtitle"><code>scratchpad</code> &mdash; the notepad for what does not fit in the conversation</div>
+    <div class="meta">
+        Microdesign v1.1 &mdash; status <strong>TESTED</strong> (April 26, 2026)<br>
+        Audience: those who want to understand how Metnos handles large data without saturating the LLM context.<br>
+        <br>
+        Reading time: 12 minutes.
+    </div>
+</div>
+
+<div class="toc">
+<h2>Contents</h2>
+<ol>
+    <li><a href="#cap1">The problem to solve</a></li>
+    <li><a href="#cap2">The scratchpad idea</a></li>
+    <li><a href="#cap3">When an observation goes to the scratchpad</a></li>
+    <li><a href="#cap4">What the LLM sees instead of the full observation</a></li>
+    <li><a href="#cap5">How the LLM reads from the scratchpad: <code>scratchpad_read</code></a></li>
+    <li><a href="#cap6">Storage and lifecycle</a></li>
+    <li><a href="#cap7">Builtin: why scratchpad_read is special</a></li>
+    <li><a href="#cap8">Limits and what is deferred to v1.2+</a></li>
+</ol>
+</div>
+
+<h1 id="cap1">1. The problem to solve</h1>
+
+<p class="lead">
+Imagine a user asks: <em>&laquo;read the file /tmp/big_log.txt and tell me the errors&raquo;</em>. The file weighs 800 KB. The <code>fs_read</code> executor reads it without issue. But now the content has to reach the LLM so it can decide which are the errors. And here lies the problem: 800 KB in the context window of a small LLM (8K-32K tokens) means <em>context explosion</em>.
+</p>
+
+<p>
+A first naive answer: we truncate. Say we keep only the first 1500 characters of the observation. It works for small files. But if the user looks for "errors" and the errors are at the end of the log, we have lost exactly the part that would matter. A blind truncation destroys useful information.
+</p>
+
+<p>
+A second answer: we ask the LLM to express in advance what it wants. If it asks for "the errors", we add a <code>filter_regex</code> parameter to fs_read and we pass it only the lines that match. It works, but it forces the LLM to know <em>beforehand</em> what it will look for, and to be able to say it as a regex. For many real cases the LLM wants to explore: "show me the start to understand the format, then I look for the errors, then I want the details of the first error".
+</p>
+
+<p>
+The scratchpad is the third answer: <em>we separate the storage of the observation from its view in the context</em>. The actual, complete observation goes into a temporary store (the scratchpad). Into the LLM context we put only a brief summary + an identifier. When the LLM needs to see slices of it, it asks explicitly. It explores.
+</p>
+
+<figure style="text-align: center; margin: 24px 0;">
+<svg viewBox="0 0 760 360" xmlns="http://www.w3.org/2000/svg" style="max-width: 100%; height: auto; border: 1px solid var(--border); border-radius: 6px; background: white; padding: 8px;">
+<style>.tt{font-family:'Segoe UI',sans-serif;text-anchor:middle;dominant-baseline:middle}.h{font-size:13px;font-weight:700;fill:#1A477A}.b{font-size:10.5px;fill:#1a1a1a}.s{font-size:9.5px;fill:#64748B}.box{stroke:#1A477A;stroke-width:1.5;rx:6;ry:6;fill:#fff}.exec{fill:#dcfce7}.run{fill:#fef3c7}.db{fill:#dbeafe}.llm{fill:#fce7f3;stroke:#a21caf}.a{stroke:#64748B;stroke-width:1.5;fill:none;marker-end:url(#ar)}</style>
+<defs><marker id="ar" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3 z" fill="#64748B"/></marker></defs>
+<rect class="box exec" x="20" y="40" width="160" height="50"/><text class="tt h" x="100" y="58">Executor</text><text class="tt s" x="100" y="76">e.g. fs_read /tmp/big.log</text>
+<path class="a" d="M180,65 L240,65"/>
+<text class="tt s" x="210" y="50">obs 89KB</text>
+<rect class="box run" x="240" y="40" width="200" height="80"/><text class="tt h" x="340" y="58">Runtime</text>
+<text class="tt b" x="340" y="78">size &gt; 4KB ?</text>
+<text class="tt s" x="340" y="96">yes: offload to scratchpad</text>
+<text class="tt s" x="340" y="110">replace with synth</text>
+<path class="a" d="M340,120 L340,160"/>
+<text class="tt s" x="280" y="142">save whole</text>
+<rect class="box db" x="240" y="160" width="200" height="60"/><text class="tt h" x="340" y="178">Scratchpad SQLite</text>
+<text class="tt s" x="340" y="196">id, turn_id, content,</text>
+<text class="tt s" x="340" y="208">summary, ttl=1h</text>
+<path class="a" d="M440,80 L520,80"/>
+<text class="tt s" x="480" y="68">obs synth</text>
+<rect class="box llm" x="520" y="40" width="220" height="100"/><text class="tt h" x="630" y="58">LLM (sees synth)</text>
+<text class="tt s" x="630" y="78">{ok:true,</text>
+<text class="tt s" x="630" y="92">scratchpad_id:"485d7b…",</text>
+<text class="tt s" x="630" y="106">summary:"INFO ... ERROR"</text>
+<text class="tt s" x="630" y="122">size:89042}</text>
+<path class="a" d="M630,140 Q630,200 530,210"/>
+<text class="tt b" x="630" y="160">decides what it needs</text>
+<rect class="box llm" x="320" y="240" width="280" height="50"/><text class="tt h" x="460" y="258">tool_call: scratchpad_read</text>
+<text class="tt s" x="460" y="276">id="485d7b…", mode="tail", n=200</text>
+<path class="a" d="M340,240 Q260,240 280,220"/>
+<rect class="box run" x="40" y="240" width="240" height="50"/><text class="tt h" x="160" y="258">Runtime: lookup + slice</text>
+<text class="tt s" x="160" y="276">retrieves from SQLite, returns slice</text>
+<path class="a" d="M280,265 L320,265"/>
+<path class="a" d="M460,290 Q460,330 540,330"/>
+<rect class="box llm" x="540" y="310" width="200" height="40"/><text class="tt h" x="640" y="332">final_answer to the user</text>
+</svg>
+<figcaption style="font-style:italic;color:#555;font-size:9.5pt;margin-top:8px;">Typical sequence: the executor produces a large observation, the runtime offloads it into the scratchpad and shows the LLM only the summary; the LLM, if it needs more, explicitly calls <code>scratchpad_read</code> with the mode it wants.</figcaption>
+</figure>
+
+<h1 id="cap2">2. The scratchpad idea</h1>
+
+<p>
+The scratchpad is a small local SQLite database (<code>~/.local/share/metnos/scratchpad.db</code>) where the runtime parks large observations. For each entry it saves:
+</p>
+
+<ul>
+    <li>a unique <code>scratchpad_id</code> (16 hexadecimal characters);</li>
+    <li>the <code>turn_id</code> it belongs to (so we can isolate entries from different turns);</li>
+    <li>the step number within the turn;</li>
+    <li>the name of the executor that produced the observation;</li>
+    <li>the <code>kind</code>: <code>text</code> or <code>binary</code>;</li>
+    <li>the full <code>content</code> (UTF-8 text or raw bytes);</li>
+    <li>the <code>size_bytes</code>;</li>
+    <li>a <code>summary</code> &mdash; see below;</li>
+    <li>the <code>created_at</code> and <code>expires_at</code> timestamps (default TTL of one hour).</li>
+</ul>
+
+<p>
+The entry lives only for the duration of the turn (and a bit beyond, for safety). A <em>garbage collection</em> function removes expired entries at the boot of the next turn.
+</p>
+
+<h1 id="cap3">3. When an observation goes to the scratchpad</h1>
+
+<p>
+The planner, after an executor has produced its observation, applies a simple rule:
+</p>
+
+<pre>if len(json.dumps(observation)) &gt; SCRATCHPAD_THRESHOLD_BYTES (default 4096):
+    save the observation in scratchpad
+    create a "synthetic" version to put in the LLM history
+else:
+    put the full observation into history (with optional truncation to 1500 chars)</pre>
+
+<p>
+The 4 KB threshold is calibrated on the fact that beyond 4 KB of JSON an observation occupies ~1000 tokens in the context, which is already significant for a multistep turn of 3-5 steps. Below 4 KB the cost is negligible and putting it in the scratchpad would be needless ceremony.
+</p>
+
+<p>
+The threshold is configurable in the config; the default is generous enough for most uses.
+</p>
+
+<h1 id="cap4">4. What the LLM sees instead of the full observation</h1>
+
+<p>
+When an observation is put in the scratchpad, the planner builds a <em>synthetic observation</em> for the LLM history. Real example from the POC:
+</p>
+
+<div class="example">
+<div class="ex-label">Case: the user asks to read an 89 KB log</div>
+<p>The <code>fs_read</code> executor returned an 89 KB observation. The runtime saves the 89 KB into the scratchpad and puts in the LLM history:</p>
+<pre>{
+  "ok": true,
+  "scratchpad_id": "485d7beae4e144eb",
+  "size_bytes": 89042,
+  "kind": "text",
+  "summary": "INFO 2026-04-26 10:00:01 event number 0\nINFO 2026-04-26 10:00:02 event number 1\n[... 88500 characters omitted ...]\nERROR 2026-04-26 23:59:59 LAST_CRITICAL_EVENT\n",
+  "metadata": {
+    "path": "/tmp/big_log.txt",
+    "bytes": 89042,
+    "encoding": "utf-8",
+    ...
+  },
+  "_note": "Large observation saved in scratchpad. To read it in full or partially, use the scratchpad_read tool."
+}</pre>
+</div>
+
+<p>
+The summary is a <em>smart truncation</em>: the first 500 characters + a placeholder with the exact number of characters omitted + the last 500. The LLM sees the start and the end of the content at once, sufficient in most cases to:
+</p>
+
+<ul>
+    <li>understand the <em>format</em> (lines, JSON, XML, CSV, etc.);</li>
+    <li>see whether the <em>end</em> contains what is needed (errors, last event, most recent rows);</li>
+    <li>decide whether it needs more and in which mode (head, tail, range).</li>
+</ul>
+
+<p>
+The original <code>metadata</code> of the observation is preserved: the LLM still knows the path, the size, the encoding, etc.
+</p>
+
+<h2>Smart summary for binaries</h2>
+
+<p>
+For binary-kind observations (e.g. a zip file read with <code>encoding=binary</code>), the summary becomes a technical note:
+</p>
+
+<pre>"[BINARY: 45123 bytes, sha256=abc123def456...]"</pre>
+
+<p>
+No textual preview (it would be gibberish), but the LLM sees size and fingerprint. To read slices, it must call <code>scratchpad_read</code> in binary mode.
+</p>
+
+<h1 id="cap5">5. How the LLM reads from the scratchpad: <code>scratchpad_read</code></h1>
+
+<p>
+The LLM, seeing in the history an observation with <code>scratchpad_id</code>, knows it can call a builtin tool named <code>scratchpad_read</code> to access the full content or parts of it.
+</p>
+
+<p>The tool schema:</p>
+
+<pre>{
+  "name": "scratchpad_read",
+  "description": "Reads from the scratchpad an observation previously saved...",
+  "parameters": {
+    "type": "object",
+    "required": ["scratchpad_id"],
+    "properties": {
+      "scratchpad_id": {"type": "string", "description": "Id obtained from the 'scratchpad_id' field of a previous observation."},
+      "mode": {"type": "string", "enum": ["full", "head", "tail", "range"], "default": "head"},
+      "n":     {"type": "integer", "description": "For mode head/tail: number of characters to read. Default 2000."},
+      "start": {"type": "integer", "description": "For mode range: start index."},
+      "end":   {"type": "integer", "description": "For mode range: end index (exclusive)."}
+    }
+  }
+}</pre>
+
+<h2>The four modes</h2>
+
+<table>
+<tr><th>Mode</th><th>What it returns</th><th>When to use it</th></tr>
+<tr><td><code>full</code></td><td>The entire content.</td><td>Only when it is really small (under the threshold or a little above). Discouraged for large files.</td></tr>
+<tr><td><code>head</code></td><td>First N characters (default 2000).</td><td>When the user asks for the start or when understanding the format is needed.</td></tr>
+<tr><td><code>tail</code></td><td>Last N characters (default 2000).</td><td>When the user asks for the end, the latest events, the most recent lines.</td></tr>
+<tr><td><code>range</code></td><td>Characters from <code>start</code> to <code>end</code> (exclusive).</td><td>When the LLM wants to explore a specific slice already identified.</td></tr>
+</table>
+
+<div class="example">
+<div class="ex-label">Example: real pattern from the POC</div>
+<p>User: "download https://httpbin.org/get and save it in /tmp/out.txt".</p>
+<p>Step 1: <code>web_fetch(url=https://httpbin.org/get)</code> returns 14 KB of JSON. It goes into the scratchpad, id <code>eae04122bd704636</code>.</p>
+<p>Step 2: the LLM, seeing in the history the observation with scratchpad_id, knows that the actual content is there. It proposes:<br>
+<code>fs_write(path="/tmp/out.txt", content="{{step1.content}}")</code>.</p>
+<p>The runtime resolves <code>{{step1.content}}</code> by retrieving from the scratchpad the full content (not the summary), and passes it to fs_write.</p>
+<p>Result: file written correctly, 14 KB of actual bytes.</p>
+</div>
+
+<p>
+The interesting bit: the LLM understood by itself that it had to refer to the content of the previous step, even though in its history it saw the summary. The <code>{{stepN.field}}</code> syntax and the scratchpad cooperate: the reference resolves by reconstructing from the database, not from the visible summary.
+</p>
+
+<h1 id="cap6">6. Storage and lifecycle</h1>
+
+<h2>SQL schema</h2>
+
+<pre>CREATE TABLE entries (
+    id            TEXT PRIMARY KEY,
+    turn_id       TEXT NOT NULL,
+    step_num      INTEGER,
+    executor_name TEXT,
+    content_kind  TEXT NOT NULL,    -- 'text' | 'binary'
+    content       BLOB NOT NULL,
+    size_bytes    INTEGER NOT NULL,
+    summary       TEXT,
+    created_at    REAL NOT NULL,
+    expires_at    REAL NOT NULL
+);</pre>
+
+<p>
+SQLite, single file in <code>~/.local/share/metnos/scratchpad.db</code>. Indexes on <code>turn_id</code> (to retrieve entries of a turn) and <code>expires_at</code> (for the GC).
+</p>
+
+<h2>Garbage collection</h2>
+
+<p>
+The planner calls <code>scratchpad.gc()</code> at the start of every turn, which removes all entries with <code>expires_at &lt; now()</code>. Default TTL: 1 hour from creation. Configurable via the <code>ttl_seconds</code> parameter in <code>put()</code>.
+</p>
+
+<p>
+This way a scratchpad heavily used for a few minutes goes back to clean after an hour. No unbounded growth.
+</p>
+
+<h2>Isolation between turns</h2>
+
+<p>
+Every turn has its own uuid <code>turn_id</code>. The planner shows the LLM only the entries of the current turn (via <code>list_for_turn(turn_id)</code>). Even though the SQLite contains entries from other turns (waiting for GC), the LLM does not see them and cannot access them.
+</p>
+
+<h1 id="cap7">7. Builtin: why scratchpad_read is special</h1>
+
+<p>
+Unlike "normal" executors (fs_read, web_fetch, etc.), <code>scratchpad_read</code> does not live on disk as a signed package. It exists only in the runtime: the planner builds its schema dynamically (a constant Python dict) and adds it to the tools passed to the LLM <em>when there are active scratchpad entries in the current turn</em>.
+</p>
+
+<p>
+If there is no observation in the scratchpad, the LLM does not see the tool: less noise in the context. As soon as the first large observation is offloaded, scratchpad_read enters the tool catalogue for the next steps.
+</p>
+
+<p>
+The "duplicate read" guard (see <a href="agent_runtime.html#cap10">agent_runtime ch. 10</a>) <em>does not</em> apply to scratchpad_read, because calling it multiple times on the same <code>scratchpad_id</code> with different mode/range is the normal use case.
+</p>
+
+<div class="callout note">
+<strong>Why a builtin and not a full-fledged executor?</strong> Because the scratchpad is a runtime primitive, not a capability that a synthesizer (synt) might invent or write. A signed on-disk "scratchpad_read" executor would be needlessly rich in ceremony for something the runtime already knows intimately. The family of builtins (of which scratchpad_read is the first) will probably include in the future a <code>scheduler</code> and similar.
+</div>
+
+<h1 id="cap8">8. Limits and what is deferred to v1.2+</h1>
+
+<table>
+<tr><th>v1.1 limit</th><th>When it is removed</th></tr>
+<tr><td>Fixed TTL (1 hour) for all entries</td><td>When an observation has to survive beyond the turn (e.g. to be retrieved in a future turn): TTL declarable per entry.</td></tr>
+<tr><td>Summary only "head + tail"</td><td>When a semantic summary (LLM-generated) for 50KB-1MB observations becomes useful. Implies a mini LLM call at offload time, to be balanced against the cost.</td></tr>
+<tr><td>Range only by character/byte indices</td><td>When the LLM wants "lines N..M" or "lines that match regex": extension of the range mode with sub-modes <code>line</code>, <code>grep</code>.</td></tr>
+<tr><td>No content compression</td><td>When the scratchpad volume grows (for now it is negligible, the GC keeps it clean).</td></tr>
+<tr><td>No "federated scratchpad" between turns / between remote instances</td><td>When remote execution or distributed synt will require sharing (currently each Metnos instance has its own).</td></tr>
+</table>
+
+<h2>Final notes</h2>
+
+<p>
+The scratchpad is a small component (~200 lines of Python) but architecturally important: without it, the system would be limited to observations that comfortably fit in 1500 characters of context, which is trivially nothing useful. With the scratchpad, the scale of the useful grows by three orders of magnitude (MB-scale files readable in slices) without saturating the LLM.
+</p>
+
+<p>
+Concept that emerged from the POC of April 26, 2026 after the D-obs stress test showed that blind truncation to 1500 characters was throwing away 99% of the content of read executors, even when that content would have been the key piece for the user's answer.
+</p>
+
+</body>
+</html>

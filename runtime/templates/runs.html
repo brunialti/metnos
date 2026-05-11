@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}Metnos admin · scheduler runs{% endblock %}
+{% block body %}
+<h1>Scheduler runs (ultimi {{ rows|length }})</h1>
+<table>
+  <thead>
+    <tr><th>id</th><th>task</th><th>started</th><th>ended</th>
+        <th>status</th><th>duration</th></tr>
+  </thead>
+  <tbody>
+  {% for r in rows %}
+    <tr>
+      <td class="muted">{{ r.id }}</td>
+      <td><code>{{ r.task }}</code></td>
+      <td class="muted">{{ r.started_at }}</td>
+      <td class="muted">{{ r.ended_at or "-" }}</td>
+      <td>
+        {% if r.status == "ok" %}<span class="chip ok">{{ r.status }}</span>
+        {% elif r.status == "error" %}<span class="chip bad">{{ r.status }}</span>
+        {% else %}<span class="chip">{{ r.status }}</span>{% endif %}
+      </td>
+      <td>{{ r.duration_s or "-" }}</td>
+    </tr>
+  {% else %}
+    <tr><td colspan="6" class="muted">nessun run</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

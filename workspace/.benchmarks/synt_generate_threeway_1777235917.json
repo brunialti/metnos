@@ -1,0 +1,114 @@
+[
+  {
+    "name": "qwen3:8b (fast)",
+    "provider": "ollama",
+    "model": "qwen3:8b",
+    "wall_ms": 8574,
+    "in_tokens": 716,
+    "out_tokens": 196,
+    "tool_call_name": "propose_executor",
+    "executor_name": "extract_emails",
+    "code_lines": 0,
+    "code_chars": 0,
+    "validation": {
+      "ast_ok": true,
+      "convention_ok": false,
+      "imports": [],
+      "non_stdlib": [],
+      "smoke_returncode": null,
+      "smoke_stdout": "",
+      "smoke_stderr": "",
+      "smoke_ok_field": null,
+      "smoke_metadata": null,
+      "smoke_extracted": null,
+      "smoke_match_expected": false
+    },
+    "code": "",
+    "args": {
+      "name": "extract_emails",
+      "description": "Estrae tutti gli indirizzi email validi da un testo arbitrario, deduplicati e ordinati.",
+      "purpose": "L'executor riceve un testo libero e ne estrae tutti gli indirizzi email validi, rimuovendo eventuali duplicati e ordinandoli. Questo è utile per analisi di dati o gestione di contatti.",
+      "affinity": [
+        "email",
+        "extract",
+        "text",
+        "parse",
+        "data_analysis",
+        "contact_management"
+      ],
+      "args_schema": {
+        "properties": {
+          "text": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "text"
+        ],
+        "type": "object"
+      },
+      "output_summary": "Contiene una lista ordinata di indirizzi email validi e un metadata con il numero totale di email trovate."
+    }
+  },
+  {
+    "name": "gemma-4-26B (wise locale)",
+    "provider": "llamacpp",
+    "model": "gemma-4-26B-A4B-it-UD-Q4_K_M.gguf",
+    "wall_ms": 33855,
+    "in_tokens": 632,
+    "out_tokens": 1592,
+    "tool_call_name": "propose_executor",
+    "executor_name": "extract_emails",
+    "code_lines": 50,
+    "code_chars": 1375,
+    "validation": {
+      "ast_ok": true,
+      "convention_ok": true,
+      "imports": [
+        "json",
+        "re",
+        "sys"
+      ],
+      "non_stdlib": [],
+      "smoke_returncode": 0,
+      "smoke_stdout": "{\"ok\": true, \"content\": \"alice@example.com, bob@foo.org, carol@bar.io\", \"metadata\": {\"count\": 3}}\n",
+      "smoke_stderr": "",
+      "smoke_ok_field": true,
+      "smoke_metadata": {
+        "count": 3
+      },
+      "smoke_extracted": [],
+      "smoke_match_expected": false
+    },
+    "code": "import re\nimport json\nimport sys\n\ndef invoke(args: dict) -> dict:\n    \"\"\"\n    Extracts all unique, sorted email addresses from the provided text.\n    \"\"\"\n    text = args.get(\"text\")\n    \n    if text is None:\n        return {\"ok\": False, \"error\": \"Missing 'text' argument\"}\n    \n    if not isinstance(text, str):\n        return {\"ok\": False, \"error\": \"'text' must be a string\"}\n\n    # Standard email regex pattern\n    email_pattern = r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}'\n    \n    matches = re.findall(email_pattern, text)\n    \n    # Deduplicate and sort (case-insensitive for uniqueness)\n    unique_emails = sorted(list(set(email.lower() for email in matches)))\n    \n    return {\n        \"ok\": True,\n        \"content\": \", \".join(unique_emails),\n        \"metadata\": {\n            \"count\": len(unique_emails)\n        }\n    }\n\ndef main() -> None:\n    \"\"\"\n    Reads JSON from stdin, calls invoke, and writes JSON to stdout.\n    \"\"\"\n    try:\n        input_data = json.load(sys.stdin)\n    except json.JSONDecodeError:\n        print(json.dumps({\"ok\": False, \"error\": \"Invalid JSON input\"}), file=sys.stderr)\n        sys.exit(1)\n    except Exception as e:\n        print(json.dumps({\"ok\": False, \"error\": str(e)}), file=sys.stderr)\n        sys.exit(1)\n\n    result = invoke(input_data)\n    sys.stdout.write(json.dumps(result) + \"\\n\")\n\nif __name__ == \"__main__\":\n    main()\n",
+    "args": {
+      "affinity": [
+        "email",
+        "extraction",
+        "regex",
+        "text_parsing",
+        "data_cleaning"
+      ],
+      "args_schema": {
+        "properties": {
+          "text": {
+            "description": "The input text to search for email addresses.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "text"
+        ],
+        "type": "object"
+      },
+      "name": "extract_emails",
+      "output_summary": "content: comma-separated string of emails; metadata: {'count': int}",
+      "purpose": "Extracts all unique, sorted email addresses from a given text string."
+    }
+  },
+  {
+    "name": "claude-sonnet-4-6 (wise online)",
+    "error": "anthropic api error 401: {\"type\":\"error\",\"error\":{\"type\":\"authentication_error\",\"message\":\"invalid x-api-key\"},\"request_id\":\"req_011CaT2XgR9e6bkm3u6LcNSY\"}",
+    "wall_ms": 187
+  }
+]

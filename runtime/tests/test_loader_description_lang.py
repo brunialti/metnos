@@ -1,0 +1,198 @@
+"""Test loader rendering description per lang corrente con fallback first-available.
+
+ADR 0092 Phase 4 (5/5/2026): pattern latest-wins simmetrico, NO source-of-truth
+canonica. Loader risolve `manifest["description"][current_lang]`; se mancante,
+fallback alla prima lingua disponibile in ordine alfabetico.
+"""
+from __future__ import annotations
+
+import shutil
+import sys
+import tempfile
+import unittest
+from pathlib import Path
+
+_RUNTIME = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(_RUNTIME))
+
+
+def _build_test_manifest(d: Path, *, name: str, description_table: dict[str, str],
+                         args_table: dict[str, dict[str, str]] | None = None) -> Path:
+    """Scrive un manifest TOML di test con `[description]` table multilingua.
+
+    args_table: optional dict {arg_name: {lang: text}}.
+    """
+    args_table = args_table or {}
+    lines = [
+        'manifest_format = "1.0"',
+        f'name = "{name}"',
+        'version = "0.1.0"',
+        'author = "test"',
+        'affinity = []',
+        '',
+        '[description]',
+    ]
+    for lang, text in description_table.items():
+        # Single-line, no escape (test inputs).
+        lines.append(f'{lang} = "{text}"')
+    lines.extend([
+        '',
+        '[code]',
+        'files = ["x.py"]',
+        'digest = "sha256:abc"',
+        '',
+        '[args]',
+        'type = "object"',
+        'required = []',
+    ])
+    for arg_name, lang_table in args_table.items():
+        lines.append('')
+        lines.append(f'[args.properties.{arg_name}]')
+        lines.append('type = "string"')
+        lines.append('')
+        lines.append(f'[args.properties.{arg_name}.description]')
+        for lang, text in lang_table.items():
+            lines.append(f'{lang} = "{text}"')
+    sub = d / name
+    sub.mkdir(parents=True, exist_ok=True)
+    (sub / "manifest.toml").write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return sub
+
+
+class TestLoaderDescriptionLang(unittest.TestCase):
+    """Verify loader resolves description per current_lang with fallback."""
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        self._old_default_lang = None
+        # config.DEFAULT_LANG e' calcolato all'import; per controllarlo nei
+        # test patchiamo il modulo.
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp, ignore_errors=True)
+        # Reset _envs/state se contaminato.
+
+    def _load(self, lang: str):
+        """Carica catalog patchando config.DEFAULT_LANG al lang dato."""
+        import config as _cfg
+        old = _cfg.DEFAULT_LANG
+        _cfg.DEFAULT_LANG = lang
+        try:
+            from loader import load_catalog
+            cat = load_catalog(executors_dir=self.tmp, verify=False,
+                               include_synth=False)
+            return cat
+        finally:
+            _cfg.DEFAULT_LANG = old
+
+    def test_description_resolved_for_current_lang_it(self):
+        _build_test_manifest(
+            self.tmp,
+            name="ex_it",
+            description_table={"it": "Descrizione italiana", "en": "English description"},
+        )
+        cat = self._load("it")
+        ex = cat.get("ex_it")
+        self.assertIsNotNone(ex)
+        self.assertEqual(ex.description, "Descrizione italiana")
+
+    def test_description_resolved_for_current_lang_en(self):
+        _build_test_manifest(
+            self.tmp,
+            name="ex_en",
+            description_table={"it": "Descrizione italiana", "en": "English description"},
+        )
+        cat = self._load("en")
+        ex = cat.get("ex_en")
+        self.assertIsNotNone(ex)
+        self.assertEqual(ex.description, "English description")
+
+    def test_fallback_first_available_alphabetical(self):
+        # Solo IT presente, lang corrente = en → fallback alphabetical first.
+        _build_test_manifest(
+            self.tmp,
+            name="ex_only_it",
+            description_table={"it": "Solo italiano"},
+        )
+        cat = self._load("en")
+        ex = cat.get("ex_only_it")
+        self.assertIsNotNone(ex)
+        self.assertEqual(ex.description, "Solo italiano")
+
+    def test_fallback_picks_alphabetically_first(self):
+        # FR + IT presenti, lang corrente = en → fallback prende FR (f < i).
+        _build_test_manifest(
+            self.tmp,
+            name="ex_fr_it",
+            description_table={"fr": "Description française", "it": "Descrizione italiana"},
+        )
+        cat = self._load("en")
+        ex = cat.get("ex_fr_it")
+        self.assertEqual(ex.description, "Description française")
+
+    def test_args_description_resolved_per_lang(self):
+        _build_test_manifest(
+            self.tmp,
+            name="ex_args",
+            description_table={"it": "top-level it"},
+            args_table={
+                "foo": {"it": "Argomento foo IT", "en": "Foo argument EN"},
+            },
+        )
+        cat_it = self._load("it")
+        ex = cat_it.get("ex_args")
+        self.assertEqual(
+            ex.args_schema["properties"]["foo"]["description"],
+            "Argomento foo IT",
+        )
+        cat_en = self._load("en")
+        ex2 = cat_en.get("ex_args")
+        self.assertEqual(
+            ex2.args_schema["properties"]["foo"]["description"],
+            "Foo argument EN",
+        )
+
+    def test_args_description_fallback(self):
+        # foo solo in IT, current_lang=en → fallback alphabetical IT.
+        _build_test_manifest(
+            self.tmp,
+            name="ex_args_only_it",
+            description_table={"it": "top-level it"},
+            args_table={"foo": {"it": "Solo italiano"}},
+        )
+        cat = self._load("en")
+        ex = cat.get("ex_args_only_it")
+        self.assertEqual(
+            ex.args_schema["properties"]["foo"]["description"],
+            "Solo italiano",
+        )
+
+
+class TestRealCatalogResolution(unittest.TestCase):
+    """Smoke test contro il catalog reale (54 manifest migrated)."""
+
+    def test_real_catalog_loads_with_default_lang(self):
+        from loader import load_catalog
+        cat = load_catalog(verify=True)
+        # Almeno gli executor canonici noti devono essere presenti.
+        self.assertIn("find_files", cat.executors)
+        self.assertIn("read_files", cat.executors)
+        self.assertIn("get_now", cat.executors)
+        # description e' una stringa NON vuota.
+        ex = cat.get("find_files")
+        self.assertIsInstance(ex.description, str)
+        self.assertGreater(len(ex.description), 50)
+
+    def test_real_catalog_args_description_is_string(self):
+        from loader import load_catalog
+        cat = load_catalog(verify=True)
+        ex = cat.get("find_files")
+        props = ex.args_schema.get("properties", {})
+        self.assertIn("base_path", props)
+        bp_desc = props["base_path"].get("description")
+        self.assertIsInstance(bp_desc, str)
+        self.assertGreater(len(bp_desc), 10)
+
+
+if __name__ == "__main__":
+    unittest.main()

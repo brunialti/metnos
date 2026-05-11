@@ -1,0 +1,14 @@
+{
+  "description": {
+    "it": {
+      "version_hash": "sha256:PLACEHOLDER_NOT_SIGNED_IN_WORKTREE",
+      "source_lang": null,
+      "source_hash": null
+    },
+    "en": {
+      "source_lang": "it",
+      "source_hash": "sha256:PLACEHOLDER_NOT_SIGNED_IN_WORKTREE",
+      "version_hash": "sha256:PLACEHOLDER_NOT_SIGNED_IN_WORKTREE"
+    }
+  }
+}
