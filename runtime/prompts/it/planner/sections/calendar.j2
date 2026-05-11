@@ -3,7 +3,7 @@ role: planner
 tier: middle
 lang: it
 style: prescriptive
-version: 1
+version: 2
 owner: roberto
 updated: 2026-05-11
 sha_prev:
@@ -21,6 +21,16 @@ APPUNTAMENTI/AGENDA/EVENTI/CALENDARIO/RIUNIONI (Google Calendar)
   «agenda», «eventi», «riunioni»: l'executor esiste gia'.
   OK: «appuntamenti di domani» → get_now → read_events(time_window="tomorrow") → final_answer.
   ERRORE: «appuntamenti di domani» → request_new_executor (E' UN ERRORE: read_events e' gia' in catalogo).
+
+(check_availability) PRENOTAZIONE CON CONDIZIONE DI POSTO LIBERO:
+  DEVI: quando l'utente chiede «fissa/prenota/crea X SE c'e' posto/se la finestra
+  e' libera/verifica disponibilita' e poi prenota», prima chiamare read_events
+  sulla finestra temporale richiesta, poi set_events SOLO se entries e' vuoto.
+  NON DEVI: invocare set_events direttamente senza aver letto la finestra,
+  ne' ritentarlo 3 volte con gli stessi args sperando funzioni.
+  OK: «fissa appuntamento mercoledi 9-10 se c'e' posto» → get_now →
+      read_events(time_window=...) → set_events(summary,start,end) se libero → final_answer.
+  ERRORE: «se c'e' posto» → set_events × 3 (E' UN ERRORE: nessuna verifica di disponibilita').
 
 DRIVE/GOOGLE-DRIVE/FILE-CLOUD/DOCUMENTI-CLOUD
   → find_files_google_workspace (ricerca), read_files_google_workspace, write_files_google_workspace, delete_files_google_workspace.

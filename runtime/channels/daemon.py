@@ -890,12 +890,89 @@ class ChannelDaemon:
         return {"ok": True, "callback": "dlg_advance",
                 "step_idx": next_idx}
 
+    def _handle_promoter_callback(self, msg: InboundMessage,
+                                    data: str) -> dict:
+        """Gestisce callback dei bottoni inviati dal `promoter_digest`
+        (ADR 0090). Formato `promoter:<proposal_id>:ok|rollback`.
+
+        - `ok`        → mark_acked + reply "Confermato in grace fino a <iso>".
+        - `rollback`  → invoca rollback_promotion + reply esito.
+
+        Determinismo §7.9: niente LLM. Sicurezza: callback_data parsing
+        strict, errori esposti come reply (mai stacktrace).
+        """
+        parts = data.split(":", 2)
+        if len(parts) != 3:
+            return {"ok": False, "reason": "bad_callback_data", "data": data}
+        _, proposal_id, action = parts
+        if action == "ok":
+            try:
+                import sys as _sys
+                _sys.path.insert(0, "/opt/myclaw/runtime")
+                from jobs.promoter_state import (  # noqa: WPS433
+                    load_proposal_state, mark_acked,
+                )
+                state = load_proposal_state(proposal_id) or {}
+                mark_acked(proposal_id)
+            except Exception as ex:  # noqa: BLE001
+                log.warning("promoter ok callback failed: %s", ex)
+                self._send_text(msg.sender_id,
+                                f"Errore conferma promoter: {ex}",
+                                reply_to=msg.message_id)
+                return {"ok": False, "reason": "ack_failed",
+                        "error": str(ex)}
+            grace = state.get("grace_until") or "(grace gia' finalizzata)"
+            self._send_text(
+                msg.sender_id,
+                f"Confermato. In grace fino a {grace}.",
+                reply_to=msg.message_id,
+            )
+            return {"ok": True, "callback": "promoter_ok",
+                    "proposal_id": proposal_id}
+        if action == "rollback":
+            try:
+                import sys as _sys
+                _sys.path.insert(0, "/opt/myclaw/runtime")
+                from jobs.promoter_rollback import (  # noqa: WPS433
+                    rollback_promotion,
+                )
+                result = rollback_promotion(proposal_id)
+            except Exception as ex:  # noqa: BLE001
+                log.warning("promoter rollback callback failed: %s", ex)
+                self._send_text(msg.sender_id,
+                                f"Errore rollback: {ex}",
+                                reply_to=msg.message_id)
+                return {"ok": False, "reason": "rollback_crash",
+                        "error": str(ex)}
+            if result.get("ok"):
+                self._send_text(
+                    msg.sender_id,
+                    f"Promozione annullata: executor "
+                    f"`{result.get('name', '?')}` rimosso.",
+                    reply_to=msg.message_id,
+                )
+            else:
+                self._send_text(
+                    msg.sender_id,
+                    f"Rollback non riuscito: "
+                    f"{result.get('error', 'errore sconosciuto')}",
+                    reply_to=msg.message_id,
+                )
+            return {"ok": bool(result.get("ok")),
+                    "callback": "promoter_rollback",
+                    "proposal_id": proposal_id,
+                    "result": result}
+        return {"ok": False, "reason": "unknown_action", "action": action}
+
     def _handle_callback(self, msg: InboundMessage) -> dict:
         """Risolve un callback_query 'approve:<token>' / 'reject:<token>' /
-        'loc_cancel' / 'dlg:...' (dialog inline keyboard, ADR 0090)."""
+        'loc_cancel' / 'dlg:...' (dialog inline keyboard, ADR 0090) /
+        'promoter:<id>:ok|rollback' (digest promoter daemon)."""
         data = (msg.text or "").strip()
         if data.startswith("dlg:"):
             return self._handle_dialog_callback(msg, data)
+        if data.startswith("promoter:"):
+            return self._handle_promoter_callback(msg, data)
         if data == "loc_cancel":
             try:
                 import sys as _sys

@@ -115,6 +115,27 @@ _BUILTIN_JOBS: list[dict[str, Any]] = [
             "source_hash, audit JSONL append-only. Throttle GPU notturna."
         ),
     },
+    {
+        "name": "promoter",
+        "trigger": "daily@04:45",
+        "callback_key": "promoter",
+        "description": (
+            "Promoter daemon: valuta synth proposals via proposal_evaluator "
+            "(ADR 0122), promuove gli accept in `~/.local/share/metnos/"
+            "executors/<name>/` con grace 72h (override env), archivia gli "
+            "reject, marca i gray come review_needed."
+        ),
+    },
+    {
+        "name": "promoter_digest",
+        "trigger": "daily@07:00",
+        "callback_key": "promoter_digest",
+        "description": (
+            "Digest Telegram delle proposte in `promoted_grace` non ancora "
+            "notificate. Inline keyboard ok/rollback (ADR 0090). Cap N=10 "
+            "per fire. Disabilitato via METNOS_PROMOTER_NOTIFY_ADMIN=false."
+        ),
+    },
 ]
 
 
@@ -252,6 +273,23 @@ def install_default_callbacks(scheduler) -> None:
         "i18n_translate_pending",
         task_i18n_translate_pending,
         "Traduce 20 righe pending del DB i18n (daily@02:00, tier wise default)",
+        replace=True,
+    )
+
+    # promoter / promoter_digest: scheduler v2 daily@04:45 + daily@07:00.
+    # Firma nativa v2 (cb(payload)). Vedi `runtime/jobs/promoter.py`.
+    from jobs.promoter import task_promoter
+    from jobs.promoter_digest import task_promoter_digest
+    cb.register(
+        "promoter",
+        task_promoter,
+        "Promoter daemon: valuta+promuove synth proposals (daily@04:45)",
+        replace=True,
+    )
+    cb.register(
+        "promoter_digest",
+        task_promoter_digest,
+        "Digest Telegram delle proposte promoted_grace (daily@07:00)",
         replace=True,
     )
 

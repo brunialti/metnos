@@ -3,7 +3,7 @@ role: planner
 tier: middle
 lang: en
 style: prescriptive
-version: 1
+version: 2
 owner: roberto
 updated: 2026-05-11
 sha_prev:
@@ -21,6 +21,16 @@ APPOINTMENTS/AGENDA/EVENTS/CALENDAR/MEETINGS (Google Calendar)
   «agenda», «events», «meetings»: the executor already exists.
   OK: «tomorrow's appointments» → get_now → read_events(time_window="tomorrow") → final_answer.
   ERROR: «tomorrow's appointments» → request_new_executor (THIS IS AN ERROR: read_events is already in catalog).
+
+(check_availability) BOOKING WITH FREE-SLOT CONDITION:
+  MUST: when the user asks «book/schedule/create X IF there is a slot/if the
+  window is free/check availability and then book», first call read_events
+  on the requested time window, then set_events ONLY if entries is empty.
+  MUST NOT: invoke set_events directly without reading the window first,
+  nor retry it 3 times with the same args hoping it will work.
+  OK: «book a meeting Wednesday 9-10 if there is a slot» → get_now →
+      read_events(time_window=...) → set_events(summary,start,end) if free → final_answer.
+  ERROR: «if there is a slot» → set_events × 3 (THIS IS AN ERROR: no availability check).
 
 DRIVE/GOOGLE-DRIVE/CLOUD-FILES/CLOUD-DOCUMENTS
   → find_files_google_workspace (search), read_files_google_workspace, write_files_google_workspace, delete_files_google_workspace.

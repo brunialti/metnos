@@ -893,6 +893,103 @@ async def admin_synth_proposal_evaluate(request: web.Request) -> web.Response:
     return web.json_response(payload)
 
 
+# --- /admin/promotions (ADR ?) -----------------------------------------------
+
+
+_ALLOWED_PROMOTION_STATES: tuple[str, ...] = (
+    "promoted_grace", "promoted_finalized", "review_needed",
+    "rolled_back", "archived",
+)
+
+
+async def admin_promotions(request: web.Request) -> web.Response:
+    """GET /admin/promotions?state=...&days=N — lista promozioni.
+
+    Filtra per `state` (uno degli stati promoter) e finestra temporale
+    `days` (default 30). Default `state=""` mostra tutti gli stati noti.
+    """
+    state = request.query.get("state", "").strip()
+    days_raw = request.query.get("days", "30").strip()
+    try:
+        days = max(1, min(365, int(days_raw)))
+    except ValueError:
+        days = 30
+    flash = request.query.get("flash", "").strip()
+    try:
+        from jobs.promoter_state import list_by_state
+        from html_sanitizer import to_safe_html_full
+    except ImportError as ex:
+        log.exception("promoter_state import failed")
+        return _error(500, "internal_error", str(ex))
+    if state and state in _ALLOWED_PROMOTION_STATES:
+        states = [state]
+    else:
+        states = list(_ALLOWED_PROMOTION_STATES)
+    rows = list_by_state(states, limit=500)
+    # Filtra per days su `promoted_at` se presente, altrimenti `created_at`.
+    cutoff_ts = time.time() - days * 86400.0
+    filtered: list[dict] = []
+    for r in rows:
+        anchor = r.get("promoted_at") or r.get("created_at") or ""
+        # Parsing ISO -> epoch best-effort. Se vuoto, includi (defensive).
+        if anchor:
+            try:
+                dt = datetime.strptime(anchor, "%Y-%m-%dT%H:%M:%SZ")
+                dt = dt.replace(tzinfo=timezone.utc)
+                if dt.timestamp() < cutoff_ts:
+                    continue
+            except ValueError:
+                pass
+        # Render markdown -> HTML safe per la cella esempio.
+        ex_md = r.get("practical_example") or ""
+        try:
+            r["example_html"] = to_safe_html_full(ex_md) if ex_md else ""
+        except Exception:
+            import html as _html
+            r["example_html"] = _html.escape(ex_md)
+        filtered.append(r)
+    return negotiate_collection(
+        request,
+        json_payload={"rows": filtered, "state": state, "days": days,
+                        "total": len(filtered)},
+        template="promotions.html",
+        template_ctx={"rows": filtered, "state": state, "days": days,
+                       "flash": flash},
+    )
+
+
+async def admin_promotion_rollback(request: web.Request) -> web.Response:
+    """POST /admin/promotions/{id}/rollback — rollback di una promozione.
+
+    Redirect alla lista con flash message. Errori → JSON 400/500.
+    """
+    proposal_id = urllib.parse.unquote(request.match_info["id"])
+    try:
+        from jobs.promoter_rollback import rollback_promotion
+    except ImportError as ex:
+        log.exception("promoter_rollback import failed")
+        return _error(500, "internal_error", str(ex))
+    try:
+        result = rollback_promotion(proposal_id)
+    except Exception as ex:  # noqa: BLE001
+        log.exception("rollback failed for %s", proposal_id)
+        return _error(500, "internal_error", str(ex))
+    if not result.get("ok"):
+        err = result.get("error") or "unknown"
+        if "text/html" in request.headers.get("Accept", ""):
+            msg = urllib.parse.quote(
+                f"Rollback fallito per {proposal_id}: {err}"
+            )
+            raise web.HTTPFound(f"/admin/promotions?flash={msg}")
+        return _error(400, "rollback_failed", err)
+    if "text/html" in request.headers.get("Accept", ""):
+        msg = urllib.parse.quote(
+            f"Promozione {proposal_id} ({result.get('name', '?')}) annullata."
+        )
+        raise web.HTTPFound(f"/admin/promotions?flash={msg}")
+    return web.json_response({"ok": True, **result})
+
+
 ROUTES = (
     ("GET",  "/admin/login",                      admin_login),
     ("POST", "/admin/login",                      admin_login),
@@ -902,6 +999,8 @@ ROUTES = (
     ("POST", r"/admin/proposals/{sig_key}/{action:approve|reject|defer}", admin_proposal_action),
     ("GET",  r"/admin/synth-proposals/{id}/evaluate", admin_synth_proposal_evaluate),
     ("POST", r"/admin/synth-proposals/{id}/evaluate", admin_synth_proposal_evaluate),
+    ("GET",  "/admin/promotions",                 admin_promotions),
+    ("POST", r"/admin/promotions/{id}/rollback",  admin_promotion_rollback),
     ("GET",  "/admin/executors",                  admin_executors),
     ("GET",  "/admin/executors/stats",            admin_executors_stats),
     ("GET",  "/admin/runs",                       admin_runs),

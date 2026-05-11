@@ -1015,6 +1015,49 @@ def _compose_final_message_from_obs(lp_tool, lp_obs):
     return final_message, ok_count, n_above_threshold
 
 
+# Bug live turn `eb837329` (11/5/2026): final_message su loop_break era una
+# stringa hardcoded ("file extension, precise path") che parlava di file
+# anche per query su events/messages/urls. Soluzione: hint parametrico per
+# OBJECT dell'intent, tabella deterministica in `i18n.sqlite` (ADR 0104).
+# Determinismo §7.9: mapping OBJECT -> chiave i18n, niente LLM.
+_LOOP_BREAK_HINT_OBJECTS = frozenset({
+    "files", "dirs", "messages", "events", "urls",
+    "images", "processes", "contacts", "credentials",
+})
+
+
+def _loop_break_hint(intent_object: str | None) -> str:
+    """Ritorna il hint user-facing parametrico sull'object dell'intent.
+
+    Mappa `intent.object` (lowercase) -> chiave `MSG_LOOP_BREAK_HINT_<OBJ>`
+    in `i18n.sqlite`. Fallback `MSG_LOOP_BREAK_HINT_GENERIC` quando l'object
+    e' None, vuoto o non in `_LOOP_BREAK_HINT_OBJECTS`. Riusa `messages.get`
+    (alias `msg`) per il fallback chain `current_lang -> en -> it`.
+    """
+    obj = (intent_object or "").strip().lower()
+    if obj in _LOOP_BREAK_HINT_OBJECTS:
+        text = msg(f"MSG_LOOP_BREAK_HINT_{obj.upper()}")
+        # `<missing:KEY>` indica che la chiave non esiste in DB: fallback a generic.
+        if not text.startswith("<missing:"):
+            return text
+    return msg("MSG_LOOP_BREAK_HINT_GENERIC")
+
+
+def _intent_object_from_route(route_info) -> str | None:
+    """Estrae `intent.object` da `route_info`. Robusto a None/missing.
+
+    Riusato dai 6 emit-site di `MSG_LOOP_BREAK` in `run_turn` (5 guard
+    branches pre-execute + 1 post-execute fail) per costruire il hint
+    object-aware (`_loop_break_hint`).
+    """
+    if not route_info:
+        return None
+    intent = route_info.get("intent") if isinstance(route_info, dict) else None
+    if not intent:
+        return None
+    return intent.get("object") if isinstance(intent, dict) else None
+
+
 def _resolve_auto_final_from_steps(steps):
     """Risolve il `last_productive` per `auto_final_on_duplicate`.
 
@@ -2993,7 +3036,8 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
             if consecutive_blocked >= LOOP_BREAK_THRESHOLD:
                 log.final_kind = "loop_break"
                 _last_err = (step.result.get("error") if isinstance(step.result, dict) else None) or step.error or "n/a"
-                log.final_message = msg("MSG_LOOP_BREAK", n=consecutive_blocked, last_error=str(_last_err)[:200])
+                _hint = _loop_break_hint(_intent_object_from_route(route_info))
+                log.final_message = msg("MSG_LOOP_BREAK", n=consecutive_blocked, hint=_hint)
                 log.ts_end = time.time(); log.write(); return log
             continue
 
@@ -3011,7 +3055,8 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
             if consecutive_blocked >= LOOP_BREAK_THRESHOLD:
                 log.final_kind = "loop_break"
                 _last_err = (step.result.get("error") if isinstance(step.result, dict) else None) or step.error or "n/a"
-                log.final_message = msg("MSG_LOOP_BREAK", n=consecutive_blocked, last_error=str(_last_err)[:200])
+                _hint = _loop_break_hint(_intent_object_from_route(route_info))
+                log.final_message = msg("MSG_LOOP_BREAK", n=consecutive_blocked, hint=_hint)
                 log.ts_end = time.time(); log.write(); return log
             continue
 
@@ -3140,7 +3185,8 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
             if consecutive_blocked >= LOOP_BREAK_THRESHOLD:
                 log.final_kind = "loop_break"
                 _last_err = (step.result.get("error") if isinstance(step.result, dict) else None) or step.error or "n/a"
-                log.final_message = msg("MSG_LOOP_BREAK", n=consecutive_blocked, last_error=str(_last_err)[:200])
+                _hint = _loop_break_hint(_intent_object_from_route(route_info))
+                log.final_message = msg("MSG_LOOP_BREAK", n=consecutive_blocked, hint=_hint)
                 log.ts_end = time.time(); log.write(); return log
             continue
 
@@ -3222,9 +3268,9 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
             consecutive_blocked += 1
             if consecutive_blocked >= LOOP_BREAK_THRESHOLD:
                 log.final_kind = "loop_break"
+                _hint = _loop_break_hint(_intent_object_from_route(route_info))
                 log.final_message = msg(
-                    "MSG_LOOP_BREAK", n=consecutive_blocked,
-                    last_error="cyclic A→X→A su verbo destructive",
+                    "MSG_LOOP_BREAK", n=consecutive_blocked, hint=_hint,
                 )
                 log.ts_end = time.time(); log.write(); return log
             continue
@@ -3257,7 +3303,8 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
             if consecutive_blocked >= LOOP_BREAK_THRESHOLD:
                 log.final_kind = "loop_break"
                 _last_err = (step.result.get("error") if isinstance(step.result, dict) else None) or step.error or "n/a"
-                log.final_message = msg("MSG_LOOP_BREAK", n=consecutive_blocked, last_error=str(_last_err)[:200])
+                _hint = _loop_break_hint(_intent_object_from_route(route_info))
+                log.final_message = msg("MSG_LOOP_BREAK", n=consecutive_blocked, hint=_hint)
                 log.ts_end = time.time(); log.write(); return log
             if not is_multistep:
                 log.final_kind = "error"; log.final_message = f"(from_step: {fs_errors})"
@@ -4033,7 +4080,8 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
             if consecutive_blocked >= LOOP_BREAK_THRESHOLD:
                 log.final_kind = "loop_break"
                 _last_err = (step.result.get("error") if isinstance(step.result, dict) else None) or step.error or "n/a"
-                log.final_message = msg("MSG_LOOP_BREAK", n=consecutive_blocked, last_error=str(_last_err)[:200])
+                _hint = _loop_break_hint(_intent_object_from_route(route_info))
+                log.final_message = msg("MSG_LOOP_BREAK", n=consecutive_blocked, hint=_hint)
                 log.ts_end = time.time(); log.write(); return log
 
         # Aggiungi tool_call e tool_result alla history LLM
