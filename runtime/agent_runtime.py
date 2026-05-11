@@ -810,6 +810,23 @@ _HEALTH_IMPERATIVE_KEYWORDS = (
 )
 
 
+# Executor transformative single-shot: dopo ok:True con _undo registrato,
+# il runtime forza final_answer per evitare che il planner LLM oscilli e
+# crei duplicati. ADR 0123 + bug live turn c627784c (11/5/2026 sera).
+# Estendere solo per executor che creano UNA singola entita' remota per
+# invocazione (set_*, send_*, write_* su provider esterni).
+_AUTO_FINAL_TRANSFORMATIVE = frozenset({
+    "set_events",
+    "send_messages_google_workspace",
+    "send_messages",
+    "write_files_google_workspace",
+    "set_files",
+    "set_files_text",
+    "set_files_xlsx",
+    "create_dirs_google_workspace",
+})
+
+
 _AUTO_FINAL_SKIP_TOOLS = frozenset({
     "scratchpad_read", "filter_entries", "classify_entries", "describe_entries",
 })
@@ -4092,6 +4109,29 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
         # In single-shot, finiamo qui col simple-format
         if not is_multistep:
             log.final_kind = "answer"; log.final_message = format_simple_answer(chosen_name, obs)
+            log.ts_end = time.time(); log.write(); return log
+
+        # Auto-final dopo executor transformative idempotente che ha gia'
+        # creato/modificato una entita' remota: il planner LLM puo' oscillare
+        # con args leggermente diversi (es. start 9-10 vs 9-11) bypassando
+        # DUPLICATE_CALL, creando N entita' duplicate. Bug live turn c627784c
+        # (11/5/2026 sera): set_events x5 → 5 eventi calendario.
+        # Pattern: chosen_name in lista whitelist + obs.ok + _undo presente
+        # (= operazione registrata revertibile) → final_answer immediato con
+        # link/id. §7.9 deterministico, niente LLM aggiuntivo.
+        if (chosen_name in _AUTO_FINAL_TRANSFORMATIVE
+                and isinstance(obs, dict)
+                and obs.get("ok") is True
+                and isinstance(obs.get("_undo"), dict)
+                and obs.get("_undo", {}).get("ids")):
+            r0 = (obs.get("results") or [{}])[0]
+            log.final_kind = "answer"
+            log.final_message = msg(
+                "MSG_TRANSFORMATIVE_AUTO_FINAL",
+                executor=chosen_name,
+                count=obs.get("n_created") or obs.get("ok_count") or 1,
+                detail=(r0.get("htmlLink") or r0.get("id") or "")
+            )
             log.ts_end = time.time(); log.write(); return log
 
         # Auto-final dopo undo successful: il modello tipicamente non rispetta
