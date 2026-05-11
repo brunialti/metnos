@@ -8,6 +8,10 @@ name        = "{{ name }}"
 version     = "0.1.0"
 author      = "Metnos importer <importer@metnos.com>"
 affinity    = [{% for term in affinity %}"{{ term }}"{% if not loop.last %}, {% endif %}{% endfor %}]
+revertible  = {{ reversible | tojson | lower }}
+{%- if reverse_pattern %}
+reverse_pattern = "{{ reverse_pattern }}"
+{%- endif %}
 
 [description]
 it = {{ description_it | tojson }}
@@ -51,11 +55,6 @@ name = "{{ cap.name }}"
 hint = [{% for h in cap.hint %}"{{ h }}"{% if not loop.last %}, {% endif %}{% endfor %}]
 
 {% endfor %}
-
-revertible       = {{ reversible | tojson | lower }}
-{%- if reverse_pattern %}
-reverse_pattern  = "{{ reverse_pattern }}"
-{%- endif %}
 
 {% if required_credentials_binding %}
 [required_credentials]
