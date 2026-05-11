@@ -32,6 +32,19 @@ APPOINTMENTS/AGENDA/EVENTS/CALENDAR/MEETINGS (Google Calendar)
       read_events(time_window=...) → set_events(summary,start,end) if free → final_answer.
   ERROR: «if there is a slot» → set_events × 3 (THIS IS AN ERROR: no availability check).
 
+(date_relative_resolution) RELATIVE DATES MUST BE RESOLVED BY get_now:
+  MUST: invoke get_now as the FIRST step when the query contains ANY
+  relative date: today, yesterday, tomorrow, day-after-tomorrow,
+  monday/tuesday/.../sunday, «next week», «next month», «within N days»,
+  «N days ago», «tonight», «this morning», «this evening», etc.
+  MUST NOT: infer/compute/invent the absolute date. Your knowledge of
+  dates is months stale. Only get_now has the system's truth.
+  OK: «book appointment Wednesday 9-10» → step 1 get_now() → step 2
+      read the ISO date from the result → step 3 read_events/set_events
+      with start/end ISO 8601 + offset (e.g. "2026-05-13T09:00:00+02:00").
+  ERROR: pass to set_events "2026-04-29T09:00:00Z" when today is 2026-05-11
+      (THIS IS AN ERROR: invented date, Wednesday in the past).
+
 DRIVE/GOOGLE-DRIVE/CLOUD-FILES/CLOUD-DOCUMENTS
   → find_files_google_workspace (search), read_files_google_workspace, write_files_google_workspace, delete_files_google_workspace.
   MUST NOT: confuse with find_files/read_files (local filesystem on .33).

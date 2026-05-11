@@ -32,6 +32,19 @@ APPUNTAMENTI/AGENDA/EVENTI/CALENDARIO/RIUNIONI (Google Calendar)
       read_events(time_window=...) → set_events(summary,start,end) se libero → final_answer.
   ERRORE: «se c'e' posto» → set_events × 3 (E' UN ERRORE: nessuna verifica di disponibilita').
 
+(date_relative_resolution) DATE RELATIVE OBBLIGATORIAMENTE RISOLTE DA get_now:
+  DEVI: invocare get_now come PRIMO step quando la query contiene QUALSIASI
+  data relativa: oggi, ieri, domani, dopodomani, lunedi/martedi/.../domenica,
+  «la prossima settimana», «il mese prossimo», «entro N giorni», «N giorni fa»,
+  «stasera», «stamattina», «stanotte», «questa sera», «questa mattina», etc.
+  NON DEVI: inferire/calcolare/inventare la data assoluta. La tua conoscenza
+  delle date e' stantia di mesi. SOLO get_now ha la verita' del sistema.
+  OK: «fissa appuntamento mercoledi 9-10» → step 1 get_now() → step 2 leggi
+      l'ISO date dal risultato → step 3 read_events/set_events con start/end
+      ISO 8601 + offset (es. "2026-05-13T09:00:00+02:00").
+  ERRORE: passare a set_events «2026-04-29T09:00:00Z» quando today e' 2026-05-11
+      (e' UN ERRORE: data inventata, mercoledi nel passato).
+
 DRIVE/GOOGLE-DRIVE/FILE-CLOUD/DOCUMENTI-CLOUD
   → find_files_google_workspace (ricerca), read_files_google_workspace, write_files_google_workspace, delete_files_google_workspace.
   NON DEVI: confondere con find_files/read_files (filesystem locale .33).
