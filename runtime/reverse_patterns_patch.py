@@ -149,7 +149,19 @@ def build_undo_calls(pattern_name, results):
     ids_field = f"{singular}_ids"
     executor = f"delete_{object_plural}"
 
-    rows, err = _validate_undo_blob(results, id_field, scope_field)
+    # Sorgenti possibili di ID (in ordine di preferenza):
+    # 1. `results._undo.ids` (lista canonica scritta dall'executor produttore).
+    # 2. `results.results[*].<singular>_id` (contratto pattern documentato).
+    # 3. `results.results[*].id` (fallback per skill imports che usano `id`
+    #    semplice — vedi set_events google-workspace ADR 0123).
+    undo_meta = results.get("_undo") if isinstance(results, dict) else None
+    if isinstance(undo_meta, dict) and isinstance(undo_meta.get("ids"), list) and undo_meta["ids"]:
+        ids = list(undo_meta["ids"])
+        # Nessuno scope-grouping disponibile da _undo.ids: tutto in un gruppo.
+        args = {ids_field: ids}
+        return [{"executor": executor, "args": args}], None
+
+    rows, err = _validate_undo_blob_with_fallback(results, id_field, scope_field)
     if err:
         return [], err
 
@@ -157,7 +169,7 @@ def build_undo_calls(pattern_name, results):
     calls = []
     for scope_value, group_rows in groups.items():
         # Mantieni ordine di apparizione interno al gruppo (deterministico).
-        ids = [r[id_field] for r in group_rows]
+        ids = [r.get(id_field) or r.get("id") for r in group_rows]
         args = {ids_field: ids}
         if scope_value is not None:
             args[scope_field] = scope_value
@@ -165,16 +177,75 @@ def build_undo_calls(pattern_name, results):
     return calls, None
 
 
+def _validate_undo_blob_with_fallback(results, id_field, scope_field):
+    """Variante che accetta `id` come fallback di `<singular>_id`."""
+    if not isinstance(results, dict):
+        return [], "results must be a dict"
+    rows = results.get("results")
+    if not isinstance(rows, list):
+        return [], "results.results must be a list"
+    if not rows:
+        return [], "empty results list, nothing to undo"
+    valid = []
+    for r in rows:
+        if not isinstance(r, dict):
+            continue
+        rid = r.get(id_field) or r.get("id")
+        if not rid:
+            continue
+        valid.append(r)
+    if not valid:
+        return [], f"no rows contained {id_field!r} or 'id'"
+    return valid, None
+
+
 # ---------------------------------------------------------------------------
 # Registry hook (idempotente)
 # ---------------------------------------------------------------------------
 
+def _dispatch_call(call):
+    """Invoca `delete_<objects>` caricando il suo modulo Python dal catalog.
+    Cerca prima in /opt/myclaw/executors/, poi in
+    ~/.local/share/metnos/executors/_imports/<skill>/<executor>/. Ritorna
+    `(ok_count, fail_count)` dell'invocazione concreta."""
+    import importlib.util
+    from pathlib import Path
+    name = call["executor"]
+    args = call["args"]
+    candidates = [
+        Path(f"/opt/myclaw/executors/{name}/{name}.py"),
+    ]
+    home_imports = Path.home() / ".local/share/metnos/executors/_imports"
+    if home_imports.exists():
+        for skill_dir in home_imports.iterdir():
+            cand = skill_dir / name / f"{name}.py"
+            if cand.is_file():
+                candidates.append(cand)
+    code_path = next((p for p in candidates if p.is_file()), None)
+    if code_path is None:
+        return 0, len(args.get(next((k for k in args if k.endswith("_ids")), ""), []) or [1])
+    spec = importlib.util.spec_from_file_location(f"_undo_{name}", str(code_path))
+    mod = importlib.util.module_from_spec(spec)
+    try:
+        spec.loader.exec_module(mod)
+        obs = mod.invoke(args)
+    except Exception:
+        return 0, len(args.get(next((k for k in args if k.endswith("_ids")), ""), []) or [1])
+    if isinstance(obs, dict):
+        results = obs.get("results") or []
+        ok = sum(1 for r in results if isinstance(r, dict) and r.get("status") in ("deleted", "ok"))
+        fail = (obs.get("n_deleted") or len(results)) - ok if obs.get("ok") else len(args.get(next((k for k in args if k.endswith("_ids")), ""), []) or [1])
+        return ok, max(0, fail)
+    return 0, 1
+
+
 def _make_pattern_callable():
     """Costruisce la callable signature `(plan, results) -> dict` che
-    `apply_pattern` invoca. Estrae il nome del pattern dal `plan` (campo
-    `reverse_pattern` o `_undo_pattern`), poi delega a `build_undo_calls`.
-    Non esegue la chiamata: lascia al runtime undo_last_turn il dispatch
-    effettivo (rispetta la separazione catalogo / dispatcher).
+    `apply_pattern` invoca. Build descriptors via `build_undo_calls` poi
+    li INVOCA tramite `_dispatch_call` per chiudere il ciclo undo end-to-end.
+    Bug live turn 93ef8420 (11/5/2026): la versione precedente costruiva
+    descrittori e basta — undo dichiarava ok_count=#ids ma l'evento remoto
+    rimaneva. Ora dispatch effettivo. §2.8 no silent failure.
     """
     def _delete_by_id(plan, results):
         pattern_name = (
@@ -183,19 +254,22 @@ def _make_pattern_callable():
             or "delete_unknown_by_id"
         )
         if isinstance(pattern_name, list):
-            # Multistage: trova quello con suffisso _by_id.
             cand = [n for n in pattern_name if isinstance(n, str)
                     and n.startswith("delete_") and n.endswith("_by_id")]
             pattern_name = cand[0] if cand else "delete_unknown_by_id"
         calls, err = build_undo_calls(pattern_name, results or {})
         if err:
-            return {"ok": False, "error": err, "calls": []}
+            return {"ok": False, "error": err, "calls": [], "ok_count": 0, "fail_count": 0}
+        ok_total = 0
+        fail_total = 0
+        for c in calls:
+            ok_i, fail_i = _dispatch_call(c)
+            ok_total += ok_i
+            fail_total += fail_i
         return {
-            "ok": True,
-            "ok_count": sum(len(c["args"].get(
-                f"{_OBJECT_REGISTRY[_object_from_pattern_name(pattern_name)]['singular']}_ids",
-                [])) for c in calls),
-            "fail_count": 0,
+            "ok": ok_total > 0 and fail_total == 0,
+            "ok_count": ok_total,
+            "fail_count": fail_total,
             "calls": calls,
         }
     return _delete_by_id
