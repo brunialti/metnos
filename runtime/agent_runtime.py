@@ -4112,6 +4112,19 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
             )
             log.ts_end = time.time(); log.write(); return log
 
+        # Auto-final dopo undo FALLITO (ok:false, undone_count=0): bug live
+        # turn d7417418 — query «annulla ultima azione» quando non c'e' nulla
+        # da annullare faceva 3x undo → loop_break con hint generico. Il
+        # planner non rispettava la regola 2-bis (undo ok:false → final).
+        # Forziamo deterministicamente. §7.9.
+        if (chosen_name == "undo_last_turn"
+                and isinstance(obs, dict)
+                and obs.get("ok") is False
+                and (obs.get("undone_count") or 0) == 0):
+            log.final_kind = "answer"
+            log.final_message = msg("MSG_UNDO_NOTHING_TO_UNDO")
+            log.ts_end = time.time(); log.write(); return log
+
     # Cap steps superato
     log.final_kind = "cap_steps"
     log.final_message = msg("MSG_CAP_STEPS", cap=cap_steps)

@@ -22,15 +22,20 @@ APPUNTAMENTI/AGENDA/EVENTI/CALENDARIO/RIUNIONI (Google Calendar)
   OK: «appuntamenti di domani» → get_now → read_events(time_window="tomorrow") → final_answer.
   ERRORE: «appuntamenti di domani» → request_new_executor (E' UN ERRORE: read_events e' gia' in catalogo).
 
-(check_availability) PRENOTAZIONE CON CONDIZIONE DI POSTO LIBERO:
-  DEVI: quando l'utente chiede «fissa/prenota/crea X SE c'e' posto/se la finestra
-  e' libera/verifica disponibilita' e poi prenota», prima chiamare read_events
-  sulla finestra temporale richiesta, poi set_events SOLO se entries e' vuoto.
-  NON DEVI: invocare set_events direttamente senza aver letto la finestra,
-  ne' ritentarlo 3 volte con gli stessi args sperando funzioni.
-  OK: «fissa appuntamento mercoledi 9-10 se c'e' posto» → get_now →
-      read_events(time_window=...) → set_events(summary,start,end) se libero → final_answer.
-  ERRORE: «se c'e' posto» → set_events × 3 (E' UN ERRORE: nessuna verifica di disponibilita').
+(check_availability) PRENOTAZIONE CON CONDIZIONE DI POSTO LIBERO — WORKFLOW NUMERATO OBBLIGATORIO:
+  Quando l'utente chiede «fissa/prenota/crea X SE c'e' posto/se la finestra
+  e' libera/verifica disponibilita' e poi prenota», ESEGUI ESATTAMENTE in
+  quest'ordine, UN passo alla volta:
+    Passo 1: get_now  → estrai today ISO.
+    Passo 2: COMPUTA start ed end ISO 8601 + offset (es. "2026-05-13T09:00:00+02:00").
+    Passo 3: read_events(start, end).
+    Passo 4a: se entries VUOTA  → set_events(summary, start, end) → final_answer con link.
+    Passo 4b: se entries NON vuota → final_answer «slot occupato, eventi gia' presenti: ...».
+  DEVI: rispettare l'ordine. set_events va SOLO al Passo 4a, MAI prima.
+  NON DEVI: invocare set_events al Passo 3 o prima. Creerebbe l'evento E
+  poi confonderebbe il read_events successivo che vedrebbe il proprio evento.
+  OK: «fissa appuntamento mercoledi 9-10 se c'e' posto» → get_now → read_events(...) → set_events(...) → final_answer.
+  ERRORE: «se c'e' posto» → set_events (Passo 3 sbagliato) → read_events vede l'evento appena creato → confusione.
 
 (date_relative_resolution) DATE RELATIVE OBBLIGATORIAMENTE RISOLTE DA get_now:
   DEVI: invocare get_now come PRIMO step quando la query contiene QUALSIASI

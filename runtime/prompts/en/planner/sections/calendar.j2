@@ -22,15 +22,20 @@ APPOINTMENTS/AGENDA/EVENTS/CALENDAR/MEETINGS (Google Calendar)
   OK: «tomorrow's appointments» → get_now → read_events(time_window="tomorrow") → final_answer.
   ERROR: «tomorrow's appointments» → request_new_executor (THIS IS AN ERROR: read_events is already in catalog).
 
-(check_availability) BOOKING WITH FREE-SLOT CONDITION:
-  MUST: when the user asks «book/schedule/create X IF there is a slot/if the
-  window is free/check availability and then book», first call read_events
-  on the requested time window, then set_events ONLY if entries is empty.
-  MUST NOT: invoke set_events directly without reading the window first,
-  nor retry it 3 times with the same args hoping it will work.
-  OK: «book a meeting Wednesday 9-10 if there is a slot» → get_now →
-      read_events(time_window=...) → set_events(summary,start,end) if free → final_answer.
-  ERROR: «if there is a slot» → set_events × 3 (THIS IS AN ERROR: no availability check).
+(check_availability) BOOKING WITH FREE-SLOT CONDITION — NUMBERED MANDATORY WORKFLOW:
+  When the user asks «book/schedule/create X IF there is a slot/if the window
+  is free/check availability and then book», EXECUTE EXACTLY in this order,
+  ONE step at a time:
+    Step 1: get_now → extract today ISO.
+    Step 2: COMPUTE start and end ISO 8601 + offset (e.g. "2026-05-13T09:00:00+02:00").
+    Step 3: read_events(start, end).
+    Step 4a: if entries is EMPTY → set_events(summary, start, end) → final_answer with link.
+    Step 4b: if entries is NON-empty → final_answer «slot occupied, events present: ...».
+  MUST: respect the order. set_events goes ONLY at Step 4a, NEVER before.
+  MUST NOT: call set_events at Step 3 or earlier. It would create the event
+  AND then confuse the subsequent read_events that would see its own event.
+  OK: «book appointment Wednesday 9-10 if there is a slot» → get_now → read_events(...) → set_events(...) → final_answer.
+  ERROR: «if there is a slot» → set_events (wrong Step 3) → read_events sees the just-created event → confusion.
 
 (date_relative_resolution) RELATIVE DATES MUST BE RESOLVED BY get_now:
   MUST: invoke get_now as the FIRST step when the query contains ANY
