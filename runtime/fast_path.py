@@ -109,6 +109,16 @@ _DATE_PATTERNS = (
     "what day is it",
 )
 
+_UNDO_PATTERNS = (
+    "annulla", "annulla ultima azione", "annulla l'ultima azione",
+    "annullare", "annullo", "annulla turn", "annulla l'ultimo turno",
+    "annulla ultimo evento", "annulla ultimo messaggio",
+    "undo", "undo last", "undo last action", "undo last turn",
+    "revert", "revert last", "rollback", "rollback last",
+    "ripristina", "ripristina turno precedente",
+)
+
+
 _FAST_PATTERNS: list[FastPattern] = [
     FastPattern(
         patterns=_TIME_PATTERNS,
@@ -123,6 +133,20 @@ _FAST_PATTERNS: list[FastPattern] = [
         args={},
         template_it="Oggi e' {weekday_it} {day} {month_it} {year}.",
         template_en="Today is {weekday_en}, {month_en} {day}, {year}.",
+    ),
+    # Safety-critical: query «annulla ...» bypassa il PLANNER LLM e va dritta
+    # a undo_last_turn (Metnos-action perspective). Bug live turn 6c6a0076
+    # (11/5/2026 sera): «annulla ultimo evento» -> planner pesco delete_events
+    # destructive sul calendario dell'utente, cancellando un evento legittimo
+    # (COMMERCIALISTA) invece di rovesciare la set_events della sessione.
+    # _UNDO_PATTERNS riusa la stessa lista di intent_extractor.py per
+    # consistenza semantica IT+EN.
+    FastPattern(
+        patterns=_UNDO_PATTERNS,
+        executor="undo_last_turn",
+        args={},
+        template_it="",  # output formattato dall'executor stesso
+        template_en="",
     ),
 ]
 
@@ -267,9 +291,27 @@ def try_fast_path(query: str, lang: str = "it",
 
     def _render(observation: dict) -> str:
         if not observation.get("ok"):
+            # Caso speciale undo_last_turn ok=False (nothing-to-undo): NON
+            # un errore, e' uno stato legittimo. Messaggio dedicato.
+            if fp.executor == "undo_last_turn":
+                undone = observation.get("undone_count") or 0
+                if undone == 0:
+                    return ("Niente da annullare: nessuna azione reversibile nel turno precedente."
+                            if lang == "it"
+                            else "Nothing to undo: no reversible action in the previous turn.")
             err = observation.get("error", "sconosciuto")
             return (f"Errore in {fp.executor}: {err}" if lang == "it"
                      else f"Error in {fp.executor}: {err}")
+        # undo_last_turn ok=True: render dai details + undone_count.
+        if fp.executor == "undo_last_turn":
+            undone = observation.get("undone_count") or 0
+            details = observation.get("details") or []
+            d0 = details[0] if details else {}
+            target_executor = d0.get("executor", "azione")
+            target_count = d0.get("ok_count", undone)
+            if lang == "it":
+                return f"Annullato: {target_executor} ({target_count} elementi)."
+            return f"Undone: {target_executor} ({target_count} items)."
         return _render_template(tpl, observation, default_timezone)
 
     return {
