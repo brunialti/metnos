@@ -347,6 +347,78 @@ ACTION_MAPPING = {
 # vuota = installato + dettaglio (path).
 
 
+# ── Mapping OBJECT → sezioni planner (Fase C2, 11/5/2026) ─────────────
+# Tabella deterministica (CLAUDE.md §7.9): dato l'`object` estratto dall'intent
+# extractor, ritorna l'elenco di sezioni del planner da iniettare nel prompt
+# composto. Caller (`prompt_loader.compose`) usa il selettore via
+# `sections_for_object(obj)`; lista vuota = nessun mapping (caller decide
+# fallback: includere TUTTE le sezioni).
+#
+# Convenzione: chiavi = membri di OBJECTS; valori = nomi base (no `.j2`) di
+# file in `runtime/prompts/<lang>/planner/sections/`.
+#
+# Razionale di assegnazione:
+# - `messages` → mail: IMAP + Google Workspace mail vivono insieme.
+# - `events` → calendar: calendario + Google Workspace (drive/sheets/docs/contacts).
+# - `contacts` → mail + calendar: rubrica e' usata sia per `to_user` (mail)
+#   sia per partecipanti agli eventi (calendar).
+# - `urls` → web: tutto il dominio crawler.
+# - `images`/`signatures` → photos: foto + face index + EXIF/GPS unified.
+#   `signatures` ospita anche safety policy (mount/admin) ma quel routing
+#   avviene via admin_shell quando l'intent e' shell-imperative; per le
+#   query relative ai criteri di firma (find_signatures_*) il routing
+#   admin_shell e' piu' pertinente di photos — escolgliamo admin_shell.
+# - `processes` → system: top-K processi + health block.
+# - `credentials` → admin_shell: gestione token + mount + sudo dipendono
+#   dallo store cifrato.
+# - `files`/`dirs`/`packages`/`places`/`numbers`/`texts`/`proposals`/`inputs`
+#   → [] (no sezione dedicata): coperti dal core (filesystem generico,
+#   compute, find_places, get_inputs UI). Il composer fallback aggiunge tutte
+#   le sezioni se la lista e' vuota (degrade graceful).
+_OBJECT_TO_SECTIONS: dict[str, tuple[str, ...]] = {
+    "files": (),                  # generico FS, coperto dal core
+    "dirs": (),                   # generico FS, coperto dal core
+    "packages": (),               # find_packages: query verbale-deterministica
+    "messages": ("mail",),
+    "events": ("calendar",),
+    "contacts": ("mail", "calendar"),
+    "places": (),                 # find_places: globale (con/senza get_location)
+    "processes": ("system",),
+    "urls": ("web",),
+    "numbers": (),                # compute scalare, coperto dal core
+    "images": ("photos",),
+    "signatures": ("admin_shell",),  # safety policy shell + mount
+    "texts": (),                  # filter/read text generico, coperto dal core
+    "proposals": (),              # admin proposals_cli, no PLANNER routing
+    "inputs": (),                 # dialog UI, gestito dal runtime, no sezione
+    "credentials": ("admin_shell",),
+}
+
+
+def sections_for_object(obj: str | None) -> tuple[str, ...]:
+    """Ritorna le sezioni planner attive per un OBJECT.
+
+    `()` (vuota) = nessun mapping noto: il caller (`prompt_loader.compose`)
+    decide il fallback (tipicamente: includere TUTTE le sezioni per degrade
+    graceful in caso di intent.confidence bassa o object unknown).
+
+    Esempi:
+        >>> sections_for_object("messages")
+        ('mail',)
+        >>> sections_for_object("contacts")
+        ('mail', 'calendar')
+        >>> sections_for_object("files")
+        ()
+        >>> sections_for_object(None)
+        ()
+        >>> sections_for_object("unknown_obj")
+        ()
+    """
+    if not obj:
+        return ()
+    return _OBJECT_TO_SECTIONS.get(obj, ())
+
+
 # ── Helper di rendering per i prompt ──────────────────────────────────
 
 def render_actions_inline() -> str:

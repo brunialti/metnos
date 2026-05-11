@@ -3,6 +3,10 @@
 Verifica che il prompt IT non instrada piu' al pattern 2-step
 (find_persons_indices → find_images_indices con paths_filter), e che
 il blocco (W) IMMAGINI E FOTO contiene gli args attesi.
+
+Fase C (11/5/2026): il planner e' splittato in 3 layer. Il blocco (W) e'
+in `prompts/it/planner/sections/photos.j2`. I test verificano la
+sezione e i renderizzati via `prompt_loader.compose`.
 """
 from __future__ import annotations
 
@@ -13,17 +17,20 @@ from pathlib import Path
 _RUNTIME = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_RUNTIME))
 
-_PLANNER_IT = _RUNTIME / "prompts" / "it" / "planner.j2"
+_PLANNER_PHOTOS = _RUNTIME / "prompts" / "it" / "planner" / "sections" / "photos.j2"
 
 
 class TestPlannerPromptUnified(unittest.TestCase):
 
     def setUp(self):
-        self.text = _PLANNER_IT.read_text(encoding="utf-8")
+        # Fase C: i contenuti (W) IMMAGINI E FOTO vivono nel section file
+        # `photos.j2`. I test che verificano structure/args restano contro
+        # questa sezione (single source of truth).
+        self.text = _PLANNER_PHOTOS.read_text(encoding="utf-8")
 
     def test_prompt_file_exists(self):
-        self.assertTrue(_PLANNER_IT.exists())
-        self.assertGreater(len(self.text), 1000)
+        self.assertTrue(_PLANNER_PHOTOS.exists())
+        self.assertGreater(len(self.text), 500)
 
     def test_w_block_unified_present(self):
         # Il nuovo blocco (W) IMMAGINI E FOTO deve esserci

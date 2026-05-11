@@ -1,7 +1,7 @@
 """Test ADR 0111 (7/5/2026): PLANNER ignora health block in observation.
 
 Verifica le tre difese contro il bug live turn 62f80f47 («stato sistema»):
-- Level 1: planner.j2 contiene la regola (Z.cinque) HEALTH BLOCK.
+- Level 1: planner.j2 contiene la regola (health_in_observation_skip) HEALTH BLOCK.
 - Level 2: handle_describe_entries usa `health_context` per pre-pendere
   istruzione "STATO SERVER GIA' RIASSUNTO" al prompt LLM.
 - Level 3: agent_runtime auto-final dopo get_processes ok+health, skip
@@ -20,30 +20,32 @@ sys.path.insert(0, str(_RUNTIME))
 
 
 # ---------------------------------------------------------------------
-# Level 1: planner prompt contiene (Z.cinque)
+# Level 1: planner prompt contiene (health_in_observation_skip)
 # ---------------------------------------------------------------------
 
 class TestLevel1PlannerPrompt(unittest.TestCase):
-    """La regola (Z.cinque) deve esistere e contenere i marker
-    obbligatori (DEVI/NON DEVI/OK/ERRORE) — stile §6 prescrittivo."""
+    """La regola (health_in_observation_skip) deve esistere e contenere i
+    marker obbligatori (DEVI/NON DEVI/OK/ERRORE) — stile §6 prescrittivo."""
 
     def _planner_text(self) -> str:
+        # Fase C (11/5/2026): planner splittato in 3 layer; usa compose()
+        # con sections=None (all) per renderizzare tutto.
         import prompt_loader
-        return prompt_loader.get(
-            "planner", "it",
+        return prompt_loader.compose(
+            "planner", "it", sections=None,
             vocab_actions="x", vocab_objects="x", vocab_qualifiers="x",
             project_paths="x", users_known="x",
         )
 
-    def test_zcinque_marker_present(self):
+    def test_health_skip_marker_present(self):
         text = self._planner_text()
-        self.assertIn("(Z.cinque)", text)
+        self.assertIn("(health_in_observation_skip)", text)
         self.assertIn("HEALTH BLOCK", text)
 
-    def test_zcinque_has_prescriptive_form(self):
+    def test_health_skip_has_prescriptive_form(self):
         text = self._planner_text()
-        # Estrai blocco (Z.cinque)..(A) DISCOVERY
-        i = text.index("(Z.cinque)")
+        # Estrai blocco (health_in_observation_skip)..(A) DISCOVERY
+        i = text.index("(health_in_observation_skip)")
         j = text.index("(A) DISCOVERY", i)
         block = text[i:j]
         self.assertIn("DEVI:", block)

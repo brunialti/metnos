@@ -21,9 +21,12 @@ class TestPromptLoaderBasic(unittest.TestCase):
 
     def test_get_planner_returns_non_empty(self):
         import prompt_loader
-        out = prompt_loader.get(
+        # Fase C (11/5/2026): il planner usa compose() (3-layer). `get()`
+        # solleva su `planner.j2` perche' il file legacy e' stato rimosso.
+        out = prompt_loader.compose(
             "planner",
             "it",
+            sections=None,  # all
             vocab_actions="read,write",
             vocab_objects="files,messages",
             vocab_qualifiers="_csv",
@@ -36,9 +39,10 @@ class TestPromptLoaderBasic(unittest.TestCase):
 
     def test_get_planner_substitutes_vars(self):
         import prompt_loader
-        out = prompt_loader.get(
+        out = prompt_loader.compose(
             "planner",
             "it",
+            sections=None,
             vocab_actions="MARKER_ACTIONS_XYZ",
             vocab_objects="MARKER_OBJECTS_XYZ",
             vocab_qualifiers="MARKER_QUAL_XYZ",
@@ -59,9 +63,10 @@ class TestPromptLoaderBasic(unittest.TestCase):
     def test_planner_preserves_escape_sequences(self):
         """Il template deve preservare `{{stepN.field}}` (escapato via {% raw %})."""
         import prompt_loader
-        out = prompt_loader.get(
+        out = prompt_loader.compose(
             "planner",
             "it",
+            sections=None,
             vocab_actions="x", vocab_objects="x", vocab_qualifiers="x",
             project_paths="x", users_known="x",
         )
@@ -85,9 +90,10 @@ class TestByteEquivalenceWithLegacy(unittest.TestCase):
             _render_project_paths_block,
             _render_users_known_block,
         )
-        out = prompt_loader.get(
+        out = prompt_loader.compose(
             "planner",
             "it",
+            sections=None,
             vocab_actions=_vocab_actions(),
             vocab_objects=_vocab_objects(),
             vocab_qualifiers=_vocab_qualifiers(),
@@ -146,9 +152,9 @@ class TestValidateInvariant(unittest.TestCase):
         base = Path(self.tmp) / "prompts"
         (base / "it").mkdir(parents=True)
         (base / "en").mkdir(parents=True)
-        (base / "it" / "planner.j2").write_text("ciao")
+        (base / "it" / "vaglio.j2").write_text("ciao")
         (base / "it" / "synt.j2").write_text("synt it")
-        (base / "en" / "planner.j2").write_text("hello")
+        (base / "en" / "vaglio.j2").write_text("hello")
         # en/ manca synt.j2
         import prompt_loader as pl
         old_base = pl._BASE
@@ -158,7 +164,10 @@ class TestValidateInvariant(unittest.TestCase):
                 pl.validate_invariant()
             msg = str(ctx.exception)
             self.assertIn("en", msg)
-            self.assertIn("synt.j2", msg)
+            # Post-Fase C: il messaggio elenca "roles" (stem, no .j2). Per
+            # file flat top-level role = stem; per split planner role include
+            # path subdir come `planner/_core`.
+            self.assertIn("synt", msg)
         finally:
             pl._BASE = old_base
 
@@ -185,8 +194,13 @@ class TestRootResolution(unittest.TestCase):
         self.assertTrue((pl._BASE / "it").is_dir())
 
     def test_planner_template_exists_in_it(self):
+        """Fase C (11/5/2026): il planner e' splittato in 3 layer.
+        Verifica che esistano _core + _footer + almeno una sezione."""
         import prompt_loader as pl
-        self.assertTrue((pl._BASE / "it" / "planner.j2").is_file())
+        self.assertTrue((pl._BASE / "it" / "planner" / "_core.j2").is_file())
+        self.assertTrue((pl._BASE / "it" / "planner" / "_footer.j2").is_file())
+        sections = list((pl._BASE / "it" / "planner" / "sections").glob("*.j2"))
+        self.assertGreater(len(sections), 0)
 
     def test_unknown_lang_raises_runtime_error(self):
         import prompt_loader as pl

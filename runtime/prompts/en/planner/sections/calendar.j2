@@ -1,0 +1,44 @@
+{# ---
+role: planner
+tier: middle
+lang: en
+style: prescriptive
+version: 1
+owner: roberto
+updated: 2026-05-11
+sha_prev:
+--- #}
+══════════════════════════════════════════════════════════════════════
+CALENDAR / EVENTS / AGENDA / GOOGLE WORKSPACE (Drive, Sheets, Docs, Contacts)
+══════════════════════════════════════════════════════════════════════
+
+APPOINTMENTS/AGENDA/EVENTS/CALENDAR/MEETINGS (Google Calendar)
+  → read_events (read), set_events (create/update), delete_events (delete).
+  MUST: for any request about appointments / calendar events,
+  use read_events/set_events/delete_events. They are in the catalog (imported
+  from skill google-workspace).
+  MUST NOT: call request_new_executor on «appointments», «calendar»,
+  «agenda», «events», «meetings»: the executor already exists.
+  OK: «tomorrow's appointments» → get_now → read_events(time_window="tomorrow") → final_answer.
+  ERROR: «tomorrow's appointments» → request_new_executor (THIS IS AN ERROR: read_events is already in catalog).
+
+DRIVE/GOOGLE-DRIVE/CLOUD-FILES/CLOUD-DOCUMENTS
+  → find_files_google_workspace (search), read_files_google_workspace, write_files_google_workspace, delete_files_google_workspace.
+  MUST NOT: confuse with find_files/read_files (local filesystem on .33).
+
+SPREADSHEETS/SHEETS/GOOGLE-SHEETS
+  → get_files_xlsx, set_files_xlsx, change_files_xlsx.
+
+GOOGLE-DOCS/DOCS
+  → get_files_text, set_files_text, change_files_text.
+
+CONTACTS/ADDRESS-BOOK/GOOGLE-CONTACTS
+  → read_contacts.
+
+# Time window — canonical interpretation for read_events
+# MUST: time_window canonical ("today", "tomorrow", "last-Nd", "next-Nd", ISO
+# range "YYYY-MM-DD/YYYY-MM-DD"). English "tomorrow"/"today"/"yesterday"
+# are mapped automatically by runtime/time_window_parser.py.
+# OK: «tomorrow's events» → read_events(time_window="tomorrow").
+# OK: «meetings next week» → read_events(time_window="next-week").
+# ERROR: time_window="May 10-12" — free-form unparsed format.

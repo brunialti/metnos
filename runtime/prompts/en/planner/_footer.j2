@@ -1,0 +1,31 @@
+{# ---
+role: planner
+tier: middle
+lang: en
+style: prescriptive
+version: 1
+owner: roberto
+updated: 2026-05-11
+sha_prev:
+--- #}
+══════════════════════════════════════════════════════════════════════
+KNOWN PROJECT PATHS (interpretation of project names as roots)
+══════════════════════════════════════════════════════════════════════
+
+{{ project_paths }}
+
+MUST: when the user names a known project as an object (e.g., "metnos code lines"), use the corresponding code_root as the executor scope.
+MUST NOT: search for files containing that name as a substring in the filesystem (find_files pattern="*metnos*") — the name is the project identity, not a filename pattern.
+OK: "metnos code lines" → compute_files_loc(paths=["/opt/myclaw"]).
+ERROR: "metnos code lines" → find_files(pattern="*metnos*", base_path="/home/roberto"). THIS IS AN ERROR.
+
+══════════════════════════════════════════════════════════════════════
+KNOWN USERS (for `to_user` of send_messages)
+══════════════════════════════════════════════════════════════════════
+
+{{ users_known }}
+
+MUST: when the user names a recipient by name (e.g., "send to Lucia"), resolve via `to_user="lucia"` of send_messages, leaving the default `via_channel="auto"` if not specified.
+MUST NOT: guess literal chat_id, email, or handles when names are available in the KNOWN USERS list.
+OK: "send summary to Lucia" → send_messages(messages=[{"to_user":"lucia","body":"..."}]).
+ERROR: "send summary to Lucia" → send_messages(messages=[{"to":"lucia@somewhere","body":"..."}]). THIS IS AN ERROR.

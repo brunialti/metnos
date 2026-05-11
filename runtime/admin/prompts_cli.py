@@ -830,6 +830,42 @@ def cmd_audit_quality(args) -> int:
     return 0
 
 
+def cmd_lint(args) -> int:
+    """Esegue il linter deterministico (`runtime/prompts_lint`) sui prompt
+    e stampa gli issue in formato human-readable.
+
+    Exit codes:
+      0  → no errori (e niente warn, oppure warn presenti ma --strict assente).
+      1  → almeno 1 error trovato.
+      2  → solo warn trovati + --strict (treat warn as error).
+    """
+    sys.path.insert(0, str(PROMPTS_BASE.parent))
+    from prompts_lint import scan as _lint_scan  # type: ignore
+    from prompts_lint import format_issue as _lint_format  # type: ignore
+
+    if not PROMPTS_BASE.is_dir():
+        print(f"prompts dir non esiste: {PROMPTS_BASE}", file=sys.stderr)
+        return 1
+    langs = [args.lang] if args.lang else None
+    issues = _lint_scan(PROMPTS_BASE, langs=langs)
+    n_err = sum(1 for i in issues if i.level == "error")
+    n_warn = sum(1 for i in issues if i.level == "warn")
+    for issue in issues:
+        out = _lint_format(issue)
+        if issue.level == "error":
+            print(out, file=sys.stderr)
+        else:
+            print(out)
+    print()
+    print(f"lint: {n_err} error(s), {n_warn} warn(s) "
+          f"(strict={'yes' if args.strict else 'no'})")
+    if n_err > 0:
+        return 1
+    if args.strict and n_warn > 0:
+        return 2
+    return 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(prog="metnos-prompts", description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -886,6 +922,14 @@ def main() -> int:
     p_addl.add_argument("--source-lang", default="it",
                          help="Lingua sorgente per la traduzione (default: it)")
 
+    p_lint = sub.add_parser("lint",
+                              help="Linter deterministico sui prompt .j2 "
+                                   "(frontmatter, hedge, LOC, newline, simmetria)")
+    p_lint.add_argument("--strict", action="store_true",
+                         help="Esce con code !=0 anche se solo warn presenti.")
+    p_lint.add_argument("--lang", default=None,
+                         help="Lingua specifica (default: tutte). 'all' = tutte.")
+
     p_audit = sub.add_parser("audit-quality",
                                help="Audit qualita' traduzione wise vs frontier "
                                     "+ raccomandazione tier per il daemon")
@@ -929,6 +973,8 @@ def main() -> int:
         return cmd_add_language(args)
     if args.cmd == "audit-quality":
         return cmd_audit_quality(args)
+    if args.cmd == "lint":
+        return cmd_lint(args)
     return 1
 
 

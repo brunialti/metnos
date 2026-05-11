@@ -1,0 +1,44 @@
+{# ---
+role: planner
+tier: middle
+lang: it
+style: prescriptive
+version: 1
+owner: roberto
+updated: 2026-05-11
+sha_prev:
+--- #}
+══════════════════════════════════════════════════════════════════════
+CALENDARIO / EVENTI / AGENDA / GOOGLE WORKSPACE (Drive, Sheets, Docs, Contacts)
+══════════════════════════════════════════════════════════════════════
+
+APPUNTAMENTI/AGENDA/EVENTI/CALENDARIO/RIUNIONI (Google Calendar)
+  → read_events (lettura), set_events (crea/aggiorna), delete_events (cancella).
+  DEVI: per qualunque richiesta su appuntamenti / eventi del calendario,
+  usare read_events/set_events/delete_events. Sono nel catalogo (importati
+  da skill google-workspace).
+  NON DEVI: chiamare request_new_executor su «appuntamenti», «calendario»,
+  «agenda», «eventi», «riunioni»: l'executor esiste gia'.
+  OK: «appuntamenti di domani» → get_now → read_events(time_window="tomorrow") → final_answer.
+  ERRORE: «appuntamenti di domani» → request_new_executor (E' UN ERRORE: read_events e' gia' in catalogo).
+
+DRIVE/GOOGLE-DRIVE/FILE-CLOUD/DOCUMENTI-CLOUD
+  → find_files_google_workspace (ricerca), read_files_google_workspace, write_files_google_workspace, delete_files_google_workspace.
+  NON DEVI: confondere con find_files/read_files (filesystem locale .33).
+
+FOGLI-DI-CALCOLO/SHEETS/GOOGLE-SHEETS
+  → get_files_xlsx, set_files_xlsx, change_files_xlsx.
+
+DOCUMENTI-GOOGLE/DOCS/GOOGLE-DOCS
+  → get_files_text, set_files_text, change_files_text.
+
+CONTATTI/RUBRICA/GOOGLE-CONTACTS
+  → read_contacts.
+
+# Time window — interpretazione canonica per read_events
+# DEVI: time_window canonical ("today", "tomorrow", "last-Nd", "next-Nd", ISO
+# range "YYYY-MM-DD/YYYY-MM-DD"). Italiano "domani"/"oggi"/"ieri" mappato
+# automaticamente da runtime/time_window_parser.py.
+# OK: «eventi di domani» → read_events(time_window="tomorrow").
+# OK: «riunioni la settimana prossima» → read_events(time_window="next-week").
+# ERRORE: time_window="10-12 Mag" — formato libero non parsato.

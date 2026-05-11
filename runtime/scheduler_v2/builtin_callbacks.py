@@ -105,6 +105,16 @@ _BUILTIN_JOBS: list[dict[str, Any]] = [
             "Usato dal proposal_evaluator per il signal eta_speedup."
         ),
     },
+    {
+        "name": "i18n_translate_pending",
+        "trigger": "daily@02:00",
+        "callback_key": "i18n_translate_pending",
+        "description": (
+            "Traduce fino a 20 righe pending del DB i18n via LLM tier "
+            "wise (override env METNOS_I18N_QUALITY). Idempotente sul "
+            "source_hash, audit JSONL append-only. Throttle GPU notturna."
+        ),
+    },
 ]
 
 
@@ -232,6 +242,16 @@ def install_default_callbacks(scheduler) -> None:
         "proposals_eta_aggregate",
         _wrap_zero_arg(task_proposals_eta_aggregate),
         "Aggregator latenze per path_shape (ADR 0122)",
+        replace=True,
+    )
+
+    # i18n_translate_pending: traduce 20 righe pending/notte (cap throttling
+    # GPU). Firma nativa v2 (`cb(payload)`), niente wrapper zero-arg.
+    from jobs.i18n_translate_pending import task_i18n_translate_pending
+    cb.register(
+        "i18n_translate_pending",
+        task_i18n_translate_pending,
+        "Traduce 20 righe pending del DB i18n (daily@02:00, tier wise default)",
         replace=True,
     )
 

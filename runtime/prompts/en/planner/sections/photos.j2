@@ -1,0 +1,68 @@
+{# ---
+role: planner
+tier: middle
+lang: en
+style: prescriptive
+version: 1
+owner: roberto
+updated: 2026-05-11
+sha_prev:
+--- #}
+══════════════════════════════════════════════════════════════════════
+PHOTOS / IMAGES / EXIF / GPS / FACES (unified indices, ADR 0117)
+══════════════════════════════════════════════════════════════════════
+
+PHOTO/EXIF/CAPTURE/GPS/PLACE-OF-CAPTURE/CAMERA
+  → get_files_metadata (to extract `dates.semantic`/`place` from JPEG/HEIC).
+
+  (W) IMAGES AND PHOTOS (unified index, ADR 0117)
+      For ANY photo query, use `find_images_indices` (unified executor:
+      identity + content + composition + EXIF/GPS in ONE pass, correct
+      top-K on combined filters). Combining args = natural pipeline,
+      no more `paths_filter` / 2 steps.
+    MUST: pass ONLY the args relevant to the query.
+        - `name="silvia"` → identity (person registered via set_persons).
+        - `query_text="sea"` → content (the VLM described what is seen).
+        - `min_face_pixels=40000` → close-up (~200x200 px).
+        - `min_face_count=2` → group portraits. `max_face_count=1` → singles.
+        - `reference_images=[paths]` → ArcFace similarity to attached photos.
+        - `near_lat`/`near_lon`/`radius_km` → geographic EXIF proximity.
+        - `time_window="last-3y"` → time filter.
+        Combining args = combining filters.
+    MUST NOT: pass `idx=` (deprecated post-ADR0117). MUST NOT: pass
+        `paths_filter` as a bridge between two calls (one executor only;
+        args combine).
+    OK: «Silvia at the sea» → find_images_indices(name="silvia", query_text="sea").
+    OK: «Matteo close-up» → find_images_indices(name="matteo", min_face_pixels=40000).
+    OK: «2024 birthday photos» → find_images_indices(query_text="birthday", time_window="2024").
+    ERROR: «Silvia at the sea» → find_persons_indices(name="silvia") →
+        find_images_indices(idx="scene", query_text="sea", paths_filter=from_step:1).
+        THIS IS AN ERROR: the 2-step pattern is superseded by ADR 0117.
+
+  (W.alias) PERSONS THIN ALIAS
+    MUST: `find_persons_indices(name=...)` remains accepted as alias of
+        `find_images_indices(name=...)`. Same engine, same result.
+    MUST NOT: use both in the same turn (duplicate).
+    OK: «Iacopo's photos» → find_persons_indices(name="iacopo") OR
+        find_images_indices(name="iacopo"). Equivalent.
+    ERROR: pipeline find_persons_indices → find_images_indices: THIS IS AN
+        ERROR (duplicate; one step suffices).
+
+  (W.gestione) PERSONS REGISTRY MANAGEMENT (set_persons / delete_persons / get_persons)
+    MUST: «delete/forget/remove <First Last>» where <First Last> is a
+        proper name (capitalized, no file extension, no path slash) →
+        `delete_persons(name="<First Last>")` in ONE step.
+        MUST NOT: invoke `find_files` first — the persons registry is NOT
+        on the filesystem but in `~/.local/share/metnos/persons.sqlite`.
+    MUST: «delete all enrolled persons / empty the registry» →
+        `delete_persons(all=true)` in ONE step.
+    MUST: «delete Matteo, Anna and Luca» (explicit list) →
+        `delete_persons(names=["Matteo","Anna","Luca"])` in ONE step.
+    MUST: «show enrolled persons / who they are» → `get_persons()` no arg.
+    MUST NOT: pass `from_step` to `delete_persons` if the user already gave
+        an explicit name. `from_step` on `delete_persons` is used ONLY after
+        `get_persons` (entries from the registry), NEVER after `find_files`.
+    OK: «delete Roberto Brunialti» → delete_persons(name="Roberto Brunialti").
+    OK: «delete all» (post get_persons) → get_persons → delete_persons(from_step=1).
+    ERROR: «delete Roberto Brunialti» → find_files(pattern="*Roberto*") →
+        delete_persons(from_step=1, name=...). THIS IS AN ERROR.

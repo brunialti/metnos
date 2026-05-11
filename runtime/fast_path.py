@@ -182,8 +182,8 @@ def _render_template(tpl: str, observation: dict, default_tz: str) -> str:
 # PLANNER LLM riceve il risultato in history e prende il controllo dallo
 # step 2 in poi.
 #
-# Razionale (ADR 0098 §c1 esteso): la regola PLANNER (Z) "URL esplicito →
-# read_urls_html primo step" e' provata insufficiente live (turn federvolley
+# Razionale (ADR 0098 §c1 esteso): la regola PLANNER (url_explicit_seed)
+# "URL esplicito → read_urls_html primo step" e' provata insufficiente live (turn federvolley
 # 7/5/2026 15:29: PLANNER ha comunque scelto find_urls). Il segnale «URL
 # specifico» e' un fatto strutturale, non interpretabile: il runtime puo'
 # garantirlo deterministicamente. PLANNER resta libero per gli step 2+.

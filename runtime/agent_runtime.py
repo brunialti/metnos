@@ -2405,11 +2405,30 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
 
     # Blocco prescrittivo per il PLANNER: lista delle credenziali estratte
     # nel turno corrente. Solo metadata (domain + context), MAI le pwd.
-    # ADR 0092: il PLANNER è caricato da runtime/prompts/<lang>/planner.j2.
+    # ADR 0092: il PLANNER è caricato da runtime/prompts/<lang>/planner/.
+    # Fase C (11/5/2026): rendering 3-layer (_core + sections + _footer) via
+    # `prompt_loader.compose()`. Selettore deterministico delle sezioni via
+    # `vocab.sections_for_object(intent.object)`. Quando l'intent extractor
+    # non si e' ancora eseguito (early route_info=None nel turno) o l'object
+    # e' unknown, passiamo sections=None → composer include TUTTE le sezioni
+    # (degrade graceful). Lo split avviene piu' avanti nel turno via re-render
+    # se serve, ma per il PLANNER prompt sistema il render iniziale e' OK con
+    # all-sections — il routing si concretizza ai prossimi step.
     # Lang esplicito al call site (5/5/2026): default da config.DEFAULT_LANG.
-    planner_system = prompt_loader.get(
+    try:
+        from vocab import sections_for_object as _sections_for_object
+        # `route_info` non e' ancora disponibile a questo punto (precede
+        # l'intent extractor del turno principale). Per il primo prompt
+        # PLANNER passiamo sections=None (= all sections) come degrade
+        # graceful. Refactor futuro: rendering lazy del system prompt ad
+        # ogni step, basato sull'intent extractor risolto.
+        _planner_sections = None
+    except Exception:
+        _planner_sections = None
+    planner_system = prompt_loader.compose(
         "planner",
         DEFAULT_LANG,
+        sections=_planner_sections,
         vocab_actions=_vocab_actions(),
         vocab_objects=_vocab_objects(),
         vocab_qualifiers=_vocab_qualifiers(),
@@ -2577,6 +2596,53 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
     if verbose:
         print(f"[prefilter] candidati: {log.candidates}")
 
+    # Fase C3 (11/5/2026): re-render planner_system con sezioni mirate dopo
+    # che `route_info` (con intent.verb/intent.object) e' disponibile. Selettore
+    # deterministico `vocab.sections_for_object(obj)` (§7.9). Fallback: se
+    # l'object e' unknown o non mappato, include TUTTE le sezioni (degrade
+    # graceful — comportamento del primo render). Confidence dal route_info
+    # come ulteriore guard: se < 0.6 (intent extractor incerto), all sections.
+    try:
+        from vocab import sections_for_object as _sections_for_object
+        _intent_for_route = (route_info or {}).get("intent") or {}
+        _conf = (route_info or {}).get("confidence")
+        _obj = _intent_for_route.get("object")
+        if not isinstance(_conf, (int, float)) or _conf < 0.6:
+            _sections_resolved = None  # all
+        else:
+            _candidate_secs = _sections_for_object(_obj)
+            _sections_resolved = list(_candidate_secs) if _candidate_secs else None
+        # Re-render solo se la lista differisce dall'all-sections iniziale.
+        if _sections_resolved is not None:
+            _planner_targeted = prompt_loader.compose(
+                "planner", DEFAULT_LANG,
+                sections=_sections_resolved,
+                vocab_actions=_vocab_actions(),
+                vocab_objects=_vocab_objects(),
+                vocab_qualifiers=_vocab_qualifiers(),
+                project_paths=_render_project_paths_block(),
+                users_known=_render_users_known_block(),
+            )
+            # Riapplica gli addenda (credenziali + reference images) gia'
+            # accumulati nel `planner_system`, calcolando la diff rispetto
+            # all'iniziale rendering all-sections.
+            _planner_all = prompt_loader.compose(
+                "planner", DEFAULT_LANG, sections=None,
+                vocab_actions=_vocab_actions(),
+                vocab_objects=_vocab_objects(),
+                vocab_qualifiers=_vocab_qualifiers(),
+                project_paths=_render_project_paths_block(),
+                users_known=_render_users_known_block(),
+            )
+            if planner_system.startswith(_planner_all):
+                _suffix = planner_system[len(_planner_all):]
+                planner_system = _planner_targeted + _suffix
+            # Se l'utente ha esteso planner_system in modo non-prefix (caso
+            # raro), lasciamo l'iniziale all-sections (no regress, no info loss).
+    except Exception as _e:
+        # Niente fail su difetti del routing: rimaniamo con all-sections.
+        log.warning("planner section routing skipped: %s", _e)
+
     # Provider selection (27/4 sera): default = Gemma 4 26B (llamacpp) come "middle" tier
     # locale per pianificare task multi-step. Override esplicito via env METNOS_PLANNER_*.
     # think (28/4 sera): default True sul planner.
@@ -2624,8 +2690,8 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
     # PLANNER per quel primo step. Il PLANNER prende il controllo dallo
     # step 2 in poi, vedendo il risultato del read in history.
     #
-    # Razionale: la regola PLANNER (Z) di ADR 0098 (URL esplicito → read
-    # primo step) si e' rivelata insufficiente live (turn federvolley
+    # Razionale: la regola PLANNER (url_explicit_seed) di ADR 0098 (URL
+    # esplicito → read primo step) si e' rivelata insufficiente live (turn federvolley
     # 7/5/2026 15:29: PLANNER ha comunque scelto find_urls). Garantirlo
     # nel runtime e' deterministico; PLANNER resta libero post step 1.
     #

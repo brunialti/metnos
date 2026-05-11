@@ -384,6 +384,37 @@ def _run_smoke_with_tool_assertion(case: dict, *, catalog=None) -> dict:
     }
 
 
+def run_prompts_lint_assertion() -> dict:
+    """Smoke check Fase C4 (11/5/2026): esegue il linter deterministico sui
+    prompt e verifica zero error.
+
+    Ritorna `{ok: bool, n_error: int, n_warn: int, codes: list[str], skip: bool,
+    reason: str}`. Skip gracefully se l'import di `prompts_lint` fallisce.
+
+    Invocato in cron daily insieme alla routing battery."""
+    try:
+        from prompts_lint import scan as _lint_scan  # type: ignore
+    except Exception as e:
+        return {"ok": True, "n_error": 0, "n_warn": 0, "codes": [],
+                "skip": True, "reason": f"import skip: {e}"}
+    root = Path(__file__).parent / "prompts"
+    if not root.is_dir():
+        return {"ok": True, "n_error": 0, "n_warn": 0, "codes": [],
+                "skip": True, "reason": "prompts dir mancante"}
+    issues = _lint_scan(root)
+    n_err = sum(1 for i in issues if i.level == "error")
+    n_warn = sum(1 for i in issues if i.level == "warn")
+    codes = sorted({i.code for i in issues})
+    return {
+        "ok": n_err == 0,
+        "n_error": n_err,
+        "n_warn": n_warn,
+        "codes": codes,
+        "skip": False,
+        "reason": "lint clean" if n_err == 0 else f"{n_err} lint errors",
+    }
+
+
 def run_smoke_routing_battery(catalog=None) -> dict:
     """Esegue solo il routing assertion per tutti i case con
     `expected_first_tool`. Per cron / scheduler v2.

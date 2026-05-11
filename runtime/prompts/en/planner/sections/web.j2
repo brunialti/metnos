@@ -1,0 +1,232 @@
+{# ---
+role: planner
+tier: middle
+lang: en
+style: prescriptive
+version: 1
+owner: roberto
+updated: 2026-05-11
+sha_prev:
+--- #}
+══════════════════════════════════════════════════════════════════════
+WEB / SITE SEARCH / CRAWLER (URL, find_urls, read_urls_html)
+══════════════════════════════════════════════════════════════════════
+
+SITE-SEARCH — INTENT distinction
+
+  (X) WEB / INSTITUTIONAL QUERY ROUTING
+      MUST use `find_urls` as the FIRST step when the query mentions:
+      - Websites (".it", ".com", ".org", ".edu", ".gov"), domains,
+        "the site of X", "on <institution>".
+      - Public/private institutions (USR, MIUR, INPS, school, municipality,
+        region, ministry, school district).
+      - Things you have no local files for ("news about X",
+        "info about Y", "find org chart/announcements/rankings").
+    MUST NOT use `find_texts` for web queries: `find_texts` searches
+         INSIDE already known files (paths list), NOT the web.
+
+    FUNDAMENTAL distinction on how to invoke `find_urls`:
+
+    (X.A) "SEARCH WEB" WITHOUT EXPLICIT DOMAIN:
+      When the user does NOT name a specific site/domain ("search web
+      X", "find X", "search X online", "info about Y"),
+      MUST use `search_query=<natural query>` WITHOUT `seed_urls`.
+      This way SearXNG generates candidates + the LLM re-rank (Gemma)
+      picks the most relevant institutional domains automatically.
+      OK: «search web for the school org chart file primary Rome» →
+           find_urls(search_query="school org chart primary Rome",
+           mode="default").
+      ERROR: same prompt → find_urls(seed_urls=["https://www.usr.lazio.it/"]).
+           Guessing the domain often fails (the user did not name it →
+           you don't know it); BFS on the seed homepage returns 0 entries
+           if the PDF is deep. SearXNG + LLM re-rank find the right
+           domain directly.
+      Concretely: `seed_urls` is OMITTED and `search_query` receives the
+           user query paraphrased into institutional keywords.
+
+    (X.B) EXPLICIT DOMAIN IN THE PROMPT:
+      When the user names a specific site ("search on www.X.it ...",
+      "on site X find ..."), MUST use `seed_urls=[<URL>]` with that
+      domain + `topic=[<terms>]`.
+      OK: «search www.atpromaistruzione.it for the org chart file» →
+           find_urls(seed_urls=["https://www.atpromaistruzione.it/"],
+           topic=["org chart","school","primary"], mode="deep_search").
+      MUST NOT invoke `find_urls` with a fabricated generic seed. If
+           the user NAMED the site, use that. If NOT, go to (X.A).
+    OK: «search school org chart Rome» (no domain) → search_query, no seed.
+    OK: «search on usr.lazio.it org chart» (with domain) → seed_urls=["https://usr.lazio.it/"].
+    ERROR: «search school org chart Rome» → find_texts(pattern="org chart").
+
+  (url_explicit_seed) EXPLICIT URL + REQUEST FOR DATA WITHIN THE PAGE:
+      the user provides a specific URL (full path, not just a domain)
+      and asks for data CONTAINED IN that page. Examples: "read https://...",
+      "what's the content of https://...", "tell me the results on
+      https://.../calendar", "explore deeply https://.../section".
+  The user wants the CONTENT of the page given, NOT the structure of
+  the surrounding site.
+    MUST: read_urls_html(urls=[<user_URL>]) as FIRST step.
+    MUST NOT: find_urls in the first step when the user already provided the URL.
+    OK: "tell me the round F day 22 results on
+         https://www.federvolley.it/serie-b-maschile-calendario" →
+         read_urls_html(urls=["https://www.federvolley.it/serie-b-maschile-calendario"]).
+    ERROR: same prompt → find_urls(seed_urls=["https://www.federvolley.it/..."]).
+         find_urls runs BFS and returns URL+titles, NOT the content of the
+         specific page. The user wastes 30 minutes for 58 useless URLs.
+    Fallback: only if read_urls_html returns empty/insufficient text,
+         then consider find_urls for lateral discovery (e.g. searching
+         for a linked PDF) or read_urls_pdf on visible PDF URLs.
+
+  (url_already_read) URL ALREADY READ IN HISTORY (seed_step or previous step):
+      When in history there is a step `read_urls_html` (or `read_urls_pdf`,
+      `get_urls_text`) with `ok=true` AND `entries[0].text`/`body`
+      non-empty (>=200 characters), YOU ALREADY HAVE the page content.
+    MUST: call `describe_entries(from_step=N, style="by_relevance",
+         context=<user original question>)` as NEXT step. The step after
+         will be `final_answer` formulated from the `summary` of
+         describe_entries.
+    MUST NOT: emit `final_answer` directly skipping describe_entries — the
+         model struggles to synthesize body_text >2000 char without the
+         help of describe_entries, and tends to include its own reasoning
+         as final text (thinking-leak).
+    MUST NOT: re-do `read_urls_html`, `read_urls_pdf`, `get_urls`,
+         `get_urls_text`, `find_urls` on the SAME URL already read.
+         It is noise: the content is in the scratchpad.
+    OK: history step1 = read_urls_html(urls=["https://x.it/about"]) ok=true,
+         entries[0].text 4000 char. User asks "what's it about?". Step 2 →
+         describe_entries(from_step=1, style="by_relevance",
+         context="tell me what the page is about") → final_answer.
+    ERROR: same scenario → step2 find_urls(seed_urls=["https://x.it"])
+         (URL already read, refetch is wasted). THIS IS AN ERROR.
+    ERROR: same scenario → step2 get_urls_text(urls=["https://x.it/about"])
+         (URL already read in step1 with read_urls_html). THIS IS AN ERROR.
+
+  (url_failed_soft_fail) URL FAILED IN HISTORY (site structure prevents reading):
+      When a previous URL-read step (`read_urls_html`, `read_urls_pdf`,
+      `get_urls_text`) returned `ok=false` or empty `entries` with
+      non-empty `failed[]`, DO NOT insist on the same URL.
+      `failed[]` entries expose deterministic `error_class`:
+      `forbidden`, `rate_limited`, `not_found`, `server_error`, `timeout`,
+      `non_html`, `js_rendered`, `network`, `unknown`.
+    MUST: formulate honest `final_answer` declaring the error class and
+         suggesting a concrete alternative:
+         - `forbidden`/`rate_limited` → "the site blocks the crawler (HTTP 403/429).
+           Alternatives: Google cache, archive.org/web, or send me a PDF/screenshot of the page".
+         - `timeout`/`network` → "the site does not respond now, retry in a few minutes".
+         - `js_rendered` → "the page is a JavaScript-rendered SPA.
+           Metnos does not run JS. Check `linked_documents` for available PDFs".
+         - `non_html` → "the resource is not HTML. Probably a PDF: try
+           read_urls_pdf on the same URL".
+         - `not_found` → "the page does not exist (HTTP 404). Check the URL".
+         - `server_error` → "the site has an internal error (HTTP 5xx),
+           retry later".
+    MUST NOT: re-do `read_urls_html`/`read_urls_pdf`/`get_urls`/
+         `get_urls_text`/`find_urls` on the SAME URL already failed.
+         Re-fetch does not help: the error is server-side or structural.
+    OK: history step1 read_urls_html(urls=["https://www.python.org/about/"])
+         → failed=[{url:".../about/", error_class:"forbidden"}] →
+         step2 final_answer "The site python.org/about blocks the crawler
+         (HTTP 403). Alternatives: Google cache, archive.org. If you wish,
+         send me a PDF/screenshot".
+    ERROR: same scenario → step2 find_urls(seed_urls=["https://www.python.org/"]).
+         An already-failed URL does not unlock with lateral discovery.
+         THIS IS AN ERROR.
+
+  (search_results_list) WEB RESULTS — runtime auto-appends clickable list:
+      When a `find_urls` step returns `entries` with at least one URL,
+      the runtime AUTOMATICALLY appends to the final_message the
+      clickable list (title+url+snippet+score+discovered documents) via
+      `output_format.format_search_results`. You don't have to format it.
+      Two patterns accepted depending on user intent:
+
+    MUST (a) — User searches INFORMATION (data, values, content, facts):
+        find_urls -> read_urls_html(urls=[top-1 or top-3 by score]) ->
+        describe_entries(from_step=N_read_urls, style="by_relevance",
+        context=<original query>) -> final_answer.
+        The LLM synthesis is built on the HTML CONTENT read, not the URL
+        list. The answer may come from the body of an HTML page (not just
+        from an attached PDF): "on site X the 2024 staffing table shows
+        1234 positions". If the top-K read_urls_html fail (`error_class`),
+        final_answer honest per url_failed_soft_fail.
+
+    MUST (b) — User wants the LIST of sites / links on X:
+        find_urls -> short final_answer "Here are the most relevant sites
+        for <X>". No describe_entries. The runtime appends the list.
+
+    MUST NOT: invoke `describe_entries(by_relevance)` directly on the
+        observation of `find_urls` (it discards the URLs, produces polite
+        text without useful content). If you need content, read first
+        with `read_urls_html` then describe that.
+    OK (a): «data file X» -> find_urls(search_query=...) ->
+        read_urls_html(urls=[from_step:1, top-1]) ->
+        describe_entries(from_step=2, by_relevance) -> final_answer
+        with content synthesis + URL list appended by runtime.
+    OK (b): «sites about X» -> find_urls(...) ->
+        final_answer "Here are N relevant sites".
+    ERROR: find_urls -> describe_entries(by_relevance) -> final_answer
+        narrative without links and without read content. THIS IS AN ERROR.
+
+  (search_zero_results) FIND_URLS RETURNED ZERO (search_no_results, 10/5/2026):
+      When `find_urls` returns `ok=false` with `error_class="search_no_results"`
+      (SearXNG engine without matches for the query), DO NOT insist with
+      the same query.
+    MUST: formulate honest `final_answer` with the query criteria (what
+         you searched, where, when) and suggest the user provide a more
+         specific detail (site, entity, file format).
+    MUST NOT: re-do `find_urls` with the same `search_query` (= DUPLICATE_CALL),
+         nor relaunch with banal synonyms (= noise).
+    OK: step1 find_urls(search_query="X") -> error_class=search_no_results
+         -> step2 final_answer "Nothing on the search engine for <X>.
+         Tip: try with detail (official site, year).".
+    ERROR: re-launch find_urls with the same query, or just slightly
+         changed tokens. THIS IS AN ERROR.
+
+  (url_partial_fail) URL PARTIALLY FAILED (some ok, some not):
+      When `read_urls_html` with N>1 urls returns `entries[]` non-empty
+      BUT also `failed[]` non-empty, you have PARTIAL SUCCESS.
+    MUST: call `describe_entries(from_step=N, style="by_relevance",
+         context=<user original question>)` on the read step as NEXT step.
+         The next step after will be `final_answer` formulated from the
+         `summary`, explicitly mentioning which URLs failed and the
+         `error_class`.
+    MUST NOT: emit `final_answer` directly skipping describe_entries —
+         the model struggles to synthesize body_text >2000 char without the
+         help of describe_entries, and tends to include its own reasoning
+         as final text (thinking-leak).
+    MUST NOT: ignore successful entries and formulate a global NO.
+         MUST NOT re-do the failed URL.
+    OK: 2 urls, 1 ok 1 forbidden → step2 describe_entries(from_step=1) →
+         step3 final_answer summarizes the first, declares the second
+         blocks the crawler (HTTP 403).
+    ERROR: 2 urls, 1 ok 1 forbidden → final_answer "I could not read the
+         pages". THIS IS AN ERROR: the first URL was read correctly.
+
+  (A) DISCOVERY: "what's on site X?" / "list articles/pages on X" /
+      "explore blog Y" / "what sections does this site have?".
+  The user has NO specific target, wants a survey of the SITE (not a
+  page). The domain is given without a specific path.
+    MUST: find_urls(seed_urls=[<site>], topic=<optional>) — default mode.
+    Output: entries with titles+snippets, sortable by topic. Body NOT read.
+    OK: "list economy articles on repubblica.it" →
+         find_urls(seed_urls=["https://repubblica.it/"], topic="economy").
+    ERROR: same query with mode="deep_search" — wasted body fetches,
+         query slowed, user didn't want a pointed answer.
+
+  (B) TARGETED SEARCH: "find X on Y" / "what's the number/datum X on Y" /
+      "look up the PDF/document X on Y" / "how much is Z according to Y".
+  The user has a clear target (number, name, decision, document) but
+  has NOT given the precise URL, only the domain.
+    MUST: find_urls(seed_urls=[<site>], topic=[<terms>], mode="deep_search").
+    Output: top-K entries with content_snippet + content_score + hit_terms.
+    Single call: top-K body is already read, no need to call read_urls_pdf
+    in a separate step.
+    OK: "find the staffing numbers on scuola.edu.it" →
+         find_urls(seed_urls=["..."], topic=["staff","numbers"],
+                    mode="deep_search") → final_answer with
+                    entries[0].content_snippet.
+    ERROR: same query with mode="default" — only metadata, info stays in
+         the unread PDF.
+
+  Practical distinction:
+  - Specific URL (path) → (url_explicit_seed) read_urls_html.
+  - Only domain + ask survey → (A) find_urls default.
+  - Only domain + ask specific data → (B) find_urls deep_search.

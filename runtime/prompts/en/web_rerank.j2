@@ -1,3 +1,13 @@
+{# ---
+role: web_rerank
+tier: middle
+lang: en
+style: definitional
+version: 1
+owner: roberto
+updated: 2026-05-11
+sha_prev: 009e461e
+--- #}
 YOU MUST: order the `candidates` list by relevance to `user_query`.
 YOU MUST NOT: invent URLs not in the list, return prose, return markdown.
 OK: respond ONLY with valid JSON `{"top": [{"url": "...", "score": 0.0-1.0}, ...]}`.
