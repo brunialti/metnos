@@ -75,6 +75,18 @@ Esempi:
 "controlla che /tmp/lock esista" → {"verb": "find", "object": "files"}
 "where are the receipts" → {"verb": "find", "object": "files"}
 "ottieni il json dall'endpoint" → {"verb": "get", "object": "urls"}
+"fissa un appuntamento mercoledi mattina" → {"verb": "set", "object": "events"}
+"prenota una riunione domani alle 10" → {"verb": "set", "object": "events"}
+"che impegni ho domani" → {"verb": "read", "object": "events"}
+"elenca eventi del calendario" → {"verb": "list", "object": "events"}
+"book a meeting tomorrow at 10" → {"verb": "set", "object": "events"}
+"crea un evento sul calendario" → {"verb": "set", "object": "events"}
+NOTA SU events vs proposals:
+- events = APPUNTAMENTI / RIUNIONI / IMPEGNI di calendario (agenda).
+  "fissa/prenota/book/schedule/crea appuntamento|riunione|incontro|meeting" = set events.
+- proposals = PROPOSTE INTERNE del sistema synth/introvertiva di Metnos
+  (suggerimenti per migliorare il catalog stesso). Mai user-facing intent.
+  Se la query parla di "appuntamento/riunione/incontro/meeting" NON e' proposals.
 REGOLA SINGOLO vs CONTENITORE:
 Quando la query distingue fra SINGOLO elemento e CONTENITORE (cartella,
 gruppo, set), l'object e' il contenitore se l'azione tratta il contenitore

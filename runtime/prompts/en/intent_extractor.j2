@@ -75,6 +75,18 @@ Examples:
 "check if /tmp/lock exists" → {"verb": "find", "object": "files"}
 "where are the receipts" → {"verb": "find", "object": "files"}
 "get the json from the endpoint" → {"verb": "get", "object": "urls"}
+"book an appointment wednesday morning" → {"verb": "set", "object": "events"}
+"schedule a meeting tomorrow at 10" → {"verb": "set", "object": "events"}
+"what's on my calendar tomorrow" → {"verb": "read", "object": "events"}
+"list calendar events" → {"verb": "list", "object": "events"}
+"fissa un appuntamento mercoledi" → {"verb": "set", "object": "events"}
+"create a calendar event" → {"verb": "set", "object": "events"}
+NOTE ON events vs proposals:
+- events = CALENDAR APPOINTMENTS / MEETINGS (user-facing agenda).
+  "book/schedule/create appointment|meeting|reminder" = set events.
+- proposals = INTERNAL Metnos synth/introvertiva proposals (suggestions
+  to improve the catalog itself). Never the user-facing intent.
+  If the query mentions "appointment/meeting/booking" it is NOT proposals.
 SINGLE vs CONTAINER RULE:
 When the query distinguishes between a SINGLE element and a CONTAINER (folder,
 group, set), the object is the container if the action treats the container
