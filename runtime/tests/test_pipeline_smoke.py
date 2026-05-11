@@ -71,11 +71,16 @@ class TestPipelineSmoke(unittest.TestCase):
         })
         seed = f"http://127.0.0.1:{self.port}/"
 
-        # Step 1: find_urls con topic
+        # Step 1: find_urls con topic. `min_score=0` disabilita l'auto-drop
+        # delle entries con score==0 (10/5/2026 fix anti-rumore): qui il test
+        # valida il FLOW della pipeline find→read→group, non il topic
+        # filtering. Senza override solo /news.html passa il ranker e gli
+        # step successivi non hanno nulla da deduplicare.
         out1 = find_urls.invoke({
             "seed_urls": [seed], "topic": "economia politica",
             "max_pages": 20, "max_depth": 2,
             "respect_robots": False, "rate_limit_ms": 30,
+            "min_score": 0,
         })
         self.assertTrue(out1["ok"], out1)
         self.assertGreaterEqual(out1["ok_count"], 3, out1)
