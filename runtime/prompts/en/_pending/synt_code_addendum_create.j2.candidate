@@ -1,4 +1,14 @@
-VERB RULES `create` (in addition to the generic):
+{# ---
+role: synt_code_addendum_create
+tier: wise
+lang: it
+style: few_shot
+version: 1
+owner: roberto
+updated: 2026-05-11
+sha_prev: cfc620d5
+--- #}
+VERB RULES `create` (besides the generic):
 
 DEFINITION: `create` = produces a new resource (dir/file/IMAP folder).
 Idempotent. Reversible via `delete_created_dirs` / `delete_created_paths`.
@@ -25,14 +35,14 @@ UNIVERSAL PSEUDOCODE:
 INVARIANTS:
 MUST: idempotent. `exist_ok=True` (FS) or ignore "already exists" (IMAP).
   Already exists (same type) → `created:False`, `ok:True`. NO failure.
-MUST: register in `results` ONLY resources ACTUALLY created with
+MUST: register in `results` ONLY resources REALLY created with
   `created:True`. Pre-existing ones reported with `created:False`. The
   undo pattern only removes those with `created:True`.
 MUST: for nested dirs (mkdir parents=True), enumerate ALL ancestors
   actually created (bottom-up for delete_created_dirs).
 MUST: type collision (path exists as file but you want dir) → entry
   fails with a clear message.
-MUST: reject `is_protected_path()` UNLESS `allow_system=True`.
+MUST: refuse `is_protected_path()` UNLESS `allow_system=True`.
 MUST NOT: declare `created:True` for pre-existing resources (undo
   would delete user data).
 MUST NOT: write `def reverse(...)`.
@@ -47,9 +57,9 @@ IMAP DOMAIN (create_folder):
 - entry: `{"account": ..., "folder_name": ...}`
 - create: `M.create(_q(folder_name))`; ignore "already exists" (server-specific
   match on error message).
-- MUST: immediately after create, `M.subscribe(_q(folder_name))` to make visible
+- MUST: immediately after create, `M.subscribe(_q(folder_name))` to make it visible
   in webmail (best-effort: try/except).
-- WARNINGS: define helper `_q`:
+- WARNINGS: define helper {{var}}:
 
       def _q(name):
           if " " in name or any(ord(c) > 127 for c in name):

@@ -419,6 +419,217 @@ def sections_for_object(obj: str | None) -> tuple[str, ...]:
     return _OBJECT_TO_SECTIONS.get(obj, ())
 
 
+# ── L7 admission: imported skill bindings registry (ADR 0125, 12/5/2026) ──
+# Ogni skill importato via `metnos-skills import` (ADR 0123) installa N
+# executor in `~/.local/share/metnos/executors/_imports/<skill>/<name>/`.
+# Quando il PLANNER chiede un synth con intent (verb, object) gia' coperto
+# da un imported, e' un FALSE NEED: il bug live 11/5 (`read_appointments`
+# proposto invece di chiamare `read_events`) ha bruciato 119s di synt cascade.
+#
+# L7 = lookup tabellare deterministico (§7.9). Scan al boot di `_imports/`,
+# parse `name = <verb>_<object>[_qualifier]`, popola la tabella
+# `(verb, object) → [imported_names]`. Auto-discovery non statica perche'
+# i bindings cambiano on-the-fly via `metnos-skills import`.
+#
+# Vedi `imported_bindings_index()` sotto. La tabella e' cached per il
+# processo + path-mtime invalidation.
+
+
+_IMPORTED_BINDINGS_CACHE: dict[str, object] = {
+    # cache_key: (path_mtime_signature, dict)
+}
+
+
+def _imports_root() -> "Path":
+    """Path della root degli imported skills (Path lazy)."""
+    from pathlib import Path
+    return Path.home() / ".local" / "share" / "metnos" / "executors" / "_imports"
+
+
+def _imports_signature(root) -> tuple:
+    """Signature dell'_imports dir per invalidazione cache. Max mtime
+    delle subdir + count = sufficiente per detect aggiunte/rimozioni."""
+    if not root.exists():
+        return (0.0, 0)
+    max_mt = 0.0
+    n = 0
+    try:
+        for skill in root.iterdir():
+            if not skill.is_dir():
+                continue
+            for ex in skill.iterdir():
+                if not ex.is_dir() or not (ex / "manifest.toml").is_file():
+                    continue
+                n += 1
+                try:
+                    mt = ex.stat().st_mtime
+                    if mt > max_mt:
+                        max_mt = mt
+                except OSError:
+                    pass
+    except OSError:
+        pass
+    return (max_mt, n)
+
+
+def imported_bindings_index() -> dict[tuple[str, str], list[str]]:
+    """Ritorna la mappa `(verb, object) -> [imported_executor_names]`.
+
+    Auto-discovery dei manifest in `~/.local/share/metnos/executors/_imports/`:
+    parsa il `name` di ogni manifest TOML, estrae verb+object da name.split('_').
+    Risultato cached con invalidazione su mtime (cheap O(N) directory scan).
+
+    L'object qualificato (es. `set_events`, `read_messages_google_workspace`)
+    viene mappato per `(verb, object)` ignorando i qualifier oltre il primo
+    token-object. Cosi' una richiesta synt per `read_appointments` (verb=read,
+    object=appointments) non matcha; ma una richiesta per `read_events`
+    (synth_request -> expected_name=read_events, intent: "leggi calendario")
+    matcha contro l'imported `read_events`. L'evaluator chiama questo via
+    `lookup_imported_for_intent(verb, object_synonyms)` con sinonimi
+    (appointments/events) per chiudere il loop.
+
+    Determinismo (§7.9): zero LLM, zero network, una sola scansione fs +
+    parse manifest.toml read-only (legge solo il campo `name`).
+
+    Returns:
+        dict: chiave tuple (verb, object) lower-case → lista nomi imported.
+              Vuoto se `_imports/` non esiste o nessun manifest valido.
+    """
+    import tomllib
+    root = _imports_root()
+    sig = _imports_signature(root)
+    cached = _IMPORTED_BINDINGS_CACHE.get("index")
+    if cached is not None and cached[0] == sig:
+        return cached[1]
+
+    index: dict[tuple[str, str], list[str]] = {}
+    if not root.exists():
+        _IMPORTED_BINDINGS_CACHE["index"] = (sig, index)
+        return index
+
+    for skill_dir in sorted(root.iterdir()):
+        if not skill_dir.is_dir():
+            continue
+        for ex_dir in sorted(skill_dir.iterdir()):
+            if not ex_dir.is_dir():
+                continue
+            mf = ex_dir / "manifest.toml"
+            if not mf.is_file():
+                continue
+            try:
+                doc = tomllib.loads(mf.read_text(encoding="utf-8"))
+            except (OSError, tomllib.TOMLDecodeError):
+                continue
+            name = doc.get("name") or ex_dir.name
+            parts = name.split("_", 2)
+            if len(parts) < 2:
+                continue
+            verb = parts[0].lower()
+            obj = parts[1].lower()
+            key = (verb, obj)
+            index.setdefault(key, []).append(name)
+
+    _IMPORTED_BINDINGS_CACHE["index"] = (sig, index)
+    return index
+
+
+# Sinonimi cross-language verb -> object atomico, deterministico (no LLM).
+# Espanso solo quando un termine nel synth `expected_name` o `intent` deve
+# essere ricondotto a un OBJECT canonico ufficiale per il match con
+# imported_bindings_index. Lista CHIUSA, esoticismi escalation a Roberto.
+_OBJECT_SYNONYMS_IT: dict[str, str] = {
+    # IT singolare/plurale → OBJECT canonico
+    "appuntamento": "events", "appuntamenti": "events",
+    "agenda": "events", "calendario": "events",
+    "evento": "events", "eventi": "events",
+    "riunione": "events", "riunioni": "events",
+    "incontro": "events", "incontri": "events",
+    "scadenza": "events", "scadenze": "events",
+    "messaggio": "messages", "messaggi": "messages",
+    "mail": "messages", "email": "messages", "posta": "messages",
+    "contatto": "contacts", "contatti": "contacts",
+    "rubrica": "contacts",
+    "file": "files", "documento": "files", "documenti": "files",
+    "cartella": "dirs", "cartelle": "dirs", "directory": "dirs",
+    "pacchetto": "packages", "pacchetti": "packages",
+    "processo": "processes", "processi": "processes",
+    "luogo": "places", "luoghi": "places", "posto": "places",
+}
+_OBJECT_SYNONYMS_EN: dict[str, str] = {
+    "appointment": "events", "appointments": "events",
+    "calendar": "events", "schedule": "events",
+    "event": "events", "events": "events",
+    "meeting": "events", "meetings": "events",
+    "deadline": "events", "deadlines": "events",
+    "message": "messages", "messages": "messages",
+    "mail": "messages", "email": "messages",
+    "contact": "contacts", "contacts": "contacts",
+    "file": "files", "document": "files", "documents": "files",
+    "folder": "dirs", "directory": "dirs",
+    "package": "packages", "packages": "packages",
+    "process": "processes", "processes": "processes",
+    "place": "places", "places": "places",
+}
+
+
+def canonical_object(token: str | None) -> str | None:
+    """Risolve un token (singolare/plurale IT/EN o OBJECT diretto) all'OBJECT
+    canonico §2.2. Ritorna None se non riconosciuto.
+
+    Determinismo (§7.9): lookup tabellare puro.
+
+    Esempi:
+        >>> canonical_object("appointments")
+        'events'
+        >>> canonical_object("appuntamenti")
+        'events'
+        >>> canonical_object("events")
+        'events'
+        >>> canonical_object("xyz")  # None
+    """
+    if not token:
+        return None
+    t = str(token).lower().strip()
+    if t in OBJECTS:
+        return t
+    if t in _OBJECT_SYNONYMS_IT:
+        return _OBJECT_SYNONYMS_IT[t]
+    if t in _OBJECT_SYNONYMS_EN:
+        return _OBJECT_SYNONYMS_EN[t]
+    return None
+
+
+def lookup_imported_for_intent(verb: str, object_token: str) -> list[str]:
+    """Cerca imported executor che coprono l'intent (verb + object).
+
+    Risolve `object_token` via `canonical_object()` per accettare sinonimi
+    (es. "appointments" → "events"). Cerca poi nella tabella
+    `imported_bindings_index()` per (verb, canonical_object). Ritorna lista
+    di executor name (ordinata) — vuota se nessun match.
+
+    L7 admission gate: se ritorna una lista non vuota, il caller
+    (synth_request) deve rifiutare il synth con error class
+    `duplicates_imported_skill_<name>`.
+
+    Determinismo (§7.9): lookup tabellare puro. Nessun LLM, nessun network.
+    """
+    if not verb:
+        return []
+    v = verb.lower().strip()
+    obj_canon = canonical_object(object_token)
+    if not obj_canon:
+        return []
+    index = imported_bindings_index()
+    hits = index.get((v, obj_canon), [])
+    return sorted(hits)
+
+
+def invalidate_imported_bindings_cache() -> None:
+    """Forza ricostruzione dell'indice al prossimo `imported_bindings_index()`.
+    Utile nei test per scenari multipli e dopo `metnos-skills import`."""
+    _IMPORTED_BINDINGS_CACHE.clear()
+
+
 # ── Helper di rendering per i prompt ──────────────────────────────────
 
 def render_actions_inline() -> str:

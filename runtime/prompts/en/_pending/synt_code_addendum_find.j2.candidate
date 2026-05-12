@@ -1,4 +1,14 @@
-VERB RULES `find` (in addition to the generic):
+{# ---
+role: synt_code_addendum_find
+tier: wise
+lang: it
+style: few_shot
+version: 1
+owner: roberto
+updated: 2026-05-11
+sha_prev: 344c390f
+--- #}
+RULES VERB `find` (besides the generic):
 
 DEFINITION: `find` = search for resources by criterion (pattern/predicate). Read-only.
 Output `entries: list[dict]` with standard cross-executor schema.

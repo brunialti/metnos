@@ -34,7 +34,7 @@ type        = "string"
 
 [args.properties.key.description]
 it = "Nome della chiave del dict su cui calcolare. Obbligatorio per max/min/avg/sum/count_distinct. Per op='count' senza key conta tutte le entries; con key conta solo quelle con valore non-null."
-en = "──────────────────────────────────────────── The name of the dict key on which to calculate. Mandatory for max/min/avg/sum/count_distinct. For op='count' without a key, it counts all entries; with a key, it counts only those with a non-null value. ────────────────────────────────────────────"
+en = "The name of the dict key on which to calculate. Mandatory for max/min/avg/sum/count_distinct. For op='count' without a key, it counts all entries; with a key, it counts only those with a non-null value."
 
 [args.properties.op]
 type        = "string"

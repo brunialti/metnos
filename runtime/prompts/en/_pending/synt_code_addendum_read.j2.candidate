@@ -1,3 +1,13 @@
+{# ---
+role: synt_code_addendum_read
+tier: wise
+lang: it
+style: few_shot
+version: 1
+owner: roberto
+updated: 2026-05-11
+sha_prev: 8616a8ce
+--- #}
 VERB RULES `read` (in addition to generic):
 
 DEFINITION: `read` = accesses a source to obtain its CONTENT.
@@ -26,17 +36,17 @@ UNIVERSAL PSEUDOCODE:
 INVARIANTS:
 MUST: ZERO mutations to the source (no write/unlink/STORE/expunge/rename).
 MUST: manifest `revertible: False` (nothing to revert).
-MUST: cap `max_bytes` or explicit {{var}}; sensible default (64KB/200 lines
+MUST: cap `max_bytes` or explicit `max_lines`; sensible default (64KB/200 lines
   for text, 4KB body_preview for mail). Cap reached → `truncated:True`
   + `truncated_what` + `used` + `available_total`.
 MUST: graceful encoding fallback: try `utf-8`, on `UnicodeDecodeError` use
   `errors="replace"` and report the actual encoding in the result.
 MUST: output `entries: list` (NOT `results`). Cross-executor I/O consistency.
-MUST NOT: load hundreds of MB into observation file.
+MUST NOT: load files into observation of hundreds of MBs.
 MUST NOT: rename the output to `results` (breaks downstream from_step).
 
 FILESYSTEM DOMAIN:
-- text: `open(path, encoding=enc, errors="replace")` with line/byte cap iteration.
+- text: `open(path, encoding=enc, errors="replace")` with line/byte iter cap.
 - csv: `csv.reader(file)` with line cap.
 - xlsx: `openpyxl.load_workbook(path, read_only=True)`; iter_rows.
 - ocr: `PIL.Image.open()` + tesseract (verify availability in manifest).
@@ -56,4 +66,3 @@ IMAP DOMAIN (read_messages):
 - read: `M.uid("FETCH", uid, "(BODY[HEADER] BODY[1])")` for envelope+body.
 - enrich with `mail_client.parse_envelope(raw)` for standard fields.
 - body_preview: cap at 4KB by default (full_body=True to skip cap).
-────────────────────────────────────────────

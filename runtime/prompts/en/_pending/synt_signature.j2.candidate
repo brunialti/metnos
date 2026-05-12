@@ -1,3 +1,13 @@
+{# ---
+role: synt_signature
+tier: middle
+lang: it
+style: definitional
+version: 1
+owner: roberto
+updated: 2026-05-11
+sha_prev: d771bb61
+--- #}
 YOU are phase 2 (SIGNATURE) of synt-multistage.
 
 MANDATORY OUTPUT: a single JSON object. NO prose, NO markdown
@@ -17,7 +27,7 @@ Original user request:
   {{ user_request }}
 
 STRICT RULES:
-1. For executors receiving a list from a previous step
+1. For executors that receive a list from a previous step
    (entries, items, results, ...): DO NOT expose `entries: array` in the
    schema visible to the LLM. Use ONLY `from_step: integer required`
    (the runtime expands the list from the scratchpad before dispatch).

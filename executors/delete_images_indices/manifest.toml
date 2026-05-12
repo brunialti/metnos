@@ -27,7 +27,7 @@ type        = "string"
 
 [args.properties.base_path.description]
 it = "Directory radice della collezione (la stessa usata in create_images_indices). Path assoluto o ~ espandibile."
-en = "──────────────────────────────────────────── Root directory of the collection (the same one used in create_images_indices). Absolute path or expandable ~. ────────────────────────────────────────────"
+en = "Root directory of the collection (the same one used in create_images_indices). Absolute path or expandable ~."
 
 [args.properties.idx]
 type        = "string"

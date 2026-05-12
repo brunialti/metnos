@@ -89,7 +89,7 @@ default     = "metnos_system"
 
 [args.properties.account.description]
 it = "Account SMTP da usare. Valid: 'metnos_system' (metnos@metnos.com, default), 'metnos_roberto', 'mykleos'."
-en = "──────────────────────────────────────────── SMTP Account to use. Valid: 'metnos_system' (metnos@metnos.com, default), 'metnos_roberto', 'mykleos'. ────────────────────────────────────────────"
+en = "SMTP Account to use. Valid: 'metnos_system' (metnos@metnos.com, default), 'metnos_roberto', 'mykleos'."
 
 [[capabilities]]
 name = "mail:send"

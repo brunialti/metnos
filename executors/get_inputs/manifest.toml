@@ -37,7 +37,7 @@ type        = "string"
 
 [args.properties.description.description]
 it = "Descrizione opzionale (1-2 frasi) mostrata sotto al titolo. Spiega il contesto / l'effetto degli input. Es. 'Server CIFS · saranno cifrate.'"
-en = "──────────────────────────────────────────── Optional description (1-2 sentences) shown under the title. Explains the context / the effect of the inputs. E.g. 'CIFS Server · will be encrypted.' ────────────────────────────────────────────"
+en = "Optional description (1-2 sentences) shown under the title. Explains the context / the effect of the inputs. E.g. 'CIFS Server · will be encrypted.'"
 
 [args.properties.dialog]
 type        = "array"

@@ -1,7 +1,8 @@
-VERB RULES `extract` (in addition to the generic):
+{{var}}
+VERB RULES for `extract` (in addition to the generic):
 
 DEFINITION: `extract` = decomposes a source (archive/doc/blob) into a
-VECTOR of smaller entries. Output ALWAYS a list (even degenerate 0/1).
+VECTOR of smaller entries. Output is ALWAYS a list (even degenerate 0/1).
 
 UNIVERSAL PSEUDOCODE:
 
@@ -39,10 +40,10 @@ INVARIANTS:
 MUST: PATH TRAVERSAL CHECK for EVERY archive entry. Verify that
   `Path(target).resolve()` is inside `Path(extract_root).resolve()` via
   `Path.is_relative_to()` or try/except `relative_to()`.
-MUST: respect cap `max_entries` (default 1000) and `max_bytes_total` (100MB) using
+MUST: cap `max_entries` (default 1000) and `max_bytes_total` (100MB) with
   `truncated:True` + `truncated_what` + `used` + `available_total`.
 MUST: dispatch per format based on `e["mime"]` or extension.
-MUST: best-effort between archives/entries: a corrupted zip must not block the pdf.
+MUST: best-effort among archives/entries: a corrupted zip does not block the pdf.
 MUST: output `entries: list[dict]` ALWAYS (degenerate allowed).
 MUST: streaming/iterative for large archives (no `extractall()` whole-loaded).
 MUST NOT: `tarfile.extractall()` / `zipfile.extractall()` WITHOUT per-entry
@@ -57,5 +58,4 @@ document DOMAIN:
 - pdf: ONLY if manifest declares dependency (pypdf/pdfminer NOT in stdlib)
 - structured text: regex on lines (filter_texts_lines)
 mail DOMAIN:
-- raw RFC822: `email.message_from_bytes()` → iter walk per parts/attachments
-────────────────────────────────────────────
+- raw RFC822: `email.message_from_bytes()` → iter walk for parts/attachments

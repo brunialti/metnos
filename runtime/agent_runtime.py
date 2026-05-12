@@ -827,6 +827,163 @@ _AUTO_FINAL_TRANSFORMATIVE = frozenset({
 })
 
 
+# P3 (12/5/2026) — Detection congiunzioni multi-step nella user_query.
+# Trigger: turn b1d9c236 «fissa appuntamento il prossimo mercoledi mattina
+# dopo le 9 per un ora se c'è posto E MANDAMI UNA EMAIL DI CONFERMA» →
+# set_events ok → _AUTO_FINAL_TRANSFORMATIVE chiuse il turno → la parte
+# «e mandami email di conferma» mai eseguita.
+# Soluzione: regex IT+EN word-boundary su congiunzioni seguite da verbo
+# d'azione esplicito. NON usiamo " e " generico per evitare falsi positivi
+# («fissa o mercoledi o giovedi» = alternativa, «email e telefono» = lista
+# noun). §7.9 deterministico, niente LLM.
+# Congiunzioni STRUTTURALI di continuita' multi-step. Solo marker linguistici
+# universali (no verbi enumerati): `_query_has_continuation` rileva multi-step
+# anche via classe semantica (>=2 verbi canonici distinti — derivato da
+# prefilter._VERB_TO_CANONICAL vocab IT+EN). §7.3 NON hardcoded enumerazione.
+_MULTISTEP_CONJUNCTIONS_RE = re.compile(
+    r"\b(e\s+poi|e\s+dopo|e\s+inoltre|e\s+anche|"
+    r"inoltre|poi|dopodiche'|dopodiche|"
+    r"and\s+then|and\s+also|and\s+after|"
+    r"moreover|then|afterwards|additionally)\b",
+    re.IGNORECASE,
+)
+
+
+def _query_has_continuation(query: str) -> bool:
+    """True se la query e' multi-step esplicito. Detection a 2 strati:
+
+    1. Congiunzione strutturale di continuita' (regex universale IT+EN).
+    2. Classe semantica: 2+ verbi canonici distinti nel query (derivato da
+       prefilter._VERB_TO_CANONICAL, gia' contiene sinonimi IT+EN per le
+       22 azioni di vocab.ACTIONS). §7.3 generale, non enumerativa.
+
+    Esempi positivi:
+      - «fissa appuntamento ... e mandami email di conferma» (set+send)
+      - «book meeting friday and send confirmation» (set+send + «and»)
+      - «mandami l'email e fissa l'appuntamento» (send+set inverso)
+    Esempi negativi:
+      - «fissa o mercoledi o giovedi» (alternativa, 1 verbo solo)
+      - «email e telefono di X» (lista nominale, 0 verbi)
+      - «fissa appuntamento mercoledi alle 9» (1 verbo solo)
+    Determinismo §7.9: lookup O(len(query)) + token scan vocab, niente LLM.
+    """
+    if not query or not isinstance(query, str):
+        return False
+    if _MULTISTEP_CONJUNCTIONS_RE.search(query):
+        return True
+    # Multi-verb detection via vocab classes. Tokenize semplice + lookup
+    # _VERB_TO_CANONICAL (gia' usato da prefilter, IT+EN sinonimi per le 22
+    # ACTIONS). 2+ verbi canonici distinti → multi-step.
+    try:
+        from prefilter import tokenize, detect_canonical_verbs_all
+        verbs = detect_canonical_verbs_all(tokenize(query))
+        return len(verbs) >= 2
+    except Exception:
+        return False
+
+
+# P4 (12/5/2026) — Availability marker detection per check_availability.
+# Trigger: turn b1d9c236 «... SE C'È POSTO» → planner ha chiamato set_events
+# direttamente senza read_events. Il workflow (check_availability) di
+# calendar.j2 era ignorato.
+# Defense in depth: il runtime intercetta set_events quando la query ha
+# un availability marker e read_events NON e' nei step precedenti.
+# Soluzione (c): post-hoc reject + hint, lascia che il planner ri-pianifichi.
+# Determinismo §7.9: regex deterministico, niente LLM.
+_AVAILABILITY_MARKERS_RE = re.compile(
+    r"\b("
+    # IT
+    r"se\s+c['’]?[eè]\s+(un\s+)?(posto|buco|slot|spazio|tempo)|"
+    r"se\s+(la\s+finestra|lo\s+slot)\s+[eè]['\s]*libera|"
+    r"se\s+sono\s+libero|se\s+sei\s+libero|"
+    r"se\s+non\s+ho\s+(altro|impegni|gi[aà])|"
+    r"verifica\s+(la\s+)?disponibilit[aà]|controlla\s+(la\s+)?disponibilit[aà]|"
+    r"se\s+disponibile|"
+    # EN
+    r"if\s+(it['’]?s\s+)?available|if\s+(i\s+am|i['’]?m)\s+free|"
+    r"if\s+there['’]?s\s+(a\s+)?(slot|opening|space|time)|"
+    r"if\s+free|check\s+availability|"
+    r"if\s+(the\s+)?(slot|window)\s+is\s+free"
+    r")\b",
+    re.IGNORECASE,
+)
+
+
+# Tool che CREANO eventi calendar: derivati dal catalog al call-time
+# (verb in classe trasformativa + object="events"). §7.3 NON hardcoded.
+# Cache LRU al boot per evitare scan ad ogni gate check.
+def _calendar_write_tools() -> frozenset:
+    """Set di executor name che scrivono sul calendario.
+    Derivato dal catalog (`verb in {set, create} AND object == "events"`).
+    Cache modulo-level invalidata solo a reload manuale (no overhead per-call).
+    """
+    cached = getattr(_calendar_write_tools, "_cached", None)
+    if cached is not None:
+        return cached
+    try:
+        from loader import load_catalog
+        from vocab import canonical_object
+        names = set()
+        for ex in load_catalog():
+            name = ex.name
+            if "_" not in name:
+                continue
+            verb, _, obj_raw = name.partition("_")
+            if verb not in ("set", "create"):
+                continue
+            # canonical_object riconosce sinonimi (events/eventi/appuntamenti).
+            # Per executor naming il suffisso e' gia' canonico, ma normalizziamo
+            # per robustezza (es. send_messages_google_workspace).
+            obj_canon = canonical_object(obj_raw.split("_")[0])
+            if obj_canon == "events":
+                names.add(name)
+        result = frozenset(names)
+    except Exception:
+        # Fallback graceful se catalog non disponibile (test/boot iniziale):
+        # almeno set_events e' guaranteed-canonical.
+        result = frozenset({"set_events"})
+    _calendar_write_tools._cached = result
+    return result
+
+
+def _invalidate_calendar_write_tools_cache():
+    """Per test: forza re-derivation da catalog al prossimo call."""
+    if hasattr(_calendar_write_tools, "_cached"):
+        del _calendar_write_tools._cached
+
+
+def _query_requires_availability_check(query: str) -> bool:
+    """True se la query richiede availability check pre-set_events.
+
+    Esempi positivi:
+      - «se c'è posto», «se sono libero», «se non ho altro»
+      - «verifica disponibilità», «if there's a slot», «if free»
+    Esempi negativi:
+      - «fissa appuntamento mercoledi alle 9» (no marker)
+      - «book meeting friday» (no marker)
+    Determinismo §7.9: regex lookup O(len(query)), niente LLM.
+    """
+    if not query or not isinstance(query, str):
+        return False
+    return bool(_AVAILABILITY_MARKERS_RE.search(query))
+
+
+def _has_prior_read_events_ok(steps) -> bool:
+    """True se uno dei step precedenti e' read_events con ok=True.
+
+    Usato dal gate P4 per non bloccare set_events quando il check
+    availability e' gia' stato fatto. §7.9 lookup deterministico.
+    """
+    for s in steps:
+        tool = getattr(s, "chosen_tool", None)
+        if tool != "read_events":
+            continue
+        res = getattr(s, "result", None)
+        if isinstance(res, dict) and res.get("ok") is True:
+            return True
+    return False
+
+
 _AUTO_FINAL_SKIP_TOOLS = frozenset({
     "scratchpad_read", "filter_entries", "classify_entries", "describe_entries",
 })
@@ -3798,6 +3955,47 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
         if identifier and read_calls_seen and read_calls_seen[-1] != (step_num, chosen_name, identifier) and step.error == "duplicate read intercepted by runtime":
             continue
 
+        # P4 (12/5/2026) — Availability check gate per calendar write tools.
+        # Bug live turn b1d9c236: query «fissa appuntamento ... SE C'È POSTO»
+        # → planner ha chiamato set_events direttamente, bypassando il
+        # workflow (check_availability) di calendar.j2 (1.get_now → 2.read_events
+        # → 3.set_events se vuoto). Roberto aveva impegno tutto mercoledi:
+        # l'evento e' stato creato lo stesso, overlap.
+        # Defense in depth §7.9: il runtime rifiuta set_events quando:
+        #   (1) chosen_name e' calendar write tool,
+        #   (2) user_query contiene un availability marker,
+        #   (3) NESSUN step precedente e' read_events ok.
+        # L'obs di rifiuto e' lasciata in history: il planner LLM al prossimo
+        # turno vede l'errore con hint e chiama read_events.
+        if (chosen_name in _calendar_write_tools()
+                and _query_requires_availability_check(user_query_for_run)
+                and not _has_prior_read_events_ok(log.steps)):
+            obs = {
+                "ok": False,
+                "_availability_check_required": True,
+                "error": (
+                    f"AVAILABILITY_CHECK_REQUIRED: la query contiene un "
+                    f"marker di disponibilita' (es. «se c'e' posto», «if "
+                    f"available»). DEVI chiamare read_events(time_window=...) "
+                    f"PRIMA di '{chosen_name}' per verificare lo slot, poi "
+                    f"set_events solo se entries vuota. Workflow numerato in "
+                    f"section calendar (check_availability)."
+                ),
+            }
+            step.result = obs
+            step.error = "availability_check_required"
+            log.steps.append(step)
+            history_for_refs.append({"step": step_num, "tool": chosen_name, "args": raw_args, "observation": obs})
+            history_for_llm.append({"role": "assistant", "tool_calls": [{"id": tc.call_id, "type": "function", "function": {"name": chosen_name, "arguments": raw_args}}]})
+            history_for_llm.append({"role": "tool", "tool_call_id": tc.call_id, "name": chosen_name, "content": json.dumps(obs, ensure_ascii=False)})
+            consecutive_blocked += 1
+            if consecutive_blocked >= LOOP_BREAK_THRESHOLD:
+                log.final_kind = "loop_break"
+                _hint = _loop_break_hint(_intent_object_from_route(route_info))
+                log.final_message = msg("MSG_LOOP_BREAK", n=consecutive_blocked, hint=_hint)
+                log.ts_end = time.time(); log.write(); return log
+            continue
+
         # Validazione, sandbox, vaglio
         validation = validate_args(args, executor.args_schema)
         step.validation_failures = validation
@@ -4119,11 +4317,18 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
         # Pattern: chosen_name in lista whitelist + obs.ok + _undo presente
         # (= operazione registrata revertibile) → final_answer immediato con
         # link/id. §7.9 deterministico, niente LLM aggiuntivo.
+        #
+        # P3 (12/5/2026): suppress auto-final se la user_query contiene una
+        # congiunzione di continuation («e mandami email», «and notify me»).
+        # Bug live turn b1d9c236: «fissa appuntamento ... E MANDAMI EMAIL»
+        # chiudeva il turno dopo set_events ok, perdendo la send_messages.
+        # `_query_has_continuation` lookup regex deterministico.
         if (chosen_name in _AUTO_FINAL_TRANSFORMATIVE
                 and isinstance(obs, dict)
                 and obs.get("ok") is True
                 and isinstance(obs.get("_undo"), dict)
-                and obs.get("_undo", {}).get("ids")):
+                and obs.get("_undo", {}).get("ids")
+                and not _query_has_continuation(user_query_for_run)):
             r0 = (obs.get("results") or [{}])[0]
             log.final_kind = "answer"
             log.final_message = msg(

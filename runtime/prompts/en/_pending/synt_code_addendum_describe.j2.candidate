@@ -1,4 +1,14 @@
-VERB RULES `describe` (in addition to the generic):
+{# ---
+role: synt_code_addendum_describe
+tier: wise
+lang: it
+style: few_shot
+version: 1
+owner: roberto
+updated: 2026-05-11
+sha_prev: 09c8302b
+--- #}
+RULES FOR VERB `describe` (in addition to the generic):
 
 DEFINITION: `describe` = pure compute → structured insight. NO external I/O. Deterministic (same input → same output). revertible=False.
 
@@ -26,7 +36,8 @@ INVARIANTS:
 MUST: PURE COMPUTE — NO read disk / network / shell / external db.
   The input arrives whole in `args["entries"]`.
 MUST: manifest `revertible: False`, no reverse_pattern.
-MUST: DETERMINISTIC. Same input → same output. Sampling only with explicit seed (default 42 or seed from args).
+MUST: DETERMINISTIC. Same input → same output. Sampling only with explicit seed
+  (default 42 or seed from args).
 MUST: NaN/Inf handled: convert them to `null` BEFORE `json.dumps`
   (`json.dumps(float("nan"))` produces invalid "NaN" in JSON).
 MUST: for large datasets (>100k), `sample_size` with `sampled:True` +

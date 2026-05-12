@@ -26,7 +26,7 @@ type = "string"
 
 [args.properties.package_name.description]
 it = "Nome del pacchetto o comando da verificare sul sistema operativo (es. 'ffmpeg', 'git')."
-en = "──────────────────────────────────────────── Name of the package or command to check on the operating system (e.g., 'ffmpeg', 'git'). ────────────────────────────────────────────"
+en = "Name of the package or command to check on the operating system (e.g., 'ffmpeg', 'git')."
 
 [[capabilities]]
 name = "code:exec"

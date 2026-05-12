@@ -27,7 +27,7 @@ default     = "UTC"
 
 [args.properties.timezone.description]
 it = "Fuso orario IANA (es. 'Europe/Rome'). Default 'UTC'."
-en = "──────────────────────────────────────────── IANA Timezone (e.g., 'Europe/Rome'). Default 'UTC'. ────────────────────────────────────────────"
+en = "IANA Timezone (e.g., 'Europe/Rome'). Default 'UTC'."
 
 [output]
 schema_inline = """

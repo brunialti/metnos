@@ -15,7 +15,7 @@ en = "Download a list of HTML URLs and return the main content as deterministic 
 
 [code]
 files  = ["read_urls_html.py"]
-digest = "sha256:f9682c268f6c69f353cadc805b80980c64a9d3be06c2fba0c7c15ed246d4d97f"
+digest = "sha256:d32d94a57b8318e090997c1377a27937043369accb24dfa5e0735801cb60467d"
 
 [args]
 type     = "object"
@@ -53,6 +53,14 @@ default     = 2000000
 [args.properties.max_bytes.description]
 it = "Tetto sui byte letti per pagina. Default 2000000 (2 MB)."
 en = "Cap on bytes read per page. Default 2000000 (2 MB)."
+
+[args.properties.js_render]
+type        = "boolean"
+default     = false
+
+[args.properties.js_render.description]
+it = "Opt-in JS-rendering via sidecar Playwright (ADR 0125). Quando true e il sidecar e' UP (porta 8771), le pagine SPA con error_class=js_rendered vengono re-richieste al sidecar che renderizza JS in Chromium headless e ritorna l'HTML finale. Costo: ~500ms-2s extra per pagina + ~200MB RAM lato sidecar. Default false per non rallentare il throughput dei turn normali. Usa SOLO dopo un primo step che ha rilevato error_class=js_rendered (regola js_rendered_retry del planner)."
+en = "Opt-in JS-rendering via Playwright sidecar (ADR 0125). When true and the sidecar is UP (port 8771), SPA pages with error_class=js_rendered are re-requested to the sidecar which renders JS in headless Chromium and returns the final HTML. Cost: ~500ms-2s extra per page + ~200MB RAM on the sidecar. Default false to avoid slowing normal turn throughput. Use ONLY after a first step that detected error_class=js_rendered (planner rule js_rendered_retry)."
 
 [[capabilities]]
 name = "network.read"

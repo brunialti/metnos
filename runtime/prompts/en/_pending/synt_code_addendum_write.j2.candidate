@@ -1,6 +1,16 @@
-VERB RULES `write` (in addition to the generic):
+{# ---
+role: synt_code_addendum_write
+tier: wise
+lang: it
+style: few_shot
+version: 1
+owner: roberto
+updated: 2026-05-11
+sha_prev: 1cfdf576
+--- #}
+VERB RULES for `write` (in addition to the generic):
 
-DEFINITION: `write` = produces/overwrites a file/value. Destructive if overwriting existing content. Reversible via `restore_blob_backup`.
+DEFINITION: `write` = produces/overwrites a file/value. Destructive if it overwrites existing content. Reversible via `restore_blob_backup`.
 
 UNIVERSAL PSEUDOCODE:
 
@@ -27,8 +37,7 @@ UNIVERSAL PSEUDOCODE:
 INVARIANTS:
 MUST: pre-flight `Path(dst).exists()` with `overwrite` gate.
 MUST: ATOMIC writing: write to `<dst>.<random>.tmp` then
-  `os.replace(tmp, dst)`. A crash halfway MUST NOT leave the final file
-  truncated.
+  `os.replace(tmp, dst)`. A mid-way crash MUST NOT leave the final file truncated.
 MUST: `parents=True` (default) → `parent.mkdir(parents=True, exist_ok=True)`.
 MUST: if `revertible=True` AND dst exists AND is about to be overwritten,
   snapshot the content pre-overwrite. Path convention:
@@ -46,10 +55,10 @@ MUST: if `revertible=True` AND dst exists AND is about to be overwritten,
   Include `prev_blob_path` (absolute) and `prev_blob_sha256` in results.
 MUST: explicit encoding (default utf-8). For bytes, `args.get("binary", False)`.
 MUST: refuse `is_protected_path()` UNLESS `allow_system=True`.
-MUST NOT: `open(dst, "w")` directly on the final path (non-atomic).
+MUST NOT: `open(dst, "w")` directly on the final path (not atomic).
 MUST NOT: write without explicit encoding (would depend on the OS locale).
-MUST NOT: declare revertible=True without emitting prev_blob_sha256 at
-  the first overwrite (undo won't know how to restore).
+MUST NOT: declare revertible=True without emitting prev_blob_sha256 on the
+  first overwrite (undo won't know how to restore).
 
 FILESYSTEM DOMAIN (write_files):
 - entry: `{"path": str, "content": str|bytes, "encoding": str?}`
@@ -61,4 +70,3 @@ FILESYSTEM DOMAIN (write_files):
 KV/store DOMAIN (set_*):
 - entry: `{"key": ..., "value": ...}`; use structured store (sqlite/json).
 - atomicity: BEGIN TRANSACTION → write → COMMIT (DB), or tmp+rename for JSON.
-────────────────────────────────────────────

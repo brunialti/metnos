@@ -113,7 +113,14 @@ def get(key: str, **kwargs) -> str:
             "SELECT text, needs_translation FROM i18n WHERE key=? AND lang=?",
             (key, lang),
         ).fetchone()
-        if row and row[0] is not None and row[1] == 0:
+        # needs_translation=1 e' un HINT al daemon traduttore, non un blocco
+        # per get(): se `text` e' popolato e non-vuoto, la traduzione e' usable.
+        # Bug live 12/5/2026: 174 righe MSG_* avevano needs_translation=1
+        # (orphan source_lang NULL) ma text valido in entrambe le lingue.
+        # i18n.get scartava la IT e cadeva in fallback a EN → test +
+        # final_message user-facing in lingua sbagliata. Fix generale:
+        # treat needs_translation come metadato del daemon, non come gate.
+        if row and row[0]:
             template = row[0]
             try:
                 return template.format(**kwargs) if kwargs else template

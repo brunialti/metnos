@@ -26,7 +26,7 @@ type        = "string"
 
 [args.properties.url.description]
 it = "URL HTTP o HTTPS da chiamare."
-en = "──────────────────────────────────────────── HTTP or HTTPS URL to call. ────────────────────────────────────────────"
+en = "HTTP or HTTPS URL to call."
 
 [args.properties.method]
 type        = "string"

@@ -42,7 +42,7 @@ items       = { type = "string" }
 
 [args.properties.queries.description]
 it = "Lista di query testuali (1+). Ogni stringa puo' essere libera (es. 'Roma', 'Via Garibaldi 12 Milano', 'Eiffel Tower')."
-en = "──────────────────────────────────────────── List of textual queries (1+). Each string can be free-form (e.g., 'Rome', 'Via Garibaldi 12 Milan', 'Eiffel Tower'). ────────────────────────────────────────────"
+en = "List of textual queries (1+). Each string can be free-form (e.g., 'Rome', 'Via Garibaldi 12 Milan', 'Eiffel Tower')."
 
 [args.properties.max_results]
 type        = "integer"

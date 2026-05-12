@@ -32,7 +32,7 @@ type        = "string"
 
 [args.properties.signature.description]
 it = "Signature canonicalizzata (binary:subcmd:target_kind). Wildcard ammessi nei campi 2 e 3."
-en = "──────────────────────────────────────────── Canonicalized signature (binary:subcmd:target_kind). Wildcards allowed in fields 2 and 3. ────────────────────────────────────────────"
+en = "Canonicalized signature (binary:subcmd:target_kind). Wildcards allowed in fields 2 and 3."
 
 [args.properties.reason]
 type        = "string"

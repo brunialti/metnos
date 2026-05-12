@@ -101,6 +101,34 @@ RICERCA-SU-SITO — distinzione INTENTO
     ERRORE: stesso scenario → step2 get_urls_text(urls=["https://x.it/about"])
          (URL gia' letto in step1 con read_urls_html). E' UN ERRORE.
 
+  (js_rendered_retry) PAGINA SPA / JS-RENDERED — RITENTA UNA VOLTA CON js_render=true:
+      Quando uno step `read_urls_html` ritorna entries con
+      `error_class="js_rendered"` (oppure `failed[]` con la stessa
+      `error_class`), la pagina e' una SPA: l'HTML iniziale e' uno
+      scheletro che il browser idrata via JavaScript. Metnos puo'
+      passare al sidecar Playwright (Chromium headless) per ottenere
+      l'HTML renderizzato.
+    DEVI: re-invocare `read_urls_html(urls=[<URL_fallito>], js_render=true)`
+         come step successivo. Il runtime probera' il sidecar; se UP,
+         renderizza la pagina e ritorna `entries` con `body_text`
+         popolato dal DOM materializzato.
+    NON DEVI: arrenderti su prima fail e dichiarare al utente "non
+         posso leggere" senza aver provato `js_render=true`.
+         NON DEVI ripetere con `js_render=true` se quel retry e' gia'
+         fallito (es. `js_render_sidecar_available=false` oppure
+         sidecar timeout su quell'URL).
+    OK: step1 read_urls_html(urls=["https://spa.example/x"]) →
+         entries[0].error_class="js_rendered" →
+         step2 read_urls_html(urls=["https://spa.example/x"], js_render=true) →
+         entries[0].body_text non vuoto, js_rendered_via_sidecar=true →
+         step3 describe_entries(from_step=2, style="by_relevance") →
+         final_answer.
+    ERRORE: step1 error_class="js_rendered" → final_answer "non riesco
+         a leggere" senza aver provato js_render=true. E' UN ERRORE.
+    Costo: ~500ms-2s extra per pagina, ~200MB RAM sul sidecar. Opt-in
+         esplicito tramite `js_render=true`; il default resta false per
+         non rallentare i turn normali.
+
   (url_failed_soft_fail) URL FALLITO IN HISTORY (struttura del sito impedisce la lettura):
       Quando uno step precedente di lettura URL (`read_urls_html`,
       `read_urls_pdf`, `get_urls_text`) ha ritornato `ok=false` oppure
@@ -115,8 +143,11 @@ RICERCA-SU-SITO — distinzione INTENTO
            tu un PDF/screenshot della pagina".
          - `timeout`/`network` → "il sito non risponde adesso, riprova fra
            qualche minuto".
-         - `js_rendered` → "la pagina e' una SPA renderizzata in JavaScript.
-           Metnos non esegue JS. Verifica `linked_documents` per PDF disponibili".
+         - `js_rendered` → PRIMA tenta il retry con `js_render=true`
+           (regola `js_rendered_retry` sopra). Solo se anche quel retry
+           fallisce (`js_render_sidecar_available=false` oppure sidecar
+           timeout), dichiara: "la pagina e' una SPA e il sidecar JS-render
+           non e' disponibile. Verifica `linked_documents` per PDF disponibili".
          - `non_html` → "la risorsa non e' HTML. Probabile PDF: prova
            read_urls_pdf sullo stesso URL".
          - `not_found` → "la pagina non esiste (HTTP 404). Verifica l'URL".

@@ -67,11 +67,20 @@ _VERB_TO_CANONICAL = {
     # create
     "crea": "create", "creo": "create", "creare": "create",
     "create": "create", "mkdir": "create", "make": "create", "new": "create",
-    # send
+    # send (canonici + enclitici IT + sinonimi EN)
     "invia": "send", "invio": "send", "inviare": "send",
+    "inviami": "send", "inviagli": "send",  # enclitico IT (oggetto indiretto)
     "manda": "send", "mando": "send", "mandare": "send",
+    "mandami": "send", "mandagli": "send",
     "spedisci": "send", "spedisco": "send", "spedire": "send",
-    "send": "send",
+    "spediscimi": "send",
+    "scrivimi": "send", "scrivigli": "send",  # write+to_me semantica = send
+    "notifica": "send", "notificami": "send", "notificagli": "send",
+    "avvisa": "send", "avvisami": "send", "avvisagli": "send",
+    "send": "send", "notify": "send", "alert": "send", "ping": "send",
+    # NB: `email`/`mail`/`text`/`message` esclusi qui — sono piu' spesso
+    # nomi che verbi nelle query naturali IT+EN (es. «email e telefono di X»).
+    # Quando l'utente vuole l'azione, usa send/invia/manda/notify esplicito.
     # set (create/update events, contacts, signatures, persons, credentials).
     # "fissa"/"prenota" sono i verbi idiomatici per booking di un evento
     # del calendario in IT; "book"/"schedule" in EN. Mappati a `set` perche'
@@ -116,7 +125,21 @@ def detect_canonical_verb(qtokens):
     return None
 
 
-# Mappa parole IT/EN → oggetto canonico (suffisso di executor name).
+def detect_canonical_verbs_all(qtokens) -> list[str]:
+    """Ritorna TUTTI i verbi canonici distinti trovati fra i token, in ordine
+    di apparizione. Usato per detection multi-step (es. «fissa appuntamento e
+    mandami email» -> ['set', 'send']). Lista vuota se nessun verbo.
+    Generale: deriva dai sinonimi vocab IT+EN gia' presenti in
+    `_VERB_TO_CANONICAL`, non hardcoded a un caso d'uso specifico."""
+    seen = []
+    for tok in qtokens:
+        v = _VERB_TO_CANONICAL.get(tok)
+        if v and v not in seen:
+            seen.append(v)
+    return seen
+
+
+# Mappa parole IT/EN -> oggetto canonico (suffisso di executor name).
 # Permette di disambiguare fra `move_files` e `move_messages` quando il verbo
 # si applica a entrambi.
 _OBJECT_HINTS = {

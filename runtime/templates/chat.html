@@ -155,6 +155,28 @@ button:disabled{opacity:.5;cursor:not-allowed}
                      border:none;cursor:pointer;font-size:.85em;line-height:18px;
                      padding:0;display:flex;align-items:center;justify-content:center}
 #thumbBar .thumb .x:hover{background:#a00}
+/* Session takeover modal + readonly banner (Phase 7 Phase 1, 12/5/2026). */
+#sessionModal{position:fixed;inset:0;background:rgba(0,0,0,.55);display:none;
+              align-items:center;justify-content:center;z-index:10000}
+#sessionModal.show{display:flex}
+#sessionModal .card{background:#fff;border-radius:.5rem;padding:1.2rem 1.4rem;
+                    max-width:480px;width:90%;box-shadow:0 8px 32px rgba(0,0,0,.3)}
+#sessionModal h2{margin:0 0 .6rem 0;font-size:1.1em;color:var(--accent)}
+#sessionModal p{margin:.4rem 0;color:#444;line-height:1.4}
+#sessionModal .countdown{color:#a06000;font-weight:600}
+#sessionModal .actions{margin-top:1rem;display:flex;gap:.6rem;justify-content:flex-end}
+#sessionModal button{padding:.5rem 1.1rem;font:inherit;border-radius:.3rem;
+                     border:1px solid var(--border);cursor:pointer}
+#sessionModal button.primary{background:var(--accent);color:#fff;border-color:var(--accent)}
+#sessionModal button.secondary{background:#fafafa;color:#444}
+#sessionModal button:hover{opacity:.9}
+#sessionBanner{display:none;padding:.6rem 1rem;background:#fff7d6;
+               color:#7a5a00;border-bottom:1px solid #e0bf3a;font-size:.9em;
+               text-align:center}
+#sessionBanner.show{display:block}
+#sessionBanner.revoked{background:#fee;color:#a00;border-bottom-color:#fbb}
+body.readonly form#f{opacity:.5;pointer-events:none}
+body.readonly #q{cursor:not-allowed}
 </style>
 </head>
 <body>
@@ -174,7 +196,21 @@ button:disabled{opacity:.5;cursor:not-allowed}
   {% endif %}
 </header>
 
+<div id="sessionBanner"></div>
+
 <div id="log"></div>
+
+<div id="sessionModal">
+  <div class="card">
+    <h2>Sessione gia' attiva su un altro dispositivo</h2>
+    <p id="sessionModalBody">Una sessione di chat e' aperta su un altro dispositivo. Vuoi continuarla qui? La sessione precedente passera' in sola lettura.</p>
+    <p class="countdown">Auto-decline in <span id="sessionCountdown">10</span>s.</p>
+    <div class="actions">
+      <button type="button" class="secondary" id="sessionDeclineBtn">Lascia altrove</button>
+      <button type="button" class="primary" id="sessionTakeoverBtn">Prendi posto qui</button>
+    </div>
+  </div>
+</div>
 
 <div id="lightbox"><img alt=""><div class="lbcap"></div></div>
 
@@ -664,7 +700,8 @@ async function pollInFlight(){
   }
 }
 
-fetchServerHistory();
+// Boot di session + history viene fatto in fondo allo script,
+// dopo che tutte le const/let sono fuori dal TDZ (deviceToken, sessionBanner).
 
 document.getElementById('clearBtn').addEventListener('click', (e) => {
   e.preventDefault();
@@ -799,6 +836,211 @@ if(!conversationId){
   localStorage.setItem(CONV_KEY, conversationId);
   sessionStorage.removeItem('metnos_conv_id');
 }
+
+// --- Session registry single-session-per-user (Phase 7 Phase 1, 12/5/2026) ---
+// Roberto: single-active-session + takeover prompt; conflict resolution
+// su edit concorrenti NON in scope (single-writer per costruzione).
+const DEVICE_TOKEN_KEY = 'metnos_device_token';
+let deviceToken = localStorage.getItem(DEVICE_TOKEN_KEY) || '';
+let sessionReadOnly = false;
+let pingTimer = null;
+let sessionSse = null;
+
+function makeDeviceLabel(){
+  const ua = (navigator.userAgent || '').slice(0, 200);
+  // Cerca di estrarre un nome breve "marca + OS"; fallback: UA truncated.
+  const m = ua.match(/(Firefox|Chrome|Edg|Safari)[ \/]([\d.]+)/);
+  const browser = m ? (m[1] + ' ' + (m[2] || '')) : 'Browser';
+  const os = (() => {
+    if(ua.includes('Windows')) return 'Windows';
+    if(ua.includes('Mac OS')) return 'Mac';
+    if(ua.includes('Android')) return 'Android';
+    if(ua.includes('iPhone') || ua.includes('iPad')) return 'iOS';
+    if(ua.includes('Linux')) return 'Linux';
+    return '';
+  })();
+  return (browser + (os ? ' su ' + os : '')).trim().slice(0, 80);
+}
+
+const sessionBanner = document.getElementById('sessionBanner');
+function showBanner(text, cls){
+  sessionBanner.textContent = text;
+  sessionBanner.className = 'show ' + (cls || '');
+}
+function hideBanner(){
+  sessionBanner.className = '';
+  sessionBanner.textContent = '';
+}
+function enterReadOnly(reason){
+  sessionReadOnly = true;
+  document.body.classList.add('readonly');
+  btn.disabled = true;
+  q.disabled = true;
+  showBanner(reason || 'Sessione attiva su un altro dispositivo, in sola lettura.', '');
+  // Ferma il ping e il SSE: la sessione vecchia non e' piu' valida.
+  if(pingTimer){ clearInterval(pingTimer); pingTimer = null; }
+  if(sessionSse){ try{ sessionSse.close(); }catch(_){} sessionSse = null; }
+}
+function exitReadOnly(){
+  sessionReadOnly = false;
+  document.body.classList.remove('readonly');
+  btn.disabled = false;
+  q.disabled = false;
+  hideBanner();
+}
+
+async function postJson(url, body){
+  const r = await fetch(url, {
+    method: 'POST',
+    headers: {'Content-Type':'application/json', 'Accept':'application/json'},
+    body: JSON.stringify(body || {}),
+  });
+  let data = {};
+  try { data = await r.json(); } catch(_){}
+  return {status: r.status, data};
+}
+
+// Modal takeover: mostra prompt, ritorna Promise<bool> (true = takeover).
+function showTakeoverPrompt(existing){
+  const modal = document.getElementById('sessionModal');
+  const body = document.getElementById('sessionModalBody');
+  const cd = document.getElementById('sessionCountdown');
+  const takeBtn = document.getElementById('sessionTakeoverBtn');
+  const declineBtn = document.getElementById('sessionDeclineBtn');
+  const label = (existing && existing.device_label) || 'un altro dispositivo';
+  const started = (existing && existing.started_at) || '';
+  body.textContent = 'Sessione attiva su ' + label
+    + (started ? ' dal ' + started : '')
+    + '. Vuoi continuarla qui? La sessione precedente passera\' in sola lettura.';
+  modal.classList.add('show');
+  return new Promise((resolve) => {
+    let remaining = 10;
+    cd.textContent = remaining;
+    const tick = setInterval(() => {
+      remaining -= 1;
+      cd.textContent = Math.max(0, remaining);
+      if(remaining <= 0){ done(false); }
+    }, 1000);
+    function done(takeover){
+      clearInterval(tick);
+      modal.classList.remove('show');
+      takeBtn.removeEventListener('click', onTake);
+      declineBtn.removeEventListener('click', onDecline);
+      resolve(takeover);
+    }
+    function onTake(){ done(true); }
+    function onDecline(){ done(false); }
+    takeBtn.addEventListener('click', onTake);
+    declineBtn.addEventListener('click', onDecline);
+  });
+}
+
+// Sottoscrive il SSE eventi sessione per ricevere `session_revoked` quando
+// un altro device fa takeover di noi.
+function subscribeSessionEvents(token){
+  if(!token || sessionSse) return;
+  try {
+    const url = '/agent/session/events?device_token=' + encodeURIComponent(token);
+    sessionSse = new EventSource(url);
+    sessionSse.addEventListener('session_revoked', (ev) => {
+      let info = {};
+      try { info = JSON.parse(ev.data || '{}'); } catch(_){}
+      const newDev = info.new_device_label || 'un altro dispositivo';
+      enterReadOnly('Sessione spostata su ' + newDev + '. Sola lettura.');
+      sessionBanner.classList.add('revoked');
+      // Pulisci device_token: ricarico = ri-acquisizione tramite takeover prompt.
+      try { localStorage.removeItem(DEVICE_TOKEN_KEY); } catch(_){}
+      deviceToken = '';
+    });
+    sessionSse.onerror = () => {
+      // Disconnect normale (chiusura server) → riconnect dopo 5s se ancora attivi.
+      if(sessionSse){
+        try { sessionSse.close(); } catch(_){}
+        sessionSse = null;
+      }
+      if(!sessionReadOnly && deviceToken){
+        setTimeout(() => subscribeSessionEvents(deviceToken), 5000);
+      }
+    };
+  } catch(e){
+    console.warn('session SSE subscribe failed', e);
+  }
+}
+
+function startPing(){
+  if(pingTimer) clearInterval(pingTimer);
+  pingTimer = setInterval(async () => {
+    if(!deviceToken || sessionReadOnly) return;
+    try {
+      const r = await postJson('/agent/session/ping', {device_token: deviceToken});
+      if(r.status === 409){
+        // Sessione revocata (race con SSE perso). Force read-only.
+        enterReadOnly('Sessione spostata su altro device. Ricarica la pagina per ri-acquisirla.');
+        sessionBanner.classList.add('revoked');
+        try { localStorage.removeItem(DEVICE_TOKEN_KEY); } catch(_){}
+        deviceToken = '';
+      }
+    } catch(e){
+      // Network blip: ignora, riprova al prossimo tick.
+    }
+  }, 30000);
+}
+
+// Boot session: tenta register; se conflict + utente accetta, fa takeover.
+async function bootSession(){
+  // Se gia' abbiamo un device_token, valida con un ping prima di partire.
+  // 409 = ricominciamo da capo (registry ha registrato un revoke).
+  if(deviceToken){
+    const p = await postJson('/agent/session/ping', {device_token: deviceToken});
+    if(p.status === 200){
+      subscribeSessionEvents(deviceToken);
+      startPing();
+      return true;
+    }
+    // Token stantio (server restart o revoked offline): scarta e ri-registra.
+    try { localStorage.removeItem(DEVICE_TOKEN_KEY); } catch(_){}
+    deviceToken = '';
+  }
+  const label = makeDeviceLabel();
+  let r;
+  try {
+    r = await postJson('/agent/session/register', {device_label: label});
+  } catch(e){
+    console.warn('session register failed', e);
+    showBanner('Impossibile registrare la sessione (rete offline?). Funzionalita\' chat ridotta.', 'revoked');
+    return false;
+  }
+  if(r.status === 200 && r.data && r.data.device_token){
+    deviceToken = r.data.device_token;
+    try { localStorage.setItem(DEVICE_TOKEN_KEY, deviceToken); } catch(_){}
+    subscribeSessionEvents(deviceToken);
+    startPing();
+    return true;
+  }
+  if(r.status === 409 && r.data && r.data.conflict){
+    const wantTakeover = await showTakeoverPrompt(r.data.existing);
+    if(!wantTakeover){
+      enterReadOnly('Sessione attiva su un altro dispositivo. Sola lettura qui.');
+      return false;
+    }
+    const t = await postJson('/agent/session/takeover', {
+      takeover_token: r.data.takeover_token,
+      device_label: label,
+    });
+    if(t.status === 200 && t.data && t.data.device_token){
+      deviceToken = t.data.device_token;
+      try { localStorage.setItem(DEVICE_TOKEN_KEY, deviceToken); } catch(_){}
+      subscribeSessionEvents(deviceToken);
+      startPing();
+      return true;
+    }
+    showBanner('Takeover fallito: ' + ((t.data && t.data.message) || 'errore'), 'revoked');
+    return false;
+  }
+  showBanner('Errore registrazione sessione (' + r.status + ').', 'revoked');
+  return false;
+}
+
 let busy = false;
 
 // Slash command dispatcher client-side: i comandi NON viaggiano al server,
@@ -847,6 +1089,10 @@ async function handleSlashCommand(text){
 form.addEventListener('submit', async (e) => {
   e.preventDefault();
   if(busy) return;
+  if(sessionReadOnly){
+    add('err', '⚠ Sessione in sola lettura. Ricarica per ri-acquisirla, oppure usa il bottone takeover dell\'altro device.');
+    return;
+  }
   const query = q.value.trim();
   // Allow submit con solo foto (no caption): la query default e' "trova
   // foto simili" implicitamente via reference_images. Richiediamo testo
@@ -1080,6 +1326,16 @@ form.addEventListener('submit', async (e) => {
 });
 
 q.focus();
+
+// Boot session prima di fetchare la storia: cosi' se l'utente declina il
+// takeover il banner read-only e' gia' visibile prima della history.
+// In coda allo script per evitare TDZ su deviceToken/sessionBanner.
+(async () => {
+  await bootSession();
+  // Anche in read-only mostriamo la history (e' lettura). Solo l'input
+  // resta disabilitato fino a takeover esplicito.
+  fetchServerHistory();
+})();
 </script>
 
 </body>

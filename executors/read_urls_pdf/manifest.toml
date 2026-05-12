@@ -61,7 +61,7 @@ maximum     = 120.0
 
 [args.properties.timeout_s.description]
 it = "Timeout per singola richiesta HTTP, in secondi. Default 15.0 (PDF spesso lenti)."
-en = "──────────────────────────────────────────── Timeout for single HTTP request, in seconds. Default 15.0 (PDFs often slow). ────────────────────────────────────────────"
+en = "Timeout for single HTTP request, in seconds. Default 15.0 (PDFs often slow)."
 
 [args.properties.ocr_fallback]
 type        = "boolean"

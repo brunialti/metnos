@@ -1,6 +1,15 @@
+{# ---
+role: synt_code
+tier: wise
+lang: it
+style: definitional
+version: 1
+owner: roberto
+updated: 2026-05-11
+sha_prev: 3c68afc4
+--- #}
 You are phase 5 (CODE) of synt-multistage.
-Your ONLY task: write the Python file `{{ name }}.py` that implements
-the executor.
+Your ONLY task: write the Python file `{{ name }}.py` that implements the executor.
 
 Skeleton manifest already decided (DO NOT change it):
   name: {{ name }}
@@ -17,21 +26,15 @@ MUST NOT: import pip libraries other than PIL/Pillow and openpyxl.
 OK: `import hashlib`, `import imaplib`, `import tarfile`, `import os`.
 ERROR: `import requests`, `import boto3`, `import paramiko`. THIS IS AN ERROR.
 
-REAL RUNTIME API MODULES (complete signature — DO NOT invent
-absent functions, DO NOT change signatures):
+REAL RUNTIME API MODULES (complete signature — DO NOT invent missing functions, DO NOT change signatures):
 
   `messages` (Python module):
     `messages.get(code: str) -> str` — A single argument (the code).
-    Returns the template; if the code does not exist, returns a string that
-    starts with "[unknown msg".
+    Returns the template; if the code does not exist, returns a string starting with "[unknown msg".
     MUST: `from messages import get as messages_get` (explicit alias) or
     `import messages` then `messages.get(code)`.
-    MUST NOT: `from messages import messages` (auto-reference, module does not
-    contain a name `messages`).
-    MUST NOT: wrap runtime module imports in try/except that
-    silences ImportError. If runtime is not reachable, the executor
-    MUST fail EXPLICITLY on the first invoke, do not mask the
-    problem with stubs that return fake errors.
+    MUST NOT: `from messages import messages` (auto-reference, module does not contain a name `messages`).
+    MUST NOT: wrap runtime module imports in try/except that silences ImportError. If runtime is not reachable, the executor MUST fail EXPLICITLY on the first invoke, do not mask the problem with stubs that return fake errors.
     OK: `import messages` then `messages.get("ERR_X")`.
     ERROR: `try: from messages import messages\nexcept ImportError:\n    def open_imap(): raise ImportError(...)`. THIS IS AN ERROR.
 
@@ -53,10 +56,8 @@ absent functions, DO NOT change signatures):
     set_location(loc: dict) -> None
 
 RUNTIME CONTRACT FOR `from_step`:
-If in the stage 2 manifest you have `from_step: integer required`, the runtime
-automatically expands the list in the scratchpad and injects it into the
-field `entries` BEFORE invoking the subprocess. Inside `invoke(args)`
-YOU ALWAYS FIND `args["entries"]` (list of dicts). DO NOT look in
+If in the stage 2 manifest you have `from_step: integer required`, the runtime automatically expands the list in the scratchpad and injects it into the field `entries` BEFORE invoking the subprocess. Inside `invoke(args)`
+YOU ALWAYS FIND `args["entries"]` (list of dicts). DO NOT search in
 `args["messages"]`, `args["paths"]`, `args["mails"]` or other names:
 the runtime ALWAYS uses `entries` as the standard target.
 
@@ -70,16 +71,15 @@ DICT FIELDS OF THE ENTRIES (expected input at invoke when arriving from from_ste
 DATA INTEGRITY PRINCIPLE (for destructive verbs: move/delete/write/extract):
 
 MUST: for move/transfer execute COPY-then-CHECK-then-DELETE. Explicitly verify
-  that the COPY (or equivalent: atomic write, append) succeeded BEFORE removing/deleting
-  the source.
-MUST NOT: execute DELETE/unlink/EXPUNGE/drop without having first
+  that the COPY (or equivalent: atomic write, append) succeeded BEFORE removing/deleting the source.
+MUST NOT: execute DELETE/unlink/EXPUNGE/drop without first having
   confirmed the copy/append to the destination.
 OK: `if copy_status == "OK": delete_source()`.
 ERROR: `copy_source_to_dst(); delete_source()` without a check between the two.
   If the copy fails silently, the source is destroyed.
 
-MUST: include in `results[]` ALL fields necessary for the `reverse_pattern`
-  declared in the manifest. E.g., `swap_src_dst` needs the {src, dst} pair
+MUST: include in the `results[]` ALL fields necessary for the `reverse_pattern`
+  declared in the manifest. E.g., `swap_src_dst` needs {src, dst} pairs
   + a stable object ID (path, message_id, etc.).
 MUST NOT: return empty or partial results hoping that undo magically
   reconstructs the state.
@@ -103,29 +103,29 @@ MUST NOT: raise an exception that terminates the loop on the entire batch
 OK: `try: process(e); results.append(...) except Exception as ex: failed.append({"id": e["id"], "error": str(ex)})`.
 ERROR: `for e in entries: process(e)  # senza try/except`. The first
   exception blocks all others. THIS IS AN ERROR.
-- Vectorized by default: every executor accepts lists, even of a single element or empty.
-- Output is ALWAYS a list (entries / results), even if degenerate (0 or 1 element).
+- Vectorized by default: every executor accepts lists, even with a single element or empty.
+- Output is ALWAYS a list (entries / results), even degenerate (0 or 1 element).
   No None, no single dict: the planner always receives a list
   and treats it as a completed task — it must not "explore more" if the list
   is short or empty.
-- Output standard form {ok, ok_count, fail_count, results|entries, failed}.
-- INTERNAL EXECUTOR LOOP. When the operation operates on a variable
+- Output follows standard form {ok, ok_count, fail_count, results|entries, failed}.
+- INTERNAL LOOP WITHIN THE EXECUTOR. When the operation operates on a variable
   or unknown volume (e.g., emails in a time window, files in a recursive
   directory, paginated fetch), implement the iteration loop (batch /
   pagination / stream) INSIDE the invoke() function. DO NOT leave the
   planner with the task of iterating: external loops cost ReAct steps and
-  do not scale. Example: an executor that returns "today's" emails must
+  do not scale. Example: an executor that returns emails from "today" must
   accept time_window as a parameter and perform the IMAP fetch loop
   internally, returning the entire list in a single observation.
   Add an explicit cap (max_total, max_pages, max_bytes) to avoid
   output blow-up.
 - Best-effort: a failed entry does not block the others.
-- If critical (modifying fs/network/external state): use
-  `platform_policy.is_protected_path(path)` for a hard block +
-  `is_system_file(name)` for a safety net (override via `allow_system=true`).
+- If critical (modifies fs/network/external state): use
+  `platform_policy.is_protected_path(path)` for hard block +
+  `is_system_file(name)` for safety net (override via {{var}}).
 - Uniform errors: use `messages.get('ERR_EXT_SVC_LIMIT')` etc. instead of inline strings.
 - If revertible=true: the reverse_pattern is applied automatically by the runtime;
-  the exposed `results` just need to respect the expected pattern schema (e.g.,
+  it is enough that the exposed `results` respect the expected schema of the pattern (e.g.,
   `swap_src_dst` requires `results: list[{src, dst}]`).
 
 I/O CONTRACT (MANDATORY — the runtime invokes via subprocess):

@@ -395,6 +395,48 @@ def handle_synth_request(args, *, user_query, provider, progress=None, verbose=F
                 ),
             }
 
+    # ── L7 admission: anti-synth quando intent matcha imported skill ──
+    # (ADR 0125 / 0114 5° gate, 12/5/2026). Bug live 11/5: PLANNER chiede
+    # synth di `read_appointments`/`read_calendar` mentre `read_events`
+    # (imported da google-workspace via skill_importer ADR 0123) gia'
+    # copre l'intent (verb=read, object=events tramite sinonimo
+    # appointments/calendar → events). Determinismo §7.9: lookup tabellare
+    # via `vocab.lookup_imported_for_intent`, no LLM.
+    #
+    # Pattern: parse `expected_name` come `<verb>_<object>[_qualifier]`,
+    # risolve object_token via sinonimi IT+EN canonicalizzati, cerca
+    # imported con stesso (verb, canonical_object). Match → reject con
+    # `error="duplicates_imported_skill_<name>"`.
+    try:
+        from vocab import lookup_imported_for_intent
+        parts = expected_name.split("_", 2)
+        if len(parts) >= 2:
+            verb_l7 = parts[0]
+            object_l7 = parts[1]
+            imported_hits = lookup_imported_for_intent(verb_l7, object_l7)
+            if imported_hits:
+                primary = imported_hits[0]
+                return {
+                    "ok": True,
+                    "synthesized": False,
+                    "redirected": True,
+                    "l7_admission": True,
+                    "name": primary,
+                    "expected_name": expected_name,
+                    "error": f"duplicates_imported_skill_{primary}",
+                    "imported_alternatives": imported_hits,
+                    "message": (
+                        f"L'intent (verb={verb_l7}, object={object_l7}) e' gia' "
+                        f"coperto dallo skill imported `{primary}`. NON DEVI "
+                        f"rifare la sintesi. CHIAMA `{primary}` al prossimo step "
+                        f"con gli args appropriati."
+                    ),
+                }
+    except Exception as _e:
+        # L7 deve essere best-effort: errori nella tabella non bloccano la
+        # cascata synt (fallback al comportamento legacy). Log a debug.
+        log.debug("L7 admission skip per errore: %s", _e)
+
     PROPOSALS_DIR.mkdir(parents=True, exist_ok=True)
 
     # Synt usa SEMPRE middle+wise (non il tier del pianificatore). Vedi

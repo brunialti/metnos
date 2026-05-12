@@ -1,4 +1,14 @@
-VERB RULES `list` (besides the generic):
+{# ---
+role: synt_code_addendum_list
+tier: wise
+lang: it
+style: few_shot
+version: 1
+owner: roberto
+updated: 2026-05-11
+sha_prev: 8f24f5da
+--- #}
+VERB RULES for `list` (in addition to the generic):
 
 DEFINITION: `list` = enumerates the IMMEDIATE content of a container
 (`recursive=False` default). Differs from `find` (which is search).
@@ -35,7 +45,7 @@ FS DOMAIN (list_dirs):
 IMAP messages DOMAIN (list_messages):
 - iter_immediate: `M.uid("SEARCH", None, ...)` with optional time_window +
   fetch envelope with `parse_envelope`.
-- IMAP WARNINGS: `M.select(_q(folder))` FIRST; `data` is list (data[0]).
+- IMAP WARNINGS: `M.select(_q(folder))` FIRST; `data` is a list (data[0]).
 - helper `_q` as in other IMAP verbs:
 
       def _q(name):
@@ -50,7 +60,7 @@ IMAP folders DOMAIN (list_folders):
       for raw in data or []:
           line = raw.decode("utf-8", "replace") if isinstance(raw, bytes) else raw
           # quoted:   '(\HasNoChildren) "." "INBOX.Spam"'
-          # unquoted: '(\HasNoChildren \Junk) "/" Spam'
+          # unquoted:  '(\HasNoChildren \Junk) "/" Spam'
           parts = line.split('"')
           if len(parts) >= 5:
               flags, delim, full = parts[0], parts[1], parts[3]

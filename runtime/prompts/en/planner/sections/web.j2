@@ -100,6 +100,34 @@ SITE-SEARCH — INTENT distinction
     ERROR: same scenario → step2 get_urls_text(urls=["https://x.it/about"])
          (URL already read in step1 with read_urls_html). THIS IS AN ERROR.
 
+  (js_rendered_retry) SPA / JS-RENDERED PAGE — RETRY ONCE WITH js_render=true:
+      When a `read_urls_html` step returns entries with
+      `error_class="js_rendered"` (or `failed[]` with the same
+      `error_class`), the page is a SPA: the initial HTML is a skeleton
+      that the browser hydrates via JavaScript. Metnos can route the
+      request to the Playwright sidecar (Chromium headless) to obtain
+      the rendered HTML.
+    MUST: re-invoke `read_urls_html(urls=[<failed_URL>], js_render=true)`
+         as the next step. The runtime probes the sidecar; if UP, it
+         renders the page and returns `entries` with `body_text`
+         populated from the materialized DOM.
+    MUST NOT: give up on first fail and tell the user "I can't read"
+         without having tried `js_render=true`.
+         MUST NOT repeat with `js_render=true` if that retry already
+         failed (e.g. `js_render_sidecar_available=false` or sidecar
+         timeout on that URL).
+    OK: step1 read_urls_html(urls=["https://spa.example/x"]) →
+         entries[0].error_class="js_rendered" →
+         step2 read_urls_html(urls=["https://spa.example/x"], js_render=true) →
+         entries[0].body_text non-empty, js_rendered_via_sidecar=true →
+         step3 describe_entries(from_step=2, style="by_relevance") →
+         final_answer.
+    ERROR: step1 error_class="js_rendered" → final_answer "I can't read"
+         without having tried js_render=true. THIS IS AN ERROR.
+    Cost: ~500ms-2s extra per page, ~200MB RAM on the sidecar. Opt-in
+         explicitly via `js_render=true`; the default stays false to
+         avoid slowing down normal turns.
+
   (url_failed_soft_fail) URL FAILED IN HISTORY (site structure prevents reading):
       When a previous URL-read step (`read_urls_html`, `read_urls_pdf`,
       `get_urls_text`) returned `ok=false` or empty `entries` with
@@ -112,8 +140,12 @@ SITE-SEARCH — INTENT distinction
          - `forbidden`/`rate_limited` → "the site blocks the crawler (HTTP 403/429).
            Alternatives: Google cache, archive.org/web, or send me a PDF/screenshot of the page".
          - `timeout`/`network` → "the site does not respond now, retry in a few minutes".
-         - `js_rendered` → "the page is a JavaScript-rendered SPA.
-           Metnos does not run JS. Check `linked_documents` for available PDFs".
+         - `js_rendered` → FIRST try the retry with `js_render=true`
+           (rule `js_rendered_retry` above). Only if THAT retry also
+           fails (`js_render_sidecar_available=false` or sidecar
+           timeout), declare: "the page is a SPA and the JS-render
+           sidecar is unavailable. Check `linked_documents` for
+           available PDFs".
          - `non_html` → "the resource is not HTML. Probably a PDF: try
            read_urls_pdf on the same URL".
          - `not_found` → "the page does not exist (HTTP 404). Check the URL".

@@ -25,7 +25,7 @@ type        = "string"
 
 [args.properties.base_path.description]
 it = "Directory di partenza della ricerca. Path assoluto o ~ espandibile (es. '~/images', '/opt/myclaw'). Deve essere dentro lo scope di lettura concesso."
-en = "──────────────────────────────────────────── Starting directory for the search. Absolute path or expandable ~ (e.g., '~/images', '/opt/myclaw'). Must be within the granted reading scope. ────────────────────────────────────────────"
+en = "Starting directory for the search. Absolute path or expandable ~ (e.g., '~/images', '/opt/myclaw'). Must be within the granted reading scope."
 
 [args.properties.pattern]
 type        = "string"

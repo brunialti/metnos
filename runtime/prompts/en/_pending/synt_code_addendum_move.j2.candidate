@@ -1,4 +1,14 @@
-VERB RULES `move` (in addition to the generic):
+{# ---
+role: synt_code_addendum_move
+tier: wise
+lang: it
+style: few_shot
+version: 1
+owner: roberto
+updated: 2026-05-11
+sha_prev: 66c0396c
+--- #}
+VERB RULES for `move` (in addition to generic):
 
 DEFINITION: `move` = copy(src→dst) + remove(src). Destructive: the source
 disappears after execution. Reversible via `swap_src_dst` if the `results`
@@ -13,7 +23,7 @@ replace functions `dst_exists`, `create_dst`, `copy_one`, `verify_copy`,
       dst = args.get("dst_folder") or args.get("dst_template")
       results, failed = [], []
 
-      # 1. Destination pre-flight (ONCE per call or per group).
+      # 1. Pre-flight destination (ONCE per call or per group).
       if not dst_exists(dst):
           if args.get("create_if_missing", default_per_domain):
               try: create_dst(dst)
@@ -78,10 +88,10 @@ IMAP DOMAIN (object == messages):
   IMPLICITLY on the CURRENTLY SELECTED folder. You MUST specify
   a `M.select(folder)` BEFORE EVERY context change. After
   `M.uid("COPY", uid, dst)`, the selected folder is still the source:
-  if IMMEDIATELY AFTER you perform `M.uid("SEARCH", ...)` to verify the copy, you are
+  if IMMEDIATELY AFTER you do `M.uid("SEARCH", ...)` to verify the copy, you are
   searching in the SOURCE (= false positive if Message-ID exists there too).
   To verify in DESTINATION, you must first `M.select(dst)`. Skipping the
-  SELECT is the #1 cause of "verification passes but mail is not there".
+  SELECT is the #1 cause of "verification passes but email is not there".
 - CRITICAL WARNING #2 (return form): `M.uid(...)` (and M.list, M.search)
   returns `(typ, data)` where `data` is a LIST of bytes (or `[None]`),
   even for single-line responses. It is NOT a direct byte string.
@@ -91,9 +101,9 @@ IMAP DOMAIN (object == messages):
   `data[0].strip()` vs `data.strip()`.
 - MUST: QUOTE folder names that contain SPACES or non-ASCII characters
   before passing them to `M.select`/`M.uid("COPY",...)`/`M.create`. Imaplib does NOT
-  quote automatically: the server sees "Posta indesiderata" without quotes as
-  two separate tokens truncated at the first space (= ghost "INBOX.Posta" bug
-  instead of "INBOX.Posta indesiderata"). Minimum helper:
+  quote automatically: the server sees "Spam folder" without quotes as
+  two separate tokens truncated at the first space (= ghost "INBOX.Spam"
+  instead of "INBOX.Spam folder" bug). Minimum helper:
       def _q(name): return f'"{name}"' if (' ' in name or any(ord(c)>127 for c in name)) else name
   Use `_q(folder)` everywhere. For already valid names (without spaces/non-ASCII)
   remain unchanged.
@@ -111,8 +121,8 @@ DO NOT replace the logic with your own interpretation):
       return name
 
   def _resolve_dst_folder(M, name, *, create_if_missing=True):
-      # Discovery via M.list (NOT via M.select, which on Cyrus accepts non-
-      # quoted names truncated at the first space = ghost folder).
+      # Discovery via M.list (NOT via M.select, which on Cyrus accepts unquoted names
+      # truncated at the first space = ghost folder).
       # Priority: exact name > last segment > CREATE (if authorized).
       typ, data = M.list()
       if typ != "OK" or not data:
@@ -173,17 +183,17 @@ IMAP MOVE SEQUENCE (rules, NOT code — derive implementation from them):
   ONLY ONCE. If None → all entries in the group fail with a
   clear message indicating the candidates or that the folder does not exist.
 - For each entry in the group, in THIS precise order:
-    1. `M.select(_q(src_folder))` — bring state to SELECTED-on-src.
-    2. `M.uid("COPY", uid, _q(dst_resolved))` — verify `typ=="OK"`.
-    3. `M.select(_q(dst_resolved))` — move state to DST. MANDATORY
+    1. `M.select(_q(src_folder))` — brings state to SELECTED-on-src.
+    2. `M.uid("COPY", uid, _q(dst_resolved))` — verifies `typ=="OK"`.
+    3. `M.select(_q(dst_resolved))` — moves state to DST. MANDATORY
        before the SEARCH, otherwise the check occurs on src and returns
        false positives when the Message-ID is present in both.
     4. `typ, data = M.uid("SEARCH", None, "HEADER", "Message-ID", e["message_id"])`
-       — verify `typ=="OK"` and `data[0]` are not empty. EXTRACT the NEW UID with
+       — verifies `typ=="OK"` and `data[0]` is not empty. EXTRACT the NEW UID with
        `new_uid = data[0].split()[-1]` (decode if bytes). This `new_uid` goes
        into `results.dst.uid` — DO NOT use placeholders like "unknown_new", the
        reverse pattern and audits need the real value.
-    5. `M.select(_q(src_folder))` — return to src for the delete.
+    5. `M.select(_q(src_folder))` — returns to src for the delete.
     6. `M.uid("STORE", uid, "+FLAGS", "(\\Deleted)")` then `M.expunge()`.
   If any of steps 2 or 4 fail → the entry fails and the
   source is NOT touched further.

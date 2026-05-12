@@ -1307,6 +1307,212 @@ async def gallery(request: web.Request) -> web.Response:
     return web.Response(text=html, content_type="text/html")
 
 
+async def _resolve_session_user_id(request: web.Request) -> str:
+    """Risolve l'user_id logico per la session registry partendo
+    dall'actor HTTP (Phase 7 Phase 1, 12/5/2026).
+
+    Ordine: device_id pairato → users.find_user_by_channel("http", device_id);
+    altrimenti host singolo se esiste; altrimenti l'actor stesso come
+    user_id "logico" (anonymous LAN trusted).
+
+    Niente LLM, §7.9: lookup deterministico in users.db.
+    """
+    import users as _users
+    actor = _resolve_actor(request, {})
+    # Tenta lookup user_channels: device_id paired su channel='http'.
+    try:
+        device_id = request.get("device_id") or ""
+        if device_id:
+            # Cerca quale user ha device_id pairato come canale 'http'.
+            for u in _users.list_users():
+                ch = _users.get_channel(u["id"], "http")
+                if ch and str(ch.get("recipient_id") or "") == str(device_id):
+                    return u["id"]
+    except Exception as e:
+        log.debug("session user lookup: %s", e)
+    # Fallback: host singolo se c'e' (LAN trusted bootstrap).
+    try:
+        hosts = _users.list_users(role="host")
+        if len(hosts) == 1:
+            return hosts[0]["id"]
+    except Exception as e:
+        log.debug("session host fallback: %s", e)
+    # Ultima spiaggia: usa l'actor string come user_id logico (le sessioni
+    # vivono nello stesso namespace ma sono isolate). Non e' un id valido
+    # in users.db ma e' coerente per (user, channel) → 1 active session.
+    return actor or "anonymous"
+
+
+async def session_register(request: web.Request) -> web.Response:
+    """POST /agent/session/register
+
+    Body JSON: `{device_label?: str}`. Ritorna `{device_token}` su
+    success (HTTP 200) o `{conflict: true, existing, takeover_token}` su
+    409 quando un altro device tiene gia' la sessione attiva per lo
+    stesso (user_id, channel='http').
+    """
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    if not isinstance(body, dict):
+        body = {}
+    device_label = str(body.get("device_label") or "")[:200]
+    user_id = await _resolve_session_user_id(request)
+    import active_sessions as _as
+    try:
+        res = _as.register_session(user_id, "http", device_label=device_label)
+    except ValueError as e:
+        return _error(400, "session_register_invalid", str(e))
+    if res.get("conflict"):
+        return web.json_response(res, status=409)
+    return web.json_response(res)
+
+
+async def session_takeover(request: web.Request) -> web.Response:
+    """POST /agent/session/takeover
+
+    Body JSON: `{takeover_token: str, device_label?: str}`. Atomic:
+    revoca la sessione vecchia + crea la nuova in singola transazione.
+    Notifica il device sloggato via SSE (`/agent/session/events`) se
+    sottoscritto. Ritorna `{device_token, revoked_device_token}`.
+    """
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    if not isinstance(body, dict):
+        body = {}
+    token = str(body.get("takeover_token") or "").strip()
+    if not token:
+        return _error(400, "takeover_token_required", "takeover_token mancante")
+    device_label = str(body.get("device_label") or "")[:200]
+    import active_sessions as _as
+    try:
+        res = _as.confirm_takeover_with_notify(token, new_device_label=device_label)
+    except ValueError as e:
+        return _error(409, "takeover_invalid", str(e))
+    return web.json_response(res)
+
+
+async def session_ping(request: web.Request) -> web.Response:
+    """POST /agent/session/ping
+
+    Body JSON: `{device_token: str}`. Aggiorna last_seen_at. 200 se
+    sessione attiva, 409 se revocata (client deve ri-registrare).
+    """
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    if not isinstance(body, dict):
+        body = {}
+    token = str(body.get("device_token") or "").strip()
+    if not token:
+        return _error(400, "device_token_required", "device_token mancante")
+    import active_sessions as _as
+    ok = _as.touch_session(token)
+    if not ok:
+        return web.json_response(
+            {"ok": False, "revoked": True}, status=409,
+        )
+    return web.json_response({"ok": True})
+
+
+async def session_revoke(request: web.Request) -> web.Response:
+    """POST /agent/session/revoke
+
+    Body JSON: `{device_token: str, reason?: str}`. Marca la sessione
+    come revocata (uscita esplicita dell'utente). Idempotente.
+    """
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    if not isinstance(body, dict):
+        body = {}
+    token = str(body.get("device_token") or "").strip()
+    if not token:
+        return _error(400, "device_token_required", "device_token mancante")
+    reason = str(body.get("reason") or "manual")[:60]
+    import active_sessions as _as
+    changed = _as.revoke_session(token, reason=reason)
+    return web.json_response({"ok": True, "changed": changed})
+
+
+async def session_events(request: web.Request) -> web.StreamResponse:
+    """GET /agent/session/events?device_token=X
+
+    SSE stream: il client si sottoscrive agli eventi della propria
+    sessione. Eventi possibili:
+    - `session_revoked`: la sessione e' stata revocata (typ. via takeover
+      di un altro device). Il client mostra banner + disabilita input.
+
+    Connessione long-poll: 15s keepalive comment, chiusura su disconnect.
+    """
+    token = (request.query.get("device_token") or "").strip()
+    if not token:
+        return _error(400, "device_token_required", "device_token mancante")
+    import active_sessions as _as
+
+    resp = web.StreamResponse(
+        status=200,
+        headers={
+            "Content-Type": "text/event-stream",
+            "Cache-Control": "no-cache, no-store",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
+    await resp.prepare(request)
+    # Snapshot: se gia' revocata al subscribe, emetti subito e chiudi.
+    sess = _as.get_session(token)
+    if sess is None or sess.get("revoked_at"):
+        payload = json.dumps({
+            "reason": (sess or {}).get("revoke_reason") or "unknown",
+            "ts": (sess or {}).get("revoked_at") or "",
+        }, ensure_ascii=False)
+        await resp.write(f"event: session_revoked\ndata: {payload}\n\n".encode())
+        await resp.write_eof()
+        return resp
+
+    queue: asyncio.Queue = asyncio.Queue(maxsize=32)
+    _as.subscribe(token, queue)
+    # Registra come SSE attiva per il graceful shutdown.
+    sse_set = request.app.setdefault("sse_responses", set())
+    sse_set.add(resp)
+    keepalive_task = asyncio.create_task(_sse_keepalive_loop(resp))
+    try:
+        while True:
+            try:
+                ev = await asyncio.wait_for(queue.get(), timeout=60.0)
+            except asyncio.TimeoutError:
+                # nessun evento da 60s, continua (il keepalive task scrive
+                # i comment SSE). Esce solo su disconnect o eccezione write.
+                continue
+            kind = ev.get("kind") or "message"
+            data = {k: v for k, v in ev.items() if k != "kind"}
+            body = json.dumps(data, ensure_ascii=False, default=str)
+            try:
+                await resp.write(f"event: {kind}\ndata: {body}\n\n".encode())
+            except (ConnectionError, ConnectionResetError, RuntimeError):
+                break
+            if kind == "session_revoked":
+                # Dopo aver notificato il client, chiudi la connessione.
+                break
+    except asyncio.CancelledError:
+        pass
+    finally:
+        keepalive_task.cancel()
+        _as.unsubscribe(token, queue)
+        sse_set.discard(resp)
+        try:
+            await resp.write_eof()
+        except Exception:
+            pass
+    return resp
+
+
 async def turns_recent(request: web.Request) -> web.Response:
     """GET /agent/turns/recent?conversation_id=X&limit=N&since_ts=T
 
@@ -1658,6 +1864,11 @@ ROUTES = (
     ("GET",  "/.well-known/metnos.json", well_known),
     ("POST", "/agent/turn",            turn),
     ("GET",  "/agent/turns/recent",    turns_recent),
+    ("POST", "/agent/session/register", session_register),
+    ("POST", "/agent/session/takeover", session_takeover),
+    ("POST", "/agent/session/ping",    session_ping),
+    ("POST", "/agent/session/revoke",  session_revoke),
+    ("GET",  "/agent/session/events",  session_events),
     ("GET",  "/agent/devices/me",      device_self),
     ("GET",  "/agent/dialog/{dialog_id}/form",   dialog_form),
     ("POST", "/agent/dialog/{dialog_id}/submit", dialog_submit),

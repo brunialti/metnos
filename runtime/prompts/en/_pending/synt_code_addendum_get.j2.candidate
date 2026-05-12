@@ -1,4 +1,14 @@
-VERB RULES `get` (in addition to the generic):
+{# ---
+role: synt_code_addendum_get
+tier: wise
+lang: it
+style: few_shot
+version: 1
+owner: roberto
+updated: 2026-05-11
+sha_prev: ae001178
+--- #}
+VERB RULES for `get` (in addition to generic):
 
 DEFINITION: `get` = ENRICHES existing entries by adding fields.
 Read-only (no mutation of the source). Output `entries` (NOT
@@ -49,5 +59,5 @@ HTTP DOMAIN (get_urls):
 - use `urllib.request.urlopen(Request(url, headers=...), timeout=...)`;
   byte cap (default 5MB) → `truncated:True` on truncated body.
 - best-effort per-entry: timeout/error of one URL does not block the batch.
-- ONLY GET/HEAD. For POST/PUT use verb `send`.
+- ONLY GET/HEAD. For POST/PUT use the verb `send`.
 - MUST NOT: `import requests` or `import httpx`.

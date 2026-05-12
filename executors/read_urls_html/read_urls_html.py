@@ -52,6 +52,13 @@ try:
 except Exception:
     record_response = None  # type: ignore
     maybe_block_host = None  # type: ignore
+# Playwright sidecar client per JS-rendering opt-in (ADR 0125).
+# Import gated dietro try cosi' il modulo carica anche se la cartella
+# `playwright_sidecar/` viene rimossa (degrade graceful).
+try:
+    from playwright_sidecar import client as _playwright_client  # noqa: E402
+except Exception:
+    _playwright_client = None  # type: ignore
 
 
 USER_AGENT = "metnos-crawler/1.2 (+metnos@metnos.com)"
@@ -571,6 +578,13 @@ def invoke(args: dict) -> dict:
         return {"ok": False, "error": f"opener build failed: {e}"}
 
     follow_iframes = bool(args.get("follow_iframes", True))
+    # ADR 0125: opt-in JS-rendering via sidecar Playwright. Default false
+    # per backwards compat con throughput. Quando true:
+    #   - entries con `error_class="js_rendered"` (SPA detected dopo fetch)
+    #     vengono ri-richieste al sidecar.
+    #   - failed con `error_class="js_rendered"` analogamente.
+    # Se il sidecar e' down, lasciamo lo stato pre-existing (degrade graceful).
+    js_render = bool(args.get("js_render", False))
 
     # Pre-validate + assegna indice originale per output deterministico.
     valid_jobs: list[tuple[int, str]] = []
@@ -659,6 +673,96 @@ def invoke(args: dict) -> dict:
                             f"Contenuto estratto da iframe same-host: {ifu}"
                         )
 
+    # Stage 3 (ADR 0125): JS-rendering fallback opt-in via sidecar Playwright.
+    # Solo se js_render=True E il sidecar e' UP (probe 1s). Bersaglia:
+    #   - entries con `error_class="js_rendered"` (SPA detected post-fetch);
+    #   - failed con `error_class="js_rendered"` (urllib non riusciva a
+    #     scaricare HTML utile e abbiamo classificato come SPA).
+    # Il sidecar e' single-instance §7.4: rendering sequenziale.
+    js_render_count = 0
+    js_render_attempted = 0
+    js_render_sidecar_up = False
+    if js_render and _playwright_client is not None:
+        js_render_sidecar_up = _playwright_client.is_up()
+        if js_render_sidecar_up:
+            # Bersagli da entries (modifica in-place via pos).
+            for pos, (idx, ent) in enumerate(entries_indexed):
+                if ent.get("error_class") != "js_rendered":
+                    continue
+                target_url = ent.get("url") or urls[idx] if idx < len(urls) else None
+                if not target_url:
+                    continue
+                js_render_attempted += 1
+                resp = _playwright_client.render(target_url)
+                if not resp.get("ok"):
+                    # Sidecar fallito: lascia entry as-is + annota error_class
+                    # dal sidecar (timeout/network/...). Non sovrascrive un
+                    # rendering riuscito.
+                    ent["js_render_error"] = resp.get("error", "unknown")
+                    ent["js_render_error_class"] = resp.get(
+                        "error_class", "unknown")
+                    continue
+                # Success: aggiorna entry con HTML/text renderizzati.
+                ent["body_text"] = (resp.get("body_text") or "")[
+                    :_BODY_TRIM_CHARS]
+                ent["body_html_rendered"] = True
+                ent["title"] = resp.get("title") or ent.get("title", "")
+                ent["url"] = resp.get("final_url") or ent["url"]
+                ent["render_ms"] = resp.get("render_ms")
+                # Pulisci il marker SPA: ora la pagina e' stata renderizzata
+                # davvero. ADR 0101 honest: error_class non piu' applicabile.
+                ent.pop("error_class", None)
+                ent["js_rendered"] = False
+                ent["js_signals"] = []
+                ent["js_rendered_via_sidecar"] = True
+                # Riformula notice per chiarire al PLANNER cosa e' successo.
+                ent["notice"] = (
+                    "Pagina renderizzata via sidecar Playwright "
+                    "(JS-rendering opt-in, ADR 0125)."
+                )
+                js_render_count += 1
+            # Bersagli da failed: promuove a entries quelli che ora vengono
+            # renderizzati con successo.
+            promoted: list[int] = []
+            for fpos, fail in enumerate(failed):
+                if fail.get("error_class") != "js_rendered":
+                    continue
+                target_url = fail.get("url")
+                if not target_url:
+                    continue
+                js_render_attempted += 1
+                resp = _playwright_client.render(target_url)
+                if not resp.get("ok"):
+                    fail["js_render_error"] = resp.get("error", "unknown")
+                    fail["js_render_error_class"] = resp.get(
+                        "error_class", "unknown")
+                    continue
+                # Promote failed → entries.
+                new_entry = {
+                    "url": resp.get("final_url") or target_url,
+                    "title": resp.get("title") or "",
+                    "body_text": (resp.get("body_text") or "")[
+                        :_BODY_TRIM_CHARS],
+                    "body_html_rendered": True,
+                    "meta": {},
+                    "lang": None,
+                    "fetched_at": time.time(),
+                    "iframe_urls": [],
+                    "linked_documents": [],
+                    "js_rendered": False,
+                    "js_signals": [],
+                    "js_rendered_via_sidecar": True,
+                    "render_ms": resp.get("render_ms"),
+                    "notice": "Pagina renderizzata via sidecar Playwright "
+                              "(JS-rendering opt-in, ADR 0125).",
+                }
+                entries_indexed.append((fail.get("_idx", 999), new_entry))
+                promoted.append(fpos)
+                js_render_count += 1
+            # Rimuovi promossi da failed (in reverse per indici stabili).
+            for fpos in reversed(promoted):
+                failed.pop(fpos)
+
     # Riordina per indice originale (deterministico, indipendente da ordine
     # di completamento dei worker).
     entries_indexed.sort(key=lambda t: t[0])
@@ -667,13 +771,20 @@ def invoke(args: dict) -> dict:
     for d in failed:
         d.pop("_idx", None)
 
-    return {
+    result = {
         "ok": len(failed) == 0,
         "ok_count": len(entries),
         "fail_count": len(failed),
         "entries": entries,
         "failed": failed,
     }
+    # Telemetria JS-render (ADR 0125): esposta solo quando l'utente ha
+    # chiesto js_render=true. Cosi' i turn senza opt-in restano puliti.
+    if js_render:
+        result["js_render_count"] = js_render_count
+        result["js_render_attempted"] = js_render_attempted
+        result["js_render_sidecar_available"] = js_render_sidecar_up
+    return result
 
 
 def main():

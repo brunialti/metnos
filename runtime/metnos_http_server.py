@@ -171,6 +171,15 @@ def make_app(*, admin_key: str | None = None) -> web.Application:
     except Exception as ex:
         log.warning("users_pairings_sync at boot failed: %s", ex)
 
+    # Active sessions schema (Phase 7 Phase 1, 12/5/2026): garantisce
+    # `active_sessions` table in users.db. Idempotente.
+    try:
+        import active_sessions as _as
+        _as.init_db()
+        log.info("active_sessions schema ready")
+    except Exception as ex:
+        log.warning("active_sessions init at boot failed: %s", ex)
+
     return app
 
 

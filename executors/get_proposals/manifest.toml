@@ -52,7 +52,7 @@ type        = "string"
 
 [args.properties.since_iso.description]
 it = "Timestamp ISO (es. '2026-05-01T00:00:00Z') da cui includere le proposte. Default: 7 giorni fa (rolling window settimanale)."
-en = "──────────────────────────────────────────── ISO Timestamp (e.g., '2026-05-01T00:00:00Z') from which to include proposals. Default: 7 days ago (rolling weekly window). ────────────────────────────────────────────"
+en = "ISO Timestamp (e.g., '2026-05-01T00:00:00Z') from which to include proposals. Default: 7 days ago (rolling weekly window)."
 
 [args.properties.max_results]
 type        = "integer"
@@ -68,4 +68,4 @@ minimum     = 1
 
 [args.properties.max_results.description]
 it = "Cap superiore sulle entries ritornate. Default 50."
-en = "──────────────────────────────────────────── Upper cap on the returned entries. Default 50. ────────────────────────────────────────────"
+en = "Upper cap on the returned entries. Default 50."

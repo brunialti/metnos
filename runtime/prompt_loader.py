@@ -132,6 +132,17 @@ _compose_planner_cached = functools.lru_cache(maxsize=128)(
     _compose_planner_cached
 )
 
+# Counters per metric esterno (cache_stats). Le hit/miss native di
+# `functools.lru_cache` sono accessibili via `.cache_info()`, ma esponiamo
+# un'API stabile cross-versione che include anche lookup non-cached (vars
+# non-hashable) come miss e disposable_call. Determinismo §7.9: contatori
+# in-process, no DB.
+_compose_cache_counters = {
+    "hits": 0,
+    "misses": 0,
+    "no_cache": 0,   # vars non hashable, render diretto
+}
+
 
 def compose(role: str, lang: str, *, sections=None, **vars) -> str:
     """Render del prompt `role`. Per `role!="planner"`: alias di `get(role,
@@ -184,8 +195,17 @@ def compose(role: str, lang: str, *, sections=None, **vars) -> str:
         vars_items = tuple(sorted(vars.items()))
         # Test hashability per detection precoce di valori non-hashable.
         hash(vars_items)
+        # Snapshot hits prima della call: se lru_cache risolve dalla cache,
+        # `hits` increase di 1. Altrimenti misses+1. Comparison decide.
+        info_before = _compose_planner_cached.cache_info()
         out = _compose_planner_cached(lang, effective, vars_items)
-        cache_state = "cache_ok"
+        info_after = _compose_planner_cached.cache_info()
+        if info_after.hits > info_before.hits:
+            _compose_cache_counters["hits"] += 1
+            cache_state = "cache_hit"
+        else:
+            _compose_cache_counters["misses"] += 1
+            cache_state = "cache_miss"
     except TypeError:
         # Vars non-hashable (dict/list): render diretto senza cache.
         env = _env_for(lang)
@@ -196,6 +216,7 @@ def compose(role: str, lang: str, *, sections=None, **vars) -> str:
                                                 **vars))
         parts.append(env.render_template("planner/_footer.j2", **vars))
         out = "\n".join(parts)
+        _compose_cache_counters["no_cache"] += 1
         cache_state = "no_cache"
 
     # Logging debug (1 riga, deterministico, no LLM, §7.9).
@@ -209,6 +230,61 @@ def compose(role: str, lang: str, *, sections=None, **vars) -> str:
         pass
 
     return out
+
+
+def cache_stats() -> dict:
+    """Ritorna metriche cache compose() in-process. Determinismo §7.9.
+
+    Schema:
+        {
+            "hits": int,         # cache lru hit
+            "misses": int,       # cache lru miss (render eseguito + cached)
+            "no_cache": int,     # vars non-hashable, render senza cache
+            "size": int,         # entries attualmente nella lru (<= maxsize)
+            "maxsize": int,      # bound della lru
+            "hit_ratio": float,  # hits / (hits + misses + no_cache); 0 se 0 call
+        }
+    """
+    info = _compose_planner_cached.cache_info()
+    h = _compose_cache_counters["hits"]
+    m = _compose_cache_counters["misses"]
+    nc = _compose_cache_counters["no_cache"]
+    total = h + m + nc
+    return {
+        "hits": h,
+        "misses": m,
+        "no_cache": nc,
+        "size": info.currsize,
+        "maxsize": info.maxsize,
+        "hit_ratio": (h / total) if total > 0 else 0.0,
+    }
+
+
+def invalidate_cache(role: str | None = None, lang: str | None = None) -> int:
+    """Invalida (parzialmente o completamente) la cache di `compose()`.
+
+    Args:
+        role: se None o "planner", invalida la lru di `_compose_planner_cached`.
+              Altri role attualmente non usano cache (alias di `get`), ritorna 0.
+        lang: oggi ignorato (la lru e' globale, non per-lang). Reset completo.
+              In futuro, se serve, si puo' rebuildare la cache mantenendo le
+              entry di lingue diverse: oggi e' semplice clear() totale.
+
+    Ritorna il numero di entry rimosse dalla lru (info pre-clear).
+
+    Determinismo §7.9: niente effetti collaterali fuori dal modulo.
+    Side-effect: reset dei counter hits/misses/no_cache.
+    """
+    _ = lang  # placeholder per future evoluzioni
+    if role is not None and role != "planner":
+        return 0
+    info = _compose_planner_cached.cache_info()
+    removed = info.currsize
+    _compose_planner_cached.cache_clear()
+    _compose_cache_counters["hits"] = 0
+    _compose_cache_counters["misses"] = 0
+    _compose_cache_counters["no_cache"] = 0
+    return removed
 
 
 _LANG_STATE_FILENAME = ".lang_state.json"

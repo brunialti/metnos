@@ -27,7 +27,7 @@ type        = "string"
 
 [args.properties.base_path.description]
 it = "Directory radice del walk. Path assoluto o ~ espandibile (es. '~', '/opt/myclaw'). Deve essere dentro lo scope di lettura concesso."
-en = "──────────────────────────────────────────── Walk root directory. Absolute path or expandable ~ (e.g., '~', '/opt/myclaw'). MUST be within the granted read scope. ────────────────────────────────────────────"
+en = "Walk root directory. Absolute path or expandable ~ (e.g., '~', '/opt/myclaw'). MUST be within the granted read scope."
 
 [args.properties.recursive]
 type        = "boolean"

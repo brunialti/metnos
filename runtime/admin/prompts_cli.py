@@ -830,6 +830,186 @@ def cmd_audit_quality(args) -> int:
     return 0
 
 
+def cmd_bench(args) -> int:
+    """Bench prompt-build perf: renderizza N=100 turni simulati con sezioni
+    varie e riporta tempi mean/p50/p95, cache hit ratio e bytes totali.
+
+    Determinismo §7.9: zero LLM, solo lookup tabellare + filesystem +
+    MiniJinja env. Sample di sezioni deterministicamente fissato (seed=42)
+    per ripetibilita' del bench.
+
+    Subcommand options:
+        --runs N         Numero render (default 100)
+        --lang LANG      Lingua prompt (default config.DEFAULT_LANG)
+        --warm           Warm cache prima della misura (default off,
+                         misura mix cold+warm)
+        --compare        Stampa anche mean per (core-only, mail-only, all)
+    """
+    from time import perf_counter
+    import random
+    import statistics
+
+    runs = int(getattr(args, "runs", 100) or 100)
+    lang = args.lang or DEFAULT_LANG
+    warm_cache = bool(getattr(args, "warm", False))
+    compare = bool(getattr(args, "compare", False))
+
+    # Lista sezioni disponibili per questa lang. Se la struttura split
+    # planner non esiste (raro su dev fresca), fallisci con messaggio chiaro.
+    available_sections = prompt_loader.list_planner_sections(lang)
+    if not available_sections:
+        print(f"prompts/{lang}/planner/sections/ vuota o assente — "
+              "split planner non disponibile, niente da benchare.",
+              file=sys.stderr)
+        return 1
+
+    # Stub vars: scopri quali servono al planner e produci placeholder
+    # stringhificati hashable per la cache. Estrai dal _core (le sub-sections
+    # potrebbero avere variabili specifiche, ma usiamo lo stesso stub set).
+    core_path = PROMPTS_BASE / lang / "planner" / "_core.j2"
+    footer_path = PROMPTS_BASE / lang / "planner" / "_footer.j2"
+    stub_vars: dict[str, str] = {}
+    env = minijinja.Environment()
+    for p in (core_path, footer_path):
+        if not p.is_file():
+            continue
+        try:
+            tpl_src = p.read_text(encoding="utf-8")
+            for v in env.undeclared_variables_in_str(tpl_src):
+                stub_vars.setdefault(v, f"<stub:{v}>")
+        except Exception:
+            continue
+    for sec in available_sections:
+        sec_path = PROMPTS_BASE / lang / "planner" / "sections" / f"{sec}.j2"
+        if not sec_path.is_file():
+            continue
+        try:
+            tpl_src = sec_path.read_text(encoding="utf-8")
+            for v in env.undeclared_variables_in_str(tpl_src):
+                stub_vars.setdefault(v, f"<stub:{v}>")
+        except Exception:
+            continue
+
+    # Sample deterministico di "intent → sections" per simulare il turno.
+    # Distribuzione: 30% degrade fallback (None → tutte le sezioni, caso
+    # confidence-low), 30% single section, 25% multi (2-3 sezioni), 15%
+    # all sezioni esplicite. NB: `sections=None` in compose() significa
+    # "include TUTTE" per ADR Fase C (degrade graceful), non "solo core".
+    rng = random.Random(42)
+    samples: list[tuple[str, ...] | None] = []
+    sec_pool = list(available_sections)
+    for _ in range(runs):
+        r = rng.random()
+        if r < 0.30:
+            samples.append(None)  # fallback all-sections
+        elif r < 0.60 and "mail" in sec_pool:
+            samples.append(("mail",))
+        elif r < 0.85:
+            k = rng.randint(2, min(3, len(sec_pool)))
+            samples.append(tuple(sorted(rng.sample(sec_pool, k))))
+        else:
+            samples.append(tuple(sorted(sec_pool)))
+
+    # Reset stato cache + warm opzionale (rende warm-ratio piu' rappresentativo
+    # di un long-running daemon vs cold start).
+    prompt_loader.invalidate_cache()
+    if warm_cache:
+        # Touch ogni combinazione del sample una volta per pre-popolare.
+        seen: set = set()
+        for combo in samples:
+            key = combo if combo is not None else ("__none__",)
+            if key in seen:
+                continue
+            seen.add(key)
+            try:
+                prompt_loader.compose("planner", lang,
+                                       sections=list(combo) if combo else None,
+                                       **stub_vars)
+            except Exception as e:
+                print(f"  warm error on {combo}: {e}", file=sys.stderr)
+        # Reset counters dopo warm-up: i tempi di seguito non includono warm.
+        # NB: invalidate_cache resetterebbe anche la lru → perdiamo il warm
+        # data. Resettiamo solo i contatori esterni.
+        prompt_loader._compose_cache_counters["hits"] = 0
+        prompt_loader._compose_cache_counters["misses"] = 0
+        prompt_loader._compose_cache_counters["no_cache"] = 0
+
+    durations_us: list[float] = []
+    bytes_total = 0
+    n_errors = 0
+    for combo in samples:
+        t0 = perf_counter()
+        try:
+            out = prompt_loader.compose("planner", lang,
+                                          sections=list(combo) if combo else None,
+                                          **stub_vars)
+        except Exception as e:
+            n_errors += 1
+            durations_us.append(0.0)
+            print(f"  error compose({combo}): {e}", file=sys.stderr)
+            continue
+        elapsed_us = (perf_counter() - t0) * 1_000_000
+        durations_us.append(elapsed_us)
+        bytes_total += len(out)
+
+    valid = [d for d in durations_us if d > 0]
+    if not valid:
+        print("nessun render riuscito.", file=sys.stderr)
+        return 1
+    mean_us = statistics.mean(valid)
+    median_us = statistics.median(valid)
+    # p95 = 95-esimo percentile semplice (nlargest)
+    sorted_us = sorted(valid)
+    p95_idx = max(0, int(len(sorted_us) * 0.95) - 1)
+    p95_us = sorted_us[p95_idx]
+
+    stats = prompt_loader.cache_stats()
+
+    print(f"Bench prompt-build (lang={lang}, runs={runs}, warm={warm_cache})")
+    print(f"  errors           : {n_errors}/{runs}")
+    print(f"  mean             : {mean_us / 1000:.3f} ms")
+    print(f"  p50  (median)    : {median_us / 1000:.3f} ms")
+    print(f"  p95              : {p95_us / 1000:.3f} ms")
+    print(f"  total bytes      : {bytes_total:,}")
+    print(f"  avg bytes/render : {bytes_total // max(1, len(valid)):,}")
+    print()
+    print(f"Cache stats:")
+    print(f"  hits             : {stats['hits']}")
+    print(f"  misses           : {stats['misses']}")
+    print(f"  no_cache         : {stats['no_cache']}")
+    print(f"  size / maxsize   : {stats['size']} / {stats['maxsize']}")
+    print(f"  hit ratio        : {stats['hit_ratio'] * 100:.2f}%")
+
+    if compare:
+        print()
+        print("Compare presets (single render each, fresh cache):")
+        # NB: sections=()/None significa "include TUTTE" (degrade graceful).
+        # Per "solo core" non c'e' API oggi → l'analogo piu' vicino e' una
+        # singola sezione minimale (1 tag) o nessuna. Misuriamo i 3 scenari
+        # realistici: mail-only (intent rilevato), multi (2 sezioni), all.
+        presets = [
+            ("mail_only", ("mail",) if "mail" in sec_pool else ()),
+            ("mail_calendar", tuple(s for s in ("mail", "calendar") if s in sec_pool)),
+            ("all_or_default", None),
+        ]
+        for label, combo in presets:
+            prompt_loader.invalidate_cache()
+            t0 = perf_counter()
+            out = prompt_loader.compose("planner", lang,
+                                          sections=list(combo) if combo else None,
+                                          **stub_vars)
+            cold_ms = (perf_counter() - t0) * 1000
+            t0 = perf_counter()
+            out = prompt_loader.compose("planner", lang,
+                                          sections=list(combo) if combo else None,
+                                          **stub_vars)
+            warm_ms = (perf_counter() - t0) * 1000
+            print(f"  {label:15s}: cold={cold_ms:.3f}ms  warm={warm_ms:.3f}ms  "
+                  f"size={len(out):,}b")
+
+    return 0
+
+
 def cmd_lint(args) -> int:
     """Esegue il linter deterministico (`runtime/prompts_lint`) sui prompt
     e stampa gli issue in formato human-readable.
@@ -950,6 +1130,17 @@ def main() -> int:
                           help="Soglia individuale wise vs frontier "
                                "(default 0.95)")
 
+    p_bench = sub.add_parser("bench",
+                               help="Bench prompt-build perf (mean/p50/p95) + cache stats")
+    p_bench.add_argument("--runs", type=int, default=100,
+                          help="Numero render simulati (default 100)")
+    p_bench.add_argument("--lang", default=None,
+                          help=f"Lingua prompt (default: {DEFAULT_LANG})")
+    p_bench.add_argument("--warm", action="store_true",
+                          help="Warm cache prima della misura (default: cold mix)")
+    p_bench.add_argument("--compare", action="store_true",
+                          help="Stampa anche cold/warm per (core_only, mail_only, all)")
+
     args = parser.parse_args()
     if args.cmd == "list":
         return cmd_list(args)
@@ -975,6 +1166,8 @@ def main() -> int:
         return cmd_audit_quality(args)
     if args.cmd == "lint":
         return cmd_lint(args)
+    if args.cmd == "bench":
+        return cmd_bench(args)
     return 1
 
 
