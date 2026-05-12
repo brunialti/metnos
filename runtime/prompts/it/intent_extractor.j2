@@ -75,12 +75,12 @@ Esempi:
 "controlla che /tmp/lock esista" → {"verb": "find", "object": "files"}
 "where are the receipts" → {"verb": "find", "object": "files"}
 "ottieni il json dall'endpoint" → {"verb": "get", "object": "urls"}
-"fissa un appuntamento mercoledi mattina" → {"verb": "set", "object": "events"}
-"prenota una riunione domani alle 10" → {"verb": "set", "object": "events"}
+"fissa un appuntamento mercoledi mattina" → {"verb": "create", "object": "events"}
+"prenota una riunione domani alle 10" → {"verb": "create", "object": "events"}
 "che impegni ho domani" → {"verb": "read", "object": "events"}
 "elenca eventi del calendario" → {"verb": "list", "object": "events"}
-"book a meeting tomorrow at 10" → {"verb": "set", "object": "events"}
-"crea un evento sul calendario" → {"verb": "set", "object": "events"}
+"book a meeting tomorrow at 10" → {"verb": "create", "object": "events"}
+"crea un evento sul calendario" → {"verb": "create", "object": "events"}
 "proponi 3 orari per appuntamento la prossima settimana" → {"verb": "find", "object": "events"}
 "suggest a free slot tomorrow morning" → {"verb": "find", "object": "events"}
 "proponi 3 mattine la prossima settimana e prenotami quella che scelgo" → {"verb": "find", "object": "events"}
@@ -89,8 +89,10 @@ Esempi:
 "suggest a free slot tomorrow and confirm" → {"verb": "find", "object": "events"}
 PRINCIPIO SEMANTICO (universale, applica a TUTTI gli object, non solo events):
 - Verbo CREA/IMPOSTA/SCRIVE/CANCELLA un'entita' (azione destructive/mutating)
-  → mappa al verb operativo (set/write/delete/move/send/create).
-  Esempi: «fissa appuntamento», «invia mail», «cancella file», «crea cartella».
+  → mappa al verb operativo (create/set/write/delete/move/send/share).
+  Esempi: «fissa appuntamento» = create events, «invia mail» = send messages,
+  «cancella file» = delete files, «crea cartella» = create dirs, «condividi
+  il foglio con Y» = share files (ADR 0128 outbound consent).
 - Verbo CHIEDE/PROPONE/SUGGERISCE/MOSTRA (azione inquiry, read-only) → read.
   La sintesi testuale del risultato avviene nel final_answer del planner;
   NON esiste un executor describe_<object> dedicato per la maggior parte
@@ -98,11 +100,12 @@ PRINCIPIO SEMANTICO (universale, applica a TUTTI gli object, non solo events):
   compute statistica). Esempi: «proponi 3 orari» = read events, «mostrami
   i file di X» = read files, «quali sono N libere?» = read events.
 - Se la frase mescola entrambi i sensi («se c'e' posto fissa l'appuntamento»)
-  l'intent vincente e' il VERBO MUTATING (set) — il check_availability
-  e' gestito a livello di planner come prima-azione (read_events).
+  l'intent vincente e' il VERBO MUTATING (create per events post ADR 0128) —
+  il check_availability e' gestito a livello di planner come prima-azione
+  (read_events).
 NOTA SU events vs proposals:
 - events = APPUNTAMENTI / RIUNIONI / IMPEGNI di calendario (agenda).
-  "fissa/prenota/book/schedule/crea appuntamento|riunione|incontro|meeting" = set events.
+  "fissa/prenota/book/schedule/crea appuntamento|riunione|incontro|meeting" = create events (ADR 0128).
 - proposals = PROPOSTE INTERNE del sistema synth/introvertiva di Metnos
   (suggerimenti per migliorare il catalog stesso). Mai user-facing intent.
   Se la query parla di "appuntamento/riunione/incontro/meeting" NON e' proposals.

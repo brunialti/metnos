@@ -326,13 +326,15 @@ class TestProposeIntentGateLogic(unittest.TestCase):
     """Test composito gate runtime — propose-intent + calendar-write tool."""
 
     def test_gate_triggers_propose_set_events(self):
-        """Query propose-intent + set_events → gate triggers."""
+        """Query propose-intent + create_events → gate triggers.
+        Test name unchanged for git diff readability; chosen_name aggiornato
+        post ADR 0128 (set_events -> create_events)."""
         from agent_runtime import (
             _query_is_propose_intent,
             _calendar_write_tools,
         )
         q = "proponi 3 orari per appuntamento la prossima settimana"
-        chosen_name = "set_events"
+        chosen_name = "create_events"  # post ADR 0128 (era set_events)
         gate_triggered = (
             chosen_name in _calendar_write_tools()
             and _query_is_propose_intent(q)
@@ -340,7 +342,7 @@ class TestProposeIntentGateLogic(unittest.TestCase):
         self.assertTrue(gate_triggered)
 
     def test_gate_triggers_propose_delete_events(self):
-        """Anche delete_events e' calendar-write: gate triggers."""
+        """Verifichiamo che create_events + EN propose triggera il gate."""
         from agent_runtime import (
             _query_is_propose_intent,
             _calendar_write_tools,
@@ -348,9 +350,9 @@ class TestProposeIntentGateLogic(unittest.TestCase):
         # NB: delete_events e' set/create-like? Cache attualmente filtra
         # per verb in {set, create}. Verifichiamo invece il pattern reale
         # del catalog: delete_events NON e' calendar_write_tool. Verifichiamo
-        # invece set_events + EN propose.
+        # invece create_events + EN propose.
         q = "propose 3 morning times next week"
-        chosen_name = "set_events"
+        chosen_name = "create_events"  # post ADR 0128
         gate_triggered = (
             chosen_name in _calendar_write_tools()
             and _query_is_propose_intent(q)
@@ -358,13 +360,13 @@ class TestProposeIntentGateLogic(unittest.TestCase):
         self.assertTrue(gate_triggered)
 
     def test_gate_skipped_legit_set_events(self):
-        """Query «fissa» + set_events → gate NO trigger (legit booking)."""
+        """Query «fissa» + create_events → gate NO trigger (legit booking)."""
         from agent_runtime import (
             _query_is_propose_intent,
             _calendar_write_tools,
         )
         q = "fissa un appuntamento la prossima settimana mattina alle 9"
-        chosen_name = "set_events"
+        chosen_name = "create_events"  # post ADR 0128
         gate_triggered = (
             chosen_name in _calendar_write_tools()
             and _query_is_propose_intent(q)
@@ -449,10 +451,11 @@ class TestPrefilterVerbMappingPropose(unittest.TestCase):
         self.assertEqual(self.detect_verb(toks), "describe")
 
     def test_detect_canonical_verb_legit_set_unchanged(self):
-        """«fissa» rimane mappato a set (no regression)."""
+        """«fissa» mappato a `create` post ADR 0128 (12/5/2026): create_events
+        e' l'executor canonico per Google Calendar create (era set_events)."""
         q = "fissa un appuntamento mercoledi mattina"
         toks = self.tokenize(q)
-        self.assertEqual(self.detect_verb(toks), "set")
+        self.assertEqual(self.detect_verb(toks), "create")
 
 
 if __name__ == "__main__":

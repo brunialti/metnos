@@ -75,12 +75,12 @@ Examples:
 "check if /tmp/lock exists" → {"verb": "find", "object": "files"}
 "where are the receipts" → {"verb": "find", "object": "files"}
 "get the json from the endpoint" → {"verb": "get", "object": "urls"}
-"book an appointment wednesday morning" → {"verb": "set", "object": "events"}
-"schedule a meeting tomorrow at 10" → {"verb": "set", "object": "events"}
+"book an appointment wednesday morning" → {"verb": "create", "object": "events"}
+"schedule a meeting tomorrow at 10" → {"verb": "create", "object": "events"}
 "what's on my calendar tomorrow" → {"verb": "read", "object": "events"}
 "list calendar events" → {"verb": "list", "object": "events"}
-"fissa un appuntamento mercoledi" → {"verb": "set", "object": "events"}
-"create a calendar event" → {"verb": "set", "object": "events"}
+"fissa un appuntamento mercoledi" → {"verb": "create", "object": "events"}
+"create a calendar event" → {"verb": "create", "object": "events"}
 "propose 3 morning times next week for a 1h appointment" → {"verb": "find", "object": "events"}
 "recommend 2 free wednesdays" → {"verb": "find", "object": "events"}
 "proponi 3 mattine la prossima settimana e prenotami quella che scelgo" → {"verb": "find", "object": "events"}
@@ -89,8 +89,10 @@ Examples:
 "suggest a free slot tomorrow and confirm" → {"verb": "find", "object": "events"}
 SEMANTIC PRINCIPLE (universal, applies to ALL objects, not just events):
 - Verb CREATES/SETS/WRITES/DELETES an entity (destructive/mutating action)
-  → maps to operative verb (set/write/delete/move/send/create).
-  Examples: «book appointment», «send mail», «delete file», «create folder».
+  → maps to operative verb (create/set/write/delete/move/send/share).
+  Examples: «book appointment» = create events (ADR 0128), «send mail» =
+  send messages, «delete file» = delete files, «create folder» = create dirs,
+  «share the doc with X» = share files (outbound consent).
 - Verb ASKS/PROPOSES/SUGGESTS/SHOWS (inquiry, read-only) → read.
   Textual synthesis of the result happens in planner's final_answer; there
   is NO `describe_<object>` executor for most objects (exception:
@@ -98,11 +100,12 @@ SEMANTIC PRINCIPLE (universal, applies to ALL objects, not just events):
   «propose 3 times» = read events, «show me X files» = read files,
   «what are N free?» = read events.
 - If the sentence mixes both senses («if there's a slot book the meeting»)
-  the winning intent is the MUTATING verb (set) — the availability check
-  is handled at planner level as first-action (read_events).
+  the winning intent is the MUTATING verb (create for events post ADR 0128)
+  — the availability check is handled at planner level as first-action
+  (read_events).
 NOTE ON events vs proposals:
 - events = CALENDAR APPOINTMENTS / MEETINGS (user-facing agenda).
-  "book/schedule/create appointment|meeting|reminder" = set events.
+  "book/schedule/create appointment|meeting|reminder" = create events (ADR 0128).
 - proposals = INTERNAL Metnos synth/introvertiva proposals (suggestions
   to improve the catalog itself). Never the user-facing intent.
   If the query mentions "appointment/meeting/booking" it is NOT proposals.

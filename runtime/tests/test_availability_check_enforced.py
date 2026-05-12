@@ -151,7 +151,7 @@ class TestAvailabilityGateLogic(unittest.TestCase):
             _calendar_write_tools,
         )
         q = "fissa appuntamento mercoledi se c'è posto"
-        chosen_name = "set_events"
+        chosen_name = "create_events"  # post ADR 0128 (era set_events)
         prev_steps = [
             SimpleNamespace(chosen_tool="get_now",
                              result={"ok": True}),
@@ -171,7 +171,7 @@ class TestAvailabilityGateLogic(unittest.TestCase):
             _calendar_write_tools,
         )
         q = "fissa appuntamento mercoledi se c'è posto"
-        chosen_name = "set_events"
+        chosen_name = "create_events"  # post ADR 0128 (era set_events)
         prev_steps = [
             SimpleNamespace(chosen_tool="get_now",
                              result={"ok": True}),
@@ -193,7 +193,7 @@ class TestAvailabilityGateLogic(unittest.TestCase):
             _calendar_write_tools,
         )
         q = "fissa appuntamento mercoledi alle 9 per mezz'ora"
-        chosen_name = "set_events"
+        chosen_name = "create_events"  # post ADR 0128 (era set_events)
         prev_steps = []
         gate_triggered = (
             chosen_name in _calendar_write_tools()

@@ -1,5 +1,5 @@
 {
-  "_doc": "Mapping deterministico action skill -> verbo Metnos (vocabolario chiuso §2.2). Domain skill -> object Metnos plurale. `object_override` su un'action sostituisce l'object derivato dal domain (es. create-folder -> dirs invece che files). `qualifier` aggiunge un suffisso SOLO se il valore e' nei QUALIFIERS canonici di vocab.py. `exclude_reason` marca un'action come deliberatamente non tradotta.",
+  "_doc": "Mapping deterministico action skill -> verbo Metnos (vocabolario chiuso §2.2). Due tabelle. (1) `actions` (LEGACY, ADR 0123): mapping flat per-action senza contesto. (2) `contextual` (ADR 0128, 12/5/2026): mapping per (provider|domain, action, target_kind, side_effect) -> metnos_verb. Il translator consulta PRIMA `contextual` (se contesto noto), poi fallback su `actions`. Domain skill -> object Metnos plurale (`domains`). `object_override` su un'action sostituisce l'object derivato dal domain. `qualifier` aggiunge un suffisso SOLO se il valore e' nei QUALIFIERS canonici di vocab.py. `exclude_reason` marca un'action come deliberatamente non tradotta.",
 
   "actions": {
     "list":          {"verb": "read",   "alt_verb": "list"},
@@ -7,17 +7,17 @@
     "search":        {"verb": "find"},
     "find":          {"verb": "find"},
     "read":          {"verb": "read"},
-    "create":        {"verb": "set"},
+    "create":        {"verb": "create"},
     "create-folder": {"verb": "create", "object_override": "dirs"},
     "send":          {"verb": "send"},
     "reply":         {"verb": "send"},
-    "update":        {"verb": "change"},
-    "modify":        {"verb": "change"},
+    "update":        {"verb": "set"},
+    "modify":        {"verb": "set"},
     "delete":        {"verb": "delete"},
-    "share":         {"verb": "set"},
+    "share":         {"verb": "share"},
     "upload":        {"verb": "write"},
     "download":      {"verb": "read"},
-    "append":        {"verb": "change"},
+    "append":        {"verb": "write", "qualifier": ""},
     "labels":        {"exclude_reason": "Gmail labels: funzionalita' troppo specifica. _labels non e' qualifier canonico (vocab.QUALIFIERS); aggiungere un nuovo qualifier richiede approvazione esplicita (CLAUDE.md §2.2)."}
   },
 
@@ -37,5 +37,70 @@
     "docs":   "text"
   },
 
-  "_note": "Il translator combina (verb, object, [domain_qualifier]) in `<verb>_<object>[_<domq>]`. I qualifier action-side sono stati rimossi (10/5/2026): `_reply`, `_share`, `_append`, `_labels` non sono in vocab.QUALIFIERS. Le collisioni risultanti (es. gmail.send + gmail.reply -> send_messages, sheets.update + sheets.append -> change_files_xlsx) producono rejection del 2° per 'name collision', registrato in audit JSONL."
+  "contextual": {
+    "_doc": "ADR 0128 — Tabella contestuale `(domain, action) -> {target_kind, side_effect, verb}`. Risolve il drift sistemico get/change/set overloaded: lo stesso provider-verb mappa a Metnos-verbi diversi a seconda del target_kind e side_effect. Chiavi formato `<domain>:<action>`. Vince su `actions` flat. `target_kind` ∈ {content, metadata, body, shape, state_labels, share_access, create_only, snapshot_only}. `side_effect` ∈ {none, fetch_content, fetch_metadata, body_modify, shape_modify, state_update, acl_grant, resource_create, resource_delete}. Il verifier deterministico `runtime/importer_verb_verify.py` controlla che il verb scelto matchi la (target_kind, side_effect) della cella.",
+
+    "calendar:list":   {"target_kind": "content",       "side_effect": "fetch_content",     "verb": "read"},
+    "calendar:get":    {"target_kind": "content",       "side_effect": "fetch_content",     "verb": "read"},
+    "calendar:create": {"target_kind": "create_only",   "side_effect": "resource_create",   "verb": "create"},
+    "calendar:update": {"target_kind": "state_labels",  "side_effect": "state_update",      "verb": "set"},
+    "calendar:delete": {"target_kind": "create_only",   "side_effect": "resource_delete",   "verb": "delete"},
+    "calendar:share":  {"target_kind": "share_access",  "side_effect": "acl_grant",         "verb": "share"},
+
+    "gmail:list":      {"target_kind": "metadata",      "side_effect": "fetch_metadata",    "verb": "read"},
+    "gmail:get":       {"target_kind": "content",       "side_effect": "fetch_content",     "verb": "read"},
+    "gmail:search":    {"target_kind": "content",       "side_effect": "fetch_content",     "verb": "find"},
+    "gmail:send":      {"target_kind": "create_only",   "side_effect": "resource_create",   "verb": "send"},
+    "gmail:reply":     {"target_kind": "create_only",   "side_effect": "resource_create",   "verb": "send"},
+    "gmail:modify":    {"target_kind": "state_labels",  "side_effect": "state_update",      "verb": "set"},
+    "gmail:delete":    {"target_kind": "create_only",   "side_effect": "resource_delete",   "verb": "delete"},
+
+    "drive:list":      {"target_kind": "metadata",      "side_effect": "fetch_metadata",    "verb": "read"},
+    "drive:get":       {"target_kind": "metadata",      "side_effect": "fetch_metadata",    "verb": "read"},
+    "drive:search":    {"target_kind": "metadata",      "side_effect": "fetch_metadata",    "verb": "find"},
+    "drive:download":  {"target_kind": "content",       "side_effect": "fetch_content",     "verb": "read"},
+    "drive:upload":    {"target_kind": "body",          "side_effect": "body_modify",       "verb": "write"},
+    "drive:create-folder": {"target_kind": "create_only", "side_effect": "resource_create", "verb": "create",
+                            "object_override": "dirs"},
+    "drive:delete":    {"target_kind": "create_only",   "side_effect": "resource_delete",   "verb": "delete"},
+    "drive:share":     {"target_kind": "share_access",  "side_effect": "acl_grant",         "verb": "share"},
+
+    "sheets:get":      {"target_kind": "content",       "side_effect": "fetch_content",     "verb": "read"},
+    "sheets:list":     {"target_kind": "metadata",      "side_effect": "fetch_metadata",    "verb": "read"},
+    "sheets:create":   {"target_kind": "create_only",   "side_effect": "resource_create",   "verb": "create"},
+    "sheets:update":   {"target_kind": "state_labels",  "side_effect": "state_update",      "verb": "set"},
+    "sheets:append":   {"target_kind": "body",          "side_effect": "body_modify",       "verb": "write"},
+    "sheets:delete":   {"target_kind": "create_only",   "side_effect": "resource_delete",   "verb": "delete"},
+
+    "docs:get":        {"target_kind": "content",       "side_effect": "fetch_content",     "verb": "read"},
+    "docs:list":       {"target_kind": "metadata",      "side_effect": "fetch_metadata",    "verb": "read"},
+    "docs:create":     {"target_kind": "create_only",   "side_effect": "resource_create",   "verb": "create"},
+    "docs:append":     {"target_kind": "body",          "side_effect": "body_modify",       "verb": "write"},
+    "docs:update":     {"target_kind": "body",          "side_effect": "body_modify",       "verb": "write"},
+    "docs:delete":     {"target_kind": "create_only",   "side_effect": "resource_delete",   "verb": "delete"},
+
+    "contacts:list":   {"target_kind": "content",       "side_effect": "fetch_content",     "verb": "read"},
+    "contacts:get":    {"target_kind": "content",       "side_effect": "fetch_content",     "verb": "read"},
+    "contacts:search": {"target_kind": "content",       "side_effect": "fetch_content",     "verb": "find"},
+    "contacts:create": {"target_kind": "create_only",   "side_effect": "resource_create",   "verb": "create"},
+    "contacts:update": {"target_kind": "state_labels",  "side_effect": "state_update",      "verb": "set"},
+    "contacts:delete": {"target_kind": "create_only",   "side_effect": "resource_delete",   "verb": "delete"}
+  },
+
+  "verb_by_target_side": {
+    "_doc": "Look-up inverso per il verifier (ADR 0128 importer_verb_verify): dato `(target_kind, side_effect)`, ritorna il `metnos_verb` canonico. Usato per controllare in pre-import che la cella `contextual[domain:action]` sia consistente E in post-import per rilevare drift dei manifest esistenti. Tabella chiusa, derivata dai principi §2.2:",
+
+    "content|fetch_content":     "read",
+    "metadata|fetch_metadata":   "get",
+    "content|fetch_metadata":    "read",
+    "body|body_modify":          "write",
+    "shape|shape_modify":        "change",
+    "state_labels|state_update": "set",
+    "share_access|acl_grant":    "share",
+    "create_only|resource_create": "create",
+    "create_only|resource_delete": "delete",
+    "snapshot_only|fetch_metadata": "get"
+  },
+
+  "_note": "Il translator combina (verb, object, [domain_qualifier]) in `<verb>_<object>[_<domq>]`. Pre-import, se `contextual[<domain>:<action>]` ha un override, ha priorita' su `actions[<action>]`. La cella contestuale e' il single source of truth per la coerenza verb<->semantica (ADR 0128). Verifier deterministico `runtime/importer_verb_verify.py::check_plan` rigetta plan dove (target_kind, side_effect) NON matcha il verb scelto."
 }

@@ -28,6 +28,7 @@ VOCAB_MAP_PATH = Path(__file__).resolve().parent / "skill_vocab_map.json"
 
 # Vocabolario Metnos (replicato qui per autonomia del prototipo).
 # In produzione si importa da `runtime/vocab.py`.
+# `share` aggiunto 12/5/2026 (ADR 0128 — outbound consent, distinto da send/set).
 _METNOS_VERBS = {
     "read", "write", "move", "delete", "create",
     "find", "list",
@@ -39,6 +40,7 @@ _METNOS_VERBS = {
     "compute", "compare",
     "change",
     "order",
+    "share",
 }
 _METNOS_OBJECTS = {
     "files", "dirs", "packages", "messages", "events",
@@ -143,24 +145,48 @@ def resolve_name(domain: str, action: str, vocab_map: dict | None = None) -> tup
     """Ritorna `(name, verb, object, qualifier)` o solleva
     SkillTranslateError se la mapping non copre.
 
+    ADR 0128 (12/5/2026): consulta PRIMA la tabella `contextual` per
+    `<domain>:<action>` — se presente, ha priorita' su `actions` flat e
+    fornisce verb canonico contestualmente al `(target_kind, side_effect)`.
+    Fallback su `actions` flat (legacy ADR 0123) se la cella contestuale
+    manca. Cosi' lo stesso provider-verb (es. gmail.modify, drive.share,
+    sheets.update) mappa a Metnos-verbi semanticamente coerenti senza
+    drift.
+
     DEVI: passare domain/action lowercase.
     NON DEVI: chiamare per action ambigue: il fallback synth stage 1 va
     fatto a livello superiore (questa funzione e' deterministica).
     OK: resolve_name("calendar", "list") -> ("read_events", "read", "events", "").
+    OK: resolve_name("drive", "share") -> ("share_files", "share", "files", "").
     ERRORE: resolve_name("calendar", "ufoize") -> SkillTranslateError.
     """
     vm = vocab_map or _load_vocab_map()
     actions = vm["actions"]
     domains = vm["domains"]
     domain_q = vm.get("domain_qualifier", {})
+    contextual = vm.get("contextual", {})
 
     if domain not in domains:
         raise SkillTranslateError(f"domain skill non mappato: {domain!r}")
-    if action not in actions:
-        raise SkillTranslateError(f"action skill non mappata: {action!r}")
+
+    # ADR 0128: consulta PRIMA contextual[`<domain>:<action>`]. Se presente,
+    # ha priorita' su `actions` flat. Cosi' `gmail:modify -> set` (state
+    # labels) e' inconfondibile con `docs:update -> write` (body modify).
+    ctx_key = f"{domain}:{action}"
+    ctx_spec = contextual.get(ctx_key)
+    if ctx_spec is not None:
+        # Sintetizziamo uno spec-like dict per riusare il resto della logica.
+        spec = {"verb": ctx_spec["verb"]}
+        if "object_override" in ctx_spec:
+            spec["object_override"] = ctx_spec["object_override"]
+        if "qualifier" in ctx_spec:
+            spec["qualifier"] = ctx_spec["qualifier"]
+    else:
+        if action not in actions:
+            raise SkillTranslateError(f"action skill non mappata: {action!r}")
+        spec = actions[action]
 
     obj = domains[domain]
-    spec = actions[action]
 
     # `exclude_reason`: action mappata deliberatamente come "non tradurre".
     # Es. `labels` (Gmail labels: funzionalita' troppo specifica, e `_labels`
@@ -209,6 +235,21 @@ def resolve_name(domain: str, action: str, vocab_map: dict | None = None) -> tup
     name = "_".join(parts)
     qualifier_combined = "_".join(q for q in (domain_qual, action_qual) if q)
     return name, verb, obj, qualifier_combined
+
+
+def resolve_context(domain: str, action: str, vocab_map: dict | None = None) -> dict:
+    """Ritorna la cella `contextual[<domain>:<action>]` o `{}`.
+
+    ADR 0128: helper per il verifier importer_verb_verify. Espone
+    `(target_kind, side_effect, verb)` derivati dal contesto in modo da
+    poter controllare a posteriori che il plan finale aderisca alla
+    semantica della cella.
+
+    Determinismo §7.9: pura lookup tabellare.
+    """
+    vm = vocab_map or _load_vocab_map()
+    ctx = vm.get("contextual", {})
+    return dict(ctx.get(f"{domain}:{action}", {}))
 
 
 # ---------------------------------------------------------------------------
@@ -494,6 +535,9 @@ def resolve_reverse_pattern(verb: str, obj: str) -> tuple:
     - write/change/extract/compress/render/order -> `(False, "")` per ora
       (richiedono blob backup specifico, fuori scope Task B).
     - send_messages         -> `(True, "delete_messages_by_id")` (5° pattern).
+    - share_<obj>          -> `(True, "delete_<obj>_permissions_by_id")` ADR 0128:
+      lo share crea un permission/ACL grant remoto, reversibile via revoke
+      dell'id del permesso. Per il momento usiamo il 5° pattern adattato.
     """
     READ_ONLY = {
         "read", "list", "find", "get", "filter", "sort", "group",
@@ -518,6 +562,10 @@ def resolve_reverse_pattern(verb: str, obj: str) -> tuple:
     if verb == "write":
         # Upload Drive: il file remoto preesiste? In genere no -> reverse via id.
         return True, f"delete_{obj}_by_id"
+    if verb == "share":
+        # ADR 0128: revoke ACL grant via permission id. Pattern non in
+        # catalogo §2.3 ancora, ma usa la stessa famiglia delete_*_by_id.
+        return True, f"delete_{obj}_permissions_by_id"
     return False, ""
 
 
@@ -604,6 +652,8 @@ _OUTPUT_KIND_BY_VERB = {
     "change": "results",
     "extract": "results",
     "compress": "results",
+    # share (ADR 0128): outbound consent, side-effect remoto -> results.
+    "share": "results",
 }
 
 

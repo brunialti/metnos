@@ -816,13 +816,21 @@ _HEALTH_IMPERATIVE_KEYWORDS = (
 # Estendere solo per executor che creano UNA singola entita' remota per
 # invocazione (set_*, send_*, write_* su provider esterni).
 _AUTO_FINAL_TRANSFORMATIVE = frozenset({
-    "set_events",
+    # Post ADR 0128 (12/5/2026): set_events -> create_events,
+    # set_files -> share_files_google_workspace, set_files_text -> create_files_text,
+    # set_files_xlsx kept but ora rappresenta sheets.update (state upsert),
+    # create_files_xlsx aggiunto (sheets.create), set_messages aggiunto
+    # (gmail.modify), write_files_text aggiunto (docs.append).
+    "create_events",
     "send_messages_google_workspace",
     "send_messages",
     "write_files_google_workspace",
-    "set_files",
-    "set_files_text",
+    "write_files_text",
+    "share_files_google_workspace",
+    "create_files_text",
+    "create_files_xlsx",
     "set_files_xlsx",
+    "set_messages",
     "create_dirs_google_workspace",
 })
 
@@ -940,8 +948,8 @@ def _calendar_write_tools() -> frozenset:
         result = frozenset(names)
     except Exception:
         # Fallback graceful se catalog non disponibile (test/boot iniziale):
-        # almeno set_events e' guaranteed-canonical.
-        result = frozenset({"set_events"})
+        # almeno create_events e' guaranteed-canonical (post ADR 0128, era set_events).
+        result = frozenset({"create_events"})
     _calendar_write_tools._cached = result
     return result
 

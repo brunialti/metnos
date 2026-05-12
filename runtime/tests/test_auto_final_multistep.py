@@ -105,7 +105,7 @@ class TestAutoFinalMultistepSkip(unittest.TestCase):
             _AUTO_FINAL_TRANSFORMATIVE,
         )
         q = "fissa appuntamento mercoledi se c'è posto e mandami email"
-        chosen_name = "set_events"
+        chosen_name = "create_events"
         obs = {
             "ok": True,
             "_undo": {"ids": ["evt_123"]},
@@ -130,7 +130,7 @@ class TestAutoFinalMultistepSkip(unittest.TestCase):
             _AUTO_FINAL_TRANSFORMATIVE,
         )
         q = "fissa appuntamento mercoledi 16 alle 9 per mezz'ora"
-        chosen_name = "set_events"
+        chosen_name = "create_events"
         obs = {
             "ok": True,
             "_undo": {"ids": ["evt_456"]},
@@ -154,7 +154,7 @@ class TestAutoFinalMultistepSkip(unittest.TestCase):
             _AUTO_FINAL_TRANSFORMATIVE,
         )
         q = "fissa appuntamento o mercoledi o giovedi alle 9"
-        chosen_name = "set_events"
+        chosen_name = "create_events"
         obs = {
             "ok": True,
             "_undo": {"ids": ["evt_x"]},

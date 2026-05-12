@@ -220,8 +220,8 @@ move/delete/send, the summary must be EMITTED IN final_answer after execution.
    MUST NOT: call the mutating verb BEFORE get_inputs (choice not made yet).
    OK: «propose 3 morning slots next week and book the one I pick»
        → get_now → find_events_empty(size="1hour", time_windows=["next-week"],
-       time_of_day="morning") → get_inputs(...) → set_events(...) → final_answer.
-   ERROR: «propose and book» → direct set_events (choice not made yet).
+       time_of_day="morning") → get_inputs(...) → create_events(...) → final_answer.
+   ERROR: «propose and book» → direct create_events (choice not made yet).
 
 ══════════════════════════════════════════════════════════════════════
 CROSS-CUTTING DOMAIN CONSTRAINTS

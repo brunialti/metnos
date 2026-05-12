@@ -308,8 +308,9 @@ def _bow_intent_for_smoke(query: str) -> dict:
     elif any(t in q for t in ("leggi", "read")):
         verb = "read"
     elif has_calendar and any(t in q for t in ("crea", "create", "aggiungi", "add", "nuovo", "nuova", "new")):
-        # "crea evento" / "aggiungi appuntamento" → set (set_events canonical).
-        verb = "set"
+        # "crea evento" / "aggiungi appuntamento" → create (create_events
+        # canonical post-ADR 0128, era set_events pre-rename).
+        verb = "create"
     elif any(t in q for t in ("dove sono", "posizione", "location", "where am")):
         verb = "get"
     elif any(t in q for t in ("scarica", "download", "url", "https://", "http://")):

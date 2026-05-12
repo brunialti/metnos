@@ -60,6 +60,13 @@ ACTIONS = (
     # ordinamento persistente (materializza un'organizzazione del corpus per
     # query future veloci: indici CLIP, perceptual hash, threading messages, ...)
     "order",
+    # OUTBOUND CONSENT: grant access a entita' senza spostarla (ADR 0128, 12/5/2026).
+    # Distinto da `send` (outbound copy/notification) e da `set` (upsert idempotente
+    # di stato/labels/metadata). Usato per `share_files_google_workspace`
+    # (Drive share), `share_events_google_workspace` (Calendar invite), share di
+    # folder cifs/smb. Side-effect: ACL/permission grant remoto, reversibile via
+    # `delete_<obj>_permissions_by_id` (5° reverse_pattern §2.3).
+    "share",
 )
 
 # Oggetti ammessi (plurale).
@@ -200,6 +207,7 @@ ACTION_CATEGORIES = {
     "compute": "calcolo", "compare": "confronto",
     "change": "trasformazione",
     "order": "ordinamento-persistente",
+    "share": "outbound-consent",
 }
 
 # ── Classificazione operativa per il runtime ──────────────────────────
@@ -213,7 +221,7 @@ PRODUCER_VERBS = frozenset({"read", "find", "list", "get"})
 
 # Verbi che lasciano residuo permanente (modifiche reali). Il vaglio
 # potrebbe escludere o richiedere conferma esplicita.
-DESTRUCTIVE_VERBS = frozenset({"move", "delete", "send", "write", "extract", "create"})
+DESTRUCTIVE_VERBS = frozenset({"move", "delete", "send", "write", "extract", "create", "share"})
 
 # Verbi candidati per precursor injection (chi può "popolare entries"
 # upstream di un consumer come describe/filter/move/...).
@@ -361,6 +369,13 @@ ACTION_MAPPING = {
         "en": ["order", "index", "build-index", "materialize-order", "prepare-search",
                 "refresh-index"],
         "boundary": "Materializza un ordinamento PERSISTENTE del corpus (indice CLIP, perceptual hash, threading messages, ...) per rendere veloci query future. Distinto da sort: sort ordina una lista IN MEMORIA del turno corrente; order produce un derivato durevole su disco. Composizione naturale: order_X_y costruisce/refresha l'indice, find_X_y lo interroga. Refresh tipicamente lazy (al primo find_X_y che lo richiede) o esplicito (utente: 'ricostruisci indice').",
+    },
+    "share": {
+        "it": ["condividi", "concedi-accesso", "invita", "dai-permesso",
+                "rendi-pubblico", "rendi-accessibile"],
+        "en": ["share", "grant-access", "give-permission", "invite-to",
+                "make-public", "make-accessible"],
+        "boundary": "OUTBOUND CONSENT (ADR 0128): grant access a una risorsa senza spostarla o duplicarla. Crea un permission/ACL grant remoto sull'entita' identificata da `id`/`ids`. Distinto da `send` (outbound copy o notifica: il destinatario riceve un OGGETTO, es. una mail) e da `set` (upsert idempotente di valori/labels/metadata interni al record). Esempio: condividere un Drive file con un utente = share_files (l'entita' resta nel proprio drive, il destinatario riceve solo un permesso di lettura/scrittura). Reversibile via revoke (`delete_<obj>_permissions_by_id` 5° reverse_pattern §2.3).",
     },
 }
 

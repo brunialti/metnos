@@ -13,16 +13,16 @@ CALENDARIO / EVENTI / AGENDA / GOOGLE WORKSPACE (Drive, Sheets, Docs, Contacts)
 ══════════════════════════════════════════════════════════════════════
 
 APPUNTAMENTI/AGENDA/EVENTI/CALENDARIO/RIUNIONI (Google Calendar)
-  → read_events (lettura), set_events (crea/aggiorna), delete_events (cancella).
+  → read_events (lettura), create_events (crea evento), delete_events (cancella).
   DEVI: per qualunque richiesta su appuntamenti / eventi del calendario,
-  usare read_events/set_events/delete_events. Sono nel catalogo (importati
+  usare read_events/create_events/delete_events. Sono nel catalogo (importati
   da skill google-workspace).
   NON DEVI: chiamare request_new_executor su «appuntamenti», «calendario»,
   «agenda», «eventi», «riunioni»: l'executor esiste gia'.
   OK: «appuntamenti di domani» → get_now → read_events(time_window="tomorrow") → final_answer.
   ERRORE: «appuntamenti di domani» → request_new_executor (E' UN ERRORE: read_events e' gia' in catalogo).
 
-(propose_intent) PROPOSTA / SUGGERIMENTO DI ORARI — RISPOSTA TESTUALE, MAI set_events:
+(propose_intent) PROPOSTA / SUGGERIMENTO DI ORARI — RISPOSTA TESTUALE, MAI create_events:
   Quando la query contiene un verbo di SUGGERIMENTO («proponi/proponimi/
   suggerisci/suggeriscimi/raccomanda/raccomandami», EN «propose/suggest/
   recommend»), oppure formulazioni come «quali sono N orari liberi»,
@@ -33,14 +33,14 @@ APPUNTAMENTI/AGENDA/EVENTI/CALENDARIO/RIUNIONI (Google Calendar)
   alternative dalle entries restituite (start/end di ogni gap libero).
   NON DEVI: invocare read_events ripetutamente per derivare manualmente
   i gap. find_events_empty fa gia' il calcolo dei gap deterministico
-  (ADR 0127). NON DEVI invocare set_events / create_events / delete_events
+  (ADR 0127). NON DEVI invocare create_events / delete_events
   / altri calendar-write tools. La query non chiede di prenotare, chiede
   di PROPORRE. Creare un evento sarebbe una azione DISTRUTTIVA non richiesta.
   OK: «proponi 3 orari per appuntamento la prossima settimana mattina»
       → get_now → find_events_empty(time_windows=["next-week"],
        size="1hour", time_of_day="morning", max_results=3) → final_answer
       testuale «3 mattine libere: lunedi 09-10, mercoledi 09-10, venerdi 10-11».
-  ERRORE: «proponi 3 orari...» → set_events(summary="Proposto 1", start=
+  ERRORE: «proponi 3 orari...» → create_events(summary="Proposto 1", start=
       2026-05-18T08:00, end=2026-05-24T12:00) (E' UN ERRORE: ha creato un
       evento di una settimana intera invece di SUGGERIRE 3 alternative).
   NB DISAMBIGUAZIONE: «fissa/prenota/book» = set destructive (vai a
@@ -58,7 +58,7 @@ APPUNTAMENTI/AGENDA/EVENTI/CALENDARIO/RIUNIONI (Google Calendar)
              prompt:'Scegli', schema:{kind:'choice', display_template:
              '{start} - {end}', value_field:'start'}}]) → entries dello
              step 2 vengono derivate in choices; user pick = `values.scelta`.
-    Passo 4: set_events(summary=..., start=<step3.values.scelta>, end=...)
+    Passo 4: create_events(summary=..., start=<step3.values.scelta>, end=...)
              → final_answer con link. Usa la sintassi runtime ufficiale
              (placeholder a doppia graffa o resolve dinamico §4.1) per
              passare la scelta dell'utente come start dell'evento.
@@ -66,18 +66,18 @@ APPUNTAMENTI/AGENDA/EVENTI/CALENDARIO/RIUNIONI (Google Calendar)
   read_events ritorna gli eventi gia' presenti, non i gap). `size` accetta
   stringhe unit-aware come "1hour"/"60min"/"30 min"; `time_windows` e' una
   lista (anche N=1, default ["next-week"]).
-  NON DEVI: invocare set_events PRIMA dello step 3 (l'utente non ha ancora
-  scelto). E' UN ERRORE «proponi e prenota» → set_events diretto: viola la
+  NON DEVI: invocare create_events PRIMA dello step 3 (l'utente non ha ancora
+  scelto). E' UN ERRORE «proponi e prenota» → create_events diretto: viola la
   semantica di scelta esplicita.
   OK: «proponi 3 mattine la prossima settimana e prenotami quella che scelgo»
       → get_now → find_events_empty(time_windows=["next-week"], size="1hour",
        time_of_day="morning", max_results=3) → get_inputs(from_step=2, ...)
-       → set_events(start=<step3.values.scelta>, ...) → final_answer.
-  ERRORE: «proponi e prenota» → set_events diretto (E' UN ERRORE: scelta non
+       → create_events(start=<step3.values.scelta>, ...) → final_answer.
+  ERRORE: «proponi e prenota» → create_events diretto (E' UN ERRORE: scelta non
        fatta dall'utente, prenotazione arbitraria).
   NB DISAMBIGUAZIONE: senza continuazione mutating la query e' propose-only
   (vedi (propose_intent) sopra: final_answer testuale, niente find_events_empty,
-  niente get_inputs, niente set_events).
+  niente get_inputs, niente create_events).
 
 (check_availability) PRENOTAZIONE CON CONDIZIONE DI POSTO LIBERO — WORKFLOW NUMERATO OBBLIGATORIO:
   Quando l'utente chiede «fissa/prenota/crea X SE c'e' posto/se la finestra
@@ -86,13 +86,13 @@ APPUNTAMENTI/AGENDA/EVENTI/CALENDARIO/RIUNIONI (Google Calendar)
     Passo 1: get_now  → estrai today ISO.
     Passo 2: COMPUTA start ed end ISO 8601 + offset (es. "2026-05-13T09:00:00+02:00").
     Passo 3: read_events(start, end).
-    Passo 4a: se entries VUOTA  → set_events(summary, start, end) → final_answer con link.
+    Passo 4a: se entries VUOTA  → create_events(summary, start, end) → final_answer con link.
     Passo 4b: se entries NON vuota → final_answer «slot occupato, eventi gia' presenti: ...».
-  DEVI: rispettare l'ordine. set_events va SOLO al Passo 4a, MAI prima.
-  NON DEVI: invocare set_events al Passo 3 o prima. Creerebbe l'evento E
+  DEVI: rispettare l'ordine. create_events va SOLO al Passo 4a, MAI prima.
+  NON DEVI: invocare create_events al Passo 3 o prima. Creerebbe l'evento E
   poi confonderebbe il read_events successivo che vedrebbe il proprio evento.
-  OK: «fissa appuntamento mercoledi 9-10 se c'e' posto» → get_now → read_events(...) → set_events(...) → final_answer.
-  ERRORE: «se c'e' posto» → set_events (Passo 3 sbagliato) → read_events vede l'evento appena creato → confusione.
+  OK: «fissa appuntamento mercoledi 9-10 se c'e' posto» → get_now → read_events(...) → create_events(...) → final_answer.
+  ERRORE: «se c'e' posto» → create_events (Passo 3 sbagliato) → read_events vede l'evento appena creato → confusione.
 
 (date_relative_resolution) DATE RELATIVE OBBLIGATORIAMENTE RISOLTE DA get_now:
   DEVI: invocare get_now come PRIMO step quando la query contiene QUALSIASI
@@ -102,21 +102,28 @@ APPUNTAMENTI/AGENDA/EVENTI/CALENDARIO/RIUNIONI (Google Calendar)
   NON DEVI: inferire/calcolare/inventare la data assoluta. La tua conoscenza
   delle date e' stantia di mesi. SOLO get_now ha la verita' del sistema.
   OK: «fissa appuntamento mercoledi 9-10» → step 1 get_now() → step 2 leggi
-      l'ISO date dal risultato → step 3 read_events/set_events con start/end
+      l'ISO date dal risultato → step 3 read_events/create_events con start/end
       ISO 8601 + offset (es. "2026-05-13T09:00:00+02:00").
-  ERRORE: passare a set_events «2026-04-29T09:00:00Z» quando today e' 2026-05-11
+  ERRORE: passare a create_events «2026-04-29T09:00:00Z» quando today e' 2026-05-11
       (e' UN ERRORE: data inventata, mercoledi nel passato).
 
 DRIVE/GOOGLE-DRIVE/FILE-CLOUD/DOCUMENTI-CLOUD
-  → find_files_google_workspace (ricerca), read_files_google_workspace, write_files_google_workspace, delete_files_google_workspace.
+  → find_files_google_workspace (ricerca), read_files_google_workspace (download),
+    write_files_google_workspace (upload), delete_files_google_workspace (cancella),
+    create_dirs_google_workspace (cartella), share_files_google_workspace (condividi).
   NON DEVI: confondere con find_files/read_files (filesystem locale .33).
+  NB (ADR 0128): condividere un file con un utente = share_files_google_workspace
+  (outbound CONSENT, grant ACL), NON send_messages (mail) e NON set_* (upsert
+  stato interno). Il destinatario riceve un permesso, non una copia.
 
 FOGLI-DI-CALCOLO/SHEETS/GOOGLE-SHEETS
-  → read_files_xlsx_google_workspace, set_files_xlsx, change_files_xlsx.
+  → read_files_xlsx_google_workspace (lettura), create_files_xlsx (crea nuovo),
+    set_files_xlsx (update celle: state upsert idempotente).
   NON DEVI: confondere con read_files_xlsx (handcrafted, file xlsx locali).
 
 DOCUMENTI-GOOGLE/DOCS/GOOGLE-DOCS
-  → read_files_text, set_files_text, change_files_text.
+  → read_files_text (lettura), create_files_text (crea nuovo),
+    write_files_text (append/body modify).
 
 CONTATTI/RUBRICA/GOOGLE-CONTACTS
   → read_contacts.

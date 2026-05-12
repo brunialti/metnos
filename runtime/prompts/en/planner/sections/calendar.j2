@@ -13,16 +13,16 @@ CALENDAR / EVENTS / AGENDA / GOOGLE WORKSPACE (Drive, Sheets, Docs, Contacts)
 ══════════════════════════════════════════════════════════════════════
 
 APPOINTMENTS/AGENDA/EVENTS/CALENDAR/MEETINGS (Google Calendar)
-  → read_events (read), set_events (create/update), delete_events (delete).
+  → read_events (read), create_events (create), delete_events (delete).
   MUST: for any request about appointments / calendar events,
-  use read_events/set_events/delete_events. They are in the catalog (imported
+  use read_events/create_events/delete_events. They are in the catalog (imported
   from skill google-workspace).
   MUST NOT: call request_new_executor on «appointments», «calendar»,
   «agenda», «events», «meetings»: the executor already exists.
   OK: «tomorrow's appointments» → get_now → read_events(time_window="tomorrow") → final_answer.
   ERROR: «tomorrow's appointments» → request_new_executor (THIS IS AN ERROR: read_events is already in catalog).
 
-(propose_intent) PROPOSAL / SUGGESTION OF TIMES — TEXTUAL ANSWER, NEVER set_events:
+(propose_intent) PROPOSAL / SUGGESTION OF TIMES — TEXTUAL ANSWER, NEVER create_events:
   When the query contains a SUGGESTION verb («propose/suggest/recommend»,
   IT «proponi/suggerisci/raccomanda» and enclitics), or formulations like
   «what are N free slots», «how about», «give me 3 options», the user is
@@ -33,13 +33,13 @@ APPOINTMENTS/AGENDA/EVENTS/CALENDAR/MEETINGS (Google Calendar)
   alternatives from the returned entries (start/end of each free gap).
   MUST NOT: call read_events repeatedly to derive gaps manually.
   find_events_empty computes gaps deterministically (ADR 0127).
-  MUST NOT: call set_events / create_events / delete_events / any other
+  MUST NOT: call create_events / delete_events / any other
   calendar-write tools. The query asks to PROPOSE, not to book.
   OK: «propose 3 morning times next week for a 1h appointment»
       → get_now → find_events_empty(time_windows=["next-week"],
        size="1hour", time_of_day="morning", max_results=3) → final_answer
       textual «3 free mornings: monday 09-10, wednesday 09-10, friday 10-11».
-  ERROR: «propose 3 times...» → set_events(summary="Proposed 1",
+  ERROR: «propose 3 times...» → create_events(summary="Proposed 1",
       start=2026-05-18T08:00, end=2026-05-24T12:00) (THIS IS AN ERROR:
       created a week-long event instead of SUGGESTING 3 alternatives).
   NB DISAMBIGUATION: «book/schedule» = set destructive (see
@@ -57,7 +57,7 @@ APPOINTMENTS/AGENDA/EVENTS/CALENDAR/MEETINGS (Google Calendar)
              prompt:'Pick one', schema:{kind:'choice', display_template:
              '{start} - {end}', value_field:'start'}}]) → entries of step 2
              are derived into choices; user pick = `values.choice`.
-    Step 4: set_events(summary=..., start=<step3.values.choice>, end=...)
+    Step 4: create_events(summary=..., start=<step3.values.choice>, end=...)
              → final_answer with link. Use the runtime placeholder syntax
              (double curly braces or dynamic resolution §4.1) to pass the
              user's choice as the event's start.
@@ -65,18 +65,18 @@ APPOINTMENTS/AGENDA/EVENTS/CALENDAR/MEETINGS (Google Calendar)
   read_events returns existing events, not the gaps). `size` accepts
   unit-aware strings like "1hour"/"60min"/"30 min"; `time_windows` is a
   list (even N=1, default ["next-week"]).
-  MUST NOT: call set_events BEFORE step 3 (user has not picked yet). IT
-  IS AN ERROR «propose and book» → direct set_events: it violates the
+  MUST NOT: call create_events BEFORE step 3 (user has not picked yet). IT
+  IS AN ERROR «propose and book» → direct create_events: it violates the
   semantics of an explicit user choice.
   OK: «propose 3 morning slots next week and book the one I pick»
       → get_now → find_events_empty(time_windows=["next-week"], size="1hour",
        time_of_day="morning", max_results=3) → get_inputs(from_step=2, ...)
-       → set_events(start=<step3.values.choice>, ...) → final_answer.
-  ERROR: «propose and book» → direct set_events (IT IS AN ERROR: choice not
+       → create_events(start=<step3.values.choice>, ...) → final_answer.
+  ERROR: «propose and book» → direct create_events (IT IS AN ERROR: choice not
        made by the user, arbitrary booking).
   NB DISAMBIGUATION: without a mutating continuation the query is propose-
   only (see (propose_intent) above: textual final_answer, no find_events_empty,
-  no get_inputs, no set_events).
+  no get_inputs, no create_events).
 
 (check_availability) BOOKING WITH FREE-SLOT CONDITION — NUMBERED MANDATORY WORKFLOW:
   When the user asks «book/schedule/create X IF there is a slot/if the window
@@ -85,13 +85,13 @@ APPOINTMENTS/AGENDA/EVENTS/CALENDAR/MEETINGS (Google Calendar)
     Step 1: get_now → extract today ISO.
     Step 2: COMPUTE start and end ISO 8601 + offset (e.g. "2026-05-13T09:00:00+02:00").
     Step 3: read_events(start, end).
-    Step 4a: if entries is EMPTY → set_events(summary, start, end) → final_answer with link.
+    Step 4a: if entries is EMPTY → create_events(summary, start, end) → final_answer with link.
     Step 4b: if entries is NON-empty → final_answer «slot occupied, events present: ...».
-  MUST: respect the order. set_events goes ONLY at Step 4a, NEVER before.
-  MUST NOT: call set_events at Step 3 or earlier. It would create the event
+  MUST: respect the order. create_events goes ONLY at Step 4a, NEVER before.
+  MUST NOT: call create_events at Step 3 or earlier. It would create the event
   AND then confuse the subsequent read_events that would see its own event.
-  OK: «book appointment Wednesday 9-10 if there is a slot» → get_now → read_events(...) → set_events(...) → final_answer.
-  ERROR: «if there is a slot» → set_events (wrong Step 3) → read_events sees the just-created event → confusion.
+  OK: «book appointment Wednesday 9-10 if there is a slot» → get_now → read_events(...) → create_events(...) → final_answer.
+  ERROR: «if there is a slot» → create_events (wrong Step 3) → read_events sees the just-created event → confusion.
 
 (date_relative_resolution) RELATIVE DATES MUST BE RESOLVED BY get_now:
   MUST: invoke get_now as the FIRST step when the query contains ANY
@@ -101,21 +101,28 @@ APPOINTMENTS/AGENDA/EVENTS/CALENDAR/MEETINGS (Google Calendar)
   MUST NOT: infer/compute/invent the absolute date. Your knowledge of
   dates is months stale. Only get_now has the system's truth.
   OK: «book appointment Wednesday 9-10» → step 1 get_now() → step 2
-      read the ISO date from the result → step 3 read_events/set_events
+      read the ISO date from the result → step 3 read_events/create_events
       with start/end ISO 8601 + offset (e.g. "2026-05-13T09:00:00+02:00").
-  ERROR: pass to set_events "2026-04-29T09:00:00Z" when today is 2026-05-11
+  ERROR: pass to create_events "2026-04-29T09:00:00Z" when today is 2026-05-11
       (THIS IS AN ERROR: invented date, Wednesday in the past).
 
 DRIVE/GOOGLE-DRIVE/CLOUD-FILES/CLOUD-DOCUMENTS
-  → find_files_google_workspace (search), read_files_google_workspace, write_files_google_workspace, delete_files_google_workspace.
+  → find_files_google_workspace (search), read_files_google_workspace (download),
+    write_files_google_workspace (upload), delete_files_google_workspace (delete),
+    create_dirs_google_workspace (folder), share_files_google_workspace (share).
   MUST NOT: confuse with find_files/read_files (local filesystem on .33).
+  NB (ADR 0128): sharing a file with a user = share_files_google_workspace
+  (outbound CONSENT, ACL grant), NOT send_messages (mail) and NOT set_*
+  (internal-state upsert). The recipient gets a permission, not a copy.
 
 SPREADSHEETS/SHEETS/GOOGLE-SHEETS
-  → read_files_xlsx_google_workspace, set_files_xlsx, change_files_xlsx.
+  → read_files_xlsx_google_workspace (read), create_files_xlsx (new sheet),
+    set_files_xlsx (update cells: idempotent state upsert).
   MUST NOT: confuse with read_files_xlsx (handcrafted, local xlsx files).
 
 GOOGLE-DOCS/DOCS
-  → read_files_text, set_files_text, change_files_text.
+  → read_files_text (read), create_files_text (new doc),
+    write_files_text (append/body modify).
 
 CONTACTS/ADDRESS-BOOK/GOOGLE-CONTACTS
   → read_contacts.

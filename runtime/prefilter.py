@@ -81,13 +81,15 @@ _VERB_TO_CANONICAL = {
     # NB: `email`/`mail`/`text`/`message` esclusi qui — sono piu' spesso
     # nomi che verbi nelle query naturali IT+EN (es. «email e telefono di X»).
     # Quando l'utente vuole l'azione, usa send/invia/manda/notify esplicito.
-    # set (create/update events, contacts, signatures, persons, credentials).
+    # set (update events labels, contacts, signatures, persons, credentials).
     # "fissa"/"prenota" sono i verbi idiomatici per booking di un evento
-    # del calendario in IT; "book"/"schedule" in EN. Mappati a `set` perche'
-    # l'executor canonico Google Workspace e' `set_events` (crea o aggiorna).
-    "fissa": "set", "fisso": "set", "fissare": "set",
-    "prenota": "set", "prenoto": "set", "prenotare": "set",
-    "book": "set", "schedule": "set", "schedules": "set",
+    # del calendario in IT; "book"/"schedule" in EN. Post ADR 0128 (12/5/2026):
+    # l'executor canonico Google Workspace per la creazione e' `create_events`
+    # (NON piu' `set_events`). Quindi il verbo semantico e' `create` (terminal
+    # resource creation), distinto da `set` (idempotent state upsert).
+    "fissa": "create", "fisso": "create", "fissare": "create",
+    "prenota": "create", "prenoto": "create", "prenotare": "create",
+    "book": "create", "schedule": "create", "schedules": "create",
     # http get (verbo `fetch` rimosso 3/5/2026: HTTP GET = `get_urls`)
     "scarica": "get", "scarico": "get", "scaricare": "get",
     "fetch": "get", "download": "get", "wget": "get", "curl": "get",
@@ -488,10 +490,10 @@ _OBJECT_PRIMARY_TOOLS = {
     "files":     ("find_files", "read_files"),
     "dirs":      ("list_dirs", "find_dirs"),
     "urls":      ("find_urls", "get_urls", "read_urls_html", "read_urls_pdf"),
-    # Calendar events (Google Workspace skill, importati 10/5/2026):
-    # set_events (crea/aggiorna), read_events (lettura), delete_events.
-    # Sostituisce il workaround stale `("read_messages",)` (mail come fallback).
-    "events":    ("set_events", "read_events", "delete_events"),
+    # Calendar events (Google Workspace skill, importati 10/5/2026,
+    # rinominato ADR 0128 12/5/2026: set_events -> create_events).
+    # create_events (crea), read_events (lettura), delete_events (cancella).
+    "events":    ("create_events", "read_events", "delete_events"),
     # Contatti Google Workspace (read_contacts dal skill):
     "contacts":  ("read_contacts",),
     "images":    ("find_images_indices", "change_images", "find_files"),

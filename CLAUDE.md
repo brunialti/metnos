@@ -13,7 +13,7 @@
 
 Assistente personale self-hosted (su `.33`, Strix Halo 96GB unified). Microarchitettura a executor sintetizzati al volo via synt multistage; runtime ReAct con planner LLM (Gemma 4 26B middle/wise locale + Sonnet/GPT-5 frontier come fallback). Canali: **Telegram** + **HTTP porta 8770** (htmx + Jinja2 + uPlot, ADR 0078). Pipeline immagini in-process: SigLIP-base + RetinaFace+ArcFace + EXIF (ADR 0086/0117). Lingua principale: italiano; corpus doc bilingue IT+EN. Etimologia: `mētis + noûs`. Process name: `myclaw`. Dominio: `metnos.com`.
 
-ADR registry canonico: `/opt/myclaw/decisions/` (`0001-0123`, `0055`/`0115`/`0116`/`0121` skipped — fonte unica per "perche' abbiamo scelto cosi'").
+ADR registry canonico: `/opt/myclaw/decisions/` (`0001-0128`, `0055`/`0115`/`0116`/`0121` skipped — fonte unica per "perche' abbiamo scelto cosi'").
 
 ## 2. Principi cardine (mai negoziabili)
 
@@ -23,8 +23,9 @@ Input come **lista** (paths, entries, urls, ids). Output **sempre lista**, anche
 ### 2.2 Naming convention compositiva
 Struttura: `azione_oggetto[_qualifier]`. Vocabolario CHIUSO (escalation a Roberto per nuovi termini), centralizzato in `runtime/vocab.py`.
 
-- **22 azioni**: `read, write, move, delete, create, find, list, filter, sort, group, classify, get, set, send, describe, render, extract, compress, compute, compare, change, order`.
-- **Ortogonalita' dei 5 verbi-produttori** (asse «com'e' fatto l'input primario»): `find` = pattern/query (discovery, sussume verifica esistenza); `get` = id noti o nessun arg (lookup/snapshot); `read` = id di sorgente, ritorna contenuto; `list` = container, enumera senza contenuto; `filter` = lista preesistente, riduce per predicato. Discrimine find vs get: pattern → `find`; id/stato → `get`. `change` = forma/parametri (resize/convert/rotate); `order` = ordinamento PERSISTENTE del corpus, distinto da `sort` in memoria del turno.
+- **23 azioni**: `read, write, move, delete, create, find, list, filter, sort, group, classify, get, set, send, describe, render, extract, compress, compute, compare, change, order, share`.
+- **Ortogonalita' dei 5 verbi-produttori** (asse «com'e' fatto l'input primario»): `find` = pattern/query (discovery, sussume verifica esistenza); `get` = id noti o nessun arg (lookup/snapshot); `read` = id di sorgente, ritorna contenuto; `list` = container, enumera senza contenuto; `filter` = lista preesistente, riduce per predicato. Discrimine find vs get: pattern → `find`; id/stato → `get`. `change` = forma/parametri (resize/convert/rotate); `order` = ordinamento PERSISTENTE del corpus, distinto da `sort` in memoria del turno. `share` = OUTBOUND CONSENT (ADR 0128, 12/5/2026): grant access a un'entita' senza spostarla o duplicarla — crea un permission/ACL grant remoto. Distinto da `send` (outbound copy/notification: il destinatario riceve un OGGETTO) e da `set` (upsert idempotente di stato/labels interni al record).
+- **Importer verb boundary** (ADR 0128): il vocab si applica integralmente anche agli executor importati via skill agentskills.io (ADR 0123). Provider-verb diversi mappano a Metnos-verbi diversi per `(target_kind, side_effect)`: `gmail get MSG_ID` (fetch content) → `read_messages`, NON `get_messages`. `docs append` (body modify) → `write_files_text`, NON `change_files_text`. `gmail modify` (state labels) → `set_messages`, NON `change_messages`. `drive share` (acl grant) → `share_files`, NON `set_files`. La tabella contestuale e' in `runtime/skill_vocab_map.json::contextual` (lookup `<domain>:<action>` → `{target_kind, side_effect, verb}`). Verifier deterministico `runtime/importer_verb_verify.py::check_plan` (§7.9, layer 6.bis di ADR 0114).
 - **Confini stretti**: `fetch` rimosso (HTTP GET = `get_urls`); `extract` solo decompressione archivi (zip/tar/gz); «estrai righe da testo» = `filter_texts_lines`; «estrai testo da PDF/HTML» = `read_files_pdf/html`; «estrai campi da entries» = `get`.
 - **17 oggetti** (plurale): `files, dirs, packages, messages, events, contacts, places, processes, urls, numbers, images, signatures, texts, proposals, inputs, credentials, entries`. Eccezioni: `get_inputs` ritorna `{values:{var:value}}` (UI dichiarativa, ADR 0090); `find_credentials`/`set_credentials`/`delete_credentials` espongono SOLO metadata (binding, fingerprint, scopes, age, status) — i valori cleartext non tornano mai al PLANNER (ADR 0123); `entries` (12/5/2026) e' meta-oggetto per pipeline in-memory dello stesso turno (compute_entries/sort_entries/filter_entries/group_entries) — NON una risorsa esterna, niente `find_entries`/`read_entries`/`get_entries`.
 - **System verbs riservati**: `undo`, `admin` sono verbi-meta di sistema, fuori dai 22 verbi canonici §2.2. Riservati a builtin runtime (`undo_last_turn`, `admin`); NON utilizzabili da synt o user-domain executor (il vaglio rifiuta `name` che inizia con uno di questi verbi). Stage 1 NAMING non li propone come azione del nuovo executor: discriminano la chiusura del turno (`undo_last_turn`) o l'esecuzione di shell privilegiata (`admin`), non producono entita' del dominio utente.
@@ -298,7 +299,7 @@ Server `runtime.metnos_http_server` su porta **8770** (separata da 8765 pairing)
 
 **Riferimenti**
 
-- ADR registry: `/opt/myclaw/decisions/` (`0001-0123`, `0055`/`0115`/`0116`/`0121` skipped) — dettagli implementativi e razionale.
+- ADR registry: `/opt/myclaw/decisions/` (`0001-0128`, `0055`/`0115`/`0116`/`0121` skipped) — dettagli implementativi e razionale.
 - Architettura canonica: `/opt/myclaw/docs/it/architecture/` (+ EN bridge simmetrico).
 - Memorie persistenti: `~/.claude/projects/-opt-myclaw/memory/MEMORY.md`.
 - Repertorio prompt: `/opt/myclaw/runtime/prompts/<lang>/*.j2` (ADR 0092).

@@ -116,12 +116,14 @@ class TestPrefilterIntegrationAppointment:
             "fissa un appuntamento mercoledi mattina dopo le 9 per un ora "
             "se c'è posto e mandami una email di conferma"
         )
-        intent = {"verb": "set", "object": "events"}
+        # post ADR 0128: l'intent semantico per «fissa appuntamento» e' verb=create
+        # (era set_events, ora create_events).
+        intent = {"verb": "create", "object": "events"}
         top = rank_with_intent(q, catalog, intent, k=8)
         assert top is not None, "rank_with_intent ha rifiutato events (catalog incompleto?)"
         names = [e.name for e in top]
         assert "admin" not in names
-        assert "set_events" in names
+        assert "create_events" in names
 
 
 # ── Layer 2: admin catalog-name guard ─────────────────────────────────
@@ -148,14 +150,16 @@ class TestAdminCatalogGuard:
         assert res["audit"]["catalog_name"] == "get_now"
 
     def test_reject_set_events_as_command(self):
+        # Test name unchanged for git diff readability; post ADR 0128
+        # l'executor canonical e' `create_events` (set_events rinominato).
         from verb_unique.admin import invoke
         res = invoke(
             intent="creare un evento",
-            command_proposed="set_events arg1 arg2",
+            command_proposed="create_events arg1 arg2",
             actor="host",
         )
         assert res["decision"] == "reject"
-        assert "set_events" in res["summary"]
+        assert "create_events" in res["summary"]
 
     def test_reject_executor_under_sudo_wrapper(self):
         """sudo get_now → ancora reject (skip wrapper, vede executor name)."""

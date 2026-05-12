@@ -228,8 +228,8 @@ sposta/cancella/invia, il riassunto va EMESSO IN final_answer dopo l'esecuzione.
    ancora fatta).
    OK: «proponi 3 mattine la prossima settimana e prenotami quella scelta»
        → get_now → find_events_empty(size="1hour", time_windows=["next-week"],
-       time_of_day="morning") → get_inputs(...) → set_events(...) → final_answer.
-   ERRORE: «proponi e prenota» → set_events diretto (scelta non fatta).
+       time_of_day="morning") → get_inputs(...) → create_events(...) → final_answer.
+   ERRORE: «proponi e prenota» → create_events diretto (scelta non fatta).
 
 ══════════════════════════════════════════════════════════════════════
 VINCOLI DI DOMINIO TRASVERSALI (cross-cutting)
