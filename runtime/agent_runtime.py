@@ -968,11 +968,113 @@ def _query_requires_availability_check(query: str) -> bool:
     return bool(_AVAILABILITY_MARKERS_RE.search(query))
 
 
+# P5 (12/5/2026) — Propose-intent detection per gate suggestion vs destructive.
+# Trigger: turn a0b96f6f (12/5/2026 09:07) → query «proponi 3 orari per
+# appuntamento la prossima settimana mattina» → planner ha chiamato
+# set_events con summary="Appuntamento Proposto 1" e finestra 8:00-12:00
+# lunedi-sabato (whole-week blob destructive). Atteso: read_events + final
+# testuale con N slot computati. NESSUN set_events.
+#
+# Regex SEMANTICA UNIVERSALE: cattura verbi di suggerimento IT+EN con
+# eventuali enclitici (mi/ti/ci/gli) tramite quantifier, NON enumerazione
+# enclitica esaustiva. Cattura anche le formulazioni interrogative tipiche
+# («che ne dici», «what about», «quali sono N ... liberi»). Determinismo
+# §7.9: regex compilata, niente LLM nel runtime gate.
+#
+# Pattern espliciti per «quali sono N X liberi/disponibili» perche' la
+# costruzione «quali sono i miei impegni» (read events) NON deve triggerare
+# il gate (la query e' read, non suggerimento di nuovo slot).
+_PROPOSE_INTENT_RE = re.compile(
+    r"(?:\b|^)("
+    # IT — verbi suggestion con eventuali enclitici (mi/ti/ci/gli/mela/...)
+    # Forma generale: stem + opzionale enclitico. Compatto via quantifier.
+    # Stem + opzionale enclitico (mi/ti/ci/gli/cela/...) — quantifier-based,
+    # NON enumerazione esaustiva. La forma `\w{1,5}?` cattura enclitici e
+    # desinenze di coniugazione (-armi -arci -ami -ate -ano -ebbe ...).
+    r"propon[a-z]{1,5}|propor[a-z]{2,7}|"
+    r"suggeris[a-z]{1,5}|sugger[a-z]{2,7}|"
+    r"raccomand[a-z]{1,6}|"
+    # IT — formulazioni interrogative tipiche di richiesta suggerimento.
+    # Pattern «che [ne] dici», «cosa [ne] pensi», «che dici», «consigliami N»
+    r"che(?:\s+ne)?\s+dici|cosa(?:\s+ne)?\s+(?:dici|pensi)|"
+    r"consigli[a-z]{1,5}|"
+    # IT — «quali (sono|fasce|orari|slot|...) ... liber[ie]/disponibil[ie]/...»
+    # Pattern semantico: parola interrogativa «quali» seguita entro la frase
+    # da un marker di disponibilita'/vacuita'. La distanza max 0-6 tokens.
+    r"quali\s+(?:\w+\s+){0,6}(?:liber[ie]|disponibil[ie]|aperte?|vuoti?|vuote)|"
+    # IT — «N alternative/opzioni/slot/orari/fasce/mattine/proposte».
+    # Forma con numero (3/2/...) + sostantivo proposta-like. Cattura
+    # «dammi 3 alternative», «cerca 3 slot 9-11», «alcune proposte»,
+    # «2 mercoledi liberi», «qualche slot». Indipendente dal verbo
+    # principale (cerca/dammi/voglio/etc.: il SOSTANTIVO + il NUMERO
+    # bastano a inferire "richiesta di N opzioni" semanticamente).
+    # Lista sostantivi: alternative/opzioni/proposte sono universali
+    # proposal-noun; slot/orari/fasce/mattine/pomeriggi/giorni-settimana
+    # sono dominio calendar (parte di `_OBJECT_HINTS["events"]`).
+    r"(?:\d+|alcun[ie]|qualche|alcune|alcuni|some)\s+"
+    r"(?:opzion[ie]|alternativ[ae]|propost[ae]|slot|slots|orari[oi]?|"
+    r"fasce?|mattine?|pomeriggi|mercoled[ìi]|luned[ìi]|marted[ìi]|"
+    r"gioved[ìi]|venerd[ìi]|sabat[oi]|domenic[ah]e?)|"
+    # EN — verbs (gerund/3rd, infinitive)
+    r"propose|proposes|proposing|"
+    r"suggest|suggests|suggesting|"
+    r"recommend|recommends|recommending|"
+    # EN — interrogative
+    r"what\s+about|how\s+about|"
+    # EN — «what slots/times/X (are) free/available/open»: marker dispon-
+    # bilita' su sostantivo plurale. Stessa logica di «quali» IT.
+    r"what\s+(?:\w+\s+){0,4}(?:are\s+|is\s+)?(?:free|available|open)|"
+    r"which\s+(?:\w+\s+){0,4}(?:are\s+|is\s+)?(?:free|available|open)|"
+    # EN — «any free X», «any open X» — domanda «c'e' / ce ne sono?»
+    # Restringo al dominio calendar via lista nomi temporal: slot/time/window.
+    r"any\s+(?:free|available|open)\s+(?:slots?|times?|windows?|mornings?|afternoons?|days?|appointments?|meetings?)|"
+    # EN — «N options/alternatives/slots/morning times/...» (with optional
+    # preceding politeness verb: give me / I'd like / I want / can you).
+    # Lista nomi RISTRETTA al dominio proposal/calendar:
+    # options/alternatives/proposals = universal proposal-noun;
+    # slots/times/mornings/afternoons/openings = calendar dominio.
+    # Esclude generici (emails/files/messages) per evitare falsi positivi.
+    r"(?:\d+|some|a\s+few|several|any)\s+"
+    r"(?:morning\s+|afternoon\s+|free\s+|available\s+|open\s+|"
+    r"alternative\s+|proposed?\s+)?"
+    r"(?:options?|alternatives?|proposals?|slots?|times?|"
+    r"mornings?|afternoons?|openings?|windows?)"
+    r")(?:\b|$)",
+    re.IGNORECASE,
+)
+
+
+def _query_is_propose_intent(query: str) -> bool:
+    """True se la query e' propose-intent (richiesta di suggerimento/proposta
+    di alternative), NON di creazione/modifica destrutiva.
+
+    Esempi positivi:
+      - «proponi 3 orari per appuntamento»
+      - «suggeriscimi 2 mercoledi liberi»
+      - «raccomandami una mattina libera»
+      - «che ne dici di lunedi 9-10»
+      - «quali sono le mattine libere prossima settimana»
+      - «propose 3 morning times», «suggest a meeting time»
+      - «what are 3 free slots tomorrow», «give me 3 options»
+
+    Esempi negativi (devono ritornare False):
+      - «fissa appuntamento mercoledi alle 9»  (set destructive)
+      - «book a meeting friday»  (set destructive)
+      - «quali sono i miei impegni domani»  (read events, no «liberi/disponibili»)
+      - «crea evento lunedi»  (create destructive)
+
+    Determinismo §7.9: regex O(len(query)), niente LLM.
+    """
+    if not query or not isinstance(query, str):
+        return False
+    return bool(_PROPOSE_INTENT_RE.search(query))
+
+
 def _has_prior_read_events_ok(steps) -> bool:
     """True se uno dei step precedenti e' read_events con ok=True.
 
-    Usato dal gate P4 per non bloccare set_events quando il check
-    availability e' gia' stato fatto. §7.9 lookup deterministico.
+    Usato dai gate P4/P5 per non bloccare set_events quando il check
+    availability/read gia' fatto. §7.9 lookup deterministico.
     """
     for s in steps:
         tool = getattr(s, "chosen_tool", None)
@@ -3984,6 +4086,51 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
             }
             step.result = obs
             step.error = "availability_check_required"
+            log.steps.append(step)
+            history_for_refs.append({"step": step_num, "tool": chosen_name, "args": raw_args, "observation": obs})
+            history_for_llm.append({"role": "assistant", "tool_calls": [{"id": tc.call_id, "type": "function", "function": {"name": chosen_name, "arguments": raw_args}}]})
+            history_for_llm.append({"role": "tool", "tool_call_id": tc.call_id, "name": chosen_name, "content": json.dumps(obs, ensure_ascii=False)})
+            consecutive_blocked += 1
+            if consecutive_blocked >= LOOP_BREAK_THRESHOLD:
+                log.final_kind = "loop_break"
+                _hint = _loop_break_hint(_intent_object_from_route(route_info))
+                log.final_message = msg("MSG_LOOP_BREAK", n=consecutive_blocked, hint=_hint)
+                log.ts_end = time.time(); log.write(); return log
+            continue
+
+        # P5 (12/5/2026) — Propose-intent gate per calendar write tools.
+        # Bug live turn a0b96f6f: query «proponi 3 orari per appuntamento
+        # la prossima settimana mattina» → planner ha chiamato set_events
+        # con whole-week blob (lun→sab 8-12). Atteso: read_events + final
+        # testuale con N slot. NESSUN evento creato.
+        # Defense in depth §7.9: il runtime rifiuta calendar-write tools
+        # quando:
+        #   (1) chosen_name e' calendar write tool (set/create _events),
+        #   (2) user_query e' propose-intent (regex semantica universale).
+        # NB: a differenza di P4, NON serve "prior read_events ok": una
+        # propose-intent query e' SEMPRE risolta con final_answer testuale,
+        # mai con set_events. Il read_events e' raccomandato per dati ma
+        # opzionale (planner puo' rispondere generico se serve). Cio' che
+        # blocchiamo qui e' la creazione effettiva di eventi.
+        if (chosen_name in _calendar_write_tools()
+                and _query_is_propose_intent(user_query_for_run)):
+            obs = {
+                "ok": False,
+                "_propose_intent_detected": True,
+                "error": (
+                    f"PROPOSE_INTENT_NO_WRITE: la query e' una richiesta di "
+                    f"proposta/suggerimento (es. «proponi 3 orari», «suggest "
+                    f"options», «what are free slots»). DEVI rispondere "
+                    f"testualmente con N slot/alternative computate da "
+                    f"read_events. NON DEVI invocare '{chosen_name}' o "
+                    f"altri tool calendar-write: la query non chiede di "
+                    f"CREARE un evento, ma di SUGGERIRE alternative. "
+                    f"Workflow: get_now → read_events(time_window=...) → "
+                    f"final_answer con N proposte. Section calendar (propose_intent)."
+                ),
+            }
+            step.result = obs
+            step.error = "propose_intent_no_write"
             log.steps.append(step)
             history_for_refs.append({"step": step_num, "tool": chosen_name, "args": raw_args, "observation": obs})
             history_for_llm.append({"role": "assistant", "tool_calls": [{"id": tc.call_id, "type": "function", "function": {"name": chosen_name, "arguments": raw_args}}]})

@@ -104,6 +104,21 @@ _VERB_TO_CANONICAL = {
     "descrivi": "describe", "descrivo": "describe", "descrivere": "describe",
     "riassumi": "describe", "riassumo": "describe", "riassumere": "describe",
     "describe": "describe", "summarize": "describe", "summary": "describe",
+    # describe — suggestion semantics (P5, 12/5/2026): «proponi/suggerisci/
+    # raccomanda» chiedono di presentare informazione strutturata (N opzioni,
+    # alternative, slot, orari). Sono READ-ONLY: NON creano/modificano niente.
+    # Mappati a `describe` perche' presentano dati aggregati gia' disponibili
+    # (es. slot liberi computati da read_events). Enclitici IT consistent
+    # con `send` (mandami/inviami): proponimi/suggeriscimi/raccomandami.
+    "proponi": "describe", "propongo": "describe", "proporre": "describe",
+    "proponimi": "describe", "proponici": "describe",
+    "suggerisci": "describe", "suggerisco": "describe", "suggerire": "describe",
+    "suggeriscimi": "describe", "suggeriscici": "describe",
+    "raccomanda": "describe", "raccomando": "describe", "raccomandare": "describe",
+    "raccomandami": "describe", "raccomandaci": "describe",
+    "propose": "describe", "proposes": "describe", "proposing": "describe",
+    "suggest": "describe", "suggests": "describe", "suggesting": "describe",
+    "recommend": "describe", "recommends": "describe", "recommending": "describe",
     # get (enrichment)
     "arricchisci": "get", "arricchisco": "get", "arricchire": "get",
     "ottieni": "get", "ottengo": "get", "ottenere": "get",
@@ -182,7 +197,13 @@ _OBJECT_HINTS = {
                   "riunione", "riunioni", "meeting", "meetings",
                   "agenda", "incontro", "incontri",
                   "scadenza", "scadenze", "deadline",
-                  "fissa", "prenota", "book", "schedule"],
+                  "fissa", "prenota", "book", "schedule",
+                  # P5 (12/5/2026): hint per query suggestion-style come
+                  # «proponi 3 orari per appuntamento» o «slot liberi mattina».
+                  # Mantieni allineato con vocab classes; "orari/fasce/slot"
+                  # sono universali per il dominio calendar.
+                  "orari", "orario", "fascia", "fasce", "slot", "slots",
+                  "mattina", "pomeriggio", "morning", "afternoon"],
     "contacts": ["contatto", "contatti", "contact", "rubrica"],
     "processes": ["processo", "processi", "process", "processes", "ps",
                    "task", "pid", "cpu", "ram", "memoria", "memory",

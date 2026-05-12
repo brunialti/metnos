@@ -81,6 +81,16 @@ Esempi:
 "elenca eventi del calendario" → {"verb": "list", "object": "events"}
 "book a meeting tomorrow at 10" → {"verb": "set", "object": "events"}
 "crea un evento sul calendario" → {"verb": "set", "object": "events"}
+"proponi 3 orari per appuntamento la prossima settimana" → {"verb": "describe", "object": "events"}
+"suggeriscimi 2 mattine libere mercoledi" → {"verb": "describe", "object": "events"}
+"propose 3 morning times next week" → {"verb": "describe", "object": "events"}
+"suggest a free slot tomorrow morning" → {"verb": "describe", "object": "events"}
+DISAMBIGUAZIONE set vs describe per events:
+- «fissa/prenota/book/schedule/crea» = set (CREA un evento concreto).
+- «proponi/suggerisci/raccomanda/propose/suggest/recommend» = describe
+  (SUGGERISCE alternative testuali, NON crea niente, read-only).
+- «quali sono N slot/orari/mattine LIBERI/DISPONIBILI» = describe (richiesta
+  di proposte basate su disponibilita', non creazione).
 NOTA SU events vs proposals:
 - events = APPUNTAMENTI / RIUNIONI / IMPEGNI di calendario (agenda).
   "fissa/prenota/book/schedule/crea appuntamento|riunione|incontro|meeting" = set events.

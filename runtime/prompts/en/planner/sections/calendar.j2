@@ -22,6 +22,26 @@ APPOINTMENTS/AGENDA/EVENTS/CALENDAR/MEETINGS (Google Calendar)
   OK: «tomorrow's appointments» → get_now → read_events(time_window="tomorrow") → final_answer.
   ERROR: «tomorrow's appointments» → request_new_executor (THIS IS AN ERROR: read_events is already in catalog).
 
+(propose_intent) PROPOSAL / SUGGESTION OF TIMES — TEXTUAL ANSWER, NEVER set_events:
+  When the query contains a SUGGESTION verb («propose/suggest/recommend»,
+  IT «proponi/suggerisci/raccomanda» and enclitics), or formulations like
+  «what are N free slots», «how about», «give me 3 options», the user is
+  NOT asking to CREATE an event but to RECEIVE textual proposals of
+  alternatives.
+  MUST: get_now → read_events(time_window=...) → final_answer with N
+  alternatives computed textually from free slots.
+  MUST NOT: call set_events / create_events / delete_events / any other
+  calendar-write tools. The query asks to PROPOSE, not to book. Creating
+  an event would be a DESTRUCTIVE action that was never requested.
+  OK: «propose 3 morning times next week for a 1h appointment»
+      → get_now → read_events(time_window="next-week") → final_answer
+      «3 free mornings: monday 09-10, wednesday 09-10, friday 10-11».
+  ERROR: «propose 3 times...» → set_events(summary="Proposed 1",
+      start=2026-05-18T08:00, end=2026-05-24T12:00) (THIS IS AN ERROR:
+      created a week-long event instead of SUGGESTING 3 alternatives).
+  NB DISAMBIGUATION: «book/schedule» = set destructive (see
+  check_availability). «propose/suggest/recommend» = read-only suggestion.
+
 (check_availability) BOOKING WITH FREE-SLOT CONDITION — NUMBERED MANDATORY WORKFLOW:
   When the user asks «book/schedule/create X IF there is a slot/if the window
   is free/check availability and then book», EXECUTE EXACTLY in this order,
