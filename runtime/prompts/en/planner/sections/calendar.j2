@@ -103,6 +103,11 @@ APPOINTMENTS/AGENDA/EVENTS/CALENDAR/MEETINGS (Google Calendar)
   (variant b) or right after get_inputs (variant a). The user's choice
   (step 3) must be passed to BOTH create_events and send_messages
   (double use of the placeholder).
+  MUST: when the user says «email/mail» as NOTIFICATION CHANNEL, PASS
+  `via_channel="mail"` EXPLICIT in send_messages. The default
+  `via_channel="auto"` routes Telegram first (order telegram > mail >
+  http) and would send a Telegram message instead of an email. Same
+  applies for «telegram» → `via_channel="telegram"`.
   MUST NOT: emit send_messages BEFORE get_inputs (user has not chosen
   yet). MUST NOT: call find_messages_google_workspace or read_messages:
   the query is NOT a search for existing mail, it is a REQUEST TO SEND
@@ -111,11 +116,15 @@ APPOINTMENTS/AGENDA/EVENTS/CALENDAR/MEETINGS (Google Calendar)
   OK: «propose 3 morning times next week and email me my choice» →
       get_now → find_events_empty(time_windows=["next-week"],
       size="1hour", time_of_day="morning", max_results=3) →
-      get_inputs(from_step=2, kind='choice', ...) → send_messages(...) →
-      final_answer.
+      get_inputs(from_step=2, kind='choice', display_template='{start} - {end}',
+      value_field='start') → send_messages(messages=[{to_user:"roberto",
+      via_channel:"mail", subject:"Your choice",
+      body:"You picked: <step3.values.choice>"}]) → final_answer.
   OK: «propose 2 wednesday slots, create the event and email confirmation»
       → get_now → find_events_empty(...) → get_inputs(...) →
-      create_events(...) → send_messages(...) → final_answer.
+      create_events(...) → send_messages(messages=[{to_user:...,
+      via_channel:"mail", subject:..., body:"Link: <step4.results[0].htmlLink>"}])
+      → final_answer.
   ERROR: «propose and email me» → find_messages_google_workspace
       (THIS IS AN ERROR: the query does not search mail, it sends mail).
   ERROR: «propose and email me» → direct send_messages at step 1

@@ -103,6 +103,11 @@ APPUNTAMENTI/AGENDA/EVENTI/CALENDARIO/RIUNIONI (Google Calendar)
   step di create (variante b) o subito dopo get_inputs (variante a). La
   scelta dell'utente (step 3) va passata sia a create_events sia a
   send_messages (uso doppio del placeholder).
+  DEVI: quando l'utente dice «email/mail/posta» come MEZZO di notifica,
+  PASSARE `via_channel="mail"` ESPLICITO in send_messages. Il default
+  `via_channel="auto"` instrada Telegram per primo (ordine telegram >
+  mail > http) e mandera' un messaggio Telegram invece di email.
+  Stesso vale per «telegram» → `via_channel="telegram"`.
   NON DEVI: emettere send_messages PRIMA di get_inputs (utente non ha
   ancora scelto). NON DEVI: invocare find_messages_google_workspace o
   read_messages: la query NON e' una ricerca di mail esistenti, ma una
@@ -111,11 +116,15 @@ APPUNTAMENTI/AGENDA/EVENTI/CALENDARIO/RIUNIONI (Google Calendar)
   OK: «proponi 3 orari mattina prossima settimana e mandami email con la
       scelta» → get_now → find_events_empty(time_windows=["next-week"],
       size="1hour", time_of_day="morning", max_results=3) →
-      get_inputs(from_step=2, kind='choice', ...) → send_messages(...) →
-      final_answer.
+      get_inputs(from_step=2, kind='choice', display_template='{start} - {end}',
+      value_field='start') → send_messages(messages=[{to_user:"roberto",
+      via_channel:"mail", subject:"Orario scelto",
+      body:"Hai scelto: <step3.values.scelta>"}]) → final_answer.
   OK: «proponi 2 slot mercoledi, creami evento e invia conferma via mail»
       → get_now → find_events_empty(...) → get_inputs(...) →
-      create_events(...) → send_messages(...) → final_answer.
+      create_events(...) → send_messages(messages=[{to_user:...,
+      via_channel:"mail", subject:..., body:"Link: <step4.results[0].htmlLink>"}])
+      → final_answer.
   ERRORE: «proponi e mandami email» → find_messages_google_workspace
       (E' UN ERRORE: la query non cerca mail, invia mail).
   ERRORE: «proponi e mandami email» → send_messages diretto al passo 1
