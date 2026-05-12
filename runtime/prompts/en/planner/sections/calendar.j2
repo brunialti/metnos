@@ -28,14 +28,17 @@ APPOINTMENTS/AGENDA/EVENTS/CALENDAR/MEETINGS (Google Calendar)
   «what are N free slots», «how about», «give me 3 options», the user is
   NOT asking to CREATE an event but to RECEIVE textual proposals of
   alternatives.
-  MUST: get_now → read_events(time_window=...) → final_answer with N
-  alternatives computed textually from free slots.
+  MUST: get_now → find_events_empty(time_windows=[...], size=...,
+  time_of_day=..., max_results=N) → final_answer textual with N
+  alternatives from the returned entries (start/end of each free gap).
+  MUST NOT: call read_events repeatedly to derive gaps manually.
+  find_events_empty computes gaps deterministically (ADR 0127).
   MUST NOT: call set_events / create_events / delete_events / any other
-  calendar-write tools. The query asks to PROPOSE, not to book. Creating
-  an event would be a DESTRUCTIVE action that was never requested.
+  calendar-write tools. The query asks to PROPOSE, not to book.
   OK: «propose 3 morning times next week for a 1h appointment»
-      → get_now → read_events(time_window="next-week") → final_answer
-      «3 free mornings: monday 09-10, wednesday 09-10, friday 10-11».
+      → get_now → find_events_empty(time_windows=["next-week"],
+       size="1hour", time_of_day="morning", max_results=3) → final_answer
+      textual «3 free mornings: monday 09-10, wednesday 09-10, friday 10-11».
   ERROR: «propose 3 times...» → set_events(summary="Proposed 1",
       start=2026-05-18T08:00, end=2026-05-24T12:00) (THIS IS AN ERROR:
       created a week-long event instead of SUGGESTING 3 alternatives).
