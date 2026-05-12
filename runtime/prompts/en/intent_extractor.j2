@@ -81,16 +81,21 @@ Examples:
 "list calendar events" → {"verb": "list", "object": "events"}
 "fissa un appuntamento mercoledi" → {"verb": "set", "object": "events"}
 "create a calendar event" → {"verb": "set", "object": "events"}
-"propose 3 morning times next week for a 1h appointment" → {"verb": "describe", "object": "events"}
-"suggest a free slot tomorrow morning" → {"verb": "describe", "object": "events"}
-"proponi 3 orari per appuntamento la prossima settimana" → {"verb": "describe", "object": "events"}
-"recommend 2 free wednesdays" → {"verb": "describe", "object": "events"}
-DISAMBIGUATION set vs describe for events:
-- «book/schedule/create» = set (CREATES a concrete event).
-- «propose/suggest/recommend» (IT proponi/suggerisci/raccomanda) = describe
-  (SUGGESTS textual alternatives, does NOT create anything, read-only).
-- «what are N FREE/AVAILABLE slots/times/mornings» = describe (request for
-  availability-based proposals, not creation).
+"propose 3 morning times next week for a 1h appointment" → {"verb": "read", "object": "events"}
+"recommend 2 free wednesdays" → {"verb": "read", "object": "events"}
+SEMANTIC PRINCIPLE (universal, applies to ALL objects, not just events):
+- Verb CREATES/SETS/WRITES/DELETES an entity (destructive/mutating action)
+  → maps to operative verb (set/write/delete/move/send/create).
+  Examples: «book appointment», «send mail», «delete file», «create folder».
+- Verb ASKS/PROPOSES/SUGGESTS/SHOWS (inquiry, read-only) → read.
+  Textual synthesis of the result happens in planner's final_answer; there
+  is NO `describe_<object>` executor for most objects (exception:
+  describe_numbers for numeric list pure-compute stats). Examples:
+  «propose 3 times» = read events, «show me X files» = read files,
+  «what are N free?» = read events.
+- If the sentence mixes both senses («if there's a slot book the meeting»)
+  the winning intent is the MUTATING verb (set) — the availability check
+  is handled at planner level as first-action (read_events).
 NOTE ON events vs proposals:
 - events = CALENDAR APPOINTMENTS / MEETINGS (user-facing agenda).
   "book/schedule/create appointment|meeting|reminder" = set events.

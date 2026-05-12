@@ -81,16 +81,21 @@ Esempi:
 "elenca eventi del calendario" → {"verb": "list", "object": "events"}
 "book a meeting tomorrow at 10" → {"verb": "set", "object": "events"}
 "crea un evento sul calendario" → {"verb": "set", "object": "events"}
-"proponi 3 orari per appuntamento la prossima settimana" → {"verb": "describe", "object": "events"}
-"suggeriscimi 2 mattine libere mercoledi" → {"verb": "describe", "object": "events"}
-"propose 3 morning times next week" → {"verb": "describe", "object": "events"}
-"suggest a free slot tomorrow morning" → {"verb": "describe", "object": "events"}
-DISAMBIGUAZIONE set vs describe per events:
-- «fissa/prenota/book/schedule/crea» = set (CREA un evento concreto).
-- «proponi/suggerisci/raccomanda/propose/suggest/recommend» = describe
-  (SUGGERISCE alternative testuali, NON crea niente, read-only).
-- «quali sono N slot/orari/mattine LIBERI/DISPONIBILI» = describe (richiesta
-  di proposte basate su disponibilita', non creazione).
+"proponi 3 orari per appuntamento la prossima settimana" → {"verb": "read", "object": "events"}
+"suggest a free slot tomorrow morning" → {"verb": "read", "object": "events"}
+PRINCIPIO SEMANTICO (universale, applica a TUTTI gli object, non solo events):
+- Verbo CREA/IMPOSTA/SCRIVE/CANCELLA un'entita' (azione destructive/mutating)
+  → mappa al verb operativo (set/write/delete/move/send/create).
+  Esempi: «fissa appuntamento», «invia mail», «cancella file», «crea cartella».
+- Verbo CHIEDE/PROPONE/SUGGERISCE/MOSTRA (azione inquiry, read-only) → read.
+  La sintesi testuale del risultato avviene nel final_answer del planner;
+  NON esiste un executor describe_<object> dedicato per la maggior parte
+  degli object (eccezione: describe_numbers per liste numeriche puro
+  compute statistica). Esempi: «proponi 3 orari» = read events, «mostrami
+  i file di X» = read files, «quali sono N libere?» = read events.
+- Se la frase mescola entrambi i sensi («se c'e' posto fissa l'appuntamento»)
+  l'intent vincente e' il VERBO MUTATING (set) — il check_availability
+  e' gestito a livello di planner come prima-azione (read_events).
 NOTA SU events vs proposals:
 - events = APPUNTAMENTI / RIUNIONI / IMPEGNI di calendario (agenda).
   "fissa/prenota/book/schedule/crea appuntamento|riunione|incontro|meeting" = set events.
