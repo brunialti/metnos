@@ -890,6 +890,68 @@ def _query_has_continuation(query: str) -> bool:
         return False
 
 
+# P6 (12/5/2026) — Notify-continuation detection per multi-pipeline.
+# Trigger: turn 35431172 «proponi N orari ... E MANDAMI EMAIL con la
+# scelta». Atteso: pipeline propose-and-notify (variant a/b) con
+# send_messages come step finale dopo get_inputs (e create_events
+# eventualmente in mezzo).
+# Pattern: marker "notify" (mandami/inviami/notificami/avvisami + email/
+# notifica/conferma) + congiunzione («e», «and», ", e") che precede.
+# §7.9 deterministico, niente LLM.
+# La regex e' DISTINTA da `_MULTISTEP_CONJUNCTIONS_RE`: qui catturiamo
+# il VERBO di notifica esplicito + il MEZZO (email/notifica/messaggio/
+# telegram/conferma), non solo la congiunzione strutturale.
+_NOTIFY_CONTINUATION_RE = re.compile(
+    r"("
+    # IT verbi notify con enclitici tipici mi/ci/gli — token interi via \b.
+    r"\b(?:mandami|inviami|spediscimi|notificami|avvisami|scrivimi)\b|"
+    r"\bfammi\s+sapere\b|"
+    # Forma "e/poi + verbo + (article)? + (mezzo)": multi-step strutturale
+    # con marker esplicito del mezzo. NB: \b iniziale prima della cong.
+    r"\b(?:e|and|poi)\s+(?:mi\s+)?(?:mandi|invii|spedisci|notifichi|avvisi|"
+    r"invia|manda|notifica|avvisa)\s+(?:una\s+|un\s+|la\s+)?"
+    r"(?:email|mail|messaggio|notifica|conferma|sms|telegram|whatsapp)\b|"
+    # EN verbi notify
+    r"\b(?:email|notify|alert|message|text|ping)\s+me\b|"
+    r"\bsend\s+me\s+(?:a\s+|an\s+)?(?:email|message|text|notification|notify)\b|"
+    r"\blet\s+me\s+know\b|"
+    # Marker del MEZZO di notifica esplicito: «via email», «via telegram».
+    r"\bvia\s+(?:email|mail|telegram|sms|whatsapp|notifica|notification|message)\b|"
+    # Coda «+ invia conferma», «and send confirmation»: cong NON-word (+/,)
+    # OPPURE word (e/and/poi). Senza \b sul prefix per ammettere `+`/`,`.
+    # Lookbehind senza fixed-width: usiamo char-class al posto di alternation.
+    r"(?:[\s\+,]|\b)(?:e|and|poi|\+|,)\s+(?:invia|manda|notifica|send|notify)\s+"
+    r"(?:una\s+|un\s+|la\s+|a\s+|an\s+|the\s+)?"
+    r"(?:conferma|confirmation|notifica|notification|messaggio|email|mail)\b|"
+    # Verbo notify standalone dopo cong NON-word/word (end-of-clause):
+    # «+ notifica», «and notify» a fine richiesta. Implica «notify the user».
+    r"(?:[\s\+,]|\b)(?:e|and|poi|\+|,)\s+(?:notifica|notify)(?=\s*[.!?]|\s*$)"
+    r")",
+    re.IGNORECASE,
+)
+
+
+def _query_has_notify_continuation(query: str) -> bool:
+    """True se la query contiene una continuation di notifica esplicita
+    diretta all'utente.
+
+    Esempi positivi:
+      - «... e mandami email con la scelta»
+      - «... e notificami il risultato»
+      - «... and email me the choice»
+      - «... and let me know»
+      - «... con conferma via email»
+    Esempi negativi (devono ritornare False):
+      - «cerca email» (verbo search, non notify)
+      - «leggi le email di oggi» (verbo read)
+      - «email di Mario» (sostantivo, no verbo notify)
+    Determinismo §7.9: regex O(len(query)), niente LLM.
+    """
+    if not query or not isinstance(query, str):
+        return False
+    return bool(_NOTIFY_CONTINUATION_RE.search(query))
+
+
 # P4 (12/5/2026) — Availability marker detection per check_availability.
 # Trigger: turn b1d9c236 «... SE C'È POSTO» → planner ha chiamato set_events
 # direttamente senza read_events. Il workflow (check_availability) di
@@ -2925,6 +2987,58 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
         route_info = {"chosen_k": len(candidates), "confidence": None, "reason": "fixed_k"}
     # Quota prefilter «non-LLM» (token rank + adattivita') = totale - intent.
     _prefilter_only_ms = max(0, _prefilter_total_ms - _intent_ms_acc)
+
+    # P6 (12/5/2026) — Multi-pipeline propose+notify injection.
+    # Bug live turn 35431172: query «proponi N orari ... e mandami email
+    # con la scelta». Intent LLM ha estratto verb=send object=messages →
+    # rank_with_intent ha popolato top-K con send_messages,
+    # find_messages_google_workspace, read_messages — NESSUN tool calendar.
+    # Step 1: find_messages_google_workspace (sbagliato).
+    # Step 2: send_messages premature (sbagliato, scelta non fatta).
+    # Step 3: find_events_empty (corretto ma tardi).
+    # Defense in depth §7.9: il runtime detecta multi-pipeline e amplia
+    # il pool con i tool calendar canonici + send tools, e RIMUOVE i tool
+    # di RICERCA mail (find_messages_*) che sono dei distrattori in questo
+    # contesto (la query non cerca mail, le invia).
+    # NB: NON rimuoviamo send_messages: e' il consumer corretto della
+    # variante (a)/(b). NON rimuoviamo find_events_empty/create_events/
+    # read_events: sono i producer/consumer della pipeline.
+    if (_query_is_propose_intent(user_query_for_run)
+            and _query_has_notify_continuation(user_query_for_run)):
+        _MULTI_PIPELINE_CALENDAR_NEEDED = (
+            "get_now",
+            "find_events_empty",
+            "create_events",
+            "read_events",
+            "get_inputs",
+            "send_messages",
+        )
+        _MULTI_PIPELINE_HIJACKERS = frozenset({
+            # Tool di RICERCA mail: la query NON cerca mail esistenti.
+            "find_messages_google_workspace",
+            "read_messages",
+            "read_messages_google_workspace",
+        })
+        existing_names = {e.name for e in candidates}
+        # Rimuovi hijackers (add-only e' la default policy del rerank, ma
+        # qui rimuoviamo perche' sono distrattori semantici dimostrati).
+        candidates = [e for e in candidates if e.name not in _MULTI_PIPELINE_HIJACKERS]
+        # Aggiungi i calendar tools mancanti.
+        for _need in _MULTI_PIPELINE_CALENDAR_NEEDED:
+            if _need in existing_names:
+                # Era nel pool ma forse rimosso (read_messages e' anche un
+                # hijacker, ma read_events e' i.e. un need). Non c'e' overlap
+                # nel nostro caso: read_messages e read_events sono distinti.
+                continue
+            _exec = next((e for e in catalog if e.name == _need), None)
+            if _exec is not None:
+                candidates.append(_exec)
+        # Aggiorna route_info per audit/observability.
+        route_info["multi_pipeline_propose_notify"] = True
+        if verbose:
+            print(f"[multi_pipeline] propose+notify detected: "
+                  f"added calendar tools, removed mail-search hijackers")
+
     log.candidates = [e.name for e in candidates]
     if verbose:
         print(f"[prefilter] candidati: {log.candidates}")

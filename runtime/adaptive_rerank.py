@@ -152,6 +152,14 @@ _GENERIC_PIPING_ARGS = frozenset({
     # Dati di output/policy generici:
     "dst", "dst_path", "dst_template", "dst_folder", "src", "src_path",
     "mode", "format", "force",
+    # `kind` (12/5/2026): discriminator universale nei record entries
+    # (es. `free_slot.kind`, `email_message.kind`) e arg enum in molti
+    # executor (get_proposals.kind dedupe|generalize|specialize|all,
+    # get_inputs.dialog[].schema.kind text|choice|...). NON identifica
+    # connessione dati. Bug live turn 35431172: free_slot.kind matcho'
+    # get_proposals.kind → step 5 invocava get_proposals invece di
+    # get_inputs. §7.3 generale, non per-tool.
+    "kind",
 })
 
 

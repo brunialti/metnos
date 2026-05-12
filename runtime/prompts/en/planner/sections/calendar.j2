@@ -78,6 +78,52 @@ APPOINTMENTS/AGENDA/EVENTS/CALENDAR/MEETINGS (Google Calendar)
   only (see (propose_intent) above: textual final_answer, no find_events_empty,
   no get_inputs, no create_events).
 
+(propose_and_notify) PROPOSAL + EMAIL/NOTIFICATION OF THE CHOICE — 5/6-STEP PIPELINE:
+  When the user combines «propose/suggest N alternatives» WITH a
+  NOTIFICATION continuation («and email me», «and notify me», «and send
+  me an email», «with the choice via email/telegram», IT equivalents
+  «e mandami email», «e inviami email», «e notificami», «e avvisami»),
+  the intent is MULTI-PIPELINE: first propose, then (optionally) create,
+  then NOTIFY the user with the choice.
+  The pipeline depends on create-or-not:
+    Variant (a) — NOTIFY only (no create_events explicitly required):
+      Step 1: get_now → today ISO.
+      Step 2: find_events_empty(time_windows=[...], size=..., time_of_day=...).
+      Step 3: get_inputs(from_step=2, kind='choice', display_template=
+              '{start} - {end}', value_field='start') → user pick.
+      Step 4: send_messages(messages=[{to:'<user>', subject:'Chosen slot',
+              body:'You picked: <step3.values.choice>'}]) → final_answer.
+    Variant (b) — NOTIFY + create_events (both required):
+      Steps 1-3 as variant (a).
+      Step 4: create_events(summary=..., start=<step3.values.choice>, end=...).
+      Step 5: send_messages(messages=[{to:'<user>', subject:'Appointment
+              confirmation', body:'Event created for <step3.values.choice>.
+              Link: <step4.results[0].htmlLink>'}]) → final_answer.
+  MUST: detect the notify continuation as a SEPARATE step after create
+  (variant b) or right after get_inputs (variant a). The user's choice
+  (step 3) must be passed to BOTH create_events and send_messages
+  (double use of the placeholder).
+  MUST NOT: emit send_messages BEFORE get_inputs (user has not chosen
+  yet). MUST NOT: call find_messages_google_workspace or read_messages:
+  the query is NOT a search for existing mail, it is a REQUEST TO SEND
+  an email. The noun «email» here is the NOTIFICATION CHANNEL, not the
+  data searched for.
+  OK: «propose 3 morning times next week and email me my choice» →
+      get_now → find_events_empty(time_windows=["next-week"],
+      size="1hour", time_of_day="morning", max_results=3) →
+      get_inputs(from_step=2, kind='choice', ...) → send_messages(...) →
+      final_answer.
+  OK: «propose 2 wednesday slots, create the event and email confirmation»
+      → get_now → find_events_empty(...) → get_inputs(...) →
+      create_events(...) → send_messages(...) → final_answer.
+  ERROR: «propose and email me» → find_messages_google_workspace
+      (THIS IS AN ERROR: the query does not search mail, it sends mail).
+  ERROR: «propose and email me» → direct send_messages at step 1
+      (THIS IS AN ERROR: send before choice → empty/placeholder body).
+  NB DISAMBIGUATION: «email» in «email me with the choice» is the
+  NOTIFICATION CHANNEL, not the searched object. Mail-search verbs
+  («search/read/find mail») still go to find_messages_*/read_messages.
+
 (check_availability) BOOKING WITH FREE-SLOT CONDITION — NUMBERED MANDATORY WORKFLOW:
   When the user asks «book/schedule/create X IF there is a slot/if the window
   is free/check availability and then book», EXECUTE EXACTLY in this order,
