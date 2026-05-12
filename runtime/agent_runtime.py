@@ -675,6 +675,37 @@ _FROM_STEP_DESC = (
 )
 
 
+_WEEKDAY_IT = ["lunedi'", "martedi'", "mercoledi'", "giovedi'",
+                "venerdi'", "sabato", "domenica"]
+_WEEKDAY_EN = ["Monday", "Tuesday", "Wednesday", "Thursday",
+                "Friday", "Saturday", "Sunday"]
+
+
+def _render_now_vars() -> dict:
+    """Restituisce dict con riferimenti temporali correnti per il prompt
+    planner footer (Roberto 12/5/2026): today_iso/now_hhmm/weekday_*/tz.
+    Iniettato in compose() per evitare step get_now ridondante quando il
+    planner deve solo risolvere una data relativa banale. §7.9 deterministico.
+    Per orari precisi al secondo o explicit time-of-day request, il planner
+    invoca comunque get_now (hint in _footer.j2).
+    """
+    from datetime import datetime
+    try:
+        import zoneinfo
+        tz = zoneinfo.ZoneInfo(DEFAULT_TIMEZONE)
+        now = datetime.now(tz)
+    except Exception:
+        now = datetime.now()
+    wd = now.weekday()
+    return {
+        "today_iso": now.strftime("%Y-%m-%d"),
+        "now_hhmm": now.strftime("%H:%M"),
+        "weekday_it": _WEEKDAY_IT[wd],
+        "weekday_en": _WEEKDAY_EN[wd],
+        "tz": DEFAULT_TIMEZONE,
+    }
+
+
 def planner_facing_schema(schema):
     """Trasforma lo `args_schema` di un executor nello schema esposto al
     pianificatore LLM. Fix strutturale (30/4/2026) per il disallineamento
@@ -2574,6 +2605,13 @@ class TurnLog:
             res = s.result if isinstance(s.result, dict) else {}
             if not res.get("truncated"):
                 continue
+            # Qualifier `_empty` (ADR 0127): l'executor ritorna ESATTAMENTE
+            # quanto chiesto dall'utente (es. find_events_empty max_results=3).
+            # "Truncated" qui significa "ho rispettato il tuo cap", non "ho
+            # tagliato risultati validi". Notice e' rumore. §7.3 detection
+            # generale via suffix qualifier, parallelo a cap-expand suppression.
+            if s.chosen_tool and s.chosen_tool.endswith("_empty"):
+                continue
             what = (res.get("truncated_what") or s.chosen_tool
                     or msg("MSG_TRUNCATED_DEFAULT_WHAT"))
             used = res.get("used") or res.get("ok_count") or res.get("count")
@@ -2820,6 +2858,7 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
         _planner_sections = None
     except Exception:
         _planner_sections = None
+    _now_vars = _render_now_vars()
     planner_system = prompt_loader.compose(
         "planner",
         DEFAULT_LANG,
@@ -2829,6 +2868,7 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
         vocab_qualifiers=_vocab_qualifiers(),
         project_paths=_render_project_paths_block(),
         users_known=_render_users_known_block(),
+        **_now_vars,
     )
     if extracted_meta:
         lines = [
@@ -3069,6 +3109,7 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
                 vocab_qualifiers=_vocab_qualifiers(),
                 project_paths=_render_project_paths_block(),
                 users_known=_render_users_known_block(),
+                **_now_vars,
             )
             # Riapplica gli addenda (credenziali + reference images) gia'
             # accumulati nel `planner_system`, calcolando la diff rispetto
@@ -3080,6 +3121,7 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
                 vocab_qualifiers=_vocab_qualifiers(),
                 project_paths=_render_project_paths_block(),
                 users_known=_render_users_known_block(),
+                **_now_vars,
             )
             if planner_system.startswith(_planner_all):
                 _suffix = planner_system[len(_planner_all):]
