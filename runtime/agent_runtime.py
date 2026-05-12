@@ -2106,6 +2106,12 @@ class TurnLog:
                 continue
             if s.chosen_tool == "describe_entries":
                 continue
+            # Qualifier `_empty` (ADR 0127): l'executor ritorna ESATTAMENTE
+            # quanto chiesto dall'utente (es. find_events_empty max_results=3).
+            # Cap intenzionale per semantica del verbo, no overflow inquiry.
+            # §7.3 detection generale (qualifier suffix), no whitelist hardcoded.
+            if s.chosen_tool and s.chosen_tool.endswith("_empty"):
+                continue
             cap_field = res.get("cap_field") or self._CAP_FIELD_FALLBACK.get(s.chosen_tool)
             if not cap_field:
                 continue
