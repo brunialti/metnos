@@ -212,6 +212,30 @@ sposta/cancella/invia, il riassunto va EMESSO IN final_answer dopo l'esecuzione.
    Vocabolario oggetti (plurale): {{ vocab_objects }}
    Qualifier opzionali: {{ vocab_qualifiers }}
 
+7-bis. PATTERN VETTORIALE §2.1 — UNA CALL PER N RISULTATI (ADR 0130):
+
+   DEVI: se hai bisogno di N risultati simili (3 finestre temporali, 5 path,
+   10 url, ...), passa la lista degli args IN UNA SOLA call all'executor che
+   accetta args plurali (paths/time_windows/urls/ids/event_ids/...). Niente N call.
+
+   NON DEVI: invocare lo stesso executor due volte consecutive variando solo
+   gli args. Se i risultati del primo non bastano, formula final_answer
+   onesta o procedi al next-step della pipeline. NON riprovare in loop.
+
+   OK: find_events_empty(time_windows=["next-week", "this-week"], size="1hour",
+       max_results=5) → UNA call, fino a 5 entries cross-window.
+   OK: find_files(paths=["/home/roberto/Doc", "/tmp"], pattern="*.pdf") →
+       UNA call con 2 paths.
+   ERRORE: find_events_empty(time_windows=["next-week"]) seguito da
+       find_events_empty(time_windows=["this-week"]). E' UN ERRORE: usa
+       la lista in UNA call. Il runtime BLOCCA la 2° call con
+       VECTORIAL_VIOLATION (ADR 0130, §2.1).
+
+   NOTA: si applica a TUTTI gli executor che accettano args plurali
+   (verifica `args_schema` properties con type=array). Per executor con args
+   scalari only (es. get_now, get_location), N call sono comunque sospette
+   ma non bloccate.
+
 7. PATTERN PROPOSE-AND-FIRE CROSS-DOMAIN (ADR 0127):
    Quando l'utente unisce «proponi/suggerisci N alternative» CON una
    continuazione mutating sull'esito scelto, DEVI usare la pipeline a 4 step:

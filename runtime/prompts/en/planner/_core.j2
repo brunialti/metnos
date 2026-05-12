@@ -205,6 +205,29 @@ move/delete/send, the summary must be EMITTED IN final_answer after execution.
    Object vocabulary (plural): {{ vocab_objects }}
    Optional Qualifiers: {{ vocab_qualifiers }}
 
+7-bis. VECTORIAL PATTERN §2.1 — ONE CALL FOR N RESULTS (ADR 0130):
+
+   MUST: if you need N similar results (3 time windows, 5 paths, 10 urls, ...),
+   pass the list of args IN A SINGLE call to the executor that accepts plural
+   args (paths/time_windows/urls/ids/event_ids/...). No N separate calls.
+
+   MUST NOT: invoke the same executor twice in a row varying only the args.
+   If the first results are not enough, emit an honest final_answer or proceed
+   to the next-step of the pipeline. DO NOT retry in a loop.
+
+   OK: find_events_empty(time_windows=["next-week", "this-week"], size="1hour",
+       max_results=5) → ONE call, up to 5 entries cross-window.
+   OK: find_files(paths=["/home/roberto/Doc", "/tmp"], pattern="*.pdf") →
+       ONE call with 2 paths.
+   ERROR: find_events_empty(time_windows=["next-week"]) followed by
+       find_events_empty(time_windows=["this-week"]). THIS IS AN ERROR: use
+       the list in ONE call. The runtime BLOCKS the 2nd call with
+       VECTORIAL_VIOLATION (ADR 0130, §2.1).
+
+   NOTE: applies to ALL executors accepting plural args (check `args_schema`
+   properties with type=array). For executors with scalar-only args (e.g.
+   get_now, get_location), N calls are still suspicious but not blocked.
+
 7. CROSS-DOMAIN PROPOSE-AND-FIRE PATTERN (ADR 0127):
    When the user combines «propose/suggest N alternatives» WITH a
    mutating continuation on the chosen result, MUST use the 4-step pipeline:

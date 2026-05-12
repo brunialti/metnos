@@ -41,7 +41,11 @@ _CONVERGENCE_QUERIES = [
     ("suggeriscimi 3 mattine e poi prenotami e notifica via mail", True, True),
     ("propose 3 morning slots next week and email me my choice", True, True),
     ("proponi 2 slot mercoledi e creami evento + invia conferma", True, True),
-    ("trova 3 finestre libere giovedi e fissa il primo + notifica", False, True),
+    # NB (12/5/2026): «3 finestre libere» = N alternatives nel dominio calendar
+    # (finestre/windows in noun list ADR 0128). Propose-intent True anche senza
+    # verbo propose/suggerisci esplicito (la richiesta di N opzioni e' sufficiente
+    # a inferire l'intent semantico). Allinea expected_propose a True.
+    ("trova 3 finestre libere giovedi e fissa il primo + notifica", True, True),
     # Ciclo 2: edge varianti
     ("proponi 3 orari mattina prossima settimana", True, False),  # solo propose
     ("proponi 3 orari e prenotami quello che scelgo", True, False),  # propose+create

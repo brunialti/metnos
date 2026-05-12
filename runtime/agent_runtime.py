@@ -20,6 +20,7 @@ Aggiornato dopo ciclo finale POC (26/4):
     - data piping con sintassi {{stepN.field}} (opzione A confermata nel ciclo 12)
     - default model = qwen3:8b con think=false
 """
+import functools
 import json
 import os
 import re
@@ -956,7 +957,20 @@ _NOTIFY_CONTINUATION_RE = re.compile(
     r"(?:conferma|confirmation|notifica|notification|messaggio|email|mail)\b|"
     # Verbo notify standalone dopo cong NON-word/word (end-of-clause):
     # «+ notifica», «and notify» a fine richiesta. Implica «notify the user».
-    r"(?:[\s\+,]|\b)(?:e|and|poi|\+|,)\s+(?:notifica|notify)(?=\s*[.!?]|\s*$)"
+    r"(?:[\s\+,]|\b)(?:e|and|poi|\+|,)\s+(?:notifica|notify)(?=\s*[.!?]|\s*$)|"
+    # Cong NON-word + <noun_medium> [<noun_conferma>]: «+ email conferma»,
+    # «, email confirmation», «+ telegram avviso». Forma ellittica del
+    # verbo notify (verbo sottinteso, mezzo+oggetto espliciti). Solo per
+    # congiunzioni NON-word (+/,) che marcano gia' lo step separato; un
+    # verbo coniugato «e/and/poi» da solo NON triggera questa branch per
+    # evitare falsi positivi (es. «cerca email» — congiunzione word senza
+    # ellissi verbale).
+    r"(?:\s*[\+,])\s+"
+    r"(?:una\s+|un\s+|la\s+|a\s+|an\s+|the\s+)?"
+    r"(?:email|mail|telegram|sms|whatsapp|notifica|notification|messaggio|message)\s*"
+    r"(?:di\s+|of\s+)?"
+    r"(?:conferma|confirmation|riassunto|summary|notifica|notification|"
+    r"avviso|alert|update|aggiornamento)?\b"
     r")",
     re.IGNORECASE,
 )
@@ -1114,7 +1128,8 @@ _PROPOSE_INTENT_RE = re.compile(
     # sono dominio calendar (parte di `_OBJECT_HINTS["events"]`).
     r"(?:\d+|alcun[ie]|qualche|alcune|alcuni|some)\s+"
     r"(?:opzion[ie]|alternativ[ae]|propost[ae]|slot|slots|orari[oi]?|"
-    r"fasce?|mattine?|pomeriggi|mercoled[ìi]|luned[ìi]|marted[ìi]|"
+    r"fasce?|mattine?|pomeriggi|finestre?|"
+    r"mercoled[ìi]|luned[ìi]|marted[ìi]|"
     r"gioved[ìi]|venerd[ìi]|sabat[oi]|domenic[ah]e?)|"
     # EN — verbs (gerund/3rd, infinitive)
     r"propose|proposes|proposing|"
@@ -1390,6 +1405,77 @@ def _compose_final_message_from_obs(lp_tool, lp_obs):
             detail=(detail if detail else msg("MSG_AUTO_FINAL_NO_DETAIL")),
         )
     return final_message, ok_count, n_above_threshold
+
+
+# Vectorial enforcement helpers (ADR 0130, 12/5/2026).
+# Bug live turn `8f8080c0` (12/5/2026, 13min): find_events_empty x9 consecutivi
+# con args che variavano solo `time_windows` -> DUPLICATE_CALL non scattava (args
+# diff), cap_same a 10 troppo permissivo per executor vettoriali. Anti-pattern
+# §2.1: un executor che accetta args plurali (paths/urls/time_windows/...) DEVE
+# essere chiamato UNA volta con N args, NON N volte. Detection deterministica via
+# manifest introspection (`args_schema.properties[arg].type == "array"`), zero
+# whitelist hardcoded §7.3. Cap_same custom 2 per executor vettoriali (vs 10
+# default), perche' la chiamata seguente alla prima ok=True su un vettoriale e'
+# sempre un retry del LLM che non aggiunge lavoro utile (segno di confusione su
+# §2.1, non di esplorazione legittima).
+_VECTORIAL_CAP_SAME = 2  # cap_same per executor vettoriali (vs DEFAULT_CAP_SAME_EXECUTOR=10)
+_VECTORIAL_ARG_TYPE_ARRAY = "array"  # JSON Schema type marker per args plurali
+
+
+@functools.lru_cache(maxsize=512)
+def _executor_has_plural_args(executor_name: str, schema_signature: str) -> bool:
+    """True se l'executor accetta almeno un arg plurale (lista) nel suo schema.
+
+    Detection introspettiva del `args_schema.properties`: cerca proprieta' con
+    `type=="array"` (JSON Schema). Determinismo §7.9: niente LLM, niente
+    whitelist hardcoded. Si applica a TUTTI gli executor vettoriali §2.1.
+
+    `schema_signature` e' una stringa stabile derivata dallo schema (sorted
+    properties + type), usata come chiave di cache: invalida automaticamente
+    al re-firma dell'executor (manifest re-loaded).
+
+    DEVI: passare il signature dal caller (vedi `_vectorial_schema_signature`).
+    NON DEVI: ispezionare l'oggetto Executor in cache (non hashable).
+    """
+    # Parser leggero del signature: "name:type;name:type;..." con type "array"
+    # come marker per detection. Se non c'e' "array" nel signature, nessun
+    # plural arg presente.
+    return ":array" in schema_signature or ";array" in schema_signature
+
+
+def _vectorial_schema_signature(args_schema: dict | None) -> str:
+    """Stringa stabile derivata da `args_schema.properties` per cache key.
+
+    Format: "name1:type1;name2:type2;..." (sorted by name). Tipi normalizzati a
+    lowercase (json schema usa lowercase). Lascia "" se schema vuoto o malformed.
+    Riusa solo type del top-level (no nested items.type analysis, sufficient
+    per detection plural).
+    """
+    if not isinstance(args_schema, dict):
+        return ""
+    props = args_schema.get("properties") or {}
+    if not isinstance(props, dict) or not props:
+        return ""
+    parts = []
+    for name in sorted(props.keys()):
+        prop = props.get(name) or {}
+        t = (prop.get("type") if isinstance(prop, dict) else None) or ""
+        parts.append(f"{name}:{str(t).lower()}")
+    return ";".join(parts)
+
+
+def _cap_same_for_executor(executor, default_cap: int) -> int:
+    """Cap_same dedicato per `executor`: 2 se vettoriale (plural args), default
+    altrimenti. ADR 0130 §2.1: executor vettoriali devono essere chiamati una
+    volta con N args, non N volte. La soglia bassa previene il thrashing del
+    LLM che varia gli args sperando in un risultato diverso.
+    """
+    if executor is None:
+        return default_cap
+    sig = _vectorial_schema_signature(getattr(executor, "args_schema", None))
+    if _executor_has_plural_args(executor.name, sig):
+        return _VECTORIAL_CAP_SAME
+    return default_cap
 
 
 # Bug live turn `eb837329` (11/5/2026): final_message su loop_break era una
@@ -3028,7 +3114,7 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
     # Quota prefilter «non-LLM» (token rank + adattivita') = totale - intent.
     _prefilter_only_ms = max(0, _prefilter_total_ms - _intent_ms_acc)
 
-    # P6 (12/5/2026) — Multi-pipeline propose+notify injection.
+    # P6 (12/5/2026) — Multi-pipeline propose / notify injection.
     # Bug live turn 35431172: query «proponi N orari ... e mandami email
     # con la scelta». Intent LLM ha estratto verb=send object=messages →
     # rank_with_intent ha popolato top-K con send_messages,
@@ -3036,48 +3122,66 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
     # Step 1: find_messages_google_workspace (sbagliato).
     # Step 2: send_messages premature (sbagliato, scelta non fatta).
     # Step 3: find_events_empty (corretto ma tardi).
-    # Defense in depth §7.9: il runtime detecta multi-pipeline e amplia
-    # il pool con i tool calendar canonici + send tools, e RIMUOVE i tool
-    # di RICERCA mail (find_messages_*) che sono dei distrattori in questo
-    # contesto (la query non cerca mail, le invia).
+    # Defense in depth §7.9: il runtime detecta tre forme di multi-pipeline
+    # e amplia il pool. Le tre forme sono ortogonali (propose XOR notify XOR
+    # entrambi) ma applicano la STESSA logica add-only (no shim §7.1):
+    #   propose-only → inietta find_events_empty + get_inputs + create_events
+    #                   (variante propose+fire; calendar pipeline producer/
+    #                   consumer + dialog).
+    #   notify-only  → inietta send_messages (consumer di notifica).
+    #   entrambi     → inietta TUTTA la pipeline 6-step + rimuove gli
+    #                   hijackers mail-search (la query NON cerca mail).
     # NB: NON rimuoviamo send_messages: e' il consumer corretto della
     # variante (a)/(b). NON rimuoviamo find_events_empty/create_events/
-    # read_events: sono i producer/consumer della pipeline.
-    if (_query_is_propose_intent(user_query_for_run)
-            and _query_has_notify_continuation(user_query_for_run)):
-        _MULTI_PIPELINE_CALENDAR_NEEDED = (
+    # read_events: sono i producer/consumer della pipeline. La rimozione
+    # dei hijackers mail-search scatta SOLO se entrambi i flag, perche'
+    # in solo-notify la query potrebbe legittimamente cercare destinatari
+    # via Gmail (caso «manda email a Mario» non triggera notify-cont).
+    _is_propose = _query_is_propose_intent(user_query_for_run)
+    _is_notify = _query_has_notify_continuation(user_query_for_run)
+    if _is_propose or _is_notify:
+        _CALENDAR_PROPOSE_TOOLS = (
             "get_now",
             "find_events_empty",
             "create_events",
             "read_events",
             "get_inputs",
-            "send_messages",
         )
-        _MULTI_PIPELINE_HIJACKERS = frozenset({
+        _NOTIFY_TOOLS = ("send_messages",)
+        _HIJACKERS_BOTH = frozenset({
             # Tool di RICERCA mail: la query NON cerca mail esistenti.
             "find_messages_google_workspace",
             "read_messages",
             "read_messages_google_workspace",
         })
+        if _is_propose and _is_notify:
+            needed = _CALENDAR_PROPOSE_TOOLS + _NOTIFY_TOOLS
+            hijackers = _HIJACKERS_BOTH
+            route_info["multi_pipeline_propose_notify"] = True
+        elif _is_propose:
+            needed = _CALENDAR_PROPOSE_TOOLS
+            hijackers = frozenset()
+            route_info["multi_pipeline_propose_only"] = True
+        else:  # notify-only
+            needed = _NOTIFY_TOOLS
+            hijackers = frozenset()
+            route_info["multi_pipeline_notify_only"] = True
+
         existing_names = {e.name for e in candidates}
         # Rimuovi hijackers (add-only e' la default policy del rerank, ma
         # qui rimuoviamo perche' sono distrattori semantici dimostrati).
-        candidates = [e for e in candidates if e.name not in _MULTI_PIPELINE_HIJACKERS]
-        # Aggiungi i calendar tools mancanti.
-        for _need in _MULTI_PIPELINE_CALENDAR_NEEDED:
-            if _need in existing_names:
-                # Era nel pool ma forse rimosso (read_messages e' anche un
-                # hijacker, ma read_events e' i.e. un need). Non c'e' overlap
-                # nel nostro caso: read_messages e read_events sono distinti.
+        if hijackers:
+            candidates = [e for e in candidates if e.name not in hijackers]
+        # Aggiungi i tools mancanti.
+        for _need in needed:
+            if _need in existing_names and _need not in hijackers:
                 continue
             _exec = next((e for e in catalog if e.name == _need), None)
             if _exec is not None:
                 candidates.append(_exec)
-        # Aggiorna route_info per audit/observability.
-        route_info["multi_pipeline_propose_notify"] = True
         if verbose:
-            print(f"[multi_pipeline] propose+notify detected: "
-                  f"added calendar tools, removed mail-search hijackers")
+            print(f"[multi_pipeline] propose={_is_propose} notify={_is_notify}: "
+                  f"injected {needed}, hijackers={list(hijackers)}")
 
     log.candidates = [e.name for e in candidates]
     if verbose:
@@ -3636,16 +3740,65 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
                 log.ts_end = time.time(); log.write(); return log
             continue
 
-        # Cap chiamate stesso tool: 10 per qualsiasi tool. Soglia generosa
+        # Vectorial violation guard (ADR 0130, 12/5/2026).
+        # Bug live turn `8f8080c0`: find_events_empty x9 consecutivi su args
+        # `time_windows` che variavano (DUPLICATE_CALL non scattava). §2.1
+        # vettoriale: chi accetta args plurali (paths/urls/time_windows/...)
+        # va chiamato UNA volta con N args, non N volte. Detection §7.9
+        # introspettiva sul `args_schema.properties` (zero whitelist §7.3).
+        # Posizione: post-DUPLICATE (args diff), pre-cap_same (intercetta
+        # PRIMA di consumare budget) e pre-invoke (zero cost, no work).
+        _executor_for_guard = catalog.get(chosen_name)
+        if (
+            _executor_for_guard is not None
+            and log.steps
+            and log.steps[-1].chosen_tool == chosen_name
+            and isinstance(log.steps[-1].result, dict)
+            and log.steps[-1].result.get("ok") is True
+        ):
+            _sig = _vectorial_schema_signature(_executor_for_guard.args_schema)
+            if _executor_has_plural_args(chosen_name, _sig):
+                obs = {
+                    "ok": False,
+                    "_anti_vectorial": True,
+                    "error": (
+                        f"VECTORIAL_VIOLATION: hai gia' chiamato '{chosen_name}' "
+                        f"al passo precedente con esito ok=True. Questo executor "
+                        f"accetta args plurali (§2.1 vettoriale): se hai bisogno "
+                        f"di MULTIPLE finestre/path/id/url, passali TUTTI in UNA "
+                        f"sola call come lista. NON chiamarlo di nuovo. Formula "
+                        f"final_answer dai risultati gia' ottenuti, oppure procedi "
+                        f"al next step della pipeline."
+                    ),
+                }
+                step.result = obs
+                step.error = "anti_vectorial_blocked"
+                log.steps.append(step)
+                history_for_refs.append({"step": step_num, "tool": chosen_name, "args": raw_args, "observation": obs})
+                history_for_llm.append({"role": "assistant", "tool_calls": [{"id": tc.call_id, "type": "function", "function": {"name": chosen_name, "arguments": raw_args}}]})
+                history_for_llm.append({"role": "tool", "tool_call_id": tc.call_id, "name": chosen_name, "content": json.dumps(obs, ensure_ascii=False)})
+                consecutive_blocked += 1
+                if consecutive_blocked >= LOOP_BREAK_THRESHOLD:
+                    log.final_kind = "loop_break"
+                    _hint = _loop_break_hint(_intent_object_from_route(route_info))
+                    log.final_message = msg("MSG_LOOP_BREAK", n=consecutive_blocked, hint=_hint)
+                    log.ts_end = time.time(); log.write(); return log
+                continue
+
+        # Cap chiamate stesso tool: 10 default per qualsiasi tool. Soglia generosa
         # per permettere iterazioni legittime (universal helpers su args
         # diversi, producer su windows/account differenti). Loop reali
         # vengono comunque catturati prima da duplicate_call_blocked.
+        # ADR 0130: cap_same per executor vettoriali abbassato a 2 (vs 10
+        # default) via `_cap_same_for_executor`: chiamare un vettoriale piu'
+        # di 2 volte e' anti-pattern §2.1 anche con args diversi.
         same_count[chosen_name] += 1
-        if same_count[chosen_name] > cap_same:
+        _cap_same_effective = _cap_same_for_executor(_executor_for_guard, cap_same)
+        if same_count[chosen_name] > _cap_same_effective:
             step.error = f"cap_same_executor superato per {chosen_name}"
             log.steps.append(step)
             log.final_kind = "cap_same_executor"
-            log.final_message = f"(stop: '{chosen_name}' chiamato {cap_same} volte)"
+            log.final_message = f"(stop: '{chosen_name}' chiamato {_cap_same_effective} volte)"
             log.ts_end = time.time(); log.write(); return log
 
         # Cap_max_per_turn (8/5/2026 notte, CLAUDE.md §4.4 estesa).
