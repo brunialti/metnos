@@ -357,12 +357,35 @@ def _build_final_message_hint(state: dict, fmt: str) -> str:
     first = dialog[0]
     prompt = first.get("prompt") or "?"
     descr = state.get("description") or ""
+    schema_first = first.get("schema") or {}
+    kind_first = schema_first.get("kind")
     lines = [title]
     if descr:
         lines.append(descr)
     lines.append("")
     lines.append(f"Step 1/{n} — {prompt}")
-    if first.get("schema", {}).get("kind") == "credentials":
+    # Per kind=choice/multi_choice in fmt=dialogue (no inline keyboard),
+    # ENUMERA le opzioni numerate cosi' l'utente sa cosa rispondere.
+    # Bug live turn 518878ff (12/5/2026): prompt mostrava «Scegli uno degli
+    # orari» ma le 3 opzioni non erano visibili → utente disorientato.
+    if kind_first in ("choice", "multi_choice"):
+        choices = schema_first.get("choices") or []
+        if choices:
+            for idx, ch in enumerate(choices, start=1):
+                if isinstance(ch, dict):
+                    label = ch.get("label") or ch.get("value") or str(ch)
+                else:
+                    label = str(ch)
+                lines.append(f"  {idx}) {label}")
+            if kind_first == "choice":
+                lines.append("")
+                lines.append("Rispondi con il numero (1, 2, ...) della tua scelta.")
+            else:
+                lines.append("")
+                lines.append("Rispondi con i numeri separati da virgola (es. 1,3).")
+            lines.append("`annulla` per abortire.")
+            return "\n".join(lines)
+    if kind_first == "credentials":
         lines.append("(la risposta sara' mascherata in registro)")
     lines.append("")
     lines.append("Rispondi nel prossimo messaggio. `annulla` per abortire.")

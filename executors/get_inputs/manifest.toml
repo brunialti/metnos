@@ -19,7 +19,7 @@ en = "Opens a structured dialogue with the user to collect one or more values. T
 
 [code]
 files  = ["get_inputs.py"]
-digest = "sha256:771500ce70a193275439434bbafa70253e3574e59148d5e833597ce8492892be"
+digest = "sha256:928988759411b162ce5d27a3bec24189faab96c5920a6a1f80aa984a8037d11d"
 
 [args]
 type     = "object"

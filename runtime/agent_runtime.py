@@ -3172,13 +3172,27 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
         # qui rimuoviamo perche' sono distrattori semantici dimostrati).
         if hijackers:
             candidates = [e for e in candidates if e.name not in hijackers]
-        # Aggiungi i tools mancanti.
+        # Promote i pipeline tools all'INIZIO della lista (priorita'): bug
+        # live turn e0cd5bfe — planner ha skippato get_inputs perche' era
+        # in 7° posizione del top-K, scegliendo send_messages diretto.
+        # Inserire prima rende visibile il sequencing corretto al LLM.
+        _to_promote = []
         for _need in needed:
-            if _need in existing_names and _need not in hijackers:
-                continue
             _exec = next((e for e in catalog if e.name == _need), None)
-            if _exec is not None:
-                candidates.append(_exec)
+            if _exec is None:
+                continue
+            if _need not in existing_names:
+                _to_promote.append(_exec)
+            else:
+                # Gia' nel pool: rimuovi e re-inserisci all'inizio.
+                candidates = [e for e in candidates if e.name != _need]
+                _to_promote.append(_exec)
+        # Ordine pipeline canonico: get_now, find_events_empty, get_inputs,
+        # create_events, read_events, send_messages. Riordina _to_promote
+        # per rispettare la sequenza naturale.
+        _pipeline_order = {n: i for i, n in enumerate(needed)}
+        _to_promote.sort(key=lambda e: _pipeline_order.get(e.name, 99))
+        candidates = _to_promote + candidates
         if verbose:
             print(f"[multi_pipeline] propose={_is_propose} notify={_is_notify}: "
                   f"injected {needed}, hijackers={list(hijackers)}")
