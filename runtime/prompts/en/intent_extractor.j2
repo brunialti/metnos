@@ -83,6 +83,10 @@ Examples:
 "create a calendar event" → {"verb": "set", "object": "events"}
 "propose 3 morning times next week for a 1h appointment" → {"verb": "read", "object": "events"}
 "recommend 2 free wednesdays" → {"verb": "read", "object": "events"}
+"proponi 3 mattine la prossima settimana e prenotami quella che scelgo" → {"verb": "find", "object": "events"}
+"suggerisci slot mercoledi e fissa il primo libero" → {"verb": "find", "object": "events"}
+"propose 3 morning times next week and book one" → {"verb": "find", "object": "events"}
+"suggest a free slot tomorrow and confirm" → {"verb": "find", "object": "events"}
 SEMANTIC PRINCIPLE (universal, applies to ALL objects, not just events):
 - Verb CREATES/SETS/WRITES/DELETES an entity (destructive/mutating action)
   → maps to operative verb (set/write/delete/move/send/create).

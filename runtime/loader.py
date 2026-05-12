@@ -534,7 +534,7 @@ HANDCRAFTED_FAMILIES: frozenset[str] = frozenset({
     "list_dirs",
     # Trasformativi non sostituibili
     "send_messages", "write_files", "move_files",
-    "create_dirs", "remove_dirs",
+    "create_dirs", "delete_dirs",
 })
 
 # Soglia di Jaccard al di sopra (>=) della quale un synth viene rejected.

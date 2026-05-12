@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-remove_dirs — executor di Metnos v1.1.
+delete_dirs — executor di Metnos v1.1 (rinominato da remove_dirs, 12/5/2026).
 
 Rimuove una o piu' directory. Vettoriale per costruzione: una sola call
 accetta una lista di path (anche di un solo elemento, o vuota).

@@ -48,7 +48,7 @@ MUST NOT: delete if snapshot is not confirmed (with revertible=True).
 MUST NOT: `os.rmdir` on non-empty dirs without recursive=True.
 MUST NOT: write `def reverse(...)` (runtime applies restore_blob_backup).
 
-FILESYSTEM DOMAIN (delete_files, remove_dirs):
+FILESYSTEM DOMAIN (delete_files, delete_dirs):
 - src: e["path"]
 - snapshot: for files = `Path(p).read_bytes()`; for dirs = tarfile.tar.gz of the tree
 - remove: `os.unlink(path)` (file) or `shutil.rmtree(path)` (dir + recursive)

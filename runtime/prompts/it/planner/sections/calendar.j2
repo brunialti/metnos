@@ -42,6 +42,39 @@ APPUNTAMENTI/AGENDA/EVENTI/CALENDARIO/RIUNIONI (Google Calendar)
   NB DISAMBIGUAZIONE: «fissa/prenota/book» = set destructive (vai a
   check_availability). «proponi/suggerisci/recommend» = suggestion read-only.
 
+(propose_and_fire) PROPOSTA + PRENOTAZIONE DELLA SCELTA — PIPELINE 4 STEP:
+  Quando l'utente unisce «proponi/suggerisci N alternative» CON una
+  continuazione mutating («e prenotami», «e fissa», «and book», «and
+  schedule», «poi crea l'evento», ecc.), DEVI eseguire ESATTAMENTE la
+  pipeline propose-and-fire (ADR 0127):
+    Passo 1: get_now → estrai today ISO.
+    Passo 2: find_events_empty(time_windows=[...], size=..., time_of_day=...)
+             → entries con `{start, end, duration_min}` dei gap.
+    Passo 3: get_inputs(from_step=2, title=..., dialog=[{var:'scelta',
+             prompt:'Scegli', schema:{kind:'choice', display_template:
+             '{start} - {end}', value_field:'start'}}]) → entries dello
+             step 2 vengono derivate in choices; user pick = `values.scelta`.
+    Passo 4: set_events(summary=..., start=<step3.values.scelta>, end=...)
+             → final_answer con link. Usa la sintassi runtime ufficiale
+             (placeholder a doppia graffa o resolve dinamico §4.1) per
+             passare la scelta dell'utente come start dell'evento.
+  DEVI: usare find_events_empty per gli SLOT VUOTI/LIBERI (NON read_events:
+  read_events ritorna gli eventi gia' presenti, non i gap). `size` accetta
+  stringhe unit-aware come "1hour"/"60min"/"30 min"; `time_windows` e' una
+  lista (anche N=1, default ["next-week"]).
+  NON DEVI: invocare set_events PRIMA dello step 3 (l'utente non ha ancora
+  scelto). E' UN ERRORE «proponi e prenota» → set_events diretto: viola la
+  semantica di scelta esplicita.
+  OK: «proponi 3 mattine la prossima settimana e prenotami quella che scelgo»
+      → get_now → find_events_empty(time_windows=["next-week"], size="1hour",
+       time_of_day="morning", max_results=3) → get_inputs(from_step=2, ...)
+       → set_events(start=<step3.values.scelta>, ...) → final_answer.
+  ERRORE: «proponi e prenota» → set_events diretto (E' UN ERRORE: scelta non
+       fatta dall'utente, prenotazione arbitraria).
+  NB DISAMBIGUAZIONE: senza continuazione mutating la query e' propose-only
+  (vedi (propose_intent) sopra: final_answer testuale, niente find_events_empty,
+  niente get_inputs, niente set_events).
+
 (check_availability) PRENOTAZIONE CON CONDIZIONE DI POSTO LIBERO — WORKFLOW NUMERATO OBBLIGATORIO:
   Quando l'utente chiede «fissa/prenota/crea X SE c'e' posto/se la finestra
   e' libera/verifica disponibilita' e poi prenota», ESEGUI ESATTAMENTE in
@@ -75,10 +108,11 @@ DRIVE/GOOGLE-DRIVE/FILE-CLOUD/DOCUMENTI-CLOUD
   NON DEVI: confondere con find_files/read_files (filesystem locale .33).
 
 FOGLI-DI-CALCOLO/SHEETS/GOOGLE-SHEETS
-  → get_files_xlsx, set_files_xlsx, change_files_xlsx.
+  → read_files_xlsx_google_workspace, set_files_xlsx, change_files_xlsx.
+  NON DEVI: confondere con read_files_xlsx (handcrafted, file xlsx locali).
 
 DOCUMENTI-GOOGLE/DOCS/GOOGLE-DOCS
-  → get_files_text, set_files_text, change_files_text.
+  → read_files_text, set_files_text, change_files_text.
 
 CONTATTI/RUBRICA/GOOGLE-CONTACTS
   → read_contacts.

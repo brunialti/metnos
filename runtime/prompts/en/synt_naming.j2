@@ -88,4 +88,26 @@ Output: {"name": "find_packages", "action": "find", "object": "packages",
 User: "ridimensiona immagine a 800x600" (resize NOT in vocab)
 Output: {"name": null, "reason_no_name": "The action 'resize' is not in the closed vocabulary (compress/extract/render cover other scopes). Escalation to Roberto to extend the vocab or to use an external tool."}
 
+QUALIFIER `_empty` (ADR 0127, cross-domain — modality-operation family):
+When the user request identifies domain entities in EMPTY/UNDER-THRESHOLD/
+AVAILABLE state (calendar free slots, small files, empty directories,
+short messages, etc.), MUST use the `_empty` qualifier. Canonical arg:
+`size` (unit-aware str: "1hour"/"10KB"/"100chars"/...). One single
+cross-domain semantics, no forced analogies between domains.
+
+User: "find free 1-hour slots next week"
+Output: {"name": "find_events_empty", "action": "find", "object": "events",
+         "qualifier": "empty", "revertible": false, "critical": false,
+         "target_kind": "none"}
+
+User: "find empty files under /tmp"
+Output: {"name": "find_files_empty", "action": "find", "object": "files",
+         "qualifier": "empty", "revertible": false, "critical": false,
+         "target_kind": "path_glob"}
+
+User: "list empty directories under /opt"
+Output: {"name": "find_dirs_empty", "action": "find", "object": "dirs",
+         "qualifier": "empty", "revertible": false, "critical": false,
+         "target_kind": "path_glob"}
+
 NOW produce the JSON for the user request. ONLY JSON, nothing else.

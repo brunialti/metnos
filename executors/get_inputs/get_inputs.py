@@ -110,12 +110,34 @@ def _validate_dialog(dialog) -> tuple[bool, str | None]:
         if kind not in VALID_KINDS:
             return False, (f"step {i} ({var}): 'schema.kind'={kind!r} "
                             f"non valido. Ammessi: {', '.join(VALID_KINDS)}")
-        # choice / multi_choice richiedono `choices`
+        # choice / multi_choice richiedono `choices` esplicite OPPURE
+        # derivazione da entries (ADR 0127 propose-and-fire): se lo step
+        # ha `display_template` (o flag `from_entries=true`), `choices`
+        # verra' popolato a runtime in `_derive_choices_from_entries`.
         if kind in ("choice", "multi_choice"):
+            has_template = isinstance(schema.get("display_template"), str) \
+                and schema.get("display_template")
+            from_entries = bool(schema.get("from_entries"))
             choices = schema.get("choices")
-            if not isinstance(choices, list) or len(choices) < 2:
+            choices_explicit = isinstance(choices, list) and len(choices) >= 1
+            if not (choices_explicit or has_template or from_entries):
                 return False, (f"step {i} ({var}): kind={kind!r} richiede "
-                                "'choices' lista con >=2 elementi")
+                                "'choices' (lista esplicita >=2) OPPURE "
+                                "'display_template' (derivazione da entries "
+                                "passate via from_step a livello top di args)")
+            if choices_explicit and len(choices) < 2 \
+                    and not (has_template or from_entries):
+                return False, (f"step {i} ({var}): kind={kind!r} 'choices' "
+                                "esplicite richiedono >=2 elementi")
+            if "value_field" in schema and not isinstance(
+                    schema.get("value_field"), str):
+                return False, (f"step {i} ({var}): 'value_field' deve essere "
+                                "stringa (nome campo dell'entry)")
+            if has_template:
+                tpl = schema["display_template"]
+                if len(tpl) > 400:
+                    return False, (f"step {i} ({var}): 'display_template' "
+                                    f"troppo lungo ({len(tpl)} char, max 400)")
         # choice_with_preview (PR5): options con value+label+preview path.
         # Path validato lato callers e re-validato lato server preview
         # endpoint (defense in depth, anti path-traversal).
@@ -124,6 +146,94 @@ def _validate_dialog(dialog) -> tuple[bool, str | None]:
             if err_pv is not None:
                 return False, f"step {i} ({var}): {err_pv}"
     return True, None
+
+
+def _format_template_safe(template: str, entry: dict) -> str:
+    """Applica `template.format(**entry)` in modo difensivo (§7.9).
+
+    DEVI: passare placeholder che corrispondono a campi del dict entry.
+    NON DEVI: usare conversioni complesse — solo substitution puro.
+    OK: '{start} - {end}' su entry {start, end, duration_min, ...}.
+    ERRORE: '{path[0]}' (indici complessi non supportati: fallback al
+    raw string entry).
+
+    Campi mancanti producono `<missing:campo>` per non rompere il
+    flow ma rendere visibile l'errore. Niente eccezioni.
+    """
+    try:
+        return template.format(**entry)
+    except (KeyError, IndexError) as ex:
+        return f"{template} <missing:{ex}>"
+    except (ValueError, TypeError):
+        # Format spec invalido o type non format-able: fallback raw.
+        return json.dumps(entry, ensure_ascii=False, default=str)[:200]
+
+
+def _derive_choices_from_entries(dialog: list, entries: list) -> list:
+    """Per ogni step `choice`/`multi_choice` con `display_template` o
+    `from_entries=true` e senza `choices` esplicite, popola `choices` a
+    partire dalle entries.
+
+    `value_field` (opzionale) estrae il valore da ogni entry; default
+    JSON-serializza l'entry intera (fallback robusto per record con
+    schema non noto).
+
+    Ritorna una NUOVA lista dialog (immutabilita' del parametro PLANNER).
+
+    Determinismo §7.9: solo string formatting, no LLM.
+    """
+    if not isinstance(entries, list) or len(entries) == 0:
+        return list(dialog)
+    out_dialog = []
+    for step in dialog:
+        if not isinstance(step, dict):
+            out_dialog.append(step)
+            continue
+        schema = step.get("schema") or {}
+        kind = schema.get("kind")
+        if kind not in ("choice", "multi_choice"):
+            out_dialog.append(step)
+            continue
+        existing = schema.get("choices")
+        if isinstance(existing, list) and len(existing) >= 2:
+            # Esplicite: priorita' sopra entries-derivation.
+            out_dialog.append(step)
+            continue
+        tpl = schema.get("display_template")
+        from_entries = bool(schema.get("from_entries"))
+        if not (tpl or from_entries):
+            out_dialog.append(step)
+            continue
+        value_field = schema.get("value_field")
+        derived = []
+        for ent in entries:
+            if not isinstance(ent, dict):
+                # Entry scalare: usa la stringa come label e value.
+                lab = str(ent)
+                derived.append({"label": lab, "value": lab})
+                continue
+            if tpl:
+                label = _format_template_safe(tpl, ent)
+            else:
+                # from_entries=true ma senza template: fallback a
+                # JSON compatto come label (rimane azione utile).
+                label = json.dumps(ent, ensure_ascii=False, default=str)[:200]
+            if value_field and value_field in ent:
+                val = ent[value_field]
+            else:
+                # Nessun value_field: usiamo l'entry serializzata come
+                # value (preserva tutti i campi per lo step successivo).
+                val = json.dumps(ent, ensure_ascii=False, default=str)
+            derived.append({"label": label, "value": val})
+        new_schema = dict(schema)
+        new_schema["choices"] = derived
+        # Sentinel per i layer downstream (canale Telegram callback_data
+        # usa indice — non serve modifica li').
+        new_schema["_derived_from_entries"] = True
+        new_step = dict(step)
+        new_step["schema"] = new_schema
+        out_dialog.append(new_step)
+    return out_dialog
 
 
 def _validate_options_with_preview(options) -> str | None:
@@ -339,6 +449,45 @@ def invoke(args: dict) -> dict:
     ok, err = _validate_dialog(dialog)
     if not ok:
         return {"ok": False, "error": f"dialog non valido: {err}"}
+
+    # Pattern propose-and-fire (ADR 0127): se l'arg `entries` e' presente
+    # (popolato a runtime quando il PLANNER chiama get_inputs con
+    # `from_step: N` top-level), deriva `choices` per gli step
+    # `choice`/`multi_choice` con `display_template`/`from_entries`.
+    # Determinismo §7.9.
+    entries_for_choices = args.get("entries")
+    needs_derivation = any(
+        (s.get("schema") or {}).get("kind") in ("choice", "multi_choice")
+        and (
+            (s.get("schema") or {}).get("display_template")
+            or (s.get("schema") or {}).get("from_entries")
+        )
+        and not (s.get("schema") or {}).get("choices")
+        for s in dialog
+    )
+    if needs_derivation:
+        if not isinstance(entries_for_choices, list):
+            return {
+                "ok": False,
+                "error": (
+                    "step kind=choice/multi_choice con display_template "
+                    "richiede `from_step=N` top-level di args (il runtime "
+                    "espande from_step in entries). Nessuna `entries` ricevuta."
+                ),
+                "error_class": "invalid_args",
+            }
+        if len(entries_for_choices) == 0:
+            return {
+                "ok": False,
+                "error": (
+                    "step kind=choice/multi_choice derivato da `entries` "
+                    "VUOTE — niente scelte disponibili. Verifica che lo step "
+                    "from_step abbia prodotto >=1 entry, o passa choices "
+                    "esplicite."
+                ),
+                "error_class": "invalid_args",
+            }
+        dialog = _derive_choices_from_entries(dialog, entries_for_choices)
 
     fmt_arg = args.get("fmt") or "auto"
     if fmt_arg not in ("auto", "dialogue", "form", "voice"):

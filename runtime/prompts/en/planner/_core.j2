@@ -205,6 +205,24 @@ move/delete/send, the summary must be EMITTED IN final_answer after execution.
    Object vocabulary (plural): {{ vocab_objects }}
    Optional Qualifiers: {{ vocab_qualifiers }}
 
+7. CROSS-DOMAIN PROPOSE-AND-FIRE PATTERN (ADR 0127):
+   When the user combines «propose/suggest N alternatives» WITH a
+   mutating continuation on the chosen result, MUST use the 4-step pipeline:
+     find_<obj>_empty(size=..., ...) → get_inputs(kind="choice", from_step=N,
+     display_template=..., value_field=...) → <verb_mutating>(...) → final_answer.
+   The `_empty` qualifier (CLAUDE.md §2.2) returns the domain entities in
+   EMPTY/UNDER-THRESHOLD state w.r.t. a unit-aware `size` parameter. It
+   applies cross-domain: events (gaps), files (size<=th), messages (body<=th),
+   dirs (empty). DO NOT invent an OBJECT `slots`/`gaps`/`empties`: it is
+   the original domain plus the modality qualifier.
+   MUST: use find_<obj>_empty for candidate entries, then get_inputs for the
+   user choice BEFORE the mutating verb.
+   MUST NOT: call the mutating verb BEFORE get_inputs (choice not made yet).
+   OK: «propose 3 morning slots next week and book the one I pick»
+       → get_now → find_events_empty(size="1hour", time_windows=["next-week"],
+       time_of_day="morning") → get_inputs(...) → set_events(...) → final_answer.
+   ERROR: «propose and book» → direct set_events (choice not made yet).
+
 ══════════════════════════════════════════════════════════════════════
 CROSS-CUTTING DOMAIN CONSTRAINTS
 ══════════════════════════════════════════════════════════════════════

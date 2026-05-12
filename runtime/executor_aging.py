@@ -44,7 +44,7 @@ PROTECTED_NAMES: frozenset[str] = frozenset({
     "list_dirs", "find_files", "send_messages", "read_messages",
     "filter_entries", "sort_entries", "describe_entries",
     "classify_entries", "compute_entries", "undo_last_turn",
-    "get_files_metadata", "create_dirs", "remove_dirs", "move_files",
+    "get_files_metadata", "create_dirs", "delete_dirs", "move_files",
     "get_signatures", "set_signatures", "compute_signatures",
     "get_proposals", "get_processes", "get_urls", "filter_texts_lines",
 })

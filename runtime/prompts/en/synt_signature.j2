@@ -86,4 +86,37 @@ OUTPUT EXAMPLE (for name=get_urls, DOES NOT receive list from previous step):
   "reverse_pattern": null
 }
 
+OUTPUT EXAMPLE (for name=find_<obj>_empty, ADR 0127, qualifier `_empty`
+with canonical unit-aware `size`. Cross-domain pattern: the same shape
+applies to find_events_empty/find_files_empty/find_dirs_empty/
+find_messages_empty):
+{
+  "args_required": [],
+  "args_properties": {
+    "size": {
+      "type": "string",
+      "description": "Unit-aware threshold (e.g. '1hour', '10KB', '100chars', '90' bare=domain default unit). Per-domain default (e.g. '1hour' for events).",
+      "default": "1hour"
+    },
+    "time_windows": {
+      "type": "array",
+      "description": "Only for temporal domains (events/messages): §2.1 list of windows.",
+      "items": {"type": "string"},
+      "default": ["next-week"]
+    },
+    "base_path": {
+      "type": "string",
+      "description": "Only for filesystem domains (files/dirs): root of search.",
+      "default": "/"
+    },
+    "max_results": {
+      "type": "integer",
+      "description": "Upper cap §2.7. 0 = no cap. Default 10.",
+      "default": 10
+    }
+  },
+  "capabilities": [{"name": "fs:read", "hint": ["~/**"]}],
+  "reverse_pattern": null
+}
+
 NOW produce the JSON for `{{ name }}`. ONLY JSON, nothing else.

@@ -42,6 +42,39 @@ APPOINTMENTS/AGENDA/EVENTS/CALENDAR/MEETINGS (Google Calendar)
   NB DISAMBIGUATION: «book/schedule» = set destructive (see
   check_availability). «propose/suggest/recommend» = read-only suggestion.
 
+(propose_and_fire) PROPOSAL + BOOKING THE CHOICE — 4-STEP PIPELINE:
+  When the user combines «propose/suggest N alternatives» WITH a
+  mutating continuation («and book», «and schedule», «poi prenotami»,
+  «and then create the event», etc.), MUST execute EXACTLY the
+  propose-and-fire pipeline (ADR 0127):
+    Step 1: get_now → extract today ISO.
+    Step 2: find_events_empty(time_windows=[...], size=..., time_of_day=...)
+             → entries with `{start, end, duration_min}` of the gaps.
+    Step 3: get_inputs(from_step=2, title=..., dialog=[{var:'choice',
+             prompt:'Pick one', schema:{kind:'choice', display_template:
+             '{start} - {end}', value_field:'start'}}]) → entries of step 2
+             are derived into choices; user pick = `values.choice`.
+    Step 4: set_events(summary=..., start=<step3.values.choice>, end=...)
+             → final_answer with link. Use the runtime placeholder syntax
+             (double curly braces or dynamic resolution §4.1) to pass the
+             user's choice as the event's start.
+  MUST: use find_events_empty for EMPTY/FREE SLOTS (NOT read_events:
+  read_events returns existing events, not the gaps). `size` accepts
+  unit-aware strings like "1hour"/"60min"/"30 min"; `time_windows` is a
+  list (even N=1, default ["next-week"]).
+  MUST NOT: call set_events BEFORE step 3 (user has not picked yet). IT
+  IS AN ERROR «propose and book» → direct set_events: it violates the
+  semantics of an explicit user choice.
+  OK: «propose 3 morning slots next week and book the one I pick»
+      → get_now → find_events_empty(time_windows=["next-week"], size="1hour",
+       time_of_day="morning", max_results=3) → get_inputs(from_step=2, ...)
+       → set_events(start=<step3.values.choice>, ...) → final_answer.
+  ERROR: «propose and book» → direct set_events (IT IS AN ERROR: choice not
+       made by the user, arbitrary booking).
+  NB DISAMBIGUATION: without a mutating continuation the query is propose-
+  only (see (propose_intent) above: textual final_answer, no find_events_empty,
+  no get_inputs, no set_events).
+
 (check_availability) BOOKING WITH FREE-SLOT CONDITION — NUMBERED MANDATORY WORKFLOW:
   When the user asks «book/schedule/create X IF there is a slot/if the window
   is free/check availability and then book», EXECUTE EXACTLY in this order,
@@ -75,10 +108,11 @@ DRIVE/GOOGLE-DRIVE/CLOUD-FILES/CLOUD-DOCUMENTS
   MUST NOT: confuse with find_files/read_files (local filesystem on .33).
 
 SPREADSHEETS/SHEETS/GOOGLE-SHEETS
-  → get_files_xlsx, set_files_xlsx, change_files_xlsx.
+  → read_files_xlsx_google_workspace, set_files_xlsx, change_files_xlsx.
+  MUST NOT: confuse with read_files_xlsx (handcrafted, local xlsx files).
 
 GOOGLE-DOCS/DOCS
-  → get_files_text, set_files_text, change_files_text.
+  → read_files_text, set_files_text, change_files_text.
 
 CONTACTS/ADDRESS-BOOK/GOOGLE-CONTACTS
   → read_contacts.

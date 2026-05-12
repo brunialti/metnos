@@ -86,4 +86,37 @@ ESEMPIO OUTPUT (per name=get_urls, NON riceve lista da step precedente):
   "reverse_pattern": null
 }
 
+ESEMPIO OUTPUT (per name=find_<obj>_empty, ADR 0127, qualifier `_empty`
+con arg canonical `size` unit-aware. Pattern cross-domain: lo stesso
+shape vale per find_events_empty/find_files_empty/find_dirs_empty/
+find_messages_empty):
+{
+  "args_required": [],
+  "args_properties": {
+    "size": {
+      "type": "string",
+      "description": "Soglia unit-aware (es. '1hour', '10KB', '100chars', '90' bare=unita' default del dominio). Default per-dominio (es. '1hour' per events).",
+      "default": "1hour"
+    },
+    "time_windows": {
+      "type": "array",
+      "description": "Solo per dominii temporali (events/messages): lista §2.1 di finestre.",
+      "items": {"type": "string"},
+      "default": ["next-week"]
+    },
+    "base_path": {
+      "type": "string",
+      "description": "Solo per dominii filesystem (files/dirs): root del search.",
+      "default": "/"
+    },
+    "max_results": {
+      "type": "integer",
+      "description": "Cap superiore §2.7. 0 = no cap. Default 10.",
+      "default": 10
+    }
+  },
+  "capabilities": [{"name": "fs:read", "hint": ["~/**"]}],
+  "reverse_pattern": null
+}
+
 ORA produci il JSON per `{{ name }}`. SOLO JSON, niente altro.

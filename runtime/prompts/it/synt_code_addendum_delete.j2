@@ -49,7 +49,7 @@ NON DEVI: cancellare se snapshot non confermato (con revertible=True).
 NON DEVI: `os.rmdir` su dir non vuote senza recursive=True.
 NON DEVI: scrivere `def reverse(...)` (runtime applica restore_blob_backup).
 
-DOMINIO FILESYSTEM (delete_files, remove_dirs):
+DOMINIO FILESYSTEM (delete_files, delete_dirs):
 - src: e["path"]
 - snapshot: per file = `Path(p).read_bytes()`; per dir = tarfile.tar.gz dell'albero
 - remove: `os.unlink(path)` (file) o `shutil.rmtree(path)` (dir + recursive)

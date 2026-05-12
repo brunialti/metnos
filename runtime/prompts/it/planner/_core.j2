@@ -212,6 +212,25 @@ sposta/cancella/invia, il riassunto va EMESSO IN final_answer dopo l'esecuzione.
    Vocabolario oggetti (plurale): {{ vocab_objects }}
    Qualifier opzionali: {{ vocab_qualifiers }}
 
+7. PATTERN PROPOSE-AND-FIRE CROSS-DOMAIN (ADR 0127):
+   Quando l'utente unisce «proponi/suggerisci N alternative» CON una
+   continuazione mutating sull'esito scelto, DEVI usare la pipeline a 4 step:
+     find_<obj>_empty(size=..., ...) → get_inputs(kind="choice", from_step=N,
+     display_template=..., value_field=...) → <verb_mutating>(...) → final_answer.
+   Il qualifier `_empty` (CLAUDE.md §2.2) ritorna le entita' del dominio in
+   stato VUOTO/SOTTO-SOGLIA rispetto a un parametro `size` unit-aware. Si
+   applica cross-domain: events (gap), files (size<=th), messages (body<=th),
+   dirs (vuote). NON inventare un OBJECT `slots`/`gaps`/`empties`: e' lo
+   stesso dominio originario con qualifier di modalita'.
+   DEVI: usare find_<obj>_empty per ottenere entries-candidate e get_inputs
+   per la scelta utente PRIMA del verbo mutating.
+   NON DEVI: invocare il verbo mutating PRIMA di get_inputs (scelta non
+   ancora fatta).
+   OK: «proponi 3 mattine la prossima settimana e prenotami quella scelta»
+       → get_now → find_events_empty(size="1hour", time_windows=["next-week"],
+       time_of_day="morning") → get_inputs(...) → set_events(...) → final_answer.
+   ERRORE: «proponi e prenota» → set_events diretto (scelta non fatta).
+
 ══════════════════════════════════════════════════════════════════════
 VINCOLI DI DOMINIO TRASVERSALI (cross-cutting)
 ══════════════════════════════════════════════════════════════════════

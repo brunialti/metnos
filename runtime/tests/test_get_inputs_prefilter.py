@@ -25,9 +25,12 @@ def test_vocab_includes_inputs_object():
     from vocab import OBJECTS
     assert "inputs" in OBJECTS
     assert "credentials" in OBJECTS
-    # 16 oggetti: `indices` declassato a qualifier "modalita'" 5/5/2026, poi
-    # `credentials` aggiunto come 16° object 10/5/2026 (ADR 0123, CLAUDE.md §2.2).
-    assert len(OBJECTS) == 16
+    assert "entries" in OBJECTS
+    # 17 oggetti: `indices` declassato a qualifier "modalita'" 5/5/2026,
+    # `credentials` aggiunto come 16° object 10/5/2026 (ADR 0123), e
+    # `entries` formalizzato come 17° object 12/5/2026 (meta-oggetto
+    # pipeline in-memory, audit §2.2 + system verbs).
+    assert len(OBJECTS) == 17
 
 
 def test_get_inputs_in_canonical_naming():

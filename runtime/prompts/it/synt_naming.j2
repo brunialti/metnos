@@ -91,4 +91,26 @@ Output: {"name": "find_packages", "action": "find", "object": "packages",
 User: "ridimensiona immagine a 800x600" (resize NON nel vocab)
 Output: {"name": null, "reason_no_name": "L'azione 'resize' non e' nel vocabolario chiuso (compress/extract/render coprono altri scope). Escalation a Roberto per estendere il vocab o per usare un tool esterno."}
 
+QUALIFIER `_empty` (ADR 0127, cross-domain — famiglia modalita'-operazione):
+Quando la richiesta utente identifica entita' del dominio in stato VUOTO/
+SOTTO-SOGLIA/DISPONIBILE (slot liberi del calendario, file piccoli, cartelle
+vuote, messaggi corti, ecc.), DEVI usare il qualifier `_empty`. Arg canonical:
+`size` (str unit-aware: "1hour"/"10KB"/"100chars"/...). Una sola semantica
+cross-domain, niente analogie forzate fra dominii.
+
+User: "trova slot liberi di un'ora la prossima settimana"
+Output: {"name": "find_events_empty", "action": "find", "object": "events",
+         "qualifier": "empty", "revertible": false, "critical": false,
+         "target_kind": "none"}
+
+User: "trova i file vuoti sotto /tmp"
+Output: {"name": "find_files_empty", "action": "find", "object": "files",
+         "qualifier": "empty", "revertible": false, "critical": false,
+         "target_kind": "path_glob"}
+
+User: "elenca le cartelle vuote in /opt"
+Output: {"name": "find_dirs_empty", "action": "find", "object": "dirs",
+         "qualifier": "empty", "revertible": false, "critical": false,
+         "target_kind": "path_glob"}
+
 ORA produci il JSON per la richiesta utente. SOLO JSON, niente altro.

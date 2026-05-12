@@ -111,6 +111,17 @@ OBJECTS = (
     # `metnos:credentials_metadata_only` — il vaglio rifiuta payload con
     # campi `value`/`token`/`secret`/`api_key` nel return.
     "credentials",
+    # Entries: meta-oggetto per pipeline in-memory dello stesso turno
+    # (12/5/2026, formalizzazione audit). NON una risorsa esterna: e' una
+    # lista runtime prodotta da step precedenti e consumata da operatori
+    # di trasformazione/aggregazione (compute_entries/sort_entries/
+    # filter_entries/group_entries). Plurale invariante. Discrimine
+    # rispetto agli altri OBJECTS: gli altri puntano a sorgenti di
+    # verita' esterne (filesystem, IMAP, calendario, web, indici);
+    # `entries` non ha sorgente, esiste solo nel ciclo di vita del
+    # turno corrente. Nessun executor `find_entries`/`read_entries`/
+    # `get_entries` (non si scopre/legge cio' che esiste solo a runtime).
+    "entries",
 )
 # NB: `indices` (ex 16° OBJECT, ADR 0086) e' stato declassato a qualifier
 # di modalita' il 5/5/2026: la lettura `verbo_oggetto[_modalita']` e' piu'
@@ -136,6 +147,18 @@ QUALIFIERS = (
     # Famiglia 2 — Modalita': operazione specifica entro il dominio
     # (introdotti per change_* / compute_*_loc / order_*).
     "size", "format", "loc", "similar",
+    # Famiglia 2 — Modalita': stato "vuoto/sotto-soglia" del dominio.
+    # (12/5/2026, ADR 0127). Modifica l'operazione del verbo per
+    # ritornare entita' con proprieta' di vuoto/disponibilita'. Args
+    # canonical: `size` (str unit-aware). Per-domain:
+    #  - events:   find_events_empty(size="1hour")   → slot >=1h liberi (gap)
+    #  - files:    find_files_empty(size="10KB")     → file <=10KB
+    #  - messages: find_messages_empty(size="100chars") → body <=100 char
+    #  - dirs:     find_dirs_empty()                 → cartelle vuote
+    # Generalizzabile cross-dominio (§7.3): una sola semantica, niente
+    # analogie forzate fra dominii. Pattern propose-and-fire (ADR 0127)
+    # idiomatico: find_<obj>_empty → get_inputs(choice) → set_<obj>.
+    "empty",
     # Famiglia 2 — Modalita': granularita' di dominio (3/5/2026). Es.
     # `filter_texts_lines` filtra a livello riga; `filter_pdfs_pages`
     # a livello pagina; `filter_audios_segments` a livello segmento.
