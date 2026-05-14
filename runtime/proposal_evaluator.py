@@ -38,7 +38,6 @@ usa l'`intent_extractor` BoW + `prefilter.rank_with_intent` (gia' presenti).
 """
 from __future__ import annotations
 
-import hashlib
 import json
 import re
 import time
@@ -173,7 +172,7 @@ def _check_affinity_overlap(proposal: dict, *, catalog=None) -> tuple[bool, str,
     if not aff:
         return False, "", {}
     try:
-        from loader import HANDCRAFTED_FAMILIES, load_catalog, SYNTHESIZED_EXECUTORS_DIR
+        from loader import load_catalog, SYNTHESIZED_EXECUTORS_DIR
     except Exception as ex:
         return False, f"loader import failed ({ex}); skip", {}
     if catalog is None:
@@ -505,8 +504,8 @@ def _check_safety(proposal: dict) -> tuple[bool, str, dict]:
     info["is_admin"] = is_admin
     if not is_admin:
         return True, (
-            f"executor opera su `signatures` (safety policy ADR 0071) ma "
-            f"non dichiara capability `admin` esplicitamente"
+            "executor opera su `signatures` (safety policy ADR 0071) ma "
+            "non dichiara capability `admin` esplicitamente"
         ), info
     return False, "", info
 
@@ -550,8 +549,8 @@ def _check_testability(
     info["new_dry_run"] = new_has_dry
     if not new_has_dry:
         return True, (
-            f"il path conteneva un executor con `dry_run`, ma il nuovo "
-            f"non dichiara questo arg (perdita preview)"
+            "il path conteneva un executor con `dry_run`, ma il nuovo "
+            "non dichiara questo arg (perdita preview)"
         ), info
     return False, "", info
 

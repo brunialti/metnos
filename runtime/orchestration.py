@@ -45,12 +45,11 @@ che chiama admin la prima volta; il resume e' una chiamata diretta al verb.
 from __future__ import annotations
 
 import json
-import os
 import sys
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Optional
+from typing import Optional
 
 sys.path.insert(0, str(Path(__file__).parent))
 

@@ -1,4 +1,5 @@
-"""prompts_lint.py — linter deterministico per `runtime/prompts/<lang>/*.j2`.
+"""prompts_lint.py — linter deterministico per `runtime/prompts/<lang>/*.j2`
+e `runtime/prompts/<lang>/.../*.yaml` (asse B PoC, 12/5/2026).
 
 Fase C4 (11/5/2026). Cinque check (CLAUDE.md §7.9, niente LLM):
 
@@ -12,10 +13,21 @@ Fase C4 (11/5/2026). Cinque check (CLAUDE.md §7.9, niente LLM):
                                     possible", "try to", "perhaps", "maybe".
   L3 LOC cap                     — warn se LOC > 800, error se > 1200.
   L4 trailing newline            — file deve terminare con `\\n`.
-  L5 lang symmetry               — per ogni `it/<path>.j2` esiste
-                                    `<lang>/<path>.j2` e viceversa (solo
+  L5 lang symmetry               — per ogni `it/<path>` (.j2 o .yaml) esiste
+                                    sibling in <lang>/ e viceversa (solo
                                     presenza file, non contenuto: drift
                                     gestito dal daemon i18n).
+
+Asse B (12/5/2026): le sezioni planner possono essere `.yaml` strutturate.
+Per i `.yaml` si verifica:
+  - L1 frontmatter top-level (8 campi `role/tier/lang/style/version/owner/
+    updated/sha_prev`) come chiavi YAML.
+  - schema: `section` dict con `name`, `rules` list di dict con
+    `name/when/must/must_not/ok/error`.
+  - `rules[*].name` univoco per sezione.
+  - `must/must_not/ok/error` non vuoti.
+  - L4 trailing newline mantenuto.
+  - L5 simmetria cross-lang considera sia .j2 sia .yaml.
 
 API:
     scan(root: Path) -> list[LintIssue]
@@ -28,6 +40,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 import re
+
+import yaml
 
 
 # Frontmatter parsing -------------------------------------------------------
@@ -194,10 +208,124 @@ def _check_l4_trailing_newline(path: Path, content: str) -> list[LintIssue]:
     return []
 
 
+# YAML section checks (asse B, 12/5/2026) ---------------------------------
+
+_RULE_REQUIRED_KEYS = ("name", "when", "must", "must_not", "ok", "error")
+
+
+def _check_yaml_section(path: Path, content: str) -> list[LintIssue]:
+    """Lint completo per i `.yaml` schema-strutturati (asse B):
+      - frontmatter top-level 8 campi (L1 YAML equivalente).
+      - `section` dict.
+      - planner sections: `rules` list con name/when/must/must_not/ok/error.
+      - synt prompts (synt_*.yaml): schema piu' lasso (no rules richieste o
+        rules con schema diverso name/body). Detect via path o `role`
+        prefix `synt_`.
+
+    Asse B extension synt (13/5/2026): i synt yaml hanno output strutturato
+    JSON, NON pattern §6 (DEVI/NON DEVI). Saltano il check rules dettagliato.
+    """
+    issues: list[LintIssue] = []
+    try:
+        data = yaml.safe_load(content)
+    except yaml.YAMLError as exc:
+        issues.append(LintIssue(
+            file=str(path), line=0, level="error", code="YL_YAML_PARSE",
+            message=f"YAML non parsable: {exc}",
+        ))
+        return issues
+    if not isinstance(data, dict):
+        issues.append(LintIssue(
+            file=str(path), line=0, level="error", code="YL_ROOT_TYPE",
+            message="root YAML non e' un mapping/dict",
+        ))
+        return issues
+
+    # L1-equivalente: 8 campi frontmatter come chiavi top-level.
+    missing_fm = [k for k in _REQUIRED_FIELDS if k not in data]
+    if missing_fm:
+        issues.append(LintIssue(
+            file=str(path), line=0, level="error", code="YL_FRONTMATTER_FIELDS",
+            message=f"campi frontmatter mancanti: {sorted(missing_fm)}",
+        ))
+    lang = str(data.get("lang", ""))
+    if lang and not _LANG_RE.match(lang):
+        issues.append(LintIssue(
+            file=str(path), line=0, level="error", code="YL_FRONTMATTER_LANG_INVALID",
+            message=f"lang non valido: {lang!r}",
+        ))
+    style = str(data.get("style", ""))
+    if style and style not in _STYLE_VALID:
+        issues.append(LintIssue(
+            file=str(path), line=0, level="error", code="YL_FRONTMATTER_STYLE_INVALID",
+            message=f"style non valido: {style!r} (atteso uno di {_STYLE_VALID})",
+        ))
+
+    section = data.get("section")
+    if not isinstance(section, dict):
+        issues.append(LintIssue(
+            file=str(path), line=0, level="error", code="YL_SECTION_MISSING",
+            message="chiave `section` mancante o non dict",
+        ))
+    else:
+        if not section.get("name"):
+            issues.append(LintIssue(
+                file=str(path), line=0, level="error", code="YL_SECTION_NAME",
+                message="section.name mancante o vuoto",
+            ))
+
+    # Synt YAML (synt_naming/signature/tests/description/code/code_addendum_*):
+    # schema diverso (definitional/few_shot), NON applica i check planner rules.
+    role = str(data.get("role", ""))
+    is_synt = role.startswith("synt_") or path.name.startswith("synt_")
+    if is_synt:
+        return issues  # frontmatter + section gia' validati.
+
+    rules = data.get("rules")
+    if not isinstance(rules, list) or not rules:
+        issues.append(LintIssue(
+            file=str(path), line=0, level="error", code="YL_RULES_MISSING",
+            message="chiave `rules` mancante, non lista o vuota",
+        ))
+        return issues
+
+    seen_names: set[str] = set()
+    for idx, rule in enumerate(rules):
+        if not isinstance(rule, dict):
+            issues.append(LintIssue(
+                file=str(path), line=0, level="error", code="YL_RULE_TYPE",
+                message=f"rules[{idx}] non e' un dict",
+            ))
+            continue
+        for k in _RULE_REQUIRED_KEYS:
+            v = rule.get(k)
+            if not isinstance(v, str) or not v.strip():
+                issues.append(LintIssue(
+                    file=str(path), line=0, level="error",
+                    code="YL_RULE_FIELD_EMPTY",
+                    message=f"rules[{idx}].{k} mancante o vuoto",
+                ))
+        name = rule.get("name")
+        if isinstance(name, str) and name:
+            if name in seen_names:
+                issues.append(LintIssue(
+                    file=str(path), line=0, level="error",
+                    code="YL_RULE_NAME_DUPLICATE",
+                    message=f"rules[{idx}].name duplicato: {name!r}",
+                ))
+            seen_names.add(name)
+    return issues
+
+
 def _check_l5_lang_symmetry(root: Path) -> list[LintIssue]:
     """L5: simmetria cross-lang. Ritorna issue per ogni file presente in
     `<langA>/...` ma mancante in `<langB>/...`. Considera la struttura split
     planner: `planner/_core.j2`, `planner/sections/mail.j2`, etc.
+
+    Asse B (12/5/2026): considera sia `.j2` sia `.yaml` come fonti di
+    simmetria. Una sezione conta UNA volta indipendentemente dal formato:
+    se IT ha `calendar.yaml` ed EN ha `calendar.j2`, sono simmetrici (la
+    coesistenza A/B e' tollerata durante il PoC).
 
     A differenza degli altri check (per-file), L5 e' uno scan globale: viene
     chiamato una volta sola dal driver `scan(root)`.
@@ -208,18 +336,19 @@ def _check_l5_lang_symmetry(root: Path) -> list[LintIssue]:
     if not langs:
         return []
 
-    # Mappa lang → set di path relativi (es. {"planner/_core", "vaglio", ...}).
+    # Mappa lang -> set di path relativi (es. {"planner/_core", "vaglio", ...}).
     by_lang: dict[str, set[str]] = {}
     for lang in langs:
         lang_root = root / lang
         files = set()
-        for p in lang_root.rglob("*.j2"):
-            if "_pending" in p.parts:
-                continue
-            rel = p.relative_to(lang_root)
-            # Normalize: rimuovi `.j2` e usa POSIX-slash come chiave canonical.
-            key = rel.with_suffix("").as_posix()
-            files.add(key)
+        for pattern in ("*.j2", "*.yaml"):
+            for p in lang_root.rglob(pattern):
+                if "_pending" in p.parts:
+                    continue
+                rel = p.relative_to(lang_root)
+                # Normalize: rimuovi estensione e usa POSIX-slash come chiave.
+                key = rel.with_suffix("").as_posix()
+                files.add(key)
         by_lang[lang] = files
 
     # Tutti i path canonici dell'unione.
@@ -278,6 +407,21 @@ def scan(root: Path, *, langs: list[str] | None = None) -> list[LintIssue]:
             issues.extend(_check_l1_frontmatter(p, content))
             issues.extend(_check_l2_hedge_blacklist(p, content))
             issues.extend(_check_l3_loc(p, content))
+            issues.extend(_check_l4_trailing_newline(p, content))
+        # YAML sections (asse B, 12/5/2026).
+        for p in sorted(lang_root.rglob("*.yaml")):
+            if "_pending" in p.parts:
+                continue
+            try:
+                content = p.read_text(encoding="utf-8")
+            except (UnicodeDecodeError, OSError):
+                issues.append(LintIssue(
+                    file=str(p), line=0, level="error",
+                    code="L0_READ_ERROR",
+                    message="file non leggibile come UTF-8",
+                ))
+                continue
+            issues.extend(_check_yaml_section(p, content))
             issues.extend(_check_l4_trailing_newline(p, content))
 
     # L5 e' uno scan globale: invocato una sola volta.

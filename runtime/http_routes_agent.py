@@ -16,7 +16,7 @@ from pathlib import Path
 from aiohttp import web
 
 import devices
-from html_sanitizer import to_safe_html, to_safe_html_full
+from html_sanitizer import to_safe_html_full
 from http_render import render_template
 from http_auth import ADMIN_KEY_PATH
 from logging_setup import get_logger
@@ -342,6 +342,7 @@ def _apply_cap_pending(sender_id: str, query: str,
                 import agent_runtime
                 res = agent_runtime.invoke_executor(
                     ex, args, timeout_s=getattr(ex, "timeout_s", 30),
+                    actor=actor, channel="http",
                 )
             except Exception as e:
                 return query, pending, f"(esecuzione fallita: {type(e).__name__}: {e})"
@@ -1553,7 +1554,7 @@ async def turns_recent(request: web.Request) -> web.Response:
 
     # Scan ultimi 7 giorni di JSONL (ordine reverse per latest-first).
     files = sorted(turns_dir.glob("*.jsonl"), reverse=True)[:7]
-    admin_key = request.app.get("admin_key", "")
+    request.app.get("admin_key", "")
     for f in files:
         try:
             with f.open() as fh:
@@ -1657,7 +1658,6 @@ async def pair_consume(request: web.Request) -> web.Response:
          in user_channels.recipient_id + cookie USER_COOKIE firmato set.
       4. Future richieste dal device portano il cookie → ruolo `user`.
     """
-    import secrets as _secrets
     from http_auth import USER_COOKIE, USER_COOKIE_TTL_S, issue_user_cookie
     import users as _users
 
@@ -1786,6 +1786,8 @@ async def oauth_callback(request: web.Request) -> web.Response:
                 import agent_runtime as _ar
                 res = _ar.invoke_executor(
                     ex, args_base, timeout_s=getattr(ex, "timeout_s", 30),
+                    actor=entry.get("actor") or None,
+                    channel=entry.get("channel") or None,
                 )
                 resume_body = _format_resume_result(res)
         except (PermissionError, KeyError, RuntimeError, TypeError) as ex:

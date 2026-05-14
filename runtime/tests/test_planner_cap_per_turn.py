@@ -14,7 +14,6 @@ Patch (c):
 """
 from __future__ import annotations
 
-import os
 import sys
 import unittest
 from pathlib import Path
@@ -151,8 +150,7 @@ class TestCapMaxPerTurnLogic(unittest.TestCase):
 
     def test_find_texts_2x_no_block(self):
         from agent_runtime import (
-            _is_non_action_tool, _normalize_args_for_dup, _args_jaccard,
-            DEFAULT_CAP_MAX_PER_TURN,
+            _normalize_args_for_dup, _args_jaccard, DEFAULT_CAP_MAX_PER_TURN,
         )
         history = [
             _step("find_texts", {"topic": "organico scuola"}, {"ok": True, "entries": []}),

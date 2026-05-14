@@ -18,7 +18,7 @@ en = "Send one or more messages via mail (SMTPS) or Telegram. Vectorial: the lis
 
 [code]
 files  = ["send_messages.py"]
-digest = "sha256:d82ccf4eff745e41a0c61856d077f737da8d9d3537a629509d59246c9170dfd2"
+digest = "sha256:7f1f37f314dc704ad6b472a87a7bc3e550629223f3b027b165ec97e37bd1a620"
 
 [args]
 type     = "object"

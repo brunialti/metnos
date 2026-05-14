@@ -331,6 +331,18 @@ class ChannelDaemon:
         except Exception as ex:
             log.warning("users_pairings_sync at daemon start failed: %s", ex)
 
+        # Sync users.email → user_channels(channel="mail"): popola pairing
+        # email implicito dai dati anagrafici (14/5/2026). Senza, send_messages
+        # fallisce con channel_not_paired per utenti con email in users ma
+        # mancante in user_channels. Idempotente §7.9.
+        try:
+            import users_email_sync as _ues
+            _e_stats = _ues.sync_users_email_to_user_channels()
+            log.info("users_email_sync at daemon start (%s): %s",
+                      channel.name, _e_stats)
+        except Exception as ex:
+            log.warning("users_email_sync at daemon start failed: %s", ex)
+
     def _resolve_run_turn(self):
         if self.run_turn is not None:
             return self.run_turn
@@ -392,6 +404,7 @@ class ChannelDaemon:
             import agent_runtime as _ar
             res = _ar.invoke_executor(
                 ex, args, timeout_s=getattr(ex, "timeout_s", 30),
+                actor=actor, channel="telegram",
             )
         except (PermissionError, KeyError, RuntimeError, TypeError) as e:
             log.exception("approval_required consume failed")

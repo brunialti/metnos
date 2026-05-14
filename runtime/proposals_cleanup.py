@@ -21,7 +21,6 @@ import shutil
 import time
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Iterable
 
 SYNT_PROPOSALS_DIR = Path.home() / ".local" / "share" / "metnos" / "synt_proposals"
 INTROVERTIVA_DIR = Path.home() / ".local" / "share" / "metnos" / "introvertiva"
@@ -62,7 +61,7 @@ def archive_aged_synth_proposals(*, max_age_days: int = 30,
         try:
             from loader import load_catalog
             catalog_names = {e.name for e in load_catalog()}
-        except Exception as ex:
+        except Exception:
             # fallback: scan dir handcrafted + synth installed
             catalog_names = _fallback_catalog_names()
 
@@ -84,14 +83,12 @@ def archive_aged_synth_proposals(*, max_age_days: int = 30,
         final_state = doc.get("final_state")
 
         should_archive = False
-        reason = None
         if archive_synthesized_in_catalog and final_state == "synthesized" \
                 and name and name in catalog_names:
             should_archive = True
-            reason = "synthesized-in-catalog"
         elif age_days > max_age_days:
             should_archive = True
-            reason = f"aged-{int(age_days)}d"
+            f"aged-{int(age_days)}d"
 
         if not should_archive:
             kept += 1

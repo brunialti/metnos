@@ -6,8 +6,6 @@ e verifica le entries restituite dall'executor.
 """
 from __future__ import annotations
 
-import http.cookiejar
-import json
 import sys
 import threading
 import time

@@ -68,7 +68,19 @@
     "en": {
       "source_lang": "it",
       "source_hash": "sha256:60fa65031ff9e0c704ffba2555beabae638c8c4e964f89b5dfc3537de7314673",
-      "version_hash": "sha256:cd18249ffe44c2b2066b5d862bf812897dc6a17307fb1910aab392cd3b51dbd6"
+      "version_hash": "sha256:e70a10b596fba291617152368decdb8ae791b63a79f3c60deb185f755bd15516"
+    }
+  },
+  "args.client.description": {
+    "it": {
+      "version_hash": "sha256:557d06ccd160a1138bad5d88a0cac6d807fa8527aedf7169779b9035aba85d15",
+      "source_lang": null,
+      "source_hash": null
+    },
+    "en": {
+      "version_hash": "sha256:72e7c349759dba786a9497870469b63efc9d90b01d6595e823eb030f8557226c",
+      "source_lang": null,
+      "source_hash": null
     }
   }
 }

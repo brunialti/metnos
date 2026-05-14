@@ -7,7 +7,6 @@ Handcrafted MAI demoted. Idempotente.
 from __future__ import annotations
 
 import json
-import os
 import sys
 import sqlite3
 from pathlib import Path
@@ -178,7 +177,6 @@ class TestArchiveAfterReEval:
         # Pre-mark as deprecated
         _seed_stats(isolated_aging_db["db_path"], "find_dead_synth", source="synth:reactive")
         # forza deprecated_at non null
-        from datetime import datetime, timezone
         old_iso = "2026-04-01T00:00:00Z"
         conn = sqlite3.connect(str(isolated_aging_db["db_path"]))
         conn.execute("UPDATE executor_stats SET deprecated_at=? WHERE name=?",

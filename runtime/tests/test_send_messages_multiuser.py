@@ -73,16 +73,37 @@ class SendMessagesMultiuserTests(unittest.TestCase):
         os.environ.pop("METNOS_PAIRINGS_DB", None)
 
     def _patch_telegram(self):
-        """Patch _send_via_telegram per non aprire connessioni reali."""
-        sent = []
+        """Patch `backends.messages.telegram_bot.send` per non aprire connessioni reali.
 
-        def fake_send(chat_id, body):
-            sent.append({"chat_id": str(chat_id), "body": body})
-            return {"ok": True, "sent_message_id": f"fake-{chat_id}"}
-        return mock.patch.object(
-            self.send_messages, "_send_via_telegram",
-            side_effect=fake_send,
-        ), sent
+        Dopo il refactor 13/5/2026 (Q1 canonical+args), il dispatcher
+        `send_messages` instrada al backend builtin
+        `runtime/backends/messaging/telegram_bot.py`. Mock-iamo a quel
+        livello per simulare l'invio.
+        """
+        sent = []
+        from backends.messages import telegram_bot as _tg
+
+        def fake_send(args):
+            results = []
+            for m in args.get("messages", []):
+                rid = m.get("recipient_id") or m.get("chat_id")
+                body = m.get("body") or m.get("text") or ""
+                subject = m.get("subject")
+                full = f"{subject}\n\n{body}".strip() if subject else body
+                sent.append({"chat_id": str(rid), "body": full})
+                rec = {
+                    "channel": "telegram",
+                    "recipient_id": str(rid),
+                    "sent_message_id": f"fake-{rid}",
+                    "ok": True,
+                }
+                for k in ("recipient_user_id", "recipient_name", "target"):
+                    if k in m:
+                        rec[k] = m[k]
+                results.append(rec)
+            return {"ok": True, "ok_count": len(results), "fail_count": 0,
+                    "results": results, "failed": []}
+        return mock.patch.object(_tg, "send", side_effect=fake_send), sent
 
     # --- 1. send a host ----------------------------------------------------
 

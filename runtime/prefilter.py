@@ -101,7 +101,9 @@ _VERB_TO_CANONICAL = {
     "extract": "extract", "unzip": "extract", "untar": "extract",
     # filter
     "filtra": "filter", "filtro": "filter", "filtrare": "filter",
-    "filter": "filter", "where": "filter",
+    "filter": "filter",
+    # NB: «where» riservato a `find` (linea 63): «where is X?» = trova X
+    # in EN naturale. Mai SQL-context nelle query utente.
     # describe
     "descrivi": "describe", "descrivo": "describe", "descrivere": "describe",
     "riassumi": "describe", "riassumo": "describe", "riassumere": "describe",
@@ -453,7 +455,6 @@ def adaptive_k(scores, k_min=5, k_max=40):
 # Vocabolario classificato — importato da vocab.py (single source of truth).
 # Aggiungere/togliere un verbo dalle classi si fa in vocab.py.
 from vocab import (
-    DESTRUCTIVE_VERBS as _DESTRUCTIVE_VERBS,
     PRECURSOR_VERBS as _PRECURSOR_VERBS,
     PRODUCER_VERBS as _PRODUCER_VERBS,
 )

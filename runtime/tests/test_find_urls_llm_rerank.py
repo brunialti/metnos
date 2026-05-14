@@ -5,7 +5,6 @@ import sys
 from pathlib import Path
 from unittest.mock import patch
 
-import pytest
 
 _FIND_URLS_DIR = Path("/opt/myclaw/executors/find_urls")
 if str(_FIND_URLS_DIR) not in sys.path:

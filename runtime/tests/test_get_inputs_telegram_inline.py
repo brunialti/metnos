@@ -12,7 +12,6 @@ Coprono:
 Niente subprocess, niente Telegram API: tutto puro Python.
 """
 import sys
-from pathlib import Path
 
 sys.path.insert(0, "/opt/myclaw/runtime")
 sys.path.insert(0, "/opt/myclaw/executors/get_inputs")

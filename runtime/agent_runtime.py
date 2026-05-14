@@ -34,7 +34,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 import uuid
 from cost_tracker import CostTracker
-from llm_provider import OllamaProvider, ProviderError, ToolCall, make_provider_from_spec
+from llm_provider import OllamaProvider, ProviderError, make_provider_from_spec
 from loader import load_catalog, filter_for_visibility, VISIBILITY_COMPOSER
 from messages import get as msg
 from mnestoma import Mnestoma, build_desired_signature
@@ -4287,7 +4287,7 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
             # ADR 0122: passa gli step gia' eseguiti del turno corrente
             # cosi' synth_request puo' calcolare il path_shape_hash e
             # arricchire la proposta con i campi path_eta_*/call_count.
-            obs = handle_synth_request(args, user_query=user_query_for_run, provider=provider, progress=progress, verbose=verbose, current_steps=list(log.steps))
+            obs = handle_synth_request(args, user_query=user_query_for_run, progress=progress, verbose=verbose, current_steps=list(log.steps))
             step.result = obs
             log.steps.append(step)
             history_for_refs.append({"step": step_num, "tool": chosen_name, "args": args, "observation": obs})

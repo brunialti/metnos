@@ -143,7 +143,6 @@ class TestAdminInvokeFlow:
                                                         monkeypatch):
         """Con consent_token valido, admin salta la carta e procede."""
         from loader import boot_register_verb_unique_builtins, invoke_verb_unique
-        from verb_unique import admin as _admin_mod
 
         boot_register_verb_unique_builtins()
 

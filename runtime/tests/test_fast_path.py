@@ -16,7 +16,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from fast_path import try_fast_path, _normalize, _render_template
+from fast_path import try_fast_path, _normalize
 
 
 # Observation mock: simula esattamente l'output di get_now per il

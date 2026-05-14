@@ -21,7 +21,7 @@ import urllib.request
 from pathlib import Path
 from typing import Literal
 
-from . import Channel, InboundMessage, OutboundMessage
+from . import InboundMessage, OutboundMessage
 
 API_BASE = "https://api.telegram.org/bot{token}/{method}"
 FILE_BASE = "https://api.telegram.org/file/bot{token}/{file_path}"
@@ -318,7 +318,7 @@ class TelegramChannel:
             try:
                 with open(tp, "rb") as fh:
                     data = fh.read()
-            except OSError as ex:
+            except OSError:
                 # log.debug non disponibile qui; il caller logga
                 continue  # noqa: E701
             form_name = f"photo{i}"

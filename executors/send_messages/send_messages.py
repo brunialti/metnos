@@ -39,7 +39,6 @@ from __future__ import annotations
 
 import json
 import sys
-from pathlib import Path
 
 sys.path.insert(0, "/opt/myclaw/runtime")
 from backends.messages import email_metnos, telegram_bot  # noqa: E402
@@ -62,19 +61,14 @@ _HANDLERS = {
 
 # Alias di `via_channel` per back-compat. 'mail' veniva usato storicamente
 # (ADR 0083) prima dell'introduzione del canonico 'email'.
-_VIA_CHANNEL_ALIAS = {
-    "mail":  "email",
-    "email": "email",
-    "telegram": "telegram",
-}
+_VIA_CHANNEL_ALIAS = {"mail": "email"}
 
-def _default_client_for_channel(channel: str) -> str:
-    """Auto-default deterministico §7.9. Per ora `email`→`metnos`
-    SMTP (Migadu) come default: nessun probing OAuth a runtime, e
-    l'account Google dell'utente puo' non avere Gmail abilitato («Mail
-    service not enabled»). Per usare Gmail backend: passare esplicito
-    `client="google_workspace"`. Per `telegram`, sempre `metnos`."""
-    return "metnos"
+# Default uniforme per ogni canale: backend builtin Metnos
+# (SMTP Migadu per email, Telegram bot per telegram). Per altri
+# client (es. google_workspace gmail) passare esplicito `client=...`.
+# Nessun probing OAuth a runtime — il PLANNER puo' decidere il client
+# in base a hint linguistici o config user.
+_DEFAULT_CLIENT = "metnos"
 
 
 
@@ -143,20 +137,6 @@ def _resolve_via_channel(user: dict, requested: str) -> str | None:
     return requested if requested in by_name else None
 
 
-def _send_via_telegram(chat_id: str, body: str) -> dict:
-    """Compat shim (legacy): some tests/plugins may still patch this name.
-
-    DEPRECATED: nuovo codice deve chiamare `telegram_bot.send(...)`
-    direttamente. Mantenuto temporaneamente per non rompere mock di test.
-    """
-    res = telegram_bot.send({"messages": [{"recipient_id": str(chat_id), "body": body}]})
-    if res.get("ok") and res.get("results"):
-        r = res["results"][0]
-        return {"ok": True, "sent_message_id": r.get("sent_message_id", "")}
-    err = res.get("error") or (res.get("failed", [{}])[0].get("error") if res.get("failed") else "send failed")
-    return {"ok": False, "error": err}
-
-
 # --- main ------------------------------------------------------------------
 
 def _normalize_via(via: str) -> str:
@@ -222,7 +202,7 @@ def invoke(args):
                     msg_n.pop("to", None)
                     msg_n.pop("to_user", None)
                     requests.append({"channel": "telegram",
-                                     "client": client or _default_client_for_channel("telegram"),
+                                     "client": client or _DEFAULT_CLIENT,
                                      "msg": msg_n, "index": i,
                                      "recipient_user": None})
                     continue
@@ -272,7 +252,7 @@ def invoke(args):
                 msg_n.pop("to", None)
                 msg_n.pop("to_user", None)
                 requests.append({"channel": chosen,
-                                 "client": client or _default_client_for_channel(chosen),
+                                 "client": client or _DEFAULT_CLIENT,
                                  "msg": msg_n, "index": i,
                                  "recipient_user": user})
         else:
@@ -287,7 +267,7 @@ def invoke(args):
                 failed_pre.append({"index": i, "error": "missing 'subject' string"})
                 continue
             requests.append({"channel": "email",
-                             "client": client or _default_client_for_channel("email"),
+                             "client": client or _DEFAULT_CLIENT,
                              "msg": msg_n, "index": i,
                              "recipient_user": None})
 

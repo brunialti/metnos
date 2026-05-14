@@ -5,7 +5,6 @@ import asyncio
 import threading
 import time
 
-import pytest
 
 from scheduler_v2.daemon import SchedulerDaemon
 

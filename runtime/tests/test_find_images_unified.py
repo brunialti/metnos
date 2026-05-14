@@ -11,7 +11,6 @@ from pathlib import Path
 from unittest import mock
 
 import numpy as np
-import pytest
 
 
 def _has_tokenizers() -> bool:

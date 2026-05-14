@@ -34,7 +34,7 @@ import uuid
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Callable, Literal, Optional
+from typing import Callable, Literal
 
 sys.path.insert(0, str(Path(__file__).parent))
 from mnestoma import Mnest, Mnestoma  # noqa: E402
@@ -799,7 +799,6 @@ class Synt:
             summary:    stringa breve
             generation_latency_ms / generation_tokens
         """
-        import subprocess
         out: dict = {
             "tests": [],
             "all_passed": False,

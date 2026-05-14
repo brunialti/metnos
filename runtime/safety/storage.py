@@ -11,9 +11,9 @@ from __future__ import annotations
 
 import os
 import sqlite3
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable, Iterator
+from typing import Iterator
 
 
 DEFAULT_DB_PATH = Path(

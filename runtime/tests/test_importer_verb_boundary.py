@@ -9,8 +9,6 @@ Determinismo §7.9: nessun LLM, solo lookup tabellare.
 """
 from __future__ import annotations
 
-import json
-from pathlib import Path
 
 import pytest
 
@@ -21,7 +19,6 @@ from runtime.skill_translator import (
     SkillTranslateError,
 )
 from runtime.importer_verb_verify import (
-    Verdict,
     classify_mismatch,
     check_plan,
 )

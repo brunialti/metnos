@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import sys
-from pathlib import Path
 
 if "/opt/myclaw/runtime" not in sys.path:
     sys.path.insert(0, "/opt/myclaw/runtime")

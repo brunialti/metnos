@@ -15,7 +15,7 @@ en = "Download a list of HTML URLs and return the main content as deterministic 
 
 [code]
 files  = ["read_urls_html.py"]
-digest = "sha256:d32d94a57b8318e090997c1377a27937043369accb24dfa5e0735801cb60467d"
+digest = "sha256:e73585d742e9bbf16921d118d092bc7ba94e7da1d54134d9207b9bd2dec8d3be"
 
 [args]
 type     = "object"
@@ -61,6 +61,15 @@ default     = false
 [args.properties.js_render.description]
 it = "Opt-in JS-rendering via sidecar Playwright (ADR 0125). Quando true e il sidecar e' UP (porta 8771), le pagine SPA con error_class=js_rendered vengono re-richieste al sidecar che renderizza JS in Chromium headless e ritorna l'HTML finale. Costo: ~500ms-2s extra per pagina + ~200MB RAM lato sidecar. Default false per non rallentare il throughput dei turn normali. Usa SOLO dopo un primo step che ha rilevato error_class=js_rendered (regola js_rendered_retry del planner)."
 en = "Opt-in JS-rendering via Playwright sidecar (ADR 0125). When true and the sidecar is UP (port 8771), SPA pages with error_class=js_rendered are re-requested to the sidecar which renders JS in headless Chromium and returns the final HTML. Cost: ~500ms-2s extra per page + ~200MB RAM on the sidecar. Default false to avoid slowing normal turn throughput. Use ONLY after a first step that detected error_class=js_rendered (planner rule js_rendered_retry)."
+
+[args.properties.client]
+type        = "string"
+enum        = ["httpx", "playwright"]
+default     = "httpx"
+
+[args.properties.client.description]
+it = "Backend di implementazione (default 'httpx' = urllib stdlib + HostThrottle + HttpCache, no JS). 'playwright' = sidecar Chromium headless come dispatcher esclusivo (stub: non ancora attivo). Per JS-render opt-in selettivo usa il flag `js_render=true` con client='httpx'. Plugin esterni futuri potranno aggiungere altri client."
+en = "Backend implementation (default 'httpx' = urllib stdlib + HostThrottle + HttpCache, no JS). 'playwright' = headless Chromium sidecar as exclusive dispatcher (stub: not yet active). For selective opt-in JS-rendering use the `js_render=true` flag with client='httpx'. Future external plugins may add other clients."
 
 [[capabilities]]
 name = "network.read"

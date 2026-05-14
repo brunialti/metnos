@@ -17,7 +17,6 @@ import os
 import time
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
 
 from .models import ScheduleEntry
 from .schedule_parser import next_fire_at as compute_next_fire

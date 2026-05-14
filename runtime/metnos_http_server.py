@@ -171,6 +171,17 @@ def make_app(*, admin_key: str | None = None) -> web.Application:
     except Exception as ex:
         log.warning("users_pairings_sync at boot failed: %s", ex)
 
+    # Sync users.email → user_channels(channel="mail"): popola il pairing
+    # email implicito dai dati anagrafici. Senza, send_messages(via_channel=
+    # "mail") fallisce con channel_not_paired:email per utenti con email
+    # nota in users ma assente da user_channels (14/5/2026). Idempotente §7.9.
+    try:
+        import users_email_sync as _ues
+        _e_stats = _ues.sync_users_email_to_user_channels()
+        log.info("users_email_sync at boot: %s", _e_stats)
+    except Exception as ex:
+        log.warning("users_email_sync at boot failed: %s", ex)
+
     # Active sessions schema (Phase 7 Phase 1, 12/5/2026): garantisce
     # `active_sessions` table in users.db. Idempotente.
     try:

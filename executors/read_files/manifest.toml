@@ -20,7 +20,7 @@ en = "Reads the content of a file from the local filesystem and returns it as te
 
 [code]
 files  = ["read_files.py"]
-digest = "sha256:e8c39fa1ac8835c4e4ee9352d0ff01ab0b05afe502ec06ec7cd38cdd85a1231e"  # sostituito al momento della firma
+digest = "sha256:ab7d46999430a7c5cdd517508460822cd209644933194eb57018309522235cee"  # sostituito al momento della firma
 
 # --- Argomenti accettati (JSON Schema, sottoinsieme v1.1) -------------------
 [args]
@@ -72,6 +72,15 @@ default     = 0
 [args.properties.offset.description]
 it = "Offset (in bytes) da cui iniziare la lettura. Default 0 (inizio). Combinato con max_bytes legge un range. Ignorato se tail_bytes e' specificato."
 en = "Offset (in bytes) from which to start reading. Default 0 (start). Combined with max_bytes, it reads a range. Ignored if tail_bytes is specified."
+
+[args.properties.client]
+type        = "string"
+enum        = ["local"]
+default     = "local"
+
+[args.properties.client.description]
+it = "Implementazione backend (default 'local' = filesystem locale). Plugin esterni futuri (gdrive, dropbox, ecc.) potranno aggiungere altri client."
+en = "Backend implementation (default 'local' = local filesystem). Future external plugins (gdrive, dropbox, etc.) may add other clients."
 
 [[capabilities]]
 name = "fs:read"

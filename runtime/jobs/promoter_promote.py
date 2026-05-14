@@ -14,7 +14,6 @@ proposal_evaluator). §2.8 fail-loud: ogni admission fail ritorna esplicito
 """
 from __future__ import annotations
 
-import json
 import os
 import tarfile
 import tempfile

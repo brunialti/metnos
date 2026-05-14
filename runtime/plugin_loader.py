@@ -24,7 +24,6 @@ import sys
 import tomllib
 from pathlib import Path
 from types import ModuleType
-from typing import Optional
 
 log = logging.getLogger(__name__)
 

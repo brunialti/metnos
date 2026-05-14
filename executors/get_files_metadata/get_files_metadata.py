@@ -35,34 +35,13 @@ Contratto:
 import datetime
 import json
 import os
-import sqlite3
 import sys
-import time
-import urllib.error
-import urllib.parse
-import urllib.request
 from pathlib import Path
 
 sys.path.insert(0, "/opt/myclaw/runtime")
 from messages import get as msg
 
-NOMINATIM_URL = "https://nominatim.openstreetmap.org/reverse"
-USER_AGENT = "Metnos/0.1 (roberto.brunialti@knowcastle.com)"
-THROTTLE_SECONDS = 1.1
-GEO_CACHE = Path.home() / ".local" / "share" / "metnos" / "geo_cache.sqlite"
-
 ALL_FIELDS = ["dates.semantic", "dates.created", "dates.modified", "gps", "place", "device", "image_dimensions"]
-
-
-def _open_geo_cache():
-    GEO_CACHE.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(str(GEO_CACHE), timeout=10.0)
-    conn.execute(
-        "CREATE TABLE IF NOT EXISTS geo_cache ("
-        "lat_r REAL, lon_r REAL, place TEXT, ts REAL, "
-        "PRIMARY KEY (lat_r, lon_r))"
-    )
-    return conn
 
 
 def _exif(path):
@@ -160,61 +139,6 @@ def _slugify_place(name):
     return s or None
 
 
-_last_call = [0.0]
-
-
-def _reverse_geocode(lat, lon, conn):
-    """Returns (place, source). source: 'cache' | 'nominatim' | 'rate_limited' | 'error'."""
-    lat_r, lon_r = round(lat, 5), round(lon, 5)
-    row = conn.execute(
-        "SELECT place FROM geo_cache WHERE lat_r = ? AND lon_r = ?",
-        (lat_r, lon_r),
-    ).fetchone()
-    if row is not None:
-        return (row[0] or "unknown"), "cache"
-    elapsed = time.monotonic() - _last_call[0]
-    if elapsed < THROTTLE_SECONDS:
-        time.sleep(THROTTLE_SECONDS - elapsed)
-    _last_call[0] = time.monotonic()
-    qs = urllib.parse.urlencode({
-        "format": "json",
-        "lat": f"{lat:.6f}",
-        "lon": f"{lon:.6f}",
-        "zoom": 10,
-        "accept-language": "it",
-        "email": "roberto.brunialti@knowcastle.com",
-    })
-    req = urllib.request.Request(f"{NOMINATIM_URL}?{qs}", headers={"User-Agent": USER_AGENT})
-    try:
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            data = json.loads(resp.read())
-    except urllib.error.HTTPError as e:
-        if e.code in (429, 403):
-            return "rate_limited", "rate_limited"
-        return "unknown", "error"
-    except (urllib.error.URLError, OSError, json.JSONDecodeError):
-        return "unknown", "error"
-    addr = data.get("address") or {}
-    place = None
-    for key in ("town", "city", "village", "municipality", "hamlet", "county", "state"):
-        if key in addr:
-            place = _slugify_place(addr[key])
-            if place:
-                break
-    if not place:
-        place = _slugify_place(data.get("display_name") or "")
-    place = place or "unknown"
-    try:
-        conn.execute(
-            "INSERT OR REPLACE INTO geo_cache (lat_r, lon_r, place, ts) VALUES (?,?,?,?)",
-            (lat_r, lon_r, place, time.time()),
-        )
-        conn.commit()
-    except sqlite3.Error:
-        pass
-    return place, "nominatim"
-
-
 def invoke(args):
     entries = args.get("entries")
     paths = args.get("paths")
@@ -245,11 +169,6 @@ def invoke(args):
     need_d_cre = "dates.created" in fset
     need_d_mod = "dates.modified" in fset
     need_exif = need_d_sem or need_d_cre or need_gps or need_device
-
-    # Bonifica 1/5/2026: Photon ha cache server-side OpenSearch, niente cache
-    # locale necessaria. _open_geo_cache + _reverse_geocode legacy lasciati nel
-    # file come dead-code per ora (rimozione futura).
-    geo_conn = None  # noqa
 
     enriched, failed = [], []
     p_resolved = p_unknown = p_failed = 0

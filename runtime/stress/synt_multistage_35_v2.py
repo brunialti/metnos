@@ -128,7 +128,6 @@ def run_one(query_obj, llm_middle_call, llm_wise_call):
     t0 = time.time()
     try:
         run = run_full(query, llm_middle_call, llm_wise_call)
-        err_runtime = None
     except Exception as e:  # noqa: BLE001
         return {
             "id": qid,

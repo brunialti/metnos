@@ -11,7 +11,6 @@ Mock del TelegramChannel: niente HTTP, niente API. Verifichiamo:
 """
 from __future__ import annotations
 
-import os
 import sys
 from pathlib import Path
 from unittest.mock import MagicMock
@@ -37,7 +36,6 @@ def safe_image(tmp_path, monkeypatch):
 def fake_daemon():
     """Costruisce un ChannelDaemon-like con un fake channel mockato."""
     from channels.daemon import ChannelDaemon
-    from channels import telegram as tg
     fake_channel = MagicMock()
     fake_channel.name = "telegram"
     fake_channel.send_dialog_preview_album = MagicMock(

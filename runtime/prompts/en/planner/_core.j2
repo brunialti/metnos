@@ -277,6 +277,16 @@ OK: pool=[get_processes,...], query "list running processes" → get_processes()
 ERROR: pool=[get_processes,...], query "list running processes" → request_new_executor(expected_name="list_processes"). THIS IS AN ERROR.
 
 ══════════════════════════════════════════════════════════════════════
+IMPLICIT ACTIONS (14/5/2026, ADR 0129)
+══════════════════════════════════════════════════════════════════════
+
+MUST: for every entry in `intent.implicit_actions` with `strategy="auto"`, EMIT the step `<entry.verb>(...)` AFTER the input-gathering steps (find_/get_inputs) and BEFORE the notify verb (send_messages). Args derived from scratchpad (e.g. {% raw %}`{{stepN.values.choice}}`{% endraw %} for user pick) + plausible domain defaults.
+MUST: for `strategy="ask"`, EMIT `get_inputs(kind="yes_no", title="Confirm action", dialog=[{var:"confirm", prompt:"Also <entry.verb>?", schema:{kind:"yes_no"}}])` BEFORE the implicit mutating step. Execute `<entry.verb>` ONLY if `values.confirm==true`; otherwise skip straight to notify.
+MUST NOT: ignore `implicit_actions`, reorder them BEFORE the choice get_inputs, or substitute them with send_messages (the email would confirm a state that does not exist).
+OK: «propose appointment next week + email me» → intent.implicit_actions=[{verb:"create_events",strategy:"ask"}] → find_events_empty → get_inputs(choice) → get_inputs(yes_no confirm) → create_events(summary,start,end) → send_messages → final_answer.
+ERROR: skipping `create_events` when implicit_actions[0].strategy in ("auto","ask"+confirm=true). The email confirms a state that does not exist in the calendar.
+
+══════════════════════════════════════════════════════════════════════
 
 ITALIAN DATES: yyyy=YYYY (2026), yy=YY (26), mm=MM (04), dd=DD (29). yymmdd → 260429; ddmmyyyy → 29042026.
 

@@ -20,8 +20,7 @@ Determinismo §7.9: niente LLM. Solo dispatch tabellare.
 """
 from __future__ import annotations
 
-import time
-from typing import Optional, Callable
+from typing import Optional
 
 
 PREFIX = "/admin"

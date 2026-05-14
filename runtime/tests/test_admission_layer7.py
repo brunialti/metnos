@@ -20,7 +20,6 @@ from __future__ import annotations
 import sys
 import tomllib  # noqa: F401  (assicura disponibilita' nei test)
 from pathlib import Path
-from unittest.mock import patch
 
 import pytest
 
@@ -198,7 +197,6 @@ class TestL7Admission:
         res = handle_synth_request(
             {"expected_name": "read_events", "intent": "leggi calendario"},
             user_query="che appuntamenti ho oggi",
-            provider=None,
         )
         assert res["ok"] is True
         assert res.get("l7_admission") is True
@@ -238,7 +236,6 @@ class TestL7Admission:
             {"expected_name": "compute_lines_of_code",
              "intent": "Compute LOC across a directory"},
             user_query="conta righe codice",
-            provider=None,
         )
         # L7 non blocca → multistage e' stato chiamato.
         assert called["multistage"] is True
@@ -266,7 +263,6 @@ class TestL7Admission:
         res = handle_synth_request(
             {"expected_name": "read_files", "intent": "leggi file di testo"},
             user_query="leggi questo file",
-            provider=None,
         )
         # L7 non blocca: object=files != events
         assert called["multistage"] is True
@@ -290,7 +286,6 @@ class TestL7Admission:
         res = handle_synth_request(
             {"expected_name": "set_events", "intent": "crea evento"},
             user_query="aggiungi un appuntamento",
-            provider=None,
         )
         assert res.get("l7_admission") is True
         alts = res.get("imported_alternatives", [])
@@ -315,7 +310,6 @@ class TestL7Admission:
         res = handle_synth_request(
             {"expected_name": "read_events", "intent": "leggi calendario"},
             user_query="che appuntamenti",
-            provider=None,
         )
         # already_in_catalog branch vince
         assert res.get("already_in_catalog") is True
@@ -367,7 +361,6 @@ class TestBugLive11May:
             {"expected_name": "read_appointments",
              "intent": "Legge gli appuntamenti del calendario per una data"},
             user_query="che appuntamenti ho domani",
-            provider=None,
         )
         # L7 redirect a read_events (canonical_object: appointments → events)
         assert res.get("l7_admission") is True

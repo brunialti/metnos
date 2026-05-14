@@ -36,7 +36,6 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from index_schema import (
     INDEX_SCHEMA_VERSION,
-    INDEX_SCHEMA_VERSION_V3,
     IDX_TYPES,
     is_unified_schema,
 )
@@ -122,7 +121,6 @@ def _aggregate_legacy(corpus_dir: Path) -> dict:
     Ritorna {path: {"scene": entry?, "persons": [entries...], "gps": entry?,
                     "scene_vec": ndarray?, "face_vecs": [ndarray...]}}.
     """
-    import numpy as np
 
     out: dict[str, dict] = {}
 

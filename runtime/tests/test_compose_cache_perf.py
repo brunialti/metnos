@@ -16,7 +16,6 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-import pytest
 
 _RUNTIME = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_RUNTIME))
@@ -98,7 +97,7 @@ class TestInvalidateCache:
         # Riempi cache con 3 entries diverse
         prompt_loader.compose("planner", "it", sections=["mail"], **common_args)
         prompt_loader.compose("planner", "it", sections=["calendar"], **common_args)
-        prompt_loader.compose("planner", "it", sections=["web"], **common_args)
+        prompt_loader.compose("planner", "it", sections=["web/search"], **common_args)
         before = prompt_loader.cache_stats()
         assert before["size"] >= 3
         # Invalidate

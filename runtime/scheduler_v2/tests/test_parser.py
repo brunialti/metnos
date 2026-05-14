@@ -150,7 +150,7 @@ def test_dst_normal_day_after_spring_forward():
 
 
 def test_cron_skip_if_not_installed():
-    croniter = pytest.importorskip("croniter")
+    pytest.importorskip("croniter")
     # If we got here, croniter exists; verify cron path works.
     base = 1_700_000_000.0
     nxt = next_fire_at("cron:0 8 * * *", base, "Europe/Rome")

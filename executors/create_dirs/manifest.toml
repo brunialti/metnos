@@ -17,7 +17,7 @@ en = "Create one or more directories at the indicated paths. Always accept a lis
 
 [code]
 files  = ["create_dirs.py"]
-digest = "sha256:c80c177edf186ccd7ddb31a68ca6fc89b28b8c2e22ba220593cc77fd56e66dbf"
+digest = "sha256:1031445381928be60e76afbe9a34d12808607464fdbb3b570e84c7e2c18a96bd"
 
 [args]
 type     = "object"
@@ -53,6 +53,15 @@ type        = "integer"
 [args.properties.mode.description]
 it = "Permessi delle nuove directory (formato decimale, es. 493 per 0o755). Default: umask del processo."
 en = "Permissions for the new directories (decimal format, e.g., 493 for 0o755). Default: process umask."
+
+[args.properties.client]
+type        = "string"
+enum        = ["local"]
+default     = "local"
+
+[args.properties.client.description]
+it = "Implementazione backend (default 'local' = filesystem locale). Plugin esterni futuri (gdrive, dropbox, ecc.) potranno aggiungere altri client."
+en = "Backend implementation (default 'local' = local filesystem). Future external plugins (gdrive, dropbox, etc.) may add other clients."
 
 [[capabilities]]
 name = "fs:write"

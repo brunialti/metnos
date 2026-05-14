@@ -18,7 +18,6 @@ from __future__ import annotations
 import json
 import sys as _sys
 import time
-from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 if "/opt/myclaw/runtime" not in _sys.path:
@@ -143,8 +142,7 @@ def format_summary(summary: dict, *, window_hours: int = 24) -> str:
     """Renderizza il summary come markdown deterministico via ADR 0095."""
     import sys
     sys.path.insert(0, str(Path(__file__).resolve().parent))
-    from output_format import (format_kv, format_list, format_section,
-                                  format_table, format_tldr)
+    from output_format import (format_kv, format_table, format_tldr)
 
     out_lines: list[str] = []
     out_lines.append(_msg("MSG_LIFECYCLE_TITLE", hours=window_hours))

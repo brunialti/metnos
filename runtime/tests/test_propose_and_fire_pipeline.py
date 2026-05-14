@@ -16,7 +16,6 @@ Run con `python3 -m pytest runtime/tests/test_propose_and_fire_pipeline.py -v`.
 from __future__ import annotations
 
 import importlib
-import json
 import sys
 from datetime import datetime
 from pathlib import Path

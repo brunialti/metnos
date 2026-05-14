@@ -17,7 +17,7 @@ en = "Removes one or more directories within writing scope. Always accepts a lis
 
 [code]
 files  = ["delete_dirs.py"]
-digest = "sha256:36390fa1148347cf5519dca188f47e8afaef15013563602437a55cdb2c28c4fe"
+digest = "sha256:54b5eaaa7c79340ca21e904489d2a0fda2b5ecca5271eaa414298b775933d042"
 
 [args]
 type     = "object"
@@ -38,6 +38,15 @@ default     = false
 [args.properties.force.description]
 it = "Se true, rmtree ricorsivo: rimuove anche directory con contenuti. Default false: rimuove solo directory vuote, salta (in errore) quelle con contenuti."
 en = "If true, recursive rmtree: also removes directories with contents. Default false: removes only empty directories, skips (with error) those with contents."
+
+[args.properties.client]
+type        = "string"
+enum        = ["local"]
+default     = "local"
+
+[args.properties.client.description]
+it = "Implementazione backend (default 'local' = filesystem locale). Plugin esterni futuri (gdrive, dropbox, ecc.) potranno aggiungere altri client."
+en = "Backend implementation (default 'local' = local filesystem). Future external plugins (gdrive, dropbox, etc.) may add other clients."
 
 [[capabilities]]
 name = "fs:write"

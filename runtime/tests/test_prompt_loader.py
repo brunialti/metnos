@@ -5,7 +5,6 @@ richiede `lang` come parametro obbligatorio.
 """
 from __future__ import annotations
 
-import importlib
 import shutil
 import sys
 import tempfile

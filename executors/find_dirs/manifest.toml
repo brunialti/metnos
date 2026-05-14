@@ -16,7 +16,7 @@ en = "Recursive walk of the directory tree starting from base_path. Returns ONLY
 
 [code]
 files  = ["find_dirs.py"]
-digest = "sha256:b7dd71ed0bc232373b5ee7b65e7646d29dc46846827629c66c7ea45372fa2c32"
+digest = "sha256:b165f3fc01c00f6ff40d732d367c61bdb68699ecc88f61487131ec95b0a9ee3b"
 
 [args]
 type     = "object"
@@ -62,6 +62,15 @@ default     = false
 [args.properties.include_hidden.description]
 it = "Se true, include directory che iniziano con '.' (es. .git, .cache). Default false."
 en = "If true, include directories that start with '.' (e.g., .git, .cache). Default false."
+
+[args.properties.client]
+type        = "string"
+enum        = ["local"]
+default     = "local"
+
+[args.properties.client.description]
+it = "Implementazione backend (default 'local' = filesystem locale). Plugin esterni futuri (gdrive, dropbox, ecc.) potranno aggiungere altri client."
+en = "Backend implementation (default 'local' = local filesystem). Future external plugins (gdrive, dropbox, etc.) may add other clients."
 
 [[capabilities]]
 name = "fs:read"

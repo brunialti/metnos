@@ -15,7 +15,7 @@ en = "Download a list of URLs that serve PDFs and return title, author, body_tex
 
 [code]
 files  = ["read_urls_pdf.py"]
-digest = "sha256:6a14f4af261c8caa8f2372f5e6612c9a67810000713dbd75feac56300cb79e29"
+digest = "sha256:7ef69a3a826a16aa9d04621782c7ae1e2faa941cfe2cee176e7008e05d8ce7cd"
 
 [args]
 type     = "object"
@@ -70,6 +70,15 @@ default     = false
 [args.properties.ocr_fallback.description]
 it = "Se true e l'estrazione testo nativa restituisce 0 char, marca l'entry con `needs_ocr: true` per orchestrazione successiva (read_files_ocr). Default false."
 en = "If true and the native text extraction returns 0 chars, mark the entry with `needs_ocr: true` for subsequent orchestration (read_files_ocr). Default false."
+
+[args.properties.client]
+type        = "string"
+enum        = ["httpx", "playwright"]
+default     = "httpx"
+
+[args.properties.client.description]
+it = "Backend di implementazione (default 'httpx' = urllib stdlib + HostThrottle + pypdf). 'playwright' = stub (non ancora attivo). Plugin esterni futuri potranno aggiungere altri client."
+en = "Backend implementation (default 'httpx' = urllib stdlib + HostThrottle + pypdf). 'playwright' = stub (not yet active). Future external plugins may add other clients."
 
 [[capabilities]]
 name = "network.read"

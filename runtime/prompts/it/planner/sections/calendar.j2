@@ -3,13 +3,13 @@ role: planner
 tier: middle
 lang: it
 style: prescriptive
-version: 2
+version: 3
 owner: roberto
-updated: 2026-05-11
+updated: 2026-05-12
 sha_prev:
 --- #}
 ══════════════════════════════════════════════════════════════════════
-CALENDARIO / EVENTI / AGENDA / GOOGLE WORKSPACE (Drive, Sheets, Docs, Contacts)
+CALENDARIO / EVENTI / AGENDA (Google Calendar)
 ══════════════════════════════════════════════════════════════════════
 
 APPUNTAMENTI/AGENDA/EVENTI/CALENDARIO/RIUNIONI (Google Calendar)
@@ -55,8 +55,7 @@ APPUNTAMENTI/AGENDA/EVENTI/CALENDARIO/RIUNIONI (Google Calendar)
     Passo 2: find_events_empty(time_windows=[...], size=..., time_of_day=...)
              → entries con `{start, end, duration_min}` dei gap.
     Passo 3: get_inputs(from_step=2, title=..., dialog=[{var:'scelta',
-             prompt:'Scegli', schema:{kind:'choice', display_template:
-             '{start} - {end}', value_field:'start'}}]) → entries dello
+             prompt:'Scegli', schema:{kind:'choice', display_template: '{when_human}', value_field:'start'}}]) → entries dello
              step 2 vengono derivate in choices; user pick = `values.scelta`.
     Passo 4: create_events(summary=..., start=<step3.values.scelta>, end=...)
              → final_answer con link. Usa la sintassi runtime ufficiale
@@ -89,8 +88,7 @@ APPUNTAMENTI/AGENDA/EVENTI/CALENDARIO/RIUNIONI (Google Calendar)
     Variante (a) — solo NOTIFY (no create_events richiesto esplicito):
       Passo 1: get_now → today ISO.
       Passo 2: find_events_empty(time_windows=[...], size=..., time_of_day=...).
-      Passo 3: get_inputs(from_step=2, kind='choice', display_template=
-              '{start} - {end}', value_field='start') → user pick.
+      Passo 3: get_inputs(from_step=2, kind='choice', display_template='{when_human}', value_field='start') → user pick.
       Passo 4: send_messages(messages=[{to:'<user>', subject:'Orario scelto',
               body:'Hai scelto: <step3.values.scelta>'}]) → final_answer.
     Variante (b) — NOTIFY + create_events (entrambi richiesti):
@@ -116,7 +114,7 @@ APPUNTAMENTI/AGENDA/EVENTI/CALENDARIO/RIUNIONI (Google Calendar)
   OK: «proponi 3 orari mattina prossima settimana e mandami email con la
       scelta» → get_now → find_events_empty(time_windows=["next-week"],
       size="1hour", time_of_day="morning", max_results=3) →
-      get_inputs(from_step=2, kind='choice', display_template='{start} - {end}',
+      get_inputs(from_step=2, kind='choice', display_template='{when_human}',
       value_field='start') → send_messages(messages=[{to_user:"roberto",
       via_channel:"mail", subject:"Orario scelto",
       body:"Hai scelto: <step3.values.scelta>"}]) → final_answer.
@@ -160,27 +158,6 @@ APPUNTAMENTI/AGENDA/EVENTI/CALENDARIO/RIUNIONI (Google Calendar)
       ISO 8601 + offset (es. "2026-05-13T09:00:00+02:00").
   ERRORE: passare a create_events «2026-04-29T09:00:00Z» quando today e' 2026-05-11
       (e' UN ERRORE: data inventata, mercoledi nel passato).
-
-DRIVE/GOOGLE-DRIVE/FILE-CLOUD/DOCUMENTI-CLOUD
-  → find_files_google_workspace (ricerca), read_files_google_workspace (download),
-    write_files_google_workspace (upload), delete_files_google_workspace (cancella),
-    create_dirs_google_workspace (cartella), share_files_google_workspace (condividi).
-  NON DEVI: confondere con find_files/read_files (filesystem locale .33).
-  NB (ADR 0128): condividere un file con un utente = share_files_google_workspace
-  (outbound CONSENT, grant ACL), NON send_messages (mail) e NON set_* (upsert
-  stato interno). Il destinatario riceve un permesso, non una copia.
-
-FOGLI-DI-CALCOLO/SHEETS/GOOGLE-SHEETS
-  → read_files_xlsx_google_workspace (lettura), create_files_xlsx (crea nuovo),
-    set_files_xlsx (update celle: state upsert idempotente).
-  NON DEVI: confondere con read_files_xlsx (handcrafted, file xlsx locali).
-
-DOCUMENTI-GOOGLE/DOCS/GOOGLE-DOCS
-  → read_files_text (lettura), create_files_text (crea nuovo),
-    write_files_text (append/body modify).
-
-CONTATTI/RUBRICA/GOOGLE-CONTACTS
-  → read_contacts.
 
 # Time window — interpretazione canonica per read_events
 # DEVI: time_window canonical ("today", "tomorrow", "last-Nd", "next-Nd", ISO

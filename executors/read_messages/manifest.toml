@@ -15,7 +15,7 @@ en = "ONLY tool for reading/searching IMAP messages. Freely combine time window 
 
 [code]
 files  = ["read_messages.py"]
-digest = "sha256:cee2f5af62791bd2ae199512da6abfc716e99d8b62bf712ec23ae2492f404ad4"
+digest = "sha256:25d227dd2c0c95e998c0990cdd4098ff6e161b8803ccdc20b889a0e0f35c2fbd"
 
 [args]
 type     = "object"
@@ -108,6 +108,22 @@ default     = 50
 [args.properties.page_size.description]
 it = "Dimensione del batch IMAP fetch interno. Default 50. Non e' un limite sul totale (cap = max_total o max_results)."
 en = "Internal IMAP fetch batch size. Default 50. This is not a limit on the total (cap = max_total or max_results)."
+
+[args.properties.via_channel]
+type        = "string"
+default     = "email"
+enum        = ["email", "mail", "telegram"]
+
+[args.properties.via_channel.description]
+it = "Canale da leggere. Default 'email' (IMAP). 'mail' = alias di 'email' (back-compat). 'telegram' attualmente stub (lettura via daemon long-poll, no inquiry sincrona)."
+en = "Channel to read. Default 'email' (IMAP). 'mail' = alias of 'email' (back-compat). 'telegram' currently stub (read via daemon long-poll, no synchronous inquiry)."
+
+[args.properties.client]
+type        = "string"
+
+[args.properties.client.description]
+it = "Implementazione backend del canale (es. 'metnos' per IMAP locale). Default per channel: email='metnos'. Plugin esterni futuri potranno aggiungere altri client."
+en = "Channel backend implementation (e.g. 'metnos' for local IMAP). Default per channel: email='metnos'. Future external plugins may add other clients."
 
 [output]
 schema_inline = """

@@ -14,7 +14,6 @@ Run con `python3 -m pytest runtime/tests/test_get_inputs_choice_from_step.py -v`
 """
 from __future__ import annotations
 
-import os
 import sys
 from pathlib import Path
 

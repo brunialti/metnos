@@ -15,7 +15,7 @@ en = "Performs the login to the web form of an already registered domain (creden
 
 [code]
 files  = ["login_session.py"]
-digest = "sha256:48f39551548deaf17176607878742daba0df3fff381c89b009fdf052d4e0df84"
+digest = "sha256:ede232e59e60821d8bba8843f455e693e70cff99e81cb9031c5819a48125ede5"
 
 [args]
 type     = "object"
@@ -45,6 +45,15 @@ maximum     = 60.0
 [args.properties.timeout_s.description]
 it = "Timeout per ogni richiesta HTTP (GET csrf + POST login). Default 15.0."
 en = "Timeout for each HTTP request (GET csrf + POST login). Default 15.0."
+
+[args.properties.client]
+type        = "string"
+enum        = ["httpx", "playwright"]
+default     = "httpx"
+
+[args.properties.client.description]
+it = "Backend di implementazione (default 'httpx' = urllib stdlib + credentials store). 'playwright' = stub (non ancora attivo). Plugin esterni futuri potranno aggiungere altri client."
+en = "Backend implementation (default 'httpx' = urllib stdlib + credentials store). 'playwright' = stub (not yet active). Future external plugins may add other clients."
 
 [[capabilities]]
 name = "network.read"

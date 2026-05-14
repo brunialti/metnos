@@ -29,7 +29,6 @@ graceful-degrade (fallback aligned=True se LLM offline = no false reject).
 """
 from __future__ import annotations
 
-import importlib
 import json
 import os
 import sys

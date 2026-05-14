@@ -12,7 +12,6 @@ Mock di TelegramChannel.send per zero rete §7.9.
 """
 from __future__ import annotations
 
-import json
 import os
 import shutil
 import sqlite3
@@ -166,7 +165,6 @@ class TestDisableViaEnv(_BaseDigestTest):
     def test_notify_disabled(self):
         os.environ["METNOS_PROMOTER_NOTIFY_ADMIN"] = "false"
         self._seed_promoted_grace("dis_001", "find_widgets")
-        from jobs.promoter_digest import task_promoter_digest
         # Force re-read env
         sys.modules.pop("jobs.promoter_digest", None)
         from jobs.promoter_digest import task_promoter_digest as t2

@@ -4,8 +4,6 @@ find_packages.py
 Verifica se un comando o un pacchetto specifico è installato sul sistema operativo.
 """
 
-import sys
-import json
 import shutil
 
 def invoke(args: dict) -> dict:

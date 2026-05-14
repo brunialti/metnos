@@ -79,7 +79,6 @@ class TestSmokeFlagsRoutingRegression:
                 "find_texts": FakeExec("find_texts"),
             }
         # Mock rank_with_intent: ritorna find_texts PRIMA di find_urls (bug)
-        import smoke as smoke_mod
         import prefilter as pref
         def fake_rank(q, catalog, intent, *, k=3):
             return [FakeExec("find_texts"), FakeExec("find_urls")]

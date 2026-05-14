@@ -27,7 +27,6 @@ sys.path.insert(0, str(Path(__file__).parent))
 from index_schema import (
     INDEX_SCHEMA_VERSION,
     IDX_TYPES,
-    ENRICHMENTS,
     fields_for_domain,
     needs_upgrade,
 )

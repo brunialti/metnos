@@ -133,8 +133,6 @@ def _bench_intent(queries: list[str]) -> dict:
 def _bench_vaglio(queries: list[str]) -> dict:
     """Per ogni query simula un step (executor=read_files, args minimi) e
     confronta giudizio fast vs middle."""
-    from vaglio import _judge_score_llm
-    import vaglio as v
 
     # Salva e flippa via env
     import os

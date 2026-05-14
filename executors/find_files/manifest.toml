@@ -14,7 +14,7 @@ en = "Search for files by name/pattern within an authorized directory. Recursive
 
 [code]
 files  = ["find_files.py"]
-digest = "sha256:c73682834f26a2947fabf9f1d508b3f6991bd98ac9379c8e9f40b9a1cdd77072"
+digest = "sha256:d282983bf98d416f3451c6fe75b05e6a10cdd7108e4fe3c65053aec5e1724c04"
 
 [args]
 type     = "object"
@@ -82,6 +82,15 @@ default     = false
 [args.properties.include_dirs.description]
 it = "Se true, include anche le directory che matchano. Default false (solo file)."
 en = "If true, also include directories that match. Default false (files only)."
+
+[args.properties.client]
+type        = "string"
+enum        = ["local"]
+default     = "local"
+
+[args.properties.client.description]
+it = "Implementazione backend (default 'local' = filesystem locale). Plugin esterni futuri (gdrive, dropbox, ecc.) potranno aggiungere altri client."
+en = "Backend implementation (default 'local' = local filesystem). Future external plugins (gdrive, dropbox, etc.) may add other clients."
 
 [output]
 schema_inline = """

@@ -20,7 +20,7 @@
     "en": {
       "source_lang": "it",
       "source_hash": "sha256:d93f0199fb38044c7969eeacee820c6f0d5c43e066dd165ebc73ad255dba5f28",
-      "version_hash": "sha256:f4e390717b4db2f18dbd89768535b8396af026f71d214b6bf3276ee9228b0565"
+      "version_hash": "sha256:96c4211da5f8ea0ef4fe6737fe72b208e2fc949d43b8bdcded5a08115e24a2dd"
     }
   },
   "args.since_iso.description": {
@@ -32,7 +32,7 @@
     "en": {
       "source_lang": "it",
       "source_hash": "sha256:40d3b497f358fbe8bdbb7a3601e8eef3531dd205afd659c1000dfb8eac5caff8",
-      "version_hash": "sha256:728bac50c776a0b7972582212cb37541455d0f6455116bb1afcb1881bbdbe351"
+      "version_hash": "sha256:eb75f7c32287abdce5f0e6cafeaf1200f6df5aaa77898db1d10f278634404d8e"
     }
   },
   "args.kind.description": {

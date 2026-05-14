@@ -70,5 +70,17 @@
       "source_hash": "sha256:8325338c62ae67115a7fab97f85c0fb8f1f1ce007e6aa26af7c8c932aff237ff",
       "version_hash": "sha256:91d669d7684ba9eb9a60dd0ca79ac0cd7eab1e79bc47ec18e8ac3e7df5e5380f"
     }
+  },
+  "args.client.description": {
+    "it": {
+      "version_hash": "sha256:557d06ccd160a1138bad5d88a0cac6d807fa8527aedf7169779b9035aba85d15",
+      "source_lang": null,
+      "source_hash": null
+    },
+    "en": {
+      "version_hash": "sha256:72e7c349759dba786a9497870469b63efc9d90b01d6595e823eb030f8557226c",
+      "source_lang": null,
+      "source_hash": null
+    }
   }
 }

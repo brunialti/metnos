@@ -16,7 +16,6 @@ from __future__ import annotations
 
 import datetime
 import sys
-from typing import Any
 
 _RUNTIME = "/opt/myclaw/runtime"
 if _RUNTIME not in sys.path:

@@ -23,7 +23,7 @@ import os
 import sqlite3
 import time
 import uuid
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass
 from pathlib import Path
 
 DEFAULT_DB_PATH = Path.home() / ".local" / "state" / "metnos" / "approvals.db"

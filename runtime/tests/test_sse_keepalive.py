@@ -16,7 +16,6 @@ import re
 import sys
 from pathlib import Path
 
-import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 # Jinja2 e' system-package su questa macchina (vedi test_gallery.py).

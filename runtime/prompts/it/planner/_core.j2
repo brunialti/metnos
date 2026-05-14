@@ -286,6 +286,16 @@ OK: pool=[get_processes,...], query "elenca processi running" → get_processes(
 ERRORE: pool=[get_processes,...], query "elenca processi running" → request_new_executor(expected_name="list_processes"). E' UN ERRORE.
 
 ══════════════════════════════════════════════════════════════════════
+IMPLICIT ACTIONS (14/5/2026, ADR 0129)
+══════════════════════════════════════════════════════════════════════
+
+DEVI: per ogni entry in `intent.implicit_actions` con `strategy="auto"`, EMETTI lo step `<entry.verb>(...)` DOPO gli step input-gathering (find_/get_inputs) e PRIMA del verbo notify (send_messages). Args derivati da scratchpad (es. {% raw %}`{{stepN.values.scelta}}`{% endraw %} per la scelta utente) + default plausibili dal dominio.
+DEVI: per `strategy="ask"`, EMETTI `get_inputs(kind="yes_no", title="Conferma azione", dialog=[{var:"conferma", prompt:"Vuoi anche <entry.verb>?", schema:{kind:"yes_no"}}])` PRIMA dello step mutating implicito. Esegui `<entry.verb>` SOLO se `values.conferma==true`; altrimenti salta direttamente al notify.
+NON DEVI: ignorare `implicit_actions`, riordinarle PRIMA di get_inputs di scelta, o sostituirle con send_messages (l'email conferma uno stato che non esiste).
+OK: «proponi appuntamento prossima settimana + mandami email» → intent.implicit_actions=[{verb:"create_events",strategy:"ask"}] → find_events_empty → get_inputs(choice scelta) → get_inputs(yes_no conferma) → create_events(summary,start,end) → send_messages → final_answer.
+ERRORE: skippare lo step `create_events` quando implicit_actions[0].strategy in ("auto","ask"+conferma=true). L'email conferma uno stato che non esiste in calendar.
+
+══════════════════════════════════════════════════════════════════════
 
 DATE ITALIANE: aaaa=YYYY (2026), aa=YY (26), mm=MM (04), gg=DD (29). aammgg → 260429; ggmmaaaa → 29042026.
 

@@ -17,7 +17,7 @@ en = "Writes text or bytes (base64) to a file in the local filesystem. Supports 
 
 [code]
 files  = ["write_files.py"]
-digest = "sha256:d84aecf39c9d46430f89e180f846343eaf83e664fc663ad43a17d1795e8afc49"
+digest = "sha256:45fea338b21408536f2eb1a9813afbfc1ca31273667e742f7583025e1468221c"
 
 [args]
 type     = "object"
@@ -46,6 +46,15 @@ default     = "utf-8"
 type        = "string"
 enum        = ["overwrite", "append", "fail_if_exists"]
 default     = "overwrite"
+
+[args.properties.client]
+type        = "string"
+enum        = ["local"]
+default     = "local"
+
+[args.properties.client.description]
+it = "Implementazione backend (default 'local' = filesystem locale). Plugin esterni futuri (gdrive, dropbox, ecc.) potranno aggiungere altri client."
+en = "Backend implementation (default 'local' = local filesystem). Future external plugins (gdrive, dropbox, etc.) may add other clients."
 
 [[capabilities]]
 name = "fs:write"

@@ -89,8 +89,7 @@ def cmd_summary(args) -> int:
     # introvertiva
     cand_files = sorted(INTROVERTIVA_DIR.glob("candidates_*.jsonl")) \
         if INTROVERTIVA_DIR.exists() else []
-    from proposals_cleanup import (_kind_from_filename, _candidate_signature,
-                                      _candidate_cost)
+    from proposals_cleanup import (_kind_from_filename, _candidate_signature)
     by_kind: Counter = Counter()
     sig_count: defaultdict[tuple, int] = defaultdict(int)
     sig_total_uses: defaultdict[tuple, int] = defaultdict(int)

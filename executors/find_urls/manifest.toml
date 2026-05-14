@@ -15,7 +15,7 @@ en = "URL and document discovery on the web. TWO mutually exclusive modes.\n\nSE
 
 [code]
 files  = ["find_urls.py"]
-digest = "sha256:b3f5299bb7e2ef02855fa9263238efc94334ddfee8822bdeaa91276cf315f633"
+digest = "sha256:5eb9932ecf1636b400293102c9e0c293e76c2c66cc8c1b0816cbc763941f187e"
 
 [args]
 type     = "object"
@@ -163,6 +163,15 @@ maximum     = 60.0
 [args.properties.timeout_s.description]
 it = "Timeout per singola richiesta HTTP, in secondi. Default 10.0."
 en = "Timeout for single HTTP request, in seconds. Default 10.0."
+
+[args.properties.client]
+type        = "string"
+enum        = ["httpx", "playwright"]
+default     = "httpx"
+
+[args.properties.client.description]
+it = "Backend di implementazione (default 'httpx' = urllib stdlib + SearXNG + HostThrottle). 'playwright' = stub (non ancora attivo). Plugin esterni futuri potranno aggiungere altri client."
+en = "Backend implementation (default 'httpx' = urllib stdlib + SearXNG + HostThrottle). 'playwright' = stub (not yet active). Future external plugins may add other clients."
 
 [[capabilities]]
 name = "network.read"

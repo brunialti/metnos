@@ -20,7 +20,6 @@ from __future__ import annotations
 
 import os
 from datetime import datetime, timezone
-from pathlib import Path
 
 from .promoter_state import audit_append, mark_notified, pending_notification
 

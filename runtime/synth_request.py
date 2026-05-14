@@ -13,6 +13,7 @@ oggi salviamo la proposal e torniamo l'esito al LLM.
 from __future__ import annotations
 
 import json
+import os
 import time
 from pathlib import Path
 
@@ -328,18 +329,16 @@ def _find_canonical_alias(expected_name, catalog):
     return None
 
 
-def handle_synth_request(args, *, user_query, provider, progress=None, verbose=False, current_steps=None):
+def handle_synth_request(args, *, user_query, progress=None, verbose=False, current_steps=None):
     """Gestisce la chiamata a request_new_executor.
 
     Lancia synt_multistage.run_full sincronamente (~150 s wall). Usa LLMRouter
     per i tier: stage 1-4 con `middle` (procedurale, gemma 4 26B), stage 5 con
-    `wise` (creativo+procedurale, gemma 4 26B con think=true). Il `provider`
+    `wise` (creativo+procedurale, gemma 4 26B con think=true). Il provider
     del pianificatore (fast tier) NON e' adatto per la sintesi: qwen3:8b
     fatica con i 5 stage, specialmente stage 5 CODE.
     Salva la proposal in PROPOSALS_DIR e ritorna una observation strutturata
     per il LLM.
-
-    `provider` resta nella firma per backward-compat ma non viene usato.
 
     `progress` (opzionale): istanza di runtime.progress.Progress. Se passato,
     apre il canale visivo (start/update/finish) per UX su Telegram/HTML.
@@ -447,9 +446,27 @@ def handle_synth_request(args, *, user_query, provider, progress=None, verbose=F
     _middle_provider = _router.provider("middle")
     _wise_provider = _router.provider("wise")
 
+    # PoC bench Asse B synt (13/5/2026 sera): env `METNOS_SYNT_BUDGET` permette
+    # di iterare sul reasoning_budget di synt (default 1024 = legacy). Valori
+    # supportati: "0" (no thinking), "<int>" flat. Determinismo §7.9: env-driven.
+    _synt_budget_env = os.environ.get("METNOS_SYNT_BUDGET", "").strip()
+
+    def _synt_budget_kwargs(default_budget: int = 1024) -> dict:
+        """Costruisce kwargs `think`/`reasoning_budget` da `METNOS_SYNT_BUDGET`.
+        - "0" -> think=False (no thinking budget, latenza minima).
+        - "<int>" -> think=True + reasoning_budget=<int>.
+        - "" (default) -> think=True + reasoning_budget=default_budget (legacy).
+        """
+        if _synt_budget_env == "0":
+            return {"think": False}
+        if _synt_budget_env.isdigit() and int(_synt_budget_env) > 0:
+            return {"think": True, "reasoning_budget": int(_synt_budget_env)}
+        return {"think": True, "reasoning_budget": default_budget}
+
     def _llm_middle(system, user, max_tokens=2500):
         t0 = time.time()
-        r = _middle_provider.chat(system, user, max_tokens=max_tokens, temperature=0.0, think=True)
+        r = _middle_provider.chat(system, user, max_tokens=max_tokens,
+                                  temperature=0.0, **_synt_budget_kwargs(1024))
         return {
             "text": r.text or "",
             "in_tokens": r.in_tokens,
@@ -459,7 +476,8 @@ def handle_synth_request(args, *, user_query, provider, progress=None, verbose=F
 
     def _llm_wise(system, user, max_tokens=5000):
         t0 = time.time()
-        r = _wise_provider.chat(system, user, max_tokens=max_tokens, temperature=0.0, think=True)
+        r = _wise_provider.chat(system, user, max_tokens=max_tokens,
+                                temperature=0.0, **_synt_budget_kwargs(1024))
         return {
             "text": r.text or "",
             "in_tokens": r.in_tokens,
@@ -573,7 +591,6 @@ def handle_synth_request(args, *, user_query, provider, progress=None, verbose=F
         # `feedback_no_silent_failure`: meglio dichiarare il fallimento di
         # generazione che installare un broken.
         if install_error is None:
-            from pathlib import Path
             test_error = _validate_birth_tests(SYNTHESIZED_EXECUTORS_DIR / run.name)
             if test_error:
                 # Rimuovi l'install fallito per non lasciare un executor broken in catalog.

@@ -33,7 +33,6 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from types import SimpleNamespace
 
 
 def _env_path(name: str, default: Path) -> Path:

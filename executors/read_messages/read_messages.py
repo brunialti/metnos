@@ -44,23 +44,18 @@ _HANDLERS = {
     ("telegram", None):               telegram_bot,
 }
 
-_VIA_CHANNEL_ALIAS = {
-    "mail":     "email",
-    "email":    "email",
-    "telegram": "telegram",
-}
+_VIA_CHANNEL_ALIAS = {"mail": "email"}
 
 
-def _default_client_for_channel(channel: str) -> str:
-    """Auto-default §7.9: SEMPRE `metnos` (IMAP Migadu / Telegram).
-    Gmail backend richiede `client="google_workspace"` esplicito + Gmail
-    abilitato sull'account (alcuni Workspace tenant non lo hanno)."""
-    return "metnos"
+# Default uniforme: IMAP Migadu per email, Telegram bot per telegram.
+# Gmail richiede `client="google_workspace"` esplicito.
+_DEFAULT_CLIENT = "metnos"
 
 
 def invoke(args):
-    via_channel = _VIA_CHANNEL_ALIAS.get(args.get("via_channel") or "email", "email")
-    client = args.get("client") or _default_client_for_channel(via_channel)
+    via_raw = args.get("via_channel") or "email"
+    via_channel = _VIA_CHANNEL_ALIAS.get(via_raw, via_raw)
+    client = args.get("client") or _DEFAULT_CLIENT
     backend = _HANDLERS.get((via_channel, client))
     if backend is None:
         avail = sorted({k[0] for k in _HANDLERS})

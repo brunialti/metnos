@@ -202,5 +202,17 @@
       "source_lang": null,
       "source_hash": null
     }
+  },
+  "args.client.description": {
+    "it": {
+      "version_hash": "sha256:bb643cb63ab70cbea1d6687d9bf6e67675648fb5daac88b88b0da490a1eed01d",
+      "source_lang": null,
+      "source_hash": null
+    },
+    "en": {
+      "version_hash": "sha256:65354e815040d0489b85668fcf587678f2da02b0a83b539474f2a746a2968b3e",
+      "source_lang": null,
+      "source_hash": null
+    }
   }
 }

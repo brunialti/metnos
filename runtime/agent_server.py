@@ -88,7 +88,7 @@ async def register(request: web.Request) -> web.Response:
         return _error(409, "token_already_used", "token already consumed by another key")
     except devices.TokenError as e:
         return _error(400, "invalid_token", str(e))
-    except Exception as e:
+    except Exception:
         log.exception("register error")
         return _error(500, "internal_error", "registration failed")
 

@@ -1624,7 +1624,7 @@ def _invoke_default(args: dict) -> dict:
                     p = _LinkExtractor()
                     p.feed(text)
                     title = p.title; snippet = p.snippet
-                    rss_links_local = p.rss_links
+                    p.rss_links
                     # accoda link interni se profondita' lo permette
                     if depth < max_depth:
                         for href in p.links:
@@ -1785,7 +1785,6 @@ def _invoke_default(args: dict) -> dict:
     # finale = mix(metadata_score, content_emb_cos). Output arricchito di
     # `content_snippet`, `content_score`, `hit_terms`. Fallback graceful
     # se EmbeddingService non disponibile o pypdf manca.
-    deep_used = False
     if mode == "deep_search" and topic_terms and entries:
         try:
             entries = _deep_search_phase(
@@ -1794,8 +1793,7 @@ def _invoke_default(args: dict) -> dict:
                 top_k=int(args.get("top_k_deep", 30)),
                 rate_limit_ms=rate_limit_ms,
             )
-            deep_used = True
-        except Exception as _ex:
+        except Exception:
             # Fallback silenzioso al pre-rank base (loggato ma non blocca)
             pass
 

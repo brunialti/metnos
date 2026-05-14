@@ -126,7 +126,7 @@ def check_plan(plan: Any, *, domain: str = "", action: str = "",
     """
     vm = vocab_map or _load_vocab_map()
     contextual = vm.get("contextual", {})
-    verb_by_ts = vm.get("verb_by_target_side", {})
+    vm.get("verb_by_target_side", {})
 
     chosen = getattr(plan, "verb", "") or ""
     # Permetti override esplicito; fallback ai campi del plan.

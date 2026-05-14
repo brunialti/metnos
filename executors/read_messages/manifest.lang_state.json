@@ -154,5 +154,29 @@
       "source_hash": "sha256:427ed2b2878b03965c6116d9cf4007ec037a1e239f8e6ba9038e080d27e642ed",
       "version_hash": "sha256:dc90b1d00e047aa6cc66b6b94bf6fa9b67bf883d264af2f03a74fba7adba4a39"
     }
+  },
+  "args.via_channel.description": {
+    "it": {
+      "version_hash": "sha256:e1bd5f1151e84a104ae2a13dc41b9a4b4f289ea629941c8b4dafd1dcb0fa04f2",
+      "source_lang": null,
+      "source_hash": null
+    },
+    "en": {
+      "version_hash": "sha256:36823bfe3e03674439679e945f9bace7ee31512f263115158a90a5111416ac54",
+      "source_lang": null,
+      "source_hash": null
+    }
+  },
+  "args.client.description": {
+    "it": {
+      "version_hash": "sha256:49ac4b50016faffeb5252d1707182a39a6495bd7a639820ff814c5f1b50e40b5",
+      "source_lang": null,
+      "source_hash": null
+    },
+    "en": {
+      "version_hash": "sha256:b99fb2ea6147ae422c4893d4e6556982dc311447d03ac26805256d0b25e7d67a",
+      "source_lang": null,
+      "source_hash": null
+    }
   }
 }

@@ -344,7 +344,6 @@ def _fetch_one(url: str, opener, timeout_s: float, max_bytes: int,
     # Meta-refresh hop tracking (8/5/2026): se la response root e' un piccolo
     # `<meta http-equiv="refresh">`, segui il redirect (urllib non lo fa).
     # Inseriamo il follow DOPO il fetch (sotto), questa variabile traccia hop.
-    _mr_hops = 0
 
     if cache is not None and cache.enabled():
         cached = cache.get(url)

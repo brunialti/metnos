@@ -387,8 +387,8 @@ def _explain(idx: int, entry: dict) -> str:
         steps_block = "\n".join(steps_lines)
 
         # Esempi prima/dopo (semplificati)
-        first = pattern[0]
-        last = pattern[-1]
+        pattern[0]
+        pattern[-1]
         before_lines = []
         for i, s in enumerate(pattern, start=1):
             before_lines.append(f"    {i}. {s}(...)")

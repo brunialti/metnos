@@ -17,7 +17,7 @@ en = "Move or rename one or more entries (files) in a single call. LIST PASSING:
 
 [code]
 files  = ["move_files.py"]
-digest = "sha256:6b8025aa19cf6e374924bb636c9f477fa457f06a01bc224af8ecf7dcbbfbaae3"
+digest = "sha256:74d6562c0e5b50020cec67e79545628ef82ee8374d28198dfe2116c856f3f338"
 
 [args]
 type     = "object"
@@ -69,6 +69,15 @@ default     = false
 [args.properties.allow_system.description]
 it = "Se true, consente di spostare file di sistema (Thumbs.db, .DS_Store, desktop.ini). Default false: il safety net li rifiuta. Imposta solo se l'utente li vuole davvero includere."
 en = "If true, allows moving system files (Thumbs.db, .DS_Store, desktop.ini). Default false: the safety net rejects them. Set only if the user truly wants to include them."
+
+[args.properties.client]
+type        = "string"
+enum        = ["local"]
+default     = "local"
+
+[args.properties.client.description]
+it = "Implementazione backend (default 'local' = filesystem locale). Plugin esterni futuri (gdrive, dropbox, ecc.) potranno aggiungere altri client."
+en = "Backend implementation (default 'local' = local filesystem). Future external plugins (gdrive, dropbox, etc.) may add other clients."
 
 [[capabilities]]
 name = "fs:write"

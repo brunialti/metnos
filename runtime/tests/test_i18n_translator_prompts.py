@@ -268,7 +268,7 @@ class TestTranslatePromptFile(unittest.TestCase):
             # Trick: il tmp deve avere struttura runtime/prompts/it/...
             # Per mantenere il test self-contained, montiamo tmp come
             # PROMPTS dir di translate_prompt_file via path patch.
-            orig_parent = Path(itx.__file__).parent
+            Path(itx.__file__).parent
             # Crea dir prompts dentro tmp
             (self.tmp / "prompts").mkdir(exist_ok=True)
             (self.tmp / "prompts" / "it").mkdir(exist_ok=True)

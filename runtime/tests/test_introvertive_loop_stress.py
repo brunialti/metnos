@@ -61,7 +61,7 @@ class TestProposalsQuiescenceStress:
         - n_seen sia sempre coerente (1≤n≤dormancy_nights+1)
         """
         import random
-        from proposals_state import touch_or_insert, lookup, DORMANCY_NIGHTS
+        from proposals_state import touch_or_insert, DORMANCY_NIGHTS
 
         random.seed(42)
         sigs = [
@@ -160,7 +160,7 @@ class TestExecutorAgingStress:
         dopo lunga inattivita'."""
         from executor_aging import (
             register, touch, apply_executor_ager, lookup,
-            PROTECTED_NAMES, DEPRECATED_DAYS, ARCHIVED_DAYS,
+            PROTECTED_NAMES,
         )
         for name in list(PROTECTED_NAMES)[:3]:
             register(name, source="handcrafted")
@@ -178,7 +178,7 @@ class TestExecutorAgingStress:
         """Un touch recente impedisce il decay anche se il primo uso era
         vecchio."""
         from executor_aging import (
-            register, touch, apply_executor_ager, lookup, DEPRECATED_DAYS,
+            register, touch, apply_executor_ager,
         )
         register("active_tool", source="handcrafted")
         # Initial touch
@@ -233,7 +233,6 @@ class TestLoopConvergence:
         """
         from executor_aging import (
             register, touch, apply_executor_ager, all_stats,
-            DEPRECATED_DAYS, ARCHIVED_DAYS,
         )
         import random
         random.seed(2026)

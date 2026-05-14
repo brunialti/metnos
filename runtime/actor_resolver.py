@@ -24,7 +24,6 @@ di un pairing (es. da auto "guest_xxxxx" a leggibile "guest_iacopo").
 """
 from __future__ import annotations
 
-import sqlite3
 from typing import Optional
 
 
