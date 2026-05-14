@@ -39,6 +39,33 @@ from backends.events import local_ics as _li  # noqa: E402
 SKILL_NAME = "google-workspace"
 ROME = ZoneInfo("Europe/Rome")
 
+# Alias calendar_id → identity Google. Lookup deterministico §7.9.
+# Bug live 15/5/2026: LLM emette `calendar_id=roberto` (nome utente Metnos),
+# Google API ritorna 404 perche' "roberto" non e' un valid Google calendar
+# ID. Pattern utili: `primary` (default), email completa, oppure alias
+# semantici tradotti qui.
+_CALENDAR_ID_ALIASES = {
+    "primary": "primary",
+    "default": "primary",
+    "me": "primary",
+    "self": "primary",
+    "roberto": "primary",  # nome utente Metnos → primary del proprietario
+    "user": "primary",
+    "utente": "primary",
+}
+
+
+def _resolve_calendar_id(cal_id: str | None) -> str:
+    """Risolve alias → calendar ID valido. Pass-through per email valide
+    (contengono `@`). Default `primary` se None/empty."""
+    if not cal_id or not isinstance(cal_id, str):
+        return "primary"
+    norm = cal_id.strip().lower()
+    if "@" in norm:
+        # E' un'email Google Calendar valida → passa raw.
+        return cal_id.strip()
+    return _CALENDAR_ID_ALIASES.get(norm, cal_id.strip())
+
 
 def _has_creds() -> bool:
     """True se il token OAuth Google e' presente sul filesystem."""
@@ -110,7 +137,7 @@ def read(args: dict) -> dict:
         except (ImportError, ValueError) as ex:
             return _err(str(ex), "invalid_args", with_entries=True)
 
-    calendar_id = args.get("calendar_id") or "primary"
+    calendar_id = _resolve_calendar_id(args.get("calendar_id"))
     max_results = int(args.get("max_results") or 25)
     argv = ["calendar", "list", "--calendar", calendar_id,
             "--max", str(max_results)]
@@ -158,7 +185,7 @@ def create(args: dict) -> dict:
         return _err("summary/start/end mandatory (start/end ISO con TZ)",
                     "invalid_args", with_results=True)
 
-    calendar_id = args.get("calendar_id") or "primary"
+    calendar_id = _resolve_calendar_id(args.get("calendar_id"))
     argv = ["calendar", "create",
             "--summary", summary, "--start", start, "--end", end,
             "--calendar", calendar_id]
@@ -232,7 +259,7 @@ def delete(args: dict) -> dict:
         return _err("nessun event_id/event_ids/entries fornito",
                     "invalid_args", with_results=True)
 
-    calendar_id = args.get("calendar_id") or "primary"
+    calendar_id = _resolve_calendar_id(args.get("calendar_id"))
     results: list[dict] = []
     failed: list[dict] = []
     for rid in ids:
@@ -307,7 +334,7 @@ def find_events_empty(args: dict) -> dict:
                                 or not cal_id.strip()):
         return _err("calendar_id must be a non-empty string",
                     "invalid_args", with_entries=True)
-    cal_id_norm = cal_id or "primary"
+    cal_id_norm = _resolve_calendar_id(cal_id)
 
     try:
         tod_start, tod_end = _li._parse_time_of_day(time_of_day)

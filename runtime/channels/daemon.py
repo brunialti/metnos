@@ -239,17 +239,31 @@ def parse_step_value(raw: str, schema: dict) -> tuple[bool, object, str]:
         return False, None, "Inserisci una data (formato 2026-05-04 o 04/05/2026)."
     if kind == "choice":
         choices = (schema or {}).get("choices") or []
-        for i, c in enumerate(choices, start=1):
-            if str(c).lower() == s.lower():
-                return True, c, ""
+        # Choices possono essere stringhe (esplicite) o dict {label, value}
+        # (derivati da entries via display_template, ADR 0127).
+        for c in choices:
+            if isinstance(c, dict):
+                if str(c.get("value", "")).lower() == s.lower():
+                    return True, c.get("value"), ""
+                if str(c.get("label", "")).lower() == s.lower():
+                    return True, c.get("value"), ""
+            else:
+                if str(c).lower() == s.lower():
+                    return True, c, ""
         try:
             idx = int(s)
             if 1 <= idx <= len(choices):
-                return True, choices[idx - 1], ""
+                pick = choices[idx - 1]
+                if isinstance(pick, dict):
+                    return True, pick.get("value"), ""
+                return True, pick, ""
         except ValueError:
             pass
+        # Messaggio: usa label se dict, altrimenti str.
+        def _label(c):
+            return c.get("label", c.get("value", "?")) if isinstance(c, dict) else str(c)
         return False, None, (
-            "Scegli una fra: " + ", ".join(str(c) for c in choices) +
+            "Scegli una fra: " + ", ".join(_label(c) for c in choices) +
             " (oppure il numero d'ordine)."
         )
     if kind == "choice_with_preview":

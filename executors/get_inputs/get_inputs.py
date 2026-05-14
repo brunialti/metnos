@@ -469,6 +469,31 @@ def invoke(args: dict) -> dict:
         return {"ok": False, "error": "'description' deve essere stringa"}
 
     dialog = args.get("dialog")
+    # ADR 0127 + 15/5/2026: auto-inject `from_entries=true` su step
+    # `kind=choice`/`multi_choice` SE `from_step` top-level presente E
+    # nessun campo (choices/display_template/from_entries) e' specificato.
+    # Bug live (turn 0a4b6a59): LLM emette `schema={kind:'choice'}` senza
+    # null'altro → validation fallisce. Fallback robusto: `from_entries`
+    # con JSON compatto come label (vedi `_derive_choices_from_entries`).
+    if isinstance(dialog, list) and (
+            args.get("from_step") is not None
+            or isinstance(args.get("entries"), list)):
+        for _step in dialog:
+            if not isinstance(_step, dict):
+                continue
+            _sch = _step.get("schema")
+            if not isinstance(_sch, dict):
+                continue
+            if _sch.get("kind") not in ("choice", "multi_choice"):
+                continue
+            _has_choices = isinstance(_sch.get("choices"), list) \
+                and len(_sch["choices"]) >= 1
+            _has_template = isinstance(_sch.get("display_template"), str) \
+                and _sch["display_template"]
+            _has_from_entries = bool(_sch.get("from_entries"))
+            if not (_has_choices or _has_template or _has_from_entries):
+                _sch["from_entries"] = True
+
     ok, err = _validate_dialog(dialog)
     if not ok:
         return {"ok": False, "error": f"dialog non valido: {err}"}
@@ -479,6 +504,43 @@ def invoke(args: dict) -> dict:
     # `choice`/`multi_choice` con `display_template`/`from_entries`.
     # Determinismo §7.9.
     entries_for_choices = args.get("entries")
+
+    # 15/5/2026: auto-infer `display_template` se il LLM non l'ha fornito
+    # ma le entries hanno campi noti (when_human, name, subject, path,
+    # title). Migliora UX: invece di JSON raw come label, mostra "lun 18
+    # mag, 09:00-10:00". Determinismo §7.9, lookup table cross-domain.
+    if isinstance(entries_for_choices, list) and entries_for_choices:
+        _first = entries_for_choices[0] if isinstance(
+            entries_for_choices[0], dict) else None
+        if _first:
+            _LABEL_HEURISTIC = (
+                ("when_human", "{when_human}"),
+                ("subject", "{subject}"),
+                ("name", "{name}"),
+                ("title", "{title}"),
+                ("path", "{path}"),
+                ("start_human", "{start_human} → {end_human}"),
+                ("start", "{start} → {end}"),
+            )
+            _VALUE_HEURISTIC = ("id", "start", "path", "url", "value")
+            _inferred_tpl = next(
+                (t for f, t in _LABEL_HEURISTIC if f in _first), None)
+            _inferred_vf = next(
+                (f for f in _VALUE_HEURISTIC if f in _first), None)
+            if _inferred_tpl:
+                for _step in dialog:
+                    if not isinstance(_step, dict):
+                        continue
+                    _sch = _step.get("schema")
+                    if not isinstance(_sch, dict):
+                        continue
+                    if _sch.get("kind") not in ("choice", "multi_choice"):
+                        continue
+                    if _sch.get("display_template") or _sch.get("choices"):
+                        continue
+                    _sch["display_template"] = _inferred_tpl
+                    if _inferred_vf and not _sch.get("value_field"):
+                        _sch["value_field"] = _inferred_vf
     needs_derivation = any(
         (s.get("schema") or {}).get("kind") in ("choice", "multi_choice")
         and (
