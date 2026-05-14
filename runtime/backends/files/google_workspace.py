@@ -31,17 +31,11 @@ if str(_RUNTIME) not in sys.path:
     sys.path.insert(0, str(_RUNTIME))
 
 from skill_wrapper import (  # noqa: E402
-    _classify_error, _run_api, _skill_home,
-    _needs_inputs_oauth_setup, _get_skill_oauth_config,
+    _skill_home, _needs_inputs_oauth_setup, _get_skill_oauth_config,
 )
+from backends._google_api_runner import run_with_retry  # noqa: E402
 
 SKILL_NAME = "google-workspace"
-_TRANSIENT_ERROR_CLASSES = ("network", "server_error", "rate_limited")
-_MAX_RETRIES = 2
-
-
-def _api_script() -> Path:
-    return _skill_home(SKILL_NAME) / "scripts" / "google_api.py"
 
 
 def _has_creds() -> bool:
@@ -81,32 +75,14 @@ def _auth_needs_inputs(args_base: dict, *, executor: str,
 def _run_drive(argv: list[str], *, executor: str, args_base: dict,
                result_kind: str = "entries"
                ) -> tuple[dict | list | None, dict | None]:
-    """Esegue `google_api.py drive ...` con retry §7.9."""
-    last_err: dict | None = None
-    for attempt in range(_MAX_RETRIES + 1):
-        rc, stdout, stderr = _run_api(_api_script(), argv,
-                                       skill_name=SKILL_NAME,
-                                       timeout_s=60)
-        if rc == 0:
-            try:
-                return json.loads(stdout) if stdout.strip() else {}, None
-            except json.JSONDecodeError as ex:
-                last_err = {"ok": False,
-                            "error": f"invalid JSON da google_api: {ex}",
-                            "error_class": "server_error"}
-                continue
-        ec = _classify_error(rc, stderr)
-        if ec == "auth_required":
-            return None, _auth_needs_inputs(args_base, executor=executor,
-                                              result_kind=result_kind)
-        last_err = {"ok": False, "error": (stderr or "").strip()
-                    or f"rc={rc}", "error_class": ec}
-        is_ssl = bool(stderr and (
-            "SSL" in stderr or "ASN1" in stderr or "TLSV" in stderr
-        ))
-        if ec not in _TRANSIENT_ERROR_CLASSES and not is_ssl:
-            return None, last_err
-    return None, last_err
+    """Thin wrapper su `run_with_retry` per CLI `google_api.py drive ...`.
+    `result_kind` propagato all'`_auth_needs_inputs` per shape return
+    (entries vs results) coerente con il verb canonical."""
+    return run_with_retry(
+        argv, executor=executor, args_base=args_base,
+        auth_handler=lambda ab: _auth_needs_inputs(
+            ab, executor=executor, result_kind=result_kind),
+    )
 
 
 # --------------------------------------------------------------------------
