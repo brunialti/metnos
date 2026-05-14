@@ -42,9 +42,12 @@ Anti-pattern:
 - pipeline 2-step con paths_filter ponte → usa una sola call con args combinati.
 
 base_path:
-- assoluto/relativo: uso diretto.
-- simbolico 'Immagini': match in ~/.local/share/metnos/.
-- omesso: discovery multi-dir automatica.
+- DEVI omettere `base_path` per default → discovery automatica (usa tutti gli indici esistenti).
+- NON DEVI inventare path tipo `/home/roberto/images` o `/home/user/Pictures` se l'utente non lo menziona.
+- OK: query «foto al mare» → `find_images_indices(query_text='mare')` SENZA base_path.
+- ERRORE: «foto al mare» → `find_images_indices(base_path='/home/roberto/images', query_text='mare')` (path inventato, non esiste indice).
+- Solo se l'utente cita un path esplicito (es. «in /mnt/foto»), passalo come `base_path`.
+- Stringa simbolica `Immagini`: match in ~/.local/share/metnos/Immagini se esiste.
 
 Output: `entries=[{path, score, match_type, description, bbox?, gps?, taken_at?}]` ordinato per score desc. Pattern §2.7: `truncated`, `used`, `available_total`, `cap_field='top_k'`.
 
@@ -75,9 +78,12 @@ Anti-patterns:
 - 2-step pipeline with paths_filter bridge → use single call with combined args.
 
 base_path:
-- absolute/relative: direct use.
-- symbolic 'Images': match in ~/.local/share/metnos/.
-- omitted: automatic multi-dir discovery.
+- MUST omit `base_path` by default → automatic discovery (uses all existing indices).
+- MUST NOT invent paths like `/home/user/images` or `/home/user/Pictures` if the user didn't mention one.
+- OK: query «sea photos» → `find_images_indices(query_text='sea')` WITHOUT base_path.
+- ERROR: «sea photos» → `find_images_indices(base_path='/home/user/images', query_text='sea')` (made-up path, no index there).
+- Only if the user cites an explicit path (e.g. «in /mnt/photos»), pass it as `base_path`.
+- Symbolic string `Images`: matches ~/.local/share/metnos/Images if it exists.
 
 Output: `entries=[{path, score, match_type, description, bbox?, gps?, taken_at?}]` ordered by score desc. Pattern §2.7: `truncated`, `used`, `available_total`, `cap_field='top_k'`.
 
@@ -85,7 +91,7 @@ error_class: low_confidence, paths_filter_empty, no_faces_above_size_threshold, 
 
 [code]
 files  = ["find_images_indices.py"]
-digest = "sha256:1d7ca3b385aff42a65707808743a66a6712520d1d9969c552dd426be02f6e391"
+digest = "sha256:c5df6d2601884b74daeaa080ed77aee6e7de995788700fc01f6fa72a12a58a22"
 
 [args]
 type     = "object"

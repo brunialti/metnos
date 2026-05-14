@@ -106,7 +106,29 @@ def _resolve_base_path(base_path_arg) -> tuple[Path | None, list[Path] | None, s
     )
     if is_path_like:
         if p.exists() and p.is_dir():
-            return p.resolve(), None, None
+            # 15/5/2026: se il path esiste ma non ha indice, fallback a
+            # discovery automatica. Bug live: LLM passa `/home/roberto/images`
+            # (esiste, no idx), discovery trova `~/.local/share/metnos/Immagini`
+            # (esiste, 30k entries). Resilienza > rigore.
+            resolved = p.resolve()
+            idx_dir = _index_dir(resolved)
+            if (idx_dir / "meta.json").exists():
+                return resolved, None, None
+            # Fallback: discovery
+            root = _user_data_root()
+            dirs: list[Path] = []
+            if root.exists():
+                for sub in root.iterdir():
+                    if sub.is_dir():
+                        sub_idx = _index_dir(sub)
+                        if (sub_idx / "meta.json").exists():
+                            dirs.append(sub)
+            if dirs:
+                return None, dirs, (
+                    f"base_path '{arg}' non indicizzato → fallback discovery "
+                    f"({len(dirs)} indici trovati)"
+                )
+            return resolved, None, None  # nessun fallback, ritorna come prima
         return None, None, f"base_path not found: {arg}"
     root = _user_data_root()
     if root.exists():
