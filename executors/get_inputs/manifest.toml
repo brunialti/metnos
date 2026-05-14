@@ -41,11 +41,46 @@ en = "Optional description (1-2 sentences) shown under the title. Explains the c
 
 [args.properties.dialog]
 type        = "array"
-items       = { type = "object" }
 
 [args.properties.dialog.description]
 it = "Lista degli step del dialogo. Ogni elemento e' un dict `{var, prompt, schema, optional?, default?}`. `var` e' un identificatore snake_case che diventa la chiave del dict di output. `prompt` e' la domanda mostrata all'utente (max 200 char). `schema.kind` definisce il tipo di input. Min 1 step, max 30. Ordine = ordine di presentazione nel dialogue."
 en = "List of dialogue steps. Each element is a dict `{var, prompt, schema, optional?, default?}`. `var` is a snake_case identifier that becomes the key of the output dict. `prompt` is the question shown to the user (max 200 char). `schema.kind` defines the input type. Min 1 step, max 30. Order = order of presentation in the dialogue."
+
+# Nested schema completo (ADR 0133 B2 recursive, 14/5/2026 sera):
+# Schema = source of truth → grammar-aware emission + validation tools.
+[args.properties.dialog.items]
+type     = "object"
+required = ["var", "prompt", "schema"]
+
+[args.properties.dialog.items.properties.var]
+type        = "string"
+description = "Identifier snake_case → chiave del dict di output values."
+
+[args.properties.dialog.items.properties.prompt]
+type        = "string"
+description = "Domanda mostrata all'utente (max 200 char)."
+
+[args.properties.dialog.items.properties.schema]
+type     = "object"
+required = ["kind"]
+
+[args.properties.dialog.items.properties.schema.properties.kind]
+type = "string"
+enum = ["text", "credentials", "yes_no", "choice", "choice_with_preview",
+        "multi_choice", "number", "date", "file_path", "location"]
+description = "Tipo di input: text (default), credentials (mask), yes_no, choice (con display_template + value_field per derivazione da entries), choice_with_preview (con options=[{value,label,preview_image_path}]), multi_choice, number, date, file_path, location."
+
+[args.properties.dialog.items.properties.schema.properties.display_template]
+type        = "string"
+description = "Per kind=choice/multi_choice con from_step: template Python {field} per la label (es. '{start} - {end}')."
+
+[args.properties.dialog.items.properties.schema.properties.value_field]
+type        = "string"
+description = "Per kind=choice/multi_choice con from_step: nome del campo entry da usare come value (es. 'start')."
+
+[args.properties.dialog.items.properties.optional]
+type        = "boolean"
+description = "Se true, lo step puo' essere saltato dall'utente."
 
 [args.properties.fmt]
 type        = "string"

@@ -298,6 +298,22 @@
     <xhtml:link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/scratchpad"/>
     <xhtml:link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/scratchpad"/>
   </url>
+  <url>
+    <loc>https://metnos.com/en/architecture/grammar</loc>
+    <lastmod>2026-05-14</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/grammar"/>
+    <xhtml:link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/grammar"/>
+  </url>
+  <url>
+    <loc>https://metnos.com/it/architecture/grammar</loc>
+    <lastmod>2026-05-14</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/grammar"/>
+    <xhtml:link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/grammar"/>
+  </url>
 
   <!-- Microdesign tested al 27/4/2026: vaglio, channel, pairing (bilingui), observability (IT-only) -->
   <url>

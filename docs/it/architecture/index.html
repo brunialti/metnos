@@ -558,6 +558,11 @@ Sotto, i quindici documenti raggruppati per ruolo. La colonna
   <td>Archivio temporaneo del turno: tiene le observation grandi senza occupare il contesto del pianificatore. Builtin <code>scratchpad_read</code> con <em>head/tail/range</em>.</td>
   <td><span class="status tested">tested</span></td>
 </tr>
+<tr>
+  <td><a href="grammar.html"><code>grammar</code></a></td>
+  <td>Constrained generation via GBNF per il <code>tool_call</code> del PLANNER. Discriminated union nome+args, schema recursive, pool filter contestuale, validator post-decode. Risolve thinking-loop, mix-match args, escape-hatch arbitrari. Bench convergenza 50% &rarr; 100%.</td>
+  <td><span class="status tested">tested</span></td>
+</tr>
 </tbody>
 </table>
 

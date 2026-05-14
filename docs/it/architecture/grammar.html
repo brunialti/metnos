@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Metnos &mdash; grammar v1.0 (for dummies)</title>
+    <meta name="description" content="Come Metnos forza l'LLM a chiamare un solo tool in modo corretto: constrained generation via GBNF, discriminated union name+args, schema recursive, pool filter. Spiegato semplice.">
+    <meta name="keywords" content="grammar, GBNF, llama.cpp, constrained generation, tool_call, PLANNER, Gemma, anti-thinking-loop, metnos, Metnos">
+    <meta name="author" content="Roberto Brunialti">
+    <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large">
+    <link rel="canonical" href="https://metnos.com/it/architecture/grammar.html">
+    <link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/grammar.html">
+    <link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/grammar.html">
+    <link rel="alternate" hreflang="x-default" href="https://metnos.com/it/architecture/grammar.html">
+    <meta property="og:type" content="article">
+    <meta property="og:url" content="https://metnos.com/it/architecture/grammar.html">
+    <meta property="og:title" content="Metnos &mdash; grammar v1.0">
+    <meta property="og:description" content="Constrained generation per il tool_call PLANNER: come funziona, perche' serve, come testarla.">
+    <meta property="og:locale" content="it_IT">
+    <meta property="og:site_name" content="Metnos">
+    <style>
+:root {
+    --navy: #1A477A; --navy-light: #2B6CB0; --sage: #548235;
+    --bronze: #A0522D; --plum: #6B21A8;
+    --bg: #FAFBFC; --text: #1a1a1a;
+    --border: #d0d7de; --code-bg: #f6f8fa;
+    --table-header: #1A477A; --table-alt: #f0f4f8;
+    --note-bg: #dbeafe; --note-border: #3b82f6;
+    --tip-bg: #dcfce7; --tip-border: #16a34a;
+    --warn-bg: #fef3c7; --warn-border: #f59e0b;
+    --danger-bg: #fee2e2; --danger-border: #dc2626;
+    --muted: #64748B;
+}
+* { box-sizing: border-box; }
+body { font-family: 'Segoe UI', Calibri, -apple-system, sans-serif; font-size: 11pt; line-height: 1.65; color: var(--text); background: var(--bg); max-width: 960px; margin: 0 auto; padding: 40px 30px; }
+h1 { color: var(--navy); font-size: 20pt; border-bottom: 3px solid var(--navy); padding-bottom: 8px; margin-top: 50px; }
+h1:first-of-type { margin-top: 0; }
+h2 { color: var(--navy-light); font-size: 14pt; margin-top: 30px; border-bottom: 1px solid var(--border); padding-bottom: 4px; }
+h3 { color: var(--navy); font-size: 12pt; margin-top: 20px; }
+p { margin: 10px 0; }
+table { width: 100%; border-collapse: collapse; margin: 15px 0; font-size: 10pt; }
+th { background: var(--table-header); color: white; padding: 8px 10px; text-align: left; font-weight: 600; }
+td { padding: 7px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+tr:nth-child(even) td { background: var(--table-alt); }
+pre { background: var(--code-bg); border: 1px solid var(--border); border-radius: 4px; padding: 12px 16px; overflow-x: auto; font-size: 9.5pt; line-height: 1.55; }
+code { font-family: Consolas, 'Courier New', monospace; }
+p code, li code, td code { background: var(--code-bg); padding: 1px 5px; border-radius: 3px; font-size: 9.5pt; }
+.callout { border-left: 4px solid; padding: 10px 16px; margin: 15px 0; border-radius: 0 4px 4px 0; font-size: 10pt; }
+.callout.note { background: var(--note-bg); border-color: var(--note-border); }
+.callout.tip { background: var(--tip-bg); border-color: var(--tip-border); }
+.callout.warning { background: var(--warn-bg); border-color: var(--warn-border); }
+.callout.danger { background: var(--danger-bg); border-color: var(--danger-border); }
+.title-page { text-align: center; padding: 80px 0 40px; }
+.title-page h1 { font-size: 32pt; border: none; margin: 0; }
+.title-page .subtitle { font-size: 16pt; color: var(--navy-light); margin: 10px 0 30px; }
+.title-page .meta { font-size: 11pt; color: #666; }
+.toc h2 { border: none; }
+.toc ol { font-size: 11pt; line-height: 2; }
+.toc a { color: var(--navy); text-decoration: none; }
+.toc a:hover { text-decoration: underline; }
+ul, ol { margin: 8px 0; padding-left: 24px; }
+li { margin-bottom: 4px; }
+.lead { font-size: 12pt; color: var(--navy); border-left: 4px solid var(--sage); padding-left: 14px; margin: 18px 0; }
+    </style>
+</head>
+<body>
+
+<nav aria-label="Language" style="position:fixed;top:16px;right:20px;z-index:9999;font-family:'Segoe UI',Calibri,sans-serif;font-size:10pt;letter-spacing:2px;background:#FAFBFC;border:1px solid #d0d7de;border-radius:14px;padding:4px 10px;">
+<a href="/it/architecture/grammar.html" class="active" hreflang="it" lang="it" style="color:#1a1a1a;text-decoration:none;font-weight:700;padding:0 4px;">IT</a>
+<span style="color:#d0d7de;"> &middot; </span>
+<a href="/en/architecture/grammar.html" hreflang="en" lang="en" style="color:#64748B;text-decoration:none;padding:0 4px;">EN</a>
+</nav>
+
+<div style="background:#fff;border-bottom:1px solid #d0d7de;padding:10px 0;font-size:14px;position:sticky;top:0;z-index:10;margin-bottom:20px;">
+  <div style="max-width:960px;margin:0 auto;padding:0 20px;display:flex;justify-content:space-between;">
+    <a href="../index.html" style="color:#1a477a;text-decoration:none;font-weight:500;">&larr; Indice documentazione</a>
+    <span style="color:#8e8e93;">Microprogettazione &rsaquo; <strong style="color:#1a1a1a;">grammar</strong></span>
+  </div>
+</div>
+
+<div class="title-page">
+    <h1>Metnos</h1>
+    <div class="subtitle"><code>grammar</code> &mdash; constrained generation per il tool_call</div>
+    <div class="meta">
+        Microprogettazione v1.0 &mdash; 14 maggio 2026<br>
+        Allineata con <a href="../../decisions/0133-constrained-grammar-tool-call.md">ADR 0133</a><br>
+        e con i moduli <code>runtime/tool_grammar.py</code>, <code>runtime/llm_provider.py</code>,
+        <code>runtime/agent_runtime.py</code>.<br>
+        <br>
+        Pubblico: chi vuole capire perche' Metnos non &ldquo;chiacchiera&rdquo; durante il planning<br>
+        e cosa succede tra l&rsquo;LLM e l&rsquo;executor.<br>
+        Lettura: 12 minuti, zero matematica.
+    </div>
+</div>
+
+<div class="toc">
+<h2>Indice</h2>
+<ol>
+    <li><a href="#cap1">Il problema: l&rsquo;LLM &ldquo;ci pensa su&rdquo; e si perde</a></li>
+    <li><a href="#cap2">L&rsquo;idea: la grammatica come binario</a></li>
+    <li><a href="#cap3">I tre pezzi: generator, filter, validator</a></li>
+    <li><a href="#cap4">Cosa garantisce e cosa no</a></li>
+    <li><a href="#cap5">Perche&rsquo; tre &ldquo;bug llama-server&rdquo; ci hanno fatto perdere mezza giornata</a></li>
+    <li><a href="#cap6">Robustezza, velocita&rsquo;, estensibilita&rsquo;</a></li>
+    <li><a href="#cap7">Come si testa</a></li>
+    <li><a href="#cap8">Riferimenti</a></li>
+</ol>
+</div>
+
+<h1 id="cap1">1. Il problema: l&rsquo;LLM &ldquo;ci pensa su&rdquo; e si perde</h1>
+
+<p class="lead">Il <em>PLANNER</em> di Metnos sceglie quale executor invocare a ogni
+step. E&rsquo; un LLM locale (Gemma 4 26B). Quando la query e&rsquo; complessa &mdash; tipo
+&laquo;proponi 3 orari per un appuntamento con Silvia di una ora la mattina settimana
+prossima, dopo la scelta mandami una email con la scelta&raquo; &mdash; l&rsquo;LLM <strong>a volte</strong>
+entra in un loop di ragionamento e finisce per emettere prosa al posto di un
+<code>tool_call</code> strutturato. Il sistema non sa cosa eseguire. Game over.</p>
+
+<p>Si chiama &ldquo;thinking loop&rdquo;. Sintomi osservati:</p>
+
+<ul>
+    <li><strong>Prosa al posto di JSON</strong>. L&rsquo;LLM scrive &ldquo;Wait, I&rsquo;ll think...&rdquo;
+        e dimentica di chiudere con un tool_call.</li>
+    <li><strong>Mix-match name/args</strong>. Emette <code>{"name":"get_inputs","arguments":
+        {"kind":"choice","from_step":1,...}}</code> &mdash; il nome di <em>un</em> tool con
+        gli argomenti di <em>un altro</em> tool.</li>
+    <li><strong>Escape-hatch arbitrari</strong>. Sceglie <code>request_new_executor</code>
+        (cioe&rsquo; &laquo;sintetizzati un nuovo verbo&raquo;) anche quando c&rsquo;e&rsquo; gia&rsquo; un
+        executor canonico ovvio. O <code>request_location_from_user</code> per la query
+        &laquo;crea cartella /tmp/x&raquo; (no, non mi serve la tua posizione GPS).</li>
+</ul>
+
+<p>Il bench prima di questa decisione: <strong>50&ndash;70% convergenza</strong>
+su 10 query rappresentative. La pipeline propose+notify dell&rsquo;ADR 0129 non chiudeva.
+Inaccettabile per un assistente personale.</p>
+
+<h1 id="cap2">2. L&rsquo;idea: la grammatica come binario</h1>
+
+<p>llama.cpp (il motore che esegue Gemma) supporta una feature chiamata
+<strong>GBNF</strong> (Grammar Backus-Naur Form). E&rsquo; un linguaggio per scrivere
+grammatiche formali, tipo:</p>
+
+<pre>root      ::= "{" ws "\"name\":" name ws "}"
+name      ::= "\"get_now\"" | "\"find_files\"" | "\"send_messages\""
+ws        ::= [ \t\n]*</pre>
+
+<p>Quando passi una grammar al server, l&rsquo;LLM <strong>fisicamente non puo&rsquo; emettere
+token che la violino</strong>. Ogni token candidato a essere generato viene filtrato
+contro la grammar prima della scelta. E&rsquo; un binario, non una linea guida.</p>
+
+<div class="callout tip">
+<strong>Analogia.</strong> Un soft constraint via prompt e&rsquo; come dire &ldquo;per favore
+guida nella corsia destra&rdquo;. Una grammar e&rsquo; come mettere il guard-rail. Il primo si
+puo&rsquo; ignorare, il secondo no.
+</div>
+
+<p>L&rsquo;idea di ADR 0133 e&rsquo;: a ogni step del PLANNER, <strong>generiamo una grammar
+specifica</strong> a partire dai <em>tools</em> del pool dello step, e la passiamo al
+server. Il modello e&rsquo; libero di scegliere quale tool chiamare e quali argomenti
+passargli, ma SOLO entro quello che gli schemi dichiarano valido.</p>
+
+<h1 id="cap3">3. I tre pezzi: generator, filter, validator</h1>
+
+<h2>3.1 Generator (<code>runtime/tool_grammar.py::generate_tool_grammar</code>)</h2>
+
+<p>Riceve la lista di <em>tools</em> del pool e ritorna una stringa GBNF.
+Il <em>core</em> della grammar e&rsquo; una <strong>discriminated union</strong>:</p>
+
+<pre>root ::= "{" ws "\"name\":" (pairGetInputs | pairSendMessages | ...) ws "}"
+pairGetInputs ::= "\"get_inputs\"" sep "\"arguments\":" colon (argsGetInputs)
+pairSendMessages ::= "\"send_messages\"" sep "\"arguments\":" colon (argsSendMessages)
+...</pre>
+
+<p>La parola chiave e&rsquo; <em>discriminated</em>: se l&rsquo;LLM sceglie il ramo
+<code>pairGetInputs</code>, gli args saranno <strong>per forza</strong> conformi a
+<code>argsGetInputs</code>. Non puo&rsquo; mescolare il nome di un tool con gli args di un
+altro &mdash; ed era il <em>bug live</em> che ci ha bloccato per mezza giornata.</p>
+
+<p>Per gli args, il generator legge il JSON Schema dichiarato nel manifest
+TOML dell&rsquo;executor e lo traduce in regole GBNF. Per i casi nested (array di
+object, object dentro object) il generator e&rsquo; <strong>ricorsivo</strong>:</p>
+
+<pre>argsGetInputs ::= "{" ws propGetInputsTitle sep propGetInputsDialog
+                  (sep (propGetInputsFromStep | ...))* ws "}"
+propGetInputsDialog ::= "\"dialog\":" colon (
+    "[" ws (GetInputsObjD1I0 (sep GetInputsObjD1I0)*)? ws "]"
+)
+GetInputsObjD1I0 ::= "{" ws propGetInputsObjD1I0Var sep propGetInputsObjD1I0Prompt sep
+                          propGetInputsObjD1I0Schema (sep (...))* ws "}"
+propGetInputsObjD1I0Schema ::= "\"schema\":" colon (GetInputsObjD3I2)
+GetInputsObjD3I2 ::= "{" ws propGetInputsObjD3I2Kind (sep (...))* ws "}"
+propGetInputsObjD3I2Kind ::= "\"kind\":" colon (
+    "\"text\"" | "\"credentials\"" | "\"yes_no\"" | "\"choice\"" |
+    "\"choice_with_preview\"" | "\"multi_choice\"" | "\"number\"" |
+    "\"date\"" | "\"file_path\"" | "\"location\""
+)</pre>
+
+<p>Esempio reale per <code>get_inputs</code>: lo schema dichiara <code>dialog</code>
+come array di object, ognuno con <code>{var, prompt, schema}</code>, dove
+<code>schema.kind</code> e&rsquo; un enum di 10 valori. Tutto questo finisce nella grammar:
+il modello <strong>non puo&rsquo;</strong> emettere <code>kind: "banana"</code>, e
+<strong>non puo&rsquo;</strong> dimenticarsi <code>var</code>.</p>
+
+<div class="callout note">
+<strong>Schema = source of truth.</strong> Se il manifest dichiara
+<code>items = {type: object}</code> senza <code>properties</code>, la grammar fa
+fallback su <code>jsonObject</code> generico, e il vincolo si perde. Per questo,
+quando aggiungi un executor con strutture nested, <strong>devi dichiararle nel
+manifest</strong> &mdash; la grammar lo protegge solo se lo schema e&rsquo; completo.
+</div>
+
+<h2>3.2 Pool filter (<code>runtime/tool_grammar.py::filter_pool_for_grammar</code>)</h2>
+
+<p>Anche con la grammar perfetta, c&rsquo;era un problema: certi tool sono <em>escape-hatch</em>
+&mdash; iniettati sempre nel pool per uso speciale &mdash; e con la grammar attiva il
+modello li sceglie a sproposito.</p>
+
+<table>
+<thead><tr><th>Tool</th><th>Quando va escluso</th></tr></thead>
+<tbody>
+<tr><td><code>request_new_executor</code></td><td>se ci sono &geq;3 tool canonical (e&rsquo; un fallback, non un default)</td></tr>
+<tr><td><code>request_location_from_user</code></td><td>se la query NON contiene marker prossimita&rsquo; (&ldquo;vicino a me&rdquo;, &ldquo;qui&rdquo;, &ldquo;nearby&rdquo;)</td></tr>
+<tr><td><code>undo_last_turn</code></td><td>se la query NON contiene marker undo (&ldquo;annulla&rdquo;, &ldquo;ripristina&rdquo;)</td></tr>
+<tr><td><code>*_google_workspace</code></td><td>se la query NON menziona &ldquo;google&rdquo;, &ldquo;drive&rdquo;, &ldquo;gmail&rdquo;...</td></tr>
+</tbody>
+</table>
+
+<p>Il filter usa <strong>word-boundary regex</strong> (<code>\bmarker\b</code>) per
+evitare i falsi positivi tipo <em>&laquo;qua&raquo; &sub; &laquo;qualcosa&raquo;</em> che ci ha fatto
+perdere un altro giro di bench. La logica e&rsquo; una funzione pura: la testi con 12
+unit-test, garantisci determinismo (&sect;7.9).</p>
+
+<h2>3.3 Validator (<code>runtime/tool_grammar.py::validate_tool_call</code>)</h2>
+
+<p>La grammar e&rsquo; tight, ma non e&rsquo; perfetta &mdash; alcuni vincoli (es. mutua
+esclusivita&rsquo; tra due property) non si esprimono naturalmente in GBNF. Per quelli
+c&rsquo;e&rsquo; un validator <em>post-decode</em>:</p>
+
+<pre>tool_call = {"name": "get_inputs", "arguments": {"display_template": "x"}}
+ok, err = validate_tool_call(tool_call, pool)
+# ok=False, err="missing required args ['title', 'dialog'] for tool 'get_inputs'"</pre>
+
+<p>Se il validator dice no, l&rsquo;executor NON viene chiamato. L&rsquo;errore viene
+iniettato nel <em>history</em> dell&rsquo;LLM come messaggio <code>role=tool</code>, e
+allo step successivo il modello vede &laquo;mi mancano <code>title</code> e <code>dialog</code>&raquo;
+e corregge. Un contatore <code>consecutive_blocked</code> previene loop infiniti.</p>
+
+<h1 id="cap4">4. Cosa garantisce e cosa no</h1>
+
+<h3>Garantisce</h3>
+<ul>
+    <li><strong>Sintassi JSON valida</strong>. Il modello non puo&rsquo; emettere un
+        JSON malformato.</li>
+    <li><strong>Nome tool nel pool</strong>. Solo i tool del pool dello step
+        sono ammessi come <code>name</code>.</li>
+    <li><strong>Args coerenti col nome</strong>. Discriminated union: nome A
+        &rArr; args di A.</li>
+    <li><strong>Tipi delle property top-level e nested</strong>. String, integer,
+        boolean, enum, array, object &mdash; ognuno emette la sua regola.</li>
+    <li><strong>Enum stretti</strong>. Se <code>kind</code> ha 10 valori, il modello
+        ne sceglie SOLO uno tra quei 10.</li>
+</ul>
+
+<h3>Non garantisce</h3>
+<ul>
+    <li><strong>Valore semanticamente giusto</strong>. La grammar accetta
+        <code>title: ""</code>: e&rsquo; una stringa. Toccaall&rsquo;executor controllare.</li>
+    <li><strong>Required nested troppo profondi</strong>. Cap
+        <code>_MAX_RECURSION_DEPTH = 4</code>: oltre, fallback su
+        <code>jsonObject</code> generico. Casi rari, da monitorare.</li>
+    <li><strong>Tool giusto per la query</strong>. Se il pool ha 8 tool tutti
+        plausibili, il modello sceglie quello che gli sembra meglio &mdash; e
+        puo&rsquo; sbagliare. Per quello c&rsquo;e&rsquo; il ranker (top-K) prima della
+        grammar, ed eventualmente il pool filter.</li>
+</ul>
+
+<h1 id="cap5">5. Perche&rsquo; tre &ldquo;bug llama-server&rdquo; ci hanno fatto perdere mezza giornata</h1>
+
+<p>llama.cpp e&rsquo; software vivo, e la sua implementazione GBNF ha un paio di
+quirk&rsquo;. Tutti scoperti in convergence test durante la sessione.</p>
+
+<div class="callout warning">
+<strong>1. Rule names con underscore &mdash; ignorate.</strong>
+La versione <code>b540-5755a100c</code> ignora silenziosamente le rule names che
+contengono underscore. Tipo <code>args_get_now ::= ...</code> non viene
+applicata. Workaround: rule names sempre <code>camelCase</code>. Test:
+<code>test_no_underscore_in_rule_names</code>.
+</div>
+
+<div class="callout warning">
+<strong>2. Rule unused interferiscono.</strong>
+Anche se una rule non e&rsquo; referenziata da nessuna altra, la sua presenza
+puo&rsquo; alterare il matching. Workaround: dependency closure
+(<code>_PRIMITIVE_DEPS</code>), emettiamo SOLO le primitives effettivamente
+referenziate. Test: <code>test_primitives_only_referenced_emitted</code>.
+</div>
+
+<div class="callout warning">
+<strong>3. <code>grammar</code> + <code>tools</code> insieme &mdash; HTTP 400.</strong>
+llama-server rifiuta payload che hanno entrambi i campi. Workaround: in
+grammar-mode bypassiamo <code>tools</code> e generiamo direttamente il JSON
+<code>{"name":..., "arguments":...}</code>. Il chat-template di Gemma che
+emette <code>&lt;|tool_call&gt;</code> markers viene anch&rsquo;esso bypassato.
+</div>
+
+<p>Sono workaround stabili, ma sono <em>workaround</em>. Se in futuro llama.cpp li
+risolve, possiamo semplificare. Sono presidiati da test.</p>
+
+<h1 id="cap6">6. Robustezza, velocita&rsquo;, estensibilita&rsquo;</h1>
+
+<h3>Robustezza</h3>
+
+<p>Bench n=10 query rappresentative (simple/medium/complex/ambiguous), n=1 run
+per query:</p>
+
+<table>
+<thead><tr><th>Configurazione</th><th>Convergenza</th><th>first_tool_match</th><th>Mean latency</th></tr></thead>
+<tbody>
+<tr><td>baseline (no grammar)</td><td>50%</td><td>n/a</td><td>70s</td></tr>
+<tr><td>grammar v1 (B2 base)</td><td>80%</td><td>89%</td><td>25s</td></tr>
+<tr><td>grammar v4 (discriminated)</td><td>80%</td><td>100%</td><td>35s</td></tr>
+<tr><td>grammar v6 (pool filter)</td><td><strong>100%</strong></td><td><strong>100%</strong></td><td>42s</td></tr>
+<tr><td>grammar v7 (refactor estratto)</td><td><strong>100%</strong></td><td><strong>100%</strong></td><td>41s</td></tr>
+</tbody>
+</table>
+
+<p>Tre cose vale la pena notare:</p>
+
+<ul>
+    <li>Il <em>thinking-loop</em> e&rsquo; sparito. Latency mean dimezzata vs baseline
+        non perche&rsquo; l&rsquo;LLM &laquo;pensi piu&rsquo; veloce&raquo;, ma perche&rsquo; non spreca cicli a
+        ragionare in cerchio.</li>
+    <li>La pipeline propose+notify (complex_propose_silvia) converge sempre.
+        Era il caso peggiore.</li>
+    <li>Anche le query ambigue (&laquo;fai qualcosa di interessante&raquo;) chiudono in
+        un <code>final_answer</code> sensato, invece di scegliere un escape-hatch
+        a caso.</li>
+</ul>
+
+<h3>Velocita&rsquo;</h3>
+
+<p>La generazione della grammar e&rsquo; deterministica e veloce: per un pool tipico
+di 8 tool produce ~80 regole in ~2&nbsp;ms. La grammar &laquo;costa&raquo; un po&rsquo; al server
+durante la generazione (filtering token candidati), ma il guadagno netto e&rsquo;
+enorme perche&rsquo; eliminiamo:</p>
+
+<ul>
+    <li>Il pensiero in prosa (centinaia di token &laquo;Wait, I&rsquo;ll check...&raquo;).</li>
+    <li>I retry causati da JSON malformato o args sbagliati.</li>
+    <li>I loop di reasoning ricorsivo.</li>
+</ul>
+
+<h3>Estensibilita&rsquo;</h3>
+
+<p>Aggiungere un nuovo provider qualifier (es. <code>_notion</code> o
+<code>_telegram_bot</code>) costa <strong>una riga</strong>:</p>
+
+<pre>_PROVIDER_SUFFIX_MARKERS = {
+    "_google_workspace": ("google", "drive", "gmail", ...),
+    "_notion": ("notion", "notion.so", "page"),  # &larr; aggiunta
+}</pre>
+
+<p>Aggiungere un nuovo executor con schema nested complesso costa zero:
+il generator legge il JSON Schema dichiarato nel manifest e produce la grammar
+automaticamente, ricorsivamente, fino al cap di depth.</p>
+
+<h1 id="cap7">7. Come si testa</h1>
+
+<p>43 unit-test in <code>runtime/tests/test_tool_grammar.py</code> verdi.
+Coprono:</p>
+
+<ul>
+    <li>Complexity scoring (<code>args_complexity</code>, <code>is_complex</code>).</li>
+    <li>Generator outer (root, name enum, args alternation, deterministico).</li>
+    <li>Discriminated union (pair rules, no cross-pollination).</li>
+    <li>B2 recursive (array of object, nested object, cap depth, no collisione cross-tool).</li>
+    <li>Anti-bug (no underscore in rules, no primitives unused emesse).</li>
+    <li>Validator (missing name, missing args, unknown tool, required missing,
+        happy path, enum top-level passa).</li>
+    <li>Pool filter (escape-hatch, word-boundary, provider suffix, safety,
+        determinismo).</li>
+    <li>Smoke integration con catalog reale (<code>get_inputs.dialog</code>
+        emette sub-rule).</li>
+</ul>
+
+<p>Bench end-to-end: <code>runtime/bench_grammar.py</code>:</p>
+
+<pre>METNOS_GRAMMAR=1 python3 runtime/bench_grammar.py --label grammar_v8
+# 10 query × 1 run, ~7 minuti totali
+# output: /tmp/bench_grammar_grammar_v8_&lt;ts&gt;.json
+# stampa tabella aggregata + per-complexity + detail riga-per-riga</pre>
+
+<p>Per attivare grammar mode in sviluppo:</p>
+
+<pre>echo '[Service]
+Environment=METNOS_GRAMMAR=1' | sudo tee /etc/systemd/system/metnos-http.service.d/grammar.conf
+systemctl --user daemon-reload &amp;&amp; systemctl --user restart metnos-http.service</pre>
+
+<h1 id="cap8">8. Riferimenti</h1>
+
+<ul>
+    <li>Decisione: <a href="../../decisions/0133-constrained-grammar-tool-call.md">ADR 0133</a></li>
+    <li>Generator: <code>runtime/tool_grammar.py</code></li>
+    <li>Provider wiring: <code>runtime/llm_provider.py::LlamaCppProvider.chat_with_tools</code></li>
+    <li>Bench: <code>runtime/bench_grammar.py</code></li>
+    <li>Test: <code>runtime/tests/test_tool_grammar.py</code></li>
+    <li>llama.cpp GBNF docs: <a href="https://github.com/ggerganov/llama.cpp/tree/master/grammars">grammars README</a></li>
+    <li>JSON Schema basics: <a href="https://json-schema.org/">json-schema.org</a></li>
+</ul>
+
+</body>
+</html>

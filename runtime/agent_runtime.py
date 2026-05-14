@@ -3828,17 +3828,31 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
             # (grammar + thinking + max_tokens collidono). §7.9 deterministico.
             if os.environ.get("METNOS_GRAMMAR", "0") == "1":
                 try:
-                    from tool_grammar import generate_tool_grammar
-                    _grammar = generate_tool_grammar(tools_for_step)
+                    from tool_grammar import (generate_tool_grammar,
+                                                filter_pool_for_grammar)
+                    from prefilter import _QUERY_DEPENDENT_PRECURSORS
+                    _proximity_markers = next(
+                        (mk for _, prec, mk in _QUERY_DEPENDENT_PRECURSORS
+                         if prec == "get_location"), ()
+                    )
+                    _pool_for_grammar, _excluded = filter_pool_for_grammar(
+                        tools_for_step,
+                        user_query_for_run or "",
+                        proximity_markers=_proximity_markers,
+                    )
+                    _grammar = generate_tool_grammar(_pool_for_grammar)
                     if _grammar:
                         _chat_kwargs["grammar"] = _grammar
-                        # Grammar mode → think=False forzato dal provider stesso.
                         if verbose:
                             print(f"[grammar] step {step_num}: "
                                   f"grammar {len(_grammar)} chars su "
-                                  f"{len(tools_for_step)} tools")
+                                  f"{len(_pool_for_grammar)} tools "
+                                  f"(filtered {_excluded or '-'})")
                 except Exception as _ex:
-                    log.warning("grammar generation failed: %s", _ex)
+                    # `log` qui e' TurnLog (shadow): uso logger module
+                    import logging as _logging
+                    _logging.getLogger(__name__).warning(
+                        "grammar generation failed: %s", _ex)
 
         try:
             r = provider.chat_with_tools(

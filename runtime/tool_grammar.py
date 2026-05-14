@@ -227,10 +227,25 @@ def _emit_string_literal_alt(values: list) -> str:
     return " | ".join(alts) if alts else "jsonStr"
 
 
-def _emit_value(schema: dict, used: set[str]) -> str:
+# Cap della profondita' di emit grammar ricorsivo (B2).
+# Oltre questo livello: fallback su jsonObject/jsonValue per safety.
+# Schema reali Metnos hanno depth tipicamente <= 3 (dialog.items.schema).
+_MAX_RECURSION_DEPTH = 4
+
+
+def _emit_value(schema: dict, used: set[str], depth: int = 0,
+                _extra_rules: list[str] | None = None,
+                _tool_prefix: str = "") -> str:
     """Emette regola GBNF per un valore secondo `schema`. Aggiunge a
-    `used` le primitives referenziate (dependency tracking).
-    Naming camelCase per bug llama-server underscore."""
+    `used` le primitives referenziate; per nested object/array of object
+    aggiunge regole anonime in `_extra_rules` (Strategia B2 recursive).
+
+    `_tool_prefix` prependa al nome delle sub-regole anonime per evitare
+    collisioni cross-tool nel pool (es. tool A.dialog.items e tool B.x.items
+    entrambi `objD1I0` → grammar invalid).
+
+    Naming camelCase per bug llama-server underscore.
+    """
     if not isinstance(schema, dict):
         used.add("jsonValue")
         return "jsonValue"
@@ -242,23 +257,117 @@ def _emit_value(schema: dict, used: set[str]) -> str:
         return rhs
     t = schema.get("type")
     if t == "string":
-        used.add("jsonStr")
-        return "jsonStr"
+        used.add("jsonStr"); return "jsonStr"
     if t in ("integer", "number"):
         used.add("jsonNum"); return "jsonNum"
     if t == "boolean":
         used.add("jsonBool"); return "jsonBool"
     if t == "null":
         used.add("jsonNull"); return "jsonNull"
+
     if t == "array":
         items = schema.get("items") or {}
+        # Array di stringhe semplici (paths, urls, to_user list, ecc.)
         if isinstance(items, dict) and items.get("type") == "string" and "enum" not in items:
             used.update({"ws", "sep", "jsonStr"})
             return "(\"[\" ws (jsonStr (sep jsonStr)*)? ws \"]\")"
+        # B2 RECURSIVE: array di object con properties tipizzate.
+        if (isinstance(items, dict) and items.get("type") == "object"
+                and isinstance(items.get("properties"), dict)
+                and items["properties"]
+                and depth < _MAX_RECURSION_DEPTH
+                and _extra_rules is not None):
+            item_expr = _emit_object_inline(items, used, depth + 1,
+                                              _extra_rules, _tool_prefix)
+            used.update({"ws", "sep"})
+            return f"(\"[\" ws ({item_expr} (sep {item_expr})*)? ws \"]\")"
         used.add("jsonArray"); return "jsonArray"
+
     if t == "object":
+        # B2 RECURSIVE: object con properties tipizzate.
+        if (isinstance(schema.get("properties"), dict)
+                and schema["properties"]
+                and depth < _MAX_RECURSION_DEPTH
+                and _extra_rules is not None):
+            return _emit_object_inline(schema, used, depth + 1, _extra_rules,
+                                         _tool_prefix)
         used.add("jsonObject"); return "jsonObject"
+
     used.add("jsonValue"); return "jsonValue"
+
+
+def _emit_object_inline(schema: dict, used: set[str], depth: int,
+                          extra_rules: list[str],
+                          tool_prefix: str = "") -> str:
+    """B2 recursive: emit GBNF inline per `type=object` con `required` +
+    `properties` tipizzate. Aggiunge una regola anonima named (per evitare
+    inline grammar troppo lunga) e ritorna il nome regola.
+
+    Args:
+      schema: il sub-schema object.
+      used: set delle primitives referenziate (mutato).
+      depth: profondita' ricorsione attuale (cap _MAX_RECURSION_DEPTH).
+      extra_rules: lista mutabile dove appendere le sub-rule generate.
+      tool_prefix: prefix per univocita' cross-tool (es. `GetInputs` →
+          `GetInputsObjD1I0`). Evita collisioni nel pool.
+    """
+    if depth >= _MAX_RECURSION_DEPTH:
+        used.add("jsonObject")
+        return "jsonObject"
+    props = schema.get("properties") or {}
+    if not isinstance(props, dict) or not props:
+        used.add("jsonObject")
+        return "jsonObject"
+
+    # Nome univoco per la sub-regola (tool_prefix + depth + counter).
+    # Naming camelCase: niente underscore per bug llama-server.
+    rule_idx = len(extra_rules)
+    rule_name = f"{tool_prefix}ObjD{depth}I{rule_idx}"
+
+    required = schema.get("required") or []
+    if not isinstance(required, list):
+        required = []
+    keys_required = [k for k in required if k in props]
+    keys_optional = [k for k in props.keys() if k not in keys_required]
+
+    # Per ogni property: nome sub-rule + value expr (potenzialmente ricorsiva)
+    kv_rules: dict[str, str] = {}  # key -> rule_name
+    for k in list(keys_required) + list(keys_optional):
+        prop_rule = f"prop{rule_name}{_sanitize_key_to_camel(k)}"
+        val_expr = _emit_value(props[k], used, depth + 1, extra_rules,
+                                _tool_prefix=tool_prefix)
+        used.add("colon")
+        extra_rules.append(
+            f"{prop_rule} ::= \"\\\"{k}\\\"\" colon ({val_expr})"
+        )
+        kv_rules[k] = prop_rule
+
+    used.update({"ws", "sep"})
+    if keys_required:
+        req_seq = " sep ".join(kv_rules[k] for k in keys_required)
+        if keys_optional:
+            opt_alt = " | ".join(kv_rules[k] for k in keys_optional)
+            extra_rules.append(
+                f"{rule_name} ::= \"{{\" ws {req_seq} (sep ({opt_alt}))* ws \"}}\""
+            )
+        else:
+            extra_rules.append(
+                f"{rule_name} ::= \"{{\" ws {req_seq} ws \"}}\""
+            )
+    else:
+        opt_alt = " | ".join(kv_rules[k] for k in keys_optional)
+        extra_rules.append(
+            f"{rule_name} ::= \"{{}}\" | \"{{\" ws ({opt_alt}) (sep ({opt_alt}))* ws \"}}\""
+        )
+    return rule_name
+
+
+def _sanitize_key_to_camel(k: str) -> str:
+    """Property key → CamelCase (no underscore)."""
+    parts = re.findall(r"[a-zA-Z0-9]+", k)
+    if not parts:
+        return "X"
+    return "".join(p.capitalize() for p in parts)
 
 
 def _emit_tool_args(tool_name: str, schema: dict | None
@@ -274,10 +383,10 @@ def _emit_tool_args(tool_name: str, schema: dict | None
         used.add("jsonObject")
         return rule_name, [f"{rule_name} ::= jsonObject"], used
 
-    if is_complex(schema):
-        used.add("jsonObject")
-        return rule_name, [f"{rule_name} ::= jsonObject"], used
-
+    # B2 recursive (14/5/2026): is_complex non scatta piu' come fallback
+    # ai tool con schema "ricco" (es. get_inputs, send_messages). Il
+    # generator esplora ricorsivamente properties annidate. Fallback
+    # jsonObject SOLO se schema mancante / oneOf top-level.
     if any(k in schema for k in ("oneOf", "anyOf", "allOf")):
         used.add("jsonObject")
         return rule_name, [f"{rule_name} ::= jsonObject"], used
@@ -294,13 +403,16 @@ def _emit_tool_args(tool_name: str, schema: dict | None
     keys_optional = [k for k in props.keys() if k not in keys_required]
 
     lines: list[str] = []
+    extra_rules: list[str] = []  # B2 recursive sub-rules
     kv_required_rules: list[str] = []
     kv_optional_rules: list[str] = []
     for k in keys_required:
         key_cap = _sanitize_rule_name(k)
         key_cap = key_cap[0].upper() + key_cap[1:] if key_cap else "X"
         rule = f"prop{cap_base}{key_cap}"
-        val_expr = _emit_value(props[k], used)
+        val_expr = _emit_value(props[k], used, depth=0,
+                                _extra_rules=extra_rules,
+                                _tool_prefix=cap_base)
         used.add("colon")
         lines.append(f"{rule} ::= \"\\\"{k}\\\"\" colon ({val_expr})")
         kv_required_rules.append(rule)
@@ -308,10 +420,15 @@ def _emit_tool_args(tool_name: str, schema: dict | None
         key_cap = _sanitize_rule_name(k)
         key_cap = key_cap[0].upper() + key_cap[1:] if key_cap else "X"
         rule = f"prop{cap_base}{key_cap}"
-        val_expr = _emit_value(props[k], used)
+        val_expr = _emit_value(props[k], used, depth=0,
+                                _extra_rules=extra_rules,
+                                _tool_prefix=cap_base)
         used.add("colon")
         lines.append(f"{rule} ::= \"\\\"{k}\\\"\" colon ({val_expr})")
         kv_optional_rules.append(rule)
+    # Le sub-rule ricorsive vanno PRIMA delle prop rule (ordine di
+    # dipendenza: prop rule referenzia objD*I* sub-rule names).
+    lines = extra_rules + lines
 
     # Body: required keys ordinati, poi optional in qualsiasi ordine.
     used.update({"ws", "sep"})
@@ -386,16 +503,28 @@ def generate_tool_grammar(tools: Sequence[Any]) -> str:
     used_primitives.update({"ws", "sep", "colon"})
     prims = _emit_primitives(used_primitives)
 
-    name_alts = " | ".join(f"\"\\\"{n}\\\"\"" for n in tool_names)
-    args_alts = " | ".join(args_rule_for.values())
+    # DISCRIMINATED UNION (14/5/2026): legare name a args per tool.
+    # Bug live: `name ::= A|B` + `args ::= argsA|argsB` ammetteva
+    # `{"name":"get_inputs","arguments":argsFilterEntries}` (kind=choice).
+    # Fix: per ogni tool emetto pairTool che vincola name + args insieme.
+    pair_rules: list[str] = []
+    pair_names: list[str] = []
+    for n in tool_names:
+        # Nome regola camelCase per coerenza naming (no underscore §B).
+        cap = _sanitize_rule_name(n)
+        cap = cap[0].upper() + cap[1:] if cap else "Tool"
+        pair_name = f"pair{cap}"
+        args_rule = args_rule_for[n]
+        pair_rules.append(
+            f"{pair_name} ::= \"\\\"{n}\\\"\" sep \"\\\"arguments\\\"\" colon ({args_rule})"
+        )
+        pair_names.append(pair_name)
 
     grammar = list(prims) + [""]
     grammar.append(
-        "root ::= \"{\" ws \"\\\"name\\\"\" colon name sep "
-        "\"\\\"arguments\\\"\" colon args ws \"}\""
+        "root ::= \"{\" ws \"\\\"name\\\"\" colon (" + " | ".join(pair_names) + ") ws \"}\""
     )
-    grammar.append(f"name ::= {name_alts}")
-    grammar.append(f"args ::= {args_alts}")
+    grammar.extend(pair_rules)
     grammar.extend(schema_lines)
     return "\n".join(grammar)
 
@@ -443,6 +572,82 @@ def validate_tool_call(tool_call: dict, tools: Sequence[Any]
             return False, (f"missing required args {missing} for tool "
                            f"'{name}'")
     return True, ""
+
+
+# --------------------------------------------------------------------------
+# Pool filter (14/5/2026): escape-hatch + provider-specific exclusion.
+# Funzione pura testabile: input = tools_for_step + user_query,
+# output = subset filtrato. Determinismo §7.9.
+# --------------------------------------------------------------------------
+
+# Marker per ogni provider suffix (estensibile). Lookup table = single
+# source of truth, niente if/elif per-provider sparsi nel codice.
+_PROVIDER_SUFFIX_MARKERS: dict[str, tuple[str, ...]] = {
+    "_google_workspace": (
+        "google", "drive", "gmail", "gdrive",
+        "workspace", "calendar google", "g suite",
+    ),
+}
+
+_UNDO_MARKERS: tuple[str, ...] = (
+    "annulla", "annullare", "annullo", "annullala",
+    "undo", "ripristina", "ripristino", "ripristinare",
+    "torna indietro", "torna su", "rollback",
+    "disfa", "disfare", "annulla l'ultimo",
+)
+
+
+def _has_word(query_lc: str, words: tuple[str, ...]) -> bool:
+    """Match word-boundary (regex \\b) per evitare falsi positivi
+    tipo `qua` ⊆ `qualcosa`, `vicino` ⊆ `vicinato`."""
+    for w in words:
+        pat = r"\b" + re.escape(w) + r"\b"
+        if re.search(pat, query_lc):
+            return True
+    return False
+
+
+def filter_pool_for_grammar(tools: Sequence[Any], user_query: str,
+                             proximity_markers: tuple[str, ...] = ()
+                             ) -> tuple[list[Any], list[str]]:
+    """Filtra pool per grammar-mode escludendo escape-hatch builtin senza
+    marker semantico. Ritorna (pool_filtrato, lista nomi esclusi).
+
+    Esclusi:
+      - `request_new_executor` se >=3 canonical (sempre, escape globale).
+      - `request_location_from_user` se manca marker prossimita'.
+      - `undo_last_turn` se manca marker undo.
+      - `<verb>_<obj>_<provider_suffix>` se manca marker provider.
+
+    Determinismo §7.9. Niente LLM, niente IO.
+    """
+    query_lc = (user_query or "").lower()
+    excluded: list[str] = []
+    # Canonical = tutto tranne escape-hatch globali
+    canonical = [
+        t for t in tools
+        if _extract_name(t) not in (
+            "request_new_executor",
+            "request_location_from_user",
+        )
+    ]
+    if len(canonical) >= 3:
+        excluded.append("request_new_executor")
+    if not _has_word(query_lc, proximity_markers):
+        excluded.append("request_location_from_user")
+    if not _has_word(query_lc, _UNDO_MARKERS):
+        excluded.append("undo_last_turn")
+    for suffix, markers in _PROVIDER_SUFFIX_MARKERS.items():
+        if not _has_word(query_lc, markers):
+            for t in tools:
+                name = _extract_name(t)
+                if name.endswith(suffix):
+                    excluded.append(name)
+    filtered = [t for t in tools if _extract_name(t) not in excluded]
+    # Safety: se filter ha azzerato il pool, ripristina originale.
+    if not filtered:
+        return list(tools), []
+    return filtered, excluded
 
 
 # --------------------------------------------------------------------------

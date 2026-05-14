@@ -3,8 +3,8 @@
 > **OBBLIGO**: leggere integralmente all'inizio di ogni sessione. Codifica decisioni architetturali, convenzioni di codice e norme di processo gia' stabilite. Quando un punto e' obsoleto o errato, AGGIORNALO subito invece di lavorarci attorno.
 >
 > Mantenuto da: agente. Aggiornamento ad ogni sessione che fissa una nuova norma duratura.
-> Ultimo aggiornamento: 2026-05-14 (sessione 14 maggio: ADR 0129 pattern intent-implicit + ADR 0130 backend tree allineato agli OBJECTS §2.2 + ADR 0131 credenziali single store cifrato + ADR 0132 plugin esterni scaffolding. 3 nuovi provider builtin `events/google_workspace.py`, `messages/gmail_google_workspace.py`, `files/google_workspace.py`; 5/5 account SMTP migrati nello store cifrato Fernet; `runtime/plugin_loader.py` discovery deterministico. Convergenza propose+create+notify live 3/3 verde IT/EN.).
-> Ultimo aggiornamento precedente: 2026-05-11 (§6.1 tipizzazione prompt + §10.6.45 roadmap prompt architecture A+B+C).
+> Ultimo aggiornamento: 2026-05-14 sera (ADR 0133 constrained generation via GBNF anti-thinking-loop: `runtime/tool_grammar.py` discriminated union + B2 recursive schema-aware + pool filter generalizzato. Bench corpus 10 query 50% → 100% convergenza, latency 70s → 41s. 43 unit test verdi. `executors/get_inputs/manifest.toml` schema `dialog.items` completato per source-of-truth recursive emit).
+> Ultimo aggiornamento precedente: 2026-05-14 mattina (ADR 0129 pattern intent-implicit + ADR 0130 backend tree allineato agli OBJECTS §2.2 + ADR 0131 credenziali single store cifrato + ADR 0132 plugin esterni scaffolding).
 > Storia precedente: `git log /opt/myclaw/CLAUDE.md`.
 
 ---
@@ -13,7 +13,7 @@
 
 Assistente personale self-hosted (su `.33`, Strix Halo 96GB unified). Microarchitettura a executor sintetizzati al volo via synt multistage; runtime ReAct con planner LLM (Gemma 4 26B middle/wise locale + Sonnet/GPT-5 frontier come fallback). Canali: **Telegram** + **HTTP porta 8770** (htmx + Jinja2 + uPlot, ADR 0078). Pipeline immagini in-process: SigLIP-base + RetinaFace+ArcFace + EXIF (ADR 0086/0117). Lingua principale: italiano; corpus doc bilingue IT+EN. Etimologia: `mētis + noûs`. Process name: `myclaw`. Dominio: `metnos.com`.
 
-ADR registry canonico: `/opt/myclaw/decisions/` (`0001-0132`, `0055`/`0115`/`0116`/`0121` skipped — fonte unica per "perche' abbiamo scelto cosi'").
+ADR registry canonico: `/opt/myclaw/decisions/` (`0001-0133`, `0055`/`0115`/`0116`/`0121` skipped — fonte unica per "perche' abbiamo scelto cosi'").
 
 ## 2. Principi cardine (mai negoziabili)
 
@@ -269,6 +269,7 @@ Tipi: `user`, `feedback`, `project`, `reference`. Indice in `~/.claude/projects/
 - **Backend tree allineato agli OBJECTS §2.2** (ADR 0130, 14/5/2026): `runtime/backends/<OBJECT_PLURALE>/<provider>.py`. Rinomine: `calendar→events`, `messaging→messages`, `web→urls`. Provider builtin: `events/{local_ics,google_workspace}.py`, `messages/{email_metnos,telegram_bot,gmail_google_workspace}.py`, `files/{local,google_workspace}.py` (folders come `create_dirs/find_dirs/delete_dirs` nello stesso modulo), `urls/{httpx_default,playwright_stub}.py`. Auto-default `_default_client()` in ogni dispatcher: filesystem check su `~/.local/share/metnos/skills/google-workspace/google_token.json` → `google_workspace`, fallback `local`/`metnos`. Retry §7.9 3× su transient (network/server_error/rate_limited/SSL ASN1/TLS handshake) nei wrapper `_run_calendar/_run_gmail/_run_drive`. `send_messages` timeout_s=90 (assorbe retry SMTP).
 - **Credenziali single store** (ADR 0131, 14/5/2026): `runtime/credentials.py` Fernet+HKDF (ADR 0089) come sorgente unica per i segreti SMTP/IMAP. Domain convention `smtp_<account>` (`smtp_metnos_system`, `smtp_metnos_roberto`, `smtp_mykleos`, `smtp_knowcastle`, `smtp_tiscali`). `mail_client._load_from_credentials_store(account)` Layer 1; fallback file `.env` Layer 2 per back-compat. CLI one-shot `python3 -m credentials_migrate` (5/5 account migrati sessione 14/5). OAuth Google token `~/.local/share/metnos/skills/google-workspace/google_token.json` resta nello skill scope (out-of-scope ADR 0131).
 - **Plugin esterni per backend** (ADR 0132, 14/5/2026, scaffolding): `~/.local/share/metnos/plugins/<plugin_name>/{plugin.toml, <object>.py}`. Manifest schema: `name/provider/version/enabled` + `[[backends]] object/file/provides`. Trust gate: `enabled=true` (Layer 1) + opzionale consent_token (Layer 2, pending CLI). Precedenza builtin > plugin (Layer 3). `runtime/plugin_loader.py::load_plugins(object)` scan deterministico §7.9, cache + `invalidate_cache()` per i test. Override path via env `METNOS_PLUGINS_ROOT`. NON ancora wirato nei dispatcher (attivazione al primo plugin reale + ADR pending sandboxing).
+- **Constrained generation tool_call** (ADR 0133, 14/5/2026 sera): `runtime/tool_grammar.py` genera GBNF deterministico dal pool `tools_for_step`, vincola JSON `{"name":..., "arguments":...}` al `args_schema` di un tool del pool. **Discriminated union** `root ::= "{\"name\":" (pairTool1|pairTool2|...) "}"` lega name↔args (fix bug live: get_inputs cross-pollinated con argsFilterEntries). **B2 recursive** emit sub-rule `{tool}ObjD{depth}I{idx}` camelCase per `array of object` e nested `object` con `properties` tipizzate (cap `_MAX_RECURSION_DEPTH=4`). Workaround bug llama-server `b540-5755a100c`: rule names con underscore ignorati silenziosamente → `_sanitize_rule_name` PascalCase; rule unused interferiscono → dependency closure `_PRIMITIVE_DEPS` emit solo referenziate. Provider wiring `LlamaCppProvider.chat_with_tools(grammar=...)`: bypass `tools` field, history riscritta no `<|tool_call>` markers, parser tolerant. **Pool filter** `filter_pool_for_grammar(tools, query, proximity_markers)` funzione pura: esclude escape-hatch contestualmente (`request_new_executor` se >=3 canonical, `request_location_from_user` senza marker prossimita', `undo_last_turn` senza marker undo, `*_<provider>` senza marker provider via lookup `_PROVIDER_SUFFIX_MARKERS`). Match word-boundary `\bmarker\b` (no falsi positivi tipo `qua` ⊆ `qualcosa`). **Validator post-decode** `validate_tool_call` top-level required-only: fail iniettato in history come `role=tool` error → next step LLM corregge. Opt-in `METNOS_GRAMMAR=1`. Bench corpus 10 query: baseline 50% → grammar 100% convergenza, latency 70s → 41s. 43 unit test verdi.
 
 ## 11. Decisioni di runtime
 
@@ -303,7 +304,7 @@ Server `runtime.metnos_http_server` su porta **8770** (separata da 8765 pairing)
 
 **Riferimenti**
 
-- ADR registry: `/opt/myclaw/decisions/` (`0001-0130`, `0055`/`0115`/`0116`/`0121` skipped) — dettagli implementativi e razionale.
+- ADR registry: `/opt/myclaw/decisions/` (`0001-0133`, `0055`/`0115`/`0116`/`0121` skipped) — dettagli implementativi e razionale.
 - Architettura canonica: `/opt/myclaw/docs/it/architecture/` (+ EN bridge simmetrico).
 - Memorie persistenti: `~/.claude/projects/-opt-myclaw/memory/MEMORY.md`.
 - Repertorio prompt: `/opt/myclaw/runtime/prompts/<lang>/*.j2` (ADR 0092).

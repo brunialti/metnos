@@ -411,6 +411,11 @@ progress or partial). All have an Italian counterpart at
   <td>Per-turn temporary store: holds large observations without crowding the planner&rsquo;s context. Builtin <code>scratchpad_read</code> with <em>head/tail/range</em>.</td>
   <td><span class="status tested">tested</span></td>
 </tr>
+<tr>
+  <td><a href="grammar.html"><code>grammar</code></a></td>
+  <td>Constrained generation via GBNF for the PLANNER <code>tool_call</code>. Discriminated union name+args, recursive schema, contextual pool filter, post-decode validator. Solves thinking-loop, args mix-match, arbitrary escape-hatches. Bench convergence 50% &rarr; 100%.</td>
+  <td><span class="status tested">tested</span></td>
+</tr>
 </tbody>
 </table>
 
