@@ -24,8 +24,7 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-_EXEC_FF_DIR = Path.home() / ".local" / "share" / "metnos" / "executors" / \
-    "_imports" / "google-workspace" / "find_events_empty"
+_EXEC_FF_DIR = Path("/opt/myclaw/executors/find_events_empty")
 _EXEC_GI_DIR = Path("/opt/myclaw/executors/get_inputs")
 _RUNTIME = Path("/opt/myclaw/runtime")
 sys.path.insert(0, str(_EXEC_FF_DIR))
@@ -62,10 +61,10 @@ def free_and_gi(monkeypatch):
     fef = importlib.import_module("find_events_empty")
     gi = importlib.import_module("get_inputs")
     # Inietta now deterministico: today = 2026-05-12.
-    monkeypatch.setattr(
-        "time_window_parser.datetime",
-        _FakeDatetime(datetime(2026, 5, 12, 8, 0, tzinfo=ROME)),
-    )
+    fake = _FakeDatetime(datetime(2026, 5, 12, 8, 0, tzinfo=ROME))
+    monkeypatch.setattr("time_window_parser.datetime", fake)
+    from backends.events import local_ics as _li
+    monkeypatch.setattr(_li, "datetime", fake)
     return fef, gi
 
 
@@ -91,13 +90,16 @@ def _run_pipeline(fef, gi, query_label):
       step 3: simulate user pick (index 0) → values["scelta"] = primo start.
       step 4: 'invoke' set_events fittizio con start=values["scelta"].
     Ritorna dict di asserzioni atomiche per il caso d'uso."""
-    # Mock read_events sottostante: 1 evento centrale, lasciando slot mattutini.
-    fef._invoke_read_events = lambda tw, cid: {
-        "ok": True,
-        "entries": [
-            {"start": _iso(2026, 5, 13, 14), "end": _iso(2026, 5, 13, 15)},
-        ],
-    }
+    # Mock backend `local_ics._load_events` sottostante (refactor 13/5/2026):
+    # 1 evento pomeridiano, lasciando slot mattutini liberi.
+    from backends.events import local_ics as _li
+    _li._load_events = lambda _p: [
+        {
+            "start": datetime.fromisoformat(_iso(2026, 5, 13, 14)),
+            "end":   datetime.fromisoformat(_iso(2026, 5, 13, 15)),
+            "summary": "", "uid": "",
+        },
+    ]
 
     out_free = fef.invoke({
         "time_windows": ["tomorrow"],

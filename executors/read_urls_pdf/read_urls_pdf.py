@@ -192,7 +192,9 @@ def _fetch_one(url: str, opener, timeout_s: float, max_bytes: int,
             pass
 
 
-def invoke(args: dict) -> dict:
+def _invoke_default(args: dict) -> dict:
+    """Implementazione default httpx (urllib). Il dispatcher `invoke()`
+    instrada qui via `backends.urls.httpx_default`."""
     urls = args.get("urls")
     if isinstance(urls, str):
         urls = [urls]
@@ -271,6 +273,30 @@ def invoke(args: dict) -> dict:
         "entries": entries,
         "failed": failed,
     }
+
+
+# --- Dispatcher (refactor 13/5/2026, ADR pending) -------------------------
+_DEFAULT_CLIENT = "httpx"
+
+
+def _resolve_backend(client: str):
+    if client == "httpx":
+        from backends.urls import httpx_default
+        return httpx_default
+    if client == "playwright":
+        from backends.urls import playwright_stub
+        return playwright_stub
+    return None
+
+
+def invoke(args: dict) -> dict:
+    client = args.get("client") or _DEFAULT_CLIENT
+    backend = _resolve_backend(client)
+    if backend is None:
+        return {"ok": False,
+                "error": f"unsupported web client: {client!r}. "
+                         f"Available: ['httpx', 'playwright']"}
+    return backend.read_pdf(args)
 
 
 def main():

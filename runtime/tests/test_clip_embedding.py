@@ -27,8 +27,19 @@ def _models_present() -> bool:
     ))
 
 
-@unittest.skipUnless(_models_present(),
-                     "SigLIP non scaricato (esegui install/download_models.sh siglip)")
+def _tokenizers_present() -> bool:
+    try:
+        import tokenizers  # noqa: F401
+        return True
+    except ImportError:
+        return False
+
+
+@unittest.skipUnless(
+    _models_present() and _tokenizers_present(),
+    "SigLIP non scaricato o `tokenizers` mancante "
+    "(esegui install/download_models.sh siglip + pip install tokenizers)",
+)
 class TestClipEngine(unittest.TestCase):
     """Smoke test: lazy init, embed_text shape, embed_images shape."""
 

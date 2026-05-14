@@ -548,7 +548,13 @@ def _fetch_one(url: str, opener, timeout_s: float, max_bytes: int,
     return entry, None
 
 
-def invoke(args: dict) -> dict:
+def _invoke_default(args: dict) -> dict:
+    """Implementazione default httpx (urllib). Mantenuta nel modulo
+    executor per permettere ai test di patchare `_playwright_client`,
+    `record_response`, ecc. tramite l'oggetto modulo.
+
+    Il dispatcher `invoke()` la chiama via `backends.urls.httpx_default`.
+    """
     urls = args.get("urls")
     if isinstance(urls, str):
         urls = [urls]
@@ -785,6 +791,35 @@ def invoke(args: dict) -> dict:
         result["js_render_attempted"] = js_render_attempted
         result["js_render_sidecar_available"] = js_render_sidecar_up
     return result
+
+
+# --- Dispatcher (refactor 13/5/2026, ADR pending) -------------------------
+# Routing client → backend builtin in `runtime/backends/web/`. Pattern
+# allineato a send_messages/read_messages/find_files (§2.5, §7.2). I test
+# che patchano nomi modulo (`_playwright_client`, `record_response`, etc.)
+# continuano a funzionare perche' `_invoke_default` resta in questo file.
+_DEFAULT_CLIENT = "httpx"
+
+def _resolve_backend(client: str):
+    """Lazy import per evitare circular (backends.urls.httpx_default importa
+    questo modulo e ne lega `_invoke_default` come implementazione)."""
+    if client == "httpx":
+        from backends.urls import httpx_default
+        return httpx_default
+    if client == "playwright":
+        from backends.urls import playwright_stub
+        return playwright_stub
+    return None
+
+
+def invoke(args: dict) -> dict:
+    client = args.get("client") or _DEFAULT_CLIENT
+    backend = _resolve_backend(client)
+    if backend is None:
+        return {"ok": False,
+                "error": f"unsupported web client: {client!r}. "
+                         f"Available: ['httpx', 'playwright']"}
+    return backend.read_html(args)
 
 
 def main():

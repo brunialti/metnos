@@ -299,12 +299,12 @@ def process_completion_callback(sender_id: str, dialog_id: str,
 
     if callback_type == "expand_cap_and_resume":
         return _process_expand_cap_and_resume(
-            on_complete, values, actor=actor,
+            on_complete, values, actor=actor, channel=channel,
         )
 
     if callback_type == "resume_executor_with_values":
         return _process_resume_executor_with_values(
-            on_complete, values, actor=actor,
+            on_complete, values, actor=actor, channel=channel,
         )
 
     if callback_type == "start_oauth_redirect_flow":
@@ -312,6 +312,11 @@ def process_completion_callback(sender_id: str, dialog_id: str,
             on_complete, values, sender_id=sender_id,
             dialog_id=dialog_id, channel=channel, actor=actor,
             host_override=host_override,
+        )
+
+    if callback_type == "resume_planner_with_dialog_values":
+        return _process_resume_planner_with_dialog_values(
+            on_complete, values, actor=actor, channel=channel,
         )
 
     log.warning("on_complete type sconosciuto: %s", callback_type)
@@ -389,7 +394,8 @@ def _process_save_credentials_and_resume(on_complete: dict, values: dict,
 
 
 def _process_expand_cap_and_resume(on_complete: dict, values: dict,
-                                     *, actor: str = "host") -> str:
+                                     *, actor: str = "host",
+                                     channel: str | None = None) -> str:
     """Allarga il cap di un executor e lo ri-invoca direttamente (no PLANNER).
 
     Pattern callback `expand_cap_and_resume`:
@@ -437,6 +443,7 @@ def _process_expand_cap_and_resume(on_complete: dict, values: dict,
         import agent_runtime
         res = agent_runtime.invoke_executor(
             ex, args, timeout_s=getattr(ex, "timeout_s", 30),
+            actor=actor, channel=channel,
         )
     except (PermissionError, KeyError, RuntimeError, TypeError) as ex:
         log.exception("orchestration: expand_cap invoke fallito")
@@ -486,7 +493,8 @@ def _process_expand_cap_and_resume(on_complete: dict, values: dict,
 
 
 def _process_resume_executor_with_values(on_complete: dict, values: dict,
-                                          *, actor: str = "host") -> str:
+                                          *, actor: str = "host",
+                                          channel: str | None = None) -> str:
     """Ri-invoca un executor con args originali patchati con i values raccolti.
 
     Pattern callback `resume_executor_with_values` (PR2 persons registry,
@@ -527,6 +535,7 @@ def _process_resume_executor_with_values(on_complete: dict, values: dict,
         import agent_runtime
         res = agent_runtime.invoke_executor(
             ex, args_base, timeout_s=getattr(ex, "timeout_s", 30),
+            actor=actor, channel=channel,
         )
     except (PermissionError, KeyError, RuntimeError, TypeError) as ex:
         log.exception("orchestration: resume_executor_with_values fallito")
@@ -537,6 +546,399 @@ def _process_resume_executor_with_values(on_complete: dict, values: dict,
                 or res.get("summary")
                 or json.dumps(res, ensure_ascii=False)[:600])
     return str(res)
+
+
+def _process_resume_planner_with_dialog_values(
+    on_complete: dict, values: dict, *,
+    actor: str = "host", channel: str | None = None,
+) -> str:
+    """Riprende un turno PLANNER multi-pipeline dopo che get_inputs ha
+    raccolto le scelte dell'utente (bug residuo 12/5/2026 pipeline
+    propose+notify ferma al "Dialogo completato").
+
+    Pattern callback `resume_planner_with_dialog_values`:
+      payload = {
+        "type": "resume_planner_with_dialog_values",
+        "original_query": str,           # query utente del turno originale
+        "prior_steps": [                  # scratchpad pre-dialog snapshot
+          {"step": 1, "tool": "find_events_empty",
+           "args": {...}, "observation": {...}},
+          ...
+        ],
+        "dialog_step_num": int,           # step in cui get_inputs e' stato emesso
+        "dialog_var_name": str,           # var raccolta nel dialog (opzionale)
+        "conversation_id": str,           # opzionale, fallback ""
+      }
+
+    Comportamento:
+      1. Ricostruisce lo scratchpad: prior_steps + 1 step extra "get_inputs"
+         (decision="completed" + values raccolti) cosi' il PLANNER al primo
+         loop iter vede il dialogo completato + le scelte utente.
+      2. Re-invoca `agent_runtime.run_turn(..., resume_with_scratchpad=...)`.
+      3. Il PLANNER al secondo turno prosegue dal punto in cui era (es. emette
+         send_messages con i valori scelti).
+
+    Determinismo §7.9: nessun LLM nella ricostruzione; il PLANNER decide
+    autonomamente i prossimi step vedendo scratchpad + values.
+
+    Returns:
+      str: final_message del nuovo turno (continuation completata) oppure
+      messaggio diagnostico se ricostruzione fallita.
+    """
+    original_query = on_complete.get("original_query") or ""
+    prior_steps = list(on_complete.get("prior_steps") or [])
+    dialog_step_num = (on_complete.get("dialog_step_num")
+                        or (len(prior_steps) + 1))
+    dialog_var = on_complete.get("dialog_var_name") or "values"
+    conversation_id = on_complete.get("conversation_id") or ""
+
+    if not original_query:
+        return ("(resume_planner_with_dialog_values: original_query "
+                "mancante in on_complete, continuation impossibile.)")
+
+    # Costruisci uno step "get_inputs" completed e PROIETTALO nello scratchpad.
+    # Caso normale: lo snapshot del turno originale gia' contiene lo step
+    # get_inputs(decision="input_required") (cf. agent_runtime ~r.4881 — lo
+    # snapshot e' preso DOPO che get_inputs ha emesso il dialogo). Se appendessimo
+    # un secondo step con stesso step_num+tool, il PLANNER continuation vedrebbe
+    # due step identici e auto_final_on_duplicate scatterebbe sul tentativo
+    # successivo (bug live turn ef7e19cc6c8e435f, 14/5/2026). Sostituiamo
+    # l'observation dell'ultimo get_inputs presente; fallback: append solo se
+    # non esiste alcun get_inputs (snapshot pre-dialog).
+    dialog_obs = {
+        "ok": True,
+        "decision": "completed",
+        "values": dict(values or {}),
+        "_resumed": True,
+        "_dialog_var": dialog_var,
+    }
+    _replaced = False
+    for entry in reversed(prior_steps):
+        if isinstance(entry, dict) and entry.get("tool") == "get_inputs":
+            entry["observation"] = dialog_obs
+            _replaced = True
+            break
+    if not _replaced:
+        prior_steps.append({
+            "step": int(dialog_step_num),
+            "tool": "get_inputs",
+            "args": {"dialog": "<elided>"},
+            "observation": dialog_obs,
+        })
+
+    # Orchestratore deterministico post-dialog (ADR 0129, 14/5/2026):
+    # esegue gli `implicit_actions` (dall'intent del turno originale)
+    # piu' un eventuale notify finale (send_messages) quando la query
+    # contiene un notify-hint. Il PLANNER LLM medium su pipeline
+    # multi-pipeline si e' rivelato fragile (loop / dimentica step).
+    # Determinismo §7.9, §7.3 (generale, no hardcoded).
+    implicit_actions = on_complete.get("implicit_actions") or []
+    det = _orchestrate_implicit_actions(
+        original_query, values, prior_steps,
+        implicit_actions=implicit_actions,
+        actor=actor, channel=channel,
+    )
+    if det is not None:
+        return det
+
+    try:
+        import agent_runtime
+        new_log = agent_runtime.run_turn(
+            original_query,
+            actor=actor or "host",
+            channel=channel or "",
+            conversation_id=conversation_id,
+            resume_with_scratchpad=prior_steps,
+        )
+    except (RuntimeError, TypeError, ImportError) as ex:
+        log.exception("orchestration: resume_planner_with_dialog_values fallito")
+        return (f"Continuation fallita: {type(ex).__name__}: {ex}")
+
+    if new_log is None:
+        return "(continuation: turno vuoto, nessuna final_message.)"
+    msg_out = getattr(new_log, "final_message", "") or ""
+    if not msg_out:
+        return "(continuation completata.)"
+    return msg_out
+
+
+# --- Notify-hint canonical (ADR 0129) ---------------------------------
+# IT + EN, usato per detectare la richiesta di notifica esplicita post-
+# dialog. Da estendere quando si supportano nuove lingue (cfr. ADR 0092).
+_NOTIFY_HINTS = (
+    "mandami", "manda", "inviami", "invia", "notificami",
+    "scrivimi", "avvisami", "informami", "rispondimi",
+    "send me", "email me", "notify me", "let me know",
+)
+
+# Hint linguistici per disambiguare il canale di notifica preferito.
+_CHANNEL_HINTS = {
+    "email":    ("email", "e-mail", "mail", "posta"),
+    "telegram": ("telegram", "telegrami", "chat", "messaggio telegram"),
+}
+
+
+def _resolve_actor_to_user(actor: str) -> dict | None:
+    """Risolve `actor` (es. 'host', 'roberto', user_id) a una row utente.
+    Generalizzato §7.3: prima exact match per name/id, poi role match.
+    Ritorna None se nessun match. Determinismo §7.9.
+    """
+    try:
+        import sqlite3
+        from pathlib import Path
+        db = sqlite3.connect(str(Path.home() / ".local" / "share" / "metnos" / "users.db"))
+        cur = db.cursor()
+        cur.row_factory = sqlite3.Row
+        rows = cur.execute(
+            "SELECT id, name, role, email FROM users"
+        ).fetchall()
+        db.close()
+    except Exception:
+        return None
+    if not rows:
+        return None
+    a = (actor or "").strip().lower()
+    # 1) exact match by id or name
+    for r in rows:
+        if a in (str(r["id"]).lower(), str(r["name"]).lower()):
+            return {"id": r["id"], "name": r["name"], "role": r["role"], "email": r["email"]}
+    # 2) role match (a='host' → primo host)
+    for r in rows:
+        if str(r["role"]).lower() == a:
+            return {"id": r["id"], "name": r["name"], "role": r["role"], "email": r["email"]}
+    # 3) default fallback: primo host
+    for r in rows:
+        if str(r["role"]).lower() == "host":
+            return {"id": r["id"], "name": r["name"], "role": r["role"], "email": r["email"]}
+    return None
+
+
+def _extract_chosen_from_values(values: dict) -> tuple[str | None, str]:
+    """Estrai (chosen_value, chosen_label) dai dialog values (qualsiasi var)."""
+    for _var, val in (values or {}).items():
+        if isinstance(val, dict) and isinstance(val.get("value"), str):
+            return val["value"], val.get("label", "")
+        if isinstance(val, str):
+            return val, ""
+    return None, ""
+
+
+def _match_entry_in_prior_steps(prior_steps: list, chosen_value: str,
+                                  *, match_field: str = "start"
+                                  ) -> dict | None:
+    """Trova in prior_steps l'entry il cui `match_field` matcha `chosen_value`."""
+    for s in prior_steps:
+        if not isinstance(s, dict):
+            continue
+        obs = s.get("observation") or {}
+        if not isinstance(obs, dict) or not obs.get("ok"):
+            continue
+        for e in (obs.get("entries") or []):
+            if isinstance(e, dict) and e.get(match_field) == chosen_value:
+                return e
+    return None
+
+
+# --- Action templates: lookup (verb, object) → args builder -----------------
+# Ogni entry e' una funzione che riceve un context dict e ritorna gli args
+# da passare a `invoke_executor`. Il context contiene:
+#   chosen_value: str (es. ISO datetime), chosen_label: str,
+#   matched_entry: dict | None (entry del prior step che matcha chosen_value),
+#   actor: str, original_query: str, user_row: dict | None.
+# Ritorna None se non puo' costruire args validi (es. match_field mancante).
+
+def _args_create_events(ctx: dict) -> dict | None:
+    e = ctx.get("matched_entry") or {}
+    start = ctx.get("chosen_value")
+    end = e.get("end")
+    if not start or not end:
+        return None
+    return {"summary": "Appuntamento", "start": start, "end": end}
+
+
+# Tabella canonica (verb, object) -> tool_name + args_builder.
+# Estendere via PR quando si aggiungono nuovi pattern propose+fire.
+_ACTION_TEMPLATES: dict[tuple[str, str], dict] = {
+    ("create", "events"): {
+        "tool":  "create_events",
+        "args":  _args_create_events,
+        "label": "Appuntamento",
+    },
+    # Posto per pattern futuri:
+    # ("set",    "messages"): {...},   # propose-label + apply
+    # ("create", "dirs"):     {...},   # propose-name + mkdir
+    # ("share",  "files"):    {...},   # propose-target + grant
+}
+
+
+def _orchestrate_implicit_actions(
+    original_query: str, values: dict, prior_steps: list,
+    *, implicit_actions: list, actor: str = "host", channel: str = "",
+) -> str | None:
+    """Esegue deterministicamente gli `implicit_actions` post-dialog +
+    eventuale notify (ADR 0129). Ritorna None se nessun match (caller
+    delega al PLANNER LLM).
+
+    Pipeline:
+      1. Per ogni `implicit_action`: lookup `_ACTION_TEMPLATES[(verb, object)]`.
+         Se presente, costruisce args via builder + invoca via catalog.
+      2. Se `original_query` contiene un notify-hint, invoca `send_messages`
+         all'utente (mail di conferma con riepilogo delle azioni eseguite).
+
+    Generale §7.3: nessun pattern hardcoded, lookup tabellare estendibile.
+    """
+    if not isinstance(implicit_actions, list) or not implicit_actions:
+        # Senza implicit_actions, non c'e' nulla da orchestrare deterministica-
+        # mente: lascia al PLANNER.
+        return None
+
+    chosen_value, chosen_label = _extract_chosen_from_values(values)
+    if not chosen_value:
+        return None
+    matched_entry = _match_entry_in_prior_steps(
+        prior_steps, chosen_value, match_field="start",
+    )
+    user_row = _resolve_actor_to_user(actor)
+
+    ctx = {
+        "chosen_value": chosen_value,
+        "chosen_label": chosen_label,
+        "matched_entry": matched_entry,
+        "actor": actor,
+        "original_query": original_query,
+        "user_row": user_row,
+    }
+
+    # Catalog load shared
+    try:
+        from loader import load_catalog
+        import agent_runtime as _ar
+        cat = load_catalog(verify=True, include_synth=True)
+    except Exception as ex:
+        log.exception("orchestrate_implicit_actions: catalog load fallito")
+        return f"Catalog load fallito: {type(ex).__name__}: {ex}"
+
+    def _run(name: str, args: dict) -> dict:
+        ex = cat.executors.get(name)
+        if ex is None:
+            return {"ok": False, "error": f"executor {name} non in catalog"}
+        try:
+            return _ar.invoke_executor(
+                ex, args, timeout_s=getattr(ex, "timeout_s", 30),
+                actor=actor, channel=channel or "http",
+            )
+        except Exception as exc:
+            return {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
+
+    def _handle_needs_inputs(r: dict) -> str | None:
+        """Generale §7.3: qualunque backend (gw/local/imap/...) puo' chiedere
+        OAuth setup o altri input. Registriamo dialog_pending + ritorniamo
+        msg user-facing. Idempotente: se gia' registrato, ritorna comunque.
+        """
+        sender_id = (f"{channel}:{actor}" if channel else (actor or "host"))
+        try:
+            gi = orchestrate_needs_inputs(
+                r, sender_id=sender_id, actor=actor, channel=channel,
+            )
+        except Exception as ex:
+            log.exception("orchestrate_implicit_actions: needs_inputs dispatch")
+            return f"OAuth setup fallito: {type(ex).__name__}: {ex}"
+        return (gi or {}).get("final_message_hint") or (
+            (r.get("needs_inputs") or {}).get("title")
+            or "Servono credenziali per completare l'azione."
+        )
+
+    out_lines: list[str] = []
+    actions_executed: list[dict] = []
+    for ia in implicit_actions:
+        if not isinstance(ia, dict):
+            continue
+        if ia.get("strategy") not in ("auto", "ask"):
+            continue
+        v = (ia.get("verb_canonical") or "").lower()
+        o = (ia.get("object") or "").lower()
+        tpl = _ACTION_TEMPLATES.get((v, o))
+        if tpl is None:
+            # Pattern non in tabella: lascia al PLANNER (return None).
+            return None
+        args = tpl["args"](ctx) if callable(tpl.get("args")) else None
+        if not args:
+            return None
+        r = _run(tpl["tool"], args)
+        # Backend richiede credenziali / input → dialog OAuth flow.
+        if isinstance(r, dict) and r.get("decision") == "needs_inputs":
+            msg_oauth = _handle_needs_inputs(r)
+            return msg_oauth or "Servono credenziali per completare l'azione."
+        if not (r or {}).get("ok"):
+            return (f"{tpl['tool']} fallito: "
+                    f"{(r or {}).get('error','errore sconosciuto')}")
+        rec = {"tool": tpl["tool"], "args": args, "result": r,
+               "label": tpl.get("label") or tpl["tool"]}
+        actions_executed.append(rec)
+        out_lines.append(
+            f"{rec['label']} creato per {chosen_label or chosen_value}."
+        )
+
+    if not actions_executed:
+        return None
+
+    # Notify finale (send_messages) se la query lo richiede esplicitamente.
+    q_low = (original_query or "").lower()
+    has_notify = any(h in q_low for h in _NOTIFY_HINTS)
+    if has_notify:
+        # Canale preferito da hint linguistici; default email per «email» o
+        # in assenza di hint specifici.
+        via = "email"
+        for ch, hints in _CHANNEL_HINTS.items():
+            if any(h in q_low for h in hints):
+                via = ch
+                break
+
+        # Subject + body generati dal riepilogo delle azioni eseguite
+        subject_label = actions_executed[0]["label"]
+        subject = f"Conferma {subject_label.lower()} {chosen_label or chosen_value}"
+        body_lines = [
+            f"Riepilogo delle azioni eseguite per: «{original_query.strip()}»",
+            "",
+        ]
+        for rec in actions_executed:
+            body_lines.append(f"  • {rec['label']}:")
+            for k, v in (rec["args"] or {}).items():
+                body_lines.append(f"      - {k}: {v}")
+        body = "\n".join(body_lines)
+
+        # Target user via resolution: actor → user.email; fallback to_user=actor.
+        send_args: dict = {
+            "messages": [{"subject": subject, "body": body}],
+            "via_channel": via,
+        }
+        if user_row and user_row.get("email") and via == "email":
+            send_args["messages"][0]["to"] = user_row["email"]
+        elif user_row and user_row.get("name"):
+            send_args["to_user"] = user_row["name"]
+        else:
+            send_args["to_user"] = actor
+
+        sm = _run("send_messages", send_args)
+        # Anche send_messages backend (es. google_workspace gmail) puo'
+        # richiedere OAuth setup: stesso handler generale §7.3.
+        if isinstance(sm, dict) and sm.get("decision") == "needs_inputs":
+            msg_oauth = _handle_needs_inputs(sm)
+            out_lines.append(
+                msg_oauth or "Servono credenziali per inviare la notifica."
+            )
+        elif (sm or {}).get("ok"):
+            channel_label = "Email" if via == "email" else via.capitalize()
+            out_lines.append(f"{channel_label} di conferma inviata.")
+        else:
+            err = (sm or {}).get("error") or "errore sconosciuto"
+            failed = (sm or {}).get("failed") or []
+            if failed and isinstance(failed[0], dict):
+                err = failed[0].get("error") or err
+            out_lines.append(f"Notifica NON inviata: {err}")
+
+    return "\n".join(out_lines)
+
 
 
 def _fmt_health_block(h: dict) -> str:

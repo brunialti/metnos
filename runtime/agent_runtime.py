@@ -922,6 +922,73 @@ def _query_has_continuation(query: str) -> bool:
         return False
 
 
+def _format_send_messages_detail(obs: dict) -> str:
+    """Costruisce il `detail` di MSG_TRANSFORMATIVE_AUTO_FINAL per send_messages.
+
+    Pattern: «a <recipient_id> «<subject>»». Helper §7.9 (no LLM). Idem
+    `_format_..._detail` per altri executor che non espongono htmlLink/id ma
+    hanno una shape `results[0]` con campi user-facing standardizzati.
+    """
+    if not isinstance(obs, dict):
+        return ""
+    r0 = (obs.get("results") or [{}])[0]
+    if not isinstance(r0, dict):
+        return ""
+    to = r0.get("recipient_id") or r0.get("target") or ""
+    if isinstance(to, list):
+        to = ", ".join(str(x) for x in to)
+    subj = r0.get("subject") or ""
+    if to and subj:
+        return f"a {to} «{subj}»"
+    if to:
+        return f"a {to}"
+    return subj
+
+
+_MUTATING_VERBS = frozenset({
+    # Sottoinsieme delle 23 ACTIONS §2.2 con side-effect remoto:
+    # send, create, delete, set, write, move, share, change, render.
+    # NON include: read, find, get, list, filter, sort, group, classify,
+    # describe, compute, compare, order, extract, compress.
+    "send", "create", "delete", "set", "write", "move", "share",
+    "change", "render",
+})
+
+
+def _all_query_verbs_satisfied(query: str, executed_tools: list[str]) -> bool:
+    """True se TUTTI i verbi MUTATING della query sono coperti da almeno
+    uno degli `executed_tools` (prefisso `<verb>_`). Verbi read-only/
+    suggestion (find/get/read/list/filter/describe/...) sono opzionali per
+    la chiusura pipeline. Determinismo §7.9.
+
+    Bug live turn 7f7381d2dba24bdc (14/5/2026, propose+choose+notify): dopo
+    send_messages ok=True il PLANNER rifaceva find_events_empty perche'
+    auto_final_transformative era inibito da `_query_has_continuation` (la
+    query ha 2 verbi: `proponi`→describe + `mandami`→send). Pipeline e'
+    completa quando il verbo MUTATING (`send`) e' stato eseguito; il
+    `describe` di «proponi» e' P5 suggestion-semantics, copertura
+    soddisfatta dal `find_events_empty + get_inputs` upstream.
+
+    `executed_tools` deve essere la lista dei tool name (chosen_name) degli
+    step ok=True inclusi i `resumed_from_prior_turn` (lo scratchpad
+    ricostruito dal callback resume_planner). Caller responsabile.
+    """
+    if not query or not isinstance(query, str) or not executed_tools:
+        return False
+    try:
+        from prefilter import tokenize, detect_canonical_verbs_all
+        verbs = detect_canonical_verbs_all(tokenize(query))
+        mutating = [v for v in verbs if v in _MUTATING_VERBS]
+        if not mutating:
+            return False
+        executed_verbs = {
+            t.split("_", 1)[0] for t in executed_tools if isinstance(t, str) and "_" in t
+        }
+        return all(v in executed_verbs for v in mutating)
+    except Exception:
+        return False
+
+
 # P6 (12/5/2026) — Notify-continuation detection per multi-pipeline.
 # Trigger: turn 35431172 «proponi N orari ... E MANDAMI EMAIL con la
 # scelta». Atteso: pipeline propose-and-notify (variant a/b) con
@@ -1200,6 +1267,98 @@ def _has_prior_read_events_ok(steps) -> bool:
         if isinstance(res, dict) and res.get("ok") is True:
             return True
     return False
+
+
+# Bug 12/5/2026 resume PLANNER dopo dialog pick (propose+notify continuation).
+# Euristica deterministica §7.9 per detectare MID-pipeline get_inputs: il
+# PLANNER ha emesso get_inputs ma la query contiene una continuation
+# (notify/create/move/...) che richiede un altro step dopo il pick.
+_RESUME_AFTER_DIALOG_HINTS_IT = (
+    "mandami", "manda", "inviami", "invia", "notificami",
+    "scrivimi", "avvisami", "informami",
+    "e poi crea", "e poi prenota", "e poi fissa", "e poi sposta",
+    "e poi cancella", "e poi invia", "e poi manda",
+    "e crea", "e prenota", "e fissa", "e sposta", "e cancella",
+    "e invia", "e manda",
+)
+_RESUME_AFTER_DIALOG_HINTS_EN = (
+    "send me", "notify me", "tell me", "email me", "let me know",
+    "and create", "and book", "and schedule", "and move",
+    "and delete", "and send", "and notify",
+    "then create", "then book", "then schedule", "then send",
+)
+
+
+def _should_resume_planner_after_dialog(query: str, route_info,
+                                          history_for_refs) -> bool:
+    """True se il get_inputs corrente e' MID-pipeline e il turno deve
+    riprendere dopo il pick dell'utente (bug 12/5/2026 propose+notify).
+
+    Sources di evidenza (OR):
+      1. route_info ha uno dei marker `multi_pipeline_*` (propose+notify
+         o notify-only) — il rank ha gia' classificato la query come
+         multi-pipeline.
+      2. Hint linguistici di continuation (mandami/manda/invia/notify/
+         create/...): notify e action-verb residuo dopo il dialog pick.
+
+    Determinismo §7.9: nessun LLM. Restituisce bool.
+
+    DEVI: ritornare True solo se la query contiene una continuation
+    legittima oltre il dialog.
+    NON DEVI: triggerare resume per query single-step (es. solo
+    «proponi 3 orari» senza «e mandami»).
+    OK: «proponi 3 orari e mandami email» → True.
+    ERRORE: «mostrami 3 orari» → False (solo display, no action verb).
+    """
+    if not isinstance(query, str) or not query.strip():
+        return False
+    # Source 1: route_info marker (set in run_turn quando la query e'
+    # propose+notify o notify-only).
+    if isinstance(route_info, dict):
+        if (route_info.get("multi_pipeline_propose_notify")
+                or route_info.get("multi_pipeline_notify_only")):
+            return True
+    # Source 2: hint linguistici espliciti.
+    q_low = query.lower()
+    for hint in _RESUME_AFTER_DIALOG_HINTS_IT:
+        if hint in q_low:
+            return True
+    for hint in _RESUME_AFTER_DIALOG_HINTS_EN:
+        if hint in q_low:
+            return True
+    return False
+
+
+def _snapshot_scratchpad(history_for_refs) -> list:
+    """Snapshot serializzabile JSON dello scratchpad per il resume callback.
+
+    Filtra step troppo pesanti (entries molto lunghe): truncation a max 50
+    entries per step + max 10KB per observation totale (heuristica safe).
+    Determinismo §7.9.
+    """
+    out: list = []
+    for h in (history_for_refs or []):
+        if not isinstance(h, dict):
+            continue
+        obs = h.get("observation") or {}
+        # Trim entries lunghe: il PLANNER continuation vede sintesi, non
+        # blob full. Se servono dettagli il PLANNER puo' ri-leggere.
+        if isinstance(obs, dict):
+            obs_trimmed = dict(obs)
+            entries = obs_trimmed.get("entries")
+            if isinstance(entries, list) and len(entries) > 50:
+                obs_trimmed["entries"] = entries[:50]
+                obs_trimmed["_entries_truncated"] = True
+                obs_trimmed["_entries_total"] = len(entries)
+        else:
+            obs_trimmed = obs
+        out.append({
+            "step": int(h.get("step") or 0),
+            "tool": h.get("tool") or "",
+            "args": h.get("args") or {},
+            "observation": obs_trimmed,
+        })
+    return out
 
 
 _AUTO_FINAL_SKIP_TOOLS = frozenset({
@@ -2092,13 +2251,22 @@ def _detect_unbacked_promise(final_message: str | None, steps: list) -> bool:
 
 
 def invoke_executor(executor, args, timeout_s=30, *, autonomy="supervised",
-                    turn_id=None):
+                    turn_id=None, actor=None, channel=None):
     """Invoca un executor, opzionalmente in sandbox bubblewrap.
 
     Se `bwrap` e' installato e `METNOS_SANDBOX` non e' disabilitato,
     il comando viene wrappato; altrimenti gira come subprocess Python
     diretto (la pseudo-sandbox del runtime resta attiva: filtro path/host
     + Vaglio).
+
+    `actor` / `channel` (12/5/2026): propagati come `METNOS_ACTOR` /
+    `METNOS_CHANNEL` nell'env del subprocess. Servono a `get_inputs` per
+    derivare un `sender_id` stabile (`<channel>:<actor>`) che e' chiave
+    di storage per `dialog_pending`. Senza questa propagazione gli
+    executor defaultano a `actor="host"`/`channel=""` e il consumer HTTP
+    cerca lo state con un sender_id diverso da quello con cui e' stato
+    salvato (bug live 12/5/2026: pipeline find_events_empty → get_inputs
+    → send_messages perdeva il dialog state).
     """
     import sandbox as _sandbox  # lazy: evita import circolare e overhead per moduli che non lo usano
     payload = json.dumps(args)
@@ -2121,6 +2289,10 @@ def invoke_executor(executor, args, timeout_s=30, *, autonomy="supervised",
     # (`<HISTORY>/<turn_id>/blob/<sha256>.bin`).
     if turn_id:
         env["METNOS_TURN_ID"] = turn_id
+    if actor:
+        env["METNOS_ACTOR"] = actor
+    if channel:
+        env["METNOS_CHANNEL"] = channel
     result = subprocess.run(
         cmd, input=payload, capture_output=True, text=True, timeout=timeout_s,
         env=env,
@@ -2872,6 +3044,7 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
              scratchpad_threshold=SCRATCHPAD_THRESHOLD_BYTES,
              actor="host", channel="", conversation_id="",
              reference_images=None,
+             resume_with_scratchpad=None,
              verbose=False):
     """
     Se k=None (default v1.1), usa adaptive K fra k_min e k_max.
@@ -2884,6 +3057,15 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
     come prima entry (consumer-match Layer 3 porta find_images_indices nel
     pool); chiama `find_images_indices(from_step=1, idx="scene")` e
     l'auto-explode (consumer match) inietta `reference_images=[paths]`.
+
+    `resume_with_scratchpad` (12/5/2026, fix bug propose+notify): lista di
+    step records pre-existing nella forma `[{step, tool, args, observation}]`.
+    Quando presente, il turno parte con scratchpad gia' popolato e il loop
+    inizia da step_num = len(prior_steps) + 1. Usato da
+    `orchestration._process_resume_planner_with_dialog_values` per riprendere
+    pipeline multi-pipeline dopo un get_inputs MID-pipeline. Bypassa
+    fast_path / seed_step (sono inutili: il context ha gia' steps).
+    Determinismo §7.9.
     """
     log = TurnLog(ts_start=time.time(), user_query=user_query,
                    actor=actor or "host", channel=channel or "",
@@ -3028,7 +3210,9 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
     # Conservativo: sull'incertezza ritorna None e prosegue normale.
     # Reference images NON triviali: se ci sono allegati, salta il
     # fast path (l'utente ha intenzioni piu' ricche del pattern letterale).
-    if not _ref_images_for_prompt:
+    # resume_with_scratchpad: skip anche fast_path (turno gia' avviato, il
+    # PLANNER continua dallo stato in history).
+    if not _ref_images_for_prompt and not resume_with_scratchpad:
         _fp_hit = try_fast_path(user_query_for_run, lang=DEFAULT_LANG,
                                   default_timezone=DEFAULT_TIMEZONE)
         if _fp_hit is not None:
@@ -3045,6 +3229,7 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
                         _fp_exec, _fp_hit["args"],
                         timeout_s=getattr(_fp_exec, "timeout_s", None) or 10,
                         autonomy="supervised", turn_id=turn_id,
+                        actor=actor, channel=channel,
                     )
                 except Exception as ex:
                     _fp_obs = {"ok": False,
@@ -3250,6 +3435,40 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
         # Niente fail su difetti del routing: rimaniamo con all-sections.
         log.warning("planner section routing skipped: %s", _e)
 
+    # IMPLICIT ACTIONS injection (ADR 0129, 14/5/2026): se l'intent extractor
+    # ha rilevato azioni mutating implicite (pattern noun→object senza verbo
+    # mutating esplicito nella query), inietta un blocco strutturato nel
+    # prompt PLANNER cosi' il LLM vede le entry come hint deterministico
+    # (la regola comportamentale e' nell'invariante `_core.j2`).
+    try:
+        _intent = route_info.get("intent") if isinstance(route_info, dict) else None
+        _implicit = (_intent or {}).get("implicit_actions") if isinstance(_intent, dict) else None
+        print(f"[implicit_actions] route_intent={bool(_intent)} "
+              f"implicit_count={len(_implicit or []) if isinstance(_implicit, list) else 'N/A'} "
+              f"resume={bool(resume_with_scratchpad)}", flush=True)
+        if isinstance(_implicit, list) and _implicit:
+            _ia_lines = [
+                "",
+                "═" * 70,
+                "IMPLICIT ACTIONS rilevate dall'intent extractor (ADR 0129):",
+            ]
+            for _a in _implicit:
+                if not isinstance(_a, dict):
+                    continue
+                _ia_lines.append(
+                    f"  - verb={_a.get('verb')!r} "
+                    f"object={_a.get('object')!r} "
+                    f"strategy={_a.get('strategy')!r} "
+                    f"confidence={_a.get('confidence')} "
+                    f"(noun='{_a.get('noun_token','')}')"
+                )
+            _ia_lines.append("Applica la regola IMPLICIT ACTIONS dell'invariante.")
+            _ia_lines.append("═" * 70)
+            planner_system = planner_system + "\n" + "\n".join(_ia_lines)
+    except Exception as _e:
+        if verbose:
+            print(f"[implicit_actions] injection failed: {_e}")
+
     # Provider selection (27/4 sera): default = Gemma 4 26B (llamacpp) come "middle" tier
     # locale per pianificare task multi-step. Override esplicito via env METNOS_PLANNER_*.
     # think (28/4 sera): default True sul planner.
@@ -3291,6 +3510,58 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
     history_for_refs = []  # per resolve_references
     same_count = Counter()
 
+    # ── resume_with_scratchpad (12/5/2026) ────────────────────────────
+    # Continuation di un turno precedente fermato a get_inputs MID-pipeline.
+    # Pre-popola scratchpad + history LLM + step counter. Bypass fast_path
+    # e seed_step (sono per turni nuovi). Determinismo §7.9: nessun LLM.
+    _resume_step_offset = 0
+    if resume_with_scratchpad and isinstance(resume_with_scratchpad, list):
+        for rs in resume_with_scratchpad:
+            if not isinstance(rs, dict):
+                continue
+            _rs_step = int(rs.get("step") or 0) or (len(history_for_refs) + 1)
+            _rs_tool = rs.get("tool") or "unknown"
+            _rs_args = rs.get("args") or {}
+            _rs_obs = rs.get("observation") or {}
+            history_for_refs.append({
+                "step": _rs_step, "tool": _rs_tool,
+                "args": _rs_args, "observation": _rs_obs,
+            })
+            # StepLog audit-only: il log mostra la genesi del turno
+            # continuation. Step records senza exec_ms (gia' eseguiti
+            # nel turno precedente). vaglio_approved=True: gia' passati.
+            _rs_step_log = StepLog(step_num=_rs_step)
+            _rs_step_log.chosen_tool = _rs_tool
+            _rs_step_log.raw_args = dict(_rs_args) if isinstance(_rs_args, dict) else {}
+            _rs_step_log.resolved_args = dict(_rs_args) if isinstance(_rs_args, dict) else {}
+            _rs_step_log.result = _rs_obs
+            _rs_step_log.vaglio_approved = True
+            _rs_step_log.error = "resumed_from_prior_turn"
+            log.steps.append(_rs_step_log)
+            # Tool_call virtuale per il LLM: il prossimo step PLANNER vede
+            # gli step precedenti come tool calls eseguiti.
+            _rs_call_id = f"resume_{_rs_step}"
+            history_for_llm.append({
+                "role": "assistant",
+                "tool_calls": [{
+                    "id": _rs_call_id, "type": "function",
+                    "function": {
+                        "name": _rs_tool,
+                        "arguments": (_rs_args
+                                      if isinstance(_rs_args, dict) else {}),
+                    },
+                }],
+            })
+            history_for_llm.append({
+                "role": "tool", "tool_call_id": _rs_call_id,
+                "name": _rs_tool,
+                "content": json.dumps(_rs_obs, ensure_ascii=False),
+            })
+            _resume_step_offset = max(_resume_step_offset, _rs_step)
+        if verbose:
+            print(f"[resume] pre-populated {len(history_for_refs)} steps "
+                  f"(offset={_resume_step_offset})")
+
     # ── Seed-step injection (ADR 0099) ────────────────────────────────
     # Quando la query contiene un URL completo, inietta deterministicamente
     # `read_urls_html(urls=[URL])` come step 1, BYPASSANDO la chiamata
@@ -3302,10 +3573,11 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
     # 7/5/2026 15:29: PLANNER ha comunque scelto find_urls). Garantirlo
     # nel runtime e' deterministico; PLANNER resta libero post step 1.
     #
-    # Esclusioni: skip se reference_images allegati (semantica diversa).
+    # Esclusioni: skip se reference_images allegati (semantica diversa) o
+    # se resume_with_scratchpad (history gia' popolata).
     _seed_step_used = False
     _seed_step_n = 0
-    if not _ref_images_for_prompt:
+    if not _ref_images_for_prompt and not resume_with_scratchpad:
         _seed_hit = try_seed_step(user_query_for_run)
         if _seed_hit is not None:
             _seed_exec = next(
@@ -3325,6 +3597,7 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
                         _seed_exec, _seed_hit["args"],
                         timeout_s=getattr(_seed_exec, "timeout_s", None) or 30,
                         autonomy="supervised", turn_id=turn_id,
+                        actor=actor, channel=channel,
                     )
                 except Exception as ex:
                     _seed_obs = {"ok": False,
@@ -3429,7 +3702,11 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
 
     # Loop start: 2 se seed_step ha gia' consumato step_num=1, altrimenti 1.
     # cap_steps non cambia: il seed_step CONTA come step (consume budget).
-    _loop_start_step = _seed_step_n + 1 if _seed_step_used else 1
+    # Se resume_with_scratchpad: parte da `max(prior_step) + 1`.
+    if _resume_step_offset > 0:
+        _loop_start_step = _resume_step_offset + 1
+    else:
+        _loop_start_step = _seed_step_n + 1 if _seed_step_used else 1
 
     for step_num in range(_loop_start_step, cap_steps + 1):
         step = StepLog(step_num=step_num)
@@ -3501,9 +3778,18 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
         # default) per il setup iniziale piu' aperto. Pass-through solo a
         # provider che lo supportano (LlamaCpp); altri provider ignorano
         # il kwarg via filter.
-        _chat_kwargs: dict = dict(max_tokens=2400, temperature=0, think=think)
+        _chat_kwargs: dict = dict(max_tokens=4096, temperature=0, think=think)
         if getattr(provider, "name", "") == "llamacpp":
-            _chat_kwargs["reasoning_budget"] = 768 if step_num == _loop_start_step else 256
+            # Override env-driven per bench (12/5/2026 sera):
+            # METNOS_REASONING_BUDGET="dyn" (default ADR 0099) | "<int>" flat per tutti gli step
+            _rb_env = os.environ.get("METNOS_REASONING_BUDGET", "dyn")
+            if _rb_env == "dyn":
+                _chat_kwargs["reasoning_budget"] = 768 if step_num == _loop_start_step else 256
+            else:
+                try:
+                    _chat_kwargs["reasoning_budget"] = int(_rb_env)
+                except ValueError:
+                    _chat_kwargs["reasoning_budget"] = 768 if step_num == _loop_start_step else 256
 
         try:
             r = provider.chat_with_tools(
@@ -4449,8 +4735,22 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
         # mai con set_events. Il read_events e' raccomandato per dati ma
         # opzionale (planner puo' rispondere generico se serve). Cio' che
         # blocchiamo qui e' la creazione effettiva di eventi.
+        # ADR 0129 fire-after-propose exception: la guardia propose_intent
+        # va sospesa quando siamo in continuation post-dialog (utente ha
+        # gia' fatto la scelta esplicita → la "proposta" e' diventata
+        # "fire"). Detect: history contiene `get_inputs` con observation
+        # `decision="completed"` o `_resumed=True`. §7.9 deterministico.
+        _dialog_completed = any(
+            isinstance(h, dict)
+            and h.get("tool") == "get_inputs"
+            and isinstance(h.get("observation"), dict)
+            and (h["observation"].get("decision") == "completed"
+                 or h["observation"].get("_resumed"))
+            for h in history_for_refs
+        )
         if (chosen_name in _calendar_write_tools()
-                and _query_is_propose_intent(user_query_for_run)):
+                and _query_is_propose_intent(user_query_for_run)
+                and not _dialog_completed):
             obs = {
                 "ok": False,
                 "_propose_intent_detected": True,
@@ -4517,6 +4817,7 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
                         obs = invoke_executor(
                             executor, args, turn_id=turn_id,
                             timeout_s=getattr(executor, "timeout_s", 30),
+                            actor=actor, channel=channel,
                         )
                     except subprocess.TimeoutExpired:
                         obs = {"ok": False, "error": "executor timeout"}
@@ -4666,6 +4967,59 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
             history_for_llm.append({"role": "assistant", "tool_calls": [{"id": tc.call_id, "type": "function", "function": {"name": chosen_name, "arguments": raw_args}}]})
             obs_str_h = _trim_obs_for_history(obs)
             history_for_llm.append({"role": "tool", "tool_call_id": tc.call_id, "name": chosen_name, "content": obs_str_h})
+
+            # MID-PIPELINE get_inputs (12/5/2026, bug residuo propose+notify):
+            # quando la query e' propose+notify e/o ha continuation di
+            # notifica/azione, il PLANNER deve riprendere DOPO il pick utente
+            # con send_messages/create_events/... Patchamo il dialog state per
+            # iniettare `on_complete=resume_planner_with_dialog_values` con
+            # snapshot dello scratchpad. process_completion_callback prendera'
+            # la palla al submit dell'utente. Determinismo §7.9.
+            try:
+                if _should_resume_planner_after_dialog(
+                        user_query_for_run, route_info, history_for_refs):
+                    sender_for_state = (
+                        f"{channel}:{actor}" if channel else (actor or "host")
+                    )
+                    dialog_id = obs.get("dialog_id")
+                    if dialog_id:
+                        import dialog_pending as _dp
+                        _state = _dp.load_pending(sender_for_state, dialog_id)
+                        if _state is not None and not _state.get("on_complete"):
+                            _dialog_var = None
+                            _dlg = _state.get("dialog") or []
+                            if _dlg and isinstance(_dlg[0], dict):
+                                _dialog_var = _dlg[0].get("var")
+                            # Estrai implicit_actions dall'intent del turno
+                            # corrente per orchestrazione deterministica post-
+                            # dialog (ADR 0129). Generalizza l'orchestratore: il
+                            # callback non deve indovinare quali verbi mutating
+                            # eseguire, li legge dall'intent gia' classificato.
+                            _intent_dict = (route_info.get("intent")
+                                            if isinstance(route_info, dict)
+                                            else None) or {}
+                            _implicit_actions = (
+                                _intent_dict.get("implicit_actions")
+                                if isinstance(_intent_dict, dict) else None
+                            ) or []
+                            _state["on_complete"] = {
+                                "type": "resume_planner_with_dialog_values",
+                                "original_query": user_query_for_run,
+                                "prior_steps": _snapshot_scratchpad(
+                                    history_for_refs),
+                                "dialog_step_num": step_num,
+                                "dialog_var_name": _dialog_var or "values",
+                                "conversation_id": conversation_id or "",
+                                "implicit_actions": list(_implicit_actions),
+                            }
+                            _dp.save_pending(sender_for_state, dialog_id, _state)
+                            if verbose:
+                                print(f"[resume_after_dialog] on_complete "
+                                      f"iniettato per dialog_id={dialog_id} "
+                                      f"prior_steps={len(history_for_refs)}")
+            except Exception as _ex:
+                log.warning("inject on_complete (resume_planner) fallito: %s", _ex)
+
             log.final_kind = "answer"
             log.final_message = (
                 obs.get("final_message_hint")
@@ -4807,19 +5161,44 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
         # Bug live turn b1d9c236: «fissa appuntamento ... E MANDAMI EMAIL»
         # chiudeva il turno dopo set_events ok, perdendo la send_messages.
         # `_query_has_continuation` lookup regex deterministico.
+        # `_query_has_continuation` inibisce auto-final per evitare di
+        # chiudere il turno a meta' pipeline (turn b1d9c236, 12/5: «fissa
+        # appuntamento E MANDAMI EMAIL» chiudeva dopo create_events). Ma se
+        # TUTTI i verbi della query sono gia' coperti dagli step ok=True
+        # (incluso il corrente), la pipeline e' completa e bisogna chiudere
+        # (turn 7f7381d2, 14/5: PLANNER ri-eseguiva find_events_empty dopo
+        # send_messages ok perche' continuation era ancora True). §7.9.
+        _executed_verbs_now = [
+            (s.chosen_tool or "") for s in log.steps
+            if isinstance(s.result, dict) and s.result.get("ok") is True
+        ] + [chosen_name]
+        _pipeline_complete = _all_query_verbs_satisfied(
+            user_query_for_run, _executed_verbs_now,
+        )
+        # Reversibili (set_events/create_events/...): chiude su _undo+ids
+        # presenti (= operazione registrata revertibile, htmlLink/id nel detail).
+        # Irreversibili (send_messages): nessun `_undo`; chiude SE pipeline
+        # complete (tutti i verbi query satisfied). Senza pipeline_complete
+        # la guardia continuation resta intatta (memoria turn b1d9c236).
+        _has_undo = (isinstance(obs.get("_undo"), dict)
+                     and obs.get("_undo", {}).get("ids"))
+        _final_safe = (
+            (not _query_has_continuation(user_query_for_run) and _has_undo)
+            or _pipeline_complete
+        )
         if (chosen_name in _AUTO_FINAL_TRANSFORMATIVE
                 and isinstance(obs, dict)
                 and obs.get("ok") is True
-                and isinstance(obs.get("_undo"), dict)
-                and obs.get("_undo", {}).get("ids")
-                and not _query_has_continuation(user_query_for_run)):
+                and _final_safe):
             r0 = (obs.get("results") or [{}])[0]
+            _detail = (r0.get("htmlLink") or r0.get("id")
+                       or _format_send_messages_detail(obs))
             log.final_kind = "answer"
             log.final_message = msg(
                 "MSG_TRANSFORMATIVE_AUTO_FINAL",
                 executor=chosen_name,
                 count=obs.get("n_created") or obs.get("ok_count") or 1,
-                detail=(r0.get("htmlLink") or r0.get("id") or "")
+                detail=_detail,
             )
             log.ts_end = time.time(); log.write(); return log
 

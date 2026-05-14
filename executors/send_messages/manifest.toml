@@ -8,6 +8,9 @@ author      = "Roberto Brunialti <roberto.brunialti@metnos.com>"
 affinity    = ["send", "invia", "spedisci", "mail", "email", "mandare", "rispondere", "reply", "telegram", "messaggio", "manda a", "scrivi a"]
 revertible  = false
 lifecycle   = "active"
+# SMTP (Migadu) puo' avere TLS handshake lento + 3 retry sul connect
+# (bug live 14/5/2026 SSL handshake timeout): 30s default insufficiente.
+timeout_s   = 90
 
 [description]
 it = "Invia uno o piu' messaggi su mail (SMTPS) o Telegram. Vettoriale: la lista `messages` puo' contenere 1+ messaggi (max 50 per call, anti-spam guard). DUE MODI: (a) MAIL CLASSICO: ogni messaggio ha `to` (email|list), `subject`, `body`, opzionali `cc`, `bcc`, `body_html`, `attachments`. (b) MULTI-USER (4/5/2026, ADR 0083): usa `to_user` (name o user_id) + `via_channel` ('telegram'|'mail'|'auto', default 'auto'). Il name e' risolto in users.db: es. 'lucia' → user_id → recipient_id (chat_id Telegram o email). via_channel='auto' = primo canale verificato (telegram > mail > http). Cross-user policy: host puo' inviare ai propri guest; guest verso terzi richiede vaglio (ADR 0084). ALLEGATI (solo mail): attachments e' una lista di path o di dict {path, filename?, content_type?}. Cap 25 MB per messaggio. Backend mail: SMTP_SSL stdlib. Backend telegram: TelegramChannel.send_to. Best-effort: una send fallita non blocca le altre. CRITICAL IRREVERSIBILE: revertible=false. Per leggere/cercare mail usa read_messages."
@@ -15,7 +18,7 @@ en = "Send one or more messages via mail (SMTPS) or Telegram. Vectorial: the lis
 
 [code]
 files  = ["send_messages.py"]
-digest = "sha256:83b52249871d75347171e78fe47a0fe11354cff3f8549f33b2c42279608f7217"
+digest = "sha256:d82ccf4eff745e41a0c61856d077f737da8d9d3537a629509d59246c9170dfd2"
 
 [args]
 type     = "object"
@@ -30,10 +33,18 @@ en = "(Multi-user) Username or user_id, or a list. E.g. 'lucia' or ['lucia','mar
 [args.properties.via_channel]
 type        = "string"
 default     = "auto"
+enum        = ["auto", "email", "mail", "telegram", "http"]
 
 [args.properties.via_channel.description]
-it = "(Multi-user) Canale di invio: 'telegram', 'mail', 'http', oppure 'auto' (default = primo canale verificato, ordine telegram > mail > http)."
-en = "(Multi-user) Sending channel: 'telegram', 'mail', 'http', or 'auto' (default = first verified channel, order telegram > mail > http)."
+it = "Canale di invio. Valori canonici: 'email', 'telegram'. Storico: 'mail' = alias di 'email' (back-compat), 'http' = riservato. 'auto' (default multi-user): primo canale verificato dell'utente in ordine telegram > email."
+en = "Sending channel. Canonical: 'email', 'telegram'. Legacy: 'mail' = alias of 'email' (back-compat), 'http' = reserved. 'auto' (default multi-user): first verified user channel in order telegram > email."
+
+[args.properties.client]
+type        = "string"
+
+[args.properties.client.description]
+it = "Implementazione backend del canale (es. 'metnos' per IMAP+SMTP/Telegram locale). Default per channel: email='metnos', telegram='metnos'. Plugin esterni potranno introdurre client aggiuntivi (es. 'gmail') in futuro."
+en = "Channel backend implementation (e.g. 'metnos' for local IMAP+SMTP/Telegram). Default per channel: email='metnos', telegram='metnos'. External plugins may add additional clients (e.g. 'gmail') in the future."
 
 [args.properties.messages]
 type        = "array"

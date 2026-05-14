@@ -1,0 +1,429 @@
+"""runtime/backends/calendar/google_workspace.py — Google Calendar backend.
+
+Wrappa lo skill `~/.local/share/metnos/skills/google-workspace/scripts/google_api.py`
+(sub-commands `calendar list | create | delete`) via `skill_wrapper._run_api`.
+
+Coerente con i backend gmail/drive importati da agentskills.io (ADR 0123):
+- subprocess su google_api.py (OAuth gestito dallo script: token JSON in
+  `~/.local/share/metnos/skills/google-workspace/google_token.json`).
+- error_class deterministico via `_classify_error` (ADR 0101).
+- `auth_required` ritorna `decision="needs_inputs"` con payload OAuth
+  setup (skill_oauth_providers.json), coerente con il pattern delle
+  altre integrazioni Google.
+
+Funzioni:
+- `read(args)`         → events nel range time_window | start/end.
+- `create(args)`       → 1 evento (summary/start/end/+optional).
+- `delete(args)`       → vettoriale per id.
+- `find_events_empty(args)` → riusa `local_ics._generate_slots` per
+  computare gap dai busy events ottenuti via API.
+"""
+from __future__ import annotations
+
+import json
+import sys
+from datetime import datetime
+from pathlib import Path
+from zoneinfo import ZoneInfo
+
+_RUNTIME = Path(__file__).resolve().parent.parent.parent
+if str(_RUNTIME) not in sys.path:
+    sys.path.insert(0, str(_RUNTIME))
+
+from skill_wrapper import (  # noqa: E402
+    _classify_error, _run_api, _skill_home,
+    _needs_inputs_oauth_setup, _get_skill_oauth_config,
+)
+from backends.events import local_ics as _li  # noqa: E402
+
+SKILL_NAME = "google-workspace"
+ROME = ZoneInfo("Europe/Rome")
+
+
+def _api_script() -> Path:
+    return _skill_home(SKILL_NAME) / "scripts" / "google_api.py"
+
+
+def _has_creds() -> bool:
+    """True se il token OAuth Google e' presente sul filesystem."""
+    return (_skill_home(SKILL_NAME) / "google_token.json").is_file()
+
+
+def _err(msg: str, error_class: str, *, with_entries=False,
+         with_results=False) -> dict:
+    out = {"ok": False, "error": msg, "error_class": error_class}
+    if with_entries:
+        out["entries"] = []; out["used"] = 0
+    if with_results:
+        out["results"] = []; out["used"] = 0; out["n_created"] = 0
+    return out
+
+
+def _auth_needs_inputs(args_base: dict, *, executor: str) -> dict:
+    """OAuth flow init payload (coerente con send_messages_google_workspace)."""
+    try:
+        payload = _needs_inputs_oauth_setup(
+            skill_name=SKILL_NAME, executor=executor,
+            args_base=args_base,
+            **_get_skill_oauth_config(__file__),
+        )
+    except Exception as ex:
+        return {"ok": False, "error_class": "auth_required",
+                "error": f"OAuth setup payload fallito: {ex}",
+                "entries": [], "used": 0}
+    return {
+        "ok": True,
+        "decision": "needs_inputs",
+        "needs_inputs": payload,
+        "entries": [], "used": 0,
+        "error_class": "auth_required",
+        "final_message_hint": payload.get("title", ""),
+    }
+
+
+_TRANSIENT_ERROR_CLASSES = ("network", "server_error", "rate_limited")
+_MAX_RETRIES = 2  # totale tentativi = 1 + 2 = 3
+
+
+def _run_calendar(argv: list[str], *, executor: str,
+                  args_base: dict) -> tuple[dict | None, dict | None]:
+    """Esegue `google_api.py calendar ...` e ritorna (parsed_json, err_obj).
+    Esattamente UNO dei due non e' None.
+
+    Retry deterministico §7.9 sugli error_class transienti (network,
+    server_error, rate_limited): bug live SSL ASN1 / TLS handshake fail
+    su httplib2 (~14/5/2026) si risolve riprovando.
+    """
+    last_err: dict | None = None
+    for attempt in range(_MAX_RETRIES + 1):
+        rc, stdout, stderr = _run_api(_api_script(), argv,
+                                       skill_name=SKILL_NAME)
+        if rc == 0:
+            try:
+                return json.loads(stdout), None
+            except json.JSONDecodeError as ex:
+                last_err = {"ok": False,
+                            "error": f"invalid JSON da google_api: {ex}",
+                            "error_class": "server_error"}
+                continue
+        ec = _classify_error(rc, stderr)
+        if ec == "auth_required":
+            return None, _auth_needs_inputs(args_base, executor=executor)
+        last_err = {"ok": False, "error": (stderr or "").strip()
+                    or f"rc={rc}", "error_class": ec}
+        # SSL ASN1 lib non e' classificato come network/server_error
+        # automaticamente dalla tabella ERROR_CLASS_TABLE — detect manuale.
+        is_ssl = bool(stderr and (
+            "SSL" in stderr or "ASN1" in stderr
+            or "TLSV" in stderr or "ssl.SSLError" in stderr
+        ))
+        if ec not in _TRANSIENT_ERROR_CLASSES and not is_ssl:
+            return None, last_err
+    return None, last_err
+
+
+# --------------------------------------------------------------------------
+# READ
+# --------------------------------------------------------------------------
+
+def read(args: dict) -> dict:
+    """Legge eventi da Google Calendar. Accetta `time_window` canonical o
+    `start`/`end` ISO espliciti. Output: `entries: list[{id, summary,
+    start, end, location, description, status, htmlLink}]`."""
+    if not isinstance(args, dict):
+        return _err("args must be an object", "invalid_args", with_entries=True)
+
+    start_iso = args.get("start")
+    end_iso = args.get("end")
+    tw = args.get("time_window")
+    if tw:
+        try:
+            from time_window_parser import parse_time_window
+            s, e = parse_time_window(tw)
+            start_iso = start_iso or s
+            end_iso = end_iso or e
+        except (ImportError, ValueError) as ex:
+            return _err(str(ex), "invalid_args", with_entries=True)
+
+    calendar_id = args.get("calendar_id") or "primary"
+    max_results = int(args.get("max_results") or 25)
+    argv = ["calendar", "list", "--calendar", calendar_id,
+            "--max", str(max_results)]
+    if start_iso: argv.extend(["--start", str(start_iso)])
+    if end_iso:   argv.extend(["--end",   str(end_iso)])
+
+    data, err = _run_calendar(argv, executor="read_events",
+                              args_base=dict(args))
+    if err is not None:
+        if err.get("decision") == "needs_inputs":
+            return err
+        return {**err, "entries": [], "used": 0}
+    entries = data if isinstance(data, list) else []
+    return {
+        "ok": True,
+        "entries": entries,
+        "used": len(entries),
+        "available_total": len(entries),
+        "calendar_source": "google_workspace",
+        "calendar_id": calendar_id,
+    }
+
+
+# --------------------------------------------------------------------------
+# CREATE
+# --------------------------------------------------------------------------
+
+def create(args: dict) -> dict:
+    """Crea UN evento. Args: summary, start (ISO+TZ), end (ISO+TZ),
+    location?, description?, attendees? (list[str] o str CSV),
+    calendar_id? (default 'primary').
+
+    Output trasformativo §2.6: `results: [{ok, id, summary, htmlLink, ...}]`.
+    `_undo` reverse_pattern §2.3: `delete_events_by_id`.
+    """
+    if not isinstance(args, dict):
+        return _err("args must be an object", "invalid_args",
+                    with_results=True)
+
+    summary = args.get("summary")
+    start = args.get("start"); end = args.get("end")
+    if not (isinstance(summary, str) and summary.strip()
+            and isinstance(start, str) and start.strip()
+            and isinstance(end, str) and end.strip()):
+        return _err("summary/start/end mandatory (start/end ISO con TZ)",
+                    "invalid_args", with_results=True)
+
+    calendar_id = args.get("calendar_id") or "primary"
+    argv = ["calendar", "create",
+            "--summary", summary, "--start", start, "--end", end,
+            "--calendar", calendar_id]
+    if args.get("location"):
+        argv.extend(["--location", str(args["location"])])
+    if args.get("description"):
+        argv.extend(["--description", str(args["description"])])
+    attendees = args.get("attendees")
+    if attendees:
+        if isinstance(attendees, list):
+            attendees = ",".join(str(a) for a in attendees if a)
+        argv.extend(["--attendees", str(attendees)])
+
+    data, err = _run_calendar(argv, executor="create_events",
+                              args_base=dict(args))
+    if err is not None:
+        if err.get("decision") == "needs_inputs":
+            return err
+        return {**err, "results": [], "used": 0, "n_created": 0}
+
+    rid = (data or {}).get("id", "")
+    rec = {
+        "ok": True,
+        "id": rid, "uid": rid,
+        "summary": (data or {}).get("summary", summary),
+        "start": start, "end": end,
+        "location": args.get("location") or "",
+        "calendar_source": "google_workspace",
+        "calendar_id": calendar_id,
+        "htmlLink": (data or {}).get("htmlLink", ""),
+    }
+    out = {
+        "ok": True,
+        "n_created": 1,
+        "results": [rec],
+        "used": 1,
+    }
+    if rid:
+        out["_undo"] = {
+            "reverse_pattern": "delete_events_by_id",
+            "ids": [rid],
+            "scope": {"calendar_id": calendar_id, "client": "google_workspace"},
+        }
+    return out
+
+
+# --------------------------------------------------------------------------
+# DELETE
+# --------------------------------------------------------------------------
+
+def delete(args: dict) -> dict:
+    """Cancella 1+ eventi per id (vettoriale §2.1)."""
+    if not isinstance(args, dict):
+        return _err("args must be an object", "invalid_args",
+                    with_results=True)
+
+    ids: list[str] = []
+    if isinstance(args.get("event_ids"), list):
+        ids.extend(str(x).strip() for x in args["event_ids"] if x)
+    eid = args.get("event_id")
+    if isinstance(eid, str) and eid.strip():
+        ids.append(eid.strip())
+    entries = args.get("entries") or []
+    if isinstance(entries, list):
+        for e in entries:
+            if isinstance(e, dict):
+                v = e.get("uid") or e.get("id")
+                if isinstance(v, str) and v.strip():
+                    ids.append(v.strip())
+    if not ids:
+        return _err("nessun event_id/event_ids/entries fornito",
+                    "invalid_args", with_results=True)
+
+    calendar_id = args.get("calendar_id") or "primary"
+    results: list[dict] = []
+    failed: list[dict] = []
+    for rid in ids:
+        argv = ["calendar", "delete", rid, "--calendar", calendar_id]
+        _, err = _run_calendar(argv, executor="delete_events",
+                                args_base=dict(args))
+        if err is not None:
+            if err.get("decision") == "needs_inputs":
+                return err
+            failed.append({"id": rid, **err})
+            continue
+        results.append({"ok": True, "id": rid, "uid": rid,
+                         "status": "deleted"})
+
+    return {
+        "ok": len(results) > 0 or not failed,
+        "n_deleted": len(results),
+        "results": results,
+        "failed": failed,
+        "used": len(results),
+        "calendar_source": "google_workspace",
+        "calendar_id": calendar_id,
+    }
+
+
+# --------------------------------------------------------------------------
+# FIND_EVENTS_EMPTY
+# --------------------------------------------------------------------------
+
+def find_events_empty(args: dict) -> dict:
+    """Computa finestre VUOTE su Google Calendar. Riusa `_generate_slots`
+    di `local_ics` per la logica deterministica di gap.
+    """
+    if not isinstance(args, dict):
+        return _err("args must be an object", "invalid_args",
+                    with_entries=True)
+
+    tw_raw = args.get("time_windows")
+    if tw_raw is None:
+        time_windows = ["next-week"]
+    elif isinstance(tw_raw, str):
+        time_windows = [tw_raw]
+    else:
+        time_windows = tw_raw
+    if not isinstance(time_windows, list) or not time_windows:
+        return _err("time_windows must be non-empty list",
+                    "invalid_args", with_entries=True)
+
+    size = args.get("size") or "1hour"
+    time_of_day = args.get("time_of_day") or "morning"
+    max_results = args.get("max_results")
+    if max_results is None:
+        max_results = 10
+    try:
+        max_results = int(max_results)
+    except (TypeError, ValueError):
+        return _err(f"max_results must be int, got {max_results!r}",
+                    "invalid_args", with_entries=True)
+    if max_results < 0:
+        return _err(f"max_results must be >= 0, got {max_results}",
+                    "invalid_args", with_entries=True)
+    if max_results == 0:
+        max_results = 100
+
+    try:
+        size_min = _li._parse_size_minutes(size)
+    except ValueError as ex:
+        return _err(str(ex), "invalid_args", with_entries=True)
+
+    cal_id = args.get("calendar_id")
+    if cal_id is not None and (not isinstance(cal_id, str)
+                                or not cal_id.strip()):
+        return _err("calendar_id must be a non-empty string",
+                    "invalid_args", with_entries=True)
+    cal_id_norm = cal_id or "primary"
+
+    try:
+        tod_start, tod_end = _li._parse_time_of_day(time_of_day)
+    except ValueError as ex:
+        return _err(str(ex), "invalid_args", with_entries=True)
+    if tod_start >= tod_end:
+        return _err(f"time_of_day range invalid: {time_of_day!r}",
+                    "invalid_args", with_entries=True)
+
+    try:
+        from time_window_parser import parse_time_window
+        windows = [parse_time_window(w) for w in time_windows]
+    except (ImportError, ValueError) as ex:
+        return _err(str(ex), "invalid_args", with_entries=True)
+
+    # Read events da Google Calendar per ognuna delle finestre (merge).
+    busy: list[dict] = []
+    for (s_iso, e_iso) in windows:
+        argv = ["calendar", "list", "--calendar", cal_id_norm,
+                "--start", s_iso, "--end", e_iso, "--max", "250"]
+        data, err = _run_calendar(argv, executor="find_events_empty",
+                                    args_base=dict(args))
+        if err is not None:
+            if err.get("decision") == "needs_inputs":
+                return err
+            return {**err, "entries": [], "used": 0}
+        if isinstance(data, list):
+            for e in data:
+                s = e.get("start"); en = e.get("end")
+                if not (s and en):
+                    continue
+                try:
+                    s_dt = datetime.fromisoformat(s)
+                    e_dt = datetime.fromisoformat(en)
+                except ValueError:
+                    continue
+                # All-day events da Google: start/end sono `date` (no TZ).
+                # Normalizziamo a Europe/Rome cosi' i confronti con slot_start
+                # (offset-aware) non sollevano TypeError. §2.8 fail-safe.
+                if s_dt.tzinfo is None:
+                    s_dt = s_dt.replace(tzinfo=ROME)
+                if e_dt.tzinfo is None:
+                    e_dt = e_dt.replace(tzinfo=ROME)
+                busy.append({
+                    "start": s_dt, "end": e_dt,
+                    "summary": e.get("summary", ""),
+                    "uid": e.get("id", ""),
+                })
+
+    now = datetime.now(tz=ROME)
+    total_days = 0
+    for (s_iso, e_iso) in windows:
+        ws = datetime.fromisoformat(s_iso).date()
+        we = datetime.fromisoformat(e_iso).date()
+        total_days += (we - ws).days + 1
+    _arg_one = args.get("one_per_day")
+    one_per_day = (max_results <= total_days
+                    if _arg_one is None else bool(_arg_one))
+
+    all_slots: list[dict] = []
+    for (s_iso, e_iso) in windows:
+        win_start = datetime.fromisoformat(s_iso)
+        win_end = datetime.fromisoformat(e_iso)
+        remaining = max_results - len(all_slots)
+        if remaining <= 0:
+            break
+        slots = _li._generate_slots(
+            win_start, win_end, tod_start, tod_end, size_min,
+            remaining, busy, now,
+            one_per_day=one_per_day,
+        )
+        all_slots.extend(slots)
+
+    for s in all_slots:
+        s.setdefault("calendar_id", cal_id_norm)
+
+    return {
+        "ok": True,
+        "entries": all_slots,
+        "used": len(all_slots),
+        "available_total": len(all_slots),
+        "calendar_source": "google_workspace",
+        "calendar_id": cal_id_norm,
+    }

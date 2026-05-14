@@ -91,7 +91,21 @@ def extract_intent(query: str, llm_call) -> Optional[dict]:
         obj = None
     if not verb and not obj:
         return None
-    return {"verb": verb, "object": obj}
+    out = {"verb": verb, "object": obj}
+    # Enrichment ADR 0129: pattern intent-implicit. Detection deterministica
+    # (§7.9) di azioni mutating implicite — sostantivi che realizzano un
+    # OBJECT §2.2 in pipeline multi-azione dove manca il verbo mutating per
+    # quel object. Il PLANNER usa `implicit_actions` come hint strutturato
+    # (vedi `_core.j2` invariante IT/EN) per emettere lo step mutating
+    # mancante senza decisione LLM. Lista vuota se niente di implicito.
+    try:
+        from vocab import detect_implicit_actions
+        implicit = detect_implicit_actions(query)
+        if implicit:
+            out["implicit_actions"] = implicit
+    except Exception as _ex:
+        log.warning("detect_implicit_actions failed: %s", _ex)
+    return out
 
 
 def _parse_json(text: str) -> Optional[dict]:

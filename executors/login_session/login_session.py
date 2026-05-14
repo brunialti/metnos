@@ -124,7 +124,9 @@ def _earliest_expiry(jar: http.cookiejar.MozillaCookieJar,
     return out
 
 
-def invoke(args: dict) -> dict:
+def _invoke_default(args: dict) -> dict:
+    """Implementazione default httpx (urllib + credentials). Il dispatcher
+    `invoke()` instrada qui via `backends.urls.httpx_default`."""
     domain = args.get("domain")
     force = bool(args.get("force", False))
     timeout_s = float(args.get("timeout_s", 15.0))
@@ -280,6 +282,30 @@ def invoke(args: dict) -> dict:
         "domain": domain,
         "cookie_file": str(cookie_path),
     }
+
+
+# --- Dispatcher (refactor 13/5/2026, ADR pending) -------------------------
+_DEFAULT_CLIENT = "httpx"
+
+
+def _resolve_backend(client: str):
+    if client == "httpx":
+        from backends.urls import httpx_default
+        return httpx_default
+    if client == "playwright":
+        from backends.urls import playwright_stub
+        return playwright_stub
+    return None
+
+
+def invoke(args: dict) -> dict:
+    client = args.get("client") or _DEFAULT_CLIENT
+    backend = _resolve_backend(client)
+    if backend is None:
+        return {"ok": False,
+                "error": f"unsupported web client: {client!r}. "
+                         f"Available: ['httpx', 'playwright']"}
+    return backend.login(args)
 
 
 def main():

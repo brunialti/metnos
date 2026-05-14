@@ -42,57 +42,59 @@ class _FakeStreamResponse:
         self.eof_called += 1
 
 
-@pytest.mark.asyncio
-async def test_keepalive_emits_comment_periodically(monkeypatch):
+def test_keepalive_emits_comment_periodically(monkeypatch):
     """Il loop emette `: keepalive\\n\\n` su intervalli ripetuti.
 
     Comprimo l'intervallo a 0.05s e lascio girare ~0.18s → mi aspetto
     ~3 emissioni.
+
+    NB: `asyncio.run` invece di `@pytest.mark.asyncio` per non dipendere
+    dal plugin `pytest-asyncio` (non installato in questo ambiente).
     """
-    import http_routes_agent
-    monkeypatch.setattr(http_routes_agent, "SSE_KEEPALIVE_INTERVAL_S", 0.05)
+    async def _run():
+        import http_routes_agent
+        monkeypatch.setattr(http_routes_agent, "SSE_KEEPALIVE_INTERVAL_S", 0.05)
 
-    resp = _FakeStreamResponse()
-    task = asyncio.create_task(http_routes_agent._sse_keepalive_loop(resp))
-    await asyncio.sleep(0.18)
-    task.cancel()
-    try:
-        await task
-    except asyncio.CancelledError:
-        pass
+        resp = _FakeStreamResponse()
+        task = asyncio.create_task(http_routes_agent._sse_keepalive_loop(resp))
+        await asyncio.sleep(0.18)
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+        return resp
 
-    # Almeno 2 keepalive (timing safety: 0.18 / 0.05 = 3.6, ma JIT/CI varia)
+    resp = asyncio.run(_run())
     assert len(resp.writes) >= 2, f"expected >= 2 keepalive, got {len(resp.writes)}"
     for w in resp.writes:
         assert w == b": keepalive\n\n", f"unexpected payload: {w!r}"
 
 
-@pytest.mark.asyncio
-async def test_keepalive_loop_exits_on_connection_error(monkeypatch):
+def test_keepalive_loop_exits_on_connection_error(monkeypatch):
     """Se response.write solleva ConnectionResetError, il loop esce
-    silenzioso (non rilancia).
-    """
-    import http_routes_agent
-    monkeypatch.setattr(http_routes_agent, "SSE_KEEPALIVE_INTERVAL_S", 0.01)
+    silenzioso (non rilancia)."""
+    async def _run():
+        import http_routes_agent
+        monkeypatch.setattr(http_routes_agent, "SSE_KEEPALIVE_INTERVAL_S", 0.01)
+        resp = _FakeStreamResponse(raise_on_write=True)
+        await asyncio.wait_for(
+            http_routes_agent._sse_keepalive_loop(resp), timeout=0.5
+        )
+    asyncio.run(_run())
 
-    resp = _FakeStreamResponse(raise_on_write=True)
-    # Il loop deve completarsi da solo dopo il primo write fallito.
-    await asyncio.wait_for(
-        http_routes_agent._sse_keepalive_loop(resp), timeout=0.5
-    )
 
-
-@pytest.mark.asyncio
-async def test_close_active_sse_calls_write_eof_and_clears():
+def test_close_active_sse_calls_write_eof_and_clears():
     """close_active_sse itera app['sse_responses'] e chiama write_eof
     su ognuna; il set viene svuotato a fine."""
-    import http_routes_agent
+    async def _run():
+        import http_routes_agent
+        r1, r2, r3 = (_FakeStreamResponse() for _ in range(3))
+        fake_app = {"sse_responses": {r1, r2, r3}}
+        await http_routes_agent.close_active_sse(fake_app)
+        return r1, r2, r3, fake_app
 
-    r1, r2, r3 = (_FakeStreamResponse() for _ in range(3))
-    fake_app = {"sse_responses": {r1, r2, r3}}
-
-    await http_routes_agent.close_active_sse(fake_app)
-
+    r1, r2, r3, fake_app = asyncio.run(_run())
     assert r1.eof_called == 1
     assert r2.eof_called == 1
     assert r3.eof_called == 1

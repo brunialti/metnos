@@ -11,6 +11,34 @@ from pathlib import Path
 from unittest import mock
 
 import numpy as np
+import pytest
+
+
+def _has_tokenizers() -> bool:
+    try:
+        import tokenizers  # noqa: F401
+        return True
+    except ImportError:
+        return False
+
+
+_TOKENIZERS_REASON = (
+    "`tokenizers` mancante: pip install tokenizers (dep BGE-M3, ADR 0117)."
+)
+
+# Stub `bge_embedding` quando `tokenizers` non disponibile: il modulo
+# originale lo importa al top-level e crasha l'import. Lo stub permette
+# ai test di esercitare il dispatcher di `find_images_indices` con
+# `mock.patch("bge_embedding.BGEEmbeddingService", ...)` senza dep BGE.
+if not _has_tokenizers():
+    import types as _types
+    _stub = _types.ModuleType("bge_embedding")
+    class _StubBGEMissing:
+        def __init__(self, *a, **kw): pass
+        def embed_texts(self, texts):  # placeholder, overridden by mock.patch
+            return np.random.rand(len(texts), 384).astype("float32")
+    _stub.BGEEmbeddingService = _StubBGEMissing
+    sys.modules.setdefault("bge_embedding", _stub)
 
 _RUNTIME = Path(__file__).resolve().parent.parent
 _EXEC = _RUNTIME.parent / "executors" / "find_images_indices"

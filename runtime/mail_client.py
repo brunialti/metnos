@@ -42,7 +42,48 @@ def _read_env(path):
     return env
 
 
+def _load_from_credentials_store(account: str) -> dict | None:
+    """Tenta lettura dell'account dallo store cifrato `runtime.credentials`
+    (ADR 0089). Ritorna dict canonical o None se non presente.
+
+    Domain conventions:
+      `smtp_<account>` (es. `smtp_metnos_system`, `smtp_metnos_roberto`,
+      `smtp_mykleos`).
+    Payload schema atteso:
+      {imap_host, imap_port, smtp_host, smtp_port, user, password,
+       verify_tls?}.
+    Determinismo §7.9: lookup tabellare, no LLM, no network.
+    """
+    try:
+        import credentials as _cr
+    except ImportError:
+        return None
+    domain = f"smtp_{account}"
+    payload = _cr.load(domain)
+    if not isinstance(payload, dict):
+        return None
+    # Validazione minimale: deve avere almeno user + password.
+    if not payload.get("user") or not payload.get("password"):
+        return None
+    return {
+        "imap_host":  payload.get("imap_host", "imap.migadu.com"),
+        "imap_port":  int(payload.get("imap_port", 993)),
+        "smtp_host":  payload.get("smtp_host", "smtp.migadu.com"),
+        "smtp_port":  int(payload.get("smtp_port", 465)),
+        "user":       payload["user"],
+        "password":   payload["password"],
+        "verify_tls": bool(payload.get("verify_tls", True)),
+    }
+
+
 def _account_creds(account: str) -> dict:
+    # Layer 1 (ADR 0089 + ADR 0131, 14/5/2026): store cifrato Fernet
+    # come single source of truth. Se l'account NON e' nel store, fallback
+    # ai legacy file env (back-compat durante migrazione).
+    from_store = _load_from_credentials_store(account)
+    if from_store is not None:
+        return from_store
+
     if account in ("metnos_system", "metnos"):
         env = _read_env(Path.home() / ".config/metnos/mail.env")
         return {

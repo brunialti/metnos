@@ -227,6 +227,35 @@ DESTRUCTIVE_VERBS = frozenset({"move", "delete", "send", "write", "extract", "cr
 # upstream di un consumer come describe/filter/move/...).
 PRECURSOR_VERBS = ("read", "find", "list", "get")
 
+# Verbo MUTATING di default per ogni OBJECT (ADR 0129, 14/5/2026):
+# usato da `detect_implicit_actions` per il pattern intent-implicit.
+# Es. user dice «proponi appuntamento» (sostantivo "appuntamento" -> object
+# "events") senza verbo create esplicito; il default mutating per `events`
+# e' `create`, quindi l'azione implicita inferita e' `create_events`.
+# Lookup tabellare §7.9 — niente LLM, niente case-patch per dominio.
+# Closed table allineata ai 17 OBJECTS §2.2. None = nessun mutating default
+# per quel object (read-only-by-construction).
+OBJECT_DEFAULT_MUTATING_VERB: dict[str, str | None] = {
+    "files":      "write",
+    "dirs":       "create",
+    "packages":   None,        # install/upgrade non sono verbi vocab §2.2
+    "messages":   "send",
+    "events":     "create",
+    "contacts":   "set",
+    "places":     None,        # places sono entita' lookup-only
+    "processes":  None,        # kill/start sono fuori vocab §2.2
+    "urls":       None,        # urls sono fetched, non creati dall'utente
+    "numbers":    None,        # numeri sono compute-only
+    "images":     "create",
+    "signatures": "set",
+    "texts":      "write",
+    "proposals":  "set",       # approve/reject mappa a set (state upsert)
+    "inputs":     None,        # get_inputs e' lookup interno, no mutating
+    "credentials": "set",
+    "entries":    None,        # entries sono meta-oggetto in-memory
+}
+
+
 # Verbi safe-by-construction: read-only / pure-compute / output-only.
 # Il vaglio puo' approvarli per costruzione senza chiamare l'LLM giudice
 # (ADR 0107). Esclude tutto cio' che ha side effect (scrittura locale,
@@ -322,8 +351,10 @@ ACTION_MAPPING = {
         "boundary": "Modifica un valore di configurazione locale. Reversibile via diff.",
     },
     "send": {
-        "it": ["invia", "manda", "spedisci", "inoltra", "publica"],
-        "en": ["send", "deliver", "forward", "publish"],
+        "it": ["invia", "manda", "mandami", "spedisci", "inoltra", "publica",
+               "notifica", "notificami", "avvisami", "scrivimi"],
+        "en": ["send", "deliver", "forward", "publish",
+               "email", "notify", "message", "post", "tell"],
         "boundary": "Side-effect remoto (mail SMTP, push, webhook). Irreversibile.",
     },
     "describe": {
@@ -397,10 +428,12 @@ ACTION_MAPPING = {
 #
 # Razionale di assegnazione:
 # - `messages` → mail: IMAP + Google Workspace mail vivono insieme.
-# - `events` → calendar: calendario + Google Workspace (drive/sheets/docs/contacts).
-# - `contacts` → mail + calendar: rubrica e' usata sia per `to_user` (mail)
-#   sia per partecipanti agli eventi (calendar).
-# - `urls` → web: tutto il dominio crawler.
+# - `events` → calendar: calendario events (Google Calendar). Workspace
+#   non-calendar (drive/sheets/docs/contacts) vivono in sezioni dedicate.
+# - `contacts` → workspace/contacts + mail + calendar: rubrica e' usata sia
+#   per `to_user` (mail) sia per partecipanti agli eventi (calendar).
+# - `urls` → web/search + web/crawl + web/content: tutto il dominio crawler
+#   splittato in 3 sub-topic (12/5/2026, asse A refactor).
 # - `images`/`signatures` → photos: foto + face index + EXIF/GPS unified.
 #   `signatures` ospita anche safety policy (mount/admin) ma quel routing
 #   avviene via admin_shell quando l'intent e' shell-imperative; per le
@@ -412,17 +445,20 @@ ACTION_MAPPING = {
 # - `files`/`dirs`/`packages`/`places`/`numbers`/`texts`/`proposals`/`inputs`
 #   → [] (no sezione dedicata): coperti dal core (filesystem generico,
 #   compute, find_places, get_inputs UI). Il composer fallback aggiunge tutte
-#   le sezioni se la lista e' vuota (degrade graceful).
+#   le sezioni se la lista e' vuota (degrade graceful). Per `files`: non
+#   triggeriamo automaticamente workspace/drive|docs sull'object da solo —
+#   preferiamo MISS che over-load. La detection workspace passa per
+#   l'intent extractor o synonym piu' specifico (skill_vocab_map).
 _OBJECT_TO_SECTIONS: dict[str, tuple[str, ...]] = {
     "files": (),                  # generico FS, coperto dal core
     "dirs": (),                   # generico FS, coperto dal core
     "packages": (),               # find_packages: query verbale-deterministica
     "messages": ("mail",),
     "events": ("calendar",),
-    "contacts": ("mail", "calendar"),
+    "contacts": ("workspace/contacts", "mail", "calendar"),
     "places": (),                 # find_places: globale (con/senza get_location)
     "processes": ("system",),
-    "urls": ("web",),
+    "urls": ("web/search", "web/crawl", "web/content"),
     "numbers": (),                # compute scalare, coperto dal core
     "images": ("photos",),
     "signatures": ("admin_shell",),  # safety policy shell + mount
@@ -430,6 +466,7 @@ _OBJECT_TO_SECTIONS: dict[str, tuple[str, ...]] = {
     "proposals": (),              # admin proposals_cli, no PLANNER routing
     "inputs": (),                 # dialog UI, gestito dal runtime, no sezione
     "credentials": ("admin_shell",),
+    "entries": (),                # meta-oggetto runtime, no sezione dedicata
 }
 
 
@@ -444,7 +481,9 @@ def sections_for_object(obj: str | None) -> tuple[str, ...]:
         >>> sections_for_object("messages")
         ('mail',)
         >>> sections_for_object("contacts")
-        ('mail', 'calendar')
+        ('workspace/contacts', 'mail', 'calendar')
+        >>> sections_for_object("urls")
+        ('web/search', 'web/crawl', 'web/content')
         >>> sections_for_object("files")
         ()
         >>> sections_for_object(None)
@@ -635,6 +674,174 @@ def canonical_object(token: str | None) -> str | None:
     if t in _OBJECT_SYNONYMS_EN:
         return _OBJECT_SYNONYMS_EN[t]
     return None
+
+
+def detect_implicit_actions(query: str,
+                             explicit_verbs: list[str] | None = None,
+                             ) -> list[dict]:
+    """Pattern intent-implicit cross-domain (ADR 0129, 14/5/2026).
+
+    Dato `query` testuale, identifica i sostantivi che realizzano un OBJECT
+    §2.2 (via `canonical_object`). Per ognuno controlla se la query contiene
+    un verbo MUTATING esplicito per quell'OBJECT. Se NO, emette una entry
+    `implicit_action` con strategia di risoluzione (auto/ask/skip) basata
+    su confidence deterministica.
+
+    `explicit_verbs` (opzionale): lista dei verbi canonici gia' rilevati
+    dalla query (es. da `prefilter.detect_canonical_verbs_all`). Se omesso,
+    chiama il detector internamente.
+
+    Ritorna lista (vuota se niente di implicito o conf<0.6). Ogni entry:
+        {
+            "verb": "<verb>_<object>",      # tool name canonico, es. "create_events"
+            "object": "events",
+            "noun_token": "appuntamento",   # sostantivo trovato in query
+            "verb_canonical": "create",     # azione §2.2
+            "confidence": 0.85,
+            "strategy": "auto" | "ask" | "skip",
+            "rationale": "noun '<token>' -> events, mutating verb 'create' missing",
+        }
+
+    Determinismo §7.9: lookup tabellare + token scan, niente LLM.
+
+    Heuristica confidence:
+      - base 0.7 per single noun→object match
+      - +0.10 se verbo principale e' producer (find/get/list/read) → chiaro
+        che l'oggetto e' destinatario di un'azione mutating successiva
+      - +0.05 se default mutating verb del object e' reversible (create/set
+        coperti da reverse_pattern §2.3)
+      - -0.20 se OBJECT.default_mutating e' None (nessun default canonico)
+    Strategy:
+      - auto:  confidence >= 0.85
+      - ask:   0.60 <= confidence < 0.85
+      - skip:  confidence < 0.60 (entry non emessa)
+
+    NB: §7.3 niente case-patch per dominio. Tutti i 17 OBJECTS §2.2 passano
+    dallo stesso lookup. Threshold/peso e' parametrico, non hardcoded.
+    """
+    if not query or not isinstance(query, str):
+        return []
+    try:
+        from prefilter import tokenize, detect_canonical_verbs_all
+    except ImportError:
+        return []
+
+    tokens = tokenize(query)
+    detected_verbs = (explicit_verbs
+                      if explicit_verbs is not None
+                      else detect_canonical_verbs_all(tokens))
+    detected_verbs_set = set(detected_verbs)
+
+    # Bigram-aware verb detection per parole verbo-noun-omonime
+    # (commento prefilter.py riga 81-83): «email», «mail», «message»,
+    # «text» sono esclusi dai single-token verb lookup perche' usati
+    # piu' spesso come nomi. Qui rilevamo i bigrammi tipici dove la
+    # parola SI riferisce a un'azione (verbo + pronome 1a persona o
+    # complemento esplicito). §7.3 generale: lookup tabellare bilingue.
+    _BIGRAM_VERB_HINTS = {
+        "send": (
+            # EN: verbo+pronome 1a pers
+            "email me", "mail me", "message me", "text me", "tell me",
+            "let me know", "ping me", "shoot me",
+            # IT: forme idiomatiche di notifica
+            "mandami una email", "mandami una mail", "mandami un messaggio",
+            "mandami un'email", "mandami un'e-mail",
+            "fammi sapere", "tienimi al corrente", "tienimi informato",
+        ),
+    }
+    q_low = query.lower()
+    for verb_canon, patterns in _BIGRAM_VERB_HINTS.items():
+        if any(p in q_low for p in patterns):
+            detected_verbs_set.add(verb_canon)
+
+    # Mappa OBJECT → verbi mutating canonici gia' presenti nella query
+    # (per fare il check "covered" per ogni object trovato).
+    mutating_in_query = {v for v in detected_verbs_set if v in DESTRUCTIVE_VERBS}
+    # Boost se TUTTI i verbi della query sono read-only (SAFE_VERBS):
+    # significa che la query e' «cerca/proponi/leggi X + manda email» tipica,
+    # dove l'azione mutating per X e' implicita e quasi sempre intesa. Se la
+    # query gia' contiene un verbo mutating per QUALSIASI altro object (es.
+    # «manda email...»), e' marker di pipeline multi-azione, e per l'object
+    # rimasto «orfano» il default mutating e' altamente probabile.
+    is_producer_principal = (
+        all(v in SAFE_VERBS or v in DESTRUCTIVE_VERBS for v in detected_verbs_set)
+        and any(v in SAFE_VERBS for v in detected_verbs_set)
+    )
+
+    # Condizione necessaria: la query DEVE avere almeno un verbo mutating
+    # esplicito per qualcosa (=> e' una pipeline multi-azione). Altrimenti la
+    # query e' read-only single-purpose («cerca file pdf») e nessuna azione
+    # implicita ha senso — sarebbe falso positivo. Pattern intent-implicit
+    # vale solo per «pipeline incompleta», non per «niente da fare».
+    if not mutating_in_query:
+        return []
+
+    # Reversible defaults — riferiti a reverse_patterns.py §2.3:
+    # create/set hanno reverse `delete_<object>_by_id`. send/write/move/share
+    # variano caso per caso (move ha swap_src_dst, send non e' reversibile).
+    _REVERSIBLE_DEFAULTS = {"create", "set", "move"}
+
+    # Raccolgo gli object detected via canonical_object (preservando l'ordine).
+    seen_objects: set[str] = set()
+    detected_objects: list[tuple[str, str]] = []  # (noun_token, obj_canon)
+    for tok in tokens:
+        t = tok.lower().strip()
+        obj_canon = canonical_object(t)
+        if obj_canon is None or obj_canon in seen_objects:
+            continue
+        seen_objects.add(obj_canon)
+        detected_objects.append((t, obj_canon))
+
+    # Pattern intent-implicit: «pipeline incompleta» = N object distinti > M mutating
+    # verbs distinti in query. Cap orfani = max(0, N - M).
+    # Candidato orfano = object il cui default_verb NON e' in mutating_in_query
+    # (cioe' il LLM non ha gia' fornito un'azione mutating canonica per esso).
+    n_objects = len(detected_objects)
+    n_mut = len(mutating_in_query)
+    orphan_cap = max(0, n_objects - n_mut)
+    if orphan_cap == 0:
+        return []
+    orphan_candidates = [
+        (t, obj_canon) for (t, obj_canon) in detected_objects
+        if (OBJECT_DEFAULT_MUTATING_VERB.get(obj_canon) or "") not in mutating_in_query
+    ]
+    orphan_objects = orphan_candidates[:orphan_cap]
+
+    out: list[dict] = []
+    for t, obj_canon in orphan_objects:
+        default_verb = OBJECT_DEFAULT_MUTATING_VERB.get(obj_canon)
+        if not default_verb:
+            continue  # object senza mutating canonico (places/urls/...)
+
+        # Calcolo confidence
+        conf = 0.70
+        if is_producer_principal:
+            conf += 0.10
+        if default_verb in _REVERSIBLE_DEFAULTS:
+            conf += 0.05
+
+        # Strategy
+        if conf >= 0.85:
+            strategy = "auto"
+        elif conf >= 0.60:
+            strategy = "ask"
+        else:
+            continue  # skip
+
+        out.append({
+            "verb": f"{default_verb}_{obj_canon}",
+            "object": obj_canon,
+            "noun_token": t,
+            "verb_canonical": default_verb,
+            "confidence": round(conf, 2),
+            "strategy": strategy,
+            "rationale": (
+                f"noun '{t}' -> {obj_canon}, mutating verb "
+                f"'{default_verb}' missing in query"
+            ),
+        })
+
+    return out
 
 
 def lookup_imported_for_intent(verb: str, object_token: str) -> list[str]:

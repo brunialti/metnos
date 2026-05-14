@@ -22,8 +22,7 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-_EXEC_DIR = Path.home() / ".local" / "share" / "metnos" / "executors" / \
-    "_imports" / "google-workspace" / "find_events_empty"
+_EXEC_DIR = Path("/opt/myclaw/executors/find_events_empty")
 _RUNTIME = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_EXEC_DIR))
 sys.path.insert(0, str(_RUNTIME))
@@ -36,6 +35,15 @@ def _now_for(year=2026, month=5, day=15, hour=8):
     return datetime(year, month, day, hour, 0, tzinfo=ROME)
 
 
+def _patch_now(monkeypatch, now_value):
+    """Allinea `now` deterministico fra `time_window_parser` e backend
+    `local_ics` (refactor 13/5/2026: backend ha proprio `datetime.now`)."""
+    fake = _FakeDatetime(now_value)
+    monkeypatch.setattr("time_window_parser.datetime", fake)
+    from backends.events import local_ics as _li
+    monkeypatch.setattr(_li, "datetime", fake)
+
+
 def _iso(y, m, d, hh, mm=0):
     """Helper costruzione ISO string con offset Europe/Rome."""
     dt = datetime(y, m, d, hh, mm, tzinfo=ROME)
@@ -45,26 +53,99 @@ def _iso(y, m, d, hh, mm=0):
 
 @pytest.fixture
 def fee(monkeypatch):
-    """Re-import find_events_empty fresh per test isolation + patcha
-    _invoke_read_events per iniettare entries fake."""
+    """Re-import find_events_empty fresh per test isolation. Forza
+    `_default_client → 'local'` (refactor 14/5/2026 google_workspace
+    backend): senza patch i test girerebbero contro Google Calendar
+    reale tramite il default auto-detect."""
     if "find_events_empty" in sys.modules:
         del sys.modules["find_events_empty"]
     mod = importlib.import_module("find_events_empty")
+    monkeypatch.setattr(mod, "_default_client", lambda: "local")
     return mod
 
 
-def _patch_read_events(mod, entries, ok=True, error_class=None, decision=None):
-    """Inietta in mod._invoke_read_events una funzione che ritorna entries
-    deterministiche. Convention: ok=True con entries; ok=False con error_class."""
-    def fake(time_window, calendar_id):
+@pytest.fixture
+def patch_calendar(monkeypatch):
+    """Iniezione mock backend `local_ics` con cleanup automatico (monkeypatch)."""
+    from backends.events import local_ics as _li
+
+    def _do(mod, entries, ok=True, error_class=None, decision=None):
         if not ok:
-            out = {"ok": False, "error": "fake", "error_class": error_class
-                   or "server_error", "entries": []}
+            def fake_find(args):
+                out = {"ok": False, "error": "fake",
+                       "error_class": error_class or "server_error",
+                       "entries": [], "used": 0}
+                if decision:
+                    out["decision"] = decision
+                return out
+            monkeypatch.setattr(_li, "find_events_empty", fake_find)
+            return
+
+        def fake_load(_path):
+            out = []
+            for e in entries:
+                s = e.get("start"); en = e.get("end")
+                if isinstance(s, str):
+                    s = datetime.fromisoformat(s)
+                if isinstance(en, str):
+                    en = datetime.fromisoformat(en)
+                if s is None or en is None:
+                    continue
+                out.append({
+                    "start": s, "end": en,
+                    "summary": e.get("summary", ""),
+                    "uid": e.get("uid", ""),
+                })
+            return out
+        monkeypatch.setattr(_li, "_load_events", fake_load)
+    return _do
+
+
+def _patch_read_events(mod, entries, ok=True, error_class=None, decision=None):
+    """Legacy shim: applica mock SENZA monkeypatch cleanup — quando il test
+    non riceve `patch_calendar` come fixture. Sconsigliato per nuovi test
+    (può causare test pollution). Tenuto per minimizzare la diff."""
+    from backends.events import local_ics as _li
+    if not ok:
+        def fake_find(args):
+            out = {"ok": False, "error": "fake",
+                   "error_class": error_class or "server_error",
+                   "entries": [], "used": 0}
             if decision:
                 out["decision"] = decision
             return out
-        return {"ok": True, "entries": entries, "used": len(entries)}
-    mod._invoke_read_events = fake
+        _li.find_events_empty = fake_find
+        return
+
+    def fake_load(_path):
+        out = []
+        for e in entries:
+            s = e.get("start"); en = e.get("end")
+            if isinstance(s, str):
+                s = datetime.fromisoformat(s)
+            if isinstance(en, str):
+                en = datetime.fromisoformat(en)
+            if s is None or en is None:
+                continue
+            out.append({
+                "start": s, "end": en,
+                "summary": e.get("summary", ""),
+                "uid": e.get("uid", ""),
+            })
+        return out
+    _li._load_events = fake_load
+
+
+@pytest.fixture(autouse=True)
+def _reset_local_ics_mocks():
+    """Reset mocks su local_ics fra test (cleanup test pollution
+    da `_patch_read_events` legacy senza monkeypatch)."""
+    from backends.events import local_ics as _li
+    orig_load = _li._load_events
+    orig_find = _li.find_events_empty
+    yield
+    _li._load_events = orig_load
+    _li.find_events_empty = orig_find
 
 
 # --------------------------------------------------------------------------
@@ -73,10 +154,7 @@ def _patch_read_events(mod, entries, ok=True, error_class=None, decision=None):
 
 def test_default_time_windows_uses_next_week(fee, monkeypatch):
     """Senza time_windows, default ['next-week'] (NON e' un required)."""
-    monkeypatch.setattr(
-        "time_window_parser.datetime",
-        _FakeDatetime(_now_for(2026, 5, 12, 8)),
-    )
+    _patch_now(monkeypatch, _now_for(2026, 5, 12, 8))
     _patch_read_events(fee, [])
     r = fee.invoke({})
     assert r["ok"] is True
@@ -130,10 +208,7 @@ def test_time_windows_string_normalized_to_list(fee, monkeypatch):
     """Backward-tolerant: passare una stringa singola e' accettato (e
     normalizzato a lista N=1) per non rompere chi continua a passare
     `time_windows="tomorrow"` come scalare durante la migrazione."""
-    monkeypatch.setattr(
-        "time_window_parser.datetime",
-        _FakeDatetime(_now_for(2026, 5, 12, 8)),
-    )
+    _patch_now(monkeypatch, _now_for(2026, 5, 12, 8))
     _patch_read_events(fee, [])
     r = fee.invoke({"time_windows": "tomorrow", "size": "30min"})
     assert r["ok"] is True
@@ -146,10 +221,7 @@ def test_time_windows_string_normalized_to_list(fee, monkeypatch):
 def test_empty_calendar_returns_whole_window(fee, monkeypatch):
     # tomorrow = 2026-05-13 con now=2026-05-12 fittizio.
     # Senza eventi, la finestra «tomorrow» dovrebbe essere tutta libera.
-    monkeypatch.setattr(
-        "time_window_parser.datetime",
-        _FakeDatetime(_now_for(2026, 5, 12, 8)),
-    )
+    _patch_now(monkeypatch, _now_for(2026, 5, 12, 8))
     _patch_read_events(fee, [])
     r = fee.invoke({"time_windows": ["tomorrow"], "size": "60min",
                     "max_results": 5})
@@ -162,10 +234,7 @@ def test_empty_calendar_returns_whole_window(fee, monkeypatch):
 
 def test_busy_morning_free_afternoon(fee, monkeypatch):
     """Un evento 09:00-12:00 dovrebbe lasciare il pomeriggio libero."""
-    monkeypatch.setattr(
-        "time_window_parser.datetime",
-        _FakeDatetime(_now_for(2026, 5, 12, 8)),
-    )
+    _patch_now(monkeypatch, _now_for(2026, 5, 12, 8))
     busy = [{"start": _iso(2026, 5, 13, 9), "end": _iso(2026, 5, 13, 12)}]
     _patch_read_events(fee, busy)
     r = fee.invoke({"time_windows": ["tomorrow"], "size": "30min",
@@ -181,10 +250,7 @@ def test_busy_morning_free_afternoon(fee, monkeypatch):
 
 def test_back_to_back_events_merge(fee, monkeypatch):
     """Due eventi adiacenti 09-10 e 10-12 devono fondersi (no slot fra)."""
-    monkeypatch.setattr(
-        "time_window_parser.datetime",
-        _FakeDatetime(_now_for(2026, 5, 12, 8)),
-    )
+    _patch_now(monkeypatch, _now_for(2026, 5, 12, 8))
     busy = [
         {"start": _iso(2026, 5, 13, 9), "end": _iso(2026, 5, 13, 10)},
         {"start": _iso(2026, 5, 13, 10), "end": _iso(2026, 5, 13, 12)},
@@ -203,10 +269,7 @@ def test_back_to_back_events_merge(fee, monkeypatch):
 
 
 def test_overlapping_events_merge(fee, monkeypatch):
-    monkeypatch.setattr(
-        "time_window_parser.datetime",
-        _FakeDatetime(_now_for(2026, 5, 12, 8)),
-    )
+    _patch_now(monkeypatch, _now_for(2026, 5, 12, 8))
     # Eventi overlap: 09-11 e 10-12 -> busy effettivo 09-12.
     busy = [
         {"start": _iso(2026, 5, 13, 9), "end": _iso(2026, 5, 13, 11)},
@@ -226,10 +289,7 @@ def test_overlapping_events_merge(fee, monkeypatch):
 # --------------------------------------------------------------------------
 
 def test_morning_keyword_filter(fee, monkeypatch):
-    monkeypatch.setattr(
-        "time_window_parser.datetime",
-        _FakeDatetime(_now_for(2026, 5, 12, 8)),
-    )
+    _patch_now(monkeypatch, _now_for(2026, 5, 12, 8))
     _patch_read_events(fee, [])
     r = fee.invoke({"time_windows": ["tomorrow"], "time_of_day": "morning",
                     "size": "30min", "max_results": 20})
@@ -242,10 +302,7 @@ def test_morning_keyword_filter(fee, monkeypatch):
 
 
 def test_custom_range_filter(fee, monkeypatch):
-    monkeypatch.setattr(
-        "time_window_parser.datetime",
-        _FakeDatetime(_now_for(2026, 5, 12, 8)),
-    )
+    _patch_now(monkeypatch, _now_for(2026, 5, 12, 8))
     _patch_read_events(fee, [])
     r = fee.invoke({"time_windows": ["tomorrow"], "time_of_day": "14:00-16:00",
                     "size": "30min"})
@@ -261,10 +318,7 @@ def test_custom_range_filter(fee, monkeypatch):
 
 def test_short_gaps_excluded_by_size(fee, monkeypatch):
     """Gap da 30 min dovrebbe essere scartato se size='60min'."""
-    monkeypatch.setattr(
-        "time_window_parser.datetime",
-        _FakeDatetime(_now_for(2026, 5, 12, 8)),
-    )
+    _patch_now(monkeypatch, _now_for(2026, 5, 12, 8))
     busy = [
         {"start": _iso(2026, 5, 13, 9), "end": _iso(2026, 5, 13, 10)},
         {"start": _iso(2026, 5, 13, 10, 30), "end": _iso(2026, 5, 13, 12)},
@@ -280,10 +334,7 @@ def test_short_gaps_excluded_by_size(fee, monkeypatch):
 
 def test_size_hour_unit(fee, monkeypatch):
     """size '1hour' equivalent to '60min': stesso filtering."""
-    monkeypatch.setattr(
-        "time_window_parser.datetime",
-        _FakeDatetime(_now_for(2026, 5, 12, 8)),
-    )
+    _patch_now(monkeypatch, _now_for(2026, 5, 12, 8))
     busy = [
         {"start": _iso(2026, 5, 13, 9), "end": _iso(2026, 5, 13, 10)},
         {"start": _iso(2026, 5, 13, 10, 30), "end": _iso(2026, 5, 13, 12)},
@@ -291,11 +342,10 @@ def test_size_hour_unit(fee, monkeypatch):
     _patch_read_events(fee, busy)
     r1 = fee.invoke({"time_windows": ["tomorrow"], "size": "60min",
                     "time_of_day": "09:00-12:00"})
-    if "find_events_empty" in sys.modules:
-        del sys.modules["find_events_empty"]
-    import find_events_empty as fee2  # reimport per re-fakear
-    fee2._invoke_read_events = fee._invoke_read_events
-    r2 = fee2.invoke({"time_windows": ["tomorrow"], "size": "1hour",
+    # `_patch_read_events` ha gia' iniettato `_load_events` sul backend
+    # `local_ics` condiviso fra moduli (reimport find_events_empty non resetta
+    # il backend). Stesso busy → stesso risultato per "1hour" alias di "60min".
+    r2 = fee.invoke({"time_windows": ["tomorrow"], "size": "1hour",
                      "time_of_day": "09:00-12:00"})
     assert r1["entries"] == r2["entries"]
 
@@ -305,10 +355,7 @@ def test_size_hour_unit(fee, monkeypatch):
 # --------------------------------------------------------------------------
 
 def test_max_results_truncates(fee, monkeypatch):
-    monkeypatch.setattr(
-        "time_window_parser.datetime",
-        _FakeDatetime(_now_for(2026, 5, 12, 8)),
-    )
+    _patch_now(monkeypatch, _now_for(2026, 5, 12, 8))
     _patch_read_events(fee, [])
     # Finestra "next-7d" senza eventi -> diversi slot mattutini disponibili.
     r = fee.invoke({"time_windows": ["next-7d"], "time_of_day": "morning",
@@ -324,10 +371,7 @@ def test_max_results_truncates(fee, monkeypatch):
 
 
 def test_max_results_zero_means_no_cap(fee, monkeypatch):
-    monkeypatch.setattr(
-        "time_window_parser.datetime",
-        _FakeDatetime(_now_for(2026, 5, 12, 8)),
-    )
+    _patch_now(monkeypatch, _now_for(2026, 5, 12, 8))
     _patch_read_events(fee, [])
     r = fee.invoke({"time_windows": ["next-3d"], "max_results": 0,
                     "size": "60min", "time_of_day": "morning"})
@@ -340,10 +384,7 @@ def test_max_results_zero_means_no_cap(fee, monkeypatch):
 # --------------------------------------------------------------------------
 
 def test_all_busy_returns_empty(fee, monkeypatch):
-    monkeypatch.setattr(
-        "time_window_parser.datetime",
-        _FakeDatetime(_now_for(2026, 5, 12, 8)),
-    )
+    _patch_now(monkeypatch, _now_for(2026, 5, 12, 8))
     # Evento copre 06:00-22:00 (tutta la giornata utile).
     busy = [{"start": _iso(2026, 5, 13, 0), "end": _iso(2026, 5, 13, 23, 59)}]
     _patch_read_events(fee, busy)
@@ -354,10 +395,7 @@ def test_all_busy_returns_empty(fee, monkeypatch):
 
 
 def test_iso_range_window(fee, monkeypatch):
-    monkeypatch.setattr(
-        "time_window_parser.datetime",
-        _FakeDatetime(_now_for(2026, 5, 12, 8)),
-    )
+    _patch_now(monkeypatch, _now_for(2026, 5, 12, 8))
     _patch_read_events(fee, [])
     r = fee.invoke({"time_windows": ["2026-05-13/2026-05-13"],
                     "size": "60min", "time_of_day": "morning"})
@@ -372,10 +410,7 @@ def test_iso_range_window(fee, monkeypatch):
 # --------------------------------------------------------------------------
 
 def test_propagates_auth_required(fee, monkeypatch):
-    monkeypatch.setattr(
-        "time_window_parser.datetime",
-        _FakeDatetime(_now_for(2026, 5, 12, 8)),
-    )
+    _patch_now(monkeypatch, _now_for(2026, 5, 12, 8))
     _patch_read_events(fee, [], ok=False, error_class="auth_required")
     r = fee.invoke({"time_windows": ["tomorrow"]})
     assert r["ok"] is False
@@ -383,17 +418,11 @@ def test_propagates_auth_required(fee, monkeypatch):
 
 
 def test_propagates_needs_inputs(fee, monkeypatch):
-    monkeypatch.setattr(
-        "time_window_parser.datetime",
-        _FakeDatetime(_now_for(2026, 5, 12, 8)),
+    _patch_now(monkeypatch, _now_for(2026, 5, 12, 8))
+    _patch_read_events(
+        fee, [], ok=False, error_class="auth_required",
+        decision="needs_inputs",
     )
-    def fake(time_window, calendar_id):
-        return {
-            "ok": True, "decision": "needs_inputs",
-            "needs_inputs": {"title": "OAuth", "dialog": [], "fmt": "form"},
-            "entries": [], "error_class": "auth_required",
-        }
-    fee._invoke_read_events = fake
     r = fee.invoke({"time_windows": ["tomorrow"]})
     assert r.get("decision") == "needs_inputs"
 
@@ -403,10 +432,7 @@ def test_propagates_needs_inputs(fee, monkeypatch):
 # --------------------------------------------------------------------------
 
 def test_entries_schema_stable(fee, monkeypatch):
-    monkeypatch.setattr(
-        "time_window_parser.datetime",
-        _FakeDatetime(_now_for(2026, 5, 12, 8)),
-    )
+    _patch_now(monkeypatch, _now_for(2026, 5, 12, 8))
     _patch_read_events(fee, [])
     r = fee.invoke({"time_windows": ["tomorrow"], "size": "30min",
                     "time_of_day": "morning"})
@@ -423,50 +449,62 @@ def test_entries_schema_stable(fee, monkeypatch):
 # 9. _parse_size_to_minutes parser (deterministico §7.9)
 # --------------------------------------------------------------------------
 
+def _parse_size_via_backend(spec):
+    """Bridge alla nuova API `backends.events.local_ics._parse_size_minutes`
+    (refactor 13/5/2026, dispatcher canonical): API moderna `raise ValueError`,
+    test parse_size mantenuti come tuple `(n, err)` per leggibilita'."""
+    from backends.events import local_ics
+    try:
+        return local_ics._parse_size_minutes(spec), None
+    except (ValueError, TypeError) as e:
+        return None, str(e)
+
+
 def test_parse_size_1hour(fee):
-    n, err = fee._parse_size_to_minutes("1hour")
+    n, err = _parse_size_via_backend("1hour")
     assert err is None
     assert n == 60
 
 
 def test_parse_size_60min(fee):
-    n, err = fee._parse_size_to_minutes("60min")
+    n, err = _parse_size_via_backend("60min")
     assert err is None
     assert n == 60
 
 
 def test_parse_size_30_space_min(fee):
-    n, err = fee._parse_size_to_minutes("30 min")
+    n, err = _parse_size_via_backend("30 min")
     assert err is None
     assert n == 30
 
 
 def test_parse_size_2_hours(fee):
-    n, err = fee._parse_size_to_minutes("2 hours")
+    n, err = _parse_size_via_backend("2 hours")
     assert err is None
     assert n == 120
 
 
 def test_parse_size_bare_number_is_minutes(fee):
-    n, err = fee._parse_size_to_minutes("90")
+    n, err = _parse_size_via_backend("90")
     assert err is None
     assert n == 90
 
 
-def test_parse_size_zero_ok(fee):
-    n, err = fee._parse_size_to_minutes("0")
-    assert err is None
-    assert n == 0
+def test_parse_size_zero_fails(fee):
+    """Durata slot 0 non ha senso (≠ cap §2.4): API moderna raise."""
+    n, err = _parse_size_via_backend("0")
+    assert n is None
+    assert err is not None and ("positive" in err or "size" in err)
 
 
 def test_parse_size_malformed(fee):
-    n, err = fee._parse_size_to_minutes("tanto")
+    n, err = _parse_size_via_backend("tanto")
     assert n is None
     assert err is not None and "size" in err
 
 
 def test_parse_size_none(fee):
-    n, err = fee._parse_size_to_minutes(None)
+    n, err = _parse_size_via_backend(None)
     assert n is None
     assert err is not None
 
@@ -477,10 +515,7 @@ def test_parse_size_none(fee):
 
 def test_multi_time_windows_accumulate(fee, monkeypatch):
     """Due finestre disgiunte accumulano slot ordinati."""
-    monkeypatch.setattr(
-        "time_window_parser.datetime",
-        _FakeDatetime(_now_for(2026, 5, 12, 8)),
-    )
+    _patch_now(monkeypatch, _now_for(2026, 5, 12, 8))
     _patch_read_events(fee, [])
     r = fee.invoke({
         "time_windows": ["2026-05-13/2026-05-13", "2026-05-15/2026-05-15"],

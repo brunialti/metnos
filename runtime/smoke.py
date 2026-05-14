@@ -379,16 +379,17 @@ def _run_smoke_with_tool_assertion(case: dict, *, catalog=None) -> dict:
             return {"query": q, "ok": True, "skip": True,
                     "reason": f"catalog load failed: {ex}"}
     # Bag-of-words intent (deterministic, no LLM): vince per smoke.
+    # Se intent vuoto (es. "che ora e?" — vedi commento §_bow_intent_for_smoke
+    # riga 348-353), salta direttamente al fallback `rank` plain text-based,
+    # che pesca per affinity. Niente skip a priori.
     intent = _bow_intent_for_smoke(q)
-    if not intent:
-        return {"query": q, "ok": True, "skip": True, "reason": "no intent"}
-    try:
-        ranked = rank_with_intent(q, catalog, intent, k=5) or []
-    except Exception as ex:
-        return {"query": q, "ok": True, "skip": True,
-                "reason": f"rank failed: {ex}"}
-    # Fallback: se prefilter ritorna [] o None (object non matched),
-    # tenta `rank` plain text-based (puo' essere piu' tollerante).
+    ranked: list = []
+    if intent:
+        try:
+            ranked = rank_with_intent(q, catalog, intent, k=5) or []
+        except Exception as ex:
+            return {"query": q, "ok": True, "skip": True,
+                    "reason": f"rank failed: {ex}"}
     if not ranked:
         try:
             from prefilter import rank as _rank_plain

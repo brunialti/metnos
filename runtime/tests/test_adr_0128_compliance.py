@@ -24,6 +24,10 @@ import pytest
 IMPORTS_ROOT = Path.home() / ".local/share/metnos/executors/_imports/google-workspace"
 
 # Tabella di rinominazione (old, new) per asserire la fine del drift.
+# Eccezione: `set_events → create_events` (14/5/2026) e' stato promosso a
+# CANONICAL dispatcher in /opt/myclaw/executors/create_events/ (refactor
+# 13/5/2026, plugin area calendar). Non e' piu' un import google-workspace.
+# Il check di rinomina lo tratta a parte (vedi `test_create_events_promoted`).
 RENAMES = [
     ("change_files_text",  "write_files_text"),
     ("change_files_xlsx",  "set_files_xlsx"),    # nota: nome riassegnato (era sheets.create, ora sheets.update)
@@ -31,7 +35,6 @@ RENAMES = [
     ("set_files",          "share_files_google_workspace"),
     ("set_files_text",     "create_files_text"),
     ("set_files_xlsx",     "create_files_xlsx"),  # era sheets.create -> create_files_xlsx
-    ("set_events",         "create_events"),
 ]
 
 NEW_NAMES_EXPECTED = {
@@ -41,8 +44,19 @@ NEW_NAMES_EXPECTED = {
     "share_files_google_workspace",
     "create_files_text",
     "create_files_xlsx",
-    "create_events",
 }
+
+
+def test_create_events_promoted_to_canonical():
+    """set_events → create_events e' canonical dispatcher (13/5/2026),
+    NON un import google-workspace. Verifica presenza nel registry canonical."""
+    canonical = Path("/opt/myclaw/executors/create_events")
+    assert canonical.is_dir(), (
+        f"create_events deve essere canonical in {canonical} (refactor 13/5/2026)"
+    )
+    assert (canonical / "manifest.toml").is_file()
+    assert (canonical / "manifest.toml.sig").is_file()
+    assert (canonical / "create_events.py").is_file()
 
 
 @pytest.fixture(scope="module")
