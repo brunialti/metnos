@@ -1329,6 +1329,35 @@ def _should_resume_planner_after_dialog(query: str, route_info,
     return False
 
 
+def _inject_get_inputs_choice_for_propose(*, entries: list,
+                                            object_canonical: str
+                                            ) -> dict | None:
+    """Costruisce args deterministici per `get_inputs(kind=choice)` quando
+    siamo in pipeline propose+notify dopo `find_events_empty` (ADR 0129
+    extended, 14/5/2026 sera).
+
+    Determinismo §7.9: nessun LLM, lookup tabellare per object_canonical
+    (oggi solo `events`; estendere quando emerge altro pattern).
+    """
+    if not entries:
+        return None
+    if object_canonical == "events":
+        return {
+            "title": "Scegli l'orario per l'appuntamento",
+            "entries": entries,
+            "dialog": [{
+                "var": "scelta",
+                "prompt": "Quale orario preferisci per l'appuntamento?",
+                "schema": {
+                    "kind": "choice",
+                    "display_template": "{when_human}",
+                    "value_field": "start",
+                },
+            }],
+        }
+    return None
+
+
 def _snapshot_scratchpad(history_for_refs) -> list:
     """Snapshot serializzabile JSON dello scratchpad per il resume callback.
 
@@ -3791,6 +3820,26 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
                 except ValueError:
                     _chat_kwargs["reasoning_budget"] = 768 if step_num == _loop_start_step else 256
 
+            # ADR 0133: grammar-constrained tool_call opt-in via env.
+            # `METNOS_GRAMMAR=1` → genera grammar GBNF dal pool tools_for_step
+            # e forza il LLM a emettere SOLO JSON tool_call valido. Risolve
+            # bug PLANNER fragility (thinking loop, prosa al posto di
+            # tool_call). Implicitamente disabilita thinking per quel call
+            # (grammar + thinking + max_tokens collidono). §7.9 deterministico.
+            if os.environ.get("METNOS_GRAMMAR", "0") == "1":
+                try:
+                    from tool_grammar import generate_tool_grammar
+                    _grammar = generate_tool_grammar(tools_for_step)
+                    if _grammar:
+                        _chat_kwargs["grammar"] = _grammar
+                        # Grammar mode → think=False forzato dal provider stesso.
+                        if verbose:
+                            print(f"[grammar] step {step_num}: "
+                                  f"grammar {len(_grammar)} chars su "
+                                  f"{len(tools_for_step)} tools")
+                except Exception as _ex:
+                    log.warning("grammar generation failed: %s", _ex)
+
         try:
             r = provider.chat_with_tools(
                 planner_system, user_query_for_run, tools_for_step,
@@ -3843,6 +3892,60 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
         raw_args = tc.arguments if isinstance(tc.arguments, dict) else {}
         step.chosen_tool = chosen_name
         step.raw_args = raw_args
+
+        # ADR 0133 Strategia 3: post-decode semantic validation per grammar
+        # mode. Grammar GBNF garantisce sintassi (JSON ben formato + name in
+        # enum), NON semantica (args possono non rispettare schema, es.
+        # required missing, type mismatch, enum non in list). Se validazione
+        # fail: NON eseguiamo l'executor (perderemmo tempo subprocess);
+        # iniettiamo error nel history_for_llm cosi' il prossimo step LLM
+        # vede il messaggio e corregge. Determinismo §7.9.
+        if os.environ.get("METNOS_GRAMMAR", "0") == "1":
+            try:
+                from tool_grammar import validate_tool_call as _vtc
+                _ok, _err = _vtc(
+                    {"name": chosen_name, "arguments": raw_args},
+                    tools_for_step,
+                )
+            except Exception as _ex:
+                _ok, _err = True, ""  # fail-open: non bloccare se validator buggy
+            if not _ok:
+                step.error = f"grammar_post_validate: {_err}"
+                step.result = {
+                    "ok": False,
+                    "error": _err,
+                    "error_class": "invalid_args",
+                    "_grammar_post_validate_failed": True,
+                }
+                log.steps.append(step)
+                history_for_refs.append({
+                    "step": step_num, "tool": chosen_name,
+                    "args": raw_args, "observation": step.result,
+                })
+                # History LLM: error visibile al prossimo step → il LLM
+                # corregge args. Limite consecutive_blocked previene loop.
+                history_for_llm.append({
+                    "role": "assistant",
+                    "tool_calls": [{
+                        "id": tc.call_id, "type": "function",
+                        "function": {"name": chosen_name,
+                                     "arguments": json.dumps(raw_args)},
+                    }],
+                })
+                history_for_llm.append({
+                    "role": "tool", "tool_call_id": tc.call_id,
+                    "name": chosen_name,
+                    "content": json.dumps({"ok": False, "error": _err,
+                                            "error_class": "invalid_args"}),
+                })
+                consecutive_blocked += 1
+                if consecutive_blocked >= LOOP_BREAK_THRESHOLD:
+                    log.final_kind = "loop_break"
+                    _hint = _loop_break_hint(_intent_object_from_route(route_info))
+                    log.final_message = msg("MSG_LOOP_BREAK",
+                                              n=consecutive_blocked, hint=_hint)
+                    log.ts_end = time.time(); log.write(); return log
+                continue
         if progress is not None:
             try:
                 # Label canale-agnostic: niente tag HTML qui (Telegram con
@@ -5146,6 +5249,137 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
         if not is_multistep:
             log.final_kind = "answer"; log.final_message = format_simple_answer(chosen_name, obs)
             log.ts_end = time.time(); log.write(); return log
+
+        # ─── Deterministic seed-step injection per pipeline propose+notify ────
+        # ADR 0129 extended (14/5/2026 sera): dopo `find_events_empty` ok con
+        # entries in pipeline propose+notify, il PLANNER medium (Gemma 4 26B)
+        # va in thinking loop su query con dettagli aggiuntivi («con Silvia»,
+        # «di una ora la mattina», ecc.) — esaurisce max_tokens senza emettere
+        # `get_inputs`. Bug live turn cc8d3980 (166s, step 2 vuoto).
+        # Fix: emetto deterministicamente lo step `get_inputs(choice)` come
+        # next-step, bypassando il PLANNER per quel singolo step. Pattern
+        # analogo a `try_seed_step` di ADR 0099. §7.9.
+        if (chosen_name == "find_events_empty"
+                and isinstance(obs, dict) and obs.get("ok")
+                and (obs.get("entries") or [])
+                and _should_resume_planner_after_dialog(
+                    user_query_for_run, route_info, history_for_refs)):
+            try:
+                _seed_gi = _inject_get_inputs_choice_for_propose(
+                    entries=obs.get("entries") or [],
+                    object_canonical=(_intent_object_from_route(route_info)
+                                       or "events"),
+                )
+            except Exception as _ex:
+                log.warning("seed get_inputs injection failed: %s", _ex)
+                _seed_gi = None
+            if _seed_gi is not None and verbose:
+                print(f"[seed-step] inject get_inputs(choice) "
+                      f"dopo find_events_empty step={step_num}")
+            if _seed_gi is not None:
+                # Eseguo direttamente get_inputs (autonomous step+1).
+                _gi_args = _seed_gi
+                _gi_step_num = step_num + 1
+                _gi_step = StepLog(step_num=_gi_step_num)
+                _gi_step.chosen_tool = "get_inputs"
+                _gi_step.raw_args = dict(_gi_args)
+                _gi_step.resolved_args = dict(_gi_args)
+                _gi_step.vaglio_approved = True
+                _gi_step.error = "seed_step_after_find_empty"
+                try:
+                    from loader import load_catalog as _lc
+                    _cat = _lc(verify=True, include_synth=True)
+                    _gi_ex = _cat.executors.get("get_inputs")
+                    if _gi_ex is None:
+                        raise RuntimeError("get_inputs executor non in catalog")
+                    _gi_obs = invoke_executor(
+                        _gi_ex, _gi_args,
+                        timeout_s=getattr(_gi_ex, "timeout_s", 30),
+                        actor=actor, channel=channel or "",
+                    )
+                except Exception as _ex:
+                    _gi_step.error = f"seed_step_failed: {type(_ex).__name__}: {_ex}"
+                    log.steps.append(_gi_step)
+                    # Lascio il loop continuare: il PLANNER tentera' step+1 reale
+                else:
+                    _gi_step.result = _gi_obs
+                    log.steps.append(_gi_step)
+                    history_for_refs.append({
+                        "step": _gi_step_num, "tool": "get_inputs",
+                        "args": _gi_args, "observation": _gi_obs,
+                    })
+                    # Chiudi il turno se input_required (uguale al ramo
+                    # `decision == "input_required"` piu' sotto, ma evita
+                    # round trip PLANNER + duplicazione codice).
+                    if (isinstance(_gi_obs, dict) and _gi_obs.get("ok")
+                            and _gi_obs.get("decision") == "input_required"):
+                        log.final_kind = "answer"
+                        log.final_message = (
+                            _gi_obs.get("final_message_hint")
+                            or "Servono alcuni input per continuare."
+                        )
+                        # Inject on_complete per resume planner (stessa
+                        # logica del blocco standard a riga ~4978).
+                        try:
+                            if _should_resume_planner_after_dialog(
+                                    user_query_for_run, route_info,
+                                    history_for_refs):
+                                sender_for_state = (
+                                    f"{channel}:{actor}" if channel
+                                    else (actor or "host")
+                                )
+                                dialog_id = _gi_obs.get("dialog_id")
+                                if dialog_id:
+                                    import dialog_pending as _dp
+                                    _state = _dp.load_pending(
+                                        sender_for_state, dialog_id)
+                                    if (_state is not None
+                                            and not _state.get("on_complete")):
+                                        _dialog_var = None
+                                        _dlg = _state.get("dialog") or []
+                                        if _dlg and isinstance(_dlg[0], dict):
+                                            _dialog_var = _dlg[0].get("var")
+                                        _intent_dict = (
+                                            route_info.get("intent")
+                                            if isinstance(route_info, dict)
+                                            else None) or {}
+                                        _implicit_actions = (
+                                            _intent_dict.get(
+                                                "implicit_actions")
+                                            if isinstance(_intent_dict, dict)
+                                            else None) or []
+                                        _state["on_complete"] = {
+                                            "type": "resume_planner_with_dialog_values",
+                                            "original_query": user_query_for_run,
+                                            "prior_steps":
+                                                _snapshot_scratchpad(
+                                                    history_for_refs),
+                                            "dialog_step_num": _gi_step_num,
+                                            "dialog_var_name":
+                                                _dialog_var or "values",
+                                            "conversation_id":
+                                                conversation_id or "",
+                                            "implicit_actions":
+                                                list(_implicit_actions),
+                                        }
+                                        _dp.save_pending(
+                                            sender_for_state, dialog_id, _state)
+                        except Exception as _ex:
+                            log.warning(
+                                "inject on_complete (seed-step) fallito: %s",
+                                _ex)
+                        log.ts_end = time.time()
+                        log.write()
+                        if log.expandable_caps:
+                            sender_for_state = (
+                                f"{channel}:{actor}" if channel
+                                else (actor or "host")
+                            )
+                            for cap in log.expandable_caps:
+                                if cap.get("kind") == "get_inputs_response":
+                                    cap.setdefault("sender_for_state",
+                                                    sender_for_state)
+                        return log
 
         # Auto-final dopo executor transformative idempotente che ha gia'
         # creato/modificato una entita' remota: il planner LLM puo' oscillare

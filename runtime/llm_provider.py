@@ -160,6 +160,89 @@ class OllamaProvider:
 _GEMMA_THOUGHT_RE = re.compile(r'<\|channel>.*?<channel\|>', flags=re.DOTALL)
 
 
+_GEMMA_TC_RE = re.compile(
+    r"<\|tool_call>call:([a-zA-Z_][a-zA-Z0-9_]*)\((.*?)\)<tool_call\|>",
+    re.DOTALL,
+)
+
+
+def _parse_tool_call_tolerant(text: str) -> dict | None:
+    """Parser ADR 0133 grammar-mode: accetta JSON puro o formato Gemma 4
+    tool_call (`<|tool_call>call:NAME(k=v,...)<tool_call|>`). Ritorna
+    `{"name", "arguments"}` o None se nessun match.
+
+    Gemma 4 args syntax (k=v separati da virgola, valori Python-like):
+        find_events_empty(size="1hour", time_windows=["next-week"], max_results=3)
+    Parsing: ast.literal_eval per ogni value (sicuro: no eval Python).
+    """
+    if not text:
+        return None
+    t = text.strip()
+    # (a) JSON puro
+    try:
+        parsed = json.loads(t)
+        if isinstance(parsed, dict) and isinstance(parsed.get("name"), str):
+            args = parsed.get("arguments")
+            if isinstance(args, str):
+                try:
+                    args = json.loads(args)
+                except json.JSONDecodeError:
+                    args = {"_raw": args}
+            elif not isinstance(args, dict):
+                args = {}
+            return {"name": parsed["name"], "arguments": args}
+    except json.JSONDecodeError:
+        pass
+    # (b) Gemma 4 tool_call template
+    m = _GEMMA_TC_RE.search(t)
+    if m:
+        name = m.group(1)
+        args_str = m.group(2).strip()
+        args: dict = {}
+        if args_str:
+            # Split su virgole top-level + parse `key=literal` via ast.
+            import ast
+            depth_p = depth_b = depth_c = 0
+            in_str = False
+            esc = False
+            cur = []
+            tokens: list[str] = []
+            for ch in args_str:
+                if esc:
+                    cur.append(ch); esc = False; continue
+                if ch == "\\":
+                    cur.append(ch); esc = True; continue
+                if ch == '"' and depth_p == depth_b == depth_c == 0:
+                    in_str = not in_str
+                    cur.append(ch); continue
+                if not in_str:
+                    if ch == "(": depth_p += 1
+                    elif ch == ")": depth_p -= 1
+                    elif ch == "[": depth_b += 1
+                    elif ch == "]": depth_b -= 1
+                    elif ch == "{": depth_c += 1
+                    elif ch == "}": depth_c -= 1
+                    elif ch == "," and depth_p == depth_b == depth_c == 0:
+                        tokens.append("".join(cur).strip())
+                        cur = []
+                        continue
+                cur.append(ch)
+            if cur:
+                tokens.append("".join(cur).strip())
+            for tok in tokens:
+                if "=" not in tok:
+                    continue
+                k, v = tok.split("=", 1)
+                k = k.strip().strip('"').strip("'")
+                v = v.strip()
+                try:
+                    args[k] = ast.literal_eval(v)
+                except (ValueError, SyntaxError):
+                    args[k] = v
+        return {"name": name, "arguments": args}
+    return None
+
+
 def _strip_thought(s):
     if not s:
         return s
@@ -215,11 +298,72 @@ class LlamaCppProvider:
 
     def chat_with_tools(self, system, user, tools, history=None, *,
                         max_tokens=2048, temperature=0, think=None,
-                        reasoning_budget=512):
+                        reasoning_budget=512, grammar: str | None = None):
+        """Chat con tool-use. Due modalita':
+
+        1. **Native tool_call protocol** (default, `grammar=None`):
+           passa `tools` + `tool_choice="auto"`. llama-server applica
+           chat_template Gemma per il tool_call. Soft-constrained → il
+           LLM puo' generare prosa/loop (bug live, vedi ADR 0133).
+
+        2. **Grammar-constrained** (`grammar=<GBNF>`, ADR 0133):
+           bypassa `tools` (llama-server rifiuta grammar+tools insieme).
+           Forza output JSON `{"name":..., "arguments":...}` tramite GBNF.
+           Implica `think=False` (grammar + thinking lungo collide su
+           max_tokens, observed empirically).
+        """
         messages = [{"role": "system", "content": system}]
         if history:
             messages.extend(history)
         messages.append({"role": "user", "content": user})
+        if grammar is not None:
+            # Grammar-constrained mode: niente tools, niente thinking,
+            # niente role=tool/tool_calls in history (triggerano il
+            # tool_call template Gemma che emette `<|tool_call>...|>`).
+            # Conversione history → messaggi role assistant/user testuali.
+            flat_msgs = [{"role": "system", "content": system}]
+            for m in (history or []):
+                if not isinstance(m, dict):
+                    continue
+                role = m.get("role")
+                if role == "tool":
+                    # tool result → assistant text per il prossimo turno
+                    flat_msgs.append({
+                        "role": "assistant",
+                        "content": (
+                            f"Tool result for `{m.get('name','?')}`: "
+                            f"{m.get('content','')}"
+                        ),
+                    })
+                elif role == "assistant":
+                    tcs = m.get("tool_calls") or []
+                    if tcs:
+                        fc = (tcs[0].get("function") or {})
+                        flat_msgs.append({
+                            "role": "assistant",
+                            "content": (
+                                f'{{"name":"{fc.get("name","")}",'
+                                f'"arguments":{fc.get("arguments","{}")}}}'
+                            ),
+                        })
+                    elif m.get("content"):
+                        flat_msgs.append({"role": "assistant",
+                                          "content": m["content"]})
+                elif role == "user":
+                    flat_msgs.append({"role": "user",
+                                      "content": m.get("content", "")})
+            flat_msgs.append({"role": "user", "content": user})
+            payload = {
+                "model": self.model,
+                "messages": flat_msgs,
+                "temperature": temperature,
+                "max_tokens": max_tokens,
+                "chat_template_kwargs": {"enable_thinking": False},
+                "reasoning_budget": 0,
+                "grammar": grammar,
+            }
+            return self._call(payload, expect_tools=True,
+                              grammar_mode=True)
         enable_thinking = bool(think)
         payload = {
             "model": self.model,
@@ -234,7 +378,7 @@ class LlamaCppProvider:
             payload["reasoning_budget"] = reasoning_budget
         return self._call(payload, expect_tools=True)
 
-    def _call(self, payload, expect_tools):
+    def _call(self, payload, expect_tools, *, grammar_mode: bool = False):
         # ADR 0120: inject id_slot per slot affinity. llama-server passa
         # la richiesta direttamente allo slot N bypassando LCP-similarity.
         if self.id_slot is not None and "id_slot" not in payload:
@@ -283,23 +427,37 @@ class LlamaCppProvider:
         out_toks = usage.get("completion_tokens", 0)
 
         if expect_tools:
-            tcs_raw = msg.get("tool_calls") or []
-            tcs = []
-            for tc in tcs_raw:
-                fn = tc.get("function") or {}
-                args_raw = fn.get("arguments") or "{}"
-                if isinstance(args_raw, str):
-                    try:
-                        args = json.loads(args_raw)
-                    except json.JSONDecodeError:
-                        args = {"_raw": args_raw}
-                else:
-                    args = args_raw
-                tcs.append(ToolCall(
-                    name=fn.get("name", ""),
-                    arguments=args,
-                    call_id=tc.get("id", ""),
-                ))
+            tcs: list[ToolCall] = []
+            if grammar_mode:
+                # ADR 0133: parse content tool_call (no native tool_calls
+                # quando grammar e' attiva). Due formati possibili:
+                #   (a) JSON puro: {"name":"<tool>","arguments":{...}}
+                #   (b) Gemma 4 tool_call: <|tool_call>call:<tool>(k=v,...)<tool_call|>
+                # Parser tollerante: prova prima JSON, fallback regex Gemma.
+                parsed = _parse_tool_call_tolerant(text)
+                if parsed is not None:
+                    tcs.append(ToolCall(
+                        name=parsed["name"],
+                        arguments=parsed["arguments"],
+                        call_id=f"grammar_{int(time.time()*1000)}",
+                    ))
+            else:
+                tcs_raw = msg.get("tool_calls") or []
+                for tc in tcs_raw:
+                    fn = tc.get("function") or {}
+                    args_raw = fn.get("arguments") or "{}"
+                    if isinstance(args_raw, str):
+                        try:
+                            args = json.loads(args_raw)
+                        except json.JSONDecodeError:
+                            args = {"_raw": args_raw}
+                    else:
+                        args = args_raw
+                    tcs.append(ToolCall(
+                        name=fn.get("name", ""),
+                        arguments=args,
+                        call_id=tc.get("id", ""),
+                    ))
             return ToolUseResult(
                 text=text, tool_calls=tcs,
                 in_tokens=in_toks, out_tokens=out_toks,
