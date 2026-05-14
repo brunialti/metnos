@@ -102,7 +102,8 @@ li { margin-bottom: 4px; }
     <li><a href="#cap5">Why three &ldquo;llama-server quirks&rdquo; cost us half a day</a></li>
     <li><a href="#cap6">Robustness, speed, extensibility</a></li>
     <li><a href="#cap7">How to test</a></li>
-    <li><a href="#cap8">References</a></li>
+    <li><a href="#cap8">Comparison with other platforms</a></li>
+    <li><a href="#cap9">References</a></li>
 </ol>
 </div>
 
@@ -391,7 +392,130 @@ Coverage:</p>
 Environment=METNOS_GRAMMAR=1' | sudo tee /etc/systemd/system/metnos-http.service.d/grammar.conf
 systemctl --user daemon-reload &amp;&amp; systemctl --user restart metnos-http.service</pre>
 
-<h1 id="cap8">8. References</h1>
+<h1 id="cap8">8. Comparison with other platforms</h1>
+
+<p>Constrained generation isn&rsquo;t a Metnos invention. Here&rsquo;s a quick map of who
+does what in the LLM/agent ecosystem &mdash; it helps locate the ADR 0133 choice
+and what we gained (or gave up) vs alternatives.</p>
+
+<table>
+<thead><tr>
+<th>Platform</th>
+<th>Mechanism</th>
+<th>Hard / soft</th>
+<th>Schema source</th>
+<th>Notes</th>
+</tr></thead>
+<tbody>
+<tr>
+<td><strong>OpenAI function calling / tools</strong></td>
+<td>Model fine-tuned on tool_call. Server emits JSON conforming to the
+declared function&rsquo;s JSON Schema. With <code>tool_choice="required"</code>
+forces a tool call.</td>
+<td>Mixed: hard that a tool IS called; soft on internal args structure
+(model-trained, not hard-rail).</td>
+<td>JSON Schema (OpenAPI subset)</td>
+<td>Excellent fluency, but black-box: no control if the model invents
+a field not declared. Network latency + $ cost.</td>
+</tr>
+<tr>
+<td><strong>Anthropic Claude tool use</strong></td>
+<td>Same pattern as OpenAI, with tools defined in input. Sonnet/Opus
+follow schema tightly, but no formal guarantee.</td>
+<td>Soft (model-trained)</td>
+<td>JSON Schema</td>
+<td>Superior robustness vs local baseline, but same non-locality and
+cost concerns. Sonnet 4.6 ~$0.30/turn vs local Gemma ~$0.001.</td>
+</tr>
+<tr>
+<td><strong>LangChain / LlamaIndex</strong></td>
+<td>Orchestrator: adapts function calling from various providers
+(OpenAI, Anthropic, ...) under one interface. Pydantic schema input.</td>
+<td>Inherits from underlying provider (soft)</td>
+<td>Pydantic / JSON Schema</td>
+<td>Abstraction layer, doesn&rsquo;t add robustness. Useful for portability;
+doesn&rsquo;t solve thinking-loop.</td>
+</tr>
+<tr>
+<td><strong>llama.cpp GBNF</strong> <span style="background:#dcfce7;padding:1px 8px;border-radius:10px;font-size:9pt;color:#15803d;font-weight:700;">Metnos choice</span></td>
+<td>Formal Backus-Naur grammar. Filters candidate tokens at every
+decoding step. Native in the server.</td>
+<td><strong>Hard</strong> (sampler-level)</td>
+<td>Hand-written or generated from JSON Schema</td>
+<td>Maximum control, zero external dependencies, deterministic.
+Server-bug quirks (see &sect;5). Local, no $ costs.</td>
+</tr>
+<tr>
+<td><strong>Outlines / Instructor</strong></td>
+<td>Python library that builds an FSM (finite state machine) from
+JSON Schema/Pydantic and applies it at decoding (token-level mask).</td>
+<td><strong>Hard</strong> (sampler-level)</td>
+<td>Pydantic / JSON Schema</td>
+<td>Same paradigm as GBNF but library-side. New dependency, limited
+model support (HuggingFace + vllm). For Metnos = extra weight, same result.</td>
+</tr>
+<tr>
+<td><strong>xgrammar</strong> (vllm)</td>
+<td>C++ library that compiles JSON Schema into token masks. Integrated
+in vllm, coming to other serving stacks.</td>
+<td><strong>Hard</strong> (sampler-level)</td>
+<td>JSON Schema</td>
+<td>Equivalent to GBNF, superior performance in some scenarios. Not yet
+in llama.cpp stable.</td>
+</tr>
+<tr>
+<td><strong>JSON Mode (OpenAI/Anthropic)</strong></td>
+<td>Guarantees syntactically valid JSON, no schema constraint.</td>
+<td>Hard on JSON syntax, soft on schema</td>
+<td>None</td>
+<td>Useful as fallback, insufficient for structured tool_call.</td>
+</tr>
+</tbody>
+</table>
+
+<h3>Where Metnos sits</h3>
+
+<p>The ADR 0133 GBNF choice is aligned with the <strong>technical frontier</strong>:
+modern serving stacks are all converging on sampler-level constraints (Outlines,
+xgrammar, llama.cpp GBNF). It&rsquo;s the <em>state of the art</em> pattern for local
+tool calling.</p>
+
+<p>The difference vs OpenAI/Anthropic is that we <em>write</em> the grammar
+instead of delegating to a fine-tuned model. Advantages:</p>
+
+<ul>
+    <li><strong>Local, zero network, zero $ costs</strong>. Aligned with the
+        Metnos &sect;10.3 principle (open-source self-hosted as default).</li>
+    <li><strong>Deterministic</strong> &sect;7.9 &mdash; testable with 43 unit tests.</li>
+    <li><strong>Full transparency</strong>: the grammar is text, inspectable,
+        versionable.</li>
+    <li><strong>Immediate update</strong>: adding an executor doesn&rsquo;t require
+        re-training. TOML schema &rarr; grammar emitted on the fly.</li>
+</ul>
+
+<p>Disadvantages:</p>
+
+<ul>
+    <li>Models fine-tuned on tool_call (GPT-5, Sonnet) are <em>more fluent</em>
+        on very open queries &mdash; they don&rsquo;t pick a tool incorrectly because
+        they&rsquo;re trained to reason semantically on the match. We compensate
+        with top-K ranker + contextual pool filter.</li>
+    <li>Server bugs (see &sect;5) fall on us. Mitigated by regression tests.</li>
+</ul>
+
+<h3>When it would make sense to change</h3>
+
+<table>
+<thead><tr><th>Trigger</th><th>Direction</th></tr></thead>
+<tbody>
+<tr><td>llama.cpp introduces native xgrammar</td><td>Switch to xgrammar (same semantics, better perf)</td></tr>
+<tr><td>Multi-model cross-provider (e.g. switch Gemma &harr; Sonnet)</td><td>Add Outlines adapter for non-llama.cpp providers</td></tr>
+<tr><td>Query corpus convergence drops below 95%</td><td>Investigate if it&rsquo;s the model or filter; possibly local fine-tune</td></tr>
+<tr><td>Unsolvable llama-server bugs</td><td>Fork generator to 2 dialects (GBNF + JSON Schema FSM)</td></tr>
+</tbody>
+</table>
+
+<h1 id="cap9">9. References</h1>
 
 <ul>
     <li>Decision: <a href="../../decisions/0133-constrained-grammar-tool-call.md">ADR 0133</a></li>

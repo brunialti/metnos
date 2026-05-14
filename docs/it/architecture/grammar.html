@@ -103,7 +103,8 @@ li { margin-bottom: 4px; }
     <li><a href="#cap5">Perche&rsquo; tre &ldquo;bug llama-server&rdquo; ci hanno fatto perdere mezza giornata</a></li>
     <li><a href="#cap6">Robustezza, velocita&rsquo;, estensibilita&rsquo;</a></li>
     <li><a href="#cap7">Come si testa</a></li>
-    <li><a href="#cap8">Riferimenti</a></li>
+    <li><a href="#cap8">Confronto con altre piattaforme</a></li>
+    <li><a href="#cap9">Riferimenti</a></li>
 </ol>
 </div>
 
@@ -396,7 +397,133 @@ Coprono:</p>
 Environment=METNOS_GRAMMAR=1' | sudo tee /etc/systemd/system/metnos-http.service.d/grammar.conf
 systemctl --user daemon-reload &amp;&amp; systemctl --user restart metnos-http.service</pre>
 
-<h1 id="cap8">8. Riferimenti</h1>
+<h1 id="cap8">8. Confronto con altre piattaforme</h1>
+
+<p>La constrained generation non e&rsquo; un&rsquo;invenzione di Metnos. Ecco una mappa
+veloce di chi fa cosa nell&rsquo;ecosistema LLM/agent &mdash; serve per capire dove si
+colloca la scelta di ADR 0133 e cosa abbiamo guadagnato (o rinunciato) rispetto
+alle alternative.</p>
+
+<table>
+<thead><tr>
+<th>Piattaforma</th>
+<th>Meccanismo</th>
+<th>Hard / soft</th>
+<th>Schema source</th>
+<th>Note</th>
+</tr></thead>
+<tbody>
+<tr>
+<td><strong>OpenAI function calling / tools</strong></td>
+<td>Modello fine-tuned su tool_call. Server emette JSON conforme al
+JSON Schema della function dichiarata. Con <code>tool_choice="required"</code>
+forza l&rsquo;uso di un tool.</td>
+<td>Misto: hard sul fatto che <em>un</em> tool sia chiamato; soft sulla
+struttura interna degli args (modello-trained, non hard-rail).</td>
+<td>JSON Schema (subset OpenAPI)</td>
+<td>Eccellente fluidita&rsquo;, but black-box: niente controllo se il modello
+inventa un campo non dichiarato. Latency rete + costo $.</td>
+</tr>
+<tr>
+<td><strong>Anthropic Claude tool use</strong></td>
+<td>Stesso pattern OpenAI, con tool definito in input. Sonnet/Opus seguono
+schema strettamente, ma niente garanzia formale.</td>
+<td>Soft (model-trained)</td>
+<td>JSON Schema</td>
+<td>Robustezza superiore al baseline locale, ma stesse riserve di
+non-localita&rsquo; e costo. Sonnet 4.6 ~$0.30/turn vs Gemma locale ~$0.001.</td>
+</tr>
+<tr>
+<td><strong>LangChain / LlamaIndex</strong></td>
+<td>Orchestrator: adatta function calling di provider diversi (OpenAI,
+Anthropic, ...) sotto un&rsquo;interfaccia unica. Pydantic schema in input.</td>
+<td>Eredita dal provider sottostante (soft)</td>
+<td>Pydantic / JSON Schema</td>
+<td>Layer di astrazione, non aggiunge robustezza. Utile per portability;
+non risolve thinking-loop.</td>
+</tr>
+<tr>
+<td><strong>llama.cpp GBNF</strong> <span style="background:#dcfce7;padding:1px 8px;border-radius:10px;font-size:9pt;color:#15803d;font-weight:700;">scelta Metnos</span></td>
+<td>Grammatica formale Backus-Naur. Filtra i token candidati a ogni step
+di decoding. Nativo nel server.</td>
+<td><strong>Hard</strong> (sampler-level)</td>
+<td>Manuale o generata da JSON Schema</td>
+<td>Massimo controllo, zero dipendenze esterne, deterministico.
+Quirks bug-server (vedi &sect;5). Locale, no costi $.</td>
+</tr>
+<tr>
+<td><strong>Outlines / Instructor</strong></td>
+<td>Libreria Python che costruisce un FSM (finite state machine) dal
+JSON Schema/Pydantic e lo applica al decoding (token-level mask).</td>
+<td><strong>Hard</strong> (sampler-level)</td>
+<td>Pydantic / JSON Schema</td>
+<td>Stesso paradigma di GBNF ma library-side. Dipendenza nuova,
+supporto modelli limitato (HuggingFace + vllm). Per Metnos = piu&rsquo;
+peso, stesso risultato.</td>
+</tr>
+<tr>
+<td><strong>xgrammar</strong> (vllm)</td>
+<td>Libreria C++ che compila JSON Schema in maschere di token.
+Integrata in vllm e a breve in altri serving stack.</td>
+<td><strong>Hard</strong> (sampler-level)</td>
+<td>JSON Schema</td>
+<td>Equivalente a GBNF, performance superiore in alcuni scenari. Non
+ancora in llama.cpp stable.</td>
+</tr>
+<tr>
+<td><strong>JSON Mode (OpenAI/Anthropic)</strong></td>
+<td>Garantisce JSON valido sintatticamente, niente vincolo su schema.</td>
+<td>Hard sulla sintassi JSON, soft sullo schema</td>
+<td>Nessuno</td>
+<td>Utile come fallback, non basta per tool_call strutturato.</td>
+</tr>
+</tbody>
+</table>
+
+<h3>Dove si colloca Metnos</h3>
+
+<p>La scelta GBNF di ADR 0133 e&rsquo; allineata con la <strong>frontiera tecnica</strong>:
+i serving stack moderni stanno tutti convergendo su sampler-level constraints
+(Outlines, xgrammar, llama.cpp GBNF). E&rsquo; il pattern <em>state of the art</em> per
+tool calling locale.</p>
+
+<p>La differenza rispetto a OpenAI/Anthropic e&rsquo; che noi <em>scriviamo</em> la
+grammar invece di delegarla a un modello fine-tuned. Vantaggi:</p>
+
+<ul>
+    <li><strong>Locale, zero rete, zero costi $</strong>. Allineato al principio
+        Metnos &sect;10.3 (open-source self-hosted come default).</li>
+    <li><strong>Deterministico</strong> &sect;7.9 &mdash; testabile con 43 unit-test.</li>
+    <li><strong>Trasparenza totale</strong>: la grammar e&rsquo; stringa testuale,
+        ispezionabile, versionabile.</li>
+    <li><strong>Aggiornamento immediato</strong>: aggiungere un executor non
+        richiede re-training. Schema TOML &rarr; grammar emessa al volo.</li>
+</ul>
+
+<p>Svantaggi:</p>
+
+<ul>
+    <li>Modelli fine-tuned su tool_call (GPT-5, Sonnet) sono <em>piu&rsquo; fluenti</em>
+        su query molto aperte &mdash; non scelgono mai un tool a sproposito perche&rsquo;
+        sono addestrati a ragionare semanticamente sul match. Compensiamo con
+        ranker top-K + pool filter contestuale.</li>
+    <li>I bug del server (vedi &sect;5) ci ricadono su. Mitigati da test
+        regression.</li>
+</ul>
+
+<h3>Quando avrebbe senso cambiare</h3>
+
+<table>
+<thead><tr><th>Trigger</th><th>Direzione</th></tr></thead>
+<tbody>
+<tr><td>llama.cpp introduce xgrammar nativo</td><td>Switch a xgrammar (stessa semantica, performance migliori)</td></tr>
+<tr><td>Multi-modello cross-provider (us. switch Gemma &harr; Sonnet)</td><td>Aggiungere adapter Outlines per provider non-llama.cpp</td></tr>
+<tr><td>Query corpus convergenza scende sotto 95%</td><td>Investigare se &egrave; il modello o il filter; eventuale fine-tune locale</td></tr>
+<tr><td>Bug llama-server irrisolvibili</td><td>Fork generator a 2 dialetti (GBNF + JSON Schema FSM)</td></tr>
+</tbody>
+</table>
+
+<h1 id="cap9">9. Riferimenti</h1>
 
 <ul>
     <li>Decisione: <a href="../../decisions/0133-constrained-grammar-tool-call.md">ADR 0133</a></li>
