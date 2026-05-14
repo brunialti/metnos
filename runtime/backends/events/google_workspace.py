@@ -193,11 +193,28 @@ def create(args: dict) -> dict:
         argv.extend(["--location", str(args["location"])])
     if args.get("description"):
         argv.extend(["--description", str(args["description"])])
+    # Filtra attendees: solo email valide (contengono `@`). Bug live
+    # 15/5/2026: LLM emette `attendees=["silvia"]` → Google API 400
+    # "Invalid attendee email". Soluzione: pass-through delle email,
+    # scarta i non-email (rimangono visibili nel summary dell'evento).
     attendees = args.get("attendees")
+    skipped_attendees: list[str] = []
     if attendees:
-        if isinstance(attendees, list):
-            attendees = ",".join(str(a) for a in attendees if a)
-        argv.extend(["--attendees", str(attendees)])
+        if isinstance(attendees, str):
+            attendees = [a.strip() for a in attendees.split(",") if a.strip()]
+        elif not isinstance(attendees, list):
+            attendees = []
+        valid = []
+        for a in attendees:
+            s = str(a).strip()
+            if not s:
+                continue
+            if "@" in s:
+                valid.append(s)
+            else:
+                skipped_attendees.append(s)
+        if valid:
+            argv.extend(["--attendees", ",".join(valid)])
 
     data, err = _run_calendar(argv, executor="create_events",
                               args_base=dict(args))
@@ -223,6 +240,11 @@ def create(args: dict) -> dict:
         "results": [rec],
         "used": 1,
     }
+    if skipped_attendees:
+        out["warnings"] = [
+            f"Attendee {a!r} ignorato (manca email valida)"
+            for a in skipped_attendees
+        ]
     if rid:
         out["_undo"] = {
             "reverse_pattern": "delete_events_by_id",
