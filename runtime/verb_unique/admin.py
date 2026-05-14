@@ -218,6 +218,11 @@ def _looks_like_literal_shell(text: str, *, allow_sudo_wrapper: bool = False) ->
     """
     if not text:
         return None
+    # 15/5/2026: strip REDACTED placeholders (ADR 0082 scrubber) PRIMA
+    # del check shell-meta. Bug live (turn 49418a8a): credenziali inline
+    # `username=Admin,password=Jundo@195,...` vengono redacted a
+    # `<REDACTED:cred>` ma il `>` matcha redirect pattern. False positive.
+    text = re.sub(r"<REDACTED:[^>]+>", "REDACTED", text)
     for pat in _SHELL_LITERAL_PATTERNS:
         # sudo/doas/pkexec come wrapper sono legittimi in PLANNER-path
         if allow_sudo_wrapper and pat.pattern in (r"\bsudo\s", r"\bdoas\s", r"\bpkexec\s"):
