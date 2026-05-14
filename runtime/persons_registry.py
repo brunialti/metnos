@@ -405,12 +405,43 @@ class PersonsRegistry:
             slug = slugify(name)
         except ValueError:
             return []
+        # Exact slug match.
         rows = self._conn.execute(
             "SELECT embedding,embedding_dim FROM person_examples "
             "WHERE person_slug=? ORDER BY id",
             (slug,),
         ).fetchall()
+        # Fallback (15/5/2026): se slug exact non matcha (es. name="iacopo"
+        # vs slug="iacopo_brunialti"), usa `resolve_name` per token-anywhere.
+        # Se multipli match, unisce embeddings di TUTTI (acceptable: face
+        # recognition con stesso first-name dovrebbe essere disambiguato
+        # con altri campi). Bug live (turn iacopo_mare): name=iacopo →
+        # 0 embeddings → fallback query_text → 29k unfiltered.
+        if not rows:
+            slugs = self.resolve_name(name)
+            if slugs:
+                placeholders = ",".join("?" * len(slugs))
+                rows = self._conn.execute(
+                    f"SELECT embedding,embedding_dim FROM person_examples "
+                    f"WHERE person_slug IN ({placeholders}) ORDER BY id",
+                    slugs,
+                ).fetchall()
         return [_bytes_to_embedding(r["embedding"], r["embedding_dim"]) for r in rows]
+
+
+# Module-level helper for cross-module convenience (used by
+# find_images_indices). Returns list[np.ndarray].
+def resolve_face_embeddings_for_name(name: str) -> list:
+    """Module-level alias: PersonsRegistry().lookup_embeddings(name).
+    Bug live 15/5/2026: find_images_indices importava questa funzione
+    che NON era definita → ImportError silent → name filter saltato.
+    """
+    if not name:
+        return []
+    try:
+        return PersonsRegistry().lookup_embeddings(name)
+    except Exception:
+        return []
 
     # -- match -------------------------------------------------------------
 
