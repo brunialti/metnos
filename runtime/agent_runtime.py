@@ -4972,6 +4972,19 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
         log.steps.append(step)
         history_for_refs.append({"step": step_num, "tool": chosen_name, "args": args, "observation": obs})
 
+        # Terminal-failure short-circuit (15/5/2026): executor che ritorna
+        # `_terminal: True` + `final_message_hint` indica un fail con
+        # messaggio user-facing autoritativo (es. index_missing). NIENTE
+        # senso a iterare: chiudi il turno con quel hint come final_message.
+        # Bug live 15/5/2026 turn e362785f: find_images_indices su path
+        # non indicizzato → 3× retry → loop_break generico. Con _terminal
+        # il turno chiude al primo fail con messaggio chiaro.
+        if isinstance(obs, dict) and obs.get("_terminal") \
+                and obs.get("final_message_hint"):
+            log.final_kind = "answer"
+            log.final_message = str(obs.get("final_message_hint", ""))
+            log.ts_end = time.time(); log.write(); return log
+
         # Generic needs_inputs orchestration: qualsiasi executor (set_persons
         # face picker, delete_persons batch ambiguous, future tools) che
         # ritorna `decision="needs_inputs"` deve far chiudere il turno

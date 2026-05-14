@@ -579,6 +579,16 @@ def invoke(args):
                 f"Run create_images_indices(base_path='{single_dir}') first."
             ),
             "base_path": str(single_dir),
+            # Hint per il PLANNER: chiudi con final_answer onesto invece
+            # di riprovare. Bug live 15/5/2026: LLM riprova 3× → loop_break
+            # generico. Con hint esplicito il PLANNER puo' usare il
+            # messaggio user-facing direttamente.
+            "final_message_hint": (
+                f"Nessun indice immagini disponibile per `{single_dir}`. "
+                f"Crea prima l'indice con `create_images_indices(base_path='{single_dir}')` "
+                f"(richiede ~6s per foto, build asincrona)."
+            ),
+            "_terminal": True,
         }
 
     entries, emb_text, emb_face, meta = _load_unified_index(idx_dir)
