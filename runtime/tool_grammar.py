@@ -343,22 +343,31 @@ def _emit_object_inline(schema: dict, used: set[str], depth: int,
         kv_rules[k] = prop_rule
 
     used.update({"ws", "sep"})
+    # Same fix repeat-loop: ordina optional alfabeticamente + (sep prop)?
+    # invece di (sep (opt_alt))* (vedi commento _emit_tool_args).
+    opt_rules_sorted = sorted(kv_rules[k] for k in keys_optional)
     if keys_required:
         req_seq = " sep ".join(kv_rules[k] for k in keys_required)
-        if keys_optional:
-            opt_alt = " | ".join(kv_rules[k] for k in keys_optional)
+        if opt_rules_sorted:
+            opt_seq = " ".join(f"(sep {r})?" for r in opt_rules_sorted)
             extra_rules.append(
-                f"{rule_name} ::= \"{{\" ws {req_seq} (sep ({opt_alt}))* ws \"}}\""
+                f"{rule_name} ::= \"{{\" ws {req_seq} {opt_seq} ws \"}}\""
             )
         else:
             extra_rules.append(
                 f"{rule_name} ::= \"{{\" ws {req_seq} ws \"}}\""
             )
     else:
-        opt_alt = " | ".join(kv_rules[k] for k in keys_optional)
-        extra_rules.append(
-            f"{rule_name} ::= \"{{}}\" | \"{{\" ws ({opt_alt}) (sep ({opt_alt}))* ws \"}}\""
-        )
+        if len(opt_rules_sorted) == 1:
+            extra_rules.append(
+                f"{rule_name} ::= \"{{}}\" | \"{{\" ws {opt_rules_sorted[0]} ws \"}}\""
+            )
+        else:
+            first = opt_rules_sorted[0]
+            rest_seq = " ".join(f"(sep {r})?" for r in opt_rules_sorted[1:])
+            extra_rules.append(
+                f"{rule_name} ::= \"{{}}\" | \"{{\" ws {first} {rest_seq} ws \"}}\""
+            )
     return rule_name
 
 
@@ -430,25 +439,44 @@ def _emit_tool_args(tool_name: str, schema: dict | None
     # dipendenza: prop rule referenzia objD*I* sub-rule names).
     lines = extra_rules + lines
 
-    # Body: required keys ordinati, poi optional in qualsiasi ordine.
+    # Body: required keys ordinati, poi optional in ORDINE FISSO con `?`.
+    # Bug live 14/5/2026 sera: `(sep (opt_a|opt_b))*` ammette ripetizioni
+    # infinite — il LLM emette `"timeout_s":3600` 300+ volte in repeat-loop.
+    # GBNF non ha "unordered set"; soluzione: ordinare alfabeticamente gli
+    # optional e dare a ognuno `(sep prop)?` esattamente una volta. Trade-off:
+    # il LLM deve emettere optional in ordine fissato → grado di liberta'
+    # ridotto ma niente repeat-loop possibili.
     used.update({"ws", "sep"})
+    # Ordina optional rules per nome PROPRIETA' (deterministico, leggibile).
+    # `kv_optional_rules` ha gia' nome `prop{cap_base}{key_cap}` → ordering
+    # alfabetico sul nome rule = ordine alfabetico sui key originali (case
+    # preserved).
+    kv_optional_sorted = sorted(kv_optional_rules)
     if kv_required_rules:
         req_seq = " sep ".join(kv_required_rules) if len(kv_required_rules) > 1 else kv_required_rules[0]
-        if kv_optional_rules:
-            opt_alt = " | ".join(kv_optional_rules)
+        if kv_optional_sorted:
+            opt_seq = " ".join(f"(sep {r})?" for r in kv_optional_sorted)
             lines.append(
-                f"{rule_name} ::= \"{{\" ws {req_seq} (sep ({opt_alt}))* ws \"}}\""
+                f"{rule_name} ::= \"{{\" ws {req_seq} {opt_seq} ws \"}}\""
             )
         else:
             lines.append(
                 f"{rule_name} ::= \"{{\" ws {req_seq} ws \"}}\""
             )
     else:
-        if kv_optional_rules:
-            opt_alt = " | ".join(kv_optional_rules)
-            lines.append(
-                f"{rule_name} ::= \"{{}}\" | \"{{\" ws ({opt_alt}) (sep ({opt_alt}))* ws \"}}\""
-            )
+        if kv_optional_sorted:
+            # No required, solo optional: prima e' senza `sep` (vuoto ok),
+            # seguenti con `(sep prop)?` ordinati.
+            if len(kv_optional_sorted) == 1:
+                lines.append(
+                    f"{rule_name} ::= \"{{}}\" | \"{{\" ws {kv_optional_sorted[0]} ws \"}}\""
+                )
+            else:
+                first = kv_optional_sorted[0]
+                rest_seq = " ".join(f"(sep {r})?" for r in kv_optional_sorted[1:])
+                lines.append(
+                    f"{rule_name} ::= \"{{}}\" | \"{{\" ws {first} {rest_seq} ws \"}}\""
+                )
         else:
             lines.append(f"{rule_name} ::= \"{{}}\"")
     return rule_name, lines, used

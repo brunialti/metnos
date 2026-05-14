@@ -386,6 +386,31 @@ def test_no_underscore_in_rule_names():
     assert not bad, f"underscore nei rule names (llama-server bug): {bad}"
 
 
+def test_no_kleene_star_on_optional_alternation():
+    """Bug live 14/5/2026 sera: `(sep (opt_a | opt_b))*` ammette ripetizioni
+    infinite → LLM emette `timeout_s:3600` 300+ volte in repeat-loop.
+    Regression guard: optional devono essere `(sep prop)?` in ordine fissato."""
+    tools = [{"name": "x",
+              "args_schema": {"type": "object",
+                               "required": ["a"],
+                               "properties": {
+                                   "a": {"type": "string"},
+                                   "b": {"type": "integer"},
+                                   "c": {"type": "boolean"}}}}]
+    g = generate_tool_grammar(tools)
+    # Trova la rule argsX
+    args_line = next(l for l in g.split("\n") if l.startswith("argsX ::="))
+    # NIENTE pattern `(sep (...))*` (Kleene star) sugli optional.
+    import re
+    bad = re.search(r"\(sep\s*\([^)]+\)\)\*", args_line)
+    assert not bad, f"Kleene loop su optional: {args_line}"
+    # Optional alfabetici, ognuno (sep prop)?
+    assert "(sep propXB)?" in args_line
+    assert "(sep propXC)?" in args_line
+    # B precede C nell'ordine alfabetico.
+    assert args_line.index("(sep propXB)?") < args_line.index("(sep propXC)?")
+
+
 def test_primitives_only_referenced_emitted():
     """Bug llama-server: rule non-referenziate possono interferire col
     matching. Generator emette solo le primitives effettivamente usate."""
