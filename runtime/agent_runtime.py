@@ -3738,6 +3738,28 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
         _loop_start_step = _seed_step_n + 1 if _seed_step_used else 1
 
     for step_num in range(_loop_start_step, cap_steps + 1):
+        # Strategia E (ADR 0133): early loop-detect su (tool, error_class)
+        # ripetuti. Cattura il caso residuo dove duplicate_call (args
+        # identici) + cap_same_executor (10) + consecutive_blocked (3)
+        # non scattano abbastanza presto. Soglia 2: due fail consecutivi
+        # stesso (tool, error_class) = loop confermato.
+        if step_num > _loop_start_step + 1:  # serve almeno 2 step pregressi
+            try:
+                from loop_detect import (is_repeated_failure,
+                                          repeated_failure_hint)
+                if is_repeated_failure(log.steps, threshold=2):
+                    _e_hint = repeated_failure_hint(log.steps)
+                    log.final_kind = "loop_break"
+                    log.final_message = msg(
+                        "MSG_LOOP_BREAK", n=2,
+                        hint=_e_hint or _loop_break_hint(
+                            _intent_object_from_route(route_info)),
+                    )
+                    log.ts_end = time.time(); log.write(); return log
+            except Exception as _e:
+                import logging as _logging
+                _logging.getLogger(__name__).warning(
+                    "loop_detect failed: %s", _e)
         step = StepLog(step_num=step_num)
         # Attribuisci prefilter+intent al PRIMO step LLM (potrebbe essere 1 o 2
         # a seconda del seed_step). Sono il costo di setup del turno
