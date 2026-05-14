@@ -62,15 +62,29 @@ class TelegramChannel:
         credentials_path: Path | None = None,
         state_path: Path | None | Literal[False] = None,
     ):
-        creds = _read_credentials(credentials_path or CREDENTIALS_FILE)
-        self.token = token or os.environ.get("TELEGRAM_BOT_TOKEN") or creds.get("TELEGRAM_BOT_TOKEN")
+        # 3 layer di risoluzione (ADR 0131 extended, 14/5/2026):
+        #   1. arg esplicito (test/dependency injection),
+        #   2. env var (override volatile),
+        #   3. credentials store cifrato (domain `telegram_bot_token` /
+        #      `telegram_chat_id_host`),
+        #   4. file ~/.config/metnos/credentials.env (legacy fallback).
+        store_token, store_chat = self._read_from_store()
+        legacy = _read_credentials(credentials_path or CREDENTIALS_FILE)
+        self.token = (
+            token
+            or os.environ.get("TELEGRAM_BOT_TOKEN")
+            or store_token
+            or legacy.get("TELEGRAM_BOT_TOKEN")
+        )
         self.default_chat_id = (
             default_chat_id
             or os.environ.get("TELEGRAM_CHAT_ID")
-            or creds.get("TELEGRAM_CHAT_ID")
+            or store_chat
+            or legacy.get("TELEGRAM_CHAT_ID")
         )
         if not self.token:
-            raise ValueError("TELEGRAM_BOT_TOKEN mancante (env o credentials.env)")
+            raise ValueError("TELEGRAM_BOT_TOKEN mancante (env, "
+                             "credentials store, o credentials.env)")
         # state_path=False disabilita la persistenza (utile in test);
         # state_path=None usa il default; altrimenti il path indicato.
         if state_path is False:
@@ -78,6 +92,24 @@ class TelegramChannel:
         else:
             self.state_path = state_path or DEFAULT_STATE_FILE
         self._last_update_id: int | None = self._load_offset()
+
+    @staticmethod
+    def _read_from_store() -> tuple[str | None, str | None]:
+        """Layer 1 (ADR 0131 extended): legge token+chat_id dallo store
+        cifrato Fernet. Ritorna (None, None) se non disponibile."""
+        try:
+            import sys
+            sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+            import credentials as _cr  # type: ignore[import-not-found]
+        except ImportError:
+            return None, None
+        tok_payload = _cr.load("telegram_bot_token")
+        chat_payload = _cr.load("telegram_chat_id_host")
+        tok = (tok_payload.get("value")
+                if isinstance(tok_payload, dict) else None)
+        chat = (chat_payload.get("value")
+                if isinstance(chat_payload, dict) else None)
+        return tok, chat
 
     def _load_offset(self) -> int | None:
         if not self.state_path or not self.state_path.exists():

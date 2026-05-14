@@ -74,6 +74,51 @@ Output sessione 14/5/2026:
 5/5 account migrati. Store: `~/.local/share/metnos/credentials/` (mode
 0700; entries Fernet 0600).
 
+## Estensione 14/5/2026 — API keys + Telegram bot + Google Maps
+
+Audit di `~/.config/metnos/credentials.env` (671B) ha rivelato altri 4
+segreti high-value in plaintext:
+
+| File / Variabile | Domain store | Sensibilita' |
+|---|---|---|
+| `ANTHROPIC_API_KEY` | `anthropic_api_key` | ALTA (billing Claude) |
+| `OPENAI_API_KEY` | `openai_api_key` | ALTA (billing OpenAI) |
+| `TELEGRAM_BOT_TOKEN` | `telegram_bot_token` | MEDIA-ALTA (bot intero) |
+| `TELEGRAM_CHAT_ID` (587627005) | `telegram_chat_id_host` | BASSA (chat id pubblico) |
+| `~/.config/metnos/google_maps.env` GOOGLE_MAPS_API_KEY | `google_maps_api_key` | ALTA (billing Places) |
+
+Payload schema (uniforme per API keys):
+```json
+{"value": "<secret>", "_env_var": "<ENV_NAME_ORIGINALE>"}
+```
+
+Consumer aggiornati a 3-layer (env → store → file legacy):
+- `runtime/llm_provider.py::_read_anthropic_key()` / `_read_openai_key()`
+  (nuovo helper `_read_api_key_from_store(domain)`).
+- `runtime/channels/telegram.py::TelegramChannel.__init__` + helper
+  `_read_from_store()` per `(token, chat_id)`.
+- `runtime/google_places_client.py::_load_api_key()`.
+
+CLI esteso: `python3 -m credentials_migrate --apis` (solo API keys),
+`--all` (SMTP + APIs). Sessione 14/5: 5/5 SMTP + 5/5 APIs migrati.
+
+## Classificazione user/system (direttiva 14/5/2026)
+
+L'utente ha posto: «in `~/.local/` le credenziali user-bound, le system
+in `/opt/myclaw/` (root del codebase Metnos)».
+
+Per ora: store single-user in `~/.local/share/metnos/credentials/`
+(coerente con `~/.local` user-bound). Quando arrivera' multi-user
+(Phase 7), split fisico:
+
+| Categoria | Domain | Location futura |
+|---|---|---|
+| User-bound | `telegram_chat_id_host`, `smtp_metnos_roberto`, `smtp_knowcastle`, `smtp_tiscali` | `~/.local/share/metnos/credentials/` |
+| System | `anthropic_api_key`, `openai_api_key`, `google_maps_api_key`, `telegram_bot_token`, `smtp_metnos_system`, `smtp_mykleos` | path system-wide TBD (richiede root-owned dir + service uid) |
+
+Oggi la distinzione e' SOLO semantica (nei nomi domain). Lo split fisico
+e' future work.
+
 ## Open
 
 - **Google OAuth token** (`~/.local/share/metnos/skills/google-workspace/
@@ -81,12 +126,16 @@ Output sessione 14/5/2026:
   ADR 0123). Il refresh-token e' gestito da `google_api.py` direttamente.
   Migrarlo nel credentials store richiederebbe fork dello skill (out-of-
   scope ADR 0131). Considerare quando si stabilizza il pattern «skill
-  external_managed credentials» (vedi ADR pending plugin esterni).
+  external_managed credentials» (vedi ADR 0132 plugin esterni).
 - **Eliminazione file .env legacy**: lasciata manuale al user. Il
   fallback resta attivo per back-compat. Quando confermato il
-  funzionamento, eseguire `mv ~/.config/metnos/mail.env{,.bak}` ecc.
+  funzionamento, eseguire `mv ~/.config/metnos/{mail,credentials,
+  google_maps}.env{,.bak}` ecc.
 - **Caching**: `credentials.load()` legge da disco ogni volta. Per
   high-frequency callsite considerare LRU cache se diventa hot.
+- **Split user/system fisico**: location system-wide TBD (es.
+  `/var/lib/metnos/credentials/` con uid dedicato, oppure
+  `~/.local/share/metnos/credentials/system/`). Pending Phase 7.
 
 ## References
 

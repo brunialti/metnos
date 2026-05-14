@@ -336,13 +336,32 @@ def _read_env_var_from_files(var_name, candidate_paths):
     return None
 
 
+def _read_api_key_from_store(domain: str) -> str | None:
+    """Layer 1 (ADR 0131 extended, 14/5/2026): legge `value` dallo store
+    cifrato Fernet. Ritorna None se assente o store non disponibile."""
+    try:
+        import credentials as _cr
+    except ImportError:
+        return None
+    payload = _cr.load(domain)
+    if not isinstance(payload, dict):
+        return None
+    v = payload.get("value")
+    return v if isinstance(v, str) and v else None
+
+
 def _read_anthropic_key():
-    """ANTHROPIC_API_KEY da env, poi da ~/.config/metnos/{credentials,anthropic}.env.
+    """ANTHROPIC_API_KEY ricerca in 3 layer:
+      1. env var (override volatile per debug).
+      2. credentials store cifrato (ADR 0131, domain `anthropic_api_key`).
+      3. file ~/.config/metnos/{credentials,anthropic}.env (legacy fallback).
 
     Le chiavi Anthropic hanno formato 'sk-ant-api...' e NON contengono whitespace;
     se ne troviamo (tipico line-wrap da copy-paste browser) lo eliminiamo tutto.
     """
     k = os.environ.get("ANTHROPIC_API_KEY")
+    if not k:
+        k = _read_api_key_from_store("anthropic_api_key")
     if not k:
         k = _read_env_var_from_files("ANTHROPIC_API_KEY", [
             "~/.config/metnos/credentials.env",
@@ -356,10 +375,10 @@ def _read_anthropic_key():
 
 
 def _read_openai_key():
-    """OPENAI_API_KEY da env, poi da ~/.config/metnos/credentials.env.
-    Stessa regola anti-whitespace di _read_anthropic_key.
-    """
+    """OPENAI_API_KEY (3 layer come `_read_anthropic_key`)."""
     k = os.environ.get("OPENAI_API_KEY")
+    if not k:
+        k = _read_api_key_from_store("openai_api_key")
     if not k:
         k = _read_env_var_from_files("OPENAI_API_KEY", [
             "~/.config/metnos/credentials.env",

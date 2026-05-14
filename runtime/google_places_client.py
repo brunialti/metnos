@@ -23,10 +23,24 @@ ENV_FILE = Path.home() / ".config/metnos/google_maps.env"
 
 
 def _load_api_key() -> str | None:
-    """Carica API key da env var oppure da ~/.config/metnos/google_maps.env."""
+    """Risolve `GOOGLE_MAPS_API_KEY` in 3 layer (ADR 0131 extended,
+    14/5/2026):
+      1. env var (override volatile),
+      2. credentials store cifrato (domain `google_maps_api_key`),
+      3. file `~/.config/metnos/google_maps.env` (legacy fallback).
+    """
     k = os.environ.get("GOOGLE_MAPS_API_KEY")
     if k:
         return k
+    try:
+        import credentials as _cr  # type: ignore[import-not-found]
+        payload = _cr.load("google_maps_api_key")
+        if isinstance(payload, dict) and isinstance(payload.get("value"), str):
+            v = payload["value"].strip()
+            if v:
+                return v
+    except ImportError:
+        pass
     if ENV_FILE.is_file():
         for line in ENV_FILE.read_text().splitlines():
             line = line.strip()
