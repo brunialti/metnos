@@ -391,6 +391,7 @@ def affinity_score(query_tokens, executor, *,
 
 def rank(query, catalog, k=10, min_score=1):
     """Forma legacy (K fisso). Usata da test esistenti."""
+    catalog = _filter_dormant(catalog)
     qtokens = tokenize(query)
     if not qtokens:
         return list(catalog)[:k]
@@ -606,6 +607,8 @@ def _query_has_marker(qlow, markers):
 
 
 def rank_with_intent(query, catalog, intent, *, k=3):
+    # Skip dormant: come rank_adaptive, vedi _filter_dormant.
+    catalog = _filter_dormant(catalog)
     """Ranking quando un intent_extractor ha gia' identificato verb+object.
 
     Filtra il catalog per `name.startswith(verb_)`; fra i match preferisce
@@ -761,6 +764,14 @@ def rank_with_intent(query, catalog, intent, *, k=3):
     return head + forced
 
 
+def _filter_dormant(catalog):
+    """Skip executor dormant (ADR 15/5/2026): importati da skill senza
+    credenziali (es. *_google_workspace pre-OAuth). Visibili in
+    `metnos-skills list` per introspezione, nascosti al PLANNER. Pattern
+    deterministico §7.9: attributo `dormant: bool` settato dal loader."""
+    return [e for e in catalog if not getattr(e, "dormant", False)]
+
+
 def rank_adaptive(query, catalog, k_min=5, k_max=8, *, llm_call=None,
                    prefer_intent=True):
     """
@@ -783,6 +794,9 @@ def rank_adaptive(query, catalog, k_min=5, k_max=8, *, llm_call=None,
     sotto-pesa le description e si attacca a nomi calamita). Cap superiore a
     k_max comunque.
     """
+    # Skip dormant (skill_credentials check, ADR 15/5/2026): il PLANNER
+    # non deve vedere executor inattivi per mancanza di OAuth/token.
+    catalog = _filter_dormant(catalog)
     # 1. Intent extractor (LLM-based) se disponibile
     if llm_call is not None and prefer_intent:
         try:

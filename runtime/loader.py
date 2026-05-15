@@ -302,6 +302,12 @@ class Executor:
     deprecated_at: float | None = None     # epoch del passaggio a deprecated (per TTL check)
     deprecation_ttl_hours: int = 24        # finestra di disponibilita' di deprecated prima di archive
     timeout_s: int = 30                    # subprocess timeout (manifest override per build lunghi)
+    # Dormant: executor caricato e firmato ma SENZA credenziali necessarie
+    # (es. *_google_workspace prima del completamento OAuth flow). Resta
+    # nel catalogo per introspezione ma viene filtrato dal pool top-K esposto
+    # al PLANNER. Ricalcolato a ogni `load_catalog` via skill_credentials.
+    dormant: bool = False
+    dormant_reason: str = ""
 
     def has_capability(self, name_prefix: str) -> bool:
         return any(c.get("name", "").startswith(name_prefix) for c in self.capabilities)
@@ -849,6 +855,16 @@ def _load_dir_into_catalog(executors_dir: Path, catalog: Catalog, verify: bool,
             if props:
                 args_schema["properties"] = new_props
 
+        # Dormancy check (ADR 15/5/2026): executor importato da skill
+        # ma senza credenziali → dormant=True, filtrato dal pool top-K.
+        try:
+            from skill_credentials import compute_dormancy as _compute_dormancy
+            _dormant, _dormant_reason = _compute_dormancy(
+                manifest.get("provenance") or {}
+            )
+        except Exception:
+            _dormant, _dormant_reason = False, ""
+
         ex = Executor(
             name=name,
             version=manifest.get("version", "0.0.0"),
@@ -867,6 +883,8 @@ def _load_dir_into_catalog(executors_dir: Path, catalog: Catalog, verify: bool,
             deprecated_at=manifest.get("deprecated_at"),
             deprecation_ttl_hours=int(manifest.get("deprecation_ttl_hours", 24)),
             timeout_s=int(manifest.get("timeout_s", 30)),
+            dormant=_dormant,
+            dormant_reason=_dormant_reason,
         )
         catalog.executors[name] = ex
 
