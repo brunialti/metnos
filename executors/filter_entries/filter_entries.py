@@ -78,6 +78,83 @@ def _parse_iso_to_epoch(s):
         return None
 
 
+_TIME_START_FIELDS = ("start", "started_at", "taken_at_iso", "mtime_iso",
+                       "fired_at", "ts")
+_TIME_END_FIELDS = ("end", "finished_at", "taken_at_iso", "mtime_iso",
+                     "fired_at", "ts")
+
+
+def _to_epoch(v):
+    """Coerce ISO string / epoch number to float epoch. Return None se invalid."""
+    if v is None:
+        return None
+    if isinstance(v, (int, float)):
+        return float(v)
+    if isinstance(v, str):
+        s = v.strip()
+        if not s:
+            return None
+        try:
+            return float(s)
+        except ValueError:
+            pass
+        try:
+            import datetime as _dt
+            return _dt.datetime.fromisoformat(
+                s.replace("Z", "+00:00")
+            ).timestamp()
+        except Exception:
+            return None
+    return None
+
+
+def _entry_window(e, field_start: str | None = None,
+                    field_end: str | None = None):
+    """Estrae (start_epoch, end_epoch) da una entry. Field-name esplicito
+    o autodetect tra `_TIME_START_FIELDS`/`_TIME_END_FIELDS`. Se solo
+    start (foto/file istantanei), end=start."""
+    if not isinstance(e, dict):
+        return None, None
+    s_val = None
+    if field_start:
+        s_val = e.get(field_start)
+    else:
+        for k in _TIME_START_FIELDS:
+            if k in e and e[k] is not None:
+                s_val = e[k]; break
+    e_val = None
+    if field_end:
+        e_val = e.get(field_end)
+    else:
+        for k in _TIME_END_FIELDS:
+            if k in e and e[k] is not None:
+                e_val = e[k]; break
+    s_epoch = _to_epoch(s_val)
+    e_epoch = _to_epoch(e_val) if e_val is not None else s_epoch
+    if s_epoch is None:
+        return None, None
+    if e_epoch is None or e_epoch < s_epoch:
+        e_epoch = s_epoch
+    return s_epoch, e_epoch
+
+
+def _extract_time_windows(entries: list, field_start: str | None = None,
+                            field_end: str | None = None):
+    """Per ogni entry estrae (start_epoch, end_epoch, label). Saltate
+    quelle senza time info."""
+    out = []
+    for e in entries:
+        if not isinstance(e, dict):
+            continue
+        s, en = _entry_window(e, field_start, field_end)
+        if s is None:
+            continue
+        label = (e.get("summary") or e.get("name")
+                 or e.get("title") or e.get("id") or "?")
+        out.append((s, en, str(label)[:80]))
+    return out
+
+
 def invoke(args):
     entries = args.get("entries")
     if not isinstance(entries, list):
@@ -208,6 +285,44 @@ def invoke(args):
         return True
 
     filtered = [e for e in entries if keep(e)]
+
+    # Temporal overlap filter (15/5/2026 §7.3): AND fra `filtered` e
+    # `overlap_entries` su finestra temporale di ogni entry. Pattern
+    # general-purpose per pipeline "due liste filtrate, intersezione".
+    # Esempio: read_events → filter HLT (lista A) + filter MNM (lista B)
+    # → filter overlap A vs B → eventi A che si sovrappongono con B.
+    #
+    # Time window di una entry: (start, end). Field estratti in ordine:
+    # 'start'/'end' (events), 'started_at'/'finished_at' (history task),
+    # 'taken_at_iso' (foto: punto, end=start), 'mtime' (file: punto).
+    # Parsing tollerante (ISO, epoch).
+    overlap_entries = args.get("overlap_entries")
+    overlap_field_start = args.get("overlap_field_start") or None
+    overlap_field_end = args.get("overlap_field_end") or None
+    n_temporal_dropped = 0
+    if isinstance(overlap_entries, list) and overlap_entries:
+        other_windows = _extract_time_windows(
+            overlap_entries, overlap_field_start, overlap_field_end,
+        )
+        if other_windows:
+            kept_temporal: list[dict] = []
+            for e in filtered:
+                e_start, e_end = _entry_window(
+                    e, overlap_field_start, overlap_field_end,
+                )
+                if e_start is None:
+                    continue  # no temporal info → exclude (deterministic)
+                hits = []
+                for o_start, o_end, o_label in other_windows:
+                    if e_start <= o_end and o_start <= e_end:
+                        hits.append(o_label)
+                if hits:
+                    e_copy = dict(e)
+                    e_copy["_overlap_with"] = hits[:3]
+                    kept_temporal.append(e_copy)
+            n_temporal_dropped = len(filtered) - len(kept_temporal)
+            filtered = kept_temporal
+
     return {
         "ok": True,
         "entries": filtered,
@@ -232,6 +347,7 @@ def invoke(args):
                 "where_contains": where_contains,
                 "where_glob": where_glob,
                 "where_regex": where_regex_str,
+                "overlap_dropped": n_temporal_dropped,
             },
         },
     }

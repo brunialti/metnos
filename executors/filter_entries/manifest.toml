@@ -14,7 +14,7 @@ en = "Filter a list of entries (dict) based on arbitrary criteria. Work ONLY IN 
 
 [code]
 files  = ["filter_entries.py"]
-digest = "sha256:a2680a68d935e58bce4d0c864f419cff6ee7cb02628f907ad337b3cc0e47524e"
+digest = "sha256:0d8da00dddc4164a6f7dd0efa11b3e6544d67fa6c58d9bbf601f8ebc72b1fa2f"
 
 [args]
 type     = "object"
@@ -151,6 +151,28 @@ type        = "string"
 [args.properties.where_regex.description]
 it = "Espressione regolare Python case-insensitive su where_field. Es. where_field='summary', where_regex='^HLT[\\s-]+' matcha 'HLT - X' e 'HLT-X'. Richiede where_field."
 en = "Case-insensitive Python regular expression on where_field. E.g. where_field='summary', where_regex='^HLT[\\s-]+' matches 'HLT - X' and 'HLT-X'. Requires where_field."
+
+[args.properties.overlap_step]
+type        = "integer"
+minimum     = 1
+
+[args.properties.overlap_step.description]
+it = "AND temporale fra la lista corrente (from_step) e le entries di un altro step. Pattern §7.3 general-purpose per pipeline 'due liste, intersezione temporale'. Estrae automatic window (start,end) da ogni entry usando i campi standard: 'start'/'end' (events), 'started_at'/'finished_at' (history task), 'taken_at_iso' (foto), 'mtime' (file). Una entry passa se il suo intervallo si sovrappone con almeno una entry dell'altro step. Es. AND fra 'eventi HLT' (step A) e 'eventi MNM' (step B): filter_entries(from_step=A, overlap_step=B) → eventi A che hanno overlap temporale con B. Aggiunge `_overlap_with` ai risultati con label dell'overlap matched."
+en = "Temporal AND between current list (from_step) and entries of another step. General §7.3 pattern for 'two lists, temporal intersection' pipelines. Auto-extracts window (start,end) from each entry using standard fields: 'start'/'end' (events), 'started_at'/'finished_at' (task history), 'taken_at_iso' (photos), 'mtime' (files). An entry passes if its interval overlaps at least one entry of the other step. E.g. AND between 'HLT events' (step A) and 'MNM events' (step B): filter_entries(from_step=A, overlap_step=B) → A events with temporal overlap with B. Adds `_overlap_with` to results with the matched overlap label."
+
+[args.properties.overlap_field_start]
+type        = "string"
+
+[args.properties.overlap_field_start.description]
+it = "Override del field-name 'start' per il calcolo overlap (default autodetect: start/started_at/taken_at_iso/mtime_iso)."
+en = "Override of 'start' field-name for overlap calc (default autodetect: start/started_at/taken_at_iso/mtime_iso)."
+
+[args.properties.overlap_field_end]
+type        = "string"
+
+[args.properties.overlap_field_end.description]
+it = "Override del field-name 'end' per overlap (default autodetect: end/finished_at; fallback start se assente — entry istante)."
+en = "Override of 'end' field-name for overlap (default autodetect: end/finished_at; fallback start if missing — instantaneous entry)."
 
 [[tests]]
 name   = "filtra_kind_image"
