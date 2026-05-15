@@ -1,0 +1,1824 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Metnos — Revisione architetturale (14 maggio 2026)</title>
+<style>
+:root {
+  --bg: #fafafa;
+  --fg: #1a1a1a;
+  --muted: #555;
+  --accent: #2a5a8a;
+  --accent-bg: #eaf3fb;
+  --warn: #b34000;
+  --warn-bg: #fdf2e9;
+  --good: #1e6b3a;
+  --good-bg: #e8f4ec;
+  --code-bg: #f0f0f0;
+  --border: #dcdcdc;
+  --table-stripe: #f4f4f4;
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  font-size: 15px;
+  line-height: 1.55;
+  color: var(--fg);
+  background: var(--bg);
+  margin: 0;
+  padding: 0;
+}
+.container {
+  max-width: 980px;
+  margin: 0 auto;
+  padding: 24px 28px 80px;
+}
+header {
+  border-bottom: 2px solid var(--accent);
+  margin-bottom: 32px;
+  padding-bottom: 18px;
+}
+header h1 {
+  font-size: 1.9em;
+  margin: 0 0 6px;
+  font-weight: 700;
+}
+header .meta {
+  font-size: 0.9em;
+  color: var(--muted);
+}
+h2 {
+  font-size: 1.5em;
+  margin-top: 48px;
+  margin-bottom: 16px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+  color: var(--accent);
+}
+h3 {
+  font-size: 1.18em;
+  margin-top: 28px;
+  margin-bottom: 10px;
+  color: var(--fg);
+}
+h4 {
+  font-size: 1.02em;
+  margin-top: 20px;
+  margin-bottom: 8px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+p { margin: 0 0 12px; }
+ul, ol { margin: 0 0 14px 22px; padding: 0; }
+li { margin-bottom: 5px; }
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+code {
+  font-family: "SF Mono", Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-size: 0.88em;
+  background: var(--code-bg);
+  padding: 1px 5px;
+  border-radius: 3px;
+}
+pre {
+  background: #1e1e1e;
+  color: #e8e8e8;
+  padding: 14px 18px;
+  border-radius: 5px;
+  overflow-x: auto;
+  font-size: 0.85em;
+  line-height: 1.45;
+  margin: 12px 0;
+}
+pre code { background: transparent; color: inherit; padding: 0; }
+.toc {
+  background: var(--accent-bg);
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  padding: 18px 22px;
+  margin-bottom: 28px;
+}
+.toc h2 {
+  margin-top: 0;
+  border-bottom: none;
+  font-size: 1.15em;
+  padding-bottom: 0;
+}
+.toc ol { margin-left: 18px; }
+.toc ol ol { margin-top: 4px; margin-bottom: 4px; }
+.toc a { color: var(--accent); }
+.callout {
+  border-left: 4px solid var(--accent);
+  background: var(--accent-bg);
+  padding: 12px 16px;
+  margin: 14px 0;
+  border-radius: 0 4px 4px 0;
+}
+.callout.warn { border-left-color: var(--warn); background: var(--warn-bg); }
+.callout.good { border-left-color: var(--good); background: var(--good-bg); }
+.callout strong { display: block; margin-bottom: 4px; }
+table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 14px 0 22px;
+  font-size: 0.92em;
+}
+th, td {
+  border: 1px solid var(--border);
+  padding: 8px 10px;
+  text-align: left;
+  vertical-align: top;
+}
+th {
+  background: var(--accent-bg);
+  font-weight: 600;
+}
+tbody tr:nth-child(even) { background: var(--table-stripe); }
+.tag {
+  display: inline-block;
+  font-size: 0.78em;
+  background: var(--accent-bg);
+  color: var(--accent);
+  padding: 1px 7px;
+  border-radius: 10px;
+  margin-right: 4px;
+}
+.tag.warn { background: var(--warn-bg); color: var(--warn); }
+.tag.good { background: var(--good-bg); color: var(--good); }
+.diagram {
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 14px 16px;
+  margin: 14px 0;
+  font-size: 0.82em;
+  line-height: 1.35;
+}
+.section-anchor { display: block; position: relative; top: -20px; visibility: hidden; }
+footer {
+  margin-top: 60px;
+  padding-top: 18px;
+  border-top: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 0.85em;
+}
+.kv-row { display: flex; gap: 12px; margin-bottom: 4px; }
+.kv-row .k { width: 180px; font-weight: 600; color: var(--muted); }
+.kv-row .v { flex: 1; }
+.numbers { font-variant-numeric: tabular-nums; }
+.figcap { font-size: 0.82em; color: var(--muted); text-align: center; margin-top: -6px; margin-bottom: 14px; }
+hr.thin { border: none; border-top: 1px dashed var(--border); margin: 22px 0; }
+</style>
+</head>
+<body>
+<div class="container">
+
+<header>
+  <h1>Metnos — Revisione architetturale</h1>
+  <div class="meta">
+    Analisi indipendente del progetto self-hosted Metnos su <code>/opt/myclaw</code><br>
+    Data: 14 maggio 2026 &middot; Periodo coperto: 22 aprile - 14 maggio 2026 &middot; ADR registry: 129 documenti (0001-0132)<br>
+    Output: revisione tecnica neutra, senza posizioni preconcette
+  </div>
+</header>
+
+<nav class="toc" id="toc">
+  <h2>Indice</h2>
+  <ol>
+    <li><a href="#architettura">Architettura software</a>
+      <ol>
+        <li><a href="#topologia">Topologia generale e processi</a></li>
+        <li><a href="#vocab">Vocabolario chiuso 23 verbi + 17 oggetti</a></li>
+        <li><a href="#vettoriale">Vettorialita' obbligatoria degli executor</a></li>
+        <li><a href="#synt">Synt pipeline 5 (+1) stadi</a></li>
+        <li><a href="#planner">Planner ReAct e prefilter</a></li>
+        <li><a href="#prompt-as-data">Prompt-as-data multilingua</a></li>
+        <li><a href="#backends">Plugin areas: backends per OBJECT</a></li>
+        <li><a href="#admission">Synth admission policy (4+2 layer)</a></li>
+        <li><a href="#determinismo">Determinismo come principio strutturale</a></li>
+        <li><a href="#leakage">Punti di leakage architetturale e debito tecnico</a></li>
+      </ol>
+    </li>
+    <li><a href="#sicurezza">Sicurezza</a>
+      <ol>
+        <li><a href="#threat-model">Threat model esplicito</a></li>
+        <li><a href="#vaglio">Vaglio: guardia + giudice + safe-verb shortcut</a></li>
+        <li><a href="#sandbox">Sandbox bubblewrap</a></li>
+        <li><a href="#admin">Admin / sudoer / consent token HMAC</a></li>
+        <li><a href="#credentials">Credentials store Fernet + HKDF</a></li>
+        <li><a href="#undo">Reverse pattern e undo</a></li>
+        <li><a href="#trust-import">Trust gate per skill importer e plugin esterni</a></li>
+        <li><a href="#sec-weaknesses">Punti deboli e gap residui</a></li>
+      </ol>
+    </li>
+    <li><a href="#innovazione">Innovazione</a>
+      <ol>
+        <li><a href="#inn-vocab">Vocabolario chiuso come anti-drift LLM</a></li>
+        <li><a href="#inn-vettoriale">Vettorialita' come boundary architetturale</a></li>
+        <li><a href="#inn-synt">Synt multistage procedural/creative tier-split</a></li>
+        <li><a href="#inn-implicit">Multi-pipeline intent-implicit actions</a></li>
+        <li><a href="#inn-channel">Channel-aware HTML rendering</a></li>
+        <li><a href="#inn-promoter">Auto-evaluator + promoter daemon</a></li>
+        <li><a href="#inn-prop">Pattern propose+create+notify</a></li>
+      </ol>
+    </li>
+    <li><a href="#futuro">Sviluppi futuri possibili</a>
+      <ol>
+        <li><a href="#fase7">Fase 7: multi-OS, multi-user, disconnect-proof</a></li>
+        <li><a href="#fase8">Fase 8: stress logico</a></li>
+        <li><a href="#voce">Voce, video, real-time collaboration</a></li>
+        <li><a href="#mobile">Client mobile (iOS, Android)</a></li>
+        <li><a href="#marketplace">Plugin marketplace</a></li>
+        <li><a href="#frontier">LLM frontier come fallback integrato</a></li>
+      </ol>
+    </li>
+    <li><a href="#confronto">Confronto con sistemi simili</a>
+      <ol>
+        <li><a href="#open-interpreter">Open Interpreter</a></li>
+        <li><a href="#langchain">LangChain / LangGraph</a></li>
+        <li><a href="#crewai">CrewAI</a></li>
+        <li><a href="#autogen">AutoGen / Microsoft Agent Framework</a></li>
+        <li><a href="#autogpt">AutoGPT / BabyAGI</a></li>
+        <li><a href="#claude-code">Claude Code (Anthropic) / Cursor / Aider</a></li>
+        <li><a href="#semantic-kernel">Microsoft Semantic Kernel</a></li>
+        <li><a href="#goose">Goose (Block / AAIF)</a></li>
+        <li><a href="#italiani">Progetti italiani / europei</a></li>
+        <li><a href="#tabella-comparativa">Tabella riassuntiva</a></li>
+      </ol>
+    </li>
+    <li><a href="#valutazione">Valutazione complessiva</a></li>
+    <li><a href="#riferimenti">Riferimenti esterni</a></li>
+  </ol>
+</nav>
+
+<!-- ==================================================================== -->
+<!--                     1. ARCHITETTURA SOFTWARE                          -->
+<!-- ==================================================================== -->
+
+<h2 id="architettura"><span class="section-anchor"></span>1. Architettura software</h2>
+
+<p>
+Metnos e' un assistente personale self-hosted (single-tenant + multi-utente
+guest) costruito su una microarchitettura non convenzionale di executor sintetizzati
+al volo. La codebase, in <code>/opt/myclaw</code>, contiene:
+</p>
+
+<ul>
+  <li><strong>349 file Python</strong> (~74 mila righe nette di runtime escludendo <code>node_modules</code>);</li>
+  <li><strong>54 executor handcrafted</strong> + N synth in <code>~/.local/share/metnos/executors/</code>;</li>
+  <li><strong>129 ADR</strong> (0001-0132 con 4 skip) datate 22 aprile - 14 maggio 2026, ~3 settimane di sviluppo intensivo;</li>
+  <li><strong>85 prompt Jinja</strong> in <code>runtime/prompts/&lt;lang&gt;/</code> (IT + EN canonical);</li>
+  <li><strong>55 manifest TOML</strong> firmati Ed25519 + signature in <code>manifest.toml.sig</code>;</li>
+  <li><strong>147 moduli runtime</strong> in <code>/opt/myclaw/runtime/</code>.</li>
+</ul>
+
+<h3 id="topologia">1.1 Topologia generale e processi</h3>
+
+<p>
+L'installazione canonica gira su un host singolo, soprannominato <code>.33</code>
+(Strix Halo 96 GB RAM unified). Tre demoni systemd autonomi:
+</p>
+
+<div class="diagram">
+<pre>
++---------------------------------------------------------------------+
+|                    HOST .33  (process name: myclaw)                 |
+|                                                                     |
+|  +------------------+   +------------------+   +-----------------+  |
+|  |  metnos-http     |   |  channel daemon  |   |  scheduler v2   |  |
+|  |  :8770 (HTTP)    |   |  Telegram bot    |   |  asyncio coloc  |  |
+|  |  htmx+Jinja2     |   |  long-poll       |   |  daily@HH:MM    |  |
+|  |  + chat WebUI    |   |  user/guest      |   |  every_Ns/m/h   |  |
+|  +------------------+   +------------------+   +-----------------+  |
+|         |                       |                      |            |
+|         v                       v                      v            |
+|        run_turn(query, actor, channel)                              |
+|         |                                                           |
+|         v                                                           |
+|  +-----------------------------------------------------------+      |
+|  |  agent_runtime.py — ReAct planner loop, 5280 lines        |      |
+|  |  fast_path -> prefilter -> PLANNER LLM -> vaglio -> exec  |      |
+|  +-----------------------------------------------------------+      |
+|         |                                                           |
+|  +-------+-------+        +------------------+                      |
+|  | LLM Router    |        |  Catalog loader  |                      |
+|  | fast: qwen3:8b|        |  /opt/myclaw/    |                      |
+|  | mid: gemma-26B|        |  executors/ +    |                      |
+|  | wise: gemma+T |        |  ~/.local/share/ |                      |
+|  | frontier opt  |        |  metnos/exec.   |                      |
+|  +---------------+        +------------------+                      |
+|                                                                     |
+|  Local servers used:                                                |
+|    ollama :11434  (qwen3:8b, fast tier)                             |
+|    llama.cpp :8080 (Gemma 4 26B middle/wise tier, 2-slot)           |
+|    llama.cpp :8081 (Qwen2-VL-7B VLM, image enrichment)              |
+|    searxng / nominatim / tesseract / piper / whisper.cpp            |
++---------------------------------------------------------------------+
+</pre>
+</div>
+<div class="figcap">Topologia processi del nodo <code>.33</code>.</div>
+
+<p>
+La separazione fra canali (Telegram, HTTP, SSE, futuro Rust client per executor remoti)
+e <em>turno</em> e' netta: ogni canale crea un <code>actor</code> + <code>channel</code>
+identifier, attraverso il quale il runtime risolve user_id e instrada la risposta
+al medium giusto. ADR 0078 (HTTP API Phase 1) e ADR 0083 (multi-user) descrivono
+l'architettura.
+</p>
+
+<h3 id="vocab">1.2 Vocabolario chiuso 23 verbi + 17 oggetti</h3>
+
+<p>
+La scelta architetturale piu' caratterizzante di Metnos e' un <strong>vocabolario
+CHIUSO</strong> per i nomi degli executor, centralizzato in
+<code>/opt/myclaw/runtime/vocab.py</code>. Pattern di naming: <code>azione_oggetto[_qualifier]</code>.
+</p>
+
+<table>
+  <thead><tr><th>Categoria</th><th>Elementi</th><th>Conteggio</th></tr></thead>
+  <tbody>
+    <tr><td>Azioni (verbs)</td><td><code>read, write, move, delete, create, find, list, filter, sort, group, classify, get, set, send, describe, render, extract, compress, compute, compare, change, order, share</code></td><td>23</td></tr>
+    <tr><td>Oggetti (plurale)</td><td><code>files, dirs, packages, messages, events, contacts, places, processes, urls, numbers, images, signatures, texts, proposals, inputs, credentials, entries</code></td><td>17</td></tr>
+    <tr><td>Qualifier formato</td><td><code>csv, xlsx, ocr, zip, pdf, xml, html, json, text, gz, tar, video, audio, image, hash</code></td><td>15</td></tr>
+    <tr><td>Qualifier modalita'</td><td><code>size, format, loc, similar, empty, lines, paragraphs, sentences, pages, segments, indices</code></td><td>11</td></tr>
+    <tr><td>Qualifier safety</td><td><code>blacklist, whitelist, graylist, forbidden, seed, sanity, command, reversibility, diff, promotion, candidates</code></td><td>11</td></tr>
+    <tr><td>Verbi-meta riservati</td><td><code>undo, admin</code> (fuori dal vocabolario chiuso, registry verb-unique)</td><td>2</td></tr>
+    <tr><td>System verbs (SAFE_VERBS)</td><td>11 verbi read-only/pure-compute</td><td>11</td></tr>
+  </tbody>
+</table>
+
+<p>
+Il vincolo "vocabolario chiuso" e' enforced ovunque: <code>synt_multistage.validate_stage1</code>
+rifiuta nomi che usano verbi/oggetti fuori dalle tuple <code>VOCAB_ACTIONS</code> e
+<code>VOCAB_OBJECTS</code>; <code>runtime/loader.py</code> rifiuta synth in collisione
+con handcrafted (ADR 0114 Layer 2); il <code>prefilter</code> mappa sinonimi IT/EN ai
+verbi canonici (~150 voci nel modulo <code>prefilter._VERB_TO_CANONICAL</code>).
+</p>
+
+<p>
+La distinzione fra i 5 verbi-produttori e' particolarmente curata:
+</p>
+
+<ul>
+  <li><strong>find</strong>: pattern/query, discovery, sussume verifica esistenza;</li>
+  <li><strong>get</strong>: id noti o nessun arg (lookup, snapshot);</li>
+  <li><strong>read</strong>: id di sorgente, ritorna contenuto;</li>
+  <li><strong>list</strong>: container, enumera senza contenuto;</li>
+  <li><strong>filter</strong>: lista preesistente in memoria, riduce per predicato.</li>
+</ul>
+
+<p>
+ADR 0045 (executor naming convention closed vocabulary, 27 aprile) e' l'atto fondativo;
+ADR 0128 (12 maggio) estende il vincolo agli executor importati via skill agentskills.io
+con tabella di mapping deterministica.
+</p>
+
+<div class="callout">
+  <strong>Valutazione</strong>
+  Il pattern <code>azione_oggetto</code> e' un Domain Specific Language (DSL) deterministico
+  che riduce drasticamente la superficie di hallucination del PLANNER LLM. Il costo di mantenimento
+  e' alto (richiede ortogonalizzazione semantica continua: vedi storia di <code>share</code> separato
+  da <code>send</code> e <code>set</code> in ADR 0128), ma il payoff e' misurabile: la
+  pipeline synt da 4/4 vs 32% single-prompt (riferimento ADR 0051-0052).
+</div>
+
+<h3 id="vettoriale">1.3 Vettorialita' obbligatoria degli executor</h3>
+
+<p>
+ADR 0041 (27 aprile 2026): <em>Executors vectorial by construction; single item is the
+degenerate case</em>. Ogni executor accetta una lista come input naturale (paths, entries,
+urls, ids), N=0 e' permesso (no-op con report strutturato), N=1 e' degenere. Nessun
+sibling <code>*_batch</code>.
+</p>
+
+<p>
+Il vincolo nasce da un caso live (turn <code>abb3a4d1</code> del 27 aprile): l'utente
+chiede di smistare 98 foto per anno EXIF; <code>move_file</code> single-item satura il
+<code>cap_steps</code> del PLANNER al passo 12, l'LLM ragionevolmente rinuncia.
+La soluzione "<code>move_files_batch</code>" sarebbe stata il fix tampone; Roberto ha
+preferito invertire il default architetturale.
+</p>
+
+<p>
+Implementazione: <code>cap_inferiore = 0</code> (lista vuota = no-op onesto, MAI silenzio),
+<code>cap_superiore = parametro esplicito</code> (<code>max_total</code>, <code>max_results</code>,
+<code>max_bytes</code>), iterazione interna (loop, paginazione, time_window <code>last-Nd</code>).
+Il branching su osservazione torna al PLANNER. <code>truncated: true</code> con
+<code>cap_field</code> + <code>cap_value</code> + <code>available_total</code> dichiarato
+ovunque il cap sia raggiunto (CLAUDE.md §2.7, §2.11 "notify then ask").
+</p>
+
+<h3 id="synt">1.4 Synt pipeline 5 (+1) stadi</h3>
+
+<p>
+Quando il PLANNER incontra un'intent che nessun executor in catalogo copre, invoca
+<code>request_new_executor</code>; il <em>synth multistage</em> orchestra 5 stadi per
+fabbricare al volo un nuovo executor (codice + manifest + test + signature).
+Sorgente: <code>/opt/myclaw/runtime/synt_multistage.py</code> (473 righe) +
+<code>/opt/myclaw/runtime/synth_request.py</code> + 6 ADR (0049-0053, 0114).
+</p>
+
+<table>
+  <thead>
+    <tr><th>Stage</th><th>Tipo</th><th>Tier LLM</th><th>Output</th><th>Max tokens</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>1 NAMING</td><td>procedurale</td><td>middle</td><td><code>name, revertible, critical, target_kind</code></td><td>1800</td></tr>
+    <tr><td>2 SIGNATURE</td><td>procedurale</td><td>middle</td><td><code>args_schema, capabilities, reverse_pattern</code></td><td>4000</td></tr>
+    <tr><td>3 TESTS</td><td>procedurale</td><td>middle</td><td>4-6 birth test TOML</td><td>4000</td></tr>
+    <tr><td>4 DESCRIPTION</td><td>creativo</td><td>middle/wise</td><td>description (80+ char) + 6-10 affinity keyword</td><td>2200</td></tr>
+    <tr><td>5 CODE</td><td>creativo+procedurale</td><td>wise</td><td><code>&lt;name&gt;.py</code> con <code>def invoke()</code></td><td>5000</td></tr>
+    <tr><td>6 VERIFY (ADR 0114 L6)</td><td>verificatore semantico</td><td>wise</td><td>aligned bool, mismatch reason</td><td>300</td></tr>
+  </tbody>
+</table>
+
+<p>
+L'idea cardine, dichiarata in ADR 0049-0051: dividere un task complesso in stadi
+sempre piu' creativi, tier LLM proporzionato, contesto ristretto. Stages 1-4 girano
+su Gemma 4 26B middle (~370 ms/query medio), stage 5 (code) su Gemma 4 26B con
+<code>think=true</code>, stage 6 (verifier) su wise tier ma con <code>think=false</code>
++ 300 token max.
+</p>
+
+<p>
+Stage 5 ha un addendum specializzato per ogni verbo del vocabolario chiuso
+(<code>synt_code_addendum_{move,delete,send,write,extract,read,create,find,list,get,filter,describe}.j2</code>),
+spliciato prima del marker "I/O CONTRACT" nel prompt generico. Stage 6 e' fail-safe:
+se il verifier stesso fallisce, il synth e' ammesso comunque (layer 2/3/5 sono ridondanti).
+</p>
+
+<div class="callout warn">
+  <strong>Anti-pattern intercettato (ADR 0114)</strong>
+  L'8 maggio 2026 il synth <code>find_texts</code> ha hijackato per giorni il
+  PLANNER per query web come "cerca su web ..." perche' affinity catch-all
+  + description fabbricata vs codice scollegato. La pipeline synt NON aveva
+  un giudice di drift semantico, e nessun ager decay-ava per inefficacia
+  (solo per inattivita'). ADR 0114 introduce 4 layer cumulativi
+  + smoke routing assertion + stage 6 verifier. L'aneddoto e' rappresentativo
+  di una classe di rischi reali in agent runtimes auto-generanti.
+</div>
+
+<h3 id="planner">1.5 Planner ReAct e prefilter</h3>
+
+<p>
+Il loop ReAct di <code>agent_runtime.py</code> (5280 righe, modulo monolitico)
+implementa la versione "tool-use nativa" del classico paper Yao et al. 2022
+(<em>ReAct: Synergizing Reasoning and Acting in Language Models</em>), con cinque
+adattamenti significativi:
+</p>
+
+<ol>
+  <li><strong>Tool-use nativo Ollama+Qwen+Gemma</strong> (ADR 0042): niente parser JSON
+    fragile, il provider emette <code>tool_calls</code> strutturati.</li>
+  <li><strong>Data piping schema-guided</strong> (ADR 0043): output di step N referenziato
+    via <code>from_step: N</code> (lista) o <code>{{stepN.field}}</code> (scalare).</li>
+  <li><strong>Prefilter token-based</strong> (ADR 0073): bag-of-words su affinity + verbi
+    canonical IT/EN. ADR 0073 documenta che il bench embedding vs token e' stato vinto
+    dal token-based (5/5/2026).</li>
+  <li><strong>Adaptive re-rank intra-turno</strong> (ADR 0072): post-step, re-ranking
+    additivo cap <code>2&times;k_max</code>.</li>
+  <li><strong>Fast path deterministico</strong> (ADR 0094): tabella chiusa di pattern
+    1:1 (<code>"che ore sono"</code>, ecc.) cortocircuita il PLANNER per ~24 query banali
+    IT+EN.</li>
+</ol>
+
+<p>
+Cap chiusi:
+</p>
+
+<ul>
+  <li><code>cap_steps = 30</code> (limite di passi per turno);</li>
+  <li><code>cap_same_executor = 10</code> (anti-loop sullo stesso tool);</li>
+  <li><code>cap_max_per_turn = 3</code> (per executor non-action su intero turno, anche non consecutivi);</li>
+  <li><code>DUPLICATE_CALL</code> detection: stessa call args identici = forza <code>final_answer</code>.</li>
+</ul>
+
+<p>
+Lo <em>seed-step injection</em> (ADR 0099): se la query contiene un URL completo,
+il runtime inietta <code>read_urls_html(urls=[URL])</code> come step 1 prima di
+interpellare il PLANNER. Bypass deterministico nato dal turno federvolley del 7 maggio
+2026 dove il PLANNER aveva scelto <code>find_urls</code> nonostante la regola prompt.
+</p>
+
+<h3 id="prompt-as-data">1.6 Prompt-as-data multilingua</h3>
+
+<p>
+ADR 0092 (5 maggio 2026): i prompt LLM vivono su filesystem in
+<code>runtime/prompts/&lt;lang&gt;/&lt;role&gt;.j2</code>, engine <strong>MiniJinja</strong>
+(Rust core), accesso via <code>prompt_loader.get(role, lang, **vars)</code>.
+Nessuna stringa di prompt inline nei moduli Python.
+</p>
+
+<p>
+L'evoluzione piu' interessante e' il <strong>3-layer planner</strong> (ADR §10.6.45,
+11 maggio 2026): il prompt PLANNER, originariamente monolitico ~600 righe, e' stato
+splittato in:
+</p>
+
+<pre><code>runtime/prompts/&lt;lang&gt;/planner/
+    _core.j2          identita', vocabolario, regole, esempi generali
+    sections/*.j2     mail, calendar, web, photos, system, admin_shell
+                      (iniettate selettivamente per intent)
+    _footer.j2        project_paths, users_known, now_vars dinamici</code></pre>
+
+<p>
+<code>prompt_loader.compose("planner", lang, sections=[...], **vars)</code> assembla
+i 3 strati con cache LRU. La selezione delle sezioni e' deterministica via
+<code>vocab.detect_target_objects</code>; <code>sections=None</code> include tutto
+(graceful degrade per intent.confidence bassa).
+</p>
+
+<p>
+Pattern <strong>latest-wins</strong> per allineamento multilingua: ogni dir lingua ha
+sibling <code>.lang_state.json</code> con <code>{version_hash, source_lang, source_hash}</code>;
+il daemon <code>i18n_translator.align_prompts()</code> (scheduler v2 daily@02:00)
+fa hash-content compare (non mtime), sceglie edit-source via mtime + tie-break alfabetico,
+ritraduce le altre lingue divergenti. Niente IO extra nel critical path
+<code>get(role, lang, **vars)</code>.
+</p>
+
+<p>
+Il bench format/budget (13 maggio): test 3x2 (<code>prose</code>/<code>yaml_raw</code>/<code>json_raw</code>
+&times; <code>reasoning_budget</code> 0/256). Verdict: <code>json_raw</code> + budget=0 vince
+Pareto su latenza e qualita' (85.1 s, q=4.40 vs prosa). Cambio drop-in via env
+<code>METNOS_SECTION_FORMAT=json_raw</code>.
+</p>
+
+<h3 id="backends">1.7 Plugin areas: backends per OBJECT</h3>
+
+<p>
+ADR 0130 (14 maggio 2026, freschissimo): i provider backend sono organizzati per OBJECT
+canonical:
+</p>
+
+<pre><code>runtime/backends/
+    events/        local_ics.py    google_workspace.py
+    messages/      email_metnos.py  telegram_bot.py  gmail_google_workspace.py
+    files/         local.py        google_workspace.py
+    urls/          httpx_default.py playwright_stub.py
+</code></pre>
+
+<p>
+Il pattern: il dispatcher canonical <code>&lt;verb&gt;_&lt;object&gt;</code> importa
+<code>from backends.&lt;object&gt; import &lt;provider&gt;</code>. La directory radice
+<em>e'</em> l'OBJECT, allineata 1:1 a <code>vocab.OBJECTS</code>; il provider e' il file.
+Niente registry magico, niente discovery dinamico: <em>drop-in deterministico</em>.
+</p>
+
+<p>
+ADR 0132 (14 maggio) descrive il complemento futuro: plugin esterni
+in <code>~/.local/share/metnos/plugins/&lt;provider&gt;-&lt;name&gt;/&lt;object&gt;.py</code>
+con manifest che dichiari <code>[(object, provider), ...]</code>. Trust gate
+<code>enabled=true</code> + <code>consent_token</code>, precedenza builtin &gt; plugin.
+La CLI <code>metnos-plugins</code> e' pending.
+</p>
+
+<div class="callout good">
+  <strong>Pattern A vs B</strong>
+  La scelta <code>backends/&lt;object&gt;/&lt;provider&gt;.py</code> (A) su
+  <code>backends/&lt;provider&gt;/&lt;object&gt;.py</code> (B) e' motivata
+  esplicitamente: l'OBJECT §2.2 e' la radice deterministica del dominio, il
+  dispatcher canonico importa 1 cartella sola, e gli helper provider-shared
+  (OAuth, ecc.) restano nello skill agentskills.io fuori dal runtime.
+  Decisione coerente con §7.2 (semplicita').
+</div>
+
+<h3 id="admission">1.8 Synth admission policy (4+2 layer)</h3>
+
+<p>
+ADR 0114 (8 maggio 2026) introduce una difesa stratificata contro i synth scadenti.
+ADR 0122 (proposal auto-evaluator) aggiunge un 5° gate preventivo:
+</p>
+
+<ol>
+  <li><strong>L1 vocab semantic gate</strong> (deferred): controllo che il synth proposto
+    aderisca semanticamente al verbo canonico scelto in stage 1.</li>
+  <li><strong>L2 affinity overlap guard</strong> (<code>loader.py::_check_affinity_overlap</code>):
+    Jaccard pairwise &gt;= 0.5 vs handcrafted o synth piu' vecchio = rejected. Catalog
+    espone i rejected in <code>catalog._rejected[]</code>.</li>
+  <li><strong>L3 efficacy ager</strong> (<code>runtime/executor_aging.py::apply_efficacy_ager</code>):
+    sorgente <code>~/.local/share/metnos/turns/*.jsonl</code> filtrato per
+    <code>chosen_tool</code>. Synth con invocations &gt;= 100, success_rate &lt; 0.20
+    -&gt; deprecated; &lt; 0.05 dopo altre 30 invocations -&gt; archived. <em>Handcrafted MAI demoted</em>.</li>
+  <li><strong>L5 smoke battery con expected_first_tool</strong>: 8+ query "must work" con
+    asserzione del tool atteso al primo step. Routing canary integrato in <code>smoke.py</code>.</li>
+  <li><strong>L6 LLM semantic verifier (stage 6)</strong>: confronta description vs code,
+    fail-safe (errore = reject in dev, ammetti in prod).</li>
+  <li><strong>L7 admission imported skills</strong> (ADR 0126): trust-classify all'importer
+    agentskills.io, fail-closed.</li>
+</ol>
+
+<p>
+La policy e' un caso di studio: 4 layer cumulativi tutti deterministici (§7.9),
+solo L6 usa LLM e mai per la decisione finale.
+</p>
+
+<h3 id="determinismo">1.9 Determinismo come principio strutturale</h3>
+
+<p>
+CLAUDE.md §7.9: <em>codice deterministico &gt; LLM se equipotente, equiefficace o
+se codice deterministico [sarebbe] troppo complesso.</em> LLM solo quando deterministico
+e' inefficace, troppo complesso, o impossibile.
+</p>
+
+<p>
+Esempi concreti applicati:
+</p>
+
+<table>
+  <thead><tr><th>Componente</th><th>Senza determinismo</th><th>Con determinismo</th></tr></thead>
+  <tbody>
+    <tr>
+      <td>Fast path query banali</td>
+      <td>PLANNER LLM 53.4s per "che ore sono"</td>
+      <td>Tabella chiusa 24 pattern IT+EN, 0 LLM, &lt; 50ms (ADR 0094)</td>
+    </tr>
+    <tr>
+      <td>Vaglio safe verbs</td>
+      <td>Giudice LLM ~1.5-3s per step read-only</td>
+      <td><code>vocab.SAFE_VERBS</code> shortcut, 0 LLM (ADR 0107)</td>
+    </tr>
+    <tr>
+      <td>Output formatter</td>
+      <td>describe_entries LLM per ogni "stato server"</td>
+      <td><code>runtime/output_format.py</code> markdown channel-agnostic (ADR 0095)</td>
+    </tr>
+    <tr>
+      <td>Implicit actions</td>
+      <td>LLM decide ask vs skip vs auto</td>
+      <td><code>vocab.detect_implicit_actions</code> + confidence weights (ADR 0129)</td>
+    </tr>
+    <tr>
+      <td>Synth admission L2-L5</td>
+      <td>LLM giudica overlap, efficacia, routing</td>
+      <td>Jaccard, success_rate counter, expected_first_tool (ADR 0114)</td>
+    </tr>
+    <tr>
+      <td>Reverse pattern</td>
+      <td>LLM scrive funzione reverse() per ogni executor</td>
+      <td>Catalogo chiuso 5 pattern (swap_src_dst, restore_blob_backup, ...) (ADR 0060)</td>
+    </tr>
+    <tr>
+      <td>Credentials extraction</td>
+      <td>LLM parses query, classifies, redacts</td>
+      <td>Regex deterministici + binding hint (ADR 0089)</td>
+    </tr>
+    <tr>
+      <td>HTML rendering</td>
+      <td>LLM o template engine generico</td>
+      <td><code>html_sanitizer</code> whitelist chiusa channel-aware (ADR 0109/0110)</td>
+    </tr>
+    <tr>
+      <td>Thinking-leak scrubber</td>
+      <td>LLM post-processing</td>
+      <td>Regex su line-by-line trigger EN+IT chirurgico (ADR 0102)</td>
+    </tr>
+  </tbody>
+</table>
+
+<p>
+L'effetto e' che il LLM e' usato solo dove davvero serve creativita' o ragionamento
+sotto-determinato: planning, synt stage 4-5, intent extraction (gemma 4 26B middle ~370ms),
+describe_entries, classify_entries. Il "core decisionale" e' codice Python testabile.
+</p>
+
+<h3 id="leakage">1.10 Punti di leakage architetturale e debito tecnico</h3>
+
+<p>
+Un'analisi neutra deve riconoscere anche i punti di tensione:
+</p>
+
+<ul>
+  <li><strong><code>agent_runtime.py</code> monolitico (5280 righe)</strong>: il main loop
+    incorpora seed-step, fast-path, vaglio invocation, scrubbing, hallucination detection,
+    health prepend, output formatter, multi-pipeline implicit_actions, resume_with_scratchpad.
+    L'estrazione di moduli e' iniziata (vedi <code>fast_path</code>, <code>orchestration</code>)
+    ma il file resta il choke point di tutta la logica di turn.</li>
+  <li><strong>Vocabolario chiuso con escalation a Roberto</strong>: aggiungere un verbo
+    richiede modifica di <code>vocab.py</code> + <code>prefilter._VERB_TO_CANONICAL</code> +
+    <code>intent_extractor</code> + opzionalmente un addendum stage 5. Single-maintainer
+    discipline; ma se Metnos diventa multi-user developer, questo collo di bottiglia diventa
+    visibile.</li>
+  <li><strong>Synth admission L1 deferred</strong>: il "vocab semantic gate" non e'
+    implementato. Oggi L2-L6 coprono il caso, ma il design originale prevedeva 6 layer.</li>
+  <li><strong>i18n.sqlite con chiavi pending</strong>: 92 EN + 116 IT chiavi
+    <code>needs_translation=1</code> in i18n.sqlite + manifest description multilang
+    stale. Il daemon di traduzione scheduler v2 (TODO traccia in MEMORY.md) e'
+    pianificato ma non ancora wired.</li>
+  <li><strong>Sandbox bubblewrap fallback graceful</strong>: se <code>bwrap</code> non
+    e' installato, il comando viene eseguito senza wrapping (la pseudo-sandbox di
+    <code>agent_runtime</code> resta attiva come prima). Strato di sicurezza weakened
+    in ambienti dove bwrap manca.</li>
+  <li><strong>Stage 6 verifier "fail-safe = admit"</strong>: scelta pragmatica (se il
+    verifier crash, layer L2/L3/L5 sono ridondanti), ma in scenario adversarial un
+    attaccante potrebbe forzare crash del verifier per bypass.</li>
+  <li><strong>Reverse pattern catalogo a 5 entries</strong>: tutti i synth con
+    <code>revertible=true</code> devono dichiarare uno di {<code>swap_src_dst,
+    delete_created_dirs, delete_created_paths, restore_blob_backup, delete_&lt;obj&gt;_by_id</code>}.
+    Se emerge un caso non riducibile, l'estensione richiede design + ADR.</li>
+  <li><strong>Test rotti vs daily test</strong>: CLAUDE.md §8.1 vieta di disabilitare,
+    impone iterazione. La regola e' chiara ma in pratica diversi turn logs
+    mostrano "8 fail pre-esistenti" trasportati di sessione in sessione.</li>
+</ul>
+
+<!-- ==================================================================== -->
+<!--                     2. SICUREZZA                                      -->
+<!-- ==================================================================== -->
+
+<h2 id="sicurezza"><span class="section-anchor"></span>2. Sicurezza</h2>
+
+<h3 id="threat-model">2.1 Threat model esplicito</h3>
+
+<p>
+Il modello di minaccia di Metnos e' atipico per un personal assistant:
+</p>
+
+<ul>
+  <li><strong>LLM planner (Gemma 4 26B locale, think=true)</strong> e' considerato
+    <em>untrusted</em>: puo' allucinazare, deviare, leakare token interni nel canale text.
+    Patch: <code>_scrub_thinking_leak</code> (ADR 0102), prompt prescrittivo §6, vaglio post-LLM.</li>
+  <li><strong>Executor synth on-the-fly</strong>: il PLANNER puo' richiedere generazione di
+    nuovo codice Python eseguito sul host. Synth pipeline genera firma Ed25519, manifest
+    + signature; <code>loader.verify_executor</code> rifiuta executor con digest mismatch.</li>
+  <li><strong>Input utente</strong>: testo, immagini, allegati. Pattern di credenziali in
+    chiaro intercettati e cifrati prima del PLANNER (ADR 0089 Strato 1).</li>
+  <li><strong>Skill agentskills.io e plugin esterni</strong>: codice di terzi importato.
+    Trust gate L7 (ADR 0126), <code>enabled</code> flag, consent_token (ADR 0132 pending).</li>
+  <li><strong>Multi-utente guest</strong>: cross-user send vaglio (ADR 0084). Host = gatekeeper.</li>
+</ul>
+
+<h3 id="vaglio">2.2 Vaglio: guardia + giudice + safe-verb shortcut</h3>
+
+<p>
+Sorgente: <code>/opt/myclaw/runtime/vaglio.py</code> (348 righe). Architettura a due fasi:
+</p>
+
+<ol>
+  <li><strong>Guardia (binaria)</strong>: <code>guard_check</code>. Forbidden path pattern
+    chiusi (<code>~/.ssh</code>, <code>/etc/passwd</code>, <code>/etc/shadow</code>,
+    <code>/root</code>, <code>/boot</code>, <code>/sys</code>, <code>/proc</code>,
+    <code>/dev/{sd,nvme,mmcblk,loop}</code>, <code>.aws/credentials</code>, <code>.gnupg</code>).
+    Comandi shell pericolosi (<code>rm -rf /</code>, <code>mkfs</code>, <code>dd of=/dev/</code>,
+    fork bomb, <code>chmod -R 077X /</code>).</li>
+  <li><strong>Giudice (graduato)</strong>: <code>judge_score</code>. Backend selezionato
+    via env <code>METNOS_JUDGE_KIND</code>:
+    <ul>
+      <li><code>rule-based-v1</code> (default): heuristica deterministica, soglia 0.30.
+        Bonus per intent menziona executor, penalita' per path traversal o chiavi anomale.</li>
+      <li><code>llm-v1</code> (opt-in): Gemma 4 26B middle tier, prompt sulle 4 Leggi e i telos.
+        ~1500-3000 ms/step.</li>
+    </ul>
+  </li>
+  <li><strong>Safe-verb shortcut (ADR 0107)</strong>: dopo la guardia, se l'action e'
+    in <code>vocab.SAFE_VERBS</code> (11 verbi read-only/pure-compute), il giudice e'
+    bypassato con <code>score=1.0</code>. La guardia esegue PRIMA, quindi
+    <code>read_files</code> su <code>~/.ssh/id_rsa</code> resta bloccato.</li>
+</ol>
+
+<p>
+La separazione deontologia (binaria) / teleologia (graduata) e' descritta come "evita
+l'auto-conferma del modello" nel capitolo 11.1 dell'Architettura. Una decisione di
+design solida: in molti agent runtimes, lo stesso LLM giudica E propone, con un
+fenomeno noto di confirmation bias.
+</p>
+
+<h3 id="sandbox">2.3 Sandbox bubblewrap</h3>
+
+<p>
+Sorgente: <code>/opt/myclaw/runtime/sandbox.py</code> (219 righe).
+Wrapper bubblewrap (<code>bwrap</code>) che applica:
+</p>
+
+<ul>
+  <li>System paths read-only: <code>/usr, /bin, /sbin, /lib, /lib64, /etc, /opt</code>;</li>
+  <li><code>/tmp</code> tmpfs privata, <code>/proc</code>, <code>/dev</code> minimal;</li>
+  <li>Code dir read-only (codice executor non modificabile durante invocazione);</li>
+  <li>Bind capability-driven: ogni <code>fs:read/write</code> capability del manifest
+    espone i path nei <code>hint</code> come bind r/o o r/w;</li>
+  <li>Network: se nessuna <code>network:*</code> capability, <code>--unshare-net</code>;</li>
+  <li><code>--unshare-user, --unshare-ipc, --unshare-uts, --die-with-parent</code>.</li>
+</ul>
+
+<div class="callout warn">
+  <strong>Punto debole strutturale</strong>
+  <code>sandbox.bwrap_available()</code>: se <code>bwrap</code> non e' nel PATH,
+  oppure se <code>METNOS_SANDBOX=0</code>, <code>wrap_command()</code> ritorna
+  il comando invariato. Il commento dichiara "la pseudo-sandbox di agent_runtime
+  resta attiva come prima", ma quella pseudo-sandbox e' un filtro path/host nel
+  runtime Python, bypassabile da subprocess Python che lancia altri processi
+  o tocca syscall direttamente. Su sistemi enterprise dove bwrap manca, la difesa
+  reale degrada a "fiducia nel synth verifier + vaglio".
+</div>
+
+<p>
+Limiti dichiarati: niente landlock (kernel &gt;= 5.13 + syscalls custom), niente
+Docker namespace, niente seccomp custom. Il design e' "MVP utility, non
+production hardening".
+</p>
+
+<h3 id="admin">2.4 Admin / sudoer / consent token HMAC</h3>
+
+<p>
+ADR 0070 (2 maggio) + ADR 0087 (CIFS mount via admin/sudoer) + ADR 0088 (admin
+esposto al PLANNER). Architettura:
+</p>
+
+<div class="diagram">
+<pre>
+PLANNER (Gemma 4 26B) → admin(query NL)
+                          │
+              ┌───────────┴───────────┐
+              │ admin deliberativo:    │
+              │ - canonicalize comando │
+              │ - check graylist/wl    │
+              │ - genera argv          │
+              │ - emette approval card │
+              │ - genera consent_token │
+              │   HMAC TTL 600s        │
+              └───────────┬───────────┘
+                          │
+                       user "si"
+                          │
+                          v
+                    sudoer (executive)
+                    - verify token
+                    - exec via NOPASSWD
+                    - log audit
+</pre>
+</div>
+
+<p>
+<code>admin</code> e' un <em>builtin verb-unique</em> (ADR 0069): verbo fuori dal
+vocabolario chiuso, registry <code>VERB_UNIQUE_REGISTRY</code> in
+<code>runtime/loader.py</code>. Esposto al PLANNER (ADR 0088, deroga
+all'invariante ADR 0069 originale) per permettere risoluzione di intent
+shell-adjacent ("monta share Public da NAS").
+</p>
+
+<p>
+Safety signatures (ADR 0071): graylist / whitelist / blacklist / forbidden
+canonicalizzate <code>binary:subcommand:target_kind</code>. Visibili al PLANNER
+come ordinari executor <code>find_signatures_*</code>, <code>write_signatures_*</code>.
+</p>
+
+<p>
+HMAC consent token: TTL 600s in <code>~/.local/share/metnos/.admin_consent_key</code>.
+Il key e' un secret separato dall'<code>admin.key</code> master (che protegge il
+credentials store).
+</p>
+
+<h3 id="credentials">2.5 Credentials store Fernet + HKDF</h3>
+
+<p>
+Sorgente: <code>/opt/myclaw/runtime/credentials.py</code>. Cipher: <code>cryptography.fernet.Fernet</code>,
+chiave derivata da <code>~/.config/metnos/admin.key</code> via HKDF-SHA256 con salt random per file.
+Storage: <code>~/.config/metnos/credentials/&lt;domain&gt;.json.age</code> mode 0600.
+</p>
+
+<p>
+Layout file:
+</p>
+
+<pre><code>&lt;salt_base64&gt;\n
+&lt;fernet_token&gt;</code></pre>
+
+<p>
+Validazione domain: rifiuto di caratteri <code>/, \\, \\x00, ..</code> per
+bloccare path traversal. <code>fingerprint(domain)</code> espone sha256[:16] della
+pwd per audit; supporta entrambi i layout (ADR 0082 legacy form_data e ADR 0089
+flat).
+</p>
+
+<p>
+<strong>Invariante <code>metnos:credentials_metadata_only</code></strong> (ADR 0123 §2.2):
+i 3 executor <code>find/set/delete_credentials</code> non ritornano mai cleartext al
+PLANNER. <code>FORBIDDEN_KEYS</code> in <code>credentials.py</code> espone una blacklist
+chiusa: <code>value, values, token, secret, secrets, api_key, password, passwd,
+client_secret, cleartext, raw</code>. La funzione <code>assert_no_secrets_in_return</code>
+valida ricorsivamente che nessun campo proibito porti valore non vuoto. Layer di
+difesa centralizzato (regola del 3 §7.2).
+</p>
+
+<p>
+ADR 0131 (14 maggio) consolida: tutti i segreti SMTP/IMAP per Migadu, register.it,
+tiscali sono migrati dai file <code>.env</code> plaintext nello store cifrato
+(<code>smtp_metnos_system</code>, <code>smtp_metnos_roberto</code>,
+<code>smtp_mykleos</code>, ecc.). CLI one-shot <code>credentials_migrate.py</code>
+idempotente. ADR 0131 estende anche a Google API keys, Telegram bot token, Google
+Maps API.
+</p>
+
+<h3 id="undo">2.6 Reverse pattern e undo</h3>
+
+<p>
+ADR 0001 (28 aprile, primo ADR): undo come hook runtime generico con
+<code>reverse(plan, results)</code> esposta dall'executor. Storage append-only in
+<code>~/.local/share/metnos/undo.jsonl</code> con <code>fsync</code>+<code>flock</code>.
+<code>find_crashed()</code> al boot rileva record <code>pending</code> senza <code>done</code>.
+</p>
+
+<p>
+Reverse pattern e' un <strong>catalogo chiuso</strong> (CLAUDE.md §2.3):
+</p>
+
+<table>
+  <thead><tr><th>Pattern</th><th>Quando si usa</th><th>Meccanismo</th></tr></thead>
+  <tbody>
+    <tr><td><code>swap_src_dst</code></td><td>move/rename</td><td>scambia src&harr;dst dai result pairs</td></tr>
+    <tr><td><code>delete_created_dirs</code></td><td>create_dirs</td><td>cancella solo dir con <code>created:true</code></td></tr>
+    <tr><td><code>delete_created_paths</code></td><td>create di file</td><td>idem per file</td></tr>
+    <tr><td><code>restore_blob_backup</code></td><td>fs_write con backup</td><td>richiede <code>blob_path</code>+<code>blob_sha256</code></td></tr>
+    <tr><td><code>delete_&lt;object&gt;_by_id</code></td><td>ADR 0123, creazione di risorsa remota</td><td><code>&lt;object&gt;_ids</code> + scope</td></tr>
+  </tbody>
+</table>
+
+<p>
+Blob backup: <code>$METNOS_HISTORY_DIR/&lt;METNOS_TURN_ID&gt;/blob/&lt;sha256&gt;.bin</code>.
+La <em>onesta'</em> del reverse e' garantita da CLAUDE.md §2.8 (no silent failure):
+<code>ok_count</code> = elementi REALMENTE processati, undo deve riflettere lo stato reale.
+</p>
+
+<h3 id="trust-import">2.7 Trust gate per skill importer e plugin esterni</h3>
+
+<p>
+ADR 0123 (10 maggio) introduce l'importer agentskills.io. La pipeline in 5 stadi
+(parser + translator + codegen Jinja + LLM stage 4 description + admission 5 layer)
+trasforma uno <code>SKILL.md</code> in executor firmato indistinguibile da un
+synth interno.
+</p>
+
+<p>
+Trust mechanism:
+</p>
+
+<ul>
+  <li><strong>Provenance dichiarata</strong> nel manifest:
+    <code>[provenance] imported_from, source_version, source_sha256, imported_at</code>;</li>
+  <li><strong>Verb boundary</strong> (ADR 0128): la tabella
+    <code>runtime/skill_vocab_map.json::contextual</code> mappa
+    <code>&lt;domain&gt;:&lt;action&gt;</code> a <code>{target_kind, side_effect, verb}</code>.
+    Verifier deterministico <code>runtime/importer_verb_verify.py::check_plan</code>
+    rifiuta plan che invocano verb-provider scorretti (es. <code>gmail get MSG_ID</code>
+    deve diventare <code>read_messages</code>, non <code>get_messages</code>);</li>
+  <li><strong>Capability invariant</strong> <code>metnos:credentials_metadata_only</code>
+    su skill che toccano credentials;</li>
+  <li><strong>L7 admission</strong> (ADR 0126): trust-classify all'importer, fail-closed.</li>
+</ul>
+
+<p>
+ADR 0132 (14 maggio) prepara il pattern per plugin esterni non agentskills.io:
+manifest + trust gate <code>enabled=true</code> + consent_token. Precedenza
+<em>builtin &gt; plugin</em>. CLI <code>metnos-plugins</code> pending.
+</p>
+
+<h3 id="sec-weaknesses">2.8 Punti deboli e gap residui</h3>
+
+<p>
+Una valutazione neutra deve riconoscere:
+</p>
+
+<ul>
+  <li><strong>HMAC consent token TTL 600s</strong>: in scenario di shoulder-surfing
+    (utente Telegram con dispositivo compromesso), 10 minuti sono molti. Mitigato
+    parzialmente dall'approval card "monta share X come utente Y", che richiede
+    conferma esplicita.</li>
+  <li><strong>Sandbox bypass quando bwrap manca</strong>: vedi §2.3. Soluzione
+    completa richiede landlock (kernel-side) o container per executor untrusted.</li>
+  <li><strong>OAuth token plaintext in skill scope</strong>: skill agentskills.io
+    google-workspace memorizza <code>google_token.json</code> in chiaro in
+    <code>~/.local/share/metnos/skills/google-workspace/</code>. Non e' nel
+    credentials store cifrato.</li>
+  <li><strong>Vaglio rule-based default</strong>: <code>METNOS_JUDGE_KIND=rule-based-v1</code>
+    e' la default. Soglia 0.30 e' permissiva (regime "benevolente"). Per scenari
+    sensibili dovrebbe essere LLM-based + soglia 0.70.</li>
+  <li><strong>Audit log non firmato</strong>: <code>~/.local/share/metnos/turns/*.jsonl</code>
+    e <code>vaglio/&lt;YYYY-MM&gt;.jsonl</code> sono append-only ma non firmati.
+    Un attaccante con access locale puo' rewriting.</li>
+  <li><strong>Capability hint non enforced cross-process</strong>: i path nei
+    capability hint sono usati per bind bwrap, ma il sandboxing finisce quando
+    l'executor finisce. Output passato al PLANNER puo' contenere data esfiltrata
+    senza essere bloccata (mitigato da scrubbing credentials).</li>
+  <li><strong>Reverse blob backup &lt;= 10 MB</strong> (ADR 0001): scrittura di
+    file grandi non e' reversible. Trade-off pragmatico ma documentato.</li>
+</ul>
+
+<!-- ==================================================================== -->
+<!--                     3. INNOVAZIONE                                    -->
+<!-- ==================================================================== -->
+
+<h2 id="innovazione"><span class="section-anchor"></span>3. Innovazione</h2>
+
+<p>
+Una valutazione sincera deve mettere in luce dove Metnos diverge dall'orizzonte
+degli agent framework di oggi (LangChain, AutoGen, CrewAI, Goose, Open Interpreter,
+Claude Code, Cursor, Semantic Kernel). Non tutti i confronti sono favorevoli al
+progetto: alcune scelte sono ortogonali, non superiori.
+</p>
+
+<h3 id="inn-vocab">3.1 Vocabolario chiuso come anti-drift LLM</h3>
+
+<p>
+Nessun agent framework mainstream impone un vocabolario CHIUSO per i nomi dei tool.
+LangChain e AutoGen permettono nomi arbitrari (libera composizione "snake_case
+description"); CrewAI usa role descriptions; Goose si appoggia a MCP che ha
+schema JSON per tool ma non vincola i nomi.
+</p>
+
+<p>
+La motivazione di Metnos: <em>se il PLANNER e' un Gemma 4 26B local, la sua capacita'
+di tenere consistenza su un naming aperto degrada rapidamente</em>. Esempi nei turn log:
+"<code>fetch_news</code>", "<code>search_internet</code>", "<code>get_emails</code>"
+diventano collisioni di lessico dopo poche centinaia di turni. Con vocabolario chiuso,
+ogni intent ha UNA mappatura canonical e i sinonimi sono nel prefilter, non nel
+catalogo.
+</p>
+
+<p>
+Il <strong>discrimine tra i 5 verbi-produttori</strong> (find vs get vs read vs list
+vs filter) e' un esempio di micro-design semantico raro: la maggior parte dei tool
+framework usa "search" come catch-all.
+</p>
+
+<p>
+Pattern adiacente (in letteratura): <em>Domain-Specific Languages as the deterministic
+backbone of AI agents</em> [Endo 2026, Microsoft Azure dev blog]. Metnos applica il pattern
+in modo radicale: il DSL e' il <em>nome stesso degli executor</em>, non un layer separato.
+</p>
+
+<h3 id="inn-vettoriale">3.2 Vettorialita' come boundary architetturale</h3>
+
+<p>
+Nei principali framework, il pattern e' "tool single-call". Per processare 98 file,
+il PLANNER emette 98 tool call. LangGraph mitiga con StateGraph batching, ma il default
+e' single-call.
+</p>
+
+<p>
+Metnos inverte: <em>vettoriale per costruzione</em>. ADR 0041 e' una decisione di
+boundary: iterazione interna allo executor, branching su osservazione al PLANNER.
+Questo cambia drasticamente il profilo di latenza per query data-intensive:
+"sposta 98 foto" = 1 step (non 98).
+</p>
+
+<h3 id="inn-synt">3.3 Synt multistage procedural/creative tier-split</h3>
+
+<p>
+La separazione "stadio procedurale = LLM medium / stadio creativo = LLM wise" non
+ha un equivalente diretto in letteratura agent. La tecnologia piu' vicina:
+<em>chain-of-thought decomposition</em> e <em>self-refine</em>. Tuttavia:
+</p>
+
+<ul>
+  <li>Self-refine: usa lo stesso modello per generare e critiquare (Madaan et al. 2023);</li>
+  <li>Chain-of-thought: e' un pattern prompt, non un'architettura di tier.</li>
+</ul>
+
+<p>
+Metnos esplicita 3 tier (fast/middle/wise) e li assegna per criterio "task procedurale
+vs creativo". L'effetto: stage 1 NAMING (lookup nel vocab) gira su middle ~300ms, stage
+5 CODE gira su wise (think=true) ~30s. <em>L'investimento computazionale e' proporzionato
+al compito</em>.
+</p>
+
+<p>
+Adozione su scala piu' ampia: Anthropic stesso ha discusso il pattern in
+"Building Effective Agents" (2024) sotto il nome <em>routing</em>.
+</p>
+
+<h3 id="inn-implicit">3.4 Multi-pipeline intent-implicit actions</h3>
+
+<p>
+ADR 0129 (14 maggio) introduce un pattern raro: la detection <em>deterministica</em>
+di azioni mutating sottintese. Query come "<em>proponi 3 orari per un appuntamento di
+1 ora la mattina, dopo la scelta mandami una email</em>" hanno il verbo <code>propone</code>
+(describe) + <code>send</code>, ma il verbo mutating <code>create_events</code> e'
+implicito nel sostantivo "appuntamento".
+</p>
+
+<p>
+Tabella chiusa <code>vocab.OBJECT_DEFAULT_MUTATING_VERB</code> + euristica confidence
++ mapping a strategy <code>auto / ask / skip</code>. Il decisional layer e' deterministico,
+il LLM solo OBBEDISCE al hint strutturato. Pattern raro in framework agentic: la maggior
+parte si affida al LLM per inferire azioni latenti, con failure rate misurabile.
+</p>
+
+<h3 id="inn-channel">3.5 Channel-aware HTML rendering</h3>
+
+<p>
+ADR 0109/0110 (7 maggio): la stessa risposta finale del PLANNER viene resa in due forme:
+</p>
+
+<ul>
+  <li><strong>HTTP browser</strong>: <code>to_safe_html_full</code> con whitelist estesa
+    (h1..h6, ul, ol, li, blockquote, hr, table, p, br) e GFM soft break (newline interno
+    in <code>&lt;p&gt;</code> diventa <code>&lt;br&gt;</code>).</li>
+  <li><strong>Telegram</strong>: <code>to_safe_html</code> subset compatibile con
+    Telegram Bot API (b/i/code/pre/a). <code>chunk_html</code> spezza messaggi &gt; 4000
+    char preservando <code>&lt;a href&gt;</code> via close+reopen LIFO/FIFO. <code>time.sleep(0.05)</code>
+    fra chunk per rispettare rate limit ~20msg/s.</li>
+</ul>
+
+<p>
+Il pattern e' poligonale: lo stesso markdown del PLANNER passa attraverso
+<code>_safe_final_html</code> dispatcher che sceglie il renderer per canale.
+Nessun re-prompting LLM. Determinismo §7.9 applicato a output formatting.
+</p>
+
+<h3 id="inn-promoter">3.6 Auto-evaluator + promoter daemon</h3>
+
+<p>
+ADR 0122 (proposal auto-evaluator, 10 maggio) + TODO promoter daemon: chiude il
+loop <code>synt_suggest → evaluator → catalog</code>. 6 killer (uso 60d &lt; soglia,
+disuso, drift, errori, ecc.) + 7 signal weighted = verdict accept|gray|reject.
+ETA index per stimare il tempo di promozione (path_hashes + count_60d).
+</p>
+
+<p>
+Anti-pattern intercettato: synth che generano valore zero ma restano nel catalog
+con success_rate 0 per settimane. ADR 0114 L3 efficacy ager (post-hoc) + ADR 0122
+(pre-hoc) coprono il ciclo. La maggior parte dei framework agent ha "tool registry"
+ma nessuno strumento di <em>aging</em> dei tool.
+</p>
+
+<h3 id="inn-prop">3.7 Pattern propose+create+notify</h3>
+
+<p>
+Pipeline live convergente (14 maggio): <code>find_events_empty → get_inputs(choice) →
+create_events → send_messages</code>. L'utente dice "<em>proponi 3 orari, dopo la
+scelta mandami email</em>"; il sistema risolve la pipeline lineare con il dialog
+manager (ADR 0090) che persistite lo stato nel mezzo, e <code>resume_with_scratchpad</code>
+riprende il turno post-pick.
+</p>
+
+<p>
+La persistenza dialog state cross-turn (<code>dialog_pending.py</code> + 9 dialog kinds)
+e' un'innovazione architetturale: la maggior parte dei framework agent ha "human-in-the-loop"
+ma come breakpoint sincrono, non come continuation deterministica del plan.
+</p>
+
+<!-- ==================================================================== -->
+<!--                     4. SVILUPPI FUTURI                                -->
+<!-- ==================================================================== -->
+
+<h2 id="futuro"><span class="section-anchor"></span>4. Sviluppi futuri possibili</h2>
+
+<h3 id="fase7">4.1 Fase 7: multi-OS, multi-user, disconnect-proof</h3>
+
+<p>
+CLAUDE.md §12: Fase 7 e' parzialmente avviata (topic 1: client Rust per executor
+remoti, 10 decisioni chiuse, MVP 5 settimane). I topic 2+ sono "DA AVVIARE":
+</p>
+
+<ul>
+  <li><strong>Multi-OS</strong>: il Rust client (ADR 0046) e' progettato per Windows,
+    Linux, macOS. Self-contained binary (ADR 0037): static-link libgcc/libstdc++/winpthread,
+    niente VC++ Redist. <code>python-build-standalone</code> Astral + uv subprocess.</li>
+  <li><strong>Multi-user</strong>: ADR 0083 modella host + guest. <code>users.db</code> in
+    SQLite (users, user_channels) + pairing via <code>/start &lt;token&gt;</code> Telegram.
+    Cross-user send vaglio (ADR 0084). Open: SSO, RBAC.</li>
+  <li><strong>Disconnect-proof</strong>: TODO HIGH (MEMORY.md). Sync chat cross-device,
+    offline queue, mTLS, conversation identity. Roberto preferisce fix completo (non
+    quick-win). Effort L ~3-4 settimane.</li>
+</ul>
+
+<h3 id="fase8">4.2 Fase 8: stress logico</h3>
+
+<p>
+Pianificata "DOPO fase 7". L'idea (Roberto, conversazioni di fine aprile): rigorosamente
+stressare il sistema su query ambigue, multi-step lunghe, edge case linguistici.
+Il framework "iterare-test-cluster" (CLAUDE.md §8.1) e' la baseline; la fase 8 dovrebbe
+estendere a test adversariali.
+</p>
+
+<h3 id="voce">4.3 Voce, video, real-time collaboration</h3>
+
+<p>
+CLAUDE.md §12: Fase 6 voce e' "STANDBY (riusare satellite proprietario; non bloccante)".
+Asset: Piper TTS + whisper.cpp gia' in toolchain self-hosted (CLAUDE.md §10.3).
+</p>
+
+<p>
+Estensioni naturali:
+</p>
+
+<ul>
+  <li><strong>Voice input</strong>: <code>read_messages_audio</code> + transcription whisper.cpp,
+    inject come query testuale al PLANNER. Latency budget: ~1.5s per minuto audio.</li>
+  <li><strong>Voice output</strong>: <code>render_text_audio</code> via Piper. Channel adapter
+    Telegram supporta voice messages nativi.</li>
+  <li><strong>Video</strong>: gia' parzialmente nel pipeline immagini (ADR 0117 unified
+    image enrichment index). Estendere a frame extraction + VLM (Qwen2-VL gia' running su :8081).</li>
+  <li><strong>Real-time collaboration</strong>: TODO HIGH (sync chat cross-device).
+    Conflict resolution, offline queue, mTLS, conversation identity.</li>
+</ul>
+
+<h3 id="mobile">4.4 Client mobile (iOS, Android)</h3>
+
+<p>
+Oggi: Telegram bot + HTTP /chat WebUI (htmx + Jinja2 + uPlot). Niente client nativo
+mobile. Estensione naturale:
+</p>
+
+<ul>
+  <li><strong>PWA</strong>: la chat HTTP e' gia' una HTML page, manca <code>manifest.json</code>
+    + service worker. Effort S ~1-2 giorni.</li>
+  <li><strong>Rust client mobile</strong>: ADR 0046 menziona Windows/Linux/macOS. Estensione
+    a Android (NDK) + iOS (xcodebuild) richiede toolchain separata. Effort L &gt; 2 mesi.</li>
+  <li><strong>Notification push</strong>: oggi delegato a Telegram. Una PWA con push API
+    sblocca notifiche outside-Telegram.</li>
+</ul>
+
+<h3 id="marketplace">4.5 Plugin marketplace</h3>
+
+<p>
+ADR 0132 (14 maggio) e' il piede in <em>plugin esterni</em>: manifest +
+<code>~/.local/share/metnos/plugins/&lt;provider&gt;-&lt;name&gt;/</code>. Estensione
+naturale: un marketplace pubblico per skill agentskills.io + plugin backend.
+</p>
+
+<p>
+La direzione del settore (Anthropic ha donato MCP all'Agentic AI Foundation a dicembre
+2025) e' verso <strong>protocolli standard</strong>. Metnos oggi e' MCP-adiacente: il
+suo tool-use e' OpenAI-compatibile via Ollama/llama.cpp, ma il pattern
+"executor handcrafted + synth + skill importer + plugin esterni" e' piu' ricco
+del singolo "MCP server".
+</p>
+
+<p>
+Migrazione possibile: esporre gli executor canonical come MCP server. Lo skill
+importer agentskills.io di ADR 0123 e' gia' multi-vendor (Claude Code, Cursor,
+Copilot, Gemini CLI hanno tutti SKILL.md format). Quel ponte e' aperto.
+</p>
+
+<h3 id="frontier">4.6 LLM frontier come fallback integrato</h3>
+
+<p>
+Oggi: Gemma 4 26B locale + Sonnet/GPT-5 frontier come fallback (CLAUDE.md §1, §11).
+Tier "wise" supporta entrambi via <code>LLMRouter</code>; default <code>llamacpp</code>
+locale.
+</p>
+
+<p>
+Estensioni utili:
+</p>
+
+<ul>
+  <li><strong>Smart routing</strong>: per query <em>misurabilmente</em> complesse (multi-step
+    &gt;= 5, intent.confidence &lt; 0.5, retry budget esaurito), commute a frontier
+    automaticamente. Oggi richiede opt-in esplicito.</li>
+  <li><strong>Prompt caching frontier</strong>: Claude API supporta cache (skill claude-api
+    automatically detecta). Per il PLANNER prompt (~25KB oggi, ~5-8KB con sezioni)
+    il cache hit rate sarebbe alto.</li>
+  <li><strong>Cost tracker enforcement</strong>: <code>cost_tracker.py</code> esiste ma
+    e' osservativo. Estensione: budget hard per turno, downgrade automatico a fast
+    tier se budget esaurito.</li>
+</ul>
+
+<!-- ==================================================================== -->
+<!--                     5. CONFRONTO                                      -->
+<!-- ==================================================================== -->
+
+<h2 id="confronto"><span class="section-anchor"></span>5. Confronto con sistemi simili</h2>
+
+<p>
+Per ogni framework: stack, approccio, dove diverge da Metnos, dove converge.
+La tabella riassuntiva e' in §5.10.
+</p>
+
+<h3 id="open-interpreter">5.1 Open Interpreter (Killian Lucas)</h3>
+
+<p>
+<strong>Stack</strong>: Python, dispatch function-call con argomento <code>(lang, code)</code>;
+runtime locale (genera codice, lo esegue).
+</p>
+
+<p>
+<strong>Approccio</strong>: <em>natural language interface for computers</em>. Il LLM
+genera codice Python/JS/bash che viene eseguito direttamente sull'host. Sandboxing
+opzionale (chiede conferma utente, mai default-no).
+</p>
+
+<p>
+<strong>Diverge da Metnos</strong>:
+</p>
+<ul>
+  <li>Niente vocabolario chiuso: il LLM scrive codice arbitrario per ogni richiesta;</li>
+  <li>Niente synth + manifest + signature: codice "one-shot" per turno, non persistito;</li>
+  <li>Niente vaglio: confirm-then-execute, ma il LLM decide cosa eseguire;</li>
+  <li>Niente vettorialita' obbligatoria: il LLM scrive il loop se serve.</li>
+</ul>
+
+<p>
+<strong>Converge con Metnos</strong>: tool-use locale, opt-out cloud, focus su filesystem
+e shell. Sandboxing weak (entrambi: bwrap quando disponibile, fallback graceful).
+</p>
+
+<h3 id="langchain">5.2 LangChain / LangGraph</h3>
+
+<p>
+<strong>Stack</strong>: Python + JS, AgentExecutor (legacy) o LangGraph (StateGraph,
+recommended 2026). 600+ integrazioni (vector DB, cloud, SaaS). LangSmith per
+observability.
+</p>
+
+<p>
+<strong>Approccio</strong>: framework <em>generale</em>. Composizione tool +
+prompt + chain via API Python. LangGraph aggiunge stato persistente, retry, error handling.
+</p>
+
+<p>
+<strong>Diverge da Metnos</strong>:
+</p>
+<ul>
+  <li>Tool registry aperto (nomi arbitrari): nessun vincolo lessicale;</li>
+  <li>Niente synth on-the-fly: i tool sono dichiarati staticamente;</li>
+  <li>Niente sandbox / signature / vaglio: tutto in-process Python;</li>
+  <li>Adopter pattern: chiama API esterne, niente self-hosting di default;</li>
+  <li>Niente determinismo §7.9: il LLM e' usato dovunque possibile.</li>
+</ul>
+
+<p>
+<strong>Converge con Metnos</strong>: ReAct come pattern fondante (LangChain ha implementazione
+canonical da 2022). State persistence (LangGraph) e' simile a <code>resume_with_scratchpad</code>
+ma piu' generale.
+</p>
+
+<h3 id="crewai">5.3 CrewAI</h3>
+
+<p>
+<strong>Stack</strong>: Python, role-based DSL ("crews" di agenti con ruoli espliciti).
+Built-in task delegation. Curva di apprendimento bassa (20 righe per partire).
+</p>
+
+<p>
+<strong>Approccio</strong>: multi-agent, ogni agente ha un <em>role</em>. Process types
+<code>sequential</code>, <code>hierarchical</code>. Task output passa sequenzialmente.
+</p>
+
+<p>
+<strong>Diverge da Metnos</strong>:
+</p>
+<ul>
+  <li>Multi-agente vs single-agente: Metnos ha UN planner, CrewAI ha N agenti
+    che dialogano per ruolo;</li>
+  <li>Naming tool aperto: nessun vocabolario chiuso;</li>
+  <li>Niente sandboxing OS-level: tutto in-process;</li>
+  <li>Niente synth on-the-fly: i tool sono dichiarati staticamente.</li>
+</ul>
+
+<p>
+<strong>Converge con Metnos</strong>: separazione ruoli e' simile alla separazione
+<code>PLANNER / VAGLIO / SYNT</code> di Metnos (tre tier LLM). La differenza e' che
+CrewAI espone i ruoli come agenti dialoganti; Metnos li tiene come <em>stages</em>
+deterministici.
+</p>
+
+<h3 id="autogen">5.4 AutoGen / Microsoft Agent Framework</h3>
+
+<p>
+<strong>Stack</strong>: Python, GroupChat conversazionale fra agenti.
+Microsoft ha shiftato focus al "Microsoft Agent Framework" piu' ampio.
+AutoGen riceve bug fix + security patches.
+</p>
+
+<p>
+<strong>Approccio</strong>: agenti che <em>negoziano</em> per turno via GroupChat.
+Ogni agent turn = full LLM call con history accumulato. Costoso per high-volume.
+</p>
+
+<p>
+<strong>Diverge da Metnos</strong>:
+</p>
+<ul>
+  <li>Multi-agente conversazionale: Metnos ha un planner + vaglio + synt, non
+    agenti che dialogano;</li>
+  <li>Niente self-hosting di default: assume Azure OpenAI / OpenAI API;</li>
+  <li>State in-memory (history-driven): Metnos persiste scratchpad su disk
+    <code>~/.local/share/metnos/scratchpad/</code>.</li>
+</ul>
+
+<p>
+<strong>Converge con Metnos</strong>: separazione di responsabilita' fra "agenti"
+(in Metnos: planner, vaglio, synt) e<em>tool use</em>. Concettualmente AutoGen
+e' un superset disordinato di Metnos.
+</p>
+
+<h3 id="autogpt">5.5 AutoGPT / BabyAGI</h3>
+
+<p>
+<strong>Stack</strong>: Python. AutoGPT 2026 e' visual Agent Builder + persistent
+AutoGPT Server + plugin system. BabyAGI 2026 ha modular skill system + memory management.
+L'originale BabyAGI marzo 2023 e' archived.
+</p>
+
+<p>
+<strong>Approccio</strong>: <em>autonomous loop</em>. AutoGPT: LLM analizza obiettivo,
+decompone subtasks, chiama API esterne, monitora progresso. BabyAGI: 3 funzioni cicliche
+(task execution, creation, prioritization) con vector memory.
+</p>
+
+<p>
+<strong>Diverge da Metnos</strong>:
+</p>
+<ul>
+  <li>Loop ad-libitum vs <code>cap_steps=30</code> di Metnos: meno controllo;</li>
+  <li>Niente synth typed: AutoGPT genera task in linguaggio naturale, BabyAGI usa
+    vector memory per "skill" non strutturati;</li>
+  <li>Niente sandbox / signature / vaglio.</li>
+</ul>
+
+<p>
+<strong>Converge con Metnos</strong>: <em>parsimonia</em> e <em>non-renunciation telos</em>
+(ADR 0010). BabyAGI cycle <code>execution + creation + prioritization</code> e' simile
+alla "synthesis cascade" di Metnos (compose → generate → dedupe → generalize →
+specialize). Metnos formalizza la cascade in 5 strategie orthogonalizzate; BabyAGI
+e' piu' fluido.
+</p>
+
+<h3 id="claude-code">5.6 Claude Code (Anthropic) / Cursor / Aider</h3>
+
+<p>
+<strong>Stack</strong>:
+</p>
+<ul>
+  <li><em>Claude Code</em>: agent CLI Anthropic. Tool use (Read, Edit, Bash, ...), legge
+    codebase, esegue comandi, scrive file end-to-end. Sandbox OS-level (in versione recente).</li>
+  <li><em>Cursor</em>: IDE wrapper VS Code + AI features. Cloud agent in sandboxed VM con
+    repo clone, apre PR finita. Local agent con streaming.</li>
+  <li><em>Aider</em>: terminal AI pair programmer + git. Editing diretto + meaningful
+    git commits. Token-efficient (4.2x meno di Claude Code per task equivalente).</li>
+</ul>
+
+<p>
+<strong>Approccio</strong>: coding-focused. Claude Code agent-first, Cursor IDE-first,
+Aider terminal+git.
+</p>
+
+<p>
+<strong>Diverge da Metnos</strong>:
+</p>
+<ul>
+  <li>Domain: coding vs personal assistant. Metnos non e' una coding tool primaria
+    (anche se via admin/sudoer puo' eseguire comandi shell);</li>
+  <li>Frontier-LLM-dependent: tutti e tre assumono cloud API. Metnos e' self-hosted
+    by default;</li>
+  <li>Niente vocabolario chiuso, niente vettorialita' obbligatoria, niente synt.</li>
+</ul>
+
+<p>
+<strong>Converge con Metnos</strong>: tool-use nativo (function calling), edit diretto
+filesystem, agente-first (Claude Code).
+</p>
+
+<h3 id="semantic-kernel">5.7 Microsoft Semantic Kernel</h3>
+
+<p>
+<strong>Stack</strong>: C# + Python + Java. <em>Kernel</em> = orchestratore centrale;
+<em>Plugin</em> = wrapper standardizzato attorno a function (Semantic + Native).
+Migration in corso verso "Microsoft Agent Framework" (open-source 2025).
+</p>
+
+<p>
+<strong>Approccio</strong>: <em>Kernel + Plugins</em>. Semantic Function = prompt template;
+Native Function = codice C#/Python. Il Kernel sceglie cosa chiamare.
+</p>
+
+<p>
+<strong>Diverge da Metnos</strong>:
+</p>
+<ul>
+  <li>Plugin registry esterna vs vocabolario chiuso integrato;</li>
+  <li>Multi-language (.NET first, poi Python/Java) vs Python-only;</li>
+  <li>Enterprise-grade (Azure-friendly) vs single-tenant self-hosted.</li>
+</ul>
+
+<p>
+<strong>Converge con Metnos</strong>: separazione fra <em>orchestratore</em>
+(in Metnos: planner) e <em>plugins/executor</em> e' parallela. Tool admission via
+schema (Metnos: manifest TOML, SK: function metadata).
+</p>
+
+<h3 id="goose">5.8 Goose (Block / AAIF)</h3>
+
+<p>
+<strong>Stack</strong>: Rust, modular core agent loop + provider abstraction LLM (15+
+provider) + extension system su MCP (70+ extensions, 3000+ MCP server discoverable).
+Donato da Block ad Agentic AI Foundation 2025.
+</p>
+
+<p>
+<strong>Approccio</strong>: <em>local-first open-source agent</em>, focus developer.
+MCP as the wire protocol. Apache 2.0.
+</p>
+
+<p>
+<strong>Diverge da Metnos</strong>:
+</p>
+<ul>
+  <li>MCP-native: l'estensibilita' passa interamente per MCP server. Metnos ha
+    plugin areas (ADR 0130/0132) + skill importer (ADR 0123) ma MCP non e' wired
+    nativamente;</li>
+  <li>Niente vocabolario chiuso: MCP tool sono nomi arbitrari;</li>
+  <li>Niente synth on-the-fly: estensione = installare un MCP server.</li>
+</ul>
+
+<p>
+<strong>Converge con Metnos</strong>: local-first, multi-LLM provider, focus
+self-hosting. Estensibilita' come asse di design centrale.
+</p>
+
+<h3 id="italiani">5.9 Progetti italiani / europei</h3>
+
+<p>
+Panorama:
+</p>
+
+<ul>
+  <li><strong>Mistral AI</strong> (Francia): leader EU per modelli open-weight. Devstral
+    e' best-in-class per agentic coding. Mistral offre <em>Workflows</em> come orchestration
+    enterprise layer. Posizionamento <em>European sovereignty</em>. Diverge da Metnos
+    per scope: Mistral fornisce modelli + workflow API, Metnos e' un personal assistant
+    completo con stack proprio.</li>
+  <li><strong>AgenticSeek</strong> (open-source, Fosowl): "Fully Local Manus AI",
+    no API. Autonomous agent che pensa, naviga, scrive codice locale. Stack: Python.
+    Converge con Metnos su local-only + multi-step.</li>
+  <li><strong>PyGPT</strong> (multi-european): desktop AI assistant multi-platform.
+    Supporta tutti i modelli noti. Piu' simile a un wrapper di chat che a un
+    agentic runtime; converge su self-hosting.</li>
+  <li><strong>DeepSeek-V4-Pro</strong> (Cina, ma open-weight): modello base
+    riferimento per agentic coding. Non e' un framework agent ma un foundation
+    model.</li>
+</ul>
+
+<p>
+Nel panorama italiano specifico non ho trovato un progetto open-source equivalente
+a Metnos (single-developer + microarchitettura proprietaria + 3-settimane di
+sviluppo intensivo + 129 ADR documentati). E' un progetto di nicchia ma con
+qualita' tecnica indipendente.
+</p>
+
+<h3 id="tabella-comparativa">5.10 Tabella riassuntiva</h3>
+
+<table>
+  <thead>
+    <tr>
+      <th>Sistema</th>
+      <th>Stack</th>
+      <th>Vocab</th>
+      <th>Tool synth</th>
+      <th>Sandbox</th>
+      <th>Self-hosted</th>
+      <th>Multi-agent</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>Metnos</strong></td>
+      <td>Python, Ollama+llama.cpp, MiniJinja, SQLite</td>
+      <td>Chiuso (23+17)</td>
+      <td>Synt 5+1 stadi</td>
+      <td>bwrap + vaglio</td>
+      <td>Default si</td>
+      <td>No (1 planner)</td>
+    </tr>
+    <tr>
+      <td>Open Interpreter</td>
+      <td>Python, multi-LLM</td>
+      <td>Aperto (code-gen)</td>
+      <td>One-shot, non persistito</td>
+      <td>Confirm-then-exec</td>
+      <td>Si</td>
+      <td>No</td>
+    </tr>
+    <tr>
+      <td>LangChain/LangGraph</td>
+      <td>Python, JS, 600+ int.</td>
+      <td>Aperto</td>
+      <td>No (statici)</td>
+      <td>No</td>
+      <td>Opzionale</td>
+      <td>LangGraph: si</td>
+    </tr>
+    <tr>
+      <td>CrewAI</td>
+      <td>Python</td>
+      <td>Aperto</td>
+      <td>No</td>
+      <td>No</td>
+      <td>Opzionale</td>
+      <td>Si (role-based)</td>
+    </tr>
+    <tr>
+      <td>AutoGen/MS Agent</td>
+      <td>Python, Azure-friendly</td>
+      <td>Aperto</td>
+      <td>No</td>
+      <td>No</td>
+      <td>No (Azure)</td>
+      <td>Si (GroupChat)</td>
+    </tr>
+    <tr>
+      <td>AutoGPT/BabyAGI</td>
+      <td>Python, GPT-4+</td>
+      <td>Aperto</td>
+      <td>Task gen NL</td>
+      <td>No (eredita Docker)</td>
+      <td>Opzionale</td>
+      <td>No (loop)</td>
+    </tr>
+    <tr>
+      <td>Claude Code</td>
+      <td>TS/Python, Anthropic API</td>
+      <td>Tool set fisso</td>
+      <td>No</td>
+      <td>OS-level (recent)</td>
+      <td>No (cloud)</td>
+      <td>No</td>
+    </tr>
+    <tr>
+      <td>Cursor</td>
+      <td>VS Code fork</td>
+      <td>Tool set fisso</td>
+      <td>No</td>
+      <td>Cloud VM</td>
+      <td>No</td>
+      <td>No</td>
+    </tr>
+    <tr>
+      <td>Aider</td>
+      <td>Python, multi-LLM</td>
+      <td>Tool set fisso (edit)</td>
+      <td>No</td>
+      <td>git as safety net</td>
+      <td>Si</td>
+      <td>No</td>
+    </tr>
+    <tr>
+      <td>Semantic Kernel</td>
+      <td>C#, Python, Java</td>
+      <td>Plugin registry</td>
+      <td>No</td>
+      <td>No</td>
+      <td>Opzionale</td>
+      <td>Si</td>
+    </tr>
+    <tr>
+      <td>Goose</td>
+      <td>Rust, MCP-native</td>
+      <td>MCP tool names</td>
+      <td>No (install MCP)</td>
+      <td>Dipende da MCP server</td>
+      <td>Default si</td>
+      <td>No (estensioni)</td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="callout">
+  <strong>Posizionamento sintetico</strong>
+  Metnos e' l'unico fra i sistemi confrontati che combina simultaneamente:
+  (a) vocabolario chiuso enforced, (b) vettorialita' obbligatoria,
+  (c) synt on-the-fly con stage 6 verifier, (d) sandbox bubblewrap + vaglio
+  costituzionale, (e) self-hosted default + frontier opzionale, (f) plugin
+  areas deterministiche per OBJECT canonical. E' un punto di design originale,
+  non un derivato evolutivo di un framework esistente.
+</div>
+
+<!-- ==================================================================== -->
+<!--                     6. VALUTAZIONE COMPLESSIVA                        -->
+<!-- ==================================================================== -->
+
+<h2 id="valutazione"><span class="section-anchor"></span>6. Valutazione complessiva</h2>
+
+<h3>6.1 Punti di forza</h3>
+
+<ul>
+  <li><strong>Coerenza disciplinare</strong>. La quadrupletta CLAUDE.md + ADR registry
+    + memory persistente + vocabolario chiuso forma un sistema di vincoli che si
+    rinforzano a vicenda. Pochi progetti di scala simile mostrano 129 ADR datati con
+    tracciabilita' decisionale completa.</li>
+  <li><strong>Determinismo come principio strutturale</strong>. §7.9 e' applicato
+    rigorosamente: ogni volta che il LLM sarebbe equivalente al codice, il codice vince.
+    L'effetto netto: latenza p50 dei turni "trivial" sotto 100ms (fast path), latenza
+    p99 dei turni complessi dominata da gemma 4 26B think=true (~30s), niente fluttuazione
+    stocastica nascosta.</li>
+  <li><strong>Sicurezza stratificata</strong>. Guardia binaria + giudice graduato +
+    safe-verb shortcut + sandbox bubblewrap + credentials cifrate Fernet + reverse pattern
+    catalogo + signature Ed25519 sui manifest. Nessun layer e' presente "perche' moderno";
+    ognuno e' motivato da uno scenario concreto in ADR.</li>
+</ul>
+
+<h3>6.2 Punti deboli</h3>
+
+<ul>
+  <li><strong>Single-maintainer scalability</strong>. Il vocabolario chiuso richiede
+    escalation per ogni nuovo verbo. Il progetto e' single-developer (Roberto Brunialti);
+    la disciplina che oggi e' un vantaggio diventera' un collo di bottiglia se Metnos
+    aprira' contributor esterni.</li>
+  <li><strong><code>agent_runtime.py</code> monolitico</strong>. 5280 righe in un singolo
+    file. Concentra fast-path, prefilter, vaglio invocation, scrubbing, hallucination
+    detection, output formatter, resume logic. Refactor in moduli e' iniziato ma incompleto.
+    Difficile per un nuovo lettore mappare il flusso.</li>
+  <li><strong>Sandbox bypass quando bwrap manca</strong>. Su sistemi senza bubblewrap,
+    la difesa reale degrada a "fiducia in vaglio + synth verifier". Non e' enterprise-ready
+    per sistemi sensibili senza un secondo layer (landlock, container, VM).</li>
+</ul>
+
+<h3>6.3 Opportunita'</h3>
+
+<ul>
+  <li><strong>MCP bridge</strong>. Esporre gli executor canonical come MCP server
+    renderebbe Metnos un cittadino di prima classe nell'ecosistema Anthropic/Block/OpenAI
+    (10k+ MCP server pubblici a marzo 2026). Lo skill importer agentskills.io di ADR 0123
+    e' gia' il ponte multi-vendor.</li>
+  <li><strong>Plugin marketplace</strong>. ADR 0132 e' il primo passo. Un registry pubblico
+    di plugin per <code>backends/&lt;object&gt;/&lt;provider&gt;.py</code> renderebbe
+    Metnos estensibile dall'utente finale senza editare il runtime.</li>
+  <li><strong>Mobile via PWA</strong>. La chat HTTP e' gia' una HTML page htmx +
+    Jinja2. Manifest PWA + service worker = ~1-2 giorni di lavoro, sblocca install-on-home-screen
+    e push notification fuori da Telegram.</li>
+</ul>
+
+<!-- ==================================================================== -->
+<!--                     7. RIFERIMENTI                                    -->
+<!-- ==================================================================== -->
+
+<h2 id="riferimenti"><span class="section-anchor"></span>7. Riferimenti</h2>
+
+<h3>7.1 Repository Metnos</h3>
+<ul>
+  <li><code>/opt/myclaw/CLAUDE.md</code> — guidelines di progetto (281 righe canonical)</li>
+  <li><code>/opt/myclaw/decisions/</code> — 129 ADR datate 22 aprile - 14 maggio 2026</li>
+  <li><code>/opt/myclaw/docs/it/architecture/</code> — documentazione canonica IT</li>
+  <li><code>/opt/myclaw/docs/en/architecture/</code> — bridge simmetrico EN</li>
+  <li><code>/opt/myclaw/runtime/vocab.py</code> — single source of truth vocabolario chiuso</li>
+  <li><code>/opt/myclaw/runtime/agent_runtime.py</code> — main loop ReAct (5280 righe)</li>
+  <li><code>/opt/myclaw/runtime/vaglio.py</code> — guardia + giudice + safe-verb shortcut</li>
+  <li><code>/opt/myclaw/runtime/sandbox.py</code> — bubblewrap wrapper</li>
+  <li><code>/opt/myclaw/runtime/credentials.py</code> — Fernet + HKDF store</li>
+  <li><code>/opt/myclaw/runtime/synt_multistage.py</code> — synt pipeline 5+1 stadi</li>
+  <li><code>/opt/myclaw/runtime/prompt_loader.py</code> — MiniJinja 3-layer compose</li>
+  <li><code>/opt/myclaw/runtime/backends/</code> — plugin areas per OBJECT</li>
+</ul>
+
+<h3>7.2 ADR notevoli</h3>
+<ul>
+  <li>ADR 0001 — Undo as a generic runtime hook with executor-supplied reverse()</li>
+  <li>ADR 0010 — Synthesis cascade with non-renunciation telos</li>
+  <li>ADR 0017 — Simplicity as a binding project constraint, not aesthetic preference</li>
+  <li>ADR 0025 — Three-tier LLM architecture (fast / middle / wise)</li>
+  <li>ADR 0041 — Executors vectorial by construction</li>
+  <li>ADR 0045 — Executor naming convention closed vocabulary</li>
+  <li>ADR 0051 — Synt multistage 5 stages</li>
+  <li>ADR 0070 — Admin → sudoer chain</li>
+  <li>ADR 0078 — HTTP API Phase 1</li>
+  <li>ADR 0089 — Credentials UX 3-tier flow</li>
+  <li>ADR 0092 — Prompts as data multilingua</li>
+  <li>ADR 0094 — Deterministic fast path</li>
+  <li>ADR 0107 — Vaglio safe-verb shortcut</li>
+  <li>ADR 0114 — Synth admission policy 4 layers</li>
+  <li>ADR 0117 — Unified image enrichment index</li>
+  <li>ADR 0123 — Skill importer agentskills.io</li>
+  <li>ADR 0128 — Importer verb boundary</li>
+  <li>ADR 0129 — Intent-implicit actions</li>
+  <li>ADR 0130 — Backends/&lt;object&gt;/&lt;provider&gt;</li>
+  <li>ADR 0131 — Credentials single store</li>
+  <li>ADR 0132 — External backend plugins</li>
+</ul>
+
+<h3>7.3 Riferimenti esterni</h3>
+<ul>
+  <li>Yao, S. et al. (2022). <em>ReAct: Synergizing Reasoning and Acting in Language Models</em>.
+    arXiv:2210.03629 [<a href="https://arxiv.org/abs/2210.03629">arxiv.org/abs/2210.03629</a>]</li>
+  <li>Anthropic (2024-2026). <em>Model Context Protocol</em>.
+    [<a href="https://modelcontextprotocol.io/">modelcontextprotocol.io</a>]</li>
+  <li>LangChain (2026). <em>Agents - Docs by LangChain</em>.
+    [<a href="https://docs.langchain.com/oss/python/langchain/agents">docs.langchain.com</a>]</li>
+  <li>OpenInterpreter. <em>open-interpreter on GitHub</em>.
+    [<a href="https://github.com/OpenInterpreter/open-interpreter">github.com/OpenInterpreter/open-interpreter</a>]</li>
+  <li>CrewAI. <em>crewAI on GitHub</em>.
+    [<a href="https://github.com/crewaiinc/crewai">github.com/crewaiinc/crewai</a>]</li>
+  <li>Microsoft. <em>Semantic Kernel Agent Framework</em>.
+    [<a href="https://learn.microsoft.com/en-us/semantic-kernel/frameworks/agent/">learn.microsoft.com</a>]</li>
+  <li>Block / AAIF. <em>Goose Open Source AI Agent</em>.
+    [<a href="https://goose-docs.ai/">goose-docs.ai</a>]</li>
+  <li>NVIDIA (2026). <em>Practical Security Guidance for Sandboxing Agentic Workflows</em>.
+    [<a href="https://developer.nvidia.com/blog/practical-security-guidance-for-sandboxing-agentic-workflows-and-managing-execution-risk/">developer.nvidia.com</a>]</li>
+  <li>Penligent (2026). <em>Distributional AGI Safety, The Agent Mesh Attack Surface</em>.</li>
+  <li>arXiv:2511.21990v1 — <em>A Safety and Security Framework for Real-World Agentic Systems</em>.</li>
+  <li>arXiv:2512.01295v1 — <em>Systems Security Foundations for Agentic Computing</em>.</li>
+  <li>Endo, T. (2026). <em>Domain-Specific Languages: The Deterministic Backbone of AI Agents</em>. Medium.</li>
+</ul>
+
+<footer>
+  Report generato il 14 maggio 2026.
+  Documento auto-contenuto, CSS inline, nessuna dipendenza esterna.
+  Salvato in <code>/opt/myclaw/docs/it/analysis/architectural_review_2026-05-14.html</code>.
+</footer>
+
+</div>
+</body>
+</html>

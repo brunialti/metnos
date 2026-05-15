@@ -1,0 +1,120 @@
+# Manifest dell'executor `create_events` — Metnos v1.1
+# Naming compositivo §2.2: azione_oggetto[_qualifier].
+# Dispatcher canonical (sequel di read_events, 13/5/2026).
+
+manifest_format = "1.0"
+
+name        = "create_events"
+version     = "0.4.0"
+author      = "Roberto Brunialti <roberto.brunialti@metnos.com>"
+affinity    = ["fissa", "fissa appuntamento", "prenota", "book", "schedule",
+                "crea evento", "create event", "aggiungi appuntamento",
+                "appuntamento", "appuntamenti", "agenda", "evento", "eventi",
+                "calendario", "calendar", "riunione", "incontro", "meeting"]
+revertible       = true
+reverse_pattern  = "delete_events_by_id"
+lifecycle        = "active"
+
+[description]
+it = "Crea un nuovo appuntamento sul calendario. Dispatcher canonical: instrada al backend giusto in base a `client` (default `local`). USO CORRETTO: create_events(summary='...', start='2026-05-14T09:00:00+02:00', end='2026-05-14T10:00:00+02:00'). DEVI risolvere prima la data con get_now se l'utente dice 'mercoledi'/'domani', poi richiamare con start/end ISO 8601 con offset. NON DEVI usarla per LEGGERE eventi (usa read_events) ne' per cancellare (usa delete_events). §2.6 trasformativo: ritorna `results: list`. §2.3 reverse_pattern='delete_events_by_id'. Backend `local` (default) e' uno STUB esplicito: ritorna ok=false con error_class='not_implemented' finche' un plugin calendar non viene aggiunto. Validazione preventiva: campi mancanti (summary/start/end) ritornano error_class='invalid_args' con hint per il PLANNER. ERRORE: invocare senza start/end ISO 8601 con offset esplicito."
+en = "Creates a new calendar appointment. Canonical dispatcher: routes to the right backend based on `client` (default `local`). CORRECT USE: create_events(summary='...', start='2026-05-14T09:00:00+02:00', end='2026-05-14T10:00:00+02:00'). MUST first resolve the date with get_now if the user says 'wednesday'/'tomorrow', then call with ISO 8601 start/end with offset. MUST NOT be used to READ events (use read_events) nor to delete (use delete_events). §2.6 transformative: returns `results: list`. §2.3 reverse_pattern='delete_events_by_id'. Backend `local` (default) is an explicit STUB: returns ok=false with error_class='not_implemented' until a calendar plugin is added. Preventive validation: missing fields (summary/start/end) return error_class='invalid_args' with PLANNER hint. ERROR: invoking without ISO 8601 start/end with explicit offset."
+
+[code]
+files  = ["create_events.py"]
+digest = "sha256:3f7b4b4b19f8a9b5fb106d4313875be2ad6f8c6dad0e4de5ede4d69c2db08e95"
+
+[args]
+type     = "object"
+required = []
+
+[args.properties.summary]
+type    = "string"
+
+[args.properties.summary.description]
+it = "Titolo dell'evento (breve, mostrato in agenda). Es. 'Team Standup', 'Pranzo con Marco'."
+en = "Event title (short, displayed in agenda). E.g. 'Team Standup', 'Lunch with Marco'."
+
+[args.properties.start]
+type    = "string"
+format  = "date-time"
+
+[args.properties.start.description]
+it = "Inizio in ISO 8601 con offset esplicito (es. 'Z' o '+01:00'). Es. '2026-05-14T09:00:00+02:00'. Risolvi con get_now se l'utente dice 'domani'/'mercoledi'."
+en = "Start in ISO 8601 with explicit offset (e.g. 'Z' or '+01:00'). E.g. '2026-05-14T09:00:00+02:00'. Resolve with get_now if the user says 'tomorrow'/'wednesday'."
+
+[args.properties.end]
+type    = "string"
+format  = "date-time"
+
+[args.properties.end.description]
+it = "Fine in ISO 8601 con offset esplicito; deve essere > start. Es. '2026-05-14T10:00:00+02:00'."
+en = "End in ISO 8601 with explicit offset; must be > start. E.g. '2026-05-14T10:00:00+02:00'."
+
+[args.properties.location]
+type    = "string"
+
+[args.properties.location.description]
+it = "Luogo dell'evento (testo libero). Es. 'Cafe', 'Sala riunioni B'."
+en = "Event location (free text). E.g. 'Cafe', 'Meeting room B'."
+
+[args.properties.attendees]
+type    = "array"
+items   = { type = "string" }
+
+[args.properties.attendees.description]
+it = "Lista email partecipanti. Es. ['alice@co.com', 'bob@co.com']."
+en = "List of attendee emails. E.g. ['alice@co.com', 'bob@co.com']."
+
+[args.properties.calendar_id]
+type    = "string"
+default = "primary"
+
+[args.properties.calendar_id.description]
+it = "Identificatore del calendario di destinazione. Default 'primary'."
+en = "Target calendar identifier. Default 'primary'."
+
+[args.properties.client]
+type        = "string"
+enum        = ["local"]
+default     = "local"
+
+[args.properties.client.description]
+it = "Implementazione backend (default 'local' = calendar locale via ICS file, attualmente stub). Plugin esterni futuri (gcal, outlook, caldav, ecc.) potranno aggiungere altri client."
+en = "Backend implementation (default 'local' = local calendar via ICS file, currently stub). Future external plugins may add other clients."
+
+[output]
+schema_inline = """
+{
+  ok: bool,
+  results: Array<dict>,
+  n_created: int,
+  used: int,
+  _undo?: {pattern: 'delete_events_by_id', ids: [str]},
+  error?: str,
+  error_class?: str
+}
+"""
+
+[[capabilities]]
+name = "metnos:write"
+hint = ["~/.local/share/metnos/calendar.ics"]
+
+[[tests]]
+name   = "missing_summary_fails"
+input  = { start = "2026-05-14T09:00:00+02:00", end = "2026-05-14T10:00:00+02:00" }
+expect = { ok = false, error_contains = "summary" }
+
+[[tests]]
+name   = "missing_start_fails"
+input  = { summary = "Test", end = "2026-05-14T10:00:00+02:00" }
+expect = { ok = false, error_contains = "start" }
+
+[[tests]]
+name   = "stub_returns_not_implemented_with_full_args"
+input  = { summary = "Test", start = "2026-05-14T09:00:00+02:00", end = "2026-05-14T10:00:00+02:00" }
+expect = { ok = false, error_contains = "non ancora implementato" }
+
+[[tests]]
+name   = "unsupported_client_fails"
+input  = { summary = "Test", start = "2026-05-14T09:00:00+02:00", end = "2026-05-14T10:00:00+02:00", client = "gdrive" }
+expect = { ok = false, error_contains = "unsupported calendar client" }

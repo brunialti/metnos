@@ -646,6 +646,8 @@ def filter_pool_for_grammar(tools: Sequence[Any], user_query: str,
       - `request_location_from_user` se manca marker prossimita'.
       - `undo_last_turn` se manca marker undo.
       - `<verb>_<obj>_<provider_suffix>` se manca marker provider.
+      - `_SCHEDULING_CONFLICT_TOOLS` se la query ha marker scheduling
+        (forza scelta su list/cancel/show_scheduled_task).
 
     Determinismo §7.9. Niente LLM, niente IO.
     """
