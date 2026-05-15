@@ -490,7 +490,8 @@ _OBJECT_PRIMARY_TOOLS = {
     # → synt scattava su executor gia' esistente).
     "places":    ("find_places",),
     "processes": ("get_processes",),
-    "messages":  ("read_messages",),
+    "messages":  ("read_messages", "send_messages",
+                   "move_messages", "find_messages"),
     "files":     ("find_files", "read_files"),
     "dirs":      ("list_dirs", "find_dirs"),
     "urls":      ("find_urls", "get_urls", "read_urls_html", "read_urls_pdf"),

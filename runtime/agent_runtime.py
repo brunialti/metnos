@@ -2929,10 +2929,19 @@ class TurnLog:
             self._append_search_results_if_any()
         # Prepend di eventuali notice di truncation prima della final answer.
         # Una sola volta, idempotente: se la stringa e' gia' presente non duplica.
+        # Skip quando l'ultimo step e' `final_answer` synthetic (ADR 0133 ext):
+        # il LLM ha ricevuto la describe_entries (con info `truncated`) e ha
+        # gia' formulato un final consapevole — prependere ridonda e copre il
+        # messaggio utile (bug live 15/5/2026 mail run 1: prepend mascherava
+        # la sintesi LLM del riassunto mail).
         if self.final_kind == "answer":
-            for notice in self._collect_truncation_notices():
-                if notice and notice not in (self.final_message or ""):
-                    self.final_message = (notice + "\n\n" + (self.final_message or "")).strip()
+            _llm_synth_final = bool(
+                self.steps and self.steps[-1].chosen_tool == "final_answer"
+            )
+            if not _llm_synth_final:
+                for notice in self._collect_truncation_notices():
+                    if notice and notice not in (self.final_message or ""):
+                        self.final_message = (notice + "\n\n" + (self.final_message or "")).strip()
             # Bug C estensione (6/5/2026): se uno step ha prodotto una sezione
             # `health` (get_processes(include_health=true)), prepend il blocco
             # salute al final_message. describe_entries non sa leggere health
@@ -4173,6 +4182,23 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
                         detail=(detail if detail else msg("MSG_AUTO_FINAL_NO_DETAIL")),
                     )
                 log.ts_end = time.time(); log.write(); return log
+            # Duplicate call ma ok=False al primo tentativo: l'errore e'
+            # gia' definitivo (target_not_found, missing_credentials, etc.).
+            # Riprovare e' anti-pattern §2.8 (no silent failure: il fail
+            # autorevole va trasformato in final user-facing onesto).
+            # Bug live 15/5/2026 turn "cancella task test_inesistente":
+            # list_tasks ok → delete_tasks ok=False (non trovato) →
+            # LLM riprova 3× delete_tasks identico → loop_break generico.
+            # Fix: chiudi turno con error del primo step come final.
+            if isinstance(last_obs_for_dup, dict) and not last_obs_for_dup.get("ok"):
+                _err_msg = (last_obs_for_dup.get("error") or
+                              last_obs_for_dup.get("message") or "")
+                if isinstance(_err_msg, str) and _err_msg.strip():
+                    step.error = "auto_final_on_duplicate_fail"
+                    log.steps.append(step)
+                    log.final_kind = "answer"
+                    log.final_message = f"{chosen_name}: {_err_msg.strip()}"
+                    log.ts_end = time.time(); log.write(); return log
             obs = {
                 "ok": False,
                 "_duplicate": True,

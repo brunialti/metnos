@@ -17,6 +17,13 @@ section:
     -> For Gmail/Google Workspace: find_messages_google_workspace (search), read_messages_google_workspace (read), send_messages_google_workspace (send).
 
 rules:
+  - name: delete_mail_is_move_to_trash
+    when: "request to DELETE / REMOVE / TRASH emails ('delete the X emails', 'remove email Y', 'throw away the advertising emails', 'bin the newsletters')"
+    must: "in Metnos `delete_messages` DOES NOT exist: deleting emails is SEMANTICALLY a move to trash/spam. Use the pipeline read_messages -> classify_entries -> filter_entries -> move_messages(dst_folder=\"Trash\" or \"Junk\") -> final_answer."
+    must_not: "call delete_messages (DOES NOT EXIST) or delete_events (calendar, wrong domain) or read_messages without follow-up action (replaces the deletion with a read, anti-pattern §2.6)"
+    ok: "'delete today's advertising emails' -> read_messages(time_window=\"today\") -> classify_entries(from_step=1, dimension=\"relevance\") -> filter_entries(from_step=2, where_in=[\"junk\",\"low\"]) -> move_messages(from_step=3, dst_folder=\"Trash\") -> final_answer"
+    error: "'delete the emails' -> read_messages + describe_entries without move (THIS IS AN ERROR: requested deletion not performed, replaced with summary)"
+
   - name: mail_core_pipeline
     when: "request to MOVE emails to an IMAP folder (spam/trash/archive/labels) or to filter and archive"
     must: "if move_messages is in the catalog, pipeline read_messages -> classify_entries -> filter_entries -> move_messages. If NOT in catalog, request_new_executor(expected_name=\"move_messages\", intent=\"Move IMAP list from source to destination, pre-flight check dst, COPY+check status then STORE \\Deleted+EXPUNGE only if COPY is ok, save message_id for swap_src_dst undo\") at the first step, then standard pipeline at the next step (synthesized observation)"

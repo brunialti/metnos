@@ -17,6 +17,13 @@ section:
     -> Per Gmail/Google Workspace: find_messages_google_workspace (ricerca), read_messages_google_workspace (lettura), send_messages_google_workspace (invio).
 
 rules:
+  - name: delete_mail_is_move_to_trash
+    when: "richiesta di CANCELLARE / ELIMINARE / RIMUOVERE mail («cancella le mail X», «elimina la mail Y», «butta via le mail di pubblicita», «cestina le newsletter»)"
+    must: "in Metnos NON esiste `delete_messages`: la cancellazione mail e' SEMANTICAMENTE uno spostamento in cestino/cestino spam. Usa la pipeline read_messages -> classify_entries -> filter_entries -> move_messages(dst_folder=\"Trash\" o \"Junk\") -> final_answer."
+    must_not: "chiamare delete_messages (NON ESISTE) o delete_events (calendar, sbagliato dominio) o read_messages senza azione successiva (sostituisce la cancellazione con una lettura, anti-pattern §2.6)"
+    ok: "«cancella le mail di pubblicita di oggi» -> read_messages(time_window=\"today\") -> classify_entries(from_step=1, dimension=\"relevance\") -> filter_entries(from_step=2, where_in=[\"junk\",\"low\"]) -> move_messages(from_step=3, dst_folder=\"Trash\") -> final_answer"
+    error: "«cancella le mail» -> read_messages + describe_entries senza move (E' UN ERRORE: cancellazione richiesta non eseguita, sostituita con riassunto)"
+
   - name: mail_core_pipeline
     when: "richiesta di SPOSTARE mail in una cartella IMAP (spam/cestino/archivio/etichette) o di filtrare e archiviare"
     must: "se move_messages e' nel catalogo, pipeline read_messages -> classify_entries -> filter_entries -> move_messages. Se NON nel catalogo, request_new_executor(expected_name=\"move_messages\", intent=\"Sposta lista IMAP da sorgente a destinazione, pre-flight check dst, COPY+check status poi STORE \\Deleted+EXPUNGE solo se COPY ok, salva message_id per swap_src_dst undo\") al primo step, poi pipeline standard al passo successivo (synthesized observation)"
