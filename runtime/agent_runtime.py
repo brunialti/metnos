@@ -2980,7 +2980,9 @@ class TurnLog:
         # non vedeva NIENTE dei link gia' trovati.
         if self.final_kind in ("answer", "loop_break", "error"):
             self._append_search_results_if_any()
-            self._append_images_results_if_any()
+            # _append_images_results_if_any rimosso 15/5/2026: lista basename
+            # nel testo era ridondante con gallery_url. L'utente vede thumb
+            # + caption hover nella gallery, niente serve nel testo.
         # Prepend di eventuali notice di truncation prima della final answer.
         # Una sola volta, idempotente: se la stringa e' gia' presente non duplica.
         # Skip quando l'ultimo step e' `final_answer` synthetic (ADR 0133 ext):

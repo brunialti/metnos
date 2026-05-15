@@ -506,7 +506,10 @@ READ_TASKS_HISTORY_TOOL = {
             "duration, output. "
             "USA per: 'mostrami gli ultimi N fire del task X', 'cronologia task', "
             "'storico esecuzioni del task ricorrente', 'storico timer', "
-            "'ha mai dato errore il task', 'log esecuzioni schedulate'. "
+            "'ha mai dato errore il task', 'log esecuzioni schedulate', "
+            "'storico ultimi N giorni'. "
+            "Dopo il primo ok EMETTI final_answer con un riassunto: NON ripetere "
+            "la call con limit diverso (l'observation gia' contiene history completa). "
             "NON CONFONDERE CON: `get_processes` (processi sistema correnti), "
             "`read_events` (eventi calendar)."
         ),
@@ -514,7 +517,15 @@ READ_TASKS_HISTORY_TOOL = {
             "type": "object",
             "properties": {
                 "name": {"type": "string", "description": "Nome task. Omesso = tutti i task."},
-                "limit": {"type": "integer", "description": "Max righe ritornate. Default 10.", "default": 10},
+                "limit": {"type": "integer", "description": "Max righe ritornate. Default 200.", "default": 200},
+                "time_window": {
+                    "type": "string",
+                    "description": (
+                        "Filtro temporale canonical applicato a started_at del fire: "
+                        "'last-Nd' (es. 'last-7d'), 'last-Nh', 'today', 'yesterday', "
+                        "ISO range 'YYYY-MM-DD/YYYY-MM-DD', anno 'YYYY'. Omesso = tutto."
+                    ),
+                },
             },
         },
     },
@@ -844,8 +855,11 @@ def handle_set_tasks(args: dict, *, actor: str, **_) -> dict:
 
 def handle_read_tasks_history(args: dict, *, actor: str, **_) -> dict:
     name = args.get("name")
-    limit = int(args.get("limit") or 10)
+    # Default 200 (vs 10 storico): l'utente che chiede "storico ultimi 7
+    # giorni" si aspetta vedere TUTTO; 10 fa troppi truncation prompts.
+    limit = int(args.get("limit") or 200)
     full_name = _normalize_task_name(name) if name else None
+    time_window = args.get("time_window")
     try:
         from scheduler_v2 import client as sched_client
         rows = sched_client.history(name=full_name, limit=limit)
@@ -857,7 +871,84 @@ def handle_read_tasks_history(args: dict, *, actor: str, **_) -> dict:
         urs = [u for u in list_user_tasks() if u["name"] == user_name]
         if urs and urs[0].get("actor") != actor:
             return {"ok": False, "error": "task non tuo (security)"}
-    return {"ok": True, "count": len(rows), "history": rows}
+    # Time window filter applicato post-fetch (scheduler v2 client non lo
+    # supporta nativamente). Usa time_window_parser canonical §2.1.
+    if time_window:
+        try:
+            import sys
+            from pathlib import Path
+            sys.path.insert(0, str(Path(__file__).resolve().parent))
+            from time_window_parser import parse_time_window
+            start_iso, end_iso = parse_time_window(time_window)
+            from datetime import datetime
+            start_ts = datetime.fromisoformat(start_iso).timestamp()
+            end_ts = datetime.fromisoformat(end_iso).timestamp()
+            filtered = []
+            for r in rows:
+                # row started_at puo' essere ISO o epoch
+                started = r.get("started_at") or r.get("ts") or r.get("fired_at")
+                if started is None:
+                    continue
+                try:
+                    if isinstance(started, str):
+                        ts = datetime.fromisoformat(
+                            started.replace("Z", "+00:00")
+                        ).timestamp()
+                    else:
+                        ts = float(started)
+                except (ValueError, TypeError):
+                    continue
+                if start_ts <= ts <= end_ts:
+                    filtered.append(r)
+            rows = filtered
+        except Exception as ex:
+            log.warning("time_window parse failed: %r — ignored", ex)
+    # Aggregati per il final_message_hint (auto_final-friendly).
+    by_status: dict[str, int] = {}
+    by_task: dict[str, dict] = {}
+    for r in rows:
+        st = (r.get("status") or "other").lower()
+        by_status[st] = by_status.get(st, 0) + 1
+        tn = r.get("entry_name") or r.get("name") or "?"
+        if tn.startswith("user_"):
+            tn = tn[len("user_"):]
+        d = by_task.setdefault(tn, {"total": 0, "ok": 0, "error": 0})
+        d["total"] += 1
+        if st == "success" or st == "ok":
+            d["ok"] += 1
+        elif st in ("error", "fail", "failure", "timeout"):
+            d["error"] += 1
+    # Hint user-facing: il auto_final / final_answer puo' usarlo.
+    if not rows:
+        hint = (
+            f"Nessuna esecuzione di task negli ultimi 7 giorni"
+            if time_window == "last-7d" else
+            f"Nessuna esecuzione di task trovata"
+        )
+        if time_window and time_window != "last-7d":
+            hint = f"Nessuna esecuzione di task per time_window={time_window}"
+    else:
+        win_str = f" ({time_window})" if time_window else ""
+        parts = [f"{len(rows)} esecuzioni totali{win_str}"]
+        if by_status:
+            status_str = ", ".join(
+                f"{n} {st}" for st, n in sorted(by_status.items(), key=lambda p: -p[1])
+            )
+            parts.append(f"per esito: {status_str}")
+        if by_task:
+            task_str = "; ".join(
+                f"{name} ({d['total']}: {d['ok']}ok/{d['error']}err)"
+                for name, d in sorted(by_task.items(), key=lambda p: -p[1]["total"])[:10]
+            )
+            parts.append(f"per task: {task_str}")
+        hint = ". ".join(parts) + "."
+    return {
+        "ok": True, "count": len(rows), "history": rows,
+        "time_window": time_window,
+        "by_status": by_status, "by_task": by_task,
+        "summary": hint,
+        "final_message_hint": hint,
+    }
 
 
 # run_scheduled_task_now: accorpato in handle_set_tasks (fire_now=true)

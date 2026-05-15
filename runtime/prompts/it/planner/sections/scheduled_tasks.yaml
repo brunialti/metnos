@@ -41,11 +41,11 @@ rules:
     ok: "«mostra dettaglio task ping» -> read_tasks(name=\"ping\") -> final_answer"
 
   - name: show_task_history
-    when: "richieste di vedere storico/cronologia/ultime esecuzioni di un task ricorrente («storico esecuzioni task X», «cronologia del task ricorrente», «log fire del timer», «ultime esecuzioni del task»)"
-    must: "usa read_tasks_history(name=<slug>?, limit=<N>?) DIRETTAMENTE in UNO step. Senza name = storico di tutti i task (l'executor stesso enumera). Ritorna lista di fire con timestamp/status/duration"
-    must_not: "chiamare list_tasks PRIMA di read_tasks_history quando l'utente NON ha menzionato un nome specifico: e' uno step ridondante, read_tasks_history senza name ritorna gia' lo storico di TUTTI i task. NE' chiamare get_processes (processi correnti, non storico) NE' read_events (eventi calendar)"
-    ok: "«storico esecuzioni del task ping» -> read_tasks_history(name=\"ping\", limit=10) -> final_answer. OPPURE «storico esecuzioni del task ricorrente» (senza nome) -> read_tasks_history() -> final_answer"
-    error: "«storico esecuzioni del task ricorrente» -> list_tasks() -> read_tasks_history() (E' UN ERRORE: step list_tasks ridondante, read_tasks_history senza name enumera gia' tutto). OPPURE -> get_processes() (E' UN ERRORE: get_processes mostra snapshot processi correnti, non storico task)"
+    when: "richieste di vedere storico/cronologia/ultime esecuzioni di un task ricorrente («storico esecuzioni task X», «cronologia del task ricorrente», «log fire del timer», «storico ultimi N giorni»)"
+    must: "usa read_tasks_history(name=<slug>?, time_window=<canonical>?, limit=<N>?) DIRETTAMENTE in UNO step. Quando l'utente cita una finestra temporale («ultimi 7 giorni», «oggi», «ieri», «da gennaio»), DEVI passare `time_window` canonical (es. 'last-7d', 'today', 'yesterday', '2024-01-01/2024-12-31', '2024'). Dopo il primo ok EMETTI final_answer col riassunto: NIENTE seconda call con limit/time_window diverso (l'observation gia' contiene la history filtrata)"
+    must_not: "chiamare list_tasks PRIMA di read_tasks_history (read_tasks_history senza name enumera gia' tutto). NIENTE call ripetute di read_tasks_history per espandere il limit (la prima call ritorna gia' fino a 200 fire). NIENTE get_processes/read_events"
+    ok: "«storico ultimi 7 giorni» -> read_tasks_history(time_window=\"last-7d\") -> final_answer. OPPURE «storico esecuzioni del task ping» -> read_tasks_history(name=\"ping\") -> final_answer"
+    error: "«storico ultimi 7 giorni» -> read_tasks_history(limit=100) -> read_tasks_history(limit=1000) (E' UN ERRORE: due call su stesso tool con limit espanso — il PLANNER deve usare time_window dichiarativo, non riprovare con limit piu' grande). OPPURE -> list_tasks() prima (ridondante). OPPURE -> get_processes() (sbagliato dominio)"
 
   - name: schedule_task
     when: "richieste di SCHEDULARE / CREARE un task ricorrente / promemoria / timer («ogni giorno alle 9 X», «ogni N minuti Y», «ricorda di X», «schedula Y», «pianifica X tutti i giorni»)"

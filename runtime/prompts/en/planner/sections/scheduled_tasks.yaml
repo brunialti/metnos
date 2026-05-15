@@ -41,11 +41,11 @@ rules:
     ok: "'show detail of task ping' -> read_tasks(name=\"ping\") -> final_answer"
 
   - name: show_task_history
-    when: "requests to see history/log/last executions of a recurring task ('history of task X', 'recurring task log', 'timer fire log', 'last executions of task')"
-    must: "use read_tasks_history(name=<slug>?, limit=<N>?) DIRECTLY in ONE step. Without name = history of all tasks (the executor itself enumerates). Returns list of fires with timestamp/status/duration"
-    must_not: "call list_tasks BEFORE read_tasks_history when the user has NOT named a specific task: it's a redundant step, read_tasks_history without name already returns the history of ALL tasks. NOR get_processes (current processes, not history) NOR read_events (calendar events)"
-    ok: "'history of task ping' -> read_tasks_history(name=\"ping\", limit=10) -> final_answer. OR 'execution history of recurring task' (no name) -> read_tasks_history() -> final_answer"
-    error: "'execution history of recurring task' -> list_tasks() -> read_tasks_history() (THIS IS AN ERROR: list_tasks step redundant, read_tasks_history without name already enumerates everything). OR -> get_processes() (THIS IS AN ERROR: get_processes shows current process snapshot, not task history)"
+    when: "requests to see history/log/last executions of a recurring task ('history of task X', 'log fire of timer', 'history last N days')"
+    must: "use read_tasks_history(name=<slug>?, time_window=<canonical>?, limit=<N>?) DIRECTLY in ONE step. When user mentions a temporal window ('last 7 days', 'today', 'yesterday', 'since January'), MUST pass canonical `time_window` (e.g. 'last-7d', 'today', 'yesterday', '2024-01-01/2024-12-31', '2024'). After first ok EMIT final_answer with summary: NO second call with different limit/time_window (observation already has filtered history)"
+    must_not: "call list_tasks BEFORE read_tasks_history (read_tasks_history without name already enumerates all). NO repeated read_tasks_history calls to expand limit (first call returns up to 200 fires). NO get_processes/read_events"
+    ok: "'history last 7 days' -> read_tasks_history(time_window=\"last-7d\") -> final_answer. OR 'history of task ping' -> read_tasks_history(name=\"ping\") -> final_answer"
+    error: "'history last 7 days' -> read_tasks_history(limit=100) -> read_tasks_history(limit=1000) (THIS IS AN ERROR: two calls expanding limit — PLANNER must use declarative time_window, not retry with larger limit). OR -> list_tasks() first (redundant). OR -> get_processes() (wrong domain)"
 
   - name: schedule_task
     when: "requests to SCHEDULE / CREATE a recurring task / reminder / timer ('every day at 9 X', 'every N minutes Y', 'remind me to X', 'schedule Y', 'plan X every day')"
