@@ -36,12 +36,20 @@ _LOG = logging.getLogger(__name__)
 CACHE_DIR = Path.home() / ".cache" / "metnos" / "affinity_emb"
 
 # Soglia hard score sotto la quale attivare il fallback semantico.
-# 4 = 1 tag match (peso hard = 4 per token in affinity_score). Sotto 4 =
-# zero match hard, query "spaesata" → vale la pena spendere ~25ms BGE.
-SEMANTIC_THRESHOLD_DEFAULT = 4
+# Calibrato via bench_semantic_tuning.py (15/5/2026, corpus 301 query reali):
+# - threshold=4 attivazione 1.3% top1 invariato (effetto marginale)
+# - threshold=6 attivazione 10.3% top3 +1.0% top5 +0.7%
+# - threshold=8 attivazione 14.0% top1 +1.0% top3 +1.0% top5 +0.7% (best)
+# - threshold=10 plateau (stesso recall ma 21% activation, latency sprecata)
+# Best Pareto = 8: copre query con 1 hard match debole dove la semantica
+# puo' aggiungere valore (es. "Sutuazione server" con solo "server" hard).
+SEMANTIC_THRESHOLD_DEFAULT = 8
 
 # Peso del semantic score (max cosine 0..1) sommato all'hard score.
 # Top cosine BGE per query ben mirate ~0.85; bonus tipico 2-3 punti.
+# Bench 15/5 ha mostrato che alpha ∈ [2..6] e' equivalente sul recall
+# (la differenziazione avviene nella SELEZIONE post-rerank, non nel
+# valore puntuale). Default conservativo a 4.
 SEMANTIC_ALPHA_DEFAULT = 4.0
 
 
