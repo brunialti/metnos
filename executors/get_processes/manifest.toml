@@ -13,7 +13,9 @@ author      = "Roberto Brunialti <roberto.brunialti@metnos.com>"
 affinity    = ["processi", "process", "ps",
                 "stato server", "server status", "salute sistema",
                 "system health", "uptime", "carico", "load",
-                "cpu", "memory", "ram"]
+                "cpu", "memory", "ram",
+                "situazione", "situazione server", "stato sistema",
+                "salute server", "diagnostica", "sutuazione"]
 revertible  = false
 lifecycle   = "active"
 
