@@ -43,6 +43,12 @@ Manifest dichiara `reverse_pattern` da catalogo chiuso: `swap_src_dst` (move/ren
 ### 2.4 Robustezza al confine NL→determinismo
 Executor accetta: `0-as-placeholder` (cap=0 → no limit), compound case-insensitive di default, args plurali ammessi (`paths` accetta anche 1 elemento). Helper comuni in `runtime/executor_helpers.py`. Niente patch reattive per-executor.
 
+**Convention args `array of string` (15/5/2026)**: per ogni nuovo arg `array of string` decidere a design-time il dominio:
+- **Dominio aperto** (valori opachi dell'utente: summary, subject, label, testo libero) → DEVE tollerare wildcard `*`/`?` via `fnmatch.fnmatchcase` case-insensitive. La description del manifest menziona esplicitamente "valori con `*` o `?` trattati come glob". Backward compatible: valori senza wildcard restano match esatto. Esempio: `filter_entries.where_in`.
+- **Dominio chiuso** (enum, slug, ID, scope OAuth, time canonical, email) → match esatto stretto. La description dichiara esplicitamente "MATCH ESATTO, wildcard NON supportati". Esempi: `delete_persons.chosen_slugs`, `set_credentials.scopes`, `create_events.attendees`, `find_events_empty.time_windows`.
+
+Razionale: il LLM ha bias forte verso glob universali (`*`/`?` = shell, SQL `LIKE %`, fnmatch). Quando un arg `array of string` filtra su valori opachi senza pattern support, il LLM inietta wildcard intuitive che falliscono silenziosamente con match esatto. La tolleranza fnmatch sul dominio aperto previene il fallimento; la dichiarazione esplicita sul dominio chiuso impedisce l'estensione abusiva.
+
 ### 2.5 Manifest leggibili da LLM medium
 Manifest TOML = "prompt del tool" per il pianificatore (Gemma 4 26B think=true, NON Sonnet/Opus). Modello canonico: `executors/find_files/manifest.toml`. Criteri:
 - Description 2-5 frasi corte (max 25 parole/frase), una frase per uso.
