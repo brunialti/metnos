@@ -3862,14 +3862,23 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
                         user_query_for_run or "",
                         proximity_markers=_proximity_markers,
                     )
-                    _grammar = generate_tool_grammar(_pool_for_grammar)
+                    # final_answer synthetic tool (ADR 0133 ext, 15/5/2026):
+                    # abilitato da step 2 in poi. Allo step 1 forziamo
+                    # l'esecuzione di un producer (no early-exit). Senza
+                    # questo, il LLM grammar-mode non puo' emettere final
+                    # naturale: regrediva su describe_entries duplicato.
+                    _allow_fa = step_num >= 2
+                    _grammar = generate_tool_grammar(
+                        _pool_for_grammar, allow_final_answer=_allow_fa,
+                    )
                     if _grammar:
                         _chat_kwargs["grammar"] = _grammar
                         if verbose:
                             print(f"[grammar] step {step_num}: "
                                   f"grammar {len(_grammar)} chars su "
                                   f"{len(_pool_for_grammar)} tools "
-                                  f"(filtered {_excluded or '-'})")
+                                  f"(filtered {_excluded or '-'}, "
+                                  f"final_answer={_allow_fa})")
                 except Exception as _ex:
                     # `log` qui e' TurnLog (shadow): uso logger module
                     import logging as _logging
@@ -3929,6 +3938,17 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
         step.chosen_tool = chosen_name
         step.raw_args = raw_args
 
+        # Synthetic `final_answer` da grammar (ADR 0133 ext, 15/5/2026):
+        # il LLM in grammar-mode emette `final_answer({message:"..."})`
+        # come tool_call per chiudere il turno con testo naturale. Il
+        # runtime intercetta qui e termina senza invocare alcun executor.
+        if chosen_name == "final_answer":
+            _msg = raw_args.get("message", "") if isinstance(raw_args, dict) else ""
+            log.steps.append(step)
+            log.final_kind = "answer"
+            log.final_message = str(_msg).strip() or (r.text or "(risposta vuota)")
+            log.ts_end = time.time(); log.write(); return log
+
         # ADR 0133 Strategia 3: post-decode semantic validation per grammar
         # mode. Grammar GBNF garantisce sintassi (JSON ben formato + name in
         # enum), NON semantica (args possono non rispettare schema, es.
@@ -3942,6 +3962,7 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
                 _ok, _err = _vtc(
                     {"name": chosen_name, "arguments": raw_args},
                     tools_for_step,
+                    allow_final_answer=(step_num >= 2),
                 )
             except Exception as _ex:
                 _ok, _err = True, ""  # fail-open: non bloccare se validator buggy

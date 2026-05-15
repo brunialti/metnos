@@ -486,10 +486,26 @@ def _emit_tool_args(tool_name: str, schema: dict | None
 # Public API: generate_tool_grammar
 # --------------------------------------------------------------------------
 
-def generate_tool_grammar(tools: Sequence[Any]) -> str:
+FINAL_ANSWER_TOOL_NAME = "final_answer"
+
+
+def generate_tool_grammar(tools: Sequence[Any], *,
+                            allow_final_answer: bool = False) -> str:
     """Genera grammar GBNF per il pool `tools`. Emit ONLY primitives
     effettivamente referenziate (dependency tracking). Workaround bug
     llama-server 14/5/2026: regole UNUSED interferiscono col matching.
+
+    Args:
+      tools: pool di tools reali del catalogo.
+      allow_final_answer: se True aggiunge una pair sintetica per
+        `final_answer({message: str})` alla discriminated union. Il
+        runtime intercetta tool_call.name == "final_answer" e chiude
+        il turno con arguments.message. Estensione ADR 0133 (15/5/2026)
+        per risolvere la regressione "final stupido post-grammar"
+        (LLM forzato a tool_call non poteva piu' emettere text final
+        naturale → describe_entries duplicato → auto_final_on_duplicate).
+        Pattern: passare True per step >= 2 (non-iniziali), False per
+        step 1 (forza esecuzione di un producer prima di rispondere).
 
     Output:
         <primitives subset>
@@ -548,6 +564,16 @@ def generate_tool_grammar(tools: Sequence[Any]) -> str:
         )
         pair_names.append(pair_name)
 
+    # Synthetic `final_answer({message: str})` (ADR 0133 ext, 15/5/2026).
+    if allow_final_answer:
+        pair_rules.append(
+            f"pairFinalAnswer ::= \"\\\"{FINAL_ANSWER_TOOL_NAME}\\\"\" "
+            f"sep \"\\\"arguments\\\"\" colon "
+            f"(\"{{\" ws \"\\\"message\\\"\" colon jsonStr ws \"}}\")"
+        )
+        pair_names.append("pairFinalAnswer")
+        used_primitives.add("jsonStr")
+
     grammar = list(prims) + [""]
     grammar.append(
         "root ::= \"{\" ws \"\\\"name\\\"\" colon (" + " | ".join(pair_names) + ") ws \"}\""
@@ -561,14 +587,18 @@ def generate_tool_grammar(tools: Sequence[Any]) -> str:
 # Validation (post-decode, Strategia 3)
 # --------------------------------------------------------------------------
 
-def validate_tool_call(tool_call: dict, tools: Sequence[Any]
-                        ) -> tuple[bool, str]:
+def validate_tool_call(tool_call: dict, tools: Sequence[Any], *,
+                         allow_final_answer: bool = False
+                         ) -> tuple[bool, str]:
     """Valida tool_call sulla SOLA correttezza top-level (required keys
     presenti + tipo dict). Non valida nested schemas: l'executor stesso
     e' responsabile della deep-validation con messaggi specifici.
 
     Strategia 3 ADR 0133: blocco grossolani errori del LLM senza
     sovrapporsi alla validation built-in dell'executor.
+
+    Quando `allow_final_answer=True`, accetta il synthetic tool
+    `final_answer({message: string})`. Coerente con `generate_tool_grammar`.
 
     Returns:
       (ok, error_message). `error_message` e' user-facing, da iniettare
@@ -582,6 +612,13 @@ def validate_tool_call(tool_call: dict, tools: Sequence[Any]
     args = tool_call.get("arguments")
     if args is None:
         return False, "tool_call manca 'arguments'"
+    if allow_final_answer and name == FINAL_ANSWER_TOOL_NAME:
+        if not isinstance(args, dict):
+            return False, "arguments deve essere object"
+        msg_val = args.get("message")
+        if not isinstance(msg_val, str):
+            return False, "final_answer richiede 'message' (string)"
+        return True, ""
     target_schema = None
     for t in tools:
         if _extract_name(t) == name:

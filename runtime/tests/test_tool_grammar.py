@@ -573,6 +573,68 @@ def test_filter_is_deterministic():
     assert e1 == e2
 
 
+# --------------------------------------------------------------------------
+# Synthetic final_answer (ADR 0133 ext, 15/5/2026)
+# --------------------------------------------------------------------------
+
+def test_generate_without_final_answer_default():
+    tools = [{"name": "get_now",
+              "args_schema": {"type": "object", "properties": {}}}]
+    g = generate_tool_grammar(tools)  # default allow_final_answer=False
+    assert "pairFinalAnswer" not in g
+    assert "final_answer" not in g
+
+
+def test_generate_with_final_answer_adds_pair():
+    tools = [{"name": "get_now",
+              "args_schema": {"type": "object", "properties": {}}}]
+    g = generate_tool_grammar(tools, allow_final_answer=True)
+    assert "pairFinalAnswer" in g
+    assert '"\\"final_answer\\""' in g
+    assert "\\\"message\\\"" in g
+    # root deve referenziare pairFinalAnswer come uno degli alt
+    root_line = next(l for l in g.splitlines() if l.startswith("root ::="))
+    assert "pairFinalAnswer" in root_line
+
+
+def test_generate_with_final_answer_uses_jsonStr_primitive():
+    g = generate_tool_grammar(
+        [{"name": "get_now",
+          "args_schema": {"type": "object", "properties": {}}}],
+        allow_final_answer=True,
+    )
+    # jsonStr deve essere emesso fra le primitives (perche' message: string)
+    assert "jsonStr ::=" in g
+
+
+def test_validate_final_answer_happy_path():
+    tc = {"name": "final_answer", "arguments": {"message": "ciao"}}
+    ok, err = validate_tool_call(tc, [], allow_final_answer=True)
+    assert ok is True
+    assert err == ""
+
+
+def test_validate_final_answer_rejected_when_not_allowed():
+    tc = {"name": "final_answer", "arguments": {"message": "ciao"}}
+    ok, err = validate_tool_call(tc, [], allow_final_answer=False)
+    assert ok is False
+    assert "non e' nel pool" in err
+
+
+def test_validate_final_answer_missing_message():
+    tc = {"name": "final_answer", "arguments": {}}
+    ok, err = validate_tool_call(tc, [], allow_final_answer=True)
+    assert ok is False
+    assert "message" in err
+
+
+def test_validate_final_answer_message_wrong_type():
+    tc = {"name": "final_answer", "arguments": {"message": 42}}
+    ok, err = validate_tool_call(tc, [], allow_final_answer=True)
+    assert ok is False
+    assert "message" in err
+
+
 def test_real_catalog_get_inputs_dialog_emits_subrule():
     """Smoke per il pool tipico di propose+notify: get_inputs.dialog DEVE
     avere sub-rule recursive, non fallback jsonArray. Regression guard B2."""

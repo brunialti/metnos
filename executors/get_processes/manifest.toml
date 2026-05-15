@@ -10,12 +10,10 @@ manifest_format = "1.0"
 name        = "get_processes"
 version     = "0.2.0"
 author      = "Roberto Brunialti <roberto.brunialti@metnos.com>"
-affinity    = ["processi", "process", "ps",
-                "stato server", "server status", "salute sistema",
-                "system health", "uptime", "carico", "load",
-                "cpu", "memory", "ram",
-                "situazione", "situazione server", "stato sistema",
-                "salute server", "diagnostica", "sutuazione"]
+affinity    = ["processi", "ps", "stato server", "server status",
+                "salute sistema", "system health", "uptime",
+                "carico", "load", "cpu", "ram", "situazione",
+                "diagnostica"]
 revertible  = false
 lifecycle   = "active"
 
