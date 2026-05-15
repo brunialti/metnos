@@ -328,6 +328,29 @@ def _filter_unified(
     radius_km = float(args.get("radius_km", 5.0))
     time_window = args.get("time_window") or "all"
     similarity_threshold = float(args.get("similarity_threshold", 0.0))
+    # text_score_min: soglia sul contributo testuale isolato (cosine BGE-M3
+    # + BM25 boost). Default 0.25 quando `query_text` e' presente: la query
+    # diventa un FILTRO AND (es. "Matteo al mare" richiede match face E
+    # match contenuto), non solo un boost di ranking. Default 0.0 quando
+    # query_text assente. Bug live 15/5/2026: foto di Matteo a Parigi
+    # entravano in "Matteo al mare" perche' face_score alto dominava
+    # text_score basso, e la sola soglia su _score totale (default 0) non
+    # filtrava. Override esplicito accettato via arg.
+    # Default text_score_min tarato sulla distribuzione BGE-M3:
+    # cosine reale per query "mare" su 923 entries di Matteo:
+    #   >=0.25: 52% (troppo permissivo, include "ambiente domestico")
+    #   >=0.30: 27%
+    #   >=0.40: 11% (foto effettivamente al mare/spiaggia)
+    #   >=0.45: 10% (top semantica stretta)
+    # Soglia 0.40 separa correlazione semantica significativa da
+    # neighborhood loose (BGE-M3 mappa "campo verde" e "mare" entrambi
+    # outdoor → cosine 0.5-0.6 ma falsi positivi).
+    if "text_score_min" in args:
+        text_score_min = float(args["text_score_min"])
+    elif args.get("query_text"):
+        text_score_min = 0.40
+    else:
+        text_score_min = 0.0
 
     applied_paths_filter = None
     if paths_filter:
@@ -468,6 +491,19 @@ def _filter_unified(
             bm25 = _bm25_score(q_terms, doc_terms)
             score = cos_score + 0.2 * min(bm25, 5.0)
             text_scores[i] = score
+
+    # Text filter: applica text_score_min sul contributo testuale ISOLATO.
+    # AND stretto con face_score: se l'utente ha chiesto sia name che
+    # query_text, ENTRAMBI devono qualificare (15/5/2026 §7.3).
+    if query_text and text_score_min > 0.0:
+        # Cache score per path (chiave stabile cross-reindexing)
+        score_by_path = {e.get("path"): text_scores.get(i, 0.0)
+                         for i, e in enumerate(entries)}
+        entries = [e for e in entries
+                   if score_by_path.get(e.get("path"), 0.0) >= text_score_min]
+        # Rebuild text_scores con i nuovi indici
+        text_scores = {i: score_by_path[e.get("path")]
+                       for i, e in enumerate(entries)}
 
     # Composito
     scored = []
@@ -746,7 +782,12 @@ def _invoke_multi_dirs(dirs: list[Path], args: dict, msg: str | None) -> dict:
         if "schema_too_old" in error_classes:
             out["error_class"] = "schema_too_old"
             out["schema_too_old_dirs"] = schema_too_old_dirs
-    if len(all_entries) > top_k:
+    # Truncated check: confronto contro n_above (totale above threshold
+    # PRE-truncation a top_k in _filter_unified), non contro len(all_entries)
+    # che e' gia' top-k troncato per dir e quindi degenere a top_k.
+    # Bug live 15/5/2026: query "Matteo al mare" ritornava 100 entries di 117
+    # totali senza truncated=True → final_answer "100 foto" inaccurato.
+    if int(n_above) > top_k:
         out["truncated"] = True
         out["truncated_what"] = "entries"
         out["used"] = len(truncated_entries)
