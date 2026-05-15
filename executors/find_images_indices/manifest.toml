@@ -27,7 +27,7 @@ Args:
 - `near_lat`/`near_lon`/`radius_km`: filtro geografico.
 - `time_window='last-3y'`/`'2024'`: filtro temporale.
 - `paths_filter=[...]`: restringe scan.
-- `top_k=100`: default.
+- `top_k=100`: default — NON PASSARLO a meno che l'utente non chieda esplicitamente «mostrami le prime N» o «top N». Passare top_k basso genera truncation confusa per l'utente.
 
 Args si combinano (AND) in una sola passata.
 
@@ -63,7 +63,7 @@ Args:
 - `near_lat`/`near_lon`/`radius_km`: geographic filter.
 - `time_window='last-3y'`/`'2024'`: temporal filter.
 - `paths_filter=[...]`: restrict scan.
-- `top_k=100`: default.
+- `top_k=100`: default — DO NOT pass it unless the user explicitly asks "show me the first N" or "top N". Passing low top_k produces confusing truncation for the user.
 
 Args combine (AND) in single pass.
 
@@ -91,7 +91,7 @@ error_class: low_confidence, paths_filter_empty, no_faces_above_size_threshold, 
 
 [code]
 files  = ["find_images_indices.py"]
-digest = "sha256:2cd90131d5717a264e6631cffafc561dc4c9cd4ec77c9576b2b083116795ca61"
+digest = "sha256:f5efb64e0d193d1f243f418eba06476e1ac973e21ca3108124263a97ead0d36a"
 
 [args]
 type     = "object"

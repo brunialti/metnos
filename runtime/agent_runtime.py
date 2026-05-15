@@ -2663,14 +2663,13 @@ class TurnLog:
         )
         if already_in_msg >= len(sample) // 2 and already_in_msg > 0:
             return  # gia' presente in modo significativo, skip
+        # Solo basename nel testo: caption VLM visibile in gallery viewer
+        # (hover tooltip + overlay HTML), NON duplicata nel final testuale
+        # (Roberto 15/5/2026: troppo verbose).
         lines = ["", "", "**Risultati:**"]
         for e in sample:
-            p = e.get("path", "")
-            basename = os.path.basename(p)
-            cap = (e.get("caption") or e.get("description") or "")[:60]
-            cap_clean = cap.strip().replace("\n", " ")
-            cap_str = f" — _{cap_clean}_" if cap_clean else ""
-            lines.append(f"- `{basename}`{cap_str}")
+            basename = os.path.basename(e.get("path", ""))
+            lines.append(f"- `{basename}`")
         if n_total > max_show:
             lines.append(f"_... e altre {n_total - max_show} foto._")
         self.final_message = (existing.rstrip() + "\n".join(lines))

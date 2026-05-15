@@ -666,8 +666,13 @@ def _filter_unified(
     min_face_count = args.get("min_face_count")
     max_face_count = args.get("max_face_count")
     paths_filter = args.get("paths_filter")
+    # Guard top_k LLM-mistake (15/5/2026 Roberto): il PLANNER tendeva a
+    # passare top_k=10 senza che l'utente lo chiedesse, generando truncation
+    # confusa "10 di 50". Se top_k < 50, ripristina il default 100. L'utente
+    # se vuole top-N specifico, deve chiederlo chiaramente (allora il LLM
+    # passera' top_k=N valido). Pattern §7.3: budget minimum.
     top_k = int(args.get("top_k", _TOP_K_DEFAULT))
-    if top_k < 1:
+    if top_k < 50:
         top_k = _TOP_K_DEFAULT
     if top_k > _TOP_K_MAX:
         top_k = _TOP_K_MAX
