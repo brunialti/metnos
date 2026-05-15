@@ -87,7 +87,7 @@ def test_handle_schedule_recurring_writes_both_dbs(isolated_dbs):
     assert p["name"] == user_name
 
 
-def test_cancel_scheduled_task_removes_v2_entry(isolated_dbs):
+def test_delete_tasks_scheduled_removes_v2_entry(isolated_dbs):
     rt, _user_db, _v2_db = isolated_dbs
     out = rt.handle_schedule_recurring(
         {"label": "x", "when": "every_30m", "query": "ping"},
@@ -97,6 +97,6 @@ def test_cancel_scheduled_task_removes_v2_entry(isolated_dbs):
     full_name = f"user_{user_name}"
     assert any(j["name"] == full_name for j in sched_client.list_jobs())
 
-    res = rt.handle_cancel_scheduled_task({"name": user_name}, actor="host")
+    res = rt.handle_delete_tasks_scheduled({"name": user_name}, actor="host")
     assert res["ok"] is True
     assert not any(j["name"] == full_name for j in sched_client.list_jobs())

@@ -1,0 +1,60 @@
+# Frontmatter equivalente a `{# --- ... --- #}` Jinja (CLAUDE.md §6.1).
+role: planner
+tier: middle
+lang: en
+style: prescriptive
+version: 1
+owner: roberto
+updated: 2026-05-13
+sha_prev: ""
+
+section:
+  name: photos
+  header: "PHOTOS / IMAGES / EXIF / GPS / FACES (unified indices, ADR 0117)"
+  preamble: |
+    PHOTO/EXIF/CAPTURE/GPS/PLACE-OF-CAPTURE/CAMERA
+    -> get_files_metadata (to extract `dates.semantic`/`place` from JPEG/HEIC).
+    -> find_images_indices (unified executor: identity + content + composition + EXIF/GPS in ONE pass, ADR 0117).
+
+rules:
+  - name: images_unified_index
+    when: "ANY photo query (identity, content, composition, EXIF/GPS, temporal, similarity)"
+    must: |
+      use `find_images_indices` as the unified executor. Pass ONLY the args relevant to the query (combining args = combining filters):
+      - `name="silvia"` -> identity (person registered via set_persons)
+      - `query_text="sea"` -> content (the VLM described what is seen)
+      - `min_face_pixels=40000` -> close-up (~200x200 px)
+      - `min_face_count=2` -> group portraits. `max_face_count=1` -> singles
+      - `reference_images=[paths]` -> ArcFace similarity to attached photos
+      - `near_lat`/`near_lon`/`radius_km` -> geographic EXIF proximity
+      - `time_window="last-3y"` -> time filter
+    must_not: "pass `idx=` (deprecated post-ADR0117). MUST NOT: pass `paths_filter` as a bridge between two calls (one executor only; args combine)"
+    ok: "«Silvia at the sea» -> find_images_indices(name=\"silvia\", query_text=\"sea\"). OR «Matteo close-up» -> find_images_indices(name=\"matteo\", min_face_pixels=40000). OR «2024 birthday photos» -> find_images_indices(query_text=\"birthday\", time_window=\"2024\")"
+    error: "«Silvia at the sea» -> find_persons_indices(name=\"silvia\") -> find_images_indices(idx=\"scene\", query_text=\"sea\", paths_filter=from_step:1) (THIS IS AN ERROR: 2-step pattern superseded by ADR 0117)"
+
+  - name: persons_thin_alias
+    when: "photo query based on identity ALONE (proper name): «Iacopo's photos», «Silvia's photos»"
+    must: "`find_persons_indices(name=...)` remains accepted as alias of `find_images_indices(name=...)`. Same engine, same result"
+    must_not: "use both in the same turn: it is a duplicate. ONE step suffices"
+    ok: "«Iacopo's photos» -> find_persons_indices(name=\"iacopo\") OR find_images_indices(name=\"iacopo\"). Equivalent"
+    error: "pipeline find_persons_indices -> find_images_indices (THIS IS AN ERROR: duplicate; one step suffices)"
+
+  - name: persons_registry_management
+    when: "persons.sqlite registry management: deletion, enumeration, registration of enrolled persons"
+    must: |
+      map the user verb to the canonical tool in ONE step:
+      - «delete/forget/remove <First Last>» (capitalized proper name, no extension, no path slash) -> `delete_persons(name="<First Last>")`
+      - «delete all enrolled persons / empty the registry» -> `delete_persons(all=true)`
+      - «delete Matteo, Anna and Luca» (explicit list) -> `delete_persons(names=["Matteo","Anna","Luca"])`
+      - «show enrolled persons / who they are» -> `get_persons()` no arg
+      `from_step` on `delete_persons` is used ONLY after `get_persons` (entries from the registry), NEVER after `find_files`
+    must_not: "invoke find_files before delete_persons: the persons registry is NOT on the filesystem but in ~/.local/share/metnos/persons.sqlite. MUST NOT pass from_step to delete_persons if the user already gave an explicit name"
+    ok: "«delete Roberto Brunialti» -> delete_persons(name=\"Roberto Brunialti\"). OR «delete all» (post get_persons) -> get_persons -> delete_persons(from_step=1)"
+    error: "«delete Roberto Brunialti» -> find_files(pattern=\"*Roberto*\") -> delete_persons(from_step=1, name=...) (THIS IS AN ERROR: no find_files, the name is in the persons.sqlite registry)"
+
+  - name: exif_metadata_extraction
+    when: "query on EXIF/capture/GPS/place-of-capture/camera (IMAGE data, not corpus index): «when was this photo taken», «with what camera», «where was it taken»"
+    must: "get_files_metadata to extract `dates.semantic`/`place` from JPEG/HEIC. Works on specific files (paths), NOT on indexed corpus"
+    must_not: "use find_images_indices to extract EXIF of ONE specific photo: find_images_indices searches the indexed corpus, get_files_metadata reads file metadata"
+    ok: "«when was this photo taken?» (path known) -> get_files_metadata(paths=[\"/path/to/photo.jpg\"]) -> final_answer with dates.semantic"
+    error: "«when was it taken?» with known path -> find_images_indices(query_text=\"date\") (THIS IS AN ERROR: query_text does not read EXIF, get_files_metadata does)"

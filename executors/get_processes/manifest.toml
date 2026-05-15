@@ -10,7 +10,7 @@ manifest_format = "1.0"
 name        = "get_processes"
 version     = "0.2.0"
 author      = "Roberto Brunialti <roberto.brunialti@metnos.com>"
-affinity    = ["processi", "process", "task", "ps",
+affinity    = ["processi", "process", "ps",
                 "stato server", "server status", "salute sistema",
                 "system health", "uptime", "carico", "load",
                 "cpu", "memory", "ram"]
@@ -20,7 +20,7 @@ lifecycle   = "active"
 [description]
 it = """Snapshot dei processi correnti (lista) e, opzionalmente, salute aggregata del server (dict `health`).
 
-USO CORRETTO: query "processi/task/ps" → senza flag. Query "stato server / salute / uptime / carico" → DEVI passare `include_health=true`.
+USO CORRETTO: query "processi/ps" → senza flag. Query "stato server / salute / uptime / carico" → DEVI passare `include_health=true`. NON CONFONDERE CON: `list_scheduled_tasks` (task ricorrenti Metnos), `scheduled_task_history` (storico esecuzioni task), `delete_tasks_scheduled` (cancella task).
 NON CONFONDERE CON: `get_files_metadata` (file su disco), `get_now` (data/ora), `get_location` (posizione fisica utente).
 
 ARG NAMES (nomi esatti, niente sinonimi):
@@ -41,7 +41,7 @@ PATTERN (non copiare letteralmente: sostituisci con i termini della query utente
 "uptime" / "salute sistema" → `get_processes(include_health=true)`.
 "processi nginx" → `get_processes(filters=[{attribute:"name", op:"contains", value:"nginx"}])`.
 "PID 1234" → `get_processes(filters=[{attribute:"pid", op:"=", value:1234}])`."""
-en = "Snapshot of current processes (list) and, optionally, aggregate server health (dict `health`).  CORRECT USE: query \"processes/task/ps\" → without flag. Query \"server status / health / uptime / load\" → MUST pass `include_health=true`. DO NOT CONFUSE WITH: `get_files_metadata` (files on disk), `get_now` (date/time), `get_location` (user physical location).  ARG NAMES (exact names, no synonyms): MUST: `top` to limit the number of processes (integer ≥ 1). MUST NOT: `max_results`, `limit`, `n`, `count`. THEY DO NOT EXIST. THIS IS AN ERROR. MUST: `include_health=true` to obtain the health section. MUST NOT: `health=true`, `with_health`, `system`, `status=true`. THEY DO NOT EXIST. THIS IS AN ERROR.  DEFAULT: `filters=[]`, `top` omitted → all, `include_health=false`, `services_extra=[]`.  OUTPUT (always): `{ok, entries=[{pid, ppid, name, cmd, user, cpu_pct, mem_pct, started_at}], ok_count, truncated, available_total}`. OUTPUT (with `include_health=true`): adds top-level `health = {load:{1m,5m,15m,uptime_s}, memory:{total_mb,used_mb,pct,swap_total_mb,swap_used_mb}, disk:[{mount,fstype,total_gb,used_gb,pct}], services:[{name,status}], collected_at}`.  PATTERN (do not copy literally: replace with the user query terms): \"processes\" → `get_processes()`. \"the 5 most CPU-hungry\" → `get_processes(top=5)`. \"server status\" → `get_processes(include_health=true, top=10)`. \"uptime\" / \"system health\" → `get_processes(include_health=true)`. \"nginx processes\" → `get_processes(filters=[{attribute:\"name\", op:\"contains\", value:\"nginx\"}])`. \"PID 1234\" → `get_processes(filters=[{attribute:\"pid\", op:\"=\", value:1234}])`."
+en = "Snapshot of current processes (list) and, optionally, aggregate server health (dict `health`).  CORRECT USE: query \"processes/ps\" → without flag. Query \"server status / health / uptime / load\" → MUST pass `include_health=true`. DO NOT CONFUSE WITH: `get_files_metadata` (files on disk), `get_now` (date/time), `get_location` (user physical location), `list_scheduled_tasks` (Metnos recurring tasks), `scheduled_task_history` (task execution history), `delete_tasks_scheduled` (cancel recurring task).  ARG NAMES (exact names, no synonyms): MUST: `top` to limit the number of processes (integer ≥ 1). MUST NOT: `max_results`, `limit`, `n`, `count`. THEY DO NOT EXIST. THIS IS AN ERROR. MUST: `include_health=true` to obtain the health section. MUST NOT: `health=true`, `with_health`, `system`, `status=true`. THEY DO NOT EXIST. THIS IS AN ERROR.  DEFAULT: `filters=[]`, `top` omitted → all, `include_health=false`, `services_extra=[]`.  OUTPUT (always): `{ok, entries=[{pid, ppid, name, cmd, user, cpu_pct, mem_pct, started_at}], ok_count, truncated, available_total}`. OUTPUT (with `include_health=true`): adds top-level `health = {load:{1m,5m,15m,uptime_s}, memory:{total_mb,used_mb,pct,swap_total_mb,swap_used_mb}, disk:[{mount,fstype,total_gb,used_gb,pct}], services:[{name,status}], collected_at}`.  PATTERN (do not copy literally: replace with the user query terms): \"processes\" → `get_processes()`. \"the 5 most CPU-hungry\" → `get_processes(top=5)`. \"server status\" → `get_processes(include_health=true, top=10)`. \"uptime\" / \"system health\" → `get_processes(include_health=true)`. \"nginx processes\" → `get_processes(filters=[{attribute:\"name\", op:\"contains\", value:\"nginx\"}])`. \"PID 1234\" → `get_processes(filters=[{attribute:\"pid\", op:\"=\", value:1234}])`."
 
 [code]
 files  = ["get_processes.py"]

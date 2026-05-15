@@ -1,0 +1,89 @@
+role: synt_naming
+tier: middle
+lang: en
+style: definitional
+version: 1
+owner: roberto
+updated: 2026-05-13
+sha_prev: ""
+
+section:
+  name: synt_naming
+  header: "Stage 1 NAMING + CLASSIFICATION of synt-multistage"
+  preamble: |
+    MANDATORY OUTPUT: a single JSON object. NO prose, NO markdown
+    fences, NO comments. The response MUST start with `{` and end with `}`.
+
+    STRICT NAMING CONVENTION — the name of the new executor follows the schema:
+      {action}_{object}[_{qualifier}]
+
+vocabulary:
+  actions_count: "{{ n_actions }}"
+  actions_block: "{{ action_categories_block }}"
+  mapping_block: "{{ action_mapping_block }}"
+  objects_count: "{{ n_objects }}"
+  objects_inline: "{{ objects_inline }}"
+  qualifiers_inline: "{{ qualifiers_inline }}"
+
+output_schema:
+  type: object
+  required: [name, action, object, revertible, critical, target_kind]
+  properties:
+    name: {type: string, pattern: "^[a-z]+_[a-z]+(?:_[a-z][a-z0-9_]*)?$", nullable: true}
+    action: {type: string, enum_ref: "vocabulary.actions"}
+    object: {type: string, enum_ref: "vocabulary.objects"}
+    qualifier: {type: string, nullable: true}
+    revertible:
+      type: boolean
+      rule_move_create: "move, create → true (default: swap_src_dst / delete_created_*)"
+      rule_delete_write: "delete, write with overwrite → revertible=true ONLY IF intent mentions snapshot/backup/blob (restore_blob_backup); otherwise false"
+      rule_send: "send → ALWAYS false (remote side-effect)"
+      rule_readonly: "read/find/list/get/describe/filter/fetch/compute → false"
+    critical:
+      type: boolean
+      true_when: "modifies filesystem / network / external state"
+      false_when: "pure compute or read-only"
+    target_kind: {type: string, enum: [path_glob, host, exact, none]}
+  no_match_fallback:
+    name: null
+    reason_no_name: "<concrete explanation>"
+
+examples:
+  - user: "calcola la deviazione standard di una lista di numeri"
+    output: {name: "describe_numbers", action: "describe", object: "numbers", qualifier: null, revertible: false, critical: false, target_kind: "none"}
+  - user: "comprimi /tmp/log.txt con gzip"
+    output: {name: "compress_files_gz", action: "compress", object: "files", qualifier: "gz", revertible: false, critical: true, target_kind: "path_glob"}
+  - user: "fai diff tra /tmp/a.txt e /tmp/b.txt"
+    output: {name: "compare_files", action: "compare", object: "files", qualifier: null, revertible: false, critical: false, target_kind: "path_glob"}
+  - user: "estrai testo da /tmp/page.html togliendo i tag"
+    output: {name: "extract_files_html", action: "extract", object: "files", qualifier: "html", revertible: false, critical: false, target_kind: "path_glob"}
+  - user: "extract frames from /tmp/clip.mp4 at 1 fps"
+    output: {name: "extract_files_video", action: "extract", object: "files", qualifier: "video", revertible: false, critical: true, target_kind: "path_glob"}
+  - user: "apply regex foo->bar in /tmp/code.py"
+    output: {name: "filter_texts_lines", action: "filter", object: "texts", qualifier: "lines", revertible: false, critical: true, target_kind: "path_glob"}
+  - user: "controlla se ffmpeg e' installato"
+    note: "verify existence -> find subsumes"
+    output: {name: "find_packages", action: "find", object: "packages", qualifier: null, revertible: false, critical: false, target_kind: "exact"}
+  - user: "ridimensiona immagine a 800x600"
+    note: "resize NOT in vocab"
+    output: {name: null, reason_no_name: "The action 'resize' is not in the closed vocabulary (compress/extract/render cover other scopes). Escalation to Roberto to extend the vocab or to use an external tool."}
+
+qualifier_empty:
+  adr: "0127"
+  desc: |
+    QUALIFIER `_empty` cross-domain — modality-operation family.
+    When the user request identifies domain entities in EMPTY/UNDER-THRESHOLD/
+    AVAILABLE state (calendar free slots, small files, empty directories,
+    short messages, etc.), MUST use the `_empty` qualifier. Canonical arg:
+    `size` (unit-aware str: "1hour"/"10KB"/"100chars"/...). One single
+    cross-domain semantics, no forced analogies between domains.
+  examples:
+    - user: "find free 1-hour slots next week"
+      output: {name: "find_events_empty", action: "find", object: "events", qualifier: "empty", revertible: false, critical: false, target_kind: "none"}
+    - user: "find empty files under /tmp"
+      output: {name: "find_files_empty", action: "find", object: "files", qualifier: "empty", revertible: false, critical: false, target_kind: "path_glob"}
+    - user: "list empty directories under /opt"
+      output: {name: "find_dirs_empty", action: "find", object: "dirs", qualifier: "empty", revertible: false, critical: false, target_kind: "path_glob"}
+
+footer:
+  instruction: "NOW produce the JSON for the user request. ONLY JSON, nothing else."

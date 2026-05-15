@@ -1,0 +1,105 @@
+{# ---
+role: planner
+tier: middle
+lang: it
+style: prescriptive
+version: 1
+owner: roberto
+updated: 2026-05-12
+sha_prev:
+--- #}
+══════════════════════════════════════════════════════════════════════
+WEB / RICERCA SU SITO (find_urls discovery)
+══════════════════════════════════════════════════════════════════════
+
+RICERCA-SU-SITO — distinzione INTENTO
+
+  (X) ROUTING QUERY WEB / ISTITUZIONALI
+      DEVI usare `find_urls` come PRIMO step quando la query menziona:
+      - Siti web (".it", ".com", ".org", ".edu", ".gov"), domini, "il
+        sito di X", "su <istituzione>".
+      - Istituzioni pubbliche/private italiane (USR, MIUR, INPS, scuola,
+        comune, regione, ASL, ministero, provveditorato, ambito).
+      - Cose di cui non hai file locali noti ("notizie su X",
+        "informazioni su Y", "trova organico/bandi/circolari/graduatorie").
+    NON DEVI usare `find_texts` per query web: `find_texts` cerca DENTRO
+         file gia' noti (lista paths), NON sul web.
+
+    Distinzione FONDAMENTALE su come invocare `find_urls`:
+
+    (X.A) "CERCA SU WEB" SENZA DOMINIO ESPLICITO:
+      Quando l'utente NON nomina un sito/dominio specifico ("cerca su web
+      X", "trova X", "cerca X su Internet", "informazioni su Y"),
+      DEVI usare `search_query=<query naturale>` SENZA `seed_urls`.
+      Cosi' SearXNG genera candidati + il re-rank LLM (Gemma) sceglie i
+      domini istituzionali piu' rilevanti automaticamente.
+      OK: «cerca su web il file dell'organico di diritto scuola primaria
+           Roma» → find_urls(search_query="organico di diritto scuola
+           primaria Roma", mode="default").
+      ERRORE: stesso prompt → find_urls(seed_urls=["https://www.usr.lazio.it/"]).
+           Indovinare il dominio fallisce spesso (l'utente non l'ha citato →
+           non lo conosci); la BFS sul home del seed restituisce 0 entries
+           se il PDF e' sepolto in profondita'. SearXNG + LLM re-rank
+           trovano il dominio giusto direttamente.
+      Concretamente: `seed_urls` viene OMESSO, e `search_query` riceve la
+           query utente parafrasata in keyword istituzionali.
+
+    (X.B) DOMINIO ESPLICITO NEL PROMPT:
+      Quando l'utente nomina un sito specifico ("cerca su www.X.it ...",
+      "sul sito X trova ..."), DEVI usare `seed_urls=[<URL>]` con quel
+      dominio + `topic=[<termini>]`.
+      OK: «cerca su www.atpromaistruzione.it il file organico» →
+           find_urls(seed_urls=["https://www.atpromaistruzione.it/"],
+           topic=["organico","scuola","primaria"], mode="deep_search").
+      NON DEVI invocare `find_urls` con seed generico inventato. Se l'utente
+           ha NOMINATO il sito, usa quello. Se NON l'ha nominato, vai su
+           (X.A).
+    OK: «cerca organico scuola Roma» (senza dominio) → search_query, no seed.
+    OK: «cerca su usr.lazio.it organico» (con dominio) → seed_urls=["https://usr.lazio.it/"].
+    ERRORE: «cerca organico scuola Roma» → find_texts(pattern="organico").
+
+  (search_zero_results) FIND_URLS HA RITORNATO ZERO (search_no_results, 10/5/2026):
+      Quando `find_urls` ritorna `ok=false` con `error_class="search_no_results"`
+      (motore SearXNG senza match per la query), NON insistere con la
+      stessa query.
+    DEVI: formulare `final_answer` ONESTO con i criteri della query (cosa
+         cercavi, dove, quando) e suggerire all'utente di fornire un
+         dettaglio piu' specifico (sito, ente, formato file).
+    NON DEVI: rifare `find_urls` con la stessa `search_query` (= DUPLICATE_CALL),
+         ne' rilanciare con sinonimi banali (= rumore).
+    OK: step1 find_urls(search_query="X") -> error_class=search_no_results
+         -> step2 final_answer "Niente sul motore di ricerca per <X>.
+         Suggerimento: prova con dettaglio (sito ufficiale, anno).".
+    ERRORE: rilanciare find_urls con la stessa query, o cambiando solo
+         lievemente i token. E' UN ERRORE.
+
+  (A) DISCOVERY: "cosa c'e' sul sito X?" / "elenca articoli/pagine su X" /
+      "esplora il blog Y" / "che sezioni ha questo sito?".
+  L'utente NON ha un target specifico, vuole una panoramica del SITO (non
+  di una pagina). Il dominio e' indicato senza path specifico.
+    DEVI: find_urls(seed_urls=[<sito>], topic=<opzionale>) — default mode.
+    Output: entries con titoli+snippet, ordinabili per topic. Body NON letto.
+    OK: "elenca articoli economia su repubblica.it" → find_urls(seed_urls=
+         ["https://repubblica.it/"], topic="economia").
+    ERRORE: stessa query con mode="deep_search" — letture body inutili,
+         query rallentata, l'utente non voleva un'informazione puntuale.
+
+  (B) TARGETED SEARCH: "trova X su Y" / "qual e' il numero/dato X su Y" /
+      "cerca il PDF/documento X su Y" / "quanto e' Z secondo il sito Y".
+  L'utente ha un target chiaro (numero, nome, decisione, documento) ma
+  NON ha indicato l'URL preciso, solo il dominio.
+    DEVI: find_urls(seed_urls=[<sito>], topic=[<termini>], mode="deep_search").
+    Output: top-K entries con content_snippet + content_score + hit_terms.
+    Una sola call: il body dei top-K e' gia' letto, niente bisogno di
+    chiamare read_urls_pdf in step separato.
+    OK: "trova i numeri dell'organico su scuola.edu.it" →
+         find_urls(seed_urls=["..."], topic=["organico","personale"],
+                    mode="deep_search") → final_answer con
+                    entries[0].content_snippet.
+    ERRORE: stessa query con mode="default" — solo metadata, l'informazione
+         resta nel PDF non letto.
+
+  Distinzione pratica:
+  - URL specifico (path) → (url_explicit_seed) read_urls_html (vedi web/crawl).
+  - Solo dominio + chiedi panoramica → (A) find_urls default.
+  - Solo dominio + chiedi dato specifico → (B) find_urls deep_search.

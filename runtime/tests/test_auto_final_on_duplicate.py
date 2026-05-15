@@ -201,7 +201,7 @@ class TestEndToEndScenario(unittest.TestCase):
 
 class TestMessageOnlyVerbUnique(unittest.TestCase):
     """Bug live 7/5/2026 11:13: 'Cancella task monitoraggio sito ics' →
-    'cancel_scheduled_task: completato (? elementi). Esito gia' nei
+    'delete_tasks_scheduled: completato (? elementi). Esito gia' nei
     risultati precedenti.' — count irrilevante per verb-unique
     'singola azione'. Quando ok_count e' ignoto E lp_obs ha un
     'message' descrittivo, usare il message verbatim, senza wrapper
@@ -215,14 +215,14 @@ class TestMessageOnlyVerbUnique(unittest.TestCase):
             _extract_auto_final_count,
         )
         steps = [
-            _step("cancel_scheduled_task", {
+            _step("delete_tasks_scheduled", {
                 "ok": True,
                 "message": "Task 'monitoraggio sito ics' cancellato.",
             }),
         ]
         lp_tool, lp_obs = _resolve_auto_final_from_steps(steps)
         ok_count, _ = _extract_auto_final_count(lp_obs)
-        self.assertEqual(lp_tool, "cancel_scheduled_task")
+        self.assertEqual(lp_tool, "delete_tasks_scheduled")
         self.assertIsNone(ok_count)
         self.assertEqual(
             lp_obs.get("message"),

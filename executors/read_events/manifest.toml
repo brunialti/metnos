@@ -1,0 +1,107 @@
+# Manifest dell'executor `read_events` — Metnos v1.1
+# Naming compositivo §2.2: azione_oggetto[_qualifier].
+# Dispatcher canonical (sequel di read_files/read_messages, 13/5/2026).
+
+manifest_format = "1.0"
+
+name        = "read_events"
+version     = "0.4.0"
+author      = "Roberto Brunialti <roberto.brunialti@metnos.com>"
+affinity    = ["appuntamento", "appuntamenti", "agenda", "evento", "eventi",
+                "calendario", "calendar", "riunione", "riunioni", "incontro",
+                "incontri", "meeting", "scadenza", "scadenze", "deadline",
+                "appointment", "appointments", "schedule", "events"]
+revertible  = false
+lifecycle   = "active"
+
+[description]
+it = "Legge gli appuntamenti del calendario. Dispatcher canonical: instrada al backend giusto in base a `client` (default `local`). USO CORRETTO: read_events(time_window='today'|'tomorrow'|'next-7d'|range ISO). NON DEVI usarla per LEGGERE mail (usa read_messages) ne' per CREARE eventi (usa create_events). NON CONFONDERE CON: `list_scheduled_tasks` (task ricorrenti / timer / promemoria Metnos, NON eventi calendar), `show_scheduled_task` (dettaglio task ricorrente), `scheduled_task_history` (storico esecuzioni task). Vettoriale §2.1: ritorna `entries: list` con {kind:'calendar_event', id, start, end, summary, location, ...}. Backend `local` (default) e' uno STUB esplicito (§2.8 no silent failure): ritorna ok=false con error_class='not_implemented' finche' un plugin calendar (gcal/outlook/caldav) o un'implementazione iCal-locale non viene aggiunta. Plugin esterni futuri (es. cloud-calendar-gcal) potranno aggiungere altri client. OK: read_events(time_window='tomorrow'). ERRORE: invocare con client sconosciuto."
+en = "Reads calendar appointments. Canonical dispatcher: routes to the right backend based on `client` (default `local`). CORRECT USE: read_events(time_window='today'|'tomorrow'|'next-7d'|ISO range). MUST NOT be used to READ mail (use read_messages) nor to CREATE events (use create_events). DO NOT CONFUSE WITH: `list_scheduled_tasks` (recurring tasks / timers / reminders in Metnos, NOT calendar events), `show_scheduled_task` (detail of one recurring task), `scheduled_task_history` (execution history of tasks). Vectorial §2.1: returns `entries: list` with {kind:'calendar_event', id, start, end, summary, location, ...}. Backend `local` (default) is an explicit STUB (§2.8 no silent failure): returns ok=false with error_class='not_implemented' until a calendar plugin (gcal/outlook/caldav) or a local iCal implementation is added. Future external plugins (e.g. cloud-calendar-gcal) may add other clients. OK: read_events(time_window='tomorrow'). ERROR: invoking with unknown client."
+
+[code]
+files  = ["read_events.py"]
+digest = "sha256:2427b3f9fc8072451af39e088e0bf6eed855986cd8225d053a25684512742264"
+
+[args]
+type     = "object"
+required = []
+
+[args.properties.time_window]
+type    = "string"
+default = "next-7d"
+
+[args.properties.time_window.description]
+it = "Finestra temporale: 'today', 'tomorrow', 'last-Nd', 'next-Nd', 'last-week', 'next-week', range ISO 'YYYY-MM-DD/YYYY-MM-DD'. Default 'next-7d'. Mutuamente esclusivo con `start`/`end`."
+en = "Time window: 'today', 'tomorrow', 'last-Nd', 'next-Nd', 'last-week', 'next-week', ISO range 'YYYY-MM-DD/YYYY-MM-DD'. Default 'next-7d'. Mutually exclusive with `start`/`end`."
+
+[args.properties.start]
+type    = "string"
+format  = "date-time"
+
+[args.properties.start.description]
+it = "Inizio in ISO 8601 con offset esplicito (es. 'Z' o '+01:00'). Es. '2026-03-01T00:00:00Z'."
+en = "Start in ISO 8601 with explicit offset (e.g. 'Z' or '+01:00'). E.g. '2026-03-01T00:00:00Z'."
+
+[args.properties.end]
+type    = "string"
+format  = "date-time"
+
+[args.properties.end.description]
+it = "Fine in ISO 8601 con offset esplicito; deve essere > start."
+en = "End in ISO 8601 with explicit offset; must be > start."
+
+[args.properties.top_k]
+type    = "integer"
+default = 50
+minimum = 0
+
+[args.properties.top_k.description]
+it = "Cap superiore esplicito (§2.7): max entries ritornate. 0 = nessun cap. Default 50."
+en = "Explicit upper cap (§2.7): max entries returned. 0 = no cap. Default 50."
+
+[args.properties.calendar_id]
+type    = "string"
+default = "primary"
+
+[args.properties.calendar_id.description]
+it = "Identificatore del calendario. Default 'primary'. Semantica specifica al backend (per i provider cloud, l'id del calendario remoto)."
+en = "Calendar identifier. Default 'primary'. Backend-specific semantics (for cloud providers, the remote calendar id)."
+
+[args.properties.client]
+type        = "string"
+enum        = ["local"]
+default     = "local"
+
+[args.properties.client.description]
+it = "Implementazione backend (default 'local' = calendar locale via ICS file, attualmente stub). Plugin esterni futuri (gcal, outlook, caldav, ecc.) potranno aggiungere altri client."
+en = "Backend implementation (default 'local' = local calendar via ICS file, currently stub). Future external plugins (gcal, outlook, caldav, etc.) may add other clients."
+
+[output]
+schema_inline = """
+{
+  ok: bool,
+  entries: Array<{kind: 'calendar_event', id: str, start, end, summary, ...}>,
+  used: int,
+  available_total?: int,
+  truncated?: bool,
+  truncated_what?: str,
+  cap_field?: str,
+  cap_value?: int,
+  error?: str,
+  error_class?: str
+}
+"""
+
+[[capabilities]]
+name = "metnos:read"
+hint = ["~/.local/share/metnos/calendar.ics"]
+
+[[tests]]
+name   = "stub_returns_not_implemented"
+input  = { time_window = "today" }
+expect = { ok = false, error_contains = "non ancora implementato" }
+
+[[tests]]
+name   = "unsupported_client_fails"
+input  = { client = "gdrive" }
+expect = { ok = false, error_contains = "unsupported calendar client" }

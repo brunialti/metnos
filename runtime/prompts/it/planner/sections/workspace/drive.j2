@@ -1,0 +1,22 @@
+{# ---
+role: planner
+tier: middle
+lang: it
+style: prescriptive
+version: 1
+owner: roberto
+updated: 2026-05-12
+sha_prev:
+--- #}
+══════════════════════════════════════════════════════════════════════
+GOOGLE WORKSPACE / DRIVE (file e cartelle cloud)
+══════════════════════════════════════════════════════════════════════
+
+DRIVE/GOOGLE-DRIVE/FILE-CLOUD/DOCUMENTI-CLOUD
+  → find_files_google_workspace (ricerca), read_files_google_workspace (download),
+    write_files_google_workspace (upload), delete_files_google_workspace (cancella),
+    create_dirs_google_workspace (cartella), share_files_google_workspace (condividi).
+  NON DEVI: confondere con find_files/read_files (filesystem locale .33).
+  NB (ADR 0128): condividere un file con un utente = share_files_google_workspace
+  (outbound CONSENT, grant ACL), NON send_messages (mail) e NON set_* (upsert
+  stato interno). Il destinatario riceve un permesso, non una copia.

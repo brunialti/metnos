@@ -1,0 +1,115 @@
+{# ---
+role: planner
+tier: middle
+lang: en
+style: prescriptive
+version: 1
+owner: roberto
+updated: 2026-05-12
+sha_prev:
+--- #}
+══════════════════════════════════════════════════════════════════════
+WEB / CRAWLER (read_urls_html, read_urls_pdf, soft-fail)
+══════════════════════════════════════════════════════════════════════
+
+  (url_explicit_seed) EXPLICIT URL + REQUEST FOR DATA WITHIN THE PAGE:
+      the user provides a specific URL (full path, not just a domain)
+      and asks for data CONTAINED IN that page. Examples: "read https://...",
+      "what's the content of https://...", "tell me the results on
+      https://.../calendar", "explore deeply https://.../section".
+  The user wants the CONTENT of the page given, NOT the structure of
+  the surrounding site.
+    MUST: read_urls_html(urls=[<user_URL>]) as FIRST step.
+    MUST NOT: find_urls in the first step when the user already provided the URL.
+    OK: "tell me the round F day 22 results on
+         https://www.federvolley.it/serie-b-maschile-calendario" →
+         read_urls_html(urls=["https://www.federvolley.it/serie-b-maschile-calendario"]).
+    ERROR: same prompt → find_urls(seed_urls=["https://www.federvolley.it/..."]).
+         find_urls runs BFS and returns URL+titles, NOT the content of the
+         specific page. The user wastes 30 minutes for 58 useless URLs.
+    Fallback: only if read_urls_html returns empty/insufficient text,
+         then consider find_urls for lateral discovery (e.g. searching
+         for a linked PDF) or read_urls_pdf on visible PDF URLs.
+
+  (js_rendered_retry) SPA / JS-RENDERED PAGE — RETRY ONCE WITH js_render=true:
+      When a `read_urls_html` step returns entries with
+      `error_class="js_rendered"` (or `failed[]` with the same
+      `error_class`), the page is a SPA: the initial HTML is a skeleton
+      that the browser hydrates via JavaScript. Metnos can route the
+      request to the Playwright sidecar (Chromium headless) to obtain
+      the rendered HTML.
+    MUST: re-invoke `read_urls_html(urls=[<failed_URL>], js_render=true)`
+         as the next step. The runtime probes the sidecar; if UP, it
+         renders the page and returns `entries` with `body_text`
+         populated from the materialized DOM.
+    MUST NOT: give up on first fail and tell the user "I can't read"
+         without having tried `js_render=true`.
+         MUST NOT repeat with `js_render=true` if that retry already
+         failed (e.g. `js_render_sidecar_available=false` or sidecar
+         timeout on that URL).
+    OK: step1 read_urls_html(urls=["https://spa.example/x"]) →
+         entries[0].error_class="js_rendered" →
+         step2 read_urls_html(urls=["https://spa.example/x"], js_render=true) →
+         entries[0].body_text non-empty, js_rendered_via_sidecar=true →
+         step3 describe_entries(from_step=2, style="by_relevance") →
+         final_answer.
+    ERROR: step1 error_class="js_rendered" → final_answer "I can't read"
+         without having tried js_render=true. THIS IS AN ERROR.
+    Cost: ~500ms-2s extra per page, ~200MB RAM on the sidecar. Opt-in
+         explicitly via `js_render=true`; the default stays false to
+         avoid slowing down normal turns.
+
+  (url_failed_soft_fail) URL FAILED IN HISTORY (site structure prevents reading):
+      When a previous URL-read step (`read_urls_html`, `read_urls_pdf`,
+      `get_urls_text`) returned `ok=false` or empty `entries` with
+      non-empty `failed[]`, DO NOT insist on the same URL.
+      `failed[]` entries expose deterministic `error_class`:
+      `forbidden`, `rate_limited`, `not_found`, `server_error`, `timeout`,
+      `non_html`, `js_rendered`, `network`, `unknown`.
+    MUST: formulate honest `final_answer` declaring the error class and
+         suggesting a concrete alternative:
+         - `forbidden`/`rate_limited` → "the site blocks the crawler (HTTP 403/429).
+           Alternatives: Google cache, archive.org/web, or send me a PDF/screenshot of the page".
+         - `timeout`/`network` → "the site does not respond now, retry in a few minutes".
+         - `js_rendered` → FIRST try the retry with `js_render=true`
+           (rule `js_rendered_retry` above). Only if THAT retry also
+           fails (`js_render_sidecar_available=false` or sidecar
+           timeout), declare: "the page is a SPA and the JS-render
+           sidecar is unavailable. Check `linked_documents` for
+           available PDFs".
+         - `non_html` → "the resource is not HTML. Probably a PDF: try
+           read_urls_pdf on the same URL".
+         - `not_found` → "the page does not exist (HTTP 404). Check the URL".
+         - `server_error` → "the site has an internal error (HTTP 5xx),
+           retry later".
+    MUST NOT: re-do `read_urls_html`/`read_urls_pdf`/`get_urls`/
+         `get_urls_text`/`find_urls` on the SAME URL already failed.
+         Re-fetch does not help: the error is server-side or structural.
+    OK: history step1 read_urls_html(urls=["https://www.python.org/about/"])
+         → failed=[{url:".../about/", error_class:"forbidden"}] →
+         step2 final_answer "The site python.org/about blocks the crawler
+         (HTTP 403). Alternatives: Google cache, archive.org. If you wish,
+         send me a PDF/screenshot".
+    ERROR: same scenario → step2 find_urls(seed_urls=["https://www.python.org/"]).
+         An already-failed URL does not unlock with lateral discovery.
+         THIS IS AN ERROR.
+
+  (url_partial_fail) URL PARTIALLY FAILED (some ok, some not):
+      When `read_urls_html` with N>1 urls returns `entries[]` non-empty
+      BUT also `failed[]` non-empty, you have PARTIAL SUCCESS.
+    MUST: call `describe_entries(from_step=N, style="by_relevance",
+         context=<user original question>)` on the read step as NEXT step.
+         The next step after will be `final_answer` formulated from the
+         `summary`, explicitly mentioning which URLs failed and the
+         `error_class`.
+    MUST NOT: emit `final_answer` directly skipping describe_entries —
+         the model struggles to synthesize body_text >2000 char without the
+         help of describe_entries, and tends to include its own reasoning
+         as final text (thinking-leak).
+    MUST NOT: ignore successful entries and formulate a global NO.
+         MUST NOT re-do the failed URL.
+    OK: 2 urls, 1 ok 1 forbidden → step2 describe_entries(from_step=1) →
+         step3 final_answer summarizes the first, declares the second
+         blocks the crawler (HTTP 403).
+    ERROR: 2 urls, 1 ok 1 forbidden → final_answer "I could not read the
+         pages". THIS IS AN ERROR: the first URL was read correctly.

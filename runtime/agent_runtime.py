@@ -85,11 +85,11 @@ from describe_entries import DESCRIBE_ENTRIES_TOOL, handle_describe_entries
 from classify_entries import CLASSIFY_ENTRIES_TOOL, handle_classify_entries
 from recurring_tasks import (
     SCHEDULE_RECURRING_TOOL, LIST_SCHEDULED_TASKS_TOOL,
-    CANCEL_SCHEDULED_TASK_TOOL, SHOW_SCHEDULED_TASK_TOOL,
+    DELETE_TASKS_SCHEDULED_TOOL, SHOW_SCHEDULED_TASK_TOOL,
     TOGGLE_SCHEDULED_TASK_TOOL, SCHEDULED_TASK_HISTORY_TOOL,
     RUN_SCHEDULED_TASK_NOW_TOOL,
     handle_schedule_recurring, handle_list_scheduled_tasks,
-    handle_cancel_scheduled_task, handle_show_scheduled_task,
+    handle_delete_tasks_scheduled, handle_show_scheduled_task,
     handle_toggle_scheduled_task, handle_scheduled_task_history,
     handle_run_scheduled_task_now,
 )
@@ -3791,7 +3791,7 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
         synth_tools = [
             SYNTH_REQUEST_TOOL, CLASSIFY_ENTRIES_TOOL, LOCATION_REQUEST_TOOL,
             SCHEDULE_RECURRING_TOOL, LIST_SCHEDULED_TASKS_TOOL,
-            CANCEL_SCHEDULED_TASK_TOOL, SHOW_SCHEDULED_TASK_TOOL,
+            DELETE_TASKS_SCHEDULED_TOOL, SHOW_SCHEDULED_TASK_TOOL,
             TOGGLE_SCHEDULED_TASK_TOOL, SCHEDULED_TASK_HISTORY_TOOL,
             RUN_SCHEDULED_TASK_NOW_TOOL,
         ]
@@ -4394,13 +4394,13 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
         # I 3 tool sono callable dal PLANNER per registrare/elencare/cancellare
         # task ricorrenti che il scheduler builtin esegue al fire automatico.
         if chosen_name in ("schedule_recurring", "list_scheduled_tasks",
-                             "cancel_scheduled_task", "show_scheduled_task",
+                             "delete_tasks_scheduled", "show_scheduled_task",
                              "toggle_scheduled_task", "scheduled_task_history",
                              "run_scheduled_task_now"):
             _handler = {
                 "schedule_recurring": handle_schedule_recurring,
                 "list_scheduled_tasks": handle_list_scheduled_tasks,
-                "cancel_scheduled_task": handle_cancel_scheduled_task,
+                "delete_tasks_scheduled": handle_delete_tasks_scheduled,
                 "show_scheduled_task": handle_show_scheduled_task,
                 "toggle_scheduled_task": handle_toggle_scheduled_task,
                 "scheduled_task_history": handle_scheduled_task_history,

@@ -167,7 +167,7 @@ def register_user_task(
             raise ValueError(
                 f"actor={actor} ha gia' {n_existing} task ricorrenti "
                 f"(limite {MAX_TASKS_PER_ACTOR}). Cancellane uno con "
-                f"cancel_scheduled_task prima di registrarne di nuovi."
+                f"delete_tasks_scheduled prima di registrarne di nuovi."
             )
         # times: None/<=0 = forever; >=1 = max fire (one-shot=1).
         # fired_count reset a 0 per nuovo task / re-register stesso name.
@@ -406,23 +406,32 @@ LIST_SCHEDULED_TASKS_TOOL = {
     "function": {
         "name": "list_scheduled_tasks",
         "description": (
-            "Elenca i task ricorrenti registrati per l'utente corrente. "
-            "USA questo tool per query 'che task ho schedulato', "
-            "'mostrami i miei promemoria', 'cosa ho pianificato'."
+            "Elenca i TASK RICORRENTI / PROMEMORIA / TIMER schedulati "
+            "(NON processi di sistema, NON eventi calendar). "
+            "USA per: 'che task ho schedulato', 'mostrami i miei promemoria', "
+            "'cosa ho pianificato', 'quali timer ho attivi', 'lista task ricorrenti', "
+            "'cosa fa Metnos automaticamente'. "
+            "NON CONFONDERE CON: `get_processes` (processi sistema), "
+            "`read_events` (eventi calendar/appuntamenti)."
         ),
         "parameters": {"type": "object", "properties": {}},
     },
 }
 
-CANCEL_SCHEDULED_TASK_TOOL = {
+DELETE_TASKS_SCHEDULED_TOOL = {
     "type": "function",
     "function": {
-        "name": "cancel_scheduled_task",
+        "name": "delete_tasks_scheduled",
         "description": (
-            "Cancella un task ricorrente. Accetta `id` numerico (preferito, "
-            "univoco) o `name` slug. Se l'utente non specifica chiaramente "
-            "quale task, chiama prima list_scheduled_tasks per mostrare "
-            "l'elenco con id. Un actor cancella solo i propri task."
+            "Cancella/ferma un TASK RICORRENTE / PROMEMORIA / TIMER schedulato. "
+            "USA per: 'cancella il task ping', 'ferma il timer X', "
+            "'rimuovi il promemoria delle mail', 'stoppa il task ricorrente'. "
+            "Accetta `id` numerico (preferito, univoco) o `name` slug. "
+            "Se l'utente non specifica chiaramente quale task, chiama prima "
+            "list_scheduled_tasks per mostrare l'elenco con id. "
+            "Un actor cancella solo i propri task. "
+            "NON CONFONDERE CON: `delete_events` (eventi calendar), "
+            "`kill` processo sistema."
         ),
         "parameters": {
             "type": "object",
@@ -445,10 +454,12 @@ SHOW_SCHEDULED_TASK_TOOL = {
     "function": {
         "name": "show_scheduled_task",
         "description": (
-            "Mostra dettaglio di UN task ricorrente per nome: schedule, "
-            "ultima esecuzione, esito ultimo fire, query, label. USA per "
-            "richieste 'mostra dettaglio task X', 'quando ha girato l'ultima "
-            "volta', 'che esito ha avuto'."
+            "Mostra dettaglio di UN TASK RICORRENTE / PROMEMORIA / TIMER per nome: "
+            "schedule, ultima esecuzione, esito ultimo fire, query, label, storico. "
+            "USA per: 'mostra dettaglio task X', 'quando ha girato l'ultima volta', "
+            "'che esito ha avuto', 'storico esecuzioni task X', 'ultima esecuzione del timer'. "
+            "NON CONFONDERE CON: `get_processes` (processi sistema), "
+            "`read_events` (eventi calendar)."
         ),
         "parameters": {
             "type": "object",
@@ -486,10 +497,14 @@ SCHEDULED_TASK_HISTORY_TOOL = {
     "function": {
         "name": "scheduled_task_history",
         "description": (
-            "Ritorna lo storico delle esecuzioni di UN task (o di tutti). "
-            "Per ogni fire: timestamp, status (ok/error/timeout/skipped), "
-            "duration, output. USA per 'mostrami gli ultimi N fire del task X', "
-            "'che cronologia ha', 'ha mai dato errore'."
+            "Ritorna lo STORICO ESECUZIONI di un TASK RICORRENTE / PROMEMORIA / TIMER "
+            "(o di tutti). Per ogni fire: timestamp, status (ok/error/timeout/skipped), "
+            "duration, output. "
+            "USA per: 'mostrami gli ultimi N fire del task X', 'cronologia task', "
+            "'storico esecuzioni del task ricorrente', 'storico timer', "
+            "'ha mai dato errore il task', 'log esecuzioni schedulate'. "
+            "NON CONFONDERE CON: `get_processes` (processi sistema correnti), "
+            "`read_events` (eventi calendar)."
         ),
         "parameters": {
             "type": "object",
@@ -700,17 +715,38 @@ def handle_list_scheduled_tasks(args: dict, *, actor: str, **_) -> dict:
         if t.get("remaining") == 1 and times and times > 1:
             t["warning"] = "ULTIMA esecuzione, poi auto-cancella"
         enriched.append(t)
-    return {"ok": True, "count": len(enriched), "tasks": enriched}
+    # Summary user-facing con ID esplicito (15/5/2026): niente numerazione
+    # progressiva 1./2./3. — usa l'id del DB per cancellazione precisa
+    # ("cancella timer 17"). i18n via i18n.sqlite (ADR 0104).
+    from messages import get as _msg
+    lines = [_msg("MSG_TASKS_LIST_HEADER", count=len(enriched))]
+    for t in enriched:
+        last = t.get("last_fire_human") or _msg("MSG_TASKS_LAST_NEVER")
+        lines.append(_msg(
+            "MSG_TASKS_LIST_ROW",
+            tid=t.get("id", "?"),
+            name=t.get("name", "?"),
+            sched=t.get("schedule_human") or t.get("schedule", "?"),
+            last=last,
+        ))
+    detail_md = "\n".join(lines)
+    return {
+        "ok": True,
+        "count": len(enriched),
+        "tasks": enriched,
+        "summary": detail_md,
+        "detail_md": detail_md,
+    }
 
 
-def handle_cancel_scheduled_task(args: dict, *, actor: str, **_) -> dict:
+def handle_delete_tasks_scheduled(args: dict, *, actor: str, **_) -> dict:
     tid = args.get("id")
     name = args.get("name")
     if tid is None and not name:
         return {"ok": False, "error": "missing: serve 'id' (preferito) o 'name'"}
     # Risolvi id → name slug per hot-unregister scheduler.
     target_name = name
-    if tid is not None and not name:
+    if tid is not None:
         conn = _open()
         try:
             row = conn.execute(
@@ -721,9 +757,18 @@ def handle_cancel_scheduled_task(args: dict, *, actor: str, **_) -> dict:
                 target_name = row["name"]
         finally:
             conn.close()
-    ref = tid if tid is not None else name
-    ok = cancel_user_task(ref, actor=actor)
+    # Provo prima tid (preferito se valido), poi fallback su name se tid fail.
+    # Bug live 15/5/2026: LLM emette {id=<inventato>, name=<corretto>} → tid
+    # fallisce e l'handler non tentava il name. Fix: cascade tid → name.
+    ok = False
+    if tid is not None:
+        ok = cancel_user_task(tid, actor=actor)
+    if not ok and name:
+        ok = cancel_user_task(name, actor=actor)
+        if ok:
+            target_name = name
     if not ok:
+        ref = tid if tid is not None else name
         return {"ok": False, "error": f"task ref='{ref}' non trovato per actor={actor}"}
     if target_name:
         try:
@@ -731,7 +776,7 @@ def handle_cancel_scheduled_task(args: dict, *, actor: str, **_) -> dict:
             sched_client.cancel_job(f"user_{target_name}")
         except Exception as _e:  # silent swallow (auto-fixed)
             log.warning("silent exception in %s: %s", __name__, _e)
-    return {"ok": True, "message": f"Task '{target_name or ref}' cancellato."}
+    return {"ok": True, "message": f"Task '{target_name or tid or name}' cancellato."}
 
 
 def _normalize_task_name(name: str) -> str:
