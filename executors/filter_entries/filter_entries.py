@@ -108,9 +108,27 @@ def invoke(args):
     where_not_in = _ensure_list(args.get("where_not_in"))
     if not where_in and args.get("where_value") is not None:
         where_in = [args.get("where_value")]
-    if (where_in or where_not_in) and not where_field:
+    # Operatori di stringa su where_field arbitrario (15/5/2026):
+    # bug live "trova appuntamenti HLT" → LLM passava where_in=["HLT*"]
+    # pensando wildcard; where_in e' match esatto. Aggiunto starts_with,
+    # contains, glob, regex per coprire i pattern naturali. Case-insensitive
+    # di default (coerente con name_glob/name_regex).
+    where_starts_with = args.get("where_starts_with")
+    where_contains = args.get("where_contains")
+    where_glob = args.get("where_glob")
+    where_regex_str = args.get("where_regex")
+    where_regex_re = None
+    if where_regex_str:
+        try:
+            where_regex_re = re.compile(where_regex_str, re.IGNORECASE)
+        except re.error as e:
+            return {"ok": False, "error": f"invalid where_regex: {e}"}
+    _has_where_str_op = any(x is not None for x in (
+        where_starts_with, where_contains, where_glob, where_regex_str))
+    if (where_in or where_not_in or _has_where_str_op) and not where_field:
         return {"ok": False,
-                "error": "where_in/where_not_in/where_value richiedono where_field"}
+                "error": "where_in/where_not_in/where_value/where_starts_with/"
+                         "where_contains/where_glob/where_regex richiedono where_field"}
 
     def keep(e):
         if not isinstance(e, dict):
@@ -140,9 +158,52 @@ def invoke(args):
             return False
         if where_field is not None:
             v = e.get(where_field)
-            if where_in and v not in where_in:
-                return False
-            if where_not_in and v in where_not_in:
+            # where_in / where_not_in: match esatto, MA tollera wildcard glob
+            # quando un valore contiene '*' o '?' (15/5/2026 §7.3). Bug live:
+            # LLM passa where_in=["HLT*"] pensando wildcard; il match esatto
+            # falliva. Applichiamo fnmatch case-insensitive sul valore stringa.
+            v_str = str(v) if v is not None else ""
+            v_lower = v_str.lower()
+            if where_in:
+                _matched = False
+                for pat in where_in:
+                    p = str(pat)
+                    if "*" in p or "?" in p:
+                        if fnmatch.fnmatchcase(v_lower, p.lower()):
+                            _matched = True
+                            break
+                    elif v == pat or v_str == p:
+                        _matched = True
+                        break
+                if not _matched:
+                    return False
+            if where_not_in:
+                _matched_neg = False
+                for pat in where_not_in:
+                    p = str(pat)
+                    if "*" in p or "?" in p:
+                        if fnmatch.fnmatchcase(v_lower, p.lower()):
+                            _matched_neg = True
+                            break
+                    elif v == pat or v_str == p:
+                        _matched_neg = True
+                        break
+                if _matched_neg:
+                    return False
+            # Operatori di stringa su where_field (15/5/2026).
+            # Coerce a string lowercase per case-insensitive matching.
+            v_str = str(v) if v is not None else ""
+            v_lower = v_str.lower()
+            if where_starts_with is not None:
+                if not v_lower.startswith(str(where_starts_with).lower()):
+                    return False
+            if where_contains is not None:
+                if str(where_contains).lower() not in v_lower:
+                    return False
+            if where_glob is not None:
+                if not fnmatch.fnmatchcase(v_lower, str(where_glob).lower()):
+                    return False
+            if where_regex_re is not None and not where_regex_re.search(v_str):
                 return False
         return True
 
@@ -167,6 +228,10 @@ def invoke(args):
                 "where_field": where_field,
                 "where_in": where_in or None,
                 "where_not_in": where_not_in or None,
+                "where_starts_with": where_starts_with,
+                "where_contains": where_contains,
+                "where_glob": where_glob,
+                "where_regex": where_regex_str,
             },
         },
     }

@@ -52,6 +52,8 @@ ROME = ZoneInfo("Europe/Rome")
 _RE_LAST_ND = re.compile(r"^last-(\d+)d$")
 _RE_NEXT_ND = re.compile(r"^next-(\d+)d$")
 _RE_ISO_DAY = re.compile(r"^(\d{4})-(\d{2})-(\d{2})$")
+_RE_ISO_YEAR = re.compile(r"^(\d{4})$")
+_RE_ISO_YEAR_MONTH = re.compile(r"^(\d{4})-(\d{2})$")
 _RE_ISO_RANGE = re.compile(
     r"^(\d{4})-(\d{2})-(\d{2})/(\d{4})-(\d{2})-(\d{2})$"
 )
@@ -227,6 +229,26 @@ def _resolve_iso(spec):
     if m:
         y, mo, d = map(int, m.groups())
         return _full_day(_safe_date(y, mo, d))
+    # Anno solo `YYYY` → tutto l'anno (1 gennaio 00:00 → 31 dicembre 23:59:59).
+    m = _RE_ISO_YEAR.match(spec)
+    if m:
+        y = int(m.group(1))
+        a = _safe_date(y, 1, 1)
+        b = _safe_date(y, 12, 31)
+        return _aware(a, time(0, 0, 0)), _aware(b, time(23, 59, 59))
+    # Anno-mese `YYYY-MM` → tutto il mese.
+    m = _RE_ISO_YEAR_MONTH.match(spec)
+    if m:
+        y, mo = int(m.group(1)), int(m.group(2))
+        a = _safe_date(y, mo, 1)
+        # Ultimo giorno del mese: vai al primo del mese successivo - 1 giorno.
+        if mo == 12:
+            b_next = _safe_date(y + 1, 1, 1)
+        else:
+            b_next = _safe_date(y, mo + 1, 1)
+        from datetime import timedelta
+        b = b_next - timedelta(days=1)
+        return _aware(a, time(0, 0, 0)), _aware(b, time(23, 59, 59))
     return None
 
 
