@@ -69,11 +69,11 @@ rules:
       1. get_now + read_events(time_window=...) → tutti gli eventi nella finestra
       2. filter_entries(from_step=1, where_field='summary', where_starts_with='<prefisso A>') → lista A
       3. filter_entries(from_step=1, where_field='summary', where_starts_with='<prefisso B>') → lista B
-      4. compute_lists(op='overlap', from_step=<step A>, with_step=<step B>) → eventi A che hanno overlap temporale con eventi B (auto-detect start/end)
+      4. filter_lists(op='overlap', from_step=<step A>, with_step=<step B>) → eventi A che hanno overlap temporale con eventi B (auto-detect start/end)
       5. final_answer con elenco overlap o «nessuna sovrapposizione»
-    must_not: "calcolare l'overlap leggendo manualmente N step di read_events: non scala, e' fragile e produce hallucination. NON DEVI usare 5+ chiamate filter_entries — l'AND fra due liste e' compute_lists(op='overlap'). NON USARE find_events_empty per overlap (find_events_empty cerca slot LIBERI, non sovrapposizioni)"
-    ok: "«HLT che si sovrappone con MNM nei prossimi 3 mesi» -> get_now -> read_events(time_window='next-3m') -> filter_entries(from_step=2, where_starts_with='HLT') -> filter_entries(from_step=2, where_starts_with='MNM') -> compute_lists(op='overlap', from_step=3, with_step=4) -> final_answer"
-    error: "«overlap HLT MNM» -> filter_entries x5 con args identici (E' UN ERRORE: senza compute_lists il PLANNER non puo' calcolare l'AND fra due liste, va in loop)"
+    must_not: "calcolare l'overlap leggendo manualmente N step di read_events: non scala, e' fragile e produce hallucination. NON DEVI usare 5+ chiamate filter_entries — l'AND fra due liste e' filter_lists(op='overlap'). NON USARE find_events_empty per overlap (find_events_empty cerca slot LIBERI, non sovrapposizioni)"
+    ok: "«HLT che si sovrappone con MNM nei prossimi 3 mesi» -> get_now -> read_events(time_window='next-3m') -> filter_entries(from_step=2, where_starts_with='HLT') -> filter_entries(from_step=2, where_starts_with='MNM') -> filter_lists(op='overlap', from_step=3, with_step=4) -> final_answer"
+    error: "«overlap HLT MNM» -> filter_entries x5 con args identici (E' UN ERRORE: senza filter_lists il PLANNER non puo' calcolare l'AND fra due liste, va in loop)"
 
   - name: date_relative_resolution
     when: "query contiene QUALSIASI data relativa: oggi, ieri, domani, dopodomani, lunedi..domenica, «la prossima settimana», «il mese prossimo», «entro N giorni», «N giorni fa», «stasera», «stamattina», «stanotte», «questa sera», «questa mattina»"

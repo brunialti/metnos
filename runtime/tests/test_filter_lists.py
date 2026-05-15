@@ -1,12 +1,12 @@
-"""Test compute_lists (set ops + aggregates su 1+ liste, ADR 15/5/2026)."""
+"""Test filter_lists (set ops + aggregates su 1+ liste, ADR 15/5/2026)."""
 from __future__ import annotations
 
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]
-                          / "executors" / "compute_lists"))
-import compute_lists as cl  # noqa: E402
+                          / "executors" / "filter_lists"))
+import filter_lists as cl  # noqa: E402
 
 
 # ----- Set ops --------------------------------------------------------------
@@ -109,57 +109,6 @@ def test_overlap_with_instantaneous_entry():
     r = cl.invoke({"op": "overlap", "entries": a, "entries_b": b})
     assert r["ok"] is True
     assert len(r["entries"]) == 1
-
-
-# ----- Aggregates -----------------------------------------------------------
-
-def test_count():
-    r = cl.invoke({"op": "count",
-                     "entries": [{"x": 1}, {"x": 2}, {"x": 3}, {"x": 4}]})
-    assert r["ok"] is True
-    assert r["value"] == 4
-
-
-def test_sum_field():
-    r = cl.invoke({"op": "sum", "field": "size",
-                     "entries": [{"size": 10}, {"size": 20}, {"size": 30}]})
-    assert r["ok"] is True
-    assert r["value"] == 60
-    assert r["count"] == 3
-
-
-def test_avg_field():
-    r = cl.invoke({"op": "avg", "field": "score",
-                     "entries": [{"score": 4.0}, {"score": 6.0}]})
-    assert r["ok"] is True
-    assert r["value"] == 5.0
-
-
-def test_max_field():
-    r = cl.invoke({"op": "max", "field": "x",
-                     "entries": [{"x": 1}, {"x": 5}, {"x": 3}]})
-    assert r["value"] == 5
-
-
-def test_min_field():
-    r = cl.invoke({"op": "min", "field": "x",
-                     "entries": [{"x": 1}, {"x": 5}, {"x": 3}]})
-    assert r["value"] == 1
-
-
-def test_aggregate_without_field_errors():
-    r = cl.invoke({"op": "sum", "entries": [{"x": 1}]})
-    assert r["ok"] is False
-    assert "field" in r["error"]
-
-
-def test_aggregate_no_numeric_values_returns_zero():
-    """Lista senza numeric → value=0 + note, non error."""
-    r = cl.invoke({"op": "sum", "field": "missing",
-                     "entries": [{"x": 1}, {"x": 2}]})
-    assert r["ok"] is True
-    assert r["value"] == 0
-    assert r["count"] == 0
 
 
 # ----- Validation ----------------------------------------------------------

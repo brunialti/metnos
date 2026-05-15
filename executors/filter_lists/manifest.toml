@@ -1,0 +1,140 @@
+# Manifest dell'executor `filter_lists` — Metnos (ADR 15/5/2026).
+# Operatori logici set ops fra 2 liste di entries.
+
+manifest_format = "1.0"
+
+name        = "filter_lists"
+version     = "0.1.0"
+author      = "Roberto Brunialti <roberto.brunialti@metnos.com>"
+affinity    = ["intersect", "intersezione", "union", "unione",
+                "differenza", "difference", "overlap", "sovrappone",
+                "sovrapposizione", "in comune", "operazioni liste",
+                "set", "AND tra liste", "filter lists"]
+
+[description]
+it = """Operatori logici set ops fra DUE liste di entries. Pattern §7.3 general-purpose: parametrizza via `op` + `on_keys` invece di creare un executor per ogni operazione (intersect_entries, union_entries, ecc.).
+
+USO CORRETTO:
+- AND fra 2 liste su una chiave: op='intersect', from_step=A, with_step=B, on_keys=['path']
+- AND temporale (overlap eventi): op='overlap', from_step=A, with_step=B (auto-detect start/end)
+- A \\ B (entries di A non in B): op='difference', on_keys=['id']
+- A ∪ B deduplicato: op='union', on_keys=['sha256']
+- (A\\B) ∪ (B\\A): op='symdiff', on_keys=['date']
+
+Pattern pipeline classico (test 4 «HLT che si sovrappone con MNM»):
+1. read_events(time_window='next-3m')  → tutti gli eventi
+2. filter_entries(from_step=1, where_field='summary', where_starts_with='HLT')  → A
+3. filter_entries(from_step=1, where_field='summary', where_starts_with='MNM')  → B
+4. filter_lists(op='overlap', from_step=2, with_step=3) → A ∩temporal B
+5. final_answer
+
+OUTPUT: `{ok, op, entries: list[dict], metadata: {count_a, count_b, count_out, on_keys}}`. Per op='overlap', entries hanno `_overlap_with` con label degli incontri.
+
+NON CONFONDERE CON:
+- `filter_entries`: filtri MONO-LISTA (where_field/where_in/where_starts_with). filter_lists e' BI-LISTA (set ops).
+- `compute_entries`: aggregati numerici su 1 lista (max/min/avg/sum). filter_lists ritorna LISTE, compute_entries ritorna SCALARI.
+
+DEVI: passare `op` (uno fra: intersect, union, difference, symdiff, overlap).
+DEVI: per ops ≠ overlap, passare `on_keys` come lista di field name.
+NON DEVI: usare set ops senza `with_step` (manca la lista B).
+NON DEVI: usare op='overlap' su liste senza campi temporali — restituisce vuoto."""
+en = """Logical set operators between TWO lists of entries. General §7.3 pattern: parametrize via `op` + `on_keys` instead of one executor per operation.
+
+CORRECT USE:
+- AND between 2 lists on a key: op='intersect', from_step=A, with_step=B, on_keys=['path']
+- Temporal AND (event overlap): op='overlap', from_step=A, with_step=B (auto-detect start/end)
+- A \\ B: op='difference', on_keys=['id']
+- A ∪ B deduped: op='union', on_keys=['sha256']
+- Symmetric diff: op='symdiff', on_keys=['date']
+
+Pipeline pattern (test 4):
+1. read_events(time_window='next-3m')
+2. filter_entries(from_step=1, where_starts_with='HLT') → A
+3. filter_entries(from_step=1, where_starts_with='MNM') → B
+4. filter_lists(op='overlap', from_step=2, with_step=3)
+5. final_answer
+
+OUTPUT: `{ok, op, entries: list[dict], metadata: {count_a, count_b, count_out, on_keys}}`. For op='overlap', entries have `_overlap_with`.
+
+DO NOT CONFUSE WITH:
+- `filter_entries`: MONO-list filters (where_field/where_in/where_starts_with).
+- `compute_entries`: numeric aggregates on 1 list (max/min/avg/sum). filter_lists returns LISTS, compute_entries returns SCALARS.
+
+MUST: pass `op` (one of: intersect, union, difference, symdiff, overlap).
+MUST: for ops ≠ overlap, pass `on_keys` as list of field names.
+MUST NOT: use set ops without `with_step`.
+MUST NOT: use op='overlap' on lists without temporal fields — returns empty."""
+
+[code]
+files  = ["filter_lists.py"]
+digest = "sha256:b69b263b3e7c645465577e2aa0b8a86cf7d095cec17ff346e8f023582fa19ac7"
+
+[args]
+type     = "object"
+required = ["op"]
+
+[args.properties.op]
+type        = "string"
+enum        = ["intersect", "union", "difference", "symdiff", "overlap"]
+
+[args.properties.op.description]
+it = "Operazione set. Set ops (intersect/union/difference/symdiff) richiedono with_step + on_keys. Overlap e' shortcut: AND temporale auto-detect su campi start/end/started_at/finished_at/taken_at_iso/mtime_iso/fired_at/ts."
+en = "Set operation. Set ops (intersect/union/difference/symdiff) require with_step + on_keys. Overlap is shortcut: temporal AND auto-detect on fields start/end/started_at/finished_at/taken_at_iso/mtime_iso/fired_at/ts."
+
+[args.properties.from_step]
+type        = "integer"
+minimum     = 1
+
+[args.properties.from_step.description]
+it = "Step della lista PRIMARIA (A). Il runtime espande in entries via scratchpad."
+en = "Step of PRIMARY list (A). Runtime expands to entries via scratchpad."
+
+[args.properties.with_step]
+type        = "integer"
+minimum     = 1
+
+[args.properties.with_step.description]
+it = "Step della lista SECONDARIA (B). Il runtime espande e inietta come `entries_b`."
+en = "Step of SECONDARY list (B). Runtime expands and injects as `entries_b`."
+
+[args.properties.on_keys]
+type        = "array"
+items       = { type = "string" }
+
+[args.properties.on_keys.description]
+it = "Lista field name su cui matchare le entries. MATCH ESATTO sui valori. Composite: on_keys=['lat','lon'] matcha la coppia."
+en = "List of field names to match entries on. EXACT MATCH on values. Composite: on_keys=['lat','lon'] matches the pair."
+
+[args.properties.entries]
+type        = "array"
+
+[args.properties.entries.description]
+it = "Lista PRIMARIA inline (alternativa a from_step). Solitamente non passata direttamente dal PLANNER."
+en = "Inline PRIMARY list (alternative to from_step). Usually not passed directly by PLANNER."
+
+[args.properties.entries_b]
+type        = "array"
+
+[args.properties.entries_b.description]
+it = "Lista SECONDARIA inline (alternativa a with_step). Solitamente non passata direttamente."
+en = "Inline SECONDARY list (alternative to with_step). Usually not passed directly."
+
+[[tests]]
+name   = "intersect_path"
+input  = { op = "intersect", entries = [{path="a"},{path="b"},{path="c"}], entries_b = [{path="b"},{path="c"},{path="d"}], on_keys = ["path"] }
+expect = { ok = true, metadata_field_eq = { count_out = 2 } }
+
+[[tests]]
+name   = "difference_id"
+input  = { op = "difference", entries = [{id=1},{id=2},{id=3}], entries_b = [{id=2}], on_keys = ["id"] }
+expect = { ok = true, metadata_field_eq = { count_out = 2 } }
+
+[[tests]]
+name   = "union_dedup"
+input  = { op = "union", entries = [{k="a"},{k="b"}], entries_b = [{k="b"},{k="c"}], on_keys = ["k"] }
+expect = { ok = true, metadata_field_eq = { count_out = 3 } }
+
+[[tests]]
+name   = "overlap_temporal"
+input  = { op = "overlap", entries = [{start="2026-01-01T10:00:00", end="2026-01-01T11:00:00"}], entries_b = [{start="2026-01-01T10:30:00", end="2026-01-01T11:30:00"}] }
+expect = { ok = true, metadata_field_eq = { count_out = 1 } }

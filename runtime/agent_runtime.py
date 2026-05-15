@@ -2104,13 +2104,13 @@ def resolve_from_step(args, history, consumer_schema=None):
     # Fallback storico: inietta sotto `entries` (target standard universale).
     new_args["entries"] = prev_list
     # Layer 5 (15/5/2026): secondary list reference. Pattern §7.3 per
-    # executor bi-lista (compute_lists, filter_entries+overlap):
-    #   `with_step=N`  → entries_b  (pattern canonical compute_lists)
+    # executor bi-lista (filter_lists, filter_entries+overlap):
+    #   `with_step=N`  → entries_b  (pattern canonical filter_lists)
     #   `overlap_step=N` → overlap_entries (alias filter_entries overlap)
     # Permette pipeline tipo:
     #   step A: filter_entries(from_step=read, where_starts_with="HLT")
     #   step B: filter_entries(from_step=read, where_starts_with="MNM")
-    #   step C: compute_lists(op="overlap", from_step=A, with_step=B)
+    #   step C: filter_lists(op="overlap", from_step=A, with_step=B)
     for _ref_arg, _inject_arg in (
         ("with_step", "entries_b"),
         ("overlap_step", "overlap_entries"),
@@ -3908,7 +3908,7 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
         # "annulla" → delete, undo_last_turn non in candidati → planner
         # innescava synt inutile).
         _UNIVERSAL_HELPERS = ("filter_entries", "sort_entries", "compute_entries",
-                              "compute_lists", "undo_last_turn")
+                              "filter_lists", "undo_last_turn")
         # Pipeline helpers che richiedono `from_step` su una lista preesistente:
         # esclusi dal pool al primo step §4.2. Caso live 15/5/2026: query
         # "fissa appuntamento mercoledi mattina dopo le 9" → PLANNER sceglie
@@ -3919,7 +3919,7 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
         # step (compreso il primo: «annulla» fa undo del turno PRECEDENTE).
         _FROM_STEP_HELPERS = frozenset({
             "filter_entries", "sort_entries", "compute_entries",
-            "compute_lists", "classify_entries", "group_entries",
+            "filter_lists", "classify_entries", "group_entries",
             "describe_entries",
         })
         _existing_names = {e.name for e in candidates}
