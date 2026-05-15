@@ -42,10 +42,10 @@ rules:
 
   - name: show_task_history
     when: "richieste di vedere storico/cronologia/ultime esecuzioni di un task ricorrente («storico esecuzioni task X», «cronologia del task ricorrente», «log fire del timer», «ultime esecuzioni del task»)"
-    must: "usa read_tasks_history(name=<slug>?, limit=<N>?). Senza name = storico di tutti i task. Ritorna lista di fire con timestamp/status/duration"
-    must_not: "chiamare get_processes (processi correnti, non storico) NE' read_events (eventi calendar)"
-    ok: "«storico esecuzioni del task ping» -> read_tasks_history(name=\"ping\", limit=10) -> final_answer"
-    error: "«storico esecuzioni del task ricorrente» -> get_processes() (E' UN ERRORE: get_processes mostra snapshot processi correnti, non storico task)"
+    must: "usa read_tasks_history(name=<slug>?, limit=<N>?) DIRETTAMENTE in UNO step. Senza name = storico di tutti i task (l'executor stesso enumera). Ritorna lista di fire con timestamp/status/duration"
+    must_not: "chiamare list_tasks PRIMA di read_tasks_history quando l'utente NON ha menzionato un nome specifico: e' uno step ridondante, read_tasks_history senza name ritorna gia' lo storico di TUTTI i task. NE' chiamare get_processes (processi correnti, non storico) NE' read_events (eventi calendar)"
+    ok: "«storico esecuzioni del task ping» -> read_tasks_history(name=\"ping\", limit=10) -> final_answer. OPPURE «storico esecuzioni del task ricorrente» (senza nome) -> read_tasks_history() -> final_answer"
+    error: "«storico esecuzioni del task ricorrente» -> list_tasks() -> read_tasks_history() (E' UN ERRORE: step list_tasks ridondante, read_tasks_history senza name enumera gia' tutto). OPPURE -> get_processes() (E' UN ERRORE: get_processes mostra snapshot processi correnti, non storico task)"
 
   - name: schedule_task
     when: "richieste di SCHEDULARE / CREARE un task ricorrente / promemoria / timer («ogni giorno alle 9 X», «ogni N minuti Y», «ricorda di X», «schedula Y», «pianifica X tutti i giorni»)"

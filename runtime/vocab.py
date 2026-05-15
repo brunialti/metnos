@@ -97,6 +97,13 @@ OBJECTS = (
     #   richieste di approvazione del Vaglio (oggi modellate in altro modo).
     # Visibili al PLANNER come ordinario `get_proposals(kind=...)`.
     "proposals",
+    # Persons (15/5/2026): registro nominale di persone enrolled (volti
+    # arcface, slug case+accent-insensitive). Distinto da `contacts`
+    # (rubrica indirizzi/email). Entita' di prima classe: ha 4 executor
+    # canonici (get_persons/set_persons/find_persons_indices/delete_persons)
+    # e dialog flow di disambiguazione face-picker. Sezione planner
+    # `photos` (compositiva con images: «foto di Matteo al mare»).
+    "persons",
     # Tasks (15/5/2026): task ricorrenti / promemoria / timer schedulati
     # nel scheduler v2 Metnos (ADR 0112). Entita' di prima classe distinta
     # da `events` (calendario utente): hanno trigger grammar `daily@HH:MM`/
@@ -257,6 +264,7 @@ OBJECT_DEFAULT_MUTATING_VERB: dict[str, str | None] = {
     "signatures": "set",
     "texts":      "write",
     "proposals":  "set",       # approve/reject mappa a set (state upsert)
+    "persons":    "set",       # set_persons (enroll); delete_persons separato
     "tasks":      "create",    # create_tasks (scheduler v2 ricorrenti)
     "inputs":     None,        # get_inputs e' lookup interno, no mutating
     "credentials": "set",
@@ -473,6 +481,7 @@ _OBJECT_TO_SECTIONS: dict[str, tuple[str, ...]] = {
     "texts": (),                  # filter/read text generico, coperto dal core
     "proposals": (),              # admin proposals_cli, no PLANNER routing
     "tasks": ("scheduled_tasks",),  # scheduler v2 ricorrenti + one-shot
+    "persons": ("photos",),       # registro nominale, compositive con images
     "inputs": (),                 # dialog UI, gestito dal runtime, no sezione
     "credentials": ("admin_shell",),
     "entries": (),                # meta-oggetto runtime, no sezione dedicata
@@ -643,6 +652,13 @@ _OBJECT_SYNONYMS_IT: dict[str, str] = {
     "task": "tasks", "promemoria": "tasks", "timer": "tasks",
     "ricorrente": "tasks", "ricorrenti": "tasks",
     "schedulato": "tasks", "schedulati": "tasks",
+    "persona": "persons", "persone": "persons",
+    "enrollato": "persons", "enrollati": "persons",
+    "enrollata": "persons", "enrollate": "persons",
+    "enrolled": "persons", "registrata": "persons", "registrate": "persons",
+    "registrato": "persons", "registrati": "persons",
+    "volto": "persons", "volti": "persons",
+    "viso": "persons", "visi": "persons",
 }
 _OBJECT_SYNONYMS_EN: dict[str, str] = {
     "appointment": "events", "appointments": "events",
@@ -660,6 +676,9 @@ _OBJECT_SYNONYMS_EN: dict[str, str] = {
     "place": "places", "places": "places",
     "task": "tasks", "tasks": "tasks", "reminder": "tasks", "timer": "tasks",
     "scheduled": "tasks", "recurring": "tasks",
+    "person": "persons", "persons": "persons", "people": "persons",
+    "enrolled": "persons", "registered": "persons",
+    "face": "persons", "faces": "persons",
 }
 
 

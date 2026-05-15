@@ -42,10 +42,10 @@ rules:
 
   - name: show_task_history
     when: "requests to see history/log/last executions of a recurring task ('history of task X', 'recurring task log', 'timer fire log', 'last executions of task')"
-    must: "use read_tasks_history(name=<slug>?, limit=<N>?). Without name = history of all tasks. Returns list of fires with timestamp/status/duration"
-    must_not: "call get_processes (current processes, not history) NOR read_events (calendar events)"
-    ok: "'history of task ping' -> read_tasks_history(name=\"ping\", limit=10) -> final_answer"
-    error: "'execution history of recurring task' -> get_processes() (THIS IS AN ERROR: get_processes shows current process snapshot, not task history)"
+    must: "use read_tasks_history(name=<slug>?, limit=<N>?) DIRECTLY in ONE step. Without name = history of all tasks (the executor itself enumerates). Returns list of fires with timestamp/status/duration"
+    must_not: "call list_tasks BEFORE read_tasks_history when the user has NOT named a specific task: it's a redundant step, read_tasks_history without name already returns the history of ALL tasks. NOR get_processes (current processes, not history) NOR read_events (calendar events)"
+    ok: "'history of task ping' -> read_tasks_history(name=\"ping\", limit=10) -> final_answer. OR 'execution history of recurring task' (no name) -> read_tasks_history() -> final_answer"
+    error: "'execution history of recurring task' -> list_tasks() -> read_tasks_history() (THIS IS AN ERROR: list_tasks step redundant, read_tasks_history without name already enumerates everything). OR -> get_processes() (THIS IS AN ERROR: get_processes shows current process snapshot, not task history)"
 
   - name: schedule_task
     when: "requests to SCHEDULE / CREATE a recurring task / reminder / timer ('every day at 9 X', 'every N minutes Y', 'remind me to X', 'schedule Y', 'plan X every day')"

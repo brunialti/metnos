@@ -193,6 +193,29 @@ def _parse_tool_call_tolerant(text: str) -> dict | None:
             return {"name": parsed["name"], "arguments": args}
     except json.JSONDecodeError:
         pass
+    # (a.bis) JSON truncated recovery (15/5/2026): llama.cpp grammar-mode
+    # talvolta termina prematuramente la generazione (EOS prima della chiusura
+    # `}` o di `"arguments"`), lasciando `{"name": "TOOL_X"` o
+    # `{"name": "TOOL_X", "arguments": {` non parsabile. Recupero: regex
+    # tollerante estrae `name`; gli args default vuoti `{}` sono accettati
+    # per i tool con `args_schema.required` vuoto. La validazione semantica
+    # avviene poi in `tool_grammar.validate_tool_call` lato runtime.
+    if t.startswith("{"):
+        m = re.search(r'"name"\s*:\s*"([a-zA-Z_][a-zA-Z0-9_]*)"', t)
+        if m:
+            name = m.group(1)
+            # Tenta anche di estrarre arguments parzialmente se presenti.
+            args_obj: dict = {}
+            args_m = re.search(r'"arguments"\s*:\s*(\{.*?\})\s*(?:\}|$)', t,
+                                 flags=re.DOTALL)
+            if args_m:
+                try:
+                    parsed_args = json.loads(args_m.group(1))
+                    if isinstance(parsed_args, dict):
+                        args_obj = parsed_args
+                except json.JSONDecodeError:
+                    pass
+            return {"name": name, "arguments": args_obj}
     # (b) Gemma 4 tool_call template
     m = _GEMMA_TC_RE.search(t)
     if m:
