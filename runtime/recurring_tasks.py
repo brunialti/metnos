@@ -919,35 +919,49 @@ def handle_read_tasks_history(args: dict, *, actor: str, **_) -> dict:
         elif st in ("error", "fail", "failure", "timeout"):
             d["error"] += 1
     # Hint user-facing: il auto_final / final_answer puo' usarlo.
+    # Build summary line + detail_md markdown multi-line
     if not rows:
-        hint = (
-            f"Nessuna esecuzione di task negli ultimi 7 giorni"
-            if time_window == "last-7d" else
-            f"Nessuna esecuzione di task trovata"
-        )
-        if time_window and time_window != "last-7d":
-            hint = f"Nessuna esecuzione di task per time_window={time_window}"
+        win_label = (f"per time_window={time_window}" if time_window
+                     else "trovata")
+        hint = f"Nessuna esecuzione di task {win_label}."
+        md_block = hint
     else:
         win_str = f" ({time_window})" if time_window else ""
-        parts = [f"{len(rows)} esecuzioni totali{win_str}"]
-        if by_status:
-            status_str = ", ".join(
-                f"{n} {st}" for st, n in sorted(by_status.items(), key=lambda p: -p[1])
+        # 1-line summary (compatto)
+        status_str = ", ".join(
+            f"{n} {st}" for st, n
+            in sorted(by_status.items(), key=lambda p: -p[1])
+        )
+        hint = (
+            f"{len(rows)} esecuzioni totali{win_str}. "
+            f"Esiti: {status_str}."
+        )
+        # Markdown detail (multi-line, usato come final pulito quando ok)
+        md_lines = [
+            f"**Storico esecuzioni task**{win_str}",
+            "",
+            f"- **Totale**: {len(rows)} esecuzioni",
+            f"- **Esiti**: {status_str}",
+            "",
+            "**Per task** (ordinati per totale):",
+        ]
+        for name, d in sorted(by_task.items(),
+                                key=lambda p: -p[1]["total"])[:15]:
+            err = f", {d['error']} errori" if d["error"] else ""
+            md_lines.append(
+                f"- `{name}`: {d['total']} fire ({d['ok']} ok{err})"
             )
-            parts.append(f"per esito: {status_str}")
-        if by_task:
-            task_str = "; ".join(
-                f"{name} ({d['total']}: {d['ok']}ok/{d['error']}err)"
-                for name, d in sorted(by_task.items(), key=lambda p: -p[1]["total"])[:10]
-            )
-            parts.append(f"per task: {task_str}")
-        hint = ". ".join(parts) + "."
+        n_tasks = len(by_task)
+        if n_tasks > 15:
+            md_lines.append(f"- _... e altri {n_tasks - 15} task._")
+        md_block = "\n".join(md_lines)
     return {
         "ok": True, "count": len(rows), "history": rows,
         "time_window": time_window,
         "by_status": by_status, "by_task": by_task,
         "summary": hint,
         "final_message_hint": hint,
+        "detail_md": md_block,
     }
 
 

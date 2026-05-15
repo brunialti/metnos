@@ -51,6 +51,12 @@ ROME = ZoneInfo("Europe/Rome")
 
 _RE_LAST_ND = re.compile(r"^last-(\d+)d$")
 _RE_NEXT_ND = re.compile(r"^next-(\d+)d$")
+_RE_LAST_NH = re.compile(r"^last-(\d+)h$")
+_RE_NEXT_NH = re.compile(r"^next-(\d+)h$")
+_RE_LAST_NM = re.compile(r"^last-(\d+)m$")
+_RE_NEXT_NM = re.compile(r"^next-(\d+)m$")
+_RE_LAST_NY = re.compile(r"^last-(\d+)y$")
+_RE_NEXT_NY = re.compile(r"^next-(\d+)y$")
 _RE_ISO_DAY = re.compile(r"^(\d{4})-(\d{2})-(\d{2})$")
 _RE_ISO_YEAR = re.compile(r"^(\d{4})$")
 _RE_ISO_YEAR_MONTH = re.compile(r"^(\d{4})-(\d{2})$")
@@ -153,6 +159,37 @@ def _resolve_canonical(spec, now):
             raise ValueError(f"next-Nd requires N>=1, got {spec!r}")
         e = now + timedelta(days=n)
         return _aware(now), _aware(e)
+    # Hours
+    m = _RE_LAST_NH.match(spec) or _RE_NEXT_NH.match(spec)
+    if m:
+        n = int(m.group(1))
+        if n <= 0:
+            raise ValueError(f"last/next-Nh requires N>=1, got {spec!r}")
+        delta = timedelta(hours=n)
+        if spec.startswith("last"):
+            return _aware(now - delta), _aware(now)
+        return _aware(now), _aware(now + delta)
+    # Months (approx 30 giorni). Pattern §2.1: l'utente dice "prossimi 3
+    # mesi" → "next-3m"; il delta e' calcolato in giorni (3*30=90).
+    m = _RE_LAST_NM.match(spec) or _RE_NEXT_NM.match(spec)
+    if m:
+        n = int(m.group(1))
+        if n <= 0:
+            raise ValueError(f"last/next-Nm requires N>=1, got {spec!r}")
+        delta = timedelta(days=n * 30)
+        if spec.startswith("last"):
+            return _aware(now - delta), _aware(now)
+        return _aware(now), _aware(now + delta)
+    # Years (approx 365 giorni)
+    m = _RE_LAST_NY.match(spec) or _RE_NEXT_NY.match(spec)
+    if m:
+        n = int(m.group(1))
+        if n <= 0:
+            raise ValueError(f"last/next-Ny requires N>=1, got {spec!r}")
+        delta = timedelta(days=n * 365)
+        if spec.startswith("last"):
+            return _aware(now - delta), _aware(now)
+        return _aware(now), _aware(now + delta)
 
     if spec == "this-week":
         mon = _start_of_week(today)

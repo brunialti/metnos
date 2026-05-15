@@ -1535,6 +1535,14 @@ def _compose_final_message_from_obs(lp_tool, lp_obs):
     Riusato da auto_final_on_duplicate e cap_max_per_turn (8/5/2026 notte).
     """
     ok_count, n_above_threshold = _extract_auto_final_count(lp_obs)
+    # 15/5/2026: detail_md autoritativo → usalo come final PURO senza wrap
+    # "{tool}: completato (...)". Per executor che producono markdown
+    # ricco (read_tasks_history, lifecycle_summary, ecc.) il wrap aggiunge
+    # rumore inutile ("read_tasks_history: completato (? elementi). ...")
+    if isinstance(lp_obs, dict):
+        md = lp_obs.get("detail_md")
+        if isinstance(md, str) and md.strip():
+            return md.strip(), ok_count, n_above_threshold
     explicit_detail_md = (
         lp_obs.get("detail_md") if isinstance(lp_obs, dict) else None
     )
@@ -4251,7 +4259,13 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
                 # Quando il count e' ignoto E abbiamo un 'message' descrittivo
                 # autorevole (verb-unique / azione singola), non aggiungere
                 # rumore "(? elementi)" — usa direttamente il message.
-                if ok_count is None and explicit_message and isinstance(explicit_message, str):
+                # 15/5/2026: detail_md autoritativo → usalo come final PURO
+                # senza wrap "{tool}: completato (?)" rumoroso. Pattern:
+                # executor producer (read_tasks_history, lifecycle_summary)
+                # popolano detail_md con markdown ricco, finale display-ready.
+                if explicit_detail_md and isinstance(explicit_detail_md, str) and explicit_detail_md.strip():
+                    log.final_message = explicit_detail_md.strip()[:1500]
+                elif ok_count is None and explicit_message and isinstance(explicit_message, str):
                     log.final_message = f"{lp_tool}: {explicit_message.strip()}"
                 else:
                     count_str = _format_auto_final_count(ok_count, n_above_threshold)
