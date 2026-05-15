@@ -2627,6 +2627,54 @@ class TurnLog:
         if new_caps:
             self.expandable_caps = new_caps
 
+    def _append_images_results_if_any(self) -> None:
+        """Se in history c'e' uno step find_images_indices/find_persons_indices
+        ok con entries, accoda al final_message la lista path reali (max 15).
+        Previene hallucination LLM (PLANNER inventa path "IMG_001.jpg..."
+        invece di leggere entries reali): l'append deterministico ancorato
+        ai path effettivi sostituisce/integra il messaggio LLM."""
+        import os
+        seen_paths: set = set()
+        all_entries: list = []
+        for s in self.steps:
+            if s.chosen_tool not in ("find_images_indices", "find_persons_indices"):
+                continue
+            res = s.result if isinstance(s.result, dict) else {}
+            if not res.get("ok"):
+                continue
+            for e in res.get("entries") or []:
+                if not isinstance(e, dict):
+                    continue
+                p = e.get("path")
+                if not p or p in seen_paths:
+                    continue
+                seen_paths.add(p)
+                all_entries.append(e)
+        if not all_entries:
+            return
+        max_show = 15
+        n_total = len(all_entries)
+        sample = all_entries[:max_show]
+        # Se il LLM ha gia' incluso path corretti, non duplicare (idempotente).
+        existing = self.final_message or ""
+        already_in_msg = sum(
+            1 for e in sample
+            if os.path.basename(e.get("path", "")) in existing
+        )
+        if already_in_msg >= len(sample) // 2 and already_in_msg > 0:
+            return  # gia' presente in modo significativo, skip
+        lines = ["", "", "**Risultati:**"]
+        for e in sample:
+            p = e.get("path", "")
+            basename = os.path.basename(p)
+            cap = (e.get("caption") or e.get("description") or "")[:60]
+            cap_clean = cap.strip().replace("\n", " ")
+            cap_str = f" — _{cap_clean}_" if cap_clean else ""
+            lines.append(f"- `{basename}`{cap_str}")
+        if n_total > max_show:
+            lines.append(f"_... e altre {n_total - max_show} foto._")
+        self.final_message = (existing.rstrip() + "\n".join(lines))
+
     def _append_search_results_if_any(self) -> None:
         """Se in history esistono step `find_urls` ok con entries,
         AGGREGA tutti i risultati, dedup per URL, ordina per score desc,
@@ -2933,6 +2981,7 @@ class TurnLog:
         # non vedeva NIENTE dei link gia' trovati.
         if self.final_kind in ("answer", "loop_break", "error"):
             self._append_search_results_if_any()
+            self._append_images_results_if_any()
         # Prepend di eventuali notice di truncation prima della final answer.
         # Una sola volta, idempotente: se la stringa e' gia' presente non duplica.
         # Skip quando l'ultimo step e' `final_answer` synthetic (ADR 0133 ext):

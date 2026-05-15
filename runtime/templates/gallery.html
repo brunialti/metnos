@@ -36,6 +36,17 @@ header a:hover{color:#cdf}
                  color:#ddd;padding:14px 6px 4px;font-size:.7em;
                  font-family:monospace;text-overflow:ellipsis;
                  overflow:hidden;white-space:nowrap}
+.thumb .caption{position:absolute;top:0;left:0;right:0;bottom:0;
+                background:rgba(0,0,0,.88);color:#eee;padding:8px;
+                font-size:.78em;line-height:1.3;overflow:auto;
+                opacity:0;transition:opacity .2s;
+                display:flex;flex-direction:column;gap:4px}
+.thumb:hover .caption{opacity:1}
+.thumb .caption .name{font-family:monospace;font-size:.85em;color:#9ad;
+                       word-break:break-all;border-bottom:1px solid #345;
+                       padding-bottom:4px;margin-bottom:2px}
+.thumb .caption .desc{color:#ddd}
+.thumb .caption .meta{color:#888;font-size:.85em;margin-top:auto}
 footer{padding:1rem;display:flex;justify-content:center;align-items:center;
        gap:1.5rem;border-top:1px solid var(--border);color:var(--muted);
        font-size:.9em;flex-wrap:wrap}
@@ -61,13 +72,22 @@ footer .disabled{color:#444;border-color:#222;pointer-events:none}
   {% for it in items %}
   <div class="thumb">
     <a href="{{ it.full_url }}" target="_blank" rel="noopener"
-       title="{{ it.basename|e }}{% if it.score is not none %} (score {{ '%+.3f'|format(it.score) }}){% endif %}">
+       title="{{ it.basename|e }}{% if it.caption %} — {{ it.caption|e }}{% endif %}{% if it.score is not none %} (score {{ '%+.3f'|format(it.score) }}){% endif %}">
       <img src="{{ it.thumb_url }}" alt="{{ it.basename|e }}" loading="lazy">
       {% if it.score is not none %}
       <span class="score">{{ '%+.3f'|format(it.score) }}</span>
       {% endif %}
       {% if it.basename %}
       <span class="basename">{{ it.basename|e }}</span>
+      {% endif %}
+      {% if it.caption %}
+      <span class="caption">
+        <span class="name">{{ it.basename|e }}</span>
+        <span class="desc">{{ it.caption|e }}</span>
+        {% if it.score is not none %}
+        <span class="meta">score {{ '%+.3f'|format(it.score) }}</span>
+        {% endif %}
+      </span>
       {% endif %}
     </a>
   </div>

@@ -40,6 +40,13 @@ rules:
     ok: "«Iacopo's photos» -> find_persons_indices(name=\"iacopo\") -> final_answer (\"Found N photos of Iacopo\")"
     error: "find_persons_indices -> describe_entries -> find_persons_indices (THIS IS AN ERROR: useless describe + duplicate find). OR find_persons_indices -> find_images_indices (THIS IS AN ERROR: duplicate; one step suffices)"
 
+  - name: persons_and_multi
+    when: "photo query with TWO OR MORE proper names joined by 'and' / 'with' / 'together with': «photos with Iacopo AND Matteo», «group photos with Roberto and Silvia», «photos including Iacopo, Matteo and Roberto»"
+    must: "pass `names` as ARRAY of enrolled slugs, NOT `name` with comma or `query_text` with concatenated names. E.g. names=[\"iacopo\",\"matteo\"] → AND face match: photo must contain BOTH faces. Combinable with time_window, min_face_count, content query_text."
+    must_not: "passing `name=\"Iacopo, Matteo\"` as single string (NOT a valid id, auto-promotion exists but is fallback). DO NOT use `query_text=\"Iacopo Matteo\"`: this searches names as WORDS in text, not AND face. Result degenerates to OR (photos with ONE name pass if name appears in filename/keyword)."
+    ok: "«group photos with Iacopo AND Matteo from 2024» -> find_images_indices(names=[\"iacopo\",\"matteo\"], time_window=\"2024\") -> final_answer"
+    error: "«photos with Iacopo and Matteo» -> find_images_indices(name=\"Iacopo, Matteo\") (invalid id) OR -> find_images_indices(query_text=\"Iacopo Matteo\") (BM25 OR, not AND face)"
+
   - name: persons_registry_management
     when: "persons.sqlite registry management: deletion, enumeration, registration of enrolled persons"
     must: |

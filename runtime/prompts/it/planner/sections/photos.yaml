@@ -40,6 +40,13 @@ rules:
     ok: "«foto di Iacopo» -> find_persons_indices(name=\"iacopo\") -> final_answer (\"Ho trovato N foto di Iacopo\")"
     error: "find_persons_indices -> describe_entries -> find_persons_indices (E' UN ERRORE: describe inutile + duplicato find). OPPURE find_persons_indices -> find_images_indices (E' UN ERRORE: duplicato; un solo step basta)"
 
+  - name: persons_and_multi
+    when: "query foto con DUE O PIU' nomi propri congiunti da «e» / «con» / «insieme a»: «foto con Iacopo E Matteo», «foto di gruppo con Roberto e Silvia», «foto dove ci sono Iacopo, Matteo e Roberto»"
+    must: "passa `names` come ARRAY di slug enrollati, NON `name` con virgola o `query_text` con i nomi concatenati. Es. names=[\"iacopo\",\"matteo\"] → AND face match: la foto deve contenere ENTRAMBI i volti. Combinabile con time_window, min_face_count, query_text content."
+    must_not: "passare `name=\"Iacopo, Matteo\"` come stringa unica (NON e' un id valido, l'auto-promozione c'e' ma e' fallback). NON DEVI usare `query_text=\"Iacopo Matteo\"`: questo cerca i nomi come PAROLE nel testo, non AND face. Risultato degenera a OR (foto con UN solo nome passano se appare il nome nel filename/keyword)."
+    ok: "«foto di gruppo con Iacopo E Matteo del 2024» -> find_images_indices(names=[\"iacopo\",\"matteo\"], time_window=\"2024\") -> final_answer"
+    error: "«foto con Iacopo e Matteo» -> find_images_indices(name=\"Iacopo, Matteo\") (NON id valido) OPPURE -> find_images_indices(query_text=\"Iacopo Matteo\") (BM25 OR, non AND face)"
+
   - name: persons_registry_management
     when: "gestione del registro persons.sqlite: cancellazione, enumerazione, registrazione di persone enrolled"
     must: |

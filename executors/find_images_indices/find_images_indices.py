@@ -499,6 +499,80 @@ def _query_expansion_llm_enabled() -> bool:
     return os.environ.get("METNOS_QUERY_EXPANSION_LLM", "1") != "0"
 
 
+# ----- Date extraction from path/filename (15/5/2026) -------------------
+# EXIF taken_at puo' mancare (foto vecchie, scansioni, screenshot,
+# whatsapp export). mtime filesystem e' spesso inaffidabile (copy/move
+# resetta). Pattern utente comune: foto organizzate in cartelle datate
+# `Immagini/2024/2024 12 14 compl. Matteo/IMG_xxx.jpg`. Parse data dal
+# path per fallback affidabile prima di degenerare su mtime.
+
+# Full date con separatori (es. "2024-12-14", "2024 12 14", "2024_12_14")
+_PATH_DATE_FULL_SEP = re.compile(
+    r"(?<!\d)(20\d\d)[\s_./\\-]{1,3}(0\d|1[012])[\s_./\\-]{1,3}([012]\d|3[01])(?!\d)"
+)
+# Full date compatta (es. "20251224" in "IMG-20251224-WA.jpg")
+_PATH_DATE_FULL_COMPACT = re.compile(
+    r"(?<!\d)(20\d\d)(0\d|1[012])([012]\d|3[01])(?!\d)"
+)
+_PATH_DATE_YM = re.compile(r"(?<!\d)(20\d\d)[\s_./\\-]{1,3}(0\d|1[012])(?!\d)")
+_PATH_DATE_Y = re.compile(r"(?<!\d)(19[89]\d|20\d\d)(?!\d)")
+
+
+def _extract_date_from_path(path: str):
+    """Ritorna timestamp epoch o None. USA SOLO IL FILENAME (basename),
+    NON l'organizzazione cartelle dell'utente (Roberto 15/5/2026: la
+    struttura `/Immagini/2024/...` e' personale, non standard
+    universale). Formato piu' specifico (full > year-month > year).
+    Anno valido 1980-2099.
+
+    Esempi:
+      "IMG-20251224-WA0107.jpg" → 2025-12-24 (compact YYYYMMDD)
+      "IMG_20241214_140034.jpg" → 2024-12-14 (compact con underscore)
+      "foto_2018-04-15.jpg" → 2018-04-15
+      "fototessera matteo.jpg" → None (no date in filename)
+    """
+    if not path:
+        return None
+    from datetime import datetime
+    import os
+    # Estrai SOLO il basename: ignora organizzazione cartelle utente
+    name = os.path.basename(str(path))
+    if not name:
+        return None
+    last_full = None
+    for m in _PATH_DATE_FULL_SEP.finditer(name):
+        last_full = m
+    for m in _PATH_DATE_FULL_COMPACT.finditer(name):
+        if last_full is None or m.start() > last_full.start():
+            last_full = m
+    if last_full is not None:
+        y, mo, d = int(last_full.group(1)), int(last_full.group(2)), int(last_full.group(3))
+        try:
+            return datetime(y, mo, d).timestamp()
+        except ValueError:
+            pass
+    last_ym = None
+    for m in _PATH_DATE_YM.finditer(name):
+        last_ym = m
+    if last_ym is not None:
+        y, mo = int(last_ym.group(1)), int(last_ym.group(2))
+        try:
+            return datetime(y, mo, 1).timestamp()
+        except ValueError:
+            pass
+    last_y = None
+    for m in _PATH_DATE_Y.finditer(name):
+        last_y = m
+    if last_y is not None:
+        y = int(last_y.group(1))
+        if 1980 <= y <= 2099:
+            try:
+                return datetime(y, 1, 1).timestamp()
+            except ValueError:
+                pass
+    return None
+
+
 def _parse_time_window(window: str) -> tuple[float, float] | None:
     if not window or window == "all":
         return None
@@ -654,8 +728,15 @@ def _filter_unified(
                         ts = datetime.fromisoformat(t_iso).timestamp()
                     except Exception:
                         ts = None
+                # Fallback 1: parse path (cartelle datate user pattern)
                 if ts is None:
-                    ts = float(e.get("mtime", 0.0))
+                    ts = _extract_date_from_path(e.get("path", ""))
+                # Fallback 2: mtime filesystem (meno affidabile)
+                if ts is None:
+                    try:
+                        ts = float(e.get("mtime", 0.0))
+                    except (TypeError, ValueError):
+                        ts = 0.0
                 if start <= ts <= end:
                     kept.append(e)
             entries = kept
@@ -986,7 +1067,10 @@ def _filter_unified(
 def _check_args(args: dict) -> str | None:
     has_query = bool(args.get("query_text"))
     has_ref = bool(args.get("reference_images"))
-    has_name = bool(args.get("name"))
+    _names = args.get("names")
+    has_name = bool(args.get("name")) or bool(
+        isinstance(_names, list) and _names
+    )
     has_gps = (args.get("near_lat") is not None and args.get("near_lon") is not None)
     has_paths_filter = bool(args.get("paths_filter"))
     has_face_filter = (
