@@ -30,8 +30,8 @@ type  = "array"
 items = { type = "string" }
 
 [args.properties.bindings.description]
-it = "Lista di binding da cancellare (plurale canonico §2.1). Ogni binding non trovato finisce in `unknown_bindings` con `deleted=false` nei `results`."
-en = "List of bindings to delete (canonical plural §2.1). Each not-found binding ends up in `unknown_bindings` with `deleted=false` in `results`."
+it = "Lista di binding da cancellare (plurale canonico §2.1). MATCH ESATTO: ogni binding e' un identificatore opaco, wildcard `*`/`?` NON supportati. Ogni binding non trovato finisce in `unknown_bindings` con `deleted=false` nei `results`."
+en = "List of bindings to delete (canonical plural §2.1). EXACT MATCH: each binding is an opaque identifier, wildcards `*`/`?` NOT supported. Each not-found binding ends up in `unknown_bindings` with `deleted=false` in `results`."
 
 [args.properties.binding]
 type        = "string"

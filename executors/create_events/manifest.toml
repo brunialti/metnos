@@ -63,8 +63,8 @@ type    = "array"
 items   = { type = "string" }
 
 [args.properties.attendees.description]
-it = "Lista email partecipanti. Es. ['alice@co.com', 'bob@co.com']."
-en = "List of attendee emails. E.g. ['alice@co.com', 'bob@co.com']."
+it = "Lista email partecipanti. MATCH ESATTO: ogni voce e' un'email RFC 5322 valida, wildcard `*`/`?` NON supportati. Es. ['alice@co.com', 'bob@co.com']."
+en = "List of attendee emails. EXACT MATCH: each entry is a valid RFC 5322 email, wildcards `*`/`?` NOT supported. E.g. ['alice@co.com', 'bob@co.com']."
 
 [args.properties.calendar_id]
 type    = "string"

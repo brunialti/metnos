@@ -32,8 +32,8 @@ type        = "array"
 items       = { type = "string" }
 
 [args.properties.argv.description]
-it = "Per op='command': argv da canonicalizzare."
-en = "For op='command': argv to be canonicalized."
+it = "Per op='command': argv da canonicalizzare. MATCH ESATTO sui token (security): wildcard `*`/`?` NON supportati e non interpretati come glob — un token argv = un token shell letterale."
+en = "For op='command': argv to be canonicalized. EXACT MATCH on tokens (security): wildcards `*`/`?` NOT supported and not interpreted as glob — one argv token = one literal shell token."
 
 [args.properties.signature]
 type        = "string"

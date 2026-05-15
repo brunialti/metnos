@@ -44,8 +44,8 @@ type        = "array"
 items       = { type = "string" }
 
 [args.properties.scopes.description]
-it = "Lista di scopes/autorizzazioni associate (opzionale, es. ['calendar.read','gmail.send']). Persistita come metadato cifrato accanto a `fields`."
-en = "List of associated scopes/permissions (optional, e.g. ['calendar.read','gmail.send']). Persisted as encrypted metadata alongside `fields`."
+it = "Lista di scopes/autorizzazioni associate (opzionale, es. ['calendar.read','gmail.send']). MATCH ESATTO: ogni scope e' un identificatore canonico OAuth, wildcard `*`/`?` NON supportati. Persistita come metadato cifrato accanto a `fields`."
+en = "List of associated scopes/permissions (optional, e.g. ['calendar.read','gmail.send']). EXACT MATCH: each scope is a canonical OAuth identifier, wildcards `*`/`?` NOT supported. Persisted as encrypted metadata alongside `fields`."
 
 [args.properties.expires_at]
 type        = "string"

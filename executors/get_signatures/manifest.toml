@@ -42,8 +42,8 @@ type        = "array"
 items       = { type = "string" }
 
 [args.properties.argv.description]
-it = "Per kind='forbidden': argv da verificare contro path/dispositivi proibiti."
-en = "For kind='forbidden': argv to be verified against forbidden paths/devices."
+it = "Per kind='forbidden': argv da verificare contro path/dispositivi proibiti. MATCH ESATTO sui token (security): wildcard `*`/`?` NON supportati. Glob/regex sono nei pattern lato DB, non negli argv input."
+en = "For kind='forbidden': argv to be verified against forbidden paths/devices. EXACT MATCH on tokens (security): wildcards `*`/`?` NOT supported. Glob/regex live in DB patterns, not in input argv."
 
 [args.properties.record_use]
 type        = "boolean"
