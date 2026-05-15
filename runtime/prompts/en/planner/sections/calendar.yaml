@@ -54,10 +54,13 @@ rules:
   - name: check_availability
     when: "«book/schedule/create X IF there is a slot/if the window is free/check availability and then book»"
     must: |
-      execute EXACTLY in this order, ONE step at a time: Step 1 get_now -> today ISO. Step 2 COMPUTE start and end ISO 8601 + offset (e.g. "2026-05-13T09:00:00+02:00"). Step 3 read_events(start, end). Step 4a if entries is EMPTY -> create_events(summary, start, end) -> final_answer with link. Step 4b if entries is NON-empty -> final_answer «slot occupied, events present: ...». create_events goes ONLY at Step 4a, NEVER before
-    must_not: "call create_events at Step 3 or earlier: it would create the event AND then confuse the subsequent read_events that would see its own event"
-    ok: "«book appointment Wednesday 9-10 if there is a slot» -> get_now -> read_events(...) -> create_events(...) -> final_answer"
-    error: "«if there is a slot» -> create_events (wrong Step 3) -> read_events sees the just-created event -> confusion"
+      execute EXACTLY in this order, ONE step at a time. TWO acceptable variants:
+      Variant (a) broad window + size: get_now -> find_events_empty(time_windows=["next-wed"], size="1hour", time_of_day="morning") -> create_events(start=<step2.entries[0].start>, end=<step2.entries[0].end>, summary=...) -> final_answer. find_events_empty filters "after 09:00" via time_of_day="morning"; use from_step on entries to avoid reinventing ISO.
+      Variant (b) exact slot: get_now -> COMPUTE start/end ISO 8601 + offset (e.g. "2026-05-13T09:00:00+02:00") -> read_events(start, end) -> if entries EMPTY create_events(...) -> final_answer, if entries NON-empty final_answer «slot occupied».
+      create_events goes ONLY AFTER availability check, NEVER before.
+    must_not: "call filter_entries at the FIRST step (NO from_step at first step §4.2: step 1 observation does not exist yet). DO NOT call read_events as availability check on 'book appointment morning/day' queries: read_events returns events PRESENT, not FREE slots; for 'if there is a slot' on a daily window the canonical primitive is find_events_empty. DO NOT call create_events before the availability check"
+    ok: "«book appointment Wednesday morning after 9 for 1h if there is a slot» -> get_now -> find_events_empty(time_windows=[\"next-wed\"], size=\"1hour\", time_of_day=\"morning\") -> create_events(start=<step2.entries[0].start>, end=<step2.entries[0].end>) -> final_answer. OR «book appointment Wednesday 9-10 if there is a slot» -> get_now -> read_events(...) -> create_events(...) -> final_answer"
+    error: "«book appointment Wednesday morning» -> filter_entries(from_step=1, where_field=\"start\") (THIS IS AN ERROR: from_step=1 at non-existent first step §4.2; filter_entries operates on in-memory lists, not the calendar). OR «if there is a slot» -> create_events (wrong Step 3) -> read_events sees the just-created event"
 
   - name: date_relative_resolution
     when: "query contains ANY relative date: today, yesterday, tomorrow, day-after-tomorrow, monday..sunday, «next week», «next month», «within N days», «N days ago», «tonight», «this morning», «this evening»"

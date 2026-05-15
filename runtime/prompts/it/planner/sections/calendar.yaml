@@ -54,10 +54,13 @@ rules:
   - name: check_availability
     when: "«fissa/prenota/crea X SE c'e' posto/se la finestra e' libera/verifica disponibilita' e poi prenota»"
     must: |
-      esegui ESATTAMENTE in ordine, UN passo alla volta: Passo 1 get_now -> today ISO. Passo 2 COMPUTA start ed end ISO 8601 + offset (es. "2026-05-13T09:00:00+02:00"). Passo 3 read_events(start, end). Passo 4a se entries VUOTA -> create_events(summary, start, end) -> final_answer con link. Passo 4b se entries NON vuota -> final_answer «slot occupato, eventi gia' presenti: ...». create_events va SOLO al Passo 4a, MAI prima
-    must_not: "invocare create_events al Passo 3 o prima: creerebbe l'evento E poi confonderebbe il read_events successivo che vedrebbe il proprio evento"
-    ok: "«fissa appuntamento mercoledi 9-10 se c'e' posto» -> get_now -> read_events(...) -> create_events(...) -> final_answer"
-    error: "«se c'e' posto» -> create_events (Passo 3 sbagliato) -> read_events vede l'evento appena creato -> confusione"
+      esegui ESATTAMENTE in ordine, UN passo alla volta. DUE varianti accettabili:
+      Variante (a) finestra ampia + size: get_now -> find_events_empty(time_windows=["next-wed"], size="1hour", time_of_day="morning") -> create_events(start=<step2.entries[0].start>, end=<step2.entries[0].end>, summary=...) -> final_answer. find_events_empty filtra "after 09:00" via time_of_day="morning"; usa from_step sulle entries per non reinventare ISO.
+      Variante (b) slot esatto: get_now -> COMPUTA start/end ISO 8601 + offset (es. "2026-05-13T09:00:00+02:00") -> read_events(start, end) -> se entries VUOTA create_events(...) -> final_answer, se entries NON vuota final_answer «slot occupato».
+      create_events va SOLO DOPO la verifica disponibilita', MAI prima.
+    must_not: "invocare filter_entries al PRIMO step (NIENTE from_step al primo step §4.2: la observation di step 1 non esiste ancora). NON invocare read_events come check su 'fissa appuntamento mattina/giornata': read_events ritorna eventi PRESENTI, non slot LIBERI; per 'se c'e' posto' su finestra giornaliera la primitiva canonica e' find_events_empty. NON invocare create_events prima della verifica disponibilita'"
+    ok: "«fissa appuntamento mercoledi mattina dopo le 9 per 1h se c'e' posto» -> get_now -> find_events_empty(time_windows=[\"next-wed\"], size=\"1hour\", time_of_day=\"morning\") -> create_events(start=<step2.entries[0].start>, end=<step2.entries[0].end>) -> final_answer. OPPURE «fissa appuntamento mercoledi 9-10 se c'e' posto» -> get_now -> read_events(...) -> create_events(...) -> final_answer"
+    error: "«fissa appuntamento mercoledi mattina» -> filter_entries(from_step=1, where_field=\"start\") (E' UN ERRORE: from_step=1 al primo step inesistente §4.2; filter_entries opera su liste in-memory, non sul calendario). OPPURE «se c'e' posto» -> create_events (Passo 3 sbagliato) -> read_events vede l'evento appena creato"
 
   - name: date_relative_resolution
     when: "query contiene QUALSIASI data relativa: oggi, ieri, domani, dopodomani, lunedi..domenica, «la prossima settimana», «il mese prossimo», «entro N giorni», «N giorni fa», «stasera», «stamattina», «stanotte», «questa sera», «questa mattina»"

@@ -3815,15 +3815,38 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
         # "annulla" → delete, undo_last_turn non in candidati → planner
         # innescava synt inutile).
         _UNIVERSAL_HELPERS = ("filter_entries", "sort_entries", "compute_entries", "undo_last_turn")
+        # Pipeline helpers che richiedono `from_step` su una lista preesistente:
+        # esclusi dal pool al primo step §4.2. Caso live 15/5/2026: query
+        # "fissa appuntamento mercoledi mattina dopo le 9" → PLANNER sceglie
+        # `filter_entries(from_step=1, ...)` riferendo a se stesso (step 1
+        # vuoto) → loop. General-purpose §7.3: vale per ogni *_entries
+        # helper data-piping che opera su observation di step precedente.
+        # `undo_last_turn` resta perche' e' azione utente diretta a qualsiasi
+        # step (compreso il primo: «annulla» fa undo del turno PRECEDENTE).
+        _FROM_STEP_HELPERS = frozenset({
+            "filter_entries", "sort_entries", "compute_entries",
+            "classify_entries", "group_entries", "describe_entries",
+        })
         _existing_names = {e.name for e in candidates}
         _added_any = False
         for _helper in _UNIVERSAL_HELPERS:
             if _helper in _existing_names:
                 continue
+            # Skip al primo step gli helpers from_step-only: senza step
+            # precedente con entries non hanno argomento valido.
+            if step_num == 1 and _helper in _FROM_STEP_HELPERS:
+                continue
             _helper_exec = next((e for e in catalog if e.name == _helper), None)
             if _helper_exec is not None:
                 candidates = list(candidates) + [_helper_exec]
                 _added_any = True
+        # Anche per i candidates gia' presenti via prefilter: al primo step
+        # escludi i from_step-helpers. Vale anche se il prefilter li ha
+        # scelti (rumore semantico, non utile §4.2).
+        if step_num == 1:
+            candidates = [e for e in candidates
+                          if e.name not in _FROM_STEP_HELPERS]
+            _added_any = True
         if _added_any:
             base_tools = render_tools_for_provider(candidates)
         tools_for_step = base_tools + synth_tools + ([SCRATCHPAD_READ_TOOL] if sp_entries else [])

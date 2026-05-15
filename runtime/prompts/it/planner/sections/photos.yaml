@@ -28,16 +28,17 @@ rules:
       - `reference_images=[paths]` -> similarita' ArcFace alle foto allegate
       - `near_lat`/`near_lon`/`radius_km` -> vicinanza geografica EXIF
       - `time_window="last-3y"` -> filtro temporale
-    must_not: "passare `idx=` (deprecato post-ADR0117). NON DEVI: passare `paths_filter` come ponte fra due chiamate (un solo executor; gli args si combinano)"
-    ok: "«Silvia al mare» -> find_images_indices(name=\"silvia\", query_text=\"mare\"). OPPURE «Matteo primo piano» -> find_images_indices(name=\"matteo\", min_face_pixels=40000). OPPURE «foto del compleanno 2024» -> find_images_indices(query_text=\"compleanno\", time_window=\"2024\")"
-    error: "«Silvia al mare» -> find_persons_indices(name=\"silvia\") -> find_images_indices(idx=\"scene\", query_text=\"mare\", paths_filter=from_step:1) (E' UN ERRORE: pattern a 2 step superseded da ADR 0117)"
+      Dopo il primo ok, EMETTI `final_answer` direttamente: l'executor ritorna `entries[]` + `summary` gia' utili per il messaggio finale, niente describe_entries necessario.
+    must_not: "passare `idx=` (deprecato post-ADR0117). NON DEVI: passare `paths_filter` come ponte fra due chiamate (un solo executor; gli args si combinano). NON DEVI chiamare describe_entries dopo find_images_indices: gli entries hanno gia' path leggibili"
+    ok: "«Silvia al mare» -> find_images_indices(name=\"silvia\", query_text=\"mare\") -> final_answer. OPPURE «Matteo primo piano» -> find_images_indices(name=\"matteo\", min_face_pixels=40000) -> final_answer"
+    error: "«Silvia al mare» -> find_persons_indices(name=\"silvia\") -> find_images_indices(idx=\"scene\", query_text=\"mare\", paths_filter=from_step:1) (E' UN ERRORE: pattern a 2 step superseded da ADR 0117). OPPURE find_images_indices -> describe_entries -> ... (E' UN ERRORE: describe inutile, entries gia' user-friendly)"
 
   - name: persons_thin_alias
     when: "query foto basata sulla SOLA identita' (nome proprio): «foto di Iacopo», «foto di Silvia»"
-    must: "`find_persons_indices(name=...)` resta accettato come alias di `find_images_indices(name=...)`. Stesso engine, stesso risultato"
-    must_not: "usare entrambi nello stesso turno: e' un duplicato. UN solo step basta"
-    ok: "«foto di Iacopo» -> find_persons_indices(name=\"iacopo\") OPPURE find_images_indices(name=\"iacopo\"). Equivalenti"
-    error: "pipeline find_persons_indices -> find_images_indices (E' UN ERRORE: duplicato; un solo step basta)"
+    must: "`find_persons_indices(name=...)` resta accettato come alias di `find_images_indices(name=...)`. Stesso engine, stesso risultato. Dopo il primo ok, EMETTI `final_answer` con un messaggio breve («N foto trovate di X»): l'observation contiene gia' `summary`/`entries` con i nomi file, niente describe_entries necessario"
+    must_not: "usare entrambi find_persons_indices E find_images_indices nello stesso turno: duplicato. NON DEVI chiamare describe_entries dopo find_persons_indices: l'executor unified ritorna gia' lista nominale di file utile per il final"
+    ok: "«foto di Iacopo» -> find_persons_indices(name=\"iacopo\") -> final_answer (\"Ho trovato N foto di Iacopo\")"
+    error: "find_persons_indices -> describe_entries -> find_persons_indices (E' UN ERRORE: describe inutile + duplicato find). OPPURE find_persons_indices -> find_images_indices (E' UN ERRORE: duplicato; un solo step basta)"
 
   - name: persons_registry_management
     when: "gestione del registro persons.sqlite: cancellazione, enumerazione, registrazione di persone enrolled"
