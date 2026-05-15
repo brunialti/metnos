@@ -91,7 +91,7 @@ error_class: low_confidence, paths_filter_empty, no_faces_above_size_threshold, 
 
 [code]
 files  = ["find_images_indices.py"]
-digest = "sha256:1924cf6ff8b1d6f1c4bf78637cb6d2326dabcc1f462db69a0034abce54e8d3ff"
+digest = "sha256:763da6bdf6bba06bcdb4139c62989be7f2cab6aa054f25862f1749ab7d7d8c33"
 
 [args]
 type     = "object"
@@ -115,8 +115,23 @@ en = "Textual query for semantic CONTENT search. The VLM has described each phot
 type        = "string"
 
 [args.properties.name.description]
-it = "Nome della persona registrata via `set_persons` (es. 'silvia', 'matteo'). Filtro per IDENTITA': cosine ArcFace fra ogni faccia in faces[] e gli embedding registrati per quel nome. Combinabile con tutti gli altri args."
-en = "Name of the person registered via `set_persons` (e.g., 'silvia', 'matteo'). IDENTITY filter: ArcFace cosine between each face in faces[] and the embeddings registered for that name. Combinable with all other args."
+it = "Nome della persona registrata via `set_persons` (es. 'silvia', 'matteo'). Filtro IDENTITA': cosine ArcFace. UN solo nome. Per AND multi-persona usa `names` plurale (es. names=['iacopo','matteo'] → foto con ENTRAMBI). Combinabile con tutti gli altri args."
+en = "Name of the person registered via `set_persons` (e.g., 'silvia', 'matteo'). IDENTITY filter: ArcFace cosine. ONE name only. For AND multi-person use `names` plural (e.g. names=['iacopo','matteo'] → photos with BOTH). Combinable with all other args."
+
+[args.properties.names]
+type        = "array"
+items       = { type = "string" }
+
+[args.properties.names.description]
+it = "Lista di nomi enrollati con semantica AND: ogni foto deve contenere TUTTI i nomi (face match per ognuno). Es. names=['iacopo','matteo'] tiene solo foto con ENTRAMBI. Plurale §2.1. MATCH ESATTO sui slug enrollati: wildcard NON supportati. Tolleranza §2.4: `name=\"iacopo, matteo\"` con virgola viene auto-promosso a names plurale."
+en = "List of enrolled names with AND semantics: each photo must contain ALL the names (face match for each). E.g. names=['iacopo','matteo'] keeps only photos with BOTH. Plural §2.1. EXACT MATCH on enrolled slugs: wildcards NOT supported. Tolerance §2.4: `name=\"iacopo, matteo\"` with comma auto-promoted to names plural."
+
+[args.properties.text_score_min]
+type        = "number"
+
+[args.properties.text_score_min.description]
+it = "Soglia minima sul contributo testuale (cosine BGE-M3 + BM25) quando query_text presente. Default 0.40. Alza per ricerche stretto-keyword (es. 0.55), abbassa per ricerche semantiche larghe."
+en = "Minimum threshold on textual contribution (BGE-M3 cosine + BM25) when query_text present. Default 0.40. Raise for keyword-strict searches (e.g. 0.55), lower for broad semantic searches."
 
 [args.properties.reference_images]
 type        = "array"

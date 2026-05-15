@@ -313,6 +313,20 @@ def _filter_unified(
     entries/n_above_threshold/error_class/applied_paths_filter."""
     query_text = (args.get("query_text") or "").strip() or None
     name = (args.get("name") or "").strip() or None
+    # Multi-persona AND (15/5/2026): `names` array, ogni nome deve essere
+    # presente in OGNI foto matchata. Es. ["iacopo","matteo"] → foto con
+    # AMBEDUE. Bug live: PLANNER passava `name="Iacopo, Matteo"` come
+    # stringa unica → lookup fallisce → BM25 fallback ammette qualunque
+    # foto con un solo nome. names plurale risolve §2.1.
+    names_list = args.get("names")
+    if isinstance(names_list, list) and names_list:
+        names_clean = [str(n).strip() for n in names_list if str(n).strip()]
+    elif isinstance(name, str) and "," in name:
+        # Tolleranza wildcard §2.4: LLM ha emesso "Iacopo, Matteo" → split
+        names_clean = [n.strip() for n in name.split(",") if n.strip()]
+        name = None  # promosso a names plurale
+    else:
+        names_clean = []
     reference_images = args.get("reference_images") or []
     min_face_pixels = args.get("min_face_pixels")
     min_face_count = args.get("min_face_count")
@@ -398,7 +412,78 @@ def _filter_unified(
                     kept.append(e)
         entries = kept
 
-    # Identity filter
+    # Identity filter — multi-name AND (`names` plurale §2.1)
+    if names_clean:
+        try:
+            from persons_registry import resolve_face_embeddings_for_name
+        except Exception:
+            resolve_face_embeddings_for_name = None
+        # Per ogni nome, resolve target embeddings. Se UN nome non e'
+        # enrollato, ritorniamo errore esplicito (no fallback BM25 perche'
+        # ammettrebbe falsi positivi su AND multi-persona).
+        targets_per_name: list[list] = []
+        for n in names_clean:
+            embs = []
+            if resolve_face_embeddings_for_name is not None:
+                try:
+                    embs = list(resolve_face_embeddings_for_name(n) or [])
+                except Exception:
+                    embs = []
+            if not embs:
+                return {
+                    "entries": [], "n_above_threshold": 0,
+                    "error_class": "person_not_enrolled",
+                    "error": (
+                        f"names: '{n}' non enrollato. Per AND multi-persona "
+                        f"tutti i nomi devono essere enrollati via set_persons."
+                    ),
+                    "applied_paths_filter": applied_paths_filter,
+                }
+            targets_per_name.append(embs)
+        # Filter entries: ogni entry deve avere una face match per OGNI name
+        kept = []
+        for e in entries:
+            faces = e.get("faces", [])
+            all_match = True
+            best_scores: list[float] = []
+            for target_embs in targets_per_name:
+                best = 0.0
+                for face in faces:
+                    eidx = face.get("embedding_face_idx")
+                    if eidx is None or emb_face is None:
+                        continue
+                    try:
+                        eidx_int = int(eidx)
+                    except (ValueError, TypeError):
+                        continue
+                    if eidx_int >= len(emb_face):
+                        continue
+                    fv = _l2_normalize(emb_face[eidx_int])
+                    for tv in target_embs:
+                        s = _cosine(fv, tv)
+                        if s > best:
+                            best = s
+                if best < _FACE_MATCH_FLOOR:
+                    all_match = False
+                    break
+                best_scores.append(best)
+            if all_match:
+                # face_score = media dei best per ogni nome
+                e["_face_score"] = sum(best_scores) / len(best_scores)
+                kept.append(e)
+        entries = kept
+        target_face_embs: list = []  # gia' applicato sopra
+        name_unenrolled = False
+        # Skip il blocco single-name che segue
+        if not entries:
+            return {
+                "entries": [], "n_above_threshold": 0,
+                "applied_paths_filter": applied_paths_filter,
+                "_msg": f"nessuna foto contiene tutti i nomi: {names_clean}",
+            }
+        name = None  # consumed
+
+    # Identity filter (single name) — il path classico resta per backward compat
     target_face_embs: list = []
     name_unenrolled = False
     if name:
@@ -477,12 +562,22 @@ def _filter_unified(
                 q_vec = _l2_normalize(qv[0])
         except Exception as ex:
             log.debug("query embed fallito: %r", ex)
+        # text_components[i] = (cos_score, bm25): teniamo i due termini
+        # separati per il filtro hybrid (15/5/2026 §7.3). BGE-M3 da solo
+        # confonde topici visivamente correlati (mare/neve entrambi outdoor
+        # paesaggio); BM25 sui keyword distingue.
+        text_components: dict[int, tuple[float, float]] = {}
         for i, e in enumerate(entries):
             cos_score = 0.0
             if q_vec is not None and emb_text is not None:
                 t_idx = e.get("embedding_text_idx")
                 if t_idx is not None and 0 <= t_idx < len(emb_text):
-                    cos_score = _cosine(q_vec, _l2_normalize(emb_text[t_idx]))
+                    try:
+                        t_idx_int = int(t_idx)
+                    except (ValueError, TypeError):
+                        t_idx_int = -1
+                    if 0 <= t_idx_int < len(emb_text):
+                        cos_score = _cosine(q_vec, _l2_normalize(emb_text[t_idx_int]))
             doc_terms = _normalize_text_for_bm25(
                 e.get("description", "") + " "
                 + " ".join(e.get("keywords", [])) + " "
@@ -491,17 +586,29 @@ def _filter_unified(
             bm25 = _bm25_score(q_terms, doc_terms)
             score = cos_score + 0.2 * min(bm25, 5.0)
             text_scores[i] = score
+            text_components[i] = (cos_score, bm25)
 
-    # Text filter: applica text_score_min sul contributo testuale ISOLATO.
-    # AND stretto con face_score: se l'utente ha chiesto sia name che
-    # query_text, ENTRAMBI devono qualificare (15/5/2026 §7.3).
+    # Text filter HYBRID (15/5/2026 §7.3): BM25 keyword-match (HARD) OR
+    # cosine BGE-M3 molto alto (STRONG semantic). Le foto borderline con
+    # cosine medio (0.40-0.55) ma BM25=0 (nessun keyword reale) sono
+    # escluse — risolve il bug "Matteo al mare" che includeva foto di
+    # neve (BGE-M3 mappa entrambe outdoor/paesaggio → cosine 0.45).
+    # Soglie:
+    #   _COSINE_STRONG = 0.55 : passa anche senza BM25 (semantic match
+    #     puro, es. descrizione paraphrase senza il keyword esatto)
+    #   bm25 > 0 + cosine >= text_score_min : conferma keyword presence
     if query_text and text_score_min > 0.0:
-        # Cache score per path (chiave stabile cross-reindexing)
+        _COSINE_STRONG = 0.55
+        keep_paths = set()
+        for i, e in enumerate(entries):
+            cos_s, bm25_s = text_components.get(i, (0.0, 0.0))
+            if bm25_s > 0 and cos_s >= text_score_min:
+                keep_paths.add(e.get("path"))
+            elif cos_s >= _COSINE_STRONG:
+                keep_paths.add(e.get("path"))
         score_by_path = {e.get("path"): text_scores.get(i, 0.0)
                          for i, e in enumerate(entries)}
-        entries = [e for e in entries
-                   if score_by_path.get(e.get("path"), 0.0) >= text_score_min]
-        # Rebuild text_scores con i nuovi indici
+        entries = [e for e in entries if e.get("path") in keep_paths]
         text_scores = {i: score_by_path[e.get("path")]
                        for i, e in enumerate(entries)}
 
