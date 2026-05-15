@@ -244,6 +244,261 @@ def _l2_normalize(v):
     return v / n
 
 
+# ----- Query expansion via corpus tokens (15/5/2026 §7.3) ---------------
+# BGE-M3 cosine puro confonde topici visivamente correlati (mare/neve
+# entrambi outdoor → cosine 0.5). Query expansion deterministica:
+#   1. Estraggo unique keyword + path_tokens dal corpus (~5k tokens)
+#   2. Encode con BGE-M3, cache su disk <idx_dir>/corpus_tokens.npz
+#   3. Per query Q: lookup top-K corpus tokens con cosine >= soglia → q_expanded
+#   4. BM25 sull'espansione → match HARD su keyword reali del corpus
+# Risultato: doc passa se contiene almeno UNO dei keyword expanded
+# (incluso il keyword originale se appare nel corpus).
+
+_QE_TOKEN_MIN_LEN = 3
+_QE_TOKEN_MAX_LEN = 25
+_QE_TOP_K = 15
+# 0.65: bench su "mare" vs vocab → include i veri positivi semantici
+# (spiaggia 0.66, oceano 0.66, bagno 0.66, ocean 0.75) e i prefix-related
+# (marea 0.87, marina 0.77, mar 0.86), esclude i puri outdoor falsi
+# positivi (campo 0.58, verde 0.58, prato 0.60, neve 0.63, montagna 0.59).
+# Con soglia inferiore: include falsi outdoor. Con superiore: perde
+# `bagno`, `oceano`, `spiaggia` (veri positivi).
+_QE_MIN_COSINE = 0.65
+
+
+def _corpus_token_embs(idx_dir):
+    """Lazy load (o build) embedding del vocabolario keyword corpus.
+    Cache file <idx_dir>/corpus_tokens.npz. Idempotente.
+    Ritorna (tokens: list[str], embs: ndarray[N,1024] L2-normalized)
+    o ([], None) se BGE non disponibile / nessun token.
+    """
+    import numpy as np
+    cache_path = idx_dir / "corpus_tokens.npz"
+    if cache_path.exists():
+        try:
+            data = np.load(cache_path, allow_pickle=False)
+            return data["tokens"].tolist(), data["embs"]
+        except Exception as ex:
+            log.warning("corpus_tokens.npz read fail: %r", ex)
+    # Build
+    entries_file = idx_dir / "entries.jsonl"
+    if not entries_file.exists():
+        return [], None
+    seen: set[str] = set()
+    tokens: list[str] = []
+    for line in entries_file.read_text().splitlines():
+        if not line.strip():
+            continue
+        try:
+            e = json.loads(line)
+        except Exception:
+            continue
+        for tok in (e.get("keywords") or []):
+            t = str(tok).strip().lower()
+            if (_QE_TOKEN_MIN_LEN <= len(t) <= _QE_TOKEN_MAX_LEN
+                    and t not in seen and t.isalpha()):
+                seen.add(t); tokens.append(t)
+        for tok in (e.get("path_tokens") or []):
+            t = str(tok).strip().lower()
+            if (_QE_TOKEN_MIN_LEN <= len(t) <= _QE_TOKEN_MAX_LEN
+                    and t not in seen and t.isalpha()):
+                seen.add(t); tokens.append(t)
+    if not tokens:
+        return [], None
+    try:
+        from bge_embedding import BGEEmbeddingService
+        te = BGEEmbeddingService()
+        embs = te.embed_texts(tokens).astype(np.float32, copy=False)
+    except Exception as ex:
+        log.warning("corpus tokens embed fail: %r", ex)
+        return [], None
+    try:
+        tmp = cache_path.with_name(cache_path.name + ".tmp")
+        with open(tmp, "wb") as f:
+            np.savez_compressed(f, tokens=np.array(tokens), embs=embs)
+        tmp.replace(cache_path)
+    except Exception as ex:
+        log.warning("corpus_tokens.npz write fail: %r", ex)
+    return tokens, embs
+
+
+def _common_prefix_len(a: str, b: str) -> int:
+    """Lunghezza prefisso comune (case-insensitive)."""
+    a, b = a.lower(), b.lower()
+    n = 0
+    for x, y in zip(a, b):
+        if x != y:
+            break
+        n += 1
+    return n
+
+
+# Soglia cosine per accettare un candidate con prefisso lungo comune
+# alla query (lemma/morfologico vs prefix-bias). BGE-M3 mappa "marrone"
+# a "mare" con cosine 0.76 puramente per prefisso "mar" — NON e' semantica
+# vera. La derivazione legittima (mare→marea→mari→mar) ha cosine >= 0.85.
+_QE_LEMMA_COSINE = 0.85
+_QE_PREFIX_MIN_LEN = 3
+
+
+def _expand_query_via_corpus(query, tokens, embs,
+                                top_k: int = _QE_TOP_K,
+                                min_cosine: float = _QE_MIN_COSINE):
+    """Top-K corpus tokens semanticamente simili alla query (cosine >= soglia).
+    Filtra prefix-bias di BGE-M3: candidate che condivide >=3 char di
+    prefisso con query DEVE avere cosine >= 0.85 (lemma threshold),
+    altrimenti viene escluso come prefix-only match ("marrone/marche/
+    marziale" vs "mare"). I candidate semanticamente diversi (no prefix
+    comune) restano accettati a min_cosine. Determinismo §7.9.
+    """
+    import numpy as np
+    q_lower = (query or "").strip().lower()
+    if not q_lower or not tokens or embs is None:
+        return [q_lower] if q_lower else []
+    try:
+        from bge_embedding import BGEEmbeddingService
+        te = BGEEmbeddingService()
+        qv = te.embed_query(query)
+        qv = qv / np.linalg.norm(qv) if np.linalg.norm(qv) > 0 else qv
+    except Exception:
+        return [q_lower]
+    scores = embs @ qv.astype(np.float32, copy=False)
+    expanded: list[str] = [q_lower]
+    seen = {q_lower}
+    # Buffer 3× per assorbire i filtri prefix-bias.
+    ranked_idx = np.argsort(-scores)[:top_k * 3]
+    for idx in ranked_idx:
+        s = float(scores[idx])
+        if s < min_cosine:
+            break
+        tok = tokens[int(idx)]
+        if tok in seen:
+            continue
+        # Filtro prefix-bias: prefisso lungo comune AND cosine sotto lemma.
+        prefix = _common_prefix_len(q_lower, tok)
+        min_len = min(len(q_lower), len(tok))
+        if (prefix >= _QE_PREFIX_MIN_LEN
+                and prefix >= min_len * 0.6
+                and s < _QE_LEMMA_COSINE):
+            continue  # prefix-bias rifiutato
+        seen.add(tok); expanded.append(tok)
+        if len(expanded) >= top_k + 1:
+            break
+    return expanded
+
+
+def _query_expansion_enabled() -> bool:
+    return os.environ.get("METNOS_QUERY_EXPANSION", "1") != "0"
+
+
+# ----- LLM-based query expansion (15/5/2026) ----------------------------
+# BGE-M3 corpus token expansion degenera per query brevi mono-token:
+# "mare" → {amare, mappe, mercato, morte, madre, mese} (cosine generico).
+# LLM expansion (Gemma 4 26B middle tier locale) genera sinonimi puliti
+# rispettando la lingua della query (prompt language-instruction).
+# Cache disk indefinita (sinonimi stabili).
+
+_QE_LLM_CACHE_DIR = Path.home() / ".cache" / "metnos" / "query_expansion_llm"
+_QE_LLM_MAX_TOKENS = 200
+
+
+def _expand_query_via_llm(query: str) -> list[str]:
+    """LLM-based query expansion language-sensitive con cache disk.
+
+    Il prompt istruisce il LLM a mantenere la lingua della query e
+    generare sinonimi semantici stretti (non parole generiche). Cache
+    indefinita per query (sha256 del lowercased). Determinismo §7.9
+    eccetto la singola call LLM irriducibilmente generativa.
+
+    Output sempre include la query originale (lowercased) come primo
+    elemento. Vuoto solo se LLM non disponibile.
+    """
+    q_clean = (query or "").strip()
+    if not q_clean:
+        return []
+    q_lower = q_clean.lower()
+    key = hashlib.sha256(q_lower.encode("utf-8")).hexdigest()[:16]
+    cache_path = _QE_LLM_CACHE_DIR / f"{key}.json"
+    if cache_path.exists():
+        try:
+            data = json.loads(cache_path.read_text())
+            cached = data.get("expanded")
+            if isinstance(cached, list) and cached:
+                return cached
+        except Exception:
+            pass
+    # Prompt language-sensitive: scritto in INGLESE (lingua neutra per
+    # Gemma multilingua, evita bias verso italiano se prompt e' in italiano)
+    # con few-shot examples in IT+EN per ancorare il behavior. Il LLM
+    # detecta la lingua della query e risponde IN-LANG.
+    prompt = (
+        "You are a multilingual thesaurus. Detect the language of the "
+        "input concept and produce synonyms IN THE SAME LANGUAGE.\n"
+        f'Concept: "{q_clean}"\n'
+        "Generate 8 specific synonyms (single words or short 2-token "
+        "phrases). Constraints:\n"
+        "- SAME LANGUAGE as the input (Italian input → Italian synonyms; "
+        "English input → English synonyms; etc.)\n"
+        "- Tight semantic synonyms only\n"
+        "- NO generic words (thing, object, item, cosa, oggetto)\n"
+        "- NO preamble, NO explanation\n"
+        "Examples (showing language fidelity — pay attention to language match):\n"
+        "- \"mare\" (Italian) → mare, oceano, marea, spiaggia, costa, mar, marina, onde\n"
+        "- \"sea\" (English) → sea, ocean, tide, shore, coast, marina, waves, water\n"
+        "- \"snow\" (English) → snow, ice, frost, blizzard, snowflake, snowfall, hail, winter\n"
+        "- \"compleanno\" (Italian) → compleanno, festa, anniversario, torta, "
+        "candeline, auguri, regalo, festeggiamento\n"
+        "- \"birthday\" (English) → birthday, anniversary, party, celebration, "
+        "jubilee, gala, fete, occasion\n"
+        "- \"neige\" (French) → neige, glace, gel, flocon, blizzard, hiver, "
+        "neigeux, poudreuse\n"
+        "Output: single line, comma-separated synonyms only, "
+        "NO concept name prefix."
+    )
+    try:
+        from llm_router import LLMRouter
+        r = LLMRouter()
+        provider = r.provider("middle")
+        res = provider.chat(
+            "", prompt, max_tokens=_QE_LLM_MAX_TOKENS,
+            temperature=0, think=False,
+        )
+        raw = (res.text or "").strip()
+    except Exception as ex:
+        log.warning("LLM query expansion failed: %r", ex)
+        return [q_lower]
+    # Parse: strip markdown fences, prendi prima riga utile
+    raw = re.sub(r"^```[a-zA-Z]*\s*", "", raw)
+    raw = re.sub(r"\s*```\s*$", "", raw)
+    line = raw.splitlines()[0] if raw else ""
+    expanded: list[str] = [q_lower]
+    seen = {q_lower}
+    for tok in line.split(","):
+        t = tok.strip().lower()
+        # Strip wrap quotes/asterischi LLM puo' aggiungere
+        t = t.strip('"\'*` ')
+        if t and t not in seen and 1 < len(t) < 30:
+            seen.add(t); expanded.append(t)
+    if len(expanded) <= 1:
+        return [q_lower]
+    # Cache disk (atomic write)
+    try:
+        _QE_LLM_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+        tmp = cache_path.with_name(cache_path.name + ".tmp")
+        tmp.write_text(json.dumps(
+            {"query": q_clean, "expanded": expanded},
+            ensure_ascii=False, indent=2,
+        ))
+        tmp.replace(cache_path)
+    except Exception as ex:
+        log.debug("LLM expansion cache write fail: %r", ex)
+    return expanded
+
+
+def _query_expansion_llm_enabled() -> bool:
+    return os.environ.get("METNOS_QUERY_EXPANSION_LLM", "1") != "0"
+
+
 def _parse_time_window(window: str) -> tuple[float, float] | None:
     if not window or window == "all":
         return None
@@ -308,9 +563,14 @@ def _extract_face_embeddings_from_reference(ref_paths: list[str]):
 
 def _filter_unified(
     entries: list[dict], emb_text, emb_face, meta: dict, args: dict,
+    idx_dir=None,
 ) -> dict:
     """Pipeline filtri/score per indice unificato. Ritorna dict con
-    entries/n_above_threshold/error_class/applied_paths_filter."""
+    entries/n_above_threshold/error_class/applied_paths_filter.
+
+    idx_dir (opzionale): se passato, abilita query expansion BGE-M3 via
+    cache `<idx_dir>/corpus_tokens.npz`. Compatibilita' all'indietro
+    (default None: query expansion disattivata)."""
     query_text = (args.get("query_text") or "").strip() or None
     name = (args.get("name") or "").strip() or None
     # Multi-persona AND (15/5/2026): `names` array, ogni nome deve essere
@@ -551,8 +811,39 @@ def _filter_unified(
 
     # Content filter (query_text)
     text_scores: dict[int, float] = {}
+    q_expanded: list[str] = []  # cache for output meta
     if query_text:
-        q_terms = _normalize_text_for_bm25(query_text)
+        # Query expansion strategia (15/5/2026 §7.3):
+        # (1) LLM expansion (Gemma 4 26B middle, language-sensitive) — preferita.
+        #     Produce sinonimi puliti anche per query brevi mono-token.
+        #     Cache disk indefinita → costo solo prima call per query.
+        # (2) Fallback corpus token (BGE-M3) per query lunghe se LLM fail.
+        # (3) Fallback nessuna expansion (query brevi senza LLM) → BM25 sul
+        #     keyword originale + cosine fallback hybrid.
+        q_clean = query_text.strip()
+        _is_short_mono = (len(q_clean.split()) == 1 and len(q_clean) <= 5)
+        # Strategia (1) LLM
+        if _query_expansion_llm_enabled():
+            try:
+                q_expanded = _expand_query_via_llm(query_text)
+            except Exception as ex:
+                log.debug("LLM expansion fallita: %r", ex)
+                q_expanded = []
+        # Strategia (2) corpus BGE-M3 SOLO per query lunghe (>5 char,
+        # multi-token) e se LLM ha fallito.
+        if (not q_expanded and idx_dir is not None
+                and _query_expansion_enabled() and not _is_short_mono):
+            try:
+                tokens, embs = _corpus_token_embs(idx_dir)
+                if tokens and embs is not None:
+                    q_expanded = _expand_query_via_corpus(query_text, tokens, embs)
+            except Exception as ex:
+                log.debug("corpus expansion fallita: %r", ex)
+                q_expanded = []
+        # Fallback: niente expansion → q_terms = tokens query originale.
+        q_terms = _normalize_text_for_bm25(
+            " ".join(q_expanded) if q_expanded else query_text
+        )
         q_vec = None
         try:
             from bge_embedding import BGEEmbeddingService
@@ -588,24 +879,27 @@ def _filter_unified(
             text_scores[i] = score
             text_components[i] = (cos_score, bm25)
 
-    # Text filter HYBRID (15/5/2026 §7.3): BM25 keyword-match (HARD) OR
-    # cosine BGE-M3 molto alto (STRONG semantic). Le foto borderline con
-    # cosine medio (0.40-0.55) ma BM25=0 (nessun keyword reale) sono
-    # escluse — risolve il bug "Matteo al mare" che includeva foto di
-    # neve (BGE-M3 mappa entrambe outdoor/paesaggio → cosine 0.45).
-    # Soglie:
-    #   _COSINE_STRONG = 0.55 : passa anche senza BM25 (semantic match
-    #     puro, es. descrizione paraphrase senza il keyword esatto)
-    #   bm25 > 0 + cosine >= text_score_min : conferma keyword presence
+    # Text filter (15/5/2026 §7.3).
+    # Strategia in base alla query:
+    # (A) q_expanded valido (BGE-M3 corpus expansion ok) → BM25 hard match
+    #     sull'expansion. Doc deve contenere ALMENO UN keyword espanso.
+    # (B) q_expanded assente o degenere (query brevi mono-token <=5 char,
+    #     BGE-M3 mappa cosine alto con token irrelati → expansion inquinata)
+    #     → fallback hybrid: bm25 > 0 con cosine >= text_score_min OR
+    #     cosine >= _COSINE_STRONG (0.55). Precision sub-ottimale ma stable.
+    _COSINE_STRONG = 0.55
     if query_text and text_score_min > 0.0:
-        _COSINE_STRONG = 0.55
         keep_paths = set()
         for i, e in enumerate(entries):
             cos_s, bm25_s = text_components.get(i, (0.0, 0.0))
-            if bm25_s > 0 and cos_s >= text_score_min:
-                keep_paths.add(e.get("path"))
-            elif cos_s >= _COSINE_STRONG:
-                keep_paths.add(e.get("path"))
+            if q_expanded and len(q_expanded) >= 2:
+                if bm25_s > 0 and cos_s >= 0.25:
+                    keep_paths.add(e.get("path"))
+            else:
+                if bm25_s > 0 and cos_s >= text_score_min:
+                    keep_paths.add(e.get("path"))
+                elif cos_s >= _COSINE_STRONG:
+                    keep_paths.add(e.get("path"))
         score_by_path = {e.get("path"): text_scores.get(i, 0.0)
                          for i, e in enumerate(entries)}
         entries = [e for e in entries if e.get("path") in keep_paths]
@@ -782,7 +1076,8 @@ def invoke(args):
             "_msg": "indice vuoto",
         }
 
-    res = _filter_unified(entries, emb_text, emb_face, meta, args)
+    res = _filter_unified(entries, emb_text, emb_face, meta, args,
+                            idx_dir=idx_dir)
 
     out: dict = {
         "ok": True,
@@ -860,7 +1155,8 @@ def _invoke_multi_dirs(dirs: list[Path], args: dict, msg: str | None) -> dict:
             continue
         if not entries:
             continue
-        res = _filter_unified(entries, emb_text, emb_face, meta, args)
+        res = _filter_unified(entries, emb_text, emb_face, meta, args,
+                                idx_dir=idx_dir)
         if res.get("error_class"):
             error_classes.add(res["error_class"])
             continue
