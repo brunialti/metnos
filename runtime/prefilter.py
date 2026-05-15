@@ -44,8 +44,11 @@ _VERB_TO_CANONICAL = {
     "cancella": "delete", "cancello": "delete", "cancellare": "delete",
     "elimina": "delete", "elimino": "delete", "eliminare": "delete",
     "rimuovi": "delete", "rimuovo": "delete", "rimuovere": "delete",
-    "delete": "delete", "remove": "delete", "rm": "delete", "del": "delete",
+    "delete": "delete", "remove": "delete", "rm": "delete",
     "drop": "delete",
+    # NB: niente `del` (preposizione articolata IT in "del sistema/del server"
+    # confondeva il verb-boost). Bug live 15/5/2026: "mostrami il quadro
+    # del sistema" → boost +10 a tutti i delete_*. Falso positivo.
     # read
     "leggi": "read", "leggo": "read", "leggere": "read", "letto": "read",
     "mostra": "read", "mostro": "read", "mostrami": "read", "mostrare": "read",
@@ -810,6 +813,30 @@ def rank_adaptive(query, catalog, k_min=5, k_max=8, *, llm_call=None,
     scored.sort(key=lambda p: p[0], reverse=True)
     scores = [s for s, _ in scored]
     top_score = scores[0] if scores else 0
+    semantic_reason = ""
+    # Semantic fallback (BGE-M3) quando hard match troppo debole: query con
+    # typo, sinonimi semantici, declinazioni irregolari, cross-lingua. Costa
+    # ~25ms quando attivato; skip quando hard match e' gia' confident.
+    try:
+        from affinity_semantic import (
+            is_enabled as _sem_enabled, threshold as _sem_threshold,
+            alpha as _sem_alpha, build_or_load_cache as _sem_build,
+            semantic_max_per_executor as _sem_max,
+        )
+        if _sem_enabled() and top_score < _sem_threshold():
+            _cache = _sem_build(list(catalog))
+            if _cache is not None:
+                _semmap = _sem_max(query, _cache)
+                if _semmap:
+                    _a = _sem_alpha()
+                    scored = [(s + _a * _semmap.get(e.name, 0.0), e)
+                              for s, e in scored]
+                    scored.sort(key=lambda p: p[0], reverse=True)
+                    scores = [s for s, _ in scored]
+                    top_score = scores[0] if scores else 0
+                    semantic_reason = "semantic_fallback"
+    except Exception:
+        pass  # fallback silente: il hard match ranking resta valido
     rel_cutoff = max(1, top_score // 2)
     relevant = [(s, e) for s, e in scored if s >= rel_cutoff]
     if len(relevant) < k_min:
@@ -846,7 +873,9 @@ def rank_adaptive(query, catalog, k_min=5, k_max=8, *, llm_call=None,
         "top_score": top_score,
         "rel_cutoff": rel_cutoff,
         "scores_top": scores[:max(K, 5)],
-        "reason": f"rel_cutoff>={rel_cutoff}" if rel_cutoff > 1 else "k_min_floor",
+        "reason": (semantic_reason or
+                   (f"rel_cutoff>={rel_cutoff}" if rel_cutoff > 1
+                    else "k_min_floor")),
     }
 
 
