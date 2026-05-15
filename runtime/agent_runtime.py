@@ -2026,8 +2026,14 @@ def resolve_from_step(args, history, consumer_schema=None):
     # from_step (10/5/2026 fix bug live: PLANNER spesso passa from_step
     # SUPERFLUO accanto a un name/names/all/paths/urls esplicito; non ha
     # senso bloccare l'esecuzione se l'utente ha gia' detto cosa fare).
+    # 15/5/2026 estesa con event_ids/event_id/entries/to/to_user dopo
+    # bug live: "cancella gli eventi con id X, Y, Z" → LLM emette
+    # delete_events(from_step=1, event_ids=[...]) → from_step=1 al primo
+    # step inesistente blocca pur con event_ids espliciti.
     _ALT_TARGET_KEYS = ("name", "names", "all", "paths", "urls", "ids",
-                          "messages", "patterns")
+                          "messages", "patterns",
+                          "event_ids", "event_id", "entries",
+                          "to", "to_user")
     _has_alt = any(
         k in args and args[k] not in (None, "", [], {})
         for k in _ALT_TARGET_KEYS
