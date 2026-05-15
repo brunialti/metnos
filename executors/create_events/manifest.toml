@@ -7,10 +7,11 @@ manifest_format = "1.0"
 name        = "create_events"
 version     = "0.4.0"
 author      = "Roberto Brunialti <roberto.brunialti@metnos.com>"
-affinity    = ["fissa", "fissa appuntamento", "prenota", "book", "schedule",
-                "crea evento", "create event", "aggiungi appuntamento",
-                "appuntamento", "appuntamenti", "agenda", "evento", "eventi",
-                "calendario", "calendar", "riunione", "incontro", "meeting"]
+affinity    = [
+    "fissa", "fissa appuntamento", "prenota", "book", "schedule", "crea evento",
+                "create event", "aggiungi appuntamento", "appuntamento", "agenda", "evento",
+                "calendario", "calendar", "riunione", "incontro", "meeting"
+            ]
 revertible       = true
 reverse_pattern  = "delete_events_by_id"
 lifecycle        = "active"

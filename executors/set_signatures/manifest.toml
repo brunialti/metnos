@@ -2,7 +2,9 @@ manifest_format = "1.0"
 name        = "set_signatures"
 version     = "0.1.0"
 author      = "Roberto Brunialti <roberto.brunialti@metnos.com>"
-affinity = ["set", "imposta", "blacklist", "whitelist", "rimuovi", "curatela", "user"]
+affinity    = ["imposta", "autorizza", "vieta", "permetti", "rimuovi",
+                "curatela", "gestione signatures", "configura permessi",
+                "approva comando", "blocca comando"]
 
 revertible       = true
 reverse_pattern  = ["delete_created_paths"]

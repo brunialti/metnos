@@ -6,7 +6,9 @@ manifest_format = "1.0"
 name        = "find_files"
 version     = "0.2.0"
 author      = "Roberto Brunialti <roberto.brunialti@metnos.com>"
-affinity    = ["find", "trova", "cerca", "search", "ricerca", "file", "documento", "fs", "glob", "pattern"]
+affinity    = [
+    "find", "trova", "cerca", "search", "ricerca", "file", "documento", "glob", "pattern"
+            ]
 
 [description]
 it = "Cerca file per nome/pattern dentro una directory autorizzata. Ricorsivo di default, ritorna SOLO file (mai dir, salvo include_dirs=true). Accetta un pattern singolo (es. '*.jpg'), una stringa con piu' pattern (',' o '|' separati: '*.jpg,*.png'), o l'array patterns=['*.jpg','*.png','*.heic']. Match case-insensitive di default. PREFERIBILE a list_dir+filter_entries quando conosci le estensioni: filtra alla sorgente, niente file di sistema, niente sotto-cartelle indesiderate. Esempio per 'tutte le foto in /home/roberto/images': find_files(base_path='/home/roberto/images', patterns=['*.jpg','*.JPG','*.png','*.heic'], recursive=true). Output: entries=[{path, name, type, mime, kind, size, mtime}]: per filtrare/ordinare per dimensione usa direttamente filter_entries/sort_entries sull'output, NON serve un get_files_metadata. Truncation: dichiarata via truncated:true + truncated_what='file' + used + cap_field='max_results' quando si raggiunge max_results."

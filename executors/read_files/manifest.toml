@@ -7,7 +7,7 @@ manifest_format = "1.0"
 name        = "read_files"
 version     = "0.1.0"
 author      = "Roberto Brunialti <roberto.brunialti@metnos.com>"
-affinity    = ["fs", "read", "leggi", "lettura", "apri", "file", "documento", "testo", "contenuto"]
+affinity    = ["read", "leggi", "lettura", "apri", "file", "documento", "testo", "contenuto"]
 
 # --- Codice -----------------------------------------------------------------
 # Il digest copre l'intero contenuto dei `files` in ordine di dichiarazione.

@@ -7,13 +7,13 @@ manifest_format = "1.0"
 name        = "find_events_empty"
 version     = "0.4.0"
 author      = "Roberto Brunialti <roberto.brunialti@metnos.com>"
-affinity    = ["slot libero", "slot liberi", "orari liberi", "finestre libere",
-                "disponibilita", "spazio libero in agenda", "buchi in agenda",
-                "free slots", "free time", "availability", "openings",
-                "available times", "morning free", "afternoon free",
-                "free wednesday", "trova un orario", "proponi orari",
-                "suggerisci slot", "free calendar window",
-                "empty slot", "slot vuoti", "finestre vuote"]
+affinity    = [
+    "slot libero", "slot liberi", "orari liberi", "finestre libere", "disponibilita",
+                "spazio libero in agenda", "buchi in agenda", "free slots", "availability",
+                "openings", "available times", "morning free", "afternoon free",
+                "trova un orario", "proponi orari", "suggerisci slot", "empty slot",
+                "slot vuoti", "finestre vuote"
+            ]
 revertible  = false
 lifecycle   = "active"
 

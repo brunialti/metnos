@@ -8,7 +8,9 @@ version     = "0.2.0"
 author      = "Roberto Brunialti <roberto.brunialti@metnos.com>"
 
 # Cosa fa: una frase per il LLM. Cosa NON fa: una frase di rinvio al composer.
-affinity    = ["list", "elenca", "lista", "ls", "dir", "directory", "contenuto", "cartella", "metadata", "fs"]
+affinity    = [
+    "list", "elenca", "lista", "ls", "dir", "directory", "contenuto", "cartella", "metadata"
+            ]
 
 [description]
 it = "Lista TUTTI i file e le sottocartelle di una directory (incluse sotto-cartelle, file di sistema come Thumbs.db/.DS_Store, e file di qualunque tipo). NON filtra: ritorna ogni elemento con metadata (nome, type=file|dir|symlink, kind=image|video|audio|text|document|archive|binary|dir|symlink, mime, size, mtime). Pipeline tipica quando l'utente nomina una categoria specifica ('foto', 'video', 'documenti'): list_dir -> filter_entries(kind='image'|'video'|...) -> operazione. NON saltare filter_entries: senza filtro le operazioni successive (move/delete/...) toccano anche dir e file di sistema. Alternativa: find_file con patterns=['*.jpg','*.png',...] filtra alla sorgente."

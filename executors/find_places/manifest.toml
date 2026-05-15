@@ -10,17 +10,12 @@ author      = "Roberto Brunialti <roberto.brunialti@metnos.com>"
 # I sostantivi (farmacia/restaurant/...) emergono dalla query utente, non
 # servono enumerati qui (cattura tutto il long-tail di POI).
 affinity    = [
-    # verbi (IT)
-    "trova", "cerca", "cercami", "trovami", "localizza",
-    # verbs (EN)
-    "find", "search", "locate", "lookup", "look-for",
-    # oggetto (IT/EN)
-    "luogo", "luoghi", "place", "places", "POI", "indirizzo", "address", "geocoding",
-    # prossimita' (IT)
-    "vicino", "vicina", "vicini", "vicine", "intorno", "dintorni", "zona", "in zona", "nelle vicinanze",
-    # proximity (EN)
-    "near", "nearby", "around", "close-by", "in the area", "in proximity",
-]
+    "trova", "cerca", "cercami", "trovami", "localizza", "find", "search", "locate", "lookup",
+                "look-for", "luogo", "luoghi", "place", "places", "POI", "indirizzo",
+                "address", "geocoding", "vicino", "vicina", "vicine", "intorno", "dintorni",
+                "zona", "in zona", "nelle vicinanze", "near", "nearby", "around", "close-by",
+                "in the area", "in proximity"
+            ]
 revertible  = false
 lifecycle   = "active"
 

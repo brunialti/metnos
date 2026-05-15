@@ -7,7 +7,10 @@ name        = "read_urls_pdf"
 version     = "0.1.0"
 timeout_s   = 300
 author      = "Roberto Brunialti <roberto.brunialti@metnos.com>"
-affinity    = ["read", "leggi", "pdf", "documento", "circolare", "report", "fattura", "url", "urls", "fetch", "scarica", "extract", "estrai", "testo", "content", "contenuto"]
+affinity    = [
+    "read", "leggi", "pdf", "documento", "circolare", "report", "fattura", "url", "fetch",
+                "scarica", "extract", "estrai", "testo", "content", "contenuto"
+            ]
 
 [description]
 it = "Scarica una lista di URL che servono PDF e ritorna title, author, body_text e n_pages estratti deterministicamente. Backend: pypdf (preferito) o pdfminer.six come fallback. Skippa Content-Type non-PDF (eccetto se l'URL termina in '.pdf'). Cap pratico: max_bytes 20 MB per documento, max_pages_per_doc 100. body_text trimmato a 200000 char. ocr_fallback=true segnala con `needs_ocr: true` quando il parser estrae 0 testo (PDF scansionato): l'OCR effettivo va via read_files_ocr in step successivo dopo download manuale. Cookie auth tramite 'auth_cookies_file' (Mozilla cookies.txt). User-Agent fisso 'metnos-crawler/1.1 (+contact@metnos.com)'. Esempio dopo find_urls (PDF di circolari scolastiche): read_urls_pdf(from_step=1) → entries=[{url, title, author, body_text, n_pages, used_lib, fetched_at}]."

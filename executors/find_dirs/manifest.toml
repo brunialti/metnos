@@ -6,7 +6,12 @@ manifest_format = "1.0"
 name        = "find_dirs"
 version     = "0.1.0"
 author      = "Roberto Brunialti <roberto.brunialti@metnos.com>"
-affinity        = ["find", "trova", "cerca", "list", "elenca", "search", "directory", "dirs", "cartelle", "folder", "folders", "subdir", "subdirs", "sottocartella", "sottocartelle", "tree", "albero", "walk", "stats", "statistiche", "popolose", "popolate", "size", "dimensione", "metadata", "metadati", "fs"]
+affinity    = [
+    "find", "trova", "cerca", "list", "elenca", "search", "directory", "dirs", "cartelle",
+                "folder", "subdir", "sottocartella", "sottocartelle", "tree", "albero",
+                "walk", "stats", "statistiche", "popolose", "popolate", "size", "dimensione",
+                "metadata", "metadati"
+            ]
 revertible      = false
 lifecycle       = "active"
 

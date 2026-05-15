@@ -7,7 +7,10 @@ manifest_format = "1.0"
 name          = "get_file_dates"
 version       = "0.1.1"
 author        = "Roberto Brunialti <roberto.brunialti@metnos.com>"
-affinity      = ["data", "date", "exif", "scatto", "creazione", "foto", "image", "metadati", "metadata", "ordina", "fs"]
+affinity    = [
+    "data", "date", "exif", "scatto", "creazione", "foto", "image", "metadati", "metadata",
+                "ordina"
+            ]
 lifecycle     = "deprecated"
 superseded_by = "get_files_metadata"
 

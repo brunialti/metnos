@@ -9,7 +9,9 @@ manifest_format = "1.0"
 name        = "delete_dirs"
 version     = "0.1.0"
 author      = "Roberto Brunialti <roberto.brunialti@metnos.com>"
-affinity    = ["delete", "elimina", "cancella", "rmdir", "rimuovi", "remove", "directory", "cartella", "fs"]
+affinity    = [
+    "delete", "elimina", "cancella", "rmdir", "rimuovi", "remove", "directory", "cartella"
+            ]
 
 [description]
 it = "Rimuove una o piu' directory in scope di scrittura. Accetta sempre una lista (anche di un solo path, o vuota). Default: rimuove SOLO directory vuote (sicuro). Per rimozione ricorsiva di un albero non vuoto serve `force=true` esplicito (l'utente lo chiede). Best-effort: ogni dir e' indipendente, una failure non blocca le altre. Operazione critical irreversibile (le sotto-cartelle e i file rimossi NON sono restorabili senza backup esterno)."

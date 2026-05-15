@@ -7,10 +7,11 @@ manifest_format = "1.0"
 name        = "read_events"
 version     = "0.4.0"
 author      = "Roberto Brunialti <roberto.brunialti@metnos.com>"
-affinity    = ["appuntamento", "appuntamenti", "agenda", "evento", "eventi",
-                "calendario", "calendar", "riunione", "riunioni", "incontro",
-                "incontri", "meeting", "scadenza", "scadenze", "deadline",
-                "appointment", "appointments", "schedule", "events"]
+affinity    = [
+    "appuntamento", "agenda", "evento", "calendario", "calendar", "riunione", "riunioni",
+                "incontro", "meeting", "scadenza", "scadenze", "deadline", "appointment",
+                "schedule", "events"
+            ]
 revertible  = false
 lifecycle   = "active"
 

@@ -7,9 +7,10 @@ manifest_format = "1.0"
 name        = "delete_events"
 version     = "0.4.0"
 author      = "Roberto Brunialti <roberto.brunialti@metnos.com>"
-affinity    = ["cancella", "elimina", "delete", "remove", "rimuovi",
-                "appuntamento", "appuntamenti", "agenda", "evento", "eventi",
-                "calendario", "calendar", "riunione", "incontro", "meeting"]
+affinity    = [
+    "cancella", "elimina", "delete", "remove", "rimuovi", "appuntamento", "agenda", "evento",
+                "calendario", "calendar", "riunione", "incontro", "meeting"
+            ]
 revertible  = false
 lifecycle   = "active"
 

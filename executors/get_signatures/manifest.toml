@@ -2,7 +2,10 @@ manifest_format = "1.0"
 name        = "get_signatures"
 version     = "0.1.0"
 author      = "Roberto Brunialti <roberto.brunialti@metnos.com>"
-affinity = ["safety", "signatures", "lookup", "blacklist", "whitelist", "graylist", "forbidden"]
+affinity    = ["safety", "signatures", "lookup", "verifica permessi",
+                "controllo autorizzazioni", "elenco autorizzati",
+                "elenco vietati", "review pending", "candidati promozione",
+                "differenze seed"]
 
 revertible       = true
 reverse_pattern  = []

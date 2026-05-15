@@ -7,7 +7,11 @@ name        = "read_urls_html"
 version     = "0.1.0"
 timeout_s   = 300
 author      = "Roberto Brunialti <roberto.brunialti@metnos.com>"
-affinity    = ["read", "leggi", "html", "pagina", "page", "url", "urls", "web", "site", "article", "articolo", "news", "fetch", "scarica", "extract", "estrai", "testo", "content", "contenuto", "readability"]
+affinity    = [
+    "read", "leggi", "html", "pagina", "page", "url", "web", "site", "article", "articolo",
+                "news", "fetch", "scarica", "extract", "estrai", "testo", "content",
+                "contenuto", "readability"
+            ]
 
 [description]
 it = "Scarica una lista di URL HTML e ritorna il contenuto principale come plain text deterministico (no LLM). Strip di <script>, <style>, <nav>, <header>, <footer>, <aside>, <form>, <noscript>; preferenza container <article> > <main> > <body> (heuristica readability-lite). Estrae meta: og:* (open graph), description, author, <time datetime=...>. Ritorna title, body_text trimmato a 50000 char, lang dell'<html>, fetched_at. Skippa Content-Type != 'text/html'. User-Agent fisso 'metnos-crawler/1.1 (+contact@metnos.com)'. Per siti autenticati: passa 'auth_cookies_file' come path a un Mozilla cookies.txt (vedi `login_session`). Esempio dopo find_urls: read_urls_html(from_step=1) → entries=[{url, title, body_text, meta:{...}, lang, fetched_at}]. Output: entries (stesso schema in input + body_text), ok_count, fail_count, failed=[{url, error}]."
