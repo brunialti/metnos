@@ -7,7 +7,7 @@ Nessuno step ok ha registrato un'azione futura — promessa vuota.
 
 Fix strutturale (no LLM, regex deterministico §7.9): se final_message contiene
 verbi di promessa futura E nessuno step ok ha chiamato un tool che registra
-azioni (schedule_recurring, send_messages, write_files, ...), il runtime
+azioni (create_tasks/send_messages/write_files/...), il runtime
 prepende una notice "azione NON registrata".
 """
 from __future__ import annotations
@@ -36,11 +36,11 @@ class TestUnbackedPromiseDetection(unittest.TestCase):
         msg = "Ho cercato sul sito ufficiale, ti aggiornerò non appena trovo i numeri."
         self.assertTrue(_detect_unbacked_promise(msg, []))
 
-    def test_promise_with_schedule_recurring_ok(self):
-        """final_message con promessa MA c'e' schedule_recurring ok → no notice."""
+    def test_promise_with_create_tasks_ok(self):
+        """final_message con promessa MA c'e' create_tasks ok → no notice."""
         from agent_runtime import _detect_unbacked_promise
         msg = "Ho schedulato il monitoraggio quotidiano, ti aggiornerò appena trovo dati."
-        steps = [_step("schedule_recurring", ok=True)]
+        steps = [_step("create_tasks", ok=True)]
         self.assertFalse(_detect_unbacked_promise(msg, steps))
 
     def test_promise_with_send_messages_ok(self):
@@ -51,10 +51,10 @@ class TestUnbackedPromiseDetection(unittest.TestCase):
         self.assertFalse(_detect_unbacked_promise(msg, steps))
 
     def test_promise_with_failed_schedule_no_support(self):
-        """schedule_recurring FAIL → promessa NON supportata → notice."""
+        """create_tasks FAIL → promessa NON supportata → notice."""
         from agent_runtime import _detect_unbacked_promise
         msg = "Ti aggiornerò domani con i risultati."
-        steps = [_step("schedule_recurring", ok=False)]
+        steps = [_step("create_tasks", ok=False)]
         self.assertTrue(_detect_unbacked_promise(msg, steps))
 
     def test_neutral_message_no_notice(self):

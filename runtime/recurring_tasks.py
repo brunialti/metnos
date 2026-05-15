@@ -2,7 +2,7 @@
 """recurring_tasks — bridge user-defined recurring tasks to runtime scheduler.
 
 Pattern: l'utente chiede "ogni giorno alle 8 verifica la posta e dimmi se ci
-sono mail importanti". Il PLANNER chiama `schedule_recurring(when="daily@08:00",
+sono mail importanti". Il PLANNER chiama `create_tasks(when="daily@08:00",
 query="leggi le mail di oggi importanti", label="check posta mattutina")`. Il
 modulo persiste in sqlite e registra una closure nello scheduler builtin.
 
@@ -167,7 +167,7 @@ def register_user_task(
             raise ValueError(
                 f"actor={actor} ha gia' {n_existing} task ricorrenti "
                 f"(limite {MAX_TASKS_PER_ACTOR}). Cancellane uno con "
-                f"delete_tasks_scheduled prima di registrarne di nuovi."
+                f"delete_tasks prima di registrarne di nuovi."
             )
         # times: None/<=0 = forever; >=1 = max fire (one-shot=1).
         # fired_count reset a 0 per nuovo task / re-register stesso name.
@@ -349,10 +349,10 @@ def _make_task_fn(record: dict):
 
 # --- Tool definitions per agent_runtime PLANNER ---------------------------
 
-SCHEDULE_RECURRING_TOOL = {
+CREATE_TASKS_TOOL = {
     "type": "function",
     "function": {
-        "name": "schedule_recurring",
+        "name": "create_tasks",
         "description": (
             "Registra un task temporizzato che Metnos esegue automaticamente "
             "alla cadenza specificata, senza interazione utente. Al fire "
@@ -401,10 +401,10 @@ SCHEDULE_RECURRING_TOOL = {
     },
 }
 
-LIST_SCHEDULED_TASKS_TOOL = {
+LIST_TASKS_TOOL = {
     "type": "function",
     "function": {
-        "name": "list_scheduled_tasks",
+        "name": "list_tasks",
         "description": (
             "Elenca i TASK RICORRENTI / PROMEMORIA / TIMER schedulati "
             "(NON processi di sistema, NON eventi calendar). "
@@ -418,17 +418,17 @@ LIST_SCHEDULED_TASKS_TOOL = {
     },
 }
 
-DELETE_TASKS_SCHEDULED_TOOL = {
+DELETE_TASKS_TOOL = {
     "type": "function",
     "function": {
-        "name": "delete_tasks_scheduled",
+        "name": "delete_tasks",
         "description": (
             "Cancella/ferma un TASK RICORRENTE / PROMEMORIA / TIMER schedulato. "
             "USA per: 'cancella il task ping', 'ferma il timer X', "
             "'rimuovi il promemoria delle mail', 'stoppa il task ricorrente'. "
             "Accetta `id` numerico (preferito, univoco) o `name` slug. "
             "Se l'utente non specifica chiaramente quale task, chiama prima "
-            "list_scheduled_tasks per mostrare l'elenco con id. "
+            "list_tasks per mostrare l'elenco con id. "
             "Un actor cancella solo i propri task. "
             "NON CONFONDERE CON: `delete_events` (eventi calendar), "
             "`kill` processo sistema."
@@ -449,10 +449,10 @@ DELETE_TASKS_SCHEDULED_TOOL = {
     },
 }
 
-SHOW_SCHEDULED_TASK_TOOL = {
+READ_TASKS_TOOL = {
     "type": "function",
     "function": {
-        "name": "show_scheduled_task",
+        "name": "read_tasks",
         "description": (
             "Mostra dettaglio di UN TASK RICORRENTE / PROMEMORIA / TIMER per nome: "
             "schedule, ultima esecuzione, esito ultimo fire, query, label, storico. "
@@ -471,31 +471,35 @@ SHOW_SCHEDULED_TASK_TOOL = {
     },
 }
 
-TOGGLE_SCHEDULED_TASK_TOOL = {
+SET_TASKS_TOOL = {
     "type": "function",
     "function": {
-        "name": "toggle_scheduled_task",
+        "name": "set_tasks",
         "description": (
-            "Abilita o disabilita TEMPORANEAMENTE un task senza cancellarlo. "
-            "Disabilitato = non fire-a ai prossimi tick ma resta in DB; "
-            "puoi riabilitarlo in seguito con stesso comando. USA per "
-            "'metti in pausa il task X', 'riattiva X', 'sospendi temporaneamente'."
+            "Cambia lo stato di un task ricorrente esistente. Due operazioni "
+            "in mutua esclusione: "
+            "(a) `enabled=bool` abilita/disabilita temporaneamente "
+            "il task (USA per 'metti in pausa X', 'riattiva X', 'sospendi'); "
+            "(b) `fire_now=true` forza l'esecuzione immediata fuori cadenza "
+            "(USA per 'esegui subito X', 'forza il fire', 'prova adesso X'). "
+            "Specifica esattamente uno dei due. fire_now solo HOST."
         ),
         "parameters": {
             "type": "object",
-            "required": ["name", "enabled"],
+            "required": ["name"],
             "properties": {
                 "name": {"type": "string", "description": "Nome del task (slug)."},
-                "enabled": {"type": "boolean", "description": "true=abilita, false=disabilita."},
+                "enabled": {"type": "boolean", "description": "true=abilita, false=disabilita. Mutex con fire_now."},
+                "fire_now": {"type": "boolean", "description": "true=fire immediato. Mutex con enabled. Solo HOST."},
             },
         },
     },
 }
 
-SCHEDULED_TASK_HISTORY_TOOL = {
+READ_TASKS_HISTORY_TOOL = {
     "type": "function",
     "function": {
-        "name": "scheduled_task_history",
+        "name": "read_tasks_history",
         "description": (
             "Ritorna lo STORICO ESECUZIONI di un TASK RICORRENTE / PROMEMORIA / TIMER "
             "(o di tutti). Per ogni fire: timestamp, status (ok/error/timeout/skipped), "
@@ -516,31 +520,14 @@ SCHEDULED_TASK_HISTORY_TOOL = {
     },
 }
 
-RUN_SCHEDULED_TASK_NOW_TOOL = {
-    "type": "function",
-    "function": {
-        "name": "run_scheduled_task_now",
-        "description": (
-            "Forza l'esecuzione immediata di un task (fuori dalla cadenza). "
-            "Utile per testare un task appena registrato senza aspettare "
-            "il prossimo fire. USA per 'esegui subito X', 'forza il fire', "
-            "'prova adesso il task X'. Solo per HOST (admin), non guest."
-        ),
-        "parameters": {
-            "type": "object",
-            "required": ["name"],
-            "properties": {
-                "name": {"type": "string", "description": "Nome task (con prefisso user_ per i recurring)."},
-            },
-        },
-    },
-}
+# NB: run_scheduled_task_now fuso in set_tasks(fire_now=true) per coerenza
+# §2.2 (no verb `execute`). Vedi handle_set_tasks per dispatch interno.
 
 
 # --- Handler dispatcher --------------------------------------------------
 
-def handle_schedule_recurring(args: dict, *, actor: str, channel: str,
-                                chat_id: str | None = None) -> dict:
+def handle_create_tasks(args: dict, *, actor: str, channel: str,
+                          chat_id: str | None = None) -> dict:
     label = args.get("label")
     when = args.get("when")
     query = args.get("query")
@@ -662,7 +649,7 @@ def _next_fire_estimate(sched: str, last_run: str | None) -> str:
     return "?"
 
 
-def handle_list_scheduled_tasks(args: dict, *, actor: str, **_) -> dict:
+def handle_list_tasks(args: dict, *, actor: str, **_) -> dict:
     tasks = list_user_tasks(actor=actor)
     if not tasks:
         return {"ok": True, "count": 0, "tasks": [],
@@ -739,7 +726,7 @@ def handle_list_scheduled_tasks(args: dict, *, actor: str, **_) -> dict:
     }
 
 
-def handle_delete_tasks_scheduled(args: dict, *, actor: str, **_) -> dict:
+def handle_delete_tasks(args: dict, *, actor: str, **_) -> dict:
     tid = args.get("id")
     name = args.get("name")
     if tid is None and not name:
@@ -787,7 +774,7 @@ def _normalize_task_name(name: str) -> str:
     return name if name.startswith("user_") else f"user_{name}"
 
 
-def handle_show_scheduled_task(args: dict, *, actor: str, **_) -> dict:
+def handle_read_tasks(args: dict, *, actor: str, **_) -> dict:
     name = args.get("name")
     if not name:
         return {"ok": False, "error": "missing required: name"}
@@ -813,26 +800,49 @@ def handle_show_scheduled_task(args: dict, *, actor: str, **_) -> dict:
     return {"ok": True, **detail}
 
 
-def handle_toggle_scheduled_task(args: dict, *, actor: str, **_) -> dict:
+def handle_set_tasks(args: dict, *, actor: str, **_) -> dict:
+    """Cambia stato di un task ricorrente. Dispatch interno fra:
+    (a) enabled=bool → toggle abilitazione (host only);
+    (b) fire_now=true → esecuzione immediata (host only, ex
+        run_scheduled_task_now accorpato 15/5/2026).
+    Mutex: esattamente uno dei due deve essere specificato."""
     if actor != "host":
-        return {"ok": False, "error": "solo HOST puo' toggle (admin)"}
+        return {"ok": False, "error": "solo HOST puo' modificare task (admin)"}
     name = args.get("name")
     enabled = args.get("enabled")
-    if name is None or enabled is None:
-        return {"ok": False, "error": "missing required: name + enabled"}
+    fire_now = args.get("fire_now")
+    if not name:
+        return {"ok": False, "error": "missing required: name"}
+    n_ops = (enabled is not None) + bool(fire_now)
+    if n_ops == 0:
+        return {"ok": False, "error": "specifica 'enabled' (abilita/disabilita) o 'fire_now=true' (esegui subito)"}
+    if n_ops > 1:
+        return {"ok": False, "error": "enabled e fire_now sono mutex"}
     full_name = _normalize_task_name(name)
+    if enabled is not None:
+        try:
+            from scheduler_v2 import client as sched_client
+            ok = sched_client.toggle_job(full_name, bool(enabled))
+            if not ok:
+                return {"ok": False, "error": f"task '{full_name}' non trovato"}
+        except Exception as e:
+            return {"ok": False, "error": f"toggle failed: {e}"}
+        return {"ok": True, "message": f"Task '{full_name}' "
+                f"{'abilitato' if enabled else 'disabilitato'}."}
+    # fire_now=true
     try:
         from scheduler_v2 import client as sched_client
-        ok = sched_client.toggle_job(full_name, bool(enabled))
-        if not ok:
-            return {"ok": False, "error": f"task '{full_name}' non trovato"}
+        out = sched_client.run_now(full_name)
+        if not out.get("ok"):
+            return {"ok": False, "error": out.get("error") or "run_now failed"}
     except Exception as e:
-        return {"ok": False, "error": f"toggle failed: {e}"}
-    return {"ok": True, "message": f"Task '{full_name}' "
-            f"{'abilitato' if enabled else 'disabilitato'}."}
+        return {"ok": False, "error": f"fire failed: {e}"}
+    return {"ok": True, "status": "scheduled",
+            "message": f"Task '{full_name}' next_fire_at avanzato a now; "
+                       f"il daemon lo eseguira' al prossimo tick. Vedi history."}
 
 
-def handle_scheduled_task_history(args: dict, *, actor: str, **_) -> dict:
+def handle_read_tasks_history(args: dict, *, actor: str, **_) -> dict:
     name = args.get("name")
     limit = int(args.get("limit") or 10)
     full_name = _normalize_task_name(name) if name else None
@@ -850,21 +860,5 @@ def handle_scheduled_task_history(args: dict, *, actor: str, **_) -> dict:
     return {"ok": True, "count": len(rows), "history": rows}
 
 
-def handle_run_scheduled_task_now(args: dict, *, actor: str, **_) -> dict:
-    if actor != "host":
-        return {"ok": False, "error": "solo HOST puo' fire manuale (admin)"}
-    name = args.get("name")
-    if not name:
-        return {"ok": False, "error": "missing required: name"}
-    full_name = _normalize_task_name(name)
-    try:
-        from scheduler_v2 import client as sched_client
-        out = sched_client.run_now(full_name)
-        if not out.get("ok"):
-            return {"ok": False, "error": out.get("error") or "run_now failed"}
-    except Exception as e:
-        return {"ok": False, "error": f"fire failed: {e}"}
-    # In v2 il fire e' asincrono: kick il loop, l'esito si vede in `history`.
-    return {"ok": True, "status": "scheduled",
-            "message": f"Task '{full_name}' next_fire_at avanzato a now; "
-                       f"il daemon lo eseguira' al prossimo tick. Vedi history."}
+# run_scheduled_task_now: accorpato in handle_set_tasks (fire_now=true)
+# per coerenza vocab §2.2 (no verb `execute`).

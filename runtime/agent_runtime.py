@@ -84,14 +84,12 @@ LOCATION_REQUEST_TOOL = {
 from describe_entries import DESCRIBE_ENTRIES_TOOL, handle_describe_entries
 from classify_entries import CLASSIFY_ENTRIES_TOOL, handle_classify_entries
 from recurring_tasks import (
-    SCHEDULE_RECURRING_TOOL, LIST_SCHEDULED_TASKS_TOOL,
-    DELETE_TASKS_SCHEDULED_TOOL, SHOW_SCHEDULED_TASK_TOOL,
-    TOGGLE_SCHEDULED_TASK_TOOL, SCHEDULED_TASK_HISTORY_TOOL,
-    RUN_SCHEDULED_TASK_NOW_TOOL,
-    handle_schedule_recurring, handle_list_scheduled_tasks,
-    handle_delete_tasks_scheduled, handle_show_scheduled_task,
-    handle_toggle_scheduled_task, handle_scheduled_task_history,
-    handle_run_scheduled_task_now,
+    CREATE_TASKS_TOOL, LIST_TASKS_TOOL,
+    DELETE_TASKS_TOOL, READ_TASKS_TOOL,
+    SET_TASKS_TOOL, READ_TASKS_HISTORY_TOOL,
+    handle_create_tasks, handle_list_tasks,
+    handle_delete_tasks, handle_read_tasks,
+    handle_set_tasks, handle_read_tasks_history,
 )
 from test_runner import check_hints
 from undo import UndoLog
@@ -2242,7 +2240,7 @@ _HALLUCINATION_RE = re.compile(
 # follow-up e ne ha chiamato uno con ok=true, la promessa e' supportata.
 # Aggiungere qui ogni nuovo executor con effetto persistente registrato.
 _REGISTERED_FUTURE_TOOLS = frozenset({
-    "schedule_recurring",        # task ricorrente nel scheduler builtin
+    "create_tasks",              # task ricorrente nel scheduler builtin
     "send_messages",             # mail/telegram in uscita
     "write_files",               # file scritti localmente
     "create_dirs",               # directory create
@@ -3790,10 +3788,9 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
         _allow_describe = (_intent_verb is None) or (_intent_verb not in _action_verbs)
         synth_tools = [
             SYNTH_REQUEST_TOOL, CLASSIFY_ENTRIES_TOOL, LOCATION_REQUEST_TOOL,
-            SCHEDULE_RECURRING_TOOL, LIST_SCHEDULED_TASKS_TOOL,
-            DELETE_TASKS_SCHEDULED_TOOL, SHOW_SCHEDULED_TASK_TOOL,
-            TOGGLE_SCHEDULED_TASK_TOOL, SCHEDULED_TASK_HISTORY_TOOL,
-            RUN_SCHEDULED_TASK_NOW_TOOL,
+            CREATE_TASKS_TOOL, LIST_TASKS_TOOL,
+            DELETE_TASKS_TOOL, READ_TASKS_TOOL,
+            SET_TASKS_TOOL, READ_TASKS_HISTORY_TOOL,
         ]
         if _allow_describe:
             synth_tools.append(DESCRIBE_ENTRIES_TOOL)
@@ -4414,18 +4411,16 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
         # Casi speciali builtin per scheduling ricorrente (1/5/2026 sera).
         # I 3 tool sono callable dal PLANNER per registrare/elencare/cancellare
         # task ricorrenti che il scheduler builtin esegue al fire automatico.
-        if chosen_name in ("schedule_recurring", "list_scheduled_tasks",
-                             "delete_tasks_scheduled", "show_scheduled_task",
-                             "toggle_scheduled_task", "scheduled_task_history",
-                             "run_scheduled_task_now"):
+        if chosen_name in ("create_tasks", "list_tasks",
+                             "delete_tasks", "read_tasks",
+                             "set_tasks", "read_tasks_history"):
             _handler = {
-                "schedule_recurring": handle_schedule_recurring,
-                "list_scheduled_tasks": handle_list_scheduled_tasks,
-                "delete_tasks_scheduled": handle_delete_tasks_scheduled,
-                "show_scheduled_task": handle_show_scheduled_task,
-                "toggle_scheduled_task": handle_toggle_scheduled_task,
-                "scheduled_task_history": handle_scheduled_task_history,
-                "run_scheduled_task_now": handle_run_scheduled_task_now,
+                "create_tasks": handle_create_tasks,
+                "list_tasks": handle_list_tasks,
+                "delete_tasks": handle_delete_tasks,
+                "read_tasks": handle_read_tasks,
+                "set_tasks": handle_set_tasks,
+                "read_tasks_history": handle_read_tasks_history,
             }[chosen_name]
             _cid = getattr(progress, "chat_id", None) if progress else None
             obs = _handler(args, actor=actor, channel=channel, chat_id=_cid)

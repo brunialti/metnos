@@ -97,6 +97,13 @@ OBJECTS = (
     #   richieste di approvazione del Vaglio (oggi modellate in altro modo).
     # Visibili al PLANNER come ordinario `get_proposals(kind=...)`.
     "proposals",
+    # Tasks (15/5/2026): task ricorrenti / promemoria / timer schedulati
+    # nel scheduler v2 Metnos (ADR 0112). Entita' di prima classe distinta
+    # da `events` (calendario utente): hanno trigger grammar `daily@HH:MM`/
+    # `every_Nm`/`at:<ISO>`/`cron:<5-field>`, history esecuzioni, query
+    # da rilanciare al fire, grace window. Sezione planner `scheduled_tasks`
+    # gated automaticamente via `_OBJECT_TO_SECTIONS['tasks']`.
+    "tasks",
     # Inputs: raccolta strutturata di valori forniti dall'utente in
     # risposta a un dialogo (ADR 0090, 4-5/5/2026). Plurale invariante.
     # Astratto come `signatures`: oggetto-strumento per la raccolta
@@ -250,6 +257,7 @@ OBJECT_DEFAULT_MUTATING_VERB: dict[str, str | None] = {
     "signatures": "set",
     "texts":      "write",
     "proposals":  "set",       # approve/reject mappa a set (state upsert)
+    "tasks":      "create",    # create_tasks (scheduler v2 ricorrenti)
     "inputs":     None,        # get_inputs e' lookup interno, no mutating
     "credentials": "set",
     "entries":    None,        # entries sono meta-oggetto in-memory
@@ -464,6 +472,7 @@ _OBJECT_TO_SECTIONS: dict[str, tuple[str, ...]] = {
     "signatures": ("admin_shell",),  # safety policy shell + mount
     "texts": (),                  # filter/read text generico, coperto dal core
     "proposals": (),              # admin proposals_cli, no PLANNER routing
+    "tasks": ("scheduled_tasks",),  # scheduler v2 ricorrenti + one-shot
     "inputs": (),                 # dialog UI, gestito dal runtime, no sezione
     "credentials": ("admin_shell",),
     "entries": (),                # meta-oggetto runtime, no sezione dedicata
@@ -631,6 +640,9 @@ _OBJECT_SYNONYMS_IT: dict[str, str] = {
     "pacchetto": "packages", "pacchetti": "packages",
     "processo": "processes", "processi": "processes",
     "luogo": "places", "luoghi": "places", "posto": "places",
+    "task": "tasks", "promemoria": "tasks", "timer": "tasks",
+    "ricorrente": "tasks", "ricorrenti": "tasks",
+    "schedulato": "tasks", "schedulati": "tasks",
 }
 _OBJECT_SYNONYMS_EN: dict[str, str] = {
     "appointment": "events", "appointments": "events",
@@ -646,6 +658,8 @@ _OBJECT_SYNONYMS_EN: dict[str, str] = {
     "package": "packages", "packages": "packages",
     "process": "processes", "processes": "processes",
     "place": "places", "places": "places",
+    "task": "tasks", "tasks": "tasks", "reminder": "tasks", "timer": "tasks",
+    "scheduled": "tasks", "recurring": "tasks",
 }
 
 

@@ -3,7 +3,7 @@ role: planner
 tier: middle
 lang: en
 style: prescriptive
-version: 1
+version: 2
 owner: roberto
 updated: 2026-05-15
 sha_prev: ""
@@ -12,45 +12,57 @@ section:
   name: scheduled_tasks
   header: "RECURRING TASKS / TIMERS / REMINDERS in Metnos (NOT calendar events, NOT OS processes)"
   preamble: |
-    RECURRING TASKS / TIMERS / REMINDERS / SCHEDULING
-    -> list_scheduled_tasks (list), delete_tasks_scheduled (cancel), show_scheduled_task (detail),
-       schedule_recurring (create), toggle_scheduled_task (enable/disable), scheduled_task_history (history),
-       run_scheduled_task_now (run now).
+    RECURRING TASKS / TIMERS / REMINDERS / SCHEDULING (object §2.2: `tasks`)
+    -> list_tasks (list), delete_tasks (cancel), read_tasks (detail),
+       create_tasks (create), set_tasks (enable/disable or fire now),
+       read_tasks_history (execution history).
     These are Metnos automatic tasks: cron-like (daily@HH:MM, every_Ns/m/h), persisted in scheduler_v2.sqlite.
     Distinct from: calendar events (read_events), system processes (get_processes), undo (undo_last_turn).
 
 rules:
   - name: list_tasks
     when: "requests to see recurring tasks / timers / reminders ('what tasks do I have scheduled', 'list timers', 'which recurring tasks', 'show me reminders', 'list scheduled tasks', 'what does Metnos do automatically')"
-    must: "use list_scheduled_tasks. Returns `tasks: [{id, name, schedule_human, last_fire_human, ...}]` + a user-facing `summary` with explicit IDs for later cancellation"
+    must: "use list_tasks. Returns `tasks: [{id, name, schedule_human, last_fire_human, ...}]` + a user-facing `summary` with explicit IDs for later cancellation"
     must_not: "call get_processes (current OS processes, NOT Metnos tasks) NOR read_events (calendar events, NOT recurring tasks)"
-    ok: "'list recurring tasks' -> list_scheduled_tasks() -> final_answer with the observation's `summary`"
+    ok: "'list recurring tasks' -> list_tasks() -> final_answer with the observation's `summary`"
     error: "'list recurring tasks' -> get_processes() (THIS IS AN ERROR: get_processes shows OS PID/CPU, nothing to do with Metnos recurring tasks)"
 
   - name: cancel_task
     when: "requests to cancel / stop / remove a recurring task / timer / reminder ('cancel timer ping', 'stop task X', 'remove the mail reminder', 'stop the recurring task', 'cancel task riassunto_mail')"
-    must: "use delete_tasks_scheduled(id=<number>) if the user cites an ID, or delete_tasks_scheduled(name=<slug>) if they cite the name. If the user is vague ('cancel the mail task'), call list_scheduled_tasks first to show IDs and ask for clarification"
+    must: "use delete_tasks(id=<number>) if the user cites an ID, or delete_tasks(name=<slug>) if they cite the name. If the user is vague ('cancel the mail task'), call list_tasks first to show IDs and ask for clarification"
     must_not: "call delete_events (cancels CALENDAR EVENTS, not recurring tasks) NOR kill (OS processes)"
-    ok: "'cancel timer 17' -> delete_tasks_scheduled(id=17) -> final_answer. OR 'cancel task riassunto_mail' -> delete_tasks_scheduled(name=\"riassunto_mail\") -> final_answer"
+    ok: "'cancel timer 17' -> delete_tasks(id=17) -> final_answer. OR 'cancel task riassunto_mail' -> delete_tasks(name=\"riassunto_mail\") -> final_answer"
     error: "'cancel recurring task riassunto_mail' -> delete_events(...) (THIS IS AN ERROR: delete_events cancels calendar events, not Metnos recurring tasks. The name is not an event_id)"
+
+  - name: show_task_detail
+    when: "requests to see detail of ONE recurring task ('show detail of task X', 'info about task Y', 'when does task X run')"
+    must: "use read_tasks(name=<slug>). Returns schedule, last execution, status, user record."
+    must_not: "confuse with read_tasks_history (execution history)"
+    ok: "'show detail of task ping' -> read_tasks(name=\"ping\") -> final_answer"
 
   - name: show_task_history
     when: "requests to see history/log/last executions of a recurring task ('history of task X', 'recurring task log', 'timer fire log', 'last executions of task')"
-    must: "use scheduled_task_history(name=<slug>?, limit=<N>?). Without name = history of all tasks. Returns list of fires with timestamp/status/duration"
+    must: "use read_tasks_history(name=<slug>?, limit=<N>?). Without name = history of all tasks. Returns list of fires with timestamp/status/duration"
     must_not: "call get_processes (current processes, not history) NOR read_events (calendar events)"
-    ok: "'history of task ping' -> scheduled_task_history(name=\"ping\", limit=10) -> final_answer"
+    ok: "'history of task ping' -> read_tasks_history(name=\"ping\", limit=10) -> final_answer"
     error: "'execution history of recurring task' -> get_processes() (THIS IS AN ERROR: get_processes shows current process snapshot, not task history)"
 
   - name: schedule_task
     when: "requests to SCHEDULE / CREATE a recurring task / reminder / timer ('every day at 9 X', 'every N minutes Y', 'remind me to X', 'schedule Y', 'plan X every day')"
-    must: "use schedule_recurring(name=<slug>, schedule=<daily@HH:MM|every_Ns/m/h>, query=<natural user phrase>, label=<description>?). Scheduler v2 will invoke a new turn with `query` at each fire"
+    must: "use create_tasks(label=<description>, when=<daily@HH:MM|every_Nm>, query=<natural user phrase>, times=<N>?). Scheduler v2 will invoke a new turn with `query` at each fire"
     must_not: "create a calendar event with create_events (it's a RECURRING task, not a single event)"
-    ok: "'every day at 9 read mail' -> schedule_recurring(name=\"check_mail_morning\", schedule=\"daily@09:00\", query=\"read latest mail\") -> final_answer"
+    ok: "'every day at 9 read mail' -> create_tasks(label=\"check mail morning\", when=\"daily@09:00\", query=\"read latest mail\") -> final_answer"
     error: "'every day at 9 X' -> create_events (THIS IS AN ERROR: create_events makes ONE event, not a repeating task)"
 
   - name: toggle_task
     when: "requests to pause / suspend / re-enable a task without canceling it ('pause task X', 'suspend temporarily', 'reactivate recurring task')"
-    must: "use toggle_scheduled_task(name=<slug>, enabled=<true|false>). Disabled = doesn't fire but remains in DB; re-enableable."
-    must_not: "cancel the task with delete_tasks_scheduled (irreversible, only for permanent removal)"
-    ok: "'pause task ping' -> toggle_scheduled_task(name=\"ping\", enabled=false) -> final_answer"
-    error: "'temporarily suspend the task' -> delete_tasks_scheduled (THIS IS AN ERROR: cancellation is permanent, suspension is temporary)"
+    must: "use set_tasks(name=<slug>, enabled=<true|false>). Disabled = doesn't fire but remains in DB; re-enableable."
+    must_not: "cancel the task with delete_tasks (irreversible, only for permanent removal)"
+    ok: "'pause task ping' -> set_tasks(name=\"ping\", enabled=false) -> final_answer"
+    error: "'temporarily suspend the task' -> delete_tasks (THIS IS AN ERROR: cancellation is permanent, suspension is temporary)"
+
+  - name: fire_task_now
+    when: "requests to force immediate execution of a task outside its schedule ('run task X now', 'force fire ping', 'try task Y now')"
+    must: "use set_tasks(name=<slug>, fire_now=true). Mutex with enabled. HOST only."
+    must_not: "specify both enabled and fire_now in the same call"
+    ok: "'run task ping now' -> set_tasks(name=\"ping\", fire_now=true) -> final_answer"

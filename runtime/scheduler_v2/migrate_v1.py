@@ -3,7 +3,7 @@
 Reads two v1 SQLite DBs:
 
   - `recurring_tasks.db` (table `recurring_tasks`): user-defined recurring
-    tasks (`schedule_recurring` from chat). Each row maps to a v2 entry
+    tasks (`create_tasks` from chat, formerly `schedule_recurring`). Each row maps to a v2 entry
     with `callback_key="run_user_query"`, `origin="user"`, and a payload
     carrying the fields the v1 callback closure used to capture (query,
     actor, channel, chat_id, name, label).

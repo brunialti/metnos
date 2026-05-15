@@ -462,12 +462,12 @@ def compose(role: str, lang: str, *, sections=None, **vars) -> str:
     if role != "planner":
         return get(role, lang, **vars)
 
-    # Sezioni OPT-IN: NON incluse nel default "all-sections" perche'
-    # rilevanti solo per pattern d'uso specifici. Includerle sempre allunga
-    # il prompt e degrada altre pipeline (bug live 15/5/2026:
-    # scheduled_tasks aggiunta → task auto ROCm/mail perdevano qualita'
-    # describe finale). Devono essere richieste esplicitamente.
-    _OPT_IN_SECTIONS = {"scheduled_tasks"}
+    # Sezioni OPT-IN: NON incluse nel default "all-sections", solo via
+    # selezione mirata. Riservato a sezioni a costo elevato il cui
+    # contesto e' inutile fuori dal loro dominio. Vuota di default
+    # (15/5/2026): la regressione che aveva motivato `scheduled_tasks`
+    # opt-in e' stata risolta dal synthetic final_answer (ADR 0133 ext).
+    _OPT_IN_SECTIONS: set[str] = set()
     # Risolvi la lista di sezioni effettive (sorted, deterministica).
     if sections is None or not sections:
         effective = tuple(s for s in list_planner_sections(lang)

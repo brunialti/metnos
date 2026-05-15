@@ -103,7 +103,7 @@ DB_I18N            = PATH_USER_DATA / "i18n.sqlite"
 DB_SCRATCHPAD      = PATH_USER_DATA / "scratchpad.db"
 # Pairings (multi-device, ADR 0035)
 DB_PAIRINGS        = PATH_USER_STATE / "pairings.db"
-# Recurring user tasks (registered via PLANNER schedule_recurring)
+# Recurring user tasks (registered via PLANNER create_tasks)
 DB_RECURRING_TASKS = PATH_USER_STATE / "recurring_tasks.db"
 # Approvals (autonomy_level + grant pending)
 DB_APPROVALS       = PATH_USER_STATE / "approvals.db"
