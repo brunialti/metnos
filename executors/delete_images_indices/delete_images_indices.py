@@ -38,7 +38,8 @@ def _is_dry_run() -> bool:
 
 
 def _index_root_for_base(base_path: Path) -> Path:
-    digest = hashlib.sha256(str(base_path.resolve()).encode("utf-8")).hexdigest()
+    # Path LOGICAL coerente con find/create/get_images_indices.
+    digest = hashlib.sha256(str(base_path).encode("utf-8")).hexdigest()
     return _index_image_root() / digest[:16]
 
 

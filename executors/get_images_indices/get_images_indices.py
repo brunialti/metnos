@@ -31,7 +31,9 @@ def _index_image_root() -> Path:
 
 
 def _index_root_for_base(base_path: Path) -> Path:
-    digest = hashlib.sha256(str(base_path.resolve()).encode("utf-8")).hexdigest()
+    # Identita' corpus = path LOGICAL (no .resolve()), coerente con
+    # find_images_indices._index_dir. Symlink → NAS non cambia indice.
+    digest = hashlib.sha256(str(base_path).encode("utf-8")).hexdigest()
     return _index_image_root() / digest[:16]
 
 

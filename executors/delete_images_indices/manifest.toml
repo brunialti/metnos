@@ -16,7 +16,7 @@ en = "Delete the persistent image index in `base_path` for the specified type. `
 
 [code]
 files  = ["delete_images_indices.py"]
-digest = "sha256:1981733467d972eebde2d160a5da9b59c31dc630a4b8980619c35bffa3dc9416"
+digest = "sha256:d9c01c1ab7014512462ee0212d8624ef0dba7d3c02dce70e9e2765d27efebfa9"
 
 [args]
 type     = "object"

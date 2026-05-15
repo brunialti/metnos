@@ -96,8 +96,10 @@ def _is_dry_run() -> bool:
 
 
 def _index_dir(base_path: Path) -> Path:
-    """Risolve la dir dell'indice unificato per `base_path`."""
-    digest = hashlib.sha256(str(base_path.resolve()).encode("utf-8")).hexdigest()
+    """Risolve la dir dell'indice unificato per `base_path`.
+    Path LOGICAL (no .resolve()): coerente con find_images_indices, symlink
+    a NAS mantiene lo stesso indice (vedi commit 15/5/2026 photo gallery fix)."""
+    digest = hashlib.sha256(str(base_path).encode("utf-8")).hexdigest()
     return _index_image_root() / digest[:16] / "unified"
 
 

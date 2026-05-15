@@ -15,7 +15,7 @@ en = "Status of image indices for `base_path`. For each `idx` (scene/persons/gps
 
 [code]
 files  = ["get_images_indices.py"]
-digest = "sha256:0595ec058b0756a33b127b5a093fabe81200c9ca16109671bc914abd266cb6f6"
+digest = "sha256:7f52499ee0bdd98b7a1db356fb8d5a14e6d3151dba366005c4474228476c6caf"
 
 [args]
 type     = "object"

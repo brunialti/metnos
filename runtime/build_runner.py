@@ -67,7 +67,8 @@ def _index_image_root() -> Path:
 
 
 def _digest_of(base_path: Path) -> str:
-    return hashlib.sha256(str(base_path.resolve()).encode("utf-8")).hexdigest()[:16]
+    # Path LOGICAL coerente con _index_dir delle altre componenti image-index.
+    return hashlib.sha256(str(base_path).encode("utf-8")).hexdigest()[:16]
 
 
 def _index_dir(base_path: Path, idx: str) -> Path:

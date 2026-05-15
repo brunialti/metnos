@@ -57,10 +57,12 @@ def _has_unified_v4(corpus_dir: Path) -> bool:
 
 
 def _resolve_corpus_dir(base_path: Path) -> Path:
-    """Risolve la corpus dir indice da base_path."""
+    """Risolve la corpus dir indice da base_path.
+    Path LOGICAL (no .resolve()): coerente con _index_dir di
+    find/create/get/delete_images_indices."""
     import hashlib
     import os
-    digest = hashlib.sha256(str(base_path.resolve()).encode("utf-8")).hexdigest()
+    digest = hashlib.sha256(str(base_path).encode("utf-8")).hexdigest()
     v = os.environ.get("METNOS_INDEX_ROOT")
     if v:
         return Path(v) / "image" / digest[:16]

@@ -72,7 +72,13 @@ def _user_data_root() -> Path:
 
 
 def _index_dir(base_path: Path) -> Path:
-    digest = hashlib.sha256(str(base_path.resolve()).encode("utf-8")).hexdigest()
+    # 15/5/2026: identita' del corpus = path LOGICAL (no .resolve()). Se
+    # `~/.local/share/metnos/Immagini` e' un symlink, il corpus resta lo
+    # stesso anche se il storage sottostante (NAS, mount) cambia. Usare
+    # `.resolve()` cambierebbe il digest e renderebbe inaccessibili gli
+    # indici creati quando il path era una dir reale. Il caller passa
+    # gia' path canonical assoluto.
+    digest = hashlib.sha256(str(base_path).encode("utf-8")).hexdigest()
     return _index_image_root() / digest[:16] / "unified"
 
 
@@ -110,10 +116,12 @@ def _resolve_base_path(base_path_arg) -> tuple[Path | None, list[Path] | None, s
             # discovery automatica. Bug live: LLM passa `/home/roberto/images`
             # (esiste, no idx), discovery trova `~/.local/share/metnos/Immagini`
             # (esiste, 30k entries). Resilienza > rigore.
-            resolved = p.resolve()
-            idx_dir = _index_dir(resolved)
+            # NON usare .resolve(): l'identita' del corpus e' il path logical,
+            # symlink->NAS deve mantenere lo stesso indice (vedi _index_dir).
+            logical = p
+            idx_dir = _index_dir(logical)
             if (idx_dir / "meta.json").exists():
-                return resolved, None, None
+                return logical, None, None
             # Fallback: discovery
             root = _user_data_root()
             dirs: list[Path] = []
@@ -128,7 +136,7 @@ def _resolve_base_path(base_path_arg) -> tuple[Path | None, list[Path] | None, s
                     f"base_path '{arg}' non indicizzato → fallback discovery "
                     f"({len(dirs)} indici trovati)"
                 )
-            return resolved, None, None  # nessun fallback, ritorna come prima
+            return logical, None, None  # nessun fallback, ritorna come prima
         return None, None, f"base_path not found: {arg}"
     root = _user_data_root()
     if root.exists():
