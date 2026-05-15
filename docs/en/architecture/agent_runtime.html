@@ -555,15 +555,6 @@ write_files(path="/tmp/out.txt", content="<JSON from httpbin>")</pre>
 The reference must be the <em>sole value</em> of the arg, not interpolated within longer strings (limit of v1.1).
 </p>
 
-<h2>History: from placeholder syntax to the <code>from_step</code> refactor</h2>
-<p>
-When the POC started without any data-piping mechanism, the LLM tried to invent a shell-style syntax (<code>$(web_fetch(...)['content'])</code>) that the runtime could not interpret: the file ended up containing that literal string instead of the data. The <code>{{stepN.field}}</code> syntax was the first solution, simple and zero-shot for Qwen3:8b.
-</p>
-
-<p>
-When the planner switched to Gemma 4 26B for native tool calling, a new problem emerged (<em>finding F1</em> on 2026-04-29): the schema-guided decoder, seeing <code>entries: array of object</code> in the schema, would fabricate plausible but fictitious dicts instead of emitting the placeholder string. The runtime's rejection forced a correct retry, but at a cost of 12-15s and hundreds of wasted tokens for each list step. Structural fix: separate the list case (<code>from_step: integer</code>, schema-coherent, no possibility of fabrication) from the single-value case (<code>{{stepN.field}}</code>, retro-compatible for content/path/template).
-</p>
-
 <h1 id="cap8">8. Scratchpad for large observations</h1>
 
 <p>

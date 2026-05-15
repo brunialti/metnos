@@ -547,15 +547,6 @@ write_files(path="/tmp/out.txt", content="<JSON di httpbin>")</pre>
 Il riferimento dev'essere il <em>solo valore</em> dell'arg, non interpolato in stringhe pi&ugrave; lunghe (limite v1.1).
 </p>
 
-<h2>Storia: dalla sintassi placeholder al refactor <code>from_step</code></h2>
-<p>
-Quando il POC &egrave; partito senza alcun meccanismo di data piping, il LLM ha provato a inventarsi una sintassi shell-style (<code>$(web_fetch(...)['content'])</code>) che il runtime non sapeva interpretare: il file finiva per contenere quella stringa letterale invece dei dati. La sintassi <code>{{stepN.field}}</code> &egrave; stata la prima soluzione, semplice e zero-shot per Qwen3:8b.
-</p>
-
-<p>
-Quando il pianificatore &egrave; passato a Gemma 4 26B per il tool calling nativo, &egrave; emerso un nuovo problema (il <em>finding F1</em> del 29/4/2026): il decoder schema-guidato, vedendo nello schema <code>entries: array of object</code>, costruiva dict plausibili ma fittizi invece di emettere il placeholder string. Il rejection del runtime forzava un retry corretto, ma con costo di 12-15s e centinaia di token sprecati per ogni step di lista. Soluzione strutturale: separare il caso lista (<code>from_step: integer</code>, schema-coerente, niente possibilit&agrave; di invenzione) dal caso valore singolo (<code>{{stepN.field}}</code>, retro-compatibile per content/path/template).
-</p>
-
 <h1 id="cap8">8. Scratchpad per observation grandi</h1>
 
 <p>

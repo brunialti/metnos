@@ -678,53 +678,54 @@ Sotto, i quindici documenti raggruppati per ruolo. La colonna
 </tbody>
 </table>
 
-<h2 id="stato">6. Stato del sistema al 4 maggio 2026</h2>
+<h2 id="stato">6. Stato del sistema</h2>
 
 <p>
-Le <strong>fasi 1 &ndash; 5 sono chiuse</strong>: scheletro POC, test framework
-SQLite a tre livelli, synt multistage validato 4/4 contro il 32% del prompt
-unico, reality check live su Telegram con 32 seed, Vaglio reale con
-guardia + giudice rule-based, sandbox <code>bwrap</code> con flag dal
-manifest, capability registry esteso. La <strong>fase 6 (voce)</strong>
-&egrave; in standby: si riusa un satellite proprietario gi&agrave; fatto,
-non &egrave; bloccante. La <strong>fase 7 (multidimensionale)</strong> &egrave;
-attiva: topic 1 sul client Rust per executor remoti ha tutte e dieci le
-decisioni chiuse e una roadmap MVP a cinque settimane; primo device
-remoto (PC Windows) gi&agrave; pairato end-to-end. La <strong>fase 8
-(stress logico)</strong> arriver&agrave; dopo la 7.
+Le <strong>fasi 1 &ndash; 5 sono chiuse</strong>: scheletro POC, test
+framework SQLite a tre livelli, synt multistage, reality check live su
+Telegram, vaglio reale con guardia + giudice LLM, sandbox
+<code>bwrap</code>, capability registry esteso. La <strong>fase 6
+(voce)</strong> &egrave; in standby: si riusa un satellite proprietario,
+non &egrave; bloccante. La <strong>fase 7 (multidimensionale)</strong>
+&egrave; attiva: topic 1 (client Rust per executor remoti) ha decisioni
+chiuse e una roadmap MVP; primo device remoto Windows gi&agrave; pairato.
+La <strong>fase 8 (stress logico)</strong> arriver&agrave; dopo la 7.
 </p>
 
 <p>
-La sessione del <strong>4 maggio 2026</strong> ha portato un blocco
-strutturale (ADR&nbsp;<code>0072&ndash;0084</code>) con tre macro-temi:
-<em>(a) prefilter pi&ugrave; affidabile</em> (adaptive re-rank intra-turno
-ranker-agnostic, primary tools per ogni object canonico, bench
-embedding-vs-token che conferma il token-based 92.3% Recall@5),
-<em>(b) introvertiva pi&ugrave; pulita</em> (filtri qualit&agrave;
-deterministici, short-circuit synth_request su already_in_catalog e
-canonical alias, scheduler gate user-activity), <em>(c) HTTP API
-Phase&nbsp;1 + multi-user + crawler web autenticato</em> (porta 8770 con
-admin dashboard htmx, registro <code>users.db</code> host+guest, pairing
-guest via <code>/start</code>, tre executor crawler nuovi
-<code>find_urls</code>/<code>read_urls_html</code>/<code>read_urls_pdf</code>
-+ <code>login_session</code>, credenziali cifrate Fernet con master
-admin.key + scrub turn log, vaglio cross-user host gatekeeper).
-Registry ADR: <strong>85 entries</strong> (<code>0055</code> intenzionalmente
-skipped).
+Il vocabolario chiuso e&grave; oggi a <strong>23 azioni</strong>
+(<code>read, write, move, delete, create, find, list, filter, sort,
+group, classify, get, set, send, describe, render, extract, compress,
+compute, compare, change, order, share</code>) e <strong>19 oggetti</strong>
+(<code>files, dirs, packages, messages, events, contacts, places,
+processes, urls, numbers, images, signatures, texts, proposals, inputs,
+credentials, entries, persons, tasks</code>). I qualifier sono in quattro
+famiglie: formato/codifica, modalit&agrave;, safety policy, provider
+(per backend specifici non-default come <code>_google_workspace</code>).
+Centralizzato in <code>runtime/vocab.py</code>.
 </p>
 
 <p>
-Il pool di executor &egrave; ora <strong>~46 totali</strong> fra
-hand-crafted e sintetizzati. Verbi-produttori ortogonali a 5
+Tre primitive di pipeline lavorano sulle liste di entries del turno:
+<code>filter_entries</code> riduce una lista (predicati su campo:
+<code>where_starts_with</code>, <code>where_contains</code>,
+<code>where_glob</code>, <code>where_regex</code>),
+<code>filter_lists</code> combina due liste (set ops: intersect, union,
+difference, symdiff, overlap temporale), <code>compute_entries</code>
+calcola uno scalare da una lista (sum, avg, min, max, count). Esempio
+concreto utente: &laquo;C'&egrave; un appuntamento HLT che si sovrappone con uno
+MNM nei prossimi 3 mesi?&raquo; &rarr; il pianificatore costruisce in
+sei passi <code>read_events &rarr; filter HLT &rarr; filter MNM &rarr;
+filter_lists(op=overlap) &rarr; final_answer</code>.
+</p>
+
+<p>
+Il pool di executor &egrave; ora <strong>~60 totali</strong> fra
+hand-crafted e sintetizzati, pi&ugrave; gli executor importati da
+skill esterne (Google Workspace, ecc.). Verbi-produttori ortogonali a 5
 (<code>find</code> per pattern, <code>get</code> per id/stato,
 <code>read</code> per blob da sorgente, <code>list</code> per container,
-<code>filter</code> per riduzione). Vocabolario chiuso a
-<strong>22 azioni</strong> e <strong>13 oggetti</strong> (con
-<code>texts</code> e <code>signatures</code> di prima classe), pi&ugrave;
-qualifier in quattro famiglie: formato/codifica, operazione (incluso il
-nuovo <code>_loc</code>), granularit&agrave; di dominio
-(<code>_lines</code>/<code>_pages</code>/<code>_segments</code>) e
-safety policy. Centralizzato in <code>runtime/vocab.py</code>.
+<code>filter</code> per riduzione).
 </p>
 
 <h2 id="convenzioni">7. Convenzioni di scrittura</h2>

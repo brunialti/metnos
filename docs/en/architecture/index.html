@@ -531,53 +531,54 @@ progress or partial). All have an Italian counterpart at
 </tbody>
 </table>
 
-<h2 id="status">6. System state as of 4 May 2026</h2>
+<h2 id="status">6. System state</h2>
 
 <p>
 <strong>Phases 1 &ndash; 5 are closed</strong>: POC skeleton, three-tier
-SQLite test framework, multistage synt validated 4/4 against the 32%
-single-prompt baseline, live reality check on Telegram with 32 seed
-executors, real Vaglio with binary guard + rule-based judge, <code>bwrap</code>
-sandbox driven from the manifest, extended capability registry. <strong>Phase
-6 (voice)</strong> is on hold: a satellite already built proprietarily is
-reused, it is not blocking. <strong>Phase 7 (multidimensional)</strong> is
-under way: topic 1 on a Rust client for remote executors has all ten
-decisions closed and a five-week MVP roadmap; the first remote device
-(a Windows PC) is already paired end-to-end. <strong>Phase 8 (logical
-stress)</strong> follows phase 7.
+SQLite test framework, multistage synt, live reality check on Telegram,
+real vaglio with binary guard + LLM judge, <code>bwrap</code> sandbox,
+extended capability registry. <strong>Phase 6 (voice)</strong> is on
+hold: a proprietary satellite is reused, it is not blocking. <strong>Phase
+7 (multidimensional)</strong> is under way: topic 1 (Rust client for
+remote executors) has decisions closed and an MVP roadmap; the first
+Windows remote device is paired. <strong>Phase 8 (logical stress)</strong>
+follows phase 7.
 </p>
 
 <p>
-The session of <strong>4 May 2026</strong> shipped a structural block
-(ADRs&nbsp;<code>0072&ndash;0084</code>) on three macro-themes:
-<em>(a) more reliable prefilter</em> (ranker-agnostic adaptive intra-turn
-re-rank, primary tools per canonical object, embedding-vs-token bench
-that confirms token-based at 92.3% Recall@5), <em>(b) cleaner
-introvertiva</em> (deterministic quality filters, synth_request
-short-circuit on already_in_catalog and canonical alias, scheduler gate
-on user activity), <em>(c) HTTP API Phase&nbsp;1 + multi-user +
-authenticated web crawler</em> (port 8770 with htmx admin dashboard,
-host+guest <code>users.db</code> registry, guest pairing via
-<code>/start</code>, three new crawler executors
-<code>find_urls</code>/<code>read_urls_html</code>/<code>read_urls_pdf</code>
-+ <code>login_session</code>, Fernet-encrypted credentials with admin.key
-master + turn-log scrub, cross-user vaglio with host gatekeeper). ADR
-registry: <strong>85 entries</strong> (<code>0055</code> intentionally
-skipped).
+The closed vocabulary now stands at <strong>23 actions</strong>
+(<code>read, write, move, delete, create, find, list, filter, sort,
+group, classify, get, set, send, describe, render, extract, compress,
+compute, compare, change, order, share</code>) and <strong>19 objects</strong>
+(<code>files, dirs, packages, messages, events, contacts, places,
+processes, urls, numbers, images, signatures, texts, proposals, inputs,
+credentials, entries, persons, tasks</code>). Qualifiers come in four
+families: format/encoding, modality, safety policy, and provider (for
+specific non-default backends like <code>_google_workspace</code>).
+Centralised in <code>runtime/vocab.py</code>.
 </p>
 
 <p>
-The executor pool now stands at <strong>~46 total</strong> across
-hand-crafted and synthesised. Five orthogonal producer verbs
+Three pipeline primitives work on the turn's lists of entries:
+<code>filter_entries</code> reduces one list (predicates on a field:
+<code>where_starts_with</code>, <code>where_contains</code>,
+<code>where_glob</code>, <code>where_regex</code>), <code>filter_lists</code>
+combines two lists (set ops: intersect, union, difference, symdiff,
+temporal overlap), <code>compute_entries</code> produces a scalar from
+one list (sum, avg, min, max, count). Concrete user example: &laquo;Is
+there an HLT appointment that overlaps with an MNM one in the next 3
+months?&raquo; &rarr; the planner builds in six steps
+<code>read_events &rarr; filter HLT &rarr; filter MNM &rarr;
+filter_lists(op=overlap) &rarr; final_answer</code>.
+</p>
+
+<p>
+The executor pool now stands at <strong>~60 total</strong> across
+hand-crafted and synthesised, plus executors imported from external
+skills (Google Workspace, etc.). Five orthogonal producer verbs
 (<code>find</code> for patterns, <code>get</code> for ids/state,
 <code>read</code> for blobs from a source, <code>list</code> for
-containers, <code>filter</code> for reduction). Closed vocabulary at
-<strong>22 actions</strong> and <strong>13 objects</strong> (with
-<code>texts</code> and <code>signatures</code> as first-class objects),
-plus qualifiers in four families: format/encoding, operation (including
-the new <code>_loc</code>), domain granularity
-(<code>_lines</code>/<code>_pages</code>/<code>_segments</code>) and
-safety policy. Centralised in <code>runtime/vocab.py</code>.
+containers, <code>filter</code> for reduction).
 </p>
 
 <h2 id="conventions">7. Writing conventions</h2>

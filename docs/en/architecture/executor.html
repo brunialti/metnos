@@ -590,7 +590,45 @@ files and that is it. If you want a subset, you ask via the pattern, or you pipe
 result into a tool that filters. One thing at a time.
 </p>
 
-<h2>7.3 <code>send_messages</code> &mdash; &laquo;send a message to Lucia&raquo;</h2>
+<h2>7.3 <code>filter_lists</code> &mdash; &laquo;find overlapping events&raquo;</h2>
+
+<p>
+A recent tool that works on <em>two</em> lists rather than one. Useful
+whenever a user question requires an AND between two sets: "which HLT
+appointments overlap with MNM ones in the next three months?", or
+"which files are present in both folders?". Before 15 May Metnos had no
+primitive for these operations; the planner tried to simulate them with
+a single repeated <code>filter_entries</code> and produced false results.
+</p>
+
+<pre>call:        filter_lists(op="overlap",
+                          from_step=2,    # list A (HLT events)
+                          with_step=3)    # list B (MNM events)
+reply:       { ok: true,
+               op: "overlap",
+               entries: [ ...entries of A that overlap with at least one of B... ],
+               metadata: { count_a: 4, count_b: 5, count_out: 0 } }</pre>
+
+<p>
+Available operations: <code>intersect</code> (entries common to both
+lists, match on a key), <code>union</code> (entries from either, deduped),
+<code>difference</code> (entries of A not in B), <code>symdiff</code>
+(symmetric difference), <code>overlap</code> (temporal AND: entries of
+A whose time window overlaps with at least one in B; auto-detect
+start/end).
+</p>
+
+<p>
+The taxonomy of list operators is closed and readable:
+<code>filter_entries</code> reduces a single list (predicates:
+where_starts_with, where_contains, where_glob, where_regex),
+<code>filter_lists</code> combines two lists with set ops,
+<code>compute_entries</code> computes a scalar (sum, average, min, max,
+count). The three primitives together cover almost every list
+manipulation without inventing new verbs.
+</p>
+
+<h2>7.4 <code>send_messages</code> &mdash; &laquo;send a message to Lucia&raquo;</h2>
 
 <p>
 Sends one or more messages over Telegram (today) or email (coming soon). Main

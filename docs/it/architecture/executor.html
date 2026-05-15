@@ -650,7 +650,45 @@ file e basta. Se vuoi un sottoinsieme, glielo chiedi col modello, oppure passi i
 risultato a un altro attrezzo che filtra. Una cosa sola alla volta.
 </p>
 
-<h2>7.3 <code>send_messages</code> &mdash; "manda un messaggio a Lucia"</h2>
+<h2>7.3 <code>filter_lists</code> &mdash; "trovami eventi che si sovrappongono"</h2>
+
+<p>
+Un attrezzo recente che lavora su <em>due</em> liste invece che su una.
+Serve quando una domanda dell'utente richiede un AND fra due insiemi:
+"quali appuntamenti HLT si sovrappongono con quelli MNM nei prossimi
+tre mesi?", oppure "quali file sono presenti sia in questa cartella sia
+nell'altra?". Pre-15 maggio Metnos non aveva un primitivo per queste
+operazioni; il pianificatore tentava di simularle con un solo
+<code>filter_entries</code> ripetuto e generava risultati falsi.
+</p>
+
+<pre>chiamata:    filter_lists(op="overlap",
+                          from_step=2,    # lista A (eventi HLT)
+                          with_step=3)    # lista B (eventi MNM)
+risposta:    { ok: true,
+               op: "overlap",
+               entries: [ ...eventi di A che si sovrappongono ad almeno uno di B... ],
+               metadata: { count_a: 4, count_b: 5, count_out: 0 } }</pre>
+
+<p>
+Operazioni disponibili: <code>intersect</code> (entries comuni alle due liste,
+match su una chiave), <code>union</code> (entries da entrambe, deduplicate),
+<code>difference</code> (entries di A non in B), <code>symdiff</code> (la
+differenza simmetrica), <code>overlap</code> (AND temporale: entries di A
+che si sovrappongono nel tempo a entries di B; auto-detect start/end).
+</p>
+
+<p>
+La tassonomia degli operatori liste e&rsquo; chiusa e leggibile:
+<code>filter_entries</code> riduce una lista (predicati: where_starts_with,
+where_contains, where_glob, where_regex), <code>filter_lists</code> combina
+due liste con set-ops, <code>compute_entries</code> calcola uno scalare
+(somma, media, min, max, count). I tre primitivi insieme coprono la
+quasi totalit&agrave; delle manipolazioni di liste senza inventare verbi
+nuovi.
+</p>
+
+<h2>7.4 <code>send_messages</code> &mdash; "manda un messaggio a Lucia"</h2>
 
 <p>
 Spedisce uno o pi&ugrave; messaggi via Telegram (oggi) o via email (in arrivo). Argomento
