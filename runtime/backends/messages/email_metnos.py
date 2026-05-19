@@ -27,9 +27,13 @@ from email.message import EmailMessage
 from pathlib import Path
 
 # Lazy imports (mail_client legge env file al boot del modulo)
-_RUNTIME = "/opt/myclaw/runtime"
+_RUNTIME = os.environ.get("METNOS_RUNTIME") or next(
+    str(p / "runtime") for p in Path(__file__).resolve().parents
+    if (p / "runtime" / "config.py").is_file())
 if _RUNTIME not in sys.path:
     sys.path.insert(0, _RUNTIME)
+
+from messages import get as _msg  # noqa: E402
 
 
 # --- helpers ---------------------------------------------------------------
@@ -122,7 +126,8 @@ def send(args: dict) -> dict:
     top_attach = args.get("attachments_top")
 
     if not isinstance(messages, list):
-        return {"ok": False, "error": "messages must be a list"}
+        return {"ok": False, "error_code": "ERR_ARG_INVALID",
+                "error": _msg("ERR_ARG_INVALID", arg="messages", reason="must be a list")}
     if not messages:
         return {"ok": True, "ok_count": 0, "fail_count": 0, "results": [], "failed": []}
 
@@ -147,13 +152,15 @@ def send(args: dict) -> dict:
                 _time.sleep(0.5 * (attempt + 1))
     if last_exc is not None or smtp is None:
         return {"ok": False, "error_code": "ERR_EXT_SVC_UNAVAILABLE",
-                "error": f"SMTP connect failed: {last_exc}"}
+                "error": _msg("ERR_EXT_SVC_UNAVAILABLE"),
+                "detail": f"SMTP connect failed: {last_exc}"}
 
     results, failed = [], []
     try:
         for i, m in enumerate(messages):
             if not isinstance(m, dict):
-                failed.append({"index": i, "error": "message must be a dict"})
+                failed.append({"index": i, "error_code": "ERR_ARG_INVALID",
+                               "error": _msg("ERR_ARG_INVALID", arg=f"messages[{i}]", reason="must be a dict")})
                 continue
             # `recipient_id` (multi-user resolved) takes precedence; fallback `to`.
             rid = m.get("recipient_id")
@@ -164,10 +171,12 @@ def send(args: dict) -> dict:
             body = m.get("body")
             body_html = m.get("body_html")
             if not to_list:
-                failed.append({"index": i, "error": "missing 'to' (string or list) or 'recipient_id'"})
+                failed.append({"index": i, "error_code": "ERR_ARG_MISSING",
+                               "error": _msg("ERR_ARG_MISSING", arg="to/recipient_id")})
                 continue
             if not body and not body_html:
-                failed.append({"index": i, "error": "missing 'body' (text) or 'body_html'"})
+                failed.append({"index": i, "error_code": "ERR_ARG_MISSING",
+                               "error": _msg("ERR_ARG_MISSING", arg="body/body_html")})
                 continue
             per_msg_attach = m.get("attachments")
             if per_msg_attach is None and top_attach is not None:
@@ -175,6 +184,7 @@ def send(args: dict) -> dict:
             attach_list, attach_errs = _resolve_attachments(per_msg_attach)
             if attach_errs:
                 failed.append({"index": i, "to": to_list, "subject": subject,
+                               "error_code": "ERR_ATTACHMENT",
                                "error": "; ".join(attach_errs)})
                 continue
             email_msg = EmailMessage()
@@ -198,7 +208,8 @@ def send(args: dict) -> dict:
                                               filename=a["filename"])
                 except Exception as e:
                     failed.append({"index": i, "to": to_list, "subject": subject,
-                                   "error": f"attachment read failed for {a['path']}: {e}"})
+                                   "error_code": "ERR_ATTACHMENT",
+                               "error": _msg("ERR_ATTACHMENT", path=str(a['path']), reason=f"read failed: {e}")})
                     attach_failed = True
                     break
             if attach_failed:
@@ -300,20 +311,24 @@ def read(args: dict) -> dict:
     if isinstance(account_arg, list):
         accounts = [a for a in account_arg if isinstance(a, str) and a.strip()]
         if not accounts:
-            return {"ok": False, "error": "account list must contain at least one non-empty string"}
+            return {"ok": False, "error_code": "ERR_ACCOUNT",
+                    "error": _msg("ERR_ACCOUNT", account="(list)", reason="must contain at least one non-empty string")}
     elif isinstance(account_arg, str):
         s = account_arg.strip()
         if not s:
-            return {"ok": False, "error": "account must be a non-empty string"}
+            return {"ok": False, "error_code": "ERR_ARG_INVALID",
+                    "error": _msg("ERR_ARG_INVALID", arg="account", reason="must be a non-empty string")}
         if s.lower() == "all":
             accounts = list_known_accounts()
             if not accounts:
-                return {"ok": False, "error": "no configured accounts found"}
+                return {"ok": False, "error_code": "ERR_ACCOUNT",
+                        "error": _msg("ERR_ACCOUNT", account="all", reason="no configured accounts found")}
             from_all_keyword = True
         else:
             accounts = [s]
     else:
-        return {"ok": False, "error": "account must be a string, list of strings, or 'all'"}
+        return {"ok": False, "error_code": "ERR_ARG_INVALID",
+                "error": _msg("ERR_ARG_INVALID", arg="account", reason="must be a string, list of strings, or 'all'")}
 
     if not from_all_keyword:
         known = set(list_known_accounts())
@@ -330,19 +345,22 @@ def read(args: dict) -> dict:
                 unknown.append(a)
         if unknown:
             hint = ", ".join(sorted(known)) if known else "(nessuno configurato)"
-            return {"ok": False,
-                    "error": f"unknown account: {unknown[0]!r}. "
-                             f"Account configurati: {hint}"}
+            return {"ok": False, "error_code": "ERR_ACCOUNT",
+                    "error": _msg("ERR_ACCOUNT", account=str(unknown[0]),
+                                   reason=f"unknown; configurati: {hint}")}
         accounts = resolved
 
     if max_results <= 0 or max_results > 200:
-        return {"ok": False, "error": "max_results must be in 1..200"}
+        return {"ok": False, "error_code": "ERR_ARG_INVALID",
+                "error": _msg("ERR_ARG_INVALID", arg="max_results", reason="must be in 1..200")}
     if max_total <= 0 or max_total > 1000:
-        return {"ok": False, "error": "max_total must be in 1..1000"}
+        return {"ok": False, "error_code": "ERR_ARG_INVALID",
+                "error": _msg("ERR_ARG_INVALID", arg="max_total", reason="must be in 1..1000")}
 
     since, before, window_label = _resolve_window(time_window)
     if time_window and window_label and window_label.startswith(("invalid:", "unknown_preset:")):
-        return {"ok": False, "error": f"invalid time_window: {window_label}"}
+        return {"ok": False, "error_code": "ERR_TIME_WINDOW_INVALID",
+                "error": _msg("ERR_TIME_WINDOW_INVALID", label=str(window_label))}
     if since_explicit:
         since = since_explicit
     if before_explicit:
@@ -364,7 +382,8 @@ def read(args: dict) -> dict:
             )
             available_total += avail or 0
         except Exception as e:
-            failed.append({"account": account, "error": f"{type(e).__name__}: {e}"})
+            failed.append({"account": account, "error_code": "ERR_OP_FAILED",
+                            "error": _msg("ERR_OP_FAILED", reason=f"{type(e).__name__}: {e}")})
 
     out = {
         "ok": True,
@@ -399,13 +418,15 @@ def _read_one_account(account, folder, max_results, unseen_only, since, before,
         conn = open_imap(account)
     except Exception as e:
         failed.append({"account": account, "error_code": "ERR_EXT_SVC_UNAVAILABLE",
-                       "error": f"IMAP connect failed: {e}"})
+                       "error_code": "ERR_EXT_SVC_UNAVAILABLE",
+                       "error": _msg("ERR_EXT_SVC_UNAVAILABLE"), "detail": f"IMAP connect failed: {e}"})
         return 0
     try:
         status, _ = conn.select(folder, readonly=True)
         if status != "OK":
             failed.append({"account": account,
-                           "error": f"folder {folder!r} not accessible"})
+                           "error_code": "ERR_FOLDER_NOT_FOUND",
+                           "error": _msg("ERR_FOLDER_NOT_FOUND", folder=str(folder))})
             return 0
         criteria = []
         if unseen_only:
@@ -432,7 +453,8 @@ def _read_one_account(account, folder, max_results, unseen_only, since, before,
         status, data = conn.uid("SEARCH", *search_args)
         if status != "OK":
             failed.append({"account": account,
-                           "error": f"IMAP search failed: {status}"})
+                           "error_code": "ERR_IMAP_CMD",
+                           "error": _msg("ERR_IMAP_CMD", cmd="search", reason=str(status))})
             return 0
         ids = (data[0].split() if data and data[0] else [])
         available = len(ids)
@@ -452,7 +474,8 @@ def _read_one_account(account, folder, max_results, unseen_only, since, before,
                 if status != "OK" or not raw or not raw[0]:
                     failed.append({"account": account,
                                    "uid": uid.decode() if isinstance(uid, bytes) else str(uid),
-                                   "error": "fetch failed"})
+                                   "error_code": "ERR_IMAP_CMD",
+                                   "error": _msg("ERR_IMAP_CMD", cmd="fetch", reason="failed")})
                     continue
                 try:
                     if isinstance(raw[0], tuple) and len(raw[0]) >= 2:
@@ -462,7 +485,8 @@ def _read_one_account(account, folder, max_results, unseen_only, since, before,
                     env = parse_envelope(body_bytes)
                 except Exception as e:
                     failed.append({"account": account, "uid": str(uid),
-                                   "error": f"parse failed: {e}"})
+                                   "error_code": "ERR_PARSE_FAIL",
+                                   "error": _msg("ERR_PARSE_FAIL", what="envelope", reason=str(e))})
                     continue
                 size = None
                 m = re.search(rb"RFC822\.SIZE\s+(\d+)", header_part) if header_part else None
@@ -504,23 +528,27 @@ def delete(args: dict) -> dict:
     folder = args.get("folder") or "INBOX"
     uids = args.get("uids") or []
     if not isinstance(uids, list) or not uids:
-        return {"ok": False, "error": "uids must be a non-empty list"}
+        return {"ok": False, "error_code": "ERR_ARG_INVALID",
+                "error": _msg("ERR_ARG_INVALID", arg="uids", reason="must be a non-empty list")}
     try:
         conn = open_imap(account)
     except Exception as e:
         return {"ok": False, "error_code": "ERR_EXT_SVC_UNAVAILABLE",
-                "error": f"IMAP connect failed: {e}"}
+                "error_code": "ERR_EXT_SVC_UNAVAILABLE",
+                "error": _msg("ERR_EXT_SVC_UNAVAILABLE"), "detail": f"IMAP connect failed: {e}"}
     results, failed = [], []
     try:
         status, _ = conn.select(folder)
         if status != "OK":
-            return {"ok": False, "error": f"folder {folder!r} not accessible"}
+            return {"ok": False, "error_code": "ERR_FOLDER_NOT_FOUND",
+                    "error": _msg("ERR_FOLDER_NOT_FOUND", folder=str(folder))}
         for uid in uids:
             try:
                 u = str(uid)
                 st, _ = conn.uid("STORE", u, "+FLAGS", "(\\Deleted)")
                 if st != "OK":
-                    failed.append({"uid": u, "error": f"STORE failed: {st}"})
+                    failed.append({"uid": u, "error_code": "ERR_IMAP_CMD",
+                                    "error": _msg("ERR_IMAP_CMD", cmd="STORE", reason=str(st))})
                     continue
                 results.append({"uid": u, "account": account, "folder": folder, "ok": True})
             except Exception as e:
@@ -528,7 +556,8 @@ def delete(args: dict) -> dict:
         try:
             conn.expunge()
         except Exception as e:
-            failed.append({"uid": "*", "error": f"EXPUNGE failed: {e}"})
+            failed.append({"uid": "*", "error_code": "ERR_IMAP_CMD",
+                            "error": _msg("ERR_IMAP_CMD", cmd="EXPUNGE", reason=str(e))})
     finally:
         try:
             conn.close()
@@ -555,30 +584,36 @@ def move(args: dict) -> dict:
     dst_folder = args.get("dst_folder")
     uids = args.get("uids") or []
     if not dst_folder:
-        return {"ok": False, "error": "missing dst_folder"}
+        return {"ok": False, "error_code": "ERR_ARG_MISSING",
+                "error": _msg("ERR_ARG_MISSING", arg="dst_folder")}
     if not isinstance(uids, list) or not uids:
-        return {"ok": False, "error": "uids must be a non-empty list"}
+        return {"ok": False, "error_code": "ERR_ARG_INVALID",
+                "error": _msg("ERR_ARG_INVALID", arg="uids", reason="must be a non-empty list")}
     try:
         conn = open_imap(account)
     except Exception as e:
         return {"ok": False, "error_code": "ERR_EXT_SVC_UNAVAILABLE",
-                "error": f"IMAP connect failed: {e}"}
+                "error_code": "ERR_EXT_SVC_UNAVAILABLE",
+                "error": _msg("ERR_EXT_SVC_UNAVAILABLE"), "detail": f"IMAP connect failed: {e}"}
     results, failed = [], []
     try:
         status, _ = conn.select(src_folder)
         if status != "OK":
-            return {"ok": False, "error": f"src_folder {src_folder!r} not accessible"}
+            return {"ok": False, "error_code": "ERR_FOLDER_NOT_FOUND",
+                    "error": _msg("ERR_FOLDER_NOT_FOUND", folder=str(src_folder))}
         for uid in uids:
             u = str(uid)
             try:
                 # COPY first (so we never DELETE before confirming, §2.9)
                 st, _ = conn.uid("COPY", u, dst_folder)
                 if st != "OK":
-                    failed.append({"uid": u, "error": f"COPY failed: {st}"})
+                    failed.append({"uid": u, "error_code": "ERR_IMAP_CMD",
+                                    "error": _msg("ERR_IMAP_CMD", cmd="COPY", reason=str(st))})
                     continue
                 st2, _ = conn.uid("STORE", u, "+FLAGS", "(\\Deleted)")
                 if st2 != "OK":
-                    failed.append({"uid": u, "error": f"STORE failed after COPY: {st2}"})
+                    failed.append({"uid": u, "error_code": "ERR_IMAP_CMD",
+                                    "error": _msg("ERR_IMAP_CMD", cmd="STORE-post-COPY", reason=str(st2))})
                     continue
                 results.append({"uid": u, "account": account,
                                 "src_folder": src_folder, "dst_folder": dst_folder,
@@ -588,7 +623,8 @@ def move(args: dict) -> dict:
         try:
             conn.expunge()
         except Exception as e:
-            failed.append({"uid": "*", "error": f"EXPUNGE failed: {e}"})
+            failed.append({"uid": "*", "error_code": "ERR_IMAP_CMD",
+                            "error": _msg("ERR_IMAP_CMD", cmd="EXPUNGE", reason=str(e))})
     finally:
         try:
             conn.close()

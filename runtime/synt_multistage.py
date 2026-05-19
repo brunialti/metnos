@@ -90,7 +90,17 @@ def _stage5_prompt_for_verb(verb: str, **vars) -> str:
     e' specializzato spliciamo l'addendum (renderizzato senza vars) prima
     del marker `I/O CONTRACT`. Mantiene byte-equivalence con il vecchio
     `_compose_verb_prompt` + `.format()`.
+
+    A2 19/5/2026 v4: inietta `available_i18n_keys` (subset chiavi per
+    famiglia) cosi' il LLM riusa chiavi esistenti invece di inventarne.
+    Cap di sicurezza in i18n.keys_for_synth_context (max_per_family=30).
     """
+    if "available_i18n_keys" not in vars:
+        try:
+            from i18n import keys_for_synth_context
+            vars["available_i18n_keys"] = keys_for_synth_context()
+        except Exception:
+            vars["available_i18n_keys"] = {}
     generic = prompt_loader.get("synt_code", DEFAULT_LANG, **vars)
     if verb in SPECIALIZED_VERBS:
         addendum = prompt_loader.get(f"synt_code_addendum_{verb}", DEFAULT_LANG)
@@ -380,9 +390,55 @@ def run_stage5(user_request: str, stage1: dict, stage2: dict, stage3: dict, stag
                            raw_text=text[:500],
                            in_tokens=res.get("in_tokens", 0), out_tokens=res.get("out_tokens", 0),
                            latency_ms=res.get("latency_ms", 0))
+    # Fase 11 (c) 19/5/2026 v4: scan delle chiavi i18n emesse dal LLM nel
+    # codice synth. Ogni chiave non presente nel DB viene auto-registrata
+    # come stub `<auto-synth: KEY>` con `needs_translation=1` per review
+    # admin. Determinismo §7.9 (regex + DB lookup, niente LLM aggiuntivo).
+    try:
+        _register_synth_keys(code)
+    except Exception as _ex:
+        # Non blocca la synth se il registratore fallisce (DB lock, etc.).
+        # Logged solo in stage6 verify se necessario.
+        pass
     return StageResult(stage=5, success=True, output={"code": code}, raw_text=text,
                        in_tokens=res.get("in_tokens", 0), out_tokens=res.get("out_tokens", 0),
                        latency_ms=res.get("latency_ms", 0))
+
+
+# Regex per estrarre chiavi i18n da codice synth. Conservativo: solo
+# chiavi maiuscolo + underscore (forma canonica ERR_*/MSG_*/WARN_*/LOG_*).
+_I18N_KEY_PATTERN = re.compile(
+    r'(?:messages\.get|_msg)\s*\(\s*["\']'
+    r'((?:ERR_|MSG_|WARN_|LOG_)[A-Z_][A-Z0-9_]*)'
+    r'["\']'
+)
+
+
+def _register_synth_keys(code: str) -> int:
+    """Scan code per chiavi i18n emesse via `messages.get("KEY")` o
+    `_msg("KEY")`. Per ogni chiave non in DB, registra stub con
+    `needs_translation=1`. Ritorna numero chiavi registrate.
+
+    Pattern conservativo: solo chiavi UPPER_CASE prefisso ERR_/MSG_/WARN_/LOG_.
+    """
+    if not code:
+        return 0
+    keys = set(_I18N_KEY_PATTERN.findall(code))
+    if not keys:
+        return 0
+    try:
+        import i18n
+    except Exception:
+        return 0
+    n_registered = 0
+    for key in keys:
+        try:
+            stub_text = f"<auto-synth: {key}>"
+            if i18n.register_key_if_missing(key, text_it=stub_text, text_en=stub_text):
+                n_registered += 1
+        except Exception:
+            continue
+    return n_registered
 
 
 def run_full(user_request: str, llm_call_middle, llm_call_wise, *, progress=None) -> MultistageRun:

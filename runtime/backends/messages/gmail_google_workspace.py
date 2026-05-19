@@ -25,9 +25,11 @@ if str(_RUNTIME) not in sys.path:
     sys.path.insert(0, str(_RUNTIME))
 
 from skill_wrapper import (  # noqa: E402
-    _skill_home, _needs_inputs_oauth_setup, _get_skill_oauth_config,
+    _skill_home, _needs_inputs_oauth_setup,
+    _get_oauth_provider_for_skill,
 )
 from backends._google_api_runner import run_with_retry  # noqa: E402
+from messages import get as _msg  # noqa: E402
 
 SKILL_NAME = "google-workspace"
 
@@ -41,11 +43,12 @@ def _auth_needs_inputs(args_base: dict, *, executor: str) -> dict:
         payload = _needs_inputs_oauth_setup(
             skill_name=SKILL_NAME, executor=executor,
             args_base=args_base,
-            **_get_skill_oauth_config(__file__),
+            **_get_oauth_provider_for_skill(SKILL_NAME),
         )
     except Exception as ex:
         return {"ok": False, "error_class": "auth_required",
-                "error": f"OAuth setup payload fallito: {ex}",
+                "error_code": "ERR_OAUTH_SETUP",
+                "error": _msg("ERR_OAUTH_SETUP", reason=str(ex)),
                 "results": [], "used": 0}
     return {
         "ok": True,
@@ -76,14 +79,16 @@ def send(args: dict) -> dict:
     body, body_html?, cc?, ...}]`. Best-effort: una send fallita non
     blocca le altre."""
     if not isinstance(args, dict):
-        return {"ok": False, "error": "args must be an object",
+        return {"ok": False, "error_code": "ERR_ARG_INVALID",
+                "error": _msg("ERR_ARG_INVALID", arg="args", reason="must be an object"),
                 "error_class": "invalid_args",
                 "results": [], "used": 0,
                 "ok_count": 0, "fail_count": 0}
 
     messages = args.get("messages") or []
     if not isinstance(messages, list):
-        return {"ok": False, "error": "messages must be a list",
+        return {"ok": False, "error_code": "ERR_ARG_INVALID",
+                "error": _msg("ERR_ARG_INVALID", arg="messages", reason="must be a list"),
                 "error_class": "invalid_args",
                 "results": [], "used": 0,
                 "ok_count": 0, "fail_count": 0}
@@ -91,14 +96,16 @@ def send(args: dict) -> dict:
     results, failed = [], []
     for i, m in enumerate(messages):
         if not isinstance(m, dict):
-            failed.append({"index": i, "error": "message must be a dict",
+            failed.append({"index": i, "error_code": "ERR_ARG_INVALID",
+                           "error": _msg("ERR_ARG_INVALID", arg=f"messages[{i}]", reason="must be a dict"),
                            "error_class": "invalid_args"})
             continue
         rid = m.get("recipient_id")
         to_field = rid or m.get("to")
         if not to_field:
             failed.append({"index": i,
-                            "error": "missing 'to' or 'recipient_id'",
+                            "error_code": "ERR_ARG_MISSING",
+                            "error": _msg("ERR_ARG_MISSING", arg="to/recipient_id"),
                             "error_class": "invalid_args"})
             continue
         if isinstance(to_field, list):
@@ -106,7 +113,7 @@ def send(args: dict) -> dict:
         else:
             to_str = str(to_field)
 
-        subject = m.get("subject") or "(no subject)"
+        subject = m.get("subject") or _msg("MSG_NO_SUBJECT")
         body = m.get("body") or m.get("body_html") or ""
         is_html = bool(m.get("body_html")) and not m.get("body")
         argv = ["gmail", "send",
@@ -132,7 +139,7 @@ def send(args: dict) -> dict:
                 return err
             failed.append({"index": i, "to": to_str,
                             "subject": subject,
-                            "error": err.get("error", "errore sconosciuto"),
+                            "error": err.get("error") or _msg("ERR_OP_FAILED", reason="unknown"),
                             "error_class": err.get("error_class")})
             continue
         msg_id = (data or {}).get("id") or (data or {}).get("messageId", "")
@@ -153,7 +160,7 @@ def send(args: dict) -> dict:
         if not results:
             out["ok"] = False
             out["error_class"] = failed[0].get("error_class") or "server_error"
-            out["error"] = failed[0].get("error") or "send failed"
+            out["error"] = failed[0].get("error") or _msg("ERR_OP_FAILED", reason="send failed")
     return out
 
 
@@ -169,7 +176,8 @@ def read(args: dict) -> dict:
     Output `entries: list[{id, thread_id, subject, from, snippet, body, ...}]`.
     """
     if not isinstance(args, dict):
-        return {"ok": False, "error": "args must be an object",
+        return {"ok": False, "error_code": "ERR_ARG_INVALID",
+                "error": _msg("ERR_ARG_INVALID", arg="args", reason="must be an object"),
                 "error_class": "invalid_args", "entries": [], "used": 0}
 
     ids: list[str] = []
@@ -239,7 +247,8 @@ def delete(args: dict) -> dict:
     Reverse pattern §2.3: ripristinabile (label INBOX restored).
     """
     if not isinstance(args, dict):
-        return {"ok": False, "error": "args must be an object",
+        return {"ok": False, "error_code": "ERR_ARG_INVALID",
+                "error": _msg("ERR_ARG_INVALID", arg="args", reason="must be an object"),
                 "error_class": "invalid_args",
                 "results": [], "used": 0, "n_deleted": 0}
     ids: list[str] = []
@@ -256,7 +265,8 @@ def delete(args: dict) -> dict:
                 if isinstance(v, str) and v.strip():
                     ids.append(v.strip())
     if not ids:
-        return {"ok": False, "error": "nessun message_id fornito",
+        return {"ok": False, "error_code": "ERR_ARG_MISSING",
+                "error": _msg("ERR_ARG_MISSING", arg="message_id"),
                 "error_class": "invalid_args",
                 "results": [], "used": 0, "n_deleted": 0}
 

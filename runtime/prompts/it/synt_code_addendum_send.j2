@@ -45,7 +45,7 @@ DEVI: cap `max_recipients` (default 50) — anti-spam. Eccesso → fail di tutto
   il batch, NON partial submit.
 DEVI: `idempotency_key` deterministico (es. sha256 di
   `recipient + subject + body + day_bucket`) persistito in
-  `/opt/myclaw/_history/sent_keys.jsonl` PRIMA del prossimo submit. Match
+  `{{ install_root }}/_history/sent_keys.jsonl` PRIMA del prossimo submit. Match
   → entry skip con status "duplicate".
 NON DEVI: retry-loop con sleep su credenziali invalide.
 NON DEVI: includere password/token/api_key nel campo `error` (leak nei log).

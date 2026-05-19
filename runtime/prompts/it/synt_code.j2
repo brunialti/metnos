@@ -22,7 +22,7 @@ Skeleton manifest gia' deciso (NON cambiarlo):
 
 PRINCIPI STRUTTURALI (validi per qualunque verbo):
 
-DEVI: Python 3.12+ stdlib + moduli runtime in /opt/myclaw/runtime.
+DEVI: Python 3.12+ stdlib + moduli runtime in /opt/metnos/runtime.
 NON DEVI: importare librerie pip oltre PIL/Pillow e openpyxl.
 OK: `import hashlib`, `import imaplib`, `import tarfile`, `import os`.
 ERRORE: `import requests`, `import boto3`, `import paramiko`. E' UN ERRORE.
@@ -133,7 +133,13 @@ ERRORE: `for e in entries: process(e)  # senza try/except`. La prima
 - Se critical (modifica fs/rete/stato esterno): usa
   `platform_policy.is_protected_path(path)` per blocco hard +
   `is_system_file(name)` per safety net (override via `allow_system=true`).
-- Errori uniformi: usa `messages.get('ERR_EXT_SVC_LIMIT')` ecc. invece di stringhe inline.
+- Errori uniformi: usa `messages.get('ERR_*')` per errori, `messages.get('MSG_*')` per info user-facing. NON inventare nomi creativi: scegli SEMPRE dalla lista qui sotto se semanticamente combacia; inventane di nuovi (UPPER_CASE_SHORT) SOLO se nessuno copre. Il runtime auto-registra le chiavi nuove come stub `<auto-synth: KEY>` per review.
+{% if available_i18n_keys %}
+CHIAVI i18n DISPONIBILI (riusale invece di inventarne):
+{% for fam, keys in available_i18n_keys.items() %}{% if keys %}
+  {{ fam }}: {{ keys | join(', ') }}
+{% endif %}{% endfor %}
+{% endif %}
 - Se revertible=true: il reverse_pattern e' applicato automaticamente dal runtime;
   basta che i `results` esposti rispettino lo schema atteso del pattern (es.
   `swap_src_dst` richiede `results: list[{src, dst}]`).

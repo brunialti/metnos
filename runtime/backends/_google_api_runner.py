@@ -35,8 +35,43 @@ if str(_RUNTIME) not in sys.path:
     sys.path.insert(0, str(_RUNTIME))
 
 from skill_wrapper import _classify_error, _run_api  # noqa: E402
+from messages import get as _msg  # noqa: E402
 
 SKILL_NAME = "google-workspace"
+
+# C.7 wiring 19/5/2026: mapping error_class deterministico → chiave i18n
+# ERR_* per error_code user-facing. Pattern §7.9 (ADR 0101 effetto collaterale).
+# Caller riceve sia `error` (template i18n in lingua corrente) sia
+# `error_class` (machine-readable per logic deterministico) sia `detail`
+# (stderr raw per debug). Lo skill_wrapper esterno emette stderr cruda,
+# qui lo traduciamo a vocabolario chiave-stabile.
+_ERROR_CLASS_TO_I18N_KEY = {
+    "auth_required":       "ERR_PERMISSION_DENIED",
+    "not_found":           "ERR_PATH_NOT_FOUND",
+    "server_error":        "ERR_EXT_SVC_UNAVAILABLE",
+    "rate_limited":        "ERR_EXT_SVC_LIMIT",
+    "network":             "ERR_TIMEOUT",
+    "missing_dependency":  "ERR_NOT_IMPLEMENTED",
+    "invalid_args":        "ERR_INVALID_ARGS",
+    "unknown":             "ERR_OP_FAILED",
+}
+
+
+def _i18n_error_for_class(error_class: str, stderr: str, rc: int) -> tuple[str, str]:
+    """Ritorna `(error_code, error_text)` per la classe data.
+    error_code: chiave i18n stabile (ERR_*).
+    error_text: messaggio user-facing localizzato (DEFAULT_LANG).
+    """
+    code = _ERROR_CLASS_TO_I18N_KEY.get(error_class, "ERR_OP_FAILED")
+    # Le 8 ERR_* esistenti hanno template parametrizzati o auto-contenuti.
+    # ERR_OP_FAILED ha {reason}. ERR_PATH_NOT_FOUND ha {path}. Per template
+    # senza params i kwargs extra vengono ignorati da .format().
+    detail = (stderr or "").strip() or f"rc={rc}"
+    try:
+        text = _msg(code, reason=detail, path=detail, arg=detail)
+    except Exception:
+        text = _msg(code)
+    return code, text
 
 # Error_class che giustificano retry: condizioni temporanee, non
 # permanenti (auth_required e invalid_args NON sono qui — fail-fast).
@@ -109,14 +144,16 @@ def run_with_retry(
                             "error_class": "server_error"}
                 continue
         ec = _classify_error(rc, stderr)
+        err_code, err_text = _i18n_error_for_class(ec, stderr, rc)
         if ec == "auth_required":
             if auth_handler is not None:
                 return None, auth_handler(args_base)
             return None, {"ok": False, "error_class": "auth_required",
-                          "error": (stderr or "").strip() or f"rc={rc}"}
-        last_err = {"ok": False,
-                    "error": (stderr or "").strip() or f"rc={rc}",
-                    "error_class": ec}
+                          "error_code": err_code, "error": err_text,
+                          "detail": (stderr or "").strip() or f"rc={rc}"}
+        last_err = {"ok": False, "error_class": ec,
+                    "error_code": err_code, "error": err_text,
+                    "detail": (stderr or "").strip() or f"rc={rc}"}
         # Retry solo su transient OR SSL handshake. Altri errori (e.g.
         # invalid_args, not_found) sono permanenti → fail-fast.
         if ec not in _TRANSIENT_ERROR_CLASSES and not _is_ssl_error(stderr):

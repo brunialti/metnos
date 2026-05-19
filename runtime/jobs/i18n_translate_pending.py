@@ -102,9 +102,116 @@ def _ensure_schema(conn: sqlite3.Connection) -> list[str]:
     if "translated_by" not in cols:
         conn.execute("ALTER TABLE i18n ADD COLUMN translated_by TEXT")
         added.append("translated_by")
+    if "auto_translated" not in cols:
+        # Fase 11(c) wire-in 19/5/2026 v4: flag per stub `<auto-synth: ...>`
+        # registrati post-stage5 e poi materializzati dal daemon via LLM.
+        # 1 = testo generato da LLM auto, da review admin.
+        conn.execute("ALTER TABLE i18n ADD COLUMN auto_translated INTEGER DEFAULT 0")
+        added.append("auto_translated")
     if added:
         conn.commit()
     return added
+
+
+_AUTO_SYNTH_PREFIX = "<auto-synth: "
+
+
+def _materialize_auto_synth_stubs(conn: sqlite3.Connection, tier: str, cap: int) -> dict:
+    """Fase 11(c) c1+flag 19/5/2026: stub registrati da synt_multistage.
+
+    Trova row con `text LIKE '<auto-synth: KEY>'` (entrambe le lingue),
+    genera testo user-facing via LLM dato il nome semantico della chiave,
+    UPDATE text + `auto_translated=1` + mantiene `needs_translation=1`
+    per review admin.
+
+    Per la stessa key processa IT+EN nella stessa call LLM (output JSON
+    `{"it": "...", "en": "..."}`). Idempotente: se la riga non e' piu'
+    stub (gia' materializzata o editata da admin) viene saltata.
+
+    Ritorna metadata: `{processed, generated, errors}`.
+    """
+    from llm_helpers import call_llm
+
+    rows = conn.execute(
+        "SELECT DISTINCT key FROM i18n "
+        "WHERE text LIKE ? ORDER BY key LIMIT ?",
+        (_AUTO_SYNTH_PREFIX + "%", cap),
+    ).fetchall()
+    if not rows:
+        return {"processed": 0, "generated": 0, "errors": 0}
+
+    sys_prompt = (
+        "Sei un esperto di UX per Metnos. Dato il NOME di una chiave i18n "
+        "(es. ERR_XML_PARSE_FAIL, MSG_OPERATION_DONE), genera UNA frase "
+        "breve user-facing in italiano E in inglese che spieghi cosa "
+        "comunica al utente. Includi placeholder {var} se la chiave "
+        "suggerisce parametri. Output SOLO JSON `{\"it\":\"...\",\"en\":\"...\"}`. "
+        "Tono coerente: ERR_=problema/errore, MSG_=info/conferma, "
+        "WARN_=avviso, LOG_=audit tecnico (1 riga concisa)."
+    )
+    processed = 0
+    generated = 0
+    errors = 0
+    for (key,) in rows:
+        processed += 1
+        prompt = (
+            f"Chiave i18n: `{key}`\n"
+            f"Famiglia: {key.split('_', 1)[0]}_\n"
+            f"Genera testo IT+EN."
+        )
+        try:
+            text, _meta = call_llm(prompt, sys_prompt, tier=tier,
+                                     max_tokens=400, temperature=0.0)
+        except Exception as ex:
+            log.warning("materialize stub LLM crash key=%s: %r", key, ex)
+            errors += 1
+            continue
+        # Parse JSON `{"it": "...", "en": "..."}`
+        text = (text or "").strip()
+        if text.startswith("```"):
+            text = re.sub(r"^```[a-zA-Z]*\n", "", text)
+            text = re.sub(r"\n```\s*$", "", text)
+        try:
+            obj = json.loads(text)
+        except Exception:
+            m = re.search(r"\{.*\}", text, flags=re.DOTALL)
+            obj = None
+            if m:
+                try:
+                    obj = json.loads(m.group(0))
+                except Exception:
+                    obj = None
+        if not isinstance(obj, dict):
+            log.warning("materialize stub bad JSON key=%s text=%r", key, text[:120])
+            errors += 1
+            continue
+        it_text = obj.get("it")
+        en_text = obj.get("en")
+        if not isinstance(it_text, str) or not isinstance(en_text, str):
+            errors += 1
+            continue
+        # UPDATE entrambe le lingue + flag.
+        try:
+            conn.execute(
+                "UPDATE i18n SET text=?, auto_translated=1, "
+                "needs_translation=1, "
+                "updated_at=strftime('%Y-%m-%dT%H:%M:%SZ','now') "
+                "WHERE key=? AND lang='it' AND text LIKE ?",
+                (it_text.strip(), key, _AUTO_SYNTH_PREFIX + "%"),
+            )
+            conn.execute(
+                "UPDATE i18n SET text=?, auto_translated=1, "
+                "needs_translation=1, "
+                "updated_at=strftime('%Y-%m-%dT%H:%M:%SZ','now') "
+                "WHERE key=? AND lang='en' AND text LIKE ?",
+                (en_text.strip(), key, _AUTO_SYNTH_PREFIX + "%"),
+            )
+            conn.commit()
+            generated += 1
+        except sqlite3.Error as ex:
+            log.warning("materialize stub UPDATE failed key=%s: %r", key, ex)
+            errors += 1
+    return {"processed": processed, "generated": generated, "errors": errors}
 
 
 def _fetch_pending(conn: sqlite3.Connection, cap: int) -> list[dict]:
@@ -311,6 +418,12 @@ def task_i18n_translate_pending(payload: dict | None = None) -> dict:
         cols_added = _ensure_schema(conn)
         if cols_added:
             log.info("i18n schema migration: added %s", cols_added)
+        # Fase 11(c) wire-in 19/5/2026 v4: materializza stub auto-synth
+        # PRIMA del normal translate, cosi' il source text non e' piu' il
+        # placeholder `<auto-synth: KEY>` ma testo significativo.
+        stub_meta = _materialize_auto_synth_stubs(conn, tier=_tier(), cap=CAP_PER_FIRE)
+        if stub_meta["processed"]:
+            log.info("i18n auto-synth materialize: %s", stub_meta)
         pending = _fetch_pending(conn, cap=CAP_PER_FIRE)
         if not pending:
             return {

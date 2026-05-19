@@ -229,7 +229,7 @@ def format_search_results(
     (anchor whitelist gia' attivo).
 
     Localizzato via i18n (MSG_SEARCH_RESULTS_HEADER /
-    MSG_SEARCH_RESULTS_NONE / MSG_SEARCH_DOCS_HEADER).
+    MSG_NO_RESULTS / MSG_SEARCH_DOCS_HEADER).
     """
     from messages import get as _msg
     entries = list(entries or [])
@@ -237,7 +237,7 @@ def format_search_results(
     n = len(entries)
     n_docs = len(docs_in)
     if n == 0 and n_docs == 0:
-        return _msg("MSG_SEARCH_RESULTS_NONE", query=query or "")
+        return _msg("MSG_NO_RESULTS")
 
     lines: list[str] = []
     if n > 0:

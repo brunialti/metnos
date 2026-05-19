@@ -15,11 +15,17 @@ Verbi esposti:
 from __future__ import annotations
 
 import datetime
+import os
 import sys
+from pathlib import Path
 
-_RUNTIME = "/opt/myclaw/runtime"
+_RUNTIME = os.environ.get("METNOS_RUNTIME") or next(
+    str(p / "runtime") for p in Path(__file__).resolve().parents
+    if (p / "runtime" / "config.py").is_file())
 if _RUNTIME not in sys.path:
     sys.path.insert(0, _RUNTIME)
+
+from messages import get as _msg
 
 
 def _new_channel():
@@ -42,7 +48,8 @@ def send(args: dict) -> dict:
 
     messages = args.get("messages") or []
     if not isinstance(messages, list):
-        return {"ok": False, "error": "messages must be a list"}
+        return {"ok": False, "error_code": "ERR_ARG_INVALID",
+                "error": _msg("ERR_ARG_INVALID", arg="messages", reason="must be a list")}
     if not messages:
         return {"ok": True, "ok_count": 0, "fail_count": 0, "results": [], "failed": []}
 
@@ -50,16 +57,19 @@ def send(args: dict) -> dict:
         ch = _new_channel()
     except Exception as e:
         return {"ok": False, "error_code": "ERR_EXT_SVC_UNAVAILABLE",
-                "error": f"telegram channel init failed: {e}"}
+                "error": _msg("ERR_EXT_SVC_UNAVAILABLE"),
+                "detail": f"telegram channel init failed: {e}"}
 
     results, failed = [], []
     for i, m in enumerate(messages):
         if not isinstance(m, dict):
-            failed.append({"index": i, "error": "message must be a dict"})
+            failed.append({"index": i, "error_code": "ERR_ARG_INVALID",
+                           "error": _msg("ERR_ARG_INVALID", arg=f"messages[{i}]", reason="must be a dict")})
             continue
         rid = m.get("recipient_id") or m.get("chat_id")
         if not rid:
-            failed.append({"index": i, "error": "missing recipient_id/chat_id"})
+            failed.append({"index": i, "error_code": "ERR_ARG_MISSING",
+                           "error": _msg("ERR_ARG_MISSING", arg="recipient_id/chat_id")})
             continue
         body_text = m.get("body") or m.get("text") or m.get("body_html") or ""
         subject = m.get("subject")
@@ -68,11 +78,14 @@ def send(args: dict) -> dict:
             res = ch.send_to(str(rid), OutboundMessage(text=full))
         except Exception as e:
             failed.append({"index": i, "recipient_id": str(rid),
-                           "error": f"{type(e).__name__}: {e}"})
+                           "error_code": "ERR_OP_FAILED",
+                           "error": _msg("ERR_OP_FAILED", reason=f"{type(e).__name__}: {e}")})
             continue
         if not res.get("ok"):
             failed.append({"index": i, "recipient_id": str(rid),
-                           "error": res.get("error", "telegram send failed")})
+                           "error_code": "ERR_OP_FAILED",
+                           "error": _msg("ERR_OP_FAILED",
+                                          reason=res.get("error", "telegram send failed"))})
             continue
         sent_id = ""
         if isinstance(res.get("result"), dict):
@@ -107,24 +120,27 @@ def read(args: dict) -> dict:
     failure, §2.8).
     """
     return {"ok": False, "error_code": "ERR_NOT_IMPLEMENTED",
-            "error": "telegram bot read is owned by ChannelDaemon long-poll; "
-                     "no synchronous inquiry API yet"}
+            "error": _msg("ERR_NOT_IMPLEMENTED",
+                           what="telegram bot read (gestito da ChannelDaemon long-poll)")}
 
 
 def find(args: dict) -> dict:
     """Telegram non e' una mailbox cercabile in inquiry sincrona."""
-    return {"ok": False, "error_code": "ERR_NOT_IMPLEMENTED",
-            "error": "telegram find not applicable (no message store)"}
+    return {"ok": False, "error_code": "ERR_NOT_APPLICABLE",
+            "error": _msg("ERR_NOT_APPLICABLE",
+                           what="telegram find (nessun message store)")}
 
 
 def delete(args: dict) -> dict:
     """Telegram bot puo' deleteMessage solo entro 48h e solo se inviato dal
     bot. Non implementato per ora."""
     return {"ok": False, "error_code": "ERR_NOT_IMPLEMENTED",
-            "error": "telegram delete not implemented (use Telegram client app)"}
+            "error": _msg("ERR_NOT_IMPLEMENTED",
+                           what="telegram delete (usa client Telegram)")}
 
 
 def move(args: dict) -> dict:
     """Telegram non ha folder."""
-    return {"ok": False, "error_code": "ERR_NOT_IMPLEMENTED",
-            "error": "telegram has no folders, move not applicable"}
+    return {"ok": False, "error_code": "ERR_NOT_APPLICABLE",
+            "error": _msg("ERR_NOT_APPLICABLE",
+                           what="telegram move (nessuna cartella)")}

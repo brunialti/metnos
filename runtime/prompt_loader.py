@@ -207,6 +207,21 @@ def _render_synt_yaml(yaml_path: Path, lang: str, fmt: str, **vars) -> str:
     )
 
 
+def _default_vars() -> dict:
+    """Variabili Jinja iniettate automaticamente in ogni render.
+
+    Include `install_root` (path della install Metnos, rename-resilient
+    §7.11) — usato dai prompt synt_code_addendum_send e simili per
+    suggerire location di storage al LLM senza hardcodare `/opt/metnos`
+    nel template (B.4 fix 19/5/2026 v4).
+    """
+    try:
+        from config import PATH_ROOT
+        return {"install_root": str(PATH_ROOT)}
+    except Exception:
+        return {"install_root": "/opt/metnos"}
+
+
 def get(role: str, lang: str, **vars) -> str:
     """Render `runtime/prompts/<lang>/<role>.j2` con `**vars` come variabili
     Jinja2. `lang` è obbligatorio: ogni caller dichiara la lingua corrente
@@ -218,14 +233,17 @@ def get(role: str, lang: str, **vars) -> str:
     rendiamo via YAML envelope (se `<role>.yaml` esiste). Per `prose` o
     YAML mancante, fallback al `<role>.j2` originale (byte-equivalence
     garantita)."""
+    # Inject install_root (B.4 19/5/2026 v4): caller può override passando
+    # esplicitamente `install_root=` in vars.
+    merged_vars = {**_default_vars(), **vars}
     if role in _SYNT_ROLES:
         fmt = _synt_format()
         if fmt in ("yaml_raw", "json_raw"):
             yaml_path = _BASE / lang / f"{role}.yaml"
             if yaml_path.is_file():
-                return _render_synt_yaml(yaml_path, lang, fmt, **vars)
+                return _render_synt_yaml(yaml_path, lang, fmt, **merged_vars)
             # YAML missing: fall through to j2 (no silent failure on bench drop-in)
-    return _env_for(lang).render_template(f"{role}.j2", **vars)
+    return _env_for(lang).render_template(f"{role}.j2", **merged_vars)
 
 
 def list_planner_sections(lang: str) -> tuple[str, ...]:
@@ -469,7 +487,13 @@ def compose(role: str, lang: str, *, sections=None, **vars) -> str:
     # opt-in e' stata risolta dal synthetic final_answer (ADR 0133 ext).
     _OPT_IN_SECTIONS: set[str] = set()
     # Risolvi la lista di sezioni effettive (sorted, deterministica).
-    if sections is None or not sections:
+    # Semantica (#H0 19/5/2026 sera — distinzione None vs () per core-only):
+    #   sections=None  → ALL sezioni (degrade graceful, intent unknown)
+    #   sections=()    → CORE ONLY (nessuna sezione, solo _core + _footer).
+    #                    Usato quando l'object e' coperto dal core (files,
+    #                    dirs, numbers, texts, ...).
+    #   sections=[...] → solo quelle sezioni (intersezione con avail).
+    if sections is None:
         effective = tuple(s for s in list_planner_sections(lang)
                           if s not in _OPT_IN_SECTIONS)
     else:

@@ -31,9 +31,11 @@ if str(_RUNTIME) not in sys.path:
     sys.path.insert(0, str(_RUNTIME))
 
 from skill_wrapper import (  # noqa: E402
-    _skill_home, _needs_inputs_oauth_setup, _get_skill_oauth_config,
+    _skill_home, _needs_inputs_oauth_setup,
+    _get_oauth_provider_for_skill,
 )
 from backends._google_api_runner import run_with_retry  # noqa: E402
+from messages import get as _msg  # noqa: E402
 
 SKILL_NAME = "google-workspace"
 
@@ -48,11 +50,12 @@ def _auth_needs_inputs(args_base: dict, *, executor: str,
         payload = _needs_inputs_oauth_setup(
             skill_name=SKILL_NAME, executor=executor,
             args_base=args_base,
-            **_get_skill_oauth_config(__file__),
+            **_get_oauth_provider_for_skill(SKILL_NAME),
         )
     except Exception as ex:
         out = {"ok": False, "error_class": "auth_required",
-               "error": f"OAuth setup payload fallito: {ex}"}
+               "error_code": "ERR_OAUTH_SETUP",
+               "error": _msg("ERR_OAUTH_SETUP", reason=str(ex))}
         if result_kind == "entries":
             out["entries"] = []; out["used"] = 0
         else:
@@ -99,7 +102,8 @@ def find(args: dict) -> dict:
         `query` mancante, prendiamo il primo elemento come query.
     """
     if not isinstance(args, dict):
-        return {"ok": False, "error": "args must be an object",
+        return {"ok": False, "error_code": "ERR_ARG_INVALID",
+                "error": _msg("ERR_ARG_INVALID", arg="args", reason="must be an object"),
                 "error_class": "invalid_args", "entries": [], "used": 0}
 
     query = args.get("query")
@@ -109,7 +113,8 @@ def find(args: dict) -> dict:
             query = str(paths[0])
     if not query:
         return {"ok": False,
-                "error": "missing 'query' (o 'paths' come fallback)",
+                "error_code": "ERR_ARG_MISSING",
+                "error": _msg("ERR_ARG_MISSING", arg="query (o 'paths')"),
                 "error_class": "invalid_args",
                 "entries": [], "used": 0}
 
@@ -143,7 +148,8 @@ def find(args: dict) -> dict:
 def read(args: dict) -> dict:
     """Legge metadata di 1+ file Drive per id (vettoriale §2.1)."""
     if not isinstance(args, dict):
-        return {"ok": False, "error": "args must be an object",
+        return {"ok": False, "error_code": "ERR_ARG_INVALID",
+                "error": _msg("ERR_ARG_INVALID", arg="args", reason="must be an object"),
                 "error_class": "invalid_args", "entries": [], "used": 0}
 
     ids: list[str] = []
@@ -159,7 +165,8 @@ def read(args: dict) -> dict:
                 ids.append(p.strip())
     if not ids:
         return {"ok": False,
-                "error": "missing 'file_id' / 'file_ids' / 'paths'",
+                "error_code": "ERR_ARG_MISSING",
+                "error": _msg("ERR_ARG_MISSING", arg="file_id/file_ids/paths"),
                 "error_class": "invalid_args",
                 "entries": [], "used": 0}
 
@@ -198,7 +205,8 @@ def write(args: dict) -> dict:
       - `mime_type`: str (override, opzionale, applicato a tutti).
     """
     if not isinstance(args, dict):
-        return {"ok": False, "error": "args must be an object",
+        return {"ok": False, "error_code": "ERR_ARG_INVALID",
+                "error": _msg("ERR_ARG_INVALID", arg="args", reason="must be an object"),
                 "error_class": "invalid_args",
                 "results": [], "used": 0, "n_written": 0}
 
@@ -206,7 +214,8 @@ def write(args: dict) -> dict:
     if isinstance(paths, str):
         paths = [paths]
     if not isinstance(paths, list) or not paths:
-        return {"ok": False, "error": "missing 'paths' (list)",
+        return {"ok": False, "error_code": "ERR_ARG_MISSING",
+                "error": _msg("ERR_ARG_MISSING", arg="paths"),
                 "error_class": "invalid_args",
                 "results": [], "used": 0, "n_written": 0}
 
@@ -246,7 +255,7 @@ def write(args: dict) -> dict:
         if not results:
             out["ok"] = False
             out["error_class"] = failed[0].get("error_class") or "server_error"
-            out["error"] = failed[0].get("error") or "write failed"
+            out["error"] = failed[0].get("error") or _msg("ERR_OP_FAILED", reason="write failed")
     if results:
         out["_undo"] = {
             "reverse_pattern": "delete_files_by_id",
@@ -264,7 +273,8 @@ def delete(args: dict) -> dict:
     """Cancella 1+ file Drive. Default `trash` (reversibile);
     `permanent: true` per cancellazione definitiva."""
     if not isinstance(args, dict):
-        return {"ok": False, "error": "args must be an object",
+        return {"ok": False, "error_code": "ERR_ARG_INVALID",
+                "error": _msg("ERR_ARG_INVALID", arg="args", reason="must be an object"),
                 "error_class": "invalid_args",
                 "results": [], "used": 0, "n_deleted": 0}
 
@@ -282,7 +292,8 @@ def delete(args: dict) -> dict:
                 if isinstance(v, str) and v.strip():
                     ids.append(v.strip())
     if not ids:
-        return {"ok": False, "error": "missing 'file_id' / 'file_ids' / 'entries'",
+        return {"ok": False, "error_code": "ERR_ARG_MISSING",
+                "error": _msg("ERR_ARG_MISSING", arg="file_id/file_ids/entries"),
                 "error_class": "invalid_args",
                 "results": [], "used": 0, "n_deleted": 0}
 
@@ -325,7 +336,8 @@ def share(args: dict) -> dict:
       - `notify`: bool (default False).
     """
     if not isinstance(args, dict):
-        return {"ok": False, "error": "args must be an object",
+        return {"ok": False, "error_code": "ERR_ARG_INVALID",
+                "error": _msg("ERR_ARG_INVALID", arg="args", reason="must be an object"),
                 "error_class": "invalid_args",
                 "results": [], "used": 0}
 
@@ -336,7 +348,8 @@ def share(args: dict) -> dict:
     if isinstance(fid, str) and fid.strip():
         ids.append(fid.strip())
     if not ids:
-        return {"ok": False, "error": "missing 'file_id' / 'file_ids'",
+        return {"ok": False, "error_code": "ERR_ARG_MISSING",
+                "error": _msg("ERR_ARG_MISSING", arg="file_id/file_ids"),
                 "error_class": "invalid_args",
                 "results": [], "used": 0}
 
@@ -346,7 +359,8 @@ def share(args: dict) -> dict:
     notify = bool(args.get("notify"))
     if grant_type in ("user", "group") and not email:
         return {"ok": False,
-                "error": "missing 'email' for type=user|group",
+                "error_code": "ERR_ARG_MISSING",
+                "error": _msg("ERR_ARG_MISSING", arg="email (per type=user|group)"),
                 "error_class": "invalid_args",
                 "results": [], "used": 0}
 
@@ -395,14 +409,16 @@ def create_dirs(args: dict) -> dict:
       - `parent`: folder_id del padre (opzionale).
     """
     if not isinstance(args, dict):
-        return {"ok": False, "error": "args must be an object",
+        return {"ok": False, "error_code": "ERR_ARG_INVALID",
+                "error": _msg("ERR_ARG_INVALID", arg="args", reason="must be an object"),
                 "error_class": "invalid_args",
                 "results": [], "used": 0, "n_created": 0}
     names = args.get("paths") or args.get("names") or []
     if isinstance(names, str):
         names = [names]
     if not isinstance(names, list) or not names:
-        return {"ok": False, "error": "missing 'paths' (list di nomi cartella)",
+        return {"ok": False, "error_code": "ERR_ARG_MISSING",
+                "error": _msg("ERR_ARG_MISSING", arg="paths (nomi cartella)"),
                 "error_class": "invalid_args",
                 "results": [], "used": 0, "n_created": 0}
     parent = args.get("parent") or ""
@@ -435,7 +451,7 @@ def create_dirs(args: dict) -> dict:
         if not results:
             out["ok"] = False
             out["error_class"] = failed[0].get("error_class") or "server_error"
-            out["error"] = failed[0].get("error") or "create_dir failed"
+            out["error"] = failed[0].get("error") or _msg("ERR_OP_FAILED", reason="create_dir failed")
     if results:
         out["_undo"] = {
             "reverse_pattern": "delete_files_by_id",
@@ -448,7 +464,8 @@ def create_dirs(args: dict) -> dict:
 def find_dirs(args: dict) -> dict:
     """Cerca cartelle su Drive (mimeType=folder)."""
     if not isinstance(args, dict):
-        return {"ok": False, "error": "args must be an object",
+        return {"ok": False, "error_code": "ERR_ARG_INVALID",
+                "error": _msg("ERR_ARG_INVALID", arg="args", reason="must be an object"),
                 "error_class": "invalid_args", "entries": [], "used": 0}
     query = args.get("query") or ""
     name_match = args.get("name") or query

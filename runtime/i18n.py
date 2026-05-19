@@ -129,6 +129,99 @@ def get(key: str, **kwargs) -> str:
     return f"<missing:{key}>"
 
 
+def key_exists(key: str, lang: str | None = None) -> bool:
+    """True se la chiave esiste nel DB (per lang specifica o qualsiasi).
+
+    Wiring helper per `register_key_if_missing` e per controlli pre-write
+    nel synth pipeline (Fase 11 c, 19/5/2026 v4).
+    """
+    conn = _open()
+    if lang:
+        row = conn.execute(
+            "SELECT 1 FROM i18n WHERE key=? AND lang=? AND text IS NOT NULL LIMIT 1",
+            (key, lang),
+        ).fetchone()
+    else:
+        row = conn.execute(
+            "SELECT 1 FROM i18n WHERE key=? AND text IS NOT NULL LIMIT 1",
+            (key,),
+        ).fetchone()
+    return row is not None
+
+
+def keys_for_synth_context(verb: str | None = None,
+                            obj: str | None = None,
+                            max_per_family: int = 30) -> dict[str, list[str]]:
+    """Subset chiavi i18n per il prompt synt_code stage 5 (A2 19/5/2026 v4).
+
+    Ritorna un dict `{family: [keys...]}` con le chiavi piu' rilevanti per il
+    verbo+oggetto del nuovo executor. Strategia:
+      - Sempre tutte le ERR_* generiche (sono ~8-30, baseline).
+      - WARN_* (poche).
+      - MSG_* solo top max_per_family per evitare bloat (133 totali).
+      - LOG_* tutte (poche, audit).
+    Filtra chiavi non semantiche (`.description`/`.affinity`/`prompt.*`/etc).
+
+    Razionale: il LLM stage 5 vede solo le famiglie che probabilmente usera'
+    (errori sempre, messaggi solo qualche esempio). Tot ~50-70 chiavi ≈ 1-2 KB
+    invece di 7 KB con tutte le 247. Determinismo §7.9.
+    """
+    conn = _open()
+    rows = conn.execute(
+        "SELECT DISTINCT key FROM i18n WHERE lang='it' "
+        "AND text IS NOT NULL "
+        "AND key GLOB '[A-Z]*_*' "  # solo UPPER_CASE_FAMILY style
+        "ORDER BY key"
+    ).fetchall()
+    by_family: dict[str, list[str]] = {"ERR_": [], "WARN_": [], "MSG_": [], "LOG_": []}
+    for (k,) in rows:
+        for fam in by_family:
+            if k.startswith(fam):
+                by_family[fam].append(k)
+                break
+    # Cap MSG_ a max_per_family (le altre sono naturalmente piccole).
+    if len(by_family["MSG_"]) > max_per_family:
+        by_family["MSG_"] = by_family["MSG_"][:max_per_family]
+    return by_family
+
+
+def register_key_if_missing(
+    key: str,
+    text_it: str,
+    text_en: str | None = None,
+    *,
+    needs_translation: bool = True,
+) -> bool:
+    """Registra una chiave i18n SOLO se assente. Idempotente, no-op se gia'
+    presente in DB. Ritorna True se ha scritto, False se gia' esisteva.
+
+    Fase 11 (c) scaffolding 19/5/2026 v4: usato dal pipeline synth quando
+    emette `messages.get("ERR_NUOVA")` con chiave non in DB, per evitare
+    orfani. Il flag `needs_translation=True` marca le entry per review
+    successivo da admin (i18n_translator daemon ADR 0092 puo' poi
+    completare con LLM se opportuno).
+
+    Convenzione naming chiavi: §6.1 + dedup CLAUDE.md 19/5 — famiglie
+    ERR_/WARN_/MSG_/LOG_ + suffisso semantico breve (max 2-3 segmenti).
+    """
+    if key_exists(key):
+        return False
+    if text_en is None:
+        text_en = text_it  # fallback IT come EN (translator daemon lo rifina)
+    set(key, "it", text_it, source_lang="it")
+    set(key, "en", text_en, source_lang="en")
+    if needs_translation:
+        # Mark entrambe le lingue per review (set() resetta needs_translation=0
+        # di default; qui lo riattiva esplicitamente come "auto-registered").
+        conn = _open()
+        conn.execute(
+            "UPDATE i18n SET needs_translation=1 WHERE key=?",
+            (key,),
+        )
+        conn.commit()
+    return True
+
+
 def set(key: str, lang: str, text: str, *, source_lang: str | None = None) -> None:
     """INSERT o REPLACE testo per (key, lang). Resetta needs_translation=0.
 
