@@ -1132,8 +1132,11 @@ def _invoke_default(args: dict) -> dict:
         # Se rerank disabilitato, equivalente al vecchio comportamento.
         n_fetch = wide_n if rerank_on else top_n
         # Propaga time_window → SearXNG time_range (filtro server-side).
-        # Mapping deterministico in _time_window_to_searxng_range.
-        _sx_tr = _time_window_to_searxng_range(time_window)
+        # Letto direttamente da args perche' la variabile `time_window`
+        # locale viene normalizzata solo piu' avanti nella funzione.
+        _sx_tr = _time_window_to_searxng_range(
+            str(args.get("time_window", "all")),
+        )
         candidates_full, err_class = _searxng_search_full(
             search_query.strip(), top_n=n_fetch, time_range=_sx_tr,
         )
