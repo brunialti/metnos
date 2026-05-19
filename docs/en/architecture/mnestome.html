@@ -593,12 +593,12 @@ the same way, turn after turn.
 <text class="lbl3-sm" x="300" y="140" text-anchor="middle">observed mnest</text>
 <text class="lbl3-sm" x="300" y="170" text-anchor="middle" style="font-style:italic;">(user turn)</text>
 <g>
-  <rect class="receptor-body" x="385" y="115" width="160" height="80" rx="10"/>
-  <rect class="notch-cavity" x="415" y="140" width="100" height="40" rx="6"/>
-  <text class="lbl3" x="465" y="165" text-anchor="middle" style="font-size:10px;fill:#6B21A8;font-style:italic;">gap</text>
-  <text class="lbl3" x="465" y="105" text-anchor="middle" style="font-weight:600;">proto-mnest</text>
-  <text class="lbl3-sm" x="465" y="215" text-anchor="middle">desired dst: &laquo;compose_report&raquo;</text>
-  <text class="lbl3-sm" x="465" y="230" text-anchor="middle" style="font-style:italic;">does not exist yet</text>
+  <rect class="receptor-body" x="385" y="115" width="180" height="90" rx="12"/>
+  <rect class="notch-cavity" x="420" y="135" width="110" height="50" rx="6"/>
+  <text class="lbl3" x="475" y="165" text-anchor="middle" style="font-size:10px;fill:#6B21A8;font-style:italic;">gap</text>
+  <text class="lbl3" x="475" y="105" text-anchor="middle" style="font-weight:600;">proto-mnest</text>
+  <text class="lbl3-sm" x="475" y="225" text-anchor="middle">desired dst: &laquo;compose_report&raquo;</text>
+  <text class="lbl3-sm" x="475" y="240" text-anchor="middle" style="font-style:italic;">does not exist yet</text>
 </g>
 <text class="lbl3-sm" x="360" y="270" text-anchor="middle">The proto-mnest waits. The dashed gap is the missing dst.</text>
 </svg>
@@ -675,7 +675,7 @@ a possible dst that would close it&rdquo;.
       55%       { opacity: 0; }
       100%      { opacity: 0; }
     }
-    .executor { transform-origin: 400px 160px; animation: executor-materialise 14s ease-in-out infinite; }
+    .executor { transform-origin: 400px 130px; animation: executor-materialise 14s ease-in-out infinite; }
     @keyframes executor-materialise {
       0%, 55%   { opacity: 0; transform: scale(0.3); }
       62%       { opacity: 0.6; transform: scale(0.9); }
@@ -698,24 +698,24 @@ a possible dst that would close it&rdquo;.
   </style>
   <rect class="bg" x="0" y="0" width="720" height="320" rx="8"/>
   <text x="360" y="28" class="receptor-label" style="font-size: 14px;">Synthesising an executor: from open gap to closed receptor</text>
+  <text x="400" y="50" class="work-label">synt at work...</text>
+  <text x="400" y="72" class="receptor-label">Receptor (proto-mnest)</text>
+  <text x="400" y="82" class="receptor-sublabel">waits for a capability</text>
   <rect class="receptor-body" x="310" y="85" width="180" height="90" rx="12"/>
-  <text x="400" y="108" class="receptor-label">Receptor (proto-mnest)</text>
-  <text x="400" y="123" class="receptor-sublabel">waits for a capability</text>
-  <rect class="notch" x="345" y="135" width="110" height="50" rx="4"/>
+  <rect class="notch" x="345" y="105" width="110" height="50" rx="4"/>
   <g>
-    <polygon class="spark spark-1" points="335,130 338,138 346,138 340,143 342,151 335,146 328,151 330,143 324,138 332,138" style="transform-origin: 335px 140px;"/>
-    <polygon class="spark spark-2" points="470,130 473,138 481,138 475,143 477,151 470,146 463,151 465,143 459,138 467,138" style="transform-origin: 470px 140px;"/>
-    <polygon class="spark spark-3" points="335,190 338,198 346,198 340,203 342,211 335,206 328,211 330,203 324,198 332,198" style="transform-origin: 335px 200px;"/>
-    <polygon class="spark spark-4" points="470,190 473,198 481,198 475,203 477,211 470,206 463,211 465,203 459,198 467,198" style="transform-origin: 470px 200px;"/>
+    <polygon class="spark spark-1" points="335,100 338,108 346,108 340,113 342,121 335,116 328,121 330,113 324,108 332,108" style="transform-origin: 335px 110px;"/>
+    <polygon class="spark spark-2" points="470,100 473,108 481,108 475,113 477,121 470,116 463,121 465,113 459,108 467,108" style="transform-origin: 470px 110px;"/>
+    <polygon class="spark spark-3" points="335,160 338,168 346,168 340,173 342,181 335,176 328,181 330,173 324,168 332,168" style="transform-origin: 335px 170px;"/>
+    <polygon class="spark spark-4" points="470,160 473,168 481,168 475,173 477,181 470,176 463,181 465,173 459,168 467,168" style="transform-origin: 470px 170px;"/>
   </g>
-  <text x="400" y="78" class="work-label">synt at work...</text>
   <g class="executor">
-    <rect class="executor-body" x="350" y="140" width="100" height="40" rx="4"/>
-    <text x="400" y="165" class="executor-label">compose_report</text>
+    <rect class="executor-body" x="350" y="110" width="100" height="40" rx="4"/>
+    <text x="400" y="135" class="executor-label">compose_report</text>
   </g>
   <g class="synt">
-    <rect class="synt-pill" x="375" y="145" width="50" height="30" rx="14"/>
-    <text x="400" y="164" class="synt-label">synt</text>
+    <rect class="synt-pill" x="375" y="115" width="50" height="30" rx="14"/>
+    <text x="400" y="134" class="synt-label">synt</text>
   </g>
   <text x="360" y="255" class="phase-label phase-1">synt approaches</text>
   <text x="360" y="255" class="phase-label phase-2">synt at work inside the receptor</text>
