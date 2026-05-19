@@ -48,11 +48,17 @@ import hashlib
 import json
 import logging
 import os
+import re as _re
 import sqlite3
 import threading
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
+
+try:
+    import numpy as np
+except ImportError:
+    np = None  # type: ignore[assignment]
 
 _LOG = logging.getLogger(__name__)
 
@@ -99,7 +105,6 @@ _ACTIVE_STATES = ("candidate", "active", "shadow")
 # Placeholder pattern → regex per playback args extraction.
 # Conservativo (§7.9 robustezza confine NL→determinismo): nessun LLM,
 # solo regex chiusa.
-import re as _re
 
 _URL_RE = _re.compile(r"https?://\S+")
 _PATH_RE = _re.compile(r"(?:^|\s)((?:~|\.{1,2})?/(?:[\w.\-]+/?)+|~/[\w.\-/]*)")
@@ -176,13 +181,19 @@ def derive_synth_name(tools: list[str]) -> str:
     sintetizzato con questo nome ESISTE gia' nel catalog, la entry L2
     viene demoted in modo che il PLANNER (o L1) usi il nuovo executor
     monolitico. Invariante: executor > fast-path.
+
+    Pseudo-tool (`final_answer`) escluso dal calcolo: e' un terminatore
+    di sintesi LLM, non un executor reinvocabile, e non deve influenzare
+    il nome della capacita' unificata.
     """
-    if not tools:
+    _PSEUDO = {"final_answer", "request_new_executor", "undo_last_turn"}
+    real_tools = [t for t in (tools or []) if t not in _PSEUDO]
+    if not real_tools:
         return "synthesized_pipeline"
-    if len(tools) == 1:
-        return tools[0]
-    first = tools[0]
-    last = tools[-1]
+    if len(real_tools) == 1:
+        return real_tools[0]
+    first = real_tools[0]
+    last = real_tools[-1]
     first_parts = first.split("_", 1)
     last_parts = last.split("_", 1)
     if len(last_parts) == 2 and len(first_parts) == 2:
@@ -329,11 +340,6 @@ def resolve_args_from_shape(shape: dict, query: str,
                 else:
                     out_list.append(item)
             resolved[k] = out_list
-        elif v == "<INT>" and isinstance(v, str) is False:
-            # Defensive: int placeholder erroneamente non-stringa.
-            if not int_pool:
-                return None
-            resolved[k] = int_pool[0]
         else:
             resolved[k] = v
     return resolved
@@ -579,16 +585,18 @@ class MultiToolPathsDB:
         if current == 0:
             current = self.max_active_day()
         threshold = max(0, current - ttl_active_days) if current > 0 else 0
-        states_csv = ",".join(f"'{s}'" for s in _ACTIVE_STATES)
+        # Parameterized IN (?, ?, ...) — niente f-string in SQL (§7.3).
+        _placeholders = ",".join("?" * len(_ACTIVE_STATES))
+        _sql = (
+            "SELECT id, canonical_query, tools_sequence, args_shape, "
+            "uses, last_used_active_day, state "
+            "FROM multi_tool_paths "
+            "WHERE uses >= ? AND state IN (" + _placeholders + ") "
+            "AND last_used_active_day >= ? "
+            "ORDER BY uses DESC, id"
+        )
         rows = self.conn.execute(
-            f"""SELECT id, canonical_query, tools_sequence, args_shape,
-                       uses, last_used_active_day, state
-                FROM multi_tool_paths
-                WHERE uses >= ?
-                  AND state IN ({states_csv})
-                  AND last_used_active_day >= ?
-                ORDER BY uses DESC, id""",
-            (min_uses, threshold),
+            _sql, (min_uses, *_ACTIVE_STATES, threshold),
         ).fetchall()
         out = []
         for r in rows:
@@ -627,10 +635,9 @@ class MultiToolPathsDB:
             self._entries_sig = sig
             return False
         emb = self._get_embedder()
-        if emb is None:
+        if emb is None or np is None:
             return False
         try:
-            import numpy as np
             vectors = emb.embed_texts([e["canonical"] for e in entries])
             if not isinstance(vectors, np.ndarray):
                 vectors = np.asarray(vectors, dtype=np.float32)
@@ -684,10 +691,9 @@ class MultiToolPathsDB:
             if not self._refresh_if_stale(min_uses, ttl_active_days):
                 return None
             emb = self._get_embedder()
-            if emb is None:
+            if emb is None or np is None:
                 return None
             try:
-                import numpy as np
                 qv = emb.embed_query(query)
                 if not isinstance(qv, np.ndarray):
                     qv = np.asarray(qv, dtype=np.float32)
@@ -697,6 +703,13 @@ class MultiToolPathsDB:
             scores = self._vectors @ qv  # (N,)
             idx = int(np.argmax(scores))
             top = float(scores[idx])
+            _LOG.debug(
+                "multi_tool_paths.try_match query=%r best_cosine=%.3f "
+                "threshold=%.3f canonical=%r min_uses=%d n_entries=%d",
+                (query or "")[:60], top, threshold,
+                self._entries[idx]["canonical"],
+                min_uses, len(self._entries),
+            )
             if top < threshold:
                 return None
             entry = self._entries[idx]
@@ -707,10 +720,20 @@ class MultiToolPathsDB:
         # L1 canonical_matcher) usera' direttamente l'executor sintetizzato.
         if available_tool_names is not None:
             synth_name = derive_synth_name(entry["tools"])
+            _LOG.debug(
+                "multi_tool_paths.try_match auto_demote_check synth=%r "
+                "in_catalog=%s in_tools=%s",
+                synth_name,
+                synth_name in available_tool_names,
+                synth_name in entry["tools"],
+            )
             if synth_name in available_tool_names and synth_name not in entry["tools"]:
                 # Demote: la entry diventa state='demoted' nel DB.
                 # Idempotente: una entry gia' demoted non rientra in
                 # _load_entries (filtro state IN active/candidate/shadow).
+                # Costo cache: UNA full re-encode al prossimo match (l'entry
+                # demoted sparisce dal load), poi cache stabile finche'
+                # un'altra entry non viene demoted. Non e' "ogni call".
                 try:
                     with self._lock, self.conn:
                         self.conn.execute(
@@ -752,12 +775,17 @@ class MultiToolPathsDB:
                 # Placeholder non risolto: probabilmente la query non porta
                 # i valori richiesti dal pattern (es. pattern memoizza un
                 # URL ma la nuova query non ha URL). Fallback PLANNER.
-                _LOG.debug(
-                    "multi_tool_paths: shape step %d unresolved for query %r",
-                    i, query[:60],
+                _LOG.info(
+                    "multi_tool_paths.try_match shape_unresolved step=%d "
+                    "tool=%r shape=%r query=%r",
+                    i, tool, shape, (query or "")[:60],
                 )
                 return None
             plan_steps.append({"tool": tool, "args": resolved})
+        _LOG.info(
+            "multi_tool_paths HIT cosine=%.3f tools=%r",
+            top, entry["tools"],
+        )
         return {
             "kind": "multi_tool_path",
             "id": entry["id"],

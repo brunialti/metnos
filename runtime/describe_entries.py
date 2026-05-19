@@ -19,6 +19,7 @@ completo (lo style viene ignorato).
 from __future__ import annotations
 
 import json
+import os
 import re
 
 from llm_helpers import call_llm
@@ -317,6 +318,13 @@ def handle_describe_entries(args, *, verbose: bool = False) -> dict:
 
     style = (args or {}).get("style") or h.get("style") or "by_importance"
     context = (args or {}).get("context") or h.get("context") or ""
+    # Safety net (20/5 v6): style=by_relevance richiede `context` con la
+    # query utente per fare un riassunto mirato. Se il PLANNER l'ha
+    # dimenticato, ricadiamo deterministicamente a by_importance (segnale
+    # vs rumore, non richiede context). Evita output del tipo "query
+    # dell'utente vuota '', non posso rispondere".
+    if style == "by_relevance" and not (context and context.strip()):
+        style = "by_importance"
     data_kind = (args or {}).get("data_kind") or h.get("kind") or h.get("data_kind")
     max_tokens = int((args or {}).get("max_tokens") or h.get("max_tokens") or 600)
     prompt_override = (args or {}).get("prompt_override") or h.get("prompt_override")
@@ -340,6 +348,59 @@ def handle_describe_entries(args, *, verbose: bool = False) -> dict:
         return {"ok": True, "summary": "", "item_count": 0, "style": style,
                 "data_kind": data_kind or "generic",
                 "in_tokens": 0, "out_tokens": 0, "latency_ms": 0}
+
+    # ADR 0153 (19/5/2026 v6): content fetch on-demand. Se le entries
+    # hanno SOLO url+title+snippet (tipicamente output di find_urls) e
+    # nessun campo testuale (content/body/text), describe_entries NON
+    # puo' sintetizzare contenuto reale — ricadrebbe in enumerazione di
+    # metadata. Dichiara strutturalmente la mancanza con
+    # `error_class=needs_content_fetch`; il runtime auto-injecta
+    # `read_urls_html` sui top URL e ri-chiama describe_entries con
+    # entries arricchite. Pattern install_on_demand (ADR 0143).
+    # Campi testuali considerati "contenuto sufficiente" per la sintesi.
+    # SOLO testo realmente sintetizzabile:
+    # - content/body/text: convenzioni generali
+    # - body_text: read_urls_html canonical HTML fetch
+    # Snippet ESCLUSO: i find_urls snippets sono preview SEO 100-200 char,
+    # non sintetizzabili a riassunto informativo. La presenza di soli
+    # snippet trigger needs_content_fetch -> read_urls_html sui top URL.
+    _CONTENT_FIELDS = ("content", "body", "text", "body_text")
+    # Soglia minima di contenuto sintetizzabile (caratteri):
+    # - snippet di search (100-200 char) → NON sufficiente
+    # - paragrafo singolo (~300 char) → marginale
+    # - 500 char ≈ ~80 parole / 4-5 frasi → contenuto reale.
+    # Override via env per tuning durante bench, default conservativo.
+    _CONTENT_MIN_CHARS = int(
+        os.environ.get("METNOS_DESCRIBE_MIN_CHARS", "500")
+    )
+    def _has_content(e: dict) -> bool:
+        for k in _CONTENT_FIELDS:
+            v = e.get(k)
+            if isinstance(v, str) and len(v.strip()) >= _CONTENT_MIN_CHARS:
+                return True
+        return False
+    _has_textual_content = any(
+        _has_content(e) for e in entries if isinstance(e, dict)
+    )
+    if not _has_textual_content:
+        _urls_for_fetch = [
+            e["url"] for e in entries
+            if isinstance(e, dict)
+            and isinstance(e.get("url"), str)
+            and e["url"].startswith(("http://", "https://"))
+        ][:5]
+        if _urls_for_fetch:
+            return {
+                "ok": False,
+                "error_class": "needs_content_fetch",
+                "needs_urls_html": _urls_for_fetch,
+                "error": (
+                    "describe_entries: le entries hanno solo metadata "
+                    "(url/title/snippet), nessun contenuto testuale. "
+                    "Il runtime interpone read_urls_html sui top URL "
+                    "e ri-prova."
+                ),
+            }
 
     # Patch 3 (8/5/2026, §2.7): cap entries verso LLM. Sopra _DESCRIBE_CAP
     # mandiamo solo le prime N al prompt e dichiariamo truncated nel
@@ -365,9 +426,7 @@ def handle_describe_entries(args, *, verbose: bool = False) -> dict:
     health_directive = ""
     if isinstance(health_context, dict) and health_context:
         try:
-            import sys as _sys
-            _sys.path.insert(0, "/opt/myclaw/runtime")
-            from orchestration import _fmt_health_block
+            from orchestration import _fmt_health_block  # ADR 0148: package-relative
             block = _fmt_health_block(health_context)
         except Exception:
             block = ""

@@ -3393,7 +3393,18 @@ class TurnLog:
             _llm_synth_final = bool(
                 self.steps and self.steps[-1].chosen_tool == "final_answer"
             )
-            if not _llm_synth_final:
+            # Skip prepend anche per turni serviti dal fast-path L2 (19/5
+            # v5): il synthesizer del playback ha ricevuto le observation
+            # complete (incl. info truncation) e ha gia' formulato una
+            # final_message consapevole. Prependere il notice qui maschera
+            # la sintesi LLM con un avviso ridondante.
+            _mtp_synth = bool(
+                self.steps and any(
+                    getattr(s, "__dict__", {}).get("multi_tool_fast_path")
+                    for s in self.steps
+                )
+            )
+            if not _llm_synth_final and not _mtp_synth:
                 for notice in self._collect_truncation_notices():
                     if notice and notice not in (self.final_message or ""):
                         self.final_message = (notice + "\n\n" + (self.final_message or "")).strip()
@@ -3480,6 +3491,20 @@ class TurnLog:
                 cq = getattr(first, "canonical_query", "") or ""
                 if not cq and isinstance(first.raw_args, dict):
                     cq = str(first.raw_args.get("_canonical_query", "") or "")
+                # Fallback (19/5 v5): step 1 e' spesso un seed_step
+                # (ADR 0099) iniettato deterministicamente senza chiamata
+                # al PLANNER LLM, quindi canonical_query=None. In quel
+                # caso leggiamo la canonical_query dal primo step LLM
+                # successivo (tipicamente step 2). Senza questo, le
+                # query con URL esplicito non popolano canonical_query_log
+                # ne' multi_tool_paths.
+                if (not cq and getattr(first, "seed_step", False)
+                        and len(self.steps) >= 2):
+                    for s in self.steps[1:]:
+                        cq_alt = getattr(s, "canonical_query", "") or ""
+                        if cq_alt:
+                            cq = cq_alt
+                            break
             except Exception:
                 cq = ""
             tool = getattr(first, "chosen_tool", "") or ""
@@ -3528,13 +3553,25 @@ class TurnLog:
                 from multi_tool_paths import (
                     record_path_observation, derive_args_shape,
                 )
+                # Pseudo-tool NON reinvocabili come subprocess. `final_answer`
+                # invece RESTA nella sequenza (19/5 v5): viene rieseguito al
+                # playback come sintesi LLM tier fast, cosi' il fast-path
+                # produce un final_message naturale come avrebbe fatto il
+                # PLANNER, mantenendo lo speedup (LLM piccolo + breve, ~500ms).
+                _NON_EXECUTOR_PSEUDO_TOOLS = {
+                    "request_new_executor",
+                    "undo_last_turn",
+                }
                 tools_seq = [
                     s.chosen_tool for s in self.steps
                     if s.chosen_tool
+                    and s.chosen_tool not in _NON_EXECUTOR_PSEUDO_TOOLS
                 ]
                 raw_args_per = [
                     s.raw_args if isinstance(s.raw_args, dict) else {}
-                    for s in self.steps if s.chosen_tool
+                    for s in self.steps
+                    if s.chosen_tool
+                    and s.chosen_tool not in _NON_EXECUTOR_PSEUDO_TOOLS
                 ]
                 if len(tools_seq) >= 2:
                     shape = derive_args_shape(
@@ -3647,6 +3684,122 @@ def _try_synt_compose(mnestoma, target_intent: str, mnest_id: str, *, verbose: b
     return None
 
 
+# --- Builtin handler registry (modulo-level) -------------------------------
+# Builtin in-process handlers (vs executor subprocess via invoke_executor).
+# Tabella unica usata dal fast-path playback, dall'auto-remediation, e da
+# qualunque futuro caller. Niente duplicazioni file-by-file.
+_BUILTIN_TOOL_HANDLERS: dict = {
+    "describe_entries": handle_describe_entries,
+    "classify_entries": handle_classify_entries,
+    "create_tasks": handle_create_tasks,
+    "list_tasks": handle_list_tasks,
+    "delete_tasks": handle_delete_tasks,
+    "read_tasks": handle_read_tasks,
+    "set_tasks": handle_set_tasks,
+}
+
+
+# --- Auto-remediation generalizzata (ADR 0153) -----------------------------
+
+def _maybe_remediate_obs(
+    obs: dict,
+    original_args: dict,
+    original_tool: str,
+    *,
+    catalog: list,
+    turn_id: str,
+    actor: str | None,
+    channel: str | None,
+    verbose: bool = False,
+) -> tuple | None:
+    """Tenta auto-remediation generica su un'observation.
+
+    Se `obs` ha un `error_class` registrato in
+    `auto_remediation.REMEDIATIONS`, invoca il prereq (executor o
+    builtin), retry l'executor originale, e ritorna
+    (prereq_step, prereq_obs, retry_obs).
+
+    Ritorna None se non c'e' remediation applicabile o se il prereq
+    fallisce (caller continua con `obs` originale).
+
+    Pattern install_on_demand generalizzato: stesso codice per
+    needs_content_fetch (describe_entries -> read_urls_html), futuro
+    needs_ocr, needs_embedding, ecc. Nuova riga in
+    `auto_remediation.REMEDIATIONS` = nuovo error_class supportato,
+    senza modificare questo helper.
+    """
+    try:
+        from auto_remediation import try_remediate, get_plan
+    except Exception:
+        return None
+    plan = get_plan(obs.get("error_class"))
+    if plan is None:
+        return None
+
+    def _invoke_prereq(tool_name: str, prereq_args: dict) -> dict:
+        # Dispatcher uniforme builtin vs executor reale.
+        if tool_name in _BUILTIN_TOOL_HANDLERS:
+            return _BUILTIN_TOOL_HANDLERS[tool_name](prereq_args)
+        _exec = next(
+            (e for e in catalog if e.name == tool_name), None,
+        )
+        if _exec is None:
+            return {"ok": False,
+                    "error": f"prereq tool {tool_name!r} non in catalog"}
+        return invoke_executor(
+            _exec, prereq_args,
+            timeout_s=(getattr(_exec, "timeout_s", None) or 120),
+            autonomy="supervised", turn_id=turn_id,
+            actor=actor, channel=channel,
+        )
+
+    result = try_remediate(obs, original_args,
+                            invoke_prereq=_invoke_prereq)
+    if result is None:
+        return None
+    prereq_obs, retry_args, plan_info = result
+    if not prereq_obs.get("ok"):
+        if verbose:
+            print(f"[auto_remediation] prereq {plan_info.get('prereq_tool')} "
+                  f"failed: {prereq_obs.get('error')!r}")
+        return None
+    # Costruisci StepLog audit per il prereq.
+    _rh_step = StepLog(step_num=0)  # caller imposta step_num corretto
+    _rh_step.chosen_tool = plan_info["prereq_tool"]
+    _rh_step.raw_args = (
+        {k: v for k, v in retry_args.items()
+         if k == plan.merge_field}
+        if plan.merge_field in retry_args else {}
+    )
+    _rh_step.resolved_args = dict(_rh_step.raw_args)
+    _rh_step.result = prereq_obs
+    _rh_step.vaglio_approved = True
+    if hasattr(_rh_step, "__dict__"):
+        _rh_step.__dict__["auto_remediation"] = plan_info["error_class"]
+
+    # Retry dell'executor originale con args arricchiti. Dispatcher
+    # uniforme builtin vs executor reale (registry modulo-level).
+    if original_tool in _BUILTIN_TOOL_HANDLERS:
+        retry_obs = _BUILTIN_TOOL_HANDLERS[original_tool](retry_args)
+    else:
+        _orig_exec = next(
+            (e for e in catalog if e.name == original_tool), None,
+        )
+        if _orig_exec is None:
+            return None
+        try:
+            retry_obs = invoke_executor(
+                _orig_exec, retry_args,
+                timeout_s=(getattr(_orig_exec, "timeout_s", None) or 120),
+                autonomy="supervised", turn_id=turn_id,
+                actor=actor, channel=channel,
+            )
+        except Exception as ex:
+            retry_obs = {"ok": False,
+                          "error": f"{type(ex).__name__}: {ex}"}
+    return (_rh_step, prereq_obs, retry_obs)
+
+
 # --- L2 multi-tool fast-path playback (ADR 0150) ---------------------------
 
 def _try_multi_tool_path_playback(
@@ -3703,7 +3856,17 @@ def _try_multi_tool_path_playback(
         )
         return None
     if hit is None:
+        # Quiet path: ogni turn passa di qui se no fast-path. DEBUG only.
+        import logging as _logging
+        _logging.getLogger(__name__).debug(
+            "multi_tool_fast_path: no hit for query=%r", (query or "")[:60],
+        )
         return None
+    import logging as _logging
+    _logging.getLogger(__name__).info(
+        "multi_tool_fast_path HIT canonical=%r cosine=%.3f uses=%d tools=%r — starting playback",
+        hit['canonical'], hit['cosine'], hit['uses'], hit['tools'],
+    )
     if verbose:
         print(f"[multi_tool_fast_path] hit canonical={hit['canonical']!r} "
               f"cosine={hit['cosine']:.3f} uses={hit['uses']} "
@@ -3711,11 +3874,45 @@ def _try_multi_tool_path_playback(
     plan = hit["plan_steps"]
     history: list = []  # per from_step resolution fra step
     steps_out: list = []
+    synthesized_final: str | None = None
     for i, step_plan in enumerate(plan, start=1):
         tool_name = step_plan["tool"]
-        executor = next((e for e in catalog if e.name == tool_name), None)
-        if executor is None:
+        # Pseudo-step `final_answer` (19/5 v5): non e' un executor IPC, e'
+        # la sintesi LLM che il PLANNER faceva a fine turno. Lo rieseguiamo
+        # con tier fast su un prompt breve che condensa l'history degli
+        # step precedenti in 2-4 righe. Costo ~500ms, conserva il senso
+        # naturale della risposta che il PLANNER avrebbe dato.
+        if tool_name == "final_answer":
+            try:
+                synthesized_final = _synthesize_final_answer_for_playback(
+                    query=query, history=history, lang=lang,
+                )
+            except Exception as ex:
+                import logging as _logging
+                _logging.getLogger(__name__).warning(
+                    "multi_tool_fast_path: final_answer synthesis fallita: %r",
+                    ex,
+                )
+                synthesized_final = None
+            # final_answer e' SEMPRE l'ultimo step per costruzione del
+            # PLANNER. Esci dal loop: history e' completa, synthesized_final
+            # (se ok) sostituira' la final_message generica.
+            break
+        # Distinzione builtin vs executor reale (19/5 v6, fix bias).
+        # Registry unica `_BUILTIN_TOOL_HANDLERS` definita a modulo (sopra),
+        # condivisa con auto-remediation. ADR 0133 ext.
+        _is_builtin = tool_name in _BUILTIN_TOOL_HANDLERS
+        executor = (
+            None if _is_builtin
+            else next((e for e in catalog if e.name == tool_name), None)
+        )
+        if not _is_builtin and executor is None:
             # Tool sparito dal catalog (renamed/disabled): fallback.
+            import logging as _logging
+            _logging.getLogger(__name__).warning(
+                "multi_tool_fast_path: tool %r non in catalog ne' builtin, "
+                "fallback PLANNER", tool_name,
+            )
             if verbose:
                 print(f"[multi_tool_fast_path] tool {tool_name} non in catalog, "
                       f"fallback PLANNER")
@@ -3733,28 +3930,66 @@ def _try_multi_tool_path_playback(
         step.raw_args = dict(raw_args)
         step.resolved_args = dict(resolved_args)
         step.vaglio_approved = True  # short-circuit (riusa decisione storica)
+        # Timeout: usa il valore del manifest se presente, altrimenti 120s
+        # (era 30s — troppo aggressivo per executor IMAP/mail/HTTP che
+        # legittimamente possono superare 30s).
+        _exec_timeout = (
+            None if _is_builtin
+            else (getattr(executor, "timeout_s", None) or 120)
+        )
         t0 = time.perf_counter()
         try:
-            obs = invoke_executor(
-                executor, resolved_args,
-                timeout_s=getattr(executor, "timeout_s", None) or 30,
-                autonomy="supervised", turn_id=turn_id,
-                actor=actor, channel=channel,
-            )
+            if _is_builtin:
+                obs = _BUILTIN_TOOL_HANDLERS[tool_name](resolved_args)
+            else:
+                obs = invoke_executor(
+                    executor, resolved_args,
+                    timeout_s=_exec_timeout,
+                    autonomy="supervised", turn_id=turn_id,
+                    actor=actor, channel=channel,
+                )
         except Exception as ex:
             obs = {"ok": False, "error": f"{type(ex).__name__}: {ex}"}
         step.exec_ms = int((time.perf_counter() - t0) * 1000)
         step.result = obs
         if hasattr(step, "__dict__"):
             step.__dict__["multi_tool_fast_path"] = True
+        # ADR 0153 (20/5 v6): auto-remediation generalizzata.
+        # Stesso codice usato dal PLANNER path: registry chiuso
+        # `auto_remediation.REMEDIATIONS` mappa error_class -> prereq.
+        _remed = _maybe_remediate_obs(
+            obs, resolved_args, tool_name,
+            catalog=catalog, turn_id=turn_id,
+            actor=actor, channel=channel,
+            verbose=verbose,
+        )
+        if _remed is not None:
+            _rh_step, _rh_obs, obs = _remed
+            _rh_step.step_num = i  # step_num corretto nel playback
+            if hasattr(_rh_step, "__dict__"):
+                _rh_step.__dict__["multi_tool_fast_path"] = True
+            step.result = obs
+            steps_out.append(_rh_step)
+            history.append({"tool": _rh_step.chosen_tool,
+                             "observation": _rh_obs})
         if not obs.get("ok"):
+            import logging as _logging
+            _logging.getLogger(__name__).warning(
+                "multi_tool_fast_path: step %d (%s) failed: %r — fallback PLANNER",
+                i, tool_name, obs.get('error'),
+            )
             if verbose:
                 print(f"[multi_tool_fast_path] step {i} ({tool_name}) "
                       f"failed: {obs.get('error')!r}, fallback PLANNER")
             return None
         steps_out.append(step)
         history.append({"tool": tool_name, "observation": obs})
-    # Tutti gli step ok. Final message dall'ultima observation.
+    # Final message: priorita' alla sintesi LLM se eseguita (final_answer
+    # nel pipeline); altrimenti fallback a summary/message/content dell'
+    # ultima observation; ultima rete generica.
+    if synthesized_final and synthesized_final.strip():
+        return (steps_out, steps_out[-1].result if steps_out else {},
+                synthesized_final.strip())
     final_obs = steps_out[-1].result if steps_out else {}
     summary = (final_obs.get("summary") or final_obs.get("message")
                 or final_obs.get("content") or "")
@@ -3767,6 +4002,94 @@ def _try_multi_tool_path_playback(
             summary = (f"Pipeline executed ({len(steps_out)} steps, "
                         f"{n_entries} items).")
     return (steps_out, final_obs, summary.strip())
+
+
+def _synthesize_final_answer_for_playback(
+    *, query: str, history: list, lang: str = "it",
+) -> str | None:
+    """Sintesi LLM tier fast del final_answer per il fast-path L2.
+
+    Costruisce un prompt minimo con la query utente + tutte le observation
+    raccolte negli step precedenti (entries / summary / content). Chiama
+    LLM tier fast (Gemma 4 26B in modalita' rapida, ~500ms) per produrre
+    2-4 righe italiane/inglesi che condensino il risultato come avrebbe
+    fatto il PLANNER al final_answer naturale del turno.
+
+    Ritorna None su fallimento (caller usa fallback generico).
+    """
+    if not history:
+        return None
+    # Snapshot compatto delle observation: prendi solo i campi user-facing
+    # (entries con keys rilevanti, summary, message, content). Evita di
+    # iniettare blob giganti nel prompt fast.
+    compact: list = []
+    for h in history:
+        obs = h.get("observation") or {}
+        tool = h.get("tool") or "?"
+        block = {"tool": tool}
+        for k in ("summary", "message", "content"):
+            v = obs.get(k)
+            if isinstance(v, str) and v.strip():
+                block[k] = v[:400]
+                break
+        entries = obs.get("entries") or []
+        if entries:
+            # Top 10 entries per non saturare il prompt; preserva solo
+            # le 4-6 chiavi piu' utili per la sintesi.
+            slim = []
+            for e in entries[:10]:
+                if not isinstance(e, dict):
+                    continue
+                pick = {}
+                for k in ("title", "from", "subject", "name", "path",
+                          "url", "value", "summary"):
+                    if k in e and e[k] not in (None, ""):
+                        pick[k] = (str(e[k])[:120]
+                                    if isinstance(e[k], str) else e[k])
+                if pick:
+                    slim.append(pick)
+            if slim:
+                block["entries"] = slim
+                block["n_entries_total"] = len(entries)
+        compact.append(block)
+    import json as _json
+    obs_blob = _json.dumps(compact, ensure_ascii=False)[:3500]
+    if lang == "it":
+        system_prompt = (
+            "Rispondi in italiano in 2-3 righe. Solo contenuto utile, "
+            "niente preamboli, niente meta-commenti."
+        )
+        user_prompt = (
+            f"Richiesta: {query}\n\nDati:\n{obs_blob}\n\nRisposta:"
+        )
+    else:
+        system_prompt = (
+            "Answer in English in 2-3 lines. Useful content only, "
+            "no preamble, no meta-commentary."
+        )
+        user_prompt = (
+            f"Request: {query}\n\nData:\n{obs_blob}\n\nAnswer:"
+        )
+    try:
+        from llm_router import LLMRouter
+        router = LLMRouter()
+        provider = router.provider("fast")
+        # max_tokens 100 ≈ 2-3 righe naturali in IT/EN. Riduce wall da
+        # ~4s a ~1.5-2s su Gemma 4 26B fast tier.
+        res = provider.chat(
+            system_prompt, user_prompt,
+            max_tokens=100, temperature=0.2, think=False,
+        )
+        text = (res.text or "").strip()
+        return text or None
+    except Exception as ex:
+        # §2.8 no silent failure: log warn cosi' problemi LLM provider
+        # non spariscono dietro un fallback generico.
+        import logging as _logging
+        _logging.getLogger(__name__).warning(
+            "multi_tool_fast_path final synth failed: %r", ex,
+        )
+        return None
 
 
 # --- Loop pianificatore (multistep con tool-use nativo) -------------------
@@ -6121,6 +6444,25 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
             except (KeyError, IndexError, TypeError):
                 pass
             obs = handle_describe_entries(args, verbose=verbose)
+            # ADR 0153 (20/5/2026 v6): auto-remediation generalizzata.
+            # Se l'observation ha error_class noto al registry
+            # `auto_remediation.REMEDIATIONS`, il runtime invoca il
+            # prereq, ricalcola gli args, retry. Stesso codice per
+            # describe_entries, classify_entries, futuri executor.
+            _remed = _maybe_remediate_obs(
+                obs, args, chosen_name,
+                catalog=catalog, turn_id=turn_id,
+                actor=actor, channel=channel,
+                verbose=verbose,
+            )
+            if _remed is not None:
+                _rh_step, _rh_obs, obs = _remed
+                log.steps.append(_rh_step)
+                history_for_refs.append({
+                    "step": step_num, "tool": _rh_step.chosen_tool,
+                    "args": _rh_step.raw_args,
+                    "observation": _rh_obs,
+                })
             step.result = obs
             log.steps.append(step)
             history_for_refs.append({"step": step_num, "tool": chosen_name, "args": args, "observation": obs})

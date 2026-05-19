@@ -29,9 +29,17 @@ from typing import Any
 _LOG = logging.getLogger(__name__)
 
 
-# Threshold per la promozione L2 → L3. ADR 0150: K_synth = 50.
-# Override via env per test.
-DEFAULT_K_SYNTH = int(os.environ.get("METNOS_MTP_K_SYNTH", "50"))
+# Threshold per la promozione L2 → L3. Lookup via runtime_settings
+# (hierarchy env > toml > default). Lazy: solo al primo call, cosi'
+# eventuali modifiche runtime.toml sono picked-up al prossimo job.
+
+
+def _k_synth() -> int:
+    try:
+        from runtime_settings import multi_tool_fast_path_k_synth
+        return multi_tool_fast_path_k_synth()
+    except Exception:
+        return int(os.environ.get("METNOS_MTP_K_SYNTH", "50"))
 
 
 def _build_desired_signature_from_path(
@@ -54,11 +62,13 @@ def _build_desired_signature_from_path(
     for k, v in first_args.items():
         if k == "from_step":
             continue
-        # Type hint: se il valore e' un placeholder, usa il tipo; else "any".
+        # Type hint: se il valore e' un placeholder (es. "<URL>"), usa
+        # il tipo; altrimenti il valore e' literal e non aggiungiamo
+        # ipotesi di tipo (lasciamo solo la chiave).
         if isinstance(v, str) and v.startswith("<") and v.endswith(">"):
             inputs.append(f"{k}:{v[1:-1].lower()}")
         else:
-            inputs.append(f"{k}")
+            inputs.append(k)
     pipeline_desc = " → ".join(tools_sequence)
     summary = (
         f"Pipeline unificata derivata da memoization L2 "
@@ -87,7 +97,7 @@ def task_multi_tool_promote(payload: dict[str, Any] | None = None) -> dict:
         {ok, promoted, skipped, errors}
     """
     payload = payload or {}
-    k_synth = int(payload.get("k_synth") or DEFAULT_K_SYNTH)
+    k_synth = int(payload.get("k_synth") or _k_synth())
     stats = {"ok": True, "promoted": 0, "skipped": 0, "errors": []}
     try:
         from multi_tool_paths import MultiToolPathsDB

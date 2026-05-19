@@ -115,22 +115,38 @@ def _extract_paths(query: str) -> list[str]:
     relativo invece di assoluto.
     """
     urls = set(_URL_RE.findall(query))
-    out = []
-    # 1. Pattern "home/<rest>" → "~/<rest>" (priorita': intercetta prima del
-    #    PATH_RE generico cosi' produce path expanso direttamente).
+    out: list[str] = []
+    # Dedup robusta: tracciamo SIA il path canonical (~/foo) SIA il path
+    # raw (/foo, home/foo) per evitare duplicati cross-pattern.
+    _seen_canon: set[str] = set()
+
+    def _add(p: str) -> None:
+        p = p.strip()
+        if not p:
+            return
+        # Normalizza per dedup: drop leading "home/" -> "~/", trim trailing /
+        canon = p
+        if canon.lower().startswith("home/"):
+            canon = "~/" + canon[5:]
+        canon = canon.rstrip("/")
+        if canon and canon not in _seen_canon:
+            _seen_canon.add(canon)
+            out.append(p if p.startswith(("~", "/", ".")) else canon)
+
+    # 1. "home/<rest>" → "~/<rest>".
     for m in _HOME_PATH_RE.finditer(query):
         rest = m.group("rest").strip()
         if rest:
-            out.append(f"~/{rest}")
-    # 2. PATH_RE generico (assoluto, ./, ../, ~/).
+            _add(f"~/{rest}")
+    # 2. PATH_RE generico (assoluto, ./, ../, ~/). Filtra URL.
     for m in _PATH_RE.finditer(query):
         p = m.group(1).strip()
-        if p and not any(p in u for u in urls) and p not in out:
-            out.append(p)
+        if p and not any(p in u for u in urls):
+            _add(p)
     # 3. "home" standalone (senza /) → "~/" se non gia' coperto.
     if _HOME_KEYWORDS_RE.search(query) and not any(
             p.startswith("~") for p in out):
-        out.append("~/")
+        _add("~/")
     return out
 
 
@@ -235,23 +251,35 @@ def regex_extract(query: str, schema: dict | None) -> dict:
         return {}
     for arg_name, _arg_spec in props.items():
         lname = arg_name.lower()
+        # Pluralizzazione GUIDATA DALLO SCHEMA, non da suffissi lessicali
+        # (lang-independent, universale): `type=array` -> lista,
+        # `type=string` -> primo elemento. Il NOME dell'arg porta solo la
+        # semantica (path/url/email/glob/date/time_window) che e' il
+        # vocabolario chiuso §2.2 condiviso IT+EN.
+        _spec = _arg_spec if isinstance(_arg_spec, dict) else {}
+        _t = _spec.get("type")
+        _is_plural = (_t == "array"
+                       or (isinstance(_t, list) and "array" in _t))
+
+        def _emit(value_list: list) -> None:
+            if not value_list:
+                return
+            out[arg_name] = list(value_list) if _is_plural else value_list[0]
+
+        # Mapping NOME -> ESTRATTORE. Il nome porta semantica
+        # (paths/path/base_path/src/dst tutti sono "path"). Niente
+        # ipotesi sul plurale dal nome — quello arriva dallo schema.
         if lname in ("path", "paths", "base_path", "src", "dst"):
-            paths = _extract_paths(query)
-            if paths:
-                # plural args ricevono lista, singular il primo.
-                out[arg_name] = paths if lname.endswith("s") else paths[0]
+            _emit(_extract_paths(query))
         elif lname in ("url", "urls", "src_url"):
-            urls = _extract_urls(query)
-            if urls:
-                out[arg_name] = urls if lname.endswith("s") else urls[0]
+            _emit(_extract_urls(query))
         elif lname in ("pattern", "patterns", "glob"):
             g = _extract_file_ext_glob(query)
             if g:
-                out[arg_name] = g if not lname.endswith("s") else [g]
-        elif lname in ("to", "recipient_id", "email"):
-            mails = _extract_emails(query)
-            if mails:
-                out[arg_name] = mails[0] if not lname.endswith("s") else mails
+                _emit([g])
+        elif lname in ("to", "recipient_id", "recipients", "email",
+                       "to_user", "to_users"):
+            _emit(_extract_emails(query))
         elif lname in ("max_results", "max_total", "top", "limit", "n", "count"):
             ints = _extract_ints(query)
             if ints:

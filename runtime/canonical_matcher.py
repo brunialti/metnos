@@ -115,15 +115,16 @@ class CanonicalMatcher:
         try:
             from mnestoma import Mnestoma
             m = Mnestoma()
-            states_csv = ",".join(f"'{s}'" for s in _ACTIVE_STATES)
+            # Parameterized IN (?, ?, ...) — niente f-string in SQL (§7.3).
+            _placeholders = ",".join("?" * len(_ACTIVE_STATES))
+            _sql = (
+                "SELECT id, canonical_query, tool_name, args_shape, uses, "
+                "args_observed FROM canonical_query_log "
+                "WHERE uses >= ? AND state IN (" + _placeholders + ") "
+                "ORDER BY id"
+            )
             rows = m.conn.execute(
-                f"""SELECT id, canonical_query, tool_name, args_shape, uses,
-                           args_observed
-                    FROM canonical_query_log
-                    WHERE uses >= ?
-                      AND state IN ({states_csv})
-                    ORDER BY id""",
-                (min_uses,),
+                _sql, (min_uses, *_ACTIVE_STATES),
             ).fetchall()
         except Exception as ex:
             _LOG.warning("canonical_matcher: lettura DB fallita: %r", ex)

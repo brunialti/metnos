@@ -1279,8 +1279,13 @@ def _invoke_default(args: dict) -> dict:
     floor_ms = _tier_floor_ms(tier)
     rate_limit_ms = max(floor_ms, rate_limit_ms)
 
-    # Cookie jar opzionale
+    # Cookie jar opzionale. §2.4 robustezza al confine NL→determinismo:
+    # se il LLM emette `auth_cookies_file` ma il file non esiste (caso
+    # classico di hallucination su query di ricerca pubblica), degradiamo
+    # silenziosamente a crawl PUBBLICO invece di fallire hard. Il warn
+    # finisce nei metadata cosi' l'utente puo' verificare ex-post.
     cookie_jar = None
+    auth_cookies_missing = False
     if auth_cookies_file:
         cookies_path = Path(os.path.expanduser(str(auth_cookies_file)))
         if cookies_path.exists():
@@ -1291,7 +1296,10 @@ def _invoke_default(args: dict) -> dict:
                 return {"ok": False,
                         "error": f"cookie file load failed: {cookies_path}: {ex}"}
         else:
-            return {"ok": False, "error": f"auth_cookies_file not found: {cookies_path}"}
+            # File mancante = degradazione, non errore. Il crawl prosegue
+            # come pubblico (nessun cookie). Segnaliamo nel metadata.
+            auth_cookies_missing = True
+            cookie_jar = None
 
     # Opener con cookie processor (se presente)
     handlers = []
@@ -1774,6 +1782,35 @@ def _invoke_default(args: dict) -> dict:
             return (-lm, e.get("depth", 99))
         entries.sort(key=_key)
 
+    # Per-domain diversity cap (19/5/2026 v6). Principio generale: nessuna
+    # source domina la top-K. Senza questo cap, query come "bitcoin notizie"
+    # ritornano 15 entries dallo stesso aggregator (es. Investing.com),
+    # 12 listings di prezzo del medesimo sito invece di prospettive
+    # diverse. Cap default 3 per registered-domain (eTLD+1). Override via
+    # `max_per_domain` esplicito, 0 = disable (back-compat).
+    max_per_domain = int(args.get("max_per_domain") or 3)
+    if max_per_domain > 0 and entries:
+        from collections import Counter as _Counter
+        _per_dom = _Counter()
+        _kept = []
+        _dropped_for_diversity = 0
+        for e in entries:
+            _u = e.get("url") or ""
+            try:
+                _ps = urllib.parse.urlparse(_u)
+                _host = _ps.netloc.split(":")[0].lower()
+                _labels = _host.split(".")
+                _reg = ".".join(_labels[-2:]) if len(_labels) >= 2 else _host
+            except Exception:
+                _reg = "?"
+            if _per_dom[_reg] >= max_per_domain:
+                _dropped_for_diversity += 1
+                continue
+            _per_dom[_reg] += 1
+            _kept.append(e)
+        if _dropped_for_diversity:
+            entries = _kept
+
     # Filtro time_window finale (per le entries arrivate via BFS senza
     # lastmod, _within_window passa sempre — le entries gia' filtrate su
     # sitemap/RSS sono coerenti).
@@ -1838,6 +1875,10 @@ def _invoke_default(args: dict) -> dict:
             "discovery_count_sitemap": len(sitemap_pre),
             "discovery_count_rss": len(rss_pre),
             "discovery_count_documents": len(docs_list),
+            # Soft warn (19/5 v6): auth_cookies_file passato ma assente.
+            # Caller puo' rilevarlo per re-auth o avviso UI.
+            **({"auth_cookies_missing": True}
+                if auth_cookies_missing else {}),
             **({k: v for k, v in search_meta.items()} if search_meta else {}),
         },
     }

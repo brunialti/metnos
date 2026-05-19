@@ -105,9 +105,11 @@ def _load_toml() -> dict[str, Any]:
     try:
         mtime = _TOML_PATH.stat().st_mtime
     except OSError:
-        return _CACHE
-    if mtime == _CACHE_MTIME and _CACHE:
-        return _CACHE
+        with _LOCK:
+            return dict(_CACHE)
+    # Tutta la lettura/scrittura della cache va sotto lock per evitare
+    # race fra "thread A vede mtime stesso, thread B sta riscrivendo
+    # _CACHE = {} mid-write".
     with _LOCK:
         if mtime == _CACHE_MTIME and _CACHE:
             return _CACHE
@@ -128,7 +130,7 @@ def _load_toml() -> dict[str, Any]:
                 flat[section] = body
         _CACHE = flat
         _CACHE_MTIME = mtime
-    return _CACHE
+        return _CACHE
 
 
 # ── Public API ──────────────────────────────────────────────────────────────
