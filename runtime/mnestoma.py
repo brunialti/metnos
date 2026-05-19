@@ -46,7 +46,8 @@ ARCHIVE_AGE_DAYS = 90
 SYNTH_TRIGGER_USES = 3
 SYNTH_TRIGGER_WEIGHT = 0.30
 
-DEFAULT_DB_PATH = Path("/opt/myclaw/workspace/.mnestoma/mnest.sqlite")
+import config as _C  # noqa: E402  ADR 0148 rename-resilient
+DEFAULT_DB_PATH = _C.DB_MNESTOMA
 
 # Schema SQLite (cap.4 mnestoma.html)
 SCHEMA = """
@@ -109,6 +110,31 @@ SELECT id, src_executor, src_version, dst_executor, dst_version,
        weight, uses, ts_last, state, tags, desired_sig
 FROM mnests
 WHERE state IN ('active', 'proto');
+
+-- ADR 0149: canonical_query log per fast-path single-tool promotion.
+-- Per ogni turno planner che emette canonical_query non vuota, una entry
+-- qui (UPSERT su (canonical, tool, args_shape)). Diventa il dataset per
+-- la promozione L1 in fast_path.py (cosine match + uses >= K_path).
+CREATE TABLE IF NOT EXISTS canonical_query_log (
+  id              INTEGER PRIMARY KEY AUTOINCREMENT,
+  canonical_query TEXT    NOT NULL,
+  tool_name       TEXT    NOT NULL,
+  args_shape      TEXT    NOT NULL,  -- JSON template (placeholders)
+  uses            INTEGER NOT NULL DEFAULT 1,
+  ok_count        INTEGER NOT NULL DEFAULT 0,
+  fail_count      INTEGER NOT NULL DEFAULT 0,
+  ts_first        TEXT    NOT NULL,
+  ts_last         TEXT    NOT NULL,
+  state           TEXT    NOT NULL DEFAULT 'candidate',
+                                   -- candidate|shadow|active|demoted
+  UNIQUE(canonical_query, tool_name, args_shape)
+);
+CREATE INDEX IF NOT EXISTS idx_cql_canonical
+  ON canonical_query_log(canonical_query);
+CREATE INDEX IF NOT EXISTS idx_cql_tool
+  ON canonical_query_log(tool_name);
+CREATE INDEX IF NOT EXISTS idx_cql_uses
+  ON canonical_query_log(uses DESC);
 """
 
 
@@ -223,8 +249,118 @@ class Mnestoma:
                      AND length(reason) IN (16, 32)
                      AND reason GLOB '[0-9a-f]*'"""
             )
+        # Migration idempotente: aggiungi colonna canonical_query_log.args_observed
+        # (Fase 14 19/5/2026 v5, args_extractor V1.5). Memorizza i VALORI args
+        # osservati al primo planner pass per memoization (no LLM call al
+        # second pass). Separato da args_shape che e' il template placeholder.
+        cql_cols = {
+            r[1] for r in self.conn.execute(
+                "PRAGMA table_info(canonical_query_log)"
+            ).fetchall()
+        }
+        if "args_observed" not in cql_cols:
+            self.conn.execute(
+                "ALTER TABLE canonical_query_log ADD COLUMN args_observed TEXT"
+            )
 
     # --- write -------------------------------------------------------------
+
+    def record_canonical_query(
+        self,
+        canonical_query: str,
+        tool_name: str,
+        args_shape: str | dict,
+        *,
+        ok: bool = True,
+        args_observed: dict | None = None,
+    ) -> int:
+        """ADR 0149 + 0150 v5: UPSERT canonical_query observation.
+
+        Idempotente per chiave (canonical_query, tool_name, args_shape).
+        Incrementa `uses` e aggiorna `ts_last` se esiste; insert candidate
+        altrimenti. `ok` distingue success/fail count per gating promozione.
+
+        Args:
+          canonical_query: forma lemma emessa dal planner come by-product.
+                            Vuoto/None → no-op (ritorna 0).
+          tool_name: executor scelto al primo step della query corrente.
+          args_shape: template JSON degli args (placeholders). Stringa o
+                      dict (serializzato).
+          ok: True se l'osservazione finale del turno e' kind=answer.
+          args_observed: dict dei VALORI args reali osservati (Fase 14 v5
+                          args_extractor V1.5). Persistito come JSON
+                          nella colonna `args_observed` per memoization
+                          al second pass del matcher.
+
+        Returns:
+          row id (>0). 0 se canonical_query vuota.
+        """
+        if not canonical_query or not isinstance(canonical_query, str):
+            return 0
+        if not tool_name or not isinstance(tool_name, str):
+            return 0
+        if isinstance(args_shape, dict):
+            shape_str = json.dumps(args_shape, sort_keys=True, ensure_ascii=False)
+        elif isinstance(args_shape, str):
+            shape_str = args_shape
+        else:
+            shape_str = "{}"
+        cq = canonical_query.strip().lower()
+        if not cq:
+            return 0
+        # args_observed: serialize JSON solo se non-vuoto (NULL altrimenti per
+        # risparmiare storage e permettere il check di esistenza).
+        args_obs_str = None
+        if isinstance(args_observed, dict) and args_observed:
+            try:
+                args_obs_str = json.dumps(
+                    args_observed, sort_keys=True, ensure_ascii=False,
+                )
+            except (TypeError, ValueError):
+                args_obs_str = None
+        now = _now_iso()
+        with self.conn:
+            row = self.conn.execute(
+                """SELECT id, uses FROM canonical_query_log
+                   WHERE canonical_query = ?
+                     AND tool_name = ?
+                     AND args_shape = ?""",
+                (cq, tool_name, shape_str),
+            ).fetchone()
+            if row:
+                # UPDATE: aggiorna args_observed solo se passato non-null
+                # (evita di sovrascrivere un valore appreso con NULL).
+                if args_obs_str is not None:
+                    self.conn.execute(
+                        """UPDATE canonical_query_log
+                           SET uses = uses + 1, ts_last = ?,
+                               ok_count = ok_count + ?,
+                               fail_count = fail_count + ?,
+                               args_observed = ?
+                           WHERE id = ?""",
+                        (now, 1 if ok else 0, 0 if ok else 1,
+                         args_obs_str, row["id"]),
+                    )
+                else:
+                    self.conn.execute(
+                        """UPDATE canonical_query_log
+                           SET uses = uses + 1, ts_last = ?,
+                               ok_count = ok_count + ?,
+                               fail_count = fail_count + ?
+                           WHERE id = ?""",
+                        (now, 1 if ok else 0, 0 if ok else 1, row["id"]),
+                    )
+                return int(row["id"])
+            cur = self.conn.execute(
+                """INSERT INTO canonical_query_log
+                   (canonical_query, tool_name, args_shape,
+                    uses, ok_count, fail_count, ts_first, ts_last, state,
+                    args_observed)
+                   VALUES (?, ?, ?, 1, ?, ?, ?, ?, 'candidate', ?)""",
+                (cq, tool_name, shape_str,
+                 1 if ok else 0, 0 if ok else 1, now, now, args_obs_str),
+            )
+            return int(cur.lastrowid or 0)
 
     def record_passing(
         self,

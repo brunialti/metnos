@@ -35,14 +35,29 @@ import numpy as np
 
 _LOG = logging.getLogger(__name__)
 
-# Soglia cosine. Conservative: 0.95 per evitare false positivi.
-# Override via env per bench/test.
+# Soglia cosine / min_uses: Fase 12 19/5/2026 v5 → letti via runtime_settings
+# (env override + persistent ~/.config/metnos/runtime.toml + default).
+# I module-level constants restano per back-compat ma sono ridotti a
+# fallback statici; chi vuole il valore corrente chiama
+# `_current_threshold()` / `_current_min_uses()`.
 DEFAULT_THRESHOLD = float(os.environ.get("METNOS_CQ_THRESHOLD", "0.95"))
-# Numero minimo di uses prima che un entry diventi candidate per il match.
-# Default 3 (Roberto 19/5/2026 v4): bilanciamento fra "promozione rapida"
-# e "stabilita' del pattern". 1 use = potenziale rumore; 3 use = pattern
-# consolidato. Override via env per test/A-B.
 DEFAULT_MIN_USES = int(os.environ.get("METNOS_CQ_MIN_USES", "3"))
+
+
+def _current_threshold() -> float:
+    try:
+        from runtime_settings import canonical_query_threshold
+        return canonical_query_threshold()
+    except Exception:
+        return DEFAULT_THRESHOLD
+
+
+def _current_min_uses() -> int:
+    try:
+        from runtime_settings import canonical_query_min_uses
+        return canonical_query_min_uses()
+    except Exception:
+        return DEFAULT_MIN_USES
 
 # Stati accettati dal matcher (esclude `demoted`).
 _ACTIVE_STATES = ("candidate", "active", "shadow")
@@ -102,7 +117,8 @@ class CanonicalMatcher:
             m = Mnestoma()
             states_csv = ",".join(f"'{s}'" for s in _ACTIVE_STATES)
             rows = m.conn.execute(
-                f"""SELECT id, canonical_query, tool_name, args_shape, uses
+                f"""SELECT id, canonical_query, tool_name, args_shape, uses,
+                           args_observed
                     FROM canonical_query_log
                     WHERE uses >= ?
                       AND state IN ({states_csv})
@@ -113,13 +129,23 @@ class CanonicalMatcher:
             _LOG.warning("canonical_matcher: lettura DB fallita: %r", ex)
             return []
         out = []
+        import json as _json
         for r in rows:
+            # args_observed: parse JSON. NULL → None.
+            obs_raw = r["args_observed"] if "args_observed" in r.keys() else None
+            obs_parsed = None
+            if obs_raw:
+                try:
+                    obs_parsed = _json.loads(obs_raw)
+                except (ValueError, TypeError):
+                    obs_parsed = None
             out.append({
                 "id": r["id"],
                 "canonical": r["canonical_query"],
                 "tool": r["tool_name"],
                 "uses": r["uses"],
                 "args_shape": r["args_shape"],
+                "args_observed": obs_parsed,
             })
         return out
 
@@ -168,8 +194,8 @@ class CanonicalMatcher:
 
     # ---------------------------------------------------------------------
     def try_match(self, query: str, *,
-                  threshold: float = DEFAULT_THRESHOLD,
-                  min_uses: int = DEFAULT_MIN_USES) -> Optional[dict]:
+                  threshold: float | None = None,
+                  min_uses: int | None = None) -> Optional[dict]:
         """Match query → executor via BGE cosine.
 
         Returns:
@@ -178,6 +204,12 @@ class CanonicalMatcher:
         """
         if not query or not query.strip():
             return None
+        # Fallback ai default correnti (env + runtime.toml + fallback) se
+        # non specificati dal caller. Lazy per honorare runtime.toml reload.
+        if threshold is None:
+            threshold = _current_threshold()
+        if min_uses is None:
+            min_uses = _current_min_uses()
         with self._lock:
             if not self._refresh_if_stale(min_uses):
                 return None
@@ -215,10 +247,13 @@ class CanonicalMatcher:
                 return f"{tool}: completato ({n_entries} elementi)"
             return f"{tool}: completato"
 
-        # V2 19/5/2026: args extraction hybrid via args_extractor (regex
-        # deterministico + memoization da args_shape del log). LLM fallback
-        # opt-in tramite METNOS_CQ_ARGS_LLM=1 (default off).
+        # V1.5 19/5/2026 v5: args extraction hybrid via args_extractor (regex
+        # deterministico + memoization da `args_observed` del log + LLM
+        # fallback opt-in). args_observed contiene i VALORI args reali
+        # osservati al primo planner pass (Fase 14 v5, separato da args_shape
+        # che e' solo il template placeholder).
         args: dict = {}
+        observed = entry.get("args_observed")
         try:
             from args_extractor import extract_args
             # Lookup schema del tool dal catalogo (lazy).
@@ -231,15 +266,10 @@ class CanonicalMatcher:
                     schema = getattr(ex, "args_schema", None)
             except Exception:
                 pass
-            # args_shape persisted nel log (V2 carryover): non e' un valore
-            # vero, e' una signature shape. La extract_args la accetta come
-            # `observed_args` solo se contiene valori (oggi shape dict ha
-            # solo key=type pairs, ignored). Future: nuova colonna
-            # args_observed JSON con valori reali.
             args = extract_args(
                 query, tool, schema,
-                observed_args=None,
-                llm_fallback=False,
+                observed_args=observed if isinstance(observed, dict) else None,
+                llm_fallback=False,  # env METNOS_CQ_ARGS_LLM=1 sblocca.
             )
         except Exception as _ex:
             _LOG.debug("args_extractor failed for %s: %r", tool, _ex)
@@ -254,10 +284,13 @@ class CanonicalMatcher:
 
 
 def try_canonical_match(query: str, *,
-                          threshold: float = DEFAULT_THRESHOLD,
-                          min_uses: int = DEFAULT_MIN_USES
+                          threshold: float | None = None,
+                          min_uses: int | None = None
                           ) -> Optional[dict]:
-    """Helper module-level (mirror di fast_path.try_fast_path)."""
+    """Helper module-level (mirror di fast_path.try_fast_path).
+
+    Default `None` → CanonicalMatcher.try_match risolve via runtime_settings.
+    """
     return CanonicalMatcher.get().try_match(
         query, threshold=threshold, min_uses=min_uses
     )

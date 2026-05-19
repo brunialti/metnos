@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# /opt/myclaw/install/setup.sh
+# /opt/metnos/install/setup.sh
 #
 # Scaffold dello script di setup di Metnos su nodo nuovo.
 #
@@ -7,7 +7,7 @@
 # pacchetto installato, secret esistente), salta.
 #
 # Suppone:
-#  - Repo Metnos clonato in /opt/myclaw
+#  - Repo Metnos clonato in /opt/metnos
 #  - Distro Debian/Ubuntu derivata
 #  - Utente di lavoro = $USER (default: chi esegue lo script)
 #
@@ -45,7 +45,7 @@ for arg in "$@"; do
     esac
 done
 
-WORKING_DIR="/opt/myclaw"
+WORKING_DIR="/opt/metnos"
 INSTALL_DIR="$WORKING_DIR/install"
 MANIFEST="$INSTALL_DIR/manifest.toml"
 
@@ -202,6 +202,25 @@ for entry in m.get("secrets", {}).get("entry", []):
 EOF
 }
 
+# ── 4-ter. Runtime config (~/.config/metnos/runtime.toml) ──────────
+
+step_runtime_config() {
+    log "[4-ter] Runtime config (toml persistente)"
+    python3 - <<EOF
+import sys
+sys.path.insert(0, "$INSTALL_DIR/runtime")
+try:
+    from runtime_settings import ensure_default_config
+    created = ensure_default_config()
+    if created:
+        print(f"  GEN runtime.toml con default fast-path / multi_tool_fast_path")
+    else:
+        print(f"  skip runtime.toml (esistente, preservato)")
+except Exception as ex:
+    print(f"  WARN: runtime_settings non disponibile: {ex!r}")
+EOF
+}
+
 # ── 4-bis. Script symlinks (/usr/local/bin) ───────────────────────
 
 step_scripts() {
@@ -325,6 +344,7 @@ step_python
 step_system_packages
 step_directories
 step_secrets
+step_runtime_config
 step_scripts
 step_systemd
 step_models

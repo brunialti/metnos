@@ -136,6 +136,29 @@ _BUILTIN_JOBS: list[dict[str, Any]] = [
             "per fire. Disabilitato via METNOS_PROMOTER_NOTIFY_ADMIN=false."
         ),
     },
+    {
+        "name": "skill_sandbox_watchdog",
+        "trigger": "daily@06:35",
+        "callback_key": "skill_sandbox_watchdog",
+        "description": (
+            "Mini-version Fase C (ADR 0140): controlla soglia trigger "
+            "per sandbox per-skill enforcement (>= 5 skill third-party "
+            "OR >= 1 guest paired). Se triggered, notifica admin via "
+            "Telegram per attivare Fase C full."
+        ),
+    },
+    {
+        "name": "github_watcher",
+        "trigger": "every_30m",
+        "callback_key": "github_watcher",
+        "description": (
+            "Fase D GitHub provider: scansiona ogni 30 min i repo "
+            "monitorati (~/.config/metnos/github_watched_repos.json), "
+            "rileva nuovi issue/PR/commenti, applica dedup semantic "
+            "BGE-M3 e o auto-risponde (4-AND safety) o apre dialog "
+            "Stage 2 al host. Default config vuota = no-op."
+        ),
+    },
 ]
 
 
@@ -147,13 +170,20 @@ def task_images_index_refresh() -> dict:
     saltate via (mtime,size); le nuove/modificate passano la pipeline
     EXIF + ArcFace + VLM + BGE.
     """
+    import os as _os
     import sys as _sys
     from pathlib import Path as _P
     base = _P.home() / ".local/share/metnos/Immagini"
     if not base.exists():
         return {"ok": True, "skipped": True, "reason": f"absent: {base}"}
-    _sys.path.insert(0, "/opt/myclaw/executors/create_images_indices")
-    _sys.path.insert(0, "/opt/myclaw/runtime")
+    # runtime/ già su sys.path (builtin_callbacks VIVE in runtime/scheduler_v2/).
+    # Per importare create_images_indices.py serve il path del suo dir executor.
+    _rt = _os.environ.get("METNOS_RUNTIME") or next(
+        str(p / "runtime") for p in _P(__file__).resolve().parents
+        if (p / "runtime" / "config.py").is_file())
+    _exec_dir = str(_P(_rt).parent / "executors" / "create_images_indices")
+    if _exec_dir not in _sys.path:
+        _sys.path.insert(0, _exec_dir)
     import create_images_indices as _m
     return _m.invoke({
         "base_path": str(base), "force": False, "recursive": True,
@@ -167,9 +197,8 @@ def task_proposals_eta_aggregate() -> dict:
     calcola path_shape_hash + total_ms per ogni turno, scrive p50/p95 in
     `proposals_eta.sqlite`. Idempotente (rewrite full per shape).
     """
-    import sys as _sys
     import time as _time
-    _sys.path.insert(0, "/opt/myclaw/runtime")
+    # runtime/ già su sys.path (builtin_callbacks VIVE in runtime/scheduler_v2/).
     from proposals_eta_index import aggregate_from_jsonls
     since = _time.time() - 7 * 86400
     rep = aggregate_from_jsonls(since_ts=since)
@@ -290,6 +319,38 @@ def install_default_callbacks(scheduler) -> None:
         "promoter_digest",
         task_promoter_digest,
         "Digest Telegram delle proposte promoted_grace (daily@07:00)",
+        replace=True,
+    )
+
+    # Multi-tool fast-path promotion L2 → L3 (ADR 0150 19/5/2026 v4):
+    # daily@04:30 scan multi_tool_paths uses>=K_synth (default 50) e crea
+    # proto-mnest in mnestoma. Firma nativa v2.
+    from jobs.multi_tool_promote import task_multi_tool_promote
+    cb.register(
+        "multi_tool_promote",
+        task_multi_tool_promote,
+        "Promuove pipeline L2 a proto-mnest (synth_request trigger, ADR 0150)",
+        replace=True,
+    )
+
+    # Sandbox watchdog soglia (mini-version Fase C, ADR 0140).
+    # daily@06:35 controlla #skill third-party + #guest paired,
+    # notifica admin se trigger superato. Firma zero-arg.
+    from jobs.skill_sandbox_watchdog import task_skill_sandbox_watchdog
+    cb.register(
+        "skill_sandbox_watchdog",
+        _wrap_zero_arg(task_skill_sandbox_watchdog),
+        "Watchdog soglia per attivare Fase C sandbox per-skill (ADR 0140)",
+        replace=True,
+    )
+
+    # GitHub watcher Fase D: every_30m scan dei repo monitorati con
+    # dedup semantic BGE-M3. Firma nativa v2 (cb(payload)).
+    from jobs.github_watcher import task_github_watcher
+    cb.register(
+        "github_watcher",
+        task_github_watcher,
+        "Watcher GitHub repo monitorati con dedup semantic (Fase D)",
         replace=True,
     )
 

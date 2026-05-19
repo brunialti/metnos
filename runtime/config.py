@@ -18,7 +18,7 @@ Convenzioni:
   - C.DEFAULT_*        default dei tier (lang, channel, llm tier)
 
 Env override (tutti opzionali):
-  METNOS_HOME           override root install (default /opt/myclaw)
+  METNOS_HOME           override root install (default <install_root>)
   METNOS_USER_DATA      override ~/.local/share/metnos
   METNOS_USER_STATE     override ~/.local/state/metnos
   METNOS_USER_CONFIG    override ~/.config/metnos
@@ -54,8 +54,21 @@ def _env_str(name: str, default: str) -> str:
 
 # --- Root paths -----------------------------------------------------------
 
-# Install root (codice + executor canonici + decisions)
-PATH_ROOT          = _env_path("METNOS_HOME", Path("/opt/myclaw"))
+# Install root (codice + executor canonici + decisions).
+# Default auto-derived da `Path(__file__).resolve().parents[1]` — questo file
+# vive in <PATH_ROOT>/runtime/config.py, quindi `parents[1]` ricava la root
+# senza ipotesi sul nome del path. Cambiare il filesystem layout (es.
+# rinomina <install_root> → /opt/metnos) non richiede nessuna config: il codice
+# si trova da solo.
+# Override esplicito via env METNOS_INSTALL_ROOT (preferito, ADR 0148);
+# l'alias METNOS_HOME e' deprecato — viene letto solo se METNOS_INSTALL_ROOT
+# non e' settato, per back-compat finche' tutti gli script downstream non
+# sono passati al nuovo nome.
+_AUTO_ROOT         = Path(__file__).resolve().parents[1]
+PATH_ROOT          = _env_path(
+    "METNOS_INSTALL_ROOT",
+    _env_path("METNOS_HOME", _AUTO_ROOT),
+)
 PATH_RUNTIME       = PATH_ROOT / "runtime"
 PATH_EXECUTORS     = PATH_ROOT / "executors"
 PATH_WORKSPACE     = PATH_ROOT / "workspace"
@@ -113,6 +126,9 @@ DB_DEVICES         = PATH_USER_STATE / "devices.db"
 DB_POLICY          = PATH_USER_STATE / "policy.db"
 # Observability (run history, dashboard data)
 DB_OBSERVABILITY   = PATH_USER_STATE / "observability.db"
+# Multi-tool fast-path memoization (ADR 0150): canonical_query → tools sequence
+# memoizzata, TTL N giorni di attivita' effettiva.
+DB_MULTI_TOOL_PATHS = PATH_USER_DATA / "multi_tool_paths.sqlite"
 # Audit JSONL (append-only, no schema; non-DB ma simile)
 LOG_LOCATIONS_JSONL = PATH_USER_DATA / "locations.jsonl"
 

@@ -355,6 +355,15 @@ ERRORE: pool=[get_processes,...], query "elenca processi running" → request_ne
 ERRORE: pool=[..., read_events, ...], query "appuntamenti domani" → request_new_executor(expected_name="get_appointments"). E' UN ERRORE (read_events copre l'intent).
 
 ══════════════════════════════════════════════════════════════════════
+EXECUTOR > FAST-PATH (19/5/2026 v5, ADR 0150)
+══════════════════════════════════════════════════════════════════════
+
+DEVI: preferire SEMPRE un executor del catalog rispetto a una pipeline di fast-path che fa la stessa cosa. Se nel pool esiste un executor sintetizzato che incorpora una sequenza, usalo direttamente in UN solo step.
+NON DEVI: emettere la sequenza multi-step `[get_X, describe_entries]` quando nel pool e' presente `describe_X` (executor sintetizzato dalla promozione L2→L3). Il fast-path L2 viene auto-demoted dal runtime in questo caso; tu, parallelamente, devi evitare di proporlo.
+OK: pool=[describe_urls, get_urls, describe_entries], query "scarica e descrivi questa pagina" → describe_urls(url=...). Un solo step.
+ERRORE: pool=[describe_urls, get_urls, describe_entries], query "scarica e descrivi questa pagina" → [step 1] get_urls(...) [step 2] describe_entries(from_step=1). E' UN ERRORE (describe_urls fa entrambe le cose in un colpo).
+
+══════════════════════════════════════════════════════════════════════
 IMPLICIT ACTIONS (14/5/2026, ADR 0129)
 ══════════════════════════════════════════════════════════════════════
 

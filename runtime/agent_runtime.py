@@ -2800,6 +2800,10 @@ class TurnLog:
     # nello stesso turno (es. cap-expand dialog) non duplicano.
     _canonical_recorded: bool = False
 
+    # ADR 0150 (19/5/2026 v4): idempotency flag per la registrazione di
+    # path sequenze in multi_tool_paths. Stessa logica di _canonical_recorded.
+    _multi_tool_recorded: bool = False
+
     # Mappa fallback executor → nome dell'arg che controlla il cap di output.
     # Coverage di tutti gli executor del catalog corrente (30/4/2026 sera) che
     # hanno un cap esplicito sui risultati. Da migrare a campo `cap_field` nel
@@ -3482,15 +3486,83 @@ class TurnLog:
             if cq and tool:
                 try:
                     from mnestoma import Mnestoma
-                    args_shape = first.raw_args if isinstance(first.raw_args, dict) else {}
+                    raw = (first.raw_args if isinstance(first.raw_args, dict)
+                           else {})
+                    # args_shape: template (placeholders); args_observed:
+                    # valori reali. Fase 14 v5: differenziamo per riusare i
+                    # valori al second pass del matcher senza re-extraction.
+                    # Per ora `raw_args` contiene gia' i valori reali del
+                    # primo step: lo passiamo sia come shape (back-compat)
+                    # che come args_observed.
+                    resolved = (first.resolved_args
+                                if isinstance(first.resolved_args, dict)
+                                else raw)
                     _mn = Mnestoma()
                     _mn.record_canonical_query(
-                        cq, tool, args_shape,
+                        cq, tool, raw,
                         ok=(self.final_kind == "answer"),
+                        args_observed=resolved,
                     )
                 except Exception:
                     pass
             self._canonical_recorded = True
+
+        # ADR 0150 (19/5/2026 v4): log multi-tool path (sequenze >= 2 step)
+        # verso multi_tool_paths per la promozione L2 fast-path.
+        #
+        # Composability fast-path-of-fast-path: NON skippiamo gli step con
+        # flag `fast_path` o `multi_tool_fast_path`. Esempio: turn ok con
+        # [L1_hit, planner_step, L1_hit] → la sequenza completa di 3 step
+        # diventa candidato L2. Cosi' due (o piu') fast-path adiacenti
+        # possono dare origine a una pipeline L2 piu' lunga. Razionale: la
+        # decisione storica e' gia' approvata per ciascun step; comporne
+        # piu' insieme non aggiunge rischio, solo determinismo.
+        #
+        # Idempotente per turn via _multi_tool_recorded.
+        if (not getattr(self, "_multi_tool_recorded", False)
+                and self.steps
+                and len(self.steps) >= 2
+                and self.final_kind == "answer"
+                and cq):
+            try:
+                from multi_tool_paths import (
+                    record_path_observation, derive_args_shape,
+                )
+                tools_seq = [
+                    s.chosen_tool for s in self.steps
+                    if s.chosen_tool
+                ]
+                raw_args_per = [
+                    s.raw_args if isinstance(s.raw_args, dict) else {}
+                    for s in self.steps if s.chosen_tool
+                ]
+                if len(tools_seq) >= 2:
+                    shape = derive_args_shape(
+                        self.user_query or "", raw_args_per,
+                    )
+                    # Recupera nomi catalog per la regola simmetrica
+                    # "executor > fast-path": se l'executor sintetizzato
+                    # equivalente esiste, NON registriamo la pipeline.
+                    catalog_names: set | None = None
+                    try:
+                        from loader import load_catalog
+                        _cat = load_catalog()
+                        catalog_names = set(
+                            getattr(_cat, "executors", {}).keys()
+                        )
+                    except Exception:
+                        catalog_names = None
+                    record_path_observation(
+                        canonical_query=cq,
+                        tools_sequence=tools_seq,
+                        args_shape=shape,
+                        ok=True,
+                        available_tool_names=catalog_names,
+                    )
+            except Exception:
+                # Telemetria mai-bloccante: log fallimento ma non crashare.
+                pass
+            self._multi_tool_recorded = True
 
         TURN_LOG_DIR.mkdir(parents=True, exist_ok=True)
         path = TURN_LOG_DIR / f"{time.strftime('%Y-%m-%d')}.jsonl"
@@ -3573,6 +3645,128 @@ def _try_synt_compose(mnestoma, target_intent: str, mnest_id: str, *, verbose: b
             ),
         }
     return None
+
+
+# --- L2 multi-tool fast-path playback (ADR 0150) ---------------------------
+
+def _try_multi_tool_path_playback(
+    query: str,
+    catalog: list,
+    *,
+    turn_id: str,
+    actor: str | None,
+    channel: str | None,
+    lang: str = "it",
+    verbose: bool = False,
+) -> tuple[list, dict, str] | None:
+    """L2 multi-tool fast-path playback. Riesegue una pipeline memoizzata.
+
+    Returns:
+      None se no match o playback fallisce a qualunque step (caller fa
+      fallback al PLANNER, no harm).
+      (steps_list, final_obs, final_message) altrimenti.
+
+    Disciplina:
+    - Env opt-in: METNOS_MULTI_TOOL_FAST_PATH=1 (default OFF al primo deploy
+      perche' la tabella e' vuota; flip a 1 dopo qualche giorno di seeding
+      dalle TurnLog).
+    - Su qualsiasi step ok=False: abort, no log additions, fallback PLANNER.
+    - On placeholder unresolved: try_multi_tool_match gia' ritorna None.
+    """
+    try:
+        from runtime_settings import multi_tool_fast_path_enabled
+        if not multi_tool_fast_path_enabled():
+            return None
+    except Exception:
+        # Conservativo: se runtime_settings non si carica, restiamo disabilitati.
+        return None
+    try:
+        from multi_tool_paths import try_multi_tool_match
+    except Exception as _ex:
+        import logging as _logging
+        _logging.getLogger(__name__).warning(
+            "multi_tool_paths import fallito: %s", _ex,
+        )
+        return None
+    try:
+        # Invariante "executor > fast-path" (19/5 v5): passa il set dei
+        # nomi catalog per permettere auto-demote delle entry L2 quando
+        # esiste gia' un executor sintetizzato equivalente.
+        _catalog_names = {e.name for e in catalog if getattr(e, "name", None)}
+        hit = try_multi_tool_match(
+            query, available_tool_names=_catalog_names,
+        )
+    except Exception as _ex:
+        import logging as _logging
+        _logging.getLogger(__name__).warning(
+            "multi_tool_paths.try_match fallito: %s", _ex,
+        )
+        return None
+    if hit is None:
+        return None
+    if verbose:
+        print(f"[multi_tool_fast_path] hit canonical={hit['canonical']!r} "
+              f"cosine={hit['cosine']:.3f} uses={hit['uses']} "
+              f"tools={hit['tools']}")
+    plan = hit["plan_steps"]
+    history: list = []  # per from_step resolution fra step
+    steps_out: list = []
+    for i, step_plan in enumerate(plan, start=1):
+        tool_name = step_plan["tool"]
+        executor = next((e for e in catalog if e.name == tool_name), None)
+        if executor is None:
+            # Tool sparito dal catalog (renamed/disabled): fallback.
+            if verbose:
+                print(f"[multi_tool_fast_path] tool {tool_name} non in catalog, "
+                      f"fallback PLANNER")
+            return None
+        # Resolve from_step se presente (history fra step della stessa pipeline).
+        raw_args = dict(step_plan["args"])
+        resolved_args, errs = resolve_from_step(raw_args, history)
+        if errs:
+            if verbose:
+                print(f"[multi_tool_fast_path] resolve_from_step step {i} "
+                      f"errs={errs}, fallback PLANNER")
+            return None
+        step = StepLog(step_num=i)
+        step.chosen_tool = tool_name
+        step.raw_args = dict(raw_args)
+        step.resolved_args = dict(resolved_args)
+        step.vaglio_approved = True  # short-circuit (riusa decisione storica)
+        t0 = time.perf_counter()
+        try:
+            obs = invoke_executor(
+                executor, resolved_args,
+                timeout_s=getattr(executor, "timeout_s", None) or 30,
+                autonomy="supervised", turn_id=turn_id,
+                actor=actor, channel=channel,
+            )
+        except Exception as ex:
+            obs = {"ok": False, "error": f"{type(ex).__name__}: {ex}"}
+        step.exec_ms = int((time.perf_counter() - t0) * 1000)
+        step.result = obs
+        if hasattr(step, "__dict__"):
+            step.__dict__["multi_tool_fast_path"] = True
+        if not obs.get("ok"):
+            if verbose:
+                print(f"[multi_tool_fast_path] step {i} ({tool_name}) "
+                      f"failed: {obs.get('error')!r}, fallback PLANNER")
+            return None
+        steps_out.append(step)
+        history.append({"tool": tool_name, "observation": obs})
+    # Tutti gli step ok. Final message dall'ultima observation.
+    final_obs = steps_out[-1].result if steps_out else {}
+    summary = (final_obs.get("summary") or final_obs.get("message")
+                or final_obs.get("content") or "")
+    if not isinstance(summary, str) or not summary.strip():
+        n_entries = len(final_obs.get("entries") or [])
+        if lang == "it":
+            summary = (f"Eseguita pipeline ({len(steps_out)} step, "
+                        f"{n_entries} elementi).")
+        else:
+            summary = (f"Pipeline executed ({len(steps_out)} steps, "
+                        f"{n_entries} items).")
+    return (steps_out, final_obs, summary.strip())
 
 
 # --- Loop pianificatore (multistep con tool-use nativo) -------------------
@@ -3808,11 +4002,19 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
         _fp_hit = try_fast_path(user_query_for_run, lang=DEFAULT_LANG,
                                   default_timezone=DEFAULT_TIMEZONE)
         # ADR 0149 step 2c (18/5/2026): Layer L1 BGE matcher su
-        # canonical_query_log. Attivo solo se canonical_query opt-in
-        # (stesso flag che alimenta la log). Threshold 0.95 conservative;
-        # miss → fallback planner.
-        if _fp_hit is None and os.environ.get(
-                "METNOS_CANONICAL_QUERY", "0") == "1":
+        # canonical_query_log. Attivo via runtime_settings (env override
+        # via METNOS_CANONICAL_QUERY, persistent in ~/.config/metnos/
+        # runtime.toml [fast_path] canonical_query_enabled). Default ON
+        # post Fase 12 19/5/2026 v5. Threshold conservativa; miss → fallback.
+        if _fp_hit is None:
+            try:
+                from runtime_settings import canonical_query_enabled as _cq_check
+                _cq_on = _cq_check()
+            except Exception:
+                _cq_on = False
+        else:
+            _cq_on = False
+        if _fp_hit is None and _cq_on:
             try:
                 from canonical_matcher import try_canonical_match
                 _fp_hit = try_canonical_match(user_query_for_run)
@@ -3825,6 +4027,65 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
                 import logging as _logging
                 _logging.getLogger(__name__).warning(
                     "canonical_matcher fallito: %s", _ex)
+        # ── L2 multi-tool fast-path memoization (ADR 0150) ────────────────
+        # Se L0 (fast_path patterns) e L1 (canonical_matcher single-tool)
+        # hanno entrambi mancato → tenta replay di una pipeline multi-step
+        # memoizzata. Env opt-in METNOS_MULTI_TOOL_FAST_PATH=1 (default OFF
+        # al primo deploy: la tabella e' vuota finche' le TurnLog non hanno
+        # seedato sequenze). Su qualunque fallimento di step → fallback PLANNER.
+        if _fp_hit is None:
+            try:
+                _mtp_result = _try_multi_tool_path_playback(
+                    user_query_for_run, catalog,
+                    turn_id=turn_id, actor=actor, channel=channel,
+                    lang=DEFAULT_LANG, verbose=verbose,
+                )
+            except Exception as _ex:
+                import logging as _logging
+                _logging.getLogger(__name__).warning(
+                    "multi_tool_fast_path fallito: %s", _ex)
+                _mtp_result = None
+            if _mtp_result is not None:
+                _mtp_steps, _mtp_final_obs, _mtp_msg = _mtp_result
+                log.steps.extend(_mtp_steps)
+                # Chaining fast-path → PLANNER (19/5/2026 v4, ADR 0150 ext):
+                # se la query ha continuation (multi-verbo via
+                # `_query_has_continuation`) e env METNOS_MULTI_TOOL_FAST_PATH_CHAIN=1,
+                # NON terminare: passa la mano al PLANNER per gli step rimanenti.
+                # I fast-path step esistono gia' in log.steps; per seedare il
+                # PLANNER riusiamo `resume_with_scratchpad` (stesso meccanismo
+                # di ADR 0099 seed_step e resume post-dialog), assegnandolo
+                # in-memory cosi' il blocco di seeding a line ~4332 ricicla
+                # la logica esistente.
+                try:
+                    from runtime_settings import multi_tool_fast_path_chain
+                    _chain_on = multi_tool_fast_path_chain()
+                except Exception:
+                    _chain_on = False
+                if _chain_on and _query_has_continuation(user_query_for_run):
+                    resume_with_scratchpad = [
+                        {
+                            "step": s.step_num,
+                            "tool": s.chosen_tool,
+                            "args": s.resolved_args,
+                            "observation": s.result,
+                        }
+                        for s in _mtp_steps
+                    ]
+                    if verbose:
+                        print(f"[multi_tool_fast_path] chain → PLANNER, "
+                              f"{len(_mtp_steps)} steps seeded as scratchpad "
+                              f"(query has continuation)")
+                    # Continua il flusso: NON return. _fp_hit resta None per
+                    # saltare L1 execution block sotto; PLANNER prende il
+                    # controllo via resume_with_scratchpad.
+                else:
+                    log.final_kind = "answer"
+                    log.final_message = _mtp_msg
+                    if verbose:
+                        print(f"[multi_tool_fast_path] {len(_mtp_steps)} steps "
+                              f"executed, msg={_mtp_msg[:80]!r}")
+                    log.ts_end = time.time(); log.write(); return log
         if _fp_hit is not None:
             _fp_exec = next((e for e in catalog if e.name == _fp_hit["executor"]), None)
             if _fp_exec is not None:
