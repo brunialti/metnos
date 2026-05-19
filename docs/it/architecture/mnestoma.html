@@ -423,36 +423,49 @@ modo, turno dopo turno.
 </p>
 
 <figure>
-<svg viewBox="0 0 720 280" xmlns="http://www.w3.org/2000/svg" style="max-width:100%;height:auto;border:1px solid var(--border);border-radius:6px;background:#fbfdff;">
+<svg viewBox="0 0 720 300" xmlns="http://www.w3.org/2000/svg" style="max-width:100%;height:auto;border:1px solid var(--border);border-radius:6px;background:#fbfdff;">
 <style>
 .bg-fill3{fill:#eef5fb}
-.lbl3{font-family:'Segoe UI',Calibri,sans-serif;font-size:11px;fill:#1a477a}
-.receptor{fill:#fef3c7;stroke:#6B21A8;stroke-width:2;animation:breath 4s ease-in-out infinite}
-.notch-label{fill:#6B21A8;font-family:'Segoe UI',sans-serif;font-size:10px;font-style:italic}
+.lbl3{font-family:'Segoe UI',Calibri,sans-serif;font-size:12px;fill:#1a477a}
+.lbl3-sm{font-family:'Segoe UI',Calibri,sans-serif;font-size:10px;fill:#64748b}
 .src-node{fill:#548235;stroke:#1A477A;stroke-width:1.5}
-@keyframes breath{0%,100%{opacity:0.7;transform:scale(1)}50%{opacity:1;transform:scale(1.05)}}
+/* Recettore: corpo solido + scanalatura grande disegnata in BIANCO sopra,
+   cosi' la forma "manca" e' davvero un vuoto evidente, non un dettaglio. */
+.receptor-body{fill:#fef3c7;stroke:#6B21A8;stroke-width:2.5}
+.notch-cavity{fill:#fbfdff;stroke:#6B21A8;stroke-width:2;stroke-dasharray:5,3}
+.notch-tag{fill:#6B21A8;font-family:'Segoe UI',sans-serif;font-size:11px;font-weight:600}
 </style>
-<rect class="bg-fill3" x="0" y="0" width="720" height="280"/>
+<rect class="bg-fill3" x="0" y="0" width="720" height="300"/>
 <!-- src executor (existing) -->
-<rect class="src-node" x="180" y="120" width="80" height="50" rx="6"/>
-<text class="lbl3" x="220" y="148" text-anchor="middle" style="fill:#fff;font-weight:600;">read_url</text>
-<text class="lbl3" x="220" y="190" text-anchor="middle">executor esistente</text>
-<!-- arrow -->
-<path d="M270,145 L350,145" stroke="#64748B" stroke-width="2" marker-end="url(#arrowend2)" fill="none"/>
+<rect class="src-node" x="120" y="125" width="100" height="55" rx="6"/>
+<text class="lbl3" x="170" y="150" text-anchor="middle" style="fill:#fff;font-weight:600;font-size:13px;">read_url</text>
+<text class="lbl3" x="170" y="170" text-anchor="middle" style="fill:#fff;font-size:10px;">(esiste)</text>
+<text class="lbl3-sm" x="170" y="210" text-anchor="middle">src executor</text>
+<!-- arrow with label -->
+<path d="M230,152 L370,152" stroke="#64748B" stroke-width="2" marker-end="url(#arrowend3)" fill="none"/>
 <defs>
-  <marker id="arrowend2" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
-    <path d="M0,0 L0,6 L7,3 z" fill="#64748B"/>
+  <marker id="arrowend3" markerWidth="10" markerHeight="10" refX="7" refY="3" orient="auto">
+    <path d="M0,0 L0,6 L8,3 z" fill="#64748B"/>
   </marker>
 </defs>
-<text class="lbl3" x="310" y="135" text-anchor="middle" style="fill:#64748b;font-size:10px;">mnest osservato</text>
-<!-- receptor (proto-mnest, notch shape) -->
-<path class="receptor" d="M370,120 L450,120 Q470,120 470,140 L470,170 Q450,170 450,160 Q450,140 430,140 Q410,140 410,160 Q410,170 390,170 L370,170 Z"/>
-<text class="notch-label" x="430" y="200" text-anchor="middle">scanalatura: dst desiderato</text>
-<text class="lbl3" x="500" y="148" style="font-size:10px;">proto-mnest:</text>
-<text class="lbl3" x="500" y="162" style="font-size:10px;">&laquo;compose_report&raquo;</text>
-<text class="lbl3" x="500" y="176" style="font-size:9px;color:#64748b;">non esiste ancora</text>
+<text class="lbl3-sm" x="300" y="140" text-anchor="middle">mnest osservato</text>
+<text class="lbl3-sm" x="300" y="170" text-anchor="middle" style="font-style:italic;">(turno utente)</text>
+<!-- Receptor: forma piena rettangolare con una scanalatura grande -->
+<g>
+  <!-- corpo del recettore -->
+  <rect class="receptor-body" x="385" y="115" width="160" height="80" rx="10"/>
+  <!-- scanalatura: rettangolo bianco con bordo tratteggiato, ben dentro il corpo -->
+  <rect class="notch-cavity" x="415" y="140" width="100" height="40" rx="6"/>
+  <!-- etichette -->
+  <text class="lbl3" x="465" y="165" text-anchor="middle" style="font-size:10px;fill:#6B21A8;font-style:italic;">scanalatura</text>
+  <text class="lbl3" x="465" y="105" text-anchor="middle" style="font-weight:600;">proto-mnest</text>
+  <text class="lbl3-sm" x="465" y="215" text-anchor="middle">dst desiderato: &laquo;compose_report&raquo;</text>
+  <text class="lbl3-sm" x="465" y="230" text-anchor="middle" style="font-style:italic;">non esiste ancora</text>
+</g>
+<!-- guide line: src → notch position -->
+<text class="lbl3-sm" x="360" y="270" text-anchor="middle">Il proto-mnest aspetta. La scanalatura tratteggiata e' il dst mancante.</text>
 </svg>
-<figcaption>Fig. 3 &mdash; Il proto-mnest come recettore. Src &egrave; un executor esistente; dst &egrave; un nome desiderato, una scanalatura aperta che ne dichiara la forma.</figcaption>
+<figcaption>Fig. 3 &mdash; Il proto-mnest come recettore. A sinistra l'executor src esiste; a destra il proto-mnest mostra in chiaro la scanalatura aperta che attende un dst.</figcaption>
 </figure>
 
 <h2>Le funzioni introspettive: chi riconosce i recettori</h2>
@@ -477,47 +490,114 @@ ed ecco un possibile dst che lo chiuderebbe&raquo;.
 </p>
 
 <figure>
-<svg viewBox="0 0 720 280" xmlns="http://www.w3.org/2000/svg" style="max-width:100%;height:auto;border:1px solid var(--border);border-radius:6px;background:#fbfdff;">
-<style>
-.bg-fill4{fill:#eef5fb}
-.lbl4{font-family:'Segoe UI',Calibri,sans-serif;font-size:11px;fill:#1a477a}
-.enzyme{fill:#dcfce7;stroke:#16a34a;stroke-width:1.5;animation:approach 6s ease-in-out infinite}
-.receptor-stable{fill:#fef3c7;stroke:#6B21A8;stroke-width:2}
-.spark{fill:#f59e0b;animation:flash 6s ease-in-out infinite}
-.proposed{fill:#548235;stroke:#16a34a;stroke-width:2;animation:appear 6s ease-in-out infinite}
-@keyframes approach{0%{transform:translate(-100px,0)}40%,60%{transform:translate(0,0)}100%{transform:translate(-100px,0)}}
-@keyframes flash{0%,55%{opacity:0}60%,70%{opacity:1}75%,100%{opacity:0}}
-@keyframes appear{0%,65%{opacity:0;transform:scale(0.5)}80%,90%{opacity:1;transform:scale(1)}100%{opacity:0;transform:scale(1)}}
-</style>
-<rect class="bg-fill4" x="0" y="0" width="720" height="280"/>
-<!-- receptor stationary -->
-<path class="receptor-stable" d="M280,100 L380,100 Q400,100 400,130 L400,170 Q380,170 380,160 Q380,135 350,135 Q320,135 320,160 Q320,170 300,170 L280,170 Z"/>
-<text class="lbl4" x="340" y="195" text-anchor="middle" style="font-size:10px;font-style:italic;fill:#6B21A8;">proto-mnest (recettore)</text>
-<!-- enzyme approaches -->
-<g class="enzyme">
-  <rect x="60" y="120" width="60" height="40" rx="20"/>
-  <text class="lbl4" x="90" y="145" text-anchor="middle" style="font-size:10px;font-weight:600;">introvertiva</text>
-</g>
-<!-- spark when binding -->
-<g class="spark">
-  <polygon points="350,140 360,130 370,140 360,150"/>
-  <polygon points="355,125 360,115 365,125 360,135"/>
-</g>
-<!-- proposed executor -->
-<g class="proposed" transform="translate(490,135)">
-  <rect x="0" y="0" width="100" height="40" rx="6"/>
-  <text class="lbl4" x="50" y="24" text-anchor="middle" style="fill:#fff;font-weight:600;font-size:10px;">compose_report</text>
-  <text class="lbl4" x="50" y="60" text-anchor="middle" style="fill:#16a34a;font-size:10px;">candidato sintesi</text>
-</g>
-<!-- arrow from receptor to proposed -->
-<path d="M400,150 L490,155" stroke="#16a34a" stroke-width="1.5" stroke-dasharray="3,2" fill="none" marker-end="url(#arrow-green2)"/>
-<defs>
-  <marker id="arrow-green2" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
-    <path d="M0,0 L0,6 L7,3 z" fill="#16a34a"/>
-  </marker>
-</defs>
+<svg viewBox="0 0 720 320" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Animazione della sintesi: synt entra nella scanalatura del recettore, lavora, lascia un executor e se ne va.">
+  <style>
+    .bg { fill: #eef5fb; }
+    .receptor-body { fill: #fef3c7; stroke: #6B21A8; stroke-width: 2.5; }
+    .receptor-label { font-family: 'Segoe UI', Calibri, sans-serif; font-size: 13px; font-weight: 600; fill: #6B21A8; text-anchor: middle; }
+    .receptor-sublabel { font-family: 'Segoe UI', Calibri, sans-serif; font-size: 10px; font-style: italic; fill: #6B21A8; text-anchor: middle; opacity: 0.75; }
+    .notch { fill: #fbfdff; stroke: #6B21A8; stroke-width: 2; stroke-dasharray: 5,3; animation: notch-state 14s ease-in-out infinite; }
+    @keyframes notch-state {
+      0%   { stroke-dasharray: 5,3; stroke: #6B21A8; stroke-width: 2; }
+      70%  { stroke-dasharray: 5,3; stroke: #6B21A8; stroke-width: 2; }
+      80%  { stroke-dasharray: 5,3; stroke: #16a34a; stroke-width: 2.2; }
+      90%  { stroke-dasharray: 0;   stroke: #16a34a; stroke-width: 2.5; }
+      100% { stroke-dasharray: 0;   stroke: #16a34a; stroke-width: 2.5; }
+    }
+    .synt { animation: synt-journey 14s ease-in-out infinite; }
+    @keyframes synt-journey {
+      0%   { transform: translateX(-360px); opacity: 0; }
+      8%   { transform: translateX(-360px); opacity: 0; }
+      15%  { transform: translateX(-180px); opacity: 1; }
+      28%  { transform: translateX(0px);    opacity: 1; }
+      55%  { transform: translateX(0px);    opacity: 1; }
+      70%  { transform: translateX(80px);   opacity: 0.5; }
+      78%  { transform: translateX(220px);  opacity: 0; }
+      100% { transform: translateX(220px);  opacity: 0; }
+    }
+    .synt-pill { fill: #dcfce7; stroke: #16a34a; stroke-width: 2; }
+    .synt-label { font-family: 'Segoe UI', Calibri, sans-serif; font-size: 12px; font-weight: 700; fill: #166534; text-anchor: middle; }
+    .spark { fill: #f59e0b; stroke: #b45309; stroke-width: 0.5; transform-origin: center; animation: spark-pulse 14s ease-in-out infinite; }
+    .spark-1 { animation-delay: 0s; }
+    .spark-2 { animation-delay: -0.6s; }
+    .spark-3 { animation-delay: -1.2s; }
+    .spark-4 { animation-delay: -1.8s; }
+    @keyframes spark-pulse {
+      0%, 28%   { opacity: 0; transform: scale(0.4); }
+      32%       { opacity: 1; transform: scale(1.1); }
+      40%       { opacity: 0.6; transform: scale(0.8); }
+      48%       { opacity: 1; transform: scale(1.1); }
+      55%       { opacity: 0; transform: scale(0.4); }
+      100%      { opacity: 0; transform: scale(0.4); }
+    }
+    .work-label { font-family: 'Segoe UI', Calibri, sans-serif; font-size: 11px; font-style: italic; fill: #15803d; text-anchor: middle; animation: work-label-pulse 14s ease-in-out infinite; }
+    @keyframes work-label-pulse {
+      0%, 28%   { opacity: 0; }
+      32%       { opacity: 1; }
+      40%       { opacity: 0.5; }
+      48%       { opacity: 1; }
+      55%       { opacity: 0; }
+      100%      { opacity: 0; }
+    }
+    .executor { transform-origin: 400px 160px; animation: executor-materialise 14s ease-in-out infinite; }
+    @keyframes executor-materialise {
+      0%, 55%   { opacity: 0; transform: scale(0.3); }
+      62%       { opacity: 0.6; transform: scale(0.9); }
+      70%       { opacity: 1; transform: scale(1.05); }
+      75%       { opacity: 1; transform: scale(1); }
+      100%      { opacity: 1; transform: scale(1); }
+    }
+    .executor-body { fill: #548235; stroke: #16a34a; stroke-width: 2; }
+    .executor-label { font-family: 'Segoe UI', Calibri, sans-serif; font-size: 11px; font-weight: 700; fill: #ffffff; text-anchor: middle; }
+    .phase-label { font-family: 'Segoe UI', Calibri, sans-serif; font-size: 14px; font-weight: 600; fill: #1e3a8a; text-anchor: middle; }
+    .phase-1 { animation: phase1 14s ease-in-out infinite; }
+    .phase-2 { animation: phase2 14s ease-in-out infinite; }
+    .phase-3 { animation: phase3 14s ease-in-out infinite; }
+    .phase-4 { animation: phase4 14s ease-in-out infinite; }
+    @keyframes phase1 { 0%{opacity:1}14%{opacity:1}17%{opacity:0}100%{opacity:0} }
+    @keyframes phase2 { 0%,14%{opacity:0}18%{opacity:1}54%{opacity:1}57%{opacity:0}100%{opacity:0} }
+    @keyframes phase3 { 0%,54%{opacity:0}58%{opacity:1}74%{opacity:1}77%{opacity:0}100%{opacity:0} }
+    @keyframes phase4 { 0%,74%{opacity:0}78%{opacity:1}100%{opacity:1} }
+    .tick { font-family: 'Segoe UI', Calibri, sans-serif; font-size: 9px; fill: #94a3b8; text-anchor: middle; }
+  </style>
+  <rect class="bg" x="0" y="0" width="720" height="320" rx="8"/>
+  <text x="360" y="28" class="receptor-label" style="font-size: 14px;">Sintesi di un executor: dalla scanalatura aperta al recettore chiuso</text>
+  <rect class="receptor-body" x="310" y="85" width="180" height="90" rx="12"/>
+  <text x="400" y="108" class="receptor-label">Recettore (proto-mnest)</text>
+  <text x="400" y="123" class="receptor-sublabel">attende una capacita'</text>
+  <rect class="notch" x="345" y="135" width="110" height="50" rx="4"/>
+  <g>
+    <polygon class="spark spark-1" points="335,130 338,138 346,138 340,143 342,151 335,146 328,151 330,143 324,138 332,138" style="transform-origin: 335px 140px;"/>
+    <polygon class="spark spark-2" points="470,130 473,138 481,138 475,143 477,151 470,146 463,151 465,143 459,138 467,138" style="transform-origin: 470px 140px;"/>
+    <polygon class="spark spark-3" points="335,190 338,198 346,198 340,203 342,211 335,206 328,211 330,203 324,198 332,198" style="transform-origin: 335px 200px;"/>
+    <polygon class="spark spark-4" points="470,190 473,198 481,198 475,203 477,211 470,206 463,211 465,203 459,198 467,198" style="transform-origin: 470px 200px;"/>
+  </g>
+  <text x="400" y="78" class="work-label">synt al lavoro...</text>
+  <g class="executor">
+    <rect class="executor-body" x="350" y="140" width="100" height="40" rx="4"/>
+    <text x="400" y="165" class="executor-label">compose_report</text>
+  </g>
+  <g class="synt">
+    <rect class="synt-pill" x="375" y="145" width="50" height="30" rx="14"/>
+    <text x="400" y="164" class="synt-label">synt</text>
+  </g>
+  <text x="360" y="255" class="phase-label phase-1">synt si avvicina</text>
+  <text x="360" y="255" class="phase-label phase-2">synt al lavoro nel recettore</text>
+  <text x="360" y="255" class="phase-label phase-3">executor creato, synt esce</text>
+  <text x="360" y="255" class="phase-label phase-4">proto-mnest chiuso, capacita' nuova nel pool</text>
+  <line x1="120" y1="285" x2="600" y2="285" stroke="#cbd5e1" stroke-width="1"/>
+  <circle cx="120" cy="285" r="3" fill="#94a3b8"/>
+  <circle cx="240" cy="285" r="3" fill="#94a3b8"/>
+  <circle cx="360" cy="285" r="3" fill="#94a3b8"/>
+  <circle cx="480" cy="285" r="3" fill="#94a3b8"/>
+  <circle cx="600" cy="285" r="3" fill="#94a3b8"/>
+  <text x="120" y="302" class="tick">0s</text>
+  <text x="240" y="302" class="tick">3.5s</text>
+  <text x="360" y="302" class="tick">7s</text>
+  <text x="480" y="302" class="tick">10.5s</text>
+  <text x="600" y="302" class="tick">14s</text>
 </svg>
-<figcaption>Fig. 4 &mdash; L'introvertiva si avvicina al proto-mnest, ne legge il dst desiderato e propone un candidato. La proposta non viene applicata subito: passa dal Vaglio, dall'audit, dall'approvazione umana (vedi <a href="synt.html">synt.html</a>).</figcaption>
+<figcaption>Fig. 4 &mdash; La danza della sintesi. Synt entra nella scanalatura del recettore, lavora alla creazione di un nuovo executor, lo lascia al suo posto e se ne va. Il proto-mnest diventa un mnest attivo: la capacita' nuova entra nel pool degli executor.</figcaption>
 </figure>
 
 <h2>Aggregazione: fast-path che si compongono</h2>
