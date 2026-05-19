@@ -581,7 +581,7 @@ conosciuto e il <em>dst</em> appena un nome, non ancora un programma.
 
 <p>
 Possiamo vederlo come un <strong>recettore</strong>: una forma con
-una scanalatura vuota in cui il dst dovrebbe entrare. La scanalatura
+una lacuna vuota in cui il dst dovrebbe entrare. La lacuna
 non &egrave; un dettaglio grafico, &egrave; la firma desiderata
 &mdash; dichiara <em>cosa</em> servirebbe per chiudere la forma. Il
 recettore aspetta: rimane stabile finch&eacute; nessuno lo riempie,
@@ -596,7 +596,7 @@ modo, turno dopo turno.
 .lbl3{font-family:'Segoe UI',Calibri,sans-serif;font-size:12px;fill:#1a477a}
 .lbl3-sm{font-family:'Segoe UI',Calibri,sans-serif;font-size:10px;fill:#64748b}
 .src-node{fill:#548235;stroke:#1A477A;stroke-width:1.5}
-/* Recettore: corpo solido + scanalatura grande disegnata in BIANCO sopra,
+/* Recettore: corpo solido + lacuna grande disegnata in BIANCO sopra,
    cosi' la forma "manca" e' davvero un vuoto evidente, non un dettaglio. */
 .receptor-body{fill:#fef3c7;stroke:#6B21A8;stroke-width:2.5}
 .notch-cavity{fill:#fbfdff;stroke:#6B21A8;stroke-width:2;stroke-dasharray:5,3}
@@ -617,22 +617,22 @@ modo, turno dopo turno.
 </defs>
 <text class="lbl3-sm" x="300" y="140" text-anchor="middle">mnest osservato</text>
 <text class="lbl3-sm" x="300" y="170" text-anchor="middle" style="font-style:italic;">(turno utente)</text>
-<!-- Receptor: forma piena rettangolare con una scanalatura grande -->
+<!-- Receptor: forma piena rettangolare con una lacuna grande -->
 <g>
   <!-- corpo del recettore -->
   <rect class="receptor-body" x="385" y="115" width="160" height="80" rx="10"/>
-  <!-- scanalatura: rettangolo bianco con bordo tratteggiato, ben dentro il corpo -->
+  <!-- lacuna: rettangolo bianco con bordo tratteggiato, ben dentro il corpo -->
   <rect class="notch-cavity" x="415" y="140" width="100" height="40" rx="6"/>
   <!-- etichette -->
-  <text class="lbl3" x="465" y="165" text-anchor="middle" style="font-size:10px;fill:#6B21A8;font-style:italic;">scanalatura</text>
+  <text class="lbl3" x="465" y="165" text-anchor="middle" style="font-size:10px;fill:#6B21A8;font-style:italic;">lacuna</text>
   <text class="lbl3" x="465" y="105" text-anchor="middle" style="font-weight:600;">proto-mnest</text>
   <text class="lbl3-sm" x="465" y="215" text-anchor="middle">dst desiderato: &laquo;compose_report&raquo;</text>
   <text class="lbl3-sm" x="465" y="230" text-anchor="middle" style="font-style:italic;">non esiste ancora</text>
 </g>
 <!-- guide line: src → notch position -->
-<text class="lbl3-sm" x="360" y="270" text-anchor="middle">Il proto-mnest aspetta. La scanalatura tratteggiata e' il dst mancante.</text>
+<text class="lbl3-sm" x="360" y="270" text-anchor="middle">Il proto-mnest aspetta. La lacuna tratteggiata e' il dst mancante.</text>
 </svg>
-<figcaption>Fig. 3 &mdash; Il proto-mnest come recettore. A sinistra l'executor src esiste; a destra il proto-mnest mostra in chiaro la scanalatura aperta che attende un dst.</figcaption>
+<figcaption>Fig. 3 &mdash; Il proto-mnest come recettore. A sinistra l'executor src esiste; a destra il proto-mnest mostra in chiaro la lacuna aperta che attende un dst.</figcaption>
 </figure>
 
 <h2>Le funzioni introspettive: chi riconosce i recettori</h2>
@@ -643,7 +643,7 @@ introspettive</em>: i mestieri silenziosi di
 <a href="synt.html">synt</a> in modo introvertivo e del modulo
 introvertiva. Non hanno una funzione finale propria, servono a far
 accadere altre cose. La loro caratteristica &egrave; saper
-riconoscere i recettori: leggere la scanalatura aperta e capire
+riconoscere i recettori: leggere la lacuna aperta e capire
 quale dst la chiuderebbe.
 </p>
 
@@ -657,7 +657,7 @@ ed ecco un possibile dst che lo chiuderebbe&raquo;.
 </p>
 
 <figure>
-<svg viewBox="0 0 720 320" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Animazione della sintesi: synt entra nella scanalatura del recettore, lavora, lascia un executor e se ne va.">
+<svg viewBox="0 0 720 320" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Animazione della sintesi: synt entra nella lacuna del recettore, lavora, lascia un executor e se ne va.">
   <style>
     .bg { fill: #eef5fb; }
     .receptor-body { fill: #fef3c7; stroke: #6B21A8; stroke-width: 2.5; }
@@ -728,7 +728,7 @@ ed ecco un possibile dst che lo chiuderebbe&raquo;.
     .tick { font-family: 'Segoe UI', Calibri, sans-serif; font-size: 9px; fill: #94a3b8; text-anchor: middle; }
   </style>
   <rect class="bg" x="0" y="0" width="720" height="320" rx="8"/>
-  <text x="360" y="28" class="receptor-label" style="font-size: 14px;">Sintesi di un executor: dalla scanalatura aperta al recettore chiuso</text>
+  <text x="360" y="28" class="receptor-label" style="font-size: 14px;">Sintesi di un executor: dalla lacuna aperta al recettore chiuso</text>
   <rect class="receptor-body" x="310" y="85" width="180" height="90" rx="12"/>
   <text x="400" y="108" class="receptor-label">Recettore (proto-mnest)</text>
   <text x="400" y="123" class="receptor-sublabel">attende una capacita'</text>
@@ -764,7 +764,7 @@ ed ecco un possibile dst che lo chiuderebbe&raquo;.
   <text x="480" y="302" class="tick">10.5s</text>
   <text x="600" y="302" class="tick">14s</text>
 </svg>
-<figcaption>Fig. 4 &mdash; La danza della sintesi. Synt entra nella scanalatura del recettore, lavora alla creazione di un nuovo executor, lo lascia al suo posto e se ne va. Il proto-mnest diventa un mnest attivo: la capacita' nuova entra nel pool degli executor.</figcaption>
+<figcaption>Fig. 4 &mdash; La danza della sintesi. Synt entra nella lacuna del recettore, lavora alla creazione di un nuovo executor, lo lascia al suo posto e se ne va. Il proto-mnest diventa un mnest attivo: la capacita' nuova entra nel pool degli executor.</figcaption>
 </figure>
 
 <h2>Aggregazione: fast-path che si compongono</h2>
@@ -852,7 +852,7 @@ il mnestoma e individuano i recettori che ricorrono &mdash; quei
 proto-mnest che si presentano nello stesso modo turno dopo turno,
 soglia tre osservazioni ricorrenti (ADR 0077). Quando ne trovano uno
 sufficientemente stabile, propongono direttamente un executor che
-chiuderebbe la scanalatura. Non serve passare da un fast-path:
+chiuderebbe la lacuna. Non serve passare da un fast-path:
 l'analisi del singolo recettore basta. &Egrave; il caso classico, e
 storicamente il primo che synt ha imparato a gestire.
 </p>
