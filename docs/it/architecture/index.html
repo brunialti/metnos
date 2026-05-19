@@ -4,7 +4,7 @@
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
 <title>Microprogettazione — Metnos</title>
-<meta name="description" content="Guida alla microprogettazione di Metnos: cosa sono executor, mnest, mnestoma, agent runtime, http_api; come si parlano fra loro; quindici documenti canonici v1.1 allineati al codice al 4 maggio 2026.">
+<meta name="description" content="Guida alla microprogettazione di Metnos: cosa sono executor, mnest, mnestoma, agent runtime, http_api; come si parlano fra loro; quindici documenti canonici allineati al codice.">
 <meta name="keywords" content="Metnos, metnos, microprogettazione, architettura, executor, mnest, mnestoma, agent runtime, vaglio, synt, telos, http_api, multi-user, web crawler">
 <meta name="author" content="Roberto Brunialti">
 <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large">
@@ -15,7 +15,7 @@
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://metnos.com/it/architecture/">
 <meta property="og:title" content="Microprogettazione — Metnos">
-<meta property="og:description" content="Guida didattica alla microprogettazione di Metnos: termini, mappa dei componenti, quattordici documenti canonici v1.1 allineati al codice.">
+<meta property="og:description" content="Guida didattica alla microprogettazione di Metnos: termini, mappa dei componenti, quattordici documenti canonici allineati al codice.">
 <meta property="og:locale" content="it_IT">
 <meta property="og:locale:alternate" content="en_US">
 <meta property="og:site_name" content="Metnos">
@@ -236,7 +236,7 @@ fissando i termini prima di usarli.
     <li><a href="#mappa">La mappa dei componenti</a></li>
     <li><a href="#flusso">Come scorre una richiesta dell&rsquo;utente</a></li>
     <li><a href="#canonici">I quindici documenti canonici</a></li>
-    <li><a href="#stato">Stato del sistema al 4 maggio 2026</a></li>
+    <li><a href="#stato">Stato del sistema</a></li>
     <li><a href="#convenzioni">Convenzioni di scrittura</a></li>
   </ol>
 </div>
@@ -606,7 +606,7 @@ Sotto, i quindici documenti raggruppati per ruolo. La colonna
 <tbody>
 <tr>
   <td><a href="vaglio.html"><code>vaglio</code></a></td>
-  <td>Guardia binaria (forbidden paths, comandi shell quasi-irrecuperabili) e giudice graduato rule-based con soglia configurabile. Giudice LLM probabilistico rinviato a v1.2.</td>
+  <td>Guardia binaria (forbidden paths, comandi shell quasi-irrecuperabili) e giudice graduato rule-based con soglia configurabile. Giudice LLM probabilistico rinviato.</td>
   <td><span class="status tested">tested</span></td>
 </tr>
 <tr>
@@ -616,7 +616,7 @@ Sotto, i quindici documenti raggruppati per ruolo. La colonna
 </tr>
 <tr>
   <td><a href="sandbox.html"><code>sandbox</code></a></td>
-  <td>Profilo <code>bwrap</code> derivato dal manifest: read-only del codice, isolamento di rete se nessuna capability lo richiede, fallback graceful se <code>bwrap</code> manca. Landlock rinviato a v1.2.</td>
+  <td>Profilo <code>bwrap</code> derivato dal manifest: read-only del codice, isolamento di rete se nessuna capability lo richiede, fallback graceful se <code>bwrap</code> manca. Landlock rinviato.</td>
   <td><span class="status tested">tested</span></td>
 </tr>
 </tbody>
@@ -693,30 +693,34 @@ La <strong>fase 8 (stress logico)</strong> arriver&agrave; dopo la 7.
 </p>
 
 <p>
-Il vocabolario chiuso e&grave; oggi a <strong>23 azioni</strong>
+Il vocabolario chiuso conta oggi <strong>23 azioni</strong>
 (<code>read, write, move, delete, create, find, list, filter, sort,
 group, classify, get, set, send, describe, render, extract, compress,
 compute, compare, change, order, share</code>) e <strong>19 oggetti</strong>
 (<code>files, dirs, packages, messages, events, contacts, places,
 processes, urls, numbers, images, signatures, texts, proposals, inputs,
-credentials, entries, persons, tasks</code>). I qualifier sono in quattro
-famiglie: formato/codifica, modalit&agrave;, safety policy, provider
-(per backend specifici non-default come <code>_google_workspace</code>).
-Centralizzato in <code>runtime/vocab.py</code>.
+credentials, entries, persons, tasks</code>). I qualifier sono divisi in
+quattro famiglie: formato (codifica del dato), modalit&agrave; (come
+agisce l&rsquo;executor), criterio di sicurezza, provider (per indicare
+un backend diverso da quello predefinito, ad esempio
+<code>_google_workspace</code>). Tutto centralizzato in
+<code>runtime/vocab.py</code>.
 </p>
 
 <p>
-Tre primitive di pipeline lavorano sulle liste di entries del turno:
-<code>filter_entries</code> riduce una lista (predicati su campo:
-<code>where_starts_with</code>, <code>where_contains</code>,
-<code>where_glob</code>, <code>where_regex</code>),
-<code>filter_lists</code> combina due liste (set ops: intersect, union,
-difference, symdiff, overlap temporale), <code>compute_entries</code>
-calcola uno scalare da una lista (sum, avg, min, max, count). Esempio
-concreto utente: &laquo;C'&egrave; un appuntamento HLT che si sovrappone con uno
-MNM nei prossimi 3 mesi?&raquo; &rarr; il pianificatore costruisce in
-sei passi <code>read_events &rarr; filter HLT &rarr; filter MNM &rarr;
-filter_lists(op=overlap) &rarr; final_answer</code>.
+Le liste di entries che il turno produce passo per passo si manipolano
+con tre primitive. <code>filter_entries</code> riduce una lista
+applicando un predicato a un campo (<code>where_starts_with</code>,
+<code>where_contains</code>, <code>where_glob</code>,
+<code>where_regex</code>). <code>filter_lists</code> opera fra due
+liste: intersezione, unione, differenza, differenza simmetrica e
+sovrapposizione temporale. <code>compute_entries</code> calcola un
+numero a partire da una lista (somma, media, minimo, massimo, conteggio).
+Esempio reale: la domanda &laquo;c&rsquo;&egrave; un appuntamento HLT che
+si sovrappone a uno MNM nei prossimi tre mesi?&raquo; viene risolta in
+sei passi: <code>read_events</code> &rarr; due <code>filter_entries</code>
+(uno per HLT, uno per MNM) &rarr;
+<code>filter_lists(op=overlap)</code> &rarr; risposta finale.
 </p>
 
 <p>
@@ -776,8 +780,8 @@ solo in parte; il documento dichiara cosa manca e quando arriver&agrave;.
 </div>
 
 <footer>
-Metnos &mdash; microprogettazione, indice canonico v1.1. Aggiornato al
-4 maggio 2026. <code>${METNOS_HOME}/docs/it/architecture/</code>
+Metnos &mdash; microprogettazione, indice canonico.
+<code>${METNOS_HOME}/docs/it/architecture/</code>
 </footer>
 
 </body>

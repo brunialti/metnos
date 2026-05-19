@@ -593,12 +593,10 @@ result into a tool that filters. One thing at a time.
 <h2>7.3 <code>filter_lists</code> &mdash; &laquo;find overlapping events&raquo;</h2>
 
 <p>
-A recent tool that works on <em>two</em> lists rather than one. Useful
-whenever a user question requires an AND between two sets: "which HLT
-appointments overlap with MNM ones in the next three months?", or
-"which files are present in both folders?". Before 15 May Metnos had no
-primitive for these operations; the planner tried to simulate them with
-a single repeated <code>filter_entries</code> and produced false results.
+A tool that works on <em>two</em> lists rather than one. Useful when a
+user question intersects two sets: "which HLT appointments overlap
+with MNM ones in the next three months?", or "which files are present
+in both folders?".
 </p>
 
 <pre>call:        filter_lists(op="overlap",

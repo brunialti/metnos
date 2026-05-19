@@ -249,18 +249,6 @@ li { margin-bottom: 4px; }
     </div>
 </div>
 
-<div class="callout tip" style="font-size: 11pt; margin: 20px auto; max-width: 720px;">
-    <strong>Cosa è cambiato dalla v1.0.</strong> Questa v1.1 incorpora i due
-    dialoghi galileiani di aprile 2026 — il <em>Dialogo sui fini e i limiti</em>
-    (telos, vaglio, le 4 Leggi) e il <em>Dialogo sugli executor e la memoria
-    distribuita</em> (executor, mnest, mnestoma, tracce, ager) — e la
-    riflessione di fine aprile sulla <em>topologia self-hosted</em> (server
-    di casa, laptop come cliente, executor remoti come direzione futura) e
-    sul <em>frame tripartito di libertà / safety dell'identità / safety del
-    perimetro / robustezza</em>. Sei capitoli nuovi rispetto alla v1.0,
-    sette figure nuove, un linguaggio più didattico e meno gergoso. La
-    struttura a quattro strati, invariata, resta il filo conduttore.
-</div>
 
 <div class="toc">
 <h2>Indice</h2>
@@ -388,8 +376,7 @@ reimplementarli in Python, dove:
 <p class="lead">
 Prima di entrare nella tecnica, fissiamo cosa Metnos deve <em>essere</em>.
 Quattro aggettivi, non in ordine di importanza ma in ordine di difficolt&agrave;
-crescente. Il quarto &egrave; la novit&agrave; della v1.1 delle prospettive:
-prima c'erano tre, ora sono quattro.
+crescente.
 </p>
 
 <table>
@@ -441,9 +428,9 @@ Richiede, in una parola, una <em>memoria</em> e un <em>telos</em>.
 Metnos non vive sul laptop. Vive su un server Linux acceso
 ventiquattro ore su ventiquattro, e il laptop &mdash; come il telefono,
 come il browser di un dispositivo in viaggio &mdash; &egrave; un
-<em>cliente</em> che lo interpella. Questo capitolo, nuovo rispetto alla v1.0,
-spiega perch&eacute; &egrave; cos&igrave; e cosa ne consegue; in fondo apre
-la porta a una direzione futura importante: gli executor remoti.
+<em>cliente</em> che lo interpella. Questo capitolo spiega
+perch&eacute; &egrave; cos&igrave; e cosa ne consegue; in fondo apre la
+porta a una direzione futura importante: gli executor remoti.
 </p>
 
 <h2>Rileggere "local-first"</h2>
@@ -451,9 +438,8 @@ la porta a una direzione futura importante: gli executor remoti.
 <p>
 Il termine <em>local-first</em> ha nella letteratura (Kleppmann 2019) un
 significato preciso che mescola due propriet&agrave;: (a) i dati vivono
-sulla macchina dell'utente; (b) il sistema funziona anche offline. La v1.0
-aveva preso entrambe come obiettivo. Messo alla prova della vita reale di
-una famiglia, il quadro cambia.
+sulla macchina dell'utente; (b) il sistema funziona anche offline. Messo
+alla prova della vita reale di una famiglia, solo la prima conta davvero.
 </p>
 
 <p>
@@ -470,13 +456,14 @@ pagina web, mandare un messaggio.
 </p>
 
 <p>
-La v1.1 riformula il principio: Metnos &egrave; <strong>self-hosted</strong>,
-non "local-first" in senso stretto. Il dato e la logica vivono su una
-macchina sotto il tuo controllo fisico e legale &mdash; nel nostro caso
-<code>metnos-server</code>, il server di casa. Nessuna dipendenza da fornitori
-terzi, nessun canale obbligato verso server di terzi. La nuvola resta
-una possibilit&agrave; opzionale (modelli linguistici remoti, canale
-Telegram) ma mai come luogo di residenza.
+Il principio si formula cos&igrave;: Metnos &egrave;
+<strong>self-hosted</strong>, non "local-first" in senso stretto. Il dato
+e la logica vivono su una macchina sotto il tuo controllo fisico e
+legale &mdash; nel nostro caso <code>metnos-server</code>, il server di
+casa. Nessuna dipendenza da fornitori terzi, nessun canale obbligato
+verso server di terzi. La nuvola resta una possibilit&agrave; opzionale
+(modelli linguistici remoti, canale Telegram) ma mai come luogo di
+residenza.
 </p>
 
 <h2>Cinque topologie sul tavolo, una scelta</h2>
@@ -860,13 +847,12 @@ fase si anticipa; i requisiti di sicurezza no.
 </p>
 
 <div class="callout note">
-<strong>Due righe sul nome.</strong> "Local-first" come obiettivo
-&egrave; stato tolto dalla tabella del cap. 1 e sostituito con
-"Self-hosted". La differenza non &egrave; retorica: chi legge la v1.0
-pensa a un'applicazione che gira sul proprio computer; chi legge la v1.1
-sa che l'architettura ruota intorno a un server in casa sua, con i suoi
-dispositivi come clienti. Entrambe le formulazioni rispettano la sovranit&agrave;
-dell'utente; ma solo la seconda &egrave; quella che costruiremo.
+<strong>Due righe sul nome.</strong> Metnos &egrave;
+<em>self-hosted</em>, non "local-first" in senso stretto.
+L'architettura ruota intorno a un server in casa con gli altri
+dispositivi come clienti. Entrambe le formulazioni rispetterebbero la
+sovranit&agrave; dell'utente; ma solo la seconda &egrave; quella che
+costruiamo.
 </div>
 
 <h2>Risorse hardware del <code>metnos-server</code>: cosa serve davvero</h2>
@@ -883,10 +869,10 @@ diventa: <em>che hardware serve per un wise locale di livello, e cosa cambia
 se lo deleghi a un provider online?</em>
 </p>
 
-<h3>L'hardware su cui &egrave; stato sviluppato il POC v1.1</h3>
+<h3>L'hardware su cui &egrave; stato sviluppato il POC</h3>
 
 <p>
-A titolo esemplificativo, il setup di sviluppo del POC (<em>proof of concept</em>, il prototipo funzionante costruito per validare l'architettura prima della v1 stabile) al 26/4/2026:
+A titolo esemplificativo, il setup di sviluppo del POC (<em>proof of concept</em>, il prototipo funzionante costruito per validare l'architettura):
 </p>
 
 <table>
@@ -1390,14 +1376,13 @@ fare per te, non quello che tu fai. Un agente che inizia a giudicarti
 </div>
 
 <div class="callout note">
-<strong>Perch&eacute; tre assi e non due.</strong> La v1.0 confondeva
-safety dell'identit&agrave; e safety del perimetro sotto un'unica
-voce. La conseguenza era che i ragionamenti sulla libert&agrave;
-slittavano: si finiva per dire "se vuoi pi&ugrave; libert&agrave; devi
-accettare meno safety", che &egrave; vero per il perimetro e falso per
-l'identit&agrave;. Il modo onesto di parlare di compromessi &egrave;
-nominarli con precisione e mostrare in quale direzione effettivamente
-tirano.
+<strong>Perch&eacute; tre assi e non due.</strong> Mettere safety
+dell'identit&agrave; e safety del perimetro sotto un'unica voce fa
+slittare i ragionamenti sulla libert&agrave;: si finisce per dire "se
+vuoi pi&ugrave; libert&agrave; devi accettare meno safety", che
+&egrave; vero per il perimetro e falso per l'identit&agrave;. Il modo
+onesto di parlare di compromessi &egrave; nominarli con precisione e
+mostrare in quale direzione effettivamente tirano.
 </div>
 
 <div class="callout note">
@@ -1471,7 +1456,7 @@ privilegi man mano che si va verso il centro.
 <text x="900" y="240" fill="#548235" font-size="11" font-weight="600" transform="rotate(-90 900 240)">interno / più privilegiato</text>
 
 </svg>
-<figcaption>Figura 3 &mdash; I quattro strati di Metnos. Ogni richiesta (sia essa venuta da un utente o nata da dentro, proattiva) attraversa tutti e quattro, in ordine, prima di produrre un effetto. Rispetto alla v1.0, lo strato 2 include esplicitamente Telos e Vaglio, e lo strato 4 include mnestoma ed executor.</figcaption>
+<figcaption>Figura 3 &mdash; I quattro strati di Metnos. Ogni richiesta (sia essa venuta da un utente o nata da dentro, proattiva) attraversa tutti e quattro, in ordine, prima di produrre un effetto. Lo strato 2 include Telos e Vaglio, lo strato 4 include mnestoma ed executor.</figcaption>
 </figure>
 
 <h3>Strato 1 — Gateway</h3>
@@ -1802,7 +1787,7 @@ LLM, indipendenti dal provider sottostante:
 </tr>
 <tr>
   <td><strong>middle</strong></td>
-  <td>vaglio probabilistico, valutazione di proposte introvertive (futuro v1.2).</td>
+  <td>vaglio probabilistico, valutazione di proposte introvertive.</td>
   <td>capacit&agrave; intermedia. Se non c'&egrave; un modello dedicato, il middle <em>rinvia verso l'alto</em> al wise (con un preambolo che ne cambia il ruolo).</td>
 </tr>
 <tr>
@@ -2592,7 +2577,7 @@ openclaw/zeroclaw ed &egrave; azzeccata: la configurazione comportamentale
 <tr><td><code>MEMORY.md</code></td><td>Fatti long-term: "la password del router &egrave; in Bitwarden", "il cane si chiama X". Distinto dal mnestoma, che &egrave; memoria relazionale di come funziona il <em>sistema</em>; <code>MEMORY.md</code> &egrave; memoria dichiarativa di fatti sul <em>mondo</em>.</td></tr>
 <tr><td><code>AGENTS.md</code></td><td>Regole di orchestrazione: quando delegare a un sibling agent, come i canali mappano a livelli di autonomia.</td></tr>
 <tr><td><code>SOUL.md</code></td><td>Principi operativi ad alto livello: "non mentire mai sulle azioni fatte", "se in dubbio, chiedi", "self-hosted prima che cloud".</td></tr>
-<tr><td><code>TELOS.md</code></td><td><strong>Novit&agrave; v1.1.</strong> Da 3 a 7 frasi brevi: i fini ultimi sui quali il Vaglio misura l'allineamento delle proposte spontanee. Non KPI, non elenchi: tendenze morbide (vedi cap. 11).</td></tr>
+<tr><td><code>TELOS.md</code></td><td>Da 3 a 7 frasi brevi: i fini ultimi sui quali il Vaglio misura l'allineamento delle proposte spontanee. Non KPI, non elenchi: tendenze morbide (vedi cap. 11).</td></tr>
 </tbody>
 </table>
 
@@ -2654,9 +2639,6 @@ ricevono dal mondo, <code>agent_runtime/</code> ragiona,
 <code>executors/</code> agiscono, <code>sandbox/</code> e
 <code>policy/</code> contengono, <code>mnestoma/</code> ricorda,
 <code>vaglio/</code> giudica, <code>pairing/</code> riconosce le persone.
-La novit&agrave; v1.1 rispetto alla v1.0 sono i package
-<code>mnestoma/</code> e <code>vaglio/</code>, e il file
-<code>workspace/TELOS.md</code>: tutti gli altri esistevano gi&agrave;.
 La figura mostra anche il file <code>mnestoma.sqlite</code> sotto
 <code>workspace/</code>, che &egrave; il grafo persistente, e i tre
 <em>profili di sandbox</em> sotto <code>config/sandbox-profiles/</code>
@@ -2667,7 +2649,7 @@ che corrispondono ai tre livelli di autonomia del cap. 12.
 <figure>
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 520" width="100%" preserveAspectRatio="xMidYMid meet" style="font-family:'Segoe UI',Calibri,sans-serif; font-size:11px;" role="img" aria-labelledby="fig10-title fig10-desc">
 <title id="fig10-title">Layout del repository</title>
-<desc id="fig10-desc">Albero delle directory di METNOS_HOME, su tre radici. docs/ contiene la documentazione bilingue (it/, en/) e la cartella architecture/ con le microprogettazioni. workspace/ contiene i dati personali: IDENTITY.md, USER.md, MEMORY.md, AGENTS.md, SOUL.md, TELOS.md (novità v1.1), il file grafo mnestoma.sqlite, e la directory append-only .audit/ in JSONL. config/ contiene default.yaml, secrets.env, e la directory sandbox-profiles/ con tre profili (readonly, supervised, full). Sotto le directory dati, src/myclaw/ contiene otto sotto-package di codice: gateway, agent_runtime, channels, executors, sandbox, policy, mnestoma, pairing, più uno spazio riservato ai package futuri. systemd/ contiene il file di unit utente, e la radice di progetto contiene i file standard Python (pyproject.toml, VERSION, CHANGELOG.md, README.md, AGENTS.md).</desc>
+<desc id="fig10-desc">Albero delle directory di METNOS_HOME, su tre radici. docs/ contiene la documentazione bilingue (it/, en/) e la cartella architecture/ con le microprogettazioni. workspace/ contiene i dati personali: IDENTITY.md, USER.md, MEMORY.md, AGENTS.md, SOUL.md, TELOS.md, il file grafo mnestoma.sqlite, e la directory append-only .audit/ in JSONL. config/ contiene default.yaml, secrets.env, e la directory sandbox-profiles/ con tre profili (readonly, supervised, full). Sotto le directory dati, src/myclaw/ contiene otto sotto-package di codice: gateway, agent_runtime, channels, executors, sandbox, policy, mnestoma, pairing, più uno spazio riservato ai package futuri. systemd/ contiene il file di unit utente, e la radice di progetto contiene i file standard Python (pyproject.toml, VERSION, CHANGELOG.md, README.md, AGENTS.md).</desc>
 <defs>
   <linearGradient id="dir1" x1="0" y1="0" x2="0" y2="1">
     <stop offset="0%" stop-color="#E3ECF5"/><stop offset="100%" stop-color="#BFD3E6"/>
@@ -2698,7 +2680,7 @@ che corrispondono ai tre livelli di autonomia del cap. 12.
 <text x="455" y="118" text-anchor="middle" fill="#3F6212" font-size="13" font-weight="700">workspace/</text>
 <text x="335" y="140" fill="#334155" font-size="10.5">IDENTITY.md · USER.md</text>
 <text x="335" y="158" fill="#334155" font-size="10.5">MEMORY.md · AGENTS.md</text>
-<text x="335" y="176" fill="#334155" font-size="10.5">SOUL.md · <strong>TELOS.md (novità v1.1)</strong></text>
+<text x="335" y="176" fill="#334155" font-size="10.5">SOUL.md · <strong>TELOS.md</strong></text>
 <text x="335" y="194" fill="#334155" font-size="10.5">mnestoma.sqlite (grafo, peso, recency)</text>
 <text x="335" y="212" fill="#334155" font-size="10.5">.audit/ (JSONL append-only)</text>
 
@@ -2771,7 +2753,7 @@ che corrispondono ai tre livelli di autonomia del cap. 12.
 <text x="670" y="493" text-anchor="middle" fill="#64748B" font-size="10" font-style="italic">layout Python standard (PEP 518), ereditato da suprastructure</text>
 
 </svg>
-<figcaption>Figura 10 &mdash; Layout del repository (v1.1). Nuovi sotto-package rispetto alla v1.0: <code>mnestoma/</code> e <code>vaglio/</code>. La directory <code>workspace/</code> guadagna <code>TELOS.md</code> e il file grafo <code>mnestoma.sqlite</code>.</figcaption>
+<figcaption>Figura 10 &mdash; Layout del repository. La directory <code>workspace/</code> contiene <code>TELOS.md</code> e il file grafo <code>mnestoma.sqlite</code>.</figcaption>
 </figure>
 
 
@@ -2920,7 +2902,7 @@ rosso visibile.</li>
 <tr><td>&mdash; livello module</td><td>305</td></tr>
 <tr><td>&mdash; livello cluster</td><td>22</td></tr>
 <tr><td>&mdash; livello system</td><td>12 (tutti su <code>agent_runtime</code>, e2e via <code>run_turn</code>)</td></tr>
-<tr><td>Esiti ultimo giro</td><td><strong>339 pass / 0 fail</strong> (giro chiuso 27/4 notte, fasi 1-2-3-4-5 chiuse a livello codice; resta la promozione di policy.html e sandbox.html a v1.1 TESTED a livello doc)</td></tr>
+<tr><td>Esiti ultimo giro</td><td><strong>339 pass / 0 fail</strong> (fasi 1-2-3-4-5 chiuse a livello codice).</td></tr>
 <tr><td>Top moduli per casi</td><td><code>synt</code> (~80), <code>mnestoma</code> (~40), <code>agent_runtime</code> (~30 module + 12 system), <code>channels</code> (19), <code>vaglio</code> (13), <code>pairing</code> (9), <code>observability</code> (6)</td></tr>
 </tbody>
 </table>
@@ -3025,49 +3007,16 @@ documento di microprogettazione che precede il codice.</p>
 <table>
 <thead><tr><th style="width:10%">Fase</th><th style="width:28%">Obiettivo</th><th>Gate</th><th style="width:14%">Stato</th></tr></thead>
 <tbody>
-<tr><td><strong>0</strong></td><td>Livello 1 completo (questo doc + dialoghi + glossario) e microprogettazione</td><td>22 doc v1.0 obsoletati il 24/4; <strong>undici canonici v1.1</strong> in <code>docs/it/architecture/</code> (executor, mnest, mnestoma, agent_runtime, scratchpad, synt, telos, vaglio, channel, pairing, observability). Dieci sono bilingui IT+EN al 27/4 sera; resta IT-only solo <code>observability.html</code>.</td><td><span style="background:#14532d;color:#fff;padding:2px 8px;border-radius:10px;font-size:9pt;font-weight:700;letter-spacing:1px;">FATTO</span></td></tr>
+<tr><td><strong>0</strong></td><td>Livello 1 completo (questo doc + dialoghi + glossario) e microprogettazione</td><td><strong>Undici componenti canonici</strong> in <code>docs/it/architecture/</code> (executor, mnest, mnestoma, agent_runtime, scratchpad, synt, telos, vaglio, channel, pairing, observability), bilingui IT+EN.</td><td><span style="background:#14532d;color:#fff;padding:2px 8px;border-radius:10px;font-size:9pt;font-weight:700;letter-spacing:1px;">FATTO</span></td></tr>
 <tr><td><strong>1</strong></td><td>POC scheletro: 4 executor firmati, runtime ReAct con tool-use nativo, sandbox base, test framework SQLite a tre livelli</td><td><code>executor.html</code>, <code>agent_runtime.html</code>, <code>scratchpad.html</code>, <code>mnest.html</code>, <code>mnestoma.html</code> tutti TESTED. Al 27/4 sera: <strong>300/300 test verdi su 20 moduli</strong>.</td><td><span style="background:#14532d;color:#fff;padding:2px 8px;border-radius:10px;font-size:9pt;font-weight:700;letter-spacing:1px;">FATTO</span></td></tr>
-<tr><td><strong>2</strong></td><td>Synt vivo (cascata reattiva: comporre + generare) + Vaglio reale + workspace markdown popolato</td><td><code>synt.html</code> + <em>synt-on-the-fly</em> in <code>agent_runtime</code> (compose-only); <code>vaglio.html</code> v1.1 TESTED (guardia binaria + giudice rule-based, giudice LLM rinviato a v1.2); <code>workspace/</code> con sei file canonici (TELOS.md popolato con i sette telos canonici).</td><td><span style="background:#14532d;color:#fff;padding:2px 8px;border-radius:10px;font-size:9pt;font-weight:700;letter-spacing:1px;">FATTO</span></td></tr>
-<tr><td><strong>3</strong></td><td>Telegram channel MVP + DM pairing</td><td><code>channel.html</code> v1.1 TESTED (Channel Protocol + TelegramChannel send + long-poll + ChannelDaemon + persistenza offset + systemd user unit); <code>pairing.html</code> v1.1 TESTED (codici Ed25519 firmati + registry SQLite + comando <code>/pair</code> + bootstrap automatico del default_chat_id).</td><td><span style="background:#14532d;color:#fff;padding:2px 8px;border-radius:10px;font-size:9pt;font-weight:700;letter-spacing:1px;">FATTO</span></td></tr>
-<tr><td><strong>4</strong></td><td>Mnestoma operativo (analitica + ispezione) + dashboard web minimale di osservabilita' + synt introvertive</td><td><strong>Mnestoma operativo &check;</strong>: API analitiche <code>top_active</code>, <code>executor_summary</code>, <code>audit_recent</code> + CLI ricca (<code>top</code>, <code>summary</code>, <code>audit</code>). <strong>Dashboard &check;</strong>: <code>observability.html</code> v1.1 TESTED, generatore HTML statico in <code>runtime/observability.py</code> (6/6 test verdi). <strong>Synt introvertive &check;</strong> (merge + generalize rule-based): <code>Synt.homeostasis()</code> + CLI <code>synt introvert</code>; coppie con Jaccard affinity &ge; 0.70 sullo stesso target_kind+capability propongono <em>merge</em>, cluster di &ge;3 executor con stesso prefix verb propongono <em>generalize</em>. Proposte loggate in audit, non auto-applicate. <strong>Specialize</strong> rimandato a v1.2 (richiede analisi pattern di mnest).</td><td><span style="background:#14532d;color:#fff;padding:2px 8px;border-radius:10px;font-size:9pt;font-weight:700;letter-spacing:1px;">FATTO</span></td></tr>
-<tr><td><strong>5</strong></td><td>Vaglio probabilistico (giudice LLM tier middle, contesto separato dal proponente, prompt sulle 4 Leggi) + sandbox vera (bubblewrap+landlock) + Capability Registry esteso + dispatcher dei callback Telegram (carta di approval interattiva)</td><td><strong>Vaglio LLM v1.1 (opt-in) &check;</strong>: <code>METNOS_JUDGE_KIND=llm-v1</code>, tier middle, contesto separato, prompt sulle 4 Leggi + sette telos, fallback graceful. <strong>Dispatcher callback Telegram &check;</strong>: <code>runtime/approval_registry.py</code> + estensione <code>TelegramChannel.poll</code> (callback_query) + <code>ChannelDaemon._handle_callback</code>. <strong>Sandbox bubblewrap &check;</strong>: <code>runtime/sandbox.py</code> deriva flag dal manifest, isola rete/utente/IPC, fallback graceful. <strong>Capability Registry esteso &check;</strong>: <code>runtime/policy.py</code> con 13 capability canoniche, tabella autonomy&times;capability (ReadOnly/Supervised/Full), grants per_target persistenti SQLite, <code>effective_outcome</code> combinato, CLI <code>policy registry|table|check|grants|revoke</code>. Tutti e quattro i gate del codice chiusi 27/4 notte. <em>Resta a livello doc</em>: promozione a v1.1 TESTED di <code>sandbox.html</code> (in corso) e <code>policy.html</code>; landlock rimandato a v1.2.</td><td><span style="background:#14532d;color:#fff;padding:2px 8px;border-radius:10px;font-size:9pt;font-weight:700;letter-spacing:1px;">FATTO</span></td></tr>
+<tr><td><strong>2</strong></td><td>Synt vivo (cascata reattiva: comporre + generare) + Vaglio reale + workspace markdown popolato</td><td><code>synt.html</code> + <em>synt-on-the-fly</em> in <code>agent_runtime</code> (compose-only); <code>vaglio.html</code> TESTED (guardia binaria + giudice rule-based, giudice LLM rinviato); <code>workspace/</code> con sei file canonici (TELOS.md popolato con i sette telos canonici).</td><td><span style="background:#14532d;color:#fff;padding:2px 8px;border-radius:10px;font-size:9pt;font-weight:700;letter-spacing:1px;">FATTO</span></td></tr>
+<tr><td><strong>3</strong></td><td>Telegram channel MVP + DM pairing</td><td><code>channel.html</code> TESTED (Channel Protocol + TelegramChannel send + long-poll + ChannelDaemon + persistenza offset + systemd user unit); <code>pairing.html</code> TESTED (codici Ed25519 firmati + registry SQLite + comando <code>/pair</code> + bootstrap automatico del default_chat_id).</td><td><span style="background:#14532d;color:#fff;padding:2px 8px;border-radius:10px;font-size:9pt;font-weight:700;letter-spacing:1px;">FATTO</span></td></tr>
+<tr><td><strong>4</strong></td><td>Mnestoma operativo (analitica + ispezione) + dashboard web minimale di osservabilita' + synt introvertive</td><td><strong>Mnestoma operativo &check;</strong>: API analitiche <code>top_active</code>, <code>executor_summary</code>, <code>audit_recent</code> + CLI ricca (<code>top</code>, <code>summary</code>, <code>audit</code>). <strong>Dashboard &check;</strong>: <code>observability.html</code> TESTED, generatore HTML statico in <code>runtime/observability.py</code> (6/6 test verdi). <strong>Synt introvertive &check;</strong> (merge + generalize rule-based): <code>Synt.homeostasis()</code> + CLI <code>synt introvert</code>; coppie con Jaccard affinity &ge; 0.70 sullo stesso target_kind+capability propongono <em>merge</em>, cluster di &ge;3 executor con stesso prefix verb propongono <em>generalize</em>. Proposte loggate in audit, non auto-applicate. <strong>Specialize</strong> rimandato (richiede analisi pattern di mnest).</td><td><span style="background:#14532d;color:#fff;padding:2px 8px;border-radius:10px;font-size:9pt;font-weight:700;letter-spacing:1px;">FATTO</span></td></tr>
+<tr><td><strong>5</strong></td><td>Vaglio probabilistico (giudice LLM tier middle, contesto separato dal proponente, prompt sulle 4 Leggi) + sandbox vera (bubblewrap+landlock) + Capability Registry esteso + dispatcher dei callback Telegram (carta di approval interattiva)</td><td><strong>Vaglio LLM (opt-in) &check;</strong>: <code>METNOS_JUDGE_KIND=llm-v1</code>, tier middle, contesto separato, prompt sulle 4 Leggi + sette telos, fallback graceful. <strong>Dispatcher callback Telegram &check;</strong>: <code>runtime/approval_registry.py</code> + estensione <code>TelegramChannel.poll</code> (callback_query) + <code>ChannelDaemon._handle_callback</code>. <strong>Sandbox bubblewrap &check;</strong>: <code>runtime/sandbox.py</code> deriva flag dal manifest, isola rete/utente/IPC, fallback graceful. <strong>Capability Registry esteso &check;</strong>: <code>runtime/policy.py</code> con 13 capability canoniche, tabella autonomy&times;capability (ReadOnly/Supervised/Full), grants per_target persistenti SQLite, <code>effective_outcome</code> combinato, CLI <code>policy registry|table|check|grants|revoke</code>.</td><td><span style="background:#14532d;color:#fff;padding:2px 8px;border-radius:10px;font-size:9pt;font-weight:700;letter-spacing:1px;">FATTO</span></td></tr>
 <tr><td><strong>6</strong></td><td>Canale voce: TTS Piper + satelliti via protocollo myoming2 + Echo Alexa quando rilevati; arbitraggio fra dispositivi; <code>voice_say</code> come executor</td><td><code>voice_say</code> manifest + scelta TTS + arbitraggio satelliti</td><td>pianificata</td></tr>
 <tr><td><strong>7+</strong></td><td>Executor remoti via overlay Headscale (laptop Linux + Windows), micro-LLM dedicati per i tre tier locali, voce in input (whisper.cpp), policy multi-utente piu' ricca</td><td>valutato caso per caso</td><td>esplorativa</td></tr>
 </tbody>
 </table>
-
-<div class="callout note" style="font-size:10.5pt;">
-<strong>Aggiornamento post-POC (27 aprile 2026, sera).</strong> Il POC v1.1
-ha esercitato e chiuso le fasi 1, 2 e 3 della roadmap qui sopra; la fase 4
-e' partita la sera stessa con due dei tre obiettivi gi&agrave; in casa.
-Quattro executor firmati (<code>fs_read</code>, <code>fs_write</code>,
-<code>time_read</code>, <code>web_fetch</code>) girano dietro il loop di
-<a href="architecture/agent_runtime.html"><code>agent_runtime</code></a> con
-tool-use nativo Ollama (default <code>qwen3:8b</code>), data piping
-fra passi (<code>from_step: N</code> per liste, <code>{{stepN.field}}</code>
-per valori singoli), scratchpad per observation grandi,
-hook su mnestoma per registrare passaggi e proto-mnest. Il 27/4 si sono
-aggiunti: <em>synt-on-the-fly</em> dentro al pianificatore (compose-only su
-proto-mnest appena registrati), <a href="architecture/vaglio.html">Vaglio
-reale</a> (guardia binaria + giudice rule-based) al posto dello stub
-always-approve, channel <a href="architecture/channel.html">Telegram MVP</a>
-end-to-end (send + long-poll + daemon + persistenza offset + systemd unit),
-<a href="architecture/pairing.html">pairing</a> con codici Ed25519 firmati e
-registry SQLite, e in serata <a href="architecture/mnestoma.html">mnestoma
-operativo</a> (analitica + audit) + <a href="architecture/observability.html">dashboard
-statica</a> che chiudono due dei tre gate della fase 4. Reality check del
-seed pool 22&rarr;27 (cinque nuovi seed promossi:
-<code>pkg_install</code>/<code>uninstall</code>/<code>search</code>/<code>list_installed</code>
-cross-OS Linux+Windows e <code>geo_poi_search</code> via Overpass OSM).
-Bilinguismo: dieci canonici su undici sono ora pubblicati IT+EN
-(<code>observability</code> resta IT-only fino alla traduzione). A fine
-serata del 27/4 sono entrate anche le introvertive di
-<a href="architecture/synt.html">synt</a> (merge + generalize rule-based,
-specialize rimandato a v1.2): la fase 4 e' chiusa, restano solo i tre
-gate della fase 5. Il sistema oggi &egrave; testato in
-<strong>20 moduli, 28 dipendenze, 305 cases SQLite</strong>
-(birth + module + cluster + system) tutti verdi.
-</div>
 
 <h2>Continua a leggere</h2>
 <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(260px, 1fr)); gap:14px; margin:16px 0 24px;">
@@ -3079,7 +3028,7 @@ gate della fase 5. Il sistema oggi &egrave; testato in
   <a href="Metnos_Dialogo_Executor_v1.html" style="display:block; padding:14px 16px; border:1px solid var(--border); border-radius:8px; background:white; color:inherit; text-decoration:none;">
     <span style="display:inline-block; padding:2px 9px; border-radius:10px; font-size:9pt; background:var(--code-bg); color:var(--muted); font-weight:500;">dialogo · 45 min</span>
     <div style="color:var(--navy); font-size:11.5pt; font-weight:700; margin:8px 0 6px 0;">Dialogo sugli executor e la memoria distribuita</div>
-    <div style="margin:0; color:var(--muted); font-size:10pt; line-height:1.5;">Il secondo dialogo, in quattro giornate: executor, mnest, mnestoma, tracce, ager, i sei principi. La fondazione tecnica di questa v1.1.</div>
+    <div style="margin:0; color:var(--muted); font-size:10pt; line-height:1.5;">Il secondo dialogo, in quattro giornate: executor, mnest, mnestoma, tracce, ager, i sei principi. La fondazione tecnica del sistema.</div>
   </a>
   <a href="Metnos_Letteratura_Adattamenti_v1.html" style="display:block; padding:14px 16px; border:1px solid var(--border); border-radius:8px; background:white; color:inherit; text-decoration:none;">
     <span style="display:inline-block; padding:2px 9px; border-radius:10px; font-size:9pt; background:var(--code-bg); color:var(--muted); font-weight:500;">razionale · 15 min</span>
@@ -3089,7 +3038,7 @@ gate della fase 5. Il sistema oggi &egrave; testato in
   <a href="architecture/" style="display:block; padding:14px 16px; border:1px solid var(--border); border-radius:8px; background:white; color:inherit; text-decoration:none;">
     <span style="display:inline-block; padding:2px 9px; border-radius:10px; font-size:9pt; background:var(--code-bg); color:var(--muted); font-weight:500;">microprogettazione</span>
     <div style="color:var(--navy); font-size:11.5pt; font-weight:700; margin:8px 0 6px 0;">Indice componenti</div>
-    <div style="margin:0; color:var(--muted); font-size:10pt; line-height:1.5;">L'indice della microprogettazione: undici canonici v1.1 (otto TESTED al 27/4 sera, dieci bilingui IT+EN), pi&ugrave; le tracce dei v1.0 obsoletati.</div>
+    <div style="margin:0; color:var(--muted); font-size:10pt; line-height:1.5;">L'indice della microprogettazione: undici componenti canonici, bilingui IT+EN.</div>
   </a>
   <a href="index.html" style="display:block; padding:14px 16px; border:1px solid var(--border); border-radius:8px; background:white; color:inherit; text-decoration:none;">
     <span style="display:inline-block; padding:2px 9px; border-radius:10px; font-size:9pt; background:var(--code-bg); color:var(--muted); font-weight:500;">home</span>
@@ -3098,21 +3047,14 @@ gate della fase 5. Il sistema oggi &egrave; testato in
   </a>
 </div>
 
-<div class="callout tip">
-<strong>Versioning del documento.</strong> Questo &egrave; il
-<code>v1.1</code>. La v1.0 &egrave; archiviata nel repository. La v2
-arriver&agrave; quando la prima implementazione avr&agrave; rivelato cosa
-&egrave; sopravvissuto al passaggio dal testo al codice.
-</div>
-
 <hr>
 
 <p style="text-align:center; color:var(--muted); font-size:9.5pt; margin-top:40px;">
-Metnos &mdash; <em>Architettura: Introduzione</em> v1.1 &mdash; 2026-04-24<br>
+Metnos &mdash; <em>Architettura: Introduzione</em>.<br>
 Ispirato a <a href="https://github.com/openclaw/openclaw">openclaw</a> e
 <a href="https://github.com/zeroclaw-labs/zeroclaw">zeroclaw</a>, costruito sopra
 <a href="Metnos_Glossario_v1.html#suprastructure">suprastructure</a>.<br>
-v1.1: incorpora il <em>Dialogo sui fini e sui limiti</em> (telos, vaglio, 4 Leggi)
+Incorpora il <em>Dialogo sui fini e sui limiti</em> (telos, vaglio, 4 Leggi)
 e il <em>Dialogo sugli executor e la memoria distribuita</em> (executor, mnest, mnestoma, tracce, ager).
 </p>
 

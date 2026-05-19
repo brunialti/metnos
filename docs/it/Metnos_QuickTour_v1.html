@@ -245,7 +245,7 @@ dd { margin-left: 18px; color: #333; }
     <h1>Metnos</h1>
     <div class="subtitle">Quick tour &amp; Survival kit &mdash; l'assistente di casa, da fuori e da dentro</div>
     <div class="tagline">Un maggiordomo digitale che vive su un server Linux a casa vostra, risponde sul telefono e dal terminale, chiede permesso prima di ogni cosa che tocca il mondo, e fa nascere nuovi strumenti quando quelli che ha non bastano. Qui dentro: cos'&egrave;, come gli si parla, come cresce, dove sta davvero il progetto oggi.</div>
-    <div class="meta">v1.1 &mdash; aggiornato il 27 aprile 2026</div>
+    <div class="meta">Quick tour &amp; Survival kit</div>
 </div>
 
 <div class="toc">
@@ -1681,7 +1681,7 @@ di cinque strategie, ordinate per costo crescente:</p>
 <tr style="background:#f0f4f8;"><td style="padding:6px 8px; border-bottom:1px solid var(--border);"><strong>2</strong></td><td style="padding:6px 8px; border-bottom:1px solid var(--border);">Generate</td><td style="padding:6px 8px; border-bottom:1px solid var(--border);">reattivo</td><td style="padding:6px 8px; border-bottom:1px solid var(--border);">Pipeline <em>multistage</em> a cinque stadi LLM (naming, signature, test, description, code) seguita da profilo, esecuzione test, approvazione, firma e installazione.</td><td style="padding:6px 8px; border-bottom:1px solid var(--border);">&euro;0 (locale)</td></tr>
 <tr><td style="padding:6px 8px; border-bottom:1px solid var(--border);"><strong>3</strong></td><td style="padding:6px 8px; border-bottom:1px solid var(--border);">Merge</td><td style="padding:6px 8px; border-bottom:1px solid var(--border);">introvertivo</td><td style="padding:6px 8px; border-bottom:1px solid var(--border);">Di notte: due executor con tracce sovrapposte e profili compatibili si fondono in uno solo.</td><td style="padding:6px 8px; border-bottom:1px solid var(--border);">~&euro;0.5</td></tr>
 <tr style="background:#f0f4f8;"><td style="padding:6px 8px; border-bottom:1px solid var(--border);"><strong>4</strong></td><td style="padding:6px 8px; border-bottom:1px solid var(--border);">Generalize</td><td style="padding:6px 8px; border-bottom:1px solid var(--border);">introvertivo</td><td style="padding:6px 8px; border-bottom:1px solid var(--border);">Tre o pi&ugrave; executor specializzati con la stessa forma collassano in uno parametrico.</td><td style="padding:6px 8px; border-bottom:1px solid var(--border);">~&euro;1</td></tr>
-<tr><td style="padding:6px 8px;"><strong>5</strong></td><td style="padding:6px 8px;">Specialize</td><td style="padding:6px 8px;">introvertivo</td><td style="padding:6px 8px;">Un executor generale genera una versione mirata per un caso ricorrente e &laquo;caldo&raquo; (rimandato a v1.2).</td><td style="padding:6px 8px;">~&euro;0.5</td></tr>
+<tr><td style="padding:6px 8px;"><strong>5</strong></td><td style="padding:6px 8px;">Specialize</td><td style="padding:6px 8px;">introvertivo</td><td style="padding:6px 8px;">Un executor generale genera una versione mirata per un caso ricorrente e &laquo;caldo&raquo;.</td><td style="padding:6px 8px;">~&euro;0.5</td></tr>
 </tbody>
 </table>
 
@@ -1826,7 +1826,7 @@ cap. 4</a> e <a href="architecture/executor.html#cap12">executor cap. 12</a>.
     <li>Riconosce host e ospiti sullo stesso canale con livelli di autonomia separati (pairing Ed25519)</li>
     <li>Mostra richieste di conferma interattive su Telegram (3 righe, due bottoni, modulate sulla ricorrenza, con verifica di identit&agrave;)</li>
     <li>Sintetizza nuovi executor al volo quando in cassetta ne manca uno (compose + generate)</li>
-    <li>Cura la cassetta di notte (merge + generalize; specialize in v1.2)</li>
+    <li>Cura la cassetta di notte (merge + generalize + specialize)</li>
     <li>Tiene una dashboard statica di osservabilit&agrave; che aggrega sei sorgenti (mnestoma, pairing, turni, vaglio, scheduler, test)</li>
     <li>Aggiunge una riga di audit per ogni azione che resta per sempre e alimenta la dashboard</li>
 </ul>
@@ -1857,8 +1857,8 @@ riscrivere da solo: (0) resta nel perimetro dichiarato, (1) non fare male,
 Vivono in <code>workspace/SOUL.md</code> e sono fatte rispettare in due
 modi: la guardia binaria del <a href="architecture/vaglio.html">vaglio</a>
 trasforma la Legge 1 in una lista di percorsi vietati e di pattern di
-shell quasi-irrecuperabili; il giudice LLM (opt-in, v1.1) e il futuro
-giudice probabilistico (v1.2) ancorano le altre tre Leggi al prompt del
+shell quasi-irrecuperabili; il giudice LLM (opt-in) e il futuro
+giudice probabilistico ancorano le altre tre Leggi al prompt del
 revisore indipendente. Se <code>SOUL.md</code> viene alterato senza
 passare dal rito di modifica, Metnos si rifiuta di partire.
 </div>
@@ -2034,7 +2034,7 @@ boot.</dd>
   <a href="Metnos_Dialogo_Executor_v1.html" style="display:block; padding:16px 18px; border:1px solid #d0d7de; border-radius:10px; background:white; color:inherit; text-decoration:none; box-shadow:0 1px 3px rgba(0,0,0,0.04);">
     <span style="display:inline-block; padding:2px 9px; border-radius:10px; font-size:9pt; background:#f0f4f8; color:#64748B; font-weight:500;">riflessione &middot; 45 min</span>
     <div style="color:#1A477A; font-size:12.5pt; font-weight:700; margin:8px 0 6px 0;">Dialogo sugli executor e la memoria distribuita</div>
-    <div style="margin:0; color:#64748B; font-size:10.5pt; line-height:1.55;">Il secondo dialogo, in quattro serate: executor, mnest, mnestoma, tracce, ager, i sei principi. La fondazione tecnica della v1.1.</div>
+    <div style="margin:0; color:#64748B; font-size:10.5pt; line-height:1.55;">Il secondo dialogo, in quattro serate: executor, mnest, mnestoma, tracce, ager, i sei principi. La fondazione tecnica del sistema.</div>
   </a>
   <a href="code.html" style="display:block; padding:16px 18px; border:1px solid #d0d7de; border-radius:10px; background:white; color:inherit; text-decoration:none; box-shadow:0 1px 3px rgba(0,0,0,0.04);">
     <span style="display:inline-block; padding:2px 9px; border-radius:10px; font-size:9pt; background:#f0f4f8; color:#64748B; font-weight:500;">nota &middot; 5 min</span>
@@ -2051,7 +2051,7 @@ boot.</dd>
 <hr>
 
 <p style="text-align:center; color:#64748B; font-size:10pt; margin-top:40px;">
-Metnos &mdash; <em>Quick tour &amp; Survival kit</em> v1.1 &mdash; aggiornato il 27 aprile 2026<br>
+Metnos &mdash; <em>Quick tour &amp; Survival kit</em>.<br>
 Pensato per essere letto in 20&ndash;25 minuti dall'inizio alla fine, o
 come ripasso per sezione. L'<a href="Metnos_Architettura_Intro_v1.html" style="color:inherit;">Architettura</a> &egrave; il seguito naturale.
 </p>
