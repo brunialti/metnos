@@ -15,7 +15,7 @@ en = "ONLY tool for reading/searching IMAP messages. Freely combine time window 
 
 [code]
 files  = ["read_messages.py"]
-digest = "sha256:25d227dd2c0c95e998c0990cdd4098ff6e161b8803ccdc20b889a0e0f35c2fbd"
+digest = "sha256:ec5dc6e2e20a8ecbe191e3d197602365b726eca167559b0f9092298a970d4c66"
 
 [args]
 type     = "object"

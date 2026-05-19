@@ -21,7 +21,7 @@ en = "Reads calendar appointments. Canonical dispatcher: routes to the right bac
 
 [code]
 files  = ["read_events.py"]
-digest = "sha256:2427b3f9fc8072451af39e088e0bf6eed855986cd8225d053a25684512742264"
+digest = "sha256:6e9da2f7ce98903bb658f087893bca5a2b86dbbbe466d7f8268d82414c79ea86"
 
 [args]
 type     = "object"

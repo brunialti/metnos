@@ -20,7 +20,7 @@ en = "Move or rename one or more entries (files) in a single call. LIST PASSING:
 
 [code]
 files  = ["move_files.py"]
-digest = "sha256:74d6562c0e5b50020cec67e79545628ef82ee8374d28198dfe2116c856f3f338"
+digest = "sha256:1827370f6a4b7f08107868d153d5d5de7b44989916681d656cec8f9fa32efab7"
 
 [args]
 type     = "object"

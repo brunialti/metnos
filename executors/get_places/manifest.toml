@@ -16,7 +16,7 @@ en = "Reverse geocoding: given a list of coordinates or entries with field `gps`
 
 [code]
 files  = ["get_places.py"]
-digest = "sha256:4f5dcf55837658011ee3a87def1d5759d5eeb0514b5ea33b808729fc35c52f80"
+digest = "sha256:68104b5d0a85bb4c4057705751eac30fe3513511249ba55910437884dde46f3c"
 
 [args]
 type     = "object"

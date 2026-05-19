@@ -21,7 +21,7 @@ en = "Recursive walk of the directory tree starting from base_path. Returns ONLY
 
 [code]
 files  = ["find_dirs.py"]
-digest = "sha256:b165f3fc01c00f6ff40d732d367c61bdb68699ecc88f61487131ec95b0a9ee3b"
+digest = "sha256:a71c84c49d5c80ef2c24f8bd654b0688b53c24f91ac8557ac78deff642bb75e3"
 
 [args]
 type     = "object"
@@ -31,8 +31,8 @@ required = ["base_path"]
 type        = "string"
 
 [args.properties.base_path.description]
-it = "Directory radice del walk. Path assoluto o ~ espandibile (es. '~', '/opt/myclaw'). Deve essere dentro lo scope di lettura concesso."
-en = "Walk root directory. Absolute path or expandable ~ (e.g., '~', '/opt/myclaw'). MUST be within the granted read scope."
+it = "Directory radice del walk. Path assoluto o ~ espandibile (es. '~', '/opt/metnos'). Deve essere dentro lo scope di lettura concesso."
+en = "Walk root directory. Absolute path or expandable ~ (e.g., '~', '/opt/metnos'). MUST be within the granted read scope."
 
 [args.properties.recursive]
 type        = "boolean"

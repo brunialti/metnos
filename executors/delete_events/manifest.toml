@@ -20,7 +20,7 @@ en = "Deletes 1+ calendar appointments. Canonical dispatcher: routes to the righ
 
 [code]
 files  = ["delete_events.py"]
-digest = "sha256:a995d8fd51ce0a8e5af216d89cc61744dac77db6d280d32c672ac57604ebe60b"
+digest = "sha256:9fc5b9d0f36300375771349115416990aa5b9c1fab8d6a6003c64c7942a6dc93"
 
 [args]
 type     = "object"

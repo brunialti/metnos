@@ -42,7 +42,9 @@ from html.parser import HTMLParser
 from pathlib import Path
 
 # Throttle condiviso (ADR 0103) — modulo runtime/host_throttle.py.
-sys.path.insert(0, "/opt/myclaw/runtime")
+sys.path.insert(0, os.environ.get("METNOS_RUNTIME") or next(
+    str(p / "runtime") for p in Path(__file__).resolve().parents
+    if (p / "runtime" / "config.py").is_file()))
 from host_throttle import HostThrottle  # noqa: E402
 # HTTP cache disk-based (ADR 0105).
 from http_cache import HttpCache, DEFAULT_TTL_S  # noqa: E402

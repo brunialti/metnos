@@ -1040,6 +1040,11 @@ def _filter_unified(
             "description": e.get("description", ""),
             "keywords": e.get("keywords", []),
         }
+        # size_bytes esplicito per aggregati (compute_entries op=sum key=size_bytes).
+        # Sorgente: campo `size` di entries.jsonl (schema v4).
+        _sz = e.get("size")
+        if isinstance(_sz, (int, float)) and _sz >= 0:
+            d["size_bytes"] = int(_sz)
         if e.get("location_hint"):
             d["location_hint"] = e["location_hint"]
         if e.get("activity_hint"):
@@ -1055,10 +1060,26 @@ def _filter_unified(
                 d["bbox"] = faces[mi].get("bbox")
         out_entries.append(d)
 
+    # Aggregati su corpus COMPLETO matched (scored intero, non solo top_k).
+    # Permette query «quante X / quanti GB» di leggere metadata direttamente,
+    # senza compute_entries su lista truncated (ADR §7.3 general-purpose).
+    total_size_bytes = 0
+    n_with_size = 0
+    for e in scored:
+        _sz = e.get("size")
+        if isinstance(_sz, (int, float)) and _sz >= 0:
+            total_size_bytes += int(_sz)
+            n_with_size += 1
+
     out_dict: dict = {
         "entries": out_entries,
         "n_above_threshold": n_above_threshold,
         "applied_paths_filter": applied_paths_filter,
+        "metadata": {
+            "total_count": n_above_threshold,
+            "total_size_bytes": total_size_bytes,
+            "n_with_size": n_with_size,
+        },
     }
     if name_unenrolled:
         out_dict["name_unenrolled"] = True
@@ -1175,6 +1196,11 @@ def invoke(args):
         "base_path": str(single_dir),
         "schema_version": INDEX_SCHEMA_VERSION,
     }
+    # Propaga metadata aggregato (total_count, total_size_bytes) calcolato
+    # su corpus COMPLETO matched. Permette al PLANNER di rispondere
+    # «quante X / quanti GB» senza compute_entries su lista truncated.
+    if isinstance(res.get("metadata"), dict):
+        out["metadata"] = res["metadata"]
     if res.get("error_class"):
         out["error_class"] = res["error_class"]
         out["entries"] = []
@@ -1230,6 +1256,8 @@ def _build_attachments_from_entries(entries: list[dict]) -> list[dict]:
 def _invoke_multi_dirs(dirs: list[Path], args: dict, msg: str | None) -> dict:
     all_entries: list[dict] = []
     n_above = 0
+    total_size_bytes = 0
+    n_with_size = 0
     error_classes: set[str] = set()
     schema_too_old_dirs: list[str] = []
     for d in dirs:
@@ -1253,6 +1281,11 @@ def _invoke_multi_dirs(dirs: list[Path], args: dict, msg: str | None) -> dict:
             e["_source_dir"] = str(d)
         all_entries.extend(res.get("entries", []))
         n_above += int(res.get("n_above_threshold", 0))
+        # Somma metadata aggregati per-dir su corpus completo matched.
+        _md = res.get("metadata") or {}
+        if isinstance(_md, dict):
+            total_size_bytes += int(_md.get("total_size_bytes", 0) or 0)
+            n_with_size += int(_md.get("n_with_size", 0) or 0)
 
     all_entries.sort(key=lambda e: e.get("score", 0.0), reverse=True)
     top_k = int(args.get("top_k", _TOP_K_DEFAULT))
@@ -1267,6 +1300,11 @@ def _invoke_multi_dirs(dirs: list[Path], args: dict, msg: str | None) -> dict:
         "schema_version": INDEX_SCHEMA_VERSION,
         "_resolved_dirs": [str(d) for d in dirs],
         "_resolve_msg": msg or "",
+        "metadata": {
+            "total_count": n_above,
+            "total_size_bytes": total_size_bytes,
+            "n_with_size": n_with_size,
+        },
     }
     if not truncated_entries and error_classes:
         out["ok"] = False

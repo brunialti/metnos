@@ -33,10 +33,14 @@ import shutil
 import subprocess
 import sys
 import time
+from pathlib import Path
 from typing import Any
 
-if "/opt/myclaw/runtime" not in sys.path:
-    sys.path.insert(0, "/opt/myclaw/runtime")
+_RUNTIME = os.environ.get("METNOS_RUNTIME") or next(
+    str(p / "runtime") for p in Path(__file__).resolve().parents
+    if (p / "runtime" / "config.py").is_file())
+if _RUNTIME not in sys.path:
+    sys.path.insert(0, _RUNTIME)
 from messages import get as _msg  # noqa: E402
 
 

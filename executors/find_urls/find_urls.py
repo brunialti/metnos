@@ -377,7 +377,9 @@ def _host_capacity() -> dict:
 
 
 # Throttle condiviso (ADR 0103) — modulo runtime/host_throttle.py.
-sys.path.insert(0, "/opt/myclaw/runtime")
+sys.path.insert(0, os.environ.get("METNOS_RUNTIME") or next(
+    str(p / "runtime") for p in Path(__file__).resolve().parents
+    if (p / "runtime" / "config.py").is_file()))
 from host_throttle import HostThrottle  # noqa: E402
 # Host health tracker per auto-degrade T2→T1 su 429/503 (ADR 0108).
 try:
@@ -947,8 +949,7 @@ def _llm_rerank_candidates(user_query: str, candidates: list[dict],
                 {"used": False, "reason": "trivial_size"})
     try:
         import sys as _sys
-        if "/opt/myclaw/runtime" not in _sys.path:
-            _sys.path.insert(0, "/opt/myclaw/runtime")
+        # runtime/ già su sys.path dalla bootstrap a riga 380 (METNOS_RUNTIME-aware).
         from prompt_loader import get as _prompt_get  # type: ignore
         from llm_helpers import call_llm as _call_llm  # type: ignore
         from config import DEFAULT_LANG as _lang  # type: ignore

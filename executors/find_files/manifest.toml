@@ -16,7 +16,7 @@ en = "Search for files by name/pattern within an authorized directory. Recursive
 
 [code]
 files  = ["find_files.py"]
-digest = "sha256:d282983bf98d416f3451c6fe75b05e6a10cdd7108e4fe3c65053aec5e1724c04"
+digest = "sha256:1573288ff8faa95565a0414b120a9e13a0988034fcefe673948238e5201dca71"
 
 [args]
 type     = "object"
@@ -26,8 +26,8 @@ required = ["base_path"]
 type        = "string"
 
 [args.properties.base_path.description]
-it = "Directory di partenza della ricerca. Path assoluto o ~ espandibile (es. '~/images', '/opt/myclaw'). Deve essere dentro lo scope di lettura concesso."
-en = "Starting directory for the search. Absolute path or expandable ~ (e.g., '~/images', '/opt/myclaw'). Must be within the granted reading scope."
+it = "Directory di partenza della ricerca. Path assoluto o ~ espandibile (es. '~/images', '/opt/metnos'). Deve essere dentro lo scope di lettura concesso."
+en = "Starting directory for the search. Absolute path or expandable ~ (e.g., '~/images', '/opt/metnos'). Must be within the granted reading scope."
 
 [args.properties.pattern]
 type        = "string"

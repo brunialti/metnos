@@ -10,9 +10,18 @@ con `truncated:true` se l'output supera `max_results`.
 from __future__ import annotations
 
 import json
+import os
 import re
+import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+
+# Bootstrap universale runtime/ (rename/depth-agnostic, ADR 0148):
+# env METNOS_RUNTIME settato da agent_runtime > fallback walk-up via marker.
+sys.path.insert(0, os.environ.get("METNOS_RUNTIME") or next(
+    str(p / "runtime") for p in Path(__file__).resolve().parents
+    if (p / "runtime" / "config.py").is_file()))
+from config import PATH_EXECUTORS as _PATH_EXECUTORS  # noqa: E402
 
 AUDIT_DIR = Path.home() / ".local" / "share" / "metnos" / "introvertiva"
 _FNAME_RE = re.compile(r"^candidates_(?P<kind>dedupe|generalize|specialize)_(?P<ts>\d+)\.jsonl$")
@@ -55,7 +64,7 @@ def _executor_brief(name: str) -> str:
     if name in _EXEC_BRIEF_CACHE:
         return _EXEC_BRIEF_CACHE[name]
     candidates = [
-        Path(f"/opt/myclaw/executors/{name}/manifest.toml"),
+        _PATH_EXECUTORS / name / "manifest.toml",
         Path.home() / f".local/share/metnos/executors/{name}/manifest.toml",
     ]
     desc = None
@@ -220,8 +229,7 @@ def invoke(args: dict, ctx: dict | None = None) -> dict:
             # che l'utente ha implicitamente ignorato per N notti.
             if not include_dormant:
                 try:
-                    import sys as _sys
-                    _sys.path.insert(0, str(Path(__file__).parent.parent.parent / "runtime"))
+                    # runtime/ già su sys.path dal bootstrap a top-level (METNOS_RUNTIME-aware).
                     from proposals_state import is_dormant
                     if is_dormant(key):
                         continue

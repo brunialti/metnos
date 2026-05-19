@@ -20,11 +20,14 @@ non-undone in quel turno → no-op con messaggio.
 """
 import importlib.util
 import json
+import os
 import sys
 from pathlib import Path
 
 # Permette di importare runtime/undo.py, runtime/loader.py, runtime/reverse_patterns.py
-sys.path.insert(0, "/opt/myclaw/runtime")
+sys.path.insert(0, os.environ.get("METNOS_RUNTIME") or next(
+    str(p / "runtime") for p in Path(__file__).resolve().parents
+    if (p / "runtime" / "config.py").is_file()))
 from loader import load_catalog
 from reverse_patterns import apply_patterns
 from undo import UndoLog

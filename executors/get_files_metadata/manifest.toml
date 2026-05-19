@@ -15,7 +15,7 @@ en = "Enriches a list of photo files on a filesystem (local paths like /home/...
 
 [code]
 files  = ["get_files_metadata.py"]
-digest = "sha256:90a27817ef34622efd8d94dde260f91699365e66ac6ea7306f7c428b283e1a00"
+digest = "sha256:069ec0d377962e4016169ee1e27151e1a19900e9f5ab22df0fc07ab4ef70f673"
 
 [args]
 type     = "object"

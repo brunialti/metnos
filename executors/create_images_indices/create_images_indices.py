@@ -50,9 +50,12 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
-# Permetti import dei moduli runtime/
-_RUNTIME = Path(__file__).resolve().parent.parent.parent / "runtime"
-sys.path.insert(0, str(_RUNTIME))
+# Permetti import dei moduli runtime/. Universal pattern (rename/depth-agnostic):
+# env METNOS_RUNTIME settato da agent_runtime > fallback walk-up via marker.
+_RUNTIME = os.environ.get("METNOS_RUNTIME") or next(
+    str(p / "runtime") for p in Path(__file__).resolve().parents
+    if (p / "runtime" / "config.py").is_file())
+sys.path.insert(0, _RUNTIME)
 
 
 from index_schema import INDEX_SCHEMA_VERSION
@@ -312,7 +315,8 @@ def _try_lazy_start_vlm() -> bool:
         return False
     _LAZY_START_ATTEMPTED = True
     import subprocess
-    helper = "/opt/myclaw/scripts/vlm_server.sh"
+    # vlm_server.sh vive in <install_root>/scripts/. _RUNTIME = <install_root>/runtime.
+    helper = str(Path(_RUNTIME).parent / "scripts" / "vlm_server.sh")
     if not os.path.exists(helper):
         return False
     try:
@@ -413,9 +417,7 @@ def _call_vlm(img_path: Path, *, url: str = _VLM_URL,
     # ADR 0121: sanitize surrogates pre-serialization. Filename foto con
     # encoding storico rotto possono iniettare U+D800..U+DFFF nel prompt.
     try:
-        import sys as _sys
-        if "/opt/myclaw/runtime" not in _sys.path:
-            _sys.path.insert(0, "/opt/myclaw/runtime")
+        # runtime/ già su sys.path dal bootstrap a riga 55 (METNOS_RUNTIME-aware).
         from utf8_safe import safe_json_dumps as _safe_dumps  # type: ignore
         body = _safe_dumps(payload).encode("utf-8")
     except Exception:

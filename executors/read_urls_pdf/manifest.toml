@@ -18,7 +18,7 @@ en = "Download a list of URLs that serve PDFs and return title, author, body_tex
 
 [code]
 files  = ["read_urls_pdf.py"]
-digest = "sha256:7ef69a3a826a16aa9d04621782c7ae1e2faa941cfe2cee176e7008e05d8ce7cd"
+digest = "sha256:c7531687b4a17fd0c760abbb871687e99c533ed799f5e4422824690d4af0a88f"
 
 [args]
 type     = "object"

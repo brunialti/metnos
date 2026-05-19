@@ -23,7 +23,7 @@ en = "Computes the EMPTY/FREE windows of the calendar within time_windows, subtr
 
 [code]
 files  = ["find_events_empty.py"]
-digest = "sha256:6f6b85944584eba610f6d8c1acdcd66f26bbdcef6ccda15fb25a497cfc795d5e"
+digest = "sha256:27faf39d9823539829d399789af99220551001222219121bbf4f232e4dd939a5"
 
 [args]
 type     = "object"

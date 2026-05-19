@@ -40,7 +40,7 @@ en = "Returns the accumulated introvertive proposals (DEDUPE / GENERALIZE / SPEC
 
 [code]
 files  = ["get_proposals.py"]
-digest = "sha256:1ff7a07c72a62e0d715503ee8d650b7cff02f8c13b7a07d5556bb024a8620660"
+digest = "sha256:d22f300683a0a6d7cc31ac4dcb437e2b424600ef99f6c7a5adf1ad2004cb6705"
 
 [args]
 type = "object"

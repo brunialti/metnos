@@ -38,9 +38,13 @@ back-compat (vedi `_VIA_CHANNEL_ALIAS`).
 from __future__ import annotations
 
 import json
+import os
 import sys
+from pathlib import Path
 
-sys.path.insert(0, "/opt/myclaw/runtime")
+sys.path.insert(0, os.environ.get("METNOS_RUNTIME") or next(
+    str(p / "runtime") for p in Path(__file__).resolve().parents
+    if (p / "runtime" / "config.py").is_file()))
 from backends.messages import email_metnos, telegram_bot  # noqa: E402
 from backends.messages import gmail_google_workspace  # noqa: E402
 

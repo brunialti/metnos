@@ -10,7 +10,9 @@ author      = "Roberto Brunialti <roberto.brunialti@metnos.com>"
 affinity    = ["cerca", "find", "search", "ricerca-foto", "ricerca-volti",
                 "ricerca-semantica", "foto", "image", "volti", "faces",
                 "persons", "geotag", "near", "vicino", "primo-piano",
-                "ritratto"]
+                "ritratto", "simili", "similar", "uguale", "alike",
+                "stesso-soggetto", "same-subject", "come-questa",
+                "like-this"]
 
 # Query pure (indice gia' presente) ~1 s.
 timeout_s = 14400
@@ -49,7 +51,14 @@ base_path:
 - Solo se l'utente cita un path esplicito (es. «in /mnt/foto»), passalo come `base_path`.
 - Stringa simbolica `Immagini`: match in ~/.local/share/metnos/Immagini se esiste.
 
-Output: `entries=[{path, score, match_type, description, bbox?, gps?, taken_at?}]` ordinato per score desc. Pattern §2.7: `truncated`, `used`, `available_total`, `cap_field='top_k'`.
+Output: `entries=[{path, score, match_type, description, size_bytes, bbox?, gps?, taken_at?}]` ordinato per score desc. Pattern §2.7: `truncated`, `used`, `available_total`, `cap_field='top_k'`.
+
+`metadata` (su corpus COMPLETO, non solo entries restituite):
+- `total_count`: numero TOTALE di foto matched (= `n_above_threshold`).
+- `total_size_bytes`: somma byte di TUTTE le foto matched.
+- `n_with_size`: quante avevano `size` valida.
+
+USO METADATA: per query aggregate «quante X / quanti GB di X» DEVI leggere `metadata.total_count` e `metadata.total_size_bytes` DIRETTAMENTE da questa observation. NON DEVI chiamare `compute_entries(op=count|sum)` su entries truncated (ti darebbe il count/sum dei soli top_k, non del corpus completo).
 
 error_class: low_confidence, paths_filter_empty, no_faces_above_size_threshold, index_missing, schema_too_old."""
 en = """Search photos in unified index (ADR 0117 v4). Combines identity + content + composition + EXIF/GPS in ONE call.
@@ -85,13 +94,20 @@ base_path:
 - Only if the user cites an explicit path (e.g. «in /mnt/photos»), pass it as `base_path`.
 - Symbolic string `Images`: matches ~/.local/share/metnos/Images if it exists.
 
-Output: `entries=[{path, score, match_type, description, bbox?, gps?, taken_at?}]` ordered by score desc. Pattern §2.7: `truncated`, `used`, `available_total`, `cap_field='top_k'`.
+Output: `entries=[{path, score, match_type, description, size_bytes, bbox?, gps?, taken_at?}]` ordered by score desc. Pattern §2.7: `truncated`, `used`, `available_total`, `cap_field='top_k'`.
+
+`metadata` (computed on FULL matched corpus, not just returned entries):
+- `total_count`: TOTAL number of matched photos (= `n_above_threshold`).
+- `total_size_bytes`: sum of bytes over ALL matched photos.
+- `n_with_size`: how many had valid `size`.
+
+METADATA USE: for aggregate queries «how many X / how many GB of X» you MUST read `metadata.total_count` and `metadata.total_size_bytes` DIRECTLY from this observation. You MUST NOT call `compute_entries(op=count|sum)` on truncated entries (it would give you the count/sum of just top_k, not the full corpus).
 
 error_class: low_confidence, paths_filter_empty, no_faces_above_size_threshold, index_missing, schema_too_old."""
 
 [code]
 files  = ["find_images_indices.py"]
-digest = "sha256:f5efb64e0d193d1f243f418eba06476e1ac973e21ca3108124263a97ead0d36a"
+digest = "sha256:66d8e99a9d183dca388fd71d083edf6dcf45045c6ab1bddb5511ad7887fbccb7"
 
 [args]
 type     = "object"

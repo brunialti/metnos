@@ -17,7 +17,7 @@ en = "Writes text or bytes (base64) to a file in the local filesystem. Supports 
 
 [code]
 files  = ["write_files.py"]
-digest = "sha256:45fea338b21408536f2eb1a9813afbfc1ca31273667e742f7583025e1468221c"
+digest = "sha256:bcff91990cfb65c133f41944184218f7efa783515810bb2bd1b6f13be2e6ebf0"
 
 [args]
 type     = "object"

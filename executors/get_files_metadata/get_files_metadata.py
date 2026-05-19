@@ -38,7 +38,9 @@ import os
 import sys
 from pathlib import Path
 
-sys.path.insert(0, "/opt/myclaw/runtime")
+sys.path.insert(0, os.environ.get("METNOS_RUNTIME") or next(
+    str(p / "runtime") for p in Path(__file__).resolve().parents
+    if (p / "runtime" / "config.py").is_file()))
 from messages import get as msg
 
 ALL_FIELDS = ["dates.semantic", "dates.created", "dates.modified", "gps", "place", "device", "image_dimensions"]

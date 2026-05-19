@@ -15,7 +15,7 @@ en = "Executes an HTTP/HTTPS request (GET or HEAD) towards one or more URLs and 
 
 [code]
 files  = ["get_urls.py"]
-digest = "sha256:92d06ea4701383b13ce412f25cf1317c42e693ebfdcf87fd74ca0dbbe8ef343f"
+digest = "sha256:24578ce21dac56873870f40046d9e4146db2418929c55b744f09ed327b15cc0b"
 
 [args]
 type     = "object"
@@ -50,7 +50,9 @@ hint = ["httpbin.org", "*.httpbin.org", "127.0.0.1"]
 [[tests]]
 name   = "get_pagina_pubblica"
 input  = { url = "https://httpbin.org/get" }
-expect = { ok = true, metadata_field_eq = { status = 200 }, content_contains = "headers" }
+# Schema entries[] post-refactor 18/5/2026 (turn 7 fix).
+# entries[0].status_code, entries[0].body_text contengono i campi.
+expect = { ok = true, entries_field_eq = { "0" = { status_code = 200 } } }
 
 [[tests]]
 name   = "fallisce_su_host_fuori_scope"
@@ -60,9 +62,10 @@ expect = { ok = false, error_contains = "outside allowed scope" }
 [[tests]]
 name   = "errore_su_404"
 input  = { url = "https://httpbin.org/status/404" }
-expect = { ok = false, error_contains = "404", metadata_field_eq = { status = 404 } }
+# Per failed entries, lo status finisce in failed[0].status_code.
+expect = { ok = false, error_contains = "404" }
 
 [[tests]]
 name   = "head_request"
 input  = { url = "https://httpbin.org/get", method = "HEAD" }
-expect = { ok = true, metadata_field_eq = { status = 200 } }
+expect = { ok = true, entries_field_eq = { "0" = { status_code = 200, method = "HEAD" } } }

@@ -20,9 +20,13 @@ Contratto:
                   places_resolved, places_unknown, places_failed}
 """
 import json
+import os
 import sys
+from pathlib import Path
 
-sys.path.insert(0, "/opt/myclaw/runtime")
+sys.path.insert(0, os.environ.get("METNOS_RUNTIME") or next(
+    str(p / "runtime") for p in Path(__file__).resolve().parents
+    if (p / "runtime" / "config.py").is_file()))
 from messages import get as msg  # noqa: E402
 # Geo provider unico via wrapper (1/5/2026 v0.4.0): chain configurabile.
 from geo_provider import reverse_geocode  # noqa: E402

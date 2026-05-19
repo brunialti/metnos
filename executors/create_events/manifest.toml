@@ -22,7 +22,7 @@ en = "Creates a new calendar appointment. Canonical dispatcher: routes to the ri
 
 [code]
 files  = ["create_events.py"]
-digest = "sha256:3f7b4b4b19f8a9b5fb106d4313875be2ad6f8c6dad0e4de5ede4d69c2db08e95"
+digest = "sha256:03651d090d75642d11c40c02e477457a5fd0be504d230852f4c6b048b4047a90"
 
 [args]
 type     = "object"

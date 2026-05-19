@@ -1,14 +1,14 @@
 {
   "description": {
     "it": {
-      "version_hash": "sha256:8d0ba4dc41035cee5881f6d483db7f676d94a0de9ea297e39f73419e45f441ce",
+      "version_hash": "sha256:900f3d50383f334aac8d0d25cac5f9473ca1931d13361ea991c6293413f9d7a5",
       "source_lang": null,
       "source_hash": null
     },
     "en": {
       "source_lang": "it",
       "source_hash": "sha256:26d3a5fd21bf966b6c6fe4b609af386b71e41a3996a0255663af25f9f3b32724",
-      "version_hash": "sha256:f7a209553642cf818df1b89de3e9a9e9b48dd88cdb8f04894754d0f97e52df64"
+      "version_hash": "sha256:63b5d430b305ee3fbd100fd017c137c68e76c9190324bd50d45ae0ec7bc97d8c"
     }
   },
   "args.force_build.description": {
@@ -289,12 +289,36 @@
   },
   "args.name.description": {
     "it": {
-      "version_hash": "sha256:9f21b9f94fc8b4564f0c07c27bf38e386923b76361fc13582c1e062ee80a665a",
+      "version_hash": "sha256:98ffb849ad3d5975ea39d54839c7ed323bfada89bdd5eec0469ec08380730933",
       "source_lang": null,
       "source_hash": null
     },
     "en": {
-      "version_hash": "sha256:e755b1133af013309c40ea28851b5c22dad85b4570ffc8cd7952f4b5c1d454b2",
+      "version_hash": "sha256:7860350ed1d075545687050432d2448ea794037a7dad9a62c4c92f3bdd9df7ba",
+      "source_lang": null,
+      "source_hash": null
+    }
+  },
+  "args.names.description": {
+    "it": {
+      "version_hash": "sha256:49b1b669ecec0a73d25ba1c56ae61a30271df29f092c7fd2bd70e28bceabe25e",
+      "source_lang": null,
+      "source_hash": null
+    },
+    "en": {
+      "version_hash": "sha256:1ebfabb79585a08011e1a821b54d76425690208f39381dad5db3841a25a67c97",
+      "source_lang": null,
+      "source_hash": null
+    }
+  },
+  "args.text_score_min.description": {
+    "it": {
+      "version_hash": "sha256:4ea4f49d021391296a3f2e7a47bc221b3e5b07b55c3b1ee46575d7f3da3bf804",
+      "source_lang": null,
+      "source_hash": null
+    },
+    "en": {
+      "version_hash": "sha256:efe185e3dab6a88f260da0e4693b4f3162db21db5cf9a39da23c538537cdee1c",
       "source_lang": null,
       "source_hash": null
     }

@@ -14,7 +14,7 @@ en = "Cancel ALL reversible operations of the last user turn that contains at le
 
 [code]
 files  = ["undo_last_turn.py"]
-digest = "sha256:7b9d9235efee116caac67f6b0081bec7768177479afb4a0612fdbe52d2a7502f"
+digest = "sha256:d0a770707f0442d72bcd43a63eee88ae086e7eb3e16697ccabcca20628ff3c0e"
 
 [args]
 type     = "object"
@@ -39,14 +39,14 @@ teardown = "rm -f /tmp/metnos_test_undo_log.jsonl"
 
 [[tests]]
 name     = "ribalta_create_dirs_done"
-setup    = """mkdir -p /tmp/metnos_test_undo_dir && rm -f /tmp/metnos_test_undo_log.jsonl && python3 -c "import sys; sys.path.insert(0,'/opt/myclaw/runtime'); from undo import UndoLog; from pathlib import Path; log=UndoLog(Path('/tmp/metnos_test_undo_log.jsonl')); log.append_pending('opA','turnX','create_dirs',{'paths':['/tmp/metnos_test_undo_dir']},{}); log.append_done('opA',{'ok':True,'results':[{'path':'/tmp/metnos_test_undo_dir','created':True}],'failed':[]})" """
+setup    = """mkdir -p /tmp/metnos_test_undo_dir && rm -f /tmp/metnos_test_undo_log.jsonl && python3 -c "import sys; sys.path.insert(0,'/opt/metnos/runtime'); from undo import UndoLog; from pathlib import Path; log=UndoLog(Path('/tmp/metnos_test_undo_log.jsonl')); log.append_pending('opA','turnX','create_dirs',{'paths':['/tmp/metnos_test_undo_dir']},{}); log.append_done('opA',{'ok':True,'results':[{'path':'/tmp/metnos_test_undo_dir','created':True}],'failed':[]})" """
 input    = { log_path = "/tmp/metnos_test_undo_log.jsonl" }
 expect   = { ok = true }
 teardown = "rm -f /tmp/metnos_test_undo_log.jsonl && rm -rf /tmp/metnos_test_undo_dir"
 
 [[tests]]
 name     = "idempotenza_secondo_undo_no_op"
-setup    = """rm -f /tmp/metnos_test_undo_log.jsonl && python3 -c "import sys; sys.path.insert(0,'/opt/myclaw/runtime'); from undo import UndoLog; from pathlib import Path; log=UndoLog(Path('/tmp/metnos_test_undo_log.jsonl')); log.append_pending('opA','turnX','create_dirs',{},{}); log.append_done('opA',{'ok':True,'results':[{'path':'/tmp/metnos_test_undo_idemp_dir','created':True}],'failed':[]}); log.append_undone('opA',{'ok':True})" """
+setup    = """rm -f /tmp/metnos_test_undo_log.jsonl && python3 -c "import sys; sys.path.insert(0,'/opt/metnos/runtime'); from undo import UndoLog; from pathlib import Path; log=UndoLog(Path('/tmp/metnos_test_undo_log.jsonl')); log.append_pending('opA','turnX','create_dirs',{},{}); log.append_done('opA',{'ok':True,'results':[{'path':'/tmp/metnos_test_undo_idemp_dir','created':True}],'failed':[]}); log.append_undone('opA',{'ok':True})" """
 input    = { log_path = "/tmp/metnos_test_undo_log.jsonl" }
 expect   = { ok = true }
 teardown = "rm -f /tmp/metnos_test_undo_log.jsonl"

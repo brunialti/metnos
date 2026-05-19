@@ -61,12 +61,12 @@
   },
   "args.attendees.description": {
     "it": {
-      "version_hash": "sha256:141d1c7f337e256956995567f341e5ceda7c47e91cd17f917e1bd71667357caf",
+      "version_hash": "sha256:300f3fe792f1745919db55f8ce7a2f8d6d9ab6a97e32d8162f4b639806b12ac6",
       "source_lang": null,
       "source_hash": null
     },
     "en": {
-      "version_hash": "sha256:4c0a651d28c959820e993b6d870540922e24085369d90bd96ea33d3e7da2d06a",
+      "version_hash": "sha256:b0c0e676f0b7706fe849888b55435da8a95166e01e25de58a74efdcaa06746b7",
       "source_lang": "it",
       "source_hash": "sha256:141d1c7f337e256956995567f341e5ceda7c47e91cd17f917e1bd71667357caf"
     }

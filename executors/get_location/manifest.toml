@@ -17,7 +17,7 @@ en = "Returns the last position shared by the user via channel (Telegram 📎 Lo
 
 [code]
 files  = ["get_location.py"]
-digest = "sha256:057f75d01c8e8aad7af532e0c5a549c03b189b0051793401c86c06d472a97544"
+digest = "sha256:14b7c1c89911ecc004572662480b5b09ddf5c86745dcefe7a7f150e0fb4cc047"
 
 [args]
 type     = "object"

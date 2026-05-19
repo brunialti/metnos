@@ -28,8 +28,8 @@ required = ["path"]
 type        = "string"
 
 [args.properties.path.description]
-it = "La directory da elencare. Path assoluto, oppure ~ che viene espanso (es. '~/images', '/opt/myclaw'). Deve essere dentro lo scope di lettura concesso."
-en = "The directory to list. Absolute path, or ~ which is expanded (e.g., '~/images', '/opt/myclaw'). Must be within the granted read scope."
+it = "La directory da elencare. Path assoluto, oppure ~ che viene espanso (es. '~/images', '/opt/metnos'). Deve essere dentro lo scope di lettura concesso."
+en = "The directory to list. Absolute path, or ~ which is expanded (e.g., '~/images', '/opt/metnos'). Must be within the granted read scope."
 
 [args.properties.recursive]
 type        = "boolean"
