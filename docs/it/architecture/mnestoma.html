@@ -341,62 +341,229 @@ una forma diversa, una specie di recettore aperto: c'&egrave; uno
 slot vuoto che aspetta di essere riempito.
 </p>
 
-<h2>L'affinit&agrave;: le particelle si attraggono</h2>
+<h2>Dalla ripetizione al fastpath</h2>
 
 <p>
 Nel brodo, niente &egrave; davvero a caso. Le particelle si
 attraggono fra loro in base alla <em>somiglianza semantica</em>,
-misurata con il modello multilingua BGE-M3. &Egrave; come una forza
-che agisce a distanza: due mnest che riguardano lo stesso oggetto
-&mdash; magari due richieste &laquo;leggi questa pagina&raquo; e
-&laquo;scaricami quella pagina&raquo; &mdash; tendono a gravitare
-l'uno verso l'altro. Quando lo fanno abbastanza spesso, si forma un
-cluster.
+misurata con il modello multilingua BGE-M3. Quando l'utente fa
+ripetutamente la stessa cosa &mdash; tre richieste &laquo;scarica
+questa pagina&raquo; che diventano sempre <code>get_urls</code>
+seguito da <code>describe_entries</code> &mdash; i mnest osservati
+nei tre turn riferiscono alla stessa coppia di executor. Quei mnest
+formano un <em>cluster cross-turn</em>: un'evidenza che &laquo;questa
+pipeline funziona&raquo;.
+</p>
+
+<p>
+A questo punto succede qualcosa di interessante: il cluster non
+resta una nuvola sfocata, cristallizza. Diventa un
+<strong>fastpath</strong>, un percorso preformato che descrive la
+sequenza in modo compatto e immediatamente eseguibile. Da quel
+momento il PLANNER non ha pi&ugrave; bisogno di chiamare il modello
+linguistico per ripensare la pipeline da capo: legge il fastpath e
+lo usa direttamente. La figura sotto mostra le quattro fasi
+&mdash; osservazione, cluster, cristallizzazione, riuso &mdash; in
+sequenza.
 </p>
 
 <figure>
-<svg viewBox="0 0 720 280" xmlns="http://www.w3.org/2000/svg" style="max-width:100%;height:auto;border:1px solid var(--border);border-radius:6px;background:#fbfdff;">
-<style>
-.bg-fill2{fill:#eef5fb}
-.lbl2{font-family:'Segoe UI',Calibri,sans-serif;font-size:11px;fill:#1a477a}
-.cluster-line{stroke:#2B6CB0;stroke-width:1.5;stroke-dasharray:2,2;fill:none;animation:fade-in 6s ease-in-out infinite}
-.particle-a{animation:converge-a 6s ease-in-out infinite}
-.particle-b{animation:converge-b 6s ease-in-out infinite}
-.particle-c{animation:converge-c 6s ease-in-out infinite}
-.particle-d{animation:converge-d 6s ease-in-out infinite}
-.particle-stable{fill:#1A477A}
-@keyframes converge-a{0%{transform:translate(0,0)}50%{transform:translate(80px,30px)}100%{transform:translate(0,0)}}
-@keyframes converge-b{0%{transform:translate(0,0)}50%{transform:translate(-60px,40px)}100%{transform:translate(0,0)}}
-@keyframes converge-c{0%{transform:translate(0,0)}50%{transform:translate(50px,-40px)}100%{transform:translate(0,0)}}
-@keyframes converge-d{0%{transform:translate(0,0)}50%{transform:translate(-70px,-30px)}100%{transform:translate(0,0)}}
-@keyframes fade-in{0%,30%{opacity:0}50%,80%{opacity:0.6}100%{opacity:0}}
-</style>
-<rect class="bg-fill2" x="0" y="0" width="720" height="280"/>
-<!-- center cluster point -->
-<circle cx="360" cy="140" r="20" fill="#dbeafe" stroke="#1A477A" stroke-width="1.5"/>
-<text class="lbl2" x="360" y="144" text-anchor="middle">cluster</text>
-<!-- converging particles -->
-<circle class="particle-stable particle-a" cx="200" cy="80" r="6"/>
-<circle class="particle-stable particle-b" cx="540" cy="80" r="6"/>
-<circle class="particle-stable particle-c" cx="200" cy="200" r="6"/>
-<circle class="particle-stable particle-d" cx="540" cy="200" r="6"/>
-<!-- attraction lines (faint) -->
-<line class="cluster-line" x1="200" y1="80" x2="360" y2="140"/>
-<line class="cluster-line" x1="540" y1="80" x2="360" y2="140"/>
-<line class="cluster-line" x1="200" y1="200" x2="360" y2="140"/>
-<line class="cluster-line" x1="540" y1="200" x2="360" y2="140"/>
-<text class="lbl2" x="360" y="250" text-anchor="middle" style="font-size:10px;color:#64748b;">mnest semanticamente vicini gravitano verso un baricentro comune</text>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 360" role="img" aria-label="Nascita di un fastpath: tre turn ripetuti, cluster di mnest, percorso preformato, planner che lo usa direttamente.">
+  <style>
+    .bg2 { fill: #eef5fb; }
+    .lab2 { font-family: 'Segoe UI', Calibri, sans-serif; font-size: 11px; fill: #1e293b; }
+    .lab2-w { font-family: 'Segoe UI', Calibri, sans-serif; font-size: 11px; fill: #ffffff; font-weight: 600; }
+    .lab2-in { font-family: 'Segoe UI', Calibri, sans-serif; font-size: 10px; fill: #1A477A; }
+    .lab2-out { font-family: 'Segoe UI', Calibri, sans-serif; font-size: 10px; fill: #78350f; }
+    .lab2-pill { font-family: 'Segoe UI', Calibri, sans-serif; font-size: 14px; fill: #ffffff; font-weight: 700; letter-spacing: 0.2px; }
+    .lab2-cluster { font-family: 'Segoe UI', Calibri, sans-serif; font-size: 11px; fill: #1e3a8a; font-style: italic; }
+    .lab2-phase { font-family: 'Segoe UI', Calibri, sans-serif; font-size: 13px; fill: #1e3a8a; font-weight: 600; }
+    .lab2-planner { font-family: 'Segoe UI', Calibri, sans-serif; font-size: 10px; fill: #64748b; font-weight: 600; }
+    .lab2-tick { font-family: 'Segoe UI', Calibri, sans-serif; font-size: 9px; fill: #64748b; }
+    .box-in2 { fill: #dbeafe; stroke: #1A477A; stroke-width: 1.2; }
+    .box-ex2 { fill: #548235; stroke: #1A477A; stroke-width: 1.2; }
+    .box-out2 { fill: #fef3c7; stroke: #A0522D; stroke-width: 1.2; }
+    .arrow2 { stroke: #1A477A; stroke-width: 1.4; fill: none; }
+    .arrow-thick2 { stroke: #1A477A; stroke-width: 2.2; fill: none; }
+    .mnest2 { fill: #1A477A; }
+    .cluster-line2 { stroke: #2B6CB0; stroke-width: 1.5; fill: none; stroke-dasharray: 2,2; }
+    .pill2 { fill: #A0522D; stroke: #7c2d12; stroke-width: 1.8; }
+    .planner-box2 { fill: #cbd5e1; stroke: #94a3b8; stroke-width: 1.2; }
+    .strike2 { stroke: #dc2626; stroke-width: 3; stroke-linecap: round; }
+    .tl-bar2 { stroke: #cbd5e1; stroke-width: 1; }
+    .rows2 { animation: rows-vis2 16s linear infinite; }
+    @keyframes rows-vis2 {
+      0%   { opacity: 1; } 48%  { opacity: 1; } 58%  { opacity: 0.12; }
+      72%  { opacity: 0.12; } 78%  { opacity: 0; } 100% { opacity: 0; }
+    }
+    .mnest-d2 { animation: mnest-pop2 16s linear infinite; transform-box: fill-box; transform-origin: center; }
+    @keyframes mnest-pop2 {
+      0%   { opacity: 0; transform: scale(0.1); }
+      6%   { opacity: 0; transform: scale(0.1); }
+      14%  { opacity: 1; transform: scale(1); }
+      48%  { opacity: 1; transform: scale(1); }
+      58%  { opacity: 0; transform: scale(0.6); }
+      100% { opacity: 0; transform: scale(0.6); }
+    }
+    .cl2 { animation: cl-vis2 16s linear infinite; }
+    @keyframes cl-vis2 {
+      0%   { opacity: 0; } 24%  { opacity: 0; } 30%  { opacity: 1; }
+      48%  { opacity: 1; } 55%  { opacity: 0; } 100% { opacity: 0; }
+    }
+    .cl-lab2 { animation: cl-lab2 16s linear infinite; }
+    @keyframes cl-lab2 {
+      0%   { opacity: 0; } 27%  { opacity: 0; } 33%  { opacity: 1; }
+      48%  { opacity: 1; } 55%  { opacity: 0; } 100% { opacity: 0; }
+    }
+    .fpill2 { animation: fpill2 16s linear infinite; transform-box: fill-box; transform-origin: center; }
+    @keyframes fpill2 {
+      0%   { opacity: 0; transform: scale(0.3); }
+      50%  { opacity: 0; transform: scale(0.3); }
+      60%  { opacity: 1; transform: scale(1); }
+      100% { opacity: 1; transform: scale(1); }
+    }
+    .fpill-lab2 { animation: fpill-lab2 16s linear infinite; }
+    @keyframes fpill-lab2 {
+      0%   { opacity: 0; } 55%  { opacity: 0; } 62%  { opacity: 1; }
+      72%  { opacity: 1; } 78%  { opacity: 0; } 100% { opacity: 0; }
+    }
+    .ph4-2 { animation: ph4-2 16s linear infinite; }
+    @keyframes ph4-2 {
+      0%   { opacity: 0; } 74%  { opacity: 0; } 80%  { opacity: 1; }
+      100% { opacity: 1; }
+    }
+    .strike-draw2 { stroke-dasharray: 90; stroke-dashoffset: 90; animation: strike-draw2 16s linear infinite; }
+    @keyframes strike-draw2 {
+      0%   { stroke-dashoffset: 90; } 78%  { stroke-dashoffset: 90; }
+      85%  { stroke-dashoffset: 0; } 100% { stroke-dashoffset: 0; }
+    }
+    .pl1-2 { animation: pl1-2 16s linear infinite; }
+    @keyframes pl1-2 { 0%,22% { opacity: 1; } 25%,100% { opacity: 0; } }
+    .pl2-2 { animation: pl2-2 16s linear infinite; }
+    @keyframes pl2-2 { 0%,24% { opacity: 0; } 27%,47% { opacity: 1; } 50%,100% { opacity: 0; } }
+    .pl3-2 { animation: pl3-2 16s linear infinite; }
+    @keyframes pl3-2 { 0%,49% { opacity: 0; } 52%,72% { opacity: 1; } 75%,100% { opacity: 0; } }
+    .pl4-2 { animation: pl4-2 16s linear infinite; }
+    @keyframes pl4-2 { 0%,74% { opacity: 0; } 77%,100% { opacity: 1; } }
+  </style>
+  <rect class="bg2" x="0" y="0" width="720" height="360"/>
+  <g class="rows2">
+    <g transform="translate(0,70)">
+      <rect class="box-in2" x="60" y="-12" width="74" height="24" rx="5"/>
+      <text class="lab2-in" x="97" y="3" text-anchor="middle">scarica X</text>
+      <line class="arrow2" x1="134" y1="0" x2="174" y2="0"/>
+      <polygon points="174,0 168,-3 168,3" fill="#1A477A"/>
+      <rect class="box-ex2" x="174" y="-12" width="92" height="24" rx="5"/>
+      <text class="lab2-w" x="220" y="3" text-anchor="middle">get_urls</text>
+      <line class="arrow2" x1="266" y1="0" x2="316" y2="0"/>
+      <polygon points="316,0 310,-3 310,3" fill="#1A477A"/>
+      <circle class="mnest2 mnest-d2" cx="291" cy="0" r="5"/>
+      <rect class="box-ex2" x="316" y="-12" width="128" height="24" rx="5"/>
+      <text class="lab2-w" x="380" y="3" text-anchor="middle">describe_entries</text>
+      <line class="arrow2" x1="444" y1="0" x2="484" y2="0"/>
+      <polygon points="484,0 478,-3 478,3" fill="#1A477A"/>
+      <rect class="box-out2" x="484" y="-12" width="66" height="24" rx="5"/>
+      <text class="lab2-out" x="517" y="3" text-anchor="middle">output</text>
+    </g>
+    <g transform="translate(0,110)">
+      <rect class="box-in2" x="60" y="-12" width="74" height="24" rx="5"/>
+      <text class="lab2-in" x="97" y="3" text-anchor="middle">scarica Y</text>
+      <line class="arrow2" x1="134" y1="0" x2="174" y2="0"/>
+      <polygon points="174,0 168,-3 168,3" fill="#1A477A"/>
+      <rect class="box-ex2" x="174" y="-12" width="92" height="24" rx="5"/>
+      <text class="lab2-w" x="220" y="3" text-anchor="middle">get_urls</text>
+      <line class="arrow2" x1="266" y1="0" x2="316" y2="0"/>
+      <polygon points="316,0 310,-3 310,3" fill="#1A477A"/>
+      <circle class="mnest2 mnest-d2" cx="291" cy="0" r="5"/>
+      <rect class="box-ex2" x="316" y="-12" width="128" height="24" rx="5"/>
+      <text class="lab2-w" x="380" y="3" text-anchor="middle">describe_entries</text>
+      <line class="arrow2" x1="444" y1="0" x2="484" y2="0"/>
+      <polygon points="484,0 478,-3 478,3" fill="#1A477A"/>
+      <rect class="box-out2" x="484" y="-12" width="66" height="24" rx="5"/>
+      <text class="lab2-out" x="517" y="3" text-anchor="middle">output</text>
+    </g>
+    <g transform="translate(0,150)">
+      <rect class="box-in2" x="60" y="-12" width="74" height="24" rx="5"/>
+      <text class="lab2-in" x="97" y="3" text-anchor="middle">scarica Z</text>
+      <line class="arrow2" x1="134" y1="0" x2="174" y2="0"/>
+      <polygon points="174,0 168,-3 168,3" fill="#1A477A"/>
+      <rect class="box-ex2" x="174" y="-12" width="92" height="24" rx="5"/>
+      <text class="lab2-w" x="220" y="3" text-anchor="middle">get_urls</text>
+      <line class="arrow2" x1="266" y1="0" x2="316" y2="0"/>
+      <polygon points="316,0 310,-3 310,3" fill="#1A477A"/>
+      <circle class="mnest2 mnest-d2" cx="291" cy="0" r="5"/>
+      <rect class="box-ex2" x="316" y="-12" width="128" height="24" rx="5"/>
+      <text class="lab2-w" x="380" y="3" text-anchor="middle">describe_entries</text>
+      <line class="arrow2" x1="444" y1="0" x2="484" y2="0"/>
+      <polygon points="484,0 478,-3 478,3" fill="#1A477A"/>
+      <rect class="box-out2" x="484" y="-12" width="66" height="24" rx="5"/>
+      <text class="lab2-out" x="517" y="3" text-anchor="middle">output</text>
+    </g>
+    <text class="lab2" x="20" y="74" font-style="italic">turn 1</text>
+    <text class="lab2" x="20" y="114" font-style="italic">turn 2</text>
+    <text class="lab2" x="20" y="154" font-style="italic">turn 3</text>
+  </g>
+  <g class="cl2">
+    <line class="cluster-line2" x1="291" y1="70" x2="291" y2="150"/>
+    <path class="cluster-line2" d="M 273 65 C 263 110, 263 110, 273 155"/>
+    <path class="cluster-line2" d="M 309 65 C 319 110, 319 110, 309 155"/>
+    <line class="cluster-line2" x1="318" y1="110" x2="372" y2="110"/>
+  </g>
+  <g class="cl-lab2">
+    <rect x="372" y="98" width="118" height="24" rx="4" fill="#ffffff" stroke="#2B6CB0" stroke-width="1"/>
+    <text class="lab2-cluster" x="431" y="113" text-anchor="middle">cluster di mnest</text>
+  </g>
+  <g class="fpill2">
+    <rect class="pill2" x="180" y="190" width="360" height="40" rx="20"/>
+    <text class="lab2-pill" x="360" y="215" text-anchor="middle">FASTPATH: get_urls &#8594; describe_entries</text>
+  </g>
+  <g class="fpill-lab2">
+    <text class="lab2-cluster" x="360" y="250" text-anchor="middle">il cluster diventa un fastpath</text>
+  </g>
+  <g class="ph4-2">
+    <rect class="box-in2" x="36" y="258" width="92" height="24" rx="5"/>
+    <text class="lab2-in" x="82" y="273" text-anchor="middle">nuovo input</text>
+    <rect class="planner-box2" x="290" y="252" width="140" height="32" rx="6"/>
+    <text class="lab2-planner" x="360" y="266" text-anchor="middle">PLANNER LLM</text>
+    <text class="lab2-planner" x="360" y="278" text-anchor="middle" font-weight="400" font-style="italic">(non chiamato)</text>
+    <line class="strike2 strike-draw2" x1="298" y1="280" x2="422" y2="256"/>
+    <rect class="box-out2" x="600" y="258" width="84" height="24" rx="5"/>
+    <text class="lab2-out" x="642" y="273" text-anchor="middle">output</text>
+    <path class="arrow-thick2" d="M 128 270 L 158 270 L 158 210 L 180 210"/>
+    <polygon points="180,210 173,206 173,214" fill="#1A477A"/>
+    <path class="arrow-thick2" d="M 540 210 L 562 210 L 562 270 L 600 270"/>
+    <polygon points="600,270 593,266 593,274" fill="#1A477A"/>
+  </g>
+  <text class="lab2-phase pl1-2" x="360" y="330" text-anchor="middle">tre turn ripetuti producono mnest osservati</text>
+  <text class="lab2-phase pl2-2" x="360" y="330" text-anchor="middle">i mnest convergono in un cluster cross-turn</text>
+  <text class="lab2-phase pl3-2" x="360" y="330" text-anchor="middle">il cluster cristallizza in un percorso preformato</text>
+  <g class="pl4-2">
+    <text class="lab2-phase" x="360" y="324" text-anchor="middle">il PLANNER usa il fastpath direttamente,</text>
+    <text class="lab2-phase" x="360" y="340" text-anchor="middle">senza chiamare l&#8217;LLM</text>
+  </g>
+  <line class="tl-bar2" x1="40" y1="350" x2="680" y2="350"/>
+  <line class="tl-bar2" x1="40" y1="346" x2="40" y2="354"/>
+  <line class="tl-bar2" x1="200" y1="346" x2="200" y2="354"/>
+  <line class="tl-bar2" x1="360" y1="346" x2="360" y2="354"/>
+  <line class="tl-bar2" x1="520" y1="346" x2="520" y2="354"/>
+  <line class="tl-bar2" x1="680" y1="346" x2="680" y2="354"/>
+  <text class="lab2-tick" x="120" y="358" text-anchor="middle">fase 1</text>
+  <text class="lab2-tick" x="280" y="358" text-anchor="middle">fase 2</text>
+  <text class="lab2-tick" x="440" y="358" text-anchor="middle">fase 3</text>
+  <text class="lab2-tick" x="600" y="358" text-anchor="middle">fase 4</text>
 </svg>
-<figcaption>Fig. 2 &mdash; Formazione di un cluster. Le particelle non si trovano per caso: somiglianza semantica = forza di attrazione.</figcaption>
+<figcaption>Fig. 2 &mdash; La nascita di un fastpath. Tre turn ripetuti producono mnest che convergono in un cluster, il cluster cristallizza in un percorso preformato, e il PLANNER lo usa direttamente saltando il modello linguistico.</figcaption>
 </figure>
 
 <p>
-Il cluster non &egrave; un'aggregazione fisica: &egrave; una nuvola
-di mnest che riguarda lo stesso oggetto. &Egrave; il primo passo
-verso la generalizzazione. Il sistema, guardando il cluster, capisce
-che c'&egrave; una richiesta-tipo che ricorre. Da qui pu&ograve;
-emergere un <em>fast-path</em>: una scorciatoia che salta il
-pianificatore e va dritta all'executor giusto.
+Il fastpath che ne emerge non &egrave; un'astrazione: &egrave;
+proprio quella sequenza concreta, memorizzata, pronta all'uso. Il
+risparmio &egrave; tangibile &mdash; la chiamata al pianificatore
+LLM (circa dodici secondi) viene saltata interamente, e l'utente
+riceve la risposta in meno di un secondo. Il cluster che l'ha
+generato resta nel mnestoma come traccia di come si &egrave;
+arrivati al fastpath; il fastpath stesso vive nel suo registro
+separato (vedi <a href="fast_path.html">fast_path.html</a>).
 </p>
 
 <h2>I recettori: il proto-mnest e il desiderio</h2>
