@@ -13,7 +13,9 @@ author      = "Roberto Brunialti <roberto.brunialti@metnos.com>"
 affinity    = ["processi", "ps", "stato server", "server status",
                 "salute sistema", "system health", "uptime",
                 "carico", "load", "cpu", "ram", "situazione",
-                "diagnostica"]
+                "diagnostica", "temperatura", "temperature",
+                "thermal", "calore", "gpu", "disco", "memoria",
+                "free", "df", "top"]
 revertible  = false
 lifecycle   = "active"
 
@@ -45,7 +47,7 @@ en = "Snapshot of current processes (list) and, optionally, aggregate server hea
 
 [code]
 files  = ["get_processes.py"]
-digest = "sha256:a2cd5b25c3a6a81bfc0e77d302cc356a91876fab9eb108191a68ba067fdb833d"
+digest = "sha256:ea16f58d021b43f7d6c453093dbdf464ecf39f2122b3b95756451b8ff398c024"
 
 [args]
 type     = "object"

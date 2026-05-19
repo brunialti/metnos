@@ -34,11 +34,14 @@ import sys
 from pathlib import Path
 
 # Lazy: il modulo move() usa platform_policy per system-file safety net.
-_RUNTIME = "/opt/myclaw/runtime"
+_RUNTIME = os.environ.get("METNOS_RUNTIME") or next(
+    str(p / "runtime") for p in Path(__file__).resolve().parents
+    if (p / "runtime" / "config.py").is_file())
 if _RUNTIME not in sys.path:
     sys.path.insert(0, _RUNTIME)
 
 from platform_policy import is_system_file  # noqa: E402
+from messages import get as _msg  # noqa: E402
 
 
 # --- read ------------------------------------------------------------------
@@ -68,9 +71,11 @@ def read(args: dict) -> dict:
         tail_bytes = None
 
     if not path:
-        return {"ok": False, "error": "missing required arg 'path'"}
+        return {"ok": False, "error_code": "ERR_ARG_MISSING",
+                "error": _msg("ERR_ARG_MISSING", arg="path")}
     if max_bytes is not None and tail_bytes is not None:
-        return {"ok": False, "error": "max_bytes e tail_bytes sono mutuamente esclusivi"}
+        return {"ok": False, "error_code": "ERR_ARG_INVALID",
+                "error": _msg("ERR_ARG_INVALID", arg="max_bytes/tail_bytes", reason="mutuamente esclusivi")}
 
     abs_path = os.path.abspath(os.path.expanduser(path))
 
@@ -144,13 +149,17 @@ def read(args: dict) -> dict:
                 out["cap_value"] = read_n
             return out
     except FileNotFoundError:
-        return {"ok": False, "error": f"file not found: {abs_path}"}
+        return {"ok": False, "error_code": "ERR_PATH_NOT_FOUND",
+                "error": _msg("ERR_PATH_NOT_FOUND", path=str(abs_path))}
     except PermissionError:
-        return {"ok": False, "error": f"permission denied (possibly outside allowed scope): {abs_path}"}
+        return {"ok": False, "error_code": "ERR_PERMISSION_DENIED",
+                "error": _msg("ERR_PERMISSION_DENIED"), "detail": f"path outside allowed scope: {abs_path}"}
     except IsADirectoryError:
-        return {"ok": False, "error": f"is a directory, not a file: {abs_path}"}
+        return {"ok": False, "error_code": "ERR_PATH_WRONG_TYPE",
+                "error": _msg("ERR_PATH_WRONG_TYPE", expected="file", actual="directory", path=str(abs_path))}
     except OSError as e:
-        return {"ok": False, "error": f"os error: {e}"}
+        return {"ok": False, "error_code": "ERR_OP_FAILED",
+                "error": _msg("ERR_OP_FAILED", reason=f"os error: {e}")}
 
 
 # --- write -----------------------------------------------------------------
@@ -164,17 +173,21 @@ def write(args: dict) -> dict:
     mode = args.get("mode", "overwrite")
 
     if not path:
-        return {"ok": False, "error": "missing required arg 'path'"}
+        return {"ok": False, "error_code": "ERR_ARG_MISSING",
+                "error": _msg("ERR_ARG_MISSING", arg="path")}
     if content is None:
-        return {"ok": False, "error": "missing required arg 'content'"}
+        return {"ok": False, "error_code": "ERR_ARG_MISSING",
+                "error": _msg("ERR_ARG_MISSING", arg="content")}
     if mode not in ("overwrite", "append", "fail_if_exists"):
-        return {"ok": False, "error": f"invalid mode '{mode}'"}
+        return {"ok": False, "error_code": "ERR_ARG_INVALID",
+                "error": _msg("ERR_ARG_INVALID", arg="mode", reason=f"invalid value '{mode}'")}
 
     abs_path = os.path.abspath(os.path.expanduser(path))
     pre_existed = os.path.exists(abs_path)
 
     if mode == "fail_if_exists" and pre_existed:
-        return {"ok": False, "error": f"file already exists: {abs_path}"}
+        return {"ok": False, "error_code": "ERR_DST_EXISTS",
+                "error": _msg("ERR_DST_EXISTS"), "detail": str(abs_path)}
 
     # mkdir -p del parent + registro per undo (§2.4 robustezza NL→det).
     parent = os.path.dirname(abs_path)
@@ -192,7 +205,8 @@ def write(args: dict) -> dict:
             os.makedirs(parent, exist_ok=True)
             created_parents = list(reversed(chain))
         except OSError as e:
-            return {"ok": False, "error": f"cannot create parent dir {parent!r}: {e}"}
+            return {"ok": False, "error_code": "ERR_PARENT_MKDIR_FAIL",
+                    "error": _msg("ERR_PARENT_MKDIR_FAIL", path=str(parent), reason=str(e))}
 
     try:
         if encoding == "binary":
@@ -235,13 +249,17 @@ def write(args: dict) -> dict:
                 "dirs_created": created_parents,
             }
     except PermissionError:
-        return {"ok": False, "error": f"permission denied (possibly outside allowed scope): {abs_path}"}
+        return {"ok": False, "error_code": "ERR_PERMISSION_DENIED",
+                "error": _msg("ERR_PERMISSION_DENIED"), "detail": f"path outside allowed scope: {abs_path}"}
     except IsADirectoryError:
-        return {"ok": False, "error": f"is a directory, not a file: {abs_path}"}
+        return {"ok": False, "error_code": "ERR_PATH_WRONG_TYPE",
+                "error": _msg("ERR_PATH_WRONG_TYPE", expected="file", actual="directory", path=str(abs_path))}
     except OSError as e:
-        return {"ok": False, "error": f"os error: {e}"}
+        return {"ok": False, "error_code": "ERR_OP_FAILED",
+                "error": _msg("ERR_OP_FAILED", reason=f"os error: {e}")}
     except Exception as e:
-        return {"ok": False, "error": f"unexpected: {type(e).__name__}: {e}"}
+        return {"ok": False, "error_code": "ERR_OP_FAILED",
+                "error": _msg("ERR_OP_FAILED", reason=f"unexpected {type(e).__name__}: {e}")}
 
 
 # --- find ------------------------------------------------------------------
@@ -310,19 +328,25 @@ def find(args: dict) -> dict:
     patterns = _parse_compound_pattern(args.get("pattern")) + _parse_compound_pattern(args.get("patterns"))
 
     if not patterns:
-        return {"ok": False, "error": "missing required arg 'pattern' (or 'patterns')"}
+        return {"ok": False, "error_code": "ERR_ARG_MISSING",
+                "error": _msg("ERR_ARG_MISSING", arg="pattern (o 'patterns')")}
     if not base_path:
-        return {"ok": False, "error": "missing required arg 'base_path'"}
+        return {"ok": False, "error_code": "ERR_ARG_MISSING",
+                "error": _msg("ERR_ARG_MISSING", arg="base_path")}
     if not isinstance(max_results, int) or max_results < 1:
-        return {"ok": False, "error": "max_results must be a positive integer"}
+        return {"ok": False, "error_code": "ERR_ARG_INVALID",
+                "error": _msg("ERR_ARG_INVALID", arg="max_results", reason="must be a positive integer")}
     if not isinstance(max_depth, int) or max_depth < 0:
-        return {"ok": False, "error": "max_depth must be >= 0"}
+        return {"ok": False, "error_code": "ERR_ARG_INVALID",
+                "error": _msg("ERR_ARG_INVALID", arg="max_depth", reason="must be >= 0")}
 
     base = Path(os.path.expanduser(base_path)).resolve()
     if not base.exists():
-        return {"ok": False, "error": f"base_path not found: {base}"}
+        return {"ok": False, "error_code": "ERR_PATH_NOT_FOUND",
+                "error": _msg("ERR_PATH_NOT_FOUND", path=str(base))}
     if not base.is_dir():
-        return {"ok": False, "error": f"base_path is not a directory: {base}"}
+        return {"ok": False, "error_code": "ERR_PATH_WRONG_TYPE",
+                "error": _msg("ERR_PATH_WRONG_TYPE", expected="directory", actual="file", path=str(base))}
 
     def name_matches(name: str) -> bool:
         if case_sensitive:
@@ -383,9 +407,11 @@ def find(args: dict) -> dict:
                 truncated = True
                 break
     except PermissionError as e:
-        return {"ok": False, "error": f"permission denied (possibly outside allowed scope): {e}"}
+        return {"ok": False, "error_code": "ERR_PERMISSION_DENIED",
+                "error": _msg("ERR_PERMISSION_DENIED"), "detail": str(e)}
     except OSError as e:
-        return {"ok": False, "error": f"os error: {e}"}
+        return {"ok": False, "error_code": "ERR_OP_FAILED",
+                "error": _msg("ERR_OP_FAILED", reason=f"os error: {e}")}
 
     # Sondaggio post-cap §2.11
     extra_matches = 0
@@ -532,37 +558,51 @@ def move(args: dict) -> dict:
     allow_system = bool(args.get("allow_system", False))
 
     if entries is None or not isinstance(entries, list):
-        return {"ok": False, "error": "missing or invalid required arg 'entries' (must be a list)"}
+        return {"ok": False, "error_code": "ERR_ARG_INVALID",
+                "error": _msg("ERR_ARG_INVALID", arg="entries", reason="must be a list")}
     if not dst_template or not isinstance(dst_template, str):
-        return {"ok": False, "error": "missing or invalid required arg 'dst_template' (must be a string)"}
+        return {"ok": False, "error_code": "ERR_ARG_INVALID",
+                "error": _msg("ERR_ARG_INVALID", arg="dst_template", reason="must be a string")}
 
     results = []
     failed = []
     all_dirs_created = set()
     for i, entry in enumerate(entries):
         if not isinstance(entry, dict):
-            failed.append({"index": i, "error": "entry must be a dict"})
+            failed.append({"index": i, "error_code": "ERR_ARG_INVALID",
+                           "error": _msg("ERR_ARG_INVALID", arg=f"entries[{i}]", reason="must be a dict")})
             continue
         src_arg = entry.get("path") or entry.get("src")
         if not src_arg or not isinstance(src_arg, str):
-            failed.append({"index": i, "error": "entry missing 'path' (or 'src') string"})
+            failed.append({"index": i, "error_code": "ERR_ARG_MISSING",
+                           "error": _msg("ERR_ARG_MISSING", arg=f"entries[{i}].path (o 'src')")})
             continue
         src_path = Path(os.path.expanduser(src_arg)).resolve()
         kind = entry.get("kind") or ""
         if not allow_dirs and (kind == "dir" or src_path.is_dir()):
-            failed.append({"index": i, "src": str(src_path), "error": "refusing to move a directory (kind=dir); pass allow_dirs=true to override, or filter entries via filter_entries(kind='image'|'video'|...) before move_files"})
+            failed.append({"index": i, "src": str(src_path),
+                           "error_code": "ERR_REFUSE_MOVE",
+                           "error": _msg("ERR_REFUSE_MOVE", path=str(src_path),
+                                          reason="directory (passa allow_dirs=true o filtra prima con filter_entries)")})
             continue
         if not allow_system and is_system_file(src_path.name):
-            failed.append({"index": i, "src": str(src_path), "error": f"refusing to move system file '{src_path.name}'; pass allow_system=true to override, or filter via filter_entries"})
+            failed.append({"index": i, "src": str(src_path),
+                           "error_code": "ERR_REFUSE_MOVE",
+                           "error": _msg("ERR_REFUSE_MOVE", path=str(src_path),
+                                          reason=f"system file '{src_path.name}' (passa allow_system=true o filtra prima)")})
             continue
         try:
             fields = _entry_fields(entry, src_path)
             dst_str = dst_template.format(**fields)
         except KeyError as e:
-            failed.append({"index": i, "src": str(src_path), "error": f"unknown placeholder in dst_template: {e}"})
+            failed.append({"index": i, "src": str(src_path),
+                           "error_code": "ERR_TEMPLATE_FAIL",
+                           "error": _msg("ERR_TEMPLATE_FAIL", stage="placeholder", reason=str(e))})
             continue
         except Exception as e:
-            failed.append({"index": i, "src": str(src_path), "error": f"template render failed: {e}"})
+            failed.append({"index": i, "src": str(src_path),
+                           "error_code": "ERR_TEMPLATE_FAIL",
+                           "error": _msg("ERR_TEMPLATE_FAIL", stage="render", reason=str(e))})
             continue
         dst_path = Path(os.path.expanduser(dst_str)).resolve()
         ok, err, dirs_created = _move_one(src_path, dst_path, overwrite, parents)
@@ -641,17 +681,22 @@ def find_dirs(args: dict) -> dict:
     include_hidden = bool(args.get("include_hidden", False))
 
     if not base_path:
-        return {"ok": False, "error": "missing required arg 'base_path'"}
+        return {"ok": False, "error_code": "ERR_ARG_MISSING",
+                "error": _msg("ERR_ARG_MISSING", arg="base_path")}
     if not isinstance(max_results, int) or max_results < 1:
-        return {"ok": False, "error": "max_results must be a positive integer"}
+        return {"ok": False, "error_code": "ERR_ARG_INVALID",
+                "error": _msg("ERR_ARG_INVALID", arg="max_results", reason="must be a positive integer")}
     if not isinstance(max_depth, int) or max_depth < 0:
-        return {"ok": False, "error": "max_depth must be >= 0"}
+        return {"ok": False, "error_code": "ERR_ARG_INVALID",
+                "error": _msg("ERR_ARG_INVALID", arg="max_depth", reason="must be >= 0")}
 
     base = Path(os.path.expanduser(base_path)).resolve()
     if not base.exists():
-        return {"ok": False, "error": f"base_path not found: {base}"}
+        return {"ok": False, "error_code": "ERR_PATH_NOT_FOUND",
+                "error": _msg("ERR_PATH_NOT_FOUND", path=str(base))}
     if not base.is_dir():
-        return {"ok": False, "error": f"base_path is not a directory: {base}"}
+        return {"ok": False, "error_code": "ERR_PATH_WRONG_TYPE",
+                "error": _msg("ERR_PATH_WRONG_TYPE", expected="directory", actual="file", path=str(base))}
 
     entries: list[dict] = []
     truncated = False
@@ -729,9 +774,11 @@ def find_dirs(args: dict) -> dict:
                     break
     except PermissionError as e:
         return {"ok": False,
-                "error": f"permission denied (possibly outside allowed scope): {e}"}
+                "error_code": "ERR_PERMISSION_DENIED",
+                "error": _msg("ERR_PERMISSION_DENIED"), "detail": str(e)}
     except OSError as e:
-        return {"ok": False, "error": f"os error: {e}"}
+        return {"ok": False, "error_code": "ERR_OP_FAILED",
+                "error": _msg("ERR_OP_FAILED", reason=f"os error: {e}")}
 
     matches = [e["path"] for e in entries]
     out = {
@@ -791,16 +838,19 @@ def create_dirs(args: dict) -> dict:
     mode = args.get("mode")
 
     if paths is None or not isinstance(paths, list):
-        return {"ok": False, "error": "missing or invalid required arg 'paths' (must be a list)"}
+        return {"ok": False, "error_code": "ERR_ARG_INVALID",
+                "error": _msg("ERR_ARG_INVALID", arg="paths", reason="must be a list")}
     if mode is not None:
         if not isinstance(mode, int) or not (0 <= mode <= 0o777):
-            return {"ok": False, "error": "mode must be an integer in 0..0o777"}
+            return {"ok": False, "error_code": "ERR_ARG_INVALID",
+                    "error": _msg("ERR_ARG_INVALID", arg="mode", reason="must be an integer in 0..0o777")}
 
     results = []
     failed = []
     for i, p in enumerate(paths):
         if not isinstance(p, str) or not p:
-            failed.append({"index": i, "path": p, "error": "path must be a non-empty string"})
+            failed.append({"index": i, "path": p, "error_code": "ERR_ARG_INVALID",
+                           "error": _msg("ERR_ARG_INVALID", arg="path", reason="must be a non-empty string")})
             continue
         ok, target, info, created = _create_one(p, parents, exist_ok, mode)
         if ok:
@@ -829,24 +879,35 @@ def reverse_create_dirs(plan, results):
     for i, entry in enumerate(candidates):
         path = Path(entry["path"])
         if not path.exists():
-            failed.append({"index": i, "path": str(path), "error": "path no longer exists"})
+            failed.append({"index": i, "path": str(path),
+                           "error_code": "ERR_PATH_NOT_FOUND",
+                           "error": _msg("ERR_PATH_NOT_FOUND", path=str(path))})
             continue
         if not path.is_dir():
-            failed.append({"index": i, "path": str(path), "error": "not a directory"})
+            failed.append({"index": i, "path": str(path),
+                           "error_code": "ERR_PATH_WRONG_TYPE",
+                           "error": _msg("ERR_PATH_WRONG_TYPE", expected="directory", actual="file", path=str(path))})
             continue
         try:
             children = list(path.iterdir())
         except OSError as e:
-            failed.append({"index": i, "path": str(path), "error": f"cannot list: {e}"})
+            failed.append({"index": i, "path": str(path),
+                           "error_code": "ERR_DIR_OP_FAILED",
+                           "error": _msg("ERR_DIR_OP_FAILED", op="list", path=str(path), reason=str(e))})
             continue
         if children:
-            failed.append({"index": i, "path": str(path), "error": f"directory not empty ({len(children)} items): not auto-removing"})
+            failed.append({"index": i, "path": str(path),
+                           "error_code": "ERR_DIR_OP_FAILED",
+                           "error": _msg("ERR_DIR_OP_FAILED", op="rmdir", path=str(path),
+                                          reason=f"directory non vuota ({len(children)} items): no auto-remove")})
             continue
         try:
             path.rmdir()
             out_results.append({"path": str(path), "removed": True})
         except OSError as e:
-            failed.append({"index": i, "path": str(path), "error": f"rmdir failed: {e}"})
+            failed.append({"index": i, "path": str(path),
+                           "error_code": "ERR_DIR_OP_FAILED",
+                           "error": _msg("ERR_DIR_OP_FAILED", op="rmdir", path=str(path), reason=str(e))})
     return {
         "ok": len(failed) == 0,
         "ok_count": len(out_results),
@@ -883,6 +944,114 @@ def _remove_one(path_arg, if_empty_only, force):
     return True, str(target), None
 
 
+def delete_files(args: dict) -> dict:
+    """Rimuove file (vettoriale, NON directory). Args: paths.
+
+    Reversibile §2.3: ogni file rimosso viene backupped come blob in
+    `<METNOS_HISTORY_DIR>/<METNOS_TURN_ID>/blob/<sha256>.bin` PRIMA
+    dell'unlink. Il runtime usa `restore_blob_backup` per ripristinare.
+
+    Safety §2.9: rifiuta paths fuori dallo scope di scrittura, rifiuta
+    directory (richiede `delete_dirs` esplicito), rifiuta system files
+    (override via `allow_system=true` non ancora supportato qui).
+
+    Best-effort §7.4: ogni path e' indipendente, una failure non blocca
+    le altre.
+    """
+    import hashlib
+    import shutil
+    paths = args.get("paths")
+    if paths is None or not isinstance(paths, list):
+        return {"ok": False, "error_code": "ERR_ARG_INVALID",
+                "error": _msg("ERR_ARG_INVALID", arg="paths", reason="must be a list")}
+
+    # Storage blob: tracciamento turn per reverse pattern §2.3.
+    history_dir = os.environ.get("METNOS_HISTORY_DIR") or str(
+        Path.home() / ".local" / "share" / "metnos" / "_history")
+    turn_id = os.environ.get("METNOS_TURN_ID") or "no_turn"
+    blob_dir = Path(history_dir) / turn_id / "blob"
+
+    results = []
+    failed = []
+    for i, p in enumerate(paths):
+        if not isinstance(p, str) or not p:
+            failed.append({"index": i, "path": p, "error_code": "ERR_ARG_INVALID",
+                           "error": _msg("ERR_ARG_INVALID", arg="path", reason="must be a non-empty string")})
+            continue
+        try:
+            abs_path = Path(os.path.expanduser(p)).resolve()
+        except OSError as e:
+            failed.append({"index": i, "path": p, "error_code": "ERR_OP_FAILED",
+                           "error": _msg("ERR_OP_FAILED", reason=f"path resolve: {e}")})
+            continue
+        if not abs_path.exists():
+            failed.append({"index": i, "path": str(abs_path),
+                           "error_code": "ERR_PATH_NOT_FOUND",
+                           "error": _msg("ERR_PATH_NOT_FOUND", path=str(abs_path))})
+            continue
+        if abs_path.is_dir():
+            failed.append({"index": i, "path": str(abs_path),
+                           "error_code": "ERR_PATH_WRONG_TYPE",
+                           "error": _msg("ERR_PATH_WRONG_TYPE",
+                                          expected="file", actual="directory", path=str(abs_path))})
+            continue
+        if not abs_path.is_file():
+            failed.append({"index": i, "path": str(abs_path),
+                           "error_code": "ERR_PATH_WRONG_TYPE",
+                           "error": _msg("ERR_PATH_WRONG_TYPE",
+                                          expected="file", actual="special", path=str(abs_path))})
+            continue
+        # Safety net: rifiuta system file (whitelisting platform_policy).
+        try:
+            if is_system_file(abs_path.name):
+                failed.append({"index": i, "path": str(abs_path),
+                               "error_code": "ERR_REFUSE_MOVE",
+                               "error": _msg("ERR_REFUSE_MOVE", path=str(abs_path),
+                                              reason="system file (no allow_system override)")})
+                continue
+        except Exception:
+            pass
+        # Backup blob → calcolo sha256 streaming, copy preserve metadata.
+        try:
+            h = hashlib.sha256()
+            with abs_path.open("rb") as f:
+                while True:
+                    chunk = f.read(65536)
+                    if not chunk:
+                        break
+                    h.update(chunk)
+            blob_sha256 = h.hexdigest()
+            blob_dir.mkdir(parents=True, exist_ok=True)
+            blob_path = blob_dir / f"{blob_sha256}.bin"
+            if not blob_path.exists():
+                shutil.copy2(abs_path, blob_path)
+        except OSError as e:
+            failed.append({"index": i, "path": str(abs_path),
+                           "error_code": "ERR_OP_FAILED",
+                           "error": _msg("ERR_OP_FAILED", reason=f"backup blob: {e}")})
+            continue
+        # Unlink dopo backup confermato (§2.9 spirit).
+        try:
+            abs_path.unlink()
+        except OSError as e:
+            failed.append({"index": i, "path": str(abs_path),
+                           "error_code": "ERR_OP_FAILED",
+                           "error": _msg("ERR_OP_FAILED", reason=f"unlink: {e}")})
+            continue
+        results.append({
+            "path": str(abs_path), "removed": True,
+            "blob_path": str(blob_path), "blob_sha256": blob_sha256,
+        })
+
+    return {
+        "ok": len(failed) == 0,
+        "ok_count": len(results),
+        "fail_count": len(failed),
+        "results": results,
+        "failed": failed,
+    }
+
+
 def delete_dirs(args: dict) -> dict:
     """Rimuove directory (vettoriale). Args: paths, if_empty_only, force."""
     paths = args.get("paths")
@@ -890,13 +1059,15 @@ def delete_dirs(args: dict) -> dict:
     force = bool(args.get("force", False))
 
     if paths is None or not isinstance(paths, list):
-        return {"ok": False, "error": "missing or invalid required arg 'paths' (must be a list)"}
+        return {"ok": False, "error_code": "ERR_ARG_INVALID",
+                "error": _msg("ERR_ARG_INVALID", arg="paths", reason="must be a list")}
 
     results = []
     failed = []
     for i, p in enumerate(paths):
         if not isinstance(p, str) or not p:
-            failed.append({"index": i, "path": p, "error": "path must be a non-empty string"})
+            failed.append({"index": i, "path": p, "error_code": "ERR_ARG_INVALID",
+                           "error": _msg("ERR_ARG_INVALID", arg="path", reason="must be a non-empty string")})
             continue
         ok, target, info = _remove_one(p, if_empty_only, force)
         if ok:

@@ -12,14 +12,18 @@ sha_prev:
 SISTEMA / SALUTE / PROCESSI / STATO SERVER
 ══════════════════════════════════════════════════════════════════════
 
-STATO-SERVER/SALUTE-SISTEMA/UPTIME/CARICO/SYSTEM-STATUS
+STATO-SERVER/SALUTE-SISTEMA/UPTIME/CARICO/TEMPERATURA/MEMORIA/DISCO
   DEVI: get_processes(include_health=true, top=10).
   NON DEVI: chiamare get_processes() senza include_health quando l'utente
-  chiede uno stato/salute generale del server.
+  chiede uno stato/salute/temperatura/memoria/disco/risorse del server.
   OK: "stato del server" → get_processes(include_health=true, top=10).
+  OK: "temperatura cpu" → get_processes(include_health=true).
+  OK: "quanta ram libera" → get_processes(include_health=true).
+  OK: "spazio disco" → get_processes(include_health=true).
   ERRORE: "stato del server" → get_processes(top=10) senza include_health.
+  ERRORE: "temperatura cpu" → get_processes() senza include_health.
   Il flag `include_health` aggiunge load avg + RAM + dischi + servizi
-  Metnos al risultato, in UN solo step.
+  + sensori termici al risultato, in UN solo step.
 
   (health_in_observation_skip) HEALTH BLOCK GIA' COMPLETO IN OBSERVATION:
       Quando un executor in history ritorna un'observation con campo

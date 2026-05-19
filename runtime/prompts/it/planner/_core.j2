@@ -118,6 +118,71 @@ NON DEVI: chiamare describe_entries dopo classify per ottenere conteggi (describ
 OK: classify → final_answer dai counts.
 ERRORE: classify → describe_entries con context "conta per categoria" (describe non rispetta le classes).
 
+# Esempio 8 — query ambigua: chiedi all'utente prima di scegliere
+UTENTE: "Manda a me via email gli appuntamenti di domani"
+   ↑ Due interpretazioni plausibili:
+     (a) MANDA via email = pipeline read_events(tomorrow) → send_messages(via_channel="mail", body=lista appuntamenti)
+     (b) CERCA email = find/read_messages con keyword "appuntamenti domani"
+[step 1] request_disambiguation_from_user(
+   question="La tua richiesta puo' essere letta in due modi. Cosa intendi?",
+   options=[
+     "Mandami via email la lista dei miei appuntamenti di domani",
+     "Cerca nelle mie email i messaggi che parlano di appuntamenti di domani"
+   ])
+   ↑ Il runtime materializza un dialog di scelta; la scelta dell'utente diventa la nuova user_query del turno successivo.
+DEVI: emettere `request_disambiguation_from_user` SOLO quando esistono due (o piu') interpretazioni semantiche distinte di pari plausibilita'. Le opzioni DEVONO essere query rifrasate complete (frasi nello STESSO STILE della richiesta utente), NON descrizioni meta tipo "opzione A: cercare; opzione B: inviare".
+NON DEVI: usare la disambiguazione per ogni minima ambiguita' di parametri (es. quale account, quale time_window). Quelle vanno risolte dal contesto o con un default ragionevole. NON DEVI: emettere `request_disambiguation_from_user` dopo lo step 1 (e' disponibile solo come PRIMO step del turno).
+OK: query "manda X via email" con X ambiguo (oggetto o canale) → disambiguation con 2 opzioni rifrasate.
+ERRORE: query "leggi le mail di ieri" → disambiguation (la query e' chiara). E' UN ERRORE chiedere conferma quando non c'e' ambiguita'.
+
+# Esempio 9 — schema "azione + oggetto + MODIFIER" esplicito
+# Il MODIFIER e' un complemento strumentale del verbo che indica COME/DOVE/CON-COSA
+# eseguire l'azione (canale di comunicazione, provider/backend, formato di output,
+# destinazione di salvataggio, ...). Riconoscerlo come strumento e NON come oggetto.
+
+UTENTE: "Manda a me via email gli appuntamenti di domani"
+   ↑ MODIFIER = "via email" (canale di consegna). OGGETTO = "appuntamenti di domani" (calendar events).
+   Pipeline: leggi prima l'oggetto nel suo dominio, poi esegui l'azione con il modifier.
+[step 1] get_now()  → today ISO
+[step 2] read_events(time_window="tomorrow")  → entries appuntamenti
+[step 3] send_messages(to_user="roberto", via_channel="mail", subject="Appuntamenti di domani", body="<lista formattata da step 2>")
+final_answer: "Ho inviato la lista degli appuntamenti di domani via email."
+
+UTENTE: "Crea uno spreadsheet con google"
+   ↑ MODIFIER = "con google" (provider/backend). OGGETTO = spreadsheet (files_xlsx).
+   Il modifier nomina un provider noto → mappa al tool con qualifier provider corrispondente.
+[step 1] write_files_xlsx_google_workspace(path="/tmp/foglio.xlsx", ...)
+final_answer: "Ho creato lo spreadsheet su Google Drive."
+
+UTENTE: "Notificami via telegram quando arriva la mail di Lucia"
+   ↑ MODIFIER = "via telegram" (canale di notifica). (Pipeline schedulata: oltre lo scope di un singolo turno;
+   qui solo il principio: il modifier sceglie il send_messages(via_channel="telegram") finale.)
+
+REGOLA GENERALE (language-agnostic).
+Il MODIFIER e' un'aggiunta strumentale al verbo, introdotta da preposizioni
+d'agente / strumento / luogo (italiano: "via", "con", "per", "tramite", "su",
+"in"; inglese: "via", "with", "by", "through", "on", "in") seguita dal nome
+di un canale/provider/destinazione. I nomi tipici: mail/email/posta, telegram,
+slack, google/drive/gmail/workspace, dropbox, notion, ...
+Quando l'utente DICHIARA ESPLICITAMENTE un modifier accanto a un verbo, DEVI:
+- mappare il modifier all'arg corrispondente del tool (`via_channel` per i send,
+  qualifier provider per i tool con suffix `_<provider>`, path di destinazione
+  per i create/write, ...).
+- mantenere l'OGGETTO come complemento del verbo, NON confonderlo col modifier.
+- comporre una PIPELINE multi-step se oggetto e modifier vivono in domini diversi
+  (es. eventi del calendario inviati via mail: read_events → send_messages).
+
+DEVI: riconoscere il modifier come STRUMENTO, non come oggetto della ricerca.
+NON DEVI: trattare il modifier (mail/telegram/google/...) come l'oggetto della query.
+OK: "manda con email X" / "send X via mail" → read_<dominio-di-X> → send_messages(via_channel="mail", body=<X>).
+OK: "crea X con google" / "create X on google" → tool_<verb>_<obj>_google_workspace.
+ERRORE: "manda con email gli appuntamenti" → find_messages(query="appuntamenti") (sta CERCANDO mail invece di INVIARE).
+ERRORE: "crea spreadsheet con google" → set_credentials per "google" (sta confondendo provider col target dell'azione).
+
+CORPUS INDICIZZATO vs FILESYSTEM
+"foto/immagini/video/contatti" → CORPUS INDICIZZATO (`find_<corpus>_indices`). Solo se l'utente specifica path filesystem ("foto in /X") → `find_files`. Pipeline read-then-write: output di `find_*` e' input di `write_*` via `from_step`.
+OK: "salva su drive le foto del 2024" → `find_images_indices(time_window="2024")` → `write_files_google_workspace(from_step=1)`.
+
 ══════════════════════════════════════════════════════════════════════
 REGOLE (in ordine di priorita')
 ══════════════════════════════════════════════════════════════════════
@@ -281,9 +346,13 @@ ANTI-COLLISION (4/5/2026, ADR 0079)
 ══════════════════════════════════════════════════════════════════════
 
 DEVI: chiamare l'executor che esiste gia' nel tuo pool quando il suo nome ESATTO e' presente.
+DEVI: usare un executor del top-K se la sua `affinity` (visibile nelle description) overlap almeno 1 keyword con la query. `request_new_executor` e' LAST RESORT: solo se NESSUN tool del top-K matcha semanticamente.
 NON DEVI: chiamare `request_new_executor` con un `expected_name` che e' gia' nel pool, ne' proporre `list_X`/`find_X`/`read_X` quando esiste gia' `get_X` (o viceversa) per lo stesso oggetto: i 5 verbi-produttori sono ORTOGONALI (CLAUDE.md §2.2).
+NON DEVI: chiamare `request_new_executor` quando un tool del top-K copre la query: il runtime ha un soft-gate jaccard che rifiuta la richiesta e ti rimanda al tool esistente (caso live "appuntamenti domani" → read_events).
 OK: pool=[get_processes,...], query "elenca processi running" → get_processes().
+OK: pool=[get_now, read_events, compute_entries], query "appuntamenti domani" → read_events (affinity matcha).
 ERRORE: pool=[get_processes,...], query "elenca processi running" → request_new_executor(expected_name="list_processes"). E' UN ERRORE.
+ERRORE: pool=[..., read_events, ...], query "appuntamenti domani" → request_new_executor(expected_name="get_appointments"). E' UN ERRORE (read_events copre l'intent).
 
 ══════════════════════════════════════════════════════════════════════
 IMPLICIT ACTIONS (14/5/2026, ADR 0129)

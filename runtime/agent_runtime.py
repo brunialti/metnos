@@ -16,9 +16,10 @@ Decisioni di design applicate (sessione 26/4/2026):
     M1  config + router (in PoC mode hardcoded a local).
 
 Aggiornato dopo ciclo finale POC (26/4):
-    - tool-use NATIVO via OllamaProvider.chat_with_tools (no prompt-based JSON parsing)
+    - tool-use NATIVO via *Provider.chat_with_tools (no prompt-based JSON parsing)
     - data piping con sintassi {{stepN.field}} (opzione A confermata nel ciclo 12)
-    - default model = qwen3:8b con think=false
+    - default planner = llamacpp + Gemma 4 26B su :8080 (ADR 0146, supersedes
+      il default storico qwen3:8b di ADR 0044)
 """
 import functools
 import json
@@ -116,6 +117,109 @@ _CRED_RE = re.compile(
 _USER_RE = re.compile(
     r"(\bu(?:ser|name|tente)\s*[:=]?\s*)(\S+)", re.IGNORECASE
 )
+
+
+# --- Think budget modulation per planner step (19/5/2026) ------------------
+# Pattern A+B (manifest [planning] complexity + verb-of-name fallback).
+# Bench Gemma 4 26B 19/5/2026 + euristica Roberto:
+#  - Exec deterministico: think=False, budget=0.
+#  - Binary contestuale: think=True, budget=64-128.
+#  - Tool calling pool ≤5: think=True, budget=256.
+#  - Tool calling pool 6-15: think=True, budget=512.
+#  - Tool calling pool >15: think=True, budget=768.
+#  - Code generation (synt stage 5): think=True, budget=1024+.
+# NOTA: skip think (False) NON e' implementabile per tool-calling: bench
+# 19/5 ha dimostrato che il planner sceglie tool sbagliato senza reasoning
+# → loop_break. Quindi la modulazione e' SOLO sul budget.
+# Vedi [[feedback_thinking_budget_heuristic]] e
+# [[metnos_todo_high_think_per_model]] (validazione cross-model pendente).
+
+# Verbi a bassa complessita' decisionale: tool-calling diretto.
+# Le 3 categorie (low/medium/high) derivano dal verbo del name se il
+# manifest non dichiara [planning] complexity (Pattern B).
+_VERB_COMPLEXITY = {
+    # Low: producer/snapshot deterministici, scelta tool ovvia se prefilter ok.
+    "get": "low", "read": "low", "list": "low", "find": "low",
+    # Medium: filtri/computi/comparazioni (richiedono valutazione predicato).
+    "filter": "medium", "sort": "medium", "group": "medium",
+    "classify": "medium", "describe": "medium", "compare": "medium",
+    "compute": "medium", "order": "medium",
+    # High: mutating + extract + creare = rischio + creativita'.
+    "write": "high", "move": "high", "delete": "high", "create": "high",
+    "send": "high", "change": "high", "extract": "high", "share": "high",
+    "set": "high",
+}
+
+# Budget tokens per (complexity, pool_size_bucket).
+# Euristica Roberto 19/5: tool-call (pattern matching NL→template) ha bisogno
+# di thinking ma non troppo. Il budget cresce un po' (ma non troppo) col
+# pool size. Scaling moderato — bench 19/5 ha mostrato che budget aggressivi
+# bassi causano scelta tool sbagliato (request_new_executor invece di
+# write_files allo step 3).
+_BUDGET_TABLE = {
+    # (complexity, pool_bucket): budget
+    ("low",    "small"):  256,   # pool ≤5
+    ("low",    "medium"): 320,   # pool 6-15 (+25%)
+    ("low",    "large"):  384,   # pool >15 (+50% vs small)
+    ("medium", "small"):  320,
+    ("medium", "medium"): 384,
+    ("medium", "large"):  512,
+    ("high",   "small"):  384,
+    ("high",   "medium"): 512,
+    ("high",   "large"):  640,
+}
+
+
+def _infer_complexity_from_name(name: str) -> str:
+    """Pattern B: fallback automatico dal verbo del name. Producer
+    (get/read/find/list) → low; filtri/compute → medium; mutating → high.
+    """
+    verb = name.split("_", 1)[0]
+    return _VERB_COMPLEXITY.get(verb, "medium")
+
+
+def _pool_size_bucket(n: int) -> str:
+    if n <= 5:
+        return "small"
+    if n <= 15:
+        return "medium"
+    return "large"
+
+
+def _decide_reasoning_budget(candidates, tools_for_step, step_num, loop_start_step):
+    """Determina il reasoning_budget per questo planner call basato su:
+    (1) step_num: step 1 forza complexity=medium (cascata multi-step composto
+        non e' nota dal prefilter; budget basato solo su top-1 sottostima);
+    (2) step 2+: complexity dal prefilter top-1 (manifest [planning] o
+        inferred via verb);
+    (3) dimensione del pool tools_for_step (small/medium/large).
+
+    Ritorna l'int reasoning_budget per LlamaCppProvider.
+
+    Bench 19/5: step 1 con complexity=low (inferred da producer top-1)
+    causava planner cascade sbagliata su query multi-step "scarica e salva"
+    (sceglieva read_urls_html invece della pipeline corretta). Step 1 ottiene
+    sempre medium + 50% boost. Sostituisce formula dyn legacy step1=768/step2+=256.
+    """
+    pool_bucket = _pool_size_bucket(len(tools_for_step or []))
+
+    is_step1 = (step_num == loop_start_step)
+    if is_step1:
+        # Step 1: complexity forzata medium (decisione di cascata multi-step).
+        complexity = "medium"
+    elif not candidates:
+        complexity = "medium"
+    else:
+        top1 = candidates[0]
+        complexity = getattr(top1, "complexity", "") or _infer_complexity_from_name(top1.name)
+
+    base = _BUDGET_TABLE.get((complexity, pool_bucket), 384)
+
+    # Step 1 boost: pool grande, history vuota, decisione di cascata.
+    if is_step1:
+        base = int(base * 1.5)
+
+    return base
 
 
 def _scrub_credentials(text: str) -> tuple[str, int]:
@@ -617,6 +721,78 @@ def _render_users_known_block() -> str:
 _OBS_HISTORY_CHAR_CAP = 8000
 
 
+def _check_top_k_affinity_jaccard(
+    query: str, candidates: list, *, threshold: float = 0.3,
+) -> tuple[str, float] | None:
+    """Soft-gate B.5 (19/5/2026 v4, #10 prompt PLANNER re-eng):
+    ritorna `(tool_name, jaccard_score)` del primo candidate del top-K che
+    ha jaccard affinity vs query >= threshold. None se nessuno passa la soglia.
+
+    Usato per rifiutare `request_new_executor` quando il top-K contiene gia'
+    un tool con affinity adeguata. Determinismo §7.9.
+
+    Tokenizzazione: lower + split su non-alfanumerico, filtra stop-word
+    minimali IT+EN. Affinity del tool: union di `name` (split su _) + termini
+    da `affinity` (lista).
+    """
+    import re as _re
+    if not query or not candidates:
+        return None
+    _stop = {"il","la","i","gli","le","un","una","di","da","del","della","dei",
+             "delle","a","al","alla","ai","alle","in","con","su","per","tra",
+             "fra","e","o","ma","che","mi","ci","ti","si","ho","ha","hai",
+             "the","a","an","of","to","in","is","it","for","on","with","and",
+             "or","but","this","that"}
+    q_tokens = {t for t in _re.split(r"[^\w]+", query.lower()) if t and t not in _stop and len(t) >= 3}
+    if not q_tokens:
+        return None
+    # B.5 STRONG MATCH (19/5/2026 v4): se la query contiene un verbo che
+    # canonicalizza a un verbo Metnos §2.2 via vocab synonyms (es. "salva"→
+    # "write", "cancella"→"delete"), E il top-K ha un tool con nome che
+    # inizia con quel verbo canonico, → match forte (score=1.0) immediato.
+    # Questo evita che query con molti tokens irrilevanti (es. "salva nota:
+    # spesa supermercato 35€") diluiscano la jaccard sotto threshold.
+    try:
+        from prefilter import detect_canonical_verbs_all, tokenize  # type: ignore
+        _qtoks_for_verb = tokenize(query)
+        _canonical_verbs = detect_canonical_verbs_all(_qtoks_for_verb) or []
+    except Exception:
+        _canonical_verbs = []
+    if _canonical_verbs:
+        for ex in candidates:
+            name = getattr(ex, "name", "") or ""
+            if not name or name == "request_new_executor":
+                continue
+            for cv in _canonical_verbs:
+                if name.startswith(cv + "_"):
+                    return (name, 1.0)
+    for ex in candidates:
+        name = getattr(ex, "name", "") or ""
+        if not name or name == "request_new_executor":
+            continue
+        aff_terms = getattr(ex, "affinity", None) or []
+        if isinstance(aff_terms, dict):
+            aff_terms = aff_terms.get("it", []) + aff_terms.get("en", [])
+        tool_tokens = set()
+        tool_tokens.update(t for t in name.split("_") if len(t) >= 3)
+        for term in aff_terms:
+            if isinstance(term, str):
+                tool_tokens.update(t for t in _re.split(r"[^\w]+", term.lower())
+                                    if t and len(t) >= 3 and t not in _stop)
+        if not tool_tokens:
+            continue
+        inter = q_tokens & tool_tokens
+        if not inter:
+            continue
+        # Overlap coefficient: inter / min(|q|, |t|). Insensibile all'asimmetria
+        # tool con affinity ricca vs query breve (caso live 11/5 "appuntamenti
+        # domani": Jaccard penalizza, overlap coefficient cattura coverage).
+        score = len(inter) / max(1, min(len(q_tokens), len(tool_tokens)))
+        if score >= threshold:
+            return (name, score)
+    return None
+
+
 def _trim_obs_for_history(obs: dict | str, *, cap: int = _OBS_HISTORY_CHAR_CAP) -> str:
     """Serializza una observation in JSON pronto per `history_for_llm` con cap
     sui caratteri. Se sfora, prova prima a rimuovere `body_preview` dalle
@@ -762,6 +938,36 @@ def planner_facing_schema(schema):
     return out
 
 
+def _split_telemetry_persist(tel, step_num: int,
+                              extra_fail_reason: str = "") -> None:
+    """Append JSONL row a ~/.local/share/metnos/planner_split_telemetry.jsonl
+    per analisi post-mortem dei call SPLIT (#H0c). Append-only, no truncate.
+    Fail-safe: qualsiasi errore I/O silenziato (telemetria non blocca il turn).
+    """
+    try:
+        from planner_split import SplitTelemetry as _Tel
+        if not isinstance(tel, _Tel):
+            return
+        row = {
+            "ts": int(time.time()),
+            "step": step_num,
+            "chosen_tool": tel.chosen_tool,
+            "sel_lat_ms": tel.selector_latency_ms,
+            "args_lat_ms": tel.args_latency_ms,
+            "sel_in_tok": tel.selector_in_tok,
+            "sel_out_tok": tel.selector_out_tok,
+            "args_in_tok": tel.args_in_tok,
+            "args_out_tok": tel.args_out_tok,
+            "failure_reason": extra_fail_reason or tel.failure_reason,
+        }
+        p = Path.home() / ".local/share/metnos/planner_split_telemetry.jsonl"
+        p.parent.mkdir(parents=True, exist_ok=True)
+        with open(p, "a") as f:
+            f.write(json.dumps(row, ensure_ascii=False) + "\n")
+    except Exception:
+        pass
+
+
 def render_tools_for_provider(executors):
     """Converte la lista di Executor in tools format Ollama/OpenAI.
 
@@ -769,15 +975,30 @@ def render_tools_for_provider(executors):
     al modello sia coerente con la convenzione `from_step` (vedi
     docstring). Trasformazione centralizzata: i singoli manifest non
     devono ricordare la convenzione, la pipeline rendering la impone.
+
+    Slim (#H0 19/5/2026 sera): la description + args_schema sono compressi
+    deterministicamente (prima frase + boundary §2.5; args desc 1
+    frase corta; rimozione description per arg auto-descrittivi con
+    default). Disable via env METNOS_TOOL_SCHEMA_FULL=1. Vedi
+    `runtime/tool_schema_slim.py`.
     """
+    from tool_schema_slim import (
+        slim_description, slim_args_schema, is_slim_enabled,
+    )
+    apply_slim = is_slim_enabled()
     tools = []
     for ex in executors:
+        desc = ex.description
+        params = planner_facing_schema(ex.args_schema) or {"type": "object"}
+        if apply_slim:
+            desc = slim_description(desc)
+            params = slim_args_schema(params)
         tools.append({
             "type": "function",
             "function": {
                 "name": ex.name,
-                "description": ex.description,
-                "parameters": planner_facing_schema(ex.args_schema) or {"type": "object"},
+                "description": desc,
+                "parameters": params,
             },
         })
     return tools
@@ -845,24 +1066,32 @@ _HEALTH_IMPERATIVE_KEYWORDS = (
 # crei duplicati. ADR 0123 + bug live turn c627784c (11/5/2026 sera).
 # Estendere solo per executor che creano UNA singola entita' remota per
 # invocazione (set_*, send_*, write_* su provider esterni).
-_AUTO_FINAL_TRANSFORMATIVE = frozenset({
-    # Post ADR 0128 (12/5/2026): set_events -> create_events,
-    # set_files -> share_files_google_workspace, set_files_text -> create_files_text,
-    # set_files_xlsx kept but ora rappresenta sheets.update (state upsert),
-    # create_files_xlsx aggiunto (sheets.create), set_messages aggiunto
-    # (gmail.modify), write_files_text aggiunto (docs.append).
-    "create_events",
-    "send_messages_google_workspace",
-    "send_messages",
-    "write_files_google_workspace",
-    "write_files_text",
-    "share_files_google_workspace",
-    "create_files_text",
-    "create_files_xlsx",
-    "set_files_xlsx",
-    "set_messages",
-    "create_dirs_google_workspace",
-})
+def _detect_binary_missing_in_obs(obs) -> dict | None:
+    """Cerca `error_class="binary_missing"` nei `results` di un'observation.
+
+    Ritorna il primo record con suggested_install (dict raw), None se
+    nessun result ha questa shape. Pattern §7.3 install-on-demand
+    (17/5/2026): usato sia da hook T1 (save pending) sia da rule planner
+    (suggerire admin install).
+    """
+    if not isinstance(obs, dict):
+        return None
+    for r in (obs.get("results") or []):
+        if isinstance(r, dict) and r.get("error_class") == "binary_missing":
+            if r.get("suggested_install"):
+                return r
+    return None
+
+
+def _is_auto_final_transformative(tool_name: str) -> bool:
+    """True se il tool e' mutating §2.2 (verbo `_MUTATING_VERBS` prefix).
+    Derivazione dinamica §7.3: ogni nuovo executor con verbo mutating eredita
+    auto-final senza touch della lista. Sostituisce il vecchio set hardcoded
+    `_AUTO_FINAL_TRANSFORMATIVE` (17/5/2026)."""
+    if not tool_name or "_" not in tool_name:
+        return False
+    verb = tool_name.split("_", 1)[0]
+    return verb in _MUTATING_VERBS
 
 
 # P3 (12/5/2026) — Detection congiunzioni multi-step nella user_query.
@@ -2046,6 +2275,19 @@ def resolve_from_step(args, history, consumer_schema=None):
         k in args and args[k] not in (None, "", [], {})
         for k in _ALT_TARGET_KEYS
     )
+    # SAFETY (17/5/2026): se l'utente ha gia' specificato un target esplicito
+    # (event_id/paths/ids/...), from_step e' ridondante O contraddittorio.
+    # Prima del fix, from_step espandeva SEMPRE prev_list in `entries`,
+    # sovrascrivendo silenziosamente l'event_id esplicito. Bug live 16/5/2026:
+    # "cancella evento abc-123" → PLANNER fa read_events(next-7d) +
+    # delete_events(event_id="abc-123", from_step=1) → runtime ignora
+    # event_id e cancella TUTTI i 9 eventi della lista step1. 15 eventi reali
+    # bruciati in 4 turn di test. Fix §7.3: target esplicito vince SEMPRE
+    # sul from_step (intent utente prevale su pipe pattern del PLANNER).
+    if _has_alt:
+        new_args = dict(args)
+        new_args.pop("from_step", None)
+        return new_args, errors
     if fs < 1 or fs > len(history):
         if _has_alt:
             new_args = dict(args)
@@ -2297,6 +2539,66 @@ _REGISTERED_FUTURE_TOOLS = frozenset({
 })
 
 
+# Pattern §2.8 honesty (17/5/2026): detection final_message «non trovato/
+# not found» mentre uno step mutating ha realmente effettuato N>0 modifiche.
+# Trigger originale: bug live 16/5/2026 in cui delete_events con
+# event_id="abc-123"+from_step=1 ha cancellato 9 eventi reali della lista
+# step1, e il LLM ha emesso final «evento abc-123 non trovato» — falso
+# silent failure §2.8. Anche se fix #1 (`_resolve_from_step` SAFETY) previene
+# il bug a monte, questo check resta come safety net per altre forme di
+# divergenza tra obs ok/n_done e claim del LLM nel final.
+_FALSE_NOT_FOUND_RE = re.compile(
+    r"(non (?:e'|è) stato trovat[oai]|non trovat[oai]|"
+    r"non (?:esiste|esistono|risulta|risultano)|"
+    r"not found|does not exist|n[oa]t (?:been )?found)",
+    re.IGNORECASE,
+)
+_MUTATING_TOOL_PREFIXES = ("delete_", "move_", "change_", "send_", "create_",
+                            "set_", "write_", "share_", "render_")
+
+
+def _detect_false_not_found(final_message: str | None, steps: list) -> dict | None:
+    """Ritorna info-dict se il final_message dichiara «non trovato»
+    contraddicendo uno step mutating ok=True con ok_count>=1.
+
+    Returns:
+        None se nessuna contraddizione, altrimenti
+        {tool, ok_count} del primo step mutating contraddetto.
+    """
+    if not final_message:
+        return None
+    if not _FALSE_NOT_FOUND_RE.search(final_message):
+        return None
+    for s in steps or []:
+        tool = getattr(s, "chosen_tool", None) or (
+            s.get("chosen_tool") if isinstance(s, dict) else None
+        )
+        if not tool or not any(tool.startswith(p) for p in _MUTATING_TOOL_PREFIXES):
+            continue
+        result = getattr(s, "result", None)
+        if isinstance(result, str):
+            try:
+                result = json.loads(result)
+            except Exception:
+                continue
+        if not isinstance(result, dict):
+            continue
+        if result.get("ok") is not True:
+            continue
+        ok_count = (result.get("ok_count")
+                     or result.get("n_created")
+                     or (len(result["results"])
+                          if isinstance(result.get("results"), list)
+                          else 0))
+        try:
+            ok_count = int(ok_count or 0)
+        except (TypeError, ValueError):
+            ok_count = 0
+        if ok_count >= 1:
+            return {"tool": tool, "ok_count": ok_count}
+    return None
+
+
 def _detect_unbacked_promise(final_message: str | None, steps: list) -> bool:
     """Ritorna True se il `final_message` contiene una promessa di azione
     futura ma nessuno step ok ha chiamato un tool che registra azioni.
@@ -2354,6 +2656,10 @@ def invoke_executor(executor, args, timeout_s=30, *, autonomy="supervised",
         runtime_path if not existing_pp
         else f"{runtime_path}{os.pathsep}{existing_pp}"
     )
+    # METNOS_RUNTIME = path canonico della dir runtime/ usata da QUESTO daemon.
+    # Gli executor (canonical e synthesized) la leggono per bootstrap sys.path
+    # senza assunzioni di depth o location filesystem. ADR 0148 universal pattern.
+    env["METNOS_RUNTIME"] = runtime_path
     # Esponi METNOS_TURN_ID al subprocess: gli executor revertibili lo usano
     # per nominare i blob backup deterministicamente
     # (`<HISTORY>/<turn_id>/blob/<sha256>.bin`).
@@ -2363,14 +2669,36 @@ def invoke_executor(executor, args, timeout_s=30, *, autonomy="supervised",
         env["METNOS_ACTOR"] = actor
     if channel:
         env["METNOS_CHANNEL"] = channel
+    _t_start = time.perf_counter()
     result = subprocess.run(
         cmd, input=payload, capture_output=True, text=True, timeout=timeout_s,
         env=env,
     )
+    _elapsed_ms = int((time.perf_counter() - _t_start) * 1000)
     try:
-        return json.loads(result.stdout)
+        parsed_result = json.loads(result.stdout)
     except json.JSONDecodeError:
-        return {"ok": False, "error": f"non-JSON output: {result.stdout!r}; stderr: {result.stderr!r}"}
+        parsed_result = {"ok": False,
+                          "error": f"non-JSON output: {result.stdout!r}; "
+                                   f"stderr: {result.stderr!r}",
+                          "error_class": "non_json"}
+    # Audit log per skill imports (mini-version Fase C, ADR 0140).
+    # No-op per builtin handcrafted (provenance vuoto). Fail-silent.
+    try:
+        if getattr(executor, "is_imported", False):
+            from skill_audit import audit_skill_invocation
+            audit_skill_invocation(
+                executor_name=executor.name,
+                provenance=getattr(executor, "provenance", {}),
+                args=args,
+                result=parsed_result,
+                elapsed_ms=_elapsed_ms,
+                error_class=(parsed_result.get("error_class")
+                              if isinstance(parsed_result, dict) else None),
+            )
+    except Exception:
+        pass
+    return parsed_result
 
 
 # --- Step + Turn log -------------------------------------------------------
@@ -2408,6 +2736,10 @@ class StepLog:
     # viene chiamato >= DEFAULT_CAP_MAX_PER_TURN volte nel turno con args
     # near-identical (Jaccard >= 0.7).
     loop_break_total: str | None = None
+    # ADR 0149 (18/5/2026): canonical_query emessa dal PLANNER come
+    # by-product del tool_call JSON (solo se METNOS_CANONICAL_QUERY=1).
+    # Persistita per telemetria e riusata da mnestoma.canonical_query_log.
+    canonical_query: str = ""
 
 
 @dataclass
@@ -2462,6 +2794,12 @@ class TurnLog:
     # ricava da `chat_id`. Vuoto = turn standalone (nessun grouping).
     conversation_id: str = ""
 
+    # ADR 0149 (18/5/2026): idempotency flag per la registrazione di
+    # canonical_query in mnestoma.canonical_query_log. Set True dopo la
+    # prima write() che ha avuto chance di registrare → write() successive
+    # nello stesso turno (es. cap-expand dialog) non duplicano.
+    _canonical_recorded: bool = False
+
     # Mappa fallback executor → nome dell'arg che controlla il cap di output.
     # Coverage di tutti gli executor del catalog corrente (30/4/2026 sera) che
     # hanno un cap esplicito sui risultati. Da migrare a campo `cap_field` nel
@@ -2510,6 +2848,28 @@ class TurnLog:
         # non aiuta l'utente, riallarga solo il contesto LLM. Stesso per
         # find_urls quando used >= 10 (un umano non legge 5000 link).
         _NARRATIVE_NO_CAP_EXPAND = {"describe", "URL"}
+
+        # 15/5/2026 fix UX query aggregate: se l'ULTIMO step e' `final_answer`
+        # synthetic E un producer precedente espone `metadata.total_count`
+        # E quel numero compare nel final_message → l'utente ha gia' la
+        # risposta aggregata, offrire "allargo a 2000?" e' rumore.
+        # Se invece il numero NON compare (list-style: "Ho trovato N",
+        # ma N riflette `used` non `total_count`), cap_expand resta
+        # utile. §7.3 general-purpose: discrimina aggregate vs list
+        # via signal autoritativo (numero stesso), non keyword.
+        _final_close = bool(
+            self.steps and self.steps[-1].chosen_tool == "final_answer"
+        )
+        if _final_close:
+            _fm = (self.final_message or "").replace(".", "").replace(",", "")
+            for s in self.steps:
+                res = s.result if isinstance(s.result, dict) else {}
+                md = res.get("metadata")
+                if not isinstance(md, dict):
+                    continue
+                tc = md.get("total_count")
+                if isinstance(tc, int) and tc > 0 and str(tc) in _fm:
+                    return proposals  # numero aggregato gia' nel final
 
         for s in self.steps:
             res = s.result if isinstance(s.result, dict) else {}
@@ -2625,8 +2985,7 @@ class TurnLog:
             else (self.actor or "host")
         )
         try:
-            import sys as _sys
-            _sys.path.insert(0, "/opt/myclaw/runtime")
+            # runtime/ già su sys.path (agent_runtime VIVE in runtime/).
             import orchestration as _orch
             res = _orch.invoke_get_inputs_internal(
                 sender_id=sender_id,
@@ -2938,8 +3297,7 @@ class TurnLog:
         if not health:
             return
         try:
-            import sys as _sys
-            _sys.path.insert(0, "/opt/myclaw/runtime")
+            # runtime/ già su sys.path (agent_runtime VIVE in runtime/).
             from orchestration import _fmt_health_block, _fmt_entries_block
             block = _fmt_health_block(health)
             if entries:
@@ -3072,6 +3430,26 @@ class TurnLog:
                         _hallucination_notice + "\n\n"
                         + (self.final_message or "")
                     ).strip()
+            # Anti-falso-silent-failure §2.8 (17/5/2026): se il LLM dice
+            # «non trovato» mentre uno step mutating ha realmente modificato
+            # N>=1 record (bug live 16/5/2026: 15 eventi calendar cancellati
+            # mentre Metnos dichiarava «evento non trovato»), prepend notice
+            # autoritativa con il contatore reale. La sovrascrittura non e'
+            # destructive (preserva il messaggio LLM per audit) ma chiarisce
+            # all'utente lo stato reale del sistema.
+            _ff = _detect_false_not_found(self.final_message, self.steps)
+            if _ff:
+                _ff_notice = (
+                    f"⚠ ATTENZIONE: {_ff['tool']} ha modificato "
+                    f"{_ff['ok_count']} elementi (ok=True). Il messaggio "
+                    f"sotto del LLM contraddice questo fatto — la modifica "
+                    f"E' STATA EFFETTUATA."
+                )
+                if _ff_notice not in (self.final_message or ""):
+                    self.final_message = (
+                        _ff_notice + "\n\n"
+                        + (self.final_message or "")
+                    ).strip()
         # Propaga attachments dall ultimo step che ne ha prodotti (use
         # case realistico: un solo find_images_indices per turno).
         for s_step in reversed(self.steps):
@@ -3083,6 +3461,37 @@ class TurnLog:
         # Footer "elapsed: Xs · chiuso HH:MM:SS" rimosso 7/5/2026 notte
         # (Roberto: ridondante con il badge meta della UI HTTP, valore
         # gia' presente nel jsonl come ts_end-ts_start per telemetria).
+        #
+        # ADR 0149 (18/5/2026): log canonical_query del PRIMO step
+        # planner verso mnestoma.canonical_query_log per la futura
+        # promozione fast-path L1. Solo first step (mapping canonical →
+        # first_chosen_tool). Idempotente per turn via _canonical_recorded.
+        # Off-thread di fallimento: never raise → telemetria mai-bloccante.
+        if not self._canonical_recorded and self.steps and self.final_kind:
+            first = self.steps[0]
+            cq = ""
+            try:
+                # raw_args può essere dict o stringa JSON. canonical_query
+                # è attributo dello step settato da agent_runtime.
+                cq = getattr(first, "canonical_query", "") or ""
+                if not cq and isinstance(first.raw_args, dict):
+                    cq = str(first.raw_args.get("_canonical_query", "") or "")
+            except Exception:
+                cq = ""
+            tool = getattr(first, "chosen_tool", "") or ""
+            if cq and tool:
+                try:
+                    from mnestoma import Mnestoma
+                    args_shape = first.raw_args if isinstance(first.raw_args, dict) else {}
+                    _mn = Mnestoma()
+                    _mn.record_canonical_query(
+                        cq, tool, args_shape,
+                        ok=(self.final_kind == "answer"),
+                    )
+                except Exception:
+                    pass
+            self._canonical_recorded = True
+
         TURN_LOG_DIR.mkdir(parents=True, exist_ok=True)
         path = TURN_LOG_DIR / f"{time.strftime('%Y-%m-%d')}.jsonl"
         # Scrubbing credenziali prima della serializzazione (ADR 0082):
@@ -3174,6 +3583,7 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
              actor="host", channel="", conversation_id="",
              reference_images=None,
              resume_with_scratchpad=None,
+             allow_disambig_synth=True,
              verbose=False):
     """
     Se k=None (default v1.1), usa adaptive K fra k_min e k_max.
@@ -3267,6 +3677,59 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
         users_known=_render_users_known_block(),
         **_now_vars,
     )
+    # ADR 0149 (18/5/2026): instruction block per il by-product
+    # `canonical_query`. Iniettata solo quando il flag e' on, per non
+    # alterare il behavior di default. Forma compatta + esempi
+    # bilingua. Niente azione su tool selection: solo formato output.
+    if os.environ.get("METNOS_CANONICAL_QUERY", "1") == "1":
+        _cq_block = [
+            "",
+            "═" * 70,
+            "CANONICAL_QUERY — BY-PRODUCT NORMALIZZAZIONE (ADR 0149)",
+            "═" * 70,
+            "Nel JSON di output, OLTRE a `name` e `arguments`, DEVI emettere",
+            "il campo `canonical_query`: forma LEMMA della richiesta utente.",
+            "",
+            "Regole di flessione (TUTTE LE LINGUE — IT, EN, ES, FR, DE, ...):",
+            "  • Verbi  → INFINITO  (essere/be/ser/sein, non è/is/es/ist)",
+            "  • Nomi   → SINGOLARE non marcato (file/file, mail/email/mail)",
+            "  • Articoli/preposizioni clitiche → RIMOSSI (i, il, le, the, ...)",
+            "  • Aggettivi possessivi/dimostrativi → RIMOSSI (mio, mia, this, ...)",
+            "  • Argomenti specifici → RIMOSSI (path, URL, ID, numeri, nomi propri,",
+            "                                   glob, date concrete come 'oggi'/'domani')",
+            "",
+            "Lingua: stessa della query utente. NON tradurre.",
+            "Lunghezza: ≤ 50 token.",
+            "",
+            "OK (IT):",
+            '  "che ora e?"                       → "che ora essere"',
+            '  "che ore sono?"                    → "che ora essere"  (plurale → sing.)',
+            '  "elenca i file in /tmp"            → "elencare file"',
+            '  "trova *.py in /opt/runtime"       → "trovare file"    (glob rimosso)',
+            '  "leggi /tmp/x.txt"                 → "leggere file"',
+            '  "le mie mail importanti di oggi"   → "leggere mail importante"',
+            '  "dove sono?"                       → "trovare posizione"',
+            '  "scarica https://x.com/api"        → "scaricare url"',
+            "",
+            "OK (EN):",
+            '  "what time is it?"                 → "what time be"',
+            '  "list the files in /tmp"           → "list file"',
+            '  "find my latest photos"            → "find photo recent"',
+            "",
+            "OK (ES):",
+            '  "qué hora es?"                     → "qué hora ser"',
+            '  "encuentra mis archivos"           → "encontrar archivo"',
+            "",
+            "ERRORE:",
+            '  "leggi /tmp/x.txt" → "leggi /tmp/x.txt"   (verbatim, non lemma)',
+            '  "trova *.py"       → "trovare *.py"       (argomenti residui)',
+            '  "che ora e?"       → "get_now"            (nome tool, non lemma)',
+            '  "che ore sono?"    → "che ore essere"     (plurale non normalizzato)',
+            '  "what time is it?" → "che ora essere"     (tradotto in IT — vietato)',
+            "═" * 70,
+            "",
+        ]
+        planner_system = planner_system + "\n" + "\n".join(_cq_block)
     if extracted_meta:
         lines = [
             "",
@@ -3344,6 +3807,24 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
     if not _ref_images_for_prompt and not resume_with_scratchpad:
         _fp_hit = try_fast_path(user_query_for_run, lang=DEFAULT_LANG,
                                   default_timezone=DEFAULT_TIMEZONE)
+        # ADR 0149 step 2c (18/5/2026): Layer L1 BGE matcher su
+        # canonical_query_log. Attivo solo se canonical_query opt-in
+        # (stesso flag che alimenta la log). Threshold 0.95 conservative;
+        # miss → fallback planner.
+        if _fp_hit is None and os.environ.get(
+                "METNOS_CANONICAL_QUERY", "0") == "1":
+            try:
+                from canonical_matcher import try_canonical_match
+                _fp_hit = try_canonical_match(user_query_for_run)
+                if _fp_hit is not None and verbose:
+                    print(f"[canonical_matcher] BGE hit "
+                          f"pattern={_fp_hit['pattern']!r} "
+                          f"cosine={_fp_hit.get('cosine', 0):.3f} "
+                          f"executor={_fp_hit['executor']}")
+            except Exception as _ex:
+                import logging as _logging
+                _logging.getLogger(__name__).warning(
+                    "canonical_matcher fallito: %s", _ex)
         if _fp_hit is not None:
             _fp_exec = next((e for e in catalog if e.name == _fp_hit["executor"]), None)
             if _fp_exec is not None:
@@ -3523,14 +4004,20 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
     # come ulteriore guard: se < 0.6 (intent extractor incerto), all sections.
     try:
         from vocab import sections_for_object as _sections_for_object
+        from vocab import object_is_core_only as _object_is_core_only
         _intent_for_route = (route_info or {}).get("intent") or {}
         _conf = (route_info or {}).get("confidence")
         _obj = _intent_for_route.get("object")
         if not isinstance(_conf, (int, float)) or _conf < 0.6:
-            _sections_resolved = None  # all
+            _sections_resolved = None  # all (degrade graceful)
         else:
             _candidate_secs = _sections_for_object(_obj)
-            _sections_resolved = list(_candidate_secs) if _candidate_secs else None
+            if _candidate_secs:
+                _sections_resolved = list(_candidate_secs)  # targeted
+            elif _object_is_core_only(_obj):
+                _sections_resolved = []  # core-only (no sezioni dominio)
+            else:
+                _sections_resolved = None  # object unknown → all
         # Re-render solo se la lista differisce dall'all-sections iniziale.
         if _sections_resolved is not None:
             _planner_targeted = prompt_loader.compose(
@@ -3617,10 +4104,22 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
     if model:
         provider = OllamaProvider(model=model, think=think)
     else:
+        # ADR 0146: default planner = llamacpp + Gemma 4 26B su :8080.
+        # METNOS_PLANNER_PROVIDER=ollama resta supportato per back-compat,
+        # ma richiede ora METNOS_PLANNER_MODEL esplicito (no fallback silenzioso
+        # a qwen3:8b che era latente-broken post-ADR 0146 con ollama disabilitato).
         planner_provider = os.environ.get("METNOS_PLANNER_PROVIDER", "llamacpp")
         if planner_provider == "ollama":
+            ollama_model = os.environ.get("METNOS_PLANNER_MODEL")
+            if not ollama_model:
+                raise ProviderError(
+                    "METNOS_PLANNER_PROVIDER=ollama richiede METNOS_PLANNER_MODEL "
+                    "esplicito (no default post-ADR 0146). Imposta es. "
+                    "METNOS_PLANNER_MODEL=qwen3:8b oppure rimuovi "
+                    "METNOS_PLANNER_PROVIDER per usare il default llamacpp+Gemma."
+                )
             provider = OllamaProvider(
-                model=os.environ.get("METNOS_PLANNER_MODEL", "qwen3:8b"),
+                model=ollama_model,
                 endpoint=os.environ.get("METNOS_PLANNER_ENDPOINT", "http://localhost:11434"),
                 think=think,
             )
@@ -3837,7 +4336,104 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
     else:
         _loop_start_step = _seed_step_n + 1 if _seed_step_used else 1
 
+    # Flag turno: frontier loop-retry consumato? (16/5/2026, una sola
+    # volta per turno; pattern fallback su CYCLIC_CALL primo step).
+    _frontier_loop_retry_done = False
+
     for step_num in range(_loop_start_step, cap_steps + 1):
+        # Install-on-demand auto-inject (§7.3, 17/5/2026): se l'ULTIMO step
+        # ha ritornato `binary_missing` E nessuno step admin ha gia' processato
+        # quel `suggested_install`, sintetizza step admin AUTO senza chiamare
+        # PLANNER. Pattern §7.9 deterministico. Razionale: il LLM Gemma 26B
+        # ignora sistematicamente la rule planner `install_on_demand_binary_missing`
+        # (final_answer e' il path di minor resistenza per il LLM), quindi
+        # runtime forza con tool_call sintetico. Una volta che admin emette
+        # approval_required, il flow ricade nella pipeline standard
+        # (CARD HMAC consent -> user approve -> sudoer -> auto-resume T2).
+        if log.steps:
+            _last_step = log.steps[-1]
+            _last_obs_io = _last_step.result if isinstance(_last_step.result, dict) else {}
+            _io_bm = _detect_binary_missing_in_obs(_last_obs_io)
+            if _io_bm and (_last_step.chosen_tool or "") != "admin":
+                _io_sugg = _io_bm.get("suggested_install", "")
+                _io_pkg = _io_bm.get("package", "?")
+                _io_bin = _io_bm.get("missing_binary", "?")
+                _io_already = any(
+                    (s.chosen_tool or "") == "admin"
+                    and isinstance(s.raw_args, dict)
+                    and s.raw_args.get("command_proposed") == _io_sugg
+                    for s in log.steps
+                )
+                if _io_sugg and not _io_already:
+                    # Sintetizza tool_call admin via invoke_verb_unique
+                    from loader import invoke_verb_unique
+                    _io_admin_args = {
+                        "intent": f"install {_io_pkg} required by {_last_step.chosen_tool} (auto-inject install-on-demand)",
+                        "command_proposed": _io_sugg,
+                    }
+                    _io_obs = invoke_verb_unique(
+                        "admin", caller="agent_runtime",
+                        intent=_io_admin_args["intent"],
+                        command_proposed=_io_admin_args["command_proposed"],
+                        actor=actor or "host",
+                    )
+                    # Append step sintetico nel log
+                    _io_step = StepLog(
+                        step_num=step_num,
+                        chosen_tool="admin",
+                        raw_args=_io_admin_args,
+                        resolved_args=_io_admin_args,
+                        llm_text=f"(install_on_demand: auto-inject admin for {_io_bin})",
+                        result=_io_obs,
+                    )
+                    log.steps.append(_io_step)
+                    # Se admin emette approval_required, save pending resume
+                    # + chiudi turno con CARD (esattamente come fa branch admin
+                    # standard).
+                    if isinstance(_io_obs, dict) and _io_obs.get("approval_required"):
+                        try:
+                            from install_resume_state import save as _io_save
+                            _io_save(
+                                admin_signature=_io_obs.get("signature", ""),
+                                executor=_last_step.chosen_tool or "",
+                                args_base=dict(_last_step.resolved_args
+                                                or _last_step.raw_args or {}),
+                                actor=actor or "host",
+                                channel=channel or "",
+                            )
+                        except Exception as _io_e:  # noqa: BLE001
+                            import logging as _logging
+                            _logging.getLogger(__name__).warning(
+                                "install_on_demand T1 save failed: %s", _io_e)
+                        _io_proposal = {
+                            "kind": "admin_approval",
+                            "step_num": step_num,
+                            "executor": "admin",
+                            "cap_field": "actor_consent_token",
+                            "cap_suggested": _io_obs.get("consent_token", ""),
+                            "args_original": dict(_io_admin_args),
+                            "args_suggested": dict(_io_admin_args,
+                                                    actor_consent_token=_io_obs.get("consent_token", "")),
+                            "approval_card": _io_obs.get("approval_card") or {},
+                            "signature": _io_obs.get("signature", ""),
+                        }
+                        log.final_kind = "answer"
+                        log.final_message = (
+                            f"Per completare l'operazione precedente serve "
+                            f"installare il pacchetto `{_io_pkg}`. "
+                            + (_io_obs.get("summary") or "Approva la card.")
+                        )
+                        log._pending_admin_approval = _io_proposal  # type: ignore[attr-defined]
+                        log.ts_end = time.time()
+                        log.write()
+                        log.expandable_caps = [_io_proposal]
+                        return log
+                    # Se admin returna execute_silent (pkg whitelisted)
+                    # ed ok=True, lascia il loop continuare: il prossimo
+                    # iterazione attivera' il T2 hook (post-admin success)
+                    # e ri-eseguira' l'executor originale.
+                    continue
+
         # Strategia E (ADR 0133): early loop-detect su (tool, error_class)
         # ripetuti. Cattura il caso residuo dove duplicate_call (args
         # identici) + cap_same_executor (10) + consecutive_blocked (3)
@@ -3942,6 +4538,22 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
             candidates = [e for e in candidates
                           if e.name not in _FROM_STEP_HELPERS]
             _added_any = True
+        # Install-on-demand (§7.3, 17/5/2026): se uno step precedente ha
+        # ritornato `binary_missing` in observation, inietta `admin` nel pool
+        # corrente cosi' il PLANNER possa emettere admin(cmd=suggested_install)
+        # come da rule planner `install_on_demand_binary_missing`. Senza
+        # questo, admin non e' visibile al LLM (non nel pool top-K) e il
+        # flow install-on-demand si interrompe a final_answer testuale.
+        if step_num > 1:
+            for _prev_step in log.steps:
+                _prev_obs = _prev_step.result if isinstance(_prev_step.result, dict) else {}
+                if _detect_binary_missing_in_obs(_prev_obs):
+                    if "admin" not in _existing_names:
+                        _admin_exec = next((e for e in catalog if e.name == "admin"), None)
+                        if _admin_exec is not None:
+                            candidates = list(candidates) + [_admin_exec]
+                            _added_any = True
+                    break
         if _added_any:
             base_tools = render_tools_for_provider(candidates)
         tools_for_step = base_tools + synth_tools + ([SCRATCHPAD_READ_TOOL] if sp_entries else [])
@@ -3953,12 +4565,32 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
         # default) per il setup iniziale piu' aperto. Pass-through solo a
         # provider che lo supportano (LlamaCpp); altri provider ignorano
         # il kwarg via filter.
+        #
+        # Per-call think BUDGET modulation (19/5/2026, post bench Gemma 4 26B).
+        # Euristica Roberto: pattern matching (tool calling) ha bisogno di
+        # thinking ma non troppo. Skip completo causa loop_break (planner
+        # sceglie tool sbagliato). Solo modulazione del budget basata su:
+        # (a) complexity manifest [planning] o inferred via verb-of-name;
+        # (b) dimensione pool tools_for_step.
+        # Vedi [[feedback_thinking_budget_heuristic]] e
+        # [[metnos_todo_high_think_per_model]] per validazione cross-model.
+        # Opt-out: METNOS_THINK_MODULATION=0 → ritorno alla formula dyn legacy.
         _chat_kwargs: dict = dict(max_tokens=4096, temperature=0, think=think)
         if getattr(provider, "name", "") == "llamacpp":
-            # Override env-driven per bench (12/5/2026 sera):
-            # METNOS_REASONING_BUDGET="dyn" (default ADR 0099) | "<int>" flat per tutti gli step
+            # Override env-driven:
+            # METNOS_REASONING_BUDGET="dyn" (legacy, default safe per Gemma 4 26B)
+            # | "ctx" (context-aware 19/5/2026 — opt-in per bench, pattern A+B
+            #         su manifest [planning] complexity + verb-of-name fallback;
+            #         bench iniziali mostrano regressione su query multi-step,
+            #         richiede tuning corpus-based prima del default-on)
+            # | "<int>" flat per tutti gli step.
             _rb_env = os.environ.get("METNOS_REASONING_BUDGET", "dyn")
-            if _rb_env == "dyn":
+            _think_mod = os.environ.get("METNOS_THINK_MODULATION", "1") == "1"
+            if _rb_env == "ctx" and _think_mod:
+                _chat_kwargs["reasoning_budget"] = _decide_reasoning_budget(
+                    candidates, tools_for_step, step_num, _loop_start_step
+                )
+            elif _rb_env == "dyn":
                 _chat_kwargs["reasoning_budget"] = 768 if step_num == _loop_start_step else 256
             else:
                 try:
@@ -3992,8 +4624,27 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
                     # questo, il LLM grammar-mode non puo' emettere final
                     # naturale: regrediva su describe_entries duplicato.
                     _allow_fa = step_num >= 2
+                    # request_disambiguation_from_user synthetic (16/5/2026,
+                    # Test 6 fix sistemico): abilitato SOLO al primo step.
+                    # La disambiguazione ha senso PRIMA di scegliere quale
+                    # pipeline eseguire; dopo che si e' iniziato a eseguire,
+                    # interrompere per chiedere all'utente sarebbe regression.
+                    # Anti-loop: disabilitato dopo che la query proviene da
+                    # un restart_turn_with_chosen_query (vedi
+                    # orchestration._process_restart_turn_with_chosen_query
+                    # che passa allow_disambig_synth=False). Senza, il
+                    # PLANNER potrebbe ri-disambiguare la query disambiguata.
+                    _allow_disambig = (step_num == 1) and bool(allow_disambig_synth)
+                    # ADR 0149: opt-in canonical_query by-product (env flag,
+                    # default off until step 2b/2v finishes verification).
+                    _include_cq = os.environ.get(
+                        "METNOS_CANONICAL_QUERY", "1"
+                    ) == "1"
                     _grammar = generate_tool_grammar(
-                        _pool_for_grammar, allow_final_answer=_allow_fa,
+                        _pool_for_grammar,
+                        allow_final_answer=_allow_fa,
+                        allow_disambiguation=_allow_disambig,
+                        include_canonical_query=_include_cq,
                     )
                     if _grammar:
                         _chat_kwargs["grammar"] = _grammar
@@ -4002,22 +4653,218 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
                                   f"grammar {len(_grammar)} chars su "
                                   f"{len(_pool_for_grammar)} tools "
                                   f"(filtered {_excluded or '-'}, "
-                                  f"final_answer={_allow_fa})")
+                                  f"final_answer={_allow_fa}, "
+                                  f"disambig={_allow_disambig})")
                 except Exception as _ex:
                     # `log` qui e' TurnLog (shadow): uso logger module
                     import logging as _logging
                     _logging.getLogger(__name__).warning(
                         "grammar generation failed: %s", _ex)
 
+        # PLANNER call — split opt-in (#H0c, 19/5/2026 v3 post-bench #H0a).
+        # Env METNOS_PLANNER_SPLIT=1 sostituisce la singola chat_with_tools
+        # con 2 call (selector grammar enum-of-names + args filler grammar
+        # tool-specifica). Speedup atteso ~5-10x compounded vs SLIM+SMART
+        # (15.7s → ~1-2s sul smoke pool=3). Default OFF: smoke gate prima
+        # di default-on. Failure -> SplitFailure -> fallback monolithic.
         try:
-            r = provider.chat_with_tools(
-                planner_system, user_query_for_run, tools_for_step,
-                history=history_for_llm, **_chat_kwargs,
+            from planner_split import (
+                is_split_enabled as _split_enabled,
+                is_provider_supported as _split_provider_ok,
+                should_split_proactive as _split_proactive,
+                chat_with_tools_split, SplitFailure, SplitTelemetry,
             )
+        except Exception:
+            _split_enabled = lambda: False  # noqa: E731 (import opzionale)
+            _split_provider_ok = lambda _p: False  # noqa: E731
+            _split_proactive = lambda **kw: _split_enabled()  # noqa: E731 (fallback compat)
+        _split_used = False
+        try:
+            # Step 1 gate (19/5/2026 v3, post-test "proponi orari" loop_break):
+            # il SELECTOR prompt minimale perde la guidance multi-step della
+            # sezione planner (calendar/mail/...) usata dal monolithic. Step
+            # successivi hanno gia' history concreta → la decisione LLM e'
+            # piu' vincolata, lo split sicuro. Speedup ridotto su step 1
+            # (mantiene latenza monolithic ~15s) ma planning preservato;
+            # step 2+ resta a ~3-5s totali (final_answer/follow-up).
+            #
+            # #H0e wire-in (19/5/2026): gate proattivo via should_split_proactive
+            # consulta calibration_sets/<lang>.json per threshold per-verb +
+            # intent_confidence. Su mutating verbs (delete/send/move/share/
+            # write/set/create) richiede confidence alta (≥0.85 IT/≥0.80 EN)
+            # altrimenti fallback monolithic (safety). Su verbi non-mutating
+            # threshold più basso. top_rank_distance signal non disponibile
+            # qui (sarebbe pre-ranking prefilter), passa None → no-op.
+            _split_verb_hint = _intent_verb
+            _split_intent_conf = (route_info or {}).get("confidence")
+            _split_gate_ok = _split_proactive(
+                lang=DEFAULT_LANG,
+                verb_hint=_split_verb_hint,
+                intent_confidence=_split_intent_conf if isinstance(_split_intent_conf, (int, float)) else None,
+                top_rank_distance=None,
+            )
+            if _split_gate_ok and _split_provider_ok(provider) and step_num >= 2:
+                _tel = SplitTelemetry()
+                try:
+                    # Determina permessi synthetic come per il monolitico.
+                    _allow_fa_split = step_num >= 2
+                    _allow_dis_split = (step_num == 1) and bool(allow_disambig_synth)
+                    r = chat_with_tools_split(
+                        provider, planner_system, user_query_for_run,
+                        tools_for_step,
+                        history=history_for_llm,
+                        max_tokens=_chat_kwargs.get("max_tokens", 4096),
+                        temperature=_chat_kwargs.get("temperature", 0),
+                        allow_final_answer=_allow_fa_split,
+                        allow_disambiguation=_allow_dis_split,
+                        include_canonical_query=os.environ.get(
+                            "METNOS_CANONICAL_QUERY", "0") == "1",
+                        telemetry=_tel,
+                        verbose=verbose,
+                    )
+                    _split_used = True
+                    _split_telemetry_persist(_tel, step_num)
+                    if verbose:
+                        print(f"[split.OK] step {step_num} "
+                              f"chosen={_tel.chosen_tool} "
+                              f"sel={_tel.selector_latency_ms}ms "
+                              f"args={_tel.args_latency_ms}ms "
+                              f"in={_tel.selector_in_tok + _tel.args_in_tok} "
+                              f"out={_tel.selector_out_tok + _tel.args_out_tok}")
+                except SplitFailure as _sf:
+                    if verbose:
+                        print(f"[split.FALLBACK] step {step_num} "
+                              f"{_sf.reason}: {_sf.detail or '-'} → monolithic")
+                    _split_telemetry_persist(_tel, step_num,
+                                             extra_fail_reason=_sf.reason)
+                    # Falls through al monolithic.
+            if not _split_used:
+                r = provider.chat_with_tools(
+                    planner_system, user_query_for_run, tools_for_step,
+                    history=history_for_llm, **_chat_kwargs,
+                )
         except ProviderError as e:
             step.error = f"LLM error: {e}"; log.steps.append(step)
             log.final_kind = "error"; log.final_message = f"(errore LLM: {e})"
             log.ts_end = time.time(); log.write(); return log
+
+        # Fallback tier FRONTIER per step 1 quando middle non capisce
+        # (16/5/2026, Roberto): se al primo step il PLANNER middle
+        # (a) emette `request_disambiguation_from_user` OR
+        # (b) non emette alcun tool_call (text-only final)
+        # → re-run con tier frontier (Sonnet/GPT-5 online). Una sola
+        # volta per turno. Pattern §7.3 generale: middle prova, se non
+        # capisce → frontier. Default attivo; disattivabile con
+        # METNOS_PLANNER_TIER_FALLBACK=0. Skip automatico se frontier
+        # non configurato (~/.config/metnos/llm_tiers.toml) o se solleva
+        # eccezione: graceful degrade al risultato middle originale.
+        if (
+            step_num == 1
+            and allow_disambig_synth
+            and os.environ.get("METNOS_PLANNER_TIER_FALLBACK", "1") != "0"
+            and (
+                (r.tool_calls and r.tool_calls[0].name == "request_disambiguation_from_user")
+                or not r.tool_calls
+            )
+        ):
+            _front_skip_reason: str | None = None
+            try:
+                from llm_router import LLMRouter
+                _front_router = LLMRouter()
+                _front_spec = _front_router.tiers.get("frontier") or {}
+                _front_model = _front_spec.get("model")
+                _front_provider = (_front_spec.get("provider") or "").lower()
+                if not _front_model:
+                    _front_skip_reason = "non configurato (tiers.toml)"
+                else:
+                    # Pre-check API key per evitare chiamata sicuramente
+                    # fallita su provider online. Mappa provider → key
+                    # source. §7.9 graceful degrade.
+                    _has_key = True
+                    if _front_provider == "anthropic":
+                        try:
+                            from llm_provider import _read_anthropic_key
+                            _has_key = bool(_read_anthropic_key())
+                        except Exception:
+                            _has_key = False
+                    elif _front_provider == "openai":
+                        try:
+                            from llm_provider import _read_openai_key
+                            _has_key = bool(_read_openai_key())
+                        except Exception:
+                            _has_key = bool(os.environ.get("OPENAI_API_KEY"))
+                    # Provider locali (llamacpp/ollama) non hanno API key
+                    # da controllare: il provider falsa direttamente sulla
+                    # connessione HTTP se l'endpoint non risponde.
+                    if not _has_key:
+                        _front_skip_reason = (
+                            f"API key {_front_provider!r} non configurata "
+                            f"(env, credentials store, o ~/.config/metnos/*.env)"
+                        )
+                # Telemetria fallback frontier (16/5/2026): counter JSON
+                # persistente ~/.local/share/metnos/frontier_fallback_stats.json
+                # per misurare % ricorso e tasso risoluzione. §7.9 deterministico.
+                def _bump_front_stats(key: str) -> None:
+                    try:
+                        import json as _json
+                        _p = (Path.home() / ".local/share/metnos"
+                              / "frontier_fallback_stats.json")
+                        _p.parent.mkdir(parents=True, exist_ok=True)
+                        _data = {}
+                        if _p.exists():
+                            try:
+                                _data = _json.loads(_p.read_text())
+                            except Exception:
+                                _data = {}
+                        _data[key] = int(_data.get(key, 0)) + 1
+                        _p.write_text(_json.dumps(_data, indent=2))
+                    except Exception:
+                        pass
+
+                if _front_skip_reason:
+                    _bump_front_stats("skipped")
+                    if verbose:
+                        print(f"[step {step_num}] fallback frontier SKIP "
+                              f"({_front_skip_reason})")
+                else:
+                    if verbose:
+                        print(f"[step {step_num}] middle->{'disambig' if r.tool_calls else 'no-tool'}, fallback tier=frontier ({_front_provider}/{_front_model})")
+                    # Filtra kwargs incompatibili col provider frontier.
+                    # `grammar`/`reasoning_budget` sono specifici di
+                    # llama-server; Anthropic/OpenAI non li accettano.
+                    _LLAMACPP_ONLY_KWARGS = {
+                        "grammar", "reasoning_budget", "n_predict",
+                        "top_k", "min_p", "tfs_z", "typical_p",
+                    }
+                    _front_kwargs = {
+                        k: v for k, v in _chat_kwargs.items()
+                        if k not in _LLAMACPP_ONLY_KWARGS
+                    }
+                    # Marca il turno come "frontier gia' speso" PRIMA della
+                    # chiamata: previene dual-fire con la cyclic fallback
+                    # ~riga 4500 (entrambi i path costano una call frontier
+                    # online; un solo budget per turno). Coerente con il
+                    # set a riga ~4501 del cyclic branch.
+                    _frontier_loop_retry_done = True
+                    _bump_front_stats("invoked")
+                    _r_front = _front_router.chat_with_tools(
+                        planner_system, user_query_for_run, tools_for_step,
+                        tier="frontier", history=history_for_llm, **_front_kwargs,
+                    )
+                    # Accetta frontier solo se ha emesso un tool_call NON-disambig
+                    # (la disambig frontier non e' miglioria rispetto a middle).
+                    if _r_front.tool_calls and _r_front.tool_calls[0].name != "request_disambiguation_from_user":
+                        r = _r_front
+                        _bump_front_stats("resolved")
+                        if verbose:
+                            print(f"[step {step_num}] frontier resolved → {r.tool_calls[0].name}")
+                    else:
+                        _bump_front_stats("no_improvement")
+            except Exception as _ex:
+                import logging as _logging
+                _logging.getLogger(__name__).warning(
+                    "tier fallback frontier failed: %s — degrade al middle result",
+                    _ex)
 
         tracker.record_post_call(provider.name, r.model, r.in_tokens, r.out_tokens)
         step.llm_in_tokens = r.in_tokens; step.llm_out_tokens = r.out_tokens
@@ -4061,6 +4908,8 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
         raw_args = tc.arguments if isinstance(tc.arguments, dict) else {}
         step.chosen_tool = chosen_name
         step.raw_args = raw_args
+        # ADR 0149: persist by-product canonical_query nel step log.
+        step.canonical_query = getattr(tc, "canonical_query", "") or ""
 
         # Synthetic `final_answer` da grammar (ADR 0133 ext, 15/5/2026):
         # il LLM in grammar-mode emette `final_answer({message:"..."})`
@@ -4071,6 +4920,81 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
             log.steps.append(step)
             log.final_kind = "answer"
             log.final_message = str(_msg).strip() or (r.text or "(risposta vuota)")
+            log.ts_end = time.time(); log.write(); return log
+
+        # Synthetic `request_disambiguation_from_user` da grammar
+        # (Test 6 fix sistemico, 16/5/2026). Il LLM in grammar-mode emette
+        # `request_disambiguation_from_user({question, options[]})` quando
+        # rileva due interpretazioni plausibili. Le `options` sono query
+        # RIFRASATE complete (es. "Manda una email a me con gli
+        # appuntamenti di domani" vs "Cerca nelle mie email i messaggi
+        # sugli appuntamenti"). Runtime materializza `get_inputs(kind=
+        # choice)` riusando l'orchestratore esistente; la scelta utente
+        # diventa la nuova `user_query` del turno successivo. Pattern §7.3
+        # generale, language-agnostic.
+        if chosen_name == "request_disambiguation_from_user":
+            _q = raw_args.get("question", "") if isinstance(raw_args, dict) else ""
+            _opts = raw_args.get("options", []) if isinstance(raw_args, dict) else []
+            _opts_clean = [str(o).strip() for o in _opts if isinstance(o, str) and o.strip()]
+            try:
+                from orchestration import invoke_get_inputs_internal
+                # Sender_id convention per channel (allinea con
+                # _http_sender_id / telegram daemon: ogni channel ha la
+                # propria, e la load_pending in continuation deve usare la
+                # stessa). Pattern §7.3 dispatch table.
+                _conv_id = getattr(log, "conversation_id", "") or ""
+                _ch = (channel or "").lower()
+                if _ch.startswith("http"):
+                    _sender = f"http:{actor or 'host'}:{_conv_id or '_'}"
+                elif _ch.startswith("telegram"):
+                    _sender = f"telegram:{actor or 'host'}"
+                else:
+                    _sender = (f"{channel}:{actor}" if channel
+                                else (actor or "host"))
+                _resp = invoke_get_inputs_internal(
+                    sender_id=_sender,
+                    title=str(_q).strip()[:80] or "Quale interpretazione?",
+                    description=None,
+                    dialog=[{
+                        "var": "chosen_query",
+                        "prompt": str(_q).strip(),
+                        "schema": {"kind": "choice", "choices": _opts_clean},
+                    }],
+                    fmt="auto",
+                    on_complete={
+                        "type": "restart_turn_with_chosen_query",
+                        "original_query": user_query_for_run or "",
+                        "options": _opts_clean,
+                        "conversation_id": getattr(log, "conversation_id", "") or "",
+                    },
+                    actor=actor or "host",
+                    channel=channel or "",
+                )
+            except Exception as _ex:
+                import logging as _logging
+                _logging.getLogger(__name__).warning(
+                    "disambig orchestrate failed: %s", _ex)
+                _resp = {"ok": False,
+                         "error": f"invoke_get_inputs_internal failed: {_ex}"}
+            # Setta `step.result` con la observation del get_inputs cosi'
+            # `_collect_expandable_caps` (Pass 1) propaga automaticamente
+            # `expandable_caps` al log. Stessa shape del get_inputs executor.
+            step.result = {
+                "ok": bool(_resp.get("ok")) if isinstance(_resp, dict) else False,
+                "decision": "disambiguation_required",
+                "question": str(_q).strip(),
+                "options": _opts_clean,
+                "expandable_caps": (
+                    _resp.get("expandable_caps")
+                    if isinstance(_resp, dict) else None
+                ) or [],
+            }
+            log.steps.append(step)
+            log.final_kind = "answer"
+            _fmh = _resp.get("final_message_hint") if isinstance(_resp, dict) else None
+            log.final_message = _fmh or "\n".join(
+                [str(_q).strip()] + [f"{i+1}. {o}" for i, o in enumerate(_opts_clean)]
+            )
             log.ts_end = time.time(); log.write(); return log
 
         # ADR 0133 Strategia 3: post-decode semantic validation per grammar
@@ -4087,6 +5011,7 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
                     {"name": chosen_name, "arguments": raw_args},
                     tools_for_step,
                     allow_final_answer=(step_num >= 2),
+                    allow_disambiguation=(step_num == 1),
                 )
             except Exception as _ex:
                 _ok, _err = True, ""  # fail-open: non bloccare se validator buggy
@@ -4202,7 +5127,168 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
             if _prev.chosen_tool == chosen_name:
                 last_args_for_tool = _prev.raw_args
                 break
+        # Default: non duplicato. Sara' ricalcolata nel branch sottostante
+        # se entriamo nel ramo duplicate-detected (incluso post-frontier).
+        _is_still_dup = False
         if last_args_for_tool is not None and last_args_for_tool == raw_args:
+            # Fallback FRONTIER per CYCLIC_CALL primo step (16/5/2026).
+            # Quando il PLANNER middle ripete il SAME tool+args al secondo
+            # tentativo, e' un signal autoritativo di confusione semantica.
+            # Tenta una sola volta retry con tier=frontier (Opus 4.7) con
+            # hint nel system: "questo tool e' stato gia' tentato, scegli
+            # diverso". Filtri:
+            #   (a) chosen_name != final_answer / disambig (close, no retry).
+            #   (b) step_num <= 3 (cyclic primo step, dopo e' loop diverso).
+            #   (c) verbo NON mutating CON ok=True: se mutazione e' avvenuta
+            #       non c'e' rollback safe. Mutating con ok=False e' OK:
+            #       il fail (target_not_found / tool_inesistente) NON ha
+            #       mutato nulla → retry frontier SAFE.
+            _verb_dup = (chosen_name or "").split("_", 1)[0]
+            _prev_obs_for_retry = None
+            for _prev in reversed(log.steps):
+                if (_prev.chosen_tool == chosen_name
+                        and _prev.raw_args == raw_args):
+                    _prev_obs_for_retry = (
+                        _prev.result if isinstance(_prev.result, dict)
+                        else None
+                    )
+                    break
+            _mutating_succeeded = (
+                _verb_dup in _MUTATING_VERBS
+                and isinstance(_prev_obs_for_retry, dict)
+                and _prev_obs_for_retry.get("ok") is True
+            )
+            # Skip frontier quando auto_final_on_duplicate (riga ~5086) o
+            # auto_final_on_duplicate_fail (riga ~5184) possono chiudere
+            # il turno deterministicamente (19/5/2026, project_cyclic_frontier
+            # _findings). Casi:
+            #  - last_obs.ok == True  → auto_final_on_duplicate chiuderebbe.
+            #  - last_obs.ok == False CON error message valido → fail-close.
+            # In entrambi i casi il frontier sarebbe SPRECO (latency + costo).
+            # Frontier viene chiamato SOLO se nessuno dei 2 path deterministici
+            # potrebbe chiudere (last_obs non dict, o ok=false senza error).
+            _det_close_possible = False
+            if isinstance(_prev_obs_for_retry, dict):
+                if _prev_obs_for_retry.get("ok") is True:
+                    _det_close_possible = True
+                else:
+                    _err_for_det = (_prev_obs_for_retry.get("error") or
+                                     _prev_obs_for_retry.get("message") or "")
+                    if isinstance(_err_for_det, str) and _err_for_det.strip():
+                        _det_close_possible = True
+            _can_retry_front = (
+                not _frontier_loop_retry_done
+                and step_num <= 3
+                and chosen_name not in ("final_answer",
+                                          "request_disambiguation_from_user")
+                and not _mutating_succeeded
+                and not _det_close_possible
+                and os.environ.get("METNOS_PLANNER_TIER_FALLBACK", "1") != "0"
+            )
+            if _can_retry_front:
+                _frontier_loop_retry_done = True
+                try:
+                    from llm_router import LLMRouter
+                    _front_router = LLMRouter()
+                    _front_spec = _front_router.tiers.get("frontier") or {}
+                    _front_model = _front_spec.get("model")
+                    _front_provider = (_front_spec.get("provider") or "").lower()
+                    _has_key = True
+                    if _front_provider == "anthropic":
+                        try:
+                            from llm_provider import _read_anthropic_key
+                            _has_key = bool(_read_anthropic_key())
+                        except Exception:
+                            _has_key = False
+                    if _front_model and _has_key:
+                        # Inietta hint nel system per orientare il frontier:
+                        # "il middle ha gia' tentato questo tool, riprova
+                        # con un'interpretazione diversa".
+                        _retry_hint = (
+                            f"\n\nNOTA RUNTIME: al passo {step_num-1} hai gia' "
+                            f"emesso `{chosen_name}({json.dumps(raw_args, ensure_ascii=False)[:200]})`. "
+                            f"Stai per emetterlo di nuovo identico → DUPLICATE_CALL. "
+                            f"Riconsidera la query e scegli un tool DIVERSO oppure "
+                            f"componi una pipeline differente. Tool dello stesso oggetto "
+                            f"o del dominio adiacente sono probabilmente piu' adatti."
+                        )
+                        _front_kwargs = {
+                            k: v for k, v in _chat_kwargs.items()
+                            if k not in {"grammar", "reasoning_budget",
+                                          "n_predict", "top_k", "min_p",
+                                          "tfs_z", "typical_p"}
+                        }
+                        if verbose:
+                            print(f"[step {step_num}] cyclic detected, "
+                                  f"fallback frontier ({_front_provider}/{_front_model})")
+                        # Telemetria
+                        try:
+                            _stats_p = Path.home() / ".local/share/metnos" / "frontier_fallback_stats.json"
+                            _stats_p.parent.mkdir(parents=True, exist_ok=True)
+                            _d = {}
+                            if _stats_p.exists():
+                                try: _d = json.loads(_stats_p.read_text())
+                                except: _d = {}
+                            _d["cyclic_invoked"] = int(_d.get("cyclic_invoked", 0)) + 1
+                            _stats_p.write_text(json.dumps(_d, indent=2))
+                        except Exception:
+                            pass
+                        _r_front = _front_router.chat_with_tools(
+                            planner_system + _retry_hint,
+                            user_query_for_run, tools_for_step,
+                            tier="frontier", history=history_for_llm,
+                            **_front_kwargs,
+                        )
+                        if _r_front.tool_calls:
+                            _front_tc = _r_front.tool_calls[-1]
+                            _front_name = _front_tc.name
+                            _front_args = (_front_tc.arguments
+                                            if isinstance(_front_tc.arguments, dict)
+                                            else {})
+                            # Accetta solo se DIVERSO dal duplicato
+                            # (name diverso OPPURE args diversi).
+                            if (_front_name != chosen_name
+                                    or _front_args != raw_args):
+                                chosen_name = _front_name
+                                raw_args = _front_args
+                                step.chosen_tool = chosen_name
+                                step.raw_args = raw_args
+                                try:
+                                    _d["cyclic_resolved"] = int(_d.get("cyclic_resolved", 0)) + 1
+                                    _stats_p.write_text(json.dumps(_d, indent=2))
+                                except Exception:
+                                    pass
+                                if verbose:
+                                    print(f"[step {step_num}] cyclic resolved by frontier → {chosen_name}")
+                                # Salta il branch duplicate: il nuovo
+                                # chosen_name non e' duplicato. Ricontrolla
+                                # last_args_for_tool con il NUOVO chosen.
+                                last_args_for_tool = None
+                                for _prev in reversed(log.steps):
+                                    if _prev.chosen_tool == chosen_name:
+                                        last_args_for_tool = _prev.raw_args
+                                        break
+                                # Se anche il nuovo e' duplicato, fall-through
+                                # al branch normale (auto_final).
+                                if (last_args_for_tool is None
+                                        or last_args_for_tool != raw_args):
+                                    # Skip il branch duplicate, esegui normale.
+                                    pass
+                                else:
+                                    # Frontier ha proposto un altro duplicato.
+                                    # Lascia procedere il branch originale.
+                                    pass
+                except Exception as _ex:
+                    import logging as _logging
+                    _logging.getLogger(__name__).warning(
+                        "cyclic frontier fallback failed: %s", _ex)
+            # Se il retry frontier ha sostituito chosen_name e ora NON e'
+            # piu' duplicato → salta il blocco duplicate.
+            _is_still_dup = (last_args_for_tool is not None
+                              and last_args_for_tool == raw_args)
+        # Se _is_still_dup e' False (frontier ha risolto), salta il blocco
+        # duplicate completo e procedi all'invoke normale.
+        if _is_still_dup:
             # Auto-final-on-duplicate: se l'ultima call con questi args ha
             # avuto successo, il modello sta solo cercando rassicurazione.
             # Chiudi il turno con un final_answer derivato dall'ULTIMO step
@@ -4222,10 +5308,20 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
                 # con ok:true che NON sia un mere data-piping helper o un
                 # narrator LLM (describe_entries). Logica estratta a livello
                 # modulo per testabilita' (cf. _resolve_auto_final_from_steps).
-                lp_tool, lp_obs = _resolve_auto_final_from_steps(log.steps)
-                if lp_tool is None:
-                    lp_tool = chosen_name
-                    lp_obs = last_obs_for_dup if isinstance(last_obs_for_dup, dict) else {}
+                # 19/5/2026 fix #12: se il duplicate trigger e' describe_entries
+                # stesso, preferisci la prosa del describer (precedente call)
+                # invece di walk-back-skip-describe verso il producer raw.
+                # Razionale: producer non ha `summary`/`final_message_hint` LLM,
+                # describer si'. Output "Esito gia' nei risultati precedenti"
+                # vs prosa Gemma: la seconda e' user-facing utile.
+                if chosen_name == "describe_entries":
+                    lp_tool = "describe_entries"
+                    lp_obs = last_obs_for_dup
+                else:
+                    lp_tool, lp_obs = _resolve_auto_final_from_steps(log.steps)
+                    if lp_tool is None:
+                        lp_tool = chosen_name
+                        lp_obs = last_obs_for_dup if isinstance(last_obs_for_dup, dict) else {}
                 step.error = "auto_final_on_duplicate"
                 log.steps.append(step)
                 ok_count, n_above_threshold = _extract_auto_final_count(lp_obs)
@@ -4589,6 +5685,41 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
         # Caso speciale: request_new_executor e' builtin (telos di non-rinuncia).
         # Lancia synt multistage sincrono (~150 s wall) e ritorna esito al LLM.
         if chosen_name == "request_new_executor":
+            # B.5 soft-gate (#10 prompt PLANNER re-eng, 19/5/2026 v4):
+            # se il top-K ha un candidate con jaccard affinity vs query >= 0.3,
+            # rifiuta synth e forza il PLANNER a usare il candidate esistente.
+            # Razionale: bug live 11/5 «appuntamenti domani» → request_new_executor
+            # (read_events posizione 3 ignorato). request_new_executor DEVE
+            # essere last-resort.
+            _jaccard_gate = _check_top_k_affinity_jaccard(
+                user_query_for_run, candidates, threshold=0.3,
+            )
+            if _jaccard_gate is not None:
+                # Soft-reject: ritorna osservazione che invita a riusare top-K.
+                obs = {
+                    "ok": False,
+                    "error_code": "ERR_OP_FAILED",
+                    "error": msg("ERR_OP_FAILED",
+                                  reason=f"request_new_executor rejected: "
+                                         f"candidate '{_jaccard_gate[0]}' "
+                                         f"copre la query (jaccard {_jaccard_gate[1]:.2f}). "
+                                         f"Riusalo invece di sintetizzare."),
+                    "rejected_synth": True,
+                    "suggested_tool": _jaccard_gate[0],
+                    "jaccard_score": _jaccard_gate[1],
+                }
+                step.result = obs
+                step.error = "synth_request_blocked_by_jaccard_gate"
+                log.steps.append(step)
+                history_for_refs.append({"step": step_num, "tool": chosen_name,
+                                          "args": args, "observation": obs})
+                history_for_llm.append({"role": "assistant", "tool_calls": [
+                    {"id": tc.call_id, "type": "function",
+                     "function": {"name": chosen_name, "arguments": raw_args}}]})
+                history_for_llm.append({"role": "tool", "tool_call_id": tc.call_id,
+                                         "name": chosen_name,
+                                         "content": _trim_obs_for_history(obs)})
+                continue
             # ADR 0122: passa gli step gia' eseguiti del turno corrente
             # cosi' synth_request puo' calcolare il path_shape_hash e
             # arricchire la proposta con i campi path_eta_*/call_count.
@@ -4854,6 +5985,31 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
             # e consuma diversamente dal cap-expand standard. Termina il turno
             # subito con la summary come final_answer.
             if isinstance(obs, dict) and obs.get("approval_required"):
+                # Install-on-demand T1 hook (§7.3, 17/5/2026): se lo step
+                # PRECEDENTE aveva `binary_missing`, persisti il
+                # pending_install_resume con chiave = admin signature.
+                # Cosi' quando l'utente clicca SI' sulla card e admin
+                # ri-entra in T2 con execute_silent, il post-admin hook
+                # (sotto) ri-esegue l'executor originale automaticamente.
+                try:
+                    if log.steps:
+                        _prev = log.steps[-1]
+                        _prev_obs = _prev.result if isinstance(_prev.result, dict) else {}
+                        _bm_rec = _detect_binary_missing_in_obs(_prev_obs)
+                        if _bm_rec and (_prev.chosen_tool or "") != "admin":
+                            from install_resume_state import save as _save_resume
+                            _save_resume(
+                                admin_signature=obs.get("signature", ""),
+                                executor=_prev.chosen_tool or "",
+                                args_base=dict(_prev.resolved_args or _prev.raw_args or {}),
+                                actor=actor or "host",
+                                channel=channel or "",
+                            )
+                except Exception as _e:  # noqa: BLE001
+                    import logging as _logging
+                    _logging.getLogger(__name__).warning(
+                        "install_on_demand T1 save failed: %s", _e)
+
                 approval_proposal = {
                     "kind": "admin_approval",
                     "step_num": step_num,
@@ -4883,6 +6039,61 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
                 # expandable_caps cosi' il daemon la trova.
                 log.expandable_caps = [approval_proposal]
                 return log
+
+            # Install-on-demand T2 hook (§7.3, 17/5/2026): se admin ok
+            # E c'e' un pending_install_resume associato al signature,
+            # ri-esegui l'executor originale con args_base e chiudi il
+            # turno con l'esito reale. Determinismo §7.9: niente LLM.
+            if isinstance(obs, dict) and obs.get("ok") is True:
+                try:
+                    from install_resume_state import (
+                        load as _load_resume, delete as _del_resume,
+                    )
+                    _pending = _load_resume(obs.get("signature", ""))
+                    if _pending:
+                        _del_resume(obs.get("signature", ""))
+                        _cat = load_catalog()
+                        _ex = _cat.executors.get(_pending["executor"])
+                        if _ex is not None:
+                            _resume_obs = invoke_executor(
+                                _ex, _pending["args_base"],
+                                timeout_s=getattr(_ex, "timeout_s", 60),
+                                actor=_pending.get("actor", "host"),
+                                channel=_pending.get("channel", ""),
+                            )
+                            _resume_step = StepLog(
+                                step_num=step_num + 1,
+                                chosen_tool=_pending["executor"],
+                                raw_args=_pending["args_base"],
+                                resolved_args=_pending["args_base"],
+                                llm_text="(install_on_demand: auto-resume)",
+                                result=_resume_obs,
+                            )
+                            log.steps.append(_resume_step)
+                            _ok_resume = (isinstance(_resume_obs, dict)
+                                            and _resume_obs.get("ok"))
+                            log.final_kind = "answer" if _ok_resume else "error"
+                            if _ok_resume:
+                                _detail = (_resume_obs.get("summary")
+                                            or "completato.")
+                                log.final_message = (
+                                    f"Installato e {_pending['executor']} "
+                                    f"completato: {_detail}"
+                                )
+                            else:
+                                _err = (_resume_obs.get("error")
+                                         if isinstance(_resume_obs, dict)
+                                         else "?")
+                                log.final_message = (
+                                    f"Pacchetto installato ma il riavvio "
+                                    f"di {_pending['executor']} e' fallito: "
+                                    f"{_err}"
+                                )
+                            log.ts_end = time.time(); log.write(); return log
+                except Exception as _e:  # noqa: BLE001
+                    import logging as _logging
+                    _logging.getLogger(__name__).warning(
+                        "install_on_demand T2 resume failed: %s", _e)
 
             # Decisione finale (execute_silent o reject): chiudi turno.
             if not is_multistep:
@@ -5635,12 +6846,26 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
             (not _query_has_continuation(user_query_for_run) and _has_undo)
             or _pipeline_complete
         )
-        if (chosen_name in _AUTO_FINAL_TRANSFORMATIVE
+        # Auto-final transformative: triggera SOLO se almeno 1 elemento e'
+        # davvero stato modificato. ok_count==0 con outer ok=true significa
+        # tutti i results sono fallimenti (binary_missing, dst_exists,
+        # converter_failed, etc.) — il PLANNER deve continuare per emettere
+        # admin install (install-on-demand pattern §7.3, 17/5/2026) o
+        # gestire l'errore. Sintassi: ok_count manca o None → backward
+        # compat (vecchi executor non riportavano) → considera implicit 1.
+        _ok_count_eff = obs.get("ok_count") if isinstance(obs, dict) else None
+        if _ok_count_eff is None:
+            _ok_count_eff = obs.get("n_created") if isinstance(obs, dict) else None
+        # Se esplicito a 0 → NIENTE auto-final (lascia PLANNER continuare).
+        _has_real_change = _ok_count_eff != 0
+        if (_is_auto_final_transformative(chosen_name)
                 and isinstance(obs, dict)
                 and obs.get("ok") is True
+                and _has_real_change
                 and _final_safe):
             r0 = (obs.get("results") or [{}])[0]
             _detail = (r0.get("htmlLink") or r0.get("id")
+                       or r0.get("dst")
                        or _format_send_messages_detail(obs))
             log.final_kind = "answer"
             log.final_message = msg(
@@ -5679,7 +6904,7 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
                 and obs.get("ok") is False
                 and (obs.get("undone_count") or 0) == 0):
             log.final_kind = "answer"
-            log.final_message = msg("MSG_UNDO_NOTHING_TO_UNDO")
+            log.final_message = msg("MSG_UNDO_NOTHING")
             log.ts_end = time.time(); log.write(); return log
 
     # Cap steps superato
