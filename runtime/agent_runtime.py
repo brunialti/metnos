@@ -3562,16 +3562,31 @@ class TurnLog:
                     "request_new_executor",
                     "undo_last_turn",
                 }
-                tools_seq = [
-                    s.chosen_tool for s in self.steps
-                    if s.chosen_tool
-                    and s.chosen_tool not in _NON_EXECUTOR_PSEUDO_TOOLS
-                ]
+                # Dedup tool consecutivi identici (es. find_urls fallisce
+                # e PLANNER retry → log ha [find_urls, find_urls, ...]).
+                # Il fast-path L2 rieseguirebbe il retry come parte della
+                # pipeline normale, raddoppiando i tempi senza guadagno.
+                # Generale: un tool consecutivo a se stesso e' SEMPRE
+                # un retry, mai un pattern legittimo (gli executor sono
+                # idempotent-aware o vector-by-construction, §2.1).
+                _filtered_steps = []
+                _prev_tool = None
+                for s in self.steps:
+                    if not s.chosen_tool:
+                        continue
+                    if s.chosen_tool in _NON_EXECUTOR_PSEUDO_TOOLS:
+                        continue
+                    if s.chosen_tool == _prev_tool:
+                        # Dedup retry consecutivo (preserva l'ULTIMO che
+                        # tipicamente e' il successo).
+                        _filtered_steps[-1] = s
+                        continue
+                    _filtered_steps.append(s)
+                    _prev_tool = s.chosen_tool
+                tools_seq = [s.chosen_tool for s in _filtered_steps]
                 raw_args_per = [
                     s.raw_args if isinstance(s.raw_args, dict) else {}
-                    for s in self.steps
-                    if s.chosen_tool
-                    and s.chosen_tool not in _NON_EXECUTOR_PSEUDO_TOOLS
+                    for s in _filtered_steps
                 ]
                 if len(tools_seq) >= 2:
                     shape = derive_args_shape(
