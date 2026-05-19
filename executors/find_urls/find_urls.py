@@ -868,22 +868,65 @@ def _searxng_search(query: str, top_n: int = SEARXNG_TOP_N,
     return ([it["url"] for it in items], err)
 
 
+def _time_window_to_searxng_range(window: str) -> str | None:
+    """Mappa la canonical time_window a SearXNG `time_range` param.
+
+    Mapping deterministico (no LLM, no hardcoding lingua):
+      today, last-24h           → day
+      last-Nd, N <= 7           → week
+      last-Nd, 7 < N <= 31      → month
+      last-Nd, 31 < N <= 365    → year
+      last-Nh con N <= 24       → day
+      altrimenti (all, range custom) → None (nessun filtro)
+
+    SearXNG time_range filtra server-side via i motori sottostanti.
+    """
+    if not window or window == "all":
+        return None
+    if window in ("today", "last-24h"):
+        return "day"
+    if window.startswith("last-") and window.endswith("h"):
+        try:
+            n = int(window[5:-1])
+            return "day" if n <= 24 else None
+        except ValueError:
+            return None
+    if window.startswith("last-") and window.endswith("d"):
+        try:
+            n = int(window[5:-1])
+        except ValueError:
+            return None
+        if n <= 7:
+            return "week"
+        if n <= 31:
+            return "month"
+        if n <= 365:
+            return "year"
+        return None
+    return None
+
+
 def _searxng_search_full(query: str, top_n: int = SEARXNG_TOP_N,
                           base_url: str | None = None,
-                          timeout_s: float = SEARXNG_TIMEOUT_S
+                          timeout_s: float = SEARXNG_TIMEOUT_S,
+                          time_range: str | None = None
                           ) -> tuple[list[dict], str | None]:
     """Interroga SearXNG e ritorna ([{url, title, snippet}], error_class).
 
     Equivalente a `_searxng_search` ma preserva title+snippet per il
     re-rank LLM (ADR 0118). Determinismo §7.9: solo HTTP GET + JSON.
-    Filtra blocked_origins (ADR 0108).
+    Filtra blocked_origins (ADR 0108). time_range filtra server-side
+    (day/week/month/year) quando passato.
     """
     if not query or not query.strip():
         return ([], "search_backend_invalid")
     base = (base_url
             or os.environ.get("METNOS_SEARXNG_URL", SEARXNG_URL_DEFAULT)
             ).rstrip("/")
-    qs = urllib.parse.urlencode({"q": query, "format": "json"})
+    params = {"q": query, "format": "json"}
+    if time_range:
+        params["time_range"] = time_range
+    qs = urllib.parse.urlencode(params)
     url = f"{base}/search?{qs}"
     try:
         req = urllib.request.Request(
@@ -1088,8 +1131,11 @@ def _invoke_default(args: dict) -> dict:
         # Fetch wide-N (default 30) per dare materiale al re-rank.
         # Se rerank disabilitato, equivalente al vecchio comportamento.
         n_fetch = wide_n if rerank_on else top_n
+        # Propaga time_window → SearXNG time_range (filtro server-side).
+        # Mapping deterministico in _time_window_to_searxng_range.
+        _sx_tr = _time_window_to_searxng_range(time_window)
         candidates_full, err_class = _searxng_search_full(
-            search_query.strip(), top_n=n_fetch,
+            search_query.strip(), top_n=n_fetch, time_range=_sx_tr,
         )
         urls_from_search: list[str] = [c["url"] for c in candidates_full]
         rerank_meta: dict = {"used": False, "reason": "disabled"}

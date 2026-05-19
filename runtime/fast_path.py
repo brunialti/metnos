@@ -31,26 +31,46 @@ from typing import Optional
 # Sostituzioni curly apostrophes → ASCII apostrophe (resilienza UI mobile).
 _CURLY_APO = {"’": "'", "‘": "'", "ʼ": "'"}
 # Punteggiatura finale da scartare.
-_TRAILING_PUNCT = ".?!,;:"
+# Trailing punctuation da scartare. Include apostrofo cosi' "e'"
+# (forma italiana di "è" senza accento) diventa "e" dopo strip.
+# Strip e' leading+trailing only: apostrofi in mezzo (l'ora) NON
+# vengono toccati.
+_TRAILING_PUNCT = ".?!,;:'"
 # Whitespace multipli.
 _WS_RE = re.compile(r"\s+")
 
 
 def _normalize(query: str) -> str:
-    """Normalizza la query per match esatto. Case-insensitive,
-    apostrofi ASCII, niente punteggiatura finale, whitespace collassato.
+    """Normalizza la query per match esatto. Case-insensitive, accent-fold
+    via Unicode NFKD, apostrofi ASCII, niente punteggiatura finale,
+    whitespace collassato.
+
+    Accent-fold (20/5 v6): "e'", "e", "è" (e + combining grave)
+    e "è" tutti convergono a "e". Lang-independent: lo stesso meccanismo
+    vale per `é`, `ñ`, `ü`, `ç`, etc. senza tabelle per-lingua. Razionale:
+    una tabella patterns esaustiva con tutte le varianti accentate esplode
+    O(N varianti per ogni lemma). NFKD + drop combining marks risolve in
+    una riga.
 
     NON aggiungere normalizzazione semantica qui (es. stemming, sinonimi):
-    il fast path e' deterministico per costruzione. Le varianti vivono
-    nella tabella patterns sotto.
+    il fast path e' deterministico per costruzione. Le varianti SEMANTICHE
+    (sinonimi/parafrasi) vivono nella tabella patterns; le varianti
+    LESSICALI (accenti, punteggiatura) sono normalizzate qui.
     """
     if not query:
         return ""
     q = query.strip().lower()
     for src, dst in _CURLY_APO.items():
         q = q.replace(src, dst)
-    # Strip leading/trailing punctuation (anche lettere accentate vanno
-    # gestite a tabella, NON qui — niente decompose unicode).
+    # Unicode NFKD + drop combining marks (Mn category):
+    # "è" (U+00E8) → "e" + U+0300 → "e" (Mn dropped). Funziona per
+    # qualunque scrittura latina, greca, cirillica, etc.
+    import unicodedata as _ud
+    q = "".join(
+        ch for ch in _ud.normalize("NFKD", q)
+        if _ud.category(ch) != "Mn"
+    )
+    # Strip leading/trailing punctuation.
     q = q.strip(_TRAILING_PUNCT + " \t\n")
     q = _WS_RE.sub(" ", q)
     return q
@@ -118,6 +138,27 @@ _UNDO_PATTERNS = (
     "ripristina", "ripristina turno precedente",
 )
 
+# get_location: query ovvie sulla propria posizione. Pattern stretti
+# (esatti, no fuzzy) per evitare false positive su query con verbi
+# d'azione tipo "sposta i file dove sono ora" (NB: queste hanno verbo
+# `sposta` PRIMA di "dove sono", quindi NON matchano per _normalize +
+# lookup esatto).
+_LOCATION_PATTERNS = (
+    # IT
+    "dove sono",
+    "dove mi trovo",
+    "posizione attuale",
+    "mia posizione",
+    "qual'e' la mia posizione",
+    "qual e la mia posizione",
+    # EN
+    "where am i",
+    "current location",
+    "my location",
+    "my current location",
+    "what is my location",
+)
+
 
 _FAST_PATTERNS: list[FastPattern] = [
     FastPattern(
@@ -146,6 +187,17 @@ _FAST_PATTERNS: list[FastPattern] = [
         executor="undo_last_turn",
         args={},
         template_it="",  # output formattato dall'executor stesso
+        template_en="",
+    ),
+    # get_location: query trivialemente single-step (#H0 19/5/2026 sera).
+    # L'executor restituisce {lat, lon, ts, accuracy, channel}. Rendering
+    # template renderizza coordinate. NO geocoding inverso qui — il PLANNER
+    # rimane libero di chiamare find_places se l'utente lo richiede.
+    FastPattern(
+        patterns=_LOCATION_PATTERNS,
+        executor="get_location",
+        args={},
+        template_it="",  # render speciale in _render via observation
         template_en="",
     ),
 ]
@@ -350,6 +402,11 @@ def try_fast_path(query: str, lang: str = "it",
                     return ("Niente da annullare: nessuna azione reversibile nel turno precedente."
                             if lang == "it"
                             else "Nothing to undo: no reversible action in the previous turn.")
+            # get_location ok=False: posizione non condivisa / non disponibile.
+            if fp.executor == "get_location":
+                return ("Posizione non disponibile (nessuna condivisione recente)."
+                        if lang == "it"
+                        else "Location not available (no recent share).")
             err = observation.get("error", "sconosciuto")
             return (f"Errore in {fp.executor}: {err}" if lang == "it"
                      else f"Error in {fp.executor}: {err}")
@@ -363,6 +420,28 @@ def try_fast_path(query: str, lang: str = "it",
             if lang == "it":
                 return f"Annullato: {target_executor} ({target_count} elementi)."
             return f"Undone: {target_executor} ({target_count} items)."
+        if fp.executor == "get_location":
+            loc = observation.get("location") or {}
+            lat = loc.get("lat")
+            lon = loc.get("lon")
+            age = observation.get("age_seconds")
+            if lat is None or lon is None:
+                return ("Posizione non disponibile."
+                        if lang == "it" else "Location not available.")
+            age_str = ""
+            if isinstance(age, (int, float)):
+                if age < 60:
+                    age_str = (f" (aggiornata {int(age)}s fa)" if lang == "it"
+                                else f" (updated {int(age)}s ago)")
+                elif age < 3600:
+                    age_str = (f" (aggiornata {int(age/60)}min fa)" if lang == "it"
+                                else f" (updated {int(age/60)}min ago)")
+                else:
+                    age_str = (f" (aggiornata {int(age/3600)}h fa)" if lang == "it"
+                                else f" (updated {int(age/3600)}h ago)")
+            if lang == "it":
+                return f"Posizione: {lat:.4f}, {lon:.4f}{age_str}."
+            return f"Location: {lat:.4f}, {lon:.4f}{age_str}."
         return _render_template(tpl, observation, default_timezone)
 
     return {
