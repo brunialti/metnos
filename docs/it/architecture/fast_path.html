@@ -1,0 +1,486 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Metnos &mdash; fast-path introvertivo</title>
+    <meta name="description" content="Il fast-path introvertivo di Metnos: come l'assistente riconosce le richieste gia' viste e risponde senza ripassare dal pianificatore. Tre livelli (L0 modelli letterali, L1 single-tool, L2 sequenze), TTL per giorni di attivita', promozione a executor sintetico.">
+    <meta name="keywords" content="fast-path, canonical_matcher, multi_tool_paths, memoization, BGE-M3, sintesi, mnestoma, metnos">
+    <meta name="author" content="Roberto Brunialti">
+    <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large">
+    <link rel="canonical" href="https://metnos.com/it/architecture/fast_path.html">
+    <link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/fast_path.html">
+    <link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/fast_path.html">
+    <link rel="alternate" hreflang="x-default" href="https://metnos.com/en/architecture/fast_path.html">
+    <meta property="og:type" content="article">
+    <meta property="og:url" content="https://metnos.com/it/architecture/fast_path.html">
+    <meta property="og:title" content="Metnos &mdash; fast-path introvertivo">
+    <meta property="og:description" content="Tre livelli di memoizzazione fra l'utente e il pianificatore: come Metnos impara a rispondere subito alle richieste che ha gia' visto.">
+    <meta property="og:locale" content="it_IT">
+    <meta property="og:locale:alternate" content="en_US">
+    <meta property="og:site_name" content="Metnos">
+    <script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "TechArticle",
+  "headline": "Metnos — fast-path introvertivo",
+  "description": "Tre livelli di memoizzazione (modelli letterali, single-tool BGE, sequenze multi-tool con TTL per giorni di attivita') che evitano il pianificatore LLM quando la richiesta e' gia' nota.",
+  "url": "https://metnos.com/it/architecture/fast_path.html",
+  "inLanguage": "it",
+  "isPartOf": {"@type": "WebSite", "name": "Metnos", "url": "https://metnos.com/"},
+  "author": {"@type": "Person", "name": "Roberto Brunialti"},
+  "about": "Metnos component: fast-path introvertivo (canonical_matcher + multi_tool_paths)"
+}
+    </script>
+    <style>
+:root {
+    --navy: #1A477A; --navy-light: #2B6CB0; --sage: #548235;
+    --bronze: #A0522D; --plum: #6B21A8;
+    --bg: #FAFBFC; --text: #1a1a1a;
+    --border: #d0d7de; --code-bg: #f6f8fa;
+    --table-header: #1A477A; --table-alt: #f0f4f8;
+    --note-bg: #dbeafe; --note-border: #3b82f6;
+    --tip-bg: #dcfce7; --tip-border: #16a34a;
+    --warn-bg: #fef3c7; --warn-border: #f59e0b;
+    --danger-bg: #fee2e2; --danger-border: #dc2626;
+    --muted: #64748B;
+}
+* { box-sizing: border-box; }
+body { font-family: 'Segoe UI', Calibri, -apple-system, sans-serif; font-size: 11pt; line-height: 1.65; color: var(--text); background: var(--bg); max-width: 960px; margin: 0 auto; padding: 40px 30px; }
+h1 { color: var(--navy); font-size: 20pt; border-bottom: 3px solid var(--navy); padding-bottom: 8px; margin-top: 50px; page-break-before: always; }
+h1:first-of-type { page-break-before: avoid; }
+h2 { color: var(--navy-light); font-size: 14pt; margin-top: 30px; border-bottom: 1px solid var(--border); padding-bottom: 4px; }
+h3 { color: var(--navy); font-size: 12pt; margin-top: 20px; }
+p { margin: 10px 0; }
+table { width: 100%; border-collapse: collapse; margin: 15px 0; font-size: 10pt; page-break-inside: avoid; }
+th { background: var(--table-header); color: white; padding: 8px 10px; text-align: left; font-weight: 600; }
+td { padding: 7px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+tr:nth-child(even) td { background: var(--table-alt); }
+pre { background: var(--code-bg); border: 1px solid var(--border); border-radius: 4px; padding: 12px 16px; overflow-x: auto; font-size: 9.5pt; line-height: 1.55; page-break-inside: avoid; }
+code { font-family: Consolas, 'Courier New', monospace; }
+p code, li code, td code { background: var(--code-bg); padding: 1px 5px; border-radius: 3px; font-size: 9.5pt; }
+figure { text-align: center; margin: 24px 0; page-break-inside: avoid; }
+figure svg { max-width: 100%; height: auto; border: 1px solid var(--border); border-radius: 6px; background: white; padding: 8px; }
+figcaption { font-style: italic; color: #555; font-size: 9.5pt; margin-top: 8px; }
+.callout { border-left: 4px solid; padding: 10px 16px; margin: 15px 0; border-radius: 0 4px 4px 0; font-size: 10pt; page-break-inside: avoid; }
+.callout.note { background: var(--note-bg); border-color: var(--note-border); }
+.callout.tip { background: var(--tip-bg); border-color: var(--tip-border); }
+.callout.warning { background: var(--warn-bg); border-color: var(--warn-border); }
+.callout.danger { background: var(--danger-bg); border-color: var(--danger-border); }
+.title-page { text-align: center; padding: 80px 0 40px; page-break-after: always; }
+.title-page h1 { font-size: 32pt; border: none; margin: 0; page-break-before: avoid; }
+.title-page .subtitle { font-size: 16pt; color: var(--navy-light); margin: 10px 0 30px; }
+.title-page .meta { font-size: 11pt; color: #666; }
+.toc { page-break-after: always; }
+.toc h2 { border: none; }
+.toc ol { font-size: 11pt; line-height: 2; }
+.toc a { color: var(--navy); text-decoration: none; }
+.toc a:hover { text-decoration: underline; }
+ul, ol { margin: 8px 0; padding-left: 24px; }
+li { margin-bottom: 4px; }
+.lead { font-size: 12pt; color: var(--navy); border-left: 4px solid var(--sage); padding-left: 14px; margin: 18px 0; }
+@media print { body { max-width: none; padding: 0; font-size: 10pt; } h1 { font-size: 16pt; } h2 { font-size: 12pt; } .title-page { padding: 60px 0 30px; } .title-page h1 { font-size: 24pt; } }
+    </style>
+</head>
+<body>
+<nav aria-label="Language" style="position:fixed;top:16px;right:20px;z-index:9999;font-family:'Segoe UI',Calibri,sans-serif;font-size:10pt;letter-spacing:2px;background:#FAFBFC;border:1px solid #d0d7de;border-radius:14px;padding:4px 10px;box-shadow:0 1px 4px rgba(0,0,0,0.04);">
+<a href="/it/architecture/fast_path.html" class="active" hreflang="it" lang="it" style="color:#1a1a1a;text-decoration:none;font-weight:700;padding:0 4px;border:none;">IT</a>
+<span style="color:#d0d7de;"> &middot; </span>
+<a href="/en/architecture/fast_path.html" hreflang="en" lang="en" style="color:#64748B;text-decoration:none;padding:0 4px;border:none;">EN</a>
+</nav>
+
+<div style="background:#fff;border-bottom:1px solid #d0d7de;padding:10px 0;font-size:14px;position:sticky;top:0;z-index:10;margin-bottom:20px;">
+  <div style="max-width:960px;margin:0 auto;padding:0 20px;display:flex;justify-content:space-between;">
+    <a href="../index.html" style="color:#1a477a;text-decoration:none;font-weight:500;">&larr; Indice documentazione</a>
+    <span style="color:#8e8e93;">Microprogettazione &rsaquo; <strong style="color:#1a1a1a;">fast-path introvertivo</strong></span>
+  </div>
+</div>
+
+<div class="title-page">
+    <h1>Metnos</h1>
+    <div class="subtitle">fast-path introvertivo &mdash; come l'assistente impara a rispondere subito</div>
+    <div class="meta">
+        Microprogettazione v1.0 &mdash; 19 maggio 2026<br>
+        Allineata con ADR 0094 (fast_path letterale), 0149 (canonical_matcher),<br>
+        0150 (multi-tool memoization).<br>
+        <br>
+        Pubblico: chi vuole capire perch&eacute; Metnos a volte risponde in mezzo secondo<br>
+        e a volte ci mette dieci.<br>
+        Lettura: 12 minuti.
+    </div>
+</div>
+
+<div class="toc">
+<h2>Indice</h2>
+<ol>
+    <li><a href="#cap1">L'idea in due righe</a></li>
+    <li><a href="#cap2">Perch&eacute; serve un fast-path</a></li>
+    <li><a href="#cap3">I tre livelli, dal piu' semplice al piu' ricco</a></li>
+    <li><a href="#cap4">L0 &mdash; modelli letterali (<code>fast_path.py</code>)</a></li>
+    <li><a href="#cap5">L1 &mdash; un solo executor (<code>canonical_matcher</code>)</a></li>
+    <li><a href="#cap6">L2 &mdash; sequenze multi-step (<code>multi_tool_paths</code>)</a></li>
+    <li><a href="#cap7">Una scadenza che misura l'uso, non il tempo</a></li>
+    <li><a href="#cap8">Fast-path composti: due si tengono per mano</a></li>
+    <li><a href="#cap9">Concatenare il fast-path al pianificatore</a></li>
+    <li><a href="#cap10">L'estrattore di argomenti</a></li>
+    <li><a href="#cap11">Configurazione persistente</a></li>
+    <li><a href="#cap12">Promozione a executor sintetico</a></li>
+    <li><a href="#cap13">Domande aperte</a></li>
+</ol>
+</div>
+
+<h1 id="cap1">1. L'idea in due righe</h1>
+
+<p class="lead">
+Quando una richiesta arriva a Metnos, prima di scomodare il pianificatore
+LLM si cerca di riconoscerla. Se l'abbiamo gia' vista e abbiamo gia'
+deciso bene come rispondere, la rieseguiamo cos&igrave; com'&egrave; e
+torniamo all'utente in mezzo secondo invece che in dieci. Niente
+modelli linguistici nel percorso critico, solo memoria.
+</p>
+
+<h1 id="cap2">2. Perch&eacute; serve un fast-path</h1>
+
+<p>
+Il pianificatore di Metnos &egrave; un Gemma 4 26B locale: pensa
+bene ma ci mette circa dodici secondi a decidere il primo passo di
+un turno. Per molte richieste questa attesa &egrave; spropositata.
+&laquo;Che ora &egrave;&raquo; non ha bisogno di un LLM: ha bisogno di
+<code>get_now</code>. Anche &laquo;scaricami questa pagina e
+descrivila in due righe&raquo; non ha bisogno del pianificatore se &egrave;
+una richiesta che facciamo spesso e di cui sappiamo gi&agrave; la
+sequenza: <code>get_urls</code> e poi <code>describe_entries</code>.
+</p>
+
+<p>
+Da qui la domanda: come riconosciamo che una richiesta &egrave; gi&agrave;
+nota? E come ci accorgiamo che <em>quasi</em> nota &egrave; abbastanza?
+La risposta &egrave; il fast-path introvertivo, organizzato in tre
+livelli &mdash; ciascuno coglie un grado diverso di somiglianza, e
+tutti convergono allo stesso esito: l'assistente esegue la sequenza
+giusta senza pensarci due volte.
+</p>
+
+<h1 id="cap3">3. I tre livelli, dal piu' semplice al piu' ricco</h1>
+
+<table>
+<thead><tr><th>Livello</th><th>Cosa riconosce</th><th>Come</th><th>Costo per ogni hit</th></tr></thead>
+<tbody>
+<tr><td><strong>L0</strong></td><td>Frasi letterali notissime (&laquo;che ora &egrave;&raquo;, &laquo;dove sono&raquo;)</td><td>Tabella chiusa di modelli normalizzati</td><td>microsecondi</td></tr>
+<tr><td><strong>L1</strong></td><td>Una richiesta semanticamente equivalente a una gi&agrave; vista, con UN solo executor</td><td>BGE-M3 cosine sul log delle <em>canonical query</em></td><td>~30 ms</td></tr>
+<tr><td><strong>L2</strong></td><td>Una pipeline multi-step gi&agrave; eseguita prima, con la stessa intenzione</td><td>BGE-M3 cosine sul log delle <em>sequenze</em> + risoluzione di segnaposto</td><td>~30 ms + N invocazioni</td></tr>
+</tbody>
+</table>
+
+<p>
+Il flusso &egrave; rigorosamente sequenziale: prima si tenta L0, se non
+matcha si tenta L1, e solo se anche L1 manca si tenta L2. Se tutti e
+tre mancano, si arriva al pianificatore LLM (L3) come sempre.
+</p>
+
+<div class="callout note">
+<strong>Nota.</strong> Il pianificatore non sparisce: il fast-path
+&egrave; un percorso aggiuntivo, non sostitutivo. Quando la
+richiesta &egrave; nuova, ambigua, o sopra la soglia di una qualunque
+delle ricerche, il pianificatore prende le redini come se il
+fast-path non ci fosse.
+</div>
+
+<h1 id="cap4">4. L0 &mdash; modelli letterali</h1>
+
+<p>
+Il livello pi&ugrave; basso vive in <code>runtime/fast_path.py</code>
+e contiene una manciata di pattern testuali codificati a mano. Sono
+le richieste che ricorrono a tutti, dette in mille modi
+intercambiabili: l'ora, la data, la propria posizione, l'annulla. Per
+ognuna abbiamo elencato le varianti italiane e inglesi che ci aspettiamo
+realisticamente (&laquo;che ora &egrave;&raquo;, &laquo;che ore sono&raquo;,
+&laquo;dimmi l'ora&raquo;, &laquo;what time is it&raquo;, &laquo;current
+time&raquo;...) e l'executor canonico da chiamare.
+</p>
+
+<p>
+Quando arriva una richiesta, la normalizziamo (minuscolo, apostrofi
+diritti, punteggiatura via) e cerchiamo una corrispondenza esatta nel
+dizionario. Se c'&egrave;, l'executor parte subito; la risposta esce
+formattata da un piccolo template italiano/inglese. Zero modello
+linguistico, zero rete, zero attesa percepita.
+</p>
+
+<p>
+&Egrave; una tabella chiusa: la si estende solo aggiungendo modelli
+nuovi, mai con espressioni regolari complicate. La regola d'oro: se
+nel dubbio non sai se va, non aggiungerlo. Conservativo per costruzione.
+</p>
+
+<h1 id="cap5">5. L1 &mdash; un solo executor (<code>canonical_matcher</code>)</h1>
+
+<p>
+Il secondo livello si occupa delle richieste con UN solo executor di
+prima scelta: &laquo;trova le foto del battesimo&raquo;,
+&laquo;mostrami gli appuntamenti di oggi&raquo;, &laquo;leggi questa
+pagina&raquo;. Sono casi in cui non possiamo enumerare a mano tutte
+le varianti possibili, perch&eacute; nel mezzo l'utente cambia
+argomenti, ordine, lessico. Il pianificatore in pratica chiamerebbe
+sempre lo stesso executor: vogliamo arrivare alla stessa conclusione
+senza il giro lungo.
+</p>
+
+<p>
+Per riuscirci, ogni volta che il pianificatore decide il primo passo
+di un turno, Metnos registra nella tabella <code>canonical_query_log</code>
+del mnestoma una riga con tre cose: la richiesta in forma lemma
+(versione canonica, minuscola, condensata), l'executor scelto, e i
+valori degli argomenti che ha effettivamente usato. Da quel momento
+quella riga &egrave; un candidato.
+</p>
+
+<p>
+Quando una nuova richiesta arriva, la trasformiamo nel suo vettore
+semantico con BGE-M3 (lo stesso modello multilingua che usiamo per
+le affinit&agrave;) e calcoliamo il coseno contro tutti i candidati
+con almeno tre osservazioni. Se il candidato pi&ugrave; vicino supera
+la soglia 0,95 di coseno, lo accettiamo: la richiesta nuova viene
+servita con l'executor della riga matchata, e gli argomenti vengono
+estratti dall'estrattore deterministico (vedi <a href="#cap10">&sect;10</a>)
+oppure riusati dai valori memorizzati al primo passaggio.
+</p>
+
+<div class="callout tip">
+<strong>Tre osservazioni minime, non una.</strong> Perch&eacute; una
+sola osservazione potrebbe essere rumore: l'utente ha scritto una
+frase strana, ha cliccato per errore, ha chiesto qualcosa che non
+torner&agrave; pi&ugrave;. Tre passaggi consolidano il pattern. La
+soglia &egrave; configurabile in <code>~/.config/metnos/runtime.toml</code>.
+</div>
+
+<h1 id="cap6">6. L2 &mdash; sequenze multi-step (<code>multi_tool_paths</code>)</h1>
+
+<p>
+Alcune richieste richiedono pi&ugrave; di un executor in sequenza,
+con il risultato del primo che alimenta il secondo. &laquo;Scaricami
+quella pagina e dimmi cosa dice&raquo; &egrave; due step:
+<code>get_urls</code> seguito da <code>describe_entries</code>. Anche
+qui il pattern si ripete: per pipeline frequenti il pianificatore
+finisce sempre per emettere la stessa sequenza, ma con dodici secondi
+di latenza ciascuna volta.
+</p>
+
+<p>
+Il terzo livello memorizza le sequenze. Al termine di ogni turno
+andato a buon fine con due o pi&ugrave; step, Metnos registra in
+<code>multi_tool_paths.sqlite</code> la coppia (canonical query,
+sequenza di executor + segnaposto degli argomenti). Dopo tre passaggi
+identici, la pipeline diventa candidata. Da quel momento, una richiesta
+nuova abbastanza simile (coseno &ge; 0,88) viene riconosciuta e
+rieseguita per intero: nessun pianificatore, nessuna interruzione.
+</p>
+
+<p>
+La soglia 0,88 &egrave; pi&ugrave; permissiva di 0,95 perch&eacute;
+le pipeline multi-step hanno pi&ugrave; varianti lessicali della stessa
+intenzione (&laquo;scarica e descrivi&raquo;,
+&laquo;leggi e riassumi&raquo;, &laquo;fammi un sunto&raquo; sono la
+stessa cosa dal punto di vista dell'esecuzione). La protezione contro
+falsi positivi non &egrave; la soglia, ma la risoluzione dei segnaposto:
+se la nuova richiesta non porta i dati richiesti (per esempio non c'&egrave;
+un URL nel testo ma la pipeline ne richiede uno), il match fallisce e
+si torna al pianificatore. Niente danni.
+</p>
+
+<div class="callout note">
+<strong>Anche L2 ha bisogno di un punto di partenza.</strong> Al primo
+giorno la tabella &egrave; vuota: il sistema accumula osservazioni
+mentre l'utente fa le sue cose normali, e dopo una settimana di uso
+quotidiano comincia a riconoscere le pipeline ricorrenti. Per questo
+L2 nasce con la levetta spenta di default (<code>enabled = false</code>):
+si attiva quando le righe sono sufficienti per essere utili.
+</div>
+
+<h1 id="cap7">7. Una scadenza che misura l'uso, non il tempo</h1>
+
+<p>
+Cosa succede a una memoizzazione che non viene usata per mesi? Se Roberto
+parte due mesi in vacanza, le sue pipeline non vanno cancellate: gli
+serviranno di nuovo al rientro. Per questo le righe di
+<code>multi_tool_paths</code> non scadono a calendario, ma in
+<em>giorni di attivit&agrave; effettiva</em>.
+</p>
+
+<p>
+La tabella <code>system_active_days</code> registra una riga per ogni
+giorno in cui Metnos ha visto almeno un turno. A ciascuna riga
+&egrave; associato un <code>day_rank</code>, un contatore monotono
+crescente: il primo giorno utile &egrave; 1, il secondo 2, e cos&igrave;
+via, saltando i giorni vuoti. Ogni memoizzazione conserva il
+<code>day_rank</code> dell'ultima volta che &egrave; servita. Quando
+il differenziale fra il giorno corrente e quel valore supera N (30
+per default), la riga viene rimossa.
+</p>
+
+<p>
+La conseguenza interessante: due mesi di assenza non contano. Il
+contatore avanza solo nei giorni di uso. Una scadenza misurata in
+&laquo;giorni di vita reale dell'assistente&raquo;, non in
+&laquo;giorni del calendario gregoriano&raquo;.
+</p>
+
+<h1 id="cap8">8. Fast-path composti: due si tengono per mano</h1>
+
+<p>
+C'&egrave; un effetto a cascata interessante. Quando un turno
+contiene step gi&agrave; serviti dal fast-path (perch&eacute; alcuni
+sotto-pezzi della richiesta sono noti), Metnos <em>non</em> li scarta
+dalla registrazione di L2. La sequenza completa &mdash; inclusi i
+passi gestiti da L0 o L1 &mdash; viene memorizzata per quella che
+&egrave;: una pipeline che ha funzionato. Dopo tre passaggi, anche
+quella combinazione diventa un fast-path multi-step.
+</p>
+
+<p>
+Significa che il sistema impara a comporre: due fast-path adiacenti
+diventano un fast-path pi&ugrave; lungo, ricorsivamente. La decisione
+storica &egrave; gi&agrave; approvata per ciascun passo, comporne
+pi&ugrave; insieme non aggiunge rischio, solo determinismo.
+</p>
+
+<h1 id="cap9">9. Concatenare il fast-path al pianificatore</h1>
+
+<p>
+Una variante opzionale (oggi disattivata di default) permette al
+fast-path L2 di passare il testimone al pianificatore <em>dopo</em>
+avere eseguito la sua sequenza. &Egrave; il caso in cui la richiesta
+ha pi&ugrave; verbi: &laquo;scaricami questa pagina e poi mandami il
+sunto per email&raquo;. Il prefisso &laquo;scarica e descrivi&raquo;
+&egrave; un L2 conosciuto; ma &laquo;mandami per email&raquo;
+&egrave; intenzione residua.
+</p>
+
+<p>
+Se la levetta <code>chain_to_planner</code> &egrave; accesa e il
+rilevatore di continuazione (multi-verbo, congiunzioni) trova
+ulteriori azioni nella richiesta, Metnos esegue il prefisso col
+fast-path, lo iscrive nella memoria di lavoro del turno, e cede al
+pianificatore per gli step rimanenti. Il pianificatore vede una
+storia gi&agrave; popolata e decide solo cosa manca, partendo dallo
+step successivo.
+</p>
+
+<h1 id="cap10">10. L'estrattore di argomenti</h1>
+
+<p>
+Riconoscere la richiesta &egrave; met&agrave; del lavoro. L'altra
+met&agrave; &egrave; ricostruire i valori concreti degli argomenti:
+quali path, quali URL, quale data, quale soglia. Per questo Metnos
+ha un piccolo estrattore deterministico (<code>args_extractor.py</code>)
+che lavora a regole, in tre passi:
+</p>
+
+<ol>
+<li><strong>Memoria.</strong> Se la riga matchata nel
+<code>canonical_query_log</code> ha valori osservati al primo
+passaggio (colonna <code>args_observed</code>), li riusiamo
+tali e quali.</li>
+<li><strong>Regole.</strong> Altrimenti applichiamo espressioni
+regolari chiuse per i tipi noti: URL (<code>https://...</code>),
+path (<code>~/...</code> o <code>/...</code>, con la scorciatoia
+&laquo;home&raquo; che diventa <code>~/</code>), email, numeri,
+estensioni di file (&laquo;file PDF&raquo; diventa <code>*.pdf</code>),
+date (oggi/ieri/domani/dopodomani in italiano e inglese, mappate a
+formato ISO), finestre temporali (&laquo;questa settimana&raquo;,
+&laquo;ultime 24 ore&raquo;, &laquo;last 7 days&raquo;).</li>
+<li><strong>LLM, solo se serve.</strong> Se restano argomenti
+obbligatori non coperti, e la levetta
+<code>canonical_query_args_llm</code> &egrave; accesa, si chiama il
+Gemma fast tier con uno schema vincolato e un prompt minimo. Il
+risultato viene messo in cache su disco per non ripetere la chiamata.
+Spento di default: l'esperienza dice che le regole bastano per il 90%
+delle richieste reali.</li>
+</ol>
+
+<h1 id="cap11">11. Configurazione persistente</h1>
+
+<p>
+Tutti i parametri del fast-path vivono in un file TOML
+in <code>~/.config/metnos/runtime.toml</code>, generato al primo
+avvio dal setup. Una variabile d'ambiente <code>METNOS_*</code> ha
+sempre la precedenza, per il debug e i bench; il file TOML stabilisce
+il valore persistente fra un riavvio e l'altro, il default codificato
+nel modulo &egrave; l'ultima rete di sicurezza.
+</p>
+
+<pre>
+[fast_path]
+canonical_query_enabled    = true
+canonical_query_min_uses   = 3
+canonical_query_threshold  = 0.95
+canonical_query_args_llm   = false
+
+[multi_tool_fast_path]
+enabled            = false
+chain_to_planner   = false
+threshold          = 0.88
+min_uses           = 3
+ttl_active_days    = 30
+k_synth            = 50
+</pre>
+
+<h1 id="cap12">12. Promozione a executor sintetico</h1>
+
+<p>
+C'&egrave; un ultimo passaggio che chiude il cerchio. Quando una
+pipeline L2 viene usata abbastanza spesso da meritare un trattamento
+diverso (50 utilizzi, soglia configurabile), un job notturno
+(<code>multi_tool_promote</code>) la promuove a candidato per la
+sintesi vera e propria. Crea un proto-mnest nel mnestoma, con la
+firma desiderata (sequenza di executor, segnaposto, query canonica),
+e da quel momento il motore di sintesi pu&ograve; produrre UN nuovo
+executor unificato che racchiude tutta la pipeline. La promozione
+&egrave; idempotente: una riga gi&agrave; promossa viene ignorata
+nelle esecuzioni successive.
+</p>
+
+<p>
+Il bridge fa due tier conviventi: L2 cattura il volume basso (sequenze
+viste 3-50 volte, replay deterministico tramite N invocazioni di
+executor), mentre L3 prende il sopravvento quando il pattern &egrave;
+stabilmente ricorrente e vale l'investimento di sintetizzare un
+executor monolitico che fa tutto in un colpo. Non si escludono: si
+completano.
+</p>
+
+<h1 id="cap13">13. Domande aperte</h1>
+
+<p>
+Alcuni punti sono volutamente lasciati al futuro, perch&eacute;
+diventano interessanti solo con un po' di volume.
+</p>
+
+<ul>
+<li><strong>Analisi introspettiva.</strong> Le memoizzazioni L2
+sono materiale prezioso per <code>introvertiva</code>: potremmo
+generare proposte automatiche di promozione, identificare cluster
+di pipeline simili, suggerire executor unificati. Per ora il modulo
+introvertiva non legge le memoizzazioni; lo far&agrave; in una fase
+successiva.</li>
+<li><strong>Modalit&agrave; ombra dopo la promozione.</strong> Per
+ora una memoizzazione promossa serve subito a tutti gli utenti. Si
+potrebbe attivare prima in &laquo;shadow&raquo; per K turni, dove
+si confronta la scelta del pianificatore col playback memoizzato, e
+si attiva solo se le due concordano oltre il 95%.</li>
+<li><strong>Verifica del passaggio dati fra step.</strong> Il
+playback assume che il consumer accetti l'output del producer come
+descritto. C'&egrave; gi&agrave; un sistema di consumer-precursor
+nel loader, lo legheremo formalmente al playback in una versione
+successiva.</li>
+</ul>
+
+<p style="margin-top:40px;color:#64748b;font-size:10pt;">
+&copy; 2026 Roberto Brunialti &middot;
+<a href="../../it/" style="color:#64748b;">documentazione Metnos</a> &middot;
+ADR di riferimento: <a href="https://github.com/" style="color:#64748b;">0094</a> /
+0149 / 0150
+</p>
+
+</body>
+</html>

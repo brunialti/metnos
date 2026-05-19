@@ -232,7 +232,7 @@
 
   <url>
     <loc>https://metnos.com/en/architecture/synt</loc>
-    <lastmod>2026-05-01</lastmod>
+    <lastmod>2026-05-19</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/synt"/>
@@ -240,11 +240,28 @@
   </url>
   <url>
     <loc>https://metnos.com/it/architecture/synt</loc>
-    <lastmod>2026-05-01</lastmod>
+    <lastmod>2026-05-19</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/synt"/>
     <xhtml:link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/synt"/>
+  </url>
+
+  <url>
+    <loc>https://metnos.com/en/architecture/fast_path</loc>
+    <lastmod>2026-05-19</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+    <xhtml:link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/fast_path"/>
+    <xhtml:link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/fast_path"/>
+  </url>
+  <url>
+    <loc>https://metnos.com/it/architecture/fast_path</loc>
+    <lastmod>2026-05-19</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+    <xhtml:link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/fast_path"/>
+    <xhtml:link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/fast_path"/>
   </url>
 
   <url>

@@ -256,6 +256,22 @@ The two modes share the same cascade of strategies but differ in <em>timing</em>
 (synchronous vs asynchronous) and in <em>tone</em> (answer vs propose).
 </p>
 
+<div class="callout note">
+<strong>A third source of proto-mnest, from the fast-path.</strong>
+Since 19 May 2026 there is a third trigger channel, not substitutive
+but complementary: the nightly job <code>multi_tool_promote</code>
+(ADR 0150) reads the pipelines memoised in the
+<a href="fast_path.html">L2 fast-path</a> and, when a sequence exceeds
+50 uses, creates a proto-mnest in the mnestome with the desired
+signature (executor chain + placeholders + canonical query). From
+that moment on, the pipeline becomes a candidate for actual
+synthesis: a new unified executor that wraps the whole sequence,
+typically named <code>&lt;last_verb&gt;_&lt;first_object&gt;</code>.
+The bridge does not duplicate work: L2 captures low volume (3&ndash;50
+uses, deterministic replay), L3 takes over when the pattern is stably
+recurring.
+</div>
+
 <h1 id="cap3">3. The cascade: overview</h1>
 
 <figure>

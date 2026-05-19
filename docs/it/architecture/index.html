@@ -563,6 +563,11 @@ Sotto, i quindici documenti raggruppati per ruolo. La colonna
   <td>Constrained generation via GBNF per il <code>tool_call</code> del PLANNER. Discriminated union nome+args, schema recursive, pool filter contestuale, validator post-decode. Risolve thinking-loop, mix-match args, escape-hatch arbitrari. Bench convergenza 50% &rarr; 100%.</td>
   <td><span class="status tested">tested</span></td>
 </tr>
+<tr>
+  <td><a href="fast_path.html"><code>fast-path introvertivo</code></a></td>
+  <td>Tre livelli di memoizzazione prima del pianificatore: L0 modelli letterali (&laquo;che ora &egrave;&raquo;), L1 single-tool tramite <code>canonical_matcher</code> con match BGE-M3 sul <em>canonical query log</em>, L2 sequenze multi-step tramite <code>multi_tool_paths</code> con TTL in giorni di attivit&agrave; effettiva. Ponte L2&rarr;L3 verso la sintesi via proto-mnest. Estrattore di argomenti ibrido regex + memoria + LLM opzionale. Configurazione persistente in <code>~/.config/metnos/runtime.toml</code>.</td>
+  <td><span class="status tested">tested</span></td>
+</tr>
 </tbody>
 </table>
 

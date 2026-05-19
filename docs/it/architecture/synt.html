@@ -256,6 +256,22 @@ differenziano nei <em>tempi</em> (sincrono vs asincrono) e nel <em>tono</em>
 (rispondere vs proporre).
 </p>
 
+<div class="callout note">
+<strong>Una terza sorgente di proto-mnest, dal fast-path.</strong>
+Dal 19 maggio 2026 esiste un terzo canale di innesco, non sostitutivo
+ma complementare: il job notturno
+<code>multi_tool_promote</code> (ADR 0150) legge le pipeline memoizzate
+nel <a href="fast_path.html">fast-path L2</a> e, quando una sequenza
+supera i 50 utilizzi, crea un proto-mnest in mnestoma con la firma
+desiderata (catena di executor + segnaposti + canonical query). Da
+quel momento la pipeline diventa candidata alla sintesi vera e
+propria: un nuovo executor unificato che incorpora tutta la sequenza,
+chiamato di solito <code>&lt;verbo_ultimo&gt;_&lt;oggetto_primo&gt;</code>.
+Il bridge non duplica lavoro: L2 cattura il volume basso (3&ndash;50
+utilizzi, replay deterministico), L3 prende il sopravvento quando il
+pattern &egrave; stabilmente ricorrente.
+</div>
+
 <h1 id="cap3">3. La cascata: visione d'insieme</h1>
 
 <figure>

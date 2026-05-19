@@ -259,6 +259,17 @@ La cosa importante: <em>il comportamento utile emerge dalla composizione</em>, n
 </p>
 </div>
 
+<div class="callout tip">
+<strong>Spesso il pianificatore non viene nemmeno scomodato.</strong>
+Prima di chiamare il modello, il runtime attraversa il
+<a href="fast_path.html">fast-path introvertivo</a>: tre livelli di
+memoizzazione che riconoscono le richieste gi&agrave; viste e
+rieseguono la sequenza giusta in pochi millisecondi. Solo quando
+tutti e tre i livelli mancano, il pianificatore Gemma 4 26B entra
+nel turno. La struttura descritta qui sotto si applica integralmente
+a quel caso; il caso veloce e' descritto nella pagina dedicata.
+</div>
+
 <h1 id="cap2">2. Il loop di un turno, passo per passo</h1>
 
 <p>

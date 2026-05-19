@@ -269,6 +269,17 @@ The key point: <em>useful behaviour emerges from composition</em>, not from hard
 </p>
 </div>
 
+<div class="callout tip">
+<strong>Often the planner is not even bothered.</strong> Before
+calling the model, the runtime walks through the
+<a href="fast_path.html">introvertive fast-path</a>: three layers of
+memoization that recognise requests already seen and replay the right
+sequence in a few milliseconds. Only when all three layers miss does
+the Gemma 4 26B planner enter the turn. The structure described below
+applies in full to that case; the fast case is described in its
+dedicated page.
+</div>
+
 <h1 id="cap2">2. The loop of one turn, step by step</h1>
 
 <p>

@@ -136,6 +136,7 @@ schedule <code>daily@04:00</code>; on top of it, the introspective MVP
     <li><a href="#cap1">Scope and boundaries</a></li>
     <li><a href="#cap2">What the mnestome is</a></li>
     <li><a href="#cap3">What the mnestome is NOT</a></li>
+    <li><a href="#cap-broth">The mnestome broth &mdash; a useful metaphor</a></li>
     <li><a href="#cap4">Data schema</a></li>
     <li><a href="#cap5">Operations: insert, query, update</a></li>
     <li><a href="#cap6">The ager: how decay operates</a></li>
@@ -232,6 +233,418 @@ The mnestome is the <em>observed relation</em> between executors: who
 worked with whom, how often, how recently. Nothing more.
 </p>
 
+<h1 id="cap-broth">3-bis. The mnestome broth &mdash; a useful metaphor</h1>
+
+<p class="lead">
+To understand what a mnestome really does, it helps to stop thinking
+of it as a SQLite table for a moment and start thinking of it as a
+<em>living environment</em>: a broth in which small particles float,
+meet, attract one another, combine. Out of that dynamic, more complex
+structures emerge through progressive aggregation &mdash; a process
+that, every so often, recalls what we see in other natural systems
+made of many elements interacting with each other.
+</p>
+
+<p>
+What follows is a metaphor, not an identity. I use it with restraint:
+it is meant to show three things the mnestome actually does &mdash;
+<em>aggregate</em> what is similar, <em>recognise</em> what is
+missing, <em>let new structures arise</em> when recognition meets the
+right material &mdash; without claiming a literal parallel that is
+not there.
+</p>
+
+<h2>The particles of the broth</h2>
+
+<p>
+At first the broth is empty. Then the particles begin to appear:
+small traces of life that the system collects while the user uses
+it. They come in a few species, each with its shape and role:
+</p>
+
+<figure>
+<svg viewBox="0 0 720 280" xmlns="http://www.w3.org/2000/svg" style="max-width:100%;height:auto;border:1px solid var(--border);border-radius:6px;background:#fbfdff;">
+<style>
+.bg-fill{fill:#eef5fb}
+.lbl{font-family:'Segoe UI',Calibri,sans-serif;font-size:11px;fill:#1a477a}
+.lbl-sm{font-family:'Segoe UI',Calibri,sans-serif;font-size:9px;fill:#64748b}
+.mnest{fill:#1A477A;animation:drift1 8s ease-in-out infinite}
+.mnest2{fill:#2B6CB0;animation:drift2 9s ease-in-out infinite}
+.mnest3{fill:#1A477A;animation:drift3 11s ease-in-out infinite}
+.executor{fill:#548235;animation:drift4 10s ease-in-out infinite}
+.executor2{fill:#6b9b4d;animation:drift5 12s ease-in-out infinite}
+.fastpath{fill:#A0522D;animation:drift6 13s ease-in-out infinite}
+.fastpath2{fill:#c87a4d;animation:drift7 9s ease-in-out infinite}
+.proto{fill:none;stroke:#6B21A8;stroke-width:1.5;stroke-dasharray:3,2;animation:pulse 4s ease-in-out infinite}
+@keyframes drift1{0%,100%{transform:translate(0,0)}50%{transform:translate(15px,-10px)}}
+@keyframes drift2{0%,100%{transform:translate(0,0)}50%{transform:translate(-12px,18px)}}
+@keyframes drift3{0%,100%{transform:translate(0,0)}50%{transform:translate(20px,12px)}}
+@keyframes drift4{0%,100%{transform:translate(0,0)}50%{transform:translate(-18px,-8px)}}
+@keyframes drift5{0%,100%{transform:translate(0,0)}50%{transform:translate(14px,-16px)}}
+@keyframes drift6{0%,100%{transform:translate(0,0)}50%{transform:translate(-10px,14px)}}
+@keyframes drift7{0%,100%{transform:translate(0,0)}50%{transform:translate(16px,-12px)}}
+@keyframes pulse{0%,100%{opacity:0.6}50%{opacity:1}}
+</style>
+<rect class="bg-fill" x="0" y="0" width="720" height="280"/>
+<circle class="mnest" cx="120" cy="80" r="5"/>
+<circle class="mnest2" cx="180" cy="140" r="5"/>
+<circle class="mnest3" cx="240" cy="100" r="5"/>
+<circle class="mnest" cx="300" cy="180" r="5"/>
+<circle class="mnest2" cx="380" cy="80" r="5"/>
+<circle class="mnest3" cx="450" cy="160" r="5"/>
+<circle class="mnest" cx="520" cy="100" r="5"/>
+<circle class="mnest2" cx="580" cy="180" r="5"/>
+<rect class="executor" x="150" y="200" width="14" height="14" rx="2"/>
+<rect class="executor2" x="320" y="60" width="14" height="14" rx="2"/>
+<rect class="executor" x="490" y="200" width="14" height="14" rx="2"/>
+<rect class="fastpath" x="220" y="40" width="22" height="10" rx="5"/>
+<rect class="fastpath2" x="420" y="200" width="22" height="10" rx="5"/>
+<rect class="fastpath" x="550" y="40" width="22" height="10" rx="5"/>
+<path class="proto" d="M380,140 Q395,125 410,140 L410,160 Q395,175 380,160 Z"/>
+<g transform="translate(20,220)">
+  <circle cx="6" cy="6" r="5" fill="#1A477A"/><text class="lbl" x="18" y="10">mnest (passage between executors)</text>
+  <rect x="220" y="0" width="14" height="14" rx="2" fill="#548235"/><text class="lbl" x="240" y="10">executor</text>
+  <rect x="320" y="2" width="22" height="10" rx="5" fill="#A0522D"/><text class="lbl" x="350" y="10">fast-path</text>
+  <path d="M520,2 Q535,-13 550,2 L550,22 Q535,37 520,22 Z" fill="none" stroke="#6B21A8" stroke-width="1.5" stroke-dasharray="3,2"/><text class="lbl" x="560" y="14">proto-mnest</text>
+</g>
+<text class="lbl-sm" x="360" y="260" text-anchor="middle">The particles drift (animation: hover over the illustration).</text>
+</svg>
+<figcaption>Fig. 1 &mdash; The mnestome broth at rest. Four species of particles: mnests (observed passages), executors (graph nodes), fast-paths (introspective shortcuts), and proto-mnests (desires not yet fulfilled).</figcaption>
+</figure>
+
+<p>
+Each particle has a story: a <strong>mnest</strong> is the memory
+that &ldquo;A served B&rdquo;; an <strong>executor</strong> is a
+small programme that knows how to do one specific thing; a
+<strong>fast-path</strong> is a shortcut the system has learned (the
+canonical request &ldquo;X is solved like this&rdquo;); a
+<strong>proto-mnest</strong> is a mnest half-done: real src, dst
+desired but not yet existing. You can see immediately in the drawing
+that the proto-mnest has a different shape, a sort of open receptor:
+there is an empty slot waiting to be filled.
+</p>
+
+<h2>Affinity: particles attract each other</h2>
+
+<p>
+In the broth, nothing is truly random. Particles attract each other
+based on <em>semantic similarity</em>, measured with the BGE-M3
+multilingual model. It works like a force acting at a distance: two
+mnests that concern the same object &mdash; perhaps two requests
+&ldquo;read this page&rdquo; and &ldquo;download me that page&rdquo;
+&mdash; tend to gravitate towards each other. When they do so often
+enough, a cluster forms.
+</p>
+
+<figure>
+<svg viewBox="0 0 720 280" xmlns="http://www.w3.org/2000/svg" style="max-width:100%;height:auto;border:1px solid var(--border);border-radius:6px;background:#fbfdff;">
+<style>
+.bg-fill2{fill:#eef5fb}
+.lbl2{font-family:'Segoe UI',Calibri,sans-serif;font-size:11px;fill:#1a477a}
+.cluster-line{stroke:#2B6CB0;stroke-width:1.5;stroke-dasharray:2,2;fill:none;animation:fade-in 6s ease-in-out infinite}
+.particle-a{animation:converge-a 6s ease-in-out infinite}
+.particle-b{animation:converge-b 6s ease-in-out infinite}
+.particle-c{animation:converge-c 6s ease-in-out infinite}
+.particle-d{animation:converge-d 6s ease-in-out infinite}
+.particle-stable{fill:#1A477A}
+@keyframes converge-a{0%{transform:translate(0,0)}50%{transform:translate(80px,30px)}100%{transform:translate(0,0)}}
+@keyframes converge-b{0%{transform:translate(0,0)}50%{transform:translate(-60px,40px)}100%{transform:translate(0,0)}}
+@keyframes converge-c{0%{transform:translate(0,0)}50%{transform:translate(50px,-40px)}100%{transform:translate(0,0)}}
+@keyframes converge-d{0%{transform:translate(0,0)}50%{transform:translate(-70px,-30px)}100%{transform:translate(0,0)}}
+@keyframes fade-in{0%,30%{opacity:0}50%,80%{opacity:0.6}100%{opacity:0}}
+</style>
+<rect class="bg-fill2" x="0" y="0" width="720" height="280"/>
+<circle cx="360" cy="140" r="20" fill="#dbeafe" stroke="#1A477A" stroke-width="1.5"/>
+<text class="lbl2" x="360" y="144" text-anchor="middle">cluster</text>
+<circle class="particle-stable particle-a" cx="200" cy="80" r="6"/>
+<circle class="particle-stable particle-b" cx="540" cy="80" r="6"/>
+<circle class="particle-stable particle-c" cx="200" cy="200" r="6"/>
+<circle class="particle-stable particle-d" cx="540" cy="200" r="6"/>
+<line class="cluster-line" x1="200" y1="80" x2="360" y2="140"/>
+<line class="cluster-line" x1="540" y1="80" x2="360" y2="140"/>
+<line class="cluster-line" x1="200" y1="200" x2="360" y2="140"/>
+<line class="cluster-line" x1="540" y1="200" x2="360" y2="140"/>
+<text class="lbl2" x="360" y="250" text-anchor="middle" style="font-size:10px;color:#64748b;">semantically close mnests gravitate towards a common centre</text>
+</svg>
+<figcaption>Fig. 2 &mdash; Cluster formation. Particles do not meet by chance: semantic similarity = attractive force.</figcaption>
+</figure>
+
+<p>
+The cluster is not a physical aggregation: it is a cloud of mnests
+concerning the same object. It is the first step towards
+generalisation. The system, looking at the cluster, understands that
+there is a typical recurring request. From here a <em>fast-path</em>
+can emerge: a shortcut that skips the planner and goes straight to
+the right executor.
+</p>
+
+<h2>Receptors: the proto-mnest and the desire</h2>
+
+<p>
+Sometimes, as the system works, something more peculiar happens: the
+planner would like to call an executor that <em>does not exist</em>.
+Maybe the user asked something new, and in the ideal chain the final
+step should have been a <code>compose_report</code> that has never
+been written. What gets recorded, at that moment, is a
+<strong>proto-mnest</strong>: a trace with a known <em>src</em> and
+a <em>dst</em> that is only a name, not yet a programme.
+</p>
+
+<p>
+We can see it as a <strong>receptor</strong>: a shape with an empty
+notch where the dst would fit. The notch is not a graphic detail, it
+is the desired signature &mdash; it declares <em>what</em> would be
+needed to close the shape. The receptor waits: it stays stable as
+long as no one fills it, and becomes more visible as it shows up in
+the same way, turn after turn.
+</p>
+
+<figure>
+<svg viewBox="0 0 720 280" xmlns="http://www.w3.org/2000/svg" style="max-width:100%;height:auto;border:1px solid var(--border);border-radius:6px;background:#fbfdff;">
+<style>
+.bg-fill3{fill:#eef5fb}
+.lbl3{font-family:'Segoe UI',Calibri,sans-serif;font-size:11px;fill:#1a477a}
+.receptor{fill:#fef3c7;stroke:#6B21A8;stroke-width:2;animation:breath 4s ease-in-out infinite}
+.notch-label{fill:#6B21A8;font-family:'Segoe UI',sans-serif;font-size:10px;font-style:italic}
+.src-node{fill:#548235;stroke:#1A477A;stroke-width:1.5}
+@keyframes breath{0%,100%{opacity:0.7;transform:scale(1)}50%{opacity:1;transform:scale(1.05)}}
+</style>
+<rect class="bg-fill3" x="0" y="0" width="720" height="280"/>
+<rect class="src-node" x="180" y="120" width="80" height="50" rx="6"/>
+<text class="lbl3" x="220" y="148" text-anchor="middle" style="fill:#fff;font-weight:600;">read_url</text>
+<text class="lbl3" x="220" y="190" text-anchor="middle">existing executor</text>
+<path d="M270,145 L350,145" stroke="#64748B" stroke-width="2" marker-end="url(#arrowend2en)" fill="none"/>
+<defs>
+  <marker id="arrowend2en" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+    <path d="M0,0 L0,6 L7,3 z" fill="#64748B"/>
+  </marker>
+</defs>
+<text class="lbl3" x="310" y="135" text-anchor="middle" style="fill:#64748b;font-size:10px;">observed mnest</text>
+<path class="receptor" d="M370,120 L450,120 Q470,120 470,140 L470,170 Q450,170 450,160 Q450,140 430,140 Q410,140 410,160 Q410,170 390,170 L370,170 Z"/>
+<text class="notch-label" x="430" y="200" text-anchor="middle">notch: desired dst</text>
+<text class="lbl3" x="500" y="148" style="font-size:10px;">proto-mnest:</text>
+<text class="lbl3" x="500" y="162" style="font-size:10px;">&laquo;compose_report&raquo;</text>
+<text class="lbl3" x="500" y="176" style="font-size:9px;color:#64748b;">does not exist yet</text>
+</svg>
+<figcaption>Fig. 3 &mdash; The proto-mnest as a receptor. Src is an existing executor; dst is a desired name, an open notch that declares its shape.</figcaption>
+</figure>
+
+<h2>Introspective functions: who recognises receptors</h2>
+
+<p>
+Somewhere in the broth, the <em>introspective functions</em> work:
+the silent crafts of <a href="synt.html">synt</a> in its introvertive
+mode and of the introvertiva module. They have no final function of
+their own; they exist to make other things happen. Their hallmark is
+the ability to recognise receptors: to read the open notch and
+understand which dst would close it.
+</p>
+
+<p>
+When an introspective function meets a proto-mnest that has been
+seen more than once (the threshold is three recurring observations,
+ADR 0077), it approaches, analyses it, reads the desired signature,
+and proposes: it emits a <em>candidate</em> for synthesis. The
+proposal says: &ldquo;this receptor exists, it recurs, and here is
+a possible dst that would close it&rdquo;.
+</p>
+
+<figure>
+<svg viewBox="0 0 720 280" xmlns="http://www.w3.org/2000/svg" style="max-width:100%;height:auto;border:1px solid var(--border);border-radius:6px;background:#fbfdff;">
+<style>
+.bg-fill4{fill:#eef5fb}
+.lbl4{font-family:'Segoe UI',Calibri,sans-serif;font-size:11px;fill:#1a477a}
+.enzyme{fill:#dcfce7;stroke:#16a34a;stroke-width:1.5;animation:approach 6s ease-in-out infinite}
+.receptor-stable{fill:#fef3c7;stroke:#6B21A8;stroke-width:2}
+.spark{fill:#f59e0b;animation:flash 6s ease-in-out infinite}
+.proposed{fill:#548235;stroke:#16a34a;stroke-width:2;animation:appear 6s ease-in-out infinite}
+@keyframes approach{0%{transform:translate(-100px,0)}40%,60%{transform:translate(0,0)}100%{transform:translate(-100px,0)}}
+@keyframes flash{0%,55%{opacity:0}60%,70%{opacity:1}75%,100%{opacity:0}}
+@keyframes appear{0%,65%{opacity:0;transform:scale(0.5)}80%,90%{opacity:1;transform:scale(1)}100%{opacity:0;transform:scale(1)}}
+</style>
+<rect class="bg-fill4" x="0" y="0" width="720" height="280"/>
+<path class="receptor-stable" d="M280,100 L380,100 Q400,100 400,130 L400,170 Q380,170 380,160 Q380,135 350,135 Q320,135 320,160 Q320,170 300,170 L280,170 Z"/>
+<text class="lbl4" x="340" y="195" text-anchor="middle" style="font-size:10px;font-style:italic;fill:#6B21A8;">proto-mnest (receptor)</text>
+<g class="enzyme">
+  <rect x="60" y="120" width="60" height="40" rx="20"/>
+  <text class="lbl4" x="90" y="145" text-anchor="middle" style="font-size:10px;font-weight:600;">introvertiva</text>
+</g>
+<g class="spark">
+  <polygon points="350,140 360,130 370,140 360,150"/>
+  <polygon points="355,125 360,115 365,125 360,135"/>
+</g>
+<g class="proposed" transform="translate(490,135)">
+  <rect x="0" y="0" width="100" height="40" rx="6"/>
+  <text class="lbl4" x="50" y="24" text-anchor="middle" style="fill:#fff;font-weight:600;font-size:10px;">compose_report</text>
+  <text class="lbl4" x="50" y="60" text-anchor="middle" style="fill:#16a34a;font-size:10px;">synth candidate</text>
+</g>
+<path d="M400,150 L490,155" stroke="#16a34a" stroke-width="1.5" stroke-dasharray="3,2" fill="none" marker-end="url(#arrow-green2en)"/>
+<defs>
+  <marker id="arrow-green2en" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+    <path d="M0,0 L0,6 L7,3 z" fill="#16a34a"/>
+  </marker>
+</defs>
+</svg>
+<figcaption>Fig. 4 &mdash; The introvertiva approaches the proto-mnest, reads its desired dst and proposes a candidate. The proposal is not applied right away: it goes through the Vaglio, the audit, the human approval (see <a href="synt.html">synt.html</a>).</figcaption>
+</figure>
+
+<h2>Aggregation: fast-paths that compose</h2>
+
+<p>
+Another interesting phenomenon happens in the broth: two fast-paths
+that live adjacent and often appear in the same turn end up
+hooking together to form a longer fast-path.
+</p>
+
+<p>
+Consider a typical turn: &ldquo;download me this page&rdquo; triggers
+an L1 single-tool fast-path; immediately after, &ldquo;tell me what
+it says&rdquo; triggers another L1 fast-path. The system observes
+the succession, records the sequence, and when it repeats three
+times promotes it to an <em>L2 multi-step fast-path</em>. From that
+moment on the pair &laquo;download + describe&raquo; is a single
+recognised sequence.
+</p>
+
+<figure>
+<svg viewBox="0 0 720 280" xmlns="http://www.w3.org/2000/svg" style="max-width:100%;height:auto;border:1px solid var(--border);border-radius:6px;background:#fbfdff;">
+<style>
+.bg-fill5{fill:#eef5fb}
+.lbl5{font-family:'Segoe UI',Calibri,sans-serif;font-size:11px;fill:#1a477a}
+.fp-mono{fill:#A0522D;animation:joinleft 8s ease-in-out infinite}
+.fp-mono2{fill:#A0522D;animation:joinright 8s ease-in-out infinite}
+.fp-poly{fill:#c87a4d;stroke:#A0522D;stroke-width:1.5;animation:emerge 8s ease-in-out infinite}
+.fp-tri{fill:#548235;stroke:#16a34a;stroke-width:1.5;animation:emerge-late 8s ease-in-out infinite}
+@keyframes joinleft{0%{transform:translate(0,0);opacity:1}40%{transform:translate(80px,0);opacity:1}50%,100%{transform:translate(80px,0);opacity:0}}
+@keyframes joinright{0%{transform:translate(0,0);opacity:1}40%{transform:translate(-80px,0);opacity:1}50%,100%{transform:translate(-80px,0);opacity:0}}
+@keyframes emerge{0%,40%{opacity:0;transform:scale(0.5)}50%,80%{opacity:1;transform:scale(1)}90%,100%{opacity:0}}
+@keyframes emerge-late{0%,75%{opacity:0;transform:scale(0.5)}85%,95%{opacity:1;transform:scale(1)}100%{opacity:0}}
+</style>
+<rect class="bg-fill5" x="0" y="0" width="720" height="280"/>
+<rect class="fp-mono" x="80" y="60" width="40" height="14" rx="7"/>
+<text class="lbl5" x="100" y="92" text-anchor="middle" style="font-size:9px;">L1 &laquo;download&raquo;</text>
+<rect class="fp-mono2" x="260" y="60" width="40" height="14" rx="7"/>
+<text class="lbl5" x="280" y="92" text-anchor="middle" style="font-size:9px;">L1 &laquo;describe&raquo;</text>
+<rect class="fp-poly" x="320" y="150" width="90" height="14" rx="7"/>
+<text class="lbl5" x="365" y="182" text-anchor="middle" style="font-size:9px;font-weight:600;">L2 = download + describe</text>
+<rect class="fp-tri" x="520" y="120" width="140" height="60" rx="6"/>
+<text class="lbl5" x="590" y="145" text-anchor="middle" style="fill:#fff;font-weight:600;font-size:11px;">describe_url</text>
+<text class="lbl5" x="590" y="160" text-anchor="middle" style="fill:#fff;font-size:9px;">synthesised executor</text>
+<text class="lbl5" x="590" y="200" text-anchor="middle" style="font-size:9px;color:#64748b;">threshold: 50 repetitions</text>
+<path d="M170,67 Q200,40 240,67" stroke="#64748B" fill="none" stroke-width="1.5" stroke-dasharray="3,2"/>
+<text class="lbl5" x="205" y="35" text-anchor="middle" style="font-size:9px;color:#64748b;">3 repetitions</text>
+<path d="M365,165 L520,150" stroke="#16a34a" stroke-width="1.5" stroke-dasharray="3,2" fill="none" marker-end="url(#arrow-green3en)"/>
+<defs>
+  <marker id="arrow-green3en" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+    <path d="M0,0 L0,6 L7,3 z" fill="#16a34a"/>
+  </marker>
+</defs>
+<text class="lbl5" x="445" y="148" text-anchor="middle" style="font-size:9px;color:#16a34a;">L2→L3 promotion</text>
+</svg>
+<figcaption>Fig. 5 &mdash; Fast-path aggregation. Two L1 fast-paths combine into an L2 after three passes; after fifty, the sequence is stable enough to be unified into a single executor.</figcaption>
+</figure>
+
+<p>
+The sequence does not stop at two. Three adjacent fast-paths can
+form a longer chain, and so on. The system keeps the whole chain,
+measures how often it repeats, and beyond a threshold (50 uses by
+default) a nightly job called <code>multi_tool_promote</code>
+presents the pipeline to synt as a proto-mnest: &ldquo;here is a
+sequence worth unifying into a single executor&rdquo;.
+</p>
+
+<h2>From pipeline to synthesis: two paths to the same outcome</h2>
+
+<p>
+At this point it is worth pausing to observe that synt receives
+proto-mnests from <em>two different paths</em>, independent of one
+another, converging at the same point.
+</p>
+
+<p>
+<strong>The direct path</strong>: the introspective functions
+observe the mnestome and identify the receptors that recur &mdash;
+those proto-mnests that present themselves in the same way turn
+after turn, threshold three recurring observations (ADR 0077). When
+they find one stable enough, they propose directly an executor that
+would close the notch. There is no need to go through a fast-path:
+the analysis of the single receptor is enough. This is the classic
+case, and historically the first that synt learned to handle.
+</p>
+
+<p>
+<strong>The indirect path</strong>: an L2 fast-path pipeline that
+has accumulated enough uses (fifty by default) is promoted by the
+nightly job <code>multi_tool_promote</code> to a proto-mnest. This
+time the proto-mnest is not born from a failed request but from a
+sequence that worked many times: the desired signature describes a
+unified executor that wraps the whole chain of calls.
+</p>
+
+<p>
+The two paths lead to the same entry point. Synt receives the
+proto-mnest, reads the signature, and translates it into a complete
+structure: it runs its five stages (naming, signature, tests,
+description, code), produces a new executor, signs it with ed25519,
+registers it in the catalog. The receptor is no longer open: the
+dst exists, the proto-mnest is promoted to an active mnest. The new
+capability is unique, reusable, and &mdash; whether it comes from
+the direct analysis of a receptor or from the aggregation of a
+pipeline &mdash; enters the executor pool like all the others.
+</p>
+
+<div class="callout tip">
+<strong>The executor always has priority over the fast-path
+(bidirectional rule).</strong>
+The rule holds in both directions of time.
+<em>From synthesis to fast-path</em>: once synthesis has produced
+the <code>describe_urls</code> executor, the aggregated pipeline
+<code>[get_urls, describe_entries]</code> that originated it is
+immediately <em>demoted</em>: its shape dissolves back into the
+broth, and every new request goes directly through the monolithic
+executor.
+<em>From candidate fast-path to non-creation</em>: symmetrically, if
+the system is about to record a new fast-path and discovers that the
+executor that would do the same thing already exists in the catalog,
+the fast-path is not created: there is nothing to memoise if the
+unified capability is already available.
+The runtime applies the rule on the fly in the matcher (auto-demote)
+and in the recording (silent skip); the planner knows it from its
+prompt and never emits the double sequence when the unified executor
+is in the pool. The form has priority over the shortcut, both
+incoming and outgoing.
+</div>
+
+<h2>All together: a system in equilibrium</h2>
+
+<p>
+What emerges, seen from a distance, is a system in dynamic
+equilibrium: closed but alive, where every component takes part in a
+cycle. Particles are born from the observation of the turn, they
+attract by similarity, form clusters, some clusters become
+fast-paths, some fast-paths aggregate into pipelines, mature
+pipelines become proto-mnests that ask for synthesis, synthesis
+produces new executors, the new executors generate further mnests
+and everything starts over.
+</p>
+
+<p>
+At the same time there is a cycle of forgetting: the nightly
+<em>ager</em> (see <a href="#cap6">chapter 6</a>) decays the unused
+particles, reduces their weight, moves them to <em>decaying</em>
+state, eventually archives them. Things that are no longer used
+disappear. The broth cleans itself.
+</p>
+
+<p>
+All of this happens inside a single SQLite file of a few MB. The
+metaphor of the broth is not a teaching trick: it describes
+faithfully enough what the code does. Understanding this level makes
+the chapters that follow &mdash; the data schema, the operations,
+the ager &mdash; obvious: they read like the technical explanation
+of a process you have already seen in motion.
+</p>
+
 <h1 id="cap4">4. Data schema</h1>
 
 <p>
@@ -307,6 +720,46 @@ later if the formula changes.
 CREATE INDEX idx_events_mnest ON events(mnest_id);
 CREATE INDEX idx_events_ts    ON events(ts);
 </code></pre>
+
+<h2>Table <code>canonical_query_log</code></h2>
+
+<p>
+A log of user requests in lemma form, used by the
+<a href="fast_path.html">introvertive fast-path</a> (L1 single-tool,
+ADR 0149). Every time the planner decides the first executor of a
+turn, a row is inserted or reinforced here: canonical query (lowercase
+condensed form), chosen tool, observed argument values. After three
+consolidated passes, the <code>canonical_matcher</code> uses BGE-M3
+cosine to match new requests against this log and skip the planner.
+</p>
+
+<pre><code>CREATE TABLE canonical_query_log (
+  id              INTEGER PRIMARY KEY AUTOINCREMENT,
+  canonical_query TEXT    NOT NULL,
+  tool_name       TEXT    NOT NULL,
+  args_shape      TEXT    NOT NULL,   -- placeholder template (back-compat)
+  args_observed   TEXT,                -- ACTUAL argument values (Phase 14 v5)
+  uses            INTEGER NOT NULL DEFAULT 1,
+  ok_count        INTEGER NOT NULL DEFAULT 0,
+  fail_count      INTEGER NOT NULL DEFAULT 0,
+  ts_first        TEXT    NOT NULL,
+  ts_last         TEXT    NOT NULL,
+  state           TEXT    NOT NULL DEFAULT 'candidate',
+  UNIQUE(canonical_query, tool_name, args_shape)
+);
+</code></pre>
+
+<p>
+The <code>args_observed</code> column (added 19 May 2026 via
+idempotent migration) stores the concrete argument values observed
+on the first planner pass. When a new request matches the row, the
+argument extractor
+(<a href="fast_path.html#cap10"><code>args_extractor</code></a>)
+reuses them directly, avoiding re-running regex extraction or
+calling an LLM. The analogous multi-step sequences live in a separate
+sqlite (<code>multi_tool_paths.sqlite</code>); see
+<a href="fast_path.html">fast_path.html</a> for the full picture.
+</p>
 
 <h2>View <code>v_mnestome</code></h2>
 

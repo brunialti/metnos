@@ -416,6 +416,11 @@ progress or partial). All have an Italian counterpart at
   <td>Constrained generation via GBNF for the PLANNER <code>tool_call</code>. Discriminated union name+args, recursive schema, contextual pool filter, post-decode validator. Solves thinking-loop, args mix-match, arbitrary escape-hatches. Bench convergence 50% &rarr; 100%.</td>
   <td><span class="status tested">tested</span></td>
 </tr>
+<tr>
+  <td><a href="fast_path.html"><code>introvertive fast-path</code></a></td>
+  <td>Three layers of memoization before the planner: L0 literal patterns (&ldquo;what time is it&rdquo;), L1 single-tool via <code>canonical_matcher</code> with BGE-M3 match on the <em>canonical query log</em>, L2 multi-step sequences via <code>multi_tool_paths</code> with active-day TTL. L2&rarr;L3 bridge to synthesis via proto-mnest. Hybrid argument extractor regex + memory + optional LLM. Persistent config in <code>~/.config/metnos/runtime.toml</code>.</td>
+  <td><span class="status tested">tested</span></td>
+</tr>
 </tbody>
 </table>
 
