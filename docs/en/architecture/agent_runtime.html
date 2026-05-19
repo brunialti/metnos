@@ -839,15 +839,51 @@ recurring system tasks without user input. Three schedule supports:
 append-only). The due-time check is idempotent: two ticks in the same slot
 do not run the task twice.</p>
 
-<p><strong>Built-in tasks registered by default</strong>:</p>
+<p><strong>Built-in tasks registered by default</strong> (defined in
+<code>runtime/scheduler_v2/builtin_callbacks.py::_BUILTIN_JOBS</code>,
+auto-installed on first HTTP daemon boot via
+<code>install_default_jobs(scheduler)</code>):</p>
 
 <table>
-<thead><tr><th style="width:18%">Name</th><th style="width:18%">Schedule</th><th>What it does</th></tr></thead>
+<thead><tr><th style="width:24%">Name</th><th style="width:15%">Schedule</th><th>What it does</th></tr></thead>
 <tbody>
+<tr><td><code>i18n_translate_pending</code></td><td><code>daily@02:00</code></td><td>Translates 20 keys in <code>i18n.sqlite</code> flagged <code>needs_translation=1</code> (GPU throttling cap). Wise tier default. See <a href="multilang.html">multilang</a>.</td></tr>
+<tr><td><code>images_index_refresh</code></td><td><code>daily@03:00</code></td><td>Incremental refresh of the unified images index (ADR 0117): walk + stat ~11s, pipeline EXIF + ArcFace + VLM + BGE on new/modified.</td></tr>
+<tr><td><code>apply_executor_ager</code></td><td><code>daily@03:30</code></td><td>Decay of inactive executors: <em>active</em> &rarr; <em>deprecated</em> after 30d idle; <em>deprecated</em> &rarr; <em>archived</em> after another 14d.</td></tr>
 <tr><td><code>apply_ager</code></td><td><code>daily@04:00</code></td><td>Calls <a href="mnestome.html#cap6"><code>Mnestoma.apply_ager()</code></a>: decay + demote + proto purge on the mnestome.</td></tr>
 <tr><td><code>synt_suggest</code></td><td><code>daily@04:30</code></td><td>For each recurring proto-mnest (<code>uses&ge;3</code>, <code>weight&ge;0.30</code>) calls <a href="synt.html"><code>Synt.react()</code></a> in compose-only and logs the outcome.</td></tr>
+<tr><td><code>multi_tool_maintenance</code></td><td><code>daily@04:30</code></td><td>Housekeeping for the <a href="fast_path.html">L2 fast-path</a> (ADR 0150): expire stale (TTL N effective-activity days, default 30) + promote mature pipelines (<code>uses&ge;K_synth</code>, default 50) into proto-mnests in the mnestome for <code>synth_request</code>.</td></tr>
+<tr><td><code>proposals_eta_aggregate</code></td><td><code>daily@04:30</code></td><td>Latency aggregator per <code>path_shape</code> (ADR 0122): scans turn JSONL from the last 7d, computes p50/p95 into <code>proposals_eta.sqlite</code>.</td></tr>
+<tr><td><code>promoter</code></td><td><code>daily@04:45</code></td><td>Promoter daemon: evaluates + promotes synth proposals via <code>proposal_evaluator</code> (6 killer + 7 signal &rarr; verdict).</td></tr>
+<tr><td><code>introvertiva_propose</code></td><td><code>daily@05:00</code></td><td>Introspective cascade: produces <em>dedupe / generalize / specialize</em> proposals on the accumulated corpus (no auto-apply, audit JSONL).</td></tr>
+<tr><td><code>introvertiva_apply</code></td><td><code>daily@05:30</code></td><td>Auto-applies specialize proposals at high confidence (dominance &ge; 0.9, uses &ge; 30, window &le; 14d).</td></tr>
+<tr><td><code>proposals_cleanup</code></td><td><code>daily@06:00</code></td><td>Lifecycle backlog maintenance (ADR 0096): archive aged synt_proposals, dedupe candidates, auto-decay legacy_orphan. <strong>NO delete</strong>: move + UPDATE only.</td></tr>
+<tr><td><code>lifecycle_summary</code></td><td><code>daily@06:30</code></td><td>READ-ONLY aggregator of the 4 agers (ADR 0097): produces a daily summary of the mnestome lifecycle.</td></tr>
+<tr><td><code>skill_sandbox_watchdog</code></td><td><code>daily@06:35</code></td><td>Mini-version of Phase C (ADR 0140): checks the trigger threshold for per-skill sandbox (&ge; 5 third-party skills OR &ge; 1 paired guest); notifies admin via Telegram.</td></tr>
+<tr><td><code>promoter_digest</code></td><td><code>daily@07:00</code></td><td>Telegram digest of proposals in <em>promoted_grace</em> not yet user-approved.</td></tr>
+<tr><td><code>github_watcher</code></td><td><code>every_30m</code></td><td>Phase D GitHub provider (ADR 0141): scans every 30 min the monitored repos (<code>~/.config/metnos/github_watched_repos.json</code>), detects issue/PR/comments, applies BGE-M3 semantic dedup and either auto-replies (4-AND safety) or opens a Stage 2 dialog.</td></tr>
 </tbody>
 </table>
+
+<div class="callout note">
+<strong>Schedule entry lifecycle.</strong> Rows live in
+<code>~/.local/state/metnos/scheduler_v2.sqlite</code>
+(<code>schedule_entries</code> table). Three guarantees:
+<ul>
+<li><em>Fresh install boot</em>: <code>install_default_jobs</code> is called
+on first HTTP daemon startup (<code>metnos_http_server.py:131</code>) and
+inserts the <code>_BUILTIN_JOBS</code> with INSERT-OR-IGNORE &mdash; existing
+rows are preserved (keep <code>last_run_at</code>,
+<code>total_runs</code>...).</li>
+<li><em>Subsequent boot</em>: the scheduler reads persistent entries,
+computes <code>next_fire_at</code>, starts the loop. Events missed during
+downtime are ignored (next valid window): no chaotic catch-up.</li>
+<li><em>Shutdown</em>: <code>scheduler.stop(timeout=5s)</code> sets
+<code>shutdown_evt</code>, waits for the current task to finish, then
+<code>pool.shutdown(cancel_futures=True)</code>. In-flight jobs past the
+timeout are cancelled gracefully.</li>
+</ul>
+</div>
 
 <p>
 The daemon loop (<code>scheduler daemon</code>) is a single process that runs

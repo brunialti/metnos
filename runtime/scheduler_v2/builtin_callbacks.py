@@ -159,6 +159,17 @@ _BUILTIN_JOBS: list[dict[str, Any]] = [
             "Stage 2 al host. Default config vuota = no-op."
         ),
     },
+    {
+        "name": "multi_tool_maintenance",
+        "trigger": "daily@04:30",
+        "callback_key": "multi_tool_maintenance",
+        "description": (
+            "Housekeeping fast-path L2 multi-tool (ADR 0150): expire "
+            "stale entries (TTL N giorni di attivita' effettiva, default "
+            "30) + promote pipelines mature (uses>=K_synth, default 50) "
+            "a proto-mnest in mnestoma per synth_request. Idempotente."
+        ),
+    },
 ]
 
 
@@ -325,11 +336,23 @@ def install_default_callbacks(scheduler) -> None:
     # Multi-tool fast-path promotion L2 → L3 (ADR 0150 19/5/2026 v4):
     # daily@04:30 scan multi_tool_paths uses>=K_synth (default 50) e crea
     # proto-mnest in mnestoma. Firma nativa v2.
-    from jobs.multi_tool_promote import task_multi_tool_promote
+    # Multi-tool fast-path housekeeping unificato (ADR 0150 v6).
+    # Un singolo job daily che fa cleanup + promote in sequenza sullo stesso
+    # sqlite. Order: expire stale PRIMA, poi promote — cosi' non promuoviamo
+    # entries che stiamo per buttare.
+    def _task_multi_tool_maintenance(payload=None):
+        from multi_tool_paths import expire_stale_paths
+        from jobs.multi_tool_promote import task_multi_tool_promote
+        expired = expire_stale_paths()
+        promoted = task_multi_tool_promote(payload or {})
+        return {"ok": True, "expired": expired,
+                "promoted": promoted.get("promoted", 0),
+                "skipped": promoted.get("skipped", 0),
+                "errors": promoted.get("errors", [])}
     cb.register(
-        "multi_tool_promote",
-        task_multi_tool_promote,
-        "Promuove pipeline L2 a proto-mnest (synth_request trigger, ADR 0150)",
+        "multi_tool_maintenance",
+        _task_multi_tool_maintenance,
+        "Housekeeping unificato L2: expire stale + promote a proto-mnest (ADR 0150)",
         replace=True,
     )
 
