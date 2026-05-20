@@ -164,7 +164,7 @@
 
   <url>
     <loc>https://metnos.com/en/architecture/</loc>
-    <lastmod>2026-05-01</lastmod>
+    <lastmod>2026-05-19</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/"/>
@@ -172,7 +172,7 @@
   </url>
   <url>
     <loc>https://metnos.com/it/architecture/</loc>
-    <lastmod>2026-05-01</lastmod>
+    <lastmod>2026-05-19</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/"/>
@@ -181,7 +181,7 @@
 
   <url>
     <loc>https://metnos.com/en/architecture/executor</loc>
-    <lastmod>2026-05-06</lastmod>
+    <lastmod>2026-05-15</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/executor"/>
@@ -189,7 +189,7 @@
   </url>
   <url>
     <loc>https://metnos.com/it/architecture/executor</loc>
-    <lastmod>2026-05-06</lastmod>
+    <lastmod>2026-05-15</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/executor"/>
@@ -215,7 +215,7 @@
 
   <url>
     <loc>https://metnos.com/en/architecture/mnestome</loc>
-    <lastmod>2026-05-01</lastmod>
+    <lastmod>2026-05-19</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/mnestome"/>
@@ -223,7 +223,7 @@
   </url>
   <url>
     <loc>https://metnos.com/it/architecture/mnestoma</loc>
-    <lastmod>2026-05-01</lastmod>
+    <lastmod>2026-05-19</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/mnestome"/>
@@ -284,7 +284,7 @@
   <!-- Microdesign tested al POC v1.1 (26/4/2026), tradotti EN il 27/4 sera -->
   <url>
     <loc>https://metnos.com/en/architecture/agent_runtime</loc>
-    <lastmod>2026-05-01</lastmod>
+    <lastmod>2026-05-20</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.65</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/agent_runtime"/>
@@ -292,7 +292,7 @@
   </url>
   <url>
     <loc>https://metnos.com/it/architecture/agent_runtime</loc>
-    <lastmod>2026-05-01</lastmod>
+    <lastmod>2026-05-20</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.65</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/agent_runtime"/>
@@ -330,6 +330,42 @@
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/grammar"/>
     <xhtml:link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/grammar"/>
+  </url>
+
+  <!-- multilang: pipeline traduzione manifest + prompts (ADR 0092) -->
+  <url>
+    <loc>https://metnos.com/en/architecture/multilang</loc>
+    <lastmod>2026-05-06</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/multilang"/>
+    <xhtml:link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/multilang"/>
+  </url>
+  <url>
+    <loc>https://metnos.com/it/architecture/multilang</loc>
+    <lastmod>2026-05-06</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/multilang"/>
+    <xhtml:link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/multilang"/>
+  </url>
+
+  <!-- skill_importer: agentskills.io → executor (ADR 0123) -->
+  <url>
+    <loc>https://metnos.com/en/architecture/skill_importer</loc>
+    <lastmod>2026-05-15</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/skill_importer"/>
+    <xhtml:link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/skill_importer"/>
+  </url>
+  <url>
+    <loc>https://metnos.com/it/architecture/skill_importer</loc>
+    <lastmod>2026-05-15</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/skill_importer"/>
+    <xhtml:link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/skill_importer"/>
   </url>
 
   <!-- Microdesign tested al 27/4/2026: vaglio, channel, pairing (bilingui), observability (IT-only) -->
