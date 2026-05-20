@@ -6483,115 +6483,19 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
                     if isinstance(_h, dict) and _h and "health_context" not in args:
                         args = dict(args)
                         args["health_context"] = _h
-                    # 10/5/2026 fix UX deterministico (rivisto 20/5/2026):
-                    # se la sorgente e' find_urls (anche attraverso
-                    # filter/sort/group helpers in mezzo) con entries
-                    # (URL list metadata), l'interceptor scatta SOLO se
-                    # l'utente ha chiesto esplicitamente i link.
-                    #
-                    # Default = riassunto: describe_entries va lasciato
-                    # eseguire; la sua detection `needs_content_fetch`
-                    # interpone read_urls_html (ADR 0153 auto-remediation)
-                    # ed estrae il testo prima di sintetizzare.
-                    #
-                    # Eccezione = list-intent: query che chiede
-                    # esplicitamente la lista link. Vocabolario chiuso
-                    # IT+EN, regex word-boundary. Niente "link" da solo
-                    # (troppo ambiguo: "trova link che parlano di..."
-                    # vuole riassunto, non lista).
-                    _LIST_INTENT_RE = _re.compile(
-                        r"\b("
-                        r"dammi\s+i\s+link|"
-                        r"elenca(?:mi)?\s+(?:i\s+)?link|"
-                        r"lista\s+(?:di\s+)?link|"
-                        r"mostra(?:mi)?\s+(?:i\s+)?link|"
-                        r"solo\s+(?:i\s+)?link|"
-                        r"elenco\s+link|"
-                        r"list\s+of\s+links|"
-                        r"links?\s+only|"
-                        r"just\s+(?:the\s+)?links?|"
-                        r"give\s+me\s+(?:the\s+)?links?"
-                        r")\b",
-                        _re.IGNORECASE,
-                    )
-                    _list_intent = bool(
-                        _LIST_INTENT_RE.search(user_query_for_run or "")
-                    )
-                    # Branch list-intent: walk-back + skip describe + auto-final
-                    # con lista link cliccabili (vecchio comportamento).
-                    # Senza list-intent: fall-through, describe_entries gira
-                    # normalmente e l'auto-remediation needs_content_fetch
-                    # interpone read_urls_html per il riassunto reale.
-                    _HELPER_TOOLS = {
-                        "filter_entries", "sort_entries", "group_entries",
-                        "classify_entries",
-                    }
-                    _walk = _fs
-                    _walked = 0
-                    _src_tool = ""
-                    while _walked < 5 and 1 <= _walk <= len(history_for_refs):
-                        _entry_step = history_for_refs[_walk - 1]
-                        _entry_tool = _entry_step.get("tool", "")
-                        if _entry_tool in _HELPER_TOOLS:
-                            _entry_args = _entry_step.get("args", {}) or {}
-                            _next_fs = _entry_args.get("from_step")
-                            if isinstance(_next_fs, str) and _next_fs.isdigit():
-                                _next_fs = int(_next_fs)
-                            if not isinstance(_next_fs, int):
-                                break
-                            _walk = _next_fs
-                            _walked += 1
-                            continue
-                        _src_tool = _entry_tool
-                        _src_obs = _entry_step.get("observation", {})
-                        break
-                    if (_list_intent
-                            and _src_tool == "find_urls"
-                            and isinstance(_src_obs, dict)
-                            and _src_obs.get("ok")
-                            and _src_obs.get("entries")):
-                        _entries = _src_obs.get("entries") or []
-                        _docs = _src_obs.get("discovered_documents") or []
-                        _n_ranked = sum(
-                            1 for _e in _entries
-                            if isinstance(_e, dict)
-                            and isinstance(_e.get("score"), (int, float))
-                            and _e["score"] > 0
-                        )
-                        # Phantom step: registra il NO-OP per audit
-                        step.result = {
-                            "ok": True,
-                            "skipped": True,
-                            "reason": "describe_on_find_urls_intercepted",
-                            "from_step": _fs,
-                            "n_entries": len(_entries),
-                            "n_ranked": _n_ranked,
-                            "n_docs": len(_docs),
-                        }
-                        step.error = "describe_skipped_for_search_results"
-                        log.steps.append(step)
-                        history_for_refs.append({
-                            "step": step_num, "tool": chosen_name,
-                            "args": args, "observation": step.result,
-                        })
-                        # Final answer breve, deterministico. La lista
-                        # cliccabile la appende write() via
-                        # _append_search_results_if_any.
-                        log.final_kind = "answer"
-                        try:
-                            from messages import get as _msg_local
-                            log.final_message = _msg_local(
-                                "MSG_SEARCH_INTRO",
-                                n=len(_entries), query=user_query_for_run or "",
-                            )
-                        except Exception:
-                            log.final_message = (
-                                f"Trovati {len(_entries)} risultati per "
-                                f"«{(user_query_for_run or '')[:80]}»."
-                            )
-                        log.ts_end = time.time(); log.write(); return log
             except (KeyError, IndexError, TypeError):
                 pass
+            # 20/5/2026: l'interceptor che dirottava describe_entries(find_urls)
+            # verso lista link (originato 10/5 come fix UX) e' stato rimosso.
+            # Razionale (lang-independent §7.3): la scelta del verbo e' del
+            # planner, che decide gia' via intent_extractor + vocab.py se
+            # l'utente vuole sintesi (describe_entries) o lista (find_urls
+            # senza describe). Il runtime non deve sovrascrivere quella scelta.
+            # ADR 0153 auto-remediation needs_content_fetch -> read_urls_html
+            # garantisce che describe produca sintesi reale anche su entries
+            # url+title+snippet. _append_search_results_if_any aggiunge i link
+            # come fonti DOPO l'abstract, ristretti agli URL effettivamente
+            # processati da read_urls_html (body_text >= 100 char).
             obs = handle_describe_entries(args, verbose=verbose)
             # ADR 0153 (20/5/2026 v6): auto-remediation generalizzata.
             # Se l'observation ha error_class noto al registry
