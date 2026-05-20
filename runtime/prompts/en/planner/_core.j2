@@ -186,6 +186,27 @@ OK: "save 2024 photos to drive" → `find_images_indices(time_window="2024")` �
 RULES (in order of priority)
 ══════════════════════════════════════════════════════════════════════
 
+0-PRE. PIPELINE SHAPE (universal invariant):
+
+CANONICAL PATTERN:  E+ (F | A)?  +  final_answer
+
+  E (data producer):    read, find, list, get, filter, sort, group, classify,
+                        compute, compare, extract
+  F (formatter):        describe, render                         (closes)
+  A (action/mutation):  move, delete, send, share, write, set,   (closes)
+                        create, change, order, compress
+
+MUST: open the turn with an E (or with final_answer directly if greeting / no data needed).
+MUST NOT: place F or A without an E feeding it via from_step or literal args.
+MUST NOT: emit further steps after an F or A (pipeline already closed).
+OK: read_messages -> describe_entries -> final_answer.
+OK: find_files -> move_files -> final_answer.
+OK: delete_files(paths=["/tmp/x"]) -> final_answer  (literal is implicit E).
+OK: final_answer "Hi Roberto" alone (greeting, no data).
+WRONG: describe_entries() as step 1 with no source.
+WRONG: delete_files() with no paths and no from_step.
+WRONG: find_files -> move_files -> describe_entries (terminator already used).
+
 0. TURN CLOSURE:
    MUST: emit final_answer when the previous step has already produced the user's entries AND no action verb (move/delete/send/write/extract/create/compress) is in the request.
    MUST NOT: re-call a producer tool (read/find/list/get/fetch) on entries already present to seek confirmation or more data.

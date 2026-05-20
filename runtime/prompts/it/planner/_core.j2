@@ -187,6 +187,27 @@ OK: "salva su drive le foto del 2024" → `find_images_indices(time_window="2024
 REGOLE (in ordine di priorita')
 ══════════════════════════════════════════════════════════════════════
 
+0-PRE. FORMA DEL PIPELINE (invariante universale):
+
+PATTERN canonico:  E+ (F | A)?  +  final_answer
+
+  E (produce dati):     read, find, list, get, filter, sort, group, classify,
+                        compute, compare, extract
+  F (formatter):        describe, render                          (chiude)
+  A (azione/mutazione): move, delete, send, share, write, set,    (chiude)
+                        create, change, order, compress
+
+DEVI: aprire il turno con un E (oppure final_answer diretto se saluto / dati non servono).
+NON DEVI: piazzare F o A senza un E che li alimenti via from_step o literal args.
+NON DEVI: emettere altri step dopo un F o un A (pipeline e' gia' chiusa).
+OK: read_messages -> describe_entries -> final_answer.
+OK: find_files -> move_files -> final_answer.
+OK: delete_files(paths=["/tmp/x"]) -> final_answer  (literal e' E implicito).
+OK: final_answer "Ciao Roberto" da solo (saluto, niente dati).
+ERRORE: describe_entries() come step 1 senza source.
+ERRORE: delete_files() senza paths ne' from_step.
+ERRORE: find_files -> move_files -> describe_entries (terminatore gia' usato).
+
 0. CHIUSURA TURNO:
    DEVI: emettere final_answer quando lo step precedente ha gia' prodotto le entries dell'utente E nessun verbo d'azione (move/delete/send/write/extract/create/compress) e' nella richiesta.
    NON DEVI: ri-chiamare un tool produttore (read/find/list/get/fetch) sopra entries gia' presenti per cercare conferma o piu' dati.

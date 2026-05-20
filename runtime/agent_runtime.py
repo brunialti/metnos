@@ -3865,6 +3865,12 @@ def _maybe_remediate_obs(
     if hasattr(_rh_step, "__dict__"):
         _rh_step.__dict__["auto_remediation"] = plan_info["error_class"]
 
+    # Skip retry: usato per remediation fail-fast (dialog get_inputs).
+    # Il prereq_obs (es. needs_inputs decision) e' l'esito di questo step;
+    # il caller propaga senza ri-eseguire l'executor originale.
+    if plan_info.get("skip_retry"):
+        return (_rh_step, prereq_obs, prereq_obs)
+
     # Retry dell'executor originale con args arricchiti. Dispatcher
     # uniforme builtin vs executor reale (registry modulo-level).
     if original_tool in _BUILTIN_TOOL_HANDLERS:
@@ -5616,6 +5622,121 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
         step.raw_args = raw_args
         # ADR 0149: persist by-product canonical_query nel step log.
         step.canonical_query = getattr(tc, "canonical_query", "") or ""
+
+        # ───── Pipeline shape FSM (20/5/2026, "sempre e per tutti") ─────
+        # Invariante `E+ (F|A)?` + final_answer. Calcola stato accumulato
+        # dagli step precedenti e simula la prossima transizione. Se ERROR
+        # -> remediation pre-dispatch (cascade per data, dialog per action).
+        _ps_handled = False
+        try:
+            from pipeline_shape import next_state as _ps_next
+            _ps_state = "START"
+            for _prev in log.steps:
+                _pt = getattr(_prev, "chosen_tool", "")
+                _pa = getattr(_prev, "raw_args", {}) or {}
+                if _pt:
+                    _ps_state, _ = _ps_next(_ps_state, _pt, _pa)
+            _, _ps_err = _ps_next(_ps_state, chosen_name, raw_args)
+            if _ps_err in ("needs_data_source", "needs_action_target"):
+                _ps_intent = (intent or {}).get("object") if isinstance(
+                    intent, dict) else None
+                _synth_obs = {
+                    "ok": False, "error_class": _ps_err,
+                    "intent_object": _ps_intent,
+                    "user_query": user_query_for_run or "",
+                    "verb": chosen_name.split("_", 1)[0],
+                }
+                _ps_remed = _maybe_remediate_obs(
+                    _synth_obs, raw_args, chosen_name,
+                    catalog=catalog, turn_id=turn_id,
+                    actor=actor, channel=channel, verbose=verbose,
+                )
+                if _ps_remed is not None:
+                    _ps_prereq_step, _ps_prereq_obs, _ps_final_obs = _ps_remed
+                    _ps_prereq_step.step_num = step_num
+                    log.steps.append(_ps_prereq_step)
+                    history_for_refs.append({
+                        "step": step_num,
+                        "tool": _ps_prereq_step.chosen_tool,
+                        "args": _ps_prereq_step.raw_args,
+                        "observation": _ps_prereq_obs,
+                    })
+                    # Record per LLM history per coerenza (no tool_call_id
+                    # canonico — uso name+content come da pattern):
+                    history_for_llm.append({
+                        "role": "tool",
+                        "name": _ps_prereq_step.chosen_tool,
+                        "content": json.dumps(_ps_prereq_obs,
+                                                ensure_ascii=False)[:4000],
+                    })
+                    # needs_action_target -> _ps_final_obs e' needs_inputs:
+                    # chiude il turno via orchestratore dialog (pattern
+                    # esistente, riusato).
+                    if (isinstance(_ps_final_obs, dict)
+                            and _ps_final_obs.get("decision") == "needs_inputs"):
+                        try:
+                            from orchestration import orchestrate_needs_inputs
+                            _sender = (
+                                f"{channel}:{actor}" if channel
+                                else (actor or "host")
+                            )
+                            _gi = orchestrate_needs_inputs(
+                                _ps_final_obs,
+                                sender_id=_sender,
+                                actor=actor or "host",
+                                channel=channel or None,
+                            )
+                            log.final_kind = "needs_inputs"
+                            log.final_message = (
+                                _gi.get("message", "")
+                                if isinstance(_gi, dict) else ""
+                            )
+                        except Exception as _ie:
+                            log.final_kind = "error"
+                            log.final_message = (
+                                f"Servono input ma orchestrazione "
+                                f"fallita: {type(_ie).__name__}"
+                            )
+                        log.ts_end = time.time(); log.write(); return log
+                    # needs_data_source: retry dell'executor originale ha
+                    # gia' prodotto _ps_final_obs (entries arricchite).
+                    # Appendo step originale col risultato e proseguo
+                    # all'iterazione successiva del loop planner.
+                    step.result = _ps_final_obs
+                    log.steps.append(step)
+                    history_for_refs.append({
+                        "step": step_num + 1, "tool": chosen_name,
+                        "args": raw_args, "observation": _ps_final_obs,
+                    })
+                    history_for_llm.append({
+                        "role": "tool", "name": chosen_name,
+                        "content": json.dumps(_ps_final_obs,
+                                                ensure_ascii=False)[:4000],
+                    })
+                    _ps_handled = True
+                # Se remediation = None: fall-through, executor originale
+                # tentato e fallira' naturalmente (final_answer aggrega).
+            elif _ps_err == "pipeline_already_closed":
+                # Step dopo terminatore F/A: log, force final_answer.
+                _LOG.warning(
+                    "pipeline_already_closed: step %d %r emesso dopo "
+                    "terminatore; chiudo turno.", step_num, chosen_name,
+                )
+                # Final_answer rinvia all'ultimo step utile gia' eseguito.
+                # Il runtime aggrega metadata via _append_search_results
+                # e formatter standard.
+                log.final_kind = "answer"
+                if not log.final_message:
+                    log.final_message = ""
+                log.ts_end = time.time(); log.write(); return log
+        except Exception as _ps_ex:
+            _LOG.warning(
+                "pipeline_shape check failed for %s: %r",
+                chosen_name, _ps_ex,
+            )
+        if _ps_handled:
+            continue
+        # ──────────────────────────────────────────────────────────────
 
         # Synthetic `final_answer` da grammar (ADR 0133 ext, 15/5/2026):
         # il LLM in grammar-mode emette `final_answer({message:"..."})`
