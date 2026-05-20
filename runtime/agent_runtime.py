@@ -4326,11 +4326,14 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
         ]
         planner_system = planner_system + "\n" + "\n".join(ref_block)
 
-    # Progress: avvia subito il canale visivo se passato dal daemon. Per turni
-    # &gt; 5 s l'utente vede "sto pensando..." con typing animation Telegram-native.
+    # Progress canale visivo: avvio con messaggio "neutro" prima della
+    # decisione fast-path vs PLANNER. Il messaggio "Sto pensando..." era
+    # ingannevole sui turni fast-path (nessun thinking, replay diretto);
+    # spostato al "ramo PLANNER" sotto. Qui solo ack iniziale (typing
+    # animation Telegram, badge "live" HTTP) senza claim sul contenuto.
     if progress is not None:
         try:
-            progress.start("Sto pensando il modo migliore di rispondere…")
+            progress.start("")
         except Exception as _e:  # silent swallow (auto-fixed)
             log.warning("silent exception in %s: %s", __name__, _e)
     catalog = filter_for_visibility(load_catalog(), VISIBILITY_COMPOSER)
@@ -4486,6 +4489,18 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
 
     chosen_mode = ModeRouter(mode).select(user_query_for_run, catalog)
     log.mode = chosen_mode
+
+    # Tutti i fast-path L0/L1/L2 hanno mancato → entro nel PLANNER LLM.
+    # Aggiorno il progress con il messaggio "Sto pensando..." perche'
+    # da qui in avanti c'e' davvero pensiero LLM in corso.
+    if progress is not None:
+        try:
+            if hasattr(progress, "update_free"):
+                progress.update_free(
+                    "Sto pensando il modo migliore di rispondere…"
+                )
+        except Exception as _e:
+            log.warning("silent exception in %s: %s", __name__, _e)
 
     # Telemetria fine (ADR 0080): prefilter_ms + intent_ms misurati al
     # confine, attribuiti allo step 1 (sotto). intent_ms e' la quota LLM
