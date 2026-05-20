@@ -3826,6 +3826,7 @@ def _try_multi_tool_path_playback(
     channel: str | None,
     lang: str = "it",
     verbose: bool = False,
+    progress=None,
 ) -> tuple[list, dict, str] | None:
     """L2 multi-tool fast-path playback. Riesegue una pipeline memoizzata.
 
@@ -3952,6 +3953,23 @@ def _try_multi_tool_path_playback(
             None if _is_builtin
             else (getattr(executor, "timeout_s", None) or 120)
         )
+        # Progress event SSE (20/5 v6): emette tool_call all'inizio dello
+        # step. Senza questo, il fast-path playback resta silenzioso sulla
+        # connessione SSE finche' tutti gli step non finiscono, dando al
+        # browser l'impressione che il server sia bloccato.
+        if progress is not None:
+            try:
+                if hasattr(progress, "tool_call"):
+                    progress.tool_call(
+                        step_num=i, tool=tool_name,
+                        args_preview=resolved_args,
+                    )
+                elif hasattr(progress, "update_free"):
+                    progress.update_free(
+                        f"step {i} · {tool_name} (fast-path)"
+                    )
+            except Exception:
+                pass
         t0 = time.perf_counter()
         try:
             if _is_builtin:
@@ -4377,6 +4395,7 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
                     user_query_for_run, catalog,
                     turn_id=turn_id, actor=actor, channel=channel,
                     lang=DEFAULT_LANG, verbose=verbose,
+                    progress=progress,
                 )
             except Exception as _ex:
                 import logging as _logging
