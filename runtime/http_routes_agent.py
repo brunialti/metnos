@@ -397,8 +397,7 @@ def _consume_http_get_inputs_response(
     from channels.daemon import (
         _cap_pending_clear, parse_step_value,
     )
-    import sys as _s
-    _s.path.insert(0, "/opt/myclaw/runtime")
+    # runtime/ già su sys.path (http_routes_agent VIVE in runtime/).
     import dialog_pending as _dp
     import orchestration as _orch
 
@@ -859,18 +858,42 @@ def _resolve_i18n_step(step):
 
 
 async def dialog_form(request: web.Request) -> web.Response:
-    """GET /agent/dialog/<dialog_id>/form — render del form HTML."""
+    """GET /agent/dialog/<dialog_id>/form — render del form HTML.
+
+    Per dialog gia' completati o cancellati (caso live 18/5/2026: utente
+    torna alla chat dopo OAuth → iframe ricarica il form → dialog finito),
+    emette un HTML minimal che fa postMessage al parent perche' rimuova
+    l'iframe dalla bubble. Tipo coerente con dialog_form.html (events
+    `metnos.dialog.done` / `metnos.dialog.cancelled`).
+    """
     dialog_id = request.match_info["dialog_id"]
     state = _resolve_dialog_state(request, dialog_id)
     if state is None:
         return _error(404, "dialog_not_found",
                       f"dialogo {dialog_id} non trovato")
     if state.get("cancelled"):
-        return web.Response(text="Dialogo annullato.", status=410,
-                            content_type="text/plain")
+        return web.Response(
+            text=(
+                "<!doctype html><meta charset=utf-8>"
+                "<script>parent.postMessage("
+                "{type:'metnos.dialog.cancelled'},'*');</script>"
+                "<p style='font:14px sans-serif;color:#a00'>"
+                "✗ Dialogo annullato.</p>"
+            ),
+            status=200, content_type="text/html",
+        )
     if state.get("completed"):
-        return web.Response(text="Dialogo gia' completato.",
-                            status=410, content_type="text/plain")
+        return web.Response(
+            text=(
+                "<!doctype html><meta charset=utf-8>"
+                "<script>parent.postMessage("
+                "{type:'metnos.dialog.done',completion_text:''},'*');"
+                "</script>"
+                "<p style='font:14px sans-serif;color:#0a7'>"
+                "✓ Dialogo completato.</p>"
+            ),
+            status=200, content_type="text/html",
+        )
     dialog_steps = [_resolve_i18n_step(s) for s in (state.get("dialog") or [])]
     html = render_template(
         "dialog_form.html",
@@ -904,8 +927,11 @@ async def dialog_submit(request: web.Request) -> web.Response:
         return _error(400, "invalid_form", "form data non valido")
 
     # Single source of truth: stesso parser del channel daemon.
+    # Rename-resilient (ADR 0148): risolve la runtime dir da __file__.
     import sys as _sys
-    _sys.path.insert(0, "/opt/myclaw/runtime")
+    _runtime_dir = str(Path(__file__).resolve().parent)
+    if _runtime_dir not in _sys.path:
+        _sys.path.insert(0, _runtime_dir)
     from channels.daemon import parse_step_value
     dialog = state.get("dialog") or []
     values = {}
@@ -1081,8 +1107,7 @@ async def dialog_preview(request: web.Request) -> web.Response:
         return _error(404, "option_out_of_range",
                       f"option {opt_idx} not in 0..{len(options)-1}")
     spec = options[opt_idx].get("preview_image_path") or ""
-    import sys as _sys
-    _sys.path.insert(0, "/opt/myclaw/runtime")
+    # runtime/ già su sys.path (http_routes_agent VIVE in runtime/).
     import dialog_preview as _dpv
     try:
         path, bbox = _dpv.validate_preview_spec(spec, require_exists=True)
@@ -1138,8 +1163,7 @@ async def dialog_context(request: web.Request) -> web.Response:
     if not spec:
         return _error(404, "no_context_image",
                       "step has no context_image_path")
-    import sys as _sys
-    _sys.path.insert(0, "/opt/myclaw/runtime")
+    # runtime/ già su sys.path (http_routes_agent VIVE in runtime/).
     import dialog_preview as _dpv
     try:
         path, _ = _dpv.validate_preview_spec(spec, require_exists=True)
@@ -1514,6 +1538,206 @@ async def session_events(request: web.Request) -> web.StreamResponse:
     return resp
 
 
+async def turn_submit(request: web.Request) -> web.Response:
+    """POST /agent/turn/submit (ADR pending — turn esecuzione async).
+
+    Ritorna 202 Accepted con `{turn_id, stream_url}` immediatamente.
+    Spawn una asyncio.Task che esegue `run_turn()` in executor, scrivendo
+    eventi durabili in `TurnEventLog`. Il client si attacca via
+    `GET /agent/turns/{turn_id}/stream` (SSE resumable con
+    Last-Event-ID). Disaccoppia esecuzione da connessione: refresh,
+    tab hidden, network drop non interrompono il turn.
+
+    Body JSON: stesso shape di `POST /agent/turn`
+      `{ query: str, conversation_id?: str, actor?: str }`.
+
+    Errori 400/401 come `turn()`. Niente fallback Telegram-style: e' un
+    endpoint asincrono dedicato al client HTTP dashboard.
+    """
+    try:
+        body = await request.json()
+    except Exception:
+        return _error(400, "invalid_json", "body JSON non valido")
+    query = body.get("query")
+    if not isinstance(query, str) or not query.strip():
+        return _error(400, "missing_field", "query (string) required")
+    actor = _resolve_actor(request, body)
+    conv_id = body.get("conversation_id") or ""
+
+    from turn_events import TurnEventLog, TurnEventProgress
+    import uuid as _uuid
+    event_log = TurnEventLog.get()
+    turn_id = _uuid.uuid4().hex[:16]
+    event_log.create(turn_id)
+
+    # Spawn task. Esegue run_turn in executor + scrive eventi nel log.
+    loop = asyncio.get_running_loop()
+
+    import agent_runtime as _agent_runtime
+    async def _run_async():
+        progress = TurnEventProgress(turn_id, log=event_log)
+        try:
+            log_obj = await loop.run_in_executor(
+                None,
+                lambda: _agent_runtime.run_turn(
+                    query, actor=actor, channel="http",
+                    conversation_id=conv_id,
+                    progress=progress,
+                ),
+            )
+            # Final event con il risultato completo.
+            event_log.append(turn_id, "final", {
+                "turn_id": log_obj.turn_id,
+                "final_message": log_obj.final_message,
+                "final_message_html": _safe_final_html(log_obj.final_message),
+                "final_kind": log_obj.final_kind,
+                "total_ms": int((log_obj.ts_end - log_obj.ts_start) * 1000),
+                "steps_summary": [
+                    {"step": s.step_num, "tool": s.chosen_tool,
+                     "ok": bool(s.result and s.result.get("ok", True))
+                            if isinstance(s.result, dict) else None}
+                    for s in log_obj.steps
+                ],
+            })
+        except Exception as ex:
+            log.exception("turn_submit run failed: %s", turn_id)
+            event_log.append(turn_id, "error", {
+                "message": str(ex),
+                "type": type(ex).__name__,
+            })
+        finally:
+            event_log.close(turn_id)
+
+    asyncio.create_task(_run_async(), name=f"turn-{turn_id}")
+
+    return web.json_response({
+        "turn_id": turn_id,
+        "stream_url": f"/agent/turns/{turn_id}/stream",
+    }, status=202)
+
+
+async def turn_stream(request: web.Request) -> web.Response:
+    """GET /agent/turns/{turn_id}/stream (SSE resumable).
+
+    Subscribe al `TurnEventLog` per il turn_id. Honora il header
+    `Last-Event-ID` (EventSource standard): replay degli eventi dal next
+    in poi. Heartbeat ogni 15s (comment SSE `: keepalive`).
+
+    404 se turn_id sconosciuto al log (turn troppo vecchio, > 5 min
+    dopo close, o turn_id mai esistito). Il client puo' fallback a
+    `GET /agent/turns/{turn_id}` per il risultato persistente da
+    TurnLog jsonl.
+    """
+    from turn_events import TurnEventLog, format_sse
+    turn_id = request.match_info["turn_id"]
+    event_log = TurnEventLog.get()
+    if not event_log.has(turn_id):
+        return _error(404, "turn_not_found",
+                       f"turn {turn_id!r} non in event log "
+                       "(potrebbe essere troppo vecchio; usa "
+                       "GET /agent/turns/{turn_id})")
+    last_id = 0
+    raw_lid = request.headers.get("Last-Event-ID")
+    if raw_lid:
+        try:
+            last_id = int(raw_lid)
+        except (ValueError, TypeError):
+            last_id = 0
+
+    response = web.StreamResponse(
+        status=200,
+        headers={
+            "Content-Type": "text/event-stream",
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",  # disable nginx buffering
+        },
+    )
+    await response.prepare(request)
+
+    try:
+        async for ev in event_log.subscribe(turn_id, last_event_id=last_id):
+            try:
+                await response.write(format_sse(ev))
+            except (ConnectionResetError, asyncio.CancelledError):
+                # Client disconnect: stop senza interrompere il turn.
+                # Il run_turn continua su executor e scrive nel log;
+                # il client si ri-attacca via reconnect.
+                break
+    except Exception as ex:
+        log.warning("turn_stream %s error: %r", turn_id, ex)
+    finally:
+        try:
+            await response.write_eof()
+        except Exception:
+            pass
+    return response
+
+
+async def turn_status(request: web.Request) -> web.Response:
+    """GET /agent/turns/{turn_id} — stato del turn.
+
+    Polling fallback per quando lo stream SSE non e' disponibile. Ritorna:
+    - Se turn ancora vivo in event log: `{state: "running"|"complete",
+      events: [...]}` con tutti gli eventi finora.
+    - Se turn chiuso e gc-ed: legge `turns/<date>.jsonl` per il risultato
+      finale persistente.
+
+    404 se turn_id non trovato ne' in log ne' su disco.
+    """
+    from turn_events import TurnEventLog
+    turn_id = request.match_info["turn_id"]
+    event_log = TurnEventLog.get()
+    if event_log.has(turn_id):
+        st = event_log._turns[turn_id]
+        return web.json_response({
+            "turn_id": turn_id,
+            "state": "complete" if st.closed else "running",
+            "events": [
+                {"id": e.id, "event_type": e.event_type,
+                 "payload": e.payload, "ts": e.ts}
+                for e in st.events
+                if e.event_type != "_heartbeat"
+            ],
+        })
+    # Fallback: cerca su disco (TurnLog jsonl).
+    import json as _json
+    from pathlib import Path as _Path
+    import config as _C
+    turns_dir = _C.PATH_TURNS
+    if turns_dir.is_dir():
+        for f in sorted(turns_dir.glob("*.jsonl"), reverse=True)[:7]:
+            try:
+                for line in _Path(f).read_text(
+                        encoding="utf-8").splitlines():
+                    if not line.strip():
+                        continue
+                    try:
+                        d = _json.loads(line)
+                    except _json.JSONDecodeError:
+                        continue
+                    if d.get("turn_id") == turn_id:
+                        return web.json_response({
+                            "turn_id": turn_id,
+                            "state": "complete",
+                            "persistent": True,
+                            "final_message": d.get("final_message"),
+                            "final_kind": d.get("final_kind"),
+                            "steps_summary": [
+                                {"step": s.get("step_num"),
+                                 "tool": s.get("chosen_tool"),
+                                 "ok": bool(
+                                    (s.get("result") or {}).get("ok", True)
+                                 ) if isinstance(s.get("result"), dict)
+                                       else None}
+                                for s in d.get("steps", [])
+                            ],
+                        })
+            except Exception:
+                continue
+    return _error(404, "turn_not_found", f"turn {turn_id!r} non trovato")
+
+
 async def turns_recent(request: web.Request) -> web.Response:
     """GET /agent/turns/recent?conversation_id=X&limit=N&since_ts=T
 
@@ -1865,6 +2089,9 @@ ROUTES = (
     ("GET",  "/agent/health",          health),
     ("GET",  "/.well-known/metnos.json", well_known),
     ("POST", "/agent/turn",            turn),
+    ("POST", "/agent/turn/submit",     turn_submit),
+    ("GET",  "/agent/turns/{turn_id}/stream", turn_stream),
+    ("GET",  "/agent/turns/{turn_id}",  turn_status),
     ("GET",  "/agent/turns/recent",    turns_recent),
     ("POST", "/agent/session/register", session_register),
     ("POST", "/agent/session/takeover", session_takeover),

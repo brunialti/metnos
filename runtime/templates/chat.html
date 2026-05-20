@@ -1132,55 +1132,143 @@ form.addEventListener('submit', async (e) => {
   attachedFiles = [];
   refreshThumbBar();
 
-  // Fetch streaming SSE manuale (EventSource non supporta POST body)
   const tStart = Date.now();
   let pending = add('thinking', '… penso');
-  // Cache stato breadcrumb del turno corrente: ultimo path noto e
-  // previsione. Usata per rigenerare il placeholder quando un
-  // progress event arriva dopo un tool_call (evita che la riga di
-  // badge venga distrutta da un textContent overwrite).
+  // Cache stato breadcrumb del turno corrente.
   let lastLivePath = null;
   let lastPredicted = null;
+  let watchdogFired = false;  // dichiarato anche nel path legacy
 
-  // Watchdog client-side (Fix B): se nessun byte arriva dal server per
-  // SILENCE_LIMIT_MS, considera la connessione morta e libera la UI.
-  // Conta i BYTE (non gli eventi parsati) cosi' i comment SSE keepalive
-  // (": keepalive\n\n") emessi dal server ogni 15s contano come liveness.
-  //
-  // Page Visibility (20/5 v6): tab nascosti throttlano setInterval +
-  // reader.read() — i bytes TCP arrivano ma JS non li consuma. Al
-  // ritorno del focus, lastByteTs vecchio fa scattare watchdog falso.
-  // Fix: pause watchdog mentre hidden; al resume reset lastByteTs.
-  const SILENCE_LIMIT_MS = 30000;
-  let lastByteTs = Date.now();
-  let reader = null;
-  let watchdogFired = false;
-  let watchdogPaused = false;
-  const watchdog = setInterval(() => {
-    if(!busy) return;  // turno gia' chiuso, ignora
-    if(watchdogPaused) return;  // tab hidden, throttling
-    if(Date.now() - lastByteTs > SILENCE_LIMIT_MS){
-      watchdogFired = true;
-      clearInterval(watchdog);
+  // Handler unico per ogni evento SSE (formato {kind, data}). Usato sia
+  // dal nuovo path resumable EventSource sia dal legacy fetch-stream
+  // (multipart con file). Tutta la logica di rendering qui.
+  let receivedFinal = false;
+  const processSSEEvent = (kind, data) => {
+    if(kind === 'thinking' || kind === 'progress' || kind === 'start'
+       || kind === 'update'){
+      if(lastLivePath) {
+        if(pending){ pending.remove(); }
+        pending = renderLivePath(lastLivePath, lastPredicted || []);
+      } else if(pending) {
+        const msg = data.message || data.label || 'lavoro';
+        if(msg) pending.textContent = '… ' + msg;
+      }
+    } else if(kind === 'tool_call'){
       if(pending){ pending.remove(); pending = null; }
-      add('err', '⚠ silenzio dal server da 30s. La connessione potrebbe essere morta — ricarica la pagina (Ctrl+Shift+R) e riprova.');
-      try{ if(reader) reader.cancel(); }catch(_){}
-      busy = false; btn.disabled = false;
-    }
-  }, 5000);
-  const _onVisibility = () => {
-    if(document.hidden){
-      watchdogPaused = true;
-    } else {
-      // Tab tornato visibile: reset lastByteTs cosi' il browser ha
-      // qualche secondo per recuperare i bytes throttled prima che
-      // riparta il check del silenzio.
-      lastByteTs = Date.now();
-      watchdogPaused = false;
+      const livePath = Array.isArray(data.path) && data.path.length
+        ? data.path : [data.tool || '?'];
+      const predicted = Array.isArray(data.predicted_remaining)
+        ? data.predicted_remaining : [];
+      lastLivePath = livePath;
+      lastPredicted = predicted;
+      pending = renderLivePath(livePath, predicted);
+    } else if(kind === 'tool_result'){
+      // nop: il prossimo tool_call (se c'e') sovrascrive il placeholder.
+    } else if(kind === 'final'){
+      receivedFinal = true;
+      if(pending){ pending.remove(); pending = null; }
+      const ms = data.total_ms || (Date.now() - tStart);
+      const galleryInfo = (data.gallery_url && data.n_total_matches)
+        ? { gallery_url: data.gallery_url, n_total_matches: data.n_total_matches }
+        : null;
+      const bodyPlain = data.final_message || '(nessuna risposta)';
+      const bodyHtml = data.final_message_html || null;
+      let body = bodyPlain;
+      let bodyAsHtml = false;
+      if(bodyHtml){ body = bodyHtml; bodyAsHtml = true; }
+      if(bodyAsHtml){
+        body = body.replace(/\n*<i>elapsed:\s*[\d.]+\s*s(\s*·\s*chiuso\s+\d{2}:\d{2}:\d{2})?<\/i>\s*$/, '').trimEnd();
+      } else {
+        body = body.replace(/\n*_elapsed:\s*[\d.]+\s*s(\s*·\s*chiuso\s+\d{2}:\d{2}:\d{2})?_\s*$/, '').trimEnd();
+      }
+      const closeDate = (typeof data.ts_end === 'number')
+        ? new Date(data.ts_end * 1000) : new Date();
+      const closeHms = closeDate.toLocaleTimeString('it-IT', { hour12: false });
+      const metaLeft = (data.turn_id ? 'turn ' + data.turn_id.slice(0,8) + ' · ' : '') +
+                        (ms/1000).toFixed(1) + ' s';
+      const metaRight = closeHms;
+      const path = Array.isArray(data.path) ? data.path
+        : Array.isArray(data.steps_summary)
+          ? data.steps_summary.map(s => ({tool: s.tool, ok: s.ok}))
+          : [];
+      add('bot', body,
+          { path: path, left: metaLeft, right: metaRight },
+          true,
+          data.attachments || null, galleryInfo, bodyAsHtml);
+    } else if(kind === 'error'){
+      receivedFinal = true;
+      if(pending){ pending.remove(); pending = null; }
+      add('err', '✗ ' + (data.message || 'errore'));
     }
   };
-  document.addEventListener('visibilitychange', _onVisibility);
 
+  // PATH 1 (nuovo, resumable): POST /agent/turn/submit -> EventSource.
+  // L'esecuzione del turn e' indipendente dalla connessione: refresh,
+  // tab hidden, network drop → EventSource auto-reconnect con
+  // Last-Event-ID. Nessun watchdog client-side: il browser gestisce
+  // la liveness nativamente.
+  if(!filesForTurn.length){
+    try {
+      const submitResp = await fetch('/agent/turn/submit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query, conversation_id: conversationId }),
+      });
+      if(!submitResp.ok){
+        const text = await submitResp.text();
+        if(pending){ pending.remove(); }
+        add('err', 'errore HTTP ' + submitResp.status + ': ' + text.slice(0, 200));
+        busy = false; btn.disabled = false;
+        return;
+      }
+      const submitBody = await submitResp.json();
+      const turnId = submitBody.turn_id;
+      const streamUrl = submitBody.stream_url;
+      // Apri EventSource. Auto-reconnect con Last-Event-ID se la
+      // connessione cade. Quando il server emette `final` o `error`,
+      // chiudiamo esplicitamente.
+      const es = new EventSource(streamUrl);
+      const evtKinds = ['start', 'update', 'tool_call', 'tool_result',
+                         'final', 'error', 'thinking', 'progress'];
+      evtKinds.forEach(k => {
+        es.addEventListener(k, (ev) => {
+          let data = {};
+          try { data = JSON.parse(ev.data); } catch(_) {}
+          processSSEEvent(k, data);
+          if(k === 'final' || k === 'error'){
+            es.close();
+            busy = false; btn.disabled = false; q.focus();
+          }
+        });
+      });
+      // onerror: EventSource gestisce il reconnect automatico. Se la
+      // connessione e' definitivamente chiusa (turn complete + log
+      // gc-ed dopo TTL), il browser smette di riconnettersi.
+      es.onerror = () => {
+        if(es.readyState === EventSource.CLOSED && !receivedFinal){
+          if(pending){ pending.remove(); pending = null; }
+          add('err', '⚠ stream chiuso senza final. Il turn potrebbe essere completato — usa /agent/turns/' + turnId.slice(0,8) + ' per recuperare il risultato.');
+          busy = false; btn.disabled = false;
+        }
+      };
+      return;
+    } catch(err){
+      if(err && err.name === 'AbortError'){
+        if(pending){ pending.remove(); }
+        busy = false; btn.disabled = false;
+        return;
+      }
+      if(pending){ pending.remove(); }
+      add('err', 'errore submit turn: ' + err.message);
+      busy = false; btn.disabled = false;
+      return;
+    }
+  }
+
+  // PATH 2 (legacy, multipart file upload): POST /agent/turn con SSE
+  // streaming inline. Mantenuto fino a quando turn_submit supportera'
+  // upload multipart.
+  let reader = null;
   try {
     let fetchOpts;
     if(filesForTurn.length){
@@ -1211,7 +1299,6 @@ form.addEventListener('submit', async (e) => {
     const resp = await fetch('/agent/turn', fetchOpts);
 
     if(!resp.ok){
-      clearInterval(watchdog);
       pending.remove();
       const text = await resp.text();
       add('err', 'errore HTTP ' + resp.status + ': ' + text.slice(0, 200));
@@ -1221,129 +1308,35 @@ form.addEventListener('submit', async (e) => {
     reader = resp.body.getReader();
     const decoder = new TextDecoder();
     let buf = '';
-    let receivedFinal = false;
 
     while(true){
       const { done, value } = await reader.read();
       if(done) break;
-      // Reset watchdog ad ogni byte ricevuto (anche keepalive comment).
-      lastByteTs = Date.now();
       buf += decoder.decode(value, { stream: true });
       const events = buf.split('\n\n');
       buf = events.pop();
-
       for(const ev of events){
-        // I comment SSE iniziano con `:` (es. ": keepalive") e sono ignorati
-        // dal regex `^event:...` qui sotto: nessun match → continue. Esplicito
-        // per chiarezza e per evitare warning futuri.
-        if(ev.startsWith(':')) continue;
+        if(ev.startsWith(':')) continue;  // SSE comment (: keepalive)
         const m = ev.match(/^event:\s*(\w+)\s*\n+data:\s*(.+)$/s);
         if(!m) continue;
         const kind = m[1];
         let data;
         try{ data = JSON.parse(m[2]); }catch(_){ data = {}; }
-
-        if(kind === 'thinking' || kind === 'progress'){
-          // Se abbiamo gia' un breadcrumb attivo (lastLivePath valorizzato)
-          // RIGENERA il breadcrumb invece di sovrascrivere con plain text.
-          // Cosi' anche se il pending e' stato perso/clobberato per qualsiasi
-          // motivo (cache stale, race), torna sempre visibile lo stato
-          // corretto.
-          if(lastLivePath) {
-            if(pending){ pending.remove(); }
-            pending = renderLivePath(lastLivePath, lastPredicted || []);
-          } else if(pending) {
-            pending.textContent = '… ' + (data.message || data.label || 'lavoro');
-          }
-        } else if(kind === 'tool_call'){
-          if(pending){ pending.remove(); pending = null; }
-          // Breadcrumb live UNICO (sostituisce il vecchio placeholder
-          // `… eseguo` + il cog `⚙ tool` di addTool — tutto consolidato
-          // in una sola riga di badge: completati + corrente attivo +
-          // previsti tratteggiati).
-          const livePath = Array.isArray(data.path) && data.path.length
-            ? data.path : [data.tool || '?'];
-          const predicted = Array.isArray(data.predicted_remaining)
-            ? data.predicted_remaining : [];
-          lastLivePath = livePath;
-          lastPredicted = predicted;
-          pending = renderLivePath(livePath, predicted);
-        } else if(kind === 'tool_result'){
-          // Niente azione: il prossimo `tool_call` (se c'e') sostituira'
-          // il placeholder. Se non arriva piu' nulla, il `final` lo
-          // pulisce comunque.
-        } else if(kind === 'final'){
-          receivedFinal = true;
-          if(pending){ pending.remove(); pending = null; }
-          const ms = data.total_ms || (Date.now() - tStart);
-          const galleryInfo = (data.gallery_url && data.n_total_matches)
-            ? { gallery_url: data.gallery_url,
-                n_total_matches: data.n_total_matches }
-            : null;
-          // Strip _elapsed_ trailing dal corpo: la riga "turn xxx · NNs · HH:MM:SS"
-          // del meta porta gia' il dato, evitiamo il duplicato nel testo.
-          // Channel HTML mode (ADR 0109): preferiamo final_message_html
-          // se il server lo fornisce (markdown -> b/i/code/pre/a safe).
-          // Fallback al plain final_message (textContent) per backward compat.
-          const bodyPlain = data.final_message || '(nessuna risposta)';
-          const bodyHtml = data.final_message_html || null;
-          let body = bodyPlain;
-          let bodyAsHtml = false;
-          if(bodyHtml){
-            body = bodyHtml;
-            bodyAsHtml = true;
-          }
-          if(bodyAsHtml){
-            // _elapsed e' ora <i>elapsed: ...</i> dopo to_safe_html
-            body = body.replace(/\n*<i>elapsed:\s*[\d.]+\s*s(\s*·\s*chiuso\s+\d{2}:\d{2}:\d{2})?<\/i>\s*$/, '').trimEnd();
-          } else {
-            body = body.replace(/\n*_elapsed:\s*[\d.]+\s*s(\s*·\s*chiuso\s+\d{2}:\d{2}:\d{2})?_\s*$/, '').trimEnd();
-          }
-          // Close time: prefer server-side ts_end (epoch sec) over client clock.
-          // Fallback su new Date() per backward compat con response pre-patch.
-          const closeDate = (typeof data.ts_end === 'number')
-            ? new Date(data.ts_end * 1000)
-            : new Date();
-          const closeHms = closeDate.toLocaleTimeString('it-IT', { hour12: false });
-          const metaLeft = (data.turn_id ? 'turn ' + data.turn_id.slice(0,8) + ' · ' : '') +
-                            (ms/1000).toFixed(1) + ' s';
-          const metaRight = closeHms;
-          const metaText = metaLeft + ' · ' + metaRight;  // backward compat (1 string)
-          // Path executor: lista di {tool, ok} dal server (data.path).
-          // Renderizzata come riga di badge sopra al meta testuale.
-          const path = Array.isArray(data.path) ? data.path : [];
-          add('bot', body,
-              { path: path, left: metaLeft, right: metaRight },
-              true,
-              data.attachments || null, galleryInfo, bodyAsHtml);
-        } else if(kind === 'error'){
-          receivedFinal = true;
-          if(pending){ pending.remove(); pending = null; }
-          add('err', '✗ ' + (data.message || 'errore'));
-        }
+        processSSEEvent(kind, data);
       }
     }
-    // SSE chiusa senza evento `final`/`error`: connessione interrotta
-    // (server restart, network drop, timeout). Non lasciare l'utente
-    // bloccato sul "… penso" — segnala l'interruzione. Se il watchdog
-    // ha gia' segnalato silenzio, non duplicare il messaggio.
-    if(!receivedFinal && !watchdogFired){
+    if(!receivedFinal){
       if(pending){ pending.remove(); pending = null; }
-      add('err', '⚠ connessione interrotta dal server (probabile restart). Il messaggio potrebbe essere arrivato — ricarica la pagina e verifica, oppure riprova.');
+      add('err', '⚠ connessione interrotta. Il messaggio potrebbe essere arrivato — ricarica e verifica.');
     }
   } catch(err){
-    // AbortError = utente ha fatto refresh / chiuso tab / annullato. Non
-    // mostra "errore rete" perche' e' un'azione utente, non un fault.
-    if(err && (err.name === 'AbortError' || err.name === 'TypeError'
-                && document.hidden)){
+    if(err && err.name === 'AbortError'){
       if(pending){ pending.remove(); pending = null; }
-    } else if(!watchdogFired){
+    } else {
       if(pending){ pending.remove(); }
-      add('err', 'errore rete: ' + err.message + ' — riprova o ricarica la pagina.');
+      add('err', 'errore rete: ' + err.message);
     }
   } finally {
-    clearInterval(watchdog);
-    document.removeEventListener('visibilitychange', _onVisibility);
     busy = false;
     btn.disabled = false;
     q.focus();

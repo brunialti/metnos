@@ -93,6 +93,14 @@ def make_app(*, admin_key: str | None = None) -> web.Application:
     app["sse_responses"] = set()
     app.on_shutdown.append(http_routes_agent.close_active_sse)
 
+    # TurnEventLog: bind del loop asyncio per le notifiche cross-thread
+    # (run_turn gira in executor, scrive eventi via call_soon_threadsafe).
+    async def _bind_turn_events_loop(app):
+        import asyncio as _a
+        from turn_events import TurnEventLog
+        TurnEventLog.get().bind_loop(_a.get_running_loop())
+    app.on_startup.append(_bind_turn_events_loop)
+
     # ADR 0093: task async per build asincrona indici immagine.
     # 3 task: healthcheck stale + notification dispatch + tmp sweeper.
     # Cancellati on_shutdown; restartati al boot del daemon.
@@ -112,8 +120,9 @@ def make_app(*, admin_key: str | None = None) -> web.Application:
         # Migrazione user-only al primo boot. Idempotente: se i nomi sono
         # gia' in v2, skip. Best-effort: errori warning, non bloccano boot.
         try:
-            recurring_db = Path.home() / ".local/state/metnos/recurring_tasks.db"
-            state_db = Path("/opt/myclaw/workspace/.scheduler/state.sqlite")
+            import config as _C  # ADR 0148 rename-resilient
+            recurring_db = _C.DB_RECURRING_TASKS
+            state_db = _C.DB_SCHEDULER
             summary = _mig.migrate(
                 recurring_db=recurring_db, state_db=state_db,
                 target_db=Path(DEFAULT_DB_PATH).expanduser(),
