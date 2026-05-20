@@ -1146,12 +1146,19 @@ form.addEventListener('submit', async (e) => {
   // SILENCE_LIMIT_MS, considera la connessione morta e libera la UI.
   // Conta i BYTE (non gli eventi parsati) cosi' i comment SSE keepalive
   // (": keepalive\n\n") emessi dal server ogni 15s contano come liveness.
+  //
+  // Page Visibility (20/5 v6): tab nascosti throttlano setInterval +
+  // reader.read() — i bytes TCP arrivano ma JS non li consuma. Al
+  // ritorno del focus, lastByteTs vecchio fa scattare watchdog falso.
+  // Fix: pause watchdog mentre hidden; al resume reset lastByteTs.
   const SILENCE_LIMIT_MS = 30000;
   let lastByteTs = Date.now();
   let reader = null;
   let watchdogFired = false;
+  let watchdogPaused = false;
   const watchdog = setInterval(() => {
     if(!busy) return;  // turno gia' chiuso, ignora
+    if(watchdogPaused) return;  // tab hidden, throttling
     if(Date.now() - lastByteTs > SILENCE_LIMIT_MS){
       watchdogFired = true;
       clearInterval(watchdog);
@@ -1161,6 +1168,18 @@ form.addEventListener('submit', async (e) => {
       busy = false; btn.disabled = false;
     }
   }, 5000);
+  const _onVisibility = () => {
+    if(document.hidden){
+      watchdogPaused = true;
+    } else {
+      // Tab tornato visibile: reset lastByteTs cosi' il browser ha
+      // qualche secondo per recuperare i bytes throttled prima che
+      // riparta il check del silenzio.
+      lastByteTs = Date.now();
+      watchdogPaused = false;
+    }
+  };
+  document.addEventListener('visibilitychange', _onVisibility);
 
   try {
     let fetchOpts;
@@ -1313,12 +1332,18 @@ form.addEventListener('submit', async (e) => {
       add('err', '⚠ connessione interrotta dal server (probabile restart). Il messaggio potrebbe essere arrivato — ricarica la pagina e verifica, oppure riprova.');
     }
   } catch(err){
-    if(!watchdogFired){
+    // AbortError = utente ha fatto refresh / chiuso tab / annullato. Non
+    // mostra "errore rete" perche' e' un'azione utente, non un fault.
+    if(err && (err.name === 'AbortError' || err.name === 'TypeError'
+                && document.hidden)){
+      if(pending){ pending.remove(); pending = null; }
+    } else if(!watchdogFired){
       if(pending){ pending.remove(); }
       add('err', 'errore rete: ' + err.message + ' — riprova o ricarica la pagina.');
     }
   } finally {
     clearInterval(watchdog);
+    document.removeEventListener('visibilitychange', _onVisibility);
     busy = false;
     btn.disabled = false;
     q.focus();
