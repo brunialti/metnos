@@ -3522,11 +3522,24 @@ class TurnLog:
                     resolved = (first.resolved_args
                                 if isinstance(first.resolved_args, dict)
                                 else raw)
+                    # Strip args volatili (query-dependent) prima della
+                    # memoization (ADR 0150 v6, fix regressione mail task):
+                    # time_window / date / since literal-memorizzati da un
+                    # past query non devono essere applicati a un nuovo
+                    # query con time intent diverso.
+                    _VOLATILE = {
+                        "time_window", "window", "since", "before", "range",
+                        "from", "date", "day", "when", "on_date",
+                    }
+                    resolved_clean = {
+                        k: v for k, v in resolved.items()
+                        if k.lower() not in _VOLATILE
+                    }
                     _mn = Mnestoma()
                     _mn.record_canonical_query(
                         cq, tool, raw,
                         ok=(self.final_kind == "answer"),
-                        args_observed=resolved,
+                        args_observed=resolved_clean,
                     )
                 except Exception:
                     pass

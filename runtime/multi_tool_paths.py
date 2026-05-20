@@ -210,6 +210,11 @@ def derive_args_shape(query: str, raw_args_per_step: list[dict]) -> list[dict]:
     - `from_step: <int>` → keep literal (link a observation precedente).
     - str matching URL/PATH/EMAIL nella query → <URL>/<PATH>/<EMAIL>.
     - int → <INT>.
+    - args con nome VOLATILE (time_window/since/before/date/day/when):
+      sempre <TIME_WINDOW> o <DATE> placeholder, ricalcolati dal query
+      al playback. Il valore literal (es. "today" da "leggi mail oggi")
+      NON deve essere replicato a query con time intent diverso (es.
+      "ultime 24 ore"). Regressione live 20/5/2026 sera (mail task).
     - altri (literal flag, lang code, scope id) → keep literal.
 
     Razionale §2.4: distinguere "valore concreto della query" (variabile fra
@@ -217,6 +222,11 @@ def derive_args_shape(query: str, raw_args_per_step: list[dict]) -> list[dict]:
     e' parte del pattern). I primi vanno generalizzati con placeholder; i
     secondi memorizzati letterali.
     """
+    # Set chiuso di nomi-arg con semantica volatile (query-dependent).
+    _VOLATILE_TIME_ARGS = {
+        "time_window", "window", "since", "before", "range", "from",
+    }
+    _VOLATILE_DATE_ARGS = {"date", "day", "when", "on_date"}
     out = []
     qlow = query.lower() if isinstance(query, str) else ""
     urls = set(_URL_RE.findall(query or ""))
@@ -227,6 +237,15 @@ def derive_args_shape(query: str, raw_args_per_step: list[dict]) -> list[dict]:
             out.append({})
             continue
         for k, v in step_args.items():
+            # Volatile time/date args: SEMPRE placeholder, ricalcolati
+            # dal query al playback (semantica query-dependent).
+            klow = k.lower()
+            if klow in _VOLATILE_TIME_ARGS:
+                shape[k] = "<TIME_WINDOW>"
+                continue
+            if klow in _VOLATILE_DATE_ARGS:
+                shape[k] = "<DATE>"
+                continue
             if k == "from_step" and isinstance(v, int):
                 shape[k] = v
             elif isinstance(v, str):
@@ -313,6 +332,28 @@ def resolve_args_from_shape(shape: dict, query: str,
                 if not int_pool:
                     return None
                 resolved[k] = int_pool[0]
+            elif v == "<TIME_WINDOW>":
+                # Ri-estrai dal query corrente (lang-independent regex).
+                try:
+                    from args_extractor import (
+                        _extract_time_window, _extract_date_keyword,
+                    )
+                    tw = (_extract_time_window(query)
+                           or _extract_date_keyword(query))
+                    if tw:
+                        resolved[k] = tw
+                    # Senza valore esplicito nel query: skippa (l'executor
+                    # usera' il suo default, es. "all").
+                except Exception:
+                    pass
+            elif v == "<DATE>":
+                try:
+                    from args_extractor import _extract_date_keyword
+                    d = _extract_date_keyword(query)
+                    if d:
+                        resolved[k] = d
+                except Exception:
+                    pass
             else:
                 resolved[k] = v  # literal
         elif isinstance(v, list):
