@@ -3121,6 +3121,42 @@ class TurnLog:
         if not all_entries_by_url and not all_docs_by_url:
             return
 
+        # Restrizione 20/5/2026: se nel turno c'e' un read_urls_html
+        # andato a buon fine, mostriamo come fonti SOLO gli URL su cui
+        # l'estrazione testo e' davvero stata fatta. I link di find_urls
+        # rimasti fuori erano candidati grezzi (titolo + snippet), non
+        # fonti del riassunto. Comportamento default = "riassunto + fonti
+        # effettive"; lista cliccabile grezza si vede solo nel branch
+        # list-intent (vedi describe_entries interceptor).
+        _fetched_urls: set[str] = set()
+        for s in self.steps:
+            if s.chosen_tool != "read_urls_html":
+                continue
+            res = s.result if isinstance(s.result, dict) else {}
+            if not res.get("ok"):
+                continue
+            for e in res.get("entries") or []:
+                if not isinstance(e, dict):
+                    continue
+                url = e.get("url")
+                body = e.get("body_text")
+                if (isinstance(url, str) and url
+                        and isinstance(body, str)
+                        and len(body.strip()) >= 100):
+                    _fetched_urls.add(url)
+        if _fetched_urls:
+            # Ristretto: solo gli URL effettivamente processati.
+            all_entries_by_url = {
+                u: e for u, e in all_entries_by_url.items()
+                if u in _fetched_urls
+            }
+            all_docs_by_url = {
+                u: d for u, d in all_docs_by_url.items()
+                if u in _fetched_urls
+            }
+            if not all_entries_by_url and not all_docs_by_url:
+                return
+
         # Noise tail elimination (Roberto, 10/5/2026):
         # 1) Score-relative threshold STRETTO 30% del top (era 5% troppo
         #    morbido — su top 35 lasciava entrare migliaia con score 1-5).
@@ -6447,19 +6483,45 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
                     if isinstance(_h, dict) and _h and "health_context" not in args:
                         args = dict(args)
                         args["health_context"] = _h
-                    # 10/5/2026 fix UX deterministico: se la sorgente e'
-                    # find_urls (anche attraverso filter/sort/group
-                    # helpers in mezzo) con entries (URL list metadata),
-                    # SKIP describe_entries — produrrebbe sintesi educata
-                    # senza link. Sostituisce con auto-final: il runtime
-                    # appende la lista cliccabile via
-                    # `_append_search_results_if_any`. Il PLANNER puo'
-                    # ignorare il rule Z.sette ma il runtime no.
+                    # 10/5/2026 fix UX deterministico (rivisto 20/5/2026):
+                    # se la sorgente e' find_urls (anche attraverso
+                    # filter/sort/group helpers in mezzo) con entries
+                    # (URL list metadata), l'interceptor scatta SOLO se
+                    # l'utente ha chiesto esplicitamente i link.
                     #
-                    # Walk-back attraverso helpers (filter_entries,
-                    # sort_entries, group_entries, classify_entries):
-                    # se from_step punta a uno di questi, risali fino al
-                    # vero source (find_urls).
+                    # Default = riassunto: describe_entries va lasciato
+                    # eseguire; la sua detection `needs_content_fetch`
+                    # interpone read_urls_html (ADR 0153 auto-remediation)
+                    # ed estrae il testo prima di sintetizzare.
+                    #
+                    # Eccezione = list-intent: query che chiede
+                    # esplicitamente la lista link. Vocabolario chiuso
+                    # IT+EN, regex word-boundary. Niente "link" da solo
+                    # (troppo ambiguo: "trova link che parlano di..."
+                    # vuole riassunto, non lista).
+                    _LIST_INTENT_RE = _re.compile(
+                        r"\b("
+                        r"dammi\s+i\s+link|"
+                        r"elenca(?:mi)?\s+(?:i\s+)?link|"
+                        r"lista\s+(?:di\s+)?link|"
+                        r"mostra(?:mi)?\s+(?:i\s+)?link|"
+                        r"solo\s+(?:i\s+)?link|"
+                        r"elenco\s+link|"
+                        r"list\s+of\s+links|"
+                        r"links?\s+only|"
+                        r"just\s+(?:the\s+)?links?|"
+                        r"give\s+me\s+(?:the\s+)?links?"
+                        r")\b",
+                        _re.IGNORECASE,
+                    )
+                    _list_intent = bool(
+                        _LIST_INTENT_RE.search(user_query_for_run or "")
+                    )
+                    # Branch list-intent: walk-back + skip describe + auto-final
+                    # con lista link cliccabili (vecchio comportamento).
+                    # Senza list-intent: fall-through, describe_entries gira
+                    # normalmente e l'auto-remediation needs_content_fetch
+                    # interpone read_urls_html per il riassunto reale.
                     _HELPER_TOOLS = {
                         "filter_entries", "sort_entries", "group_entries",
                         "classify_entries",
@@ -6483,7 +6545,8 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
                         _src_tool = _entry_tool
                         _src_obs = _entry_step.get("observation", {})
                         break
-                    if (_src_tool == "find_urls"
+                    if (_list_intent
+                            and _src_tool == "find_urls"
                             and isinstance(_src_obs, dict)
                             and _src_obs.get("ok")
                             and _src_obs.get("entries")):
