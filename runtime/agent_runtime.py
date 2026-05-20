@@ -634,6 +634,9 @@ from vocab import (
 )
 from logging_setup import get_logger
 log = get_logger(__name__)
+# Alias modulo (immutabile, mai shadowed). Usato dai gestori silent-swallow
+# dentro run_turn(), dove `log` e' shadowed dall'istanza TurnLog locale.
+_LOG = log
 
 
 def _render_project_paths_block() -> str:
@@ -3522,19 +3525,31 @@ class TurnLog:
                     resolved = (first.resolved_args
                                 if isinstance(first.resolved_args, dict)
                                 else raw)
-                    # Strip args volatili (query-dependent) prima della
-                    # memoization (ADR 0150 v6, fix regressione mail task):
-                    # time_window / date / since literal-memorizzati da un
-                    # past query non devono essere applicati a un nuovo
-                    # query con time intent diverso.
-                    _VOLATILE = {
-                        "time_window", "window", "since", "before", "range",
-                        "from", "date", "day", "when", "on_date",
-                    }
-                    resolved_clean = {
-                        k: v for k, v in resolved.items()
-                        if k.lower() not in _VOLATILE
-                    }
+                    # Strip args query-derived (ADR 0150 v7, generalizzato):
+                    # qualunque arg che `args_extractor.regex_extract`
+                    # saprebbe ri-derivare dal query corrente NON va
+                    # memoizzato letterale — verrebbe applicato a una
+                    # query con intent diverso. Single source of truth =
+                    # args_extractor + schema dell'executor del primo step.
+                    # General + lang-independent §7.3.
+                    resolved_clean = dict(resolved)
+                    try:
+                        from args_extractor import regex_extract as _are
+                        from loader import load_catalog as _ld
+                        _ex0 = (getattr(_ld(), "executors", {})
+                                 .get(tool))
+                        _sch0 = (getattr(_ex0, "args_schema", None)
+                                  if _ex0 else None) or {}
+                        if _sch0:
+                            _qd = set(
+                                _are(self.user_query or "", _sch0).keys()
+                            )
+                            resolved_clean = {
+                                k: v for k, v in resolved.items()
+                                if k not in _qd
+                            }
+                    except Exception:
+                        pass
                     _mn = Mnestoma()
                     _mn.record_canonical_query(
                         cq, tool, raw,
@@ -3602,21 +3617,30 @@ class TurnLog:
                     for s in _filtered_steps
                 ]
                 if len(tools_seq) >= 2:
-                    shape = derive_args_shape(
-                        self.user_query or "", raw_args_per,
-                    )
-                    # Recupera nomi catalog per la regola simmetrica
-                    # "executor > fast-path": se l'executor sintetizzato
-                    # equivalente esiste, NON registriamo la pipeline.
+                    # Recupera nomi catalog + schemi per gli step (per
+                    # derive_args_shape: args query-derived sono inferiti
+                    # da args_extractor.regex_extract usando lo schema).
                     catalog_names: set | None = None
+                    _schemas_per_step: list[dict] = []
                     try:
                         from loader import load_catalog
                         _cat = load_catalog()
                         catalog_names = set(
                             getattr(_cat, "executors", {}).keys()
                         )
+                        for _tname in tools_seq:
+                            _ex = (getattr(_cat, "executors", {})
+                                    .get(_tname))
+                            _schemas_per_step.append(
+                                getattr(_ex, "args_schema", None) or {}
+                            )
                     except Exception:
                         catalog_names = None
+                        _schemas_per_step = []
+                    shape = derive_args_shape(
+                        self.user_query or "", raw_args_per,
+                        schemas_per_step=_schemas_per_step or None,
+                    )
                     record_path_observation(
                         canonical_query=cq,
                         tools_sequence=tools_seq,
@@ -4348,7 +4372,7 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
         try:
             progress.start("")
         except Exception as _e:  # silent swallow (auto-fixed)
-            log.warning("silent exception in %s: %s", __name__, _e)
+            _LOG.warning("silent exception in %s: %s", __name__, _e)
     catalog = filter_for_visibility(load_catalog(), VISIBILITY_COMPOSER)
     if len(catalog) == 0:
         log.final_kind = "error"; log.final_message = "(catalogo vuoto)"
@@ -4513,7 +4537,7 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
                     "Sto pensando il modo migliore di rispondere…"
                 )
         except Exception as _e:
-            log.warning("silent exception in %s: %s", __name__, _e)
+            _LOG.warning("silent exception in %s: %s", __name__, _e)
 
     # Telemetria fine (ADR 0080): prefilter_ms + intent_ms misurati al
     # confine, attribuiti allo step 1 (sotto). intent_ms e' la quota LLM
@@ -5113,7 +5137,7 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
             try:
                 progress.update_free(f"step {step_num} · sto decidendo il prossimo passo…")
             except Exception as _e:  # silent swallow (auto-fixed)
-                log.warning("silent exception in %s: %s", __name__, _e)
+                _LOG.warning("silent exception in %s: %s", __name__, _e)
         # Aggiungi il builtin scratchpad_read se ci sono entries di questo turno.
         # SYNTH_REQUEST_TOOL e' sempre disponibile: e' il telos di non-rinuncia
         # cablato come tool meta che il LLM puo' chiamare quando nessun seed copre.
@@ -5723,7 +5747,7 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
                         predicted_remaining=predicted_remaining,
                     )
             except Exception as _e:  # silent swallow (auto-fixed)
-                log.warning("silent exception in %s: %s", __name__, _e)
+                _LOG.warning("silent exception in %s: %s", __name__, _e)
         if verbose:
             print(f"[step {step_num}] tool_call: {chosen_name}({raw_args})")
 

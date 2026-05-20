@@ -255,12 +255,19 @@ class TurnEventProgress:
         )
 
     def tool_call(self, *, step_num: int, tool: str,
-                   args_preview: dict | None = None) -> None:
-        self._log.append(
-            self.turn_id, "tool_call",
-            {"step": step_num, "tool": tool,
-              "args_preview": args_preview or {}},
-        )
+                   args_preview: dict | None = None,
+                   **kwargs) -> None:
+        """Compat con l'API Progress legacy: accetta args/path_so_far/
+        predicted_remaining/... e li passa nel payload SSE. Il front-end
+        decide quali campi mostrare."""
+        payload = {"step": step_num, "tool": tool}
+        if args_preview:
+            payload["args_preview"] = args_preview
+        # kwargs comuni dal call-site di run_turn:
+        # args (dict), path_so_far (list[str]), predicted_remaining (list[str])
+        for k, v in kwargs.items():
+            payload[k] = v
+        self._log.append(self.turn_id, "tool_call", payload)
 
     def emit(self, event_type: str, payload: dict) -> None:
         """Escape hatch per evento custom."""

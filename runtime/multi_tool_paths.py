@@ -203,48 +203,70 @@ def derive_synth_name(tools: list[str]) -> str:
     return f"{first}__then__{last}"
 
 
-def derive_args_shape(query: str, raw_args_per_step: list[dict]) -> list[dict]:
+def derive_args_shape(query: str, raw_args_per_step: list[dict],
+                       schemas_per_step: list[dict] | None = None
+                       ) -> list[dict]:
     """Costruisce args_shape sostituendo valori variabili con placeholder typed.
 
     Per ogni step, ispeziona raw_args:
     - `from_step: <int>` → keep literal (link a observation precedente).
-    - str matching URL/PATH/EMAIL nella query → <URL>/<PATH>/<EMAIL>.
-    - int → <INT>.
-    - args con nome VOLATILE (time_window/since/before/date/day/when):
-      sempre <TIME_WINDOW> o <DATE> placeholder, ricalcolati dal query
-      al playback. Il valore literal (es. "today" da "leggi mail oggi")
-      NON deve essere replicato a query con time intent diverso (es.
-      "ultime 24 ore"). Regressione live 20/5/2026 sera (mail task).
-    - altri (literal flag, lang code, scope id) → keep literal.
+    - args che `args_extractor` saprebbe ri-derivare dal query
+      (paths, urls, emails, glob, ints, time_window, date) → placeholder
+      `<DYNAMIC>`. Al playback vengono ri-estratti dal query corrente
+      via `args_extractor.regex_extract`. Garantisce che memoization
+      generalizzi senza replicare valori query-specific (es. "today"
+      memorizzato da "leggi mail oggi" non viene applicato a "ultime
+      24 ore"). General + lang-independent: il set di "args ri-estraibili"
+      e' definito UNA volta in args_extractor, scelta canonica del
+      vocabolario.
+    - altri (literal flag, lang code, scope id, default planner) → keep
+      literal.
 
     Razionale §2.4: distinguere "valore concreto della query" (variabile fra
     chiamate, va sostituito) da "scelta del PLANNER" (lang, flag, default che
     e' parte del pattern). I primi vanno generalizzati con placeholder; i
     secondi memorizzati letterali.
+
+    Args:
+      schemas_per_step: opzionale, schema args dell'executor per ciascun
+        step (parallelo a raw_args_per_step). Quando presente, abilita
+        l'inference query-derived via args_extractor. Senza schema,
+        fallback a placeholder per URL/PATH/EMAIL come prima (back-compat).
     """
-    # Set chiuso di nomi-arg con semantica volatile (query-dependent).
-    _VOLATILE_TIME_ARGS = {
-        "time_window", "window", "since", "before", "range", "from",
-    }
-    _VOLATILE_DATE_ARGS = {"date", "day", "when", "on_date"}
+    try:
+        from args_extractor import regex_extract as _arg_re
+    except Exception:
+        _arg_re = None
     out = []
     qlow = query.lower() if isinstance(query, str) else ""
     urls = set(_URL_RE.findall(query or ""))
     emails = set(_EMAIL_RE.findall(query or ""))
-    for step_args in raw_args_per_step:
+    for idx, step_args in enumerate(raw_args_per_step):
         shape: dict = {}
         if not isinstance(step_args, dict):
             out.append({})
             continue
+        # Set di args che `args_extractor` ri-deriverebbe dal query
+        # corrente per questo step. Universale: se l'extractor lo
+        # gestisce, e' query-dependent → memoizziamo come placeholder.
+        _query_derived: set = set()
+        if _arg_re is not None and schemas_per_step is not None:
+            try:
+                _sch = (schemas_per_step[idx]
+                         if idx < len(schemas_per_step) else None)
+                if _sch:
+                    _query_derived = set(
+                        _arg_re(query or "", _sch).keys()
+                    )
+            except Exception:
+                pass
         for k, v in step_args.items():
-            # Volatile time/date args: SEMPRE placeholder, ricalcolati
-            # dal query al playback (semantica query-dependent).
-            klow = k.lower()
-            if klow in _VOLATILE_TIME_ARGS:
-                shape[k] = "<TIME_WINDOW>"
-                continue
-            if klow in _VOLATILE_DATE_ARGS:
-                shape[k] = "<DATE>"
+            if k in _query_derived:
+                # args_extractor ri-estraibile → placeholder con type hint
+                # cosi' al playback ricostruiamo la stessa shape (array vs
+                # singolo) anche senza accesso allo schema.
+                _t = "array" if isinstance(v, list) else "string"
+                shape[k] = f"<DYNAMIC:{_t}>"
                 continue
             if k == "from_step" and isinstance(v, int):
                 shape[k] = v
@@ -332,26 +354,21 @@ def resolve_args_from_shape(shape: dict, query: str,
                 if not int_pool:
                     return None
                 resolved[k] = int_pool[0]
-            elif v == "<TIME_WINDOW>":
-                # Ri-estrai dal query corrente (lang-independent regex).
+            elif isinstance(v, str) and v.startswith("<DYNAMIC"):
+                # Ri-estrai dal query corrente via args_extractor.
+                # Schema-driven: l'extractor sa quale tipo l'arg vuole
+                # (URL/PATH/EMAIL/INT/TIME_WINDOW/DATE/GLOB) dal name.
+                # Type hint nel placeholder (`<DYNAMIC:array>` o
+                # `<DYNAMIC:string>`) ricostruisce shape originale.
                 try:
-                    from args_extractor import (
-                        _extract_time_window, _extract_date_keyword,
-                    )
-                    tw = (_extract_time_window(query)
-                           or _extract_date_keyword(query))
-                    if tw:
-                        resolved[k] = tw
-                    # Senza valore esplicito nel query: skippa (l'executor
-                    # usera' il suo default, es. "all").
-                except Exception:
-                    pass
-            elif v == "<DATE>":
-                try:
-                    from args_extractor import _extract_date_keyword
-                    d = _extract_date_keyword(query)
-                    if d:
-                        resolved[k] = d
+                    from args_extractor import regex_extract as _are
+                    _is_array = v == "<DYNAMIC:array>"
+                    _spec = {"type": "array"} if _is_array else {}
+                    _ext = _are(query, {"properties": {k: _spec}})
+                    if k in _ext:
+                        resolved[k] = _ext[k]
+                    # Se non estraibile dal nuovo query: skip (executor
+                    # usa il suo default).
                 except Exception:
                     pass
             else:
