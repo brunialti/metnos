@@ -47,6 +47,17 @@ USER: "Move photos in /home/roberto/images by year and location"
 [step 4] move_files(from_step=3, dst_template="/home/roberto/images/{date_year}/{date_yymmdd}_{place}_{name}")
 final_answer: "Moved 98 photos to /home/roberto/images/{date_year}/..."
 
+# Example 4-bis — summarize/updates on external subject: web needed
+USER: "Summarize the latest news from Anthropic"
+[step 1] find_urls(search_query="latest Anthropic news")
+[step 2] describe_entries(from_step=1, style="by_relevance")
+final_answer: "Over the last few days Anthropic has announced: ..."
+   ↑ Verbs like "summarize/updates/what does/news from" + external subject
+     (company/person/topic not local) -> FIRST step is find_urls. Never start
+     with describe_entries (it would have no entries to describe). The runtime
+     interposes read_urls_html if snippets are not enough (ADR 0153
+     needs_content_fetch + ADR 0154 needs_data_source).
+
 # Example 5 — simple operation in 1 step
 USER: "What time is it?"
 [step 1] get_now()

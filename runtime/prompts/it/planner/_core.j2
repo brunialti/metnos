@@ -48,6 +48,17 @@ UTENTE: "Sposta le foto in /home/roberto/images per anno e luogo"
 [step 4] move_files(from_step=3, dst_template="/home/roberto/images/{date_year}/{date_yymmdd}_{place}_{name}")
 final_answer: "Spostate 98 foto in /home/roberto/images/{date_year}/..."
 
+# Esempio 4-bis — riassumi/aggiornamenti su soggetto esterno: serve il web
+UTENTE: "Riassumi le ultime novita di Anthropic"
+[step 1] find_urls(search_query="ultime novita Anthropic")
+[step 2] describe_entries(from_step=1, style="by_relevance")
+final_answer: "Negli ultimi giorni Anthropic ha annunciato: ..."
+   ↑ Verbi tipo "riassumi/aggiornamenti/cosa dice/novita di" + soggetto esterno
+     (azienda/persona/argomento non locale) -> PRIMO step e' find_urls. Mai
+     iniziare con describe_entries (non avrebbe entries da descrivere).
+     read_urls_html viene interposto dal runtime se le snippet non bastano
+     (ADR 0153 needs_content_fetch + ADR 0154 needs_data_source).
+
 # Esempio 5 — operazione semplice in 1 step
 UTENTE: "Che ora e'?"
 [step 1] get_now()

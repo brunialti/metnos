@@ -1,0 +1,793 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="utf-8" />
+<title>Metnos — Telos come motore creativo (bozza di lavoro)</title>
+<meta name="description" content="Bozza di pensiero su come implementare il telos in Metnos: dove vive, cosa propone, con quale creativita'. Discussione esplorativa, non architettura definitiva." />
+<style>
+:root {
+  --navy: #1A477A;
+  --navy-light: #2B6CB0;
+  --bronze: #A0522D;
+  --sage: #548235;
+  --plum: #6B21A8;
+  --paper: #FCFAF6;
+  --ink: #2a2a2a;
+  --muted: #64748B;
+  --border: #d0d7de;
+  --code-bg: #EFEADB;
+  --note-bg: #F5F0E5;
+  --tip-bg: #dcfce7;
+  --warn-bg: #fef3c7;
+  --warn-border: #f59e0b;
+}
+* { box-sizing: border-box; }
+body {
+  font-family: 'Georgia', 'Cambria', 'Times New Roman', serif;
+  font-size: 12pt;
+  line-height: 1.75;
+  color: var(--ink);
+  background: var(--paper);
+  max-width: 820px;
+  margin: 0 auto;
+  padding: 40px 40px 80px;
+}
+h1 {
+  font-family: 'Segoe UI', Calibri, sans-serif;
+  color: var(--navy);
+  font-size: 22pt;
+  margin-top: 56px;
+  border-bottom: 2px solid var(--bronze);
+  padding-bottom: 8px;
+}
+h1:first-of-type { margin-top: 0; }
+h2 {
+  font-family: 'Segoe UI', Calibri, sans-serif;
+  color: var(--navy-light);
+  font-size: 15pt;
+  margin-top: 32px;
+  font-weight: 600;
+}
+h3 {
+  font-family: 'Segoe UI', Calibri, sans-serif;
+  color: var(--bronze);
+  font-size: 12pt;
+  margin-top: 22px;
+}
+p { margin: 12px 0; text-align: justify; }
+a { color: var(--navy); }
+code {
+  font-family: Consolas, 'Courier New', monospace;
+  background: var(--code-bg);
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-size: 10.5pt;
+}
+pre {
+  background: var(--code-bg);
+  padding: 14px 18px;
+  border-radius: 6px;
+  font-size: 10pt;
+  line-height: 1.5;
+  overflow-x: auto;
+  border-left: 3px solid var(--bronze);
+}
+blockquote {
+  border-left: 3px solid var(--bronze);
+  margin: 16px 0;
+  padding: 8px 20px;
+  font-style: italic;
+  color: #555;
+  background: var(--note-bg);
+  border-radius: 0 6px 6px 0;
+}
+.preface {
+  background: var(--note-bg);
+  border-left: 4px solid var(--bronze);
+  padding: 16px 24px;
+  margin: 24px 0;
+  border-radius: 0 8px 8px 0;
+}
+.preface h3 { margin-top: 0; color: var(--navy); font-style: italic; }
+.toc {
+  background: var(--note-bg);
+  border: 1px solid #E0D5C0;
+  border-radius: 8px;
+  padding: 18px 28px;
+  margin: 28px 0;
+}
+.toc h2 { margin-top: 0; color: var(--navy); border: none; }
+.toc ol { margin: 0; padding-left: 22px; }
+.toc li { margin: 6px 0; }
+.warn {
+  background: var(--warn-bg);
+  border-left: 4px solid var(--warn-border);
+  padding: 12px 20px;
+  margin: 16px 0;
+  border-radius: 0 6px 6px 0;
+  font-size: 11pt;
+}
+.tip {
+  background: var(--tip-bg);
+  border-left: 4px solid var(--sage);
+  padding: 12px 20px;
+  margin: 16px 0;
+  border-radius: 0 6px 6px 0;
+  font-size: 11pt;
+}
+.example {
+  margin: 22px 0;
+  padding: 14px 20px;
+  background: #FAF7F0;
+  border: 1px solid #E0D5C0;
+  border-radius: 6px;
+}
+.example .label {
+  font-family: 'Segoe UI', sans-serif;
+  font-size: 9.5pt;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  color: var(--bronze);
+  text-transform: uppercase;
+  margin-bottom: 8px;
+}
+.example h3 { margin-top: 4px; color: var(--navy); font-family: 'Segoe UI', sans-serif; }
+.lens {
+  background: white;
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--plum);
+  padding: 16px 22px;
+  margin: 22px 0;
+  border-radius: 0 6px 6px 0;
+}
+.lens .ref {
+  font-size: 10.5pt;
+  color: var(--muted);
+  margin-top: 4px;
+  font-style: italic;
+}
+.bookend {
+  text-align: center;
+  font-family: 'Segoe UI', sans-serif;
+  color: var(--bronze);
+  font-size: 13pt;
+  letter-spacing: 3px;
+  margin: 36px 0;
+}
+.meta-top {
+  color: var(--muted);
+  font-size: 10.5pt;
+  margin-bottom: 24px;
+  font-style: italic;
+  border-bottom: 1px dotted var(--border);
+  padding-bottom: 10px;
+}
+table {
+  border-collapse: collapse;
+  margin: 16px 0;
+  width: 100%;
+  font-size: 11pt;
+}
+th, td {
+  border: 1px solid var(--border);
+  padding: 8px 12px;
+  text-align: left;
+  vertical-align: top;
+}
+th {
+  background: var(--note-bg);
+  font-family: 'Segoe UI', sans-serif;
+  color: var(--navy);
+}
+.bib { font-size: 11pt; }
+.bib li { margin: 10px 0; }
+</style>
+</head>
+<body>
+
+<div class="meta-top">
+  Bozza di lavoro &middot; non architettura canonica &middot; 20 maggio 2026 &middot;
+  Compagno alla lettura del dialogo <a href="../Metnos_Dialogo_v1.html">Dialogo sui fini e i limiti v1</a>
+  e della microprogettazione <a href="../architecture/telos.html">telos v1.1</a>.
+</div>
+
+<h1>Telos come motore creativo</h1>
+
+<p style="font-style: italic; color: var(--muted); font-size: 13pt; text-align: center; margin-top: -8px;">
+  Una discussione esplorativa su dove vive, cosa propone e come ragiona.
+</p>
+
+<div class="preface">
+<h3>Avvertenza al lettore</h3>
+<p>
+Questo documento raccoglie una conversazione di pensiero del 20 maggio 2026 fra
+Roberto e l'assistente sulla seguente questione: il telos in Metnos esiste
+come file (<code>workspace/TELOS.md</code> con i 7 fini canonici) e come idea
+nel dialogo della Prima Giornata, ma non ha ancora un'implementazione che lo
+renda operativo. Come renderlo utile senza tradirne la missione&nbsp;&mdash; che
+e' giudicare cio' che Metnos sta per fare, mai cio' che fa l'utente?
+</p>
+<p>
+La discussione e' aperta. Le sezioni 1&ndash;4 raccolgono il ragionamento; la 5
+elenca esempi di prima generazione; la 6 introduce nove lenti dalla letteratura
+sulla creativita' artificiale, ciascuna con un esempio concreto generato
+attraverso quella lente; la 7&ndash;8 chiudono con il prossimo passo
+concreto e cosa lasciar fuori.
+</p>
+</div>
+
+<div class="toc">
+<h2>Indice</h2>
+<ol>
+  <li><a href="#partenza">Il punto di partenza</a></li>
+  <li><a href="#dibattito">Il dibattito sulla collocazione</a></li>
+  <li><a href="#risoluzione">La risoluzione&nbsp;&mdash; due posti legittimi</a></li>
+  <li><a href="#antipaternalismo">Anti-paternalismo come bussola</a></li>
+  <li><a href="#esempi1">Esempi di prima generazione</a></li>
+  <li><a href="#lenti">Cornice laterale&nbsp;&mdash; nove lenti dalla letteratura</a></li>
+  <li><a href="#domanda">La domanda riformulata</a></li>
+  <li><a href="#nonora">Cosa non fare ora</a></li>
+  <li><a href="#prossimo">Prossimo passo concreto</a></li>
+  <li><a href="#bibliografia">Riferimenti</a></li>
+</ol>
+</div>
+
+<div class="bookend">&#10086;</div>
+
+<h1 id="partenza">1. Il punto di partenza</h1>
+
+<p>
+Il telos nasce nel dialogo della Prima Giornata come risposta a un problema
+semplice: se Metnos propone di sua iniziativa, chi valuta la proposta? Non
+puo' essere l'utente ogni volta (stanchezza dell'approvatore). Non puo' essere
+Metnos stesso (giudice di se stesso). Serve un terzo termine, ed
+e' nei <em>fini ultimi</em>: tre-sette frasi brevi scritte dall'utente che
+dicono <em>verso cosa tendere</em>. Una funzione di allineamento le proietta
+su ogni proposta e ne fa un punteggio. Sopra soglia, la proposta vive;
+sotto, va in un registro ispezionabile.
+</p>
+
+<p>
+La microprogettazione <code>telos.html</code> espande questa intuizione in
+contratto Python, formula <code>expected_alignment</code>, clausola di stop,
+apprendimento dai silenzi. Il file <code>TELOS.md</code> nel workspace e' gia'
+popolato con i 7 telos canonici dal 27 aprile 2026. Ma nessuna delle
+componenti di runtime e' stata scritta: nessun loader, nessuna funzione di
+allineamento, nessun bother budget.
+</p>
+
+<p>
+Per partire bene serve riformulare il problema in un modo piu' fertile di
+quello del dialogo. Il dialogo presenta il telos come <strong>gate a valle
+delle proposte spontanee</strong>. Questa formulazione e' corretta ma
+sottocomprende il ruolo che il telos dovrebbe avere. La domanda piu' radicale
+che e' emersa nella conversazione del 20 maggio e' la seguente:
+</p>
+
+<blockquote>
+  Il telos chiude il gap fra un mnest parziale e un obiettivo non esplicito.
+  E' creativita' finalizzata a un obiettivo generale.
+</blockquote>
+
+<p>
+"Mnest parziale" significa: una traccia di co-attivazione fra executor che
+porta a meta' strada ma non chiude. "Obiettivo non esplicito" significa: il
+fine ultimo che l'utente ha dichiarato (telos) ma che non si traduce
+automaticamente in una sequenza di azioni concreta. Il telos e' il segnale
+che permette di colmare quel divario&nbsp;&mdash; non come regola, ma come
+spinta direzionale.
+</p>
+
+<p>
+Questo cambia tutto. Il telos non e' un giudice di proposte; e' un
+<em>motore generativo</em>. Genera proposte che servono i fini, partendo
+dal grafo di capacita' esistenti (mnestoma) e dalla silhouette d'uso
+dell'utente.
+</p>
+
+<div class="bookend">&#10086;</div>
+
+<h1 id="dibattito">2. Il dibattito sulla collocazione</h1>
+
+<p>
+Una prima ipotesi (formulata male, e respinta): il telos vive nel planner,
+nei filter, nel describe, nel vaglio&nbsp;&mdash; insomma, in <em>ogni</em>
+situazione dubbia. Un esempio specifico era:
+<code>filter_entries(criterion="important")</code> userebbe la <code>note</code>
+del telos <code>t.puntualita</code> come prompt di classificazione&nbsp;&mdash;
+risolvendo cosi' la nozione di "importante" senza chiedere all'utente.
+</p>
+
+<div class="warn">
+<strong>Il problema con questa formulazione:</strong> il telos finisce per
+<em>interpretare cosa intende l'utente</em>. Cio' contraddice la frase-cardine
+del dialogo della Giornata II: <em>i telos valutano cio' che Metnos sta per
+fare per l'utente, non cio' che l'utente fa</em>. Anche solo decidere che
+"importante" significa "lavoro, salute, famiglia" sulla base del telos e' un
+giudizio sulla richiesta utente, non sulla proposta di Metnos. E' paternalismo
+travestito da utilita'.
+</div>
+
+<p>
+Il dibattito si articola allora su due posizioni opposte:
+</p>
+
+<table>
+<tr><th style="width:25%">Opzione</th><th>Pro</th><th>Contro</th></tr>
+<tr>
+  <td><strong>Ovunque</strong>&nbsp;&mdash; il telos e' visibile a tutti i layer che fanno scelte</td>
+  <td>Massima utilita' potenziale; il telos rompe ogni pareggio.</td>
+  <td>Tradisce la missione: non puo' fare a meno di giudicare richieste utente. Slittamento paternalistico inevitabile.</td>
+</tr>
+<tr>
+  <td><strong>Nessuna parte (in background)</strong>&nbsp;&mdash; il telos vive solo nel batch notturno</td>
+  <td>Rispetta la non-giudicialita': non interviene mai a request-time.</td>
+  <td>Rischia di essere irrilevante. Se non fa qualcosa di unico, e' peso morto.</td>
+</tr>
+</table>
+
+<p>
+La seconda opzione e' la sola che rispetta la missione, ma deve dimostrare
+di valere il proprio costo. <strong>Se nascosto, il telos deve fare qualcosa
+in piu' di tutti gli altri ager introvertivi gia' in funzione</strong>
+(<a href="../architecture/synt.html">synt cascade</a>,
+<a href="../architecture/mnestoma.html">mnestoma promote</a>,
+executor aging, multi-tool promote). Quel "qualcosa in piu'" e' la
+creativita' finalizzata.
+</p>
+
+<div class="bookend">&#10086;</div>
+
+<h1 id="risoluzione">3. La risoluzione&nbsp;&mdash; due posti legittimi</h1>
+
+<p>
+Il telos vive in due posti, disgiunti e complementari.
+</p>
+
+<h2>3.1 Motore introspettivo orientato a obiettivo</h2>
+
+<p>
+Loop di fondo (scheduler v2, <code>daily@03:30</code>) che per ciascun telos
+dichiarato esplora cosa Metnos puo' fare di sua iniziativa per servirlo. La
+materia prima e' duplice:
+</p>
+
+<ul>
+  <li>il <strong>mnestoma</strong>&nbsp;&mdash; capacita' gia' esistenti, mnest co-attivati frequentemente, "buchi" osservabili nel pool di executor;</li>
+  <li>la <strong>silhouette d'uso dell'utente</strong>&nbsp;&mdash; cosa fa con Metnos, quando, con che ritmo, con che esito (dal <code>turn_log</code>).</li>
+</ul>
+
+<p>L'esecuzione del loop produce proposte concrete che passano poi per il vaglio:</p>
+
+<pre>scheduler v2 daily@03:30
+  &mdash;&mdash; telos_introspect_run
+       &mdash;&mdash; per ogni telos in TELOS.md:
+            &mdash;&mdash; raccoglie mnestoma (mnest top-N per uses, frequenti, buchi)
+            &mdash;&mdash; raccoglie pattern d'uso (turn_log &rarr; verbi + ritmi recenti)
+            &mdash;&mdash; LLM tier=middle, prompt:
+            |    "L'utente vuole {telos.phrase} (peso w, note).
+            |     Mnestoma ha {summary mnests}. Usa Metnos per {verbi+ritmi}.
+            |     Proponi K azioni che Metnos puo' fare DA SOLO
+            |     per servire questo telos. Ognuna:
+            |       kind in {schedule, synth_executor, digest, deprecate}
+            |       evidence  &larr; mnest_id o pattern osservato
+            |       expected_alignment &larr; stima fit x weight"
+            &mdash;&mdash; ogni proposta passa attraverso il vaglio:
+            |      &middot; Guardia costituzionale (block forbidden)
+            |      &middot; Anti-paternalismo: rigetta se "dire all'utente di..."
+            |                                   o "impedire all'utente di..."
+            |      &middot; Giudice teleologico: gate expected_alignment >= soglia
+            &mdash;&mdash; proposals.db &larr; sopravvissute, in stato to_review
+                 &rarr; admin UI / digest serale
+</pre>
+
+<p>
+L'output sono <em>funzioni nuove o ritmi nuovi</em>, mai interpretazioni di
+richieste in corso. Esempio breve: telos <code>t.tempo</code> + il mnestoma
+mostra <code>read_messages &rarr; classify_entries &rarr; describe_entries</code>
+co-attivati 12 volte negli ultimi 14 giorni alle 7&ndash;9 del mattino &rarr;
+proposta: synth <code>morning_mail_digest</code> + schedule
+<code>daily@07:30</code>.
+</p>
+
+<h2>3.2 Scelte interne di Metnos</h2>
+
+<p>
+Il secondo posto&nbsp;&mdash; legittimo, esplicitamente sancito dal dialogo
+("Metnos preferisce il modello linguistico piu' economico quando basta")&nbsp;&mdash;
+e' l'applicazione del telos alle scelte di risorsa che Metnos fa per se'.
+Non c'e' giudizio sull'utente, ma sul proprio comportamento:
+</p>
+
+<ul>
+  <li><strong>llm_router</strong>: scelta tier (fast / middle / wise) rispetta <code>t.parsimonia</code>;</li>
+  <li><strong>synt cascade depth</strong>: la cascata si ferma quando il costo accumulato vs alignment-margine dice "non vale";</li>
+  <li><strong>parallelismo crawler</strong>: numero di worker per-host scala col peso di <code>t.tempo</code> vs <code>t.parsimonia</code>;</li>
+  <li><strong>retry budget</strong>: stessa logica.</li>
+</ul>
+
+<p>
+Questo lavoro vive in un modulo separato (<code>runtime/self_thrift.py</code> o
+analogo), <strong>non</strong> in <code>telos_introspect.py</code>. Le due
+applicazioni sono concettualmente distinte: la prima e' creativa e
+generativa (LLM); la seconda e' deterministica (formule §4 della
+microprogettazione telos).
+</p>
+
+<div class="bookend">&#10086;</div>
+
+<h1 id="antipaternalismo">4. Anti-paternalismo come bussola</h1>
+
+<p>
+Il filtro di sanita' di ogni proposta del motore introspettivo e' la stessa
+domanda, sempre: <strong>la proposta cambia qualcosa che fa Metnos
+(executor, schedule, policy, traccia), o cambia qualcosa che fa l'utente?</strong>
+Solo la prima e' ammessa.
+</p>
+
+<p>Esempi che il vaglio deve <strong>rigettare</strong>:</p>
+
+<ul>
+  <li><code>t.parsimonia</code> + Roberto compra spesso elettronica &rarr; "ti suggerisco di ridurre la spesa elettronica del 30%". Giudica l'utente.</li>
+  <li><code>t.ordine</code> + Roberto lascia 47 file in Desktop &rarr; "riordino il Desktop in cartelle per te" senza chiedere. Agisce su scelte utente non delegate.</li>
+  <li><code>t.puntualita</code> + cerca eventi mancati per "richiamare l'attenzione". Moralismo.</li>
+</ul>
+
+<p>
+La regola positiva, simmetrica: il telos valuta cio' che Metnos sta per fare
+per l'utente, non cio' che l'utente fa. Esempi che <strong>passano</strong>
+proprio perche' rispettano questo confine:
+</p>
+
+<ul>
+  <li><code>t.parsimonia</code> + l'agente nota di aver usato 23 volte tier=wise dove tier=middle bastava &rarr; propone modifica della tier policy. Cambia il comportamento di Metnos.</li>
+  <li><code>t.protezione</code> + l'agente nota che <code>share_files</code> non preserva privacy dei metadata &rarr; propone wrapper pre-execution che strippa EXIF. Cambia il comportamento di Metnos sul punto di esposizione.</li>
+</ul>
+
+<div class="bookend">&#10086;</div>
+
+<h1 id="esempi1">5. Esempi di prima generazione</h1>
+
+<p>
+Sei tipologie di proposta, ordinate per creativita' crescente. La distinzione
+da tenere a mente: il telos engine deve produrre cose che gli altri ager
+<strong>non</strong> producono. L'introvertiva e' bottom-up (guarda il pool
+e lo riordina: dedup, generalize, demote, promote dei path frequenti). Il
+telos engine e' top-down (parte dal fine dichiarato e <em>inventa</em>
+capacita' assenti).
+</p>
+
+<div class="example">
+<div class="label">Tipo 1 &middot; Ricombinazione cross-domain &middot; creativita' bassa</div>
+<h3>weekly_finance_briefing</h3>
+<p><strong>Telos</strong>: <code>t.tempo</code> + <code>t.puntualita</code></p>
+<p><strong>Segnale</strong>: il turn_log mostra che 9 su 14 marted&igrave;-venerd&igrave; alle 07:15&ndash;08:30 Roberto chiama in sequenza <code>read_messages(from=banca)</code>, <code>describe_entries(by_amount)</code>, <code>find_files(*.pdf, ~/Documents/spese)</code>. Il mnestoma non ha mai chained questi tre: sono tre mnest separati che si accendono nella stessa ora.</p>
+<p><strong>Proposta</strong>: un executor sintetizzato <code>morning_finance_briefing</code> + schedule <code>daily@07:15</code>, output unificato (saldi recenti / pagamenti da fare entro 7gg / spese settimanali per categoria).</p>
+<p><strong>Cosa la rende diversa da <code>multi_tool_promote</code></strong>: il promote vede solo sequenze gi&agrave; co-attivate nello stesso turno. Qui le tre cose accadono in turni distinti ma allo stesso giorno-ora. La connessione la deve fare un LLM che legge il pattern temporale, non il counter delle co-occorrenze.</p>
+</div>
+
+<div class="example">
+<div class="label">Tipo 2 &middot; Ponte fra fonti che non si parlano &middot; creativita' media</div>
+<h3>contracts_deadline_radar</h3>
+<p><strong>Telos</strong>: <code>t.puntualita</code></p>
+<p><strong>Segnale</strong>: negli ultimi 90 giorni Roberto ha chiesto 3 volte "che fine ha fatto la scadenza X?", trovata in un PDF in <code>~/Documents/contratti/</code>. Mnestoma: <code>read_files_pdf</code> &egrave; chiamato 4 volte in totale negli ultimi 90 giorni. La cartella ha 287 PDF mai indicizzati.</p>
+<p><strong>Proposta</strong>: synth <code>contracts_deadline_radar</code> + schedule <code>weekly@dom-20:00</code>: legge i nuovi PDF in <code>contratti/</code>, estrae date (LLM fast), cross-check con <code>events.sqlite</code>, propone le mancanti come task calendar 7gg avanti.</p>
+<p><strong>Originalit&agrave;</strong>: lavora su un corpus che Roberto non ha mai esplicitamente interrogato. La proposta nasce dall'osservazione di tre <em>fallimenti silenziosi</em> (scadenze trovate post-hoc), non da un pattern di successo.</p>
+</div>
+
+<div class="example">
+<div class="label">Tipo 3 &middot; Proposta da osservazione negativa &middot; creativita' alta</div>
+<h3>quiet_hours_pre_brief</h3>
+<p><strong>Telos</strong>: <code>t.tempo</code> + <code>t.discrezione</code></p>
+<p><strong>Segnale</strong>: in 30gg Telegram ha 47 sessioni utente, 38 fra le 21:00 e 24:00, 19/38 chiuse con "lascia perdere" o silenzio entro 90s. Pattern temporale &rarr; frustrazione serale.</p>
+<p><strong>Proposta</strong>: cambia il modello di interazione, non aggiunge un executor. Daily@19:30 Metnos pre-computa risposte alle 8 query piu' probabili per quell'utente in quella fascia (calendar tomorrow, mail summary, scadenze, news watchlist) e le mette in un digest serale single-page. Le interruzioni serali calano del 60% perch&eacute; la risposta &egrave; gi&agrave; l&igrave;.</p>
+<p><strong>Originalit&agrave;</strong>: nessun executor lo "fa", &egrave; una mossa strutturale sulla cadenza di interazione. Roberto pu&ograve; rifiutarla&mdash;ma &egrave; esattamente il tipo di proposta che nessun ager bottom-up genererebbe perch&eacute; non guarda gli stati emotivi del turn_log.</p>
+</div>
+
+<div class="example">
+<div class="label">Tipo 4 &middot; Capacita' assenti del catalog &middot; creativita' alta</div>
+<h3>share_audit_redactor</h3>
+<p><strong>Telos</strong>: <code>t.protezione</code></p>
+<p><strong>Segnale</strong>: in 60gg <code>share_files</code> chiamato 23 volte. Mnestoma mostra zero <code>*_metadata</code> chiamato in catena con <code>share_files</code>. Sample di 4 PDF condivisi: EXIF contiene <code>Author: Roberto B. (Studio Legale X SRL)</code>, vecchio datore.</p>
+<p><strong>Proposta</strong>: due cose in una. (a) wrapper pre-execution su <code>share_files</code> che propone <code>set_files_metadata(strip_pii=true)</code> con preview del diff metadata. (b) audit retroattivo: lista dei 23 file gi&agrave; condivisi con tracce identificabili, per ciascuno propone "richiedi cancellazione lato destinatario" + un email-draft generato.</p>
+<p><strong>Originalit&agrave;</strong>: tocca un'azione costituzionalmente sensibile (modificare l'azione utente prima dell'esecuzione). Il vaglio anti-paternalismo qui <em>non</em> blocca, perch&eacute; la modifica &egrave; del comportamento di Metnos, non dell'utente&nbsp;&mdash; Metnos sta scegliendo di non condividere PII a suo nome.</p>
+</div>
+
+<div class="example">
+<div class="label">Tipo 5 &middot; Meta-proposta sulla propria policy &middot; creativita' alta</div>
+<h3>tier_policy_downgrade(read_messages)</h3>
+<p><strong>Telos</strong>: <code>t.parsimonia</code></p>
+<p><strong>Segnale</strong>: <code>read_messages</code> con tier <code>wise</code> chiamato 23 volte in 14gg. Cross-check delle vaglio decision: 17/23 output sono stati giudicati di qualit&agrave; "average" (avrebbe bastato tier <code>middle</code>). Costo risparmiabile speculato: ~30% del compute settimanale.</p>
+<p><strong>Proposta</strong>: modifica la tier policy in <code>runtime/llm_tiers.toml</code> per intent=<code>read_messages</code>: default <code>middle</code>, escalate a <code>wise</code> solo se la confidenza prima-passata &egrave; sotto soglia.</p>
+<p><strong>Originalit&agrave;</strong>: il caso pi&ugrave; puro del dialogo Giornata II. Telos applicato a una scelta che &egrave; <em>solo</em> di Metnos, mai dell'utente.</p>
+</div>
+
+<div class="example">
+<div class="label">Tipo 6 &middot; Pulizia della propria traccia &middot; creativita' molto alta</div>
+<h3>turn_log_self_redactor</h3>
+<p><strong>Telos</strong>: <code>t.protezione</code></p>
+<p><strong>Segnale</strong>: turn_log degli ultimi 90gg contiene 134 menzioni di nomi propri di persone (cross-check con <code>persons.sqlite</code>), 14 menzioni di numeri IBAN/CC, 7 menzioni di indirizzi fisici. Tutto in chiaro nel JSONL.</p>
+<p><strong>Proposta</strong>: <code>turn_log_pii_scrubber</code> mensile che ri-scrive turn_log JSONL sostituendo nominativi noti con <code>&lt;P:slug&gt;</code>, conti con <code>&lt;ACCT&gt;</code>, indirizzi con <code>&lt;ADDR&gt;</code>. Mantiene un mapping cifrato a parte (Fernet, accessibile solo via admin consent). Audit chain: hash della versione precedente, never-destroy.</p>
+<p><strong>Originalit&agrave;</strong>: Metnos propone di ripulire la propria memoria operativa per onorare la privacy dichiarata. Autoreferenziale. Strano, valido. Nessun ager bottom-up arriverebbe qui.</p>
+</div>
+
+<div class="bookend">&#10086;</div>
+
+<h1 id="lenti">6. Cornice laterale&nbsp;&mdash; nove lenti</h1>
+
+<p>
+La domanda chiave non e' "quali proposte produrre?" ma "<strong>come deve
+pensare un LLM sotto vincolo per produrne di originali e utili?</strong>".
+Il problema ha una storia ricca in informatica e in teoria della creativita'.
+Ognuna delle nove lenti che seguono e' un modo di formulare il prompt al
+modello generativo, e ciascuna ha esempi distinti.
+</p>
+
+<div class="lens">
+<h3>6.1 OuLiPo&nbsp;&mdash; il vincolo come motore</h3>
+<p class="ref">Queneau, <em>Cent mille milliards de pomes</em>, 1961. Perec, <em>La Disparition</em>, 1969.</p>
+<p>
+Il gruppo francese che ha scritto romanzi senza la lettera "e" o sonetti
+combinabili in 10<sup>14</sup> varianti. Tesi: i vincoli rigidi liberano la
+creativita' perche' chiudono le scorciatoie banali.
+</p>
+<p><strong>Esempio Metnos &mdash; settimana senza wise</strong>. Telos <code>t.parsimonia</code> come vincolo OuLiPo: per 7gg consecutivi Metnos opera con tier max=<code>middle</code>. Telemetria misura per quali intent la qualit&agrave; &egrave; crollata e per quali no. Output: un ADR di policy "tier wise solo per intent {set finale dopo esperimento}", con dati di campagna. Nessun ager esistente accetta degradazione temporanea per imparare. &Egrave; deliberato auto-handicap come strumento di scoperta.</p>
+</div>
+
+<div class="lens">
+<h3>6.2 SCAMPER&nbsp;&mdash; sette operatori di brainstorming</h3>
+<p class="ref">Eberle, <em>SCAMPER: Games for Imagination Development</em>, 1971. Basato su Osborn, <em>Applied Imagination</em>, 1953.</p>
+<p>
+Sette operatori: <strong>S</strong>ubstitute, <strong>C</strong>ombine,
+<strong>A</strong>dapt, <strong>M</strong>odify, <strong>P</strong>ut to
+other use, <strong>E</strong>liminate, <strong>R</strong>everse. Strumento
+didattico noioso, ma se applicato sistematicamente da un LLM sui 50+ executor
+del catalog genera ~350 ipotesi che la mente umana non visita.
+</p>
+<p><strong>Esempio Metnos &mdash; read_messages_voice</strong>. Operatore: Substitute la sorgente (IMAP &rarr; trascrizione voicemail via whisper.cpp self-hosted). Telos: <code>t.puntualita</code> (voicemail spesso contengono urgenza che la mail no). Segnale: la rubrica <code>persons</code> ha 14 numeri di telefono, ma il volume di voicemail trascritte &egrave; 0. Proposta: synth <code>read_messages_voice(account="voicemail.local")</code>. La pipeline a valle (<code>classify_entries</code>, <code>describe_entries</code>) &egrave; gi&agrave; pronta.</p>
+</div>
+
+<div class="lens">
+<h3>6.3 Inverse Reinforcement Learning</h3>
+<p class="ref">Russell, <em>Learning agents for uncertain environments</em>, COLT 1998. Ng &amp; Russell, <em>Algorithms for Inverse Reinforcement Learning</em>, ICML 2000.</p>
+<p>
+Osservi cosa fa un agente, <em>inferisci la sua funzione di valore</em>.
+Specularmente: i telos dichiarati sono un'ipotesi; il comportamento osservato
+e' il dato. Quando divergono, c'e' un'occasione.
+</p>
+<p><strong>Esempio Metnos &mdash; discover_unstated_telos</strong>. Cluster sui turni "soddisfacenti" (final_kind=answer, no rebuttal entro 24h, total_ms basso, no edit-then-resend dell'utente). 90gg &rarr; 12 cluster. 10 mappano sui 7 telos dichiarati. Due non mappano: uno &egrave; "consultare wikipedia/wikidata per disambiguare nomi propri storici" (frequenza 19, alta soddisfazione, nessun telos lo cattura). Proposta: "ho rilevato un comportamento che valori (vedi cluster #11), non c'&egrave; un telos che lo copra. Vuoi aggiungere <code>t.curiosita_storica</code>?". Il sistema <strong>scopre i telos</strong>, non solo li applica.</p>
+</div>
+
+<div class="lens">
+<h3>6.4 Endgame tables&nbsp;&mdash; precomputazione orientata a goal</h3>
+<p class="ref">Stiller, <em>Multilinear algebra and chess endgames</em>, 1991. Nalimov tablebases, 2000.</p>
+<p>
+Negli scacchi al computer si precomputano tutti i finali con &le;7 pezzi: dato
+uno stato, la mossa ottimale e' una lookup, non un calcolo. Generalizzo:
+per i telos a alta priorita', precomputare "endgame" sui pattern frequenti.
+</p>
+<p><strong>Esempio Metnos &mdash; deadline_endgame_book</strong>. Per ogni evento futuro in <code>events.sqlite</code> entro 30gg, precomputare offline la sequenza ottimale di executor che lo chiude (es: visita medica &rarr; <code>find_files(referto)</code> + <code>read_files_pdf</code> + <code>set_events_metadata(prep_done=true)</code>). Quando arriva il giorno -3, l'esecuzione &egrave; una lookup, non una pianificazione. Niente LLM call al planner per quei task. Servito: <code>t.puntualita</code> + <code>t.parsimonia</code> (zero compute al go-time).</p>
+</div>
+
+<div class="lens">
+<h3>6.5 Analogia strutturale</h3>
+<p class="ref">Gentner, <em>Structure-Mapping: A theoretical framework for analogy</em>, Cognitive Science 1983. Hofstadter &amp; Mitchell, <em>Fluid Concepts and Creative Analogies</em>, 1995.</p>
+<p>
+L'agente osserva una strategia che funziona in un dominio e la trasferisce a
+un dominio strutturalmente simile dove non e' ancora applicata. Il mapping
+e' strutturale, non superficiale.
+</p>
+<p><strong>Esempio Metnos &mdash; photo_inbox_triage</strong>. Strategia osservata in dominio <code>messages</code>: <code>read &rarr; classify &rarr; archive_or_act</code>. Pipeline matura, 47 occorrenze in 90gg. Dominio <code>images</code>: zero pipeline strutturalmente analoga. Le 1842 foto in <code>~/Pictures/inbox/</code> non hanno mai subito classify+archive. Mapping: <code>read_messages &rarr; find_images_inbox</code>, <code>classify_entries(by_sender) &rarr; classify_entries(by_ArcFace_person)</code>, <code>move_messages(Junk) &rarr; move_files(~/Pictures/archive/{person})</code>. Proposta: synth <code>photo_inbox_triage</code> schedule weekly@dom-22:00. Il <em>transfer di strategia</em> &egrave; una mossa creativa specifica.</p>
+</div>
+
+<div class="lens">
+<h3>6.6 Boden&nbsp;&mdash; combinational, exploratory, transformational</h3>
+<p class="ref">Boden, <em>The Creative Mind: Myths and Mechanisms</em>, 1990 (2a ed. 2004).</p>
+<p>
+Boden distingue tre forme di creativita': <strong>combinazionale</strong>
+(mescolare il noto, banale), <strong>esplorativa</strong> (uscire dai bordi
+del dominio noto), <strong>trasformativa</strong> (cambiare le regole del
+dominio stesso). La terza e' la piu' rara e la piu' interessante.
+</p>
+<p><strong>Esempio Metnos &mdash; move_files contract revision</strong>. Osservazione: <code>move_files</code> &egrave; chiamato 287 volte in 90gg. In 23 casi Roberto poi cerca "dove ho messo X" &mdash; segnale che la mossa ha perso informazione. Proposta trasformativa: modifica il <em>contratto</em> di <code>move_files</code> nel manifest. Aggiunge arg obbligatorio <code>reason: str</code> (1 frase) + side-effect implicito: scrive in <code>persons.sqlite</code> o <code>events.sqlite</code> una nota "X spostato da Y a Z perch&eacute; REASON". Cambia la grammatica del verbo, non solo l'implementazione. Nessun ager bottom-up cambierebbe lo <em>schema</em> di un executor: solo un'analisi telos-driven sull'effetto a 30gg lo giustifica.</p>
+</div>
+
+<div class="lens">
+<h3>6.7 Compressione come creativita'</h3>
+<p class="ref">Schmidhuber, <em>Formal Theory of Creativity, Fun, and Intrinsic Motivation</em>, IEEE TAMD 2010.</p>
+<p>
+Il fascino estetico = compressione: l'osservatore trova soddisfazione in
+pattern che riducono la descrizione del mondo. Il telos
+<code>t.ordine</code> &harr; desiderio di compressione.
+</p>
+<p><strong>Esempio Metnos &mdash; super-verbo route_downloads</strong>. Osservazione: <code>~/Downloads/</code> riceve mediamente 18 file/settimana. Roberto li sposta a destinazione semantica con 7 verbi diversi (<code>move_files</code>, <code>compress_files</code>, <code>extract_files</code>, <code>delete_files</code>, <code>share_files</code>, <code>read_files_pdf</code>+move, <code>set_files_metadata</code>+move). Sette routine per un'unica intenzione: dispatchare un download. Proposta: super-verbo <code>route_downloads</code> che internamente dispatcha. Compressione 7&rarr;1 lessicalmente, mantenendo i 7 sotto-verbi come implementation. La pipeline al PLANNER diventa pi&ugrave; corta, il vocabolario pi&ugrave; compatto. &Egrave; la mossa pi&ugrave; <em>platonica</em> del telos: trovare il concetto unificante dietro azioni disparate.</p>
+</div>
+
+<div class="lens">
+<h3>6.8 Pattern language</h3>
+<p class="ref">Alexander, Ishikawa, Silverstein, <em>A Pattern Language: Towns, Buildings, Construction</em>, 1977.</p>
+<p>
+L'architetto che ha proposto: la qualita' di vita ("Quality Without a Name")
+nasce dalla composizione di <em>patterns</em>: schemi piccoli, ricorrenti,
+parametrizzabili. Il telos engine puo' generare pattern invece di proposte
+puntuali.
+</p>
+<p><strong>Esempio Metnos &mdash; pattern set per t.tempo</strong>. Pattern <code>morning_aggregate(domain)</code>: raccoglie scattered da <code>domain</code> e ne fa un brief unico. Parametrizzabile: domain &isin; {finance, calendar, mail, news, foto-recenti, scadenze}. Pattern <code>preemptive_answer(query_class)</code>: precomputa offline le risposte alle query frequenti di una classe. Pattern <code>lunch_debrief()</code>: 12:30 invia summary di cosa &egrave; successo nelle 5h precedenti. Roberto accetta 0&ndash;N pattern. Quelli accettati si compongono in una grammatica personale. <strong>Non una proposta, una grammatica di proposte componibili</strong>.</p>
+</div>
+
+<div class="lens">
+<h3>6.9 Constraint Programming / Generative Design</h3>
+<p class="ref">McCormack et al., <em>Generative Design Inspiration through Rapid Iteration</em>, AID 2004. Autodesk Generative Design 2018+. Rhino-Grasshopper, dal 2007.</p>
+<p>
+In CAD: l'ingegnere dichiara goal + vincoli, il software esplora lo spazio
+di design e produce alternative Pareto-ottimali da scegliere. Stesso schema
+applicabile al telos engine.
+</p>
+<p><strong>Esempio Metnos &mdash; design_my_morning</strong>. Goal: arrivare alle 09:00 con saldo banca / calendario / mail prioritarie / news watchlist tutti rivisti. Vincoli: bother budget &le; 3 interruzioni totali; tier &le; middle; tempo di compute &le; 5 min sequenziale. L'LLM esplora: combina N&times;M proposte di schedule e produce 3 candidati Pareto-ottimali (tempo &times; interruzioni &times; completezza). Roberto sceglie. Il telos diventa un <strong>brief</strong>. Lo strumento produce alternative concrete da scegliere, non una proposta da accettare/rifiutare.</p>
+</div>
+
+<div class="bookend">&#10086;</div>
+
+<h1 id="domanda">7. La domanda riformulata</h1>
+
+<p>
+Cosa stiamo davvero chiedendo all'LLM nel loop introspettivo:
+</p>
+
+<blockquote>
+Dato il telos T come obiettivo, e dato il mnestoma + user behavior come
+spazio di stati, produci una proposta P tale che (a) la sua esecuzione
+avvicini lo stato del sistema a T, (b) la proposta sia <em>novel</em>
+rispetto a quanto gia' esiste, (c) sia eseguibile con risorse note.
+</blockquote>
+
+<p>
+Le nove lenti della sezione 6 sono <strong>nove prompt diversi</strong> che
+l'LLM puo' ricevere ciclicamente:
+</p>
+
+<ul>
+  <li>"applica SCAMPER agli executor pi&ugrave; chiamati"</li>
+  <li>"fai inverse-RL sui turni soddisfacenti e proponi un telos mancante"</li>
+  <li>"trasferisci una strategia da dominio A a dominio B per analogia strutturale"</li>
+  <li>"trova un'astrazione che comprime N verbi simili in 1"</li>
+  <li>"proponi una revisione di contratto di un executor che perde informazione"</li>
+  <li>"design 3 alternative Pareto per un brief composto da telos + vincoli"</li>
+  <li>"precomputa l'endgame per i pattern noti del telos T"</li>
+  <li>"genera una grammatica di pattern per il telos T, parametrizzabili"</li>
+  <li>"proponi una settimana di vincolo OuLiPo per scoprire policy interne"</li>
+</ul>
+
+<p>
+Ognuna produce un tipo di output diverso. Ognuna e' <em>una forma di
+creativita' riconoscibile</em> nella letteratura, non improvvisata. Il loop
+puo' alternarle&nbsp;&mdash; una lente al giorno, oppure tutte e nove con
+gating finale che tiene solo le proposte di alignment piu' alto.
+</p>
+
+<h2>7.1 Calibrazione attesa</h2>
+
+<p>
+Non aspettarsi tante proposte. La frequenza ragionevole e' bassa per design:
+</p>
+
+<ul>
+  <li><strong>1&ndash;3 proposte/settimana</strong> per utente attivo, post anti-paternalismo gate.</li>
+  <li><strong>30&ndash;60% rejected dall'utente</strong> e' normale ed e' il segnale-da-silenzio del dialogo Giornata I. Se &lt; 20% rejection, soglia troppo alta (Metnos timido). Se &gt; 80%, telos mal-stimati (LLM judge poco affidabile per quel telos).</li>
+  <li><strong>Originalita' misurabile</strong>: una metrica utile e' "distanza dall'esistente"&nbsp;&mdash; quanti executor della proposta sono nuovi vs gia' nel catalog. Tipi 2, 4, 6 della sezione 5 hanno distanza alta; tipi 1, 3, 5 hanno distanza bassa ma combinano in modi non visti.</li>
+</ul>
+
+<div class="bookend">&#10086;</div>
+
+<h1 id="nonora">8. Cosa non fare ora</h1>
+
+<p>
+Per non costruire fuffa, ci sono pezzi del dialogo e della microprogettazione
+che hanno senso ma che si lasciano per dopo:
+</p>
+
+<ul>
+  <li><strong>Bother budget</strong>: utilita' marginale finch&eacute; le proposte spontanee non esistono davvero. Si attiva quando 5+ proposte/settimana iniziano davvero a generarsi.</li>
+  <li><strong>EMA learning dai silenzi</strong>: prematuro, non sappiamo ancora se i fit hanno senso. Se la prima settimana di proposte ha 80% rejection, il problema non sono i pesi effettivi.</li>
+  <li><strong>CLI <code>metnos telos {show,verify,diff}</code></strong>: il file si legge con <code>cat</code>. Strumento di sviluppo, non di runtime.</li>
+  <li><strong>Firma HMAC / Merkle del TELOS.md</strong>: il workspace e' gi&agrave; sotto backup notturno NAS, l'audit del telos non e' costituzionale. Si aggiunge se serve.</li>
+  <li><strong>Coltivazione_strumenti come AlignmentEngine</strong>: resta builtin <code>request_new_executor</code>, &egrave; un caso a parte (decisione del dialogo Giornata II). Non riconciliare per pulizia&mdash;e' coerente cosi'.</li>
+</ul>
+
+<div class="bookend">&#10086;</div>
+
+<h1 id="prossimo">9. Prossimo passo concreto</h1>
+
+<div style="background:#dcfce7;border-left:4px solid #15803d;padding:14px 22px;margin:14px 0;border-radius:0 6px 6px 0;">
+<strong>Aggiornamento 21/5/2026 v6:</strong> il passo 1 di questa sezione
+e' stato fatto. Esistono in repo:
+<ul style="margin:8px 0 0 0;">
+  <li><code>runtime/telos_loader.py</code> &mdash; parse di TELOS.md
+      con cache hot-reload (mtime invalidation). 7/7 telos canonici parsed.</li>
+  <li><code>runtime/telos_lenses/scamper.py</code> &mdash; lente pilota
+      con 7 operatori (S/C/A/M/P/E/R), filtro anti-paternalismo regex
+      IT+EN, output strutturato <code>ScamperProposal</code>.</li>
+  <li><code>runtime/telos_introspect.py</code> &mdash; orchestrator,
+      builder di context (mnestoma summary, user patterns dal turn_log,
+      executors sample), telemetria a
+      <code>~/.local/share/metnos/telos_proposals.jsonl</code>.</li>
+  <li>CLI offline:
+      <code>python -m runtime.telos_introspect --telos t.tempo --operators S,C,A --mock-llm</code>.</li>
+</ul>
+Prossimo step: girare la CLI con LLM reale (Gemma 26B middle) su un
+telos pilota (consiglio <code>t.tempo</code>), produrre 10-20 proposte,
+valutare manualmente. Se rate-utile >= 30%: integrare scheduler v2
+daily@03:30. Tutte le altre lenti restano TODO (#13).
+</div>
+
+<p>Se la direzione convince, il prossimo passo <em>non</em> e' scrivere
+<code>telos_loader.py</code>. E' un esperimento di prima generazione:</p>
+
+<ol>
+<li>Prendere <strong>una sola lente</strong> della sezione 6 (consiglio: SCAMPER o analogia strutturale, le pi&ugrave; concrete).</li>
+<li>Comporre un prompt che la implementi, con accesso a:
+  <ul>
+    <li>il catalog corrente degli executor;</li>
+    <li>i mnest top-N del mnestoma;</li>
+    <li>una settimana di turn_log redatto.</li>
+  </ul>
+</li>
+<li>Girare il prompt off-line (Gemma 4 26B middle locale), produrre 5&ndash;10 proposte.</li>
+<li>Misurare a mano: quante sono utili? Quante banali? Quante paternalistiche?</li>
+<li>Decidere se vale costruire il loop completo.</li>
+</ol>
+
+<p>
+Se l'esperimento riesce, segue una fase 1 minima: <code>telos_loader.py</code>
++ scheletro di <code>telos_introspect.py</code> con la lente vincente, un
+solo telos pilota (<code>t.tempo</code>), schedule daily@03:30, vaglio
+anti-paternalismo, output su <code>proposals.db</code>. Tutto il resto
+(bother budget, EMA, multi-lente, scelte interne via
+<code>self_thrift.py</code>) segue solo se la prima settimana mostra valore.
+</p>
+
+<div class="warn">
+<strong>Anti-pattern da evitare</strong>: implementare il loader + lo store +
+l'engine + il bother budget + l'EMA in una sola fase. La microprogettazione
+<code>telos.html</code> e' completa di disegno ma non e' un piano di sviluppo.
+Implementarla in blocco produce molto codice e zero proposte; produce
+nessuna verifica empirica del valore.
+</div>
+
+<div class="bookend">&#10086;</div>
+
+<h1 id="bibliografia">10. Riferimenti</h1>
+
+<ol class="bib">
+  <li>Alexander C., Ishikawa S., Silverstein M. <em>A Pattern Language: Towns, Buildings, Construction</em>. Oxford University Press, 1977.</li>
+  <li>Boden M. <em>The Creative Mind: Myths and Mechanisms</em>. Weidenfeld &amp; Nicolson, 1990 (2a ed. Routledge 2004).</li>
+  <li>Eberle B. <em>SCAMPER: Games for Imagination Development</em>. D.O.K. Publishers, 1971. Basato su Osborn A.F. <em>Applied Imagination</em>, Scribner's, 1953.</li>
+  <li>Gentner D. <em>Structure-Mapping: A Theoretical Framework for Analogy</em>. Cognitive Science 7(2), 1983, pp. 155&ndash;170.</li>
+  <li>Hofstadter D.R. &amp; Mitchell M. <em>Fluid Concepts and Creative Analogies: Computer Models of the Fundamental Mechanisms of Thought</em>. Basic Books, 1995.</li>
+  <li>McCormack J.P., Cagan J., Vogel C.M. <em>Speaking the Buick language: capturing, understanding, and exploring brand identity with shape grammars</em>. Design Studies 25(1), 2004, pp. 1&ndash;29.</li>
+  <li>Nalimov E. <em>Endgame tablebases</em>. ChessBase, dal 2000.</li>
+  <li>Ng A.Y. &amp; Russell S. <em>Algorithms for Inverse Reinforcement Learning</em>. ICML 2000, pp. 663&ndash;670.</li>
+  <li>Perec G. <em>La Disparition</em>. &Eacute;ditions Denoel, 1969.</li>
+  <li>Queneau R. <em>Cent mille milliards de pomes</em>. Gallimard, 1961.</li>
+  <li>Russell S. <em>Learning Agents for Uncertain Environments</em>. COLT 1998, pp. 101&ndash;103.</li>
+  <li>Schmidhuber J. <em>Formal Theory of Creativity, Fun, and Intrinsic Motivation (1990&ndash;2010)</em>. IEEE Transactions on Autonomous Mental Development 2(3), 2010, pp. 230&ndash;247.</li>
+  <li>Stiller L. <em>Multilinear algebra and chess endgames</em>. ICCA Journal 14(2), 1991, pp. 88&ndash;91.</li>
+</ol>
+
+<h2>Documenti Metnos rilevanti</h2>
+<ul>
+  <li><a href="../Metnos_Dialogo_v1.html">Dialogo sui fini e i limiti v1</a>&nbsp;&mdash; il primo dialogo platonico, Giornate I&ndash;IV.</li>
+  <li><a href="../architecture/telos.html">Microprogettazione telos v1.1</a>&nbsp;&mdash; contratto Python, formule, clausola di stop.</li>
+  <li><a href="../architecture/vaglio.html">Microprogettazione vaglio</a>&nbsp;&mdash; guardia costituzionale + giudice teleologico.</li>
+  <li><a href="../architecture/mnestoma.html">Microprogettazione mnestoma</a>&nbsp;&mdash; il grafo di mnest da cui parte il motore introspettivo.</li>
+  <li><a href="../architecture/synt.html">Microprogettazione synt</a>&nbsp;&mdash; cascata di sintesi, attivata dalle proposte del motore.</li>
+</ul>
+
+<div class="bookend">&#10086;</div>
+
+<p style="text-align:center; font-style: italic; color: var(--muted); margin-top: 40px;">
+fine del documento di lavoro. La discussione resta aperta.
+</p>
+
+</body>
+</html>

@@ -23,13 +23,31 @@ Opt-in di default OFF per fase di tuning. Env METNOS_SPECULATION=1.
 """
 from __future__ import annotations
 
+import json
 import logging
 import os
 import threading
 import time
+from pathlib import Path
 from typing import Callable, Optional
 
 _LOG = logging.getLogger(__name__)
+
+# Telemetria persistente per A/B bench (task #16).
+# Append-only JSONL, una riga per warm tentativo. Strutture:
+#   {ts, turn_id?, tool, args, dt_ms, ok, cache_hit, error?}
+# Letto da admin/script per misurare hit-rate + saving.
+_TELEMETRY_PATH = Path.home() / ".local" / "share" / "metnos" / "speculation_telemetry.jsonl"
+
+
+def _persist_telemetry(record: dict) -> None:
+    """Append-only telemetria. Best-effort: errori loggati, non bloccanti."""
+    try:
+        _TELEMETRY_PATH.parent.mkdir(parents=True, exist_ok=True)
+        with _TELEMETRY_PATH.open("a", encoding="utf-8") as fh:
+            fh.write(json.dumps(record, ensure_ascii=False) + "\n")
+    except Exception as ex:
+        _LOG.warning("speculation telemetry write failed: %r", ex)
 
 # Mapping euristico intent.object -> producer tool. Solo producer pesanti
 # (latenza >500ms) che justifierebbero la speculazione. Producer leggeri
@@ -96,14 +114,31 @@ def kick_off(
 
     def _run():
         t0 = time.perf_counter()
+        rec: dict = {
+            "ts": time.time(), "tool": tool, "args_keys": sorted(args.keys()),
+        }
         try:
-            invoke(tool, args)
+            obs = invoke(tool, args)
+            dt_ms = int((time.perf_counter() - t0) * 1000)
+            rec["dt_ms"] = dt_ms
+            rec["ok"] = bool(obs.get("ok")) if isinstance(obs, dict) else False
+            # cache_hit euristico: se il warm e' tornato in <300ms su tool
+            # cache-able (find_urls/read_urls_html) e ok=True, e' cache hit.
+            rec["cache_hit"] = (
+                rec["ok"] and dt_ms < 300
+                and tool in {"find_urls", "read_urls_html"}
+            )
             if _telemetry_enabled():
-                dt = int((time.perf_counter() - t0) * 1000)
-                _LOG.info("speculation: %s warmed cache in %dms", tool, dt)
+                _LOG.info("speculation: %s %dms ok=%s",
+                          tool, dt_ms, rec["ok"])
         except Exception as ex:
+            rec["dt_ms"] = int((time.perf_counter() - t0) * 1000)
+            rec["ok"] = False
+            rec["error"] = f"{type(ex).__name__}: {ex}"[:200]
             if _telemetry_enabled():
                 _LOG.warning("speculation: %s failed: %r", tool, ex)
+        # Persisti sempre (anche se telemetria env e' OFF) per bench.
+        _persist_telemetry(rec)
         # finally: thread daemon termina; cache populated rimane.
 
     th = threading.Thread(target=_run, daemon=True, name=f"spec_{tool}")

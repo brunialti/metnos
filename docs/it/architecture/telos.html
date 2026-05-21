@@ -140,6 +140,23 @@ Doc canonico testato dopo l'implementazione: <code>TELOS.md</code> popolato in <
 
 <h1 id="cap1">1. Scopo e confini</h1>
 
+<div style="background:#fef3c7;border-left:4px solid #b45309;padding:14px 22px;margin:14px 0;border-radius:0 6px 6px 0;">
+<strong>Stato implementazione (21/5/2026 v6 sessione):</strong> il
+loader <code>runtime/telos_loader.py</code> e la prima lente
+<code>runtime/telos_lenses/scamper.py</code> + orchestrator
+<code>runtime/telos_introspect.py</code> sono presenti come MVP fase 1.
+Esecuzione finora SOLO offline via CLI
+(<code>python -m runtime.telos_introspect --telos t.tempo --mock-llm</code>).
+Nessuna integrazione scheduler attiva, nessun loop daily, nessuna
+proposta visibile all'utente. Le altre 8 lenti (OuLiPo, inverse-RL,
+endgame_book, analogia, Boden, Schmidhuber, Alexander, generative_design)
+sono progettate ma non implementate (vedi
+<a href="../drafts/telos_engine_v1">drafts/telos_engine_v1</a> §6).
+Toggle individuale per lente: <code>METNOS_TELOS_LENS_&lt;NAME&gt;=1</code>.
+Telemetria persistente:
+<code>~/.local/share/metnos/telos_proposals.jsonl</code>.
+</div>
+
 <p class="lead">
 Un sistema reattivo ha una funzione di valutazione implicita: &laquo;l'utente
 ha chiesto X &rarr; fai X bene&raquo;. Un sistema proattivo no: &egrave; lui

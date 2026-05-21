@@ -142,6 +142,22 @@ Canonical doc tested after implementation: <code>TELOS.md</code> populated in <c
 
 <h1 id="cap1">1. Scope and boundaries</h1>
 
+<div style="background:#fef3c7;border-left:4px solid #b45309;padding:14px 22px;margin:14px 0;border-radius:0 6px 6px 0;">
+<strong>Implementation status (21/5/2026 v6 session):</strong> the loader
+<code>runtime/telos_loader.py</code> and the first lens
+<code>runtime/telos_lenses/scamper.py</code> + orchestrator
+<code>runtime/telos_introspect.py</code> are present as MVP phase 1.
+Execution so far ONLY offline via CLI
+(<code>python -m runtime.telos_introspect --telos t.tempo --mock-llm</code>).
+No active scheduler integration, no daily loop, no proposals visible to
+the user. The other 8 lenses (OuLiPo, inverse-RL, endgame_book, analogy,
+Boden, Schmidhuber, Alexander, generative_design) are designed but not
+implemented (see the IT draft
+<code>drafts/telos_engine_v1</code> §6). Per-lens toggle:
+<code>METNOS_TELOS_LENS_&lt;NAME&gt;=1</code>. Persistent telemetry:
+<code>~/.local/share/metnos/telos_proposals.jsonl</code>.
+</div>
+
 <p class="lead">
 A reactive system has an implicit evaluation function: &laquo;the user
 asked for X &rarr; do X well&raquo;. A proactive system does not: it
