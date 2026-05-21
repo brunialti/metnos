@@ -53,17 +53,31 @@ def _persist(record: dict) -> None:
         _LOG.warning("telos_introspect telemetry write failed: %r", ex)
 
 
-def _build_mnestoma_summary(top_n: int = 10) -> str:
-    """Recupera i top-N mnest co-attivati di recente. Stringa per prompt."""
+def _build_mnestoma_summary(
+    top_n: int = 10,
+    live_names: Optional[set] = None,
+) -> str:
+    """Recupera i top-N mnest co-attivati di recente. Stringa per prompt.
+
+    Filtra le coppie a entrambi gli endpoint vivi nel catalog corrente
+    (`live_names`): evita che il LLM proponga su executor obsoleti che
+    sono nel mnestoma per ragioni storiche (rinomi, GC, demote)."""
     try:
         from mnestoma import Mnestoma
         mn = Mnestoma()
         rows = mn.conn.execute(
             "SELECT src_executor, dst_executor, uses FROM mnests "
-            "WHERE uses >= 2 ORDER BY uses DESC LIMIT ?", (top_n,)
+            "WHERE uses >= 2 ORDER BY uses DESC LIMIT ?", (top_n * 3,)
         ).fetchall()
         if not rows:
             return "(nessun mnest disponibile)"
+        if live_names:
+            rows = [r for r in rows
+                    if r["src_executor"] in live_names
+                    and r["dst_executor"] in live_names]
+        rows = rows[:top_n]
+        if not rows:
+            return "(nessun mnest vivente nel catalog corrente)"
         return "\n".join(
             f"  {r['src_executor']} -> {r['dst_executor']} "
             f"(uses={r['uses']})" for r in rows
@@ -143,12 +157,13 @@ def _build_executors_sample(catalog, max_n: int = 8) -> list[dict]:
 
 
 def _llm_invoke_middle(prompt: str) -> str:
-    """Adapter LLM tier=middle, riusa llm_router."""
+    """Adapter LLM tier=middle, riusa LLMRouter."""
     try:
-        from llm_router import call_tier
-        r = call_tier(
-            tier=_DEFAULT_TIER, system="",
-            user=prompt, max_tokens=2048, temperature=0.7,
+        from llm_router import LLMRouter
+        router = LLMRouter()
+        r = router.chat(
+            "", prompt, tier=_DEFAULT_TIER,
+            max_tokens=2048, temperature=0.7,
         )
         return r.text if hasattr(r, "text") else str(r)
     except Exception as ex:
@@ -199,7 +214,13 @@ def run_for_telos(
         _LOG.info("telos_introspect: nessuna lente attiva per %s", telos.id)
         return []
 
-    mnestoma_summary = _build_mnestoma_summary()
+    # Set di nomi vivi nel catalog corrente — usato per filtrare mnestoma
+    # da executor obsoleti (rinomi storici, GC, demote).
+    if hasattr(catalog, "executors"):
+        live_names = set(catalog.executors.keys())
+    else:
+        live_names = {getattr(e, "name", "") for e in (catalog or [])}
+    mnestoma_summary = _build_mnestoma_summary(live_names=live_names)
     user_patterns = _build_user_patterns()
     executors_sample = _build_executors_sample(catalog)
 

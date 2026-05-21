@@ -112,35 +112,60 @@ REGOLA CRUCIALE: le tue proposte cambiano cio' che fa METNOS, mai cio'
 che fa l'utente. NIENTE proposte tipo "dire all'utente di X" o
 "impedire all'utente di Y". Metnos giudica se stesso, non l'utente.
 
+VINCOLI ARCHITETTURALI (proposte che li violano vengono scartate):
+1. NON FONDERE due executor in uno. Ogni executor fa una sola
+   operazione (vettoriale, batch-by-default). Es: "merge fetch+write
+   in single executor" NON e' valido. Le pipeline si compongono nel
+   planner via from_step, non nel codice executor.
+2. NON proporre default IMPLICITI che inferiscono argomenti dal
+   contesto (es. "infer path dal cwd", "infer chiave dal tipo lista"):
+   gli executor sono deterministici al confine NL→codice. I default
+   inferiti generano sorprese e bug silenti.
+3. NON ACCOPPIARE domini ortogonali. Es: filter_entries (predicato
+   puro) NON deve "auto-fetch metadata" del dominio file. Il
+   trasformatore consuma cio' che riceve, niente di piu'.
+4. NON suggerire "approvazione batch silenziosa" o "auto-conferma":
+   ogni azione mutante mantiene il gate di vaglio/consent.
+
+COSA METNOS GIA' FA (NON re-inventare):
+- Piping fra executor via `from_step: N` nel planner ReAct.
+- Undo del turno corrente via `undo_last_turn`.
+- Fast-path deterministico per query triviali (zero LLM).
+- Memoization di sequenze multi-tool (uses>=3) e promozione a synth
+  (uses>=50).
+- Output formatter channel-agnostic (markdown), no LLM nel render.
+- Dialog `needs_inputs` per parametri mancanti.
+
 TELOS DA SERVIRE:
   {telos_phrase}
   Note utente: {telos_notes}
 
 CONTESTO:
-- Mnestoma recente (executor co-attivati):
+- Mnestoma recente (executor co-attivati, gia' filtrato al catalog vivo):
 {mnestoma_summary}
 
 - Pattern d'uso dell'utente (turn_log 30gg):
 {user_patterns_summary}
 
-- Executor disponibili nel catalog (campione):
+- Executor disponibili nel catalog (campione vivo):
 {chr(10).join(f"  - {e['name']}: {e.get('description', '')[:120]}" for e in executors_sample)}
 
 OPERATORE SCAMPER: {operator} = {op_name}
 COSA FARE: {op_descriptions[operator]}
 
 Genera 1-3 proposte concrete che applicano l'operatore {operator} a uno
-degli executor del catalog per servire il telos sopra. Ogni proposta in
-JSON:
+degli executor del catalog VIVO sopra (NON inventare nomi non in lista)
+per servire il telos. Ogni proposta in JSON:
 
   {{
-    "executor_target": "<name dell'executor del catalog>",
+    "executor_target": "<name esatto dell'executor dal campione sopra>",
     "proposed_action": "<descrizione 1-2 righe della proposta>",
     "rationale": "<perche' avvicina al telos, 1 riga, con evidenza dal mnestoma o pattern>"
   }}
 
 Rispondi SOLO con un array JSON di 1-3 oggetti. Niente prosa attorno.
-Se nessuna proposta sensata e' generabile, rispondi `[]`.
+Se nessuna proposta sensata che rispetti i VINCOLI ARCHITETTURALI e'
+generabile, rispondi `[]` (preferito a forzare una proposta debole).
 """
 
 
