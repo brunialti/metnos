@@ -106,6 +106,30 @@ def has_literal_source(raw_args: dict | None) -> bool:
     return False
 
 
+def compute_state(history) -> str:
+    """Ricalcola lo stato FSM dalla sequenza degli step gia' eseguiti.
+
+    `history` puo' essere una list[StepLog] (con attributi chosen_tool e
+    raw_args) o una list[dict] (con chiavi 'tool'/'chosen_tool' e
+    'args'/'raw_args'). Saltati gli step senza chosen_tool (step vuoti
+    o virtuali). Determinismo: nessun side-effect, pura funzione.
+    """
+    state = "START"
+    for s in history or ():
+        if hasattr(s, "chosen_tool"):
+            tool = getattr(s, "chosen_tool", "") or ""
+            args = getattr(s, "raw_args", {}) or {}
+        elif isinstance(s, dict):
+            tool = s.get("chosen_tool") or s.get("tool") or ""
+            args = s.get("raw_args") or s.get("args") or {}
+        else:
+            continue
+        if not tool:
+            continue
+        state, _ = next_state(state, tool, args)
+    return state
+
+
 def next_state(state: str, name: str,
                 raw_args: dict | None = None
                 ) -> tuple[str, str | None]:

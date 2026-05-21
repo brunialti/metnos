@@ -3,12 +3,14 @@
 > **OBBLIGO**: leggere integralmente all'inizio di ogni sessione. Codifica decisioni architetturali, convenzioni di codice e norme di processo gia' stabilite. Quando un punto e' obsoleto o errato, AGGIORNALO subito invece di lavorarci attorno.
 >
 > Mantenuto da: agente. Aggiornamento ad ogni sessione che fissa una nuova norma duratura.
-> Ultimo aggiornamento: 2026-05-19 v5 (Fase 13: multi-tool fast-path memoization L2 + bridge L2→L3 + composability + chain).
+> Ultimo aggiornamento: 2026-05-20 v6 (Pipeline shape FSM + planner-choice principle + args_extractor single source).
 > Norme durature recenti (dettagli in ADR / git log):
-> - Multi-tool fast-path memoization L2 (19/5 v5): `runtime/multi_tool_paths.py` + `runtime/jobs/multi_tool_promote.py`. TTL active-days, uses>=3 match, uses>=50 promotion. Composability fast-path-of-fast-path nel recording. Chain opt-in via resume_with_scratchpad. Env `METNOS_MULTI_TOOL_FAST_PATH=1`. ADR 0150 ext.
-> - PLANNER split call grammar GBNF (19/5 v3): `planner_split.chat_with_tools_split` 2-call (SELECTOR enum + ARGS FILLER schema-tool). Opt-in `METNOS_PLANNER_SPLIT=1` default OFF pre-bench. Smoke 14-22× LLM speedup, risolve loop_break. Solo llamacpp. ADR 0151.
-> - Giant prompt slimming sequenza b+c+d (19/5 v2): tool schema slim -65% chars; section pruning core-only -72%; fast_path `get_location`. Module 297/297 stabile.
-> Storia precedente: `git log CLAUDE.md`. Voci 17/5 spostate in git log; canonical entry in §10.6 (ADR 0140-0143).
+> - Pipeline shape FSM (20/5 v6): `runtime/pipeline_shape.py` invariante `E+ (F|A)?` + auto_remediation registry esteso con `needs_data_source` cascade e `needs_action_target` dialog. Pre-execution hook in agent_runtime. Planner prompt 0-PRE bilingue. ADR 0154.
+> - Planner choice > runtime override (20/5 v6): runtime non intercetta scelte del planner se non via error_class strutturati o policy. Rimosso interceptor describe_on_find_urls (10/5). ADR 0155.
+> - args_extractor single source (20/5 v6): args query-derived sempre placeholder `<DYNAMIC>` in canonical_query_log e multi_tool_paths shape. ADR 0150 v7 (rimuove hardcoded `_VOLATILE` enum).
+> - Multi-tool fast-path memoization L2 (19/5 v5): `runtime/multi_tool_paths.py` + `runtime/jobs/multi_tool_promote.py`. TTL active-days, uses>=3 match, uses>=50 promotion. Env `METNOS_MULTI_TOOL_FAST_PATH=1`. ADR 0150 ext.
+> - PLANNER split call grammar GBNF (19/5 v3): `planner_split.chat_with_tools_split` 2-call. Env `METNOS_PLANNER_SPLIT=1`. ADR 0151.
+> Storia precedente: `git log CLAUDE.md`. Voci 17/5 e prompt slimming 19/5 v2 spostate in git log.
 
 ---
 
@@ -241,6 +243,8 @@ Tipi: `user`, `feedback`, `project`, `reference`. Indice in `~/.claude/projects/
 
 > Una riga per meccanismo. Dettagli: ADR registry `decisions/` (relative). Solo le voci da memorizzare al call-site (file/funzione/policy) restano qui.
 
+- **Pipeline shape FSM** (ADR 0154, 20/5/2026): `runtime/pipeline_shape.py` impone `E+ (F|A)?` come invariante universale. Categorie derivate dal verb prefix via `vocab.PRODUCER_VERBS` + 2 frozenset (FORMATTER/ACTION). Pre-execution hook in `agent_runtime` emette `needs_data_source` (cascade) / `needs_action_target` (dialog) / `pipeline_already_closed`. Planner prompt 0-PRE bilingue insegna pattern upstream.
+- **Planner choice > runtime override** (ADR 0155, 20/5/2026): runtime non sovrascrive scelte deterministiche del planner se non via auto_remediation, vaglio costituzionale, o fast-path pre-planner. Vietato interceptor pattern-match `(chosen_tool, predecessor_tool)`. Rimosso interceptor `describe_on_find_urls` (107 righe).
 - **Smoke battery** (`runtime/smoke.py`): query "must work" + invariants. OBBLIGATORIA prima di `./deploy.sh`, dopo synth, in cron daily, su tocchi a `prefilter.py`/`agent_runtime.py`/`synt_multistage.py`/`loader.py`. Routing assertion `expected_first_tool` (ADR 0114 L5).
 - **Catalog invariants al load** (`runtime/loader.py`): rifiuta synth con name collision verso handcrafted.
 - **Prefilter precursor universale** (`prefilter.rank_with_intent`): inietta UN precursor per ogni verbo NON producer (`read, find, list, get`).

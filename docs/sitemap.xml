@@ -284,7 +284,7 @@
   <!-- Microdesign tested al POC v1.1 (26/4/2026), tradotti EN il 27/4 sera -->
   <url>
     <loc>https://metnos.com/en/architecture/agent_runtime</loc>
-    <lastmod>2026-05-20</lastmod>
+    <lastmod>2026-05-21</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.65</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/agent_runtime"/>
@@ -292,7 +292,7 @@
   </url>
   <url>
     <loc>https://metnos.com/it/architecture/agent_runtime</loc>
-    <lastmod>2026-05-20</lastmod>
+    <lastmod>2026-05-21</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.65</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/agent_runtime"/>

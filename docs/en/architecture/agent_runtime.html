@@ -227,6 +227,8 @@ Eight new ADRs (0061-0068) codify the session decisions.
     <li><a href="#cap2">The loop of one turn, step by step</a></li>
     <li><a href="#cap3">Modes: <em>local</em>, <em>online</em>, <em>hybrid</em></a></li>
     <li><a href="#cap4">Three tiers of LLM: <em>fast</em>, <em>middle</em>, <em>wise</em></a></li>
+    <li><a href="#cap4bis">Pipeline shape: <code>E+ (F | A)?</code> invariant</a></li>
+    <li><a href="#cap4ter">Auto-remediation registry</a></li>
     <li><a href="#cap5">The pre-filter: choosing the sub-catalog</a></li>
     <li><a href="#cap6">Native tool-use (no JSON parsing)</a></li>
     <li><a href="#cap7">Data piping between steps: <code>from_step</code> and <code>{{stepN.field}}</code></a></li>
@@ -472,6 +474,82 @@ model    = "claude-sonnet-4-6"
 <p>
 In v1.1 the structure is implemented but full differentiation is not yet: in PoC the three pointers are identical (<code>qwen3:8b</code>) and the prompt is a single one. The per-tier prompt differentiation is deferred until we have a second backend or a use case that requires it.
 </p>
+
+<h1 id="cap4bis">4-bis. Pipeline shape: <code>E+ (F | A)?</code> invariant</h1>
+
+<p>
+The planner may emit steps in an order that violates the data-flow. To prevent silent failures (a consumer without upstream data, an action without target, a step after a terminator), the runtime enforces a <strong>universal shape rule</strong>, deterministic, derived from the closed vocabulary §2.2. Every turn must match the regex:
+</p>
+
+<pre>E+ (F | A)?     optionally followed by final_answer (always allowed)</pre>
+
+<p>Three categories, classified from the verb prefix (never from executor name):</p>
+
+<table>
+<thead><tr><th style="width:8%">Cat</th><th style="width:22%">Verbs</th><th>Role</th></tr></thead>
+<tbody>
+<tr><td><strong>E</strong></td><td><code>read, find, list, get, filter, sort, group, classify, compute, compare, extract</code></td><td>Emits entries reusable downstream (producer-out).</td></tr>
+<tr><td><strong>F</strong></td><td><code>describe, render</code></td><td>User-facing presentation. <em>Closes</em> the pipeline.</td></tr>
+<tr><td><strong>A</strong></td><td><code>move, delete, send, share, write, set, create, change, order, compress</code></td><td>State mutation, output = outcome metadata. <em>Closes</em> the pipeline.</td></tr>
+</tbody>
+</table>
+
+<p>The five system pseudo-verbs (<code>final_answer</code>, <code>undo_last_turn</code>, <code>request_new_executor</code>, <code>admin</code>, <code>request_disambiguation_from_user</code>) bypass the FSM: meta-operations of the runtime, outside the data-flow.</p>
+
+<p>Deterministic 3-state FSM implemented in <code>runtime/pipeline_shape.py</code>:</p>
+
+<pre>        E              E              F | A
+START ─────► CHAIN ─────► CHAIN ─────► TERMINAL
+  │            │            │
+  │ F | A      │            │ *
+  ▼            ▼            ▼
+ERROR        VALID        ERROR
+(no source) (post-F|A)   (post-terminator)</pre>
+
+<p>Minimal API: <code>compute_state(history) &rarr; str</code> rebuilds accumulated state; <code>next_state(state, name, args) &rarr; (new_state, error_class)</code> simulates the next transition. The helper <code>has_literal_source(args)</code> recognizes <code>from_step</code> or any non-empty list-arg as implicit producer, so <code>delete_files(paths=[&quot;/x&quot;])</code> is a valid 1-step pipeline (literal counts as implicit E).</p>
+
+<p>Three illegal transitions, three canonical <code>error_class</code>:</p>
+
+<table>
+<thead><tr><th>Error</th><th>Cause</th><th>Strategy</th></tr></thead>
+<tbody>
+<tr><td><code>needs_data_source</code></td><td>F or consumer-E without upstream source</td><td>auto-recoverable: cascade <code>intent.object &rarr; OBJECT_PRIMARY_TOOLS &rarr; find_urls</code></td></tr>
+<tr><td><code>needs_action_target</code></td><td>A without target (no <code>from_step</code>, no literal)</td><td>fail-fast: <code>get_inputs</code> dialog, NEVER external cascade (a mutation target is never fabricated)</td></tr>
+<tr><td><code>pipeline_already_closed</code></td><td>step after F/A terminator</td><td>force immediate <code>final_answer</code>, log warning</td></tr>
+</tbody>
+</table>
+
+<p>The check lives in a single point in <code>agent_runtime.py</code>, right after the planner emits <code>chosen_name</code>. The FSM is a safety net: the planner prompt (rule <code>0-PRE</code> in <code>_core.j2</code>) already teaches the pattern upstream, so runtime remediation rarely fires.</p>
+
+<p>References: ADR 0154 (this decision), ADR 0155 (collateral principle planner-choice over runtime-override), ADR 0153 (auto-remediation pattern, first application <code>needs_content_fetch</code>).</p>
+
+<h1 id="cap4ter">4-ter. Auto-remediation registry</h1>
+
+<p>
+The FSM reports violations via canonical <code>error_class</code> values; a centralized registry in <code>runtime/auto_remediation.py</code> maps them to remediation plans. Same pattern as ADR 0143 install_on_demand for missing binaries, generalized to any prerequisite synthesizable on the fly.
+</p>
+
+<pre>@dataclass(frozen=True)
+class RemediationPlan:
+    prereq_tool: Any              # str | Callable[[obs], str]   ← dynamic
+    hint_field: Optional[str]     # None = pass whole obs
+    arg_builder: Callable[[Any], dict]
+    merge_field: str = "entries"
+    merge_source: str = "entries"
+    skip_retry: bool = False      # fail-fast (get_inputs dialog)</pre>
+
+<p>Current registry, append-only:</p>
+
+<table>
+<thead><tr><th>error_class</th><th>Prereq</th><th>Hint / Strategy</th><th>ADR</th></tr></thead>
+<tbody>
+<tr><td><code>needs_content_fetch</code></td><td><code>read_urls_html</code></td><td>fetch top-5 URLs from <code>needs_urls_html</code> hint, retry original executor with enriched entries</td><td>0153</td></tr>
+<tr><td><code>needs_data_source</code></td><td>dynamic chooser</td><td>cascade <code>intent.object &rarr; OBJECT_PRIMARY_TOOLS[obj][0] &rarr; find_urls</code>; retry with entries</td><td>0154</td></tr>
+<tr><td><code>needs_action_target</code></td><td><code>get_inputs</code></td><td>free_text dialog with <code>verb + object</code>; <code>skip_retry=True</code>, turn ends via <code>needs_inputs</code> orchestrator</td><td>0154</td></tr>
+</tbody>
+</table>
+
+<p>Extending the pattern is one line in <code>REMEDIATIONS</code>. Future possible examples: <code>needs_ocr</code> &rarr; <code>change_files_ocr</code>; <code>needs_embedding</code> &rarr; <code>create_&lt;dom&gt;_indices</code>; <code>needs_voicemail</code> &rarr; <code>read_messages_voice</code>.</p>
 
 <h1 id="cap5">5. The pre-filter: choosing the sub-catalog</h1>
 

@@ -4621,6 +4621,33 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
     # Quota prefilter «non-LLM» (token rank + adattivita') = totale - intent.
     _prefilter_only_ms = max(0, _prefilter_total_ms - _intent_ms_acc)
 
+    # ───── Preemption euristica (cluster C, 20/5/2026) ────────────────────
+    # Warming del cache HTTP (ADR 0105) in parallelo al PLANNER LLM.
+    # Opt-in METNOS_SPECULATION=1. Thread daemon, best-effort, no harm.
+    try:
+        from speculation import kick_off as _spec_kick
+        def _spec_invoke(tool_name: str, spec_args: dict) -> dict:
+            _spec_exec = next(
+                (e for e in catalog if e.name == tool_name), None,
+            )
+            if _spec_exec is None:
+                return {"ok": False, "error": "no such tool"}
+            return invoke_executor(
+                _spec_exec, spec_args,
+                timeout_s=(getattr(_spec_exec, "timeout_s", None) or 30),
+                autonomy="supervised", turn_id=turn_id,
+                actor=actor, channel=channel,
+            )
+        _spec_kick(
+            (route_info or {}).get("intent"),
+            user_query_for_run or "",
+            invoke=_spec_invoke,
+        )
+    except Exception as _spec_ex:
+        # Mai bloccare il turno per un errore di speculazione.
+        _LOG.warning("speculation kickoff failed: %r", _spec_ex)
+    # ─────────────────────────────────────────────────────────────────────
+
     # P6 (12/5/2026) — Multi-pipeline propose / notify injection.
     # Bug live turn 35431172: query «proponi N orari ... e mandami email
     # con la scelta». Intent LLM ha estratto verb=send object=messages →
@@ -5629,14 +5656,11 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
         # -> remediation pre-dispatch (cascade per data, dialog per action).
         _ps_handled = False
         try:
+            from pipeline_shape import compute_state as _ps_state_fn
             from pipeline_shape import next_state as _ps_next
-            _ps_state = "START"
-            for _prev in log.steps:
-                _pt = getattr(_prev, "chosen_tool", "")
-                _pa = getattr(_prev, "raw_args", {}) or {}
-                if _pt:
-                    _ps_state, _ = _ps_next(_ps_state, _pt, _pa)
-            _, _ps_err = _ps_next(_ps_state, chosen_name, raw_args)
+            _, _ps_err = _ps_next(
+                _ps_state_fn(log.steps), chosen_name, raw_args,
+            )
             if _ps_err in ("needs_data_source", "needs_action_target"):
                 _ps_intent = (intent or {}).get("object") if isinstance(
                     intent, dict) else None
