@@ -24,40 +24,66 @@ it = """Snapshot processi correnti + opzionale dict `health` (load/memory/therma
 
 NON CONFONDERE CON: list_tasks (task Metnos), get_files_metadata (file), get_now (ora), get_location (utente).
 
+DUE USI DISTINTI (NON mescolare):
+1. PROCESSI: query "processi/PID/nginx" → `filters` su attributi pid/ppid/name/cmd/user/cpu_pct/mem_pct/started_at.
+   DEVI usare predicati dict `{attribute,op,value}`, NON stringhe nude.
+2. SALUTE SERVER: query "stato/IP/rete/temperatura/uptime/RAM/disco" → `include_health=true`.
+   La risposta vive in `health.network` / `health.thermal` / `health.disk` ecc.
+   NON DEVI usare `filters` per cercare IP/rete/temperatura/RAM: NON sono attributi di processo.
+
 ARG NAMES esatti:
-DEVI: `top` (int≥1) | `include_health` (bool) | `filters` (list) | `services_extra` (list).
+DEVI: `top` (int≥1) | `include_health` (bool) | `filters` (list di dict) | `services_extra` (list).
 NON DEVI: `max_results`/`limit`/`n`/`count`/`health`/`with_health`/`status`. NON ESISTONO.
 
 OUTPUT: entries=[{pid,ppid,name,cmd,user,cpu_pct,mem_pct,started_at}].
 Con include_health=true aggiunge health.{load,memory,thermal,disk,network,services,collected_at}.
 
 PATTERN (non copiare letteralmente):
-"processi" → get_processes().
-"top 5 cpu" → get_processes(top=5).
-"stato/salute/uptime/carico server" → get_processes(include_health=true,top=5).
-"IP/rete/interfacce server" → get_processes(include_health=true,top=5) (leggi health.network).
-"temperatura CPU/GPU" → get_processes(include_health=true,top=5) (leggi health.thermal).
-"processi nginx" → get_processes(filters=[{attribute:"name",op:"contains",value:"nginx"}]).
-"PID 1234" → get_processes(filters=[{attribute:"pid",op:"=",value:1234}])."""
+"processi" / "ps" → `get_processes()`.
+"top 5 cpu" → `get_processes(top=5)`.
+"processi nginx" → `get_processes(filters=[{attribute:"name",op:"contains",value:"nginx"}])`.
+"PID 1234" → `get_processes(filters=[{attribute:"pid",op:"=",value:1234}])`.
+"stato/salute/uptime/carico server" → `get_processes(include_health=true,top=5)`.
+"IP/rete/interfacce server" → `get_processes(include_health=true,top=5)` → leggi `health.network`.
+"temperatura CPU/GPU" → `get_processes(include_health=true,top=5)` → leggi `health.thermal`.
+
+ERRORE pattern (NON fare):
+- `filters=["ip","network"]` (stringhe nude, schema richiede dict).
+- `filters=[{attribute:"ip",...}]` (ip NON e' attributo di processo).
+- `filters=[{field:"name",...}]` (chiave si chiama `attribute`, non `field`).
+- include_health=true con filters per cercare IP: redundant, IP sta in health.network."""
 en = """Current processes snapshot + optional `health` dict (load/memory/thermal/disk/network/services).
 
 DO NOT CONFUSE WITH: list_tasks (Metnos tasks), get_files_metadata (files), get_now (time), get_location (user).
 
+TWO DISTINCT USES (DO NOT mix):
+1. PROCESSES: query "processes/PID/nginx" → `filters` on attributes pid/ppid/name/cmd/user/cpu_pct/mem_pct/started_at.
+   MUST use dict predicates `{attribute,op,value}`, NOT bare strings.
+2. SERVER HEALTH: query "status/IP/network/temperature/uptime/RAM/disk" → `include_health=true`.
+   The answer lives in `health.network` / `health.thermal` / `health.disk` etc.
+   MUST NOT use `filters` to look up IP/network/temperature/RAM: they are NOT process attributes.
+
 ARG NAMES (exact):
-MUST: `top` (int≥1) | `include_health` (bool) | `filters` (list) | `services_extra` (list).
+MUST: `top` (int≥1) | `include_health` (bool) | `filters` (list of dicts) | `services_extra` (list).
 MUST NOT: `max_results`/`limit`/`n`/`count`/`health`/`with_health`/`status`. THEY DO NOT EXIST.
 
 OUTPUT: entries=[{pid,ppid,name,cmd,user,cpu_pct,mem_pct,started_at}].
 With include_health=true adds health.{load,memory,thermal,disk,network,services,collected_at}.
 
 PATTERN (do not copy literally):
-"processes" → get_processes().
-"top 5 cpu" → get_processes(top=5).
-"server status/health/uptime/load" → get_processes(include_health=true,top=5).
-"server IP/network/interfaces" → get_processes(include_health=true,top=5) (read health.network).
-"CPU/GPU temperature" → get_processes(include_health=true,top=5) (read health.thermal).
-"nginx processes" → get_processes(filters=[{attribute:"name",op:"contains",value:"nginx"}]).
-"PID 1234" → get_processes(filters=[{attribute:"pid",op:"=",value:1234}])."""
+"processes" / "ps" → `get_processes()`.
+"top 5 cpu" → `get_processes(top=5)`.
+"nginx processes" → `get_processes(filters=[{attribute:"name",op:"contains",value:"nginx"}])`.
+"PID 1234" → `get_processes(filters=[{attribute:"pid",op:"=",value:1234}])`.
+"server status/health/uptime/load" → `get_processes(include_health=true,top=5)`.
+"server IP/network/interfaces" → `get_processes(include_health=true,top=5)` → read `health.network`.
+"CPU/GPU temperature" → `get_processes(include_health=true,top=5)` → read `health.thermal`.
+
+ERROR pattern (DO NOT do):
+- `filters=["ip","network"]` (bare strings, schema requires dicts).
+- `filters=[{attribute:"ip",...}]` (ip is NOT a process attribute).
+- `filters=[{field:"name",...}]` (key is `attribute`, not `field`).
+- include_health=true with filters to look up IP: redundant, IP lives in health.network."""
 
 [code]
 files  = ["get_processes.py"]
