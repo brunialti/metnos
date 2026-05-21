@@ -1,64 +1,44 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 """inverse_rl.py — discover unstated telos.
 
-Da cluster di turni utente soddisfatti (no follow-up correttivo,
-final_answer = answer non error), infera un telos NON dichiarato che
-spiega il pattern di soddisfazione.
-
-Es: utente usa spesso `find_files + filter_entries + describe` su
-documentazione progetti. Telos inferito: "mantenere panorama
-documentazione" → si potrebbe aggiungere a TELOS.md (review utente).
-
-§7.9: i cluster sono identificati deterministicamente dal turn_log
-(group by sequence of verbi); il LLM solo nomina il telos.
+Concept-only lens: propone TELOS non dichiarati osservando cluster di
+turni soddisfatti (no follow-up correttivo). Non variant di executor.
+new_op_name resta null.
 """
 from __future__ import annotations
 
-from ._base import LensCtx
+from ._base import (
+    LensCtx, SHARED_PREAMBLE, SHARED_NAMING_NULL,
+    SHARED_OUTPUT_FORMAT, context_block,
+)
 
 NAME = "inverse_rl"
 OPERATORS = ("cluster_soddisfatto",)
 
+_DECLARED_TELOS = """TELOS GIA' DICHIARATI (da NON riproporre):
+- t.tempo, t.ordine, t.puntualita, t.protezione,
+- t.discrezione, t.parsimonia, t.coltivazione_strumenti."""
+
 
 def build_prompt(ctx: LensCtx, operator: str) -> str:
-    return f"""Sei un agente Metnos in background che inferisce TELOS NON DICHIARATI
-osservando pattern di turni utente che terminano con successo (no follow-up
-correttivo, no retry, esito accettato).
+    return f"""{SHARED_PREAMBLE}
 
-REGOLA: il telos inferito riguarda cio' che L'UTENTE valorizza ricorrentemente
-secondo i suoi pattern d'uso, NON cio' che TU pensi dovrebbe valorizzare.
-Anti-paternalismo: nessun giudizio. La proposta va al digest e l'utente
-decide se aggiungere a TELOS.md.
+TELOS DI RIFERIMENTO: {ctx.telos.phrase}
+Note utente: {ctx.telos.notes}
 
-TELOS GIA' DICHIARATI (da NON riproporre):
-- t.tempo: liberare tempo da incombenze ripetitive
-- t.ordine: ordine dei dati digitali
-- t.puntualita: non perdere scadenze
-- t.protezione: privacy
-- t.discrezione: sorprendere senza interrompere
-- t.parsimonia: non spendere piu' del necessario
-- t.coltivazione_strumenti: non lasciare richieste inattuate
+{_DECLARED_TELOS}
 
-CONTESTO DI ANALISI:
-- Mnestoma recente (sequenze co-attivate): {ctx.mnestoma_summary}
-- Pattern verbi utente: {ctx.user_patterns_summary}
+{context_block(ctx)}
 
-OPERATORE: cluster_soddisfatto
-COSA FARE: osserva il mnestoma e i pattern. Individua un FILO che
-ricorre con frequenza ma NON e' coperto da uno dei 7 telos sopra.
-Esprimi quel filo come PROPOSED TELOS in forma "Mantenere/Liberare/
-Garantire/Coltivare <X>".
+OPERATORE: cluster_soddisfatto.
+COSA FARE: osserva mnestoma + patterns. Individua un FILO ricorrente
+NON coperto dai 7 telos sopra. Esprimi come PROPOSED_TELOS in forma
+imperativa: "Mantenere/Liberare/Garantire/Coltivare <X>".
 
-Genera 1-2 proposte. Ogni proposta JSON:
-  {{
-    "executor_target": "<executor piu' rappresentativo del cluster>",
-    "new_op_name": null,
-    "proposed_action": "PROPOSED_TELOS: <una frase imperativa, es. 'Mantenere panorama documentazione progetti'>",
-    "rationale": "<quale cluster di turni lo evidenzia (cita executor co-attivati), 1 riga>"
-  }}
+Output: target_executor = il piu' rappresentativo del cluster,
+proposed_action inizia con "PROPOSED_TELOS: ...".
 
-Executor disponibili (campione):
-{chr(10).join(f"  - {e['name']}" for e in ctx.executors_sample[:8])}
+{SHARED_NAMING_NULL}
 
-Rispondi SOLO array JSON. `[]` preferito a forzare un telos artificiale.
+{SHARED_OUTPUT_FORMAT}
 """

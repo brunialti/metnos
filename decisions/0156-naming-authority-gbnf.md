@@ -97,6 +97,56 @@ Regole descriptor (enforce da `validate_name`):
 - NO leading/trailing hyphen, NO doppi hyphen
 - NON puo' coincidere con verbo/oggetto §2.2 (anti pseudo-canonical)
 
+### Regole semantiche aggiuntive (refinement 21/5/2026 v3)
+
+**R1 — Un livello alla volta**: una proposta non puo' introdurre un
+nuovo qualifier (3°) E un nuovo descriptor (4°) insieme. Implementazione:
+`validate_name(name, live_canonicals=set)` rifiuta nomi 4-livello il cui
+canonical 3-livello non e' gia' nel `live_canonicals` (catalog vivo).
+
+Razionale: ogni livello che si aggiunge richiede giustificazione propria
+(che qualifier? perche'? quale dominio?). Stack di nuovi token a un solo
+colpo nasconde l'analisi e produce nomi senza fondamenta.
+
+Sequenza giusta:
+- Proposta 1: introduce `create_events_promotion` (3-livello, vocab
+  governance: 3 criteri necessario/generale/comprensibile per `_promotion`
+  applicato a `events`). Va a review.
+- Proposta 2 (dopo accettazione 1): `create_events_promotion_nightly`
+  (4-livello variant).
+
+GBNF v3: `canonical-4-with-descriptor` enum filtrato a `canonical-3-live`
+(executor con esattamente 3 parti gia' nel catalog).
+
+**R2 — Descriptor = modificatore comportamentale**: il descriptor (4°)
+deve cambiare *come* l'executor opera **a parita' di argomenti**.
+
+OK pattern: `_dry-run`, `_per-language`, `_excluding-tests`, `_recursive`,
+`_incremental`, `_streaming`, `_unified` (se sussume varianti reali),
+`_v2` (nuovo contratto).
+
+ERRORE pattern: `_nightly` (timing, va in scheduler `tasks`),
+`_invoice-lifecycle` (dominio applicativo, va nel `proposed_action`),
+`_meeting-reminders` (etichetta caso d'uso, non comportamento).
+
+R2 e' euristica: validate_name oggi NON la enforce (richiederebbe
+classificazione semantica). Va nel prompt come regola DEVI/NON DEVI
+con pattern OK/ERRORE; il vaglio LLM judge a valle e' la rete di
+sicurezza.
+
+### Governance estensione vocab §2.2
+
+Proporre un nuovo token (verbo, oggetto, qualifier) richiede TRE criteri
+congiunti:
+1. **Necessario** — nessun token della stessa classe e' semanticamente
+   equivalente al proposto (solo lessicalmente diverso).
+2. **Generale** — semantica riusabile, compositiva, non domain-specific.
+3. **Comprensibile** — un LLM medium (Gemma 26B) coglie il significato
+   senza glossa.
+
+La proposta marca nel rationale "RICHIEDE estensione vocab §2.2:
+<motivazione_3_criteri>". Va a review umana al digest serale.
+
 Esempi validi:
 - `compute_files_loc_per-language` (4-livello)
 - `compute_files_loc_excluding-tests` (4-livello)

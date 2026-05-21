@@ -24,6 +24,62 @@ from typing import Callable, Optional
 
 _LOG = logging.getLogger(__name__)
 
+
+# ── SHARED prompt blocks — stile §6 prescrittivo, brevita' obbligatoria ─
+#
+# Iniettati dalle lenti per evitare duplicazione. Le lenti NON ripetono
+# queste norme. Stile: DEVI / NON DEVI / OK / ERRORE / PATTERN.
+
+SHARED_PREAMBLE = """RUOLO: agente Metnos background. Scrivi proposte per il Vaglio. NON parli con l'utente.
+
+DEVI: cambiare cio' che fa METNOS.
+NON DEVI: giudicare l'utente.
+ERRORE: "dire/impedire/correggere all'utente".
+
+DEVI: §2.1 (single-op vettoriale) | §2.9 (no default impliciti) | §2.10 (no accoppiamento domini) | §2.4 (plurale N=1 OK).
+NON DEVI: fondere executor | inferire args dal contesto | accoppiare domini | rimuovere supporto N=1.
+
+METNOS FA GIA': from_step piping | undo_last_turn | fast_path | multi_tool memo | output_format markdown | needs_inputs.
+NON re-inventare."""
+
+# Schema naming + governance: SOLO per lenti naming-aware.
+SHARED_NAMING_SCHEMA = """NAMING §2.2 + ADR 0156: `verb_object[_qualifier[_descriptor]]` (separatore `_` posizionale).
+
+DEVI: usare token dal vocab CHIUSO (verb/object/qualifier).
+DEVI: estendere UN LIVELLO ALLA VOLTA. Se il 3° non esiste nel catalog, NON aggiungere 4°.
+DEVI: descriptor (4°) = MODIFICATORE COMPORTAMENTALE a parita' args.
+
+NON DEVI: descriptor senza qualifier presente.
+NON DEVI: descriptor che e' timing / contesto applicativo / dominio.
+NON DEVI: proporre nuovo qualifier (3°) + nuovo descriptor (4°) insieme.
+
+OK pattern: `compute_files_loc_per-language` | `find_dirs_empty` | `change_files_format_dry-run` | `set_tasks`.
+ERRORE pattern: `set_tasks_invoice-lifecycle` (no qualifier) | `create_events_promotion_nightly` (3°+4° nuovi insieme) | `_nightly` (timing).
+
+ESTENSIONE VOCAB §2.2: nuovo token? NON inventarlo nel nome. Scrivi nel rationale
+"RICHIEDE estensione vocab §2.2: <criterio>". 3 CRITERI: necessario (no synonym in classe) + generale (semantica riusabile, no domain-specific) + comprensibile (Gemma 26B senza glossa)."""
+
+# Per lenti concept-only.
+SHARED_NAMING_NULL = "NAMING: `new_op_name` = SEMPRE null (questa lens propone un concetto, non un executor variant)."
+
+# Output JSON.
+SHARED_OUTPUT_FORMAT = """OUTPUT: array JSON 1-3 oggetti, NIENT'ALTRO. `[]` preferito a proposte deboli.
+  {{"executor_target":"<dal campione vivo>","new_op_name":<vedi NAMING>,
+    "proposed_action":"<descrizione 1-2 righe>","rationale":"<evidenza dal mnestoma/patterns>"}}"""
+
+
+def context_block(ctx) -> str:
+    """Render del blocco CONTESTO (mnestoma + patterns + executors) comune.
+
+    Compatto: 3 sezioni con whitespace minimo. Le lenti possono includerlo
+    o costruire una versione piu' breve se serve."""
+    execs = "\n".join(f"  - {e['name']}: {e.get('description','')[:100]}"
+                      for e in ctx.executors_sample)
+    return (f"CONTESTO:\nMnestoma:\n{ctx.mnestoma_summary}\n\n"
+            f"Pattern utente (turn_log 30gg):\n{ctx.user_patterns_summary}\n\n"
+            f"Executor disponibili (campione vivo):\n{execs}")
+
+
 # Regex anti-paternalismo: pattern di proposte che giudicano l'utente.
 # Conservativo, deterministico, multilingua IT+EN.
 _PATERNALISM_RE = re.compile(

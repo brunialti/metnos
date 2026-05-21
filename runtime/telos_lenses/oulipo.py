@@ -1,57 +1,42 @@
 # SPDX-License-Identifier: AGPL-3.0-only
-"""oulipo.py — lente vincolo deliberato (OuLiPo).
+"""oulipo.py — vincolo deliberato (OuLiPo).
 
-Propone vincoli a tempo (settimana/giorno) che obbligano Metnos a essere
-piu' ingegnoso con meno risorse. Tipici: "no tier=wise per N gg", "no
-network outbound per giorno", "no usage di executor X per N gg".
-
-L'effetto e' di esplorare path alternativi che oggi non vengono scelti
-perche' c'e' la via piu' facile. Serve in particolare t.parsimonia
-(non spendere) e t.coltivazione_strumenti (cresce capacita' locali).
+Concept-only lens: propone vincoli temporanei, non variant di executor.
+new_op_name resta null. Gemma puo' usare il campo executor_target solo
+come riferimento a cosa il vincolo tocca.
 """
 from __future__ import annotations
 
-from ._base import LensCtx
+from ._base import (
+    LensCtx, SHARED_PREAMBLE, SHARED_NAMING_NULL,
+    SHARED_OUTPUT_FORMAT, context_block,
+)
 
 NAME = "oulipo"
 OPERATORS = ("vincolo_risorsa", "vincolo_tempo", "vincolo_executor")
 
 _DESCRIPTIONS = {
-    "vincolo_risorsa": "Proponi un VINCOLO DI RISORSA temporaneo (no API frontier per N gg, no rete, no provider Google) che esercita Metnos a trovare path alternativi locali.",
-    "vincolo_tempo": "Proponi un VINCOLO TEMPORALE (es. nessun executor mutante prima delle 09:00, nessun batch oltre la finestra notturna) che modula i ritmi di Metnos.",
-    "vincolo_executor": "Proponi un VINCOLO DI ESECUTORE (es. no consult_frontier per una settimana, no executor X) che obbliga Metnos a scegliere alternative.",
+    "vincolo_risorsa": "VINCOLO DI RISORSA temporaneo (no API frontier per N gg, no rete, no provider Google).",
+    "vincolo_tempo": "VINCOLO TEMPORALE (es. nessun executor mutante prima delle 09:00, batch solo in finestra notturna).",
+    "vincolo_executor": "VINCOLO DI ESECUTORE (es. no consult_frontier per N gg, no executor X).",
 }
 
 
 def build_prompt(ctx: LensCtx, operator: str) -> str:
-    op_desc = _DESCRIPTIONS[operator]
-    return f"""Sei un agente Metnos in background che propone vincoli deliberati
-(OuLiPo: Ouvroir de Litterature Potentielle, vincoli che liberano creativita').
+    return f"""{SHARED_PREAMBLE}
 
-REGOLA CRUCIALE: i vincoli vincolano METNOS, mai l'utente. NIENTE
-"impedisci all'utente X" — il vincolo riguarda solo cosa Metnos fa
-da solo in autonomia (proposals, scheduler, fallback chain).
-
-TELOS DA SERVIRE: {ctx.telos.phrase}
+TELOS: {ctx.telos.phrase}
 Note utente: {ctx.telos.notes}
 
-CONTESTO:
-- Mnestoma recente: {ctx.mnestoma_summary}
-- Pattern utente: {ctx.user_patterns_summary}
+{context_block(ctx)}
 
 OPERATORE OULIPO: {operator}
-COSA FARE: {op_desc}
+{_DESCRIPTIONS[operator]}
+NB: il vincolo riguarda METNOS (proposals/scheduler/fallback), non l'utente.
 
-Genera 1-2 proposte concrete di vincolo. Ogni proposta JSON:
-  {{
-    "executor_target": "<executor del catalog vivo a cui il vincolo si applica, o quello rappresentativo>",
-    "new_op_name": null,
-    "proposed_action": "<descrizione del vincolo: cosa, per quanto, su quale scope>",
-    "rationale": "<come libera creativita' Metnos per servire il telos, 1 riga>"
-  }}
+Genera 1-2 vincoli concreti (cosa, per quanto, su quale scope).
 
-Executor disponibili (campione):
-{chr(10).join(f"  - {e['name']}" for e in ctx.executors_sample[:8])}
+{SHARED_NAMING_NULL}
 
-Rispondi SOLO array JSON. `[]` se nessun vincolo sensato.
+{SHARED_OUTPUT_FORMAT}
 """

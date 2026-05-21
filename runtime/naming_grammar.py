@@ -138,16 +138,25 @@ def parse_name(name: str) -> Optional[NameComponents]:
     return NameComponents(verb=verb, obj=obj, qualifier=qual, descriptor=desc)
 
 
-def validate_name(name: str) -> ValidationResult:
+def validate_name(name: str,
+                  live_canonicals: Optional[set] = None) -> ValidationResult:
     """Verifica conformita' §2.2 + 4° livello descriptor.
 
+    Args:
+      name: nome completo (canonical 2-4 livelli).
+      live_canonicals: set di canonical 3-livello GIA' VIVI nel catalog.
+        Se passato, attiva la regola "un livello alla volta":
+        un nome 4-livello e' accettato SOLO se il suo canonical
+        3-livello (verb_obj_qual) e' gia' in live_canonicals.
+        Razionale: una proposta non puo' introdurre 3° + 4° insieme.
+
     Catches:
-    - verb fuori vocab (audit/check/verify/monitor/track/notify)
-    - object fuori vocab
-    - qualifier fuori vocab
+    - verb / object / qualifier fuori vocab
     - eccezione entries: no find/read/get_entries
-    - descriptor sintassi (regex)
     - system pseudo-verbs riservati
+    - descriptor senza qualifier (regola posizionale)
+    - descriptor con canonical 3-livello non-vivo (regola "uno alla volta")
+    - descriptor sintassi (regex kebab-case)
     """
     nc = parse_name(name)
     if nc is None:
@@ -168,6 +177,18 @@ def validate_name(name: str) -> ValidationResult:
             nc)
     if nc.qualifier and nc.qualifier not in QUALIFIERS:
         return ValidationResult(False, f"qualifier '{nc.qualifier}' not in vocab §2.2", nc)
+    # Regola "uno alla volta": 4° livello richiede canonical 3-livello
+    # gia' vivo nel catalog. Una proposta non puo' introdurre 3° + 4° insieme.
+    if nc.descriptor and live_canonicals is not None:
+        if nc.canonical not in live_canonicals:
+            return ValidationResult(False,
+                f"4° livello '{nc.descriptor}' richiede canonical 3-livello "
+                f"'{nc.canonical}' gia' presente nel catalog. Propose una "
+                f"NUOVA proposta separata che introduce '{nc.canonical}' "
+                f"come 3-livello (RICHIEDE estensione vocab §2.2 se il "
+                f"qualifier '{nc.qualifier}' non e' ancora ammesso per "
+                f"l'object '{nc.obj}').",
+                nc)
     # Eccezione entries
     if nc.obj == "entries" and nc.verb in _ENTRIES_FORBIDDEN_VERBS:
         return ValidationResult(
@@ -260,18 +281,31 @@ def naming_grammar_fragment(*, live_executors: list[str]) -> str:
         ))
     """
     if not live_executors:
-        target_enum = '""'  # nessuno: stringa vuota (degenere; non dovrebbe accadere)
+        target_enum = '""'
     else:
         target_enum = _quote_jsonstring_enum(sorted(set(live_executors)))
-    # verb/object/qualifier sono pezzi sintattici interni al nome:
-    # le quote JSON le aggiunge canonical_only / canonical_with_descriptor.
     verb_enum = _quote_token_enum(ACTIONS)
     obj_enum = _quote_token_enum(OBJECTS)
     qual_enum = _quote_token_enum(QUALIFIERS)
-    # NB: llama.cpp GBNF accetta solo hyphen `-` nei nomi di regola
-    # (NON underscore), quindi tutte le regole interne usano kebab-case.
-    # I tag dei nomi canonical Metnos (verb_object_qualifier) restano
-    # con `_` perche' sono LITERAL inside la stringa generata.
+    # Regola "uno alla volta" (v3): il 4° livello e' ammesso SOLO se il
+    # suo canonical 3-livello e' gia' VIVO nel catalog. Estraggo dai
+    # live_executors solo quelli con esattamente 3 parti (verb_obj_qual).
+    live_3level = sorted({
+        e for e in live_executors
+        if len(e.split("_")) == 3
+    })
+    if live_3level:
+        canonical3_enum = _quote_token_enum(live_3level)
+        # canonical-4 = (uno dei 3-livello vivi) + "_" + descriptor kebab
+        desc_4_rule = (
+            'canonical-4-with-descriptor ::= "\\"" canonical-3-live '
+            '"_" desc-segment ("-" desc-segment)* "\\""'
+        )
+        canon3_def = f"canonical-3-live ::= {canonical3_enum}"
+    else:
+        # Nessun canonical 3-livello vivo: vietato proporre 4-livello.
+        desc_4_rule = 'canonical-4-with-descriptor ::= "null"'  # degenere
+        canon3_def = ""
     return f"""
 target-name ::= {target_enum}
 
@@ -279,11 +313,13 @@ verb ::= {verb_enum}
 object-token ::= {obj_enum}
 qualifier-token ::= {qual_enum}
 
+{canon3_def}
+
 canonical-2or3 ::= "\\"" verb "_" object-token ("_" qualifier-token)? "\\""
 
 desc-alnum ::= [a-z0-9]
 desc-segment ::= desc-alnum desc-alnum*
-canonical-4-with-descriptor ::= "\\"" verb "_" object-token "_" qualifier-token "_" desc-segment ("-" desc-segment)* "\\""
+{desc_4_rule}
 
 new-op-name ::= canonical-2or3 | canonical-4-with-descriptor | "null"
 """

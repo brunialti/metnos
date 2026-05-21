@@ -1,69 +1,46 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 """generative_design.py — Pareto candidates per brief composto.
 
-Generative design (Bentley, Autodesk): per UN brief utente composto da
-piu' vincoli/obiettivi, genera N candidati e mostra i trade-off
-Pareto-ottimali invece di scegliere uno.
-
-Es: "design_my_morning" — brief composto (tempo, ordine, puntualita).
-Candidati: (a) sveglia 06:30 + workout 30min + colazione → tempo alto,
-ordine medio; (b) sveglia 07:00 + workout 0min + colazione lunga →
-tempo medio, ordine alto; (c) ... — l'utente sceglie esplicitamente.
+Per UN brief composto da piu' vincoli/obiettivi, genera 2-3 candidati
+con trade-off espliciti. L'utente sceglie esplicitamente nel digest;
+Metnos non decide per lui.
 """
 from __future__ import annotations
 
-from ._base import LensCtx
+from ._base import (
+    LensCtx, SHARED_PREAMBLE, SHARED_NAMING_SCHEMA,
+    SHARED_OUTPUT_FORMAT, context_block,
+)
 
 NAME = "generative_design"
 OPERATORS = ("pareto_brief",)
 
+_TELOS_REGISTRY = """ALTRI TELOS NEL REGISTRO (per trade-off Pareto):
+t.tempo (efficienza) / t.ordine (stabilita') / t.puntualita (deadline) /
+t.protezione (privacy) / t.discrezione (no rumore) / t.parsimonia (no costo) /
+t.coltivazione_strumenti (capacita' locale)."""
+
 
 def build_prompt(ctx: LensCtx, operator: str) -> str:
-    return f"""Sei un agente Metnos in background che propone candidati
-Pareto-ottimali per brief composti (generative design).
+    return f"""{SHARED_PREAMBLE}
 
-Differente dalle altre lenti: invece di UNA proposta, generi 2-3
-candidati con TRADE-OFF ESPLICITI. L'utente sceglie esplicitamente
-nel digest serale; Metnos non decide per lui.
-
-REGOLA: il brief riguarda un'attivita' di Metnos (es. "come Metnos
-gestisce le notifiche mattutine"), non un'attivita' dell'utente
-("come l'utente dovrebbe fare colazione"). Anti-paternalismo.
-
-TELOS DA SERVIRE: {ctx.telos.phrase}
+TELOS DI RIFERIMENTO: {ctx.telos.phrase}
 Note utente: {ctx.telos.notes}
 
-ALTRI TELOS NEL REGISTRO (per Pareto trade-off):
-- t.tempo: efficienza
-- t.ordine: stabilita' strutturale
-- t.puntualita: rispetto delle deadline
-- t.protezione: privacy
-- t.discrezione: minimo rumore
-- t.parsimonia: minimo costo
-- t.coltivazione_strumenti: capacita' locale
+{_TELOS_REGISTRY}
 
-CONTESTO:
-- Mnestoma: {ctx.mnestoma_summary}
-- Pattern utente: {ctx.user_patterns_summary}
+{context_block(ctx)}
 
-OPERATORE: pareto_brief
+OPERATORE: pareto_brief.
 COSA FARE: scegli un BRIEF COMPOSTO che riguarda comportamento Metnos
-(esempi: "design dello scheduler notturno", "design del digest
-proposte serali", "design dei reminder per scadenze"). Genera
-2-3 CANDIDATI Pareto-ottimali con trade-off esplicito su 2-3 telos
+(es. "design scheduler notturno", "design digest serale"). Genera
+2-3 CANDIDATI Pareto-ottimali con trade-off espliciti su 2-3 telos
 contrapposti.
 
-Genera 2-3 proposte (UN candidate per oggetto). Ogni proposta JSON:
-  {{
-    "executor_target": "<executor centrale del candidato>",
-    "new_op_name": "<verb_object[_qualifier[_descriptor-kebab]]>" o null (descriptor RICHIEDE qualifier),
-    "proposed_action": "CANDIDATO <X>: <descrizione> | trade-off: ↑t.<telosA> ↓t.<telosB>",
-    "rationale": "<quale telos serve meglio, 1 riga>"
-  }}
+Output: target = executor centrale del candidato;
+proposed_action: "CANDIDATO X: <descrizione> | trade-off: ↑t.<A> ↓t.<B>"
 
-Executor disponibili (campione):
-{chr(10).join(f"  - {e['name']}" for e in ctx.executors_sample[:8])}
+{SHARED_NAMING_SCHEMA}
 
-Rispondi SOLO array JSON con 2-3 candidati. `[]` se brief non
-rappresentabile come Pareto.
+{SHARED_OUTPUT_FORMAT}
 """
