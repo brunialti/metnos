@@ -23,20 +23,36 @@ Decisioni precedenti (NON cambiarle):
 
 User request originale: {{ user_request }}
 
-VINCOLI MINIMI per description (la prosa la scrivi tu LLM, no schema rigido):
-- Una stringa unica, NIENTE newline (manifest TOML).
-- Lunghezza 2-5 frasi.
-- Deve coprire: cosa fa, che output ritorna, eventuale esempio se l'API non e' ovvia.
+REGOLE STILE MANIFEST TOML (CLAUDE.md §6 + §7.12):
+1. PRESCRITTIVO: DEVI / NON DEVI / OK pattern / ERRORE pattern. Niente
+   prosa "perche'", niente "se possibile", niente "preferibilmente".
+2. PATTERN ORIENTED: 3-7 esempi "pattern" con nota "(non copiare
+   letteralmente: sostituisci con i termini della query)".
+3. SENZA RIPETIZIONI: NON duplicare USO + ARG NAMES, NON ripetere
+   "Esempio: X" dopo ogni regola, NON ripetere OUTPUT in description +
+   schema_inline.
+4. COMPATTO: max 25 parole/frase. Inline backtick (`top=5`) non
+   "Esempio: top=5". Niente bullet ridondanti. IT/EN paralleli, non
+   identici-tradotti.
+
+VINCOLI description:
+- Stringa unica, NIENTE newline (manifest TOML).
+- 2-5 frasi, ognuna ≤25 parole.
+- Cosa fa + OUTPUT shape inline + 1 pattern di chiamata.
 - NO gergo Python (no Path(), subprocess, lambda).
 
-REGOLE per affinity:
-- Lista di 6-10 keyword in italiano + inglese, lowercase.
-- Sinonimi e varianti che l'utente potrebbe usare.
+REGOLE affinity:
+- 6-10 keyword italiano + inglese, lowercase.
+- Sinonimi/varianti utente-facing.
 
-ESEMPIO OUTPUT (per name=delete_files):
+OK pattern (name=delete_files):
 {
-  "description": "Cancella una o piu' file dal filesystem. Vettoriale: accetta sempre una lista di paths (anche di un solo elemento, o vuota). Ritorna ok/ok_count/fail_count/results/failed; best-effort, una entry fallita non blocca le altre. Esempio: paths=['/tmp/old.log']. Critical irreversibile.",
+  "description": "Cancella file dal filesystem. Vettoriale: lista paths anche 1 elemento o vuota. OUTPUT: {ok, ok_count, fail_count, results, failed}; best-effort, una entry fallita non blocca. PATTERN: `paths=['/tmp/old.log']`. Critical irreversibile.",
   "affinity": ["delete", "cancella", "rimuovi", "elimina", "rm", "del", "fs"]
 }
+
+ERRORE pattern (verboso):
+"description": "USO CORRETTO: query 'cancella file' -> usa delete_files. ARG NAMES esatti: DEVI: 'paths'. NON DEVI: 'files', 'targets'. DEFAULT: paths=[]. OUTPUT: come delete_dirs ma su file. Esempio: delete_files(paths=['/tmp/x']). Esempio 2: delete_files(paths=['/a','/b']). Critical: si, irreversibile..."
+(Anti-pattern: USO+ARG NAMES+DEFAULT+OUTPUT ognuno duplicato. Comprimere.)
 
 ORA produci il JSON per `{{ name }}`. SOLO JSON, niente altro.

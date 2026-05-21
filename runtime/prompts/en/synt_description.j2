@@ -21,20 +21,36 @@ Previous decisions (DO NOT change them):
 
 Original user request: {{ user_request }}
 
-MINIMUM CONSTRAINTS for description (you, the LLM, write the prose, no rigid schema):
-- A single string, NO newline (TOML manifest).
-- Length 2-5 sentences.
-- Must cover: what it does, what output it returns, a possible example if the API is not obvious.
+TOML MANIFEST STYLE RULES (CLAUDE.md §6 + §7.12):
+1. PRESCRIPTIVE: MUST / MUST NOT / OK pattern / ERROR pattern. No prose
+   "because", no "if possible", no "preferably".
+2. PATTERN ORIENTED: 3-7 "pattern" examples with note "(do not copy
+   literally: replace with the query terms)".
+3. NO REPETITIONS: do NOT duplicate USAGE + ARG NAMES, do NOT repeat
+   "Example: X" after every rule, do NOT repeat OUTPUT in description +
+   schema_inline.
+4. COMPACT: max 25 words/sentence. Inline backticks (`top=5`) not
+   "Example: top=5". No redundant bullets. IT/EN parallel, not
+   identical-translated.
+
+description CONSTRAINTS:
+- Single string, NO newline (TOML manifest).
+- 2-5 sentences, each ≤25 words.
+- What it does + OUTPUT shape inline + 1 call pattern.
 - NO Python jargon (no Path(), subprocess, lambda).
 
-RULES for affinity:
-- List of 6-10 keywords in Italian + English, lowercase.
-- Synonyms and variants that the user might use.
+affinity RULES:
+- 6-10 keywords italiano + english, lowercase.
+- User-facing synonyms/variants.
 
-OUTPUT EXAMPLE (for name=delete_files):
+OK pattern (name=delete_files):
 {
-  "description": "Deletes one or more files from the filesystem. Vectorial: always accepts a list of paths (even with a single element, or empty). Returns ok/ok_count/fail_count/results/failed; best-effort, one failed entry does not block the others. Example: paths=['/tmp/old.log']. Irreversible critical.",
+  "description": "Deletes files from filesystem. Vectorial: list paths even 1 element or empty. OUTPUT: {ok, ok_count, fail_count, results, failed}; best-effort, one failed entry does not block. PATTERN: `paths=['/tmp/old.log']`. Irreversible critical.",
   "affinity": ["delete", "cancella", "rimuovi", "elimina", "rm", "del", "fs"]
 }
+
+ERROR pattern (verbose):
+"description": "USAGE: query 'delete file' -> use delete_files. ARG NAMES exact: MUST: 'paths'. MUST NOT: 'files', 'targets'. DEFAULT: paths=[]. OUTPUT: like delete_dirs but for files. Example: delete_files(paths=['/tmp/x']). Example 2: delete_files(paths=['/a','/b']). Critical: yes, irreversible..."
+(Anti-pattern: USAGE+ARG NAMES+DEFAULT+OUTPUT each duplicated. Compress.)
 
 NOW produce the JSON for `{{ name }}`. ONLY JSON, nothing else.

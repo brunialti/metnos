@@ -26,6 +26,13 @@ Decisioni precedenti (vincoli, NON discutere):
 User request originale:
   {{ user_request }}
 
+REGOLE STILE description campi args (CLAUDE.md §6 + §7.12):
+- PRESCRITTIVO: DEVI / NON DEVI / OK pattern. Niente "se possibile".
+- COMPATTO: 1-3 righe per arg, max 25 parole/frase.
+- INLINE EXAMPLE: backtick `top=5`, NON "Esempio: top=5".
+- IT/EN PARALLELI (non identical-translated).
+- NIENTE RIPETIZIONI fra description di top-level e args.
+
 REGOLE STRINGENTI:
 1. Per gli executor che ricevono una lista da uno step precedente
    (entries, items, results, ...): NON esporre `entries: array` nello
