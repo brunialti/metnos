@@ -15,7 +15,10 @@ affinity    = ["processi", "ps", "stato server", "server status",
                 "carico", "load", "cpu", "ram", "situazione",
                 "diagnostica", "temperatura", "temperature",
                 "thermal", "calore", "gpu", "disco", "memoria",
-                "free", "df", "top"]
+                "free", "df", "top",
+                "ip", "ip server", "indirizzi", "addresses",
+                "rete", "network", "interfacce", "ifconfig",
+                "ip address"]
 revertible  = false
 lifecycle   = "active"
 
@@ -34,20 +37,22 @@ NON DEVI: `health=true`, `with_health`, `system`, `status=true`. NON ESISTONO. E
 DEFAULT: `filters=[]`, `top` omesso → tutti, `include_health=false`, `services_extra=[]`.
 
 OUTPUT (sempre): `{ok, entries=[{pid, ppid, name, cmd, user, cpu_pct, mem_pct, started_at}], ok_count, truncated, available_total}`.
-OUTPUT (con `include_health=true`): aggiunge top-level `health = {load:{1m,5m,15m,uptime_s}, memory:{total_mb,used_mb,pct,swap_total_mb,swap_used_mb}, disk:[{mount,fstype,total_gb,used_gb,pct}], services:[{name,status}], collected_at}`.
+OUTPUT (con `include_health=true`): aggiunge top-level `health = {load:{1m,5m,15m,uptime_s}, memory:{total_mb,used_mb,pct,swap_total_mb,swap_used_mb}, thermal:{available,cpu_c,gpu_c,nvme_c}, disk:[{mount,fstype,total_gb,used_gb,pct}], network:[{iface,ipv4,ipv6,up}], services:[{name,status}], collected_at}`.
 
 PATTERN (non copiare letteralmente: sostituisci con i termini della query utente):
 "processi" → `get_processes()`.
 "i 5 più CPU-hungry" → `get_processes(top=5)`.
 "stato del server" → `get_processes(include_health=true, top=10)`.
 "uptime" / "salute sistema" → `get_processes(include_health=true)`.
+"IP del server" / "indirizzi rete" / "interfacce" → `get_processes(include_health=true, top=0)` (la sezione `health.network` ha iface+ipv4+ipv6+up).
+"temperatura CPU GPU" → `get_processes(include_health=true, top=0)` (la sezione `health.thermal` ha cpu_c/gpu_c/nvme_c).
 "processi nginx" → `get_processes(filters=[{attribute:"name", op:"contains", value:"nginx"}])`.
 "PID 1234" → `get_processes(filters=[{attribute:"pid", op:"=", value:1234}])`."""
-en = "Snapshot of current processes (list) and, optionally, aggregate server health (dict `health`).  CORRECT USE: query \"processes/ps\" → without flag. Query \"server status / health / uptime / load\" → MUST pass `include_health=true`. DO NOT CONFUSE WITH: `get_files_metadata` (files on disk), `get_now` (date/time), `get_location` (user physical location), `list_tasks` (Metnos recurring tasks), `read_tasks_history` (task execution history), `delete_tasks` (cancel recurring task).  ARG NAMES (exact names, no synonyms): MUST: `top` to limit the number of processes (integer ≥ 1). MUST NOT: `max_results`, `limit`, `n`, `count`. THEY DO NOT EXIST. THIS IS AN ERROR. MUST: `include_health=true` to obtain the health section. MUST NOT: `health=true`, `with_health`, `system`, `status=true`. THEY DO NOT EXIST. THIS IS AN ERROR.  DEFAULT: `filters=[]`, `top` omitted → all, `include_health=false`, `services_extra=[]`.  OUTPUT (always): `{ok, entries=[{pid, ppid, name, cmd, user, cpu_pct, mem_pct, started_at}], ok_count, truncated, available_total}`. OUTPUT (with `include_health=true`): adds top-level `health = {load:{1m,5m,15m,uptime_s}, memory:{total_mb,used_mb,pct,swap_total_mb,swap_used_mb}, disk:[{mount,fstype,total_gb,used_gb,pct}], services:[{name,status}], collected_at}`.  PATTERN (do not copy literally: replace with the user query terms): \"processes\" → `get_processes()`. \"the 5 most CPU-hungry\" → `get_processes(top=5)`. \"server status\" → `get_processes(include_health=true, top=10)`. \"uptime\" / \"system health\" → `get_processes(include_health=true)`. \"nginx processes\" → `get_processes(filters=[{attribute:\"name\", op:\"contains\", value:\"nginx\"}])`. \"PID 1234\" → `get_processes(filters=[{attribute:\"pid\", op:\"=\", value:1234}])`."
+en = "Snapshot of current processes (list) and, optionally, aggregate server health (dict `health`).  CORRECT USE: query \"processes/ps\" → without flag. Query \"server status / health / uptime / load\" → MUST pass `include_health=true`. DO NOT CONFUSE WITH: `get_files_metadata` (files on disk), `get_now` (date/time), `get_location` (user physical location), `list_tasks` (Metnos recurring tasks), `read_tasks_history` (task execution history), `delete_tasks` (cancel recurring task).  ARG NAMES (exact names, no synonyms): MUST: `top` to limit the number of processes (integer ≥ 1). MUST NOT: `max_results`, `limit`, `n`, `count`. THEY DO NOT EXIST. THIS IS AN ERROR. MUST: `include_health=true` to obtain the health section. MUST NOT: `health=true`, `with_health`, `system`, `status=true`. THEY DO NOT EXIST. THIS IS AN ERROR.  DEFAULT: `filters=[]`, `top` omitted → all, `include_health=false`, `services_extra=[]`.  OUTPUT (always): `{ok, entries=[{pid, ppid, name, cmd, user, cpu_pct, mem_pct, started_at}], ok_count, truncated, available_total}`. OUTPUT (with `include_health=true`): adds top-level `health = {load:{1m,5m,15m,uptime_s}, memory:{total_mb,used_mb,pct,swap_total_mb,swap_used_mb}, thermal:{available,cpu_c,gpu_c,nvme_c}, disk:[{mount,fstype,total_gb,used_gb,pct}], network:[{iface,ipv4,ipv6,up}], services:[{name,status}], collected_at}`.  PATTERN (do not copy literally: replace with the user query terms): \"processes\" → `get_processes()`. \"the 5 most CPU-hungry\" → `get_processes(top=5)`. \"server status\" → `get_processes(include_health=true, top=10)`. \"uptime\" / \"system health\" → `get_processes(include_health=true)`. \"server IP\" / \"network addresses\" / \"interfaces\" → `get_processes(include_health=true, top=0)` (the `health.network` section has iface+ipv4+ipv6+up). \"nginx processes\" → `get_processes(filters=[{attribute:\"name\", op:\"contains\", value:\"nginx\"}])`. \"PID 1234\" → `get_processes(filters=[{attribute:\"pid\", op:\"=\", value:1234}])`."
 
 [code]
 files  = ["get_processes.py"]
-digest = "sha256:ea16f58d021b43f7d6c453093dbdf464ecf39f2122b3b95756451b8ff398c024"
+digest = "sha256:97c0d2e611a414e741fa13d262aba766652f0ea77b64bc7ed56534accc2de9f2"
 
 [args]
 type     = "object"

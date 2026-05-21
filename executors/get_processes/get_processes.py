@@ -402,8 +402,38 @@ def _read_thermal() -> dict:
     return out
 
 
+def _read_network() -> list[dict]:
+    """Interfacce di rete con IP IPv4/IPv6 (esclude loopback).
+    Determinismo §7.9: psutil deterministico, niente comandi esterni."""
+    out: list[dict] = []
+    try:
+        import socket
+        import psutil  # type: ignore
+        addrs = psutil.net_if_addrs()
+        stats = psutil.net_if_stats()
+    except Exception:
+        return out
+    for iface, addr_list in addrs.items():
+        if iface == "lo":
+            continue
+        ipv4 = [a.address for a in addr_list if a.family == socket.AF_INET]
+        ipv6 = [a.address for a in addr_list
+                if a.family == socket.AF_INET6
+                and not a.address.startswith("fe80")]  # esclude link-local
+        if not ipv4 and not ipv6:
+            continue
+        up = bool(stats.get(iface) and stats[iface].isup)
+        out.append({
+            "iface": iface,
+            "ipv4": ipv4,
+            "ipv6": ipv6,
+            "up": up,
+        })
+    return out
+
+
 def _collect_health(services_extra: tuple[str, ...] | None = None) -> dict:
-    """Aggrega le 5 sezioni. Nessuna chiamata LLM (§7.9)."""
+    """Aggrega le 6 sezioni. Nessuna chiamata LLM (§7.9)."""
     units = _METNOS_SERVICES
     if services_extra:
         units = _METNOS_SERVICES + tuple(services_extra)
@@ -412,6 +442,7 @@ def _collect_health(services_extra: tuple[str, ...] | None = None) -> dict:
         "memory": _read_memory(),
         "thermal": _read_thermal(),
         "disk": _read_disk(),
+        "network": _read_network(),
         "services": _read_services(units),
         "collected_at": int(time.time()),
     }
