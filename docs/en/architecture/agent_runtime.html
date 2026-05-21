@@ -319,7 +319,7 @@ Now let us see the same path more precisely. A turn always has this structure:
 
 <h3>Phase 0 &mdash; preparation</h3>
 <ul>
-    <li>The <em>catalog</em> is loaded: the loader discovers all executors on disk (folders under <code>executors/</code>); for each it verifies that the manifest is signed by the author's key and that the code digest matches. Those failing verification are discarded with a reason. The catalog lives in memory.</li>
+    <li>The <em>catalog</em> is obtained &mdash; it lives in memory since boot. On the first load (<em>cold</em>) the loader discovers all executors on disk (folders under <code>executors/</code>); for each it verifies that the manifest is signed by the author's key and that the code digest matches. Those failing verification are discarded with a reason. On subsequent boots and every turn (<em>hot</em>), a lightweight signature check (mtime of <code>manifest.toml</code>, <code>.py</code>, <code>.sig</code> files + lifecycle DB) returns the cached catalog in O(1). Any modification (synth-on-the-fly, manual re-sign, ager demote/archive) automatically invalidates the cache on the next turn. See ADR 0099.</li>
     <li>The <em>mode</em> is chosen (local/online/hybrid &mdash; see ch. 3) and the LLM <em>tier</em> (fast/middle/wise &mdash; see ch. 4).</li>
     <li>A unique <code>turn_id</code> is generated to identify this turn in the logs.</li>
 </ul>
@@ -347,7 +347,7 @@ At this point the turn enters a loop. For each step:
             <li><em>Resolve references</em>: if the args contain <code>{{stepN.field}}</code> (for non-list args, e.g. <code>content</code>, <code>dst_template</code>), it substitutes them with the real value (see ch. 7).</li>
             <li><em>Validate</em>: do the args respect the JSON Schema declared in the executor's manifest?</li>
             <li><em>Sandbox check</em>: is the requested path/host within the scope declared in the executor's hint?</li>
-            <li><em>Vaglio</em>: does the constitutional evaluator give the green light?</li>
+            <li><em>Vaglio</em>: does the constitutional evaluator give the green light <strong>on this specific use</strong> of the executor? Executor signatures were already verified at load time (phase 0); the vaglio does not re-verify components, it inspects the single call: is this <code>delete_files(paths=...)</code>, with these args, in this context, allowed? Two phases: <em>guard</em> (binary: does it touch a forbidden path? Does it violate one of the 4 Laws?) and <em>judge</em> (graduated: alignment to the user's telos). See <a href="vaglio.html"><code>vaglio.html</code></a>.</li>
             <li><em>Guard duplicate read</em>: are we re-reading the same path/url as a previous step? If so, intercept and suggest the LLM to formulate the final_answer.</li>
         </ol>
     </li>

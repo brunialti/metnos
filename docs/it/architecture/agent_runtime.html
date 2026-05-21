@@ -309,7 +309,7 @@ Ora vediamo lo stesso percorso in modo pi&ugrave; preciso. Un turno ha sempre qu
 
 <h3>Fase 0 &mdash; preparazione</h3>
 <ul>
-    <li>Si carica il <em>catalogo</em>: il loader scopre tutti gli executor da disco (cartelle in <code>executors/</code>), per ognuno verifica che il manifest sia firmato dalla chiave dell'autore e che il digest del codice corrisponda. Quelli che falliscono la verifica vengono scartati con un motivo. Il catalogo &egrave; in memoria.</li>
+    <li>Si ottiene il <em>catalogo</em> di executor &mdash; gi&agrave; in memoria dal boot. Al primo caricamento (<em>cold</em>) il loader scopre tutti gli executor da disco (cartelle in <code>executors/</code>), per ognuno verifica che il manifest sia firmato dalla chiave dell'autore e che il digest del codice corrisponda. Quelli che falliscono la verifica vengono scartati con un motivo. Al boot successivo e ad ogni turno (<em>hot</em>), un check leggero sulla firma di modifica (mtime dei <code>manifest.toml</code>, <code>.py</code>, <code>.sig</code> + DB lifecycle) ritorna il catalogo cached in O(1). Una qualunque modifica (synth-on-the-fly, re-sign manuale, ager demote/archive) invalida la cache automaticamente al turno successivo. Vedi ADR 0099.</li>
     <li>Si sceglie il <em>mode</em> (local/online/hybrid &mdash; vedi cap. 3) e il <em>tier</em> di LLM (fast/middle/wise &mdash; vedi cap. 4).</li>
     <li>Si genera un <code>turn_id</code> univoco per identificare questo turno nei log.</li>
 </ul>
@@ -337,7 +337,7 @@ A questo punto il turno entra in un ciclo. Per ogni passo:
             <li><em>Resolve references</em>: se gli args contengono <code>{{stepN.field}}</code> (per arg non-lista, es. <code>content</code>, <code>dst_template</code>), li sostituisce col valore reale (vedi cap. 7).</li>
             <li><em>Validate</em>: gli args rispettano il JSON Schema dichiarato nel manifest dell'executor?</li>
             <li><em>Sandbox check</em>: il path/host richiesto &egrave; dentro lo scope dichiarato nell'hint dell'executor?</li>
-            <li><em>Vaglio</em>: il valutatore costituzionale d&agrave; il via libera?</li>
+            <li><em>Vaglio</em>: il valutatore costituzionale d&agrave; il via libera <strong>sull'uso specifico</strong> dell'executor? Le firme degli executor sono gi&agrave; state verificate al load (fase 0); il vaglio non ri-verifica componenti, controlla la singola chiamata: questa <code>delete_files(paths=...)</code>, con questi args, in questo contesto, &egrave; ammessa? Due fasi: <em>guardia</em> binaria (tocca path forbidden? Viola una delle 4 Leggi?) e <em>giudice</em> graduato (allineamento ai telos). Vedi <a href="vaglio.html"><code>vaglio.html</code></a>.</li>
             <li><em>Guard duplicate read</em>: stiamo rileggendo lo stesso path/url di un passo precedente? Se s&iacute;, intercetta e suggerisci all'LLM di formulare la final_answer.</li>
         </ol>
     </li>
