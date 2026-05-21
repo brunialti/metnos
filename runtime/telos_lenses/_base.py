@@ -19,7 +19,7 @@ from __future__ import annotations
 import json
 import logging
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Callable, Optional
 
 _LOG = logging.getLogger(__name__)
@@ -101,6 +101,11 @@ class LensCtx:
     mnestoma_summary: str
     user_patterns_summary: str
     live_executor_names: set
+    # Proposte gia' emesse in questo run (operator precedenti): permette
+    # anti-fixation in lenti multi-operator (es. SCAMPER 7 op). run_lens
+    # accumula dopo ogni operator; le lenti che vogliono differenziare
+    # leggono ctx.previous_proposals e inseriscono "NON DEVI ripetere".
+    previous_proposals: list = field(default_factory=list)
 
 
 @dataclass
@@ -163,6 +168,8 @@ def run_lens(
       paternalism_filter: scarta proposte che giudicano l'utente.
     """
     out: list[LensProposal] = []
+    # Reset accumulator per scope per-lens (no cross-lens pollution).
+    ctx.previous_proposals = []
     for op in operators:
         prompt = build_prompt(ctx, op)
         try:
@@ -186,7 +193,7 @@ def run_lens(
                 if isinstance(new_name_raw, str) and new_name_raw.strip()
                 else None
             )
-            out.append(LensProposal(
+            prop = LensProposal(
                 lens=lens_name,
                 operator=op,
                 executor_target=tgt,
@@ -195,7 +202,13 @@ def run_lens(
                 rationale=rationale,
                 new_op_name=new_name,
                 paternalism_flag=patern,
-            ))
+            )
+            out.append(prop)
+            # Accumula per anti-fixation operator-by-operator.
+            ctx.previous_proposals.append({
+                "operator": op, "executor_target": tgt,
+                "new_op_name": new_name,
+            })
     if paternalism_filter:
         kept = [p for p in out if not p.paternalism_flag]
         if len(kept) < len(out):

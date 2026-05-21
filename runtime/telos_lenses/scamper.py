@@ -37,7 +37,33 @@ _OP_DESCRIPTIONS = {
 }
 
 
+def _anti_fixation_block(ctx: LensCtx, operator: str) -> str:
+    """Anti-lazy-fixation: lista i nomi gia' emessi da operator precedenti
+    e impone diversita'. Vuoto se siamo al primo operator."""
+    if not ctx.previous_proposals:
+        return ""
+    prev_names = sorted({
+        p.get("new_op_name") for p in ctx.previous_proposals
+        if p.get("new_op_name")
+    })
+    prev_targets = sorted({
+        p.get("executor_target") for p in ctx.previous_proposals
+        if p.get("executor_target")
+    })
+    if not prev_names and not prev_targets:
+        return ""
+    lines = ["ANTI-FIXATION (operator precedenti hanno gia' emesso):"]
+    if prev_names:
+        lines.append(f"  nomi: {', '.join(prev_names)}")
+    if prev_targets:
+        lines.append(f"  target: {', '.join(prev_targets)}")
+    lines.append(f"DEVI: produrre proposta strutturalmente DIVERSA per l'operatore {operator}.")
+    lines.append("NON DEVI: ripetere un new_op_name gia' emesso o ricalcare lo stesso pattern.")
+    return "\n".join(lines)
+
+
 def build_prompt(ctx: LensCtx, operator: str) -> str:
+    anti_fix = _anti_fixation_block(ctx, operator)
     return f"""{SHARED_PREAMBLE}
 
 TELOS: {ctx.telos.phrase}
@@ -47,6 +73,8 @@ Note utente: {ctx.telos.notes}
 
 OPERATORE SCAMPER {operator} ({_OP_NAMES[operator]}):
 {_OP_DESCRIPTIONS[operator]}
+
+{anti_fix}
 
 Genera 1-3 proposte concrete che applicano l'operatore {operator} a uno
 degli executor del catalog vivo sopra.

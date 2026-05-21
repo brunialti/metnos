@@ -47,7 +47,7 @@ import re
 from dataclasses import dataclass
 from typing import Optional
 
-from vocab import ACTIONS, OBJECTS, QUALIFIERS
+from vocab import ACTIONS, OBJECTS, QUALIFIERS, qualifier_compatible, qualifiers_for_object
 
 # ── Separatori e regex ─────────────────────────────────────────────────
 #
@@ -177,6 +177,13 @@ def validate_name(name: str,
             nc)
     if nc.qualifier and nc.qualifier not in QUALIFIERS:
         return ValidationResult(False, f"qualifier '{nc.qualifier}' not in vocab §2.2", nc)
+    # R4: qualifier-object compatibility (deterministico §7.9)
+    if nc.qualifier and not qualifier_compatible(nc.qualifier, nc.obj):
+        return ValidationResult(False,
+            f"qualifier '{nc.qualifier}' not semantically valid for object "
+            f"'{nc.obj}' (R4 qualifier-object compatibility). Allowed objects "
+            f"per qualifier in vocab.QUALIFIER_OBJECT_COMPAT.",
+            nc)
     # Regola "uno alla volta": 4° livello richiede canonical 3-livello
     # gia' vivo nel catalog. Una proposta non puo' introdurre 3° + 4° insieme.
     if nc.descriptor and live_canonicals is not None:
@@ -285,37 +292,51 @@ def naming_grammar_fragment(*, live_executors: list[str]) -> str:
     else:
         target_enum = _quote_jsonstring_enum(sorted(set(live_executors)))
     verb_enum = _quote_token_enum(ACTIONS)
-    obj_enum = _quote_token_enum(OBJECTS)
-    qual_enum = _quote_token_enum(QUALIFIERS)
-    # Regola "uno alla volta" (v3): il 4° livello e' ammesso SOLO se il
-    # suo canonical 3-livello e' gia' VIVO nel catalog. Estraggo dai
-    # live_executors solo quelli con esattamente 3 parti (verb_obj_qual).
-    live_3level = sorted({
-        e for e in live_executors
-        if len(e.split("_")) == 3
-    })
+    # R4 (v3 ext): per ogni object, enum qualifier compat. Genera 19 rules
+    # `<obj>-with-qual ::= "<obj>" ("_" <obj>-qualifier-token)?` con il set
+    # di qualifier ammessi semanticamente per quell'object.
+    per_object_rules = []
+    obj_with_qual_alts = []
+    for obj in OBJECTS:
+        rule_obj = obj.replace("_", "-")  # GBNF rule names: kebab
+        compat_quals = qualifiers_for_object(obj)
+        if compat_quals:
+            qenum = _quote_token_enum(compat_quals)
+            per_object_rules.append(f'{rule_obj}-qualifier ::= {qenum}')
+            per_object_rules.append(
+                f'{rule_obj}-with-qual ::= "{obj}" ("_" {rule_obj}-qualifier)?'
+            )
+        else:
+            # Nessun qualifier compat per questo object (degenere): solo 2-livello.
+            per_object_rules.append(f'{rule_obj}-with-qual ::= "{obj}"')
+        obj_with_qual_alts.append(f'{rule_obj}-with-qual')
+    obj_with_qual_union = " | ".join(obj_with_qual_alts)
+    per_object_block = "\n".join(per_object_rules)
+    # Regola "uno alla volta" (v3): canonical-4 ammesso SOLO con canonical-3
+    # gia' VIVO nel catalog (filtrato a 3-parti).
+    live_3level = sorted({e for e in live_executors if len(e.split("_")) == 3})
     if live_3level:
         canonical3_enum = _quote_token_enum(live_3level)
-        # canonical-4 = (uno dei 3-livello vivi) + "_" + descriptor kebab
         desc_4_rule = (
             'canonical-4-with-descriptor ::= "\\"" canonical-3-live '
             '"_" desc-segment ("-" desc-segment)* "\\""'
         )
         canon3_def = f"canonical-3-live ::= {canonical3_enum}"
     else:
-        # Nessun canonical 3-livello vivo: vietato proporre 4-livello.
         desc_4_rule = 'canonical-4-with-descriptor ::= "null"'  # degenere
         canon3_def = ""
     return f"""
 target-name ::= {target_enum}
 
 verb ::= {verb_enum}
-object-token ::= {obj_enum}
-qualifier-token ::= {qual_enum}
+
+{per_object_block}
+
+obj-with-qual ::= {obj_with_qual_union}
 
 {canon3_def}
 
-canonical-2or3 ::= "\\"" verb "_" object-token ("_" qualifier-token)? "\\""
+canonical-2or3 ::= "\\"" verb "_" obj-with-qual "\\""
 
 desc-alnum ::= [a-z0-9]
 desc-segment ::= desc-alnum desc-alnum*

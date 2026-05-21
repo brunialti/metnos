@@ -207,6 +207,93 @@ QUALIFIERS = (
     "promotion", "candidates",
 )
 
+# ── Qualifier → Object compatibility map (Naming Authority R4) ────────
+#
+# Mappa quali OBJECTS ammettono ogni qualifier (vocab-validi ma
+# semantica corretta). None = cross-domain (qualsiasi object OK).
+# Set vuoto = qualifier riservato a una famiglia stretta.
+#
+# Razionale per famiglia §2.2:
+# - SAFETY POLICY (blacklist/whitelist/.../candidates): solo signatures
+#   (ADR 0071 — policy shell). `candidates` ammesso anche su proposals
+#   per simmetria (introvertiva candidates).
+# - GRANULARITA' TESTO (lines/paragraphs/sentences): texts, messages.
+#   Pages: anche files (PDF). Segments: anche files (audio/video).
+# - INDICES (mezzo persistente, ADR 0086+0117): images, messages, texts,
+#   persons (domini con embedding/hash perceptual).
+# - LOC: solo files (lines of code).
+# - FORMATO/CODIFICA: files primario, messages secondario (allegati,
+#   formati strutturati json/xml/html), urls per html, images/files per
+#   ocr.
+# - CROSS-DOMAIN (size/empty/format/similar): None = ammessi ovunque.
+QUALIFIER_OBJECT_COMPAT = {
+    # Safety policy — signatures (con candidates su proposals)
+    "blacklist": frozenset({"signatures"}),
+    "whitelist": frozenset({"signatures"}),
+    "graylist": frozenset({"signatures"}),
+    "forbidden": frozenset({"signatures"}),
+    "seed": frozenset({"signatures"}),
+    "diff": frozenset({"signatures"}),
+    "sanity": frozenset({"signatures"}),
+    "command": frozenset({"signatures"}),
+    "reversibility": frozenset({"signatures"}),
+    "promotion": frozenset({"signatures"}),
+    "candidates": frozenset({"signatures", "proposals"}),
+    # Granularita' testo
+    "lines": frozenset({"texts", "messages"}),
+    "paragraphs": frozenset({"texts", "messages"}),
+    "sentences": frozenset({"texts", "messages"}),
+    "pages": frozenset({"texts", "files"}),
+    "segments": frozenset({"texts", "messages", "files"}),
+    # Indices (mezzo persistente)
+    "indices": frozenset({"images", "messages", "texts", "persons"}),
+    # LOC
+    "loc": frozenset({"files"}),
+    # Formato/codifica
+    "csv": frozenset({"files", "messages"}),
+    "xlsx": frozenset({"files"}),
+    "ocr": frozenset({"files", "images"}),
+    "zip": frozenset({"files"}),
+    "pdf": frozenset({"files", "messages"}),
+    "xml": frozenset({"files", "messages"}),
+    "html": frozenset({"files", "messages", "urls"}),
+    "json": frozenset({"files", "messages"}),
+    "text": frozenset({"files", "messages"}),
+    "gz": frozenset({"files"}),
+    "tar": frozenset({"files"}),
+    "video": frozenset({"files"}),
+    "audio": frozenset({"files"}),
+    "image": frozenset({"files"}),
+    "hash": frozenset({"files", "signatures"}),
+    # Cross-domain (None: ammessi su qualsiasi object)
+    "size": None,
+    "empty": None,
+    "format": None,
+    "similar": None,
+}
+
+
+def qualifier_compatible(qualifier: str, obj: str) -> bool:
+    """True se `qualifier` e' semanticamente ammesso per `obj`.
+    §7.9 deterministico. False se la coppia viola il dominio."""
+    if qualifier not in QUALIFIER_OBJECT_COMPAT:
+        # Qualifier fuori vocab: lascia a validate_name la rejection
+        # con l'errore "qualifier not in vocab §2.2".
+        return False
+    compat = QUALIFIER_OBJECT_COMPAT[qualifier]
+    return compat is None or obj in compat
+
+
+def qualifiers_for_object(obj: str) -> list[str]:
+    """Ritorna i qualifier ammessi per `obj` (per generazione GBNF
+    object-specific). Include i cross-domain (None) + quelli che
+    elencano `obj` nel proprio set."""
+    return sorted(
+        q for q, compat in QUALIFIER_OBJECT_COMPAT.items()
+        if compat is None or obj in compat
+    )
+
+
 # Categorie semantiche (descrittive, usate dai prompt synt stage 1).
 ACTION_CATEGORIES = {
     "read": "I/O fs", "write": "I/O fs", "move": "I/O fs",
@@ -283,6 +370,23 @@ SAFE_VERBS = frozenset({
     "describe", "classify", "compute", "compare",
     "sort", "group",
 })
+
+
+# ── System verbs riservati (CLAUDE.md §2.2) ───────────────────────────
+# Verbi-meta di sistema fuori dai 22 verbi canonici. Discriminano la
+# chiusura del turno (`undo`), l'esecuzione di shell privilegiata
+# (`admin`), la sintesi al volo di nuovi executor (`synthesize`) o la
+# delega a frontier LLM esterno (`consult`). Stage 1 NAMING NON li
+# propone come azione di nuovi executor: rifiuta il name se inizia con
+# uno di questi verbi. Reservato a builtin runtime e a `consult_frontier`
+# (l'unico executor utente-domain che usa `consult`).
+#
+# - admin   -> verb-unique builtin (verb_unique/admin.py)
+# - undo    -> handcrafted executor `undo_last_turn`
+# - synthesize -> synth runtime (synt_multistage), nessun executor utente
+# - consult -> handcrafted executor `consult_frontier` (delega a frontier
+#              LLM esterni: Opus/Sonnet/GPT-5)
+SYSTEM_VERBS = frozenset({"admin", "undo", "synthesize", "consult"})
 
 # ── MAPPING bilingue per stage 1 di synt + intent extractor ───────────
 # Per ogni verbo: sinonimi IT, sinonimi EN, confine semantico (1 frase).
@@ -512,6 +616,23 @@ def sections_for_object(obj: str | None) -> tuple[str, ...]:
     if not obj:
         return ()
     return _OBJECT_TO_SECTIONS.get(obj, ())
+
+
+def object_is_core_only(obj: str | None) -> bool:
+    """True se l'OBJECT e' mappato esplicitamente a NESSUNA sezione, cioe'
+    e' interamente coperto dal `_core.j2` (no mail/calendar/photos/web/...).
+
+    Usato da `agent_runtime` per distinguere:
+      - object known-core (in mapping con `()`)  → sections=() = core-only
+      - object unknown (NOT in mapping)          → sections=None = all
+      - object con sezioni esplicite             → sections=[...] mirate
+
+    #H0 19/5/2026 sera: con la distinzione None/(), risparmiamo ~14k tok / step
+    sui turn di dominio core (files, dirs, numbers, texts, ...).
+    """
+    if not obj:
+        return False
+    return obj in _OBJECT_TO_SECTIONS and _OBJECT_TO_SECTIONS[obj] == ()
 
 
 # ── L7 admission: imported skill bindings registry (ADR 0125, 12/5/2026) ──
