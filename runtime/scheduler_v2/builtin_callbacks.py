@@ -170,6 +170,19 @@ _BUILTIN_JOBS: list[dict[str, Any]] = [
             "a proto-mnest in mnestoma per synth_request. Idempotente."
         ),
     },
+    {
+        "name": "telos_introspect_nightly",
+        "trigger": "daily@02:30",
+        "callback_key": "telos_introspect_nightly",
+        "description": (
+            "Telos engine: 10 lenti laterali (scamper/oulipo/inverse_rl/"
+            "endgame_book/analogy_transfer/boden_transformational/"
+            "pattern_language/generative_design/counterfactual/"
+            "constitutional) su tutti i telos dichiarati. Opt-in via "
+            "env METNOS_TELOS_NIGHTLY=1 (default OFF). Output: "
+            "~/.local/share/metnos/telos_proposals.jsonl (ADR 0156)."
+        ),
+    },
 ]
 
 
@@ -374,6 +387,29 @@ def install_default_callbacks(scheduler) -> None:
         "github_watcher",
         task_github_watcher,
         "Watcher GitHub repo monitorati con dedup semantic (Fase D)",
+        replace=True,
+    )
+
+    # Telos engine nightly introspection (ADR 0156, 21/5/2026 v8).
+    # Esegue le 10 lenti laterali su tutti i telos dichiarati, produce
+    # proposte in `~/.local/share/metnos/telos_proposals.jsonl`.
+    # Opt-in via env METNOS_TELOS_NIGHTLY=1 (default OFF) per evitare
+    # auto-run prima che la review utente sia wired (next session).
+    def _task_telos_introspect_nightly(payload=None):
+        import os
+        if os.environ.get("METNOS_TELOS_NIGHTLY", "0") != "1":
+            return {"ok": True, "skipped": True,
+                    "reason": "METNOS_TELOS_NIGHTLY=0 (opt-in)"}
+        from telos_introspect import run_all_telos
+        from telos_lenses import LENSES
+        # Forza tutte le 10 lenti attive: in modalita' nightly ignoriamo
+        # i toggle per-lens individuali.
+        summary = run_all_telos(lenses=list(LENSES.keys()), persist=True)
+        return {"ok": True, **summary}
+    cb.register(
+        "telos_introspect_nightly",
+        _task_telos_introspect_nightly,
+        "Telos engine: 10 lenti laterali su tutti i telos (ADR 0156)",
         replace=True,
     )
 
