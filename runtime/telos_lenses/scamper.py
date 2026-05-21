@@ -64,6 +64,7 @@ class ScamperProposal:
     telos_id: str                       # telos servito
     proposed_action: str                # descrizione 1-2 righe
     rationale: str                      # perche' serve il telos
+    new_op_name: str | None = None      # 4-livello opzionale: canonical[#descriptor]
     expected_alignment: float = 0.0     # stima [0,1], LLM judge a valle
     distance_from_existing: int = 0     # quanti executor della proposta sono nuovi
     paternalism_flag: bool = False      # True = scartata dal guard
@@ -126,6 +127,30 @@ VINCOLI ARCHITETTURALI (proposte che li violano vengono scartate):
    trasformatore consuma cio' che riceve, niente di piu'.
 4. NON suggerire "approvazione batch silenziosa" o "auto-conferma":
    ogni azione mutante mantiene il gate di vaglio/consent.
+5. NON RIMUOVERE il supporto a input plurali con N=1: gli executor
+   accettano sempre liste anche di un solo elemento (robustezza al
+   confine NL→codice). Es: "create_dirs accetta solo lista" NON e'
+   un miglioramento, e' una rottura.
+
+VINCOLI DI NAMING (§2.2, vocab CHIUSO):
+- Nuovi nomi di executor o di operazioni devono rispettare il pattern
+  `<azione>_<oggetto>[_<qualifier>]`.
+- AZIONI ammesse (23): read, write, move, delete, create, find, list,
+  filter, sort, group, classify, get, set, send, describe, render,
+  extract, compress, compute, compare, change, order, share.
+- OGGETTI ammessi (19): files, dirs, packages, messages, events,
+  contacts, places, processes, urls, numbers, images, signatures,
+  texts, proposals, persons, tasks, inputs, credentials, entries.
+- QUALIFIER ammessi (4 famiglie): formato (_csv,_xlsx,_pdf,_html,_json,
+  _text,_xml,_gz,_tar,_video,_audio,_image,_hash); modalita' (_size,
+  _format,_similar,_loc,_empty,_lines,_paragraphs,_sentences,_pages,
+  _segments,_indices); safety (_blacklist,_whitelist,_seed,_diff,
+  _sanity); provider (_google_workspace,_metnos).
+- VIETATI: verbi fuori lista (no `audit_*`, `check_*`, `verify_*`,
+  `monitor_*`, `track_*`, `notify_*`); qualifier fuori lista (no
+  `_aggregate`, `_missing`, `_delta`, `_summary`, `_report`).
+- Se l'idea richiede un nome FUORI vocab, NON inventarlo: scrivi
+  esplicitamente "RICHIEDE estensione vocab §2.2" nel rationale.
 
 COSA METNOS GIA' FA (NON re-inventare):
 - Piping fra executor via `from_step: N` nel planner ReAct.
@@ -159,9 +184,20 @@ per servire il telos. Ogni proposta in JSON:
 
   {{
     "executor_target": "<name esatto dell'executor dal campione sopra>",
+    "new_op_name": "<canonical>" oppure "<canonical#descriptor>" oppure null,
     "proposed_action": "<descrizione 1-2 righe della proposta>",
     "rationale": "<perche' avvicina al telos, 1 riga, con evidenza dal mnestoma o pattern>"
   }}
+
+CAMPO `new_op_name`:
+- `null` se la proposta modifica un executor esistente (default M/A/E/P)
+- canonical §2.2: `<verb>_<object>[_<qualifier>]` snake_case con `_`
+- canonical+descriptor: `<canonical>#<descriptor>` dove descriptor e' kebab-case
+  `[a-z0-9]+(-[a-z0-9]+)*` max 30 char (es. `compute_files_loc#per-language`,
+  `find_dirs_empty#recursive`, `compute_signatures#post-move-verify`)
+- Il descriptor 4-livello e' OPZIONALE: usalo solo se il nome canonical da solo
+  collide con un executor che gia' fa qualcosa di diverso, o se vuoi suggerire
+  esplicitamente la variante.
 
 Rispondi SOLO con un array JSON di 1-3 oggetti. Niente prosa attorno.
 Se nessuna proposta sensata che rispetti i VINCOLI ARCHITETTURALI e'
@@ -174,9 +210,10 @@ def generate_proposals(
     executors_sample: list[dict],
     mnestoma_summary: str,
     user_patterns_summary: str,
-    llm_invoke: Callable[[str], str],
+    llm_invoke: Callable[..., str],
     operators: Optional[tuple] = None,
     paternalism_filter: bool = True,
+    grammar: Optional[str] = None,
 ) -> list[ScamperProposal]:
     """Genera proposte SCAMPER per un telos via LLM.
 
@@ -201,7 +238,7 @@ def generate_proposals(
             executors_sample, mnestoma_summary, user_patterns_summary, op,
         )
         try:
-            raw = llm_invoke(prompt)
+            raw = llm_invoke(prompt, grammar=grammar) if grammar else llm_invoke(prompt)
         except Exception as ex:
             _LOG.warning("scamper: LLM call failed for op=%s: %r", op, ex)
             continue
@@ -230,12 +267,15 @@ def generate_proposals(
             patern = paternalism_filter and (
                 _paternalism_check(action) or _paternalism_check(rationale)
             )
+            new_name_raw = it.get("new_op_name")
+            new_name = new_name_raw.strip() if isinstance(new_name_raw, str) and new_name_raw.strip() else None
             proposals.append(ScamperProposal(
                 operator=op,
                 executor_target=tgt,
                 telos_id=telos.id,
                 proposed_action=action,
                 rationale=rationale,
+                new_op_name=new_name,
                 paternalism_flag=patern,
             ))
     if paternalism_filter:

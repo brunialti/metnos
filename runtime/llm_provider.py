@@ -45,6 +45,7 @@ class ToolCall:
     name: str
     arguments: dict
     call_id: str = ""
+    canonical_query: str = ""  # ADR 0149: by-product planner normalization
 
 
 @dataclass
@@ -64,10 +65,27 @@ class ProviderError(Exception):
 
 
 class OllamaProvider:
+    """Provider Ollama HTTP API (deprecato post-ADR 0146).
+
+    Mantenuto per back-compat e per chi serve esplicitamente modelli via
+    `ollama serve`. Il modello DEVE essere specificato esplicitamente:
+    il vecchio default `qwen3:8b` e' stato rimosso il 18/5/2026 perche'
+    era latent-broken (ADR 0148) — ollama.service e' disabilitato su .33
+    e i caller hardcoded a qwen3:8b cadevano silenziosamente.
+
+    Per il pianificatore default usa `LlamaCppProvider` o `LLMRouter`
+    (vedi ADR 0146).
+    """
     mode = "local"
     name = "ollama"
 
-    def __init__(self, model="qwen3:8b", endpoint="http://localhost:11434", think=False):
+    def __init__(self, model: str, endpoint: str = "http://localhost:11434",
+                 think: bool = False):
+        if not model:
+            raise ValueError(
+                "OllamaProvider richiede `model=` esplicito post-ADR 0148 "
+                "(no default qwen3:8b). Es. OllamaProvider(model='qwen3:8b')."
+            )
         self.model = model
         self.endpoint = endpoint
         self.think = think
@@ -190,7 +208,13 @@ def _parse_tool_call_tolerant(text: str) -> dict | None:
                     args = {"_raw": args}
             elif not isinstance(args, dict):
                 args = {}
-            return {"name": parsed["name"], "arguments": args}
+            # ADR 0149: canonical_query as planner by-product (optional).
+            cq = parsed.get("canonical_query")
+            return {
+                "name": parsed["name"],
+                "arguments": args,
+                "canonical_query": cq if isinstance(cq, str) else "",
+            }
     except json.JSONDecodeError:
         pass
     # (a.bis) JSON truncated recovery (15/5/2026): llama.cpp grammar-mode
@@ -291,7 +315,7 @@ class LlamaCppProvider:
         self.id_slot = id_slot
 
     def chat(self, system, user, *, max_tokens=512, temperature=0, think=None,
-             reasoning_budget=1024):
+             reasoning_budget=1024, grammar: str | None = None):
         """think semantics (allineato a suprastructure/openai_compat):
             False  → enable_thinking=False, niente reasoning budget. Risposta
                      immediata. Ideale per stage procedurali (lookup, schema).
@@ -302,6 +326,10 @@ class LlamaCppProvider:
 
         `reasoning_budget` consente di limitare il budget di think (es. 512
         per stage procedurali con think=True). Ignorato se think != True.
+
+        `grammar` (GBNF, opzionale): se non None, vincola l'output del
+        modello alla grammatica fornita (ADR 0133). Usato dal telos engine
+        Naming Authority per forzare vocab §2.2 in proposed names.
         """
         payload = {
             "model": self.model,
@@ -317,7 +345,10 @@ class LlamaCppProvider:
         elif think is True:
             payload["chat_template_kwargs"] = {"enable_thinking": True}
             payload["reasoning_budget"] = reasoning_budget
-        return self._call(payload, expect_tools=False)
+        if grammar is not None:
+            payload["grammar"] = grammar
+        return self._call(payload, expect_tools=False,
+                          grammar_mode=grammar is not None)
 
     def chat_with_tools(self, system, user, tools, history=None, *,
                         max_tokens=2048, temperature=0, think=None,
@@ -463,6 +494,7 @@ class LlamaCppProvider:
                         name=parsed["name"],
                         arguments=parsed["arguments"],
                         call_id=f"grammar_{int(time.time()*1000)}",
+                        canonical_query=parsed.get("canonical_query", ""),
                     ))
             else:
                 tcs_raw = msg.get("tool_calls") or []
@@ -636,7 +668,7 @@ class AnthropicProvider:
         anthropic_tools = self._convert_tools(tools)
         messages = []
         if history:
-            messages.extend(history)
+            messages.extend(self._convert_history(history))
         messages.append({"role": "user", "content": user})
         payload = {
             "model": self.model,
@@ -656,6 +688,79 @@ class AnthropicProvider:
             in_tokens=in_toks, out_tokens=out_toks,
             model=self.model, provider="anthropic", latency_ms=latency,
         )
+
+    @staticmethod
+    def _convert_history(history):
+        """OpenAI-shaped history → Anthropic-shaped messages.
+
+        OpenAI uses role="tool" entries; Anthropic rejects those (400
+        "Unexpected role"). Convert:
+          assistant + tool_calls  → assistant + [text?, tool_use blocks]
+          role=tool               → user + [tool_result blocks]
+          plain user/assistant    → passed through
+        Consecutive role=tool entries get merged into one user message,
+        preserving Anthropic's strict user/assistant alternation.
+        """
+        out: list = []
+        pending_tool_results: list = []
+
+        def _flush_tool_results():
+            if pending_tool_results:
+                out.append({"role": "user", "content": list(pending_tool_results)})
+                pending_tool_results.clear()
+
+        for m in history or []:
+            if not isinstance(m, dict):
+                continue
+            role = m.get("role")
+            if role == "tool":
+                content = m.get("content", "")
+                if not isinstance(content, str):
+                    try:
+                        content = json.dumps(content, ensure_ascii=False)
+                    except Exception:
+                        content = str(content)
+                pending_tool_results.append({
+                    "type": "tool_result",
+                    "tool_use_id": m.get("tool_call_id") or m.get("id") or "",
+                    "content": content,
+                })
+                continue
+            _flush_tool_results()
+            if role == "assistant":
+                tcs = m.get("tool_calls") or []
+                if tcs:
+                    blocks = []
+                    txt = m.get("content")
+                    if isinstance(txt, str) and txt.strip():
+                        blocks.append({"type": "text", "text": txt})
+                    for tc in tcs:
+                        fn = (tc.get("function") or {})
+                        name = fn.get("name") or tc.get("name") or ""
+                        args_raw = fn.get("arguments")
+                        if isinstance(args_raw, str):
+                            try:
+                                args = json.loads(args_raw) if args_raw else {}
+                            except Exception:
+                                args = {}
+                        elif isinstance(args_raw, dict):
+                            args = args_raw
+                        else:
+                            args = {}
+                        blocks.append({
+                            "type": "tool_use",
+                            "id": tc.get("id") or "",
+                            "name": name,
+                            "input": args,
+                        })
+                    out.append({"role": "assistant", "content": blocks})
+                else:
+                    out.append({"role": "assistant",
+                                "content": m.get("content", "")})
+            elif role in ("user", "system"):
+                out.append({"role": role, "content": m.get("content", "")})
+        _flush_tool_results()
+        return out
 
     def _post(self, payload):
         # ADR 0121: sanitize surrogates pre-serialization. Critico per
@@ -910,12 +1015,20 @@ class StubProvider:
 
 
 def make_provider_from_config(mode, runtime_config):
+    """Deprecated post-ADR 0146: use make_provider_from_spec via LLMRouter."""
     if mode == "local":
         cfg = runtime_config.get("local", {})
-        return OllamaProvider(
-            model=cfg.get("model", "qwen3:8b"),
-            endpoint=cfg.get("endpoint", "http://localhost:11434"),
-            think=cfg.get("think", False),
+        # Default flipped to llamacpp+Gemma per ADR 0146. Pass `provider="ollama"`
+        # in cfg to opt back into Ollama (requires `model=` explicit).
+        if cfg.get("provider") == "ollama":
+            return OllamaProvider(
+                model=cfg.get("model"),     # required, no default
+                endpoint=cfg.get("endpoint", "http://localhost:11434"),
+                think=cfg.get("think", False),
+            )
+        return LlamaCppProvider(
+            model=cfg.get("model", "gemma-4-26B-A4B-it-UD-Q4_K_M.gguf"),
+            endpoint=cfg.get("endpoint", "http://127.0.0.1:8080"),
         )
     elif mode == "online":
         cfg = runtime_config.get("online", {})
@@ -927,14 +1040,18 @@ def make_provider_from_spec(spec):
     """Costruisce un provider da una spec dict {provider, model, ...}.
 
     Usato dal tier resolver per istanziare un provider concreto. Esempi:
-        {"provider": "ollama",    "model": "qwen3:8b", "think": false}
         {"provider": "llamacpp",  "model": "gemma-4-26B...", "endpoint": "http://127.0.0.1:8080"}
         {"provider": "anthropic", "model": "claude-sonnet-4-6"}
+        {"provider": "ollama",    "model": "<modello-esplicito>"}  (deprecated)
     """
-    p = spec.get("provider", "ollama")
+    # ADR 0146: default provider = llamacpp (era ollama pre-18/5/2026).
+    p = spec.get("provider", "llamacpp")
     if p == "ollama":
+        # Post-ADR 0148: niente fallback silenzioso a qwen3:8b. Caller
+        # deve specificare model. OllamaProvider stesso ora raise se model
+        # mancante.
         return OllamaProvider(
-            model=spec.get("model", "qwen3:8b"),
+            model=spec.get("model"),
             endpoint=spec.get("endpoint", "http://localhost:11434"),
             think=spec.get("think", False),
         )

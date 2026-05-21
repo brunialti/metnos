@@ -1,0 +1,308 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+"""naming_grammar.py — Naming Authority + GBNF generator per §2.2.
+
+Centralizza il vincolo del vocabolario chiuso §2.2 (verbi/oggetti/qualifier)
+per TUTTI i generatori di proposte introspettive (telos lenses, introvertiva,
+synt_multistage stage 1, skill importer mapping).
+
+§7.9 deterministico: zero LLM. Parsa `runtime/vocab.py` (single source of
+truth) e produce:
+
+1. `validate_name(name)` — verifica conformita' (canonical+descriptor)
+2. `suggest_canonical(intent_hint)` — mappa intent libera a nome canonico
+3. `naming_grammar(live_executors)` — GBNF per LLM constrained generation
+4. `parse_name(s)` — decompone in (canonical, descriptor) tupla
+
+ADR-in-writing (21/5/2026): proposta 4° livello "descriptor" OPEN, fuori
+grammar canonical. Vedi docs/it/architecture/naming_authority.html (TODO).
+
+Convenzione:
+    canonical_name  = <verb>_<object>[_<qualifier>]      vocab CHIUSO §2.2 (snake_case con `_`)
+    descriptor      = kebab-case [a-z0-9](-[a-z0-9]+)*   vocab APERTO 4° livello
+                      DEVE usare `-` (hyphen), MAI `_` (underscore).
+                      Razionale: separatore visivo dal canonical_name,
+                      parsing piu' robusto, allineato a slug URL/filename
+                      e a kebab-case di integrazioni esterne.
+    full_name       = canonical[#descriptor]             join opt: "#"
+
+Esempi:
+    "compute_files_loc"                  — canonical only
+    "compute_files_loc#per-language"     — canonical + descriptor
+    "compute_files_loc#excluding-tests"  — variant
+    "compute_files_loc#v1"               — variant minimal
+"""
+from __future__ import annotations
+
+import re
+from dataclasses import dataclass
+from typing import Optional
+
+from vocab import ACTIONS, OBJECTS, QUALIFIERS
+
+# ── Regex e separatori ─────────────────────────────────────────────────
+
+_DESCRIPTOR_SEP = "#"
+# Descriptor kebab-case stretto:
+# - inizia con alfanumerico
+# - permette hyphen `-` come separatore fra segmenti alfanumerici
+# - NON permette underscore `_` (riservato al canonical_name §2.2)
+# - NON permette doppi hyphen
+# - lunghezza 1-30
+_DESCRIPTOR_RE = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
+_DESCRIPTOR_MAX_LEN = 30
+
+# Eccezioni semantiche §2.2 (entries meta-oggetto, no find/read/get_entries):
+_ENTRIES_FORBIDDEN_VERBS = frozenset({"find", "read", "get"})
+
+# System verbs riservati (§2.2): non possono comparire come prefisso
+_SYSTEM_PSEUDO_VERBS = frozenset({"undo", "admin", "audit"})
+
+
+@dataclass(frozen=True)
+class NameComponents:
+    """Decomposizione di un nome canonical+descriptor."""
+    verb: str
+    obj: str
+    qualifier: Optional[str]
+    descriptor: Optional[str]
+
+    @property
+    def canonical(self) -> str:
+        parts = [self.verb, self.obj]
+        if self.qualifier:
+            parts.append(self.qualifier)
+        return "_".join(parts)
+
+    @property
+    def full(self) -> str:
+        if self.descriptor:
+            return f"{self.canonical}{_DESCRIPTOR_SEP}{self.descriptor}"
+        return self.canonical
+
+
+@dataclass(frozen=True)
+class ValidationResult:
+    ok: bool
+    reason: Optional[str] = None
+    components: Optional[NameComponents] = None
+
+
+# ── Validation ──────────────────────────────────────────────────────────
+
+def parse_name(name: str) -> Optional[NameComponents]:
+    """Decompone un nome in (verb, object, qualifier?, descriptor?).
+    Ritorna None se la sintassi e' invalida (non solo lookup vocab)."""
+    if not name or not isinstance(name, str):
+        return None
+    descriptor = None
+    canonical = name
+    if _DESCRIPTOR_SEP in name:
+        canonical, _, descriptor = name.partition(_DESCRIPTOR_SEP)
+    parts = canonical.split("_")
+    if len(parts) < 2 or len(parts) > 3:
+        return None
+    verb = parts[0]
+    obj = parts[1]
+    qual = parts[2] if len(parts) == 3 else None
+    return NameComponents(verb=verb, obj=obj, qualifier=qual, descriptor=descriptor)
+
+
+def validate_name(name: str) -> ValidationResult:
+    """Verifica conformita' §2.2 + 4° livello descriptor.
+
+    Catches:
+    - verb fuori vocab (audit/check/verify/monitor/track/notify)
+    - object fuori vocab
+    - qualifier fuori vocab
+    - eccezione entries: no find/read/get_entries
+    - descriptor sintassi (regex)
+    - system pseudo-verbs riservati
+    """
+    nc = parse_name(name)
+    if nc is None:
+        return ValidationResult(False, "syntax invalid (expected verb_object[_qualifier][#descriptor])")
+    if nc.verb in _SYSTEM_PSEUDO_VERBS:
+        return ValidationResult(False, f"verb '{nc.verb}' is reserved system pseudo-verb")
+    if nc.verb not in ACTIONS:
+        return ValidationResult(False, f"verb '{nc.verb}' not in vocab §2.2 (23 actions)", nc)
+    if nc.obj not in OBJECTS:
+        return ValidationResult(False, f"object '{nc.obj}' not in vocab §2.2 (19 objects)", nc)
+    if nc.qualifier and nc.qualifier not in QUALIFIERS:
+        return ValidationResult(False, f"qualifier '{nc.qualifier}' not in vocab §2.2", nc)
+    # Eccezione entries
+    if nc.obj == "entries" and nc.verb in _ENTRIES_FORBIDDEN_VERBS:
+        return ValidationResult(
+            False,
+            f"'{nc.verb}_entries' violates §2.2 exception: entries is in-memory meta-object, "
+            "no find/read/get_entries permitted",
+            nc,
+        )
+    if nc.descriptor:
+        if len(nc.descriptor) > _DESCRIPTOR_MAX_LEN:
+            return ValidationResult(
+                False,
+                f"descriptor '{nc.descriptor}' exceeds max {_DESCRIPTOR_MAX_LEN} chars",
+                nc,
+            )
+        if not _DESCRIPTOR_RE.match(nc.descriptor):
+            return ValidationResult(
+                False,
+                f"descriptor '{nc.descriptor}' must be kebab-case "
+                "([a-z0-9]+(-[a-z0-9]+)*); no underscores, no leading/trailing hyphen",
+                nc,
+            )
+        # Evita pseudo-canonical (descriptor = verb o object §2.2)
+        if nc.descriptor in ACTIONS or nc.descriptor in OBJECTS:
+            return ValidationResult(
+                False,
+                f"descriptor '{nc.descriptor}' shadows a vocab token",
+                nc,
+            )
+    return ValidationResult(True, None, nc)
+
+
+# ── Naming Authority: suggest canonical ─────────────────────────────────
+
+# Mapping intent libero → verbo canonical §2.2 (deterministico).
+# Espandibile; tipici fuori-vocab che le proposte introspettive emettono.
+_VERB_HINTS = {
+    "audit": "find",            # "audit dirs" → "find_dirs_empty"
+    "check": "find",            # "check format" → "find_files_*"
+    "verify": "compute",        # "verify integrity" → "compute_signatures"
+    "monitor": "compute",       # "monitor density" → "compute_*_loc"
+    "track": "list",            # "track changes" → "list_*"
+    "notify": "send",           # "notify user" → "send_messages"
+    "report": "describe",       # "report stats" → "describe_entries"
+    "validate": "compute",      # "validate hashes" → "compute_signatures"
+    "diff": "compare",          # "diff lists" → "compare_entries"
+    "summarize": "describe",    # "summarize" → "describe_entries"
+}
+
+
+def suggest_canonical_verb(intent_verb: str) -> Optional[str]:
+    """Dato un verbo intent non-vocab, suggerisce il verbo canonical
+    piu' vicino. None se il verbo e' gia' canonical o non mappato."""
+    iv = intent_verb.lower().strip()
+    if iv in ACTIONS:
+        return iv  # gia' canonical
+    return _VERB_HINTS.get(iv)
+
+
+# ── GBNF generator ──────────────────────────────────────────────────────
+
+def _quote_jsonstring_enum(values) -> str:
+    """Enum di JSON string completi: ogni alternativa e' '\"X\"' (con quote).
+    Usato per token che compaiono come VALORI JSON standalone, es.
+    `target_name` che e' un campo JSON intero."""
+    return " | ".join(f'"\\"{v}\\""' for v in values)
+
+
+def _quote_token_enum(values) -> str:
+    """Enum di token nudi: ogni alternativa e' 'X' (senza quote).
+    Usato per pezzi sintattici che vengono concatenati da regole esterne
+    che aggiungono le quote JSON una sola volta intorno al risultato."""
+    return " | ".join(f'"{v}"' for v in values)
+
+
+def naming_grammar_fragment(*, live_executors: list[str]) -> str:
+    """Fragment GBNF per nomi canonical (no SCAMPER outer JSON).
+
+    Da incorporare in grammar piu' grandi. Definisce 4 regole top-level:
+    - target_name: enum executor vivi (anti-hallucination)
+    - new_op_name: verb+obj[+qualifier] (vocab CHIUSO)
+    - descriptor: [a-z0-9_]{1,30}
+    - canonical_or_null: union null|new_op_name
+
+    Le altre regole (root, item, JSON outer) sono compito del caller.
+
+    Esempio uso (SCAMPER):
+        grammar = scamper_json_grammar(naming_grammar_fragment(
+            live_executors=list(catalog.executors.keys()),
+        ))
+    """
+    if not live_executors:
+        target_enum = '""'  # nessuno: stringa vuota (degenere; non dovrebbe accadere)
+    else:
+        target_enum = _quote_jsonstring_enum(sorted(set(live_executors)))
+    # verb/object/qualifier sono pezzi sintattici interni al nome:
+    # le quote JSON le aggiunge canonical_only / canonical_with_descriptor.
+    verb_enum = _quote_token_enum(ACTIONS)
+    obj_enum = _quote_token_enum(OBJECTS)
+    qual_enum = _quote_token_enum(QUALIFIERS)
+    # NB: llama.cpp GBNF accetta solo hyphen `-` nei nomi di regola
+    # (NON underscore), quindi tutte le regole interne usano kebab-case.
+    # I tag dei nomi canonical Metnos (verb_object_qualifier) restano
+    # con `_` perche' sono LITERAL inside la stringa generata.
+    return f"""
+target-name ::= {target_enum}
+
+verb ::= {verb_enum}
+object-token ::= {obj_enum}
+qualifier-token ::= {qual_enum}
+
+canonical-only ::= "\\"" verb "_" object-token ("_" qualifier-token)? "\\""
+
+desc-alnum ::= [a-z0-9]
+desc-segment ::= desc-alnum desc-alnum*
+canonical-with-descriptor ::= "\\"" verb "_" object-token ("_" qualifier-token)? "#" desc-segment ("-" desc-segment)* "\\""
+
+new-op-name ::= canonical-only | canonical-with-descriptor | "null"
+"""
+
+
+def scamper_json_grammar(naming_fragment: str) -> str:
+    """Grammar GBNF completo per output SCAMPER (JSON array of objects).
+
+    Combina il fragment naming con la struttura JSON SCAMPER:
+        [
+          {
+            "executor_target": "<target_name>",
+            "new_op_name":     "<canonical>" | "<canonical#descriptor>" | null,
+            "proposed_action": "<free text>",
+            "rationale":       "<free text>"
+          },
+          ...
+        ]
+
+    `proposed_action` e `rationale` restano free-text JSON strings
+    (creativita' preservata, vocab vincolato solo dove conta).
+    """
+    # NB: GBNF llama.cpp NON accetta rule body multiline — il body deve
+    # stare su una sola riga. Le quattro field-key sono allineate qui in
+    # f-string ma vengono unite a una linea sola alla generazione finale.
+    return f"""root ::= "[]" | "[" item ("," item)* "]"
+item ::= "{{" ws "\\"executor_target\\":" ws target-name "," ws "\\"new_op_name\\":" ws new-op-name "," ws "\\"proposed_action\\":" ws json-string "," ws "\\"rationale\\":" ws json-string ws "}}"
+json-string ::= "\\"" json-char* "\\""
+json-char ::= [^"\\\\] | "\\\\" ["\\\\/bfnrt]
+ws ::= ws-char*
+ws-char ::= " " | "\\t" | "\\n"
+{naming_fragment}
+"""
+
+
+# ── CLI test ────────────────────────────────────────────────────────────
+
+if __name__ == "__main__":
+    import json
+    import sys
+
+    if len(sys.argv) > 1 and sys.argv[1] == "validate":
+        # validate <name>
+        name = sys.argv[2]
+        r = validate_name(name)
+        print(json.dumps({
+            "ok": r.ok,
+            "reason": r.reason,
+            "components": r.components.__dict__ if r.components else None,
+        }, indent=2, ensure_ascii=False))
+    elif len(sys.argv) > 1 and sys.argv[1] == "grammar":
+        # genera grammar per un campione di executor
+        sample = ["find_files", "compute_entries", "create_events",
+                  "compute_signatures", "change_files_format"]
+        frag = naming_grammar_fragment(live_executors=sample)
+        full = scamper_json_grammar(frag)
+        print(full)
+    else:
+        print("Usage: python3 -m runtime.naming_grammar validate <name>")
+        print("       python3 -m runtime.naming_grammar grammar")
+        sys.exit(1)

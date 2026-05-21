@@ -39,8 +39,13 @@ _LOG = logging.getLogger(__name__)
 
 TELEMETRY_PATH = Path.home() / ".local" / "share" / "metnos" / "telos_proposals.jsonl"
 
-# Tier LLM default per le lenti (creativita' moderata, costo contenuto).
-_DEFAULT_TIER = "middle"
+# LLM default per le lenti: Gemma 4 26B locale via llama-server :8080.
+# Bypass LLMRouter (che secondo `~/.config/metnos/llm_tiers.toml` instrada
+# middle a Sonnet frontier). Il telos engine deve girare a costo zero,
+# in background, su modello locale — questo e' un vincolo del progetto
+# (vedi docs/it/architecture/telos.html §3 "Vive in BACKGROUND").
+_LOCAL_GEMMA_MODEL = "gemma-4-26B-A4B-it-UD-Q4_K_M.gguf"
+_LOCAL_GEMMA_ENDPOINT = "http://127.0.0.1:8080"
 
 
 def _persist(record: dict) -> None:
@@ -156,18 +161,39 @@ def _build_executors_sample(catalog, max_n: int = 8) -> list[dict]:
     return out
 
 
-def _llm_invoke_middle(prompt: str) -> str:
-    """Adapter LLM tier=middle, riusa LLMRouter."""
+def _llm_invoke_local_gemma(prompt: str, *, grammar: str | None = None) -> str:
+    """Adapter LLM Gemma locale via LlamaCppProvider diretto a :8080.
+
+    BYPASSA LLMRouter perche' `~/.config/metnos/llm_tiers.toml` puo'
+    instradare tier=middle a un provider frontier (Sonnet/Opus): per il
+    telos engine vogliamo SEMPRE il modello locale (background, zero
+    cost, vincolo §3 telos.html "Vive in BACKGROUND").
+
+    Thinking budget configurabile via env:
+      METNOS_TELOS_THINK=0|1   abilita reasoning (default 0)
+      METNOS_TELOS_REASONING_BUDGET=N  (default 1024, ignorato se THINK=0)
+
+    `grammar`: GBNF opzionale. Se passata, vincola l'output (Naming
+    Authority, ADR 0133).
+    """
+    think = os.environ.get("METNOS_TELOS_THINK", "0") == "1"
+    rb = int(os.environ.get("METNOS_TELOS_REASONING_BUDGET", "1024"))
     try:
-        from llm_router import LLMRouter
-        router = LLMRouter()
-        r = router.chat(
-            "", prompt, tier=_DEFAULT_TIER,
+        from llm_provider import LlamaCppProvider
+        prov = LlamaCppProvider(
+            model=_LOCAL_GEMMA_MODEL,
+            endpoint=_LOCAL_GEMMA_ENDPOINT,
+        )
+        r = prov.chat(
+            "", prompt,
             max_tokens=2048, temperature=0.7,
+            think=think,
+            reasoning_budget=rb,
+            grammar=grammar,
         )
         return r.text if hasattr(r, "text") else str(r)
     except Exception as ex:
-        _LOG.error("telos_introspect: LLM call failed: %r", ex)
+        _LOG.error("telos_introspect: Gemma local LLM call failed: %r", ex)
         raise
 
 
@@ -200,7 +226,7 @@ def run_for_telos(
         except Exception as ex:
             _LOG.error("telos_introspect: catalog load failed: %r", ex)
             return []
-    llm = llm_invoke or _llm_invoke_middle
+    llm = llm_invoke or _llm_invoke_local_gemma
     from telos_lenses import is_lens_enabled
     active = []
     if lenses is None:
@@ -224,6 +250,18 @@ def run_for_telos(
     user_patterns = _build_user_patterns()
     executors_sample = _build_executors_sample(catalog)
 
+    # GBNF opt-in via env: vincola executor_target a catalog vivo e
+    # new_op_name a vocab §2.2 + descriptor kebab-case (Naming Authority).
+    grammar = None
+    if os.environ.get("METNOS_TELOS_GRAMMAR", "0") == "1":
+        try:
+            from naming_grammar import naming_grammar_fragment, scamper_json_grammar
+            grammar = scamper_json_grammar(naming_grammar_fragment(
+                live_executors=sorted(live_names),
+            ))
+        except Exception as ex:
+            _LOG.warning("telos_introspect: grammar build failed: %r", ex)
+
     results: list[dict] = []
     for lens_name in active:
         if lens_name == "scamper":
@@ -232,6 +270,7 @@ def run_for_telos(
                 telos, executors_sample,
                 mnestoma_summary, user_patterns,
                 llm_invoke=llm, operators=operators,
+                grammar=grammar,
             )
             for p in proposals:
                 rec = {
@@ -241,6 +280,7 @@ def run_for_telos(
                     "lens": lens_name,
                     "operator": p.operator,
                     "executor_target": p.executor_target,
+                    "new_op_name": p.new_op_name,
                     "proposed_action": p.proposed_action,
                     "rationale": p.rationale,
                     "paternalism_flag": p.paternalism_flag,
