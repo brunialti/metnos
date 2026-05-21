@@ -141,19 +141,16 @@ Doc canonico testato dopo l'implementazione: <code>TELOS.md</code> popolato in <
 <h1 id="cap1">1. Scopo e confini</h1>
 
 <div style="background:#fef3c7;border-left:4px solid #b45309;padding:14px 22px;margin:14px 0;border-radius:0 6px 6px 0;">
-<strong>Stato implementazione (21/5/2026 v6 sessione):</strong> il
-loader <code>runtime/telos_loader.py</code> e la prima lente
-<code>runtime/telos_lenses/scamper.py</code> + orchestrator
-<code>runtime/telos_introspect.py</code> sono presenti come MVP fase 1.
-Esecuzione finora SOLO offline via CLI
-(<code>python -m runtime.telos_introspect --telos t.tempo --mock-llm</code>).
-Nessuna integrazione scheduler attiva, nessun loop daily, nessuna
-proposta visibile all'utente. Le altre 8 lenti (OuLiPo, inverse-RL,
-endgame_book, analogia, Boden, Schmidhuber, Alexander, generative_design)
-sono progettate ma non implementate (vedi
-<a href="../drafts/telos_engine_v1">drafts/telos_engine_v1</a> §6).
-Toggle individuale per lente: <code>METNOS_TELOS_LENS_&lt;NAME&gt;=1</code>.
-Telemetria persistente:
+<strong>Stato implementazione (21/5/2026 v8):</strong> 11 lenti
+implementate e testate (di cui le 10 migliori in produzione, ADR 0156).
+Framework comune in <code>runtime/telos_lenses/_base.py</code> con
+SHARED_PREAMBLE / SHARED_NAMING_SCHEMA / SHARED_OUTPUT_FORMAT in stile
+&sect;6 prescrittivo (DEVI / NON DEVI / OK / ERRORE). Naming Authority
+(<code>runtime/naming_grammar.py</code>) impone 5 regole R0..R4 a
+prove di GBNF + validator deterministico. Esecuzione finora SOLO offline
+via CLI <code>python3 -m runtime.telos_introspect</code>; integrazione
+scheduler v2 daily@03:30 pending. Toggle individuale per lente:
+<code>METNOS_TELOS_LENS_&lt;NAME&gt;=1</code>. Telemetria persistente:
 <code>~/.local/share/metnos/telos_proposals.jsonl</code>.
 </div>
 
@@ -878,7 +875,69 @@ Leggi.
 <li><strong>Multi-utente.</strong> Quando Metnos avr&agrave; pi&ugrave; sender pairati, i telos sono per-utente, condivisi, o un misto? Probabilmente per-utente con un set condiviso minimo (sicurezza, perimetro). Da decidere.</li>
 </ol>
 
-<h1 id="cap14">14. Riferimenti</h1>
+<h1 id="cap14">14. Le 10 lenti laterali</h1>
+
+<p>Le lenti laterali (<code>runtime/telos_lenses/</code>) sono i
+generatori creativi che producono proposte introspettive per servire
+i telos. Architettura modulare (<a href="#cap9">cap.&nbsp;9</a>):
+ogni lente &egrave; un modulo Python con 3 elementi (<code>NAME</code>,
+<code>OPERATORS</code> tupla, funzione <code>build_prompt(ctx,
+operator)</code>) e si registra in <code>__init__.py</code>. Il loop
+LLM + parse JSON + paternalism guard + GBNF wiring &egrave; centralizzato
+in <code>_base.run_lens</code>. Toggle individuale per lente:
+<code>METNOS_TELOS_LENS_&lt;NAME&gt;=1</code>.</p>
+
+<p>Stato al 21/5/2026 v8: 10 lenti in produzione (ADR&nbsp;0156 final).
+Le 2 nuove dell'iterazione corrente (<code>counterfactual</code>,
+<code>constitutional</code>) sono ispirate a referenze 2022&ndash;2023.
+La lens <code>compression</code> (Schmidhuber 2010) e' stata implementata
+ma scartata dopo bench v8 per fallimento convergenza: anche col prompt
+restretto Gemma 26B non riusciva a proporre super-verbi vocab-compliant
+(violava l'eccezione &sect;2.2 su <code>entries</code>). Razionale in
+ADR&nbsp;0156. Bench convergenza v7&minus;v8 con Gemma 4 26B + GBNF: 10/10
+lenti accettate convergono al primo tentativo, 0 paternalismo, 0 invalid
+naming, 0 qualifier-object mismatch.</p>
+
+<table style="border-collapse:collapse;width:100%;margin:14px 0;font-size:10pt;">
+<thead>
+<tr style="background:#f8fafc;border-bottom:2px solid #e2e8f0;text-align:left;">
+<th style="padding:8px 12px;">Lente</th>
+<th style="padding:8px 12px;">Cosa fa</th>
+<th style="padding:8px 12px;">Referenza</th>
+</tr>
+</thead>
+<tbody>
+<tr style="border-bottom:1px solid #f1f5f9;"><td style="padding:7px 12px;"><code>scamper</code></td><td style="padding:7px 12px;">7 operatori brainstorming (Substitute / Combine / Adapt / Modify / Put&nbsp;to&nbsp;other&nbsp;use / Eliminate / Reverse) sui top-N executor del catalog.</td><td style="padding:7px 12px;">Eberle 1971; Osborn 1953 (Applied Imagination)</td></tr>
+<tr style="border-bottom:1px solid #f1f5f9;"><td style="padding:7px 12px;"><code>oulipo</code></td><td style="padding:7px 12px;">Vincoli temporanei deliberati che Metnos auto-impone (no API frontier, no executor X per N giorni) per esplorare path alternativi locali.</td><td style="padding:7px 12px;">Queneau &amp; Le Lionnais 1960 (Ouvroir de Litt&eacute;rature Potentielle)</td></tr>
+<tr style="border-bottom:1px solid #f1f5f9;"><td style="padding:7px 12px;"><code>inverse_rl</code></td><td style="padding:7px 12px;">Infera telos NON dichiarati osservando cluster di turni soddisfatti (proposed_action inizia con <code>PROPOSED_TELOS:</code>).</td><td style="padding:7px 12px;">Russell 1998 (Learning agents for uncertain environments, IRL)</td></tr>
+<tr style="border-bottom:1px solid #f1f5f9;"><td style="padding:7px 12px;"><code>endgame_book</code></td><td style="padding:7px 12px;">Precompute pattern di scadenze noti (fatture, scadenze, certificati) come cascate scheduler v2 deterministiche.</td><td style="padding:7px 12px;">Thompson 1986 (chess endgame tablebases, KQKR)</td></tr>
+<tr style="border-bottom:1px solid #f1f5f9;"><td style="padding:7px 12px;"><code>analogy_transfer</code></td><td style="padding:7px 12px;">Trasferisce una strategia di successo da un dominio Metnos (credentials Fernet, signatures hash) a un dominio strutturalmente simile.</td><td style="padding:7px 12px;">Hofstadter 1979 (GEB); Mitchell 2001 (Analogy-making as Perception)</td></tr>
+<tr style="border-bottom:1px solid #f1f5f9;"><td style="padding:7px 12px;"><code>boden_transformational</code></td><td style="padding:7px 12px;">Trasforma il contratto (signature args / schema / ritorno) di un executor invece dei suoi default. Cambia lo spazio di possibilit&agrave;.</td><td style="padding:7px 12px;">Boden 1990 (The Creative Mind: Myths &amp; Mechanisms)</td></tr>
+<tr style="border-bottom:1px solid #f1f5f9;"><td style="padding:7px 12px;"><code>pattern_language</code></td><td style="padding:7px 12px;">Estrae micro-pattern componibili dal mnestoma (es. ispeziona-poi-agisci, verify-after-mutate) come ricette astratte con placeholder.</td><td style="padding:7px 12px;">Alexander 1977 (A Pattern Language); Gamma et al. 1994 (Design Patterns)</td></tr>
+<tr style="border-bottom:1px solid #f1f5f9;"><td style="padding:7px 12px;"><code>generative_design</code></td><td style="padding:7px 12px;">Per un brief composto (es. design scheduler notturno), genera 2&minus;3 candidati Pareto-ottimali con trade-off espliciti su pi&ugrave; telos.</td><td style="padding:7px 12px;">Bentley 1999 (Evolutionary Design); Krish 2011 (Generative Design Method)</td></tr>
+<tr style="border-bottom:1px solid #f1f5f9;"><td style="padding:7px 12px;"><code>counterfactual</code></td><td style="padding:7px 12px;">Speculare di <code>inverse_rl</code>: estrae proposte da turni INSODDISFATTI (lunghi, retry, error). Propone l'executor mancante che avrebbe risolto in 1&minus;2 step.</td><td style="padding:7px 12px;">Shinn et al. 2023 (Reflexion: Language Agents with Verbal&nbsp;RL, NeurIPS)</td></tr>
+<tr style="border-bottom:1px solid #f1f5f9;"><td style="padding:7px 12px;"><code>constitutional</code></td><td style="padding:7px 12px;">Per ogni executor sensibile (filesystem mutante, outbound, credenziali) identifica modi di fallimento non ovvi e propone DEFENSE (layer di sicurezza, default conservativo).</td><td style="padding:7px 12px;">Bai et al. 2022 (Constitutional AI: Harmlessness from AI Feedback, Anthropic)</td></tr>
+</tbody>
+</table>
+
+<p>Le 11 lenti sono tutte LLM-driven al loro core (creativit&agrave;
+richiesta) ma il GATING delle proposte e' deterministico (&sect;7.9):
+anti-paternalismo via regex, naming compliance via Naming Authority
+(<a href="#cap9">cap.&nbsp;9</a>), qualifier-object compatibility
+(R4) via mappa in <code>vocab.py</code>. Una proposta che viola un
+vincolo del Naming Authority NON puo' essere emessa: la grammar GBNF
+la blocca a tempo di generazione.</p>
+
+<h2>Catalogo &amp; routine notturna</h2>
+
+<p>Tutte le lenti partecipano al loop notturno (scheduler v2
+<code>daily@03:30</code>, integrazione pending) e producono proposte che
+vanno al Vaglio. Lenti che propongono CONCETTI (telos, vincoli, pattern
+astratti) hanno <code>new_op_name=null</code>: oulipo, inverse_rl,
+pattern_language. Lenti naming-aware (le restanti 8) possono proporre
+nuovi nomi 2-4 livelli (R0..R4).</p>
+
+<h1 id="cap15">15. Riferimenti</h1>
 
 <h3>Riferimenti interni</h3>
 <ul>

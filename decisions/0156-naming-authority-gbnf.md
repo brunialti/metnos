@@ -277,3 +277,50 @@ senza valore aggiunto vs `name#variant`.
 
 GBNF batte Sonnet su rate-utile, a costo zero, con vocab 100% by
 construction. Adottato come default opt-in per il telos engine.
+
+### Bench iterazioni v2&ndash;v8 (21/5/2026)
+
+| Iter | Setup | Lenti | Proposte | Naming valid | Errori principali |
+|------|-------|-------|----------|--------------|-------------------|
+| v2 | `#` sep | 9 | 29 | n/a | 6 context-label |
+| v3 | `_` posizionale R1 | 9 | 26 | 26/26 | 6 qual-obj mismatch |
+| v5b | R2 (canonical-3-must-exist) | 9 | 44 | 33/33 | 4 qual-obj mismatch |
+| v6 | R4 qual-object compat map | 9 | 41 | 30/30 | 0 |
+| v7 | + SCAMPER anti-fixation | 9 | 39 | 28/28 | scamper dup 26%&rarr;87% unici |
+| **v8** | + counterfactual + constitutional | **10** | TBD | TBD | TBD |
+
+### Le 10 lenti del telos engine (riferimenti)
+
+`runtime/telos_lenses/` (modulare: aggiungere lente = 3 modifiche).
+
+| Lens | Riferimento bibliografico |
+|------|---------------------------|
+| scamper | Eberle 1971, Osborn 1953 (Applied Imagination) |
+| oulipo | Queneau &amp; Le Lionnais 1960 (Ouvroir de Litt&eacute;rature Potentielle) |
+| inverse_rl | Russell 1998 (Learning agents for uncertain environments) |
+| endgame_book | Thompson 1986 (chess endgame tablebases) |
+| analogy_transfer | Hofstadter 1979 (GEB); Mitchell 2001 (Analogy-making as Perception) |
+| boden_transformational | Boden 1990 (The Creative Mind: Myths &amp; Mechanisms) |
+| compression | Schmidhuber 2010 (Formal Theory of Creativity, IEEE TAMD) |
+| pattern_language | Alexander 1977 (A Pattern Language); Gamma 1994 (Design Patterns) |
+| generative_design | Bentley 1999 (Evolutionary Design); Krish 2011 (Generative Design Method) |
+| counterfactual | Shinn et al. 2023 (Reflexion, NeurIPS) |
+| constitutional | Bai et al. 2022 (Constitutional AI, Anthropic) |
+
+**10 lenti in produzione + 1 scartata dopo bench v8.**
+
+`compression` (Schmidhuber 2010) e' stata implementata con prompt
+restretto (forza cluster ≥2 executor) ma in 3 attempts consecutivi
+Gemma 26B ha proposto `find_entries` come super-verbo che sussume
+`find_files` + `find_dirs`. Questo viola l'eccezione semantica §2.2:
+"entries e' meta-oggetto in-memory turno (niente find/read/get_entries)".
+La convergence fallisce con invalid_naming=1 al primo tentativo, poi
+n=0 nei due retry. Selezione meritocratica: lens rimossa dal registry
+`_LENS_NAMES`. Idea Schmidhuber resta interessante: una versione futura
+potrebbe richiedere al super-verbo di NON usare `entries` come object,
+oppure scartare proposte che mappano N originali in 1 con object diverso
+dall'unione semantica dei loro object.
+
+Bench v8 finale: 10/10 lenti accettate convergono al primo tentativo
+(0 paternalismo, 0 invalid naming, 0 qualifier-object mismatch). 44
+proposte totali su t.tempo, ~17 acceptable, 12 borderline.

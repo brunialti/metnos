@@ -29,16 +29,21 @@ import importlib
 from ._base import LensCtx, LensProposal, run_lens, paternalism_check
 
 # Tutte le lenti vivono in moduli con nome = NAME della lens.
+# 10 lenti in produzione (ADR 0156 final, 21/5/2026 v8). La lens
+# `compression` (Schmidhuber 2010) e' stata scartata dopo bench v8 per
+# fallimento convergenza (3 attempts, propone nomi che violano l'eccezione
+# §2.2 entries). Razionale completo nell'ADR.
 _LENS_NAMES = (
-    "scamper",
-    "oulipo",
-    "inverse_rl",
-    "endgame_book",
-    "analogy_transfer",
-    "boden_transformational",
-    "compression",
-    "pattern_language",
-    "generative_design",
+    "scamper",                  # Eberle 1971, Osborn 1953
+    "oulipo",                   # Queneau & Le Lionnais 1960
+    "inverse_rl",               # Russell 1998 (IRL)
+    "endgame_book",             # Thompson 1986 (chess tablebases)
+    "analogy_transfer",         # Hofstadter 1979 (GEB), Mitchell 2001
+    "boden_transformational",   # Boden 1990 (Creativity Mechanisms)
+    "pattern_language",         # Alexander 1977 (A Pattern Language)
+    "generative_design",        # Bentley 1999, Krish 2011 (Pareto)
+    "counterfactual",           # Shinn et al. 2023 (Reflexion, NeurIPS)
+    "constitutional",           # Bai et al. 2022 (Constitutional AI)
 )
 
 

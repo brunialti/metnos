@@ -862,7 +862,59 @@ as that of the Laws.
 <li><strong>Multi-user.</strong> When Metnos has more paired senders, will telos be per-user, shared, or a mix? Probably per-user with a shared minimum set (security, perimeter). To be decided.</li>
 </ol>
 
-<h1 id="cap14">14. References</h1>
+<h1 id="cap14">14. The 10 lateral lenses</h1>
+
+<p>Lateral lenses (<code>runtime/telos_lenses/</code>) are the creative
+generators that produce introspective proposals serving the telos.
+Modular architecture (<a href="#cap9">ch.&nbsp;9</a>): each lens is a
+Python module with 3 elements (<code>NAME</code>, <code>OPERATORS</code>
+tuple, <code>build_prompt(ctx, operator)</code> function); registration
+in <code>__init__.py</code>. The LLM call loop + JSON parse + paternalism
+guard + GBNF wiring is centralized in <code>_base.run_lens</code>.
+Per-lens toggle: <code>METNOS_TELOS_LENS_&lt;NAME&gt;=1</code>.</p>
+
+<p>Status 21/5/2026 v8: 10 lenses in production (ADR&nbsp;0156 final).
+The 2 newer ones (<code>counterfactual</code>, <code>constitutional</code>)
+draw from 2022&ndash;2023 references. The <code>compression</code> lens
+(Schmidhuber 2010) was implemented but dropped after the v8 bench due
+to convergence failure: even with the strictest prompt, Gemma&nbsp;26B
+could not reliably produce vocab-compliant super-verbs (violating the
+&sect;2.2 <code>entries</code> exception). Rationale in ADR&nbsp;0156.
+Convergence bench v7&minus;v8 with Gemma&nbsp;4&nbsp;26B + GBNF: 10/10
+accepted lenses converge on first attempt, 0 paternalism, 0 invalid
+naming, 0 qualifier-object mismatch.</p>
+
+<table style="border-collapse:collapse;width:100%;margin:14px 0;font-size:10pt;">
+<thead>
+<tr style="background:#f8fafc;border-bottom:2px solid #e2e8f0;text-align:left;">
+<th style="padding:8px 12px;">Lens</th>
+<th style="padding:8px 12px;">What it does</th>
+<th style="padding:8px 12px;">Reference</th>
+</tr>
+</thead>
+<tbody>
+<tr style="border-bottom:1px solid #f1f5f9;"><td style="padding:7px 12px;"><code>scamper</code></td><td style="padding:7px 12px;">7 brainstorming operators (Substitute / Combine / Adapt / Modify / Put&nbsp;to&nbsp;other&nbsp;use / Eliminate / Reverse) on top-N catalog executors.</td><td style="padding:7px 12px;">Eberle 1971; Osborn 1953 (Applied Imagination)</td></tr>
+<tr style="border-bottom:1px solid #f1f5f9;"><td style="padding:7px 12px;"><code>oulipo</code></td><td style="padding:7px 12px;">Deliberate temporary constraints Metnos self-imposes (no frontier API, no executor X for N days) to explore alternative local paths.</td><td style="padding:7px 12px;">Queneau &amp; Le Lionnais 1960 (Ouvroir de Litt&eacute;rature Potentielle)</td></tr>
+<tr style="border-bottom:1px solid #f1f5f9;"><td style="padding:7px 12px;"><code>inverse_rl</code></td><td style="padding:7px 12px;">Infers UNSTATED telos by observing clusters of satisfied turns (proposed_action begins with <code>PROPOSED_TELOS:</code>).</td><td style="padding:7px 12px;">Russell 1998 (Learning agents for uncertain environments, IRL)</td></tr>
+<tr style="border-bottom:1px solid #f1f5f9;"><td style="padding:7px 12px;"><code>endgame_book</code></td><td style="padding:7px 12px;">Precomputes known deadline patterns (invoices, expirations, certificates) as deterministic scheduler v2 cascades.</td><td style="padding:7px 12px;">Thompson 1986 (chess endgame tablebases, KQKR)</td></tr>
+<tr style="border-bottom:1px solid #f1f5f9;"><td style="padding:7px 12px;"><code>analogy_transfer</code></td><td style="padding:7px 12px;">Transfers a successful strategy from one Metnos domain (credentials Fernet, signatures hash) to another structurally similar domain.</td><td style="padding:7px 12px;">Hofstadter 1979 (GEB); Mitchell 2001 (Analogy-making as Perception)</td></tr>
+<tr style="border-bottom:1px solid #f1f5f9;"><td style="padding:7px 12px;"><code>boden_transformational</code></td><td style="padding:7px 12px;">Transforms the CONTRACT (args signature / schema / return) of an executor rather than its defaults. Changes the space of possibility.</td><td style="padding:7px 12px;">Boden 1990 (The Creative Mind: Myths &amp; Mechanisms)</td></tr>
+<tr style="border-bottom:1px solid #f1f5f9;"><td style="padding:7px 12px;"><code>pattern_language</code></td><td style="padding:7px 12px;">Extracts composable micro-patterns from the mnestoma (e.g., inspect-then-act, verify-after-mutate) as abstract recipes with placeholders.</td><td style="padding:7px 12px;">Alexander 1977 (A Pattern Language); Gamma et al. 1994 (Design Patterns)</td></tr>
+<tr style="border-bottom:1px solid #f1f5f9;"><td style="padding:7px 12px;"><code>generative_design</code></td><td style="padding:7px 12px;">For a composite brief (e.g., design of nightly scheduler), generates 2&minus;3 Pareto-optimal candidates with explicit trade-offs across multiple telos.</td><td style="padding:7px 12px;">Bentley 1999 (Evolutionary Design); Krish 2011 (Generative Design Method)</td></tr>
+<tr style="border-bottom:1px solid #f1f5f9;"><td style="padding:7px 12px;"><code>counterfactual</code></td><td style="padding:7px 12px;">Mirror of <code>inverse_rl</code>: extracts proposals from UNSATISFIED turns (long, retries, errors). Proposes the missing executor that would have resolved in 1&minus;2 steps.</td><td style="padding:7px 12px;">Shinn et al. 2023 (Reflexion: Language Agents with Verbal&nbsp;RL, NeurIPS)</td></tr>
+<tr style="border-bottom:1px solid #f1f5f9;"><td style="padding:7px 12px;"><code>constitutional</code></td><td style="padding:7px 12px;">For each sensitive executor (mutating filesystem, outbound, credentials) identifies non-obvious failure modes and proposes DEFENSE (safety layer, conservative default).</td><td style="padding:7px 12px;">Bai et al. 2022 (Constitutional AI: Harmlessness from AI Feedback, Anthropic)</td></tr>
+</tbody>
+</table>
+
+<p>All 11 lenses are LLM-driven at their core (creativity required) but
+the GATING of proposals is deterministic (&sect;7.9): anti-paternalism
+via regex, naming compliance via the Naming Authority
+(<a href="#cap9">ch.&nbsp;9</a>), qualifier-object compatibility (R4)
+via a map in <code>vocab.py</code>. A proposal that violates a Naming
+Authority constraint CANNOT be emitted: the GBNF grammar blocks it at
+generation time.</p>
+
+<h1 id="cap15">15. References</h1>
 
 <h3>Internal references</h3>
 <ul>
