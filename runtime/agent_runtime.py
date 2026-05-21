@@ -5768,6 +5768,27 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
         # runtime intercetta qui e termina senza invocare alcun executor.
         if chosen_name == "final_answer":
             _msg = raw_args.get("message", "") if isinstance(raw_args, dict) else ""
+            # 21/5/2026 v8 — detail_md autoritativo universale (§7.9).
+            # Quando l'ULTIMO step produttivo ha emesso `detail_md`, quel
+            # blocco e' la rappresentazione canonica del risultato: l'LLM
+            # nel final_answer NON deve riscriverlo (perderebbe ID precisi,
+            # tabelle, link e formato strutturato, rompendo l'usabilita'
+            # come "cancella timer 17"). Politica content-driven (non
+            # interceptor tool-pair, ADR 0155 compatibile): l'executor
+            # decide se produrre detail_md, il runtime lo rispetta.
+            # Coerente con `_compose_final_message_from_obs` (linee 1770-77)
+            # che gia' fa lo stesso negli auto-final paths.
+            for _past_step in reversed(log.steps):
+                _obs = getattr(_past_step, "observation", None)
+                if not isinstance(_obs, dict):
+                    continue
+                # Considera solo l'ultimo step con observation strutturata.
+                if _obs.get("ok") is None and "detail_md" not in _obs:
+                    continue
+                _md = _obs.get("detail_md")
+                if isinstance(_md, str) and _md.strip():
+                    _msg = _md.strip()
+                break
             log.steps.append(step)
             log.final_kind = "answer"
             log.final_message = str(_msg).strip() or (r.text or "(risposta vuota)")
