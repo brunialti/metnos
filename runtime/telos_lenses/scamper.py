@@ -2,38 +2,25 @@
 """scamper.py — lente SCAMPER (Eberle 1971, Osborn 1953).
 
 Sette operatori di brainstorming applicati ai top-N executor del catalog:
-
-  S - Substitute        sorgente diversa per stesso verbo (read_messages -> read_voicemail)
-  C - Combine           due executor in pipeline non ancora vista (find_files + read_messages cross)
-  A - Adapt             stesso executor adattato a contesto utente (read_messages_voice)
-  M - Modify            executor con parametri default diversi (filter_entries con preset)
-  P - Put to other use  executor in contesto non canonico (compute_files_loc su README per stats progetti)
-  E - Eliminate         executor sostituito da scorciatoia (cap a 30 entries default invece di 100)
+  S - Substitute        sorgente diversa per stesso verbo
+  C - Combine           due executor in pipeline non ancora vista
+  A - Adapt             stesso executor adattato a contesto utente
+  M - Modify            executor con parametri default diversi
+  P - Put to other use  executor in contesto non canonico
+  E - Eliminate         executor sostituito da scorciatoia
   R - Reverse           verbo inverso (write -> read; find -> ignore)
 
-Output: lista di proposte ognuna con (operator, executor_target, telos_id,
-proposed_action, rationale, distance_from_existing).
-
-Anti-paternalismo guard (vedi telos_engine_v1 §3, dialogo Giornata II):
-- Proposta NON propone "dire all'utente di X" o "impedire all'utente di Y".
-- Cambia comportamento di Metnos, non scelte dell'utente.
-- Si applica a executor sintetizzati, schedule, policy interne.
-
 §7.9: la lente USA un LLM per generare (creativita' richiesta), ma il
-GATING anti-paternalismo a valle e' deterministico (regex su proposte
-sospette + filtraggio).
+GATING anti-paternalismo a valle e' deterministico.
 """
 from __future__ import annotations
 
-import logging
-import re
-from dataclasses import dataclass, field
-from typing import Callable, Optional
+from ._base import LensCtx
 
-_LOG = logging.getLogger(__name__)
+NAME = "scamper"
+OPERATORS = ("S", "C", "A", "M", "P", "E", "R")
 
-SCAMPER_OPERATORS = ("S", "C", "A", "M", "P", "E", "R")
-SCAMPER_NAMES = {
+_OP_NAMES = {
     "S": "Substitute",
     "C": "Combine",
     "A": "Adapt",
@@ -42,246 +29,77 @@ SCAMPER_NAMES = {
     "E": "Eliminate",
     "R": "Reverse",
 }
+_OP_DESCRIPTIONS = {
+    "S": "SOSTITUISCI una componente di un executor con un'alternativa funzionalmente analoga (es. sorgente, formato, scope)",
+    "C": "COMBINA due executor in una pipeline che l'utente NON ha mai usato (cross-domain o cross-corpus)",
+    "A": "ADATTA un executor a un contesto utente non standard (multi-account, multi-lingua, multi-canale)",
+    "M": "MODIFICA i parametri di default di un executor per allinearli al pattern d'uso reale dell'utente",
+    "P": "USA un executor in un contesto non canonico (es. compute_files_loc su README per stats progetti)",
+    "E": "ELIMINA uno step ridondante / un parametro inutilizzato / un cap che non serve mai",
+    "R": "INVERTI il verbo: se write fa X, prova read di X (es. log inverse, undo memoizzato, dry-run)",
+}
 
-# Regex anti-paternalismo: pattern di proposte che giudicano l'utente.
-# Conservativo, deterministico, multilingua IT+EN.
-_PATERNALISM_RE = re.compile(
-    r"\b("
-    r"dire\s+all['']?\s*utente|impedire\s+all['']?\s*utente|"
-    r"correggere\s+l['']?\s*utente|consigliare\s+all['']?\s*utente\s+di\s+(?:non\s+)?|"
-    r"tell\s+the\s+user|prevent\s+the\s+user|warn\s+the\s+user\s+about|"
-    r"advise\s+the\s+user\s+to"
-    r")\b",
-    re.IGNORECASE,
-)
-
-
-@dataclass
-class ScamperProposal:
-    """Una proposta SCAMPER concreta."""
-    operator: str                       # one of SCAMPER_OPERATORS
-    executor_target: str                # nome executor da cui parte
-    telos_id: str                       # telos servito
-    proposed_action: str                # descrizione 1-2 righe
-    rationale: str                      # perche' serve il telos
-    new_op_name: str | None = None      # 4-livello opzionale: canonical[#descriptor]
-    expected_alignment: float = 0.0     # stima [0,1], LLM judge a valle
-    distance_from_existing: int = 0     # quanti executor della proposta sono nuovi
-    paternalism_flag: bool = False      # True = scartata dal guard
-
-
-def _paternalism_check(text: str) -> bool:
-    """True se il testo suggerisce paternalismo (giudica utente)."""
-    return bool(_PATERNALISM_RE.search(text))
-
-
-def _build_prompt(
-    telos_phrase: str,
-    telos_notes: str,
-    executors_sample: list[dict],
-    mnestoma_summary: str,
-    user_patterns_summary: str,
-    operator: str,
-) -> str:
-    """Compone il prompt LLM per un singolo operatore SCAMPER su un telos.
-
-    Schema input:
-    - telos: il fine che la proposta deve servire
-    - executors_sample: 5-10 executor del catalog con descrizione breve
-    - mnestoma_summary: top-N mnest co-attivati di recente
-    - user_patterns_summary: verbi/oggetti/ritmi recenti dal turn_log
-    - operator: lettera SCAMPER (S/C/A/M/P/E/R)
-
-    Output atteso dall'LLM: JSON array di 1-3 proposte, ognuna con campi
-    {executor_target, proposed_action, rationale}.
-    """
-    op_name = SCAMPER_NAMES[operator]
-    op_descriptions = {
-        "S": "SOSTITUISCI una componente di un executor con un'alternativa funzionalmente analoga (es. sorgente, formato, scope)",
-        "C": "COMBINA due executor in una pipeline che l'utente NON ha mai usato (cross-domain o cross-corpus)",
-        "A": "ADATTA un executor a un contesto utente non standard (multi-account, multi-lingua, multi-canale)",
-        "M": "MODIFICA i parametri di default di un executor per allinearli al pattern d'uso reale dell'utente",
-        "P": "USA un executor in un contesto non canonico (es. compute_files_loc su README per stats progetti)",
-        "E": "ELIMINA uno step ridondante / un parametro inutilizzato / un cap che non serve mai",
-        "R": "INVERTI il verbo: se write fa X, prova read di X (es. log inverse, undo memoizzato, dry-run)",
-    }
-    return f"""Sei un agente di Metnos che genera proposte creative di nuove
-funzioni o ritmi per servire un fine utente. Operi in background:
-NON parli con l'utente, scrivi proposte da sottoporre al Vaglio.
-
-REGOLA CRUCIALE: le tue proposte cambiano cio' che fa METNOS, mai cio'
-che fa l'utente. NIENTE proposte tipo "dire all'utente di X" o
-"impedire all'utente di Y". Metnos giudica se stesso, non l'utente.
-
-VINCOLI ARCHITETTURALI (proposte che li violano vengono scartate):
-1. NON FONDERE due executor in uno. Ogni executor fa una sola
-   operazione (vettoriale, batch-by-default). Es: "merge fetch+write
-   in single executor" NON e' valido. Le pipeline si compongono nel
-   planner via from_step, non nel codice executor.
-2. NON proporre default IMPLICITI che inferiscono argomenti dal
-   contesto (es. "infer path dal cwd", "infer chiave dal tipo lista"):
-   gli executor sono deterministici al confine NL→codice. I default
-   inferiti generano sorprese e bug silenti.
-3. NON ACCOPPIARE domini ortogonali. Es: filter_entries (predicato
-   puro) NON deve "auto-fetch metadata" del dominio file. Il
-   trasformatore consuma cio' che riceve, niente di piu'.
-4. NON suggerire "approvazione batch silenziosa" o "auto-conferma":
-   ogni azione mutante mantiene il gate di vaglio/consent.
-5. NON RIMUOVERE il supporto a input plurali con N=1: gli executor
-   accettano sempre liste anche di un solo elemento (robustezza al
-   confine NL→codice). Es: "create_dirs accetta solo lista" NON e'
-   un miglioramento, e' una rottura.
-
-VINCOLI DI NAMING (§2.2, vocab CHIUSO):
-- Nuovi nomi di executor o di operazioni devono rispettare il pattern
-  `<azione>_<oggetto>[_<qualifier>]`.
-- AZIONI ammesse (23): read, write, move, delete, create, find, list,
-  filter, sort, group, classify, get, set, send, describe, render,
-  extract, compress, compute, compare, change, order, share.
-- OGGETTI ammessi (19): files, dirs, packages, messages, events,
-  contacts, places, processes, urls, numbers, images, signatures,
-  texts, proposals, persons, tasks, inputs, credentials, entries.
-- QUALIFIER ammessi (4 famiglie): formato (_csv,_xlsx,_pdf,_html,_json,
-  _text,_xml,_gz,_tar,_video,_audio,_image,_hash); modalita' (_size,
-  _format,_similar,_loc,_empty,_lines,_paragraphs,_sentences,_pages,
-  _segments,_indices); safety (_blacklist,_whitelist,_seed,_diff,
-  _sanity); provider (_google_workspace,_metnos).
-- VIETATI: verbi fuori lista (no `audit_*`, `check_*`, `verify_*`,
-  `monitor_*`, `track_*`, `notify_*`); qualifier fuori lista (no
-  `_aggregate`, `_missing`, `_delta`, `_summary`, `_report`).
-- Se l'idea richiede un nome FUORI vocab, NON inventarlo: scrivi
-  esplicitamente "RICHIEDE estensione vocab §2.2" nel rationale.
+_PREAMBLE_VINCOLI = """VINCOLI ARCHITETTURALI (proposte che li violano vengono scartate):
+1. NON FONDERE due executor in uno. Ogni executor fa una sola operazione
+   (vettoriale, batch-by-default). Le pipeline si compongono nel planner
+   via from_step, non nel codice executor.
+2. NON proporre default IMPLICITI che inferiscono argomenti dal contesto:
+   gli executor sono deterministici al confine NL→codice.
+3. NON ACCOPPIARE domini ortogonali: filter_entries non deve auto-fetch
+   metadata del dominio file.
+4. NON suggerire approvazione batch silenziosa o auto-conferma.
+5. NON RIMUOVERE il supporto a input plurali con N=1.
 
 COSA METNOS GIA' FA (NON re-inventare):
 - Piping fra executor via `from_step: N` nel planner ReAct.
 - Undo del turno corrente via `undo_last_turn`.
 - Fast-path deterministico per query triviali (zero LLM).
-- Memoization di sequenze multi-tool (uses>=3) e promozione a synth
-  (uses>=50).
+- Memoization sequenze multi-tool (uses>=3) + promozione synth (uses>=50).
 - Output formatter channel-agnostic (markdown), no LLM nel render.
 - Dialog `needs_inputs` per parametri mancanti.
-
-TELOS DA SERVIRE:
-  {telos_phrase}
-  Note utente: {telos_notes}
-
-CONTESTO:
-- Mnestoma recente (executor co-attivati, gia' filtrato al catalog vivo):
-{mnestoma_summary}
-
-- Pattern d'uso dell'utente (turn_log 30gg):
-{user_patterns_summary}
-
-- Executor disponibili nel catalog (campione vivo):
-{chr(10).join(f"  - {e['name']}: {e.get('description', '')[:120]}" for e in executors_sample)}
-
-OPERATORE SCAMPER: {operator} = {op_name}
-COSA FARE: {op_descriptions[operator]}
-
-Genera 1-3 proposte concrete che applicano l'operatore {operator} a uno
-degli executor del catalog VIVO sopra (NON inventare nomi non in lista)
-per servire il telos. Ogni proposta in JSON:
-
-  {{
-    "executor_target": "<name esatto dell'executor dal campione sopra>",
-    "new_op_name": "<canonical>" oppure "<canonical#descriptor>" oppure null,
-    "proposed_action": "<descrizione 1-2 righe della proposta>",
-    "rationale": "<perche' avvicina al telos, 1 riga, con evidenza dal mnestoma o pattern>"
-  }}
-
-CAMPO `new_op_name`:
-- `null` se la proposta modifica un executor esistente (default M/A/E/P)
-- canonical §2.2: `<verb>_<object>[_<qualifier>]` snake_case con `_`
-- canonical+descriptor: `<canonical>#<descriptor>` dove descriptor e' kebab-case
-  `[a-z0-9]+(-[a-z0-9]+)*` max 30 char (es. `compute_files_loc#per-language`,
-  `find_dirs_empty#recursive`, `compute_signatures#post-move-verify`)
-- Il descriptor 4-livello e' OPZIONALE: usalo solo se il nome canonical da solo
-  collide con un executor che gia' fa qualcosa di diverso, o se vuoi suggerire
-  esplicitamente la variante.
-
-Rispondi SOLO con un array JSON di 1-3 oggetti. Niente prosa attorno.
-Se nessuna proposta sensata che rispetti i VINCOLI ARCHITETTURALI e'
-generabile, rispondi `[]` (preferito a forzare una proposta debole).
 """
 
 
-def generate_proposals(
-    telos,
-    executors_sample: list[dict],
-    mnestoma_summary: str,
-    user_patterns_summary: str,
-    llm_invoke: Callable[..., str],
-    operators: Optional[tuple] = None,
-    paternalism_filter: bool = True,
-    grammar: Optional[str] = None,
-) -> list[ScamperProposal]:
-    """Genera proposte SCAMPER per un telos via LLM.
+def build_prompt(ctx: LensCtx, operator: str) -> str:
+    op_name = _OP_NAMES[operator]
+    op_desc = _OP_DESCRIPTIONS[operator]
+    return f"""Sei un agente Metnos che genera proposte creative per servire un fine utente.
+Operi in background: NON parli con l'utente, scrivi proposte per il Vaglio.
 
-    Args:
-      telos: oggetto Telos (id, phrase, notes)
-      executors_sample: 5-10 executor del catalog con description
-      mnestoma_summary: stringa con top-N mnest recenti
-      user_patterns_summary: stringa con verbi/ritmi recenti
-      llm_invoke: callable(prompt) -> raw_text del LLM (tier middle suggerito)
-      operators: subset operatori SCAMPER, default tutti e 7
-      paternalism_filter: se True, scarta proposte che giudicano l'utente
+REGOLA CRUCIALE: le tue proposte cambiano cio' che fa METNOS, mai cio'
+che fa l'utente. NIENTE "dire all'utente di X" o "impedire all'utente di Y".
 
-    Returns:
-      Lista di ScamperProposal, gia' filtrate per anti-paternalismo.
-    """
-    import json
-    ops = operators or SCAMPER_OPERATORS
-    proposals: list[ScamperProposal] = []
-    for op in ops:
-        prompt = _build_prompt(
-            telos.phrase, telos.notes,
-            executors_sample, mnestoma_summary, user_patterns_summary, op,
-        )
-        try:
-            raw = llm_invoke(prompt, grammar=grammar) if grammar else llm_invoke(prompt)
-        except Exception as ex:
-            _LOG.warning("scamper: LLM call failed for op=%s: %r", op, ex)
-            continue
-        if not raw or not raw.strip():
-            continue
-        # Estrai JSON: tollerante a markdown fence
-        raw = raw.strip()
-        if raw.startswith("```"):
-            raw = re.sub(r"^```(?:json)?\s*|\s*```$", "", raw, flags=re.M)
-        try:
-            items = json.loads(raw)
-        except json.JSONDecodeError as ex:
-            _LOG.warning("scamper: JSON parse failed for op=%s: %r raw=%r",
-                          op, ex, raw[:200])
-            continue
-        if not isinstance(items, list):
-            continue
-        for it in items:
-            if not isinstance(it, dict):
-                continue
-            tgt = (it.get("executor_target") or "").strip()
-            action = (it.get("proposed_action") or "").strip()
-            rationale = (it.get("rationale") or "").strip()
-            if not tgt or not action:
-                continue
-            patern = paternalism_filter and (
-                _paternalism_check(action) or _paternalism_check(rationale)
-            )
-            new_name_raw = it.get("new_op_name")
-            new_name = new_name_raw.strip() if isinstance(new_name_raw, str) and new_name_raw.strip() else None
-            proposals.append(ScamperProposal(
-                operator=op,
-                executor_target=tgt,
-                telos_id=telos.id,
-                proposed_action=action,
-                rationale=rationale,
-                new_op_name=new_name,
-                paternalism_flag=patern,
-            ))
-    if paternalism_filter:
-        filtered = [p for p in proposals if not p.paternalism_flag]
-        if len(filtered) < len(proposals):
-            _LOG.info("scamper: scartate %d proposte paternalistiche",
-                      len(proposals) - len(filtered))
-        proposals = filtered
-    return proposals
+{_PREAMBLE_VINCOLI}
+
+TELOS DA SERVIRE:
+  {ctx.telos.phrase}
+  Note utente: {ctx.telos.notes}
+
+CONTESTO:
+- Mnestoma recente (executor co-attivati, catalog vivo):
+{ctx.mnestoma_summary}
+
+- Pattern d'uso utente (turn_log 30gg):
+{ctx.user_patterns_summary}
+
+- Executor disponibili (campione vivo):
+{chr(10).join(f"  - {e['name']}: {e.get('description', '')[:120]}" for e in ctx.executors_sample)}
+
+OPERATORE SCAMPER: {operator} = {op_name}
+COSA FARE: {op_desc}
+
+Genera 1-3 proposte concrete che applicano l'operatore {operator} a uno
+degli executor del catalog VIVO sopra. Ogni proposta JSON:
+  {{
+    "executor_target": "<name esatto>",
+    "new_op_name": "<canonical>" | "<canonical#kebab-descriptor>" | null,
+    "proposed_action": "<descrizione 1-2 righe>",
+    "rationale": "<perche' avvicina al telos, 1 riga>"
+  }}
+
+`new_op_name`: snake_case `<verb>_<object>[_<qualifier>]` (vocab §2.2);
+descriptor 4-livello opzionale dopo `#` in kebab-case `[a-z0-9]+(-[a-z0-9]+)*`.
+Esempi: `compute_files_loc#per-extension`, `find_dirs_empty`, null.
+
+Rispondi SOLO array JSON 1-3 oggetti. `[]` preferito a proposta debole.
+"""

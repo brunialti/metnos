@@ -227,21 +227,16 @@ def run_for_telos(
             _LOG.error("telos_introspect: catalog load failed: %r", ex)
             return []
     llm = llm_invoke or _llm_invoke_local_gemma
-    from telos_lenses import is_lens_enabled
-    active = []
+    from telos_lenses import LENSES, LENSES_NO_GRAMMAR, is_lens_enabled, run_lens, LensCtx
+
     if lenses is None:
-        # Auto-detect dalle env flag
-        for name in ("scamper",):  # MVP: solo scamper. Altre da task #13.
-            if is_lens_enabled(name):
-                active.append(name)
+        active = [n for n in LENSES if is_lens_enabled(n)]
     else:
-        active = list(lenses)
+        active = [n for n in lenses if n in LENSES]
     if not active:
         _LOG.info("telos_introspect: nessuna lente attiva per %s", telos.id)
         return []
 
-    # Set di nomi vivi nel catalog corrente — usato per filtrare mnestoma
-    # da executor obsoleti (rinomi storici, GC, demote).
     if hasattr(catalog, "executors"):
         live_names = set(catalog.executors.keys())
     else:
@@ -262,35 +257,47 @@ def run_for_telos(
         except Exception as ex:
             _LOG.warning("telos_introspect: grammar build failed: %r", ex)
 
+    ctx = LensCtx(
+        telos=telos,
+        executors_sample=executors_sample,
+        mnestoma_summary=mnestoma_summary,
+        user_patterns_summary=user_patterns,
+        live_executor_names=live_names,
+    )
+
     results: list[dict] = []
     for lens_name in active:
-        if lens_name == "scamper":
-            from telos_lenses import scamper_generate
-            proposals = scamper_generate(
-                telos, executors_sample,
-                mnestoma_summary, user_patterns,
-                llm_invoke=llm, operators=operators,
-                grammar=grammar,
-            )
-            for p in proposals:
-                rec = {
-                    "ts": time.time(),
-                    "telos_id": telos.id,
-                    "telos_phrase": telos.phrase,
-                    "lens": lens_name,
-                    "operator": p.operator,
-                    "executor_target": p.executor_target,
-                    "new_op_name": p.new_op_name,
-                    "proposed_action": p.proposed_action,
-                    "rationale": p.rationale,
-                    "paternalism_flag": p.paternalism_flag,
-                    "expected_alignment": p.expected_alignment,
-                }
-                if persist:
-                    _persist(rec)
-                results.append(rec)
-        else:
-            _LOG.warning("telos_introspect: lens %r non implementata", lens_name)
+        lens_mod = LENSES[lens_name]
+        # operators override (oggi solo SCAMPER usa subset)
+        ops = operators if (operators and lens_name == "scamper") else lens_mod.OPERATORS
+        # Per lenti che propongono concetti (telos, super-verbo, vincolo)
+        # disabilita la grammar canonical (new_op_name e' sempre null).
+        lens_grammar = None if lens_name in LENSES_NO_GRAMMAR else grammar
+        proposals = run_lens(
+            lens_name=lens_name,
+            operators=ops,
+            build_prompt=lens_mod.build_prompt,
+            ctx=ctx,
+            llm_invoke=llm,
+            grammar=lens_grammar,
+        )
+        for p in proposals:
+            rec = {
+                "ts": time.time(),
+                "telos_id": telos.id,
+                "telos_phrase": telos.phrase,
+                "lens": lens_name,
+                "operator": p.operator,
+                "executor_target": p.executor_target,
+                "new_op_name": p.new_op_name,
+                "proposed_action": p.proposed_action,
+                "rationale": p.rationale,
+                "paternalism_flag": p.paternalism_flag,
+                "expected_alignment": p.expected_alignment,
+            }
+            if persist:
+                _persist(rec)
+            results.append(rec)
     return results
 
 

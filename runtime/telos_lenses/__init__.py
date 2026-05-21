@@ -1,34 +1,77 @@
 # SPDX-License-Identifier: AGPL-3.0-only
-"""telos_lenses — pacchetto delle 9 lenti laterali per il telos engine.
+"""telos_lenses — pacchetto delle 9 lenti laterali del telos engine.
 
-Ogni lente e' una callable che genera proposte per servire un telos dato
-mnestoma + user behavior. Ognuna ha:
-- un env flag toggle METNOS_TELOS_LENS_<NAME>=1 per attivazione individuale
-- telemetria specifica: hit_rate, accept_rate, distance_from_existing
-- LLM tier middle, prompt dedicato
+Ogni lens espone:
+- NAME (str)
+- OPERATORS (tuple di label, una call LLM per operator)
+- build_prompt(ctx: LensCtx, operator: str) -> str
 
-Lenti previste (vedi docs/it/drafts/telos_engine_v1.html):
+Il loop LLM + parse + paternalism + grammar wiring e' centralizzato in
+`_base.run_lens()`. Le lenti diventano dati (prompt + operatori), non
+codice duplicato.
 
-  scamper           — 7 operatori brainstorming su top-N executor
-  oulipo            — vincolo deliberato (settimana senza tier=wise)
-  inverse_rl        — discover_unstated_telos da turni soddisfacenti
-  endgame_book      — precompute pattern per t.puntualita
-  analogy_transfer  — strategia A→B dominio strutturalmente simile
-  boden_transform   — revisione contratto executor (es. move + reason)
-  compression       — super-verbo che unifica N varianti
-  pattern_language  — grammatica di pattern componibili
-  generative_design — Pareto candidates per brief composto
+Env toggle individuale: METNOS_TELOS_LENS_<NAME>=1.
 
-Solo `scamper` implementato come pilota (task #12). Le altre attivabili
-quando l'esperimento offline conferma il pattern (task #13).
+Lenti registrate (10/5/2026 -> 21/5/2026 batch):
+  scamper                — 7 operatori SCAMPER (Eberle 1971)
+  oulipo                 — vincolo deliberato (OuLiPo)
+  inverse_rl             — discover_unstated_telos da turni soddisfatti
+  endgame_book           — precompute pattern di scadenze
+  analogy_transfer       — strategia A→B dominio strutturalmente simile
+  boden_transformational — revisione contratto executor
+  compression            — super-verbo Schmidhuber
+  pattern_language       — grammatica componibile (Alexander)
+  generative_design      — Pareto candidates per brief composto
 """
-from .scamper import generate_proposals as scamper_generate
+import os
+import importlib
 
-__all__ = ["scamper_generate"]
+from ._base import LensCtx, LensProposal, run_lens, paternalism_check
+
+# Tutte le lenti vivono in moduli con nome = NAME della lens.
+_LENS_NAMES = (
+    "scamper",
+    "oulipo",
+    "inverse_rl",
+    "endgame_book",
+    "analogy_transfer",
+    "boden_transformational",
+    "compression",
+    "pattern_language",
+    "generative_design",
+)
+
+
+def _load_lens(name: str):
+    """Carica il modulo lens (cached da Python's import system)."""
+    return importlib.import_module(f"telos_lenses.{name}")
+
+
+LENSES = {name: _load_lens(name) for name in _LENS_NAMES}
+
+# Lenti che propongono CONCETTI (telos, vincolo) anziche' executor:
+# il loro output non si adatta allo schema GBNF canonical
+# (new_op_name=null sempre). Per queste il dispatcher disabilita
+# la grammar e si affida ai soli vincoli prompt + paternalism filter.
+#
+# NB: `compression` propone super-verbi che DEVONO restare vocab-compliant
+# (verb_object canonical); resta sotto grammar. Se Gemma 26B non riesce a
+# trovare un canonical valido, ritorna [] (preferito a invenzione).
+LENSES_NO_GRAMMAR = frozenset({"inverse_rl"})
 
 
 def is_lens_enabled(lens_name: str) -> bool:
     """True se la lente `<lens_name>` e' attiva via env."""
-    import os
     flag = f"METNOS_TELOS_LENS_{lens_name.upper()}"
     return os.environ.get(flag, "0") == "1"
+
+
+def active_lenses() -> list[str]:
+    """Ritorna i nomi delle lenti attive (env-toggled)."""
+    return [n for n in _LENS_NAMES if is_lens_enabled(n)]
+
+
+__all__ = [
+    "LensCtx", "LensProposal", "run_lens", "paternalism_check",
+    "LENSES", "LENSES_NO_GRAMMAR", "is_lens_enabled", "active_lenses",
+]
