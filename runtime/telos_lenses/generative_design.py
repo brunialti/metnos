@@ -56,7 +56,7 @@ contrapposti.
 Genera 2-3 proposte (UN candidate per oggetto). Ogni proposta JSON:
   {{
     "executor_target": "<executor centrale del candidato>",
-    "new_op_name": "<canonical[#descriptor]>" o null,
+    "new_op_name": "<verb_object[_qualifier[_descriptor-kebab]]>" o null (descriptor RICHIEDE qualifier),
     "proposed_action": "CANDIDATO <X>: <descrizione> | trade-off: ↑t.<telosA> ↓t.<telosB>",
     "rationale": "<quale telos serve meglio, 1 riga>"
   }}

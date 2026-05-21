@@ -37,7 +37,16 @@ Differente da SCAMPER:
 REGOLA: cambiare contratto rompe backward compat (§7.1 OK in dev pre-1.0).
 Ma cambiare contratto NON cambia il VOCABOLARIO canonical §2.2: il
 nome dell'executor resta lo stesso (o eventualmente un canonical
-nuovo con descriptor #v2 per indicare la variante).
+4-livello con descriptor `_v2` per indicare la variante, ma RICHIEDE
+un qualifier 3° livello presente: `compute_files_loc_v2` OK,
+`set_tasks_v2` INVALIDO senza qualifier).
+
+ESTENSIONE VOCAB: se il nuovo contratto richiede un nuovo qualifier
+non in vocab, NON inventarlo nel nome. Scrivilo nel rationale con
+"RICHIEDE estensione vocab §2.2: <criterio>" giustificando con
+TRE criteri congiunti: necessario (no synonym in classe), generale
+(semantica riusabile, non domain-specific), comprensibile (LLM
+Gemma 26B capisce senza glossa).
 
 TELOS DA SERVIRE: {ctx.telos.phrase}
 Note utente: {ctx.telos.notes}
@@ -54,7 +63,7 @@ ritorno arricchito. Specifica l'incremento di potenza espressiva.
 Genera 1-2 trasformazioni. Ogni JSON:
   {{
     "executor_target": "<executor del catalog vivo>",
-    "new_op_name": "<canonical>" oppure "<canonical#v2>" o null,
+    "new_op_name": "<verb_object[_qualifier[_v2]]>" o null (`_v2` richiede qualifier),
     "proposed_action": "CONTRATTO ATTUALE: <descrizione args/schema> | NUOVO: <descrizione> | DELTA: <potenza espressiva guadagnata>",
     "rationale": "<come serve il telos, 1 riga>"
   }}

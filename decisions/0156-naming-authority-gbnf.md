@@ -69,36 +69,58 @@ Nuovo modulo `runtime/naming_grammar.py` parsa `runtime/vocab.py`
 Tutti i generatori di proposte introspettive consultano la Naming
 Authority. Centralizzazione = §7.3 (no hardcoded, single source).
 
-### B. 4° livello descriptor — open, kebab-case, fuori grammar canonical
+### B. 4° livello descriptor — schema POSIZIONALE, separatore `_` unico
 
-Estende §2.2 con un livello opzionale, separato da `#`:
+Estende §2.2 con un livello opzionale, SEMPRE in 4ª posizione (dopo
+qualifier), separato da `_` come tutti i livelli canonical:
 
 | Livello | Vocabolario | Sintassi | Esempio |
 |---------|-------------|----------|---------|
 | 1: action | CHIUSO 23 verbi | enum | `compute` |
 | 2: object | CHIUSO 19 oggetti | enum | `files` |
 | 3: qualifier | CHIUSO 4 famiglie | enum | `loc` |
-| 4: descriptor | **APERTO** | kebab-case | `per-language` |
+| 4: descriptor | **APERTO** | kebab-case interno | `per-language` |
+
+Schema canonical: `verb_object[_qualifier[_descriptor]]`
+
+Regola d'oro: **il 4° livello ESTENDE, non RIMPIAZZA il 3°.**
+Il descriptor puo' apparire SOLO se il qualifier e' presente.
+Se serve estendere un nome a 2 livelli, la risposta giusta e':
+- (a) usare un qualifier esistente, oppure
+- (b) proporre nuovo qualifier in vocab §2.2 (escalation), oppure
+- (c) lasciare nome 2-livello e mettere il contesto in proposed_action.
 
 Regole descriptor (enforce da `validate_name`):
-- regex `^[a-z0-9]+(-[a-z0-9]+)*$` (kebab-case)
+- regex `^[a-z0-9]+(-[a-z0-9]+)*$` (kebab-case interno)
 - max 30 caratteri
-- NO underscore (riservato canonical 3-livello)
-- NO leading/trailing hyphen
-- NO doppi hyphen
-- NON puo' coincidere con un verbo o oggetto §2.2 (anti pseudo-canonical)
+- NO underscore (riservato a separatore livelli)
+- NO leading/trailing hyphen, NO doppi hyphen
+- NON puo' coincidere con verbo/oggetto §2.2 (anti pseudo-canonical)
 
 Esempi validi:
-- `compute_files_loc#per-language`
-- `compute_files_loc#excluding-tests`
-- `find_dirs_empty#recursive`
-- `create_events#google-workspace`
+- `compute_files_loc_per-language` (4-livello)
+- `compute_files_loc_excluding-tests` (4-livello)
+- `find_dirs_empty_recursive` (4-livello)
+- `change_files_format_dry-run` (4-livello)
+- `set_tasks` (2-livello)
+- `delete_dirs_empty` (3-livello)
 
-Razionale separatore `#` + kebab-case:
-- `#` visivo come "anchor" tipico (URL hash, markdown).
-- kebab-case allineato a slug filename-safe / URL-safe / pipeline esterne.
-- Separazione visuale netta dal canonical (underscore vs hyphen).
-- Parsing robusto: `name.partition("#")` deterministico.
+Esempi INVALIDI:
+- `set_tasks_invoice-lifecycle` (descriptor senza qualifier)
+- `create_events_from-file-metadata` (descriptor senza qualifier)
+- `compute_files_loc_per_language` (descriptor con underscore → 5 parti, rifiutato)
+
+Razionale separatore `_` posizionale (refinement 21/5/2026):
+- Eliminato l'iniziale `#` separator: era asimmetrico (LLM con `_` emette
+  `set_tasks_lifecycle` indistinguibile fra "lifecycle=qualifier" vs
+  "lifecycle=descriptor"). Posizionale = univoco.
+- Split deterministico `name.split("_")` → 2/3/4 parti.
+- Descriptor con `-` interno (kebab) NON collide con `_` separator esterno.
+- Forzare qualifier-prima-di-descriptor cattura naturalmente l'errore
+  "context label" vs "behavior modifier": un context label (es.
+  `invoice-lifecycle`) tipicamente non ha un qualifier-vocab che gli sta
+  prima, mentre un behavior modifier (es. `per-language`) ha sempre
+  ragionevolmente un qualifier base (es. `loc`).
 
 ### C. GBNF generator
 

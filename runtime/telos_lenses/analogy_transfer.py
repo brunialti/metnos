@@ -47,7 +47,7 @@ strutturalmente si applica.
 Genera 1-3 trasferimenti. Ogni JSON:
   {{
     "executor_target": "<executor del dominio B (destinazione del transfer)>",
-    "new_op_name": "<canonical[#descriptor]>" o null,
+    "new_op_name": "<verb_object[_qualifier[_descriptor-kebab]]>" o null (descriptor RICHIEDE qualifier),
     "proposed_action": "ANALOGIA: <dominio A>:<strategia S> → <dominio B>:<applicazione>",
     "rationale": "<perche' l'isomorfismo regge, 1 riga>"
   }}

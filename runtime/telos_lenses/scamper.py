@@ -92,14 +92,34 @@ Genera 1-3 proposte concrete che applicano l'operatore {operator} a uno
 degli executor del catalog VIVO sopra. Ogni proposta JSON:
   {{
     "executor_target": "<name esatto>",
-    "new_op_name": "<canonical>" | "<canonical#kebab-descriptor>" | null,
+    "new_op_name": "<verb_object[_qualifier[_descriptor-kebab]]>" | null,
     "proposed_action": "<descrizione 1-2 righe>",
     "rationale": "<perche' avvicina al telos, 1 riga>"
   }}
 
-`new_op_name`: snake_case `<verb>_<object>[_<qualifier>]` (vocab §2.2);
-descriptor 4-livello opzionale dopo `#` in kebab-case `[a-z0-9]+(-[a-z0-9]+)*`.
-Esempi: `compute_files_loc#per-extension`, `find_dirs_empty`, null.
+`new_op_name` schema POSIZIONALE 4-livelli, separatore `_`:
+- Livelli 1-2: verb+object (CHIUSO §2.2). Es: `compute_files`.
+- Livello 3: qualifier (CHIUSO §2.2, opzionale). Es: `compute_files_loc`.
+- Livello 4: descriptor kebab-case interno (`[a-z0-9-]+`, no underscore).
+  RICHIEDE livello 3 presente. Es: `compute_files_loc_per-language`.
+
+REGOLA CRUCIALE: il descriptor (4°) ESTENDE, non RIMPIAZZA il qualifier
+(3°). Se il tuo nome richiede solo 2 livelli + descriptor (es.
+`set_tasks_X`), il check vocab rifiutera' X come qualifier sconosciuto.
+In tal caso: usa un qualifier esistente, oppure lascia il nome a 2 livelli
+e metti il contesto nel proposed_action.
+
+Esempi validi: `compute_files_loc_per-extension`, `find_dirs_empty`,
+`change_files_format_dry-run`, `read_files_format`, null.
+
+ESTENSIONE VOCAB §2.2 (proposta di nuovo verbo/oggetto/qualifier):
+se l'idea richiede un token non in vocab, NON inventarlo nel nome.
+Scrivi nel rationale "RICHIEDE estensione vocab §2.2: <criterio>" e
+giustifica con TRE criteri congiunti:
+- necessario: nessun token vocab della stessa classe e' semanticamente
+  equivalente (solo lessicalmente diverso).
+- generale: cattura semantica riusabile/compositiva, non domain-specific.
+- comprensibile: un LLM Gemma 26B capisce il significato senza glossa.
 
 Rispondi SOLO array JSON 1-3 oggetti. `[]` preferito a proposta debole.
 """

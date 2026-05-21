@@ -56,7 +56,7 @@ class LensProposal:
     telos_id: str
     proposed_action: str
     rationale: str
-    new_op_name: str | None = None      # canonical[#kebab-descriptor] o None
+    new_op_name: str | None = None      # verb_object[_qualifier[_descriptor-kebab]] o None
     paternalism_flag: bool = False
     expected_alignment: float = 0.0
 

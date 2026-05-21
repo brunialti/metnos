@@ -16,20 +16,30 @@ truth) e produce:
 ADR-in-writing (21/5/2026): proposta 4° livello "descriptor" OPEN, fuori
 grammar canonical. Vedi docs/it/architecture/naming_authority.html (TODO).
 
-Convenzione:
-    canonical_name  = <verb>_<object>[_<qualifier>]      vocab CHIUSO §2.2 (snake_case con `_`)
-    descriptor      = kebab-case [a-z0-9](-[a-z0-9]+)*   vocab APERTO 4° livello
-                      DEVE usare `-` (hyphen), MAI `_` (underscore).
-                      Razionale: separatore visivo dal canonical_name,
-                      parsing piu' robusto, allineato a slug URL/filename
-                      e a kebab-case di integrazioni esterne.
-    full_name       = canonical[#descriptor]             join opt: "#"
+Convenzione (Naming Authority v2, 21/5/2026):
+    Schema POSIZIONALE a 4 livelli, separatore unico `_`:
+
+        <verb>_<object>[_<qualifier>[_<descriptor>]]
+
+    Livelli:
+      1. verb       (CHIUSO §2.2, 23 azioni)
+      2. object     (CHIUSO §2.2, 19 oggetti)
+      3. qualifier  (CHIUSO §2.2, 4 famiglie) — OPZIONALE
+      4. descriptor (APERTO, kebab-case interno `[a-z0-9-]+`) — RICHIEDE qualifier
+
+    Regola d'oro: il 4° livello ESTENDE, non RIMPIAZZA il 3°.
+    Se serve estendere un nome a 2 livelli, la risposta giusta e':
+      (a) usare un qualifier esistente,
+      (b) proporre nuovo qualifier in vocab §2.2 (escalation),
+      (c) lasciare nome 2-livello + contesto in proposed_action.
 
 Esempi:
-    "compute_files_loc"                  — canonical only
-    "compute_files_loc#per-language"     — canonical + descriptor
-    "compute_files_loc#excluding-tests"  — variant
-    "compute_files_loc#v1"               — variant minimal
+    "compute_files_loc"                       — 3-livello canonical
+    "compute_files_loc_per-language"          — 4-livello: qualifier=loc, desc=per-language
+    "compute_files_loc_excluding-tests"       — variant
+    "find_dirs_empty_recursive"               — variant
+    "set_tasks"                               — 2-livello (NO descriptor admesso)
+    "set_tasks_invoice-lifecycle"             — INVALIDO (descriptor senza qualifier)
 """
 from __future__ import annotations
 
@@ -39,14 +49,31 @@ from typing import Optional
 
 from vocab import ACTIONS, OBJECTS, QUALIFIERS
 
-# ── Regex e separatori ─────────────────────────────────────────────────
+# ── Separatori e regex ─────────────────────────────────────────────────
+#
+# Naming Authority v2 (ADR 0156 refinement 21/5/2026):
+# Schema POSIZIONALE a 4 livelli, separatore unico `_`:
+#
+#     <verb>_<object>[_<qualifier>[_<descriptor>]]
+#
+# Regola d'oro: il 4° livello ESTENDE, non RIMPIAZZA il 3°.
+# Un descriptor (4°) puo' apparire SOLO se anche il qualifier (3°) e'
+# presente. Se si vuole estendere un nome a 2 livelli, la risposta giusta
+# e':
+#   (a) usare un qualifier esistente,
+#   (b) proporre un nuovo qualifier nel vocab §2.2 (escalation),
+#   (c) lasciare il nome 2-livello e mettere il contesto in proposed_action.
+#
+# Razionale: il delimiter `_` posizionale evita l'asimmetria che si aveva
+# con `#`-separator (LLM emetteva `set_tasks_lifecycle` pensando a un
+# qualifier OR a un descriptor, due interpretazioni indistinguibili).
+# Posizionale = univoco.
 
-_DESCRIPTOR_SEP = "#"
 # Descriptor kebab-case stretto:
-# - inizia con alfanumerico
-# - permette hyphen `-` come separatore fra segmenti alfanumerici
-# - NON permette underscore `_` (riservato al canonical_name §2.2)
-# - NON permette doppi hyphen
+# - contenuto interno [a-z0-9-]+, inizia/termina alfanumerico
+# - hyphen `-` come separatore fra segmenti alfanumerici
+# - NON underscore (riservato a separatore livelli §2.2)
+# - NON doppi hyphen, leading/trailing hyphen
 # - lunghezza 1-30
 _DESCRIPTOR_RE = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
 _DESCRIPTOR_MAX_LEN = 30
@@ -76,7 +103,7 @@ class NameComponents:
     @property
     def full(self) -> str:
         if self.descriptor:
-            return f"{self.canonical}{_DESCRIPTOR_SEP}{self.descriptor}"
+            return f"{self.canonical}_{self.descriptor}"
         return self.canonical
 
 
@@ -90,21 +117,25 @@ class ValidationResult:
 # ── Validation ──────────────────────────────────────────────────────────
 
 def parse_name(name: str) -> Optional[NameComponents]:
-    """Decompone un nome in (verb, object, qualifier?, descriptor?).
-    Ritorna None se la sintassi e' invalida (non solo lookup vocab)."""
+    """Decompone un nome posizionale in (verb, object, qualifier?, descriptor?).
+
+    Schema: verb_object[_qualifier[_descriptor]]
+    Split by `_` produce 2/3/4 parti. Parte 4 (descriptor) e' kebab-case
+    (puo' contenere `-` ma non `_`). Parte 3 (qualifier) e' single token
+    senza separatori.
+
+    Ritorna None se la sintassi e' invalida (split count fuori 2-4)."""
     if not name or not isinstance(name, str):
         return None
-    descriptor = None
-    canonical = name
-    if _DESCRIPTOR_SEP in name:
-        canonical, _, descriptor = name.partition(_DESCRIPTOR_SEP)
-    parts = canonical.split("_")
-    if len(parts) < 2 or len(parts) > 3:
+    parts = name.split("_")
+    n = len(parts)
+    if n < 2 or n > 4:
         return None
     verb = parts[0]
     obj = parts[1]
-    qual = parts[2] if len(parts) == 3 else None
-    return NameComponents(verb=verb, obj=obj, qualifier=qual, descriptor=descriptor)
+    qual = parts[2] if n >= 3 else None
+    desc = parts[3] if n == 4 else None
+    return NameComponents(verb=verb, obj=obj, qualifier=qual, descriptor=desc)
 
 
 def validate_name(name: str) -> ValidationResult:
@@ -120,13 +151,21 @@ def validate_name(name: str) -> ValidationResult:
     """
     nc = parse_name(name)
     if nc is None:
-        return ValidationResult(False, "syntax invalid (expected verb_object[_qualifier][#descriptor])")
+        return ValidationResult(False,
+            "syntax invalid (expected verb_object[_qualifier[_descriptor]], 2-4 parts split by _)")
     if nc.verb in _SYSTEM_PSEUDO_VERBS:
         return ValidationResult(False, f"verb '{nc.verb}' is reserved system pseudo-verb")
     if nc.verb not in ACTIONS:
         return ValidationResult(False, f"verb '{nc.verb}' not in vocab §2.2 (23 actions)", nc)
     if nc.obj not in OBJECTS:
         return ValidationResult(False, f"object '{nc.obj}' not in vocab §2.2 (19 objects)", nc)
+    # Regola posizionale: descriptor (4°) richiede qualifier (3°).
+    if nc.descriptor and not nc.qualifier:
+        return ValidationResult(False,
+            "descriptor (4° livello) requires qualifier (3°) present: "
+            "the 4th level EXTENDS, it does not REPLACE the 3rd. "
+            "Either use an existing qualifier or propose a new one in vocab §2.2.",
+            nc)
     if nc.qualifier and nc.qualifier not in QUALIFIERS:
         return ValidationResult(False, f"qualifier '{nc.qualifier}' not in vocab §2.2", nc)
     # Eccezione entries
@@ -240,13 +279,13 @@ verb ::= {verb_enum}
 object-token ::= {obj_enum}
 qualifier-token ::= {qual_enum}
 
-canonical-only ::= "\\"" verb "_" object-token ("_" qualifier-token)? "\\""
+canonical-2or3 ::= "\\"" verb "_" object-token ("_" qualifier-token)? "\\""
 
 desc-alnum ::= [a-z0-9]
 desc-segment ::= desc-alnum desc-alnum*
-canonical-with-descriptor ::= "\\"" verb "_" object-token ("_" qualifier-token)? "#" desc-segment ("-" desc-segment)* "\\""
+canonical-4-with-descriptor ::= "\\"" verb "_" object-token "_" qualifier-token "_" desc-segment ("-" desc-segment)* "\\""
 
-new-op-name ::= canonical-only | canonical-with-descriptor | "null"
+new-op-name ::= canonical-2or3 | canonical-4-with-descriptor | "null"
 """
 
 

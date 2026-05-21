@@ -26,8 +26,16 @@ identifica 2-3 executor del catalog con args overlappanti e semantica
 vicina, e proponi un SUPER-VERBO PARAMETRIZZATO che li sussume.
 
 REGOLA §2.2: il super-verbo deve essere VOCAB-COMPLIANT — pattern
-`<verb>_<object>[_<qualifier>]` con verb e object dai set chiusi.
+`<verb>_<object>[_<qualifier>[_<descriptor>]]` con verb e object dai
+set chiusi. Il 4° livello descriptor RICHIEDE qualifier prima.
 NON inventare nuovi token.
+
+ESTENSIONE VOCAB: se il super-verbo richiede un nuovo qualifier (es.
+`_unified` non e' ancora in vocab), scrivilo nel rationale con
+"RICHIEDE estensione vocab §2.2: <criterio>" giustificando con
+TRE criteri congiunti: necessario (no synonym in classe), generale
+(semantica riusabile, non domain-specific), comprensibile (LLM
+Gemma 26B capisce senza glossa).
 
 REGOLA §2.1: il super-verbo resta vettoriale (input lista, output lista)
 e single-purpose. Non e' un mega-executor che fa N operazioni —
@@ -47,7 +55,7 @@ Proponi UN super-verbo che li sussume con un param di disambiguazione.
 Genera 1-2 proposte di compressione. Ogni JSON:
   {{
     "executor_target": "<primo executor del cluster da cui parte la compressione>",
-    "new_op_name": "<canonical del super-verbo, es. find_files#unified>",
+    "new_op_name": "<verb_object_qualifier_unified> es. compute_files_loc_unified (descriptor `_unified` richiede qualifier 3°)",
     "proposed_action": "COMPRESS: <executor_A>, <executor_B>, [<executor_C>] → <super-verbo> con param <param_disambiguator>. Compression: N_args → M_args (delta tokens).",
     "rationale": "<gain attesa: meno codice, meno carico planner, 1 riga>"
   }}
