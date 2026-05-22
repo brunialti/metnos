@@ -42,152 +42,25 @@ if _RUNTIME not in sys.path:
 
 from platform_policy import is_system_file  # noqa: E402
 from messages import get as _msg  # noqa: E402
-
+# path_alias modulo riusabile (D.1, D.3). Re-export degli alias come moduli
+# locali per back-compat con test esistenti che mockano backends.files.local.
+from path_alias import (  # noqa: E402
+    candidate_roots as _candidate_roots,
+    count_files_recursive as _count_files_recursive,
+    resolve_path_with_alias as _resolve_path_with_alias,
+    list_alias_candidates as _list_alias_candidates,
+    check_mutating_path_ambiguity as _check_mutating_path_ambiguity,
+    home_dir_suggestions as _home_dir_suggestions,
+    USER_DIR_ALIASES as _USER_DIR_ALIASES,
+)
 
 # Alias bilingue IT↔EN per i path utente standard (XDG user-dirs). Quando
 # l'utente IT scrive "Immagini" su un sistema con LANG=en_US la cartella
 # vera e' "Pictures": senza questo mapping find_files fallisce e il planner
-# ritenta inutilmente lo stesso step (bug osservato turn d39e16bb).
-_USER_DIR_ALIASES = {
-    # IT lowercase → candidati ordinati per probabilita'
-    "immagini":   ["Pictures", "Immagini", "Foto", "Images", "images"],
-    "foto":       ["Pictures", "Foto", "Immagini", "images"],
-    "documenti":  ["Documents", "Documenti", "Docs"],
-    "musica":     ["Music", "Musica"],
-    "video":      ["Videos", "Video", "Movies"],
-    "scaricati":  ["Downloads", "Scaricati", "Download"],
-    "scrivania":  ["Desktop", "Scrivania"],
-    "modelli":    ["Templates", "Modelli"],
-    "pubblici":   ["Public", "Pubblici"],
-    # EN lowercase → candidati (caso utente IT che chiede in EN o opposto)
-    "pictures":   ["Pictures", "Immagini", "Foto"],
-    "documents":  ["Documents", "Documenti"],
-    "music":      ["Music", "Musica"],
-    "videos":     ["Videos", "Video", "Movies"],
-    "movies":     ["Movies", "Videos", "Video"],
-    "downloads":  ["Downloads", "Scaricati"],
-    "desktop":    ["Desktop", "Scrivania"],
-    "templates":  ["Templates", "Modelli"],
-    "public":     ["Public", "Pubblici"],
-    "images":     ["Pictures", "Immagini", "images"],
-}
-
-
-def _candidate_roots() -> list[Path]:
-    """Root da cui cercare alias di user-dirs. Ordine = priorita':
-    1. HOME (XDG canonico)
-    2. NAS mount path (/tmp/nas_public/media — convention .33 ADR 0087)
-    3. /mnt e /media (mount tradizionali Linux)
-    Filtra root inesistenti per evitare lookup futili.
-    """
-    cands = [
-        Path.home(),
-        Path("/tmp/nas_public/media"),
-        Path("/mnt"),
-        Path("/media"),
-    ]
-    return [p for p in cands if p.is_dir()]
-
-
-def _count_files_recursive(path: Path, cap: int = 10000) -> int:
-    """Conta file ricorsivi (cap per evitare scan di TB). Per ranking match."""
-    try:
-        n = 0
-        for entry in path.rglob("*"):
-            try:
-                if entry.is_file():
-                    n += 1
-                    if n >= cap:
-                        return n
-            except OSError:
-                continue
-        return n
-    except (OSError, PermissionError):
-        return 0
-
-
-def _resolve_path_with_alias(base_path: str) -> tuple[Path, str | None]:
-    """Risolve `base_path` provando alias bilingue e root multipli.
-
-    Strategia:
-    1. Se base_path esiste cosi' com'e' → usa quello (no surprise).
-    2. Altrimenti, per ogni root in `_candidate_roots()` e ogni alias
-       bilingue, cerca match esistenti.
-    3. Se 1 candidate: usa quello.
-    4. Se >1 candidate: sceglie quello con piu' file (probabile "vero"
-       archivio), annota nel note "trovati N candidati, scelto il piu' grande".
-
-    Ritorna (resolved_path, alias_note | None).
-    """
-    expanded = Path(os.path.expanduser(base_path)).resolve()
-    if expanded.exists():
-        return expanded, None
-    # Alias lookup solo se name e' nel dizionario bilingue.
-    name_key = expanded.name.lower()
-    aliases = _USER_DIR_ALIASES.get(name_key, [])
-    if not aliases:
-        return expanded, None
-    # Aggrega candidati esistenti in tutti i root.
-    candidates: list[Path] = []
-    for root in _candidate_roots():
-        for alias in aliases:
-            cand = root / alias
-            try:
-                if cand.is_dir():
-                    candidates.append(cand)
-            except (OSError, PermissionError):
-                continue
-    if not candidates:
-        return expanded, None
-    if len(candidates) == 1:
-        chosen = candidates[0]
-        note = (f"path '{base_path}' non esiste; risolto a '{chosen}' "
-                f"(alias bilingue IT/EN per xdg user-dirs)")
-        return chosen, note
-    # Multiple: rank per # file (più grande = probabile vero archivio).
-    ranked = sorted(
-        ((c, _count_files_recursive(c)) for c in candidates),
-        key=lambda kv: -kv[1],
-    )
-    chosen = ranked[0][0]
-    others = ", ".join(f"'{p}' ({n} files)" for p, n in ranked[1:])
-    note = (
-        f"path '{base_path}' non esiste; trovati {len(candidates)} candidati: "
-        f"scelto '{chosen}' ({ranked[0][1]} files, piu' grande). "
-        f"Altri: {others}"
-    )
-    return chosen, note
-
-
-def _home_dir_suggestions(missing_name: str, limit: int = 6) -> list[str]:
-    """Quando un path utente non esiste, suggerisce cartelle in HOME che
-    potrebbero essere ragionevoli alternative. Output sorted per pertinenza:
-    1. Cartelle XDG user-dirs esistenti.
-    2. Altre cartelle non-hidden in home.
-
-    Il planner usa queste suggestion per chiedere all'utente quale path
-    intendeva, evitando il loop_break generico "aggiungi dettaglio".
-    """
-    home = Path.home()
-    if not home.is_dir():
-        return []
-    xdg_set = {"Pictures", "Documents", "Music", "Videos", "Downloads",
-               "Desktop", "Templates", "Public",
-               "Immagini", "Documenti", "Musica", "Video", "Scaricati",
-               "Scrivania", "Modelli", "Pubblici", "Foto"}
-    out_xdg: list[str] = []
-    out_other: list[str] = []
-    try:
-        for entry in sorted(home.iterdir(), key=lambda p: p.name.lower()):
-            if not entry.is_dir() or entry.name.startswith("."):
-                continue
-            if entry.name in xdg_set:
-                out_xdg.append(str(entry))
-            else:
-                out_other.append(str(entry))
-    except (PermissionError, OSError):
-        return []
-    return (out_xdg + out_other)[:limit]
+# Le funzioni di alias resolver vivono ora in `runtime/path_alias.py` (D.3
+# refactor 22/5/2026, modulo riusabile da local.py + list_dirs.py + altri
+# executor). Import sopra al modulo. Riferimenti `_*` mantengono back-compat
+# con il codice del backend.
 
 
 # --- read ------------------------------------------------------------------
@@ -327,6 +200,12 @@ def write(args: dict) -> dict:
     if mode not in ("overwrite", "append", "fail_if_exists"):
         return {"ok": False, "error_code": "ERR_ARG_INVALID",
                 "error": _msg("ERR_ARG_INVALID", arg="mode", reason=f"invalid value '{mode}'")}
+
+    # D.3: ambiguita' alias bilingue → ERR_AMBIGUOUS_PATH se parent non
+    # esiste e ci sono >0 candidati. Mai auto-resolve su mutating.
+    ambig = _check_mutating_path_ambiguity(path, target_must_exist=False)
+    if ambig is not None:
+        return ambig
 
     abs_path = os.path.abspath(os.path.expanduser(path))
     pre_existed = os.path.exists(abs_path)
@@ -716,6 +595,30 @@ def move(args: dict) -> dict:
         return {"ok": False, "error_code": "ERR_ARG_INVALID",
                 "error": _msg("ERR_ARG_INVALID", arg="dst_template", reason="must be a string")}
 
+    # D.3: pre-check ambiguita' alias bilingue su tutti src + dst_template
+    # parent. Se anche solo UN path e' ambiguo, fail globale (move never
+    # implicit delete: meglio non muovere nessuno che muovere quello
+    # sbagliato). Skip se dst_template ha placeholder ({...}).
+    if "{" not in dst_template:
+        ambig_dst = _check_mutating_path_ambiguity(
+            dst_template, target_must_exist=False)
+        if ambig_dst is not None:
+            ambig_dst["error"] = "dst_template ambiguo: " + ambig_dst["error"]
+            return ambig_dst
+    for i, entry in enumerate(entries[:50]):  # cap pre-check a 50
+        if not isinstance(entry, dict):
+            continue
+        src_arg = entry.get("path") or entry.get("src")
+        if not src_arg or not isinstance(src_arg, str):
+            continue
+        ambig_src = _check_mutating_path_ambiguity(
+            src_arg, target_must_exist=True)
+        if ambig_src is not None:
+            ambig_src["error"] = (
+                f"src[{i}] '{src_arg}' ambiguo: " + ambig_src["error"]
+            )
+            return ambig_src
+
     results = []
     failed = []
     all_dirs_created = set()
@@ -1008,6 +911,11 @@ def create_dirs(args: dict) -> dict:
             failed.append({"index": i, "path": p, "error_code": "ERR_ARG_INVALID",
                            "error": _msg("ERR_ARG_INVALID", arg="path", reason="must be a non-empty string")})
             continue
+        # D.3: ambiguita' alias bilingue su parent → ERR_AMBIGUOUS_PATH.
+        ambig = _check_mutating_path_ambiguity(p, target_must_exist=False)
+        if ambig is not None:
+            failed.append({"index": i, "path": p, **ambig})
+            continue
         ok, target, info, created = _create_one(p, parents, exist_ok, mode)
         if ok:
             entry = {"path": target, "created": created}
@@ -1134,6 +1042,11 @@ def delete_files(args: dict) -> dict:
             failed.append({"index": i, "path": p, "error_code": "ERR_ARG_INVALID",
                            "error": _msg("ERR_ARG_INVALID", arg="path", reason="must be a non-empty string")})
             continue
+        # D.3: ambiguita' alias bilingue (delete = target must exist).
+        ambig = _check_mutating_path_ambiguity(p, target_must_exist=True)
+        if ambig is not None:
+            failed.append({"index": i, "path": p, **ambig})
+            continue
         try:
             abs_path = Path(os.path.expanduser(p)).resolve()
         except OSError as e:
@@ -1224,6 +1137,12 @@ def delete_dirs(args: dict) -> dict:
         if not isinstance(p, str) or not p:
             failed.append({"index": i, "path": p, "error_code": "ERR_ARG_INVALID",
                            "error": _msg("ERR_ARG_INVALID", arg="path", reason="must be a non-empty string")})
+            continue
+        # D.3: ambiguita' alias bilingue (delete_dirs = target must exist).
+        # Rischio massimo: cancellare 33578 file NAS quando si voleva 116 in ~/images.
+        ambig = _check_mutating_path_ambiguity(p, target_must_exist=True)
+        if ambig is not None:
+            failed.append({"index": i, "path": p, **ambig})
             continue
         ok, target, info = _remove_one(p, if_empty_only, force)
         if ok:

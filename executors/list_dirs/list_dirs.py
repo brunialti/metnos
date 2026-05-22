@@ -23,6 +23,11 @@ import os
 import sys
 from pathlib import Path
 
+sys.path.insert(0, os.environ.get("METNOS_RUNTIME") or next(
+    str(p / "runtime") for p in Path(__file__).resolve().parents
+    if (p / "runtime" / "config.py").is_file()))
+from path_alias import resolve_path_with_alias  # noqa: E402
+
 _KIND_PREFIX = {
     "image": ("image/",),
     "video": ("video/",),
@@ -67,9 +72,11 @@ def invoke(args):
     if sort_by not in ("name", "mtime", "size"):
         return {"ok": False, "error": "sort must be one of name|mtime|size"}
 
-    base = Path(os.path.expanduser(path)).resolve()
+    # path_alias resolver: workspace-default + bilingue IT/EN + multi-root.
+    base, alias_note = resolve_path_with_alias(path)
     if not base.exists():
-        return {"ok": False, "error": f"path not found: {base}"}
+        return {"ok": False, "error_code": "ERR_PATH_NOT_FOUND",
+                "error": f"path not found: {base}"}
     if not base.is_dir():
         return {"ok": False, "error": f"path is not a directory: {base}"}
 
@@ -139,6 +146,7 @@ def invoke(args):
             "count": len(entries),
             "truncated": truncated,
             "sort": sort_by,
+            **({"alias_resolved": alias_note} if alias_note else {}),
         },
     }
 
