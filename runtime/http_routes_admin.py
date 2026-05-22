@@ -326,47 +326,96 @@ def _telos_lens_facets(rows: list[dict]) -> dict:
 async def admin_telos_proposals(request: web.Request) -> web.Response:
     """GET /admin/proposals/telos
 
-    Query params: min_alignment (float), lens (str), telos_id (str),
-    only_pending (bool), enriched (bool=true).
+    Query params:
+      tier: 'top' (≥0.45), 'interesting' (0.30-0.45, default), 'weak' (<0.30)
+      min_alignment: float override del tier (advanced)
+      lens, telos_id: filtri sorgente
+      only_pending: bool, nasconde accept/reject (stage resta)
+      group_clusters: bool=true, collassa proposte con stesso signature_relaxed
     """
+    tier = request.query.get("tier", "interesting").strip().lower()
+    # Tier bands (sincronizzati con telos_proposals_store.TIER_*)
+    tier_bands = {
+        "top":         (telos_proposals_store.TIER_TOP_MIN, 1.0),
+        "interesting": (telos_proposals_store.TIER_INTERESTING_MIN,
+                        telos_proposals_store.TIER_TOP_MIN),
+        "weak":        (0.0, telos_proposals_store.TIER_INTERESTING_MIN),
+    }
+    if tier not in tier_bands:
+        tier = "interesting"
+    band_min, band_max = tier_bands[tier]
+    # Override esplicito via min_alignment (advanced)
     try:
-        min_align = float(request.query.get("min_alignment", _TELOS_DASH_DEFAULT_MIN))
+        min_align_override = request.query.get("min_alignment", "").strip()
+        if min_align_override:
+            band_min = float(min_align_override)
+            band_max = 1.0
+            tier = "custom"
     except ValueError:
-        min_align = _TELOS_DASH_DEFAULT_MIN
+        pass
+
     lens = request.query.get("lens", "").strip() or None
     telos_id = request.query.get("telos_id", "").strip() or None
     only_pending = request.query.get("only_pending", "0") in ("1", "true", "on")
+    group_clusters = request.query.get("group_clusters", "1") in ("1", "true", "on")
 
-    rows = telos_proposals_store.load_all(
-        min_alignment=min_align,
+    # Carica TUTTO sopra band_min e applica band_max + filtri post-load
+    rows_all = telos_proposals_store.load_all(
+        min_alignment=band_min,
         lens=lens,
         telos_id=telos_id,
-        max_rows=_TELOS_DASH_MAX_ROWS,
+        max_rows=_TELOS_DASH_MAX_ROWS * 10,
         include_decided=not only_pending,
         enrich_rows=True,
     )
+    rows = [r for r in rows_all if r.get("expected_alignment", 0) < band_max]
+    # Group by signature_relaxed: 1 riga leader per cluster, varianti collassate.
+    if group_clusters:
+        seen_sigs = set()
+        grouped = []
+        for r in rows:
+            sig = r.get("signature_relaxed")
+            if not sig or sig in seen_sigs:
+                continue
+            seen_sigs.add(sig)
+            grouped.append(r)
+        rows = grouped
+    rows = rows[:_TELOS_DASH_MAX_ROWS]
+
     stats = telos_proposals_store.stats()
-    # Facets calcolate sull'INTERA collezione (non filtrata) per i dropdown.
+    # Tier counts su INTERA collezione (per UI tab badge).
     all_rows = telos_proposals_store.load_all(
         min_alignment=0.0, max_rows=10000, enrich_rows=False,
     )
     facets = _telos_lens_facets(all_rows)
+    tier_counts = {"top": 0, "interesting": 0, "weak": 0}
+    for r in all_rows:
+        ea = r.get("expected_alignment", 0.0)
+        if ea >= telos_proposals_store.TIER_TOP_MIN:
+            tier_counts["top"] += 1
+        elif ea >= telos_proposals_store.TIER_INTERESTING_MIN:
+            tier_counts["interesting"] += 1
+        else:
+            tier_counts["weak"] += 1
 
     return negotiate_collection(
         request,
         json_payload={
             "rows": rows, "stats": stats, "facets": facets,
+            "tier_counts": tier_counts,
             "filters": {
-                "min_alignment": min_align,
+                "tier": tier, "min_alignment": band_min,
                 "lens": lens or "", "telos_id": telos_id or "",
-                "only_pending": only_pending,
+                "only_pending": only_pending, "group_clusters": group_clusters,
             },
         },
         template="proposals_telos.html",
         template_ctx={
             "rows": rows, "stats": stats, "facets": facets,
-            "min_alignment": min_align, "lens": lens or "",
+            "tier_counts": tier_counts, "tier": tier,
+            "min_alignment": band_min, "lens": lens or "",
             "telos_id": telos_id or "", "only_pending": only_pending,
+            "group_clusters": group_clusters,
         },
     )
 
@@ -396,17 +445,37 @@ async def admin_telos_proposal_action(request: web.Request) -> web.Response:
     if action not in ("accept", "reject", "stage"):
         return _error(400, "invalid_action",
                       f"action must be accept|reject|stage, got {action}")
+    # Lookup della proposta per popolare executor_target + signature_relaxed
+    # nel decision record (C.5 anti-resurrezione). Lazy: solo per prop_id
+    # ricercato, no full scan se reject (LWW gestisce LWW indipendentemente).
+    extra: dict = {}
+    try:
+        rows = telos_proposals_store.load_all(
+            min_alignment=0.0, max_rows=10000, enrich_rows=True,
+        )
+        for r in rows:
+            if r.get("prop_id") == prop_id:
+                extra["executor_target"] = r.get("executor_target") or ""
+                extra["signature_relaxed"] = r.get("signature_relaxed") or ""
+                extra["lens"] = r.get("lens") or ""
+                break
+    except Exception as ex:
+        log.warning("telos proposal action: lookup failed: %r", ex)
     try:
         rec = telos_proposals_store.apply_decision(
-            prop_id, action, by="admin")
+            prop_id, action, by="admin", **extra,
+        )
     except ValueError as e:
         return _error(400, "invalid_action", str(e))
     except Exception as e:
         log.exception("telos proposal action failed")
         return _error(500, "internal_error", str(e))
 
-    if "text/html" in request.headers.get("Accept", ""):
-        # Riga compressa con badge della decisione.
+    # htmx 1.x manda `HX-Request: true`. `Accept` da htmx e' `*/*` di default
+    # quindi il check "text/html in Accept" fallisce. Usiamo HX-Request come
+    # discriminante autorevole: presente → swap HTML, assente → JSON.
+    is_htmx = request.headers.get("HX-Request", "").lower() == "true"
+    if is_htmx:
         html = _render_telos_row_html({"prop_id": prop_id, "decision": rec})
         return web.Response(text=html, content_type="text/html")
     return web.json_response({"ok": True, "prop_id": prop_id, "action": action,

@@ -49,7 +49,23 @@ _LOCAL_GEMMA_ENDPOINT = "http://127.0.0.1:8080"
 
 
 def _persist(record: dict) -> None:
-    """Append-only telemetria. Best-effort."""
+    """Append-only telemetria. Best-effort.
+
+    Anti-resurrezione (C.5, 22/5/2026): se il `executor_target` della proposta
+    e' nei `rejected_targets()` (LWW), skippa silenziosamente. Coerente con
+    la regola utente: "se cancello una proposta non deve riapparire la sera
+    dopo". Implementazione conservativa "per target" (collassa anche varianti
+    parametriche): per ora preferiamo over-filter a under-filter.
+    """
+    try:
+        from telos_proposals_store import rejected_targets
+        rej_targets = rejected_targets()
+        target = record.get("executor_target") or ""
+        if target and target in rej_targets:
+            _LOG.info("telos_introspect: skip persist (rejected target): %s", target)
+            return
+    except Exception as ex:
+        _LOG.warning("telos_introspect: rejected_targets check failed: %r", ex)
     try:
         TELEMETRY_PATH.parent.mkdir(parents=True, exist_ok=True)
         with TELEMETRY_PATH.open("a", encoding="utf-8") as fh:

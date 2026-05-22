@@ -22,6 +22,20 @@ _jinja_env = Environment(
 )
 
 
+def _jinja_msg(key: str, **kwargs) -> str:
+    """Funzione Jinja globale `msg(key, **vars)` → i18n.sqlite.
+
+    Lingua corrente via `messages.get` (env METNOS_LANG, default it).
+    Se la chiave manca per la lingua, `i18n.get` ritorna fallback nativo
+    (chiave fra `[]`) per visibilita' al developer.
+    """
+    import messages as _msgs
+    return _msgs.get(key, **kwargs)
+
+
+_jinja_env.globals["msg"] = _jinja_msg
+
+
 def render_template(name: str, **ctx) -> str:
     """Render del template Jinja `name` con il contesto `ctx`."""
     return _jinja_env.get_template(name).render(**ctx)

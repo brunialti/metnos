@@ -4,6 +4,10 @@
 Read-only sui proposals JSONL (cui scrivono lenti + AlignmentEngine),
 append-only sulle decisioni admin in `telos_decisions.jsonl`.
 
+Definisce anche `UnifiedProposal` (vedi sotto): struttura unica per
+proposte di QUALSIASI sorgente (telos, introvertiva, synt, multi_tool).
+Metadati di provenance + ranking separati dal payload comune.
+
 Determinismo §7.9: nessun LLM, nessuna logica fuzzy. Filtri sono predicati
 puri. ID proposta = `ts` (timestamp float, granularita' microsecondi:
 collisione virtualmente impossibile per le sole proposte introspettive
@@ -26,12 +30,119 @@ Sorgenti file (path canonical, dataclass-free per leggerezza):
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 import time
-from collections import Counter
+from collections import Counter, defaultdict
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Optional
+
+
+# ============================================================================
+# UnifiedProposal — struttura comune cross-sorgente (telos, introvertiva, ...)
+# ============================================================================
+#
+# Razionale (utente, 22/5/2026): "l'oggetto proposal deve essere unico.
+# Contiene metadati (origine, valori numerici di ranking ecc) ma il rimanente
+# deve essere uguale". Separiamo provenance (source/source_id/generator) +
+# ranking (score, confidence) dal payload comune (target, action, rationale,
+# pipeline, validation flags, enrichment turn log).
+#
+# `signature` cross-sorgente abilita dedup: due proposte da lenti diverse che
+# coincidono su (target, pipeline_tools_normalized) hanno la stessa signature
+# e vengono raggruppate in cluster (convergence_count > 1).
+
+# Tier band per il filtro UI: definito qui per single-source con telos_proposals_store.stats().
+TIER_TOP_MIN = 0.45
+TIER_INTERESTING_MIN = 0.30
+
+
+@dataclass
+class UnifiedProposal:
+    """Proposta da QUALSIASI sorgente, schema invariante (ADR 0157+0158).
+
+    - Metadati di provenance: `source`, `source_id`, `origin_module`, `generated_at`.
+    - Ranking: `ranking_score` ∈ [0,1], `confidence` ∈ [0,1].
+    - Payload comune: `executor_target`, `proposed_action`, `rationale`,
+      `pipeline_tools_mentioned`, `alignment_per_telos` (sorgente-specific
+      per telos, vuoto per introvertiva).
+    - Validation flags (dedup/naming): `name_in_catalog`, `name_grammar_valid`,
+      `name_invalid_reason`, `hallucinated_tool_mentions`,
+      `is_parametric_extension`, `convergence_count`, `convergence_lenses`.
+    - Enrichment turn log: `example_query`, `current_path`, `new_path_estimated`,
+      `latency_saved_ms_est`, `pipeline_observed`.
+    - Stato decisione admin: `decision` dict | None.
+    """
+    # Identificazione cross-sorgente
+    prop_id: str
+    source: str  # "telos" | "introvertiva" | "synt" | "multi_tool"
+    source_id: str
+    origin_module: str = ""  # lens (telos) | kind (introvertiva) | etc.
+    generated_at: float = 0.0
+
+    # Ranking
+    ranking_score: float = 0.0
+    confidence: float = 0.8
+
+    # Payload comune
+    executor_target: str = ""
+    proposed_action: str = ""
+    rationale: str = ""
+    pipeline_tools_mentioned: list = field(default_factory=list)
+
+    # Per-telos breakdown (sorgente-specific telos)
+    alignment_per_telos: list = field(default_factory=list)
+    paternalism_flag: bool = False
+    n_observed: Optional[int] = None
+    telos_id: Optional[str] = None  # telos generante
+    operator: Optional[str] = None  # SCAMPER S/C/A/M/P/E/R
+
+    # Validation flags (popolati da enrich)
+    name_status: str = "unknown"  # vedi _classify_name_status sotto
+    name_status_reason: Optional[str] = None
+    name_grammar_valid: bool = True
+    hallucinated_tool_mentions: list = field(default_factory=list)
+    is_parametric_extension: bool = False
+    convergence_count: int = 1
+    convergence_lenses: list = field(default_factory=list)
+    # Lista di prop_id che condividono la stessa signature (dedup cluster).
+    dedup_cluster: list = field(default_factory=list)
+
+    # Enrichment turn log
+    example_query: Optional[str] = None
+    current_path: list = field(default_factory=list)
+    new_path_estimated: list = field(default_factory=list)
+    current_latency_ms: Optional[int] = None
+    latency_saved_ms_est: Optional[int] = None
+    pipeline_observed: bool = False
+
+    # Stato decisione
+    decision: Optional[dict] = None
+
+    def signature(self) -> str:
+        """Hash stabile per dedup cross-sorgente.
+
+        Basato su (executor_target, pipeline normalizzata, is_parametric).
+        Due proposte con stesso signature → stesso cluster (convergenza)."""
+        pipeline_sig = ",".join(sorted(
+            t for t in self.pipeline_tools_mentioned
+            if t != self.executor_target
+        ))
+        key = f"{self.executor_target}|{pipeline_sig}|{int(self.is_parametric_extension)}"
+        return hashlib.sha256(key.encode("utf-8")).hexdigest()[:16]
+
+    def tier(self) -> str:
+        """Banda UI: 'top' (≥0.45), 'interesting' (0.30-0.45), 'weak' (<0.30)."""
+        if self.ranking_score >= TIER_TOP_MIN:
+            return "top"
+        if self.ranking_score >= TIER_INTERESTING_MIN:
+            return "interesting"
+        return "weak"
+
+    def to_dict(self) -> dict:
+        return asdict(self)
 
 _DATA_DIR = Path.home() / ".local" / "share" / "metnos"
 _PROPOSALS_CANDIDATES = (
@@ -126,6 +237,42 @@ def load_all(
         turns = _load_turns()
         for rec in out:
             enrich(rec, turns)
+        # --- Convergence cluster (C.2, 22/5/2026) -------------------------
+        # Due livelli di signature:
+        #   - `signature` (strict): hash(target | sorted(others) | parametric)
+        #     → proposte identiche su pipeline + intent.
+        #   - `signature_relaxed`: hash(target | parametric) → proposte sullo
+        #     STESSO target/intent base anche se la pipeline parsata differisce
+        #     (es. 7 proposte "deadline-to-calendar" che citano tool diversi
+        #     ma propongono la stessa capability su create_events).
+        # `convergence_count` usa signature_relaxed (segnale "n lenti
+        # concordano sull'intent"); `dedup_cluster` usa signature strict
+        # (collassa duplicate esatte). Entrambi disponibili al consumer.
+        from collections import defaultdict as _dd
+        cluster_strict: dict[str, list[dict]] = _dd(list)
+        cluster_relaxed: dict[str, list[dict]] = _dd(list)
+        for rec in out:
+            target = rec.get("executor_target", "") or ""
+            mentions = rec.get("pipeline_tools_mentioned", []) or []
+            others = sorted(t for t in mentions if t != target)
+            parametric = 1 if rec.get("is_parametric_extension") else 0
+            strict_key = f"{target}|{','.join(others)}|{parametric}"
+            relaxed_key = f"{target}|{parametric}"
+            sig_strict = hashlib.sha256(strict_key.encode("utf-8")).hexdigest()[:16]
+            sig_relaxed = hashlib.sha256(relaxed_key.encode("utf-8")).hexdigest()[:16]
+            rec["signature"] = sig_strict
+            rec["signature_relaxed"] = sig_relaxed
+            cluster_strict[sig_strict].append(rec)
+            cluster_relaxed[sig_relaxed].append(rec)
+        for sig, members in cluster_strict.items():
+            ids = [m["prop_id"] for m in members]
+            for m in members:
+                m["dedup_cluster"] = ids
+        for sig, members in cluster_relaxed.items():
+            lenses = sorted({m.get("lens", "?") for m in members})
+            for m in members:
+                m["convergence_count"] = len(members)
+                m["convergence_lenses"] = lenses
     return out
 
 
@@ -153,8 +300,21 @@ def decisions_index() -> dict[str, dict]:
     return idx
 
 
-def apply_decision(prop_id: str, action: str, by: str = "admin") -> dict:
+def apply_decision(
+    prop_id: str,
+    action: str,
+    by: str = "admin",
+    *,
+    executor_target: Optional[str] = None,
+    signature_relaxed: Optional[str] = None,
+    lens: Optional[str] = None,
+) -> dict:
     """Appende una decisione al file. Ritorna il record persistito.
+
+    Campi opzionali (executor_target, signature_relaxed, lens) servono al
+    writer (telos_introspect) per anti-resurrezione: una nuova proposta con
+    stessa signature_relaxed di una rejected DEVE essere skippata (C.5).
+    Persistere nel decision record evita lookup all'origine.
 
     Raises ValueError per action invalida. Non valida prop_id contro il
     set delle proposte (le decisioni sono append-only, l'orphan check
@@ -162,16 +322,75 @@ def apply_decision(prop_id: str, action: str, by: str = "admin") -> dict:
     """
     if action not in _VALID_ACTIONS:
         raise ValueError(f"action must be in {sorted(_VALID_ACTIONS)}, got {action!r}")
-    rec = {
+    rec: dict = {
         "prop_id": prop_id,
         "action": action,
         "ts": time.time(),
         "by": by,
     }
+    if executor_target:
+        rec["executor_target"] = executor_target
+    if signature_relaxed:
+        rec["signature_relaxed"] = signature_relaxed
+    if lens:
+        rec["lens"] = lens
     _DATA_DIR.mkdir(parents=True, exist_ok=True)
     with DECISIONS_PATH.open("a", encoding="utf-8") as fh:
         fh.write(json.dumps(rec, ensure_ascii=False) + "\n")
     return rec
+
+
+def rejected_signatures_relaxed() -> set[str]:
+    """Insieme di `signature_relaxed` di proposte con decision=reject (LWW).
+
+    Usata dal writer (telos_introspect) per anti-resurrezione: skippare
+    proposte nuove con stessa signature_relaxed di una rejected. LWW
+    significa che se una proposta era reject ed e' stata poi accept/stage,
+    NON e' piu' nella set (giusto: l'utente ha cambiato idea).
+
+    Granularita': signature_relaxed = hash(executor_target | is_parametric).
+    Una nuova proposta con stesso target+parametric viene bloccata anche
+    se la pipeline parsata differisce — coerente col messaggio utente:
+    "se cancello una proposta non deve riapparire la sera dopo".
+    """
+    idx = decisions_index()
+    out = set()
+    for d in idx.values():
+        if d.get("action") != "reject":
+            continue
+        sig = d.get("signature_relaxed")
+        if sig:
+            out.add(sig)
+    return out
+
+
+def rejected_targets() -> set[str]:
+    """Insieme di executor_target di proposte rejected. Fallback a
+    `rejected_signatures_relaxed` per proposte vecchie senza target salvato.
+
+    Usato per anti-resurrezione "stesso target": piu' aggressivo della
+    signature_relaxed (collassa anche varianti is_parametric).
+    """
+    idx = decisions_index()
+    out = set()
+    for d in idx.values():
+        if d.get("action") != "reject":
+            continue
+        tgt = d.get("executor_target")
+        if tgt:
+            out.add(tgt)
+    return out
+
+
+def compute_signature_relaxed(executor_target: str,
+                              is_parametric_extension: bool = False) -> str:
+    """Calcola signature_relaxed senza dover costruire un UnifiedProposal.
+
+    Utile per il writer (`telos_introspect`) che vuole verificare anti-
+    resurrezione prima di persistere.
+    """
+    key = f"{executor_target or ''}|{int(bool(is_parametric_extension))}"
+    return hashlib.sha256(key.encode("utf-8")).hexdigest()[:16]
 
 
 # --- Enrichment (turn log + rationale parsing) --------------------------------
@@ -203,6 +422,176 @@ _PER_STEP_LATENCY_MS_MEDIAN = 5500
 _RATIONALE_NUMBER_RE = re.compile(
     r"(\d+)\s*(?:volte|occorrenze|times|co-?attiv)", re.IGNORECASE
 )
+
+# Pattern per detection "modulazione parametrica": la proposta NON aggiunge
+# un nuovo executor ma estende args/modes/output di uno esistente.
+_PARAMETRIC_RE = re.compile(
+    r"\b(?:aggiungere?|aggiunta|estendere?|nuovo\s+parametro|nuova\s+modalit[aà]|"
+    r"parametro\s+`|argomento|arg\s+|modo\s+\w+\b|"
+    r"add\s+(?:parameter|arg|mode)|extend|new\s+(?:parameter|mode|flag))",
+    re.IGNORECASE,
+)
+
+
+# --- Catalog cache (executor names live) -----------------------------------
+# Necessario per validation: capire se executor_target esiste GIA' (caso
+# create_events: target ricorrente nelle proposte ma gia' implementato).
+_CATALOG_CACHE: dict = {"names": frozenset(), "mtime": 0.0}
+_CATALOG_TTL_S = 60.0
+
+
+def _live_catalog_names() -> frozenset[str]:
+    """Set di executor names attualmente nel catalog. Cache TTL 60s.
+
+    Import lazy per evitare overhead se enrich non viene chiamato.
+    """
+    now = time.time()
+    if now - _CATALOG_CACHE["mtime"] < _CATALOG_TTL_S and _CATALOG_CACHE["names"]:
+        return _CATALOG_CACHE["names"]
+    try:
+        # Import lazy (loader pesante per via di project_paths/sign verify).
+        import loader as _loader
+        cat = _loader.load_catalog()
+        names = frozenset(e.name for e in cat)
+    except Exception:
+        names = frozenset()
+    _CATALOG_CACHE["names"] = names
+    _CATALOG_CACHE["mtime"] = now
+    return names
+
+
+def _validate_executor_naming(name: str) -> tuple[bool, Optional[str]]:
+    """Wrapper su `naming_grammar.validate_name`. Ritorna (ok, reason).
+
+    Import lazy (naming_grammar carica vocab.py).
+    """
+    if not name:
+        return False, "empty name"
+    try:
+        import naming_grammar as _ng
+    except ImportError:
+        return True, None  # se non disponibile, no-op tollerante
+    try:
+        live = {e.split("_", 2)[0] + "_" + e.split("_", 2)[1]
+                for e in _live_catalog_names() if "_" in e}
+    except Exception:
+        live = None
+    r = _ng.validate_name(name, live_canonicals=live)
+    return bool(r.ok), (None if r.ok else r.reason)
+
+
+def _detect_parametric_extension(
+    target: str,
+    target_in_catalog: bool,
+    action: str,
+    pipeline_mentions: list,
+) -> bool:
+    """Riconosce proposte che sono SOLO modulazione di un executor esistente.
+
+    Criteri (AND):
+    - Il target esiste gia' nel catalog.
+    - L'azione cita un'estensione di parametri/modes/args.
+    - I tool menzionati sono al massimo {target} (no nuovi step pipeline).
+    """
+    if not target_in_catalog:
+        return False
+    if not _PARAMETRIC_RE.search(action):
+        return False
+    other_mentions = {t for t in pipeline_mentions if t != target}
+    if other_mentions:
+        return False
+    return True
+
+
+def _classify_name_status(
+    target: str,
+    catalog_names: frozenset,
+    grammar_ok: bool,
+    grammar_reason: Optional[str],
+    is_parametric: bool,
+    pipeline_mentions: list,
+) -> tuple[str, Optional[str]]:
+    """Classifica la relazione semantica fra nome proposto e catalog esistente.
+
+    Ritorna (status, reason). Status:
+    - `new_valid`: nome non in catalog, grammar §2.2 ok → proposta legittima.
+    - `new_invalid`: nome non in catalog, grammar fail → allucinazione naming.
+    - `existing_parametric`: nome in catalog + estensione args/modes chiara →
+      modifica utile, ortogonale alla pipeline.
+    - `existing_pipeline`: nome in catalog + combinato con altri tool → uso
+      legittimo del target come step di una nuova pipeline (NOMINA non
+      cambia, ma il composto e' nuovo).
+    - `existing_redundant`: nome in catalog, no estensione param chiara, no
+      altri tool nella pipeline → la proposta sembra riproporre il target
+      cosi' com'e'. Sospetto: o l'LLM ha allucinato che non esiste, oppure
+      vuole sovrascriverne la semantica (review umana).
+    """
+    if not target:
+        return "unknown", "no target"
+    if target not in catalog_names:
+        if grammar_ok:
+            return "new_valid", None
+        return "new_invalid", grammar_reason
+    # target esiste in catalog
+    other_mentions = [t for t in pipeline_mentions if t != target]
+    if is_parametric:
+        return "existing_parametric", "estensione di parametri/modes su executor esistente"
+    if other_mentions:
+        return "existing_pipeline", f"combina con {len(other_mentions)} altri tool"
+    return "existing_redundant", (
+        "target gia' implementato, nessuna estensione parametrica e nessuna pipeline nuova: "
+        "sembra ricreazione dello stesso executor"
+    )
+
+
+def _compute_dedup_clusters(
+    props_iter,
+) -> dict[str, list[str]]:
+    """Calcola signature → list di prop_id su tutto l'insieme.
+
+    `props_iter`: iterabile di UnifiedProposal gia' enriched (con
+    `pipeline_tools_mentioned` + `is_parametric_extension` popolati).
+
+    Ritorna dict signature → [prop_id1, prop_id2, ...].
+    """
+    out: dict[str, list[str]] = defaultdict(list)
+    for p in props_iter:
+        sig = p.signature()
+        out[sig].append(p.prop_id)
+    return dict(out)
+
+
+def _classify_hallucinated_mentions(
+    mentions: list,
+    catalog_names: frozenset,
+) -> list[str]:
+    """Tool nominati nella proposta ma non esistenti in catalog.
+
+    Solo VERE allucinazioni di tool name: nomi che passano `validate_name`
+    (verb/obj/qualifier nel vocab §2.2) ma NON sono nel catalog. Es.
+    `create_events_format` parsa come create+events+_format → valido
+    sintatticamente, ma l'executor non esiste → halluc.
+
+    Esclude:
+    - placeholder semantici (es. `documento_scadenza`, `deadline_date`,
+      `file_metadata`): parsano sintatticamente ma verb/obj NON sono nel
+      vocab, quindi `validate_name` fallisce → skip.
+    - tool esistenti nel catalog.
+    - target stesso (gestito da name_status).
+    """
+    try:
+        import naming_grammar as _ng
+    except ImportError:
+        return []
+    hall = []
+    for m in mentions:
+        if m in catalog_names:
+            continue
+        r = _ng.validate_name(m)
+        if not r.ok:
+            continue  # parsing fail O verb/obj fuori vocab → non e' un tool name
+        hall.append(m)
+    return hall
 
 # Tool names sono `verbo_oggetto` o `verbo_oggetto_qualifier` (§2.2). Pattern
 # safe: 2-4 token snake_case di lunghezza ragionevole.
@@ -391,6 +780,33 @@ def enrich(prop: dict, turns: Optional[list[dict]] = None) -> dict:
         prop["current_latency_ms"] = None
         prop["new_path_estimated"] = [target] if target else []
         prop["latency_saved_ms_est"] = None
+
+    # --- Naming + dedup validation (C.2, 22/5/2026) ------------------------
+    catalog_names = _live_catalog_names()
+    target_in_catalog = bool(target) and target in catalog_names
+
+    grammar_ok, grammar_reason = _validate_executor_naming(target) if target else (True, None)
+    prop["name_grammar_valid"] = grammar_ok
+
+    is_parametric = _detect_parametric_extension(
+        target, target_in_catalog, proposed, mentions,
+    )
+    prop["is_parametric_extension"] = is_parametric
+
+    status, reason = _classify_name_status(
+        target=target,
+        catalog_names=catalog_names,
+        grammar_ok=grammar_ok,
+        grammar_reason=grammar_reason,
+        is_parametric=is_parametric,
+        pipeline_mentions=mentions,
+    )
+    prop["name_status"] = status
+    prop["name_status_reason"] = reason
+
+    prop["hallucinated_tool_mentions"] = _classify_hallucinated_mentions(
+        mentions, catalog_names,
+    )
     return prop
 
 
