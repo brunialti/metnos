@@ -72,6 +72,20 @@ header .role{font-size:.75em;background:rgba(255,255,255,.18);
 .msg .meta{font-size:.7em;color:var(--muted);margin-top:.2rem;
             display:flex;justify-content:space-between;align-items:baseline;gap:1rem}
 .msg .meta .meta-right{margin-left:auto;white-space:nowrap}
+/* Feedback OK/Errore (E.1): icone discrete bottom-right del bubble bot.
+   Default opacity .35 per essere poco invasive; al hover .85. */
+.msg .msg-fb{display:inline-flex;gap:.15rem;margin-left:.4rem}
+.msg .msg-fb-btn{border:none;background:transparent;cursor:pointer;
+                  opacity:.35;font-size:1.1em;line-height:1;padding:0 .25rem;
+                  color:var(--muted);transition:opacity .15s,color .15s;
+                  font-family:inherit}
+.msg .msg-fb-btn:hover{opacity:.85}
+.msg .msg-fb-btn.ok:hover{color:#2a8}
+.msg .msg-fb-btn.err:hover{color:#c53}
+.msg .msg-fb-btn:disabled{cursor:default;opacity:.2}
+.msg .msg-fb-pending{opacity:.5}
+.msg .msg-fb-done{color:var(--muted);font-size:.9em;margin-left:.4rem;opacity:.7;
+                   white-space:nowrap}
 .msg .path-badges{display:flex;flex-wrap:wrap;gap:.25rem;align-items:center;
                    font-size:.7em;color:var(--muted);margin-top:.35rem}
 .msg .path-badges .arrow{color:#bbb;font-size:.85em;margin:0 .05rem}
@@ -311,6 +325,33 @@ function clearCmdBuf(){
   try { localStorage.removeItem(CMDBUF_KEY); } catch(_){}
 }
 
+async function sendFeedback(turnId, action, container){
+  // POST /agent/turns/{turn_id}/feedback (HX-Request → HTML swap).
+  // Disabilita i button durante la richiesta, rimpiazza con badge "grazie".
+  const btns = container.querySelectorAll('button');
+  btns.forEach(b => b.disabled = true);
+  container.classList.add('msg-fb-pending');
+  try {
+    const r = await fetch('/agent/turns/' + turnId + '/feedback', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json', 'HX-Request': 'true'},
+      body: JSON.stringify({action: action}),
+    });
+    if(r.ok){
+      const html = await r.text();
+      container.outerHTML = html;
+    } else {
+      container.classList.remove('msg-fb-pending');
+      btns.forEach(b => b.disabled = false);
+      container.title = 'errore HTTP ' + r.status;
+    }
+  } catch(e) {
+    container.classList.remove('msg-fb-pending');
+    btns.forEach(b => b.disabled = false);
+    container.title = 'errore: ' + e.message;
+  }
+}
+
 function add(cls, text, meta, persist, attachments, galleryInfo, htmlMode){
   const d = document.createElement('div');
   d.className = 'msg ' + cls;
@@ -452,6 +493,21 @@ function add(cls, text, meta, persist, attachments, galleryInfo, htmlMode){
         right.className = 'meta-right';
         right.textContent = meta.right || '';
         m.appendChild(right);
+        // Feedback OK/Errore (E.1, 22/5/2026). Solo su messaggi bot con
+        // turn_id valido. Inseriti DOPO il meta-right per non disturbare.
+        if(cls === 'bot' && meta.turn_id){
+          const fb = document.createElement('span');
+          fb.className = 'msg-fb';
+          fb.dataset.turnId = meta.turn_id;
+          fb.innerHTML =
+            '<button class="msg-fb-btn ok" title="{{ msg("MSG_CHAT_FB_OK_HINT")|e }}">✓</button>'
+          + '<button class="msg-fb-btn err" title="{{ msg("MSG_CHAT_FB_ERR_HINT")|e }}">✗</button>';
+          fb.querySelector('.ok').addEventListener('click',
+            () => sendFeedback(meta.turn_id, 'ok', fb));
+          fb.querySelector('.err').addEventListener('click',
+            () => sendFeedback(meta.turn_id, 'error', fb));
+          m.appendChild(fb);
+        }
         d.appendChild(m);
       } else if(meta.text){
         const m = document.createElement('div');
@@ -647,9 +703,10 @@ async function fetchServerHistory(){
         if(ph) ph.dataset.turnId = t.turn_id;
         if(ph) ph.dataset.inFlight = '1';
       } else if(t.final_message){
-        const meta = 'turn ' + (t.turn_id || '').slice(0,8) +
-                     (t.total_ms ? ' · ' + (t.total_ms/1000).toFixed(1) + 's' : '');
-        add('bot', t.final_message_html || t.final_message, meta, true,
+        const metaLeft = 'turn ' + (t.turn_id || '').slice(0,8) +
+                          (t.total_ms ? ' · ' + (t.total_ms/1000).toFixed(1) + 's' : '');
+        add('bot', t.final_message_html || t.final_message,
+            { left: metaLeft, right: '', turn_id: t.turn_id }, true,
             t.attachments || null, null,
             !!t.final_message_html);
       }
@@ -1192,7 +1249,7 @@ form.addEventListener('submit', async (e) => {
           ? data.steps_summary.map(s => ({tool: s.tool, ok: s.ok}))
           : [];
       add('bot', body,
-          { path: path, left: metaLeft, right: metaRight },
+          { path: path, left: metaLeft, right: metaRight, turn_id: data.turn_id },
           true,
           data.attachments || null, galleryInfo, bodyAsHtml);
     } else if(kind === 'error'){
