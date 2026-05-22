@@ -40,15 +40,15 @@
       <td class="muted">{{ r.last_seen }}</td>
       <td>
         <button class="btn"
-                hx-post="/admin/proposals/{{ r.sig_key|urlencode }}/approve"
+                hx-post="/admin/proposals/introvertiva/{{ r.sig_key|urlencode }}/approve"
                 hx-confirm="Approve {{ r.sig_key }}?"
                 hx-target="closest tr" hx-swap="outerHTML">approve</button>
         <button class="btn"
-                hx-post="/admin/proposals/{{ r.sig_key|urlencode }}/reject"
+                hx-post="/admin/proposals/introvertiva/{{ r.sig_key|urlencode }}/reject"
                 hx-confirm="Reject {{ r.sig_key }}?"
                 hx-target="closest tr" hx-swap="outerHTML">reject</button>
         <button class="btn"
-                hx-post="/admin/proposals/{{ r.sig_key|urlencode }}/defer"
+                hx-post="/admin/proposals/introvertiva/{{ r.sig_key|urlencode }}/defer"
                 hx-target="closest tr" hx-swap="outerHTML">defer</button>
       </td>
     </tr>

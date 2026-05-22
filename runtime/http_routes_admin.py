@@ -17,6 +17,7 @@ from aiohttp import web
 
 import executor_aging
 import proposals_state
+import proposals_unified
 import telos_proposals_store
 import users
 from http_auth import (
@@ -302,6 +303,120 @@ async def admin_proposal_action(request: web.Request) -> web.Response:
         return web.Response(text=html, content_type="text/html")
     return web.json_response({"ok": True, "sig_key": sig_key, "action": action,
                               "state": row.state})
+
+
+# --- /admin/proposals (unified hub C.6, 22/5/2026) ---------------------------
+
+_UNIFIED_DASH_MAX_ROWS = 80
+
+
+async def admin_proposals_unified(request: web.Request) -> web.Response:
+    """GET /admin/proposals — hub multi-sorgente (telos + introvertiva + ...).
+
+    Query params:
+      source: 'telos' / 'introvertiva' / '' (tutti)
+      tier: 'top' / 'interesting' (default) / 'weak'
+      only_pending: bool
+      group_clusters: bool=true (collassa duplicati cluster telos)
+    """
+    source_filter = request.query.get("source", "").strip() or None
+    tier = request.query.get("tier", "interesting").strip().lower()
+    if tier not in ("top", "interesting", "weak"):
+        tier = "interesting"
+    only_pending = request.query.get("only_pending", "0") in ("1", "true", "on")
+    group_clusters = request.query.get("group_clusters", "1") in ("1", "true", "on")
+
+    rows = proposals_unified.load_unified(
+        source_filter=source_filter,
+        tier=tier,
+        only_pending=only_pending,
+        group_clusters=group_clusters,
+        max_rows=_UNIFIED_DASH_MAX_ROWS,
+    )
+    src_counts = proposals_unified.source_counts()
+
+    # Tier counts cross-source (per tab badge)
+    all_unfiltered = proposals_unified.load_unified(
+        source_filter=source_filter, tier=None, only_pending=False,
+        group_clusters=group_clusters, max_rows=10000,
+    )
+    tier_counts = {"top": 0, "interesting": 0, "weak": 0}
+    for r in all_unfiltered:
+        sc = r.get("ranking_score", 0.0)
+        if sc >= telos_proposals_store.TIER_TOP_MIN:
+            tier_counts["top"] += 1
+        elif sc >= telos_proposals_store.TIER_INTERESTING_MIN:
+            tier_counts["interesting"] += 1
+        else:
+            tier_counts["weak"] += 1
+
+    return negotiate_collection(
+        request,
+        json_payload={
+            "rows": rows,
+            "source_counts": src_counts,
+            "tier_counts": tier_counts,
+            "filters": {
+                "source": source_filter or "",
+                "tier": tier,
+                "only_pending": only_pending,
+                "group_clusters": group_clusters,
+            },
+        },
+        template="proposals_unified.html",
+        template_ctx={
+            "rows": rows,
+            "source_counts": src_counts,
+            "tier_counts": tier_counts,
+            "source": source_filter or "",
+            "tier": tier,
+            "only_pending": only_pending,
+            "group_clusters": group_clusters,
+        },
+    )
+
+
+def _render_unified_row_html(prop_id: str, source: str, action: str,
+                              rec: dict) -> str:
+    """Riga aggiornata post-decisione unified. htmx swap."""
+    badge = {
+        "accept": '<span class="chip ok">accepted</span>',
+        "reject": '<span class="chip bad">rejected</span>',
+        "stage":  '<span class="chip">staged</span>',
+    }.get(action, '<span class="chip muted">pending</span>')
+    return (
+        f'<tr><td colspan="7" class="muted">'
+        f'[{source}] {prop_id[:24]}: {badge} '
+        f'(by {rec.get("by", "?")} at {time.strftime("%H:%M:%S", time.localtime(rec.get("ts", 0)))})'
+        f'</td></tr>'
+    )
+
+
+async def admin_proposal_unified_action(request: web.Request) -> web.Response:
+    """POST /admin/proposals/unified/{source}/{prop_id}/{action}"""
+    source = request.match_info["source"]
+    prop_id = urllib.parse.unquote(request.match_info["prop_id"])
+    action = request.match_info["action"]
+    if action not in ("accept", "reject", "stage"):
+        return _error(400, "invalid_action",
+                      f"action must be accept|reject|stage, got {action}")
+    try:
+        rec = proposals_unified.apply_decision_unified(
+            prop_id, source, action, by="admin",
+        )
+    except ValueError as e:
+        return _error(400, "invalid_request", str(e))
+    except Exception as e:
+        log.exception("unified proposal action failed")
+        return _error(500, "internal_error", str(e))
+
+    is_htmx = request.headers.get("HX-Request", "").lower() == "true"
+    if is_htmx:
+        html = _render_unified_row_html(prop_id, source, action, rec)
+        return web.Response(text=html, content_type="text/html")
+    return web.json_response({"ok": True, "source": source,
+                              "prop_id": prop_id, "action": action,
+                              "recorded_at": rec.get("ts")})
 
 
 # --- /admin/proposals/telos --------------------------------------------------
@@ -1251,10 +1366,13 @@ ROUTES = (
     ("POST", "/admin/login",                      admin_login),
     ("POST", "/admin/logout",                     admin_logout),
     ("GET",  "/admin",                            admin_home),
-    ("GET",  "/admin/proposals",                  admin_proposals),
-    ("POST", r"/admin/proposals/{sig_key}/{action:approve|reject|defer}", admin_proposal_action),
+    ("GET",  "/admin/proposals",                  admin_proposals_unified),
+    ("GET",  "/admin/proposals/introvertiva",     admin_proposals),
+    ("POST", r"/admin/proposals/introvertiva/{sig_key}/{action:approve|reject|defer}", admin_proposal_action),
     ("GET",  "/admin/proposals/telos",            admin_telos_proposals),
     ("POST", r"/admin/proposals/telos/{prop_id}/{action:accept|reject|stage}", admin_telos_proposal_action),
+    ("POST", r"/admin/proposals/unified/{source:telos|introvertiva}/{prop_id}/{action:accept|reject|stage}",
+              admin_proposal_unified_action),
     ("GET",  r"/admin/synth-proposals/{id}/evaluate", admin_synth_proposal_evaluate),
     ("POST", r"/admin/synth-proposals/{id}/evaluate", admin_synth_proposal_evaluate),
     ("GET",  "/admin/promotions",                 admin_promotions),
