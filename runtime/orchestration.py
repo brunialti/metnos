@@ -1034,8 +1034,15 @@ def _fmt_health_block(h: dict) -> str:
         ))
     disks = h.get("disk") or []
     if disks:
-        disk_strs = [f"{d.get('mount','?')} {d.get('pct','?')}%"
-                      for d in disks[:5]]
+        disk_strs = []
+        for d in disks[:5]:
+            mount = d.get("mount", "?")
+            pct = d.get("pct", "?")
+            free_gb = d.get("free_gb")
+            if free_gb is not None:
+                disk_strs.append(f"{mount} {pct}% (free {free_gb} GB)")
+            else:
+                disk_strs.append(f"{mount} {pct}%")
         out.append(_msg("MSG_HEALTH_DISKS", body=" · ".join(disk_strs)))
     thermal = h.get("thermal") or {}
     if thermal.get("available"):
