@@ -352,9 +352,12 @@ def find(args: dict) -> dict:
 
     patterns = _parse_compound_pattern(args.get("pattern")) + _parse_compound_pattern(args.get("patterns"))
 
+    # Robustezza §2.4 (22/5/2026): se patterns non e' specificato, default
+    # ["*"] (= "tutti i file"). Caso live turn 7580b454: planner chiama
+    # find_files({base_path: ...}) per query "quanti file" senza patterns;
+    # fallisce ERR_ARG_MISSING e ripiega su list_dirs (top-level only).
     if not patterns:
-        return {"ok": False, "error_code": "ERR_ARG_MISSING",
-                "error": _msg("ERR_ARG_MISSING", arg="pattern (o 'patterns')")}
+        patterns = ["*"]
     if not base_path:
         return {"ok": False, "error_code": "ERR_ARG_MISSING",
                 "error": _msg("ERR_ARG_MISSING", arg="base_path")}
@@ -444,7 +447,12 @@ def find(args: dict) -> dict:
     # Sondaggio post-cap §2.11
     extra_matches = 0
     if truncated:
-        probe_cap = max(10 * max_results, max_results + 1000)
+        # Probe esteso (22/5/2026): per query count-style ("quanti file in X")
+        # con max_results piccolo (1000) ma corpus grande (es. NAS 33K+),
+        # serve un sondaggio profondo per available_total veritiero.
+        # Floor 100k per ~secondi su NAS lenti; senza pattern (`*`) il caller
+        # vuole comunque un count globale, quindi paghiamo lo scan.
+        probe_cap = max(100 * max_results, max_results + 100000)
         try:
             for p in walker:
                 visited += 1
