@@ -175,12 +175,30 @@
           <span class="chip muted">{{ msg('UI_PROP_TELOS_DECISION_PENDING') }}</span>
         {% endif %}
         <div style="margin-top:.4rem;display:flex;flex-direction:column;gap:.2rem">
+          {% set redundant_warn = (r.name_status == 'existing_redundant') %}
           <button class="btn ok"
                   hx-post="/admin/proposals/unified/{{ r.source }}/{{ r.prop_id|urlencode }}/accept"
+                  {% if redundant_warn %}hx-confirm="{{ msg('UI_PROP_TELOS_CONFIRM_REDUNDANT') }}"{% endif %}
                   hx-target="closest tr" hx-swap="outerHTML">{{ msg('UI_PROP_TELOS_BTN_ACCEPT') }}</button>
+          {% if r.source == 'telos' and r.convergence_count and r.convergence_count > 1 %}
+            <button class="btn ok" style="background:#dfd;border-color:#7a7"
+                    hx-post="/admin/proposals/telos/{{ r.prop_id|urlencode }}/cluster/accept"
+                    hx-confirm="{{ msg('UI_PROP_TELOS_CONFIRM_CLUSTER', n=r.convergence_count) }}"
+                    hx-target="closest tr" hx-swap="outerHTML">
+              {{ msg('UI_PROP_TELOS_BTN_ACCEPT_CLUSTER', n=r.convergence_count) }}
+            </button>
+          {% endif %}
           <button class="btn bad"
                   hx-post="/admin/proposals/unified/{{ r.source }}/{{ r.prop_id|urlencode }}/reject"
                   hx-target="closest tr" hx-swap="outerHTML">{{ msg('UI_PROP_TELOS_BTN_REJECT') }}</button>
+          {% if r.source == 'telos' and r.convergence_count and r.convergence_count > 1 %}
+            <button class="btn bad" style="background:#fdd;border-color:#a77"
+                    hx-post="/admin/proposals/telos/{{ r.prop_id|urlencode }}/cluster/reject"
+                    hx-confirm="{{ msg('UI_PROP_TELOS_CONFIRM_CLUSTER', n=r.convergence_count) }}"
+                    hx-target="closest tr" hx-swap="outerHTML">
+              {{ msg('UI_PROP_TELOS_BTN_REJECT_CLUSTER', n=r.convergence_count) }}
+            </button>
+          {% endif %}
           <button class="btn"
                   hx-post="/admin/proposals/unified/{{ r.source }}/{{ r.prop_id|urlencode }}/stage"
                   hx-target="closest tr" hx-swap="outerHTML">{{ msg('UI_PROP_TELOS_BTN_STAGE') }}</button>

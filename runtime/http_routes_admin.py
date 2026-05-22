@@ -553,6 +553,71 @@ def _render_telos_row_html(row: dict) -> str:
     )
 
 
+async def admin_telos_proposal_cluster_action(request: web.Request) -> web.Response:
+    """POST /admin/proposals/telos/{prop_id}/cluster/{action}
+
+    Applica `action` a TUTTI i membri del `dedup_cluster` (cluster relaxed:
+    proposte con stesso target+parametric da lenti diverse). C.8: 1 accept
+    invece di N decisioni separate per le varianti dello stesso intent.
+    Es. 28 proposte create_events deadline-to-calendar → 1 cluster accept.
+    """
+    prop_id = urllib.parse.unquote(request.match_info["prop_id"])
+    action = request.match_info["action"]
+    if action not in ("accept", "reject", "stage"):
+        return _error(400, "invalid_action",
+                      f"action must be accept|reject|stage, got {action}")
+
+    # Lookup completo per recuperare dedup_cluster
+    cluster_ids: list[str] = []
+    extra_base: dict = {}
+    try:
+        rows = telos_proposals_store.load_all(
+            min_alignment=0.0, max_rows=10000, enrich_rows=True,
+        )
+        for r in rows:
+            if r.get("prop_id") == prop_id:
+                cluster_ids = list(r.get("dedup_cluster") or [prop_id])
+                extra_base["executor_target"] = r.get("executor_target") or ""
+                extra_base["signature_relaxed"] = r.get("signature_relaxed") or ""
+                extra_base["lens"] = r.get("lens") or ""
+                break
+    except Exception as ex:
+        log.warning("cluster action lookup failed: %r", ex)
+        cluster_ids = [prop_id]
+
+    if not cluster_ids:
+        cluster_ids = [prop_id]
+
+    applied: list[dict] = []
+    for cid in cluster_ids:
+        try:
+            rec = telos_proposals_store.apply_decision(
+                cid, action, by="admin", **extra_base,
+            )
+            applied.append(rec)
+        except Exception as ex:
+            log.warning("cluster apply failed for %s: %r", cid, ex)
+
+    is_htmx = request.headers.get("HX-Request", "").lower() == "true"
+    if is_htmx:
+        n = len(applied)
+        badge = {
+            "accept": '<span class="chip ok">accepted</span>',
+            "reject": '<span class="chip bad">rejected</span>',
+            "stage":  '<span class="chip">staged</span>',
+        }.get(action, '<span class="chip muted">?</span>')
+        html = (
+            f'<tr><td colspan="6" class="muted">'
+            f'cluster (n={n}): {badge} applicato a {n} membri'
+            f'</td></tr>'
+        )
+        return web.Response(text=html, content_type="text/html")
+    return web.json_response({"ok": True, "action": action,
+                              "cluster_size": len(cluster_ids),
+                              "applied": len(applied),
+                              "prop_ids": cluster_ids})
+
+
 async def admin_telos_proposal_action(request: web.Request) -> web.Response:
     """POST /admin/proposals/telos/{prop_id}/{action}"""
     prop_id = urllib.parse.unquote(request.match_info["prop_id"])
@@ -1371,6 +1436,8 @@ ROUTES = (
     ("POST", r"/admin/proposals/introvertiva/{sig_key}/{action:approve|reject|defer}", admin_proposal_action),
     ("GET",  "/admin/proposals/telos",            admin_telos_proposals),
     ("POST", r"/admin/proposals/telos/{prop_id}/{action:accept|reject|stage}", admin_telos_proposal_action),
+    ("POST", r"/admin/proposals/telos/{prop_id}/cluster/{action:accept|reject|stage}",
+              admin_telos_proposal_cluster_action),
     ("POST", r"/admin/proposals/unified/{source:telos|introvertiva}/{prop_id}/{action:accept|reject|stage}",
               admin_proposal_unified_action),
     ("GET",  r"/admin/synth-proposals/{id}/evaluate", admin_synth_proposal_evaluate),
