@@ -847,6 +847,15 @@ def find_dirs(args: dict) -> dict:
                 "error": _msg("ERR_OP_FAILED", reason=f"os error: {e}")}
 
     matches = [e["path"] for e in entries]
+    # Aggregati anti-confusione (turn af6447da 22/5/2026): il LLM ha letto
+    # `count` di find_dirs come "count file" e ha risposto "858 file" quando
+    # erano 858 directories. Aggiungo nomi non ambigui:
+    # - count_dirs = numero di directory trovate
+    # - file_count_total = somma dei file diretti su tutte le dirs (= numero
+    #   totale di file ricorsivo sotto base_path, senza dover lanciare anche
+    #   find_files).
+    count_dirs = len(entries)
+    file_count_total = sum(int(e.get("file_count", 0) or 0) for e in entries)
     out = {
         "ok": True,
         "entries": entries,
@@ -855,7 +864,9 @@ def find_dirs(args: dict) -> dict:
             "base_path": str(base),
             "recursive": recursive,
             "include_hidden": include_hidden,
-            "count": len(entries),
+            "count": count_dirs,            # legacy, ambiguo
+            "count_dirs": count_dirs,        # esplicito
+            "file_count_total": file_count_total,
             "visited_dirs": visited_dirs,
             "truncated": truncated,
             **({"alias_resolved": alias_note} if alias_note else {}),
