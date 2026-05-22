@@ -11,12 +11,36 @@ revertible      = false
 lifecycle       = "active"
 
 [description]
-it = "Riduce una lista di entries a uno scalare applicando un'operazione su una chiave del dizionario. Spec: input lista di dict flat, key=nome chiave, op=operazione. Op supportate: max/min/avg/sum (numeric: somma/medie/estremi del valore della key, ignora entry senza key o non numeriche); count (numero entries; con key, conta solo quelle con valore non-null); count_distinct (numero valori distinti della key). Differenza con sort_entries: sort ritorna LISTA ordinata (top-K); compute ritorna SCALARE ridotto. Esempi: max bytes di una dir → compute_entries(key='total_bytes', op='max'); somma file_count di tutte le dir → compute_entries(key='file_count', op='sum'); media size mail → compute_entries(key='size', op='avg'); count distinct sender → compute_entries(key='from', op='count_distinct'). Output: {value: scalare, op, key, count_input, ignored_non_numeric}. Per ottenere ANCHE l'entry vincitrice (per max/min) usa return_entry=true: l'output include 'entry': {dict completo}."
-en = "Reduces a list of entries to a scalar by applying an operation on a dictionary key. Spec: input flat list of dicts, key=key name, op=operation. Supported ops: max/min/avg/sum (numeric: sum/average/extremes of the key value, ignores entries without key or non-numeric); count (number of entries; with key, counts only those with non-null values); count_distinct (number of distinct values of the key). Difference from sort_entries: sort returns an ordered LIST (top-K); compute returns a reduced SCALAR. Examples: max bytes of a dir → compute_entries(key='total_bytes', op='max'); sum file_count of all dirs → compute_entries(key='file_count', op='sum'); average mail size → compute_entries(key='size', op='avg'); count distinct sender → compute_entries(key='from', op='count_distinct'). Output: {value: scalar, op, key, count_input, ignored_non_numeric}. To ALSO obtain the winning entry (for max/min) use return_entry=true: the output includes 'entry': {complete dict}."
+it = """Riduce una lista di entries a uno SCALARE applicando op su una key.
+
+Op: max/min/avg/sum (numeric, ignora entry senza key o non numeriche); count (n entries, con key conta solo non-null); count_distinct (valori distinti).
+
+vs sort_entries: sort → LISTA ordinata. compute → SCALARE.
+
+OK:
+- compute_entries(key="total_bytes", op="max") → bytes max di una dir.
+- compute_entries(key="file_count", op="sum") → totale file aggregato.
+- compute_entries(op="count") → numero entries (no key richiesto).
+- compute_entries(key="from", op="count_distinct") → distinct sender.
+
+Output: {value, op, key, count_input, ignored_non_numeric}. return_entry=true aggiunge 'entry' (dict vincitore di max/min)."""
+en = """Reduces an entries list to a SCALAR applying op on a key.
+
+Op: max/min/avg/sum (numeric, ignores entries without key or non-numeric); count (n entries, with key counts non-null only); count_distinct (distinct values).
+
+vs sort_entries: sort → ordered LIST. compute → SCALAR.
+
+OK:
+- compute_entries(key="total_bytes", op="max") → max bytes of a dir.
+- compute_entries(key="file_count", op="sum") → aggregated total files.
+- compute_entries(op="count") → entries count (no key required).
+- compute_entries(key="from", op="count_distinct") → distinct senders.
+
+Output: {value, op, key, count_input, ignored_non_numeric}. return_entry=true adds 'entry' (winning dict for max/min)."""
 
 [code]
 files  = ["compute_entries.py"]
-digest = "sha256:c7400076c22283140b4c516d3a2122fa58c269f79c277e161f8b47635fe00996"
+digest = "sha256:cfe45f34dc12cd73acea9cb415500d6e40ec31afb08f5b0505281bacb274ca19"
 
 [args]
 type     = "object"

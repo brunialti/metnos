@@ -13,12 +13,26 @@ affinity    = [
             ]
 
 [description]
-it = "Lista TUTTI i file e le sottocartelle di una directory (incluse sotto-cartelle, file di sistema come Thumbs.db/.DS_Store, e file di qualunque tipo). NON filtra: ritorna ogni elemento con metadata (nome, type=file|dir|symlink, kind=image|video|audio|text|document|archive|binary|dir|symlink, mime, size, mtime). Pipeline tipica quando l'utente nomina una categoria specifica ('foto', 'video', 'documenti'): list_dir -> filter_entries(kind='image'|'video'|...) -> operazione. NON saltare filter_entries: senza filtro le operazioni successive (move/delete/...) toccano anche dir e file di sistema. Alternativa: find_file con patterns=['*.jpg','*.png',...] filtra alla sorgente."
-en = "List ALL files and subdirectories of a directory (including subdirectories, system files like Thumbs.db/.DS_Store, and files of any type). DO NOT filter: return every element with metadata (name, type=file|dir|symlink, kind=image|video|audio|text|document|archive|binary|dir|symlink, mime, size, mtime). Typical pipeline when the user names a specific category ('photo', 'video', 'document'): list_dirs -> filter_entries(kind='image'|'video'|...) -> operation. DO NOT skip filter_entries: without a filter, subsequent operations (move/delete/...) also touch directories and system files. Alternative: find_files with patterns=['*.jpg','*.png',...] filters at the source."
+it = """Lista TUTTI i contenuti diretti di una directory (file + sub-dir + symlink + sistema come Thumbs.db/.DS_Store). NON filtra.
+
+Output entries=[{name, type=file|dir|symlink, kind=image|video|audio|text|document|archive|binary|dir|symlink, mime, size, mtime}].
+
+DEVI: per categorie ("foto"/"video"/"documenti") pipeline list_dirs→filter_entries(kind=...)→operazione.
+NON DEVI: saltare filter_entries prima di move/delete — toccherebbe dir e sistema.
+
+Alternativa: find_files(patterns=["*.jpg",...]) filtra alla sorgente."""
+en = """List ALL direct contents of a directory (files + sub-dirs + symlinks + system files like Thumbs.db/.DS_Store). DOES NOT filter.
+
+Output entries=[{name, type=file|dir|symlink, kind=image|video|audio|text|document|archive|binary|dir|symlink, mime, size, mtime}].
+
+DO: for categories ("photos"/"videos"/"documents") pipeline list_dirs→filter_entries(kind=...)→operation.
+DO NOT: skip filter_entries before move/delete — it would touch dirs and system files.
+
+Alternative: find_files(patterns=["*.jpg",...]) filters at source."""
 
 [code]
 files  = ["list_dirs.py"]
-digest = "sha256:b34b4f4e8266eceb3dc50f540a8ffb4cf5214afecdc9c51ea6c735d7c6814653"
+digest = "sha256:57bbb36750f5a85baa837d5126f3900fea8d518c41fdb49623e208e403f2de6b"
 
 [args]
 type     = "object"

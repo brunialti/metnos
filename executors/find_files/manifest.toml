@@ -11,8 +11,28 @@ affinity    = [
             ]
 
 [description]
-it = "Cerca file per nome/pattern dentro una directory autorizzata. Ricorsivo di default, ritorna SOLO file (mai dir, salvo include_dirs=true). Accetta un pattern singolo (es. '*.jpg'), una stringa con piu' pattern (',' o '|' separati: '*.jpg,*.png'), o l'array patterns=['*.jpg','*.png','*.heic']. Match case-insensitive di default. PREFERIBILE a list_dir+filter_entries quando conosci le estensioni: filtra alla sorgente, niente file di sistema, niente sotto-cartelle indesiderate. Esempio per 'tutte le foto in /home/roberto/images': find_files(base_path='/home/roberto/images', patterns=['*.jpg','*.JPG','*.png','*.heic'], recursive=true). Output: entries=[{path, name, type, mime, kind, size, mtime}]: per filtrare/ordinare per dimensione usa direttamente filter_entries/sort_entries sull'output, NON serve un get_files_metadata. Truncation: dichiarata via truncated:true + truncated_what='file' + used + cap_field='max_results' quando si raggiunge max_results."
-en = "Search for files by name/pattern within an authorized directory. Recursive by default, returns ONLY files (never dirs, unless include_dirs=true). Accepts a single pattern (e.g., '*.jpg'), a string with multiple patterns (separated by ',' or '|': '*.jpg,*.png'), or the array patterns=['*.jpg','*.png','*.heic']. Case-insensitive match by default. PREFERABLE to list_dir+filter_entries when you know the extensions: filters at the source, no system files, no unwanted sub-folders. Example for 'all photos in /home/roberto/images': find_files(base_path='/home/roberto/images', patterns=['*.jpg','*.JPG','*.png','*.heic'], recursive=true). Output: entries=[{path, name, type, mime, kind, size, mtime}]: to filter/sort by size, use filter_entries/sort_entries directly on the output, no get_files_metadata is needed. Truncation: declared via truncated:true + truncated_what='file' + used + cap_field='max_results' when max_results is reached."
+it = """Cerca file per nome/pattern in una directory. Ricorsivo di default, ritorna SOLO file (no dir salvo include_dirs=true). Match case-insensitive.
+
+Pattern: stringa singola ("*.jpg"), compound ("*.jpg,*.png" o "*.jpg|*.png"), array (["*.jpg","*.png"]). Default ["*"] se non specificato.
+
+USO: preferibile a list_dirs+filter_entries quando conosci le estensioni. Filtra alla sorgente, niente sistema, niente sub-dir indesiderate.
+
+OK: find_files(base_path="/home/roberto/images", patterns=["*.jpg","*.png","*.heic"], recursive=true).
+
+Output entries=[{path,name,type,mime,kind,size,mtime}]. Per filtri/sort: filter_entries/sort_entries (no get_files_metadata).
+
+Truncation: truncated_what='file' + used + cap_field='max_results'."""
+en = """Search files by name/pattern in a directory. Recursive by default, returns ONLY files (no dirs unless include_dirs=true). Case-insensitive match.
+
+Pattern: single string ("*.jpg"), compound ("*.jpg,*.png" or "*.jpg|*.png"), array (["*.jpg","*.png"]). Default ["*"] if missing.
+
+USE: preferable to list_dirs+filter_entries when you know extensions. Filters at the source, no system files, no unwanted sub-dirs.
+
+OK: find_files(base_path="/home/roberto/images", patterns=["*.jpg","*.png","*.heic"], recursive=true).
+
+Output entries=[{path,name,type,mime,kind,size,mtime}]. For filter/sort: filter_entries/sort_entries (no get_files_metadata).
+
+Truncation: truncated_what='file' + used + cap_field='max_results'."""
 
 [code]
 files  = ["find_files.py"]
