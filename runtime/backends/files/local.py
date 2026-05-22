@@ -44,6 +44,93 @@ from platform_policy import is_system_file  # noqa: E402
 from messages import get as _msg  # noqa: E402
 
 
+# Alias bilingue IT↔EN per i path utente standard (XDG user-dirs). Quando
+# l'utente IT scrive "Immagini" su un sistema con LANG=en_US la cartella
+# vera e' "Pictures": senza questo mapping find_files fallisce e il planner
+# ritenta inutilmente lo stesso step (bug osservato turn d39e16bb).
+_USER_DIR_ALIASES = {
+    # IT lowercase → candidati ordinati per probabilita'
+    "immagini":   ["Pictures", "Immagini", "Foto", "Images", "images"],
+    "foto":       ["Pictures", "Foto", "Immagini", "images"],
+    "documenti":  ["Documents", "Documenti", "Docs"],
+    "musica":     ["Music", "Musica"],
+    "video":      ["Videos", "Video", "Movies"],
+    "scaricati":  ["Downloads", "Scaricati", "Download"],
+    "scrivania":  ["Desktop", "Scrivania"],
+    "modelli":    ["Templates", "Modelli"],
+    "pubblici":   ["Public", "Pubblici"],
+    # EN lowercase → candidati (caso utente IT che chiede in EN o opposto)
+    "pictures":   ["Pictures", "Immagini", "Foto"],
+    "documents":  ["Documents", "Documenti"],
+    "music":      ["Music", "Musica"],
+    "videos":     ["Videos", "Video", "Movies"],
+    "movies":     ["Movies", "Videos", "Video"],
+    "downloads":  ["Downloads", "Scaricati"],
+    "desktop":    ["Desktop", "Scrivania"],
+    "templates":  ["Templates", "Modelli"],
+    "public":     ["Public", "Pubblici"],
+    "images":     ["Pictures", "Immagini", "images"],
+}
+
+
+def _resolve_path_with_alias(base_path: str) -> tuple[Path, str | None]:
+    """Risolve `base_path` provando alias bilingue se path non esiste.
+
+    Ritorna (resolved_path, alias_note | None). Se non trova alternative,
+    ritorna il path originale (cosi' il chiamante ritorna error normale).
+    """
+    expanded = Path(os.path.expanduser(base_path)).resolve()
+    if expanded.exists():
+        return expanded, None
+    # Tenta alias solo se base_path e' un nome semplice (no path absoluto
+    # complesso): "Immagini" o "~/Immagini" o "/home/x/Immagini" hanno
+    # tutti `.name == "Immagini"`.
+    name_key = expanded.name.lower()
+    aliases = _USER_DIR_ALIASES.get(name_key, [])
+    if not aliases:
+        return expanded, None
+    home = Path.home()
+    for alias in aliases:
+        candidate = home / alias
+        if candidate.exists() and candidate.is_dir():
+            return candidate, (
+                f"path '{base_path}' non esiste; risolto a '{candidate}' "
+                f"(alias bilingue IT/EN per xdg user-dirs)"
+            )
+    return expanded, None
+
+
+def _home_dir_suggestions(missing_name: str, limit: int = 6) -> list[str]:
+    """Quando un path utente non esiste, suggerisce cartelle in HOME che
+    potrebbero essere ragionevoli alternative. Output sorted per pertinenza:
+    1. Cartelle XDG user-dirs esistenti.
+    2. Altre cartelle non-hidden in home.
+
+    Il planner usa queste suggestion per chiedere all'utente quale path
+    intendeva, evitando il loop_break generico "aggiungi dettaglio".
+    """
+    home = Path.home()
+    if not home.is_dir():
+        return []
+    xdg_set = {"Pictures", "Documents", "Music", "Videos", "Downloads",
+               "Desktop", "Templates", "Public",
+               "Immagini", "Documenti", "Musica", "Video", "Scaricati",
+               "Scrivania", "Modelli", "Pubblici", "Foto"}
+    out_xdg: list[str] = []
+    out_other: list[str] = []
+    try:
+        for entry in sorted(home.iterdir(), key=lambda p: p.name.lower()):
+            if not entry.is_dir() or entry.name.startswith("."):
+                continue
+            if entry.name in xdg_set:
+                out_xdg.append(str(entry))
+            else:
+                out_other.append(str(entry))
+    except (PermissionError, OSError):
+        return []
+    return (out_xdg + out_other)[:limit]
+
+
 # --- read ------------------------------------------------------------------
 
 
@@ -340,10 +427,13 @@ def find(args: dict) -> dict:
         return {"ok": False, "error_code": "ERR_ARG_INVALID",
                 "error": _msg("ERR_ARG_INVALID", arg="max_depth", reason="must be >= 0")}
 
-    base = Path(os.path.expanduser(base_path)).resolve()
+    base, alias_note = _resolve_path_with_alias(base_path)
     if not base.exists():
+        # Suggerisci cartelle home esistenti: il planner puo' chiedere
+        # all'utente quale intendeva, evitando loop_break generico.
         return {"ok": False, "error_code": "ERR_PATH_NOT_FOUND",
-                "error": _msg("ERR_PATH_NOT_FOUND", path=str(base))}
+                "error": _msg("ERR_PATH_NOT_FOUND", path=str(base)),
+                "suggested_paths": _home_dir_suggestions(base.name)}
     if not base.is_dir():
         return {"ok": False, "error_code": "ERR_PATH_WRONG_TYPE",
                 "error": _msg("ERR_PATH_WRONG_TYPE", expected="directory", actual="file", path=str(base))}
@@ -455,6 +545,9 @@ def find(args: dict) -> dict:
             "count": len(entries),
             "visited": visited,
             "truncated": truncated,
+            # Se il path originale non esisteva ma e' stato risolto via alias
+            # bilingue IT/EN, lo segnaliamo nei metadata (planner + UI).
+            **({"alias_resolved": alias_note} if alias_note else {}),
         },
     }
     if truncated:
@@ -690,10 +783,13 @@ def find_dirs(args: dict) -> dict:
         return {"ok": False, "error_code": "ERR_ARG_INVALID",
                 "error": _msg("ERR_ARG_INVALID", arg="max_depth", reason="must be >= 0")}
 
-    base = Path(os.path.expanduser(base_path)).resolve()
+    base, alias_note = _resolve_path_with_alias(base_path)
     if not base.exists():
+        # Suggerisci cartelle home esistenti: il planner puo' chiedere
+        # all'utente quale intendeva, evitando loop_break generico.
         return {"ok": False, "error_code": "ERR_PATH_NOT_FOUND",
-                "error": _msg("ERR_PATH_NOT_FOUND", path=str(base))}
+                "error": _msg("ERR_PATH_NOT_FOUND", path=str(base)),
+                "suggested_paths": _home_dir_suggestions(base.name)}
     if not base.is_dir():
         return {"ok": False, "error_code": "ERR_PATH_WRONG_TYPE",
                 "error": _msg("ERR_PATH_WRONG_TYPE", expected="directory", actual="file", path=str(base))}
@@ -792,6 +888,7 @@ def find_dirs(args: dict) -> dict:
             "count": len(entries),
             "visited_dirs": visited_dirs,
             "truncated": truncated,
+            **({"alias_resolved": alias_note} if alias_note else {}),
         },
     }
     if truncated:
