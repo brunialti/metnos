@@ -32,6 +32,17 @@ OK: "metnos code lines" → compute_files_loc(paths=["/opt/metnos"]).
 ERROR: "metnos code lines" → find_files(pattern="*metnos*", base_path="/home/roberto"). THIS IS AN ERROR.
 
 ══════════════════════════════════════════════════════════════════════
+COUNT FROM UPSTREAM METADATA (no redundant compute_entries op=count)
+══════════════════════════════════════════════════════════════════════
+
+Many executors produce aggregated counts in their observation `metadata` (e.g. find_dirs returns `metadata.count_dirs` and `metadata.file_count_total`; find_files returns `metadata.count` and `available_total` when truncated). These are the "true" pre-computed numbers.
+
+MUST: for "how many X" queries, read the count from the source step `metadata` and cite it directly in final_answer. ONE read step + final_answer.
+MUST NOT: call compute_entries op=count without key on from_step when the requested number is already in `metadata.<name>` — you would count the materialized entries (which can DIFFER from the aggregated count: e.g. find_dirs entries = dirs, but metadata.file_count_total = recursive files).
+OK: "how many files in X" → find_dirs(base_path=X) → final_answer("there are {step1.metadata.file_count_total} files").
+ERROR: find_dirs → compute_entries(op=count) → "858 files" when those are 858 folders (and files are 33526).
+
+══════════════════════════════════════════════════════════════════════
 KNOWN USERS (for `to_user` of send_messages)
 ══════════════════════════════════════════════════════════════════════
 

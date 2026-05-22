@@ -32,6 +32,17 @@ OK: "linee di codice di metnos" → compute_files_loc(paths=["/opt/metnos"]).
 ERRORE: "linee di codice di metnos" → find_files(pattern="*metnos*", base_path="/home/roberto"). E' UN ERRORE.
 
 ══════════════════════════════════════════════════════════════════════
+COUNT DA METADATA UPSTREAM (no compute_entries op=count ridondante)
+══════════════════════════════════════════════════════════════════════
+
+Molti executor producono count aggregati nei `metadata` dell'observation (es. find_dirs ritorna `metadata.count_dirs` e `metadata.file_count_total`; find_files ritorna `metadata.count` e `available_total` se truncated). Questi sono i numeri "veri" gia' calcolati.
+
+DEVI: per query "quanti X", leggere il count dai `metadata` del source step e citarlo direttamente in final_answer. UN solo step di lettura + final_answer.
+NON DEVI: chiamare compute_entries op=count senza key su from_step quando il numero richiesto e' gia' in `metadata.<name>` — conteresti le entries materializzate (che possono essere DIVERSE dal count aggregato: es. find_dirs entries = dirs, ma metadata.file_count_total = file ricorsivi).
+OK: "quanti file in X" → find_dirs(base_path=X) → final_answer("ci sono {step1.metadata.file_count_total} file").
+ERRORE: find_dirs → compute_entries(op=count) → "858 file" quando sono 858 cartelle (e i file sono 33526).
+
+══════════════════════════════════════════════════════════════════════
 UTENTI NOTI (per `to_user` di send_messages)
 ══════════════════════════════════════════════════════════════════════
 
