@@ -758,6 +758,52 @@ class MultiToolPathsDB:
         self._entries_sig = sig
         return True
 
+    def delete_entries_matching_query(
+        self, query: str, *, cosine_threshold: float = 0.7,
+    ) -> int:
+        """Cancella tutte le entries cache la cui canonical_query ha
+        similarity BGE >= threshold con `query`. Usato post-feedback ✗
+        per assicurare che il prossimo retry non re-hitti via cosine match
+        (E.2, 22/5/2026).
+
+        Ritorna n. entries cancellate. Logging info se >0.
+        """
+        if not query or not query.strip():
+            return 0
+        with self._lock:
+            if not self._refresh_if_stale(0, 9999):
+                return 0
+            emb = self._get_embedder()
+            if emb is None or np is None:
+                return 0
+            try:
+                qv = emb.embed_query(query)
+                if not isinstance(qv, np.ndarray):
+                    qv = np.asarray(qv, dtype=np.float32)
+            except Exception:
+                return 0
+            scores = self._vectors @ qv
+            ids_to_delete = [
+                self._entries[i]["id"]
+                for i in range(len(self._entries))
+                if scores[i] >= cosine_threshold
+            ]
+            if not ids_to_delete:
+                return 0
+        with self._lock, self.conn:
+            self.conn.executemany(
+                "DELETE FROM multi_tool_paths WHERE id = ?",
+                [(i,) for i in ids_to_delete],
+            )
+        self._entries_sig = ""  # invalida cache
+        _LOG.info(
+            "multi_tool_paths: deleted %d entries matching %r "
+            "(cosine >= %.2f)",
+            len(ids_to_delete), query[:60], cosine_threshold,
+        )
+        return len(ids_to_delete)
+
+
     def try_match(self, query: str, *,
                    threshold: float | None = None,
                    min_uses: int | None = None,

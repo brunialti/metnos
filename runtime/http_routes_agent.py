@@ -2087,17 +2087,15 @@ a.btn:hover{{background:#eef}}
 async def turn_retry_handler(request: web.Request) -> web.Response:
     """POST /agent/turns/{turn_id}/retry — rilancia la query del turno.
 
-    Usato dopo feedback `error`: la cache fast-path e' stata demotata, ora
-    il client chiede di rieseguire la stessa query. Il planner ricevera'
-    nel prompt il negative example della pipeline rifiutata (E.2).
+    Pre-step di pulizia (richiesta utente 22/5/2026): cancella TUTTE le
+    entries multi_tool_paths con la stessa `tools_sequence` del turno
+    rifiutato, indipendentemente da canonical_query. Motivo: il fast-path
+    matcha via BGE cosine similarity, quindi una entry per "controllare
+    temperatura cpu gpu" hitterebbe "quanto consuma gpu" (cosine 0.821)
+    se i tools sono gli stessi. Demote per canonical exact non basta.
 
-    Implementazione: recupera user_query dal turn log, ritorna l'URL
-    `/agent/turn/submit` per il client che inoltrera' come nuovo turn.
-    Niente magic server-side: il client gestisce la sequenza tramite
-    EventSource come per le query normali.
-
-    Risposta JSON: {"query": <str>, "submit_url": "/agent/turn/submit"}.
-    Il client fa POST a submit_url e apre EventSource sul nuovo turn.
+    Risposta JSON: {"query": <str>, "submit_url": "/agent/turn/submit",
+                    "deleted_cache_entries": <int>}.
     """
     turn_id = request.match_info["turn_id"]
     try:
@@ -2111,10 +2109,26 @@ async def turn_retry_handler(request: web.Request) -> web.Response:
     query = turn.get("user_query") or ""
     if not query:
         return _error(400, "no_query", "turn has no user_query to retry")
+
+    # Cancellazione cache via cosine match: TUTTE le entries il cui
+    # canonical_query ha BGE similarity >= 0.7 con la user_query del
+    # turno rifiutato. Coincide con le entries che fast-path HITTEREBBE
+    # al prossimo tentativo → garantisce che il retry passi dal planner.
+    deleted = 0
+    try:
+        from multi_tool_paths import MultiToolPathsDB
+        store = MultiToolPathsDB()
+        deleted = store.delete_entries_matching_query(query, cosine_threshold=0.7)
+        log.info("retry %s: deleted %d cache entries cosine>=0.7 vs query %r",
+                 turn_id, deleted, query[:60])
+    except Exception as ex:
+        log.warning("retry %s: cache cleanup failed: %r", turn_id, ex)
+
     return web.json_response({
         "ok": True, "query": query,
         "submit_url": "/agent/turn/submit",
         "conversation_id": turn.get("conversation_id"),
+        "deleted_cache_entries": deleted,
     })
 
 
@@ -2158,6 +2172,8 @@ async def turn_feedback_handler(request: web.Request) -> web.Response:
         eff_summary = ", ".join(
             e.get("action", e.get("type", "?")) for e in effects
         ) or "noted"
+        # Classe semantica per stile colorato: ok verde, err rosso.
+        done_class = "ok" if action == "ok" else "err"
         # E.2: dopo action=error aggiungo button "↻ riprova" inline. Il
         # client intercetta il click e chiama POST /agent/turns/{id}/retry.
         retry_btn = ""
@@ -2171,7 +2187,8 @@ async def turn_feedback_handler(request: web.Request) -> web.Response:
                 f'data-action="retry-turn">↻ {retry_label}</button>'
             )
         html = (
-            f'<span class="msg-fb-done" title="{eff_summary}">{emoji} {label}{retry_btn}</span>'
+            f'<span class="msg-fb-done {done_class}" title="{eff_summary}">'
+            f'{emoji} {label}{retry_btn}</span>'
         )
         return web.Response(text=html, content_type="text/html")
     return web.json_response({"ok": True, "feedback": rec})

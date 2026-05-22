@@ -84,8 +84,10 @@ header .role{font-size:.75em;background:rgba(255,255,255,.18);
 .msg .msg-fb-btn.err:hover{color:#c53}
 .msg .msg-fb-btn:disabled{cursor:default;opacity:.2}
 .msg .msg-fb-pending{opacity:.5}
-.msg .msg-fb-done{color:var(--muted);font-size:.9em;margin-left:.4rem;opacity:.7;
+.msg .msg-fb-done{color:var(--muted);font-size:.9em;margin-left:.4rem;opacity:.85;
                    white-space:nowrap}
+.msg .msg-fb-done.ok{color:#2a8;opacity:1}
+.msg .msg-fb-done.err{color:#c53;opacity:1}
 /* Riprova: meno invasivo. Stesso muted dei feedback button, sottolineatura
    tratteggiata leggera. Padding adeguato per cliccabilita' (~24px height). */
 .msg .msg-fb-retry{border:none;background:transparent;cursor:pointer;
