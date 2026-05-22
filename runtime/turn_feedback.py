@@ -233,18 +233,24 @@ def apply_feedback(turn_id: str, action: str, by: str = "user") -> dict:
         "fast_path_hit": fast_path_hit,
         "effects": effects,
     }
-    # Per action=error: salviamo anche user_query + pipeline tool-sequence
-    # rifiutata, cosi' al retry l'agent_runtime puo' istruire il planner
-    # a EVITARLA (negative example, E.2).
-    if action == "error":
-        record["user_query"] = turn.get("user_query", "")
-        steps = turn.get("steps") or []
-        rejected_pipeline = [
-            s.get("chosen_tool") for s in steps
-            if isinstance(s, dict) and s.get("chosen_tool")
-            and s.get("chosen_tool") != "final_answer"
-        ]
-        record["rejected_pipeline"] = rejected_pipeline
+    # Registriamo user_query + tool-sequence in entrambi i casi (ok / error)
+    # cosi' `rejected_pipelines_for_query` puo' applicare LWW per
+    # (query, pipeline_signature): un ok successivo annulla un err
+    # precedente sulla stessa pipeline (caso utente preme ✗ per errore,
+    # poi ↻, sistema rifa stesso path corretto, utente preme ✓ — la
+    # pipeline DEVE tornare considerata valida).
+    record["user_query"] = turn.get("user_query", "")
+    steps = turn.get("steps") or []
+    pipeline = [
+        s.get("chosen_tool") for s in steps
+        if isinstance(s, dict) and s.get("chosen_tool")
+        and s.get("chosen_tool") != "final_answer"
+    ]
+    if pipeline:
+        if action == "error":
+            record["rejected_pipeline"] = pipeline
+        else:  # ok
+            record["approved_pipeline"] = pipeline
     _append_feedback(record)
     return record
 
@@ -279,24 +285,26 @@ def rejected_pipelines_for_query(user_query: str,
                                   *, lookback: int = 200) -> list[list[str]]:
     """Pipeline (tool sequence) rifiutate dall'utente per una query.
 
-    Match euristico: case-insensitive trimmed exact su `user_query`. Per
-    ora niente similarity (BGE) — sufficiente per evitare retry-loop sulla
-    STESSA query. Sarà esteso a fuzzy match se serve.
+    LWW per (query, pipeline_signature): un feedback `ok` su una pipeline
+    annulla qualunque `error` PRECEDENTE sulla stessa pipeline per la
+    stessa query. Caso edge utente 22/5/2026: preme ✗ per errore, poi
+    ↻, sistema rifa stesso path (legittimo), preme ✓ — la pipeline non
+    deve restare in rejected.
 
-    Usato da agent_runtime PRIMA del planner LLM per istruirlo a non
-    ripetere pipeline gia' rifiutate dall'utente (negative examples).
+    Match query: case-insensitive trimmed exact.
     """
     if not user_query:
         return []
     needle = user_query.strip().lower()
     if not FEEDBACK_PATH.is_file():
         return []
-    rejected: list[list[str]] = []
-    seen_sigs: set[str] = set()
     with FEEDBACK_PATH.open(encoding="utf-8") as fh:
-        # Scan lineare; lookback per evitare cost su feedback log lunghi.
         lines = fh.readlines()
-    for line in reversed(lines[-lookback:]):
+    # Scan in ordine cronologico (oldest first): l'ultimo record per
+    # (query, signature) vince (LWW).
+    latest: dict[str, str] = {}  # sig → last action ("ok"|"error")
+    pipeline_by_sig: dict[str, list[str]] = {}
+    for line in lines[-lookback:]:
         line = line.strip()
         if not line:
             continue
@@ -304,20 +312,22 @@ def rejected_pipelines_for_query(user_query: str,
             rec = json.loads(line)
         except json.JSONDecodeError:
             continue
-        if rec.get("action") != "error":
-            continue
         q = rec.get("user_query") or ""
         if q.strip().lower() != needle:
             continue
-        pipeline = rec.get("rejected_pipeline") or []
+        # Cerca pipeline in entrambe le chiavi (approved_pipeline o
+        # rejected_pipeline): registriamo entrambi i tipi di feedback con
+        # la pipeline, cosi' LWW funziona.
+        pipeline = (rec.get("rejected_pipeline") or
+                    rec.get("approved_pipeline") or [])
         if not pipeline:
             continue
         sig = ">".join(pipeline)
-        if sig in seen_sigs:
-            continue
-        seen_sigs.add(sig)
-        rejected.append(pipeline)
-    return rejected
+        latest[sig] = rec.get("action") or ""
+        pipeline_by_sig[sig] = pipeline
+    # Ritorna solo pipeline il cui ULTIMO record e' "error".
+    return [pipeline_by_sig[sig] for sig, act in latest.items()
+            if act == "error"]
 
 
 def feedback_history(limit: int = 100) -> list[dict]:

@@ -198,6 +198,27 @@ class RejectedPipelinesTests(unittest.TestCase):
         out = self.TF.rejected_pipelines_for_query("CONTA file IN x")
         self.assertEqual(len(out), 1)
 
+    def test_ok_after_error_revokes_rejection(self):
+        """Utente preme ✗, poi ↻, sistema rifa stesso path corretto,
+        utente preme ✓. La pipeline non deve restare in rejected (LWW)."""
+        import time as _time
+        # Step 1: error sulla pipeline A
+        self._record_error("t1", "test query", ["find_dirs", "compute_entries"])
+        # Step 2: simula feedback ok sulla stessa pipeline + stessa query.
+        # _record_error usa apply_feedback(error). Per simulate ok, scrivo
+        # direttamente nel file (idempotent format).
+        _time.sleep(0.01)  # ts ordering
+        with self.fb_path.open("a") as fh:
+            fh.write(json.dumps({
+                "turn_id": "t2", "action": "ok", "by": "user",
+                "ts": _time.time(),
+                "user_query": "test query",
+                "approved_pipeline": ["find_dirs", "compute_entries"],
+            }) + "\n")
+        out = self.TF.rejected_pipelines_for_query("test query")
+        self.assertEqual(out, [],
+                          "OK successivo deve annullare rejection LWW")
+
 
 if __name__ == "__main__":
     unittest.main()
