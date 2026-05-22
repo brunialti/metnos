@@ -318,6 +318,23 @@ def process_completion_callback(sender_id: str, dialog_id: str,
             on_complete, values, actor=actor, channel=channel,
         )
 
+    if callback_type == "restart_turn_with_chosen_query":
+        return _process_restart_turn_with_chosen_query(
+            on_complete, values, actor=actor, channel=channel,
+        )
+
+    if callback_type == "github_analyze":
+        return _process_github_analyze(
+            on_complete, values, actor=actor, channel=channel,
+            sender_id=sender_id,
+        )
+
+    if callback_type == "github_send_reply":
+        return _process_github_send_reply(
+            on_complete, values, actor=actor, channel=channel,
+            sender_id=sender_id,
+        )
+
     log.warning("on_complete type sconosciuto: %s", callback_type)
     return (f"Dialogo completato, ma il tipo callback "
             f"'{callback_type}' non e' implementato.")
@@ -545,6 +562,54 @@ def _process_resume_executor_with_values(on_complete: dict, values: dict,
                 or res.get("summary")
                 or json.dumps(res, ensure_ascii=False)[:600])
     return str(res)
+
+
+def _process_restart_turn_with_chosen_query(
+    on_complete: dict, values: dict, *,
+    actor: str = "host", channel: str | None = None,
+) -> str:
+    """Riprende un turno disambiguato: la scelta dell'utente diventa
+    direttamente la nuova `user_query` (Test 6 fix sistemico, 16/5/2026).
+
+    Pattern callback `restart_turn_with_chosen_query`:
+      payload = {
+        "type": "restart_turn_with_chosen_query",
+        "original_query": str,        # query originale (per audit/log)
+        "options": list[str],         # le opzioni proposte (audit)
+        "conversation_id": str,       # opzionale
+      }
+
+    `values["chosen_query"]` viene riusato come nuova user_query del
+    turno successivo. PLANNER vede una query gia' disambiguata e procede
+    senza ambiguita'. Niente scratchpad (la disambiguazione cambia
+    interpretazione, non e' un resume di pipeline).
+
+    Determinismo §7.9, language-agnostic.
+    """
+    chosen = (values or {}).get("chosen_query") or ""
+    if not isinstance(chosen, str) or not chosen.strip():
+        return ("(Disambiguazione: scelta vuota, niente da rilanciare. "
+                "Riformula la richiesta.)")
+    conversation_id = on_complete.get("conversation_id") or ""
+    try:
+        import agent_runtime
+        # Anti-loop: il PLANNER al restart NON deve ri-disambiguare la
+        # query gia' disambiguata dall'utente (anche se semanticamente
+        # potrebbe sembrare ancora ambigua per il PLANNER). Pattern
+        # §7.3 generale: passare allow_disambig_synth=False sul restart.
+        new_log = agent_runtime.run_turn(
+            chosen.strip(),
+            actor=actor or "host",
+            channel=channel or "",
+            conversation_id=conversation_id,
+            allow_disambig_synth=False,
+        )
+    except (RuntimeError, TypeError, ImportError) as ex:
+        log.exception("orchestration: restart_turn_with_chosen_query fallito")
+        return f"Continuation fallita: {type(ex).__name__}: {ex}"
+    if new_log is None:
+        return "(continuation: turno vuoto, nessuna final_message.)"
+    return getattr(new_log, "final_message", "") or ""
 
 
 def _process_resume_planner_with_dialog_values(
@@ -981,6 +1046,35 @@ def _fmt_health_block(h: dict) -> str:
                 therm_strs.append(f"{kind} {v}°C")
         if therm_strs:
             out.append(_msg("MSG_HEALTH_THERMAL", body=" · ".join(therm_strs)))
+    power = h.get("power") or {}
+    if power.get("available_cpu") or power.get("available_gpu"):
+        pwr_strs = []
+        cw = power.get("cpu_watts")
+        if cw is not None:
+            pwr_strs.append(f"CPU {cw} W")
+        gw = power.get("gpu_watts")
+        if gw is not None:
+            vendor = (power.get("vendor") or "").upper()
+            label = f"GPU{f' [{vendor}]' if vendor else ''}"
+            pwr_strs.append(f"{label} {gw} W")
+        if pwr_strs:
+            out.append(_msg("MSG_HEALTH_POWER", body=" · ".join(pwr_strs)))
+    network = h.get("network") or []
+    if network:
+        net_strs = []
+        for n in network:
+            if not isinstance(n, dict):
+                continue
+            iface = n.get("iface", "?")
+            ipv4 = n.get("ipv4") or []
+            ipv6 = n.get("ipv6") or []
+            addrs = ipv4 + [a for a in ipv6 if not a.startswith("fe80")]  # skip link-local
+            if not addrs:
+                continue
+            up_mark = "" if n.get("up") else " ✗"
+            net_strs.append(f"{iface}{up_mark} {', '.join(addrs)}")
+        if net_strs:
+            out.append(_msg("MSG_HEALTH_NETWORK", body=" · ".join(net_strs)))
     services = h.get("services") or []
     if services:
         svc_strs = []
@@ -1278,3 +1372,218 @@ def orchestrate_needs_inputs(obs: dict, *,
         channel=channel,
         timeout_s=timeout_s,
     )
+
+
+# ── GitHub watcher Fase F + G (ADR-pending) ──────────────────────────
+
+def _process_github_analyze(on_complete: dict, values: dict, *,
+                             actor: str = "host",
+                             channel: Optional[str] = None,
+                             sender_id: str = "") -> str:
+    """Fase E+F: branching su `values["decision"]` del dialog Stage 1c.
+
+    Payload on_complete (Fase D):
+      {
+        "type": "github_analyze",
+        "issue_ref": {"repo", "kind", "number", "title"},
+        "classification_hint": str,
+        "related_refs": [{ref, similarity}, ...],
+      }
+
+    `values["decision"]` ∈ {"analizza", "skip", "snooze 1h",
+                              "snooze 4h", "snooze 24h"}.
+
+    Branching:
+      - "skip" -> no-op, ritorna messaggio.
+      - "snooze Nh" -> set_snooze(repo,kind,number, now+seconds) + msg.
+      - "analizza" -> run_github_analysis(...) + apre Stage 2 dialog
+                      (Posta/Modifica/Scarta) con on_complete github_send_reply.
+    """
+    issue_ref = on_complete.get("issue_ref") or {}
+    repo = issue_ref.get("repo") or ""
+    kind = issue_ref.get("kind") or "issue"
+    number = issue_ref.get("number")
+    if not repo or number is None:
+        return "(github_analyze: issue_ref malformato.)"
+    decision = (values or {}).get("decision") or ""
+    if isinstance(decision, str):
+        decision_lc = decision.strip().lower()
+    else:
+        decision_lc = ""
+
+    # Skip
+    if decision_lc == "skip":
+        return f"✅ skipped #{number}"
+
+    # Snooze "snooze Nh"
+    if decision_lc.startswith("snooze"):
+        from jobs.github_analyze_callback import _extract_snooze_seconds
+        seconds = _extract_snooze_seconds(decision)
+        if seconds is None:
+            return f"(github_analyze: snooze label non parsabile: {decision!r})"
+        try:
+            import time as _t
+            from github_watch_state import set_snooze
+            until = int(_t.time()) + int(seconds)
+            set_snooze(repo, kind, int(number), int(until))
+            import datetime as _dt
+            hh_mm = _dt.datetime.fromtimestamp(until).strftime("%H:%M")
+        except Exception as ex:
+            log.exception("github_analyze: snooze fail")
+            return (f"(snooze fallito: {type(ex).__name__}: {ex})")
+        return f"💤 snooze #{number} fino a {hh_mm}"
+
+    # Analizza
+    if decision_lc == "analizza":
+        from jobs.github_analyze_callback import (
+            run_github_analysis, format_stage2_card,
+        )
+        analysis = run_github_analysis(
+            issue_ref, actor=actor, channel=channel, sender_id=sender_id,
+        )
+        if not analysis.get("ok"):
+            return (f"Analisi fallita per #{number}: "
+                    f"{analysis.get('error') or 'errore sconosciuto'}")
+
+        card_md = format_stage2_card(issue_ref, analysis)
+        # Apri Stage 2 dialog [Posta / Modifica / Scarta]
+        title_str = f"Reply draft per {kind} #{number}"
+        dialog = [
+            {
+                "kind": "choice",
+                "label": card_md,
+                "options": ["Posta", "Modifica", "Scarta"],
+                "var": "stage2_action",
+            },
+        ]
+        on_complete2 = {
+            "type": "github_send_reply",
+            "issue_ref": issue_ref,
+            "analysis": analysis,
+            "draft_reply": analysis.get("draft_reply") or "",
+            "cost_usd": float(analysis.get("cost_usd") or 0.0),
+        }
+        gi_res = invoke_get_inputs_internal(
+            sender_id=sender_id or _safe_sender(actor, channel),
+            title=title_str,
+            description=None,
+            dialog=dialog,
+            fmt="auto",
+            on_complete=on_complete2,
+            actor=actor,
+            channel=channel,
+        )
+        if not gi_res.get("ok"):
+            return (f"Card review fallita per #{number}: "
+                    f"{gi_res.get('error') or 'errore'}")
+        return (gi_res.get("final_message_hint")
+                or f"Apri la card per review draft reply su #{number}")
+
+    return (f"(github_analyze: decision non riconosciuta: {decision!r}; "
+            "atteso uno di: analizza, skip, snooze Nh)")
+
+
+def _process_github_send_reply(on_complete: dict, values: dict, *,
+                                 actor: str = "host",
+                                 channel: Optional[str] = None,
+                                 sender_id: str = "") -> str:
+    """Fase G: branching su `values["stage2_action"]` del dialog Stage 2.
+
+    Payload on_complete:
+      {
+        "type": "github_send_reply",
+        "issue_ref": {"repo", "kind", "number", "title"},
+        "analysis": dict (output run_github_analysis),
+        "draft_reply": str,
+        "cost_usd": float,
+      }
+
+    `values["stage2_action"]` ∈ {"Posta", "Modifica", "Scarta"}.
+
+    Posta -> invoca send_messages_github + qa_store.insert + notify.
+    Modifica -> ritorna placeholder (v1 semplice: l'utente puo' ri-emettere
+                /watcher manual; estensione futura: terzo dialog kind="text").
+    Scarta -> no-op + msg.
+    """
+    issue_ref = on_complete.get("issue_ref") or {}
+    repo = issue_ref.get("repo") or ""
+    kind = issue_ref.get("kind") or "issue"
+    number = issue_ref.get("number")
+    title = issue_ref.get("title") or ""
+    if not repo or number is None:
+        return "(github_send_reply: issue_ref malformato.)"
+
+    analysis = on_complete.get("analysis") or {}
+    draft_reply = on_complete.get("draft_reply") or ""
+    cost_usd = float(on_complete.get("cost_usd") or 0.0)
+    action = (values or {}).get("stage2_action") or ""
+    action_lc = action.strip().lower() if isinstance(action, str) else ""
+
+    if action_lc == "scarta":
+        return f"✅ scartato draft per #{number}"
+
+    if action_lc == "modifica":
+        # V1 semplice: messaggio operativo. Estensione futura: aprire
+        # terzo dialog kind="text" pre-popolato con draft_reply e
+        # ri-route a github_send_reply con draft_reply aggiornato.
+        return ("Modifica draft direttamente in chat e rilancia "
+                "/watcher manual per la nuova review.")
+
+    if action_lc == "posta":
+        # 1) send_messages_github
+        try:
+            from loader import load_catalog
+            cat = load_catalog(verify=True, include_synth=True)
+            ex = cat.executors.get("send_messages_github")
+            if ex is None:
+                return ("send_messages_github non in catalog: post annullato.")
+            import agent_runtime
+            target = f"{kind}:{int(number)}"
+            res = agent_runtime.invoke_executor(
+                ex,
+                {
+                    "repo": repo,
+                    "target": target,
+                    "body": draft_reply,
+                },
+                timeout_s=getattr(ex, "timeout_s", 60),
+                actor=actor, channel=channel,
+            )
+        except Exception as ex:
+            log.exception("github_send_reply: invoke fail")
+            return (f"❌ POST fallito su #{number}: "
+                    f"{type(ex).__name__}: {ex}")
+        if not isinstance(res, dict) or not res.get("ok"):
+            err = (res or {}).get("error") if isinstance(res, dict) else "no_result"
+            return f"❌ POST fallito su #{number}: {err or 'errore sconosciuto'}"
+
+        # 2) qa_store insert (loop di apprendimento)
+        try:
+            from github_issue_qa_store import insert as qa_insert
+            from jobs.github_dedup import embed_query
+            question_text = (
+                (analysis.get("issue_summary_tldr") or "") + " " + title
+            ).strip() or title or f"{kind} #{number}"
+            qe = embed_query(question_text)
+            qa_insert(
+                repo=repo,
+                issue_number=int(number),
+                classification=analysis.get("classification") or "other",
+                question_text=question_text,
+                embedding=qe,
+                accepted_reply=draft_reply,
+                related_refs=analysis.get("related_issues") or [],
+                cost_usd=cost_usd,
+                auto_replied=False,
+            )
+        except Exception as ex:
+            log.exception("github_send_reply: qa_store insert fail (post ok)")
+            # Non far fallire la risposta: post ok > insert ok.
+            return (f"✅ postato su {target}, ma qa_store insert fallito: "
+                    f"{type(ex).__name__}: {ex}")
+
+        return (f"✅ postato su {target}, costo ${cost_usd:.4f}, "
+                f"qa_store aggiornato")
+
+    return (f"(github_send_reply: stage2_action non riconosciuta: "
+            f"{action!r}; atteso uno di: Posta, Modifica, Scarta)")

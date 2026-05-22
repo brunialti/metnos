@@ -761,10 +761,13 @@ class MultiToolPathsDB:
     def delete_entries_matching_query(
         self, query: str, *, cosine_threshold: float = 0.7,
     ) -> int:
-        """Cancella tutte le entries cache la cui canonical_query ha
-        similarity BGE >= threshold con `query`. Usato post-feedback ✗
-        per assicurare che il prossimo retry non re-hitti via cosine match
-        (E.2, 22/5/2026).
+        """Cancella tutte le entries cache (L2 multi_tool_paths) la cui
+        canonical_query ha similarity BGE >= threshold con `query`. Usato
+        post-feedback ✗ per assicurare che il prossimo retry non re-hitti
+        via cosine match (E.2, 22/5/2026).
+
+        Limitazione: copre SOLO L2. Per L1 (canonical_query_log) usare
+        `delete_canonical_query_log_matching` (mnestoma).
 
         Ritorna n. entries cancellate. Logging info se >0.
         """

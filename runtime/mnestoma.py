@@ -495,6 +495,67 @@ class Mnestoma:
                 )
                 return mid
 
+    def delete_canonical_query_log_matching(
+        self,
+        query: str,
+        *,
+        cosine_threshold: float = 0.7,
+    ) -> int:
+        """Cancella entries `canonical_query_log` la cui canonical_query ha
+        BGE similarity >= threshold con `query`. Companion del cleanup L2
+        in multi_tool_paths (E.2 retry, 22/5/2026).
+
+        Usa BGE embedder via canonical_matcher se disponibile. Se BGE non
+        installato → fallback a EXACT match case-insensitive trimmed.
+
+        Ritorna n. entries cancellate.
+        """
+        if not query or not query.strip():
+            return 0
+        rows = self.conn.execute(
+            "SELECT id, canonical_query FROM canonical_query_log"
+        ).fetchall()
+        if not rows:
+            return 0
+        ids_to_delete: list[int] = []
+        try:
+            import numpy as np
+            from canonical_matcher import _get_embedder  # type: ignore
+            emb = _get_embedder()
+        except Exception:
+            emb = None
+            np = None
+        if emb is not None and np is not None:
+            try:
+                qv = emb.embed_query(query)
+                qv = np.asarray(qv, dtype=np.float32)
+                texts = [r["canonical_query"] or "" for r in rows]
+                if texts:
+                    ev = emb.embed_documents(texts)
+                    if not isinstance(ev, np.ndarray):
+                        ev = np.asarray(ev, dtype=np.float32)
+                    scores = ev @ qv
+                    for r, sc in zip(rows, scores):
+                        if float(sc) >= cosine_threshold:
+                            ids_to_delete.append(int(r["id"]))
+            except Exception:
+                emb = None
+        if emb is None:
+            # Fallback exact match.
+            needle = query.strip().lower()
+            for r in rows:
+                if (r["canonical_query"] or "").strip().lower() == needle:
+                    ids_to_delete.append(int(r["id"]))
+        if not ids_to_delete:
+            return 0
+        self.conn.executemany(
+            "DELETE FROM canonical_query_log WHERE id = ?",
+            [(i,) for i in ids_to_delete],
+        )
+        self.conn.commit()
+        return len(ids_to_delete)
+
+
     def transition_state(self, mnest_id: str, new_state: str, *, reason: str) -> None:
         """Cambia stato + traccia evento (cap.5 update di stato)."""
         if new_state not in ("proto", "active", "decaying", "superseded"):

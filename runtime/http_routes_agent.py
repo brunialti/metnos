@@ -2110,19 +2110,28 @@ async def turn_retry_handler(request: web.Request) -> web.Response:
     if not query:
         return _error(400, "no_query", "turn has no user_query to retry")
 
-    # Cancellazione cache via cosine match: TUTTE le entries il cui
-    # canonical_query ha BGE similarity >= 0.7 con la user_query del
-    # turno rifiutato. Coincide con le entries che fast-path HITTEREBBE
-    # al prossimo tentativo → garantisce che il retry passi dal planner.
-    deleted = 0
+    # Cancellazione cache via cosine match: TUTTE le entries (L1
+    # canonical_query_log + L2 multi_tool_paths) il cui canonical_query ha
+    # BGE similarity >= 0.7 con la user_query del turno rifiutato. Coincide
+    # con le entries che fast-path HITTEREBBE al prossimo tentativo →
+    # garantisce che il retry passi dal planner.
+    deleted_l1 = 0
+    deleted_l2 = 0
     try:
         from multi_tool_paths import MultiToolPathsDB
         store = MultiToolPathsDB()
-        deleted = store.delete_entries_matching_query(query, cosine_threshold=0.7)
-        log.info("retry %s: deleted %d cache entries cosine>=0.7 vs query %r",
-                 turn_id, deleted, query[:60])
+        deleted_l2 = store.delete_entries_matching_query(query, cosine_threshold=0.7)
     except Exception as ex:
-        log.warning("retry %s: cache cleanup failed: %r", turn_id, ex)
+        log.warning("retry %s: L2 cache cleanup failed: %r", turn_id, ex)
+    try:
+        from mnestoma import Mnestoma
+        mn = Mnestoma()
+        deleted_l1 = mn.delete_canonical_query_log_matching(query, cosine_threshold=0.7)
+    except Exception as ex:
+        log.warning("retry %s: L1 cache cleanup failed: %r", turn_id, ex)
+    deleted = deleted_l1 + deleted_l2
+    log.info("retry %s: deleted L1=%d L2=%d cache entries vs query %r",
+             turn_id, deleted_l1, deleted_l2, query[:60])
 
     return web.json_response({
         "ok": True, "query": query,

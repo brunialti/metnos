@@ -48,19 +48,63 @@ _VALID_ATTRS = {
     "pid", "ppid", "name", "cmd", "user", "cpu_pct", "mem_pct", "started_at",
 }
 _NUMERIC_ATTRS = {"pid", "ppid", "cpu_pct", "mem_pct"}
+_VALID_OPS = {"=", "!=", ">", ">=", "<", "<=",
+              "contains", "startswith", "endswith", "regex", "in"}
+
+# Mapping di attribute "errati" → campo health corrispondente. Quando il
+# planner prova a filtrare su un concetto che non e' attributo di processo
+# ma ESISTE come campo health (ip/network/temperature/...), il messaggio
+# di errore indica esplicitamente la pipeline corretta. Riduce il loop
+# osservato 21-22/5/2026 sulla query "quali sono gli ip del server".
+_HEALTH_FIELD_HINT = {
+    "ip": "health.network", "ipv4": "health.network", "ipv6": "health.network",
+    "network": "health.network", "interface": "health.network",
+    "interfaces": "health.network", "iface": "health.network",
+    "address": "health.network", "addresses": "health.network",
+    "mac": "health.network",
+    "temperature": "health.thermal", "temp": "health.thermal",
+    "thermal": "health.thermal", "cpu_c": "health.thermal", "gpu_c": "health.thermal",
+    "load": "health.load", "uptime": "health.load",
+    "memory": "health.memory", "ram": "health.memory", "swap": "health.memory",
+    "disk": "health.disk", "fs": "health.disk", "filesystem": "health.disk",
+    "service": "health.services", "services": "health.services", "systemd": "health.services",
+}
 
 
-def _parse_predicate(p: dict) -> tuple[str, str, Any]:
-    """Validate and normalise a single predicate."""
-    attr = p.get("attribute")
-    if attr not in _VALID_ATTRS:
+def _parse_predicate(p) -> tuple[str, str, Any]:
+    """Validate and normalise a single predicate.
+
+    Robustezza al confine NL→determinismo (CLAUDE.md §2.4): tollerante a
+    forme comuni che il planner LLM produce. Mai crash su input strutturato
+    male: ritorna ValueError con messaggio actionable.
+
+    Alias accettati:
+    - `field` ≡ `attribute` (convenzione REST/SQL, frequente in LLM out)
+    - `operator` ≡ `op` (idem)
+
+    Hint health: se l'attribute richiesto non e' valido ma corrisponde a
+    un campo di `health.*`, il messaggio di errore lo indica → planner
+    ha next-step actionable invece di loopare su variazioni di filtro.
+    """
+    if not isinstance(p, dict):
         raise ValueError(
-            f"invalid attribute {attr!r}; valid: {sorted(_VALID_ATTRS)}"
+            f"predicate must be an object with {{attribute, op?, value}}; "
+            f"got {type(p).__name__}: {p!r}"
         )
-    op = p.get("op", "=")
-    if op not in {"=", "!=", ">", ">=", "<", "<=",
-                  "contains", "startswith", "endswith", "regex", "in"}:
-        raise ValueError(f"invalid op {op!r}")
+    attr = p.get("attribute") or p.get("field")
+    if attr not in _VALID_ATTRS:
+        msg = f"invalid attribute {attr!r}; valid: {sorted(_VALID_ATTRS)}"
+        hint_target = _HEALTH_FIELD_HINT.get(
+            str(attr).lower() if isinstance(attr, str) else ""
+        )
+        if hint_target:
+            msg += (f". HINT: '{attr}' non e' attributo di processo, "
+                    f"vive in {hint_target}: chiama get_processes("
+                    f"include_health=true) e leggi quel campo.")
+        raise ValueError(msg)
+    op = p.get("op") or p.get("operator") or "="
+    if op not in _VALID_OPS:
+        raise ValueError(f"invalid op {op!r}; valid: {sorted(_VALID_OPS)}")
     value = p.get("value")
     if value is None:
         raise ValueError(f"predicate {p!r} missing 'value'")
@@ -402,6 +446,103 @@ def _read_thermal() -> dict:
     return out
 
 
+def _read_power() -> dict:
+    """Consumo istantaneo CPU + GPU in Watt.
+
+    CPU: Intel/AMD RAPL via `/sys/class/powercap/intel-rapl:*/energy_uj`
+    (lettura dual a 100ms per derivare i Watt). AMD ha pacchetti
+    `intel-rapl:N` malgrado il nome (kernel mainline). Se assente:
+    skip CPU (`available_cpu: false`).
+
+    GPU: detection vendor + tool:
+    - AMD: `rocm-smi --showpower` (parse "Power (W): X")
+    - NVIDIA: `nvidia-smi --query-gpu=power.draw --format=csv,noheader,nounits`
+    Se nessun tool trovato → skip GPU (`available_gpu: false`).
+
+    Determinismo §7.9. Subprocess timeout 2s per non bloccare il turno.
+    """
+    import glob
+    import subprocess
+    out: dict[str, Any] = {
+        "available_cpu": False, "available_gpu": False,
+        "cpu_watts": None, "gpu_watts": None, "vendor": None,
+    }
+
+    # --- CPU via RAPL ----------------------------------------------------
+    rapl_files = sorted(glob.glob(
+        "/sys/class/powercap/intel-rapl:*/energy_uj"
+    ))
+    # Filtra solo i package roots (no subzone -dram/-uncore).
+    rapl_files = [p for p in rapl_files
+                  if p.split("/")[-2].count(":") == 1]
+    if rapl_files:
+        try:
+            def _read_energy(paths):
+                total = 0
+                for p in paths:
+                    try:
+                        with open(p) as f:
+                            total += int(f.read().strip())
+                    except (OSError, ValueError):
+                        pass
+                return total
+            e0 = _read_energy(rapl_files)
+            time.sleep(0.1)
+            e1 = _read_energy(rapl_files)
+            if e1 >= e0:
+                # microjoules → watts su 100ms = (delta_uj / 1e6) / 0.1
+                watts = (e1 - e0) / 1_000_000.0 / 0.1
+                out["cpu_watts"] = round(watts, 2)
+                out["available_cpu"] = True
+        except Exception:
+            pass
+
+    # --- GPU vendor detection --------------------------------------------
+    # Prova rocm-smi prima (più rapido fail su sistemi NVIDIA).
+    for cmd, vendor, parser in (
+        (["rocm-smi", "--showpower"], "amd", "rocm"),
+        (["nvidia-smi", "--query-gpu=power.draw",
+          "--format=csv,noheader,nounits"], "nvidia", "nv"),
+    ):
+        try:
+            r = subprocess.run(cmd, capture_output=True, text=True,
+                                timeout=2.0)
+            if r.returncode != 0:
+                continue
+        except (FileNotFoundError, subprocess.TimeoutExpired):
+            continue
+        text = r.stdout or ""
+        watts: float | None = None
+        if parser == "rocm":
+            # "Current Socket Graphics Package Power (W): 27.038"
+            import re as _re
+            m = _re.search(r"Power\s*\(W\)\s*:\s*([\d.]+)", text)
+            if m:
+                try:
+                    watts = float(m.group(1))
+                except ValueError:
+                    pass
+        elif parser == "nv":
+            # Una o più righe con valore numerico (per GPU multipla, somma).
+            tot = 0.0
+            any_val = False
+            for line in text.strip().splitlines():
+                v = line.strip()
+                try:
+                    tot += float(v)
+                    any_val = True
+                except ValueError:
+                    continue
+            if any_val:
+                watts = round(tot, 2)
+        if watts is not None:
+            out["gpu_watts"] = watts
+            out["vendor"] = vendor
+            out["available_gpu"] = True
+            break
+    return out
+
+
 def _read_network() -> list[dict]:
     """Interfacce di rete con IP IPv4/IPv6 (esclude loopback).
     Determinismo §7.9: psutil deterministico, niente comandi esterni."""
@@ -441,6 +582,7 @@ def _collect_health(services_extra: tuple[str, ...] | None = None) -> dict:
         "load": _read_load(),
         "memory": _read_memory(),
         "thermal": _read_thermal(),
+        "power": _read_power(),
         "disk": _read_disk(),
         "network": _read_network(),
         "services": _read_services(units),
@@ -475,13 +617,23 @@ def invoke(args: dict, ctx: dict | None = None) -> dict:
             "failed": [{"error": "'services_extra' must be a list of unit names"}],
         }
 
+    # Parse predicati: se filter parse fail MA include_health=true, ritorna
+    # comunque il blocco health (l'utente lo ha chiesto esplicitamente). Il
+    # campo `failed[]` contiene l'errore del filtro per audit. §2.8: no silent
+    # failure ma anche §2.4 robustezza confine: rispetta gli arg validi (health)
+    # anche quando altri sono malformati.
+    predicates: list = []
+    filter_failed: list[dict] = []
     try:
         predicates = [_parse_predicate(p) for p in filters_in]
     except ValueError as e:
-        return {
-            "ok": False, "ok_count": 0, "fail_count": 1,
-            "entries": [], "failed": [{"error": str(e)}],
-        }
+        if not include_health:
+            return {
+                "ok": False, "ok_count": 0, "fail_count": 1,
+                "entries": [], "failed": [{"error": str(e)}],
+            }
+        filter_failed = [{"error": str(e)}]
+        predicates = []  # ignora i filtri e procedi con health
 
     snapshot = _ps_snapshot()
     if predicates:
@@ -500,6 +652,10 @@ def invoke(args: dict, ctx: dict | None = None) -> dict:
         used = len(snapshot)
         available_total = len(snapshot)
 
+    # ok=True anche con filter_failed quando health e' stato comunque
+    # ritornato: l'LLM legge `ok: False` come "tool fallito, riprova".
+    # Se include_health=true ha avuto successo, l'esito utile c'e';
+    # filter_failed e' un warning di partial output (vedi `warnings`).
     result: dict[str, Any] = {
         "ok": True,
         "ok_count": len(snapshot),
@@ -513,6 +669,10 @@ def invoke(args: dict, ctx: dict | None = None) -> dict:
         "cap_field": "top" if truncated else None,
         "cap_value": top if truncated else None,
     }
+    if filter_failed:
+        result["warnings"] = [
+            f"filter ignored: {fe['error']}" for fe in filter_failed
+        ]
     if include_health:
         result["health"] = _collect_health(
             tuple(s for s in services_extra_in if isinstance(s, str)),
