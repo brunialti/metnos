@@ -353,23 +353,34 @@ async function retryTurn(turnId){
   // /agent/turns/{id}/retry recupera la query → submit nuovo turn (riusa
   // il flow EventSource standard).
   try {
+    console.log('retryTurn:', turnId);
     const r = await fetch('/agent/turns/' + turnId + '/retry', {
       method: 'POST', headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({}),
     });
-    if(!r.ok){ console.error('retry HTTP', r.status); return; }
+    if(!r.ok){
+      console.error('retry HTTP', r.status, await r.text());
+      return;
+    }
     const data = await r.json();
+    console.log('retry data:', data);
     if(!data.query) return;
-    // Mostra come nuovo input utente + submit (riusa il path query handler).
-    if(typeof q !== 'undefined' && q){
-      q.value = data.query;
-      // Triggera il submit del form esistente (riusa tutta la logica
-      // EventSource + UI già implementata).
-      const form = q.closest('form');
-      if(form){
-        const ev = new Event('submit', {cancelable: true, bubbles: true});
-        form.dispatchEvent(ev);
-      }
+    if(typeof q === 'undefined' || !q){
+      console.error('retry: q (input) not in scope');
+      return;
+    }
+    q.value = data.query;
+    q.focus();
+    // Triggera submit via `form.requestSubmit(btn)` (modo canonico,
+    // funziona con addEventListener('submit')) o fallback su btn.click().
+    const form = q.closest('form');
+    const submitBtn = document.getElementById('b');
+    if(form && typeof form.requestSubmit === 'function'){
+      form.requestSubmit(submitBtn || undefined);
+    } else if(submitBtn){
+      submitBtn.click();
+    } else {
+      console.error('retry: form/btn non trovati');
     }
   } catch(e){ console.error('retry fail', e); }
 }
