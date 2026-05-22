@@ -307,7 +307,7 @@ async def admin_proposal_action(request: web.Request) -> web.Response:
 
 # --- /admin/proposals (unified hub C.6, 22/5/2026) ---------------------------
 
-_UNIFIED_DASH_MAX_ROWS = 80
+_UNIFIED_DASH_MAX_ROWS = 30  # selettivita': il primo giro non deve mostrarne centinaia
 
 
 async def admin_proposals_unified(request: web.Request) -> web.Response:
@@ -315,12 +315,16 @@ async def admin_proposals_unified(request: web.Request) -> web.Response:
 
     Query params:
       source: 'telos' / 'introvertiva' / '' (tutti)
-      tier: 'top' / 'interesting' (default) / 'weak'
+      tier: 'top' (default) / 'interesting' / 'weak'
       only_pending: bool
       group_clusters: bool=true (collassa duplicati cluster telos)
+
+    Default selettivo (22/5/2026): tier=top + max 30 rows. Telos engine
+    accumula centinaia di proposte; il triage manuale non scala oltre
+    qualche decina. Tier=interesting/weak per esplorare oltre.
     """
     source_filter = request.query.get("source", "").strip() or None
-    tier = request.query.get("tier", "interesting").strip().lower()
+    tier = request.query.get("tier", "top").strip().lower()
     if tier not in ("top", "interesting", "weak"):
         tier = "interesting"
     only_pending = request.query.get("only_pending", "0") in ("1", "true", "on")

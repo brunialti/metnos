@@ -58,7 +58,13 @@
            onchange="this.form.submit()">
     {{ msg('UI_PROP_TELOS_FILTER_GROUP') }}
   </label>
-  <span class="muted">{{ msg('UI_PROP_TELOS_RESULTS_COUNT', n=rows|length) }}</span>
+  <span class="muted">
+    {% set total_all = source_counts.telos.total + source_counts.introvertiva.total %}
+    {{ rows|length }} mostrate · {{ total_all }} totali
+    {% if rows|length < total_all %}
+      <span style="color:#888">(filtra per esplorare oltre)</span>
+    {% endif %}
+  </span>
 </form>
 
 <table class="tp">

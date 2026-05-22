@@ -307,6 +307,17 @@ def run_for_telos(
             llm_invoke=llm,
             grammar=lens_grammar,
         )
+        # Cap selettivita' (F.2, 22/5/2026): max N proposte per lens per
+        # run. Rationale utente: 481 proposte accumulate sono ingestibili.
+        # Conservare solo le top-N per affidarsi all'AlignmentEngine come
+        # filtro post-hoc. Cap conservativo (10): le lenti emettono
+        # tipicamente 2-30 proposte per run, taglio elimina la coda lunga.
+        _MAX_PROPOSALS_PER_LENS = int(os.environ.get(
+            "METNOS_TELOS_MAX_PER_LENS", "10"))
+        if len(proposals) > _MAX_PROPOSALS_PER_LENS:
+            _LOG.info("telos %s: %d → %d proposte (cap)",
+                      lens_name, len(proposals), _MAX_PROPOSALS_PER_LENS)
+            proposals = proposals[:_MAX_PROPOSALS_PER_LENS]
         for p in proposals:
             # Giudice teleologico fase 2 (22/5/2026): stima fit per telos +
             # compone expected_alignment. Bother_cost=0 in MVP (l'engine
