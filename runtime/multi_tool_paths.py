@@ -159,6 +159,39 @@ def _today_utc() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
 
+_FIND_EXECUTORS_WITH_COUNT_METADATA = frozenset({
+    "find_files", "find_dirs", "find_messages", "find_events", "find_urls",
+    "find_persons", "find_persons_indices", "find_contacts",
+    "find_images_indices", "find_signatures", "get_processes",
+})
+
+
+def _is_count_antipattern(tools_sequence: list[str],
+                          args_shape: list[dict]) -> bool:
+    """True se la sequenza include `<find executor> → compute_entries(op=count
+    senza key)`. Anti-pattern: il count e' gia' nei metadata del find_*.
+
+    Esamina coppie consecutive (find, compute_entries). Non chiediamo che
+    siano gli unici step: la sequenza puo' avere altri step dopo (final_answer,
+    sort, ecc.), ma se trova questo binomio è anti-pattern.
+    """
+    if not tools_sequence or not args_shape:
+        return False
+    if len(tools_sequence) != len(args_shape):
+        return False
+    for i, tool in enumerate(tools_sequence[:-1]):
+        if tool not in _FIND_EXECUTORS_WITH_COUNT_METADATA:
+            continue
+        if tools_sequence[i + 1] != "compute_entries":
+            continue
+        next_args = args_shape[i + 1] if isinstance(args_shape[i + 1], dict) else {}
+        op = next_args.get("op")
+        key = next_args.get("key")
+        if op == "count" and not key:
+            return True
+    return False
+
+
 def _path_shape_hash(tools: list[str], args_shape: list[dict]) -> str:
     payload = json.dumps(
         {"tools": tools, "shape": args_shape},
@@ -536,6 +569,21 @@ class MultiToolPathsDB:
         if not tools_sequence or len(tools_sequence) < 2:
             # MVP: solo sequenze multi-step (>= 2). Single-tool e' coperto
             # da canonical_matcher (ADR 0149).
+            return 0
+        # Anti-pattern (22/5/2026): `find_* + compute_entries(op=count, no key)`
+        # è ridondante quando il source ha già aggregati nei metadata
+        # (find_dirs.count_dirs/file_count_total, find_files.metadata.count/
+        # available_total). Il LLM lo invoca per abitudine, ma:
+        # - per find_dirs conta dirs invece di file → risposta sbagliata
+        # - per find_files conta entries materializzate ignorando available_total
+        # Vedi footer planner "COUNT DA METADATA UPSTREAM". Non memoizziamo
+        # questo anti-pattern così il prossimo turno passa dal planner e
+        # legge i metadata.
+        if _is_count_antipattern(tools_sequence, args_shape):
+            _LOG.info(
+                "multi_tool_paths: skip record anti-pattern "
+                "find_* → compute_entries(op=count) per '%s'", canonical[:60],
+            )
             return 0
         # Regola simmetrica "executor > fast-path" (19/5 v5): se la
         # sintesi della pipeline corrisponderebbe a un executor gia' in
