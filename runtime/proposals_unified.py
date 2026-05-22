@@ -105,7 +105,11 @@ def _intr_decision_from_state(state: str, last_action: Optional[str],
 
 
 def _load_telos(only_pending: bool, max_rows: int) -> list[dict]:
-    """Carica proposte telos via telos_proposals_store, enriched."""
+    """Carica proposte telos via telos_proposals_store, enriched.
+
+    `source` granulare = "telos:<lens>" (es. "telos:scamper") per filtri UI.
+    `source_family` = "telos" per raggruppamento aggregato.
+    """
     import telos_proposals_store as S
     rows = S.load_all(
         min_alignment=0.0,
@@ -113,12 +117,13 @@ def _load_telos(only_pending: bool, max_rows: int) -> list[dict]:
         include_decided=not only_pending,
         enrich_rows=True,
     )
-    # Marca source = "telos" su ogni riga
     for r in rows:
-        r["source"] = "telos"
+        lens = r.get("lens", "") or "?"
+        r["source"] = f"telos:{lens}"
+        r["source_family"] = "telos"
         r["source_id"] = r.get("prop_id", "")
         r["ranking_score"] = r.get("expected_alignment", 0.0)
-        r["origin_module"] = r.get("lens", "")
+        r["origin_module"] = lens
     return rows
 
 
@@ -161,7 +166,8 @@ def _load_introvertiva(only_pending: bool, max_rows: int) -> list[dict]:
         target = _intr_target_from_sigkey(sig_key)
         rec = {
             "prop_id": _intr_prop_id(sig_key),
-            "source": "introvertiva",
+            "source": f"introvertiva:{kind}",
+            "source_family": "introvertiva",
             "source_id": sig_key,
             "origin_module": kind,  # dedupe/generalize/specialize
             "generated_at": _parse_iso(d.get("first_seen") or ""),
@@ -248,16 +254,36 @@ def load_unified(
     import telos_proposals_store as S
     all_rows: list[dict] = []
 
+    # source_filter granulare: "telos", "introvertiva", "telos:scamper",
+    # "introvertiva:dedupe", ecc. None = tutte le sorgenti.
     loaders = {
         "telos": _load_telos,
         "introvertiva": _load_introvertiva,
     }
-    targets = [source_filter] if source_filter else sources
+    # Quando filtro e' "<family>:<module>", carichiamo la family e poi
+    # filtriamo per source granulare (post-load).
+    if source_filter and ":" in source_filter:
+        family = source_filter.split(":", 1)[0]
+        targets = [family] if family in loaders else []
+    elif source_filter:
+        targets = [source_filter] if source_filter in loaders else []
+    else:
+        targets = list(sources)
     for src in targets:
         loader = loaders.get(src)
         if loader is None:
             continue
         all_rows.extend(loader(only_pending, max_rows_per_source))
+
+    # Filtro granulare post-load: confronta r["source"] (es. "telos:scamper")
+    # con source_filter. Se source_filter e' solo family ("telos"), match
+    # ogni r con source_family == family.
+    if source_filter:
+        if ":" in source_filter:
+            all_rows = [r for r in all_rows if r.get("source") == source_filter]
+        else:
+            all_rows = [r for r in all_rows
+                        if r.get("source_family") == source_filter]
 
     # Tier filter (post-load, semplice da gestire qui)
     if tier == "top":
@@ -378,6 +404,39 @@ def _find_introvertiva_sig_key(prop_id: str) -> Optional[str]:
         if _intr_prop_id(sig_key) == prop_id:
             return sig_key
     return None
+
+
+def granular_source_counts() -> dict:
+    """Conteggi per source granulare (telos:lens, introvertiva:kind).
+
+    Usato dal dropdown UI per mostrare "telos:scamper (311)",
+    "introvertiva:specialize (24)", ecc.
+    """
+    from collections import Counter
+    counts: Counter = Counter()
+    try:
+        import telos_proposals_store as S
+        for r in S.load_all(min_alignment=0.0, max_rows=100000):
+            lens = r.get("lens", "?") or "?"
+            counts[f"telos:{lens}"] += 1
+    except Exception:
+        pass
+    try:
+        import proposals_state
+        db = proposals_state.DB_PATH
+        if db.exists():
+            conn = sqlite3.connect(str(db))
+            try:
+                rows = conn.execute(
+                    "SELECT kind, COUNT(*) FROM proposals_state GROUP BY kind"
+                ).fetchall()
+            finally:
+                conn.close()
+            for kind, c in rows:
+                counts[f"introvertiva:{kind}"] = int(c)
+    except Exception:
+        pass
+    return dict(counts.most_common())
 
 
 def source_counts() -> dict:

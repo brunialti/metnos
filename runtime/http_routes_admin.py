@@ -334,6 +334,7 @@ async def admin_proposals_unified(request: web.Request) -> web.Response:
         max_rows=_UNIFIED_DASH_MAX_ROWS,
     )
     src_counts = proposals_unified.source_counts()
+    granular = proposals_unified.granular_source_counts()
 
     # Tier counts cross-source (per tab badge)
     all_unfiltered = proposals_unified.load_unified(
@@ -355,6 +356,7 @@ async def admin_proposals_unified(request: web.Request) -> web.Response:
         json_payload={
             "rows": rows,
             "source_counts": src_counts,
+            "granular_sources": granular,
             "tier_counts": tier_counts,
             "filters": {
                 "source": source_filter or "",
@@ -367,6 +369,7 @@ async def admin_proposals_unified(request: web.Request) -> web.Response:
         template_ctx={
             "rows": rows,
             "source_counts": src_counts,
+            "granular_sources": granular,
             "tier_counts": tier_counts,
             "source": source_filter or "",
             "tier": tier,

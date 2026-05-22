@@ -36,8 +36,13 @@
   <label>{{ msg('UI_PROP_UNIFIED_FILTER_SOURCE') }}:
     <select name="source" onchange="this.form.submit()">
       <option value=""{% if source == "" %} selected{% endif %}>{{ msg('UI_PROP_TELOS_FILTER_ALL') }}</option>
-      {% for src in source_counts|sort %}
-        <option value="{{ src }}"{% if source == src %} selected{% endif %}>{{ src }} ({{ source_counts[src].total }})</option>
+      {# Family aggregati prima (telos, introvertiva). #}
+      {% for fam, c in source_counts|dictsort %}
+        <option value="{{ fam }}"{% if source == fam %} selected{% endif %}>— {{ fam }} ({{ c.total }})</option>
+      {% endfor %}
+      {# Sub-source granulari (lens / kind). #}
+      {% for src, n in granular_sources.items() %}
+        <option value="{{ src }}"{% if source == src %} selected{% endif %}>{{ src }} ({{ n }})</option>
       {% endfor %}
     </select>
   </label>

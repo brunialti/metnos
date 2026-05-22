@@ -692,35 +692,66 @@ def _step_latency_ms(step: dict) -> int:
     return total
 
 
+_EXAMPLE_QUERY_MIN_SHARED_TOKENS = 1
+
+
+def _semantic_overlap_query(user_query: str, proposed_action: str) -> int:
+    """Token overlap minimo IT+EN fra user_query e proposed_action.
+
+    Heuristic deterministico (§7.9, no LLM): split lowercase su non-alfanumeric,
+    filtra stop-word minimali, conta intersezione. Per validare che un
+    `example_query` matchi semanticamente la `proposed_action` (caso live
+    turn 22/5/2026: proposta su create_events 'pipeline deadline-to-calendar'
+    veniva mostrata con esempio 'converti heic in jpg', che NON c'entrava).
+    """
+    import re as _re
+    stop = {"il","la","i","gli","le","un","una","di","da","del","della","dei",
+            "delle","a","al","alla","ai","alle","in","con","su","per","tra",
+            "fra","e","o","ma","che","mi","ci","ti","si","ho","ha","hai",
+            "the","a","an","of","to","in","is","it","for","on","with","and",
+            "or","but","this","that","una","sono","ci"}
+    def _toks(s: str) -> set:
+        return {t for t in _re.split(r"[^\w]+", (s or "").lower())
+                if t and t not in stop and len(t) >= 3}
+    return len(_toks(user_query) & _toks(proposed_action))
+
+
 def _find_example_turn(
     target: str,
     related_tools: list[str],
     turns: list[dict],
+    proposed_action: str = "",
 ):
     """Trova il turno piu' rilevante che illustra la proposta.
 
     Ritorna: (turn|None, pipeline_observed: bool).
-    Priorita': (1) turno che contiene TUTTI i related_tools (pipeline
-    osservata, pipeline_observed=True); (2) turno con piu' alto overlap;
-    (3) primo turno con il target (pipeline_observed=False).
+    Priorita':
+      (1) turno con TUTTI i related_tools (pipeline osservata).
+      (2) turno con overlap related_tools + token overlap user_query vs
+          proposed_action (semantic match).
+      (3) turno con solo il target E almeno 1 token in comune fra
+          user_query e proposed_action (evita esempi spuri).
+    Se nessun candidato passa il filtro semantico → None.
     """
     if not turns:
         return None, False
-    candidates: list[tuple[int, dict]] = []  # (overlap, turn)
+    candidates: list[tuple[int, int, dict]] = []  # (overlap, sem, turn)
     for t in turns:
         steps = t.get("steps") or []
         chosen = {s.get("chosen_tool") for s in steps if s.get("chosen_tool")}
         if not chosen:
             continue
         overlap = sum(1 for tool in related_tools if tool in chosen)
-        if related_tools and overlap == len(related_tools):
-            return t, True  # match perfetto: pipeline_observed
-        if target and target in chosen:
-            candidates.append((overlap, t))
+        sem = _semantic_overlap_query(
+            t.get("user_query", ""), proposed_action) if proposed_action else 1
+        if related_tools and overlap == len(related_tools) and sem >= _EXAMPLE_QUERY_MIN_SHARED_TOKENS:
+            return t, True
+        if target and target in chosen and sem >= _EXAMPLE_QUERY_MIN_SHARED_TOKENS:
+            candidates.append((overlap, sem, t))
     if not candidates:
         return None, False
-    candidates.sort(key=lambda kv: -kv[0])
-    return candidates[0][1], False
+    candidates.sort(key=lambda kv: (-kv[0], -kv[1]))
+    return candidates[0][2], False
 
 
 def _path_from_turn(turn: dict) -> list[str]:
@@ -761,7 +792,8 @@ def enrich(prop: dict, turns: Optional[list[dict]] = None) -> dict:
     prop["pipeline_tools_mentioned"] = mentions
 
     if target or related_tools:
-        turn, pipeline_observed = _find_example_turn(target, related_tools, turns)
+        turn, pipeline_observed = _find_example_turn(
+            target, related_tools, turns, proposed_action=proposed)
     else:
         turn, pipeline_observed = None, False
     prop["pipeline_observed"] = pipeline_observed
