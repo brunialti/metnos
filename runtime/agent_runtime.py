@@ -4387,7 +4387,7 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
         project_paths=_render_project_paths_block(),
         users_known=_render_users_known_block(),
         telos_block=_render_telos_block(DEFAULT_LANG),
-        rejected_block=_render_rejected_pipelines_block(query, DEFAULT_LANG),
+        rejected_block=_render_rejected_pipelines_block(user_query, DEFAULT_LANG),
         **_now_vars,
     )
     # ADR 0149 (18/5/2026): instruction block per il by-product
@@ -4852,7 +4852,7 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
                 project_paths=_render_project_paths_block(),
                 users_known=_render_users_known_block(),
                 telos_block=_render_telos_block(DEFAULT_LANG),
-                rejected_block=_render_rejected_pipelines_block(query, DEFAULT_LANG),
+                rejected_block=_render_rejected_pipelines_block(user_query, DEFAULT_LANG),
                 **_now_vars,
             )
             # Riapplica gli addenda (credenziali + reference images) gia'
@@ -4866,7 +4866,7 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
                 project_paths=_render_project_paths_block(),
                 users_known=_render_users_known_block(),
                 telos_block=_render_telos_block(DEFAULT_LANG),
-                rejected_block=_render_rejected_pipelines_block(query, DEFAULT_LANG),
+                rejected_block=_render_rejected_pipelines_block(user_query, DEFAULT_LANG),
                 **_now_vars,
             )
             if planner_system.startswith(_planner_all):

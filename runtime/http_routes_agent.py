@@ -2164,10 +2164,11 @@ async def turn_feedback_handler(request: web.Request) -> web.Response:
         if action == "error":
             retry_label = _msg("MSG_CHAT_FB_RETRY")
             retry_hint = _msg("MSG_CHAT_FB_RETRY_HINT")
+            # Event delegation lato client (no inline onclick: rischio CSP).
             retry_btn = (
-                f' <button class="msg-fb-retry" title="{retry_hint}" '
-                f'data-turn-id="{turn_id}" '
-                f'onclick="retryTurn(this.dataset.turnId)">↻ {retry_label}</button>'
+                f' <button class="msg-fb-retry" type="button" '
+                f'title="{retry_hint}" data-turn-id="{turn_id}" '
+                f'data-action="retry-turn">↻ {retry_label}</button>'
             )
         html = (
             f'<span class="msg-fb-done" title="{eff_summary}">{emoji} {label}{retry_btn}</span>'

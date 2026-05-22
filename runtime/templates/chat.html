@@ -86,11 +86,17 @@ header .role{font-size:.75em;background:rgba(255,255,255,.18);
 .msg .msg-fb-pending{opacity:.5}
 .msg .msg-fb-done{color:var(--muted);font-size:.9em;margin-left:.4rem;opacity:.7;
                    white-space:nowrap}
+/* Riprova: meno invasivo. Stesso muted dei feedback button, sottolineatura
+   tratteggiata leggera. Padding adeguato per cliccabilita' (~24px height). */
 .msg .msg-fb-retry{border:none;background:transparent;cursor:pointer;
-                    color:var(--accent);font-size:.95em;padding:0 .3rem;
-                    margin-left:.3rem;font-family:inherit;text-decoration:underline;
-                    text-decoration-style:dotted;opacity:.7;transition:opacity .15s}
-.msg .msg-fb-retry:hover{opacity:1}
+                    color:var(--muted);font-size:.9em;padding:.15rem .4rem;
+                    margin-left:.4rem;font-family:inherit;
+                    text-decoration:underline;text-decoration-style:dotted;
+                    text-decoration-color:#bbb;opacity:.7;
+                    transition:opacity .15s,color .15s,background .15s;
+                    border-radius:.2rem}
+.msg .msg-fb-retry:hover{opacity:1;color:var(--fg);background:#f0f0f0}
+.msg .msg-fb-retry:active{background:#e4e4e4}
 .msg .path-badges{display:flex;flex-wrap:wrap;gap:.25rem;align-items:center;
                    font-size:.7em;color:var(--muted);margin-top:.35rem}
 .msg .path-badges .arrow{color:#bbb;font-size:.85em;margin:0 .05rem}
@@ -329,6 +335,18 @@ function pushCmdBuf(text){
 function clearCmdBuf(){
   try { localStorage.removeItem(CMDBUF_KEY); } catch(_){}
 }
+
+// Event delegation per il button "↻ riprova" iniettato dal server.
+// htmx-style: il button ha data-action=retry-turn + data-turn-id. Catturiamo
+// click sul document (capturing-bubble) per intercettare anche elementi
+// inseriti dopo il page load (post-feedback HTML swap).
+document.addEventListener('click', function(ev) {
+  const btn = ev.target.closest('[data-action="retry-turn"]');
+  if(!btn) return;
+  ev.preventDefault();
+  const turnId = btn.dataset.turnId;
+  if(turnId) retryTurn(turnId);
+});
 
 async function retryTurn(turnId){
   // E.2: dopo feedback ✗ il badge espone "↻ riprova". Click → POST
