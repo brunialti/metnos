@@ -233,6 +233,18 @@ def apply_feedback(turn_id: str, action: str, by: str = "user") -> dict:
         "fast_path_hit": fast_path_hit,
         "effects": effects,
     }
+    # Per action=error: salviamo anche user_query + pipeline tool-sequence
+    # rifiutata, cosi' al retry l'agent_runtime puo' istruire il planner
+    # a EVITARLA (negative example, E.2).
+    if action == "error":
+        record["user_query"] = turn.get("user_query", "")
+        steps = turn.get("steps") or []
+        rejected_pipeline = [
+            s.get("chosen_tool") for s in steps
+            if isinstance(s, dict) and s.get("chosen_tool")
+            and s.get("chosen_tool") != "final_answer"
+        ]
+        record["rejected_pipeline"] = rejected_pipeline
     _append_feedback(record)
     return record
 
@@ -261,6 +273,51 @@ def feedback_for_turn(turn_id: str) -> Optional[dict]:
             if rec.get("turn_id") == turn_id:
                 last = rec
     return last
+
+
+def rejected_pipelines_for_query(user_query: str,
+                                  *, lookback: int = 200) -> list[list[str]]:
+    """Pipeline (tool sequence) rifiutate dall'utente per una query.
+
+    Match euristico: case-insensitive trimmed exact su `user_query`. Per
+    ora niente similarity (BGE) — sufficiente per evitare retry-loop sulla
+    STESSA query. Sarà esteso a fuzzy match se serve.
+
+    Usato da agent_runtime PRIMA del planner LLM per istruirlo a non
+    ripetere pipeline gia' rifiutate dall'utente (negative examples).
+    """
+    if not user_query:
+        return []
+    needle = user_query.strip().lower()
+    if not FEEDBACK_PATH.is_file():
+        return []
+    rejected: list[list[str]] = []
+    seen_sigs: set[str] = set()
+    with FEEDBACK_PATH.open(encoding="utf-8") as fh:
+        # Scan lineare; lookback per evitare cost su feedback log lunghi.
+        lines = fh.readlines()
+    for line in reversed(lines[-lookback:]):
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            rec = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if rec.get("action") != "error":
+            continue
+        q = rec.get("user_query") or ""
+        if q.strip().lower() != needle:
+            continue
+        pipeline = rec.get("rejected_pipeline") or []
+        if not pipeline:
+            continue
+        sig = ">".join(pipeline)
+        if sig in seen_sigs:
+            continue
+        seen_sigs.add(sig)
+        rejected.append(pipeline)
+    return rejected
 
 
 def feedback_history(limit: int = 100) -> list[dict]:

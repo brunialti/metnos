@@ -58,3 +58,10 @@ ERRORE: "manda riassunto a Lucia" → send_messages(messages=[{"to":"lucia@somew
 
 {{ telos_block }}
 {% endif %}
+{# rejected_block: pipeline rifiutate dall'utente per QUESTA query via
+   feedback ✗. Wired via agent_runtime._render_rejected_pipelines_block(query,
+   lang) — E.2 (22/5/2026). Vuoto se nessun feedback negativo storico. #}
+{% if rejected_block %}
+
+{{ rejected_block }}
+{% endif %}

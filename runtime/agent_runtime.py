@@ -734,6 +734,56 @@ def _render_telos_block(lang: str) -> str:
         return ""
 
 
+def _render_rejected_pipelines_block(user_query: str, lang: str) -> str:
+    """Negative examples per il planner (E.2, 22/5/2026): se l'utente ha
+    rifiutato pipeline per QUESTA query con feedback ✗, le elenchiamo nel
+    prompt cosi' il LLM non le ripropone.
+
+    Approccio soft: il LLM PUÒ ignorare, ma di solito risponde al cue.
+    Safety net: `multi_tool_paths._is_count_antipattern` impedisce di
+    re-cachare le sequence sbagliate (commit d34f8e5).
+
+    Ritorna stringa pronta per `{% if rejected_block %}` nel footer.j2.
+    Vuota se nessuna pipeline rifiutata per la query.
+    """
+    if not user_query:
+        return ""
+    try:
+        from turn_feedback import rejected_pipelines_for_query
+        rejected = rejected_pipelines_for_query(user_query)
+    except Exception as ex:
+        log.warning("rejected_pipelines_for_query failed: %s", ex)
+        return ""
+    if not rejected:
+        return ""
+    lines_it = [
+        "══════════════════════════════════════════════════════════════════════",
+        "PIPELINE GIA' RIFIUTATE DALL'UTENTE PER QUESTA QUERY (non ripetere!)",
+        "══════════════════════════════════════════════════════════════════════",
+        "",
+    ]
+    lines_en = [
+        "══════════════════════════════════════════════════════════════════════",
+        "PIPELINES ALREADY REJECTED BY USER FOR THIS QUERY (do not repeat!)",
+        "══════════════════════════════════════════════════════════════════════",
+        "",
+    ]
+    for p in rejected[:5]:
+        lines_it.append(f"- {' → '.join(p)}")
+        lines_en.append(f"- {' → '.join(p)}")
+    if lang == "en":
+        lines_en += ["",
+            "DEVI: scegliere una pipeline DIVERSA. NON DEVI: replicare quelle elencate.",
+            "OK: usare un executor alternativo, leggere direttamente metadata, o riformulare gli step.",
+            "ERRORE: ricostruire la stessa sequence che l'utente ha gia' bocciato."]
+        return "\n".join(lines_en)
+    lines_it += ["",
+        "DEVI: scegliere una pipeline DIVERSA. NON DEVI: ripetere quelle elencate sopra.",
+        "OK: usare un executor alternativo, leggere direttamente metadata, o riformulare gli step.",
+        "ERRORE: ricostruire la stessa sequence che l'utente ha gia' bocciato."]
+    return "\n".join(lines_it)
+
+
 
 
 _OBS_HISTORY_CHAR_CAP = 8000
@@ -4337,6 +4387,7 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
         project_paths=_render_project_paths_block(),
         users_known=_render_users_known_block(),
         telos_block=_render_telos_block(DEFAULT_LANG),
+        rejected_block=_render_rejected_pipelines_block(query, DEFAULT_LANG),
         **_now_vars,
     )
     # ADR 0149 (18/5/2026): instruction block per il by-product
@@ -4801,6 +4852,7 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
                 project_paths=_render_project_paths_block(),
                 users_known=_render_users_known_block(),
                 telos_block=_render_telos_block(DEFAULT_LANG),
+                rejected_block=_render_rejected_pipelines_block(query, DEFAULT_LANG),
                 **_now_vars,
             )
             # Riapplica gli addenda (credenziali + reference images) gia'
@@ -4814,6 +4866,7 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
                 project_paths=_render_project_paths_block(),
                 users_known=_render_users_known_block(),
                 telos_block=_render_telos_block(DEFAULT_LANG),
+                rejected_block=_render_rejected_pipelines_block(query, DEFAULT_LANG),
                 **_now_vars,
             )
             if planner_system.startswith(_planner_all):

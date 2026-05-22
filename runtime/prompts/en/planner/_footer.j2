@@ -58,3 +58,10 @@ ERROR: "send summary to Lucia" → send_messages(messages=[{"to":"lucia@somewher
 
 {{ telos_block }}
 {% endif %}
+{# rejected_block: pipelines rejected by user for THIS query via ✗ feedback.
+   Wired via agent_runtime._render_rejected_pipelines_block(query, lang)
+   — E.2 (22/5/2026). Empty if no negative feedback history. #}
+{% if rejected_block %}
+
+{{ rejected_block }}
+{% endif %}

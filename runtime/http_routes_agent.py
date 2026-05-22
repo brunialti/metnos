@@ -2084,6 +2084,40 @@ a.btn:hover{{background:#eef}}
     return web.Response(text=html, content_type="text/html")
 
 
+async def turn_retry_handler(request: web.Request) -> web.Response:
+    """POST /agent/turns/{turn_id}/retry — rilancia la query del turno.
+
+    Usato dopo feedback `error`: la cache fast-path e' stata demotata, ora
+    il client chiede di rieseguire la stessa query. Il planner ricevera'
+    nel prompt il negative example della pipeline rifiutata (E.2).
+
+    Implementazione: recupera user_query dal turn log, ritorna l'URL
+    `/agent/turn/submit` per il client che inoltrera' come nuovo turn.
+    Niente magic server-side: il client gestisce la sequenza tramite
+    EventSource come per le query normali.
+
+    Risposta JSON: {"query": <str>, "submit_url": "/agent/turn/submit"}.
+    Il client fa POST a submit_url e apre EventSource sul nuovo turn.
+    """
+    turn_id = request.match_info["turn_id"]
+    try:
+        from turn_feedback import _load_turn
+        turn = _load_turn(turn_id)
+    except Exception as ex:
+        log.exception("retry: cannot load turn %s", turn_id)
+        return _error(500, "internal_error", str(ex))
+    if turn is None:
+        return _error(404, "not_found", f"turn {turn_id} not found")
+    query = turn.get("user_query") or ""
+    if not query:
+        return _error(400, "no_query", "turn has no user_query to retry")
+    return web.json_response({
+        "ok": True, "query": query,
+        "submit_url": "/agent/turn/submit",
+        "conversation_id": turn.get("conversation_id"),
+    })
+
+
 async def turn_feedback_handler(request: web.Request) -> web.Response:
     """POST /agent/turns/{turn_id}/feedback — user feedback OK|error.
 
@@ -2121,13 +2155,22 @@ async def turn_feedback_handler(request: web.Request) -> web.Response:
         label_key = "MSG_CHAT_FB_OK_DONE" if action == "ok" else "MSG_CHAT_FB_ERR_DONE"
         label = _msg(label_key)
         effects = rec.get("effects", [])
-        # Tooltip tecnico (developer-facing, no traduzione necessaria):
-        # sintesi degli effetti applicati (reinforce/demote/noop).
         eff_summary = ", ".join(
             e.get("action", e.get("type", "?")) for e in effects
         ) or "noted"
+        # E.2: dopo action=error aggiungo button "↻ riprova" inline. Il
+        # client intercetta il click e chiama POST /agent/turns/{id}/retry.
+        retry_btn = ""
+        if action == "error":
+            retry_label = _msg("MSG_CHAT_FB_RETRY")
+            retry_hint = _msg("MSG_CHAT_FB_RETRY_HINT")
+            retry_btn = (
+                f' <button class="msg-fb-retry" title="{retry_hint}" '
+                f'data-turn-id="{turn_id}" '
+                f'onclick="retryTurn(this.dataset.turnId)">↻ {retry_label}</button>'
+            )
         html = (
-            f'<span class="msg-fb-done" title="{eff_summary}">{emoji} {label}</span>'
+            f'<span class="msg-fb-done" title="{eff_summary}">{emoji} {label}{retry_btn}</span>'
         )
         return web.Response(text=html, content_type="text/html")
     return web.json_response({"ok": True, "feedback": rec})
@@ -2142,6 +2185,7 @@ ROUTES = (
     ("GET",  "/agent/turns/{turn_id}/stream", turn_stream),
     ("GET",  "/agent/turns/{turn_id}",  turn_status),
     ("POST", r"/agent/turns/{turn_id}/feedback", turn_feedback_handler),
+    ("POST", r"/agent/turns/{turn_id}/retry",    turn_retry_handler),
     ("GET",  "/agent/turns/recent",    turns_recent),
     ("POST", "/agent/session/register", session_register),
     ("POST", "/agent/session/takeover", session_takeover),

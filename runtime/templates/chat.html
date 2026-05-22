@@ -86,6 +86,11 @@ header .role{font-size:.75em;background:rgba(255,255,255,.18);
 .msg .msg-fb-pending{opacity:.5}
 .msg .msg-fb-done{color:var(--muted);font-size:.9em;margin-left:.4rem;opacity:.7;
                    white-space:nowrap}
+.msg .msg-fb-retry{border:none;background:transparent;cursor:pointer;
+                    color:var(--accent);font-size:.95em;padding:0 .3rem;
+                    margin-left:.3rem;font-family:inherit;text-decoration:underline;
+                    text-decoration-style:dotted;opacity:.7;transition:opacity .15s}
+.msg .msg-fb-retry:hover{opacity:1}
 .msg .path-badges{display:flex;flex-wrap:wrap;gap:.25rem;align-items:center;
                    font-size:.7em;color:var(--muted);margin-top:.35rem}
 .msg .path-badges .arrow{color:#bbb;font-size:.85em;margin:0 .05rem}
@@ -323,6 +328,32 @@ function pushCmdBuf(text){
 }
 function clearCmdBuf(){
   try { localStorage.removeItem(CMDBUF_KEY); } catch(_){}
+}
+
+async function retryTurn(turnId){
+  // E.2: dopo feedback ✗ il badge espone "↻ riprova". Click → POST
+  // /agent/turns/{id}/retry recupera la query → submit nuovo turn (riusa
+  // il flow EventSource standard).
+  try {
+    const r = await fetch('/agent/turns/' + turnId + '/retry', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({}),
+    });
+    if(!r.ok){ console.error('retry HTTP', r.status); return; }
+    const data = await r.json();
+    if(!data.query) return;
+    // Mostra come nuovo input utente + submit (riusa il path query handler).
+    if(typeof q !== 'undefined' && q){
+      q.value = data.query;
+      // Triggera il submit del form esistente (riusa tutta la logica
+      // EventSource + UI già implementata).
+      const form = q.closest('form');
+      if(form){
+        const ev = new Event('submit', {cancelable: true, bubbles: true});
+        form.dispatchEvent(ev);
+      }
+    }
+  } catch(e){ console.error('retry fail', e); }
 }
 
 async function sendFeedback(turnId, action, container){

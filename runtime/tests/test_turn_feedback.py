@@ -141,5 +141,63 @@ class ApplyFeedbackTests(unittest.TestCase):
         self.assertEqual(rec["action"], "ok")
 
 
+class RejectedPipelinesTests(unittest.TestCase):
+    """rejected_pipelines_for_query: lista pipeline rifiutate via ✗ feedback."""
+
+    def setUp(self):
+        import turn_feedback as TF
+        self.tmp = tempfile.TemporaryDirectory()
+        self.fb_path = Path(self.tmp.name) / "fb.jsonl"
+        self.turns_dir = Path(self.tmp.name) / "turns"
+        self.turns_dir.mkdir()
+        self._orig_fb = TF.FEEDBACK_PATH
+        self._orig_turns = TF.TURNS_DIR
+        TF.FEEDBACK_PATH = self.fb_path
+        TF.TURNS_DIR = self.turns_dir
+        self.TF = TF
+
+    def tearDown(self):
+        self.TF.FEEDBACK_PATH = self._orig_fb
+        self.TF.TURNS_DIR = self._orig_turns
+        self.tmp.cleanup()
+
+    def _record_error(self, turn_id, user_query, tools):
+        steps = [{"chosen_tool": t, "canonical_query": user_query.lower()
+                                                       if i == 0 else "",
+                  "llm_in_tokens": 0, "llm_latency_ms": 0}
+                 for i, t in enumerate(tools)]
+        (self.turns_dir / "x.jsonl").write_text(
+            (self.turns_dir / "x.jsonl").read_text() if (self.turns_dir / "x.jsonl").exists() else ""
+            + json.dumps({"turn_id": turn_id, "user_query": user_query,
+                          "steps": steps}) + "\n",
+            encoding="utf-8",
+        )
+        with mock.patch.object(self.TF, "_demote_path",
+                                return_value={"action": "demoted"}):
+            self.TF.apply_feedback(turn_id, "error")
+
+    def test_no_feedback_returns_empty(self):
+        out = self.TF.rejected_pipelines_for_query("nessuna query")
+        self.assertEqual(out, [])
+
+    def test_error_feedback_saves_pipeline(self):
+        self._record_error("t1", "conta file in X",
+                            ["find_dirs", "compute_entries", "final_answer"])
+        out = self.TF.rejected_pipelines_for_query("conta file in X")
+        self.assertEqual(len(out), 1)
+        # final_answer escluso (non e' un executor)
+        self.assertEqual(out[0], ["find_dirs", "compute_entries"])
+
+    def test_different_query_no_match(self):
+        self._record_error("t1", "conta file in X", ["find_dirs"])
+        out = self.TF.rejected_pipelines_for_query("conta file in Y")
+        self.assertEqual(out, [])
+
+    def test_match_case_insensitive_and_trimmed(self):
+        self._record_error("t1", "conta file in X  ", ["find_dirs"])
+        out = self.TF.rejected_pipelines_for_query("CONTA file IN x")
+        self.assertEqual(len(out), 1)
+
+
 if __name__ == "__main__":
     unittest.main()
