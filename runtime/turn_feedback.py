@@ -110,8 +110,8 @@ def _reinforce_path(canonical: str) -> dict:
     if not canonical:
         return {"action": "noop", "reason": "no_canonical"}
     try:
-        from multi_tool_paths import MultiToolPaths
-        store = MultiToolPaths()
+        from multi_tool_paths import MultiToolPathsDB
+        store = MultiToolPathsDB()
     except Exception as ex:
         log.warning("turn_feedback: cannot open multi_tool_paths: %r", ex)
         return {"action": "noop", "reason": "store_unavailable"}
@@ -158,8 +158,8 @@ def _demote_path(canonical: str) -> dict:
     if not canonical:
         return {"action": "noop", "reason": "no_canonical"}
     try:
-        from multi_tool_paths import MultiToolPaths
-        store = MultiToolPaths()
+        from multi_tool_paths import MultiToolPathsDB
+        store = MultiToolPathsDB()
     except Exception as ex:
         log.warning("turn_feedback: cannot open multi_tool_paths: %r", ex)
         return {"action": "noop", "reason": "store_unavailable"}

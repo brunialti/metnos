@@ -4052,6 +4052,11 @@ def _try_multi_tool_path_playback(
         step.raw_args = dict(raw_args)
         step.resolved_args = dict(resolved_args)
         step.vaglio_approved = True  # short-circuit (riusa decisione storica)
+        # Propaga canonical_query del fast-path su step 1: serve a
+        # `turn_feedback.apply_feedback` per identificare la entry cache
+        # da rinforzare/demotare (E.1, 22/5/2026).
+        if i == 1:
+            step.canonical_query = hit.get("canonical", "") or ""
         # Timeout: usa il valore del manifest se presente, altrimenti 120s
         # (era 30s — troppo aggressivo per executor IMAP/mail/HTTP che
         # legittimamente possono superare 30s).
