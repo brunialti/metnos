@@ -73,31 +73,90 @@ _USER_DIR_ALIASES = {
 }
 
 
-def _resolve_path_with_alias(base_path: str) -> tuple[Path, str | None]:
-    """Risolve `base_path` provando alias bilingue se path non esiste.
+def _candidate_roots() -> list[Path]:
+    """Root da cui cercare alias di user-dirs. Ordine = priorita':
+    1. HOME (XDG canonico)
+    2. NAS mount path (/tmp/nas_public/media — convention .33 ADR 0087)
+    3. /mnt e /media (mount tradizionali Linux)
+    Filtra root inesistenti per evitare lookup futili.
+    """
+    cands = [
+        Path.home(),
+        Path("/tmp/nas_public/media"),
+        Path("/mnt"),
+        Path("/media"),
+    ]
+    return [p for p in cands if p.is_dir()]
 
-    Ritorna (resolved_path, alias_note | None). Se non trova alternative,
-    ritorna il path originale (cosi' il chiamante ritorna error normale).
+
+def _count_files_recursive(path: Path, cap: int = 10000) -> int:
+    """Conta file ricorsivi (cap per evitare scan di TB). Per ranking match."""
+    try:
+        n = 0
+        for entry in path.rglob("*"):
+            try:
+                if entry.is_file():
+                    n += 1
+                    if n >= cap:
+                        return n
+            except OSError:
+                continue
+        return n
+    except (OSError, PermissionError):
+        return 0
+
+
+def _resolve_path_with_alias(base_path: str) -> tuple[Path, str | None]:
+    """Risolve `base_path` provando alias bilingue e root multipli.
+
+    Strategia:
+    1. Se base_path esiste cosi' com'e' → usa quello (no surprise).
+    2. Altrimenti, per ogni root in `_candidate_roots()` e ogni alias
+       bilingue, cerca match esistenti.
+    3. Se 1 candidate: usa quello.
+    4. Se >1 candidate: sceglie quello con piu' file (probabile "vero"
+       archivio), annota nel note "trovati N candidati, scelto il piu' grande".
+
+    Ritorna (resolved_path, alias_note | None).
     """
     expanded = Path(os.path.expanduser(base_path)).resolve()
     if expanded.exists():
         return expanded, None
-    # Tenta alias solo se base_path e' un nome semplice (no path absoluto
-    # complesso): "Immagini" o "~/Immagini" o "/home/x/Immagini" hanno
-    # tutti `.name == "Immagini"`.
+    # Alias lookup solo se name e' nel dizionario bilingue.
     name_key = expanded.name.lower()
     aliases = _USER_DIR_ALIASES.get(name_key, [])
     if not aliases:
         return expanded, None
-    home = Path.home()
-    for alias in aliases:
-        candidate = home / alias
-        if candidate.exists() and candidate.is_dir():
-            return candidate, (
-                f"path '{base_path}' non esiste; risolto a '{candidate}' "
-                f"(alias bilingue IT/EN per xdg user-dirs)"
-            )
-    return expanded, None
+    # Aggrega candidati esistenti in tutti i root.
+    candidates: list[Path] = []
+    for root in _candidate_roots():
+        for alias in aliases:
+            cand = root / alias
+            try:
+                if cand.is_dir():
+                    candidates.append(cand)
+            except (OSError, PermissionError):
+                continue
+    if not candidates:
+        return expanded, None
+    if len(candidates) == 1:
+        chosen = candidates[0]
+        note = (f"path '{base_path}' non esiste; risolto a '{chosen}' "
+                f"(alias bilingue IT/EN per xdg user-dirs)")
+        return chosen, note
+    # Multiple: rank per # file (più grande = probabile vero archivio).
+    ranked = sorted(
+        ((c, _count_files_recursive(c)) for c in candidates),
+        key=lambda kv: -kv[1],
+    )
+    chosen = ranked[0][0]
+    others = ", ".join(f"'{p}' ({n} files)" for p, n in ranked[1:])
+    note = (
+        f"path '{base_path}' non esiste; trovati {len(candidates)} candidati: "
+        f"scelto '{chosen}' ({ranked[0][1]} files, piu' grande). "
+        f"Altri: {others}"
+    )
+    return chosen, note
 
 
 def _home_dir_suggestions(missing_name: str, limit: int = 6) -> list[str]:
