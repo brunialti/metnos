@@ -56,13 +56,33 @@ def invoke(args):
     if op == "count":
         # count: se key e' specificata, conta entries dove key e' presente
         # con valore non-None; altrimenti, conta tutte.
+        # ADR truncation-aware (22/5/2026): se le entries provengono da
+        # from_step e l'upstream era truncated, usa available_total invece
+        # di len(entries) (caso live: find_files con max_results=1000 su
+        # cartella da 33578 → utente vede 1000 invece di 33578). Il runtime
+        # inietta `_from_step_total_hint` quando rileva truncation upstream.
+        total_hint = args.get("_from_step_total_hint")
+        truncated_hint = bool(args.get("_from_step_truncated"))
         if not key:
-            return {"ok": True, "value": count_input, "op": op,
-                    "count_input": count_input, "ignored_non_numeric": 0}
+            value = count_input
+            extra = {}
+            if isinstance(total_hint, int) and total_hint > count_input:
+                value = total_hint
+                extra["truncated_upstream"] = True
+                extra["materialized_count"] = count_input
+            return {"ok": True, "value": value, "op": op,
+                    "count_input": count_input, "ignored_non_numeric": 0,
+                    **extra}
         v = sum(1 for e in entries
                 if isinstance(e, dict) and e.get(key) is not None)
+        # Con `key` non possiamo proiettare da total_hint (non sappiamo
+        # quanti elementi NON materializzati hanno la key): usiamo solo
+        # quelli materializzati, ma annotiamo truncated_upstream.
+        extra = ({"truncated_upstream": True, "materialized_count": count_input}
+                 if truncated_hint else {})
         return {"ok": True, "value": v, "op": op, "key": key,
-                "count_input": count_input, "ignored_non_numeric": 0}
+                "count_input": count_input, "ignored_non_numeric": 0,
+                **extra}
 
     if op == "count_distinct":
         seen = set()

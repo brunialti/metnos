@@ -2366,6 +2366,15 @@ def resolve_from_step(args, history, consumer_schema=None):
         return new_args, errors
     # Fallback storico: inietta sotto `entries` (target standard universale).
     new_args["entries"] = prev_list
+    # Injection metadata upstream per executor che possono usare available_total
+    # senza materializzare l'intera lista (es. compute_entries op=count su
+    # find_files truncated: usa available_total invece di len(entries) capped).
+    # Keys passate solo se presenti nello step_obs (no rumore).
+    src_meta = step_obs.get("metadata") if isinstance(step_obs.get("metadata"), dict) else {}
+    avail_total = step_obs.get("available_total") or src_meta.get("available_total")
+    if isinstance(avail_total, int) and avail_total > len(prev_list):
+        new_args["_from_step_total_hint"] = avail_total
+        new_args["_from_step_truncated"] = True
     # Layer 5 (15/5/2026): secondary list reference. Pattern §7.3 per
     # executor bi-lista (filter_lists, filter_entries+overlap):
     #   `with_step=N`  → entries_b  (pattern canonical filter_lists)
