@@ -735,53 +735,103 @@ def _render_telos_block(lang: str) -> str:
 
 
 def _render_rejected_pipelines_block(user_query: str, lang: str) -> str:
-    """Negative examples per il planner (E.2, 22/5/2026): se l'utente ha
-    rifiutato pipeline per QUESTA query con feedback ✗, le elenchiamo nel
-    prompt cosi' il LLM non le ripropone.
+    """Negative examples per il planner (E.2/E.3, 22/5/2026).
 
-    Approccio soft: il LLM PUÒ ignorare, ma di solito risponde al cue.
-    Safety net: `multi_tool_paths._is_count_antipattern` impedisce di
-    re-cachare le sequence sbagliate (commit d34f8e5).
+    Strato 1 (1 ✗): wording soft "evita queste pipeline".
+    Strato 2 (>=2 ✗ consecutive): HARD CONSTRAINT con escalation —
+    "rifiuto definitivo, considera request_new_executor o consult_frontier
+    o final_answer onesto 'non ho strumenti adatti'".
 
-    Ritorna stringa pronta per `{% if rejected_block %}` nel footer.j2.
-    Vuota se nessuna pipeline rifiutata per la query.
+    Strato 3 (UI escalation post-3 ✗): deferred task #30.
     """
     if not user_query:
         return ""
     try:
-        from turn_feedback import rejected_pipelines_for_query
+        from turn_feedback import (
+            rejected_pipelines_for_query, count_consecutive_errors_for_query,
+        )
         rejected = rejected_pipelines_for_query(user_query)
+        consec_errors = count_consecutive_errors_for_query(user_query)
     except Exception as ex:
         log.warning("rejected_pipelines_for_query failed: %s", ex)
         return ""
     if not rejected:
         return ""
-    lines_it = [
+    hard = consec_errors >= 2
+    if lang == "en":
+        if hard:
+            header = ("RUNTIME HARD CONSTRAINT — USER REJECTED ALL PIPELINES "
+                       "ATTEMPTED ({n} consecutive ✗)").format(n=consec_errors)
+            body_suffix = [
+                "",
+                "DO: try a STRUCTURALLY DIFFERENT approach (different executor "
+                "family, or request_new_executor for synthesis, or "
+                "consult_frontier for high-stakes reasoning).",
+                "DO NOT: produce yet another minor variation of the rejected "
+                "pipelines — the user wants a different SHAPE of answer.",
+                "OK: if no viable alternative exists, emit final_answer "
+                "explicitly stating: \"I don't have a suitable tool for X; "
+                "I can try synthesizing one with request_new_executor.\"",
+                "ERROR: silently re-run a similar pipeline.",
+            ]
+        else:
+            header = ("PIPELINES ALREADY REJECTED BY USER FOR THIS QUERY "
+                       "(do not repeat!)")
+            body_suffix = [
+                "",
+                "DO: pick a DIFFERENT pipeline. DO NOT: replicate those listed.",
+                "OK: use an alternative executor, read metadata directly, "
+                "or reshape the steps.",
+                "ERROR: rebuild the same sequence the user already rejected.",
+            ]
+        lines = [
+            "══════════════════════════════════════════════════════════════════════",
+            header,
+            "══════════════════════════════════════════════════════════════════════",
+            "",
+        ]
+        for p in rejected[:5]:
+            lines.append(f"- {' → '.join(p)}")
+        lines += body_suffix
+        return "\n".join(lines)
+    # IT
+    if hard:
+        header = ("VINCOLO HARD RUNTIME — UTENTE HA RIFIUTATO TUTTE LE "
+                   "PIPELINE TENTATE ({n} ✗ consecutive)").format(n=consec_errors)
+        body_suffix = [
+            "",
+            "DEVI: provare un approccio STRUTTURALMENTE DIVERSO (executor di "
+            "famiglia diversa, o request_new_executor per sintesi, o "
+            "consult_frontier per ragionamento ad alto rischio).",
+            "NON DEVI: produrre l'ennesima variante minore delle pipeline "
+            "rifiutate — l'utente vuole una FORMA diversa di risposta.",
+            "OK: se nessuna alternativa praticabile esiste, emetti final_answer "
+            "esplicitando: \"non ho uno strumento adatto per X; posso "
+            "provare a sintetizzarne uno con request_new_executor.\"",
+            "ERRORE: rilanciare silenziosamente una pipeline simile.",
+        ]
+    else:
+        header = ("PIPELINE GIA' RIFIUTATE DALL'UTENTE PER QUESTA QUERY "
+                   "(non ripetere!)")
+        body_suffix = [
+            "",
+            "DEVI: scegliere una pipeline DIVERSA. NON DEVI: ripetere quelle "
+            "elencate sopra.",
+            "OK: usare un executor alternativo, leggere direttamente metadata, "
+            "o riformulare gli step.",
+            "ERRORE: ricostruire la stessa sequence che l'utente ha gia' "
+            "bocciato.",
+        ]
+    lines = [
         "══════════════════════════════════════════════════════════════════════",
-        "PIPELINE GIA' RIFIUTATE DALL'UTENTE PER QUESTA QUERY (non ripetere!)",
-        "══════════════════════════════════════════════════════════════════════",
-        "",
-    ]
-    lines_en = [
-        "══════════════════════════════════════════════════════════════════════",
-        "PIPELINES ALREADY REJECTED BY USER FOR THIS QUERY (do not repeat!)",
+        header,
         "══════════════════════════════════════════════════════════════════════",
         "",
     ]
     for p in rejected[:5]:
-        lines_it.append(f"- {' → '.join(p)}")
-        lines_en.append(f"- {' → '.join(p)}")
-    if lang == "en":
-        lines_en += ["",
-            "DEVI: scegliere una pipeline DIVERSA. NON DEVI: replicare quelle elencate.",
-            "OK: usare un executor alternativo, leggere direttamente metadata, o riformulare gli step.",
-            "ERRORE: ricostruire la stessa sequence che l'utente ha gia' bocciato."]
-        return "\n".join(lines_en)
-    lines_it += ["",
-        "DEVI: scegliere una pipeline DIVERSA. NON DEVI: ripetere quelle elencate sopra.",
-        "OK: usare un executor alternativo, leggere direttamente metadata, o riformulare gli step.",
-        "ERRORE: ricostruire la stessa sequence che l'utente ha gia' bocciato."]
-    return "\n".join(lines_it)
+        lines.append(f"- {' → '.join(p)}")
+    lines += body_suffix
+    return "\n".join(lines)
 
 
 

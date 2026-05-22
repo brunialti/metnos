@@ -281,6 +281,39 @@ def feedback_for_turn(turn_id: str) -> Optional[dict]:
     return last
 
 
+def count_consecutive_errors_for_query(user_query: str,
+                                        *, lookback: int = 200) -> int:
+    """Conteggio feedback ✗ consecutive (no ✓ in mezzo) per `user_query`.
+
+    Usato per escalation strato 2 (E.3): se >=2, il negative example nel
+    planner prompt diventa HARD CONSTRAINT (wording piu' severo + suggerisce
+    request_new_executor/frontier). LWW: un ✓ resetta il counter a 0.
+    """
+    if not user_query or not FEEDBACK_PATH.is_file():
+        return 0
+    needle = user_query.strip().lower()
+    with FEEDBACK_PATH.open(encoding="utf-8") as fh:
+        lines = fh.readlines()
+    count = 0
+    # Scan dal piu' recente all'indietro: stop al primo ✓ (resetta).
+    for line in reversed(lines[-lookback:]):
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            rec = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        q = rec.get("user_query") or ""
+        if q.strip().lower() != needle:
+            continue
+        if rec.get("action") == "ok":
+            break  # un ok resetta il counter consecutivo
+        if rec.get("action") == "error":
+            count += 1
+    return count
+
+
 def rejected_pipelines_for_query(user_query: str,
                                   *, lookback: int = 200) -> list[list[str]]:
     """Pipeline (tool sequence) rifiutate dall'utente per una query.

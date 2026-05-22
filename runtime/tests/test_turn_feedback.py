@@ -198,6 +198,29 @@ class RejectedPipelinesTests(unittest.TestCase):
         out = self.TF.rejected_pipelines_for_query("CONTA file IN x")
         self.assertEqual(len(out), 1)
 
+    def test_count_consecutive_errors_basic(self):
+        self._record_error("t1", "test q", ["a"])
+        self._record_error("t2", "test q", ["b"])
+        n = self.TF.count_consecutive_errors_for_query("test q")
+        self.assertEqual(n, 2)
+
+    def test_count_consecutive_errors_resets_on_ok(self):
+        """Un ✓ in mezzo resetta il counter consecutivo."""
+        import time as _time
+        self._record_error("t1", "q", ["a"])
+        _time.sleep(0.01)
+        with self.fb_path.open("a") as fh:
+            fh.write(json.dumps({
+                "turn_id": "t2", "action": "ok", "by": "u",
+                "ts": _time.time(), "user_query": "q",
+            }) + "\n")
+        _time.sleep(0.01)
+        self._record_error("t3", "q", ["b"])
+        n = self.TF.count_consecutive_errors_for_query("q")
+        self.assertEqual(n, 1,
+                          "ok in mezzo deve resettare il counter; "
+                          "ultimo error count = 1")
+
     def test_ok_after_error_revokes_rejection(self):
         """Utente preme ✗, poi ↻, sistema rifa stesso path corretto,
         utente preme ✓. La pipeline non deve restare in rejected (LWW)."""

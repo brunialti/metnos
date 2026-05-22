@@ -585,6 +585,23 @@ class MultiToolPathsDB:
                 "find_* → compute_entries(op=count) per '%s'", canonical[:60],
             )
             return 0
+        # Strato 1 anti-loop feedback (E.3, 22/5/2026): se la pipeline e'
+        # gia' in `rejected_pipelines_for_query(canonical)`, NON memorizzare.
+        # Razionale: l'utente ha rifiutato esplicitamente questo path per
+        # questa query; re-cacharlo via record_path automatico al termine
+        # del turno produce il loop infinito ✗→↻→stessa pipeline→✗.
+        try:
+            from turn_feedback import rejected_pipelines_for_query
+            for rej in rejected_pipelines_for_query(canonical):
+                if list(rej) == list(tools_sequence):
+                    _LOG.info(
+                        "multi_tool_paths: skip record (pipeline rifiutata "
+                        "dall'utente per query '%s'): %r",
+                        canonical[:60], tools_sequence,
+                    )
+                    return 0
+        except Exception as _ex:
+            _LOG.debug("rejected_pipelines check failed: %r", _ex)
         # Regola simmetrica "executor > fast-path" (19/5 v5): se la
         # sintesi della pipeline corrisponderebbe a un executor gia' in
         # catalog, NON registrare. Niente da memoizzare se la capacita'
