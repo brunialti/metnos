@@ -4865,6 +4865,26 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
             print(f"[multi_pipeline] propose={_is_propose} notify={_is_notify}: "
                   f"injected {needed}, hijackers={list(hijackers)}")
 
+    # Strato 2 (E.3): se l'utente ha rifiutato pipeline per QUESTA query,
+    # forza nel pool gli "escape hatch" così il LLM vede alternative
+    # concrete invece di ripetere il solito tool (root cause turn cf4ce937
+    # 22/5/2026: 4 ✗ consecutive ma pool = [find_events_empty, filter_lists,
+    # find_places, get_processes, consult_frontier] — admin/request_new
+    # mancavano, LLM forzato a get_processes).
+    try:
+        from turn_feedback import count_consecutive_errors_for_query
+        if count_consecutive_errors_for_query(user_query_for_run) >= 1:
+            _have = {e.name for e in candidates}
+            for _ehatch in ("admin", "consult_frontier", "request_new_executor"):
+                if _ehatch in _have:
+                    continue
+                _e = next((e for e in catalog if e.name == _ehatch), None)
+                if _e is not None:
+                    candidates = list(candidates) + [_e]
+                    _have.add(_ehatch)
+    except Exception as _ex:
+        log.warning("escape_hatch injection failed: %s", _ex)
+
     log.candidates = [e.name for e in candidates]
     if verbose:
         print(f"[prefilter] candidati: {log.candidates}")
