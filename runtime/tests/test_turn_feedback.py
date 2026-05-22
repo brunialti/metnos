@@ -166,8 +166,12 @@ class RejectedPipelinesTests(unittest.TestCase):
                                                        if i == 0 else "",
                   "llm_in_tokens": 0, "llm_latency_ms": 0}
                  for i, t in enumerate(tools)]
-        (self.turns_dir / "x.jsonl").write_text(
-            (self.turns_dir / "x.jsonl").read_text() if (self.turns_dir / "x.jsonl").exists() else ""
+        existing = ""
+        tf = self.turns_dir / "x.jsonl"
+        if tf.exists():
+            existing = tf.read_text()
+        tf.write_text(
+            existing
             + json.dumps({"turn_id": turn_id, "user_query": user_query,
                           "steps": steps}) + "\n",
             encoding="utf-8",
