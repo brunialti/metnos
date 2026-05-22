@@ -337,6 +337,23 @@ def apply_decision(
     _DATA_DIR.mkdir(parents=True, exist_ok=True)
     with DECISIONS_PATH.open("a", encoding="utf-8") as fh:
         fh.write(json.dumps(rec, ensure_ascii=False) + "\n")
+    # C.8: per action=accept invoca on_accept che crea marker operativi
+    # (synt_pending / change_pending / pipeline_pending). Idempotente per
+    # signature (cluster-level: 28 varianti → 1 marker).
+    if action == "accept":
+        try:
+            from proposal_actions import on_accept as _on_accept
+            # Recupera la proposta enriched per leggere name_status,
+            # signature_relaxed, ecc.
+            for r in load_all(min_alignment=0.0, max_rows=10000, enrich_rows=True):
+                if r.get("prop_id") == prop_id:
+                    rec["operative_effect"] = _on_accept(r, rec)
+                    break
+        except Exception as ex:
+            import logging as _logging
+            _logging.getLogger(__name__).warning(
+                "proposal_actions.on_accept failed: %r", ex,
+            )
     return rec
 
 
