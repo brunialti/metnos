@@ -265,6 +265,16 @@ def run_for_telos(
         live_executor_names=live_names,
     )
 
+    # Fase 2 (22/5/2026): pre-carica TUTTI i telos per il Giudice teleologico.
+    # La proposta e' generata per UN telos (telos.id) ma il fit va misurato su
+    # TUTTI: una proposta puo' aiutare quello ma danneggiarne altri.
+    try:
+        from telos_loader import current as _telos_current
+        all_telos = _telos_current()
+    except Exception as ex:
+        _LOG.warning("telos_introspect: telos_loader.current() failed: %r", ex)
+        all_telos = []
+
     results: list[dict] = []
     for lens_name in active:
         lens_mod = LENSES[lens_name]
@@ -282,6 +292,30 @@ def run_for_telos(
             grammar=lens_grammar,
         )
         for p in proposals:
+            # Giudice teleologico fase 2 (22/5/2026): stima fit per telos +
+            # compone expected_alignment. Bother_cost=0 in MVP (l'engine
+            # non sa ancora quante proposte sono gia' state pubblicate).
+            ea = 0.0
+            per_telos_audit: list[dict] = []
+            if all_telos:
+                try:
+                    from alignment_engine import estimate_fit
+                    res = estimate_fit(
+                        {"lens": lens_name,
+                         "proposed_action": p.proposed_action,
+                         "rationale": p.rationale},
+                        all_telos,
+                        llm_invoke=llm,
+                    )
+                    ea = res.expected_alignment
+                    p.expected_alignment = ea
+                    per_telos_audit = [
+                        {"telos_id": f.telos_id, "fit": f.fit, "why": f.why}
+                        for f in res.per_telos
+                    ]
+                except Exception as ex:
+                    _LOG.warning("telos_introspect: alignment_engine failed: %r", ex)
+
             rec = {
                 "ts": time.time(),
                 "telos_id": telos.id,
@@ -295,6 +329,8 @@ def run_for_telos(
                 "paternalism_flag": p.paternalism_flag,
                 "expected_alignment": p.expected_alignment,
             }
+            if per_telos_audit:
+                rec["alignment_per_telos"] = per_telos_audit
             if persist:
                 _persist(rec)
             results.append(rec)

@@ -251,69 +251,66 @@ abitano due assi ortogonali della vita di Metnos.
 
 <p>
 Vive nel workspace come sesto file canonico, gi&agrave; presente come scaffold
-in <code>workspace/TELOS.md</code> dal 27/4 con i sette telos canonici
-popolati (peso, soglia_attivazione, note). Formato markdown leggibile a
-mano. Loader Python (<code>telos_loader.py</code>, vedi cap.&nbsp;7) rinviato
-a fase 4: per ora il file e' editabile ma non ancora iniettato nel prompt
-di sistema dal runtime. Gli altri cinque file canonici del workspace
+in <code>workspace/TELOS.md</code> dal 27/4. Formato markdown leggibile a
+mano. Loader Python (<code>telos_loader.py</code>, vedi cap.&nbsp;7) wired
+in produzione il 22/5/2026 (fase 4 chiusa): TELOS.md &egrave; iniettato nel
+prompt di sistema del planner via <code>render_planner_block(lang)</code>,
+con hot-reload mtime-based. Set canonico ridotto a <strong>6 telos</strong>
+dal 22/5/2026 (v1.2, vedi nota in fondo a questo capitolo). Gli altri cinque file canonici del workspace
 (<code>IDENTITY.md</code>, <code>USER.md</code>, <code>MEMORY.md</code>,
 <code>AGENTS.md</code>, <code>SOUL.md</code>) sono pure presenti come
 scaffold.
 </p>
 
-<pre><code>---
-telos_version: 1.1
-written_at: 2026-04-25T12:00:00+02:00
-written_by: roberto
-previous_hash: &lt;sha256 della versione precedente, o "genesis"&gt;
-signature: &lt;HMAC-SHA256, chiave separata dalla costituzionale&gt;
----
-
-# I miei fini ultimi
+<pre><code># I miei fini ultimi (v1.2, 22/5/2026)
 
 ## t.tempo &mdash; Liberare il mio tempo dalle incombenze ripetitive
-peso: 0.22
+peso: 0.25
 soglia_attivazione: 0.30
 note: se qualcosa mi libera almeno 30 minuti/settimana e posso fidarmi,
       considera di proporlo.
 
 ## t.ordine &mdash; Mantenere l'ordine dei miei dati digitali
-peso: 0.13
+peso: 0.15
 soglia_attivazione: 0.40
 note: preferisco piccoli riassetti incrementali ai grandi riordini.
 
 ## t.puntualita &mdash; Non farmi perdere scadenze importanti
-peso: 0.18
+peso: 0.20
 soglia_attivazione: 0.25
 note: una scadenza &egrave; "importante" se riguarda lavoro, salute, famiglia,
       o se io l'ho segnata esplicitamente come tale.
 
 ## t.protezione &mdash; Proteggere la privacy mia e di chi mi &egrave; vicino
-peso: 0.18
+peso: 0.20
 soglia_attivazione: 0.20
 note: sotto questa soglia sono paranoico apposta. Meglio un falso allarme
       che un'indiscrezione.
 
 ## t.discrezione &mdash; Sorprendermi utilmente ma non interrompermi
-peso: 0.09
+peso: 0.10
 soglia_attivazione: 0.50
 note: non interrompermi in orario di riunione, di sonno, di cena. Accumula
       e proponi al digest serale.
 
 ## t.parsimonia &mdash; Non spendere (in API, servizi, tempo di calcolo) pi&ugrave; di quanto serve
-peso: 0.08
+peso: 0.10
 soglia_attivazione: 0.35
 note: scegli sempre l'opzione pi&ugrave; economica che raggiunge la qualit&agrave;
       necessaria.
-
-## t.coltivazione_strumenti &mdash; Non lasciare inattuata una mia richiesta, se possibile
-peso: 0.12
-soglia_attivazione: 0.10
-note: se ti chiedo qualcosa che il tuo pool non sa ancora fare, esaurisci
-      le strategie di sintesi (comporre, generare, chiedere) prima di
-      rispondere "non posso". Il fallimento &egrave; lecito; la rinuncia
-      silenziosa no. Vedi cap. 5 per la clausola di stop.
 </code></pre>
+
+<div class="callout note">
+<strong>v1.2 (22/5/2026): rimosso <code>t.coltivazione_strumenti</code>.</strong>
+Il telos &laquo;non lasciare inattuata una mia richiesta&raquo; era una
+<em>clausola anti-rinuncia di runtime</em>, non un fine ultimo: produceva
+fit moderato come rumore di fondo su quasi ogni proposta (qualunque
+estensione di capacit&agrave; lo soddisfa parzialmente), riducendo il
+potere discriminativo del Giudice teleologico. Il suo peso 0.12 &egrave;
+stato ridistribuito proporzionalmente sui 6 rimanenti. Il cap.&nbsp;5
+(originariamente dedicato a questo telos) &egrave; lasciato a fine doc
+come riferimento storico. Vedi ADR&nbsp;0157.
+</div>
 
 <h2>Campi obbligatori per telos</h2>
 <table>
@@ -330,25 +327,65 @@ note: se ti chiedo qualcosa che il tuo pool non sa ancora fare, esaurisci
 <div class="callout note">
 <strong>Numero di telos.</strong> Tra 3 (minimo utile) e 7 (limite di carico
 cognitivo). Oltre 7, il rischio &egrave; telos ridondanti che si cancellano a
-vicenda. L'esempio sopra ha 7 elementi: il limite. Se emerge una nuova
-dimensione, meglio rivedere quelle esistenti che aggiungerne.
+vicenda. La v1.2 ha 6 elementi: ridotta da 7 dopo aver osservato che
+<code>t.coltivazione_strumenti</code> era una clausola di runtime e non
+un fine ultimo. Se emerge una nuova dimensione, meglio rivedere quelle
+esistenti che aggiungerne.
 </div>
 
 <h1 id="cap4">4. La funzione di allineamento</h1>
 
-<h2>Formula</h2>
+<h2>Formula (v1.3, 22/5/2026)</h2>
 
 <div class="formula">
-expected_alignment = ( &sum;<sub>i</sub> peso<sub>i</sub> &middot; gate(fit<sub>i</sub>, soglia<sub>i</sub>) ) &middot; urgency &middot; confidence &minus; bother_cost
+contrib<sub>i</sub> = peso<sub>i</sub> &middot; gate(fit<sub>i</sub>, soglia<sub>i</sub>)<br>
+top = max(contrib<sub>i</sub>)<br>
+rest = &sum;<sub>i</sub> contrib<sub>i</sub> &minus; top<br>
+expected_alignment = (&alpha; &middot; top + &gamma; &middot; rest) &middot; urgency &middot; confidence &minus; bother_cost
 </div>
 
 <p>Con:</p>
 <ul>
+    <li><code>&alpha; = 2.0</code>, <code>&gamma; = 0.5</code> (costanti interne in <code>runtime/alignment_engine.py</code>). Vincolo <code>&alpha; &gt; 3&gamma;</code> garantisce che uno specialista perfetto su un telos pesante batta un tuttofare medio.</li>
     <li><code>gate(fit, soglia) = fit</code> se <code>fit &ge; soglia</code>, altrimenti <code>0</code>. Funzione gate &rarr; un telos non contribuisce se il fit &egrave; sotto-soglia.</li>
     <li><code>urgency &isin; [0.5, 2.0]</code>: 1.0 = nessuna pressione temporale; 2.0 = scadenza entro 24h; 0.5 = cronico, nessuna urgenza. Moltiplicatore, non additivo.</li>
     <li><code>confidence &isin; [0, 1]</code>: quanto Metnos &egrave; sicuro della propria stima. Proposte basate su pochi dati o ragionamento speculativo &rarr; confidence bassa.</li>
     <li><code>bother_cost &isin; [0, &infin;)</code>: vedi cap. 6.</li>
 </ul>
+
+<h2>Storia formula &mdash; come siamo arrivati a v1.3</h2>
+
+<table>
+<thead><tr><th>Versione</th><th>Formula base</th><th>Distribuzione su 481 proposte backfill</th><th>Esito</th></tr></thead>
+<tbody>
+<tr>
+  <td><strong>v1.0</strong> (22/5 mattina)</td>
+  <td><code>&sum; peso &middot; fit</code> (sum-product)</td>
+  <td>min 0.077, max 0.569, mean 0.302, stdev 0.075</td>
+  <td>Ordering invertito: il tuttofare medio (fit&nbsp;~0.5 su tutti) superava lo specialista perfetto. Il segnale del Giudice (per-telos <em>chiaro</em>) veniva diluito dall'aggregazione.</td>
+</tr>
+<tr>
+  <td><strong>v1.2</strong> (22/5 pomeriggio)</td>
+  <td><code>top + 0.3 &middot; rest</code></td>
+  <td>min 0.072, max 0.278, mean 0.176, stdev 0.039</td>
+  <td>Ordering corretto, ma stdev dimezzato: il top1 era limitato ai 6 pesi discreti (range [0.10, 0.25]), perdendo dispersione utile per il triage.</td>
+</tr>
+<tr>
+  <td><strong>v1.3</strong> (22/5 sera)</td>
+  <td><code>2 &middot; top + 0.5 &middot; rest</code></td>
+  <td>min 0.144, max 0.524, mean 0.338, stdev 0.073</td>
+  <td>Ordering corretto + stdev al livello di v1.0. Il boost <code>&alpha;</code> espande la dinamica del termine dominante; <code>&gamma;</code> piu' alto valorizza le proposte multi-telos (98.5% del corpus).</td>
+</tr>
+</tbody>
+</table>
+
+<p>
+Il diagnostico chiave: il Giudice teleologico (LLM Gemma 4 26B locale)
+discrimina <em>benissimo</em> per-telos (mean(max(fit)) = 0.87, mean(stdev fit
+per proposta) = 0.32: distribuzione bimodale, l'LLM <em>sa</em> quali telos
+servono). Il problema era solo l'aggregazione che apparteneva al codice
+deterministico, non al giudizio.
+</p>
 
 <h2>Come si stimano i <code>fit</code><sub>i</sub></h2>
 
@@ -376,13 +413,40 @@ sono due metriche distinte:
 Una proposta passa entrambi i filtri: synt produce qualcosa di buono (<code>R &ge; soglia</code>), il Vaglio teleologico decide se vale la pena consegnarlo (<code>expected_alignment &ge; &theta;</code>). Sono ortogonali: un'ottima proposta in un momento sbagliato resta muta.
 </div>
 
-<h2>Threshold di pubblicazione</h2>
+<h2>Threshold di pubblicazione e dashboard di triage</h2>
 
 <p>
-Se <code>expected_alignment &lt; &theta;</code>, la proposta <strong>non viene
-mostrata all'utente</strong>. <code>&theta;</code> &egrave; un parametro di
-<code>config</code> con default <code>0.15</code>. Le
-proposte scartate finiscono in un journal interno ispezionabile:
+Le proposte vengono ordinate per <code>expected_alignment</code> e
+sottoposte all'utente via <strong>dashboard
+<code>/admin/proposals/telos</code></strong> (ADR 0078 + 0157, wired
+22/5/2026). Per ogni proposta la UI mostra:
+</p>
+
+<ul>
+  <li><strong>Origine</strong>: lens (es. <code>scamper</code>,
+  <code>endgame_book</code>), telos generante, operator, <code>n_observed</code>
+  estratto dal rationale (es. "co-attivati 49 volte").</li>
+  <li><strong>Proposta</strong>: target executor, proposed_action,
+  rationale + breakdown <code>alignment_per_telos</code> con fit e
+  spiegazione per ciascun telos.</li>
+  <li><strong>Esempio applicabile</strong>: chip
+  <code>pipeline osservata</code> (la combinazione esiste nel turn log
+  reale), <code>match parziale</code> (solo il target appare),
+  <code>speculativa</code> (nessun esempio negli ultimi 14 giorni). Se
+  trovata, una query utente reale + path attuale &rarr; path suggerito.</li>
+  <li><strong>Impatto</strong>: stima latenza risparmiata (mediana per-step
+  ~5.5s &times; step ridotti).</li>
+  <li><strong>Azioni</strong>: pulsanti <code>accept</code>,
+  <code>reject</code>, <code>stage</code> (in attesa, non terminale).</li>
+</ul>
+
+<p>
+Le decisioni sono persistite in
+<code>~/.local/share/metnos/telos_decisions.jsonl</code> (append-only,
+LWW per <code>prop_id</code> = timestamp). Lo stato &laquo;stage&raquo;
+non &egrave; terminale: la proposta resta nella lista pending finch&eacute;
+non &egrave; accept/reject. Le proposte scartate <em>silenziosamente</em>
+(sotto soglia) finiscono in un journal interno ispezionabile:
 </p>
 
 <pre><code>// workspace/.audit/telos_rejected.jsonl
@@ -392,18 +456,35 @@ proposte scartate finiscono in un journal interno ispezionabile:
  "at": "2026-04-25T19:42:00Z"}</code></pre>
 
 <p>
-L'utente pu&ograve; ispezionare questo journal per verificare che Metnos non
-stia sopprimendo cose buone (&laquo;digest settimanale: 47 proposte scartate,
-ecco le 5 al margine&raquo;).
+Default <code>&theta;</code> per la dashboard: <code>0.30</code>
+(quartile basso, override via query param <code>min_alignment</code>).
+Cutoff empirici su 481 proposte v1.3: <code>&gt; 0.50</code> = 3 proposte
+top (0.6%); <code>&gt; 0.45</code> = 23 (5%, soglia review); <code>&gt;
+0.40</code> = 88 (18%, top decile).
 </p>
 
-<h1 id="cap5">5. Il telos di non-rinuncia</h1>
+<h1 id="cap5">5. Il telos di non-rinuncia (storico, rimosso v1.2)</h1>
+
+<div class="callout warning">
+<strong>22/5/2026 (v1.2): <code>t.coltivazione_strumenti</code> rimosso dal
+set canonico.</strong>
+Il backfill empirico ha mostrato che questo &laquo;telos&raquo; si comportava
+come una <em>clausola di runtime</em> universale, non come un fine ultimo:
+qualunque proposta di estensione capacit&agrave; lo soddisfaceva almeno
+parzialmente, e il fit moderato risultante diventava rumore di fondo
+sull'AlignmentEngine, riducendo il potere discriminativo del Giudice.
+La semantica anti-rinuncia (esaurisci la cascata synt prima di rispondere
+&laquo;non posso&raquo;) rimane attiva nel runtime ma come <em>policy
+deterministica</em>, non come telos pesato. Vedi ADR&nbsp;0157.
+</div>
 
 <p class="lead">
 <code>t.coltivazione_strumenti</code> &egrave; il telos pi&ugrave; nuovo
 (introdotto il 25 aprile 2026) e quello che cambia di pi&ugrave; il significato
 di &laquo;non si applica alle richieste esplicite&raquo;. Lo facciamo vivere a
 parte perch&eacute; meccanicamente si comporta in modo diverso dagli altri.
+Il capitolo &egrave; conservato come riferimento storico al razionale
+originale.
 </p>
 
 <h2>5.1 Il problema che risolve</h2>

@@ -28,7 +28,7 @@ KNOWN PROJECT PATHS (interpretation of project names as roots)
 
 MUST: when the user names a known project as an object (e.g., "metnos code lines"), use the corresponding code_root as the executor scope.
 MUST NOT: search for files containing that name as a substring in the filesystem (find_files pattern="*metnos*") — the name is the project identity, not a filename pattern.
-OK: "metnos code lines" → compute_files_loc(paths=["/opt/myclaw"]).
+OK: "metnos code lines" → compute_files_loc(paths=["/opt/metnos"]).
 ERROR: "metnos code lines" → find_files(pattern="*metnos*", base_path="/home/roberto"). THIS IS AN ERROR.
 
 ══════════════════════════════════════════════════════════════════════
@@ -41,3 +41,9 @@ MUST: when the user names a recipient by name (e.g., "send to Lucia"), resolve v
 MUST NOT: guess literal chat_id, email, or handles when names are available in the KNOWN USERS list.
 OK: "send summary to Lucia" → send_messages(messages=[{"to_user":"lucia","body":"..."}]).
 ERROR: "send summary to Lucia" → send_messages(messages=[{"to":"lucia@somewhere","body":"..."}]). THIS IS AN ERROR.
+{# telos_block: rendered by telos_loader.render_planner_block(lang),
+   wired via agent_runtime._render_telos_block() — phase 4 (22/5/2026). #}
+{% if telos_block %}
+
+{{ telos_block }}
+{% endif %}

@@ -17,6 +17,7 @@ from aiohttp import web
 
 import executor_aging
 import proposals_state
+import telos_proposals_store
 import users
 from http_auth import (
     ADMIN_COOKIE,
@@ -180,6 +181,7 @@ async def admin_home(request: web.Request) -> web.Response:
         "uptime_s": time.time() - started,
         "turn_summary": _summary_turns(),
         "proposals_summary": _summary_proposals(),
+        "telos_proposals_summary": telos_proposals_store.stats(),
         "executors_summary": _summary_executors(catalog),
         "runs_summary": _summary_runs(),
         "safety_summary": _summary_safety(),
@@ -223,7 +225,7 @@ def _describe_proposal(kind: str, sig_key: str) -> str:
     if head == "specialize" and len(parsed) >= 4:
         exec_name, arg, val_json = parsed[1], parsed[2], parsed[3]
         # val_json e' una stringa JSON-encoded del valore originale (es.
-        # '"/opt/myclaw"' o '["dates.semantic"]'). Decodifica per leggibilita',
+        # '"<install_root>"' o '["dates.semantic"]'). Decodifica per leggibilita',
         # fallback al raw se invalida.
         try:
             val = json.loads(val_json)
@@ -300,6 +302,115 @@ async def admin_proposal_action(request: web.Request) -> web.Response:
         return web.Response(text=html, content_type="text/html")
     return web.json_response({"ok": True, "sig_key": sig_key, "action": action,
                               "state": row.state})
+
+
+# --- /admin/proposals/telos --------------------------------------------------
+
+# Soglia di default per la dashboard triage. Sotto 0.30 = quartile basso, non
+# vale l'attenzione umana. Override via query param `min_alignment`.
+_TELOS_DASH_DEFAULT_MIN = 0.30
+_TELOS_DASH_MAX_ROWS = 60
+
+
+def _telos_lens_facets(rows: list[dict]) -> dict:
+    """Conteggi per lens e telos_id, usati nei filtri della UI."""
+    lens_c: dict[str, int] = {}
+    telos_c: dict[str, int] = {}
+    for r in rows:
+        lens_c[r.get("lens", "?")] = lens_c.get(r.get("lens", "?"), 0) + 1
+        tid = r.get("telos_id") or "?"
+        telos_c[tid] = telos_c.get(tid, 0) + 1
+    return {"by_lens": lens_c, "by_telos": telos_c}
+
+
+async def admin_telos_proposals(request: web.Request) -> web.Response:
+    """GET /admin/proposals/telos
+
+    Query params: min_alignment (float), lens (str), telos_id (str),
+    only_pending (bool), enriched (bool=true).
+    """
+    try:
+        min_align = float(request.query.get("min_alignment", _TELOS_DASH_DEFAULT_MIN))
+    except ValueError:
+        min_align = _TELOS_DASH_DEFAULT_MIN
+    lens = request.query.get("lens", "").strip() or None
+    telos_id = request.query.get("telos_id", "").strip() or None
+    only_pending = request.query.get("only_pending", "0") in ("1", "true", "on")
+
+    rows = telos_proposals_store.load_all(
+        min_alignment=min_align,
+        lens=lens,
+        telos_id=telos_id,
+        max_rows=_TELOS_DASH_MAX_ROWS,
+        include_decided=not only_pending,
+        enrich_rows=True,
+    )
+    stats = telos_proposals_store.stats()
+    # Facets calcolate sull'INTERA collezione (non filtrata) per i dropdown.
+    all_rows = telos_proposals_store.load_all(
+        min_alignment=0.0, max_rows=10000, enrich_rows=False,
+    )
+    facets = _telos_lens_facets(all_rows)
+
+    return negotiate_collection(
+        request,
+        json_payload={
+            "rows": rows, "stats": stats, "facets": facets,
+            "filters": {
+                "min_alignment": min_align,
+                "lens": lens or "", "telos_id": telos_id or "",
+                "only_pending": only_pending,
+            },
+        },
+        template="proposals_telos.html",
+        template_ctx={
+            "rows": rows, "stats": stats, "facets": facets,
+            "min_alignment": min_align, "lens": lens or "",
+            "telos_id": telos_id or "", "only_pending": only_pending,
+        },
+    )
+
+
+def _render_telos_row_html(row: dict) -> str:
+    """Riga aggiornata post-azione (per swap htmx). Mostra solo summary
+    visto che il dettaglio era nella vista precedente."""
+    decision = row.get("decision") or {}
+    action = decision.get("action", "")
+    badge = {
+        "accept": '<span class="chip ok">accepted</span>',
+        "reject": '<span class="chip bad">rejected</span>',
+        "stage":  '<span class="chip">staged</span>',
+    }.get(action, '<span class="chip muted">pending</span>')
+    return (
+        f'<tr><td colspan="6" class="muted">'
+        f'prop {row.get("prop_id", "?")[:14]}: {badge} '
+        f'(by {decision.get("by", "?")} at {time.strftime("%H:%M:%S", time.localtime(decision.get("ts", 0)))})'
+        f'</td></tr>'
+    )
+
+
+async def admin_telos_proposal_action(request: web.Request) -> web.Response:
+    """POST /admin/proposals/telos/{prop_id}/{action}"""
+    prop_id = urllib.parse.unquote(request.match_info["prop_id"])
+    action = request.match_info["action"]
+    if action not in ("accept", "reject", "stage"):
+        return _error(400, "invalid_action",
+                      f"action must be accept|reject|stage, got {action}")
+    try:
+        rec = telos_proposals_store.apply_decision(
+            prop_id, action, by="admin")
+    except ValueError as e:
+        return _error(400, "invalid_action", str(e))
+    except Exception as e:
+        log.exception("telos proposal action failed")
+        return _error(500, "internal_error", str(e))
+
+    if "text/html" in request.headers.get("Accept", ""):
+        # Riga compressa con badge della decisione.
+        html = _render_telos_row_html({"prop_id": prop_id, "decision": rec})
+        return web.Response(text=html, content_type="text/html")
+    return web.json_response({"ok": True, "prop_id": prop_id, "action": action,
+                              "recorded_at": rec.get("ts")})
 
 
 # --- /admin/executors --------------------------------------------------------
@@ -1073,6 +1184,8 @@ ROUTES = (
     ("GET",  "/admin",                            admin_home),
     ("GET",  "/admin/proposals",                  admin_proposals),
     ("POST", r"/admin/proposals/{sig_key}/{action:approve|reject|defer}", admin_proposal_action),
+    ("GET",  "/admin/proposals/telos",            admin_telos_proposals),
+    ("POST", r"/admin/proposals/telos/{prop_id}/{action:accept|reject|stage}", admin_telos_proposal_action),
     ("GET",  r"/admin/synth-proposals/{id}/evaluate", admin_synth_proposal_evaluate),
     ("POST", r"/admin/synth-proposals/{id}/evaluate", admin_synth_proposal_evaluate),
     ("GET",  "/admin/promotions",                 admin_promotions),

@@ -1,0 +1,186 @@
+{% extends "base.html" %}
+{% block title %}Metnos admin · telos proposals{% endblock %}
+{% block body %}
+<h1>Proposte telos engine</h1>
+<p class="muted">
+  {{ stats.total }} totali ·
+  {{ stats.pending }} pending ·
+  {{ stats.accepted }} accepted ·
+  {{ stats.rejected }} rejected ·
+  {{ stats.staged }} staged
+</p>
+
+<form method="get" class="row tp-filters">
+  <label>min alignment:
+    <input type="number" name="min_alignment" value="{{ min_alignment }}"
+           step="0.05" min="0" max="1" style="width:5em"
+           onchange="this.form.submit()">
+  </label>
+  <label>lens:
+    <select name="lens" onchange="this.form.submit()">
+      <option value=""{% if lens == "" %} selected{% endif %}>tutte ({{ facets.by_lens|length }})</option>
+      {% for ln, c in facets.by_lens|dictsort(by="value", reverse=true) %}
+        <option value="{{ ln }}"{% if lens == ln %} selected{% endif %}>{{ ln }} ({{ c }})</option>
+      {% endfor %}
+    </select>
+  </label>
+  <label>telos:
+    <select name="telos_id" onchange="this.form.submit()">
+      <option value=""{% if telos_id == "" %} selected{% endif %}>tutti</option>
+      {% for tid, c in facets.by_telos|dictsort(by="value", reverse=true) %}
+        <option value="{{ tid }}"{% if telos_id == tid %} selected{% endif %}>{{ tid }} ({{ c }})</option>
+      {% endfor %}
+    </select>
+  </label>
+  <label>
+    <input type="checkbox" name="only_pending" value="1"
+           {% if only_pending %}checked{% endif %}
+           onchange="this.form.submit()">
+    solo pending
+  </label>
+  <span class="muted">{{ rows|length }} risultati</span>
+</form>
+
+<table class="tp">
+  <thead>
+    <tr>
+      <th>ea</th>
+      <th>origine</th>
+      <th>proposta</th>
+      <th>esempio applicabile</th>
+      <th>impatto</th>
+      <th>azioni</th>
+    </tr>
+  </thead>
+  <tbody>
+  {% for r in rows %}
+    <tr>
+      <td class="tp-ea">
+        <strong>{{ "%.3f"|format(r.expected_alignment) }}</strong>
+        {% if r.expected_alignment >= 0.50 %}<span class="chip ok">top</span>
+        {% elif r.expected_alignment >= 0.45 %}<span class="chip warn">alta</span>
+        {% endif %}
+        {% if r.paternalism_flag %}<span class="chip bad">paternalism</span>{% endif %}
+      </td>
+      <td>
+        <div><span class="chip">{{ r.lens }}</span></div>
+        <div class="muted" style="margin-top:.2rem">{{ r.telos_id }}</div>
+        {% if r.operator %}<div class="muted">op: {{ r.operator }}</div>{% endif %}
+        {% if r.n_observed %}<div class="muted">osservato {{ r.n_observed }}×</div>{% endif %}
+      </td>
+      <td>
+        <div><strong>{{ r.executor_target }}</strong></div>
+        <div style="margin-top:.3rem">{{ r.proposed_action }}</div>
+        <details style="margin-top:.4rem">
+          <summary class="muted">rationale + breakdown allineamento</summary>
+          <div style="margin-top:.3rem">{{ r.rationale }}</div>
+          <table class="tp-fits">
+            <thead><tr><th>telos</th><th>fit</th><th>perché</th></tr></thead>
+            <tbody>
+            {% for f in r.alignment_per_telos %}
+              <tr>
+                <td>{{ f.telos_id }}</td>
+                <td>{{ "%.2f"|format(f.fit) }}</td>
+                <td class="muted">{{ f.why }}</td>
+              </tr>
+            {% endfor %}
+            </tbody>
+          </table>
+        </details>
+      </td>
+      <td class="tp-example">
+        {% if r.pipeline_observed %}
+          <span class="chip ok">pipeline osservata</span>
+        {% elif r.current_path %}
+          <span class="chip warn">match parziale</span>
+        {% else %}
+          <span class="chip muted">speculativa</span>
+        {% endif %}
+        {% if r.example_query %}
+          <div class="tp-query muted" style="margin-top:.3rem">
+            <em>«{{ r.example_query[:140] }}{% if r.example_query|length > 140 %}…{% endif %}»</em>
+          </div>
+        {% else %}
+          <div class="muted" style="margin-top:.3rem">nessuna query reale trovata negli ultimi 14 giorni di log</div>
+        {% endif %}
+        {% if r.current_path %}
+          <div class="tp-path" style="margin-top:.4rem">
+            <div class="muted">path attuale:</div>
+            <code>{{ r.current_path|join(" → ") }}</code>
+          </div>
+          <div class="tp-path" style="margin-top:.2rem">
+            <div class="muted">path suggerito:</div>
+            <code>{{ r.new_path_estimated|join(" → ") }}</code>
+          </div>
+        {% endif %}
+      </td>
+      <td class="tp-impact">
+        {% if r.latency_saved_ms_est is not none and r.latency_saved_ms_est > 0 %}
+          <div><strong>−{{ (r.latency_saved_ms_est / 1000)|round(1) }}s</strong> stimati</div>
+          <div class="muted">
+            {{ r.current_path|length }} → {{ r.new_path_estimated|length }} step
+          </div>
+          {% if r.current_latency_ms %}
+            <div class="muted">attuale: {{ (r.current_latency_ms / 1000)|round(1) }}s</div>
+          {% endif %}
+        {% elif r.current_path %}
+          <div class="muted">stesso n° step (riformulazione)</div>
+        {% else %}
+          <div class="muted">stima n/d</div>
+        {% endif %}
+        {% if r.pipeline_tools_mentioned %}
+          <details style="margin-top:.3rem">
+            <summary class="muted">tool menzionati ({{ r.pipeline_tools_mentioned|length }})</summary>
+            <div style="font-size:.85em">{{ r.pipeline_tools_mentioned|join(", ") }}</div>
+          </details>
+        {% endif %}
+      </td>
+      <td class="tp-actions">
+        {% if r.decision %}
+          {% set act = r.decision.action %}
+          {% if act == "accept" %}<span class="chip ok">accepted</span>
+          {% elif act == "reject" %}<span class="chip bad">rejected</span>
+          {% elif act == "stage" %}<span class="chip">staged</span>
+          {% endif %}
+          <div class="muted" style="font-size:.85em">
+            by {{ r.decision.by }}
+          </div>
+        {% else %}
+          <span class="chip muted">pending</span>
+        {% endif %}
+        <div style="margin-top:.4rem;display:flex;flex-direction:column;gap:.2rem">
+          <button class="btn ok"
+                  hx-post="/admin/proposals/telos/{{ r.prop_id|urlencode }}/accept"
+                  hx-target="closest tr" hx-swap="outerHTML">accept</button>
+          <button class="btn bad"
+                  hx-post="/admin/proposals/telos/{{ r.prop_id|urlencode }}/reject"
+                  hx-target="closest tr" hx-swap="outerHTML">reject</button>
+          <button class="btn"
+                  hx-post="/admin/proposals/telos/{{ r.prop_id|urlencode }}/stage"
+                  hx-target="closest tr" hx-swap="outerHTML">stage</button>
+        </div>
+      </td>
+    </tr>
+  {% else %}
+    <tr><td colspan="6" class="muted">nessuna proposta con i filtri correnti</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+
+<style>
+  table.tp td{vertical-align:top;font-size:.92em}
+  table.tp td.tp-ea{white-space:nowrap;width:7em}
+  table.tp td.tp-example{max-width:340px}
+  table.tp td.tp-impact{width:9em;white-space:nowrap}
+  table.tp td.tp-actions{width:7em}
+  table.tp code{font-size:.85em;display:block;word-break:break-all;padding:.2em .4em;background:#f7f7f7;border-radius:.2em}
+  table.tp .tp-fits{margin-top:.4rem;font-size:.85em}
+  table.tp .tp-fits th{background:#f7f7f7;font-weight:500}
+  table.tp .tp-query{font-size:.9em;border-left:3px solid #ccd;padding-left:.5em}
+  form.tp-filters{margin:0 0 1rem;padding:.6rem 1rem;background:#fff;border:1px solid #eee;border-radius:.4rem;flex-wrap:wrap;align-items:center}
+  form.tp-filters label{display:inline-flex;gap:.3rem;align-items:center;margin-right:.6rem;font-size:.9em}
+  .chip.muted{background:#eee;color:#777}
+  .btn.ok{background:#efe;border-color:#9c9}
+  .btn.bad{background:#fee;border-color:#c99}
+</style>
+{% endblock %}

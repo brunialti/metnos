@@ -719,6 +719,21 @@ def _render_users_known_block() -> str:
     return "\n".join(out)
 
 
+def _render_telos_block(lang: str) -> str:
+    """Wrap thin di `telos_loader.render_planner_block(lang)`. Fase 4
+    wire-in (22/5/2026): se TELOS.md mancante o vuoto ritorna stringa
+    vuota; il template `_footer.j2` ha `{% if telos_block %}` quindi
+    nessuna sezione spuria appare. Hot-reload via `telos_loader` cache
+    su mtime (idempotente, thread-safe).
+    """
+    try:
+        import telos_loader
+        return telos_loader.render_planner_block(lang)
+    except Exception as ex:
+        log.warning("telos_loader.render_planner_block failed: %s", ex)
+        return ""
+
+
 
 
 _OBS_HISTORY_CHAR_CAP = 8000
@@ -1413,7 +1428,10 @@ _PROPOSE_INTENT_RE = re.compile(
     # IT — «quali (sono|fasce|orari|slot|...) ... liber[ie]/disponibil[ie]/...»
     # Pattern semantico: parola interrogativa «quali» seguita entro la frase
     # da un marker di disponibilita'/vacuita'. La distanza max 0-6 tokens.
-    r"quali\s+(?:\w+\s+){0,6}(?:liber[ie]|disponibil[ie]|aperte?|vuoti?|vuote)|"
+    # NB 22/5/2026: rimosso `aperte?` dal pattern — falso positivo su query
+    # sysinfo «quali porte TCP aperte» (network info, NON calendar). I marker
+    # canonici disponibilita' calendar sono `liber[ie]|disponibil[ie]|vuot[ei]`.
+    r"quali\s+(?:\w+\s+){0,6}(?:liber[ie]|disponibil[ie]|vuoti?|vuote)|"
     # IT — «N alternative/opzioni/slot/orari/fasce/mattine/proposte».
     # Forma con numero (3/2/...) + sostantivo proposta-like. Cattura
     # «dammi 3 alternative», «cerca 3 slot 9-11», «alcune proposte»,
@@ -4304,6 +4322,7 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
         vocab_qualifiers=_vocab_qualifiers(),
         project_paths=_render_project_paths_block(),
         users_known=_render_users_known_block(),
+        telos_block=_render_telos_block(DEFAULT_LANG),
         **_now_vars,
     )
     # ADR 0149 (18/5/2026): instruction block per il by-product
@@ -4767,6 +4786,7 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
                 vocab_qualifiers=_vocab_qualifiers(),
                 project_paths=_render_project_paths_block(),
                 users_known=_render_users_known_block(),
+                telos_block=_render_telos_block(DEFAULT_LANG),
                 **_now_vars,
             )
             # Riapplica gli addenda (credenziali + reference images) gia'
@@ -4779,6 +4799,7 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
                 vocab_qualifiers=_vocab_qualifiers(),
                 project_paths=_render_project_paths_block(),
                 users_known=_render_users_known_block(),
+                telos_block=_render_telos_block(DEFAULT_LANG),
                 **_now_vars,
             )
             if planner_system.startswith(_planner_all):

@@ -186,6 +186,58 @@ def declared_weight_sum(path: Optional[Path] = None) -> float:
     return sum(t.weight for t in current(path))
 
 
+# Fase 4 (22/5/2026): rendering del blocco TELOS per system prompt PLANNER.
+# I telos sono dati utente (frase in lingua scelta dall'utente). Il rendering
+# e' lingua-agnostico per la SOSTANZA (phrase utente) e tradotto per le
+# istruzioni §6 (DEVI/NON DEVI). Degrade graceful: se TELOS.md mancante o
+# vuoto, ritorna stringa vuota — il PLANNER si comporta come oggi (no telos).
+
+_TELOS_HEADERS = {
+    "it": "TELOS DELL'UTENTE (fini ultimi dichiarati in workspace/TELOS.md)",
+    "en": "USER TELOS (ultimate ends declared in workspace/TELOS.md)",
+}
+
+_TELOS_RULES = {
+    "it": (
+        "DEVI: tenere conto di questi telos quando esistono piu' strategie con esito simile; preferisci quella che li serve.\n"
+        "NON DEVI: trattare i telos come hard-constraint — non bloccano richieste esplicite dell'utente, sono segnale soft.\n"
+        "OK: utente chiede 'riassumi le mail' → preferisci pipeline veloce (t.tempo, t.parsimonia) se la qualita' regge.\n"
+        "ERRORE: rifiutare un'azione perche' 'viola t.discrezione' — i telos pesano le proposte spontanee, non le richieste esplicite."
+    ),
+    "en": (
+        "MUST: account for these telos when multiple strategies yield similar outcomes; prefer the one that serves them.\n"
+        "MUST NOT: treat telos as hard-constraints — they don't block explicit user requests, they're a soft signal.\n"
+        "OK: user asks 'summarize the mail' → prefer fast pipeline (t.tempo, t.parsimonia) if quality holds.\n"
+        "ERROR: refusing an action because it 'violates t.discrezione' — telos weight spontaneous proposals, not explicit requests."
+    ),
+}
+
+
+def render_planner_block(lang: str = "it", path: Optional[Path] = None) -> str:
+    """Render del blocco TELOS per il system prompt del PLANNER.
+
+    Pattern §6 (CLAUDE.md): header separato da `═`, righe `t.<id> (peso X): <phrase>`,
+    quartetto DEVI/NON DEVI/OK/ERRORE in lingua. Lingua dei telos = lingua
+    in cui l'utente ha scritto TELOS.md (no traduzione). Lingua istruzioni
+    = `lang` (it/en supportati; altri lang → fallback 'en').
+
+    Ritorna stringa vuota se TELOS.md mancante o nessun telos parsed:
+    degrade graceful, il PLANNER si comporta come pre-fase-4.
+    """
+    telos_list = current(path)
+    if not telos_list:
+        return ""
+    lang_key = lang if lang in _TELOS_HEADERS else "en"
+    bar = "═" * 70
+    lines = [bar, _TELOS_HEADERS[lang_key], bar, ""]
+    # Ordina per peso decrescente (segnale di priorita' al PLANNER).
+    for t in sorted(telos_list, key=lambda x: x.weight, reverse=True):
+        lines.append(f"- {t.id} (peso {t.weight:.2f}): {t.phrase}")
+    lines.append("")
+    lines.append(_TELOS_RULES[lang_key])
+    return "\n".join(lines)
+
+
 # CLI minimo per inspection manuale.
 if __name__ == "__main__":
     import json

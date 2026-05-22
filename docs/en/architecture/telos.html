@@ -254,62 +254,59 @@ inhabit two orthogonal axes of Metnos's life.
 <h1 id="cap3">3. <code>TELOS.md</code> &mdash; the file</h1>
 
 <p>
-It lives in the workspace as the sixth canonical file. Markdown format with a YAML
-front-matter. A few lines, hand-written by the user.
+It lives in the workspace as the sixth canonical file. Markdown format with
+front-matter optional. A few lines, hand-written by the user. The canonical
+set was reduced to <strong>6 telos</strong> on 22/5/2026 (v1.2, see note
+at the end of this chapter).
 </p>
 
-<pre><code>---
-telos_version: 1.1
-written_at: 2026-04-25T12:00:00+02:00
-written_by: roberto
-previous_hash: &lt;sha256 of the previous version, or "genesis"&gt;
-signature: &lt;HMAC-SHA256, key separate from the constitutional one&gt;
----
-
-# My ultimate ends
+<pre><code># My ultimate ends (v1.2, 22/5/2026)
 
 ## t.tempo &mdash; Free my time from repetitive chores
-weight: 0.22
+weight: 0.25
 activation_threshold: 0.30
 notes: if something frees at least 30 minutes/week and I can trust it,
        consider proposing it.
 
 ## t.ordine &mdash; Keep the order of my digital data
-weight: 0.13
+weight: 0.15
 activation_threshold: 0.40
 notes: I prefer small incremental tidying to large reorganisations.
 
 ## t.puntualita &mdash; Don't make me miss important deadlines
-weight: 0.18
+weight: 0.20
 activation_threshold: 0.25
 notes: a deadline is "important" if it concerns work, health, family,
        or if I marked it explicitly as such.
 
 ## t.protezione &mdash; Protect the privacy of me and those close to me
-weight: 0.18
+weight: 0.20
 activation_threshold: 0.20
 notes: below this threshold I am paranoid on purpose. Better a false
        alarm than a leak.
 
 ## t.discrezione &mdash; Surprise me usefully but do not interrupt me
-weight: 0.09
+weight: 0.10
 activation_threshold: 0.50
 notes: do not interrupt during meetings, sleep, dinner. Accumulate
        and propose at the evening digest.
 
 ## t.parsimonia &mdash; Don't spend (on APIs, services, compute time) more than needed
-weight: 0.08
+weight: 0.10
 activation_threshold: 0.35
 notes: always pick the cheapest option that reaches the necessary quality.
-
-## t.coltivazione_strumenti &mdash; Don't leave a request of mine unmet, if possible
-weight: 0.12
-activation_threshold: 0.10
-notes: if I ask for something your pool cannot yet do, exhaust the
-       synthesis strategies (compose, generate, ask) before answering
-       "I cannot". Failure is allowed; silent retreat is not. See
-       ch. 5 for the stop clause.
 </code></pre>
+
+<div class="callout note">
+<strong>v1.2 (22/5/2026): removed <code>t.coltivazione_strumenti</code>.</strong>
+The &laquo;don't leave a request unmet&raquo; telos turned out to be a
+<em>runtime anti-retreat clause</em>, not an ultimate end: it produced
+moderate fit as background noise on nearly every proposal (any capability
+extension partially satisfies it), reducing the discriminative power of
+the teleological Judge. Its 0.12 weight was redistributed proportionally
+across the remaining 6. Chapter 5 (originally devoted to this telos) is
+kept as historical reference. See ADR&nbsp;0157.
+</div>
 
 <h2>Mandatory fields per telos</h2>
 <table>
@@ -326,25 +323,57 @@ notes: if I ask for something your pool cannot yet do, exhaust the
 <div class="callout note">
 <strong>Number of telos.</strong> Between 3 (useful minimum) and 7
 (cognitive load limit). Past 7, the risk is redundant telos that cancel
-each other out. The example above has 7 entries: the limit. If a new
-dimension emerges, better revise the existing ones than add another.
+each other out. v1.2 has 6 entries: reduced from 7 after observing that
+<code>t.coltivazione_strumenti</code> behaved as a runtime clause rather
+than an ultimate end. If a new dimension emerges, better revise the existing
+ones than add another.
 </div>
 
 <h1 id="cap4">4. The alignment function</h1>
 
-<h2>Formula</h2>
+<h2>Formula (v1.3, 22/5/2026)</h2>
 
 <div class="formula">
-expected_alignment = ( &sum;<sub>i</sub> weight<sub>i</sub> &middot; gate(fit<sub>i</sub>, threshold<sub>i</sub>) ) &middot; urgency &middot; confidence &minus; bother_cost
+contrib<sub>i</sub> = weight<sub>i</sub> &middot; gate(fit<sub>i</sub>, threshold<sub>i</sub>)<br>
+top = max(contrib<sub>i</sub>)<br>
+rest = &sum;<sub>i</sub> contrib<sub>i</sub> &minus; top<br>
+expected_alignment = (&alpha; &middot; top + &gamma; &middot; rest) &middot; urgency &middot; confidence &minus; bother_cost
 </div>
 
 <p>Where:</p>
 <ul>
+    <li><code>&alpha; = 2.0</code>, <code>&gamma; = 0.5</code> (internal constants in <code>runtime/alignment_engine.py</code>). Constraint <code>&alpha; &gt; 3&gamma;</code> guarantees that a perfect specialist on a heavy telos beats a mediocre generalist.</li>
     <li><code>gate(fit, threshold) = fit</code> if <code>fit &ge; threshold</code>, else <code>0</code>. Gate function &rarr; a telos contributes nothing if <em>fit</em> is below threshold.</li>
     <li><code>urgency &isin; [0.5, 2.0]</code>: 1.0 = no time pressure; 2.0 = deadline within 24h; 0.5 = chronic, no urgency. Multiplicative, not additive.</li>
     <li><code>confidence &isin; [0, 1]</code>: how sure Metnos is of its estimate. Proposals based on little data or speculative reasoning &rarr; low confidence.</li>
     <li><code>bother_cost &isin; [0, &infin;)</code>: see ch. 6.</li>
 </ul>
+
+<h2>Formula history &mdash; how we arrived at v1.3</h2>
+
+<table>
+<thead><tr><th>Version</th><th>Base formula</th><th>Distribution over 481 backfilled proposals</th><th>Outcome</th></tr></thead>
+<tbody>
+<tr>
+  <td><strong>v1.0</strong> (22/5 morning)</td>
+  <td><code>&sum; weight &middot; fit</code> (sum-product)</td>
+  <td>min 0.077, max 0.569, mean 0.302, stdev 0.075</td>
+  <td>Inverted ordering: the mediocre generalist (fit&nbsp;~0.5 across all) beat the perfect specialist. The per-telos signal from the Judge (clear) was diluted by aggregation.</td>
+</tr>
+<tr>
+  <td><strong>v1.2</strong> (22/5 afternoon)</td>
+  <td><code>top + 0.3 &middot; rest</code></td>
+  <td>min 0.072, max 0.278, mean 0.176, stdev 0.039</td>
+  <td>Correct ordering, but stdev halved: top1 was bounded by the 6 discrete weights (range [0.10, 0.25]), losing useful dispersion for triage.</td>
+</tr>
+<tr>
+  <td><strong>v1.3</strong> (22/5 evening)</td>
+  <td><code>2 &middot; top + 0.5 &middot; rest</code></td>
+  <td>min 0.144, max 0.524, mean 0.338, stdev 0.073</td>
+  <td>Correct ordering + stdev at v1.0 level. The <code>&alpha;</code> boost expands the dynamic range of the dominant term; higher <code>&gamma;</code> credits multi-telos proposals (98.5% of the corpus).</td>
+</tr>
+</tbody>
+</table>
 
 <h2>How <code>fit</code><sub>i</sub> values are estimated</h2>
 
@@ -373,13 +402,39 @@ this doc and the <code>R</code> score in <a href="synt.html#cap6">synt
 A proposal must clear both filters: synt produces something good (<code>R &ge; threshold</code>), the teleological Vaglio decides whether it is worth delivering it (<code>expected_alignment &ge; &theta;</code>). They are orthogonal: an excellent proposal at the wrong moment stays silent.
 </div>
 
-<h2>Publication threshold</h2>
+<h2>Publication threshold and triage dashboard</h2>
 
 <p>
-If <code>expected_alignment &lt; &theta;</code>, the proposal <strong>is
-not shown to the user</strong>. <code>&theta;</code> is a parameter of
-<code>config</code> with default <code>0.15</code>.
-Discarded proposals end up in an inspectable internal journal:
+Proposals are ranked by <code>expected_alignment</code> and surfaced to
+the user via the <strong><code>/admin/proposals/telos</code>
+dashboard</strong> (ADR 0078 + 0157, wired 22/5/2026). For each proposal
+the UI shows:
+</p>
+
+<ul>
+  <li><strong>Origin</strong>: lens (e.g. <code>scamper</code>,
+  <code>endgame_book</code>), generating telos, operator,
+  <code>n_observed</code> extracted from the rationale (e.g. "co-activated
+  49 times").</li>
+  <li><strong>Proposal</strong>: target executor, proposed_action,
+  rationale + <code>alignment_per_telos</code> breakdown with fit and
+  explanation per telos.</li>
+  <li><strong>Applicable example</strong>: chip <code>pipeline
+  observed</code> (the combination exists in the real turn log),
+  <code>partial match</code> (only the target appears),
+  <code>speculative</code> (no example in the last 14 days). If found,
+  a real user query + current path &rarr; suggested path.</li>
+  <li><strong>Impact</strong>: estimated latency saved (median per-step
+  ~5.5s &times; steps removed).</li>
+  <li><strong>Actions</strong>: <code>accept</code>, <code>reject</code>,
+  <code>stage</code> buttons (the latter non-terminal: held for later).</li>
+</ul>
+
+<p>
+Decisions are persisted in
+<code>~/.local/share/metnos/telos_decisions.jsonl</code> (append-only,
+LWW by <code>prop_id</code> = timestamp). Silently discarded proposals
+(below threshold) land in an inspectable internal journal:
 </p>
 
 <pre><code>// workspace/.audit/telos_rejected.jsonl
@@ -389,12 +444,27 @@ Discarded proposals end up in an inspectable internal journal:
  "at": "2026-04-25T19:42:00Z"}</code></pre>
 
 <p>
-The user can inspect this journal to verify Metnos is not suppressing
-good things (&laquo;weekly digest: 47 proposals discarded, here are the
-5 borderline ones&raquo;).
+Dashboard default <code>&theta;</code>: <code>0.30</code> (low quartile;
+override via <code>min_alignment</code> query param). Empirical cutoffs
+on 481 v1.3 proposals: <code>&gt; 0.50</code> = 3 top proposals (0.6%);
+<code>&gt; 0.45</code> = 23 (5%, review threshold); <code>&gt; 0.40</code>
+= 88 (18%, top decile).
 </p>
 
-<h1 id="cap5">5. The non-retreat telos</h1>
+<h1 id="cap5">5. The non-retreat telos (historical, removed in v1.2)</h1>
+
+<div class="callout warning">
+<strong>22/5/2026 (v1.2): <code>t.coltivazione_strumenti</code> removed
+from the canonical set.</strong>
+Empirical backfill showed it behaved as a universal runtime clause, not
+an ultimate end: any capability extension partially satisfied it, and
+the resulting moderate fit became background noise on the AlignmentEngine,
+weakening the Judge's discriminative power. The anti-retreat semantics
+(exhaust the synt cascade before answering &laquo;cannot&raquo;) remain
+active in the runtime as <em>deterministic policy</em>, not as a weighted
+telos. See ADR&nbsp;0157. The chapter below is preserved as a historical
+reference to the original rationale.
+</div>
 
 <p class="lead">
 <code>t.coltivazione_strumenti</code> is the newest telos (introduced

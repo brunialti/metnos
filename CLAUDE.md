@@ -3,8 +3,8 @@
 > **OBBLIGO**: leggere integralmente all'inizio di ogni sessione. Codifica decisioni architetturali, convenzioni di codice e norme di processo gia' stabilite. Quando un punto e' obsoleto o errato, AGGIORNALO subito invece di lavorarci attorno.
 >
 > Mantenuto da: agente. Aggiornamento ad ogni sessione che fissa una nuova norma duratura.
-> Ultimo aggiornamento: 2026-05-20 v6 (pipeline shape FSM + planner-choice + args_extractor single source).
-> Norme recenti: dettagli in ADR 0150/0151/0152/0154/0155 e §10.6. Storia in `git log CLAUDE.md`.
+> Ultimo aggiornamento: 2026-05-22 v7 (AlignmentEngine v1.3 α·top+γ·rest, TELOS.md v1.2 a 6 telos, dashboard /admin/proposals/telos).
+> Norme recenti: dettagli in ADR 0150/0151/0152/0154/0155/0156/0157 e §10.6. Storia in `git log CLAUDE.md`.
 
 ---
 
@@ -12,7 +12,7 @@
 
 Assistente personale self-hosted (su `.33`, Strix Halo 96GB unified). Microarchitettura a executor sintetizzati al volo via synt multistage; runtime ReAct con planner LLM (Gemma 4 26B middle/wise locale + Sonnet/GPT-5 frontier come fallback). Canali: **Telegram** + **HTTP porta 8770** (htmx + Jinja2 + uPlot, ADR 0078). Pipeline immagini in-process: SigLIP-base + RetinaFace+ArcFace + EXIF (ADR 0086/0117). Lingua principale: italiano; corpus doc bilingue IT+EN. Etimologia: `mētis + noûs`. Process name: `myclaw`. Dominio: `metnos.com`.
 
-ADR registry canonico: `decisions/` (relative alla repo root; `0001-0148`, `0055`/`0115`/`0116`/`0121` skipped — fonte unica per "perche' abbiamo scelto cosi'").
+ADR registry canonico: `decisions/` (relative alla repo root; `0001-0157`, `0055`/`0115`/`0116`/`0121` skipped — fonte unica per "perche' abbiamo scelto cosi'").
 
 ## 2. Principi cardine (mai negoziabili)
 
@@ -242,6 +242,10 @@ Tipi: `user`, `feedback`, `project`, `reference`. Indice in `~/.claude/projects/
 - **Pipeline shape FSM** (ADR 0154): `runtime/pipeline_shape.py` invariante `E+ (F|A)?` + pre-execution hook in `agent_runtime` + planner prompt 0-PRE bilingue.
 - **Planner choice > runtime override** (ADR 0155): runtime non sovrascrive il planner se non via auto_remediation / vaglio / fast-path pre-planner. Vietato interceptor pattern-match.
 - **Naming Authority centralizzata** (ADR 0156, 21/5/2026): `runtime/naming_grammar.py` parsa `vocab.py` ed espone validator deterministico (§7.9) + GBNF generator. Vincola executor_target a catalog vivo (anti-hallucination) e new_op_name a `<verb>_<object>[_<qualifier>][#<kebab-descriptor>]`. Opt-in `METNOS_TELOS_GRAMMAR=1`. Riusabile da: telos lenses (`telos_lenses/*.py`), introvertiva, synt stage 1, skill importer. Bench 21/5: Gemma+GBNF 64% rate-utile, 0% anti-pattern, 100% naming compliance (batte Sonnet 4.6).
+- **Alignment Engine — Giudice teleologico fase 2 + formula v1.3** (ADR 0157, 22/5/2026): `runtime/alignment_engine.py`. Formula `expected_alignment = (α·top + γ·rest) * urgency * confidence - bother_cost` con α=2.0, γ=0.5, vincolo α>3γ (specialista perfetto su telos pesante > tuttofare medio). Storia: v1.0 sum-product invertiva l'ordering, v1.2 top+0.3·rest comprimeva stdev, v1.3 finalizzata su 481 proposte backfill (stdev 0.073). `compose()` deterministico §7.9; `estimate_fit(proposal, telos_list)` LLM judge Gemma 4 26B locale (think=False, max_tokens=2048, ~9s/call). CLI: `--backfill` (LLM, ~71min/481) o `--recompose` (no-LLM, secondi, ricalcola da `alignment_per_telos` salvati). Confidence 0.8 default, bother_cost 0 in MVP.
+- **TELOS.md v1.2 (6 telos)** (ADR 0157, 22/5/2026): rimosso `t.coltivazione_strumenti` (clausola anti-rinuncia di runtime, non un fine ultimo — produceva fit moderato come rumore di fondo). Pesi ridistribuiti: t.tempo 0.25, t.puntualita 0.20, t.protezione 0.20, t.ordine 0.15, t.discrezione 0.10, t.parsimonia 0.10 (somma 1.0). La semantica anti-rinuncia rimane nel runtime come policy deterministica synt_multistage, non pesata.
+- **Dashboard `/admin/proposals/telos`** (ADR 0157, 22/5/2026): triage umano-in-the-loop per le proposte introspettive. `runtime/telos_proposals_store.py` (load+filtri+enrichment turn log per `example_query`/`current_path`/`new_path_estimated`/`latency_saved_ms_est`/`pipeline_observed`) + handler in `http_routes_admin.py` + template `proposals_telos.html` (htmx, 3 buttons accept/reject/stage). Decisioni append-only in `~/.local/share/metnos/telos_decisions.jsonl` (LWW per `prop_id` = ts microsecondo). Chip 3-stati: pipeline osservata/match parziale/speculativa. Cutoff default UI `min_alignment=0.30`. 19/19 test in `runtime/tests/test_telos_proposals_store.py`.
+- **Telos engine fase 4 — TELOS.md iniettato nel system prompt PLANNER** (22/5/2026): `telos_loader.render_planner_block(lang)` produce blocco compatto con telos ordinati per peso desc + quartetto §6 DEVI/NON DEVI/OK/ERRORE. Wire-in `agent_runtime._render_telos_block(lang)` + slot `{% if telos_block %}` in `prompts/{it,en}/planner/_footer.j2`. Degrade graceful se TELOS.md mancante (stringa vuota). Hot-reload mtime cache.
 - **Telos engine — 10 lenti laterali in produzione** (ADR 0156, 21/5/2026 v8): `runtime/telos_lenses/` pacchetto modulare. Lenti + ref: scamper (Eberle 1971), oulipo (Queneau 1960), inverse_rl (Russell 1998), endgame_book (Thompson 1986), analogy_transfer (Hofstadter 1979/Mitchell 2001), boden_transformational (Boden 1990), pattern_language (Alexander 1977), generative_design (Bentley 1999/Krish 2011), counterfactual (Shinn 2023 Reflexion), constitutional (Bai 2022). `compression` (Schmidhuber 2010) implementata ma scartata in v8 per fallimento convergenza (Gemma propone nomi che violano eccezione §2.2). Framework comune `_base.run_lens` + SHARED_PREAMBLE/NAMING_SCHEMA/OUTPUT_FORMAT stile §6 prescrittivo. Env toggle per-lens `METNOS_TELOS_LENS_<NAME>=1`. Concept-only (oulipo/inverse_rl/pattern_language) in `LENSES_NO_GRAMMAR`. LLM default Gemma 4 26B locale. LensCtx.previous_proposals per anti-fixation (SCAMPER nomi unici 26%→87%).
 - **Smoke battery** (`runtime/smoke.py`, ADR 0114 L5): OBBLIGATORIA prima di `./deploy.sh`, dopo synth, in cron daily, su tocchi a `prefilter.py`/`agent_runtime.py`/`synt_multistage.py`/`loader.py`.
 - **Catalog invariants al load** (`runtime/loader.py`): rifiuta synth con name collision verso handcrafted.
@@ -344,7 +348,7 @@ Server `runtime.metnos_http_server` su porta **8770** (separata da 8765 pairing)
 
 **Riferimenti**
 
-- ADR registry: `decisions/` (`0001-0148`, `0055`/`0115`/`0116`/`0121` skipped) — dettagli implementativi e razionale.
+- ADR registry: `decisions/` (`0001-0157`, `0055`/`0115`/`0116`/`0121` skipped) — dettagli implementativi e razionale.
 - Architettura canonica: `docs/it/architecture/` (+ EN bridge simmetrico).
 - Memorie persistenti: `~/.claude/projects/-opt-myclaw/memory/MEMORY.md` (path Claude harness, indipendente dal rename Metnos).
 - Repertorio prompt: `runtime/prompts/<lang>/*.j2` (ADR 0092).
