@@ -104,18 +104,21 @@ def _intr_decision_from_state(state: str, last_action: Optional[str],
     return {"action": action, "by": last_action or "system", "ts": ts}
 
 
-def _load_telos(only_pending: bool, max_rows: int) -> list[dict]:
-    """Carica proposte telos via telos_proposals_store, enriched.
+def _load_telos(only_pending: bool, max_rows: int,
+                 enrich: bool = True) -> list[dict]:
+    """Carica proposte telos via telos_proposals_store.
 
     `source` granulare = "telos:<lens>" (es. "telos:scamper") per filtri UI.
     `source_family` = "telos" per raggruppamento aggregato.
+    `enrich=False` salta il turn log lookup (utile per tier_counts dove
+    serve solo ranking_score, non l'esempio applicabile).
     """
     import telos_proposals_store as S
     rows = S.load_all(
         min_alignment=0.0,
         max_rows=max_rows,
         include_decided=not only_pending,
-        enrich_rows=True,
+        enrich_rows=enrich,
     )
     for r in rows:
         lens = r.get("lens", "") or "?"
@@ -237,8 +240,9 @@ def load_unified(
     source_filter: Optional[str] = None,
     only_pending: bool = False,
     group_clusters: bool = True,
-    max_rows_per_source: int = 500,
+    max_rows_per_source: int = 200,
     max_rows: int = 200,
+    enrich: bool = True,
 ) -> list[dict]:
     """Carica proposte da TUTTE le sorgenti supportate, unificate.
 
@@ -273,7 +277,11 @@ def load_unified(
         loader = loaders.get(src)
         if loader is None:
             continue
-        all_rows.extend(loader(only_pending, max_rows_per_source))
+        # _load_telos accetta `enrich`; _load_introvertiva no (sempre raw).
+        if src == "telos":
+            all_rows.extend(loader(only_pending, max_rows_per_source, enrich))
+        else:
+            all_rows.extend(loader(only_pending, max_rows_per_source))
 
     # Filtro granulare post-load: confronta r["source"] (es. "telos:scamper")
     # con source_filter. Se source_filter e' solo family ("telos"), match
@@ -409,16 +417,28 @@ def _find_introvertiva_sig_key(prop_id: str) -> Optional[str]:
 def granular_source_counts() -> dict:
     """Conteggi per source granulare (telos:lens, introvertiva:kind).
 
-    Usato dal dropdown UI per mostrare "telos:scamper (311)",
-    "introvertiva:specialize (24)", ecc.
+    Lettura raw del file telos (no enrich, no decisions index): conta i
+    `lens` direttamente. Per introvertiva: query SQL GROUP BY kind.
+    Performance: <50ms anche su 10k+ proposte (vs ~10s con load_all+enrich).
     """
     from collections import Counter
     counts: Counter = Counter()
     try:
         import telos_proposals_store as S
-        for r in S.load_all(min_alignment=0.0, max_rows=100000):
-            lens = r.get("lens", "?") or "?"
-            counts[f"telos:{lens}"] += 1
+        import json as _json
+        path = S._resolve_proposals_path()
+        if path:
+            with path.open(encoding="utf-8") as fh:
+                for line in fh:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        rec = _json.loads(line)
+                    except _json.JSONDecodeError:
+                        continue
+                    lens = rec.get("lens", "?") or "?"
+                    counts[f"telos:{lens}"] += 1
     except Exception:
         pass
     try:

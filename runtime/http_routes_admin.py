@@ -336,10 +336,11 @@ async def admin_proposals_unified(request: web.Request) -> web.Response:
     src_counts = proposals_unified.source_counts()
     granular = proposals_unified.granular_source_counts()
 
-    # Tier counts cross-source (per tab badge)
+    # Tier counts cross-source (per tab badge). enrich=False per evitare
+    # 481x turn log lookup (~10s); serve solo ranking_score.
     all_unfiltered = proposals_unified.load_unified(
         source_filter=source_filter, tier=None, only_pending=False,
-        group_clusters=group_clusters, max_rows=10000,
+        group_clusters=group_clusters, max_rows=10000, enrich=False,
     )
     tier_counts = {"top": 0, "interesting": 0, "weak": 0}
     for r in all_unfiltered:
