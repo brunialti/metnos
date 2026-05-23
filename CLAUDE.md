@@ -3,8 +3,8 @@
 > **OBBLIGO**: leggere integralmente all'inizio di ogni sessione. Codifica decisioni architetturali, convenzioni di codice e norme di processo gia' stabilite. Quando un punto e' obsoleto o errato, AGGIORNALO subito invece di lavorarci attorno.
 >
 > Mantenuto da: agente. Aggiornamento ad ogni sessione che fissa una nuova norma duratura.
-> Ultimo aggiornamento: 2026-05-23 v9 (E2E sim fix sistemici: shape FSM, hide_executors, i18n baseline, inproc-tool catalog, judge safety, max_tokens 600→400).
-> Norme recenti: dettagli in ADR 0150/0151/0152/0154/0155/0156/0157/0158 e §10.6. Storia in `git log CLAUDE.md`.
+> Ultimo aggiornamento: 2026-05-24 v10 (ADR 0159: safety net 7-layer per skill imported third-party).
+> Norme recenti: dettagli in ADR 0150/0151/0152/0154/0155/0156/0157/0158/0159 e §10.6. Storia in `git log CLAUDE.md`.
 
 ---
 
@@ -322,6 +322,8 @@ Tipi: `user`, `feedback`, `project`, `reference`. Indice in `~/.claude/projects/
 - **E2E driver baseline** (23/5/2026): `server._copy_db_with_wal` (SQLite backup API, WAL pending) + `_seed_i18n_baseline` SEMPRE (1000+ MSG_*/ERR_* runtime-essential) + lint regex `^E*F?$`.
 - **Judge prompt safety-aware** (23/5/2026): `prompts/{it,en}/e2e_judge.j2` riconosce consenso utente (signature unknown, mount, sudoer) come VALID answer (ok=true, score≥0.7).
 - **`describe_entries.max_tokens` adattivo** (23/5/2026): scala con N entries — N≤3:200, N≤10:300, N>10:400 (era 600 fisso). Misurato: query "appuntamenti domani" 68s→30s (-56%) e/o `read_events` skip-describe pattern. Override esplicito via arg.
+- **Safety net 7-layer per skill imported** (ADR 0159, 24/5/2026): L1 sign verify, L2 affinity overlap Jaccard ≥0.5, L3 efficacy ager (deprecate 30g, archive 14g), L5 smoke battery, L6 LLM semantic verifier Gemma 4 26B, runtime `vaglio.judge` (guard + safe-verb shortcut + LLM), skill_audit JSONL. Coverage: manomissione/squatting/drift/silent-break/exfiltration. Builtin handcrafted NON ha L2/L6/audit (codice trusted by team).
+- **Strato 3 escalation UI dopo ≥3 ✗ consecutive** (task #30, 24/5/2026): `agent_runtime._orchestrate_strato3_escalation` early-exit prima del PLANNER loop quando `count_consecutive_errors_for_query >= 3`. Dialog `get_inputs` 4-choice (synth/frontier/reformulate/abandon) → on_complete `strato3_choice_dispatch` in `orchestration.py` mappa scelta → nuova `run_turn(chosen_query, allow_disambig_synth=False)`. Determinismo §7.9 (no LLM nell'escalation path). Strato 1 (soft prompt) + Strato 2 (hard constraint ≥2 ✗) restano upstream in `_render_rejected_pipelines_block`.
 - **`dialog_pending.DIALOG_DIR` §7.11** (23/5/2026): era `Path.home()/.local/share/metnos/get_inputs` hardcoded → ora `_C.PATH_USER_DATA / "get_inputs"`. Senza, test E2E scrivevano dialog OAuth in LIVE storage → cross-contamination state tra test (Step 2/2 MSG_OAUTH_PROMPT_SERVICES leaked dalle query google ai test fast_path).
 - **`*_tasks` conditional injection** (23/5/2026): in `agent_runtime` i 6 builtin scheduler v2 (create/list/delete/read/set_tasks + read_tasks_history) iniettati nel pool PLANNER SOLO se query contiene marker scheduling (`_TASKS_MARKERS` in `tool_grammar.py`: task/promemoria/ricordami/schedule/etc.). Senza, PLANNER LLM li selezionava su query ambigue (caso live 23/5: «cerca mail bookings» → read_tasks_history). Stesso filter aggiunto in `filter_pool_for_grammar` per grammar mode.
 

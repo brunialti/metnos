@@ -349,7 +349,43 @@ Total time, excluding the one-time OAuth setup: under three minutes for
 twenty-one new tools.
 </p>
 
-<h1 id="cap8">8. Going deeper</h1>
+<h1 id="cap8">8. Seven layers of safety net</h1>
+
+<p>
+Importing third-party code requires layers of control that handcrafted
+code does not need. An imported skill could have been tampered with,
+declare one thing and do another, impersonate an existing tool to
+hijack the chat, or exfiltrate credentials without trace. The seven
+layers reduce a different risk each, progressively. ADR&nbsp;0159
+documents every layer.
+</p>
+
+<table>
+<tr><th>Layer</th><th>When</th><th>What it catches</th></tr>
+<tr><td><strong>L1 sign verify</strong></td><td>every boot</td><td>file tampered post-import (sha256 digest + Ed25519)</td></tr>
+<tr><td><strong>L2 affinity overlap</strong></td><td>at-import</td><td>skill squatting on an existing tool (Jaccard ≥0.5 → reject)</td></tr>
+<tr><td><strong>L3 efficacy ager</strong></td><td>daily cron</td><td>skill silently failing or never selected (deprecate 30d, archive 14d)</td></tr>
+<tr><td><strong>L5 smoke battery</strong></td><td>at-import</td><td>skill returning broken schema or crashing</td></tr>
+<tr><td><strong>L6 LLM semantic verifier</strong></td><td>at-import</td><td>mismatch between manifest description and code behavior</td></tr>
+<tr><td><strong>Runtime vaglio</strong></td><td>every invocation</td><td>current action violates policy (guard + safe-verb shortcut + LLM judge)</td></tr>
+<tr><td><strong>Skill audit JSONL</strong></td><td>every invocation</td><td>exfiltration / credentials abuse (append-only trace for forensics)</td></tr>
+</table>
+
+<p>
+Handcrafted executors (written by the Metnos team) do not have L2, L6
+and audit: the code is trusted by construction, manifest and behavior
+are aligned by definition, and audit of who-did-what lives in
+<code>git blame</code>.
+</p>
+
+<p>
+Layers are independent: if L6 fails (LLM down) L1/L2/L3/L5 remain
+active; if L2 is too strict (Jaccard 0.5 can reject legitimately
+similar skills) the provider qualifier (<code>_google_workspace</code>)
+disambiguates (ADR&nbsp;0136).
+</p>
+
+<h1 id="cap9">9. Going deeper</h1>
 
 <table>
 <tr><th>To understand&hellip;</th><th>Read</th></tr>

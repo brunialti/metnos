@@ -323,6 +323,11 @@ def process_completion_callback(sender_id: str, dialog_id: str,
             on_complete, values, actor=actor, channel=channel,
         )
 
+    if callback_type == "strato3_choice_dispatch":
+        return _process_strato3_choice_dispatch(
+            on_complete, values, actor=actor, channel=channel,
+        )
+
     if callback_type == "github_analyze":
         return _process_github_analyze(
             on_complete, values, actor=actor, channel=channel,
@@ -562,6 +567,70 @@ def _process_resume_executor_with_values(on_complete: dict, values: dict,
                 or res.get("summary")
                 or json.dumps(res, ensure_ascii=False)[:600])
     return str(res)
+
+
+def _process_strato3_choice_dispatch(
+    on_complete: dict, values: dict, *,
+    actor: str = "host", channel: str | None = None,
+) -> str:
+    """Dispatcher strato 3 (task #30, 24/5/2026): la scelta utente fra 4
+    azioni viene mappata in una nuova query e si rilancia il turno.
+
+    `values["chosen_action"]` puo' essere index 0-3 oppure prefix string.
+    """
+    raw = (values or {}).get("chosen_action") or ""
+    original_query = on_complete.get("original_query") or ""
+    lang = on_complete.get("lang") or "it"
+    conversation_id = on_complete.get("conversation_id") or ""
+    # Normalizza scelta: il dialog choice puo' ritornare l'indice (str/int)
+    # o la stringa intera. Dispatch per prefix univoco.
+    txt = str(raw).strip().lower()
+    if txt.startswith(("0", "1.", "synth", "sintetiz")):
+        action_key = "synth"
+    elif txt.startswith(("1", "2.", "frontier")):
+        action_key = "frontier"
+    elif txt.startswith(("2", "3.", "reformul", "riformul")):
+        action_key = "reformulate"
+    elif txt.startswith(("3", "4.", "abandon", "abbandon")):
+        action_key = "abandon"
+    else:
+        action_key = "abandon"
+
+    if action_key == "abandon":
+        return ("Ok, mi fermo qui." if lang != "en"
+                else "Ok, stopping here.")
+    if action_key == "reformulate":
+        return ("Riformula la richiesta nel prossimo messaggio."
+                if lang != "en"
+                else "Reformulate your request in the next message.")
+    if action_key == "synth":
+        new_query = (
+            f"request_new_executor per: {original_query}"
+            if lang != "en"
+            else f"request_new_executor for: {original_query}"
+        )
+    elif action_key == "frontier":
+        new_query = (
+            f"consult_frontier su: {original_query}"
+            if lang != "en"
+            else f"consult_frontier on: {original_query}"
+        )
+    else:
+        return ("Scelta non riconosciuta." if lang != "en"
+                else "Unrecognized choice.")
+    try:
+        import agent_runtime
+        new_log = agent_runtime.run_turn(
+            new_query,
+            actor=actor or "host",
+            channel=channel or "",
+            conversation_id=conversation_id,
+            allow_disambig_synth=False,
+        )
+    except (RuntimeError, TypeError, ImportError) as ex:
+        log.exception("strato3 dispatch failed")
+        return f"Continuation fallita: {type(ex).__name__}: {ex}"
+    return getattr(new_log, "final_message", "") or ""
 
 
 def _process_restart_turn_with_chosen_query(

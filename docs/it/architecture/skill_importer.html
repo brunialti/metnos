@@ -355,7 +355,44 @@ Tempo totale, escluso il setup di OAuth la prima volta: meno di tre
 minuti per ventuno strumenti nuovi.
 </p>
 
-<h1 id="cap8">8. Per andare pi&ugrave; a fondo</h1>
+<h1 id="cap8">8. Sette strati di rete di sicurezza</h1>
+
+<p>
+Importare codice scritto da altri (third-party) richiede strati di
+controllo che il codice <em>handcrafted</em> non ha. Una skill importata
+potrebbe essere stata manomessa, dichiarare cose diverse da quello che
+fa, imitare uno strumento esistente per dirottare la chat, o esfiltrare
+credenziali senza lasciare traccia. I sette strati riducono ognuno un
+rischio diverso, in modo progressivo. ADR&nbsp;0159 dettaglia ogni
+strato.
+</p>
+
+<table>
+<tr><th>Strato</th><th>Quando</th><th>Cosa intercetta</th></tr>
+<tr><td><strong>L1 sign verify</strong></td><td>ogni avvio</td><td>file manomesso dopo l'import (digest sha256 + Ed25519)</td></tr>
+<tr><td><strong>L2 affinity overlap</strong></td><td>at-import</td><td>skill che imita uno strumento esistente (Jaccard ≥0.5 → rifiuto)</td></tr>
+<tr><td><strong>L3 efficacy ager</strong></td><td>cron giornaliero</td><td>skill che fallisce silenziosamente o non viene mai scelta (deprecate 30g, archive 14g)</td></tr>
+<tr><td><strong>L5 smoke battery</strong></td><td>at-import</td><td>skill che restituisce schema rotto o crasha</td></tr>
+<tr><td><strong>L6 verifier semantico LLM</strong></td><td>at-import</td><td>scollamento fra cosa il manifest dichiara e cosa il codice fa</td></tr>
+<tr><td><strong>Runtime vaglio</strong></td><td>ogni invocazione</td><td>azione attuale viola policy (guard + safe-verb shortcut + judge LLM)</td></tr>
+<tr><td><strong>Skill audit JSONL</strong></td><td>ogni invocazione</td><td>esfiltrazione / abuso credenziali (traccia append-only per forensics)</td></tr>
+</table>
+
+<p>
+Gli executor handcrafted (scritti dal team Metnos) non hanno L2, L6 e
+audit: il codice &egrave; trusted per costruzione, il manifest e il
+comportamento sono allineati per definizione, e l'audit di chi ha fatto
+cosa &egrave; in <code>git blame</code>.
+</p>
+
+<p>
+Gli strati sono indipendenti: se L6 fallisce (LLM down) restano
+attivi L1/L2/L3/L5; se L2 e' troppo stretto (Jaccard 0.5 puo' rigettare
+skill legitime affini) il provider qualifier (<code>_google_workspace</code>)
+distingue (ADR&nbsp;0136).
+</p>
+
+<h1 id="cap9">9. Per andare pi&ugrave; a fondo</h1>
 
 <table>
 <tr><th>Per capire&hellip;</th><th>Leggi</th></tr>

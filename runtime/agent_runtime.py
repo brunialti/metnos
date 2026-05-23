@@ -743,7 +743,10 @@ def _render_rejected_pipelines_block(user_query: str, lang: str) -> str:
     "rifiuto definitivo, considera request_new_executor o consult_frontier
     o final_answer onesto 'non ho strumenti adatti'".
 
-    Strato 3 (UI escalation post-3 ✗): deferred task #30.
+    Strato 3 (UI escalation post-3 ✗, task #30, 24/5/2026): handled
+    upstream da `_orchestrate_strato3_escalation` in `run_turn` (early
+    exit prima del PLANNER loop). Dialog 4-choice (synth/frontier/
+    reformulate/abandon) via `orchestrate_needs_inputs`.
     """
     if not user_query:
         return ""
@@ -4350,6 +4353,77 @@ def _synthesize_final_answer_for_playback(
         return None
 
 
+# --- Strato 3 escalation UI (task #30) ----------------------------------
+
+def _orchestrate_strato3_escalation(
+    *, user_query: str, lang: str, actor: str, channel: str,
+    conversation_id: str, consec_errors: int,
+) -> dict | None:
+    """Apre un dialog `get_inputs` con 4 azioni quando l'utente ha
+    rifiutato ≥3 pipeline consecutive per la stessa query.
+
+    Azioni offerte:
+      1. **synth** — chiede al sintetizzatore un executor specifico.
+      2. **frontier** — delega a LLM esterno di frontiera (Opus/Sonnet/GPT-5).
+      3. **reformulate** — utente riformula la query da zero.
+      4. **abandon** — termina senza fare nulla.
+
+    Callback `restart_turn_with_chosen_query`: il `chosen_query` derivato
+    dalla scelta diventa la nuova `user_query` del turno successivo.
+    Determinismo §7.9: niente LLM, lookup deterministico.
+
+    Ritorna il dict result di `invoke_get_inputs_internal` (con
+    `final_message_hint`, `expandable_caps`) oppure None se errore.
+    """
+    from orchestration import invoke_get_inputs_internal
+    if lang == "en":
+        title = "I tried 3 different paths, all rejected. What do you want?"
+        descr = (f"Pipelines attempted and rejected ({consec_errors} ✗): "
+                  "the answer needs a different shape. Choose how to proceed.")
+        choices = [
+            "synth: build a dedicated executor for this",
+            "frontier: ask an external high-stakes LLM",
+            "reformulate: I rewrite the request",
+            "abandon: stop here",
+        ]
+        prompt_text = "Choose one of the four actions"
+    else:
+        title = "Ho provato 3 strade diverse, tutte rifiutate. Cosa preferisci?"
+        descr = (f"Pipeline tentate e rifiutate ({consec_errors} ✗): "
+                  "la risposta richiede una forma diversa. Scegli come procedere.")
+        choices = [
+            "sintetizza: costruisci un executor dedicato",
+            "frontier: chiedi a un LLM esterno di frontiera",
+            "riformula: riscrivo la richiesta",
+            "abbandona: fermati qui",
+        ]
+        prompt_text = "Scegli una delle quattro azioni"
+    sender_id = f"{channel}:{actor}" if channel else actor
+    on_complete = {
+        "type": "strato3_choice_dispatch",
+        "original_query": user_query,
+        "lang": lang,
+        "actor": actor,
+        "channel": channel,
+        "conversation_id": conversation_id,
+        "consec_errors": consec_errors,
+    }
+    return invoke_get_inputs_internal(
+        sender_id=sender_id,
+        title=title,
+        description=descr,
+        dialog=[{
+            "var": "chosen_action",
+            "prompt": prompt_text,
+            "schema": {"kind": "choice", "choices": choices},
+        }],
+        fmt="auto",
+        on_complete=on_complete,
+        actor=actor,
+        channel=channel,
+    )
+
+
 # --- Loop pianificatore (multistep con tool-use nativo) -------------------
 
 def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, think=None, progress=None,
@@ -4417,6 +4491,39 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
                 return log
     except ImportError:
         pass
+
+    # ── Strato 3 escalation UI (task #30, 24/5/2026) ──────────────────
+    # Quando l'utente ha rifiutato >=3 pipeline consecutive per la stessa
+    # query, gli strati 1 (soft prompt) e 2 (hard constraint) non bastano.
+    # Apriamo un dialog `get_inputs` con 4 azioni esplicite e ritorniamo
+    # un final_kind="ask" senza chiamare il PLANNER. La scelta utente
+    # diventa la nuova query del prossimo turno via `restart_turn_with_chosen_query`.
+    # Determinismo §7.9 (no LLM in questo path).
+    try:
+        from turn_feedback import count_consecutive_errors_for_query
+        _consec = count_consecutive_errors_for_query(user_query_for_run)
+    except Exception:
+        _consec = 0
+    if _consec >= 3 and channel != "":
+        try:
+            _ask_result = _orchestrate_strato3_escalation(
+                user_query=user_query_for_run,
+                lang=DEFAULT_LANG,
+                actor=actor or "host",
+                channel=channel,
+                conversation_id=conversation_id or "",
+                consec_errors=_consec,
+            )
+            if _ask_result is not None:
+                log.turn_id = uuid.uuid4().hex[:16]
+                log.final_message = _ask_result.get("final_message_hint", "")
+                log.final_kind = "ask"
+                log.expandable_caps = _ask_result.get("expandable_caps", []) or []
+                log.ts_end = time.time()
+                log.write()
+                return log
+        except Exception as ex:
+            log.warning("strato3 escalation failed: %s", ex) if hasattr(log, "warning") else None
 
     # Blocco prescrittivo per il PLANNER: lista delle credenziali estratte
     # nel turno corrente. Solo metadata (domain + context), MAI le pwd.
