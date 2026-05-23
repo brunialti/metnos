@@ -18,7 +18,9 @@ import os
 import time
 from pathlib import Path
 
-DEFAULT_LOG = Path.home() / ".local" / "share" / "metnos" / "locations.jsonl"
+import config as _C  # §7.11
+
+DEFAULT_LOG = _C.PATH_USER_DATA / "locations.jsonl"
 
 
 def _path():

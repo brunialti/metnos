@@ -7,11 +7,11 @@
 # robustezza di ADR 0093 async build.
 #
 # Uso (lancio diretto, sincrono):
-#   /opt/myclaw/scripts/audit_quality_with_email.sh
+#   /opt/metnos/scripts/audit_quality_with_email.sh
 #
 # Uso (lancio OS-level via systemd, sopravvive a chiusura sessione):
 #   systemd-run --user --transient --unit=metnos-audit-quality \
-#       /opt/myclaw/scripts/audit_quality_with_email.sh
+#       /opt/metnos/scripts/audit_quality_with_email.sh
 #
 # Variabili env opzionali:
 #   AUDIT_TARGET_LANG  (default: en)
@@ -58,8 +58,8 @@ AUDIT_ARGS+=(--report)  # JSON dettagliato per-prompt in stdout (extracted poi)
 # --- Esegui audit ---
 log "running: $VENV_PY -m admin.prompts_cli ${AUDIT_ARGS[*]}"
 
-cd /opt/myclaw/runtime
-export PYTHONPATH=/opt/myclaw/runtime
+cd /opt/metnos/runtime
+export PYTHONPATH=/opt/metnos/runtime
 
 EXIT_CODE=0
 {
@@ -117,7 +117,7 @@ BODY_FILE="$WORKDIR/email_body.txt"
 log "email body composed: $BODY_FILE ($(wc -l <"$BODY_FILE") righe)"
 
 # --- Invia email ---
-SEND_MAIL=/opt/myclaw/scripts/send-mail.sh
+SEND_MAIL=/opt/metnos/scripts/send-mail.sh
 if [ ! -x "$SEND_MAIL" ]; then
     log "ERROR: $SEND_MAIL non eseguibile, skip invio email"
     log "report disponibile in $WORKDIR"

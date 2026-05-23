@@ -28,7 +28,7 @@ sys.path.insert(0, str(_RUNTIME))
 def _load_real_catalog():
     """Carica il catalog reale dal path canonico (verify=False, no synth).
 
-    Pinniamo `executors_dir=/opt/myclaw/executors` e invalidiamo la cache
+    Pinniamo `executors_dir=<install_root>/executors` e invalidiamo la cache
     perche' altri test del suite fanno monkeypatch di
     `DEFAULT_EXECUTORS_DIR`/`config.DEFAULT_LANG`/lifecycle filter (cfr.
     commento in test_run_turn_reference_images.py): senza pin, l'ordine di
@@ -43,7 +43,7 @@ def _load_real_catalog():
     """
     from loader import Catalog, _load_dir_into_catalog
     cat = Catalog()
-    _load_dir_into_catalog(Path("/opt/myclaw/executors"), cat,
+    _load_dir_into_catalog(Path(__file__).resolve().parents[2] / "executors", cat,
                            verify=False, is_synthesized=False)
     return list(cat.executors.values())
 

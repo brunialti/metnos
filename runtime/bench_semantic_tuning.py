@@ -25,7 +25,9 @@ import time
 from collections import defaultdict
 from pathlib import Path
 
-sys.path.insert(0, "/opt/myclaw/runtime")
+_RUNTIME = os.environ.get("METNOS_RUNTIME") or str(Path(__file__).resolve().parent)
+if _RUNTIME not in sys.path:
+    sys.path.insert(0, _RUNTIME)
 sys.path.insert(0, "/opt/suprastructure/src")
 
 import affinity_semantic as asm  # noqa: E402
@@ -34,7 +36,7 @@ from prefilter import rank_adaptive  # noqa: E402
 
 
 CORPUS_PATH = Path("/tmp/bench_corpus.json")
-RESULT_PATH = Path("/opt/myclaw/runtime/bench_semantic_tuning.result.json")
+RESULT_PATH = Path(__file__).resolve().parents[1] / "runtime/bench_semantic_tuning.result.json"
 
 # Filter out non-executor tools (uploads, deprecated names)
 SKIP_TOOLS = {"@uploaded", "fetch_urls", "scratchpad_read", "final_answer"}

@@ -38,8 +38,8 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from registry import Registry, TestCase
 
-RUNTIME_DIR = Path("/opt/myclaw/runtime")
-EXECUTORS_DIR = Path("/opt/myclaw/executors")
+RUNTIME_DIR = Path(__file__).resolve().parents[2] / "runtime"
+EXECUTORS_DIR = Path(__file__).resolve().parents[2] / "executors"
 
 
 @dataclass
@@ -82,10 +82,15 @@ def _run_python(case):
         if s.returncode != 0:
             return "error", f"SETUP failed: {s.stderr.strip()}", ""
 
+    _EX_DIR = str(RUNTIME_DIR.parent / "executors")
     preamble = f"""
 import sys
 sys.path.insert(0, {str(RUNTIME_DIR)!r})
 sys.path.insert(0, {str(RUNTIME_DIR / 'testing')!r})
+# Variabili convenzionali per i test snippet (popolati da runner.py):
+# _RT = path runtime/, _EX = path executors/.
+_RT = {str(RUNTIME_DIR)!r}
+_EX = {_EX_DIR!r}
 """
     full_code = preamble + "\n" + case.test_code
 
@@ -93,7 +98,21 @@ sys.path.insert(0, {str(RUNTIME_DIR / 'testing')!r})
         f.write(full_code)
         script = f.name
     try:
-        out = subprocess.run(["python3", script], capture_output=True, text=True, timeout=120)
+        _env = os.environ.copy()
+        # METNOS_RUNTIME è il pattern universale che agent_runtime esporta nel
+        # subprocess di un executor. Lo replichiamo qui per i test snippet che
+        # fanno bootstrap via env (vedi pattern in feedback_path_universal_pattern).
+        _env["METNOS_RUNTIME"] = str(RUNTIME_DIR)
+        _env["PYTHONPATH"] = (
+            f"{RUNTIME_DIR}{os.pathsep}{_env.get('PYTHONPATH', '')}".rstrip(os.pathsep)
+        )
+        # Cluster e2e via run_turn (LLM gemma-26b) può prendere fino a 60-90s
+        # per query complessa con multi-step planner. Bump timeout cluster/system
+        # a 240s (vs 120 default) per evitare false-positive su LLM slow path.
+        _timeout = 240 if case.level in ("cluster", "system") else 120
+        out = subprocess.run(
+            ["python3", script], capture_output=True, text=True, timeout=_timeout, env=_env,
+        )
     finally:
         os.unlink(script)
 

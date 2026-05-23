@@ -7,7 +7,7 @@ import tempfile
 import shutil
 from pathlib import Path
 
-sys.path.insert(0, "/opt/myclaw/runtime")
+sys.path.insert(0, str(__import__("pathlib").Path(__file__).resolve().parents[1]))
 
 
 def _isolate(tmpdir):

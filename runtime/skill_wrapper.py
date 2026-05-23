@@ -38,11 +38,8 @@ def _skill_home(skill_name: str) -> Path:
         return Path(home_env)
     if not isinstance(skill_name, str) or not skill_name.strip():
         raise ValueError("skill_name must be a non-empty string")
-    base = Path(os.environ.get(
-        "XDG_DATA_HOME",
-        str(Path.home() / ".local" / "share"),
-    ))
-    return base / "metnos" / "skills" / skill_name
+    import config as _C  # §7.11
+    return _C.PATH_USER_DATA / "skills" / skill_name
 
 
 def _subprocess_runner() -> Optional[Callable]:
@@ -209,6 +206,36 @@ def _get_skill_oauth_config(executor_file: str) -> dict:
 _OAUTH_CFG_CACHE: dict = {}
 
 
+def _get_oauth_provider_for_skill(skill_name: str) -> dict:
+    """Lookup OAuth provider config in `runtime/skill_oauth_providers.json`
+    by skill_name. Single source of truth, indipendente dal manifest
+    dell'executor che invoca (fix 18/5/2026: backend non sa dove sta il
+    manifest dell'executor caller).
+
+    Ritorna dict con keys `scopes_options`, `mirror_paths`,
+    `client_secret_install_path` (omessi quando vuoti). `{}` se la skill
+    non e' nella tabella o il file manca.
+    """
+    cached = _OAUTH_CFG_CACHE.get(f"skill::{skill_name}")
+    if cached is not None:
+        return cached
+    out: dict = {}
+    providers_path = Path(__file__).resolve().parent / "skill_oauth_providers.json"
+    if providers_path.is_file():
+        try:
+            import json as _json
+            data = _json.loads(providers_path.read_text(encoding="utf-8"))
+            entry = (data.get("providers") or {}).get(skill_name) or {}
+            for field in ("scopes_options", "mirror_paths",
+                          "client_secret_install_path"):
+                if field in entry and entry[field]:
+                    out[field] = entry[field]
+        except Exception:
+            pass
+    _OAUTH_CFG_CACHE[f"skill::{skill_name}"] = out
+    return out
+
+
 def _needs_inputs_oauth_setup(
     *,
     skill_name: str,
@@ -264,14 +291,25 @@ def _needs_inputs_oauth_setup(
     if client_secret_install_path:
         on_complete["client_secret_install_path"] = client_secret_install_path
 
+    # Pre-populate file_path field default se il client_secret esiste gia'
+    # nel mirror path canonico (caso "refresh after token revocation" 18/5/2026).
+    client_secret_field = {
+        "var": "client_secret_path",
+        "prompt": "MSG_OAUTH_PROMPT_CLIENT_SECRET",
+        "schema": {"kind": "file_path"},
+    }
+    if client_secret_install_path:
+        try:
+            existing = Path(client_secret_install_path).expanduser()
+            if existing.is_file():
+                client_secret_field["default"] = str(existing)
+        except Exception:
+            pass
+
     return {
         "title": "MSG_OAUTH_SETUP_NEEDED",
         "dialog": [
-            {
-                "var": "client_secret_path",
-                "prompt": "MSG_OAUTH_PROMPT_CLIENT_SECRET",
-                "schema": {"kind": "file_path"},
-            },
+            client_secret_field,
             {
                 "var": "services",
                 "prompt": "MSG_OAUTH_PROMPT_SERVICES",

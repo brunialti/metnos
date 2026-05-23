@@ -22,7 +22,7 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-_EXEC_DIR = Path("/opt/myclaw/executors/find_events_empty")
+_EXEC_DIR = Path(__file__).resolve().parents[2] / "executors/find_events_empty"
 _RUNTIME = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_EXEC_DIR))
 sys.path.insert(0, str(_RUNTIME))

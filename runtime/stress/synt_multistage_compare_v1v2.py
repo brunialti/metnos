@@ -15,9 +15,9 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-V1_PATH = Path("/opt/myclaw/decisions/synt_stress/results_multistage_35.jsonl")
-V2_PATH = Path("/opt/myclaw/decisions/synt_stress/results_multistage_35_v2.jsonl")
-OUT_PATH = Path("/opt/myclaw/decisions/synt_stress/results_multistage_35_v2.compare.json")
+V1_PATH = Path(__file__).resolve().parents[2] / "decisions/synt_stress/results_multistage_35.jsonl"
+V2_PATH = Path(__file__).resolve().parents[2] / "decisions/synt_stress/results_multistage_35_v2.jsonl"
+OUT_PATH = Path(__file__).resolve().parents[2] / "decisions/synt_stress/results_multistage_35_v2.compare.json"
 
 
 def correct(rec):

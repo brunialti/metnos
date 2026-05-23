@@ -102,6 +102,23 @@ _VERB_TO_CANONICAL = {
     # extract
     "estrai": "extract", "estraggo": "extract", "estrarre": "extract",
     "extract": "extract", "unzip": "extract", "untar": "extract",
+    # change — forma/parametri (resize/convert/rotate/crop, vocab §2.2).
+    # Senza queste entry, _all_query_verbs_satisfied non riconosce «converti
+    # X in formato Y» come mutating, auto-final transformative non triggera
+    # e il PLANNER ri-emette la stessa call (loop fino al duplicate-detect).
+    "cambia": "change", "cambio": "change", "cambiare": "change",
+    "modifica": "change", "modifico": "change", "modificare": "change",
+    "trasforma": "change", "trasformo": "change", "trasformare": "change",
+    "converti": "change", "converto": "change", "convertire": "change",
+    "ridimensiona": "change", "ridimensiono": "change", "ridimensionare": "change",
+    "ruota": "change", "ruoto": "change", "ruotare": "change",
+    "ritaglia": "change", "ritaglio": "change", "ritagliare": "change",
+    "normalizza": "change", "normalizzo": "change", "normalizzare": "change",
+    "ricodifica": "change", "ricodifico": "change", "ricodificare": "change",
+    "change": "change", "modify": "change", "transform": "change",
+    "convert": "change", "resize": "change", "rotate": "change",
+    "crop": "change", "normalize": "change", "reformat": "change",
+    "transcode": "change", "encode": "change",
     # filter
     "filtra": "filter", "filtro": "filter", "filtrare": "filter",
     "filter": "filter",
@@ -581,7 +598,7 @@ _SHELL_INTENT_HINTS = (
     "start", "avvia", "avviare", "stop", "ferma", "fermare", "fermo",
     # permissions
     "chmod", "chown", "permessi", "permission",
-    # network
+    # network — basics
     "ifconfig", "ip route", "iptables", "rete", "network",
     # packages
     "apt", "apt-get", "pacchetto", "package", "installa", "installare",
@@ -589,6 +606,18 @@ _SHELL_INTENT_HINTS = (
     "journalctl", "syslog", "log di sistema",
     # generic shell verb
     "comando shell", "shell command", "esegui",
+    # ── long-tail sysinfo fallback (22/5/2026): query che `get_processes`
+    # non copre (porte, socket, kernel module, GPU, ecc.). Trigger inietta
+    # admin nel pool: il LLM (che conosce i comandi Linux) propone p.es.
+    # `ss -tlnp` o `lsmod` e la whitelist v3 li auto-approva.
+    "porta", "porte", "port", "ports",
+    "socket", "sockets",
+    "listening", "ascolta", "ascoltante",
+    "tcp", "udp",
+    "modulo kernel", "moduli kernel", "kernel module",
+    "scheda video", "gpu", "video card",
+    "lsof", "lsblk", "lsmod", "lspci", "lsusb",
+    "dmesg", "sensors", "sensor",
 )
 
 
@@ -724,13 +753,18 @@ def rank_with_intent(query, catalog, intent, *, k=3):
             seen_names.add(prov_name)
 
     # Admin shell injection (ADR 0088, 4/5/2026): query con shell-intent
-    # marker (mount/kill/systemctl/...) → inietta admin con priorità
-    # massima. Permette al PLANNER di sceglierlo invece di scivolare a
+    # marker (mount/kill/systemctl/...) → admin a priorità massima.
+    # Permette al PLANNER di sceglierlo invece di scivolare a
     # `request_new_executor` o produrre final_answer di resa.
-    if _detect_shell_intent(qlow) and "admin" not in seen_names:
+    # 22/5/2026: shell-intent esteso a long-tail sysinfo (port/socket/lsmod/
+    # gpu/...). Se admin gia' in seen_names (matched per affinity), lo
+    # promuoviamo comunque al top — il PLANNER deve vederlo come prima
+    # opzione, non al 6° posto.
+    if _detect_shell_intent(qlow):
         admin_exec = next((e for e in catalog if e.name == "admin"), None)
         if admin_exec is not None:
-            primary.insert(0, (15, admin_exec))  # priorità sopra tutto il resto
+            primary = [(s, e) for s, e in primary if e.name != "admin"]
+            primary.insert(0, (15, admin_exec))
             seen_names.add("admin")
 
     # Time intent injection (6/5/2026): "che ore sono", "what time", etc.
@@ -778,6 +812,107 @@ def _filter_dormant(catalog):
 
 def rank_adaptive(query, catalog, k_min=5, k_max=8, *, llm_call=None,
                    prefer_intent=True):
+    """Dispatcher modulare (17/5/2026): delega alla strategy selezionata da
+    env `METNOS_PREFILTER` (default `legacy` = comportamento storico).
+
+    Strategy registrate in `runtime/prefilter_strategies/__init__.py`.
+    Per backward compat, in assenza di env var o per `METNOS_PREFILTER=
+    legacy|token_flat` ritorna esattamente il comportamento di
+    `_rank_adaptive_legacy` originale.
+
+    Telemetria opt-in (`METNOS_PREFILTER_TELEMETRY=1`): logga ogni call su
+    `~/.local/share/metnos/prefilter_telemetry.jsonl` per A/B compare.
+
+    Compare mode (`METNOS_PREFILTER=compare:a,b`): esegue entrambi A e B in
+    sequenza, ritorna A, ma logga B come confronto.
+    """
+    import os as _os
+    chosen_env = _os.environ.get("METNOS_PREFILTER", "").strip().lower()
+    if not chosen_env or chosen_env in ("legacy", "token_flat"):
+        # Fast path: nessun overhead per il default.
+        result = _rank_adaptive_legacy(
+            query, catalog, k_min=k_min, k_max=k_max,
+            llm_call=llm_call, prefer_intent=prefer_intent,
+        )
+        if _os.environ.get("METNOS_PREFILTER_TELEMETRY", "0") == "1":
+            _log_telemetry("legacy", query, result)
+        return result
+    # Modular path
+    from prefilter_strategies import select_strategy
+    import time as _time
+    primary_name = chosen_env
+    secondary_name = None
+    if chosen_env.startswith("compare:"):
+        parts = chosen_env.split(":", 1)[1].split(",")
+        primary_name = parts[0].strip()
+        if len(parts) > 1:
+            secondary_name = parts[1].strip()
+    primary = select_strategy(primary_name)
+    t0 = _time.perf_counter()
+    result = primary.rank(query, catalog, k_min=k_min, k_max=k_max,
+                          llm_call=llm_call, prefer_intent=prefer_intent)
+    elapsed_ms = int((_time.perf_counter() - t0) * 1000)
+    _log_telemetry(primary.name, query, result, elapsed_ms=elapsed_ms)
+    # Compare mode: lancia secondary, logga ma non ritorna.
+    if secondary_name:
+        try:
+            secondary = select_strategy(secondary_name)
+            t1 = _time.perf_counter()
+            sec_result = secondary.rank(
+                query, catalog, k_min=k_min, k_max=k_max,
+                llm_call=llm_call, prefer_intent=prefer_intent,
+            )
+            sec_elapsed_ms = int((_time.perf_counter() - t1) * 1000)
+            _log_telemetry(
+                secondary.name, query, sec_result,
+                elapsed_ms=sec_elapsed_ms, compare_against=primary.name,
+            )
+        except Exception as ex:
+            import logging
+            logging.getLogger(__name__).warning(
+                "compare-mode secondary %r failed: %s", secondary_name, ex)
+    return result
+
+
+def _log_telemetry(strategy_name: str, query: str, result, *,
+                    elapsed_ms: int | None = None,
+                    compare_against: str | None = None) -> None:
+    """Append JSONL telemetry record. Best-effort, fail-silent."""
+    try:
+        import json
+        import hashlib
+        import time
+        from pathlib import Path
+        candidates, route_info = result if isinstance(result, tuple) else (result, {})
+        top3 = []
+        for e in (candidates or [])[:3]:
+            n = getattr(e, "name", None) or str(e)[:60]
+            top3.append(n)
+        rec = {
+            "ts": time.time(),
+            "strategy": strategy_name,
+            "query_hash": hashlib.sha256(query.encode()).hexdigest()[:12],
+            "query_len": len(query),
+            "n_candidates": len(candidates or []),
+            "top3": top3,
+            "confidence": (route_info or {}).get("confidence"),
+            "reason": (route_info or {}).get("reason"),
+        }
+        if elapsed_ms is not None:
+            rec["elapsed_ms"] = elapsed_ms
+        if compare_against:
+            rec["compare_against"] = compare_against
+        import config as _C  # §7.11 (local import per evitare circular)
+        p = _C.PATH_USER_DATA / "prefilter_telemetry.jsonl"
+        p.parent.mkdir(parents=True, exist_ok=True)
+        with p.open("a", encoding="utf-8") as f:
+            f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+    except Exception:
+        pass
+
+
+def _rank_adaptive_legacy(query, catalog, k_min=5, k_max=8, *, llm_call=None,
+                           prefer_intent=True):
     """
     Forma adattiva (preferita v1.1) con intent extractor LLM-based opzionale.
 
@@ -879,11 +1014,13 @@ def rank_adaptive(query, catalog, k_min=5, k_max=8, *, llm_call=None,
                 sel_names.add(primary_name)
     # Admin shell injection (ADR 0088) anche nel fallback BoW: se la query
     # ha shell-intent marker e admin esiste nel catalog, garantisce che
-    # sia in cima al pool (head-injection, no shadowing degli altri).
+    # sia in cima al pool (head-injection). 22/5/2026: anche se gia'
+    # presente per affinity, lo promuoviamo a position 0.
     qlow_bow = (query or "").lower()
-    if _detect_shell_intent(qlow_bow) and not any(e.name == "admin" for e in selected):
+    if _detect_shell_intent(qlow_bow):
         admin_exec = next((e for e in catalog if e.name == "admin"), None)
         if admin_exec is not None:
+            selected = [e for e in selected if e.name != "admin"]
             selected = [admin_exec] + selected[:max(0, k_max - 1)]
     _, conf = adaptive_k(scores, k_min, k_max)
     return selected, {

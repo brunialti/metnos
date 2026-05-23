@@ -30,7 +30,8 @@ from typing import Any, Callable
 _LOG = logging.getLogger(__name__)
 
 
-_SKILLS_ROOT = Path.home() / ".local/share/metnos/skills"
+import config as _C  # §7.11 — rispetta METNOS_USER_DATA
+_SKILLS_ROOT = _C.PATH_USER_DATA / "skills"
 
 
 def _check_google_workspace() -> tuple[bool, str]:
@@ -47,9 +48,38 @@ def _check_google_workspace() -> tuple[bool, str]:
     return True, ""
 
 
+def _check_github_pat() -> tuple[bool, str]:
+    """GitHub PAT present:
+    1) env METNOS_GITHUB_TOKEN (priorita') — copre runtime ad-hoc / test
+    2) credentials store domain=github (ADR 0131)
+
+    Validazione HTTP attiva (revoke/scope) lazy: troppo costosa al boot.
+    Restituiamo ok=True se uno dei due e' presente; l'executor scopre
+    l'auth_required al primo invoke se il PAT e' invalido (e ritorna
+    `decision="needs_inputs"` al PLANNER).
+    """
+    import os
+    if os.environ.get("METNOS_GITHUB_TOKEN", "").strip():
+        return True, ""
+    try:
+        import sys as _sys
+        from pathlib import Path as _Path
+        runtime_dir = _Path(__file__).resolve().parent
+        if str(runtime_dir) not in _sys.path:
+            _sys.path.insert(0, str(runtime_dir))
+        import credentials as _cred  # type: ignore
+        if _cred._file_for("github").exists():
+            return True, ""
+    except Exception as e:
+        _LOG.warning("github credentials probe failed: %r", e)
+    return False, ("PAT mancante — esegui `metnos-cli credentials add github` "
+                   "o esporta METNOS_GITHUB_TOKEN")
+
+
 # Skill → (ok, reason). Estensibile da plugin.
 _CHECKS: dict[str, Callable[[], tuple[bool, str]]] = {
     "google-workspace": _check_google_workspace,
+    "github": _check_github_pat,
 }
 
 

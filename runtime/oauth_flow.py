@@ -66,7 +66,15 @@ def start_flow(*,
     if client_secret_install_path is not None:
         dest = Path(client_secret_install_path).expanduser()
         dest.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(src, dest)
+        # Skip copy quando src e dest puntano allo stesso file
+        # (caso "renew after revoke" 18/5/2026: il default UI e' gia'
+        # il path canonico installato).
+        try:
+            same = src.resolve() == dest.resolve()
+        except OSError:
+            same = False
+        if not same:
+            shutil.copy2(src, dest)
         try:
             os.chmod(dest, 0o600)
         except OSError:

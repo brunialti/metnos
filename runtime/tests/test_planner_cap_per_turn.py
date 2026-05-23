@@ -19,7 +19,7 @@ import unittest
 from pathlib import Path
 from types import SimpleNamespace
 
-# Path setup: i test girano da /opt/myclaw, runtime/ e' importabile direttamente
+# Path setup: i test girano da <install_root>, runtime/ e' importabile direttamente
 _RUNTIME = str(Path(__file__).resolve().parent.parent)
 if _RUNTIME not in sys.path:
     sys.path.insert(0, _RUNTIME)

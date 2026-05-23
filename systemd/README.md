@@ -11,7 +11,7 @@ Long-poll Telegram + dispatch al runtime. Persistenza `last_update_id` in
 
 ```bash
 mkdir -p ~/.config/systemd/user
-cp /opt/myclaw/systemd/metnos-telegram-daemon.service ~/.config/systemd/user/
+cp /opt/metnos/systemd/metnos-telegram-daemon.service ~/.config/systemd/user/
 systemctl --user daemon-reload
 systemctl --user enable --now metnos-telegram-daemon.service
 ```

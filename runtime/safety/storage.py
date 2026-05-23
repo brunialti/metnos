@@ -16,10 +16,13 @@ from pathlib import Path
 from typing import Iterator
 
 
+import sys as _sys
+_sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+import config as _C  # §7.11 — rispetta METNOS_USER_STATE
 DEFAULT_DB_PATH = Path(
     os.environ.get(
         "SAFETY_DB_PATH",
-        str(Path.home() / ".local/state/metnos/safety.db"),
+        str(_C.PATH_USER_STATE / "safety.db"),
     )
 )
 

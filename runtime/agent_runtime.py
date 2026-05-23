@@ -95,8 +95,9 @@ from recurring_tasks import (
 from test_runner import check_hints
 from undo import UndoLog
 from vaglio import judge
+import config as _C  # §7.11
 
-TURN_LOG_DIR = Path.home() / ".local" / "share" / "metnos" / "turns"
+TURN_LOG_DIR = _C.PATH_USER_DATA / "turns"
 DEFAULT_CAP_STEPS = 30
 DEFAULT_CAP_SAME_EXECUTOR = 10
 # Cap per-turn per executor non-action (find/get/list/read/classify/filter):
@@ -1078,7 +1079,8 @@ def _split_telemetry_persist(tel, step_num: int,
             "args_out_tok": tel.args_out_tok,
             "failure_reason": extra_fail_reason or tel.failure_reason,
         }
-        p = Path.home() / ".local/share/metnos/planner_split_telemetry.jsonl"
+        import config as _C  # §7.11 (lazy per evitare circular)
+        p = _C.PATH_USER_DATA / "planner_split_telemetry.jsonl"
         p.parent.mkdir(parents=True, exist_ok=True)
         with open(p, "a") as f:
             f.write(json.dumps(row, ensure_ascii=False) + "\n")
@@ -3531,6 +3533,18 @@ class TurnLog:
         return notices
 
     def write(self):
+        # Shape FSM ADR 0154: l'ultimo step di un turno terminale deve
+        # avere `chosen_tool` settato. Step generati da percorsi che NON
+        # passano dal tool_call dispatch (LLM ritorna testo senza
+        # tool_calls, ProviderError, error LLM) lasciano `chosen_tool=""`
+        # (default StepLog), generando shape "E?" che fallisce la regex
+        # `^E+F?$`. Normalizzazione idempotente, una sola riga: tutti i
+        # call-site terminali ereditano il fix.
+        if self.steps and self.final_kind in (
+            "answer", "ask", "error", "loop_break"
+        ):
+            if not self.steps[-1].chosen_tool:
+                self.steps[-1].chosen_tool = "final_answer"
         # Anti thinking-leak (ADR 0102, 7/5/2026): rimuovi righe di
         # reasoning interno emesse erroneamente dal PLANNER nel canale
         # text. Applicato PRIMA di qualsiasi prepend (truncation/health/
@@ -5381,12 +5395,24 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
         _action_verbs = {"move", "delete", "send", "write", "extract", "create",
                          "compress", "compute", "set"}
         _allow_describe = (_intent_verb is None) or (_intent_verb not in _action_verbs)
+        # I tool `*_tasks` (scheduler v2) sono iniettati condizionalmente:
+        # solo se la query contiene marker scheduling. Altrimenti il PLANNER
+        # LLM li seleziona erroneamente su query mail/file (bug live 23/5:
+        # «cerca mail bookings» → PLANNER scelse read_tasks_history). Lista
+        # marker in `tool_grammar._TASKS_MARKERS`; helper `_has_word` per
+        # word-boundary deterministic match §7.9.
+        from tool_grammar import _TASKS_MARKERS, _has_word
+        _user_query_lc = (user_query or "").lower()
+        _query_has_tasks_marker = _has_word(_user_query_lc, _TASKS_MARKERS)
         synth_tools = [
             SYNTH_REQUEST_TOOL, CLASSIFY_ENTRIES_TOOL, LOCATION_REQUEST_TOOL,
-            CREATE_TASKS_TOOL, LIST_TASKS_TOOL,
-            DELETE_TASKS_TOOL, READ_TASKS_TOOL,
-            SET_TASKS_TOOL, READ_TASKS_HISTORY_TOOL,
         ]
+        if _query_has_tasks_marker:
+            synth_tools.extend([
+                CREATE_TASKS_TOOL, LIST_TASKS_TOOL,
+                DELETE_TASKS_TOOL, READ_TASKS_TOOL,
+                SET_TASKS_TOOL, READ_TASKS_HISTORY_TOOL,
+            ])
         if _allow_describe:
             synth_tools.append(DESCRIBE_ENTRIES_TOOL)
         # filter_entries e' un pipeline-helper come classify_entries: serve
@@ -5665,13 +5691,21 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
             )
         ):
             _front_skip_reason: str | None = None
+            # Universal opt-out (§7.3): blocca chiamate frontier (Anthropic
+            # Opus / GPT-5 / ecc.) per evitare costi. Usato in test E2E
+            # paralleli e in scenari offline. Coerente anche con prod se
+            # l'utente ha esplicitamente disabilitato il tier online.
+            if os.environ.get("METNOS_DISABLE_FRONTIER") == "1":
+                _front_skip_reason = "METNOS_DISABLE_FRONTIER=1"
             try:
                 from llm_router import LLMRouter
                 _front_router = LLMRouter()
                 _front_spec = _front_router.tiers.get("frontier") or {}
                 _front_model = _front_spec.get("model")
                 _front_provider = (_front_spec.get("provider") or "").lower()
-                if not _front_model:
+                if _front_skip_reason is not None:
+                    pass  # gia' deciso skip via env
+                elif not _front_model:
                     _front_skip_reason = "non configurato (tiers.toml)"
                 else:
                     # Pre-check API key per evitare chiamata sicuramente
@@ -5704,8 +5738,8 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
                 def _bump_front_stats(key: str) -> None:
                     try:
                         import json as _json
-                        _p = (Path.home() / ".local/share/metnos"
-                              / "frontier_fallback_stats.json")
+                        import config as _C  # §7.11 (lazy)
+                        _p = _C.PATH_USER_DATA / "frontier_fallback_stats.json"
                         _p.parent.mkdir(parents=True, exist_ok=True)
                         _data = {}
                         if _p.exists():
@@ -5774,7 +5808,12 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
                 print(f"[step {step_num}] thinking: {r.thinking[:120]}…")
 
         # Caso 1: nessun tool_call -> testo finale
+        # ADR 0154 shape FSM: step terminale deve dichiarare chosen_tool
+        # ="final_answer" per garantire pipeline shape `E+ (F|A)?`.
+        # Senza normalizzazione, chosen_tool=="" (default StepLog) genera
+        # shape come "E?" che fallisce la regex `^E+F?$`.
         if not r.tool_calls:
+            step.chosen_tool = "final_answer"
             log.steps.append(step)
             log.final_kind = "answer"; log.final_message = r.text or "(risposta vuota)"
             log.ts_end = time.time(); log.write(); return log
@@ -6215,6 +6254,11 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
                 and not _det_close_possible
                 and os.environ.get("METNOS_PLANNER_TIER_FALLBACK", "1") != "0"
             )
+            # Universal opt-out (§7.3): METNOS_DISABLE_FRONTIER=1 blocca anche
+            # questo call site (CYCLIC_CALL retry), coerente con il primo
+            # path frontier ~riga 5670.
+            if _can_retry_front and os.environ.get("METNOS_DISABLE_FRONTIER") == "1":
+                _can_retry_front = False
             if _can_retry_front:
                 _frontier_loop_retry_done = True
                 try:
@@ -6253,7 +6297,8 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
                                   f"fallback frontier ({_front_provider}/{_front_model})")
                         # Telemetria
                         try:
-                            _stats_p = Path.home() / ".local/share/metnos" / "frontier_fallback_stats.json"
+                            import config as _C  # §7.11 (lazy)
+                            _stats_p = _C.PATH_USER_DATA / "frontier_fallback_stats.json"
                             _stats_p.parent.mkdir(parents=True, exist_ok=True)
                             _d = {}
                             if _stats_p.exists():

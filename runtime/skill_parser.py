@@ -589,13 +589,20 @@ def _absorb_args_into(sc: SkillSubCommand, args: list) -> None:
     while i < n:
         tok = args[i]
         if tok.startswith("--"):
-            name = tok[2:]
-            value = None
-            if i + 1 < n and not args[i + 1].startswith("--"):
-                value = args[i + 1]
-                i += 2
-            else:
+            # Supporta sia `--flag value` che `--flag=value` (POSIX std).
+            raw = tok[2:]
+            if "=" in raw:
+                name, _, inline_value = raw.partition("=")
+                value = inline_value
                 i += 1
+            else:
+                name = raw
+                value = None
+                if i + 1 < n and not args[i + 1].startswith("--"):
+                    value = args[i + 1]
+                    i += 2
+                else:
+                    i += 1
             flag = sc.flags.get(name)
             if flag is None:
                 flag = SkillFlag(name=name)

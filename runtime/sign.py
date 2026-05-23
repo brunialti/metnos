@@ -26,9 +26,10 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import (
 from cryptography.hazmat.primitives import serialization
 
 from logging_setup import get_logger
+import config as _C  # §7.11
 log = get_logger(__name__)
 
-KEYS_DIR = Path.home() / ".config" / "metnos" / "keys"
+KEYS_DIR = _C.PATH_USER_CONFIG / "keys"
 DEFAULT_AUTHOR_KEY = "author"
 
 

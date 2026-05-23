@@ -45,8 +45,11 @@ _LANG_NAMES = {
 }
 
 # Default DB e audit dir; override via env per i test.
-_DEFAULT_DB = Path.home() / ".local/share/metnos/i18n.sqlite"
-_DEFAULT_AUDIT_DIR = Path.home() / ".local/share/metnos/i18n_audit"
+import sys as _sys
+_sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+import config as _C  # §7.11
+_DEFAULT_DB = _C.DB_I18N
+_DEFAULT_AUDIT_DIR = _C.PATH_USER_DATA / "i18n_audit"
 
 
 def _db_path() -> Path:

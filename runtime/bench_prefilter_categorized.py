@@ -12,17 +12,20 @@ Confronta tre modalita' di ranking:
 Output: precision per categoria + per modalita', + lista regressioni.
 
 Run:
-  /opt/suprastructure/.venv/bin/python /opt/myclaw/runtime/bench_prefilter_categorized.py
+  /opt/suprastructure/.venv/bin/python <install_root>/runtime/bench_prefilter_categorized.py
 """
 from __future__ import annotations
 
 import json
+import os
 import sys
 import time
 from pathlib import Path
 
 sys.path.insert(0, "/usr/lib/python3/dist-packages")
-sys.path.insert(0, "/opt/myclaw/runtime")
+_RUNTIME = os.environ.get("METNOS_RUNTIME") or str(Path(__file__).resolve().parent)
+if _RUNTIME not in sys.path:
+    sys.path.insert(0, _RUNTIME)
 sys.path.insert(0, "/opt/suprastructure/src")
 
 import numpy as np  # noqa: E402
@@ -31,7 +34,7 @@ from loader import load_catalog  # noqa: E402
 from prefilter import rank_adaptive  # noqa: E402
 from suprastructure.embedding.onnx_embedding import EmbeddingService  # noqa: E402
 
-MODEL_DIR = "/opt/myclaw/models/embedding"
+MODEL_DIR_FN = lambda: str(Path(_RUNTIME).parent / "models" / "embedding")
 KS = (3, 5, 8)
 
 
@@ -52,7 +55,7 @@ CORPUS: list[tuple[str, str, set[str]]] = [
     # ── FILE FIND (10) ────────────────────────────────────────────────
     ("file_find", "trova tutte le foto in /home/roberto/images", {"find_files"}),
     ("file_find", "cerca file pdf in ~/Documents", {"find_files"}),
-    ("file_find", "find all *.py files in /opt/myclaw", {"find_files"}),
+    ("file_find", "find all *.py files in the install root", {"find_files"}),
     ("file_find", "trova README.md in opt/myclaw", {"find_files"}),
     ("file_find", "lista i file .jpg sul NAS", {"find_files"}),
     ("file_find", "search files matching *.log", {"find_files"}),
@@ -127,7 +130,7 @@ CORPUS: list[tuple[str, str, set[str]]] = [
 
     # ── COMPUTE (5) ───────────────────────────────────────────────────
     ("compute", "linee di codice di metnos", {"compute_files_loc"}),
-    ("compute", "count lines of code in /opt/myclaw", {"compute_files_loc"}),
+    ("compute", "count lines of code in the install root", {"compute_files_loc"}),
     ("compute", "calcola sha256 di /tmp/test.txt", {"compute_signatures"}),
     ("compute", "compute hash of file foo.py", {"compute_signatures"}),
     ("compute", "loc del progetto", {"compute_files_loc"}),
@@ -311,10 +314,10 @@ def main():
         },
         "failures": failures,
     }
-    Path("/opt/myclaw/runtime/bench_prefilter_categorized.result.json").write_text(
+    Path(__file__).resolve().parents[1] / "runtime/bench_prefilter_categorized.result.json".write_text(
         json.dumps(out, indent=2, ensure_ascii=False)
     )
-    print("\n  → JSON → /opt/myclaw/runtime/bench_prefilter_categorized.result.json")
+    print("\n  → JSON → <install_root>/runtime/bench_prefilter_categorized.result.json")
 
 
 if __name__ == "__main__":

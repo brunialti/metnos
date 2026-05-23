@@ -21,11 +21,13 @@ from synt_multistage import run_full as multistage_run_full
 from loader import SYNTHESIZED_EXECUTORS_DIR
 from sign import sign_executor
 from vocab import render_actions_pipe, render_objects_pipe, render_qualifiers_pipe
+from messages import get as _msg
 
 from logging_setup import get_logger
+import config as _C  # §7.11
 log = get_logger(__name__)
 
-PROPOSALS_DIR = Path.home() / ".local" / "share" / "metnos" / "synt_proposals"
+PROPOSALS_DIR = _C.PATH_USER_DATA / "synt_proposals"
 
 
 def _toml_value(v):
@@ -60,7 +62,7 @@ def _validate_birth_tests(executor_dir):
         return f"manifest non trovato in {executor_dir}"
     try:
         result = subprocess.run(
-            ["python3", "/opt/myclaw/runtime/test_runner.py", str(manifest_path)],
+            ["python3", str(_C.PATH_RUNTIME / "test_runner.py"), str(manifest_path)],
             capture_output=True, text=True, timeout=60,
         )
     except subprocess.TimeoutExpired:
@@ -623,7 +625,8 @@ def handle_synth_request(args, *, user_query, progress=None, verbose=False, curr
                  f"con gli args appropriati per il task originale dell'utente "
                  f"(\"{user_query}\")**: il tool e' ora nel catalog.")
                 if install_error is None
-                else f"Sintesi completata ma install fallito: {install_error}. Rispondi all'utente che il task richiede attenzione manuale."
+                else _msg("MSG_SYNTH_FAILED",
+                          reason=f"install error: {install_error}")
             ),
         }
     elif run.final_state == "rejected":
@@ -635,11 +638,8 @@ def handle_synth_request(args, *, user_query, progress=None, verbose=False, curr
             "rejected": True,
             "elapsed_s": elapsed_s,
             "reason": run.abandon_reason or "out-of-vocabulary",
-            "message": (
-                "La sintesi e' stata rigettata: il verbo richiesto e' fuori dal "
-                "vocabolario chiuso. Rispondi all'utente che il task e' "
-                f"semanticamente non coperto: {run.abandon_reason or 'verbo out-of-scope'}."
-            ),
+            "message": _msg("MSG_SYNTH_REJECTED_VOCAB",
+                            reason=run.abandon_reason or "verbo out-of-scope"),
         }
     else:  # abandoned
         if progress is not None:
@@ -650,9 +650,6 @@ def handle_synth_request(args, *, user_query, progress=None, verbose=False, curr
             "abandoned": True,
             "elapsed_s": elapsed_s,
             "reason": run.abandon_reason or "unknown",
-            "message": (
-                "La sintesi non e' riuscita a completare la pipeline. "
-                f"Motivo: {run.abandon_reason or 'errore in uno stage'}. "
-                "Rispondi all'utente che il task richiede attenzione manuale."
-            ),
+            "message": _msg("MSG_SYNTH_FAILED",
+                            reason=run.abandon_reason or "errore in uno stage"),
         }

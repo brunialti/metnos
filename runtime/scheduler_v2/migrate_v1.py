@@ -264,20 +264,27 @@ def migrate(
 
 def _cli(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="Migrate v1 scheduler state to v2")
+    import sys as _sys
+    _sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    import config as _C  # §7.11
     ap.add_argument(
         "--recurring-db",
         type=Path,
-        default=Path.home() / ".local/state/metnos/recurring_tasks.db",
+        default=_C.DB_RECURRING_TASKS,
     )
+    # ADR 0148 rename-resilient: state.sqlite default derived from
+    # PATH_WORKSPACE (this file lives at runtime/scheduler_v2/migrate_v1.py).
+    _default_state_db = (Path(__file__).resolve().parents[2]
+                         / "workspace" / ".scheduler" / "state.sqlite")
     ap.add_argument(
         "--state-db",
         type=Path,
-        default=Path("/opt/myclaw/workspace/.scheduler/state.sqlite"),
+        default=_default_state_db,
     )
     ap.add_argument(
         "--target-db",
         type=Path,
-        default=Path.home() / ".local/state/metnos/scheduler_v2.sqlite",
+        default=_C.PATH_USER_STATE / "scheduler_v2.sqlite",
     )
     ap.add_argument("--tz", default="Europe/Rome")
     ap.add_argument("--dry-run", action="store_true")

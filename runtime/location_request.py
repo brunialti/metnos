@@ -39,7 +39,8 @@ import uuid
 from pathlib import Path
 from typing import Optional
 
-PENDING_DIR = Path.home() / ".local/state/metnos/location_pending"
+import config as _C  # §7.11
+PENDING_DIR = _C.PATH_USER_STATE / "location_pending"
 DEFAULT_TIMEOUT_S = 300
 
 

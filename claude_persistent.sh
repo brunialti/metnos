@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 # Claude Code — sessione persistente in tmux
 #
-# Uso locale:   bash /opt/myclaw/claude_persistent.sh
-# Uso da SSH:   ssh -t roberto@192.168.1.33 bash /opt/myclaw/claude_persistent.sh
+# Uso locale:   bash /opt/metnos/claude_persistent.sh
+# Uso da SSH:   ssh -t roberto@192.168.1.33 bash /opt/metnos/claude_persistent.sh
 #
 # Se la sessione tmux "myclaw" esiste, si riconnette.
 # Se non esiste, la crea, applica tuning anti-lag, e avvia claude --resume.
 set -euo pipefail
 
-SESSION="myclaw"
+SESSION="metnos"
 CLAUDE_INIT_DELAY="${CLAUDE_INIT_DELAY:-4}"
 CLAUDE_SESSION_NAME="${CLAUDE_SESSION_NAME:-METNOS}"
 CLAUDE_COLOR="${CLAUDE_COLOR:-blu}"
@@ -39,7 +39,7 @@ if [ -n "${TMUX:-}" ]; then
         apply_tuning
         exec tmux switch-client -t "$SESSION"
     else
-        tmux new-session -d -s "$SESSION" -c /opt/myclaw
+        tmux new-session -d -s "$SESSION" -c /opt/metnos
         apply_tuning
         tmux send-keys -t "$SESSION" 'claude --resume' Enter
         apply_claude_session_settings
@@ -54,7 +54,7 @@ if tmux has-session -t "$SESSION" 2>/dev/null; then
 fi
 
 echo "Creo nuova sessione '$SESSION'..."
-tmux new-session -d -s "$SESSION" -c /opt/myclaw
+tmux new-session -d -s "$SESSION" -c /opt/metnos
 apply_tuning
 tmux send-keys -t "$SESSION" 'claude --resume' Enter
 apply_claude_session_settings

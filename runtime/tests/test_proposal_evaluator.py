@@ -122,7 +122,7 @@ def _make_catalog(
     for n, aff in handcrafted.items():
         execs[n] = SimpleNamespace(
             name=n, affinity=aff,
-            manifest_path=Path(f"/opt/myclaw/executors/{n}/manifest.toml"),
+            manifest_path=Path(__file__).resolve().parents[2] / "executors" / n / "manifest.toml",
             reverse_pattern=None,
         )
     for n, payload in synth.items():
@@ -249,7 +249,7 @@ def test_reversibility_parity_killer(tmp_path):
     # Manualmente metto un executor con reverse_pattern nel catalog
     cat.executors["move_files"] = SimpleNamespace(
         name="move_files", affinity=["sposta", "move"],
-        manifest_path=Path("/opt/myclaw/executors/move_files/manifest.toml"),
+        manifest_path=Path(__file__).resolve().parents[2] / "executors/move_files/manifest.toml",
         reverse_pattern="swap_src_dst",
     )
     result = evaluate_proposal(pf, catalog=cat, audit=False)
@@ -266,7 +266,7 @@ def test_reversibility_parity_passes_when_new_has_pattern(tmp_path):
     cat = _make_catalog()
     cat.executors["move_files"] = SimpleNamespace(
         name="move_files", affinity=[],
-        manifest_path=Path("/opt/myclaw/executors/move_files/manifest.toml"),
+        manifest_path=Path(__file__).resolve().parents[2] / "executors/move_files/manifest.toml",
         reverse_pattern="swap_src_dst",
     )
     result = evaluate_proposal(pf, catalog=cat, audit=False)

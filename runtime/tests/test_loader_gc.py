@@ -138,7 +138,7 @@ class TestGcIntegration:
         import loader
 
         # Il test usa il catalog reale: cerchiamo un handcrafted esistente.
-        # Scegliamo `find_files`: presente sicuramente in /opt/myclaw/executors/.
+        # Scegliamo `find_files`: presente sicuramente in <install_root>/executors/.
         handcrafted_name = "find_files"
         with tempfile.TemporaryDirectory() as tmp:
             synth_root = Path(tmp) / "synth"

@@ -23,7 +23,7 @@ Outcomes possibili:
 - fail_other     : 'abandoned' generico (LLM error, missing fields, ecc.)
 
 Output:
-- /opt/myclaw/decisions/synt_stress/results_iter_<N>.jsonl  (un record/query)
+- <install_root>/decisions/synt_stress/results_iter_<N>.jsonl  (un record/query)
 - summary su stdout
 
 Il banco e' isolato: usa SYNT_AUDIT_DIR / SYNT_LOCK_PATH / SYNT_PROPOSALS_DIR

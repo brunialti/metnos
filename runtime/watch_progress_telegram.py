@@ -8,7 +8,7 @@ Uso:
     systemd-run --user --unit=metnos-progress-watcher \\
         --setenv=METNOS_PROGRESS_FILE=<path> \\
         --setenv=METNOS_BATCH_LABEL="enrichment foto" \\
-        /opt/suprastructure/.venv/bin/python /opt/myclaw/runtime/watch_progress_telegram.py
+        /opt/suprastructure/.venv/bin/python <install_root>/runtime/watch_progress_telegram.py
 """
 from __future__ import annotations
 
@@ -30,7 +30,11 @@ def main() -> int:
     label = os.environ.get("METNOS_BATCH_LABEL", "batch")
     p = Path(prog_path)
 
-    sys.path.insert(0, "/opt/myclaw/runtime")
+    _RUNTIME = os.environ.get("METNOS_RUNTIME") or next(
+        str(pp / "runtime") for pp in Path(__file__).resolve().parents
+        if (pp / "runtime" / "config.py").is_file())
+    if _RUNTIME not in sys.path:
+        sys.path.insert(0, _RUNTIME)
     from channels.telegram import TelegramChannel  # type: ignore
     from channels import OutboundMessage  # type: ignore
 

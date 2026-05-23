@@ -129,6 +129,11 @@ DB_OBSERVABILITY   = PATH_USER_STATE / "observability.db"
 # Multi-tool fast-path memoization (ADR 0150): canonical_query → tools sequence
 # memoizzata, TTL N giorni di attivita' effettiva.
 DB_MULTI_TOOL_PATHS = PATH_USER_DATA / "multi_tool_paths.sqlite"
+# Change intents (ADR 0158): single source of truth per il ciclo di vita
+# proposed → accepted → applied → observed → finalized (o rolled_back).
+# Sostituisce 9 storage frammentati (telos jsonl, introvertiva sqlite,
+# synt jsonl, multi_tool sqlite, canonical_query_log, executor_history, ...).
+DB_CHANGE_INTENTS  = PATH_USER_STATE / "change_intents.sqlite"
 # Audit JSONL (append-only, no schema; non-DB ma simile)
 LOG_LOCATIONS_JSONL = PATH_USER_DATA / "locations.jsonl"
 

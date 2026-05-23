@@ -417,6 +417,155 @@ def _check_forbidden_argv(argv: list[str]) -> tuple[bool, Optional[str]]:
     return False, None
 
 
+# ── Approval card UX (22/5/2026): role-aware + danger summary ────────
+#
+# Whitelist miss → carta vaglio. Differenziamo per ruolo dell'attore:
+#
+# - actor == 'host'  (admin/proprietario di Metnos):
+#     opzioni = [approve_once, approve_and_whitelist, reject_once, block_forever]
+#     danger_summary spiega cosa fa il comando. L'admin puo' aggiungerlo
+#     permanentemente in whitelist (no carta ogni volta).
+#
+# - actor == 'guest_<id>'  (utente invitato, autonomy_level<3):
+#     opzioni = [run_externally, request_admin_whitelist, reject_once]
+#     Metnos non esegue il comando: l'utente lo lancia da solo, oppure
+#     richiede al proprietario di aggiungerlo in whitelist (queue su disco).
+
+import sys as _sys
+_sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+import config as _C  # §7.11
+_REQUEST_WHITELIST_QUEUE = _C.PATH_USER_DATA / "admin_whitelist_requests.jsonl"
+
+
+def _is_admin_actor(actor: str) -> bool:
+    """Solo 'host' (proprietario unico di Metnos) e' admin §10.6.
+    I guest hanno autonomy_level<3 e non vedono la stessa carta."""
+    return actor == "host"
+
+
+def _explain_command_dangers(argv: list[str], severity: str | None) -> str:
+    """Spiegazione testuale dei rischi del comando (1-2 frasi). Deterministica,
+    basata sul binario + flags + severity dalla policy. Niente LLM.
+    """
+    if not argv:
+        return "Comando vuoto."
+    binary = argv[0].split("/")[-1]
+    flags = [t for t in argv[1:] if t.startswith("-")]
+    targets = [t for t in argv[1:] if not t.startswith("-")]
+
+    danger_by_binary = {
+        "rm": "Cancella file/directory in modo IRREVERSIBILE.",
+        "dd": "Scrittura raw su block device. Puo' distruggere dati.",
+        "mkfs": "Formatta un filesystem cancellando tutto sul device.",
+        "shred": "Sovrascrive file per rendere il recupero impossibile.",
+        "wipefs": "Cancella signature filesystem da un device.",
+        "fdisk": "Modifica tabella partizioni — cambio struttura disco.",
+        "parted": "Modifica tabella partizioni — cambio struttura disco.",
+        "iptables": "Modifica firewall del kernel — puo' bloccare la rete.",
+        "ip": "Modifica configurazione di rete (route/addr/link).",
+        "modprobe": "Carica/scarica moduli kernel.",
+        "sysctl": "Modifica parametri kernel runtime.",
+        "mount": "Monta filesystem — cambia visibilita' dati.",
+        "umount": "Smonta filesystem — interrompe accesso a dati.",
+        "systemctl": "Gestione servizi systemd (start/stop/restart/enable).",
+        "kill": "Termina processi forzatamente.",
+        "killall": "Termina TUTTI i processi con nome dato.",
+        "chmod": "Modifica permessi file/directory.",
+        "chown": "Modifica proprietario file/directory.",
+        "apt": "Installa/rimuove pacchetti dal sistema.",
+        "apt-get": "Installa/rimuove pacchetti dal sistema.",
+        "dpkg": "Manipola pacchetti Debian.",
+        "useradd": "Aggiunge utenti al sistema.",
+        "userdel": "Rimuove utenti dal sistema (e i loro file).",
+    }
+    base = danger_by_binary.get(binary,
+        f"`{binary}` non e' nella whitelist conosciuta. Esecuzione non automaticamente sicura.")
+
+    notes = []
+    # Force flags: -f, --force, oppure 'f' all'interno di un short-flag cluster
+    # tipo `-rf`/`-fr`/`-Rf` (POSIX getopt: short flags concatenati).
+    def _has_short(letter: str, flag: str) -> bool:
+        return (flag.startswith("-") and not flag.startswith("--")
+                and letter in flag[1:])
+    has_force = any(f == "--force" or _has_short("f", f) for f in flags)
+    has_recursive = any(f in ("--recursive",) or _has_short("r", f)
+                         or _has_short("R", f) for f in flags)
+    if has_force:
+        notes.append("Include flag forzanti (`-f`/`--force`) che saltano conferme.")
+    if has_recursive:
+        notes.append("Operazione RICORSIVA su tutta la sottostruttura.")
+    sudo_required = any(t == "sudo" for t in argv)
+    if sudo_required:
+        notes.append("Richiede privilegi root (`sudo`).")
+    if severity == "irreversible":
+        notes.append("Classificato IRREVERSIBILE dalla policy di sicurezza.")
+    elif severity == "dangerous":
+        notes.append("Classificato PERICOLOSO dalla policy di sicurezza.")
+
+    if notes:
+        return base + " " + " ".join(notes)
+    return base
+
+
+def _build_approval_card(argv: list[str], sig, requires_sudo: bool,
+                          rev_class: str, undo_hint: str | None,
+                          intent_text: str, actor: str,
+                          severity: str | None = None) -> dict:
+    """Carta vaglio role-aware. Vedi modulo header per spec opzioni."""
+    is_admin = _is_admin_actor(actor)
+    danger_summary = _explain_command_dangers(argv, severity)
+    if is_admin:
+        options = ["approve_once", "approve_and_whitelist",
+                   "reject_once", "block_forever"]
+        warning = (
+            f"⚠ Stai per autorizzare un comando NON in whitelist. "
+            f"{danger_summary}"
+        )
+    else:
+        options = ["run_externally", "request_admin_whitelist", "reject_once"]
+        warning = (
+            f"Il comando `{' '.join(argv)}` non e' autorizzato per il tuo "
+            f"ruolo. Puoi (a) eseguirlo personalmente fuori da Metnos, "
+            f"oppure (b) chiedere all'amministratore di aggiungerlo alla "
+            f"whitelist. {danger_summary}"
+        )
+    return {
+        "type": "approval_card",
+        "argv_rendered": " ".join(argv),
+        "signature": str(sig),
+        "requires_sudo": requires_sudo,
+        "reversibility": rev_class,
+        "undo_hint": undo_hint,
+        "intent_text": intent_text,
+        "actor_role": "admin" if is_admin else "guest",
+        "danger_summary": danger_summary,
+        "warning": warning,
+        "options": options,
+    }
+
+
+def _enqueue_whitelist_request(*, signature: str, argv: list[str],
+                                requester: str, intent_text: str) -> None:
+    """Append una richiesta di whitelisting al queue file. L'admin la
+    rivede via `metnos-cli admin whitelist-queue` o analogo (ADR pending).
+    File JSONL append-only; niente race condition perche' append e'
+    atomico per single-line POSIX (< PIPE_BUF=4096).
+    """
+    import datetime
+    import json as _json
+    _REQUEST_WHITELIST_QUEUE.parent.mkdir(parents=True, exist_ok=True)
+    entry = {
+        "ts": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds"),
+        "requester": requester,
+        "signature": signature,
+        "argv": argv,
+        "intent": intent_text,
+        "status": "pending",
+    }
+    with open(_REQUEST_WHITELIST_QUEUE, "a", encoding="utf-8") as fh:
+        fh.write(_json.dumps(entry, ensure_ascii=False) + "\n")
+
+
 # ── Main flow ─────────────────────────────────────────────────────────
 
 def decide(
@@ -596,16 +745,11 @@ def decide(
         # Unknown: ask the user.
         emit_wait(WAIT_HIGH)
         audit["safety"] = "unknown"
-        card = {
-            "type": "approval_card",
-            "argv_rendered": " ".join(argv),
-            "signature": str(sig),
-            "requires_sudo": requires_sudo,
-            "reversibility": rev_class,
-            "undo_hint": undo_hint,
-            "options": ["approve", "reject_once", "block_forever"],
-            "intent_text": user_text,
-        }
+        card = _build_approval_card(
+            argv=argv, sig=sig, requires_sudo=requires_sudo,
+            rev_class=rev_class, undo_hint=undo_hint,
+            intent_text=user_text, actor=actor,
+        )
         return AdminDecision(
             kind="ask_user",
             argv=argv, signature=str(sig),
@@ -627,11 +771,18 @@ def apply_user_decision(
 ) -> AdminDecision:
     """Apply the user's reply to an `ask_user` decision.
 
-    user_choice ∈ {'approve', 'reject_once', 'block_forever'}.
+    Opzioni admin (actor=='host'):
+      - approve_once / approve: insert/update graylist (uses+=1), execute.
+      - approve_and_whitelist:  insert in whitelist permanente, execute.
+      - reject_once:            reject senza side effect.
+      - block_forever:          insert in blacklist, reject.
 
-    - approve:        insert/update graylist (uses+=1), return execute_silent.
-    - reject_once:    return reject with no side effect.
-    - block_forever:  insert in blacklist, return reject.
+    Opzioni guest (actor!='host'):
+      - run_externally:          drop request, no execution (utente lancia
+                                  manualmente fuori da Metnos).
+      - request_admin_whitelist: append richiesta a queue file; admin
+                                  rivede e decide. Niente execute.
+      - reject_once:             drop request senza side effect.
     """
     if decision.kind != "ask_user":
         raise ValueError("apply_user_decision called on non-ask decision")
@@ -640,11 +791,39 @@ def apply_user_decision(
     audit["user_choice"] = user_choice
     audit["actor_decided"] = actor
 
-    if user_choice == "reject_once":
+    # Opzioni indipendenti da ruolo: reject senza side effect.
+    if user_choice in ("reject_once", "reject"):
         return AdminDecision(
             kind="reject",
             argv=decision.argv, signature=sig,
             reason="Richiesta rifiutata per questa volta.",
+            audit=audit,
+        )
+
+    # Opzioni guest-only (niente safety store mutation).
+    if user_choice == "run_externally":
+        return AdminDecision(
+            kind="reject",
+            argv=decision.argv, signature=sig,
+            reason=(
+                "Esegui il comando manualmente fuori da Metnos. "
+                "Niente azione automatica."
+            ),
+            audit=audit,
+        )
+    if user_choice == "request_admin_whitelist":
+        _enqueue_whitelist_request(
+            signature=sig, argv=decision.argv,
+            requester=actor,
+            intent_text=audit.get("user_text") or "",
+        )
+        return AdminDecision(
+            kind="reject",
+            argv=decision.argv, signature=sig,
+            reason=(
+                "Richiesta inviata all'amministratore. Il comando verra' "
+                "rivisto manualmente e, se approvato, aggiunto in whitelist."
+            ),
             audit=audit,
         )
 
@@ -663,7 +842,31 @@ def apply_user_decision(
                 reason="Comando bloccato per sempre.",
                 audit=audit,
             )
-        if user_choice == "approve":
+        if user_choice == "approve_and_whitelist":
+            if not _is_admin_actor(actor):
+                raise ValueError(
+                    "approve_and_whitelist requires admin role (actor='host')"
+                )
+            store.upsert_user(
+                sig, "whitelist",
+                severity=decision.severity or "reversible",
+                reason="admin promoted to permanent whitelist from approval card",
+                created_by=actor,
+            )
+            new_uses = store.record_use(sig)
+            audit["whitelist_uses"] = new_uses
+            audit["promoted_to_whitelist"] = True
+            return AdminDecision(
+                kind="execute_silent",
+                argv=decision.argv, signature=sig,
+                age_class="permanent",
+                severity=decision.severity,
+                requires_sudo=decision.requires_sudo,
+                reversibility=decision.reversibility,
+                undo_hint=decision.undo_hint,
+                audit=audit,
+            )
+        if user_choice in ("approve", "approve_once"):
             existing = store.find_by_signature(sig)
             if existing is None or existing.kind != "graylist":
                 store.upsert_user(
@@ -709,7 +912,8 @@ import time as _time
 # in `~/.local/share/metnos/.admin_consent_key` la prima volta, riusata
 # sempre dopo. Niente sync fra nodi (carry-over).
 def _consent_key() -> bytes:
-    key_path = Path.home() / ".local" / "share" / "metnos" / ".admin_consent_key"
+    import config as _C  # §7.11
+    key_path = _C.PATH_USER_DATA / ".admin_consent_key"
     key_path.parent.mkdir(parents=True, exist_ok=True)
     if key_path.exists():
         return key_path.read_bytes()
@@ -870,18 +1074,13 @@ def _decide_for_argv(argv: list[str], *, intent_text: str,
                 audit=audit,
             )
 
-        # signature sconosciuta → carta vaglio
+        # signature sconosciuta → carta vaglio role-aware
         audit["safety"] = "unknown"
-        card = {
-            "type": "approval_card",
-            "argv_rendered": " ".join(argv),
-            "signature": str(sig),
-            "requires_sudo": requires_sudo,
-            "reversibility": rev_class,
-            "undo_hint": undo_hint,
-            "options": ["approve", "reject_once", "block_forever"],
-            "intent_text": intent_text,
-        }
+        card = _build_approval_card(
+            argv=argv, sig=sig, requires_sudo=requires_sudo,
+            rev_class=rev_class, undo_hint=undo_hint,
+            intent_text=intent_text, actor=actor,
+        )
         return AdminDecision(
             kind="ask_user",
             argv=argv, signature=str(sig),
@@ -1131,6 +1330,56 @@ def invoke(*, intent: str, command_proposed: str,
                 "catalog_name": catalog_hit,
             },
         }
+
+    # ── Pkg whitelist guard (17/5/2026, install-on-demand pattern §7.3):
+    # se il comando e' `[sudo] apt[-get] install [-y] <pkg>`, verifica che
+    # <pkg> sia in `system_binaries.installable_packages_whitelist()`. Reject
+    # se non in lista. Defense in depth: anche se PLANNER + utente approvano
+    # via card HMAC, NON installiamo pkg non whitelisted (protezione contro
+    # pkg-injection via prompt). Whitelist auto-deriva da _BINARY_TO_PACKAGE
+    # + override `~/.config/metnos/installable_packages.json`.
+    try:
+        import sys as _sys
+        from pathlib import Path as _Path
+        _rt = str(_Path(__file__).resolve().parent.parent)
+        if _rt not in _sys.path:
+            _sys.path.insert(0, _rt)
+        from system_binaries import (
+            parse_apt_install_pkg as _parse_apt_pkg,
+            is_package_installable as _is_pkg_ok,
+            installable_packages_whitelist as _wl,
+        )
+        _pkg = _parse_apt_pkg(command_proposed or "")
+        if _pkg is not None and not _is_pkg_ok(_pkg):
+            _allowed = sorted(_wl())
+            return {
+                "ok": False,
+                "decision": "reject",
+                "signature": "",
+                "argv": argv,
+                "approval_required": False,
+                "approval_card": None,
+                "summary": (
+                    f"Pacchetto `{_pkg}` non e' nella whitelist Metnos. "
+                    f"Per installarlo aggiungilo a "
+                    f"`~/.config/metnos/installable_packages.json` (lista "
+                    f"JSON di string), oppure registra il binary di cui ha "
+                    f"bisogno in `runtime/system_binaries._BINARY_TO_PACKAGE`. "
+                    f"Whitelist attuale: {', '.join(_allowed[:8])}"
+                    f"{' ...' if len(_allowed) > 8 else ''}."
+                ),
+                "audit": {
+                    "actor": audit_actor,
+                    "user_text": intent or "",
+                    "source": "planner_argv",
+                    "argv": argv,
+                    "gate": "pkg_not_whitelisted",
+                    "package": _pkg,
+                },
+            }
+    except ImportError:
+        # system_binaries non disponibile (test stand-alone): salta guard
+        pass
 
     # ── ADR 0091 (5/5/2026): se il command_proposed contiene un placeholder
     # ${METNOS_<KIND>_CREDS} ma il dominio NON e' ancora salvato, NON emettere

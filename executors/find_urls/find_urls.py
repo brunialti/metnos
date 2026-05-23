@@ -306,6 +306,18 @@ def _domain_in(host: str, items: list[str]) -> bool:
     return False
 
 
+def _is_loopback_host(host: str) -> bool:
+    """Loopback/local host (no rate limit applicabile)."""
+    if not host:
+        return False
+    h = host.lower().split(":", 1)[0]
+    if h in ("localhost", "127.0.0.1", "::1", "0.0.0.0"):
+        return True
+    if h.endswith(".local") or h.endswith(".localhost"):
+        return True
+    return False
+
+
 def _resolve_tier(host: str, trust: str) -> int:
     """Ritorna 1 (blocked/restrictive), 2 (default), o 3 (owned).
 
@@ -314,10 +326,15 @@ def _resolve_tier(host: str, trust: str) -> int:
     di default. Solo host esplicitamente listati in `blocked_origins.json`
     (manuale o auto-degrade post-429/503) finiscono in T1.
 
+    Loopback (localhost/127.0.0.1/::1/*.local): SEMPRE T3 owned. La macchina
+    e' dell'utente, niente rate-limit ragionevole §7.3.
+
     `trust='auto'` → consulta i file di config. `trust='owned'` → forza 3.
     `trust='blocked'` → forza 1. `trust='cookie:<dom>'` → tier 2 se match.
     """
     if trust == "owned":
+        return 3
+    if _is_loopback_host(host):
         return 3
     if trust == "blocked":
         return 1
@@ -1433,10 +1450,12 @@ def _invoke_default(args: dict) -> dict:
     def _allowed_by_robots(url: str) -> bool:
         if not respect_robots:
             return True
-        # Tier 3 owned: sempre allowed (override).
-        if tier == 3:
-            return True
         ps = urllib.parse.urlparse(url)
+        # Tier 3 owned (non-loopback): bypass robots come scelta esplicita del
+        # gestore del proprio dominio. Loopback (test/dev) NON bypassa: il test
+        # harness puo' simulare server con robots reali e attendersi compliance.
+        if tier == 3 and not _is_loopback_host(ps.hostname or ""):
+            return True
         origin = f"{ps.scheme}://{ps.netloc}"
         rules = robots_cache.disallow_for(origin) if robots_cache else []
         if _is_disallowed(ps.path or "/", rules):
@@ -1835,9 +1854,14 @@ def _invoke_default(args: dict) -> dict:
     # source domina la top-K. Senza questo cap, query come "bitcoin notizie"
     # ritornano 15 entries dallo stesso aggregator (es. Investing.com),
     # 12 listings di prezzo del medesimo sito invece di prospettive
-    # diverse. Cap default 3 per registered-domain (eTLD+1). Override via
-    # `max_per_domain` esplicito, 0 = disable (back-compat).
-    max_per_domain = int(args.get("max_per_domain") or 3)
+    # diverse. Cap default 3 per registered-domain (eTLD+1) SOLO quando
+    # c'e' topic ranking (search query): per BFS seed-based stesso dominio
+    # il cap non ha senso (tutti i link interni sono su same origin).
+    # Override esplicito via `max_per_domain`, 0 = disable.
+    if "max_per_domain" in args:
+        max_per_domain = int(args.get("max_per_domain") or 0)
+    else:
+        max_per_domain = 3 if topic_terms else 0
     if max_per_domain > 0 and entries:
         from collections import Counter as _Counter
         _per_dom = _Counter()

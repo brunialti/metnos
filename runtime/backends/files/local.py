@@ -42,6 +42,7 @@ if _RUNTIME not in sys.path:
 
 from platform_policy import is_system_file  # noqa: E402
 from messages import get as _msg  # noqa: E402
+import config as _C  # noqa: E402 §7.11
 # path_alias modulo riusabile (D.1, D.3). Re-export degli alias come moduli
 # locali per back-compat con test esistenti che mockano backends.files.local.
 from path_alias import (  # noqa: E402
@@ -1050,7 +1051,7 @@ def delete_files(args: dict) -> dict:
 
     # Storage blob: tracciamento turn per reverse pattern §2.3.
     history_dir = os.environ.get("METNOS_HISTORY_DIR") or str(
-        Path.home() / ".local" / "share" / "metnos" / "_history")
+        _C.PATH_USER_DATA / "_history")
     turn_id = os.environ.get("METNOS_TURN_ID") or "no_turn"
     blob_dir = Path(history_dir) / turn_id / "blob"
 

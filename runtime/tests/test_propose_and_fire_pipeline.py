@@ -23,9 +23,9 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-_EXEC_FF_DIR = Path("/opt/myclaw/executors/find_events_empty")
-_EXEC_GI_DIR = Path("/opt/myclaw/executors/get_inputs")
-_RUNTIME = Path("/opt/myclaw/runtime")
+_EXEC_FF_DIR = Path(__file__).resolve().parents[2] / "executors/find_events_empty"
+_EXEC_GI_DIR = Path(__file__).resolve().parents[2] / "executors/get_inputs"
+_RUNTIME = Path(__file__).resolve().parents[2] / "runtime"
 sys.path.insert(0, str(_EXEC_FF_DIR))
 sys.path.insert(0, str(_EXEC_GI_DIR))
 sys.path.insert(0, str(_RUNTIME))
@@ -198,8 +198,9 @@ def test_propose_only_does_not_require_get_inputs(free_and_gi):
 # --------------------------------------------------------------------------
 
 def test_intent_examples_present_in_prompts():
-    p_it = Path("/opt/myclaw/runtime/prompts/it/intent_extractor.j2").read_text(encoding="utf-8")
-    p_en = Path("/opt/myclaw/runtime/prompts/en/intent_extractor.j2").read_text(encoding="utf-8")
+    root = Path(__file__).resolve().parents[2]
+    p_it = (root / "runtime/prompts/it/intent_extractor.j2").read_text(encoding="utf-8")
+    p_en = (root / "runtime/prompts/en/intent_extractor.j2").read_text(encoding="utf-8")
     # Almeno una variante propose+continuazione mutating mappa a verb=find.
     assert "prenotami quella che scelgo" in p_it
     assert "fissa il primo libero" in p_it
@@ -208,8 +209,9 @@ def test_intent_examples_present_in_prompts():
 
 
 def test_calendar_section_has_propose_and_fire_hint():
-    p_it = Path("/opt/myclaw/runtime/prompts/it/planner/sections/calendar.j2").read_text(encoding="utf-8")
-    p_en = Path("/opt/myclaw/runtime/prompts/en/planner/sections/calendar.j2").read_text(encoding="utf-8")
+    root = Path(__file__).resolve().parents[2]
+    p_it = (root / "runtime/prompts/it/planner/sections/calendar.j2").read_text(encoding="utf-8")
+    p_en = (root / "runtime/prompts/en/planner/sections/calendar.j2").read_text(encoding="utf-8")
     assert "(propose_and_fire)" in p_it
     assert "(propose_and_fire)" in p_en
     assert "find_events_empty" in p_it

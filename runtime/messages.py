@@ -17,13 +17,18 @@ delegata a `i18n.get`. Per la lista delle chiavi e per l'editing testi: tool
 admin `python3 -m admin.i18n_cli`.
 """
 
+import os as _os
 import sys as _sys
+from pathlib import Path as _Path
 
 from logging_setup import get_logger
 log = get_logger(__name__)
 
-if "/opt/myclaw/runtime" not in _sys.path:
-    _sys.path.insert(0, "/opt/myclaw/runtime")
+_RUNTIME = _os.environ.get("METNOS_RUNTIME") or next(
+    str(p / "runtime") for p in _Path(__file__).resolve().parents
+    if (p / "runtime" / "config.py").is_file())
+if _RUNTIME not in _sys.path:
+    _sys.path.insert(0, _RUNTIME)
 import i18n as _i18n
 
 

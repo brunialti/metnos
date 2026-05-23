@@ -1,13 +1,13 @@
 Auto-audit del ciclo introvertiva di stanotte (Metnos). Lavora silenzioso e in background, NIENTE conferme, NIENTE chiacchiere.
 
-CONTESTO: Metnos è l'assistente personale self-hosted in /opt/myclaw. Il scheduler ha appena finito (ore 05:30 locali) `introvertiva_propose` (05:00) + `introvertiva_apply` (05:30) + `apply_executor_ager` (03:30). I tuoi obiettivi: verificare i risultati, correggere errori, applicare ottimizzazioni quando sicuro.
+CONTESTO: Metnos è l'assistente personale self-hosted in /opt/metnos. Il scheduler ha appena finito (ore 05:30 locali) `introvertiva_propose` (05:00) + `introvertiva_apply` (05:30) + `apply_executor_ager` (03:30). I tuoi obiettivi: verificare i risultati, correggere errori, applicare ottimizzazioni quando sicuro.
 
-LEGGI PRIMA `/opt/myclaw/CLAUDE.md` (vincolante) + `~/.claude/projects/-opt-myclaw/memory/MEMORY.md` (contesto sessioni precedenti). Date di riferimento: ADR 0067, 0072, 0074, 0076, 0077. Se esiste, leggi anche il report del giorno precedente (`~/.claude/projects/-opt-myclaw/memory/metnos_auto_audit_*.md`) per confronto trend.
+LEGGI PRIMA `/opt/metnos/CLAUDE.md` (vincolante) + `~/.claude/projects/-opt-myclaw/memory/MEMORY.md` (contesto sessioni precedenti). Date di riferimento: ADR 0067, 0072, 0074, 0076, 0077. Se esiste, leggi anche il report del giorno precedente (`~/.claude/projects/-opt-myclaw/memory/metnos_auto_audit_*.md`) per confronto trend.
 
 CHECKLIST OPERATIVA:
 
 1. **Esiti scheduler**:
-   sqlite3 /opt/myclaw/workspace/.scheduler/state.sqlite "SELECT task,started_at,status,duration_ms,output FROM runs WHERE task IN ('introvertiva_propose','introvertiva_apply','apply_executor_ager') AND started_at > datetime('now','-12 hours') ORDER BY id DESC LIMIT 6"
+   sqlite3 /opt/metnos/workspace/.scheduler/state.sqlite "SELECT task,started_at,status,duration_ms,output FROM runs WHERE task IN ('introvertiva_propose','introvertiva_apply','apply_executor_ager') AND started_at > datetime('now','-12 hours') ORDER BY id DESC LIMIT 6"
    Se status != 'ok', leggi output completo e diagnostica.
 
 2. **Qualità proposte introvertiva** — leggi gli ultimi `~/.local/share/metnos/introvertiva/candidates_{dedupe,generalize,specialize}_*.jsonl`. Verifica:
@@ -15,16 +15,16 @@ CHECKLIST OPERATIVA:
    - Nessun arg di flusso (`entries`, `from_step`, `results`) come `arg_name` (skip-list ADR 0077).
    - Nessun pattern generalize che include executor non in catalog.
    Se trovi violazioni → BUG nei filtri introvertiva.py. Apri il file, identifica la falla, correggi, fai girare i test:
-   cd /opt/myclaw/runtime && python3 -m pytest tests/test_introvertiva.py -q
+   cd /opt/metnos/runtime && python3 -m pytest tests/test_introvertiva.py -q
 
 3. **Audit applied** — `~/.local/share/metnos/introvertiva/auto_applied_*.jsonl` più recente: verifica che ogni `applied` non abbia `error`, e che il file generato in `~/.local/share/metnos/executors/<name>/` esista, sia firmato (`manifest.toml.sig`) e venga caricato dal loader senza reject. Se reject persistente → backup il synth in `/tmp/metnos_synth_<name>_<ts>` e annota in memoria.
 
 4. **Synt cascade spuria** — controlla turni recenti:
    ls ~/.local/share/metnos/turns/ | tail -3
-   Se ci sono `chosen_tool=='request_new_executor'`, leggi il `result.message`: se `redirected: true` o `already_in_catalog: true`, OK (short-circuit ADR 0076 funziona). Se invece la cascata è davvero partita, verifica collisioni con handcrafted (/opt/myclaw/executors/) e pulisci: backup in /tmp/, rimuovi.
+   Se ci sono `chosen_tool=='request_new_executor'`, leggi il `result.message`: se `redirected: true` o `already_in_catalog: true`, OK (short-circuit ADR 0076 funziona). Se invece la cascata è davvero partita, verifica collisioni con handcrafted (/opt/metnos/executors/) e pulisci: backup in /tmp/, rimuovi.
 
 5. **Bench latenza**:
-   python3 /opt/myclaw/runtime/bench_latency_breakdown.py 2>&1 | head -25
+   python3 /opt/metnos/runtime/bench_latency_breakdown.py 2>&1 | head -25
    Confronta con i numeri base nel report del giorno precedente. Se `request_new_executor` calls > 0 in last 24h, indaga.
 
 6. **Fix automatici sicuri** (puoi applicare senza chiedere):
@@ -41,7 +41,7 @@ CHECKLIST OPERATIVA:
    - Modifiche a CLAUDE.md sezioni 1-9.
 
 8. **Test sempre** dopo ogni fix:
-   cd /opt/myclaw/runtime && python3 -m pytest tests/ -q
+   cd /opt/metnos/runtime && python3 -m pytest tests/ -q
    Se rosso, rollback la modifica.
 
 9. **Salva un report** in `~/.claude/projects/-opt-myclaw/memory/metnos_auto_audit_<YYYY-MM-DD>.md` (data corrente):

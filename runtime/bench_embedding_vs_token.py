@@ -10,20 +10,23 @@ Metriche: Recall@K (intersezione non vuota), Recall_full@K (GT ⊆ topK),
 latenza per query, overlap fra le due classifiche.
 
 Run:
-  /opt/suprastructure/.venv/bin/python /opt/myclaw/runtime/bench_embedding_vs_token.py
+  /opt/suprastructure/.venv/bin/python <install_root>/runtime/bench_embedding_vs_token.py
 """
 from __future__ import annotations
 
 import glob
 import json
 import statistics
+import os
 import sys
 import time
 from pathlib import Path
 
 # bridge sys.path: cryptography from system, runtime + suprastructure src
 sys.path.insert(0, "/usr/lib/python3/dist-packages")
-sys.path.insert(0, "/opt/myclaw/runtime")
+_RUNTIME = os.environ.get("METNOS_RUNTIME") or str(Path(__file__).resolve().parent)
+if _RUNTIME not in sys.path:
+    sys.path.insert(0, _RUNTIME)
 sys.path.insert(0, "/opt/suprastructure/src")
 
 import numpy as np  # noqa: E402
@@ -218,7 +221,7 @@ def main():
         "overlap_top5_mean": statistics.mean(overlap5),
         "divergences_sample": divergences,
     }
-    out_path = Path("/opt/myclaw/runtime/bench_embedding_vs_token.result.json")
+    out_path = Path(__file__).resolve().parents[1] / "runtime/bench_embedding_vs_token.result.json"
     out_path.write_text(json.dumps(out, indent=2, ensure_ascii=False))
     print(f"\n  → JSON → {out_path}")
 

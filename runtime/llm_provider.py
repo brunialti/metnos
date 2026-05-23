@@ -209,12 +209,13 @@ def _parse_tool_call_tolerant(text: str) -> dict | None:
             elif not isinstance(args, dict):
                 args = {}
             # ADR 0149: canonical_query as planner by-product (optional).
+            # Solo se presente nel JSON: evita di sporcare l'output con campo
+            # "" che il chiamante non aspetta.
+            out: dict = {"name": parsed["name"], "arguments": args}
             cq = parsed.get("canonical_query")
-            return {
-                "name": parsed["name"],
-                "arguments": args,
-                "canonical_query": cq if isinstance(cq, str) else "",
-            }
+            if isinstance(cq, str) and cq:
+                out["canonical_query"] = cq
+            return out
     except json.JSONDecodeError:
         pass
     # (a.bis) JSON truncated recovery (15/5/2026): llama.cpp grammar-mode

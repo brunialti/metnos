@@ -16,7 +16,7 @@ from pathlib import Path
 
 import pytest
 
-_EXEC_DIR = Path("/opt/myclaw/executors/get_processes")
+_EXEC_DIR = Path(__file__).resolve().parents[2] / "executors/get_processes"
 sys.path.insert(0, str(_EXEC_DIR))
 
 

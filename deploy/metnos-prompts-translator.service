@@ -11,10 +11,10 @@ Type=oneshot
 #
 # Output: candidati in prompts/<lang>/_pending/ (review umana obbligatoria
 # prima di mark-synced). Notifica via Telegram al host se candidati > 0.
-ExecStart=/opt/myclaw/deploy/run_prompts_translator.sh
+ExecStart=/opt/metnos/deploy/run_prompts_translator.sh
 User=roberto
-WorkingDirectory=/opt/myclaw
-Environment=PYTHONPATH=/opt/myclaw/runtime
+WorkingDirectory=/opt/metnos
+Environment=PYTHONPATH=/opt/metnos/runtime
 # Tier LLM per la traduzione. Override via env nel systemd unit:
 #   "wise"     = Gemma 4 26B locale (default, gratuito).
 #   "frontier" = Anthropic Opus 4.7 (~$0.015/call, opt-in).

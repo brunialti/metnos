@@ -1,0 +1,40 @@
+# Metnos — .gitattributes (ADR 0145 scrub L3)
+#
+# `export-ignore`: i path elencati sono NEL repo ma esclusi da:
+# - `git archive` (tarball/zip release)
+# - GitHub release "Source code (zip/tar)" download
+# Restano tracciati nel repo per chi clone-a; non vengono pubblicati come
+# parte dei release artifact.
+
+# Doc interni — narrativa di sessione, bench dettagliati, registry interno.
+docs/it/internal/      export-ignore
+docs/en/internal/      export-ignore
+
+# Bench detail dei roadmap interni (non per consumatori esterni).
+decisions/synt_stress/ export-ignore
+
+# Tool dev-only (sessione Claude, scripts personali).
+.claude/                export-ignore
+claude_persistent.sh    export-ignore
+.review_status.md       export-ignore
+AGENTS.md               export-ignore
+
+# Workspace personale dell'assistente (memoria, identita').
+workspace/              export-ignore
+_history/               export-ignore
+
+# File temporaneo di lavoro
+x.png                   export-ignore
+
+# Cloudflare dev-only (ADR 0144)
+deploy.sh               export-ignore
+
+# Normalizzazione fine-riga su sorgenti testuali
+*.py        text eol=lf
+*.md        text eol=lf
+*.toml      text eol=lf
+*.yaml      text eol=lf
+*.j2        text eol=lf
+*.html      text eol=lf
+*.sh        text eol=lf
+*.json      text eol=lf

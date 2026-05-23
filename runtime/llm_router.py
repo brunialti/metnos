@@ -14,8 +14,11 @@ Regole canoniche di alias:
     - frontier assente -> opzionale, errore SOLO se chiamato esplicitamente
                           (i caller di tier="frontier" devono gestire fallback)
 
-Config TOML in workspace/.config/llm_tiers.toml. Se manca, default baked-in
-per Roberto: fast=ollama:qwen3:8b, wise=llamacpp:gemma-4-26B.
+Config TOML in workspace/.config/llm_tiers.toml. Se manca, default
+baked-in: tutti i tier locali (fast/middle/wise) puntano allo stesso
+llama-server :8080 (Gemma 4 26B + drafter E2B speculative), differenze
+solo nei parametri per-call. Frontier = Anthropic Opus 4.7 opt-in.
+La verita' canonica e' in `DEFAULT_TIERS` (sotto) — vedi ADR 0146.
 
 API:
     router = LLMRouter()
@@ -36,26 +39,52 @@ except ImportError:
     tomllib = None
 
 sys.path.insert(0, str(Path(__file__).parent))
+import config as _C  # §7.11
 from llm_provider import (  # noqa: E402
     ChatResult, ToolUseResult, ProviderError, make_provider_from_spec,
 )
 
 
-CONFIG_PATH = Path(os.environ.get(
-    "METNOS_LLM_TIERS_CONFIG",
-    "/opt/myclaw/workspace/.config/llm_tiers.toml",
-))
+def _default_config_path() -> Path:
+    """Preferenza:
+      1. env METNOS_LLM_TIERS_CONFIG
+      2. ~/.config/metnos/llm_tiers.toml  (canonical user, ADR 0089)
+      3. <install_root>/workspace/.config/llm_tiers.toml  (legacy fallback)
+    """
+    v = os.environ.get("METNOS_LLM_TIERS_CONFIG")
+    if v:
+        return Path(v)
+    home_cfg = _C.PATH_USER_CONFIG / "llm_tiers.toml"
+    if home_cfg.exists():
+        return home_cfg
+    # ADR 0148 rename-resilient: derive from this module's location.
+    return Path(__file__).resolve().parents[1] / "workspace" / ".config" / "llm_tiers.toml"
 
 
-# Default baked-in: setup di Roberto (Gemma 4 26B locale come wise).
+CONFIG_PATH = _default_config_path()
+
+
+# Default baked-in — single source of truth per ADR 0146 (18/5/2026).
+# I tre tier locali (fast/middle/wise) puntano allo stesso processo
+# llama-server :8080 (Gemma 4 26B main + Gemma 4 E2B drafter speculative
+# decoding caricato via `-md`). La differenza fra tier e' solo nei
+# parametri per-call (think, num_predict) — non nel modello servito.
+# Qualsiasi modifica a questo dict aggiorna la realta' del progetto:
+# tutti gli altri doc (CLAUDE.md §11, ADR 0146, docs/LLM_TIERS.md)
+# rinviano qui, non duplicano i valori. Supersedes ADR 0044.
 DEFAULT_TIERS = {
     "fast": {
-        "provider": "ollama",
-        "model": "qwen3:8b",
-        "endpoint": "http://localhost:11434",
+        "provider": "llamacpp",
+        "model": "gemma-4-26B-A4B-it-UD-Q4_K_M.gguf",
+        "endpoint": "http://127.0.0.1:8080",
         "think": False,
+        "num_predict": 400,
     },
-    # middle non definito -> aliasera' a wise
+    "middle": {
+        "provider": "llamacpp",
+        "model": "gemma-4-26B-A4B-it-UD-Q4_K_M.gguf",
+        "endpoint": "http://127.0.0.1:8080",
+    },
     "wise": {
         "provider": "llamacpp",
         "model": "gemma-4-26B-A4B-it-UD-Q4_K_M.gguf",
@@ -95,6 +124,39 @@ def _load_config_file(path: Path) -> dict:
     return tomllib.loads(path.read_text(encoding="utf-8"))
 
 
+# Tier canonici riconosciuti come sezioni top-level flat (oltre al nested
+# `[tiers.<name>]`). Ogni nome qui entra nella mappa `tiers` se presente
+# come `[<name>]` con almeno `provider` + `model`.
+_TOP_LEVEL_TIER_NAMES = ("fast", "middle", "wise", "frontier")
+
+
+def _normalize_tiers_dict(cfg: dict) -> dict:
+    """Estrae la mappa tier dal config TOML supportando due formati:
+
+      - Nested (legacy):  `[tiers.fast] provider=... model=...`
+      - Flat (canonical user, ~/.config/metnos/llm_tiers.toml):
+                          `[fast] provider=... model=...`
+                          `[[wise.fallback]] provider=... model=...`
+
+    Flat ha precedenza su nested quando entrambi presenti per lo stesso
+    tier (la sezione flat e' l'override utente esplicito).
+
+    `fallback` (lista di {provider, model}) e' supportato sia flat
+    (`[[wise.fallback]]`) sia nested (`[tiers.wise.fallback]`).
+    """
+    out: dict = {}
+    nested = cfg.get("tiers") or {}
+    if isinstance(nested, dict):
+        for k, v in nested.items():
+            if isinstance(v, dict):
+                out[k] = dict(v)
+    for name in _TOP_LEVEL_TIER_NAMES:
+        section = cfg.get(name)
+        if isinstance(section, dict) and "provider" in section and "model" in section:
+            out[name] = dict(section)
+    return out
+
+
 def _wise_passes_quality_floor(spec: dict) -> bool:
     """True se la spec di wise rispetta la soglia di qualita' del cap. wise."""
     p = spec.get("provider", "")
@@ -122,12 +184,12 @@ MIDDLE_ALIASED_PREAMBLE = (
 
 
 # Repertorio dei prompt addendum provider-specifici. Caricato da file TOML:
-#   1. /opt/myclaw/runtime/prompts.toml         (default bundled)
+#   1. <install_root>/runtime/prompts.toml         (default bundled)
 #   2. ~/.config/metnos/prompts.toml            (override utente, opzionale)
 # Origine empirica delle scoperte: vedi memorie di progetto.
 
 PROMPTS_BUNDLED_PATH = Path(__file__).parent / "prompts.toml"
-PROMPTS_USER_PATH = Path.home() / ".config" / "metnos" / "prompts.toml"
+PROMPTS_USER_PATH = _C.PATH_USER_CONFIG / "prompts.toml"
 
 
 # Fallback in-code se entrambi i file mancano (test, container minimali).
@@ -207,7 +269,7 @@ class LLMRouter:
             tiers = dict(tiers_override)
         else:
             cfg = _load_config_file(config_path or CONFIG_PATH)
-            tiers = (cfg.get("tiers") or {}).copy() or dict(DEFAULT_TIERS)
+            tiers = _normalize_tiers_dict(cfg) or dict(DEFAULT_TIERS)
 
         # Regola: fast obbligatorio
         if "fast" not in tiers:
@@ -255,14 +317,44 @@ class LLMRouter:
     def is_aliased(self, tier: str) -> bool:
         return bool(self.tiers.get(tier, {}).get("_aliased_from_wise"))
 
+    def fallback_chain(self, tier: str) -> list[dict]:
+        """Ritorna la catena di provider per `tier`: primary + fallback
+        secondari. Lista di spec {provider, model, ...} pronte per
+        `make_provider_from_spec`. Vuota se il tier non e' configurato.
+
+        Usata da `consult_frontier` per ritentare con fallback se primary
+        fallisce (es. Opus 4.7 → GPT-5 → fail). Niente fallback chain per
+        fast/middle/wise di default (catena = primary only); se servisse
+        in futuro, basta aggiungere `[[wise.fallback]]` in llm_tiers.toml.
+        """
+        spec = self.tiers.get(tier)
+        if not spec:
+            return []
+        primary = {k: v for k, v in spec.items()
+                   if not k.startswith("_") and k != "fallback"}
+        out = [primary]
+        for f in (spec.get("fallback") or []):
+            if not isinstance(f, dict):
+                continue
+            if "provider" not in f or "model" not in f:
+                continue
+            out.append(dict(f))
+        return out
+
     def describe(self) -> dict:
         out = {}
-        for t in ("fast", "middle", "wise"):
+        for t in ("fast", "middle", "wise", "frontier"):
+            if t not in self.tiers:
+                continue
             spec = self.tiers[t]
             out[t] = {
                 "provider": spec.get("provider"),
                 "model":    spec.get("model"),
                 "aliased":  bool(spec.get("_aliased_from_wise")),
+                "fallback": [
+                    {"provider": f.get("provider"), "model": f.get("model")}
+                    for f in (spec.get("fallback") or [])
+                ],
             }
         return out
 

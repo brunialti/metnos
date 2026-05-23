@@ -27,7 +27,7 @@ if [ -z "$VERSION" ]; then
     exit 1
 fi
 
-REPO="/opt/myclaw"
+REPO="/opt/metnos"
 CLIENT_DIR="$REPO/client-rs"
 MIRROR_ROOT="${METNOS_MIRROR_ROOT:-$HOME/.local/share/metnos/mirror}"
 CLIENT_OUT="$MIRROR_ROOT/client"

@@ -34,6 +34,10 @@ import shutil
 from datetime import datetime, timezone
 from pathlib import Path
 
+import sys as _sys
+_sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+import config as _C  # §7.11
+
 from .promoter_example import render_practical_example
 from .promoter_promote import promote_to_catalog
 from .promoter_state import (
@@ -54,12 +58,8 @@ CAP_PER_FIRE_DEFAULT = 5
 GRACE_HOURS_DEFAULT = 72
 
 
-_DEFAULT_PROPOSALS_DIR = (
-    Path.home() / ".local" / "share" / "metnos" / "synt_proposals"
-)
-_DEFAULT_ARCHIVE_DIR = (
-    Path.home() / ".local" / "share" / "metnos" / "synth_archive"
-)
+_DEFAULT_PROPOSALS_DIR = _C.PATH_USER_DATA / "synt_proposals"
+_DEFAULT_ARCHIVE_DIR = _C.PATH_USER_DATA / "synth_archive"
 
 
 def _proposals_dir() -> Path:
@@ -304,8 +304,7 @@ def task_promoter(payload: dict | None = None) -> dict:
     import sqlite3 as _sql
     conn = _sql.connect(str(
         Path(os.environ.get("METNOS_PROMOTER_DB",
-                            str(Path.home() /
-                                ".local/share/metnos/promoter.sqlite")))
+                            str(_C.PATH_USER_DATA / "promoter.sqlite")))
     ))
     try:
         cols_added = ensure_schema(conn)

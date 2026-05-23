@@ -37,12 +37,13 @@ import pairing  # noqa: E402
 from progress import NullProgress, TelegramProgress  # noqa: E402
 from . import Channel, InboundMessage, OutboundMessage  # noqa: E402
 from .telegram import TelegramChannel  # noqa: E402
+import config as _C  # noqa: E402  §7.11
 
 log = logging.getLogger("metnos.daemon")
 
 DAEMON_LOCKFILE = Path(os.environ.get(
     "METNOS_DAEMON_LOCKFILE",
-    str(Path.home() / ".local" / "state" / "metnos" / "daemon.lock"),
+    str(_C.PATH_USER_STATE / "daemon.lock"),
 ))
 
 # Burst aggregation per media_group_id (ADR 0092, 5/5/2026): Telegram invia
@@ -56,7 +57,7 @@ MEDIA_GROUP_TTL_S = 1.5  # finestra di accumulo per gruppi multi-foto
 # Cap-expand pending state (CLAUDE.md 2.11): file per sender_id che memorizza
 # la proposta di rilancio con cap esteso emessa nel turno precedente.
 # Quando l'utente risponde "sì" il daemon rilancia con cap nuovo; "no" pulisce.
-CAP_PENDING_DIR = Path.home() / ".local" / "state" / "metnos" / "cap_pending"
+CAP_PENDING_DIR = _C.PATH_USER_STATE / "cap_pending"
 CAP_PENDING_TTL_S = 600  # 10 min: oltre, la proposta scade.
 _YES_PATTERN = re.compile(r"\b(s[iì]|yes|y|ok|okay|alza|aumenta|rilancia|più)\b",
                           re.IGNORECASE)
@@ -336,8 +337,7 @@ class ChannelDaemon:
         # multi-user (ADR 0083). Senza questo /admin/users mostra channels=[]
         # per host bootstrappato. Idempotente, deterministico (§7.9).
         try:
-            import sys as _s
-            _s.path.insert(0, "/opt/myclaw/runtime")
+            # runtime/ già su sys.path (channels VIVE in runtime/).
             import users_pairings_sync as _ups
             _stats = _ups.sync_pairings_to_user_channels()
             log.info("users_pairings_sync at daemon start (%s): %s",
@@ -447,8 +447,7 @@ class ChannelDaemon:
             credentials in chiaro).
         """
         try:
-            import sys as _s
-            _s.path.insert(0, "/opt/myclaw/runtime")
+            # runtime/ già su sys.path (channels VIVE in runtime/).
             import dialog_pending as _dp
         except ImportError as ex:
             log.warning("dialog_pending non disponibile: %s", ex)
@@ -544,8 +543,7 @@ class ChannelDaemon:
                              "mancanti nello state")
                 return None
             try:
-                import sys as _s
-                _s.path.insert(0, "/opt/myclaw/runtime")
+                # runtime/ già su sys.path (channels VIVE in runtime/).
                 from orchestration import process_completion_callback
                 msg_back = process_completion_callback(
                     sender_id, dialog_id,
@@ -567,8 +565,7 @@ class ChannelDaemon:
         if not username or not password:
             return None
         try:
-            import sys as _s
-            _s.path.insert(0, "/opt/myclaw/runtime")
+            # runtime/ già su sys.path (channels VIVE in runtime/).
             import credentials as _cred  # noqa: WPS433
             _cred.store(cred_domain, {
                 "username": username,
@@ -628,8 +625,7 @@ class ChannelDaemon:
                             reply_to=msg.message_id)
             return {"ok": False, "reason": "missing_token"}
         try:
-            import sys as _sys
-            _sys.path.insert(0, "/opt/myclaw/runtime")
+            # runtime/ già su sys.path (channels VIVE in runtime/).
             import users as _users
         except ImportError as e:
             log.warning("users module unavailable: %s", e)
@@ -712,9 +708,8 @@ class ChannelDaemon:
         ritorna {ok:false} cosi' il caller puo' degradare a kind=choice.
         """
         import os as _os
-        import sys as _s
         import tempfile
-        _s.path.insert(0, "/opt/myclaw/runtime")
+        # runtime/ già su sys.path (channels VIVE in runtime/).
         import dialog_preview as _dpv
 
         options = (step.get("schema") or {}).get("options") or []
@@ -780,8 +775,7 @@ class ChannelDaemon:
         """
         from messages import get as _msg
         try:
-            import sys as _s
-            _s.path.insert(0, "/opt/myclaw/runtime")
+            # runtime/ già su sys.path (channels VIVE in runtime/).
             import dialog_pending as _dp
         except ImportError as ex:
             log.warning("dialog_pending non disponibile: %s", ex)
@@ -952,8 +946,7 @@ class ChannelDaemon:
             return {"ok": True, "callback": "promoter_open_form"}
         if action == "ok":
             try:
-                import sys as _sys
-                _sys.path.insert(0, "/opt/myclaw/runtime")
+                # runtime/ già su sys.path (channels VIVE in runtime/).
                 from jobs.promoter_state import (  # noqa: WPS433
                     load_proposal_state, mark_acked,
                 )
@@ -976,8 +969,7 @@ class ChannelDaemon:
                     "proposal_id": proposal_id}
         if action == "rollback":
             try:
-                import sys as _sys
-                _sys.path.insert(0, "/opt/myclaw/runtime")
+                # runtime/ già su sys.path (channels VIVE in runtime/).
                 from jobs.promoter_rollback import (  # noqa: WPS433
                     rollback_promotion,
                 )
@@ -1020,8 +1012,7 @@ class ChannelDaemon:
             return self._handle_promoter_callback(msg, data)
         if data == "loc_cancel":
             try:
-                import sys as _sys
-                _sys.path.insert(0, "/opt/myclaw/runtime")
+                # runtime/ già su sys.path (channels VIVE in runtime/).
                 import location_request as _locreq
                 from actor_resolver import resolve_actor as _ra
                 from messages import get as _msg
@@ -1149,8 +1140,7 @@ class ChannelDaemon:
             # uno user verificato in users.db (paired via /start), accettalo
             # senza richiedere il bootstrap classico.
             try:
-                import sys as _sys
-                _sys.path.insert(0, "/opt/myclaw/runtime")
+                # runtime/ già su sys.path (channels VIVE in runtime/).
                 import users as _users
                 u = _users.find_user_by_recipient(
                     self.channel.name, msg.sender_id,
@@ -1226,8 +1216,7 @@ class ChannelDaemon:
         # Multi-user (1/5/2026): risolvi actor logico dal pairing.
         # Default "host" (MVP single-user, fallback in actor_resolver).
         try:
-            import sys as _sys
-            _sys.path.insert(0, "/opt/myclaw/runtime")
+            # runtime/ già su sys.path (channels VIVE in runtime/).
             from actor_resolver import resolve_actor as _resolve_actor
             actor_for_pending = _resolve_actor(self.channel.name, msg.sender_id)
         except Exception as ex:
@@ -1239,8 +1228,7 @@ class ChannelDaemon:
         # multi-utente discriminato da actor, non da channel sub-key.
         loc_channel_key = self.channel.name
         try:
-            import sys as _sys
-            _sys.path.insert(0, "/opt/myclaw/runtime")
+            # runtime/ già su sys.path (channels VIVE in runtime/).
             import location_request as _locreq
             from messages import get as _msg
             _loc_pending = _locreq.get_pending_for(actor_for_pending, loc_channel_key)
@@ -1342,8 +1330,7 @@ class ChannelDaemon:
                     # originale dell'utente: il callback FA gia' la chiamata
                     # diretta al verb e ci ritorna il summary.
                     try:
-                        import sys as _sys
-                        _sys.path.insert(0, "/opt/myclaw/runtime")
+                        # runtime/ già su sys.path (channels VIVE in runtime/).
                         import dialog_pending as _dp
                         _state = _dp.load_pending(
                             p.get("sender_for_state") or msg.sender_id,
@@ -1536,8 +1523,7 @@ class ChannelDaemon:
                     if (p0.get("kind") == "get_inputs_response"
                             and p0.get("fmt") == "telegram_inline"):
                         try:
-                            import sys as _s2
-                            _s2.path.insert(0, "/opt/myclaw/runtime")
+                            # runtime/ già su sys.path (channels VIVE in runtime/).
                             import dialog_pending as _dp2
                             sender_for_state = (
                                 p0.get("sender_for_state")
@@ -1651,8 +1637,7 @@ class ChannelDaemon:
             # Cleanup tmp uploads vecchi (TTL 1h) ogni N=15 iterazioni.
             if i % 15 == 0:
                 try:
-                    import sys as _sys
-                    _sys.path.insert(0, str(Path(__file__).parent.parent))
+                    # runtime/ già su sys.path (channels VIVE in runtime/).
                     from upload_cleanup import sweep_old_uploads
                     sweep_old_uploads()
                 except Exception:

@@ -41,8 +41,12 @@ from __future__ import annotations
 
 import json
 import os
+import sys as _sys
 from pathlib import Path
 from typing import Any
+
+_sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+import config as _C  # §7.11
 
 # Stima conservativa della core size del prompt PLANNER (Fase C, 11/5/2026
 # section-aware ~5-8KB): assumiamo 6KB per la versione single-section.
@@ -58,10 +62,8 @@ _LLM_COMMENTARY_TIMEOUT_S = 5.0
 _LLM_COMMENTARY_MAX_TOKENS = 300
 
 
-_DEFAULT_TURNS_DIR = Path.home() / ".local" / "share" / "metnos" / "turns"
-_DEFAULT_ETA_DB = (
-    Path.home() / ".local" / "share" / "metnos" / "proposals_eta.sqlite"
-)
+_DEFAULT_TURNS_DIR = _C.PATH_USER_DATA / "turns"
+_DEFAULT_ETA_DB = _C.PATH_USER_DATA / "proposals_eta.sqlite"
 
 
 def _turns_dir() -> Path:

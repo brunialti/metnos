@@ -35,11 +35,8 @@ from typing import Optional
 _LOG = logging.getLogger(__name__)
 
 # Path canonical da config.py (ADR 0148 rename-resilient).
-try:
-    import config as _C
-    DEFAULT_TELOS_PATH = _C.PATH_WORKSPACE / "TELOS.md"
-except Exception:
-    DEFAULT_TELOS_PATH = Path("/opt/metnos/workspace/TELOS.md")
+import config as _C  # §7.11 — SoT canonical
+DEFAULT_TELOS_PATH = _C.PATH_WORKSPACE / "TELOS.md"
 
 _HEADER_RE = re.compile(r"^##\s+(t\.\S+)\s*[—-]\s*(.+?)\s*$", re.MULTILINE)
 _FIELD_RE = re.compile(

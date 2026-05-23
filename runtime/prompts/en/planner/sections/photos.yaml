@@ -40,12 +40,30 @@ rules:
     ok: "«Iacopo's photos» -> find_persons_indices(name=\"iacopo\") -> final_answer (\"Found N photos of Iacopo\")"
     error: "find_persons_indices -> describe_entries -> find_persons_indices (THIS IS AN ERROR: useless describe + duplicate find). OR find_persons_indices -> find_images_indices (THIS IS AN ERROR: duplicate; one step suffices)"
 
+  - name: aggregate_count_or_size
+    when: "AGGREGATE query on the corpus: «how many photos of X», «how many sea photos», «how many GB of photos», «how heavy are Y's photos». User wants a numeric TOTAL, NOT the photo list"
+    must: |
+      ONE step: `find_images_indices(...)` with filter args (name/names/query_text/time_window/...). DO NOT pass `top_k`. The observation returns `metadata.total_count` (total matched count) and `metadata.total_size_bytes` (byte sum). Read these two values and EMIT `final_answer` with the total, converting bytes into a readable unit (MB/GB). Example format: «You have 936 photos of Matteo for a total of 2.38 GB».
+    must_not: |
+      call `compute_entries(op=count|sum)` on returned entries: entries are truncated to `top_k` (default 100), the count/sum would be partial. The correct answer is already in `metadata.total_*` computed on the FULL matched corpus. DO NOT call describe_entries or filter_entries: the question asks for a NUMBER, not a list
+    ok: "«How many Matteo photos and what is the total size?» -> find_images_indices(names=[\"matteo\"]) -> final_answer (\"You have 936 photos of Matteo, 2.38 GB total\"). Read from metadata.total_count + metadata.total_size_bytes"
+    error: "«How many Matteo photos?» -> find_images_indices(names=[\"matteo\"]) -> compute_entries(op=\"count\") (THIS IS AN ERROR: count would be 100 not 936, entries are truncated). OR find_images_indices -> compute_entries(op=\"sum\", key=\"size_bytes\") (THIS IS AN ERROR: partial sum)"
+
   - name: persons_and_multi
     when: "photo query with TWO OR MORE proper names joined by 'and' / 'with' / 'together with': «photos with Iacopo AND Matteo», «group photos with Roberto and Silvia», «photos including Iacopo, Matteo and Roberto»"
     must: "pass `names` as ARRAY of enrolled slugs, NOT `name` with comma or `query_text` with concatenated names. E.g. names=[\"iacopo\",\"matteo\"] → AND face match: photo must contain BOTH faces. Combinable with time_window, min_face_count, content query_text."
     must_not: "passing `name=\"Iacopo, Matteo\"` as single string (NOT a valid id, auto-promotion exists but is fallback). DO NOT use `query_text=\"Iacopo Matteo\"`: this searches names as WORDS in text, not AND face. Result degenerates to OR (photos with ONE name pass if name appears in filename/keyword)."
     ok: "«group photos with Iacopo AND Matteo from 2024» -> find_images_indices(names=[\"iacopo\",\"matteo\"], time_window=\"2024\") -> final_answer"
     error: "«photos with Iacopo and Matteo» -> find_images_indices(name=\"Iacopo, Matteo\") (invalid id) OR -> find_images_indices(query_text=\"Iacopo Matteo\") (BM25 OR, not AND face)"
+
+  - name: find_similar
+    when: "query «find/show photos similar to/like this/like that/same subject», OR the user has just uploaded (Telegram caption + photo, HTTP drag&drop) one or more photos as reference AND asks for related search"
+    must: |
+      You MUST use `find_images_indices(reference_images=[paths_from_uploaded])` for ArcFace face-similarity. Uploaded photos live in the scratchpad as virtual step `@uploaded` with `entries=[{path}]`. Pass those paths to the `reference_images` arg. Combinable with other filters (time_window, min_face_pixels, query_text content).
+      If no photo is uploaded and the query says «similar to Matteo» without a photo, use `name="matteo"` (face match via registry, not reference_images).
+    must_not: "ignore the uploaded photos by passing only `query_text` textual (textual match is weak; reference_images = ArcFace cosine, orders of magnitude more accurate). You MUST NOT pass `query_text=\"similar\"`: «similar» is an instruction, not a corpus term."
+    ok: "[upload photo.jpg] «find similar photos» -> find_images_indices(reference_images=[\"/path/to/photo.jpg\"]) -> final_answer. OR «show me photos like this from 2024» (with uploaded photo) -> find_images_indices(reference_images=[paths], time_window=\"2024\")"
+    error: "[upload photo] «similar» -> find_images_indices(query_text=\"similar\") (instruction word, not term). OR «similar to this» (with uploaded photo) -> find_images_indices() without reference_images (loses visual signal)"
 
   - name: persons_registry_management
     when: "persons.sqlite registry management: deletion, enumeration, registration of enrolled persons"

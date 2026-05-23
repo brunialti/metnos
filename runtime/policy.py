@@ -24,7 +24,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
-DEFAULT_DB_PATH = Path.home() / ".local" / "state" / "metnos" / "grants.db"
+import config as _C  # §7.11
+
+DEFAULT_DB_PATH = _C.PATH_USER_STATE / "grants.db"
 
 AutonomyLevel = Literal["ReadOnly", "Supervised", "Full"]
 PolicyOutcome = Literal["allowed", "approval_required", "denied"]

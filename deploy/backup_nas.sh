@@ -6,13 +6,13 @@
 # rsync codice + dati runtime + secrets + service systemd, manifest, rotazione.
 #
 # Invocazione (da systemd timer):
-#   /opt/myclaw/deploy/backup_nas.sh
+#   /opt/metnos/deploy/backup_nas.sh
 #
 # Esecuzione manuale (debug):
-#   sudo bash /opt/myclaw/deploy/backup_nas.sh
+#   sudo bash /opt/metnos/deploy/backup_nas.sh
 #
 # Sorgenti incluse:
-#   - /opt/myclaw/                  (codice + decisions + executors + manifest + CLAUDE.md)
+#   - /opt/metnos/                  (codice + decisions + executors + manifest + CLAUDE.md)
 #   - /home/roberto/.local/share/metnos/  (runtime data: scratchpad, undo, locations,
 #                                          executors synth, vaglio, turns, index,
 #                                          introvertiva, mirror, i18n.sqlite, ...)
@@ -47,12 +47,12 @@
 set -e
 
 # --- Configurazione ---
-METNOS_DIR="/opt/myclaw"
+METNOS_DIR="/opt/metnos"
 USER_HOME="/home/roberto"
 NAS_MOUNT="/mnt/nas"
 BACKUP_BASE="$NAS_MOUNT/backup/BEELINK/metnos"
 MAX_BACKUPS=20
-LOG_FILE="/opt/myclaw/data/backup_nas.log"
+LOG_FILE="/opt/metnos/data/backup_nas.log"
 DATE_TAG=$(date +%Y%m%d_%H%M%S)
 BACKUP_DIR="$BACKUP_BASE/metnos_$DATE_TAG"
 
@@ -191,7 +191,7 @@ EXCLUDED_NOTE="venv*/, node_modules/, __pycache__/, Immagini/ (CIFS NAS), thumbc
     echo "  $EXCLUDED_NOTE"
     echo
     echo "Restore quick:"
-    echo "  rsync -a myclaw/ /opt/myclaw/"
+    echo "  rsync -a myclaw/ /opt/metnos/"
     echo "  rsync -a dotlocal/ ~/.local/share/metnos/"
     echo "  rsync -a dotlocal_state/ ~/.local/state/metnos/"
     echo "  rsync -a dotconfig/ ~/.config/metnos/"

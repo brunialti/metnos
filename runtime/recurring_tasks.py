@@ -34,7 +34,8 @@ log = get_logger(__name__)
 
 sys.path.insert(0, str(Path(__file__).parent))
 
-DB_PATH = Path.home() / ".local/state/metnos/recurring_tasks.db"
+import config as _C  # §7.11 — rispetta METNOS_USER_STATE
+DB_PATH = _C.DB_RECURRING_TASKS
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS recurring_tasks (
@@ -530,6 +531,29 @@ READ_TASKS_HISTORY_TOOL = {
         },
     },
 }
+
+# --- Catalog inproc-tool injection (loader pattern) ----------------------
+# Esponiamo i 6 tool builtin a `loader._inject_inproc_tool_specs` cosi'
+# entrano nel catalog `/admin/executors` e nei coverage check §2.2 (object
+# `tasks`). Idempotente: handcrafted vince per costruzione (ADR 0079).
+BUILTIN_INPROC_SPECS = [
+    {"name": "create_tasks", "tool_spec": CREATE_TASKS_TOOL,
+     "affinity": ["task", "ricorrente", "schedule", "promemoria", "timer",
+                  "recurring", "reminder", "every", "daily"]},
+    {"name": "list_tasks", "tool_spec": LIST_TASKS_TOOL,
+     "affinity": ["task", "elenco", "lista", "scheduled", "ricorrenti", "list"]},
+    {"name": "delete_tasks", "tool_spec": DELETE_TASKS_TOOL,
+     "affinity": ["task", "cancella", "elimina", "rimuovi", "delete",
+                  "remove"]},
+    {"name": "read_tasks", "tool_spec": READ_TASKS_TOOL,
+     "affinity": ["task", "dettaglio", "info", "read", "show"]},
+    {"name": "set_tasks", "tool_spec": SET_TASKS_TOOL,
+     "affinity": ["task", "abilita", "disabilita", "pausa", "enable",
+                  "disable", "fire"]},
+    {"name": "read_tasks_history", "tool_spec": READ_TASKS_HISTORY_TOOL,
+     "affinity": ["task", "storico", "history", "fire", "log",
+                  "esecuzioni"]},
+]
 
 # NB: run_scheduled_task_now fuso in set_tasks(fire_now=true) per coerenza
 # §2.2 (no verb `execute`). Vedi handle_set_tasks per dispatch interno.

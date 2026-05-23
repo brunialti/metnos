@@ -25,9 +25,11 @@ import tomllib
 from pathlib import Path
 from types import ModuleType
 
+import config as _C  # §7.11
+
 log = logging.getLogger(__name__)
 
-PLUGINS_ROOT = Path.home() / ".local" / "share" / "metnos" / "plugins"
+PLUGINS_ROOT = _C.PATH_USER_DATA / "plugins"
 
 # Cache: (object, frozen_root) → {provider_name: module}
 _CACHE: dict[tuple[str, str], dict[str, ModuleType]] = {}

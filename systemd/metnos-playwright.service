@@ -1,12 +1,12 @@
 [Unit]
 Description=Metnos Playwright sidecar (JS-rendering for SPA URLs, ADR 0125)
-Documentation=file:///opt/myclaw/decisions/0125-playwright-sidecar.md
+Documentation=file:///opt/metnos/decisions/0125-playwright-sidecar.md
 After=network-online.target
 Wants=network-online.target
 
 [Service]
 Type=simple
-WorkingDirectory=/opt/myclaw/runtime
+WorkingDirectory=/opt/metnos/runtime
 ExecStart=/opt/suprastructure/.venv/bin/python -m playwright_sidecar.server --host 127.0.0.1 --port 8771
 Restart=always
 RestartSec=10s

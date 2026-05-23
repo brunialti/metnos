@@ -24,8 +24,8 @@ from pathlib import Path
 
 import pytest
 
-_RUNTIME = Path("/opt/myclaw/runtime")
-_EXECUTORS = Path("/opt/myclaw/executors")
+_RUNTIME = Path(__file__).resolve().parents[2] / "runtime"
+_EXECUTORS = Path(__file__).resolve().parents[2] / "executors"
 sys.path.insert(0, str(_RUNTIME))
 sys.path.insert(0, str(_EXECUTORS))
 
@@ -257,11 +257,15 @@ def test_find_messages_gws_affinity_does_not_match_email_noun():
     time in loader.py).
     """
     import tomllib
-    manifest_path = Path(
-        "/home/roberto/.local/share/metnos/executors/_imports/"
-        "google-workspace/find_messages_google_workspace/manifest.toml"
+    import pytest
+    manifest_path = (
+        Path.home() / ".local/share/metnos/executors/_imports"
+        / "google-workspace/find_messages_google_workspace/manifest.toml"
     )
-    assert manifest_path.exists(), f"manifest non trovato: {manifest_path}"
+    if not manifest_path.exists():
+        pytest.skip(
+            f"google-workspace skill not imported (manifest missing: {manifest_path})"
+        )
     with manifest_path.open("rb") as f:
         manifest = tomllib.load(f)
     aff_lower = {a.lower() for a in manifest.get("affinity", [])}
@@ -289,9 +293,7 @@ def test_get_proposals_affinity_no_bare_propose_terms():
     Legge il manifest direttamente da disco per indipendenza da cache.
     """
     import tomllib
-    manifest_path = Path(
-        "/opt/myclaw/executors/get_proposals/manifest.toml"
-    )
+    manifest_path = Path(__file__).resolve().parents[2] / "executors/get_proposals/manifest.toml"
     assert manifest_path.exists(), f"manifest non trovato: {manifest_path}"
     with manifest_path.open("rb") as f:
         manifest = tomllib.load(f)

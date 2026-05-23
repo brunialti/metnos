@@ -31,6 +31,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+import config as _C  # §7.11
+
 
 VOCAB_MAP_PATH = Path(__file__).resolve().parent / "skill_vocab_map.json"
 
@@ -201,8 +203,7 @@ def audit_existing_imports(root: Path | None = None,
     import tomllib
 
     vm = vocab_map or _load_vocab_map()
-    base = root or (Path.home() / ".local" / "share" / "metnos"
-                    / "executors" / "_imports")
+    base = root or (_C.PATH_USER_DATA / "executors" / "_imports")
     if not base.is_dir():
         return []
 

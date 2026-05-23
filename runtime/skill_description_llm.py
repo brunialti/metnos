@@ -10,7 +10,7 @@ deterministiche (vedi gap POC_REPORT §5.9: rischio traduzione letterale).
 Fallback: se LLM non disponibile (no provider, no rete, no key), ritorna
 boilerplate dal codegen + affinity dell'OBJECT.
 
-Integrazione produzione (in /opt/myclaw):
+Integrazione produzione (in <install_root>):
 - Usa `prompt_loader.get("synt_stage4_description_imported", "it", ...)` o EN.
 - Tier wise (Gemma 4 26B), una shot, max 500 tokens output.
 - Output parsato come JSON `{description_it, description_en, affinity}`.
@@ -66,7 +66,7 @@ def build_prompt(plan, parsed_skill, skill_body_snippet: str = "") -> str:
 
     Strategia (gap 2, 10/5/2026):
     1. Prova `prompt_loader.get("synt_stage4_description_imported", "it", ...)`
-       da /opt/myclaw/runtime/prompts/ — se esiste, usa quello.
+       da <install_root>/runtime/prompts/ — se esiste, usa quello.
     2. Altrimenti fallback al template inline `PROMPT_TEMPLATE_IT` (legacy).
     """
     provenance_summary = ""
@@ -113,7 +113,7 @@ def _try_render_prompt_loader(**vars) -> Optional[str]:
     try:
         import sys
         from pathlib import Path
-        runtime_dir = Path("/opt/myclaw/runtime")
+        runtime_dir = Path(__file__).resolve().parent  # ADR 0148 rename-resilient
         if not runtime_dir.exists():
             return None
         if str(runtime_dir) not in sys.path:
@@ -145,7 +145,7 @@ def _call_llm(prompt: str, *, timeout_s: int = 30,
 
     Strategie in ordine:
     1. Funzione fake iniettata via env METNOS_LLM_DESCRIPTION_FAKE=mod.fn (test).
-    2. LLMRouter() da /opt/myclaw/runtime → provider("wise").chat() — produzione.
+    2. LLMRouter() da <install_root>/runtime → provider("wise").chat() — produzione.
     3. None (fallback boilerplate; logga WARN tramite logger se disponibile).
 
     Nota gap 2 (10/5/2026): sostituisce il vecchio call_tier. think=False
@@ -165,13 +165,13 @@ def _call_llm(prompt: str, *, timeout_s: int = 30,
                 _warn_no_llm(f"fake llm error: {e}")
                 return None
 
-    # Produzione: LLMRouter da /opt/myclaw/runtime, tier wise.
+    # Produzione: LLMRouter da <install_root>/runtime, tier wise.
     try:
         import sys
         from pathlib import Path
-        runtime_dir = Path("/opt/myclaw/runtime")
+        runtime_dir = Path(__file__).resolve().parent  # ADR 0148 rename-resilient
         if not runtime_dir.exists():
-            _warn_no_llm("/opt/myclaw/runtime non disponibile")
+            _warn_no_llm("<install_root>/runtime non disponibile")
             return None
         if str(runtime_dir) not in sys.path:
             sys.path.insert(0, str(runtime_dir))
@@ -201,7 +201,7 @@ def _warn_no_llm(reason: str) -> None:
     try:
         import sys
         from pathlib import Path
-        runtime_dir = Path("/opt/myclaw/runtime")
+        runtime_dir = Path(__file__).resolve().parent  # ADR 0148 rename-resilient
         if str(runtime_dir) in sys.path:
             from logging_setup import get_logger  # type: ignore
             log = get_logger(__name__)

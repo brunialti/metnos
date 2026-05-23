@@ -61,4 +61,74 @@ coverage.xml
 *.bak.*
 
 # --- Note: ~/.local/share/metnos/ e ~/.cache/metnos/ vivono fuori da
-# /opt/myclaw, quindi non necessitano regole qui (sono outside-worktree).
+# /opt/metnos, quindi non necessitano regole qui (sono outside-worktree).
+
+# --- Dati personali / runtime utente / ambiente sviluppo .33 -------------
+# Mai versionati nel repo pubblico (ADR 0145 scrub L1).
+workspace/
+_history/
+.claude/
+claude_persistent.sh
+.review_status.md
+x.png
+*.png.bak
+
+# --- ADR registry + storia decisionale interna (NOT for GitHub) ----------
+# Scope distribuzione = solo file necessari per installare e avviare Metnos.
+# ADR e docs interne restano locali su /opt/metnos, fuori dal repo pubblico.
+decisions/
+
+# --- Tutta la documentazione (NOT for GitHub, vive su metnos.com) --------
+docs/
+
+# --- Doc agente / harness Claude (internal) ------------------------------
+AGENTS.md
+CLAUDE.md
+
+# --- Dev tooling, bench, stress (non parte runtime utente) ---------------
+runtime/bench_*.py
+runtime/bench_*.sh
+runtime/stress/
+runtime/testing/
+runtime/prompts.toml
+runtime/.review_status.md
+
+# --- Decision/test stress artifacts --------------------------------------
+decisions/synt_stress/
+
+# --- Test result dumps con dati interni (ADR 0145) -----------------------
+decisions/synt_stress/
+decisions/executor_requests.jsonl
+decisions/executor_diary.md
+*.jsonl
+
+# --- Sqlite full (non solo WAL/SHM) --------------------------------------
+*.sqlite
+*.sqlite-journal
+*.db
+
+# --- Modelli (gia' models/ ma esplicito difesa in profondita') -----------
+*.gguf
+*.onnx
+*.bin
+*.safetensors
+
+# --- Cloudflare dev-only (ADR 0144, ADR 0145) ----------------------------
+deploy.sh
+.cloudflare/
+wrangler.toml
+cloudflare/
+
+# --- GitHub Actions cache locali / artefatti tooling ---------------------
+.github/cache/
+
+# --- Memoria persistente assistente (mai in repo) ------------------------
+MEMORY.md
+SOUL.md
+TELOS.md
+IDENTITY.md
+USER.md
+
+# --- File temporanei dell'IDE / OS ---------------------------------------
+*~
+.~lock.*

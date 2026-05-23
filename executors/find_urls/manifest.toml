@@ -18,7 +18,7 @@ en = "URL and document discovery on the web. TWO mutually exclusive modes.\n\nSE
 
 [code]
 files  = ["find_urls.py"]
-digest = "sha256:8fc06af74856faa897a7a99945bebeaa1a02fd4812b06adbad0c875fff73ddd9"
+digest = "sha256:67c264fe5b25397d8a5be822fab6d79813ae2c9450f15d333f2089397d149478"
 
 [args]
 type     = "object"
@@ -56,6 +56,15 @@ minimum     = 0.0
 [args.properties.min_score.description]
 it = "Soglia minima di score BM25 per filtrare le entries. Default None (nessun filtro: anche score=0 restano in lista). Esempi: 0.01 = elimina solo i veri zeri (cross-link irrelevanti); 1.0 = solo match di topic forti. Solo applicabile quando `topic` e' valorizzato."
 en = "Minimum BM25 score threshold to filter entries. Default None (no filter: even score=0 entries remain). Examples: 0.01 = drops only true zeros (irrelevant cross-links); 1.0 = only strong topic matches. Only applicable when `topic` is set."
+
+[args.properties.max_per_domain]
+type        = "integer"
+minimum     = 0
+default     = 3
+
+[args.properties.max_per_domain.description]
+it = "Cap diversita': massimo N entries per registered-domain (eTLD+1) nella top-K finale. Default 3, evita che una singola source domini i risultati (es. 15 listing pages dello stesso aggregator). Override 0 = disabilita (back-compat)."
+en = "Diversity cap: max N entries per registered-domain (eTLD+1) in the final top-K. Default 3, prevents a single source from dominating results (e.g. 15 listing pages from the same aggregator). Override 0 = disable (back-compat)."
 
 [args.properties.mode]
 type        = "string"
@@ -137,8 +146,8 @@ en = "If true (default), reads /robots.txt once per origin and respects Disallow
 type        = "string"
 
 [args.properties.auth_cookies_file.description]
-it = "Path a un file Mozilla cookies.txt da iniettare nelle Request. Per siti autenticati: prima `login_session(domain=...)` produce il file, poi find_urls lo usa. Esempio: '~/.config/metnos/cookies/web.spaggiari.eu.txt'."
-en = "Path to a Mozilla cookies.txt file to be injected into Requests. For authenticated sites: first `login_session(domain=...)` produces the file, then find_urls uses it. Example: '~/.config/metnos/cookies/web.spaggiari.eu.txt'."
+it = "OPZIONALE. OMETTERE per ricerche pubbliche (notizie, wikipedia, blog, web search generica). USARE SOLO quando l'utente cita esplicitamente un sito che richiede login (es. 'spaggiari', 'gmail web', 'portale aziendale'). Path a un file Mozilla cookies.txt da iniettare nelle Request: prima `login_session(domain=...)` produce il file, poi find_urls lo usa. Esempio: '~/.config/metnos/cookies/web.spaggiari.eu.txt'. Se passato ma il file non esiste, il crawl prosegue pubblico (degradazione silenziosa)."
+en = "OPTIONAL. OMIT for public searches (news, wikipedia, blogs, generic web search). USE ONLY when the user explicitly cites a site that requires login (e.g. 'spaggiari', 'gmail web', 'company portal'). Path to a Mozilla cookies.txt file to be injected into Requests: first `login_session(domain=...)` produces the file, then find_urls uses it. Example: '~/.config/metnos/cookies/web.spaggiari.eu.txt'. If passed but the file does not exist, the crawl continues publicly (silent degradation)."
 
 [args.properties.time_window]
 type        = "string"

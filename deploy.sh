@@ -13,7 +13,7 @@
 set -euo pipefail
 
 ENV_FILE="${HOME}/.config/mykleos/deploy.env"
-REPO="/opt/myclaw"
+REPO="/opt/metnos"
 
 if [ ! -f "$ENV_FILE" ]; then
     echo "ERROR: $ENV_FILE non esiste." >&2

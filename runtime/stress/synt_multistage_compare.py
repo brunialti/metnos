@@ -14,9 +14,9 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-BASE_PATH = Path("/opt/myclaw/decisions/synt_stress/results_iter_1.jsonl")
-MS_PATH = Path("/opt/myclaw/decisions/synt_stress/results_multistage_35.jsonl")
-OUT_PATH = Path("/opt/myclaw/decisions/synt_stress/results_multistage_35.compare.json")
+BASE_PATH = Path(__file__).resolve().parents[2] / "decisions/synt_stress/results_iter_1.jsonl"
+MS_PATH = Path(__file__).resolve().parents[2] / "decisions/synt_stress/results_multistage_35.jsonl"
+OUT_PATH = Path(__file__).resolve().parents[2] / "decisions/synt_stress/results_multistage_35.compare.json"
 
 
 def baseline_correct(rec):

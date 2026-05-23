@@ -30,12 +30,14 @@ from typing import Any
 import aiohttp
 from aiohttp import web
 
+import config as _C  # §7.11
+
 log = logging.getLogger("metnos.mirror")
 
 # Storage roots
 MIRROR_ROOT = Path(os.environ.get(
     "METNOS_MIRROR_ROOT",
-    str(Path.home() / ".local" / "share" / "metnos" / "mirror"),
+    str(_C.PATH_USER_DATA / "mirror"),
 ))
 WHEEL_CACHE_DIR = MIRROR_ROOT / "wheel-cache"
 INDEX_CACHE_DIR = MIRROR_ROOT / "wheel-index-cache"

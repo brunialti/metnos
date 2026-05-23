@@ -27,12 +27,21 @@ from __future__ import annotations
 
 import os
 import re
+import sys
 from datetime import datetime, time as dtime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
+# §7.11 — risali alla runtime root per import config
+_RUNTIME = os.environ.get("METNOS_RUNTIME") or next(
+    str(p / "runtime") for p in Path(__file__).resolve().parents
+    if (p / "runtime" / "config.py").is_file())
+if _RUNTIME not in sys.path:
+    sys.path.insert(0, _RUNTIME)
+import config as _C  # noqa: E402
+
 ROME = ZoneInfo("Europe/Rome")
-_DEFAULT_STORAGE = Path.home() / ".local" / "share" / "metnos" / "calendar.ics"
+_DEFAULT_STORAGE = _C.PATH_USER_DATA / "calendar.ics"
 
 
 def _storage_path() -> Path:

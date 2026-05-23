@@ -26,13 +26,14 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 import build_orchestrator
 from logging_setup import get_logger
+import config as _C  # §7.11
 
 log = get_logger(__name__)
 
 
 _COMPLETE_DIR = Path("/tmp/metnos_build_complete")
-_COMPLETE_ARCHIVE = Path.home() / ".local" / "state" / "metnos" / "build_completed_archive"
-_PROGRESS_DIR = Path.home() / ".local" / "state" / "metnos" / "build_progress"
+_COMPLETE_ARCHIVE = _C.PATH_USER_STATE / "build_completed_archive"
+_PROGRESS_DIR = _C.PATH_USER_STATE / "build_progress"
 
 # Configurazione task (override via env per test)
 _HEALTHCHECK_INTERVAL_S = float(os.environ.get("METNOS_BUILD_HEALTHCHECK_INTERVAL_S", "30"))

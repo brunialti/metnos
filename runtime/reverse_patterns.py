@@ -123,8 +123,7 @@ def _swap_src_dst_imap(pairs):
     nella destinazione anche se il suo UID e' diverso.
     Senza message_id nel pair: skip + failed (e' un dato runtime mancante).
     """
-    import sys as _sys
-    _sys.path.insert(0, "/opt/myclaw/runtime")
+    # runtime/ già su sys.path (reverse_patterns VIVE in runtime/).
     from mail_client import open_imap
     by_account = {}
     for p in pairs:
@@ -298,11 +297,12 @@ def _delete_created_paths(plan, results):
 def _restore_blob_backup(plan, results):
     import os as _os
     from pathlib import Path as _Path
+    import config as _C  # §7.11
     entries = (results or {}).get("results") or []
     out, failed = [], []
     history_root = _Path(_os.environ.get(
         "METNOS_HISTORY_DIR",
-        _Path.home() / ".local" / "share" / "metnos" / "_history",
+        _C.PATH_USER_DATA / "_history",
     ))
     imap_conns = {}  # account -> open IMAP connection (lazy)
 
@@ -349,8 +349,7 @@ def _restore_blob_backup(plan, results):
                 folder = entry["folder"]
                 try:
                     if account not in imap_conns:
-                        import sys as _sys
-                        _sys.path.insert(0, "/opt/myclaw/runtime")
+                        # runtime/ già su sys.path (reverse_patterns VIVE in runtime/).
                         from mail_client import open_imap
                         imap_conns[account] = open_imap(account)
                     M = imap_conns[account]

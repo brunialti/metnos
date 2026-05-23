@@ -21,8 +21,10 @@ import time
 from pathlib import Path
 from typing import Iterator
 
-DEFAULT_LOG = Path.home() / ".local" / "share" / "metnos" / "undo.jsonl"
-DEFAULT_BLOBS = Path.home() / ".local" / "share" / "metnos" / "undo_blobs"
+import config as _C  # §7.11
+
+DEFAULT_LOG = _C.PATH_USER_DATA / "undo.jsonl"
+DEFAULT_BLOBS = _C.PATH_USER_DATA / "undo_blobs"
 
 
 class UndoLog:

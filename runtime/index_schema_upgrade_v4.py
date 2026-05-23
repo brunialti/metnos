@@ -44,12 +44,11 @@ log = logging.getLogger(__name__)
 
 
 def _index_image_root() -> Path:
+    import config as _C  # §7.11
     v = os.environ.get("METNOS_INDEX_ROOT")
     if v:
         return Path(v) / "image"
-    base = os.environ.get("METNOS_USER_DATA")
-    base_p = Path(base) if base else Path.home() / ".local" / "share" / "metnos"
-    return base_p / "index" / "image"
+    return _C.PATH_USER_DATA / "index" / "image"
 
 
 def _list_corpus_dirs(base: Optional[Path] = None) -> list[Path]:

@@ -32,8 +32,9 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 
 from sign import KEYS_DIR, list_trusted_publics, load_private  # noqa: E402
+import config as _C  # §7.11
 
-DEFAULT_DB_PATH = Path.home() / ".local" / "state" / "metnos" / "pairings.db"
+DEFAULT_DB_PATH = _C.PATH_USER_STATE / "pairings.db"
 DEFAULT_TTL_S = 300
 VALID_LEVELS = ("ReadOnly", "Supervised", "Full")
 CODE_PREFIX = "PAIR."

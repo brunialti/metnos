@@ -24,18 +24,18 @@ stesso turno, da combinare logicamente. Esempi reali:
   read_tasks_history(state="started"), B = read_tasks_history(state=
   "finished"), A \\ B su `task_id`.
 
-Pre-15/5 il catalog NON aveva un primitivo per set ops bi-list. Il
-PLANNER tentava di simulare con `filter_entries` ripetuti dentro un
-loop o con string-matching ad hoc → degeneration (loop_break),
-risultati falsi (test 4 HLT/MNM ritornava 0 entries con AND simulato
-via 2 filter_entries paralleli, perche' la 2ª lista non veniva mai
-incrociata).
+Prima del 15/5 il catalogo NON aveva una primitiva per set ops
+bi-lista. Il PLANNER tentava di simularla con `filter_entries`
+ripetuti in loop o con string-matching ad hoc → degenerazione
+(`loop_break`), risultati falsi (test 4 HLT/MNM ritornava 0 entries
+con AND simulato da 2 `filter_entries` paralleli: la seconda lista
+non entrava mai a incrociare la prima).
 
 Stessa lacuna sui filtri MONO-LISTA: `filter_entries` accettava solo
-`where_in/where_not_in` (match esatto in lista). NON `starts_with`,
-`contains`, `glob`, `regex`. Query «appuntamenti che iniziano con HLT»
-→ il PLANNER passava `where_in=["HLT*"]` con wildcard pensando glob,
-match esatto restituiva 0.
+`where_in`/`where_not_in` (match esatto). NON `starts_with`,
+`contains`, `glob`, `regex`. Sulla query «appuntamenti che iniziano
+con HLT» il PLANNER passava `where_in=["HLT*"]` pensando glob — il
+match esatto restituiva 0 risultati.
 
 ## Decision
 
@@ -50,10 +50,10 @@ CARDINALITA' (1 lista mono | 2 liste bi):
 | `compute_entries`| 1 lista  | scalare   | sum, prod, avg, min, max, count, count_distinct |
 | `compute_lists`* | 2 liste  | scalare   | jaccard, cosine, distance (riservato futuro) |
 
-(*) `compute_lists` riservato ma NON implementato in 0138 — verra'
-introdotto quando emerga necessita' concreta di metriche numeriche
-cross-list. La presenza nella tabella documenta la regola di naming
-per il futuro.
+(*) `compute_lists` e' riservato ma NON implementato in 0138 — verra'
+introdotto quando emergera' la necessita' di una metrica numerica fra
+due liste. La presenza nella tabella fissa la regola di naming per il
+futuro.
 
 ### filter_entries esteso (commit `ef0c776`)
 
@@ -144,7 +144,7 @@ da lista). Vincente.
   introdotto in `4059593`) resta come scorciatoia mono-call quando
   l'utente vuole filtrare+overlap in un solo step. `filter_lists`
   rimane la primitive canonica per bi-list ops puri.
-- Il pattern di naming generalizza: futuri operatori cross-list
-  (es. metrica di similarita') vanno sotto `compute_lists` non
-  `filter_lists` (output scalare, non lista). La tabella sopra e'
-  la guida normativa.
+- Il pattern di naming generalizza: futuri operatori fra due liste
+  (es. metriche di similarita') vanno sotto `compute_lists`, non
+  `filter_lists` (output scalare, non lista). La tabella sopra e' la
+  guida normativa.

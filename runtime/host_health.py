@@ -30,9 +30,11 @@ import threading
 import time
 from pathlib import Path
 
-STATE_DIR = Path.home() / ".local" / "share" / "metnos"
+import config as _C  # §7.11
+
+STATE_DIR = _C.PATH_USER_DATA
 HEALTH_PATH = STATE_DIR / "host_health.json"
-CONFIG_DIR = Path.home() / ".config" / "metnos"
+CONFIG_DIR = _C.PATH_USER_CONFIG
 BLOCKED_PATH = CONFIG_DIR / "blocked_origins.json"
 
 # Sliding-window: eventi piu' vecchi vengono potati.

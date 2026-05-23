@@ -6,7 +6,21 @@ I moduli corrispondono ai canonici della microprogettazione (per quelli implemen
 nella POC) + i 4 executor concreti. Le dipendenze definiscono il grafo da cui i
 cluster sono derivati: cluster(X) = {X} U vicini diretti(X) (in entrambe le direzioni).
 """
+import os as _os
+import sys as _sys
+from pathlib import Path as _Path
+
+_RUNTIME = _os.environ.get("METNOS_RUNTIME") or next(
+    str(p / "runtime") for p in _Path(__file__).resolve().parents
+    if (p / "runtime" / "config.py").is_file())
+if _RUNTIME not in _sys.path:
+    _sys.path.insert(0, _RUNTIME)
+
 from registry import Registry
+from config import PATH_ROOT as _PATH_ROOT  # noqa: E402
+
+_RT = f"{_PATH_ROOT}/runtime"
+_EX = f"{_PATH_ROOT}/executors"
 
 
 def main():
@@ -14,45 +28,45 @@ def main():
 
     # --- Moduli runtime (microprogettazione canonica) ---
     runtime_modules = [
-        ("agent_runtime",  "runtime", "/opt/myclaw/runtime/agent_runtime.py",
+        ("agent_runtime",  "runtime", f"{_RT}/agent_runtime.py",
          "Loop pianificatore multistep ReAct con tool-use nativo, mode router, vaglio, sandbox check."),
-        ("loader",         "runtime", "/opt/myclaw/runtime/loader.py",
+        ("loader",         "runtime", f"{_RT}/loader.py",
          "Scopre, verifica e carica gli executor in un Catalog."),
-        ("sign",           "runtime", "/opt/myclaw/runtime/sign.py",
+        ("sign",           "runtime", f"{_RT}/sign.py",
          "Firma Ed25519 + verifica digest dei file di codice degli executor."),
-        ("prefilter",      "runtime", "/opt/myclaw/runtime/prefilter.py",
+        ("prefilter",      "runtime", f"{_RT}/prefilter.py",
          "Pre-filtro bag-of-words sui tag affinity per ridurre il catalogo a top-K."),
-        ("vaglio",         "runtime", "/opt/myclaw/runtime/vaglio.py",
+        ("vaglio",         "runtime", f"{_RT}/vaglio.py",
          "Valutatore costituzionale (stub always-approve in PoC)."),
-        ("cost_tracker",   "runtime", "/opt/myclaw/runtime/cost_tracker.py",
+        ("cost_tracker",   "runtime", f"{_RT}/cost_tracker.py",
          "Contabilita' della spesa LLM con cap mensile, JSONL append-only."),
-        ("llm_provider",   "runtime", "/opt/myclaw/runtime/llm_provider.py",
+        ("llm_provider",   "runtime", f"{_RT}/llm_provider.py",
          "Astrazione LLM mode-aware: OllamaProvider, LlamaCppProvider, AnthropicProvider, StubProvider."),
-        ("llm_router",     "runtime", "/opt/myclaw/runtime/llm_router.py",
+        ("llm_router",     "runtime", f"{_RT}/llm_router.py",
          "Tier resolver fast/middle/wise con quality floor wise + provider hints brevi prescrittivi."),
-        ("test_runner",    "runtime", "/opt/myclaw/runtime/test_runner.py",
+        ("test_runner",    "runtime", f"{_RT}/test_runner.py",
          "Esegue i test di nascita dichiarativi nei manifest degli executor."),
-        ("scratchpad",     "runtime", "/opt/myclaw/runtime/scratchpad.py",
+        ("scratchpad",     "runtime", f"{_RT}/scratchpad.py",
          "Archivio temporaneo per observation grandi (oltre soglia) con builtin executor scratchpad_read."),
-        ("mnestoma",       "runtime", "/opt/myclaw/runtime/mnestoma.py",
+        ("mnestoma",       "runtime", f"{_RT}/mnestoma.py",
          "Storage SQLite di mnest e proto-mnest; record_passing, query, walk, ager."),
-        ("synt",           "runtime", "/opt/myclaw/runtime/synt.py",
+        ("synt",           "runtime", f"{_RT}/synt.py",
          "Synth orchestrator MVP compose-only; cascata reattiva, BFS sul mnestoma, audit, lock."),
-        ("scheduler_v2",   "runtime", "/opt/myclaw/runtime/scheduler_v2/daemon.py",
+        ("scheduler_v2",   "runtime", f"{_RT}/scheduler_v2/daemon.py",
          "Scheduler v2 asyncio-native co-host nel server HTTP (ADR 0112). "
          "Single table schedule_entries, next_fire_at materializzato, "
          "ThreadPool offload per callback sync, in-process kick."),
-        ("channels",       "runtime", "/opt/myclaw/runtime/channels/__init__.py",
+        ("channels",       "runtime", f"{_RT}/channels/__init__.py",
          "Astrazione canale (Channel Protocol + InboundMessage/OutboundMessage). Telegram come prima implementazione."),
-        ("pairing",        "runtime", "/opt/myclaw/runtime/pairing.py",
+        ("pairing",        "runtime", f"{_RT}/pairing.py",
          "Riconoscimento channel+sender via codici Ed25519. Registry SQLite, bootstrap default_chat_id, /pair flow."),
-        ("observability",  "runtime", "/opt/myclaw/runtime/observability.py",
+        ("observability",  "runtime", f"{_RT}/observability.py",
          "Dashboard statica HTML che aggrega mnestoma, pairings, turns, vaglio, scheduler, test framework. Singolo file generato on-demand."),
-        ("approval_registry", "runtime", "/opt/myclaw/runtime/approval_registry.py",
+        ("approval_registry", "runtime", f"{_RT}/approval_registry.py",
          "Registry SQLite per pending approval requests con TTL. Dispatcher Telegram risolve approve:<token>/reject:<token>."),
-        ("sandbox", "runtime", "/opt/myclaw/runtime/sandbox.py",
+        ("sandbox", "runtime", f"{_RT}/sandbox.py",
          "Sandbox bubblewrap per gli executor. Deriva bwrap args da capabilities+hint del manifest. Fallback graceful se bwrap manca."),
-        ("policy", "runtime", "/opt/myclaw/runtime/policy.py",
+        ("policy", "runtime", f"{_RT}/policy.py",
          "Capability Registry esteso (13 voci) + tabella autonomy x capability + grants per_target persistenti SQLite + effective_outcome combinato."),
     ]
     for name, kind, path, desc in runtime_modules:
@@ -60,13 +74,13 @@ def main():
 
     # --- Executor concreti ---
     executor_modules = [
-        ("read_files",   "/opt/myclaw/executors/read_files/read_files.py",
+        ("read_files",   f"{_EX}/read_files/read_files.py",
          "Legge file dal filesystem locale. capability=fs:read"),
-        ("write_files",  "/opt/myclaw/executors/write_files/write_files.py",
+        ("write_files",  f"{_EX}/write_files/write_files.py",
          "Scrive file sul filesystem locale. capability=fs:write critical"),
-        ("get_now", "/opt/myclaw/executors/get_now/get_now.py",
+        ("get_now", f"{_EX}/get_now/get_now.py",
          "Restituisce ora corrente in fuso IANA. capability=time:read"),
-        ("get_urls", "/opt/myclaw/executors/get_urls/get_urls.py",
+        ("get_urls", f"{_EX}/get_urls/get_urls.py",
          "Esegue HTTP GET/HEAD verso host. capability=network:http"),
     ]
     for name, path, desc in executor_modules:

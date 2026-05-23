@@ -35,7 +35,7 @@ Uso:
     python3 migrate_manifest_descriptions.py [--dry-run] [--lang LANG] [DIR ...]
 
 Default LANG = METNOS_LANG dall'env (default 'it').
-Default DIR = ['/opt/myclaw/executors', '~/.local/share/metnos/executors'].
+Default DIR = ['<install_root>/executors', '~/.local/share/metnos/executors'].
 """
 from __future__ import annotations
 
@@ -47,6 +47,8 @@ import re
 import sys
 import tomllib
 from pathlib import Path
+
+import config as _C  # §7.11
 
 sys.path.insert(0, str(Path(__file__).parent))
 
@@ -424,8 +426,8 @@ def migrate_dirs(dirs: list[Path], *, lang: str = "it",
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("dirs", nargs="*", default=[
-        "/opt/myclaw/executors",
-        str(Path.home() / ".local" / "share" / "metnos" / "executors"),
+        str(_C.PATH_EXECUTORS),
+        str(_C.PATH_USER_DATA / "executors"),
     ], help="Directory radice degli executor (sub-dir = manifest.toml).")
     parser.add_argument("--lang", default=os.environ.get("METNOS_LANG", "it"),
                         help="Lingua corrente (default da METNOS_LANG, fallback 'it').")

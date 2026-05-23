@@ -5,9 +5,9 @@ Wants=network-online.target
 
 [Service]
 Type=oneshot
-ExecStart=/opt/myclaw/deploy/backup_nas.sh
+ExecStart=/opt/metnos/deploy/backup_nas.sh
 # Richiede mount NAS + rm su path NAS → runs as root.
 User=root
-WorkingDirectory=/opt/myclaw
+WorkingDirectory=/opt/metnos
 # Nota: il timer associato lancia questa unit ogni giorno alle 03:35
 # (5 min dopo suprastructure-backup per evitare contesa CIFS/CPU).

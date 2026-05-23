@@ -33,11 +33,13 @@ from typing import Callable, Optional
 
 _LOG = logging.getLogger(__name__)
 
+import config as _C  # §7.11
+
 # Telemetria persistente per A/B bench (task #16).
 # Append-only JSONL, una riga per warm tentativo. Strutture:
 #   {ts, turn_id?, tool, args, dt_ms, ok, cache_hit, error?}
 # Letto da admin/script per misurare hit-rate + saving.
-_TELEMETRY_PATH = Path.home() / ".local" / "share" / "metnos" / "speculation_telemetry.jsonl"
+_TELEMETRY_PATH = _C.PATH_USER_DATA / "speculation_telemetry.jsonl"
 
 
 def _persist_telemetry(record: dict) -> None:

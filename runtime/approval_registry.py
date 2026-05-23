@@ -26,7 +26,9 @@ import uuid
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
-DEFAULT_DB_PATH = Path.home() / ".local" / "state" / "metnos" / "approvals.db"
+import config as _C  # §7.11
+
+DEFAULT_DB_PATH = _C.PATH_USER_STATE / "approvals.db"
 DEFAULT_TTL_S = 600  # 10 min: oltre, la richiesta scade
 
 VALID_STATUS = ("pending", "approved", "rejected", "expired")

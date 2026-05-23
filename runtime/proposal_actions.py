@@ -34,10 +34,11 @@ from pathlib import Path
 from typing import Optional
 
 from logging_setup import get_logger
+import config as _C  # §7.11
 log = get_logger(__name__)
 
 
-_DATA_DIR = Path.home() / ".local" / "share" / "metnos"
+_DATA_DIR = _C.PATH_USER_DATA
 SYNT_PENDING_DIR = _DATA_DIR / "proposal_accepts" / "synt_pending"
 CHANGE_PENDING_DIR = _DATA_DIR / "proposal_accepts" / "change_pending"
 PIPELINE_PENDING_DIR = _DATA_DIR / "proposal_accepts" / "pipeline_pending"

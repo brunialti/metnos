@@ -44,10 +44,11 @@ BATTERY_IMPORTS: list = []
 
 # Storage persistente JSON: l'importer scrive qui, smoke.py legge al boot.
 # Niente persistenza in moduli .py per evitare race con concurrent import.
+import config as _C  # §7.11
 _STORE_PATH = Path(
     os.environ.get(
         "METNOS_SMOKE_IMPORTS_PATH",
-        str(Path.home() / ".local/share/metnos/smoke_imports.json"),
+        str(_C.PATH_USER_DATA / "smoke_imports.json"),
     )
 )
 
@@ -128,9 +129,15 @@ def add_case(*, query: str, expected_first_tool: str,
             and existing.get("q", "").strip().lower() == q_norm
         ):
             return False
+    # Strict match: any() gia' copre pipeline read->delete via delete_X.
+    # Relaxation creava false-green se delete non eseguito (loop break,
+    # final_answer short-circuit, mid-pipeline error): il regex relaxed
+    # ^(read_X|delete_X)$ passava anche se nel turno comparivano solo read_X.
+    tool_re = rf"^{expected_first_tool}$"
+
     case = {
         "q": query,
-        "tool_re": rf"^{expected_first_tool}$",
+        "tool_re": tool_re,
         "kind": "answer",
         "expected_first_tool": expected_first_tool,
         "expected_arg_keys": set(expected_arg_keys),

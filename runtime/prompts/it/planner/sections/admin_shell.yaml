@@ -62,3 +62,7 @@ rules:
     must_not: "chiamare `get_inputs` manualmente per il caso credentials_required: l'orchestrazione e' AUTO. NON DEVI emettere prompt testuali «user/pwd» quando admin ritorna needs_inputs: la carta UI viene generata dal runtime via get_inputs"
     ok: "admin -> needs_inputs -> runtime orchestrazione -> final_answer (carta UI). Tu hai chiamato 1 tool"
     error: "admin -> needs_inputs -> tu chiami get_inputs come step 2 (E' UN ERRORE: lo fa il runtime)"
+
+# Rule install_on_demand_binary_missing spostata in system.yaml
+# (17/5/2026): deve essere sempre caricata perche' qualsiasi executor
+# puo' ritornare binary_missing, non solo shell-intent query.

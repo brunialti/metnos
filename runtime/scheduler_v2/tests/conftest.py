@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 
 # Make the package importable as `scheduler_v2` regardless of working dir.
-_ROOT = Path(__file__).resolve().parents[2]  # /opt/myclaw/runtime
+_ROOT = Path(__file__).resolve().parents[2]  # <install_root>/runtime
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 

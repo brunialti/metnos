@@ -53,6 +53,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import minijinja  # type: ignore
 import prompt_loader
+import config as _C  # §7.11
 from config import DEFAULT_LANG
 
 PROMPTS_BASE = Path(__file__).resolve().parent.parent / "prompts"
@@ -260,7 +261,7 @@ def cmd_sync_status(_args) -> int:
     """Tabella ruolo + mtime IT vs EN + lag + presenza candidato.
 
     Determinismo (CLAUDE.md §7.9): preferiamo `git log` se il working dir
-    e' un git repo, altrimenti fallback a mtime. /opt/myclaw NON e' un
+    e' un git repo, altrimenti fallback a mtime. <install_root> NON e' un
     git repo, quindi normalmente fallback mtime.
     """
     if not PROMPTS_BASE.is_dir():
@@ -491,7 +492,7 @@ def cmd_add_language(args) -> int:
     # Layer 3 — bootstrap i18n.sqlite via i18n_cli (invocazione del modulo).
     # Eseguito come subprocess per riusare la logica esistente in cmd_add_lang
     # senza duplicare codice (CLAUDE.md §7.1: niente shim).
-    rt_dir = PROMPTS_BASE.parent  # /opt/myclaw/runtime
+    rt_dir = PROMPTS_BASE.parent  # <install_root>/runtime
     import os as _os
     env = _os.environ.copy()
     env["PYTHONPATH"] = str(rt_dir) + ":" + env.get("PYTHONPATH", "")
@@ -514,7 +515,7 @@ def cmd_add_language(args) -> int:
 
     # Audit log opt-in (best-effort, non blocca su errori).
     try:
-        audit_dir = Path.home() / ".local" / "share" / "metnos" / "multilang"
+        audit_dir = _C.PATH_USER_DATA / "multilang"
         audit_dir.mkdir(parents=True, exist_ok=True)
         audit_path = audit_dir / "audit.jsonl"
         import json as _json
@@ -538,7 +539,7 @@ def cmd_add_language(args) -> int:
     print(f"  - Manifest description: il daemon scansionera' al prossimo cycle")
     print()
     print("Per triggerare manualmente la traduzione subito:")
-    print("  /opt/myclaw/deploy/run_prompts_translator.sh")
+    print("  <install_root>/deploy/run_prompts_translator.sh")
     print()
     print(f"Per attivare la lingua: METNOS_LANG={code} nei systemd unit + restart")
     return 0
@@ -550,8 +551,7 @@ def cmd_add_language(args) -> int:
 
 def _config_translator_tier_path() -> Path:
     """Path della config persistente di tier-resolution per il daemon."""
-    base = os.environ.get("XDG_CONFIG_HOME") or str(Path.home() / ".config")
-    return Path(base) / "metnos" / "translator_tier.toml"
+    return _C.PATH_USER_CONFIG / "translator_tier.toml"
 
 
 def _audit_pick_prompts(sample: str) -> list[str]:
@@ -704,7 +704,7 @@ def _audit_apply_config(decision: dict, *,
     now = _dt.datetime.now(_dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     body = (
         "# Generato da `metnos-prompts audit-quality --apply`.\n"
-        "# Letto da /opt/myclaw/deploy/run_prompts_translator.sh come fallback\n"
+        "# Letto da <install_root>/deploy/run_prompts_translator.sh come fallback\n"
         "# se METNOS_TRANSLATOR_QUALITY env var non e' settata.\n"
         "\n"
         "[translator]\n"

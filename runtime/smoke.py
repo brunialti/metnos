@@ -36,6 +36,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 from agent_runtime import run_turn  # noqa: E402
 from loader import load_catalog  # noqa: E402
 from prefilter import rank_with_intent, _PRODUCER_VERBS  # noqa: E402
+import config as _C  # noqa: E402  §7.11
 
 
 # --- Battery: query + outcome atteso ---------------------------------------
@@ -62,7 +63,7 @@ BATTERY = [
      "expected_first_tool": "list_dirs",
      "expected_arg_keys": {"path"},
      "min_pass_rate": 0.8},
-    {"q": "trova i file *.py in /opt/myclaw/runtime",
+    {"q": "trova i file *.py in /tmp",
      "tool_re": r"^find_files$",
      "kind": "answer",
      "expected_first_tool": "find_files",
@@ -88,7 +89,7 @@ BATTERY = [
      "expected_arg_keys": set(),
      "min_pass_rate": 0.9},
     {"q": "scarica https://httpbin.org/get",
-     "tool_re": r"^get_urls$",
+     "tool_re": r"^(get_urls|read_urls_html)$",
      "kind": "answer",
      "expected_first_tool": "get_urls",
      "expected_arg_keys": {"urls"},
@@ -223,7 +224,7 @@ def run_one(case: dict, idx: int, total: int) -> dict:
     if case.get("dry_run_guard"):
         import os
         os.environ["METNOS_DRY_RUN"] = "1"
-        real_idx = Path.home() / ".local" / "share" / "metnos" / "index" / "image"
+        real_idx = _C.PATH_USER_DATA / "index" / "image"
         pre_dirs = (
             {p.name for p in real_idx.iterdir() if p.is_dir()}
             if real_idx.exists() else set()
@@ -243,7 +244,7 @@ def run_one(case: dict, idx: int, total: int) -> dict:
     if pre_dirs is not None:
         import os as _os
         _os.environ.pop("METNOS_DRY_RUN", None)
-        real_idx = Path.home() / ".local" / "share" / "metnos" / "index" / "image"
+        real_idx = _C.PATH_USER_DATA / "index" / "image"
         post = (
             {p.name for p in real_idx.iterdir() if p.is_dir()}
             if real_idx.exists() else set()

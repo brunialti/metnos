@@ -1,0 +1,20 @@
+[project]
+name = "metnos-e2e-simulator"
+version = "0.1.0"
+description = "End-to-end simulator for Metnos: lifecycle + skill import + chat quality"
+requires-python = ">=3.12"
+
+# Deps minimali — il simulatore parla via HTTP, non importa runtime/
+dependencies = [
+    "aiohttp>=3.13",        # HTTP client async (matches server)
+    "pytest>=9.0",
+    "pytest-asyncio>=0.24",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["scenarios"]
+asyncio_mode = "auto"
+python_files = ["test_*.py"]
+filterwarnings = [
+    "ignore::DeprecationWarning",
+]

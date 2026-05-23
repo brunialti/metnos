@@ -33,7 +33,9 @@ from contextlib import closing
 from pathlib import Path
 from typing import Iterable
 
-DB_PATH = Path.home() / ".local" / "share" / "metnos" / "proposals_eta.sqlite"
+import config as _C  # §7.11
+
+DB_PATH = _C.PATH_USER_DATA / "proposals_eta.sqlite"
 
 
 def _ensure_schema(conn: sqlite3.Connection) -> None:
@@ -151,7 +153,7 @@ def aggregate_from_jsonls(
     """
     from path_shape import extract_path_shape, turn_total_ms, steps_to_tools
 
-    base = turns_dir or (Path.home() / ".local" / "share" / "metnos" / "turns")
+    base = turns_dir or (_C.PATH_USER_DATA / "turns")
     if not base.exists():
         return {"shapes": 0, "samples": 0, "files_read": 0}
 
@@ -217,7 +219,7 @@ def count_shape_calls(
     """
     from path_shape import extract_path_shape
 
-    base = turns_dir or (Path.home() / ".local" / "share" / "metnos" / "turns")
+    base = turns_dir or (_C.PATH_USER_DATA / "turns")
     if not base.exists() or not path_hash:
         return 0
     n = 0

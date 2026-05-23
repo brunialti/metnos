@@ -47,7 +47,7 @@ def stress_d_cat():
     section("D-cat — scaling catalogo: prefilter latency + LLM accuracy con top-K=10")
     sizes = [10, 30, 100, 300]
     base_dir = "/tmp/metnos_stress_executors"
-    real_executors_dir = "/opt/myclaw/executors"
+    real_executors_dir = str(Path(__file__).resolve().parents[2] / "executors")
 
     provider = OllamaProvider(model="qwen3:8b", think=False)
 
@@ -108,7 +108,7 @@ def stress_d_tools():
     base_dir = "/tmp/metnos_stress_executors"
     gen_synthetic(base_dir, 100)
     all_dir = Path(tempfile.mkdtemp(prefix="metnos_tools_"))
-    for src in Path("/opt/myclaw/executors").iterdir():
+    for src in Path(__file__).resolve().parents[2] / "executors".iterdir():
         if src.is_dir():
             shutil.copytree(src, all_dir / src.name)
     for src in Path(base_dir).iterdir():

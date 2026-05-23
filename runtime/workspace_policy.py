@@ -32,10 +32,12 @@ import os
 import tomllib
 from pathlib import Path
 
+import config as _C  # §7.11
+
 DEFAULT_CONFIG_PATH = Path(
     os.environ.get(
         "METNOS_WORKSPACE_POLICY",
-        str(Path.home() / ".config" / "metnos" / "workspace_policy.toml"),
+        str(_C.PATH_USER_CONFIG / "workspace_policy.toml"),
     )
 )
 DEFAULT_ACTOR = "host"

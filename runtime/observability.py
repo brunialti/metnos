@@ -27,11 +27,13 @@ log = get_logger(__name__)
 
 sys.path.insert(0, str(Path(__file__).parent))
 
-DEFAULT_OUT = Path("/opt/myclaw/workspace/dashboard/index.html")
-TURNS_DIR = Path.home() / ".local" / "share" / "metnos" / "turns"
-VAGLIO_DIR = Path.home() / ".local" / "share" / "metnos" / "vaglio"
-SCHEDULER_DB = Path.home() / ".local" / "state" / "metnos" / "scheduler_v2.sqlite"
-TESTS_DB = Path("/opt/myclaw/runtime/testing/tests.db")
+# ADR 0148 rename-resilient
+import config as _C  # noqa: E402
+DEFAULT_OUT = _C.PATH_WORKSPACE / "dashboard" / "index.html"
+TURNS_DIR = _C.PATH_TURNS
+VAGLIO_DIR = _C.PATH_USER_DATA / "vaglio"
+SCHEDULER_DB = _C.PATH_USER_STATE / "scheduler_v2.sqlite"
+TESTS_DB = _C.PATH_RUNTIME / "testing" / "tests.db"
 
 
 def _h(s) -> str:

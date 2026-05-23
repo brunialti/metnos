@@ -21,7 +21,7 @@ import time
 from pathlib import Path
 
 # Path setup
-RUNTIME = Path("/opt/myclaw/runtime")
+RUNTIME = Path(__file__).resolve().parents[2] / "runtime"
 sys.path.insert(0, str(RUNTIME))
 
 from synt_multistage import run_full  # type: ignore  # noqa: E402
@@ -46,9 +46,9 @@ def _safe_print(*args, **kwargs):
 _bi.print = _safe_print
 
 
-QUERIES_PATH = Path("/opt/myclaw/decisions/synt_stress/queries_50.json")
-RESULTS_JSONL = Path("/opt/myclaw/decisions/synt_stress/results_multistage_35_v2.jsonl")
-SUMMARY_JSON = Path("/opt/myclaw/decisions/synt_stress/results_multistage_35_v2.summary.json")
+QUERIES_PATH = Path(__file__).resolve().parents[2] / "decisions/synt_stress/queries_50.json"
+RESULTS_JSONL = Path(__file__).resolve().parents[2] / "decisions/synt_stress/results_multistage_35_v2.jsonl"
+SUMMARY_JSON = Path(__file__).resolve().parents[2] / "decisions/synt_stress/results_multistage_35_v2.summary.json"
 
 LLAMA_ENDPOINT = "http://127.0.0.1:8080"
 LLAMA_MODEL = "gemma-4-26B-A4B-it-UD-Q4_K_M.gguf"

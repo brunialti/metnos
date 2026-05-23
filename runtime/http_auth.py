@@ -24,11 +24,14 @@ from pathlib import Path
 from aiohttp import web
 
 import devices
+import config as _C  # §7.11
 from logging_setup import get_logger
 
 log = get_logger(__name__)
 
-ADMIN_KEY_PATH = Path.home() / ".config" / "metnos" / "admin.key"
+import os as _os
+# Admin key path rispetta METNOS_USER_CONFIG per isolamento test/e2e.
+ADMIN_KEY_PATH = _C.PATH_USER_CONFIG / "admin.key"
 
 ANON_WHITELIST_PREFIXES = (
     "/agent/health", "/agent/register", "/.well-known/",

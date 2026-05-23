@@ -36,9 +36,12 @@ log = get_logger(__name__)
 
 DEFAULT_HOST = os.environ.get("METNOS_HTTP_HOST", "127.0.0.1")
 DEFAULT_PORT = int(os.environ.get("METNOS_HTTP_PORT", "8770"))
+# Lockfile sotto PATH_USER_STATE (rispetta METNOS_USER_STATE per
+# storage isolato test/e2e). Override esplicito via METNOS_HTTP_LOCKFILE.
+from runtime import config as _C  # noqa: E402
 LOCKFILE = Path(os.environ.get(
     "METNOS_HTTP_LOCKFILE",
-    str(Path.home() / ".local" / "state" / "metnos" / "http_server.lock"),
+    str(_C.PATH_USER_STATE / "http_server.lock"),
 ))
 
 

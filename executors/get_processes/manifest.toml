@@ -12,10 +12,7 @@ affinity    = ["processi", "ps", "stato server", "server status",
                 "carico", "load", "cpu", "ram", "situazione",
                 "diagnostica", "temperatura", "temperature",
                 "thermal", "calore", "gpu", "disco", "memoria",
-                "free", "df", "top",
-                "ip", "ip server", "indirizzi", "addresses",
-                "rete", "network", "interfacce", "ifconfig",
-                "ip address"]
+                "free", "df", "top"]
 revertible  = false
 lifecycle   = "active"
 
@@ -67,7 +64,7 @@ ERROR pattern: `filters=["ip","network"]` (need dicts, not bare strings) | `filt
 
 [code]
 files  = ["get_processes.py"]
-digest = "sha256:97c0d2e611a414e741fa13d262aba766652f0ea77b64bc7ed56534accc2de9f2"
+digest = "sha256:898b260a99f5327ea279e58643fc9ece51061961bfa86c25c3c60f8b0dadcde6"
 
 [args]
 type     = "object"

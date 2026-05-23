@@ -741,8 +741,10 @@ def translate_subcommand(parsed_skill, sub_command, *,
     )
 
 
-_HANDCRAFTED_DIR = Path("/opt/myclaw/executors")
-_SYNTH_DIR = Path.home() / ".local" / "share" / "metnos" / "executors"
+# ADR 0148 rename-resilient
+import config as _C  # noqa: E402
+_HANDCRAFTED_DIR = _C.PATH_EXECUTORS
+_SYNTH_DIR = _C.PATH_USER_DATA / "executors"
 
 
 def _normalize_binding(skill_name: str) -> str:
@@ -788,13 +790,20 @@ def translate_skill(parsed_skill, *,
     """Itera su tutti i sub-command della skill. Ritorna
     `(plans: list[ExecutorPlan], rejected: list[(domain, action, reason)])`.
 
-    Disambiguazione collisione con handcrafted: se il `name` canonico
-    coincide con un executor handcrafted in `/opt/myclaw/executors/`, il
-    nome viene suffixato col `binding` della skill (es. `read_files` ->
-    `read_files_google_workspace`). Questo evita il rigetto al catalog
-    load (ADR §10.6 + ADR 0114 L2 affinity overlap) e rende esplicito al
-    PLANNER quale dominio remoto l'executor copre. Il binding e' invece
-    invariato per ADR 0089 (credenziali condivise per famiglia).
+    Naming convention §2.2 4ª famiglia qualifier "provider" (ADR 0136):
+    ogni executor importato da una skill esterna riceve SEMPRE il
+    binding della skill come suffix (`_<binding>`). Es. tutti i tool
+    della skill `google-workspace` finiscono in `_google_workspace`,
+    a prescindere dalla collisione con builtin. Questo permette al
+    filtro grammar `_PROVIDER_SUFFIX_MARKERS` di escludere dal pool i
+    tool che richiedono un provider esterno se la query utente non
+    contiene marker (`google`, `gmail`, `drive`, ecc.). Self-hosted
+    e' il default, provider esterno e' opt-in.
+
+    Pre-16/5/2026: il suffix veniva applicato SOLO su collision con
+    handcrafted — bug noto (naming asimmetrico negli imports: 10/17
+    tool google-workspace senza suffix). Il fix uniforme rende ADR
+    0136 consistentemente applicabile.
 
     Collisione interna alla skill (due sub-command stesso name): il
     secondo va in `rejected`.
@@ -803,8 +812,10 @@ def translate_skill(parsed_skill, *,
     rejected: list = []
     seen: dict = {}
     vm = vocab_map or _load_vocab_map()
-    hc = handcrafted_names if handcrafted_names is not None else _load_handcrafted_names()
     binding = _normalize_binding(parsed_skill.name)
+    # `handcrafted_names` non e' piu' usato dopo il fix uniforme suffix
+    # provider (16/5/2026). Mantenuto in signature per backward compat.
+    _ = handcrafted_names  # silenzia linter
     for sc in parsed_skill.sub_commands:
         try:
             plan = translate_subcommand(
@@ -816,11 +827,12 @@ def translate_skill(parsed_skill, *,
         except SkillTranslateError as e:
             rejected.append((sc.domain, sc.action, str(e)))
             continue
-        if plan.name in hc:
-            disambiguated = f"{plan.name}_{binding}"
-            plan.name = disambiguated
-            new_qual = "_".join(q for q in (plan.qualifier, binding) if q)
-            plan.qualifier = new_qual
+        # SEMPRE suffix provider (ADR 0136). Pre-fix era condizionale a
+        # `if plan.name in hc`; questo causava asimmetria naming.
+        disambiguated = f"{plan.name}_{binding}"
+        plan.name = disambiguated
+        new_qual = "_".join(q for q in (plan.qualifier, binding) if q)
+        plan.qualifier = new_qual
         if plan.name in seen:
             rejected.append((
                 sc.domain, sc.action,

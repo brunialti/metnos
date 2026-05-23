@@ -38,44 +38,40 @@ if str(_RUNTIME) not in sys.path:
     sys.path.insert(0, str(_RUNTIME))
 
 
-def _executors_base() -> Path:
-    """~/.local/share/metnos/executors/_imports/<skill_name>/.
+def _user_data() -> Path:
+    """Path canonical USER_DATA (§7.11). Rispetta METNOS_USER_DATA per
+    isolamento test/e2e. Fallback canonico via runtime.config."""
+    import config as _C
+    return _C.PATH_USER_DATA
 
-    Override per test via METNOS_EXECUTORS_DIR (path completo).
-    """
+
+def _executors_base() -> Path:
+    """`<USER_DATA>/executors/_imports/`. Override solo via
+    METNOS_EXECUTORS_DIR esplicito (path completo)."""
     override = os.environ.get("METNOS_EXECUTORS_DIR")
     if override:
         return Path(override)
-    base = Path(os.environ.get(
-        "XDG_DATA_HOME",
-        str(Path.home() / ".local/share"),
-    ))
-    return base / "metnos" / "executors" / "_imports"
+    return _user_data() / "executors" / "_imports"
 
 
 def _skills_dir() -> Path:
-    """~/.local/share/metnos/skills/<skill_name>/ (file della skill copiati)."""
+    """`<USER_DATA>/skills/<name>/` (skill source files)."""
     override = os.environ.get("METNOS_SKILLS_DIR")
     if override:
         return Path(override)
-    base = Path(os.environ.get(
-        "XDG_DATA_HOME",
-        str(Path.home() / ".local/share"),
-    ))
-    return base / "metnos" / "skills"
+    return _user_data() / "skills"
 
 
 def _audit_log_path() -> Path:
-    base = Path(os.environ.get(
-        "METNOS_AUDIT_DIR",
-        str(Path.home() / ".local/share/metnos/synth_audit"),
-    ))
+    """`<USER_DATA>/synth_audit/imports.jsonl`."""
+    override = os.environ.get("METNOS_AUDIT_DIR")
+    base = Path(override) if override else _user_data() / "synth_audit"
     base.mkdir(parents=True, exist_ok=True)
     return base / "imports.jsonl"
 
 
 # ---------------------------------------------------------------------------
-# Sign helper (importa da /opt/myclaw/runtime/sign.py senza modificarlo)
+# Sign helper (importa da <install_root>/runtime/sign.py senza modificarlo)
 # ---------------------------------------------------------------------------
 
 
@@ -85,7 +81,8 @@ def _sign_keys_present(key_name: str = "author") -> tuple[bool, Optional[Path]]:
     Ritorna `(present, expected_path)`. Caller (cmd_import) puo' fallire
     gentilmente con istruzioni se il key non esiste.
     """
-    keys_dir = Path.home() / ".config" / "metnos" / "keys"
+    import config as _C
+    keys_dir = _C.PATH_USER_CONFIG / "keys"
     priv = keys_dir / f"{key_name}_priv.bin"
     pub = keys_dir / f"{key_name}_pub.bin"
     return (priv.is_file() and pub.is_file()), priv
@@ -94,10 +91,10 @@ def _sign_keys_present(key_name: str = "author") -> tuple[bool, Optional[Path]]:
 def _try_sign_executor(manifest_dir: Path) -> Optional[str]:
     """Wrapper di runtime/sign.py::sign_executor.
 
-    Importa modulo da /opt/myclaw/runtime/ se disponibile. Restituisce
+    Importa modulo da <install_root>/runtime/ se disponibile. Restituisce
     il digest sha256 calcolato (str) o None se signer non disponibile.
     """
-    canonical = Path("/opt/myclaw/runtime")
+    canonical = Path(__file__).resolve().parents[1]  # ADR 0148 rename-resilient (cli/ → runtime/)
     if not canonical.exists():
         return None
     if str(canonical) not in sys.path:
@@ -177,7 +174,7 @@ def _cmd_import(args) -> int:
             print(
                 "ERROR: chiave Ed25519 author non trovata.\n"
                 f"  Atteso: {expected}\n"
-                "  Genera con: python3 /opt/myclaw/runtime/sign.py keygen author\n"
+                "  Genera con: python3 <install_root>/runtime/sign.py keygen author\n"
                 "  Oppure: usa --no-sign per saltare la firma (sviluppo).",
                 file=sys.stderr,
             )
@@ -255,8 +252,8 @@ def _cmd_import(args) -> int:
 
     # Gap 6 (10/5/2026): auto-add smoke routing assertion per ogni accepted.
     # NOTA: lo smoke runner canonico (`smoke.py`) carica BATTERY_IMPORTS via
-    # `smoke_imports.py` modulo a /opt/myclaw/runtime/. In test env locale
-    # (sys.path non punta a /opt/myclaw) il modulo non e' raggiungibile e
+    # `smoke_imports.py` modulo a <install_root>/runtime/. In test env locale
+    # (sys.path non punta a <install_root>) il modulo non e' raggiungibile e
     # il blocco e' silentemente saltato.
     if not args.skip_smoke_battery:
         added_n = _add_smoke_cases_for(report, parsed)
@@ -283,37 +280,75 @@ def _add_smoke_cases_for(report, parsed) -> int:
     """Aggiunge case smoke per ogni accepted. Riusa il `smoke_battery_case`
     gia' calcolato in admission (`_smoke_case_for_plan`).
 
-    Ritorna il numero di case aggiunti (esclusi i duplicati skippati).
+    Skip rules:
+    - case con `_no_smoke=True`: pattern (verb, obj) non ha una query
+      realistica nella mappa di `_smoke_case_for_plan`. Aggiungere una
+      query stub "verb object" provoca loop CYCLIC_CALL o intercept
+      route_intent ADR 0129 → falsi negativi nella battery.
+    - case con `expected_first_tool` provider-qualified (suffix
+      `_google_workspace` etc.) ma `query` senza marker provider:
+      `tool_grammar._PROVIDER_SUFFIX_MARKERS` esclude correttamente il
+      tool dal pool grammar (ADR 0136), l'expected sarebbe irraggiungibile.
+      Strip del suffix → expected = tool canonico equivalente.
+
+    Ritorna il numero di case aggiunti (esclusi gli skip + i duplicati).
     """
-    canonical = Path("/opt/myclaw/runtime")
+    canonical = Path(__file__).resolve().parents[1]  # ADR 0148 rename-resilient (cli/ → runtime/)
     if not canonical.exists():
         return 0
     if str(canonical) not in sys.path:
         sys.path.insert(0, str(canonical))
     try:
         import smoke_imports  # type: ignore
+        from tool_grammar import _PROVIDER_SUFFIX_MARKERS  # type: ignore
     except ImportError:
         return 0
     n = 0
     skill_url = ""
     for v in report.accepted:
         case = v.smoke_battery_case or {}
+        if case.get("_no_smoke"):
+            continue
         query = case.get("query")
         if not query:
             continue
+        # `expected_first_tool` autoritativo dalla mappa (puo' differire
+        # da v.plan_name se il PLANNER usa un canonical sinonimo, es.
+        # `find_messages` plan -> `read_messages` builtin atteso).
+        # Fallback: v.plan_name dopo strip provider qualifier (ADR 0136).
+        expected = case.get("expected_first_tool") or _strip_unmarked_provider(
+            v.plan_name, query, _PROVIDER_SUFFIX_MARKERS,
+        )
         arg_keys = case.get("expected_arg_keys") or []
         # Provenance per audit nel BATTERY_IMPORTS case.
         if not skill_url:
             skill_url = f"agentskills.io/local/{parsed.name}"
         if smoke_imports.add_case(
             query=query,
-            expected_first_tool=v.plan_name,
+            expected_first_tool=expected,
             expected_arg_keys=set(arg_keys),
             imported_from=skill_url,
             min_pass_rate=case.get("min_pass_rate", 0.9),
         ):
             n += 1
     return n
+
+
+def _strip_unmarked_provider(tool_name: str, query: str,
+                              markers_map: dict) -> str:
+    """Se `tool_name` ha un suffix provider noto e la `query` NON contiene
+    nessuno dei marker del provider, ritorna il nome canonico (senza
+    suffix). Allinea il smoke expected con il filtro pool grammar
+    `tool_grammar.filter_pool_for_grammar` (ADR 0136).
+    """
+    q_lc = (query or "").lower()
+    for suffix, markers in markers_map.items():
+        if not tool_name.endswith(suffix):
+            continue
+        if any(m in q_lc for m in markers):
+            return tool_name  # marker presente → mantieni provider variant
+        return tool_name[: -len(suffix)]
+    return tool_name
 
 
 def _append_audit(parsed, plans, report,
@@ -393,6 +428,12 @@ def _cmd_list(args) -> int:
 
 
 def _cmd_uninstall(args) -> int:
+    """Rimuove SOLO gli executor importati (`_imports/<skill>/`).
+
+    NON tocca la source `skills/<skill>/` (contiene SKILL.md + credenziali
+    + scripts user-provided). La source resta per permettere re-import.
+    Per cancellare la source serve `--purge-source` esplicito.
+    """
     skill_dir = _executors_base() / args.skill
     if not skill_dir.exists():
         print(f"Not found: {skill_dir}", file=sys.stderr)
@@ -401,10 +442,15 @@ def _cmd_uninstall(args) -> int:
     shutil.rmtree(skill_dir)
     print(f"Removed {n} executors from {skill_dir}")
 
-    sk = _skills_dir() / args.skill
-    if sk.exists():
-        shutil.rmtree(sk)
-        print(f"Removed skill data {sk}")
+    if getattr(args, "purge_source", False):
+        sk = _skills_dir() / args.skill
+        if sk.exists():
+            shutil.rmtree(sk)
+            print(f"Removed skill source {sk}")
+    else:
+        sk = _skills_dir() / args.skill
+        if sk.exists():
+            print(f"Skill source preserved at {sk} (use --purge-source to remove)")
     return 0
 
 
@@ -508,8 +554,11 @@ def main(argv=None) -> int:
     sp.add_argument("-v", "--verbose", action="store_true")
     sp.set_defaults(func=_cmd_list)
 
-    sp = sub.add_parser("uninstall", help="Rimuove skill importata")
+    sp = sub.add_parser("uninstall",
+                        help="Rimuove executor importati (preserva la source)")
     sp.add_argument("skill", help="skill name")
+    sp.add_argument("--purge-source", action="store_true",
+                    help="rimuove ANCHE skills/<skill>/ (SKILL.md, credenziali, scripts)")
     sp.set_defaults(func=_cmd_uninstall)
 
     sp = sub.add_parser("status", help="Stato skill (invocazioni, success rate)")

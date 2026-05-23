@@ -289,7 +289,7 @@ class TestRealCatalogLangStatePresence(unittest.TestCase):
 
     def test_real_executors_have_lang_state(self):
         roots = [
-            Path("/opt/myclaw/executors"),
+            Path(__file__).resolve().parents[2] / "executors",
             Path.home() / ".local" / "share" / "metnos" / "executors",
         ]
         n_total = 0
@@ -309,7 +309,7 @@ class TestRealCatalogLangStatePresence(unittest.TestCase):
 
     def test_lang_state_is_valid_json_with_expected_keys(self):
         # Sample: find_files.
-        path = Path("/opt/myclaw/executors/find_files/manifest.lang_state.json")
+        path = Path(__file__).resolve().parents[2] / "executors/find_files/manifest.lang_state.json"
         if not path.is_file():
             self.skipTest("find_files manifest.lang_state.json not present")
         data = json.loads(path.read_text(encoding="utf-8"))

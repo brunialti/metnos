@@ -33,7 +33,7 @@ context:
 rules:
   - name: language_and_stdlib
     body: |
-      DEVI: Python 3.12+ stdlib + moduli runtime in /opt/myclaw/runtime.
+      DEVI: Python 3.12+ stdlib + moduli runtime in /opt/metnos/runtime.
       NON DEVI: importare librerie pip oltre PIL/Pillow e openpyxl.
       OK: `import hashlib`, `import imaplib`, `import tarfile`, `import os`.
       ERRORE: `import requests`, `import boto3`, `import paramiko`. E' UN ERRORE.

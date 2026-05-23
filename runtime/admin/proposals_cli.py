@@ -21,9 +21,10 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+import config as _C  # §7.11
 
-SYNT_PROPOSALS_DIR = Path.home() / ".local" / "share" / "metnos" / "synt_proposals"
-INTROVERTIVA_DIR = Path.home() / ".local" / "share" / "metnos" / "introvertiva"
+SYNT_PROPOSALS_DIR = _C.PATH_USER_DATA / "synt_proposals"
+INTROVERTIVA_DIR = _C.PATH_USER_DATA / "introvertiva"
 
 
 def _read_json_safe(p: Path) -> dict | None:

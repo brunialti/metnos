@@ -41,7 +41,7 @@ INVARIANTS:
 MUST: manifest `revertible: False` (send is not cancellable by the runtime).
 MUST: open connection / auth FAIL-FAST before the loop. Missing/incorrect credentials do not become valid with retry.
 MUST: cap `max_recipients` (default 50) — anti-spam. Excess → fail the entire batch, NOT partial submit.
-MUST: `idempotency_key` deterministic (e.g., sha256 of `recipient + subject + body + day_bucket`) persisted in `/opt/myclaw/_history/sent_keys.jsonl` BEFORE the next submit. Match → entry skip with status "duplicate".
+MUST: `idempotency_key` deterministic (e.g., sha256 of `recipient + subject + body + day_bucket`) persisted in `/opt/metnos/_history/sent_keys.jsonl` BEFORE the next submit. Match → entry skip with status "duplicate".
 MUST NOT: retry-loop with sleep on invalid credentials.
 MUST NOT: include password/token/api_key in the `error` field (leak in logs). Refer only to the account name or a symbolic name.
 MUST NOT: write `def reverse(...)`.

@@ -45,8 +45,10 @@ _EXECUTORS = _RUNTIME.parent / "executors"
 sys.path.insert(0, str(_RUNTIME))
 sys.path.insert(0, str(_EXECUTORS / "create_images_indices"))
 
+import config as _C  # §7.11
 
-_PROGRESS_DIR = Path.home() / ".local" / "state" / "metnos" / "build_progress"
+
+_PROGRESS_DIR = _C.PATH_USER_STATE / "build_progress"
 _COMPLETE_DIR = Path("/tmp/metnos_build_complete")
 _VALID_IDX = ("scene", "persons", "gps")
 
@@ -61,9 +63,7 @@ def _index_image_root() -> Path:
     v = os.environ.get("METNOS_INDEX_ROOT")
     if v:
         return Path(v) / "image"
-    base = os.environ.get("METNOS_USER_DATA")
-    base_p = Path(base) if base else Path.home() / ".local" / "share" / "metnos"
-    return base_p / "index" / "image"
+    return _C.PATH_USER_DATA / "index" / "image"
 
 
 def _digest_of(base_path: Path) -> str:

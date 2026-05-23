@@ -27,10 +27,11 @@ from pathlib import Path
 from typing import Optional
 
 from logging_setup import get_logger
+import config as _C  # §7.11
 log = get_logger(__name__)
 
 
-_DATA_DIR = Path.home() / ".local" / "share" / "metnos"
+_DATA_DIR = _C.PATH_USER_DATA
 FEEDBACK_PATH = _DATA_DIR / "turn_feedback.jsonl"
 TURNS_DIR = _DATA_DIR / "turns"
 

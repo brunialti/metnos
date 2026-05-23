@@ -3,7 +3,7 @@
 import json
 from pathlib import Path
 
-ROOT = Path("/opt/myclaw/decisions/synt_stress")
+ROOT = Path(__file__).resolve().parents[2] / "decisions/synt_stress"
 
 # Costi (USD per Mtok) — Claude Sonnet 4.5: 3/15. Locali: 0/0.
 COST = {

@@ -4,7 +4,7 @@
 
 - **Versione:** 0.0.1 (design phase)
 - **Python:** ≥ 3.11
-- **Location:** `/opt/myclaw/` (standalone, sibling di `suprastructure/` e `giorgio2/`)
+- **Location:** auto-resolved via `runtime.config.PATH_ROOT` (default da `__file__`, override env `METNOS_INSTALL_ROOT`). Su `.33` oggi `/opt/metnos/`; rinomina pianificata a `/opt/metnos/` zero-config (ADR 0148).
 - **Status:** solo documentazione di architettura. Nessun codice ancora scritto.
 
 > 📖 **Prima volta qui?** Apri [`docs/index.html`](docs/index.html) nel browser. È l'indice navigabile. Il punto di partenza è **Myclaw — Architettura: Introduzione v1** (20 minuti, didattico, con diagrammi).

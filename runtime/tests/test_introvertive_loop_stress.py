@@ -36,16 +36,23 @@ sys.path.insert(0, str(_RUNTIME))
 def tmp_dbs(monkeypatch, tmp_path):
     monkeypatch.setenv("METNOS_EXECUTOR_STATS_DB", str(tmp_path / "exec_stats.db"))
     monkeypatch.setenv("METNOS_PROPOSALS_STATE_DB", str(tmp_path / "props_state.db"))
-    # Re-import with fresh env vars
+    # Re-import with fresh env vars (DB_PATH inizializzato a module-import time).
     import importlib
     import executor_aging
     import proposals_state
     importlib.reload(executor_aging)
     importlib.reload(proposals_state)
-    return {
+    yield {
         "exec_stats": tmp_path / "exec_stats.db",
         "props_state": tmp_path / "props_state.db",
     }
+    # Teardown: ripristina i moduli al loro path canonical (env originale).
+    # Senza questo, executor_aging.DB_PATH resta puntato al tmp_path che
+    # pytest cancellera' — altri test che usano executor_aging dopo trovano
+    # DB inesistente e l'invariate cross-test si rompe.
+    monkeypatch.undo()
+    importlib.reload(executor_aging)
+    importlib.reload(proposals_state)
 
 
 # ──────────────────────────────────────────────────────────────────────

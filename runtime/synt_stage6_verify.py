@@ -25,7 +25,9 @@ import time
 from pathlib import Path
 from typing import Callable
 
-VERIFY_AUDIT_DIR = Path.home() / ".local" / "share" / "metnos" / "synth_audit"
+import config as _C  # §7.11
+
+VERIFY_AUDIT_DIR = _C.PATH_USER_DATA / "synth_audit"
 
 VERIFY_PROMPT_TEMPLATE = """Sei un revisore stretto di executor Metnos. Confronta DESCRIPTION e CODE.
 

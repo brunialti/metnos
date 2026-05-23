@@ -13,8 +13,8 @@ Niente subprocess, niente Telegram API: tutto puro Python.
 """
 import sys
 
-sys.path.insert(0, "/opt/myclaw/runtime")
-sys.path.insert(0, "/opt/myclaw/executors/get_inputs")
+sys.path.insert(0, str(__import__("pathlib").Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(__import__("pathlib").Path(__file__).resolve().parents[2] / "executors" / "get_inputs"))
 
 import get_inputs as _gi
 

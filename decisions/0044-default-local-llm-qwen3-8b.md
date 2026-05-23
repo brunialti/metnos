@@ -2,12 +2,24 @@
 id: 0044
 title: Default local LLM — qwen3:8b with think=false, num_predict=400
 date: 2026-04-26
-status: accepted
+status: superseded
+superseded-by: 0146
 area: runtime
 related:
   - 0025
   - 0042
+  - 0106  # bench PROMOTE_FAIL on qwen3:8b vs Gemma
+  - 0146  # consolidamento Gemma single-model
 ---
+
+> **SUPERSEDED-BY ADR 0146** (18/5/2026). Il bench formale ADR 0106
+> (7/5/2026) ha dimostrato che `qwen3:8b` non porta beneficio
+> rispetto a Gemma 4 26B + drafter E2B su intent_extractor e vaglio
+> (concordanza sotto soglia, speedup 0.72×). In produzione su `.33`
+> ollama e' disabilitato; tutti i tier locali puntano allo stesso
+> llama-server Gemma su `:8080`. La differenza fra fast/middle/wise
+> e' nei parametri per-call. Questa ADR resta in archivio come
+> storia della scelta originale.
 
 ## Context
 

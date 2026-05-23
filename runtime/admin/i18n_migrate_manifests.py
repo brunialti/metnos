@@ -3,7 +3,7 @@
 
 Fase 2 i18n (1/5/2026 sera).
 
-Per ogni manifest.toml in /opt/myclaw/executors/* + ~/.local/share/metnos/executors/*:
+Per ogni manifest.toml in <install_root>/executors/* + ~/.local/share/metnos/executors/*:
 - Se `description` in manifest e' stringa flat → INSERT in DB con (key=<name>.description, lang=it, text=<value>)
 - Se `description` e' dict {it,en,...} → INSERT N rows (una per lingua)
 - Idempotente: usa INSERT OR REPLACE
@@ -26,9 +26,11 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import i18n
 
+# ADR 0148 rename-resilient
+import config as _C  # noqa: E402
 EXEC_DIRS = [
-    Path("/opt/myclaw/executors"),
-    Path.home() / ".local/share/metnos/executors",
+    _C.PATH_EXECUTORS,
+    _C.PATH_USER_DATA / "executors",
 ]
 DEFAULT_LANG = "it"
 

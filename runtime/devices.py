@@ -32,11 +32,12 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 
 from sign import KEYS_DIR, list_trusted_publics, load_private  # noqa: E402
+import config as _C  # §7.11
 
 from logging_setup import get_logger
 log = get_logger(__name__)
 
-DEFAULT_DB_PATH = Path.home() / ".local" / "state" / "metnos" / "devices.db"
+DEFAULT_DB_PATH = _C.PATH_USER_STATE / "devices.db"
 DEFAULT_TOKEN_TTL_S = 600
 TOKEN_PREFIX = "DEV."
 PROTOCOL_VERSION = 1

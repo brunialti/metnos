@@ -39,6 +39,8 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Optional
 
+import config as _C  # §7.11
+
 
 # ============================================================================
 # UnifiedProposal — struttura comune cross-sorgente (telos, introvertiva, ...)
@@ -144,7 +146,7 @@ class UnifiedProposal:
     def to_dict(self) -> dict:
         return asdict(self)
 
-_DATA_DIR = Path.home() / ".local" / "share" / "metnos"
+_DATA_DIR = _C.PATH_USER_DATA
 _PROPOSALS_CANDIDATES = (
     _DATA_DIR / "telos_proposals.rescored.recomposed.jsonl",
     _DATA_DIR / "telos_proposals.rescored.jsonl",
@@ -744,9 +746,15 @@ def _find_example_turn(
         overlap = sum(1 for tool in related_tools if tool in chosen)
         sem = _semantic_overlap_query(
             t.get("user_query", ""), proposed_action) if proposed_action else 1
-        if related_tools and overlap == len(related_tools) and sem >= _EXAMPLE_QUERY_MIN_SHARED_TOKENS:
+        if related_tools and overlap == len(related_tools):
+            # Pipeline osservata: tutti i tool della proposta presenti.
+            # L'evidenza e' la pipeline stessa: niente filtro semantico extra.
             return t, True
-        if target and target in chosen and sem >= _EXAMPLE_QUERY_MIN_SHARED_TOKENS:
+        if target and target in chosen:
+            # Target in chosen e' evidenza forte: il turn usa effettivamente
+            # l'executor proposto. Niente filtro semantico (rischio FN su
+            # action generiche tipo "schedula evento" vs query "domani alle 15 dentista").
+            # L'anti-spurious resta perche' target match e' restrittivo per costruzione.
             candidates.append((overlap, sem, t))
     if not candidates:
         return None, False

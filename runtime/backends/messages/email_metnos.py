@@ -42,6 +42,118 @@ _MAX_ATTACH_BYTES_PER_MSG = 25 * 1024 * 1024
 _MONTHS_IMAP = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
                 "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
 
+# MX validation (§7.9 deterministic): pre-flight check destinatari per evitare
+# bounce silenziosi. 4 bounce reali 1-19/5/2026 verso destinatari mai
+# raggiungibili (`example.com` nullMX RFC 7505, `roberto@migadu.com`,
+# `roberto@knowcastle.com`). Soft-fail per-recipient: se rimangono validi,
+# il send procede; rejected vanno in `failed[]` con error_code ERR_INVALID_RECIPIENT_MX.
+_MX_KEY_REGISTERED = False
+_ADDR_RE = re.compile(r"^[^@\s]+@([A-Za-z0-9.\-]+)$")
+
+
+def _ensure_mx_i18n_key() -> None:
+    global _MX_KEY_REGISTERED
+    if _MX_KEY_REGISTERED:
+        return
+    try:
+        from i18n import register_key_if_missing
+        register_key_if_missing(
+            "ERR_INVALID_RECIPIENT_MX",
+            text_it="Destinatario {addr} rifiutato: dominio senza MX validi ({reason}).",
+            text_en="Recipient {addr} rejected: domain has no valid MX ({reason}).",
+        )
+    except Exception:
+        pass
+    _MX_KEY_REGISTERED = True
+
+
+def _parse_addr(addr: str) -> str | None:
+    """Estrae dominio da `local@domain`. Tollerante a `Name <addr>` formato RFC 5322."""
+    if not addr or not isinstance(addr, str):
+        return None
+    s = addr.strip()
+    if "<" in s and ">" in s:
+        i, j = s.rfind("<"), s.rfind(">")
+        if i < j:
+            s = s[i + 1:j].strip()
+    m = _ADDR_RE.match(s)
+    return m.group(1).lower() if m else None
+
+
+def _query_mx(domain: str, *, timeout_s: int = 3) -> tuple[bool, bool]:
+    """Ritorna (has_valid_mx, is_null_mx). NullMX RFC 7505: record `0 .`.
+
+    Determinismo §7.9: subprocess `host -t MX -W <s> <domain>`. Niente DNS
+    in-proc (dnspython non installato). Output forma `<dom> mail is handled by <pref> <target>`.
+    """
+    import subprocess
+    try:
+        out = subprocess.run(
+            ["host", "-t", "MX", "-W", str(timeout_s), domain],
+            capture_output=True, text=True, timeout=timeout_s + 1,
+        )
+    except (subprocess.TimeoutExpired, FileNotFoundError):
+        return False, False
+    if out.returncode != 0:
+        return False, False
+    has_mx, is_null = False, False
+    for line in out.stdout.splitlines():
+        m = re.search(r"mail is handled by\s+(\d+)\s+(\S+)", line)
+        if not m:
+            continue
+        pref, target = int(m.group(1)), m.group(2).rstrip(".")
+        if pref == 0 and target == "":
+            is_null = True
+        else:
+            has_mx = True
+    return has_mx, is_null
+
+
+def _query_a(domain: str, *, timeout_s: int = 3) -> bool:
+    """Fallback A-record check. RFC 5321 implicit MX: A record → mail dovrebbe arrivare."""
+    import socket
+    try:
+        socket.setdefaulttimeout(timeout_s)
+        socket.getaddrinfo(domain, 25)
+        return True
+    except (socket.gaierror, socket.timeout, OSError):
+        return False
+    finally:
+        socket.setdefaulttimeout(None)
+
+
+def _domain_deliverable(domain: str, cache: dict) -> tuple[bool, str]:
+    """Ritorna (ok, reason). Cache per-call su domain → (ok, reason)."""
+    if domain in cache:
+        return cache[domain]
+    has_mx, is_null = _query_mx(domain)
+    if is_null:
+        res = (False, "null_mx")
+    elif has_mx:
+        res = (True, "")
+    elif _query_a(domain):
+        res = (True, "")  # implicit MX via A record
+    else:
+        res = (False, "no_dns_record")
+    cache[domain] = res
+    return res
+
+
+def _validate_recipients(addrs: list[str], cache: dict) -> tuple[list[str], list[dict]]:
+    """Split `addrs` in (valid, rejected). Rejected = [{addr, reason}, ...]."""
+    valid, rejected = [], []
+    for a in addrs:
+        dom = _parse_addr(a)
+        if not dom:
+            rejected.append({"addr": a, "reason": "malformed"})
+            continue
+        ok, reason = _domain_deliverable(dom, cache)
+        if ok:
+            valid.append(a)
+        else:
+            rejected.append({"addr": a, "reason": reason})
+    return valid, rejected
+
 
 def _to_list(x):
     if x is None:
@@ -156,6 +268,8 @@ def send(args: dict) -> dict:
                 "detail": f"SMTP connect failed: {last_exc}"}
 
     results, failed = [], []
+    _ensure_mx_i18n_key()
+    mx_cache: dict[str, tuple[bool, str]] = {}
     try:
         for i, m in enumerate(messages):
             if not isinstance(m, dict):
@@ -177,6 +291,20 @@ def send(args: dict) -> dict:
             if not body and not body_html:
                 failed.append({"index": i, "error_code": "ERR_ARG_MISSING",
                                "error": _msg("ERR_ARG_MISSING", arg="body/body_html")})
+                continue
+            # MX validation §7.9: soft-fail per-recipient.
+            to_list, rej_to = _validate_recipients(to_list, mx_cache)
+            cc_list, rej_cc = _validate_recipients(cc_list, mx_cache)
+            bcc_list, rej_bcc = _validate_recipients(bcc_list, mx_cache)
+            rejected_addrs = rej_to + rej_cc + rej_bcc
+            for r in rejected_addrs:
+                failed.append({
+                    "index": i, "to": r["addr"], "subject": subject,
+                    "error_code": "ERR_INVALID_RECIPIENT_MX",
+                    "error": _msg("ERR_INVALID_RECIPIENT_MX", addr=r["addr"], reason=r["reason"]),
+                })
+            if not to_list:
+                # tutti i destinatari primari rifiutati: skip messaggio
                 continue
             per_msg_attach = m.get("attachments")
             if per_msg_attach is None and top_attach is not None:
@@ -232,6 +360,8 @@ def send(args: dict) -> dict:
                 for k in ("recipient_user_id", "recipient_name", "recipient_id", "target"):
                     if k in m:
                         rec[k] = m[k]
+                if rejected_addrs:
+                    rec["rejected_recipients"] = rejected_addrs  # §2.7 visibility
                 results.append(rec)
             except Exception as e:
                 failed.append({"index": i, "to": to_list, "subject": subject, "error": str(e)})

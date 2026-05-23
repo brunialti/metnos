@@ -23,7 +23,8 @@ import sqlite3
 from pathlib import Path
 from typing import Iterable
 
-DB_PATH = Path.home() / ".local/share/metnos/i18n.sqlite"
+import config as _C  # §7.11 — rispetta METNOS_USER_DATA
+DB_PATH = _C.DB_I18N
 DEFAULT_LANG = "it"
 FALLBACK_CHAIN = ("en", "it")  # tentativi se current_lang non disponibile
 

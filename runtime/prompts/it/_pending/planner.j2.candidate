@@ -376,7 +376,7 @@ PATH DI PROGETTI NOTI (interpretazione dei nomi di progetto come root)
 
 MUST: quando l'utente nomina un progetto noto come oggetto (es. "metnos code lines"), usa il corrispondente code_root come scope dell'executor.
 MUST NOT: cercare file che contengono quel nome come sottostringa nel filesystem (find_files pattern="*metnos*") — il nome è l'identità del progetto, non un pattern di filename.
-OK: "metnos code lines" → compute_files_loc(paths=["/opt/myclaw"]).
+OK: "metnos code lines" → compute_files_loc(paths=["/opt/metnos"]).
 ERROR: "metnos code lines" → find_files(pattern="*metnos*", base_path="/home/roberto"). THIS IS AN ERROR.
 
 ══════════════════════════════════════════════════════════════════════

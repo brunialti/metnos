@@ -7,9 +7,9 @@ dopo Round 2 di parallelizzazione executor (ADR 0103). Combina:
   - Lock + last_ts opzionale per garantire `rate_limit_ms` minimo fra
     request consecutive sullo stesso host (0 = disabilitato).
 
-Convenzione import dagli executor:
+Convenzione import dagli executor (runtime/ già su sys.path via PYTHONPATH
+o tramite il bootstrap universale env METNOS_RUNTIME):
 
-    sys.path.insert(0, "/opt/myclaw/runtime")
     from host_throttle import HostThrottle
 
 API:

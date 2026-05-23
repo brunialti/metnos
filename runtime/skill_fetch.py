@@ -7,7 +7,7 @@ Supporta:
 - `https://raw.githubusercontent.com/<owner>/<repo>/<branch>/SKILL.md` — direct urllib.
 
 Cache: `~/.cache/metnos/skill_imports/<sha256(url)>/` con TTL 7 giorni.
-Riusa pattern `runtime/http_cache.py` di /opt/myclaw/ (ADR 0105):
+Riusa pattern `runtime/http_cache.py` di <install_root>/ (ADR 0105):
 - sharded directory tree
 - atomic write tmp+rename
 - TTL configurabile via `METNOS_SKILL_FETCH_TTL_S` (default 7*86400)
@@ -93,7 +93,7 @@ def _classify_url(arg: str) -> tuple[str, dict]:
 
 
 # ---------------------------------------------------------------------------
-# Cache (riusa pattern http_cache di /opt/myclaw/)
+# Cache (riusa pattern http_cache di <install_root>/)
 # ---------------------------------------------------------------------------
 
 

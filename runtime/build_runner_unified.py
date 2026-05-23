@@ -62,13 +62,12 @@ def _resolve_corpus_dir(base_path: Path) -> Path:
     find/create/get/delete_images_indices."""
     import hashlib
     import os
+    import config as _C  # §7.11
     digest = hashlib.sha256(str(base_path).encode("utf-8")).hexdigest()
     v = os.environ.get("METNOS_INDEX_ROOT")
     if v:
         return Path(v) / "image" / digest[:16]
-    base = os.environ.get("METNOS_USER_DATA")
-    base_p = Path(base) if base else Path.home() / ".local" / "share" / "metnos"
-    return base_p / "index" / "image" / digest[:16]
+    return _C.PATH_USER_DATA / "index" / "image" / digest[:16]
 
 
 def main():

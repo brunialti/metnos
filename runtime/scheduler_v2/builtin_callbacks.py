@@ -171,6 +171,44 @@ _BUILTIN_JOBS: list[dict[str, Any]] = [
         ),
     },
     {
+        "name": "change_intent_materialize",
+        "trigger": "daily@01:00",
+        "callback_key": "change_intent_materialize",
+        "description": (
+            "Materializer unificato (ADR 0158): proietta 6 storage legacy "
+            "(telos jsonl, introvertiva sqlite, synt jsonl, multi_tool, "
+            "canonical_query_log, turn_feedback) in change_intents.sqlite. "
+            "Idempotente via fingerprint (dedup cross-source + bump "
+            "convergence). Eseguito daily@01:00 prima delle altre task "
+            "notturne, cosi' le UI vedono dati freschi al risveglio."
+        ),
+    },
+    {
+        "name": "change_applier",
+        "trigger": "every_10m",
+        "callback_key": "change_applier",
+        "description": (
+            "Applier daemon (ADR 0158): legge change_intents in stato "
+            "ACCEPTED, applica fisicamente per kind (create_executor → "
+            "synth, extend_executor → manifest patch, dedupe → alias, "
+            "materialize_pipeline → multi_tool active, cache_pattern → "
+            "canonical_query_log active, reject_pattern → blocklist "
+            "jsonl). Cap 20 intent per fire."
+        ),
+    },
+    {
+        "name": "change_observer",
+        "trigger": "daily@03:15",
+        "callback_key": "change_observer",
+        "description": (
+            "Observer daemon (ADR 0158): verifica APPLIED + OBSERVED. "
+            "Per kind, calcola metrics (executor_stats / cache state / "
+            "feedback storico) e transiziona a FINALIZED (oltre grace 7gg "
+            "OK) o ROLLED_BACK (fail_rate alto / cache demoted / nuovi "
+            "feedback negativi). Cap 200 intent per fire."
+        ),
+    },
+    {
         "name": "telos_introspect_nightly",
         "trigger": "daily@02:30",
         "callback_key": "telos_introspect_nightly",
@@ -343,6 +381,34 @@ def install_default_callbacks(scheduler) -> None:
         "promoter_digest",
         task_promoter_digest,
         "Digest Telegram delle proposte promoted_grace (daily@07:00)",
+        replace=True,
+    )
+
+    # Change intent materializer (ADR 0158): proietta 6 storage legacy in
+    # change_intents.sqlite. Idempotente via fingerprint cross-source dedup.
+    from jobs.change_intent_materialize import task_change_intent_materialize
+    cb.register(
+        "change_intent_materialize",
+        task_change_intent_materialize,
+        "Materializer unificato change_intents (ADR 0158, daily@01:00)",
+        replace=True,
+    )
+
+    # Change applier (ADR 0158): legge ACCEPTED, applica fisicamente.
+    from change_applier import task_change_applier
+    cb.register(
+        "change_applier",
+        task_change_applier,
+        "Applier change_intents accepted → applied (ADR 0158, every_10m)",
+        replace=True,
+    )
+
+    # Change observer (ADR 0158, Fase 3): monitora APPLIED → finalize/rollback.
+    from change_observer import task_change_observer
+    cb.register(
+        "change_observer",
+        task_change_observer,
+        "Observer change_intents applied → finalized|rolled_back (ADR 0158, daily@03:15)",
         replace=True,
     )
 

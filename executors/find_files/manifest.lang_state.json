@@ -118,5 +118,17 @@
       "source_lang": null,
       "source_hash": null
     }
+  },
+  "args.kind.description": {
+    "it": {
+      "version_hash": "sha256:e3b98a4da31a127d4bde6e43033f66ba274cab0eb7eb1c70ec41402bf6273dd8",
+      "source_lang": null,
+      "source_hash": null
+    },
+    "en": {
+      "version_hash": "sha256:e3b98a4da31a127d4bde6e43033f66ba274cab0eb7eb1c70ec41402bf6273dd8",
+      "source_lang": null,
+      "source_hash": null
+    }
   }
 }

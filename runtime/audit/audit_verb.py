@@ -15,14 +15,19 @@ adattarle al codice. Se una query fallisce, si fixa il prompt verbo /
 l'executor / il runtime, e si riesegue.
 """
 import json
+import os
 import re
 import sys
 import time
 import traceback
 from pathlib import Path
 
-sys.path.insert(0, "/opt/myclaw/runtime")
-sys.path.insert(0, "/opt/myclaw/runtime/audit")
+_RUNTIME = os.environ.get("METNOS_RUNTIME") or next(
+    str(p / "runtime") for p in Path(__file__).resolve().parents
+    if (p / "runtime" / "config.py").is_file())
+for _p in (_RUNTIME, str(Path(_RUNTIME) / "audit")):
+    if _p not in sys.path:
+        sys.path.insert(0, _p)
 
 from agent_runtime import run_turn  # noqa: E402
 from queries import VERBS, setup_fixtures  # noqa: E402

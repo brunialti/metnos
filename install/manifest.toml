@@ -1,4 +1,4 @@
-# /opt/myclaw/install/manifest.toml
+# /opt/metnos/install/manifest.toml
 #
 # Manifest centrale di installazione di Metnos.
 #
@@ -34,7 +34,7 @@ manifest_schema_version = 1
 
 [runtime]
 python_min      = "3.12"
-working_dir     = "/opt/myclaw"
+working_dir     = "/opt/metnos"
 data_dir        = "~/.local/share/metnos"
 state_dir       = "~/.local/state/metnos"
 config_dir      = "~/.config/metnos"
@@ -166,16 +166,16 @@ source_url  = "https://huggingface.co/Xenova/siglip-base-patch16-224"
 # meno pratico per i workflow asimmetrici (1 query : N immagini).
 # sha256 verificati al download del 2026-05-04.
 files = [
-  { name = "onnx/text_model_quantized.onnx", local = "/opt/myclaw/models/siglip/text_model_quantized.onnx", sha256 = "ad0329b1f35acc66d8953ff2559ce358da8eb0a7011794cf951523d63a4dbce2", url_path = "onnx/text_model_quantized.onnx" },
-  { name = "onnx/vision_model_quantized.onnx", local = "/opt/myclaw/models/siglip/vision_model_quantized.onnx", sha256 = "ef14a954f3d57e1806666432bd9785004c1dc27100aa260eee0cb0f10a5de058", url_path = "onnx/vision_model_quantized.onnx" },
-  { name = "tokenizer.json", local = "/opt/myclaw/models/siglip/tokenizer.json", sha256 = "4a17c975210be5ab4c36b47d8dae4eefb866dbfb1e676e394aad85dc30a3ae08", url_path = "tokenizer.json" },
-  { name = "tokenizer_config.json", local = "/opt/myclaw/models/siglip/tokenizer_config.json", sha256 = "9a38d3c6b5e26fe5dcc607eda95e38d78d30d9291835bb9e8116e8174c1d4ba2", url_path = "tokenizer_config.json" },
-  { name = "preprocessor_config.json", local = "/opt/myclaw/models/siglip/preprocessor_config.json", sha256 = "21ee046a8a52a65e5f9c177bf840bfb39ea66c9c54cf2760630efd58e0a3ec80", url_path = "preprocessor_config.json" },
-  { name = "config.json", local = "/opt/myclaw/models/siglip/config.json", sha256 = "e6de71291f181b0b81adc93098787bb4597a79dc18f59737feda8f41671fb6a2", url_path = "config.json" },
-  { name = "special_tokens_map.json", local = "/opt/myclaw/models/siglip/special_tokens_map.json", sha256 = "22f82d1c19654c9552ff1368c2c236ebb34f457dbdbc7510d304cebfeb96f3bf", url_path = "special_tokens_map.json" },
-  { name = "spiece.model", local = "/opt/myclaw/models/siglip/spiece.model", sha256 = "1e5036bed065526c3c212dfbe288752391797c4bb1a284aa18c9a0b23fcaf8ec", url_path = "spiece.model" },
+  { name = "onnx/text_model_quantized.onnx", local = "/opt/metnos/models/siglip/text_model_quantized.onnx", sha256 = "ad0329b1f35acc66d8953ff2559ce358da8eb0a7011794cf951523d63a4dbce2", url_path = "onnx/text_model_quantized.onnx" },
+  { name = "onnx/vision_model_quantized.onnx", local = "/opt/metnos/models/siglip/vision_model_quantized.onnx", sha256 = "ef14a954f3d57e1806666432bd9785004c1dc27100aa260eee0cb0f10a5de058", url_path = "onnx/vision_model_quantized.onnx" },
+  { name = "tokenizer.json", local = "/opt/metnos/models/siglip/tokenizer.json", sha256 = "4a17c975210be5ab4c36b47d8dae4eefb866dbfb1e676e394aad85dc30a3ae08", url_path = "tokenizer.json" },
+  { name = "tokenizer_config.json", local = "/opt/metnos/models/siglip/tokenizer_config.json", sha256 = "9a38d3c6b5e26fe5dcc607eda95e38d78d30d9291835bb9e8116e8174c1d4ba2", url_path = "tokenizer_config.json" },
+  { name = "preprocessor_config.json", local = "/opt/metnos/models/siglip/preprocessor_config.json", sha256 = "21ee046a8a52a65e5f9c177bf840bfb39ea66c9c54cf2760630efd58e0a3ec80", url_path = "preprocessor_config.json" },
+  { name = "config.json", local = "/opt/metnos/models/siglip/config.json", sha256 = "e6de71291f181b0b81adc93098787bb4597a79dc18f59737feda8f41671fb6a2", url_path = "config.json" },
+  { name = "special_tokens_map.json", local = "/opt/metnos/models/siglip/special_tokens_map.json", sha256 = "22f82d1c19654c9552ff1368c2c236ebb34f457dbdbc7510d304cebfeb96f3bf", url_path = "special_tokens_map.json" },
+  { name = "spiece.model", local = "/opt/metnos/models/siglip/spiece.model", sha256 = "1e5036bed065526c3c212dfbe288752391797c4bb1a284aa18c9a0b23fcaf8ec", url_path = "spiece.model" },
 ]
-local_path  = "/opt/myclaw/models/siglip"
+local_path  = "/opt/metnos/models/siglip"
 size_mb     = 210
 embedding_dim = 768
 image_size  = 224
@@ -191,12 +191,12 @@ source_url  = "https://github.com/deepinsight/insightface/releases/download/v0.7
 # (ArcFace, ~170MB), e altri modelli InsightFace (genderage, 2d106det,
 # 1k3d68). Per Metnos ne usiamo solo det_10g + w600k_r50.
 files = [
-  { name = "buffalo_l.zip", local = "/opt/myclaw/models/face/buffalo_l.zip", sha256 = "80ffe37d8a5940d59a7384c201a2a38d4741f2f3c51eef46ebb28218a7b0ca2f" },
+  { name = "buffalo_l.zip", local = "/opt/metnos/models/face/buffalo_l.zip", sha256 = "80ffe37d8a5940d59a7384c201a2a38d4741f2f3c51eef46ebb28218a7b0ca2f" },
   # Estratti dallo zip post-download (sha256 verificati 2026-05-04):
-  { name = "det_10g.onnx", local = "/opt/myclaw/models/face/det_10g.onnx", sha256 = "5838f7fe053675b1c7a08b633df49e7af5495cee0493c7dcf6697200b85b5b91", extract_from = "buffalo_l.zip", member = "det_10g.onnx" },
-  { name = "w600k_r50.onnx", local = "/opt/myclaw/models/face/w600k_r50.onnx", sha256 = "4c06341c33c2ca1f86781dab0e829f88ad5b64be9fba56e56bc9ebdefc619e43", extract_from = "buffalo_l.zip", member = "w600k_r50.onnx" },
+  { name = "det_10g.onnx", local = "/opt/metnos/models/face/det_10g.onnx", sha256 = "5838f7fe053675b1c7a08b633df49e7af5495cee0493c7dcf6697200b85b5b91", extract_from = "buffalo_l.zip", member = "det_10g.onnx" },
+  { name = "w600k_r50.onnx", local = "/opt/metnos/models/face/w600k_r50.onnx", sha256 = "4c06341c33c2ca1f86781dab0e829f88ad5b64be9fba56e56bc9ebdefc619e43", extract_from = "buffalo_l.zip", member = "w600k_r50.onnx" },
 ]
-local_path  = "/opt/myclaw/models/face"
+local_path  = "/opt/metnos/models/face"
 size_mb     = 280
 embedding_dim = 512
 required_for = ["face detection in immagini (executor TBD)", "indici volti per ricerca similarita' (executor TBD)"]
@@ -206,7 +206,7 @@ notes       = "L'indice volti puo' essere replicato/sincronizzato fra le macchin
 
 [[scripts.entry]]
 name        = "metnos-cli"
-src         = "/opt/myclaw/scripts/metnos-cli"
+src         = "/opt/metnos/scripts/metnos-cli"
 dest        = "/usr/local/bin/metnos-cli"
 mode        = "0755"
 needs_sudo  = true
@@ -217,7 +217,7 @@ notes       = "CLI utility (Strato 3 ADR 0089): gestione credenziali da terminal
 [[services.entry]]
 name            = "metnos-http"
 type            = "systemd-user"
-unit_file_local = "/opt/myclaw/install/units/metnos-http.service"
+unit_file_local = "/opt/metnos/install/units/metnos-http.service"
 unit_file_dest  = "~/.config/systemd/user/metnos-http.service"
 description     = "HTTP API + admin dashboard (porta 8770). Co-host scheduler v2 (ADR 0112), persons registry (ADR 0113), unified image index (ADR 0117)."
 enabled_at_install = true
@@ -228,9 +228,9 @@ notes           = "User unit (8/5/2026, ADR 0117 prep): migrato da system→user
 [[services.entry]]
 name            = "metnos-i18n-translator"
 type            = "systemd-timer"
-unit_file_local = "/opt/myclaw/install/units/metnos-i18n-translator.service"
+unit_file_local = "/opt/metnos/install/units/metnos-i18n-translator.service"
 unit_file_dest  = "/etc/systemd/system/metnos-i18n-translator.service"
-timer_file_local = "/opt/myclaw/install/units/metnos-i18n-translator.timer"
+timer_file_local = "/opt/metnos/install/units/metnos-i18n-translator.timer"
 timer_file_dest  = "/etc/systemd/system/metnos-i18n-translator.timer"
 description     = "Traduce lazy le stringhe i18n non ancora tradotte (timer ogni 5min)"
 enabled_at_install = true
@@ -239,7 +239,7 @@ needs_sudo      = true
 [[services.entry]]
 name            = "metnos-telegram-daemon"
 type            = "systemd-user"
-unit_file_local = "/opt/myclaw/systemd/metnos-telegram-daemon.service"
+unit_file_local = "/opt/metnos/systemd/metnos-telegram-daemon.service"
 unit_file_dest  = "~/.config/systemd/user/metnos-telegram-daemon.service"
 description     = "Daemon canale Telegram (poll, run_turn, send)"
 enabled_at_install = false                  # solo se token Telegram configurato
@@ -253,7 +253,7 @@ notes           = "User unit (systemctl --user). Attivato manualmente dopo `pair
 [[services.entry]]
 name            = "metnos-llm-mid"
 type            = "systemd-user"
-unit_file_local = "/opt/myclaw/install/units/metnos-llm-mid.service"
+unit_file_local = "/opt/metnos/install/units/metnos-llm-mid.service"
 unit_file_dest  = "~/.config/systemd/user/metnos-llm-mid.service"
 description     = "LLM mid/wise tier — llama-server Gemma 4 26B (porta 8080), 65K ctx, speculative decoding con draft E2B."
 enabled_at_install = true
@@ -264,7 +264,7 @@ notes           = "ADR 0112+ tier locale principale. Throughput ~130 tok/s post-
 [[services.entry]]
 name            = "metnos-vlm"
 type            = "systemd-user"
-unit_file_local = "/opt/myclaw/install/units/metnos-vlm.service"
+unit_file_local = "/opt/metnos/install/units/metnos-vlm.service"
 unit_file_dest  = "~/.config/systemd/user/metnos-vlm.service"
 description     = "Vision-Language Model — llama-server Qwen2-VL-7B (porta 8081). Usato da unified image enrichment build (ADR 0117)."
 enabled_at_install = false
@@ -341,11 +341,11 @@ path = "~/.config/metnos/mail"
 mode = "0700"
 
 [[directories.entry]]
-path = "/opt/myclaw/models/siglip"
+path = "/opt/metnos/models/siglip"
 mode = "0755"
 
 [[directories.entry]]
-path = "/opt/myclaw/models/face"
+path = "/opt/metnos/models/face"
 mode = "0755"
 
 # ── Directory aggiunte da review 2026-05-07 ──────────────────────────
@@ -396,7 +396,7 @@ template = """{"_doc": "Origini HTTP/Telegram trusted per /agent endpoint. Vedi 
 path = "~/.config/metnos/workspace_policy.toml"
 mode = "0600"
 template = """# Policy workspace (override per-utente sul vincolo path).
-# Vedi /opt/myclaw/runtime/workspace_policy.py.
+# Vedi /opt/metnos/runtime/workspace_policy.py.
 [default]
 home_only = true
 allow_dirs = []
@@ -407,7 +407,7 @@ deny_dirs = []
 path = "~/.config/metnos/mail/mail.env"
 mode = "0600"
 template = """# Mail credentials (TEMPLATE - va riempito manualmente).
-# Vedi /opt/myclaw/scripts/check-mail.sh per lo schema.
+# Vedi /opt/metnos/scripts/check-mail.sh per lo schema.
 # IMAP_HOST=imap.example.com
 # IMAP_PORT=993
 # IMAP_USER=metnos@example.com
@@ -482,8 +482,8 @@ notes       = "Esiste nella seed pool ma non legato a executor in produzione al 
 node_role          = "primary"          # primary | replica | client
 sync_strategy      = "manual"           # manual | rsync | tba (futuro)
 shareable_paths    = [
-    "/opt/myclaw/models/siglip",
-    "/opt/myclaw/models/face",
+    "/opt/metnos/models/siglip",
+    "/opt/metnos/models/face",
 ]
 per_node_paths     = [
     "~/.config/metnos/credentials",

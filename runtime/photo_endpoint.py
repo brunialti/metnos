@@ -27,11 +27,12 @@ from datetime import date, timedelta
 from pathlib import Path
 
 from logging_setup import get_logger
+import config as _C  # §7.11
 
 log = get_logger(__name__)
 
-TURNS_DIR = Path.home() / ".local" / "share" / "metnos" / "turns"
-THUMB_CACHE_DIR = Path.home() / ".local" / "share" / "metnos" / "thumbcache"
+TURNS_DIR = _C.PATH_USER_DATA / "turns"
+THUMB_CACHE_DIR = _C.PATH_USER_DATA / "thumbcache"
 TOKEN_TTL_S = 86400  # 24h
 
 VALID_SIZES = ("thumb", "full")

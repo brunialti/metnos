@@ -6,7 +6,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 
-_FIND_URLS_DIR = Path("/opt/myclaw/executors/find_urls")
+_FIND_URLS_DIR = Path(__file__).resolve().parents[2] / "executors/find_urls"
 if str(_FIND_URLS_DIR) not in sys.path:
     sys.path.insert(0, str(_FIND_URLS_DIR))
 

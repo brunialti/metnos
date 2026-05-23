@@ -1,7 +1,7 @@
 """Test minimale per `runtime/clip_embedding.py` (SigLIP).
 
 I test sono skip-friendly: se i modelli SigLIP non sono presenti
-in `/opt/myclaw/models/siglip/` (download via
+in `<install_root>/models/siglip/` (download via
 `install/download_models.sh siglip`), tutti i test sono saltati con
 messaggio chiaro. In CI senza modelli, suite resta verde.
 """
@@ -19,7 +19,7 @@ sys.path.insert(0, str(_RUNTIME))
 
 
 def _models_present() -> bool:
-    base = Path("/opt/myclaw/models/siglip")
+    base = Path(__file__).resolve().parents[2] / "models/siglip"
     return all((base / f).exists() for f in (
         "text_model_quantized.onnx",
         "vision_model_quantized.onnx",

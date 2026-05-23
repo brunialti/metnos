@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Esegue test_runner su tutti i manifest in /opt/myclaw/executors/."""
+"""Esegue test_runner su tutti i manifest in <install_root>/executors/."""
 import subprocess
 import sys
 from pathlib import Path
 
-EXECUTORS_DIR = Path("/opt/myclaw/executors")
+EXECUTORS_DIR = Path(__file__).resolve().parents[1] / "executors"
 TEST_RUNNER = Path(__file__).parent / "test_runner.py"
 
 

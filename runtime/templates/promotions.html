@@ -1,6 +1,12 @@
 {% extends "base.html" %}
 {% block title %}Metnos admin · promotions{% endblock %}
 {% block body %}
+<div class="section" style="background:#fef8e8;border:1px solid #d4a800;padding:.8rem;margin-bottom:1rem">
+  <strong>{{ msg('UI_CHANGE_DEPRECATION_TITLE') }}</strong>
+  &nbsp;{{ msg('UI_CHANGE_DEPRECATION_BODY') }}
+  &nbsp;<a href="/admin/changes?state=observed" class="btn ok">{{ msg('UI_CHANGE_DEPRECATION_LINK') }}</a>
+</div>
+
 <h1>Promozioni synth</h1>
 
 <form method="get" class="row" style="margin-bottom:.8rem">

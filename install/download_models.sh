@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
-# /opt/myclaw/install/download_models.sh
+# /opt/metnos/install/download_models.sh
 #
-# Scarica i modelli ML necessari a Metnos in `/opt/myclaw/models/`.
+# Scarica i modelli ML necessari a Metnos in `/opt/metnos/models/`.
 # Idempotente: se il file esiste e ha sha256 corretto, salta.
 # Se il manifest dichiara `<TBD-on-download>`, scarica e stampa lo sha256
 # perche' venga incollato nel manifest al primo run.
 #
 # Modelli scaricati:
 #   1. SigLIP-base-patch16-224 (Xenova ONNX, quantized int8)
-#      → /opt/myclaw/models/siglip/
+#      → /opt/metnos/models/siglip/
 #   2. InsightFace buffalo_l (RetinaFace det_10g + ArcFace w600k_r50)
-#      → /opt/myclaw/models/face/
+#      → /opt/metnos/models/face/
 #
 # Nota: il modello text-embedding MiniLM e' in /opt/giorgio2/models/onnx/
 # e NON va riscaricato (e' condiviso con giorgio2/suprastructure).
@@ -43,7 +43,7 @@ for arg in "$@"; do
 done
 [[ ${#TARGETS[@]} -eq 0 ]] && TARGETS=(siglip face)
 
-MODELS_DIR="/opt/myclaw/models"
+MODELS_DIR="/opt/metnos/models"
 SIGLIP_DIR="${MODELS_DIR}/siglip"
 FACE_DIR="${MODELS_DIR}/face"
 
@@ -176,4 +176,4 @@ for t in "${TARGETS[@]}"; do
     esac
 done
 
-log "DONE. Aggiorna /opt/myclaw/install/manifest.toml con gli sha256 stampati."
+log "DONE. Aggiorna /opt/metnos/install/manifest.toml con gli sha256 stampati."

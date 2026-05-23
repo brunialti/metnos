@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Test ADR 0107 — vaglio short-circuit per safe-verbs."""
 import sys
-sys.path.insert(0, "/opt/myclaw/runtime")
+sys.path.insert(0, str(__import__("pathlib").Path(__file__).resolve().parents[1]))
 
 from vaglio import judge, _action_of
 from vocab import SAFE_VERBS

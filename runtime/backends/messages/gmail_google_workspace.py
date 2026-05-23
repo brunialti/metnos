@@ -201,20 +201,42 @@ def read(args: dict) -> dict:
         ids = [e.get("id") for e in search_results
                 if isinstance(e, dict) and e.get("id")]
 
-    entries: list[dict] = []
-    for mid in ids:
+    # Parallelizza fetch per-id (§7.4: speedup reale, IO subprocess).
+    # Cap 8 concorrenti, ordine preservato dall'output. Auth/needs_inputs
+    # propaga immediatamente: se UN fetch chiede OAuth, fallisce tutti.
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+    entries: list[dict] = [None] * len(ids)
+    needs_inputs_resp: dict | None = None
+
+    def _fetch_one(idx_mid: tuple[int, str]) -> tuple[int, dict | None, dict | None]:
+        idx, mid = idx_mid
         argv = ["gmail", "get", mid]
-        data, err = _run_gmail(argv, executor="read_messages",
-                                args_base=dict(args))
-        if err is not None:
-            if err.get("decision") == "needs_inputs":
-                return err
-            entries.append({"id": mid, "error_class": err.get("error_class"),
-                             "error": err.get("error")})
-            continue
-        if isinstance(data, dict):
-            data.setdefault("id", mid)
-            entries.append(data)
+        d, e = _run_gmail(argv, executor="read_messages",
+                          args_base=dict(args))
+        return idx, d, e
+
+    with ThreadPoolExecutor(max_workers=min(8, max(1, len(ids)))) as pool:
+        futs = [pool.submit(_fetch_one, (i, m)) for i, m in enumerate(ids)]
+        for fut in as_completed(futs):
+            idx, data, err = fut.result()
+            mid = ids[idx]
+            if err is not None:
+                if err.get("decision") == "needs_inputs":
+                    needs_inputs_resp = err
+                    continue
+                entries[idx] = {"id": mid,
+                                "error_class": err.get("error_class"),
+                                "error": err.get("error")}
+                continue
+            if isinstance(data, dict):
+                data.setdefault("id", mid)
+                entries[idx] = data
+
+    if needs_inputs_resp is not None:
+        return needs_inputs_resp
+
+    # Filtra None (race condition impossibile ma type-safe)
+    entries = [e for e in entries if e is not None]
 
     return {
         "ok": True,

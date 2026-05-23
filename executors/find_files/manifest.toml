@@ -227,3 +227,11 @@ expect_full = """
   }
 }
 """
+
+[args.properties.kind]
+type        = "string"
+default     = ""
+
+[args.properties.kind.description]
+it = "t"
+en = "t"

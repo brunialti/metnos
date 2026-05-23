@@ -31,7 +31,9 @@ from pathlib import Path
 
 import numpy as np
 
-DEFAULT_DB_PATH = Path.home() / ".local" / "share" / "metnos" / "persons.sqlite"
+import config as _C  # §7.11
+
+DEFAULT_DB_PATH = _C.PATH_USER_DATA / "persons.sqlite"
 EMBEDDING_DIM = 512
 WARN_EXAMPLES_PER_PERSON = 50
 
@@ -428,21 +430,6 @@ class PersonsRegistry:
                 ).fetchall()
         return [_bytes_to_embedding(r["embedding"], r["embedding_dim"]) for r in rows]
 
-
-# Module-level helper for cross-module convenience (used by
-# find_images_indices). Returns list[np.ndarray].
-def resolve_face_embeddings_for_name(name: str) -> list:
-    """Module-level alias: PersonsRegistry().lookup_embeddings(name).
-    Bug live 15/5/2026: find_images_indices importava questa funzione
-    che NON era definita → ImportError silent → name filter saltato.
-    """
-    if not name:
-        return []
-    try:
-        return PersonsRegistry().lookup_embeddings(name)
-    except Exception:
-        return []
-
     # -- match -------------------------------------------------------------
 
     @staticmethod
@@ -512,3 +499,18 @@ def resolve_face_embeddings_for_name(name: str) -> list:
                 })
         results.sort(key=lambda d: d["best_score"], reverse=True)
         return results
+
+
+# Module-level helper for cross-module convenience (used by
+# find_images_indices). Returns list[np.ndarray].
+def resolve_face_embeddings_for_name(name: str) -> list:
+    """Module-level alias: PersonsRegistry().lookup_embeddings(name).
+    Bug live 15/5/2026: find_images_indices importava questa funzione
+    che NON era definita → ImportError silent → name filter saltato.
+    """
+    if not name:
+        return []
+    try:
+        return PersonsRegistry().lookup_embeddings(name)
+    except Exception:
+        return []

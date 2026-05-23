@@ -56,17 +56,20 @@ STRATEGY_COST_BONUS = {
     "generate": 0.0,
 }
 
+# ADR 0148 rename-resilient: synt working dirs default under PATH_WORKSPACE.
+import config as _C  # noqa: E402
+_DEFAULT_WORKSPACE = _C.PATH_WORKSPACE
 DEFAULT_AUDIT_DIR = Path(
-    os.environ.get("SYNT_AUDIT_DIR", "/opt/myclaw/workspace/.audit/synt")
+    os.environ.get("SYNT_AUDIT_DIR", str(_DEFAULT_WORKSPACE / ".audit" / "synt"))
 )
 DEFAULT_LOCK_PATH = Path(
-    os.environ.get("SYNT_LOCK_PATH", "/opt/myclaw/workspace/.synt/locks.json")
+    os.environ.get("SYNT_LOCK_PATH", str(_DEFAULT_WORKSPACE / ".synt" / "locks.json"))
 )
 DEFAULT_PROPOSALS_DIR = Path(
-    os.environ.get("SYNT_PROPOSALS_DIR", "/opt/myclaw/workspace/.synt/proposals")
+    os.environ.get("SYNT_PROPOSALS_DIR", str(_DEFAULT_WORKSPACE / ".synt" / "proposals"))
 )
 DEFAULT_REJECTED_DIR = Path(
-    os.environ.get("SYNT_REJECTED_DIR", "/opt/myclaw/workspace/.synt/rejected")
+    os.environ.get("SYNT_REJECTED_DIR", str(_DEFAULT_WORKSPACE / ".synt" / "rejected"))
 )
 
 # Stdlib whitelist conservativa per validazione import (cap. 4 scaffolding):
@@ -1118,7 +1121,7 @@ class Synt:
 
         # Locate parent manifest
         candidates = [
-            _P(f"/opt/myclaw/executors/{parent_name}/manifest.toml"),
+            _C.PATH_EXECUTORS / parent_name / "manifest.toml",
             _P.home() / f".local/share/metnos/executors/{parent_name}/manifest.toml",
         ]
         parent_manifest_path = None
@@ -1186,7 +1189,7 @@ class Synt:
         # Sign with synt key
         try:
             sign_proc = _sp.run(
-                ["python3", "/opt/myclaw/runtime/sign.py", "sign",
+                ["python3", str(_C.PATH_RUNTIME / "sign.py"), "sign",
                  str(target_dir), "synt"],
                 capture_output=True, text=True, timeout=10,
             )
@@ -1521,7 +1524,7 @@ class Synt:
         return out
 
     def approve_proposal(self, proposal_id: str, *,
-                         executors_dir: Path | str = "/opt/myclaw/executors",
+                         executors_dir: Path | str = str(_C.PATH_EXECUTORS),
                          key_name: str = "author") -> dict:
         """Stadi 6 (approval = chiamata stessa) + 7 (firma e install).
 
@@ -1664,9 +1667,12 @@ _CABLED_VAL = {val_repr}
 
 
 def _load_parent_invoke():
+    import os as _os
+    _user_data = Path(_os.environ.get("METNOS_USER_DATA",
+                                       str(Path.home() / ".local/share/metnos")))
     candidates = [
-        Path(f"/opt/myclaw/executors/{{_PARENT_NAME}}/{{_PARENT_NAME}}.py"),
-        Path.home() / f".local/share/metnos/executors/{{_PARENT_NAME}}/{{_PARENT_NAME}}.py",
+        Path(f"{_C.PATH_EXECUTORS}/{{_PARENT_NAME}}/{{_PARENT_NAME}}.py"),
+        _user_data / f"executors/{{_PARENT_NAME}}/{{_PARENT_NAME}}.py",
     ]
     for p in candidates:
         if p.exists():
@@ -1895,7 +1901,7 @@ def _cli():
     sub.add_parser("proposals", help="Lista le proposte pendenti")
     p_app = sub.add_parser("approve", help="Approva una proposta (firma + install)")
     p_app.add_argument("proposal_id")
-    p_app.add_argument("--executors-dir", default="/opt/myclaw/executors")
+    p_app.add_argument("--executors-dir", default=str(_C.PATH_EXECUTORS))
     p_app.add_argument("--key-name", default="author")
     p_rej = sub.add_parser("reject", help="Rigetta una proposta (lock 30gg)")
     p_rej.add_argument("proposal_id")

@@ -4,8 +4,8 @@ from __future__ import annotations
 import json
 import sys
 
-if "/opt/myclaw/runtime" not in sys.path:
-    sys.path.insert(0, "/opt/myclaw/runtime")
+if "<install_root>/runtime" not in sys.path:
+    sys.path.insert(0, str(__import__("pathlib").Path(__file__).resolve().parents[1]))
 
 from utf8_safe import strip_surrogates, clean_obj, safe_json_dumps  # type: ignore
 

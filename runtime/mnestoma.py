@@ -104,8 +104,10 @@ CREATE INDEX IF NOT EXISTS idx_events_ts      ON events(ts);
 -- idx_events_turn_id: creato dalla migration in __init__ (su DB pre-1/5/2026
 -- la colonna turn_id non esiste ancora a executescript-time).
 
-DROP VIEW IF EXISTS v_mnestoma;
-CREATE VIEW v_mnestoma AS
+-- §7.9: idempotente race-safe (no DROP+CREATE: connection concurrent
+-- collide su "view already exists"). Se lo schema della view cambia
+-- in futuro, gestire migration esplicita una volta nel boot, non qui.
+CREATE VIEW IF NOT EXISTS v_mnestoma AS
 SELECT id, src_executor, src_version, dst_executor, dst_version,
        weight, uses, ts_last, state, tags, desired_sig
 FROM mnests

@@ -6,7 +6,7 @@ API principale: `admit_skill_import(parsed_skill, plans)` -> AdmissionReport.
 Layer applicati:
 - L1 vocab gate: nome deve essere `azione_oggetto[_qualifier]` con
   verb in vocab.ACTIONS e obj in vocab.OBJECTS.
-- L2 affinity overlap (jaccard 0.5): vs handcrafted in /opt/myclaw/executors
+- L2 affinity overlap (jaccard 0.5): vs handcrafted in /opt/metnos/executors
   + altri synth gia' presenti in ~/.local/share/metnos/executors. RIFIUTA
   il singolo plan in collisione, non l'intero import.
 - L3 efficacy ager: NON applicato a admission-time (l'ager opera live
@@ -76,10 +76,10 @@ class AdmissionReport:
 
 def _load_vocab():
     """Carica vocab.py canonico. Test isolation: ritorna fallback se
-    /opt/myclaw non disponibile.
+    /opt/metnos non disponibile.
     """
     try:
-        runtime_canonical = Path("/opt/myclaw/runtime")
+        runtime_canonical = Path(__file__).resolve().parent  # ADR 0148 rename-resilient
         if runtime_canonical.exists() and str(runtime_canonical) not in sys.path:
             sys.path.insert(0, str(runtime_canonical))
         import vocab  # type: ignore
@@ -156,11 +156,12 @@ def _vocab_gate(plan, verbs, objs, quals, binding: str = "") -> tuple[bool, str]
 # ---------------------------------------------------------------------------
 
 
+import config as _C  # §7.11
 HANDCRAFTED_FAMILIES = (
-    "/opt/myclaw/executors",
+    str(_C.PATH_EXECUTORS),
 )
 SYNTH_DIRS = (
-    str(Path.home() / ".local/share/metnos/executors"),
+    str(_C.PATH_SYNTH_EXECUTORS),
 )
 
 
@@ -255,23 +256,108 @@ def _affinity_overlap_check(plan, plan_affinity, scan_handcrafted, scan_synth,
 def _smoke_case_for_plan(plan) -> dict:
     """Ritorna un BATTERY case proposto per smoke.py (ADR 0114 L5).
 
-    NON modifica /opt/myclaw/runtime/smoke.py; e' solo una proposta nel
+    NON modifica /opt/metnos/runtime/smoke.py; e' solo una proposta nel
     audit log per review manuale.
+
+    Genera solo case CON query realistica IT dalla mappa `queries_by_pattern`.
+    Per i pattern non mappati ritorna `_no_smoke=True`: `_add_smoke_cases_for`
+    skippa l'auto-add per evitare bad test data (es. query stub
+    "write files" senza target → loop CYCLIC_CALL o intercept
+    route_intent ADR 0129).
+
+    Ogni entry della mappa specifica ESPLICITAMENTE sia la query
+    realistica sia l'`expected_first_tool` builtin attualmente in
+    catalogo. Importante: alcuni verbi del vocab §2.2 (find/set)
+    NON hanno tool builtin per certi object — il PLANNER usa il
+    canonical sinonimo (es. `find_messages` non esiste → `read_messages`;
+    `set_events` non esiste → `create_events`). La mappa rispecchia
+    questa realta'; se aggiungi un tool canonical nuovo, aggiorna qui.
     """
-    queries_by_pattern = {
-        ("read", "events"):   "elenca i miei appuntamenti di domani",
-        ("set", "events"):    "crea un evento standup alle 10",
-        ("delete", "events"): "cancella l'evento abc-123",
-        ("find", "messages"): "cerca le mail non lette",
-        ("send", "messages"): "scrivi a Roberto",
-        ("set", "files_xlsx"): "crea un foglio di calcolo",
-        ("find", "files"):    "cerca i miei documenti",
+    # Mappa pattern (verb, obj_or_obj_qual) → {query, expected_first_tool}
+    # `expected_first_tool` deve essere il NOME REALMENTE PRESENTE nel
+    # catalogo builtin (eventualmente diverso dal verb del plan).
+    queries_by_pattern: dict[tuple[str, str], dict[str, str]] = {
+        # events
+        ("read",   "events"):    {"query": "elenca i miei appuntamenti di domani",
+                                  "expected_first_tool": "read_events"},
+        ("find",   "events"):    {"query": "trova eventi con MNM nei prossimi 7 giorni",
+                                  "expected_first_tool": "read_events"},
+        ("set",    "events"):    {"query": "crea un evento standup domani alle 10",
+                                  "expected_first_tool": "create_events"},
+        ("create", "events"):    {"query": "crea un evento standup domani alle 10",
+                                  "expected_first_tool": "create_events"},
+        ("delete", "events"):    {"query": "cancella l'evento abc-123",
+                                  "expected_first_tool": "delete_events"},
+        # messages (canale email/IMAP/SMTP); find/read entrambi vanno a read_messages.
+        ("find",   "messages"):  {"query": "cerca le mail non lette",
+                                  "expected_first_tool": "read_messages"},
+        ("read",   "messages"):  {"query": "leggi le mail di oggi",
+                                  "expected_first_tool": "read_messages"},
+        ("send",   "messages"):  {"query": "scrivi a Roberto: ciao, ci vediamo alle 8",
+                                  "expected_first_tool": "send_messages"},
+        ("move",   "messages"):  {"query": "sposta nella cartella Junk le mail di spam",
+                                  "expected_first_tool": "move_messages"},
+        ("set",    "messages"):  {"query": "marca come letta l'ultima mail di Aruba",
+                                  "expected_first_tool": "read_messages"},
+        # files
+        ("find",   "files"):     {"query": "cerca i documenti pdf in /tmp",
+                                  "expected_first_tool": "find_files"},
+        ("read",   "files"):     {"query": "leggi /tmp/note.txt",
+                                  "expected_first_tool": "read_files"},
+        ("write",  "files"):     {"query": "scrivi 'ciao' in /tmp/out.txt",
+                                  "expected_first_tool": "write_files"},
+        ("delete", "files"):     {"query": "cancella /tmp/note.txt",
+                                  "expected_first_tool": "delete_files"},
+        ("move",   "files"):     {"query": "sposta /tmp/a.txt in /tmp/b.txt",
+                                  "expected_first_tool": "move_files"},
+        ("change", "files"):     {"query": "rinomina /tmp/a.txt in /tmp/b.txt",
+                                  "expected_first_tool": "move_files"},
+        ("get",    "files"):     {"query": "metadata di /tmp/note.txt",
+                                  "expected_first_tool": "get_files_metadata"},
+        # files con qualifier formato: solo i tool effettivamente builtin
+        # in /opt/metnos/executors/. Per write/change xlsx esiste solo
+        # read_files_xlsx — gli altri sono solo tool importati provider
+        # qualified (write_files_xlsx_google_workspace) che potrebbero
+        # non essere routati senza marker provider. Lasciali fuori.
+        ("read",   "files_xlsx"):  {"query": "leggi /tmp/foglio.xlsx",
+                                    "expected_first_tool": "read_files_xlsx"},
+        ("set",    "files_text"):  {"query": "crea un documento /tmp/doc.md",
+                                    "expected_first_tool": "write_files"},
+        ("read",   "files_text"):  {"query": "leggi /tmp/doc.md",
+                                    "expected_first_tool": "read_files"},
+        ("write",  "files_text"):  {"query": "scrivi una nota in /tmp/doc.md",
+                                    "expected_first_tool": "write_files"},
+        ("change", "files_text"):  {"query": "modifica il titolo di /tmp/doc.md",
+                                    "expected_first_tool": "write_files"},
+        # dirs
+        ("create", "dirs"):      {"query": "crea cartella /tmp/nuova",
+                                  "expected_first_tool": "create_dirs"},
+        ("list",   "dirs"):      {"query": "elenca i file in /tmp",
+                                  "expected_first_tool": "list_dirs"},
+        ("delete", "dirs"):      {"query": "cancella la cartella /tmp/nuova",
+                                  "expected_first_tool": "delete_dirs"},
+        # contacts
+        ("read",   "contacts"):  {"query": "mostra il contatto di Roberto",
+                                  "expected_first_tool": "read_contacts"},
+        ("find",   "contacts"):  {"query": "cerca il contatto di Lucia",
+                                  "expected_first_tool": "read_contacts"},
+        # share (ACL grant remoto, builtin canonical da definire)
+        ("share",  "files"):     {"query": "condividi /tmp/foglio.xlsx con lucia@example.com",
+                                  "expected_first_tool": "share_files"},
     }
     key = (plan.verb, plan.obj if not plan.qualifier else f"{plan.obj}_{plan.qualifier}")
-    query = queries_by_pattern.get(key, f"{plan.verb} {plan.obj}")
+    entry = queries_by_pattern.get(key)
+    if not entry:
+        # Pattern non mappato: NON aggiungere allo smoke. Una query stub
+        # generica "verb object" produce loop/intercept route_intent e
+        # rompe il pass-rate della battery con falsi negativi.
+        return {
+            "_no_smoke": True,
+            "_reason": f"no realistic query for pattern {key!r}",
+        }
     return {
-        "query": query,
-        "expected_first_tool": plan.name,
+        "query": entry["query"],
+        "expected_first_tool": entry["expected_first_tool"],
         "expected_arg_keys": [a.name for a in plan.args[:3]],
         "min_pass_rate": 0.9,
         "note": "auto-generated by skill_admission L5",
@@ -287,7 +373,7 @@ def _stage6_verify_callable() -> Callable:
     """Risolve la callable di stage 6.
 
     1. METNOS_STAGE6_VERIFY_FAKE=mod.fn override (test).
-    2. /opt/myclaw/runtime/synt_stage6_verify.py se importabile.
+    2. /opt/metnos/runtime/synt_stage6_verify.py se importabile.
     3. fallback aligned=True (graceful-degrade: no false reject quando LLM offline).
     """
     fake = os.environ.get("METNOS_STAGE6_VERIFY_FAKE")
@@ -303,7 +389,7 @@ def _stage6_verify_callable() -> Callable:
                 pass
 
     try:
-        runtime_canonical = Path("/opt/myclaw/runtime")
+        runtime_canonical = Path(__file__).resolve().parent  # ADR 0148 rename-resilient
         if runtime_canonical.exists() and str(runtime_canonical) not in sys.path:
             sys.path.insert(0, str(runtime_canonical))
         from synt_stage6_verify import verify_semantic_alignment  # type: ignore
@@ -339,29 +425,35 @@ def _stage6_check(plan, manifest_path, code_path, verifier) -> tuple[bool, str]:
 
 
 def _audit_log_path() -> Path:
-    base = Path(os.environ.get(
-        "METNOS_AUDIT_DIR",
-        str(Path.home() / ".local/share/metnos/synth_audit"),
-    ))
+    """Audit log dir. Rispetta METNOS_USER_DATA (§7.11) per isolamento test/e2e.
+    Override esplicito via METNOS_AUDIT_DIR."""
+    override = os.environ.get("METNOS_AUDIT_DIR")
+    if override:
+        base = Path(override)
+    else:
+        user_data = os.environ.get(
+            "METNOS_USER_DATA",
+            str(_C.PATH_USER_DATA),
+        )
+        base = Path(user_data) / "synth_audit"
     base.mkdir(parents=True, exist_ok=True)
     return base / "imports.jsonl"
 
 
 def _existing_bindings() -> set:
-    """Scan imports.jsonl per binding gia' usati."""
-    path = _audit_log_path()
-    if not path.exists():
+    """Scan `_imports/` on-disk per binding ATTUALMENTE registrati.
+
+    Single source of truth = lo stato fisico del catalog, NON l'audit
+    storico (che mantiene record append-only anche dopo uninstall). Cosi'
+    uninstall → re-import funziona senza false "already in use".
+
+    Razionale §7.3: l'invariante "binding unico cross-skill" e' uno
+    stato di sistema corrente, non un fatto storico permanente.
+    """
+    base = _C.PATH_USER_DATA / "executors" / "_imports"
+    if not base.is_dir():
         return set()
-    out = set()
-    for line in path.read_text(encoding="utf-8").splitlines():
-        try:
-            entry = json.loads(line)
-        except json.JSONDecodeError:
-            continue
-        b = entry.get("binding")
-        if b:
-            out.add(b)
-    return out
+    return {p.name for p in base.iterdir() if p.is_dir()}
 
 
 def _binding_uniqueness_check(parsed_skill, existing) -> tuple[bool, str]:
@@ -401,7 +493,10 @@ def admit_skill_import(parsed_skill, plans, *,
     handcrafted_aff = _scan_existing_executors(HANDCRAFTED_FAMILIES)
     synth_aff = _scan_existing_executors(SYNTH_DIRS)
     verifier = _stage6_verify_callable()
-    existing_bindings = _existing_bindings()
+    # Existing bindings = catalog corrente ON-DISK, escludendo la skill che
+    # stiamo importando (la pipeline codegen ha gia' creato la dir prima
+    # del check). Senza esclusione, ogni import fallirebbe self-collision.
+    existing_bindings = _existing_bindings() - {parsed_skill.name}
 
     report = AdmissionReport(skill_name=parsed_skill.name)
     report.audit_log_path = str(_audit_log_path())

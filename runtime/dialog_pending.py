@@ -61,7 +61,11 @@ from logging_setup import get_logger
 log = get_logger(__name__)
 
 # Path canonico esposto come modulo-level per facilitare test (monkeypatch).
-DIALOG_DIR = Path.home() / ".local" / "share" / "metnos" / "get_inputs"
+# §7.11: deriva da config.PATH_USER_DATA (env METNOS_USER_DATA override).
+# Senza, dialog pending finivano in `~/.local/share/metnos/get_inputs/`
+# anche con server tmp E2E → cross-contamination state tra test.
+import config as _C
+DIALOG_DIR = _C.PATH_USER_DATA / "get_inputs"
 
 # Soft TTL: scaduti dopo 1h senza progressi (override per dialogo via
 # `timeout_s`). Lavora insieme al cleanup_expired chiamato a inizio turno.

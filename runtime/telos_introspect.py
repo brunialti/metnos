@@ -37,7 +37,9 @@ from typing import Callable, Optional
 
 _LOG = logging.getLogger(__name__)
 
-TELEMETRY_PATH = Path.home() / ".local" / "share" / "metnos" / "telos_proposals.jsonl"
+import config as _C  # §7.11
+
+TELEMETRY_PATH = _C.PATH_USER_DATA / "telos_proposals.jsonl"
 
 # LLM default per le lenti: Gemma 4 26B locale via llama-server :8080.
 # Bypass LLMRouter (che secondo `~/.config/metnos/llm_tiers.toml` instrada
@@ -111,12 +113,11 @@ def _build_mnestoma_summary(
 def _build_user_patterns(days: int = 30, top_n: int = 8) -> str:
     """Sintesi dei verbi/oggetti piu' usati di recente dal turn_log."""
     try:
-        import config as _C
         from collections import Counter
         verb_counts: Counter = Counter()
         n_turns = 0
         turn_dir = _C.PATH_TURNS if hasattr(_C, "PATH_TURNS") else (
-            Path.home() / ".local" / "share" / "metnos" / "turns"
+            _C.PATH_USER_DATA / "turns"
         )
         now = time.time()
         cutoff = now - days * 86400

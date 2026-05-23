@@ -16,7 +16,11 @@ from pathlib import Path
 from .models import Run, ScheduleEntry
 
 
-DEFAULT_DB_PATH = Path.home() / ".local/state/metnos/scheduler_v2.sqlite"
+# §7.11: rispetta METNOS_USER_STATE per isolamento test/e2e via config.
+import sys as _sys
+_sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+import config as _C
+DEFAULT_DB_PATH = _C.PATH_USER_STATE / "scheduler_v2.sqlite"
 
 
 _SCHEMA = """

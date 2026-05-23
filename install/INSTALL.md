@@ -1,7 +1,7 @@
 # Metnos — Installazione
 
 Questo documento descrive come installare Metnos su un nodo nuovo a partire
-dal repository in `/opt/myclaw`. La fonte unica di verita' delle componenti
+dal repository in `/opt/metnos`. La fonte unica di verita' delle componenti
 (pacchetti Python, pacchetti di sistema, modelli ML, servizi systemd,
 directory, template di config, secret) e' `install/manifest.toml`.
 
@@ -28,10 +28,10 @@ Tre passi obbligatori + uno opzionale.
 ### 1. Clonare il repository
 
 ```bash
-sudo mkdir -p /opt/myclaw
-sudo chown $USER:$USER /opt/myclaw
-git clone <repo-url> /opt/myclaw
-cd /opt/myclaw
+sudo mkdir -p /opt/metnos
+sudo chown $USER:$USER /opt/metnos
+git clone <repo-url> /opt/metnos
+cd /opt/metnos
 git checkout <ramo-stable>      # o main / un tag
 ```
 
@@ -101,7 +101,7 @@ sudo systemctl enable --now metnos-i18n-translator.timer
 
 # User unit Telegram (se pairato)
 mkdir -p ~/.config/systemd/user
-cp /opt/myclaw/systemd/metnos-telegram-daemon.service ~/.config/systemd/user/
+cp /opt/metnos/systemd/metnos-telegram-daemon.service ~/.config/systemd/user/
 systemctl --user daemon-reload
 systemctl --user enable --now metnos-telegram-daemon
 ```
@@ -161,12 +161,12 @@ del modello VLM (es. Qwen2-VL-7B → 14B) richiede un trigger manuale:
 
 ```bash
 systemd-run --user --unit=metnos-vlm-enrich-rebuild \
-  --setenv=PYTHONPATH=/opt/myclaw/runtime:/opt/suprastructure/src \
+  --setenv=PYTHONPATH=/opt/metnos/runtime:/opt/suprastructure/src \
   --setenv=METNOS_VLM_URL=http://127.0.0.1:8081 \
   --setenv=METNOS_PROGRESS_FILE=$HOME/.local/share/metnos/index/image/<sha8>/_progress.json \
   /opt/suprastructure/.venv/bin/python -c "
-import sys; sys.path.insert(0, '/opt/myclaw/runtime')
-sys.path.insert(0, '/opt/myclaw/executors/create_images_indices')
+import sys; sys.path.insert(0, '/opt/metnos/runtime')
+sys.path.insert(0, '/opt/metnos/executors/create_images_indices')
 import create_images_indices as m
 print(m.invoke({'base_path': '$HOME/.local/share/metnos/Immagini', 'force': True, 'recursive': True}))
 "

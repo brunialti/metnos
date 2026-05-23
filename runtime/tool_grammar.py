@@ -487,10 +487,13 @@ def _emit_tool_args(tool_name: str, schema: dict | None
 # --------------------------------------------------------------------------
 
 FINAL_ANSWER_TOOL_NAME = "final_answer"
+DISAMBIG_TOOL_NAME = "request_disambiguation_from_user"
 
 
 def generate_tool_grammar(tools: Sequence[Any], *,
-                            allow_final_answer: bool = False) -> str:
+                            allow_final_answer: bool = False,
+                            allow_disambiguation: bool = False,
+                            include_canonical_query: bool = False) -> str:
     """Genera grammar GBNF per il pool `tools`. Emit ONLY primitives
     effettivamente referenziate (dependency tracking). Workaround bug
     llama-server 14/5/2026: regole UNUSED interferiscono col matching.
@@ -574,10 +577,43 @@ def generate_tool_grammar(tools: Sequence[Any], *,
         pair_names.append("pairFinalAnswer")
         used_primitives.add("jsonStr")
 
+    # Synthetic `request_disambiguation_from_user({question, options})`
+    # (Test 6 fix sistemico, 16/5/2026). Il PLANNER lo emette quando
+    # rileva due interpretazioni plausibili invece di scegliere
+    # arbitrariamente. Args:
+    #   question: stringa, la domanda da porre all'utente
+    #   options: array di 2+ stringhe (label leggibili)
+    # Runtime intercetta -> get_inputs(kind=choice) -> resume con
+    # scelta = nuova user_query.
+    if allow_disambiguation:
+        pair_rules.append(
+            f"pairRequestDisambig ::= \"\\\"{DISAMBIG_TOOL_NAME}\\\"\" "
+            f"sep \"\\\"arguments\\\"\" colon "
+            f"(\"{{\" ws \"\\\"question\\\"\" colon jsonStr ws "
+            f"\",\" ws \"\\\"options\\\"\" colon "
+            f"\"[\" ws jsonStr ws (\",\" ws jsonStr ws)+ \"]\" ws \"}}\")"
+        )
+        pair_names.append("pairRequestDisambig")
+        used_primitives.add("jsonStr")
+
+    # ADR 0149: opt-in by-product `canonical_query` (top-level sibling of
+    # name/arguments). LLM emits the lemma form of the user query alongside
+    # the tool_call. Cost: ~50 ms output tokens. Consumed by mnestoma for
+    # future fast-path promotion. Off by default for back-compat.
+    if include_canonical_query:
+        used_primitives.add("jsonStr")
+        prims = _emit_primitives(used_primitives)
+
     grammar = list(prims) + [""]
-    grammar.append(
-        "root ::= \"{\" ws \"\\\"name\\\"\" colon (" + " | ".join(pair_names) + ") ws \"}\""
-    )
+    if include_canonical_query:
+        grammar.append(
+            "root ::= \"{\" ws \"\\\"name\\\"\" colon (" + " | ".join(pair_names) +
+            ") sep \"\\\"canonical_query\\\"\" colon jsonStr ws \"}\""
+        )
+    else:
+        grammar.append(
+            "root ::= \"{\" ws \"\\\"name\\\"\" colon (" + " | ".join(pair_names) + ") ws \"}\""
+        )
     grammar.extend(pair_rules)
     grammar.extend(schema_lines)
     return "\n".join(grammar)
@@ -588,7 +624,8 @@ def generate_tool_grammar(tools: Sequence[Any], *,
 # --------------------------------------------------------------------------
 
 def validate_tool_call(tool_call: dict, tools: Sequence[Any], *,
-                         allow_final_answer: bool = False
+                         allow_final_answer: bool = False,
+                         allow_disambiguation: bool = False
                          ) -> tuple[bool, str]:
     """Valida tool_call sulla SOLA correttezza top-level (required keys
     presenti + tipo dict). Non valida nested schemas: l'executor stesso
@@ -618,6 +655,21 @@ def validate_tool_call(tool_call: dict, tools: Sequence[Any], *,
         msg_val = args.get("message")
         if not isinstance(msg_val, str):
             return False, "final_answer richiede 'message' (string)"
+        return True, ""
+    if allow_disambiguation and name == DISAMBIG_TOOL_NAME:
+        if not isinstance(args, dict):
+            return False, "arguments deve essere object"
+        q_val = args.get("question")
+        if not isinstance(q_val, str) or not q_val.strip():
+            return False, (f"{DISAMBIG_TOOL_NAME} richiede 'question' "
+                           "(string non vuota)")
+        opts = args.get("options")
+        if not isinstance(opts, list) or len(opts) < 2:
+            return False, (f"{DISAMBIG_TOOL_NAME} richiede 'options' "
+                           "(array di almeno 2 stringhe)")
+        if not all(isinstance(o, str) and o.strip() for o in opts):
+            return False, (f"{DISAMBIG_TOOL_NAME}: ogni option deve essere "
+                           "stringa non vuota")
         return True, ""
     target_schema = None
     for t in tools:
@@ -652,6 +704,11 @@ _PROVIDER_SUFFIX_MARKERS: dict[str, tuple[str, ...]] = {
         "google", "drive", "gmail", "gdrive",
         "workspace", "calendar google", "g suite",
     ),
+    "_github": (
+        "github", "pr", "issue", "issues",
+        "repo", "repository", "commit", "branch",
+        "workflow", "gist", "fork", "merge",
+    ),
 }
 
 _UNDO_MARKERS: tuple[str, ...] = (
@@ -659,6 +716,24 @@ _UNDO_MARKERS: tuple[str, ...] = (
     "undo", "ripristina", "ripristino", "ripristinare",
     "torna indietro", "torna su", "rollback",
     "disfa", "disfare", "annulla l'ultimo",
+)
+
+# Markers semantici per `*_tasks` (scheduler v2). Se la query NON contiene
+# nessun marker, escludi `create/list/delete/read/set_tasks` +
+# `read_tasks_history` dal pool grammar. Senza, il PLANNER LLM li seleziona
+# erroneamente su query mail/file/etc (es. "cerca mail bookings" → PLANNER
+# scelse read_tasks_history per ambiguità nome).
+_TASKS_MARKERS: tuple[str, ...] = (
+    "task", "tasks", "schedule", "scheduled", "schedula", "schedulare",
+    "ricorrente", "ricorrenti", "promemoria", "reminder", "timer",
+    "ricordami", "ricordati", "ricorda", "remind",
+    "ogni", "every", "daily", "weekly", "hourly", "fra",
+    "storico", "history", "esecuzione", "esecuzioni",
+    "cancella task", "elenca task", "lista task",
+)
+_TASKS_NAMES: tuple[str, ...] = (
+    "create_tasks", "list_tasks", "delete_tasks",
+    "read_tasks", "set_tasks", "read_tasks_history",
 )
 
 
@@ -704,11 +779,24 @@ def filter_pool_for_grammar(tools: Sequence[Any], user_query: str,
         excluded.append("request_location_from_user")
     if not _has_word(query_lc, _UNDO_MARKERS):
         excluded.append("undo_last_turn")
+    # Tasks builtin: escludi se query non ha marker scheduling (anti-bait
+    # del PLANNER LLM su query mail/file ambigue).
+    if not _has_word(query_lc, _TASKS_MARKERS):
+        excluded.extend(_TASKS_NAMES)
+    # Indice nomi presenti nel pool (per il check "esiste canonical?")
+    _names_in_pool = {_extract_name(t) for t in tools}
     for suffix, markers in _PROVIDER_SUFFIX_MARKERS.items():
         if not _has_word(query_lc, markers):
             for t in tools:
                 name = _extract_name(t)
-                if name.endswith(suffix):
+                if not name.endswith(suffix):
+                    continue
+                # Canonical equivalente = name senza il suffix provider.
+                # Se il canonical NON e' nel pool (es. nascosto via
+                # METNOS_HIDE_EXECUTORS in test E2E), tenere il provider-
+                # suffixed: e' l'unica opzione semantica disponibile.
+                canonical_name = name[: -len(suffix)].rstrip("_")
+                if canonical_name in _names_in_pool:
                     excluded.append(name)
     filtered = [t for t in tools if _extract_name(t) not in excluded]
     # Safety: se filter ha azzerato il pool, ripristina originale.

@@ -14,18 +14,21 @@ Bench corpus: lo stesso `bench_prefilter_categorized.CORPUS` (91 query con GT).
 Metriche: recall@K e per-categoria.
 
 Run:
-  /opt/suprastructure/.venv/bin/python /opt/myclaw/runtime/bench_text_formulation.py
+  /opt/suprastructure/.venv/bin/python <install_root>/runtime/bench_text_formulation.py
 """
 from __future__ import annotations
 
 import json
 import re
+import os
 import sys
 import time
 from pathlib import Path
 
 sys.path.insert(0, "/usr/lib/python3/dist-packages")
-sys.path.insert(0, "/opt/myclaw/runtime")
+_RUNTIME = os.environ.get("METNOS_RUNTIME") or str(Path(__file__).resolve().parent)
+if _RUNTIME not in sys.path:
+    sys.path.insert(0, _RUNTIME)
 sys.path.insert(0, "/opt/suprastructure/src")
 
 import numpy as np  # noqa: E402
@@ -34,7 +37,7 @@ from loader import load_catalog  # noqa: E402
 from suprastructure.embedding.onnx_embedding import EmbeddingService  # noqa: E402
 from bench_prefilter_categorized import CORPUS  # noqa: E402
 
-MODEL_DIR = "/opt/myclaw/models/embedding"
+MODEL_DIR_FN = lambda: str(Path(_RUNTIME).parent / "models" / "embedding")
 KS = (3, 5, 8)
 
 
@@ -181,7 +184,7 @@ def main():
                 row += f" {pct:>13.1f}%"
         print(row)
 
-    out = Path("/opt/myclaw/runtime/bench_text_formulation.result.json")
+    out = Path(__file__).resolve().parents[1] / "runtime/bench_text_formulation.result.json"
     out.write_text(json.dumps(summary, indent=2, ensure_ascii=False))
     print(f"\n  → JSON → {out}")
 

@@ -62,6 +62,19 @@ rules:
     ok: "«book appointment Wednesday morning after 9 for 1h if there is a slot» -> get_now -> find_events_empty(time_windows=[\"next-wed\"], size=\"1hour\", time_of_day=\"morning\") -> create_events(start=<step2.entries[0].start>, end=<step2.entries[0].end>) -> final_answer. OR «book appointment Wednesday 9-10 if there is a slot» -> get_now -> read_events(...) -> create_events(...) -> final_answer"
     error: "«book appointment Wednesday morning» -> filter_entries(from_step=1, where_field=\"start\") (THIS IS AN ERROR: from_step=1 at non-existent first step §4.2; filter_entries operates on in-memory lists, not the calendar). OR «if there is a slot» -> create_events (wrong Step 3) -> read_events sees the just-created event"
 
+  - name: events_overlap_intersect
+    when: "question about temporal OVERLAP between two categories of events («is there an HLT event that overlaps with an MNM one», «overlap between X and Y», «events from client A that fall together with events from client B»)"
+    must: |
+      Pipeline §7.3 in 4 steps:
+      1. get_now + read_events(time_window=...) → all events in the window
+      2. filter_entries(from_step=1, where_field='summary', where_starts_with='<prefix A>') → list A
+      3. filter_entries(from_step=1, where_field='summary', where_starts_with='<prefix B>') → list B
+      4. filter_lists(op='overlap', from_step=<step A>, with_step=<step B>) → events from A that overlap temporally with events from B (auto-detect start/end)
+      5. final_answer with overlap list or «no overlap»
+    must_not: "compute the overlap by manually reading N read_events steps: doesn't scale, fragile, produces hallucination. DO NOT use 5+ filter_entries calls — the AND between two lists is filter_lists(op='overlap'). DO NOT use find_events_empty for overlap (find_events_empty looks for FREE slots, not overlaps)"
+    ok: "«HLT overlapping MNM in the next 3 months» -> get_now -> read_events(time_window='next-3m') -> filter_entries(from_step=2, where_starts_with='HLT') -> filter_entries(from_step=2, where_starts_with='MNM') -> filter_lists(op='overlap', from_step=3, with_step=4) -> final_answer"
+    error: "«overlap HLT MNM» -> filter_entries x5 with identical args (THIS IS AN ERROR: without filter_lists the PLANNER cannot compute the AND between two lists, ends up in a loop)"
+
   - name: date_relative_resolution
     when: "query contains ANY relative date: today, yesterday, tomorrow, day-after-tomorrow, monday..sunday, «next week», «next month», «within N days», «N days ago», «tonight», «this morning», «this evening»"
     must: "invoke get_now as the FIRST step and read the ISO date from the result. Then read_events/create_events with start/end ISO 8601 + offset (e.g. \"2026-05-13T09:00:00+02:00\"). time_window canonical (\"today\", \"tomorrow\", \"last-Nd\", \"next-Nd\", ISO range \"YYYY-MM-DD/YYYY-MM-DD\"): English «tomorrow/today/yesterday» mapped by runtime/time_window_parser.py"

@@ -35,7 +35,9 @@ import uuid
 from pathlib import Path
 from typing import Any
 
-DEFAULT_DB_PATH = Path.home() / ".local" / "share" / "metnos" / "users.db"
+import config as _C  # §7.11
+
+DEFAULT_DB_PATH = _C.PATH_USER_DATA / "users.db"
 
 ROLES = ("host", "guest")
 AUTONOMY_LEVELS = ("read_only", "restricted", "full")

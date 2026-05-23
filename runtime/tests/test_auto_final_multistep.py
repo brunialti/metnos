@@ -102,7 +102,7 @@ class TestAutoFinalMultistepSkip(unittest.TestCase):
         """Query con «e mandami email» → auto-final NON triggera."""
         from agent_runtime import (
             _query_has_continuation,
-            _AUTO_FINAL_TRANSFORMATIVE,
+            _is_auto_final_transformative,
         )
         q = "fissa appuntamento mercoledi se c'è posto e mandami email"
         chosen_name = "create_events"
@@ -113,7 +113,7 @@ class TestAutoFinalMultistepSkip(unittest.TestCase):
         }
         # Simulazione della condizione runtime (post-fix):
         triggered = (
-            chosen_name in _AUTO_FINAL_TRANSFORMATIVE
+            _is_auto_final_transformative(chosen_name)
             and obs.get("ok") is True
             and isinstance(obs.get("_undo"), dict)
             and obs.get("_undo", {}).get("ids")
@@ -127,7 +127,7 @@ class TestAutoFinalMultistepSkip(unittest.TestCase):
         """Query mono-step → auto-final TRIGGERA (preserva fix anti-loop)."""
         from agent_runtime import (
             _query_has_continuation,
-            _AUTO_FINAL_TRANSFORMATIVE,
+            _is_auto_final_transformative,
         )
         q = "fissa appuntamento mercoledi 16 alle 9 per mezz'ora"
         chosen_name = "create_events"
@@ -137,7 +137,7 @@ class TestAutoFinalMultistepSkip(unittest.TestCase):
             "results": [{"id": "evt_456"}],
         }
         triggered = (
-            chosen_name in _AUTO_FINAL_TRANSFORMATIVE
+            _is_auto_final_transformative(chosen_name)
             and obs.get("ok") is True
             and isinstance(obs.get("_undo"), dict)
             and obs.get("_undo", {}).get("ids")
@@ -151,7 +151,7 @@ class TestAutoFinalMultistepSkip(unittest.TestCase):
         """«fissa o X o Y» = alternativa: NON multi-step, auto-final OK."""
         from agent_runtime import (
             _query_has_continuation,
-            _AUTO_FINAL_TRANSFORMATIVE,
+            _is_auto_final_transformative,
         )
         q = "fissa appuntamento o mercoledi o giovedi alle 9"
         chosen_name = "create_events"
@@ -161,7 +161,7 @@ class TestAutoFinalMultistepSkip(unittest.TestCase):
             "results": [{"id": "evt_x"}],
         }
         triggered = (
-            chosen_name in _AUTO_FINAL_TRANSFORMATIVE
+            _is_auto_final_transformative(chosen_name)
             and obs.get("ok") is True
             and isinstance(obs.get("_undo"), dict)
             and obs.get("_undo", {}).get("ids")

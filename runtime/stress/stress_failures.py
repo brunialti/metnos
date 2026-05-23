@@ -89,7 +89,7 @@ expect = { ok = true }
 def F3_manifest_tampered_post_sign():
     section("F3 - Codice modificato post-firma -> loader rifiuta")
     tmp = Path(tempfile.mkdtemp())
-    src = Path("/opt/myclaw/executors/read_files")
+    src = Path(__file__).resolve().parents[2] / "executors/read_files"
     dst = tmp / "read_files"
     shutil.copytree(src, dst)
     # Modifica il codice senza ri-firmare

@@ -17,8 +17,8 @@ from unittest import mock
 _RUNTIME = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_RUNTIME))
 
-# Lo script send_messages.py vive in /opt/myclaw/executors/send_messages/
-_EXEC = Path("/opt/myclaw/executors/send_messages").resolve()
+# Lo script send_messages.py vive in <install_root>/executors/send_messages/
+_EXEC = (Path(__file__).resolve().parents[2] / "executors/send_messages").resolve()
 sys.path.insert(0, str(_EXEC))
 
 

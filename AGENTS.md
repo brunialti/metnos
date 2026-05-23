@@ -4,7 +4,7 @@ Ciao, agente. Questo è il tuo entry point. **Leggi questo file per primo.**
 
 ## TL;DR (30 secondi)
 
-`myclaw` è un assistente AI personale per uso domestico, Python ≥ 3.11, che gira a `/opt/myclaw/`. Costruisce **gateway + agent runtime + sandbox a strati + workspace** sopra [`suprastructure`](/opt/suprastructure/) (che fornisce LLM/STT/TTS/embedding/speaker-ID).
+`myclaw` è un assistente AI personale per uso domestico, Python ≥ 3.11. Install root resolved via `runtime.config.PATH_ROOT` (auto-derived da `__file__`, override env `METNOS_INSTALL_ROOT`). Su `.33` oggi gira a `/opt/myclaw/`; rinomina pianificata a `/opt/metnos/` sara' zero-config (ADR 0148). Costruisce **gateway + agent runtime + sandbox a strati + workspace** sopra `suprastructure` (LLM/STT/TTS/embedding/speaker-ID).
 
 **Stato attuale:** solo documentazione di architettura. Nessun codice ancora. Se ti è stato chiesto di implementare qualcosa, verifica prima con l'utente.
 
@@ -26,7 +26,7 @@ L'ordine è questo:
 - ✅ Default di sicurezza ALTI: bind `127.0.0.1`, autonomy `Supervised`, sandbox sempre attiva per tool shell/fs.
 - ✅ Usa `typing.Protocol` per le interfacce (stesso stile di suprastructure).
 - ✅ Aggiorna la documentazione **prima** del codice. Se la doc non copre un caso, ferma e scrivi prima la doc.
-- ✅ Prima di operazioni distruttive (refactor grossi, rimozione file): `tar czf /var/backups/myclaw/pre-$(date +%Y%m%d-%H%M).tar.gz /opt/myclaw`.
+- ✅ Prima di operazioni distruttive (refactor grossi, rimozione file): `tar czf $HOME/backups/metnos-pre-$(date +%Y%m%d-%H%M).tar.gz "$(python3 -c 'from runtime import config as C; print(C.PATH_ROOT)')"`.
 
 ### DO NOT
 

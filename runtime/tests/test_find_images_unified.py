@@ -399,10 +399,13 @@ class TestFindImagesUnified(unittest.TestCase):
         (idx_dir / "meta.json").write_text(json.dumps({
             "schema_version": 4, "n_entries": 2,
         }))
+        # Criterio non-text: paths_filter accetta entrambi, time_window 2024
+        # restringe a y24. (Test isolato del time_window filter, no text scoring.)
         with mock.patch("bge_embedding.BGEEmbeddingService", return_value=_StubBGE()):
             out = fii.invoke({
                 "base_path": str(self.corpus),
-                "query_text": "x",
+                "paths_filter": [str(self.corpus / "y24.jpg"),
+                                 str(self.corpus / "y23.jpg")],
                 "time_window": "2024",
             })
         self.assertTrue(out["ok"])

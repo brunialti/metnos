@@ -37,10 +37,12 @@ from cryptography.fernet import Fernet, InvalidToken
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 
+import config as _C  # §7.11
+
 
 # Path canonici. Esposti come modulo-level per facilitare test (monkeypatch).
-ADMIN_KEY_PATH = Path.home() / ".config" / "metnos" / "admin.key"
-CRED_DIR = Path.home() / ".config" / "metnos" / "credentials"
+ADMIN_KEY_PATH = _C.PATH_USER_CONFIG / "admin.key"
+CRED_DIR = _C.PATH_USER_CONFIG / "credentials"
 
 
 # Caratteri proibiti nel nome di dominio: bloccano path-traversal e

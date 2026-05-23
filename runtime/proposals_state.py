@@ -20,10 +20,11 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
+import config as _C  # §7.11 — rispetta METNOS_USER_STATE
 DB_PATH = Path(
     os.environ.get(
         "METNOS_PROPOSALS_STATE_DB",
-        str(Path.home() / ".local/state/metnos/proposals_state.db"),
+        str(_C.PATH_USER_STATE / "proposals_state.db"),
     )
 )
 

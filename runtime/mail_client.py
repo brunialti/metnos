@@ -23,6 +23,7 @@ from email import message_from_bytes
 from email.header import decode_header, make_header
 from pathlib import Path
 
+import config as _C  # §7.11 — rispetta METNOS_USER_CONFIG
 from logging_setup import get_logger
 log = get_logger(__name__)
 
@@ -85,7 +86,7 @@ def _account_creds(account: str) -> dict:
         return from_store
 
     if account in ("metnos_system", "metnos"):
-        env = _read_env(Path.home() / ".config/metnos/mail.env")
+        env = _read_env(_C.PATH_USER_CONFIG / "mail.env")
         return {
             "imap_host": env.get("METNOS_MAIL_HOST_IMAP", "imap.migadu.com"),
             "imap_port": int(env.get("METNOS_MAIL_PORT_IMAP", "993")),
@@ -96,7 +97,7 @@ def _account_creds(account: str) -> dict:
             "verify_tls": True,
         }
     if account == "metnos_roberto":
-        env = _read_env(Path.home() / ".config/metnos/mail.env")
+        env = _read_env(_C.PATH_USER_CONFIG / "mail.env")
         return {
             "imap_host": env.get("METNOS_MAIL_HOST_IMAP", "imap.migadu.com"),
             "imap_port": int(env.get("METNOS_MAIL_PORT_IMAP", "993")),
@@ -120,7 +121,7 @@ def _account_creds(account: str) -> dict:
     # Fallback dinamico: ~/.config/metnos/mail/<account>.env con schema
     # neutro (HOST_IMAP, PORT_IMAP, HOST_SMTP, PORT_SMTP, USER, PASS,
     # VERIFY_TLS). Permette di aggiungere account senza toccare il codice.
-    dyn_path = Path.home() / ".config/metnos/mail" / f"{account}.env"
+    dyn_path = _C.PATH_USER_CONFIG / "mail" / f"{account}.env"
     if dyn_path.exists():
         env = _read_env(dyn_path)
         if not env.get("USER") or not env.get("PASS"):
@@ -201,7 +202,7 @@ def list_known_accounts() -> list[str]:
         except Exception as _e:  # silent swallow (auto-fixed)
             log.warning("silent exception in %s: %s", __name__, _e)
     # Dinamici da ~/.config/metnos/mail/*.env
-    dyn_dir = Path.home() / ".config/metnos/mail"
+    dyn_dir = _C.PATH_USER_CONFIG / "mail"
     if dyn_dir.exists():
         for p in sorted(dyn_dir.iterdir()):
             if p.suffix != ".env":

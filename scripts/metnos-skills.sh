@@ -10,5 +10,5 @@
 #   metnos-skills status <skill_name>
 #   metnos-skills evaluate <skill_name>
 set -euo pipefail
-export PYTHONPATH="${PYTHONPATH:-}:/opt/myclaw"
+export PYTHONPATH="${PYTHONPATH:-}:/opt/metnos"
 exec /opt/suprastructure/.venv/bin/python -m runtime.cli.skills_cli "$@"

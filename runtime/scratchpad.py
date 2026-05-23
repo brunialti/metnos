@@ -33,7 +33,9 @@ import time
 import uuid
 from pathlib import Path
 
-DEFAULT_DB = Path.home() / ".local" / "share" / "metnos" / "scratchpad.db"
+import config as _C  # §7.11
+
+DEFAULT_DB = _C.PATH_USER_DATA / "scratchpad.db"
 DEFAULT_THRESHOLD_BYTES = 4096
 DEFAULT_TTL_SECONDS = 3600  # 1 ora
 SUMMARY_HEAD = 500
@@ -98,7 +100,7 @@ def _summarize_structured(observation, max_items=10):
         # tool, non ricopiare inline (vedi check_inline_data + ref_hint
         # nel synthetic handle). Mostrare `repr(item)` qui leakerebbe
         # i dati e tenta il LLM a copiarli — bug confermato 29/4/2026
-        # (turn ce16d6d34b624d7d, knowcastle mail summary).
+        # (observed during dev on a large mail-summary observation).
         schema = sorted(chosen_list[0].keys()) if chosen_list and isinstance(chosen_list[0], dict) else None
         if schema:
             parts.append(f"{chosen_key}: {len(chosen_list)} elementi. Campi: {schema}")

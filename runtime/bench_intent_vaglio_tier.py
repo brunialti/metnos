@@ -30,7 +30,9 @@ import sys
 import time
 from pathlib import Path
 
-sys.path.insert(0, "/opt/myclaw/runtime")
+_RUNTIME = os.environ.get("METNOS_RUNTIME") or str(Path(__file__).resolve().parent)
+if _RUNTIME not in sys.path:
+    sys.path.insert(0, _RUNTIME)
 
 
 def _sample_queries(n: int) -> list[str]:

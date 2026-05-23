@@ -17,12 +17,17 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import re
 import sys
 import time
 from pathlib import Path
 
-sys.path.insert(0, "/opt/myclaw/runtime")
+_RUNTIME = os.environ.get("METNOS_RUNTIME") or next(
+    str(p / "runtime") for p in Path(__file__).resolve().parents
+    if (p / "runtime" / "config.py").is_file())
+if _RUNTIME not in sys.path:
+    sys.path.insert(0, _RUNTIME)
 import i18n  # noqa: E402
 
 log = logging.getLogger("metnos.i18n_translator")
@@ -812,8 +817,9 @@ def align_manifest_descriptions(executor_dirs: list[Path] | None = None,
     """
     if executor_dirs is None:
         from pathlib import Path as _P
+        from config import PATH_EXECUTORS as _PE
         executor_dirs = [
-            _P("/opt/myclaw/executors"),
+            _PE,
             _P.home() / ".local" / "share" / "metnos" / "executors",
         ]
     if target_langs is None:

@@ -30,6 +30,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 
 from logging_setup import get_logger
+import config as _C  # §7.11
 
 log = get_logger(__name__)
 
@@ -43,16 +44,14 @@ def _index_image_root() -> Path:
     v = os.environ.get("METNOS_INDEX_ROOT")
     if v:
         return Path(v) / "image"
-    base = os.environ.get("METNOS_USER_DATA")
-    base_p = Path(base) if base else Path.home() / ".local" / "share" / "metnos"
-    return base_p / "index" / "image"
+    return _C.PATH_USER_DATA / "index" / "image"
 
 
 def _is_dry_run() -> bool:
     return os.environ.get("METNOS_DRY_RUN", "0") == "1"
 
 
-_PROGRESS_DIR = Path.home() / ".local" / "state" / "metnos" / "build_progress"
+_PROGRESS_DIR = _C.PATH_USER_STATE / "build_progress"
 _VALID_IDX = ("scene", "persons", "gps")
 
 # Path stabile al venv (CLAUDE.md istruzioni operative)
@@ -169,7 +168,13 @@ def start_async_build(base_path: Path | str, idx: str, *,
     # Per systemctl 254+ il flag corretto e' --unit=NAME (no spazio).
     # Aggiungiamo PYTHONPATH come property cosi' build_runner trova i
     # moduli runtime + executor.
-    pythonpath = "/opt/myclaw/runtime:/opt/myclaw/executors/create_images_indices:/usr/lib/python3/dist-packages:/opt/suprastructure/src"
+    _rt_dir = Path(__file__).resolve().parent
+    _install_root = _rt_dir.parent
+    pythonpath = (
+        f"{_rt_dir}:"
+        f"{_install_root / 'executors' / 'create_images_indices'}:"
+        "/usr/lib/python3/dist-packages:/opt/suprastructure/src"
+    )
     cmd_with_env = [
         "systemctl", "--user",
         "start",

@@ -34,6 +34,7 @@ from aiohttp import web  # noqa: E402
 
 import agent_mirror  # noqa: E402
 import devices  # noqa: E402
+import config as _C  # noqa: E402 — §7.11
 
 from logging_setup import get_logger
 log = get_logger(__name__)
@@ -44,7 +45,7 @@ DEFAULT_HOST = os.environ.get("METNOS_AGENT_HOST", "127.0.0.1")
 DEFAULT_PORT = int(os.environ.get("METNOS_AGENT_PORT", "8765"))
 LOCKFILE = Path(os.environ.get(
     "METNOS_AGENT_LOCKFILE",
-    str(Path.home() / ".local" / "state" / "metnos" / "agent_server.lock"),
+    str(_C.PATH_USER_STATE / "agent_server.lock"),
 ))
 
 

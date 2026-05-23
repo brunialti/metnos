@@ -4,17 +4,20 @@ Stesso corpus categorizzato + stesse 4 formulazioni del testo. Per ogni
 combinazione (modello × variante × @K) calcola precision e tempo.
 
 Run:
-  /opt/suprastructure/.venv/bin/python /opt/myclaw/runtime/bench_minilm_vs_bge.py
+  /opt/suprastructure/.venv/bin/python <install_root>/runtime/bench_minilm_vs_bge.py
 """
 from __future__ import annotations
 
 import json
+import os
 import sys
 import time
 from pathlib import Path
 
 sys.path.insert(0, "/usr/lib/python3/dist-packages")
-sys.path.insert(0, "/opt/myclaw/runtime")
+_RUNTIME = os.environ.get("METNOS_RUNTIME") or str(Path(__file__).resolve().parent)
+if _RUNTIME not in sys.path:
+    sys.path.insert(0, _RUNTIME)
 sys.path.insert(0, "/opt/suprastructure/src")
 
 import numpy as np  # noqa: E402
@@ -39,11 +42,11 @@ def main():
 
     print("loading models...", flush=True)
     t0 = time.perf_counter()
-    minilm = EmbeddingService(model_dir="/opt/myclaw/models/embedding")
+    minilm = EmbeddingService(model_dir=str(Path(_RUNTIME).parent / "models" / "embedding"))
     minilm.embed_query("warmup")
     print(f"  MiniLM 384d ready in {(time.perf_counter()-t0)*1000:.0f} ms")
     t0 = time.perf_counter()
-    bge = BGEEmbeddingService(model_dir="/opt/myclaw/models/embedding-bge")
+    bge = BGEEmbeddingService(model_dir=str(Path(_RUNTIME).parent / "models" / "embedding-bge"))
     bge.embed_query("warmup")
     print(f"  bge-m3 int8 1024d ready in {(time.perf_counter()-t0)*1000:.0f} ms")
 
@@ -164,10 +167,10 @@ def main():
         "hybrid_v3": {m: {f"@{k}": hybrid_results[m][k] for k in KS}
                        for m in ("MiniLM","bge-m3")},
     }
-    Path("/opt/myclaw/runtime/bench_minilm_vs_bge.result.json").write_text(
+    Path(__file__).resolve().parents[1] / "runtime/bench_minilm_vs_bge.result.json".write_text(
         json.dumps(out, indent=2, ensure_ascii=False)
     )
-    print(f"\n  → JSON → /opt/myclaw/runtime/bench_minilm_vs_bge.result.json")
+    print(f"\n  → JSON → <install_root>/runtime/bench_minilm_vs_bge.result.json")
 
 
 if __name__ == "__main__":

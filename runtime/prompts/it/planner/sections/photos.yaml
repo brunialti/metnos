@@ -40,12 +40,30 @@ rules:
     ok: "«foto di Iacopo» -> find_persons_indices(name=\"iacopo\") -> final_answer (\"Ho trovato N foto di Iacopo\")"
     error: "find_persons_indices -> describe_entries -> find_persons_indices (E' UN ERRORE: describe inutile + duplicato find). OPPURE find_persons_indices -> find_images_indices (E' UN ERRORE: duplicato; un solo step basta)"
 
+  - name: aggregate_count_or_size
+    when: "query AGGREGATA sul corpus: «quante foto di X», «quante foto al mare», «quanti GB di foto», «quanto pesano le foto di Y». L'utente vuole un TOTALE numerico, NON la lista delle foto"
+    must: |
+      UN solo passo: `find_images_indices(...)` con gli args del filtro (name/names/query_text/time_window/...). NON passare `top_k`. L'observation ritorna `metadata.total_count` (numero totale matched) e `metadata.total_size_bytes` (somma byte). Leggi questi due valori e EMETTI `final_answer` con il totale, convertendo i byte in unita' leggibile (MB/GB). Esempio formato: «Hai 936 foto di Matteo per un totale di 2.38 GB».
+    must_not: |
+      chiamare `compute_entries(op=count|sum)` sulle entries restituite: le entries sono troncate a `top_k` (default 100), il count/sum sarebbe parziale. La risposta giusta e' gia' in `metadata.total_*` calcolato sul corpus COMPLETO matched. NON DEVI chiamare describe_entries ne' filter_entries: la domanda chiede un NUMERO, non una lista
+    ok: "«Quante foto di Matteo ho e quanto pesano?» -> find_images_indices(names=[\"matteo\"]) -> final_answer (\"Hai 936 foto di Matteo per un totale di 2.38 GB\"). Letto da metadata.total_count + metadata.total_size_bytes"
+    error: "«Quante foto di Matteo?» -> find_images_indices(names=[\"matteo\"]) -> compute_entries(op=\"count\") (E' UN ERRORE: count sarebbe 100, non 936, perche' le entries sono troncate). OPPURE find_images_indices -> compute_entries(op=\"sum\", key=\"size_bytes\") (E' UN ERRORE: sum sarebbe parziale)"
+
   - name: persons_and_multi
     when: "query foto con DUE O PIU' nomi propri congiunti da «e» / «con» / «insieme a»: «foto con Iacopo E Matteo», «foto di gruppo con Roberto e Silvia», «foto dove ci sono Iacopo, Matteo e Roberto»"
     must: "passa `names` come ARRAY di slug enrollati, NON `name` con virgola o `query_text` con i nomi concatenati. Es. names=[\"iacopo\",\"matteo\"] → AND face match: la foto deve contenere ENTRAMBI i volti. Combinabile con time_window, min_face_count, query_text content."
     must_not: "passare `name=\"Iacopo, Matteo\"` come stringa unica (NON e' un id valido, l'auto-promozione c'e' ma e' fallback). NON DEVI usare `query_text=\"Iacopo Matteo\"`: questo cerca i nomi come PAROLE nel testo, non AND face. Risultato degenera a OR (foto con UN solo nome passano se appare il nome nel filename/keyword)."
     ok: "«foto di gruppo con Iacopo E Matteo del 2024» -> find_images_indices(names=[\"iacopo\",\"matteo\"], time_window=\"2024\") -> final_answer"
     error: "«foto con Iacopo e Matteo» -> find_images_indices(name=\"Iacopo, Matteo\") (NON id valido) OPPURE -> find_images_indices(query_text=\"Iacopo Matteo\") (BM25 OR, non AND face)"
+
+  - name: find_similar
+    when: "query «trova/cerca foto simili/uguali/come questa/come quella/stesso soggetto», OPPURE l'utente ha appena caricato (upload Telegram caption + photo, drag&drop HTTP) una o piu' foto come reference E chiede ricerca correlata"
+    must: |
+      DEVI usare `find_images_indices(reference_images=[paths_dalla_foto_uploaded])` per face-similarity ArcFace. Le foto uploaded vivono nello scratchpad come step virtuale `@uploaded` con `entries=[{path}]`. Passa quei path al verso `reference_images`. Combinabile con altri filtri (time_window, min_face_pixels, query_text content).
+      Se NON ci sono foto uploaded e la query dice «simili a Matteo» senza foto, usa `name="matteo"` (face match via registry, non reference_images).
+    must_not: "ignorare le foto uploaded passando solo `query_text` testuale (il match testuale e' debole; reference_images = face cosine ArcFace, ordini di grandezza piu' preciso). NON DEVI passare `query_text=\"simili\"`: «simili» e' un'istruzione, non un termine semantico del corpus."
+    ok: "[upload foto.jpg] «trova foto simili» -> find_images_indices(reference_images=[\"/path/to/foto.jpg\"]) -> final_answer. OPPURE «mostrami foto come questa del 2024» (con foto uploaded) -> find_images_indices(reference_images=[paths], time_window=\"2024\")"
+    error: "[upload foto] «simili» -> find_images_indices(query_text=\"simili\") (parola istruzione, non termine). OPPURE «simili a questa» (con foto uploaded) -> find_images_indices() senza reference_images (perde il signal visivo)"
 
   - name: persons_registry_management
     when: "gestione del registro persons.sqlite: cancellazione, enumerazione, registrazione di persone enrolled"

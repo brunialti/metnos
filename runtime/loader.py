@@ -2,7 +2,7 @@
 """
 loader.py — scopre, verifica e carica gli executor (Metnos v1.1 POC).
 
-Scansiona una directory di executor (default: /opt/myclaw/executors), per ognuno:
+Scansiona una directory di executor (default: <install_root>/executors), per ognuno:
     1. legge il manifest.toml
     2. verifica firma + digest tramite sign.verify_executor()
     3. inserisce nel catalogo (dataclass Executor)
@@ -25,8 +25,11 @@ from logging_setup import get_logger
 log = get_logger(__name__)
 
 
-DEFAULT_EXECUTORS_DIR = Path("/opt/myclaw/executors")
-SYNTHESIZED_EXECUTORS_DIR = Path.home() / ".local" / "share" / "metnos" / "executors"
+# ADR 0148: rename-resilient — auto-derived da config.PATH_ROOT che
+# usa Path(__file__).resolve().parents[1].
+import config as _C  # noqa: E402  (sys.path insert above)
+DEFAULT_EXECUTORS_DIR = _C.PATH_EXECUTORS
+SYNTHESIZED_EXECUTORS_DIR = _C.PATH_USER_DATA / "executors"
 
 
 def _resolve_lang_text(value, *, where: str, current_lang: str) -> str:
@@ -248,6 +251,81 @@ def _build_admin_executor_from_manifest_virtual(manifest: dict,
     )
 
 
+# --- In-process builtin tool specs registry ------------------------------
+#
+# Alcuni tool builtin (es. `create_tasks`, `list_tasks`, ...) vivono SOLO
+# come dict "tool spec" OpenAI-style in moduli di runtime (es.
+# `recurring_tasks.py`) e sono iniettati direttamente nel `tools=[]` del
+# PLANNER. Mancano dal catalog `/admin/executors` → coverage check §2.2
+# fallisce su OBJECTS coperti solo da builtin in-process (es. `tasks`).
+#
+# Pattern simmetrico a `_inject_planner_visible_verb_unique`: il modulo
+# dichiara un `BUILTIN_INPROC_SPECS` list-of-dict, ogni dict contiene
+# `name` + `tool_spec` (OpenAI format) + `manifest_virtual` opzionale.
+# Il loader li costruisce in `Executor` dataclass e li aggiunge al
+# catalog. Idempotente; collision con executor handcrafted → handcrafted
+# vince per costruzione (ADR 0079).
+
+_INPROC_TOOL_MODULE_PATHS: tuple[str, ...] = (
+    "recurring_tasks",  # *_tasks builtin scheduler v2
+)
+
+
+def _inject_inproc_tool_specs(catalog: "Catalog") -> None:
+    """Scopre i `BUILTIN_INPROC_SPECS` dei moduli registrati e inietta i
+    relativi `Executor` virtuali nel catalog.
+
+    Ogni entry deve essere un dict con almeno:
+      - `name`: nome canonico (es. "create_tasks")
+      - `tool_spec`: dict tool spec OpenAI-style (con `function.name`,
+        `function.description`, `function.parameters`)
+      - `affinity`: lista di keyword IT+EN (opzionale, default [])
+
+    Idempotente: se gia' presente in catalog (handcrafted o synth) → noop.
+    """
+    for mod_name in _INPROC_TOOL_MODULE_PATHS:
+        try:
+            mod = __import__(mod_name)
+        except ImportError as e:
+            log.debug("[loader] inproc-tool module %r not importable: %s",
+                       mod_name, e)
+            continue
+        specs = getattr(mod, "BUILTIN_INPROC_SPECS", None)
+        if not specs:
+            continue
+        mod_path = Path(getattr(mod, "__file__", ""))
+        for entry in specs:
+            name = entry.get("name") or ""
+            if not name:
+                continue
+            if name in catalog.executors:
+                # Handcrafted wins
+                continue
+            spec = entry.get("tool_spec") or {}
+            fn_block = spec.get("function") or {}
+            desc = fn_block.get("description") or ""
+            params = fn_block.get("parameters") or {}
+            executor = Executor(
+                name=name,
+                version=entry.get("version", "1.0.0"),
+                description=desc,
+                affinity=list(entry.get("affinity", [])),
+                args_schema=params,
+                capabilities=list(entry.get("capabilities", [])),
+                tests=[],
+                code_path=mod_path,
+                manifest_path=mod_path,
+                signed_by="(inproc builtin)",
+                revertible=bool(entry.get("revertible", False)),
+                lifecycle="active",
+                superseded_by=None,
+                reverse_pattern=entry.get("reverse_pattern"),
+                deprecated_at=None,
+                deprecation_ttl_hours=24,
+            )
+            catalog.executors[name] = executor
+
+
 def _inject_planner_visible_verb_unique(catalog: "Catalog") -> None:
     """Inietta nel catalog i verb-unique builtin che dichiarano
     `EXPOSE_TO_PLANNER=True` (ADR 0088). Idempotente: se gia' presente,
@@ -308,9 +386,37 @@ class Executor:
     # al PLANNER. Ricalcolato a ogni `load_catalog` via skill_credentials.
     dormant: bool = False
     dormant_reason: str = ""
+    # Sandbox profile DICHIARATIVO dal manifest `[sandbox]` (mini-version
+    # 17/5/2026): network_allowed/fs_read/fs_write/exec_allowed. Oggi non
+    # enforced (validato al load, warning se mancante per skill imported).
+    # Enforcement bubblewrap arriva con Fase C full a soglia trigger.
+    sandbox_profile: dict = field(default_factory=dict)
+    # Provenance dal manifest `[provenance]` (ADR 0123): skill_id,
+    # imported_from, source_version, source_sha256, imported_at.
+    # Usato per audit log skill (runtime/skill_audit.py) e per
+    # dormancy check (runtime/skill_credentials.py).
+    provenance: dict = field(default_factory=dict)
+    # Planning complexity hint (19/5/2026): suggerisce al planner se questa
+    # call beneficia di reasoning LLM (think=True) o se la decisione e' ovvia
+    # e think=False e' sufficiente (5-10x speedup su Gemma 4 26B - bench
+    # 19/5). Valori:
+    #   - "low":    decisione ovvia (es. read_files con path esplicito) → think=False
+    #   - "medium": default; il planner usa think=True con budget ridotto
+    #   - "high":   query complessa (synt, multi-step composto) → think=True full budget
+    # Letto dal manifest `[planning] complexity = "low|medium|high"`. Se non
+    # dichiarato, fallback automatico in `agent_runtime` basato sul verbo del
+    # nome (producer verbs get/read/find/list → low, mutating → medium).
+    # NOTA: validato su Gemma 4 26B. Per modelli diversi vedi
+    # [[metnos_todo_high_think_per_model]].
+    complexity: str = ""
 
     def has_capability(self, name_prefix: str) -> bool:
         return any(c.get("name", "").startswith(name_prefix) for c in self.capabilities)
+
+    @property
+    def is_imported(self) -> bool:
+        """True se executor importato da skill (ha [provenance]) vs builtin."""
+        return bool(self.provenance and self.provenance.get("imported_from"))
 
 
 @dataclass
@@ -394,7 +500,14 @@ def _catalog_cache_signature(dirs: list) -> tuple:
     return tuple(sig)
 
 
-def load_catalog(executors_dir=DEFAULT_EXECUTORS_DIR, verify=True, *, include_synth=True) -> Catalog:
+def load_catalog(executors_dir=DEFAULT_EXECUTORS_DIR, verify=True, *, include_synth=True, include_verb_unique=True) -> Catalog:
+    # Test/dev override: env `METNOS_LOADER_VERIFY=0` disabilita la verify
+    # della firma. Use case: server tmp E2E che importa skill al volo via
+    # CLI con `--no-sign`. Senza questo override, gli executor importati
+    # vengono silenziosamente scartati (digest mismatch) e il PLANNER non
+    # li vede mai. NIENTE in produzione.
+    if verify and os.environ.get("METNOS_LOADER_VERIFY", "1") == "0":
+        verify = False
     """Scansiona executors_dir + (opzionale) SYNTHESIZED_EXECUTORS_DIR.
 
     `include_synth=True` (default): carica anche gli executor sintetizzati
@@ -425,7 +538,8 @@ def load_catalog(executors_dir=DEFAULT_EXECUTORS_DIR, verify=True, *, include_sy
         from config import DEFAULT_LANG as _cfg_lang
     except Exception:
         _cfg_lang = ""
-    cache_key = f"{executors_dir}|{verify}|{include_synth}|{_cfg_lang}"
+    _hidden_env = os.environ.get("METNOS_HIDE_EXECUTORS", "")
+    cache_key = f"{executors_dir}|{verify}|{include_synth}|{include_verb_unique}|{_cfg_lang}|{_hidden_env}"
     dirs_for_sig = [Path(executors_dir)]
     if include_synth and SYNTHESIZED_EXECUTORS_DIR.exists():
         dirs_for_sig.append(SYNTHESIZED_EXECUTORS_DIR)
@@ -444,6 +558,18 @@ def load_catalog(executors_dir=DEFAULT_EXECUTORS_DIR, verify=True, *, include_sy
             continue
         _load_dir_into_catalog(d, catalog, verify, is_synthesized=(i > 0))
 
+    # Hidden executors (env-driven): permette di nascondere selettivamente
+    # executor dal catalog senza tocco filesystem. Use case principale: test
+    # E2E che vogliono forzare il PLANNER a usare un imported skill invece
+    # del builtin equivalente (ADR 0136 prefer-builtin default). Universale:
+    # qualunque executor `name in METNOS_HIDE_EXECUTORS` viene escluso.
+    _hidden_raw = os.environ.get("METNOS_HIDE_EXECUTORS", "")
+    if _hidden_raw:
+        _hidden_names = {n.strip() for n in _hidden_raw.split(",") if n.strip()}
+        for _n in list(catalog.executors.keys()):
+            if _n in _hidden_names:
+                catalog.executors.pop(_n)
+
     # Affinity overlap guard (ADR 0114, 8/5/2026): synth con Jaccard >=0.5
     # verso UN handcrafted (o un altro synth piu' vecchio) viene rejected.
     # Audit log JSONL. Esecuzione DOPO load completo, PRIMA di GC.
@@ -458,10 +584,17 @@ def load_catalog(executors_dir=DEFAULT_EXECUTORS_DIR, verify=True, *, include_sy
     # Inietta verb-unique builtin esposti al PLANNER (ADR 0088, 4/5/2026):
     # `admin` (sì), `sudoer` (no, EXPOSE_TO_PLANNER=False). Si esegue dopo
     # GC per evitare di iniettare e poi GC-are nello stesso load.
-    try:
-        _inject_planner_visible_verb_unique(catalog)
-    except Exception as e:
-        log.warning("[loader] verb-unique injection failed: %s", e)
+    # `include_verb_unique=False` (testing): salta l'iniezione per test che
+    # asseriscono cardinalità sull'executors_dir custom (es. carica_*).
+    if include_verb_unique:
+        try:
+            _inject_planner_visible_verb_unique(catalog)
+        except Exception as e:
+            log.warning("[loader] verb-unique injection failed: %s", e)
+        try:
+            _inject_inproc_tool_specs(catalog)
+        except Exception as e:
+            log.warning("[loader] inproc-tool injection failed: %s", e)
 
     # Apply lifecycle override from executor_aging stats + register newly
     # discovered executors with their source. Best-effort: if the module
@@ -548,7 +681,7 @@ HANDCRAFTED_FAMILIES: frozenset[str] = frozenset({
 # 8/5/2026 (`find_texts` con 5/8 termini overlap su `find_urls`).
 AFFINITY_OVERLAP_THRESHOLD: float = 0.5
 
-_AFFINITY_AUDIT_DIR = Path.home() / ".local" / "share" / "metnos" / "synth_audit"
+_AFFINITY_AUDIT_DIR = _C.PATH_USER_DATA / "synth_audit"
 
 
 def _affinity_audit_path() -> Path:
@@ -865,6 +998,25 @@ def _load_dir_into_catalog(executors_dir: Path, catalog: Catalog, verify: bool,
         except Exception:
             _dormant, _dormant_reason = False, ""
 
+        # Sandbox profile dichiarativo (mini-version 17/5/2026):
+        # legge [sandbox] dal manifest senza enforcement. Default vuoto
+        # = comportamento attuale (sandbox bubblewrap globale).
+        sandbox_profile = manifest.get("sandbox") or {}
+        if not isinstance(sandbox_profile, dict):
+            sandbox_profile = {}
+        # Provenance: skill imports hanno [provenance] (ADR 0123).
+        # Builtin handcrafted: dict vuoto = is_imported False.
+        provenance = manifest.get("provenance") or {}
+        if not isinstance(provenance, dict):
+            provenance = {}
+
+        # Planning complexity hint (19/5/2026): [planning] complexity = "low|medium|high".
+        # Vuoto = fallback automatico in agent_runtime su verbo del name.
+        _planning = manifest.get("planning") or {}
+        _complexity = (_planning.get("complexity") or "").strip().lower()
+        if _complexity not in ("low", "medium", "high", ""):
+            _complexity = ""  # invalid → fallback automatico
+
         ex = Executor(
             name=name,
             version=manifest.get("version", "0.0.0"),
@@ -885,6 +1037,9 @@ def _load_dir_into_catalog(executors_dir: Path, catalog: Catalog, verify: bool,
             timeout_s=int(manifest.get("timeout_s", 30)),
             dormant=_dormant,
             dormant_reason=_dormant_reason,
+            sandbox_profile=sandbox_profile,
+            provenance=provenance,
+            complexity=_complexity,
         )
         catalog.executors[name] = ex
 

@@ -3,8 +3,8 @@
 > **OBBLIGO**: leggere integralmente all'inizio di ogni sessione. Codifica decisioni architetturali, convenzioni di codice e norme di processo gia' stabilite. Quando un punto e' obsoleto o errato, AGGIORNALO subito invece di lavorarci attorno.
 >
 > Mantenuto da: agente. Aggiornamento ad ogni sessione che fissa una nuova norma duratura.
-> Ultimo aggiornamento: 2026-05-22 v7 (AlignmentEngine v1.3 α·top+γ·rest, TELOS.md v1.2 a 6 telos, dashboard /admin/proposals/telos).
-> Norme recenti: dettagli in ADR 0150/0151/0152/0154/0155/0156/0157 e §10.6. Storia in `git log CLAUDE.md`.
+> Ultimo aggiornamento: 2026-05-23 v9 (E2E sim fix sistemici: shape FSM, hide_executors, i18n baseline, inproc-tool catalog, judge safety, max_tokens 600→400).
+> Norme recenti: dettagli in ADR 0150/0151/0152/0154/0155/0156/0157/0158 e §10.6. Storia in `git log CLAUDE.md`.
 
 ---
 
@@ -233,7 +233,7 @@ SearXNG, Nominatim, Tesseract, Piper, whisper.cpp, sqlite. SaaS solo come fallba
 UN file scaricabile e eseguibile. Niente mingw / VC++ Redist / lib sul target. Static-link libgcc/libstdc++/winpthread.
 
 ### 10.5 Memorie persistenti
-Tipi: `user`, `feedback`, `project`, `reference`. Indice in `~/.claude/projects/-opt-myclaw/memory/MEMORY.md` (max ~150 char/riga, max ~200 righe). Dettaglio in file separati.
+Tipi: `user`, `feedback`, `project`, `reference`. Indice in `~/.claude/projects/-opt-myclaw/memory/MEMORY.md` (max ~150 char/riga, max ~200 righe). Dettaglio in file separati. **Session log pattern**: ogni sessione multi-step crea `project_session_<DD_M_YYYY>.md` con cose-fatte + cose-da-fare + BG attivi; entry top in MEMORY.md marcata ⏰ con "LEGGI PRIMA"; vecchi session log eliminati a fine sessione.
 
 ### 10.6 Meccanismi anti-regressione (indice)
 
@@ -314,6 +314,16 @@ Tipi: `user`, `feedback`, `project`, `reference`. Indice in `~/.claude/projects/
 - **PLANNER split call grammar GBNF opt-in** (ADR 0151): `runtime/planner_split.py::chat_with_tools_split` 2-call. Env `METNOS_PLANNER_SPLIT=1`. 1.72× speedup. Selector history-aware + soft-gate verb-canonical.
 - **i18n pipeline strutturale** (ADR 0152): subset 65 chiavi nel synt stage 5; `_i18n_error_for_class` Google API; daemon `_materialize_auto_synth_stubs` con `auto_translated` flag.
 - **delete_files executor** (19/5/2026 v4): `executors/delete_files/` + `backends/files/local.py::delete_files` reversible `restore_blob_backup`. Riempie gap catalog (PLANNER sceglieva erroneamente delete_dirs per file).
+- **Unified change_intent lifecycle** (ADR 0158, 22/5/2026): un solo oggetto + un solo state machine + una sola UI `/admin/changes` (al posto di 6 sorgenti × 9 storage × 7 state machine × 3 UI). Stati: `proposed → accepted → applied → observed → finalized` (+ `staged|rejected|failed|rolled_back`). 6 kind: `create_executor|extend_executor|dedupe_executors|materialize_pipeline|cache_pattern|reject_pattern`. Storage canonico `~/.local/state/metnos/change_intents.sqlite`. Pipeline: `runtime/jobs/change_intent_materialize.py` daily@01:00 (adapter `change_intent_adapters/` proietta i 6 storage legacy → upsert con dedup cross-source via fingerprint, +bump convergence), `change_applier.py` every_10m (ACCEPTED → APPLIED per kind, extend_executor via TOML patch + rollback_blob + re-sign), `change_observer.py` daily@03:15 (APPLIED → FINALIZED|ROLLED_BACK con grace 7gg, env `METNOS_CHANGE_GRACE_DAYS`). UI `/admin/changes` con 9 tab per stato, default cap 30 PROPOSED. Soft-deprecation `/admin/proposals` + `/admin/promotions` con banner redirect. Baseline reale 22/5: 866 yielded → 153 unique (82% dedup). 55 test verdi.
+- **Shape FSM normalization** (23/5/2026): `agent_runtime.TurnLog.write()` normalizza `chosen_tool="final_answer"` su ultimo step terminale con `chosen_tool==""`. Copre LLM no-tool-call/ProviderError. Coerente con regex lint `^E*F?$` (small-talk F-only legittimo).
+- **Inproc tool catalog injection** (23/5/2026): `loader._inject_inproc_tool_specs` + `BUILTIN_INPROC_SPECS` espone tool moduli runtime al catalog `/admin/executors` (es. `recurring_tasks.*_tasks`). Risolve gap §2.2 `tasks` 0-producer.
+- **Env `METNOS_HIDE_EXECUTORS` + `METNOS_LOADER_VERIFY`** (23/5/2026): loader exclude lista + disable verify firma (test only). Pair per test E2E che forzano PLANNER a usare skill imported nascondendo builtin equivalenti.
+- **`tool_grammar.filter_pool_for_grammar` canonical-aware** (23/5/2026): provider-suffixed NON rimosso se canonical equivalente assente dal pool (es. nascosto via HIDE_EXECUTORS). Altrimenti marker filter ADR 0136 svuotava il pool.
+- **E2E driver baseline** (23/5/2026): `server._copy_db_with_wal` (SQLite backup API, WAL pending) + `_seed_i18n_baseline` SEMPRE (1000+ MSG_*/ERR_* runtime-essential) + lint regex `^E*F?$`.
+- **Judge prompt safety-aware** (23/5/2026): `prompts/{it,en}/e2e_judge.j2` riconosce consenso utente (signature unknown, mount, sudoer) come VALID answer (ok=true, score≥0.7).
+- **`describe_entries.max_tokens` adattivo** (23/5/2026): scala con N entries — N≤3:200, N≤10:300, N>10:400 (era 600 fisso). Misurato: query "appuntamenti domani" 68s→30s (-56%) e/o `read_events` skip-describe pattern. Override esplicito via arg.
+- **`dialog_pending.DIALOG_DIR` §7.11** (23/5/2026): era `Path.home()/.local/share/metnos/get_inputs` hardcoded → ora `_C.PATH_USER_DATA / "get_inputs"`. Senza, test E2E scrivevano dialog OAuth in LIVE storage → cross-contamination state tra test (Step 2/2 MSG_OAUTH_PROMPT_SERVICES leaked dalle query google ai test fast_path).
+- **`*_tasks` conditional injection** (23/5/2026): in `agent_runtime` i 6 builtin scheduler v2 (create/list/delete/read/set_tasks + read_tasks_history) iniettati nel pool PLANNER SOLO se query contiene marker scheduling (`_TASKS_MARKERS` in `tool_grammar.py`: task/promemoria/ricordami/schedule/etc.). Senza, PLANNER LLM li selezionava su query ambigue (caso live 23/5: «cerca mail bookings» → read_tasks_history). Stesso filter aggiunto in `filter_pool_for_grammar` per grammar mode.
 
 ## 11. Decisioni di runtime
 

@@ -24,7 +24,7 @@ Manuale (foreground):
 
 Via systemd-user (non enable di default):
 ```bash
-cp /opt/myclaw/systemd/metnos-playwright.service \
+cp /opt/metnos/systemd/metnos-playwright.service \
    ~/.config/systemd/user/
 systemctl --user daemon-reload
 systemctl --user start metnos-playwright.service

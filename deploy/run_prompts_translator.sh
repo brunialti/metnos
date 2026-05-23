@@ -15,7 +15,7 @@
 
 set -e
 PYTHON=/opt/suprastructure/.venv/bin/python
-RUNTIME=/opt/myclaw/runtime
+RUNTIME=/opt/metnos/runtime
 PROMPTS=$RUNTIME/prompts
 LOG=/var/log/metnos/prompts-translator.log
 mkdir -p "$(dirname "$LOG")" || LOG=/tmp/metnos-prompts-translator.log
@@ -139,7 +139,7 @@ if [ "$n_pending" -gt 0 ]; then
     log "  notifying host: $msg"
     "$PYTHON" -c "
 import sys
-sys.path.insert(0, '/opt/myclaw/runtime')
+sys.path.insert(0, '/opt/metnos/runtime')
 try:
     from notifier import notify_host
     notify_host('${msg}')

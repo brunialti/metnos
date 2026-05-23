@@ -28,7 +28,7 @@ context:
 rules:
   - name: language_and_stdlib
     body: |
-      MUST: Python 3.12+ stdlib + runtime modules in /opt/myclaw/runtime.
+      MUST: Python 3.12+ stdlib + runtime modules in /opt/metnos/runtime.
       MUST NOT: import pip libraries other than PIL/Pillow and openpyxl.
       OK: `import hashlib`, `import imaplib`, `import tarfile`, `import os`.
       ERROR: `import requests`, `import boto3`, `import paramiko`. THIS IS AN ERROR.

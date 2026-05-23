@@ -205,7 +205,7 @@ def _validate_undo_blob_with_fallback(results, id_field, scope_field):
 
 def _dispatch_call(call):
     """Invoca `delete_<objects>` caricando il suo modulo Python dal catalog.
-    Cerca prima in /opt/myclaw/executors/, poi in
+    Cerca prima in <install_root>/executors/, poi in
     ~/.local/share/metnos/executors/_imports/<skill>/<executor>/. Ritorna
     `(ok_count, fail_count)` dell'invocazione concreta."""
     import importlib.util
@@ -213,9 +213,10 @@ def _dispatch_call(call):
     name = call["executor"]
     args = call["args"]
     candidates = [
-        Path(f"/opt/myclaw/executors/{name}/{name}.py"),
+        Path(f"<install_root>/executors/{name}/{name}.py"),
     ]
-    home_imports = Path.home() / ".local/share/metnos/executors/_imports"
+    import config as _C  # §7.11
+    home_imports = _C.PATH_USER_DATA / "executors" / "_imports"
     if home_imports.exists():
         for skill_dir in home_imports.iterdir():
             cand = skill_dir / name / f"{name}.py"

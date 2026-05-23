@@ -22,12 +22,13 @@ from pathlib import Path
 from typing import Literal
 
 from . import InboundMessage, OutboundMessage
+import config as _C  # §7.11
 
 API_BASE = "https://api.telegram.org/bot{token}/{method}"
 FILE_BASE = "https://api.telegram.org/file/bot{token}/{file_path}"
 DEFAULT_TIMEOUT_S = 25  # long-poll: Telegram raccomanda 25-50s
-CREDENTIALS_FILE = Path.home() / ".config" / "metnos" / "credentials.env"
-DEFAULT_STATE_FILE = Path.home() / ".local" / "state" / "metnos" / "telegram_offset"
+CREDENTIALS_FILE = _C.PATH_USER_CONFIG / "credentials.env"
+DEFAULT_STATE_FILE = _C.PATH_USER_STATE / "telegram_offset"
 UPLOAD_DIR = Path("/tmp/metnos_uploads")
 PHOTO_DOWNLOAD_TIMEOUT_S = 30
 PHOTO_MAX_BYTES = 25 * 1024 * 1024  # 25 MB hard cap
@@ -141,8 +142,7 @@ class TelegramChannel:
           (3) tap bottone Annulla (callback loc_cancel)
         Multilingue via messages.py.
         """
-        import sys as _sys
-        _sys.path.insert(0, "/opt/myclaw/runtime")
+        # runtime/ già su sys.path (channels VIVE in runtime/).
         from messages import get as _msg
         text = _msg("MSG_LOCATION_NEEDED", goal=goal)
         btn_cancel = _msg("MSG_LOCATION_BUTTON_CANCEL")
@@ -232,8 +232,7 @@ class TelegramChannel:
         """
         if not chat_id:
             return {"ok": False, "error": "chat_id mancante"}
-        import sys as _sys
-        _sys.path.insert(0, "/opt/myclaw/runtime")
+        # runtime/ già su sys.path (channels VIVE in runtime/).
         import photo_endpoint  # noqa: E402
 
         atts = list(attachments or [])[:10]
@@ -492,8 +491,7 @@ class TelegramChannel:
                 lon_f = float(loc["longitude"])
                 acc = loc.get("horizontal_accuracy")
                 try:
-                    import sys as _sys
-                    _sys.path.insert(0, "/opt/myclaw/runtime")
+                    # runtime/ già su sys.path (channels VIVE in runtime/).
                     from location_store import record_location  # type: ignore
                     from actor_resolver import resolve_actor  # type: ignore
                     actor_name = resolve_actor(self.name, chat_id)

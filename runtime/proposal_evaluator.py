@@ -45,6 +45,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal
 
+import config as _C  # §7.11
+
 # Default thresholds (tunable via kwargs).
 ETA_SPEEDUP_ACCEPT = 2.0
 ETA_SPEEDUP_PENALTY = 1.2
@@ -82,7 +84,7 @@ DECIDABILITY_MIN_PASS = 5  # almeno 5 riformulazioni vincenti
 
 
 # Audit log JSONL.
-_AUDIT_DIR = Path.home() / ".local" / "share" / "metnos" / "synth_audit"
+_AUDIT_DIR = _C.PATH_USER_DATA / "synth_audit"
 
 
 def _audit_path() -> Path:

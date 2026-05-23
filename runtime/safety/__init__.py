@@ -10,7 +10,7 @@ Three concerns live here, kept separate by module:
 
 The public API of this package is what `runtime/builtins/admin.py` and
 `runtime/builtins/sudoer.py` consume; ordinary handcrafted executors in
-`/opt/myclaw/executors/find_signatures_*` import from here too.
+`<install_root>/executors/find_signatures_*` import from here too.
 
 Invariants enforced across the package:
 - Signatures are colon-separated `binary:subcommand_or_flag:target_kind`.

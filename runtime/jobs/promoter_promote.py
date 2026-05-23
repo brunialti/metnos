@@ -15,11 +15,15 @@ proposal_evaluator). §2.8 fail-loud: ogni admission fail ritorna esplicito
 from __future__ import annotations
 
 import os
+import sys as _sys
 import tarfile
 import tempfile
 import time
 from pathlib import Path
 from typing import Any
+
+_sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+import config as _C  # §7.11
 
 # Import lazy del firmatore: `sign_executor` viene patchato nei test via
 # `mock.patch("jobs.promoter_promote.sign_executor")` quindi serve come
@@ -32,13 +36,10 @@ except Exception:  # pragma: no cover
 
 
 # Dir canoniche, env-overridable per i test.
-_DEFAULT_SYNTH_EXEC_DIR = (
-    Path.home() / ".local" / "share" / "metnos" / "executors"
-)
-_DEFAULT_BLOB_DIR = (
-    Path.home() / ".local" / "share" / "metnos" / "promoter_blobs"
-)
-_DEFAULT_HANDCRAFTED_DIR = Path("/opt/myclaw/executors")
+_DEFAULT_SYNTH_EXEC_DIR = _C.PATH_USER_DATA / "executors"
+_DEFAULT_BLOB_DIR = _C.PATH_USER_DATA / "promoter_blobs"
+# ADR 0148 rename-resilient — derive from this module's location (runtime/jobs/file.py)
+_DEFAULT_HANDCRAFTED_DIR = Path(__file__).resolve().parents[2] / "executors"
 
 
 def _synth_exec_dir() -> Path:

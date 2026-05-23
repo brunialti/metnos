@@ -25,7 +25,9 @@ import sqlite3
 import sys
 from pathlib import Path
 
-DEFAULT_DB = Path.home() / ".local/share/metnos/i18n.sqlite"
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+import config as _C  # §7.11
+DEFAULT_DB = _C.DB_I18N
 
 
 def _sha256_full(text: str) -> str:

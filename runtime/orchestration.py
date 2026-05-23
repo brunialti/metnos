@@ -750,7 +750,8 @@ def _resolve_actor_to_user(actor: str) -> dict | None:
     try:
         import sqlite3
         from pathlib import Path
-        db = sqlite3.connect(str(Path.home() / ".local" / "share" / "metnos" / "users.db"))
+        import config as _C  # §7.11
+        db = sqlite3.connect(str(_C.PATH_USER_DATA / "users.db"))
         cur = db.cursor()
         cur.row_factory = sqlite3.Row
         rows = cur.execute(

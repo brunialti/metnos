@@ -26,10 +26,11 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
+import config as _C  # §7.11 — rispetta METNOS_USER_STATE
 DB_PATH = Path(
     os.environ.get(
         "METNOS_EXECUTOR_STATS_DB",
-        str(Path.home() / ".local/state/metnos/executor_stats.db"),
+        str(_C.PATH_USER_STATE / "executor_stats.db"),
     )
 )
 
@@ -463,7 +464,7 @@ EFFICACY_MIN_INVOCATIONS     = int(os.environ.get(
 EFFICACY_RE_EVAL_INVOCATIONS = int(os.environ.get(
     "METNOS_EFFICACY_RE_EVAL_INVOCATIONS", "30"))
 
-EFFICACY_AUDIT_DIR = Path.home() / ".local" / "share" / "metnos" / "synth_audit"
+EFFICACY_AUDIT_DIR = _C.PATH_USER_DATA / "synth_audit"
 
 
 def _is_synth(name: str, source: str | None) -> bool:
@@ -511,7 +512,7 @@ def collect_invocation_stats(turns_dir: Path | None = None,
     """
     import json as _json
     if turns_dir is None:
-        turns_dir = Path.home() / ".local" / "share" / "metnos" / "turns"
+        turns_dir = _C.PATH_USER_DATA / "turns"
     out: dict[str, dict] = {}
     if not turns_dir.exists():
         return out

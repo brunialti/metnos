@@ -568,6 +568,11 @@ Sotto, i quindici documenti raggruppati per ruolo. La colonna
   <td>Tre livelli di memoizzazione prima del pianificatore: L0 modelli letterali (&laquo;che ora &egrave;&raquo;), L1 single-tool tramite <code>canonical_matcher</code> con match BGE-M3 sul <em>canonical query log</em>, L2 sequenze multi-step tramite <code>multi_tool_paths</code> con TTL in giorni di attivit&agrave; effettiva. Ponte L2&rarr;L3 verso la sintesi via proto-mnest. Estrattore di argomenti ibrido regex + memoria + LLM opzionale. Configurazione persistente in <code>~/.config/metnos/runtime.toml</code>.</td>
   <td><span class="status tested">tested</span></td>
 </tr>
+<tr>
+  <td><a href="lifecycle.html"><code>lifecycle</code></a></td>
+  <td>Lifecycle unificato dei cambiamenti al sistema (ADR 0158): un solo oggetto <code>change_intent</code>, un solo state machine (<em>proposed&rarr;accepted&rarr;applied&rarr;observed&rarr;finalized</em>, plus <em>staged</em>/<em>rejected</em>/<em>failed</em>/<em>rolled_back</em>), una sola UI <code>/admin/changes</code>. Sostituisce 6 sorgenti (telos, introvertiva, synt, multi_tool, canonical, feedback) &times; 9 storage &times; 7 state machine. Pipeline: materializer @01:00 (dedup cross-source via fingerprint), applier @every_10m (per kind), observer @03:15 (grace 7gg + rollback fisico).</td>
+  <td><span class="status tested">tested</span></td>
+</tr>
 </tbody>
 </table>
 

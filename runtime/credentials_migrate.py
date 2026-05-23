@@ -39,6 +39,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+import config as _C  # noqa: E402 — §7.11
 import credentials as cr  # noqa: E402
 import mail_client as mc  # noqa: E402
 
@@ -62,7 +63,7 @@ def _legacy_creds(account: str) -> dict | None:
 
 
 def _dynamic_accounts_dir() -> Path:
-    return Path.home() / ".config" / "metnos" / "mail"
+    return _C.PATH_USER_CONFIG / "mail"
 
 
 def _discover_dynamic_accounts() -> list[str]:
@@ -144,26 +145,26 @@ def _read_env_var_from_files(name: str, paths: list[Path]) -> str | None:
 _API_KEY_SOURCES: dict[str, tuple[list[Path], str]] = {
     # domain        : ([files in order], env_var_name)
     "anthropic_api_key": (
-        [Path.home() / ".config/metnos/credentials.env",
-         Path.home() / ".config/metnos/anthropic.env"],
+        [_C.PATH_USER_CONFIG / "credentials.env",
+         _C.PATH_USER_CONFIG / "anthropic.env"],
         "ANTHROPIC_API_KEY",
     ),
     "openai_api_key": (
-        [Path.home() / ".config/metnos/credentials.env",
-         Path.home() / ".config/metnos/openai.env"],
+        [_C.PATH_USER_CONFIG / "credentials.env",
+         _C.PATH_USER_CONFIG / "openai.env"],
         "OPENAI_API_KEY",
     ),
     "google_maps_api_key": (
-        [Path.home() / ".config/metnos/google_maps.env",
-         Path.home() / ".config/metnos/credentials.env"],
+        [_C.PATH_USER_CONFIG / "google_maps.env",
+         _C.PATH_USER_CONFIG / "credentials.env"],
         "GOOGLE_MAPS_API_KEY",
     ),
     "telegram_bot_token": (
-        [Path.home() / ".config/metnos/credentials.env"],
+        [_C.PATH_USER_CONFIG / "credentials.env"],
         "TELEGRAM_BOT_TOKEN",
     ),
     "telegram_chat_id_host": (
-        [Path.home() / ".config/metnos/credentials.env"],
+        [_C.PATH_USER_CONFIG / "credentials.env"],
         "TELEGRAM_CHAT_ID",
     ),
 }

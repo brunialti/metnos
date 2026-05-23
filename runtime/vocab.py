@@ -658,8 +658,8 @@ _IMPORTED_BINDINGS_CACHE: dict[str, object] = {
 
 def _imports_root() -> "Path":
     """Path della root degli imported skills (Path lazy)."""
-    from pathlib import Path
-    return Path.home() / ".local" / "share" / "metnos" / "executors" / "_imports"
+    import config as _C  # §7.11
+    return _C.PATH_USER_DATA / "executors" / "_imports"
 
 
 def _imports_signature(root) -> tuple:

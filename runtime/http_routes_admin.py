@@ -20,6 +20,7 @@ import proposals_state
 import proposals_unified
 import telos_proposals_store
 import users
+import config as _C  # §7.11
 from http_auth import (
     ADMIN_COOKIE,
     ADMIN_COOKIE_TTL_S,
@@ -70,7 +71,7 @@ def _summary_executors(catalog) -> dict:
 
 
 def _turn_log_dir() -> Path:
-    return Path.home() / ".local" / "share" / "metnos" / "turns"
+    return _C.PATH_USER_DATA / "turns"
 
 
 def _load_recent_turns(limit: int = 50) -> list[dict]:
@@ -323,6 +324,10 @@ async def admin_proposals_unified(request: web.Request) -> web.Response:
     accumula centinaia di proposte; il triage manuale non scala oltre
     qualche decina. Tier=interesting/weak per esplorare oltre.
     """
+    # Bootstrap i18n per banner deprecation /admin/changes
+    import change_intents_i18n
+    change_intents_i18n.bootstrap_keys()
+
     source_filter = request.query.get("source", "").strip() or None
     tier = request.query.get("tier", "top").strip().lower()
     if tier not in ("top", "interesting", "weak"):
@@ -425,6 +430,204 @@ async def admin_proposal_unified_action(request: web.Request) -> web.Response:
     return web.json_response({"ok": True, "source": source,
                               "prop_id": prop_id, "action": action,
                               "recorded_at": rec.get("ts")})
+
+
+# --- /admin/changes (ADR 0158, unified change-intent lifecycle) ----------------
+
+# Default cap della UI. Sopra 50 il triage manuale non scala (CLAUDE.md §F.2).
+_CHANGES_DEFAULT_LIMIT = 30
+_CHANGES_TABS = [
+    {"key": "proposed"},
+    {"key": "accepted"},
+    {"key": "applied"},
+    {"key": "observed"},
+    {"key": "finalized"},
+    {"key": "staged"},
+    {"key": "rejected"},
+    {"key": "rolled_back"},
+    {"key": "failed"},
+]
+
+
+async def admin_changes(request: web.Request) -> web.Response:
+    """GET /admin/changes — vista unificata change_intent lifecycle.
+
+    Query params:
+      state: proposed (default) | accepted | applied | observed |
+             finalized | staged | rejected | rolled_back | failed
+      family: telos|introvertiva|synt|multi_tool|canonical|user (vuoto=tutti)
+      kind: create_executor|extend_executor|... (vuoto=tutti)
+      min_score: float (default 0)
+      limit: int (default 30)
+    """
+    import change_intents as ci_mod
+    import change_intents_i18n
+    change_intents_i18n.bootstrap_keys()
+
+    state = (request.query.get("state") or "proposed").strip().lower()
+    if state not in {t["key"] for t in _CHANGES_TABS}:
+        state = "proposed"
+    family = (request.query.get("family") or "").strip() or None
+    kind = (request.query.get("kind") or "").strip() or None
+    try:
+        min_score = float(request.query.get("min_score") or 0.0)
+    except (ValueError, TypeError):
+        min_score = 0.0
+    try:
+        limit = int(request.query.get("limit") or _CHANGES_DEFAULT_LIMIT)
+    except (ValueError, TypeError):
+        limit = _CHANGES_DEFAULT_LIMIT
+    limit = max(1, min(500, limit))
+
+    rows_objs = ci_mod.list_intents(
+        state=state, origin_family=family, intent_kind=kind,
+        min_score=min_score, limit=limit, order_by="score_desc",
+    )
+    rows = [asdict(r) for r in rows_objs]
+    counts = ci_mod.count_by_state()
+
+    # Facets — conta per family e kind sull'INSIEME corrente (state filtered)
+    all_in_state = ci_mod.list_intents(state=state, limit=5000)
+    family_counts: dict[str, int] = {}
+    kind_counts: dict[str, int] = {}
+    for r in all_in_state:
+        family_counts[r.origin_family] = family_counts.get(r.origin_family, 0) + 1
+        kind_counts[r.intent_kind] = kind_counts.get(r.intent_kind, 0) + 1
+
+    # Query string passthrough (per i link delle tabs)
+    qs_parts = []
+    if family:
+        qs_parts.append(f"family={urllib.parse.quote(family)}")
+    if kind:
+        qs_parts.append(f"kind={urllib.parse.quote(kind)}")
+    if min_score:
+        qs_parts.append(f"min_score={min_score}")
+    if limit != _CHANGES_DEFAULT_LIMIT:
+        qs_parts.append(f"limit={limit}")
+    qs_extra = ("&" + "&".join(qs_parts)) if qs_parts else ""
+
+    return negotiate_collection(
+        request,
+        json_payload={
+            "rows": rows,
+            "counts": counts,
+            "family_counts": family_counts,
+            "kind_counts": kind_counts,
+            "filters": {
+                "state": state,
+                "family": family or "",
+                "kind": kind or "",
+                "min_score": min_score,
+                "limit": limit,
+            },
+        },
+        template="changes.html",
+        template_ctx={
+            "rows": rows,
+            "counts": counts,
+            "family_counts": family_counts,
+            "kind_counts": kind_counts,
+            "tabs": _CHANGES_TABS,
+            "state": state,
+            "family": family or "",
+            "kind": kind or "",
+            "min_score": min_score,
+            "limit": limit,
+            "qs_extra": qs_extra,
+        },
+    )
+
+
+def _render_change_row_html(ci_row) -> str:
+    """Riga aggiornata post-decisione (htmx swap)."""
+    from messages import get as _msg
+    state_chip = {
+        "accepted":    f'<span class="chip ok">{_msg("UI_CHANGE_BADGE_ACCEPTED")}</span>',
+        "rejected":    f'<span class="chip bad">{_msg("UI_CHANGE_BADGE_REJECTED")}</span>',
+        "staged":      f'<span class="chip">{_msg("UI_CHANGE_BADGE_FAILED" if False else "UI_CHANGE_TAB_STAGED")}</span>',
+        "applied":     f'<span class="chip ok">{_msg("UI_CHANGE_BADGE_APPLIED")}</span>',
+        "observed":    f'<span class="chip ok">{_msg("UI_CHANGE_BADGE_OBSERVED")}</span>',
+        "finalized":   f'<span class="chip ok">{_msg("UI_CHANGE_BADGE_FINALIZED")}</span>',
+        "rolled_back": f'<span class="chip bad">{_msg("UI_CHANGE_BADGE_ROLLED_BACK")}</span>',
+        "failed":      f'<span class="chip bad">{_msg("UI_CHANGE_BADGE_FAILED")}</span>',
+        "proposed":    f'<span class="chip muted">proposed</span>',
+    }.get(ci_row.state, f'<span class="chip muted">{ci_row.state}</span>')
+    return (
+        f'<tr id="ci-{ci_row.id}">'
+        f'<td colspan="6" class="muted">'
+        f'{ci_row.intent_target}: {state_chip}'
+        f' <span class="muted">(by {ci_row.decision_by or "system"} at '
+        f'{ci_row.updated_at})</span></td></tr>'
+    )
+
+
+async def admin_change_action(request: web.Request) -> web.Response:
+    """POST /admin/changes/{id}/{action}.
+
+    action ∈ accept | reject | stage | rollback | retry
+    Body opzionale: {"reason": "..."}.
+    """
+    import change_intents as ci_mod
+    import change_intents_i18n
+    change_intents_i18n.bootstrap_keys()
+
+    from messages import get as _msg
+
+    id_ = request.match_info["id"]
+    action = request.match_info["action"]
+
+    if action not in ("accept", "reject", "stage", "rollback", "retry"):
+        return _error(400, "INVALID_ACTION",
+                      _msg("ERR_CHANGE_INVALID_ACTION", action=action))
+
+    by = request.get("admin_user") or "admin"
+
+    try:
+        body = await request.json() if request.body_exists else {}
+    except Exception:
+        body = {}
+    reason = body.get("reason") if isinstance(body, dict) else None
+
+    try:
+        if action in ("accept", "reject", "stage"):
+            updated = ci_mod.apply_decision(id_, action=action, by=by, reason=reason)
+        elif action == "rollback":
+            updated = ci_mod.mark_rolled_back(
+                id_, reason=reason or "user-initiated rollback",
+            )
+        elif action == "retry":
+            # failed → accepted (re-enqueue al daemon)
+            cur = ci_mod.get_intent(id_)
+            if cur is None:
+                return _error(404, "NOT_FOUND",
+                              _msg("ERR_CHANGE_NOT_FOUND", id=id_))
+            if cur.state != "failed":
+                return _error(400, "INVALID_TRANSITION",
+                              f"retry richiede state=failed, attuale={cur.state}")
+            updated = ci_mod._transition(id_, to_state="accepted",
+                                          extra_cols={"decision_by": by,
+                                                      "decision_ts": ci_mod._iso_utc_now(),
+                                                      "decision_action": "retry",
+                                                      "decision_reason": reason})
+        else:
+            return _error(400, "INVALID_ACTION",
+                          _msg("ERR_CHANGE_INVALID_ACTION", action=action))
+    except ci_mod.TransitionError as exc:
+        return _error(400, "TRANSITION_ERROR", str(exc))
+    except Exception as exc:
+        log.exception("change_action failed: %s", exc)
+        return _error(500, "INTERNAL", str(exc))
+
+    # htmx negotiate (HX-Request header) o JSON
+    if request.headers.get("HX-Request") == "true":
+        return web.Response(
+            text=_render_change_row_html(updated),
+            content_type="text/html",
+        )
+    return web.json_response({
+        "ok": True, "id": id_, "action": action, "state": updated.state,
+        "message": _msg("MSG_CHANGE_DECISION_OK", action=action),
+    })
 
 
 # --- /admin/proposals/telos --------------------------------------------------
@@ -740,6 +943,51 @@ async def admin_executors_stats(request: web.Request) -> web.Response:
     }
     body = json.dumps(payload, ensure_ascii=False, default=str).encode("utf-8")
     return serve_with_etag(request, body, content_type="application/json")
+
+
+# --- /admin/jobs/{key}/fire (manual trigger scheduler callbacks) -------------
+
+async def admin_job_fire(request: web.Request) -> web.Response:
+    """POST /admin/jobs/{key}/fire — invoca manualmente un callback
+    scheduler v2 (es. change_intent_materialize, change_applier,
+    change_observer). Body opzionale JSON come `payload`.
+
+    Use case: trigger manuale admin + simulatore E2E. Idempotente per
+    job che sono progettati cosi'. Niente lock cross-fire: il caller
+    e' responsabile di evitare race.
+    """
+    key = request.match_info["key"]
+    try:
+        body = await request.json() if request.body_exists else {}
+    except Exception:
+        body = {}
+    payload = body if isinstance(body, dict) else {}
+    try:
+        from scheduler_v2 import builtin_callbacks
+        # Lazy-build callback registry sub-instance (no scheduler running).
+        from scheduler_v2.callbacks import CallbackRegistry
+        # Construct fake scheduler-like object exposing only .callbacks.
+        class _StubScheduler:
+            callbacks = CallbackRegistry()
+        stub = _StubScheduler()
+        builtin_callbacks.install_default_callbacks(stub)
+        info = stub.callbacks.get(key)
+        if info is None:
+            return _error(404, "UNKNOWN_CALLBACK",
+                            f"callback `{key}` non registrato")
+        cb = info.fn  # CallbackInfo wraps fn
+    except Exception as exc:
+        log.exception("job_fire setup failed")
+        return _error(500, "INTERNAL", str(exc))
+    try:
+        if info.is_async:
+            result = await cb(payload)
+        else:
+            result = cb(payload)
+    except Exception as exc:
+        log.exception("job_fire callback failed: %s", key)
+        return _error(500, "CALLBACK_ERROR", str(exc))
+    return web.json_response({"ok": True, "callback": key, "result": result})
 
 
 # --- /admin/runs -------------------------------------------------------------
@@ -1215,7 +1463,7 @@ async def admin_logout(request: web.Request) -> web.Response:
 
 # --- /admin/synth-proposals/<id>/evaluate (ADR 0122) -------------------------
 
-_SYNT_PROPOSALS_DIR = Path.home() / ".local" / "share" / "metnos" / "synt_proposals"
+_SYNT_PROPOSALS_DIR = _C.PATH_USER_DATA / "synt_proposals"
 
 
 async def admin_synth_proposal_evaluate(request: web.Request) -> web.Response:
@@ -1276,6 +1524,10 @@ async def admin_promotions(request: web.Request) -> web.Response:
     Filtra per `state` (uno degli stati promoter) e finestra temporale
     `days` (default 30). Default `state=""` mostra tutti gli stati noti.
     """
+    # Bootstrap i18n per banner deprecation /admin/changes
+    import change_intents_i18n
+    change_intents_i18n.bootstrap_keys()
+
     state = request.query.get("state", "").strip()
     days_raw = request.query.get("days", "30").strip()
     try:
@@ -1439,6 +1691,9 @@ ROUTES = (
     ("POST", "/admin/login",                      admin_login),
     ("POST", "/admin/logout",                     admin_logout),
     ("GET",  "/admin",                            admin_home),
+    ("GET",  "/admin/changes",                    admin_changes),
+    ("POST", r"/admin/changes/{id}/{action:accept|reject|stage|rollback|retry}",
+              admin_change_action),
     ("GET",  "/admin/proposals",                  admin_proposals_unified),
     ("GET",  "/admin/proposals/introvertiva",     admin_proposals),
     ("POST", r"/admin/proposals/introvertiva/{sig_key}/{action:approve|reject|defer}", admin_proposal_action),
@@ -1456,6 +1711,7 @@ ROUTES = (
     ("POST", r"/admin/promotions/{id}/rollback",  admin_promotion_rollback),
     ("GET",  "/admin/executors",                  admin_executors),
     ("GET",  "/admin/executors/stats",            admin_executors_stats),
+    ("POST", r"/admin/jobs/{key}/fire",           admin_job_fire),
     ("GET",  "/admin/runs",                       admin_runs),
     ("GET",  "/admin/builds",                     admin_builds),
     ("GET",  "/admin/safety",                     admin_safety),

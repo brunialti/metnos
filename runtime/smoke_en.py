@@ -45,7 +45,7 @@ BATTERY_EN = [
     {"q": "list files in /tmp",
      "tool_re": r"^list_dirs$",
      "kind": "answer"},
-    {"q": "find *.py files in /opt/myclaw/runtime",
+    {"q": "find *.py files in /tmp",
      "tool_re": r"^find_files$",
      "kind": "answer"},
     {"q": "read /tmp/smoke_test.txt",

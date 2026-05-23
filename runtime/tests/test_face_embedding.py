@@ -1,7 +1,7 @@
 """Test minimale per `runtime/face_embedding.py` (RetinaFace + ArcFace).
 
 Skip-friendly: se i modelli buffalo_l non sono presenti in
-`/opt/myclaw/models/face/` (download via
+`<install_root>/models/face/` (download via
 `install/download_models.sh face`), i test sono saltati. In CI senza
 modelli, suite resta verde.
 """
@@ -16,7 +16,7 @@ sys.path.insert(0, str(_RUNTIME))
 
 
 def _models_present() -> bool:
-    base = Path("/opt/myclaw/models/face")
+    base = Path(__file__).resolve().parents[2] / "models/face"
     return (base / "det_10g.onnx").exists() and (base / "w600k_r50.onnx").exists()
 
 

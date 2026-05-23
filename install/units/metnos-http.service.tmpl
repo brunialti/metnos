@@ -1,0 +1,22 @@
+[Unit]
+Description=Metnos HTTP API + admin dashboard
+After=network.target
+StartLimitIntervalSec=120
+StartLimitBurst=5
+
+[Service]
+Type=simple
+ExecStart=@VENV@/bin/python -m runtime.metnos_http_server --host 127.0.0.1 --port @PORT@
+WorkingDirectory=@REPO_DIR@
+Restart=on-failure
+RestartSec=10
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONPATH=@REPO_DIR@
+Environment=METNOS_HOME=@HOME_DIR@
+Environment=METNOS_CONFIG=@CONFIG_DIR@
+Environment=METNOS_STATE=@STATE_DIR@
+Environment=METNOS_HTTP_HOST=127.0.0.1
+Environment=METNOS_HTTP_PORT=@PORT@
+
+[Install]
+WantedBy=default.target

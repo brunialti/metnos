@@ -14,7 +14,7 @@ MVP 1/5/2026 sera: identificazione + ranking + audit log JSONL append-only.
 NESSUNA promozione/sintesi automatica (richiede smoke replay + manual review).
 
 Riferimenti:
-  - bacino: /opt/myclaw/workspace/.mnestoma/mnest.sqlite (mnests + events)
+  - bacino: <install_root>/workspace/.mnestoma/mnest.sqlite (mnests + events)
   - turni:  ~/.local/share/metnos/turns/<YYYY-MM-DD>.jsonl
   - audit:  ~/.local/share/metnos/introvertiva/<op>_<ts>.jsonl
 """
@@ -28,9 +28,10 @@ from pathlib import Path
 import sys
 sys.path.insert(0, str(Path(__file__).parent))
 from mnestoma import Mnestoma  # noqa: E402
+import config as _C  # §7.11
 
-TURNS_DIR = Path.home() / ".local" / "share" / "metnos" / "turns"
-AUDIT_DIR = Path.home() / ".local" / "share" / "metnos" / "introvertiva"
+TURNS_DIR = _C.PATH_USER_DATA / "turns"
+AUDIT_DIR = _C.PATH_USER_DATA / "introvertiva"
 
 # Channel da escludere di default: smoke battery + test runner.
 # Generano traffico massiccio non rappresentativo dell'uso reale.
@@ -153,7 +154,7 @@ def candidates_generalize(
     from loader import load_catalog
     cat_names = {e.name for e in load_catalog()}
     # Universal helpers + builtin verb-unique sono "tool del runtime"
-    # (non file in /opt/myclaw/executors/) ma sono validi nei pattern.
+    # (non file in <install_root>/executors/) ma sono validi nei pattern.
     cat_names.update({
         "filter_entries", "sort_entries", "compute_entries", "undo_last_turn",
         "describe_entries", "classify_entries",

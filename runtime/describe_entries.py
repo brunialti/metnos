@@ -326,7 +326,21 @@ def handle_describe_entries(args, *, verbose: bool = False) -> dict:
     if style == "by_relevance" and not (context and context.strip()):
         style = "by_importance"
     data_kind = (args or {}).get("data_kind") or h.get("kind") or h.get("data_kind")
-    max_tokens = int((args or {}).get("max_tokens") or h.get("max_tokens") or 600)
+    # max_tokens adattivo per dimensione bundle (era 600 fisso → 400 → scala):
+    # N=1-3 → 200, N=4-10 → 300, N>10 → 400. Riduce KV-cache allocation
+    # llama-server proporzionalmente al target output reale (3-5 righe). Caller
+    # puo' override esplicito.
+    _explicit_max = (args or {}).get("max_tokens") or h.get("max_tokens")
+    if _explicit_max is not None:
+        max_tokens = int(_explicit_max)
+    else:
+        _n_ent = len(entries) if isinstance(entries, list) else 0
+        if _n_ent <= 3:
+            max_tokens = 200
+        elif _n_ent <= 10:
+            max_tokens = 300
+        else:
+            max_tokens = 400
     prompt_override = (args or {}).get("prompt_override") or h.get("prompt_override")
     fmt = (args or {}).get("format") or h.get("format") or "markdown"
     tier = (args or {}).get("tier") or h.get("tier") or "auto"

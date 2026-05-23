@@ -24,7 +24,7 @@
 # Maintenance: bump `version` when adding/changing entries; the bootstrap
 # will apply only the new/changed entries to existing DBs.
 
-version = 2
+version = 3
 
 
 # ─────────────────────────────────────────────────────────────────────
@@ -1203,3 +1203,269 @@ sig = "passwd:*:*"
 kind = "blacklist"
 severity = "dangerous"
 reason = "password change must go through interactive UX, not the chain"
+
+
+# ─────────────────────────────────────────────────────────────────────
+#  v3 (22/5/2026): long-tail sysinfo come fallback per get_processes
+#  Read-only, no side effect, comandi che get_processes non copre.
+# ─────────────────────────────────────────────────────────────────────
+
+# ── Hardware monitoring (oltre lsblk/lscpu/lsusb/lspci gia' presenti) ─
+
+[[signatures]]
+sig = "sensors:*:*"
+kind = "whitelist"
+severity = "reversible"
+reason = "lm-sensors: temperature, voltaggi, ventole. Read-only hardware monitoring."
+
+[[signatures]]
+sig = "nvidia-smi:*:*"
+kind = "whitelist"
+severity = "reversible"
+reason = "NVIDIA GPU info (utilizzo, memoria, processi, temp). Senza --gpu-reset/-r e' read-only."
+
+[[signatures]]
+sig = "rocm-smi:*:*"
+kind = "whitelist"
+severity = "reversible"
+reason = "AMD GPU info (Strix Halo). Default mode e' read-only; -d/--device per filtri ok."
+
+[[signatures]]
+sig = "nproc:*:*"
+kind = "whitelist"
+severity = "reversible"
+reason = "numero CPU disponibili. Read-only."
+
+[[signatures]]
+sig = "dmidecode:*:*"
+kind = "whitelist"
+severity = "reversible"
+reason = "info hardware da SMBIOS (mobo, BIOS, RAM slot). Read-only."
+
+[[signatures]]
+sig = "lshw:*:*"
+kind = "whitelist"
+severity = "reversible"
+reason = "elenco hardware unificato (PCI/USB/SCSI/CPU/RAM). Read-only."
+
+# ── Filesystem extended (oltre lsblk/df/du/ls gia' presenti) ─────────
+
+[[signatures]]
+sig = "findmnt:*:*"
+kind = "whitelist"
+severity = "reversible"
+reason = "elenco mountpoint con dettagli (FS, opzioni, source). Read-only."
+
+[[signatures]]
+sig = "swapon:*:*"
+kind = "whitelist"
+severity = "reversible"
+reason = "default mode e' --show (read). --activate/--all richiedono root + scrittura; quelle vanno via graylist."
+
+[[signatures]]
+sig = "losetup:*:*"
+kind = "whitelist"
+severity = "reversible"
+reason = "default mode = list loop devices (read-only). Setup/detach sono graylist."
+
+[[signatures]]
+sig = "blkid:*:*"
+kind = "whitelist"
+severity = "reversible"
+reason = "elenco UUID/LABEL/TYPE dei block device. Read-only."
+
+# ── Process / per-process stats ──────────────────────────────────────
+
+[[signatures]]
+sig = "pidstat:*:*"
+kind = "whitelist"
+severity = "reversible"
+reason = "statistiche per-process da /proc. Read-only (parte di sysstat)."
+
+[[signatures]]
+sig = "sar:*:*"
+kind = "whitelist"
+severity = "reversible"
+reason = "system activity reporter, legge log gia' raccolti. Read-only."
+
+# ── Network monitoring (oltre ss/ip:addr|link|route/arp/netstat) ─────
+
+[[signatures]]
+sig = "ip:neigh:*"
+kind = "whitelist"
+severity = "reversible"
+reason = "ARP/NDP neighbour table via ip (replacement di arp -a). Read-only."
+
+[[signatures]]
+sig = "ip:rule:*"
+kind = "whitelist"
+severity = "reversible"
+reason = "policy routing rules (read mode di default). Replace/add/delete sono graylist."
+
+[[signatures]]
+sig = "nstat:*:*"
+kind = "whitelist"
+severity = "reversible"
+reason = "kernel network statistics (/proc/net/netstat). Read-only."
+
+[[signatures]]
+sig = "iptables:L:*"
+kind = "whitelist"
+severity = "reversible"
+reason = "list iptables rules (-L). Read-only."
+
+[[signatures]]
+sig = "iptables:S:*"
+kind = "whitelist"
+severity = "reversible"
+reason = "list iptables rules in save format (-S). Read-only."
+
+[[signatures]]
+sig = "ip6tables:L:*"
+kind = "whitelist"
+severity = "reversible"
+reason = "list ip6tables rules. Read-only."
+
+[[signatures]]
+sig = "nft:list:*"
+kind = "whitelist"
+severity = "reversible"
+reason = "nftables list ruleset/tables/chains. Subcommand list e' read-only."
+
+# ── NUMA / scheduling ────────────────────────────────────────────────
+
+[[signatures]]
+sig = "numastat:*:*"
+kind = "whitelist"
+severity = "reversible"
+reason = "NUMA memory allocation stats. Read-only."
+
+[[signatures]]
+sig = "numactl:--show:*"
+kind = "whitelist"
+severity = "reversible"
+reason = "NUMA policy corrente. --show e' read-only (vs --bind che esegue)."
+
+# ── DNS / NSS ────────────────────────────────────────────────────────
+
+[[signatures]]
+sig = "getent:*:*"
+kind = "whitelist"
+severity = "reversible"
+reason = "NSS database lookup (hosts/passwd/group/services/...). Read-only."
+
+[[signatures]]
+sig = "resolvectl:status:*"
+kind = "whitelist"
+severity = "reversible"
+reason = "systemd-resolved status (DNS server, suffissi, cache stats). Read-only."
+
+[[signatures]]
+sig = "resolvectl:query:*"
+kind = "whitelist"
+severity = "reversible"
+reason = "DNS query via systemd-resolved. Read-only."
+
+# ── System config / kernel parameters (read mode) ────────────────────
+
+[[signatures]]
+sig = "getconf:*:*"
+kind = "whitelist"
+severity = "reversible"
+reason = "POSIX system configuration values. Read-only."
+
+[[signatures]]
+sig = "sysctl:a:*"
+kind = "whitelist"
+severity = "reversible"
+reason = "sysctl -a / -n (read-only). Le scritture (-w) sono gia' graylist."
+
+[[signatures]]
+sig = "sysctl:n:*"
+kind = "whitelist"
+severity = "reversible"
+reason = "sysctl -n (single value read). Read-only."
+
+# ── Logs / journals extended ─────────────────────────────────────────
+
+[[signatures]]
+sig = "dmesg:H:*"
+kind = "whitelist"
+severity = "reversible"
+reason = "dmesg --human (read-only). Gia' dmesg:*:* lo copre ma esplicito per clarity."
+
+# ── Users / sessions ─────────────────────────────────────────────────
+
+[[signatures]]
+sig = "users:*:*"
+kind = "whitelist"
+severity = "reversible"
+reason = "elenco utenti loggati (compact). Read-only."
+
+[[signatures]]
+sig = "finger:*:*"
+kind = "whitelist"
+severity = "reversible"
+reason = "info utente (gecos, ultimo login, ecc.). Read-only."
+
+# ── Date / locale / encoding ─────────────────────────────────────────
+
+[[signatures]]
+sig = "locale:*:*"
+kind = "whitelist"
+severity = "reversible"
+reason = "elenco locale correnti / configurazione i18n. Read-only."
+
+# ── Network discovery (NO scan, solo read locale) ────────────────────
+
+[[signatures]]
+sig = "iw:dev:*"
+kind = "whitelist"
+severity = "reversible"
+reason = "iw dev (info WiFi dev locale). Read-only."
+
+[[signatures]]
+sig = "iwconfig:*:*"
+kind = "whitelist"
+severity = "reversible"
+reason = "WiFi interface info (legacy, read-only)."
+
+# ── Storage / FS metadata ────────────────────────────────────────────
+
+[[signatures]]
+sig = "tune2fs:l:*"
+kind = "whitelist"
+severity = "reversible"
+reason = "tune2fs -l (list filesystem features). Read-only."
+
+[[signatures]]
+sig = "btrfs:filesystem:*"
+kind = "whitelist"
+severity = "reversible"
+reason = "btrfs filesystem show/df/usage. Read-only (vs btrfs balance/scrub start che sono operazioni)."
+
+# ── ZFS (se installato, read-only) ───────────────────────────────────
+
+[[signatures]]
+sig = "zpool:status:*"
+kind = "whitelist"
+severity = "reversible"
+reason = "ZFS pool status. Read-only."
+
+[[signatures]]
+sig = "zpool:list:*"
+kind = "whitelist"
+severity = "reversible"
+reason = "ZFS pool list. Read-only."
+
+[[signatures]]
+sig = "zfs:list:*"
+kind = "whitelist"
+severity = "reversible"
+reason = "ZFS dataset list. Read-only."
+
+[[signatures]]
+sig = "zfs:get:*"
+kind = "whitelist"
+severity = "reversible"
+reason = "ZFS property get. Read-only."

@@ -22,8 +22,10 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-SYNT_PROPOSALS_DIR = Path.home() / ".local" / "share" / "metnos" / "synt_proposals"
-INTROVERTIVA_DIR = Path.home() / ".local" / "share" / "metnos" / "introvertiva"
+import config as _C  # §7.11
+
+SYNT_PROPOSALS_DIR = _C.PATH_USER_DATA / "synt_proposals"
+INTROVERTIVA_DIR = _C.PATH_USER_DATA / "introvertiva"
 
 
 # ─── synt_proposals/ ─────────────────────────────────────────────────────
@@ -120,8 +122,9 @@ def archive_aged_synth_proposals(*, max_age_days: int = 30,
 
 def _fallback_catalog_names() -> set[str]:
     out: set[str] = set()
-    for d in (Path("/opt/myclaw/executors"),
-              Path.home() / ".local" / "share" / "metnos" / "executors"):
+    import config as _C  # ADR 0148 rename-resilient
+    for d in (_C.PATH_EXECUTORS,
+              _C.PATH_USER_DATA / "executors"):
         if not d.is_dir():
             continue
         for sub in d.iterdir():
@@ -385,7 +388,7 @@ def run_cleanup(*, dry_run: bool = False, keep_n_snapshots: int = 3,
     report["legacy_orphan_mnests"] = auto_decay_legacy_orphan_mnests(dry_run=dry_run)
     if write_audit and not dry_run:
         try:
-            audit_dir = Path.home() / ".local" / "share" / "metnos" / "lifecycle"
+            audit_dir = _C.PATH_USER_DATA / "lifecycle"
             audit_dir.mkdir(parents=True, exist_ok=True)
             ts = int(time.time())
             (audit_dir / f"proposals_cleanup_{ts}.jsonl").write_text(

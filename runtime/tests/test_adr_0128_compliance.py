@@ -25,7 +25,7 @@ IMPORTS_ROOT = Path.home() / ".local/share/metnos/executors/_imports/google-work
 
 # Tabella di rinominazione (old, new) per asserire la fine del drift.
 # Eccezione: `set_events → create_events` (14/5/2026) e' stato promosso a
-# CANONICAL dispatcher in /opt/myclaw/executors/create_events/ (refactor
+# CANONICAL dispatcher in <install_root>/executors/create_events/ (refactor
 # 13/5/2026, plugin area calendar). Non e' piu' un import google-workspace.
 # Il check di rinomina lo tratta a parte (vedi `test_create_events_promoted`).
 RENAMES = [
@@ -38,19 +38,23 @@ RENAMES = [
 ]
 
 NEW_NAMES_EXPECTED = {
-    "write_files_text",
-    "set_files_xlsx",
-    "set_messages",
+    # ADR 0136 (15/5/2026): provider qualifier `_google_workspace`
+    # universale. Tutti gli executor importati da skill google-workspace
+    # hanno suffix unico, eliminando i mix Sprint M (set_messages vs
+    # set_messages_google_workspace).
+    "write_files_text_google_workspace",
+    "set_files_xlsx_google_workspace",
+    "set_messages_google_workspace",
     "share_files_google_workspace",
-    "create_files_text",
-    "create_files_xlsx",
+    "create_files_text_google_workspace",
+    "create_files_xlsx_google_workspace",
 }
 
 
 def test_create_events_promoted_to_canonical():
     """set_events → create_events e' canonical dispatcher (13/5/2026),
     NON un import google-workspace. Verifica presenza nel registry canonical."""
-    canonical = Path("/opt/myclaw/executors/create_events")
+    canonical = Path(__file__).resolve().parents[2] / "executors/create_events"
     assert canonical.is_dir(), (
         f"create_events deve essere canonical in {canonical} (refactor 13/5/2026)"
     )
@@ -59,10 +63,22 @@ def test_create_events_promoted_to_canonical():
     assert (canonical / "create_events.py").is_file()
 
 
-@pytest.fixture(scope="module")
-def imports_dir():
+def _skip_if_no_google_workspace_imports():
+    """Skip se la skill google-workspace non e' installata.
+    Universale: dir mancante OR vuota = nessuna skill da testare. Non e'
+    un bug del codice, e' una condizione ambientale (skill opt-in)."""
     if not IMPORTS_ROOT.is_dir():
         pytest.skip(f"imports root missing: {IMPORTS_ROOT}")
+    if not any(p.is_dir() for p in IMPORTS_ROOT.iterdir()):
+        pytest.skip(
+            f"google-workspace skill not imported (empty {IMPORTS_ROOT}). "
+            "Run `metnos-skills import agentskills.io/local/google-workspace` to enable."
+        )
+
+
+@pytest.fixture(scope="module")
+def imports_dir():
+    _skip_if_no_google_workspace_imports()
     return IMPORTS_ROOT
 
 
@@ -103,6 +119,7 @@ def test_old_names_absent_after_sprint_m(imports_dir):
 
 
 def test_catalog_loads_all_renamed_executors():
+    _skip_if_no_google_workspace_imports()
     from runtime import loader
     cat = loader.load_catalog()
     assert len(cat.rejected) == 0, f"rejected non vuoto: {cat.rejected}"

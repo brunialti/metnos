@@ -3,8 +3,8 @@ from __future__ import annotations
 
 import sys
 
-if "/opt/myclaw/runtime" not in sys.path:
-    sys.path.insert(0, "/opt/myclaw/runtime")
+if "<install_root>/runtime" not in sys.path:
+    sys.path.insert(0, str(__import__("pathlib").Path(__file__).resolve().parents[1]))
 
 from describe_entries import _maybe_append_link_section  # type: ignore
 

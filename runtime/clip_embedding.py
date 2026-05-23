@@ -8,7 +8,7 @@ Drop-in pattern modellato su `suprastructure.embedding.onnx_embedding`:
     - Singleton `get_clip_engine()` per inizializzazione lazy
 
 Modello atteso: SigLIP-base-patch16-224 (Xenova ONNX).
-Path di default: `/opt/myclaw/models/siglip/`. Override via env:
+Path di default: `<install_root>/models/siglip/`. Override via env:
 `METNOS_CLIP_MODEL_DIR`.
 
 Preferenza filename: `text_model.onnx` / `vision_model.onnx` (fp32, ~441+372MB).
@@ -54,11 +54,13 @@ __all__ = [
 
 
 def _default_model_dir() -> Path:
-    """Risolve la dir del modello. Env > default."""
+    """Risolve la dir del modello. Env > default rename-resilient."""
     env = os.environ.get("METNOS_CLIP_MODEL_DIR")
     if env:
         return Path(env)
-    return Path("/opt/myclaw/models/siglip")
+    # ADR 0148: derive from PATH_ROOT.
+    import config as _C
+    return _C.PATH_ROOT / "models" / "siglip"
 
 
 # ── Engine ──────────────────────────────────────────────────────────
@@ -159,7 +161,7 @@ class ClipEngine:
                 if not p.exists():
                     raise FileNotFoundError(
                         f"ClipEngine: file mancante {p}. Esegui "
-                        "/opt/myclaw/install/download_models.sh siglip",
+                        "<install_root>/install/download_models.sh siglip",
                     )
             # Logga la variante scelta (fp32 vs quantized) per audit
             text_variant = "fp32" if text_path.name == "text_model.onnx" else "quantized"

@@ -23,7 +23,10 @@ import statistics
 from collections import defaultdict
 from pathlib import Path
 
-TURNS = sorted(glob.glob(str(Path.home() / ".local/share/metnos/turns/*.jsonl")))
+import sys as _sys
+_sys.path.insert(0, str(Path(__file__).resolve().parent))
+import config as _C  # §7.11
+TURNS = sorted(glob.glob(str(_C.PATH_TURNS / "*.jsonl")))
 
 
 def collect_turns():

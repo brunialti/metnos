@@ -335,7 +335,8 @@ if __name__ == "__main__":
     if not (args.backfill is not None or args.recompose is not None):
         ap.error("specificare --backfill o --recompose")
 
-    default_path = str(Path.home() / ".local/share/metnos/telos_proposals.jsonl")
+    import config as _C  # §7.11
+    default_path = str(_C.PATH_USER_DATA / "telos_proposals.jsonl")
     mode_name = "recompose" if args.recompose is not None else "backfill"
     src_arg = args.recompose if mode_name == "recompose" else args.backfill
     src_path = src_arg or default_path

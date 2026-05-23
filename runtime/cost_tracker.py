@@ -23,7 +23,9 @@ import time
 from decimal import Decimal
 from pathlib import Path
 
-COST_DIR = Path.home() / ".local" / "share" / "metnos" / "cost"
+import config as _C  # §7.11
+
+COST_DIR = _C.PATH_USER_DATA / "cost"
 
 # Prezzo in EUR per 1k tokens. Tabella conservativa, da revedere col tempo.
 PRICING = {

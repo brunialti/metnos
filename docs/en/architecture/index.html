@@ -421,6 +421,11 @@ progress or partial). All have an Italian counterpart at
   <td>Three layers of memoization before the planner: L0 literal patterns (&ldquo;what time is it&rdquo;), L1 single-tool via <code>canonical_matcher</code> with BGE-M3 match on the <em>canonical query log</em>, L2 multi-step sequences via <code>multi_tool_paths</code> with active-day TTL. L2&rarr;L3 bridge to synthesis via proto-mnest. Hybrid argument extractor regex + memory + optional LLM. Persistent config in <code>~/.config/metnos/runtime.toml</code>.</td>
   <td><span class="status tested">tested</span></td>
 </tr>
+<tr>
+  <td><a href="lifecycle.html"><code>lifecycle</code></a></td>
+  <td>Unified system-change lifecycle (ADR 0158): one <code>change_intent</code> object, one state machine (<em>proposed&rarr;accepted&rarr;applied&rarr;observed&rarr;finalized</em>, plus <em>staged</em>/<em>rejected</em>/<em>failed</em>/<em>rolled_back</em>), one UI <code>/admin/changes</code>. Replaces 6 sources (telos, introvertiva, synt, multi_tool, canonical, feedback) &times; 9 storage &times; 7 state machines. Pipeline: materializer @01:00 (cross-source fingerprint dedup), applier @every_10m (per kind), observer @03:15 (7d grace + physical rollback).</td>
+  <td><span class="status tested">tested</span></td>
+</tr>
 </tbody>
 </table>
 

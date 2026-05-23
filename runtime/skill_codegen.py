@@ -67,49 +67,107 @@ def _tojson(value: Any) -> str:
 # il termine plurale non lo deriva ovviamente (eventi/evento ok dal token match
 # parziale? No: prefilter fa exact substring match sulla parola).
 _AFFINITY_BY_OBJ = {
-    "events":   ["appuntamento", "appuntamenti", "agenda", "evento",
-                 "eventi", "calendario", "calendar", "riunione",
-                 "riunioni", "incontro", "incontri", "meeting",
-                 "scadenza", "scadenze", "deadline", "promemoria",
-                 "reminder", "events", "meetings", "schedule"],
-    "messages": ["mail", "email", "messaggio", "messaggi", "posta",
-                 "newsletter", "newsletters", "messages", "emails",
-                 "inbox", "lettera"],
-    "files":    ["file", "documento", "documenti", "documents", "files",
-                 "spreadsheet", "spreadsheets", "doc", "docs"],
-    "contacts": ["contatto", "contatti", "rubrica", "contact", "contacts",
-                 "address", "addresses", "persona"],
-    "credentials": ["credenziale", "credenziali", "chiave", "chiavi",
-                    "token", "credentials", "keys", "password"],
+    # Coverage di vocab.OBJECTS §2.2 (19 plurali). Bug F4 mitigato:
+    # ogni object ha entry, cosi' il cartesian (verb × obj) produce
+    # affinity qualified anche per oggetti rari.
+    "events":      ["appuntamento", "appuntamenti", "agenda", "evento",
+                    "eventi", "calendario", "calendar", "riunione",
+                    "riunioni", "meeting", "scadenza", "deadline",
+                    "promemoria", "events", "schedule"],
+    "messages":    ["mail", "email", "messaggio", "messaggi", "posta",
+                    "newsletter", "messages", "emails", "inbox", "lettera"],
+    "files":       ["file", "documento", "documenti", "documents",
+                    "files", "spreadsheet", "doc", "docs"],
+    "dirs":        ["cartella", "cartelle", "directory", "folder",
+                    "folders", "dirs"],
+    "contacts":    ["contatto", "contatti", "rubrica", "contact",
+                    "contacts", "address", "persona"],
+    "credentials": ["credenziale", "credenziali", "chiave", "token",
+                    "credentials", "keys", "password"],
+    "processes":   ["processo", "processi", "process", "processes",
+                    "task", "pid"],
+    "urls":        ["url", "urls", "link", "links", "sito", "siti",
+                    "homepage", "pagina", "pagine"],
+    "texts":       ["testo", "testi", "text", "texts", "contenuto",
+                    "stringa"],
+    "images":      ["immagine", "immagini", "image", "images", "foto",
+                    "photo", "photos", "picture"],
+    "persons":     ["persona", "persone", "person", "people"],
+    "places":      ["luogo", "luoghi", "place", "places", "posto",
+                    "location"],
+    "numbers":     ["numero", "numeri", "number", "numbers", "telefono"],
+    "tasks":       ["task", "tasks", "promemoria", "scheduler"],
+    "inputs":      ["input", "inputs", "valore", "valori"],
+    "proposals":   ["proposta", "proposte", "proposal", "proposals"],
+    "signatures":  ["firma", "firme", "signature", "signatures"],
+    "packages":    ["pacchetto", "pacchetti", "package", "packages"],
+    "entries":     ["voce", "voci", "entry", "entries", "elemento",
+                    "elementi"],
 }
 
 
 _AFFINITY_BY_VERB = {
-    "read":   ["leggi", "read", "view", "open"],
-    "find":   ["cerca", "find", "search"],
-    "set":    ["crea", "imposta", "set", "create"],
-    "delete": ["cancella", "elimina", "delete", "remove"],
-    "send":   ["invia", "manda", "send"],
-    "list":   ["elenca", "list", "enumera"],
-    "get":    ["ottieni", "get"],
-    "change": ["modifica", "update", "change"],
-    "write":  ["scrivi", "write", "upload"],
+    # Coverage completa dei 23 verbi canonici §2.2 ACTIONS. Una chiave per
+    # ogni verb mutating/non-mutating: il bug F4 (bare nouns nell'affinity)
+    # nasceva quando il verb non era in tabella e il cartesian fallback
+    # ritornava solo i nomi degli object.
+    "read":     ["leggi", "read", "view", "open"],
+    "write":    ["scrivi", "write", "upload"],
+    "find":     ["cerca", "find", "search"],
+    "list":     ["elenca", "list", "enumera"],
+    "get":      ["ottieni", "get"],
+    "set":      ["imposta", "set", "update"],
+    "create":   ["crea", "create", "new", "nuovo"],
+    "delete":   ["cancella", "elimina", "delete", "remove"],
+    "move":     ["sposta", "move"],
+    "send":     ["invia", "manda", "send"],
+    "share":    ["condividi", "share"],
+    "change":   ["modifica", "update", "change"],
+    "filter":   ["filtra", "filter"],
+    "sort":     ["ordina", "sort"],
+    "group":    ["raggruppa", "group"],
+    "classify": ["classifica", "classify"],
+    "describe": ["descrivi", "describe"],
+    "render":   ["mostra", "render"],
+    "extract":  ["estrai", "extract"],
+    "compress": ["comprimi", "compress"],
+    "compute":  ["calcola", "compute"],
+    "compare":  ["confronta", "compare"],
+    "order":    ["ordina", "order"],
 }
 
 
 def _default_affinity(plan) -> list:
-    """Affinity baseline: combina termini per object + verbo. 8-15 termini."""
-    base = list(_AFFINITY_BY_OBJ.get(plan.obj, []))
-    base.extend(_AFFINITY_BY_VERB.get(plan.verb, []))
-    seen = set()
-    out = []
-    for t in base:
-        if t in seen:
-            continue
-        seen.add(t)
-        out.append(t)
-    # Cap a 15
-    return out[:15]
+    """Affinity baseline QUALIFIED: combina verbo+oggetto in frasi (es.
+    'cerca mail', 'find email') invece di bare nouns separati.
+
+    Razionale §7.3 (bug F4 22/5/2026): `find_messages` con affinity
+    `[mail, email, find, search]` matchava «mandami una mail» (send_messages
+    intent) perche' bare 'mail' overlap query. Cartesian verbo×oggetto
+    risolve: 'cerca mail' NON matcha 'mandami mail'.
+
+    Cap 15. Fallback se uno dei due set e' vuoto: concat (back-compat).
+    """
+    objs = list(_AFFINITY_BY_OBJ.get(plan.obj, []))
+    verbs = list(_AFFINITY_BY_VERB.get(plan.verb, []))
+    if not objs or not verbs:
+        # Fallback: concat dedup capped 15.
+        seen, out = set(), []
+        for t in objs + verbs:
+            if t not in seen:
+                seen.add(t)
+                out.append(t)
+        return out[:15]
+    # Cartesian qualified: verbo + " " + oggetto. Cap 15 = ~3 verbi × 5 obj.
+    out: list[str] = []
+    for v in verbs:
+        for o in objs:
+            phrase = f"{v} {o}"
+            if phrase not in out:
+                out.append(phrase)
+            if len(out) >= 15:
+                return out
+    return out
 
 
 # ---------------------------------------------------------------------------
@@ -730,7 +788,7 @@ def generate_executor_files(plan, parsed_skill, executor_dir, *,
     Ritorna dict `{manifest_path, code_path, lang_state_path}`.
 
     DEVI: passare un ExecutorPlan + ParsedSkill (output di Task A/B).
-    NON DEVI: scrivere in /opt/myclaw/.
+    NON DEVI: scrivere in <install_root>/.
     """
     out_dir = Path(executor_dir) / plan.name
     out_dir.mkdir(parents=True, exist_ok=True)

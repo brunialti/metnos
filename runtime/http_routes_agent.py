@@ -16,6 +16,7 @@ from pathlib import Path
 from aiohttp import web
 
 import devices
+import config as _C  # §7.11
 from html_sanitizer import to_safe_html_full
 from http_render import render_template
 from http_auth import ADMIN_KEY_PATH
@@ -1771,7 +1772,7 @@ async def turns_recent(request: web.Request) -> web.Response:
     except (ValueError, TypeError):
         since_ts = 0.0
 
-    turns_dir = Path.home() / ".local" / "share" / "metnos" / "turns"
+    turns_dir = _C.PATH_USER_DATA / "turns"
     out: list[dict] = []
     if not turns_dir.exists():
         return web.json_response({"turns": []})

@@ -36,9 +36,11 @@ class TestPlannerSizeTargeted(unittest.TestCase):
     def test_planner_size_targeted_calendar_mail(self):
         """Compose con sections=["calendar","mail"] (typical mailbox+events).
 
-        Soglia 40_000 char (~10K token): dopo il refactor il calendar.j2 e'
-        ridotto (workspace/* separati), tutto il web/* non viene incluso.
-        Il bulk del prompt resta nel _core.j2 (~20K) + variazioni vocab.
+        Soglia 65_000 char (~16K token): il _core.j2 e' cresciuto a ~30K
+        per coprire telos engine (ADR 0156/0157), pipeline_shape (ADR 0154),
+        fast-path (ADR 0150), executor > fast-path invariante, ecc. Ben
+        dentro il context window 1M di Gemma 4. Il targeted resta <
+        all-sections (verifica esplicita in test_planner_targeted_less_than_all).
         """
         import prompt_loader
         out = prompt_loader.compose(
@@ -52,9 +54,10 @@ class TestPlannerSizeTargeted(unittest.TestCase):
             **_NOW_VARS,
         )
         self.assertLess(
-            len(out), 40_000,
+            len(out), 65_000,
             f"prompt PLANNER targeted too large: {len(out)} char "
-            "(soglia 40_000 = ~10K token).",
+            "(soglia 65_000 = ~16K token). Se ben oltre, valuta refactor "
+            "_core.j2 (compatta o sposta in sezioni opzionali).",
         )
 
     def test_planner_targeted_less_than_all_sections(self):
@@ -130,8 +133,10 @@ class TestPlannerSizeTargeted(unittest.TestCase):
         )
         # Deve contenere marker della sezione search (find_urls).
         self.assertIn("find_urls", out)
-        # Non deve contenere marker di sezioni NON richieste.
-        self.assertNotIn("read_events", out)
+        # Non deve contenere marker UNICO della sezione calendar (non richiesta).
+        # Nota: nomi tool come `read_events` compaiono anche in `_core.j2` come
+        # esempi, quindi non sono marker affidabili. Il titolo della sezione si'.
+        self.assertNotIn("CALENDARIO / EVENTI / AGENDA", out)
 
 
 if __name__ == "__main__":

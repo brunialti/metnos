@@ -35,16 +35,16 @@ from __future__ import annotations
 import json
 import os
 import sqlite3
+import sys as _sys
 from datetime import datetime, timezone
 from pathlib import Path
 
+_sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+import config as _C  # §7.11
 
-_DEFAULT_DB = (
-    Path.home() / ".local" / "share" / "metnos" / "promoter.sqlite"
-)
-_DEFAULT_AUDIT_DIR = (
-    Path.home() / ".local" / "share" / "metnos" / "synth_audit"
-)
+
+_DEFAULT_DB = _C.PATH_USER_DATA / "promoter.sqlite"
+_DEFAULT_AUDIT_DIR = _C.PATH_USER_DATA / "synth_audit"
 
 
 def _db_path() -> Path:

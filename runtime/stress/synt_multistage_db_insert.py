@@ -22,9 +22,9 @@ import json
 import sqlite3
 from pathlib import Path
 
-DB = Path("/opt/myclaw/runtime/testing/tests.db")
-RESULTS = Path("/opt/myclaw/decisions/synt_stress/results_multistage_35.jsonl")
-QUERIES = Path("/opt/myclaw/decisions/synt_stress/queries_50.json")
+DB = Path(__file__).resolve().parents[2] / "runtime/testing/tests.db"
+RESULTS = Path(__file__).resolve().parents[2] / "decisions/synt_stress/results_multistage_35.jsonl"
+QUERIES = Path(__file__).resolve().parents[2] / "decisions/synt_stress/queries_50.json"
 
 MODULE_ID_SYNT = 12  # 'synt' module per registry
 

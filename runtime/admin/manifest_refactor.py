@@ -42,7 +42,10 @@ try:
 except ImportError:
     tomli_w = None  # write-back disabled if not installed
 
-EXECUTORS_DIR = Path("/opt/metnos/executors")
+import sys as _sys
+_sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+import config as _C  # §7.11
+EXECUTORS_DIR = _C.PATH_EXECUTORS
 REFERENCE = EXECUTORS_DIR / "get_processes" / "manifest.toml"
 
 # Soglie di verbosita' (idempotenza): se manifest sotto soglia → SKIP.

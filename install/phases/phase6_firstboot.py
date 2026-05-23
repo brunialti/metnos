@@ -1,0 +1,142 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+"""Phase 6 — First boot.
+
+Final phase. After all the moving parts are in place, this:
+
+- generates a one-shot admin onboarding URL with the HMAC token from
+  ``~/.config/metnos/admin.key`` (so the user can claim the web
+  dashboard without re-authenticating)
+- prints a Telegram pairing snippet if the bot is enabled
+- writes a Markdown summary at
+  ``$METNOS_HOME/install_summary.md`` so the user has a single doc
+  recording every choice they made
+- opens the browser to the dashboard if ``$DISPLAY`` / ``$WAYLAND_DISPLAY``
+  is set and the user agrees
+
+After this phase finishes, Metnos is fully installed.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import hmac
+import os
+import secrets
+import time
+from datetime import datetime
+from pathlib import Path
+from typing import Any
+
+from .. import state, ui
+
+
+def _onboard_token(admin_key_hex: str) -> str:
+    """One-shot HMAC token good for 15 minutes."""
+    expires = int(time.time()) + 15 * 60
+    nonce = secrets.token_hex(8)
+    payload = f"{expires}.{nonce}"
+    sig = hmac.new(bytes.fromhex(admin_key_hex), payload.encode(), hashlib.sha256).hexdigest()[:16]
+    return f"{payload}.{sig}"
+
+
+def _read_admin_key() -> str | None:
+    p = Path(os.environ.get("METNOS_CONFIG", Path.home() / ".config" / "metnos")) / "admin.key"
+    if not p.exists():
+        return None
+    return p.read_text().strip()
+
+
+def _write_summary(rows: list[dict]) -> Path:
+    home = Path(os.environ.get("METNOS_HOME", Path.home() / ".local" / "share" / "metnos"))
+    home.mkdir(parents=True, exist_ok=True)
+    p = home / "install_summary.md"
+
+    lines = [
+        "# Metnos installation summary",
+        "",
+        f"_Generated {datetime.now().isoformat(timespec='seconds')}_",
+        "",
+        "## Phases",
+        "",
+        "| # | Name | Status | Notes |",
+        "|--:|------|:------:|-------|",
+    ]
+    for r in rows:
+        status = "✓ done" if r["done"] else "⋯ pending"
+        notes = ", ".join(f"`{k}={v}`" for k, v in (r.get("notes") or {}).items()) or "—"
+        lines.append(f"| {r['phase']} | {r['name']} | {status} | {notes} |")
+
+    lines += [
+        "",
+        "## Files of interest",
+        "",
+        "- `~/.config/metnos/admin.key` — HMAC key for admin onboarding (mode 0600)",
+        "- `~/.config/metnos/llm_tiers.toml` — tier routing config",
+        "- `~/.local/share/metnos/install_summary.md` — this file",
+        "- `~/.local/share/metnos/.venv/` — Python virtual environment",
+        "- `~/.local/state/metnos/install/phase*.done` — phase sentinels (delete to re-run)",
+        "",
+        "## Day-2 commands",
+        "",
+        "```bash",
+        "systemctl --user status metnos-http",
+        "systemctl --user restart metnos-http",
+        "journalctl --user -u metnos-http -f",
+        "python -m install --force-phase 4   # re-run secrets dialog",
+        "```",
+        "",
+        "## Next steps",
+        "",
+        "- Open the dashboard URL printed above to claim admin access (token valid 15 min).",
+        "- Read the full architecture at https://metnos.com",
+        "- Issues / questions: https://github.com/brunialti/metnos/issues",
+        "",
+    ]
+    p.write_text("\n".join(lines))
+    return p
+
+
+def run(args: Any) -> dict[str, Any]:
+    notes: dict[str, Any] = {}
+    ui.banner("Phase 6 — First boot", "Admin onboarding + summary + next steps")
+
+    # Pull port + telegram state from phase 4/5
+    phase4 = state.load(4)
+    phase5 = state.load(5)
+    port = (phase5.notes.get("http_port") if phase5 else None) or (phase4.notes.get("http_port") if phase4 else 8770)
+    telegram_on = bool(phase4 and phase4.notes.get("telegram"))
+
+    # 1. Onboarding URL
+    admin_key = _read_admin_key()
+    if admin_key:
+        token = _onboard_token(admin_key)
+        url = f"http://127.0.0.1:{port}/admin/onboard?t={token}"
+        ui.console().print()
+        ui.console().print("  [bold green]One-shot admin onboarding URL[/bold green] (valid 15 min):")
+        ui.console().print(f"  [link={url}]{url}[/link]")
+        ui.console().print()
+        notes["onboard_url_emitted"] = True
+    else:
+        ui.warn("admin.key not found — was phase 4 completed?")
+        notes["onboard_url_emitted"] = False
+
+    # 2. Telegram pairing hint
+    if telegram_on:
+        ui.console().print("  [bold]Telegram is enabled.[/bold] To pair your first user:")
+        ui.console().print("    1) On Telegram, search for the bot you configured in phase 4.")
+        ui.console().print("    2) Send /start.")
+        ui.console().print("    3) Paste the pairing code from the metnos-http dashboard.")
+        ui.console().print()
+
+    # 3. Write the summary
+    ui.step("Writing install summary")
+    summary_path = _write_summary(state.summary())
+    ui.ok(f"summary at {summary_path}")
+    notes["summary_path"] = str(summary_path)
+
+    # 4. Final note
+    ui.console().print()
+    ui.console().print("  [bold]All done.[/bold] Metnos is installed and running.")
+    ui.console().print("  [dim]Run `cat ~/.local/share/metnos/install_summary.md` anytime.[/dim]")
+
+    return notes

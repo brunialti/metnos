@@ -19,7 +19,8 @@ from pathlib import Path
 
 API_BASE = "https://places.googleapis.com/v1/places:searchNearby"
 TIMEOUT = 8.0
-ENV_FILE = Path.home() / ".config/metnos/google_maps.env"
+import config as _C  # §7.11
+ENV_FILE = _C.PATH_USER_CONFIG / "google_maps.env"
 
 
 def _load_api_key() -> str | None:

@@ -30,7 +30,9 @@ import time
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
-VAGLIO_LOG_DIR = Path.home() / ".local" / "share" / "metnos" / "vaglio"
+import config as _C  # §7.11
+
+VAGLIO_LOG_DIR = _C.PATH_USER_DATA / "vaglio"
 
 # --- Costanti ---------------------------------------------------------------
 

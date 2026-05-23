@@ -13,7 +13,7 @@
 # Mettere prima i pattern piu' specifici.
 #
 # File caricati in ordine (l'ultimo vince per match identico):
-#   1. /opt/myclaw/runtime/prompts.toml          (default bundled, questo file)
+#   1. /opt/metnos/runtime/prompts.toml          (default bundled, questo file)
 #   2. ~/.config/metnos/prompts.toml             (override utente)
 
 # --- Anthropic Claude 4.x: piu' letterale; tende a regex con lookbehind/lookahead.

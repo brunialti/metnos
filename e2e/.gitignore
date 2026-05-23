@@ -1,0 +1,25 @@
+# Storage runtime (isolato per-run)
+tmp/
+
+# Output dei test
+reports/
+
+# Cache judge LLM
+.cache/
+
+# Corpus DB rigenerabile
+corpus/corpus.sqlite
+corpus/samples/
+
+# Credenziali google copiate runtime (mai committed)
+fixtures/google_creds/google_client_secret.json
+fixtures/google_creds/google_token.json
+
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Editor
+*.swp
+.DS_Store

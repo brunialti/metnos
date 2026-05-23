@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# myclaw-unattended.sh — esegue Claude in background su /opt/myclaw/
+# myclaw-unattended.sh — esegue Claude in background su /opt/metnos/
 # continuando la microprogettazione fino a esaurimento dei doc pianificati.
 #
 # Uso:
@@ -15,7 +15,7 @@
 
 set -euo pipefail
 
-readonly PROJECT_DIR="/opt/myclaw"
+readonly PROJECT_DIR="/opt/metnos"
 readonly LOG_FILE="/tmp/myclaw-unattended.log"
 readonly PID_FILE="/tmp/myclaw-unattended.pid"
 readonly CLAUDE_BIN="${CLAUDE_BIN:-$HOME/.local/bin/claude}"

@@ -1,10 +1,10 @@
 #!/bin/bash
 # Pre-commit hook (ADR 0092): lint sintassi MiniJinja per ogni .j2 modificato
 # in runtime/prompts/. Installabile via:
-#     ln -s /opt/myclaw/scripts/pre-commit-prompts.sh /opt/myclaw/.git/hooks/pre-commit
+#     ln -s /opt/metnos/scripts/pre-commit-prompts.sh /opt/metnos/.git/hooks/pre-commit
 # (oppure copiare il file).
 set -e
-cd /opt/myclaw
+cd /opt/metnos
 files=$(git diff --cached --name-only --diff-filter=ACM | grep '^runtime/prompts/.*\.j2$' || true)
 if [ -z "$files" ]; then exit 0; fi
 /opt/suprastructure/.venv/bin/python - "$files" <<'PYEOF'

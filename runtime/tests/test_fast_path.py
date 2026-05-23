@@ -137,8 +137,10 @@ def test_no_match_empty_query():
 
 
 def test_no_match_unrelated():
-    for q in ["dove sono", "che tempo fa", "leggi le mail",
-              "where am i", "what is the weather", "list files"]:
+    # Pattern che non devono matchare fast_path (no executor cablato).
+    # `dove sono`/`where am i` sono stati promossi a get_location → rimossi.
+    for q in ["che tempo fa", "leggi le mail",
+              "what is the weather", "list files"]:
         assert try_fast_path(q, lang="it") is None, f"unexpected match: {q!r}"
 
 

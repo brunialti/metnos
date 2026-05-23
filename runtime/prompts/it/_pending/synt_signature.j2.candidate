@@ -10,11 +10,11 @@ sha_prev: 0f7cfe41
 --- #}
 TU sei la fase 2 (SIGNATURE) di synt-multistage.
 
-OUTPUT OBBLIGATORIO: un singolo oggetto JSON. NO prosa, NO
-fences markdown, NO commenti. La risposta DEVE iniziare con `{` e terminare con
+OUTPUT OBBLIGATORIO: un singolo oggetto JSON. NO prosa, NO recinzioni
+markdown, NO commenti. La risposta DEVE iniziare con `{` e terminare con
 `}`. Nulla prima del primo `{`, nulla dopo l'ultimo `}`.
 
-Decisioni precedenti (vincoli, NON discuterne):
+Decisioni precedenti (vincoli, NON discutere):
   name: {{ name }}
   action: {{ action }}
   object: {{ object }}
@@ -26,30 +26,37 @@ Decisioni precedenti (vincoli, NON discuterne):
 Richiesta originale dell'utente:
   {{ user_request }}
 
-REGOLE RIGIDE:
-1. Per gli executor che ricevono una lista da un passaggio precedente
+REGOLE DI STILE per i campi description di args (CLAUDE.md §6 + §7.12):
+- PRESCRITTIVO: pattern MUST / MUST NOT / OK. No "se possibile".
+- COMPATTO: 1-3 righe per arg, max 25 parole/frase.
+- ESEMPIO INLINE: backtick `top=5`, NON "Esempio: top=5".
+- PARALLELO IT/EN (non tradotto-identico).
+- NESSUNA RIPETIZIONE tra la description top-level e args.
+
+REGOLE STRICTE:
+1. Per executor che ricevono una lista da uno step precedente
    (entries, items, results, ...): NON esporre `entries: array` nello
    schema visibile all'LLM. Usa SOLO `from_step: integer required`
    (il runtime espande la lista dallo scratchpad prima del dispatch).
-2. Per gli args che NON sono liste (path, content, dst_template):
+2. Per args che NON sono liste (path, content, dst_template):
    schema normale (string/number/boolean).
 3. Se l'executor opera su un volume variabile (mail in una time window,
-   search results, paginated fetch, files in un recursive dir), aggiungi
-   args di **pagination / internal cap** in modo che il loop rimanga INTERNO all'executor:
-     - una semantic window (es. `time_window: today|yesterday|last-Nd`) o
+   risultati di ricerca, fetch paginato, file in una dir ricorsiva), aggiungi
+   args di **paginazione / cap interno** in modo che il loop resti DENTRO l'executor:
+     - una finestra semantica (es., `time_window: today|yesterday|last-Nd`) oppure
        una coppia esplicita {since, before};
-     - un upper cap (`max_total`, `max_results`, `max_bytes`);
-     - opzionale `page_size` per l'internal batch.
-   NON delegare il loop al planner (costa step ReAct, non è scalabile).
+     - un cap superiore (`max_total`, `max_results`, `max_bytes`);
+     - opzionale `page_size` per il batch interno.
+   NON delegare il loop al planner (costa step ReAct, non scala).
 4. capabilities SOLO da questo set: 'fs:read', 'fs:write', 'net:read',
    'net:write', 'mail:read', 'mail:send', 'channel:read', 'channel:write',
    'code:exec'. Mai 'fs:write' a meno che non sia strettamente necessario.
 5. reverse_pattern:
-   - se revertible=true → DEVE essere uno di: 'swap_src_dst',
+   - se revertible=true → DEVE essere uno tra: 'swap_src_dst',
      'delete_created_dirs', 'delete_created_paths', 'restore_blob_backup'.
    - se revertible=false → DEVE essere null.
 
-OUTPUT EXAMPLE (per name=move_files, riceve una lista da un passaggio precedente):
+ESEMPIO DI OUTPUT (per name=move_files, riceve lista da step precedente):
 {
   "args_required": ["from_step", "dst_template"],
   "args_properties": {
@@ -67,7 +74,7 @@ OUTPUT EXAMPLE (per name=move_files, riceve una lista da un passaggio precedente
   "reverse_pattern": "swap_src_dst"
 }
 
-OUTPUT EXAMPLE (per name=get_urls, NON riceve una lista da un passaggio precedente):
+ESEMPIO DI OUTPUT (per name=get_urls, NON riceve lista da step precedente):
 {
   "args_required": ["urls"],
   "args_properties": {
@@ -86,8 +93,8 @@ OUTPUT EXAMPLE (per name=get_urls, NON riceve una lista da un passaggio preceden
   "reverse_pattern": null
 }
 
-OUTPUT EXAMPLE (per name=find_<obj>_empty, ADR 0127, qualifier `_empty`
-con canonical unit-aware `size`. Cross-domain pattern: lo stesso schema
+ESEMPIO DI OUTPUT (per name=find_<obj>_empty, ADR 0127, qualifier `_empty`
+con `size` canonico unit-aware. Pattern cross-domain: la stessa forma
 si applica a find_events_empty/find_files_empty/find_dirs_empty/
 find_messages_empty):
 {
@@ -120,5 +127,3 @@ find_messages_empty):
 }
 
 ORA produci il JSON per `{{ name }}`. SOLO JSON, nient'altro.
-
-────────────────────────────────────────────

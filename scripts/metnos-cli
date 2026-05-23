@@ -18,14 +18,19 @@ from __future__ import annotations
 import argparse
 import getpass
 import json
+import os
 import sys
 from pathlib import Path
 
 # Includi runtime/ nel path: questo script vive in scripts/ e accede a
 # `credentials.py` per fare store/list/remove. Niente dipendenze esterne.
-_RUNTIME = Path("/opt/myclaw/runtime")
-if _RUNTIME.is_dir():
-    sys.path.insert(0, str(_RUNTIME))
+# Bootstrap universale (rename/depth-agnostic, ADR 0148):
+# env METNOS_RUNTIME > fallback walk-up via marker config.py.
+_RUNTIME = os.environ.get("METNOS_RUNTIME") or next(
+    (str(p / "runtime") for p in Path(__file__).resolve().parents
+     if (p / "runtime" / "config.py").is_file()), "")
+if _RUNTIME and Path(_RUNTIME).is_dir():
+    sys.path.insert(0, _RUNTIME)
 
 
 def _print_err(msg: str, *, code: int = 1) -> int:

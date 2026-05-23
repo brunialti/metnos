@@ -16,17 +16,22 @@ Output via `output_format` (ADR 0095): markdown deterministico, niente LLM.
 from __future__ import annotations
 
 import json
+import os as _os
 import sys as _sys
 import time
 from pathlib import Path
 
-if "/opt/myclaw/runtime" not in _sys.path:
-    _sys.path.insert(0, "/opt/myclaw/runtime")
+_RUNTIME = _os.environ.get("METNOS_RUNTIME") or next(
+    str(p / "runtime") for p in Path(__file__).resolve().parents
+    if (p / "runtime" / "config.py").is_file())
+if _RUNTIME not in _sys.path:
+    _sys.path.insert(0, _RUNTIME)
 from messages import get as _msg
+import config as _C  # §7.11
 
-AGING_DIR = Path.home() / ".local" / "share" / "metnos" / "aging"
-INTROVERTIVA_DIR = Path.home() / ".local" / "share" / "metnos" / "introvertiva"
-LIFECYCLE_DIR = Path.home() / ".local" / "share" / "metnos" / "lifecycle"
+AGING_DIR = _C.PATH_USER_DATA / "aging"
+INTROVERTIVA_DIR = _C.PATH_USER_DATA / "introvertiva"
+LIFECYCLE_DIR = _C.PATH_USER_DATA / "lifecycle"
 
 
 def _latest(dir_path: Path, pattern: str, *, since_ts: float | None = None) -> Path | None:

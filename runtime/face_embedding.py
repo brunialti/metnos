@@ -4,7 +4,7 @@ Backend: InsightFace `buffalo_l` (open-source).
     - RetinaFace `det_10g.onnx` → bounding box + 5 landmarks per volto
     - ArcFace `w600k_r50.onnx` → embedding 512 dim per volto allineato
 
-Path di default: `/opt/myclaw/models/face/`. Override via env:
+Path di default: `<install_root>/models/face/`. Override via env:
 `METNOS_FACE_MODEL_DIR`.
 
 Pipeline:
@@ -50,7 +50,9 @@ def _default_model_dir() -> Path:
     env = os.environ.get("METNOS_FACE_MODEL_DIR")
     if env:
         return Path(env)
-    return Path("/opt/myclaw/models/face")
+    # ADR 0148 rename-resilient: derive from PATH_ROOT.
+    import config as _C  # local import to avoid cyclic at module load
+    return _C.PATH_ROOT / "models" / "face"
 
 
 # Template volto allineato (5 landmark standard ArcFace, 112x112)
@@ -118,9 +120,10 @@ class FaceEngine:
             emb_path = self._model_dir / "w600k_r50.onnx"
             for p in (det_path, emb_path):
                 if not p.exists():
+                    import config as _C  # ADR 0148 rename-resilient
                     raise FileNotFoundError(
                         f"FaceEngine: file mancante {p}. Esegui "
-                        "/opt/myclaw/install/download_models.sh face",
+                        f"{_C.PATH_ROOT / 'install' / 'download_models.sh'} face",
                     )
             self._det_session = ort.InferenceSession(
                 str(det_path), sess_options=opts,

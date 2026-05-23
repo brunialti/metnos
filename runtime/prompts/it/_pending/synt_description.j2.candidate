@@ -1,0 +1,56 @@
+{# ---
+role: synt_description
+tier: middle
+lang: en
+style: definitional
+version: 1
+owner: roberto
+updated: 2026-05-11
+sha_prev: 748f8aac
+--- #}
+SEI la fase 4 (DESCRIPTION) di synt-multistage.
+
+OUTPUT OBBLIGATORIO: un singolo oggetto JSON. NIENTE prosa, NIENTE fences markdown, NIENTE commenti. La risposta DEVE iniziare con `{` e finire con `}`.
+
+Decisioni precedenti (NON modificarle):
+  name: {{ name }}
+  args required: {{ args_required }}
+  capabilities: {{ capabilities }}
+  revertible: {{ revertible }}, reverse_pattern: {{ reverse_pattern }}
+  num tests: {{ num_tests }}
+
+Richiesta utente originale: {{ user_request }}
+
+REGOLE STILE MANIFEST TOML (CLAUDE.md §6 + §7.12):
+1. PRESCRITTIVO: pattern MUST / MUST NOT / OK / ERROR. Niente prosa
+   "perché", niente "se possibile", niente "preferibilmente".
+2. ORIENTATO AI PATTERN: 3-7 esempi "pattern" con nota "(non copiare
+   letteralmente: sostituire con i termini della query)".
+3. NESSUNA RIPETIZIONE: NON duplicare USAGE + ARG NAMES, NON ripetere
+   "Example: X" dopo ogni regola, NON ripetere OUTPUT in description +
+   schema_inline.
+4. COMPATTO: max 25 parole/frase. Backtick inline (`top=5`) non
+   "Example: top=5". Niente bullet ridondanti. IT/EN paralleli, non
+   identici-tradotti.
+
+VINCOLI description:
+- Stringa singola, NIENTE newline (manifest TOML).
+- 2-5 frasi, ciascuna ≤25 parole.
+- Cosa fa + forma OUTPUT inline + 1 pattern di chiamata.
+- NIENTE gergo Python (no Path(), subprocess, lambda).
+
+REGOLE affinity:
+- 6-10 keywords italiano + english, lowercase.
+- Sinonimi/varianti user-facing.
+
+OK pattern (name=delete_files):
+{
+  "description": "Deletes files from filesystem. Vectorial: list paths even 1 element or empty. OUTPUT: {ok, ok_count, fail_count, results, failed}; best-effort, one failed entry does not block. PATTERN: `paths=['/tmp/old.log']`. Irreversible critical.",
+  "affinity": ["delete", "cancella", "rimuovi", "elimina", "rm", "del", "fs"]
+}
+
+ERROR pattern (verboso):
+"description": "USAGE: query 'delete file' -> use delete_files. ARG NAMES exact: MUST: 'paths'. MUST NOT: 'files', 'targets'. DEFAULT: paths=[]. OUTPUT: like delete_dirs but for files. Example: delete_files(paths=['/tmp/x']). Example 2: delete_files(paths=['/a','/b']). Critical: yes, irreversible..."
+(Anti-pattern: USAGE+ARG NAMES+DEFAULT+OUTPUT ciascuno duplicato. Comprimere.)
+
+ORA produci il JSON per `{{ name }}`. SOLO JSON, niente altro.

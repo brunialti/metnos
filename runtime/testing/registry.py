@@ -21,7 +21,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 SCHEMA_PATH = Path(__file__).parent / "schema.sql"
-DEFAULT_DB = Path("/opt/myclaw/runtime/testing/tests.db")
+DEFAULT_DB = Path(__file__).resolve().parents[2] / "runtime/testing/tests.db"
 
 
 @dataclass

@@ -7,7 +7,7 @@
 #   2. pre-commit-prompts.sh        — lint sintassi MiniJinja sui .j2 modificati.
 #
 # Onboarding: dopo `git clone` (o `git init` la prima volta), eseguire:
-#     bash /opt/myclaw/scripts/install_git_hooks.sh
+#     bash /opt/metnos/scripts/install_git_hooks.sh
 #
 # Bypass legittimi (vedi singoli script):
 #   METNOS_LANG_DEFER=en|it git commit ...
@@ -16,7 +16,7 @@
 
 set -euo pipefail
 
-REPO_DIR="${REPO_DIR:-/opt/myclaw}"
+REPO_DIR="${REPO_DIR:-/opt/metnos}"
 HOOK_DIR="$REPO_DIR/.git/hooks"
 TARGET="$HOOK_DIR/pre-commit"
 

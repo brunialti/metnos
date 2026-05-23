@@ -10,14 +10,14 @@
 
 set -u
 
-PROMPT_FILE="/opt/myclaw/scripts/audit_introvertiva_prompt.txt"
+PROMPT_FILE="/opt/metnos/scripts/audit_introvertiva_prompt.txt"
 LOG_DIR="$HOME/.local/share/metnos/auto_audit"
 TODAY="$(date +%Y-%m-%d)"
 LOG_FILE="$LOG_DIR/${TODAY}.log"
 
 mkdir -p "$LOG_DIR"
 
-cd /opt/myclaw || exit 1
+cd /opt/metnos || exit 1
 
 {
   echo "=== auto-audit introvertiva start $(date -Iseconds) ==="

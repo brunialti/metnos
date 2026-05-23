@@ -27,9 +27,13 @@ from __future__ import annotations
 import json
 import os
 import sqlite3
+import sys as _sys
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
+
+_sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+import config as _C  # §7.11
 
 # Cap N per group (paginazione: se >max, mostra top-max + nota).
 DEFAULT_MAX_PER_GROUP = 10
@@ -123,7 +127,7 @@ def _audit_dir() -> Path:
     env = os.environ.get("METNOS_PROMOTER_AUDIT_DIR")
     if env:
         return Path(env)
-    return Path.home() / ".local" / "share" / "metnos" / "synth_audit"
+    return _C.PATH_USER_DATA / "synth_audit"
 
 
 def _now_iso() -> str:
@@ -414,7 +418,7 @@ def _mark_review_to_pending(proposal_id: str) -> bool:
     from pathlib import Path as _Path
     db_env = os.environ.get("METNOS_PROMOTER_DB")
     db = _Path(db_env) if db_env else (
-        _Path.home() / ".local" / "share" / "metnos" / "promoter.sqlite"
+        _C.PATH_USER_DATA / "promoter.sqlite"
     )
     if not db.exists():
         return False
