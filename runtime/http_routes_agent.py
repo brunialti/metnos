@@ -261,6 +261,49 @@ def _http_sender_id(actor: str, conv_id: str) -> str:
     return f"http:{actor}:{conv_id or '_'}"
 
 
+def _apply_dialog_cancel(sender_id: str, query: str) -> str | None:
+    """Intercetta "annulla" come abort di dialog pending (24/5/2026).
+
+    Quando un dialog `get_inputs` (es. disambiguation) e' pending per il
+    sender, l'executor istruisce l'utente con "Rispondi nel prossimo
+    messaggio. `annulla` per abortire." Se l'utente poi scrive "annulla"
+    come query libera (fuori dalla form UI), oggi va al fast_path UNDO
+    e tenta `undo_last_turn` — che non trova nulla di mutante da
+    revertire e risponde "Nessuna operazione recente da annullare".
+
+    Soluzione §7.3: PRIMA del pipeline, se la query e' un undo pattern E
+    ci sono dialog pending per il sender, cancella TUTTI i dialog pending
+    e ritorna il messaggio di conferma. L'utente vede coerenza fra
+    l'istruzione data (annulla aborta il dialogo) e l'effetto osservato.
+
+    Ritorna None se non c'e' nulla da fare (caller prosegue normale).
+    """
+    from fast_path import _normalize, _undo_prefix_match  # type: ignore
+    from fast_path import _UNDO_PATTERNS  # type: ignore
+    norm = _normalize(query)
+    if not norm:
+        return None
+    if norm not in _UNDO_PATTERNS and not _undo_prefix_match(norm):
+        return None
+    try:
+        from dialog_pending import cancel_pending, list_pending
+    except Exception:
+        return None
+    pending = list_pending(sender_id)
+    if not pending:
+        return None
+    cancelled = 0
+    for d in pending:
+        dlg_id = d.get("dialog_id", "")
+        if dlg_id and cancel_pending(sender_id, dlg_id):
+            cancelled += 1
+    if cancelled == 0:
+        return None
+    if cancelled == 1:
+        return "Dialogo annullato."
+    return f"Dialogo annullato ({cancelled} pending)."
+
+
 def _apply_cap_pending(sender_id: str, query: str,
                         actor: str = "host") -> tuple[str, dict | None, str | None]:
     """Se c'e' un cap-expand pending e la query e' un sì, ritorna la
@@ -615,13 +658,22 @@ async def turn(request: web.Request) -> web.Response:
         conversation_id = body.get("conversation_id") or ""
         sender_id = _http_sender_id(actor, conversation_id)
 
-    # Cap-expand fase 2 (CLAUDE.md §2.11): se nel turno precedente HTTP
-    # abbiamo registrato un offer di cap-expand su questa conversation_id,
-    # e ora l'utente risponde "sì", riscrivi la query originale forzando
-    # il cap e rilancia (poi pulisci stato).
-    # Per pending kind="admin_approval" (ADR 0088): direct-call admin,
-    # niente PLANNER round-trip.
-    query_for_run, _, immediate_msg = _apply_cap_pending(sender_id, query, actor=actor)
+    # Dialog cancel intercept (24/5/2026): se c'e' un dialog pending per
+    # questo sender e l'utente scrive "annulla"/"undo"/..., cancella il
+    # dialog invece di routare a undo_last_turn (che non trova nulla di
+    # mutante e risponde "Nessuna operazione recente da annullare").
+    _dialog_cancel_msg = _apply_dialog_cancel(sender_id, query)
+    if _dialog_cancel_msg is not None:
+        query_for_run = query
+        immediate_msg = _dialog_cancel_msg
+    else:
+        # Cap-expand fase 2 (CLAUDE.md §2.11): se nel turno precedente HTTP
+        # abbiamo registrato un offer di cap-expand su questa conversation_id,
+        # e ora l'utente risponde "sì", riscrivi la query originale forzando
+        # il cap e rilancia (poi pulisci stato).
+        # Per pending kind="admin_approval" (ADR 0088): direct-call admin,
+        # niente PLANNER round-trip.
+        query_for_run, _, immediate_msg = _apply_cap_pending(sender_id, query, actor=actor)
     accept = request.headers.get("Accept", "")
     want_sse = "text/event-stream" in accept
     if immediate_msg is not None:
