@@ -58,7 +58,18 @@ _CALENDAR_ID_ALIASES = {
 
 def _resolve_calendar_id(cal_id: str | None) -> str:
     """Risolve alias → calendar ID valido. Pass-through per email valide
-    (contengono `@`). Default `primary` se None/empty."""
+    (contengono `@`). Default `primary` se None/empty.
+
+    Test override (24/5/2026): se l'env `METNOS_TEST_CALENDAR_ID` e' set
+    e cal_id e' None/empty/'primary', usa il calendar dedicato test
+    (evita pollution del calendario reale Roberto durante E2E).
+    """
+    import os as _os
+    if (not cal_id) or (isinstance(cal_id, str)
+                         and cal_id.strip().lower() in ("", "primary")):
+        test_id = _os.environ.get("METNOS_TEST_CALENDAR_ID", "").strip()
+        if test_id:
+            return test_id
     if not cal_id or not isinstance(cal_id, str):
         return "primary"
     norm = cal_id.strip().lower()
@@ -258,6 +269,102 @@ def create(args: dict) -> dict:
             "ids": [rid],
             "scope": {"calendar_id": calendar_id, "client": "google_workspace"},
         }
+    return out
+
+
+# --------------------------------------------------------------------------
+# UPDATE  (PATCH semantics — solo i field passati vengono modificati)
+# --------------------------------------------------------------------------
+
+def update(args: dict) -> dict:
+    """Patch update di UN event esistente. Args:
+      - `event_id` (mandatory): id evento da modificare.
+      - `calendar_id` (default 'primary').
+      - Patch fields (tutti opzionali, almeno uno richiesto):
+        summary, start (ISO+TZ), end (ISO+TZ), location, description,
+        attendees (list[str] o CSV).
+
+    Output trasformativo §2.6: `results: [{ok, id, summary, htmlLink,
+    updated_fields}]`. Niente `_undo`: PATCH non e' triviale da invertire
+    (servirebbe pre-fetch dello state precedente; al momento non
+    supportato — l'utente puo' re-update manualmente).
+    """
+    if not isinstance(args, dict):
+        return _err("args must be an object", "invalid_args",
+                    with_results=True)
+    event_id = args.get("event_id") or args.get("uid")
+    if not (isinstance(event_id, str) and event_id.strip()):
+        return _err("event_id mandatory", "invalid_args",
+                    with_results=True)
+    calendar_id = _resolve_calendar_id(args.get("calendar_id"))
+    # Almeno un patch field richiesto
+    patch_fields = (args.get("summary"), args.get("start"), args.get("end"),
+                    args.get("location"), args.get("description"),
+                    args.get("attendees"))
+    if not any(v is not None for v in patch_fields):
+        return _err("at least one of summary/start/end/location/"
+                    "description/attendees required", "invalid_args",
+                    with_results=True)
+
+    argv = ["calendar", "update", event_id.strip(), "--calendar", calendar_id]
+    if args.get("summary"):
+        argv.extend(["--summary", str(args["summary"])])
+    if args.get("start"):
+        argv.extend(["--start", str(args["start"])])
+    if args.get("end"):
+        argv.extend(["--end", str(args["end"])])
+    if args.get("location") is not None:
+        argv.extend(["--location", str(args["location"])])
+    if args.get("description") is not None:
+        argv.extend(["--description", str(args["description"])])
+
+    attendees = args.get("attendees")
+    skipped_attendees: list[str] = []
+    if attendees:
+        if isinstance(attendees, str):
+            attendees = [a.strip() for a in attendees.split(",") if a.strip()]
+        elif not isinstance(attendees, list):
+            attendees = []
+        valid = []
+        for a in attendees:
+            s = str(a).strip()
+            if not s:
+                continue
+            if "@" in s:
+                valid.append(s)
+            else:
+                skipped_attendees.append(s)
+        if valid:
+            argv.extend(["--attendees", ",".join(valid)])
+
+    data, err = _run_calendar(argv, executor="set_events",
+                              args_base=dict(args))
+    if err is not None:
+        if err.get("decision") == "needs_inputs":
+            return err
+        return {**err, "results": [], "used": 0, "n_updated": 0}
+
+    rec = {
+        "ok": True,
+        "id": (data or {}).get("id", event_id),
+        "uid": (data or {}).get("id", event_id),
+        "summary": (data or {}).get("summary", ""),
+        "calendar_source": "google_workspace",
+        "calendar_id": calendar_id,
+        "htmlLink": (data or {}).get("htmlLink", ""),
+        "updated_fields": (data or {}).get("updated_fields", []),
+    }
+    out = {
+        "ok": True,
+        "n_updated": 1,
+        "results": [rec],
+        "used": 1,
+    }
+    if skipped_attendees:
+        out["warnings"] = [
+            f"Attendee {a!r} ignorato (manca email valida)"
+            for a in skipped_attendees
+        ]
     return out
 
 
