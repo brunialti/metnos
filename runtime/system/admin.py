@@ -1296,6 +1296,51 @@ def invoke(*, intent: str, command_proposed: str,
     audit_actor = actor or "host"
     argv = (command_proposed or "").split() if isinstance(command_proposed, str) else []
 
+    # ── Placeholder guard §7.3 (24/5/2026): se `command_proposed` (o
+    # `intent`) contiene placeholder letterali `<name>` non risolti, il
+    # PLANNER ha ricevuto una query con segnaposto dell'utente (es.
+    # «mount //<ip>/share») e ha propagato i placeholder nei suoi args
+    # invece di chiederli. Eseguire produrrebbe "DNS resolution failed"
+    # o simili; il LLM classifier interno ritornerebbe `kind=unknown`
+    # ciclico (bug iter 4/5: «monta share \\<ip>\Public» → 2× admin
+    # unknown → loop_break con messaggio criptico). Reject deterministico
+    # §7.9 con summary specifico: il PLANNER al prossimo step emette
+    # final_answer onesto chiedendo i valori reali — niente loop.
+    import re as _re_ph
+    _placeholder_re = _re_ph.compile(r"<([a-zA-Z_][a-zA-Z0-9_-]*)>")
+    _cp_text = command_proposed if isinstance(command_proposed, str) else ""
+    _in_text = intent if isinstance(intent, str) else ""
+    _placeholders = sorted(set(
+        _placeholder_re.findall(_cp_text)
+        + _placeholder_re.findall(_in_text)
+    ))
+    if _placeholders:
+        _ph_list = ", ".join("`<" + p + ">`" for p in _placeholders)
+        return {
+            "ok": False,
+            "decision": "reject",
+            "signature": "",
+            "argv": argv,
+            "approval_required": False,
+            "approval_card": None,
+            "summary": (
+                f"Il comando contiene segnaposto non risolti: {_ph_list}. "
+                f"Per procedere ho bisogno dei valori reali (es. indirizzo "
+                f"IP del server, path della cartella). Riformula la "
+                f"richiesta sostituendo i segnaposto."
+            ),
+            "error_class": "unresolved_placeholders",
+            "audit": {
+                "actor": audit_actor,
+                "user_text": intent or "",
+                "source": "planner_argv",
+                "argv": argv,
+                "gate": "placeholder_rejected",
+                "placeholders": _placeholders,
+                "command_proposed": command_proposed,
+            },
+        }
+
     # ── Catalog-name guard (12/5/2026): se `argv[0]` (saltando i wrapper
     # sudo/doas/pkexec) coincide con il nome di un executor del catalog,
     # il PLANNER ha sbagliato strada: admin e' per UN comando shell

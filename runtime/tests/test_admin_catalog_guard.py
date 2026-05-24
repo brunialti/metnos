@@ -221,6 +221,82 @@ class TestAdminCatalogGuard:
         # un executor del catalog → None.
         assert _executor_name_in_argv(["/bin/mount", "-t", "cifs"]) is None
 
+
+class TestPlaceholderGuard:
+    """`admin.invoke(command_proposed=<...<ph>...>)` → reject deterministico.
+
+    Bug iter 4/5 (24/5/2026, chat_quality «monta share \\\\<ip>\\Public»):
+    PLANNER ha propagato `<ip>` letterale come placeholder nel command_proposed.
+    Senza guard, il LLM classifier ritornava `kind=unknown` ciclico → loop_break
+    con messaggio criptico. Fix §7.3: detection regex deterministica PRIMA del
+    LLM call → reject con summary specifico che istruisce l'utente.
+    """
+
+    def test_reject_command_with_ip_placeholder(self):
+        from system.admin import invoke
+        res = invoke(
+            intent="monta cifs share",
+            command_proposed=("sudo mount -t cifs //<ip>/Public/media "
+                              "/home/roberto/Immagini "
+                              "-o credentials=${METNOS_CIFS_CREDS}"),
+            actor="host",
+        )
+        assert res["ok"] is False
+        assert res["decision"] == "reject"
+        assert res.get("error_class") == "unresolved_placeholders"
+        assert "<ip>" in res["summary"]
+        assert "segnaposto" in res["summary"].lower()
+        assert res["audit"]["gate"] == "placeholder_rejected"
+        assert "ip" in res["audit"]["placeholders"]
+
+    def test_multiple_placeholders_listed(self):
+        from system.admin import invoke
+        res = invoke(
+            intent="esegui comando",
+            command_proposed="sudo cp /data/<user>/<dir>/file.txt /backup/",
+            actor="host",
+        )
+        assert res["decision"] == "reject"
+        phs = res["audit"]["placeholders"]
+        assert "user" in phs and "dir" in phs
+
+    def test_placeholder_in_intent_only(self):
+        """Anche se command_proposed e' pulito, un placeholder in `intent`
+        indica che il PLANNER ha propagato un user-text non risolto."""
+        from system.admin import invoke
+        res = invoke(
+            intent="connessione al server <host>",
+            command_proposed="echo ok",
+            actor="host",
+        )
+        assert res["decision"] == "reject"
+        assert "host" in res["audit"]["placeholders"]
+
+    def test_clean_command_falls_through(self):
+        """Niente placeholder → guard non scatta, flow normale."""
+        from system.admin import invoke
+        res = invoke(
+            intent="montare share NAS",
+            command_proposed="sudo mount -t cifs //192.168.1.20/Public /mnt/nas -o credentials=${METNOS_CIFS_CREDS}",
+            actor="host",
+        )
+        # non e' rejection da placeholder guard.
+        if res.get("decision") == "reject":
+            assert res.get("audit", {}).get("gate") != "placeholder_rejected"
+
+    def test_env_placeholder_does_not_trigger(self):
+        """`${VAR}` (env-style) NON e' un placeholder utente — i CIFS creds
+        usano questo pattern come marker per la sostituzione runtime."""
+        from system.admin import invoke
+        res = invoke(
+            intent="mount share",
+            command_proposed=("sudo mount -t cifs //host/share /mnt "
+                              "-o credentials=${METNOS_CIFS_CREDS}"),
+            actor="host",
+        )
+        if res.get("decision") == "reject":
+            assert res.get("audit", {}).get("gate") != "placeholder_rejected"
+
     def test_helper_strips_path_to_basename_for_catalog_match(self):
         """Path che basename'a in nome executor del catalog → guard scatta.
         Defesa contro tentativi di bypass tipo "/usr/bin/get_now"."""
