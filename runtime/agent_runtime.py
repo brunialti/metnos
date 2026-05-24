@@ -3509,6 +3509,7 @@ class TurnLog:
         Vedi feedback_truncation_visibility."""
         notices = []
         seen = set()
+        from vocab import PROCESSOR_VERBS as _PROC_VERBS
         for s in self.steps:
             res = s.result if isinstance(s.result, dict) else {}
             if not res.get("truncated"):
@@ -3520,6 +3521,18 @@ class TurnLog:
             # generale via suffix qualifier, parallelo a cap-expand suppression.
             if s.chosen_tool and s.chosen_tool.endswith("_empty"):
                 continue
+            # Solo i PRODUCER (read/find/list/get) emettono notice di
+            # truncation user-facing: rappresentano l'evento "dato sorgente
+            # > cap". I PROCESSOR (vocab.PROCESSOR_VERBS) trasformano una
+            # lista gia' presente nello scratchpad; il loro `truncated:True`
+            # e' metadata per il pattern cap_expand §2.11 (PLANNER puo'
+            # rilanciare con cap maggiore), non un secondo evento sul
+            # dato sorgente — quello e' gia' stato annunciato dal producer
+            # upstream.
+            if s.chosen_tool:
+                _verb = s.chosen_tool.split("_", 1)[0]
+                if _verb in _PROC_VERBS:
+                    continue
             what = (res.get("truncated_what") or s.chosen_tool
                     or msg("MSG_TRUNCATED_DEFAULT_WHAT"))
             used = res.get("used") or res.get("ok_count") or res.get("count")
@@ -3656,6 +3669,86 @@ class TurnLog:
             if isinstance(atts, list) and atts:
                 self.attachments = atts
                 break
+
+        # Invariante §2.8 (no silent failure): un turno terminale che parla
+        # all'utente non puo' avere final_message vuoto. Indipendente dal
+        # path che ha settato `final_kind`. Sintesi best-effort dal contesto.
+        # Ordine cruciale: l'error report ha PRIORITA' sul compose_from_obs
+        # perche' su `ok=False` quest'ultimo emette "completato (0 elementi)"
+        # — disonesto §2.8 (un fail non e' un completamento).
+        # Strato:
+        #   1. Ultimo step con `ok=False` E error informativo →
+        #      MSG_FINAL_FALLBACK_FROM_ERROR (tool + error reale).
+        #   2. Ultimo step con obs strutturata utile (ok=True/None) →
+        #      `_compose_final_message_from_obs` (path auto-final ufficiale).
+        #   3. Fallback generico MSG_FINAL_FALLBACK_GENERIC.
+        # `needs_inputs` ha dialog UX dedicata: non rientra qui.
+        def _extract_error(obs: dict) -> str:
+            if not isinstance(obs, dict):
+                return ""
+            _e = obs.get("error")
+            if isinstance(_e, str) and _e.strip():
+                return _e.strip()
+            _failed = obs.get("failed") or []
+            if isinstance(_failed, list):
+                parts = [
+                    str((f or {}).get("error", "")).strip()
+                    for f in _failed
+                    if isinstance(f, dict) and f.get("error")
+                ]
+                if parts:
+                    return ", ".join(parts)
+            return ""
+
+        if (self.final_kind in ("answer", "ask", "error", "loop_break")
+                and not (self.final_message or "").strip()):
+            _fallback = ""
+            # (1) priorita': ultimo step ok=False con error → onestamente
+            #     reporta il fail. Non degradare a "completato (0 elementi)".
+            for _s in reversed(self.steps):
+                _obs = _s.result if isinstance(_s.result, dict) else {}
+                if not _obs:
+                    continue
+                if _s.chosen_tool == "final_answer":
+                    continue
+                if _obs.get("ok") is False:
+                    _err = _extract_error(_obs)
+                    if _err:
+                        try:
+                            _fallback = msg(
+                                "MSG_FINAL_FALLBACK_FROM_ERROR",
+                                tool=_s.chosen_tool or "",
+                                error=_err,
+                            )
+                        except Exception:
+                            _fallback = f"{_s.chosen_tool}: {_err}"
+                        break
+            # (2) successo silente: usa compose_from_obs
+            if not _fallback:
+                for _s in reversed(self.steps):
+                    _obs = _s.result if isinstance(_s.result, dict) else None
+                    if not _obs:
+                        continue
+                    if _s.chosen_tool == "final_answer":
+                        continue
+                    if _obs.get("ok") is False:
+                        continue
+                    try:
+                        _fm, _, _ = _compose_final_message_from_obs(
+                            _s.chosen_tool or "", _obs)
+                    except Exception:
+                        _fm = ""
+                    if _fm and _fm.strip():
+                        _fallback = _fm.strip()
+                        break
+            # (3) ultimo livello: fallback generico i18n
+            if not _fallback:
+                try:
+                    _fallback = msg("MSG_FINAL_FALLBACK_GENERIC")
+                except Exception:
+                    _fallback = ""
+            if _fallback:
+                self.final_message = _fallback
         # Footer "elapsed: Xs · chiuso HH:MM:SS" rimosso 7/5/2026 notte
         # (Roberto: ridondante con il badge meta della UI HTTP, valore
         # gia' presente nel jsonl come ts_end-ts_start per telemetria).

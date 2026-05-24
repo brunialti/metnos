@@ -342,6 +342,17 @@ ACTION_CATEGORIES = {
 # canonico, va mappato a `find`.
 PRODUCER_VERBS = frozenset({"read", "find", "list", "get"})
 
+# Verbi PROCESSOR: trasformano una lista gia' presente nello scratchpad
+# (input via `from_step`), non producono dati nuovi. Conseguenze runtime:
+# (a) `_collect_truncation_notices` NON emette notice user-facing per questi
+#     verbi: il loro `truncated:True` e' metadata per il PLANNER (pattern
+#     cap_expand §2.11), non un evento di troncamento del dato sorgente —
+#     il dato sorgente e' gia' stato annunciato dal producer upstream.
+# (b) prefilter precursor injection non si applica (input arriva da from_step).
+PROCESSOR_VERBS = frozenset({
+    "describe", "classify", "filter", "sort", "group", "compute", "compare",
+})
+
 # Verbi che lasciano residuo permanente (modifiche reali). Il vaglio
 # potrebbe escludere o richiedere conferma esplicita.
 DESTRUCTIVE_VERBS = frozenset({"move", "delete", "send", "write", "extract", "create", "share"})
