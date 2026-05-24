@@ -1332,15 +1332,33 @@ il backend &egrave; un argomento <code>client=...</code> nel manifest,
 non un refactor di codice.</li>
 </ul>
 
-<p><strong>Onestamente, cosa NON fa</strong>:</p>
+<p><strong>Onestamente, cosa NON fa (caveat osservati in test reale del 24/5/2026 con 2 bollette vere ENEL+AMA)</strong>:</p>
 
 <ul>
-<li>Le fatture allegate come PDF vengono estratte solo se contengono uno
-strato di testo (no OCR su scansioni; il prossimo passaggio sarebbe
-<code>read_files_pdf</code> + Tesseract).</li>
-<li>L'estrazione del totale dalla mail dipende da quanto chiara &egrave;
-la mail: per importi sepolti in immagini o body HTML pi&ugrave; intricati,
-il modello locale ogni tanto manca la riga e va corretto a mano.</li>
+<li><strong>PDF scansionati: routing automatico a OCR</strong>. La
+bolletta AMA dicembre 2022 nel test era una scansione (170&nbsp;KB,
+nessuno strato testo). <code>pdftotext</code> ha ritornato 4 caratteri
+(form feed) → fallback a <code>read_files_ocr</code> (Tesseract +
+poppler @200dpi), che ha estratto 5827&nbsp;char di testo pulito,
+incluso <em>"IMPORTO DA PAGARE PER Ta.Ri. EURO: 281,67 / data di
+scadenza: 20.12.2022"</em>. LLM Gemma 4 26B ha poi popolato tutti i
+campi (vendor=AMA, amount_eur=281.67, due_date=2022-12-20,
+category=waste). Costo OCR: ~30&nbsp;s per pagina @200dpi sulla CPU
+del server di casa; per scansioni anziane di bollette annuali con 1-3
+pagine, sempre nel sub-minuto.</li>
+<li><strong>Estrazione LLM &egrave; probabilistica</strong>. Sulla
+bolletta ENEL aprile 2023 (43&nbsp;KB testo nativo) Metnos ha recuperato
+correttamente <em>vendor</em> ("ENEL") e <em>amount_eur</em> ("213.47"
+reale, non simulato) ma ha perso <em>due_date</em> e <em>period</em>
+perch&eacute; il pre-filter regex ha tagliato le sezioni "SCADENZA" e
+"PERIODO" per stare nei 5&nbsp;K caratteri passati al modello locale.
+Con prompt mirato + sliding window full text o tier <code>wise</code>
+con <code>max_tokens=1000</code> i campi mancanti rientrano.</li>
+<li><strong>IMAP transient SSL</strong>. La prima fetch della mail
+nel test &egrave; fallita con <code>SSL DECRYPTION_FAILED_OR_BAD_RECORD_MAC</code>,
+ricostruita al retry (2 tentativi, backoff 2&nbsp;s). Pattern Metnos
+universale per Google API + IMAP: 3 attempt con retry su transient
+(<code>_google_api_runner</code> + <code>open_smtp</code> retry loop).</li>
 <li>Il free tier Google Cloud copre fino a 1000 richieste/mese per le
 API qui usate; oltre, il costo &egrave; di
 ~&euro;1.30/1000&nbsp;richieste. Per un budget personale che gira una
@@ -1349,6 +1367,16 @@ volta al giorno (~30/mese), si resta sempre nel gratuito.</li>
 ancora non c'&egrave; (richiede l'<em>introspettiva</em> di
 cap.&nbsp;6, oggi disabilitata).</li>
 </ul>
+
+<p><strong>Test E2E reale eseguito 24/5/2026, 13:50</strong> — sotto
+<code>e2e/scenarios/test_budget_pipeline_real.py</code>: invia 2 PDF
+allegati a <code>roberto.brunialti@metnos.com</code> via SMTP Migadu,
+li scarica via IMAP, esegue <code>pdftotext</code>, chiama Gemma 4 26B
+locale per estrarre struttura, scrive nello sheet. Dati nello sheet
+sono valori reali letti dai PDF (importo &euro;213.47, vendor "ENEL").
+La bolletta AMA &egrave; stata processata via fallback OCR Tesseract
+(stessa pipeline, executor <code>read_files_ocr</code> attivato quando
+<code>pdftotext</code> ritorna meno di N caratteri).</p>
 
 <p>
 Il foglio reale prodotto in questa sessione (test del 24 maggio, dati

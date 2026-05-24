@@ -1307,15 +1307,32 @@ the backend is a <code>client=...</code> argument in the manifest, not
 a code refactor.</li>
 </ul>
 
-<p><strong>Honestly, what it does NOT do</strong>:</p>
+<p><strong>Honestly, what it does NOT do (caveats observed in real test of 24/5/2026 with 2 real bills ENEL+AMA)</strong>:</p>
 
 <ul>
-<li>Invoices attached as PDF are extracted only if they contain a text
-layer (no OCR on scans; the next step would be
-<code>read_files_pdf</code> + Tesseract).</li>
-<li>Total extraction from the email body depends on how clear the email
-is: for amounts buried in images or more convoluted HTML bodies, the
-local model occasionally misses the line and needs manual correction.</li>
+<li><strong>Scanned PDFs: automatic routing to OCR</strong>. The AMA
+December 2022 bill in the test was a scan (170&nbsp;KB, no text
+layer). <code>pdftotext</code> returned 4 characters (form feed) →
+fallback to <code>read_files_ocr</code> (Tesseract + poppler @200dpi),
+which extracted 5827&nbsp;chars of clean text, including <em>"IMPORTO
+DA PAGARE PER Ta.Ri. EURO: 281,67 / data di scadenza:
+20.12.2022"</em>. LLM Gemma 4 26B then filled all fields (vendor=AMA,
+amount_eur=281.67, due_date=2022-12-20, category=waste). OCR cost: ~30
+s per page @200dpi on the home server CPU; for older annual bills with
+1-3 pages, always sub-minute.</li>
+<li><strong>LLM extraction is probabilistic</strong>. On the ENEL April
+2023 bill (43&nbsp;KB native text) Metnos correctly recovered
+<em>vendor</em> ("ENEL") and <em>amount_eur</em> ("213.47" real, not
+simulated) but lost <em>due_date</em> and <em>period</em> because the
+regex pre-filter cut out the "SCADENZA" and "PERIODO" sections to fit
+in the 5&nbsp;K characters passed to the local model. With targeted
+prompt + sliding window full text or tier <code>wise</code> with
+<code>max_tokens=1000</code> the missing fields come back.</li>
+<li><strong>IMAP transient SSL</strong>. The first mail fetch in the
+test failed with <code>SSL DECRYPTION_FAILED_OR_BAD_RECORD_MAC</code>,
+rebuilt on retry (2 attempts, 2&nbsp;s backoff). Universal Metnos
+pattern for Google API + IMAP: 3 attempts with retry on transient
+(<code>_google_api_runner</code> + <code>open_smtp</code> retry loop).</li>
 <li>The Google Cloud free tier covers up to 1000 requests/month for the
 APIs used here; over that, the cost is
 ~&euro;1.30/1000&nbsp;requests. For a personal budget running once a
@@ -1324,6 +1341,16 @@ day (~30/month), you always stay in the free tier.</li>
 there yet (it requires the <em>introspettiva</em> of ch.&nbsp;6, today
 disabled).</li>
 </ul>
+
+<p><strong>Real E2E test executed 24/5/2026, 13:50</strong> — under
+<code>e2e/scenarios/test_budget_pipeline_real.py</code>: sends 2 PDF
+attachments to <code>roberto.brunialti@metnos.com</code> via Migadu
+SMTP, downloads via IMAP, runs <code>pdftotext</code>, calls local
+Gemma 4 26B to extract structure, writes to the sheet. Data in the
+sheet are real values read from PDFs (amount &euro;213.47, vendor
+"ENEL"). The AMA bill was processed via OCR Tesseract fallback (same pipeline,
+executor <code>read_files_ocr</code> triggered when <code>pdftotext</code>
+returns less than N characters).</p>
 
 <p>
 The actual sheet produced in this session (test of May 24, mock data):
