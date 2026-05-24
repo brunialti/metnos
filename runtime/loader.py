@@ -87,6 +87,36 @@ def _resolve_lang_text(value, *, where: str, current_lang: str) -> str:
 VERB_UNIQUE_REGISTRY: dict[str, dict] = {}
 
 
+def _normalize_capabilities(raw) -> list[dict]:
+    """Normalizza `capabilities` da manifest TOML a list[dict].
+
+    Forma canonica: `[[capabilities]] name="..." hint=[...]` → list[dict].
+    Forma erronea ma tollerata: `[capabilities] foo={description=...}` →
+    in TOML diventa dict, qui convertito a list[{name, hint}].
+    """
+    if raw is None:
+        return []
+    if isinstance(raw, dict):
+        # Forma dict-malformed: chiavi = nomi capability, valori = metadata.
+        out = []
+        for k, v in raw.items():
+            entry: dict = {"name": k}
+            if isinstance(v, dict):
+                if "description" in v:
+                    entry["hint"] = [v["description"]]
+                else:
+                    entry.update(v)
+            out.append(entry)
+        return out
+    out = []
+    for c in raw:
+        if isinstance(c, dict):
+            out.append(c)
+        elif isinstance(c, str):
+            out.append({"name": c})
+    return out
+
+
 class VerbUniqueViolation(Exception):
     """Raised when a verb-unique builtin breaks one of the five ADR-0069 invariants."""
 
@@ -237,7 +267,7 @@ def _build_admin_executor_from_manifest_virtual(manifest: dict,
         description=manifest.get("description", ""),
         affinity=list(manifest.get("affinity", [])),
         args_schema=manifest.get("args", {}),
-        capabilities=list(manifest.get("capabilities", [])),
+        capabilities=_normalize_capabilities(manifest.get("capabilities")),
         tests=[],
         code_path=manifest_path,  # punta al .py del modulo
         manifest_path=manifest_path,
@@ -311,7 +341,7 @@ def _inject_inproc_tool_specs(catalog: "Catalog") -> None:
                 description=desc,
                 affinity=list(entry.get("affinity", [])),
                 args_schema=params,
-                capabilities=list(entry.get("capabilities", [])),
+                capabilities=_normalize_capabilities(entry.get("capabilities")),
                 tests=[],
                 code_path=mod_path,
                 manifest_path=mod_path,
@@ -1070,7 +1100,7 @@ def _load_dir_into_catalog(executors_dir: Path, catalog: Catalog, verify: bool,
             description=raw_desc,
             affinity=raw_affinity,
             args_schema=args_schema,
-            capabilities=list(manifest.get("capabilities", [])),
+            capabilities=_normalize_capabilities(manifest.get("capabilities")),
             tests=list(manifest.get("tests", [])),
             code_path=code_path,
             manifest_path=manifest_path,

@@ -66,9 +66,13 @@ default = "google_workspace"
 it = "Backend rubrica. Default 'google_workspace'."
 en = "Address book backend. Default 'google_workspace'."
 
-[capabilities]
-exec_subprocess = {description = "subprocess Python google_api.py contacts list"}
-exec_net        = {description = "Google People API HTTPS"}
+[[capabilities]]
+name = "exec_subprocess"
+hint = ["subprocess Python google_api.py contacts list"]
+
+[[capabilities]]
+name = "exec_net"
+hint = ["Google People API HTTPS"]
 
 [reversible]
 value = false

@@ -302,6 +302,39 @@ def _migrate_args_descriptions(text: str, lang: str,
     return out, n_replaced
 
 
+def _state_from_parsed(parsed: dict) -> dict:
+    """Ricostruisce `manifest.lang_state.json` da un manifest gia' in schema
+    multilingua. Per ogni description (top-level + args.properties.<arg>),
+    salva `version_hash` per ciascuna lingua presente.
+    """
+    state: dict = {}
+    desc = parsed.get("description")
+    if isinstance(desc, dict):
+        for lang, val in desc.items():
+            if isinstance(val, str):
+                state.setdefault("description", {})[lang] = {
+                    "version_hash": _sha256_str(val),
+                    "source_lang": None,
+                    "source_hash": None,
+                }
+    props = (parsed.get("args") or {}).get("properties") or {}
+    for arg_name, arg_def in props.items():
+        if not isinstance(arg_def, dict):
+            continue
+        arg_desc = arg_def.get("description")
+        if not isinstance(arg_desc, dict):
+            continue
+        key = f"args.{arg_name}.description"
+        for lang, val in arg_desc.items():
+            if isinstance(val, str):
+                state.setdefault(key, {})[lang] = {
+                    "version_hash": _sha256_str(val),
+                    "source_lang": None,
+                    "source_hash": None,
+                }
+    return state
+
+
 def migrate_one(manifest_path: Path, *, lang: str = "it",
                 dry_run: bool = False, sign: bool = True) -> dict:
     """Migra un singolo manifest. Ritorna dict con esito.
@@ -332,6 +365,19 @@ def migrate_one(manifest_path: Path, *, lang: str = "it",
                 if not isinstance(arg_def["description"], dict):
                     leftovers.append(arg_name)
         if not leftovers:
+            # Se il companion `manifest.lang_state.json` manca, ricostruisci
+            # dallo schema corrente. Copre executor creati direttamente nel
+            # nuovo schema multilingua senza passare per la migrazione.
+            state_path = manifest_dir / "manifest.lang_state.json"
+            if not state_path.is_file() and not dry_run:
+                state = _state_from_parsed(parsed)
+                state_path.write_text(
+                    json.dumps(state, ensure_ascii=False, indent=2) + "\n",
+                    encoding="utf-8",
+                )
+                return {"ok": True, "path": str(manifest_path),
+                        "status": "state_companion_written",
+                        "lang_state_keys": list(state.keys())}
             return {"ok": True, "path": str(manifest_path),
                     "status": "already_migrated"}
 

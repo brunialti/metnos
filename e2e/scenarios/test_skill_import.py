@@ -57,7 +57,7 @@ async def test_skill_import_mock_roundtrip(driver, server):
     """Import skill mock → 3 executor in catalog → uninstall.
 
     Verifica:
-      - import produce _imports/skill_mock_e2e/ con 3 manifest firmati
+      - import produce skills/skill-mock-e2e/ con 3 manifest firmati
       - catalog include i 3 executor (via /admin/executors)
       - affinity qualified (no bare nouns)
       - uninstall default: _imports vuoto, source preservata
@@ -80,7 +80,7 @@ async def test_skill_import_mock_roundtrip(driver, server):
                   env=env, timeout_s=120)
     if r.returncode != 0:
         # Cleanup before failing (Roberto pattern: no leftover)
-        imports_dir = server.user_data / "executors" / "_imports" / "skill-mock-e2e"
+        imports_dir = server.user_data / "executors" / "skills" / "skill-mock-e2e"
         if imports_dir.exists():
             shutil.rmtree(imports_dir)
         pytest.fail(
@@ -89,8 +89,8 @@ async def test_skill_import_mock_roundtrip(driver, server):
             f"STDERR:\n{r.stderr[-2000:]}"
         )
 
-    # Verify _imports popolato
-    imports_dir = server.user_data / "executors" / "_imports" / "skill-mock-e2e"
+    # Verify skills/<bundle>/ popolato
+    imports_dir = server.user_data / "executors" / "skills" / "skill-mock-e2e"
     assert imports_dir.is_dir(), f"imports dir missing: {imports_dir}"
     executors = [p.name for p in imports_dir.iterdir() if p.is_dir()]
     assert len(executors) >= 1, f"no executors imported: {executors}"
@@ -148,7 +148,7 @@ async def test_skill_import_google_workspace_real(driver, server):
 
     Verifica:
       - SKILL.md + credenziali copiati in tmp dir del server isolato
-      - import produce ~21 executor in _imports/google-workspace/
+      - import produce ~21 executor in skills/google-workspace/
       - manifest firmati (verify_executor ok per ognuno)
       - affinity qualified
       - backend builtin invariato (digest stabile pre/post)
@@ -177,7 +177,7 @@ async def test_skill_import_google_workspace_real(driver, server):
          "--skip-l2", "--skip-l6", "--skip-smoke-battery", "--no-sign"],
         env=env, timeout_s=300,
     )
-    imports_dir = server.user_data / "executors" / "_imports" / "google-workspace"
+    imports_dir = server.user_data / "executors" / "skills" / "google-workspace"
 
     if r.returncode != 0:
         # Cleanup completo prima di fallire
@@ -190,7 +190,7 @@ async def test_skill_import_google_workspace_real(driver, server):
             f"STDERR:\n{r.stderr[-2000:]}"
         )
 
-    # Verify _imports popolato (>= 10 executor attesi)
+    # Verify skills/<bundle>/ popolato (>= 10 executor attesi)
     assert imports_dir.is_dir(), f"imports dir missing: {imports_dir}"
     executors = [p.name for p in imports_dir.iterdir() if p.is_dir()]
     assert len(executors) >= 10, (

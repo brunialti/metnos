@@ -122,12 +122,17 @@ def test_cmd_audit_quality_dry_run(capsys):
 
 
 def test_cmd_audit_quality_apply_writes_toml(tmp_path, monkeypatch):
-    """`--apply` salva config in path corretto (mockato via XDG_CONFIG_HOME)."""
-    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    """`--apply` salva config in path corretto (override `PATH_USER_CONFIG`).
+
+    `runtime/config.py` deriva `PATH_USER_CONFIG` da `METNOS_USER_CONFIG`
+    a import-time (non da `XDG_CONFIG_HOME`). Per testare overrida il
+    valore gia' risolto sul modulo `_C` importato da `prompts_cli`.
+    """
+    monkeypatch.setattr(pc._C, "PATH_USER_CONFIG", tmp_path)
     args = _make_args(sample="2", apply=True, dry_run=True)
     rc = pc.cmd_audit_quality(args)
     assert rc == 0
-    expected = tmp_path / "metnos" / "translator_tier.toml"
+    expected = tmp_path / "translator_tier.toml"
     assert expected.is_file()
     body = expected.read_text(encoding="utf-8")
     assert "[translator]" in body

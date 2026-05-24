@@ -182,5 +182,51 @@ description = "Legacy flat su arg"
                       msg=f"reason non cita arg description: {joined}")
 
 
+class TestRealCatalogCapabilitiesSchema(unittest.TestCase):
+    """Invariant cross-catalog: ogni manifest reale (handcrafted + skill
+    bundle) deve avere `capabilities` come array of tables `[[capabilities]]`,
+    NON come dict `[capabilities]`. Regressione 24/5/2026: `find_contacts`
+    e `read_contacts` usavano dict-form → /admin/executors 500.
+    """
+
+    def test_all_real_manifests_have_array_of_tables_capabilities(self):
+        import tomllib
+        repo_executors = Path(__file__).resolve().parents[2] / "executors"
+        user_executors = Path.home() / ".local/share/metnos/executors"
+        bad = []
+        for root in (repo_executors, user_executors):
+            if not root.exists():
+                continue
+            for manifest_path in root.rglob("manifest.toml"):
+                try:
+                    parsed = tomllib.loads(
+                        manifest_path.read_text(encoding="utf-8")
+                    )
+                except tomllib.TOMLDecodeError:
+                    continue
+                caps = parsed.get("capabilities")
+                if caps is None:
+                    continue
+                if isinstance(caps, dict):
+                    bad.append(
+                        f"{manifest_path}: dict-form `[capabilities]`, "
+                        f"use `[[capabilities]]` array of tables"
+                    )
+                    continue
+                if not isinstance(caps, list):
+                    bad.append(f"{manifest_path}: tipo {type(caps).__name__}")
+                    continue
+                for i, c in enumerate(caps):
+                    if not isinstance(c, dict) or "name" not in c:
+                        bad.append(
+                            f"{manifest_path}: capabilities[{i}]={c!r} "
+                            f"manca campo `name`"
+                        )
+        self.assertFalse(
+            bad,
+            msg="Manifest con capabilities malformato:\n  " + "\n  ".join(bad),
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

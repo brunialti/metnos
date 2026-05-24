@@ -101,6 +101,81 @@ def update_digest_in_text(manifest_text, new_digest):
     return _DIGEST_RE.sub(rf'\g<1>{new_digest}\g<2>', manifest_text)
 
 
+def _validate_capabilities_schema(manifest: dict, manifest_path: Path) -> None:
+    """Rifiuta capabilities in forma `[capabilities]` (dict TOML) invece di
+    `[[capabilities]]` (array of tables). Senza questo check il loader
+    silenziosamente convertirebbe le chiavi dict in `list[str]` e l'admin
+    UI esploderebbe con AttributeError (vedi fix 24/5/2026 F1).
+    """
+    caps = manifest.get("capabilities")
+    if caps is None:
+        return
+    if isinstance(caps, dict):
+        raise ValueError(
+            f"{manifest_path}: `capabilities` deve essere array of tables "
+            f"`[[capabilities]] name=\"...\" hint=[...]`, NON `[capabilities]` "
+            f"(dict TOML). Vedi executors/find_files/manifest.toml come modello."
+        )
+    if not isinstance(caps, list):
+        raise ValueError(
+            f"{manifest_path}: `capabilities` tipo inatteso "
+            f"{type(caps).__name__} (atteso list)."
+        )
+    for i, c in enumerate(caps):
+        if not isinstance(c, dict) or "name" not in c:
+            raise ValueError(
+                f"{manifest_path}: capabilities[{i}] deve essere table con "
+                f"campo `name`. Got: {c!r}"
+            )
+
+
+def _ensure_lang_state_companion(manifest: dict, manifest_dir: Path) -> None:
+    """Auto-genera `manifest.lang_state.json` se mancante e description e'
+    in schema multilingua (ADR 0092). Evita drift quando un manifest viene
+    creato direttamente in nuovo schema senza passare per la migrazione
+    (vedi fix 24/5/2026 F2: 12 manifest senza companion).
+    """
+    desc = manifest.get("description")
+    if not isinstance(desc, dict):
+        return  # schema flat legacy: lang_state non richiesto
+    state_path = manifest_dir / "manifest.lang_state.json"
+    if state_path.is_file():
+        return
+    import hashlib
+    import json as _json
+
+    def _h(s: str) -> str:
+        return "sha256:" + hashlib.sha256(s.encode("utf-8")).hexdigest()
+
+    state: dict = {}
+    for lang, val in desc.items():
+        if isinstance(val, str):
+            state.setdefault("description", {})[lang] = {
+                "version_hash": _h(val),
+                "source_lang": None,
+                "source_hash": None,
+            }
+    props = (manifest.get("args") or {}).get("properties") or {}
+    for arg_name, arg_def in props.items():
+        if not isinstance(arg_def, dict):
+            continue
+        arg_desc = arg_def.get("description")
+        if not isinstance(arg_desc, dict):
+            continue
+        key = f"args.{arg_name}.description"
+        for lang, val in arg_desc.items():
+            if isinstance(val, str):
+                state.setdefault(key, {})[lang] = {
+                    "version_hash": _h(val),
+                    "source_lang": None,
+                    "source_hash": None,
+                }
+    state_path.write_text(
+        _json.dumps(state, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+
+
 def sign_executor(manifest_dir, key_name=DEFAULT_AUTHOR_KEY):
     """Aggiorna digest, firma il manifest aggiornato, scrive manifest.toml.sig."""
     manifest_dir = Path(manifest_dir)
@@ -112,6 +187,9 @@ def sign_executor(manifest_dir, key_name=DEFAULT_AUTHOR_KEY):
     code_files = manifest.get("code", {}).get("files", [])
     if not code_files:
         raise ValueError("manifest senza [code].files")
+
+    _validate_capabilities_schema(manifest, manifest_path)
+    _ensure_lang_state_companion(manifest, manifest_dir)
 
     digest = compute_code_digest(manifest_dir, code_files)
 
