@@ -20,7 +20,7 @@ en = "Reads the content of a file from the local filesystem and returns it as te
 
 [code]
 files  = ["read_files.py"]
-digest = "sha256:2416c91bed5d439ff04b1f5a366c16b91b3816374a45ee8b34e659a43023e2ae"  # sostituito al momento della firma
+digest = "sha256:cf2fa48e465ce022eccc298b519b8a155b116814d8d699352fb889377595aa37"  # sostituito al momento della firma
 
 # --- Argomenti accettati (JSON Schema, sottoinsieme v1.1) -------------------
 [args]

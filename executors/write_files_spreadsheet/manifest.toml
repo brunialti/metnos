@@ -1,0 +1,116 @@
+# Manifest dell'executor `write_files_spreadsheet` — Metnos v1.1
+# Naming compositivo §2.2: azione_oggetto_qualifier.
+# Dispatcher canonical Google Sheets write/append (24/5/2026).
+
+manifest_format = "1.0"
+
+name        = "write_files_spreadsheet"
+version     = "0.1.0"
+author      = "Roberto Brunialti <roberto.brunialti@metnos.com>"
+affinity    = [
+    "spreadsheet", "foglio elettronico", "google sheets", "sheets",
+    "scrivi celle", "aggiorna celle", "write sheet", "update sheet",
+    "append rows", "aggiungi righe", "salva celle", "celle", "tabella"
+]
+revertible  = false
+lifecycle   = "active"
+
+[description]
+it = "Scrive (o appende) celle in un range di un Google Sheets. Dispatcher canonical: instrada al backend `client` (default `google_workspace`). USO CORRETTO: write_files_spreadsheet(spreadsheet_id='1abc...', range='Sheet1!A1:C3', values=[['a','b','c'],[1,2,3],[4,5,6]], mode='overwrite'). NON CONFONDERE CON: `write_files` (file locale), `create_files_spreadsheet` (crea NUOVO foglio, qui SCRIVI in uno esistente). Mode 'overwrite' (default) sostituisce le celle del range; 'append' aggiunge in coda (al di sotto dell'ultima riga occupata). §2.6 trasformativo: ritorna `results: list`. NON reversibile (snapshot blob delle celle previe sarebbe oneroso e cross-sheet inaffidabile). Se OAuth manca, decision='needs_inputs'."
+en = "Writes (or appends) cells to a range of a Google Sheets. Canonical dispatcher: routes to backend `client` (default `google_workspace`). CORRECT USE: write_files_spreadsheet(spreadsheet_id='1abc...', range='Sheet1!A1:C3', values=[['a','b','c'],[1,2,3],[4,5,6]], mode='overwrite'). DO NOT CONFUSE WITH: `write_files` (local file), `create_files_spreadsheet` (creates NEW sheet, here you WRITE in an existing one). Mode 'overwrite' (default) replaces the cells of the range; 'append' adds at the end (below the last occupied row). §2.6 transformative: returns `results: list`. NOT reversible (snapshot blob of previous cells would be expensive and cross-sheet unreliable). If OAuth missing, decision='needs_inputs'."
+
+[code]
+files  = ["write_files_spreadsheet.py"]
+digest = "sha256:5d5e35b351b5fadfc09a9d591cb44f9f3eee979c6ca128d129e2682a310f2e8a"
+
+[args]
+type     = "object"
+required = ["spreadsheet_id", "range", "values"]
+
+[args.properties.spreadsheet_id]
+type    = "string"
+
+[args.properties.spreadsheet_id.description]
+it = "ID del Google Sheets target (es. '1abc...XYZ', visibile nell'URL). MATCH ESATTO: stringa opaca, wildcard NON supportati."
+en = "Target Google Sheets ID (e.g. '1abc...XYZ', visible in URL). EXACT MATCH: opaque string, wildcards NOT supported."
+
+[args.properties.range]
+type    = "string"
+
+[args.properties.range.description]
+it = "Range A1 in cui scrivere (es. 'Sheet1!A1:C3', 'Dati!B2'). Per overwrite il range definisce l'area sovrascritta; per append definisce la tab e l'ancora iniziale."
+en = "A1 range to write into (e.g. 'Sheet1!A1:C3', 'Data!B2'). For overwrite the range defines the overwritten area; for append it defines the tab and the initial anchor."
+
+[args.properties.values]
+type    = "array"
+items   = { type = "array" }
+
+[args.properties.values.description]
+it = "Matrice di celle [riga][colonna] da scrivere. Es. [['nome','eta'],['Alice',30]]. Numeri/stringhe/bool ammessi. Lista vuota = nessuna scrittura (no-op)."
+en = "Cell matrix [row][column] to write. E.g. [['name','age'],['Alice',30]]. Numbers/strings/bool allowed. Empty list = no-op."
+
+[args.properties.mode]
+type    = "string"
+enum    = ["overwrite", "append"]
+default = "overwrite"
+
+[args.properties.mode.description]
+it = "MATCH ESATTO: 'overwrite' (default) o 'append'. Overwrite sostituisce le celle del range con `values`. Append aggiunge in coda alle righe gia' occupate del foglio indicato da `range`."
+en = "EXACT MATCH: 'overwrite' (default) or 'append'. Overwrite replaces the cells of the range with `values`. Append adds at the end of the rows already occupied in the sheet specified by `range`."
+
+[args.properties.client]
+type    = "string"
+enum    = ["google_workspace"]
+default = "google_workspace"
+
+[args.properties.client.description]
+it = "Backend (oggi solo 'google_workspace'). Plugin esterni futuri potranno aggiungerne altri."
+en = "Backend (today only 'google_workspace'). Future external plugins may add others."
+
+[output]
+schema_inline = """
+{
+  ok: bool,
+  n_written: int,
+  updated_cells: int,
+  updated_rows: int,
+  range: str,
+  spreadsheet_id: str,
+  mode: 'overwrite'|'append',
+  results: Array<{ok, spreadsheet_id, range, updated_cells, mode}>,
+  used: int,
+  files_source: 'google_workspace',
+  error?: str,
+  error_class?: str,
+  decision?: 'needs_inputs'
+}
+"""
+
+[[capabilities]]
+name = "metnos:write"
+hint = ["spreadsheet:remote"]
+
+[[tests]]
+name   = "missing_spreadsheet_id_fails"
+input  = { range = "Sheet1!A1", values = [["x"]] }
+expect = { ok = false, error_contains = "spreadsheet_id" }
+
+[[tests]]
+name   = "missing_range_fails"
+input  = { spreadsheet_id = "1abc", values = [["x"]] }
+expect = { ok = false, error_contains = "range" }
+
+[[tests]]
+name   = "missing_values_fails"
+input  = { spreadsheet_id = "1abc", range = "Sheet1!A1" }
+expect = { ok = false }
+
+[[tests]]
+name   = "invalid_mode_fails"
+input  = { spreadsheet_id = "1abc", range = "Sheet1!A1", values = [["x"]], mode = "merge" }
+expect = { ok = false, error_contains = "mode" }
+
+[[tests]]
+name   = "unsupported_client_fails"
+input  = { spreadsheet_id = "1abc", range = "Sheet1!A1", values = [["x"]], client = "dropbox" }
+expect = { ok = false, error_contains = "unsupported" }

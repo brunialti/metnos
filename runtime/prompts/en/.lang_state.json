@@ -19,9 +19,14 @@
     "source_lang": "it",
     "version_hash": "sha256:1dc14004543623c5ef1ec78685129e3fb4de233110f88cd9561b2f30db8e6291"
   },
-  "intent_extractor": {
+  "e2e_judge": {
     "source_hash": null,
     "source_lang": null,
+    "version_hash": "sha256:63dab73c38ee9a7732d9c777e6093f9815f62bd2605290b93cfdba9d638aef8c"
+  },
+  "intent_extractor": {
+    "source_hash": "sha256:b3c905710425ae2666b548aab8215205599269e11a7a95744a8790ef0f51b071",
+    "source_lang": "it",
     "version_hash": "sha256:65cb4eb55c16d750dc824c3ed3f5f80b2dadf79452da0706011f1bd8b6af3e2e"
   },
   "planner": {
@@ -30,8 +35,8 @@
     "version_hash": "sha256:e1c7da82ff17b8c5e92f21e9b2cc98f69749bab3e82b3df78419aa772c7a78ad"
   },
   "promoter_commentary": {
-    "source_hash": null,
-    "source_lang": null,
+    "source_hash": "sha256:78c49c3a18f400d6b69e4b49eca0c75c66235395cafae05a69028c6451540d8e",
+    "source_lang": "it",
     "version_hash": "sha256:bba113352887263ce781f597ff618c29f11067521346492a0ca6d588c22f9674"
   },
   "synt_birth_tests": {

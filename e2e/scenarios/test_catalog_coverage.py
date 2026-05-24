@@ -94,7 +94,7 @@ async def test_each_object_has_producer(driver, obj: str):
         # meta-object turn-scoped). Skip soft.
         external_only = {"packages", "numbers", "credentials",
                           "inputs", "proposals", "signatures", "entries",
-                          "places", "contacts"}
+                          "places"}
         if obj in external_only:
             pytest.skip(f"obj `{obj}` non in pool minimal handcrafted")
         pytest.fail(f"object `{obj}` SENZA producer in catalog")

@@ -497,3 +497,527 @@ def delete_dirs(args: dict) -> dict:
     """Cancella 1+ cartelle (=file folder mime) su Drive.
     Alias di `delete(args)` (Drive cancella file e folders allo stesso modo)."""
     return delete(args)
+
+
+# --------------------------------------------------------------------------
+# UPLOAD / DOWNLOAD / CREATE_FOLDER  (esplicito name aliases)
+# --------------------------------------------------------------------------
+# `upload`/`create_folder` espongono gli stessi nomi del CLI `gws drive`
+# per coerenza con la skill imported. Il dispatcher canonical
+# `write_files`/`create_dirs` chiama `write`/`create_dirs` (storico), ma
+# i tool builtin possono linkarsi direttamente a queste funzioni con i
+# nomi naturali (es. un futuro executor `upload_files`).
+
+def upload(args: dict) -> dict:
+    """Upload 1+ file locali a Drive. Args:
+      - `local_path`: path locale singolo (o `paths` lista).
+      - `dst_folder_id`: folder Drive padre (alias di `parent`).
+      - `mime`: MIME type (alias di `mime_type`).
+      - `name`: override nome file su Drive.
+    Best-effort: ogni path indipendente. Reverse: delete_files_by_id.
+    """
+    if not isinstance(args, dict):
+        return {"ok": False, "error_code": "ERR_ARG_INVALID",
+                "error": _msg("ERR_ARG_INVALID", arg="args", reason="must be an object"),
+                "error_class": "invalid_args",
+                "results": [], "used": 0, "n_written": 0}
+    a = dict(args)
+    # Alias normalization
+    if "local_path" in a and "paths" not in a:
+        a["paths"] = [a["local_path"]] if isinstance(a["local_path"], str) else a["local_path"]
+    if "dst_folder_id" in a and "parent" not in a:
+        a["parent"] = a["dst_folder_id"]
+    if "mime" in a and "mime_type" not in a:
+        a["mime_type"] = a["mime"]
+    return write(a)
+
+
+def download(args: dict) -> dict:
+    """Scarica 1+ file Drive su path locale. Args:
+      - `file_id` / `file_ids`: target.
+      - `dst_path`: path locale (per single id). Se `file_ids` lista,
+        accettiamo `dst_dir` per scrivere ./<id>/<name>.
+      - `export_mime`: override per Google-native (Docs/Sheets/Slides).
+    Output: `results: [{ok, file_id, local_path, bytes}]`.
+    """
+    if not isinstance(args, dict):
+        return {"ok": False, "error_code": "ERR_ARG_INVALID",
+                "error": _msg("ERR_ARG_INVALID", arg="args", reason="must be an object"),
+                "error_class": "invalid_args",
+                "results": [], "used": 0}
+
+    ids: list[str] = []
+    if isinstance(args.get("file_ids"), list):
+        ids.extend(str(x).strip() for x in args["file_ids"] if x)
+    fid = args.get("file_id")
+    if isinstance(fid, str) and fid.strip():
+        ids.append(fid.strip())
+    if not ids:
+        return {"ok": False, "error_code": "ERR_ARG_MISSING",
+                "error": _msg("ERR_ARG_MISSING", arg="file_id/file_ids"),
+                "error_class": "invalid_args",
+                "results": [], "used": 0}
+
+    dst_path = args.get("dst_path") or ""
+    dst_dir = args.get("dst_dir") or ""
+    export_mime = args.get("export_mime") or ""
+    if len(ids) > 1 and dst_path and not dst_dir:
+        return {"ok": False, "error_code": "ERR_ARG_INVALID",
+                "error": _msg("ERR_ARG_INVALID", arg="dst_path",
+                              reason="usare dst_dir per multi-id"),
+                "error_class": "invalid_args",
+                "results": [], "used": 0}
+
+    results, failed = [], []
+    for i, target_id in enumerate(ids):
+        argv = ["drive", "download", target_id]
+        if dst_path and len(ids) == 1:
+            argv.extend(["--output", str(dst_path)])
+        elif dst_dir:
+            # CLI default = ./<name> in cwd; con dst_dir, leave name
+            # autoderived but join dir at output side. Pass output as
+            # dir/<file_id>.bin placeholder if no name resolution upfront.
+            # Simpler: rely on CLI default in cwd then we cannot know
+            # final path without parse — propagate dst_dir as output
+            # explicitly only when single-id.
+            pass
+        if export_mime:
+            argv.extend(["--export-mime", export_mime])
+        data, err = _run_drive(argv, executor="read_files",
+                               args_base=dict(args), result_kind="results")
+        if err is not None:
+            if err.get("decision") == "needs_inputs":
+                return err
+            failed.append({"file_id": target_id, **err})
+            continue
+        d = data or {}
+        local_p = d.get("path", "")
+        # Compute size if path exists (best-effort, no error if missing)
+        size_b = 0
+        if local_p:
+            try:
+                size_b = Path(local_p).stat().st_size
+            except OSError:
+                size_b = 0
+        results.append({"ok": True, "file_id": target_id,
+                        "local_path": local_p,
+                        "name": d.get("name", ""),
+                        "bytes": size_b})
+
+    out = {
+        "ok": len(results) > 0 or not failed,
+        "ok_count": len(results),
+        "fail_count": len(failed),
+        "results": results,
+        "used": len(results),
+        "files_source": "google_workspace",
+    }
+    if failed:
+        out["failed"] = failed
+        if not results:
+            out["ok"] = False
+            out["error_class"] = failed[0].get("error_class") or "server_error"
+            out["error"] = failed[0].get("error") or _msg("ERR_OP_FAILED", reason="download failed")
+    return out
+
+
+def create_folder(args: dict) -> dict:
+    """Crea UNA cartella Drive. Args:
+      - `name`: nome cartella.
+      - `parent_folder_id`: folder padre (alias di `parent`).
+    Wrapper sottile di `create_dirs` con shape singolo (per coerenza
+    con CLI `drive create-folder`). Output: `{ok, folder_id, ...}`.
+    """
+    if not isinstance(args, dict):
+        return {"ok": False, "error_code": "ERR_ARG_INVALID",
+                "error": _msg("ERR_ARG_INVALID", arg="args", reason="must be an object"),
+                "error_class": "invalid_args",
+                "results": [], "used": 0}
+    name = args.get("name") or ""
+    if not isinstance(name, str) or not name.strip():
+        return {"ok": False, "error_code": "ERR_ARG_MISSING",
+                "error": _msg("ERR_ARG_MISSING", arg="name"),
+                "error_class": "invalid_args",
+                "results": [], "used": 0}
+    a = {"paths": [name]}
+    parent = args.get("parent_folder_id") or args.get("parent") or ""
+    if parent:
+        a["parent"] = parent
+    out = create_dirs(a)
+    # Convenience flat shape: surface folder_id at top level
+    if out.get("ok") and out.get("results"):
+        out["folder_id"] = out["results"][0].get("id", "")
+        out["web_view_link"] = out["results"][0].get("webViewLink", "")
+    return out
+
+
+# --------------------------------------------------------------------------
+# SPREADSHEETS  (Google Sheets API: get/update/append/create)
+# --------------------------------------------------------------------------
+# Wrappa `google_api.py sheets {get|update|append|create}`. Output remoto
+# = matrice di celle (list[list[str|num]]) + metadata range. ID = uno
+# `spreadsheetId` (es. "1abc...XYZ"), range = notazione A1 (es. "Sheet1!A1:C10").
+
+def read_spreadsheet(args: dict) -> dict:
+    """Legge un range di celle da uno spreadsheet Google Sheets.
+
+    Args:
+      - `spreadsheet_id`: str (richiesto).
+      - `range`: str A1 (default "Sheet1"; legge tutto il foglio).
+    Output: `{ok, values: [[...]], range, spreadsheet_id, used}`.
+    """
+    if not isinstance(args, dict):
+        return {"ok": False, "error_code": "ERR_ARG_INVALID",
+                "error": _msg("ERR_ARG_INVALID", arg="args", reason="must be an object"),
+                "error_class": "invalid_args", "entries": [], "used": 0}
+    sid = (args.get("spreadsheet_id") or "").strip()
+    if not sid:
+        return {"ok": False, "error_code": "ERR_ARG_MISSING",
+                "error": _msg("ERR_ARG_MISSING", arg="spreadsheet_id"),
+                "error_class": "invalid_args", "entries": [], "used": 0}
+    rng = (args.get("range") or "Sheet1").strip()
+    argv = ["sheets", "get", sid, rng]
+    data, err = _run_drive(argv, executor="read_files_spreadsheet",
+                             args_base=dict(args), result_kind="entries")
+    if err is not None:
+        if err.get("decision") == "needs_inputs":
+            return err
+        return {**err, "entries": [], "used": 0}
+    values = data if isinstance(data, list) else []
+    return {
+        "ok": True,
+        "values": values,
+        "range": rng,
+        "spreadsheet_id": sid,
+        "entries": values,
+        "used": len(values),
+        "available_total": len(values),
+        "files_source": "google_workspace",
+    }
+
+
+def write_spreadsheet(args: dict) -> dict:
+    """Sovrascrive (o appende) celle in un range di uno spreadsheet.
+
+    Args:
+      - `spreadsheet_id`: str (richiesto).
+      - `range`: str A1 (richiesto, es. "Sheet1!A1:C3").
+      - `values`: list[list] (richiesto, matrice riga x colonna).
+      - `mode`: "overwrite" (default) | "append".
+    Output: `{ok, updated_cells, updated_rows, range, spreadsheet_id, mode}`.
+    """
+    if not isinstance(args, dict):
+        return {"ok": False, "error_code": "ERR_ARG_INVALID",
+                "error": _msg("ERR_ARG_INVALID", arg="args", reason="must be an object"),
+                "error_class": "invalid_args",
+                "results": [], "used": 0, "n_written": 0}
+    sid = (args.get("spreadsheet_id") or "").strip()
+    if not sid:
+        return {"ok": False, "error_code": "ERR_ARG_MISSING",
+                "error": _msg("ERR_ARG_MISSING", arg="spreadsheet_id"),
+                "error_class": "invalid_args",
+                "results": [], "used": 0, "n_written": 0}
+    rng = (args.get("range") or "").strip()
+    if not rng:
+        return {"ok": False, "error_code": "ERR_ARG_MISSING",
+                "error": _msg("ERR_ARG_MISSING", arg="range"),
+                "error_class": "invalid_args",
+                "results": [], "used": 0, "n_written": 0}
+    values = args.get("values")
+    if not isinstance(values, list):
+        return {"ok": False, "error_code": "ERR_ARG_INVALID",
+                "error": _msg("ERR_ARG_INVALID", arg="values",
+                                reason="must be a list of lists"),
+                "error_class": "invalid_args",
+                "results": [], "used": 0, "n_written": 0}
+
+    mode = (args.get("mode") or "overwrite").strip().lower()
+    if mode not in ("overwrite", "append"):
+        return {"ok": False, "error_code": "ERR_ARG_INVALID",
+                "error": _msg("ERR_ARG_INVALID", arg="mode",
+                                reason="must be 'overwrite' or 'append'"),
+                "error_class": "invalid_args",
+                "results": [], "used": 0, "n_written": 0}
+
+    sub_cmd = "append" if mode == "append" else "update"
+    argv = ["sheets", sub_cmd, sid, rng,
+            "--values", json.dumps(values, ensure_ascii=False)]
+    data, err = _run_drive(argv, executor="write_files_spreadsheet",
+                             args_base=dict(args), result_kind="results")
+    if err is not None:
+        if err.get("decision") == "needs_inputs":
+            return err
+        return {**err, "results": [], "used": 0, "n_written": 0}
+
+    info = data if isinstance(data, dict) else {}
+    updated_cells = int(info.get("updatedCells") or 0)
+    updated_range = info.get("updatedRange") or rng
+    result_row = {
+        "ok": True,
+        "spreadsheet_id": sid,
+        "range": updated_range,
+        "updated_cells": updated_cells,
+        "mode": mode,
+    }
+    return {
+        "ok": True,
+        "n_written": 1,
+        "updated_cells": updated_cells,
+        "updated_rows": len(values),
+        "range": updated_range,
+        "spreadsheet_id": sid,
+        "mode": mode,
+        "results": [result_row],
+        "used": 1,
+        "files_source": "google_workspace",
+    }
+
+
+def append_spreadsheet(args: dict) -> dict:
+    """Append-only wrapper di `write_spreadsheet` con `mode='append'`.
+
+    Args:
+      - `spreadsheet_id`: str (richiesto).
+      - `range`: str A1 (richiesto).
+      - `values`: list[list] (richiesto).
+    Equivalente a `write_spreadsheet(args, mode='append')`.
+    """
+    a = dict(args or {})
+    a["mode"] = "append"
+    return write_spreadsheet(a)
+
+
+def create_spreadsheet(args: dict) -> dict:
+    """Crea un nuovo spreadsheet Google Sheets.
+
+    Args:
+      - `title`: str (richiesto).
+      - `sheet_name`: str (opzionale; nome della prima tab).
+    Output: `{ok, spreadsheet_id, web_view_url, title}`. Reverse:
+    `delete_files_by_id` (Drive trash).
+    """
+    if not isinstance(args, dict):
+        return {"ok": False, "error_code": "ERR_ARG_INVALID",
+                "error": _msg("ERR_ARG_INVALID", arg="args", reason="must be an object"),
+                "error_class": "invalid_args",
+                "results": [], "used": 0, "n_created": 0}
+    title = (args.get("title") or "").strip()
+    if not title:
+        return {"ok": False, "error_code": "ERR_ARG_MISSING",
+                "error": _msg("ERR_ARG_MISSING", arg="title"),
+                "error_class": "invalid_args",
+                "results": [], "used": 0, "n_created": 0}
+    argv = ["sheets", "create", "--title", title]
+    sheet_name = (args.get("sheet_name") or "").strip()
+    if sheet_name:
+        argv.extend(["--sheet-name", sheet_name])
+    data, err = _run_drive(argv, executor="create_files_spreadsheet",
+                             args_base=dict(args), result_kind="results")
+    if err is not None:
+        if err.get("decision") == "needs_inputs":
+            return err
+        return {**err, "results": [], "used": 0, "n_created": 0}
+
+    info = data if isinstance(data, dict) else {}
+    sid = info.get("spreadsheetId") or ""
+    web_view_url = info.get("spreadsheetUrl") or (
+        f"https://docs.google.com/spreadsheets/d/{sid}/edit" if sid else ""
+    )
+    result_row = {
+        "ok": True,
+        "file_id": sid,
+        "id": sid,
+        "spreadsheet_id": sid,
+        "title": info.get("title") or title,
+        "web_view_url": web_view_url,
+        "kind": "spreadsheet",
+    }
+    out = {
+        "ok": True,
+        "n_created": 1,
+        "spreadsheet_id": sid,
+        "web_view_url": web_view_url,
+        "title": info.get("title") or title,
+        "results": [result_row],
+        "used": 1,
+        "files_source": "google_workspace",
+    }
+    if sid:
+        out["_undo"] = {
+            "reverse_pattern": "delete_files_by_id",
+            "ids": [sid],
+            "scope": {"client": "google_workspace"},
+        }
+    return out
+
+
+# --------------------------------------------------------------------------
+# DOCS  (Google Docs API: get/create/append)
+# --------------------------------------------------------------------------
+# Wrappa `google_api.py docs {get|create|append}`. ID = un `documentId`
+# (es. "1abc...XYZ"). Body = flow di testo paragrafi.
+
+def read_doc(args: dict) -> dict:
+    """Legge il contenuto testuale di un Google Doc.
+
+    Args:
+      - `document_id`: str (richiesto).
+    Output: `{ok, body_text, title, document_id}`.
+    """
+    if not isinstance(args, dict):
+        return {"ok": False, "error_code": "ERR_ARG_INVALID",
+                "error": _msg("ERR_ARG_INVALID", arg="args", reason="must be an object"),
+                "error_class": "invalid_args", "entries": [], "used": 0}
+    did = (args.get("document_id") or "").strip()
+    if not did:
+        return {"ok": False, "error_code": "ERR_ARG_MISSING",
+                "error": _msg("ERR_ARG_MISSING", arg="document_id"),
+                "error_class": "invalid_args", "entries": [], "used": 0}
+    argv = ["docs", "get", did]
+    data, err = _run_drive(argv, executor="read_files_doc",
+                             args_base=dict(args), result_kind="entries")
+    if err is not None:
+        if err.get("decision") == "needs_inputs":
+            return err
+        return {**err, "entries": [], "used": 0}
+
+    info = data if isinstance(data, dict) else {}
+    body_text = info.get("body") or ""
+    title = info.get("title") or ""
+    entry = {
+        "document_id": did,
+        "id": did,
+        "title": title,
+        "body_text": body_text,
+        "content_length": len(body_text),
+        "kind": "doc",
+    }
+    return {
+        "ok": True,
+        "body_text": body_text,
+        "title": title,
+        "document_id": did,
+        "entries": [entry],
+        "used": 1,
+        "available_total": 1,
+        "files_source": "google_workspace",
+    }
+
+
+def create_doc(args: dict) -> dict:
+    """Crea un nuovo Google Doc.
+
+    Args:
+      - `title`: str (richiesto).
+      - `body`: str (opzionale; testo iniziale).
+    Output: `{ok, document_id, web_view_url, title}`. Reverse:
+    `delete_files_by_id` (Drive trash).
+    """
+    if not isinstance(args, dict):
+        return {"ok": False, "error_code": "ERR_ARG_INVALID",
+                "error": _msg("ERR_ARG_INVALID", arg="args", reason="must be an object"),
+                "error_class": "invalid_args",
+                "results": [], "used": 0, "n_created": 0}
+    title = (args.get("title") or "").strip()
+    if not title:
+        return {"ok": False, "error_code": "ERR_ARG_MISSING",
+                "error": _msg("ERR_ARG_MISSING", arg="title"),
+                "error_class": "invalid_args",
+                "results": [], "used": 0, "n_created": 0}
+    argv = ["docs", "create", "--title", title]
+    body = args.get("body") or ""
+    if body:
+        argv.extend(["--body", str(body)])
+    data, err = _run_drive(argv, executor="create_files_doc",
+                             args_base=dict(args), result_kind="results")
+    if err is not None:
+        if err.get("decision") == "needs_inputs":
+            return err
+        return {**err, "results": [], "used": 0, "n_created": 0}
+
+    info = data if isinstance(data, dict) else {}
+    did = info.get("documentId") or ""
+    web_view_url = info.get("url") or (
+        f"https://docs.google.com/document/d/{did}/edit" if did else ""
+    )
+    result_row = {
+        "ok": True,
+        "file_id": did,
+        "id": did,
+        "document_id": did,
+        "title": info.get("title") or title,
+        "web_view_url": web_view_url,
+        "kind": "doc",
+    }
+    out = {
+        "ok": True,
+        "n_created": 1,
+        "document_id": did,
+        "web_view_url": web_view_url,
+        "title": info.get("title") or title,
+        "results": [result_row],
+        "used": 1,
+        "files_source": "google_workspace",
+    }
+    if did:
+        out["_undo"] = {
+            "reverse_pattern": "delete_files_by_id",
+            "ids": [did],
+            "scope": {"client": "google_workspace"},
+        }
+    return out
+
+
+def append_doc(args: dict) -> dict:
+    """Appende testo alla fine di un Google Doc esistente.
+
+    Args:
+      - `document_id`: str (richiesto).
+      - `text`: str (richiesto; aggiunto in coda con newline trailing
+        garantito).
+    Output: `{ok, document_id, content_length, characters_appended}`.
+    """
+    if not isinstance(args, dict):
+        return {"ok": False, "error_code": "ERR_ARG_INVALID",
+                "error": _msg("ERR_ARG_INVALID", arg="args", reason="must be an object"),
+                "error_class": "invalid_args",
+                "results": [], "used": 0, "n_written": 0}
+    did = (args.get("document_id") or "").strip()
+    if not did:
+        return {"ok": False, "error_code": "ERR_ARG_MISSING",
+                "error": _msg("ERR_ARG_MISSING", arg="document_id"),
+                "error_class": "invalid_args",
+                "results": [], "used": 0, "n_written": 0}
+    text = args.get("text")
+    if not isinstance(text, str) or not text:
+        return {"ok": False, "error_code": "ERR_ARG_MISSING",
+                "error": _msg("ERR_ARG_MISSING", arg="text"),
+                "error_class": "invalid_args",
+                "results": [], "used": 0, "n_written": 0}
+    argv = ["docs", "append", did, "--text", text]
+    data, err = _run_drive(argv, executor="write_files_doc",
+                             args_base=dict(args), result_kind="results")
+    if err is not None:
+        if err.get("decision") == "needs_inputs":
+            return err
+        return {**err, "results": [], "used": 0, "n_written": 0}
+
+    info = data if isinstance(data, dict) else {}
+    chars = int(info.get("characters") or len(text))
+    result_row = {
+        "ok": True,
+        "document_id": did,
+        "id": did,
+        "characters_appended": chars,
+        "kind": "doc",
+    }
+    return {
+        "ok": True,
+        "n_written": 1,
+        "document_id": did,
+        "content_length": chars,
+        "characters_appended": chars,
+        "results": [result_row],
+        "used": 1,
+        "files_source": "google_workspace",
+    }

@@ -49,6 +49,10 @@ def invoke(args):
         return {"ok": False,
                 "error": f"unsupported files client '{client}'. "
                          f"Available: {avail}"}
+    # Per google_workspace: se richiesto `dst_path`/`dst_dir` → download
+    # vero (bytes su disco). Altrimenti `read` = metadata Drive.
+    if client == "google_workspace" and (args.get("dst_path") or args.get("dst_dir")):
+        return backend.download(args)
     # Attribute lookup a call-time: i test possono patchare `backend.read`.
     return backend.read(args)
 

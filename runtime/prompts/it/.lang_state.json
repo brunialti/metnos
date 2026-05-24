@@ -19,6 +19,11 @@
     "source_lang": "en",
     "version_hash": "sha256:cc4c4b287714b8b30473546c9806d7bef94760d2b8c1589331e0be1362f8504b"
   },
+  "e2e_judge": {
+    "source_hash": "sha256:63dab73c38ee9a7732d9c777e6093f9815f62bd2605290b93cfdba9d638aef8c",
+    "source_lang": "en",
+    "version_hash": "sha256:296f5d9fc8eaa0dd93cd25d96fbb5fc801bb49bc53d3f2e030bebc20e05a1025"
+  },
   "intent_extractor": {
     "source_hash": "sha256:65cb4eb55c16d750dc824c3ed3f5f80b2dadf79452da0706011f1bd8b6af3e2e",
     "source_lang": "en",

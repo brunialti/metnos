@@ -165,6 +165,15 @@ QUALIFIERS = (
     # Famiglia 1 — Formato file
     "csv", "xlsx", "ocr", "zip", "pdf", "xml", "html", "json", "text",
     "gz", "tar", "video", "audio", "image", "hash",
+    # Famiglia 1 — Formato file: applicazioni cloud strutturate (24/5/2026).
+    # `spreadsheet` = formato Google Sheets / generico foglio elettronico
+    # online (output: matrice di righe/celle, range A1). Distinto da `xlsx`
+    # (file binario Excel locale): qui il dato sta su un servizio remoto,
+    # l'identificatore e' uno `spreadsheet_id`, non un path.
+    # `doc` = formato Google Docs (output: testo flow corrente, document_id).
+    # Distinto da `text`/`pdf`/`html` (formati file): qui il "file" e' un
+    # documento di un editor remoto. Compat: solo files (cloud-resident).
+    "spreadsheet", "doc",
     # Famiglia 2 — Modalita': operazione specifica entro il dominio
     # (introdotti per change_* / compute_*_loc / order_*).
     "size", "format", "loc", "similar",
@@ -265,6 +274,8 @@ QUALIFIER_OBJECT_COMPAT = {
     "audio": frozenset({"files"}),
     "image": frozenset({"files"}),
     "hash": frozenset({"files", "signatures"}),
+    "spreadsheet": frozenset({"files"}),
+    "doc": frozenset({"files"}),
     # Cross-domain (None: ammessi su qualsiasi object)
     "size": None,
     "empty": None,

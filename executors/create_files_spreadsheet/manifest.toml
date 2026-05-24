@@ -1,0 +1,95 @@
+# Manifest dell'executor `create_files_spreadsheet` — Metnos v1.1
+# Naming compositivo §2.2: azione_oggetto_qualifier.
+# Dispatcher canonical Google Sheets create (24/5/2026).
+
+manifest_format = "1.0"
+
+name             = "create_files_spreadsheet"
+version          = "0.1.0"
+author           = "Roberto Brunialti <roberto.brunialti@metnos.com>"
+affinity         = [
+    "spreadsheet", "foglio elettronico", "google sheets", "sheets",
+    "crea foglio", "nuovo foglio", "create sheet", "new spreadsheet",
+    "tabella nuova", "workbook"
+]
+revertible       = true
+reverse_pattern  = "delete_files_by_id"
+lifecycle        = "active"
+
+[description]
+it = "Crea un nuovo Google Sheets (foglio elettronico online). Dispatcher canonical: instrada al backend `client` (default `google_workspace`). USO CORRETTO: create_files_spreadsheet(title='Budget 2026', sheet_name='Spese'). NON CONFONDERE CON: `write_files_spreadsheet` (scrive in foglio esistente), `create_files_doc` (crea Google Doc, NON foglio), `create_dirs` (cartella). §2.3 reverse_pattern='delete_files_by_id' (Drive trash, reversibile via gmail/drive UI). §2.6 trasformativo: ritorna `results: list[{spreadsheet_id, title, web_view_url}]`. Se OAuth manca, decision='needs_inputs'."
+en = "Creates a new Google Sheets (online spreadsheet). Canonical dispatcher: routes to backend `client` (default `google_workspace`). CORRECT USE: create_files_spreadsheet(title='Budget 2026', sheet_name='Expenses'). DO NOT CONFUSE WITH: `write_files_spreadsheet` (writes to existing sheet), `create_files_doc` (creates Google Doc, NOT sheet), `create_dirs` (folder). §2.3 reverse_pattern='delete_files_by_id' (Drive trash, reversible via Gmail/Drive UI). §2.6 transformative: returns `results: list[{spreadsheet_id, title, web_view_url}]`. If OAuth missing, decision='needs_inputs'."
+
+[code]
+files  = ["create_files_spreadsheet.py"]
+digest = "sha256:ad575a3041ecb9b98d7db994477867f6338d3a2a28b2dc6e6592ec623ecf1de9"
+
+[args]
+type     = "object"
+required = ["title"]
+
+[args.properties.title]
+type    = "string"
+
+[args.properties.title.description]
+it = "Titolo del nuovo Google Sheets (es. 'Budget 2026', 'Lista invitati'). Testo libero, visibile in Drive."
+en = "Title of the new Google Sheets (e.g. 'Budget 2026', 'Invitee list'). Free text, visible in Drive."
+
+[args.properties.sheet_name]
+type    = "string"
+default = ""
+
+[args.properties.sheet_name.description]
+it = "Nome della prima tab del foglio (es. 'Dati', 'Q1 2026'). Se vuoto, Google usa il default 'Sheet1'."
+en = "Name of the first tab (e.g. 'Data', 'Q1 2026'). If empty, Google uses default 'Sheet1'."
+
+[args.properties.client]
+type    = "string"
+enum    = ["google_workspace"]
+default = "google_workspace"
+
+[args.properties.client.description]
+it = "Backend (oggi solo 'google_workspace'). Plugin esterni futuri potranno aggiungerne altri."
+en = "Backend (today only 'google_workspace'). Future external plugins may add others."
+
+[output]
+schema_inline = """
+{
+  ok: bool,
+  n_created: int,
+  spreadsheet_id: str,
+  web_view_url: str,
+  title: str,
+  results: Array<{file_id, id, spreadsheet_id, title, web_view_url, kind: 'spreadsheet'}>,
+  used: int,
+  files_source: 'google_workspace',
+  _undo?: {reverse_pattern, ids, scope},
+  error?: str,
+  error_class?: str,
+  decision?: 'needs_inputs'
+}
+"""
+
+[[capabilities]]
+name = "metnos:create"
+hint = ["spreadsheet:remote"]
+
+[[tests]]
+name   = "missing_title_fails"
+input  = {}
+expect = { ok = false, error_contains = "title" }
+
+[[tests]]
+name   = "empty_title_fails"
+input  = { title = "   " }
+expect = { ok = false, error_contains = "title" }
+
+[[tests]]
+name   = "unsupported_client_fails"
+input  = { title = "Test", client = "dropbox" }
+expect = { ok = false, error_contains = "unsupported" }
+
+[[tests]]
+name   = "happy_path_with_sheet_name"
+input  = { title = "Budget 2026", sheet_name = "Spese" }
+expect = { ok = true }
