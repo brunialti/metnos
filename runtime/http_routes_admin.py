@@ -632,10 +632,13 @@ async def admin_change_action(request: web.Request) -> web.Response:
 
 # --- /admin/proposals/telos --------------------------------------------------
 
-# Soglia di default per la dashboard triage. Sotto 0.30 = quartile basso, non
-# vale l'attenzione umana. Override via query param `min_alignment`.
-_TELOS_DASH_DEFAULT_MIN = 0.30
-_TELOS_DASH_MAX_ROWS = 60
+# Soglia di default per la dashboard triage. Default strict (C.8 fase 2,
+# 24/5/2026): utente puo' gestire poche proposte alla volta; le filtrate
+# riemergono nel tempo con score piu' alto via convergence. Override via
+# query param `min_alignment` (e `strict=0` per disabilitare i filtri
+# convergence+name_status). Soglie da runtime_settings (telos.dashboard_*).
+_TELOS_DASH_DEFAULT_MIN = 0.30  # mantenuto come fallback se settings non disponibili
+_TELOS_DASH_MAX_ROWS = 60       # mantenuto come hard cap superiore
 
 
 def _telos_lens_facets(rows: list[dict]) -> dict:
@@ -684,6 +687,24 @@ async def admin_telos_proposals(request: web.Request) -> web.Response:
     telos_id = request.query.get("telos_id", "").strip() or None
     only_pending = request.query.get("only_pending", "0") in ("1", "true", "on")
     group_clusters = request.query.get("group_clusters", "1") in ("1", "true", "on")
+    strict = request.query.get("strict", "1") in ("1", "true", "on")
+
+    # Strict filter defaults da runtime_settings (C.8 fase 2 24/5/2026).
+    try:
+        from runtime_settings import get as _setting
+        strict_min_align = float(_setting("telos.dashboard_min_alignment"))
+        strict_min_conv = int(_setting("telos.dashboard_min_convergence"))
+        strict_max_rows = int(_setting("telos.dashboard_max_rows"))
+        strict_name_only = bool(_setting("telos.dashboard_strict_name_status"))
+    except Exception:
+        strict_min_align, strict_min_conv = 0.55, 2
+        strict_max_rows, strict_name_only = 10, True
+
+    # In strict mode, alza band_min al max(band_min, strict_min_align) se
+    # non c'e' override esplicito (tier custom). Cap rows = strict_max_rows.
+    if strict and tier != "custom" and band_min < strict_min_align:
+        band_min = strict_min_align
+    effective_max_rows = strict_max_rows if strict else _TELOS_DASH_MAX_ROWS
 
     # Carica TUTTO sopra band_min e applica band_max + filtri post-load
     rows_all = telos_proposals_store.load_all(
@@ -695,6 +716,13 @@ async def admin_telos_proposals(request: web.Request) -> web.Response:
         enrich_rows=True,
     )
     rows = [r for r in rows_all if r.get("expected_alignment", 0) < band_max]
+    # Strict post-filters: convergence + name_status (proposte gia' validate).
+    if strict:
+        rows = [r for r in rows
+                if int(r.get("convergence_count", 1) or 1) >= strict_min_conv]
+        if strict_name_only:
+            rows = [r for r in rows
+                    if r.get("name_status") == "new_valid"]
     # Group by signature_relaxed: 1 riga leader per cluster, varianti collassate.
     if group_clusters:
         seen_sigs = set()
@@ -706,7 +734,7 @@ async def admin_telos_proposals(request: web.Request) -> web.Response:
             seen_sigs.add(sig)
             grouped.append(r)
         rows = grouped
-    rows = rows[:_TELOS_DASH_MAX_ROWS]
+    rows = rows[:effective_max_rows]
 
     stats = telos_proposals_store.stats()
     # Tier counts su INTERA collezione (per UI tab badge).

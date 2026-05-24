@@ -22,7 +22,7 @@ class FakeProposal:
     """Helper per dict UnifiedProposal-shape."""
     @staticmethod
     def new(name_status="new_valid", target="compress_files_zip",
-            sig_relaxed="abc", prop_id="t1"):
+            sig_relaxed="abc", prop_id="t1", expected_alignment=0.7):
         return {
             "prop_id": prop_id,
             "source": "telos",
@@ -35,6 +35,7 @@ class FakeProposal:
             "convergence_lenses": [],
             "pipeline_tools_mentioned": [],
             "is_parametric_extension": False,
+            "expected_alignment": expected_alignment,
         }
 
 
@@ -49,15 +50,16 @@ class OnAcceptTests(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.tmpdir = Path(self.tmp.name)
         self._orig = (PA.SYNT_PENDING_DIR, PA.CHANGE_PENDING_DIR,
-                       PA.PIPELINE_PENDING_DIR)
+                       PA.PIPELINE_PENDING_DIR, PA.TELOS_FILTERED_LOG)
         PA.SYNT_PENDING_DIR = self.tmpdir / "synt_pending"
         PA.CHANGE_PENDING_DIR = self.tmpdir / "change_pending"
         PA.PIPELINE_PENDING_DIR = self.tmpdir / "pipeline_pending"
+        PA.TELOS_FILTERED_LOG = self.tmpdir / "telos_filtered.jsonl"
         self.PA = PA
 
     def tearDown(self):
         (self.PA.SYNT_PENDING_DIR, self.PA.CHANGE_PENDING_DIR,
-         self.PA.PIPELINE_PENDING_DIR) = self._orig
+         self.PA.PIPELINE_PENDING_DIR, self.PA.TELOS_FILTERED_LOG) = self._orig
         self.tmp.cleanup()
 
     def test_new_valid_creates_synt_marker(self):
@@ -119,6 +121,56 @@ class OnAcceptTests(unittest.TestCase):
         only_synt = self.PA.pending_markers(kind="synt_pending")
         self.assertEqual(len(only_synt), 1)
         self.assertEqual(only_synt[0]["_marker_kind"], "synt_pending")
+
+
+class HardGateTests(unittest.TestCase):
+    """Test C.8 fase 2 (24/5/2026): hard gate alignment in on_accept."""
+
+    def setUp(self):
+        import proposal_actions as PA
+        self.tmp = tempfile.TemporaryDirectory()
+        self.tmpdir = Path(self.tmp.name)
+        self._orig = (PA.SYNT_PENDING_DIR, PA.CHANGE_PENDING_DIR,
+                       PA.PIPELINE_PENDING_DIR, PA.TELOS_FILTERED_LOG)
+        PA.SYNT_PENDING_DIR = self.tmpdir / "synt_pending"
+        PA.CHANGE_PENDING_DIR = self.tmpdir / "change_pending"
+        PA.PIPELINE_PENDING_DIR = self.tmpdir / "pipeline_pending"
+        PA.TELOS_FILTERED_LOG = self.tmpdir / "telos_filtered.jsonl"
+        self.PA = PA
+
+    def tearDown(self):
+        (self.PA.SYNT_PENDING_DIR, self.PA.CHANGE_PENDING_DIR,
+         self.PA.PIPELINE_PENDING_DIR, self.PA.TELOS_FILTERED_LOG) = self._orig
+        self.tmp.cleanup()
+
+    def test_below_hard_gate_blocked_no_marker(self):
+        """Proposta con expected_alignment < 0.45 → noop, niente marker."""
+        p = FakeProposal.new(expected_alignment=0.30)
+        r = self.PA.on_accept(p, _decision())
+        self.assertEqual(r["kind"], "noop")
+        self.assertIn("below_hard_gate", r["reason"])
+        self.assertFalse(list(self.PA.SYNT_PENDING_DIR.glob("*")))
+        # Audit log scritto
+        self.assertTrue(self.PA.TELOS_FILTERED_LOG.exists())
+        import json as _json
+        line = self.PA.TELOS_FILTERED_LOG.read_text().strip()
+        rec = _json.loads(line)
+        self.assertEqual(rec["expected_alignment"], 0.30)
+
+    def test_above_hard_gate_proceeds(self):
+        """Proposta con expected_alignment >= 0.45 → marker creato."""
+        p = FakeProposal.new(expected_alignment=0.50)
+        r = self.PA.on_accept(p, _decision())
+        self.assertEqual(r["kind"], "synt_pending")
+        self.assertTrue(r["created"])
+        # Audit log NON scritto (non filtrata)
+        self.assertFalse(self.PA.TELOS_FILTERED_LOG.exists())
+
+    def test_exactly_at_gate_proceeds(self):
+        """Boundary: expected_alignment == hard_gate → ammessa."""
+        p = FakeProposal.new(expected_alignment=0.45)
+        r = self.PA.on_accept(p, _decision())
+        self.assertEqual(r["kind"], "synt_pending")
 
 
 if __name__ == "__main__":

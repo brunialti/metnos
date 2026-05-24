@@ -552,6 +552,18 @@ def install_default_callbacks(scheduler) -> None:
         replace=True,
     )
 
+    # Telos synth consumer (C.8 fase 2, 24/5/2026): processa i marker
+    # synt_pending creati da `proposal_actions.on_accept`, chiama
+    # `synth_request.handle_synth_request` per ognuno fino al cap giornaliero
+    # (`telos.synth_daily_cap`, default 3). Schedula daily@03:30.
+    from telos_synth_consumer import task_telos_synth_consume
+    cb.register(
+        "telos_synth_consume",
+        task_telos_synth_consume,
+        "Consumer marker synt_pending → handle_synth_request (C.8 fase 2, daily@03:30)",
+        replace=True,
+    )
+
     # Multi-tool fast-path promotion L2 → L3 (ADR 0150 19/5/2026 v4):
     # daily@04:30 scan multi_tool_paths uses>=K_synth (default 50) e crea
     # proto-mnest in mnestoma. Firma nativa v2.

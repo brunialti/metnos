@@ -68,6 +68,15 @@ _DEFAULTS: dict[str, Any] = {
     "multi_tool_fast_path.min_uses": 3,
     "multi_tool_fast_path.ttl_active_days": 30,
     "multi_tool_fast_path.k_synth": 50,
+    # Telos pipeline accept→synt_request (C.8 fase 2, 24/5/2026).
+    # Filtri restrittivi a 3 livelli (utente puo' gestire poche proposte
+    # alla volta; le filtrate riemergono nel tempo con score piu' alto).
+    "telos.dashboard_min_alignment": 0.55,    # UI cutoff (era 0.30)
+    "telos.dashboard_min_convergence": 2,     # almeno 2 lenti/notti
+    "telos.dashboard_max_rows": 10,           # cap pagina (era 500)
+    "telos.dashboard_strict_name_status": True,  # solo new_valid
+    "telos.accept_hard_gate": 0.45,           # gate non bypassabile
+    "telos.synth_daily_cap": 3,               # rate limit consumer
 }
 
 
@@ -83,6 +92,12 @@ _ENV_MAP: dict[str, str] = {
     "multi_tool_fast_path.min_uses": "METNOS_MTP_MIN_USES",
     "multi_tool_fast_path.ttl_active_days": "METNOS_MTP_TTL_ACTIVE_DAYS",
     "multi_tool_fast_path.k_synth": "METNOS_MTP_K_SYNTH",
+    "telos.dashboard_min_alignment": "METNOS_TELOS_DASHBOARD_MIN_ALIGNMENT",
+    "telos.dashboard_min_convergence": "METNOS_TELOS_DASHBOARD_MIN_CONVERGENCE",
+    "telos.dashboard_max_rows": "METNOS_TELOS_DASHBOARD_MAX_ROWS",
+    "telos.dashboard_strict_name_status": "METNOS_TELOS_DASHBOARD_STRICT_NAME_STATUS",
+    "telos.accept_hard_gate": "METNOS_TELOS_ACCEPT_HARD_GATE",
+    "telos.synth_daily_cap": "METNOS_TELOS_SYNTH_DAILY_CAP",
 }
 
 

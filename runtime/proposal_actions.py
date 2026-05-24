@@ -42,6 +42,31 @@ _DATA_DIR = _C.PATH_USER_DATA
 SYNT_PENDING_DIR = _DATA_DIR / "proposal_accepts" / "synt_pending"
 CHANGE_PENDING_DIR = _DATA_DIR / "proposal_accepts" / "change_pending"
 PIPELINE_PENDING_DIR = _DATA_DIR / "proposal_accepts" / "pipeline_pending"
+TELOS_FILTERED_LOG = _DATA_DIR / "telos_filtered.jsonl"
+
+
+def _audit_filtered(proposal: dict, decision_record: dict,
+                    expected_alignment: float, hard_gate: float) -> None:
+    """Append-only audit log per proposte accept-ate ma filtrate dal hard
+    gate. Usato per visibilita' admin (quante proposte vengono scartate
+    dal gate, quali, perche')."""
+    rec = {
+        "ts": decision_record.get("ts", time.time()),
+        "prop_id": proposal.get("prop_id", ""),
+        "by": decision_record.get("by", "admin"),
+        "executor_target": proposal.get("executor_target", ""),
+        "expected_alignment": expected_alignment,
+        "hard_gate": hard_gate,
+        "name_status": proposal.get("name_status", "unknown"),
+        "lens": proposal.get("lens", ""),
+        "convergence_count": int(proposal.get("convergence_count", 1) or 1),
+    }
+    try:
+        TELOS_FILTERED_LOG.parent.mkdir(parents=True, exist_ok=True)
+        with TELOS_FILTERED_LOG.open("a", encoding="utf-8") as f:
+            f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+    except OSError as e:
+        log.warning("audit_filtered write failed: %s", e)
 
 
 def _signature(proposal: dict) -> str:
@@ -79,6 +104,22 @@ def on_accept(proposal: dict, decision_record: dict) -> dict:
     """
     if decision_record.get("action") != "accept":
         return {"kind": "noop", "reason": "not_an_accept"}
+
+    # Hard gate alignment (C.8 fase 2, 24/5/2026): anche se l'utente accetta
+    # una proposta vista in dashboard con filtri allargati, il gate qui
+    # blocca la propagazione operativa se sotto soglia. Self-correcting:
+    # proposte meritevoli riemergono con score piu' alto nel tempo.
+    try:
+        from runtime_settings import get as _setting
+        hard_gate = float(_setting("telos.accept_hard_gate"))
+    except Exception:
+        hard_gate = 0.45
+    expected_alignment = float(proposal.get("expected_alignment") or 0.0)
+    if expected_alignment < hard_gate:
+        _audit_filtered(proposal, decision_record, expected_alignment, hard_gate)
+        return {"kind": "noop",
+                "reason": f"below_hard_gate={hard_gate}",
+                "expected_alignment": expected_alignment}
 
     name_status = proposal.get("name_status", "unknown")
     target = proposal.get("executor_target", "") or ""
