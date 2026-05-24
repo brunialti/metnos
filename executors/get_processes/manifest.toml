@@ -64,7 +64,7 @@ ERROR pattern: `filters=["ip","network"]` (need dicts, not bare strings) | `filt
 
 [code]
 files  = ["get_processes.py"]
-digest = "sha256:898b260a99f5327ea279e58643fc9ece51061961bfa86c25c3c60f8b0dadcde6"
+digest = "sha256:c6be0eb87d371328a9a5c9261c5d30a6133ae7e30c698fb1eb5840408570addd"
 
 [args]
 type     = "object"

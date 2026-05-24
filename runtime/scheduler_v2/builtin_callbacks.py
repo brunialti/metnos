@@ -276,6 +276,140 @@ def _wrap_zero_arg(fn: Callable[[], Any]) -> Callable[[dict | None], Any]:
     return _adapter
 
 
+def task_temp_threshold_alert(payload: dict | None = None) -> dict:
+    """Deterministic threshold alert §7.9 — niente LLM.
+
+    Legge le temperature hardware via `host_health.collect_thermal()` (CPU
+    GPU NVMe) e invia notifica al canale dichiarato se ALMENO una supera
+    `threshold_c`. Sotto soglia: noop silenzioso. Risolve il bug live
+    24/5/2026 (PLANNER LLM Gemma 4 26B inviava alarm anche con
+    temperature < threshold per pattern condizionale ambiguo).
+
+    Payload schema:
+        {
+          "threshold_c": int|float,        # default 80
+          "channel":     str,              # "telegram" | "email" (default "telegram")
+          "chat_id":     str,              # Telegram chat_id destinatario
+          "to":          str,              # email destinatario (se channel="email")
+          "label":       str,              # opzionale, prefisso messaggio
+          "min_pause_s": int,              # opzionale, anti-flap (default 1800 = 30min)
+        }
+
+    Anti-flap: se l'ultima notifica per la STESSA combinazione (chat_id,
+    threshold) e' stata inviata < min_pause_s secondi fa, skip. State in
+    `<PATH_USER_STATE>/temp_threshold_alert.json` (last_sent_ts per key).
+
+    Idempotente. Cross-tier (telegram/email). Estendibile a altre metriche
+    via subclass payload (RAM, disk) — pattern §7.3 generale.
+    """
+    import json
+    import time as _time
+    from pathlib import Path as _P
+
+    payload = payload or {}
+    threshold_c = float(payload.get("threshold_c") or 80)
+    channel = (payload.get("channel") or "telegram").lower()
+    chat_id = payload.get("chat_id") or ""
+    to_addr = payload.get("to") or ""
+    label = payload.get("label") or "Allerta Temperatura Hardware"
+    min_pause_s = int(payload.get("min_pause_s") or 1800)
+
+    if channel == "telegram" and not chat_id:
+        return {"ok": False, "error": "channel=telegram richiede chat_id"}
+    if channel == "email" and not to_addr:
+        return {"ok": False, "error": "channel=email richiede to"}
+
+    # Anti-flap state
+    import config as _C
+    state_path = _C.PATH_USER_STATE / "temp_threshold_alert.json"
+    state = {}
+    if state_path.is_file():
+        try:
+            state = json.loads(state_path.read_text())
+        except Exception:
+            state = {}
+    state_key = f"{channel}:{chat_id or to_addr}:{int(threshold_c)}"
+    last_ts = float(state.get(state_key) or 0)
+    now = _time.time()
+
+    # Collect thermal — single source of truth from host_health (no
+    # duplicate sensor parsing logic, ADR 0098+0108 pattern).
+    from host_health import collect_thermal
+    thermal = collect_thermal()
+    if not thermal.get("available"):
+        return {"ok": True, "skipped": "no_thermal_sensors",
+                "thermal": thermal}
+
+    # Componenti misurati e relativi label canonical.
+    components = [
+        ("cpu_c", "CPU"),
+        ("gpu_c", "GPU"),
+        ("nvme_c", "NVMe"),
+    ]
+    over_threshold = []
+    snapshot = {}
+    for key, comp_label in components:
+        val = thermal.get(key)
+        if val is None:
+            continue
+        try:
+            v = float(val)
+        except (TypeError, ValueError):
+            continue
+        snapshot[comp_label] = v
+        if v >= threshold_c:
+            over_threshold.append((comp_label, v))
+
+    if not over_threshold:
+        return {"ok": True, "skipped": "below_threshold",
+                "threshold_c": threshold_c, "snapshot": snapshot}
+
+    # Anti-flap: sotto soglia minima → skip.
+    if last_ts > 0 and (now - last_ts) < min_pause_s:
+        return {"ok": True, "skipped": "anti_flap",
+                "last_sent_age_s": int(now - last_ts),
+                "min_pause_s": min_pause_s,
+                "over_threshold": over_threshold}
+
+    # Build message
+    over_str = " · ".join(f"{c} {v:.0f}°C" for c, v in over_threshold)
+    snap_str = " · ".join(f"{c} {v:.0f}°C" for c, v in snapshot.items())
+    body = (f"{label}\n\n"
+             f"Soglia: {int(threshold_c)}°C\n"
+             f"Componente sopra: {over_str}\n"
+             f"Snapshot: {snap_str}")
+
+    # Dispatch send (deterministic, no PLANNER)
+    if channel == "telegram":
+        from backends.messages import telegram_bot
+        send_res = telegram_bot.send({
+            "messages": [{"recipient_id": chat_id, "body": body}],
+        })
+    else:  # email
+        from backends.messages import email_metnos
+        send_res = email_metnos.send({
+            "messages": [{"to": to_addr,
+                          "subject": label,
+                          "body": body}],
+            "account": "metnos_system",
+        })
+
+    # Update state if send ok
+    if send_res.get("ok"):
+        state[state_key] = now
+        try:
+            state_path.parent.mkdir(parents=True, exist_ok=True)
+            state_path.write_text(json.dumps(state))
+        except OSError:
+            pass
+
+    return {"ok": send_res.get("ok", False),
+            "threshold_c": threshold_c,
+            "over_threshold": over_threshold,
+            "snapshot": snapshot,
+            "send_result": send_res}
+
+
 def install_default_callbacks(scheduler) -> None:
     """Register all builtin + user callbacks on `scheduler.callbacks`.
 
@@ -354,6 +488,12 @@ def install_default_callbacks(scheduler) -> None:
         "proposals_eta_aggregate",
         _wrap_zero_arg(task_proposals_eta_aggregate),
         "Aggregator latenze per path_shape (ADR 0122)",
+        replace=True,
+    )
+    cb.register(
+        "temp_threshold_alert",
+        task_temp_threshold_alert,
+        "Alert deterministic se temperatura HW supera soglia (24/5/2026)",
         replace=True,
     )
 

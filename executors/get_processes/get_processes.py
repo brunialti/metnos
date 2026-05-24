@@ -403,15 +403,19 @@ def _read_services(unit_names: tuple[str, ...] = _METNOS_SERVICES) -> list[dict]
 
 
 def _read_thermal() -> dict:
-    """Termiche da `/sys/class/hwmon/<hN>/temp*_input` (millicelsius).
-
-    Targeting AMD Strix Halo + NVMe: cerchiamo i sensori canonici
-    `k10temp` (CPU package controller AMD), `amdgpu` (GPU edge), `nvme`
-    (Composite). Su altre piattaforme alcuni mancheranno: ritorniamo
-    `available: false` solo se nessun sensore conosciuto e' presente.
-    Determinismo §7.9: solo I/O sysfs, nessun comando esterno (no
-    `sensors` userspace), nessun LLM.
-    """
+    """Delega a `host_health.collect_thermal` (SoT 24/5/2026). Mantiene
+    il nome locale per back-compat (questo modulo `get_processes` viene
+    invocato come subprocess separato e potrebbe non aver `runtime/`
+    sul path); in caso di import fallito, mantiene la logica inline."""
+    try:
+        sys.path.insert(0, os.environ.get("METNOS_RUNTIME") or next(
+            str(p / "runtime") for p in Path(__file__).resolve().parents
+            if (p / "runtime" / "config.py").is_file()))
+        from host_health import collect_thermal
+        return collect_thermal()
+    except (ImportError, AttributeError, StopIteration):
+        pass
+    # Fallback inline (subprocess sandbox senza runtime/ accessibile)
     targets = {"k10temp": "cpu_c", "amdgpu": "gpu_c", "nvme": "nvme_c"}
     out: dict[str, Any] = {"available": False}
     base = "/sys/class/hwmon"
@@ -427,8 +431,7 @@ def _read_thermal() -> dict:
                 continue
             key = targets.get(name)
             if not key or key in out:
-                continue  # gia' raccolto o non target
-            # Preferiamo temp1_input (canonico). Se non c'e', primo *_input.
+                continue
             inputs = [p for p in os.listdir(hpath) if p.endswith("_input")]
             if not inputs:
                 continue

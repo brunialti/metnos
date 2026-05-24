@@ -181,3 +181,59 @@ if __name__ == "__main__":
     print("blocked:", maybe_block_host("example.com"))
     print("is_blocked:", is_blocked("example.com"))
     print("cleanup:", cleanup_expired())
+
+
+# ── System health sensors (riusable cross-executor) ──────────────────
+# Single source of truth per la lettura di sensori HW (thermal/power/...).
+# Pattern §7.3 generale: una sola funzione `collect_*` per family, riusata
+# da get_processes (mostra), scheduler builtin_callbacks (alert), e
+# eventuali futuri consumer (monitor dashboards).
+
+
+def collect_thermal() -> dict:
+    """Termiche da `/sys/class/hwmon/<hN>/temp*_input` (millicelsius).
+
+    Estratto da `executors/get_processes/get_processes.py::_read_thermal`
+    (24/5/2026) per condivisione con `scheduler_v2.builtin_callbacks
+    .task_temp_threshold_alert` (alert deterministic). Determinismo §7.9:
+    solo I/O sysfs, nessun comando esterno, nessun LLM.
+
+    Targeting AMD Strix Halo + NVMe: sensori canonici `k10temp` (CPU AMD),
+    `amdgpu` (GPU edge), `nvme` (Composite). Su altre piattaforme alcuni
+    mancheranno: ritorna `available: false` solo se nessun sensore noto
+    e' presente.
+
+    Returns:
+      dict {available: bool, cpu_c?: int, gpu_c?: int, nvme_c?: int}
+    """
+    targets = {"k10temp": "cpu_c", "amdgpu": "gpu_c", "nvme": "nvme_c"}
+    out: dict = {"available": False}
+    base = "/sys/class/hwmon"
+    if not os.path.isdir(base):
+        return out
+    try:
+        for hwmon_dir in sorted(os.listdir(base)):
+            hpath = os.path.join(base, hwmon_dir)
+            try:
+                with open(os.path.join(hpath, "name")) as f:
+                    name = f.read().strip()
+            except OSError:
+                continue
+            key = targets.get(name)
+            if not key or key in out:
+                continue
+            inputs = [p for p in os.listdir(hpath) if p.endswith("_input")]
+            if not inputs:
+                continue
+            chosen = "temp1_input" if "temp1_input" in inputs else sorted(inputs)[0]
+            try:
+                with open(os.path.join(hpath, chosen)) as f:
+                    raw = f.read().strip()
+                if raw and raw.lstrip("-").isdigit():
+                    out[key] = int(raw) // 1000
+                    out["available"] = True
+            except OSError:
+                continue
+    except OSError:
+        return out
+    return out
