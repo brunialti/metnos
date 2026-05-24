@@ -116,10 +116,13 @@ class TestFinalMessageInvariant(unittest.TestCase):
         # final_message NON deve essere vuoto.
         self.assertGreater(len(log.final_message.strip()), 0,
                             "final_message vuoto viola §2.8")
-        # Deve menzionare l'error (no_verified_channel) o il tool.
+        # Deve menzionare l'error in forma user-friendly (i18n
+        # ERR_NO_VERIFIED_CHANNEL) o almeno il tool.
         fm = log.final_message.lower()
         self.assertTrue(
-            "no_verified_channel" in fm or "send_messages" in fm,
+            "canale verificato" in fm
+            or "no_verified_channel" in fm
+            or "send_messages" in fm,
             f"fallback non informativo: {log.final_message!r}",
         )
 
@@ -156,7 +159,37 @@ class TestFinalMessageInvariant(unittest.TestCase):
         self.assertNotIn("completato", log.final_message.lower(),
                           f"fail non puo' essere etichettato 'completato': "
                           f"{log.final_message!r}")
-        self.assertIn("no_verified_channel", log.final_message.lower())
+        # i18n humanize: "no_verified_channel" → "canale verificato"
+        fm = log.final_message.lower()
+        self.assertTrue(
+            "canale verificato" in fm or "no_verified_channel" in fm,
+            f"error_class non riportato: {log.final_message!r}",
+        )
+
+    def test_error_class_translated_via_i18n(self):
+        """error_class technical viene tradotto via i18n ERR_<UPPER> in
+        forma user-friendly (es. no_verified_channel → ITA 'canale
+        verificato')."""
+        log = self._make_turn_with_failed_step(
+            "send_messages",
+            {"ok": False,
+             "failed": [{"error": "no_verified_channel"}]},
+        )
+        log.write()
+        self.assertIn("canale verificato", log.final_message.lower())
+        # raw class non deve apparire (humanize ha sostituito)
+        self.assertNotIn("no_verified_channel", log.final_message)
+
+    def test_unknown_error_class_falls_back_to_raw(self):
+        """error_class senza i18n ERR_<UPPER> resta in forma raw (no crash,
+        no <missing:>)."""
+        log = self._make_turn_with_failed_step(
+            "compute_xyz",
+            {"ok": False, "error": "boom_unknown_class_xyz_123"},
+        )
+        log.write()
+        self.assertIn("boom_unknown_class_xyz_123", log.final_message)
+        self.assertNotIn("<missing:", log.final_message)
 
     def test_invariant_applies_to_loop_break(self):
         from agent_runtime import TurnLog, StepLog
@@ -168,6 +201,22 @@ class TestFinalMessageInvariant(unittest.TestCase):
         log.ts_end = 0.1
         log.write()
         self.assertGreater(len(log.final_message.strip()), 0)
+
+
+class TestCapSameExecutorMessage(unittest.TestCase):
+    """final_message di `cap_same_executor` deve essere user-facing,
+    non «(stop: 'tool' chiamato N volte)» criptico (§7.3, judge-friendly).
+    """
+
+    def test_cap_same_message_is_user_facing(self):
+        """Smoke i18n: MSG_CAP_SAME_EXECUTOR esiste e formatta correttamente."""
+        from messages import get as _msg
+        out = _msg("MSG_CAP_SAME_EXECUTOR", tool="find_x", n=2)
+        self.assertNotIn("<missing:", out)
+        self.assertIn("find_x", out)
+        self.assertIn("2", out)
+        # Non deve iniziare con "(stop:" — quel pattern legacy era criptico.
+        self.assertFalse(out.startswith("(stop:"))
 
 
 if __name__ == "__main__":

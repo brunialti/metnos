@@ -3685,21 +3685,51 @@ class TurnLog:
         #      `_compose_final_message_from_obs` (path auto-final ufficiale).
         #   3. Fallback generico MSG_FINAL_FALLBACK_GENERIC.
         # `needs_inputs` ha dialog UX dedicata: non rientra qui.
+        def _humanize_error_class(raw: str) -> str:
+            """Traduce error_class technical (es. `no_verified_channel`) in
+            testo user-facing via i18n key `ERR_<UPPERCASE>`. Fallback al
+            raw string se la chiave non esiste. Generale §7.3: ogni
+            executor che ritorna un error_class registrato come ERR_
+            i18n diventa automaticamente user-friendly senza modifiche.
+            """
+            if not raw or not isinstance(raw, str):
+                return raw or ""
+            # Strip prefisso colon-separated tipo "channel_not_paired:telegram"
+            _key_part = raw.split(":", 1)[0].strip()
+            if not _key_part or not _key_part.replace("_", "").isalnum():
+                return raw
+            _i18n_key = f"ERR_{_key_part.upper()}"
+            try:
+                _human = msg(_i18n_key)
+            except Exception:
+                return raw
+            # `msg()` ritorna `<missing:KEY>` se assente: distingui
+            if _human and not _human.startswith("<missing:"):
+                return _human
+            return raw
+
         def _extract_error(obs: dict) -> str:
             if not isinstance(obs, dict):
                 return ""
             _e = obs.get("error")
             if isinstance(_e, str) and _e.strip():
-                return _e.strip()
+                return _humanize_error_class(_e.strip())
             _failed = obs.get("failed") or []
             if isinstance(_failed, list):
                 parts = [
-                    str((f or {}).get("error", "")).strip()
+                    _humanize_error_class(str((f or {}).get("error", "")).strip())
                     for f in _failed
                     if isinstance(f, dict) and f.get("error")
                 ]
-                if parts:
-                    return ", ".join(parts)
+                # dedup conservando ordine (stessa error_class su piu' target)
+                seen = set()
+                deduped = []
+                for p in parts:
+                    if p and p not in seen:
+                        seen.add(p)
+                        deduped.append(p)
+                if deduped:
+                    return " ".join(deduped)
             return ""
 
         if (self.final_kind in ("answer", "ask", "error", "loop_break")
@@ -6778,7 +6808,37 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
             step.error = f"cap_same_executor superato per {chosen_name}"
             log.steps.append(step)
             log.final_kind = "cap_same_executor"
-            log.final_message = f"(stop: '{chosen_name}' chiamato {_cap_same_effective} volte)"
+            # Final user-facing §7.3: prima cerca un last_productive ok=True
+            # per restituire l'esito parziale (es. find_images_indices ha
+            # trovato 0 risultati), poi appende il notice MSG_CAP_SAME_EXECUTOR
+            # i18n. Senza last_productive utile, il notice da solo basta.
+            # Il messaggio criptico "(stop: ... chiamato N volte)" e' stato
+            # rimosso: era opaco per il judge LLM e per l'utente finale.
+            _cap_lp = ""
+            for _ps in reversed(log.steps[:-1]):  # skip step appena loggato
+                _po = _ps.result if isinstance(_ps.result, dict) else None
+                if _po and _po.get("ok") is True:
+                    try:
+                        _fm, _, _ = _compose_final_message_from_obs(
+                            _ps.chosen_tool or "", _po)
+                        if _fm and _fm.strip():
+                            _cap_lp = _fm.strip()
+                            break
+                    except Exception:
+                        pass
+            try:
+                _cap_notice = msg("MSG_CAP_SAME_EXECUTOR",
+                                  tool=chosen_name,
+                                  n=_cap_same_effective)
+            except Exception:
+                _cap_notice = (
+                    f"Ho provato `{chosen_name}` "
+                    f"{_cap_same_effective} volte senza nuovo risultato."
+                )
+            log.final_message = (
+                f"{_cap_lp}\n\n{_cap_notice}".strip()
+                if _cap_lp else _cap_notice
+            )
             log.ts_end = time.time(); log.write(); return log
 
         # Cap_max_per_turn (8/5/2026 notte, CLAUDE.md §4.4 estesa).
