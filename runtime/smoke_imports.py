@@ -102,6 +102,28 @@ BATTERY_IMPORTS.extend(_load_store())
 # ---------------------------------------------------------------------------
 
 
+# Stato per batch flush opzionale (perf, 24/5/2026): l'importer di una skill
+# con N executor invocava `_save_store` N volte (N atomic write completi). Il
+# flag suspende il save al primo `add_case`; `flush()` lo esegue una sola
+# volta a fine batch. Usage: `begin_batch()` / N x `add_case()` / `flush()`.
+_DEFER_SAVE: bool = False
+
+
+def begin_batch() -> None:
+    """Sospende il save automatico in `add_case`. Pair-up con `flush()` a
+    fine batch. Idempotente: chiamate ripetute non hanno effetti."""
+    global _DEFER_SAVE
+    _DEFER_SAVE = True
+
+
+def flush() -> None:
+    """Riprende save automatico + salva BATTERY_IMPORTS UNA VOLTA.
+    Idempotente: se nessun batch e' aperto, save no-op semantico."""
+    global _DEFER_SAVE
+    _DEFER_SAVE = False
+    _save_store(BATTERY_IMPORTS)
+
+
 def add_case(*, query: str, expected_first_tool: str,
              expected_arg_keys: Optional[set] = None,
              imported_from: str = "",
@@ -119,6 +141,9 @@ def add_case(*, query: str, expected_first_tool: str,
                  imported_from="agentskills.io/x/y").
     ERRORE: add_case(query="x", expected_first_tool="ufoize_xyzzy")
     (executor non in catalogo: lo smoke fallira' al boot).
+
+    Quando dentro `begin_batch()/flush()`, NON salva su disco: il caller
+    decide il momento di flush. Default: save atomico ad ogni call (back-compat).
     """
     if expected_arg_keys is None:
         expected_arg_keys = set()
@@ -145,7 +170,8 @@ def add_case(*, query: str, expected_first_tool: str,
         "imported_from": imported_from,
     }
     BATTERY_IMPORTS.append(case)
-    _save_store(BATTERY_IMPORTS)
+    if not _DEFER_SAVE:
+        _save_store(BATTERY_IMPORTS)
     return True
 
 

@@ -75,45 +75,26 @@ class AdmissionReport:
 
 
 def _load_vocab():
-    """Carica vocab.py canonico. Test isolation: ritorna fallback se
-    /opt/metnos non disponibile.
+    """Carica vocab.py canonico (R3, 24/5/2026): single source of truth.
+
+    DEVI: importare da `vocab` direttamente, niente fallback locale.
+    NON DEVI: replicare ACTIONS/OBJECTS/QUALIFIERS qui (drift garantito).
+    OK: vocab.ACTIONS modificato → admission gate riflette al boot.
+    ERRORE: fallback nascondeva drift (es. set 'reply' in fallback ma
+    non in vocab → admission accettava plan che vocab avrebbe rifiutato).
+
+    Ritorna tuple `(verbs: frozenset, objs: frozenset, quals: frozenset)`.
     """
-    try:
-        runtime_canonical = Path(__file__).resolve().parent  # ADR 0148 rename-resilient
-        if runtime_canonical.exists() and str(runtime_canonical) not in sys.path:
-            sys.path.insert(0, str(runtime_canonical))
-        import vocab  # type: ignore
-        return set(vocab.ACTIONS), set(vocab.OBJECTS), set(vocab.QUALIFIERS)
-    except Exception:
-        # Fallback locale (replicato da §2.2 — sync manuale OK per dev).
-        verbs = {
-            "read", "write", "move", "delete", "create",
-            "find", "list", "filter", "sort", "group", "classify",
-            "get", "set", "send", "describe", "render",
-            "extract", "compress", "compute", "compare", "change", "order",
-        }
-        objs = {
-            "files", "dirs", "packages", "messages", "events",
-            "contacts", "places", "processes", "urls", "numbers",
-            "images", "signatures", "texts", "proposals", "inputs",
-            "credentials",
-        }
-        quals = {
-            "csv", "xlsx", "ocr", "zip", "pdf", "xml", "html", "json", "text",
-            "gz", "tar", "video", "audio", "image", "hash",
-            "size", "format", "loc", "similar",
-            "lines", "paragraphs", "sentences", "pages", "segments",
-            "indices",
-            "blacklist", "whitelist", "graylist", "forbidden", "seed",
-            "sanity", "command", "reversibility",
-            "diff", "promotion", "candidates",
-            # Estensioni da vocab map (translator usa anche queste come qualifier:
-            # share, reply, append, labels — non sono in QUALIFIERS canonical ma
-            # vivono nel mapping. Accettate temporaneamente per evitare reject
-            # false-positive su skill importate; vedi gap §10.6.43).
-            "share", "reply", "append", "labels",
-        }
-        return verbs, objs, quals
+    # ADR 0148: ensure runtime/ on sys.path per import diretto.
+    runtime_dir = Path(__file__).resolve().parent
+    if runtime_dir.exists() and str(runtime_dir) not in sys.path:
+        sys.path.insert(0, str(runtime_dir))
+    import vocab  # noqa: E402
+    return (
+        frozenset(vocab.ACTIONS),
+        frozenset(vocab.OBJECTS),
+        frozenset(vocab.QUALIFIERS),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -157,12 +138,52 @@ def _vocab_gate(plan, verbs, objs, quals, binding: str = "") -> tuple[bool, str]
 
 
 import config as _C  # §7.11
-HANDCRAFTED_FAMILIES = (
-    str(_C.PATH_EXECUTORS),
-)
-SYNTH_DIRS = (
-    str(_C.PATH_SYNTH_EXECUTORS),
-)
+# G6 fix (24/5/2026, §7.3): _HANDCRAFTED_DIRS / _SYNTH_DIRS sono PATH STRINGS
+# (consumati da `_scan_existing_executors`), distinti dal `loader.HANDCRAFTED_FAMILIES`
+# che e' frozenset di NOMI executor. Stessa parola, semantiche diverse →
+# pattern errore. Naming separato + helper `_is_handcrafted(name)` simmetrico
+# a `loader._is_synth`/`_is_imported` evita confusione.
+_HANDCRAFTED_DIRS: tuple[str, ...] = (str(_C.PATH_EXECUTORS),)
+_SYNTH_DIRS: tuple[str, ...] = (str(_C.PATH_SYNTH_EXECUTORS),)
+
+# Back-compat alias (deprecabile gradualmente): mantengo per ora i nomi
+# pubblici legacy, ma marcati come deprecati nei consumer test (zero usage
+# fuori da skill_admission, vedi `grep -rn HANDCRAFTED_FAMILIES`).
+HANDCRAFTED_FAMILIES = _HANDCRAFTED_DIRS
+SYNTH_DIRS = _SYNTH_DIRS
+
+
+def _is_handcrafted(name: str) -> bool:
+    """True se `<name>` esiste come dir handcrafted in _HANDCRAFTED_DIRS.
+
+    Helper simmetrico a `loader._is_synth`/`loader._is_imported` (path-based).
+    NON confondere con `loader.HANDCRAFTED_FAMILIES` (frozenset di nomi
+    discovery primari curati).
+    """
+    for root in _HANDCRAFTED_DIRS:
+        if (Path(root) / name / "manifest.toml").is_file():
+            return True
+    return False
+
+
+def _is_synth(name: str) -> bool:
+    """True se `<name>` esiste come dir synth in _SYNTH_DIRS (escluso `_imports/`)."""
+    for root in _SYNTH_DIRS:
+        candidate = Path(root) / name / "manifest.toml"
+        if candidate.is_file():
+            return True
+    return False
+
+
+def _is_imported(name: str) -> bool:
+    """True se `<name>` esiste sotto `_imports/<skill>/<name>/manifest.toml`."""
+    base = Path(_C.PATH_USER_DATA) / "executors" / "_imports"
+    if not base.is_dir():
+        return False
+    for skill_dir in base.iterdir():
+        if (skill_dir / name / "manifest.toml").is_file():
+            return True
+    return False
 
 
 def _read_affinity_from_manifest(manifest_path: Path) -> list:
@@ -201,48 +222,52 @@ def _scan_existing_executors(roots) -> dict:
     return out
 
 
-def _jaccard(a: set, b: set) -> float:
-    if not a or not b:
-        return 0.0
-    inter = len(a & b)
-    union = len(a | b)
-    return inter / union if union else 0.0
-
-
 def _affinity_overlap_check(plan, plan_affinity, scan_handcrafted, scan_synth,
-                             threshold: float = 0.5,
+                             threshold: Optional[float] = None,
                              binding: str = "") -> tuple[bool, str]:
     """Ritorna (ok, reason). ok=False = reject (jaccard >= threshold).
 
-    Soglia 0.5 al catalog load (ADR 0114 L2). Soglia 0.4 stretta come gate
-    preventivo a evaluator-time (ADR 0122 — non applicata qui).
+    Delega a `loader.check_affinity_pair` (single source of truth §7.3):
+    questa funzione applica solo la policy at-import (binding-aware
+    threshold choice), il calcolo Jaccard e' centralizzato in loader.
+
+    Soglia default 0.5 (= `loader.AFFINITY_OVERLAP_THRESHOLD`) al catalog
+    load (ADR 0114 L2 / ADR 0159). 0.4 stretta come gate preventivo a
+    evaluator-time (ADR 0122 — non applicata qui).
 
     Se il plan ha il suffix `_<binding>` (disambiguato in translate_skill
     per evitare collisione con handcrafted/synth gia' esistenti col nome
-    canonico), la soglia sale a 0.85: il binding qualifica esplicitamente
-    il dominio remoto, le keyword sovrapposte sono attese e legittime,
-    non un doppione mascherato.
+    canonico), la soglia sale a `AFFINITY_OVERLAP_THRESHOLD_BINDING` (0.85):
+    il binding qualifica esplicitamente il dominio remoto, le keyword
+    sovrapposte sono attese e legittime, non un doppione mascherato.
     """
+    from loader import (
+        check_affinity_pair,
+        AFFINITY_OVERLAP_THRESHOLD,
+        AFFINITY_OVERLAP_THRESHOLD_BINDING,
+    )
     plan_set = set(t.lower() for t in plan_affinity if t)
     if not plan_set:
         return True, ""
 
+    if threshold is None:
+        threshold = AFFINITY_OVERLAP_THRESHOLD
     eff_threshold = threshold
     if binding and plan.name.endswith(f"_{binding}"):
-        eff_threshold = 0.85
+        eff_threshold = AFFINITY_OVERLAP_THRESHOLD_BINDING
 
     for name, aff in scan_handcrafted.items():
         if name == plan.name:
             return False, f"name collision with handcrafted {name}"
-        j = _jaccard(plan_set, aff)
-        if j >= eff_threshold:
+        triggered, j = check_affinity_pair(plan_set, aff, threshold=eff_threshold)
+        if triggered:
             return False, f"affinity jaccard={j:.2f} >= {eff_threshold} vs handcrafted {name}"
 
     for name, aff in scan_synth.items():
         if name == plan.name:
             return False, f"name collision with existing synth {name}"
-        j = _jaccard(plan_set, aff)
-        if j >= eff_threshold:
+        triggered, j = check_affinity_pair(plan_set, aff, threshold=eff_threshold)
+        if triggered:
             return False, f"affinity jaccard={j:.2f} >= {eff_threshold} vs synth {name}"
 
     return True, ""
@@ -476,9 +501,45 @@ def _binding_uniqueness_check(parsed_skill, existing) -> tuple[bool, str]:
 # ---------------------------------------------------------------------------
 
 
+def _run_smoke_for_plan(plan, case: dict) -> tuple[bool, str]:
+    """Esegue il routing assertion di smoke per UN plan accepted (ADR 0159 L5).
+
+    Strict: se `expected_first_tool` del prefilter != atteso, reject.
+    Skip gracefully con ok=True se il case e' `_no_smoke=True` (pattern
+    non in mappa) o se prefilter/catalog non importabili.
+
+    Determinismo §7.9: usa `smoke._run_smoke_with_tool_assertion`
+    (intent BoW + prefilter, no LLM).
+
+    Ritorna (ok, reason). ok=True implica smoke passato o skip ammesso.
+    """
+    if not case or case.get("_no_smoke"):
+        return True, "no smoke case mapped (skip)"
+    expected = case.get("expected_first_tool")
+    if not expected:
+        return True, "case has no expected_first_tool (skip)"
+    try:
+        from smoke import _run_smoke_with_tool_assertion
+    except Exception as ex:
+        return True, f"smoke runner not importable (skip): {ex}"
+    try:
+        result = _run_smoke_with_tool_assertion(case, catalog=None)
+    except Exception as ex:
+        return False, f"smoke runner raised: {ex}"
+    if result.get("skip"):
+        return True, f"smoke skipped: {result.get('reason', '?')}"
+    if result.get("ok"):
+        return True, "smoke pass"
+    return False, (
+        f"smoke fail: expected {result.get('expected')!r} "
+        f"got {result.get('actual_first')!r}"
+    )
+
+
 def admit_skill_import(parsed_skill, plans, *,
                        executor_dir: Optional[Path] = None,
                        skip_l2: bool = False,
+                       skip_l5_exec: bool = False,
                        skip_l6: bool = False,
                        skip_binding_check: bool = False,
                        audit_log: bool = True) -> AdmissionReport:
@@ -490,8 +551,8 @@ def admit_skill_import(parsed_skill, plans, *,
     fa stage6 sul testo della description plan-only).
     """
     verbs, objs, quals = _load_vocab()
-    handcrafted_aff = _scan_existing_executors(HANDCRAFTED_FAMILIES)
-    synth_aff = _scan_existing_executors(SYNTH_DIRS)
+    handcrafted_aff = _scan_existing_executors(_HANDCRAFTED_DIRS)
+    synth_aff = _scan_existing_executors(_SYNTH_DIRS)
     verifier = _stage6_verify_callable()
     # Existing bindings = catalog corrente ON-DISK, escludendo la skill che
     # stiamo importando (la pipeline codegen ha gia' creato la dir prima
@@ -543,13 +604,27 @@ def admit_skill_import(parsed_skill, plans, *,
         verdict.smoke_battery_case = _smoke_case_for_plan(plan)
         verdict.layer_results["L5_smoke_proposed"] = True
 
-        # L6 semantic verifier — skip by design per imported: il code body
-        # e' generato da template Jinja deterministico (skill_codegen), non
-        # c'e' LLM drift da intercettare. Stage 6 resta attivo per synth
-        # generati da stage 5 LLM (synt.run_full). Override via
-        # METNOS_STAGE6_VERIFY_IMPORTED=1 (dev/diagnostica).
-        force_l6 = os.environ.get("METNOS_STAGE6_VERIFY_IMPORTED") == "1"
-        if not skip_l6 and force_l6 and verdict.accepted:
+        # L5 smoke EXEC (ADR 0159): esegue il routing assertion al-import
+        # e rejecta se fail. Default ON. Bypass via `skip_l5_exec` (dev
+        # / unit test) o env `METNOS_SMOKE_AT_IMPORT=0` (legacy).
+        legacy_smoke_off = os.environ.get("METNOS_SMOKE_AT_IMPORT") == "0"
+        if not skip_l5_exec and not legacy_smoke_off and verdict.accepted:
+            s_ok, s_reason = _run_smoke_for_plan(plan, verdict.smoke_battery_case)
+            verdict.layer_results["L5_smoke_exec"] = s_ok
+            if not s_ok:
+                verdict.accepted = False
+                verdict.reasons.append(f"L5_smoke_exec: {s_reason}")
+
+        # L6 semantic verifier — default ON per imported (ADR 0159):
+        # confronta description (manifest) ↔ code body via Gemma 4 26B.
+        # Reject su `aligned=false`. Bypass via flag esplicito `--skip-l6`
+        # (escape hatch dev/CI). Disable globale via env
+        # `METNOS_SYNT_STAGE6_DISABLED=1` (test veloce). L'override
+        # storico `METNOS_STAGE6_VERIFY_IMPORTED=0` resta come kill-switch
+        # legacy per chi vuole il comportamento pre-0159.
+        legacy_off = os.environ.get("METNOS_STAGE6_VERIFY_IMPORTED") == "0"
+        global_off = os.environ.get("METNOS_SYNT_STAGE6_DISABLED") == "1"
+        if not skip_l6 and not legacy_off and not global_off and verdict.accepted:
             mp = None
             cp = None
             if executor_dir is not None:

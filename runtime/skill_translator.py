@@ -22,49 +22,25 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+# R3 (24/5/2026): single source of truth = runtime/vocab.py.
+# Eliminati i fallback locali `_METNOS_VERBS/_OBJECTS/_QUALIFIERS` (drift
+# rispetto a vocab.py canonico, vedi ADR 0156 Naming Authority). Convertiti
+# a frozenset per O(1) membership con vocab.py-tuple original.
+from vocab import ACTIONS, OBJECTS, QUALIFIERS
+
+_METNOS_VERBS: frozenset = frozenset(ACTIONS)
+_METNOS_OBJECTS: frozenset = frozenset(OBJECTS)
+_METNOS_QUALIFIERS: frozenset = frozenset(QUALIFIERS)
+
 
 VOCAB_MAP_PATH = Path(__file__).resolve().parent / "skill_vocab_map.json"
 
-
-# Vocabolario Metnos (replicato qui per autonomia del prototipo).
-# In produzione si importa da `runtime/vocab.py`.
-# `share` aggiunto 12/5/2026 (ADR 0128 — outbound consent, distinto da send/set).
-_METNOS_VERBS = {
-    "read", "write", "move", "delete", "create",
-    "find", "list",
-    "filter", "sort", "group", "classify",
-    "get", "set",
-    "send",
-    "describe", "render",
-    "extract", "compress",
-    "compute", "compare",
-    "change",
-    "order",
-    "share",
-}
-_METNOS_OBJECTS = {
-    "files", "dirs", "packages", "messages", "events",
-    "contacts", "places", "processes", "urls", "numbers",
-    "images", "signatures", "texts", "proposals", "inputs",
-    "credentials",
-}
-
-# Vocabolario QUALIFIERS canonico (CLAUDE.md §2.2 + runtime/vocab.py).
-# Replicato qui per autonomia del prototipo. Lista chiusa: aggiunte
-# richiedono approvazione esplicita (escalation a Roberto).
-_METNOS_QUALIFIERS = {
-    # Famiglia 1 — Formato file
-    "csv", "xlsx", "ocr", "zip", "pdf", "xml", "html", "json", "text",
-    "gz", "tar", "video", "audio", "image", "hash",
-    # Famiglia 2 — Modalita': operazione/granularita'/mezzo
-    "size", "format", "loc", "similar",
-    "lines", "paragraphs", "sentences", "pages", "segments",
-    "indices",
-    # Famiglia 3 — Safety policy (signatures)
-    "blacklist", "whitelist", "graylist", "forbidden", "seed",
-    "sanity", "command", "reversibility", "diff",
-    "promotion", "candidates",
-}
+# Cache module-level (perf, 24/5/2026): pre-fix `_load_vocab_map()` faceva
+# json.loads + I/O per ogni `resolve_name`/`translate_subcommand`. Una skill
+# con 19 sub-command poteva caricare il file 19 volte. Cache invalidata via
+# mtime (re-import a deploy time o test che muta il file).
+_VOCAB_MAP_CACHE: dict | None = None
+_VOCAB_MAP_MTIME: float = 0.0
 
 
 class SkillTranslateError(ValueError):
@@ -132,8 +108,24 @@ class ExecutorPlan:
 
 
 def _load_vocab_map(path: Path | None = None) -> dict:
+    """Carica skill_vocab_map.json con cache mtime-validated (perf).
+
+    Caller esplicito con `path` (test) bypassa la cache. Caller default
+    (path=None) usa VOCAB_MAP_PATH + cache: re-load solo se mtime cambia.
+    """
+    global _VOCAB_MAP_CACHE, _VOCAB_MAP_MTIME
     p = path or VOCAB_MAP_PATH
-    return json.loads(p.read_text(encoding="utf-8"))
+    if path is not None:
+        return json.loads(p.read_text(encoding="utf-8"))
+    try:
+        cur_mtime = p.stat().st_mtime
+    except OSError:
+        cur_mtime = 0.0
+    if _VOCAB_MAP_CACHE is not None and cur_mtime == _VOCAB_MAP_MTIME:
+        return _VOCAB_MAP_CACHE
+    _VOCAB_MAP_CACHE = json.loads(p.read_text(encoding="utf-8"))
+    _VOCAB_MAP_MTIME = cur_mtime
+    return _VOCAB_MAP_CACHE
 
 
 # ---------------------------------------------------------------------------
@@ -807,7 +799,16 @@ def translate_skill(parsed_skill, *,
 
     Collisione interna alla skill (due sub-command stesso name): il
     secondo va in `rejected`.
+
+    R2 (24/5/2026): verb-boundary gate via `importer_verb_verify.check_plan`.
+    Plan con `aligned=False` (mismatch get_drift/change_overload/set_overload/
+    share_drift/share_collapse) finisce in `rejected` con reason
+    `verb_boundary: <reason>`. Audit JSONL append-only in
+    `<PATH_USER_DATA>/synth_audit/imports.jsonl`.
     """
+    # R2: lazy import per evitare import circolare top-level.
+    from importer_verb_verify import check_plan as _verify_plan
+
     plans: list = []
     rejected: list = []
     seen: dict = {}
@@ -827,6 +828,15 @@ def translate_skill(parsed_skill, *,
         except SkillTranslateError as e:
             rejected.append((sc.domain, sc.action, str(e)))
             continue
+
+        # R2 verb-boundary check PRIMA del disambiguator suffix (verb non
+        # cambia con il suffix; check su verb crudo).
+        verdict = _verify_plan(plan, vocab_map=vm)
+        if not verdict.aligned:
+            reason = f"verb_boundary: {verdict.mismatch_reason}"
+            rejected.append((sc.domain, sc.action, reason))
+            continue
+
         # SEMPRE suffix provider (ADR 0136). Pre-fix era condizionale a
         # `if plan.name in hc`; questo causava asimmetria naming.
         disambiguated = f"{plan.name}_{binding}"

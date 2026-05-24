@@ -681,6 +681,11 @@ HANDCRAFTED_FAMILIES: frozenset[str] = frozenset({
 # 8/5/2026 (`find_texts` con 5/8 termini overlap su `find_urls`).
 AFFINITY_OVERLAP_THRESHOLD: float = 0.5
 
+# Soglia stretta per skill imported binding-suffixed (ADR 0123): il binding
+# qualifica esplicitamente il dominio remoto, le keyword sovrapposte sono
+# attese. 0.85 = quasi identita' richiesta per parlare di squatting.
+AFFINITY_OVERLAP_THRESHOLD_BINDING: float = 0.85
+
 _AFFINITY_AUDIT_DIR = _C.PATH_USER_DATA / "synth_audit"
 
 
@@ -689,6 +694,36 @@ def _affinity_audit_path() -> Path:
     p = _AFFINITY_AUDIT_DIR
     p.mkdir(parents=True, exist_ok=True)
     return p / "affinity_rejected.jsonl"
+
+
+def jaccard_affinity(a: set, b: set) -> float:
+    """Single source of truth per Jaccard fra due affinity set.
+
+    Deterministico §7.9. Ritorna 0.0 se uno dei due set e' vuoto.
+    """
+    if not a or not b:
+        return 0.0
+    inter = len(a & b)
+    union = len(a | b)
+    return inter / union if union else 0.0
+
+
+def check_affinity_pair(candidate_aff: set, existing_aff: set,
+                         *, threshold: float = AFFINITY_OVERLAP_THRESHOLD
+                         ) -> tuple[bool, float]:
+    """Single source of truth per il check Jaccard pairwise.
+
+    Ritorna `(overlap_detected, jaccard_value)`. `overlap_detected=True`
+    se `jaccard >= threshold`. Caller decide cosa fare (reject, audit,
+    log) — questa funzione e' un puro predicato deterministico.
+
+    Usato da:
+    - `_check_affinity_overlap(catalog)` al boot (threshold 0.5),
+    - `skill_admission._affinity_overlap_check(plan, ...)` at-import
+       (threshold 0.5 default, 0.85 se plan binding-suffixed).
+    """
+    j = jaccard_affinity(candidate_aff, existing_aff)
+    return (j >= threshold, j)
 
 
 def _check_affinity_overlap(catalog: Catalog) -> list[dict]:
@@ -766,21 +801,23 @@ def _check_affinity_overlap(catalog: Catalog) -> list[dict]:
             # piu' giovane; il binding e' la sola garanzia di distinzione.
             if _is_imported(other_name):
                 continue
-            inter = synth_aff & other_aff
-            union = synth_aff | other_aff
-            if not union:
+            # Delega a SoT centralizzata (ADR 0159): pure Jaccard test.
+            triggered, jaccard = check_affinity_pair(
+                synth_aff, other_aff,
+                threshold=AFFINITY_OVERLAP_THRESHOLD,
+            )
+            if not triggered:
                 continue
-            jaccard = len(inter) / len(union)
-            if jaccard >= AFFINITY_OVERLAP_THRESHOLD:
-                # Preferisci handcrafted come "overlapping_with" se entrambi
-                # candidati: l'audit message e' piu' chiaro.
-                if overlap_with is None or (
-                    other_name in HANDCRAFTED_FAMILIES
-                    and overlap_with not in HANDCRAFTED_FAMILIES
-                ):
-                    overlap_with = other_name
-                    overlap_jaccard = jaccard
-                    overlap_shared = sorted(inter)
+            inter = synth_aff & other_aff
+            # Preferisci handcrafted come "overlapping_with" se entrambi
+            # candidati: l'audit message e' piu' chiaro.
+            if overlap_with is None or (
+                other_name in HANDCRAFTED_FAMILIES
+                and overlap_with not in HANDCRAFTED_FAMILIES
+            ):
+                overlap_with = other_name
+                overlap_jaccard = jaccard
+                overlap_shared = sorted(inter)
         if overlap_with is not None:
             entry = {
                 "name": synth_name,

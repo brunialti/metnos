@@ -156,8 +156,13 @@ def _resolve_skill_source(arg: str) -> Path:
 def _cmd_import(args) -> int:
     from skill_parser import parse_skill_md
     from skill_translator import translate_skill
-    from skill_codegen import generate_executor_files
+    from skill_codegen import (
+        generate_executor_files,
+        _description_boilerplate,
+        _default_affinity,
+    )
     from skill_admission import admit_skill_import
+    from skill_description_llm import generate_description_or_fallback
 
     try:
         skill_path = _resolve_skill_source(args.skill)
@@ -190,16 +195,52 @@ def _cmd_import(args) -> int:
         imported_from_url=args.url or f"agentskills.io/local/{parsed.name}",
         imported_at=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
     )
-    print(f"  plans: {len(plans)}, translator-rejected: {len(rejected)}")
+    # R2 (24/5/2026): separa rejection per verb_boundary (gate post-translate
+    # ADR 0128). Il reason prefix `verb_boundary:` permette di distinguerli.
+    verb_boundary_rejected = [
+        (d, a, r) for (d, a, r) in rejected
+        if isinstance(r, str) and r.startswith("verb_boundary:")
+    ]
+    extra = (
+        f" (di cui verb_boundary: {len(verb_boundary_rejected)})"
+        if verb_boundary_rejected else ""
+    )
+    print(f"  plans: {len(plans)}, translator-rejected: {len(rejected)}{extra}")
 
     executors_dir = _executors_base() / parsed.name
     executors_dir.mkdir(parents=True, exist_ok=True)
 
+    # R1 (24/5/2026): description LLM PRIMA del codegen, una call per ogni
+    # plan. Time budget 5s/plan (env METNOS_SKILL_LLM_TIMEOUT_S). Audit
+    # JSONL in `<PATH_USER_DATA>/skill_descriptions_audit.jsonl`.
+    body_snippet = (parsed.raw_body or "")[:2000]
     print(f"Codegen in {executors_dir}...")
     generated = []
+    n_llm = 0
+    n_boil = 0
     for p in plans:
-        out = generate_executor_files(p, parsed, executors_dir)
+        boil_it, boil_en = _description_boilerplate(p)
+        boil_aff = _default_affinity(p)
+        desc = generate_description_or_fallback(
+            p, parsed,
+            skill_body_snippet=body_snippet,
+            boilerplate_it=boil_it,
+            boilerplate_en=boil_en,
+            boilerplate_affinity=boil_aff,
+        )
+        if desc.get("source") == "llm":
+            n_llm += 1
+        else:
+            n_boil += 1
+        out = generate_executor_files(
+            p, parsed, executors_dir,
+            description_it=desc["description_it"],
+            description_en=desc["description_en"],
+            affinity=desc["affinity"],
+        )
         generated.append((p.name, out))
+    if plans:
+        print(f"  descriptions: llm={n_llm}, boilerplate={n_boil}")
 
     print(f"Copying skill scripts/references to {_skills_dir() / parsed.name}...")
     if skill_path.parent.exists() and skill_path.parent != Path("/"):
@@ -222,13 +263,14 @@ def _cmd_import(args) -> int:
         if skill_path.resolve() != dest_skill.resolve():
             shutil.copy2(skill_path, dest_skill)
 
-    print(f"Admission policy (ADR 0114 + ADR 0122)...")
+    print(f"Admission policy (ADR 0114 + ADR 0122 + ADR 0159)...")
     skip_binding = bool(args.update)
     report = admit_skill_import(
         parsed, plans,
         executor_dir=executors_dir,
         skip_binding_check=skip_binding,
         skip_l2=bool(args.skip_l2),
+        skip_l5_exec=bool(args.skip_l5_exec),
         skip_l6=bool(args.skip_l6),
     )
     print(f"  accepted: {len(report.accepted)}")
@@ -303,34 +345,40 @@ def _add_smoke_cases_for(report, parsed) -> int:
         from tool_grammar import _PROVIDER_SUFFIX_MARKERS  # type: ignore
     except ImportError:
         return 0
-    n = 0
-    skill_url = ""
-    for v in report.accepted:
-        case = v.smoke_battery_case or {}
-        if case.get("_no_smoke"):
-            continue
-        query = case.get("query")
-        if not query:
-            continue
-        # `expected_first_tool` autoritativo dalla mappa (puo' differire
-        # da v.plan_name se il PLANNER usa un canonical sinonimo, es.
-        # `find_messages` plan -> `read_messages` builtin atteso).
-        # Fallback: v.plan_name dopo strip provider qualifier (ADR 0136).
-        expected = case.get("expected_first_tool") or _strip_unmarked_provider(
-            v.plan_name, query, _PROVIDER_SUFFIX_MARKERS,
-        )
-        arg_keys = case.get("expected_arg_keys") or []
-        # Provenance per audit nel BATTERY_IMPORTS case.
-        if not skill_url:
-            skill_url = f"agentskills.io/local/{parsed.name}"
-        if smoke_imports.add_case(
-            query=query,
-            expected_first_tool=expected,
-            expected_arg_keys=set(arg_keys),
-            imported_from=skill_url,
-            min_pass_rate=case.get("min_pass_rate", 0.9),
-        ):
-            n += 1
+    # Perf (24/5/2026): batch flush invece di atomic write per case.
+    # Una skill con 19 executor faceva 19 write completi del JSON store.
+    smoke_imports.begin_batch()
+    try:
+        n = 0
+        skill_url = ""
+        for v in report.accepted:
+            case = v.smoke_battery_case or {}
+            if case.get("_no_smoke"):
+                continue
+            query = case.get("query")
+            if not query:
+                continue
+            # `expected_first_tool` autoritativo dalla mappa (puo' differire
+            # da v.plan_name se il PLANNER usa un canonical sinonimo, es.
+            # `find_messages` plan -> `read_messages` builtin atteso).
+            # Fallback: v.plan_name dopo strip provider qualifier (ADR 0136).
+            expected = case.get("expected_first_tool") or _strip_unmarked_provider(
+                v.plan_name, query, _PROVIDER_SUFFIX_MARKERS,
+            )
+            arg_keys = case.get("expected_arg_keys") or []
+            # Provenance per audit nel BATTERY_IMPORTS case.
+            if not skill_url:
+                skill_url = f"agentskills.io/local/{parsed.name}"
+            if smoke_imports.add_case(
+                query=query,
+                expected_first_tool=expected,
+                expected_arg_keys=set(arg_keys),
+                imported_from=skill_url,
+                min_pass_rate=case.get("min_pass_rate", 0.9),
+            ):
+                n += 1
+    finally:
+        smoke_imports.flush()
     return n
 
 
@@ -545,7 +593,10 @@ def main(argv=None) -> int:
                     help="re-import: skip binding uniqueness check")
     sp.add_argument("--no-sign", action="store_true", help="skip Ed25519 sign")
     sp.add_argument("--skip-l2", action="store_true", help="skip L2 affinity check (dev)")
-    sp.add_argument("--skip-l6", action="store_true", help="skip L6 semantic verifier (dev)")
+    sp.add_argument("--skip-l5-exec", action="store_true",
+                    help="skip L5 smoke at-import (dev / CI veloce, ADR 0159)")
+    sp.add_argument("--skip-l6", action="store_true",
+                    help="skip L6 semantic verifier (dev / CI veloce, ADR 0159)")
     sp.add_argument("--skip-smoke-battery", action="store_true",
                     help="skip auto-add to BATTERY_IMPORTS (dev/test)")
     sp.set_defaults(func=_cmd_import)

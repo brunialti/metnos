@@ -32,16 +32,25 @@ from jinja2 import Environment, FileSystemLoader, StrictUndefined
 
 _TEMPLATES_DIR = Path(__file__).resolve().parent / "templates"
 
+# Cache singleton (perf, 24/5/2026): Environment + FileSystemLoader rebuilt
+# per ogni `render_manifest`/`render_executor_py` (2 ricreazioni per executor;
+# 38 per skill da 19 plan). Loader holds template AST cache: la ricostruzione
+# invalida quella cache ogni volta.
+_JINJA_ENV: Environment | None = None
+
 
 def _jinja_env() -> Environment:
-    env = Environment(
-        loader=FileSystemLoader(str(_TEMPLATES_DIR)),
-        undefined=StrictUndefined,
-        keep_trailing_newline=True,
-        autoescape=False,
-    )
-    env.filters["tojson"] = _tojson
-    return env
+    global _JINJA_ENV
+    if _JINJA_ENV is None:
+        env = Environment(
+            loader=FileSystemLoader(str(_TEMPLATES_DIR)),
+            undefined=StrictUndefined,
+            keep_trailing_newline=True,
+            autoescape=False,
+        )
+        env.filters["tojson"] = _tojson
+        _JINJA_ENV = env
+    return _JINJA_ENV
 
 
 def _tojson(value: Any) -> str:

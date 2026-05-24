@@ -7,22 +7,32 @@ Determinismo §7.9: LLM e' giustificato perche' la traduzione/condensazione
 del body inglese in stile prescrittivo IT non e' equipotente con regole
 deterministiche (vedi gap POC_REPORT §5.9: rischio traduzione letterale).
 
-Fallback: se LLM non disponibile (no provider, no rete, no key), ritorna
-boilerplate dal codegen + affinity dell'OBJECT.
+Fallback: se LLM non disponibile (no provider, no rete, no key, timeout),
+ritorna boilerplate dal codegen + affinity dell'OBJECT.
 
 Integrazione produzione (in <install_root>):
 - Usa `prompt_loader.get("synt_stage4_description_imported", "it", ...)` o EN.
 - Tier wise (Gemma 4 26B), una shot, max 500 tokens output.
 - Output parsato come JSON `{description_it, description_en, affinity}`.
+- Time budget per call: 5s (R1, 24/5/2026). Fallback boilerplate al timeout.
 
-Stub corrente: parser di output LLM minimale + retry su JSON malformato.
+R1 (24/5/2026): wired in `cli/skills_cli.py::_cmd_import` PRIMA del codegen.
+Ogni call (LLM o fallback) registrata in
+`<PATH_USER_DATA>/skill_descriptions_audit.jsonl` append-only.
 """
 from __future__ import annotations
 
 import json
 import os
 import re
+import threading
+import time
+from pathlib import Path
 from typing import Optional
+
+
+# R1 time budget per executor (s). Override via env per dev/test.
+DEFAULT_TIMEOUT_S: int = int(os.environ.get("METNOS_SKILL_LLM_TIMEOUT_S", "5"))
 
 
 # ---------------------------------------------------------------------------
@@ -138,7 +148,7 @@ _WISE_SYSTEM_DEFAULT = (
 )
 
 
-def _call_llm(prompt: str, *, timeout_s: int = 30,
+def _call_llm(prompt: str, *, timeout_s: int = DEFAULT_TIMEOUT_S,
               max_tokens: int = 600) -> Optional[str]:
     """Chiamata reale al tier wise (Gemma 4 26B locale via LlamaCppProvider
     su http://127.0.0.1:8080).
@@ -148,11 +158,17 @@ def _call_llm(prompt: str, *, timeout_s: int = 30,
     2. LLMRouter() da <install_root>/runtime → provider("wise").chat() — produzione.
     3. None (fallback boilerplate; logga WARN tramite logger se disponibile).
 
-    Nota gap 2 (10/5/2026): sostituisce il vecchio call_tier. think=False
-    per stage 4 (description e' creativo ma non richiede thinking esteso;
-    riduce latenza ~3x). max_tokens=600 sufficiente per JSON di description.
+    Time budget enforced via thread wrapper: se il provider supera `timeout_s`
+    secondi, ritorna None silenziosamente (caller fallback su boilerplate). Il
+    thread "leaked" continua in background ma non blocca la pipeline di import
+    (un singolo import skill = N executor; un timeout su uno non blocca gli
+    altri).
+
+    think=False per stage 4 (description e' creativo ma non richiede thinking
+    esteso; riduce latenza ~3x). max_tokens=600 sufficiente per JSON.
     """
     fake = os.environ.get("METNOS_LLM_DESCRIPTION_FAKE")
+    fake_fn = None
     if fake:
         mod_name, _, attr = fake.rpartition(".")
         if mod_name and attr:
@@ -160,38 +176,63 @@ def _call_llm(prompt: str, *, timeout_s: int = 30,
                 mod = __import__(mod_name, fromlist=[attr])
                 fn = getattr(mod, attr, None)
                 if callable(fn):
-                    return fn(prompt, timeout_s, max_tokens)
+                    fake_fn = fn
             except Exception as e:
-                _warn_no_llm(f"fake llm error: {e}")
+                _warn_no_llm(f"fake llm import error: {e}")
                 return None
 
-    # Produzione: LLMRouter da <install_root>/runtime, tier wise.
-    try:
-        import sys
-        from pathlib import Path
-        runtime_dir = Path(__file__).resolve().parent  # ADR 0148 rename-resilient
-        if not runtime_dir.exists():
-            _warn_no_llm("<install_root>/runtime non disponibile")
-            return None
-        if str(runtime_dir) not in sys.path:
-            sys.path.insert(0, str(runtime_dir))
-        from llm_router import LLMRouter  # type: ignore
-        router = LLMRouter()
-        provider = router.provider("wise")
-        # think=False — stage 4 e' creativo ma JSON-strict, no reasoning extended.
-        # temperature=0 — output deterministico.
-        result = provider.chat(
-            _WISE_SYSTEM_DEFAULT, prompt,
-            max_tokens=max_tokens, temperature=0, think=False,
-        )
-        text = getattr(result, "text", None) or ""
-        if not text.strip():
-            _warn_no_llm("LLM ritornato vuoto")
-            return None
-        return text
-    except Exception as e:
-        _warn_no_llm(f"LLM provider error: {type(e).__name__}: {e}")
+    # Wrap fake/real call uniformemente in thread-with-deadline per garantire
+    # time budget (timeout enforcement simmetrico fra test e produzione).
+    result_holder: dict = {}
+
+    def _call() -> None:
+        try:
+            if fake_fn is not None:
+                text = fake_fn(prompt, timeout_s, max_tokens)
+                if text is None:
+                    result_holder["err"] = "fake llm returned None"
+                    return
+                if not isinstance(text, str) or not text.strip():
+                    result_holder["err"] = "fake llm returned empty"
+                    return
+                result_holder["text"] = text
+                return
+            # Produzione: LLMRouter tier wise.
+            import sys as _sys
+            runtime_dir = Path(__file__).resolve().parent  # ADR 0148 rename-resilient
+            if not runtime_dir.exists():
+                result_holder["err"] = "runtime dir non disponibile"
+                return
+            if str(runtime_dir) not in _sys.path:
+                _sys.path.insert(0, str(runtime_dir))
+            from llm_router import LLMRouter  # type: ignore
+            router = LLMRouter()
+            provider = router.provider("wise")
+            # think=False — JSON-strict, no reasoning extended.
+            # temperature=0 — output deterministico.
+            res = provider.chat(
+                _WISE_SYSTEM_DEFAULT, prompt,
+                max_tokens=max_tokens, temperature=0, think=False,
+            )
+            text = getattr(res, "text", None) or ""
+            if not text.strip():
+                result_holder["err"] = "LLM ritornato vuoto"
+                return
+            result_holder["text"] = text
+        except Exception as e:
+            result_holder["err"] = f"LLM error: {type(e).__name__}: {e}"
+
+    t = threading.Thread(target=_call, daemon=True)
+    t.start()
+    t.join(timeout=timeout_s)
+    if t.is_alive():
+        _warn_no_llm(f"LLM timeout dopo {timeout_s}s")
         return None
+    if "text" in result_holder:
+        return result_holder["text"]
+    if "err" in result_holder:
+        _warn_no_llm(result_holder["err"])
+    return None
 
 
 def _warn_no_llm(reason: str) -> None:
@@ -303,13 +344,17 @@ def _validate_shape(obj) -> bool:
 
 def generate_description(plan, parsed_skill, *,
                          skill_body_snippet: str = "",
-                         retries: int = 1) -> Optional[dict]:
+                         retries: int = 1,
+                         timeout_s: int = DEFAULT_TIMEOUT_S) -> Optional[dict]:
     """Genera description IT+EN + affinity via LLM. Ritorna None se fallisce
     (caller fallback su boilerplate).
+
+    `timeout_s` (R1): time budget per singola call LLM (default 5s, override
+    via env METNOS_SKILL_LLM_TIMEOUT_S). Su timeout → None senza retry.
     """
     prompt = build_prompt(plan, parsed_skill, skill_body_snippet)
     for attempt in range(retries + 1):
-        text = _call_llm(prompt)
+        text = _call_llm(prompt, timeout_s=timeout_s)
         if not text:
             return None
         parsed = _parse_llm_output(text)
@@ -330,25 +375,99 @@ def generate_description(plan, parsed_skill, *,
     return None
 
 
+# ---------------------------------------------------------------------------
+# Audit log (R1, 24/5/2026)
+# ---------------------------------------------------------------------------
+
+
+def _audit_log_path() -> Path:
+    """`<PATH_USER_DATA>/skill_descriptions_audit.jsonl`.
+
+    Rispetta METNOS_USER_DATA (§7.11) per isolamento test/e2e via
+    `config.PATH_USER_DATA`. Niente Path.home() hardcoded.
+    """
+    import config as _C
+    base = _C.PATH_USER_DATA
+    base.mkdir(parents=True, exist_ok=True)
+    return base / "skill_descriptions_audit.jsonl"
+
+
+def _append_audit(*, plan_name: str, skill_name: str, source: str,
+                  elapsed_ms: int, error: Optional[str] = None,
+                  timeout_s: int = DEFAULT_TIMEOUT_S) -> None:
+    """Append una riga JSONL per ogni description generation attempt.
+
+    Schema: {ts, skill_name, plan_name, source: 'llm'|'boilerplate'|'fake',
+             elapsed_ms, timeout_s, error?}.
+
+    Fail-silent: l'audit non blocca la pipeline import. Skip se test env
+    silenzioso (PYTEST_CURRENT_TEST set + METNOS_SKILLS_QUIET=1) per evitare
+    creazione spurious in unit test.
+    """
+    if (
+        os.environ.get("METNOS_SKILLS_QUIET") == "1"
+        and os.environ.get("PYTEST_CURRENT_TEST")
+    ):
+        return
+    rec = {
+        "ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "skill_name": skill_name,
+        "plan_name": plan_name,
+        "source": source,
+        "elapsed_ms": int(elapsed_ms),
+        "timeout_s": int(timeout_s),
+    }
+    if error:
+        rec["error"] = error
+    try:
+        path = _audit_log_path()
+        with path.open("a", encoding="utf-8") as f:
+            f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+    except Exception:
+        pass  # fail-silent
+
+
 def generate_description_or_fallback(plan, parsed_skill, *,
                                      skill_body_snippet: str = "",
                                      boilerplate_it: str = "",
                                      boilerplate_en: str = "",
                                      boilerplate_affinity: Optional[list] = None,
+                                     timeout_s: int = DEFAULT_TIMEOUT_S,
                                      ) -> dict:
-    """Tenta LLM; se fallisce, ritorna boilerplate del caller.
+    """Tenta LLM; se fallisce/timeout, ritorna boilerplate del caller.
 
     Garantisce che l'output abbia sempre `description_it`, `description_en`,
     `affinity` come stringhe/list — caller pratico per codegen.
+
+    Audit append-only in `<PATH_USER_DATA>/skill_descriptions_audit.jsonl`
+    per ogni invocazione (R1). Una riga per executor con source=llm/
+    boilerplate + elapsed_ms + eventuale error.
     """
-    res = generate_description(plan, parsed_skill, skill_body_snippet=skill_body_snippet)
+    skill_name = getattr(parsed_skill, "name", "") or ""
+    plan_name = getattr(plan, "name", "") or ""
+    t0 = time.perf_counter()
+    res = generate_description(
+        plan, parsed_skill,
+        skill_body_snippet=skill_body_snippet,
+        timeout_s=timeout_s,
+    )
+    elapsed_ms = int((time.perf_counter() - t0) * 1000)
     if res:
+        _append_audit(
+            plan_name=plan_name, skill_name=skill_name,
+            source="llm", elapsed_ms=elapsed_ms, timeout_s=timeout_s,
+        )
         return {
             "description_it": res["description_it"],
             "description_en": res["description_en"],
             "affinity": res["affinity"] or boilerplate_affinity or [],
             "source": "llm",
         }
+    _append_audit(
+        plan_name=plan_name, skill_name=skill_name,
+        source="boilerplate", elapsed_ms=elapsed_ms,
+        error="llm_unavailable_or_timeout", timeout_s=timeout_s,
+    )
     return {
         "description_it": boilerplate_it,
         "description_en": boilerplate_en,
