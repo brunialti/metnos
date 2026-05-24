@@ -252,6 +252,35 @@ def apply_feedback(turn_id: str, action: str, by: str = "user") -> dict:
             record["rejected_pipeline"] = pipeline
         else:  # ok
             record["approved_pipeline"] = pipeline
+
+    # E12 feedback→demote (24/5/2026): su action="error" con pipeline nota,
+    # controlla se uno dei tool ha superato la soglia ✗ consecutive. Il
+    # count comprende il feedback CORRENTE (lookback storia + 1). Demote
+    # solo synth non-protetti (ADR 0114 L3, enforcement in apply_feedback_ager).
+    if action == "error" and pipeline:
+        try:
+            from runtime_settings import feedback_error_demote_threshold
+            from executor_aging import apply_feedback_ager
+            threshold = feedback_error_demote_threshold()
+        except Exception as ex:
+            log.warning("turn_feedback: demote setup failed: %r", ex)
+            threshold = 0
+        if threshold > 0:
+            for tool_name in dict.fromkeys(pipeline):  # dedup preservando ordine
+                prior = count_consecutive_errors_for_tool(tool_name)
+                consecutive = prior + 1  # include feedback corrente
+                if consecutive >= threshold:
+                    try:
+                        out = apply_feedback_ager(
+                            tool_name, consecutive_errors=consecutive)
+                    except Exception as ex:
+                        log.warning(
+                            "turn_feedback: apply_feedback_ager(%s) failed: %r",
+                            tool_name, ex)
+                        out = {"action": "noop",
+                               "reason": f"ager_error: {ex}"}
+                    effects.append({"type": "feedback_demote", **out})
+
     _append_feedback(record)
     return record
 
@@ -312,6 +341,44 @@ def count_consecutive_errors_for_query(user_query: str,
             break  # un ok resetta il counter consecutivo
         if rec.get("action") == "error":
             count += 1
+    return count
+
+
+def count_consecutive_errors_for_tool(tool_name: str,
+                                       *, lookback: int = 200) -> int:
+    """Conteggio feedback ✗ consecutive (cross-query) per `tool_name`.
+
+    Usato da E12 feedback→demote: dopo N ✗ consecutive sullo stesso tool,
+    l'executor viene demoted. LWW: un ✓ su un feedback che include
+    `tool_name` nella `approved_pipeline` resetta il counter (signal che
+    il tool e' valido in qualche altro contesto).
+
+    Scan dal piu' recente all'indietro, stop al primo ✓ che menziona
+    `tool_name`. ✗ che menzionano `tool_name` incrementano. Feedback su
+    altri tool sono ignorati (non interrompono la sequenza).
+    """
+    if not tool_name or not FEEDBACK_PATH.is_file():
+        return 0
+    with FEEDBACK_PATH.open(encoding="utf-8") as fh:
+        lines = fh.readlines()
+    count = 0
+    for line in reversed(lines[-lookback:]):
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            rec = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        action = rec.get("action")
+        if action == "ok":
+            pipeline = rec.get("approved_pipeline") or []
+            if tool_name in pipeline:
+                break  # ✓ sullo stesso tool resetta
+        elif action == "error":
+            pipeline = rec.get("rejected_pipeline") or []
+            if tool_name in pipeline:
+                count += 1
     return count
 
 

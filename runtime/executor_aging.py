@@ -683,6 +683,93 @@ def apply_efficacy_ager(
     }
 
 
+# ── Layer 3 admission policy: feedback ager (E12, ADR 0114 reinforcement) ───
+#
+# A differenza di `apply_efficacy_ager` (success_rate dai turn JSONL su
+# bulk di ≥100 invocations), `apply_feedback_ager` reagisce al signal
+# esplicito ✗ dell'utente: dopo N feedback negative consecutive su uno
+# stesso tool synth (cross-query, LWW), demota l'executor a `deprecated`.
+#
+# Vincoli ADR 0114 L3:
+#   - Handcrafted MAI demoted (source NOT starts with 'synth').
+#   - PROTECTED_NAMES MAI demoted.
+#   - Idempotente: se gia' deprecated/archived, no-op.
+#
+# Audit: stesso JSONL di efficacy_ager (`synth_audit/efficacy_demotions.jsonl`)
+# con campo `by: "feedback_ager"`.
+
+def apply_feedback_ager(
+    tool_name: str,
+    *,
+    consecutive_errors: int,
+    now_iso: str | None = None,
+) -> dict:
+    """Demote `tool_name` a deprecated se synth e non protetto.
+
+    Args:
+      tool_name:           nome executor candidato a demotion.
+      consecutive_errors:  conteggio ✗ consecutive che ha triggerato
+                           la chiamata (per audit/history detail).
+      now_iso:             timestamp di riferimento (default: now).
+
+    Returns:
+      dict {action, name, reason?} dove action ∈
+        {"demoted", "skip_protected", "skip_handcrafted",
+         "skip_already_deprecated", "skip_unknown"}.
+    """
+    import json as _json
+    if not tool_name:
+        return {"action": "skip_unknown", "name": tool_name,
+                "reason": "empty_name"}
+    now_iso = now_iso or datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    if tool_name in PROTECTED_NAMES:
+        return {"action": "skip_protected", "name": tool_name}
+
+    conn = _open()
+    try:
+        row = conn.execute(
+            "SELECT * FROM executor_stats WHERE name = ?", (tool_name,)
+        ).fetchone()
+        if row is None:
+            return {"action": "skip_unknown", "name": tool_name,
+                    "reason": "not_in_stats"}
+        row = _row(row)
+        if not _is_synth(row.name, row.source):
+            return {"action": "skip_handcrafted", "name": tool_name,
+                    "source": row.source}
+        if row.archived_at or row.deprecated_at:
+            return {"action": "skip_already_deprecated", "name": tool_name,
+                    "deprecated_at": row.deprecated_at,
+                    "archived_at": row.archived_at}
+        conn.execute(
+            "UPDATE executor_stats SET deprecated_at = ? WHERE name = ?",
+            (now_iso, tool_name),
+        )
+        detail = {"by": "feedback_ager",
+                  "consecutive_errors": int(consecutive_errors)}
+        _log_event(conn, tool_name, "deprecated", row.source, detail)
+        conn.commit()
+    finally:
+        conn.close()
+
+    # Audit JSONL append. Fail-safe.
+    try:
+        audit_path = _efficacy_audit_path()
+        with audit_path.open("a", encoding="utf-8") as fh:
+            fh.write(_json.dumps({
+                "ts": now_iso, "event": "deprecated",
+                "name": tool_name, "by": "feedback_ager",
+                "consecutive_errors": int(consecutive_errors),
+            }, ensure_ascii=False) + "\n")
+    except OSError:
+        pass
+
+    return {"action": "demoted", "name": tool_name,
+            "deprecated_at": now_iso,
+            "consecutive_errors": int(consecutive_errors)}
+
+
 def daily_event_counts(*, days: int = 30) -> list[dict]:
     """Per i grafici «andamento meccanismi di distruzione/disabilitazione».
     Ritorna [{date, source, event_kind, n}] aggregato per giorno × source × kind.

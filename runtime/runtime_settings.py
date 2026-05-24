@@ -77,6 +77,11 @@ _DEFAULTS: dict[str, Any] = {
     "telos.dashboard_strict_name_status": True,  # solo new_valid
     "telos.accept_hard_gate": 0.45,           # gate non bypassabile
     "telos.synth_daily_cap": 3,               # rate limit consumer
+    # Feedback→demote (E12, 24/5/2026). Soglia di ✗ consecutive per uno
+    # stesso tool synth (cross-query, LWW: un ✓ resetta) prima di
+    # demotare l'executor a `deprecated`. Handcrafted/protected mai
+    # demoted (ADR 0114 L3).
+    "feedback.error_demote_threshold": 3,
 }
 
 
@@ -98,6 +103,7 @@ _ENV_MAP: dict[str, str] = {
     "telos.dashboard_strict_name_status": "METNOS_TELOS_DASHBOARD_STRICT_NAME_STATUS",
     "telos.accept_hard_gate": "METNOS_TELOS_ACCEPT_HARD_GATE",
     "telos.synth_daily_cap": "METNOS_TELOS_SYNTH_DAILY_CAP",
+    "feedback.error_demote_threshold": "METNOS_FEEDBACK_DEMOTE_THRESHOLD",
 }
 
 
@@ -264,6 +270,10 @@ def multi_tool_fast_path_k_synth() -> int:
     return get_int("multi_tool_fast_path.k_synth")
 
 
+def feedback_error_demote_threshold() -> int:
+    return get_int("feedback.error_demote_threshold")
+
+
 # ── Bootstrap helper: scrivi runtime.toml di default se assente ────────────
 
 _DEFAULT_TOML_BODY = """\
@@ -290,6 +300,14 @@ threshold = 0.88
 min_uses = 3
 ttl_active_days = 30                # scadenza in giorni di attivita' effettiva
 k_synth = 50                        # promozione L2 → L3 (proto-mnest sintesi)
+
+[feedback]
+# E12 (24/5/2026): demote di executor synth dopo N feedback ✗ consecutive
+# (cross-query, LWW: un ✓ sullo stesso tool resetta il counter). Si applica
+# SOLO a synth (ADR 0114 L3): handcrafted e PROTECTED_NAMES restano sempre
+# attivi. La demotion setta `deprecated_at` in executor_stats e nasconde
+# l'executor dal pool catalog al boot successivo.
+error_demote_threshold = 3
 """
 
 
