@@ -68,7 +68,7 @@ class TestCredentials3TierFlow(unittest.TestCase):
         → decision=needs_inputs (ADR 0091), payload strutturato per
         l'orchestratore runtime (no carta vaglio, no summary plain text).
         """
-        from verb_unique.admin import invoke
+        from system.admin import invoke
         # Non abbiamo salvato nulla → dominio cifs_192.0.2.10 assente.
         out = invoke(
             intent="mount cifs share di test",
@@ -107,7 +107,7 @@ class TestCredentials3TierFlow(unittest.TestCase):
             "username": "u", "password": "p", "binding": "cifs",
             "host": "192.0.2.10",
         })
-        from verb_unique.admin import invoke
+        from system.admin import invoke
         out = invoke(
             intent="mount cifs share di test",
             command_proposed=(
@@ -125,7 +125,7 @@ class TestCredentials3TierFlow(unittest.TestCase):
 
     def test_strato3_cli_instructions_format(self):
         """_format_cli_instructions emette indicazioni terminale leggibili."""
-        from verb_unique.admin import _format_cli_instructions
+        from system.admin import _format_cli_instructions
         text = _format_cli_instructions("cifs_192.168.1.20", {
             "binding": "cifs", "host": "192.168.1.20",
         })

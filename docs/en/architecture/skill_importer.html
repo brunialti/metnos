@@ -214,7 +214,7 @@ Python file with the <code>invoke</code> function, the TOML manifest,
 the signature, the fence profile.
 </p>
 
-<pre>~/.local/share/metnos/executors/_imports/google-workspace/
+<pre>~/.local/share/metnos/executors/skills/google-workspace/
   read_events/
     read_events.py
     manifest.toml
@@ -228,7 +228,8 @@ the signature, the fence profile.
 </pre>
 
 <p>
-The destination is <code>_imports/</code>, under the folder of
+The destination is <code>skills/</code> (ADR 0160; the prior name
+<code>_imports/</code> is still read in back-compat mode), under the folder of
 synthesized executors. This visually separates what comes from outside
 from what Metnos has written on its own, and from what was hand-written.
 All three kinds end up in the same agent catalog, however, and all pass
@@ -338,7 +339,7 @@ Roberto asks: &laquo;import the Google Workspace skill&raquo;.
   <li><strong>Download</strong>: the skill is already in the local cache (last refresh three days ago); no network traffic.</li>
   <li><strong>Read</strong>: the parser finds 24 sub-commands across Gmail, Calendar, Drive, Sheets, Docs, Contacts.</li>
   <li><strong>Translate</strong>: 21 sub-commands translate cleanly into canonical names; three are rejected (<code>gmail reply</code> collides with <code>send_messages</code>; <code>gmail labels</code> has no canonical qualifier; <code>sheets append</code> collides with its own <em>update</em>).</li>
-  <li><strong>Generate</strong>: 21 executor folders, each with Python file and manifest, are written under <code>_imports/google-workspace/</code>.</li>
+  <li><strong>Generate</strong>: 21 executor folders, each with Python file and manifest, are written under <code>skills/google-workspace/</code> (ADR 0160).</li>
   <li><strong>Check</strong>: all 21 pass the five gates. A routing assertion is added to the test battery for each.</li>
   <li><strong>Sign</strong>: the 21 manifests are signed Ed25519.</li>
   <li><strong>Ready</strong>: Roberto asks in chat &laquo;what appointments do I have tomorrow?&raquo;. The planner picks <code>read_events</code> (one of the 21), which replies <em>credentials needed</em> and opens the request form. Roberto provides the client secret and the redirect URL once; subsequent invocations work silently.</li>

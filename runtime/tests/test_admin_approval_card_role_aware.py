@@ -24,25 +24,25 @@ if str(_RUNTIME) not in sys.path:
 class TestExplainCommandDangers:
 
     def test_rm_explained(self):
-        from verb_unique.admin import _explain_command_dangers
+        from system.admin import _explain_command_dangers
         msg = _explain_command_dangers(["rm", "-rf", "/tmp/x"], None)
         assert "Cancella" in msg or "cancella" in msg.lower()
         assert "RICORSIVA" in msg or "ricorsiva" in msg.lower()
         assert "forzanti" in msg.lower() or "force" in msg.lower()
 
     def test_unknown_binary_generic_warning(self):
-        from verb_unique.admin import _explain_command_dangers
+        from system.admin import _explain_command_dangers
         msg = _explain_command_dangers(["weirdbin", "--show"], None)
         assert "weirdbin" in msg
         assert "non" in msg.lower()  # "non e' nella whitelist conosciuta"
 
     def test_severity_irreversible_noted(self):
-        from verb_unique.admin import _explain_command_dangers
+        from system.admin import _explain_command_dangers
         msg = _explain_command_dangers(["dd", "if=/dev/zero"], "irreversible")
         assert "IRREVERSIBILE" in msg.upper()
 
     def test_empty_argv(self):
-        from verb_unique.admin import _explain_command_dangers
+        from system.admin import _explain_command_dangers
         msg = _explain_command_dangers([], None)
         assert msg
 
@@ -51,7 +51,7 @@ class TestApprovalCardRoleAware:
     """Card emitted on whitelist miss: shape differente per host vs guest."""
 
     def _ask_user_decision_for(self, argv: list[str], actor: str):
-        from verb_unique.admin import _decide_for_argv
+        from system.admin import _decide_for_argv
         return _decide_for_argv(argv, intent_text="test intent", actor=actor)
 
     def test_card_admin_has_approve_and_whitelist_option(self):
@@ -90,7 +90,7 @@ class TestApplyUserDecisionNewOptions:
     """apply_user_decision con le 4 nuove choices."""
 
     def _make_ask(self, actor):
-        from verb_unique.admin import _decide_for_argv
+        from system.admin import _decide_for_argv
         return _decide_for_argv(
             ["weirdunknowncmd_xyz", "--show"],
             intent_text="test", actor=actor,
@@ -105,13 +105,13 @@ class TestApplyUserDecisionNewOptions:
         import importlib
         import safety.storage
         importlib.reload(safety.storage)
-        import verb_unique.admin
-        importlib.reload(verb_unique.admin)
+        import system.admin
+        importlib.reload(system.admin)
 
         d = self._make_ask("host")
         if d.kind != "ask_user":
             pytest.skip("decisione non ask_user")
-        from verb_unique.admin import apply_user_decision
+        from system.admin import apply_user_decision
         result = apply_user_decision(
             decision=d, user_choice="approve_and_whitelist", actor="host",
         )
@@ -133,13 +133,13 @@ class TestApplyUserDecisionNewOptions:
         import importlib
         import safety.storage
         importlib.reload(safety.storage)
-        import verb_unique.admin
-        importlib.reload(verb_unique.admin)
+        import system.admin
+        importlib.reload(system.admin)
 
         d = self._make_ask("guest_x")
         if d.kind != "ask_user":
             pytest.skip()
-        from verb_unique.admin import apply_user_decision
+        from system.admin import apply_user_decision
         with pytest.raises(ValueError, match="admin role"):
             apply_user_decision(decision=d, user_choice="approve_and_whitelist",
                                 actor="guest_x")
@@ -149,13 +149,13 @@ class TestApplyUserDecisionNewOptions:
         import importlib
         import safety.storage
         importlib.reload(safety.storage)
-        import verb_unique.admin
-        importlib.reload(verb_unique.admin)
+        import system.admin
+        importlib.reload(system.admin)
 
         d = self._make_ask("guest_x")
         if d.kind != "ask_user":
             pytest.skip()
-        from verb_unique.admin import apply_user_decision
+        from system.admin import apply_user_decision
         result = apply_user_decision(decision=d, user_choice="run_externally",
                                       actor="guest_x")
         assert result.kind == "reject"
@@ -170,15 +170,15 @@ class TestApplyUserDecisionNewOptions:
         import importlib
         import safety.storage
         importlib.reload(safety.storage)
-        import verb_unique.admin
-        importlib.reload(verb_unique.admin)
+        import system.admin
+        importlib.reload(system.admin)
         # Override module constant
-        verb_unique.admin._REQUEST_WHITELIST_QUEUE = queue_path
+        system.admin._REQUEST_WHITELIST_QUEUE = queue_path
 
         d = self._make_ask("guest_lucia")
         if d.kind != "ask_user":
             pytest.skip()
-        from verb_unique.admin import apply_user_decision
+        from system.admin import apply_user_decision
         result = apply_user_decision(decision=d, user_choice="request_admin_whitelist",
                                       actor="guest_lucia")
         assert result.kind == "reject"
@@ -202,10 +202,10 @@ class TestBackwardsCompatLegacyOptions:
         import importlib
         import safety.storage
         importlib.reload(safety.storage)
-        import verb_unique.admin
-        importlib.reload(verb_unique.admin)
+        import system.admin
+        importlib.reload(system.admin)
 
-        from verb_unique.admin import _decide_for_argv, apply_user_decision
+        from system.admin import _decide_for_argv, apply_user_decision
         d = _decide_for_argv(["weirdxyz", "--p"], intent_text="t", actor="host")
         if d.kind != "ask_user":
             pytest.skip()
@@ -218,9 +218,9 @@ class TestBackwardsCompatLegacyOptions:
         import importlib
         import safety.storage
         importlib.reload(safety.storage)
-        import verb_unique.admin
-        importlib.reload(verb_unique.admin)
-        from verb_unique.admin import _decide_for_argv, apply_user_decision
+        import system.admin
+        importlib.reload(system.admin)
+        from system.admin import _decide_for_argv, apply_user_decision
         d = _decide_for_argv(["weirdxyz", "--p"], intent_text="t", actor="host")
         if d.kind != "ask_user":
             pytest.skip()

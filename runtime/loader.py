@@ -212,8 +212,8 @@ def boot_register_verb_unique_builtins() -> list[str]:
     Idempotente: se i moduli sono già registrati con lo STESSO oggetto,
     skip silenzioso. Permette doppia chiamata (es. test + load_catalog).
     """
-    from verb_unique import admin as _admin_mod
-    from verb_unique import sudoer as _sudoer_mod
+    from system import admin as _admin_mod
+    from system import sudoer as _sudoer_mod
     if VERB_UNIQUE_REGISTRY.get("admin", {}).get("module") is not _admin_mod:
         register_verb_unique_builtin(_admin_mod)
     if VERB_UNIQUE_REGISTRY.get("sudoer", {}).get("module") is not _sudoer_mod:
@@ -749,7 +749,8 @@ def _check_affinity_overlap(catalog: Catalog) -> list[dict]:
             return False
 
     def _is_imported(name: str) -> bool:
-        """Imported via skill_importer (ADR 0123) - path contiene `_imports/`.
+        """Imported via skill_importer (ADR 0123) - path sotto `skills/`
+        (new, ADR 0160) o `_imports/` (legacy back-compat).
         Esentati dal pairwise overlap: il binding (provenance.imported_from)
         qualifica esplicitamente il dominio remoto. Le keyword sovrapposte
         sono attese e legittime, non un doppione mascherato."""
@@ -757,7 +758,8 @@ def _check_affinity_overlap(catalog: Catalog) -> list[dict]:
         if ex is None:
             return False
         try:
-            return "/_imports/" in str(ex.manifest_path).replace(os.sep, "/")
+            from skills_paths import is_skill_path as _isp
+            return _isp(ex.manifest_path)
         except Exception:
             return False
 
@@ -912,16 +914,24 @@ def _gc_collisions(catalog: Catalog) -> None:
 
 def _iter_executor_dirs(executors_dir: Path):
     """Yield le subdir con `manifest.toml`. Visita 1 livello + caso speciale
-    `_imports/<skill>/<executor>/manifest.toml` (ADR 0123): gli executor
-    importati da skill stanno 2 livelli sotto la base synth per separarli
-    visivamente dai synth nativi del Synt."""
+    `skills/<skill>/<executor>/manifest.toml` (ADR 0123 + ADR 0160) e back-
+    compat `_imports/<skill>/<executor>/manifest.toml` (legacy installazioni):
+    gli executor importati da skill stanno 2 livelli sotto la base synth per
+    separarli visivamente dai synth nativi del Synt."""
     for sub in sorted(executors_dir.iterdir()):
         if not sub.is_dir():
             continue
-        if sub.name == "_imports":
+        if sub.name in ("skills", "_imports"):
             for skill_dir in sorted(sub.iterdir()):
                 if not skill_dir.is_dir():
                     continue
+                # ADR 0160: gate via skill_registry (enabled/disabled).
+                try:
+                    from skill_registry import is_skill_enabled as _isen
+                    if not _isen(skill_dir.name):
+                        continue
+                except Exception:
+                    pass
                 for ex_dir in sorted(skill_dir.iterdir()):
                     if ex_dir.is_dir() and (ex_dir / "manifest.toml").is_file():
                         yield ex_dir

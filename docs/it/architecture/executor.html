@@ -546,14 +546,14 @@ vivono sul disco, e da dove provengono le idee che li abitano.
   <div>
     <h4 style="color:#9333ea;">Importati da skill esterna</h4>
     <p style="color:#444;">Una skill pubblica (es. da <code>agentskills.io</code>) descrive in italiano l'uso di un servizio terzo. Un traduttore deterministico la converte in uno o pi&ugrave; executor Metnos.</p>
-    <p><strong>Cartella</strong>: <code>~/.local/share/metnos/executors/_imports/</code></p>
+    <p><strong>Cartella</strong>: <code>~/.local/share/metnos/executors/skills/</code> (legacy <code>_imports/</code> letto in back-compat, ADR 0160).</p>
     <p><strong>Esempi</strong>: <code>read_events</code>, <code>set_events</code>, <code>delete_events</code> (da una skill calendario).</p>
     <p style="color:#64748B;font-style:italic;">Stessi controlli di un generato: niente trattamento di favore per il fatto di venire da fuori.</p>
   </div>
   <div>
     <h4 style="color:#16a34a;">Di sistema (builtin)</h4>
     <p style="color:#444;">Servizi interni del runtime. Non hanno cartella propria, vivono dentro Metnos.</p>
-    <p><strong>Cartella</strong>: <code>runtime/verb_unique/</code></p>
+    <p><strong>Cartella</strong>: <code>runtime/system/</code> (ex <code>verb_unique/</code>, rinominato ADR 0160).</p>
     <p><strong>Esempi</strong>: <code>undo_last_turn</code>, <code>scheduler</code>, <code>admin</code>.</p>
     <p style="color:#64748B;font-style:italic;">Servizi del sistema, non attrezzi normali.</p>
   </div>

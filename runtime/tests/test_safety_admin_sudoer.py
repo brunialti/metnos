@@ -7,9 +7,9 @@ Covers:
   - safety.secret_slot:  fill / consume / zero invariants.
   - verb_unique loader:  five invariants of ADR 0069 (vocab collision,
                           unauthorised caller, double-registration).
-  - verb_unique.admin:   four-act flow with mocked LLM (gate, translated,
+  - system.admin:   four-act flow with mocked LLM (gate, translated,
                           unknown, blacklist hit, whitelist hit, ask user).
-  - verb_unique.sudoer:  re-validation at fire time + sanity-check
+  - system.sudoer:  re-validation at fire time + sanity-check
                           additivity + secret-slot lifecycle.
 
 Run with `python3 -m pytest runtime/tests/test_safety_admin_sudoer.py -v`.
@@ -278,7 +278,7 @@ class TestVerbUniqueLoader:
 
 class TestAdminFlow:
     def test_pre1_gate_rejects_literal_shell(self, seeded_db):
-        from verb_unique.admin import decide
+        from system.admin import decide
         # Various literal-shell shapes
         for text in [
             "sudo systemctl restart nginx",
@@ -292,7 +292,7 @@ class TestAdminFlow:
             assert "non accetto comandi diretti" in d.reason.lower()
 
     def test_blacklist_hit_rejects(self, seeded_db):
-        from verb_unique.admin import decide
+        from system.admin import decide
         # The seed has rm:fr:fs:root in blacklist as forbidden.
         mock_llm = lambda _p: '{"kind":"translated","argv":["rm","-rf","/"]}'
         d = decide("svuota la radice", llm_call=mock_llm)
@@ -301,14 +301,14 @@ class TestAdminFlow:
         assert d.audit.get("safety") in ("forbidden_hit", "blacklist_hit")
 
     def test_whitelist_hit_silent_execute(self, seeded_db):
-        from verb_unique.admin import decide
+        from system.admin import decide
         mock_llm = lambda _p: '{"kind":"translated","argv":["systemctl","status","nginx"]}'
         d = decide("vedi se nginx gira", llm_call=mock_llm)
         assert d.kind == "execute_silent"
         assert d.signature == "systemctl:status:unit"
 
     def test_unknown_signature_asks_user(self, seeded_db):
-        from verb_unique.admin import decide
+        from system.admin import decide
         # Pick a binary not in seed (e.g. cowsay)
         mock_llm = lambda _p: '{"kind":"translated","argv":["cowsay","hello"]}'
         d = decide("fammi un cowsay", llm_call=mock_llm)
@@ -317,7 +317,7 @@ class TestAdminFlow:
         assert d.card_payload["argv_rendered"].startswith("cowsay")
 
     def test_user_approves_unknown_creates_graylist(self, seeded_db):
-        from verb_unique.admin import decide, apply_user_decision
+        from system.admin import decide, apply_user_decision
         from safety.storage import SafetyStore
         mock_llm = lambda _p: '{"kind":"translated","argv":["cowsay","hi"]}'
         d = decide("cowsay", llm_call=mock_llm)
@@ -333,7 +333,7 @@ class TestAdminFlow:
         store.close()
 
     def test_user_blocks_forever_creates_blacklist(self, seeded_db):
-        from verb_unique.admin import decide, apply_user_decision
+        from system.admin import decide, apply_user_decision
         from safety.storage import SafetyStore
         mock_llm = lambda _p: '{"kind":"translated","argv":["fortune"]}'
         d = decide("fortune", llm_call=mock_llm)
@@ -347,7 +347,7 @@ class TestAdminFlow:
         store.close()
 
     def test_user_reject_once_no_side_effect(self, seeded_db):
-        from verb_unique.admin import decide, apply_user_decision
+        from system.admin import decide, apply_user_decision
         from safety.storage import SafetyStore
         mock_llm = lambda _p: '{"kind":"translated","argv":["xeyes"]}'
         d = decide("xeyes", llm_call=mock_llm)
@@ -361,13 +361,13 @@ class TestAdminFlow:
         store.close()
 
     def test_llm_unknown_kind_rejects(self, seeded_db):
-        from verb_unique.admin import decide
+        from system.admin import decide
         mock_llm = lambda _p: '{"kind":"unknown","reason":"ambiguous"}'
         d = decide("non si capisce", llm_call=mock_llm)
         assert d.kind == "reject"
 
     def test_llm_impossible_kind_rejects(self, seeded_db):
-        from verb_unique.admin import decide
+        from system.admin import decide
         mock_llm = lambda _p: '{"kind":"impossible","reason":"ssh interactive"}'
         d = decide("aprimi una sessione ssh", llm_call=mock_llm)
         assert d.kind == "reject"
@@ -377,7 +377,7 @@ class TestAdminFlow:
 
 class TestSudoerExecution:
     def test_execute_simple_command(self, seeded_db):
-        from verb_unique.sudoer import execute
+        from system.sudoer import execute
         # `true` exits 0; we're testing the spawn + audit path.
         res = execute(argv=["true"], reversibility="reversible")
         assert res.status == "executed"
@@ -385,7 +385,7 @@ class TestSudoerExecution:
         assert res.audit["signature"] == "true:*:*"
 
     def test_revalidation_blocks_at_fire(self, seeded_db):
-        from verb_unique.sudoer import execute
+        from system.sudoer import execute
         from safety.storage import SafetyStore
         # Add a runtime blacklist entry that didn't exist when admin
         # validated.
@@ -401,13 +401,13 @@ class TestSudoerExecution:
         assert "regola che lo blocca" in res.notify_user
 
     def test_forbidden_argv_blocked_at_fire(self, seeded_db):
-        from verb_unique.sudoer import execute
+        from system.sudoer import execute
         res = execute(argv=["rm", "-rf", "/"], reversibility="irreversible")
         assert res.status == "blocked_at_fire"
         assert "Law 1" in res.audit.get("block_reason", "")
 
     def test_sanity_check_urgent_blocks(self, seeded_db):
-        from verb_unique.sudoer import execute
+        from system.sudoer import execute
 
         def mock_sanity(prompt, fmt):
             return '{"smell":"urgent_review","reason":"disco al 95%"}'
@@ -422,7 +422,7 @@ class TestSudoerExecution:
         assert "disco al 95%" in (res.notify_user or "")
 
     def test_sanity_check_ok_lets_pass(self, seeded_db):
-        from verb_unique.sudoer import execute
+        from system.sudoer import execute
 
         def mock_sanity(prompt, fmt):
             return '{"smell":"ok"}'
@@ -442,8 +442,8 @@ class TestSudoerExecution:
 class TestAdminToSudoerChain:
     def test_whitelist_silent_chain(self, seeded_db):
         """Whitelist hit: admin returns execute_silent, sudoer runs the cmd."""
-        from verb_unique.admin import decide
-        from verb_unique.sudoer import execute
+        from system.admin import decide
+        from system.sudoer import execute
         # `date` is in seed whitelist (date:*:*).
         mock_llm = lambda _p: '{"kind":"translated","argv":["date"]}'
         d = decide("che ora e'?", llm_call=mock_llm)
@@ -454,8 +454,8 @@ class TestAdminToSudoerChain:
 
     def test_user_approval_then_chain_run(self, seeded_db):
         """Unknown signature: admin asks; user approves; sudoer runs."""
-        from verb_unique.admin import decide, apply_user_decision
-        from verb_unique.sudoer import execute
+        from system.admin import decide, apply_user_decision
+        from system.sudoer import execute
         mock_llm = lambda _p: '{"kind":"translated","argv":["echo","hello"]}'
         d = decide("dimmi ciao", llm_call=mock_llm)
         # echo isn't in seed → ask_user

@@ -2,7 +2,12 @@
 id: 0132
 title: Plugin esterni per backend `(object, provider)` — manifest + trust gate
 date: 2026-05-14
-status: accepted
+status: deprecated
+deprecated_date: 2026-05-24
+superseded_by:
+  - 0123  # skill bundle import (extension canale unico)
+  - 0136  # provider qualifier (suffisso `_<provider>` distingue dal canonical)
+  - 0160  # locale-aware + enable/disable skill (governance estensione)
 area: runtime | backends | plugins
 related:
   - 0078  # HTTP API + dispatcher canonical
@@ -13,6 +18,18 @@ related:
 complements:
   - 0130
 ---
+
+> **DEPRECATED 2026-05-24.** Lo stesso effetto (estendere il catalog
+> con backend custom per `(object, provider)`) si ottiene importando
+> una **skill** che dichiara il provider qualifier (ADR 0136). La skill
+> registra direttamente executor `<verb>_<object>_<provider>` firmati
+> Ed25519 + admission 7-layer (ADR 0159), senza un canale parallelo di
+> discovery. Per sostituire il builtin canonical e' disponibile l'env
+> `METNOS_HIDE_EXECUTORS=<canonical_name>` (ADR 0123 ext, 24/5/2026).
+> Il modulo `runtime/plugin_loader.py` (scaffolding mai wired) e'
+> rimosso. La directory `~/.local/share/metnos/plugins/` resta
+> inutilizzata: nessuno scan attivo.
+
 
 ## Context
 

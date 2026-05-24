@@ -87,6 +87,15 @@ li { margin-bottom: 6px; }
     border-radius:12px; background: var(--sage); color:white; font-weight:600;
     letter-spacing:.3px; margin-bottom: 8px;
 }
+.scene .tag.tested {
+    background: #dc3545; color: #fff; margin-left: 6px;
+}
+.scene .tag.verified {
+    background: #198754; color: #fff; margin-left: 6px;
+}
+.scene .tag.aspirational {
+    background: #6c757d; color: #fff; margin-left: 6px;
+}
 .verified-badge {
     display: inline-block; width: 56px; height: 56px;
     margin-left: 10px; vertical-align: middle;
@@ -397,7 +406,7 @@ unpredictable behaviour inside the system. Not done.
 deterministic translator that reads it, produces one or more Metnos
 executor folders (with all the checks of the case: vocabulary, sandbox,
 signature, manifest), and installs them in a separate watched zone
-(<code>_imports</code>). The skill becomes a first-class tool of the
+(<code>skills</code>, ADR 0160). The skill becomes a first-class tool of the
 system, indistinguishable from a handwritten one once the five admission
 checks pass. Required credentials (API key, OAuth token) are asked on
 first invocation through a dialog window, encrypted into a local vault,

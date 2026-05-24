@@ -10,7 +10,7 @@ Due livelli di difesa, testati qui:
      shell-intent injection di admin (il match naive `"ferma"` matchava
      `con-ferma`).
 
-  2. **Admin catalog-name guard** (`runtime/verb_unique/admin.py`):
+  2. **Admin catalog-name guard** (`runtime/system/admin.py`):
      se `argv[0]` (saltando wrapper sudo) e' un executor del catalog,
      admin emette decision="reject" con messaggio chiaro PRIMA di
      emettere la carta vaglio o spawnare sudoer.
@@ -132,7 +132,7 @@ class TestAdminCatalogGuard:
 
     def test_reject_get_now_as_command(self):
         """Bug 1f82a766: PLANNER ha invocato admin(command_proposed='get_now')."""
-        from verb_unique.admin import invoke
+        from system.admin import invoke
         res = invoke(
             intent="ottenere la data corrente",
             command_proposed="get_now",
@@ -151,7 +151,7 @@ class TestAdminCatalogGuard:
     def test_reject_set_events_as_command(self):
         # Test name unchanged for git diff readability; post ADR 0128
         # l'executor canonical e' `create_events` (set_events rinominato).
-        from verb_unique.admin import invoke
+        from system.admin import invoke
         res = invoke(
             intent="creare un evento",
             command_proposed="create_events arg1 arg2",
@@ -162,7 +162,7 @@ class TestAdminCatalogGuard:
 
     def test_reject_executor_under_sudo_wrapper(self):
         """sudo get_now → ancora reject (skip wrapper, vede executor name)."""
-        from verb_unique.admin import invoke
+        from system.admin import invoke
         res = invoke(
             intent="forzare con sudo",
             command_proposed="sudo get_now",
@@ -172,7 +172,7 @@ class TestAdminCatalogGuard:
         assert res["audit"]["catalog_name"] == "get_now"
 
     def test_reject_under_sudo_S_flag(self):
-        from verb_unique.admin import invoke
+        from system.admin import invoke
         res = invoke(
             intent="forzare con sudo -S",
             command_proposed="sudo -S get_now",
@@ -184,7 +184,7 @@ class TestAdminCatalogGuard:
     def test_legitimate_mount_still_works(self):
         """`admin(command_proposed="mount -t cifs ...")` → NON e' un nome
         executor → continua il flow normale (approval card o execute_silent)."""
-        from verb_unique.admin import invoke
+        from system.admin import invoke
         res = invoke(
             intent="montare share NAS",
             command_proposed="sudo mount -t cifs //host/share /mnt/nas -o credentials=${METNOS_CIFS_CREDS},uid=1000",
@@ -204,19 +204,19 @@ class TestAdminCatalogGuard:
         """`argv[0]=admin` non innesca il guard (admin e' verb_unique builtin,
         non un executor "normale" nel senso del guard). Il gate sintattico
         lo gestisce separatamente."""
-        from verb_unique.admin import _executor_name_in_argv
+        from system.admin import _executor_name_in_argv
         assert _executor_name_in_argv(["admin"]) is None
         assert _executor_name_in_argv(["sudoer"]) is None
 
     def test_helper_handles_empty_argv(self):
-        from verb_unique.admin import _executor_name_in_argv
+        from system.admin import _executor_name_in_argv
         assert _executor_name_in_argv([]) is None
         assert _executor_name_in_argv([""]) is None
 
     def test_helper_handles_absolute_path(self):
         """Path assoluti (es. /bin/mount) NON triggerano il guard:
         sono comandi shell con path letterale, non nomi di executor."""
-        from verb_unique.admin import _executor_name_in_argv
+        from system.admin import _executor_name_in_argv
         # `/bin/mount` finisce in `mount` come basename: mount non e'
         # un executor del catalog → None.
         assert _executor_name_in_argv(["/bin/mount", "-t", "cifs"]) is None
@@ -224,6 +224,6 @@ class TestAdminCatalogGuard:
     def test_helper_strips_path_to_basename_for_catalog_match(self):
         """Path che basename'a in nome executor del catalog → guard scatta.
         Defesa contro tentativi di bypass tipo "/usr/bin/get_now"."""
-        from verb_unique.admin import _executor_name_in_argv
+        from system.admin import _executor_name_in_argv
         assert _executor_name_in_argv(["/usr/bin/get_now"]) == "get_now"
         assert _executor_name_in_argv(["./get_now"]) == "get_now"

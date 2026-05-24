@@ -120,7 +120,7 @@ def test_seed_lookup_mount_cifs_is_graylist(seeded_db):
 # ── 3. admin.decide → ask_user con carta vaglio ──────────────────────
 
 def test_admin_decide_mount_cifs_emits_approval_card(seeded_db):
-    from verb_unique.admin import decide
+    from system.admin import decide
 
     mock_argv = [
         "sudo", "mount", "-t", "cifs",
@@ -159,7 +159,7 @@ def test_admin_decide_mount_cifs_emits_approval_card(seeded_db):
 # ── 4. sudoer placeholder substitution ───────────────────────────────
 
 def test_sudoer_substitutes_cifs_placeholder(seeded_db, isolated_creds):
-    from verb_unique import sudoer
+    from system import sudoer
 
     h = isolated_creds
     h.store_cifs_credentials(
@@ -229,7 +229,7 @@ def test_sudoer_missing_cifs_credentials_returns_error(seeded_db, isolated_creds
     """Se il placeholder e' presente ma le credenziali non sono in store,
     sudoer ritorna error con stderr informativo (non lancia subprocess).
     """
-    from verb_unique import sudoer
+    from system import sudoer
 
     argv = [
         "mount", "-t", "cifs",
@@ -248,8 +248,8 @@ def test_sudoer_missing_cifs_credentials_returns_error(seeded_db, isolated_creds
 # ── 5. flow end-to-end mocked: admin → user approve → sudoer execute ──
 
 def test_end_to_end_mount_cifs_chain(seeded_db, isolated_creds):
-    from verb_unique.admin import decide, apply_user_decision
-    from verb_unique import sudoer
+    from system.admin import decide, apply_user_decision
+    from system import sudoer
 
     # Pre-seed delle credenziali (in produzione lo fa una UI separata).
     isolated_creds.store_cifs_credentials(

@@ -64,7 +64,7 @@ class ExecResult:
 def _re_validate(argv: list[str], signature: Signature) -> Optional[str]:
     """Re-run forbidden + blacklist checks. Return reason if blocked, else None."""
     # forbidden raw
-    from verb_unique.admin import _check_forbidden_argv  # reuse, no duplication
+    from system.admin import _check_forbidden_argv  # reuse, no duplication
     forbidden, forbidden_reason = _check_forbidden_argv(argv)
     if forbidden:
         return f"forbidden at fire: {forbidden_reason}"

@@ -392,7 +392,7 @@ SAFE_VERBS = frozenset({
 # uno di questi verbi. Reservato a builtin runtime e a `consult_frontier`
 # (l'unico executor utente-domain che usa `consult`).
 #
-# - admin   -> verb-unique builtin (verb_unique/admin.py)
+# - admin   -> verb-unique builtin (system/admin.py)
 # - undo    -> handcrafted executor `undo_last_turn`
 # - synthesize -> synth runtime (synt_multistage), nessun executor utente
 # - consult -> handcrafted executor `consult_frontier` (delega a frontier
@@ -668,34 +668,55 @@ _IMPORTED_BINDINGS_CACHE: dict[str, object] = {
 
 
 def _imports_root() -> "Path":
-    """Path della root degli imported skills (Path lazy)."""
+    """Path della root canonica degli imported skills (Path lazy).
+
+    ADR 0160: new name `skills/`. Back-compat reader: `_imports_roots()`
+    ritorna entrambi i path per scan. Manteniamo `_imports_root()` per
+    callsite legacy (es. test); il primo path esistente vince.
+    """
     import config as _C  # §7.11
-    return _C.PATH_USER_DATA / "executors" / "_imports"
+    if _C.PATH_SKILLS_USER.exists():
+        return _C.PATH_SKILLS_USER
+    return _C.PATH_SKILLS_USER_LEGACY
 
 
-def _imports_signature(root) -> tuple:
-    """Signature dell'_imports dir per invalidazione cache. Max mtime
-    delle subdir + count = sufficiente per detect aggiunte/rimozioni."""
-    if not root.exists():
-        return (0.0, 0)
+def _imports_roots() -> list:
+    """Lista dei root attivi (skills/ + legacy _imports/). ADR 0160."""
+    from skills_paths import skill_roots as _sr
+    return _sr(include_builtin=False)
+
+
+def _imports_signature(root_or_roots) -> tuple:
+    """Signature delle dir imports per invalidazione cache.
+
+    Accetta sia un singolo `Path` (back-compat) sia una `list[Path]`
+    (multi-root post ADR 0160). Max mtime delle subdir + count totale.
+    """
+    if isinstance(root_or_roots, list):
+        roots = root_or_roots
+    else:
+        roots = [root_or_roots]
     max_mt = 0.0
     n = 0
-    try:
-        for skill in root.iterdir():
-            if not skill.is_dir():
-                continue
-            for ex in skill.iterdir():
-                if not ex.is_dir() or not (ex / "manifest.toml").is_file():
+    for root in roots:
+        if not root or not root.exists():
+            continue
+        try:
+            for skill in root.iterdir():
+                if not skill.is_dir():
                     continue
-                n += 1
-                try:
-                    mt = ex.stat().st_mtime
-                    if mt > max_mt:
-                        max_mt = mt
-                except OSError:
-                    pass
-    except OSError:
-        pass
+                for ex in skill.iterdir():
+                    if not ex.is_dir() or not (ex / "manifest.toml").is_file():
+                        continue
+                    n += 1
+                    try:
+                        mt = ex.stat().st_mtime
+                        if mt > max_mt:
+                            max_mt = mt
+                    except OSError:
+                        pass
+        except OSError:
+            pass
     return (max_mt, n)
 
 
@@ -723,20 +744,25 @@ def imported_bindings_index() -> dict[tuple[str, str], list[str]]:
               Vuoto se `_imports/` non esiste o nessun manifest valido.
     """
     import tomllib
-    root = _imports_root()
-    sig = _imports_signature(root)
+    roots = _imports_roots()
+    sig = _imports_signature(roots)
     cached = _IMPORTED_BINDINGS_CACHE.get("index")
     if cached is not None and cached[0] == sig:
         return cached[1]
 
     index: dict[tuple[str, str], list[str]] = {}
-    if not root.exists():
+    if not roots:
         _IMPORTED_BINDINGS_CACHE["index"] = (sig, index)
         return index
 
-    for skill_dir in sorted(root.iterdir()):
-        if not skill_dir.is_dir():
+    skill_dirs = []
+    for r in roots:
+        if not r.exists():
             continue
+        for sd in sorted(r.iterdir()):
+            if sd.is_dir():
+                skill_dirs.append(sd)
+    for skill_dir in skill_dirs:
         for ex_dir in sorted(skill_dir.iterdir()):
             if not ex_dir.is_dir():
                 continue

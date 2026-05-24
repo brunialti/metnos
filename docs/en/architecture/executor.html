@@ -485,14 +485,14 @@ where on disk they live, and where the ideas behind them come from.
   <div>
     <h4 style="color:#9333ea;">Imported from an external skill</h4>
     <p style="color:#444;">A public skill (e.g. from <code>agentskills.io</code>) describes in plain English how to use a third-party service. A deterministic translator turns it into one or more Metnos executors.</p>
-    <p><strong>Folder</strong>: <code>~/.local/share/metnos/executors/_imports/</code></p>
+    <p><strong>Folder</strong>: <code>~/.local/share/metnos/executors/skills/</code> (legacy <code>_imports/</code> read in back-compat, ADR 0160).</p>
     <p><strong>Examples</strong>: <code>read_events</code>, <code>set_events</code>, <code>delete_events</code> (from a calendar skill).</p>
     <p style="color:#64748B;font-style:italic;">Same checks as a generated one: no special treatment for coming from outside.</p>
   </div>
   <div>
     <h4 style="color:#16a34a;">Builtin</h4>
     <p style="color:#444;">Internal runtime services. They have no folder of their own; they live within Metnos.</p>
-    <p><strong>Folder</strong>: <code>runtime/verb_unique/</code></p>
+    <p><strong>Folder</strong>: <code>runtime/system/</code> (formerly <code>verb_unique/</code>, renamed by ADR 0160).</p>
     <p><strong>Examples</strong>: <code>undo_last_turn</code>, <code>scheduler</code>, <code>admin</code>.</p>
     <p style="color:#64748B;font-style:italic;">System services, not regular tools.</p>
   </div>

@@ -90,7 +90,7 @@ def test_hardcoded_metnos_paths_audit():
     #   23/5/2026 13:10  -12 (mail_client/credentials_migrate + skill_admission/credentials/audit
     #                          + github_watch_state/issue_qa + jobs/i18n+sandbox)
     #   23/5/2026 13:20  -17 (prefilter_stats/prefilter/alignment_engine + agent_runtime 3×
-    #                          + scheduler_v2/migrate + admin/i18n+manifest_refactor + verb_unique/admin
+    #                          + scheduler_v2/migrate + admin/i18n+manifest_refactor + system/admin
     #                          + smoke_imports + reverse_patterns_patch + scheduler_v2/storage
     #                          + 3 bench scripts (thinking_budget/prefilter_strategies/latency_breakdown))
     WATERMARK = 0  # §7.11 fully resolved 23/5/2026 13:20

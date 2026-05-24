@@ -761,8 +761,8 @@ def _load_existing_names(executors_dir: Path | None = None) -> set:
     """Nomi degli executor gia' presenti in catalogo (handcrafted + synth).
     Usato per disambiguare imported con suffix `_<binding>` (§2.2 famiglia
     mezzo astratto: il binding qualifica il dominio remoto). Esclude
-    `_imports/` dal scan synth: gli imported di una run precedente non
-    devono bloccare il re-import."""
+    `skills/` (ADR 0160) e legacy `_imports/` (ADR 0123) dal scan synth: gli
+    imported di una run precedente non devono bloccare il re-import."""
     if executors_dir is not None:
         return _scan_executor_names(executors_dir)
     return _scan_executor_names(_HANDCRAFTED_DIR) | _scan_executor_names(_SYNTH_DIR)

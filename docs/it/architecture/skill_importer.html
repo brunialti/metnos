@@ -216,7 +216,7 @@ trovi in un executor scritto a mano: il file Python con la funzione
 <code>invoke</code>, il manifest TOML, la firma, il profilo del recinto.
 </p>
 
-<pre>~/.local/share/metnos/executors/_imports/google-workspace/
+<pre>~/.local/share/metnos/executors/skills/google-workspace/
   read_events/
     read_events.py
     manifest.toml
@@ -230,8 +230,10 @@ trovi in un executor scritto a mano: il file Python con la funzione
 </pre>
 
 <p>
-La cartella di destinazione &egrave; <code>_imports/</code>, sotto la
-cartella degli executor sintetizzati. Questo separa visivamente quanto
+La cartella di destinazione &egrave; <code>skills/</code> (ADR 0160; il
+nome precedente <code>_imports/</code> resta letto in modalit&agrave; back-
+compat), sotto la cartella degli executor sintetizzati. Questo separa
+visivamente quanto
 viene da fuori da quanto Metnos ha scritto da solo, e da quanto &egrave;
 stato scritto a mano. Tutti e tre i tipi finiscono per&ograve; nello
 stesso catalogo dell'agente, e tutti passano dagli stessi controlli al
@@ -344,7 +346,7 @@ Roberto chiede: «importa la skill di Google Workspace».
   <li><strong>Scaricamento</strong>: la skill &egrave; gi&agrave; nella cache locale (ultimo aggiornamento tre giorni fa); nessun traffico di rete.</li>
   <li><strong>Lettura</strong>: il parser trova 24 sotto-comandi distribuiti su Gmail, Calendar, Drive, Sheets, Docs, Contatti.</li>
   <li><strong>Traduzione</strong>: 21 sotto-comandi si traducono pulitamente in nomi canonici; tre vengono rifiutati (<code>gmail reply</code> collide con <code>send_messages</code>; <code>gmail labels</code> non ha qualifier canonico; <code>sheets append</code> collide con la sua <em>update</em>).</li>
-  <li><strong>Generazione</strong>: 21 cartelle di executor, ciascuna con file Python e manifest, vengono scritte sotto <code>_imports/google-workspace/</code>.</li>
+  <li><strong>Generazione</strong>: 21 cartelle di executor, ciascuna con file Python e manifest, vengono scritte sotto <code>skills/google-workspace/</code> (ADR 0160).</li>
   <li><strong>Controlli</strong>: tutti i 21 passano i cinque cancelli. Per ognuno viene aggiunta un'asserzione di instradamento alla batteria di test.</li>
   <li><strong>Firma</strong>: i 21 manifest sono firmati Ed25519.</li>
   <li><strong>Pronto</strong>: Roberto chiede in chat «che appuntamenti ho domani?». Il pianificatore sceglie <code>read_events</code> (uno dei 21), che risponde <em>servono credenziali</em> e apre il modulo di richiesta. Roberto fornisce il client secret e l'URL di redirezione una sola volta; le invocazioni successive funzionano in silenzio.</li>

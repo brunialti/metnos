@@ -176,13 +176,13 @@ def _is_synth(name: str) -> bool:
 
 
 def _is_imported(name: str) -> bool:
-    """True se `<name>` esiste sotto `_imports/<skill>/<name>/manifest.toml`."""
-    base = Path(_C.PATH_USER_DATA) / "executors" / "_imports"
-    if not base.is_dir():
-        return False
-    for skill_dir in base.iterdir():
-        if (skill_dir / name / "manifest.toml").is_file():
-            return True
+    """True se `<name>` esiste sotto `skills/<skill>/<name>/manifest.toml`
+    (ADR 0160) o legacy `_imports/<skill>/<name>/manifest.toml` (ADR 0123)."""
+    from skills_paths import skill_roots as _sr
+    for base in _sr():
+        for skill_dir in base.iterdir():
+            if (skill_dir / name / "manifest.toml").is_file():
+                return True
     return False
 
 
@@ -466,7 +466,8 @@ def _audit_log_path() -> Path:
 
 
 def _existing_bindings() -> set:
-    """Scan `_imports/` on-disk per binding ATTUALMENTE registrati.
+    """Scan `skills/` + legacy `_imports/` on-disk per binding ATTUALMENTE
+    registrati (ADR 0160 rename, ADR 0123 originario).
 
     Single source of truth = lo stato fisico del catalog, NON l'audit
     storico (che mantiene record append-only anche dopo uninstall). Cosi'
@@ -475,10 +476,8 @@ def _existing_bindings() -> set:
     Razionale §7.3: l'invariante "binding unico cross-skill" e' uno
     stato di sistema corrente, non un fatto storico permanente.
     """
-    base = _C.PATH_USER_DATA / "executors" / "_imports"
-    if not base.is_dir():
-        return set()
-    return {p.name for p in base.iterdir() if p.is_dir()}
+    from skills_paths import existing_skill_names as _esn
+    return _esn()
 
 
 def _binding_uniqueness_check(parsed_skill, existing) -> tuple[bool, str]:

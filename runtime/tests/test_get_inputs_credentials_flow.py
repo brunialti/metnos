@@ -52,7 +52,7 @@ def test_admin_needs_inputs_returns_decision_and_payload(isolated_dirs):
     """ADR 0091: admin con placeholder + dominio NON salvato →
     decision='needs_inputs' con payload strutturato (title/description/
     dialog/on_complete)."""
-    from verb_unique import admin
+    from system import admin
     res = admin.invoke(
         intent="mount cifs share",
         command_proposed=(

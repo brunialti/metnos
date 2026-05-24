@@ -67,13 +67,17 @@ def _seed_imported_skill(root: Path, skill: str, name: str, *, verb_object: str 
 
 @pytest.fixture
 def isolated_imports(tmp_path, monkeypatch):
-    """Redirige `_imports_root()` di vocab.py a una tmp dir vuota.
-    Reset cache imported_bindings_index per ogni test."""
+    """Redirige `_imports_roots()` di vocab.py a una tmp dir vuota
+    (ADR 0160: multi-root scan). Reset cache imported_bindings_index per
+    ogni test."""
     import vocab
-    # Override l'helper _imports_root() (Path Home-based) con tmp_path.
+    # Override l'helper multi-root con tmp_path (singolo root, comportamento
+    # legacy ma compatibile con la nuova signature list[Path]).
     fake_root = tmp_path / "executors"
     fake_root.mkdir(parents=True, exist_ok=True)
-    monkeypatch.setattr(vocab, "_imports_root", lambda: fake_root / "_imports")
+    fake_imports = fake_root / "_imports"
+    monkeypatch.setattr(vocab, "_imports_root", lambda: fake_imports)
+    monkeypatch.setattr(vocab, "_imports_roots", lambda: [fake_imports])
     # Reset cache (le altre suite hanno gia' un index in memoria).
     vocab.invalidate_imported_bindings_cache()
     yield fake_root

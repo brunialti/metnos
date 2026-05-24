@@ -30,12 +30,12 @@ import config as _C  # §7.11 — rispetta METNOS_USER_DATA
 
 
 def _count_distinct_skills() -> int:
-    """Conta skill installate distinte (NON executor count)."""
-    imports_root = _C.PATH_USER_DATA / "executors" / "_imports"
-    if not imports_root.is_dir():
-        return 0
-    return sum(1 for p in imports_root.iterdir()
-                if p.is_dir() and not p.name.startswith("."))
+    """Conta skill installate distinte (NON executor count).
+
+    ADR 0160: scan `skills/` (new) + `_imports/` (legacy back-compat).
+    """
+    from skills_paths import existing_skill_names as _esn
+    return len(_esn())
 
 
 def _count_guest_users() -> int:

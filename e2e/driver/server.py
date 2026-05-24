@@ -129,7 +129,8 @@ def _seed_realistic_into(user_data: Path, user_state: Path,
         "telos_proposals.jsonl", "turn_feedback.jsonl",
         "executor_aliases.json", "rejected_patterns.jsonl",
         "introvertiva", "scratchpad.db", "multi_tool_paths.sqlite",
-        "executors/_imports",  # skill imports
+        "executors/skills",   # skill imports (ADR 0160 canonical)
+        "executors/_imports", # skill imports legacy back-compat
     ]
     for name in items_data:
         src = _LIVE_USER_DATA / name

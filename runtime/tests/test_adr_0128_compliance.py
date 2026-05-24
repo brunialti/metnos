@@ -21,7 +21,18 @@ from pathlib import Path
 import pytest
 
 
-IMPORTS_ROOT = Path.home() / ".local/share/metnos/executors/_imports/google-workspace"
+def _resolve_imports_root() -> Path:
+    """Dual-path resolution (ADR 0160): preferisci `skills/` (new), fallback
+    su `_imports/` legacy se installazione precedente."""
+    base = Path.home() / ".local/share/metnos/executors"
+    new_p = base / "skills" / "google-workspace"
+    legacy = base / "_imports" / "google-workspace"
+    if new_p.is_dir():
+        return new_p
+    return legacy
+
+
+IMPORTS_ROOT = _resolve_imports_root()
 
 # Tabella di rinominazione (old, new) per asserire la fine del drift.
 # Eccezione: `set_events → create_events` (14/5/2026) e' stato promosso a

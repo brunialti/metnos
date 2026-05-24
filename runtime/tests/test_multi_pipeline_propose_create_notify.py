@@ -259,7 +259,7 @@ def test_find_messages_gws_affinity_does_not_match_email_noun():
     import tomllib
     import pytest
     manifest_path = (
-        Path.home() / ".local/share/metnos/executors/_imports"
+        Path.home() / ".local/share/metnos/executors/skills"
         / "google-workspace/find_messages_google_workspace/manifest.toml"
     )
     if not manifest_path.exists():

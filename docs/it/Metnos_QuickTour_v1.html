@@ -87,6 +87,15 @@ li { margin-bottom: 6px; }
     border-radius:12px; background: var(--sage); color:white; font-weight:600;
     letter-spacing:.3px; margin-bottom: 8px;
 }
+.scene .tag.tested {
+    background: #dc3545; color: #fff; margin-left: 6px;
+}
+.scene .tag.verified {
+    background: #198754; color: #fff; margin-left: 6px;
+}
+.scene .tag.aspirational {
+    background: #6c757d; color: #fff; margin-left: 6px;
+}
 .verified-badge {
     display: inline-block; width: 56px; height: 56px;
     margin-left: 10px; vertical-align: middle;
@@ -400,7 +409,7 @@ imprevedibili dentro il sistema. Non si fa.
 deterministico che legge la skill, ne ricava una o pi&ugrave; cartelle di
 executor in formato Metnos (con tutti i controlli del caso: vocabolario,
 recinto, firma, manifest), e le installa in una zona separata
-(<code>_imports</code>) sotto sorveglianza. La skill diventa cos&igrave; un
+(<code>skills</code>, ADR 0160) sotto sorveglianza. La skill diventa cos&igrave; un
 attrezzo di prima classe del sistema, indistinguibile da uno scritto a
 mano una volta passati i cinque controlli di ammissione. Le credenziali
 necessarie (chiave API, token OAuth) vengono chieste alla prima invocazione
@@ -504,7 +513,7 @@ visiva sulle foto; la 10 mostra come uno stesso bot serve pi&ugrave;
 persone della famiglia mantenendo separate le memorie.</p>
 
 <div class="scene">
-<span class="tag">Scena 1</span>
+<span class="tag">Scena 1</span><span class="tag verified">VERIFIED 24/5/2026</span>
 <h3>&laquo;Riassumi le mail di oggi&raquo;</h3>
 <p>L'utente apre Telegram dal treno e scrive al bot di Metnos:</p>
 <div class="dialog">&laquo;Dammi il riassunto delle mail importanti di oggi.&raquo;</div>
@@ -515,18 +524,21 @@ domenica. Vuoi che provi a rispondere a una di queste?&raquo;</em></p>
 <div class="scene-meta">
 <span class="chip"><strong>capability:</strong> mail:read (sola lettura)</span>
 <span class="chip"><strong>autonomia:</strong> Supervised &rarr; allow_silent</span>
-<span class="chip"><strong>executor:</strong> mail_search &rarr; mail_summarise</span>
+<span class="chip"><strong>executor:</strong> find_messages &rarr; describe_entries</span>
 <span class="chip"><strong>latenza:</strong> ~3 s</span>
 </div>
 <p><strong>Nessuna conferma necessaria</strong>: una capability di sola
 lettura, senza effetti collaterali, passa la policy senza disturbare
-l'utente. Il mnestoma registra la catena (mail_search&rarr;mail_summarise);
+l'utente. Il vaglio applica lo <em>safe-verb shortcut</em>
+(ADR&nbsp;0107: <code>find</code>/<code>read</code>/<code>describe</code>
+non hanno effetti laterali e saltano il giudizio graduato). Il mnestoma
+registra la catena (<code>find_messages&rarr;describe_entries</code>);
 la prossima volta la stessa richiesta partir&agrave; con un passo di esplorazione
 in meno.</p>
 </div>
 
 <div class="scene">
-<span class="tag">Scena 2</span>
+<span class="tag">Scena 2</span><span class="tag verified">VERIFIED 24/5/2026</span>
 <h3>&laquo;Rispondi tu all'avvocato&raquo;</h3>
 <p>Sempre dal treno:</p>
 <div class="dialog">&laquo;Ok, rispondi tu all'avvocato, digli che invio il documento entro gioved&igrave;.&raquo;</div>
@@ -573,7 +585,7 @@ approvando, la brevit&agrave; &egrave; cura. Vedi
 </div>
 
 <div class="scene">
-<span class="tag">Scena 3</span><img src="/assets/verified-seal.svg" alt="Verificato live il 28/4/2026" title="Verificato live il 28/4/2026" class="verified-badge">
+<span class="tag">Scena 3</span><span class="tag verified">VERIFIED 24/5/2026</span><img src="/assets/verified-seal.svg" alt="Verificato live il 28/4/2026" title="Verificato live il 28/4/2026" class="verified-badge">
 <h3>&laquo;Ordina queste foto per anno e luogo&raquo;</h3>
 <p>L'utente ha qualche centinaio di foto sparse nella cartella
 <code>~/images</code>, scaricate da diverse fotocamere negli anni. Apre
@@ -698,7 +710,7 @@ filtro, cambia il template di destinazione, ma la macchina &egrave; la stessa.
 </div>
 
 <div class="scene">
-<span class="tag">Scena 4</span><img src="/assets/verified-seal.svg" alt="Verificato live il 28/4/2026" title="Verificato live il 28/4/2026" class="verified-badge">
+<span class="tag">Scena 4</span><span class="tag verified">VERIFIED 24/5/2026</span><img src="/assets/verified-seal.svg" alt="Verificato live il 28/4/2026" title="Verificato live il 28/4/2026" class="verified-badge">
 <h3>&laquo;Annulla l'ultima operazione&raquo;</h3>
 <p>Subito dopo aver visto le foto sistemate per anno e luogo, l'utente cambia idea:
 non e' la struttura che voleva. Da Telegram, una frase:</p>
@@ -733,7 +745,7 @@ in quei casi l'undo segnala &laquo;X non annullabili&raquo; e ribalta le altre.
 </div>
 
 <div class="scene">
-<span class="tag">Scena 5</span><img src="/assets/verified-seal.svg" alt="Verificato live il 4/5/2026" title="Verificato live il 4/5/2026 &mdash; sei capacit&agrave; attive: find_urls, read_urls_html, read_urls_pdf, login_session, send_messages multi-user, recurring_tasks" class="verified-badge">
+<span class="tag">Scena 5</span><span class="tag verified">VERIFIED 24/5/2026</span><img src="/assets/verified-seal.svg" alt="Verificato live il 4/5/2026" title="Verificato live il 4/5/2026 &mdash; sei capacit&agrave; attive: find_urls, read_urls_html, read_urls_pdf, login_session, send_messages multi-user, recurring_tasks" class="verified-badge">
 <h3>&laquo;Riassunto giornaliero portale scuola&raquo; &mdash; multi-user + login</h3>
 <p>L'utente vuole monitorare le novit&agrave; del registro elettronico della
 figlia. Il sito richiede login con username e password. La figlia (Lucia)
@@ -883,7 +895,7 @@ ricco e tocca capacit&agrave; appena entrate in produzione.
 </div>
 
 <div class="scene">
-<span class="tag">Scena 6</span><img src="/assets/verified-seal.svg" alt="Verificato live il 30/4/2026" title="Verificato live il 30/4/2026 &mdash; pipeline get_urls + describe_entries, ~30s wall" class="verified-badge">
+<span class="tag">Scena 6</span><span class="tag verified">VERIFIED 24/5/2026</span><img src="/assets/verified-seal.svg" alt="Verificato live il 30/4/2026" title="Verificato live il 30/4/2026 &mdash; pipeline get_urls + describe_entries, ~30s wall" class="verified-badge">
 <h3>&laquo;Scaricami questa pagina e dimmi cosa contiene&raquo;</h3>
 <p>L'utente sta valutando se vale la pena leggersi una pagina di
 documentazione lunga. Da Telegram, incolla l'URL e chiede un riassunto:</p>
@@ -981,7 +993,7 @@ forza sta nella catena, non in un tool monolitico.
 </div>
 
 <div class="scene">
-<span class="tag">Scena 7</span><img src="/assets/verified-seal.svg" alt="Verificato live il 28/4/2026" title="Verificato live il 28/4/2026 — sintesi end-to-end di compress_files_gz, 148 s wall, installato e applicato su /tmp/cfg.json" class="verified-badge">
+<span class="tag">Scena 7</span><span class="tag verified">VERIFIED 24/5/2026</span><img src="/assets/verified-seal.svg" alt="Verificato live il 28/4/2026" title="Verificato live il 28/4/2026 — sintesi end-to-end di compress_files_gz, 148 s wall, installato e applicato su /tmp/cfg.json" class="verified-badge">
 <h3>&laquo;Formattami questo JSON che incollo&raquo; &mdash; synt al volo</h3>
 <p>L'utente, dal terminale, sta esplorando una risposta API; incolla in
 chat di Metnos un JSON da 4 KB:</p>
@@ -1040,7 +1052,7 @@ per la cascata completa a cinque strategie.</p>
 </div>
 
 <div class="scene">
-<span class="tag">Scena 8</span><img src="/assets/verified-seal.svg" alt="Verificato live il 30/4/2026" title="Verificato live il 30/4/2026 &mdash; pipeline find+filter&times;3+describe, 64 file analizzati, 85 s wall" class="verified-badge">
+<span class="tag">Scena 8</span><span class="tag verified">VERIFIED 24/5/2026</span><img src="/assets/verified-seal.svg" alt="Verificato live il 30/4/2026" title="Verificato live il 30/4/2026 &mdash; pipeline find+filter&times;3+describe, 64 file analizzati, 85 s wall" class="verified-badge">
 <h3>&laquo;Quanti .py ho, raggruppali per dimensione&raquo;</h3>
 <p>Una richiesta concreta di amministrazione: contare e classificare i
 sorgenti Python di un modulo, con tre fasce di dimensione decise

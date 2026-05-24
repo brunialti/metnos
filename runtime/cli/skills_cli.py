@@ -46,12 +46,13 @@ def _user_data() -> Path:
 
 
 def _executors_base() -> Path:
-    """`<USER_DATA>/executors/_imports/`. Override solo via
-    METNOS_EXECUTORS_DIR esplicito (path completo)."""
+    """Path canonico WRITE delle skill imported (ADR 0160: `skills/`).
+    Override solo via METNOS_EXECUTORS_DIR esplicito (path completo).
+    Legacy `_imports/` viene letto dal loader ma non scritto."""
     override = os.environ.get("METNOS_EXECUTORS_DIR")
     if override:
         return Path(override)
-    return _user_data() / "executors" / "_imports"
+    return _user_data() / "executors" / "skills"
 
 
 def _skills_dir() -> Path:
@@ -438,35 +439,31 @@ def _append_audit(parsed, plans, report,
 
 
 def _cmd_list(args) -> int:
-    base = _executors_base()
-    if not base.exists():
+    """Elenca skill importate (ADR 0123) + builtin (ADR 0160).
+
+    Scan via `skill_registry` per leggere `lang/trust/auto_enable/enabled`
+    dalla SKILL.md + override state. Supporta filtro `--lang`.
+    """
+    import skill_registry as _sr
+    lang_filter = getattr(args, "lang", None)
+    skills = _sr.list_skills(lang=lang_filter)
+    if not skills:
         print("(no imported skills)")
         return 0
-    for skill_dir in sorted(base.iterdir()):
-        if not skill_dir.is_dir():
-            continue
-        executors = []
-        binding = ""
-        version = ""
-        for child in sorted(skill_dir.iterdir()):
-            if not child.is_dir():
-                continue
-            manifest = child / "manifest.toml"
-            if manifest.exists():
-                executors.append(child.name)
-                if not binding:
-                    text = manifest.read_text(errors="ignore")
-                    import re
-                    m = re.search(r'imported_from\s*=\s*"([^"]+)"', text)
-                    if m:
-                        binding = m.group(1).split("/")[-1]
-                    m = re.search(r'source_version\s*=\s*"([^"]+)"', text)
-                    if m:
-                        version = m.group(1)
-        print(f"- {skill_dir.name} (binding={binding} v{version}): {len(executors)} executors")
+    for s in skills:
+        en = "on" if s.enabled else "off"
+        flags = []
+        if s.is_builtin_repo:
+            flags.append("builtin")
+        if s.trust == "metnos-official":
+            flags.append("official")
+        flag_str = f" [{','.join(flags)}]" if flags else ""
+        print(f"- {s.name} (lang={s.lang} trust={s.trust} enabled={en}){flag_str}: "
+              f"{s.n_executors} executors")
         if args.verbose:
-            for e in executors:
-                print(f"    {e}")
+            for child in sorted(s.path.iterdir()):
+                if child.is_dir() and (child / "manifest.toml").is_file():
+                    print(f"    {child.name}")
     return 0
 
 
@@ -475,16 +472,29 @@ def _cmd_list(args) -> int:
 # ---------------------------------------------------------------------------
 
 
+def _resolve_existing_skill_dir(name: str) -> Path | None:
+    """Cerca `<name>` in `skills/` (new) e poi `_imports/` (legacy back-compat,
+    ADR 0160). Ritorna il primo path esistente, None se assente."""
+    new_p = _executors_base() / name
+    if new_p.exists():
+        return new_p
+    legacy = _user_data() / "executors" / "_imports" / name
+    if legacy.exists():
+        return legacy
+    return None
+
+
 def _cmd_uninstall(args) -> int:
-    """Rimuove SOLO gli executor importati (`_imports/<skill>/`).
+    """Rimuove SOLO gli executor importati (`skills/<skill>/` o legacy
+    `_imports/<skill>/`).
 
     NON tocca la source `skills/<skill>/` (contiene SKILL.md + credenziali
     + scripts user-provided). La source resta per permettere re-import.
     Per cancellare la source serve `--purge-source` esplicito.
     """
-    skill_dir = _executors_base() / args.skill
-    if not skill_dir.exists():
-        print(f"Not found: {skill_dir}", file=sys.stderr)
+    skill_dir = _resolve_existing_skill_dir(args.skill)
+    if skill_dir is None:
+        print(f"Not found: {args.skill}", file=sys.stderr)
         return 1
     n = sum(1 for _ in skill_dir.iterdir())
     shutil.rmtree(skill_dir)
@@ -508,9 +518,9 @@ def _cmd_uninstall(args) -> int:
 
 
 def _cmd_status(args) -> int:
-    skill_dir = _executors_base() / args.skill
-    if not skill_dir.exists():
-        print(f"Not found: {skill_dir}", file=sys.stderr)
+    skill_dir = _resolve_existing_skill_dir(args.skill)
+    if skill_dir is None:
+        print(f"Not found: {args.skill}", file=sys.stderr)
         return 1
     executors = []
     for child in sorted(skill_dir.iterdir()):
@@ -575,6 +585,51 @@ def _cmd_evaluate(args) -> int:
 
 
 # ---------------------------------------------------------------------------
+# Sub-commands enable / disable / info (ADR 0160)
+# ---------------------------------------------------------------------------
+
+
+def _cmd_enable(args) -> int:
+    import skill_registry as _sr
+    info = _sr.get_skill_info(args.skill)
+    if info is None:
+        print(f"Skill not found: {args.skill}", file=sys.stderr)
+        return 1
+    _sr.set_skill_enabled(args.skill, True)
+    print(f"Enabled: {args.skill}")
+    return 0
+
+
+def _cmd_disable(args) -> int:
+    import skill_registry as _sr
+    info = _sr.get_skill_info(args.skill)
+    if info is None:
+        print(f"Skill not found: {args.skill}", file=sys.stderr)
+        return 1
+    _sr.set_skill_enabled(args.skill, False)
+    print(f"Disabled: {args.skill}")
+    return 0
+
+
+def _cmd_info(args) -> int:
+    import skill_registry as _sr
+    info = _sr.get_skill_info(args.skill)
+    if info is None:
+        print(f"Skill not found: {args.skill}", file=sys.stderr)
+        return 1
+    print(f"name        : {info.name}")
+    print(f"path        : {info.path}")
+    print(f"lang        : {info.lang}")
+    print(f"trust       : {info.trust}")
+    print(f"auto_enable : {info.auto_enable}")
+    print(f"enabled     : {info.enabled}")
+    print(f"n_executors : {info.n_executors}")
+    print(f"is_builtin  : {info.is_builtin_repo}")
+    print(f"is_imported : {info.is_imported}")
+    return 0
+
+
+# ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
 
@@ -603,6 +658,8 @@ def main(argv=None) -> int:
 
     sp = sub.add_parser("list", help="Elenca skill importate")
     sp.add_argument("-v", "--verbose", action="store_true")
+    sp.add_argument("--lang", default=None,
+                    help="filtra per lang (ADR 0160). 'any' inclusa sempre.")
     sp.set_defaults(func=_cmd_list)
 
     sp = sub.add_parser("uninstall",
@@ -620,6 +677,20 @@ def main(argv=None) -> int:
     sp.add_argument("skill", help="skill name")
     sp.set_defaults(func=_cmd_evaluate)
 
+    # ADR 0160 — enable/disable/info
+    sp = sub.add_parser("enable", help="Abilita una skill (ADR 0160)")
+    sp.add_argument("skill", help="skill name")
+    sp.set_defaults(func=_cmd_enable)
+
+    sp = sub.add_parser("disable", help="Disabilita una skill (ADR 0160)")
+    sp.add_argument("skill", help="skill name")
+    sp.set_defaults(func=_cmd_disable)
+
+    sp = sub.add_parser("info", help="Mostra lang/trust/enabled/n_executors di una skill")
+    sp.add_argument("skill", help="skill name")
+    sp.set_defaults(func=_cmd_info)
+
+    # `list --lang it` aggiunto sul parser list gia' esistente.
     args = p.parse_args(argv)
     return args.func(args)
 

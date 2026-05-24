@@ -85,6 +85,12 @@ PATH_USER_CONFIG   = _env_path("METNOS_USER_CONFIG",
 
 # Synth executors (synth on-the-fly, ADR 0066)
 PATH_SYNTH_EXECUTORS = PATH_USER_DATA / "executors"
+# Skill imported (ADR 0123; ADR 0160 rename _imports/ → skills/).
+# Loader scansiona ENTRAMBI: i write nuovi vanno in PATH_SKILLS_USER (new),
+# le installazioni legacy in PATH_SKILLS_USER_LEGACY restano leggibili.
+PATH_SKILLS_USER         = PATH_USER_DATA / "executors" / "skills"
+PATH_SKILLS_USER_LEGACY  = PATH_USER_DATA / "executors" / "_imports"
+PATH_SKILLS_BUILTIN      = PATH_EXECUTORS / "skills"
 # Audit log dir (introvertiva, vaglio, synt; ADR 0067)
 PATH_AUDIT         = PATH_USER_DATA / "introvertiva"
 # History turns (TurnLog jsonl daily files)

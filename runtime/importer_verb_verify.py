@@ -192,25 +192,35 @@ def check_plan(plan: Any, *, domain: str = "", action: str = "",
 
 def audit_existing_imports(root: Path | None = None,
                            vocab_map: dict | None = None) -> list:
-    """Scan dei manifest importati in `~/.local/share/metnos/executors/_imports/`
-    e verifica per ognuno che il `name` del manifest matchi la cella
-    contestuale derivabile da `[provenance].source_subcommand`.
+    """Scan dei manifest importati in `<USER_DATA>/executors/skills/` (ADR 0160)
+    + legacy `<USER_DATA>/executors/_imports/` (ADR 0123) e verifica per ognuno
+    che il `name` del manifest matchi la cella contestuale derivabile da
+    `[provenance].source_subcommand`.
 
     Ritorna lista `[(executor_name, Verdict)]` ordinata per name.
 
     Determinismo §7.9: read-only sui manifest, lookup tabellare.
     """
     import tomllib
+    from skills_paths import skill_roots as _sr
 
     vm = vocab_map or _load_vocab_map()
-    base = root or (_C.PATH_USER_DATA / "executors" / "_imports")
-    if not base.is_dir():
+    if root is not None:
+        bases = [root]
+    else:
+        bases = _sr(include_builtin=False)
+    if not bases:
         return []
 
     out: list = []
-    for skill_dir in sorted(base.iterdir()):
-        if not skill_dir.is_dir():
+    skill_dirs = []
+    for base in bases:
+        if not base.is_dir():
             continue
+        for sd in sorted(base.iterdir()):
+            if sd.is_dir():
+                skill_dirs.append(sd)
+    for skill_dir in skill_dirs:
         for ex_dir in sorted(skill_dir.iterdir()):
             if not ex_dir.is_dir():
                 continue
