@@ -438,6 +438,44 @@ def handle_synth_request(args, *, user_query, progress=None, verbose=False, curr
         # cascata synt (fallback al comportamento legacy). Log a debug.
         log.debug("L7 admission skip per errore: %s", _e)
 
+    # ── Binding short-circuit (24/5/2026, ADR 0076 extension) ───────────
+    # Quando la query ha un `binding` (cifs/ssh/web) riconosciuto, esistono
+    # tool builtin nativi che lo coprono — synthesis e' improprio (verbi
+    # tipo "mount", "ssh", "login" sono fuori dal vocab chiuso §2.2 e
+    # verrebbero rejected). Ridirigi al builtin appropriato prima di
+    # iniziare la cascata.
+    #
+    # Razionale §7.3: il binding e' la single source of truth per la
+    # selezione del canale di esecuzione. La cascata synth e' riservata
+    # a intent realmente fuori dal sistema (es. nuova classe di problema).
+    try:
+        from agent_runtime import detect_binding as _detect_binding
+        _binding = _detect_binding(user_query or "")
+    except Exception:
+        _binding = "generic"
+    _BINDING_TO_BUILTIN = {
+        "cifs": "admin",         # mount via sudoer
+        "ssh":  "admin",          # comandi remoti via sudoer
+        "web":  "login_session",  # sessione autenticata HTTP/cookie
+    }
+    _redirect_tool = _BINDING_TO_BUILTIN.get(_binding)
+    if _redirect_tool:
+        return {
+            "ok": True,
+            "synthesized": False,
+            "redirected": True,
+            "binding_short_circuit": True,
+            "binding": _binding,
+            "name": _redirect_tool,
+            "expected_name": expected_name,
+            "message": (
+                f"La query ha binding={_binding}: il tool nativo "
+                f"`{_redirect_tool}` lo copre. NON DEVI sintetizzare un "
+                f"nuovo executor. CHIAMA `{_redirect_tool}` al prossimo "
+                f"step con gli args appropriati per il task originale."
+            ),
+        }
+
     PROPOSALS_DIR.mkdir(parents=True, exist_ok=True)
 
     # Synt usa SEMPRE middle+wise (non il tier del pianificatore). Vedi

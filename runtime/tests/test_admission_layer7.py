@@ -370,3 +370,129 @@ class TestBugLive11May:
         assert res.get("l7_admission") is True
         assert res.get("name") == "read_events"
         assert res.get("expected_name") == "read_appointments"
+
+
+# ── 5. Binding short-circuit (24/5/2026, post-L7) ────────────────────────
+
+class TestBindingShortCircuit:
+    """synth_request rifiuta synthesis quando la query ha binding coperto
+    da tool builtin nativi (cifs/ssh → admin; web → login_session).
+
+    Bug live 24/5/2026 (chat_quality «monta nella mia area personale lo share
+    \\\\<ip>\\Public\\media\\Immagini del server <ip>»): PLANNER ha proposto
+    `mount_cifs` via synt_request, rejected per vocab (mount fuori §2.2),
+    sistema dichiara «task non rientra nel vocabolario». Il PLANNER avrebbe
+    dovuto usare `admin` (mount via sudoer). Fix: short-circuit binding-aware
+    PRIMA della cascata synt — la presenza del binding e' la single source
+    of truth per la scelta del canale, sintetizzare e' improprio.
+    """
+
+    def _patch_empty_catalog(self, monkeypatch):
+        from loader import Catalog
+        empty_cat = Catalog()
+        monkeypatch.setattr("synth_request.load_catalog",
+                              lambda *a, **kw: empty_cat, raising=False)
+        import loader as _loader
+        monkeypatch.setattr(_loader, "load_catalog",
+                              lambda *a, **kw: empty_cat)
+
+    def test_cifs_query_redirects_to_admin(self, monkeypatch):
+        self._patch_empty_catalog(monkeypatch)
+        from synth_request import handle_synth_request
+        res = handle_synth_request(
+            {"expected_name": "mount_cifs",
+             "intent": "monta share CIFS"},
+            user_query="monta nella mia area lo share \\\\192.168.1.20\\Public",
+        )
+        assert res.get("ok") is True
+        assert res.get("binding_short_circuit") is True
+        assert res.get("binding") == "cifs"
+        assert res.get("name") == "admin"
+        assert res.get("synthesized") is False
+
+    def test_cifs_with_placeholder_host_still_redirects(self, monkeypatch):
+        """Query corpus con placeholder letterale `<ip>` deve comunque
+        essere ridirezionata via keyword binding (monta + share + \\\\...).
+        """
+        self._patch_empty_catalog(monkeypatch)
+        from synth_request import handle_synth_request
+        res = handle_synth_request(
+            {"expected_name": "mount_cifs", "intent": "monta share"},
+            user_query=("monta nella mia area personale lo share "
+                        "\\\\<ip>\\Public\\media\\Immagini del server <ip>"),
+        )
+        assert res.get("binding_short_circuit") is True
+        assert res.get("binding") == "cifs"
+        assert res.get("name") == "admin"
+
+    def test_web_query_redirects_to_login_session(self, monkeypatch):
+        self._patch_empty_catalog(monkeypatch)
+        from synth_request import handle_synth_request
+        res = handle_synth_request(
+            {"expected_name": "browse_portal", "intent": "naviga sito"},
+            user_query="fai login su https://portale.example.com",
+        )
+        assert res.get("binding_short_circuit") is True
+        assert res.get("binding") == "web"
+        assert res.get("name") == "login_session"
+
+    def test_ssh_query_redirects_to_admin(self, monkeypatch):
+        self._patch_empty_catalog(monkeypatch)
+        from synth_request import handle_synth_request
+        res = handle_synth_request(
+            {"expected_name": "ssh_remote_exec",
+             "intent": "esegui comando ssh"},
+            user_query="ssh user@10.0.0.5 systemctl status nginx",
+        )
+        assert res.get("binding_short_circuit") is True
+        assert res.get("binding") == "ssh"
+        assert res.get("name") == "admin"
+
+    def test_generic_query_falls_through_to_multistage(self, monkeypatch):
+        """Query senza binding (generic) non triggera il short-circuit;
+        la cascata synt parte normalmente."""
+        self._patch_empty_catalog(monkeypatch)
+        called = {"multistage": False}
+
+        def fake_multistage(intent, llm_m, llm_w, progress=None):
+            called["multistage"] = True
+            class FakeRun:
+                final_state = "abandoned"; name = "compute_lines"
+                abandon_reason = "stub"; stages = []; code_text = ""
+            return FakeRun()
+
+        monkeypatch.setattr("synth_request.multistage_run_full",
+                              fake_multistage)
+        from synth_request import handle_synth_request
+        res = handle_synth_request(
+            {"expected_name": "compute_lines", "intent": "conta righe"},
+            user_query="conta righe di codice nel progetto",
+        )
+        assert res.get("binding_short_circuit") is not True
+        assert called["multistage"] is True
+
+    def test_already_in_catalog_wins_over_binding_short_circuit(
+            self, monkeypatch):
+        """Boundary: se l'expected_name e' gia' in catalog, quel branch vince
+        prima del binding short-circuit (optimization piu' veloce)."""
+        from loader import Catalog, Executor
+        from pathlib import Path as _Path
+        cat = Catalog()
+        cat.executors["mount_cifs"] = Executor(
+            name="mount_cifs", version="0.0.0", description="",
+            affinity=[], args_schema={}, capabilities=[], tests=[],
+            code_path=None,
+            manifest_path=_Path("/tmp/stub/mount_cifs/manifest.toml"),
+            signed_by="(test)",
+        )
+        monkeypatch.setattr("synth_request.load_catalog",
+                              lambda *a, **kw: cat, raising=False)
+        import loader as _loader
+        monkeypatch.setattr(_loader, "load_catalog", lambda *a, **kw: cat)
+        from synth_request import handle_synth_request
+        res = handle_synth_request(
+            {"expected_name": "mount_cifs", "intent": "monta share"},
+            user_query="monta share \\\\host\\share",
+        )
+        assert res.get("already_in_catalog") is True
+        assert res.get("binding_short_circuit") is not True

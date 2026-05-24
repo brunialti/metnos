@@ -432,10 +432,12 @@ _BINDING_WEAK = (
 )
 
 
-def _detect_binding(query: str) -> str:
+def detect_binding(query: str) -> str:
     """Ritorna 'cifs' | 'ssh' | 'web' | 'generic' in base ad hint linguistici.
 
     Priorita' a discriminatori inequivocabili (regex) prima dei keyword.
+    Public: importato anche da `synth_request` per il binding short-circuit
+    (un binding coperto da tool builtin invalida la cascata synth).
     """
     qlc = query.lower()
     for binding, patterns in _BINDING_STRONG:
@@ -497,7 +499,7 @@ def extract_credentials(query: str) -> list[dict]:
     """
     if not isinstance(query, str) or not query.strip():
         return []
-    binding = _detect_binding(query)
+    binding = detect_binding(query)
     host, ctx = _detect_host(query, binding)
     domain_prefix = binding if binding != "generic" else "host"
     if host:
