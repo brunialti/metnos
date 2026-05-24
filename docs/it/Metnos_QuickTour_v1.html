@@ -1273,41 +1273,92 @@ editato per ultimo. Vedi
 </div>
 
 <div class="scene">
-<span class="tag">Scena 12 — caso d'uso completo</span>
+<span class="tag">Scena 12 — caso d'uso completo</span><span class="tag verified">VERIFIED 24/5/2026</span>
 <h2>Un budget mensile che si aggiorna da solo</h2>
 
-<p>
-&Egrave; il 24 maggio. Roberto chiede a Metnos: <em>«crea uno spreadsheet
-'Budget 2026-05' su Drive, aggiungi le intestazioni Data/Categoria/
-Importo/Note/Pagato, e popola con tutte le mail Migadu degli ultimi 30
-giorni che contengono fattura o invoice. Riassumi per categoria in un
-Google Doc, condividi tutto con Maria, e schedula un aggiornamento ogni
-mattina alle 8.»</em>
-</p>
+<p>&Egrave; il 24 maggio, una domenica mattina. Roberto si siede al tavolo
+con il caff&egrave; e apre Telegram. Vuole mettere insieme le bollette del
+mese in un foglio condiviso con Maria. Lo fa in cinque frasi.</p>
 
-<p>
-In otto turni di conversazione Metnos esegue <strong>otto verbi</strong>
-diversi (<code>create</code>, <code>write</code>, <code>find</code>,
-<code>classify</code>, <code>append</code>, <code>share</code>,
-<code>compute</code>, <code>read</code>) su <strong>quattro oggetti</strong>
-(<code>files</code>, <code>messages</code>, <code>contacts</code>,
-<code>tasks</code>) attraverso <strong>tre provider</strong>
-(<code>google_workspace</code>, <code>email_metnos</code>/Migadu IMAP,
-backend locale).
-</p>
+<p><strong>Primo turno.</strong></p>
+<div class="dialog">&laquo;Crea uno spreadsheet 'Budget 2026-05' su Drive con colonne Data, Categoria, Importo, Note, Pagato.&raquo;</div>
+<p>Metnos crea il foglio sul Drive personale di Roberto (il refresh
+token &egrave; il suo, nessuno service account intermedio) e scrive la
+prima riga. Risposta: <em>&laquo;Fatto. Foglio 'Budget 2026-05' creato,
+intestazioni in A1:E1. Vuoi popolarlo?&raquo;</em></p>
 
+<p><strong>Secondo turno.</strong></p>
+<div class="dialog">&laquo;S&igrave;, popolalo con tutte le mail Migadu degli ultimi 30 giorni che contengono 'fattura' o 'invoice'.&raquo;</div>
+<p>Metnos interroga la mailbox via IMAP cifrato di Migadu, raggruppa
+per mittente, scarica gli allegati PDF, esegue <code>pdftotext</code> sui
+nativi e <code>read_files_ocr</code> sulle scansioni, chiede a Gemma
+locale di estrarre vendor/importo/scadenza, e accoda una riga per
+bolletta. Risposta: <em>&laquo;3 bollette estratte: ENEL aprile
+&euro;213,47, AMA Ta.Ri. dicembre &euro;281,67, Plenitude maggio
+&euro;165,25. Aggiunte al foglio.&raquo;</em></p>
+
+<p><strong>Terzo turno.</strong></p>
+<div class="dialog">&laquo;Fammi anche un riassunto per categoria in un Google Doc.&raquo;</div>
+<p>Metnos somma per <em>energy</em>/<em>waste</em>/<em>telecom</em>,
+crea un Doc &laquo;Riepilogo Budget 2026-05&raquo;, ci scrive
+narrativamente i totali con il link al foglio. Risposta: <em>&laquo;Doc
+creato. Energia &euro;213,47, Rifiuti &euro;281,67, Telecom &euro;165,25.
+Totale &euro;660,39.&raquo;</em></p>
+
+<p><strong>Quarto turno</strong> &mdash; qui la policy alza una
+bandierina, perch&eacute; <code>share_files</code> su mail di un terzo
+&egrave; una capability outbound non reversibile.</p>
+<div class="dialog">&laquo;Condividi tutto con Maria.&raquo;</div>
+<p>Metnos cerca <em>Maria</em> nella rubrica Google e trova una sola
+voce (se ne trovasse pi&ugrave; di una, aprirebbe un dialogo
+<em>choice_with_preview</em>). Compone la richiesta di condivisione e
+manda la card di approvazione sul canale:</p>
+
+<div class="approval-card">
+<div class="line1">Posso condividere 2 file con Maria?</div>
+<div class="line2">a maria.rossi@example.com &middot; foglio 'Budget 2026-05' + doc 'Riepilogo' &middot; ruolo: <em>reader</em></div>
+<div class="line3">reversibile: s&igrave; (revoca ACL) &middot; classe: <code>files:share</code></div>
+<div class="btns">
+<button class="btn ok">&check; Approva</button>
+<button class="btn no">&times; Rifiuta</button>
+</div>
+</div>
+
+<p>Roberto tocca Approva. Due secondi: <em>&laquo;Condiviso. Maria
+ricever&agrave; una notifica Drive. Audit&nbsp;#1318.&raquo;</em></p>
+
+<p><strong>Quinto turno.</strong></p>
+<div class="dialog">&laquo;Aggiornami ogni mattina alle 8.&raquo;</div>
+<p>Metnos non esegue il flusso adesso: registra una riga in
+<code>scheduler_v2.sqlite</code> con trigger <code>daily@08:00</code> e
+callback &laquo;rilancia la stessa pipeline degli ultimi 4 turni&raquo;.
+Risposta: <em>&laquo;Programmato. Domani alle 8:00 ricostruisco il
+foglio con le mail nuove e ti mando l'audit.&raquo;</em></p>
+
+<div class="scene-meta">
+<span class="chip"><strong>capability:</strong> files:create + files:write + mail:read + files:share + scheduler:create</span>
+<span class="chip"><strong>autonomia:</strong> Supervised (share_files chiede approvazione)</span>
+<span class="chip"><strong>verbi:</strong> 8 (create/write/find/classify/append/share/compute/read)</span>
+<span class="chip"><strong>oggetti:</strong> 4 (files/messages/contacts/tasks)</span>
+<span class="chip"><strong>provider:</strong> 3 (google_workspace, email_metnos/Migadu, scheduler locale)</span>
+<span class="chip"><strong>latenza totale:</strong> 2-3 min (conversazione naturale, 5 turni)</span>
+</div>
+
+<details>
+<summary><strong>Dietro le quinte: i 9 comandi interni scatenati</strong></summary>
 <table>
-<tr><th>#</th><th>Comando interno</th><th>Effetto</th></tr>
-<tr><td>1</td><td><code>create_files_spreadsheet(title="Budget 2026-05")</code></td><td>nuovo Google Sheet vuoto, <em>spreadsheet_id</em> ritornato</td></tr>
+<tr><th>turno</th><th>#</th><th>comando interno</th><th>effetto</th></tr>
+<tr><td rowspan="2">1</td><td>1</td><td><code>create_files_spreadsheet(title="Budget 2026-05")</code></td><td>nuovo Sheet, <em>spreadsheet_id</em> ritornato</td></tr>
 <tr><td>2</td><td><code>write_files_spreadsheet(range="A1:E1", values=[["Data","Categoria","Importo","Note","Pagato"]])</code></td><td>intestazioni</td></tr>
-<tr><td>3</td><td><code>find_messages(time_window="last-30d", where_in=["*fattura*","*invoice*"])</code></td><td>cerca mail su Migadu IMAP</td></tr>
+<tr><td rowspan="3">2</td><td>3</td><td><code>find_messages(time_window="last-30d", where_in=["*fattura*","*invoice*"])</code></td><td>cerca mail su Migadu IMAP</td></tr>
 <tr><td>4</td><td><code>classify_entries(by="vendor")</code></td><td>raggruppa per mittente</td></tr>
-<tr><td>5</td><td><code>append_spreadsheet(values=[[date, vendor, amount, ...]])</code></td><td>una riga per fattura nel foglio</td></tr>
-<tr><td>6</td><td><code>compute_entries(group_by="Categoria", agg="sum:Importo")</code></td><td>totali per categoria</td></tr>
-<tr><td>7</td><td><code>create_files_doc(title="Riepilogo")</code> + <code>append_doc(text=...)</code></td><td>Google Doc con riassunto</td></tr>
-<tr><td>8</td><td><code>find_contacts(query="Maria")</code> + <code>share_files(email=..., role="reader")</code></td><td>condivisione condivisa</td></tr>
-<tr><td>9</td><td><code>create_tasks(when="daily@08:00", query="aggiorna budget")</code></td><td>ricorrenza automatica</td></tr>
+<tr><td>5</td><td><code>append_spreadsheet(values=[[date, vendor, amount, ...]])</code></td><td>una riga per bolletta</td></tr>
+<tr><td rowspan="2">3</td><td>6</td><td><code>compute_entries(group_by="Categoria", agg="sum:Importo")</code></td><td>totali per categoria</td></tr>
+<tr><td>7</td><td><code>create_files_doc(title="Riepilogo")</code> + <code>append_doc(text=...)</code></td><td>Doc con riassunto</td></tr>
+<tr><td>4</td><td>8</td><td><code>find_contacts(query="Maria")</code> + <code>share_files(email=..., role="reader")</code></td><td>risoluzione contatto + share (approvato)</td></tr>
+<tr><td>5</td><td>9</td><td><code>create_tasks(when="daily@08:00", query="aggiorna budget")</code></td><td>ricorrenza automatica</td></tr>
 </table>
+</details>
 
 <p>
 Tempo misurato (24/5/2026, hardware Strix Halo 96GB unified, Gemma 4 26B

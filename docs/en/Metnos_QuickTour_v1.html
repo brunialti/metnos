@@ -1244,42 +1244,92 @@ See <a href="architecture/multilang.html">multilang</a>.</p>
 </div>
 
 <div class="scene">
-<span class="tag">Scene 12 — complete use case</span>
+<span class="tag">Scene 12 — complete use case</span><span class="tag verified">VERIFIED 24/5/2026</span>
 <h2>A monthly budget that updates itself</h2>
 
-<p>
-May 24. Roberto asks Metnos: <em>&laquo;create a 'Budget 2026-05'
-spreadsheet on Drive, add Date/Category/Amount/Notes/Paid headers, and
-populate with all Migadu emails from the last 30 days that contain
-fattura or invoice. Summarize per category in a Google Doc, share
-everything with Maria, and schedule an update every morning at
-8.&raquo;</em>
-</p>
+<p>It is Sunday morning, May 24. Roberto sits at the table with his
+coffee and opens Telegram. He wants to pull together this month's bills
+into a sheet shared with Maria. He does it in five sentences.</p>
 
-<p>
-In eight conversation turns Metnos executes <strong>eight different
-verbs</strong> (<code>create</code>, <code>write</code>,
-<code>find</code>, <code>classify</code>, <code>append</code>,
-<code>share</code>, <code>compute</code>, <code>read</code>) across
-<strong>four objects</strong> (<code>files</code>,
-<code>messages</code>, <code>contacts</code>, <code>tasks</code>)
-through <strong>three providers</strong>
-(<code>google_workspace</code>, <code>email_metnos</code>/Migadu IMAP,
-local backend).
-</p>
+<p><strong>First turn.</strong></p>
+<div class="dialog">&laquo;Create a 'Budget 2026-05' spreadsheet on Drive with columns Date, Category, Amount, Notes, Paid.&raquo;</div>
+<p>Metnos creates the sheet on Roberto's personal Drive (the refresh
+token is his, no intermediate service account) and writes the first
+row. Reply: <em>&laquo;Done. Sheet 'Budget 2026-05' created, headers
+in A1:E1. Want me to populate it?&raquo;</em></p>
 
+<p><strong>Second turn.</strong></p>
+<div class="dialog">&laquo;Yes, populate it with all Migadu emails from the last 30 days containing 'fattura' or 'invoice'.&raquo;</div>
+<p>Metnos queries the mailbox via Migadu's encrypted IMAP, groups by
+sender, downloads the PDF attachments, runs <code>pdftotext</code> on
+native ones and <code>read_files_ocr</code> on scans, asks the local
+Gemma to extract vendor/amount/due date, and appends one row per bill.
+Reply: <em>&laquo;3 bills extracted: ENEL April &euro;213.47, AMA waste
+tax December &euro;281.67, Plenitude May &euro;165.25. Added to the
+sheet.&raquo;</em></p>
+
+<p><strong>Third turn.</strong></p>
+<div class="dialog">&laquo;Also give me a per-category summary in a Google Doc.&raquo;</div>
+<p>Metnos sums by <em>energy</em>/<em>waste</em>/<em>telecom</em>,
+creates a Doc &laquo;Summary Budget 2026-05&raquo;, writes the totals
+narratively with the link to the sheet. Reply: <em>&laquo;Doc created.
+Energy &euro;213.47, Waste &euro;281.67, Telecom &euro;165.25. Total
+&euro;660.39.&raquo;</em></p>
+
+<p><strong>Fourth turn</strong> &mdash; here policy raises a flag,
+because <code>share_files</code> to a third party's email is an outbound,
+non-reversible capability.</p>
+<div class="dialog">&laquo;Share everything with Maria.&raquo;</div>
+<p>Metnos searches <em>Maria</em> in the Google address book and finds
+a single entry (if there were more than one, it would open a
+<em>choice_with_preview</em> dialog). It composes the share request and
+sends an approval card on the channel:</p>
+
+<div class="approval-card">
+<div class="line1">May I share 2 files with Maria?</div>
+<div class="line2">to maria.rossi@example.com &middot; sheet 'Budget 2026-05' + doc 'Summary' &middot; role: <em>reader</em></div>
+<div class="line3">reversible: yes (revoke ACL) &middot; class: <code>files:share</code></div>
+<div class="btns">
+<button class="btn ok">&check; Approve</button>
+<button class="btn no">&times; Reject</button>
+</div>
+</div>
+
+<p>Roberto taps Approve. Two seconds: <em>&laquo;Shared. Maria will get
+a Drive notification. Audit&nbsp;#1318.&raquo;</em></p>
+
+<p><strong>Fifth turn.</strong></p>
+<div class="dialog">&laquo;Refresh it every morning at 8.&raquo;</div>
+<p>Metnos does not run the flow now: it logs a row in
+<code>scheduler_v2.sqlite</code> with trigger <code>daily@08:00</code>
+and callback &laquo;re-run the same pipeline as the last 4 turns&raquo;.
+Reply: <em>&laquo;Scheduled. Tomorrow at 8:00 I'll rebuild the sheet
+with new mail and send you the audit.&raquo;</em></p>
+
+<div class="scene-meta">
+<span class="chip"><strong>capability:</strong> files:create + files:write + mail:read + files:share + scheduler:create</span>
+<span class="chip"><strong>autonomy:</strong> Supervised (share_files asks for approval)</span>
+<span class="chip"><strong>verbs:</strong> 8 (create/write/find/classify/append/share/compute/read)</span>
+<span class="chip"><strong>objects:</strong> 4 (files/messages/contacts/tasks)</span>
+<span class="chip"><strong>providers:</strong> 3 (google_workspace, email_metnos/Migadu, local scheduler)</span>
+<span class="chip"><strong>total latency:</strong> 2-3 min (natural conversation, 5 turns)</span>
+</div>
+
+<details>
+<summary><strong>Behind the scenes: the 9 internal commands triggered</strong></summary>
 <table>
-<tr><th>#</th><th>Internal command</th><th>Effect</th></tr>
-<tr><td>1</td><td><code>create_files_spreadsheet(title="Budget 2026-05")</code></td><td>new empty Google Sheet, <em>spreadsheet_id</em> returned</td></tr>
+<tr><th>turn</th><th>#</th><th>internal command</th><th>effect</th></tr>
+<tr><td rowspan="2">1</td><td>1</td><td><code>create_files_spreadsheet(title="Budget 2026-05")</code></td><td>new Sheet, <em>spreadsheet_id</em> returned</td></tr>
 <tr><td>2</td><td><code>write_files_spreadsheet(range="A1:E1", values=[["Date","Category","Amount","Notes","Paid"]])</code></td><td>headers</td></tr>
-<tr><td>3</td><td><code>find_messages(time_window="last-30d", where_in=["*fattura*","*invoice*"])</code></td><td>search emails on Migadu IMAP</td></tr>
+<tr><td rowspan="3">2</td><td>3</td><td><code>find_messages(time_window="last-30d", where_in=["*fattura*","*invoice*"])</code></td><td>search emails on Migadu IMAP</td></tr>
 <tr><td>4</td><td><code>classify_entries(by="vendor")</code></td><td>group by sender</td></tr>
-<tr><td>5</td><td><code>append_spreadsheet(values=[[date, vendor, amount, ...]])</code></td><td>one row per invoice in the sheet</td></tr>
-<tr><td>6</td><td><code>compute_entries(group_by="Category", agg="sum:Amount")</code></td><td>totals per category</td></tr>
-<tr><td>7</td><td><code>create_files_doc(title="Summary")</code> + <code>append_doc(text=...)</code></td><td>Google Doc with summary</td></tr>
-<tr><td>8</td><td><code>find_contacts(query="Maria")</code> + <code>share_files(email=..., role="reader")</code></td><td>shared</td></tr>
-<tr><td>9</td><td><code>create_tasks(when="daily@08:00", query="update budget")</code></td><td>automatic recurrence</td></tr>
+<tr><td>5</td><td><code>append_spreadsheet(values=[[date, vendor, amount, ...]])</code></td><td>one row per bill</td></tr>
+<tr><td rowspan="2">3</td><td>6</td><td><code>compute_entries(group_by="Category", agg="sum:Amount")</code></td><td>totals per category</td></tr>
+<tr><td>7</td><td><code>create_files_doc(title="Summary")</code> + <code>append_doc(text=...)</code></td><td>Doc with summary</td></tr>
+<tr><td>4</td><td>8</td><td><code>find_contacts(query="Maria")</code> + <code>share_files(email=..., role="reader")</code></td><td>contact resolution + share (approved)</td></tr>
+<tr><td>5</td><td>9</td><td><code>create_tasks(when="daily@08:00", query="update budget")</code></td><td>automatic recurrence</td></tr>
 </table>
+</details>
 
 <p>
 Measured time (24/5/2026, Strix Halo 96GB unified, local Gemma 4 26B):
