@@ -1260,6 +1260,104 @@ editato per ultimo. Vedi
 <a href="architecture/multilang.html">multilang</a>.</p>
 </div>
 
+<div class="scene">
+<span class="tag">Scena 12 — caso d'uso completo</span>
+<h2>Un budget mensile che si aggiorna da solo</h2>
+
+<p>
+&Egrave; il 24 maggio. Roberto chiede a Metnos: <em>«crea uno spreadsheet
+'Budget 2026-05' su Drive, aggiungi le intestazioni Data/Categoria/
+Importo/Note/Pagato, e popola con tutte le mail Migadu degli ultimi 30
+giorni che contengono fattura o invoice. Riassumi per categoria in un
+Google Doc, condividi tutto con Maria, e schedula un aggiornamento ogni
+mattina alle 8.»</em>
+</p>
+
+<p>
+In otto turni di conversazione Metnos esegue <strong>otto verbi</strong>
+diversi (<code>create</code>, <code>write</code>, <code>find</code>,
+<code>classify</code>, <code>append</code>, <code>share</code>,
+<code>compute</code>, <code>read</code>) su <strong>quattro oggetti</strong>
+(<code>files</code>, <code>messages</code>, <code>contacts</code>,
+<code>tasks</code>) attraverso <strong>tre provider</strong>
+(<code>google_workspace</code>, <code>email_metnos</code>/Migadu IMAP,
+backend locale).
+</p>
+
+<table>
+<tr><th>#</th><th>Comando interno</th><th>Effetto</th></tr>
+<tr><td>1</td><td><code>create_files_spreadsheet(title="Budget 2026-05")</code></td><td>nuovo Google Sheet vuoto, <em>spreadsheet_id</em> ritornato</td></tr>
+<tr><td>2</td><td><code>write_files_spreadsheet(range="A1:E1", values=[["Data","Categoria","Importo","Note","Pagato"]])</code></td><td>intestazioni</td></tr>
+<tr><td>3</td><td><code>find_messages(time_window="last-30d", where_in=["*fattura*","*invoice*"])</code></td><td>cerca mail su Migadu IMAP</td></tr>
+<tr><td>4</td><td><code>classify_entries(by="vendor")</code></td><td>raggruppa per mittente</td></tr>
+<tr><td>5</td><td><code>append_spreadsheet(values=[[date, vendor, amount, ...]])</code></td><td>una riga per fattura nel foglio</td></tr>
+<tr><td>6</td><td><code>compute_entries(group_by="Categoria", agg="sum:Importo")</code></td><td>totali per categoria</td></tr>
+<tr><td>7</td><td><code>create_files_doc(title="Riepilogo")</code> + <code>append_doc(text=...)</code></td><td>Google Doc con riassunto</td></tr>
+<tr><td>8</td><td><code>find_contacts(query="Maria")</code> + <code>share_files(email=..., role="reader")</code></td><td>condivisione condivisa</td></tr>
+<tr><td>9</td><td><code>create_tasks(when="daily@08:00", query="aggiorna budget")</code></td><td>ricorrenza automatica</td></tr>
+</table>
+
+<p>
+Tempo misurato (24/5/2026, hardware Strix Halo 96GB unified, Gemma 4 26B
+locale): step 1 = 1.2&nbsp;s, step 2 = 1.1&nbsp;s, step 5 (3 righe) =
+0.6&nbsp;s. Il pianificatore impiega 8-15&nbsp;s di pensiero per turno
+(scelta executor + composizione args), e la sintesi finale del Doc altri
+~25&nbsp;s di descrizione LLM locale. Totale &laquo;da zero a budget
+condiviso&raquo;: tra i due e tre minuti di conversazione naturale.
+</p>
+
+<p><strong>Cosa rende il flusso diverso da uno script o da una macro Office</strong>:</p>
+
+<ul>
+<li><strong>Conversazione, non API</strong>: Roberto non sa come si chiama
+l'endpoint <code>spreadsheets.values.append</code> n&eacute; la query
+sintassi di Gmail. Dice cosa vuole; Metnos compone gli executor.</li>
+<li><strong>Privacy reale</strong>: il pianificatore (Gemma 4 26B) gira
+sul server di casa; le mail passano da Migadu su IMAP cifrato; gli unici
+dati che escono in rete sono le chiamate Google API ai TUOI fogli,
+autenticate col tuo refresh token (non con uno service account
+condiviso, e nessun terzo &egrave; nel circuito).</li>
+<li><strong>Reversibile</strong>: ogni passo mutante ha un <em>reverse
+pattern</em> dichiarato (cancellazione dello sheet appena creato,
+revoca della condivisione). Una frase &laquo;annulla&raquo; e Metnos
+ripristina lo stato precedente. Vedi <a href="#cap5">cap.&nbsp;5</a>.</li>
+<li><strong>Schedulabile in coda di turno</strong>: l'ultimo
+&laquo;...e fallo ogni mattina alle 8&raquo; non &egrave; un comando a
+parte. Diventa una riga in <code>scheduler_v2.sqlite</code> e ogni
+mattina ri-esegue il flusso completo, automatico.</li>
+<li><strong>Multi-provider trasparente</strong>: la stessa parola
+<em>mail</em> in due frasi diverse pu&ograve; instradare a IMAP Migadu
+o a Gmail (se hai il marker &laquo;gmail&raquo; nel testo). Sostituire
+il backend &egrave; un argomento <code>client=...</code> nel manifest,
+non un refactor di codice.</li>
+</ul>
+
+<p><strong>Onestamente, cosa NON fa</strong>:</p>
+
+<ul>
+<li>Le fatture allegate come PDF vengono estratte solo se contengono uno
+strato di testo (no OCR su scansioni; il prossimo passaggio sarebbe
+<code>read_files_pdf</code> + Tesseract).</li>
+<li>L'estrazione del totale dalla mail dipende da quanto chiara &egrave;
+la mail: per importi sepolti in immagini o body HTML pi&ugrave; intricati,
+il modello locale ogni tanto manca la riga e va corretto a mano.</li>
+<li>Il free tier Google Cloud copre fino a 1000 richieste/mese per le
+API qui usate; oltre, il costo &egrave; di
+~&euro;1.30/1000&nbsp;richieste. Per un budget personale che gira una
+volta al giorno (~30/mese), si resta sempre nel gratuito.</li>
+<li>L'allerta &laquo;hai pagato 320&euro; in pi&ugrave; del previsto&raquo;
+ancora non c'&egrave; (richiede l'<em>introspettiva</em> di
+cap.&nbsp;6, oggi disabilitata).</li>
+</ul>
+
+<p>
+Il foglio reale prodotto in questa sessione (test del 24 maggio, dati
+mock): <a href="https://docs.google.com/spreadsheets/d/1Bsh7-Bo15DCyxSfA0j5KsLE2jHlOrqVELd6C-Sw_A60/edit"
+target="_blank" rel="noopener">apri Budget 2026-05</a> (visibile solo
+se l'host autorizza).
+</p>
+</div>
+
 <h1 id="cap4">4. Dove vive e come gli si parla</h1>
 
 <p>Metnos gira su un server Linux a casa vostra &mdash; nel caso di questo
