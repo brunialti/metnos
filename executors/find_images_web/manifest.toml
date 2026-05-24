@@ -1,0 +1,96 @@
+# Manifest dell'executor `find_images_web` — Metnos (24/5/2026).
+# Reverse image search via Google Cloud Vision Web Detection.
+# Distinto da `find_images` (filesystem locale) e `find_images_indices`
+# (indice CLIP locale): origine = web pubblico.
+
+manifest_format = "1.0"
+
+name        = "find_images_web"
+version     = "0.1.0"
+author      = "Roberto Brunialti <roberto.brunialti@metnos.com>"
+affinity    = [
+    "reverse-image-search", "ricerca-inversa", "trova-fonte",
+    "find-source", "where-from", "da-dove-viene",
+    "immagine-simile-web", "similar-on-web",
+    "google-vision", "web-detection",
+    "immagine", "image", "foto", "photo",
+]
+timeout_s = 60
+
+[description]
+it = """Cerca un'immagine sul web pubblico via Google Cloud Vision Web Detection. Reverse image search: dato un'immagine (locale o URL), restituisce pagine web che la contengono, immagini visualmente simili, etichette concettuali.
+
+USO CORRETTO: «da dove viene questa foto?», «trova la fonte di questa immagine», «cerca immagini simili a questa sul web», «riconosci cosa c'e' in questa foto».
+
+NON CONFONDERE CON:
+- `find_images`: cerca foto sul FILESYSTEM locale (path-based).
+- `find_images_indices`: cerca foto in INDICI locali CLIP/ArcFace (semantica + volti su corpus locale).
+
+Args:
+- `paths=[...]`: file immagine locali (jpg/png/gif/bmp/webp). Letti, encoded base64, inviati a Vision.
+- `urls=[...]`: URL pubblici di immagini. Vision fa fetch direct.
+- `max_results=10`: cap per ciascun blocco (pagine/simili/entita).
+
+Almeno uno fra `paths` e `urls` deve essere non-vuoto.
+
+Output: entries=[{source, best_guess_label, matching_pages, similar_images, web_entities}].
+
+Quota: free tier 1000 unit/mese. Uso personale tipico (~30 query/mese) resta gratuito."""
+en = """Search for an image on the public web via Google Cloud Vision Web Detection. Reverse image search: given an image (local or URL), returns web pages containing it, visually similar images, conceptual labels.
+
+CORRECT USE: "where is this photo from?", "find the source of this image", "search for similar images on the web", "what's in this photo?".
+
+DO NOT CONFUSE WITH:
+- `find_images`: search photos on local FILESYSTEM (path-based).
+- `find_images_indices`: search photos in LOCAL indexes CLIP/ArcFace (semantic + faces on local corpus).
+
+Args:
+- `paths=[...]`: local image files (jpg/png/gif/bmp/webp). Read, base64-encoded, sent to Vision.
+- `urls=[...]`: public image URLs. Vision direct-fetches.
+- `max_results=10`: cap per block (pages/similar/entities).
+
+At least one of `paths` and `urls` must be non-empty.
+
+Output: entries=[{source, best_guess_label, matching_pages, similar_images, web_entities}].
+
+Quota: free tier 1000 units/month. Typical personal use (~30 queries/month) stays free."""
+
+[code]
+files  = ["find_images_web.py"]
+digest = "sha256:905af3f0fe418be5881b7a2beabf67ed03dea4f908cc69bce7ee5e216be215d4"
+
+[args]
+type = "object"
+required = []
+
+[args.properties.paths]
+type = "array"
+items = {type = "string"}
+default = []
+[args.properties.paths.description]
+it = "Lista di path locali a file immagine (jpg/png/gif/bmp/webp). Es: [\"/home/roberto/foto/x.jpg\"]."
+en = "List of local paths to image files (jpg/png/gif/bmp/webp). E.g.: [\"/home/roberto/photos/x.jpg\"]."
+
+[args.properties.urls]
+type = "array"
+items = {type = "string"}
+default = []
+[args.properties.urls.description]
+it = "Lista di URL pubblici di immagini. Vision fa fetch diretto. Es: [\"https://example.com/img.jpg\"]."
+en = "List of public image URLs. Vision direct-fetches. E.g.: [\"https://example.com/img.jpg\"]."
+
+[args.properties.max_results]
+type = "integer"
+default = 10
+minimum = 1
+maximum = 50
+[args.properties.max_results.description]
+it = "Cap per ciascun blocco (matching_pages, similar_images, web_entities). Default 10."
+en = "Cap per block (matching_pages, similar_images, web_entities). Default 10."
+
+[[capabilities]]
+name = "net:google_vision"
+hint = ["https://vision.googleapis.com/v1/images:annotate"]
+
+[reversible]
+value = false

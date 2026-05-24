@@ -205,6 +205,17 @@ QUALIFIERS = (
     # ...). Lista chiusa: oggi solo `indices`; aggiunte future seguono lo
     # stesso pattern (es. `cache`, `histogram` se emergeranno).
     "indices",
+    # Famiglia 2 — Modalita': origine ricerca = web pubblico (24/5/2026).
+    # Distingue executor che interrogano servizi web (Google Vision Web
+    # Detection, web search engines, public APIs) da quelli che operano
+    # su dati locali (filesystem, `_indices`). Pattern cross-domain:
+    # `find_images_web` (reverse image search via Cloud Vision),
+    # `find_urls` (web crawl, qualifier omesso perche' urls implica web),
+    # future: `find_persons_web`, `find_news_web`. Governance §2.2:
+    # necessario (nessun qualifier copre origine=web), generale
+    # (applicabile a tutti gli oggetti ricercabili sul web pubblico),
+    # comprensibile (termine universale).
+    "web",
     # Famiglia 3 — Safety policy (ADR 0071, oggetto `signatures`):
     # find_signatures_blacklist, write_signatures_whitelist, ecc.
     "blacklist", "whitelist", "graylist", "forbidden", "seed",
