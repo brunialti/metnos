@@ -354,23 +354,36 @@ def _is_meta_step(s) -> bool:
 
 
 def _detect_unfulfilled_mutating_intent(log) -> str:
-    """Detection §4.3 + §2.8 (25/5/2026): il PLANNER ha invocato un verbo
-    mutating (move/delete/send/write/create/share) ma nessuno step di
-    quel verbo e' ok=True con count>0 → l'azione richiesta non e' stata
-    completata, il final_message attuale e' fuorviante.
+    """Detection §4.3 + §2.8 (25/5/2026): intent utente mutating ma
+    nessuno step l'ha eseguito con successo → l'azione e' pendente,
+    il final_message attuale e' fuorviante.
 
-    Ritorna il verbo (es. "move") se pendente, "" altrimenti.
+    Due fonti di intent mutating (entrambe deterministiche §7.9):
+      1. `log.intent_verb` da intent_extractor LLM (se verb in
+         DESTRUCTIVE_VERBS, l'intent e' mutating per costruzione).
+      2. step CHIAMATI con `chosen_tool` che inizia con verbo mutating
+         (il PLANNER ha mappato la query a un tool mutating).
 
-    Derivazione §7.3 dai TOOL chiamati (non da NL keyword matching):
-    se il PLANNER ha mappato la query a un tool mutating, l'intent era
-    mutating per costruzione. Robusto a sinonimi colloquiali ("metti",
-    "trasloca", "spedisci") senza enum hardcoded.
+    Verb pendente se:
+      - intent.verb in DESTRUCTIVE_VERBS, nessuno step con quel verb ok=True
+        OPPURE
+      - ALCUN step mutating chiamato senza ok=True+count>0.
     """
     try:
         from vocab import DESTRUCTIVE_VERBS
     except Exception:
         return ""
-    pending_verb = ""
+
+    intent_verb = (getattr(log, "intent_verb", "") or "").strip()
+    intent_is_mutating = intent_verb in DESTRUCTIVE_VERBS
+
+    # Cerca step chiamati con verbo mutating + esito. `ok=True` (qualunque
+    # ok_count, anche 0) significa azione TENTATA correttamente — count=0
+    # e' un esito LEGITTIMO (es. filter ha selezionato 0 spam, move ha 0
+    # target da spostare, l'esito e' onesto). Solo `ok=False` o nessuno
+    # step del verbo richiesto → pending.
+    pending_from_steps = ""
+    intent_verb_executed = False
     for s in getattr(log, "steps", []) or []:
         if not s.chosen_tool:
             continue
@@ -378,14 +391,21 @@ def _detect_unfulfilled_mutating_intent(log) -> str:
         if step_verb not in DESTRUCTIVE_VERBS:
             continue
         _obs = s.result if isinstance(s.result, dict) else None
-        # ok=True con count>0 → azione completata, intent soddisfatto.
         if isinstance(_obs, dict) and _obs.get("ok") is True:
-            _ok_cnt = _obs.get("ok_count")
-            if _ok_cnt is None or _ok_cnt > 0:
+            if intent_is_mutating and step_verb == intent_verb:
                 return ""
-        # ok=False o ok=None o ok_count=0: candidato pending.
-        pending_verb = step_verb
-    return pending_verb
+            if not intent_is_mutating:
+                return ""
+            intent_verb_executed = True
+            continue
+        # ok=False o ok=None → step non completato successo
+        pending_from_steps = step_verb
+
+    if intent_is_mutating and not intent_verb_executed:
+        return intent_verb
+    if pending_from_steps:
+        return pending_from_steps
+    return ""
 
 
 def _compose_honest_from_last_error(log) -> str:
@@ -1333,10 +1353,30 @@ def validate_args(args, schema):
             failures.append(
                 f"requires one of {group} (none provided non-empty)"
             )
+    # Placeholder value detection §7.3 (25/5/2026): property con
+    # `forbid_placeholder_values: true` rifiuta valori sintetici tipo
+    # "msg_1", "mail_2", "id_3" emessi dal PLANNER LLM quando inventa
+    # IDs invece di usare from_step. Pattern deterministico §7.9.
+    import re as _re_ph_val
+    _PLACEHOLDER_VALUE_RE = _re_ph_val.compile(
+        r"^(msg|mail|email|file|item|id|entry|element|placeholder|uid|"
+        r"row|record|doc|document|message)[-_]?\d+$",
+        _re_ph_val.IGNORECASE,
+    )
     for name, value in (args or {}).items():
         if name not in props:
             continue
         spec = props[name]
+        if spec.get("forbid_placeholder_values") and isinstance(value, list):
+            _ph_hits = [v for v in value if isinstance(v, str)
+                        and _PLACEHOLDER_VALUE_RE.match(v.strip())]
+            if _ph_hits:
+                failures.append(
+                    f"arg '{name}' contiene valori placeholder sintetici "
+                    f"({_ph_hits[:3]}). Usa `from_step=N` per ottenere "
+                    f"gli ID reali dallo step producer (§4.1)."
+                )
+                continue
         expected_type = spec.get("type")
         if expected_type == "string" and not isinstance(value, str):
             failures.append(f"arg '{name}' deve essere string, e' {type(value).__name__}")
@@ -2529,6 +2569,19 @@ def _consumer_match_arg(consumer_schema: dict | None, prev_entries: list) -> str
             t = spec.get("type")
             if t and t != "array":
                 continue
+        # `from_entries_key` (25/5/2026) §7.3: dichiarazione esplicita di
+        # quale campo delle entries usare quando from_step espande in
+        # quest'arg. Risolve l'ambiguita' quando il singular naïve di
+        # arg_name punta a un campo non utile (es. move_messages.message_ids
+        # → singular "message_id" matcha RFC822 header invece dello UID
+        # IMAP usato dal backend). Manifest property opt-in.
+        from_key = (spec.get("from_entries_key")
+                    if isinstance(spec, dict) else None)
+        if isinstance(from_key, str) and from_key in sample_keys:
+            priority = 0 if arg_name in required else 1
+            # boost priorita' per dichiarazione esplicita
+            candidates.append((priority - 1, arg_name, from_key))
+            continue
         # Singolare = arg.rstrip('s'). Match esatto contro un campo di entries[0].
         singular = arg_name[:-1] if arg_name.endswith("s") and len(arg_name) > 1 else arg_name
         if singular in sample_keys:
@@ -2716,13 +2769,23 @@ def resolve_from_step(args, history, consumer_schema=None):
     # consumer non e' gia' presente in args, estrae i valori scalari.
     consumer_arg = _consumer_match_arg(consumer_schema, prev_list)
     if consumer_arg and consumer_arg not in new_args:
-        singular = (consumer_arg[:-1]
-                    if consumer_arg.endswith("s") and len(consumer_arg) > 1
-                    else consumer_arg)
+        # Match key: prima `from_entries_key` (dichiarazione esplicita),
+        # fallback singular naïve.
+        match_key = None
+        if isinstance(consumer_schema, dict):
+            _spec = (consumer_schema.get("properties") or {}).get(consumer_arg)
+            if isinstance(_spec, dict):
+                fek = _spec.get("from_entries_key")
+                if isinstance(fek, str) and fek:
+                    match_key = fek
+        if not match_key:
+            match_key = (consumer_arg[:-1]
+                         if consumer_arg.endswith("s") and len(consumer_arg) > 1
+                         else consumer_arg)
         values = []
         for e in prev_list:
-            if isinstance(e, dict) and singular in e:
-                v = e[singular]
+            if isinstance(e, dict) and match_key in e:
+                v = e[match_key]
                 if v is not None:
                     values.append(v)
         new_args[consumer_arg] = values
@@ -3181,6 +3244,11 @@ class TurnLog:
     # Settati da run_turn ai parametri ricevuti.
     actor: str = "host"
     channel: str = ""
+    # Verbo intent estratto dall'intent_extractor (25/5/2026): usato in
+    # write() per detection mutating-intent-unfulfilled quando il PLANNER
+    # non chiama mai un tool col verbo richiesto (es. utente «cancella X»
+    # ma PLANNER fa solo read/list).
+    intent_verb: str = ""
     # Conversation linking (8/5/2026): persisted nel JSONL per permettere
     # al chat HTTP di ricaricare la storia della conversazione dopo un tab
     # close. Sender HTTP setta dal body POST `conversation_id`. Telegram lo
@@ -5272,6 +5340,15 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
             llm_call=_intent_llm,
         )
         _prefilter_total_ms = int((time.perf_counter() - _t_prefilter0) * 1000)
+        # Propaga intent.verb a log.intent_verb per il guard mutating-intent
+        # in write() (§2.8): se intent.verb e' mutating ma il PLANNER non
+        # chiama mai un tool con quel verbo, dichiarare incompletezza.
+        try:
+            _iv = ((route_info or {}).get("intent") or {}).get("verb")
+            if isinstance(_iv, str) and _iv:
+                log.intent_verb = _iv
+        except Exception:
+            pass
         if verbose:
             conf = route_info.get('confidence')
             conf_s = f"{conf:.2f}" if isinstance(conf, (int, float)) else str(conf)

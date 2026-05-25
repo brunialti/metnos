@@ -28,10 +28,25 @@ digest = "sha256:35e4741200e94a073cff449899411139da68f7df710ff5f6d8be42b0587655c
 
 [args]
 type = "object"
+# §7.3 vincolo disgiuntivo (25/5/2026): almeno uno fra message_ids,
+# message_id o from_step deve essere fornito non-vuoto. Senza, il
+# PLANNER tende a inventare ID plausibili (es. "msg_1") che falliscono
+# IMAP COPY. Validato dal runtime (validate_args), niente teaching
+# ad-hoc nella description.
+requires_one_of = [["message_ids", "message_id", "from_step"]]
 
 [args.properties.message_ids]
 type  = "array"
 items = { type = "string" }
+# §7.3 (25/5/2026): rifiuta valori sintetici (msg_1, mail_2, id_3) che
+# il PLANNER inventa quando non passa from_step. IMAP COPY fallisce
+# comunque su UID inventati, ma il check schema fail prima con hint
+# chiaro («usa from_step»).
+forbid_placeholder_values = true
+# §7.3 da_entries_key: quando from_step espande entries → message_ids,
+# usa entries[*].uid (UID IMAP, valido per COPY) invece del singular
+# naive "message_id" (RFC822 header, NON valido per COPY/operations).
+from_entries_key = "uid"
 
 [args.properties.message_ids.description]
 it = "Lista di id messaggi (Gmail) o UID IMAP. Esempio: [\"18b3c4...\"]. MATCH ESATTO, wildcard NON supportati."

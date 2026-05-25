@@ -16,6 +16,10 @@ Environment=PYTHONUNBUFFERED=1
 Environment=PYTHONPATH=/usr/lib/python3/dist-packages:/opt/metnos:/opt/metnos/runtime:/opt/suprastructure/src
 Environment=METNOS_HTTP_HOST=0.0.0.0
 Environment=METNOS_HTTP_PORT=8770
+# Tier wise per PLANNER (25/5/2026): bench n=3 conferma ~2.2 min/turn
+# vs ~4.3 min/turn middle baseline, stessa qualita' onesta'. Budget
+# 2048 permette al LLM di convergere prima a final_answer senza retry.
+Environment=METNOS_REASONING_BUDGET=2048
 
 [Install]
 WantedBy=multi-user.target
