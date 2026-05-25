@@ -294,6 +294,106 @@ _LEAK_IT_STANDALONE_RE = re.compile(
 )
 
 
+# Pattern di leak runtime-internal (§2.8 guard): messaggi destinati al
+# PLANNER LLM (system messages del runtime) che il LLM a volte copia
+# nel final_answer.message. Detection deterministica §7.9.
+_RUNTIME_INTERNAL_LEAK_RE = re.compile(
+    r"(DUPLICATE_CALL:|FORMULA LA FINAL_ANSWER|"
+    r"FORMULATE (?:THE )?FINAL_ANSWER|"
+    r"^validation failed:|^vaglio rifiuta:|"
+    r"consecutive_blocked|auto_final_on_duplicate|"
+    r"cap_same_executor|VECTORIAL_VIOLATION|"
+    r"synth_request_blocked_by|requires one of \[)",
+    re.IGNORECASE | re.MULTILINE,
+)
+
+
+def _has_runtime_internal_leak(text: str) -> bool:
+    if not text or not isinstance(text, str):
+        return False
+    return bool(_RUNTIME_INTERNAL_LEAK_RE.search(text))
+
+
+# Set di `step.error` "meta" del runtime: indicano che il step e' stato
+# bloccato dal guard (duplicate_call, cap_same_executor, ecc.), NON che
+# l'executor stesso abbia prodotto un error semantico. Quando cerchiamo
+# il "vero" error per il final_message dobbiamo SKIPPARLI e risalire al
+# primo step con error sostanziale.
+_META_STEP_ERRORS = frozenset({
+    "duplicate_call_blocked",
+    "auto_final_on_duplicate",
+    "auto_final_on_duplicate_fail",
+    "anti_vectorial_blocked",
+    "inline_data_rejected",
+    "malformed_reference",
+})
+
+
+def _is_meta_step(s) -> bool:
+    """True se lo step e' un guard runtime, non un fail executor reale."""
+    if s is None:
+        return False
+    _step_err = (getattr(s, "error", "") or "").strip()
+    if _step_err in _META_STEP_ERRORS:
+        return True
+    if _step_err.startswith("cap_same_executor"):
+        return True
+    _obs = getattr(s, "result", None)
+    if isinstance(_obs, dict) and _obs.get("_duplicate") is True:
+        return True
+    return False
+
+
+def _compose_honest_from_last_error(log) -> str:
+    """Compose messaggio onesto user-facing dall'ultimo step ok=False.
+
+    Salta step "meta" del runtime (duplicate_call_blocked, cap_same, ecc.)
+    e risale al VERO step con error semantico. Riusa il path priority
+    error-first dell'invariante TurnLog.write (`MSG_VALIDATION_LOOP_FINAL`
+    o `MSG_FINAL_FALLBACK_FROM_ERROR`). Fallback MSG_FINAL_FALLBACK_GENERIC.
+    """
+    for _s in reversed(getattr(log, "steps", []) or []):
+        if _is_meta_step(_s):
+            continue
+        _obs = _s.result if isinstance(_s.result, dict) else {}
+        if not _obs:
+            continue
+        if _s.chosen_tool == "final_answer":
+            continue
+        if _obs.get("ok") is False:
+            _err = _obs.get("error") or ""
+            _failed = _obs.get("failed") or []
+            if not _err and isinstance(_failed, list) and _failed:
+                _err = ", ".join(
+                    str((f or {}).get("error", "")).strip()
+                    for f in _failed
+                    if isinstance(f, dict) and f.get("error")
+                )
+            _vfails = _obs.get("validation_failures") or []
+            if _vfails and isinstance(_vfails, list):
+                try:
+                    return msg(
+                        "MSG_VALIDATION_LOOP_FINAL",
+                        tool=_s.chosen_tool or "",
+                        fails="; ".join(str(v) for v in _vfails),
+                    )
+                except Exception:
+                    pass
+            if _err:
+                try:
+                    return msg(
+                        "MSG_FINAL_FALLBACK_FROM_ERROR",
+                        tool=_s.chosen_tool or "",
+                        error=str(_err).strip(),
+                    )
+                except Exception:
+                    return f"{_s.chosen_tool}: {_err}"
+    try:
+        return msg("MSG_FINAL_FALLBACK_GENERIC")
+    except Exception:
+        return "Non sono riuscito a produrre un esito. Riformula la richiesta."
+
+
 def _scrub_thinking_leak(text):
     """Rimuove pattern di reasoning leak da response PLANNER.
 
@@ -3646,6 +3746,15 @@ class TurnLog:
         # riga aggiunta dal runtime viene scartata. Idempotente.
         if self.final_kind == "answer" and self.final_message:
             self.final_message = _scrub_thinking_leak(self.final_message)
+            # §2.8 universal leak guard: marker runtime-internal in
+            # final_message (DUPLICATE_CALL, "validation failed:", etc.)
+            # sono gergo destinato al PLANNER, non all'utente. Detection
+            # deterministica §7.9 + sintesi onesta dal last error.
+            # Applicato dopo _scrub_thinking_leak per coprire OGNI path
+            # (auto_final_on_duplicate_fail, final_answer synth grammar,
+            # _compose_final_message_from_obs branch).
+            if _has_runtime_internal_leak(self.final_message):
+                self.final_message = _compose_honest_from_last_error(self)
         # 10/5/2026: append lista risultati formattati quando in history
         # c'e' uno step `find_urls` ok con entries. Indipendente da
         # final_kind: anche su loop_break/error l'utente vede i risultati
@@ -5664,6 +5773,75 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
                                           repeated_failure_hint)
                 if is_repeated_failure(log.steps, threshold=2):
                     _e_hint = repeated_failure_hint(log.steps)
+                    # Caso specifico §2.8: loop su `invalid_args` con
+                    # `validation_failures` indica che il PLANNER non e'
+                    # riuscito a fornire gli args required. MSG_LOOP_BREAK
+                    # generico e' cripto per l'utente. Sostituiamo con un
+                    # final_answer dignitoso che cita esattamente il
+                    # constraint violato.
+                    _last = log.steps[-1] if log.steps else None
+                    _last_res = (getattr(_last, "result", None) or {}) \
+                        if _last else {}
+                    _is_invalid_loop = (
+                        isinstance(_last_res, dict)
+                        and _last_res.get("error_class") == "invalid_args"
+                        and bool(_last_res.get("validation_failures"))
+                    )
+                    # Loop su `request_new_executor` rejected per jaccard
+                    # (L2 admission). Il PLANNER ha tentato di creare un
+                    # executor duplicato di uno gia' nel catalog. Pattern
+                    # anti-§2.8: final_answer onesto che spiega che il
+                    # tool esiste gia' e suggerisce di chiarire l'intent.
+                    _is_synth_loop = (
+                        getattr(_last, "chosen_tool", "") == "request_new_executor"
+                        and isinstance(_last_res, dict)
+                        and (
+                            _last_res.get("rejected") is True
+                            or "jaccard" in str(_last_res.get("reason", "")).lower()
+                            or "jaccard" in str(_last_res.get("error", "")).lower()
+                            or "duplicates" in str(_last_res.get("error", ""))
+                        )
+                    )
+                    if _is_synth_loop:
+                        _exp = ""
+                        try:
+                            _exp = (getattr(_last, "raw_args", None) or {}).get(
+                                "expected_name", "") or ""
+                        except Exception:
+                            _exp = ""
+                        log.final_kind = "answer"
+                        try:
+                            log.final_message = msg(
+                                "MSG_SYNTH_LOOP_FINAL", expected=_exp,
+                            )
+                        except Exception:
+                            log.final_message = (
+                                f"Un executor simile a `{_exp}` esiste gia' "
+                                f"nel catalog. Per completare la richiesta "
+                                f"riformula con maggiori dettagli (file, "
+                                f"directory, parole chiave) invece di "
+                                f"proporre un nuovo strumento."
+                            )
+                        log.ts_end = time.time(); log.write(); return log
+                    if _is_invalid_loop:
+                        _vfails = _last_res.get("validation_failures") or []
+                        _vmsg = "; ".join(str(v) for v in _vfails)
+                        _tool = getattr(_last, "chosen_tool", "") or ""
+                        log.final_kind = "answer"
+                        try:
+                            log.final_message = msg(
+                                "MSG_VALIDATION_LOOP_FINAL",
+                                tool=_tool, fails=_vmsg,
+                            )
+                        except Exception:
+                            log.final_message = (
+                                f"Per completare l'operazione `{_tool}` "
+                                f"mancano argomenti richiesti ({_vmsg}). "
+                                f"Riformula la query indicando i parametri "
+                                f"mancanti (es. file, directory, parole "
+                                f"chiave)."
+                            )
+                        log.ts_end = time.time(); log.write(); return log
                     log.final_kind = "loop_break"
                     log.final_message = msg(
                         "MSG_LOOP_BREAK", n=2,
@@ -6296,7 +6474,18 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
                 break
             log.steps.append(step)
             log.final_kind = "answer"
-            log.final_message = str(_msg).strip() or (r.text or "(risposta vuota)")
+            _msg_final = str(_msg).strip() or (r.text or "(risposta vuota)")
+            # §2.8 leak guard: il PLANNER LLM a volte copia messaggi
+            # internal del runtime ("DUPLICATE_CALL:", "FORMULA LA
+            # FINAL_ANSWER", "validation failed:") direttamente nel
+            # final_answer.message. Quei marker sono gergo runtime: il
+            # destinatario e' il LLM stesso, non l'utente. Detection
+            # deterministica §7.9: se prefisso runtime-internal,
+            # sostituisci con messaggio onesto sintetico basato sul vero
+            # last error (validation_failures o ultimo step ok=False).
+            if _has_runtime_internal_leak(_msg_final):
+                _msg_final = _compose_honest_from_last_error(log)
+            log.final_message = _msg_final
             log.ts_end = time.time(); log.write(); return log
 
         # Synthetic `request_disambiguation_from_user` da grammar

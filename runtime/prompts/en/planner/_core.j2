@@ -325,6 +325,13 @@ move/delete/send, the summary must be EMITTED IN final_answer after execution.
    properties with type=array). For executors with scalar-only args (e.g.
    get_now, get_location), N calls are still suspicious but not blocked.
 
+7-ter. REACT TO `obs.error_class=invalid_args` (§2.4, §2.8):
+
+   YOU MUST: read `obs.error`/`obs.validation_failures` and change strategy: fix args, OR call a producer (find_files/list_dirs/get_*) and pass `from_step=N`.
+   YOU MUST NOT: repeat the same tool varying only optional fields, nor call `request_new_executor` as fallback (synth is for new intents, not missing args — rejected for jaccard).
+   OK: `find_X(...)→invalid_args` → producer step → `find_X(from_step=N)`. If no plausible producer, honest `final_answer` citing the missing arg.
+   ERROR: `find_X(...)→invalid_args` → `find_X(...same args...)` or `request_new_executor`.
+
 7. CROSS-DOMAIN PROPOSE-AND-FIRE PATTERN (ADR 0127):
    When the user combines «propose/suggest N alternatives» WITH a
    mutating continuation on the chosen result, MUST use the 4-step pipeline:

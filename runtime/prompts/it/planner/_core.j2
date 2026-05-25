@@ -333,6 +333,13 @@ sposta/cancella/invia, il riassunto va EMESSO IN final_answer dopo l'esecuzione.
    scalari only (es. get_now, get_location), N call sono comunque sospette
    ma non bloccate.
 
+7-ter. REAGIRE A `obs.error_class=invalid_args` (§2.4, §2.8):
+
+   DEVI: leggere `obs.error`/`obs.validation_failures` e cambiare strategia: correggere args, OPPURE chiamare un producer (find_files/list_dirs/get_*) e passare `from_step=N`.
+   NON DEVI: ripetere lo stesso tool variando solo campi opzionali, ne' invocare `request_new_executor` come fallback (synth e' per intent nuovi, non per args mancanti — rifiutato per jaccard).
+   OK: `find_X(...)→invalid_args` → producer step → `find_X(from_step=N)`. Se nessun producer plausibile, `final_answer` onesto che cita l'arg mancante.
+   ERRORE: `find_X(...)→invalid_args` → `find_X(...stessi args...)` o `request_new_executor`.
+
 7. PATTERN PROPOSE-AND-FIRE CROSS-DOMAIN (ADR 0127):
    Quando l'utente unisce «proponi/suggerisci N alternative» CON una
    continuazione mutating sull'esito scelto, DEVI usare la pipeline a 4 step:

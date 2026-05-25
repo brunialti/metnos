@@ -18,34 +18,16 @@ affinity    = [
 timeout_s = 60
 
 [description]
-it = """Reverse image search via Google Cloud Vision Web Detection. Riceve UNA o piu' immagini gia' note (locali via `paths`, pubbliche via `urls`, oppure ereditate da uno step precedente via `from_step`) e ritorna pagine web che le contengono, immagini visualmente simili, etichette concettuali.
+it = """Reverse image search via Google Cloud Vision Web Detection. Riceve immagini gia' note (locali in `paths`, pubbliche in `urls`, o ereditate via `from_step`) e ritorna pagine web contenenti, simili, etichette concettuali.
 
-DEVI: passare ALMENO uno fra `paths`, `urls`, `from_step`. Senza, fallisce con `invalid_args`.
-NON DEVI: invocare con tutti e tre vuoti, o inventare nomi file plausibili. Se non hai path reali, prima discoveri (find_files / find_images_indices / list_dirs / ...) producendo entries con campo `path`, poi consumi via `from_step=N` (§4.1 pattern producer→consumer).
-OK: chiamata standalone con paths/urls noti, oppure `from_step=N` dopo qualunque producer di immagini.
-ERRORE: chiamata con paths e urls entrambi vuoti senza from_step.
+NON CONFONDERE CON: `find_images` (FS locale) ne' `find_images_indices` (corpus locale CLIP/ArcFace). Questo cerca SUL WEB.
 
-Argomento `paths`: file locali (jpg/png/gif/bmp/webp), encoded base64 inviati a Vision. Argomento `urls`: URL http(s) pubblici, fetch diretto. NON CONFONDERE schema: path locali NON vanno in `urls` (il backend normalizza §2.4 ma resta anti-pattern); URL http non vanno in `paths`.
+Output: entries=[{source, best_guess_label, matching_pages, similar_images, web_entities}]. Quota: free tier 1000 unit/mese."""
+en = """Reverse image search via Google Cloud Vision Web Detection. Takes known images (local in `paths`, public in `urls`, or inherited via `from_step`) and returns containing web pages, similar images, conceptual labels.
 
-NON CONFONDERE CON: `find_images` (FS locale, path-based) ne' `find_images_indices` (indici CLIP/ArcFace su corpus locale). Questo executor cerca SUL WEB.
+DO NOT CONFUSE WITH: `find_images` (local FS) nor `find_images_indices` (local CLIP/ArcFace corpus). This searches THE WEB.
 
-Output: entries=[{source, best_guess_label, matching_pages, similar_images, web_entities}].
-
-Quota: free tier 1000 unit/mese."""
-en = """Reverse image search via Google Cloud Vision Web Detection. Takes one or more KNOWN images (local via `paths`, public via `urls`, or inherited from a previous step via `from_step`) and returns containing web pages, visually similar images, conceptual labels.
-
-YOU MUST: provide AT LEAST one of `paths`, `urls`, `from_step`. Without, fails with `invalid_args`.
-YOU MUST NOT: invoke with all three empty, or invent plausible filenames. If you do not know real paths, first discover (find_files / find_images_indices / list_dirs / ...) producing entries with `path` field, then consume via `from_step=N` (§4.1 producer→consumer pattern).
-OK: standalone call with known paths/urls, or `from_step=N` after any image producer.
-ERROR: call with paths AND urls empty without from_step.
-
-`paths` arg: local image files (jpg/png/gif/bmp/webp), base64-encoded to Vision. `urls` arg: public http(s) URLs, direct fetch. DO NOT CONFUSE schema: local paths do NOT go in `urls` (backend normalizes §2.4 but it remains anti-pattern); http URLs do not go in `paths`.
-
-DO NOT CONFUSE WITH: `find_images` (local FS, path-based) nor `find_images_indices` (CLIP/ArcFace indexes on local corpus). This executor searches THE WEB.
-
-Output: entries=[{source, best_guess_label, matching_pages, similar_images, web_entities}].
-
-Quota: free tier 1000 unit/month."""
+Output: entries=[{source, best_guess_label, matching_pages, similar_images, web_entities}]. Quota: free tier 1000 units/month."""
 
 [code]
 files  = ["find_images_web.py"]
