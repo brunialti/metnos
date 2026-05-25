@@ -20,7 +20,9 @@ timeout_s = 60
 [description]
 it = """Cerca un'immagine sul web pubblico via Google Cloud Vision Web Detection. Reverse image search: dato un'immagine (locale o URL), restituisce pagine web che la contengono, immagini visualmente simili, etichette concettuali.
 
-USO CORRETTO: «da dove viene questa foto?», «trova la fonte di questa immagine», «cerca immagini simili a questa sul web», «riconosci cosa c'e' in questa foto».
+USO CORRETTO: «da dove viene questa foto?», «trova la fonte di questa immagine», «cerca immagini simili a questa sul web», «cerca sul web foto simili a quelle di enrollment di <persona>», «riconosci cosa c'e' in questa foto».
+
+OK: `find_images_web(paths=["/home/roberto/images/enrollment/roberto.jpg"])` per cercare immagini simili a una foto LOCALE sul web. Per piu' foto reference: `paths=[file1, file2, ...]` (loop per ciascuna).
 
 NON CONFONDERE CON:
 - `find_images`: cerca foto sul FILESYSTEM locale (path-based).
@@ -42,7 +44,9 @@ Output: entries=[{source, best_guess_label, matching_pages, similar_images, web_
 Quota: free tier 1000 unit/mese. Uso personale tipico (~30 query/mese) resta gratuito."""
 en = """Search for an image on the public web via Google Cloud Vision Web Detection. Reverse image search: given an image (local or URL), returns web pages containing it, visually similar images, conceptual labels.
 
-CORRECT USE: "where is this photo from?", "find the source of this image", "search for similar images on the web", "what's in this photo?".
+CORRECT USE: "where is this photo from?", "find the source of this image", "search for similar images on the web", "search the web for photos similar to <person>'s enrollment shots", "what's in this photo?".
+
+OK: `find_images_web(paths=["/home/roberto/images/enrollment/roberto.jpg"])` to search the web for images similar to a LOCAL photo. For multiple reference photos: `paths=[file1, file2, ...]` (loop per file).
 
 DO NOT CONFUSE WITH:
 - `find_images`: search photos on local FILESYSTEM (path-based).

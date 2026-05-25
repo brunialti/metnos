@@ -132,6 +132,15 @@ def find_images_web(args: dict) -> dict:
         ok_count: int
         errors:   list[{source, error, error_class}]
     """
+    # §2.4 forgiving: path-like in `urls` → spostati in `paths` e
+    # viceversa http(s) in `paths` → `urls`. Patch sistemica del confine
+    # NL→determinismo (PLANNER LLM confonde tipo arg su nomi generici
+    # tipo "url"). Vedi turn live 2a5f2711.
+    try:
+        from executor_helpers import normalize_paths_urls
+        args = normalize_paths_urls(args)
+    except ImportError:
+        pass
     paths = args.get("paths") or []
     urls = args.get("urls") or []
     max_results = int(args.get("max_results") or 10)
