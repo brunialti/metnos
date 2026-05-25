@@ -7663,7 +7663,30 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
         validation = validate_args(args, executor.args_schema)
         step.validation_failures = validation
         if validation:
-            obs = {"ok": False, "error": f"validation failed: {validation}"}
+            # Arricchimento hint §7.3: il vincolo `requires_one_of` indica
+            # all'LLM che servono args alternativi, ma il LLM medium spesso
+            # ignora e riprova identico. Aggiungiamo hint sistemico generico
+            # «se non hai gli args, chiama un producer e usa from_step=N»
+            # (PRODUCER_VERBS lookup dal vocab, no enum hardcoded di tool).
+            _hint = ""
+            if any("requires one of" in f for f in validation):
+                try:
+                    from vocab import PRODUCER_VERBS as _PV
+                    _verbs = ", ".join(sorted(_PV))
+                    _hint = (f" Se non disponi di questi args, prima invoca "
+                             f"un executor producer (verbo fra: {_verbs}) "
+                             f"e passa `from_step=N` qui (§4.1).")
+                except Exception:
+                    _hint = (" Se non hai questi args, prima invoca un "
+                             "producer step (find/list/get/read) e usa "
+                             "`from_step=N`.")
+            obs = {
+                "ok": False,
+                "error": f"validation failed: {validation}{_hint}",
+                "error_class": "invalid_args",
+                "validation_failures": validation,
+            }
+            step.error = "validation_failed"
         else:
             scope_violation = check_hints(args, executor.capabilities)
             step.scope_violation = scope_violation
