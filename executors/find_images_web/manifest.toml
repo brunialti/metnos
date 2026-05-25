@@ -24,10 +24,13 @@ USO CORRETTO: «da dove viene questa foto?», «trova la fonte di questa immagin
 
 OK: `find_images_web(paths=["/home/roberto/images/enrollment/roberto.jpg"])` per cercare immagini simili a una foto LOCALE sul web. Per piu' foto reference: `paths=[file1, file2, ...]` (loop per ciascuna).
 
-DEVI: se NON conosci con certezza i path reali, prima invoca `find_files(query=...)` o `list_dirs(path=...)` per scoprirli, poi passa `paths` da `from_step=N` (§4.1).
+DEVI: se NON conosci con certezza i path reali, prima invoca uno fra `find_files(query=...)`, `find_images_indices(name=..., base_path=...)`, `list_dirs(path=...)` per scoprirli, poi passa `from_step=N` (§4.1). Le entries ritornate hanno campo `path` che `find_images_web` legge come `paths`.
+NON DEVI: chiamare `find_images_web` con `paths=[]` E `urls=[]`. Devi sempre fornire ALMENO uno fra `paths`, `urls`, o `from_step` (riferimento a uno step producer precedente).
 NON DEVI: inventare nomi di file plausibili ("enrollment_sample.jpg", "photo_1.jpg", ...) — l'executor ritornera' `not_found` per file inesistenti.
-OK: pipeline «cerca foto sul web simile a enrollment di X» → step1 `find_files(query="X enrollment", base_path="/home/roberto/images/enrollment")` → step2 `find_images_web(from_step=1)`.
+OK: pipeline «cerca foto sul web simile a enrollment di X» → step1 `find_images_indices(name="X", base_path="/home/roberto/images/enrollment")` → step2 `find_images_web(from_step=1)`.
+OK: pipeline «trova fonte di X.jpg sul web» → step1 `find_files(query="X.jpg")` → step2 `find_images_web(from_step=1)`.
 ERRORE: chiamare direttamente `find_images_web(paths=["/home/roberto/foto_inventata.jpg"])` senza aver verificato che esista.
+ERRORE: chiamare `find_images_web(max_results=5)` senza paths/urls/from_step — l'invocazione fallisce con `invalid_args`.
 
 NON CONFONDERE CON:
 - `find_images`: cerca foto sul FILESYSTEM locale (path-based).
@@ -53,10 +56,13 @@ CORRECT USE: "where is this photo from?", "find the source of this image", "sear
 
 OK: `find_images_web(paths=["/home/roberto/images/enrollment/roberto.jpg"])` to search the web for images similar to a LOCAL photo. For multiple reference photos: `paths=[file1, file2, ...]` (loop per file).
 
-YOU MUST: if you do NOT know the exact local paths, first call `find_files(query=...)` or `list_dirs(path=...)` to discover them, then pass `paths` via `from_step=N` (§4.1).
+YOU MUST: if you do NOT know the exact local paths, first call one of `find_files(query=...)`, `find_images_indices(name=..., base_path=...)`, `list_dirs(path=...)` to discover them, then pass `from_step=N` (§4.1). Returned entries have `path` field that `find_images_web` reads as `paths`.
+YOU MUST NOT: call `find_images_web` with `paths=[]` AND `urls=[]`. Always provide AT LEAST one of `paths`, `urls`, or `from_step` (reference to upstream producer step).
 YOU MUST NOT: invent plausible-looking filenames ("enrollment_sample.jpg", "photo_1.jpg", ...) — the executor will return `not_found` for non-existing files.
-OK: pipeline "search the web for photos similar to X's enrollment" → step1 `find_files(query="X enrollment", base_path="/home/roberto/images/enrollment")` → step2 `find_images_web(from_step=1)`.
+OK: pipeline "search web for photos similar to X's enrollment" → step1 `find_images_indices(name="X", base_path="/home/roberto/images/enrollment")` → step2 `find_images_web(from_step=1)`.
+OK: pipeline "find source of X.jpg on web" → step1 `find_files(query="X.jpg")` → step2 `find_images_web(from_step=1)`.
 ERROR: calling `find_images_web(paths=["/home/roberto/invented_file.jpg"])` directly without checking existence.
+ERROR: calling `find_images_web(max_results=5)` without paths/urls/from_step — invocation fails with `invalid_args`.
 
 DO NOT CONFUSE WITH:
 - `find_images`: search photos on local FILESYSTEM (path-based).
