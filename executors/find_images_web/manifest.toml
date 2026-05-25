@@ -24,6 +24,11 @@ USO CORRETTO: «da dove viene questa foto?», «trova la fonte di questa immagin
 
 OK: `find_images_web(paths=["/home/roberto/images/enrollment/roberto.jpg"])` per cercare immagini simili a una foto LOCALE sul web. Per piu' foto reference: `paths=[file1, file2, ...]` (loop per ciascuna).
 
+DEVI: se NON conosci con certezza i path reali, prima invoca `find_files(query=...)` o `list_dirs(path=...)` per scoprirli, poi passa `paths` da `from_step=N` (§4.1).
+NON DEVI: inventare nomi di file plausibili ("enrollment_sample.jpg", "photo_1.jpg", ...) — l'executor ritornera' `not_found` per file inesistenti.
+OK: pipeline «cerca foto sul web simile a enrollment di X» → step1 `find_files(query="X enrollment", base_path="/home/roberto/images/enrollment")` → step2 `find_images_web(from_step=1)`.
+ERRORE: chiamare direttamente `find_images_web(paths=["/home/roberto/foto_inventata.jpg"])` senza aver verificato che esista.
+
 NON CONFONDERE CON:
 - `find_images`: cerca foto sul FILESYSTEM locale (path-based).
 - `find_images_indices`: cerca foto in INDICI locali CLIP/ArcFace (semantica + volti su corpus locale).
@@ -47,6 +52,11 @@ en = """Search for an image on the public web via Google Cloud Vision Web Detect
 CORRECT USE: "where is this photo from?", "find the source of this image", "search for similar images on the web", "search the web for photos similar to <person>'s enrollment shots", "what's in this photo?".
 
 OK: `find_images_web(paths=["/home/roberto/images/enrollment/roberto.jpg"])` to search the web for images similar to a LOCAL photo. For multiple reference photos: `paths=[file1, file2, ...]` (loop per file).
+
+YOU MUST: if you do NOT know the exact local paths, first call `find_files(query=...)` or `list_dirs(path=...)` to discover them, then pass `paths` via `from_step=N` (§4.1).
+YOU MUST NOT: invent plausible-looking filenames ("enrollment_sample.jpg", "photo_1.jpg", ...) — the executor will return `not_found` for non-existing files.
+OK: pipeline "search the web for photos similar to X's enrollment" → step1 `find_files(query="X enrollment", base_path="/home/roberto/images/enrollment")` → step2 `find_images_web(from_step=1)`.
+ERROR: calling `find_images_web(paths=["/home/roberto/invented_file.jpg"])` directly without checking existence.
 
 DO NOT CONFUSE WITH:
 - `find_images`: search photos on local FILESYSTEM (path-based).
