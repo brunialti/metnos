@@ -1090,6 +1090,29 @@ def _load_dir_into_catalog(executors_dir: Path, catalog: Catalog, verify: bool,
             args_schema = dict(args_schema)
             if props:
                 args_schema["properties"] = new_props
+            # §7.3 universale (25/5/2026): se requires_one_of menziona
+            # `from_step` ma la property non e' in args.properties, il
+            # tool_use protocol non espone from_step al LLM (anche se il
+            # runtime lo accetta via resolve_from_step). Inietta property
+            # virtuale cosi' il PLANNER vede l'opzione e puo' usarla.
+            _rof = args_schema.get("requires_one_of") or []
+            _needs_from_step = any(
+                isinstance(g, list) and "from_step" in g for g in _rof
+            )
+            if _needs_from_step:
+                _props = dict(args_schema.get("properties") or {})
+                if "from_step" not in _props:
+                    _props["from_step"] = {
+                        "type": "integer",
+                        "description": (
+                            "Numero dello step precedente che ha prodotto "
+                            "le entries da consumare (§4.1). Alternativo a "
+                            "paths/urls quando le entries vengono da uno "
+                            "step producer (find_*, list_*, get_*, read_*)."
+                        ),
+                        "minimum": 1,
+                    }
+                    args_schema["properties"] = _props
 
         # Dormancy check (ADR 15/5/2026): executor importato da skill
         # ma senza credenziali → dormant=True, filtrato dal pool top-K.
