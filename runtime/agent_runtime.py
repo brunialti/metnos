@@ -1890,7 +1890,45 @@ def _compose_final_message_from_obs(lp_tool, lp_obs):
       detail_md > summary > final_message_hint > message > results/entries.
     Ritorna (final_message, ok_count, n_above_threshold).
     Riusato da auto_final_on_duplicate e cap_max_per_turn (8/5/2026 notte).
+
+    §2.8 ext (25/5/2026): se l'obs ha 0 elementi prodotti (ok_count=0,
+    entries=[], results=[]) E ha `errors` non vuoti, NON usare il
+    template "completato" — riporta gli errori reali. Caso live turn
+    2a5f2711: find_images_web con `urls=path_locale` → entries=[] +
+    errors=[{...}] ma ok=True → final disonesto "completato (0 elementi)".
     """
+    # Detection mascheramento 0-elementi + errors (§2.8 honesty).
+    if isinstance(lp_obs, dict):
+        _ok_cnt = lp_obs.get("ok_count")
+        _entries = lp_obs.get("entries") or []
+        _results = lp_obs.get("results") or []
+        _errors = lp_obs.get("errors") or []
+        _zero_work = (
+            (_ok_cnt == 0 or _ok_cnt is None)
+            and not _entries and not _results
+        )
+        if _zero_work and isinstance(_errors, list) and _errors:
+            _err_msgs = []
+            _seen = set()
+            for _e in _errors[:3]:
+                if not isinstance(_e, dict):
+                    continue
+                _emsg = (_e.get("error") or _e.get("error_class")
+                         or _e.get("reason") or "")
+                _emsg = str(_emsg).strip()
+                if _emsg and _emsg not in _seen:
+                    _seen.add(_emsg)
+                    _err_msgs.append(_emsg)
+            _err_text = "; ".join(_err_msgs) if _err_msgs else "errore"
+            try:
+                _msg_template = msg(
+                    "MSG_FINAL_FALLBACK_FROM_ERROR",
+                    tool=lp_tool or "", error=_err_text,
+                )
+            except Exception:
+                _msg_template = f"{lp_tool}: nessun risultato. {_err_text}"
+            return _msg_template, 0, 0
+
     ok_count, n_above_threshold = _extract_auto_final_count(lp_obs)
     # 15/5/2026: detail_md autoritativo → usalo come final PURO senza wrap
     # "{tool}: completato (...)". Per executor che producono markdown

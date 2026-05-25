@@ -193,8 +193,15 @@ def find_images_web(args: dict) -> dict:
             errors.append({"source": url, "error": str(e),
                            "error_class": "network"})
 
+    # Semantica `ok` §2.8: True solo se almeno un'entry e' stata prodotta
+    # OPPURE nessun errore per-source (input vuoto legitto). Falso se
+    # tutti i source hanno fallito (entries=[] AND errors!=[]): senza
+    # questa rifrazione, l'auto-final compose emette «completato (0
+    # elementi)» disonesto invece di riportare gli errori reali.
+    has_entries = bool(entries)
+    has_errors = bool(errors)
     return {
-        "ok": True,
+        "ok": has_entries or not has_errors,
         "entries": entries,
         "ok_count": len(entries),
         "errors": errors,

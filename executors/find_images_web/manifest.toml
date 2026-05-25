@@ -33,6 +33,10 @@ Args:
 
 Almeno uno fra `paths` e `urls` deve essere non-vuoto.
 
+USO CORRETTO: `find_images_web(paths=["/home/roberto/foto.jpg"])` per file locale, oppure `find_images_web(urls=["https://example.com/foto.jpg"])` per URL pubblico.
+
+ERRORE: `find_images_web(urls=["/home/roberto/foto.jpg"])` — i path locali (slash iniziale, niente `http://`/`https://`) vanno in `paths`, non in `urls`. `urls` accetta SOLO URL pubblici http/https.
+
 Output: entries=[{source, best_guess_label, matching_pages, similar_images, web_entities}].
 
 Quota: free tier 1000 unit/mese. Uso personale tipico (~30 query/mese) resta gratuito."""
@@ -50,6 +54,10 @@ Args:
 - `max_results=10`: cap per block (pages/similar/entities).
 
 At least one of `paths` and `urls` must be non-empty.
+
+CORRECT USE: `find_images_web(paths=["/home/roberto/foto.jpg"])` for local file, or `find_images_web(urls=["https://example.com/foto.jpg"])` for public URL.
+
+ERROR: `find_images_web(urls=["/home/roberto/foto.jpg"])` — local paths (leading slash, no `http://`/`https://`) belong in `paths`, NOT `urls`. `urls` accepts ONLY public http/https URLs.
 
 Output: entries=[{source, best_guess_label, matching_pages, similar_images, web_entities}].
 

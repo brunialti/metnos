@@ -219,5 +219,45 @@ class TestCapSameExecutorMessage(unittest.TestCase):
         self.assertFalse(out.startswith("(stop:"))
 
 
+class TestComposeFromObsZeroWithErrors(unittest.TestCase):
+    """`_compose_final_message_from_obs`: ok_count=0 + errors!=[] → fail message,
+    non «completato (0 elementi)» disonesto (§2.8, turn live 2a5f2711)."""
+
+    def test_zero_entries_with_errors_emits_error_msg(self):
+        from agent_runtime import _compose_final_message_from_obs
+        obs = {
+            "ok": True, "ok_count": 0,
+            "entries": [],
+            "errors": [{"source": "/local/path.jpg",
+                         "error": "File is not a valid URL.",
+                         "error_class": "invalid_url"}],
+        }
+        msg, ok_count, _ = _compose_final_message_from_obs(
+            "find_images_web", obs)
+        self.assertNotIn("completato", msg.lower(),
+                          f"0 elementi + errors NON e' completato: {msg!r}")
+        self.assertIn("find_images_web", msg)
+        # L'errore reale deve apparire
+        self.assertTrue("valid url" in msg.lower() or "invalid_url" in msg,
+                        f"errore reale deve apparire: {msg!r}")
+
+    def test_zero_entries_no_errors_is_completato(self):
+        """Caso legitto: 0 entries + 0 errors = input vuoto, OK completato."""
+        from agent_runtime import _compose_final_message_from_obs
+        obs = {"ok": True, "ok_count": 0, "entries": [], "errors": []}
+        msg, _, _ = _compose_final_message_from_obs("find_x", obs)
+        # Qui "completato (0 elementi)" e' legittimo (nessun fail mascherato)
+        self.assertIn("0", msg)
+
+    def test_some_entries_falls_through(self):
+        """ok_count>0 → non triggera detection, comportamento normale."""
+        from agent_runtime import _compose_final_message_from_obs
+        obs = {"ok": True, "ok_count": 2,
+                "entries": [{"a": 1}, {"a": 2}],
+                "errors": []}
+        msg, _, _ = _compose_final_message_from_obs("find_x", obs)
+        self.assertIn("2", msg)
+
+
 if __name__ == "__main__":
     unittest.main()
