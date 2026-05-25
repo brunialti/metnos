@@ -3,6 +3,7 @@ Vision Web Detection. Thin wrapper sul backend.
 """
 from __future__ import annotations
 
+import json
 import sys
 from pathlib import Path
 
@@ -15,3 +16,17 @@ from backends.images.google_vision import find_images_web as _backend  # noqa: E
 
 def invoke(args: dict) -> dict:
     return _backend(args)
+
+
+def main():
+    try:
+        args = json.load(sys.stdin)
+    except json.JSONDecodeError as e:
+        sys.stdout.write(json.dumps({"ok": False,
+                                      "error": f"invalid input json: {e}"}))
+        return
+    sys.stdout.write(json.dumps(invoke(args), ensure_ascii=False))
+
+
+if __name__ == "__main__":
+    main()

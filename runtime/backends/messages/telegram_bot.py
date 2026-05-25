@@ -43,6 +43,11 @@ def send(args: dict) -> dict:
 
     `subject` viene prefisso a body con doppia newline (mail-like UX).
     Ritorna {ok, ok_count, fail_count, results[], failed[]}.
+
+    Mock mode (`METNOS_TELEGRAM_MOCK=1`, ADR seed): bypassa la chiamata
+    reale aiogram, ritorna ok=True con message_id placeholder. Necessario
+    per test e2e isolati (no telegram-daemon, no token reale) e per dry-run
+    pre-deploy. Determinismo §7.9.
     """
     from channels import OutboundMessage
 
@@ -52,6 +57,35 @@ def send(args: dict) -> dict:
                 "error": _msg("ERR_ARG_INVALID", arg="messages", reason="must be a list")}
     if not messages:
         return {"ok": True, "ok_count": 0, "fail_count": 0, "results": [], "failed": []}
+
+    if os.environ.get("METNOS_TELEGRAM_MOCK", "0") == "1":
+        results: list[dict] = []
+        for i, m in enumerate(messages):
+            if not isinstance(m, dict):
+                continue
+            rid = str(m.get("recipient_id") or m.get("chat_id") or "")
+            if not rid:
+                continue
+            rec = {
+                "channel": "telegram",
+                "recipient_id": rid,
+                "sent_message_id": f"mock_{i}",
+                "sent_at_iso": datetime.datetime.now(
+                    datetime.timezone.utc).isoformat(timespec="seconds"),
+                "ok": True,
+                "_mock": True,
+            }
+            for k in ("recipient_user_id", "recipient_name", "target"):
+                if k in m:
+                    rec[k] = m[k]
+            results.append(rec)
+        return {
+            "ok": True,
+            "ok_count": len(results),
+            "fail_count": 0,
+            "results": results,
+            "failed": [],
+        }
 
     try:
         ch = _new_channel()

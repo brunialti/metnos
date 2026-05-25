@@ -57,7 +57,7 @@ Quota: free tier 1000 units/month. Typical personal use (~30 queries/month) stay
 
 [code]
 files  = ["find_images_web.py"]
-digest = "sha256:905af3f0fe418be5881b7a2beabf67ed03dea4f908cc69bce7ee5e216be215d4"
+digest = "sha256:512f44312d598f92204a42064a4aec4f842597ca04bbf0fea5621be8a3b36b6b"
 
 [args]
 type = "object"

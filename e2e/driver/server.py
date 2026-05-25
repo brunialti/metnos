@@ -131,6 +131,11 @@ def _seed_realistic_into(user_data: Path, user_state: Path,
         "introvertiva", "scratchpad.db", "multi_tool_paths.sqlite",
         "executors/skills",   # skill imports (ADR 0160 canonical)
         "executors/_imports", # skill imports legacy back-compat
+        # users.db: registro utenti + canali verified (telegram/mail).
+        # Senza, `send_messages(to_user=...)` fallisce con
+        # `no_verified_channel` anche se Roberto ha canali in live →
+        # test e2e «mandami un ping» rifiutato dal judge (24/5/2026).
+        "users.db",
     ]
     for name in items_data:
         src = _LIVE_USER_DATA / name
@@ -301,6 +306,13 @@ class E2EServer:
             "METNOS_HTTP_DISABLE_BUILD_TASKS": "1",  # niente async build
             # Mai chiamare frontier (Anthropic/OpenAI a pagamento) nei test
             "METNOS_DISABLE_FRONTIER": "1",
+            # Mock telegram backend: niente chiamate reali ai bot API,
+            # niente dipendenza dal telegram-daemon (che non gira nel
+            # server e2e tmp). send_messages via_channel=telegram ritorna
+            # ok=True con message_id placeholder. Necessario per test che
+            # esercitano send_messages con users.db seedato (Roberto ha
+            # telegram verified in live, e2e deve simulare il send).
+            "METNOS_TELEGRAM_MOCK": "1",
             # Evita lock files in giro
             "PYTHONUNBUFFERED": "1",
         })

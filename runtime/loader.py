@@ -1012,6 +1012,32 @@ def _load_dir_into_catalog(executors_dir: Path, catalog: Catalog, verify: bool,
             continue
         code_path = (sub / code_files[0]) if code_files else None
 
+        # Main entry check §7.3 (24/5/2026): ogni executor file deve avere
+        # `if __name__ == "__main__":` per il dispatch stdin/stdout JSON
+        # del subprocess `python <code_path>`. Senza, il subprocess esegue
+        # il top-level import e esce con stdout vuoto → runtime emette
+        # `non-JSON output: ''; stderr: ''` (bug live 25/5/2026 find_images_web).
+        # Reject deterministico al boot §7.9: il catalog non espone executor
+        # degeneri al PLANNER, evitando il loop di retry su error class
+        # `non_json` o `unknown` non risolvibile dal dispatcher.
+        if code_path is not None and lifecycle != "proposed":
+            try:
+                _code_text = code_path.read_text(encoding="utf-8")
+                if '__name__ == "__main__"' not in _code_text \
+                        and "__name__ == '__main__'" not in _code_text:
+                    catalog.rejected.append((
+                        str(sub),
+                        f"missing main entry point in {code_path.name}: "
+                        f"expected `if __name__ == \"__main__\":` for "
+                        f"subprocess stdin/stdout JSON dispatch",
+                    ))
+                    continue
+            except OSError as _e:
+                catalog.rejected.append((
+                    str(sub), f"cannot read code_path: {_e}",
+                ))
+                continue
+
         # ADR 0092 Phase 4 (5/5/2026): description multilingua come table
         # TOML. Schema atteso: `[description] it = "..." en = "..."`.
         # Schema legacy flat (`description = "..."`) → ValueError esplicito.
