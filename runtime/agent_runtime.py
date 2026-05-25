@@ -303,7 +303,16 @@ _RUNTIME_INTERNAL_LEAK_RE = re.compile(
     r"^validation failed:|^vaglio rifiuta:|"
     r"consecutive_blocked|auto_final_on_duplicate|"
     r"cap_same_executor|VECTORIAL_VIOLATION|"
-    r"synth_request_blocked_by|requires one of \[)",
+    r"synth_request_blocked_by|requires one of \[|"
+    # Synth rejection messages (turn live 25/5/2026 bk93uc961):
+    # «request_new_executor rejected: candidate '...' copre la query
+    # (jaccard 1.00). Riusalo invece di sintetizzare.» — system msg
+    # destinato al PLANNER, non all'utente.
+    r"request_new_executor rejected|jaccard \d|"
+    r"Riusalo invece di sintetiz|"
+    r"Reuse it instead of synthesiz|"
+    r"candidate '[^']+' copre la query|"
+    r"candidate '[^']+' covers the query)",
     re.IGNORECASE | re.MULTILINE,
 )
 
@@ -344,6 +353,41 @@ def _is_meta_step(s) -> bool:
     return False
 
 
+def _detect_unfulfilled_mutating_intent(log) -> str:
+    """Detection §4.3 + §2.8 (25/5/2026): il PLANNER ha invocato un verbo
+    mutating (move/delete/send/write/create/share) ma nessuno step di
+    quel verbo e' ok=True con count>0 → l'azione richiesta non e' stata
+    completata, il final_message attuale e' fuorviante.
+
+    Ritorna il verbo (es. "move") se pendente, "" altrimenti.
+
+    Derivazione §7.3 dai TOOL chiamati (non da NL keyword matching):
+    se il PLANNER ha mappato la query a un tool mutating, l'intent era
+    mutating per costruzione. Robusto a sinonimi colloquiali ("metti",
+    "trasloca", "spedisci") senza enum hardcoded.
+    """
+    try:
+        from vocab import DESTRUCTIVE_VERBS
+    except Exception:
+        return ""
+    pending_verb = ""
+    for s in getattr(log, "steps", []) or []:
+        if not s.chosen_tool:
+            continue
+        step_verb = s.chosen_tool.split("_", 1)[0]
+        if step_verb not in DESTRUCTIVE_VERBS:
+            continue
+        _obs = s.result if isinstance(s.result, dict) else None
+        # ok=True con count>0 → azione completata, intent soddisfatto.
+        if isinstance(_obs, dict) and _obs.get("ok") is True:
+            _ok_cnt = _obs.get("ok_count")
+            if _ok_cnt is None or _ok_cnt > 0:
+                return ""
+        # ok=False o ok=None o ok_count=0: candidato pending.
+        pending_verb = step_verb
+    return pending_verb
+
+
 def _compose_honest_from_last_error(log) -> str:
     """Compose messaggio onesto user-facing dall'ultimo step ok=False.
 
@@ -380,6 +424,12 @@ def _compose_honest_from_last_error(log) -> str:
                 except Exception:
                     pass
             if _err:
+                # Scrub leak runtime-internal dall'error stesso §2.8:
+                # se l'error contiene marker runtime (request_new_executor
+                # rejected, DUPLICATE_CALL, jaccard, ...) emettere generic
+                # fallback invece di propagare il leak nel template.
+                if _has_runtime_internal_leak(str(_err)):
+                    continue  # cerca step precedente
                 try:
                     return msg(
                         "MSG_FINAL_FALLBACK_FROM_ERROR",
@@ -2035,6 +2085,36 @@ def _compose_final_message_from_obs(lp_tool, lp_obs):
     2a5f2711: find_images_web con `urls=path_locale` → entries=[] +
     errors=[{...}] ma ok=True → final disonesto "completato (0 elementi)".
     """
+    # Detection processor con 0 entries (§2.8 honesty, 25/5/2026):
+    # se il last_productive e' un PROCESSOR_VERB (filter/classify/sort/
+    # group/compute/compare/describe) che ritorna entries=[] dopo
+    # filtraggio, il template "completato (0 elementi)" sarebbe vero ma
+    # fuorviante (l'utente ha chiesto un'azione mutating su un subset
+    # che e' risultato vuoto). Emetti final dedicato. Caso live turn
+    # e2ec23eb: filter_entries(where=relevance,where_in=[junk,low]) →
+    # 0 entries (nessuna mail spam) → auto_final pescava read_messages
+    # come last_productive e mostrava "17 elementi" fuorviante.
+    if isinstance(lp_obs, dict) and lp_tool:
+        try:
+            from vocab import PROCESSOR_VERBS as _PROC_VERBS_LP
+        except Exception:
+            _PROC_VERBS_LP = frozenset()
+        _verb_lp = lp_tool.split("_", 1)[0]
+        if _verb_lp in _PROC_VERBS_LP:
+            _entries_lp = lp_obs.get("entries") or []
+            _results_lp = lp_obs.get("results") or []
+            if not _entries_lp and not _results_lp:
+                try:
+                    return msg(
+                        "MSG_PROCESSOR_EMPTY",
+                        tool=lp_tool,
+                    ), 0, 0
+                except Exception:
+                    return (
+                        f"Nessun risultato da `{lp_tool}`. Il filtro non "
+                        f"ha selezionato elementi corrispondenti."
+                    ), 0, 0
+
     # Detection mascheramento 0-elementi + errors (§2.8 honesty).
     if isinstance(lp_obs, dict):
         _ok_cnt = lp_obs.get("ok_count")
@@ -3755,6 +3835,26 @@ class TurnLog:
             # _compose_final_message_from_obs branch).
             if _has_runtime_internal_leak(self.final_message):
                 self.final_message = _compose_honest_from_last_error(self)
+            # §4.3 mutating intent honesty: se la user_query contiene un
+            # verbo mutating (move/delete/send/write/create/share) ma
+            # nessuno step ok=True ha quel verbo → l'azione non e' stata
+            # eseguita. Final_message attuale (es. "read_messages:
+            # completato (7 elementi)" da auto-final) e' fuorviante.
+            # Sostituisci con dichiarazione esplicita di incompletezza.
+            _mutating_pending = _detect_unfulfilled_mutating_intent(self)
+            if _mutating_pending:
+                try:
+                    self.final_message = msg(
+                        "MSG_MUTATING_INTENT_UNFULFILLED",
+                        verb=_mutating_pending,
+                    )
+                except Exception:
+                    self.final_message = (
+                        f"L'azione `{_mutating_pending}` richiesta non e' "
+                        f"stata completata. Riformula la richiesta con "
+                        f"maggiori dettagli o specifica i target da "
+                        f"modificare."
+                    )
         # 10/5/2026: append lista risultati formattati quando in history
         # c'e' uno step `find_urls` ok con entries. Indipendente da
         # final_kind: anche su loop_break/error l'utente vede i risultati

@@ -150,6 +150,20 @@ def find_images_web(args: dict) -> dict:
                                        "deve essere non-vuoto",
                 "error_class": "invalid_args"}
 
+    # Cap MAX_PATHS_PER_CALL §2.7 (25/5/2026): Google Vision Web Detection
+    # processa ogni source con una HTTP request sincrona ~1-3s ciascuna.
+    # Con >10 sources la call totale supera il timeout executor (60s) → bug
+    # live turn 7c7312e9. Cap a 10 sources/call complessivi (paths+urls);
+    # esubero in `truncated:True` con cap_field/cap_value standard.
+    _MAX_SOURCES = 10
+    _total_requested = len(paths) + len(urls)
+    _truncated_sources = _total_requested > _MAX_SOURCES
+    if _truncated_sources:
+        # Slice deterministico §7.9: paths first, urls fill remaining slots.
+        _np = min(len(paths), _MAX_SOURCES)
+        paths = list(paths)[:_np]
+        urls = list(urls)[:_MAX_SOURCES - _np]
+
     try:
         access_token = _refresh_access_token()
     except (ValueError, urllib.error.HTTPError, OSError) as e:
@@ -209,12 +223,22 @@ def find_images_web(args: dict) -> dict:
     # elementi)» disonesto invece di riportare gli errori reali.
     has_entries = bool(entries)
     has_errors = bool(errors)
-    return {
+    out = {
         "ok": has_entries or not has_errors,
         "entries": entries,
         "ok_count": len(entries),
         "errors": errors,
     }
+    if _truncated_sources:
+        out.update({
+            "truncated": True,
+            "truncated_what": "fonti",
+            "used": _MAX_SOURCES,
+            "available_total": _total_requested,
+            "cap_field": "max_sources_per_call",
+            "cap_value": _MAX_SOURCES,
+        })
+    return out
 
 
 def _classify_http(code: int) -> str:
