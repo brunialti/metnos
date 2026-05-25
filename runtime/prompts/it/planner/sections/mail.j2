@@ -22,6 +22,15 @@ UTENTE: "Sposta in spam le mail di pubblicita' di oggi"
 [step 4] move_messages(from_step=3, dst_folder="Junk")
 final_answer: "Spostate N mail in Junk."
 
+PATTERN SPAM / JUNK / COMMERCIALI / PROMO / PUBBLICITA' / NEWSLETTER:
+DEVI: usare `classify_entries(dimension="relevance")` + `filter_entries(where_field="relevance", where_in=["junk","low"])`. La classe `junk` di relevance copre semantica: newsletter, promo, pubblicita', spam, commerciali.
+NON DEVI: usare `body_contains="spam"` o `subject_contains="commerciale"` come surrogato (cerca quel testo letterale, non semantica).
+OK: «metti in spam le mail commerciali» → read_messages → classify → filter(junk) → move_messages.
+ERRORE: «metti in spam» → read_messages(body_contains="spam commerciale") → 0 entries.
+
+PRESET time_window VALIDI: "today", "yesterday", "last-Nd" (es. "last-7d"), "last-Nh" (es. "last-24h"). NON esistono "all"/"always"/"sempre". Se l'utente non specifica tempo, ometti `time_window` o usa "last-7d" come default ragionevole.
+ERRORE: read_messages(time_window="all") → invalid_args.
+
 CASO 2: move_messages NON e' nel tuo set di tool.
 UTENTE: "Sposta in spam le mail di pubblicita' di oggi"
 [step 1] request_new_executor(expected_name="move_messages", intent="Sposta una lista di messaggi IMAP da una cartella sorgente (es. INBOX) a una cartella di destinazione (es. INBOX.Spam su Cyrus, Junk su Migadu). Pre-flight check che dst esista. COPY+check status, poi STORE \Deleted+EXPUNGE solo se COPY ok. Salva message_id nei results per swap_src_dst undo.")
