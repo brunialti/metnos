@@ -1145,6 +1145,44 @@ def validate_args(args, schema):
             if r == "from_step" and "entries" in args:
                 continue
             failures.append(f"missing required arg '{r}'")
+    # `requires_one_of`: lista di liste, ciascuna sotto-lista esprime un
+    # disgiuntivo "ALMENO uno fra X, Y, Z deve essere non-vuoto". Schema
+    # dichiarativo §7.3 universale: ogni executor puo' imporre vincoli
+    # tipo «paths OR urls OR from_step» senza prompt teaching ad-hoc nella
+    # description. Un arg e' considerato "fornito" se: presente nel dict
+    # E non-vuoto (string non-blank, list non-empty, dict non-empty).
+    for group in (schema.get("requires_one_of") or []):
+        if not isinstance(group, list) or not group:
+            continue
+        provided = False
+        for k in group:
+            if k == "from_step":
+                # `from_step` viene risolto a `entries` upstream prima
+                # dell'invocazione: vale se uno dei due e' presente non-vuoto.
+                if (args.get("from_step") is not None
+                        and args.get("from_step") != 0):
+                    provided = True
+                    break
+                if args.get("entries"):
+                    provided = True
+                    break
+                continue
+            v = args.get(k)
+            if v is None:
+                continue
+            if isinstance(v, str) and v.strip():
+                provided = True
+                break
+            if isinstance(v, (list, dict)) and len(v) > 0:
+                provided = True
+                break
+            if not isinstance(v, (str, list, dict)) and v:
+                provided = True
+                break
+        if not provided:
+            failures.append(
+                f"requires one of {group} (none provided non-empty)"
+            )
     for name, value in (args or {}).items():
         if name not in props:
             continue

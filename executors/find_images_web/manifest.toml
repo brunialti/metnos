@@ -18,70 +18,34 @@ affinity    = [
 timeout_s = 60
 
 [description]
-it = """Cerca un'immagine sul web pubblico via Google Cloud Vision Web Detection. Reverse image search: dato un'immagine (locale o URL), restituisce pagine web che la contengono, immagini visualmente simili, etichette concettuali.
+it = """Reverse image search via Google Cloud Vision Web Detection. Riceve UNA o piu' immagini gia' note (locali via `paths`, pubbliche via `urls`, oppure ereditate da uno step precedente via `from_step`) e ritorna pagine web che le contengono, immagini visualmente simili, etichette concettuali.
 
-USO CORRETTO: «da dove viene questa foto?», «trova la fonte di questa immagine», «cerca immagini simili a questa sul web», «cerca sul web foto simili a quelle di enrollment di <persona>», «riconosci cosa c'e' in questa foto».
+DEVI: passare ALMENO uno fra `paths`, `urls`, `from_step`. Senza, fallisce con `invalid_args`.
+NON DEVI: invocare con tutti e tre vuoti, o inventare nomi file plausibili. Se non hai path reali, prima discoveri (find_files / find_images_indices / list_dirs / ...) producendo entries con campo `path`, poi consumi via `from_step=N` (§4.1 pattern producer→consumer).
+OK: chiamata standalone con paths/urls noti, oppure `from_step=N` dopo qualunque producer di immagini.
+ERRORE: chiamata con paths e urls entrambi vuoti senza from_step.
 
-OK: `find_images_web(paths=["/home/roberto/images/enrollment/roberto.jpg"])` per cercare immagini simili a una foto LOCALE sul web. Per piu' foto reference: `paths=[file1, file2, ...]` (loop per ciascuna).
+Argomento `paths`: file locali (jpg/png/gif/bmp/webp), encoded base64 inviati a Vision. Argomento `urls`: URL http(s) pubblici, fetch diretto. NON CONFONDERE schema: path locali NON vanno in `urls` (il backend normalizza §2.4 ma resta anti-pattern); URL http non vanno in `paths`.
 
-DEVI: se NON conosci con certezza i path reali, prima invoca uno fra `find_files(query=...)`, `find_images_indices(name=..., base_path=...)`, `list_dirs(path=...)` per scoprirli, poi passa `from_step=N` (§4.1). Le entries ritornate hanno campo `path` che `find_images_web` legge come `paths`.
-NON DEVI: chiamare `find_images_web` con `paths=[]` E `urls=[]`. Devi sempre fornire ALMENO uno fra `paths`, `urls`, o `from_step` (riferimento a uno step producer precedente).
-NON DEVI: inventare nomi di file plausibili ("enrollment_sample.jpg", "photo_1.jpg", ...) — l'executor ritornera' `not_found` per file inesistenti.
-OK: pipeline «cerca foto sul web simile a enrollment di X» → step1 `find_images_indices(name="X", base_path="/home/roberto/images/enrollment")` → step2 `find_images_web(from_step=1)`.
-OK: pipeline «trova fonte di X.jpg sul web» → step1 `find_files(query="X.jpg")` → step2 `find_images_web(from_step=1)`.
-ERRORE: chiamare direttamente `find_images_web(paths=["/home/roberto/foto_inventata.jpg"])` senza aver verificato che esista.
-ERRORE: chiamare `find_images_web(max_results=5)` senza paths/urls/from_step — l'invocazione fallisce con `invalid_args`.
-
-NON CONFONDERE CON:
-- `find_images`: cerca foto sul FILESYSTEM locale (path-based).
-- `find_images_indices`: cerca foto in INDICI locali CLIP/ArcFace (semantica + volti su corpus locale).
-
-Args:
-- `paths=[...]`: file immagine locali (jpg/png/gif/bmp/webp). Letti, encoded base64, inviati a Vision.
-- `urls=[...]`: URL pubblici di immagini. Vision fa fetch direct.
-- `max_results=10`: cap per ciascun blocco (pagine/simili/entita).
-
-Almeno uno fra `paths` e `urls` deve essere non-vuoto.
-
-USO CORRETTO: `find_images_web(paths=["/home/roberto/foto.jpg"])` per file locale, oppure `find_images_web(urls=["https://example.com/foto.jpg"])` per URL pubblico.
-
-ERRORE: `find_images_web(urls=["/home/roberto/foto.jpg"])` — i path locali (slash iniziale, niente `http://`/`https://`) vanno in `paths`, non in `urls`. `urls` accetta SOLO URL pubblici http/https.
+NON CONFONDERE CON: `find_images` (FS locale, path-based) ne' `find_images_indices` (indici CLIP/ArcFace su corpus locale). Questo executor cerca SUL WEB.
 
 Output: entries=[{source, best_guess_label, matching_pages, similar_images, web_entities}].
 
-Quota: free tier 1000 unit/mese. Uso personale tipico (~30 query/mese) resta gratuito."""
-en = """Search for an image on the public web via Google Cloud Vision Web Detection. Reverse image search: given an image (local or URL), returns web pages containing it, visually similar images, conceptual labels.
+Quota: free tier 1000 unit/mese."""
+en = """Reverse image search via Google Cloud Vision Web Detection. Takes one or more KNOWN images (local via `paths`, public via `urls`, or inherited from a previous step via `from_step`) and returns containing web pages, visually similar images, conceptual labels.
 
-CORRECT USE: "where is this photo from?", "find the source of this image", "search for similar images on the web", "search the web for photos similar to <person>'s enrollment shots", "what's in this photo?".
+YOU MUST: provide AT LEAST one of `paths`, `urls`, `from_step`. Without, fails with `invalid_args`.
+YOU MUST NOT: invoke with all three empty, or invent plausible filenames. If you do not know real paths, first discover (find_files / find_images_indices / list_dirs / ...) producing entries with `path` field, then consume via `from_step=N` (§4.1 producer→consumer pattern).
+OK: standalone call with known paths/urls, or `from_step=N` after any image producer.
+ERROR: call with paths AND urls empty without from_step.
 
-OK: `find_images_web(paths=["/home/roberto/images/enrollment/roberto.jpg"])` to search the web for images similar to a LOCAL photo. For multiple reference photos: `paths=[file1, file2, ...]` (loop per file).
+`paths` arg: local image files (jpg/png/gif/bmp/webp), base64-encoded to Vision. `urls` arg: public http(s) URLs, direct fetch. DO NOT CONFUSE schema: local paths do NOT go in `urls` (backend normalizes §2.4 but it remains anti-pattern); http URLs do not go in `paths`.
 
-YOU MUST: if you do NOT know the exact local paths, first call one of `find_files(query=...)`, `find_images_indices(name=..., base_path=...)`, `list_dirs(path=...)` to discover them, then pass `from_step=N` (§4.1). Returned entries have `path` field that `find_images_web` reads as `paths`.
-YOU MUST NOT: call `find_images_web` with `paths=[]` AND `urls=[]`. Always provide AT LEAST one of `paths`, `urls`, or `from_step` (reference to upstream producer step).
-YOU MUST NOT: invent plausible-looking filenames ("enrollment_sample.jpg", "photo_1.jpg", ...) — the executor will return `not_found` for non-existing files.
-OK: pipeline "search web for photos similar to X's enrollment" → step1 `find_images_indices(name="X", base_path="/home/roberto/images/enrollment")` → step2 `find_images_web(from_step=1)`.
-OK: pipeline "find source of X.jpg on web" → step1 `find_files(query="X.jpg")` → step2 `find_images_web(from_step=1)`.
-ERROR: calling `find_images_web(paths=["/home/roberto/invented_file.jpg"])` directly without checking existence.
-ERROR: calling `find_images_web(max_results=5)` without paths/urls/from_step — invocation fails with `invalid_args`.
-
-DO NOT CONFUSE WITH:
-- `find_images`: search photos on local FILESYSTEM (path-based).
-- `find_images_indices`: search photos in LOCAL indexes CLIP/ArcFace (semantic + faces on local corpus).
-
-Args:
-- `paths=[...]`: local image files (jpg/png/gif/bmp/webp). Read, base64-encoded, sent to Vision.
-- `urls=[...]`: public image URLs. Vision direct-fetches.
-- `max_results=10`: cap per block (pages/similar/entities).
-
-At least one of `paths` and `urls` must be non-empty.
-
-CORRECT USE: `find_images_web(paths=["/home/roberto/foto.jpg"])` for local file, or `find_images_web(urls=["https://example.com/foto.jpg"])` for public URL.
-
-ERROR: `find_images_web(urls=["/home/roberto/foto.jpg"])` — local paths (leading slash, no `http://`/`https://`) belong in `paths`, NOT `urls`. `urls` accepts ONLY public http/https URLs.
+DO NOT CONFUSE WITH: `find_images` (local FS, path-based) nor `find_images_indices` (CLIP/ArcFace indexes on local corpus). This executor searches THE WEB.
 
 Output: entries=[{source, best_guess_label, matching_pages, similar_images, web_entities}].
 
-Quota: free tier 1000 units/month. Typical personal use (~30 queries/month) stays free."""
+Quota: free tier 1000 unit/month."""
 
 [code]
 files  = ["find_images_web.py"]
@@ -90,6 +54,11 @@ digest = "sha256:512f44312d598f92204a42064a4aec4f842597ca04bbf0fea5621be8a3b36b6
 [args]
 type = "object"
 required = []
+# Vincolo disgiuntivo §7.3: almeno uno fra paths, urls, from_step deve
+# essere fornito non-vuoto. Validato dal runtime (validate_args), niente
+# teaching ad-hoc nella description. Universale: ogni executor con
+# pattern producer→consumer puo' dichiararlo cosi'.
+requires_one_of = [["paths", "urls", "from_step"]]
 
 [args.properties.paths]
 type = "array"
