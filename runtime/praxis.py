@@ -164,20 +164,69 @@ def extract_keywords(query: str, top_n: int = 5) -> list[str]:
     return keep[:top_n]
 
 
-def compute_intent_sig(verb: str, obj: str, keywords: list[str]) -> tuple[str, str]:
+_SELF_TOKENS = {"io", "me", "mio", "mia", "mie", "miei",
+                  "myself", "i", "my", "mine"}
+_LIST_ROLE_TOKENS = {"host": "host", "guest": "guest"}
+
+
+def _detect_scope(query: str, keywords: list[str]) -> str:
+    """Discrimina scope semantico per query persons (ADR 0163, 26/5/2026).
+
+    Riduce false-positive cluster merge che usa skill cross-query: una skill
+    promossa per «chi sono io» (scope=self) NON deve essere riusata per
+    «dimmi tutto su Silvia» (scope=other:silvia) o «lista guest» (scope=list).
+
+    Universal §7.3: applica a TUTTI gli object, non solo persons. Scope
+    aggiunto a intent_sig MA NON a intent_hash (hash resta ampio per
+    bucketing) — il discriminante e' cluster_id embedding-based.
+
+    Ritorna: stringa scope (self|list:role|other:proper_noun|).
+    """
+    if not query:
+        return ""
+    qlow = (query or "").lower()
+    tokens = set(t.lower() for t in (keywords or []))
+    # Self
+    if tokens & _SELF_TOKENS:
+        return "self"
+    # Lista filtrata per role/dominio (es. «lista guest paired», «lista host»)
+    if "lista" in qlow or "list " in qlow or "elenca" in qlow:
+        for kw in keywords or []:
+            if kw.lower() in _LIST_ROLE_TOKENS:
+                return f"list:{kw.lower()}"
+    # Proper noun (capitalized token len>=3, esclude "I"/"My"/...)
+    import re as _re
+    proper = _re.findall(r"\b[A-Z][a-zàèéìòù]{2,}\b", query or "")
+    if proper:
+        return f"other:{proper[0].lower()}"
+    return ""
+
+
+def compute_intent_sig(verb: str, obj: str, keywords: list[str],
+                        query: str = "") -> tuple[str, str]:
     """Ritorna (intent_sig, intent_hash).
 
-    intent_sig leggibile (include keywords per debug).
+    intent_sig leggibile (include keywords + scope per debug e per
+    differenziazione cluster ADR 0163, 26/5/2026 ext).
     intent_hash basato SOLO su (verb, object) per bucketing ampio — keywords
     variano lessicalmente fra query semanticamente equivalenti (es. "quanti
     file /tmp" vs "conta file /tmp") e bloccherebbero ogni promozione (bucket
     di 1). Bucket per coppia (verb, object) = 23×19 = 437 cluster massimi.
+
+    Scope marker (self|list:role|other:noun) aggiunto a intent_sig per
+    discriminare cluster cross-query (es. chi sono io vs dimmi tutto su X).
     """
     verb = (verb or "").lower().strip()
     obj = (obj or "").lower().strip()
     kw_norm = sorted(set(k.lower().strip() for k in (keywords or []) if k))
-    sig = f"{verb}|{obj}|{'_'.join(kw_norm)}"
-    h = hashlib.sha256(f"{verb}|{obj}".encode("utf-8")).hexdigest()[:16]
+    scope = _detect_scope(query, kw_norm) if query else ""
+    sig = f"{verb}|{obj}|{'_'.join(kw_norm)}|{scope}"
+    # Scope marker entra nel hash per discriminare cluster:
+    # chi sono io (scope=self) vs dimmi tutto su X (scope=other:x) finiscono
+    # in bucket diversi → cluster diversi → skill cache non si confondono.
+    # Bucket totali: 437 × ~5 scope = ~2185 max.
+    hash_input = f"{verb}|{obj}|{scope}"
+    h = hashlib.sha256(hash_input.encode("utf-8")).hexdigest()[:16]
     return sig, h
 
 
@@ -274,7 +323,7 @@ class PraxisStore:
         """
         if not verb or not obj:
             return None
-        sig, h = compute_intent_sig(verb, obj, keywords)
+        sig, h = compute_intent_sig(verb, obj, keywords, query=query)
         excl = exclude_framework_hashes or set()
 
         # 0. Cluster lookup semantico (preferito).
@@ -604,7 +653,7 @@ class PraxisStore:
         Cluster assignment (ADR 0161 ext, 26/5/2026): se BGE-M3 disponibile,
         embed(query) + assign_cluster (deterministic + LLM judge zona grigia).
         """
-        sig, h = compute_intent_sig(verb, obj, keywords)
+        sig, h = compute_intent_sig(verb, obj, keywords, query=query)
         fw_hash = compute_framework_hash(framework)
         embedding = None
         cluster_id = None

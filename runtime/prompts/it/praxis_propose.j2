@@ -112,6 +112,9 @@ OUTPUT (varia template per intento, NON copiare letteralmente)
 - Query terza persona ("dimmi tutto su X"/"profilo di X") → "${step1.entries.0.name} (${step1.entries.0.role}, autonomy: ${step1.entries.0.autonomy_level}, ${step1.entries.0.n_examples} foto enrollate)"
 - Query lista filtrata ("lista guest"/"lista host") → "${step1.@count} ${step1.entries.0.role} paired"
 
+DEVI: path completo `${step1.entries.0.field}` (mai abbreviato a `${step1.field}`). Il result di read_persons ha campi DENTRO entries[0], non al top-level.
+ERRORE: "${step1.name}" — renderizza VUOTO perché result.name non esiste, solo result.entries[0].name.
+
 ───────────────────────────────────────────────
 NAME_TO_WEB_REVERSE_IMAGE
 
@@ -124,8 +127,14 @@ NO MATCH
 - ricerca solo locale (no web)
 - nessuna persona di riferimento
 
-PIPELINE
-- step1: find_persons_indices(name=TOKEN_PROPER_NOUN) sul corpus locale
+PIPELINE_ENROLLMENT (preferita quando query menziona "enrollement"/"registrate"/"enrolled")
+- step1: read_persons(name=TOKEN_PROPER_NOUN) ritorna profilo + examples enrollate
+- step2: find_images_web(paths=${step1.entries.0.examples.*.image_path}) reverse search SOLO sulle foto enrollate
+- step3: final_answer
+- VANTAGGIO: read_persons ritorna 4 foto canoniche enrollate, NON 3381 face-match corpus
+
+PIPELINE_FACE_MATCH (fallback senza menzione enrollement)
+- step1: find_persons_indices(name=TOKEN_PROPER_NOUN) sul corpus locale (face match)
 - step2: find_images_web(reference_images=from_step:1) reverse image search
 - step3: final_answer
 - NIENTE find_images_indices intermedio (e' ricerca locale, non web)

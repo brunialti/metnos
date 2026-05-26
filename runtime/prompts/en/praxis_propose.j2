@@ -121,6 +121,126 @@ Output:
 }
 
 ───────────────────────────────────────────────
+COUNT_ONLY
+
+MATCH
+- by intent, not by token
+- the user wants only the COUNT of elements
+- expected output: "<number> <unit>"
+
+NO MATCH
+- descriptive/narrative intent
+
+PIPELINE
+- step1: producer (verb producer §2.2: read/find/list/get on the object)
+- step2: final_answer (NO intermediate step)
+- final_message: "${step1.@count} <unit>"
+
+YOU MUST: use EXACTLY 2 steps (producer + final_answer).
+YOU MUST NOT: add compute_entries between producer and final_answer. The producer already exposes available_total in result; @count resolves it.
+OK: {"steps":[{"tool":"find_files","args":{"base_path":"X"}},{"tool":"final_answer","args":{}}],"final_message":"${step1.@count} files"}.
+ERROR: adding compute_entries(op:"count") + final_message="${step2.result}" — compute_entries sees ONLY truncated entries (1000 of N), counts wrong; its result is {value:N} not {result:N}: template renders empty.
+
+COUNT renderer magic: ${stepN.@count} resolves in deterministic cascade
+(available_total → ok_count → used → len(first list of dict in result)).
+
+───────────────────────────────────────────────
+NAME_TO_WEB_REVERSE_IMAGE
+
+MATCH
+- by intent, not by token
+- user wants to search the WEB for images SIMILAR to known photos of a person
+- expected output: external images (web/google vision)
+
+NO MATCH
+- local search only (no web)
+- no reference person
+
+PIPELINE
+- step1: find_persons_indices(name=TOKEN_PROPER_NOUN) on local corpus
+- step2: find_images_web(reference_images=from_step:1) reverse image search
+- step3: final_answer
+- NO find_images_indices intermediate (that's local search, not web)
+- NO describe_entries between steps (reduces output noise)
+
+OUTPUT
+terse final_message with count: "${step2.@count} similar images on the web"
+
+───────────────────────────────────────────────
+LIST_OR_DESCRIBE
+
+MATCH
+- by intent, not by token
+- user wants to read/enumerate/describe elements
+- expected output: enumeration or narrative summary
+
+NO MATCH
+- request for plain count
+- mutating action
+
+PIPELINE
+- producer + describe_entries + final_answer
+
+PRODUCER
+producer verb from vocab §2.2 on the requested object
+
+OUTPUT
+"${step2.summary}" or equivalent concise narrative
+
+───────────────────────────────────────────────
+FILTER_INTERMEDIATE
+
+MATCH
+- by intent, not by token
+- user specifies a restrictive condition on a subset
+
+NO MATCH
+- neutral request "all", "every", "last N"
+
+PIPELINE
+- producer + filter_entries(where_field=, where_in=) + finalizer + final_answer
+- filter args coherent with REAL fields of producer entries
+
+NO PIPELINE
+- without restrictive intent: producer + finalizer (no filter)
+
+───────────────────────────────────────────────
+METRIC_TOP_LEVEL
+
+MATCH
+- by intent, not by token
+- user wants structured metrics NOT inside entries
+- expected output: nested dot-path field of result
+
+NO MATCH
+- request on list elements (entries)
+
+PIPELINE
+- producer single-step + final_answer
+- no describe_entries (would narrate entries, not the metric)
+
+TEMPLATE
+${stepN.a.b.c} dot-path nested toward the final SCALAR, never toward an intermediate dict
+(e.g., a typed metric "_c"/"_pct"/"_mb" → path arrives at typed field, not container dict)
+
+───────────────────────────────────────────────
+MUTATING_VERB
+
+MATCH
+- intent.verb in transformative actions of vocab §2.2
+- expected output: action confirmation + count of processed elements
+
+NO MATCH
+- informative intent
+
+PIPELINE
+- producer (if target list needed) + verb_mutating + final_answer
+- NO descriptive finalizer (mutating verb produces final_message from result)
+
+GUARD
+field "if_prev_entries_nonempty": true on mutating step if preceded by filter that may return 0 elements
+
+───────────────────────────────────────────────
 IDENTITY_PROFILE (ADR 0163)
 
 MATCH
@@ -151,6 +271,9 @@ OUTPUT (varies by intent, do NOT copy literally)
 - Self query → "You are ${step1.entries.0.name} (${step1.entries.0.role}, autonomy: ${step1.entries.0.autonomy_level})"
 - Third person → "${step1.entries.0.name} (${step1.entries.0.role}, autonomy: ${step1.entries.0.autonomy_level}, ${step1.entries.0.n_examples} enrolled photos)"
 - Filtered list → "${step1.@count} ${step1.entries.0.role} paired"
+
+YOU MUST: use FULL path `${step1.entries.0.field}` (never abbreviate to `${step1.field}`). read_persons result has fields INSIDE entries[0], not at top-level.
+ERROR: "${step1.name}" — renders EMPTY because result.name does not exist, only result.entries[0].name.
 
 ───────────────────────────────────────────────
 

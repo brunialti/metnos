@@ -43,7 +43,7 @@ log = logging.getLogger(__name__)
 
 _FILLER_RE = re.compile(r"\$\{FILLER:([a-zA-Z_][a-zA-Z0-9_]*)\}")
 # Step reference: supporta dot-path nested (es. ${step1.health.thermal})
-_STEPREF_RE = re.compile(r"\$\{step(\d+)\.(@?[a-zA-Z_][a-zA-Z0-9_.]*)\}")
+_STEPREF_RE = re.compile(r"\$\{step(\d+)\.(@?[a-zA-Z_][a-zA-Z0-9_.*]*)\}")
 # Runtime placeholder (ADR 0163, 26/5/2026): ${RUNTIME:key} risolto al
 # turno corrente. Whitelist chiusa di chiavi sotto in _RUNTIME_RESOLVERS.
 _RUNTIME_RE = re.compile(r"\$\{RUNTIME:([a-zA-Z_][a-zA-Z0-9_]*)\}")
@@ -120,16 +120,29 @@ def _resolve_dotted(obj, path: str):
     """Traverse dict/list per dot-path. Es:
       - obj={'health':{'thermal':45}}, path='health.thermal' → 45
       - obj={'entries':[{'name':'X'}]}, path='entries.0.name' → 'X'
-    Parte numerica intera = index list; altrimenti dict key.
+      - obj={'entries':[{'examples':[{'image_path':'/a.jpg'}]}]},
+        path='entries.0.examples.*.image_path' →
+        ['/a.jpg', ...] (PROJECTION map: `*` proietta su tutti gli elementi
+        della list, ritorna list con field estratto per ognuno).
+    Parte numerica intera = index list; `*` = projection map list;
+    altrimenti dict key.
     """
     cur = obj
-    for part in path.split("."):
+    parts = path.split(".")
+    for i, part in enumerate(parts):
         if isinstance(cur, list) and part.isdigit():
             idx = int(part)
             if 0 <= idx < len(cur):
                 cur = cur[idx]
             else:
                 return None
+        elif isinstance(cur, list) and part == "*":
+            # Projection: applica i sotto-path rimanenti a ogni elemento.
+            rest = ".".join(parts[i + 1:])
+            if not rest:
+                return list(cur)  # `*` finale = lista come-è
+            return [v for v in (_resolve_dotted(el, rest) for el in cur)
+                    if v is not None]
         elif isinstance(cur, dict):
             cur = cur.get(part)
         else:
@@ -261,9 +274,27 @@ def _resolve_fillers_scalar(v: Any, fillers: dict, *,
 
 def _resolve_stepref(value: Any, history: list[StepRun]) -> Any:
     """Sostituisce ${stepN.field} → valore dal result di step N.
-    Supporta dot-path nested (es. ${step1.health.thermal})."""
+    Supporta dot-path nested (es. ${step1.health.thermal}) e projection
+    (es. ${step1.entries.0.examples.*.image_path} → list).
+
+    Full-match (placeholder = intero valore) preserva il TIPO originale
+    (list/dict/int rimangono tali). Embedded-match (placeholder in mezzo a
+    stringa più ampia) stringifica il valore. Cruciale per pipeline:
+    `paths=${step1.entries.0.examples.*.image_path}` deve risolvere a
+    list di paths, non a string.
+    """
     if not isinstance(value, str):
         return value
+    # Full-match: placeholder è l'intero valore → ritorna tipo nativo.
+    fm = _STEPREF_RE.fullmatch(value.strip())
+    if fm:
+        n = int(fm.group(1))
+        path = fm.group(2)
+        if 1 <= n <= len(history):
+            val = _resolve_dotted(history[n - 1].result, path)
+            return val if val is not None else value
+        return value
+    # Embedded: stringify e sostituisci nel testo.
     def _sub(m):
         n = int(m.group(1))
         path = m.group(2)
