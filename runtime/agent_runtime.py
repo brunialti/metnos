@@ -1232,37 +1232,6 @@ def planner_facing_schema(schema):
     return out
 
 
-def _split_telemetry_persist(tel, step_num: int,
-                              extra_fail_reason: str = "") -> None:
-    """Append JSONL row a ~/.local/share/metnos/planner_split_telemetry.jsonl
-    per analisi post-mortem dei call SPLIT (#H0c). Append-only, no truncate.
-    Fail-safe: qualsiasi errore I/O silenziato (telemetria non blocca il turn).
-    """
-    try:
-        from planner_split import SplitTelemetry as _Tel
-        if not isinstance(tel, _Tel):
-            return
-        row = {
-            "ts": int(time.time()),
-            "step": step_num,
-            "chosen_tool": tel.chosen_tool,
-            "sel_lat_ms": tel.selector_latency_ms,
-            "args_lat_ms": tel.args_latency_ms,
-            "sel_in_tok": tel.selector_in_tok,
-            "sel_out_tok": tel.selector_out_tok,
-            "args_in_tok": tel.args_in_tok,
-            "args_out_tok": tel.args_out_tok,
-            "failure_reason": extra_fail_reason or tel.failure_reason,
-        }
-        import config as _C  # §7.11 (lazy per evitare circular)
-        p = _C.PATH_USER_DATA / "planner_split_telemetry.jsonl"
-        p.parent.mkdir(parents=True, exist_ok=True)
-        with open(p, "a") as f:
-            f.write(json.dumps(row, ensure_ascii=False) + "\n")
-    except Exception:
-        pass
-
-
 def render_tools_for_provider(executors):
     """Converte la lista di Executor in tools format Ollama/OpenAI.
 
@@ -5632,12 +5601,13 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
             log.ts_end = time.time(); log.write(); return log
 
     # ╔════════════════════════════════════════════════════════════════════╗
-    # ║ DEPRECATED-PRAXIS — PLANNER step-by-step legacy (ADR 0161 G3).     ║
-    # ║ Tutto il codice da qui in giu' (~3000 LOC) e' SUPERSEDED da Praxis. ║
-    # ║ Default METNOS_PLANNER_LEGACY=0 → questo blocco NON viene eseguito. ║
-    # ║ Praxis cascata copre 100% query (bench strict 25/25 INTENT_OK).     ║
-    # ║ Removal fisico target: dopo 1-2 settimane d'uso reale.              ║
-    # ║ Re-enable temporaneo: METNOS_PLANNER_LEGACY=1.                      ║
+    # ║ PLANNER step-by-step (LEGACY FALLBACK, ADR 0163 fase #7).          ║
+    # ║ ~3000 LOC. Da Praxis Engine ADR 0161 questo path è disattivato di  ║
+    # ║ default (METNOS_PLANNER_LEGACY=0). Praxis cascata copre ~94% query;║
+    # ║ il 6% miss finisce in Aporia (vicolo cieco onesto), NON qui.       ║
+    # ║ Re-enable temporaneo: METNOS_PLANNER_LEGACY=1.                     ║
+    # ║ Rimozione fisica: sessione dedicata richiesta (rischio alto multi- ║
+    # ║ file refactor). Status: ATTIVO come safety net opt-in.             ║
     # ╚════════════════════════════════════════════════════════════════════╝
     chosen_mode = ModeRouter(mode).select(user_query_for_run, catalog)
     log.mode = chosen_mode
@@ -6596,88 +6566,15 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
                     _logging.getLogger(__name__).warning(
                         "grammar generation failed: %s", _ex)
 
-        # PLANNER call — split opt-in (#H0c, 19/5/2026 v3 post-bench #H0a).
-        # Env METNOS_PLANNER_SPLIT=1 sostituisce la singola chat_with_tools
-        # con 2 call (selector grammar enum-of-names + args filler grammar
-        # tool-specifica). Speedup atteso ~5-10x compounded vs SLIM+SMART
-        # (15.7s → ~1-2s sul smoke pool=3). Default OFF: smoke gate prima
-        # di default-on. Failure -> SplitFailure -> fallback monolithic.
+        # PLANNER call (ADR 0163 fase #7, 26/5/2026): planner_split rimosso
+        # (Praxis Engine ADR 0161 sostituisce il path SPLIT). Single
+        # chat_with_tools monolithic resta come fallback per il 6% query
+        # che Praxis non gestisce.
         try:
-            from planner_split import (
-                is_split_enabled as _split_enabled,
-                is_provider_supported as _split_provider_ok,
-                should_split_proactive as _split_proactive,
-                chat_with_tools_split, SplitFailure, SplitTelemetry,
+            r = provider.chat_with_tools(
+                planner_system, user_query_for_run, tools_for_step,
+                history=history_for_llm, **_chat_kwargs,
             )
-        except Exception:
-            _split_enabled = lambda: False  # noqa: E731 (import opzionale)
-            _split_provider_ok = lambda _p: False  # noqa: E731
-            _split_proactive = lambda **kw: _split_enabled()  # noqa: E731 (fallback compat)
-        _split_used = False
-        try:
-            # Step 1 gate (19/5/2026 v3, post-test "proponi orari" loop_break):
-            # il SELECTOR prompt minimale perde la guidance multi-step della
-            # sezione planner (calendar/mail/...) usata dal monolithic. Step
-            # successivi hanno gia' history concreta → la decisione LLM e'
-            # piu' vincolata, lo split sicuro. Speedup ridotto su step 1
-            # (mantiene latenza monolithic ~15s) ma planning preservato;
-            # step 2+ resta a ~3-5s totali (final_answer/follow-up).
-            #
-            # #H0e wire-in (19/5/2026): gate proattivo via should_split_proactive
-            # consulta calibration_sets/<lang>.json per threshold per-verb +
-            # intent_confidence. Su mutating verbs (delete/send/move/share/
-            # write/set/create) richiede confidence alta (≥0.85 IT/≥0.80 EN)
-            # altrimenti fallback monolithic (safety). Su verbi non-mutating
-            # threshold più basso. top_rank_distance signal non disponibile
-            # qui (sarebbe pre-ranking prefilter), passa None → no-op.
-            _split_verb_hint = _intent_verb
-            _split_intent_conf = (route_info or {}).get("confidence")
-            _split_gate_ok = _split_proactive(
-                lang=DEFAULT_LANG,
-                verb_hint=_split_verb_hint,
-                intent_confidence=_split_intent_conf if isinstance(_split_intent_conf, (int, float)) else None,
-                top_rank_distance=None,
-            )
-            if _split_gate_ok and _split_provider_ok(provider) and step_num >= 2:
-                _tel = SplitTelemetry()
-                try:
-                    # Determina permessi synthetic come per il monolitico.
-                    _allow_fa_split = step_num >= 2
-                    _allow_dis_split = (step_num == 1) and bool(allow_disambig_synth)
-                    r = chat_with_tools_split(
-                        provider, planner_system, user_query_for_run,
-                        tools_for_step,
-                        history=history_for_llm,
-                        max_tokens=_chat_kwargs.get("max_tokens", 4096),
-                        temperature=_chat_kwargs.get("temperature", 0),
-                        allow_final_answer=_allow_fa_split,
-                        allow_disambiguation=_allow_dis_split,
-                        include_canonical_query=os.environ.get(
-                            "METNOS_CANONICAL_QUERY", "0") == "1",
-                        telemetry=_tel,
-                        verbose=verbose,
-                    )
-                    _split_used = True
-                    _split_telemetry_persist(_tel, step_num)
-                    if verbose:
-                        print(f"[split.OK] step {step_num} "
-                              f"chosen={_tel.chosen_tool} "
-                              f"sel={_tel.selector_latency_ms}ms "
-                              f"args={_tel.args_latency_ms}ms "
-                              f"in={_tel.selector_in_tok + _tel.args_in_tok} "
-                              f"out={_tel.selector_out_tok + _tel.args_out_tok}")
-                except SplitFailure as _sf:
-                    if verbose:
-                        print(f"[split.FALLBACK] step {step_num} "
-                              f"{_sf.reason}: {_sf.detail or '-'} → monolithic")
-                    _split_telemetry_persist(_tel, step_num,
-                                             extra_fail_reason=_sf.reason)
-                    # Falls through al monolithic.
-            if not _split_used:
-                r = provider.chat_with_tools(
-                    planner_system, user_query_for_run, tools_for_step,
-                    history=history_for_llm, **_chat_kwargs,
-                )
         except ProviderError as e:
             step.error = f"LLM error: {e}"; log.steps.append(step)
             log.final_kind = "error"; log.final_message = f"(errore LLM: {e})"

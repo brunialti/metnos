@@ -1,11 +1,10 @@
-# ╔════════════════════════════════════════════════════════════════════╗
-# ║ DEPRECATED-PRAXIS — partially superseded by praxis_propose.py (ADR 0161).║
-# ║ Reason: GBNF per step-by-step tool_call diventa inutile quando      ║
-# ║         Praxis 1-shot framework grammar prende il sopravvento.      ║
-# ║         Kept as fallback finche' legacy PLANNER e' attivo.          ║
-# ║ Removal target: dopo Praxis MVP convergence ≥90% intent coverage.    ║
-# ║ Tracking: decisions/0161-praxis-engine.md §Deprecations.             ║
-# ╚════════════════════════════════════════════════════════════════════╝
+# Status (ADR 0163, 26/5/2026): NON deprecato.
+#   - `filter_pool_for_grammar` USATO da Praxis (praxis_executor.py +
+#     pronoia.py) per filtrare pool tool con provider qualifier markers.
+#   - GBNF generator step-by-step USATO dal fallback PLANNER monolitico
+#     in agent_runtime.run_turn (6% query Praxis-miss).
+# Il marker DEPRECATED-PRAXIS originale era misleading: il modulo è
+# riusato da Praxis stessa per pool filtering.
 """runtime/tool_grammar.py — generatore GBNF per constrained tool_call.
 
 ADR 0133 (14/5/2026): forza il PLANNER LLM a emettere SOLO JSON tool_call
