@@ -12,11 +12,11 @@ affinity    = [
                 "ordina"
             ]
 lifecycle     = "deprecated"
-superseded_by = "get_files_metadata"
+superseded_by = "get_files"
 
 [description]
-it = "[DEPRECATO 28/4/2026 — usare get_files_metadata con fields=['dates.semantic']] Arricchisce una lista di entries (file) con la 'data sensata' di ciascuno (EXIF/birth/mtime)."
-en = "[DEPRECATED 28/4/2026 — use get_files_metadata with fields=['dates.semantic']] Enriches a list of entries (files) with the 'sensible date' of each (EXIF/birth/mtime)."
+it = "[DEPRECATO 28/4/2026 — usare get_files con fields=['dates.semantic']] Arricchisce una lista di entries (file) con la 'data sensata' di ciascuno (EXIF/birth/mtime)."
+en = "[DEPRECATED 28/4/2026 — use get_files with fields=['dates.semantic']] Enriches a list of entries (files) with the 'sensible date' of each (EXIF/birth/mtime)."
 
 [code]
 files  = ["get_file_dates.py"]

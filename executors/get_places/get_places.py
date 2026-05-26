@@ -10,7 +10,7 @@ via env METNOS_NOMINATIM_URL). Cache locale.
 Due modalita' di input (mutuamente esclusive):
   A. coords=[{lat, lon}, ...] - lista pura di coordinate.
   B. entries=[{gps:{lat,lon}, ...}, ...] - lista di entries qualsiasi
-     (es. da get_files_metadata) con campo `gps`. Le entries vengono
+     (es. da get_files) con campo `gps`. Le entries vengono
      ritornate ARRICCHITE col campo `place`. Le entries senza gps
      ricevono place='unknown'.
 

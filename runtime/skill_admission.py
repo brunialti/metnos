@@ -338,7 +338,7 @@ def _smoke_case_for_plan(plan) -> dict:
         ("change", "files"):     {"query": "rinomina /tmp/a.txt in /tmp/b.txt",
                                   "expected_first_tool": "move_files"},
         ("get",    "files"):     {"query": "metadata di /tmp/note.txt",
-                                  "expected_first_tool": "get_files_metadata"},
+                                  "expected_first_tool": "get_files"},
         # files con qualifier formato: solo i tool effettivamente builtin
         # in /opt/metnos/executors/. Per write/change xlsx esiste solo
         # read_files_xlsx — gli altri sono solo tool importati provider

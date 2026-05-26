@@ -206,11 +206,11 @@ class TestCandidateSignature(unittest.TestCase):
     def test_generalize_signature_pattern_tuple(self):
         from proposals_cleanup import _candidate_signature
         s = _candidate_signature({
-            "pattern": ["find_files", "get_files_metadata"],
+            "pattern": ["find_files", "get_files"],
             "uses": 4,
         }, kind_from_file="generalize")
         self.assertEqual(s[0], "generalize")
-        self.assertEqual(s[1], ("find_files", "get_files_metadata"))
+        self.assertEqual(s[1], ("find_files", "get_files"))
 
 
 class TestKindFromFilename(unittest.TestCase):

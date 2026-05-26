@@ -696,7 +696,7 @@ HANDCRAFTED_FAMILIES: frozenset[str] = frozenset({
     "find_images_indices", "find_persons_indices",
     # Lookup canonici
     "get_now", "get_location", "get_processes",
-    "get_files_metadata", "get_signatures", "get_proposals",
+    "get_files", "get_signatures", "get_proposals",
     "get_urls", "get_persons", "get_places", "get_images_indices",
     # Read primari
     "read_files", "read_messages", "read_urls_html", "read_urls_pdf",

@@ -147,7 +147,7 @@ def test_validator_rejects_uppercase_qualifier():
     from introvertiva import _is_valid_proposed_name
     assert _is_valid_proposed_name("move_messages_Posta_indesiderata") is False
     assert _is_valid_proposed_name("move_messages_posta_indesiderata") is True
-    assert _is_valid_proposed_name("get_files_metadata_dates_semantic") is True
+    assert _is_valid_proposed_name("get_files_dates_semantic") is True
     assert _is_valid_proposed_name("move_messages_True") is False
 
 

@@ -349,7 +349,7 @@ def _bow_intent_for_smoke(query: str) -> dict:
     # NB: "ora/data/now/time" senza contesto calendario NON mappa a events.
     # "che ora e?" / "che data e oggi" deve cadere nel fallback BoW (rank
     # plain) per pickare get_now via affinity. Mapparlo a events forzerebbe
-    # rank_with_intent a candidare get_file_dates/get_files_metadata (primi
+    # rank_with_intent a candidare get_file_dates/get_files (primi
     # get_* del catalog) e bypassare get_now. Regression introdotta+fixata
     # nello stesso turno F4-F7 (11/5/2026).
     if not verb and not obj:

@@ -453,7 +453,7 @@ notes       = "Solo se preferenza llama.cpp diretto vs ollama wrapper. Vedi metn
 
 [[external_services.entry]]
 name        = "photon"
-purpose     = "geocoder OSM-based (find_places, get_files_metadata place reverse-geo)."
+purpose     = "geocoder OSM-based (find_places, get_files place reverse-geo)."
 optional    = true
 service_url = "http://localhost:2322"
 notes       = "Self-hosted via docker komoot/photon. Vedi runtime/photon_client.py."

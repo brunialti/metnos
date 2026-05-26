@@ -44,13 +44,93 @@ log = logging.getLogger(__name__)
 _FILLER_RE = re.compile(r"\$\{FILLER:([a-zA-Z_][a-zA-Z0-9_]*)\}")
 # Step reference: supporta dot-path nested (es. ${step1.health.thermal})
 _STEPREF_RE = re.compile(r"\$\{step(\d+)\.(@?[a-zA-Z_][a-zA-Z0-9_.]*)\}")
+# Runtime placeholder (ADR 0163, 26/5/2026): ${RUNTIME:key} risolto al
+# turno corrente. Whitelist chiusa di chiavi sotto in _RUNTIME_RESOLVERS.
+_RUNTIME_RE = re.compile(r"\$\{RUNTIME:([a-zA-Z_][a-zA-Z0-9_]*)\}")
+
+
+def _build_runtime_resolvers(ctx: dict) -> dict[str, str]:
+    """Whitelist deterministica §7.9 dei valori runtime esponibili come
+    placeholder ${RUNTIME:key}. ctx contiene actor/channel/lang/conversation_id
+    passati da agent_runtime al boot del Praxis.execute_framework.
+
+    Actor "host"/"guest" label generico → risolto al display_name reale via
+    users.db (read-only). Se users.db assente o nessun match → label
+    invariato. Determinismo §7.9, no LLM.
+    """
+    actor = str(ctx.get("actor") or "")
+    if actor.lower() in ("host", "guest"):
+        try:
+            import sqlite3
+            import config as _C
+            udb = _C.PATH_USER_DATA / "users.db"
+            if udb.exists():
+                conn = sqlite3.connect(str(udb))
+                row = conn.execute(
+                    "SELECT name, display_name FROM users WHERE role=? LIMIT 1",
+                    (actor.lower(),)).fetchone()
+                conn.close()
+                if row:
+                    actor = row[1] or row[0] or actor
+        except Exception:
+            pass
+    return {
+        "actor": actor,
+        "lang": str(ctx.get("lang") or "it"),
+        "channel": str(ctx.get("channel") or ""),
+    }
+
+
+def _resolve_runtime_placeholders(args: dict, runtime_ctx: dict) -> dict:
+    """Sostituisce ${RUNTIME:key} string-encoded con valore corrente +
+    inietta `_actor`/`_lang`/`_channel` come arg "hidden" (prefix `_` =
+    runtime-injected, mai emesso da LLM, esecutori liberi di ignorarli).
+
+    Pattern parallelo a _resolve_fillers: walka args (scalari + liste),
+    sostituisce solo se chiave nella whitelist. Chiave unknown → resta
+    letterale (no crash, no silent default).
+    """
+    if not runtime_ctx:
+        return args
+    resolvers = _build_runtime_resolvers(runtime_ctx)
+    def _sub_one(v):
+        if not isinstance(v, str):
+            return v
+        m = _RUNTIME_RE.search(v)
+        if not m:
+            return v
+        def _repl(mm):
+            key = mm.group(1)
+            return resolvers.get(key, mm.group(0))
+        return _RUNTIME_RE.sub(_repl, v)
+    out: dict = {}
+    for k, v in args.items():
+        if isinstance(v, list):
+            out[k] = [_sub_one(x) for x in v]
+        else:
+            out[k] = _sub_one(v)
+    # Inietta runtime context come arg `_*` (prefix riservato).
+    for ck, cv in resolvers.items():
+        if cv:
+            out.setdefault(f"_{ck}", cv)
+    return out
 
 
 def _resolve_dotted(obj, path: str):
-    """Traverse dict per dot-path. Es. obj={'health':{'thermal':45}}, path='health.thermal' → 45."""
+    """Traverse dict/list per dot-path. Es:
+      - obj={'health':{'thermal':45}}, path='health.thermal' → 45
+      - obj={'entries':[{'name':'X'}]}, path='entries.0.name' → 'X'
+    Parte numerica intera = index list; altrimenti dict key.
+    """
     cur = obj
     for part in path.split("."):
-        if isinstance(cur, dict):
+        if isinstance(cur, list) and part.isdigit():
+            idx = int(part)
+            if 0 <= idx < len(cur):
+                cur = cur[idx]
+            else:
+                return None
+        elif isinstance(cur, dict):
             cur = cur.get(part)
         else:
             return None
@@ -248,6 +328,7 @@ def execute_framework(framework: dict, *,
                        max_steps: int = 12,
                        remediate_args_cb: Optional[Callable] = None,
                        intent_hash: str = "",
+                       runtime_ctx: Optional[dict] = None,
                        ) -> PraxisRun:
     """Esegue il framework deterministicamente.
 
@@ -293,13 +374,14 @@ def execute_framework(framework: dict, *,
             run.final_kind = "answer"
             break
 
-        # Resolve from_step + ${stepN.field} + fillers (in ordine)
+        # Resolve from_step + ${stepN.field} + fillers + ${RUNTIME:*} (in ordine)
         args1 = _resolve_from_step(raw_args, run.steps)
         args2 = {k: _resolve_stepref(v, run.steps) for k, v in args1.items()}
         args3 = _resolve_fillers(args2, fillers,
                                    llm_call_fast=llm_call_fast,
                                    query_context=query_context,
                                    intent_hash=intent_hash)
+        args3 = _resolve_runtime_placeholders(args3, runtime_ctx or {})
 
         t0 = time.time()
         try:
@@ -429,6 +511,7 @@ def try_praxis_path(*, query: str, catalog: list,
                      llm_call_fast: Optional[Callable] = None,
                      remediate_args_cb: Optional[Callable] = None,
                      lang: str = "it",
+                     runtime_ctx: Optional[dict] = None,
                      verbose: bool = False) -> Optional[dict]:
     """Cascata Praxis: intent_extractor → cache hit O(1) → LLM 1-shot → execute.
 
@@ -546,6 +629,7 @@ def try_praxis_path(*, query: str, catalog: list,
         query_context=query,
         remediate_args_cb=remediate_args_cb,
         intent_hash=_ihash,
+        runtime_ctx=runtime_ctx,
     )
 
     if verbose:

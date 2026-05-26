@@ -292,7 +292,7 @@
       "emb3": [
         "read_urls_pdf",
         "read_files_ocr",
-        "get_files_metadata"
+        "get_files"
       ],
       "hybrid3": [
         "read_files_ocr",

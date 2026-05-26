@@ -215,11 +215,11 @@ class EnrichTests(FixtureBase):
     def test_enrich_pipeline_observed_when_all_tools_match(self):
         self._write_proposals([_sample_proposal(
             ts=1.0, target="create_events",
-            action="combina get_files_metadata + create_events",
+            action="combina get_files + create_events",
         )])
         self._write_turn("2026-05-22.jsonl", _sample_turn(
             query="leggi i metadati e crea l'evento",
-            chosen_tools=["get_files_metadata", "create_events"],
+            chosen_tools=["get_files", "create_events"],
         ))
         rows = self.S.load_all(enrich_rows=True)
         r = rows[0]
@@ -243,16 +243,16 @@ class EnrichTests(FixtureBase):
     def test_enrich_estimates_latency_saved(self):
         self._write_proposals([_sample_proposal(
             ts=1.0, target="create_events",
-            action="combina get_files_metadata + create_events",
+            action="combina get_files + create_events",
         )])
         self._write_turn("2026-05-22.jsonl", _sample_turn(
             query="leggi metadati e schedula",
-            chosen_tools=["get_files_metadata", "create_events", "final_answer"],
+            chosen_tools=["get_files", "create_events", "final_answer"],
             latencies_ms=[5000, 5000, 1000],
         ))
         rows = self.S.load_all(enrich_rows=True)
         r = rows[0]
-        # current 3 step → new 2 step (get_files_metadata+create_events collassati)
+        # current 3 step → new 2 step (get_files+create_events collassati)
         self.assertEqual(len(r["current_path"]), 3)
         self.assertEqual(len(r["new_path_estimated"]), 2)
         self.assertGreater(r["latency_saved_ms_est"], 0)
@@ -260,9 +260,9 @@ class EnrichTests(FixtureBase):
     def test_extract_tool_mentions_filters_false_positives(self):
         # Le parole italiane snake_case sintetiche (es. del_sistema) sono blacklistate.
         mentions = self.S._extract_tool_mentions(
-            "Combinare get_files_metadata + create_events nella lista_di file"
+            "Combinare get_files + create_events nella lista_di file"
         )
-        self.assertIn("get_files_metadata", mentions)
+        self.assertIn("get_files", mentions)
         self.assertIn("create_events", mentions)
         self.assertNotIn("lista_di", mentions)
 

@@ -1,10 +1,10 @@
-# Manifest dell'executor `get_files_metadata` — Metnos v1.1
+# Manifest dell'executor `get_files` — Metnos v1.1
 # Naming compositivo: verbo_oggetto_plurale_qualificatore. Vettoriale per costruzione.
 # Sostituisce `get_file_dates` (deprecato).
 
 manifest_format = "1.0"
 
-name        = "get_files_metadata"
+name        = "get_files"
 version     = "0.4.0"
 author      = "Roberto Brunialti <roberto.brunialti@metnos.com>"
 affinity    = ["exif", "foto", "photo", "image", "gps", "geotag", "luogo", "place", "camera", "image_dimensions"]
@@ -14,8 +14,8 @@ it = "Arricchisce una lista di file foto su filesystem (path locali tipo /home/.
 en = "Enriches a list of photo files on a filesystem (local paths like /home/.../foto.jpg) with EXIF data: capture date, GPS coordinates, place, camera model, image dimensions. ONLY for photo files on disk — NOT for emails, NOT for IMAP messages, NOT for generic text or code files. To read or search emails use `read_messages`. PASSING THE LIST — TWO FORMS: (a) `from_step=N` where N is the previous step that produced the list (e.g., find_files at step 1 → from_step=1); the runtime retrieves it from the scratchpad. (b) `paths=[\"/path/a.jpg\", ...]` as a literal string for the atomic case (user mentions 1+ paths in the query, no step has already produced the list). Exactly ONE of the two. Vectorized: one call processes N entries. Selection via `fields`: 'dates.semantic' (capture date from EXIF, fallback mtime), 'gps', 'place' (reverse-geocode), 'device', 'image_dimensions'. Default fields=['dates.semantic']."
 
 [code]
-files  = ["get_files_metadata.py"]
-digest = "sha256:069ec0d377962e4016169ee1e27151e1a19900e9f5ab22df0fc07ab4ef70f673"
+files  = ["get_files.py"]
+digest = "sha256:c53dc8262d119fa6aff693bc42a2da3ab5b37ceb05c6dbef6c2ad57d7525536e"
 
 [args]
 type     = "object"
@@ -26,8 +26,8 @@ type        = "integer"
 minimum     = 1
 
 [args.properties.from_step.description]
-it = "Numero dello step precedente (in questo turno) che ha prodotto la lista di file da arricchire. Es. al passo 1 find_files trova le foto, al passo 2 get_files_metadata riceve from_step=1. ALTERNATIVA: usa `paths` se l'utente cita path letterali nella query e nessuno step precedente ha prodotto la lista (caso atomico)."
-en = "Number of the previous step (in this turn) that produced the list of files to enrich. E.g., at step 1 find_files finds the photos, at step 2 get_files_metadata receives from_step=1. ALTERNATIVE: use `paths` if the user cites literal paths in the query and no previous step produced the list (atomic case)."
+it = "Numero dello step precedente (in questo turno) che ha prodotto la lista di file da arricchire. Es. al passo 1 find_files trova le foto, al passo 2 get_files riceve from_step=1. ALTERNATIVA: usa `paths` se l'utente cita path letterali nella query e nessuno step precedente ha prodotto la lista (caso atomico)."
+en = "Number of the previous step (in this turn) that produced the list of files to enrich. E.g., at step 1 find_files finds the photos, at step 2 get_files receives from_step=1. ALTERNATIVE: use `paths` if the user cites literal paths in the query and no previous step produced the list (atomic case)."
 
 [args.properties.paths]
 type        = "array"

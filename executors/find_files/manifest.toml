@@ -19,7 +19,7 @@ USO: preferibile a list_dirs+filter_entries quando conosci le estensioni. Filtra
 
 OK: find_files(base_path="/home/roberto/images", patterns=["*.jpg","*.png","*.heic"], recursive=true).
 
-Output entries=[{path,name,type,mime,kind,size,mtime}]. Per filtri/sort: filter_entries/sort_entries (no get_files_metadata).
+Output entries=[{path,name,type,mime,kind,size,mtime}]. Per filtri/sort: filter_entries/sort_entries (no get_files).
 
 Truncation: truncated_what='file' + used + cap_field='max_results'."""
 en = """Search files by name/pattern in a directory. Recursive by default, returns ONLY files (no dirs unless include_dirs=true). Case-insensitive match.
@@ -30,7 +30,7 @@ USE: preferable to list_dirs+filter_entries when you know extensions. Filters at
 
 OK: find_files(base_path="/home/roberto/images", patterns=["*.jpg","*.png","*.heic"], recursive=true).
 
-Output entries=[{path,name,type,mime,kind,size,mtime}]. For filter/sort: filter_entries/sort_entries (no get_files_metadata).
+Output entries=[{path,name,type,mime,kind,size,mtime}]. For filter/sort: filter_entries/sort_entries (no get_files).
 
 Truncation: truncated_what='file' + used + cap_field='max_results'."""
 

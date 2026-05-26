@@ -55,7 +55,7 @@ EMAIL/MAIL/POST/MESSAGES/IMAP/SENDER/SUBJECT
   → list_folders_messages ONLY if the user explicitly asks to list
     folders. For standard move, it is NOT necessary: move_messages already has
     an internal folder resolver (matches the LAST segment of the IMAP name).
-  FORBIDDEN: move_files, get_files_metadata, find_files, list_dirs, read_files*, get_location. Emails live in IMAP, not on the filesystem; move_files is ONLY for filesystem files.
+  FORBIDDEN: move_files, get_files, find_files, list_dirs, read_files*, get_location. Emails live in IMAP, not on the filesystem; move_files is ONLY for filesystem files.
   DESTINATION for spam/trash/archive:
   MUST: pass the folder name (e.g., "Junk", "Spam", "Archive") DIRECTLY as `dst_folder`/`dst_template` of move_messages.
     The executor automatically resolves the real server name (e.g.,

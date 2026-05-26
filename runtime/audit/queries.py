@@ -189,7 +189,7 @@ VERBS = {
             {"q": "data di modifica di /tmp/audit/fs/get/file.txt",
              "expect_executor_re": r"get_file_dates"},
             {"q": "metadata di /tmp/audit/fs/get/file.txt",
-             "expect_executor_re": r"get_files_metadata"},
+             "expect_executor_re": r"get_files"},
             {"q": "where am I",
              "expect_executor_re": r"get_location"},
             {"q": "trova posti vicino a Roma",
@@ -197,7 +197,7 @@ VERBS = {
             {"q": "che data e oggi",
              "expect_executor_re": r"get_now"},
             {"q": "permessi del file /tmp/audit/fs/get/file.txt",
-             "expect_executor_re": r"get_files_metadata"},
+             "expect_executor_re": r"get_files"},
         ],
     },
 

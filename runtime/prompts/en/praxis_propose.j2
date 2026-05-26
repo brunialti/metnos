@@ -120,4 +120,38 @@ Output:
   "final_message": "Moved ${step4.ok_count} mails to ${step4.dst_folder}."
 }
 
+───────────────────────────────────────────────
+IDENTITY_PROFILE (ADR 0163)
+
+MATCH
+- by intent, not by token
+- the user wants FULL identity content of a person
+- tokens: "I", "me", "who am I", "my profile", "my account",
+  "tell me about X", "X's profile", "list guests", "list hosts"
+
+NO MATCH
+- "who is registered" / "list persons" / "how many photos of X"
+  → get_persons (registry card, no JOIN)
+- "my photos" / "find photos of X" → find_persons_indices (face match)
+
+PIPELINE
+- step1: read_persons(name="${RUNTIME:actor}" | name=X | role=Y)
+- step2: final_answer
+- read_persons aggregates persons.sqlite (biometric) + users.db (paired account)
+- ZERO compute_entries, ZERO describe_entries
+
+YOU MUST: for "who am I"/"my profile" use read_persons(name="${RUNTIME:actor}"). The ${RUNTIME:actor} placeholder is resolved at runtime to current actor.
+YOU MUST NOT: use get_persons for identity query (get returns card, no role/autonomy).
+OK: {"tool":"read_persons","args":{"name":"${RUNTIME:actor}"}} for "who am I"
+OK: {"tool":"read_persons","args":{"name":"Lucia"}} for "tell me about Lucia"
+OK: {"tool":"read_persons","args":{"role":"guest"}} for "list paired guests"
+ERROR: get_persons for "who am I" — returns registry card, missing role/autonomy.
+
+OUTPUT (varies by intent, do NOT copy literally)
+- Self query → "You are ${step1.entries.0.name} (${step1.entries.0.role}, autonomy: ${step1.entries.0.autonomy_level})"
+- Third person → "${step1.entries.0.name} (${step1.entries.0.role}, autonomy: ${step1.entries.0.autonomy_level}, ${step1.entries.0.n_examples} enrolled photos)"
+- Filtered list → "${step1.@count} ${step1.entries.0.role} paired"
+
+───────────────────────────────────────────────
+
 STRICT JSON output. No prose, no commentary, no <think>.

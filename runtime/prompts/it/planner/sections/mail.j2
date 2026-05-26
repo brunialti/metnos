@@ -55,7 +55,7 @@ EMAIL/MAIL/POSTA/MESSAGGI/IMAP/MITTENTE/OGGETTO
   → list_folders_messages SOLO se l'utente chiede esplicitamente di elencare
     le cartelle. Per il move standard NON e' necessario: move_messages ha gia'
     un folder resolver interno (matcha l'ULTIMO segmento del nome IMAP).
-  VIETATI: move_files, get_files_metadata, find_files, list_dirs, read_files*, get_location. Le mail vivono in IMAP, non sul filesystem; move_files e' SOLO per file di filesystem.
+  VIETATI: move_files, get_files, find_files, list_dirs, read_files*, get_location. Le mail vivono in IMAP, non sul filesystem; move_files e' SOLO per file di filesystem.
   DESTINAZIONE per spam/cestino/archivio:
   DEVI: passare il nome utente (es. "Posta indesiderata", "Junk", "Spam",
     "Archivio") DIRETTAMENTE come `dst_folder`/`dst_template` di move_messages.

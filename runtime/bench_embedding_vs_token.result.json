@@ -88,7 +88,7 @@
       "query": "stampa la mia foto profilo sulla stampante",
       "gt": [
         "find_files",
-        "get_files_metadata",
+        "get_files",
         "move_files"
       ],
       "token5": [
@@ -99,7 +99,7 @@
         "change_images"
       ],
       "emb5": [
-        "get_files_metadata",
+        "get_files",
         "create_images_indices",
         "change_images",
         "find_images_indices",
@@ -205,7 +205,7 @@
         "move_messages"
       ],
       "emb5": [
-        "get_files_metadata",
+        "get_files",
         "create_images_indices",
         "find_images_indices",
         "list_dirs",
@@ -228,7 +228,7 @@
         "move_messages"
       ],
       "emb5": [
-        "get_files_metadata",
+        "get_files",
         "create_images_indices",
         "list_dirs",
         "find_images_indices",
@@ -264,7 +264,7 @@
         "find_files"
       ],
       "token5": [
-        "get_files_metadata",
+        "get_files",
         "find_files",
         "get_file_dates",
         "get_inputs",
@@ -273,7 +273,7 @@
       "emb5": [
         "read_urls_pdf",
         "read_files_ocr",
-        "get_files_metadata",
+        "get_files",
         "find_dirs",
         "read_files_xlsx"
       ]

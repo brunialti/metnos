@@ -19,7 +19,7 @@ lifecycle   = "active"
 [description]
 it = """Snapshot processi correnti + opzionale dict `health` (load/memory/thermal/disk/network/services).
 
-NON CONFONDERE CON: list_tasks (task Metnos), get_files_metadata (file), get_now (ora), get_location (utente).
+NON CONFONDERE CON: list_tasks (task Metnos), get_files (file), get_now (ora), get_location (utente).
 
 ARG NAMES esatti:
 DEVI: `top` (int≥1) | `include_health` (bool) | `filters` (list di dict {attribute,op,value}) | `services_extra` (list).
@@ -41,7 +41,7 @@ PATTERN (non copiare letteralmente; query non-processo → include_health):
 ERRORE pattern: `filters=["ip","network"]` (servono dict, non stringhe) | `filters=[{attribute:"ip"}]` (ip NON e' attributo di processo, sta in health.network) | `filters=[{field:"name"}]` (chiave si chiama `attribute`)."""
 en = """Current processes snapshot + optional `health` dict (load/memory/thermal/disk/network/services).
 
-DO NOT CONFUSE WITH: list_tasks (Metnos tasks), get_files_metadata (files), get_now (time), get_location (user).
+DO NOT CONFUSE WITH: list_tasks (Metnos tasks), get_files (files), get_now (time), get_location (user).
 
 ARG NAMES (exact):
 MUST: `top` (int≥1) | `include_health` (bool) | `filters` (list of dicts {attribute,op,value}) | `services_extra` (list).

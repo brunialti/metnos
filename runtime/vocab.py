@@ -144,6 +144,12 @@ OBJECTS = (
     # `get_entries` (non si scopre/legge cio' che esiste solo a runtime).
     "entries",
 )
+# NB §2.2 (26/5/2026, ADR 0163): `users` NON è OBJECT vocab. L'account
+# Metnos paired (host/guest, ADR 0083) è runtime-internal, esposto al
+# PLANNER come ATTRIBUTI di `persons` via `read_persons` aggregator (legge
+# users.db + persons.sqlite). Per «chi sono io»/«mio profilo» il pattern
+# è `read_persons(name="${RUNTIME:actor}")`. Vedi placeholder runtime in
+# `praxis_executor._resolve_runtime_placeholders`.
 # NB: `indices` (ex 16° OBJECT, ADR 0086) e' stato declassato a qualifier
 # di modalita' il 5/5/2026: la lettura `verbo_oggetto[_modalita']` e' piu'
 # trasparente per LLM medium quando il mezzo di ricerca e' un derivato

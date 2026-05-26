@@ -11,12 +11,12 @@ revertible  = false
 lifecycle   = "active"
 
 [description]
-it = "Reverse geocoding: dato una lista di coordinate o entries con campo `gps`, arricchisce ogni elemento con `place: str` (slug del luogo, es. 'roma', 'boulder'; 'unknown' se gps mancante o servizio satura). PASSAGGIO DELLA LISTA DI ENTRIES: usa `from_step=N` dove N e' lo step precedente (es. get_files_metadata al passo 1 ha estratto gps → from_step=1). Il runtime recupera automaticamente le entries dallo scratchpad. Per coordinate raw (no entries dict): usa `coords=[{lat,lon},...]`. Le due modalita' sono mutuamente esclusive. Backend: Nominatim pubblico (rate-limit ~1/s) con cache locale; override via env METNOS_NOMINATIM_URL per self-hostato. La logica di reverse-geocode e' anche usata internamente da get_files_metadata quando 'place' e' fra i fields richiesti."
-en = "Reverse geocoding: given a list of coordinates or entries with field `gps`, enrich each element with `place: str` (place slug, e.g., 'roma', 'boulder'; 'unknown' if gps is missing or service is saturated). PASSING THE LIST OF ENTRIES: use `from_step=N` where N is the previous step (e.g., get_files_metadata at step 1 extracted gps → from_step=1). The runtime automatically retrieves the entries from the scratchpad. For raw coordinates (no entries dict): use `coords=[{lat,lon},...]`. The two modes are mutually exclusive. Backend: Public Nominatim (rate-limit ~1/s) with local cache; override via env METNOS_NOMINATIM_URL for self-hosted. The reverse-geocode logic is also used internally by get_files_metadata when 'place' is among the requested fields."
+it = "Reverse geocoding: dato una lista di coordinate o entries con campo `gps`, arricchisce ogni elemento con `place: str` (slug del luogo, es. 'roma', 'boulder'; 'unknown' se gps mancante o servizio satura). PASSAGGIO DELLA LISTA DI ENTRIES: usa `from_step=N` dove N e' lo step precedente (es. get_files al passo 1 ha estratto gps → from_step=1). Il runtime recupera automaticamente le entries dallo scratchpad. Per coordinate raw (no entries dict): usa `coords=[{lat,lon},...]`. Le due modalita' sono mutuamente esclusive. Backend: Nominatim pubblico (rate-limit ~1/s) con cache locale; override via env METNOS_NOMINATIM_URL per self-hostato. La logica di reverse-geocode e' anche usata internamente da get_files quando 'place' e' fra i fields richiesti."
+en = "Reverse geocoding: given a list of coordinates or entries with field `gps`, enrich each element with `place: str` (place slug, e.g., 'roma', 'boulder'; 'unknown' if gps is missing or service is saturated). PASSING THE LIST OF ENTRIES: use `from_step=N` where N is the previous step (e.g., get_files at step 1 extracted gps → from_step=1). The runtime automatically retrieves the entries from the scratchpad. For raw coordinates (no entries dict): use `coords=[{lat,lon},...]`. The two modes are mutually exclusive. Backend: Public Nominatim (rate-limit ~1/s) with local cache; override via env METNOS_NOMINATIM_URL for self-hosted. The reverse-geocode logic is also used internally by get_files when 'place' is among the requested fields."
 
 [code]
 files  = ["get_places.py"]
-digest = "sha256:68104b5d0a85bb4c4057705751eac30fe3513511249ba55910437884dde46f3c"
+digest = "sha256:4560bd5ec4fa370add8ca0fac602bb9ab815823ff7fe5704d86bdca7701b8d5c"
 
 [args]
 type     = "object"
@@ -26,8 +26,8 @@ type        = "integer"
 minimum     = 1
 
 [args.properties.from_step.description]
-it = "Numero dello step precedente (in questo turno) che ha prodotto la lista di entries con campo `gps`. Mutuamente esclusivo con coords. Es. al passo 1 get_files_metadata estrae gps, al passo 2 get_places riceve from_step=1 e arricchisce ogni entry con `place`."
-en = "Number of the previous step (in this turn) that produced the list of entries with the field `gps`. Mutually exclusive with coords. E.g., at step 1 get_files_metadata extracts gps, at step 2 get_places receives from_step=1 and enriches each entry with `place`."
+it = "Numero dello step precedente (in questo turno) che ha prodotto la lista di entries con campo `gps`. Mutuamente esclusivo con coords. Es. al passo 1 get_files estrae gps, al passo 2 get_places riceve from_step=1 e arricchisce ogni entry con `place`."
+en = "Number of the previous step (in this turn) that produced the list of entries with the field `gps`. Mutually exclusive with coords. E.g., at step 1 get_files extracts gps, at step 2 get_places receives from_step=1 and enriches each entry with `place`."
 
 [args.properties.coords]
 type        = "array"

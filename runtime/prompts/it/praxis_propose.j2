@@ -81,6 +81,38 @@ PIPELINE 2-STEP per query con NAME + CONTESTO (find_<obj>_indices):
   Se NAME assente o oggetto non immagine, usa single-step.
 
 ───────────────────────────────────────────────
+PROFILO_IDENTITARIO
+
+MATCH
+- per intento, non per token
+- l'utente vuole CONTENUTO completo identitario di una persona
+- token: "io", "me", "chi sono", "mio profilo", "il mio account",
+  "dimmi tutto su X", "profilo di X", "lista guest", "lista host"
+
+NO MATCH
+- "chi è registrato" / "lista persone" / "quante foto di X"
+  → get_persons (scheda registro, no JOIN, no contenuto profilo)
+- "le mie foto" / "trova foto di X" → find_persons_indices (face match)
+
+PIPELINE
+- step1: read_persons(name="${RUNTIME:actor}" | name=X | role=Y)
+- step2: final_answer
+- read_persons aggrega persons.sqlite (biometric) + users.db (account paired)
+- ZERO compute_entries, ZERO describe_entries (output entry singola arricchita)
+
+DEVI: per "io"/"chi sono io"/"mio profilo" usare read_persons(name="${RUNTIME:actor}"). Il placeholder ${RUNTIME:actor} è risolto a runtime all'actor corrente.
+NON DEVI: usare get_persons per query identità (get ritorna scheda, non profilo).
+OK: {"tool":"read_persons","args":{"name":"${RUNTIME:actor}"}} per "chi sono io".
+OK: {"tool":"read_persons","args":{"name":"Lucia"}} per "dimmi tutto su Lucia".
+OK: {"tool":"read_persons","args":{"role":"guest"}} per "lista guest paired".
+ERRORE: get_persons per "chi sono io" — ritorna scheda registro, manca role/autonomy.
+
+OUTPUT (varia template per intento, NON copiare letteralmente)
+- Query self ("chi sono io"/"io"/"mio profilo") → "Sei ${step1.entries.0.name} (${step1.entries.0.role}, autonomy: ${step1.entries.0.autonomy_level})"
+- Query terza persona ("dimmi tutto su X"/"profilo di X") → "${step1.entries.0.name} (${step1.entries.0.role}, autonomy: ${step1.entries.0.autonomy_level}, ${step1.entries.0.n_examples} foto enrollate)"
+- Query lista filtrata ("lista guest"/"lista host") → "${step1.@count} ${step1.entries.0.role} paired"
+
+───────────────────────────────────────────────
 NAME_TO_WEB_REVERSE_IMAGE
 
 MATCH

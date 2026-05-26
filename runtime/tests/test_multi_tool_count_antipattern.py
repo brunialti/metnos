@@ -67,10 +67,10 @@ class AntipatternDetectionTests(unittest.TestCase):
         self.assertFalse(_is_count_antipattern(tools, shape))
 
     def test_non_find_source_is_ok(self):
-        """get_files_metadata + compute_entries(count) e' OK: il metadata
+        """get_files + compute_entries(count) e' OK: il metadata
         non ha aggregato pre-calcolato."""
         from multi_tool_paths import _is_count_antipattern
-        tools = ["get_files_metadata", "compute_entries", "final_answer"]
+        tools = ["get_files", "compute_entries", "final_answer"]
         shape = [{}, {"from_step": 1, "op": "count"}, {}]
         self.assertFalse(_is_count_antipattern(tools, shape))
 

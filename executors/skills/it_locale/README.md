@@ -32,7 +32,7 @@ Esempio aggiunta `codice_fiscale`:
 
 `it_locale/` NON contiene `manifest.toml` al livello root: e' un
 helper-library bundle, non un executor singolo. Gli executor che usano
-queste feature (`get_files_metadata`, future `parse_codice_fiscale`, etc.)
+queste feature (`get_files`, future `parse_codice_fiscale`, etc.)
 importano i moduli sotto `scripts/` via Python path.
 
 ## Estensione ad altri locale

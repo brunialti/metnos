@@ -1197,7 +1197,7 @@ def planner_facing_schema(schema):
 
     Il `validate_args` accetta sia `from_step` che `entries` (vedi
     special-case linea 387), quindi:
-    - manifest che gia' usano `from_step` (filter_entries, get_files_metadata,
+    - manifest che gia' usano `from_step` (filter_entries, get_files,
       move_files): nessuna trasformazione necessaria.
     - manifest che usano `entries` (sort_entries, compute_entries,
       get_file_dates): vengono trasformati qui in modo consistente.
@@ -4739,7 +4739,10 @@ def _try_praxis_cascade(
         llm_call_wise=_llm_call_wise,
         llm_call_fast=_llm_call_fast,
         remediate_args_cb=_remediate_args_cb,
-        lang=lang, verbose=verbose,
+        lang=lang,
+        runtime_ctx={"actor": actor or "", "lang": lang,
+                      "channel": channel or ""},
+        verbose=verbose,
     )
     if res is None:
         return None
@@ -5930,7 +5933,7 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
     # Provider selection (27/4 sera): default = Gemma 4 26B (llamacpp) come "middle" tier
     # locale per pianificare task multi-step. Override esplicito via env METNOS_PLANNER_*.
     # think (28/4 sera): default True sul planner.
-    # Il bug Gemma "tool_call magnetico get_files_metadata anche con reasoning
+    # Il bug Gemma "tool_call magnetico get_files anche con reasoning
     # corretto" si manifestava solo con tools_for_step gonfio (15-22 tool):
     # il pattern matching del modello sotto-pesava le description e si attaccava
     # a nomi calamita. Con prefilter k_max=8 + cap effettivo a 9 (incl. synth),
@@ -6829,7 +6832,7 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
 
         # Caso 2: tool_call (D7 sequenziale = uno solo per turno).
         # Bug Gemma 4 26B: a volte emette 2+ tool_calls paralleli — il primo e'
-        # un "placeholder magnetico" con args vuoti (es. get_files_metadata
+        # un "placeholder magnetico" con args vuoti (es. get_files
         # entries=[]), il secondo/ultimo e' quello corretto coi reali args
         # derivati dalla query. Selettore: scegli il tool_call con args NON
         # vuoti; se piu' di uno qualifica, prendi l'ultimo (Gemma tende a
