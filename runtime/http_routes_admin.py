@@ -923,6 +923,146 @@ def _executors_rows(catalog) -> list[dict]:
     return out
 
 
+# --- /admin/praxis (ADR 0161) ------------------------------------------------
+
+async def admin_praxis(request: web.Request) -> web.Response:
+    """GET /admin/praxis — dashboard cognitive memory layer.
+
+    Mostra: stats globali, skill catalog (active/shadow/pending/demoted/archived),
+    observations recenti, anti_skills attivi, filler_cache stats.
+    """
+    try:
+        from praxis import get_store
+        store = get_store()
+        stats = store.stats()
+        skills_active = store.list_skills(status="active", limit=50)
+        skills_shadow = store.list_skills(status="shadow", limit=20)
+        skills_demoted = store.list_skills(status="demoted", limit=20)
+        cur = store.conn.execute(
+            "SELECT id, intent_sig, framework_json, framework_hash, verdict, "
+            "verdict_ts, latency_ms, ts, promoted_to FROM observations "
+            "ORDER BY id DESC LIMIT 30")
+        obs_cols = ["id", "intent_sig", "framework_json", "framework_hash",
+                     "verdict", "verdict_ts", "latency_ms", "ts", "promoted_to"]
+        observations = [dict(zip(obs_cols, r)) for r in cur]
+        # Decode framework_json per pretty display
+        for o in observations:
+            try:
+                import json as _json
+                fw = _json.loads(o["framework_json"])
+                o["tools"] = [s.get("tool") for s in fw.get("steps") or []]
+            except Exception:
+                o["tools"] = []
+        cur = store.conn.execute(
+            "SELECT intent_hash, framework_hash, fail_count, ttl_expires_at, "
+            "reason, ts_last_fail FROM anti_skills "
+            "WHERE ttl_expires_at > datetime('now') "
+            "ORDER BY ts_last_fail DESC LIMIT 20")
+        anti_cols = ["intent_hash", "framework_hash", "fail_count",
+                      "ttl_expires_at", "reason", "ts_last_fail"]
+        anti_skills = [dict(zip(anti_cols, r)) for r in cur]
+        cur = store.conn.execute(
+            "SELECT intent_hash, filler_name, value, uses, ts_last "
+            "FROM filler_cache ORDER BY uses DESC LIMIT 30")
+        fc_cols = ["intent_hash", "filler_name", "value", "uses", "ts_last"]
+        filler_cache = [dict(zip(fc_cols, r)) for r in cur]
+    except Exception as ex:
+        log.warning("admin_praxis failed: %r", ex)
+        stats = {"error": str(ex)}
+        skills_active = skills_shadow = skills_demoted = []
+        observations = anti_skills = filler_cache = []
+    # Pronoia config display
+    import os as _os
+    pronoia_tier = _os.environ.get("METNOS_PRONOIA_TIER", "wise")
+
+    payload = {
+        "stats": stats,
+        "skills_active": skills_active,
+        "skills_shadow": skills_shadow,
+        "skills_demoted": skills_demoted,
+        "observations": observations,
+        "anti_skills": anti_skills,
+        "filler_cache": filler_cache,
+        "pronoia_tier": pronoia_tier,
+    }
+    return negotiate_collection(
+        request,
+        json_payload=payload,
+        template="praxis.html",
+        template_ctx=payload,
+    )
+
+
+async def admin_aporiae(request: web.Request) -> web.Response:
+    """GET /admin/aporiae — registry lacune (vicoli ciechi onesti).
+
+    Pentade Praxis Engine ADR 0161 ext: Aporia (ἀπορία).
+    """
+    try:
+        import aporia
+        store = aporia.get_store()
+        stats = store.stats()
+        lacune = store.list_open(limit=100)
+    except Exception as ex:
+        log.warning("admin_aporiae failed: %r", ex)
+        stats = {"error": str(ex)}
+        lacune = []
+    payload = {"stats": stats, "lacune": lacune}
+    return negotiate_collection(
+        request,
+        json_payload=payload,
+        template="aporiae.html",
+        template_ctx=payload,
+    )
+
+
+async def admin_aporiae_resolve(request: web.Request) -> web.Response:
+    """POST /admin/aporiae/{id}/resolve — marca lacuna come risolta."""
+    role = request.get("role", "anonymous")
+    if role != "admin":
+        return _error(request, 403, "forbidden", "admin role required")
+    lid_str = request.match_info.get("id", "")
+    try:
+        lid = int(lid_str)
+    except ValueError:
+        return _error(request, 400, "bad_id", f"id must be int, got {lid_str!r}")
+    try:
+        import aporia
+        aporia.get_store().mark_resolved(lid)
+        return web.json_response({"ok": True, "id": lid, "status": "resolved"})
+    except Exception as ex:
+        return _error(request, 500, "internal", str(ex))
+
+
+async def admin_praxis_config(request: web.Request) -> web.Response:
+    """POST /admin/praxis/config — aggiorna config Pronoia (tier, ecc.).
+
+    Body JSON: {pronoia_tier: 'wise'|'frontier'}.
+    Persistenza: env update + runtime_settings.toml.
+    """
+    role = request.get("role", "anonymous")
+    if role != "admin":
+        return _error(request, 403, "forbidden", "admin role required")
+    try:
+        body = await request.json()
+    except Exception:
+        return _error(request, 400, "bad_json", "invalid JSON")
+    tier = (body.get("pronoia_tier") or "").strip().lower()
+    if tier not in ("wise", "frontier"):
+        return _error(request, 400, "bad_value",
+                       f"pronoia_tier must be wise|frontier, got {tier!r}")
+    # Update env in current process
+    import os
+    os.environ["METNOS_PRONOIA_TIER"] = tier
+    # Persist su runtime.toml deferred (MVP: env runtime only — survive
+    # finche' processo vive; per persistente cross-restart, set in unit env).
+    return web.json_response({
+        "ok": True, "pronoia_tier": tier, "persisted": False,
+        "note": "env runtime only; per persistere cross-restart "
+                 "edit /etc/systemd/system/metnos-http.service Environment.",
+    })
+
+
 async def admin_executors(request: web.Request) -> web.Response:
     """GET /admin/executors"""
     catalog = request.app.get("catalog_provider", lambda: [])()
@@ -1714,7 +1854,109 @@ async def admin_promotions_review_submit(request: web.Request) -> web.Response:
     return web.json_response({"ok": True, **result})
 
 
+async def admin_skill_history(request):
+    """GET /admin/skills/{skill_id}/history — audit trail skill_versions.
+
+    Content negotiation:
+      Accept: text/html → tabella HTML
+      Accept: application/json (default) → JSON
+
+    Ritorna lista append-only di event (created/refresh_template/retry_repeat/
+    champion_swap) con old/new fw_hash + reason + timestamp. ADR 0162."""
+    from aiohttp import web
+    skill_id = request.match_info.get("skill_id", "")
+    if not skill_id:
+        return web.json_response({"error": "missing_skill_id"}, status=400)
+    try:
+        from praxis import get_store as _gs
+        store = _gs()
+        cur = store.conn.execute(
+            "SELECT ts, event, old_fw_hash, new_fw_hash, reason "
+            "FROM skill_versions WHERE skill_id = ? "
+            "ORDER BY id DESC LIMIT 100", (skill_id,))
+        history = [
+            {"ts": r[0], "event": r[1], "old_fw_hash": r[2],
+              "new_fw_hash": r[3], "reason": r[4]}
+            for r in cur.fetchall()
+        ]
+        cur = store.conn.execute(
+            "SELECT id, intent_sig, cluster_id, framework_hash, uses, "
+            "ok_count, fail_count, champion, composite_score, "
+            "template_issue, status, ts_created, ts_last_used "
+            "FROM skills WHERE id = ?", (skill_id,))
+        row = cur.fetchone()
+        meta = None
+        if row:
+            meta = {
+                "id": row[0], "intent_sig": row[1], "cluster_id": row[2],
+                "framework_hash": row[3], "uses": row[4],
+                "ok_count": row[5], "fail_count": row[6],
+                "champion": row[7], "composite_score": row[8],
+                "template_issue": row[9], "status": row[10],
+                "ts_created": row[11], "ts_last_used": row[12],
+            }
+    except Exception as ex:
+        return web.json_response({"error": str(ex)}, status=500)
+    accept = request.headers.get("Accept", "")
+    if "text/html" in accept:
+        return _render_skill_history_html(meta, history)
+    return web.json_response({"skill": meta, "history": history})
+
+
+def _render_skill_history_html(meta: dict | None, history: list) -> "web.Response":
+    """Tabella compatta HTML (no JS, no CSS esterno)."""
+    from aiohttp import web
+    if not meta:
+        return web.Response(text="<h1>404 skill not found</h1>",
+                              content_type="text/html", status=404)
+    rows_h = "".join(
+        f"<tr><td>{e['ts']}</td><td><b>{e['event']}</b></td>"
+        f"<td>{(e['old_fw_hash'] or '')[:12]}</td>"
+        f"<td>{(e['new_fw_hash'] or '')[:12]}</td>"
+        f"<td>{e['reason'] or ''}</td></tr>"
+        for e in history
+    )
+    html = f"""<!doctype html>
+<html><head><meta charset="utf-8"><title>Skill {meta['id']}</title>
+<style>
+body{{font-family:monospace;margin:1.5em;max-width:90em}}
+table{{border-collapse:collapse;width:100%}}
+th,td{{padding:.3em .6em;border-bottom:1px solid #ddd;text-align:left;vertical-align:top}}
+th{{background:#f4f4f4}}
+.meta{{background:#fafafa;padding:1em;border-radius:.4em;margin-bottom:1.5em}}
+.kv{{display:inline-block;margin-right:1.5em}}
+.kv b{{color:#666}}
+.champ{{color:#080;font-weight:bold}}
+.warn{{color:#a60}}
+</style></head><body>
+<h1>Skill <code>{meta['id']}</code></h1>
+<div class="meta">
+  <div class="kv"><b>intent_sig:</b> {meta['intent_sig']}</div>
+  <div class="kv"><b>cluster:</b> {meta['cluster_id'] or '—'}</div>
+  <div class="kv"><b>framework_hash:</b> {(meta['framework_hash'] or '')[:12]}</div>
+  <div class="kv"><b>uses:</b> {meta['uses']}</div>
+  <div class="kv"><b>ok:</b> {meta['ok_count']}</div>
+  <div class="kv"><b>fail:</b> {meta['fail_count']}</div>
+  <div class="kv"><b>composite:</b> {round(meta['composite_score'] or 0, 3)}</div>
+  <div class="kv {'champ' if meta['champion'] else ''}">
+    {'★ champion' if meta['champion'] else 'challenger'}</div>
+  <div class="kv {'warn' if meta['template_issue'] else ''}">
+    {'⚠ template_issue' if meta['template_issue'] else ''}</div>
+  <div class="kv"><b>status:</b> {meta['status']}</div>
+  <div class="kv"><b>created:</b> {meta['ts_created']}</div>
+  <div class="kv"><b>last_used:</b> {meta['ts_last_used'] or '—'}</div>
+</div>
+<h2>Audit trail ({len(history)} eventi)</h2>
+<table>
+<thead><tr><th>ts</th><th>event</th><th>old_fw</th><th>new_fw</th><th>reason</th></tr></thead>
+<tbody>{rows_h}</tbody>
+</table>
+</body></html>"""
+    return web.Response(text=html, content_type="text/html")
+
+
 ROUTES = (
+    ("GET",  r"/admin/skills/{skill_id}/history",  admin_skill_history),
     ("GET",  "/admin/login",                      admin_login),
     ("POST", "/admin/login",                      admin_login),
     ("POST", "/admin/logout",                     admin_logout),
@@ -1737,6 +1979,10 @@ ROUTES = (
     ("GET",  "/admin/promotions/review",          admin_promotions_review),
     ("POST", "/admin/promotions/review",          admin_promotions_review_submit),
     ("POST", r"/admin/promotions/{id}/rollback",  admin_promotion_rollback),
+    ("GET",  "/admin/praxis",                     admin_praxis),
+    ("POST", "/admin/praxis/config",              admin_praxis_config),
+    ("GET",  "/admin/aporiae",                    admin_aporiae),
+    ("POST", r"/admin/aporiae/{id}/resolve",      admin_aporiae_resolve),
     ("GET",  "/admin/executors",                  admin_executors),
     ("GET",  "/admin/executors/stats",            admin_executors_stats),
     ("POST", r"/admin/jobs/{key}/fire",           admin_job_fire),

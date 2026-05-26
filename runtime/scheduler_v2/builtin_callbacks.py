@@ -197,6 +197,29 @@ _BUILTIN_JOBS: list[dict[str, Any]] = [
         ),
     },
     {
+        "name": "praxis_template_refresh",
+        "trigger": "daily@04:00",
+        "callback_key": "praxis_template_refresh",
+        "description": (
+            "Refresh skill con template_issue=1 (ADR 0161 ext): Mētis "
+            "re-propose framework escludendo fw_hash corrente, salva, "
+            "marca template_issue=0. Safety net per format_fail rilevati "
+            "ma non rigenerati immediatamente (retry inline disabilitato "
+            "o fallito). Idempotente: salta skill template_issue=0."
+        ),
+    },
+    {
+        "name": "praxis_cluster_merge",
+        "trigger": "daily@03:30",
+        "callback_key": "praxis_cluster_merge",
+        "description": (
+            "Consolidation cluster piccoli (ADR 0162): rivisita cluster "
+            "singleton/piccoli, find_neighbors centroide, LLM judge merge "
+            "se cosine 0.75-0.90 + same intent. Cap 20 pair/fire. "
+            "Risolve frammentazione iniziale Praxis."
+        ),
+    },
+    {
         "name": "change_observer",
         "trigger": "daily@03:15",
         "callback_key": "change_observer",
@@ -584,6 +607,30 @@ def install_default_callbacks(scheduler) -> None:
         "multi_tool_maintenance",
         _task_multi_tool_maintenance,
         "Housekeeping unificato L2: expire stale + promote a proto-mnest (ADR 0150)",
+        replace=True,
+    )
+
+    # Praxis template refresh nightly (ADR 0161 ext, 26/5/2026).
+    # daily@04:00 safety net per skill con template_issue=1.
+    def _task_praxis_template_refresh():
+        from jobs.praxis_template_refresh import run as _run
+        return _run()
+    cb.register(
+        "praxis_template_refresh",
+        _task_praxis_template_refresh,
+        "Refresh template skill con template_issue=1 (ADR 0161 ext)",
+        replace=True,
+    )
+
+    # Praxis cluster merge nightly (ADR 0162, 26/5/2026).
+    # daily@03:30 consolidation cluster singleton via LLM judge.
+    def _task_praxis_cluster_merge():
+        from jobs.praxis_cluster_merge import run as _run
+        return _run()
+    cb.register(
+        "praxis_cluster_merge",
+        _task_praxis_cluster_merge,
+        "Merge cluster piccoli via LLM judge (ADR 0162)",
         replace=True,
     )
 

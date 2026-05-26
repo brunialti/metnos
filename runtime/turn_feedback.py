@@ -35,7 +35,7 @@ _DATA_DIR = _C.PATH_USER_DATA
 FEEDBACK_PATH = _DATA_DIR / "turn_feedback.jsonl"
 TURNS_DIR = _DATA_DIR / "turns"
 
-VALID_ACTIONS = frozenset({"ok", "error"})
+VALID_ACTIONS = frozenset({"ok", "error", "repeat"})
 
 
 def _load_turn(turn_id: str) -> Optional[dict]:
@@ -280,6 +280,21 @@ def apply_feedback(turn_id: str, action: str, by: str = "user") -> dict:
                         out = {"action": "noop",
                                "reason": f"ager_error: {ex}"}
                     effects.append({"type": "feedback_demote", **out})
+
+    # ── Praxis hook (ADR 0161) ────────────────────────────────────────
+    # Propaga ✓✗↻ a praxis.record_feedback: ✓→promote check (3 obs same
+    # hash+success≥80%→skill ACTIVE), ✗→anti_skill 30gg TTL, ↻→exclude
+    # next turn (transient, no DB action).
+    try:
+        from praxis import get_store as _praxis_get_store
+        _verdict_map = {"ok": "ok", "error": "fail", "repeat": "repeat"}
+        _verdict = _verdict_map.get(action)
+        if _verdict:
+            _out = _praxis_get_store().record_feedback(turn_id, _verdict)
+            if _out.get("ok"):
+                effects.append({"type": "praxis_feedback", **_out})
+    except Exception as ex:
+        log.warning("turn_feedback: praxis hook failed: %r", ex)
 
     _append_feedback(record)
     return record

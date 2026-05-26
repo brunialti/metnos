@@ -1,3 +1,11 @@
+# ╔════════════════════════════════════════════════════════════════════╗
+# ║ DEPRECATED-PRAXIS — partially superseded by praxis_propose.py (ADR 0161).║
+# ║ Reason: GBNF per step-by-step tool_call diventa inutile quando      ║
+# ║         Praxis 1-shot framework grammar prende il sopravvento.      ║
+# ║         Kept as fallback finche' legacy PLANNER e' attivo.          ║
+# ║ Removal target: dopo Praxis MVP convergence ≥90% intent coverage.    ║
+# ║ Tracking: decisions/0161-praxis-engine.md §Deprecations.             ║
+# ╚════════════════════════════════════════════════════════════════════╝
 """runtime/tool_grammar.py — generatore GBNF per constrained tool_call.
 
 ADR 0133 (14/5/2026): forza il PLANNER LLM a emettere SOLO JSON tool_call
@@ -787,6 +795,7 @@ def filter_pool_for_grammar(tools: Sequence[Any], user_query: str,
     _names_in_pool = {_extract_name(t) for t in tools}
     for suffix, markers in _PROVIDER_SUFFIX_MARKERS.items():
         if not _has_word(query_lc, markers):
+            # Marker provider ASSENTE → escludi tool con suffix
             for t in tools:
                 name = _extract_name(t)
                 if not name.endswith(suffix):
@@ -797,6 +806,20 @@ def filter_pool_for_grammar(tools: Sequence[Any], user_query: str,
                 # suffixed: e' l'unica opzione semantica disponibile.
                 canonical_name = name[: -len(suffix)].rstrip("_")
                 if canonical_name in _names_in_pool:
+                    excluded.append(name)
+        else:
+            # Marker provider PRESENTE → escludi canonical (non-suffixed)
+            # SE esiste provider equivalente nel pool. Forza scelta univoca
+            # del backend coerente con la query (universale §7.3, no
+            # marker-by-tool hardcoded).
+            for t in tools:
+                name = _extract_name(t)
+                if name.endswith(suffix):
+                    continue
+                if name in excluded:
+                    continue
+                provider_eq = f"{name}{suffix}"
+                if provider_eq in _names_in_pool:
                     excluded.append(name)
     filtered = [t for t in tools if _extract_name(t) not in excluded]
     # Safety: se filter ha azzerato il pool, ripristina originale.

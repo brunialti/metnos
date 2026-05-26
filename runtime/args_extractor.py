@@ -100,6 +100,10 @@ _HOME_KEYWORDS_RE = re.compile(
     r"(?:^|\s)(?:home|the\s+home|la\s+home|nella\s+home|in\s+home)\b",
     re.IGNORECASE,
 )
+
+# Tilde standalone "~" (senza /) come abbreviazione di home dir. Patch
+# 25/5/2026: query "directory in ~" non veniva catturata da _PATH_RE.
+_TILDE_STANDALONE_RE = re.compile(r"(?:^|\s)~(?:\s|$|[^\w./~])")
 _HOME_PATH_RE = re.compile(
     r"(?:^|\s)(?:home|~)/(?P<rest>[\w.\-/]+)",
     re.IGNORECASE,
@@ -145,6 +149,10 @@ def _extract_paths(query: str) -> list[str]:
             _add(p)
     # 3. "home" standalone (senza /) → "~/" se non gia' coperto.
     if _HOME_KEYWORDS_RE.search(query) and not any(
+            p.startswith("~") for p in out):
+        _add("~/")
+    # 4. "~" standalone (senza /) → "~/" se non gia' coperto.
+    if _TILDE_STANDALONE_RE.search(query) and not any(
             p.startswith("~") for p in out):
         _add("~/")
     return out

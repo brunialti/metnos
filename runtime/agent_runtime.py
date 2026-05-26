@@ -3198,6 +3198,26 @@ class StepLog:
     canonical_query: str = ""
 
 
+# Pentade ADR 0161 ext: pattern strutturale per intent count.
+# Detection deterministico §7.9 (no LLM): marker quantificatori interrogativi
+# universali IT+EN. Usato da TurnLog._collect_truncation_notices e
+# _expandable_caps per sopprimere rumore quando l'utente vuole solo un numero.
+_COUNT_QUANTIFIER_MARKERS = (
+    "quanti ", "quante ",       # IT interrogativo numerico
+    "how many ", " count ",     # EN
+    " conta ", "numero di ",    # IT imperativo / nominale
+)
+
+
+def _is_count_intent(intent_verb: str, user_query: str) -> bool:
+    """Vero se l'intent e' un count: verb=compute (canonical §2.2) o pattern
+    testuale quantificatore. Pattern §7.3 universale, no per-domain."""
+    if (intent_verb or "").lower() == "compute":
+        return True
+    q = f" {(user_query or '').lower()} "
+    return any(m in q for m in _COUNT_QUANTIFIER_MARKERS)
+
+
 @dataclass
 class TurnLog:
     ts_start: float
@@ -3296,6 +3316,11 @@ class TurnLog:
         """
         proposals = []
         seen = set()
+        # Pentade ADR 0161 ext: skip cap-expand per query count.
+        # Query con quantificatore → utente vuole il numero, dialog e' rumore.
+        if _is_count_intent(getattr(self, "intent_verb", ""),
+                             getattr(self, "user_query", "")):
+            return proposals
         # ── Pass 1: propaga expandable_caps custom (ADR 0090) ──
         for s in self.steps:
             res = s.result if isinstance(s.result, dict) else {}
@@ -3832,9 +3857,18 @@ class TurnLog:
         all'observation `truncated: true`, opzionalmente `available_total`
         (cardinalita' reale prima del cap), `used: int`, e `truncated_what`
         (nome leggibile della unita': 'email', 'file', 'risultati', ...).
-        Vedi feedback_truncation_visibility."""
+        Vedi feedback_truncation_visibility.
+
+        Pentade ADR 0161 ext: skip notice se intent.verb=compute o query
+        contiene marker count (pattern §7.3 universale, no per-tool).
+        Per query count l'utente vuole SOLO il numero, notice e' rumore.
+        """
         notices = []
         seen = set()
+        # Skip per query count (verb=compute o pattern testuale)
+        if _is_count_intent(getattr(self, "intent_verb", ""),
+                             getattr(self, "user_query", "")):
+            return notices
         from vocab import PROCESSOR_VERBS as _PROC_VERBS
         for s in self.steps:
             res = s.result if isinstance(s.result, dict) else {}
@@ -4514,6 +4548,218 @@ def _maybe_remediate_obs(
             retry_obs = {"ok": False,
                           "error": f"{type(ex).__name__}: {ex}"}
     return (_rh_step, prereq_obs, retry_obs)
+
+
+# --- L3 Praxis Engine cascata (ADR 0161) ---------------------------------
+
+def _try_praxis_cascade(
+    query: str,
+    catalog: list,
+    *,
+    turn_id: str,
+    actor: str | None,
+    channel: str | None,
+    lang: str = "it",
+    verbose: bool = False,
+) -> "dict | None":
+    """Cascata Praxis: cache O(1) → LLM 1-shot framework → execute deterministico.
+
+    Returns:
+      None: skip (intent fail, framework parse fail, ecc.).
+      dict {steps (StepLog list), final_text, final_kind, framework,
+            framework_hash, intent_sig, verb, object, keywords,
+            match_source, elapsed_ms}: ready for run_turn caller.
+    """
+    try:
+        from praxis_executor import try_praxis_path as _praxis_entry
+    except Exception as _ex:
+        import logging as _logging
+        _logging.getLogger(__name__).warning("praxis import failed: %r", _ex)
+        return None
+
+    # Provider LLM fast (intent_extractor + filler args)
+    def _llm_call_fast(sys_msg: str, user_msg: str, *,
+                        max_tokens: int = 80, think: bool = False,
+                        **_kw) -> str:
+        try:
+            from llm_router import LLMRouter
+            router = LLMRouter()
+            provider = router.provider("fast")
+            res = provider.chat(sys_msg, user_msg,
+                                  max_tokens=max_tokens, think=think)
+            txt = getattr(res, "text", res)
+            return (txt or "").strip()
+        except Exception as ex:
+            import logging as _logging
+            _logging.getLogger(__name__).warning(
+                "praxis._llm_call_fast failed: %r", ex)
+            return ""
+
+    # Provider LLM wise (framework proposer Mētis, fisso wise)
+    # Pronoia puo' scalare a frontier via env METNOS_PRONOIA_TIER.
+    def _llm_call_wise(sys_msg: str, user_msg: str, *,
+                        max_tokens: int = 2048, think: bool = True,
+                        grammar: "str | None" = None,
+                        tier_override: "str | None" = None,
+                        **_kw) -> str:
+        from llm_router import LLMRouter
+        router = LLMRouter()
+        provider = router.provider(tier_override or "wise")
+        kw: dict = {"max_tokens": max_tokens, "think": think}
+        if grammar:
+            kw["grammar"] = grammar
+        try:
+            res = provider.chat(sys_msg, user_msg, **kw)
+        except TypeError as ex:
+            # Provider non supporta grammar (es. AnthropicProvider) → retry senza
+            if "grammar" in str(ex) and "grammar" in kw:
+                kw.pop("grammar", None)
+                kw["think"] = True  # reabilita thinking se grammar dropped
+                try:
+                    res = provider.chat(sys_msg, user_msg, **kw)
+                except Exception as ex2:
+                    import logging as _logging
+                    _logging.getLogger(__name__).warning(
+                        "praxis._llm_call_wise (no grammar) failed: %r", ex2)
+                    return ""
+            else:
+                import logging as _logging
+                _logging.getLogger(__name__).warning(
+                    "praxis._llm_call_wise TypeError: %r", ex)
+                return ""
+        except Exception as ex:
+            import logging as _logging
+            _logging.getLogger(__name__).warning(
+                "praxis._llm_call_wise failed: %r", ex)
+            return ""
+        txt = getattr(res, "text", res)
+        return (txt or "").strip()
+
+    # Catalog by name + invoke wrapper.
+    # Include sia executor subprocess che builtin in-process handlers
+    # (classify_entries, describe_entries, *_tasks) — il LLM proposer
+    # deve poterli vedere nel pool, il dispatcher deve poterli invocare.
+    catalog_by_name = {e.name: e for e in catalog if getattr(e, "name", None)}
+
+    # Extend catalog logically con i builtin (oggetti shim con .name).
+    # Non li aggiungo a catalog_by_name in modo da preservare il dispatch
+    # via _BUILTIN_TOOL_HANDLERS check sotto.
+    class _BuiltinShim:
+        def __init__(self, name):
+            self.name = name
+    builtin_catalog = [_BuiltinShim(n) for n in _BUILTIN_TOOL_HANDLERS.keys()]
+    catalog_augmented = list(catalog) + builtin_catalog
+
+    def _invoke_wrap(tool_name: str, args: dict) -> dict:
+        # Pre-resolve entries → consumer_arg (from_entries_key o singolare).
+        # Riusa _consumer_match_arg esistente (PLANNER step-by-step logic).
+        if "entries" in args and tool_name not in _BUILTIN_TOOL_HANDLERS:
+            ex_obj = catalog_by_name.get(tool_name)
+            schema = getattr(ex_obj, "args_schema", None) if ex_obj else None
+            if schema:
+                entries = args.get("entries") or []
+                consumer_arg = _consumer_match_arg(schema, entries)
+                if consumer_arg and consumer_arg != "entries":
+                    props = schema.get("properties") or {}
+                    spec = props.get(consumer_arg) or {}
+                    from_key = spec.get("from_entries_key")
+                    if not from_key and consumer_arg.endswith("s"):
+                        from_key = consumer_arg[:-1]
+                    if from_key:
+                        values = [e[from_key] for e in entries
+                                    if isinstance(e, dict) and from_key in e]
+                        if values:
+                            args = {k: v for k, v in args.items()
+                                     if k != "entries"}
+                            args[consumer_arg] = values
+        # 1. Builtin in-process handler (classify_entries, describe_entries,
+        # list_tasks, ...). Alcuni handler richiedono actor/channel/turn_id
+        # come kwargs (es. recurring_tasks). Passali sempre, gli handler che
+        # non li usano hanno **_ catch-all.
+        if tool_name in _BUILTIN_TOOL_HANDLERS:
+            try:
+                return _BUILTIN_TOOL_HANDLERS[tool_name](
+                    args,
+                    actor=actor or "host",
+                    channel=channel or "",
+                    turn_id=turn_id or "",
+                )
+            except TypeError:
+                # Handler legacy senza kwargs (es. describe_entries)
+                try:
+                    return _BUILTIN_TOOL_HANDLERS[tool_name](args)
+                except Exception as exc:
+                    return {"ok": False, "error": str(exc),
+                             "error_class": "exception"}
+            except Exception as exc:
+                return {"ok": False, "error": str(exc),
+                         "error_class": "exception"}
+        # 2. Executor subprocess
+        ex = catalog_by_name.get(tool_name)
+        if ex is None:
+            return {"ok": False,
+                     "error": f"tool unknown: {tool_name}",
+                     "error_class": "tool_unknown"}
+        try:
+            return invoke_executor(
+                ex, args,
+                timeout_s=getattr(ex, "timeout_s", None) or 30,
+                autonomy="supervised", turn_id=turn_id,
+                actor=actor, channel=channel,
+            )
+        except Exception as exc:
+            return {"ok": False, "error": str(exc),
+                     "error_class": "exception"}
+
+    # Recovery deterministico G2: error_class=invalid_args → tenta
+    # args_extractor.regex_extract sulla query + retry once.
+    def _remediate_args_cb(*, tool, args, result, query_context):
+        ex_obj = catalog_by_name.get(tool)
+        schema = getattr(ex_obj, "args_schema", None) if ex_obj else None
+        if not schema:
+            return None
+        try:
+            from args_extractor import regex_extract
+            extracted = regex_extract(query_context, schema)
+        except Exception:
+            return None
+        if not extracted:
+            return None
+        merged = dict(args)
+        changed = False
+        for k, v in extracted.items():
+            if k not in merged or merged.get(k) in (None, "", [], {}):
+                merged[k] = v
+                changed = True
+        return merged if changed else None
+
+    res = _praxis_entry(
+        query=query, catalog=catalog_augmented,
+        invoke_executor_cb=_invoke_wrap,
+        llm_call_wise=_llm_call_wise,
+        llm_call_fast=_llm_call_fast,
+        remediate_args_cb=_remediate_args_cb,
+        lang=lang, verbose=verbose,
+    )
+    if res is None:
+        return None
+
+    # Convert PraxisRun.steps (dataclass) → StepLog per log.steps
+    steps_out: list = []
+    for s in res["steps"]:
+        sl = StepLog(step_num=s.step_idx)
+        sl.chosen_tool = s.tool
+        sl.raw_args = dict(s.args)
+        sl.resolved_args = dict(s.args)
+        sl.exec_ms = s.latency_ms
+        sl.result = s.result
+        sl.vaglio_approved = True
+        if hasattr(sl, "__dict__"):
+            sl.__dict__["praxis"] = True
+            sl.__dict__["praxis_match_source"] = res.get("match_source", "")
+        steps_out.append(sl)
+    res["steps"] = steps_out
+    return res
 
 
 # --- L2 multi-tool fast-path playback (ADR 0150) ---------------------------
@@ -5299,6 +5545,97 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
                     print(f"[fast_path] match ma executor fallito ({_fp_obs.get('error')!r}), "
                           f"fallback PLANNER")
 
+        # ── L3 Praxis Engine (ADR 0161) ────────────────────────────────
+        # Cascata: intent_extractor → cache O(1) → LLM 1-shot framework
+        # → execute deterministico. Sostituisce PLANNER step-by-step per
+        # intent ricorrenti. Feature flag METNOS_PRAXIS=1 default ON.
+        if os.environ.get("METNOS_PRAXIS", "1") == "1":
+            try:
+                _praxis_res = _try_praxis_cascade(
+                    user_query_for_run, catalog,
+                    turn_id=turn_id, actor=actor, channel=channel,
+                    lang=DEFAULT_LANG, verbose=verbose,
+                )
+            except Exception as _ex:
+                import logging as _logging
+                _logging.getLogger(__name__).warning(
+                    "praxis fallito: %s", _ex)
+                _praxis_res = None
+            # HYBRID mode (ADR 0161 ext): se Praxis cascata produce kind=error
+            # AND METNOS_PRAXIS_FALLBACK=1 → fallthrough al PLANNER legacy
+            # (safety net per edge case fuori scope catalog/E2E). Universale:
+            # nessuna decisione per-query, solo final_kind di Praxis.
+            if (_praxis_res is not None
+                and _praxis_res.get("final_kind") == "error"
+                and os.environ.get("METNOS_PRAXIS_FALLBACK", "1") == "1"
+                and os.environ.get("METNOS_PLANNER_LEGACY", "0") == "1"):
+                if verbose:
+                    print(f"[praxis] kind=error → fallthrough to PLANNER legacy")
+                _praxis_res = None  # forza PLANNER fallback
+            if _praxis_res is not None:
+                log.steps.extend(_praxis_res["steps"])
+                log.final_kind = _praxis_res["final_kind"] or "answer"
+                log.final_message = _praxis_res["final_text"] or ""
+                log.intent_verb = _praxis_res.get("verb", "") or ""
+                # Record observation per feedback loop + auto-promote check
+                try:
+                    from praxis import get_store as _praxis_get_store
+                    _praxis_store = _praxis_get_store()
+                    _praxis_store.record_observation(
+                        turn_id=turn_id,
+                        verb=_praxis_res["verb"],
+                        obj=_praxis_res["object"],
+                        keywords=_praxis_res["keywords"],
+                        framework=_praxis_res["framework"],
+                        latency_ms=_praxis_res["elapsed_ms"],
+                        query=user_query,
+                    )
+                    # Auto-promote (ADR 0161 ext): senza UI, se tutti gli step
+                    # ok=True AND no aborted_reason AND env flag → promote.
+                    # Soglia aggressive 2 obs + 100% ok (configurabile).
+                    _auto_promote = os.environ.get(
+                        "METNOS_PRAXIS_AUTO_PROMOTE", "1") == "1"
+                    _n_ok = sum(1 for s in _praxis_res["steps"]
+                                 if s.result.get("ok"))
+                    _n_total = max(1, len(_praxis_res["steps"]))
+                    _ok_ratio = _n_ok / _n_total
+                    _no_abort = not _praxis_res.get("aborted_reason")
+                    if (_auto_promote and _ok_ratio >= 1.0 and _no_abort):
+                        # Hook synthetic ok feedback → promote check
+                        _praxis_store.record_feedback(turn_id, "ok")
+                except Exception as _ex:
+                    import logging as _logging
+                    _logging.getLogger(__name__).warning(
+                        "praxis.record_observation fallito: %s", _ex)
+                if verbose:
+                    print(f"[praxis] {len(_praxis_res['steps'])} steps exec, "
+                          f"source={_praxis_res['match_source']}, "
+                          f"elapsed={_praxis_res['elapsed_ms']}ms, "
+                          f"final={(_praxis_res['final_text'] or '')[:80]!r}")
+                log.ts_end = time.time(); log.write(); return log
+
+        # G3 (ADR 0161 ext): PLANNER step-by-step DEPRECATO da 25/5/2026.
+        # Default METNOS_PLANNER_LEGACY=0 → return error invece di entrare nel
+        # PLANNER legacy. Bench strict 25/25 INTENT_OK conferma Praxis copre 100%.
+        # Override METNOS_PLANNER_LEGACY=1 per re-abilitare temporaneamente.
+        if os.environ.get("METNOS_PLANNER_LEGACY", "0") == "0":
+            log.final_kind = "error"
+            log.final_message = (
+                "Praxis non ha coperto questa query (LEGACY=0). "
+                "Verifica intent extraction + framework propose."
+            )
+            if verbose:
+                print(f"[praxis] LEGACY=0 + no cascade match → error return")
+            log.ts_end = time.time(); log.write(); return log
+
+    # ╔════════════════════════════════════════════════════════════════════╗
+    # ║ DEPRECATED-PRAXIS — PLANNER step-by-step legacy (ADR 0161 G3).     ║
+    # ║ Tutto il codice da qui in giu' (~3000 LOC) e' SUPERSEDED da Praxis. ║
+    # ║ Default METNOS_PLANNER_LEGACY=0 → questo blocco NON viene eseguito. ║
+    # ║ Praxis cascata copre 100% query (bench strict 25/25 INTENT_OK).     ║
+    # ║ Removal fisico target: dopo 1-2 settimane d'uso reale.              ║
+    # ║ Re-enable temporaneo: METNOS_PLANNER_LEGACY=1.                      ║
+    # ╚════════════════════════════════════════════════════════════════════╝
     chosen_mode = ModeRouter(mode).select(user_query_for_run, catalog)
     log.mode = chosen_mode
 
@@ -5628,6 +5965,15 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
                 endpoint=os.environ.get("METNOS_PLANNER_ENDPOINT", "http://localhost:11434"),
                 think=think,
             )
+        elif planner_provider == "anthropic":
+            # Tier frontier (Claude) per il PLANNER. Opt-in via env, usato
+            # per bench comparativi vs LLM medium locale (Gemma 4 26B).
+            # Costa ~$0.015/turno (Sonnet) o ~$0.075/turno (Opus). Default
+            # haiku se non specificato (cheap+veloce).
+            from llm_provider import AnthropicProvider
+            anth_model = os.environ.get("METNOS_PLANNER_MODEL",
+                                          "claude-haiku-4-5-20251001")
+            provider = AnthropicProvider(model=anth_model)
         else:
             provider = make_provider_from_spec({
                 "provider": "llamacpp",

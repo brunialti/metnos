@@ -5,7 +5,7 @@
   <!-- Locale homes -->
   <url>
     <loc>https://metnos.com/en/</loc>
-    <lastmod>2026-04-27</lastmod>
+    <lastmod>2026-05-25</lastmod>
     <changefreq>weekly</changefreq>
     <priority>1.0</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://metnos.com/en/"/>
@@ -14,7 +14,7 @@
   </url>
   <url>
     <loc>https://metnos.com/it/</loc>
-    <lastmod>2026-04-27</lastmod>
+    <lastmod>2026-05-25</lastmod>
     <changefreq>weekly</changefreq>
     <priority>1.0</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://metnos.com/en/"/>
@@ -164,7 +164,7 @@
 
   <url>
     <loc>https://metnos.com/en/architecture/</loc>
-    <lastmod>2026-05-19</lastmod>
+    <lastmod>2026-05-25</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/"/>
@@ -172,7 +172,7 @@
   </url>
   <url>
     <loc>https://metnos.com/it/architecture/</loc>
-    <lastmod>2026-05-19</lastmod>
+    <lastmod>2026-05-25</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/"/>
@@ -525,6 +525,26 @@
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://metnos.com/en/code"/>
     <xhtml:link rel="alternate" hreflang="it" href="https://metnos.com/it/code"/>
+  </url>
+
+  <!-- Praxis Engine (pentade Mētis/Noûs/Praxis/Pronoia/Aporia, ADR 0161) -->
+
+  <url>
+    <loc>https://metnos.com/en/architecture/praxis_engine.html</loc>
+    <lastmod>2026-05-25</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+    <xhtml:link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/praxis_engine.html"/>
+    <xhtml:link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/praxis_engine.html"/>
+  </url>
+
+  <url>
+    <loc>https://metnos.com/it/architecture/praxis_engine.html</loc>
+    <lastmod>2026-05-25</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+    <xhtml:link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/praxis_engine.html"/>
+    <xhtml:link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/praxis_engine.html"/>
   </url>
 
   <!-- Service -->

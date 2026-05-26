@@ -549,6 +549,11 @@ Sotto, i quindici documenti raggruppati per ruolo. La colonna
 <thead><tr><th style="width:22%">Componente</th><th>Cosa copre</th><th style="width:14%">Stato</th></tr></thead>
 <tbody>
 <tr>
+  <td><a href="praxis_engine.html"><code>Praxis Engine</code></a></td>
+  <td>La pentade greca della cognizione (ADR 0161, sostituisce il PLANNER step-by-step legacy): <strong>M&emacr;tis</strong> propone l'intero piano in una sola call LLM wise tier (GBNF strict, ~15s), <strong>No&ucirc;s</strong> esegue deterministico senza LLM nel loop, <strong>Praxis</strong> ricorda i framework che hanno funzionato in sqlite O(1) e li auto-promuove dopo 2-3 &#10003;, <strong>Pronoia</strong> recupera classificando l'errore in 3 classi (wrong_tool/wrong_args/missing_input) e ri-propone, <strong>Aporia</strong> riconosce onestamente il vicolo cieco (4 root cause) e suggerisce all'utente l'azione concreta. Bench: 6x speedup, costo zero, -55% LOC agente.</td>
+  <td><span class="status tested">tested</span></td>
+</tr>
+<tr>
   <td><a href="agent_runtime.html"><code>agent_runtime</code></a></td>
   <td>Loop ReAct, mode router, data piping fra step (<code>from_step:&nbsp;int</code> per liste, <code>{{stepN.field}}</code> per scalari), scratchpad, hook su mnestoma. &Egrave; il motore che chiama tutti gli altri.</td>
   <td><span class="status tested">tested</span></td>

@@ -2209,9 +2209,9 @@ async def turn_feedback_handler(request: web.Request) -> web.Response:
     except Exception:
         body = {}
     action = (body.get("action") or "").strip().lower()
-    if action not in ("ok", "error"):
+    if action not in ("ok", "error", "repeat"):
         return _error(400, "invalid_action",
-                      "action must be 'ok' or 'error'")
+                      "action must be 'ok', 'error', or 'repeat'")
     actor = _resolve_actor(request, body)
     try:
         from turn_feedback import apply_feedback

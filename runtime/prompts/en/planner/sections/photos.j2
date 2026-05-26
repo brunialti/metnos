@@ -66,3 +66,26 @@ PHOTO/EXIF/CAPTURE/GPS/PLACE-OF-CAPTURE/CAMERA
     OK: «delete all» (post get_persons) → get_persons → delete_persons(from_step=1).
     ERROR: «delete Roberto Brunialti» → find_files(pattern="*Roberto*") →
         delete_persons(from_step=1, name=...). THIS IS AN ERROR.
+
+  (W.reverse) REVERSE WEB IMAGE SEARCH (local images → web)
+    Use case: "search the web for images similar to <local photos of X>" —
+    the subject is identified by LOCAL FILES (enrollment/folder/file), not
+    a text query. Pipeline: FILE discovery → Google Vision Web Detection
+    reverse search (find_images_web).
+    MUST: use `find_files` (NOT `find_images_indices`) to discover photos
+        in a folder named by the user (e.g., enrollment, collection, archive).
+        Then `find_images_web(from_step=N)` for reverse of each.
+    MUST: pattern_path / query coherent with the named folder (e.g., user
+        says "enrollment photos" → find_files(query="X enrollment", base_path
+        named or default scope /home/roberto/images/<sub>)).
+    MUST NOT: call find_images_indices for this: the indexed corpus is for
+        SEMANTIC search on a global library, not for files in a specific
+        folder named by the user.
+    MUST NOT: call find_images_web WITHOUT from_step or real paths (invalid
+        args → loop). Photos come from the upstream find_files step.
+    OK: «search the web for photos similar to my enrollment of Roberto» →
+        find_files(query="roberto", base_path="/home/roberto/images") →
+        find_images_web(from_step=1) → final_answer with web pages found.
+    ERROR: same intent → find_images_indices(name="roberto") →
+        find_images_web(from_step=1). The index is for global semantic
+        search, not the specific enrollment folder.

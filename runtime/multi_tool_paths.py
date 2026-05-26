@@ -44,6 +44,11 @@ V2 futuro:
 """
 from __future__ import annotations
 
+# ╔════════════════════════════════════════════════════════════════════╗
+# ║ REMOVED-PRAXIS-FINAL (25/5/2026 sera tardissima)                    ║
+# ║ Subsumed da praxis.sqlite (ADR 0161). Pentade convergente.          ║
+# ║ Removal fisica pianificata post 24h monitor live use.               ║
+# ╚════════════════════════════════════════════════════════════════════╝
 import hashlib
 import json
 import logging

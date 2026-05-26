@@ -402,6 +402,11 @@ progress or partial). All have an Italian counterpart at
 <thead><tr><th style="width:22%">Component</th><th>Scope</th><th style="width:14%">Status</th></tr></thead>
 <tbody>
 <tr>
+  <td><a href="praxis_engine.html"><code>Praxis Engine</code></a></td>
+  <td>The Greek pentad of cognition (ADR 0161, replaces the legacy step-by-step PLANNER): <strong>M&emacr;tis</strong> proposes the whole plan in a single wise-tier LLM call (GBNF strict, ~15s), <strong>No&ucirc;s</strong> executes deterministically with no LLM in the loop, <strong>Praxis</strong> remembers successful frameworks in an O(1) sqlite cache and auto-promotes them after 2-3 &#10003;, <strong>Pronoia</strong> recovers by classifying the error into 3 classes (wrong_tool/wrong_args/missing_input) and re-proposing, <strong>Aporia</strong> honestly recognises dead-ends (4 root causes) and tells the user what concrete action is needed. Bench: 6x speedup, zero cost, -55% agent LOC.</td>
+  <td><span class="status tested">tested</span></td>
+</tr>
+<tr>
   <td><a href="agent_runtime.html"><code>agent_runtime</code></a></td>
   <td>ReAct loop, mode router, data piping between steps (<code>from_step:&nbsp;int</code> for lists, <code>{{stepN.field}}</code> for scalars), scratchpad, mnestome hooks. The engine that calls everyone else.</td>
   <td><span class="status tested">tested</span></td>

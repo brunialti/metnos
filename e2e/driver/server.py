@@ -171,6 +171,19 @@ def _seed_realistic_into(user_data: Path, user_state: Path,
         except (OSError, shutil.Error):
             pass
 
+    # Index immagini (read-only, condiviso via symlink: 489MB → 0MB copy).
+    # Permette a find_images_indices nei test E2E di vedere il corpus live
+    # senza moltiplicare lo storage per ogni test. Fail-safe: se non esiste
+    # nel live, skip silenzioso.
+    src_index = _LIVE_USER_DATA / "index"
+    dst_index = user_data / "index"
+    if src_index.is_dir() and not dst_index.exists():
+        try:
+            os.symlink(str(src_index), str(dst_index),
+                        target_is_directory=True)
+        except OSError:
+            pass
+
     items_config = [
         "runtime.toml", "owned_domains.json", "blocked_origins.json",
         "trusted_origins.json", "mail.env", "github_watched_repos.json",

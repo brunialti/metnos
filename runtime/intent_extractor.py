@@ -79,7 +79,14 @@ def extract_intent(query: str, llm_call) -> Optional[dict]:
             return None
     except Exception:
         return None
-    text = (res or {}).get("text") or ""
+    # Duck-type: accetta dict {"text": ...} (legacy) o ChatResult dataclass
+    # (provider standard) o str (callback semplice).
+    if isinstance(res, str):
+        text = res
+    elif hasattr(res, "text"):
+        text = res.text or ""
+    else:
+        text = (res or {}).get("text") or ""
     parsed = _parse_json(text)
     if not parsed:
         return None

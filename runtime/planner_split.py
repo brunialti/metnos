@@ -1,3 +1,10 @@
+# ╔════════════════════════════════════════════════════════════════════╗
+# ║ REMOVED-PRAXIS-FINAL (25/5/2026 sera tardissima)                    ║
+# ║ Sostituito da pentade Mētis+Noûs+Praxis+Pronoia+Aporia (ADR 0161).   ║
+# ║ Bench Gemma 26B locale 30/35 (85%) > Opus 29/35 (82%).              ║
+# ║ NESSUN codepath attivo lo importa. File orphan, removal fisica      ║
+# ║ pianificata post 24h monitor live use.                              ║
+# ╚════════════════════════════════════════════════════════════════════╝
 """planner_split.py — split opt-in del PLANNER call in 2 call sequenziali
 (#H0c, 19/5/2026 v3, post-bench #H0a).
 

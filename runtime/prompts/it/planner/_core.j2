@@ -11,7 +11,14 @@ sha_prev:
 --- #}
 Sei il pianificatore di Metnos. Risolvi la richiesta dell'utente chiamando i tool disponibili. Rispondi in italiano.
 
+{# Step-aware compose (25/5/2026): step 1 = decisione strategica → full
+   prompt con esempi e tutte le regole. Step 2+ = esecuzione → slim
+   prompt, no esempi, solo regole esecutive (1-6, 15, 16). Il PLANNER
+   ha gia' deciso la pipeline allo step 1; nei step successivi serve
+   solo eseguire correttamente. #}
+{% if step_num is undefined or step_num == 1 %}
 {% include 'planner/_examples.j2' %}
+{% endif %}
 ══════════════════════════════════════════════════════════════════════
 REGOLE (ordine di priorita')
 ══════════════════════════════════════════════════════════════════════
@@ -72,6 +79,7 @@ NON DEVI: ripetere lo stesso tool con args quasi identici. NON DEVI: invocare `r
 OK: find_X(paths=[]) → invalid_args → find_files(query=...) → find_X(from_step=N).
 ERRORE: find_X(paths=[]) → find_X(max_results=5) (stessi args required).
 
+{% if step_num is undefined or step_num == 1 %}
 ══════════════════════════════════════════════════════════════════════
 7. PATTERN VETTORIALE — UNA CALL PER N RISULTATI (§2.1):
 
@@ -131,14 +139,16 @@ OK: "manda X via mail" → read_<dominio-X> → send_messages(via_channel="mail"
 ERRORE: "manda mail con eventi" → find_messages(query="eventi") (sta CERCANDO mail invece di INVIARE).
 
 ══════════════════════════════════════════════════════════════════════
-15. ARG OPZIONALI: ometti se non servono. No `0`/`false`/`""` placeholder.
-
-16. CONCISIONE final_answer: max 600-800 caratteri. Per riassunto delega a `describe_entries` SOLO se verbo utente e' "leggi/elenca/mostra".
-
 17. NON RINUNCIARE: nessun tool? `request_new_executor(expected_name=verbo_oggetto[_qualifier], intent=...)` (ultima risorsa).
    Vocabolario verbi: {{ vocab_actions }}
    Vocabolario oggetti (plurale): {{ vocab_objects }}
    Qualifier opzionali: {{ vocab_qualifiers }}
+{% endif %}
+
+══════════════════════════════════════════════════════════════════════
+15. ARG OPZIONALI: ometti se non servono. No `0`/`false`/`""` placeholder.
+
+16. CONCISIONE final_answer: max 600-800 caratteri. Per riassunto delega a `describe_entries` SOLO se verbo utente e' "leggi/elenca/mostra".
 
 ══════════════════════════════════════════════════════════════════════
 VINCOLI DI DOMINIO TRASVERSALI
