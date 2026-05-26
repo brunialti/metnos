@@ -290,5 +290,76 @@ class TestLogSkillVersion(unittest.TestCase):
         self.assertEqual(row, ("sk1", "created", "abc", "test"))
 
 
+class TestFeedbackLWWSymmetric(unittest.TestCase):
+    """✓ feedback su (intent_hash, framework_hash) rimuove anti_skill +
+    ripristina demoted → active (26/5/2026, asimmetria fix)."""
+
+    def setUp(self):
+        # praxis.py importa "from runtime_paths" ecc., usiamo PraxisStore reale.
+        import sys
+        sys.path.insert(0, "/opt/metnos/runtime")
+        from praxis import PraxisStore
+        self.tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
+        self.tmp.close()
+        self.store = PraxisStore(self.tmp.name)
+
+    def tearDown(self):
+        self.store.conn.close()
+        os.unlink(self.tmp.name)
+
+    def test_ok_removes_anti_skill_and_restores_demoted(self):
+        # Seed: 1 anti_skill + 1 demoted skill + 1 observation
+        ih, fh = "ih_x", "fh_x"
+        ts = "2026-05-26T10:00:00Z"
+        ttl = "2026-06-25T10:00:00Z"
+        self.store.conn.execute(
+            "INSERT INTO anti_skills(intent_hash, framework_hash, fail_count, "
+            "ttl_expires_at, reason, ts_last_fail) VALUES (?,?,?,?,?,?)",
+            (ih, fh, 3, ttl, "test", ts))
+        self.store.conn.execute(
+            "INSERT INTO skills(id, intent_sig, intent_hash, keywords_csv, "
+            "framework_json, framework_hash, source, status, version, "
+            "ts_created) VALUES (?,?,?,?,?,?,?,?,?,?)",
+            ("sk_test", "find|files", ih, "", "{}", fh, "praxis",
+             "demoted", "v1.0.0", ts))
+        self.store.conn.execute(
+            "INSERT INTO observations(turn_id, intent_hash, intent_sig, "
+            "framework_json, framework_hash, latency_ms, ts) "
+            "VALUES (?,?,?,?,?,?,?)",
+            ("turn_x", ih, "find|files", "{}", fh, 100, ts))
+        self.store.conn.commit()
+
+        out = self.store.record_feedback("turn_x", "ok")
+        self.assertTrue(out["ok"])
+        self.assertEqual(out.get("anti_skill_removed"), 1)
+        # Verify DELETE
+        n_anti = self.store.conn.execute(
+            "SELECT COUNT(*) FROM anti_skills WHERE intent_hash=?",
+            (ih,)).fetchone()[0]
+        self.assertEqual(n_anti, 0)
+        # Verify status restored
+        status = self.store.conn.execute(
+            "SELECT status FROM skills WHERE id='sk_test'").fetchone()[0]
+        self.assertEqual(status, "active")
+        # Audit row
+        n_ver = self.store.conn.execute(
+            "SELECT COUNT(*) FROM skill_versions "
+            "WHERE event='anti_skill_lww_remove'").fetchone()[0]
+        self.assertEqual(n_ver, 1)
+
+    def test_ok_without_anti_skill_no_effect(self):
+        ih, fh = "ih_y", "fh_y"
+        ts = "2026-05-26T10:00:00Z"
+        self.store.conn.execute(
+            "INSERT INTO observations(turn_id, intent_hash, intent_sig, "
+            "framework_json, framework_hash, latency_ms, ts) "
+            "VALUES (?,?,?,?,?,?,?)",
+            ("turn_y", ih, "find|files", "{}", fh, 100, ts))
+        self.store.conn.commit()
+        out = self.store.record_feedback("turn_y", "ok")
+        self.assertTrue(out["ok"])
+        self.assertNotIn("anti_skill_removed", out)
+
+
 if __name__ == "__main__":
     unittest.main()

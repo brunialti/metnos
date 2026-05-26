@@ -708,7 +708,39 @@ class PraxisStore:
         }
 
     def _handle_feedback_ok(self, ctx: dict, outcome: dict) -> None:
-        """✓ feedback: promote check + update metrics + swap champion."""
+        """✓ feedback: promote check + update metrics + swap champion.
+
+        LWW simmetrico (26/5/2026): se esiste anti_skill per
+        (intent_hash, framework_hash), un ✓ successivo lo cancella e
+        ripristina skill demoted → active. Caso: utente preme ✗ per errore
+        su pipeline corretta, poi ↻/✓ corregge. Senza questo, anti_skill
+        TTL 30gg blocca path unico indefinitamente.
+        """
+        # LWW: remove matching anti_skill + restore demoted skill.
+        try:
+            anti_removed = self.conn.execute(
+                "DELETE FROM anti_skills "
+                "WHERE intent_hash = ? AND framework_hash = ?",
+                (ctx["intent_hash"], ctx["fw_hash"])).rowcount
+            if anti_removed:
+                outcome["anti_skill_removed"] = anti_removed
+                self.conn.execute(
+                    "UPDATE skills SET status = 'active' "
+                    "WHERE intent_hash = ? AND framework_hash = ? "
+                    "AND status = 'demoted'",
+                    (ctx["intent_hash"], ctx["fw_hash"]))
+                try:
+                    import praxis_cluster
+                    praxis_cluster.log_skill_version(
+                        self.conn, ctx["skill_id_hit"] or "",
+                        "anti_skill_lww_remove",
+                        old_fw_hash=ctx["fw_hash"],
+                        new_fw_hash=ctx["fw_hash"],
+                        reason="ok_feedback_after_error")
+                except Exception:
+                    pass
+        except Exception as ex:
+            log.warning("anti_skill LWW remove on ok: %r", ex)
         promoted = self._maybe_promote(
             ctx["intent_hash"], ctx["sig"], ctx["fw_hash"], ctx["fw_json"],
             cluster_id=ctx["cluster_id"])

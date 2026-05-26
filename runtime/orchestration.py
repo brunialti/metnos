@@ -238,8 +238,15 @@ def _build_final_message_hint(state: dict, fmt: str) -> str:
         lines.append(descr)
     lines.append("")
     lines.append(f"Step 1/{n} — {prompt}")
-    if (first.get("schema") or {}).get("kind") == "credentials":
+    schema = first.get("schema") or {}
+    if schema.get("kind") == "credentials":
         lines.append("(la risposta sara' mascherata in registro)")
+    elif schema.get("kind") == "choice":
+        choices = schema.get("choices") or []
+        if choices:
+            lines.append("")
+            for i, ch in enumerate(choices, 1):
+                lines.append(f"  {i}. {ch}")
     lines.append("")
     lines.append("Rispondi nel prossimo messaggio. `annulla` per abortire.")
     return "\n".join(lines)

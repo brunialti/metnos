@@ -123,19 +123,17 @@ NO MATCH
 - intento descrittivo/narrativo
 
 PIPELINE
-- producer + final_answer
-- no compute_entries
-- no describe_entries
+- step1: producer (verbo producer §2.2: read/find/list/get sull'oggetto)
+- step2: final_answer (NESSUNO step intermedio)
+- final_message: "${step1.@count} <unita>"
 
-PRODUCER
-verbo producer del vocab §2.2 (read/find/list/get) sull'oggetto richiesto
+DEVI: usare ESATTAMENTE 2 step (producer + final_answer).
+NON DEVI: aggiungere compute_entries fra producer e final_answer. Il producer espone gia' available_total nel result, @count lo risolve.
+OK: {"steps":[{"tool":"find_files","args":{"base_path":"X"}},{"tool":"final_answer","args":{}}],"final_message":"${step1.@count} file"}.
+ERRORE: {"steps":[{"tool":"find_files","args":{...}},{"tool":"compute_entries","args":{"op":"count","from_step":1}},{"tool":"final_answer","args":{}}],"final_message":"${step2.result} file"} — compute_entries vede SOLO entries truncate (1000 di N), conteggia sbagliato, e il suo result e' {value:N} non {result:N}: il template renderizza vuoto.
 
-COUNT (renderer magic: ${stepN.@count})
-sintassi speciale che il renderer risolve in cascata deterministica
-(available_total → ok_count → used → len(prima list di dict del result))
-
-OUTPUT
-solo "<numero> <unita>", template usa "${step1.@count}"
+COUNT renderer magic: ${stepN.@count} risolve in cascata
+(available_total → ok_count → used → len(prima list di dict del result)).
 
 ───────────────────────────────────────────────
 LIST_OR_DESCRIBE
