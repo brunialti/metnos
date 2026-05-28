@@ -59,6 +59,8 @@ _VERB_TO_CANONICAL = {
     # write
     "scrivi": "write", "scrivo": "write", "scrivere": "write",
     "salva": "write", "salvo": "write", "salvare": "write",
+    "metti": "write", "metto": "write", "mettere": "write",
+    "put": "write", "place": "write",
     "write": "write", "save": "write",
     # find
     "trova": "find", "trovo": "find", "trovare": "find",
@@ -164,15 +166,45 @@ def detect_canonical_verb(qtokens):
     return None
 
 
+# Italian clitic suffixes per pronominal forms (universal §7.9):
+# "mettili" = "metti" + "li", "inviamelo" = "invia" + "melo", ecc.
+# Ordine matter: prima i più lunghi.
+_IT_CLITIC_SUFFIXES = (
+    "celo", "cela", "celi", "cele", "cene", "cisi",
+    "melo", "mela", "meli", "mele", "mene",
+    "telo", "tela", "teli", "tele", "tene",
+    "selo", "sela", "seli", "sele", "sene",
+    "gli", "mi", "ti", "si", "ci", "vi", "ne",
+    "lo", "la", "li", "le",
+)
+
+
+def _strip_italian_clitic(tok: str) -> str | None:
+    """Universal §7.9: rimuovi clitico pronome IT. Ritorna stem o None."""
+    for suf in _IT_CLITIC_SUFFIXES:
+        if tok.endswith(suf) and len(tok) > len(suf) + 2:
+            return tok[:-len(suf)]
+    return None
+
+
 def detect_canonical_verbs_all(qtokens) -> list[str]:
     """Ritorna TUTTI i verbi canonici distinti trovati fra i token, in ordine
     di apparizione. Usato per detection multi-step (es. «fissa appuntamento e
     mandami email» -> ['set', 'send']). Lista vuota se nessun verbo.
     Generale: deriva dai sinonimi vocab IT+EN gia' presenti in
-    `_VERB_TO_CANONICAL`, non hardcoded a un caso d'uso specifico."""
+    `_VERB_TO_CANONICAL`, non hardcoded a un caso d'uso specifico.
+
+    Italian clitic stripping (§7.9 universal): "mettili"→"metti", "inviamelo"
+    →"invia". Cattura clitici pronominali standard IT.
+    """
     seen = []
     for tok in qtokens:
         v = _VERB_TO_CANONICAL.get(tok)
+        if not v:
+            # Try clitic stripping (mettili → metti, inviamelo → invia)
+            stem = _strip_italian_clitic(tok)
+            if stem:
+                v = _VERB_TO_CANONICAL.get(stem)
         if v and v not in seen:
             seen.append(v)
     return seen
@@ -366,7 +398,8 @@ _STOPWORDS = _STOPWORDS_IT | _STOPWORDS_EN
 
 
 def affinity_score(query_tokens, executor, *,
-                   query_canonical_verb=None, query_canonical_object=None):
+                   query_canonical_verb=None, query_canonical_object=None,
+                   query_raw=None):
     """Score con preferenza forte al VERBO CANONICO della query, all'oggetto
     canonico, e all'affinity (verbi/azioni dichiarati nel manifest);
     soft-match cap-ato sui token rari.
@@ -380,6 +413,11 @@ def affinity_score(query_tokens, executor, *,
     - soft match (token query ∈ tokenize(description) escluse stopwords e i
       token gia' contati come hard): peso 1, cappato a 3 (per evitare che
       description verbose dominino).
+
+    §7.3 Task #41 (28/5/2026) — opt-in METNOS_PREFILTER_RULES=1 attiva 4 rule
+    aggiuntive portate da e2e/simulator (path-promote, query-pattern, producer
+    compat, rare-token penalty). Bench 446q baseline: prefilter top-1 47% →
+    atteso 65-75% post-rules. Vedi runtime/prefilter_rules.py.
 
     Riferimento al caso live 29/4/2026: query "sposta in Posta indesiderata le
     mail" privilegiava read_messages (description ricca + affinity over-tagged)
@@ -403,7 +441,22 @@ def affinity_score(query_tokens, executor, *,
         name_parts = executor.name.split("_")
         if query_canonical_object in name_parts:
             object_boost = 6
-    return hard + soft + verb_boost + object_boost
+    base = hard + soft + verb_boost + object_boost
+
+    # §7.3 opt-in rule porting da simulator
+    import os
+    if os.environ.get("METNOS_PREFILTER_RULES", "0") == "1" and query_raw:
+        try:
+            from prefilter_rules import (compute_rule_boost,
+                                          compute_rare_penalty)
+            rule_boost = compute_rule_boost(
+                query_raw, query_tokens, query_canonical_verb, executor)
+            rare_pen = compute_rare_penalty(query_tokens, executor)
+            base += rule_boost + rare_pen
+        except Exception:
+            pass
+
+    return base
 
 
 def rank(query, catalog, k=10, min_score=1):
@@ -414,9 +467,18 @@ def rank(query, catalog, k=10, min_score=1):
         return list(catalog)[:k]
     canonical_verb = detect_canonical_verb(qtokens)
     canonical_object = detect_canonical_object(qtokens, query)
+    # §7.3 Task #41: init rare-tokens cache (idempotente) per rule penalty
+    import os as _os_pref
+    if _os_pref.environ.get("METNOS_PREFILTER_RULES", "0") == "1":
+        try:
+            from prefilter_rules import init_rare_tokens
+            init_rare_tokens(catalog)
+        except Exception:
+            pass
     scored = [(affinity_score(qtokens, e,
                               query_canonical_verb=canonical_verb,
-                              query_canonical_object=canonical_object), e)
+                              query_canonical_object=canonical_object,
+                              query_raw=query), e)
               for e in catalog]
     scored.sort(key=lambda p: p[0], reverse=True)
     above = [e for s, e in scored if s >= min_score]
@@ -960,9 +1022,20 @@ def _rank_adaptive_legacy(query, catalog, k_min=5, k_max=8, *, llm_call=None,
                                     "confidence": 0.0, "scores_top": [], "reason": "empty_query"}
     canonical_verb = detect_canonical_verb(qtokens)
     canonical_object = detect_canonical_object(qtokens, query)
+    # §7.3 Task #41 (28/5/2026): pass query_raw per attivare typed-rules
+    # (input_coverage, schema_field) gated da METNOS_PREFILTER_RULES=1.
+    # Init rare-tokens cache (idempotente, no-op se env=0).
+    import os as _os_pref
+    if _os_pref.environ.get("METNOS_PREFILTER_RULES", "0") == "1":
+        try:
+            from prefilter_rules import init_rare_tokens
+            init_rare_tokens(catalog)
+        except Exception:
+            pass
     scored = [(affinity_score(qtokens, e,
                               query_canonical_verb=canonical_verb,
-                              query_canonical_object=canonical_object), e)
+                              query_canonical_object=canonical_object,
+                              query_raw=query), e)
               for e in catalog]
     scored.sort(key=lambda p: p[0], reverse=True)
     scores = [s for s, _ in scored]
