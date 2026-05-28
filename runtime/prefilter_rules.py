@@ -212,8 +212,9 @@ _QUERY_PATTERN_BOOSTS = [
     # Send mail
     (re.compile(r"\b(invia|manda|send).*(mail|email|messag)", re.I),
      "send_messages", 8),
-    # Spam handling
-    (re.compile(r"\b(spam|posta indesiderata|junk).*(sposta|move|filtra)", re.I),
+    # Spam handling — both word orders ("spam → sposta" and "sposta in spam")
+    (re.compile(r"(?=.*\b(?:spam|posta indesiderata|junk)\b)"
+                r"(?=.*\b(?:sposta|move|filtra)\b)", re.I),
      "move_messages", 8),
     # Trova / cerca file
     (re.compile(r"\b(trova|find|cerca).*(file|cartella|directory)", re.I),
@@ -227,8 +228,8 @@ _QUERY_PATTERN_BOOSTS = [
     # Tasks/timer
     (re.compile(r"\b(timer|task|promemoria|ricordami|schedule|scaden)", re.I),
      "list_tasks", 4),
-    # Count queries
-    (re.compile(r"^(quant[io]|conta|numero di|how many|count)\b", re.I),
+    # Count queries (\b anchor — robusta a leading whitespace dal tokenizer)
+    (re.compile(r"\b(quant[io]|conta|numero di|how many|count)\b", re.I),
      "compute_entries", 3),
     # Topographic / place queries
     (re.compile(r"\b(bar|ristorante|pizzeria|hotel|farmacia|stazione|caff[èe])\b", re.I),
@@ -250,8 +251,11 @@ _QUERY_PATTERN_BOOSTS = [
      "read_events", 6),
     (re.compile(r"\b(eventi.*\b(domani|oggi|settimana|mese)|calendar|agenda)\b", re.I),
      "read_events", 6),
-    # "enrolled" / "registrate" → persons retrieval
-    (re.compile(r"\b(enroll|enrolled|registrat[ie]|paired)\b", re.I),
+    # "paired" → read_persons(role="guest") per CLAUDE.md §5 (lista guest)
+    (re.compile(r"\b(paired)\b", re.I),
+     "read_persons", 5),
+    # "enrolled" / "registrate" → get_persons (scheda registro biometrico)
+    (re.compile(r"\b(enroll|enrolled|registrat[ie])\b", re.I),
      "get_persons", 5),
     # Sort by date/size
     (re.compile(r"\b(ordina|sort).*\b(data|date|dimens|size)", re.I),

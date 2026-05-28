@@ -22,6 +22,9 @@ API:
 """
 import re
 
+from logging_setup import get_logger
+log = get_logger(__name__)
+
 _WORD_RE = re.compile(r"[a-z0-9]+", re.UNICODE)
 
 
@@ -453,8 +456,9 @@ def affinity_score(query_tokens, executor, *,
                 query_raw, query_tokens, query_canonical_verb, executor)
             rare_pen = compute_rare_penalty(query_tokens, executor)
             base += rule_boost + rare_pen
-        except Exception:
-            pass
+        except Exception as _e:  # §2.8 no silent failure
+            log.warning("prefilter_rules failed for %s: %s",
+                        executor.name, _e)
 
     return base
 
@@ -473,8 +477,8 @@ def rank(query, catalog, k=10, min_score=1):
         try:
             from prefilter_rules import init_rare_tokens
             init_rare_tokens(catalog)
-        except Exception:
-            pass
+        except Exception as _e:  # §2.8 no silent failure
+            log.warning("init_rare_tokens failed: %s", _e)
     scored = [(affinity_score(qtokens, e,
                               query_canonical_verb=canonical_verb,
                               query_canonical_object=canonical_object,
@@ -725,6 +729,20 @@ def rank_with_intent(query, catalog, intent, *, k=3):
     if not verb:
         return None  # caller fa fallback lexicon
     qtokens = tokenize(query) if query else set()
+    # §7.3 opt-in: rule_boost wire-in nel path intent-driven (era applicato
+    # solo nel fallback BoW). Gating env METNOS_PREFILTER_RULES=1.
+    import os as _os_intent
+    _rules_on = (_os_intent.environ.get("METNOS_PREFILTER_RULES", "0") == "1"
+                  and query)
+    _rule_fn = None
+    if _rules_on:
+        try:
+            from prefilter_rules import compute_rule_boost, init_rare_tokens
+            init_rare_tokens(catalog)
+            _rule_fn = compute_rule_boost
+        except Exception as _e:  # §2.8 no silent failure
+            log.warning("prefilter_rules init in rank_with_intent: %s", _e)
+            _rule_fn = None
     primary = []
     for e in catalog:
         parts = e.name.split("_")
@@ -743,6 +761,12 @@ def rank_with_intent(query, catalog, intent, *, k=3):
             if qtokens and any(q in qtokens for q in qualifiers):
                 s += 2  # forte bonus se il qualifier matcha la query
             # else: nessun bonus — il generico (parts=[verb,obj]) puo' battere
+        if _rule_fn is not None:
+            try:
+                s += _rule_fn(query, qtokens, verb, e)
+            except Exception as _e:
+                log.warning("rule_boost in rank_with_intent for %s: %s",
+                             e.name, _e)
         primary.append((s, e))
     primary.sort(key=lambda p: -p[0])
 
