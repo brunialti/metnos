@@ -281,20 +281,27 @@ def apply_feedback(turn_id: str, action: str, by: str = "user") -> dict:
                                "reason": f"ager_error: {ex}"}
                     effects.append({"type": "feedback_demote", **out})
 
-    # ── Praxis hook (ADR 0161) ────────────────────────────────────────
-    # Propaga ✓✗↻ a praxis.record_feedback: ✓→promote check (3 obs same
-    # hash+success≥80%→skill ACTIVE), ✗→anti_skill 30gg TTL, ↻→exclude
-    # next turn (transient, no DB action).
+    # ── Praxis/Autopath hook (ADR 0161 + engine v2 wiring fix) ────────
+    # Dispatcha verdict a engine.autopath.record_feedback se METNOS_ENGINE_V2=1
+    # (default), altrimenti praxis legacy. Bug pre-fix: caller scriveva su
+    # praxis.sqlite (vuoto) mentre engine.dispatch scriveva observations su
+    # autopath.sqlite → _promote_skill mai chiamato → 0% praxis coverage.
+    # Vedi decisions/_metis_wiring_consolidation.md §3.
     try:
-        from praxis import get_store as _praxis_get_store
         _verdict_map = {"ok": "ok", "error": "fail", "repeat": "repeat"}
         _verdict = _verdict_map.get(action)
         if _verdict:
-            _out = _praxis_get_store().record_feedback(turn_id, _verdict)
+            import os as _os_ev2
+            if _os_ev2.environ.get("METNOS_ENGINE_V2", "1") == "1":
+                from engine.autopath import record_feedback as _rec_fb
+                _out = _rec_fb(turn_id, _verdict)
+            else:
+                from praxis import get_store as _praxis_get_store
+                _out = _praxis_get_store().record_feedback(turn_id, _verdict)
             if _out.get("ok"):
                 effects.append({"type": "praxis_feedback", **_out})
     except Exception as ex:
-        log.warning("turn_feedback: praxis hook failed: %r", ex)
+        log.warning("turn_feedback: praxis/autopath hook failed: %r", ex)
 
     _append_feedback(record)
     return record
@@ -444,6 +451,38 @@ def rejected_pipelines_for_query(user_query: str,
     # Ritorna solo pipeline il cui ULTIMO record e' "error".
     return [pipeline_by_sig[sig] for sig, act in latest.items()
             if act == "error"]
+
+
+def reset_rejected_for_query(user_query: str) -> int:
+    """Compensa demote precedenti per `user_query` appending feedback `ok`
+    LWW per ogni pipeline che era in stato `error`. Usato quando l'utente
+    sceglie "ritenta" dopo escalation strato 3 e la nuova esecuzione SUCCESS:
+    le pipeline prima rifiutate vanno ri-promosse a OK.
+
+    Ritorna numero di pipeline rese OK.
+    Universal §7.9: scan + LWW append, no LLM.
+    """
+    if not user_query:
+        return 0
+    rejected = rejected_pipelines_for_query(user_query)
+    if not rejected:
+        return 0
+    import time as _t
+    count = 0
+    for pipeline in rejected:
+        sig = ",".join(pipeline)
+        rec = {
+            "ts": _t.time(),
+            "turn_id": f"strato3-retry-{int(_t.time()*1000)}",
+            "action": "ok",
+            "by": "strato3_retry_success",
+            "user_query": user_query,
+            "approved_pipeline": pipeline,
+            "signature": sig,
+        }
+        _append_feedback(rec)
+        count += 1
+    return count
 
 
 def feedback_history(limit: int = 100) -> list[dict]:
