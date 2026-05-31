@@ -96,6 +96,10 @@ BLOCKED_FILE = CONFIG_DIR / "blocked_origins.json"
 # 8888 di localhost; override via env METNOS_SEARXNG_URL.
 SEARXNG_URL_DEFAULT = "http://localhost:8888"
 SEARXNG_TIMEOUT_S = 3.0
+# Budget di tempo del rerank LLM: oltre questo, fallback all'ordine SearXNG.
+# Senza budget, sotto contesa GPU col planner la chat si appende e
+# l'executor va in timeout (bug ARK/people-search). Override via env.
+_RERANK_TIMEOUT_S = float(os.environ.get("METNOS_FINDURLS_RERANK_TIMEOUT_S", "8.0"))
 SEARXNG_TOP_N = 5
 
 
@@ -397,6 +401,7 @@ def _host_capacity() -> dict:
 sys.path.insert(0, os.environ.get("METNOS_RUNTIME") or next(
     str(p / "runtime") for p in Path(__file__).resolve().parents
     if (p / "runtime" / "config.py").is_file()))
+from messages import get as _msg  # noqa: E402
 from host_throttle import HostThrottle  # noqa: E402
 # Host health tracker per auto-degrade T2→T1 su 429/503 (ADR 0108).
 try:
@@ -1229,8 +1234,7 @@ def _invoke_default(args: dict) -> dict:
         # Niente da fare: niente content reachable.
         return {
             "ok": False,
-            "error": "seed_urls contiene solo home di motori di ricerca; "
-                     "passa search_query oppure URL di contenuto specifico.",
+            "error": _msg("ERR_SEED_URLS_ALL_HOME"),
             "error_class": "invalid_args",
             "entries": [],
         }
@@ -1254,7 +1258,7 @@ def _invoke_default(args: dict) -> dict:
             }
         return {
             "ok": False,
-            "error": "missing required arg 'seed_urls' (list[str]) or 'search_query' (str)",
+            "error": _msg("ERR_ARG_MISSING_ONE_OF", options="seed_urls, search_query"),
             "error_class": "invalid_args",
         }
 
@@ -1987,8 +1991,7 @@ def invoke(args: dict) -> dict:
     backend = _resolve_backend(client)
     if backend is None:
         return {"ok": False,
-                "error": f"unsupported web client: {client!r}. "
-                         f"Available: ['httpx', 'playwright']"}
+                "error": _msg("ERR_NOT_APPLICABLE", what=f"client {client!r}")}
     return backend.find(args)
 
 
@@ -1996,7 +1999,7 @@ def main():
     try:
         args = json.load(sys.stdin)
     except json.JSONDecodeError as e:
-        sys.stdout.write(json.dumps({"ok": False, "error": f"invalid input json: {e}"}))
+        sys.stdout.write(json.dumps({"ok": False, "error": _msg("ERR_JSON_INVALID")}))
         return
     result = invoke(args)
     sys.stdout.write(json.dumps(result, ensure_ascii=False))
