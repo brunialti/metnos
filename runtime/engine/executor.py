@@ -27,6 +27,7 @@ import time
 from typing import Any, Callable, Optional
 
 from .types import Framework, StepSpec, StepRun, RunResult
+from messages import get as _msg  # §11: render user-facing via DB i18n
 
 log = logging.getLogger(__name__)
 
@@ -79,12 +80,18 @@ def _build_runtime_resolvers(ctx: dict) -> dict[str, str]:
                 actor_email = row[0]
     except Exception:
         pass
-    return {
+    # §2.8 no-silent-failure: una chiave RUNTIME risolta a stringa vuota NON
+    # va inserita nel resolver-map. Altrimenti `${RUNTIME:actor_email}` si
+    # risolverebbe a "" → `_detect_unresolved_placeholders` non lo intercetta
+    # (non è letterale) → un send con to="" partirebbe silenzioso. Omettendo
+    # la chiave, il placeholder resta letterale e viene bloccato come irrisolto.
+    candidates = {
         "actor": actor,
         "actor_email": actor_email,
         "lang": str(ctx.get("lang") or "it"),
         "channel": str(ctx.get("channel") or ""),
     }
+    return {k: v for k, v in candidates.items() if v != ""}
 
 
 # Pattern matchers per placeholder TIME dinamici §7.9.
@@ -247,10 +254,16 @@ def _resolve_from_step(args: dict, history: list[StepRun]) -> dict:
     if not isinstance(n, int) or n < 1 or n > len(history):
         return args
     src = history[n - 1].result
-    entries = (src.get("entries")
-                or src.get("results")
-                or _find_list_of_dicts(src)
-                or [])
+    # Selezione per PRESENZA+TIPO, non per verità: una lista vuota [] e' un
+    # risultato valido a 0 elementi (§2.1) e NON deve cadere su 'results' o su
+    # una lista stale non correlata. Prima `... or ...` testava la verità →
+    # entries=[] (N=0 legittimo) veniva scartato.
+    if isinstance(src.get("entries"), list):
+        entries = src["entries"]
+    elif isinstance(src.get("results"), list):
+        entries = src["results"]
+    else:
+        entries = _find_list_of_dicts(src) or []
     out = {k: v for k, v in args.items() if k != "from_step"}
     out["entries"] = entries
     return out
@@ -522,7 +535,7 @@ def _render_final_message(template: str, history: list[StepRun]) -> str:
                     else:
                         lines.append(f"- {str(e)[:80]}")
                 more = len(entries) - 20
-                tail = f"\n(altri {more} non mostrati)" if more > 0 else ""
+                tail = ("\n" + _msg("MSG_RENDER_MORE_HIDDEN", more=more)) if more > 0 else ""
                 return "\n".join(lines) + tail
         return _format_value(v)
     def _sub_step(m):
@@ -559,6 +572,87 @@ def compute_framework_hash(fw: Framework) -> str:
 
 
 # ── Main execution ────────────────────────────────────────────────────────
+
+_PLACEHOLDER_RE = re.compile(r"\$\{[^}]+\}|\{\{[^}]+\}\}")
+
+
+def _render_is_degenerate(template: str, rendered: str) -> bool:
+    """True se il render del final_message è degenere: il template conteneva
+    placeholder `${stepN.x}`/`{{stepN.x}}` ma il risultato ha buchi (sostituiti
+    a vuoto) → frase monca tipo "Sono le ." o "Ho scritto  byte".
+
+    Universal §2.8 (no silent failure): una risposta con un placeholder reso
+    vuoto NON è una risposta onesta. Caso scoperto 31/5: get_now → template
+    "Sono le ${step1.X}" con X errato → "Sono le ." (ora mancante).
+
+    NON degenere: template senza placeholder (testo statico legittimo), o
+    render pieno. Il caso entries/count è gestito a parte (auto-list).
+    """
+    if not template or not _PLACEHOLDER_RE.search(template):
+        return False  # nessun placeholder → niente da risolvere, non degenere
+    r = (rendered or "").strip()
+    if not r:
+        return True  # tutto vuoto
+    # Segnale più forte: un placeholder è rimasto LETTERALE nel rendered
+    # (es. "${1.@count}" formato non-standard non risolto da _STEPREF_RE,
+    # o ${stepN.x} fuori range). Una risposta con `${...}`/`{{...}}` visibile
+    # all'utente è sempre degenere.
+    if _PLACEHOLDER_RE.search(r):
+        return True
+    # Rimuovi punteggiatura/whitespace residui: se resta quasi nulla rispetto
+    # alle parti statiche del template, il placeholder è stato perso.
+    # Heuristica: il template senza i placeholder dà le parti statiche; se il
+    # rendered == solo-parti-statiche (i placeholder hanno reso ""), è monco.
+    static_only = _PLACEHOLDER_RE.sub("", template).strip()
+    # normalizza spazi multipli
+    norm = lambda s: re.sub(r"\s+", " ", s).strip(" .,:;-—–\t\n")
+    return norm(r) == norm(static_only) and bool(norm(static_only) != norm(template))
+
+
+def _synthesize_final_from_steps(query: str, steps: list, llm_fast) -> str:
+    """Sintesi LLM della risposta finale dalle observation degli step.
+
+    Fallback quando il template è degenere: invece di mostrare "Sono le .",
+    diamo al LLM fast la query + le observation e gli chiediamo la risposta.
+    È ciò che fa describe_entries / il PLANNER legacy: ragionare sui VALORI.
+    Determinismo §7.9 eccetto la singola call irriducibilmente generativa;
+    se llm_fast manca o fallisce, ritorna "" (caller decide il fallback).
+    """
+    if llm_fast is None or not steps:
+        return ""
+    import json as _json
+    obs_lines = []
+    for s in steps[-4:]:  # ultime 4 observation bastano
+        res = getattr(s, "result", None)
+        tool = getattr(s, "tool", "?")
+        if isinstance(res, dict):
+            # privilegia content/value/summary; altrimenti dump compatto
+            val = (res.get("content") or res.get("value")
+                   or res.get("summary"))
+            if val is None:
+                slim = {k: v for k, v in res.items()
+                        if k not in ("ok", "metadata", "attachments", "entries")}
+                val = _json.dumps(slim, ensure_ascii=False)[:500]
+            obs_lines.append(f"{tool}: {str(val)[:500]}")
+    if not obs_lines:
+        return ""
+    sys_msg = (
+        "Sei l'assemblatore della risposta finale. Data la richiesta utente e "
+        "i risultati degli strumenti, scrivi UNA risposta diretta, concisa, in "
+        "linguaggio naturale, nella lingua della richiesta. Niente preamboli, "
+        "niente JSON, niente placeholder."
+    )
+    user_msg = (
+        f"Richiesta: {query}\n\nRisultati strumenti:\n" + "\n".join(obs_lines)
+        + "\n\nRisposta:"
+    )
+    try:
+        out = llm_fast(sys_msg, user_msg, max_tokens=160, think=False)
+        return (out or "").strip()
+    except Exception as ex:
+        log.warning("Executor: synthesize_final fallback failed: %r", ex)
+        return ""
+
 
 class Executor:
     """Esegue Framework deterministicamente. SHARED fra tutti gli engine."""
@@ -626,8 +720,15 @@ class Executor:
                                 else:
                                     lines.append(f"- {str(e)[:80]}")
                             more = len(entries) - 20
-                            tail = f"\n... e altri {more}" if more > 0 else ""
+                            tail = ("\n" + _msg("MSG_RENDER_AND_MORE", more=more)) if more > 0 else ""
                             rendered = (rendered.strip() + "\n\n" if rendered.strip() else "") + "\n".join(lines) + tail
+                # §2.8: render degenere (placeholder reso vuoto, es. get_now
+                # "Sono le .") → sintetizza dalle observation via LLM fast.
+                if _render_is_degenerate(framework.final_message, rendered):
+                    synth = _synthesize_final_from_steps(
+                        query, result.steps, self.llm_fast)
+                    if synth:
+                        rendered = synth
                 result.final_text = rendered
                 result.final_kind = "answer"
                 break
@@ -756,4 +857,12 @@ class Executor:
         if result.final_kind == "answer" and not result.final_text:
             result.final_text = _render_final_message(
                 framework.final_message, result.steps)
+            # §2.8: se anche il re-render è vuoto/degenere → sintesi LLM.
+            if (not result.final_text.strip()
+                    or _render_is_degenerate(framework.final_message,
+                                              result.final_text)):
+                synth = _synthesize_final_from_steps(
+                    query, result.steps, self.llm_fast)
+                if synth:
+                    result.final_text = synth
         return result
