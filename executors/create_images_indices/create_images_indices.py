@@ -58,6 +58,7 @@ _RUNTIME = os.environ.get("METNOS_RUNTIME") or next(
 sys.path.insert(0, _RUNTIME)
 
 
+from messages import get as _msg  # noqa: E402
 from index_schema import INDEX_SCHEMA_VERSION
 
 log = logging.getLogger(__name__)
@@ -83,6 +84,13 @@ def _resolve_vlm_url(env_val: str | None) -> str:
 _VLM_URL = _resolve_vlm_url(os.environ.get("METNOS_VLM_URL"))
 _VLM_MODEL = os.environ.get("METNOS_VLM_MODEL", "qwen2-vl-7b")
 _VLM_TIMEOUT_S = int(os.environ.get("METNOS_VLM_TIMEOUT_S", "60"))
+# Leve di accuratezza testuale settabili (default = comportamento storico).
+# Risoluzione: long-edge piu' alto = piu' dettaglio (scene fini, testo-in-foto)
+# a costo di piu' vision-token/latenza. max_tokens: descrizioni piu' ricche.
+_VLM_MAX_EDGE = int(os.environ.get("METNOS_VLM_MAX_EDGE", "1024"))
+# 512 (era 192): il prompt chiede descrizione ~50 parole + 8-15 keyword +
+# 2 hint; 192 troncava il JSON a meta'. A 1024 il contesto/slot abbonda.
+_VLM_MAX_TOKENS = int(os.environ.get("METNOS_VLM_MAX_TOKENS", "512"))
 
 
 def _index_image_root() -> Path:
@@ -100,9 +108,18 @@ def _is_dry_run() -> bool:
 
 def _index_dir(base_path: Path) -> Path:
     """Risolve la dir dell'indice unificato per `base_path`.
-    Path LOGICAL (no .resolve()): coerente con find_images_indices, symlink
-    a NAS mantiene lo stesso indice (vedi commit 15/5/2026 photo gallery fix)."""
-    digest = hashlib.sha256(str(base_path).encode("utf-8")).hexdigest()
+
+    Path CANONICAL (symlink risolto): coerente con find_images_indices._index_dir.
+    Build e lookup devono concordare sul digest; il default workspace
+    `~/.local/share/metnos/Immagini` e' un symlink verso il mount reale, quindi
+    symlink e path reale devono mappare sullo stesso indice (fix 30/5/2026).
+    `invoke()` passa gia' un path resolved, ma canonicalizziamo anche qui per
+    robustezza ai caller diretti."""
+    try:
+        canon = str(Path(base_path).expanduser().resolve())
+    except OSError:
+        canon = os.path.expanduser(str(base_path))
+    digest = hashlib.sha256(canon.encode("utf-8")).hexdigest()
     return _index_image_root() / digest[:16] / "unified"
 
 
@@ -256,9 +273,10 @@ def _vlm_prompt(lang: str, filename: str, parent_dir: str) -> str:
             "Describe this photo in English. Respond ONLY with valid JSON "
             "in the exact format below, no extra text:\n"
             "{\n"
-            '  "description": "short sentence (max 30 words) describing '
-            'what is concretely visible",\n'
-            '  "keywords": ["list", "of", "5-10", "keywords"],\n'
+            '  "description": "descriptive text (max 50 words): main '
+            'subjects, number of people, setting/place, relevant objects, '
+            'dominant colors and visible action",\n'
+            '  "keywords": ["8-15", "specific", "keywords"],\n'
             '  "location_hint": "place or environment (e.g., beach, '
             'mountain, kitchen, office); short",\n'
             '  "activity_hint": "main action/activity (e.g., running, '
@@ -277,9 +295,10 @@ def _vlm_prompt(lang: str, filename: str, parent_dir: str) -> str:
         "Descrivi questa foto in italiano. Rispondi SOLO con JSON valido "
         "nel formato esatto seguente, senza testo aggiuntivo:\n"
         "{\n"
-        '  "description": "frase breve (max 30 parole) che descrive cosa '
-        'si vede di concreto e visibile nella foto",\n'
-        '  "keywords": ["lista", "di", "5-10", "parole", "chiave"],\n'
+        '  "description": "frase descrittiva (max 50 parole): soggetti '
+        'principali, numero di persone, ambiente/luogo, oggetti rilevanti, '
+        'colori dominanti e azione visibile",\n'
+        '  "keywords": ["8-15", "parole", "chiave", "specifiche"],\n'
         '  "location_hint": "luogo o ambiente (es. spiaggia, montagna, '
         'cucina, ufficio); breve",\n'
         '  "activity_hint": "azione/attivita\' principale (es. correre, '
@@ -366,7 +385,7 @@ def _call_vlm(img_path: Path, *, url: str = _VLM_URL,
             elif _img.mode == "L":
                 _img = _img.convert("RGB")
             _le = max(_img.size)
-            _MAX = 1024
+            _MAX = _VLM_MAX_EDGE
             if _le > _MAX:
                 _scale = _MAX / float(_le)
                 _new_size = (
@@ -408,7 +427,7 @@ def _call_vlm(img_path: Path, *, url: str = _VLM_URL,
         # ~80-150 char + keywords ~10 = ~120 tok). presence_penalty 0.0
         # per caption brevi.
         "temperature": 0.2,
-        "max_tokens": 192,
+        "max_tokens": _VLM_MAX_TOKENS,
         "top_p": 0.8,
         "top_k": 20,
         "presence_penalty": 0.0,
@@ -550,12 +569,15 @@ def _atomic_write_index(
     entries: list[dict],
     emb_text,
     emb_face,
+    emb_image=None,
     *,
     base_path: Path,
     model_text: str,
     dim_text: int,
     model_vlm: str,
     model_face: str,
+    model_image: str = "none",
+    dim_image: int = 0,
 ) -> None:
     idx_dir.mkdir(parents=True, exist_ok=True)
     # entries.jsonl
@@ -578,17 +600,26 @@ def _atomic_write_index(
         tmp_v = p.with_suffix(".tmp.npy")
         np.save(str(tmp_v), emb_face)
         tmp_v.replace(p)
+    if emb_image is not None and len(emb_image) > 0:
+        import numpy as np
+        p = idx_dir / "embeddings_image.npy"
+        tmp_v = p.with_suffix(".tmp.npy")
+        np.save(str(tmp_v), emb_image)
+        tmp_v.replace(p)
     # meta
     meta = {
         "schema_version": _INDEX_VERSION,
         "version": _INDEX_VERSION,
         "n_entries": len(entries),
         "n_faces": int(len(emb_face)) if emb_face is not None else 0,
+        "n_images_with_visual_emb": int(len(emb_image)) if emb_image is not None else 0,
         "base_path": str(base_path),
         "model_text": model_text,
         "dim_text": int(dim_text),
         "model_vlm": model_vlm,
         "model_face": model_face,
+        "model_image": model_image,
+        "dim_image": int(dim_image),
         "last_refresh_at": time.time(),
     }
     (idx_dir / "meta.json").write_text(
@@ -605,15 +636,17 @@ def _build_unified(
     existing_entries: list[dict],
     existing_emb_text,
     existing_emb_face,
+    existing_emb_image=None,
     *,
     force: bool,
 ) -> dict:
     """Build/refresh dell'indice unificato.
 
-    Ritorna dict {entries, emb_text, emb_face, ok_count, fail_count,
-                  model_text, dim_text, model_vlm, model_face}.
-    Lazy import dei backend (face_embedding, bge_embedding) per consentire
-    il dry_run senza dipendenze installate.
+    Ritorna dict {entries, emb_text, emb_face, emb_image, ok_count,
+                  fail_count, model_text, dim_text, model_vlm, model_face,
+                  model_image, dim_image}.
+    Lazy import dei backend (face_embedding, bge_embedding, clip_embedding)
+    per consentire il dry_run senza dipendenze installate.
     """
     import numpy as np
 
@@ -628,6 +661,23 @@ def _build_unified(
         text_engine = None
         text_dim = 0
         text_model_name = "none"
+
+    # §7.3: SigLIP image embedding (image-to-image visual similarity)
+    try:
+        from clip_embedding import get_clip_engine
+        clip_engine_obj = get_clip_engine()
+        if clip_engine_obj.available:
+            image_dim = int(clip_engine_obj.dimension)
+            image_model_name = "clip_siglip"
+        else:
+            clip_engine_obj = None
+            image_dim = 0
+            image_model_name = "none"
+    except Exception as _ex:
+        log.warning("ClipEngine init fallito: %r — embedding_image omesso", _ex)
+        clip_engine_obj = None
+        image_dim = 0
+        image_model_name = "none"
 
     face_engine = get_face_engine()
     if not face_engine.available:
@@ -646,8 +696,10 @@ def _build_unified(
     new_entries: list[dict] = []
     new_emb_text_list: list = []
     new_emb_face_list: list = []
+    new_emb_image_list: list = []
     text_idx_counter = 0
     face_idx_counter = 0
+    image_idx_counter = 0
     ok = 0
     fail = 0
 
@@ -668,7 +720,16 @@ def _build_unified(
         if prev and not force:
             prev_e, _prev_idx = prev
             if prev_e.get("mtime") == mtime and prev_e.get("size") == size:
-                return (p, "resume", prev_e)
+                # Resume: riusa SigLIP+volti gia' calcolati. Ma se l'asse VLM
+                # manca (description vuota o `_vlm_error` da un build col server
+                # VLM giu'), ritenta SOLO il VLM invece di ricongelare un
+                # fallimento transitorio (§2.8 no silent failure). Il lavoro
+                # visivo/volti, costoso e gia' valido, viene riusato.
+                _has_vlm = bool(prev_e.get("description")) and "_vlm_error" not in prev_e
+                if _has_vlm:
+                    return (p, "resume", prev_e)
+                vlm_out = _call_vlm(p)
+                return (p, "resume_revlm", (prev_e, vlm_out))
         try:
             entry = _build_entry(p, mtime, size, face_engine=face_engine)
             return (p, "new", entry)
@@ -684,6 +745,29 @@ def _build_unified(
     _CHUNK = max(8, _n_par * 4)
     _i = 0
     _last_path: Path | None = None
+
+    def _emit_prog():
+        """Scrive il file di progresso (atomic) ogni 25 elementi o a fine.
+        Usato da tutti i rami lenti (new, resume_revlm) per non lasciare un
+        refresh di sole-re-VLM senza avanzamento visibile."""
+        _pp = os.environ.get("METNOS_PROGRESS_FILE")
+        if not _pp or not ((ok + fail) % 25 == 0 or (ok + fail) == len(paths)):
+            return
+        try:
+            _tmp = _pp + ".tmp"
+            with open(_tmp, "w") as _fh:
+                json.dump({
+                    "ts": time.time(), "phase": "running",
+                    "n_total": len(paths), "n_processed": ok + fail,
+                    "ok": ok, "fail": fail,
+                    "last_path": str(_last_path) if _last_path else "",
+                    "pct": round(100.0 * (ok + fail) / max(1, len(paths)), 2),
+                    "parallel": _n_par,
+                }, _fh)
+            os.replace(_tmp, _pp)
+        except Exception:
+            pass
+
     while _i < len(paths):
         _chunk = paths[_i:_i + _CHUNK]
         if _pool is not None:
@@ -708,6 +792,13 @@ def _build_unified(
                         new_emb_text_list.append(existing_emb_text[old_t_idx])
                         new_e["embedding_text_idx"] = text_idx_counter
                         text_idx_counter += 1
+                # Resume image embedding se presente in indice precedente
+                if "embedding_image_idx" in prev_e and existing_emb_image is not None:
+                    old_i_idx = prev_e["embedding_image_idx"]
+                    if 0 <= old_i_idx < len(existing_emb_image):
+                        new_emb_image_list.append(existing_emb_image[old_i_idx])
+                        new_e["embedding_image_idx"] = image_idx_counter
+                        image_idx_counter += 1
                 new_faces: list[dict] = []
                 for face in prev_e.get("faces", []):
                     nf = dict(face)
@@ -723,8 +814,80 @@ def _build_unified(
                 ok += 1
                 continue
 
+            if _status == "resume_revlm":
+                # Riempie SOLO l'asse VLM+testo (fallito col server VLM giu')
+                # riusando SigLIP+volti gia' calcolati e verificati completi.
+                prev_e, vlm_out = _payload
+                new_e = dict(prev_e)
+                new_e["description"] = vlm_out.get("description", "")
+                new_e["keywords"] = list(vlm_out.get("keywords", []))
+                new_e["location_hint"] = vlm_out.get("location_hint", "")
+                new_e["activity_hint"] = vlm_out.get("activity_hint", "")
+                if "_vlm_error" in vlm_out:
+                    new_e["_vlm_error"] = vlm_out["_vlm_error"]
+                else:
+                    new_e.pop("_vlm_error", None)
+                # SigLIP image emb: riusa la riga esistente
+                new_e.pop("embedding_image_idx", None)
+                if (isinstance(prev_e.get("embedding_image_idx"), int)
+                        and existing_emb_image is not None):
+                    old_i_idx = prev_e["embedding_image_idx"]
+                    if 0 <= old_i_idx < len(existing_emb_image):
+                        new_emb_image_list.append(existing_emb_image[old_i_idx])
+                        new_e["embedding_image_idx"] = image_idx_counter
+                        image_idx_counter += 1
+                # Volti: riusa le righe esistenti
+                new_faces = []
+                for face in prev_e.get("faces", []):
+                    nf = dict(face)
+                    old_f_idx = face.get("embedding_face_idx")
+                    nf.pop("embedding_face_idx", None)
+                    if (isinstance(old_f_idx, int) and existing_emb_face is not None
+                            and 0 <= old_f_idx < len(existing_emb_face)):
+                        new_emb_face_list.append(existing_emb_face[old_f_idx])
+                        nf["embedding_face_idx"] = face_idx_counter
+                        face_idx_counter += 1
+                    new_faces.append(nf)
+                new_e["faces"] = new_faces
+                # Text emb fresco dalla nuova description
+                new_e.pop("embedding_text_idx", None)
+                desc = new_e.get("description") or ""
+                if desc and text_model_name != "none":
+                    if text_engine is None:
+                        try:
+                            text_engine = BGEEmbeddingService()
+                        except FileNotFoundError as ex:
+                            log.warning("BGE non disponibile: %r — embedding_text omesso", ex)
+                            text_engine = False
+                        except Exception as ex:
+                            log.warning("BGE init fallito: %r", ex)
+                            text_engine = False
+                    if text_engine and text_engine is not False:
+                        try:
+                            vec = text_engine.embed_texts([desc])
+                            if vec.ndim == 2 and vec.shape[0] == 1:
+                                new_emb_text_list.append(vec[0])
+                                new_e["embedding_text_idx"] = text_idx_counter
+                                text_idx_counter += 1
+                        except Exception as ex:
+                            log.debug("embed_texts fallito: %r", ex)
+                new_entries.append(new_e)
+                ok += 1
+                _emit_prog()
+                continue
+
             # status == "new"
             entry = _payload
+            # §7.3: SigLIP image embedding (image-to-image visual similarity)
+            if clip_engine_obj is not None:
+                try:
+                    img_emb = clip_engine_obj.embed_images([str(p)], batch_size=1)
+                    if img_emb is not None and img_emb.ndim == 2 and img_emb.shape[0] == 1:
+                        new_emb_image_list.append(img_emb[0])
+                        entry["embedding_image_idx"] = image_idx_counter
+                        image_idx_counter += 1
+                except Exception as ex:
+                    log.debug("clip image embed fallito per %s: %r", p, ex)
             for face in entry["faces"]:
                 emb = face.pop("_embedding_face", None)
                 if emb is not None:
@@ -753,27 +916,7 @@ def _build_unified(
                         log.debug("embed_texts fallito: %r", ex)
             new_entries.append(entry)
             ok += 1
-
-            _progress_path = os.environ.get("METNOS_PROGRESS_FILE")
-            if _progress_path and ((ok + fail) % 25 == 0 or (ok + fail) == len(paths)):
-                try:
-                    _tmp = _progress_path + ".tmp"
-                    _payload_p = {
-                        "ts": time.time(),
-                        "phase": "running",
-                        "n_total": len(paths),
-                        "n_processed": ok + fail,
-                        "ok": ok,
-                        "fail": fail,
-                        "last_path": str(_last_path) if _last_path else "",
-                        "pct": round(100.0 * (ok + fail) / max(1, len(paths)), 2),
-                        "parallel": _n_par,
-                    }
-                    with open(_tmp, "w") as _fh:
-                        json.dump(_payload_p, _fh)
-                    os.replace(_tmp, _progress_path)
-                except Exception:
-                    pass
+            _emit_prog()
 
         _i += _CHUNK
 
@@ -788,17 +931,24 @@ def _build_unified(
         np.stack(new_emb_face_list, axis=0).astype("float32")
         if new_emb_face_list else None
     )
+    emb_image = (
+        np.stack(new_emb_image_list, axis=0).astype("float32")
+        if new_emb_image_list else None
+    )
 
     return {
         "entries": new_entries,
         "emb_text": emb_text,
         "emb_face": emb_face,
+        "emb_image": emb_image,
         "ok_count": ok,
         "fail_count": fail,
         "model_text": text_model_name,
         "dim_text": int(text_dim if emb_text is not None else 0),
         "model_vlm": _VLM_MODEL,
         "model_face": face_engine.name,
+        "model_image": image_model_name,
+        "dim_image": int(image_dim if emb_image is not None else 0),
     }
 
 
@@ -977,7 +1127,7 @@ def _build_entry(
 def invoke(args):
     base_path_arg = args.get("base_path")
     if not base_path_arg:
-        return {"ok": False, "error": "missing required arg 'base_path'"}
+        return {"ok": False, "error": _msg("ERR_ARG_MISSING", arg="base_path")}
 
     # Backward compat: idx ignorato post-ADR0117
     if args.get("idx") not in (None, "", "all"):
@@ -990,13 +1140,13 @@ def invoke(args):
     force = bool(args.get("force", False))
     max_files = args.get("max_files", 50000)
     if not isinstance(max_files, int) or max_files < 1:
-        return {"ok": False, "error": "max_files must be a positive integer"}
+        return {"ok": False, "error": _msg("ERR_ARG_NOT_POSITIVE_INT", arg="max_files")}
 
     base = Path(os.path.expanduser(base_path_arg)).resolve()
     if not base.exists():
-        return {"ok": False, "error": f"base_path not found: {base}"}
+        return {"ok": False, "error": _msg("ERR_PATH_NOT_FOUND", path=base)}
     if not base.is_dir():
-        return {"ok": False, "error": f"base_path is not a directory: {base}"}
+        return {"ok": False, "error": _msg("ERR_PATH_WRONG_TYPE", expected="dir", actual="file", path=base)}
 
     # Dry run: enumera senza side-effect
     if bool(args.get("dry_run")) or _is_dry_run():
@@ -1042,10 +1192,20 @@ def invoke(args):
         ([], None, None) if force else _load_existing(idx_dir)
     )
 
+    # Load existing image embeddings se presenti (resume incrementale)
+    existing_emb_image = None
+    try:
+        import numpy as _np
+        _eip = idx_dir / "embeddings_image.npy"
+        if not force and _eip.exists():
+            existing_emb_image = _np.load(str(_eip))
+    except Exception:
+        existing_emb_image = None
+
     try:
         result = _build_unified(
             paths, existing_entries, existing_emb_text, existing_emb_face,
-            force=force,
+            existing_emb_image=existing_emb_image, force=force,
         )
     except FileNotFoundError as e:
         return {"ok": False, "error": str(e)}
@@ -1074,11 +1234,14 @@ def invoke(args):
             result["entries"],
             result["emb_text"],
             result["emb_face"],
+            result.get("emb_image"),
             base_path=base,
             model_text=result["model_text"],
             dim_text=result["dim_text"],
             model_vlm=result["model_vlm"],
             model_face=result["model_face"],
+            model_image=result.get("model_image", "none"),
+            dim_image=result.get("dim_image", 0),
         )
     except OSError as e:
         return {"ok": False, "error": f"index write failed: {e}"}
@@ -1096,8 +1259,48 @@ def invoke(args):
         "model_text": result["model_text"],
         "model_vlm": result["model_vlm"],
         "model_face": result["model_face"],
+        "model_image": result.get("model_image", "none"),
         "dim_text": int(result["dim_text"]),
+        "dim_image": int(result.get("dim_image", 0)),
     }
+
+    # §7.3 Completion marker per `notification_dispatcher_task`
+    # (runtime/http_async_tasks.py polla `/tmp/metnos_build_complete/*.json`).
+    # Env var settata da _spawn_index_build in find_images_indices.
+    _notify_marker = os.environ.get("METNOS_BUILD_NOTIFY_MARKER")
+    if _notify_marker:
+        try:
+            from pathlib import Path as _P
+            pending_p = _P(_notify_marker)
+            pending_data = {}
+            if pending_p.exists():
+                try:
+                    pending_data = json.loads(pending_p.read_text(encoding="utf-8"))
+                except (OSError, json.JSONDecodeError):
+                    pending_data = {}
+            ts_start = float(pending_data.get("ts_started", time.time()))
+            done_data = {
+                "actor": pending_data.get("actor", "host"),
+                "channel": pending_data.get("channel", "http"),
+                "base_path": pending_data.get("base_path", str(base)),
+                "idx": pending_data.get("idx", "unified"),
+                "n_entries": int(out["n_entries_total"]),
+                "duration_s": float(time.time() - ts_start),
+                "errors_count": int(out["fail_count"]),
+                "ok": True,
+                "ts_done": time.time(),
+            }
+            complete_dir = _P("/tmp/metnos_build_complete")
+            complete_dir.mkdir(parents=True, exist_ok=True)
+            done_p = complete_dir / pending_p.name
+            done_p.write_text(json.dumps(done_data, ensure_ascii=False))
+            if pending_p.exists():
+                try:
+                    pending_p.unlink()
+                except OSError:
+                    pass
+        except Exception as _ex:
+            log.warning("completion marker write failed: %r", _ex)
     if result["fail_count"] > 0 and result["ok_count"] > 0:
         out["warning"] = (
             f"{result['fail_count']}/{len(paths)} file falliti l'encoding "
@@ -1141,7 +1344,7 @@ def main():
     try:
         args = json.load(sys.stdin)
     except json.JSONDecodeError as e:
-        sys.stdout.write(json.dumps({"ok": False, "error": f"invalid input json: {e}"}))
+        sys.stdout.write(json.dumps({"ok": False, "error": _msg("ERR_JSON_INVALID")}))
         return
     result = invoke(args)
     sys.stdout.write(json.dumps(result, ensure_ascii=False))

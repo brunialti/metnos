@@ -47,6 +47,7 @@ from pathlib import Path
 _RUNTIME = Path(__file__).resolve().parent.parent.parent / "runtime"
 sys.path.insert(0, str(_RUNTIME))
 
+from messages import get as _msg  # noqa: E402
 from index_schema import INDEX_SCHEMA_VERSION, is_unified_schema
 
 log = logging.getLogger(__name__)
@@ -71,19 +72,57 @@ def _user_data_root() -> Path:
     return Path(base) if base else Path.home() / ".local" / "share" / "metnos"
 
 
+def _canonical_corpus_path(base_path) -> str:
+    """Canonicalizza il path del corpus per il digest dell'indice.
+
+    Build e lookup DEVONO concordare sulla dir dell'indice. Il builder
+    (create_images_indices) costruisce sotto `Path(...).resolve()`, quindi
+    il digest e' calcolato sul path REALE (symlink risolto). Il reader deve
+    risolvere allo stesso modo: il default workspace
+    `~/.local/share/metnos/Immagini` e' un symlink verso il mount reale
+    (es. NAS); senza resolve() il digest del symlink differisce da quello
+    del path reale → 0 indici trovati → dialog di indicizzazione spurio.
+
+    `resolve()` segue i symlink esistenti ed e' no-op (lessicale) per path
+    inesistenti, quindi un corpus mancante hashifica comunque in modo
+    deterministico. Fallback a expanduser su errore di risoluzione.
+    """
+    try:
+        return str(Path(base_path).expanduser().resolve())
+    except OSError:
+        return os.path.expanduser(str(base_path))
+
+
 def _index_dir(base_path: Path) -> Path:
-    # 15/5/2026: identita' del corpus = path LOGICAL (no .resolve()). Se
-    # `~/.local/share/metnos/Immagini` e' un symlink, il corpus resta lo
-    # stesso anche se il storage sottostante (NAS, mount) cambia. Usare
-    # `.resolve()` cambierebbe il digest e renderebbe inaccessibili gli
-    # indici creati quando il path era una dir reale. Il caller passa
-    # gia' path canonical assoluto.
-    digest = hashlib.sha256(str(base_path).encode("utf-8")).hexdigest()
+    # Il digest del corpus e' calcolato sul path CANONICAL (symlink risolto),
+    # coerente con create_images_indices._index_dir, cosi' symlink e path
+    # reale mappano sullo stesso indice (fix 30/5/2026).
+    digest = hashlib.sha256(
+        _canonical_corpus_path(base_path).encode("utf-8")
+    ).hexdigest()
     return _index_image_root() / digest[:16] / "unified"
 
 
 def _is_dry_run() -> bool:
     return os.environ.get("METNOS_DRY_RUN", "0") == "1"
+
+
+def _discover_indexed_dirs() -> list[Path]:
+    """Trova tutte le sotto-dir di user_data che hanno un indice unificato.
+
+    Centralizza la discovery usata sia dal ramo `base_path` vuoto sia dai
+    fallback quando un `base_path` esplicito non risolve. Il match avviene
+    via `_index_dir(sub)` che canonicalizza (resolve) il path, cosi' un
+    symlink (es. `Immagini`→NAS) collima con l'indice costruito sul path
+    reale (fix 30/5/2026)."""
+    root = _user_data_root()
+    dirs: list[Path] = []
+    if root.exists():
+        for sub in sorted(root.iterdir()):
+            if sub.is_dir():
+                if (_index_dir(sub) / "meta.json").exists():
+                    dirs.append(sub)
+    return dirs
 
 
 def _resolve_base_path(base_path_arg) -> tuple[Path | None, list[Path] | None, str | None]:
@@ -93,14 +132,7 @@ def _resolve_base_path(base_path_arg) -> tuple[Path | None, list[Path] | None, s
     (single_dir, multi_dirs) e' valorizzato.
     """
     if base_path_arg is None or base_path_arg == "":
-        root = _user_data_root()
-        dirs: list[Path] = []
-        if root.exists():
-            for sub in root.iterdir():
-                if sub.is_dir():
-                    idx_dir = _index_dir(sub)
-                    if (idx_dir / "meta.json").exists():
-                        dirs.append(sub)
+        dirs = _discover_indexed_dirs()
         if not dirs:
             return None, None, "no indexed dirs found"
         return None, dirs, f"discovered {len(dirs)} indexed dirs"
@@ -112,38 +144,44 @@ def _resolve_base_path(base_path_arg) -> tuple[Path | None, list[Path] | None, s
     )
     if is_path_like:
         if p.exists() and p.is_dir():
-            # 15/5/2026: se il path esiste ma non ha indice, fallback a
-            # discovery automatica. Bug live: LLM passa `/home/roberto/images`
-            # (esiste, no idx), discovery trova `~/.local/share/metnos/Immagini`
-            # (esiste, 30k entries). Resilienza > rigore.
-            # NON usare .resolve(): l'identita' del corpus e' il path logical,
-            # symlink->NAS deve mantenere lo stesso indice (vedi _index_dir).
+            # Path esistente con indice → usalo direttamente. _index_dir
+            # canonicalizza (resolve) cosi' symlink e path reale collimano.
             logical = p
             idx_dir = _index_dir(logical)
             if (idx_dir / "meta.json").exists():
                 return logical, None, None
-            # Fallback: discovery
-            root = _user_data_root()
-            dirs: list[Path] = []
-            if root.exists():
-                for sub in root.iterdir():
-                    if sub.is_dir():
-                        sub_idx = _index_dir(sub)
-                        if (sub_idx / "meta.json").exists():
-                            dirs.append(sub)
-            if dirs:
-                return None, dirs, (
+            # Path esiste ma senza indice → discovery prima di proporre build.
+            discovered = _discover_indexed_dirs()
+            if discovered:
+                return None, discovered, (
                     f"base_path '{arg}' non indicizzato → fallback discovery "
-                    f"({len(dirs)} indici trovati)"
+                    f"({len(discovered)} indici trovati)"
                 )
-            return logical, None, None  # nessun fallback, ritorna come prima
+            return logical, None, None  # nessun indice altrove: build su questo
+        # Path-like ma INESISTENTE (es. LLM inventa `/home/roberto/Immagini`).
+        # §7.3: non proporre indicizzazione se esistono gia' indici altrove;
+        # fai fallback a discovery. Il dialog di build resta solo per ZERO indici.
+        discovered = _discover_indexed_dirs()
+        if discovered:
+            return None, discovered, (
+                f"base_path '{arg}' non trovato → fallback discovery "
+                f"({len(discovered)} indici trovati)"
+            )
         return None, None, f"base_path not found: {arg}"
+    # Arg simbolico (nome cartella, non un path). Match esatto sui figli di
+    # user_data; altrimenti fallback discovery prima del dialog di build.
     root = _user_data_root()
     if root.exists():
         target = arg.lower()
         for sub in root.iterdir():
             if sub.is_dir() and sub.name.lower() == target:
                 return sub.resolve(), None, None
+    discovered = _discover_indexed_dirs()
+    if discovered:
+        return None, discovered, (
+            f"base_path '{arg}' non corrisponde a una cartella nota → "
+            f"fallback discovery ({len(discovered)} indici trovati)"
+        )
     return None, None, f"base_path symbolic match not found: {arg}"
 
 
@@ -854,6 +892,20 @@ def _filter_unified(
                 )
     if reference_images:
         target_face_embs.extend(_extract_face_embeddings_from_reference(reference_images))
+        # §2.8 no silent failure: se reference_images sono state fornite ma
+        # NESSUN volto è stato estratto → l'indice NON ha image-to-image
+        # embedding (solo face). Senza face il filtro è NOOP e ritorneremmo
+        # TUTTE le entries del corpus, ingannando l'utente. Errore onesto.
+        if not target_face_embs:
+            return {
+                "entries": [], "n_above_threshold": 0,
+                "error_class": "no_face_in_reference",
+                "_msg": (f"Nessun volto rilevato nelle {len(reference_images)} "
+                         "foto di riferimento. find_images_indices "
+                         "supporta solo similarity per VOLTO (ArcFace), "
+                         "non per scena/oggetto. Per ricerca scena su web "
+                         "usa `find_images_web` (Vision API)."),
+            }
 
     if target_face_embs:
         kept = []
@@ -1112,6 +1164,196 @@ def _check_args(args: dict) -> str | None:
     return None
 
 
+# §7.3 Lazy indexing helpers --------------------------------------------------
+
+def _default_workspace_dir() -> Path:
+    """Default workspace foto: `~/.local/share/metnos/Immagini`.
+    Memoria utente: «se dico Immagini cerca sul workspace .local/.../metnos»."""
+    import config as _C
+    return _C.PATH_USER_DATA / "Immagini"
+
+
+def _discover_existing_photo_dirs() -> list[Path]:
+    """Trova directory candidate per indicizzazione: workspace default,
+    eventuali altri symlink in user data, NAS mount comuni."""
+    cands: list[Path] = []
+    ws = _default_workspace_dir()
+    if ws.exists() and ws.is_dir():
+        cands.append(ws)
+    # NAS mount common pattern
+    nas = Path("/tmp/nas_public/media/Immagini")
+    if nas.exists() and nas.is_dir() and nas not in cands:
+        # Only if NOT already covered via symlink
+        try:
+            if ws.resolve() != nas:
+                cands.append(nas)
+        except OSError:
+            cands.append(nas)
+    return cands
+
+
+def _scan_image_count(d: Path, *, max_scan: int = 50000) -> tuple[int, float]:
+    """Conta foto e somma dimensioni (best-effort, cap)."""
+    n = 0
+    sz = 0
+    exts = {".jpg", ".jpeg", ".png", ".heic", ".webp", ".tiff", ".bmp"}
+    try:
+        for p in d.rglob("*"):
+            if n >= max_scan:
+                break
+            if p.is_file() and p.suffix.lower() in exts:
+                n += 1
+                try:
+                    sz += p.stat().st_size
+                except OSError:
+                    pass
+    except OSError:
+        pass
+    return n, sz / (1024 * 1024)  # MB
+
+
+def _propose_lazy_index_dialog(args: dict) -> dict:
+    """Ritorna needs_inputs per scelta dir quando 0 indici e query ambigua.
+    L'orchestrator (agent_runtime) mostra dialog all'utente; on_complete
+    re-invoca find_images_indices con base_path scelto.
+    """
+    cands = _discover_existing_photo_dirs()
+    if not cands:
+        return {
+            "ok": False, "entries": [], "error_class": "no_workspace",
+            "error": (
+                "Nessuna directory foto trovata. Crea "
+                f"`{_default_workspace_dir()}` (anche symlink a una dir esterna) "
+                "oppure passa `base_path=/percorso/esplicito`."
+            ),
+            "_terminal": True,
+        }
+    # choices = path bare (selezionando, value = path) + summary in prompt
+    choices = [str(c) for c in cands]
+    summary_lines = ["Directory disponibili:"]
+    for c in cands:
+        n, mb = _scan_image_count(c)
+        gb = mb / 1024
+        summary_lines.append(f"  • {c}  →  {n:,} foto, {gb:.1f} GB")
+    prompt = (
+        "Non ci sono ancora indici. La prima query foto richiede una "
+        "scansione iniziale (durata dipende dal numero foto, va in "
+        "background, non blocca le richieste successive).\n\n"
+        + "\n".join(summary_lines)
+    )
+    return {
+        "ok": True,
+        "decision": "needs_inputs",
+        "needs_inputs": {
+            "title": "Quale directory vuoi indicizzare per le ricerche foto?",
+            "dialog": [{
+                "var": "base_path",
+                "prompt": prompt,
+                "schema": {
+                    "kind": "choice",
+                    "choices": choices,
+                },
+            }],
+            "fmt": "form",
+            "on_complete": {
+                "type": "resume_executor_with_values",
+                "executor": "find_images_indices",
+                "args_base": dict(args),
+            },
+        },
+    }
+
+
+def _spawn_index_build(base_path: Path, args: dict) -> dict:
+    """Spawna `create_images_indices(base_path=...)` come systemd-run user
+    unit. Scrive marker per notifica completion. Ritorna status
+    indexing_started subito (non blocca turn).
+    """
+    import hashlib as _hl
+    import os as _os
+    import subprocess as _sp
+    import time as _t
+
+    job_id = _hl.sha256(f"{base_path}_{_t.time()}".encode()).hexdigest()[:12]
+    unit_name = f"metnos-build-{job_id}-unified"
+
+    # Estima conta foto + tempo
+    n_count, mb = _scan_image_count(base_path)
+    gb = mb / 1024
+    # 3.3s/foto stima conservativa
+    est_min = round(n_count * 3.3 / 60, 1)
+
+    # Marker dir riusa `_COMPLETE_DIR` del dispatcher esistente
+    # (http_async_tasks.py `notification_dispatcher_task` polla /tmp/metnos_build_complete).
+    # Schema atteso: actor, channel, base_path, idx, n_entries, duration_s,
+    # errors_count, ok.
+    notify_dir = Path("/tmp") / "metnos_build_pending"  # transient durante build
+    notify_dir.mkdir(parents=True, exist_ok=True)
+    pending_marker = notify_dir / f"{job_id}.json"
+    ts_start = _t.time()
+    pending_marker.write_text(json.dumps({
+        "job_id": job_id,
+        "base_path": str(base_path),
+        "idx": "unified",
+        "n_estimated": n_count,
+        "actor": args.get("_actor") or "host",
+        "channel": args.get("_channel") or "http",
+        "ts_started": ts_start,
+    }, ensure_ascii=False))
+
+    # Spawn detached via subprocess.Popen + start_new_session. Più
+    # affidabile di systemd-run --user (richiede user-session attiva).
+    # Log su file per audit. Process child del metnos-http ma indipendente
+    # (start_new_session = new session group).
+    metnos_root = _os.environ.get("METNOS_INSTALL_ROOT", "/opt/metnos")
+    log_dir = Path("/tmp") / "metnos_build_logs"
+    log_dir.mkdir(parents=True, exist_ok=True)
+    log_path = log_dir / f"{job_id}.log"
+    env = dict(_os.environ)
+    env["METNOS_BUILD_JOB_ID"] = job_id
+    env["METNOS_BUILD_NOTIFY_MARKER"] = str(pending_marker)
+    cmd = [
+        "/usr/bin/python3",
+        f"{metnos_root}/runtime/build_runner_unified.py",
+        "--base-path", str(base_path),
+    ]
+    try:
+        log_fh = open(log_path, "ab")
+        _sp.Popen(
+            cmd, stdout=log_fh, stderr=log_fh, stdin=_sp.DEVNULL,
+            start_new_session=True, env=env, cwd=metnos_root,
+        )
+    except (OSError, _sp.SubprocessError) as ex:
+        try:
+            pending_marker.unlink()
+        except OSError:
+            pass
+        return {
+            "ok": False, "entries": [], "error_class": "build_spawn_failed",
+            "error": f"spawn failed: {type(ex).__name__}: {ex}",
+            "base_path": str(base_path),
+            "_terminal": True,
+        }
+
+    return {
+        "ok": True,
+        "status": "indexing_started",
+        "entries": [],
+        "base_path": str(base_path),
+        "job_id": job_id,
+        "n_estimated": n_count,
+        "est_size_gb": round(gb, 1),
+        "est_minutes": est_min,
+        "final_message_hint": (
+            f"Ho avviato l'indicizzazione di {n_count:,} foto in `{base_path}` "
+            f"(~{gb:.1f} GB). Stima: ~{est_min} min. "
+            f"Va in background, non blocca le tue prossime richieste. "
+            f"Ti scrivo su Telegram quando ho finito."
+        ),
+        "_terminal": True,
+    }
+
+
 def invoke(args):
     legacy_idx = args.get("idx")
     if legacy_idx is not None and legacy_idx not in ("", "all"):
@@ -1126,11 +1368,14 @@ def invoke(args):
 
     top_k = int(args.get("top_k", _TOP_K_DEFAULT))
     if top_k < 1:
-        return {"ok": False, "error": "top_k must be >= 1"}
+        return {"ok": False, "error": _msg("ERR_ARG_NOT_POSITIVE_INT", arg="top_k")}
 
     single_dir, multi_dirs, msg = _resolve_base_path(args.get("base_path"))
     if single_dir is None and multi_dirs is None:
-        return {"ok": False, "error": msg or "could not resolve base_path"}
+        # §7.3 lazy index: 0 indici E query SENZA base_path esplicito →
+        # ritorna needs_inputs dialog per scelta dir + spawn build su scelta.
+        # Default suggerito: ~/.local/share/metnos/Immagini.
+        return _propose_lazy_index_dialog(args)
 
     if multi_dirs is not None:
         return _invoke_multi_dirs(multi_dirs, args, msg)
@@ -1149,24 +1394,9 @@ def invoke(args):
                 "base_path": str(single_dir),
                 "schema_version": INDEX_SCHEMA_VERSION,
             }
-        return {
-            "ok": False, "entries": [], "error_class": "index_missing",
-            "error": (
-                f"unified index missing for {single_dir}. "
-                f"Run create_images_indices(base_path='{single_dir}') first."
-            ),
-            "base_path": str(single_dir),
-            # Hint per il PLANNER: chiudi con final_answer onesto invece
-            # di riprovare. Bug live 15/5/2026: LLM riprova 3× → loop_break
-            # generico. Con hint esplicito il PLANNER puo' usare il
-            # messaggio user-facing direttamente.
-            "final_message_hint": (
-                f"Nessun indice immagini disponibile per `{single_dir}`. "
-                f"Crea prima l'indice con `create_images_indices(base_path='{single_dir}')` "
-                f"(richiede ~6s per foto, build asincrona)."
-            ),
-            "_terminal": True,
-        }
+        # §7.3 lazy index: path esplicito SENZA indice → spawn build async
+        # + notify utente, ritorna status indexing_started.
+        return _spawn_index_build(single_dir, args)
 
     entries, emb_text, emb_face, meta = _load_unified_index(idx_dir)
     if not is_unified_schema(meta):
@@ -1312,6 +1542,16 @@ def _invoke_multi_dirs(dirs: list[Path], args: dict, msg: str | None) -> dict:
         if "schema_too_old" in error_classes:
             out["error_class"] = "schema_too_old"
             out["schema_too_old_dirs"] = schema_too_old_dirs
+        elif "no_face_in_reference" in error_classes:
+            out["error_class"] = "no_face_in_reference"
+            out["error"] = ("Nessun volto rilevato nelle foto di "
+                            "riferimento. L'indice locale supporta solo "
+                            "similarity per VOLTO (ArcFace), non per "
+                            "scena/oggetto generico. Per ricerca scena "
+                            "sul web usa 'cerca foto simili sul web' "
+                            "(Google Vision API).")
+        elif error_classes:
+            out["error_class"] = sorted(error_classes)[0]
     # Truncated check: confronto contro n_above (totale above threshold
     # PRE-truncation a top_k in _filter_unified), non contro len(all_entries)
     # che e' gia' top-k troncato per dir e quindi degenere a top_k.
@@ -1332,7 +1572,7 @@ def main():
     try:
         args = json.load(sys.stdin)
     except json.JSONDecodeError as e:
-        sys.stdout.write(json.dumps({"ok": False, "error": f"invalid input json: {e}"}))
+        sys.stdout.write(json.dumps({"ok": False, "error": _msg("ERR_JSON_INVALID")}))
         return
     result = invoke(args)
     sys.stdout.write(json.dumps(result, ensure_ascii=False))

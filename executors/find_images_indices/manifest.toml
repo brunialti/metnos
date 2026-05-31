@@ -107,7 +107,7 @@ error_class: low_confidence, paths_filter_empty, no_faces_above_size_threshold, 
 
 [code]
 files  = ["find_images_indices.py"]
-digest = "sha256:66d8e99a9d183dca388fd71d083edf6dcf45045c6ab1bddb5511ad7887fbccb7"
+digest = "sha256:20b6fd51768a97f9db85f59ca3a5e0737bd4b4ffa82377cde0f0140559331b84"
 
 [args]
 type     = "object"
