@@ -1130,7 +1130,11 @@ def _invoke_default(args: dict) -> dict:
     # `search_query`, interroga SearXNG per ottenere i top-N URL e usali
     # come seed. Se anche `seed_urls` e' settato, i risultati di SearXNG
     # vengono PRIMA (probabilmente piu' rilevanti per la query).
-    search_query = args.get("search_query")
+    # Robustezza NL→determinismo (§2.4): il planner a volte emette `query`
+    # (alias naturale) invece del canonico `search_query`. Senza questo
+    # alias la query web cadeva in invalid_args→terminator ("Pipeline
+    # malformata") su "cerca chi è X". Dominio aperto: accetta entrambi.
+    search_query = args.get("search_query") or args.get("query")
     search_top_n = args.get("search_top_n")
     try:
         top_n = int(search_top_n) if search_top_n is not None else SEARXNG_TOP_N
