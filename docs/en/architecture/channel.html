@@ -1,50 +1,49 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Metnos &mdash; channel v1.1 (tested)</title>
-    <meta name="description" content="Microdesign of the Metnos channel: the Channel adapter that converts an external interface (CLI, Telegram, voice) into a stream of messages spoken to the runtime. Telegram as the first concrete implementation, daemon, offset persistence, systemd unit.">
-    <meta name="keywords" content="channel, protocol, telegram, daemon, long-poll, send, metnos, microdesign">
-    <meta name="author" content="Roberto Brunialti">
-    <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large">
-    <link rel="canonical" href="https://metnos.com/en/architecture/channel.html">
-    <link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/channel.html">
-    <link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/channel.html">
-    <link rel="alternate" hreflang="x-default" href="https://metnos.com/en/architecture/channel.html">
-    <meta property="og:type" content="article">
-    <meta property="og:url" content="https://metnos.com/en/architecture/channel.html">
-    <meta property="og:title" content="Metnos &mdash; channel v1.1 (tested)">
-    <meta property="og:description" content="Channel adapter and Telegram implementation (send + long-poll + daemon + offset persistence + systemd unit).">
-    <meta property="og:locale" content="en_US">
-    <meta property="og:locale:alternate" content="it_IT">
-    <meta property="og:site_name" content="Metnos">
-    <meta name="twitter:card" content="summary">
-    <meta name="twitter:title" content="Metnos &mdash; channel v1.1 (tested)">
-    <script type="application/ld+json">
+ <meta charset="UTF-8">
+ <meta name="viewport" content="width=device-width, initial-scale=1.0">
+ <title>Metnos &mdash; channel (tested)</title>
+ <meta name="description" content="Microdesign of the Metnos channel: the Channel adapter that converts an external interface (CLI, Telegram, voice) into a stream of messages spoken to the runtime. Telegram as the first concrete implementation, daemon, offset persistence, systemd unit.">
+ <meta name="keywords" content="channel, protocol, telegram, daemon, long-poll, send, metnos, microdesign">
+ <meta name="author" content="Roberto Brunialti">
+ <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large">
+ <link rel="canonical" href="https://metnos.com/en/architecture/channel.html">
+ <link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/channel.html">
+ <link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/channel.html">
+ <link rel="alternate" hreflang="x-default" href="https://metnos.com/en/architecture/channel.html">
+ <meta property="og:type" content="article">
+ <meta property="og:url" content="https://metnos.com/en/architecture/channel.html">
+ <meta property="og:title" content="Metnos &mdash; channel (tested)">
+ <meta property="og:description" content="Channel adapter and Telegram implementation (send + long-poll + daemon + offset persistence + systemd unit).">
+ <meta property="og:locale" content="en_US">
+ <meta property="og:locale:alternate" content="it_IT">
+ <meta property="og:site_name" content="Metnos">
+ <meta name="twitter:card" content="summary">
+ <meta name="twitter:title" content="Metnos &mdash; channel (tested)">
+ <script type="application/ld+json">
 {
-  "@context": "https://schema.org",
-  "@type": "TechArticle",
-  "headline": "Metnos — channel v1.1",
-  "description": "Channel microdesign: Protocol, InboundMessage/OutboundMessage, TelegramChannel, ChannelDaemon, offset persistence, systemd unit. Status: tested.",
-  "url": "https://metnos.com/en/architecture/channel.html",
-  "inLanguage": "en",
-  "isPartOf": {"@type": "WebSite", "name": "Metnos", "url": "https://metnos.com/"},
-  "author": {"@type": "Person", "name": "Roberto Brunialti"}
+ "@context": "https://schema.org",
+ "@type": "TechArticle",
+ "headline": "Metnos — channel ",
+ "description": "Channel microdesign: Protocol, InboundMessage/OutboundMessage, TelegramChannel, ChannelDaemon, offset persistence, systemd unit. Status: tested.",
+ "url": "https://metnos.com/en/architecture/channel.html",
+ "inLanguage": "en",
+ "isPartOf": {"@type": "WebSite", "name": "Metnos", "url": "https://metnos.com/"},
+ "author": {"@type": "Person", "name": "Roberto Brunialti"}
 }
-    </script>
-    <style>
-:root {
-    --navy: #1A477A; --navy-light: #2B6CB0; --sage: #548235;
-    --bronze: #A0522D; --plum: #6B21A8;
-    --bg: #FAFBFC; --text: #1a1a1a;
-    --border: #d0d7de; --code-bg: #f6f8fa;
-    --table-header: #1A477A; --table-alt: #f0f4f8;
-    --note-bg: #dbeafe; --note-border: #3b82f6;
-    --tip-bg: #dcfce7; --tip-border: #16a34a;
-    --warn-bg: #fef3c7; --warn-border: #f59e0b;
-    --danger-bg: #fee2e2; --danger-border: #dc2626;
-    --muted: #64748B;
+ </script>
+ <style>:root {
+ --navy: #1A477A; --navy-light: #2B6CB0; --sage: #548235;
+ --bronze: #A0522D; --plum: #6B21A8;
+ --bg: #FAFBFC; --text: #1a1a1a;
+ --border: #d0d7de; --code-bg: #f6f8fa;
+ --table-header: #1A477A; --table-alt: #f0f4f8;
+ --note-bg: #dbeafe; --note-border: #3b82f6;
+ --tip-bg: #dcfce7; --tip-border: #16a34a;
+ --warn-bg: #fef3c7; --warn-border: #f59e0b;
+ --danger-bg: #fee2e2; --danger-border: #dc2626;
+ --muted: #64748B;
 }
 * { box-sizing: border-box; }
 body { font-family: 'Segoe UI', Calibri, -apple-system, sans-serif; font-size: 11pt; line-height: 1.65; color: var(--text); background: var(--bg); max-width: 960px; margin: 0 auto; padding: 40px 30px; }
@@ -59,36 +58,20 @@ td { padding: 7px 10px; border-bottom: 1px solid var(--border); vertical-align: 
 tr:nth-child(even) td { background: var(--table-alt); }
 pre { background: var(--code-bg); border: 1px solid var(--border); border-radius: 4px; padding: 12px 16px; overflow-x: auto; font-size: 9.5pt; line-height: 1.55; }
 code { font-family: Consolas, 'Courier New', monospace; }
-p code, li code, td code { background: var(--code-bg); padding: 1px 5px; border-radius: 3px; font-size: 9.5pt; }
-.callout { border-left: 4px solid; padding: 10px 16px; margin: 15px 0; border-radius: 0 4px 4px 0; font-size: 10pt; }
-.callout.note { background: var(--note-bg); border-color: var(--note-border); }
-.callout.tip { background: var(--tip-bg); border-color: var(--tip-border); }
-.callout.warning { background: var(--warn-bg); border-color: var(--warn-border); }
-.title-page { text-align: center; padding: 60px 0 30px; }
-.title-page h1 { font-size: 32pt; border: none; margin: 0; }
-.title-page .subtitle { font-size: 16pt; color: var(--navy-light); margin: 10px 0 30px; }
-.title-page .meta { font-size: 11pt; color: #666; }
-.toc h2 { border: none; }
-.toc ol { font-size: 11pt; line-height: 1.9; }
-.toc a { color: var(--navy); text-decoration: none; }
+p code, li code, td code { background: var(--code-bg); padding: 1px 5px; border-radius: 3px; font-size: 9.5pt; }.callout { border-left: 4px solid; padding: 10px 16px; margin: 15px 0; border-radius: 0 4px 4px 0; font-size: 10pt; }.callout.note { background: var(--note-bg); border-color: var(--note-border); }.callout.tip { background: var(--tip-bg); border-color: var(--tip-border); }.callout.warning { background: var(--warn-bg); border-color: var(--warn-border); }.title-page { text-align: center; padding: 60px 0 30px; }.title-page h1 { font-size: 32pt; border: none; margin: 0; }.title-page.subtitle { font-size: 16pt; color: var(--navy-light); margin: 10px 0 30px; }.title-page.meta { font-size: 11pt; color: #666; }.toc h2 { border: none; }.toc ol { font-size: 11pt; line-height: 1.9; }.toc a { color: var(--navy); text-decoration: none; }
 ul, ol { margin: 8px 0; padding-left: 24px; }
-li { margin-bottom: 4px; }
-.lead { font-size: 12pt; color: var(--navy); border-left: 4px solid var(--sage); padding-left: 14px; margin: 18px 0; }
-.status-banner { margin: 18px 0; border-left: 5px solid #16a34a; background: #dcfce7; color: #14532d; padding: 14px 20px; border-radius: 0 8px 8px 0; font-size: 11pt; line-height: 1.55; }
-.status-banner strong { color: #14532d; }
-.status-banner .status-chip { display: inline-block; background: #14532d; color: #fff; padding: 2px 10px; border-radius: 12px; font-size: 9.5pt; letter-spacing: 1px; font-weight: 700; margin-right: 6px; }
-.status-banner .seq { font-size: 9.5pt; color: #2d4a32; margin-top: 8px; }
-    </style>
+li { margin-bottom: 4px; }.lead { font-size: 12pt; color: var(--navy); border-left: 4px solid var(--sage); padding-left: 14px; margin: 18px 0; }.status-banner { margin: 18px 0; border-left: 5px solid #16a34a; background: #dcfce7; color: #14532d; padding: 14px 20px; border-radius: 0 8px 8px 0; font-size: 11pt; line-height: 1.55; }.status-banner strong { color: #14532d; }.status-banner.status-chip { display: inline-block; background: #14532d; color: #fff; padding: 2px 10px; border-radius: 12px; font-size: 9.5pt; letter-spacing: 1px; font-weight: 700; margin-right: 6px; }.status-banner.seq { font-size: 9.5pt; color: #2d4a32; margin-top: 8px; }
+ </style>
 </head>
 <body>
 
 <div class="status-banner">
-<span class="status-chip">TESTED</span>
-<strong>&#10003; Microdesign v1.1 &mdash; aligned with the code as of 4 May 2026.</strong>
-The <code>channels</code> component was implemented and tested at module level (<code>channels</code> cluster 19/19 green) on 27/4/2026, then extended on 4/5/2026 with multi-user support (ADR&nbsp;0083): <code>/start &lt;token&gt;</code> guest pairing command, <code>send_to(chat_id, OutboundMessage)</code> and multi-user fallback for pairings missing in <code>pairings.db</code>.
+
+<strong>&#10003; Microdesign &mdash; aligned with the code.</strong>
+The <code>channels</code> component was implemented and tested at module level (<code>channels</code> cluster 19/19 green) on, then extended on with multi-user support: <code>/start &lt;token&gt;</code> guest pairing command, <code>send_to(chat_id, OutboundMessage)</code> and multi-user fallback for pairings missing in <code>pairings.db</code>.
 Read alongside <a href="http_api.html" style="color:#14532d;text-decoration:underline;"><code>http_api</code></a>: <strong>Telegram remains the primary dialogue channel</strong>; HTTP (port 8770) is the alternative channel for the host dashboard, curl/script automations and the remote Rust client.
-Implementation reference: <code>/opt/myclaw/runtime/channels/</code>.
-<div class="seq">Status sequence of the microdesign: <em>under approval</em> &rarr; <em>approved</em> &rarr; <strong>tested</strong> &rarr; <em>implemented</em>. The v1.0 of this doc preceded the code; it is replaced by this v1.1 after the implementation of Channel Protocol, TelegramChannel, ChannelDaemon and the integration with the <a href="pairing.html"><code>pairing</code></a> module.</div>
+Implementation reference: <code>/opt/metnos/runtime/channels/</code>.
+<div class="seq">Status sequence of the microdesign: <em>under approval</em> &rarr; <em>approved</em> &rarr; <strong>tested</strong> &rarr; <em>implemented</em>. The of this doc preceded the code; it is replaced by this after the implementation of Channel Protocol, TelegramChannel, ChannelDaemon and the integration with the <a href="pairing.html"><code>pairing</code></a> module.</div>
 </div>
 
 <nav aria-label="Language" style="position:fixed;top:16px;right:20px;z-index:9999;font-family:'Segoe UI',Calibri,sans-serif;font-size:10pt;letter-spacing:2px;background:#FAFBFC;border:1px solid #d0d7de;border-radius:14px;padding:4px 10px;box-shadow:0 1px 4px rgba(0,0,0,0.04);">
@@ -98,36 +81,36 @@ Implementation reference: <code>/opt/myclaw/runtime/channels/</code>.
 </nav>
 
 <div style="background:#fff;border-bottom:1px solid #d0d7de;padding:10px 0;font-size:14px;position:sticky;top:0;z-index:10;margin-bottom:20px;">
-  <div style="max-width:960px;margin:0 auto;padding:0 20px;display:flex;justify-content:space-between;">
-    <a href="../index.html" style="color:#1a477a;text-decoration:none;font-weight:500;">&larr; Documentation index</a>
-    <span style="color:#8e8e93;">Microdesign &rsaquo; <strong style="color:#1a1a1a;">channel</strong></span>
-  </div>
+ <div style="max-width:960px;margin:0 auto;padding:0 20px;display:flex;justify-content:space-between;">
+ <a href="../index.html" style="color:#1a477a;text-decoration:none;font-weight:500;">&larr; Documentation index</a>
+ <span style="color:#8e8e93;">Microdesign &rsaquo; <strong style="color:#1a1a1a;">channel</strong></span>
+ </div>
 </div>
 
 <div class="title-page">
-    <h1>Metnos</h1>
-    <div class="subtitle"><code>channel</code> &mdash; how Metnos receives from and replies to the world</div>
-    <div class="meta">
-        Microdesign v1.1 &mdash; status <strong>TESTED</strong> (April 27, 2026)<br>
-        Audience: those who want to understand how to add a conversational interface.<br>
-        <br>
-        Reading time: 10 minutes.
-    </div>
+ <h1>Metnos</h1>
+ <div class="subtitle"><code>channel</code> &mdash; how Metnos receives from and replies to the world</div>
+ <div class="meta">
+ Microdesign<br>
+ Audience: those who want to understand how to add a conversational interface.<br>
+ <br>
+ Reading time: 10 minutes.
+ </div>
 </div>
 
 <div class="toc">
 <h2>Contents</h2>
 <ol>
-    <li><a href="#cap1">What it does: the channel adapter</a></li>
-    <li><a href="#cap2">The <code>Protocol</code> and the types</a></li>
-    <li><a href="#cap3">Telegram as the first implementation</a></li>
-    <li><a href="#cap4">Long-poll and offset persistence</a></li>
-    <li><a href="#cap5">Daemon: the loop poll &rarr; run_turn &rarr; send</a></li>
-    <li><a href="#cap6">Inline buttons and approval rendering</a></li>
-    <li><a href="#cap7">Relationship with <code>pairing</code></a></li>
-    <li><a href="#cap8">Distribution: systemd user unit</a></li>
-    <li><a href="#cap9">HTTP as alternative channel (Phase&nbsp;1)</a></li>
-    <li><a href="#cap10">Limits and deferrals to v1.2+</a></li>
+ <li><a href="#cap1">What it does: the channel adapter</a></li>
+ <li><a href="#cap2">The <code>Protocol</code> and the types</a></li>
+ <li><a href="#cap3">Telegram as the first implementation</a></li>
+ <li><a href="#cap4">Long-poll and offset persistence</a></li>
+ <li><a href="#cap5">Daemon: the loop poll &rarr; run_turn &rarr; send</a></li>
+ <li><a href="#cap6">Inline buttons and approval rendering</a></li>
+ <li><a href="#cap7">Relationship with <code>pairing</code></a></li>
+ <li><a href="#cap8">Distribution: systemd user unit</a></li>
+ <li><a href="#cap9">HTTP as alternative channel</a></li>
+ <li><a href="#cap10">Limits and deferrals to +</a></li>
 </ol>
 </div>
 
@@ -140,6 +123,30 @@ messages spoken to the runtime, and returns the responses back. Nothing more.
 All the conversational logic &mdash; planning, execution, vaglio &mdash; lives
 in the runtime; the channel is a bidirectional pipe.
 </p>
+
+ <figure>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 180" width="100%" preserveAspectRatio="xMidYMid meet" style="font-family:'Segoe UI',Calibri,sans-serif;font-size:11px;">
+<defs><marker id="m-d" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#1A477A"/></marker></defs>
+<rect x="10" y="70" width="170" height="56" rx="8" fill="#FEF3C7" stroke="#B7791F"/>
+<text x="95" y="94" text-anchor="middle" fill="#1A477A" font-weight="700">Telegram</text>
+<text x="95" y="112" text-anchor="middle" fill="#475569" font-size="9.5">long-poll</text>
+<rect x="198" y="70" width="170" height="56" rx="8" fill="#D9E4F0" stroke="#1A477A"/>
+<text x="283" y="94" text-anchor="middle" fill="#1A477A" font-weight="700">channel adapter</text>
+<text x="283" y="112" text-anchor="middle" fill="#475569" font-size="9.5">send / poll</text>
+<rect x="386" y="70" width="170" height="56" rx="8" fill="#1A477A" stroke="#0f2d4a"/>
+<text x="471" y="94" text-anchor="middle" fill="#1A477A" font-weight="700">agent runtime</text>
+<text x="471" y="112" text-anchor="middle" fill="#475569" font-size="9.5">handles the turn</text>
+<rect x="574" y="70" width="170" height="56" rx="8" fill="#DCFCE7" stroke="#3F6212"/>
+<text x="659" y="94" text-anchor="middle" fill="#1A477A" font-weight="700">reply</text>
+<text x="659" y="112" text-anchor="middle" fill="#475569" font-size="9.5">send_to(chat_id)</text>
+<line x1="180" y1="98" x2="196" y2="98" stroke="#1A477A" stroke-width="2" marker-end="url(#m-ch)"/>
+<line x1="368" y1="98" x2="384" y2="98" stroke="#1A477A" stroke-width="2" marker-end="url(#m-ch)"/>
+<line x1="556" y1="98" x2="572" y2="98" stroke="#1A477A" stroke-width="2" marker-end="url(#m-ch)"/>
+
+</svg>
+<figcaption>Figure 1 &mdash; The channel adapter: Telegram on long-poll, normalized into a uniform interface, routed to the runtime and answered per chat.</figcaption>
+</figure>
+
 
 <p>
 The choice to treat the channel as an adapter (and not as a distinct module
@@ -161,9 +168,9 @@ channel.
 <pre>
 @runtime_checkable
 class Channel(Protocol):
-    name: str
-    def send(self, recipient: str, message: OutboundMessage) -&gt; dict: ...
-    def poll(self) -&gt; list[InboundMessage]: ...
+ name: str
+ def send(self, recipient: str, message: OutboundMessage) -&gt; dict:...
+ def poll(self) -&gt; list[InboundMessage]:...
 </pre>
 
 <p>The two message types are <code>dataclass(frozen=True)</code>:</p>
@@ -217,7 +224,7 @@ to <code>api.telegram.org</code>. If <code>buttons</code>, it builds an
 <li><code>poll(timeout_s=25)</code> &rarr; long-poll <code>getUpdates</code>
 with internal offset; returns only the <code>message</code> and
 <code>edited_message</code> entries with a <code>text</code> field. The
-<code>callback_query</code> events (clicked buttons) will be handled in v1.2
+<code>callback_query</code> events (clicked buttons) will be handled in 
 with a separate dispatcher (see ch.&nbsp;6 and 9).</li>
 </ul>
 
@@ -269,7 +276,7 @@ starts with a different instance.
 <li><strong>Exception in <code>poll</code></strong>: log + sleep 5&nbsp;s +
 retry on the next tick. No crash.</li>
 <li><strong>Exception in <code>run_turn</code></strong>: caught, reply to the
-sender with <em>(internal error: ...)</em>, the daemon continues.</li>
+sender with <em>(internal error:...)</em>, the daemon continues.</li>
 <li><strong>Exception in <code>send</code></strong>: caught by
 <code>TelegramChannel._call</code>, returns dict <code>{ok: False, error}</code>.
 The turn is already closed on the runtime side; the user must retry.</li>
@@ -300,8 +307,8 @@ The component that produces the approval cards is in
 <code>runtime/channels/approval.py</code>:
 <code>render_approval_card(ApprovalRequest)</code> returns an
 <code>OutboundMessage</code> with the &laquo;3-line card&raquo; of the dialog
-manager (see <a href="approval_ux.html">approval_ux</a> v1.0, to be promoted
-to v1.1 once the dispatcher arrives). Three forms modulated by recurrence:
+manager (see <a href="approval_ux.html">approval_ux</a>, to be promoted
+to once the dispatcher arrives). Three forms modulated by recurrence:
 </p>
 
 <ul>
@@ -316,7 +323,7 @@ button-friendly form.</li>
 <p>
 The card can already be rendered; the <em>dispatching</em> of callbacks
 (clicking "Approve" resolves the <code>token</code> into a pending request and
-applies the decision) is deferred to v1.2 because it requires a registry of
+applies the decision) is deferred to because it requires a registry of
 pending requests with TTL, which is the natural next iteration now that the
 real <a href="vaglio.html">vaglio</a> (27/4) can start raising concrete
 approval requests.
@@ -356,7 +363,7 @@ accounts to revoke.
 <p>
 The daemon runs as a <em>user unit</em>, not as a system service: no root, no
 privileges. The template file is in
-<code>/opt/myclaw/systemd/metnos-telegram-daemon.service</code>. Explicit
+<code>/opt/metnos/systemd/metnos-telegram-daemon.service</code>. Explicit
 hardening:
 </p>
 
@@ -375,14 +382,14 @@ to <code>~/.local/state/metnos</code> and <code>~/.local/share/metnos</code></li
 <code>Restart=on-failure</code> with 5s backoff. The user <em>linger</em> is
 required for the service to stay active without an interactive login:
 <code>loginctl enable-linger $USER</code> (sudo required the first time). The
-<code>README</code> in <code>/opt/myclaw/systemd/README.md</code> has the
+<code>README</code> in <code>/opt/metnos/systemd/README.md</code> has the
 full procedure.
 </p>
 
-<h1 id="cap9">9. HTTP as alternative channel (Phase&nbsp;1)</h1>
+<h1 id="cap9">9. HTTP as alternative channel</h1>
 
 <p>
-Since 4/5/2026 (ADR&nbsp;0078) Metnos exposes a second HTTP server on
+Since Metnos exposes a second HTTP server on
 port 8770 with three agent-side routes: <code>POST /agent/turn</code>
 (<code>run_turn</code> execution with SSE or JSON),
 <code>GET /agent/devices/me</code>, <code>GET /agent/health</code> and
@@ -398,7 +405,7 @@ is deliberate:
 <ul>
 <li><strong>Telegram</strong> &mdash; primary dialogue channel. Long-poll, mobile-first, well-trodden UX.</li>
 <li><strong>HTTP</strong> &mdash; alternative channel for <em>(a)</em> the host browser dashboard, <em>(b)</em> the Rust client on a paired PC, <em>(c)</em> curl/script automations. <code>run_turn</code> receives <code>channel="http"</code> and goes through the same gates (<a href="vaglio.html">vaglio</a>, <a href="policy.html">policy</a>) as Telegram.</li>
-<li><strong>No formal HTTPChannel</strong> in Phase 1: the poll-based <code>channels</code> model is incompatible with request/response. <code>POST /agent/turn</code> calls <code>run_turn</code> directly.</li>
+<li><strong>No formal HTTPChannel</strong>: the poll-based <code>channels</code> model is incompatible with request/response. <code>POST /agent/turn</code> calls <code>run_turn</code> directly.</li>
 </ul>
 
 <p>
@@ -408,10 +415,10 @@ the Telegram daemon completes the guest pairing issued from the
 <code>send_messages</code> v0.4.0 supports <code>to_user="lucia"</code>
 and <code>via_channel="auto"</code>: it resolves through
 <code>users.resolve_recipients</code>, with cross-user vaglio applied
-for non-host actors (ADR&nbsp;0084).
+for non-host actors.
 </p>
 
-<h1 id="cap10">10. Limits and deferrals to v1.2+</h1>
+<h1 id="cap10">10. Limits and deferrals to +</h1>
 
 <ul>
 <li><strong>One channel per process</strong>: the daemon manages one channel
@@ -420,7 +427,7 @@ systemd units). Adequate for now; a richer multi-channel abstraction will
 arrive when three or more channels are active.</li>
 
 <li><strong>No callback dispatcher</strong>: the inline buttons are rendered
-(ch.&nbsp;6) but clicking them does nothing yet. Implementation in v1.2,
+(ch.&nbsp;6) but clicking them does nothing yet. Implementation in,
 after the registry of pending approval requests (tied to the real
 <a href="vaglio.html">vaglio</a> 27/4).</li>
 
@@ -439,7 +446,7 @@ public IP or a proxy &mdash; and Metnos chooses to have neither.</li>
 needed, a token bucket at <code>send</code> level would suffice.</li>
 
 <li><strong>No per-sender rate-limit</strong>: a paired sender can flood the
-daemon. In v1.2 with a more active real vaglio this becomes relevant; for
+daemon. In with a more active real vaglio this becomes relevant; for
 now the pairing cardinality is low (one or a few family members).</li>
 </ul>
 

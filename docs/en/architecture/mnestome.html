@@ -1,51 +1,50 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Metnos &mdash; mnestome v1.1 (under approval)</title>
-    <meta name="description" content="Microdesign of the mnestome: the emergent graph that holds all mnests. Data schema, operations, snapshots, pruning, relations with executor and proto-mnest.">
-    <meta name="keywords" content="mnestome, mnestoma, graph, mnest, executor, ager, synt, snapshot, sqlite, microdesign, metnos">
-    <meta name="author" content="Roberto Brunialti">
-    <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large">
-    <link rel="canonical" href="https://metnos.com/en/architecture/mnestome.html">
-    <link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/mnestoma.html">
-    <link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/mnestome.html">
-    <link rel="alternate" hreflang="x-default" href="https://metnos.com/en/architecture/mnestome.html">
-    <meta property="og:type" content="article">
-    <meta property="og:url" content="https://metnos.com/en/architecture/mnestome.html">
-    <meta property="og:title" content="Metnos &mdash; mnestome v1.1 (under approval)">
-    <meta property="og:description" content="The emergent graph of all mnests: data schema, operations, snapshots, ager.">
-    <meta property="og:locale" content="en_US">
-    <meta property="og:locale:alternate" content="it_IT">
-    <meta property="og:site_name" content="Metnos">
-    <meta name="twitter:card" content="summary">
-    <meta name="twitter:title" content="Metnos &mdash; mnestome v1.1 (under approval)">
-    <script type="application/ld+json">
+ <meta charset="UTF-8">
+ <meta name="viewport" content="width=device-width, initial-scale=1.0">
+ <title>Metnos &mdash; mnestome (under approval)</title>
+ <meta name="description" content="Microdesign of the mnestome: the emergent graph that holds all mnests. Data schema, operations, snapshots, pruning, relations with executor and proto-mnest.">
+ <meta name="keywords" content="mnestome, mnestoma, graph, mnest, executor, ager, synt, snapshot, sqlite, microdesign, metnos">
+ <meta name="author" content="Roberto Brunialti">
+ <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large">
+ <link rel="canonical" href="https://metnos.com/en/architecture/mnestome.html">
+ <link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/mnestoma.html">
+ <link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/mnestome.html">
+ <link rel="alternate" hreflang="x-default" href="https://metnos.com/en/architecture/mnestome.html">
+ <meta property="og:type" content="article">
+ <meta property="og:url" content="https://metnos.com/en/architecture/mnestome.html">
+ <meta property="og:title" content="Metnos &mdash; mnestome (under approval)">
+ <meta property="og:description" content="The emergent graph of all mnests: data schema, operations, snapshots, ager.">
+ <meta property="og:locale" content="en_US">
+ <meta property="og:locale:alternate" content="it_IT">
+ <meta property="og:site_name" content="Metnos">
+ <meta name="twitter:card" content="summary">
+ <meta name="twitter:title" content="Metnos &mdash; mnestome (under approval)">
+ <script type="application/ld+json">
 {
-  "@context": "https://schema.org",
-  "@type": "TechArticle",
-  "headline": "Metnos — mnestome v1.1",
-  "description": "Canonical microdesign of the mnestome: schema, operations, snapshots, pruning.",
-  "url": "https://metnos.com/en/architecture/mnestome.html",
-  "inLanguage": "en",
-  "isPartOf": {"@type": "WebSite", "name": "Metnos", "url": "https://metnos.com/"},
-  "author": {"@type": "Person", "name": "Roberto Brunialti"},
-  "about": "Metnos component: mnestome (canonical, new in v1.1)"
+ "@context": "https://schema.org",
+ "@type": "TechArticle",
+ "headline": "Metnos — mnestome ",
+ "description": "Canonical microdesign of the mnestome: schema, operations, snapshots, pruning.",
+ "url": "https://metnos.com/en/architecture/mnestome.html",
+ "inLanguage": "en",
+ "isPartOf": {"@type": "WebSite", "name": "Metnos", "url": "https://metnos.com/"},
+ "author": {"@type": "Person", "name": "Roberto Brunialti"},
+ "about": "Metnos component: mnestome (canonical, new in )"
 }
-    </script>
-    <style>
-:root {
-    --navy: #1A477A; --navy-light: #2B6CB0; --sage: #548235;
-    --bronze: #A0522D; --plum: #6B21A8;
-    --bg: #FAFBFC; --text: #1a1a1a;
-    --border: #d0d7de; --code-bg: #f6f8fa;
-    --table-header: #1A477A; --table-alt: #f0f4f8;
-    --note-bg: #dbeafe; --note-border: #3b82f6;
-    --tip-bg: #dcfce7; --tip-border: #16a34a;
-    --warn-bg: #fef3c7; --warn-border: #f59e0b;
-    --danger-bg: #fee2e2; --danger-border: #dc2626;
-    --muted: #64748B;
+ </script>
+ <style>:root {
+ --navy: #1A477A; --navy-light: #2B6CB0; --sage: #548235;
+ --bronze: #A0522D; --plum: #6B21A8;
+ --bg: #FAFBFC; --text: #1a1a1a;
+ --border: #d0d7de; --code-bg: #f6f8fa;
+ --table-header: #1A477A; --table-alt: #f0f4f8;
+ --note-bg: #dbeafe; --note-border: #3b82f6;
+ --tip-bg: #dcfce7; --tip-border: #16a34a;
+ --warn-bg: #fef3c7; --warn-border: #f59e0b;
+ --danger-bg: #fee2e2; --danger-border: #dc2626;
+ --muted: #64748B;
 }
 * { box-sizing: border-box; }
 body { font-family: 'Segoe UI', Calibri, -apple-system, sans-serif; font-size: 11pt; line-height: 1.65; color: var(--text); background: var(--bg); max-width: 960px; margin: 0 auto; padding: 40px 30px; }
@@ -63,31 +62,16 @@ code { font-family: Consolas, 'Courier New', monospace; }
 p code, li code, td code { background: var(--code-bg); padding: 1px 5px; border-radius: 3px; font-size: 9.5pt; }
 figure { text-align: center; margin: 24px 0; page-break-inside: avoid; }
 figure svg { max-width: 100%; height: auto; border: 1px solid var(--border); border-radius: 6px; background: white; padding: 8px; }
-figcaption { font-style: italic; color: #555; font-size: 9.5pt; margin-top: 8px; }
-.callout { border-left: 4px solid; padding: 10px 16px; margin: 15px 0; border-radius: 0 4px 4px 0; font-size: 10pt; page-break-inside: avoid; }
-.callout.note { background: var(--note-bg); border-color: var(--note-border); }
-.callout.tip { background: var(--tip-bg); border-color: var(--tip-border); }
-.callout.warning { background: var(--warn-bg); border-color: var(--warn-border); }
-.callout.danger { background: var(--danger-bg); border-color: var(--danger-border); }
-.title-page { text-align: center; padding: 80px 0 40px; page-break-after: always; }
-.title-page h1 { font-size: 32pt; border: none; margin: 0; page-break-before: avoid; }
-.title-page .subtitle { font-size: 16pt; color: var(--navy-light); margin: 10px 0 30px; }
-.title-page .meta { font-size: 11pt; color: #666; }
-.toc { page-break-after: always; }
-.toc h2 { border: none; }
-.toc ol { font-size: 11pt; line-height: 2; }
-.toc a { color: var(--navy); text-decoration: none; }
-.toc a:hover { text-decoration: underline; }
+figcaption { font-style: italic; color: #555; font-size: 9.5pt; margin-top: 8px; }.callout { border-left: 4px solid; padding: 10px 16px; margin: 15px 0; border-radius: 0 4px 4px 0; font-size: 10pt; page-break-inside: avoid; }.callout.note { background: var(--note-bg); border-color: var(--note-border); }.callout.tip { background: var(--tip-bg); border-color: var(--tip-border); }.callout.warning { background: var(--warn-bg); border-color: var(--warn-border); }.callout.danger { background: var(--danger-bg); border-color: var(--danger-border); }.title-page { text-align: center; padding: 80px 0 40px; page-break-after: always; }.title-page h1 { font-size: 32pt; border: none; margin: 0; page-break-before: avoid; }.title-page.subtitle { font-size: 16pt; color: var(--navy-light); margin: 10px 0 30px; }.title-page.meta { font-size: 11pt; color: #666; }.toc { page-break-after: always; }.toc h2 { border: none; }.toc ol { font-size: 11pt; line-height: 2; }.toc a { color: var(--navy); text-decoration: none; }.toc a:hover { text-decoration: underline; }
 ul, ol { margin: 8px 0; padding-left: 24px; }
-li { margin-bottom: 4px; }
-.lead { font-size: 12pt; color: var(--navy); border-left: 4px solid var(--sage); padding-left: 14px; margin: 18px 0; }
-@media print { body { max-width: none; padding: 0; font-size: 10pt; } h1 { font-size: 16pt; } h2 { font-size: 12pt; } .title-page { padding: 60px 0 30px; } .title-page h1 { font-size: 24pt; } }
-    </style>
+li { margin-bottom: 4px; }.lead { font-size: 12pt; color: var(--navy); border-left: 4px solid var(--sage); padding-left: 14px; margin: 18px 0; }
+@media print { body { max-width: none; padding: 0; font-size: 10pt; } h1 { font-size: 16pt; } h2 { font-size: 12pt; }.title-page { padding: 60px 0 30px; }.title-page h1 { font-size: 24pt; } }
+ </style>
 </head>
 <body>
 <div style="margin: 18px 0; border-left: 5px solid #16a34a; background: #dcfce7; color: #14532d; padding: 14px 20px; border-radius: 0 8px 8px 0; font-size: 11pt; font-family: 'Segoe UI', Calibri, -apple-system, sans-serif; line-height: 1.55;">
-<strong>Microdesign v1.1 &mdash; under approval; MVP code aligned as of 4 May 2026.</strong>
-Canonical doc approved after the 25/4/2026 end-to-end simulation, aligned with the <a href="../Metnos_Architecture_Intro_v1.html" style="color: #14532d; text-decoration: underline;">Architecture v1.1</a> and the <a href="../Metnos_Dialogue_Executors_v1.html" style="color: #14532d; text-decoration: underline;">Dialogue on executors and distributed memory</a>. Normative reference for implementation. <strong>New concept</strong> compared to the previous microdesign. Update 4/5/2026: the nightly <em>ager</em> (<code>apply_executor_ager</code>, <code>introvertiva_propose</code>, <code>introvertiva_apply</code>) is now gated by the &laquo;has the user interacted since the last run?&raquo; signal (ADR&nbsp;0074): a Metnos on holiday no longer deprecates executors for calendar inactivity. The introvertiva also has deterministic quality filters (ADR&nbsp;0077): vocab validator on <code>proposed_name</code>, skip of flow args (<code>entries</code>, <code>from_step</code>, <code>results</code>) and template values <code>{{stepN.field}}</code>, <code>min_uses</code> threshold raised from 3 to 10. Proposal volume goes 24 &rarr; 6 with much higher expected quality.
+<strong>Microdesign &mdash; under approval; MVP code aligned.</strong>
+Canonical doc approved after the end-to-end simulation, aligned with the <a href="../Metnos_Architecture_Intro_v1.html" style="color: #14532d; text-decoration: underline;">Architecture </a> and the <a href="../Metnos_Dialogue_Executors_v1.html" style="color: #14532d; text-decoration: underline;">Dialogue on executors and distributed memory</a>. Normative reference for implementation. <strong>New concept</strong> compared to the previous microdesign. Update: the nightly <em>ager</em> (<code>apply_executor_ager</code>, <code>introvertiva_propose</code>, <code>introvertiva_apply</code>) is now gated by the &laquo;has the user interacted since the last run?&raquo; signal: a Metnos on holiday no longer deprecates executors for calendar inactivity. The introvertiva also has deterministic quality filters: vocab validator on <code>proposed_name</code>, skip of flow args (<code>entries</code>, <code>from_step</code>, <code>results</code>) and template values <code>{{stepN.field}}</code>, <code>min_uses</code> threshold raised from 3 to 10. Proposal volume goes 24 &rarr; 6 with much higher expected quality.
 </div>
 
 <nav aria-label="Language" style="position:fixed;top:16px;right:20px;z-index:9999;font-family:'Segoe UI',Calibri,sans-serif;font-size:10pt;letter-spacing:2px;background:#FAFBFC;border:1px solid #d0d7de;border-radius:14px;padding:4px 10px;box-shadow:0 1px 4px rgba(0,0,0,0.04);">
@@ -97,28 +81,28 @@ Canonical doc approved after the 25/4/2026 end-to-end simulation, aligned with t
 </nav>
 
 <div style="background:#fff;border-bottom:1px solid #d0d7de;padding:10px 0;font-size:14px;position:sticky;top:0;z-index:10;margin-bottom:20px;">
-  <div style="max-width:960px;margin:0 auto;padding:0 20px;display:flex;justify-content:space-between;">
-    <a href="../index.html" style="color:#1a477a;text-decoration:none;font-weight:500;">&larr; Documentation index</a>
-    <span style="color:#8e8e93;">Microdesign &rsaquo; <strong style="color:#1a1a1a;">mnestome</strong></span>
-  </div>
+ <div style="max-width:960px;margin:0 auto;padding:0 20px;display:flex;justify-content:space-between;">
+ <a href="../index.html" style="color:#1a477a;text-decoration:none;font-weight:500;">&larr; Documentation index</a>
+ <span style="color:#8e8e93;">Microdesign &rsaquo; <strong style="color:#1a1a1a;">mnestome</strong></span>
+ </div>
 </div>
 
 <div class="title-page">
-    <h1>Metnos</h1>
-    <div class="subtitle"><code>mnestome</code> &mdash; the emergent graph of all mnests</div>
-    <div class="meta">
-        Microdesign v1.1 &mdash; 24 April 2026<br>
-        Aligned with Architecture v1.1 (ch. 9, Figure 6) and the Dialogue on executors.<br>
-        New concept introduced by v1.1 (does not replace anything existing).<br>
-        <br>
-        Audience: whoever implements the data schema, the ager, the snapshots.<br>
-        Reading time: 16 minutes.
-    </div>
+ <h1>Metnos</h1>
+ <div class="subtitle"><code>mnestome</code> &mdash; the emergent graph of all mnests</div>
+ <div class="meta">
+ Microdesign &mdash; <br>
+ Aligned with Architecture (ch. 9, Figure 6) and the Dialogue on executors.<br>
+ New concept introduced by (does not replace anything existing).<br>
+ <br>
+ Audience: whoever implements the data schema, the ager, the snapshots.<br>
+ Reading time: 16 minutes.
+ </div>
 </div>
 
 <div class="callout" style="border-left:5px solid #16a34a;background:#dcfce7;color:#14532d;padding:14px 18px;border-radius:0 8px 8px 0;margin:18px 0;">
-<strong>Session update May 1, 2026 (evening).</strong>
-<code>events.turn_id</code> refactor (ADR 0067): the mnestome events table
+<strong>Session update (evening).</strong>
+<code>events.turn_id</code> refactor: the mnestome events table
 adopts <code>turn_id</code> as the single discriminator, replacing the
 scattered identifiers (run_id / session_id / batch_id) used by the early
 versions of the introspective. Schema change with in-place migration;
@@ -133,18 +117,18 @@ schedule <code>daily@04:00</code>; on top of it, the introspective MVP
 <div class="toc">
 <h2>Contents</h2>
 <ol>
-    <li><a href="#cap1">Scope and boundaries</a></li>
-    <li><a href="#cap2">What the mnestome is</a></li>
-    <li><a href="#cap3">What the mnestome is NOT</a></li>
-    <li><a href="#cap-broth">The mnestome broth &mdash; a useful metaphor</a></li>
-    <li><a href="#cap4">Data schema</a></li>
-    <li><a href="#cap5">Operations: insert, query, update</a></li>
-    <li><a href="#cap6">The ager: how decay operates</a></li>
-    <li><a href="#cap7">Pruning, snapshots, archival</a></li>
-    <li><a href="#cap8">Linguistic variant: mnestome vs mnestoma</a></li>
-    <li><a href="#cap9">Bootstrap: the first mnestome</a></li>
-    <li><a href="#cap10">Observability and debugging</a></li>
-    <li><a href="#cap11">Open questions</a></li>
+ <li><a href="#cap1">Scope and boundaries</a></li>
+ <li><a href="#cap2">What the mnestome is</a></li>
+ <li><a href="#cap3">What the mnestome is NOT</a></li>
+ <li><a href="#cap-broth">The mnestome broth &mdash; a useful metaphor</a></li>
+ <li><a href="#cap4">Data schema</a></li>
+ <li><a href="#cap5">Operations: insert, query, update</a></li>
+ <li><a href="#cap6">The ager: how decay operates</a></li>
+ <li><a href="#cap7">Pruning, snapshots, archival</a></li>
+ <li><a href="#cap8">Linguistic variant: mnestome vs mnestoma</a></li>
+ <li><a href="#cap9">Bootstrap: the first mnestome</a></li>
+ <li><a href="#cap10">Observability and debugging</a></li>
+ <li><a href="#cap11">Open questions</a></li>
 </ol>
 </div>
 
@@ -154,8 +138,7 @@ schedule <code>daily@04:00</code>; on top of it, the introspective MVP
 This document defines the <em>mnestome</em>: the data structure that
 holds the set of all active <a href="mnest.html">mnests</a> and
 governs their lifecycle. It is the third of three canonical docs
-introduced by the <em>Dialogue on executors and distributed memory</em>
-(24 April 2026), and it is a new concept: the previous microdesign did
+introduced by the <em>Dialogue on executors and distributed memory</em>, and it is a new concept: the previous microdesign did
 not have it. Technically it is a weighted directed graph persisted in
 SQLite; ontologically it is <em>Metnos's relational memory</em>
 &mdash; what it remembers having done together.
@@ -264,18 +247,7 @@ it. They come in a few species, each with its shape and role:
 
 <figure>
 <svg viewBox="0 0 720 280" xmlns="http://www.w3.org/2000/svg" style="max-width:100%;height:auto;border:1px solid var(--border);border-radius:6px;background:#fbfdff;">
-<style>
-.bg-fill{fill:#eef5fb}
-.lbl{font-family:'Segoe UI',Calibri,sans-serif;font-size:11px;fill:#1a477a}
-.lbl-sm{font-family:'Segoe UI',Calibri,sans-serif;font-size:9px;fill:#64748b}
-.mnest{fill:#1A477A;animation:drift1 8s ease-in-out infinite}
-.mnest2{fill:#2B6CB0;animation:drift2 9s ease-in-out infinite}
-.mnest3{fill:#1A477A;animation:drift3 11s ease-in-out infinite}
-.executor{fill:#548235;animation:drift4 10s ease-in-out infinite}
-.executor2{fill:#6b9b4d;animation:drift5 12s ease-in-out infinite}
-.fastpath{fill:#A0522D;animation:drift6 13s ease-in-out infinite}
-.fastpath2{fill:#c87a4d;animation:drift7 9s ease-in-out infinite}
-.proto{fill:none;stroke:#6B21A8;stroke-width:1.5;stroke-dasharray:3,2;animation:pulse 4s ease-in-out infinite}
+<style>.bg-fill{fill:#eef5fb}.lbl{font-family:'Segoe UI',Calibri,sans-serif;font-size:11px;fill:#1a477a}.lbl-sm{font-family:'Segoe UI',Calibri,sans-serif;font-size:9px;fill:#64748b}.mnest{fill:#1A477A;animation:drift1 8s ease-in-out infinite}.mnest2{fill:#2B6CB0;animation:drift2 9s ease-in-out infinite}.mnest3{fill:#1A477A;animation:drift3 11s ease-in-out infinite}.executor{fill:#548235;animation:drift4 10s ease-in-out infinite}.executor2{fill:#6b9b4d;animation:drift5 12s ease-in-out infinite}.fastpath{fill:#A0522D;animation:drift6 13s ease-in-out infinite}.fastpath2{fill:#c87a4d;animation:drift7 9s ease-in-out infinite}.proto{fill:none;stroke:#6B21A8;stroke-width:1.5;stroke-dasharray:3,2;animation:pulse 4s ease-in-out infinite}
 @keyframes drift1{0%,100%{transform:translate(0,0)}50%{transform:translate(15px,-10px)}}
 @keyframes drift2{0%,100%{transform:translate(0,0)}50%{transform:translate(-12px,18px)}}
 @keyframes drift3{0%,100%{transform:translate(0,0)}50%{transform:translate(20px,12px)}}
@@ -302,10 +274,10 @@ it. They come in a few species, each with its shape and role:
 <rect class="fastpath" x="550" y="40" width="22" height="10" rx="5"/>
 <path class="proto" d="M380,140 Q395,125 410,140 L410,160 Q395,175 380,160 Z"/>
 <g transform="translate(20,220)">
-  <circle cx="6" cy="6" r="5" fill="#1A477A"/><text class="lbl" x="18" y="10">mnest (passage between executors)</text>
-  <rect x="220" y="0" width="14" height="14" rx="2" fill="#548235"/><text class="lbl" x="240" y="10">executor</text>
-  <rect x="320" y="2" width="22" height="10" rx="5" fill="#A0522D"/><text class="lbl" x="350" y="10">fast-path</text>
-  <path d="M520,2 Q535,-13 550,2 L550,22 Q535,37 520,22 Z" fill="none" stroke="#6B21A8" stroke-width="1.5" stroke-dasharray="3,2"/><text class="lbl" x="560" y="14">proto-mnest</text>
+ <circle cx="6" cy="6" r="5" fill="#1A477A"/><text class="lbl" x="18" y="10">mnest (passage between executors)</text>
+ <rect x="220" y="0" width="14" height="14" rx="2" fill="#548235"/><text class="lbl" x="240" y="10">executor</text>
+ <rect x="320" y="2" width="22" height="10" rx="5" fill="#A0522D"/><text class="lbl" x="350" y="10">fast-path</text>
+ <path d="M520,2 Q535,-13 550,2 L550,22 Q535,37 520,22 Z" fill="none" stroke="#6B21A8" stroke-width="1.5" stroke-dasharray="3,2"/><text class="lbl" x="560" y="14">proto-mnest</text>
 </g>
 <text class="lbl-sm" x="360" y="260" text-anchor="middle">The particles drift (animation: hover over the illustration).</text>
 </svg>
@@ -351,188 +323,155 @@ observation, cluster, crystallisation, reuse &mdash; in sequence.
 
 <figure>
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 360" role="img" aria-label="Birth of a fastpath: three repeated turns, mnest cluster, preformed path, planner using it directly.">
-  <style>
-    .bg2 { fill: #eef5fb; }
-    .lab2 { font-family: 'Segoe UI', Calibri, sans-serif; font-size: 11px; fill: #1e293b; }
-    .lab2-w { font-family: 'Segoe UI', Calibri, sans-serif; font-size: 11px; fill: #ffffff; font-weight: 600; }
-    .lab2-in { font-family: 'Segoe UI', Calibri, sans-serif; font-size: 10px; fill: #1A477A; }
-    .lab2-out { font-family: 'Segoe UI', Calibri, sans-serif; font-size: 10px; fill: #78350f; }
-    .lab2-pill { font-family: 'Segoe UI', Calibri, sans-serif; font-size: 14px; fill: #ffffff; font-weight: 700; letter-spacing: 0.2px; }
-    .lab2-cluster { font-family: 'Segoe UI', Calibri, sans-serif; font-size: 11px; fill: #1e3a8a; font-style: italic; }
-    .lab2-phase { font-family: 'Segoe UI', Calibri, sans-serif; font-size: 13px; fill: #1e3a8a; font-weight: 600; }
-    .lab2-planner { font-family: 'Segoe UI', Calibri, sans-serif; font-size: 10px; fill: #64748b; font-weight: 600; }
-    .lab2-tick { font-family: 'Segoe UI', Calibri, sans-serif; font-size: 9px; fill: #64748b; }
-    .box-in2 { fill: #dbeafe; stroke: #1A477A; stroke-width: 1.2; }
-    .box-ex2 { fill: #548235; stroke: #1A477A; stroke-width: 1.2; }
-    .box-out2 { fill: #fef3c7; stroke: #A0522D; stroke-width: 1.2; }
-    .arrow2 { stroke: #1A477A; stroke-width: 1.4; fill: none; }
-    .arrow-thick2 { stroke: #1A477A; stroke-width: 2.2; fill: none; }
-    .mnest2 { fill: #1A477A; }
-    .cluster-line2 { stroke: #2B6CB0; stroke-width: 1.5; fill: none; stroke-dasharray: 2,2; }
-    .pill2 { fill: #A0522D; stroke: #7c2d12; stroke-width: 1.8; }
-    .planner-box2 { fill: #cbd5e1; stroke: #94a3b8; stroke-width: 1.2; }
-    .strike2 { stroke: #dc2626; stroke-width: 3; stroke-linecap: round; }
-    .tl-bar2 { stroke: #cbd5e1; stroke-width: 1; }
-    .rows2 { animation: rows-vis2 16s linear infinite; }
-    @keyframes rows-vis2 {
-      0%   { opacity: 1; } 48%  { opacity: 1; } 58%  { opacity: 0.12; }
-      72%  { opacity: 0.12; } 78%  { opacity: 0; } 100% { opacity: 0; }
-    }
-    .mnest-d2 { animation: mnest-pop2 16s linear infinite; transform-box: fill-box; transform-origin: center; }
-    @keyframes mnest-pop2 {
-      0%   { opacity: 0; transform: scale(0.1); }
-      6%   { opacity: 0; transform: scale(0.1); }
-      14%  { opacity: 1; transform: scale(1); }
-      48%  { opacity: 1; transform: scale(1); }
-      58%  { opacity: 0; transform: scale(0.6); }
-      100% { opacity: 0; transform: scale(0.6); }
-    }
-    .cl2 { animation: cl-vis2 16s linear infinite; }
-    @keyframes cl-vis2 {
-      0%   { opacity: 0; } 24%  { opacity: 0; } 30%  { opacity: 1; }
-      48%  { opacity: 1; } 55%  { opacity: 0; } 100% { opacity: 0; }
-    }
-    .cl-lab2 { animation: cl-lab2 16s linear infinite; }
-    @keyframes cl-lab2 {
-      0%   { opacity: 0; } 27%  { opacity: 0; } 33%  { opacity: 1; }
-      48%  { opacity: 1; } 55%  { opacity: 0; } 100% { opacity: 0; }
-    }
-    .fpill2 { animation: fpill2 16s linear infinite; transform-box: fill-box; transform-origin: center; }
-    @keyframes fpill2 {
-      0%   { opacity: 0; transform: scale(0.3); }
-      50%  { opacity: 0; transform: scale(0.3); }
-      60%  { opacity: 1; transform: scale(1); }
-      100% { opacity: 1; transform: scale(1); }
-    }
-    .fpill-lab2 { animation: fpill-lab2 16s linear infinite; }
-    @keyframes fpill-lab2 {
-      0%   { opacity: 0; } 55%  { opacity: 0; } 62%  { opacity: 1; }
-      72%  { opacity: 1; } 78%  { opacity: 0; } 100% { opacity: 0; }
-    }
-    .ph4-2 { animation: ph4-2 16s linear infinite; }
-    @keyframes ph4-2 {
-      0%   { opacity: 0; } 74%  { opacity: 0; } 80%  { opacity: 1; }
-      100% { opacity: 1; }
-    }
-    .strike-draw2 { stroke-dasharray: 90; stroke-dashoffset: 90; animation: strike-draw2 16s linear infinite; }
-    @keyframes strike-draw2 {
-      0%   { stroke-dashoffset: 90; } 78%  { stroke-dashoffset: 90; }
-      85%  { stroke-dashoffset: 0; } 100% { stroke-dashoffset: 0; }
-    }
-    .pl1-2 { animation: pl1-2 16s linear infinite; }
-    @keyframes pl1-2 { 0%,22% { opacity: 1; } 25%,100% { opacity: 0; } }
-    .pl2-2 { animation: pl2-2 16s linear infinite; }
-    @keyframes pl2-2 { 0%,24% { opacity: 0; } 27%,47% { opacity: 1; } 50%,100% { opacity: 0; } }
-    .pl3-2 { animation: pl3-2 16s linear infinite; }
-    @keyframes pl3-2 { 0%,49% { opacity: 0; } 52%,72% { opacity: 1; } 75%,100% { opacity: 0; } }
-    .pl4-2 { animation: pl4-2 16s linear infinite; }
-    @keyframes pl4-2 { 0%,74% { opacity: 0; } 77%,100% { opacity: 1; } }
-  </style>
-  <rect class="bg2" x="0" y="0" width="720" height="360"/>
-  <g class="rows2">
-    <g transform="translate(0,70)">
-      <rect class="box-in2" x="60" y="-12" width="74" height="24" rx="5"/>
-      <text class="lab2-in" x="97" y="3" text-anchor="middle">download X</text>
-      <line class="arrow2" x1="134" y1="0" x2="174" y2="0"/>
-      <polygon points="174,0 168,-3 168,3" fill="#1A477A"/>
-      <rect class="box-ex2" x="174" y="-12" width="92" height="24" rx="5"/>
-      <text class="lab2-w" x="220" y="3" text-anchor="middle">get_urls</text>
-      <line class="arrow2" x1="266" y1="0" x2="316" y2="0"/>
-      <polygon points="316,0 310,-3 310,3" fill="#1A477A"/>
-      <circle class="mnest2 mnest-d2" cx="291" cy="0" r="5"/>
-      <rect class="box-ex2" x="316" y="-12" width="128" height="24" rx="5"/>
-      <text class="lab2-w" x="380" y="3" text-anchor="middle">describe_entries</text>
-      <line class="arrow2" x1="444" y1="0" x2="484" y2="0"/>
-      <polygon points="484,0 478,-3 478,3" fill="#1A477A"/>
-      <rect class="box-out2" x="484" y="-12" width="66" height="24" rx="5"/>
-      <text class="lab2-out" x="517" y="3" text-anchor="middle">output</text>
-    </g>
-    <g transform="translate(0,110)">
-      <rect class="box-in2" x="60" y="-12" width="74" height="24" rx="5"/>
-      <text class="lab2-in" x="97" y="3" text-anchor="middle">download Y</text>
-      <line class="arrow2" x1="134" y1="0" x2="174" y2="0"/>
-      <polygon points="174,0 168,-3 168,3" fill="#1A477A"/>
-      <rect class="box-ex2" x="174" y="-12" width="92" height="24" rx="5"/>
-      <text class="lab2-w" x="220" y="3" text-anchor="middle">get_urls</text>
-      <line class="arrow2" x1="266" y1="0" x2="316" y2="0"/>
-      <polygon points="316,0 310,-3 310,3" fill="#1A477A"/>
-      <circle class="mnest2 mnest-d2" cx="291" cy="0" r="5"/>
-      <rect class="box-ex2" x="316" y="-12" width="128" height="24" rx="5"/>
-      <text class="lab2-w" x="380" y="3" text-anchor="middle">describe_entries</text>
-      <line class="arrow2" x1="444" y1="0" x2="484" y2="0"/>
-      <polygon points="484,0 478,-3 478,3" fill="#1A477A"/>
-      <rect class="box-out2" x="484" y="-12" width="66" height="24" rx="5"/>
-      <text class="lab2-out" x="517" y="3" text-anchor="middle">output</text>
-    </g>
-    <g transform="translate(0,150)">
-      <rect class="box-in2" x="60" y="-12" width="74" height="24" rx="5"/>
-      <text class="lab2-in" x="97" y="3" text-anchor="middle">download Z</text>
-      <line class="arrow2" x1="134" y1="0" x2="174" y2="0"/>
-      <polygon points="174,0 168,-3 168,3" fill="#1A477A"/>
-      <rect class="box-ex2" x="174" y="-12" width="92" height="24" rx="5"/>
-      <text class="lab2-w" x="220" y="3" text-anchor="middle">get_urls</text>
-      <line class="arrow2" x1="266" y1="0" x2="316" y2="0"/>
-      <polygon points="316,0 310,-3 310,3" fill="#1A477A"/>
-      <circle class="mnest2 mnest-d2" cx="291" cy="0" r="5"/>
-      <rect class="box-ex2" x="316" y="-12" width="128" height="24" rx="5"/>
-      <text class="lab2-w" x="380" y="3" text-anchor="middle">describe_entries</text>
-      <line class="arrow2" x1="444" y1="0" x2="484" y2="0"/>
-      <polygon points="484,0 478,-3 478,3" fill="#1A477A"/>
-      <rect class="box-out2" x="484" y="-12" width="66" height="24" rx="5"/>
-      <text class="lab2-out" x="517" y="3" text-anchor="middle">output</text>
-    </g>
-    <text class="lab2" x="20" y="74" font-style="italic">turn 1</text>
-    <text class="lab2" x="20" y="114" font-style="italic">turn 2</text>
-    <text class="lab2" x="20" y="154" font-style="italic">turn 3</text>
-  </g>
-  <g class="cl2">
-    <line class="cluster-line2" x1="291" y1="70" x2="291" y2="150"/>
-    <path class="cluster-line2" d="M 273 65 C 263 110, 263 110, 273 155"/>
-    <path class="cluster-line2" d="M 309 65 C 319 110, 319 110, 309 155"/>
-    <line class="cluster-line2" x1="318" y1="110" x2="372" y2="110"/>
-  </g>
-  <g class="cl-lab2">
-    <rect x="372" y="98" width="118" height="24" rx="4" fill="#ffffff" stroke="#2B6CB0" stroke-width="1"/>
-    <text class="lab2-cluster" x="431" y="113" text-anchor="middle">mnest cluster</text>
-  </g>
-  <g class="fpill2">
-    <rect class="pill2" x="180" y="190" width="360" height="40" rx="20"/>
-    <text class="lab2-pill" x="360" y="215" text-anchor="middle">FASTPATH: get_urls &#8594; describe_entries</text>
-  </g>
-  <g class="fpill-lab2">
-    <text class="lab2-cluster" x="360" y="250" text-anchor="middle">the cluster becomes a fastpath</text>
-  </g>
-  <g class="ph4-2">
-    <rect class="box-in2" x="36" y="258" width="92" height="24" rx="5"/>
-    <text class="lab2-in" x="82" y="273" text-anchor="middle">new input</text>
-    <rect class="planner-box2" x="290" y="252" width="140" height="32" rx="6"/>
-    <text class="lab2-planner" x="360" y="266" text-anchor="middle">PLANNER LLM</text>
-    <text class="lab2-planner" x="360" y="278" text-anchor="middle" font-weight="400" font-style="italic">(not invoked)</text>
-    <line class="strike2 strike-draw2" x1="298" y1="280" x2="422" y2="256"/>
-    <rect class="box-out2" x="600" y="258" width="84" height="24" rx="5"/>
-    <text class="lab2-out" x="642" y="273" text-anchor="middle">output</text>
-    <path class="arrow-thick2" d="M 128 270 L 158 270 L 158 210 L 180 210"/>
-    <polygon points="180,210 173,206 173,214" fill="#1A477A"/>
-    <path class="arrow-thick2" d="M 540 210 L 562 210 L 562 270 L 600 270"/>
-    <polygon points="600,270 593,266 593,274" fill="#1A477A"/>
-  </g>
-  <text class="lab2-phase pl1-2" x="360" y="330" text-anchor="middle">three repeated turns produce observed mnests</text>
-  <text class="lab2-phase pl2-2" x="360" y="330" text-anchor="middle">mnests converge into a cross-turn cluster</text>
-  <text class="lab2-phase pl3-2" x="360" y="330" text-anchor="middle">the cluster crystallises into a preformed path</text>
-  <g class="pl4-2">
-    <text class="lab2-phase" x="360" y="324" text-anchor="middle">the PLANNER uses the fastpath directly,</text>
-    <text class="lab2-phase" x="360" y="340" text-anchor="middle">without invoking the LLM</text>
-  </g>
-  <line class="tl-bar2" x1="40" y1="350" x2="680" y2="350"/>
-  <line class="tl-bar2" x1="40" y1="346" x2="40" y2="354"/>
-  <line class="tl-bar2" x1="200" y1="346" x2="200" y2="354"/>
-  <line class="tl-bar2" x1="360" y1="346" x2="360" y2="354"/>
-  <line class="tl-bar2" x1="520" y1="346" x2="520" y2="354"/>
-  <line class="tl-bar2" x1="680" y1="346" x2="680" y2="354"/>
-  <text class="lab2-tick" x="120" y="358" text-anchor="middle">phase 1</text>
-  <text class="lab2-tick" x="280" y="358" text-anchor="middle">phase 2</text>
-  <text class="lab2-tick" x="440" y="358" text-anchor="middle">phase 3</text>
-  <text class="lab2-tick" x="600" y="358" text-anchor="middle">phase 4</text>
+ <style>.bg2 { fill: #eef5fb; }.lab2 { font-family: 'Segoe UI', Calibri, sans-serif; font-size: 11px; fill: #1e293b; }.lab2-w { font-family: 'Segoe UI', Calibri, sans-serif; font-size: 11px; fill: #ffffff; font-weight: 600; }.lab2-in { font-family: 'Segoe UI', Calibri, sans-serif; font-size: 10px; fill: #1A477A; }.lab2-out { font-family: 'Segoe UI', Calibri, sans-serif; font-size: 10px; fill: #78350f; }.lab2-pill { font-family: 'Segoe UI', Calibri, sans-serif; font-size: 14px; fill: #ffffff; font-weight: 700; letter-spacing: 0.2px; }.lab2-cluster { font-family: 'Segoe UI', Calibri, sans-serif; font-size: 11px; fill: #1e3a8a; font-style: italic; }.lab2-phase { font-family: 'Segoe UI', Calibri, sans-serif; font-size: 13px; fill: #1e3a8a; font-weight: 600; }.lab2-planner { font-family: 'Segoe UI', Calibri, sans-serif; font-size: 10px; fill: #64748b; font-weight: 600; }.lab2-tick { font-family: 'Segoe UI', Calibri, sans-serif; font-size: 9px; fill: #64748b; }.box-in2 { fill: #dbeafe; stroke: #1A477A; stroke-width: 1.2; }.box-ex2 { fill: #548235; stroke: #1A477A; stroke-width: 1.2; }.box-out2 { fill: #fef3c7; stroke: #A0522D; stroke-width: 1.2; }.arrow2 { stroke: #1A477A; stroke-width: 1.4; fill: none; }.arrow-thick2 { stroke: #1A477A; stroke-width: 2.2; fill: none; }.mnest2 { fill: #1A477A; }.cluster-line2 { stroke: #2B6CB0; stroke-width: 1.5; fill: none; stroke-dasharray: 2,2; }.pill2 { fill: #A0522D; stroke: #7c2d12; stroke-width: 1.8; }.planner-box2 { fill: #cbd5e1; stroke: #94a3b8; stroke-width: 1.2; }.strike2 { stroke: #dc2626; stroke-width: 3; stroke-linecap: round; }.tl-bar2 { stroke: #cbd5e1; stroke-width: 1; }.rows2 { animation: rows-vis2 16s linear infinite; }
+ @keyframes rows-vis2 {
+ 0% { opacity: 1; } 48% { opacity: 1; } 58% { opacity: 0.12; }
+ 72% { opacity: 0.12; } 78% { opacity: 0; } 100% { opacity: 0; }
+ }.mnest-d2 { animation: mnest-pop2 16s linear infinite; transform-box: fill-box; transform-origin: center; }
+ @keyframes mnest-pop2 {
+ 0% { opacity: 0; transform: scale(0.1); }
+ 6% { opacity: 0; transform: scale(0.1); }
+ 14% { opacity: 1; transform: scale(1); }
+ 48% { opacity: 1; transform: scale(1); }
+ 58% { opacity: 0; transform: scale(0.6); }
+ 100% { opacity: 0; transform: scale(0.6); }
+ }.cl2 { animation: cl-vis2 16s linear infinite; }
+ @keyframes cl-vis2 {
+ 0% { opacity: 0; } 24% { opacity: 0; } 30% { opacity: 1; }
+ 48% { opacity: 1; } 55% { opacity: 0; } 100% { opacity: 0; }
+ }.cl-lab2 { animation: cl-lab2 16s linear infinite; }
+ @keyframes cl-lab2 {
+ 0% { opacity: 0; } 27% { opacity: 0; } 33% { opacity: 1; }
+ 48% { opacity: 1; } 55% { opacity: 0; } 100% { opacity: 0; }
+ }.fpill2 { animation: fpill2 16s linear infinite; transform-box: fill-box; transform-origin: center; }
+ @keyframes fpill2 {
+ 0% { opacity: 0; transform: scale(0.3); }
+ 50% { opacity: 0; transform: scale(0.3); }
+ 60% { opacity: 1; transform: scale(1); }
+ 100% { opacity: 1; transform: scale(1); }
+ }.fpill-lab2 { animation: fpill-lab2 16s linear infinite; }
+ @keyframes fpill-lab2 {
+ 0% { opacity: 0; } 55% { opacity: 0; } 62% { opacity: 1; }
+ 72% { opacity: 1; } 78% { opacity: 0; } 100% { opacity: 0; }
+ }.ph4-2 { animation: ph4-2 16s linear infinite; }
+ @keyframes ph4-2 {
+ 0% { opacity: 0; } 74% { opacity: 0; } 80% { opacity: 1; }
+ 100% { opacity: 1; }
+ }.strike-draw2 { stroke-dasharray: 90; stroke-dashoffset: 90; animation: strike-draw2 16s linear infinite; }
+ @keyframes strike-draw2 {
+ 0% { stroke-dashoffset: 90; } 78% { stroke-dashoffset: 90; }
+ 85% { stroke-dashoffset: 0; } 100% { stroke-dashoffset: 0; }
+ }.pl1-2 { animation: pl1-2 16s linear infinite; }
+ @keyframes pl1-2 { 0%,22% { opacity: 1; } 25%,100% { opacity: 0; } }.pl2-2 { animation: pl2-2 16s linear infinite; }
+ @keyframes pl2-2 { 0%,24% { opacity: 0; } 27%,47% { opacity: 1; } 50%,100% { opacity: 0; } }.pl3-2 { animation: pl3-2 16s linear infinite; }
+ @keyframes pl3-2 { 0%,49% { opacity: 0; } 52%,72% { opacity: 1; } 75%,100% { opacity: 0; } }.pl4-2 { animation: pl4-2 16s linear infinite; }
+ @keyframes pl4-2 { 0%,74% { opacity: 0; } 77%,100% { opacity: 1; } }
+ </style>
+ <rect class="bg2" x="0" y="0" width="720" height="360"/>
+ <g class="rows2">
+ <g transform="translate(0,70)">
+ <rect class="box-in2" x="60" y="-12" width="74" height="24" rx="5"/>
+ <text class="lab2-in" x="97" y="3" text-anchor="middle">download X</text>
+ <line class="arrow2" x1="134" y1="0" x2="174" y2="0"/>
+ <polygon points="174,0 168,-3 168,3" fill="#1A477A"/>
+ <rect class="box-ex2" x="174" y="-12" width="92" height="24" rx="5"/>
+ <text class="lab2-w" x="220" y="3" text-anchor="middle">get_urls</text>
+ <line class="arrow2" x1="266" y1="0" x2="316" y2="0"/>
+ <polygon points="316,0 310,-3 310,3" fill="#1A477A"/>
+ <circle class="mnest2 mnest-d2" cx="291" cy="0" r="5"/>
+ <rect class="box-ex2" x="316" y="-12" width="128" height="24" rx="5"/>
+ <text class="lab2-w" x="380" y="3" text-anchor="middle">describe_entries</text>
+ <line class="arrow2" x1="444" y1="0" x2="484" y2="0"/>
+ <polygon points="484,0 478,-3 478,3" fill="#1A477A"/>
+ <rect class="box-out2" x="484" y="-12" width="66" height="24" rx="5"/>
+ <text class="lab2-out" x="517" y="3" text-anchor="middle">output</text>
+ </g>
+ <g transform="translate(0,110)">
+ <rect class="box-in2" x="60" y="-12" width="74" height="24" rx="5"/>
+ <text class="lab2-in" x="97" y="3" text-anchor="middle">download Y</text>
+ <line class="arrow2" x1="134" y1="0" x2="174" y2="0"/>
+ <polygon points="174,0 168,-3 168,3" fill="#1A477A"/>
+ <rect class="box-ex2" x="174" y="-12" width="92" height="24" rx="5"/>
+ <text class="lab2-w" x="220" y="3" text-anchor="middle">get_urls</text>
+ <line class="arrow2" x1="266" y1="0" x2="316" y2="0"/>
+ <polygon points="316,0 310,-3 310,3" fill="#1A477A"/>
+ <circle class="mnest2 mnest-d2" cx="291" cy="0" r="5"/>
+ <rect class="box-ex2" x="316" y="-12" width="128" height="24" rx="5"/>
+ <text class="lab2-w" x="380" y="3" text-anchor="middle">describe_entries</text>
+ <line class="arrow2" x1="444" y1="0" x2="484" y2="0"/>
+ <polygon points="484,0 478,-3 478,3" fill="#1A477A"/>
+ <rect class="box-out2" x="484" y="-12" width="66" height="24" rx="5"/>
+ <text class="lab2-out" x="517" y="3" text-anchor="middle">output</text>
+ </g>
+ <g transform="translate(0,150)">
+ <rect class="box-in2" x="60" y="-12" width="74" height="24" rx="5"/>
+ <text class="lab2-in" x="97" y="3" text-anchor="middle">download Z</text>
+ <line class="arrow2" x1="134" y1="0" x2="174" y2="0"/>
+ <polygon points="174,0 168,-3 168,3" fill="#1A477A"/>
+ <rect class="box-ex2" x="174" y="-12" width="92" height="24" rx="5"/>
+ <text class="lab2-w" x="220" y="3" text-anchor="middle">get_urls</text>
+ <line class="arrow2" x1="266" y1="0" x2="316" y2="0"/>
+ <polygon points="316,0 310,-3 310,3" fill="#1A477A"/>
+ <circle class="mnest2 mnest-d2" cx="291" cy="0" r="5"/>
+ <rect class="box-ex2" x="316" y="-12" width="128" height="24" rx="5"/>
+ <text class="lab2-w" x="380" y="3" text-anchor="middle">describe_entries</text>
+ <line class="arrow2" x1="444" y1="0" x2="484" y2="0"/>
+ <polygon points="484,0 478,-3 478,3" fill="#1A477A"/>
+ <rect class="box-out2" x="484" y="-12" width="66" height="24" rx="5"/>
+ <text class="lab2-out" x="517" y="3" text-anchor="middle">output</text>
+ </g>
+ <text class="lab2" x="20" y="74" font-style="italic">turn 1</text>
+ <text class="lab2" x="20" y="114" font-style="italic">turn 2</text>
+ <text class="lab2" x="20" y="154" font-style="italic">turn 3</text>
+ </g>
+ <g class="cl2">
+ <line class="cluster-line2" x1="291" y1="70" x2="291" y2="150"/>
+ <path class="cluster-line2" d="M 273 65 C 263 110, 263 110, 273 155"/>
+ <path class="cluster-line2" d="M 309 65 C 319 110, 319 110, 309 155"/>
+ <line class="cluster-line2" x1="318" y1="110" x2="372" y2="110"/>
+ </g>
+ <g class="cl-lab2">
+ <rect x="372" y="98" width="118" height="24" rx="4" fill="#ffffff" stroke="#2B6CB0" stroke-width="1"/>
+ <text class="lab2-cluster" x="431" y="113" text-anchor="middle">mnest cluster</text>
+ </g>
+ <g class="fpill2">
+ <rect class="pill2" x="180" y="190" width="360" height="40" rx="20"/>
+ <text class="lab2-pill" x="360" y="215" text-anchor="middle">FASTPATH: get_urls &#8594; describe_entries</text>
+ </g>
+ <g class="fpill-lab2">
+ <text class="lab2-cluster" x="360" y="250" text-anchor="middle">the cluster becomes a fastpath</text>
+ </g>
+ <g class="ph4-2">
+ <rect class="box-in2" x="36" y="258" width="92" height="24" rx="5"/>
+ <text class="lab2-in" x="82" y="273" text-anchor="middle">new input</text>
+ <rect class="planner-box2" x="290" y="252" width="140" height="32" rx="6"/>
+ <text class="lab2-planner" x="360" y="266" text-anchor="middle">PLANNER LLM</text>
+ <text class="lab2-planner" x="360" y="278" text-anchor="middle" font-weight="400" font-style="italic">(not invoked)</text>
+ <line class="strike2 strike-draw2" x1="298" y1="280" x2="422" y2="256"/>
+ <rect class="box-out2" x="600" y="258" width="84" height="24" rx="5"/>
+ <text class="lab2-out" x="642" y="273" text-anchor="middle">output</text>
+ <path class="arrow-thick2" d="M 128 270 L 158 270 L 158 210 L 180 210"/>
+ <polygon points="180,210 173,206 173,214" fill="#1A477A"/>
+ <path class="arrow-thick2" d="M 540 210 L 562 210 L 562 270 L 600 270"/>
+ <polygon points="600,270 593,266 593,274" fill="#1A477A"/>
+ </g>
+ <text class="lab2-phase pl1-2" x="360" y="330" text-anchor="middle">three repeated turns produce observed mnests</text>
+ <text class="lab2-phase pl2-2" x="360" y="330" text-anchor="middle">mnests converge into a cross-turn cluster</text>
+ <text class="lab2-phase pl3-2" x="360" y="330" text-anchor="middle">the cluster crystallises into a preformed path</text>
+ <g class="pl4-2">
+ <text class="lab2-phase" x="360" y="324" text-anchor="middle">the PLANNER uses the fastpath directly,</text>
+ <text class="lab2-phase" x="360" y="340" text-anchor="middle">without invoking the LLM</text>
+ </g>
+ <line class="tl-bar2" x1="40" y1="350" x2="680" y2="350"/>
+ <line class="tl-bar2" x1="40" y1="346" x2="40" y2="354"/>
+ <line class="tl-bar2" x1="200" y1="346" x2="200" y2="354"/>
+ <line class="tl-bar2" x1="360" y1="346" x2="360" y2="354"/>
+ <line class="tl-bar2" x1="520" y1="346" x2="520" y2="354"/>
+ <line class="tl-bar2" x1="680" y1="346" x2="680" y2="354"/>
+ <text class="lab2-tick" x="120" y="358" text-anchor="middle">phase 1</text>
+ <text class="lab2-tick" x="280" y="358" text-anchor="middle">phase 2</text>
+ <text class="lab2-tick" x="440" y="358" text-anchor="middle">phase 3</text>
+ <text class="lab2-tick" x="600" y="358" text-anchor="middle">phase 4</text>
 </svg>
 <figcaption>Fig. 2 &mdash; The birth of a fastpath. Three repeated turns produce mnests that converge into a cluster, the cluster crystallises into a preformed path, and the PLANNER uses it directly, skipping the language model.</figcaption>
 </figure>
@@ -570,14 +509,7 @@ the same way, turn after turn.
 
 <figure>
 <svg viewBox="0 0 720 300" xmlns="http://www.w3.org/2000/svg" style="max-width:100%;height:auto;border:1px solid var(--border);border-radius:6px;background:#fbfdff;">
-<style>
-.bg-fill3{fill:#eef5fb}
-.lbl3{font-family:'Segoe UI',Calibri,sans-serif;font-size:12px;fill:#1a477a}
-.lbl3-sm{font-family:'Segoe UI',Calibri,sans-serif;font-size:10px;fill:#64748b}
-.src-node{fill:#548235;stroke:#1A477A;stroke-width:1.5}
-.receptor-body{fill:#fef3c7;stroke:#6B21A8;stroke-width:2.5}
-.notch-cavity{fill:#fbfdff;stroke:#6B21A8;stroke-width:2;stroke-dasharray:5,3}
-.notch-tag{fill:#6B21A8;font-family:'Segoe UI',sans-serif;font-size:11px;font-weight:600}
+<style>.bg-fill3{fill:#eef5fb}.lbl3{font-family:'Segoe UI',Calibri,sans-serif;font-size:12px;fill:#1a477a}.lbl3-sm{font-family:'Segoe UI',Calibri,sans-serif;font-size:10px;fill:#64748b}.src-node{fill:#548235;stroke:#1A477A;stroke-width:1.5}.receptor-body{fill:#fef3c7;stroke:#6B21A8;stroke-width:2.5}.notch-cavity{fill:#fbfdff;stroke:#6B21A8;stroke-width:2;stroke-dasharray:5,3}.notch-tag{fill:#6B21A8;font-family:'Segoe UI',sans-serif;font-size:11px;font-weight:600}
 </style>
 <rect class="bg-fill3" x="0" y="0" width="720" height="300"/>
 <rect class="src-node" x="120" y="125" width="100" height="55" rx="6"/>
@@ -586,19 +518,19 @@ the same way, turn after turn.
 <text class="lbl3-sm" x="170" y="210" text-anchor="middle">src executor</text>
 <path d="M230,152 L370,152" stroke="#64748B" stroke-width="2" marker-end="url(#arrowend3en)" fill="none"/>
 <defs>
-  <marker id="arrowend3en" markerWidth="10" markerHeight="10" refX="7" refY="3" orient="auto">
-    <path d="M0,0 L0,6 L8,3 z" fill="#64748B"/>
-  </marker>
+ <marker id="arrowend3en" markerWidth="10" markerHeight="10" refX="7" refY="3" orient="auto">
+ <path d="M0,0 L0,6 L8,3 z" fill="#64748B"/>
+ </marker>
 </defs>
 <text class="lbl3-sm" x="300" y="140" text-anchor="middle">observed mnest</text>
 <text class="lbl3-sm" x="300" y="170" text-anchor="middle" style="font-style:italic;">(user turn)</text>
 <g>
-  <rect class="receptor-body" x="385" y="115" width="180" height="90" rx="12"/>
-  <rect class="notch-cavity" x="420" y="135" width="110" height="50" rx="6"/>
-  <text class="lbl3" x="475" y="165" text-anchor="middle" style="font-size:10px;fill:#6B21A8;font-style:italic;">gap</text>
-  <text class="lbl3" x="475" y="105" text-anchor="middle" style="font-weight:600;">proto-mnest</text>
-  <text class="lbl3-sm" x="475" y="225" text-anchor="middle">desired dst: &laquo;compose_report&raquo;</text>
-  <text class="lbl3-sm" x="475" y="240" text-anchor="middle" style="font-style:italic;">does not exist yet</text>
+ <rect class="receptor-body" x="385" y="115" width="180" height="90" rx="12"/>
+ <rect class="notch-cavity" x="420" y="135" width="110" height="50" rx="6"/>
+ <text class="lbl3" x="475" y="165" text-anchor="middle" style="font-size:10px;fill:#6B21A8;font-style:italic;">gap</text>
+ <text class="lbl3" x="475" y="105" text-anchor="middle" style="font-weight:600;">proto-mnest</text>
+ <text class="lbl3-sm" x="475" y="225" text-anchor="middle">desired dst: &laquo;compose_report&raquo;</text>
+ <text class="lbl3-sm" x="475" y="240" text-anchor="middle" style="font-style:italic;">does not exist yet</text>
 </g>
 <text class="lbl3-sm" x="360" y="270" text-anchor="middle">The proto-mnest waits. The dashed gap is the missing dst.</text>
 </svg>
@@ -619,7 +551,7 @@ understand which dst would close it.
 <p>
 When an introspective function meets a proto-mnest that has been
 seen more than once (the threshold is three recurring observations,
-ADR 0077), it approaches, analyses it, reads the desired signature,
+), it approaches, analyses it, reads the desired signature,
 and proposes: it emits a <em>candidate</em> for synthesis. The
 proposal says: &ldquo;this receptor exists, it recurs, and here is
 a possible dst that would close it&rdquo;.
@@ -627,111 +559,88 @@ a possible dst that would close it&rdquo;.
 
 <figure>
 <svg viewBox="0 0 720 320" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Synthesis animation: synt enters the receptor's gap, works, leaves an executor and exits.">
-  <style>
-    .bg { fill: #eef5fb; }
-    .receptor-body { fill: #fef3c7; stroke: #6B21A8; stroke-width: 2.5; }
-    .receptor-label { font-family: 'Segoe UI', Calibri, sans-serif; font-size: 13px; font-weight: 600; fill: #6B21A8; text-anchor: middle; }
-    .receptor-sublabel { font-family: 'Segoe UI', Calibri, sans-serif; font-size: 10px; font-style: italic; fill: #6B21A8; text-anchor: middle; opacity: 0.75; }
-    .notch { fill: #fbfdff; stroke: #6B21A8; stroke-width: 2; stroke-dasharray: 5,3; animation: notch-state 14s ease-in-out infinite; }
-    @keyframes notch-state {
-      0%   { stroke-dasharray: 5,3; stroke: #6B21A8; stroke-width: 2; }
-      70%  { stroke-dasharray: 5,3; stroke: #6B21A8; stroke-width: 2; }
-      80%  { stroke-dasharray: 5,3; stroke: #16a34a; stroke-width: 2.2; }
-      90%  { stroke-dasharray: 0;   stroke: #16a34a; stroke-width: 2.5; }
-      100% { stroke-dasharray: 0;   stroke: #16a34a; stroke-width: 2.5; }
-    }
-    .synt { animation: synt-journey 14s ease-in-out infinite; }
-    @keyframes synt-journey {
-      0%   { transform: translateX(-360px); opacity: 0; }
-      8%   { transform: translateX(-360px); opacity: 0; }
-      15%  { transform: translateX(-180px); opacity: 1; }
-      28%  { transform: translateX(0px);    opacity: 1; }
-      55%  { transform: translateX(0px);    opacity: 1; }
-      70%  { transform: translateX(80px);   opacity: 0.5; }
-      78%  { transform: translateX(220px);  opacity: 0; }
-      100% { transform: translateX(220px);  opacity: 0; }
-    }
-    .synt-pill { fill: #dcfce7; stroke: #16a34a; stroke-width: 2; }
-    .synt-label { font-family: 'Segoe UI', Calibri, sans-serif; font-size: 12px; font-weight: 700; fill: #166534; text-anchor: middle; }
-    .spark { fill: #f59e0b; stroke: #b45309; stroke-width: 0.5; transform-origin: center; animation: spark-pulse 14s ease-in-out infinite; }
-    .spark-1 { animation-delay: 0s; }
-    .spark-2 { animation-delay: -0.6s; }
-    .spark-3 { animation-delay: -1.2s; }
-    .spark-4 { animation-delay: -1.8s; }
-    @keyframes spark-pulse {
-      0%, 28%   { opacity: 0; transform: scale(0.4); }
-      32%       { opacity: 1; transform: scale(1.1); }
-      40%       { opacity: 0.6; transform: scale(0.8); }
-      48%       { opacity: 1; transform: scale(1.1); }
-      55%       { opacity: 0; transform: scale(0.4); }
-      100%      { opacity: 0; transform: scale(0.4); }
-    }
-    .work-label { font-family: 'Segoe UI', Calibri, sans-serif; font-size: 11px; font-style: italic; fill: #15803d; text-anchor: middle; animation: work-label-pulse 14s ease-in-out infinite; }
-    @keyframes work-label-pulse {
-      0%, 28%   { opacity: 0; }
-      32%       { opacity: 1; }
-      40%       { opacity: 0.5; }
-      48%       { opacity: 1; }
-      55%       { opacity: 0; }
-      100%      { opacity: 0; }
-    }
-    .executor { transform-origin: 400px 130px; animation: executor-materialise 14s ease-in-out infinite; }
-    @keyframes executor-materialise {
-      0%, 55%   { opacity: 0; transform: scale(0.3); }
-      62%       { opacity: 0.6; transform: scale(0.9); }
-      70%       { opacity: 1; transform: scale(1.05); }
-      75%       { opacity: 1; transform: scale(1); }
-      100%      { opacity: 1; transform: scale(1); }
-    }
-    .executor-body { fill: #548235; stroke: #16a34a; stroke-width: 2; }
-    .executor-label { font-family: 'Segoe UI', Calibri, sans-serif; font-size: 11px; font-weight: 700; fill: #ffffff; text-anchor: middle; }
-    .phase-label { font-family: 'Segoe UI', Calibri, sans-serif; font-size: 14px; font-weight: 600; fill: #1e3a8a; text-anchor: middle; }
-    .phase-1 { animation: phase1 14s ease-in-out infinite; }
-    .phase-2 { animation: phase2 14s ease-in-out infinite; }
-    .phase-3 { animation: phase3 14s ease-in-out infinite; }
-    .phase-4 { animation: phase4 14s ease-in-out infinite; }
-    @keyframes phase1 { 0%{opacity:1}14%{opacity:1}17%{opacity:0}100%{opacity:0} }
-    @keyframes phase2 { 0%,14%{opacity:0}18%{opacity:1}54%{opacity:1}57%{opacity:0}100%{opacity:0} }
-    @keyframes phase3 { 0%,54%{opacity:0}58%{opacity:1}74%{opacity:1}77%{opacity:0}100%{opacity:0} }
-    @keyframes phase4 { 0%,74%{opacity:0}78%{opacity:1}100%{opacity:1} }
-    .tick { font-family: 'Segoe UI', Calibri, sans-serif; font-size: 9px; fill: #94a3b8; text-anchor: middle; }
-  </style>
-  <rect class="bg" x="0" y="0" width="720" height="320" rx="8"/>
-  <text x="360" y="28" class="receptor-label" style="font-size: 14px;">Synthesising an executor: from open gap to closed receptor</text>
-  <text x="400" y="50" class="work-label">synt at work...</text>
-  <text x="400" y="72" class="receptor-label">Receptor (proto-mnest)</text>
-  <text x="400" y="82" class="receptor-sublabel">waits for a capability</text>
-  <rect class="receptor-body" x="310" y="85" width="180" height="90" rx="12"/>
-  <rect class="notch" x="345" y="105" width="110" height="50" rx="4"/>
-  <g>
-    <polygon class="spark spark-1" points="335,100 338,108 346,108 340,113 342,121 335,116 328,121 330,113 324,108 332,108" style="transform-origin: 335px 110px;"/>
-    <polygon class="spark spark-2" points="470,100 473,108 481,108 475,113 477,121 470,116 463,121 465,113 459,108 467,108" style="transform-origin: 470px 110px;"/>
-    <polygon class="spark spark-3" points="335,160 338,168 346,168 340,173 342,181 335,176 328,181 330,173 324,168 332,168" style="transform-origin: 335px 170px;"/>
-    <polygon class="spark spark-4" points="470,160 473,168 481,168 475,173 477,181 470,176 463,181 465,173 459,168 467,168" style="transform-origin: 470px 170px;"/>
-  </g>
-  <g class="executor">
-    <rect class="executor-body" x="350" y="110" width="100" height="40" rx="4"/>
-    <text x="400" y="135" class="executor-label">compose_report</text>
-  </g>
-  <g class="synt">
-    <rect class="synt-pill" x="375" y="115" width="50" height="30" rx="14"/>
-    <text x="400" y="134" class="synt-label">synt</text>
-  </g>
-  <text x="360" y="255" class="phase-label phase-1">synt approaches</text>
-  <text x="360" y="255" class="phase-label phase-2">synt at work inside the receptor</text>
-  <text x="360" y="255" class="phase-label phase-3">executor created, synt leaves</text>
-  <text x="360" y="255" class="phase-label phase-4">proto-mnest closed, new capability in the pool</text>
-  <line x1="120" y1="285" x2="600" y2="285" stroke="#cbd5e1" stroke-width="1"/>
-  <circle cx="120" cy="285" r="3" fill="#94a3b8"/>
-  <circle cx="240" cy="285" r="3" fill="#94a3b8"/>
-  <circle cx="360" cy="285" r="3" fill="#94a3b8"/>
-  <circle cx="480" cy="285" r="3" fill="#94a3b8"/>
-  <circle cx="600" cy="285" r="3" fill="#94a3b8"/>
-  <text x="120" y="302" class="tick">0s</text>
-  <text x="240" y="302" class="tick">3.5s</text>
-  <text x="360" y="302" class="tick">7s</text>
-  <text x="480" y="302" class="tick">10.5s</text>
-  <text x="600" y="302" class="tick">14s</text>
+ <style>.bg { fill: #eef5fb; }.receptor-body { fill: #fef3c7; stroke: #6B21A8; stroke-width: 2.5; }.receptor-label { font-family: 'Segoe UI', Calibri, sans-serif; font-size: 13px; font-weight: 600; fill: #6B21A8; text-anchor: middle; }.receptor-sublabel { font-family: 'Segoe UI', Calibri, sans-serif; font-size: 10px; font-style: italic; fill: #6B21A8; text-anchor: middle; opacity: 0.75; }.notch { fill: #fbfdff; stroke: #6B21A8; stroke-width: 2; stroke-dasharray: 5,3; animation: notch-state 14s ease-in-out infinite; }
+ @keyframes notch-state {
+ 0% { stroke-dasharray: 5,3; stroke: #6B21A8; stroke-width: 2; }
+ 70% { stroke-dasharray: 5,3; stroke: #6B21A8; stroke-width: 2; }
+ 80% { stroke-dasharray: 5,3; stroke: #16a34a; stroke-width: 2.2; }
+ 90% { stroke-dasharray: 0; stroke: #16a34a; stroke-width: 2.5; }
+ 100% { stroke-dasharray: 0; stroke: #16a34a; stroke-width: 2.5; }
+ }.synt { animation: synt-journey 14s ease-in-out infinite; }
+ @keyframes synt-journey {
+ 0% { transform: translateX(-360px); opacity: 0; }
+ 8% { transform: translateX(-360px); opacity: 0; }
+ 15% { transform: translateX(-180px); opacity: 1; }
+ 28% { transform: translateX(0px); opacity: 1; }
+ 55% { transform: translateX(0px); opacity: 1; }
+ 70% { transform: translateX(80px); opacity: 0.5; }
+ 78% { transform: translateX(220px); opacity: 0; }
+ 100% { transform: translateX(220px); opacity: 0; }
+ }.synt-pill { fill: #dcfce7; stroke: #16a34a; stroke-width: 2; }.synt-label { font-family: 'Segoe UI', Calibri, sans-serif; font-size: 12px; font-weight: 700; fill: #166534; text-anchor: middle; }.spark { fill: #f59e0b; stroke: #b45309; stroke-width: 0.5; transform-origin: center; animation: spark-pulse 14s ease-in-out infinite; }.spark-1 { animation-delay: 0s; }.spark-2 { animation-delay: -0.6s; }.spark-3 { animation-delay: -1.2s; }.spark-4 { animation-delay: -1.8s; }
+ @keyframes spark-pulse {
+ 0%, 28% { opacity: 0; transform: scale(0.4); }
+ 32% { opacity: 1; transform: scale(1.1); }
+ 40% { opacity: 0.6; transform: scale(0.8); }
+ 48% { opacity: 1; transform: scale(1.1); }
+ 55% { opacity: 0; transform: scale(0.4); }
+ 100% { opacity: 0; transform: scale(0.4); }
+ }.work-label { font-family: 'Segoe UI', Calibri, sans-serif; font-size: 11px; font-style: italic; fill: #15803d; text-anchor: middle; animation: work-label-pulse 14s ease-in-out infinite; }
+ @keyframes work-label-pulse {
+ 0%, 28% { opacity: 0; }
+ 32% { opacity: 1; }
+ 40% { opacity: 0.5; }
+ 48% { opacity: 1; }
+ 55% { opacity: 0; }
+ 100% { opacity: 0; }
+ }.executor { transform-origin: 400px 130px; animation: executor-materialise 14s ease-in-out infinite; }
+ @keyframes executor-materialise {
+ 0%, 55% { opacity: 0; transform: scale(0.3); }
+ 62% { opacity: 0.6; transform: scale(0.9); }
+ 70% { opacity: 1; transform: scale(1.05); }
+ 75% { opacity: 1; transform: scale(1); }
+ 100% { opacity: 1; transform: scale(1); }
+ }.executor-body { fill: #548235; stroke: #16a34a; stroke-width: 2; }.executor-label { font-family: 'Segoe UI', Calibri, sans-serif; font-size: 11px; font-weight: 700; fill: #ffffff; text-anchor: middle; }.phase-label { font-family: 'Segoe UI', Calibri, sans-serif; font-size: 14px; font-weight: 600; fill: #1e3a8a; text-anchor: middle; }.phase-1 { animation: phase1 14s ease-in-out infinite; }.phase-2 { animation: phase2 14s ease-in-out infinite; }.phase-3 { animation: phase3 14s ease-in-out infinite; }.phase-4 { animation: phase4 14s ease-in-out infinite; }
+ @keyframes phase1 { 0%{opacity:1}14%{opacity:1}17%{opacity:0}100%{opacity:0} }
+ @keyframes phase2 { 0%,14%{opacity:0}18%{opacity:1}54%{opacity:1}57%{opacity:0}100%{opacity:0} }
+ @keyframes phase3 { 0%,54%{opacity:0}58%{opacity:1}74%{opacity:1}77%{opacity:0}100%{opacity:0} }
+ @keyframes phase4 { 0%,74%{opacity:0}78%{opacity:1}100%{opacity:1} }.tick { font-family: 'Segoe UI', Calibri, sans-serif; font-size: 9px; fill: #94a3b8; text-anchor: middle; }
+ </style>
+ <rect class="bg" x="0" y="0" width="720" height="320" rx="8"/>
+ <text x="360" y="28" class="receptor-label" style="font-size: 14px;">Synthesising an executor: from open gap to closed receptor</text>
+ <text x="400" y="50" class="work-label">synt at work...</text>
+ <text x="400" y="72" class="receptor-label">Receptor (proto-mnest)</text>
+ <text x="400" y="82" class="receptor-sublabel">waits for a capability</text>
+ <rect class="receptor-body" x="310" y="85" width="180" height="90" rx="12"/>
+ <rect class="notch" x="345" y="105" width="110" height="50" rx="4"/>
+ <g>
+ <polygon class="spark spark-1" points="335,100 338,108 346,108 340,113 342,121 335,116 328,121 330,113 324,108 332,108" style="transform-origin: 335px 110px;"/>
+ <polygon class="spark spark-2" points="470,100 473,108 481,108 475,113 477,121 470,116 463,121 465,113 459,108 467,108" style="transform-origin: 470px 110px;"/>
+ <polygon class="spark spark-3" points="335,160 338,168 346,168 340,173 342,181 335,176 328,181 330,173 324,168 332,168" style="transform-origin: 335px 170px;"/>
+ <polygon class="spark spark-4" points="470,160 473,168 481,168 475,173 477,181 470,176 463,181 465,173 459,168 467,168" style="transform-origin: 470px 170px;"/>
+ </g>
+ <g class="executor">
+ <rect class="executor-body" x="350" y="110" width="100" height="40" rx="4"/>
+ <text x="400" y="135" class="executor-label">compose_report</text>
+ </g>
+ <g class="synt">
+ <rect class="synt-pill" x="375" y="115" width="50" height="30" rx="14"/>
+ <text x="400" y="134" class="synt-label">synt</text>
+ </g>
+ <text x="360" y="255" class="phase-label phase-1">synt approaches</text>
+ <text x="360" y="255" class="phase-label phase-2">synt at work inside the receptor</text>
+ <text x="360" y="255" class="phase-label phase-3">executor created, synt leaves</text>
+ <text x="360" y="255" class="phase-label phase-4">proto-mnest closed, new capability in the pool</text>
+ <line x1="120" y1="285" x2="600" y2="285" stroke="#cbd5e1" stroke-width="1"/>
+ <circle cx="120" cy="285" r="3" fill="#94a3b8"/>
+ <circle cx="240" cy="285" r="3" fill="#94a3b8"/>
+ <circle cx="360" cy="285" r="3" fill="#94a3b8"/>
+ <circle cx="480" cy="285" r="3" fill="#94a3b8"/>
+ <circle cx="600" cy="285" r="3" fill="#94a3b8"/>
+ <text x="120" y="302" class="tick">0s</text>
+ <text x="240" y="302" class="tick">3.5s</text>
+ <text x="360" y="302" class="tick">7s</text>
+ <text x="480" y="302" class="tick">10.5s</text>
+ <text x="600" y="302" class="tick">14s</text>
 </svg>
 <figcaption>Fig. 4 &mdash; The synthesis dance. Synt enters the receptor's gap, works on creating a new executor, leaves it in place and exits. The proto-mnest becomes an active mnest: the new capability joins the executor pool.</figcaption>
 </figure>
@@ -756,13 +665,7 @@ recognised sequence.
 
 <figure>
 <svg viewBox="0 0 720 280" xmlns="http://www.w3.org/2000/svg" style="max-width:100%;height:auto;border:1px solid var(--border);border-radius:6px;background:#fbfdff;">
-<style>
-.bg-fill5{fill:#eef5fb}
-.lbl5{font-family:'Segoe UI',Calibri,sans-serif;font-size:11px;fill:#1a477a}
-.fp-mono{fill:#A0522D;animation:joinleft 8s ease-in-out infinite}
-.fp-mono2{fill:#A0522D;animation:joinright 8s ease-in-out infinite}
-.fp-poly{fill:#c87a4d;stroke:#A0522D;stroke-width:1.5;animation:emerge 8s ease-in-out infinite}
-.fp-tri{fill:#548235;stroke:#16a34a;stroke-width:1.5;animation:emerge-late 8s ease-in-out infinite}
+<style>.bg-fill5{fill:#eef5fb}.lbl5{font-family:'Segoe UI',Calibri,sans-serif;font-size:11px;fill:#1a477a}.fp-mono{fill:#A0522D;animation:joinleft 8s ease-in-out infinite}.fp-mono2{fill:#A0522D;animation:joinright 8s ease-in-out infinite}.fp-poly{fill:#c87a4d;stroke:#A0522D;stroke-width:1.5;animation:emerge 8s ease-in-out infinite}.fp-tri{fill:#548235;stroke:#16a34a;stroke-width:1.5;animation:emerge-late 8s ease-in-out infinite}
 @keyframes joinleft{0%{transform:translate(0,0);opacity:1}40%{transform:translate(80px,0);opacity:1}50%,100%{transform:translate(80px,0);opacity:0}}
 @keyframes joinright{0%{transform:translate(0,0);opacity:1}40%{transform:translate(-80px,0);opacity:1}50%,100%{transform:translate(-80px,0);opacity:0}}
 @keyframes emerge{0%,40%{opacity:0;transform:scale(0.5)}50%,80%{opacity:1;transform:scale(1)}90%,100%{opacity:0}}
@@ -783,9 +686,9 @@ recognised sequence.
 <text class="lbl5" x="205" y="35" text-anchor="middle" style="font-size:9px;color:#64748b;">3 repetitions</text>
 <path d="M365,165 L520,150" stroke="#16a34a" stroke-width="1.5" stroke-dasharray="3,2" fill="none" marker-end="url(#arrow-green3en)"/>
 <defs>
-  <marker id="arrow-green3en" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
-    <path d="M0,0 L0,6 L7,3 z" fill="#16a34a"/>
-  </marker>
+ <marker id="arrow-green3en" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+ <path d="M0,0 L0,6 L7,3 z" fill="#16a34a"/>
+ </marker>
 </defs>
 <text class="lbl5" x="445" y="148" text-anchor="middle" style="font-size:9px;color:#16a34a;">L2→L3 promotion</text>
 </svg>
@@ -813,7 +716,7 @@ another, converging at the same point.
 <strong>The direct path</strong>: the introspective functions
 observe the mnestome and identify the receptors that recur &mdash;
 those proto-mnests that present themselves in the same way turn
-after turn, threshold three recurring observations (ADR 0077). When
+after turn, threshold three recurring observations. When
 they find one stable enough, they propose directly an executor that
 would close the gap. There is no need to go through a fast-path:
 the analysis of the single receptor is enough. This is the classic
@@ -912,12 +815,12 @@ is an index.
 </p>
 
 <pre><code>CREATE TABLE executors (
-  name           TEXT NOT NULL,
-  version        TEXT NOT NULL,
-  state          TEXT NOT NULL,        -- seed | active | quarantine | archived
-  loaded_at      TEXT NOT NULL,        -- ISO 8601
-  manifest_hash  TEXT NOT NULL,        -- blake3
-  PRIMARY KEY (name, version)
+ name TEXT NOT NULL,
+ version TEXT NOT NULL,
+ state TEXT NOT NULL, -- seed | active | quarantine | archived
+ loaded_at TEXT NOT NULL, -- ISO 8601
+ manifest_hash TEXT NOT NULL, -- blake3
+ PRIMARY KEY (name, version)
 );
 CREATE INDEX idx_executors_state ON executors(state);
 </code></pre>
@@ -925,26 +828,26 @@ CREATE INDEX idx_executors_state ON executors(state);
 <h2>Table <code>mnests</code></h2>
 
 <pre><code>CREATE TABLE mnests (
-  id             TEXT PRIMARY KEY,     -- ULID
-  src_executor   TEXT NOT NULL,
-  src_version    TEXT NOT NULL,
-  dst_executor   TEXT NOT NULL,        -- canonical name OR desired name (proto)
-  dst_version    TEXT,                 -- NULL for proto
-  weight         REAL NOT NULL CHECK (weight BETWEEN 0 AND 1),
-  uses           INTEGER NOT NULL CHECK (uses &gt;= 1),
-  ts_first       TEXT NOT NULL,
-  ts_last        TEXT NOT NULL,
-  decay_lambda   REAL NOT NULL DEFAULT 0.018,
-  state          TEXT NOT NULL,        -- proto | active | decaying | superseded
-  tags           TEXT,                 -- JSON array
-  desired_sig    TEXT,                 -- JSON, only for proto
-  CHECK (ts_last &gt;= ts_first),
-  UNIQUE (src_executor, src_version, dst_executor, dst_version, state)
+ id TEXT PRIMARY KEY, -- ULID
+ src_executor TEXT NOT NULL,
+ src_version TEXT NOT NULL,
+ dst_executor TEXT NOT NULL, -- canonical name OR desired name (proto)
+ dst_version TEXT, -- NULL for proto
+ weight REAL NOT NULL CHECK (weight BETWEEN 0 AND 1),
+ uses INTEGER NOT NULL CHECK (uses &gt;= 1),
+ ts_first TEXT NOT NULL,
+ ts_last TEXT NOT NULL,
+ decay_lambda REAL NOT NULL DEFAULT 0.018,
+ state TEXT NOT NULL, -- proto | active | decaying | superseded
+ tags TEXT, -- JSON array
+ desired_sig TEXT, -- JSON, only for proto
+ CHECK (ts_last &gt;= ts_first),
+ UNIQUE (src_executor, src_version, dst_executor, dst_version, state)
 );
-CREATE INDEX idx_mnests_dst    ON mnests(dst_executor);
-CREATE INDEX idx_mnests_src    ON mnests(src_executor);
+CREATE INDEX idx_mnests_dst ON mnests(dst_executor);
+CREATE INDEX idx_mnests_src ON mnests(src_executor);
 CREATE INDEX idx_mnests_weight ON mnests(weight DESC);
-CREATE INDEX idx_mnests_state  ON mnests(state);
+CREATE INDEX idx_mnests_state ON mnests(state);
 </code></pre>
 
 <h2>Table <code>events</code></h2>
@@ -956,17 +859,17 @@ later if the formula changes.
 </p>
 
 <pre><code>CREATE TABLE events (
-  id          INTEGER PRIMARY KEY AUTOINCREMENT,
-  mnest_id    TEXT NOT NULL,
-  ts          TEXT NOT NULL,
-  kind        TEXT NOT NULL,           -- reinforce | decay | state_change
-  delta       REAL,                    -- weight delta (NULL for state_change)
-  new_state   TEXT,                    -- only for state_change
-  reason      TEXT,                    -- e.g. "ager nightly", "synt approved"
-  FOREIGN KEY (mnest_id) REFERENCES mnests(id)
+ id INTEGER PRIMARY KEY AUTOINCREMENT,
+ mnest_id TEXT NOT NULL,
+ ts TEXT NOT NULL,
+ kind TEXT NOT NULL, -- reinforce | decay | state_change
+ delta REAL, -- weight delta (NULL for state_change)
+ new_state TEXT, -- only for state_change
+ reason TEXT, -- e.g. "ager nightly", "synt approved"
+ FOREIGN KEY (mnest_id) REFERENCES mnests(id)
 );
 CREATE INDEX idx_events_mnest ON events(mnest_id);
-CREATE INDEX idx_events_ts    ON events(ts);
+CREATE INDEX idx_events_ts ON events(ts);
 </code></pre>
 
 <h2>Table <code>canonical_query_log</code></h2>
@@ -974,7 +877,7 @@ CREATE INDEX idx_events_ts    ON events(ts);
 <p>
 A log of user requests in lemma form, used by the
 <a href="fast_path.html">introvertive fast-path</a> (L1 single-tool,
-ADR 0149). Every time the planner decides the first executor of a
+). Every time the planner decides the first executor of a
 turn, a row is inserted or reinforced here: canonical query (lowercase
 condensed form), chosen tool, observed argument values. After three
 consolidated passes, the <code>canonical_matcher</code> uses BGE-M3
@@ -982,23 +885,23 @@ cosine to match new requests against this log and skip the planner.
 </p>
 
 <pre><code>CREATE TABLE canonical_query_log (
-  id              INTEGER PRIMARY KEY AUTOINCREMENT,
-  canonical_query TEXT    NOT NULL,
-  tool_name       TEXT    NOT NULL,
-  args_shape      TEXT    NOT NULL,   -- placeholder template (back-compat)
-  args_observed   TEXT,                -- ACTUAL argument values (Phase 14 v5)
-  uses            INTEGER NOT NULL DEFAULT 1,
-  ok_count        INTEGER NOT NULL DEFAULT 0,
-  fail_count      INTEGER NOT NULL DEFAULT 0,
-  ts_first        TEXT    NOT NULL,
-  ts_last         TEXT    NOT NULL,
-  state           TEXT    NOT NULL DEFAULT 'candidate',
-  UNIQUE(canonical_query, tool_name, args_shape)
+ id INTEGER PRIMARY KEY AUTOINCREMENT,
+ canonical_query TEXT NOT NULL,
+ tool_name TEXT NOT NULL,
+ args_shape TEXT NOT NULL, -- placeholder template (back-compat)
+ args_observed TEXT, -- ACTUAL argument values
+ uses INTEGER NOT NULL DEFAULT 1,
+ ok_count INTEGER NOT NULL DEFAULT 0,
+ fail_count INTEGER NOT NULL DEFAULT 0,
+ ts_first TEXT NOT NULL,
+ ts_last TEXT NOT NULL,
+ state TEXT NOT NULL DEFAULT 'candidate',
+ UNIQUE(canonical_query, tool_name, args_shape)
 );
 </code></pre>
 
 <p>
-The <code>args_observed</code> column (added 19 May 2026 via
+The <code>args_observed</code> column (added via
 idempotent migration) stores the concrete argument values observed
 on the first planner pass. When a new request matches the row, the
 argument extractor
@@ -1018,7 +921,7 @@ The &laquo;live&raquo; graph for read queries. Excludes
 
 <pre><code>CREATE VIEW v_mnestome AS
 SELECT id, src_executor, src_version, dst_executor, dst_version,
-       weight, uses, ts_last, state, tags, desired_sig
+ weight, uses, ts_last, state, tags, desired_sig
 FROM mnests
 WHERE state IN ('active', 'proto');
 </code></pre>
@@ -1032,32 +935,31 @@ The only write operation during a turn. Atomic per pair. Pseudocode:
 </p>
 
 <pre><code>def record_passing(src, dst, turn_ctx) -&gt; mnest_id:
-    with conn.transaction():
-        if dst.exists:
-            row = SELECT * FROM mnests
-                  WHERE src_executor = src.name AND src_version = src.version
-                    AND dst_executor = dst.name AND dst_version = dst.version
-                    AND state = 'active'
-            if row:
-                w = decay(row.weight, now() - row.ts_last, row.decay_lambda) + REINFORCE_DELTA
-                UPDATE mnests SET weight = clamp01(w), uses = uses + 1, ts_last = now()
-                INSERT INTO events (mnest_id, ts, kind, delta, reason)
-                       VALUES (row.id, now(), 'reinforce', REINFORCE_DELTA, turn_ctx.id)
-                return row.id
-            else:
-                id = ulid()
-                INSERT INTO mnests (id, src_*, dst_*, weight, uses, ts_first, ts_last, state, tags)
-                       VALUES (id, ..., BOOTSTRAP_WEIGHT, 1, now(), now(), 'active', tags)
-                INSERT INTO events (mnest_id, ts, kind, delta, reason)
-                       VALUES (id, now(), 'reinforce', BOOTSTRAP_WEIGHT, turn_ctx.id)
-                return id
-        else:
-            # proto-mnest
-            id = ulid()
-            desired = build_desired_signature(turn_ctx)
-            INSERT INTO mnests (..., dst_executor=dst.desired_name, dst_version=NULL,
-                                ..., state='proto', desired_sig=desired)
-            return id
+ with conn.transaction:
+ if dst.exists:
+ row = SELECT * FROM mnests
+ WHERE src_executor = src.name AND src_version = src.version
+ AND dst_executor = dst.name AND dst_version = dst.version
+ AND state = 'active'
+ if row:
+ w = decay(row.weight, now - row.ts_last, row.decay_lambda) + REINFORCE_DELTA
+ UPDATE mnests SET weight = clamp01(w), uses = uses + 1, ts_last = now
+ INSERT INTO events (mnest_id, ts, kind, delta, reason)
+ VALUES (row.id, now, 'reinforce', REINFORCE_DELTA, turn_ctx.id)
+ return row.id
+ else:
+ id = ulid
+ INSERT INTO mnests (id, src_*, dst_*, weight, uses, ts_first, ts_last, state, tags)
+ VALUES (id,..., BOOTSTRAP_WEIGHT, 1, now, now, 'active', tags)
+ INSERT INTO events (mnest_id, ts, kind, delta, reason)
+ VALUES (id, now, 'reinforce', BOOTSTRAP_WEIGHT, turn_ctx.id)
+ return id
+ else:
+ # proto-mnest
+ id = ulid
+ desired = build_desired_signature(turn_ctx)
+ INSERT INTO mnests (..., dst_executor=dst.desired_name, dst_version=NULL,..., state='proto', desired_sig=desired)
+ return id
 </code></pre>
 
 <h2>Main queries</h2>
@@ -1070,7 +972,7 @@ The only write operation during a turn. Atomic per pair. Pseudocode:
 <tr><td><code>walk(start, max_depth)</code></td><td>Weighted BFS from the starting node, up to a maximum depth. Used by the gateway to build the execution context.</td></tr>
 <tr><td><code>recurring_protos(min_uses, since)</code></td><td>List of proto-mnests that have crossed a recurrence threshold. Trigger of the synt.</td></tr>
 <tr><td><code>by_tag(tag)</code></td><td>All mnests with a given tag. Used by observability and the ager for clustering.</td></tr>
-<tr><td><code>decaying()</code></td><td>Mnests in decaying state. Used by the ager for archival proposals.</td></tr>
+<tr><td><code>decaying</code></td><td>Mnests in decaying state. Used by the ager for archival proposals.</td></tr>
 </tbody>
 </table>
 
@@ -1120,10 +1022,9 @@ On the first of the month (UTC), the ager produces a snapshot of the
 live file:
 </p>
 
-<pre><code>workspace/.mnestome/snapshots/2026-04.sqlite      # current month
-workspace/.mnestome/snapshots/2026-03.sqlite.zst  # older, compressed
-workspace/.mnestome/snapshots/2026-02.sqlite.zst
-...
+<pre><code>workspace/.mnestome/snapshots/2026-04.sqlite # current month
+workspace/.mnestome/snapshots/2026-03.sqlite.zst # older, compressed
+workspace/.mnestome/snapshots/2026-02.sqlite.zst...
 </code></pre>
 
 <p>
@@ -1143,7 +1044,7 @@ cleanliness a periodic pruning helps:
 
 <ul>
 <li><code>superseded</code> and <code>archived</code> mnests are moved to a <code>mnests_archive</code> table after 90 days (still in the same SQLite file);</li>
-<li>the <code>events</code> table is partitioned by year (tables <code>events_2026</code>, <code>events_2027</code>, ...). Only the current year is in the live schema; previous years move to a second SQLite file <code>events_history.sqlite</code>;</li>
+<li>the <code>events</code> table is partitioned by year (tables <code>events_2026</code>, <code>events_2027</code>,...). Only the current year is in the live schema; previous years move to a second SQLite file <code>events_history.sqlite</code>;</li>
 <li>SQLite's <code>VACUUM</code> runs monthly right after the snapshot.</li>
 </ul>
 
@@ -1186,7 +1087,7 @@ do we start?&raquo; has three concrete answers:
 
 <ol>
 <li><strong>Start empty.</strong> For most instances, the mnestome is empty at first boot and forms over a month of use. It is slow but correct: the user's specificity enters the graph's shape immediately.</li>
-<li><strong>Minimal seed (recommended).</strong> A seed of 12-15 known mnests, hard-coded in the repo, wires the most common passings between seed executors (e.g. <em>fs_read &rarr; pdf_extract</em>, <em>web_fetch &rarr; markdown_render</em>). They have <code>state = 'seed'</code> to distinguish them and weight <code>BOOTSTRAP_WEIGHT</code> (see <a href="mnest.html#cap6">mnest.html ch. 6</a>).</li>
+<li><strong>Minimal seed (recommended).</strong> A seed of 12-15 known mnests, hard-coded in the repo, wires the most common passings between seed executors (e.g. <em>read_files &rarr; read_files_pdf</em>, <em>get_urls &rarr; render_texts</em>). They have <code>state = 'seed'</code> to distinguish them and weight <code>BOOTSTRAP_WEIGHT</code> (see <a href="mnest.html#cap6">mnest.html ch. 6</a>).</li>
 <li><strong>Import from snapshot.</strong> For migrations or sharing (future), a clean snapshot can be imported. Import goes through validation: the cited executors must exist and be signed.</li>
 </ol>
 
@@ -1197,13 +1098,13 @@ The user can inspect the mnestome from the CLI (via the
 <code>Metnos mnestome</code> command):
 </p>
 
-<pre><code>Metnos mnestome list                        # all active mnests
-Metnos mnestome list --tag invoice          # filtered by tag
-Metnos mnestome top 20                      # the 20 heaviest
-Metnos mnestome graph executor fs_read      # neighbourhood of an executor
-Metnos mnestome proto                       # current proto-mnests
-Metnos mnestome history mnest_01HW...       # event history of a mnest
-Metnos mnestome snapshot --month 2026-03    # opens the monthly snapshot
+<pre><code>Metnos mnestome list # all active mnests
+Metnos mnestome list --tag invoice # filtered by tag
+Metnos mnestome top 20 # the 20 heaviest
+Metnos mnestome graph executor read_files # neighbourhood of an executor
+Metnos mnestome proto # current proto-mnests
+Metnos mnestome history mnest_01HW... # event history of a mnest
+Metnos mnestome snapshot --month 2026-03 # opens the monthly snapshot
 </code></pre>
 
 <p>
@@ -1225,32 +1126,32 @@ can always know what Metnos thinks it knows.
 <hr>
 
 <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(260px, 1fr)); gap:14px; margin:28px 0 24px;">
-  <a href="executor.html" style="display:block; padding:14px 16px; border:1px solid var(--border); border-radius:8px; background:white; color:inherit; text-decoration:none;">
-    <span style="display:inline-block; padding:2px 9px; border-radius:10px; font-size:9pt; background:var(--code-bg); color:var(--muted); font-weight:500;">first in the triad</span>
-    <div style="color:var(--navy); font-size:11.5pt; font-weight:700; margin:8px 0 6px 0;">executor</div>
-    <div style="margin:0; color:var(--muted); font-size:10pt; line-height:1.5;">The node of the mnestome.</div>
-  </a>
-  <a href="mnest.html" style="display:block; padding:14px 16px; border:1px solid var(--border); border-radius:8px; background:white; color:inherit; text-decoration:none;">
-    <span style="display:inline-block; padding:2px 9px; border-radius:10px; font-size:9pt; background:var(--code-bg); color:var(--muted); font-weight:500;">second in the triad</span>
-    <div style="color:var(--navy); font-size:11.5pt; font-weight:700; margin:8px 0 6px 0;">mnest</div>
-    <div style="margin:0; color:var(--muted); font-size:10pt; line-height:1.5;">The edge of the mnestome.</div>
-  </a>
-  <a href="../Metnos_Architecture_Intro_v1.html#cap9" style="display:block; padding:14px 16px; border:1px solid var(--border); border-radius:8px; background:white; color:inherit; text-decoration:none;">
-    <span style="display:inline-block; padding:2px 9px; border-radius:10px; font-size:9pt; background:var(--code-bg); color:var(--muted); font-weight:500;">level 1</span>
-    <div style="color:var(--navy); font-size:11.5pt; font-weight:700; margin:8px 0 6px 0;">Architecture, ch. 9</div>
-    <div style="margin:0; color:var(--muted); font-size:10pt; line-height:1.5;">The big picture.</div>
-  </a>
-  <a href="./" style="display:block; padding:14px 16px; border:1px solid var(--border); border-radius:8px; background:white; color:inherit; text-decoration:none;">
-    <span style="display:inline-block; padding:2px 9px; border-radius:10px; font-size:9pt; background:var(--code-bg); color:var(--muted); font-weight:500;">index</span>
-    <div style="color:var(--navy); font-size:11.5pt; font-weight:700; margin:8px 0 6px 0;">Microdesign</div>
-    <div style="margin:0; color:var(--muted); font-size:10pt; line-height:1.5;">All docs.</div>
-  </a>
+ <a href="executor.html" style="display:block; padding:14px 16px; border:1px solid var(--border); border-radius:8px; background:white; color:inherit; text-decoration:none;">
+ <span style="display:inline-block; padding:2px 9px; border-radius:10px; font-size:9pt; background:var(--code-bg); color:var(--muted); font-weight:500;">first in the triad</span>
+ <div style="color:var(--navy); font-size:11.5pt; font-weight:700; margin:8px 0 6px 0;">executor</div>
+ <div style="margin:0; color:var(--muted); font-size:10pt; line-height:1.5;">The node of the mnestome.</div>
+ </a>
+ <a href="mnest.html" style="display:block; padding:14px 16px; border:1px solid var(--border); border-radius:8px; background:white; color:inherit; text-decoration:none;">
+ <span style="display:inline-block; padding:2px 9px; border-radius:10px; font-size:9pt; background:var(--code-bg); color:var(--muted); font-weight:500;">second in the triad</span>
+ <div style="color:var(--navy); font-size:11.5pt; font-weight:700; margin:8px 0 6px 0;">mnest</div>
+ <div style="margin:0; color:var(--muted); font-size:10pt; line-height:1.5;">The edge of the mnestome.</div>
+ </a>
+ <a href="../Metnos_Architecture_Intro_v1.html#cap9" style="display:block; padding:14px 16px; border:1px solid var(--border); border-radius:8px; background:white; color:inherit; text-decoration:none;">
+ <span style="display:inline-block; padding:2px 9px; border-radius:10px; font-size:9pt; background:var(--code-bg); color:var(--muted); font-weight:500;">level 1</span>
+ <div style="color:var(--navy); font-size:11.5pt; font-weight:700; margin:8px 0 6px 0;">Architecture, ch. 9</div>
+ <div style="margin:0; color:var(--muted); font-size:10pt; line-height:1.5;">The big picture.</div>
+ </a>
+ <a href="./" style="display:block; padding:14px 16px; border:1px solid var(--border); border-radius:8px; background:white; color:inherit; text-decoration:none;">
+ <span style="display:inline-block; padding:2px 9px; border-radius:10px; font-size:9pt; background:var(--code-bg); color:var(--muted); font-weight:500;">index</span>
+ <div style="color:var(--navy); font-size:11.5pt; font-weight:700; margin:8px 0 6px 0;">Microdesign</div>
+ <div style="margin:0; color:var(--muted); font-size:10pt; line-height:1.5;">All docs.</div>
+ </a>
 </div>
 
 <hr>
 <p style="text-align:center; color:var(--muted); font-size:9.5pt; margin-top:40px;">
-Metnos &mdash; <em>mnestome</em> microdesign v1.1 &mdash; 2026-04-24<br>
-New canonical doc (concept introduced by v1.1).
+Metnos &mdash; <em>mnestome</em> microdesign <br>
+New canonical doc (concept introduced by ).
 </p>
 </body>
 </html>

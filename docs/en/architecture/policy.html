@@ -1,51 +1,50 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Metnos &mdash; policy v1.1 (tested)</title>
-    <meta name="description" content="Microdesign of the Metnos policy: Capability Registry v1.1, autonomy x capability table, persistent per_target grants, combined outcome, integration with vaglio and sandbox.">
-    <meta name="keywords" content="policy, capability registry, autonomy, grants, approval, vaglio, sandbox, metnos">
-    <meta name="author" content="Roberto Brunialti">
-    <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large">
-    <link rel="canonical" href="https://metnos.com/en/architecture/policy.html">
-    <link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/policy.html">
-    <link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/policy.html">
-    <link rel="alternate" hreflang="x-default" href="https://metnos.com/it/architecture/policy.html">
-    <meta property="og:type" content="article">
-    <meta property="og:url" content="https://metnos.com/en/architecture/policy.html">
-    <meta property="og:title" content="Metnos &mdash; policy v1.1 (tested)">
-    <meta property="og:description" content="The Metnos policy: 13 canonical capabilities, 3x13 table per autonomy level, persistent per_target grants, guarantee that a grant can never elevate a denied.">
-    <meta property="og:locale" content="en_US">
-    <meta property="og:locale:alternate" content="it_IT">
-    <meta property="og:site_name" content="Metnos">
-    <meta name="twitter:card" content="summary">
-    <meta name="twitter:title" content="Metnos &mdash; policy v1.1 (tested)">
-    <meta name="twitter:description" content="Capability Registry v1.1 + autonomy x capability table + persistent grants. Status: tested.">
-    <script type="application/ld+json">
+ <meta charset="UTF-8">
+ <meta name="viewport" content="width=device-width, initial-scale=1.0">
+ <title>Metnos &mdash; policy (tested)</title>
+ <meta name="description" content="Microdesign of the Metnos policy: Capability Registry, autonomy x capability table, persistent per_target grants, combined outcome, integration with vaglio and sandbox.">
+ <meta name="keywords" content="policy, capability registry, autonomy, grants, approval, vaglio, sandbox, metnos">
+ <meta name="author" content="Roberto Brunialti">
+ <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large">
+ <link rel="canonical" href="https://metnos.com/en/architecture/policy.html">
+ <link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/policy.html">
+ <link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/policy.html">
+ <link rel="alternate" hreflang="x-default" href="https://metnos.com/it/architecture/policy.html">
+ <meta property="og:type" content="article">
+ <meta property="og:url" content="https://metnos.com/en/architecture/policy.html">
+ <meta property="og:title" content="Metnos &mdash; policy (tested)">
+ <meta property="og:description" content="The Metnos policy: 13 canonical capabilities, 3x13 table per autonomy level, persistent per_target grants, guarantee that a grant can never elevate a denied.">
+ <meta property="og:locale" content="en_US">
+ <meta property="og:locale:alternate" content="it_IT">
+ <meta property="og:site_name" content="Metnos">
+ <meta name="twitter:card" content="summary">
+ <meta name="twitter:title" content="Metnos &mdash; policy (tested)">
+ <meta name="twitter:description" content="Capability Registry + autonomy x capability table + persistent grants. Status: tested.">
+ <script type="application/ld+json">
 {
-  "@context": "https://schema.org",
-  "@type": "TechArticle",
-  "headline": "Metnos — policy v1.1",
-  "description": "Microdesign of the policy: Capability Registry v1.1, autonomy x capability table, persistent per_target grants, combined outcome. Status: tested.",
-  "url": "https://metnos.com/en/architecture/policy.html",
-  "inLanguage": "en",
-  "isPartOf": {"@type": "WebSite", "name": "Metnos", "url": "https://metnos.com/"},
-  "author": {"@type": "Person", "name": "Roberto Brunialti"}
+ "@context": "https://schema.org",
+ "@type": "TechArticle",
+ "headline": "Metnos — policy ",
+ "description": "Microdesign of the policy: Capability Registry, autonomy x capability table, persistent per_target grants, combined outcome. Status: tested.",
+ "url": "https://metnos.com/en/architecture/policy.html",
+ "inLanguage": "en",
+ "isPartOf": {"@type": "WebSite", "name": "Metnos", "url": "https://metnos.com/"},
+ "author": {"@type": "Person", "name": "Roberto Brunialti"}
 }
-    </script>
-    <style>
-:root {
-    --navy: #1A477A; --navy-light: #2B6CB0; --sage: #548235;
-    --bronze: #A0522D; --plum: #6B21A8;
-    --bg: #FAFBFC; --text: #1a1a1a;
-    --border: #d0d7de; --code-bg: #f6f8fa;
-    --table-header: #1A477A; --table-alt: #f0f4f8;
-    --note-bg: #dbeafe; --note-border: #3b82f6;
-    --tip-bg: #dcfce7; --tip-border: #16a34a;
-    --warn-bg: #fef3c7; --warn-border: #f59e0b;
-    --danger-bg: #fee2e2; --danger-border: #dc2626;
-    --muted: #64748B;
+ </script>
+ <style>:root {
+ --navy: #1A477A; --navy-light: #2B6CB0; --sage: #548235;
+ --bronze: #A0522D; --plum: #6B21A8;
+ --bg: #FAFBFC; --text: #1a1a1a;
+ --border: #d0d7de; --code-bg: #f6f8fa;
+ --table-header: #1A477A; --table-alt: #f0f4f8;
+ --note-bg: #dbeafe; --note-border: #3b82f6;
+ --tip-bg: #dcfce7; --tip-border: #16a34a;
+ --warn-bg: #fef3c7; --warn-border: #f59e0b;
+ --danger-bg: #fee2e2; --danger-border: #dc2626;
+ --muted: #64748B;
 }
 * { box-sizing: border-box; }
 body { font-family: 'Segoe UI', Calibri, -apple-system, sans-serif; font-size: 11pt; line-height: 1.65; color: var(--text); background: var(--bg); max-width: 960px; margin: 0 auto; padding: 40px 30px; }
@@ -60,41 +59,20 @@ td { padding: 7px 10px; border-bottom: 1px solid var(--border); vertical-align: 
 tr:nth-child(even) td { background: var(--table-alt); }
 pre { background: var(--code-bg); border: 1px solid var(--border); border-radius: 4px; padding: 12px 16px; overflow-x: auto; font-size: 9.5pt; line-height: 1.55; }
 code { font-family: Consolas, 'Courier New', monospace; }
-p code, li code, td code { background: var(--code-bg); padding: 1px 5px; border-radius: 3px; font-size: 9.5pt; }
-.callout { border-left: 4px solid; padding: 10px 16px; margin: 15px 0; border-radius: 0 4px 4px 0; font-size: 10pt; }
-.callout.note { background: var(--note-bg); border-color: var(--note-border); }
-.callout.tip { background: var(--tip-bg); border-color: var(--tip-border); }
-.callout.warning { background: var(--warn-bg); border-color: var(--warn-border); }
-.title-page { text-align: center; padding: 60px 0 30px; }
-.title-page h1 { font-size: 32pt; border: none; margin: 0; }
-.title-page .subtitle { font-size: 16pt; color: var(--navy-light); margin: 10px 0 30px; }
-.title-page .meta { font-size: 11pt; color: #666; }
-.toc h2 { border: none; }
-.toc ol { font-size: 11pt; line-height: 1.9; }
-.toc a { color: var(--navy); text-decoration: none; }
+p code, li code, td code { background: var(--code-bg); padding: 1px 5px; border-radius: 3px; font-size: 9.5pt; }.callout { border-left: 4px solid; padding: 10px 16px; margin: 15px 0; border-radius: 0 4px 4px 0; font-size: 10pt; }.callout.note { background: var(--note-bg); border-color: var(--note-border); }.callout.tip { background: var(--tip-bg); border-color: var(--tip-border); }.callout.warning { background: var(--warn-bg); border-color: var(--warn-border); }.title-page { text-align: center; padding: 60px 0 30px; }.title-page h1 { font-size: 32pt; border: none; margin: 0; }.title-page.subtitle { font-size: 16pt; color: var(--navy-light); margin: 10px 0 30px; }.title-page.meta { font-size: 11pt; color: #666; }.toc h2 { border: none; }.toc ol { font-size: 11pt; line-height: 1.9; }.toc a { color: var(--navy); text-decoration: none; }
 ul, ol { margin: 8px 0; padding-left: 24px; }
-li { margin-bottom: 4px; }
-.lead { font-size: 12pt; color: var(--navy); border-left: 4px solid var(--sage); padding-left: 14px; margin: 18px 0; }
-.example { background: #fff; border: 1px solid var(--border); border-left: 4px solid var(--bronze); border-radius: 0 4px 4px 0; padding: 12px 16px; margin: 14px 0; font-size: 10.5pt; }
-.example .ex-label { font-weight: 700; color: var(--bronze); font-size: 9.5pt; letter-spacing: 1px; text-transform: uppercase; }
-.status-banner { margin: 18px 0; border-left: 5px solid #16a34a; background: #dcfce7; color: #14532d; padding: 14px 20px; border-radius: 0 8px 8px 0; font-size: 11pt; line-height: 1.55; }
-.status-banner strong { color: #14532d; }
-.status-banner .status-chip { display: inline-block; background: #14532d; color: #fff; padding: 2px 10px; border-radius: 12px; font-size: 9.5pt; letter-spacing: 1px; font-weight: 700; margin-right: 6px; }
-.status-banner .seq { font-size: 9.5pt; color: #2d4a32; margin-top: 8px; }
-.v-allow { display: inline-block; background: #dcfce7; color: #166534; padding: 1px 7px; border-radius: 8px; font-size: 9pt; font-weight: 700; }
-.v-deny { display: inline-block; background: #fee2e2; color: #7F1D1D; padding: 1px 7px; border-radius: 8px; font-size: 9pt; font-weight: 700; }
-.v-approve { display: inline-block; background: #fef3c7; color: #92400E; padding: 1px 7px; border-radius: 8px; font-size: 9pt; font-weight: 700; }
+li { margin-bottom: 4px; }.lead { font-size: 12pt; color: var(--navy); border-left: 4px solid var(--sage); padding-left: 14px; margin: 18px 0; }.example { background: #fff; border: 1px solid var(--border); border-left: 4px solid var(--bronze); border-radius: 0 4px 4px 0; padding: 12px 16px; margin: 14px 0; font-size: 10.5pt; }.example.ex-label { font-weight: 700; color: var(--bronze); font-size: 9.5pt; letter-spacing: 1px; text-transform: uppercase; }.status-banner { margin: 18px 0; border-left: 5px solid #16a34a; background: #dcfce7; color: #14532d; padding: 14px 20px; border-radius: 0 8px 8px 0; font-size: 11pt; line-height: 1.55; }.status-banner strong { color: #14532d; }.status-banner.status-chip { display: inline-block; background: #14532d; color: #fff; padding: 2px 10px; border-radius: 12px; font-size: 9.5pt; letter-spacing: 1px; font-weight: 700; margin-right: 6px; }.status-banner.seq { font-size: 9.5pt; color: #2d4a32; margin-top: 8px; }.v-allow { display: inline-block; background: #dcfce7; color: #166534; padding: 1px 7px; border-radius: 8px; font-size: 9pt; font-weight: 700; }.v-deny { display: inline-block; background: #fee2e2; color: #7F1D1D; padding: 1px 7px; border-radius: 8px; font-size: 9pt; font-weight: 700; }.v-approve { display: inline-block; background: #fef3c7; color: #92400E; padding: 1px 7px; border-radius: 8px; font-size: 9pt; font-weight: 700; }
 table.policy-table td { text-align: center; }
 table.policy-table td:first-child { text-align: left; font-weight: 600; }
-    </style>
+ </style>
 </head>
 <body>
 
 <div class="status-banner">
-<span class="status-chip">TESTED</span>
-<strong>&#10003; Microdesign v1.1 &mdash; aligned with the code as of 4 May 2026.</strong>
-Cluster <code>policy</code> 10/10 green. Additions on 4/5/2026: two new capabilities, <code>auth.password_storage</code> for <code>login_session</code> (ADR&nbsp;0082) and <code>crawl.recursive</code> for <code>find_urls(mode='research'/'archive')</code> (ADR&nbsp;0081), with three-tier policy (default / trusted / owned) governed by <code>~/.config/metnos/owned_domains.json</code> and <code>~/.config/metnos/trusted_origins.json</code>. Reference: <code>runtime/policy.py</code>.
-<div class="seq">Status sequence: <em>under approval</em> &rarr; <em>approved</em> &rarr; <strong>tested</strong> &rarr; <em>implemented</em>. Replaces the obsolete v1.0 written before implementation.</div>
+
+<strong>&#10003; Microdesign &mdash; aligned with the code.</strong>
+Cluster <code>policy</code> 10/10 green. Additions on: two new capabilities, <code>auth.password_storage</code> for <code>login_session</code> and <code>crawl.recursive</code> for <code>find_urls(mode='research'/'archive')</code>, with three-tier policy (default / trusted / owned) governed by <code>~/.config/metnos/owned_domains.json</code> and <code>~/.config/metnos/trusted_origins.json</code>. Reference: <code>runtime/policy.py</code>.
+<div class="seq">Status sequence: <em>under approval</em> &rarr; <em>approved</em> &rarr; <strong>tested</strong> &rarr; <em>implemented</em>. Replaces the obsolete written before implementation.</div>
 </div>
 
 <nav aria-label="Language" style="position:fixed;top:16px;right:20px;z-index:9999;font-family:'Segoe UI',Calibri,sans-serif;font-size:10pt;letter-spacing:2px;background:#FAFBFC;border:1px solid #d0d7de;border-radius:14px;padding:4px 10px;box-shadow:0 1px 4px rgba(0,0,0,0.04);">
@@ -104,35 +82,35 @@ Cluster <code>policy</code> 10/10 green. Additions on 4/5/2026: two new capabili
 </nav>
 
 <div style="background:#fff;border-bottom:1px solid #d0d7de;padding:10px 0;font-size:14px;position:sticky;top:0;z-index:10;margin-bottom:20px;">
-  <div style="max-width:960px;margin:0 auto;padding:0 20px;display:flex;justify-content:space-between;">
-    <a href="../index.html" style="color:#1a477a;text-decoration:none;font-weight:500;">&larr; Documentation index</a>
-    <span style="color:#8e8e93;">Microdesign &rsaquo; <strong style="color:#1a1a1a;">policy</strong></span>
-  </div>
+ <div style="max-width:960px;margin:0 auto;padding:0 20px;display:flex;justify-content:space-between;">
+ <a href="../index.html" style="color:#1a477a;text-decoration:none;font-weight:500;">&larr; Documentation index</a>
+ <span style="color:#8e8e93;">Microdesign &rsaquo; <strong style="color:#1a1a1a;">policy</strong></span>
+ </div>
 </div>
 
 <div class="title-page">
-    <h1>Metnos</h1>
-    <div class="subtitle"><code>policy</code> &mdash; the legality filter for every action</div>
-    <div class="meta">
-        Microdesign v1.1 &mdash; status <strong>TESTED</strong> (April 27, 2026 evening)<br>
-        Audience: those who want to understand how Metnos decides whether an action is permitted, requires approval, or is forbidden.<br>
-        <br>
-        Reading time: 10 minutes.
-    </div>
+ <h1>Metnos</h1>
+ <div class="subtitle"><code>policy</code> &mdash; the legality filter for every action</div>
+ <div class="meta">
+ Microdesign<br>
+ Audience: those who want to understand how Metnos decides whether an action is permitted, requires approval, or is forbidden.<br>
+ <br>
+ Reading time: 10 minutes.
+ </div>
 </div>
 
 <div class="toc">
 <h2>Contents</h2>
 <ol>
-    <li><a href="#cap1">What policy is</a></li>
-    <li><a href="#cap2">Capability Registry v1.1</a></li>
-    <li><a href="#cap3">Autonomy &times; capability table</a></li>
-    <li><a href="#cap4">Persistent per_target grants</a></li>
-    <li><a href="#cap5">Combined outcome (<code>effective_outcome</code>)</a></li>
-    <li><a href="#cap6">Runtime integration</a></li>
-    <li><a href="#cap7">CLI</a></li>
-    <li><a href="#cap8">Tests</a></li>
-    <li><a href="#cap9">Limits and what is deferred to v1.2+</a></li>
+ <li><a href="#cap1">What policy is</a></li>
+ <li><a href="#cap2">Capability Registry </a></li>
+ <li><a href="#cap3">Autonomy &times; capability table</a></li>
+ <li><a href="#cap4">Persistent per_target grants</a></li>
+ <li><a href="#cap5">Combined outcome (<code>effective_outcome</code>)</a></li>
+ <li><a href="#cap6">Runtime integration</a></li>
+ <li><a href="#cap7">CLI</a></li>
+ <li><a href="#cap8">Tests</a></li>
+ <li><a href="#cap9">Limits and what is deferred to +</a></li>
 </ol>
 </div>
 
@@ -142,8 +120,32 @@ Cluster <code>policy</code> 10/10 green. Additions on 4/5/2026: two new capabili
 Policy is the legality filter of Metnos: layer 2 of the architecture (ch. 6 of the <a href="../Metnos_Architecture_Intro_v1.html#cap6">Architecture</a>). For every combination of autonomy level, capability and target it decides one outcome among <em>allowed</em>, <em>denied</em>, <em>approval_required</em>. It is the module that embodies the rules shared between Roberto and the agent: what may be done without asking, what must be asked, what is never done.
 </p>
 
+ <figure>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 150" width="100%" preserveAspectRatio="xMidYMid meet" style="font-family:'Segoe UI',Calibri,sans-serif;font-size:11px;">
+<defs><marker id="m-d" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#1A477A"/></marker></defs>
+<rect x="10" y="70" width="178" height="56" rx="8" fill="#D9E4F0" stroke="#1A477A"/>
+<text x="99" y="94" text-anchor="middle" fill="#1A477A" font-weight="700">requested capability</text>
+<text x="99" y="112" text-anchor="middle" fill="#475569" font-size="9.5">from the executor</text>
+<rect x="206" y="70" width="178" height="56" rx="8" fill="#FEF3C7" stroke="#B7791F"/>
+<text x="295" y="94" text-anchor="middle" fill="#1A477A" font-weight="700">autonomy level</text>
+<text x="295" y="112" text-anchor="middle" fill="#475569" font-size="9.5">ReadOnly/Supervised/Full</text>
+<rect x="402" y="70" width="178" height="56" rx="8" fill="#EDE4F7" stroke="#6B21A8"/>
+<text x="491" y="94" text-anchor="middle" fill="#1A477A" font-weight="700">per_target grants</text>
+<text x="491" y="112" text-anchor="middle" fill="#475569" font-size="9.5">persistent</text>
+<rect x="598" y="70" width="178" height="56" rx="8" fill="#DCFCE7" stroke="#3F6212"/>
+<text x="687" y="94" text-anchor="middle" fill="#1A477A" font-weight="700">effective_outcome</text>
+<text x="687" y="112" text-anchor="middle" fill="#475569" font-size="9.5">allow / ask / deny</text>
+<line x1="188" y1="98" x2="204" y2="98" stroke="#1A477A" stroke-width="2" marker-end="url(#m-po)"/>
+<line x1="384" y1="98" x2="400" y2="98" stroke="#1A477A" stroke-width="2" marker-end="url(#m-po)"/>
+<line x1="580" y1="98" x2="596" y2="98" stroke="#1A477A" stroke-width="2" marker-end="url(#m-po)"/>
+
+</svg>
+<figcaption>Figure 1 &mdash; The capability registry: the requested capability crosses the autonomy level and any per-target grants, producing the effective outcome.</figcaption>
+</figure>
+
+
 <p>
-Policy lives alongside two other layers that decide different things, and this is the clarity point that v1.0 lacked:
+Policy lives alongside two other layers that decide different things, and this is the clarity point that lacked:
 </p>
 
 <ul>
@@ -160,7 +162,7 @@ The three filters are in series: policy runs first (it is the cheapest, a table 
 <strong>No policy decision inside executor code.</strong> An executor knows nothing about the current autonomy level or the active grants. It only declares its capabilities in the manifest. Policy is the module where all rules live, readable in one place, modifiable without touching a single executor.
 </div>
 
-<h1 id="cap2">2. Capability Registry v1.1</h1>
+<h1 id="cap2">2. Capability Registry </h1>
 
 <p>
 The registry is the closed dictionary of actions Metnos recognises. Thirteen canonical entries, defined in <code>runtime/policy.py:CAPABILITY_REGISTRY</code> (<code>runtime/policy.py:46-121</code>). Each entry is a <code>CapabilitySpec</code> with four attributes:
@@ -179,8 +181,8 @@ The registry is the closed dictionary of actions Metnos recognises. Thirteen can
 <tr><td><code>fs:write</code></td><td><strong>yes</strong></td><td><code>per_target</code></td><td><code>path_glob</code></td><td>write/modify files within path_globs (critical)</td></tr>
 <tr><td><code>code:exec</code></td><td><strong>yes</strong></td><td><code>always</code></td><td><code>exact</code></td><td>execute a shell command from a whitelist (e.g. package manager)</td></tr>
 <tr><td><code>network:http</code></td><td>no</td><td><code>per_target</code></td><td><code>host</code></td><td>HTTP/HTTPS GET/POST to authorised hosts</td></tr>
-<tr><td><code>llm:local</code></td><td>no</td><td><code>none</code></td><td><code>none</code></td><td>local LLM call (Ollama, llama.cpp), zero cost</td></tr>
-<tr><td><code>llm:online</code></td><td>no</td><td><code>per_target</code></td><td><code>none</code></td><td>online LLM call (Anthropic, OpenAI, ...), cost &gt; 0</td></tr>
+<tr><td><code>llm:local</code></td><td>no</td><td><code>none</code></td><td><code>none</code></td><td>local LLM call (llama-server, llama.cpp), zero cost</td></tr>
+<tr><td><code>llm:online</code></td><td>no</td><td><code>per_target</code></td><td><code>none</code></td><td>online LLM call (Anthropic, OpenAI,...), cost &gt; 0</td></tr>
 <tr><td><code>mail:read</code></td><td>no</td><td><code>per_target</code></td><td><code>exact</code></td><td>read IMAP messages from an authorised mailbox</td></tr>
 <tr><td><code>mail:send</code></td><td><strong>yes</strong></td><td><code>always</code></td><td><code>exact</code></td><td>SMTP send to recipients (irreversible, high stakes)</td></tr>
 <tr><td><code>channel:in</code></td><td>no</td><td><code>none</code></td><td><code>exact</code></td><td>receive messages from a channel (Telegram, CLI, voice)</td></tr>
@@ -262,15 +264,15 @@ Defined in <code>runtime/policy.py:SCHEMA</code> (<code>runtime/policy.py:186-20
 </p>
 
 <pre>CREATE TABLE IF NOT EXISTS grants (
-    id              INTEGER PRIMARY KEY AUTOINCREMENT,
-    channel         TEXT NOT NULL,
-    sender_id       TEXT NOT NULL,
-    capability      TEXT NOT NULL,
-    target          TEXT NOT NULL,
-    granted_at      TEXT NOT NULL,
-    expires_at      TEXT,
-    granted_by      TEXT,
-    revoked_at      TEXT
+ id INTEGER PRIMARY KEY AUTOINCREMENT,
+ channel TEXT NOT NULL,
+ sender_id TEXT NOT NULL,
+ capability TEXT NOT NULL,
+ target TEXT NOT NULL,
+ granted_at TEXT NOT NULL,
+ expires_at TEXT,
+ granted_by TEXT,
+ revoked_at TEXT
 );</pre>
 
 <p>
@@ -286,24 +288,24 @@ File path: <code>~/.local/state/metnos/grants.db</code>, override available via 
 <table>
 <tr><th>function</th><th>what it does</th><th>citation</th></tr>
 <tr>
-  <td><code>record_grant(channel, sender_id, capability, target, expires_at=None, granted_by=None)</code></td>
-  <td>Records a concession. Raises <code>ValueError</code> if <code>capability</code> is not in the registry. Returns the <code>Grant</code> object with assigned <code>id</code>.</td>
-  <td><code>runtime/policy.py:232-259</code></td>
+ <td><code>record_grant(channel, sender_id, capability, target, expires_at=None, granted_by=None)</code></td>
+ <td>Records a concession. Raises <code>ValueError</code> if <code>capability</code> is not in the registry. Returns the <code>Grant</code> object with assigned <code>id</code>.</td>
+ <td><code>runtime/policy.py:232-259</code></td>
 </tr>
 <tr>
-  <td><code>has_grant(channel, sender_id, capability, target)</code></td>
-  <td>True if an active grant (not revoked, not expired) exists for the four-tuple. The query compares <code>expires_at</code> with the current time.</td>
-  <td><code>runtime/policy.py:262-284</code></td>
+ <td><code>has_grant(channel, sender_id, capability, target)</code></td>
+ <td>True if an active grant (not revoked, not expired) exists for the four-tuple. The query compares <code>expires_at</code> with the current time.</td>
+ <td><code>runtime/policy.py:262-284</code></td>
 </tr>
 <tr>
-  <td><code>list_grants(channel=None, sender_id=None, include_revoked=False)</code></td>
-  <td>Lists grants, filterable by channel/sender, optionally including revoked. Sorted by <code>granted_at</code> descending.</td>
-  <td><code>runtime/policy.py:287-311</code></td>
+ <td><code>list_grants(channel=None, sender_id=None, include_revoked=False)</code></td>
+ <td>Lists grants, filterable by channel/sender, optionally including revoked. Sorted by <code>granted_at</code> descending.</td>
+ <td><code>runtime/policy.py:287-311</code></td>
 </tr>
 <tr>
-  <td><code>revoke_grant(grant_id)</code></td>
-  <td>Sets <code>revoked_at</code> to the current time. Returns True if something was modified, False if the grant was already revoked or did not exist.</td>
-  <td><code>runtime/policy.py:314-325</code></td>
+ <td><code>revoke_grant(grant_id)</code></td>
+ <td>Sets <code>revoked_at</code> to the current time. Returns True if something was modified, False if the grant was already revoked or did not exist.</td>
+ <td><code>runtime/policy.py:314-325</code></td>
 </tr>
 </table>
 
@@ -314,7 +316,7 @@ All four functions open and close the connection per call: no in-memory state. T
 <h2>4.3 When grants are written</h2>
 
 <p>
-In v1.1 the <code>policy</code> module is <em>read-only</em> from the planner: the planner reads the table and the grants but never creates them. Creation happens in the approval dispatcher (ch. 5 phase 5, see <a href="../it/architecture/approval_ux.html">approval_ux</a>): when a pending request resolves as <em>approved</em> with scope <em>this and similar</em>, the dispatcher calls <code>record_grant</code> and from that moment the concession is persistent.
+In the <code>policy</code> module is <em>read-only</em> from the planner: the planner reads the table and the grants but never creates them. Creation happens in the approval dispatcher (ch. 5 phase 5, see <a href="../it/architecture/approval_ux.html">approval_ux</a>): when a pending request resolves as <em>approved</em> with scope <em>this and similar</em>, the dispatcher calls <code>record_grant</code> and from that moment the concession is persistent.
 </p>
 
 <h1 id="cap5">5. Combined outcome (<code>effective_outcome</code>)</h1>
@@ -359,33 +361,33 @@ Table for (ReadOnly, fs:write) &rarr; <code>denied</code>. Even if the grant exi
 <div class="ex-label">Example 3 &mdash; Full, mail:send</div>
 Level Full, capability <code>mail:send</code>, recipient <code>invoice@known-client.com</code> to whom Roberto has sent ten emails before.
 <br><br>
-Table for (Full, mail:send) &rarr; <code>approval_required</code> (the "always" rule). Active grant? For <code>mail:send</code> the default mode is <code>always</code>, and in v1.1 no grant is ever created for capabilities marked <code>always</code>. Outcome <span class="v-approve">approval_required</span>: the email goes to the queue, Roberto sees the card, approves or denies that single email.
+Table for (Full, mail:send) &rarr; <code>approval_required</code> (the "always" rule). Active grant? For <code>mail:send</code> the default mode is <code>always</code>, and in no grant is ever created for capabilities marked <code>always</code>. Outcome <span class="v-approve">approval_required</span>: the email goes to the queue, Roberto sees the card, approves or denies that single email.
 </div>
 
 <h1 id="cap6">6. Runtime integration</h1>
 
 <p>
-In v1.1 <code>runtime/policy.py</code> is a separate module, complete and tested, but not yet stitched into the planner. Integration into <code>agent_runtime</code> is the last line of phase 5 and will arrive in the next iteration. The planned shape:
+In <code>runtime/policy.py</code> is a separate module, complete and tested, but not yet stitched into the planner. Integration into <code>agent_runtime</code> is the last line of phase 5 and will arrive in the next iteration. The planned shape:
 </p>
 
 <pre>def execute_step(step, ctx):
-    cap = step.capability        # e.g. "fs:write"
-    target = step.target         # e.g. "/home/roberto/Documents/invoices-2026/04.pdf"
-    outcome = policy.effective_outcome(
-        ctx.autonomy_level,      # "ReadOnly" | "Supervised" | "Full"
-        cap,
-        channel=ctx.channel,     # e.g. "telegram"
-        sender_id=ctx.sender_id, # e.g. "roberto"
-        target=target,
-    )
-    if outcome == "denied":
-        return Refused(reason="insufficient level for " + cap)
-    if outcome == "approval_required":
-        pending = approval_registry.create_pending(step, ctx)
-        channels.approval.render_approval_card(pending, ctx.channel)
-        return Awaiting(pending_id=pending.id)
-    # outcome == "allowed"
-    return invoke_executor(step.executor, step.args, autonomy=ctx.autonomy_level)</pre>
+ cap = step.capability # e.g. "fs:write"
+ target = step.target # e.g. "/home/roberto/Documents/invoices-2026/04.pdf"
+ outcome = policy.effective_outcome(
+ ctx.autonomy_level, # "ReadOnly" | "Supervised" | "Full"
+ cap,
+ channel=ctx.channel, # e.g. "telegram"
+ sender_id=ctx.sender_id, # e.g. "roberto"
+ target=target,
+ )
+ if outcome == "denied":
+ return Refused(reason="insufficient level for " + cap)
+ if outcome == "approval_required":
+ pending = approval_registry.create_pending(step, ctx)
+ channels.approval.render_approval_card(pending, ctx.channel)
+ return Awaiting(pending_id=pending.id)
+ # outcome == "allowed"
+ return invoke_executor(step.executor, step.args, autonomy=ctx.autonomy_level)</pre>
 
 <p>
 Three references to existing modules:
@@ -398,7 +400,7 @@ Three references to existing modules:
 </ul>
 
 <p>
-The planner never reads the table or the grants directly: it makes a single call to <code>effective_outcome</code> and branches on the outcome. This keeps <code>policy</code> as the single source of truth for the rules; the day the rules change (v1.2: cost tier, rate limit), the planner is not touched.
+The planner never reads the table or the grants directly: it makes a single call to <code>effective_outcome</code> and branches on the outcome. This keeps <code>policy</code> as the single source of truth for the rules; the day the rules change (: cost tier, rate limit), the planner is not touched.
 </p>
 
 <h1 id="cap7">7. CLI</h1>
@@ -423,7 +425,7 @@ JSON-line output makes piping into <code>jq</code> easy: for instance <code>pyth
 <h1 id="cap8">8. Tests</h1>
 
 <p>
-Cluster <code>policy</code> in the runtime test framework: 10/10 green as of April 27, 2026. Cases cover the registry, the three table rules, the grants round-trip, and the security invariant separating <code>denied</code> from grant-elevatable cases.
+Cluster <code>policy</code> in the runtime test framework: 10/10 green. Cases cover the registry, the three table rules, the grants round-trip, and the security invariant separating <code>denied</code> from grant-elevatable cases.
 </p>
 
 <table>
@@ -444,25 +446,25 @@ Cluster <code>policy</code> in the runtime test framework: 10/10 green as of Apr
 The three [security]-marked cases are the invariants that bind future evolution of the module: any change that breaks them is a dismantling of the security posture, not a refactor.
 </p>
 
-<h1 id="cap9">9. Limits and what is deferred to v1.2+</h1>
+<h1 id="cap9">9. Limits and what is deferred to +</h1>
 
 <table>
-<tr><th>v1.1 limit</th><th>when it is removed</th></tr>
+<tr><th> limit</th><th>when it is removed</th></tr>
 <tr>
-  <td><strong>No rate-limit in code.</strong> The autonomy &times; capability table does not yet distinguish "one call vs ten calls per minute". A granted capability is granted without ceiling; accidental abuse (runaway loops, an executor calling HTTP a hundred times) is not throttled at policy level.</td>
-  <td>v1.2, with a per_capability token bucket stored in the same DB as the grants. The token bucket requires choosing parameters (capacity, refill rate) for each capability; real-usage telemetry is needed before fixing them.</td>
+ <td><strong>No rate-limit in code.</strong> The autonomy &times; capability table does not yet distinguish "one call vs ten calls per minute". A granted capability is granted without ceiling; accidental abuse (runaway loops, an executor calling HTTP a hundred times) is not throttled at policy level.</td>
+ <td>, with a per_capability token bucket stored in the same DB as the grants. The token bucket requires choosing parameters (capacity, refill rate) for each capability; real-usage telemetry is needed before fixing them.</td>
 </tr>
 <tr>
-  <td><strong>No cost tier.</strong> <code>llm:online</code> requires a generic <code>approval_required</code>, it does not differentiate "Sonnet at $0.02 per call" from "GPT-5 at $0.17". Roberto sees all online calls as equal, even when the cost varies by an order of magnitude.</td>
-  <td>v1.2, when the LLM judge will measure the cost factor inside vaglio's reward. Policy will then expose explicit thresholds (e.g. "up to $0.05 allowed in Full, above approval_required").</td>
+ <td><strong>No cost tier.</strong> <code>llm:online</code> requires a generic <code>approval_required</code>, it does not differentiate "Sonnet at $0.02 per call" from "GPT-5 at $0.17". Roberto sees all online calls as equal, even when the cost varies by an order of magnitude.</td>
+ <td>, when the LLM judge will measure the cost factor inside vaglio's reward. Policy will then expose explicit thresholds (e.g. "up to $0.05 allowed in Full, above approval_required").</td>
 </tr>
 <tr>
-  <td><strong>No custom policy per user profile.</strong> The table is compiled in code. A per-user override (e.g. Roberto vs a family member with different levels on the same capabilities) requires a config layer that does not yet exist.</td>
-  <td>When pairing supports multiple profiles with distinct sender_ids mapped to different tables. A boot-time TOML layer (something like <code>policy_overrides.toml</code>) will be introduced, but with integrity constraints against the registry.</td>
+ <td><strong>No custom policy per user profile.</strong> The table is compiled in code. A per-user override (e.g. Roberto vs a family member with different levels on the same capabilities) requires a config layer that does not yet exist.</td>
+ <td>When pairing supports multiple profiles with distinct sender_ids mapped to different tables. A boot-time TOML layer (something like <code>policy_overrides.toml</code>) will be introduced, but with integrity constraints against the registry.</td>
 </tr>
 <tr>
-  <td><strong>No automatic revoke.</strong> Grants expire only via explicit <code>expires_at</code>. An "inactivity expiry" (e.g. 90 days unused) does not exist; grants stay in the DB even for years.</td>
-  <td>When the active-grants pool grows large enough to make pruning useful. Simple implementation: an internal cron that, at boot, looks for grants without recent accesses (a <code>last_used</code> column would be needed) or with a very old <code>granted_at</code> and revokes them with reason "stale".</td>
+ <td><strong>No automatic revoke.</strong> Grants expire only via explicit <code>expires_at</code>. An "inactivity expiry" (e.g. 90 days unused) does not exist; grants stay in the DB even for years.</td>
+ <td>When the active-grants pool grows large enough to make pruning useful. Simple implementation: an internal cron that, at boot, looks for grants without recent accesses (a <code>last_used</code> column would be needed) or with a very old <code>granted_at</code> and revokes them with reason "stale".</td>
 </tr>
 </table>
 

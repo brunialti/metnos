@@ -1,47 +1,46 @@
 <!DOCTYPE html>
 <html lang="it">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Metnos &mdash; agent_runtime v1.1 (tested)</title>
-    <meta name="description" content="Microprogettazione del pianificatore di Metnos: come riceve una richiesta utente, sceglie cosa fare, esegue, risponde. Doc canonico v1.1 testato dal POC il 26/4/2026.">
-    <meta name="keywords" content="agent_runtime, pianificatore, ReAct, multistep, tool-use, scratchpad, data piping, mode router, vaglio, microprogettazione, metnos">
-    <meta name="author" content="Roberto Brunialti">
-    <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large">
-    <link rel="canonical" href="https://metnos.com/it/architecture/agent_runtime.html">
-    <link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/agent_runtime.html">
-    <link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/agent_runtime.html">
-    <link rel="alternate" hreflang="x-default" href="https://metnos.com/it/architecture/agent_runtime.html">
-    <meta property="og:type" content="article">
-    <meta property="og:url" content="https://metnos.com/it/architecture/agent_runtime.html">
-    <meta property="og:title" content="Metnos &mdash; agent_runtime v1.1 (tested)">
-    <meta property="og:description" content="Il pianificatore di Metnos. Come riceve una richiesta, decide cosa fare, e risponde. Microprogettazione testata.">
-    <meta property="og:locale" content="it_IT">
-    <meta property="og:site_name" content="Metnos">
-    <script type="application/ld+json">
+ <meta charset="UTF-8">
+ <meta name="viewport" content="width=device-width, initial-scale=1.0">
+ <title>Metnos &mdash; agent_runtime: il runtime turno per turno</title>
+ <meta name="description" content="Microprogettazione del runtime di Metnos: come riceve una richiesta utente, estrae l'intento, instrada al motore cognitivo, esegue e risponde.">
+ <meta name="keywords" content="agent_runtime, pianificatore, ReAct, multistep, tool-use, scratchpad, data piping, mode router, vaglio, microprogettazione, metnos">
+ <meta name="author" content="Roberto Brunialti">
+ <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large">
+ <link rel="canonical" href="https://metnos.com/it/architecture/agent_runtime.html">
+ <link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/agent_runtime.html">
+ <link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/agent_runtime.html">
+ <link rel="alternate" hreflang="x-default" href="https://metnos.com/it/architecture/agent_runtime.html">
+ <meta property="og:type" content="article">
+ <meta property="og:url" content="https://metnos.com/it/architecture/agent_runtime.html">
+ <meta property="og:title" content="Metnos &mdash; agent_runtime: il runtime turno per turno">
+ <meta property="og:description" content="Il runtime di Metnos. Come riceve una richiesta, estrae l'intento, instrada al motore, esegue e risponde.">
+ <meta property="og:locale" content="it_IT">
+ <meta property="og:site_name" content="Metnos">
+ <script type="application/ld+json">
 {
-  "@context": "https://schema.org",
-  "@type": "TechArticle",
-  "headline": "Metnos — agent_runtime v1.1",
-  "description": "Microprogettazione del pianificatore di Metnos: tool-use nativo, multistep ReAct, data piping, scratchpad, 3-tier LLM. Stato: tested.",
-  "url": "https://metnos.com/it/architecture/agent_runtime.html",
-  "inLanguage": "it",
-  "isPartOf": {"@type": "WebSite", "name": "Metnos", "url": "https://metnos.com/"},
-  "author": {"@type": "Person", "name": "Roberto Brunialti"}
+ "@context": "https://schema.org",
+ "@type": "TechArticle",
+ "headline": "Metnos — agent_runtime: il runtime turno per turno",
+ "description": "Microprogettazione del runtime di Metnos: estrazione intento, motore cognitivo, tool-use nativo, data piping, scratchpad, 4 tier LLM.",
+ "url": "https://metnos.com/it/architecture/agent_runtime.html",
+ "inLanguage": "it",
+ "isPartOf": {"@type": "WebSite", "name": "Metnos", "url": "https://metnos.com/"},
+ "author": {"@type": "Person", "name": "Roberto Brunialti"}
 }
-    </script>
-    <style>
-:root {
-    --navy: #1A477A; --navy-light: #2B6CB0; --sage: #548235;
-    --bronze: #A0522D; --plum: #6B21A8;
-    --bg: #FAFBFC; --text: #1a1a1a;
-    --border: #d0d7de; --code-bg: #f6f8fa;
-    --table-header: #1A477A; --table-alt: #f0f4f8;
-    --note-bg: #dbeafe; --note-border: #3b82f6;
-    --tip-bg: #dcfce7; --tip-border: #16a34a;
-    --warn-bg: #fef3c7; --warn-border: #f59e0b;
-    --danger-bg: #fee2e2; --danger-border: #dc2626;
-    --muted: #64748B;
+ </script>
+ <style>:root {
+ --navy: #1A477A; --navy-light: #2B6CB0; --sage: #548235;
+ --bronze: #A0522D; --plum: #6B21A8;
+ --bg: #FAFBFC; --text: #1a1a1a;
+ --border: #d0d7de; --code-bg: #f6f8fa;
+ --table-header: #1A477A; --table-alt: #f0f4f8;
+ --note-bg: #dbeafe; --note-border: #3b82f6;
+ --tip-bg: #dcfce7; --tip-border: #16a34a;
+ --warn-bg: #fef3c7; --warn-border: #f59e0b;
+ --danger-bg: #fee2e2; --danger-border: #dc2626;
+ --muted: #64748B;
 }
 * { box-sizing: border-box; }
 body { font-family: 'Segoe UI', Calibri, -apple-system, sans-serif; font-size: 11pt; line-height: 1.65; color: var(--text); background: var(--bg); max-width: 960px; margin: 0 auto; padding: 40px 30px; }
@@ -56,39 +55,21 @@ td { padding: 7px 10px; border-bottom: 1px solid var(--border); vertical-align: 
 tr:nth-child(even) td { background: var(--table-alt); }
 pre { background: var(--code-bg); border: 1px solid var(--border); border-radius: 4px; padding: 12px 16px; overflow-x: auto; font-size: 9.5pt; line-height: 1.55; }
 code { font-family: Consolas, 'Courier New', monospace; }
-p code, li code, td code { background: var(--code-bg); padding: 1px 5px; border-radius: 3px; font-size: 9.5pt; }
-.callout { border-left: 4px solid; padding: 10px 16px; margin: 15px 0; border-radius: 0 4px 4px 0; font-size: 10pt; }
-.callout.note { background: var(--note-bg); border-color: var(--note-border); }
-.callout.tip { background: var(--tip-bg); border-color: var(--tip-border); }
-.callout.warning { background: var(--warn-bg); border-color: var(--warn-border); }
-.callout.danger { background: var(--danger-bg); border-color: var(--danger-border); }
-.title-page { text-align: center; padding: 60px 0 30px; }
-.title-page h1 { font-size: 32pt; border: none; margin: 0; }
-.title-page .subtitle { font-size: 16pt; color: var(--navy-light); margin: 10px 0 30px; }
-.title-page .meta { font-size: 11pt; color: #666; }
-.toc h2 { border: none; }
-.toc ol { font-size: 11pt; line-height: 1.9; }
-.toc a { color: var(--navy); text-decoration: none; }
-.toc a:hover { text-decoration: underline; }
+p code, li code, td code { background: var(--code-bg); padding: 1px 5px; border-radius: 3px; font-size: 9.5pt; }.callout { border-left: 4px solid; padding: 10px 16px; margin: 15px 0; border-radius: 0 4px 4px 0; font-size: 10pt; }.callout.note { background: var(--note-bg); border-color: var(--note-border); }.callout.tip { background: var(--tip-bg); border-color: var(--tip-border); }.callout.warning { background: var(--warn-bg); border-color: var(--warn-border); }.callout.danger { background: var(--danger-bg); border-color: var(--danger-border); }.title-page { text-align: center; padding: 60px 0 30px; }.title-page h1 { font-size: 32pt; border: none; margin: 0; }.title-page.subtitle { font-size: 16pt; color: var(--navy-light); margin: 10px 0 30px; }.title-page.meta { font-size: 11pt; color: #666; }.toc h2 { border: none; }.toc ol { font-size: 11pt; line-height: 1.9; }.toc a { color: var(--navy); text-decoration: none; }.toc a:hover { text-decoration: underline; }
 ul, ol { margin: 8px 0; padding-left: 24px; }
-li { margin-bottom: 4px; }
-.lead { font-size: 12pt; color: var(--navy); border-left: 4px solid var(--sage); padding-left: 14px; margin: 18px 0; }
-.example { background: #fff; border: 1px solid var(--border); border-left: 4px solid var(--bronze); border-radius: 0 4px 4px 0; padding: 12px 16px; margin: 14px 0; font-size: 10.5pt; }
-.example .ex-label { font-weight: 700; color: var(--bronze); font-size: 9.5pt; letter-spacing: 1px; text-transform: uppercase; }
-.status-banner { margin: 18px 0; border-left: 5px solid #16a34a; background: #dcfce7; color: #14532d; padding: 14px 20px; border-radius: 0 8px 8px 0; font-size: 11pt; line-height: 1.55; }
-.status-banner strong { color: #14532d; }
-.status-banner a { color: #14532d; text-decoration: underline; }
-.status-banner .status-chip { display: inline-block; background: #14532d; color: #fff; padding: 2px 10px; border-radius: 12px; font-size: 9.5pt; letter-spacing: 1px; font-weight: 700; margin-right: 6px; }
-.status-banner .seq { font-size: 9.5pt; color: #2d4a32; margin-top: 8px; }
-    </style>
+li { margin-bottom: 4px; }.lead { font-size: 12pt; color: var(--navy); border-left: 4px solid var(--sage); padding-left: 14px; margin: 18px 0; }.example { background: #fff; border: 1px solid var(--border); border-left: 4px solid var(--bronze); border-radius: 0 4px 4px 0; padding: 12px 16px; margin: 14px 0; font-size: 10.5pt; }.example.ex-label { font-weight: 700; color: var(--bronze); font-size: 9.5pt; letter-spacing: 1px; text-transform: uppercase; }.status-banner { margin: 18px 0; border-left: 5px solid #16a34a; background: #dcfce7; color: #14532d; padding: 14px 20px; border-radius: 0 8px 8px 0; font-size: 11pt; line-height: 1.55; }.status-banner strong { color: #14532d; }.status-banner a { color: #14532d; text-decoration: underline; }.status-banner.status-chip { display: inline-block; background: #14532d; color: #fff; padding: 2px 10px; border-radius: 12px; font-size: 9.5pt; letter-spacing: 1px; font-weight: 700; margin-right: 6px; }.status-banner.seq { font-size: 9.5pt; color: #2d4a32; margin-top: 8px; }
+ </style>
 </head>
 <body>
 
 <div class="status-banner">
-<span class="status-chip">TESTED</span>
-<strong>Microprogettazione v1.1 &mdash; allineata al codice al 4 maggio 2026.</strong>
-La componente &egrave; stata realizzata e testata a livello di modulo e di cluster nel POC v1.1 (test framework: <strong>cluster <code>agent_runtime</code> 109/109 verde</strong>, totale sistema 67/67 verde al 1/5/2026), poi estesa il 4/5/2026 con telemetria fine StepLog (5 sotto-componenti: <code>intent_ms</code>, <code>prefilter_ms</code>, <code>vaglio_ms</code>, <code>exec_ms</code>, <code>rerank_ms</code> &mdash; ADR&nbsp;0080), guard ANTI-COLLISION nel prompt PLANNER (ADR&nbsp;0079), blocco PROJECT PATHS NOTI letto da <code>runtime/project_paths.json</code>, blocco UTENTI NOTI per multi-user (ADR&nbsp;0083), scrub credenziali nel turn log (ADR&nbsp;0082), adaptive re-rank intra-turno (ADR&nbsp;0072). Riferimento di implementazione: <code>/opt/myclaw/runtime/agent_runtime.py</code>.
-<div class="seq">Stato nella sequenza dei microdesign: <em>under approval</em> &rarr; <em>approved</em> &rarr; <strong>tested</strong> &rarr; <em>implemented</em> (quando l'intero sistema sar&agrave; pronto in produzione). Sostituisce la versione 1.0 del 24/4/2026, ormai obsoleta.</div>
+<strong>Come Metnos riceve una richiesta, decide cosa fare, esegue e risponde.</strong>
+Il runtime dell'agente &egrave; il cuore che orchestra ogni turno: estrae
+l'intento, instrada la richiesta al motore cognitivo, esegue gli step e
+compone la risposta, con telemetria fine per ogni sotto-fase
+(<code>intent_ms</code>, <code>prefilter_ms</code>, <code>vaglio_ms</code>,
+<code>exec_ms</code>, <code>rerank_ms</code>). Riferimento di implementazione:
+<code>runtime/agent_runtime.py</code>.
 </div>
 
 <nav aria-label="Language" style="position:fixed;top:16px;right:20px;z-index:9999;font-family:'Segoe UI',Calibri,sans-serif;font-size:10pt;letter-spacing:2px;background:#FAFBFC;border:1px solid #d0d7de;border-radius:14px;padding:4px 10px;box-shadow:0 1px 4px rgba(0,0,0,0.04);">
@@ -97,23 +78,22 @@ La componente &egrave; stata realizzata e testata a livello di modulo e di clust
 </nav>
 
 <div style="background:#fff;border-bottom:1px solid #d0d7de;padding:10px 0;font-size:14px;position:sticky;top:0;z-index:10;margin-bottom:20px;">
-  <div style="max-width:960px;margin:0 auto;padding:0 20px;display:flex;justify-content:space-between;">
-    <a href="../index.html" style="color:#1a477a;text-decoration:none;font-weight:500;">&larr; Indice documentazione</a>
-    <span style="color:#8e8e93;">Microprogettazione &rsaquo; <strong style="color:#1a1a1a;">agent_runtime</strong></span>
-  </div>
+ <div style="max-width:960px;margin:0 auto;padding:0 20px;display:flex;justify-content:space-between;">
+ <a href="../index.html" style="color:#1a477a;text-decoration:none;font-weight:500;">&larr; Indice documentazione</a>
+ <span style="color:#8e8e93;">Microprogettazione &rsaquo; <strong style="color:#1a1a1a;">agent_runtime</strong></span>
+ </div>
 </div>
 
 <div class="title-page">
-    <h1>Metnos</h1>
-    <div class="subtitle"><code>agent_runtime</code> &mdash; il pianificatore turno per turno</div>
-    <div class="meta">
-        Microprogettazione v1.1 &mdash; stato <strong>TESTED</strong> (26 aprile 2026)<br>
-        Validato dal POC v1.1 con test framework SQLite a 3 livelli<br>
-        Pubblico: chi legge per capire come funziona Metnos dentro;<br>
-        chi implementa o estende un componente del runtime.<br>
-        <br>
-        Lettura: 18 minuti.
-    </div>
+ <h1>Metnos</h1>
+ <div class="subtitle"><code>agent_runtime</code> &mdash; il runtime turno per turno</div>
+ <div class="meta">
+ Microprogettazione &mdash; il runtime dell'agente.<br>
+ Pubblico: chi legge per capire come funziona Metnos dentro;<br>
+ chi implementa o estende un componente del runtime.<br>
+ <br>
+ Lettura: 18 minuti.
+ </div>
 </div>
 
 <div class="callout" style="border-left:5px solid #1A477A;background:#e3f2fd;color:#0d3a6b;padding:14px 18px;border-radius:0 8px 8px 0;margin:18px 0;">
@@ -134,7 +114,7 @@ fallback BGE-M3 quando confidence bassa), <code>verb_first</code>
 <code>~/.local/share/metnos/prefilter_telemetry.jsonl</code>; CLI A/B
 <code>python3 -m prefilter_stats --compare a,b</code>.
 <br><br>
-<strong>Scaling validato a 1000 tool</strong> (bench 17/5/2026 su 300 query
+<strong>Scaling validato a 1000 tool</strong> (bench su 300 query
 reali, catalog reale + distractor sintetici): le strategie top-3 mostrano
 degradazione di <strong>&minus;5.7 pp Recall@5</strong> tra pool 84 e
 pool 1000. Confronto con la letteratura: ToolBench/ToolLLM
@@ -152,39 +132,38 @@ report interno (<code>/it/internal/bench_prefilter_strategies</code>,
 </div>
 
 <div class="callout" style="border-left:5px solid #16a34a;background:#dcfce7;color:#14532d;padding:14px 18px;border-radius:0 8px 8px 0;margin:18px 0;">
-<strong>Aggiornamento sessione 4/5/2026.</strong> Sei estensioni strutturali
-del blocco ADR&nbsp;0072&ndash;0084, tutte non-bloccanti per il loop ReAct
+<strong>Aggiornamento sessione.</strong> Sei estensioni strutturali
+del blocco &ndash;0084, tutte non-bloccanti per il loop ReAct
 ma rilevanti per qualit&agrave; e diagnostica:
 <em>(0) adaptive re-rank intra-turno</em> &mdash;
 <code>runtime/adaptive_rerank.py</code> aggiunge keywords delle observation
-ai candidati del prefilter dopo ogni step ok, add-only, ranker-agnostic
-(ADR&nbsp;0072);
+ai candidati del prefilter dopo ogni step ok, add-only, ranker-agnostic;
 <em>(1) PROJECT PATHS + ANTI-COLLISION</em> &mdash; il prompt PLANNER inietta
 il blocco letto da <code>runtime/project_paths.json</code> (es.
-<code>"metnos" = codebase in /opt/myclaw</code>) e una guard prescrittiva
+<code>"metnos" = codebase in /opt/metnos</code>) e una guard prescrittiva
 contro <code>request_new_executor</code> per nomi gi&agrave; in catalog o
-alias di producer canonico (ADR&nbsp;0079);
-<em>(2) UTENTI NOTI</em> &mdash; <code>_render_users_known_block()</code>
-itera <code>users.list_users()</code> e rende risolvibile
-<code>to_user="lucia"</code> in <code>send_messages</code> (ADR&nbsp;0083);
+alias di producer canonico;
+<em>(2) UTENTI NOTI</em> &mdash; <code>_render_users_known_block</code>
+itera <code>users.list_users</code> e rende risolvibile
+<code>to_user="lucia"</code> in <code>send_messages</code>;
 <em>(3) telemetria fine StepLog</em> &mdash; cinque nuovi campi
 (<code>intent_ms</code>, <code>prefilter_ms</code>, <code>vaglio_ms</code>,
 <code>exec_ms</code>, <code>rerank_ms</code>) per turn breakdown leggibile
-da <code>bench_latency_breakdown.py</code> (ADR&nbsp;0080);
+da <code>bench_latency_breakdown.py</code>;
 <em>(4) scrub credenziali</em> &mdash; regex su <code>user_query</code> e
 <code>step.raw_args</code>/<code>resolved_args</code>: pwd/user finiscono
 <code>&lt;REDACTED:cred&gt;</code> nel jsonl, campi <code>redacted</code> +
-<code>n_redacted_fields</code> sul record (ADR&nbsp;0082);
+<code>n_redacted_fields</code> sul record;
 <em>(5) HTTP API canale</em> &mdash; <code>run_turn(channel="http")</code>
 chiamato da <code>POST /agent/turn</code> dell'<a href="http_api.html"><code>http_api</code></a>
 con SSE Progress (eventi <code>thinking</code>/<code>progress</code>/<code>final</code>/<code>error</code>;
-<code>tool_call</code>/<code>tool_result</code> rinviati a Phase 2).
-Le sezioni v1.0 della sessione 1/5 (recurring scheduler, location request,
+<code>tool_call</code>/<code>tool_result</code> rinviati a una fase successiva).
+Le sezioni della sessione 1/5 (recurring scheduler, location request,
 multi-user step&nbsp;1) restano valide e sono ora supportate dai blocchi
 prompt deterministici sopra.
 </div>
 <div class="callout" style="border-left:5px solid #f59e0b;background:#fef3c7;color:#92400e;padding:14px 18px;border-radius:0 8px 8px 0;margin:18px 0;">
-<strong>Sessione 1/5/2026 (storica).</strong> Quattro estensioni
+<strong>Sessione (storica).</strong> Quattro estensioni
 strutturali validate dalla batteria UC <strong>67/67 verde</strong>
 (50 base + 15 edge + 2 process query):
 <em>(a) cornice teorica delle quattro forze + inerzia</em> &mdash; il
@@ -197,8 +176,7 @@ separato (soglie, lentezza, gate), mai come quinta forza;
 builtin (<code>schedule_recurring</code>, <code>cancel_recurring</code>,
 <code>list_recurring</code>, <code>show_recurring</code>,
 <code>toggle_recurring</code>, <code>history_recurring</code>,
-<code>run_now_recurring</code>), callback registry per chiave string (ADR
-0068), <code>times</code> + auto-cancel, <code>grace_window_minutes</code>
+<code>run_now_recurring</code>), callback registry per chiave string, <code>times</code> + auto-cancel, <code>grace_window_minutes</code>
 per recover-missed, systemd user service <code>metnos-scheduler.service</code>;
 <em>(c) location request UX (&sect;2-quater PLANNER)</em> &mdash; quando
 <code>get_location</code> torna <code>ok:false</code> su query
@@ -206,28 +184,28 @@ location-relative, viene attivato il tool builtin
 <code>request_location_from_user</code> con pattern atomico analogo a &sect;2-ter;
 <em>(d) multi-user step 1</em> &mdash; <code>pairing.actor</code> +
 <code>runtime/actor_resolver.py</code> con auto-assign host /
-<code>guest_&lt;id6&gt;</code> e propagazione end-to-end (ADR 0035 MVP).
-Otto nuovi ADR (0061-0068) codificano le decisioni della sessione.
+<code>guest_&lt;id6&gt;</code> e propagazione end-to-end ( MVP).
+Le decisioni di questa sessione sono codificate negli ADR del registro.
 </div>
 
 <div class="toc">
 <h2>Indice</h2>
 <ol>
-    <li><a href="#cap1">Cosa fa: una storia di una richiesta</a></li>
-    <li><a href="#cap2">Il loop di un turno, passo per passo</a></li>
-    <li><a href="#cap3">Modi: <em>local</em>, <em>online</em>, <em>hybrid</em></a></li>
-    <li><a href="#cap4">Tre tier di LLM: <em>fast</em>, <em>middle</em>, <em>wise</em></a></li>
-    <li><a href="#cap4bis">Forma del pipeline: invariante <code>E+ (F | A)?</code></a></li>
-    <li><a href="#cap4ter">Auto-remediation registry</a></li>
-    <li><a href="#cap5">Il pre-filter: scegliere il sotto-catalogo</a></li>
-    <li><a href="#cap6">Tool-use nativo (no JSON parsing)</a></li>
-    <li><a href="#cap7">Data piping fra passi: <code>from_step</code> e <code>{{stepN.field}}</code></a></li>
-    <li><a href="#cap8">Scratchpad per observation grandi</a></li>
-    <li><a href="#cap9">Vaglio del piano</a></li>
-    <li><a href="#cap10">Cap di sicurezza e guard runtime</a></li>
-    <li><a href="#cap11">Cosa scrive nei log</a></li>
-    <li><a href="#cap12">Quando le cose vanno male</a></li>
-    <li><a href="#cap13">Cosa &egrave; rimandato a v1.2+</a></li>
+ <li><a href="#cap1">Cosa fa: una storia di una richiesta</a></li>
+ <li><a href="#cap2">Il loop di un turno, passo per passo</a></li>
+ <li><a href="#cap3">Modi: <em>local</em>, <em>online</em>, <em>hybrid</em></a></li>
+ <li><a href="#cap4">I tier di LLM: <em>fast</em>, <em>middle</em>, <em>wise</em> (locali) + <em>frontier</em></a></li>
+ <li><a href="#cap4bis">Forma del pipeline: invariante <code>E+ (F | A)?</code></a></li>
+ <li><a href="#cap4ter">Auto-remediation registry</a></li>
+ <li><a href="#cap5">Il pre-filter: scegliere il sotto-catalogo</a></li>
+ <li><a href="#cap6">Tool-use nativo (no JSON parsing)</a></li>
+ <li><a href="#cap7">Data piping fra passi: <code>from_step</code> e <code>{{stepN.field}}</code></a></li>
+ <li><a href="#cap8">Scratchpad per observation grandi</a></li>
+ <li><a href="#cap9">Vaglio del piano</a></li>
+ <li><a href="#cap10">Cap di sicurezza e guard runtime</a></li>
+ <li><a href="#cap11">Cosa scrive nei log</a></li>
+ <li><a href="#cap12">Quando le cose vanno male</a></li>
+ <li><a href="#cap13">Cosa &egrave; rimandato</a></li>
 </ol>
 </div>
 
@@ -238,22 +216,22 @@ Immagina di scrivere a Metnos: <em>&laquo;leggi il file ~/notes/diario.md e dimm
 </p>
 
 <p>
-Per capire cosa significa "decidere cosa fare", seguiamo un esempio concreto. La richiesta &egrave; quella sopra. Il pianificatore non ha logica codificata che dica "se l'utente dice 'leggi un file' chiama fs_read"; l'idea &egrave; un'altra:
+Per capire cosa significa "decidere cosa fare", seguiamo un esempio concreto. La richiesta &egrave; quella sopra. Il pianificatore non ha logica codificata che dica "se l'utente dice 'leggi un file' chiama read_files"; l'idea &egrave; un'altra:
 </p>
 
 <ol>
-    <li>Il pianificatore guarda il <em>catalogo degli executor</em> disponibili (programmi piccoli e firmati che sanno fare una cosa sola: leggere un file, scriverlo, fare una chiamata HTTP, leggere l'orologio, ecc.).</li>
-    <li>Sceglie un sotto-insieme rilevante per la richiesta (qui i candidati saranno fs_read, fs_write, web_fetch).</li>
-    <li>Passa quei candidati a un LLM (un modello di linguaggio) come "tools" che pu&ograve; usare.</li>
-    <li>L'LLM legge la richiesta e propone il prossimo passo: "chiama fs_read con path=~/notes/diario.md e tail_bytes=N (N abbastanza grande da contenere 3 righe)".</li>
-    <li>Il pianificatore valida la proposta (sandbox, args, vaglio costituzionale), invoca l'executor, raccoglie l'output.</li>
-    <li>Passa di nuovo all'LLM con: la richiesta originale + l'output del passo precedente.</li>
-    <li>L'LLM dice: "ho tutto, la risposta &egrave;: ecco le ultime tre righe del tuo diario".</li>
-    <li>Il pianificatore consegna quella risposta all'utente, scrive il log, finisce il turno.</li>
+ <li>Il pianificatore guarda il <em>catalogo degli executor</em> disponibili (programmi piccoli e firmati che sanno fare una cosa sola: leggere un file, scriverlo, fare una chiamata HTTP, leggere l'orologio, ecc.).</li>
+ <li>Sceglie un sotto-insieme rilevante per la richiesta (qui i candidati saranno read_files, write_files, get_urls).</li>
+ <li>Passa quei candidati a un LLM (un modello di linguaggio) come "tools" che pu&ograve; usare.</li>
+ <li>L'LLM legge la richiesta e propone il prossimo passo: "chiama read_files con paths=["~/notes/diario.md"] (leggendo le ultime righe)".</li>
+ <li>Il pianificatore valida la proposta (sandbox, args, vaglio costituzionale), invoca l'executor, raccoglie l'output.</li>
+ <li>Passa di nuovo all'LLM con: la richiesta originale + l'output del passo precedente.</li>
+ <li>L'LLM dice: "ho tutto, la risposta &egrave;: ecco le ultime tre righe del tuo diario".</li>
+ <li>Il pianificatore consegna quella risposta all'utente, scrive il log, finisce il turno.</li>
 </ol>
 
 <p>
-La cosa importante: <em>il comportamento utile emerge dalla composizione</em>, non da regole codificate. Se domani l'utente chieder&agrave; "scarica una pagina, salvala in un file, e dimmi quanti byte hai scritto", il pianificatore comporr&agrave; web_fetch + fs_write + final_answer senza bisogno di alcun caso particolare. La stessa pipeline, una richiesta diversa, una sequenza di passi diversa.
+La cosa importante: <em>il comportamento utile emerge dalla composizione</em>, non da regole codificate. Se domani l'utente chieder&agrave; "scarica una pagina, salvala in un file, e dimmi quanti byte hai scritto", il pianificatore comporr&agrave; get_urls + write_files + final_answer senza bisogno di alcun caso particolare. La stessa pipeline, una richiesta diversa, una sequenza di passi diversa.
 </p>
 
 <div class="callout note">
@@ -307,11 +285,24 @@ Ora vediamo lo stesso percorso in modo pi&ugrave; preciso. Un turno ha sempre qu
 <figcaption style="font-style:italic;color:#334155;font-size:10pt;margin-top:8px;">Flusso di un turno: dalla query utente al log finale, con il ciclo multistep al centro.</figcaption>
 </figure>
 
+<div class="callout note">
+<strong>Il loop &egrave; l'ultimo strato, non il primo.</strong>
+Prima di arrivare al ciclo descritto qui, la richiesta attraversa la cascata
+del <a href="praxis_engine.html">motore cognitivo</a>: una scorciatoia
+approvata (<em>fastpath</em>) o una skill gi&agrave; appresa (<em>autopath</em>)
+possono rispondere in pochi millisecondi senza alcuna chiamata al modello. Il
+ciclo passo-passo descritto in questa sezione &egrave; lo strato pi&ugrave;
+profondo (l'<em>engine</em>): si attiva solo quando n&eacute; le scorciatoie
+n&eacute; la memoria riconoscono la richiesta. In quel caso il motore propone
+l'intero piano in una sola chiamata e l'esecuzione che segue &egrave; quella
+deterministica descritta qui sotto.
+</div>
+
 <h3>Fase 0 &mdash; preparazione</h3>
 <ul>
-    <li>Si ottiene il <em>catalogo</em> di executor &mdash; gi&agrave; in memoria dal boot. Al primo caricamento (<em>cold</em>) il loader scopre tutti gli executor da disco (cartelle in <code>executors/</code>), per ognuno verifica che il manifest sia firmato dalla chiave dell'autore e che il digest del codice corrisponda. Quelli che falliscono la verifica vengono scartati con un motivo. Al boot successivo e ad ogni turno (<em>hot</em>), un check leggero sulla firma di modifica (mtime dei <code>manifest.toml</code>, <code>.py</code>, <code>.sig</code> + DB lifecycle) ritorna il catalogo cached in O(1). Una qualunque modifica (synth-on-the-fly, re-sign manuale, ager demote/archive) invalida la cache automaticamente al turno successivo. Vedi ADR 0099.</li>
-    <li>Si sceglie il <em>mode</em> (local/online/hybrid &mdash; vedi cap. 3) e il <em>tier</em> di LLM (fast/middle/wise &mdash; vedi cap. 4).</li>
-    <li>Si genera un <code>turn_id</code> univoco per identificare questo turno nei log.</li>
+ <li>Si ottiene il <em>catalogo</em> di executor &mdash; gi&agrave; in memoria dal boot. Al primo caricamento (<em>cold</em>) il loader scopre tutti gli executor da disco (cartelle in <code>executors/</code>), per ognuno verifica che il manifest sia firmato dalla chiave dell'autore e che il digest del codice corrisponda. Quelli che falliscono la verifica vengono scartati con un motivo. Al boot successivo e ad ogni turno (<em>hot</em>), un check leggero sulla firma di modifica (mtime dei <code>manifest.toml</code>, <code>.py</code>, <code>.sig</code> + DB lifecycle) ritorna il catalogo cached in O(1). Una qualunque modifica (synth-on-the-fly, re-sign manuale, ager demote/archive) invalida la cache automaticamente al turno successivo. Vedi.</li>
+ <li>Si sceglie il <em>mode</em> (local/online/hybrid &mdash; vedi cap. 3) e il <em>tier</em> di LLM (fast/middle/wise &mdash; vedi cap. 4).</li>
+ <li>Si genera un <code>turn_id</code> univoco per identificare questo turno nei log.</li>
 </ul>
 
 <h3>Fase 1 &mdash; pre-filter</h3>
@@ -324,26 +315,26 @@ Il <em>pre-filter</em> ranka il catalogo per pertinenza alla query utente e ne s
 A questo punto il turno entra in un ciclo. Per ogni passo:
 </p>
 <ol>
-    <li>Si chiama l'LLM passando: la query utente, il sotto-catalogo (come "tools" nativi), e la storia delle observation dei passi precedenti.</li>
-    <li>L'LLM risponde in uno di due modi:
-        <ul>
-            <li><strong>tool_call</strong>: vuole invocare un executor. Restituisce in modo strutturato il nome e gli argomenti.</li>
-            <li><strong>testo</strong>: ha tutto quello che gli serve, produce la risposta finale e basta.</li>
-        </ul>
-    </li>
-    <li>Se &egrave; un tool_call, il pianificatore ne fa una serie di controlli:
-        <ol>
-            <li><em>Resolve from_step</em>: se gli args contengono <code>from_step: N</code> (riferimento a una lista prodotta da uno step precedente), il runtime recupera la lista dallo scratchpad e la inietta come <code>entries</code> (vedi cap. 7).</li>
-            <li><em>Resolve references</em>: se gli args contengono <code>{{stepN.field}}</code> (per arg non-lista, es. <code>content</code>, <code>dst_template</code>), li sostituisce col valore reale (vedi cap. 7).</li>
-            <li><em>Validate</em>: gli args rispettano il JSON Schema dichiarato nel manifest dell'executor?</li>
-            <li><em>Sandbox check</em>: il path/host richiesto &egrave; dentro lo scope dichiarato nell'hint dell'executor?</li>
-            <li><em>Vaglio</em>: il valutatore costituzionale d&agrave; il via libera <strong>sull'uso specifico</strong> dell'executor? Le firme degli executor sono gi&agrave; state verificate al load (fase 0); il vaglio non ri-verifica componenti, controlla la singola chiamata: questa <code>delete_files(paths=...)</code>, con questi args, in questo contesto, &egrave; ammessa? Due fasi: <em>guardia</em> binaria (tocca path forbidden? Viola una delle 4 Leggi?) e <em>giudice</em> graduato (allineamento ai telos). Vedi <a href="vaglio.html"><code>vaglio.html</code></a>.</li>
-            <li><em>Guard duplicate read</em>: stiamo rileggendo lo stesso path/url di un passo precedente? Se s&iacute;, intercetta e suggerisci all'LLM di formulare la final_answer.</li>
-        </ol>
-    </li>
-    <li>Se tutti i controlli passano, l'executor viene eseguito come <em>subprocess</em>. L'observation (un JSON con <code>{ok, content?, metadata?, error?}</code>) torna al pianificatore.</li>
-    <li>Se l'observation &egrave; pi&ugrave; grande di una soglia (4 KB di JSON), viene salvata in <em>scratchpad</em> e nella history dell'LLM ci va una versione sintetica con id + summary (vedi cap. 8).</li>
-    <li>La history del turno cresce di un passo. Il ciclo riprende dal punto 1.</li>
+ <li>Si chiama l'LLM passando: la query utente, il sotto-catalogo (come "tools" nativi), e la storia delle observation dei passi precedenti.</li>
+ <li>L'LLM risponde in uno di due modi:
+ <ul>
+ <li><strong>tool_call</strong>: vuole invocare un executor. Restituisce in modo strutturato il nome e gli argomenti.</li>
+ <li><strong>testo</strong>: ha tutto quello che gli serve, produce la risposta finale e basta.</li>
+ </ul>
+ </li>
+ <li>Se &egrave; un tool_call, il pianificatore ne fa una serie di controlli:
+ <ol>
+ <li><em>Resolve from_step</em>: se gli args contengono <code>from_step: N</code> (riferimento a una lista prodotta da uno step precedente), il runtime recupera la lista dallo scratchpad e la inietta come <code>entries</code> (vedi cap. 7).</li>
+ <li><em>Resolve references</em>: se gli args contengono <code>{{stepN.field}}</code> (per arg non-lista, es. <code>content</code>, <code>dst_template</code>), li sostituisce col valore reale (vedi cap. 7).</li>
+ <li><em>Validate</em>: gli args rispettano il JSON Schema dichiarato nel manifest dell'executor?</li>
+ <li><em>Sandbox check</em>: il path/host richiesto &egrave; dentro lo scope dichiarato nell'hint dell'executor?</li>
+ <li><em>Vaglio</em>: il valutatore costituzionale d&agrave; il via libera <strong>sull'uso specifico</strong> dell'executor? Le firme degli executor sono gi&agrave; state verificate al load (fase 0); il vaglio non ri-verifica componenti, controlla la singola chiamata: questa <code>delete_files(paths=...)</code>, con questi args, in questo contesto, &egrave; ammessa? Due fasi: <em>guardia</em> binaria (tocca path forbidden? Viola una delle 4 Leggi?) e <em>giudice</em> graduato (allineamento ai telos). Vedi <a href="vaglio.html"><code>vaglio.html</code></a>.</li>
+ <li><em>Guard duplicate read</em>: stiamo rileggendo lo stesso path/url di un passo precedente? Se s&iacute;, intercetta e suggerisci all'LLM di formulare la final_answer.</li>
+ </ol>
+ </li>
+ <li>Se tutti i controlli passano, l'executor viene eseguito come <em>subprocess</em>. L'observation (un JSON con <code>{ok, content?, metadata?, error?}</code>) torna al pianificatore.</li>
+ <li>Se l'observation &egrave; pi&ugrave; grande di una soglia (4 KB di JSON), viene salvata in <em>scratchpad</em> e nella history dell'LLM ci va una versione sintetica con id + summary (vedi cap. 8).</li>
+ <li>La history del turno cresce di un passo. Il ciclo riprende dal punto 1.</li>
 </ol>
 
 <h3>Fase 3 &mdash; chiusura del turno</h3>
@@ -351,10 +342,14 @@ A questo punto il turno entra in un ciclo. Per ogni passo:
 Il turno termina in uno dei seguenti modi:
 </p>
 <ul>
-    <li><code>final_kind = "answer"</code> &mdash; l'LLM ha prodotto la risposta finale.</li>
-    <li><code>final_kind = "cap_steps"</code> &mdash; superato il limite di passi (default 5).</li>
-    <li><code>final_kind = "cap_same_executor"</code> &mdash; lo stesso executor &egrave; stato chiamato troppe volte (default cap 2).</li>
-    <li><code>final_kind = "error"</code> &mdash; un componente esterno irraggiungibile (es. il llama-server locale gi&ugrave;), oppure il catalogo &egrave; vuoto, ecc.</li>
+ <li><code>final_kind = "answer"</code> &mdash; l'LLM ha prodotto la risposta finale.</li>
+ <li><code>final_kind = "ask"</code> &mdash; serve una scelta o un chiarimento all'utente prima di proseguire.</li>
+ <li><code>final_kind = "awaiting"</code> &mdash; il turno attende un'azione esterna (per esempio la posizione condivisa) prima di completarsi.</li>
+ <li><code>final_kind = "needs_inputs"</code> &mdash; manca un dato richiesto (per esempio una credenziale): si apre un dialogo per raccoglierlo.</li>
+ <li><code>final_kind = "cap_steps"</code> &mdash; superato il limite di passi (default 30).</li>
+ <li><code>final_kind = "cap_same_executor"</code> &mdash; lo stesso executor &egrave; stato chiamato troppe volte (default 10; 2 per gli executor vettoriali).</li>
+ <li><code>final_kind = "loop_break"</code> &mdash; rilevato un ciclo (stesso passo ripetuto senza progresso): il turno si interrompe.</li>
+ <li><code>final_kind = "error"</code> &mdash; un componente esterno irraggiungibile (es. il llama-server locale gi&ugrave;), oppure il catalogo &egrave; vuoto, ecc.</li>
 </ul>
 
 <p>
@@ -364,9 +359,9 @@ In ogni caso, il pianificatore scrive un record JSONL completo del turno (vedi c
 <div class="example">
 <div class="ex-label">Esempio reale dal POC</div>
 <p>Query: <em>&laquo;scarica https://httpbin.org/uuid e dimmi solo l'UUID&raquo;</em>.</p>
-<p>Step 1 &mdash; LLM propone <code>web_fetch(url=https://httpbin.org/uuid)</code>. Esecuzione: ritorna JSON <code>{"uuid":"7c089d54-..."}</code>.</p>
+<p>Step 1 &mdash; LLM propone <code>get_urls(urls=["https://httpbin.org/uuid"])</code>. Esecuzione: ritorna JSON <code>{"uuid":"7c089d54-..."}</code>.</p>
 <p>Step 2 &mdash; LLM legge la storia, capisce che ha quel che serve, produce final_answer: <code>"7c089d54-..."</code>.</p>
-<p>Latenza totale: 3.3 secondi (Qwen3:8b locale). Nessun pre-codifica per "estrai uuid": il LLM ragiona sul JSON e estrae il campo da solo.</p>
+<p>Nessuna pre-codifica per "estrai uuid": il LLM locale ragiona sul JSON ed estrae il campo da solo.</p>
 </div>
 
 <h1 id="cap3">3. Modi: <em>local</em>, <em>online</em>, <em>hybrid</em></h1>
@@ -387,33 +382,38 @@ Il principio: <em>la forma del loop segue dal costo per chiamata</em>. Un LLM lo
 </p>
 
 <p>
-In v1.1 abbiamo testato il mode <code>local</code>; <code>online</code> &egrave; predisposto come scaffold (provider Anthropic stub) ma non esercitato; <code>hybrid</code> ha il <code>ModeRouter</code> presente che in PoC ritorna sempre "local". Estensioni richiederanno: configurare un provider online + abilitare le regole di routing in <code>[runtime.hybrid]</code>.
+Il mode predefinito &egrave; <code>local</code>: tutto gira sul modello locale, a
+costo zero e con privacy massima. Il mode <code>online</code> e
+<code>hybrid</code> instradano i task pi&ugrave; complessi verso un modello
+frontier; richiedono di configurare un provider online e le regole di routing
+in <code>[runtime.hybrid]</code>.
 </p>
 
-<h1 id="cap4">4. Tre tier di LLM: <em>fast</em>, <em>middle</em>, <em>wise</em></h1>
+<h1 id="cap4">4. I tier di LLM: <em>fast</em>, <em>middle</em>, <em>wise</em> (locali) + <em>frontier</em></h1>
 
 <p>
-Indipendentemente dal mode (che dice <em>dove</em> gira l'LLM), il runtime espone tre <em>tier</em>: tre puntatori a LLM con caratteristiche diverse. Ogni componente del runtime sceglie il tier che gli serve.
+Indipendentemente dal mode (che dice <em>dove</em> gira l'LLM), il runtime espone quattro <em>tier</em>. I tre tier locali puntano tutti allo <em>stesso</em> modello (Gemma&nbsp;4&nbsp;26B su <code>llama-server:8080</code>, con un drafter speculativo): la differenza non &egrave; il modello ma i <em>parametri per chiamata</em> (ragionamento attivo o no, budget di token). Il quarto tier, <em>frontier</em>, &egrave; un modello del cloud, opt-in.
 </p>
 
 <table>
-<tr><th>Tier</th><th>Caratteristica</th><th>Candidato</th></tr>
-<tr><td><strong>fast &amp; furious</strong></td><td>Piccolo, veloce, sempre LOCALE, sempre disponibile.</td><td><code>qwen3:8b</code> con <code>think=false</code></td></tr>
-<tr><td><strong>middle &amp; trustable</strong></td><td>Capacit&agrave; di ragionamento intermedia.</td><td><code>gemma3:12b</code> locale, oppure <code>claude-haiku-4-5</code> online.</td></tr>
-<tr><td><strong>slow &amp; wise</strong></td><td>Massima capacit&agrave; di ragionamento, accetta latenza/costo.</td><td><code>claude-sonnet-4-6</code> online, oppure <code>qwen3:32b</code> con <code>think=true</code> in locale potente.</td></tr>
+<tr><th>Tier</th><th>Caratteristica</th><th>Modello</th></tr>
+<tr><td><strong>fast</strong></td><td>Risposte dirette, ragionamento disattivato, budget di token basso.</td><td>Gemma&nbsp;4&nbsp;26B locale, <code>think=false</code></td></tr>
+<tr><td><strong>middle</strong></td><td>Ragionamento intermedio. &Egrave; il tier dell'intent extractor e del vaglio.</td><td>Gemma&nbsp;4&nbsp;26B locale</td></tr>
+<tr><td><strong>wise</strong></td><td>Massima riflessione locale, ragionamento attivo, budget di token alto. &Egrave; il tier che propone i piani.</td><td>Gemma&nbsp;4&nbsp;26B locale, <code>think=true</code></td></tr>
+<tr><td><strong>frontier</strong></td><td>Modello del cloud, opt-in, per i casi che lo valgono. Accetta latenza e costo.</td><td>Anthropic Opus (online)</td></tr>
 </table>
 
 <p>
-Il pianificatore standard usa <em>fast</em>. Il vaglio costituzionale (quando reale) user&agrave; <em>middle</em>. Il sintetizzatore di nuovi executor (synt) user&agrave; <em>wise</em>. Quando una sezione manca dalla configurazione, il puntatore aliasa al tier inferiore: middle &rarr; fast, wise &rarr; middle &rarr; fast. Mai un crash, mai un'eccezione: la presenza del solo <em>fast</em> garantisce funzionamento.
+Il proposer del motore usa <em>wise</em>. L'intent extractor e il vaglio usano <em>middle</em>. I riempitivi al volo (<code>${FILLER}</code>) usano <em>fast</em>. Il <em>frontier</em> si invoca solo esplicitamente, come ultima risorsa. La verit&agrave; canonica dei tier &egrave; in <code>runtime/llm_router.py</code>.
 </p>
 
 <figure style="text-align: center; margin: 24px 0;">
 <svg viewBox="0 0 760 280" xmlns="http://www.w3.org/2000/svg" style="max-width: 100%; height: auto; border: 1px solid var(--border); border-radius: 6px; background: white; padding: 8px;">
 <style>.tt{font-family:'Segoe UI',sans-serif;text-anchor:middle;dominant-baseline:middle}.h{font-size:13.5px;font-weight:700;fill:#1A477A}.b{font-size:11.5px;fill:#0f172a;font-weight:600}.s{font-size:10.5px;fill:#1e293b;font-weight:500}.box{stroke:#1A477A;stroke-width:1.8;rx:8;ry:8}.fast{fill:#dcfce7}.mid{fill:#fef3c7}.wise{fill:#dbeafe}</style>
-<text class="tt h" x="380" y="22">Tre tier, lo stesso runtime</text>
+<text class="tt h" x="380" y="22">I tier, lo stesso runtime</text>
 <rect class="box fast" x="40" y="50" width="220" height="180"/>
 <text class="tt h" x="150" y="76">fast &amp; furious</text>
-<text class="tt s" x="150" y="96">qwen3:8b · think=false</text>
+<text class="tt s" x="150" y="96">Gemma 4 26B · think=false</text>
 <text class="tt b" x="150" y="125">~700ms/chiamata</text>
 <text class="tt s" x="150" y="145">sempre LOCALE</text>
 <text class="tt s" x="150" y="160">sempre disponibile</text>
@@ -421,7 +421,7 @@ Il pianificatore standard usa <em>fast</em>. Il vaglio costituzionale (quando re
 <text class="tt s" x="150" y="212">summarizer scratchpad</text>
 <rect class="box mid" x="280" y="50" width="220" height="180"/>
 <text class="tt h" x="390" y="76">middle &amp; trustable</text>
-<text class="tt s" x="390" y="96">gemma3:12b o haiku-4-5</text>
+<text class="tt s" x="390" y="96">Gemma 4 26B (locale)</text>
 <text class="tt b" x="390" y="125">~2-5s/chiamata</text>
 <text class="tt s" x="390" y="145">locale o online</text>
 <text class="tt s" x="390" y="160">ragionamento intermedio</text>
@@ -429,7 +429,7 @@ Il pianificatore standard usa <em>fast</em>. Il vaglio costituzionale (quando re
 <text class="tt s" x="390" y="212">synt.compose</text>
 <rect class="box wise" x="520" y="50" width="220" height="180"/>
 <text class="tt h" x="630" y="76">slow &amp; wise</text>
-<text class="tt s" x="630" y="96">claude-sonnet o qwen3:32b+think</text>
+<text class="tt s" x="630" y="96">Gemma 4 26B · think=true</text>
 <text class="tt b" x="630" y="125">5-30s/chiamata</text>
 <text class="tt s" x="630" y="145">accetta latenza/$</text>
 <text class="tt s" x="630" y="160">riflessione profonda</text>
@@ -441,7 +441,7 @@ Il pianificatore standard usa <em>fast</em>. Il vaglio costituzionale (quando re
 </figure>
 
 <div class="callout tip">
-<strong>Specializzazione anche con un solo modello.</strong> Se l'hardware permette un solo LLM locale, i tre tier puntano allo stesso (es. tutti a qwen3:8b). Stesso modello ma il <em>system prompt</em> cambia per tier: <em>fast</em> chiede azione diretta, <em>middle</em> chiede di considerare alternative, <em>wise</em> attiva <code>think=true</code> e chiede riflessione profonda. Stesso modello, ruoli diversi, output diversi. L'utente ottiene tre punti di vista anche con un solo cervello.
+<strong>Specializzazione con un solo modello.</strong> I tre tier locali puntano per progetto allo stesso modello (Gemma&nbsp;4&nbsp;26B). A cambiare sono i <em>parametri per chiamata</em>: <em>fast</em> chiede azione diretta senza ragionamento, <em>middle</em> un ragionamento intermedio, <em>wise</em> attiva <code>think=true</code> con budget di token alto. Stesso modello, ruoli diversi, output diversi. L'utente ottiene pi&ugrave; punti di vista da un solo cervello.
 </div>
 
 <p>
@@ -449,20 +449,25 @@ Schema config minimale:
 </p>
 <pre>[runtime.llm.fast]
 provider = "llamacpp"
-model    = "qwen3:8b"
-think    = false
+model = "gemma-4-26B"
+think = false
 
 [runtime.llm.middle]
 provider = "llamacpp"
-model    = "gemma3:12b"
+model = "gemma-4-26B"
 
 [runtime.llm.wise]
+provider = "llamacpp"
+model = "gemma-4-26B"
+think = true
+
+[runtime.llm.frontier]
 provider = "anthropic"
-model    = "claude-sonnet-4-6"
+model = "claude-opus"
 </pre>
 
 <p>
-In v1.1 implementato la struttura ma non ancora la differenziazione completa: i tre puntatori in PoC sono identici (<code>qwen3:8b</code>) e il prompt &egrave; uno solo. La differenziazione di prompt per tier &egrave; rimandata a quando avremo un secondo backend o un caso d'uso che la richiede.
+I tre tier locali condividono per progetto lo stesso modello e lo stesso backend: la differenziazione &egrave; nei parametri per chiamata (ragionamento, budget di token) e nel <em>system prompt</em> specifico di ogni ruolo. Il tier <em>frontier</em> &egrave; l'unico che esce dalla macchina, e solo se invocato esplicitamente.
 </p>
 
 <h1 id="cap4bis">4-bis. Forma del pipeline: invariante <code>E+ (F | A)?</code></h1>
@@ -471,7 +476,7 @@ In v1.1 implementato la struttura ma non ancora la differenziazione completa: i 
 Il pianificatore puo' emettere step in ordine illegale rispetto al data-flow. Per evitare fallimenti silenziosi (un consumer senza dati upstream, un'azione senza target, uno step dopo un terminatore), il runtime impone una <strong>regola di forma universale</strong>, deterministica, derivata dal vocabolario chiuso §2.2. Ogni turno deve matchare la regex:
 </p>
 
-<pre>E+ (F | A)?     seguita opzionalmente da final_answer (sempre lecito)</pre>
+<pre>E+ (F | A)? seguita opzionalmente da final_answer (sempre lecito)</pre>
 
 <p>Tre categorie, classificate dal verb prefix (mai dal nome dell'executor):</p>
 
@@ -488,13 +493,13 @@ Il pianificatore puo' emettere step in ordine illegale rispetto al data-flow. Pe
 
 <p>FSM deterministico a tre stati implementato in <code>runtime/pipeline_shape.py</code>:</p>
 
-<pre>        E              E              F | A
+<pre> E E F | A
 START ─────► CHAIN ─────► CHAIN ─────► TERMINAL
-  │            │            │
-  │ F | A      │            │ *
-  ▼            ▼            ▼
-ERROR        VALID        ERROR
-(no source) (post-F|A)   (post-terminator)</pre>
+ │ │ │
+ │ F | A │ │ *
+ ▼ ▼ ▼
+ERROR VALID ERROR
+(no source) (post-F|A) (post-terminator)</pre>
 
 <p>API minimale: <code>compute_state(history) &rarr; str</code> ricostruisce lo stato accumulato; <code>next_state(state, name, args) &rarr; (new_state, error_class)</code> simula la prossima transizione. La funzione <code>has_literal_source(args)</code> riconosce <code>from_step</code> o qualunque list-arg non vuoto come producer implicito, per cui <code>delete_files(paths=[&quot;/x&quot;])</code> e' una pipeline valida 1-step (literal e' E implicito).</p>
 
@@ -511,22 +516,22 @@ ERROR        VALID        ERROR
 
 <p>Il check vive in un solo punto in <code>agent_runtime.py</code>, subito dopo che il planner ha emesso <code>chosen_name</code>. La FSM e' safety net: il prompt del planner (regola <code>0-PRE</code> in <code>_core.j2</code>) insegna gia' il pattern upstream, cosi' la remediation runtime resta raramente attivata.</p>
 
-<p>Riferimenti: ADR 0154 (questa decisione), ADR 0155 (principio collaterale planner-choice over runtime-override), ADR 0153 (auto-remediation pattern, prima applicazione <code>needs_content_fetch</code>).</p>
+<p>Riferimenti: (questa decisione), (principio collaterale planner-choice over runtime-override), (auto-remediation pattern, prima applicazione <code>needs_content_fetch</code>).</p>
 
 <h1 id="cap4ter">4-ter. Auto-remediation registry</h1>
 
 <p>
-La FSM segnala violazioni con <code>error_class</code> canonici; un registry centralizzato in <code>runtime/auto_remediation.py</code> li mappa a piani di rimedio. Stesso pattern di ADR 0143 install_on_demand per binari mancanti, generalizzato a qualunque prerequisito sintetizzabile al volo.
+La FSM segnala violazioni con <code>error_class</code> canonici; un registry centralizzato in <code>runtime/auto_remediation.py</code> li mappa a piani di rimedio. Stesso pattern di install_on_demand per binari mancanti, generalizzato a qualunque prerequisito sintetizzabile al volo.
 </p>
 
 <pre>@dataclass(frozen=True)
 class RemediationPlan:
-    prereq_tool: Any              # str | Callable[[obs], str]   ← dinamico
-    hint_field: Optional[str]     # None = passa intera obs
-    arg_builder: Callable[[Any], dict]
-    merge_field: str = "entries"
-    merge_source: str = "entries"
-    skip_retry: bool = False      # fail-fast (dialog get_inputs)</pre>
+ prereq_tool: Any # str | Callable[[obs], str] ← dinamico
+ hint_field: Optional[str] # None = passa intera obs
+ arg_builder: Callable[[Any], dict]
+ merge_field: str = "entries"
+ merge_source: str = "entries"
+ skip_retry: bool = False # fail-fast (dialog get_inputs)</pre>
 
 <p>Registry attuale, append-only:</p>
 
@@ -549,15 +554,15 @@ Con un catalogo di 30+ executor, passare tutti come "tools" all'LLM esplode il p
 
 <h2>Come ranka</h2>
 <p>
-In v1.1 il ranking &egrave; <em>bag-of-words</em>: tokenizza la query utente, tokenizza l'<code>affinity</code> dichiarato in ogni manifest, somma i match (i match sull'affinity contano doppio rispetto a quelli sulla descrizione). Estrarre i token significa: minuscolo, parole alfanumeriche, niente accenti.
+In il ranking &egrave; <em>bag-of-words</em>: tokenizza la query utente, tokenizza l'<code>affinity</code> dichiarato in ogni manifest, somma i match (i match sull'affinity contano doppio rispetto a quelli sulla descrizione). Estrarre i token significa: minuscolo, parole alfanumeriche, niente accenti.
 </p>
 
 <div class="example">
 <div class="ex-label">Esempio</div>
 <p>Query: <em>&laquo;scarica https://httpbin.org/get&raquo;</em>. Token: <code>{scarica, httpbin, org, get, https}</code>.</p>
-<p>Match con affinity di <code>web_fetch</code>: <code>web</code>, <code>http</code>, <code>url</code>, <code>fetch</code>, <code>scarica</code>, <code>leggi</code>, <code>pagina</code>, <code>api</code>, <code>rest</code>. Match: <code>scarica</code>. Score: 2.</p>
-<p>Match con affinity di <code>fs_read</code>: <code>fs</code>, <code>read</code>, <code>leggi</code>, <code>lettura</code>, <code>file</code>, ... Nessun match. Score: 0.</p>
-<p>web_fetch vince con confidenza alta.</p>
+<p>Match con affinity di <code>get_urls</code>: <code>web</code>, <code>http</code>, <code>url</code>, <code>fetch</code>, <code>scarica</code>, <code>leggi</code>, <code>pagina</code>, <code>api</code>, <code>rest</code>. Match: <code>scarica</code>. Score: 2.</p>
+<p>Match con affinity di <code>read_files</code>: <code>read</code>, <code>leggi</code>, <code>lettura</code>, <code>file</code>,... Nessun match. Score: 0.</p>
+<p>get_urls vince con confidenza alta.</p>
 </div>
 
 <h2>K adattivo</h2>
@@ -565,13 +570,13 @@ In v1.1 il ranking &egrave; <em>bag-of-words</em>: tokenizza la query utente, to
 K (numero di executor da passare al LLM) non &egrave; fisso: dipende dalla <em>confidenza</em> con cui il pre-filter distingue il top-1 dagli altri.
 </p>
 <ul>
-    <li>Confidenza alta (top-1 nettamente sopra) &rarr; K piccolo (default <code>k_min=5</code>). Inutile passare candidati a score zero.</li>
-    <li>Confidenza bassa (score ravvicinati o tutti zero) &rarr; K grande (default <code>k_max=40</code>). Lascia che sia l'LLM a decidere.</li>
-    <li>K viene comunque limitato al numero di executor con score &ge; 1 (no riempimento).</li>
+ <li>Confidenza alta (top-1 nettamente sopra) &rarr; K piccolo (default <code>k_min=5</code>). Inutile passare candidati a score zero.</li>
+ <li>Confidenza bassa (score ravvicinati o tutti zero) &rarr; K grande (default <code>k_max=40</code>). Lascia che sia l'LLM a decidere.</li>
+ <li>K viene comunque limitato al numero di executor con score &ge; 1 (no riempimento).</li>
 </ul>
 
 <p>
-Misurato nel POC: pre-filter sub-millisecondo fino a 300+ executor; LLM Qwen3:8b sceglie correttamente fino a K=200; latenza cresce linearmente con K oltre 40. Sweet spot pratico: K=20-40 (~3 secondi di latenza LLM).
+Misurato: pre-filter sub-millisecondo fino a 300+ executor; il LLM locale sceglie correttamente anche con K grandi; la latenza cresce linearmente con K oltre 40. Sweet spot pratico: K=20-40.
 </p>
 
 <p>
@@ -585,15 +590,15 @@ Gli LLM moderni (Anthropic, OpenAI da sempre; llama-server e altri server compat
 </p>
 
 <pre>{
-  "tool_calls": [
-    {
-      "id": "call_abc123",
-      "function": {
-        "name": "fs_read",
-        "arguments": {"path": "/tmp/note.txt", "tail_bytes": 100}
-      }
-    }
-  ]
+ "tool_calls": [
+ {
+ "id": "call_abc123",
+ "function": {
+ "name": "read_files",
+ "arguments": {"paths": ["/tmp/note.txt"]}
+ }
+ }
+ ]
 }</pre>
 
 <p>
@@ -624,9 +629,9 @@ Per gli arg che ricevono una <em>lista di entries</em> (mail, file, web_results,
 
 // Passo 2 (proposto dal LLM)
 { "tool": "classify_entries", "args": {
-    "from_step": 1,
-    "dimension": "relevance",
-    "pre_filter": true
+ "from_step": 1,
+ "dimension": "relevance",
+ "pre_filter": true
 } }
 
 // Il runtime recupera entries da scratchpad[step1] e invoca:
@@ -643,8 +648,8 @@ Lo schema dei tool che ricevono liste dichiara <strong>solo</strong> <code>from_
 Per gli arg di tipo NON-lista (stringhe, content, path), la sintassi rimane il placeholder template:
 </p>
 <ul>
-    <li><code>N</code> &egrave; il numero del passo (1-indexed: <code>step1</code> &egrave; il primo).</li>
-    <li><code>field</code> &egrave; la chiave dentro l'observation di quel passo. Pu&ograve; essere annidata: <code>{{step1.metadata.path}}</code>, <code>{{step2.content}}</code>.</li>
+ <li><code>N</code> &egrave; il numero del passo (1-indexed: <code>step1</code> &egrave; il primo).</li>
+ <li><code>field</code> &egrave; la chiave dentro l'observation di quel passo. Pu&ograve; essere annidata: <code>{{step1.metadata.path}}</code>, <code>{{step2.content}}</code>.</li>
 </ul>
 
 <div class="example">
@@ -655,8 +660,8 @@ Per gli arg di tipo NON-lista (stringhe, content, path), la sintassi rimane il p
 
 // Passo 2 (proposto dal LLM)
 { "tool": "write_files", "args": {
-    "path": "/tmp/out.txt",
-    "content": "{{step1.content}}"
+ "path": "/tmp/out.txt",
+ "content": "{{step1.content}}"
 } }
 
 // Il runtime sostituisce e invoca:
@@ -668,7 +673,7 @@ write_files(path="/tmp/out.txt", content="<JSON di httpbin>")</pre>
 </div>
 
 <p>
-Il riferimento dev'essere il <em>solo valore</em> dell'arg, non interpolato in stringhe pi&ugrave; lunghe (limite v1.1).
+Il riferimento dev'essere il <em>solo valore</em> dell'arg, non interpolato in stringhe pi&ugrave; lunghe (limite).
 </p>
 
 <h1 id="cap8">8. Scratchpad per observation grandi</h1>
@@ -678,16 +683,16 @@ Quando un executor restituisce molto contenuto (un file di 100 KB, una pagina HT
 </p>
 
 <p>
-La soluzione del v1.1: <em>scratchpad</em>. Quando un'observation supera la soglia (4 KB di JSON serializzato), il runtime la salva in uno SQLite locale (<code>~/.local/share/metnos/scratchpad.db</code>) e mette nella history un'observation <em>sintetica</em>:
+La soluzione: lo <em>scratchpad</em>. Quando un'observation supera la soglia (4 KB di JSON serializzato), il runtime la salva in uno SQLite locale (<code>~/.local/share/metnos/scratchpad.db</code>) e mette nella history un'observation <em>sintetica</em>:
 </p>
 
 <pre>{
-  "ok": true,
-  "scratchpad_id": "eae04122bd704636",
-  "size_bytes": 14144,
-  "kind": "text",
-  "summary": "ciao questa &egrave; una nota di test\n\n[... 13900 caratteri omessi ...]\n\nINFO 2026-04-26 23:59:59 ULTIMO_EVENTO_CRITICO\n",
-  "metadata": {"path": "/tmp/big_log.txt", "bytes": 14144, ...}
+ "ok": true,
+ "scratchpad_id": "eae04122bd704636",
+ "size_bytes": 14144,
+ "kind": "text",
+ "summary": "ciao questa &egrave; una nota di test\n\n[... 13900 caratteri omessi...]\n\nINFO 2026-04-26 23:59:59 ULTIMO_EVENTO_CRITICO\n",
+ "metadata": {"path": "/tmp/big_log.txt", "bytes": 14144,...}
 }</pre>
 
 <p>
@@ -698,15 +703,15 @@ Il summary &egrave; uno <em>smart truncation</em>: i primi 500 caratteri + un pl
 L'LLM al passo successivo, vedendo il summary, decide:
 </p>
 <ul>
-    <li>Se il summary basta, formula la final_answer.</li>
-    <li>Se gli serve di pi&ugrave;, chiama l'executor builtin <code>scratchpad_read</code> con mode:
-        <ul>
-            <li><code>full</code>: il contenuto intero (sconsigliato se &egrave; molto grande).</li>
-            <li><code>head</code>: i primi N caratteri (default 2000).</li>
-            <li><code>tail</code>: gli ultimi N caratteri.</li>
-            <li><code>range</code>: un intervallo <code>[start, end)</code>.</li>
-        </ul>
-    </li>
+ <li>Se il summary basta, formula la final_answer.</li>
+ <li>Se gli serve di pi&ugrave;, chiama l'executor builtin <code>scratchpad_read</code> con mode:
+ <ul>
+ <li><code>full</code>: il contenuto intero (sconsigliato se &egrave; molto grande).</li>
+ <li><code>head</code>: i primi N caratteri (default 2000).</li>
+ <li><code>tail</code>: gli ultimi N caratteri.</li>
+ <li><code>range</code>: un intervallo <code>[start, end)</code>.</li>
+ </ul>
+ </li>
 </ul>
 
 <p>
@@ -729,20 +734,20 @@ dell'Architettura.
 
 <h3>9.1 Guardia (binaria)</h3>
 <p>
-Blocca le violazioni delle 4 Leggi. In v1.1 le regole codificate sono:
+Blocca le violazioni delle 4 Leggi. In le regole codificate sono:
 </p>
 <ul>
-    <li><strong>Forbidden paths</strong>: <code>~/.ssh</code>,
-        <code>/etc/passwd|shadow|sudoers</code>, <code>/root</code>,
-        <code>/boot</code>, <code>/sys</code>, <code>/proc</code>,
-        <code>/dev/sd*|nvme*</code>, <code>~/.aws/credentials</code>,
-        <code>~/.config/*/credentials.env</code>, <code>~/.gnupg</code>.
-        Se anche solo MENZIONATI in un argomento di tool, l'azione e' negata.</li>
-    <li><strong>Comandi shell quasi-irrecuperabili</strong> (Legge 1: niente
-        stato irrecuperabile): <code>rm&nbsp;-rf /</code>, <code>rm&nbsp;-rf ~</code>,
-        <code>mkfs</code>, <code>dd&nbsp;of=/dev/...</code>, fork bomb, chmod 7XX
-        ricorsivo sulla radice. Match solo per executor con <code>capability:
-        code:exec</code>.</li>
+ <li><strong>Forbidden paths</strong>: <code>~/.ssh</code>,
+ <code>/etc/passwd|shadow|sudoers</code>, <code>/root</code>,
+ <code>/boot</code>, <code>/sys</code>, <code>/proc</code>,
+ <code>/dev/sd*|nvme*</code>, <code>~/.aws/credentials</code>,
+ <code>~/.config/*/credentials.env</code>, <code>~/.gnupg</code>.
+ Se anche solo MENZIONATI in un argomento di tool, l'azione e' negata.</li>
+ <li><strong>Comandi shell quasi-irrecuperabili</strong> (Legge 1: niente
+ stato irrecuperabile): <code>rm&nbsp;-rf /</code>, <code>rm&nbsp;-rf ~</code>,
+ <code>mkfs</code>, <code>dd&nbsp;of=/dev/...</code>, fork bomb, chmod 7XX
+ ricorsivo sulla radice. Match solo per executor con <code>capability:
+ code:exec</code>.</li>
 </ul>
 <p>
 La lista non si rilassa per livello di autonomia: e' il "nucleo non
@@ -759,13 +764,13 @@ l'azione e' negata con <code>blocked_by="judge"</code>. Sopra, e'
 approvata.
 </p>
 <p>
-In v1.1 il giudice e' <strong>rule-based</strong>: heuristiche locali,
+In il giudice e' <strong>rule-based</strong>: heuristiche locali,
 microsecondi, costo zero. Score base 0.7, bonus se l'<em>intent</em> menziona
 il nome dell'executor (segnale di intento esplicito), penalita' per
 <code>..</code> in path (possibile path traversal), penalita' per chiavi
 <code>args</code> con caratteri non alfanumerici (anomalia). Il <strong>giudice
 LLM</strong> (tier middle, contesto separato dal proponente per evitare
-auto-conferma) e' rimandato a v1.2: richiede tier middle configurato +
+auto-conferma) e' rimandato: richiede tier middle configurato +
 budget esplicito. La separazione deontologia/teleologia e' gia' al posto
 giusto, l'implementazione del giudice puo' evolvere senza toccare la
 guardia.
@@ -786,13 +791,13 @@ Il pianificatore ha tre meccanismi di safety contro loop e azioni mal poste. Son
 
 <table>
 <tr><th>Meccanismo</th><th>Cosa fa</th><th>Default</th></tr>
-<tr><td><code>cap_steps</code></td><td>Limite massimo di passi per turno.</td><td>5</td></tr>
-<tr><td><code>cap_same_executor</code></td><td>Limite di chiamate dello stesso executor nel turno.</td><td>2</td></tr>
-<tr><td><strong>guard duplicate read</strong></td><td>Se l'LLM richiama <code>fs_read</code>/<code>fs_write</code>/<code>web_fetch</code> con lo stesso path/url di un passo precedente, il runtime non ri-esegue: restituisce un'observation che dice "hai gi&agrave; questo dato al passo X, formula la final_answer".</td><td>attivo</td></tr>
+<tr><td><code>cap_steps</code></td><td>Limite massimo di passi per turno.</td><td>30</td></tr>
+<tr><td><code>cap_same_executor</code></td><td>Limite di chiamate dello stesso executor nel turno.</td><td>10 (2 per gli executor vettoriali)</td></tr>
+<tr><td><strong>guard duplicate read</strong></td><td>Se l'LLM richiama <code>read_files</code>/<code>get_urls</code> con lo stesso path/url di un passo precedente, il runtime non ri-esegue: restituisce un'observation che dice "hai gi&agrave; questo dato al passo X, formula la final_answer".</td><td>attivo</td></tr>
 </table>
 
 <p>
-Il guard duplicate read &egrave; emerso dal POC: senza, gli LLM piccoli (Qwen3:8b in particolare) tendevano a rileggere lo stesso file con args leggermente diversi sperando in un risultato migliore, finendo nel cap_same. Il guard intercetta prima e sblocca la formulazione.
+Il guard duplicate read evita uno spreco comune: senza, l'LLM tende a rileggere lo stesso file con args leggermente diversi sperando in un risultato migliore, finendo nel cap_same. Il guard intercetta prima e sblocca la formulazione.
 </p>
 
 <p>
@@ -806,18 +811,18 @@ Per ogni turno il pianificatore scrive una riga JSONL in <code>~/.local/share/me
 </p>
 
 <ul>
-    <li><code>turn_id</code> &mdash; uuid del turno.</li>
-    <li><code>ts_start</code>, <code>ts_end</code> &mdash; timestamp Unix.</li>
-    <li><code>user_query</code> &mdash; testo originale dell'utente.</li>
-    <li><code>mode</code> &mdash; mode scelto (local/online/hybrid).</li>
-    <li><code>candidates</code> &mdash; nomi degli executor passati al LLM dopo pre-filter.</li>
-    <li><code>steps</code> &mdash; lista di step con: numero, llm in/out tokens, latenza, tool chiamato, args raw e risolti, esito di validation/sandbox/vaglio, result.</li>
-    <li><code>final_message</code> &mdash; testo finale all'utente.</li>
-    <li><code>final_kind</code> &mdash; uno di <code>answer | error | cap_steps | cap_same_executor</code>.</li>
+ <li><code>turn_id</code> &mdash; uuid del turno.</li>
+ <li><code>ts_start</code>, <code>ts_end</code> &mdash; timestamp Unix.</li>
+ <li><code>user_query</code> &mdash; testo originale dell'utente.</li>
+ <li><code>mode</code> &mdash; mode scelto (local/online/hybrid).</li>
+ <li><code>candidates</code> &mdash; nomi degli executor passati al LLM dopo pre-filter.</li>
+ <li><code>steps</code> &mdash; lista di step con: numero, llm in/out tokens, latenza, tool chiamato, args raw e risolti, esito di validation/sandbox/vaglio, result.</li>
+ <li><code>final_message</code> &mdash; testo finale all'utente.</li>
+ <li><code>final_kind</code> &mdash; uno di <code>answer | error | cap_steps | cap_same_executor</code>.</li>
 </ul>
 
 <p>
-JSONL append-only, un file per giorno. Niente rotazione automatica in v1.1 (con uso normale ~3 MB/mese, trascurabile).
+JSONL append-only, un file per giorno. Niente rotazione automatica in (con uso normale ~3 MB/mese, trascurabile).
 </p>
 
 <h2>11.1 Scrittura nel mnestoma</h2>
@@ -829,18 +834,18 @@ osservato fra step:
 </p>
 
 <ul>
-    <li><strong>mnest active</strong> &mdash; al termine di uno step con <code>obs.ok = true</code>,
-        se i <code>raw_args</code> contenevano almeno un riferimento <code>{{stepM.field}}</code>
-        risolto e l'executor M era reale (non un proto, non scratchpad), invoca
-        <code>Mnestoma.record_passing(src=executor_M, dst=executor_corrente, dst_exists=True)</code>.
-        Il mnest cresce o nasce con peso bootstrap; ogni passaggio futuro lo rinforza.</li>
-    <li><strong>proto-mnest</strong> &mdash; quando il LLM chiama un nome di tool che il
-        catalogo non contiene (<code>executor_inesistente</code>) e i <code>raw_args</code>
-        avevano riferimenti a step precedenti, invoca
-        <code>record_passing(src=executor_M, dst=nome_desiderato, dst_exists=False,
-        desired_signature=...)</code>. La firma desiderata &egrave; inferita
-        in modo conservativo da nome del tool richiesto, args e contesto del turno
-        (<code>build_desired_signature</code>).</li>
+ <li><strong>mnest active</strong> &mdash; al termine di uno step con <code>obs.ok = true</code>,
+ se i <code>raw_args</code> contenevano almeno un riferimento <code>{{stepM.field}}</code>
+ risolto e l'executor M era reale (non un proto, non scratchpad), invoca
+ <code>Mnestoma.record_passing(src=executor_M, dst=executor_corrente, dst_exists=True)</code>.
+ Il mnest cresce o nasce con peso bootstrap; ogni passaggio futuro lo rinforza.</li>
+ <li><strong>proto-mnest</strong> &mdash; quando il LLM chiama un nome di tool che il
+ catalogo non contiene (<code>executor_inesistente</code>) e i <code>raw_args</code>
+ avevano riferimenti a step precedenti, invoca
+ <code>record_passing(src=executor_M, dst=nome_desiderato, dst_exists=False,
+ desired_signature=...)</code>. La firma desiderata &egrave; inferita
+ in modo conservativo da nome del tool richiesto, args e contesto del turno
+ (<code>build_desired_signature</code>).</li>
 </ul>
 
 <p>
@@ -863,24 +868,24 @@ viene aggiunto all'observation come campo <code>synt</code>:
 </p>
 
 <ul>
-    <li>se <code>state == "composed"</code>: il composer ha trovato una catena
-        di executor firmati che chiude il proto-mnest. L'observation porta
-        <code>{strategy: "compose", state: "composed", chain: [...], first_hop: "X",
-        suggestion: "Riprova invocando 'X' come prossimo passo"}</code>.
-        Il pianificatore non rilancia automaticamente il primo hop: lascia che
-        sia il LLM a decidere se seguire il suggerimento allo step successivo
-        (mantiene la disciplina ReAct &mdash; il LLM resta padrone della
-        sequenza).</li>
-    <li>se <code>state == "abandoned"</code> o <code>"rejected"</code>:
-        l'observation porta <code>{state: "abandoned",
-        suggestion: "Non c'e' executor disponibile per questa esigenza,
-        cerca un'altra via"}</code>. Telos di non-rinuncia: il pianificatore
-        non si arrende sul primo errore, comunica al LLM che la strada e'
-        chiusa cosi' che possa cercarne un'altra.</li>
+ <li>se <code>state == "composed"</code>: il composer ha trovato una catena
+ di executor firmati che chiude il proto-mnest. L'observation porta
+ <code>{strategy: "compose", state: "composed", chain: [...], first_hop: "X",
+ suggestion: "Riprova invocando 'X' come prossimo passo"}</code>.
+ Il pianificatore non rilancia automaticamente il primo hop: lascia che
+ sia il LLM a decidere se seguire il suggerimento allo step successivo
+ (mantiene la disciplina ReAct &mdash; il LLM resta padrone della
+ sequenza).</li>
+ <li>se <code>state == "abandoned"</code> o <code>"rejected"</code>:
+ l'observation porta <code>{state: "abandoned",
+ suggestion: "Non c'e' executor disponibile per questa esigenza,
+ cerca un'altra via"}</code>. Telos di non-rinuncia: il pianificatore
+ non si arrende sul primo errore, comunica al LLM che la strada e'
+ chiusa cosi' che possa cercarne un'altra.</li>
 </ul>
 
 <p>
-Costo: una chiamata a <code>Composer.find_chain()</code> (BFS sul mnestoma,
+Costo: una chiamata a <code>Composer.find_chain</code> (BFS sul mnestoma,
 millisecondi) e un'eventuale lock-check. Niente LLM, niente budget.
 La chiamata e' fail-safe: qualunque eccezione di <code>synt</code> non
 propaga e l'observation rimane quella di default
@@ -897,9 +902,9 @@ task ricorrenti del sistema senza input utente. Tre supporti di schedule:
 </p>
 
 <ul>
-    <li><code>daily@HH:MM</code> &mdash; ogni giorno all'ora HH:MM (UTC), una sola volta.</li>
-    <li><code>every_N_minutes</code> &mdash; ogni N minuti dall'ultima esecuzione (o subito se mai).</li>
-    <li><code>manual</code> &mdash; solo via <code>scheduler run-now &lt;task&gt;</code>.</li>
+ <li><code>daily@HH:MM</code> &mdash; ogni giorno all'ora HH:MM (UTC), una sola volta.</li>
+ <li><code>every_N_minutes</code> &mdash; ogni N minuti dall'ultima esecuzione (o subito se mai).</li>
+ <li><code>manual</code> &mdash; solo via <code>scheduler run-now &lt;task&gt;</code>.</li>
 </ul>
 
 <p>Stato persistito in <code>workspace/.scheduler/state.sqlite</code> (tabella
@@ -916,20 +921,20 @@ auto-installati al primo boot del daemon HTTP via
 <thead><tr><th style="width:24%">Nome</th><th style="width:15%">Schedule</th><th>Cosa fa</th></tr></thead>
 <tbody>
 <tr><td><code>i18n_translate_pending</code></td><td><code>daily@02:00</code></td><td>Traduce 20 chiavi <code>i18n.sqlite</code> con <code>needs_translation=1</code> (cap throttling GPU). Tier wise default. Vedi <a href="multilang.html">multilang</a>.</td></tr>
-<tr><td><code>images_index_refresh</code></td><td><code>daily@03:00</code></td><td>Refresh incrementale indice immagini unificato (ADR 0117): walk + stat ~11s, pipeline EXIF + ArcFace + VLM + BGE su nuove/modificate.</td></tr>
+<tr><td><code>images_index_refresh</code></td><td><code>daily@03:00</code></td><td>Refresh incrementale indice immagini unificato: walk + stat ~11s, pipeline EXIF + ArcFace + VLM + BGE su nuove/modificate.</td></tr>
 <tr><td><code>apply_executor_ager</code></td><td><code>daily@03:30</code></td><td>Decay degli executor inattivi: <em>active</em> &rarr; <em>deprecated</em> dopo 30g di inattivita'; <em>deprecated</em> &rarr; <em>archived</em> dopo altri 14g.</td></tr>
-<tr><td><code>apply_ager</code></td><td><code>daily@04:00</code></td><td>Chiama <a href="mnestoma.html#cap6"><code>Mnestoma.apply_ager()</code></a>: decay + demote + proto purge sul mnestoma.</td></tr>
-<tr><td><code>synt_suggest</code></td><td><code>daily@04:30</code></td><td>Per ciascun proto-mnest ricorrente (<code>uses&ge;3</code>, <code>weight&ge;0.30</code>) chiama <a href="synt.html"><code>Synt.react()</code></a> in compose-only e logga l'esito.</td></tr>
-<tr><td><code>multi_tool_maintenance</code></td><td><code>daily@04:30</code></td><td>Housekeeping <a href="fast_path.html">fast-path L2</a> (ADR 0150): expire stale (TTL N giorni di attivita' effettiva, default 30) + promote pipelines mature (<code>uses&ge;K_synth</code>, default 50) a proto-mnest in mnestoma per <code>synth_request</code>.</td></tr>
-<tr><td><code>proposals_eta_aggregate</code></td><td><code>daily@04:30</code></td><td>Aggregator latenze per <code>path_shape</code> (ADR 0122): scansiona turn JSONL ultimi 7g, calcola p50/p95 in <code>proposals_eta.sqlite</code>.</td></tr>
+<tr><td><code>apply_ager</code></td><td><code>daily@04:00</code></td><td>Chiama <a href="mnestoma.html#cap6"><code>Mnestoma.apply_ager</code></a>: decay + demote + proto purge sul mnestoma.</td></tr>
+<tr><td><code>synt_suggest</code></td><td><code>daily@04:30</code></td><td>Per ciascun proto-mnest ricorrente (<code>uses&ge;3</code>, <code>weight&ge;0.30</code>) chiama <a href="synt.html"><code>Synt.react</code></a> in compose-only e logga l'esito.</td></tr>
+<tr><td><code>multi_tool_maintenance</code></td><td><code>daily@04:30</code></td><td>Housekeeping <a href="fast_path.html">fast-path L2</a>: expire stale (TTL N giorni di attivita' effettiva, default 30) + promote pipelines mature (<code>uses&ge;K_synth</code>, default 50) a proto-mnest in mnestoma per <code>synth_request</code>.</td></tr>
+<tr><td><code>proposals_eta_aggregate</code></td><td><code>daily@04:30</code></td><td>Aggregator latenze per <code>path_shape</code>: scansiona turn JSONL ultimi 7g, calcola p50/p95 in <code>proposals_eta.sqlite</code>.</td></tr>
 <tr><td><code>promoter</code></td><td><code>daily@04:45</code></td><td>Promoter daemon: valuta + promuove synth proposals via <code>proposal_evaluator</code> (6 killer + 7 signal &rarr; verdict).</td></tr>
 <tr><td><code>introvertiva_propose</code></td><td><code>daily@05:00</code></td><td>Cascata introvertiva: produce proposte <em>dedupe / generalize / specialize</em> sul corpus accumulato (no auto-apply, audit JSONL).</td></tr>
 <tr><td><code>introvertiva_apply</code></td><td><code>daily@05:30</code></td><td>Auto-apply specialize ad altissima confidenza (dominanza &ge; 0,9, uses &ge; 30, finestra &le; 14g).</td></tr>
-<tr><td><code>proposals_cleanup</code></td><td><code>daily@06:00</code></td><td>Manutenzione lifecycle backlog (ADR 0096): archive aged synt_proposals, dedupe candidates, auto-decay legacy_orphan. <strong>NIENTE delete</strong>: solo move + UPDATE.</td></tr>
-<tr><td><code>lifecycle_summary</code></td><td><code>daily@06:30</code></td><td>Aggregatore READ-ONLY dei 4 ager (ADR 0097): produce un sunto giornaliero del lifecycle del mnestoma.</td></tr>
-<tr><td><code>skill_sandbox_watchdog</code></td><td><code>daily@06:35</code></td><td>Mini-version Fase C (ADR 0140): controlla soglia trigger per sandbox per-skill (&ge; 5 skill third-party OR &ge; 1 guest paired); notifica admin via Telegram.</td></tr>
+<tr><td><code>proposals_cleanup</code></td><td><code>daily@06:00</code></td><td>Manutenzione lifecycle backlog: archive aged synt_proposals, dedupe candidates, auto-decay legacy_orphan. <strong>NIENTE delete</strong>: solo move + UPDATE.</td></tr>
+<tr><td><code>lifecycle_summary</code></td><td><code>daily@06:30</code></td><td>Aggregatore READ-ONLY dei 4 ager: produce un sunto giornaliero del lifecycle del mnestoma.</td></tr>
+<tr><td><code>skill_sandbox_watchdog</code></td><td><code>daily@06:35</code></td><td>Controlla soglia trigger per sandbox per-skill (&ge; 5 skill third-party OR &ge; 1 guest paired); notifica admin via Telegram.</td></tr>
 <tr><td><code>promoter_digest</code></td><td><code>daily@07:00</code></td><td>Digest Telegram delle proposte in <em>promoted_grace</em> non ancora approvate dall'utente.</td></tr>
-<tr><td><code>github_watcher</code></td><td><code>every_30m</code></td><td>Fase D GitHub provider (ADR 0141): scansiona ogni 30 min i repo monitorati (<code>~/.config/metnos/github_watched_repos.json</code>), rileva issue/PR/commenti, applica dedup semantic BGE-M3 e auto-risponde (4-AND safety) o apre dialog Stage 2.</td></tr>
+<tr><td><code>github_watcher</code></td><td><code>every_30m</code></td><td>GitHub provider: scansiona ogni 30 min i repo monitorati (<code>~/.config/metnos/github_watched_repos.json</code>), rileva issue/PR/commenti, applica dedup semantic BGE-M3 e auto-risponde (4-AND safety) o apre dialog Stage 2.</td></tr>
 </tbody>
 </table>
 
@@ -956,8 +961,8 @@ timeout vengono cancellati graziosamente.</li>
 
 <p>
 Il loop daemon (<code>scheduler daemon</code>) e' un singolo processo che fa
-<code>tick()</code> ogni 60s e va in idle. Niente concorrenza, niente locking
-fra processi: lo scheduler in v1.1 e' un singleton sul <code>metnos-server</code>.
+<code>tick</code> ogni 60s e va in idle. Niente concorrenza, niente locking
+fra processi: lo scheduler in e' un singleton sul <code>metnos-server</code>.
 La policy di errore e' <em>"non far cadere il loop"</em>: ogni eccezione del
 task viene catturata, segnata in <code>last_status='error'</code> con
 traceback in <code>last_output</code>, e il tick continua sui task successivi.
@@ -972,7 +977,7 @@ non un executor che il sistema "decide di chiamare". Vedi anche la memoria
 (scheduler, ager, snapshot).
 </p>
 
-<h2 id="cap11_2_1">11.2.1 Recurring tasks utente (1/5/2026)</h2>
+<h2 id="cap11_2_1">11.2.1 Recurring tasks utente</h2>
 
 <p>
 Sopra lo scheduler builtin gira <code>runtime/recurring_tasks.py</code>: il
@@ -985,7 +990,7 @@ tool builtin sono callable dal PLANNER: <code>schedule_recurring</code>,
 </p>
 
 <p>
-La risoluzione del callback &egrave; per <em>chiave string</em> (ADR 0068):
+La risoluzione del callback &egrave; per <em>chiave string</em>:
 il task persiste il nome simbolico del callback, il dispatcher lo risolve a
 runtime contro un registro centralizzato. Niente serializzazione di
 <code>callable</code>, niente stale references al riavvio del daemon.
@@ -1015,7 +1020,7 @@ PLANNER attiva il tool builtin <code>request_location_from_user</code>: un
 dialog atomico che chiede la posizione all'utente sul canale e riprende il
 piano alla ricezione. Il pattern &egrave; analogo a &sect;2-ter (undo
 atomico): un tool che ferma e riprende il turno senza step intermedi che
-inquinino la storia. ADR 0061-0065 codificano la famiglia di pattern
+inquinino la storia. -0065 codificano la famiglia di pattern
 &laquo;atomic dialog tool&raquo;.
 </p>
 
@@ -1034,7 +1039,7 @@ i POI il vantaggio di copertura giustifica l'eccezione.
 <h2 id="cap11_2_4">11.2.4 Multi-user step 1: actor resolver</h2>
 
 <p>
-<code>runtime/actor_resolver.py</code> implementa lo step 1 di ADR 0035
+<code>runtime/actor_resolver.py</code> implementa lo step 1 di 
 (host + guest model): ogni pairing espone un campo <code>actor</code>;
 nuovi pairing ricevono auto-assign <code>host</code> (al primo) o
 <code>guest_&lt;id6&gt;</code> (ai successivi). L'<code>actor</code> &egrave;
@@ -1065,14 +1070,14 @@ template interni non user-facing).
 <p>
 Il sottosistema multilingua di Metnos vive su <strong>tre layer</strong>
 distinti: (1) prompt LLM in <code>runtime/prompts/&lt;lang&gt;/&lt;role&gt;.j2</code>
-(MiniJinja, 26 ruoli, ADR&nbsp;0092); (2) description executor nei manifest
+(MiniJinja, 26 ruoli, ); (2) description executor nei manifest
 TOML (tabella <code>[description].&lt;lang&gt;</code> + companion
 <code>manifest.lang_state.json</code>); (3) messaggi user-facing in
 <code>i18n.sqlite</code> (118 chiavi standard + 79 description migrate).
 La disciplina di allineamento e' <em>latest-wins</em>: nessuna lingua
 &egrave; canonica per costruzione, vince chi viene editato per ultimo
 (<code>version_hash</code> + <code>source_hash</code> per risorsa). Il
-daemon notturno <code>i18n_translator.run_loop()</code> rigenera candidati
+daemon notturno <code>i18n_translator.run_loop</code> rigenera candidati
 in <code>_pending/</code>; <code>metnos-prompts review</code> mostra il
 diff, <code>mark-synced</code> promuove. Aggiungere una nuova lingua &egrave;
 un comando: <code>metnos-prompts add-language fr</code>. Vedi documento
@@ -1083,7 +1088,7 @@ canonico <a href="multilang.html">multilang</a>.
 
 <p>
 <code>runtime/config.py</code> espone 24 costanti tunable e 11 path con
-override via env (<code>METNOS_HOME</code>, <code>METNOS_USER_DATA</code>,
+override via env (<code>METNOS_INSTALL_ROOT</code>, <code>METNOS_USER_DATA</code>,
 <code>METNOS_LOG_LEVEL</code>, ecc.). <code>runtime/logging_setup.py</code>
 configura un logger root <code>metnos.*</code> con stdout + file rotating.
 Bonifica accompagnata: 54 occorrenze di <code>except: pass</code> sostituite
@@ -1110,16 +1115,16 @@ Il POC ha verificato cinque modi tipici di rottura. Sono diventati test cases pe
 Il principio: <em>non far cadere il sistema; restituire sempre una risposta strutturata</em>, anche quando &egrave; un errore. L'utente capisce, l'LLM nel passo successivo (in multistep) pu&ograve; correggere, gli executor a valle non vedono input strani.
 </p>
 
-<h1 id="cap13">13. Cosa &egrave; rimandato a v1.2+</h1>
+<h1 id="cap13">13. Cosa &egrave; rimandato</h1>
 
 <table>
 <tr><th>Funzionalit&agrave;</th><th>Quando entra</th></tr>
 <tr><td>Mode <code>online</code> reale</td><td>Quando si configura un provider Anthropic con API key.</td></tr>
 <tr><td>Mode <code>hybrid</code> con regole di escalation reali</td><td>Quando si decide il vocabolario delle <code>critical_capabilities</code> e si vuole l'auto-routing.</td></tr>
-<tr><td>Vaglio probabilistico (LLM-judge)</td><td>Quando la <code>constitution</code> v1.1 esiste come riferimento.</td></tr>
+<tr><td>Vaglio probabilistico (LLM-judge)</td><td>Quando la <code>constitution</code> esiste come riferimento.</td></tr>
 <tr><td>Auto-escalation di tier (fast &rarr; middle &rarr; wise se i passi falliscono)</td><td>Quando esistono almeno due tier diversi configurati e si ha un caso d'uso che lo motiva.</td></tr>
 <tr><td>Differenziazione del prompt per tier (fast/middle/wise) anche con stesso modello</td><td>Quando il caso d'uso richiede pi&ugrave; punti di vista sulla stessa situazione.</td></tr>
-<tr><td>Parallel-tool-call intra-turno</td><td>Quando un caso reale dimostra latency win significativo. <strong>Vincolo binding v1.2</strong>.</td></tr>
+<tr><td>Parallel-tool-call intra-turno</td><td>Quando un caso reale dimostra latency win significativo. <strong>Vincolo binding</strong>.</td></tr>
 <tr><td>Async approval (esecuzione differita con grant per_target durevoli)</td><td>Quando channel + scheduler richiedono interazione asincrona.</td></tr>
 <tr><td>Mnestoma history-driven nel pre-filter (boost dalla storia)</td><td>Quando il mnestoma operativo esiste.</td></tr>
 <tr><td>Embedding (MiniLM locale) nel pre-filter</td><td>Quando il bag-of-words mostra limiti pratici (non emersi nel POC).</td></tr>
@@ -1130,8 +1135,65 @@ Il principio: <em>non far cadere il sistema; restituire sempre una risposta stru
 <h2>Note finali</h2>
 
 <p>
-Questo documento descrive cosa il pianificatore fa <em>oggi</em>, validato da test. Le sezioni "rimandato a v1.2" descrivono cosa ci aspettiamo, non promesse. Quando un'estensione passa, questo doc verr&agrave; aggiornato esattamente come il POC v1.1 ha aggiornato la versione precedente: piuttosto che speculare su come sar&agrave;, scriveremo cosa funziona.
+Questo documento descrive cosa il pianificatore fa <em>oggi</em>, validato da test. Le sezioni "rimandato a" descrivono cosa ci aspettiamo, non promesse. Quando un'estensione passa, questo doc verr&agrave; aggiornato esattamente come il POC ha aggiornato la versione precedente: piuttosto che speculare su come sar&agrave;, scriveremo cosa funziona.
 </p>
+
+<div style="margin:22px 0;padding:20px;background:#fff;border:1px solid var(--border);border-radius:8px;overflow-x:auto;">
+ <svg viewBox="0 0 860 300" role="img" aria-label="Diagramma cascata Engine v2: i quattro strati di run_turn">
+ <defs>
+ <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+ <path d="M0,0 L10,5 L0,10 z" fill="#64748B"/>
+ </marker>
+ </defs>
+ <text x="430" y="22" text-anchor="middle" font-family="Segoe UI,sans-serif" font-size="15" font-weight="700" fill="#1A477A">run_turn &mdash; cascata a quattro strati</text>
+ <g font-family="Segoe UI,sans-serif" font-size="12.5">
+ <rect x="40" y="45" width="150" height="48" rx="8" fill="#dbeafe" stroke="#3b82f6" stroke-width="1.5"/>
+ <text x="115" y="68" text-anchor="middle" fill="#1A477A" font-weight="600">L0 fast-path</text>
+ <text x="115" y="84" text-anchor="middle" fill="#475569" font-size="10.5">hash + coseno</text>
+ <rect x="40" y="115" width="150" height="48" rx="8" fill="#dcfce7" stroke="#16a34a" stroke-width="1.5"/>
+ <text x="115" y="138" text-anchor="middle" fill="#14532d" font-weight="600">L1 autopath</text>
+ <text x="115" y="154" text-anchor="middle" fill="#475569" font-size="10.5">cluster BGE-M3</text>
+ <rect x="40" y="185" width="150" height="48" rx="8" fill="#fef3c7" stroke="#f59e0b" stroke-width="1.5"/>
+ <text x="115" y="208" text-anchor="middle" fill="#713f12" font-weight="600">L2 validator</text>
+ <text x="115" y="224" text-anchor="middle" fill="#475569" font-size="10.5">ri-proposta 1&times;</text>
+ <rect x="40" y="255" width="150" height="48" rx="8" fill="#ede9fe" stroke="#7c3aed" stroke-width="1.5"/>
+ <text x="115" y="278" text-anchor="middle" fill="#4c1d95" font-weight="600">L3 engine</text>
+ <text x="115" y="294" text-anchor="middle" fill="#475569" font-size="10.5">proponi+esegui+recupera</text>
+ <line x1="115" y1="93" x2="115" y2="113" stroke="#64748B" stroke-width="1.5" marker-end="url(#ar)"/>
+ <line x1="115" y1="163" x2="115" y2="183" stroke="#64748B" stroke-width="1.5" marker-end="url(#ar)"/>
+ <line x1="115" y1="233" x2="115" y2="253" stroke="#64748B" stroke-width="1.5" marker-end="url(#ar)"/>
+ </g>
+ <g font-family="Segoe UI,sans-serif" font-size="11">
+ <text x="210" y="72" fill="#475569">&lt; 5 ms</text>
+ <text x="210" y="142" fill="#475569">match cluster</text>
+ <text x="210" y="212" fill="#475569">guardia pre-engine</text>
+ <text x="210" y="282" fill="#475569">loop ReAct completo</text>
+ </g>
+ <g font-family="Segoe UI,sans-serif" font-size="11.5">
+ <rect x="430" y="60" width="180" height="180" rx="10" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.5"/>
+ <text x="520" y="80" text-anchor="middle" fill="#1A477A" font-weight="700">risolvi e fermati</text>
+ <text x="520" y="104" text-anchor="middle" fill="#475569">il primo strato che</text>
+ <text x="520" y="120" text-anchor="middle" fill="#475569">risolve vince</text>
+ <line x1="190" y1="69" x2="428" y2="69" stroke="#cbd5e1" stroke-width="1.2" stroke-dasharray="3,3" marker-end="url(#ar)"/>
+ <line x1="190" y1="139" x2="428" y2="120" stroke="#cbd5e1" stroke-width="1.2" stroke-dasharray="3,3" marker-end="url(#ar)"/>
+ <line x1="190" y1="209" x2="428" y2="160" stroke="#cbd5e1" stroke-width="1.2" stroke-dasharray="3,3" marker-end="url(#ar)"/>
+ <line x1="190" y1="279" x2="428" y2="200" stroke="#cbd5e1" stroke-width="1.2" stroke-dasharray="3,3" marker-end="url(#ar)"/>
+ </g>
+ </svg>
+</div>
+
+<p>
+I quattro strati, dall'alto:
+</p>
+
+<ol>
+<li><strong>L0 &mdash; fast-path</strong>: match esatto su hash (&lt; 5 ms) piu' una ricerca per coseno BGE-M3. Approvato dalla chat col bottone &laquo;approva fast-path&raquo;; vince su autopath.</li>
+<li><strong>L1 &mdash; autopath</strong>: match semantico di cluster (BGE-M3) indicizzato sull'hash di intento, con punteggio champion/challenger e TTL di 30 giorni sugli anti-skill.</li>
+<li><strong>L2 &mdash; validator</strong>: una guardia che puo' ri-proporre una volta prima che giri l'engine (attiva di default).</li>
+<li><strong>L3 &mdash; engine</strong>: il loop ReAct completo &mdash; proposer, executor, recovery, terminator. Il selettore <code>METNOS_ENGINE</code> sceglie <code>simple|metis|frontier</code>.</li>
+</ol>
+
+
 
 </body>
 </html>

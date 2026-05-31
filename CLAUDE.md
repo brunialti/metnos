@@ -161,7 +161,7 @@ Caccia ad anglicismi (peer, trigger, goal, plumbing, gate) e calchi (costosa/mor
 **Codice deterministico > LLM se equipotente, equiefficace o se codice deterministico [sarebbe] troppo complesso.** LLM solo quando deterministico e' inefficace, troppo complesso da scrivere/mantenere, o impossibile. Anti-pattern: LLM per validare/classificare cose che `vocab.py` o un regex coprono. LLM giustificato: intent extractor (parser linguistico equipotente troppo complesso).
 
 ### 7.10 Re-sign executor dopo edit del codice
-Edit di `<executor>.py` cambia il digest sha256 del codice ma NON il `manifest.toml`. Al boot/reload, `runtime/loader.py::verify_executor` scarta silenziosamente l'executor se `declared digest != actual digest`. Workflow OBBLIGATORIO dopo ogni edit di un `.py` di executor: `python -m runtime.sign sign executors/<name>` (relative alla repo root) + restart `metnos-http.service`.
+Edit di `<executor>.py` cambia il digest sha256 del codice ma NON il `manifest.toml`. Al boot/reload, `runtime/loader.py::verify_executor` scarta silenziosamente l'executor se `declared digest != actual digest`. Workflow OBBLIGATORIO dopo ogni edit di un `.py` di executor: `python3 runtime/sign.py sign executors/<name>` (dalla repo root) + restart `metnos-http.service`. NB: `python -m runtime.sign` NON funziona (`runtime` non è un package, manca `__init__`/`__main__`); usare lo script diretto. Verificato 30/5/2026.
 
 ### 7.11 No path assoluti hardcoded (rename-resilient)
 
@@ -333,6 +333,15 @@ Tipi: `user`, `feedback`, `project`, `reference`. Indice in `~/.claude/projects/
 - **Lifecycle summary** (ADR 0097): `runtime/lifecycle_summary.py` aggregatore READ-ONLY ager.
 - **Proposal auto-evaluator** (ADR 0122): `proposals_eta_index.py` + `proposal_evaluator.py` 6 killer + 7 signal. CLI `admin.proposals_cli evaluate`.
 - **Unified change_intent lifecycle** (ADR 0158): single object/FSM/UI `/admin/changes`. 6 kind. Storage sqlite. Jobs `change_intent_materialize/applier/observer`. Soft-deprecation `/admin/{proposals,promotions}`.
+- **Consolidamento scheduler builtin** (30/5/2026): `nightly_aging` daily@03:30 (= apply_executor_ager+apply_ager uniti); `state_reaper` daily@03:40 (reaper UNICO stato persistente: undo/_history-blob/http_cache/location/skill_fetch/install_resume/approval_registry/turns/autopath; env `METNOS_*_RETENTION_DAYS`); GPU-heavy `telos_introspect_nightly`+`intent_classifier_retrain`→`every_72h` staggerati (env `METNOS_{TELOS_INTROSPECT,INTENT_RETRAIN}_INTERVAL_H` def 72); `i18n_translate_pending`→`every_6h` (cap `METNOS_I18N_CAP_PER_FIRE` def 20); ritirati stub `synt_suggest`/`introvertiva_apply`; systemd `metnos-i18n-translator.timer/.service` RIMOSSI (1 sola coda i18n). NB: la migrate scheduler SALTA i builtin esistenti → editare `_BUILTIN_JOBS` NON aggiorna il DB; serve `UPDATE schedule_entries`.
+- **Reaper sempre WIRED** (30/5/2026, regola): ogni `cleanup*/sweep*/purge*/gc*` DEVE avere un call-site reale (job scheduler o invocazione) — un reaper definito e mai chiamato accumula stato silenziosamente (lezione `dialog_pending.cleanup_expired`). Verificare i chiamanti con grep (escludendo test/docstring), non assumere.
+- **UI gestione timer** (30/5/2026): `GET /admin/timers` + `POST /admin/timers/{name}/{enable|disable|fire}` (`http_routes_admin.py`) + `SchedulerStorage.enable()`. Tutti i timer di sistema visibili/gestibili (link in dashboard).
+- **Promoter kill-switch grace a esito** (L3.5, 30/5/2026): `jobs/promoter.py::_grace_killswitch` — auto-promozione + ritiro su segnale negativo (turn-log `error`/`scope_violation`) durante grace. OSSERVA-di-default (`METNOS_PROMOTER_KILLSWITCH_ENFORCE=0`, `_ROLLBACK_FAILS=2`); notifica Telegram admin (i18n `MSG_KILLSWITCH_*`); `resurrect_from_archive` accetta anche `rolled_back`.
+- **Dialog TTL + sweep** (30/5/2026): `dialog_pending.list_pending` salta gli scaduti; `dialog_pending_sweep` every_1m chiude+notifica STESSO canale (`send_messages` to_user/via_channel, i18n `MSG_DIALOG_AUTOCLOSED`); TTL 60s default / 600s form-credenziali (`default_timeout_for`, env `METNOS_DIALOG_TTL_S`/`_FORM_TTL_S`); `save_pending` atomico (tmp+os.replace).
+- **engine_proposer pattern H classify→filter** (30/5/2026): dopo `classify_entries(dimension=D, classes=[...])` filtra con `filter_entries(where_field=D, where_value=<classe>)`, MAI `kind`/`type` (matchano `entry.kind`/`type` del dominio file → 0 risultati). In `prompts/{it,en}/engine_proposer.j2`.
+- **chat.html SSE resumable** (30/5/2026): `onerror` recupera l'esito via `GET /agent/turns/{id}` invece di marcare ✗ (navigate-away NON è errore; il turn è resumable e completa lato server).
+- **NOPASSWD restart** (30/5/2026): `/etc/sudoers.d/metnos-http` → `systemctl restart|start|stop metnos-http.service` senza password (admin/agente). VLM accuratezza: env `METNOS_VLM_{MAX_EDGE,MAX_TOKENS,CTX,SLOTS}`; `resume_revlm` in create_images_indices riempie solo l'asse VLM riusando SigLIP+volti.
+- **Workflow rate-limit 429** (30/5/2026): ~16 agenti concorrenti → 429 ("server limiting, NOT your usage limit"); chunkare in ondate da ~5 (`for wave: await parallel(...)`).
 
 **Multi-user / sync / introvertiva**
 - **Multi-user sync** (ADR 0083): `runtime/users_pairings_sync.py` idempotente al boot.
@@ -369,7 +378,7 @@ Tipi: `user`, `feedback`, `project`, `reference`. Indice in `~/.claude/projects/
 - **Universal helpers**: `classify_entries`, `filter_entries`, `undo_last_turn` sempre. `describe_entries` SOLO se intent.verb NOT in action_verbs.
 - **Reverse patterns**: `runtime/reverse_patterns.py` — 5 entry deterministiche (vedi §2.3).
 - **Platform policy**: `runtime/platform_policy.py` — system files cross-mount-safe + protected paths host-aware.
-- **Messaggi**: `runtime/messages.py` — dizionario unico code→template `ERR_*/WARN_*/MSG_*/LOG_*`. Mai stringhe duplicate negli executor.
+- **Messaggi**: `runtime/messages.py` — dizionario unico code→template `ERR_*/WARN_*/MSG_*/LOG_*`. Mai stringhe duplicate negli executor. **REGOLA (2026-05-29)**: ogni messaggio user-facing DEVE risolversi via i18n DB (`_msg`/`messages.get`) nella lingua dell'istanza (`METNOS_LANG`, `i18n.current_lang()`); VIETATE stringhe user-facing hardcoded, inclusi gli errori di validazione-arg (l'utente li vede su pipeline malformata). Eccezione: `LOG_*`/diagnostica interna mai mostrata. Builtin=multilang obbligatorio+re-sign; synth/imported=lingua utente (vedi memoria i18n-scope-by-executor-class).
 
 ## 12. Fasi di sviluppo
 

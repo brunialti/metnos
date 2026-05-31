@@ -1,49 +1,48 @@
 <!DOCTYPE html>
 <html lang="it">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Metnos &mdash; fast-path introvertivo</title>
-    <meta name="description" content="Il fast-path introvertivo di Metnos: come l'assistente riconosce le richieste gia' viste e risponde senza ripassare dal pianificatore. Tre livelli (L0 modelli letterali, L1 single-tool, L2 sequenze), TTL per giorni di attivita', promozione a executor sintetico.">
-    <meta name="keywords" content="fast-path, canonical_matcher, multi_tool_paths, memoization, BGE-M3, sintesi, mnestoma, metnos">
-    <meta name="author" content="Roberto Brunialti">
-    <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large">
-    <link rel="canonical" href="https://metnos.com/it/architecture/fast_path.html">
-    <link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/fast_path.html">
-    <link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/fast_path.html">
-    <link rel="alternate" hreflang="x-default" href="https://metnos.com/en/architecture/fast_path.html">
-    <meta property="og:type" content="article">
-    <meta property="og:url" content="https://metnos.com/it/architecture/fast_path.html">
-    <meta property="og:title" content="Metnos &mdash; fast-path introvertivo">
-    <meta property="og:description" content="Tre livelli di memoizzazione fra l'utente e il pianificatore: come Metnos impara a rispondere subito alle richieste che ha gia' visto.">
-    <meta property="og:locale" content="it_IT">
-    <meta property="og:locale:alternate" content="en_US">
-    <meta property="og:site_name" content="Metnos">
-    <script type="application/ld+json">
+ <meta charset="UTF-8">
+ <meta name="viewport" content="width=device-width, initial-scale=1.0">
+ <title>Metnos &mdash; fast-path introvertivo</title>
+ <meta name="description" content="Il fast-path introvertivo di Metnos: come l'assistente riconosce le richieste gia' viste e risponde senza ripassare dal pianificatore. Tre livelli (L0 modelli letterali, L1 single-tool, L2 sequenze), TTL per giorni di attivita', promozione a executor sintetico.">
+ <meta name="keywords" content="fast-path, canonical_matcher, multi_tool_paths, memoization, BGE-M3, sintesi, mnestoma, metnos">
+ <meta name="author" content="Roberto Brunialti">
+ <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large">
+ <link rel="canonical" href="https://metnos.com/it/architecture/fast_path.html">
+ <link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/fast_path.html">
+ <link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/fast_path.html">
+ <link rel="alternate" hreflang="x-default" href="https://metnos.com/en/architecture/fast_path.html">
+ <meta property="og:type" content="article">
+ <meta property="og:url" content="https://metnos.com/it/architecture/fast_path.html">
+ <meta property="og:title" content="Metnos &mdash; fast-path introvertivo">
+ <meta property="og:description" content="Tre livelli di memoizzazione fra l'utente e il pianificatore: come Metnos impara a rispondere subito alle richieste che ha gia' visto.">
+ <meta property="og:locale" content="it_IT">
+ <meta property="og:locale:alternate" content="en_US">
+ <meta property="og:site_name" content="Metnos">
+ <script type="application/ld+json">
 {
-  "@context": "https://schema.org",
-  "@type": "TechArticle",
-  "headline": "Metnos — fast-path introvertivo",
-  "description": "Tre livelli di memoizzazione (modelli letterali, single-tool BGE, sequenze multi-tool con TTL per giorni di attivita') che evitano il pianificatore LLM quando la richiesta e' gia' nota.",
-  "url": "https://metnos.com/it/architecture/fast_path.html",
-  "inLanguage": "it",
-  "isPartOf": {"@type": "WebSite", "name": "Metnos", "url": "https://metnos.com/"},
-  "author": {"@type": "Person", "name": "Roberto Brunialti"},
-  "about": "Metnos component: fast-path introvertivo (canonical_matcher + multi_tool_paths)"
+ "@context": "https://schema.org",
+ "@type": "TechArticle",
+ "headline": "Metnos — fast-path introvertivo",
+ "description": "Tre livelli di memoizzazione (modelli letterali, single-tool BGE, sequenze multi-tool con TTL per giorni di attivita') che evitano il pianificatore LLM quando la richiesta e' gia' nota.",
+ "url": "https://metnos.com/it/architecture/fast_path.html",
+ "inLanguage": "it",
+ "isPartOf": {"@type": "WebSite", "name": "Metnos", "url": "https://metnos.com/"},
+ "author": {"@type": "Person", "name": "Roberto Brunialti"},
+ "about": "Metnos component: fast-path introvertivo (canonical_matcher + multi_tool_paths)"
 }
-    </script>
-    <style>
-:root {
-    --navy: #1A477A; --navy-light: #2B6CB0; --sage: #548235;
-    --bronze: #A0522D; --plum: #6B21A8;
-    --bg: #FAFBFC; --text: #1a1a1a;
-    --border: #d0d7de; --code-bg: #f6f8fa;
-    --table-header: #1A477A; --table-alt: #f0f4f8;
-    --note-bg: #dbeafe; --note-border: #3b82f6;
-    --tip-bg: #dcfce7; --tip-border: #16a34a;
-    --warn-bg: #fef3c7; --warn-border: #f59e0b;
-    --danger-bg: #fee2e2; --danger-border: #dc2626;
-    --muted: #64748B;
+ </script>
+ <style>:root {
+ --navy: #1A477A; --navy-light: #2B6CB0; --sage: #548235;
+ --bronze: #A0522D; --plum: #6B21A8;
+ --bg: #FAFBFC; --text: #1a1a1a;
+ --border: #d0d7de; --code-bg: #f6f8fa;
+ --table-header: #1A477A; --table-alt: #f0f4f8;
+ --note-bg: #dbeafe; --note-border: #3b82f6;
+ --tip-bg: #dcfce7; --tip-border: #16a34a;
+ --warn-bg: #fef3c7; --warn-border: #f59e0b;
+ --danger-bg: #fee2e2; --danger-border: #dc2626;
+ --muted: #64748B;
 }
 * { box-sizing: border-box; }
 body { font-family: 'Segoe UI', Calibri, -apple-system, sans-serif; font-size: 11pt; line-height: 1.65; color: var(--text); background: var(--bg); max-width: 960px; margin: 0 auto; padding: 40px 30px; }
@@ -61,26 +60,11 @@ code { font-family: Consolas, 'Courier New', monospace; }
 p code, li code, td code { background: var(--code-bg); padding: 1px 5px; border-radius: 3px; font-size: 9.5pt; }
 figure { text-align: center; margin: 24px 0; page-break-inside: avoid; }
 figure svg { max-width: 100%; height: auto; border: 1px solid var(--border); border-radius: 6px; background: white; padding: 8px; }
-figcaption { font-style: italic; color: #555; font-size: 9.5pt; margin-top: 8px; }
-.callout { border-left: 4px solid; padding: 10px 16px; margin: 15px 0; border-radius: 0 4px 4px 0; font-size: 10pt; page-break-inside: avoid; }
-.callout.note { background: var(--note-bg); border-color: var(--note-border); }
-.callout.tip { background: var(--tip-bg); border-color: var(--tip-border); }
-.callout.warning { background: var(--warn-bg); border-color: var(--warn-border); }
-.callout.danger { background: var(--danger-bg); border-color: var(--danger-border); }
-.title-page { text-align: center; padding: 80px 0 40px; page-break-after: always; }
-.title-page h1 { font-size: 32pt; border: none; margin: 0; page-break-before: avoid; }
-.title-page .subtitle { font-size: 16pt; color: var(--navy-light); margin: 10px 0 30px; }
-.title-page .meta { font-size: 11pt; color: #666; }
-.toc { page-break-after: always; }
-.toc h2 { border: none; }
-.toc ol { font-size: 11pt; line-height: 2; }
-.toc a { color: var(--navy); text-decoration: none; }
-.toc a:hover { text-decoration: underline; }
+figcaption { font-style: italic; color: #555; font-size: 9.5pt; margin-top: 8px; }.callout { border-left: 4px solid; padding: 10px 16px; margin: 15px 0; border-radius: 0 4px 4px 0; font-size: 10pt; page-break-inside: avoid; }.callout.note { background: var(--note-bg); border-color: var(--note-border); }.callout.tip { background: var(--tip-bg); border-color: var(--tip-border); }.callout.warning { background: var(--warn-bg); border-color: var(--warn-border); }.callout.danger { background: var(--danger-bg); border-color: var(--danger-border); }.title-page { text-align: center; padding: 80px 0 40px; page-break-after: always; }.title-page h1 { font-size: 32pt; border: none; margin: 0; page-break-before: avoid; }.title-page.subtitle { font-size: 16pt; color: var(--navy-light); margin: 10px 0 30px; }.title-page.meta { font-size: 11pt; color: #666; }.toc { page-break-after: always; }.toc h2 { border: none; }.toc ol { font-size: 11pt; line-height: 2; }.toc a { color: var(--navy); text-decoration: none; }.toc a:hover { text-decoration: underline; }
 ul, ol { margin: 8px 0; padding-left: 24px; }
-li { margin-bottom: 4px; }
-.lead { font-size: 12pt; color: var(--navy); border-left: 4px solid var(--sage); padding-left: 14px; margin: 18px 0; }
-@media print { body { max-width: none; padding: 0; font-size: 10pt; } h1 { font-size: 16pt; } h2 { font-size: 12pt; } .title-page { padding: 60px 0 30px; } .title-page h1 { font-size: 24pt; } }
-    </style>
+li { margin-bottom: 4px; }.lead { font-size: 12pt; color: var(--navy); border-left: 4px solid var(--sage); padding-left: 14px; margin: 18px 0; }
+@media print { body { max-width: none; padding: 0; font-size: 10pt; } h1 { font-size: 16pt; } h2 { font-size: 12pt; }.title-page { padding: 60px 0 30px; }.title-page h1 { font-size: 24pt; } }
+ </style>
 </head>
 <body>
 <nav aria-label="Language" style="position:fixed;top:16px;right:20px;z-index:9999;font-family:'Segoe UI',Calibri,sans-serif;font-size:10pt;letter-spacing:2px;background:#FAFBFC;border:1px solid #d0d7de;border-radius:14px;padding:4px 10px;box-shadow:0 1px 4px rgba(0,0,0,0.04);">
@@ -90,42 +74,42 @@ li { margin-bottom: 4px; }
 </nav>
 
 <div style="background:#fff;border-bottom:1px solid #d0d7de;padding:10px 0;font-size:14px;position:sticky;top:0;z-index:10;margin-bottom:20px;">
-  <div style="max-width:960px;margin:0 auto;padding:0 20px;display:flex;justify-content:space-between;">
-    <a href="../index.html" style="color:#1a477a;text-decoration:none;font-weight:500;">&larr; Indice documentazione</a>
-    <span style="color:#8e8e93;">Microprogettazione &rsaquo; <strong style="color:#1a1a1a;">fast-path introvertivo</strong></span>
-  </div>
+ <div style="max-width:960px;margin:0 auto;padding:0 20px;display:flex;justify-content:space-between;">
+ <a href="../index.html" style="color:#1a477a;text-decoration:none;font-weight:500;">&larr; Indice documentazione</a>
+ <span style="color:#8e8e93;">Microprogettazione &rsaquo; <strong style="color:#1a1a1a;">fast-path introvertivo</strong></span>
+ </div>
 </div>
 
 <div class="title-page">
-    <h1>Metnos</h1>
-    <div class="subtitle">fast-path introvertivo &mdash; come l'assistente impara a rispondere subito</div>
-    <div class="meta">
-        Microprogettazione v1.0 &mdash; 19 maggio 2026<br>
-        Allineata con ADR 0094 (fast_path letterale), 0149 (canonical_matcher),<br>
-        0150 (multi-tool memoization).<br>
-        <br>
-        Pubblico: chi vuole capire perch&eacute; Metnos a volte risponde in mezzo secondo<br>
-        e a volte ci mette dieci.<br>
-        Lettura: 12 minuti.
-    </div>
+ <h1>Metnos</h1>
+ <div class="subtitle">fast-path introvertivo &mdash; come l'assistente impara a rispondere subito</div>
+ <div class="meta">
+ Microprogettazione &mdash; <br>
+ Allineata con (fast_path letterale), 0149 (canonical_matcher),<br>
+ 0150 (multi-tool memoization).<br>
+ <br>
+ Pubblico: chi vuole capire perch&eacute; Metnos a volte risponde in mezzo secondo<br>
+ e a volte ci mette dieci.<br>
+ Lettura: 12 minuti.
+ </div>
 </div>
 
 <div class="toc">
 <h2>Indice</h2>
 <ol>
-    <li><a href="#cap1">L'idea in due righe</a></li>
-    <li><a href="#cap2">Perch&eacute; serve un fast-path</a></li>
-    <li><a href="#cap3">I tre livelli, dal piu' semplice al piu' ricco</a></li>
-    <li><a href="#cap4">L0 &mdash; modelli letterali (<code>fast_path.py</code>)</a></li>
-    <li><a href="#cap5">L1 &mdash; un solo executor (<code>canonical_matcher</code>)</a></li>
-    <li><a href="#cap6">L2 &mdash; sequenze multi-step (<code>multi_tool_paths</code>)</a></li>
-    <li><a href="#cap7">Una scadenza che misura l'uso, non il tempo</a></li>
-    <li><a href="#cap8">Fast-path composti: due si tengono per mano</a></li>
-    <li><a href="#cap9">Concatenare il fast-path al pianificatore</a></li>
-    <li><a href="#cap10">L'estrattore di argomenti</a></li>
-    <li><a href="#cap11">Configurazione persistente</a></li>
-    <li><a href="#cap12">Promozione a executor sintetico</a></li>
-    <li><a href="#cap13">Domande aperte</a></li>
+ <li><a href="#cap1">L'idea in due righe</a></li>
+ <li><a href="#cap2">Perch&eacute; serve un fast-path</a></li>
+ <li><a href="#cap3">I tre livelli, dal piu' semplice al piu' ricco</a></li>
+ <li><a href="#cap4">L0 &mdash; modelli letterali (<code>fast_path.py</code>)</a></li>
+ <li><a href="#cap5">L1 &mdash; un solo executor (<code>canonical_matcher</code>)</a></li>
+ <li><a href="#cap6">L2 &mdash; sequenze multi-step (<code>multi_tool_paths</code>)</a></li>
+ <li><a href="#cap7">Una scadenza che misura l'uso, non il tempo</a></li>
+ <li><a href="#cap8">Fast-path composti: due si tengono per mano</a></li>
+ <li><a href="#cap9">Concatenare il fast-path al pianificatore</a></li>
+ <li><a href="#cap10">L'estrattore di argomenti</a></li>
+ <li><a href="#cap11">Configurazione persistente</a></li>
+ <li><a href="#cap12">Promozione a executor sintetico</a></li>
+ <li><a href="#cap13">Domande aperte</a></li>
 </ol>
 </div>
 
@@ -138,6 +122,34 @@ deciso bene come rispondere, la rieseguiamo cos&igrave; com'&egrave; e
 torniamo all'utente in mezzo secondo invece che in dieci. Niente
 modelli linguistici nel percorso critico, solo memoria.
 </p>
+
+ <figure>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 150" width="100%" preserveAspectRatio="xMidYMid meet" style="font-family:'Segoe UI',Calibri,sans-serif;font-size:11px;">
+<defs><marker id="m-d" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#1A477A"/></marker></defs>
+<rect x="10" y="70" width="158" height="56" rx="8" fill="#D9E4F0" stroke="#1A477A"/>
+<text x="89" y="94" text-anchor="middle" fill="#1A477A" font-weight="700">richiesta</text>
+<text x="89" y="112" text-anchor="middle" fill="#475569" font-size="9.5">query utente</text>
+<rect x="186" y="70" width="158" height="56" rx="8" fill="#DCFCE7" stroke="#3F6212"/>
+<text x="265" y="94" text-anchor="middle" fill="#1A477A" font-weight="700">L0 letterali</text>
+<text x="265" y="112" text-anchor="middle" fill="#475569" font-size="9.5">modelli esatti</text>
+<rect x="362" y="70" width="158" height="56" rx="8" fill="#DCFCE7" stroke="#3F6212"/>
+<text x="441" y="94" text-anchor="middle" fill="#1A477A" font-weight="700">L1 single-tool</text>
+<text x="441" y="112" text-anchor="middle" fill="#475569" font-size="9.5">match BGE-M3</text>
+<rect x="538" y="70" width="158" height="56" rx="8" fill="#DCFCE7" stroke="#3F6212"/>
+<text x="617" y="94" text-anchor="middle" fill="#1A477A" font-weight="700">L2 multi-step</text>
+<text x="617" y="112" text-anchor="middle" fill="#475569" font-size="9.5">sequenze memoizzate</text>
+<rect x="714" y="70" width="158" height="56" rx="8" fill="#1A477A" stroke="#0f2d4a"/>
+<text x="793" y="94" text-anchor="middle" fill="#1A477A" font-weight="700">L3 motore</text>
+<text x="793" y="112" text-anchor="middle" fill="#475569" font-size="9.5">Engine v2</text>
+<line x1="168" y1="98" x2="184" y2="98" stroke="#1A477A" stroke-width="2" marker-end="url(#m-fp)"/>
+<line x1="344" y1="98" x2="360" y2="98" stroke="#1A477A" stroke-width="2" marker-end="url(#m-fp)"/>
+<line x1="520" y1="98" x2="536" y2="98" stroke="#1A477A" stroke-width="2" marker-end="url(#m-fp)"/>
+<line x1="696" y1="98" x2="712" y2="98" stroke="#1A477A" stroke-width="2" marker-end="url(#m-fp)"/>
+
+</svg>
+<figcaption>Figura 1 &mdash; I livelli di memoizzazione prima del motore: L0 letterali, L1 single-tool, L2 sequenze multi-step; se nessuno scatta, la richiesta passa al motore (Engine v2).</figcaption>
+</figure>
+
 
 <h1 id="cap2">2. Perch&eacute; serve un fast-path</h1>
 
@@ -411,18 +423,18 @@ nel modulo &egrave; l'ultima rete di sicurezza.
 
 <pre>
 [fast_path]
-canonical_query_enabled    = true
-canonical_query_min_uses   = 3
-canonical_query_threshold  = 0.95
-canonical_query_args_llm   = false
+canonical_query_enabled = true
+canonical_query_min_uses = 3
+canonical_query_threshold = 0.95
+canonical_query_args_llm = false
 
 [multi_tool_fast_path]
-enabled            = false
-chain_to_planner   = false
-threshold          = 0.88
-min_uses           = 3
-ttl_active_days    = 30
-k_synth            = 50
+enabled = false
+chain_to_planner = false
+threshold = 0.88
+min_uses = 3
+ttl_active_days = 30
+k_synth = 50
 </pre>
 
 <h1 id="cap12">12. Promozione a executor sintetico</h1>

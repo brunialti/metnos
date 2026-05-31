@@ -1,51 +1,50 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Metnos &mdash; pairing v1.1 (tested)</title>
-    <meta name="description" content="Microdesign of Metnos pairing: signed Ed25519 codes that bind a channel+sender to an autonomy level. Default-chat bootstrap, SQLite registry, /pair command on the Telegram daemon.">
-    <meta name="keywords" content="pairing, channel, sender, autonomy, Ed25519, telegram, bootstrap, registry, sqlite, metnos">
-    <meta name="author" content="Roberto Brunialti">
-    <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large">
-    <link rel="canonical" href="https://metnos.com/en/architecture/pairing.html">
-    <link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/pairing.html">
-    <link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/pairing.html">
-    <link rel="alternate" hreflang="x-default" href="https://metnos.com/en/architecture/pairing.html">
-    <meta property="og:type" content="article">
-    <meta property="og:url" content="https://metnos.com/en/architecture/pairing.html">
-    <meta property="og:title" content="Metnos &mdash; pairing v1.1 (tested)">
-    <meta property="og:description" content="Metnos pairing: signed Ed25519 codes, default-chat bootstrap, /pair on the Telegram daemon, SQLite registry, ReadOnly/Supervised/Full levels.">
-    <meta property="og:locale" content="en_US">
-    <meta property="og:locale:alternate" content="it_IT">
-    <meta property="og:site_name" content="Metnos">
-    <meta name="twitter:card" content="summary_large_image">
-    <meta name="twitter:title" content="Metnos &mdash; pairing v1.1 (tested)">
-    <meta name="twitter:description" content="Ed25519 codes, SQLite registry, /pair on the Telegram daemon. Status: tested.">
-    <script type="application/ld+json">
+ <meta charset="UTF-8">
+ <meta name="viewport" content="width=device-width, initial-scale=1.0">
+ <title>Metnos &mdash; pairing (tested)</title>
+ <meta name="description" content="Microdesign of Metnos pairing: signed Ed25519 codes that bind a channel+sender to an autonomy level. Default-chat bootstrap, SQLite registry, /pair command on the Telegram daemon.">
+ <meta name="keywords" content="pairing, channel, sender, autonomy, Ed25519, telegram, bootstrap, registry, sqlite, metnos">
+ <meta name="author" content="Roberto Brunialti">
+ <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large">
+ <link rel="canonical" href="https://metnos.com/en/architecture/pairing.html">
+ <link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/pairing.html">
+ <link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/pairing.html">
+ <link rel="alternate" hreflang="x-default" href="https://metnos.com/en/architecture/pairing.html">
+ <meta property="og:type" content="article">
+ <meta property="og:url" content="https://metnos.com/en/architecture/pairing.html">
+ <meta property="og:title" content="Metnos &mdash; pairing (tested)">
+ <meta property="og:description" content="Metnos pairing: signed Ed25519 codes, default-chat bootstrap, /pair on the Telegram daemon, SQLite registry, ReadOnly/Supervised/Full levels.">
+ <meta property="og:locale" content="en_US">
+ <meta property="og:locale:alternate" content="it_IT">
+ <meta property="og:site_name" content="Metnos">
+ <meta name="twitter:card" content="summary_large_image">
+ <meta name="twitter:title" content="Metnos &mdash; pairing (tested)">
+ <meta name="twitter:description" content="Ed25519 codes, SQLite registry, /pair on the Telegram daemon. Status: tested.">
+ <script type="application/ld+json">
 {
-  "@context": "https://schema.org",
-  "@type": "TechArticle",
-  "headline": "Metnos — pairing v1.1",
-  "description": "Microdesign of pairing: signed Ed25519 codes, default-chat bootstrap, /pair command on the daemon, SQLite registry with single-shot consumed codes. Status: tested.",
-  "url": "https://metnos.com/en/architecture/pairing.html",
-  "inLanguage": "en",
-  "isPartOf": {"@type": "WebSite", "name": "Metnos", "url": "https://metnos.com/"},
-  "author": {"@type": "Person", "name": "Roberto Brunialti"}
+ "@context": "https://schema.org",
+ "@type": "TechArticle",
+ "headline": "Metnos — pairing ",
+ "description": "Microdesign of pairing: signed Ed25519 codes, default-chat bootstrap, /pair command on the daemon, SQLite registry with single-shot consumed codes. Status: tested.",
+ "url": "https://metnos.com/en/architecture/pairing.html",
+ "inLanguage": "en",
+ "isPartOf": {"@type": "WebSite", "name": "Metnos", "url": "https://metnos.com/"},
+ "author": {"@type": "Person", "name": "Roberto Brunialti"}
 }
-    </script>
-    <style>
-:root {
-    --navy: #1A477A; --navy-light: #2B6CB0; --sage: #548235;
-    --bronze: #A0522D; --plum: #6B21A8;
-    --bg: #FAFBFC; --text: #1a1a1a;
-    --border: #d0d7de; --code-bg: #f6f8fa;
-    --table-header: #1A477A; --table-alt: #f0f4f8;
-    --note-bg: #dbeafe; --note-border: #3b82f6;
-    --tip-bg: #dcfce7; --tip-border: #16a34a;
-    --warn-bg: #fef3c7; --warn-border: #f59e0b;
-    --danger-bg: #fee2e2; --danger-border: #dc2626;
-    --muted: #64748B;
+ </script>
+ <style>:root {
+ --navy: #1A477A; --navy-light: #2B6CB0; --sage: #548235;
+ --bronze: #A0522D; --plum: #6B21A8;
+ --bg: #FAFBFC; --text: #1a1a1a;
+ --border: #d0d7de; --code-bg: #f6f8fa;
+ --table-header: #1A477A; --table-alt: #f0f4f8;
+ --note-bg: #dbeafe; --note-border: #3b82f6;
+ --tip-bg: #dcfce7; --tip-border: #16a34a;
+ --warn-bg: #fef3c7; --warn-border: #f59e0b;
+ --danger-bg: #fee2e2; --danger-border: #dc2626;
+ --muted: #64748B;
 }
 * { box-sizing: border-box; }
 body { font-family: 'Segoe UI', Calibri, -apple-system, sans-serif; font-size: 11pt; line-height: 1.65; color: var(--text); background: var(--bg); max-width: 960px; margin: 0 auto; padding: 40px 30px; }
@@ -60,37 +59,19 @@ td { padding: 7px 10px; border-bottom: 1px solid var(--border); vertical-align: 
 tr:nth-child(even) td { background: var(--table-alt); }
 pre { background: var(--code-bg); border: 1px solid var(--border); border-radius: 4px; padding: 12px 16px; overflow-x: auto; font-size: 9.5pt; line-height: 1.55; }
 code { font-family: Consolas, 'Courier New', monospace; }
-p code, li code, td code { background: var(--code-bg); padding: 1px 5px; border-radius: 3px; font-size: 9.5pt; }
-.callout { border-left: 4px solid; padding: 10px 16px; margin: 15px 0; border-radius: 0 4px 4px 0; font-size: 10pt; }
-.callout.note { background: var(--note-bg); border-color: var(--note-border); }
-.callout.tip { background: var(--tip-bg); border-color: var(--tip-border); }
-.callout.warning { background: var(--warn-bg); border-color: var(--warn-border); }
-.title-page { text-align: center; padding: 60px 0 30px; }
-.title-page h1 { font-size: 32pt; border: none; margin: 0; }
-.title-page .subtitle { font-size: 16pt; color: var(--navy-light); margin: 10px 0 30px; }
-.title-page .meta { font-size: 11pt; color: #666; }
-.toc h2 { border: none; }
-.toc ol { font-size: 11pt; line-height: 1.9; }
-.toc a { color: var(--navy); text-decoration: none; }
+p code, li code, td code { background: var(--code-bg); padding: 1px 5px; border-radius: 3px; font-size: 9.5pt; }.callout { border-left: 4px solid; padding: 10px 16px; margin: 15px 0; border-radius: 0 4px 4px 0; font-size: 10pt; }.callout.note { background: var(--note-bg); border-color: var(--note-border); }.callout.tip { background: var(--tip-bg); border-color: var(--tip-border); }.callout.warning { background: var(--warn-bg); border-color: var(--warn-border); }.title-page { text-align: center; padding: 60px 0 30px; }.title-page h1 { font-size: 32pt; border: none; margin: 0; }.title-page.subtitle { font-size: 16pt; color: var(--navy-light); margin: 10px 0 30px; }.title-page.meta { font-size: 11pt; color: #666; }.toc h2 { border: none; }.toc ol { font-size: 11pt; line-height: 1.9; }.toc a { color: var(--navy); text-decoration: none; }
 ul, ol { margin: 8px 0; padding-left: 24px; }
-li { margin-bottom: 4px; }
-.lead { font-size: 12pt; color: var(--navy); border-left: 4px solid var(--sage); padding-left: 14px; margin: 18px 0; }
-.example { background: #fff; border: 1px solid var(--border); border-left: 4px solid var(--bronze); border-radius: 0 4px 4px 0; padding: 12px 16px; margin: 14px 0; font-size: 10.5pt; }
-.example .ex-label { font-weight: 700; color: var(--bronze); font-size: 9.5pt; letter-spacing: 1px; text-transform: uppercase; }
-.status-banner { margin: 18px 0; border-left: 5px solid #16a34a; background: #dcfce7; color: #14532d; padding: 14px 20px; border-radius: 0 8px 8px 0; font-size: 11pt; line-height: 1.55; }
-.status-banner strong { color: #14532d; }
-.status-banner .status-chip { display: inline-block; background: #14532d; color: #fff; padding: 2px 10px; border-radius: 12px; font-size: 9.5pt; letter-spacing: 1px; font-weight: 700; margin-right: 6px; }
-.status-banner .seq { font-size: 9.5pt; color: #2d4a32; margin-top: 8px; }
-    </style>
+li { margin-bottom: 4px; }.lead { font-size: 12pt; color: var(--navy); border-left: 4px solid var(--sage); padding-left: 14px; margin: 18px 0; }.example { background: #fff; border: 1px solid var(--border); border-left: 4px solid var(--bronze); border-radius: 0 4px 4px 0; padding: 12px 16px; margin: 14px 0; font-size: 10.5pt; }.example.ex-label { font-weight: 700; color: var(--bronze); font-size: 9.5pt; letter-spacing: 1px; text-transform: uppercase; }.status-banner { margin: 18px 0; border-left: 5px solid #16a34a; background: #dcfce7; color: #14532d; padding: 14px 20px; border-radius: 0 8px 8px 0; font-size: 11pt; line-height: 1.55; }.status-banner strong { color: #14532d; }.status-banner.status-chip { display: inline-block; background: #14532d; color: #fff; padding: 2px 10px; border-radius: 12px; font-size: 9.5pt; letter-spacing: 1px; font-weight: 700; margin-right: 6px; }.status-banner.seq { font-size: 9.5pt; color: #2d4a32; margin-top: 8px; }
+ </style>
 </head>
 <body>
 
 <div class="status-banner">
-<span class="status-chip">TESTED</span>
-<strong>&#10003; Microdesign v1.1 &mdash; aligned with the code as of 4 May 2026.</strong>
-Status: <strong>TESTED</strong>. Cluster <code>pairing</code> 9/9 green + daemon flow 5/5 (27/4/2026), plus multi-user (ADR&nbsp;0083, 4/5/2026): <code>users.db</code> registry under <code>~/.local/share/metnos/</code>, guest pairing via short-lived <code>/start &lt;token&gt;</code> issued from the <code>/admin/users</code> panel of <a href="http_api.html" style="color:#14532d;text-decoration:underline;"><code>http_api</code></a>, web admin login via <code>POST /admin/login</code> with a 7-day cookie.
-Implementation reference: <code>/opt/myclaw/runtime/pairing.py</code>, <code>/opt/myclaw/runtime/users.py</code>.
-<div class="seq">Status in the microdesign sequence: <em>under approval</em> &rarr; <em>approved</em> &rarr; <strong>tested</strong> &rarr; <em>implemented</em>. The module was written and tested on April 27, 2026, after the closure of the synthesised executor POC and before opening the Telegram daemon to the family audience.</div>
+
+<strong>&#10003; Microdesign &mdash; aligned with the code.</strong>
+<code>pairing</code> 9/9 green + daemon flow 5/5, plus multi-user ( <code>users.db</code> registry under <code>~/.local/share/metnos/</code>, guest pairing via short-lived <code>/start &lt;token&gt;</code> issued from the <code>/admin/users</code> panel of <a href="http_api.html" style="color:#14532d;text-decoration:underline;"><code>http_api</code></a>, web admin login via <code>POST /admin/login</code> with a 7-day cookie.
+Implementation reference: <code>/opt/metnos/runtime/pairing.py</code>, <code>/opt/metnos/runtime/users.py</code>.
+<div class="seq">Status in the microdesign sequence: <em>under approval</em> &rarr; <em>approved</em> &rarr; <strong>tested</strong> &rarr; <em>implemented</em>. The module was written and tested, after the closure of the synthesised executor POC and before opening the Telegram daemon to the family audience.</div>
 </div>
 
 <nav aria-label="Language" style="position:fixed;top:16px;right:20px;z-index:9999;font-family:'Segoe UI',Calibri,sans-serif;font-size:10pt;letter-spacing:2px;background:#FAFBFC;border:1px solid #d0d7de;border-radius:14px;padding:4px 10px;box-shadow:0 1px 4px rgba(0,0,0,0.04);">
@@ -100,38 +81,38 @@ Implementation reference: <code>/opt/myclaw/runtime/pairing.py</code>, <code>/op
 </nav>
 
 <div style="background:#fff;border-bottom:1px solid #d0d7de;padding:10px 0;font-size:14px;position:sticky;top:0;z-index:10;margin-bottom:20px;">
-  <div style="max-width:960px;margin:0 auto;padding:0 20px;display:flex;justify-content:space-between;">
-    <a href="../index.html" style="color:#1a477a;text-decoration:none;font-weight:500;">&larr; Documentation index</a>
-    <span style="color:#8e8e93;">Microdesign &rsaquo; <strong style="color:#1a1a1a;">pairing</strong></span>
-  </div>
+ <div style="max-width:960px;margin:0 auto;padding:0 20px;display:flex;justify-content:space-between;">
+ <a href="../index.html" style="color:#1a477a;text-decoration:none;font-weight:500;">&larr; Documentation index</a>
+ <span style="color:#8e8e93;">Microdesign &rsaquo; <strong style="color:#1a1a1a;">pairing</strong></span>
+ </div>
 </div>
 
 <div class="title-page">
-    <h1>Metnos</h1>
-    <div class="subtitle"><code>pairing</code> &mdash; binding a channel and a sender to an autonomy level</div>
-    <div class="meta">
-        Microdesign v1.1 &mdash; status <strong>TESTED</strong> (April 27, 2026)<br>
-        Audience: those who want to understand how Metnos recognises who writes from outside, and with what authority.<br>
-        <br>
-        Reading time: 10 minutes.
-    </div>
+ <h1>Metnos</h1>
+ <div class="subtitle"><code>pairing</code> &mdash; binding a channel and a sender to an autonomy level</div>
+ <div class="meta">
+ Microdesign<br>
+ Audience: those who want to understand how Metnos recognises who writes from outside, and with what authority.<br>
+ <br>
+ Reading time: 10 minutes.
+ </div>
 </div>
 
 <div class="toc">
 <h2>Contents</h2>
 <ol>
-    <li><a href="#cap1">What pairing is</a></li>
-    <li><a href="#cap2">Types and constants</a></li>
-    <li><a href="#cap3">Code format</a></li>
-    <li><a href="#cap4">SQLite schema</a></li>
-    <li><a href="#cap5">Python API</a></li>
-    <li><a href="#cap6">CLI</a></li>
-    <li><a href="#cap7">Integration with the Telegram daemon</a></li>
-    <li><a href="#cap8">Security</a></li>
-    <li><a href="#cap9">Tests</a></li>
-    <li><a href="#cap10">v1.1 limits</a></li>
-    <li><a href="#cap11">Multi-user: <code>users.db</code> and <code>/start</code></a></li>
-    <li><a href="#cap12">Web admin login</a></li>
+ <li><a href="#cap1">What pairing is</a></li>
+ <li><a href="#cap2">Types and constants</a></li>
+ <li><a href="#cap3">Code format</a></li>
+ <li><a href="#cap4">SQLite schema</a></li>
+ <li><a href="#cap5">Python API</a></li>
+ <li><a href="#cap6">CLI</a></li>
+ <li><a href="#cap7">Integration with the Telegram daemon</a></li>
+ <li><a href="#cap8">Security</a></li>
+ <li><a href="#cap9">Tests</a></li>
+ <li><a href="#cap10"> limits</a></li>
+ <li><a href="#cap11">Multi-user: <code>users.db</code> and <code>/start</code></a></li>
+ <li><a href="#cap12">Web admin login</a></li>
 </ol>
 </div>
 
@@ -140,6 +121,30 @@ Implementation reference: <code>/opt/myclaw/runtime/pairing.py</code>, <code>/op
 <p class="lead">
 <em>Pairing</em> identifies a <em>channel+sender</em>, not a physical person. The same family member writing to Metnos via Telegram and via Signal are two distinct, independent pairings, each with its own autonomy level. This naturally enables pairing the same person at different levels depending on the channel (Telegram = Full because the phone is always with them; mail = ReadOnly because it might have been read by someone else).
 </p>
+
+ <figure>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 180" width="100%" preserveAspectRatio="xMidYMid meet" style="font-family:'Segoe UI',Calibri,sans-serif;font-size:11px;">
+<defs><marker id="m-d" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#1A477A"/></marker></defs>
+<rect x="10" y="70" width="170" height="56" rx="8" fill="#D9E4F0" stroke="#1A477A"/>
+<text x="95" y="94" text-anchor="middle" fill="#1A477A" font-weight="700">technical device</text>
+<text x="95" y="112" text-anchor="middle" fill="#475569" font-size="9.5">/pair + Ed25519</text>
+<rect x="198" y="70" width="170" height="56" rx="8" fill="#FEF3C7" stroke="#B7791F"/>
+<text x="283" y="94" text-anchor="middle" fill="#1A477A" font-weight="700">family / guest</text>
+<text x="283" y="112" text-anchor="middle" fill="#475569" font-size="9.5">/start &lt;token&gt;</text>
+<rect x="386" y="70" width="170" height="56" rx="8" fill="#DCFCE7" stroke="#3F6212"/>
+<text x="471" y="94" text-anchor="middle" fill="#1A477A" font-weight="700">users.db registry</text>
+<text x="471" y="112" text-anchor="middle" fill="#475569" font-size="9.5">host + guests</text>
+<rect x="574" y="70" width="170" height="56" rx="8" fill="#EDE4F7" stroke="#6B21A8"/>
+<text x="659" y="94" text-anchor="middle" fill="#1A477A" font-weight="700">resolve_recipients</text>
+<text x="659" y="112" text-anchor="middle" fill="#475569" font-size="9.5">routing</text>
+<line x1="180" y1="98" x2="196" y2="98" stroke="#1A477A" stroke-width="2" marker-end="url(#m-pr)"/>
+<line x1="368" y1="98" x2="384" y2="98" stroke="#1A477A" stroke-width="2" marker-end="url(#m-pr)"/>
+<line x1="556" y1="98" x2="572" y2="98" stroke="#1A477A" stroke-width="2" marker-end="url(#m-pr)"/>
+
+</svg>
+<figcaption>Figure 1 &mdash; The two pairing paths: signed Ed25519 codes for technical devices and short-lived tokens for guests; both feed the multi-user registry.</figcaption>
+</figure>
+
 
 <p>
 Architecture ch. 12 treats pairing as a branch of the &laquo;identity and perimeter&raquo; node: Metnos does not know <em>who</em> you are in any registry sense, it only knows that the pair <code>(channel, sender_id)</code> was associated, once, with an autonomy level, and works on that.
@@ -154,30 +159,30 @@ Three autonomy levels, one single dimension (see Architecture chapter 4 for the 
 </p>
 
 <ul>
-    <li><code>ReadOnly</code> &mdash; the sender can write, Metnos acknowledges but <em>does not execute</em>. Designed for occasional family members or sensitive channels.</li>
-    <li><code>Supervised</code> &mdash; the sender gets a complete turn, but actions with external side effects fall under control (reserved for v1.2+; today it behaves like Full as far as <code>run_turn</code> is concerned, but the level is already persisted).</li>
-    <li><code>Full</code> &mdash; the sender has full authority: Metnos executes the turn and replies.</li>
+ <li><code>ReadOnly</code> &mdash; the sender can write, Metnos acknowledges but <em>does not execute</em>. Designed for occasional family members or sensitive channels.</li>
+ <li><code>Supervised</code> &mdash; the sender gets a complete turn, but actions with external side effects fall under control (reserved for +; today it behaves like Full as far as <code>run_turn</code> is concerned, but the level is already persisted).</li>
+ <li><code>Full</code> &mdash; the sender has full authority: Metnos executes the turn and replies.</li>
 </ul>
 
 <h1 id="cap2">2. Types and constants</h1>
 
 <p>
-The whole module lives in <code>/opt/myclaw/runtime/pairing.py</code> (354 lines). The two public types are a dataclass and an exception:
+The whole module lives in <code>/opt/metnos/runtime/pairing.py</code> (354 lines). The two public types are a dataclass and an exception:
 </p>
 
 <pre>@dataclass
 class Pairing:
-    channel: str
-    sender_id: str
-    autonomy_level: str
-    paired_at: str
-    paired_by: str
-    last_seen: str | None = None
-    revoked_at: str | None = None
+ channel: str
+ sender_id: str
+ autonomy_level: str
+ paired_at: str
+ paired_by: str
+ last_seen: str | None = None
+ revoked_at: str | None = None
 
 
 class PairingError(Exception):
-    pass</pre>
+ pass</pre>
 
 <p>
 <code>Pairing</code> is what queries return and what the caller inspects. <code>PairingError</code> wraps every error in the module (code format, signature, expiry, double consume) so that the caller can handle them with a single <code>except</code>. See <code>pairing.py:64-76</code>.
@@ -190,7 +195,7 @@ class PairingError(Exception):
 <tr><td><code>VALID_LEVELS</code></td><td><code>("ReadOnly", "Supervised", "Full")</code></td><td>Tuple of the only accepted levels. Generating a code with a level outside this tuple raises <code>ValueError</code>.</td></tr>
 <tr><td><code>CODE_PREFIX</code></td><td><code>"PAIR."</code></td><td>Fixed prefix of the code: it makes the string instantly recognisable (by a human eye or a regex) as a <em>pairing</em> code, not some other kind of token.</td></tr>
 <tr><td><code>DEFAULT_TTL_S</code></td><td><code>300</code></td><td>Five minutes. Lifetime of the code between issuance and consumption. Configurable per call, but deliberately short by default.</td></tr>
-<tr><td><code>PROTOCOL_VERSION</code></td><td><code>1</code></td><td>Payload version. <em>Verify</em> rejects payloads with a different <code>v</code>. When the structure changes (likely in v1.2+) we bump here and handle the branching.</td></tr>
+<tr><td><code>PROTOCOL_VERSION</code></td><td><code>1</code></td><td>Payload version. <em>Verify</em> rejects payloads with a different <code>v</code>. When the structure changes (likely in +) we bump here and handle the branching.</td></tr>
 <tr><td><code>DEFAULT_DB_PATH</code></td><td><code>~/.local/state/metnos/pairings.db</code></td><td>Default location of the registry. Override via env <code>METNOS_PAIRINGS_DB</code> (useful for tests).</td></tr>
 </table>
 
@@ -207,11 +212,11 @@ The payload is a deterministic JSON (sorted keys, separators with no spaces) wit
 </p>
 
 <pre>{
-  "v": 1,
-  "id": "&lt;uuid12&gt;",
-  "autonomy": "&lt;ReadOnly|Supervised|Full&gt;",
-  "exp": &lt;unix epoch in seconds&gt;,
-  "iss": "author"
+ "v": 1,
+ "id": "&lt;uuid12&gt;",
+ "autonomy": "&lt;ReadOnly|Supervised|Full&gt;",
+ "exp": &lt;unix epoch in seconds&gt;,
+ "iss": "author"
 }</pre>
 
 <p>
@@ -239,21 +244,21 @@ Two tables, defined in <code>pairing.py:43-61</code>:
 </p>
 
 <pre>CREATE TABLE IF NOT EXISTS pairings (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    channel TEXT NOT NULL,
-    sender_id TEXT NOT NULL,
-    autonomy_level TEXT NOT NULL,
-    paired_at TEXT NOT NULL,
-    paired_by TEXT NOT NULL,
-    last_seen TEXT,
-    revoked_at TEXT,
-    UNIQUE(channel, sender_id)
+ id INTEGER PRIMARY KEY AUTOINCREMENT,
+ channel TEXT NOT NULL,
+ sender_id TEXT NOT NULL,
+ autonomy_level TEXT NOT NULL,
+ paired_at TEXT NOT NULL,
+ paired_by TEXT NOT NULL,
+ last_seen TEXT,
+ revoked_at TEXT,
+ UNIQUE(channel, sender_id)
 );
 CREATE TABLE IF NOT EXISTS consumed_codes (
-    code_id TEXT PRIMARY KEY,
-    consumed_at TEXT NOT NULL,
-    channel TEXT NOT NULL,
-    sender_id TEXT NOT NULL
+ code_id TEXT PRIMARY KEY,
+ consumed_at TEXT NOT NULL,
+ channel TEXT NOT NULL,
+ sender_id TEXT NOT NULL
 );</pre>
 
 <table>
@@ -312,13 +317,13 @@ PAIR.eyJhdXRvbm9teSI6IlJlYWRPbmx5IiwiZXhwIjox...
 
 # 2. he passes it via iMessage to the family member
 
-# 3. the family member writes on Telegram:  /pair PAIR.eyJ...
+# 3. the family member writes on Telegram: /pair PAIR.eyJ...
 # the daemon consumes it and replies "Paired as ReadOnly. Welcome."
 
 # 4. Roberto verifies
 $ python3 -m pairing list
-{"channel": "telegram", "sender_id": "12345678", "autonomy_level": "ReadOnly", ...}
-{"channel": "telegram", "sender_id": "99887766", "autonomy_level": "Full", ...}
+{"channel": "telegram", "sender_id": "12345678", "autonomy_level": "ReadOnly",...}
+{"channel": "telegram", "sender_id": "99887766", "autonomy_level": "Full",...}
 
 # 5. one week later, revoke
 $ python3 -m pairing revoke telegram 12345678
@@ -328,15 +333,15 @@ revoked</pre>
 <h1 id="cap7">7. Integration with the Telegram daemon</h1>
 
 <p>
-The daemon lives in <code>/opt/myclaw/runtime/channels/daemon.py</code>. The <code>handle_message</code> function (<code>daemon.py:121-165</code>) is where pairing and runtime meet. The decision sequence:
+The daemon lives in <code>/opt/metnos/runtime/channels/daemon.py</code>. The <code>handle_message</code> function (<code>daemon.py:121-165</code>) is where pairing and runtime meet. The decision sequence:
 </p>
 
 <ol>
-    <li>If the message text starts with <code>/pair </code> (see the <code>PAIR_COMMAND</code> constant in <code>daemon.py:36</code>), the daemon goes into <code>_handle_pair_command</code> (<code>daemon.py:108-119</code>): consumes the code, replies "Paired as &lt;level&gt;. Welcome." on success, "Pairing failed: &lt;reason&gt;" otherwise. <em>No</em> runtime turn starts here, even if pairing succeeded: the user must send a second message to activate Metnos.</li>
-    <li>Otherwise, <code>pairing.get_pairing(channel.name, sender_id)</code> is consulted. If it returns <code>None</code>, the daemon attempts the bootstrap (see below). If the bootstrap also fails, it replies with <code>UNPAIRED_REPLY</code> (<code>daemon.py:37-40</code>) and ends the turn.</li>
-    <li>If the pairing exists, <code>touch_last_seen</code> is called for audit.</li>
-    <li>If the level is in <code>LEVEL_BLOCKS_RUN = {"ReadOnly"}</code> (<code>daemon.py:41</code>): polite reply (<code>LEVEL_REPLY_BLOCKED</code>, <code>daemon.py:42-45</code>), no <code>run_turn</code>.</li>
-    <li>Otherwise, <code>run_turn(msg.text)</code> is called, the result is formatted, and the reply is sent on the channel.</li>
+ <li>If the message text starts with <code>/pair </code> (see the <code>PAIR_COMMAND</code> constant in <code>daemon.py:36</code>), the daemon goes into <code>_handle_pair_command</code> (<code>daemon.py:108-119</code>): consumes the code, replies "Paired as &lt;level&gt;. Welcome." on success, "Pairing failed: &lt;reason&gt;" otherwise. <em>No</em> runtime turn starts here, even if pairing succeeded: the user must send a second message to activate Metnos.</li>
+ <li>Otherwise, <code>pairing.get_pairing(channel.name, sender_id)</code> is consulted. If it returns <code>None</code>, the daemon attempts the bootstrap (see below). If the bootstrap also fails, it replies with <code>UNPAIRED_REPLY</code> (<code>daemon.py:37-40</code>) and ends the turn.</li>
+ <li>If the pairing exists, <code>touch_last_seen</code> is called for audit.</li>
+ <li>If the level is in <code>LEVEL_BLOCKS_RUN = {"ReadOnly"}</code> (<code>daemon.py:41</code>): polite reply (<code>LEVEL_REPLY_BLOCKED</code>, <code>daemon.py:42-45</code>), no <code>run_turn</code>.</li>
+ <li>Otherwise, <code>run_turn(msg.text)</code> is called, the result is formatted, and the reply is sent on the channel.</li>
 </ol>
 
 <h2>Default-chat bootstrap</h2>
@@ -346,9 +351,9 @@ The <code>_try_bootstrap</code> function (<code>daemon.py:93-106</code>) handles
 </p>
 
 <ol>
-    <li>the daemon's <code>bootstrap_default_sender</code> flag is True (default; disabled with <code>--no-bootstrap</code>);</li>
-    <li>the message's <code>sender_id</code> matches the <code>default_chat_id</code> declared by the channel;</li>
-    <li>no pairing exists on that channel (<code>bootstrap_default_chat_id</code> refuses otherwise, see <code>pairing.py:283-287</code>).</li>
+ <li>the daemon's <code>bootstrap_default_sender</code> flag is True (default; disabled with <code>--no-bootstrap</code>);</li>
+ <li>the message's <code>sender_id</code> matches the <code>default_chat_id</code> declared by the channel;</li>
+ <li>no pairing exists on that channel (<code>bootstrap_default_chat_id</code> refuses otherwise, see <code>pairing.py:283-287</code>).</li>
 </ol>
 
 <p>
@@ -400,7 +405,7 @@ Cluster <code>pairing</code>: 9 cases, all green. They cover the nominal flows a
 <tr><td>6</td><td>revoke makes <code>is_paired</code> false</td><td>After <code>revoke</code>, <code>is_paired</code> on the same pair returns <code>False</code>; the record persists but with <code>revoked_at</code> set.</td></tr>
 <tr><td>7</td><td>bootstrap only on empty channel</td><td>First call: Full pairing created. Second call on the same channel (even with a different sender_id): <code>PairingError("bootstrap refused")</code>.</td></tr>
 <tr><td>8</td><td><code>list_pairings</code> filters revoked</td><td>Default <code>include_revoked=False</code>: only rows with <code>revoked_at IS NULL</code>. With <code>True</code>: all of them.</td></tr>
-<tr><td>9</td><td>invalid level in generate</td><td><code>generate_code("Admin", ...)</code> raises <code>ValueError</code> before signing anything.</td></tr>
+<tr><td>9</td><td>invalid level in generate</td><td><code>generate_code("Admin",...)</code> raises <code>ValueError</code> before signing anything.</td></tr>
 </table>
 
 <p>
@@ -408,20 +413,20 @@ Cluster <code>pairing</code>: 9 cases, all green. They cover the nominal flows a
 </p>
 
 <ul>
-    <li><strong>D1</strong>: default bootstrap + run_turn on the next message, Full level obtained automatically;</li>
-    <li><strong>D2</strong>: unpaired sender (and not the default) receives <code>UNPAIRED_REPLY</code>, no run_turn;</li>
-    <li><strong>D3</strong>: <code>/pair &lt;valid code&gt;</code> &rarr; reply "Paired as &lt;level&gt;. Welcome.", pairing written in DB, no run_turn;</li>
-    <li><strong>D4</strong>: <code>/pair &lt;expired/tampered code&gt;</code> &rarr; reply "Pairing failed: &lt;cause&gt;", no pairing written;</li>
-    <li><strong>D5</strong>: sender paired as ReadOnly receives the polite reply, no <code>run_turn</code>; <code>last_seen</code> is not touched (the update only fires after the level check).</li>
+ <li><strong>D1</strong>: default bootstrap + run_turn on the next message, Full level obtained automatically;</li>
+ <li><strong>D2</strong>: unpaired sender (and not the default) receives <code>UNPAIRED_REPLY</code>, no run_turn;</li>
+ <li><strong>D3</strong>: <code>/pair &lt;valid code&gt;</code> &rarr; reply "Paired as &lt;level&gt;. Welcome.", pairing written in DB, no run_turn;</li>
+ <li><strong>D4</strong>: <code>/pair &lt;expired/tampered code&gt;</code> &rarr; reply "Pairing failed: &lt;cause&gt;", no pairing written;</li>
+ <li><strong>D5</strong>: sender paired as ReadOnly receives the polite reply, no <code>run_turn</code>; <code>last_seen</code> is not touched (the update only fires after the level check).</li>
 </ul>
 
 <p>
 All tests run in isolation with their own <code>METNOS_PAIRINGS_DB</code> in <code>/tmp</code>, and with an ad-hoc test keypair, so neither the registry nor the author's development keys are touched.
 </p>
 
-<h1 id="cap10">10. v1.1 limits</h1>
+<h1 id="cap10">10. limits</h1>
 
-<p>Five declared limits, some by deliberate design, others deferred to v1.2+:</p>
+<p>Five declared limits, some by deliberate design, others deferred to +:</p>
 
 <table>
 <tr><th>Limit</th><th>When it lifts</th></tr>
@@ -445,7 +450,7 @@ Pairing is the first piece of the &laquo;perimeter&raquo; node that becomes exec
 <h1 id="cap11">11. Multi-user: <code>users.db</code> and <code>/start</code></h1>
 
 <p>
-Since 4 May 2026 (ADR&nbsp;0083) Metnos puts a second registry,
+Since Metnos puts a second registry,
 <code>users.db</code>, alongside <code>pairings.db</code> in
 <code>~/.local/share/metnos/</code>: two tables (<code>users</code> +
 <code>user_channels</code>) that map <em>logical users</em> (host and
@@ -458,8 +463,8 @@ guests) to one or more channels. Responsibility split:
 </ul>
 
 <p>
-Automatic bootstrap: at the first <code>users.list_users()</code>
-<code>init_db()</code> creates the host with <code>name=$USER</code>,
+Automatic bootstrap: at the first <code>users.list_users</code>
+<code>init_db</code> creates the host with <code>name=$USER</code>,
 <code>role='host'</code>, <code>autonomy_level='full'</code>. Single-host
 policy at app level: a second host is rejected.
 <code>autobind_host_telegram(default_chat_id)</code> is called by the
@@ -492,10 +497,10 @@ zeroed after use; a second <code>/start</code> with the same token fails
 <h2>PLANNER prompt &mdash; KNOWN USERS</h2>
 
 <p>
-<code>agent_runtime.py::_render_users_known_block()</code> iterates
-<code>users.list_users()</code> and injects a KNOWN USERS section into
+<code>agent_runtime.py::_render_users_known_block</code> iterates
+<code>users.list_users</code> and injects a KNOWN USERS section into
 the PLANNER prompt right after PROJECT PATHS. The pattern mirrors PROJECT
-PATHS (ADR&nbsp;0079): a deterministic datum is woven into the prompt; a
+PATHS: a deterministic datum is woven into the prompt; a
 change requires a runtime restart.
 </p>
 
@@ -514,7 +519,7 @@ at first boot). Two modes:
 </ul>
 
 <p>
-The admin key is also the master for credential encryption (ADR&nbsp;0082):
+The admin key is also the master for credential encryption:
 whoever holds the file can decrypt
 <code>~/.config/metnos/credentials/&lt;domain&gt;.json.age</code>.
 Offline backup recommended. Logs only show the sha256[:16] fingerprint.

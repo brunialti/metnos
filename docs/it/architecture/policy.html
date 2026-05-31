@@ -1,51 +1,50 @@
 <!DOCTYPE html>
 <html lang="it">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Metnos &mdash; policy v1.1 (tested)</title>
-    <meta name="description" content="Microprogettazione della policy di Metnos: Capability Registry v1.1, tabella autonomy x capability, grants per_target persistenti, esito combinato, integrazione con vaglio e sandbox.">
-    <meta name="keywords" content="policy, capability registry, autonomy, grants, approval, vaglio, sandbox, metnos">
-    <meta name="author" content="Roberto Brunialti">
-    <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large">
-    <link rel="canonical" href="https://metnos.com/it/architecture/policy.html">
-    <link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/policy.html">
-    <link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/policy.html">
-    <link rel="alternate" hreflang="x-default" href="https://metnos.com/it/architecture/policy.html">
-    <meta property="og:type" content="article">
-    <meta property="og:url" content="https://metnos.com/it/architecture/policy.html">
-    <meta property="og:title" content="Metnos &mdash; policy v1.1 (tested)">
-    <meta property="og:description" content="La policy di Metnos: 13 capability canoniche, tabella 3x13 per livello di autonomia, grants persistenti per_target, garanzia che un grant non possa mai elevare un denied.">
-    <meta property="og:locale" content="it_IT">
-    <meta property="og:locale:alternate" content="en_US">
-    <meta property="og:site_name" content="Metnos">
-    <meta name="twitter:card" content="summary">
-    <meta name="twitter:title" content="Metnos &mdash; policy v1.1 (tested)">
-    <meta name="twitter:description" content="Capability Registry v1.1 + tabella autonomy x capability + grants persistenti. Stato: tested.">
-    <script type="application/ld+json">
+ <meta charset="UTF-8">
+ <meta name="viewport" content="width=device-width, initial-scale=1.0">
+ <title>Metnos &mdash; policy (tested)</title>
+ <meta name="description" content="Microprogettazione della policy di Metnos: Capability Registry, tabella autonomy x capability, grants per_target persistenti, esito combinato, integrazione con vaglio e sandbox.">
+ <meta name="keywords" content="policy, capability registry, autonomy, grants, approval, vaglio, sandbox, metnos">
+ <meta name="author" content="Roberto Brunialti">
+ <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large">
+ <link rel="canonical" href="https://metnos.com/it/architecture/policy.html">
+ <link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/policy.html">
+ <link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/policy.html">
+ <link rel="alternate" hreflang="x-default" href="https://metnos.com/it/architecture/policy.html">
+ <meta property="og:type" content="article">
+ <meta property="og:url" content="https://metnos.com/it/architecture/policy.html">
+ <meta property="og:title" content="Metnos &mdash; policy (tested)">
+ <meta property="og:description" content="La policy di Metnos: 13 capability canoniche, tabella 3x13 per livello di autonomia, grants persistenti per_target, garanzia che un grant non possa mai elevare un denied.">
+ <meta property="og:locale" content="it_IT">
+ <meta property="og:locale:alternate" content="en_US">
+ <meta property="og:site_name" content="Metnos">
+ <meta name="twitter:card" content="summary">
+ <meta name="twitter:title" content="Metnos &mdash; policy (tested)">
+ <meta name="twitter:description" content="Capability Registry + tabella autonomy x capability + grants persistenti. Stato: tested.">
+ <script type="application/ld+json">
 {
-  "@context": "https://schema.org",
-  "@type": "TechArticle",
-  "headline": "Metnos — policy v1.1",
-  "description": "Microprogettazione della policy: Capability Registry v1.1, tabella autonomy x capability, grants per_target persistenti, esito combinato. Stato: tested.",
-  "url": "https://metnos.com/it/architecture/policy.html",
-  "inLanguage": "it",
-  "isPartOf": {"@type": "WebSite", "name": "Metnos", "url": "https://metnos.com/"},
-  "author": {"@type": "Person", "name": "Roberto Brunialti"}
+ "@context": "https://schema.org",
+ "@type": "TechArticle",
+ "headline": "Metnos — policy ",
+ "description": "Microprogettazione della policy: Capability Registry, tabella autonomy x capability, grants per_target persistenti, esito combinato. Stato: tested.",
+ "url": "https://metnos.com/it/architecture/policy.html",
+ "inLanguage": "it",
+ "isPartOf": {"@type": "WebSite", "name": "Metnos", "url": "https://metnos.com/"},
+ "author": {"@type": "Person", "name": "Roberto Brunialti"}
 }
-    </script>
-    <style>
-:root {
-    --navy: #1A477A; --navy-light: #2B6CB0; --sage: #548235;
-    --bronze: #A0522D; --plum: #6B21A8;
-    --bg: #FAFBFC; --text: #1a1a1a;
-    --border: #d0d7de; --code-bg: #f6f8fa;
-    --table-header: #1A477A; --table-alt: #f0f4f8;
-    --note-bg: #dbeafe; --note-border: #3b82f6;
-    --tip-bg: #dcfce7; --tip-border: #16a34a;
-    --warn-bg: #fef3c7; --warn-border: #f59e0b;
-    --danger-bg: #fee2e2; --danger-border: #dc2626;
-    --muted: #64748B;
+ </script>
+ <style>:root {
+ --navy: #1A477A; --navy-light: #2B6CB0; --sage: #548235;
+ --bronze: #A0522D; --plum: #6B21A8;
+ --bg: #FAFBFC; --text: #1a1a1a;
+ --border: #d0d7de; --code-bg: #f6f8fa;
+ --table-header: #1A477A; --table-alt: #f0f4f8;
+ --note-bg: #dbeafe; --note-border: #3b82f6;
+ --tip-bg: #dcfce7; --tip-border: #16a34a;
+ --warn-bg: #fef3c7; --warn-border: #f59e0b;
+ --danger-bg: #fee2e2; --danger-border: #dc2626;
+ --muted: #64748B;
 }
 * { box-sizing: border-box; }
 body { font-family: 'Segoe UI', Calibri, -apple-system, sans-serif; font-size: 11pt; line-height: 1.65; color: var(--text); background: var(--bg); max-width: 960px; margin: 0 auto; padding: 40px 30px; }
@@ -60,41 +59,20 @@ td { padding: 7px 10px; border-bottom: 1px solid var(--border); vertical-align: 
 tr:nth-child(even) td { background: var(--table-alt); }
 pre { background: var(--code-bg); border: 1px solid var(--border); border-radius: 4px; padding: 12px 16px; overflow-x: auto; font-size: 9.5pt; line-height: 1.55; }
 code { font-family: Consolas, 'Courier New', monospace; }
-p code, li code, td code { background: var(--code-bg); padding: 1px 5px; border-radius: 3px; font-size: 9.5pt; }
-.callout { border-left: 4px solid; padding: 10px 16px; margin: 15px 0; border-radius: 0 4px 4px 0; font-size: 10pt; }
-.callout.note { background: var(--note-bg); border-color: var(--note-border); }
-.callout.tip { background: var(--tip-bg); border-color: var(--tip-border); }
-.callout.warning { background: var(--warn-bg); border-color: var(--warn-border); }
-.title-page { text-align: center; padding: 60px 0 30px; }
-.title-page h1 { font-size: 32pt; border: none; margin: 0; }
-.title-page .subtitle { font-size: 16pt; color: var(--navy-light); margin: 10px 0 30px; }
-.title-page .meta { font-size: 11pt; color: #666; }
-.toc h2 { border: none; }
-.toc ol { font-size: 11pt; line-height: 1.9; }
-.toc a { color: var(--navy); text-decoration: none; }
+p code, li code, td code { background: var(--code-bg); padding: 1px 5px; border-radius: 3px; font-size: 9.5pt; }.callout { border-left: 4px solid; padding: 10px 16px; margin: 15px 0; border-radius: 0 4px 4px 0; font-size: 10pt; }.callout.note { background: var(--note-bg); border-color: var(--note-border); }.callout.tip { background: var(--tip-bg); border-color: var(--tip-border); }.callout.warning { background: var(--warn-bg); border-color: var(--warn-border); }.title-page { text-align: center; padding: 60px 0 30px; }.title-page h1 { font-size: 32pt; border: none; margin: 0; }.title-page.subtitle { font-size: 16pt; color: var(--navy-light); margin: 10px 0 30px; }.title-page.meta { font-size: 11pt; color: #666; }.toc h2 { border: none; }.toc ol { font-size: 11pt; line-height: 1.9; }.toc a { color: var(--navy); text-decoration: none; }
 ul, ol { margin: 8px 0; padding-left: 24px; }
-li { margin-bottom: 4px; }
-.lead { font-size: 12pt; color: var(--navy); border-left: 4px solid var(--sage); padding-left: 14px; margin: 18px 0; }
-.example { background: #fff; border: 1px solid var(--border); border-left: 4px solid var(--bronze); border-radius: 0 4px 4px 0; padding: 12px 16px; margin: 14px 0; font-size: 10.5pt; }
-.example .ex-label { font-weight: 700; color: var(--bronze); font-size: 9.5pt; letter-spacing: 1px; text-transform: uppercase; }
-.status-banner { margin: 18px 0; border-left: 5px solid #16a34a; background: #dcfce7; color: #14532d; padding: 14px 20px; border-radius: 0 8px 8px 0; font-size: 11pt; line-height: 1.55; }
-.status-banner strong { color: #14532d; }
-.status-banner .status-chip { display: inline-block; background: #14532d; color: #fff; padding: 2px 10px; border-radius: 12px; font-size: 9.5pt; letter-spacing: 1px; font-weight: 700; margin-right: 6px; }
-.status-banner .seq { font-size: 9.5pt; color: #2d4a32; margin-top: 8px; }
-.v-allow { display: inline-block; background: #dcfce7; color: #166534; padding: 1px 7px; border-radius: 8px; font-size: 9pt; font-weight: 700; }
-.v-deny { display: inline-block; background: #fee2e2; color: #7F1D1D; padding: 1px 7px; border-radius: 8px; font-size: 9pt; font-weight: 700; }
-.v-approve { display: inline-block; background: #fef3c7; color: #92400E; padding: 1px 7px; border-radius: 8px; font-size: 9pt; font-weight: 700; }
+li { margin-bottom: 4px; }.lead { font-size: 12pt; color: var(--navy); border-left: 4px solid var(--sage); padding-left: 14px; margin: 18px 0; }.example { background: #fff; border: 1px solid var(--border); border-left: 4px solid var(--bronze); border-radius: 0 4px 4px 0; padding: 12px 16px; margin: 14px 0; font-size: 10.5pt; }.example.ex-label { font-weight: 700; color: var(--bronze); font-size: 9.5pt; letter-spacing: 1px; text-transform: uppercase; }.status-banner { margin: 18px 0; border-left: 5px solid #16a34a; background: #dcfce7; color: #14532d; padding: 14px 20px; border-radius: 0 8px 8px 0; font-size: 11pt; line-height: 1.55; }.status-banner strong { color: #14532d; }.status-banner.status-chip { display: inline-block; background: #14532d; color: #fff; padding: 2px 10px; border-radius: 12px; font-size: 9.5pt; letter-spacing: 1px; font-weight: 700; margin-right: 6px; }.status-banner.seq { font-size: 9.5pt; color: #2d4a32; margin-top: 8px; }.v-allow { display: inline-block; background: #dcfce7; color: #166534; padding: 1px 7px; border-radius: 8px; font-size: 9pt; font-weight: 700; }.v-deny { display: inline-block; background: #fee2e2; color: #7F1D1D; padding: 1px 7px; border-radius: 8px; font-size: 9pt; font-weight: 700; }.v-approve { display: inline-block; background: #fef3c7; color: #92400E; padding: 1px 7px; border-radius: 8px; font-size: 9pt; font-weight: 700; }
 table.policy-table td { text-align: center; }
 table.policy-table td:first-child { text-align: left; font-weight: 600; }
-    </style>
+ </style>
 </head>
 <body>
 
 <div class="status-banner">
-<span class="status-chip">TESTED</span>
-<strong>Microprogettazione v1.1 &mdash; allineata al codice al 4 maggio 2026.</strong>
-Cluster <code>policy</code> 10/10 verde. Aggiunte 4/5/2026: due capability nuove, <code>auth.password_storage</code> per <code>login_session</code> (ADR&nbsp;0082) e <code>crawl.recursive</code> per <code>find_urls(mode='research'/'archive')</code> (ADR&nbsp;0081), con tier-policy a tre livelli (default / trusted / owned) governata da <code>~/.config/metnos/owned_domains.json</code> e <code>~/.config/metnos/trusted_origins.json</code>. Riferimento: <code>runtime/policy.py</code>.
-<div class="seq">Stato nella sequenza dei microdesign: <em>under approval</em> &rarr; <em>approved</em> &rarr; <strong>tested</strong> &rarr; <em>implemented</em>. Sostituisce la versione v1.0 obsoleta scritta prima dell'implementazione.</div>
+
+<strong>Microprogettazione &mdash; allineata al codice.</strong>
+Cluster <code>policy</code> 10/10 verde. Aggiunte: due capability nuove, <code>auth.password_storage</code> per <code>login_session</code> e <code>crawl.recursive</code> per <code>find_urls(mode='research'/'archive')</code>, con tier-policy a tre livelli (default / trusted / owned) governata da <code>~/.config/metnos/owned_domains.json</code> e <code>~/.config/metnos/trusted_origins.json</code>. Riferimento: <code>runtime/policy.py</code>.
+<div class="seq">Stato nella sequenza dei microdesign: <em>under approval</em> &rarr; <em>approved</em> &rarr; <strong>tested</strong> &rarr; <em>implemented</em>. Sostituisce la versione obsoleta scritta prima dell'implementazione.</div>
 </div>
 
 <nav aria-label="Language" style="position:fixed;top:16px;right:20px;z-index:9999;font-family:'Segoe UI',Calibri,sans-serif;font-size:10pt;letter-spacing:2px;background:#FAFBFC;border:1px solid #d0d7de;border-radius:14px;padding:4px 10px;box-shadow:0 1px 4px rgba(0,0,0,0.04);">
@@ -104,35 +82,35 @@ Cluster <code>policy</code> 10/10 verde. Aggiunte 4/5/2026: due capability nuove
 </nav>
 
 <div style="background:#fff;border-bottom:1px solid #d0d7de;padding:10px 0;font-size:14px;position:sticky;top:0;z-index:10;margin-bottom:20px;">
-  <div style="max-width:960px;margin:0 auto;padding:0 20px;display:flex;justify-content:space-between;">
-    <a href="../index.html" style="color:#1a477a;text-decoration:none;font-weight:500;">&larr; Indice documentazione</a>
-    <span style="color:#8e8e93;">Microprogettazione &rsaquo; <strong style="color:#1a1a1a;">policy</strong></span>
-  </div>
+ <div style="max-width:960px;margin:0 auto;padding:0 20px;display:flex;justify-content:space-between;">
+ <a href="../index.html" style="color:#1a477a;text-decoration:none;font-weight:500;">&larr; Indice documentazione</a>
+ <span style="color:#8e8e93;">Microprogettazione &rsaquo; <strong style="color:#1a1a1a;">policy</strong></span>
+ </div>
 </div>
 
 <div class="title-page">
-    <h1>Metnos</h1>
-    <div class="subtitle"><code>policy</code> &mdash; il filtro di legalit&agrave; di ogni azione</div>
-    <div class="meta">
-        Microprogettazione v1.1 &mdash; stato <strong>TESTED</strong> (27 aprile 2026 sera)<br>
-        Pubblico: chi vuole capire come Metnos decide se un'azione &egrave; lecita, sotto approvazione o vietata.<br>
-        <br>
-        Lettura: 10 minuti.
-    </div>
+ <h1>Metnos</h1>
+ <div class="subtitle"><code>policy</code> &mdash; il filtro di legalit&agrave; di ogni azione</div>
+ <div class="meta">
+ Microprogettazione<br>
+ Pubblico: chi vuole capire come Metnos decide se un'azione &egrave; lecita, sotto approvazione o vietata.<br>
+ <br>
+ Lettura: 10 minuti.
+ </div>
 </div>
 
 <div class="toc">
 <h2>Indice</h2>
 <ol>
-    <li><a href="#cap1">Cos'&egrave; policy</a></li>
-    <li><a href="#cap2">Capability Registry v1.1</a></li>
-    <li><a href="#cap3">Tabella autonomy &times; capability</a></li>
-    <li><a href="#cap4">Grants per_target persistenti</a></li>
-    <li><a href="#cap5">Esito combinato (<code>effective_outcome</code>)</a></li>
-    <li><a href="#cap6">Integrazione runtime</a></li>
-    <li><a href="#cap7">CLI</a></li>
-    <li><a href="#cap8">Test</a></li>
-    <li><a href="#cap9">Limiti e cosa &egrave; rimandato a v1.2+</a></li>
+ <li><a href="#cap1">Cos'&egrave; policy</a></li>
+ <li><a href="#cap2">Capability Registry </a></li>
+ <li><a href="#cap3">Tabella autonomy &times; capability</a></li>
+ <li><a href="#cap4">Grants per_target persistenti</a></li>
+ <li><a href="#cap5">Esito combinato (<code>effective_outcome</code>)</a></li>
+ <li><a href="#cap6">Integrazione runtime</a></li>
+ <li><a href="#cap7">CLI</a></li>
+ <li><a href="#cap8">Test</a></li>
+ <li><a href="#cap9">Limiti e cosa &egrave; rimandato a +</a></li>
 </ol>
 </div>
 
@@ -142,8 +120,32 @@ Cluster <code>policy</code> 10/10 verde. Aggiunte 4/5/2026: due capability nuove
 La policy &egrave; il filtro di legalit&agrave; di Metnos: lo strato 2 dell'architettura (cap. 6 dell'<a href="../Metnos_Architettura_Intro_v1.html#cap6">Architettura</a>). Per ogni combinazione di livello di autonomia, capability e bersaglio decide un esito fra <em>permesso</em>, <em>negato</em>, <em>approvazione richiesta</em>. &Egrave; il modulo che incarna le regole condivise fra Roberto e l'agente: cosa si pu&ograve; fare senza chiedere, cosa serve chiedere, cosa non si fa mai.
 </p>
 
+ <figure>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 150" width="100%" preserveAspectRatio="xMidYMid meet" style="font-family:'Segoe UI',Calibri,sans-serif;font-size:11px;">
+<defs><marker id="m-d" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#1A477A"/></marker></defs>
+<rect x="10" y="70" width="178" height="56" rx="8" fill="#D9E4F0" stroke="#1A477A"/>
+<text x="99" y="94" text-anchor="middle" fill="#1A477A" font-weight="700">capability richiesta</text>
+<text x="99" y="112" text-anchor="middle" fill="#475569" font-size="9.5">dall'executor</text>
+<rect x="206" y="70" width="178" height="56" rx="8" fill="#FEF3C7" stroke="#B7791F"/>
+<text x="295" y="94" text-anchor="middle" fill="#1A477A" font-weight="700">livello autonomy</text>
+<text x="295" y="112" text-anchor="middle" fill="#475569" font-size="9.5">ReadOnly/Supervised/Full</text>
+<rect x="402" y="70" width="178" height="56" rx="8" fill="#EDE4F7" stroke="#6B21A8"/>
+<text x="491" y="94" text-anchor="middle" fill="#1A477A" font-weight="700">grant per_target</text>
+<text x="491" y="112" text-anchor="middle" fill="#475569" font-size="9.5">persistenti</text>
+<rect x="598" y="70" width="178" height="56" rx="8" fill="#DCFCE7" stroke="#3F6212"/>
+<text x="687" y="94" text-anchor="middle" fill="#1A477A" font-weight="700">effective_outcome</text>
+<text x="687" y="112" text-anchor="middle" fill="#475569" font-size="9.5">consenti / chiedi / nega</text>
+<line x1="188" y1="98" x2="204" y2="98" stroke="#1A477A" stroke-width="2" marker-end="url(#m-po)"/>
+<line x1="384" y1="98" x2="400" y2="98" stroke="#1A477A" stroke-width="2" marker-end="url(#m-po)"/>
+<line x1="580" y1="98" x2="596" y2="98" stroke="#1A477A" stroke-width="2" marker-end="url(#m-po)"/>
+
+</svg>
+<figcaption>Figura 1 &mdash; Il registro delle capability: la capability richiesta incrocia il livello di autonomy e gli eventuali grant per-bersaglio, producendo l'esito effettivo.</figcaption>
+</figure>
+
+
 <p>
-La policy convive con altri due strati che decidono cose diverse, e questo &egrave; il punto di chiarezza che il v1.0 non aveva:
+La policy convive con altri due strati che decidono cose diverse, e questo &egrave; il punto di chiarezza che il non aveva:
 </p>
 
 <ul>
@@ -160,7 +162,7 @@ I tre filtri sono in serie: la policy gira per prima (&egrave; quella pi&ugrave;
 <strong>Nessuna decisione politica nel codice degli executor.</strong> Un executor non sa nulla del livello di autonomia corrente n&eacute; dei grants attivi. Si limita a dichiarare le proprie capability nel manifest. La policy &egrave; il modulo dove tutte le regole vivono, leggibili in un punto solo, modificabili senza toccare un solo executor.
 </div>
 
-<h1 id="cap2">2. Capability Registry v1.1</h1>
+<h1 id="cap2">2. Capability Registry </h1>
 
 <p>
 Il registro &egrave; il dizionario chiuso delle azioni che Metnos riconosce. Tredici voci canoniche, definite in <code>runtime/policy.py:CAPABILITY_REGISTRY</code> (<code>runtime/policy.py:46-121</code>). Ogni voce &egrave; un <code>CapabilitySpec</code> con quattro attributi:
@@ -179,8 +181,8 @@ Il registro &egrave; il dizionario chiuso delle azioni che Metnos riconosce. Tre
 <tr><td><code>fs:write</code></td><td><strong>s&iacute;</strong></td><td><code>per_target</code></td><td><code>path_glob</code></td><td>scrittura/modifica file entro path_glob (critica)</td></tr>
 <tr><td><code>code:exec</code></td><td><strong>s&iacute;</strong></td><td><code>always</code></td><td><code>exact</code></td><td>esecuzione di un comando shell di una whitelist (es. pkg manager)</td></tr>
 <tr><td><code>network:http</code></td><td>no</td><td><code>per_target</code></td><td><code>host</code></td><td>HTTP/HTTPS GET/POST verso host autorizzati</td></tr>
-<tr><td><code>llm:local</code></td><td>no</td><td><code>none</code></td><td><code>none</code></td><td>chiamata LLM locale (Ollama, llama.cpp), costo zero</td></tr>
-<tr><td><code>llm:online</code></td><td>no</td><td><code>per_target</code></td><td><code>none</code></td><td>chiamata LLM online (Anthropic, OpenAI, ...), costo &gt; 0</td></tr>
+<tr><td><code>llm:local</code></td><td>no</td><td><code>none</code></td><td><code>none</code></td><td>chiamata LLM locale (llama-server, llama.cpp), costo zero</td></tr>
+<tr><td><code>llm:online</code></td><td>no</td><td><code>per_target</code></td><td><code>none</code></td><td>chiamata LLM online (Anthropic, OpenAI,...), costo &gt; 0</td></tr>
 <tr><td><code>mail:read</code></td><td>no</td><td><code>per_target</code></td><td><code>exact</code></td><td>lettura messaggi IMAP da una mailbox autorizzata</td></tr>
 <tr><td><code>mail:send</code></td><td><strong>s&iacute;</strong></td><td><code>always</code></td><td><code>exact</code></td><td>invio SMTP a destinatari (irreversibile, alta posta in gioco)</td></tr>
 <tr><td><code>channel:in</code></td><td>no</td><td><code>none</code></td><td><code>exact</code></td><td>ricezione messaggi da un canale (Telegram, CLI, voice)</td></tr>
@@ -262,15 +264,15 @@ Definito in <code>runtime/policy.py:SCHEMA</code> (<code>runtime/policy.py:186-2
 </p>
 
 <pre>CREATE TABLE IF NOT EXISTS grants (
-    id              INTEGER PRIMARY KEY AUTOINCREMENT,
-    channel         TEXT NOT NULL,
-    sender_id       TEXT NOT NULL,
-    capability      TEXT NOT NULL,
-    target          TEXT NOT NULL,
-    granted_at      TEXT NOT NULL,
-    expires_at      TEXT,
-    granted_by      TEXT,
-    revoked_at      TEXT
+ id INTEGER PRIMARY KEY AUTOINCREMENT,
+ channel TEXT NOT NULL,
+ sender_id TEXT NOT NULL,
+ capability TEXT NOT NULL,
+ target TEXT NOT NULL,
+ granted_at TEXT NOT NULL,
+ expires_at TEXT,
+ granted_by TEXT,
+ revoked_at TEXT
 );</pre>
 
 <p>
@@ -286,24 +288,24 @@ Path del file: <code>~/.local/state/metnos/grants.db</code>, override possibile 
 <table>
 <tr><th>funzione</th><th>cosa fa</th><th>citazione</th></tr>
 <tr>
-  <td><code>record_grant(channel, sender_id, capability, target, expires_at=None, granted_by=None)</code></td>
-  <td>Registra una concessione. Solleva <code>ValueError</code> se la <code>capability</code> non &egrave; nel registro. Ritorna l'oggetto <code>Grant</code> con <code>id</code> assegnato.</td>
-  <td><code>runtime/policy.py:232-259</code></td>
+ <td><code>record_grant(channel, sender_id, capability, target, expires_at=None, granted_by=None)</code></td>
+ <td>Registra una concessione. Solleva <code>ValueError</code> se la <code>capability</code> non &egrave; nel registro. Ritorna l'oggetto <code>Grant</code> con <code>id</code> assegnato.</td>
+ <td><code>runtime/policy.py:232-259</code></td>
 </tr>
 <tr>
-  <td><code>has_grant(channel, sender_id, capability, target)</code></td>
-  <td>True se esiste un grant attivo (non revocato, non scaduto) per la quaterna. La query confronta <code>expires_at</code> con il tempo corrente.</td>
-  <td><code>runtime/policy.py:262-284</code></td>
+ <td><code>has_grant(channel, sender_id, capability, target)</code></td>
+ <td>True se esiste un grant attivo (non revocato, non scaduto) per la quaterna. La query confronta <code>expires_at</code> con il tempo corrente.</td>
+ <td><code>runtime/policy.py:262-284</code></td>
 </tr>
 <tr>
-  <td><code>list_grants(channel=None, sender_id=None, include_revoked=False)</code></td>
-  <td>Lista i grants, filtrabile per canale/sender ed eventualmente includendo i revocati. Ordinati per <code>granted_at</code> discendente.</td>
-  <td><code>runtime/policy.py:287-311</code></td>
+ <td><code>list_grants(channel=None, sender_id=None, include_revoked=False)</code></td>
+ <td>Lista i grants, filtrabile per canale/sender ed eventualmente includendo i revocati. Ordinati per <code>granted_at</code> discendente.</td>
+ <td><code>runtime/policy.py:287-311</code></td>
 </tr>
 <tr>
-  <td><code>revoke_grant(grant_id)</code></td>
-  <td>Pone <code>revoked_at</code> al momento corrente. Ritorna True se &egrave; stato modificato qualcosa, False se il grant era gi&agrave; revocato o non esisteva.</td>
-  <td><code>runtime/policy.py:314-325</code></td>
+ <td><code>revoke_grant(grant_id)</code></td>
+ <td>Pone <code>revoked_at</code> al momento corrente. Ritorna True se &egrave; stato modificato qualcosa, False se il grant era gi&agrave; revocato o non esisteva.</td>
+ <td><code>runtime/policy.py:314-325</code></td>
 </tr>
 </table>
 
@@ -314,7 +316,7 @@ Tutte e quattro le funzioni aprono e chiudono la connessione per chiamata: nessu
 <h2>4.3 Quando si scrivono i grants</h2>
 
 <p>
-In v1.1 il modulo <code>policy</code> &egrave; <em>read-only</em> dal pianificatore: quest'ultimo legge la tabella e i grants, ma non li crea mai. La creazione avviene nel dispatcher di approval (cap. 5 fase 5, vedi <a href="approval_ux.html">approval_ux</a>): quando una pending request risolve come <em>approved</em> con scope <em>this and similar</em>, il dispatcher chiama <code>record_grant</code> e da quel momento la concessione &egrave; persistente.
+In il modulo <code>policy</code> &egrave; <em>read-only</em> dal pianificatore: quest'ultimo legge la tabella e i grants, ma non li crea mai. La creazione avviene nel dispatcher di approval (cap. 5 fase 5, vedi <a href="approval_ux.html">approval_ux</a>): quando una pending request risolve come <em>approved</em> con scope <em>this and similar</em>, il dispatcher chiama <code>record_grant</code> e da quel momento la concessione &egrave; persistente.
 </p>
 
 <h1 id="cap5">5. Esito combinato (<code>effective_outcome</code>)</h1>
@@ -359,33 +361,33 @@ Tabella per (ReadOnly, fs:write) &rarr; <code>denied</code>. Anche se il grant e
 <div class="ex-label">Esempio 3 &mdash; Full, mail:send</div>
 Livello Full, capability <code>mail:send</code>, destinatario <code>fattura@cliente-noto.com</code> a cui Roberto ha mandato dieci mail in passato.
 <br><br>
-Tabella per (Full, mail:send) &rarr; <code>approval_required</code> (regola "always"). Grant attivo? Per <code>mail:send</code> la modalit&agrave; di default &egrave; <code>always</code>, e in v1.1 nessun grant viene mai creato per le capability <code>always</code>. Esito <span class="v-approve">approval_required</span>: la mail va in coda, Roberto vede la carta, approva o nega quella singola mail.
+Tabella per (Full, mail:send) &rarr; <code>approval_required</code> (regola "always"). Grant attivo? Per <code>mail:send</code> la modalit&agrave; di default &egrave; <code>always</code>, e in nessun grant viene mai creato per le capability <code>always</code>. Esito <span class="v-approve">approval_required</span>: la mail va in coda, Roberto vede la carta, approva o nega quella singola mail.
 </div>
 
 <h1 id="cap6">6. Integrazione runtime</h1>
 
 <p>
-In v1.1 <code>runtime/policy.py</code> &egrave; un modulo separato, completo e testato, ma non ancora cucito dentro il pianificatore. L'integrazione in <code>agent_runtime</code> &egrave; l'ultima riga della fase 5 e arriver&agrave; nella prossima iterazione. Lo schema previsto:
+In <code>runtime/policy.py</code> &egrave; un modulo separato, completo e testato, ma non ancora cucito dentro il pianificatore. L'integrazione in <code>agent_runtime</code> &egrave; l'ultima riga della fase 5 e arriver&agrave; nella prossima iterazione. Lo schema previsto:
 </p>
 
 <pre>def execute_step(step, ctx):
-    cap = step.capability        # es. "fs:write"
-    target = step.target         # es. "/home/roberto/Documents/fatture-2026/04.pdf"
-    outcome = policy.effective_outcome(
-        ctx.autonomy_level,      # "ReadOnly" | "Supervised" | "Full"
-        cap,
-        channel=ctx.channel,     # es. "telegram"
-        sender_id=ctx.sender_id, # es. "roberto"
-        target=target,
-    )
-    if outcome == "denied":
-        return Refused(reason="livello insufficiente per " + cap)
-    if outcome == "approval_required":
-        pending = approval_registry.create_pending(step, ctx)
-        channels.approval.render_approval_card(pending, ctx.channel)
-        return Awaiting(pending_id=pending.id)
-    # outcome == "allowed"
-    return invoke_executor(step.executor, step.args, autonomy=ctx.autonomy_level)</pre>
+ cap = step.capability # es. "fs:write"
+ target = step.target # es. "/home/roberto/Documents/fatture-2026/04.pdf"
+ outcome = policy.effective_outcome(
+ ctx.autonomy_level, # "ReadOnly" | "Supervised" | "Full"
+ cap,
+ channel=ctx.channel, # es. "telegram"
+ sender_id=ctx.sender_id, # es. "roberto"
+ target=target,
+ )
+ if outcome == "denied":
+ return Refused(reason="livello insufficiente per " + cap)
+ if outcome == "approval_required":
+ pending = approval_registry.create_pending(step, ctx)
+ channels.approval.render_approval_card(pending, ctx.channel)
+ return Awaiting(pending_id=pending.id)
+ # outcome == "allowed"
+ return invoke_executor(step.executor, step.args, autonomy=ctx.autonomy_level)</pre>
 
 <p>
 Tre rinvii a moduli esistenti:
@@ -398,7 +400,7 @@ Tre rinvii a moduli esistenti:
 </ul>
 
 <p>
-Il pianificatore non legge mai direttamente la tabella o i grants: fa una sola chiamata a <code>effective_outcome</code> e ramifica sull'esito. Questo mantiene <code>policy</code> come unico punto di verit&agrave; sulle regole; il giorno in cui le regole cambieranno (v1.2: cost tier, rate limit), il pianificatore non si tocca.
+Il pianificatore non legge mai direttamente la tabella o i grants: fa una sola chiamata a <code>effective_outcome</code> e ramifica sull'esito. Questo mantiene <code>policy</code> come unico punto di verit&agrave; sulle regole; il giorno in cui le regole cambieranno (: cost tier, rate limit), il pianificatore non si tocca.
 </p>
 
 <h1 id="cap7">7. CLI</h1>
@@ -423,7 +425,7 @@ L'output JSON-line agevola la pipe verso <code>jq</code>: ad esempio <code>pytho
 <h1 id="cap8">8. Test</h1>
 
 <p>
-Cluster <code>policy</code> nel framework di test del runtime: 10/10 verde alla data del 27 aprile 2026. I casi coprono il registro, le tre regole della tabella, il round-trip dei grants e l'invariante di sicurezza che separa <code>denied</code> da grants alzabili.
+Cluster <code>policy</code> nel framework di test del runtime: 10/10 verde alla data. I casi coprono il registro, le tre regole della tabella, il round-trip dei grants e l'invariante di sicurezza che separa <code>denied</code> da grants alzabili.
 </p>
 
 <table>
@@ -444,25 +446,25 @@ Cluster <code>policy</code> nel framework di test del runtime: 10/10 verde alla 
 I tre casi marcati [security] sono gli invarianti che vincolano l'evoluzione futura del modulo: una qualsiasi modifica che li rompa &egrave; uno smantellamento della postura di sicurezza, non un refactor.
 </p>
 
-<h1 id="cap9">9. Limiti e cosa &egrave; rimandato a v1.2+</h1>
+<h1 id="cap9">9. Limiti e cosa &egrave; rimandato a +</h1>
 
 <table>
-<tr><th>limite v1.1</th><th>quando si toglie</th></tr>
+<tr><th>limite </th><th>quando si toglie</th></tr>
 <tr>
-  <td><strong>Niente rate-limit nel codice.</strong> La tabella autonomy &times; capability non distingue ancora "una chiamata vs dieci chiamate al minuto". Una capability concessa &egrave; concessa senza tetto; gli abusi accidentali (loop fuori controllo, executor che chiama HTTP cento volte) non vengono frenati a livello di policy.</td>
-  <td>v1.2, con un token bucket per_capability salvato nello stesso DB dei grants. Il token bucket richiede di scegliere bene i parametri (capacit&agrave;, rate di ricarica) per ogni capability; serve telemetria d'uso reale prima di fissarli.</td>
+ <td><strong>Niente rate-limit nel codice.</strong> La tabella autonomy &times; capability non distingue ancora "una chiamata vs dieci chiamate al minuto". Una capability concessa &egrave; concessa senza tetto; gli abusi accidentali (loop fuori controllo, executor che chiama HTTP cento volte) non vengono frenati a livello di policy.</td>
+ <td>, con un token bucket per_capability salvato nello stesso DB dei grants. Il token bucket richiede di scegliere bene i parametri (capacit&agrave;, rate di ricarica) per ogni capability; serve telemetria d'uso reale prima di fissarli.</td>
 </tr>
 <tr>
-  <td><strong>Niente cost tier.</strong> <code>llm:online</code> richiede <code>approval_required</code> generico, non differenzia "Sonnet a $0.02 per chiamata" da "GPT-5 a $0.17". Roberto vede tutte le chiamate online uguali, anche quando il costo varia di un ordine di grandezza.</td>
-  <td>v1.2, quando il giudice LLM avr&agrave; misurato il fattore costo nel reward del vaglio. La policy potr&agrave; allora esporre soglie esplicite (es. "fino a $0.05 allowed in Full, sopra approval_required").</td>
+ <td><strong>Niente cost tier.</strong> <code>llm:online</code> richiede <code>approval_required</code> generico, non differenzia "Sonnet a $0.02 per chiamata" da "GPT-5 a $0.17". Roberto vede tutte le chiamate online uguali, anche quando il costo varia di un ordine di grandezza.</td>
+ <td>, quando il giudice LLM avr&agrave; misurato il fattore costo nel reward del vaglio. La policy potr&agrave; allora esporre soglie esplicite (es. "fino a $0.05 allowed in Full, sopra approval_required").</td>
 </tr>
 <tr>
-  <td><strong>Niente policy custom per profilo utente.</strong> La tabella &egrave; compilata in codice. Un override per profilo utente (es. Roberto vs un familiare con livelli diversi sulle stesse capability) richiede un layer di config che non esiste ancora.</td>
-  <td>Quando il pairing supporter&agrave; profili multipli con sender_id distinti che mappano a tabelle diverse. Si introdurr&agrave; un layer TOML letto al boot (tipo <code>policy_overrides.toml</code>) ma con vincoli di integrit&agrave; verso il registro.</td>
+ <td><strong>Niente policy custom per profilo utente.</strong> La tabella &egrave; compilata in codice. Un override per profilo utente (es. Roberto vs un familiare con livelli diversi sulle stesse capability) richiede un layer di config che non esiste ancora.</td>
+ <td>Quando il pairing supporter&agrave; profili multipli con sender_id distinti che mappano a tabelle diverse. Si introdurr&agrave; un layer TOML letto al boot (tipo <code>policy_overrides.toml</code>) ma con vincoli di integrit&agrave; verso il registro.</td>
 </tr>
 <tr>
-  <td><strong>Niente revoke automatico.</strong> I grants scadono solo via <code>expires_at</code> esplicito. Una "scadenza per inattivit&agrave;" (es. 90 giorni di non uso) non esiste; i grants restano nel DB anche per anni.</td>
-  <td>Quando il pool di grants attivi diventer&agrave; abbastanza grande da rendere utile la pulizia. Implementazione semplice: un cron interno che, al boot, cerca grants senza accessi (servirebbe una colonna <code>last_used</code>) o con <code>granted_at</code> molto vecchio e li revoca con motivazione "stale".</td>
+ <td><strong>Niente revoke automatico.</strong> I grants scadono solo via <code>expires_at</code> esplicito. Una "scadenza per inattivit&agrave;" (es. 90 giorni di non uso) non esiste; i grants restano nel DB anche per anni.</td>
+ <td>Quando il pool di grants attivi diventer&agrave; abbastanza grande da rendere utile la pulizia. Implementazione semplice: un cron interno che, al boot, cerca grants senza accessi (servirebbe una colonna <code>last_used</code>) o con <code>granted_at</code> molto vecchio e li revoca con motivazione "stale".</td>
 </tr>
 </table>
 

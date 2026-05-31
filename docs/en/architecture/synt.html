@@ -1,51 +1,50 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Metnos &mdash; synt v1.1 (tested)</title>
-    <meta name="description" content="Microdesign of synt: the process that grows and matures the executor pool. Reactive cascade (compose, generate) and introspective cascade (merge, generalise, specialise). Non-retreat telos.">
-    <meta name="keywords" content="synt, synthesis, cascade, compose, generate, merge, generalise, executor, mnest, telos, microdesign, metnos, Metnos">
-    <meta name="author" content="Roberto Brunialti">
-    <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large">
-    <link rel="canonical" href="https://metnos.com/en/architecture/synt.html">
-    <link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/synt.html">
-    <link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/synt.html">
-    <link rel="alternate" hreflang="x-default" href="https://metnos.com/en/architecture/synt.html">
-    <meta property="og:type" content="article">
-    <meta property="og:url" content="https://metnos.com/en/architecture/synt.html">
-    <meta property="og:title" content="Metnos &mdash; synt v1.1 (tested)">
-    <meta property="og:description" content="The synthesis cascade: compose first, generate later; in nightly homeostasis merge, generalise, specialise. Non-retreat telos.">
-    <meta property="og:locale" content="en_US">
-    <meta property="og:locale:alternate" content="it_IT">
-    <meta property="og:site_name" content="Metnos">
-    <meta name="twitter:card" content="summary">
-    <meta name="twitter:title" content="Metnos &mdash; synt v1.1 (tested)">
-    <script type="application/ld+json">
+ <meta charset="UTF-8">
+ <meta name="viewport" content="width=device-width, initial-scale=1.0">
+ <title>Metnos &mdash; synt</title>
+ <meta name="description" content="Microdesign of synt: the process that grows and matures the executor pool. Reactive cascade (compose, generate) and introspective cascade (merge, generalise, specialise). Non-retreat telos.">
+ <meta name="keywords" content="synt, synthesis, cascade, compose, generate, merge, generalise, executor, mnest, telos, microdesign, metnos, Metnos">
+ <meta name="author" content="Roberto Brunialti">
+ <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large">
+ <link rel="canonical" href="https://metnos.com/en/architecture/synt.html">
+ <link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/synt.html">
+ <link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/synt.html">
+ <link rel="alternate" hreflang="x-default" href="https://metnos.com/en/architecture/synt.html">
+ <meta property="og:type" content="article">
+ <meta property="og:url" content="https://metnos.com/en/architecture/synt.html">
+ <meta property="og:title" content="Metnos &mdash; synt">
+ <meta property="og:description" content="The synthesis cascade: compose first, generate later; in nightly homeostasis merge, generalise, specialise. Non-retreat telos.">
+ <meta property="og:locale" content="en_US">
+ <meta property="og:locale:alternate" content="it_IT">
+ <meta property="og:site_name" content="Metnos">
+ <meta name="twitter:card" content="summary">
+ <meta name="twitter:title" content="Metnos &mdash; synt">
+ <script type="application/ld+json">
 {
-  "@context": "https://schema.org",
-  "@type": "TechArticle",
-  "headline": "Metnos — synt v1.1",
-  "description": "Canonical microdesign of synt: reactive and introspective cascade, non-retreat telos.",
-  "url": "https://metnos.com/en/architecture/synt.html",
-  "inLanguage": "en",
-  "isPartOf": {"@type": "WebSite", "name": "Metnos", "url": "https://metnos.com/"},
-  "author": {"@type": "Person", "name": "Roberto Brunialti"},
-  "about": "Metnos component: synt (canonical, replaces synthesizer)"
+ "@context": "https://schema.org",
+ "@type": "TechArticle",
+ "headline": "Metnos — synt",
+ "description": "Canonical microdesign of synt: reactive and introspective cascade, non-retreat telos.",
+ "url": "https://metnos.com/en/architecture/synt.html",
+ "inLanguage": "en",
+ "isPartOf": {"@type": "WebSite", "name": "Metnos", "url": "https://metnos.com/"},
+ "author": {"@type": "Person", "name": "Roberto Brunialti"},
+ "about": "Metnos component: synt (canonical, replaces synthesizer)"
 }
-    </script>
-    <style>
-:root {
-    --navy: #1A477A; --navy-light: #2B6CB0; --sage: #548235;
-    --bronze: #A0522D; --plum: #6B21A8;
-    --bg: #FAFBFC; --text: #1a1a1a;
-    --border: #d0d7de; --code-bg: #f6f8fa;
-    --table-header: #1A477A; --table-alt: #f0f4f8;
-    --note-bg: #dbeafe; --note-border: #3b82f6;
-    --tip-bg: #dcfce7; --tip-border: #16a34a;
-    --warn-bg: #fef3c7; --warn-border: #f59e0b;
-    --danger-bg: #fee2e2; --danger-border: #dc2626;
-    --muted: #64748B;
+ </script>
+ <style>:root {
+ --navy: #1A477A; --navy-light: #2B6CB0; --sage: #548235;
+ --bronze: #A0522D; --plum: #6B21A8;
+ --bg: #FAFBFC; --text: #1a1a1a;
+ --border: #d0d7de; --code-bg: #f6f8fa;
+ --table-header: #1A477A; --table-alt: #f0f4f8;
+ --note-bg: #dbeafe; --note-border: #3b82f6;
+ --tip-bg: #dcfce7; --tip-border: #16a34a;
+ --warn-bg: #fef3c7; --warn-border: #f59e0b;
+ --danger-bg: #fee2e2; --danger-border: #dc2626;
+ --muted: #64748B;
 }
 * { box-sizing: border-box; }
 body { font-family: 'Segoe UI', Calibri, -apple-system, sans-serif; font-size: 11pt; line-height: 1.65; color: var(--text); background: var(--bg); max-width: 960px; margin: 0 auto; padding: 40px 30px; }
@@ -63,37 +62,13 @@ code { font-family: Consolas, 'Courier New', monospace; }
 p code, li code, td code { background: var(--code-bg); padding: 1px 5px; border-radius: 3px; font-size: 9.5pt; }
 figure { text-align: center; margin: 24px 0; page-break-inside: avoid; }
 figure svg { max-width: 100%; height: auto; border: 1px solid var(--border); border-radius: 6px; background: white; padding: 8px; }
-figcaption { font-style: italic; color: #555; font-size: 9.5pt; margin-top: 8px; }
-.callout { border-left: 4px solid; padding: 10px 16px; margin: 15px 0; border-radius: 0 4px 4px 0; font-size: 10pt; page-break-inside: avoid; }
-.callout.note { background: var(--note-bg); border-color: var(--note-border); }
-.callout.tip { background: var(--tip-bg); border-color: var(--tip-border); }
-.callout.warning { background: var(--warn-bg); border-color: var(--warn-border); }
-.callout.danger { background: var(--danger-bg); border-color: var(--danger-border); }
-.title-page { text-align: center; padding: 80px 0 40px; page-break-after: always; }
-.title-page h1 { font-size: 32pt; border: none; margin: 0; page-break-before: avoid; }
-.title-page .subtitle { font-size: 16pt; color: var(--navy-light); margin: 10px 0 30px; }
-.title-page .meta { font-size: 11pt; color: #666; }
-.toc { page-break-after: always; }
-.toc h2 { border: none; }
-.toc ol { font-size: 11pt; line-height: 2; }
-.toc a { color: var(--navy); text-decoration: none; }
-.toc a:hover { text-decoration: underline; }
+figcaption { font-style: italic; color: #555; font-size: 9.5pt; margin-top: 8px; }.callout { border-left: 4px solid; padding: 10px 16px; margin: 15px 0; border-radius: 0 4px 4px 0; font-size: 10pt; page-break-inside: avoid; }.callout.note { background: var(--note-bg); border-color: var(--note-border); }.callout.tip { background: var(--tip-bg); border-color: var(--tip-border); }.callout.warning { background: var(--warn-bg); border-color: var(--warn-border); }.callout.danger { background: var(--danger-bg); border-color: var(--danger-border); }.title-page { text-align: center; padding: 80px 0 40px; page-break-after: always; }.title-page h1 { font-size: 32pt; border: none; margin: 0; page-break-before: avoid; }.title-page.subtitle { font-size: 16pt; color: var(--navy-light); margin: 10px 0 30px; }.title-page.meta { font-size: 11pt; color: #666; }.toc { page-break-after: always; }.toc h2 { border: none; }.toc ol { font-size: 11pt; line-height: 2; }.toc a { color: var(--navy); text-decoration: none; }.toc a:hover { text-decoration: underline; }
 ul, ol { margin: 8px 0; padding-left: 24px; }
-li { margin-bottom: 4px; }
-.lead { font-size: 12pt; color: var(--navy); border-left: 4px solid var(--sage); padding-left: 14px; margin: 18px 0; }
-.decision { background: #FEF3C7; border: 1px solid #F59E0B; border-radius: 6px; padding: 10px 14px; margin: 14px 0; font-size: 10pt; }
-.decision strong { color: #92400E; }
-@media print { body { max-width: none; padding: 0; font-size: 10pt; } h1 { font-size: 16pt; } h2 { font-size: 12pt; } .title-page { padding: 60px 0 30px; } .title-page h1 { font-size: 24pt; } }
-    </style>
+li { margin-bottom: 4px; }.lead { font-size: 12pt; color: var(--navy); border-left: 4px solid var(--sage); padding-left: 14px; margin: 18px 0; }.decision { background: #FEF3C7; border: 1px solid #F59E0B; border-radius: 6px; padding: 10px 14px; margin: 14px 0; font-size: 10pt; }.decision strong { color: #92400E; }
+@media print { body { max-width: none; padding: 0; font-size: 10pt; } h1 { font-size: 16pt; } h2 { font-size: 12pt; }.title-page { padding: 60px 0 30px; }.title-page h1 { font-size: 24pt; } }
+ </style>
 </head>
 <body>
-<div style="margin: 18px 0; border-left: 5px solid #16a34a; background: #f0fdf4; color: #14532d; padding: 14px 20px; border-radius: 0 8px 8px 0; font-size: 11pt; font-family: 'Segoe UI', Calibri, -apple-system, sans-serif; line-height: 1.55;">
-<span style="display: inline-block; background: #15803d; color: #fff; padding: 2px 10px; border-radius: 12px; font-size: 9.5pt; letter-spacing: 1px; font-weight: 700; margin-right: 6px;">TESTED</span>
-<strong>&#10003; Microdesign v1.1 &mdash; aligned with the code as of 4 May 2026.</strong> <strong>Update 28/4:</strong> the LLM core of <em>generate</em> was rewritten as a five-stage <em>multistage</em> pipeline (see &sect;<a href="#cap4">4.2.3</a>); validation on 35 stress queries underway (ADR <a href="../../decisions/0052-synt-multistage-validation-35-queries.md">0052</a>).
-Implemented in <code>runtime/synt.py</code> and <code>runtime/llm_router.py</code>: <em>compose &rarr; generate</em> cascade, conservative sandbox profile (stage 4), level-2 LLM-generated and executed birth tests (stage 5), CLI approval (<code>synt approve|reject &lt;id&gt;</code>, stages 6+7), Ed25519 signing and automatic install in the pool. First end-to-end synthesised executor via local Gemma 4 26B: <code>format_json</code>, ~65s wall, signed manifest, <code>verify_executor()=ok</code>, smoke run pretty-prints JSON. <strong>Apr 27 update</strong>: <em>synt-on-the-fly</em> integrated into the runtime (<code>agent_runtime.py:_try_synt_compose</code>) &mdash; when the planner hits a non-existent executor with piping, it calls <code>Synt.react()</code> in compose-only and enriches the observation with a hint to the LLM (see <a href="agent_runtime.html#cap11_1_1">agent_runtime &sect;11.1.1</a>). <strong>Apr 27 evening update (phase 4)</strong>: rule-based introvertive <em>merge</em> and <em>generalize</em> implemented in <code>Synt.homeostasis()</code> + CLI <code>synt introvert</code>: pairs sharing target_kind+capability with Jaccard affinity &ge; 0.70 propose merge; clusters of &ge;3 executors with the same verb prefix propose generalize. Proposals are logged to audit, not auto-applied: they reach Roberto for approval. <strong>Not in MVP</strong>: introvertive <em>specialize</em> (requires mnest pattern analysis, deferred to v1.2), <em>revise</em>, internal synt LLM judge (today fixed stub 0.5; distinct from the runtime's <a href="vaglio.html">vaglio</a>, real and rule-based since 27 Apr), strict sandbox profile (today: derived from imports + AST scan).
-<div style="font-size: 9.5pt; color: #166534; margin-top: 8px;">Status sequence: <em>under approval</em> &rarr; <em>approved</em> &rarr; <em>reactive complete</em> &rarr; <em>introvertive added</em> &rarr; <strong>tested at scale</strong> &rarr; <em>implemented</em>. <strong>POC delta vs. doc</strong>: (a) <code>react()</code> requires an identified <code>proto_mnest</code> (intent-only will be added when the pre-filter has embeddings); (b) locks are persisted to a JSON file; (c) the &sect;6 R formula is verbatim but <code>judge_score</code> and <code>similarity_penalty</code> are constant stubs; (d) stages 2 and 3 (Spec + Skeleton) are <strong>unified into a single LLM call at tier=wise</strong> via tool-use <code>propose_executor</code> &mdash; they will be split when the amend UX between spec and code lands; (e) stage 5 runs <em>level 2</em> (LLM generates tests, runner executes via subprocess); (f) stage 6 is a CLI command (<code>synt approve</code>) pending HTML UX.</div>
-</div>
-
 <nav aria-label="Language" style="position:fixed;top:16px;right:20px;z-index:9999;font-family:'Segoe UI',Calibri,sans-serif;font-size:10pt;letter-spacing:2px;background:#FAFBFC;border:1px solid #d0d7de;border-radius:14px;padding:4px 10px;box-shadow:0 1px 4px rgba(0,0,0,0.04);">
 <a href="/it/architecture/synt.html" hreflang="it" lang="it" style="color:#64748B;text-decoration:none;padding:0 4px;border:none;">IT</a>
 <span style="color:#d0d7de;"> &middot; </span>
@@ -101,86 +76,52 @@ Implemented in <code>runtime/synt.py</code> and <code>runtime/llm_router.py</cod
 </nav>
 
 <div style="background:#fff;border-bottom:1px solid #d0d7de;padding:10px 0;font-size:14px;position:sticky;top:0;z-index:10;margin-bottom:20px;">
-  <div style="max-width:960px;margin:0 auto;padding:0 20px;display:flex;justify-content:space-between;">
-    <a href="../index.html" style="color:#1a477a;text-decoration:none;font-weight:500;">&larr; Documentation index</a>
-    <span style="color:#8e8e93;">Microdesign &rsaquo; <strong style="color:#1a1a1a;">synt</strong></span>
-  </div>
+ <div style="max-width:960px;margin:0 auto;padding:0 20px;display:flex;justify-content:space-between;">
+ <a href="../index.html" style="color:#1a477a;text-decoration:none;font-weight:500;">&larr; Documentation index</a>
+ <span style="color:#8e8e93;">Microdesign &rsaquo; <strong style="color:#1a1a1a;">synt</strong></span>
+ </div>
 </div>
 
 <div class="title-page">
-    <h1>Metnos</h1>
-    <div class="subtitle"><code>synt</code> &mdash; how the executor pool is born and matures</div>
-    <div class="meta">
-        Microdesign v1.1 &mdash; 25 April 2026<br>
-        Aligned with Architecture v1.1 (ch. 9 and 11) and the canonical triad<br>
-        <a href="executor.html"><code>executor</code></a>, <a href="mnest.html"><code>mnest</code></a>, <a href="mnestome.html"><code>mnestome</code></a>.<br>
-        Replaces <code>synthesizer.html</code> (deprecated).<br>
-        <br>
-        Audience: those who will implement the reactive loop, the nightly homeostasis,<br>the approval gates and the cost controls.<br>
-        Reading time: 18 minutes.
-    </div>
+ <h1>Metnos</h1>
+ <div class="subtitle"><code>synt</code> &mdash; how the executor pool is born and matures</div>
+ <div class="meta">
+ Aligned with the canonical triad<br>
+ <a href="executor.html"><code>executor</code></a>, <a href="mnest.html"><code>mnest</code></a>, <a href="mnestome.html"><code>mnestome</code></a>.<br>
+ <br>
+ Audience: those who implement the reactive loop, the nightly homeostasis,<br>the approval gates and the cost controls.<br>
+ Reading time: 18 minutes.
+ </div>
 </div>
 
-<div class="callout" style="border-left:5px solid #16a34a;background:#dcfce7;color:#14532d;padding:14px 18px;border-radius:0 8px 8px 0;margin:18px 0;">
-<strong>Session update 4 May 2026 &mdash; introspective quality + synth_request short-circuit.</strong>
-Three deterministic interventions (CLAUDE.md &sect;7.9: deterministic
-code &gt; LLM where equipotent) close gaps surfaced by the 4/5/2026
-nightly audit:
-<em>(a) introspective quality filters</em> (ADR&nbsp;0077) &mdash;
-<code>_is_valid_proposed_name()</code> rejects names outside the closed
-vocabulary (boolean qualifiers <code>_True</code>/<code>_False</code>,
-double underscores, literal paths, alphanumeric-only qualifiers);
-<code>_FLOW_ARGS = {"entries", "from_step", "results"}</code> skips
-specialize on pipeline args; skips template values
-<code>"{{stepN.field}}"</code>; bumps <code>min_uses</code> default from
-3 to 10 (below is noise). Proposal volume goes 24 &rarr; 6, with much
-higher expected quality;
-<em>(b) synth_request short-circuit</em> (ADR&nbsp;0076) &mdash;
-<code>handle_synth_request</code> checks
-<code>already_in_catalog</code> and <code>redirected</code> via
-<code>_find_canonical_alias</code> before invoking the 5-stage pipeline.
-<code>list_processes</code> &rarr; <code>get_processes</code>,
-<code>list_messages</code> &rarr; <code>read_messages</code>,
-<code>read_processes</code> &rarr; <code>get_processes</code>. Saves
-~150&nbsp;s/call;
-<em>(c) GC of colliding synth</em> (ADR&nbsp;0079) &mdash;
-<code>loader._gc_collisions</code> moves into
-<code>/tmp/metnos_synth_gc_&lt;ts&gt;/</code> any synth whose name
-collides with a handcrafted (non-destructive backup), idempotent. Disk
-no longer fills with synth zombies. Earlier sections on the introvertive
-MVP (1/5/2026) remain valid and now run cleaner.
-</div>
-<div class="callout" style="border-left:5px solid #f59e0b;background:#fef3c7;color:#92400e;padding:14px 18px;border-radius:0 8px 8px 0;margin:18px 0;">
-<strong>Session 1 May 2026 (historical) &mdash; introspective MVP.</strong>
-The module <code>runtime/introvertiva.py</code> implements the MVP of the
-three operations of &sect;5 (<em>merge</em>/dedupe, <em>generalize</em>,
-<em>specialize</em>) with <code>diff_audit</code> for the long-period signal
-and four noise filters: <code>skip_smoke_channel</code>,
-<code>skip_X&rarr;X</code> (no-op self-mapping), <code>skip_default_manifest_value</code>,
-<code>only_active_catalog</code>. Companion refactor: <code>events.turn_id</code>
-replaces the scattered identifiers (ADR 0067). Six pytest smoke tests green.
-JSONL append-only audit log at
-<code>~/.local/share/metnos/introvertiva/audit.jsonl</code>. The three
-operations run under the <em>introspective force</em> in the new theoretical
-frame "four forces + inertia" (see <a href="agent_runtime.html">agent_runtime</a>).
+<div class="callout note">
+<strong>Quality filters and short-circuit.</strong> The introspective
+cascade applies deterministic filters before proposing: names outside the
+closed vocabulary are rejected, pipeline args are skipped, and a minimum
+use threshold rules out noise. The explicit synthesis request
+(<code>handle_synth_request</code>) first checks whether the intent is
+already covered by the catalog or redirectable to a canonical executor
+(e.g. <code>list_processes</code> &rarr; <code>get_processes</code>),
+saving the whole pipeline. A garbage collector moves colliding synthesised
+executors into a temporary area without deleting them.
 </div>
 
 <div class="toc">
 <h2>Contents</h2>
 <ol>
-    <li><a href="#cap1">Scope and boundaries</a></li>
-    <li><a href="#cap2">What synt is</a></li>
-    <li><a href="#cap3">The cascade: overview</a></li>
-    <li><a href="#cap4">Reactive strategies: compose, generate</a></li>
-    <li><a href="#cap5">Introspective strategies: merge, generalise, specialise</a></li>
-    <li><a href="#cap6">Weighting: the extended R score</a></li>
-    <li><a href="#cap7">The non-retreat telos</a></li>
-    <li><a href="#cap8">Human approval, budget, abandonment</a></li>
-    <li><a href="#cap9">Python contract</a></li>
-    <li><a href="#cap10">Audit and observability</a></li>
-    <li><a href="#cap11">Alternatives considered</a></li>
-    <li><a href="#cap12">Conformance tests</a></li>
-    <li><a href="#cap13">Open questions</a></li>
+ <li><a href="#cap1">Scope and boundaries</a></li>
+ <li><a href="#cap2">What synt is</a></li>
+ <li><a href="#cap3">The cascade: overview</a></li>
+ <li><a href="#cap4">Reactive strategies: compose, generate</a></li>
+ <li><a href="#cap5">Introspective strategies: merge, generalise, specialise</a></li>
+ <li><a href="#cap6">Weighting: the extended R score</a></li>
+ <li><a href="#cap7">The non-retreat telos</a></li>
+ <li><a href="#cap8">Human approval, budget, abandonment</a></li>
+ <li><a href="#cap9">Python contract</a></li>
+ <li><a href="#cap10">Audit and observability</a></li>
+ <li><a href="#cap11">Alternatives considered</a></li>
+ <li><a href="#cap12">Conformance tests</a></li>
+ <li><a href="#cap13">Open questions</a></li>
 </ol>
 </div>
 
@@ -239,14 +180,14 @@ generation is the <em>documented exception</em>, not the default.
 <thead><tr><th style="width:24%">Mode</th><th>Trigger</th><th>Time</th></tr></thead>
 <tbody>
 <tr>
-  <td><strong>Reactive</strong></td>
-  <td>The gateway, during a user turn, records a proto-mnest pointing to a non-existent executor; or the planner cannot find any executor that satisfies the request.</td>
-  <td>Synchronous to the turn (the user is waiting for a response).</td>
+ <td><strong>Reactive</strong></td>
+ <td>The gateway, during a user turn, records a proto-mnest pointing to a non-existent executor; or the planner cannot find any executor that satisfies the request.</td>
+ <td>Synchronous to the turn (the user is waiting for a response).</td>
 </tr>
 <tr>
-  <td><strong>Introspective</strong></td>
-  <td>The <em>ager</em> sweeps the mnestome and signed pool at night; it finds recurring proto-mnests, executors with overlapping traces, families of specialised executors with the same shape.</td>
-  <td>Asynchronous, in homeostasis (night, pauses, low load).</td>
+ <td><strong>Introspective</strong></td>
+ <td>The <em>ager</em> sweeps the mnestome and signed pool at night; it finds recurring proto-mnests, executors with overlapping traces, families of specialised executors with the same shape.</td>
+ <td>Asynchronous, in homeostasis (night, pauses, low load).</td>
 </tr>
 </tbody>
 </table>
@@ -258,9 +199,8 @@ The two modes share the same cascade of strategies but differ in <em>timing</em>
 
 <div class="callout note">
 <strong>A third source of proto-mnest, from the fast-path.</strong>
-Since 19 May 2026 there is a third trigger channel, not substitutive
-but complementary: the nightly job <code>multi_tool_promote</code>
-(ADR 0150) reads the pipelines memoised in the
+Since there is a third trigger channel, not substitutive
+but complementary: the nightly job <code>multi_tool_promote</code> reads the pipelines memoised in the
 <a href="fast_path.html">L2 fast-path</a> and, when a sequence exceeds
 50 uses, creates a proto-mnest in the mnestome with the desired
 signature (executor chain + placeholders + canonical query). From
@@ -277,13 +217,13 @@ recurring.
 <figure>
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 460" width="100%" preserveAspectRatio="xMidYMid meet" style="font-family:'Segoe UI',Calibri,sans-serif; font-size:11px;">
 <defs>
-  <linearGradient id="sx-react" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#DCFCE7"/><stop offset="100%" stop-color="#86EFAC"/></linearGradient>
-  <linearGradient id="sx-gen" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#FEF3C7"/><stop offset="100%" stop-color="#F8DC85"/></linearGradient>
-  <linearGradient id="sx-intr" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#EDE4F7"/><stop offset="100%" stop-color="#C4B5FD"/></linearGradient>
-  <linearGradient id="sx-out" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#D9E4F0"/><stop offset="100%" stop-color="#A9C3DE"/></linearGradient>
-  <linearGradient id="sx-end" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#FEE2E2"/><stop offset="100%" stop-color="#F6A5A5"/></linearGradient>
-  <marker id="sx-arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#1A477A"/></marker>
-  <marker id="sx-arr-r" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#B91C1C"/></marker>
+ <linearGradient id="sx-react" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#DCFCE7"/><stop offset="100%" stop-color="#86EFAC"/></linearGradient>
+ <linearGradient id="sx-gen" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#FEF3C7"/><stop offset="100%" stop-color="#F8DC85"/></linearGradient>
+ <linearGradient id="sx-intr" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#EDE4F7"/><stop offset="100%" stop-color="#C4B5FD"/></linearGradient>
+ <linearGradient id="sx-out" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#D9E4F0"/><stop offset="100%" stop-color="#A9C3DE"/></linearGradient>
+ <linearGradient id="sx-end" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#FEE2E2"/><stop offset="100%" stop-color="#F6A5A5"/></linearGradient>
+ <marker id="sx-arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#1A477A"/></marker>
+ <marker id="sx-arr-r" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#B91C1C"/></marker>
 </defs>
 
 <text x="480" y="24" text-anchor="middle" fill="#1A477A" font-size="14" font-weight="700">The synt cascade</text>
@@ -435,7 +375,7 @@ risk of cascading errors outweighs the reuse benefit. synt jumps to
 <h2>4.2 Generate</h2>
 
 <div class="callout note" style="margin-bottom:14px;">
-<strong>Update 28 April 2026.</strong> The <em>LLM core</em> of generation
+<strong>Update.</strong> The <em>LLM core</em> of generation
 (specification + skeleton + tests + description + code) has been rewritten
 as a five-stage <em>multistage</em> pipeline: see
 &sect;<a href="#cap4">4.2.3</a> below. The seven-stage pipeline described
@@ -472,7 +412,7 @@ aesthetic: it is real saving.
 <strong>Wise tier quality floor.</strong> The <em>code</em> stage (stage 5 of
 the multistage pipeline in &sect;<a href="#cap4">4.2.3</a>) requires an LLM at
 the level of <strong>Gemma 4 26B or above</strong>. Smaller models
-(e.g. qwen3:8b) produce fragile code with high probability of violating the
+(e.g. a small model) produce fragile code with high probability of violating the
 convention. The procedural stages (1-4: naming, signature, tests, description)
 use the <em>middle</em> tier, which is enough for closed-vocabulary lookup and
 fixed formats. The rule is encoded in the <em>tier resolver</em>
@@ -482,7 +422,7 @@ OpenAI, etc.) must be configured. Explicit boot error, never a silent downgrade
 to fast.
 </div>
 
-<h3>4.2.1 Real measurements on the POC (April 26, 2026)</h3>
+<h3>4.2.1 Real measurements on the POC </h3>
 
 <p>
 First end-to-end synthesised executor via wise tier = local Gemma 4 26B (Q4_K_M
@@ -493,7 +433,7 @@ readable indentation).
 <table>
 <thead><tr><th style="width:32%">Stage</th><th>Time</th><th>Notes</th></tr></thead>
 <tbody>
-<tr><td><strong>1 Pattern detect</strong></td><td>~0 (caller)</td><td>caller of <code>react()</code> already holds the proto-mnest.</td></tr>
+<tr><td><strong>1 Pattern detect</strong></td><td>~0 (caller)</td><td>caller of <code>react</code> already holds the proto-mnest.</td></tr>
 <tr><td><strong>2+3 Spec + Skeleton</strong></td><td><strong>~36s</strong></td><td>single LLM call at tier=wise via tool-use <code>propose_executor</code>; ~640 in tokens, ~1700 out.</td></tr>
 <tr><td><strong>4 Profile</strong></td><td>~ms</td><td>derived from AST + import whitelist; "pure" profile when no external I/O.</td></tr>
 <tr><td><strong>5 Level-2 birth tests</strong></td><td><strong>~28s + ~1s/test</strong></td><td>second LLM call yields 3-5 declarative tests; runner executes each via subprocess.</td></tr>
@@ -510,9 +450,9 @@ pure code execution (~ms).
 </p>
 
 <div class="decision">
-<strong>POC v1.1 simplification.</strong> Stages 2 (Spec) and 3 (Skeleton) are
+<strong>Simplification.</strong> Stages 2 (Spec) and 3 (Skeleton) are
 unified into a single LLM call with tool-use <code>propose_executor</code>. The
-canonical doc keeps them separate because v1.2 will introduce an <em>amend
+canonical doc keeps them separate because will introduce an <em>amend
 UX</em> between Specification and Skeleton: Roberto will be able to review and
 correct the spec before code generation. The unified tool of the POC is an
 explicit simplification, not a renunciation of the design.
@@ -540,22 +480,22 @@ override). TOML schema:
 </p>
 
 <pre><code>[[hint]]
-provider      = "anthropic"
-model_pattern = "claude-*"          # glob on prov.model
-use_case      = "code_gen"
-text          = "\\n\\nVincoli: codice fedele alla spec. Regex semplice. Niente lookbehind/lookahead."
+provider = "anthropic"
+model_pattern = "claude-*" # glob on prov.model
+use_case = "code_gen"
+text = "\\n\\nVincoli: codice fedele alla spec. Regex semplice. Niente lookbehind/lookahead."
 
 [[hint]]
-provider      = "llamacpp"
+provider = "llamacpp"
 model_pattern = "gemma-4-*"
-use_case      = "code_gen"
-text          = "\\n\\nVincoli: raw string r'...' con UN backslash. Niente triple-quote docstring."
+use_case = "code_gen"
+text = "\\n\\nVincoli: raw string r'...' con UN backslash. Niente triple-quote docstring."
 
 [[hint]]
-provider      = "ollama"
-model_pattern = "qwen3:*"
-use_case      = "code_gen"
-text          = "\\n\\nVincoli: compila python_code per intero (def invoke + def main). Mai vuoto."
+provider = "openai"
+model_pattern = "gpt-*"
+use_case = "code_gen"
+text = "\\n\\nVincoli: compila python_code per intero (def invoke + def main). Mai vuoto."
 </code></pre>
 
 <p>
@@ -566,13 +506,13 @@ prompt</em> and the executors do not change: the only lever touched is the
 repertoire.
 </p>
 
-<h3>4.2.3 Multistage pipeline (28 April 2026)</h3>
+<h3>4.2.3 Multistage pipeline </h3>
 
 <p>
 The mammoth single prompt that should produce name, args, capabilities,
 tests and code in one call is fragile: tested on 35 non-trivial queries
 it synthesised correctly only <strong>2 out of 35 (5.7&thinsp;%)</strong>,
-and even with a frontier-grade wise tier (Claude Sonnet 4.5) the rate
+and even with a frontier-grade wise tier the rate
 climbed only to 40&thinsp;%. The bottleneck was structural, not
 model-bound: the overcrowded prompt demanded too many simultaneous
 decisions.
@@ -589,11 +529,11 @@ ONLY the slice it needs &mdash; no cumulative blob.
 <table>
 <thead><tr><th style="width:18%">Stage</th><th style="width:14%">Type</th><th style="width:18%">LLM Tier</th><th>Output</th></tr></thead>
 <tbody>
-<tr><td><strong>1. Naming + classification</strong></td><td>procedural</td><td>middle (Gemma 4 26B think=true)</td><td>name <code>{action}_{object}[_qualifier]</code> from the closed vocabulary (20 actions, 11 objects) + revertible/critical/target_kind. If no combination fits: explicit rejection with reason.</td></tr>
+<tr><td><strong>1. Naming + classification</strong></td><td>procedural</td><td>middle (Gemma 4 26B think=true)</td><td>name <code>{action}_{object}[_qualifier]</code> from the closed vocabulary (23 actions, 19 objects) + revertible/critical/target_kind. If no combination fits: explicit rejection with reason.</td></tr>
 <tr><td><strong>2. Signature</strong></td><td>procedural</td><td>middle</td><td>args_schema (JSON Schema), capabilities (closed set), reverse_pattern from the catalogue (see <a href="undo.html">undo</a>).</td></tr>
 <tr><td><strong>3. Birth tests</strong></td><td>procedural</td><td>middle</td><td>4-6 tests in fixed format (setup/input/expect/teardown), at minimum: happy path, empty list, invalid args, domain edge.</td></tr>
 <tr><td><strong>4. Description + affinity</strong></td><td>creative</td><td>middle</td><td>LLM-readable description (2-5 sentences, single string) + 6-10 affinity keywords for the composer.</td></tr>
-<tr><td><strong>5. Code</strong></td><td>creative + procedural</td><td>wise (Gemma 4 26B think=true)</td><td><code>&lt;name&gt;.py</code> Python file with <code>def invoke()</code>, runtime conventions (<a href="messages.html">messages</a>, <a href="platform_policy.html">platform_policy</a>, helpers).</td></tr>
+<tr><td><strong>5. Code</strong></td><td>creative + procedural</td><td>wise (Gemma 4 26B think=true)</td><td><code>&lt;name&gt;.py</code> Python file with <code>def invoke</code>, runtime conventions (<a href="messages.html">messages</a>, <a href="platform_policy.html">platform_policy</a>, helpers).</td></tr>
 </tbody>
 </table>
 
@@ -606,7 +546,7 @@ born, by who can produce it.
 </p>
 
 <p>
-Measured results on the 35-query stress dataset (28 April 2026):
+Measured results on the 35-query stress dataset :
 <strong>stage 1 (naming + classification) reaches 88.6&thinsp;% (31/35)</strong>
 under the bilingual prompt, against 5.7&thinsp;% for the monolithic
 single-prompt (ADR <a href="../../decisions/0050-synt-stress-test-50-queries.md">0050</a>) and
@@ -615,8 +555,7 @@ single-prompt (ADR <a href="../../decisions/0050-synt-stress-test-50-queries.md"
 The remaining 4 escalations (resize, query SQL, validate YAML, crack)
 are explicit rejections for verbs semantically outside the closed
 vocabulary, not synthesis errors: the vocabulary is only worth
-extending if those patterns recur in real cases (see ADR
-<a href="../../decisions/0053-synt-stage1-bilingual-mapping.md">0053</a>:
+extending if those patterns recur in real cases (<a href="../../decisions/0053-synt-stage1-bilingual-mapping.md">0053</a>:
 &laquo;synonyms before vocabulary&raquo;).
 </p>
 
@@ -727,15 +666,15 @@ the previous microdesign (<a href="../../it/architecture/synthesizer.html">synth
 cheaper strategies:
 </p>
 
-<pre><code>R = 0.35 &middot; det_pass_rate           # fraction of deterministic tests passing
-  + 0.20 &middot; judge_score             # LLM-as-judge (local-fast) on constitutional rubric
-  + 0.15 &middot; cost_ratio              # clip(1 - actual_cost / estimate, 0, 1)
-  &minus; 0.10 &middot; similarity_penalty      # cosine-sim of embedding vs existing pool &gt; 0.85
-  + 0.10 &middot; coverage_bonus          # bonus if it covers uncovered proto-mnests
-  + 0.10 &middot; strategy_cost_bonus     # 1 for compose, 0.6 for merge/specialise,
-                                       # 0.4 for generalise, 0 for generate
+<pre><code>R = 0.35 &middot; det_pass_rate # fraction of deterministic tests passing
+ + 0.20 &middot; judge_score # LLM-as-judge (local-fast) on constitutional rubric
+ + 0.15 &middot; cost_ratio # clip(1 - actual_cost / estimate, 0, 1)
+ &minus; 0.10 &middot; similarity_penalty # cosine-sim of embedding vs existing pool &gt; 0.85
+ + 0.10 &middot; coverage_bonus # bonus if it covers uncovered proto-mnests
+ + 0.10 &middot; strategy_cost_bonus # 1 for compose, 0.6 for merge/specialise,
+ # 0.4 for generalise, 0 for generate
 
-gate_threshold = 0.65                # v1 DECISION
+gate_threshold = 0.65 # v1 DECISION
 </code></pre>
 
 <p>
@@ -770,8 +709,8 @@ others:
 </p>
 
 <pre><code>5. Cultivate the tools: if I ask for something your pool cannot yet do,
-   exhaust the synthesis strategies (compose, generate, ask) before
-   answering "I cannot". Failure is allowed; silent retreat is not.</code></pre>
+ exhaust the synthesis strategies (compose, generate, ask) before
+ answering "I cannot". Failure is allowed; silent retreat is not.</code></pre>
 
 <p>
 The difference between <em>failure</em> and <em>retreat</em> is exactly here.
@@ -844,70 +783,67 @@ confirmation is skipped.
 from dataclasses import dataclass
 
 Strategy = Literal[
-    "compose", "generate",
-    "merge", "generalise", "specialise",
+ "compose", "generate",
+ "merge", "generalise", "specialise",
 ]
 
 ProposalState = Literal[
-    "composing", "composed",
-    "generating", "born", "abandoned",
-    "proposed", "rejected",
-    "fused", "generalised", "specialised",
+ "composing", "composed",
+ "generating", "born", "abandoned",
+ "proposed", "rejected",
+ "fused", "generalised", "specialised",
 ]
 
 @dataclass(frozen=True)
 class SynthRequest:
-    """A synthesis request, reactive or introspective."""
-    request_id:    str
-    mode:          Literal["reactive", "introspective"]
-    proto_mnest:   str | None       # id of the triggering proto-mnest (reactive)
-    target_intent: str              # NL: what needs to be done
-    budget_cents:  int              # frontier cap to spend
-    capability_hint: list[str]      # capabilities already assumed
+ """A synthesis request, reactive or introspective."""
+ request_id: str
+ mode: Literal["reactive", "introspective"]
+ proto_mnest: str | None # id of the triggering proto-mnest (reactive)
+ target_intent: str # NL: what needs to be done
+ budget_cents: int # frontier cap to spend
+ capability_hint: list[str] # capabilities already assumed
 
 @dataclass(frozen=True)
 class RewardBreakdown:
-    det_pass_rate:        float    # [0,1]
-    judge_score:          float    # [0,1]
-    judge_reasoning:      str
-    cost_ratio:           float    # [0,1]
-    similarity_penalty:   float    # [0,1] (negative sign in the formula)
-    coverage_bonus:       float    # [0,1]
-    strategy_cost_bonus:  float    # [0,1] depends on Strategy
-    total:                float    # aggregated R
+ det_pass_rate: float # [0,1]
+ judge_score: float # [0,1]
+ judge_reasoning: str
+ cost_ratio: float # [0,1]
+ similarity_penalty: float # [0,1] (negative sign in the formula)
+ coverage_bonus: float # [0,1]
+ strategy_cost_bonus: float # [0,1] depends on Strategy
+ total: float # aggregated R
 
 @dataclass
 class SynthProposal:
-    """A concrete proposal that synt presents to the user."""
-    request_id:   str
-    strategy:     Strategy
-    state:        ProposalState
-    artefact:     dict             # chain (compose) or candidate executor (generate/&hellip;)
-    reward:       RewardBreakdown
-    cost_cents:   int              # consumption so far
-    rationale:    str              # 2-3 lines NL: why this strategy, here
+ """A concrete proposal that synt presents to the user."""
+ request_id: str
+ strategy: Strategy
+ state: ProposalState
+ artefact: dict # chain (compose) or candidate executor (generate/&hellip;)
+ reward: RewardBreakdown
+ cost_cents: int # consumption so far
+ rationale: str # 2-3 lines NL: why this strategy, here
 
 class Synt(Protocol):
-    async def react(self, req: SynthRequest) -&gt; SynthProposal:
-        """Reactive cascade: compose first, then generate, then abandon."""
-        ...
+ async def react(self, req: SynthRequest) -&gt; SynthProposal:
+ """Reactive cascade: compose first, then generate, then abandon."""...
 
-    async def homeostasis(self, lookback_days: int = 30) -&gt; list[SynthProposal]:
-        """Sweeps mnestome and pool; returns 0..N introspective proposals in batch."""
-        ...
+ async def homeostasis(self, lookback_days: int = 30) -&gt; list[SynthProposal]:
+ """Sweeps mnestome and pool; returns 0..N introspective proposals in batch."""...
 
-    async def revise(
-        self, request_id: str, feedback: str,
-        target_strategy: Strategy | None = None,
-    ) -&gt; SynthProposal:
-        """Resumes a proposal after human feedback."""
-        ...
+ async def revise(
+ self, request_id: str, feedback: str,
+ target_strategy: Strategy | None = None,
+ ) -&gt; SynthProposal:
+ """Resumes a proposal after human feedback."""...
 
 # Errors (logged and turned into state, not propagated)
-class StrategyExhaustedError(Exception): ...
-class BudgetExceededError(Exception): ...
-class PolicyVetoError(Exception): ...
-class ConstitutionViolationError(Exception): ...
+class StrategyExhaustedError(Exception):...
+class BudgetExceededError(Exception):...
+class PolicyVetoError(Exception):...
+class ConstitutionViolationError(Exception):...
 </code></pre>
 
 <h1 id="cap10">10. Audit and observability</h1>
@@ -919,16 +855,16 @@ composition:
 </p>
 
 <pre><code>{
-  "ts":            "2026-04-25T22:14:33Z",
-  "request_id":    "01HX...",
-  "mode":          "reactive",
-  "proto_mnest":   "mnest_01HW...",
-  "strategy":      "compose",
-  "state":         "composed",
-  "chain":         ["fs_read", "pdf_extract", "invoice_classify", "workspace_save"],
-  "reward":        {"total": 0.78, "det_pass_rate": 0.95, "&hellip;": "&hellip;"},
-  "cost_cents":    0,
-  "duration_ms":   142
+ "ts": "2026-04-25T22:14:33Z",
+ "request_id": "01HX...",
+ "mode": "reactive",
+ "proto_mnest": "mnest_01HW...",
+ "strategy": "compose",
+ "state": "composed",
+ "chain": ["read_files", "read_files_pdf", "classify_entries", "move_files"],
+ "reward": {"total": 0.78, "det_pass_rate": 0.95, "&hellip;": "&hellip;"},
+ "cost_cents": 0,
+ "duration_ms": 142
 }
 </code></pre>
 
@@ -946,7 +882,7 @@ Three invariants of the synt audit, guaranteed by loader and runtime:
 <table>
 <thead><tr><th style="width:30%">Alternative</th><th>Why rejected (or postponed)</th></tr></thead>
 <tbody>
-<tr><td>Generation only, no cascade</td><td>Original default of <code>synthesizer.html</code> v1.0. Costly and pollutes the pool: every proto-mnest yields a new executor even when an existing chain would have sufficed. Replaced by the cascade on 25/4/2026.</td></tr>
+<tr><td>Generation only, no cascade</td><td>Original default of the first design. Costly and pollutes the pool: every proto-mnest yields a new executor even when an existing chain would have sufficed. Replaced by the cascade.</td></tr>
 <tr><td>Extended cascade (introspective in the user turn too)</td><td>Merging/generalising/specialising during the user turn multiplies risk: three concurrent proposals in parallel, human gate under pressure. They stay introspective.</td></tr>
 <tr><td>Generation with N parallel models</td><td>3&times; the cost for small variance reduction. Possible in v2 if the pipeline hit-rate falls below 60%.</td></tr>
 <tr><td>Reward learning (RLHF) on R weights</td><td>Requires a signed human-feedback dataset; over-engineered for domestic use. Manual calibration + semi-annual review is more transparent.</td></tr>
@@ -988,36 +924,36 @@ Three invariants of the synt audit, guaranteed by loader and runtime:
 <hr>
 
 <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(260px, 1fr)); gap:14px; margin:28px 0 24px;">
-  <a href="executor.html" style="display:block; padding:14px 16px; border:1px solid var(--border); border-radius:8px; background:white; color:inherit; text-decoration:none;">
-    <span style="display:inline-block; padding:2px 9px; border-radius:10px; font-size:9pt; background:var(--code-bg); color:var(--muted); font-weight:500;">canonical</span>
-    <div style="color:var(--navy); font-size:11.5pt; font-weight:700; margin:8px 0 6px 0;">executor</div>
-    <div style="margin:0; color:var(--muted); font-size:10pt; line-height:1.5;">The unit of code that synt brings to life or orchestrates. 5-stage multistage pipeline at ch. 7 / &sect;4.2.3.</div>
-  </a>
-  <a href="mnest.html" style="display:block; padding:14px 16px; border:1px solid var(--border); border-radius:8px; background:white; color:inherit; text-decoration:none;">
-    <span style="display:inline-block; padding:2px 9px; border-radius:10px; font-size:9pt; background:var(--code-bg); color:var(--muted); font-weight:500;">canonical</span>
-    <div style="color:var(--navy); font-size:11.5pt; font-weight:700; margin:8px 0 6px 0;">mnest</div>
-    <div style="margin:0; color:var(--muted); font-size:10pt; line-height:1.5;">The trace of co-activation that synt reads to decide. Proto-mnest at ch. 8.</div>
-  </a>
-  <a href="../Metnos_Architecture_Intro_v1.html#cap9" style="display:block; padding:14px 16px; border:1px solid var(--border); border-radius:8px; background:white; color:inherit; text-decoration:none;">
-    <span style="display:inline-block; padding:2px 9px; border-radius:10px; font-size:9pt; background:var(--code-bg); color:var(--muted); font-weight:500;">level 1</span>
-    <div style="color:var(--navy); font-size:11.5pt; font-weight:700; margin:8px 0 6px 0;">Architecture, ch. 9</div>
-    <div style="margin:0; color:var(--muted); font-size:10pt; line-height:1.5;">The cascade in the big-picture view.</div>
-  </a>
-  <a href="../Metnos_Architecture_Intro_v1.html#cap11" style="display:block; padding:14px 16px; border:1px solid var(--border); border-radius:8px; background:white; color:inherit; text-decoration:none;">
-    <span style="display:inline-block; padding:2px 9px; border-radius:10px; font-size:9pt; background:var(--code-bg); color:var(--muted); font-weight:500;">level 1</span>
-    <div style="color:var(--navy); font-size:11.5pt; font-weight:700; margin:8px 0 6px 0;">Architecture, ch. 11</div>
-    <div style="margin:0; color:var(--muted); font-size:10pt; line-height:1.5;">Telos and Vaglio: the non-retreat telos.</div>
-  </a>
-  <a href="./" style="display:block; padding:14px 16px; border:1px solid var(--border); border-radius:8px; background:white; color:inherit; text-decoration:none;">
-    <span style="display:inline-block; padding:2px 9px; border-radius:10px; font-size:9pt; background:var(--code-bg); color:var(--muted); font-weight:500;">index</span>
-    <div style="color:var(--navy); font-size:11.5pt; font-weight:700; margin:8px 0 6px 0;">Microdesign</div>
-    <div style="margin:0; color:var(--muted); font-size:10pt; line-height:1.5;">All docs.</div>
-  </a>
+ <a href="executor.html" style="display:block; padding:14px 16px; border:1px solid var(--border); border-radius:8px; background:white; color:inherit; text-decoration:none;">
+ <span style="display:inline-block; padding:2px 9px; border-radius:10px; font-size:9pt; background:var(--code-bg); color:var(--muted); font-weight:500;">canonical</span>
+ <div style="color:var(--navy); font-size:11.5pt; font-weight:700; margin:8px 0 6px 0;">executor</div>
+ <div style="margin:0; color:var(--muted); font-size:10pt; line-height:1.5;">The unit of code that synt brings to life or orchestrates. 5-stage multistage pipeline at ch. 7 / &sect;4.2.3.</div>
+ </a>
+ <a href="mnest.html" style="display:block; padding:14px 16px; border:1px solid var(--border); border-radius:8px; background:white; color:inherit; text-decoration:none;">
+ <span style="display:inline-block; padding:2px 9px; border-radius:10px; font-size:9pt; background:var(--code-bg); color:var(--muted); font-weight:500;">canonical</span>
+ <div style="color:var(--navy); font-size:11.5pt; font-weight:700; margin:8px 0 6px 0;">mnest</div>
+ <div style="margin:0; color:var(--muted); font-size:10pt; line-height:1.5;">The trace of co-activation that synt reads to decide. Proto-mnest at ch. 8.</div>
+ </a>
+ <a href="../Metnos_Architecture_Intro_v1.html#cap9" style="display:block; padding:14px 16px; border:1px solid var(--border); border-radius:8px; background:white; color:inherit; text-decoration:none;">
+ <span style="display:inline-block; padding:2px 9px; border-radius:10px; font-size:9pt; background:var(--code-bg); color:var(--muted); font-weight:500;">level 1</span>
+ <div style="color:var(--navy); font-size:11.5pt; font-weight:700; margin:8px 0 6px 0;">Architecture, ch. 9</div>
+ <div style="margin:0; color:var(--muted); font-size:10pt; line-height:1.5;">The cascade in the big-picture view.</div>
+ </a>
+ <a href="../Metnos_Architecture_Intro_v1.html#cap11" style="display:block; padding:14px 16px; border:1px solid var(--border); border-radius:8px; background:white; color:inherit; text-decoration:none;">
+ <span style="display:inline-block; padding:2px 9px; border-radius:10px; font-size:9pt; background:var(--code-bg); color:var(--muted); font-weight:500;">level 1</span>
+ <div style="color:var(--navy); font-size:11.5pt; font-weight:700; margin:8px 0 6px 0;">Architecture, ch. 11</div>
+ <div style="margin:0; color:var(--muted); font-size:10pt; line-height:1.5;">Telos and Vaglio: the non-retreat telos.</div>
+ </a>
+ <a href="./" style="display:block; padding:14px 16px; border:1px solid var(--border); border-radius:8px; background:white; color:inherit; text-decoration:none;">
+ <span style="display:inline-block; padding:2px 9px; border-radius:10px; font-size:9pt; background:var(--code-bg); color:var(--muted); font-weight:500;">index</span>
+ <div style="color:var(--navy); font-size:11.5pt; font-weight:700; margin:8px 0 6px 0;">Microdesign</div>
+ <div style="margin:0; color:var(--muted); font-size:10pt; line-height:1.5;">All docs.</div>
+ </a>
 </div>
 
 <hr>
 <p style="text-align:center; color:var(--muted); font-size:9.5pt; margin-top:40px;">
-Metnos &mdash; <em>synt</em> microdesign v1.1 &mdash; 2026-04-25<br>
+Metnos &mdash; <em>synt</em> microdesign &mdash; 2026-04-25<br>
 New canonical doc. Replaces <code>synthesizer.html</code> (deprecated, in Italian).
 </p>
 </body>

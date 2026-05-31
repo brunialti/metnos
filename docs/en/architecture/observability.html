@@ -1,51 +1,50 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Metnos &mdash; observability v1.1 (tested)</title>
-    <meta name="description" content="Microdesign of Metnos's observability: a static HTML dashboard generated on demand that aggregates mnestome, pairings, turns, vaglio decisions, scheduler and test framework into a single browser-readable file.">
-    <meta name="keywords" content="observability, dashboard, mnestome, pairings, vaglio, scheduler, test, metnos, microdesign">
-    <meta name="author" content="Roberto Brunialti">
-    <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large">
-    <link rel="canonical" href="https://metnos.com/en/architecture/observability.html">
-    <link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/observability.html">
-    <link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/observability.html">
-    <link rel="alternate" hreflang="x-default" href="https://metnos.com/en/architecture/observability.html">
-    <meta property="og:type" content="article">
-    <meta property="og:url" content="https://metnos.com/en/architecture/observability.html">
-    <meta property="og:title" content="Metnos &mdash; observability v1.1 (tested)">
-    <meta property="og:description" content="Static HTML dashboard that aggregates all of Metnos's data sources into a single file. No live server, no WebSocket: regenerated on demand.">
-    <meta property="og:locale" content="en_US">
-    <meta property="og:locale:alternate" content="it_IT">
-    <meta property="og:site_name" content="Metnos">
-    <meta name="twitter:card" content="summary">
-    <meta name="twitter:title" content="Metnos &mdash; observability v1.1 (tested)">
-    <meta name="twitter:description" content="Static HTML dashboard that aggregates all of Metnos's data sources into a single file. No live server, no WebSocket: regenerated on demand.">
-    <script type="application/ld+json">
+ <meta charset="UTF-8">
+ <meta name="viewport" content="width=device-width, initial-scale=1.0">
+ <title>Metnos &mdash; observability (tested)</title>
+ <meta name="description" content="Microdesign of Metnos's observability: a static HTML dashboard generated on demand that aggregates mnestome, pairings, turns, vaglio decisions, scheduler and test framework into a single browser-readable file.">
+ <meta name="keywords" content="observability, dashboard, mnestome, pairings, vaglio, scheduler, test, metnos, microdesign">
+ <meta name="author" content="Roberto Brunialti">
+ <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large">
+ <link rel="canonical" href="https://metnos.com/en/architecture/observability.html">
+ <link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/observability.html">
+ <link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/observability.html">
+ <link rel="alternate" hreflang="x-default" href="https://metnos.com/en/architecture/observability.html">
+ <meta property="og:type" content="article">
+ <meta property="og:url" content="https://metnos.com/en/architecture/observability.html">
+ <meta property="og:title" content="Metnos &mdash; observability (tested)">
+ <meta property="og:description" content="Static HTML dashboard that aggregates all of Metnos's data sources into a single file. No live server, no WebSocket: regenerated on demand.">
+ <meta property="og:locale" content="en_US">
+ <meta property="og:locale:alternate" content="it_IT">
+ <meta property="og:site_name" content="Metnos">
+ <meta name="twitter:card" content="summary">
+ <meta name="twitter:title" content="Metnos &mdash; observability (tested)">
+ <meta name="twitter:description" content="Static HTML dashboard that aggregates all of Metnos's data sources into a single file. No live server, no WebSocket: regenerated on demand.">
+ <script type="application/ld+json">
 {
-  "@context": "https://schema.org",
-  "@type": "TechArticle",
-  "headline": "Metnos — observability v1.1",
-  "description": "Microdesign of observability: static HTML dashboard generated on demand. Aggregates mnestome, pairings, turns, vaglio decisions, scheduler, tests. Status: tested.",
-  "url": "https://metnos.com/en/architecture/observability.html",
-  "inLanguage": "en",
-  "isPartOf": {"@type": "WebSite", "name": "Metnos", "url": "https://metnos.com/"},
-  "author": {"@type": "Person", "name": "Roberto Brunialti"}
+ "@context": "https://schema.org",
+ "@type": "TechArticle",
+ "headline": "Metnos — observability ",
+ "description": "Microdesign of observability: static HTML dashboard generated on demand. Aggregates mnestome, pairings, turns, vaglio decisions, scheduler, tests. Status: tested.",
+ "url": "https://metnos.com/en/architecture/observability.html",
+ "inLanguage": "en",
+ "isPartOf": {"@type": "WebSite", "name": "Metnos", "url": "https://metnos.com/"},
+ "author": {"@type": "Person", "name": "Roberto Brunialti"}
 }
-    </script>
-    <style>
-:root {
-    --navy: #1A477A; --navy-light: #2B6CB0; --sage: #548235;
-    --bronze: #A0522D; --plum: #6B21A8;
-    --bg: #FAFBFC; --text: #1a1a1a;
-    --border: #d0d7de; --code-bg: #f6f8fa;
-    --table-header: #1A477A; --table-alt: #f0f4f8;
-    --note-bg: #dbeafe; --note-border: #3b82f6;
-    --tip-bg: #dcfce7; --tip-border: #16a34a;
-    --warn-bg: #fef3c7; --warn-border: #f59e0b;
-    --danger-bg: #fee2e2; --danger-border: #dc2626;
-    --muted: #64748B;
+ </script>
+ <style>:root {
+ --navy: #1A477A; --navy-light: #2B6CB0; --sage: #548235;
+ --bronze: #A0522D; --plum: #6B21A8;
+ --bg: #FAFBFC; --text: #1a1a1a;
+ --border: #d0d7de; --code-bg: #f6f8fa;
+ --table-header: #1A477A; --table-alt: #f0f4f8;
+ --note-bg: #dbeafe; --note-border: #3b82f6;
+ --tip-bg: #dcfce7; --tip-border: #16a34a;
+ --warn-bg: #fef3c7; --warn-border: #f59e0b;
+ --danger-bg: #fee2e2; --danger-border: #dc2626;
+ --muted: #64748B;
 }
 * { box-sizing: border-box; }
 body { font-family: 'Segoe UI', Calibri, -apple-system, sans-serif; font-size: 11pt; line-height: 1.65; color: var(--text); background: var(--bg); max-width: 960px; margin: 0 auto; padding: 40px 30px; }
@@ -60,35 +59,19 @@ td { padding: 7px 10px; border-bottom: 1px solid var(--border); vertical-align: 
 tr:nth-child(even) td { background: var(--table-alt); }
 pre { background: var(--code-bg); border: 1px solid var(--border); border-radius: 4px; padding: 12px 16px; overflow-x: auto; font-size: 9.5pt; line-height: 1.55; }
 code { font-family: Consolas, 'Courier New', monospace; }
-p code, li code, td code { background: var(--code-bg); padding: 1px 5px; border-radius: 3px; font-size: 9.5pt; }
-.callout { border-left: 4px solid; padding: 10px 16px; margin: 15px 0; border-radius: 0 4px 4px 0; font-size: 10pt; }
-.callout.note { background: var(--note-bg); border-color: var(--note-border); }
-.callout.tip { background: var(--tip-bg); border-color: var(--tip-border); }
-.callout.warning { background: var(--warn-bg); border-color: var(--warn-border); }
-.title-page { text-align: center; padding: 60px 0 30px; }
-.title-page h1 { font-size: 32pt; border: none; margin: 0; }
-.title-page .subtitle { font-size: 16pt; color: var(--navy-light); margin: 10px 0 30px; }
-.title-page .meta { font-size: 11pt; color: #666; }
-.toc h2 { border: none; }
-.toc ol { font-size: 11pt; line-height: 1.9; }
-.toc a { color: var(--navy); text-decoration: none; }
+p code, li code, td code { background: var(--code-bg); padding: 1px 5px; border-radius: 3px; font-size: 9.5pt; }.callout { border-left: 4px solid; padding: 10px 16px; margin: 15px 0; border-radius: 0 4px 4px 0; font-size: 10pt; }.callout.note { background: var(--note-bg); border-color: var(--note-border); }.callout.tip { background: var(--tip-bg); border-color: var(--tip-border); }.callout.warning { background: var(--warn-bg); border-color: var(--warn-border); }.title-page { text-align: center; padding: 60px 0 30px; }.title-page h1 { font-size: 32pt; border: none; margin: 0; }.title-page.subtitle { font-size: 16pt; color: var(--navy-light); margin: 10px 0 30px; }.title-page.meta { font-size: 11pt; color: #666; }.toc h2 { border: none; }.toc ol { font-size: 11pt; line-height: 1.9; }.toc a { color: var(--navy); text-decoration: none; }
 ul, ol { margin: 8px 0; padding-left: 24px; }
-li { margin-bottom: 4px; }
-.lead { font-size: 12pt; color: var(--navy); border-left: 4px solid var(--sage); padding-left: 14px; margin: 18px 0; }
-.status-banner { margin: 18px 0; border-left: 5px solid #16a34a; background: #dcfce7; color: #14532d; padding: 14px 20px; border-radius: 0 8px 8px 0; font-size: 11pt; line-height: 1.55; }
-.status-banner strong { color: #14532d; }
-.status-banner .status-chip { display: inline-block; background: #14532d; color: #fff; padding: 2px 10px; border-radius: 12px; font-size: 9.5pt; letter-spacing: 1px; font-weight: 700; margin-right: 6px; }
-.status-banner .seq { font-size: 9.5pt; color: #2d4a32; margin-top: 8px; }
-    </style>
+li { margin-bottom: 4px; }.lead { font-size: 12pt; color: var(--navy); border-left: 4px solid var(--sage); padding-left: 14px; margin: 18px 0; }.status-banner { margin: 18px 0; border-left: 5px solid #16a34a; background: #dcfce7; color: #14532d; padding: 14px 20px; border-radius: 0 8px 8px 0; font-size: 11pt; line-height: 1.55; }.status-banner strong { color: #14532d; }.status-banner.status-chip { display: inline-block; background: #14532d; color: #fff; padding: 2px 10px; border-radius: 12px; font-size: 9.5pt; letter-spacing: 1px; font-weight: 700; margin-right: 6px; }.status-banner.seq { font-size: 9.5pt; color: #2d4a32; margin-top: 8px; }
+ </style>
 </head>
 <body>
 
 <div class="status-banner">
-<span class="status-chip">TESTED</span>
-<strong>&#10003; Microdesign v1.1 &mdash; aligned with the code as of 4 May 2026.</strong>
-The <code>observability</code> component has been built and tested at module level (cluster <code>observability</code> 6/6 green) on 27/4/2026, then extended on 4/5/2026 by the <code>/admin</code> dashboard of <a href="http_api.html" style="color:#14532d;text-decoration:underline;"><code>http_api</code></a> (htmx + Jinja2 + uPlot, ADR&nbsp;0078): <code>/admin/proposals</code>, <code>/admin/executors</code>, <code>/admin/executors/stats</code>, <code>/admin/runs</code>, <code>/admin/safety</code>, <code>/admin/turns</code>, <code>/admin/users</code>. Fine-grained StepLog telemetry (ADR&nbsp;0080): five sub-components (<code>intent_ms</code>, <code>prefilter_ms</code>, <code>vaglio_ms</code>, <code>exec_ms</code>, <code>rerank_ms</code>) readable from <code>bench_latency_breakdown.py</code>. The original static HTML generator remains as an offline fallback.
-Implementation reference: <code>/opt/myclaw/runtime/observability.py</code>, <code>/opt/myclaw/runtime/http_routes_admin.py</code>.
-<div class="seq">Status in the microdesign sequence: <em>under approval</em> &rarr; <em>approved</em> &rarr; <strong>tested</strong> &rarr; <em>implemented</em>. The v1.0 of this doc preceded the code; it is replaced by this v1.1 after the implementation of the static HTML generator that closes (together with <a href="mnestome.html">operational mnestome</a>) phase 4 of the roadmap.</div>
+
+<strong>&#10003; Microdesign &mdash; aligned with the code.</strong>
+The <code>observability</code> component has been built and tested at module level (cluster <code>observability</code> 6/6 green) on, then extended on by the <code>/admin</code> dashboard of <a href="http_api.html" style="color:#14532d;text-decoration:underline;"><code>http_api</code></a> (htmx + Jinja2 + uPlot, ): <code>/admin/proposals</code>, <code>/admin/executors</code>, <code>/admin/executors/stats</code>, <code>/admin/runs</code>, <code>/admin/safety</code>, <code>/admin/turns</code>, <code>/admin/users</code>. Fine-grained StepLog telemetry: five sub-components (<code>intent_ms</code>, <code>prefilter_ms</code>, <code>vaglio_ms</code>, <code>exec_ms</code>, <code>rerank_ms</code>) readable from <code>bench_latency_breakdown.py</code>. The original static HTML generator remains as an offline fallback.
+Implementation reference: <code>/opt/metnos/runtime/observability.py</code>, <code>/opt/metnos/runtime/http_routes_admin.py</code>.
+<div class="seq">Status in the microdesign sequence: <em>under approval</em> &rarr; <em>approved</em> &rarr; <strong>tested</strong> &rarr; <em>implemented</em>. The of this doc preceded the code; it is replaced by this after the implementation of the static HTML generator that closes (together with <a href="mnestome.html">operational mnestome</a>) phase 4 of the roadmap.</div>
 </div>
 
 <nav aria-label="Language" style="position:fixed;top:16px;right:20px;z-index:9999;font-family:'Segoe UI',Calibri,sans-serif;font-size:10pt;letter-spacing:2px;background:#FAFBFC;border:1px solid #d0d7de;border-radius:14px;padding:4px 10px;box-shadow:0 1px 4px rgba(0,0,0,0.04);">
@@ -98,34 +81,34 @@ Implementation reference: <code>/opt/myclaw/runtime/observability.py</code>, <co
 </nav>
 
 <div style="background:#fff;border-bottom:1px solid #d0d7de;padding:10px 0;font-size:14px;position:sticky;top:0;z-index:10;margin-bottom:20px;">
-  <div style="max-width:960px;margin:0 auto;padding:0 20px;display:flex;justify-content:space-between;">
-    <a href="../index.html" style="color:#1a477a;text-decoration:none;font-weight:500;">&larr; Documentation index</a>
-    <span style="color:#8e8e93;">Microdesign &rsaquo; <strong style="color:#1a1a1a;">observability</strong></span>
-  </div>
+ <div style="max-width:960px;margin:0 auto;padding:0 20px;display:flex;justify-content:space-between;">
+ <a href="../index.html" style="color:#1a477a;text-decoration:none;font-weight:500;">&larr; Documentation index</a>
+ <span style="color:#8e8e93;">Microdesign &rsaquo; <strong style="color:#1a1a1a;">observability</strong></span>
+ </div>
 </div>
 
 <div class="title-page">
-    <h1>Metnos</h1>
-    <div class="subtitle"><code>observability</code> &mdash; making the system visible without going through the logs</div>
-    <div class="meta">
-        Microdesign v1.1 &mdash; status <strong>TESTED</strong> (April 27, 2026)<br>
-        Audience: those who want to understand what Metnos is doing without opening a terminal.<br>
-        <br>
-        Reading time: 9 minutes.
-    </div>
+ <h1>Metnos</h1>
+ <div class="subtitle"><code>observability</code> &mdash; making the system visible without going through the logs</div>
+ <div class="meta">
+ Microdesign<br>
+ Audience: those who want to understand what Metnos is doing without opening a terminal.<br>
+ <br>
+ Reading time: 9 minutes.
+ </div>
 </div>
 
 <div class="toc">
 <h2>Contents</h2>
 <ol>
-    <li><a href="#cap1">What it does: static dashboard</a></li>
-    <li><a href="#cap2">The six data sources</a></li>
-    <li><a href="#cap3">Generation: <code>render_dashboard</code></a></li>
-    <li><a href="#cap4">Sections of the produced file</a></li>
-    <li><a href="#cap5">Privacy and HTML-escape</a></li>
-    <li><a href="#cap6">Distribution and lifecycle</a></li>
-    <li><a href="#cap7">CLI</a></li>
-    <li><a href="#cap8">Limits and what is deferred to v1.2+</a></li>
+ <li><a href="#cap1">What it does: static dashboard</a></li>
+ <li><a href="#cap2">The six data sources</a></li>
+ <li><a href="#cap3">Generation: <code>render_dashboard</code></a></li>
+ <li><a href="#cap4">Sections of the produced file</a></li>
+ <li><a href="#cap5">Privacy and HTML-escape</a></li>
+ <li><a href="#cap6">Distribution and lifecycle</a></li>
+ <li><a href="#cap7">CLI</a></li>
+ <li><a href="#cap8">Limits and what is deferred to +</a></li>
 </ol>
 </div>
 
@@ -140,6 +123,26 @@ opening terminals, without inspecting SQLite by hand, without grepping the
 JSONL logs. A single HTML file, one page that summarises everything an
 owner needs to understand where the system has got to.
 </p>
+
+ <figure>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 150" width="100%" preserveAspectRatio="xMidYMid meet" style="font-family:'Segoe UI',Calibri,sans-serif;font-size:11px;">
+<defs><marker id="m-d" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#1A477A"/></marker></defs>
+<rect x="60" y="70" width="240" height="56" rx="8" fill="#D9E4F0" stroke="#1A477A"/>
+<text x="180" y="94" text-anchor="middle" fill="#1A477A" font-weight="700">data sources</text>
+<text x="180" y="112" text-anchor="middle" fill="#475569" font-size="9.5">mnestome, turns, vaglio...</text>
+<rect x="318" y="70" width="240" height="56" rx="8" fill="#FEF3C7" stroke="#B7791F"/>
+<text x="438" y="94" text-anchor="middle" fill="#1A477A" font-weight="700">aggregator</text>
+<text x="438" y="112" text-anchor="middle" fill="#475569" font-size="9.5">read-only</text>
+<rect x="576" y="70" width="240" height="56" rx="8" fill="#DCFCE7" stroke="#3F6212"/>
+<text x="696" y="94" text-anchor="middle" fill="#1A477A" font-weight="700">HTML dashboard</text>
+<text x="696" y="112" text-anchor="middle" fill="#475569" font-size="9.5">static, no JS</text>
+<line x1="300" y1="98" x2="316" y2="98" stroke="#1A477A" stroke-width="2" marker-end="url(#m-ob)"/>
+<line x1="558" y1="98" x2="574" y2="98" stroke="#1A477A" stroke-width="2" marker-end="url(#m-ob)"/>
+
+</svg>
+<figcaption>Figure 1 &mdash; The observability dashboard: read-only aggregation of the data sources, generating static HTML on demand with no live server.</figcaption>
+</figure>
+
 
 <p>
 The architectural choice is deliberately <em>non-live</em>: no
@@ -182,7 +185,7 @@ in a local browser.
 <tr>
 <td><strong>Test framework</strong></td>
 <td>Number of modules, number of test cases, last_status distribution, top modules by case count.</td>
-<td><code>/opt/myclaw/runtime/testing/tests.db</code></td>
+<td><code>/opt/metnos/runtime/testing/tests.db</code></td>
 </tr>
 </tbody>
 </table>
@@ -258,9 +261,9 @@ produced file.
 
 <p>
 The default file is <code>workspace/dashboard/index.html</code>, which
-lives under <code>METNOS_HOME</code> and is <em>not</em> deployed on
+lives under <code>METNOS_INSTALL_ROOT</code> and is <em>not</em> deployed on
 metnos.com (it is a local operational tool). To consult it:
-<code>file:///opt/myclaw/workspace/dashboard/index.html</code> in the
+<code>file:///opt/metnos/workspace/dashboard/index.html</code> in the
 browser, or scp from the server to Roberto's machine if one wants
 to look at it remotely.
 </p>
@@ -276,17 +279,17 @@ regenerates it every N minutes.
 <h1 id="cap7">7. CLI</h1>
 
 <pre>
-python3 -m observability render                    # default: workspace/dashboard/index.html
-python3 -m observability render --out path.html    # custom path
+python3 -m observability render # default: workspace/dashboard/index.html
+python3 -m observability render --out path.html # custom path
 </pre>
 
 <p>
-No subcommands other than <code>render</code> in v1.1. The
+No subcommands other than <code>render</code> in. The
 generator offers no JSON dump or export: those who want the raw data go
 straight to the sources (SQLite + JSONL).
 </p>
 
-<h1 id="cap8">8. Limits and what is deferred to v1.2+</h1>
+<h1 id="cap8">8. Limits and what is deferred to +</h1>
 
 <ul>
 <li><strong>No live update</strong>: the page does not auto-refresh. To
@@ -304,14 +307,14 @@ reads the aggregated turn-logs.</li>
 
 <li><strong>No mnestome graph</strong>: today the top-N tables.
 Graph visualisation (force-directed or cluster) requires
-JavaScript: deferred to v1.2 when there will be a gateway that serves the
+JavaScript: deferred to when there will be a gateway that serves the
 page.</li>
 
 <li><strong>No interactive filters</strong>: to search for a specific executor
 in the turn logs one goes to SQLite. The dashboard is
 &laquo;what-is-now&raquo;, not &laquo;search-what-was&raquo;.</li>
 
-<li><strong>Manual regeneration</strong>: in v1.2 a task of the
+<li><strong>Manual regeneration</strong>: in a task of the
 builtin scheduler (<code>render_dashboard</code>, every 5 min) will
 keep it fresh without intervention.</li>
 </ul>

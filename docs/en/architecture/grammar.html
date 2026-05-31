@@ -1,35 +1,34 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Metnos &mdash; grammar v1.0 (for dummies)</title>
-    <meta name="description" content="How Metnos forces the LLM to call exactly one tool, correctly: constrained generation via GBNF, discriminated union name+args, recursive schema, pool filter. Plain talk.">
-    <meta name="keywords" content="grammar, GBNF, llama.cpp, constrained generation, tool_call, PLANNER, Gemma, anti-thinking-loop, metnos, Metnos">
-    <meta name="author" content="Roberto Brunialti">
-    <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large">
-    <link rel="canonical" href="https://metnos.com/en/architecture/grammar.html">
-    <link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/grammar.html">
-    <link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/grammar.html">
-    <link rel="alternate" hreflang="x-default" href="https://metnos.com/it/architecture/grammar.html">
-    <meta property="og:type" content="article">
-    <meta property="og:url" content="https://metnos.com/en/architecture/grammar.html">
-    <meta property="og:title" content="Metnos &mdash; grammar v1.0">
-    <meta property="og:description" content="Constrained generation for the PLANNER tool_call: how it works, why it matters, how to test it.">
-    <meta property="og:locale" content="en_US">
-    <meta property="og:site_name" content="Metnos">
-    <style>
-:root {
-    --navy: #1A477A; --navy-light: #2B6CB0; --sage: #548235;
-    --bronze: #A0522D; --plum: #6B21A8;
-    --bg: #FAFBFC; --text: #1a1a1a;
-    --border: #d0d7de; --code-bg: #f6f8fa;
-    --table-header: #1A477A; --table-alt: #f0f4f8;
-    --note-bg: #dbeafe; --note-border: #3b82f6;
-    --tip-bg: #dcfce7; --tip-border: #16a34a;
-    --warn-bg: #fef3c7; --warn-border: #f59e0b;
-    --danger-bg: #fee2e2; --danger-border: #dc2626;
-    --muted: #64748B;
+ <meta charset="UTF-8">
+ <meta name="viewport" content="width=device-width, initial-scale=1.0">
+ <title>Metnos &mdash; grammar (for dummies)</title>
+ <meta name="description" content="How Metnos forces the LLM to call exactly one tool, correctly: constrained generation via GBNF, discriminated union name+args, recursive schema, pool filter. Plain talk.">
+ <meta name="keywords" content="grammar, GBNF, llama.cpp, constrained generation, tool_call, PLANNER, Gemma, anti-thinking-loop, metnos, Metnos">
+ <meta name="author" content="Roberto Brunialti">
+ <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large">
+ <link rel="canonical" href="https://metnos.com/en/architecture/grammar.html">
+ <link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/grammar.html">
+ <link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/grammar.html">
+ <link rel="alternate" hreflang="x-default" href="https://metnos.com/it/architecture/grammar.html">
+ <meta property="og:type" content="article">
+ <meta property="og:url" content="https://metnos.com/en/architecture/grammar.html">
+ <meta property="og:title" content="Metnos &mdash; grammar">
+ <meta property="og:description" content="Constrained generation for the PLANNER tool_call: how it works, why it matters, how to test it.">
+ <meta property="og:locale" content="en_US">
+ <meta property="og:site_name" content="Metnos">
+ <style>:root {
+ --navy: #1A477A; --navy-light: #2B6CB0; --sage: #548235;
+ --bronze: #A0522D; --plum: #6B21A8;
+ --bg: #FAFBFC; --text: #1a1a1a;
+ --border: #d0d7de; --code-bg: #f6f8fa;
+ --table-header: #1A477A; --table-alt: #f0f4f8;
+ --note-bg: #dbeafe; --note-border: #3b82f6;
+ --tip-bg: #dcfce7; --tip-border: #16a34a;
+ --warn-bg: #fef3c7; --warn-border: #f59e0b;
+ --danger-bg: #fee2e2; --danger-border: #dc2626;
+ --muted: #64748B;
 }
 * { box-sizing: border-box; }
 body { font-family: 'Segoe UI', Calibri, -apple-system, sans-serif; font-size: 11pt; line-height: 1.65; color: var(--text); background: var(--bg); max-width: 960px; margin: 0 auto; padding: 40px 30px; }
@@ -44,23 +43,10 @@ td { padding: 7px 10px; border-bottom: 1px solid var(--border); vertical-align: 
 tr:nth-child(even) td { background: var(--table-alt); }
 pre { background: var(--code-bg); border: 1px solid var(--border); border-radius: 4px; padding: 12px 16px; overflow-x: auto; font-size: 9.5pt; line-height: 1.55; }
 code { font-family: Consolas, 'Courier New', monospace; }
-p code, li code, td code { background: var(--code-bg); padding: 1px 5px; border-radius: 3px; font-size: 9.5pt; }
-.callout { border-left: 4px solid; padding: 10px 16px; margin: 15px 0; border-radius: 0 4px 4px 0; font-size: 10pt; }
-.callout.note { background: var(--note-bg); border-color: var(--note-border); }
-.callout.tip { background: var(--tip-bg); border-color: var(--tip-border); }
-.callout.warning { background: var(--warn-bg); border-color: var(--warn-border); }
-.title-page { text-align: center; padding: 80px 0 40px; }
-.title-page h1 { font-size: 32pt; border: none; margin: 0; }
-.title-page .subtitle { font-size: 16pt; color: var(--navy-light); margin: 10px 0 30px; }
-.title-page .meta { font-size: 11pt; color: #666; }
-.toc h2 { border: none; }
-.toc ol { font-size: 11pt; line-height: 2; }
-.toc a { color: var(--navy); text-decoration: none; }
-.toc a:hover { text-decoration: underline; }
+p code, li code, td code { background: var(--code-bg); padding: 1px 5px; border-radius: 3px; font-size: 9.5pt; }.callout { border-left: 4px solid; padding: 10px 16px; margin: 15px 0; border-radius: 0 4px 4px 0; font-size: 10pt; }.callout.note { background: var(--note-bg); border-color: var(--note-border); }.callout.tip { background: var(--tip-bg); border-color: var(--tip-border); }.callout.warning { background: var(--warn-bg); border-color: var(--warn-border); }.title-page { text-align: center; padding: 80px 0 40px; }.title-page h1 { font-size: 32pt; border: none; margin: 0; }.title-page.subtitle { font-size: 16pt; color: var(--navy-light); margin: 10px 0 30px; }.title-page.meta { font-size: 11pt; color: #666; }.toc h2 { border: none; }.toc ol { font-size: 11pt; line-height: 2; }.toc a { color: var(--navy); text-decoration: none; }.toc a:hover { text-decoration: underline; }
 ul, ol { margin: 8px 0; padding-left: 24px; }
-li { margin-bottom: 4px; }
-.lead { font-size: 12pt; color: var(--navy); border-left: 4px solid var(--sage); padding-left: 14px; margin: 18px 0; }
-    </style>
+li { margin-bottom: 4px; }.lead { font-size: 12pt; color: var(--navy); border-left: 4px solid var(--sage); padding-left: 14px; margin: 18px 0; }
+ </style>
 </head>
 <body>
 
@@ -71,39 +57,39 @@ li { margin-bottom: 4px; }
 </nav>
 
 <div style="background:#fff;border-bottom:1px solid #d0d7de;padding:10px 0;font-size:14px;position:sticky;top:0;z-index:10;margin-bottom:20px;">
-  <div style="max-width:960px;margin:0 auto;padding:0 20px;display:flex;justify-content:space-between;">
-    <a href="../index.html" style="color:#1a477a;text-decoration:none;font-weight:500;">&larr; Documentation index</a>
-    <span style="color:#8e8e93;">Microdesign &rsaquo; <strong style="color:#1a1a1a;">grammar</strong></span>
-  </div>
+ <div style="max-width:960px;margin:0 auto;padding:0 20px;display:flex;justify-content:space-between;">
+ <a href="../index.html" style="color:#1a477a;text-decoration:none;font-weight:500;">&larr; Documentation index</a>
+ <span style="color:#8e8e93;">Microdesign &rsaquo; <strong style="color:#1a1a1a;">grammar</strong></span>
+ </div>
 </div>
 
 <div class="title-page">
-    <h1>Metnos</h1>
-    <div class="subtitle"><code>grammar</code> &mdash; constrained tool_call generation</div>
-    <div class="meta">
-        Microdesign v1.0 &mdash; 14 May 2026<br>
-        Aligned with <a href="../../decisions/0133-constrained-grammar-tool-call.md">ADR 0133</a><br>
-        and the modules <code>runtime/tool_grammar.py</code>, <code>runtime/llm_provider.py</code>,
-        <code>runtime/agent_runtime.py</code>.<br>
-        <br>
-        Audience: anyone who wants to understand why Metnos doesn&rsquo;t &ldquo;ramble&rdquo;
-        during planning,<br>and what happens between the LLM and the executor.<br>
-        Read time: 12 minutes, zero math.
-    </div>
+ <h1>Metnos</h1>
+ <div class="subtitle"><code>grammar</code> &mdash; constrained tool_call generation</div>
+ <div class="meta">
+ Microdesign &mdash; <br>
+ Aligned with <br>
+ and the modules <code>runtime/tool_grammar.py</code>, <code>runtime/llm_provider.py</code>,
+ <code>runtime/agent_runtime.py</code>.<br>
+ <br>
+ Audience: anyone who wants to understand why Metnos doesn&rsquo;t &ldquo;ramble&rdquo;
+ during planning,<br>and what happens between the LLM and the executor.<br>
+ Read time: 12 minutes, zero math.
+ </div>
 </div>
 
 <div class="toc">
 <h2>Contents</h2>
 <ol>
-    <li><a href="#cap1">The problem: the LLM &ldquo;thinks about it&rdquo; and gets lost</a></li>
-    <li><a href="#cap2">The idea: grammar as a guardrail</a></li>
-    <li><a href="#cap3">Three pieces: generator, filter, validator</a></li>
-    <li><a href="#cap4">What it guarantees and what it doesn&rsquo;t</a></li>
-    <li><a href="#cap5">Why three &ldquo;llama-server quirks&rdquo; cost us half a day</a></li>
-    <li><a href="#cap6">Robustness, speed, extensibility</a></li>
-    <li><a href="#cap7">How to test</a></li>
-    <li><a href="#cap8">Comparison with other platforms</a></li>
-    <li><a href="#cap9">References</a></li>
+ <li><a href="#cap1">The problem: the LLM &ldquo;thinks about it&rdquo; and gets lost</a></li>
+ <li><a href="#cap2">The idea: grammar as a guardrail</a></li>
+ <li><a href="#cap3">Three pieces: generator, filter, validator</a></li>
+ <li><a href="#cap4">What it guarantees and what it doesn&rsquo;t</a></li>
+ <li><a href="#cap5">Why three &ldquo;llama-server quirks&rdquo; cost us half a day</a></li>
+ <li><a href="#cap6">Robustness, speed, extensibility</a></li>
+ <li><a href="#cap7">How to test</a></li>
+ <li><a href="#cap8">Comparison with other platforms</a></li>
+ <li><a href="#cap9">References</a></li>
 </ol>
 </div>
 
@@ -116,22 +102,50 @@ me the choice&rdquo; &mdash; the LLM <strong>sometimes</strong> enters a reasoni
 up emitting prose instead of a structured <code>tool_call</code>. The system
 doesn&rsquo;t know what to run. Game over.</p>
 
+<figure>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 150" width="100%" preserveAspectRatio="xMidYMid meet" style="font-family:'Segoe UI',Calibri,sans-serif;font-size:11px;">
+<defs><marker id="gr-arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#1A477A"/></marker></defs>
+<rect x="10" y="70" width="150" height="56" rx="8" fill="#D9E4F0" stroke="#1A477A"/>
+<text x="85" y="94" text-anchor="middle" fill="#1A477A" font-weight="700">user request</text>
+<text x="85" y="112" text-anchor="middle" fill="#475569" font-size="9.5">+ tool catalog</text>
+<rect x="200" y="70" width="150" height="56" rx="8" fill="#FEF3C7" stroke="#B7791F"/>
+<text x="275" y="90" text-anchor="middle" fill="#92400E" font-weight="700">GBNF</text>
+<text x="275" y="106" text-anchor="middle" fill="#44403C" font-size="9.5">grammar generated</text>
+<text x="275" y="119" text-anchor="middle" fill="#44403C" font-size="9.5">from the filtered pool</text>
+<rect x="390" y="70" width="160" height="56" rx="8" fill="#1A477A" stroke="#0f2d4a"/>
+<text x="470" y="94" text-anchor="middle" fill="#fff" font-weight="700">constrained decode</text>
+<text x="470" y="112" text-anchor="middle" fill="#fff" font-size="9.5">llama.cpp + Gemma</text>
+<rect x="590" y="70" width="150" height="56" rx="8" fill="#DCFCE7" stroke="#3F6212"/>
+<text x="665" y="94" text-anchor="middle" fill="#14532D" font-weight="700">valid tool_call</text>
+<text x="665" y="112" text-anchor="middle" fill="#1F2937" font-size="9.5">name + coherent args</text>
+<rect x="780" y="70" width="110" height="56" rx="8" fill="#EDE4F7" stroke="#6B21A8"/>
+<text x="835" y="94" text-anchor="middle" fill="#4C1D95" font-weight="700">validator</text>
+<text x="835" y="112" text-anchor="middle" fill="#1F2937" font-size="9.5">post-decode</text>
+<line x1="160" y1="98" x2="198" y2="98" stroke="#1A477A" stroke-width="2" marker-end="url(#gr-arr)"/>
+<line x1="350" y1="98" x2="388" y2="98" stroke="#1A477A" stroke-width="2" marker-end="url(#gr-arr)"/>
+<line x1="550" y1="98" x2="588" y2="98" stroke="#1A477A" stroke-width="2" marker-end="url(#gr-arr)"/>
+<line x1="740" y1="98" x2="778" y2="98" stroke="#1A477A" stroke-width="2" marker-end="url(#gr-arr)"/>
+</svg>
+<figcaption>Figure 1 &mdash; Grammar-constrained decoding: the tool pool generates the GBNF, which forces the model to emit a single well-formed <code>tool_call</code>, finally re-checked by the validator.</figcaption>
+</figure>
+
+
 <p>This is called &ldquo;thinking loop&rdquo;. Symptoms observed:</p>
 
 <ul>
-    <li><strong>Prose instead of JSON</strong>. The LLM writes &ldquo;Wait, I&rsquo;ll think...&rdquo;
-        and forgets to close with a tool_call.</li>
-    <li><strong>Name/args mix-match</strong>. Emits <code>{"name":"get_inputs","arguments":
-        {"kind":"choice","from_step":1,...}}</code> &mdash; the name of <em>one</em> tool
-        with the arguments of <em>another</em> tool.</li>
-    <li><strong>Arbitrary escape-hatches</strong>. Picks <code>request_new_executor</code>
-        (i.e. &ldquo;synthesize me a new verb&rdquo;) even when there&rsquo;s an obvious canonical
-        executor already. Or <code>request_location_from_user</code> for the query
-        &ldquo;create folder /tmp/x&rdquo; (no, I don&rsquo;t need your GPS location).</li>
+ <li><strong>Prose instead of JSON</strong>. The LLM writes &ldquo;Wait, I&rsquo;ll think...&rdquo;
+ and forgets to close with a tool_call.</li>
+ <li><strong>Name/args mix-match</strong>. Emits <code>{"name":"get_inputs","arguments":
+ {"kind":"choice","from_step":1,...}}</code> &mdash; the name of <em>one</em> tool
+ with the arguments of <em>another</em> tool.</li>
+ <li><strong>Arbitrary escape-hatches</strong>. Picks <code>request_new_executor</code>
+ (i.e. &ldquo;synthesize me a new verb&rdquo;) even when there&rsquo;s an obvious canonical
+ executor already. Or <code>request_location_from_user</code> for the query
+ &ldquo;create folder /tmp/x&rdquo; (no, I don&rsquo;t need your GPS location).</li>
 </ul>
 
 <p>Bench before this decision: <strong>50&ndash;70% convergence</strong> on 10
-representative queries. The propose+notify pipeline from ADR 0129 was failing.
+representative queries. The propose+notify pipeline was failing.
 Unacceptable for a personal assistant.</p>
 
 <h1 id="cap2">2. The idea: grammar as a guardrail</h1>
@@ -140,9 +154,9 @@ Unacceptable for a personal assistant.</p>
 <strong>GBNF</strong> (Grammar Backus-Naur Form). It&rsquo;s a language for writing
 formal grammars, like:</p>
 
-<pre>root      ::= "{" ws "\"name\":" name ws "}"
-name      ::= "\"get_now\"" | "\"find_files\"" | "\"send_messages\""
-ws        ::= [ \t\n]*</pre>
+<pre>root::= "{" ws "\"name\":" name ws "}"
+name::= "\"get_now\"" | "\"find_files\"" | "\"send_messages\""
+ws::= [ \t\n]*</pre>
 
 <p>When you pass a grammar to the server, the LLM <strong>physically cannot emit
 tokens that violate it</strong>. Every candidate token is filtered against the
@@ -154,7 +168,7 @@ in the right lane&rdquo;. A grammar is like installing a guardrail. The first ca
 ignored, the second cannot.
 </div>
 
-<p>The ADR 0133 idea: at each PLANNER step, <strong>we generate a specific grammar</strong>
+<p>The idea: at each PLANNER step, <strong>we generate a specific grammar</strong>
 from the step&rsquo;s <em>tools</em> pool, and we pass it to the server. The model is free
 to pick which tool to call and which arguments to pass, but ONLY within what the
 schemas declare valid.</p>
@@ -166,10 +180,9 @@ schemas declare valid.</p>
 <p>Takes the pool of tools and returns a GBNF string. The grammar core is a
 <strong>discriminated union</strong>:</p>
 
-<pre>root ::= "{" ws "\"name\":" (pairGetInputs | pairSendMessages | ...) ws "}"
-pairGetInputs ::= "\"get_inputs\"" sep "\"arguments\":" colon (argsGetInputs)
-pairSendMessages ::= "\"send_messages\"" sep "\"arguments\":" colon (argsSendMessages)
-...</pre>
+<pre>root::= "{" ws "\"name\":" (pairGetInputs | pairSendMessages |...) ws "}"
+pairGetInputs::= "\"get_inputs\"" sep "\"arguments\":" colon (argsGetInputs)
+pairSendMessages::= "\"send_messages\"" sep "\"arguments\":" colon (argsSendMessages)...</pre>
 
 <p>The keyword is <em>discriminated</em>: if the LLM picks the <code>pairGetInputs</code>
 branch, the args <strong>must</strong> conform to <code>argsGetInputs</code>. It cannot
@@ -180,19 +193,19 @@ that blocked us for half a day.</p>
 TOML manifest and translates it into GBNF rules. For nested cases (array of object,
 object inside object) the generator is <strong>recursive</strong>:</p>
 
-<pre>argsGetInputs ::= "{" ws propGetInputsTitle sep propGetInputsDialog
-                  (sep (propGetInputsFromStep | ...))* ws "}"
-propGetInputsDialog ::= "\"dialog\":" colon (
-    "[" ws (GetInputsObjD1I0 (sep GetInputsObjD1I0)*)? ws "]"
+<pre>argsGetInputs::= "{" ws propGetInputsTitle sep propGetInputsDialog
+ (sep (propGetInputsFromStep |...))* ws "}"
+propGetInputsDialog::= "\"dialog\":" colon (
+ "[" ws (GetInputsObjD1I0 (sep GetInputsObjD1I0)*)? ws "]"
 )
-GetInputsObjD1I0 ::= "{" ws propGetInputsObjD1I0Var sep propGetInputsObjD1I0Prompt sep
-                          propGetInputsObjD1I0Schema (sep (...))* ws "}"
-propGetInputsObjD1I0Schema ::= "\"schema\":" colon (GetInputsObjD3I2)
-GetInputsObjD3I2 ::= "{" ws propGetInputsObjD3I2Kind (sep (...))* ws "}"
-propGetInputsObjD3I2Kind ::= "\"kind\":" colon (
-    "\"text\"" | "\"credentials\"" | "\"yes_no\"" | "\"choice\"" |
-    "\"choice_with_preview\"" | "\"multi_choice\"" | "\"number\"" |
-    "\"date\"" | "\"file_path\"" | "\"location\""
+GetInputsObjD1I0::= "{" ws propGetInputsObjD1I0Var sep propGetInputsObjD1I0Prompt sep
+ propGetInputsObjD1I0Schema (sep (...))* ws "}"
+propGetInputsObjD1I0Schema::= "\"schema\":" colon (GetInputsObjD3I2)
+GetInputsObjD3I2::= "{" ws propGetInputsObjD3I2Kind (sep (...))* ws "}"
+propGetInputsObjD3I2Kind::= "\"kind\":" colon (
+ "\"text\"" | "\"credentials\"" | "\"yes_no\"" | "\"choice\"" |
+ "\"choice_with_preview\"" | "\"multi_choice\"" | "\"number\"" |
+ "\"date\"" | "\"file_path\"" | "\"location\""
 )</pre>
 
 <p>Real example for <code>get_inputs</code>: the schema declares <code>dialog</code>
@@ -248,28 +261,28 @@ corrects. A <code>consecutive_blocked</code> counter prevents infinite loops.</p
 
 <h3>Guarantees</h3>
 <ul>
-    <li><strong>Valid JSON syntax</strong>. The model cannot emit malformed JSON.</li>
-    <li><strong>Tool name in the pool</strong>. Only tools from the step pool are
-        admitted as <code>name</code>.</li>
-    <li><strong>Args coherent with the name</strong>. Discriminated union:
-        name A &rArr; args of A.</li>
-    <li><strong>Top-level and nested property types</strong>. String, integer,
-        boolean, enum, array, object &mdash; each gets its rule.</li>
-    <li><strong>Strict enums</strong>. If <code>kind</code> has 10 values, the
-        model picks ONE of those 10.</li>
+ <li><strong>Valid JSON syntax</strong>. The model cannot emit malformed JSON.</li>
+ <li><strong>Tool name in the pool</strong>. Only tools from the step pool are
+ admitted as <code>name</code>.</li>
+ <li><strong>Args coherent with the name</strong>. Discriminated union:
+ name A &rArr; args of A.</li>
+ <li><strong>Top-level and nested property types</strong>. String, integer,
+ boolean, enum, array, object &mdash; each gets its rule.</li>
+ <li><strong>Strict enums</strong>. If <code>kind</code> has 10 values, the
+ model picks ONE of those 10.</li>
 </ul>
 
 <h3>Doesn&rsquo;t guarantee</h3>
 <ul>
-    <li><strong>Semantically correct value</strong>. The grammar accepts
-        <code>title: ""</code>: it&rsquo;s a string. The executor checks.</li>
-    <li><strong>Deep required nested</strong>. Cap
-        <code>_MAX_RECURSION_DEPTH = 4</code>: beyond, fallback to generic
-        <code>jsonObject</code>. Rare cases, to monitor.</li>
-    <li><strong>The right tool for the query</strong>. If the pool has 8 plausible
-        tools, the model picks the one that seems best &mdash; and can be wrong.
-        That&rsquo;s what the ranker (top-K) before the grammar is for, plus the
-        pool filter.</li>
+ <li><strong>Semantically correct value</strong>. The grammar accepts
+ <code>title: ""</code>: it&rsquo;s a string. The executor checks.</li>
+ <li><strong>Deep required nested</strong>. Cap
+ <code>_MAX_RECURSION_DEPTH = 4</code>: beyond, fallback to generic
+ <code>jsonObject</code>. Rare cases, to monitor.</li>
+ <li><strong>The right tool for the query</strong>. If the pool has 8 plausible
+ tools, the model picks the one that seems best &mdash; and can be wrong.
+ That&rsquo;s what the ranker (top-K) before the grammar is for, plus the
+ pool filter.</li>
 </ul>
 
 <h1 id="cap5">5. Why three &ldquo;llama-server quirks&rdquo; cost us half a day</h1>
@@ -280,7 +293,7 @@ quirks. All discovered during convergence tests in the session.</p>
 <div class="callout warning">
 <strong>1. Rule names with underscore &mdash; ignored.</strong>
 Version <code>b540-5755a100c</code> silently ignores rule names that contain
-underscores. So <code>args_get_now ::= ...</code> doesn&rsquo;t apply. Workaround:
+underscores. So <code>args_get_now::=...</code> doesn&rsquo;t apply. Workaround:
 rule names always <code>camelCase</code>. Test: <code>test_no_underscore_in_rule_names</code>.
 </div>
 
@@ -323,14 +336,14 @@ n=1 run per query:</p>
 <p>Three things worth noting:</p>
 
 <ul>
-    <li>The <em>thinking-loop</em> is gone. Mean latency halved vs baseline,
-        not because the LLM &ldquo;thinks faster&rdquo;, but because it doesn&rsquo;t waste
-        cycles reasoning in a circle.</li>
-    <li>The propose+notify pipeline (complex_propose_silvia) always converges.
-        It was the worst case.</li>
-    <li>Even ambiguous queries (&ldquo;do something interesting&rdquo;) close with a
-        sensible <code>final_answer</code>, instead of picking an escape-hatch
-        at random.</li>
+ <li>The <em>thinking-loop</em> is gone. Mean latency halved vs baseline,
+ not because the LLM &ldquo;thinks faster&rdquo;, but because it doesn&rsquo;t waste
+ cycles reasoning in a circle.</li>
+ <li>The propose+notify pipeline (complex_propose_silvia) always converges.
+ It was the worst case.</li>
+ <li>Even ambiguous queries (&ldquo;do something interesting&rdquo;) close with a
+ sensible <code>final_answer</code>, instead of picking an escape-hatch
+ at random.</li>
 </ul>
 
 <h3>Speed</h3>
@@ -341,9 +354,9 @@ generation (filtering candidate tokens), but the net gain is huge because we
 eliminate:</p>
 
 <ul>
-    <li>Prose thinking (hundreds of &ldquo;Wait, I&rsquo;ll check...&rdquo; tokens).</li>
-    <li>Retries due to malformed JSON or wrong args.</li>
-    <li>Recursive reasoning loops.</li>
+ <li>Prose thinking (hundreds of &ldquo;Wait, I&rsquo;ll check...&rdquo; tokens).</li>
+ <li>Retries due to malformed JSON or wrong args.</li>
+ <li>Recursive reasoning loops.</li>
 </ul>
 
 <h3>Extensibility</h3>
@@ -352,8 +365,8 @@ eliminate:</p>
 <code>_telegram_bot</code>) costs <strong>one line</strong>:</p>
 
 <pre>_PROVIDER_SUFFIX_MARKERS = {
-    "_google_workspace": ("google", "drive", "gmail", ...),
-    "_notion": ("notion", "notion.so", "page"),  # &larr; added
+ "_google_workspace": ("google", "drive", "gmail",...),
+ "_notion": ("notion", "notion.so", "page"), # &larr; added
 }</pre>
 
 <p>Adding a new executor with complex nested schema costs zero: the generator
@@ -366,17 +379,17 @@ automatically, recursively, up to the depth cap.</p>
 Coverage:</p>
 
 <ul>
-    <li>Complexity scoring (<code>args_complexity</code>, <code>is_complex</code>).</li>
-    <li>Generator outer (root, name enum, args alternation, deterministic).</li>
-    <li>Discriminated union (pair rules, no cross-pollination).</li>
-    <li>B2 recursive (array of object, nested object, depth cap, no cross-tool collision).</li>
-    <li>Anti-bug (no underscore in rules, no unused primitives emitted).</li>
-    <li>Validator (missing name, missing args, unknown tool, required missing,
-        happy path, top-level enum passes).</li>
-    <li>Pool filter (escape-hatch, word-boundary, provider suffix, safety,
-        determinism).</li>
-    <li>Smoke integration with real catalog (<code>get_inputs.dialog</code>
-        emits sub-rule).</li>
+ <li>Complexity scoring (<code>args_complexity</code>, <code>is_complex</code>).</li>
+ <li>Generator outer (root, name enum, args alternation, deterministic).</li>
+ <li>Discriminated union (pair rules, no cross-pollination).</li>
+ <li>B2 recursive (array of object, nested object, depth cap, no cross-tool collision).</li>
+ <li>Anti-bug (no underscore in rules, no unused primitives emitted).</li>
+ <li>Validator (missing name, missing args, unknown tool, required missing,
+ happy path, top-level enum passes).</li>
+ <li>Pool filter (escape-hatch, word-boundary, provider suffix, safety,
+ determinism).</li>
+ <li>Smoke integration with real catalog (<code>get_inputs.dialog</code>
+ emits sub-rule).</li>
 </ul>
 
 <p>End-to-end bench: <code>runtime/bench_grammar.py</code>:</p>
@@ -395,7 +408,7 @@ systemctl --user daemon-reload &amp;&amp; systemctl --user restart metnos-http.s
 <h1 id="cap8">8. Comparison with other platforms</h1>
 
 <p>Constrained generation isn&rsquo;t a Metnos invention. Here&rsquo;s a quick map of who
-does what in the LLM/agent ecosystem &mdash; it helps locate the ADR 0133 choice
+does what in the LLM/agent ecosystem &mdash; it helps locate the choice
 and what we gained (or gave up) vs alternatives.</p>
 
 <table>
@@ -430,7 +443,7 @@ cost concerns. Sonnet 4.6 ~$0.30/turn vs local Gemma ~$0.001.</td>
 <tr>
 <td><strong>LangChain / LlamaIndex</strong></td>
 <td>Orchestrator: adapts function calling from various providers
-(OpenAI, Anthropic, ...) under one interface. Pydantic schema input.</td>
+(OpenAI, Anthropic,...) under one interface. Pydantic schema input.</td>
 <td>Inherits from underlying provider (soft)</td>
 <td>Pydantic / JSON Schema</td>
 <td>Abstraction layer, doesn&rsquo;t add robustness. Useful for portability;
@@ -475,7 +488,7 @@ in llama.cpp stable.</td>
 
 <h3>Where Metnos sits</h3>
 
-<p>The ADR 0133 GBNF choice is aligned with the <strong>technical frontier</strong>:
+<p>The GBNF choice is aligned with the <strong>technical frontier</strong>:
 modern serving stacks are all converging on sampler-level constraints (Outlines,
 xgrammar, llama.cpp GBNF). It&rsquo;s the <em>state of the art</em> pattern for local
 tool calling.</p>
@@ -484,23 +497,23 @@ tool calling.</p>
 instead of delegating to a fine-tuned model. Advantages:</p>
 
 <ul>
-    <li><strong>Local, zero network, zero $ costs</strong>. Aligned with the
-        Metnos &sect;10.3 principle (open-source self-hosted as default).</li>
-    <li><strong>Deterministic</strong> &sect;7.9 &mdash; testable with 43 unit tests.</li>
-    <li><strong>Full transparency</strong>: the grammar is text, inspectable,
-        versionable.</li>
-    <li><strong>Immediate update</strong>: adding an executor doesn&rsquo;t require
-        re-training. TOML schema &rarr; grammar emitted on the fly.</li>
+ <li><strong>Local, zero network, zero $ costs</strong>. Aligned with the
+ Metnos &sect;10.3 principle (open-source self-hosted as default).</li>
+ <li><strong>Deterministic</strong> &sect;7.9 &mdash; testable with 43 unit tests.</li>
+ <li><strong>Full transparency</strong>: the grammar is text, inspectable,
+ versionable.</li>
+ <li><strong>Immediate update</strong>: adding an executor doesn&rsquo;t require
+ re-training. TOML schema &rarr; grammar emitted on the fly.</li>
 </ul>
 
 <p>Disadvantages:</p>
 
 <ul>
-    <li>Models fine-tuned on tool_call (GPT-5, Sonnet) are <em>more fluent</em>
-        on very open queries &mdash; they don&rsquo;t pick a tool incorrectly because
-        they&rsquo;re trained to reason semantically on the match. We compensate
-        with top-K ranker + contextual pool filter.</li>
-    <li>Server bugs (see &sect;5) fall on us. Mitigated by regression tests.</li>
+ <li>Models fine-tuned on tool_call (GPT-5, Sonnet) are <em>more fluent</em>
+ on very open queries &mdash; they don&rsquo;t pick a tool incorrectly because
+ they&rsquo;re trained to reason semantically on the match. We compensate
+ with top-K ranker + contextual pool filter.</li>
+ <li>Server bugs (see &sect;5) fall on us. Mitigated by regression tests.</li>
 </ul>
 
 <h3>When it would make sense to change</h3>
@@ -518,13 +531,13 @@ instead of delegating to a fine-tuned model. Advantages:</p>
 <h1 id="cap9">9. References</h1>
 
 <ul>
-    <li>Decision: <a href="../../decisions/0133-constrained-grammar-tool-call.md">ADR 0133</a></li>
-    <li>Generator: <code>runtime/tool_grammar.py</code></li>
-    <li>Provider wiring: <code>runtime/llm_provider.py::LlamaCppProvider.chat_with_tools</code></li>
-    <li>Bench: <code>runtime/bench_grammar.py</code></li>
-    <li>Tests: <code>runtime/tests/test_tool_grammar.py</code></li>
-    <li>llama.cpp GBNF docs: <a href="https://github.com/ggerganov/llama.cpp/tree/master/grammars">grammars README</a></li>
-    <li>JSON Schema basics: <a href="https://json-schema.org/">json-schema.org</a></li>
+ <li>Decision: </li>
+ <li>Generator: <code>runtime/tool_grammar.py</code></li>
+ <li>Provider wiring: <code>runtime/llm_provider.py::LlamaCppProvider.chat_with_tools</code></li>
+ <li>Bench: <code>runtime/bench_grammar.py</code></li>
+ <li>Tests: <code>runtime/tests/test_tool_grammar.py</code></li>
+ <li>llama.cpp GBNF docs: <a href="https://github.com/ggerganov/llama.cpp/tree/master/grammars">grammars README</a></li>
+ <li>JSON Schema basics: <a href="https://json-schema.org/">json-schema.org</a></li>
 </ul>
 
 </body>

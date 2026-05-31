@@ -1,50 +1,49 @@
 <!DOCTYPE html>
 <html lang="it">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Metnos &mdash; multilang v1.1 (under approval)</title>
-    <meta name="description" content="Microprogettazione del multilinguismo di Metnos: tre layer (prompt LLM, manifest description, messaggi user-facing), source-of-truth latest-wins, workflow add-language, METNOS_LANG di processo.">
-    <meta name="keywords" content="multilang, multilingue, i18n, prompts, manifest, latest-wins, add-language, METNOS_LANG, metnos, Metnos">
-    <meta name="author" content="Roberto Brunialti">
-    <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large">
-    <link rel="canonical" href="https://metnos.com/it/architecture/multilang.html">
-    <link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/multilang.html">
-    <link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/multilang.html">
-    <link rel="alternate" hreflang="x-default" href="https://metnos.com/it/architecture/multilang.html">
-    <meta property="og:type" content="article">
-    <meta property="og:url" content="https://metnos.com/it/architecture/multilang.html">
-    <meta property="og:title" content="Metnos &mdash; multilang v1.1">
-    <meta property="og:description" content="Tre layer multilingua, source-of-truth latest-wins, workflow add-language, METNOS_LANG di processo.">
-    <meta property="og:locale" content="it_IT">
-    <meta property="og:site_name" content="Metnos">
-    <meta name="twitter:card" content="summary">
-    <meta name="twitter:title" content="Metnos &mdash; multilang v1.1">
-    <script type="application/ld+json">
+ <meta charset="UTF-8">
+ <meta name="viewport" content="width=device-width, initial-scale=1.0">
+ <title>Metnos &mdash; multilang (under approval)</title>
+ <meta name="description" content="Microprogettazione del multilinguismo di Metnos: tre layer (prompt LLM, manifest description, messaggi user-facing), source-of-truth latest-wins, workflow add-language, METNOS_LANG di processo.">
+ <meta name="keywords" content="multilang, multilingue, i18n, prompts, manifest, latest-wins, add-language, METNOS_LANG, metnos, Metnos">
+ <meta name="author" content="Roberto Brunialti">
+ <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large">
+ <link rel="canonical" href="https://metnos.com/it/architecture/multilang.html">
+ <link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/multilang.html">
+ <link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/multilang.html">
+ <link rel="alternate" hreflang="x-default" href="https://metnos.com/it/architecture/multilang.html">
+ <meta property="og:type" content="article">
+ <meta property="og:url" content="https://metnos.com/it/architecture/multilang.html">
+ <meta property="og:title" content="Metnos &mdash; multilang ">
+ <meta property="og:description" content="Tre layer multilingua, source-of-truth latest-wins, workflow add-language, METNOS_LANG di processo.">
+ <meta property="og:locale" content="it_IT">
+ <meta property="og:site_name" content="Metnos">
+ <meta name="twitter:card" content="summary">
+ <meta name="twitter:title" content="Metnos &mdash; multilang ">
+ <script type="application/ld+json">
 {
-  "@context": "https://schema.org",
-  "@type": "TechArticle",
-  "headline": "Metnos — multilang v1.1",
-  "description": "Microprogettazione canonica del multilinguismo di Metnos: tre layer + source-of-truth latest-wins + workflow add-language.",
-  "url": "https://metnos.com/it/architecture/multilang.html",
-  "inLanguage": "it",
-  "isPartOf": {"@type": "WebSite", "name": "Metnos", "url": "https://metnos.com/"},
-  "author": {"@type": "Person", "name": "Roberto Brunialti"},
-  "about": "Metnos component: multilang (prompts + manifests + i18n DB)"
+ "@context": "https://schema.org",
+ "@type": "TechArticle",
+ "headline": "Metnos — multilang ",
+ "description": "Microprogettazione canonica del multilinguismo di Metnos: tre layer + source-of-truth latest-wins + workflow add-language.",
+ "url": "https://metnos.com/it/architecture/multilang.html",
+ "inLanguage": "it",
+ "isPartOf": {"@type": "WebSite", "name": "Metnos", "url": "https://metnos.com/"},
+ "author": {"@type": "Person", "name": "Roberto Brunialti"},
+ "about": "Metnos component: multilang (prompts + manifests + i18n DB)"
 }
-    </script>
-    <style>
-:root {
-    --navy: #1A477A; --navy-light: #2B6CB0; --sage: #548235;
-    --bronze: #A0522D; --plum: #6B21A8;
-    --bg: #FAFBFC; --text: #1a1a1a;
-    --border: #d0d7de; --code-bg: #f6f8fa;
-    --table-header: #1A477A; --table-alt: #f0f4f8;
-    --note-bg: #dbeafe; --note-border: #3b82f6;
-    --tip-bg: #dcfce7; --tip-border: #16a34a;
-    --warn-bg: #fef3c7; --warn-border: #f59e0b;
-    --danger-bg: #fee2e2; --danger-border: #dc2626;
-    --muted: #64748B;
+ </script>
+ <style>:root {
+ --navy: #1A477A; --navy-light: #2B6CB0; --sage: #548235;
+ --bronze: #A0522D; --plum: #6B21A8;
+ --bg: #FAFBFC; --text: #1a1a1a;
+ --border: #d0d7de; --code-bg: #f6f8fa;
+ --table-header: #1A477A; --table-alt: #f0f4f8;
+ --note-bg: #dbeafe; --note-border: #3b82f6;
+ --tip-bg: #dcfce7; --tip-border: #16a34a;
+ --warn-bg: #fef3c7; --warn-border: #f59e0b;
+ --danger-bg: #fee2e2; --danger-border: #dc2626;
+ --muted: #64748B;
 }
 * { box-sizing: border-box; }
 body { font-family: 'Segoe UI', Calibri, -apple-system, sans-serif; font-size: 11pt; line-height: 1.65; color: var(--text); background: var(--bg); max-width: 960px; margin: 0 auto; padding: 40px 30px; }
@@ -59,33 +58,18 @@ td { padding: 7px 10px; border-bottom: 1px solid var(--border); vertical-align: 
 tr:nth-child(even) td { background: var(--table-alt); }
 pre { background: var(--code-bg); border: 1px solid var(--border); border-radius: 4px; padding: 12px 16px; overflow-x: auto; font-size: 9.5pt; line-height: 1.55; page-break-inside: avoid; }
 code { font-family: Consolas, 'Courier New', monospace; }
-p code, li code, td code { background: var(--code-bg); padding: 1px 5px; border-radius: 3px; font-size: 9.5pt; }
-.callout { border-left: 4px solid; padding: 10px 16px; margin: 15px 0; border-radius: 0 4px 4px 0; font-size: 10pt; page-break-inside: avoid; }
-.callout.note { background: var(--note-bg); border-color: var(--note-border); }
-.callout.tip { background: var(--tip-bg); border-color: var(--tip-border); }
-.callout.warning { background: var(--warn-bg); border-color: var(--warn-border); }
-.callout.danger { background: var(--danger-bg); border-color: var(--danger-border); }
-.title-page { text-align: center; padding: 80px 0 40px; page-break-after: always; }
-.title-page h1 { font-size: 32pt; border: none; margin: 0; page-break-before: avoid; }
-.title-page .subtitle { font-size: 16pt; color: var(--navy-light); margin: 10px 0 30px; }
-.title-page .meta { font-size: 11pt; color: #666; }
-.toc { page-break-after: always; }
-.toc h2 { border: none; }
-.toc ol { font-size: 11pt; line-height: 2; }
-.toc a { color: var(--navy); text-decoration: none; }
-.toc a:hover { text-decoration: underline; }
+p code, li code, td code { background: var(--code-bg); padding: 1px 5px; border-radius: 3px; font-size: 9.5pt; }.callout { border-left: 4px solid; padding: 10px 16px; margin: 15px 0; border-radius: 0 4px 4px 0; font-size: 10pt; page-break-inside: avoid; }.callout.note { background: var(--note-bg); border-color: var(--note-border); }.callout.tip { background: var(--tip-bg); border-color: var(--tip-border); }.callout.warning { background: var(--warn-bg); border-color: var(--warn-border); }.callout.danger { background: var(--danger-bg); border-color: var(--danger-border); }.title-page { text-align: center; padding: 80px 0 40px; page-break-after: always; }.title-page h1 { font-size: 32pt; border: none; margin: 0; page-break-before: avoid; }.title-page.subtitle { font-size: 16pt; color: var(--navy-light); margin: 10px 0 30px; }.title-page.meta { font-size: 11pt; color: #666; }.toc { page-break-after: always; }.toc h2 { border: none; }.toc ol { font-size: 11pt; line-height: 2; }.toc a { color: var(--navy); text-decoration: none; }.toc a:hover { text-decoration: underline; }
 ul, ol { margin: 8px 0; padding-left: 24px; }
-li { margin-bottom: 4px; }
-.lead { font-size: 12pt; color: var(--navy); border-left: 4px solid var(--sage); padding-left: 14px; margin: 18px 0; }
-@media print { body { max-width: none; padding: 0; font-size: 10pt; } h1 { font-size: 16pt; } h2 { font-size: 12pt; } .title-page { padding: 60px 0 30px; } .title-page h1 { font-size: 24pt; } }
-    </style>
+li { margin-bottom: 4px; }.lead { font-size: 12pt; color: var(--navy); border-left: 4px solid var(--sage); padding-left: 14px; margin: 18px 0; }
+@media print { body { max-width: none; padding: 0; font-size: 10pt; } h1 { font-size: 16pt; } h2 { font-size: 12pt; }.title-page { padding: 60px 0 30px; }.title-page h1 { font-size: 24pt; } }
+ </style>
 </head>
 <body>
 <div style="margin: 18px 0; border-left: 5px solid #f59e0b; background: #fef3c7; color: #92400e; padding: 14px 20px; border-radius: 0 8px 8px 0; font-size: 11pt; font-family: 'Segoe UI', Calibri, -apple-system, sans-serif; line-height: 1.55;">
 <span style="display: inline-block; background: #b45309; color: #fff; padding: 2px 10px; border-radius: 12px; font-size: 9.5pt; letter-spacing: 1px; font-weight: 700; margin-right: 6px;">UNDER APPROVAL</span>
-<strong>Microprogettazione v1.1 &mdash; 6 maggio 2026.</strong> Documento canonico del
+<strong>Microprogettazione &mdash;.</strong> Documento canonico del
 sottosistema multilingua di Metnos. Allinea con ADR
-<a href="../../decisions/0092-prompts-as-data-multilingue.md">0092</a>
+
 (prompt-as-data + auto-allineamento bilingue) e con i tre layer gi&agrave; vivi nel codice:
 <code>runtime/prompts/&lt;lang&gt;/&lt;role&gt;.j2</code> (MiniJinja, 26 ruoli),
 <code>runtime/i18n.sqlite</code> (118 chiavi) e i manifest TOML degli executor con tabella
@@ -99,37 +83,37 @@ sottosistema multilingua di Metnos. Allinea con ADR
 </nav>
 
 <div style="background:#fff;border-bottom:1px solid #d0d7de;padding:10px 0;font-size:14px;position:sticky;top:0;z-index:10;margin-bottom:20px;">
-  <div style="max-width:960px;margin:0 auto;padding:0 20px;display:flex;justify-content:space-between;">
-    <a href="../index.html" style="color:#1a477a;text-decoration:none;font-weight:500;">&larr; Indice documentazione</a>
-    <span style="color:#8e8e93;">Microprogettazione &rsaquo; <strong style="color:#1a1a1a;">multilang</strong></span>
-  </div>
+ <div style="max-width:960px;margin:0 auto;padding:0 20px;display:flex;justify-content:space-between;">
+ <a href="../index.html" style="color:#1a477a;text-decoration:none;font-weight:500;">&larr; Indice documentazione</a>
+ <span style="color:#8e8e93;">Microprogettazione &rsaquo; <strong style="color:#1a1a1a;">multilang</strong></span>
+ </div>
 </div>
 
 <div class="title-page">
-    <h1>Metnos</h1>
-    <div class="subtitle"><code>multilang</code> &mdash; tre layer, source-of-truth latest-wins, add-language</div>
-    <div class="meta">
-        Microprogettazione v1.1 &mdash; 6 maggio 2026<br>
-        Allineata con ADR 0092 (prompt-as-data) e con i moduli<br>
-        <code>runtime/prompt_loader.py</code>, <code>runtime/i18n.py</code>,
-        <code>runtime/i18n_translator.py</code>, <code>runtime/admin/prompts_cli.py</code>.<br>
-        <br>
-        Pubblico: chi aggiunge una nuova lingua a Metnos,<br>chi rivede le traduzioni candidate, chi ne audita la coerenza.<br>
-        Lettura: 14 minuti.
-    </div>
+ <h1>Metnos</h1>
+ <div class="subtitle"><code>multilang</code> &mdash; tre layer, source-of-truth latest-wins, add-language</div>
+ <div class="meta">
+ Microprogettazione &mdash; <br>
+ Allineata con (prompt-as-data) e con i moduli<br>
+ <code>runtime/prompt_loader.py</code>, <code>runtime/i18n.py</code>,
+ <code>runtime/i18n_translator.py</code>, <code>runtime/admin/prompts_cli.py</code>.<br>
+ <br>
+ Pubblico: chi aggiunge una nuova lingua a Metnos,<br>chi rivede le traduzioni candidate, chi ne audita la coerenza.<br>
+ Lettura: 14 minuti.
+ </div>
 </div>
 
 <div class="toc">
 <h2>Indice</h2>
 <ol>
-    <li><a href="#cap1">Scopo e confini</a></li>
-    <li><a href="#cap2">I tre layer multilingua</a></li>
-    <li><a href="#cap3">Source-of-truth: latest-wins</a></li>
-    <li><a href="#cap4">Workflow add-language</a></li>
-    <li><a href="#cap5">METNOS_LANG di processo vs source-of-truth dinamico</a></li>
-    <li><a href="#cap6">Edge case: retro-translate manuale</a></li>
-    <li><a href="#cap7">Estensioni future</a></li>
-    <li><a href="#cap8">CLI di riferimento</a></li>
+ <li><a href="#cap1">Scopo e confini</a></li>
+ <li><a href="#cap2">I tre layer multilingua</a></li>
+ <li><a href="#cap3">Source-of-truth: latest-wins</a></li>
+ <li><a href="#cap4">Workflow add-language</a></li>
+ <li><a href="#cap5">METNOS_LANG di processo vs source-of-truth dinamico</a></li>
+ <li><a href="#cap6">Edge case: retro-translate manuale</a></li>
+ <li><a href="#cap7">Estensioni future</a></li>
+ <li><a href="#cap8">CLI di riferimento</a></li>
 </ol>
 </div>
 
@@ -139,10 +123,30 @@ sottosistema multilingua di Metnos. Allinea con ADR
 Questo documento definisce <em>come Metnos parla pi&ugrave; lingue</em>: dove vivono
 le stringhe, chi pu&ograve; modificarle, come si propaga un cambio da una
 lingua all'altra, come si aggiunge una nuova lingua. Italiano e inglese
-sono entrambi presenti dal primo giorno; da settembre 2026 il sistema deve
+sono entrambi presenti dal primo giorno; da il sistema deve
 poter accogliere una terza lingua (francese, spagnolo, tedesco) senza
 toccare il codice.
 </p>
+
+ <figure>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 150" width="100%" preserveAspectRatio="xMidYMid meet" style="font-family:'Segoe UI',Calibri,sans-serif;font-size:11px;">
+<defs><marker id="m-d" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#1A477A"/></marker></defs>
+<rect x="60" y="70" width="240" height="56" rx="8" fill="#FEF3C7" stroke="#B7791F"/>
+<text x="180" y="94" text-anchor="middle" fill="#1A477A" font-weight="700">prompt LLM</text>
+<text x="180" y="112" text-anchor="middle" fill="#475569" font-size="9.5">prompts/&lt;lang&gt;/*.j2</text>
+<rect x="318" y="70" width="240" height="56" rx="8" fill="#D9E4F0" stroke="#1A477A"/>
+<text x="438" y="94" text-anchor="middle" fill="#1A477A" font-weight="700">description executor</text>
+<text x="438" y="112" text-anchor="middle" fill="#475569" font-size="9.5">manifest + JSON</text>
+<rect x="576" y="70" width="240" height="56" rx="8" fill="#DCFCE7" stroke="#3F6212"/>
+<text x="696" y="94" text-anchor="middle" fill="#1A477A" font-weight="700">messaggi utente</text>
+<text x="696" y="112" text-anchor="middle" fill="#475569" font-size="9.5">i18n.sqlite</text>
+<line x1="300" y1="98" x2="316" y2="98" stroke="#1A477A" stroke-width="2" marker-end="url(#m-ml)"/>
+<line x1="558" y1="98" x2="574" y2="98" stroke="#1A477A" stroke-width="2" marker-end="url(#m-ml)"/>
+
+</svg>
+<figcaption>Figura 1 &mdash; I tre strati multilingua: prompt del LLM, descrizioni degli executor e messaggi user-facing; nessuna lingua canonica, vince l'ultimo editato.</figcaption>
+</figure>
+
 
 <p>Il documento copre:</p>
 <ul>
@@ -212,18 +216,18 @@ intelaiatura di sezioni, solo testo localizzato.
 </p>
 
 <pre>runtime/prompts/
-  it/
-    planner.j2
-    vaglio_judge.j2
-    describe_entries.j2
-    &hellip; (26 file)
-  en/
-    planner.j2          # stessa intelaiatura, testo in EN
-    &hellip;
-    _pending/
-      planner.j2.candidate   # candidato in attesa di review
-  fr/                    # opzionale, dopo metnos-prompts add-language fr
-    &hellip;</pre>
+ it/
+ planner.j2
+ vaglio_judge.j2
+ describe_entries.j2
+ &hellip; (26 file)
+ en/
+ planner.j2 # stessa intelaiatura, testo in EN
+ &hellip;
+ _pending/
+ planner.j2.candidate # candidato in attesa di review
+ fr/ # opzionale, dopo metnos-prompts add-language fr
+ &hellip;</pre>
 
 <p>
 Il loader <code>runtime/prompt_loader.py</code> &egrave; chiamato da ogni componente
@@ -260,22 +264,22 @@ en = ["find", "search", "files", "lookup", "&hellip;"]</pre>
 
 <pre>// manifest.lang_state.json (companion file)
 {
-  "lang_state": {
-    "it": {
-      "version_hash": "a3f9...",
-      "source_hash": null,           // it = source corrente
-      "source_lang": null,
-      "translated_by": null,
-      "reviewed_at": "2026-04-22T10:30Z"
-    },
-    "en": {
-      "version_hash": "7c1b...",
-      "source_hash": "a3f9...",      // EN derivato da hash IT a3f9
-      "source_lang": "it",
-      "translated_by": "wise:gemma4-26b",
-      "reviewed_at": "2026-04-22T11:05Z"
-    }
-  }
+ "lang_state": {
+ "it": {
+ "version_hash": "a3f9...",
+ "source_hash": null, // it = source corrente
+ "source_lang": null,
+ "translated_by": null,
+ "reviewed_at": "2026-04-22T10:30Z"
+ },
+ "en": {
+ "version_hash": "7c1b...",
+ "source_hash": "a3f9...", // EN derivato da hash IT a3f9
+ "source_lang": "it",
+ "translated_by": "wise:gemma4-26b",
+ "reviewed_at": "2026-04-22T11:05Z"
+ }
+ }
 }</pre>
 
 <p>
@@ -326,7 +330,7 @@ di una risorsa, il <code>version_hash</code> di L1 cambia. Questo invalida
 implicitamente tutte le altre lingue <em>L2, L3, &hellip;</em> che hanno
 <code>source_hash</code> uguale al <em>vecchio</em> <code>version_hash</code> di
 L1: non sono pi&ugrave; sincronizzate. Il daemon notturno
-<code>i18n_translator.run_loop()</code> le ritrova come <em>pending</em> e
+<code>i18n_translator.run_loop</code> le ritrova come <em>pending</em> e
 genera un nuovo candidato in <code>_pending/</code>.
 </p>
 
@@ -379,12 +383,12 @@ Il flusso completo per aggiungere una nuova lingua &egrave; un comando solo:
 
 <pre>$ metnos-prompts add-language fr
 Lingua 'fr' bootstrap completato.
-  - prompts/fr/ creata (vuota, daemon notturno generera' candidate)
-  - i18n.sqlite: fr bootstrap rows pending
-  - Manifest description: il daemon scansionera' al prossimo cycle
+ - prompts/fr/ creata (vuota, daemon notturno generera' candidate)
+ - i18n.sqlite: fr bootstrap rows pending
+ - Manifest description: il daemon scansionera' al prossimo cycle
 
 Per triggerare manualmente la traduzione subito:
-  /opt/myclaw/deploy/run_prompts_translator.sh
+ /opt/metnos/deploy/run_prompts_translator.sh
 
 Per attivare la lingua: METNOS_LANG=fr nei systemd unit + restart</pre>
 
@@ -516,7 +520,7 @@ le stringhe sono solo testo, il canale e' responsabile del rendering.
 <tr><td><code>metnos-prompts show &lt;role&gt; [--lang=it]</code></td><td>Render finale del prompt con vars stub.</td></tr>
 <tr><td><code>metnos-prompts validate</code></td><td>Lint sintassi MiniJinja + invariant check.</td></tr>
 <tr><td><code>metnos-prompts translate &lt;role&gt; [--to=en] [--quality=wise|frontier]</code></td><td>One-shot: traduce IT &rarr; <code>--to</code>; salva candidato in <code>_pending/</code>.</td></tr>
-<tr><td><code>metnos-prompts translate-all [--to=en] [--quality=wise|frontier]</code></td><td>Batch: traduce ogni .j2 mancante.</td></tr>
+<tr><td><code>metnos-prompts translate-all [--to=en] [--quality=wise|frontier]</code></td><td>Batch: traduce ogni.j2 mancante.</td></tr>
 <tr><td><code>metnos-prompts sync-status</code></td><td>Tabella mtime/lag/candidate per ruolo.</td></tr>
 <tr><td><code>metnos-prompts review &lt;role&gt; [--lang=en]</code></td><td>Mostra diff + validation di un candidato. Non promuove.</td></tr>
 <tr><td><code>metnos-prompts mark-synced &lt;role&gt; [--lang=en]</code></td><td>Promuove <code>_pending</code> a runtime se validation OK.</td></tr>
@@ -535,11 +539,11 @@ non modifica i systemd unit n&eacute; il manifest, solo
 <h2>Riferimenti</h2>
 
 <ul>
-<li>ADR <a href="../../decisions/0086-image-indices-in-process.md">0086</a> &mdash; pattern <code>indices_image</code>: stesso schema di oggetto-strumento + qualifier dominio si applica a <code>indices_text</code> per ricerca semantica multilingua (futuro).</li>
-<li>ADR <a href="../../decisions/0090-get-inputs-dialog-engine.md">0090</a> &mdash; <code>get_inputs</code>: i dialoghi richiedono prompt LLM in lingua del processo per il <em>final_message_hint</em>.</li>
-<li>ADR <a href="../../decisions/0091-strato2-via-get-inputs-callback.md">0091</a> &mdash; Strato 2 credentials via <code>get_inputs</code> + on_complete: stesso prompt loader, stesse lingue.</li>
-<li>ADR <a href="../../decisions/0092-prompts-as-data-multilingue.md">0092</a> &mdash; prompt-as-data, motivazione e schema completo del layer 1.</li>
-<li>ADR <a href="../../decisions/0093-async-indexing-build.md">0093</a> &mdash; build asincrona indici: i progress message escono dal layer 3 (i18n.sqlite), naturalmente localizzati.</li>
+<li>ADR &mdash; pattern <code>indices_image</code>: stesso schema di oggetto-strumento + qualifier dominio si applica a <code>indices_text</code> per ricerca semantica multilingua (futuro).</li>
+<li>ADR &mdash; <code>get_inputs</code>: i dialoghi richiedono prompt LLM in lingua del processo per il <em>final_message_hint</em>.</li>
+<li>ADR &mdash; Strato 2 credentials via <code>get_inputs</code> + on_complete: stesso prompt loader, stesse lingue.</li>
+<li>ADR &mdash; prompt-as-data, motivazione e schema completo del layer 1.</li>
+<li>ADR &mdash; build asincrona indici: i progress message escono dal layer 3 (i18n.sqlite), naturalmente localizzati.</li>
 <li>Codice: <code>runtime/prompt_loader.py</code>, <code>runtime/i18n.py</code>, <code>runtime/i18n_translator.py</code>, <code>runtime/admin/prompts_cli.py</code>, <code>runtime/admin/i18n_cli.py</code>.</li>
 </ul>
 

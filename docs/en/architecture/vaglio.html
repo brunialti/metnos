@@ -1,50 +1,49 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Metnos &mdash; vaglio v1.1 (tested)</title>
-    <meta name="description" content="Microdesign of Metnos's vaglio: the constitutional evaluator in two phases (binary guard + graded judge) that decides whether a tool_call becomes action.">
-    <meta name="keywords" content="vaglio, guard, judge, deontology, teleology, constitution, verdict, metnos">
-    <meta name="author" content="Roberto Brunialti">
-    <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large">
-    <link rel="canonical" href="https://metnos.com/en/architecture/vaglio.html">
-    <link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/vaglio.html">
-    <link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/vaglio.html">
-    <link rel="alternate" hreflang="x-default" href="https://metnos.com/en/architecture/vaglio.html">
-    <meta property="og:type" content="article">
-    <meta property="og:url" content="https://metnos.com/en/architecture/vaglio.html">
-    <meta property="og:title" content="Metnos &mdash; vaglio v1.1 (tested)">
-    <meta property="og:description" content="Metnos's vaglio: binary guard on the non-negotiable core, graded judge on alignment with the user's telos. Status: tested.">
-    <meta property="og:locale" content="en_US">
-    <meta property="og:locale:alternate" content="it_IT">
-    <meta property="og:site_name" content="Metnos">
-    <meta name="twitter:card" content="summary">
-    <meta name="twitter:title" content="Metnos &mdash; vaglio v1.1 (tested)">
-    <script type="application/ld+json">
+ <meta charset="UTF-8">
+ <meta name="viewport" content="width=device-width, initial-scale=1.0">
+ <title>Metnos &mdash; vaglio</title>
+ <meta name="description" content="Microdesign of Metnos's vaglio: the constitutional evaluator in two phases (binary guard + graded judge) that decides whether a tool_call becomes action.">
+ <meta name="keywords" content="vaglio, guard, judge, deontology, teleology, constitution, verdict, metnos">
+ <meta name="author" content="Roberto Brunialti">
+ <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large">
+ <link rel="canonical" href="https://metnos.com/en/architecture/vaglio.html">
+ <link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/vaglio.html">
+ <link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/vaglio.html">
+ <link rel="alternate" hreflang="x-default" href="https://metnos.com/en/architecture/vaglio.html">
+ <meta property="og:type" content="article">
+ <meta property="og:url" content="https://metnos.com/en/architecture/vaglio.html">
+ <meta property="og:title" content="Metnos &mdash; vaglio">
+ <meta property="og:description" content="Metnos's vaglio: binary guard on the non-negotiable core, graded judge on alignment with the user's telos.">
+ <meta property="og:locale" content="en_US">
+ <meta property="og:locale:alternate" content="it_IT">
+ <meta property="og:site_name" content="Metnos">
+ <meta name="twitter:card" content="summary">
+ <meta name="twitter:title" content="Metnos &mdash; vaglio">
+ <script type="application/ld+json">
 {
-  "@context": "https://schema.org",
-  "@type": "TechArticle",
-  "headline": "Metnos — vaglio v1.1",
-  "description": "Microdesign of vaglio: two phases (guard + judge), encoded rules, JSONL log, runtime integration. Status: tested.",
-  "url": "https://metnos.com/en/architecture/vaglio.html",
-  "inLanguage": "en",
-  "isPartOf": {"@type": "WebSite", "name": "Metnos", "url": "https://metnos.com/"},
-  "author": {"@type": "Person", "name": "Roberto Brunialti"}
+ "@context": "https://schema.org",
+ "@type": "TechArticle",
+ "headline": "Metnos — vaglio",
+ "description": "Microdesign of vaglio: two phases (guard + judge), encoded rules, JSONL log, runtime integration.",
+ "url": "https://metnos.com/en/architecture/vaglio.html",
+ "inLanguage": "en",
+ "isPartOf": {"@type": "WebSite", "name": "Metnos", "url": "https://metnos.com/"},
+ "author": {"@type": "Person", "name": "Roberto Brunialti"}
 }
-    </script>
-    <style>
-:root {
-    --navy: #1A477A; --navy-light: #2B6CB0; --sage: #548235;
-    --bronze: #A0522D; --plum: #6B21A8;
-    --bg: #FAFBFC; --text: #1a1a1a;
-    --border: #d0d7de; --code-bg: #f6f8fa;
-    --table-header: #1A477A; --table-alt: #f0f4f8;
-    --note-bg: #dbeafe; --note-border: #3b82f6;
-    --tip-bg: #dcfce7; --tip-border: #16a34a;
-    --warn-bg: #fef3c7; --warn-border: #f59e0b;
-    --danger-bg: #fee2e2; --danger-border: #dc2626;
-    --muted: #64748B;
+ </script>
+ <style>:root {
+ --navy: #1A477A; --navy-light: #2B6CB0; --sage: #548235;
+ --bronze: #A0522D; --plum: #6B21A8;
+ --bg: #FAFBFC; --text: #1a1a1a;
+ --border: #d0d7de; --code-bg: #f6f8fa;
+ --table-header: #1A477A; --table-alt: #f0f4f8;
+ --note-bg: #dbeafe; --note-border: #3b82f6;
+ --tip-bg: #dcfce7; --tip-border: #16a34a;
+ --warn-bg: #fef3c7; --warn-border: #f59e0b;
+ --danger-bg: #fee2e2; --danger-border: #dc2626;
+ --muted: #64748B;
 }
 * { box-sizing: border-box; }
 body { font-family: 'Segoe UI', Calibri, -apple-system, sans-serif; font-size: 11pt; line-height: 1.65; color: var(--text); background: var(--bg); max-width: 960px; margin: 0 auto; padding: 40px 30px; }
@@ -59,38 +58,17 @@ td { padding: 7px 10px; border-bottom: 1px solid var(--border); vertical-align: 
 tr:nth-child(even) td { background: var(--table-alt); }
 pre { background: var(--code-bg); border: 1px solid var(--border); border-radius: 4px; padding: 12px 16px; overflow-x: auto; font-size: 9.5pt; line-height: 1.55; }
 code { font-family: Consolas, 'Courier New', monospace; }
-p code, li code, td code { background: var(--code-bg); padding: 1px 5px; border-radius: 3px; font-size: 9.5pt; }
-.callout { border-left: 4px solid; padding: 10px 16px; margin: 15px 0; border-radius: 0 4px 4px 0; font-size: 10pt; }
-.callout.note { background: var(--note-bg); border-color: var(--note-border); }
-.callout.tip { background: var(--tip-bg); border-color: var(--tip-border); }
-.callout.warning { background: var(--warn-bg); border-color: var(--warn-border); }
-.callout.danger { background: var(--danger-bg); border-color: var(--danger-border); }
-.title-page { text-align: center; padding: 60px 0 30px; }
-.title-page h1 { font-size: 32pt; border: none; margin: 0; }
-.title-page .subtitle { font-size: 16pt; color: var(--navy-light); margin: 10px 0 30px; }
-.title-page .meta { font-size: 11pt; color: #666; }
-.toc h2 { border: none; }
-.toc ol { font-size: 11pt; line-height: 1.9; }
-.toc a { color: var(--navy); text-decoration: none; }
+p code, li code, td code { background: var(--code-bg); padding: 1px 5px; border-radius: 3px; font-size: 9.5pt; }.callout { border-left: 4px solid; padding: 10px 16px; margin: 15px 0; border-radius: 0 4px 4px 0; font-size: 10pt; }.callout.note { background: var(--note-bg); border-color: var(--note-border); }.callout.tip { background: var(--tip-bg); border-color: var(--tip-border); }.callout.warning { background: var(--warn-bg); border-color: var(--warn-border); }.callout.danger { background: var(--danger-bg); border-color: var(--danger-border); }.title-page { text-align: center; padding: 60px 0 30px; }.title-page h1 { font-size: 32pt; border: none; margin: 0; }.title-page.subtitle { font-size: 16pt; color: var(--navy-light); margin: 10px 0 30px; }.title-page.meta { font-size: 11pt; color: #666; }.toc h2 { border: none; }.toc ol { font-size: 11pt; line-height: 1.9; }.toc a { color: var(--navy); text-decoration: none; }
 ul, ol { margin: 8px 0; padding-left: 24px; }
-li { margin-bottom: 4px; }
-.lead { font-size: 12pt; color: var(--navy); border-left: 4px solid var(--sage); padding-left: 14px; margin: 18px 0; }
-.example { background: #fff; border: 1px solid var(--border); border-left: 4px solid var(--bronze); border-radius: 0 4px 4px 0; padding: 12px 16px; margin: 14px 0; font-size: 10.5pt; }
-.example .ex-label { font-weight: 700; color: var(--bronze); font-size: 9.5pt; letter-spacing: 1px; text-transform: uppercase; }
-.status-banner { margin: 18px 0; border-left: 5px solid #16a34a; background: #dcfce7; color: #14532d; padding: 14px 20px; border-radius: 0 8px 8px 0; font-size: 11pt; line-height: 1.55; }
-.status-banner strong { color: #14532d; }
-.status-banner .status-chip { display: inline-block; background: #14532d; color: #fff; padding: 2px 10px; border-radius: 12px; font-size: 9.5pt; letter-spacing: 1px; font-weight: 700; margin-right: 6px; }
-.status-banner .seq { font-size: 9.5pt; color: #2d4a32; margin-top: 8px; }
-    </style>
+li { margin-bottom: 4px; }.lead { font-size: 12pt; color: var(--navy); border-left: 4px solid var(--sage); padding-left: 14px; margin: 18px 0; }.example { background: #fff; border: 1px solid var(--border); border-left: 4px solid var(--bronze); border-radius: 0 4px 4px 0; padding: 12px 16px; margin: 14px 0; font-size: 10.5pt; }.example.ex-label { font-weight: 700; color: var(--bronze); font-size: 9.5pt; letter-spacing: 1px; text-transform: uppercase; }.status-banner { margin: 18px 0; border-left: 5px solid #16a34a; background: #dcfce7; color: #14532d; padding: 14px 20px; border-radius: 0 8px 8px 0; font-size: 11pt; line-height: 1.55; }.status-banner strong { color: #14532d; }.status-banner.status-chip { display: inline-block; background: #14532d; color: #fff; padding: 2px 10px; border-radius: 12px; font-size: 9.5pt; letter-spacing: 1px; font-weight: 700; margin-right: 6px; }.status-banner.seq { font-size: 9.5pt; color: #2d4a32; margin-top: 8px; }
+ </style>
 </head>
 <body>
 
 <div class="status-banner">
-<span class="status-chip">TESTED</span>
-<strong>&#10003; Microdesign v1.1 &mdash; aligned with the code as of 4 May 2026.</strong>
-Status: <strong>TESTED</strong>. Cluster <code>vaglio</code> 13/13 green + integration cluster <code>agent_runtime</code> 67/67 green (1/5/2026), plus two new deterministic hooks added on 4/5/2026: <code>check_cross_user_send</code> (ADR&nbsp;0084) to validate cross-user sends (host gatekeeper, self-send allowed, guest&rarr;other requires vaglio); capability <code>crawl.recursive</code> with standing concession in <code>~/.config/metnos/trusted_origins.json</code> (ADR&nbsp;0081); capability <code>auth.password_storage</code> for <code>login_session</code> (ADR&nbsp;0082).
+<strong>&#10003; The constitutional evaluator in two phases.</strong>
+The <em>vaglio</em> filters every proposed <code>tool_call</code> before it becomes action: a binary guard on the non-negotiable core (forbidden paths, irrecoverable shell commands) followed by a graded judge on alignment with the user's telos. Deterministic hooks include <code>check_cross_user_send</code> for cross-user sends (host gatekeeper, self-send allowed, guest&rarr;other requires vaglio), plus a short-circuit that approves read-only verbs without invoking the judge.
 Implementation reference: <code>runtime/vaglio.py</code>.
-<div class="seq">Status in the microdesign sequence: <em>under approval</em> &rarr; <em>approved</em> &rarr; <strong>tested</strong> &rarr; <em>implemented</em>. The real <em>vaglio</em> (no longer the <em>always-approve</em> stub) went live on April 27, 2026 replacing the POC stub; the binary guard and the rule-based judge passed both micro and cluster tests. The LLM judge remains deferred to v1.2.</div>
 </div>
 
 <nav aria-label="Language" style="position:fixed;top:16px;right:20px;z-index:9999;font-family:'Segoe UI',Calibri,sans-serif;font-size:10pt;letter-spacing:2px;background:#FAFBFC;border:1px solid #d0d7de;border-radius:14px;padding:4px 10px;box-shadow:0 1px 4px rgba(0,0,0,0.04);">
@@ -100,40 +78,91 @@ Implementation reference: <code>runtime/vaglio.py</code>.
 </nav>
 
 <div style="background:#fff;border-bottom:1px solid #d0d7de;padding:10px 0;font-size:14px;position:sticky;top:0;z-index:10;margin-bottom:20px;">
-  <div style="max-width:960px;margin:0 auto;padding:0 20px;display:flex;justify-content:space-between;">
-    <a href="../index.html" style="color:#1a477a;text-decoration:none;font-weight:500;">&larr; Documentation index</a>
-    <span style="color:#8e8e93;">Microdesign &rsaquo; <strong style="color:#1a1a1a;">vaglio</strong></span>
-  </div>
+ <div style="max-width:960px;margin:0 auto;padding:0 20px;display:flex;justify-content:space-between;">
+ <a href="../index.html" style="color:#1a477a;text-decoration:none;font-weight:500;">&larr; Documentation index</a>
+ <span style="color:#8e8e93;">Microdesign &rsaquo; <strong style="color:#1a1a1a;">vaglio</strong></span>
+ </div>
 </div>
 
 <div class="title-page">
-    <h1>Metnos</h1>
-    <div class="subtitle"><code>vaglio</code> &mdash; the constitutional evaluator in two phases</div>
-    <div class="meta">
-        Microdesign v1.1 &mdash; status <strong>TESTED</strong> (April 27, 2026)<br>
-        Audience: those who want to understand how Metnos decides whether an action proposed by the LLM may become an effect on the world.<br>
-        <br>
-        Reading time: 12 minutes.
-    </div>
+ <h1>Metnos</h1>
+ <div class="subtitle"><code>vaglio</code> &mdash; the constitutional evaluator in two phases</div>
+ <div class="meta">
+ Microdesign &mdash; the constitutional evaluator in two phases.<br>
+ Audience: those who want to understand how Metnos decides whether an action proposed by the LLM may become an effect on the world.<br>
+ <br>
+ Reading time: 12 minutes.
+ </div>
 </div>
 
 <div class="toc">
 <h2>Contents</h2>
 <ol>
-    <li><a href="#cap1">What the <em>vaglio</em> is</a></li>
-    <li><a href="#cap2">Anatomy: the <code>Verdict</code></a></li>
-    <li><a href="#cap3">Binary guard v1.1</a></li>
-    <li><a href="#cap4">Graded judge v1.1</a></li>
-    <li><a href="#cap5">LLM judge v1.1 (opt-in)</a></li>
-    <li><a href="#cap6">JSONL logging</a></li>
-    <li><a href="#cap7">Runtime integration</a></li>
-    <li><a href="#cap8">Tests</a></li>
-    <li><a href="#cap9">Limits of v1.1</a></li>
-    <li><a href="#cap10">Configurables</a></li>
+ <li><a href="#cap1">What the <em>vaglio</em> is</a></li>
+ <li><a href="#cap2">Anatomy: the <code>Verdict</code></a></li>
+ <li><a href="#cap3">Binary guard</a></li>
+ <li><a href="#cap4">Graded judge</a></li>
+ <li><a href="#cap5">LLM judge (opt-in)</a></li>
+ <li><a href="#cap6">JSONL logging</a></li>
+ <li><a href="#cap7">Runtime integration</a></li>
+ <li><a href="#cap8">Tests</a></li>
+ <li><a href="#cap9">Known limits</a></li>
+ <li><a href="#cap10">Configurables</a></li>
 </ol>
 </div>
 
 <h1 id="cap1">1. What the <em>vaglio</em> is</h1>
+
+<div style="margin:22px 0;padding:20px;background:#fff;border:1px solid var(--border);border-radius:8px;overflow-x:auto;">
+  <svg viewBox="0 0 880 280" role="img" aria-label="Vaglio flow: tool_call, binary guard, read-only verb short-circuit, graduated judge, approved or blocked outcome">
+    <defs>
+      <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M0,0 L10,5 L0,10 z" fill="#64748B"/>
+      </marker>
+    </defs>
+    <text x="440" y="22" text-anchor="middle" font-family="Segoe UI,sans-serif" font-size="15" font-weight="700" fill="#1A477A">The vaglio &mdash; two phases, from tool_call to outcome</text>
+    <g font-family="Segoe UI,sans-serif" font-size="11.5">
+      <rect x="20" y="58" width="120" height="46" rx="8" fill="#dbeafe" stroke="#3b82f6" stroke-width="1.5"/>
+      <text x="80" y="80" text-anchor="middle" fill="#1A477A" font-weight="600">tool_call</text>
+      <text x="80" y="96" text-anchor="middle" fill="#475569" font-size="10">proposed by the LLM</text>
+
+      <rect x="185" y="52" width="150" height="58" rx="8" fill="#dcfce7" stroke="#16a34a" stroke-width="1.5"/>
+      <text x="260" y="74" text-anchor="middle" fill="#14532d" font-weight="700">Phase 1 &mdash; guard</text>
+      <text x="260" y="90" text-anchor="middle" fill="#475569" font-size="10">forbidden path</text>
+      <text x="260" y="103" text-anchor="middle" fill="#475569" font-size="10">+ dangerous shell</text>
+
+      <rect x="380" y="52" width="150" height="58" rx="8" fill="#ede9fe" stroke="#7c3aed" stroke-width="1.5"/>
+      <text x="455" y="74" text-anchor="middle" fill="#4c1d95" font-weight="700">short-circuit</text>
+      <text x="455" y="90" text-anchor="middle" fill="#475569" font-size="10">verb &isin; SAFE_VERBS</text>
+      <text x="455" y="103" text-anchor="middle" fill="#475569" font-size="10">(read-only)</text>
+
+      <rect x="575" y="52" width="150" height="58" rx="8" fill="#fef3c7" stroke="#f59e0b" stroke-width="1.5"/>
+      <text x="650" y="74" text-anchor="middle" fill="#713f12" font-weight="700">Phase 2 &mdash; judge</text>
+      <text x="650" y="90" text-anchor="middle" fill="#475569" font-size="10">rule-based / LLM</text>
+      <text x="650" y="103" text-anchor="middle" fill="#475569" font-size="10">score vs threshold 0.30</text>
+
+      <rect x="762" y="44" width="100" height="34" rx="8" fill="#dcfce7" stroke="#16a34a" stroke-width="1.5"/>
+      <text x="812" y="65" text-anchor="middle" fill="#14532d" font-weight="700">APPROVED</text>
+      <rect x="762" y="96" width="100" height="34" rx="8" fill="#fee2e2" stroke="#dc2626" stroke-width="1.5"/>
+      <text x="812" y="117" text-anchor="middle" fill="#991b1b" font-weight="700">BLOCKED</text>
+
+      <line x1="140" y1="81" x2="183" y2="81" stroke="#64748B" stroke-width="1.5" marker-end="url(#ar)"/>
+      <line x1="335" y1="81" x2="378" y2="81" stroke="#64748B" stroke-width="1.5" marker-end="url(#ar)"/>
+      <line x1="530" y1="81" x2="573" y2="81" stroke="#64748B" stroke-width="1.5" marker-end="url(#ar)"/>
+      <line x1="725" y1="75" x2="760" y2="63" stroke="#16a34a" stroke-width="1.5" marker-end="url(#ar)"/>
+      <line x1="725" y1="92" x2="760" y2="108" stroke="#dc2626" stroke-width="1.5" marker-end="url(#ar)"/>
+    </g>
+    <g font-family="Segoe UI,sans-serif" font-size="10.5" fill="#475569">
+      <line x1="260" y1="110" x2="260" y2="150" stroke="#dc2626" stroke-width="1.5" marker-end="url(#ar)"/>
+      <text x="270" y="138" fill="#991b1b">violates &rarr; BLOCKED (blocked_by=guard)</text>
+      <line x1="455" y1="110" x2="455" y2="190" stroke="#16a34a" stroke-width="1.5" marker-end="url(#ar)"/>
+      <text x="465" y="178" fill="#14532d">match &rarr; APPROVED (judge_kind=safe-verb-shortcut)</text>
+      <line x1="650" y1="110" x2="650" y2="230" stroke="#dc2626" stroke-width="1.5" marker-end="url(#ar)"/>
+      <text x="455" y="220" fill="#991b1b">score &lt; threshold &rarr; BLOCKED (blocked_by=judge)</text>
+    </g>
+    <text x="440" y="262" text-anchor="middle" font-family="Segoe UI,sans-serif" font-size="10.5" fill="#64748B">The guard always runs first; the judge runs only if the guard passes and the verb is not read-only.</text>
+  </svg>
+</div>
 
 <p class="lead">
 Between the moment when the LLM says &laquo;I want to call <code>shell_exec</code> with these arguments&raquo; and the moment the runtime executes the process, there is a mandatory checkpoint: the <em>vaglio</em>. It decides whether that proposal can become action. It is not an opinion, it is a filter: if the <em>vaglio</em> denies, the plan does not proceed.
@@ -148,7 +177,7 @@ Why two separate phases? Because otherwise a specific phenomenon happens, descri
 </p>
 
 <p>
-The separation is also a promise of architectural stability: the guard today is a list of encoded regexes; tomorrow, when the judge becomes an LLM call (v1.2), the guard will stay the same. The non-negotiable core does not pass through a model.
+The separation is also a promise of architectural stability: the guard is a list of encoded regexes; when the judge runs as an LLM call (opt-in mode, ch.&nbsp;5), the guard stays the same. The non-negotiable core does not pass through a model.
 </p>
 
 <div class="callout note">
@@ -163,19 +192,19 @@ Every call to the <em>vaglio</em> returns a <code>Verdict</code> object. It is a
 
 <pre>@dataclass
 class Verdict:
-    approved: bool
-    reason: str
-    ts: float = field(default_factory=time.time)
-    judge_kind: str = "rule-based-v1"
-    score: float = 1.0  # relevant only if the guard let it through
-    blocked_by: str | None = None  # "guard" | "judge" | None</pre>
+ approved: bool
+ reason: str
+ ts: float = field(default_factory=time.time)
+ judge_kind: str = "rule-based-v1"
+ score: float = 1.0 # relevant only if the guard let it through
+ blocked_by: str | None = None # "guard" | "judge" | None</pre>
 
 <table>
 <tr><th>Field</th><th>Type</th><th>Meaning</th></tr>
 <tr><td><code>approved</code></td><td>bool</td><td>Final outcome: <code>True</code> if the action may proceed, <code>False</code> otherwise.</td></tr>
-<tr><td><code>reason</code></td><td>str</td><td>Readable explanation. For a guard block: <code>"guard: forbidden path violated: ..."</code>. For a judge block: <code>"judge: score 0.20 &lt; threshold 0.30 (...)"</code>.</td></tr>
+<tr><td><code>reason</code></td><td>str</td><td>Readable explanation. For a guard block: <code>"guard: forbidden path violated:..."</code>. For a judge block: <code>"judge: score 0.20 &lt; threshold 0.30 (...)"</code>.</td></tr>
 <tr><td><code>ts</code></td><td>float</td><td>Unix timestamp of the decision.</td></tr>
-<tr><td><code>judge_kind</code></td><td>str</td><td>Family of judge used. <code>"rule-based-v1"</code> (default) or <code>"llm-v1"</code> (opt-in via env <code>METNOS_JUDGE_KIND=llm-v1</code>, since the evening of Apr 27).</td></tr>
+<tr><td><code>judge_kind</code></td><td>str</td><td>Family of judge used. <code>"rule-based-v1"</code> (default), <code>"llm-v1"</code> (opt-in via env <code>METNOS_JUDGE_KIND=llm-v1</code>), or <code>"safe-verb-shortcut"</code> for read-only verbs approved without invoking the judge.</td></tr>
 <tr><td><code>score</code></td><td>float</td><td>Alignment score in <code>[0,&nbsp;1]</code>. Meaningful only if the guard let it through. For guard blocks, value is <code>0.0</code>.</td></tr>
 <tr><td><code>blocked_by</code></td><td>str|None</td><td>Which phase denied: <code>"guard"</code>, <code>"judge"</code>, or <code>None</code> if approved.</td></tr>
 </table>
@@ -184,7 +213,7 @@ class Verdict:
 The orchestrator <code>judge(intent, executor_name, args, context)</code> (<code>runtime/vaglio.py:186-214</code>) is the only public signature. It receives the user's <em>intent</em> (the initial query of the turn), the name of the proposed <em>executor</em>, the validated <em>args</em>, and an optional <em>context</em> dictionary (mode, capability, step number). It returns a single <code>Verdict</code>.
 </p>
 
-<h1 id="cap3">3. Binary guard v1.1</h1>
+<h1 id="cap3">3. Binary guard</h1>
 
 <p>
 The guard has no nuances. It performs two checks in sequence, and stops at the first violation (<code>runtime/vaglio.py:104-126</code>).
@@ -197,17 +226,17 @@ The guard extracts <em>all</em> string values from <code>args</code>, even neste
 </p>
 
 <pre>_FORBIDDEN_PATH_PATTERNS = [
-    re.compile(r"(^|/)\.ssh(/|$)"),
-    re.compile(r"^/etc/(passwd|shadow|sudoers)"),
-    re.compile(r"^/etc/ssh(/|$)"),
-    re.compile(r"^/root(/|$)"),
-    re.compile(r"^/boot(/|$)"),
-    re.compile(r"^/sys(/|$)"),
-    re.compile(r"^/proc(/[0-9]|$)"),
-    re.compile(r"^/dev/(sd|nvme|mmcblk|loop)"),
-    re.compile(r"\.aws/credentials"),
-    re.compile(r"\.config/[^/]+/credentials\.env"),
-    re.compile(r"\.gnupg(/|$)"),
+ re.compile(r"(^|/)\.ssh(/|$)"),
+ re.compile(r"^/etc/(passwd|shadow|sudoers)"),
+ re.compile(r"^/etc/ssh(/|$)"),
+ re.compile(r"^/root(/|$)"),
+ re.compile(r"^/boot(/|$)"),
+ re.compile(r"^/sys(/|$)"),
+ re.compile(r"^/proc(/[0-9]|$)"),
+ re.compile(r"^/dev/(sd|nvme|mmcblk|loop)"),
+ re.compile(r"\.aws/credentials"),
+ re.compile(r"\.config/[^/]+/credentials\.env"),
+ re.compile(r"\.gnupg(/|$)"),
 ]</pre>
 
 <p>
@@ -225,12 +254,12 @@ This applies only if <code>executor_name == "shell_exec"</code> or if the <code>
 </p>
 
 <pre>_DANGEROUS_SHELL_PATTERNS = [
-    re.compile(r"\brm\s+-rf?\s+/(\s|$)"),         # rm -rf /
-    re.compile(r"\brm\s+-rf?\s+~(\s|$|/)"),       # rm -rf ~
-    re.compile(r"\bmkfs\b"),
-    re.compile(r"\bdd\s+.*\bof=/dev/"),
-    re.compile(r":\s*\(\s*\)\s*\{\s*:\|:&\s*\}"),  # fork bomb
-    re.compile(r"\bchmod\s+-?R?\s*0?77[0-9]\s+/"),
+ re.compile(r"\brm\s+-rf?\s+/(\s|$)"), # rm -rf /
+ re.compile(r"\brm\s+-rf?\s+~(\s|$|/)"), # rm -rf ~
+ re.compile(r"\bmkfs\b"),
+ re.compile(r"\bdd\s+.*\bof=/dev/"),
+ re.compile(r":\s*\(\s*\)\s*\{\s*:\|:&\s*\}"), # fork bomb
+ re.compile(r"\bchmod\s+-?R?\s*0?77[0-9]\s+/"),
 ]</pre>
 
 <p>
@@ -241,21 +270,21 @@ The motivation is <strong>Law 1 of the constitution</strong>: &laquo;no irrecove
 Here too the match is textual. The guard does not emulate the shell: it looks for literal patterns in the command. This means that variants cleverly built with escape characters can pass; the defence in depth is the <a href="sandbox.html">sandbox</a> with filesystem namespacing for <code>shell_exec</code>, of which the guard is only the first layer.
 </p>
 
-<h1 id="cap4">4. Graded judge v1.1</h1>
+<h1 id="cap4">4. Graded judge</h1>
 
 <p>
-If the guard lets it through, the judge starts. In v1.1 the judge is <strong>rule-based</strong>: no LLM call, microsecond latency, zero cost. The function is <code>judge_score(intent, executor_name, args, context)</code> (<code>runtime/vaglio.py:131-171</code>) and returns <code>(score, rationale)</code>.
+If the guard lets it through, the judge starts. By default the judge is <strong>rule-based</strong>: no LLM call, microsecond latency, zero cost. The function is <code>judge_score(intent, executor_name, args, context)</code> (<code>runtime/vaglio.py:131-171</code>) and returns <code>(score, rationale)</code>.
 </p>
 
 <h2>Heuristics</h2>
 
 <p>
-It starts from a <strong>base score of 0.7</strong>: the v1.1 regime is benevolent by construction (see ch.&nbsp;9). From there the judge adds or subtracts small adjustments, then clamps to <code>[0,&nbsp;1]</code>.
+It starts from a <strong>base score of 0.7</strong>: the rule-based regime is benevolent by construction (see ch.&nbsp;9). From there the judge adds or subtracts small adjustments, then clamps to <code>[0,&nbsp;1]</code>.
 </p>
 
 <table>
 <tr><th>Signal</th><th>Effect on score</th><th>Rationale</th></tr>
-<tr><td>The user's <em>intent</em> mentions the executor name (even just one of its tokens, length &ge; 3).</td><td>+0.10</td><td>Sign of explicit intent. If the user wrote &laquo;read the file&raquo; and the executor is <code>fs_read</code>, the match on <code>read</code> is a weak but real signal that the action matches the request.</td></tr>
+<tr><td>The user's <em>intent</em> mentions the executor name (even just one of its tokens, length &ge; 3).</td><td>+0.10</td><td>Sign of explicit intent. If the user wrote &laquo;read the file&raquo; and the executor is <code>read_files</code>, the match on <code>read</code> is a weak but real signal that the action matches the request.</td></tr>
 <tr><td>Any string value in <code>args</code> contains <code>..</code> and <code>/</code> (possible path traversal).</td><td>&minus;0.20</td><td>Coarse but effective heuristic: many filesystem attacks use <code>..</code> to escape the expected folder. The penalty is the largest because it indicates an <em>attempt to cross a boundary</em>.</td></tr>
 <tr><td>An <code>args</code> key does not respect Python identifier rules (non-alphanumeric / underscore characters).</td><td>&minus;0.10</td><td>Shape anomaly. A healthy executor declares args with normal keys; an odd key suggests either injection or a planning error.</td></tr>
 <tr><td>The <code>context</code> declares <code>critical: false</code> (non-critical executor, read-only).</td><td>+0.05</td><td>Modest bonus: read-only executors cannot produce irrecoverable state, so the bar can be slightly lower.</td></tr>
@@ -267,8 +296,8 @@ The score is clamped to <code>[0,&nbsp;1]</code> and compared against <code>JUDG
 
 <div class="example">
 <div class="ex-label">Example: harmless path, generic intent</div>
-<p>Intent: <code>"read my notes in /tmp/n.txt"</code>. Executor: <code>fs_read</code>. Args: <code>{"path": "/tmp/n.txt"}</code>.</p>
-<p>Starting score: <code>0.7</code>. The judge splits <code>fs_read</code> on separators, gets the tokens <code>fs</code> and <code>read</code>; in English the latter (<code>read</code>) appears in the intent. Intent bonus applies (+0.10). Harmless path. Clean keys.</p>
+<p>Intent: <code>"read my notes in /tmp/n.txt"</code>. Executor: <code>read_files</code>. Args: <code>{"paths": ["/tmp/n.txt"]}</code>.</p>
+<p>Starting score: <code>0.7</code>. The judge splits <code>read_files</code> on separators, gets the tokens <code>read</code> and <code>files</code>; the former (<code>read</code>) appears in the intent. Intent bonus applies (+0.10). Harmless path. Clean keys.</p>
 <p>Final score: <code>0.80</code>. Above threshold. <code>approved=True</code>, <code>reason="approved: score 0.80 (intent matches executor)"</code>.</p>
 </div>
 
@@ -276,18 +305,18 @@ The score is clamped to <code>[0,&nbsp;1]</code> and compared against <code>JUDG
 <div class="ex-label">Example: suspicious path traversal</div>
 <p>Args: <code>{"path": "/tmp/../etc/foo"}</code>. Suspicious path traversal: <code>..</code> and <code>/</code> present.</p>
 <p>Score: <code>0.7&nbsp;&minus;&nbsp;0.2&nbsp;=&nbsp;0.5</code>. Still above <code>0.30</code>: <strong>approved nonetheless</strong>, but with the note <code>"possible path traversal ('..' in path)"</code> in the <code>reason</code> and in the log.</p>
-<p>To actually block the action, the judge would need other cumulative negative signals, or a higher configured threshold. In v1.1 the judge <em>marks</em>; it does not <em>block</em> on its own except in edge cases.</p>
+<p>To actually block the action, the judge would need other cumulative negative signals, or a higher configured threshold. The rule-based judge <em>marks</em>; it does not <em>block</em> on its own except in edge cases.</p>
 </div>
 
 <div class="callout note">
-<strong>Why is the rule-based judge so benevolent?</strong> Because in v1.1 the real filter is the guard. The rule-based judge is a first layer of observability (what gives off a strange smell?) more than a gate. The score lands in the JSONL log and becomes signal for later analysis; outliers emerge. When the judge becomes LLM (v1.2), the threshold will make sense as more stringent, because the evaluation will really be able to weigh alternatives and context.
+<strong>Why is the rule-based judge so benevolent?</strong> Because the real filter is the guard. The rule-based judge is a first layer of observability (what gives off a strange smell?) more than a gate. The score lands in the JSONL log and becomes signal for later analysis; outliers emerge. With the LLM judge, the threshold makes sense as more stringent, because the evaluation can really weigh alternatives and context.
 </div>
 
-<h1 id="cap5">5. LLM judge v1.1 (opt-in)</h1>
+<h1 id="cap5">5. LLM judge (opt-in)</h1>
 
 <p>
-Since the evening of Apr 27 (phase 5 kickoff) the <em>vaglio</em> can use an
-LLM-based judge instead of the rule-based one. It is enabled via the env
+The <em>vaglio</em> can use an LLM-based judge instead of the rule-based
+one. It is enabled via the env
 variable <code>METNOS_JUDGE_KIND=llm-v1</code> (default
 <code>rule-based-v1</code>): opt-in because it costs &mdash; every judge
 decision pays one call to the middle tier. Implementation in
@@ -297,43 +326,43 @@ decision pays one call to the middle tier. Implementation in
 <h2>5.1 Applied decisions</h2>
 
 <ul>
-    <li><strong>Middle tier</strong>. The judge uses the <em>middle</em> tier
-        of the 3-tier LLM architecture (see <a href="agent_runtime.html#cap4">agent_runtime ch.&nbsp;4</a>):
-        not the fast tier (too coarse for ethical reasoning), not the wise
-        tier (disproportionate for the frequency at which the <em>vaglio</em>
-        runs).</li>
-    <li><strong>Context separated from the proposer</strong>. The judge runs
-        in a session distinct from the planner's: dedicated system prompt
-        (<code>_LLM_JUDGE_SYSTEM</code>), no memory shared with the
-        proposer. Explicit defence against <em>model self-confirmation</em>:
-        if the proposer could listen to its own justifications as judge
-        input, it would optimise them backwards. Separate sessions break
-        the loop.</li>
-    <li><strong>Prompt on the 4 Laws and seven telos</strong>. The judge
-        prompt explicitly lists the 4 Laws of the
-        constitution and the seven canonical
-        telos (with weights, see <a href="telos.html">telos</a>). The judge
-        applies them, it does not invent them.</li>
-    <li><strong>Privacy: keys only</strong>. The user prompt contains ONLY
-        argument keys, not values &mdash; same discipline as the JSONL log.
-        Even if the middle-tier LLM is remote, no sensitive user value
-        (paths, passwords, content) reaches it.</li>
-    <li><strong>Structured output</strong>. Contract: JSON
-        <code>{"score": float [0,1], "reason": "max 25 words"}</code>.
-        Robust regex-based parser: if the LLM produces invalid JSON,
-        fallback to 0.5 with rationale <em>"llm-judge fallback (parse
-        fail)"</em>.</li>
-    <li><strong>Graceful fallback</strong>. If <code>LLMRouter</code> is not
-        configured or the middle tier does not respond, the judge returns
-        score 0.5 with explicit rationale <em>"llm-judge fallback (router
-        missing|chat failed)"</em>. The sequence is not blocked; the log
-        reveals that the analysis was degraded.</li>
-    <li><strong>The guard always precedes the judge</strong>. Even with
-        <code>JUDGE_KIND=llm-v1</code> active, the binary guard runs first:
-        forbidden path or dangerous shell block without consulting the LLM
-        at all. Guarantee: no LLM call wasted on cases already decidable
-        by local rules (test
-        <code>judge_llm_guardia_blocca_prima_di_chiamare_llm</code>).</li>
+ <li><strong>Middle tier</strong>. The judge uses the <em>middle</em> tier
+ of the 3-tier LLM architecture (see <a href="agent_runtime.html#cap4">agent_runtime ch.&nbsp;4</a>):
+ not the fast tier (too coarse for ethical reasoning), not the wise
+ tier (disproportionate for the frequency at which the <em>vaglio</em>
+ runs).</li>
+ <li><strong>Context separated from the proposer</strong>. The judge runs
+ in a session distinct from the planner's: dedicated system prompt
+ (<code>_LLM_JUDGE_SYSTEM</code>), no memory shared with the
+ proposer. Explicit defence against <em>model self-confirmation</em>:
+ if the proposer could listen to its own justifications as judge
+ input, it would optimise them backwards. Separate sessions break
+ the loop.</li>
+ <li><strong>Prompt on the 4 Laws and seven telos</strong>. The judge
+ prompt explicitly lists the 4 Laws of the
+ constitution and the seven canonical
+ telos (with weights, see <a href="telos.html">telos</a>). The judge
+ applies them, it does not invent them.</li>
+ <li><strong>Privacy: keys only</strong>. The user prompt contains ONLY
+ argument keys, not values &mdash; same discipline as the JSONL log.
+ Even if the middle-tier LLM is remote, no sensitive user value
+ (paths, passwords, content) reaches it.</li>
+ <li><strong>Structured output</strong>. Contract: JSON
+ <code>{"score": float [0,1], "reason": "max 25 words"}</code>.
+ Robust regex-based parser: if the LLM produces invalid JSON,
+ fallback to 0.5 with rationale <em>"llm-judge fallback (parse
+ fail)"</em>.</li>
+ <li><strong>Graceful fallback</strong>. If <code>LLMRouter</code> is not
+ configured or the middle tier does not respond, the judge returns
+ score 0.5 with explicit rationale <em>"llm-judge fallback (router
+ missing|chat failed)"</em>. The sequence is not blocked; the log
+ reveals that the analysis was degraded.</li>
+ <li><strong>The guard always precedes the judge</strong>. Even with
+ <code>JUDGE_KIND=llm-v1</code> active, the binary guard runs first:
+ forbidden path or dangerous shell block without consulting the LLM
+ at all. Guarantee: no LLM call wasted on cases already decidable
+ by local rules (test
+ <code>judge_llm_guardia_blocca_prima_di_chiamare_llm</code>).</li>
 </ul>
 
 <h2>5.2 When to enable it</h2>
@@ -348,23 +377,24 @@ under bother budget, choice between equivalent options). Enable with:
 <pre>METNOS_JUDGE_KIND=llm-v1 python3 -m channels.daemon</pre>
 
 <p>
-Tradeoff: every judge call pays a latency of ~800&nbsp;ms (local qwen3:8b
-in middle-tier mode) or ~150&nbsp;ms (Anthropic Sonnet). For a 3-step
-turn, that is 3 vaglio calls. A future <em>cost policy</em> will be able
-to automatically degrade to rule-based above a calls-per-day threshold.
+Tradeoff: every judge call pays a latency of an order of seconds (local
+Gemma 4 26B, middle tier) or lower with the frontier tier (Anthropic
+Opus, opt-in). For a 3-step turn, that is 3 vaglio calls. A future
+<em>cost policy</em> will be able to automatically degrade to rule-based
+above a calls-per-day threshold.
 </p>
 
-<h2>5.3 Deferred to v1.2</h2>
+<h2>5.3 Later developments</h2>
 
 <ul>
-    <li>Few-shot examples in the prompt to stabilise the score distribution.</li>
-    <li>Reading the mnestome as context: today the judge does not know "what happened before" beyond the current turn's context.</li>
-    <li>Threshold calibration: <code>METNOS_JUDGE_THRESHOLD</code> is
-        calibrated for the rule-based (default 0.30); the LLM will produce
-        scores in a different distribution and will need its own separate
-        threshold.</li>
-    <li>Telemetry: who is using llm-v1, how much it costs, percentage of
-        decisions that agree with the rule-based.</li>
+ <li>Few-shot examples in the prompt to stabilise the score distribution.</li>
+ <li>Reading the mnestome as context: today the judge does not know "what happened before" beyond the current turn's context.</li>
+ <li>Threshold calibration: <code>METNOS_JUDGE_THRESHOLD</code> is
+ calibrated for the rule-based (default 0.30); the LLM will produce
+ scores in a different distribution and will need its own separate
+ threshold.</li>
+ <li>Telemetry: who is using llm-v1, how much it costs, percentage of
+ decisions that agree with the rule-based.</li>
 </ul>
 
 <h1 id="cap6">6. JSONL logging</h1>
@@ -376,20 +406,20 @@ Every call to the <em>vaglio</em> writes a JSONL line in <code>~/.local/share/me
 <h2>Record schema</h2>
 
 <pre>{
-  "approved": false,
-  "reason": "guard: forbidden path violated: pattern '(^|/)\\.ssh(/|$)' in args",
-  "ts": 1714225863.214,
-  "judge_kind": "rule-based-v1",
-  "score": 0.0,
-  "blocked_by": "guard",
-  "intent": "read the key",
-  "executor": "fs_read",
-  "args_keys": ["path"],
-  "context_keys": ["mode", "step"]
+ "approved": false,
+ "reason": "guard: forbidden path violated: pattern '(^|/)\\.ssh(/|$)' in args",
+ "ts": 1714225863.214,
+ "judge_kind": "rule-based-v1",
+ "score": 0.0,
+ "blocked_by": "guard",
+ "intent": "read the key",
+ "executor": "read_files",
+ "args_keys": ["path"],
+ "context_keys": ["mode", "step"]
 }</pre>
 
 <div class="callout warning">
-<strong>Only the keys of <code>args</code>, not the values.</strong> This is explicit (<code>runtime/vaglio.py:197</code> and <code>212</code>): the log records the key names (<code>"path"</code>, <code>"command"</code>, ...) but not the values (the actual path, the actual command). Reason: privacy. Values often contain sensitive data (user paths, file contents, payloads), and a log that recorded them would itself become an asset to protect. The keys are enough for statistical analysis (which executors get blocked most often?); the live value lives in the <a href="agent_runtime.html#cap11">turn events</a> of the agent_runtime, with different retention rules.
+<strong>Only the keys of <code>args</code>, not the values.</strong> This is explicit (<code>runtime/vaglio.py:197</code> and <code>212</code>): the log records the key names (<code>"path"</code>, <code>"command"</code>,...) but not the values (the actual path, the actual command). Reason: privacy. Values often contain sensitive data (user paths, file contents, payloads), and a log that recorded them would itself become an asset to protect. The keys are enough for statistical analysis (which executors get blocked most often?); the live value lives in the <a href="agent_runtime.html#cap11">turn events</a> of the agent_runtime, with different retention rules.
 </div>
 
 <p>
@@ -407,28 +437,27 @@ The call site lives in the planner, in <code>runtime/agent_runtime.py:512-526</c
 validation = validate_args(args, executor.args_schema)
 step.validation_failures = validation
 if validation:
-    obs = {"ok": False, "error": f"validation failed: {validation}"}
+ obs = {"ok": False, "error": f"validation failed: {validation}"}
 else:
-    scope_violation = check_hints(args, executor.capabilities)
-    step.scope_violation = scope_violation
-    if scope_violation:
-        obs = {"ok": False, "error": scope_violation}
-    else:
-        verdict = judge(user_query, chosen_name, args,
-                        {"mode": chosen_mode, "step": step_num})
-        step.vaglio_approved = verdict.approved
-        if not verdict.approved:
-            obs = {"ok": False, "error": f"vaglio rejects: {verdict.reason}"}
-        else:
-            ...
-            obs = invoke_executor(executor, args)</pre>
+ scope_violation = check_hints(args, executor.capabilities)
+ step.scope_violation = scope_violation
+ if scope_violation:
+ obs = {"ok": False, "error": scope_violation}
+ else:
+ verdict = judge(user_query, chosen_name, args,
+ {"mode": chosen_mode, "step": step_num})
+ step.vaglio_approved = verdict.approved
+ if not verdict.approved:
+ obs = {"ok": False, "error": f"vaglio rejects: {verdict.reason}"}
+ else:...
+ obs = invoke_executor(executor, args)</pre>
 
 <p>The order is not random:</p>
 <ol>
-    <li><strong>Args validation</strong> against the executor's schema (types and required). If it fails, no <em>vaglio</em>: the error is one of shape, not of permissibility.</li>
-    <li><strong>Capabilities check</strong> (<code>check_hints</code>): is the executor stepping out of its declared perimeter? (Example: a read-only executor that writes.)</li>
-    <li><strong>Vaglio</strong> (<code>judge(...)</code>): only if the two previous checks pass. It receives the user's original <em>intent</em> (<code>user_query</code>), the chosen executor name, the validated args, and a context with <code>mode</code> and <code>step_num</code>.</li>
-    <li><strong>Invoke executor</strong>: only if the <em>vaglio</em> approves.</li>
+ <li><strong>Args validation</strong> against the executor's schema (types and required). If it fails, no <em>vaglio</em>: the error is one of shape, not of permissibility.</li>
+ <li><strong>Capabilities check</strong> (<code>check_hints</code>): is the executor stepping out of its declared perimeter? (Example: a read-only executor that writes.)</li>
+ <li><strong>Vaglio</strong> (<code>judge(...)</code>): only if the two previous checks pass. It receives the user's original <em>intent</em> (<code>user_query</code>), the chosen executor name, the validated args, and a context with <code>mode</code> and <code>step_num</code>.</li>
+ <li><strong>Invoke executor</strong>: only if the <em>vaglio</em> approves.</li>
 </ol>
 
 <p>
@@ -442,7 +471,7 @@ The flag <code>step.vaglio_approved</code> ends up in the turn log (<a href="age
 <h1 id="cap8">8. Tests</h1>
 
 <p>
-The <code>vaglio</code> cluster is at 13/13 green. The cases are declared in <code>runtime/testing/populate_cases.py</code> (section <code>--- vaglio ---</code>) and cover guard, judge, log and privacy.
+The <code>vaglio</code> cluster is green. The cases are declared in <code>runtime/testing/populate_cases.py</code> (section <code>--- vaglio ---</code>) and cover guard, judge, log and privacy.
 </p>
 
 <table>
@@ -452,7 +481,7 @@ The <code>vaglio</code> cluster is at 13/13 green. The cases are declared in <co
 <tr><td><code>guard_blocca_etc_passwd</code></td><td>security</td><td><code>/etc/passwd</code> blocked.</td></tr>
 <tr><td><code>guard_blocca_credentials_user</code></td><td>security</td><td><code>~/.config/metnos/credentials.env</code> blocked (check of the <code>credentials.env</code> pattern nested in user path).</td></tr>
 <tr><td><code>guard_blocca_rm_rf_root</code></td><td>security</td><td><code>shell_exec</code> with <code>rm&nbsp;-rf&nbsp;/</code> blocked as irrecoverable.</td></tr>
-<tr><td><code>guard_blocca_fork_bomb</code></td><td>security</td><td><code>shell_exec</code> with <code>:(){&nbsp;:|:&amp;&nbsp;};:</code> blocked.</td></tr>
+<tr><td><code>guard_blocca_fork_bomb</code></td><td>security</td><td><code>shell_exec</code> with <code>:{&nbsp;:|:&amp;&nbsp;};:</code> blocked.</td></tr>
 <tr><td><code>guard_lascia_passare_shell_innocua</code></td><td>happy</td><td><code>shell_exec</code> with <code>ls&nbsp;-la&nbsp;/tmp</code> passes the guard.</td></tr>
 <tr><td><code>judge_intent_menziona_executor_alza_score</code></td><td>happy</td><td>Score with intent that mentions the executor &gt; score with generic intent.</td></tr>
 <tr><td><code>judge_path_traversal_abbassa_score</code></td><td>edge</td><td>Path with <code>..</code> receives lower score than the harmless path.</td></tr>
@@ -462,24 +491,24 @@ The <code>vaglio</code> cluster is at 13/13 green. The cases are declared in <co
 </table>
 
 <p>
-On top of these 13, integration in the <code>agent_runtime</code> cluster (172/172 green) exercises the <em>vaglio</em> at its real call site (validation + scope + vaglio + invoke), on end-to-end scenarios.
+On top of these, integration in the <code>agent_runtime</code> cluster (green) exercises the <em>vaglio</em> at its real call site (validation + scope + vaglio + invoke), on end-to-end scenarios.
 </p>
 
-<h1 id="cap9">9. Limits of v1.1</h1>
+<h1 id="cap9">9. Known limits</h1>
 
 <table>
 <tr><th>Limit</th><th>Explanation</th><th>When it lifts</th></tr>
-<tr><td>The <em>vaglio</em> does not read the <a href="mnestoma.html">mnestoma</a>.</td><td>Separation-of-concerns decision: the v1.1 <em>vaglio</em> evaluates only the declared intent + executor + args, it does not look at history. Meaning: it cannot see &laquo;this same action was denied 5 minutes ago&raquo; or &laquo;the user usually does not operate this way&raquo;.</td><td>v1.2: the LLM judge will receive context from the mnestoma (similar relevance, prior outcomes) to weigh better.</td></tr>
-<tr><td>The <a href="approval_ux.html">approval_ux</a> (card + buttons in the <a href="channel.html">channel</a>) is renderable, the callback dispatcher is not.</td><td>The card the user sees in the channels (Telegram, Slack, etc.) gets generated already via <code>runtime/channels/approval.py</code>. But if the user presses &laquo;Allow this once&raquo;, the callback does not yet re-enter the live plan.</td><td>v1.2: callback dispatcher with re-injection into the current turn.</td></tr>
-<tr><td>The rule-based judge is very benevolent.</td><td>Default threshold <code>0.30</code> and base score <code>0.7</code>: even with several moderate penalties, the score stays above. Conscious: in v1.1 the real filter is the guard, the judge only marks outliers in the log.</td><td>v1.2 with LLM judge: the threshold will mean more, and the score distribution will be wider.</td></tr>
-<tr><td>No <em>structured explanation</em> of refusal to the user.</td><td>When the <em>vaglio</em> denies, the planner shows the textual <code>reason</code> but does not build a card &laquo;why I said no and what you can do&raquo;. The refusal UX is minimal.</td><td>v1.2: integration with approval_ux for dialogic refusals.</td></tr>
-<tr><td>No <em>interactive vaglio</em>.</td><td>The v1.1 <em>vaglio</em> is a pure function: input args, output Verdict. It cannot ask &laquo;are you sure?&raquo; or request confirmation.</td><td>v1.2: integration with the dialog manager for authorisation requests (see <a href="approval_ux.html">approval_ux</a>).</td></tr>
+<tr><td>The <em>vaglio</em> does not read the <a href="mnestoma.html">mnestoma</a>.</td><td>Separation-of-concerns decision: the <em>vaglio</em> evaluates only the declared intent + executor + args, it does not look at history. Meaning: it cannot see &laquo;this same action was denied 5 minutes ago&raquo; or &laquo;the user usually does not operate this way&raquo;.</td><td>Evolution: the LLM judge will receive context from the mnestoma (similar relevance, prior outcomes) to weigh better.</td></tr>
+<tr><td>The <a href="approval_ux.html">approval_ux</a> (card + buttons in the <a href="channel.html">channel</a>) is renderable, the callback dispatcher is not.</td><td>The card the user sees in the channels (Telegram, Slack, etc.) gets generated already via <code>runtime/channels/approval.py</code>. But if the user presses &laquo;Allow this once&raquo;, the callback does not yet re-enter the live plan.</td><td>Evolution: callback dispatcher with re-injection into the current turn.</td></tr>
+<tr><td>The rule-based judge is very benevolent.</td><td>Default threshold <code>0.30</code> and base score <code>0.7</code>: even with several moderate penalties, the score stays above. Conscious: the real filter is the guard, the judge only marks outliers in the log.</td><td>With the LLM judge: the threshold will mean more, and the score distribution will be wider.</td></tr>
+<tr><td>No <em>structured explanation</em> of refusal to the user.</td><td>When the <em>vaglio</em> denies, the planner shows the textual <code>reason</code> but does not build a card &laquo;why I said no and what you can do&raquo;. The refusal UX is minimal.</td><td>Evolution: integration with approval_ux for dialogic refusals.</td></tr>
+<tr><td>No <em>interactive vaglio</em>.</td><td>The <em>vaglio</em> is a pure function: input args, output Verdict. It cannot ask &laquo;are you sure?&raquo; or request confirmation.</td><td>Evolution: integration with the dialog manager for authorisation requests (see <a href="approval_ux.html">approval_ux</a>).</td></tr>
 </table>
 
 <h1 id="cap10">10. Configurables</h1>
 
 <p>
-The configuration of the v1.1 <em>vaglio</em> is minimal, and this minimality is deliberate.
+The configuration of the <em>vaglio</em> is minimal, and this minimality is deliberate.
 </p>
 
 <table>
@@ -491,7 +520,7 @@ The configuration of the v1.1 <em>vaglio</em> is minimal, and this minimality is
 </table>
 
 <div class="callout tip">
-<strong>Deliberately few configurations.</strong> When the <em>vaglio</em> becomes more configurable (in v1.2 with LLM judge there will be the provider, the prompt, the budget, possibly the fallback), every new knob will need to be justified. The philosophy: the ethical filter has so few dials on purpose. What cannot be configured cannot be misconfigured.
+<strong>Deliberately few configurations.</strong> When the <em>vaglio</em> becomes more configurable (with the LLM judge there will be the provider, the prompt, the budget, possibly the fallback), every new knob will need to be justified. The philosophy: the ethical filter has so few dials on purpose. What cannot be configured cannot be misconfigured.
 </div>
 
 <h2>Final notes</h2>
@@ -501,7 +530,7 @@ The <em>vaglio</em> is a small component (~210 lines of Python) but architectura
 </p>
 
 <p>
-The microdesign of this module was validated <em>by the code before the document</em>: the module went live on April 27, 2026, passed 13 own tests and 172 integration tests, and this doc describes what runs. Not the other way around.
+The microdesign of this module was validated <em>by the code before the document</em>: this doc describes what runs. The module has its own test battery plus end-to-end integration in the <code>agent_runtime</code> cluster. Not the other way around.
 </p>
 
 </body>

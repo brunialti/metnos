@@ -1,51 +1,50 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Metnos &mdash; telos v1.1 (tested)</title>
-    <meta name="description" content="Microdesign of telos: the user's ultimate ends, the alignment function, the bother budget with scheduler quotas, the non-retreat telos, the stop clause. Replaces telos v1.0.">
-    <meta name="keywords" content="telos, ultimate ends, alignment, bother budget, non-retreat, cultivate tools, anti-paternalism, microdesign, metnos, Metnos">
-    <meta name="author" content="Roberto Brunialti">
-    <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large">
-    <link rel="canonical" href="https://metnos.com/en/architecture/telos.html">
-    <link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/telos.html">
-    <link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/telos.html">
-    <link rel="alternate" hreflang="x-default" href="https://metnos.com/en/architecture/telos.html">
-    <meta property="og:type" content="article">
-    <meta property="og:url" content="https://metnos.com/en/architecture/telos.html">
-    <meta property="og:title" content="Metnos &mdash; telos v1.1 (tested)">
-    <meta property="og:description" content="Telos v1.1: includes the new non-retreat telos, scheduler-driven quotas, the stop clause. Aligned with the synt cascade.">
-    <meta property="og:locale" content="en_US">
-    <meta property="og:locale:alternate" content="it_IT">
-    <meta property="og:site_name" content="Metnos">
-    <meta name="twitter:card" content="summary">
-    <meta name="twitter:title" content="Metnos &mdash; telos v1.1 (tested)">
-    <script type="application/ld+json">
+ <meta charset="UTF-8">
+ <meta name="viewport" content="width=device-width, initial-scale=1.0">
+ <title>Metnos &mdash; telos (tested)</title>
+ <meta name="description" content="Microdesign of telos: the user's ultimate ends, the alignment function, the bother budget with scheduler quotas, the non-retreat telos, the stop clause. Replaces telos.">
+ <meta name="keywords" content="telos, ultimate ends, alignment, bother budget, non-retreat, cultivate tools, anti-paternalism, microdesign, metnos, Metnos">
+ <meta name="author" content="Roberto Brunialti">
+ <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large">
+ <link rel="canonical" href="https://metnos.com/en/architecture/telos.html">
+ <link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/telos.html">
+ <link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/telos.html">
+ <link rel="alternate" hreflang="x-default" href="https://metnos.com/en/architecture/telos.html">
+ <meta property="og:type" content="article">
+ <meta property="og:url" content="https://metnos.com/en/architecture/telos.html">
+ <meta property="og:title" content="Metnos &mdash; telos (tested)">
+ <meta property="og:description" content="Telos: includes the new non-retreat telos, scheduler-driven quotas, the stop clause. Aligned with the synt cascade.">
+ <meta property="og:locale" content="en_US">
+ <meta property="og:locale:alternate" content="it_IT">
+ <meta property="og:site_name" content="Metnos">
+ <meta name="twitter:card" content="summary">
+ <meta name="twitter:title" content="Metnos &mdash; telos (tested)">
+ <script type="application/ld+json">
 {
-  "@context": "https://schema.org",
-  "@type": "TechArticle",
-  "headline": "Metnos — telos v1.1",
-  "description": "Canonical microdesign of telos: ultimate ends, alignment, non-retreat, anti-paternalism.",
-  "url": "https://metnos.com/en/architecture/telos.html",
-  "inLanguage": "en",
-  "isPartOf": {"@type": "WebSite", "name": "Metnos", "url": "https://metnos.com/"},
-  "author": {"@type": "Person", "name": "Roberto Brunialti"},
-  "about": "Metnos component: telos (canonical v1.1)"
+ "@context": "https://schema.org",
+ "@type": "TechArticle",
+ "headline": "Metnos — telos ",
+ "description": "Canonical microdesign of telos: ultimate ends, alignment, non-retreat, anti-paternalism.",
+ "url": "https://metnos.com/en/architecture/telos.html",
+ "inLanguage": "en",
+ "isPartOf": {"@type": "WebSite", "name": "Metnos", "url": "https://metnos.com/"},
+ "author": {"@type": "Person", "name": "Roberto Brunialti"},
+ "about": "Metnos component: telos (canonical )"
 }
-    </script>
-    <style>
-:root {
-    --navy: #1A477A; --navy-light: #2B6CB0; --sage: #548235;
-    --bronze: #A0522D; --plum: #6B21A8;
-    --bg: #FAFBFC; --text: #1a1a1a;
-    --border: #d0d7de; --code-bg: #f6f8fa;
-    --table-header: #1A477A; --table-alt: #f0f4f8;
-    --note-bg: #dbeafe; --note-border: #3b82f6;
-    --tip-bg: #dcfce7; --tip-border: #16a34a;
-    --warn-bg: #fef3c7; --warn-border: #f59e0b;
-    --danger-bg: #fee2e2; --danger-border: #dc2626;
-    --muted: #64748B;
+ </script>
+ <style>:root {
+ --navy: #1A477A; --navy-light: #2B6CB0; --sage: #548235;
+ --bronze: #A0522D; --plum: #6B21A8;
+ --bg: #FAFBFC; --text: #1a1a1a;
+ --border: #d0d7de; --code-bg: #f6f8fa;
+ --table-header: #1A477A; --table-alt: #f0f4f8;
+ --note-bg: #dbeafe; --note-border: #3b82f6;
+ --tip-bg: #dcfce7; --tip-border: #16a34a;
+ --warn-bg: #fef3c7; --warn-border: #f59e0b;
+ --danger-bg: #fee2e2; --danger-border: #dc2626;
+ --muted: #64748B;
 }
 * { box-sizing: border-box; }
 body { font-family: 'Segoe UI', Calibri, -apple-system, sans-serif; font-size: 11pt; line-height: 1.65; color: var(--text); background: var(--bg); max-width: 960px; margin: 0 auto; padding: 40px 30px; }
@@ -64,34 +63,16 @@ code { font-family: Consolas, 'Courier New', monospace; }
 p code, li code, td code { background: var(--code-bg); padding: 1px 5px; border-radius: 3px; font-size: 9.5pt; }
 figure { text-align: center; margin: 24px 0; page-break-inside: avoid; }
 figure svg { max-width: 100%; height: auto; border: 1px solid var(--border); border-radius: 6px; background: white; padding: 8px; }
-figcaption { font-style: italic; color: #555; font-size: 9.5pt; margin-top: 8px; }
-.callout { border-left: 4px solid; padding: 10px 16px; margin: 15px 0; border-radius: 0 4px 4px 0; font-size: 10pt; page-break-inside: avoid; }
-.callout.note { background: var(--note-bg); border-color: var(--note-border); }
-.callout.tip { background: var(--tip-bg); border-color: var(--tip-border); }
-.callout.warning { background: var(--warn-bg); border-color: var(--warn-border); }
-.callout.danger { background: var(--danger-bg); border-color: var(--danger-border); }
-.title-page { text-align: center; padding: 80px 0 40px; page-break-after: always; }
-.title-page h1 { font-size: 32pt; border: none; margin: 0; page-break-before: avoid; }
-.title-page .subtitle { font-size: 16pt; color: var(--navy-light); margin: 10px 0 30px; }
-.title-page .meta { font-size: 11pt; color: #666; }
-.toc { page-break-after: always; }
-.toc h2 { border: none; }
-.toc ol { font-size: 11pt; line-height: 2; }
-.toc a { color: var(--navy); text-decoration: none; }
-.toc a:hover { text-decoration: underline; }
+figcaption { font-style: italic; color: #555; font-size: 9.5pt; margin-top: 8px; }.callout { border-left: 4px solid; padding: 10px 16px; margin: 15px 0; border-radius: 0 4px 4px 0; font-size: 10pt; page-break-inside: avoid; }.callout.note { background: var(--note-bg); border-color: var(--note-border); }.callout.tip { background: var(--tip-bg); border-color: var(--tip-border); }.callout.warning { background: var(--warn-bg); border-color: var(--warn-border); }.callout.danger { background: var(--danger-bg); border-color: var(--danger-border); }.title-page { text-align: center; padding: 80px 0 40px; page-break-after: always; }.title-page h1 { font-size: 32pt; border: none; margin: 0; page-break-before: avoid; }.title-page.subtitle { font-size: 16pt; color: var(--navy-light); margin: 10px 0 30px; }.title-page.meta { font-size: 11pt; color: #666; }.toc { page-break-after: always; }.toc h2 { border: none; }.toc ol { font-size: 11pt; line-height: 2; }.toc a { color: var(--navy); text-decoration: none; }.toc a:hover { text-decoration: underline; }
 ul, ol { margin: 8px 0; padding-left: 24px; }
-li { margin-bottom: 4px; }
-.lead { font-size: 12pt; color: var(--navy); border-left: 4px solid var(--sage); padding-left: 14px; margin: 18px 0; }
-.decision { background: #FEF3C7; border: 1px solid #F59E0B; border-radius: 6px; padding: 10px 14px; margin: 14px 0; font-size: 10pt; }
-.decision strong { color: #92400E; }
-.formula { background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 6px; padding: 14px 18px; margin: 16px 0; font-family: 'Cambria Math', Cambria, 'Times New Roman', serif; font-size: 12pt; text-align: center; page-break-inside: avoid; }
-@media print { body { max-width: none; padding: 0; font-size: 10pt; } h1 { font-size: 16pt; } h2 { font-size: 12pt; } .title-page { padding: 60px 0 30px; } .title-page h1 { font-size: 24pt; } }
-    </style>
+li { margin-bottom: 4px; }.lead { font-size: 12pt; color: var(--navy); border-left: 4px solid var(--sage); padding-left: 14px; margin: 18px 0; }.decision { background: #FEF3C7; border: 1px solid #F59E0B; border-radius: 6px; padding: 10px 14px; margin: 14px 0; font-size: 10pt; }.decision strong { color: #92400E; }.formula { background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 6px; padding: 14px 18px; margin: 16px 0; font-family: 'Cambria Math', Cambria, 'Times New Roman', serif; font-size: 12pt; text-align: center; page-break-inside: avoid; }
+@media print { body { max-width: none; padding: 0; font-size: 10pt; } h1 { font-size: 16pt; } h2 { font-size: 12pt; }.title-page { padding: 60px 0 30px; }.title-page h1 { font-size: 24pt; } }
+ </style>
 </head>
 <body>
 <div style="margin: 18px 0; border-left: 5px solid #16a34a; background: #dcfce7; color: #14532d; padding: 14px 20px; border-radius: 0 8px 8px 0; font-size: 11pt; font-family: 'Segoe UI', Calibri, -apple-system, sans-serif; line-height: 1.55;">
-<strong>&#10003; Microdesign v1.1 &mdash; aligned with the code as of 1 May 2026.</strong>
-Canonical doc tested after implementation: <code>TELOS.md</code> populated in <code>workspace/</code> with the seven canonical teloi, the non-renouncement telos integrated into the <a href="synt.html" style="color: #14532d; text-decoration: underline;">synt</a> cascade (compose+generate+on-the-fly), aligned with <a href="../Metnos_Architecture_Intro_v1.html" style="color: #14532d; text-decoration: underline;">Architecture v1.1</a> and the triad <a href="executor.html" style="color: #14532d; text-decoration: underline;">executor</a>+<a href="mnest.html" style="color: #14532d; text-decoration: underline;">mnest</a>+<a href="mnestome.html" style="color: #14532d; text-decoration: underline;">mnestome</a>. Normative reference for implementation. Replaces v1.0 (myclaw, neuron, synapse, proteome).
+<strong>&#10003; Microdesign &mdash; aligned with the code.</strong>
+Canonical doc tested after implementation: <code>TELOS.md</code> populated in <code>workspace/</code> with the seven canonical teloi, the non-renouncement telos integrated into the <a href="synt.html" style="color: #14532d; text-decoration: underline;">synt</a> cascade (compose+generate+on-the-fly), aligned with <a href="../Metnos_Architecture_Intro_v1.html" style="color: #14532d; text-decoration: underline;">Architecture </a> and the triad <a href="executor.html" style="color: #14532d; text-decoration: underline;">executor</a>+<a href="mnest.html" style="color: #14532d; text-decoration: underline;">mnest</a>+<a href="mnestome.html" style="color: #14532d; text-decoration: underline;">mnestome</a>. Normative reference for implementation. Replaces (metnos, neuron, synapse, proteome).
 </div>
 
 <nav aria-label="Language" style="position:fixed;top:16px;right:20px;z-index:9999;font-family:'Segoe UI',Calibri,sans-serif;font-size:10pt;letter-spacing:2px;background:#FAFBFC;border:1px solid #d0d7de;border-radius:14px;padding:4px 10px;box-shadow:0 1px 4px rgba(0,0,0,0.04);">
@@ -101,49 +82,49 @@ Canonical doc tested after implementation: <code>TELOS.md</code> populated in <c
 </nav>
 
 <div style="background:#fff;border-bottom:1px solid #d0d7de;padding:10px 0;font-size:14px;position:sticky;top:0;z-index:10;margin-bottom:20px;">
-  <div style="max-width:960px;margin:0 auto;padding:0 20px;display:flex;justify-content:space-between;">
-    <a href="../index.html" style="color:#1a477a;text-decoration:none;font-weight:500;">&larr; Documentation index</a>
-    <span style="color:#8e8e93;">Microdesign &rsaquo; <strong style="color:#1a1a1a;">telos</strong></span>
-  </div>
+ <div style="max-width:960px;margin:0 auto;padding:0 20px;display:flex;justify-content:space-between;">
+ <a href="../index.html" style="color:#1a477a;text-decoration:none;font-weight:500;">&larr; Documentation index</a>
+ <span style="color:#8e8e93;">Microdesign &rsaquo; <strong style="color:#1a1a1a;">telos</strong></span>
+ </div>
 </div>
 
 <div class="title-page">
-    <h1>Metnos</h1>
-    <div class="subtitle"><code>telos</code> &mdash; ultimate ends, alignment, non-retreat</div>
-    <div class="meta">
-        Microdesign v1.1 &mdash; 25 April 2026<br>
-        Aligned with Architecture v1.1 (ch. 11), executor/mnest/mnestome and <a href="synt.html"><code>synt</code></a>.<br>
-        Replaces telos v1.0 (full rewrite).<br>
-        <br>
-        Audience: those who will implement <code>TELOS.md</code>, the alignment function,<br>the bother budget and the stop clause.<br>
-        Reading time: 22 minutes.
-    </div>
+ <h1>Metnos</h1>
+ <div class="subtitle"><code>telos</code> &mdash; ultimate ends, alignment, non-retreat</div>
+ <div class="meta">
+ Microdesign &mdash; <br>
+ Aligned with Architecture (ch. 11), executor/mnest/mnestome and <a href="synt.html"><code>synt</code></a>.<br>
+ Replaces telos (full rewrite).<br>
+ <br>
+ Audience: those who will implement <code>TELOS.md</code>, the alignment function,<br>the bother budget and the stop clause.<br>
+ Reading time: 22 minutes.
+ </div>
 </div>
 
 <div class="toc">
 <h2>Contents</h2>
 <ol>
-    <li><a href="#cap1">Scope and boundaries</a></li>
-    <li><a href="#cap2">Laws vs telos: two distinct grammars</a></li>
-    <li><a href="#cap3"><code>TELOS.md</code> &mdash; the file</a></li>
-    <li><a href="#cap4">The alignment function</a></li>
-    <li><a href="#cap5">The non-retreat telos</a></li>
-    <li><a href="#cap6">Bother budget and scheduler-driven quotas</a></li>
-    <li><a href="#cap7">Learning from silences</a></li>
-    <li><a href="#cap8">Anti-paternalism and the stop clause</a></li>
-    <li><a href="#cap9">Python contract</a></li>
-    <li><a href="#cap10">Revision rite</a></li>
-    <li><a href="#cap11">Alternatives considered</a></li>
-    <li><a href="#cap12">Conformance tests</a></li>
-    <li><a href="#cap13">Open questions</a></li>
-    <li><a href="#cap14">References</a></li>
+ <li><a href="#cap1">Scope and boundaries</a></li>
+ <li><a href="#cap2">Laws vs telos: two distinct grammars</a></li>
+ <li><a href="#cap3"><code>TELOS.md</code> &mdash; the file</a></li>
+ <li><a href="#cap4">The alignment function</a></li>
+ <li><a href="#cap5">The non-retreat telos</a></li>
+ <li><a href="#cap6">Bother budget and scheduler-driven quotas</a></li>
+ <li><a href="#cap7">Learning from silences</a></li>
+ <li><a href="#cap8">Anti-paternalism and the stop clause</a></li>
+ <li><a href="#cap9">Python contract</a></li>
+ <li><a href="#cap10">Revision rite</a></li>
+ <li><a href="#cap11">Alternatives considered</a></li>
+ <li><a href="#cap12">Conformance tests</a></li>
+ <li><a href="#cap13">Open questions</a></li>
+ <li><a href="#cap14">References</a></li>
 </ol>
 </div>
 
 <h1 id="cap1">1. Scope and boundaries</h1>
 
 <div style="background:#fef3c7;border-left:4px solid #b45309;padding:14px 22px;margin:14px 0;border-radius:0 6px 6px 0;">
-<strong>Implementation status (21/5/2026 v6 session):</strong> the loader
+<strong>Implementation status v6 session):</strong> the loader
 <code>runtime/telos_loader.py</code> and the first lens
 <code>runtime/telos_lenses/scamper.py</code> + orchestrator
 <code>runtime/telos_introspect.py</code> are present as MVP phase 1.
@@ -163,7 +144,7 @@ A reactive system has an implicit evaluation function: &laquo;the user
 asked for X &rarr; do X well&raquo;. A proactive system does not: it
 generates the intention itself. <code>telos</code> is the component that
 decides <em>which intention makes sense</em> before it becomes a proposal
-to the user, without asking the user to evaluate everything. In v1.1 it
+to the user, without asking the user to evaluate everything. In it
 gains a new telos &mdash; <em>cultivate the tools</em> &mdash; which does
 not concern spontaneous proposals but the <em>silent retreat</em> from a
 direct request: a zone the previous design left uncovered.
@@ -171,19 +152,19 @@ direct request: a zone the previous design left uncovered.
 
 <h2>What it is</h2>
 <ul>
-    <li>A <strong>file</strong> in the workspace (<code>TELOS.md</code>) with the user's ultimate ends.</li>
-    <li>An <strong>alignment function</strong> that projects an <code>ActionProposal</code> onto the telos and returns a scalar (<code>expected_alignment</code>).</li>
-    <li>A <strong>bother budget</strong> with separate quotas for ad-hoc proposals and scheduler-driven invocations.</li>
-    <li>A <strong>stop clause</strong> that disengages the non-retreat telos when the user explicitly requests it.</li>
-    <li>A <strong>learning mechanism</strong> from silences that updates the effective weights without altering the declared ones.</li>
+ <li>A <strong>file</strong> in the workspace (<code>TELOS.md</code>) with the user's ultimate ends.</li>
+ <li>An <strong>alignment function</strong> that projects an <code>ActionProposal</code> onto the telos and returns a scalar (<code>expected_alignment</code>).</li>
+ <li>A <strong>bother budget</strong> with separate quotas for ad-hoc proposals and scheduler-driven invocations.</li>
+ <li>A <strong>stop clause</strong> that disengages the non-retreat telos when the user explicitly requests it.</li>
+ <li>A <strong>learning mechanism</strong> from silences that updates the effective weights without altering the declared ones.</li>
 </ul>
 
 <h2>What it is not</h2>
 <ul>
-    <li><strong>Not a substitute for the 4 Laws.</strong> Laws constrain, telos orient. A proposal perfectly aligned with the telos but violating a Law is still rejected: the Constitution wins.</li>
-    <li><strong>Not a judge of the user.</strong> Telos evaluate <em>what Metnos is about to do for the user</em>, not <em>what the user does</em>.</li>
-    <li><strong>Not an optimiser.</strong> Telos are Aristotelian ends (asymptotic), not SMART objectives. They are not reached: one approaches them.</li>
-    <li><strong>Not applied to explicit requests</strong> &mdash; with one exception: the non-retreat telos (ch. 5) takes effect precisely when the user asks for something the pool cannot yet do.</li>
+ <li><strong>Not a substitute for the 4 Laws.</strong> Laws constrain, telos orient. A proposal perfectly aligned with the telos but violating a Law is still rejected: the Constitution wins.</li>
+ <li><strong>Not a judge of the user.</strong> Telos evaluate <em>what Metnos is about to do for the user</em>, not <em>what the user does</em>.</li>
+ <li><strong>Not an optimiser.</strong> Telos are Aristotelian ends (asymptotic), not SMART objectives. They are not reached: one approaches them.</li>
+ <li><strong>Not applied to explicit requests</strong> &mdash; with one exception: the non-retreat telos (ch. 5) takes effect precisely when the user asks for something the pool cannot yet do.</li>
 </ul>
 
 <h1 id="cap2">2. Laws vs telos: two distinct grammars</h1>
@@ -195,46 +176,43 @@ inhabit two orthogonal axes of Metnos's life.
 
 <figure>
 <svg viewBox="0 0 780 320" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Laws (negative, safety) vs Telos (positive, utility)">
-  <defs>
-    <linearGradient id="tl-law" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stop-color="#EDE4F7"/><stop offset="100%" stop-color="#C4B5FD"/>
-    </linearGradient>
-    <linearGradient id="tl-tel" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stop-color="#DCFCE7"/><stop offset="100%" stop-color="#86EFAC"/>
-    </linearGradient>
-    <style>
-      .tit { font: 700 13pt 'Segoe UI', sans-serif; }
-      .sub { font: 10.5pt 'Segoe UI', sans-serif; }
-      .itl { font: italic 10pt 'Segoe UI', sans-serif; fill: #555; }
-    </style>
-  </defs>
+ <defs>
+ <linearGradient id="tl-law" x1="0" y1="0" x2="0" y2="1">
+ <stop offset="0%" stop-color="#EDE4F7"/><stop offset="100%" stop-color="#C4B5FD"/>
+ </linearGradient>
+ <linearGradient id="tl-tel" x1="0" y1="0" x2="0" y2="1">
+ <stop offset="0%" stop-color="#DCFCE7"/><stop offset="100%" stop-color="#86EFAC"/>
+ </linearGradient>
+ <style>.tit { font: 700 13pt 'Segoe UI', sans-serif; }.sub { font: 10.5pt 'Segoe UI', sans-serif; }.itl { font: italic 10pt 'Segoe UI', sans-serif; fill: #555; }
+ </style>
+ </defs>
 
-  <rect x="40"  y="30" width="330" height="260" rx="10" fill="url(#tl-law)" stroke="#6B21A8" stroke-width="2"/>
-  <text x="205" y="60" class="tit" text-anchor="middle" fill="#4C1D95">LAWS</text>
-  <text x="205" y="80" class="sub" text-anchor="middle" fill="#4C1D95">what NEVER to do</text>
+ <rect x="40" y="30" width="330" height="260" rx="10" fill="url(#tl-law)" stroke="#6B21A8" stroke-width="2"/>
+ <text x="205" y="60" class="tit" text-anchor="middle" fill="#4C1D95">LAWS</text>
+ <text x="205" y="80" class="sub" text-anchor="middle" fill="#4C1D95">what NEVER to do</text>
 
-  <text x="205" y="115" class="itl" text-anchor="middle">grammar of prohibition</text>
-  <text x="205" y="135" class="itl" text-anchor="middle">binary, hard constraint</text>
-  <text x="205" y="155" class="itl" text-anchor="middle">explicit modification rite</text>
-  <text x="205" y="175" class="itl" text-anchor="middle">absolute precedence</text>
-  <text x="205" y="195" class="itl" text-anchor="middle">always upheld</text>
-  <text x="205" y="225" class="sub" text-anchor="middle" fill="#4C1D95" font-weight="700">SOUL.md (4 Laws)</text>
-  <text x="205" y="248" class="itl" text-anchor="middle">perimeter, non-harm,</text>
-  <text x="205" y="263" class="itl" text-anchor="middle">obedience, traceability</text>
+ <text x="205" y="115" class="itl" text-anchor="middle">grammar of prohibition</text>
+ <text x="205" y="135" class="itl" text-anchor="middle">binary, hard constraint</text>
+ <text x="205" y="155" class="itl" text-anchor="middle">explicit modification rite</text>
+ <text x="205" y="175" class="itl" text-anchor="middle">absolute precedence</text>
+ <text x="205" y="195" class="itl" text-anchor="middle">always upheld</text>
+ <text x="205" y="225" class="sub" text-anchor="middle" fill="#4C1D95" font-weight="700">SOUL.md (4 Laws)</text>
+ <text x="205" y="248" class="itl" text-anchor="middle">perimeter, non-harm,</text>
+ <text x="205" y="263" class="itl" text-anchor="middle">obedience, traceability</text>
 
-  <rect x="410" y="30" width="330" height="260" rx="10" fill="url(#tl-tel)" stroke="#16A34A" stroke-width="2"/>
-  <text x="575" y="60" class="tit" text-anchor="middle" fill="#14532D">TELOS</text>
-  <text x="575" y="80" class="sub" text-anchor="middle" fill="#14532D">what to tend toward</text>
+ <rect x="410" y="30" width="330" height="260" rx="10" fill="url(#tl-tel)" stroke="#16A34A" stroke-width="2"/>
+ <text x="575" y="60" class="tit" text-anchor="middle" fill="#14532D">TELOS</text>
+ <text x="575" y="80" class="sub" text-anchor="middle" fill="#14532D">what to tend toward</text>
 
-  <text x="575" y="115" class="itl" text-anchor="middle">grammar of tendency</text>
-  <text x="575" y="135" class="itl" text-anchor="middle">soft, graduated signal</text>
-  <text x="575" y="155" class="itl" text-anchor="middle">written by the user</text>
-  <text x="575" y="175" class="itl" text-anchor="middle">weighted, balanced</text>
-  <text x="575" y="195" class="itl" text-anchor="middle">approached, not reached</text>
-  <text x="575" y="225" class="sub" text-anchor="middle" fill="#14532D" font-weight="700">TELOS.md (3-7 ends)</text>
-  <text x="575" y="248" class="itl" text-anchor="middle">time, order, punctuality,</text>
-  <text x="575" y="263" class="itl" text-anchor="middle">protection, discretion,</text>
-  <text x="575" y="278" class="itl" text-anchor="middle">cultivate the tools, &hellip;</text>
+ <text x="575" y="115" class="itl" text-anchor="middle">grammar of tendency</text>
+ <text x="575" y="135" class="itl" text-anchor="middle">soft, graduated signal</text>
+ <text x="575" y="155" class="itl" text-anchor="middle">written by the user</text>
+ <text x="575" y="175" class="itl" text-anchor="middle">weighted, balanced</text>
+ <text x="575" y="195" class="itl" text-anchor="middle">approached, not reached</text>
+ <text x="575" y="225" class="sub" text-anchor="middle" fill="#14532D" font-weight="700">TELOS.md (3-7 ends)</text>
+ <text x="575" y="248" class="itl" text-anchor="middle">time, order, punctuality,</text>
+ <text x="575" y="263" class="itl" text-anchor="middle">protection, discretion,</text>
+ <text x="575" y="278" class="itl" text-anchor="middle">cultivate the tools, &hellip;</text>
 </svg>
 <figcaption>Figure 1 &mdash; Laws and telos occupy two different linguistic registers: the grammar of prohibition vs the grammar of tendency. They are complementary, not alternatives.</figcaption>
 </figure>
@@ -256,17 +234,17 @@ inhabit two orthogonal axes of Metnos's life.
 <p>
 It lives in the workspace as the sixth canonical file. Markdown format with
 front-matter optional. A few lines, hand-written by the user. The canonical
-set was reduced to <strong>6 telos</strong> on 22/5/2026 (v1.2, see note
+set was reduced to <strong>6 telos</strong> on (, see note
 at the end of this chapter).
 </p>
 
-<pre><code># My ultimate ends (v1.2, 22/5/2026)
+<pre><code># My ultimate ends (,
 
 ## t.tempo &mdash; Free my time from repetitive chores
 weight: 0.25
 activation_threshold: 0.30
 notes: if something frees at least 30 minutes/week and I can trust it,
-       consider proposing it.
+ consider proposing it.
 
 ## t.ordine &mdash; Keep the order of my digital data
 weight: 0.15
@@ -277,19 +255,19 @@ notes: I prefer small incremental tidying to large reorganisations.
 weight: 0.20
 activation_threshold: 0.25
 notes: a deadline is "important" if it concerns work, health, family,
-       or if I marked it explicitly as such.
+ or if I marked it explicitly as such.
 
 ## t.protezione &mdash; Protect the privacy of me and those close to me
 weight: 0.20
 activation_threshold: 0.20
 notes: below this threshold I am paranoid on purpose. Better a false
-       alarm than a leak.
+ alarm than a leak.
 
 ## t.discrezione &mdash; Surprise me usefully but do not interrupt me
 weight: 0.10
 activation_threshold: 0.50
 notes: do not interrupt during meetings, sleep, dinner. Accumulate
-       and propose at the evening digest.
+ and propose at the evening digest.
 
 ## t.parsimonia &mdash; Don't spend (on APIs, services, compute time) more than needed
 weight: 0.10
@@ -298,14 +276,14 @@ notes: always pick the cheapest option that reaches the necessary quality.
 </code></pre>
 
 <div class="callout note">
-<strong>v1.2 (22/5/2026): removed <code>t.coltivazione_strumenti</code>.</strong>
+<strong>: removed <code>t.coltivazione_strumenti</code>.</strong>
 The &laquo;don't leave a request unmet&raquo; telos turned out to be a
 <em>runtime anti-retreat clause</em>, not an ultimate end: it produced
 moderate fit as background noise on nearly every proposal (any capability
 extension partially satisfies it), reducing the discriminative power of
 the teleological Judge. Its 0.12 weight was redistributed proportionally
 across the remaining 6. Chapter 5 (originally devoted to this telos) is
-kept as historical reference. See ADR&nbsp;0157.
+kept as historical reference. See.
 </div>
 
 <h2>Mandatory fields per telos</h2>
@@ -323,7 +301,7 @@ kept as historical reference. See ADR&nbsp;0157.
 <div class="callout note">
 <strong>Number of telos.</strong> Between 3 (useful minimum) and 7
 (cognitive load limit). Past 7, the risk is redundant telos that cancel
-each other out. v1.2 has 6 entries: reduced from 7 after observing that
+each other out. has 6 entries: reduced from 7 after observing that
 <code>t.coltivazione_strumenti</code> behaved as a runtime clause rather
 than an ultimate end. If a new dimension emerges, better revise the existing
 ones than add another.
@@ -331,7 +309,7 @@ ones than add another.
 
 <h1 id="cap4">4. The alignment function</h1>
 
-<h2>Formula (v1.3, 22/5/2026)</h2>
+<h2>Formula (,</h2>
 
 <div class="formula">
 contrib<sub>i</sub> = weight<sub>i</sub> &middot; gate(fit<sub>i</sub>, threshold<sub>i</sub>)<br>
@@ -342,35 +320,35 @@ expected_alignment = (&alpha; &middot; top + &gamma; &middot; rest) &middot; urg
 
 <p>Where:</p>
 <ul>
-    <li><code>&alpha; = 2.0</code>, <code>&gamma; = 0.5</code> (internal constants in <code>runtime/alignment_engine.py</code>). Constraint <code>&alpha; &gt; 3&gamma;</code> guarantees that a perfect specialist on a heavy telos beats a mediocre generalist.</li>
-    <li><code>gate(fit, threshold) = fit</code> if <code>fit &ge; threshold</code>, else <code>0</code>. Gate function &rarr; a telos contributes nothing if <em>fit</em> is below threshold.</li>
-    <li><code>urgency &isin; [0.5, 2.0]</code>: 1.0 = no time pressure; 2.0 = deadline within 24h; 0.5 = chronic, no urgency. Multiplicative, not additive.</li>
-    <li><code>confidence &isin; [0, 1]</code>: how sure Metnos is of its estimate. Proposals based on little data or speculative reasoning &rarr; low confidence.</li>
-    <li><code>bother_cost &isin; [0, &infin;)</code>: see ch. 6.</li>
+ <li><code>&alpha; = 2.0</code>, <code>&gamma; = 0.5</code> (internal constants in <code>runtime/alignment_engine.py</code>). Constraint <code>&alpha; &gt; 3&gamma;</code> guarantees that a perfect specialist on a heavy telos beats a mediocre generalist.</li>
+ <li><code>gate(fit, threshold) = fit</code> if <code>fit &ge; threshold</code>, else <code>0</code>. Gate function &rarr; a telos contributes nothing if <em>fit</em> is below threshold.</li>
+ <li><code>urgency &isin; [0.5, 2.0]</code>: 1.0 = no time pressure; 2.0 = deadline within 24h; 0.5 = chronic, no urgency. Multiplicative, not additive.</li>
+ <li><code>confidence &isin; [0, 1]</code>: how sure Metnos is of its estimate. Proposals based on little data or speculative reasoning &rarr; low confidence.</li>
+ <li><code>bother_cost &isin; [0, &infin;)</code>: see ch. 6.</li>
 </ul>
 
-<h2>Formula history &mdash; how we arrived at v1.3</h2>
+<h2>Formula history &mdash; how we arrived at </h2>
 
 <table>
 <thead><tr><th>Version</th><th>Base formula</th><th>Distribution over 481 backfilled proposals</th><th>Outcome</th></tr></thead>
 <tbody>
 <tr>
-  <td><strong>v1.0</strong> (22/5 morning)</td>
-  <td><code>&sum; weight &middot; fit</code> (sum-product)</td>
-  <td>min 0.077, max 0.569, mean 0.302, stdev 0.075</td>
-  <td>Inverted ordering: the mediocre generalist (fit&nbsp;~0.5 across all) beat the perfect specialist. The per-telos signal from the Judge (clear) was diluted by aggregation.</td>
+ <td><strong></strong> (22/5 morning)</td>
+ <td><code>&sum; weight &middot; fit</code> (sum-product)</td>
+ <td>min 0.077, max 0.569, mean 0.302, stdev 0.075</td>
+ <td>Inverted ordering: the mediocre generalist (fit&nbsp;~0.5 across all) beat the perfect specialist. The per-telos signal from the Judge (clear) was diluted by aggregation.</td>
 </tr>
 <tr>
-  <td><strong>v1.2</strong> (22/5 afternoon)</td>
-  <td><code>top + 0.3 &middot; rest</code></td>
-  <td>min 0.072, max 0.278, mean 0.176, stdev 0.039</td>
-  <td>Correct ordering, but stdev halved: top1 was bounded by the 6 discrete weights (range [0.10, 0.25]), losing useful dispersion for triage.</td>
+ <td><strong></strong> (22/5 afternoon)</td>
+ <td><code>top + 0.3 &middot; rest</code></td>
+ <td>min 0.072, max 0.278, mean 0.176, stdev 0.039</td>
+ <td>Correct ordering, but stdev halved: top1 was bounded by the 6 discrete weights (range [0.10, 0.25]), losing useful dispersion for triage.</td>
 </tr>
 <tr>
-  <td><strong>v1.3</strong> (22/5 evening)</td>
-  <td><code>2 &middot; top + 0.5 &middot; rest</code></td>
-  <td>min 0.144, max 0.524, mean 0.338, stdev 0.073</td>
-  <td>Correct ordering + stdev at v1.0 level. The <code>&alpha;</code> boost expands the dynamic range of the dominant term; higher <code>&gamma;</code> credits multi-telos proposals (98.5% of the corpus).</td>
+ <td><strong></strong> (22/5 evening)</td>
+ <td><code>2 &middot; top + 0.5 &middot; rest</code></td>
+ <td>min 0.144, max 0.524, mean 0.338, stdev 0.073</td>
+ <td>Correct ordering + stdev at level. The <code>&alpha;</code> boost expands the dynamic range of the dominant term; higher <code>&gamma;</code> credits multi-telos proposals (98.5% of the corpus).</td>
 </tr>
 </tbody>
 </table>
@@ -396,8 +374,8 @@ values the Vaglio hands it.
 this doc and the <code>R</code> score in <a href="synt.html#cap6">synt
 &sect;6</a> are two distinct metrics:
 <ul style="margin-top:6px;">
-    <li><strong>R (synt)</strong>: measures the <em>quality of a synthesised artefact</em> (a composed chain, a generated executor, a proposed merge). Components: det_pass_rate, judge_score, cost_ratio, similarity_penalty, coverage_bonus, strategy_cost_bonus.</li>
-    <li><strong>expected_alignment (telos)</strong>: measures the <em>opportunity to deliver the proposal to the user</em> now, on this channel, given the context. Components: fit per telos, urgency, confidence, bother_cost.</li>
+ <li><strong>R (synt)</strong>: measures the <em>quality of a synthesised artefact</em> (a composed chain, a generated executor, a proposed merge). Components: det_pass_rate, judge_score, cost_ratio, similarity_penalty, coverage_bonus, strategy_cost_bonus.</li>
+ <li><strong>expected_alignment (telos)</strong>: measures the <em>opportunity to deliver the proposal to the user</em> now, on this channel, given the context. Components: fit per telos, urgency, confidence, bother_cost.</li>
 </ul>
 A proposal must clear both filters: synt produces something good (<code>R &ge; threshold</code>), the teleological Vaglio decides whether it is worth delivering it (<code>expected_alignment &ge; &theta;</code>). They are orthogonal: an excellent proposal at the wrong moment stays silent.
 </div>
@@ -407,27 +385,27 @@ A proposal must clear both filters: synt produces something good (<code>R &ge; t
 <p>
 Proposals are ranked by <code>expected_alignment</code> and surfaced to
 the user via the <strong><code>/admin/proposals/telos</code>
-dashboard</strong> (ADR 0078 + 0157, wired 22/5/2026). For each proposal
+dashboard</strong> ( + 0157, wired. For each proposal
 the UI shows:
 </p>
 
 <ul>
-  <li><strong>Origin</strong>: lens (e.g. <code>scamper</code>,
-  <code>endgame_book</code>), generating telos, operator,
-  <code>n_observed</code> extracted from the rationale (e.g. "co-activated
-  49 times").</li>
-  <li><strong>Proposal</strong>: target executor, proposed_action,
-  rationale + <code>alignment_per_telos</code> breakdown with fit and
-  explanation per telos.</li>
-  <li><strong>Applicable example</strong>: chip <code>pipeline
-  observed</code> (the combination exists in the real turn log),
-  <code>partial match</code> (only the target appears),
-  <code>speculative</code> (no example in the last 14 days). If found,
-  a real user query + current path &rarr; suggested path.</li>
-  <li><strong>Impact</strong>: estimated latency saved (median per-step
-  ~5.5s &times; steps removed).</li>
-  <li><strong>Actions</strong>: <code>accept</code>, <code>reject</code>,
-  <code>stage</code> buttons (the latter non-terminal: held for later).</li>
+ <li><strong>Origin</strong>: lens (e.g. <code>scamper</code>,
+ <code>endgame_book</code>), generating telos, operator,
+ <code>n_observed</code> extracted from the rationale (e.g. "co-activated
+ 49 times").</li>
+ <li><strong>Proposal</strong>: target executor, proposed_action,
+ rationale + <code>alignment_per_telos</code> breakdown with fit and
+ explanation per telos.</li>
+ <li><strong>Applicable example</strong>: chip <code>pipeline
+ observed</code> (the combination exists in the real turn log),
+ <code>partial match</code> (only the target appears),
+ <code>speculative</code> (no example in the last 14 days). If found,
+ a real user query + current path &rarr; suggested path.</li>
+ <li><strong>Impact</strong>: estimated latency saved (median per-step
+ ~5.5s &times; steps removed).</li>
+ <li><strong>Actions</strong>: <code>accept</code>, <code>reject</code>,
+ <code>stage</code> buttons (the latter non-terminal: held for later).</li>
 </ul>
 
 <p>
@@ -446,15 +424,15 @@ LWW by <code>prop_id</code> = timestamp). Silently discarded proposals
 <p>
 Dashboard default <code>&theta;</code>: <code>0.30</code> (low quartile;
 override via <code>min_alignment</code> query param). Empirical cutoffs
-on 481 v1.3 proposals: <code>&gt; 0.50</code> = 3 top proposals (0.6%);
+on 481 proposals: <code>&gt; 0.50</code> = 3 top proposals (0.6%);
 <code>&gt; 0.45</code> = 23 (5%, review threshold); <code>&gt; 0.40</code>
 = 88 (18%, top decile).
 </p>
 
-<h1 id="cap5">5. The non-retreat telos (historical, removed in v1.2)</h1>
+<h1 id="cap5">5. The non-retreat telos (historical, removed in )</h1>
 
 <div class="callout warning">
-<strong>22/5/2026 (v1.2): <code>t.coltivazione_strumenti</code> removed
+<strong>: <code>t.coltivazione_strumenti</code> removed
 from the canonical set.</strong>
 Empirical backfill showed it behaved as a universal runtime clause, not
 an ultimate end: any capability extension partially satisfied it, and
@@ -462,13 +440,12 @@ the resulting moderate fit became background noise on the AlignmentEngine,
 weakening the Judge's discriminative power. The anti-retreat semantics
 (exhaust the synt cascade before answering &laquo;cannot&raquo;) remain
 active in the runtime as <em>deterministic policy</em>, not as a weighted
-telos. See ADR&nbsp;0157. The chapter below is preserved as a historical
+telos. See. The chapter below is preserved as a historical
 reference to the original rationale.
 </div>
 
 <p class="lead">
-<code>t.coltivazione_strumenti</code> is the newest telos (introduced
-on 25 April 2026) and the one that most changes the meaning of
+<code>t.coltivazione_strumenti</code> is the newest telos (introduced) and the one that most changes the meaning of
 &laquo;does not apply to explicit requests&raquo;. We let it live apart
 because mechanically it behaves differently from the others.
 </p>
@@ -508,24 +485,24 @@ retreat in silence. These are two different things.
 <thead><tr><th style="width:22%">Outcome</th><th>Form</th><th>Honours the telos?</th></tr></thead>
 <tbody>
 <tr>
-  <td><strong>Success</strong></td>
-  <td>One strategy of the cascade closes the proto-mnest.</td>
-  <td>Yes, naturally.</td>
+ <td><strong>Success</strong></td>
+ <td>One strategy of the cascade closes the proto-mnest.</td>
+ <td>Yes, naturally.</td>
 </tr>
 <tr>
-  <td><strong>Motivated failure</strong></td>
-  <td>&laquo;I tried composing with these N executors, I tried generating with this specification, the birth test failed on case X. I cannot now; I propose Y as a partial alternative.&raquo;</td>
-  <td>Yes: the attempt is traced, the user knows what you knew and what you didn't.</td>
+ <td><strong>Motivated failure</strong></td>
+ <td>&laquo;I tried composing with these N executors, I tried generating with this specification, the birth test failed on case X. I cannot now; I propose Y as a partial alternative.&raquo;</td>
+ <td>Yes: the attempt is traced, the user knows what you knew and what you didn't.</td>
 </tr>
 <tr>
-  <td><strong>Abandonment for budget/policy</strong></td>
-  <td>&laquo;I started the cascade, I consumed the hard budget, I stop. Here is what I have done so far.&raquo;</td>
-  <td>Yes: the limit is documented, it is not a retreat.</td>
+ <td><strong>Abandonment for budget/policy</strong></td>
+ <td>&laquo;I started the cascade, I consumed the hard budget, I stop. Here is what I have done so far.&raquo;</td>
+ <td>Yes: the limit is documented, it is not a retreat.</td>
 </tr>
 <tr>
-  <td><strong>Silent retreat</strong></td>
-  <td>&laquo;I cannot&raquo; without attempts, without explanation.</td>
-  <td><strong>No.</strong> Violates the telos.</td>
+ <td><strong>Silent retreat</strong></td>
+ <td>&laquo;I cannot&raquo; without attempts, without explanation.</td>
+ <td><strong>No.</strong> Violates the telos.</td>
 </tr>
 </tbody>
 </table>
@@ -576,7 +553,7 @@ asks not to stop before.
 The user has a finite capacity to evaluate proposals. The more arrive in
 a window, the less attention each gets. For this reason, the alignment
 function includes a <code>bother_cost</code> that grows with the recent
-frequency of published proposals. The novelty in v1.1 is the separation
+frequency of published proposals. The novelty in is the separation
 between <em>ad-hoc proposals</em> and <em>scheduler-driven invocations</em>
 (the builtin described in <a href="executor.html#scheduler-builtin">executor.html
 ch. 10</a>).
@@ -609,24 +586,24 @@ builtin, already pre-approved. The ad-hoc bother budget does not apply.
 <thead><tr><th style="width:24%">Type of publication</th><th>Counts toward bother budget?</th><th>Modulation</th></tr></thead>
 <tbody>
 <tr>
-  <td><strong>Spontaneous ad-hoc proposal</strong></td>
-  <td>Yes, full</td>
-  <td>Base model above. Telegram immediate &le; 3/day, &le; 1/hour.</td>
+ <td><strong>Spontaneous ad-hoc proposal</strong></td>
+ <td>Yes, full</td>
+ <td>Base model above. Telegram immediate &le; 3/day, &le; 1/hour.</td>
 </tr>
 <tr>
-  <td><strong>Scheduler firing in agreed cadence</strong></td>
-  <td>No, separate quota</td>
-  <td>One attention spend per scheduled firing. If it falls in a protected window, it is deferred to the next non-protected slot.</td>
+ <td><strong>Scheduler firing in agreed cadence</strong></td>
+ <td>No, separate quota</td>
+ <td>One attention spend per scheduled firing. If it falls in a protected window, it is deferred to the next non-protected slot.</td>
 </tr>
 <tr>
-  <td><strong>Scheduler firing outside the agreed cadence</strong></td>
-  <td>Yes, partial (50%)</td>
-  <td>If the schedule fires at an atypical time (e.g. recent change of cadence, exceptional event), it weighs half an ad-hoc proposal.</td>
+ <td><strong>Scheduler firing outside the agreed cadence</strong></td>
+ <td>Yes, partial (50%)</td>
+ <td>If the schedule fires at an atypical time (e.g. recent change of cadence, exceptional event), it weighs half an ad-hoc proposal.</td>
 </tr>
 <tr>
-  <td><strong>Response to an explicit request</strong></td>
-  <td>No</td>
-  <td>The user is already waiting. No bother.</td>
+ <td><strong>Response to an explicit request</strong></td>
+ <td>No</td>
+ <td>The user is already waiting. No bother.</td>
 </tr>
 </tbody>
 </table>
@@ -696,7 +673,7 @@ this risk.
 </p>
 
 <div class="decision">
-<strong>Anti-paternalism clause (reformulated v1.1).</strong> Telos
+<strong>Anti-paternalism clause (reformulated ).</strong> Telos
 evaluate <em>what Metnos is about to do for the user</em>, not <em>what
 the user does</em>. Explicit exception: the non-retreat telos (ch. 5)
 applies to synt's behaviour while serving a request, but <em>only</em>
@@ -705,16 +682,16 @@ until the user activates the stop clause.
 
 <p>Operationally, the alignment function <em>never applies to</em>:</p>
 <ul>
-    <li>Observed behaviours of the user in the workspace (time spent, patterns, purchases, choices).</li>
-    <li>Retractions of past user choices.</li>
-    <li>Explicit user requests <em>when the pool already knows how to satisfy them</em>: in that case, just execute.</li>
+ <li>Observed behaviours of the user in the workspace (time spent, patterns, purchases, choices).</li>
+ <li>Retractions of past user choices.</li>
+ <li>Explicit user requests <em>when the pool already knows how to satisfy them</em>: in that case, just execute.</li>
 </ul>
 
 <p>It applies to:</p>
 <ul>
-    <li>Spontaneous <code>ActionProposal</code>s generated by reflection, ager, mnestome.</li>
-    <li>Internal Metnos choices (LLM tier, parallelism, retry) where the telos guides the trade-off.</li>
-    <li>Synt's behaviour in the cascade, while the non-retreat telos is active.</li>
+ <li>Spontaneous <code>ActionProposal</code>s generated by reflection, ager, mnestome.</li>
+ <li>Internal Metnos choices (LLM tier, parallelism, retry) where the telos guides the trade-off.</li>
+ <li>Synt's behaviour in the cascade, while the non-retreat telos is active.</li>
 </ul>
 
 <p>
@@ -753,83 +730,81 @@ from uuid import UUID
 
 @dataclass(frozen=True)
 class Telos:
-    id: str                       # "t.coltivazione_strumenti"
-    phrase: str                   # "Don't leave a request of mine unmet, if possible"
-    weight_declared: float        # [0,1], normalised sum
-    activation_threshold: float   # [0,1]
-    notes: str                    # context for the LLM
-    is_non_retreat: bool = False  # only t.coltivazione_strumenti
+ id: str # "t.coltivazione_strumenti"
+ phrase: str # "Don't leave a request of mine unmet, if possible"
+ weight_declared: float # [0,1], normalised sum
+ activation_threshold: float # [0,1]
+ notes: str # context for the LLM
+ is_non_retreat: bool = False # only t.coltivazione_strumenti
 
 @dataclass(frozen=True)
 class FitEstimate:
-    telos_id: str
-    fit: float                    # [0,1]
-    why: str                      # textual explanation (for audit)
+ telos_id: str
+ fit: float # [0,1]
+ why: str # textual explanation (for audit)
 
 @dataclass(frozen=True)
 class AlignmentResult:
-    proposal_id: UUID
-    expected_alignment: float
-    per_telos: list[FitEstimate]
-    urgency: float
-    confidence: float
-    bother_cost: float
-    decision: Literal["publish", "reject", "defer_to_digest"]
-    threshold_used: float
-    at: datetime
+ proposal_id: UUID
+ expected_alignment: float
+ per_telos: list[FitEstimate]
+ urgency: float
+ confidence: float
+ bother_cost: float
+ decision: Literal["publish", "reject", "defer_to_digest"]
+ threshold_used: float
+ at: datetime
 
 @dataclass(frozen=True)
 class StopSignal:
-    """Emitted when the user activates the stop clause."""
-    request_id: str               # synt request_id to stop
-    target_intent: str            # what to stop
-    raw_phrase: str               # exact user words (audit)
-    at: datetime
+ """Emitted when the user activates the stop clause."""
+ request_id: str # synt request_id to stop
+ target_intent: str # what to stop
+ raw_phrase: str # exact user words (audit)
+ at: datetime
 
 class TelosStore(Protocol):
-    """Reads TELOS.md and exposes the current telos."""
-    def current(self) -&gt; list[Telos]: ...
-    def get(self, telos_id: str) -&gt; Telos | None: ...
-    def version(self) -&gt; str: ...                    # current hash
+ """Reads TELOS.md and exposes the current telos."""
+ def current(self) -&gt; list[Telos]:...
+ def get(self, telos_id: str) -&gt; Telos | None:...
+ def version(self) -&gt; str:... # current hash
 
 class AlignmentEngine(Protocol):
-    async def evaluate(
-        self,
-        proposal: "ActionProposal",
-        urgency_hint: float = 1.0,
-    ) -&gt; AlignmentResult:
-        """Estimate fit per telos (Vaglio), compose expected_alignment,
-        apply bother_cost, decide publish/reject/defer."""
-        ...
+ async def evaluate(
+ self,
+ proposal: "ActionProposal",
+ urgency_hint: float = 1.0,
+ ) -&gt; AlignmentResult:
+ """Estimate fit per telos (Vaglio), compose expected_alignment,
+ apply bother_cost, decide publish/reject/defer."""...
 
 class BotherBudget(Protocol):
-    def current_cost_adhoc(self, channel: str, at: datetime) -&gt; float: ...
-    def scheduler_quota_left(self, channel: str, schedule_id: str) -&gt; int: ...
-    def record_published_adhoc(self, channel: str, proposal_id: UUID) -&gt; None: ...
-    def record_scheduler_firing(self, channel: str, schedule_id: str) -&gt; None: ...
-    def in_protected_window(self, at: datetime) -&gt; bool: ...
+ def current_cost_adhoc(self, channel: str, at: datetime) -&gt; float:...
+ def scheduler_quota_left(self, channel: str, schedule_id: str) -&gt; int:...
+ def record_published_adhoc(self, channel: str, proposal_id: UUID) -&gt; None:...
+ def record_scheduler_firing(self, channel: str, schedule_id: str) -&gt; None:...
+ def in_protected_window(self, at: datetime) -&gt; bool:...
 
 class StopRecognizer(Protocol):
-    """Recognises the stop clause in the user's words."""
-    async def detect(self, user_text: str, current_intent: str | None) -&gt; StopSignal | None:
-        """Returns a StopSignal if the phrase is a clear stop;
-        None if it is not; raises a confirmation if ambiguous."""
-        ...
+ """Recognises the stop clause in the user's words."""
+ async def detect(self, user_text: str, current_intent: str | None) -&gt; StopSignal | None:
+ """Returns a StopSignal if the phrase is a clear stop;
+ None if it is not; raises a confirmation if ambiguous."""...
 
 class TelosFeedback(Protocol):
-    """Updates per-telos EMAs from user signals."""
-    async def on_accept(self, proposal_id: UUID) -&gt; None: ...
-    async def on_accept_with_edit(self, proposal_id: UUID) -&gt; None: ...
-    async def on_reject(self, proposal_id: UUID, never_again: bool) -&gt; None: ...
-    async def on_stop(self, signal: StopSignal) -&gt; None: ...
-    async def on_silence_48h(self, proposal_id: UUID) -&gt; None: ...
-    async def on_viewed_undecided(self, proposal_id: UUID) -&gt; None: ...
+ """Updates per-telos EMAs from user signals."""
+ async def on_accept(self, proposal_id: UUID) -&gt; None:...
+ async def on_accept_with_edit(self, proposal_id: UUID) -&gt; None:...
+ async def on_reject(self, proposal_id: UUID, never_again: bool) -&gt; None:...
+ async def on_stop(self, signal: StopSignal) -&gt; None:...
+ async def on_silence_48h(self, proposal_id: UUID) -&gt; None:...
+ async def on_viewed_undecided(self, proposal_id: UUID) -&gt; None:...
 
 # Errors
-class TelosFileMalformed(Exception): ...
-class TelosSignatureInvalid(Exception): ...
-class TelosFitEstimationFailed(Exception): ...
-class StopAmbiguousNeedsConfirm(Exception): ...
+class TelosFileMalformed(Exception):...
+class TelosSignatureInvalid(Exception):...
+class TelosFitEstimationFailed(Exception):...
+class StopAmbiguousNeedsConfirm(Exception):...
 </code></pre>
 
 <h1 id="cap10">10. Revision rite</h1>
@@ -840,12 +815,12 @@ deserves a light rite:
 </p>
 
 <ol>
-    <li><strong>Manual writing</strong>: the user edits TELOS.md with an editor.</li>
-    <li><strong>Validation</strong>: Metnos re-reads, re-checks the format, normalises the weights.</li>
-    <li><strong>Recap</strong>: Metnos answers with a comparison &laquo;here is what changes from the previous version: parsimony weight +0.05, added t.convivialita, etc.&raquo;.</li>
-    <li><strong>Signature</strong>: HMAC-SHA256 with a dedicated key (separate from the constitutional one).</li>
-    <li><strong>Versioning</strong>: the new file includes the <code>previous_hash</code> of the previous one; the old one moves to <code>.audit/telos/</code>. Light Merkle.</li>
-    <li><strong>Soft EMA reset</strong>: telos that were renamed or removed lose their EMA; new ones start from 0. Telos that only changed weight keep their EMA.</li>
+ <li><strong>Manual writing</strong>: the user edits TELOS.md with an editor.</li>
+ <li><strong>Validation</strong>: Metnos re-reads, re-checks the format, normalises the weights.</li>
+ <li><strong>Recap</strong>: Metnos answers with a comparison &laquo;here is what changes from the previous version: parsimony weight +0.05, added t.convivialita, etc.&raquo;.</li>
+ <li><strong>Signature</strong>: HMAC-SHA256 with a dedicated key (separate from the constitutional one).</li>
+ <li><strong>Versioning</strong>: the new file includes the <code>previous_hash</code> of the previous one; the old one moves to <code>.audit/telos/</code>. Light Merkle.</li>
+ <li><strong>Soft EMA reset</strong>: telos that were renamed or removed lose their EMA; new ones start from 0. Telos that only changed weight keep their EMA.</li>
 </ol>
 
 <div class="callout note">
@@ -862,39 +837,39 @@ as that of the Laws.
 <thead><tr><th style="width:30%">Alternative</th><th>Outcome</th><th>Reason</th></tr></thead>
 <tbody>
 <tr>
-    <td><strong>No explicit TELOS, only implicit feedback</strong></td>
-    <td>discarded</td>
-    <td>Cold start impossible: without declared telos, the first 50 proposals are random. The user rejects them all, the EMA collapses, the system goes silent.</td>
+ <td><strong>No explicit TELOS, only implicit feedback</strong></td>
+ <td>discarded</td>
+ <td>Cold start impossible: without declared telos, the first 50 proposals are random. The user rejects them all, the EMA collapses, the system goes silent.</td>
 </tr>
 <tr>
-    <td><strong>Non-retreat telos as Law 4 of the Constitution</strong></td>
-    <td>discarded (25/4/2026)</td>
-    <td>Breaks the grammar of Laws (negative prohibitions). The telos is a positive push, it belongs here. See <a href="../Metnos_Architecture_Intro_v1.html#cap11">Architecture ch. 11</a>.</td>
+ <td><strong>Non-retreat telos as Law 4 of the Constitution</strong></td>
+ <td>discarded</td>
+ <td>Breaks the grammar of Laws (negative prohibitions). The telos is a positive push, it belongs here. See <a href="../Metnos_Architecture_Intro_v1.html#cap11">Architecture ch. 11</a>.</td>
 </tr>
 <tr>
-    <td><strong>Reward function learned from a dataset</strong></td>
-    <td>discarded</td>
-    <td>We have no dataset. A learned function is opaque: the user does not know what Metnos is optimising.</td>
+ <td><strong>Reward function learned from a dataset</strong></td>
+ <td>discarded</td>
+ <td>We have no dataset. A learned function is opaque: the user does not know what Metnos is optimising.</td>
 </tr>
 <tr>
-    <td><strong>Hierarchical goal graph</strong></td>
-    <td>postponed</td>
-    <td>Nested telos increase expressive power but break manual writability. 3-7 flat telos cover 90% of cases.</td>
+ <td><strong>Hierarchical goal graph</strong></td>
+ <td>postponed</td>
+ <td>Nested telos increase expressive power but break manual writability. 3-7 flat telos cover 90% of cases.</td>
 </tr>
 <tr>
-    <td><strong>Single global threshold &theta; (no per-telos)</strong></td>
-    <td>partial</td>
-    <td>Adopted as the final <code>&theta;</code>, but combined with per-telos thresholds (<code>activation_threshold</code>) to prevent low noise across many telos from summing up.</td>
+ <td><strong>Single global threshold &theta; (no per-telos)</strong></td>
+ <td>partial</td>
+ <td>Adopted as the final <code>&theta;</code>, but combined with per-telos thresholds (<code>activation_threshold</code>) to prevent low noise across many telos from summing up.</td>
 </tr>
 <tr>
-    <td><strong>Online learning (continuous RL)</strong></td>
-    <td>discarded</td>
-    <td>Risk of reward hacking, opaque to the user. EMA from explicit signals is enough.</td>
+ <td><strong>Online learning (continuous RL)</strong></td>
+ <td>discarded</td>
+ <td>Risk of reward hacking, opaque to the user. EMA from explicit signals is enough.</td>
 </tr>
 <tr>
-    <td><strong>Implicit stop (timeout)</strong></td>
-    <td>discarded</td>
-    <td>The user might be distracted, not uninterested. Stop must be explicit or confirmed.</td>
+ <td><strong>Implicit stop (timeout)</strong></td>
+ <td>discarded</td>
+ <td>The user might be distracted, not uninterested. Stop must be explicit or confirmed.</td>
 </tr>
 </tbody>
 </table>
@@ -943,13 +918,13 @@ in <code>__init__.py</code>. The LLM call loop + JSON parse + paternalism
 guard + GBNF wiring is centralized in <code>_base.run_lens</code>.
 Per-lens toggle: <code>METNOS_TELOS_LENS_&lt;NAME&gt;=1</code>.</p>
 
-<p>Status 21/5/2026 v8: 10 lenses in production (ADR&nbsp;0156 final).
+<p>Status v8: 10 lenses in production ( final).
 The 2 newer ones (<code>counterfactual</code>, <code>constitutional</code>)
 draw from 2022&ndash;2023 references. The <code>compression</code> lens
 (Schmidhuber 2010) was implemented but dropped after the v8 bench due
 to convergence failure: even with the strictest prompt, Gemma&nbsp;26B
 could not reliably produce vocab-compliant super-verbs (violating the
-&sect;2.2 <code>entries</code> exception). Rationale in ADR&nbsp;0156.
+&sect;2.2 <code>entries</code> exception). Rationale in.
 Convergence bench v7&minus;v8 with Gemma&nbsp;4&nbsp;26B + GBNF: 10/10
 accepted lenses converge on first attempt, 0 paternalism, 0 invalid
 naming, 0 qualifier-object mismatch.</p>
@@ -988,55 +963,55 @@ generation time.</p>
 
 <h3>Internal references</h3>
 <ul>
-    <li><a href="../Metnos_Architecture_Intro_v1.html#cap11">Architecture v1.1, ch. 11</a> &mdash; the big-picture view of telos+vaglio.</li>
-    <li><a href="../Metnos_Architecture_Intro_v1.html#cap7">Architecture v1.1, ch. 7</a> &mdash; the proactive variant and the canonical example &laquo;monitoring a mailbox&raquo; (a chain invoked by the scheduler builtin).</li>
-    <li><a href="synt.html">synt.html v1.1</a> &mdash; the cascade the non-retreat telos honours; R score distinct from expected_alignment.</li>
-    <li><a href="executor.html">executor.html v1.1</a> &mdash; the artefacts synt produces and that telos evaluate at delivery time.</li>
-    <li><a href="mnest.html">mnest.html v1.1</a> &mdash; the proto-mnests that trigger the non-retreat telos.</li>
-    <li><a href="../../it/architecture/vaglio.html">vaglio.html</a> (to be rewritten, in Italian) &mdash; the teleological judge that estimates the fit values.</li>
-    <li><code>constitution</code> &mdash; the 4 Laws; the non-retreat telos is a positive push, NOT a Law.</li>
+ <li><a href="../Metnos_Architecture_Intro_v1.html#cap11">Architecture, ch. 11</a> &mdash; the big-picture view of telos+vaglio.</li>
+ <li><a href="../Metnos_Architecture_Intro_v1.html#cap7">Architecture, ch. 7</a> &mdash; the proactive variant and the canonical example &laquo;monitoring a mailbox&raquo; (a chain invoked by the scheduler builtin).</li>
+ <li><a href="synt.html">synt.html </a> &mdash; the cascade the non-retreat telos honours; R score distinct from expected_alignment.</li>
+ <li><a href="executor.html">executor.html </a> &mdash; the artefacts synt produces and that telos evaluate at delivery time.</li>
+ <li><a href="mnest.html">mnest.html </a> &mdash; the proto-mnests that trigger the non-retreat telos.</li>
+ <li><a href="../../it/architecture/vaglio.html">vaglio.html</a> (to be rewritten, in Italian) &mdash; the teleological judge that estimates the fit values.</li>
+ <li><code>constitution</code> &mdash; the 4 Laws; the non-retreat telos is a positive push, NOT a Law.</li>
 </ul>
 
 <h3>Literary and technical references</h3>
 <ul>
-    <li><strong>Aristotle, Nicomachean Ethics</strong> (&tau;&epsilon;&lambda;&omicron;&sigmaf;) &mdash; ends as final causes, not operational targets.</li>
-    <li><strong>Constitutional AI, Anthropic 2022</strong> &mdash; hierarchical constraints; telos are the positive side of what Constitutional AI does with rules.</li>
-    <li><strong>Goodhart's Law</strong> &mdash; &laquo;when a measure becomes a target, it stops being a good measure&raquo;. Treated as an explicit countermeasure in ch. 8 and ch. 11.</li>
-    <li><strong>Zheng et al. 2023</strong> &mdash; LLM-as-Judge self-enhancement bias: the reason for the Vaglio's independence from the proposer.</li>
-    <li><strong>Asimov</strong> &mdash; the formulation &laquo;don't leave a request unmet&raquo; echoes Law 2 (informed obedience) but lives in the telos because it is a tendency, not a binary constraint.</li>
+ <li><strong>Aristotle, Nicomachean Ethics</strong> (&tau;&epsilon;&lambda;&omicron;&sigmaf;) &mdash; ends as final causes, not operational targets.</li>
+ <li><strong>Constitutional AI, Anthropic 2022</strong> &mdash; hierarchical constraints; telos are the positive side of what Constitutional AI does with rules.</li>
+ <li><strong>Goodhart's Law</strong> &mdash; &laquo;when a measure becomes a target, it stops being a good measure&raquo;. Treated as an explicit countermeasure in ch. 8 and ch. 11.</li>
+ <li><strong>Zheng et al. 2023</strong> &mdash; LLM-as-Judge self-enhancement bias: the reason for the Vaglio's independence from the proposer.</li>
+ <li><strong>Asimov</strong> &mdash; the formulation &laquo;don't leave a request unmet&raquo; echoes Law 2 (informed obedience) but lives in the telos because it is a tendency, not a binary constraint.</li>
 </ul>
 
 <hr>
 
 <h2>Continue reading</h2>
 <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(260px, 1fr)); gap:14px; margin:16px 0 24px;">
-  <a href="synt.html" style="display:block; padding:14px 16px; border:1px solid var(--border); border-radius:8px; background:white; color:inherit; text-decoration:none;">
-    <span style="display:inline-block; padding:2px 9px; border-radius:10px; font-size:9pt; background:var(--code-bg); color:var(--muted); font-weight:500;">canonical</span>
-    <div style="color:var(--navy); font-size:11.5pt; font-weight:700; margin:8px 0 6px 0;">synt</div>
-    <div style="margin:0; color:var(--muted); font-size:10pt; line-height:1.5;">The cascade that the non-retreat telos honours. R score disambiguated from expected_alignment.</div>
-  </a>
-  <a href="executor.html" style="display:block; padding:14px 16px; border:1px solid var(--border); border-radius:8px; background:white; color:inherit; text-decoration:none;">
-    <span style="display:inline-block; padding:2px 9px; border-radius:10px; font-size:9pt; background:var(--code-bg); color:var(--muted); font-weight:500;">canonical</span>
-    <div style="color:var(--navy); font-size:11.5pt; font-weight:700; margin:8px 0 6px 0;">executor</div>
-    <div style="margin:0; color:var(--muted); font-size:10pt; line-height:1.5;">The artefacts synt produces and that telos evaluate at the moment of publication.</div>
-  </a>
-  <a href="../Metnos_Architecture_Intro_v1.html#cap11" style="display:block; padding:14px 16px; border:1px solid var(--border); border-radius:8px; background:white; color:inherit; text-decoration:none;">
-    <span style="display:inline-block; padding:2px 9px; border-radius:10px; font-size:9pt; background:var(--code-bg); color:var(--muted); font-weight:500;">level 1</span>
-    <div style="color:var(--navy); font-size:11.5pt; font-weight:700; margin:8px 0 6px 0;">Architecture, ch. 11</div>
-    <div style="margin:0; color:var(--muted); font-size:10pt; line-height:1.5;">Telos and Vaglio in the big-picture view.</div>
-  </a>
-  <a href="./" style="display:block; padding:14px 16px; border:1px solid var(--border); border-radius:8px; background:white; color:inherit; text-decoration:none;">
-    <span style="display:inline-block; padding:2px 9px; border-radius:10px; font-size:9pt; background:var(--code-bg); color:var(--muted); font-weight:500;">index</span>
-    <div style="color:var(--navy); font-size:11.5pt; font-weight:700; margin:8px 0 6px 0;">Microdesign</div>
-    <div style="margin:0; color:var(--muted); font-size:10pt; line-height:1.5;">All docs.</div>
-  </a>
+ <a href="synt.html" style="display:block; padding:14px 16px; border:1px solid var(--border); border-radius:8px; background:white; color:inherit; text-decoration:none;">
+ <span style="display:inline-block; padding:2px 9px; border-radius:10px; font-size:9pt; background:var(--code-bg); color:var(--muted); font-weight:500;">canonical</span>
+ <div style="color:var(--navy); font-size:11.5pt; font-weight:700; margin:8px 0 6px 0;">synt</div>
+ <div style="margin:0; color:var(--muted); font-size:10pt; line-height:1.5;">The cascade that the non-retreat telos honours. R score disambiguated from expected_alignment.</div>
+ </a>
+ <a href="executor.html" style="display:block; padding:14px 16px; border:1px solid var(--border); border-radius:8px; background:white; color:inherit; text-decoration:none;">
+ <span style="display:inline-block; padding:2px 9px; border-radius:10px; font-size:9pt; background:var(--code-bg); color:var(--muted); font-weight:500;">canonical</span>
+ <div style="color:var(--navy); font-size:11.5pt; font-weight:700; margin:8px 0 6px 0;">executor</div>
+ <div style="margin:0; color:var(--muted); font-size:10pt; line-height:1.5;">The artefacts synt produces and that telos evaluate at the moment of publication.</div>
+ </a>
+ <a href="../Metnos_Architecture_Intro_v1.html#cap11" style="display:block; padding:14px 16px; border:1px solid var(--border); border-radius:8px; background:white; color:inherit; text-decoration:none;">
+ <span style="display:inline-block; padding:2px 9px; border-radius:10px; font-size:9pt; background:var(--code-bg); color:var(--muted); font-weight:500;">level 1</span>
+ <div style="color:var(--navy); font-size:11.5pt; font-weight:700; margin:8px 0 6px 0;">Architecture, ch. 11</div>
+ <div style="margin:0; color:var(--muted); font-size:10pt; line-height:1.5;">Telos and Vaglio in the big-picture view.</div>
+ </a>
+ <a href="./" style="display:block; padding:14px 16px; border:1px solid var(--border); border-radius:8px; background:white; color:inherit; text-decoration:none;">
+ <span style="display:inline-block; padding:2px 9px; border-radius:10px; font-size:9pt; background:var(--code-bg); color:var(--muted); font-weight:500;">index</span>
+ <div style="color:var(--navy); font-size:11.5pt; font-weight:700; margin:8px 0 6px 0;">Microdesign</div>
+ <div style="margin:0; color:var(--muted); font-size:10pt; line-height:1.5;">All docs.</div>
+ </a>
 </div>
 
 <hr>
 
 <p style="text-align:center; color:var(--muted); font-size:9.5pt; margin-top:40px;">
-Metnos &mdash; <em>telos</em> microdesign v1.1 &mdash; 2026-04-25<br>
-Rewrite. Replaces telos v1.0 (myclaw, neurons, synapses). Without telos, proactivity is noise.
+Metnos &mdash; <em>telos</em> microdesign <br>
+Rewrite. Replaces telos (metnos, neurons, synapses). Without telos, proactivity is noise.
 </p>
 
 </body>
