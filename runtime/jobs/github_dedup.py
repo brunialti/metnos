@@ -40,6 +40,15 @@ _CLASS_KEYWORDS: dict[str, list[str]] = {
         "feature", "would be nice", "proposal",
         "enhancement", "potresti aggiungere",
     ],
+    # `question` deve esistere: il config utente (`classify_for_auto_reply`) e
+    # `check_4_and_safety` accettano "question" per l'auto-reply. Senza questo
+    # bucket la classe era IRRAGGIUNGIBILE → config inerte (bug 1/6/2026).
+    "question": [
+        "how do i", "is it possible", "is there a way", "what is",
+        "why does", "can someone", "any idea", "?",
+        "come mai", "perche'", "perché", "qual e'", "qual è",
+        "cosa significa", "si puo'", "si può", "è possibile",
+    ],
 }
 
 
@@ -69,13 +78,15 @@ def classify_hint(title: str | None, body: str | None) -> str:
     """Match keyword case-insensitive. Primo bucket che ha hit vince.
     No match → 'unknown' (flow gate normale, mai auto-reply).
 
-    Ordine di preferenza: bug > support > enhancement.
+    Ordine di preferenza: bug > support > question > enhancement.
     Bug ha priorita' perche' anche una keyword bug singola in mezzo a
-    una richiesta di documentazione deve sospettare un bug nascosto."""
+    una richiesta di documentazione deve sospettare un bug nascosto.
+    `question` dopo `support` (doc-seeking ha precedenza su interrogativo
+    generico) ma prima di `enhancement`."""
     text = " ".join(filter(None, [title or "", body or ""])).lower()
     if not text.strip():
         return "unknown"
-    for cls in ("bug", "support", "enhancement"):
+    for cls in ("bug", "support", "question", "enhancement"):
         for kw in _CLASS_KEYWORDS[cls]:
             if kw in text:
                 return cls
@@ -85,19 +96,22 @@ def classify_hint(title: str | None, body: str | None) -> str:
 def check_4_and_safety(
     top_match: dict[str, Any] | None,
     classification_hint: str,
+    min_similarity: float | None = None,
 ) -> bool:
     """4 condizioni AND. Una sola falsa → False (flow gate normale).
     Vedi github_provider_architecture §6.3.
 
-    1. top.similarity >= 0.85
+    1. top.similarity >= soglia (`min_similarity` da config `auto_reply_threshold`,
+       default SIM_AUTO_REPLY)
     2. classification_hint in {'support', 'question'}
     3. top.user_satisfied == 1
     4. top.accepted_reply length > 100
     """
     if not top_match:
         return False
+    threshold = SIM_AUTO_REPLY if min_similarity is None else float(min_similarity)
     sim = float(top_match.get("similarity") or 0.0)
-    if sim < SIM_AUTO_REPLY:
+    if sim < threshold:
         return False
     if classification_hint not in {"support", "question"}:
         return False

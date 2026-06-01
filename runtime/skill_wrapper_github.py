@@ -62,7 +62,10 @@ def paginate(
     Stop conditions:
       - max_pages raggiunto
       - assenza rel="next" nel Link header
-      - status >= 400 (yield del body e stop)
+      - errore HTTP (>=400) o di rete → yield un MARKER
+        `{"_github_error": {...}}` e stop. §2.8: NON spacciare un risultato
+        parziale (rate-limit/timeout) per completo; il consumer distingue
+        troncatura da fine-paginazione e legge `retry_after_s`/`rate_limit`.
     """
     if max_pages <= 0:
         return
@@ -70,17 +73,32 @@ def paginate(
     cur_params = dict(params or {})
     pages_done = 0
     while cur_url and pages_done < max_pages:
-        resp = client.request(
-            "GET", cur_url, params=cur_params if pages_done == 0 else None,
-            headers=headers, timeout=timeout_s,
-        )
+        try:
+            resp = client.request(
+                "GET", cur_url, params=cur_params if pages_done == 0 else None,
+                headers=headers, timeout=timeout_s,
+            )
+        except Exception as e:
+            # Timeout/connection error: prima crashava il consumer del generator.
+            yield {"_github_error": {
+                "status": None, "error": str(e),
+                "error_class": "network", "pages_done": pages_done,
+            }}
+            return
         try:
             body = resp.json()
         except Exception:
             body = None
-        yield body
         if resp.status_code >= 400:
+            yield {"_github_error": {
+                "status": resp.status_code,
+                "retry_after_s": should_retry_after(resp.headers, resp.status_code),
+                "rate_limit": extract_rate_limit(resp.headers),
+                "body": body,
+                "pages_done": pages_done,
+            }}
             return
+        yield body
         links = parse_link_header(resp.headers.get("Link"))
         cur_url = links.get("next")
         pages_done += 1

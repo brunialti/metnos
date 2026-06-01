@@ -109,7 +109,9 @@ def _resolve_executor(name: str):
     """Cerca un executor nel catalog. Ritorna None se assente (Fase B/C in build)."""
     try:
         from loader import load_catalog  # type: ignore
-        cat = load_catalog(verify=True, include_synth=True)
+        # verify=False: la verifica firme è già fatta dal loader al boot;
+        # rifarla ad OGNI _invoke (più volte per fire, per evento) è spreco.
+        cat = load_catalog(verify=False, include_synth=True)
         return cat.executors.get(name)
     except Exception as e:
         _LOG.info("github_watcher: load_catalog fail: %r", e)
@@ -147,9 +149,23 @@ def _detect_events_for_repo(
     sta scrivendo). Il watcher tenta `state="open"`, since=last_check;
     formati alternativi sono tollerati (degrade silent).
     """
+    import time as _time
     from github_watch_state import get_state, set_state  # type: ignore
     out: list[dict[str, Any]] = []
     skip_bots = set(dedup_cfg.get("skip_bot_comments") or [])
+    _now = int(_time.time())
+
+    def _is_snoozed(state: dict[str, Any] | None) -> bool:
+        """True se l'utente ha snoozato questo elemento e lo snooze non e'
+        ancora scaduto. Senza questo check lo snooze veniva vanificato: ogni
+        nuova attivita' ri-gatava l'elemento (bug 1/6/2026)."""
+        if not state:
+            return False
+        sn = state.get("snoozed_until")
+        try:
+            return bool(sn) and int(sn) > _now
+        except (TypeError, ValueError):
+            return False
 
     # Issue
     if "new_issue" in events_kinds or "new_comment" in events_kinds:
@@ -169,6 +185,8 @@ def _detect_events_for_repo(
                 state = get_state(repo, "issue", int(number))
                 if state and state.get("last_event_id") == last_ev:
                     continue  # nessun evento nuovo
+                if _is_snoozed(state):
+                    continue  # snoozato dall'utente: non ri-gatare
                 out.append({
                     "kind": "issue",
                     "number": int(number),
@@ -197,6 +215,8 @@ def _detect_events_for_repo(
                 state = get_state(repo, "pr", int(number))
                 if state and state.get("last_event_id") == last_ev:
                     continue
+                if _is_snoozed(state):
+                    continue  # snoozato dall'utente: non ri-gatare
                 out.append({
                     "kind": "pr",
                     "number": int(number),
@@ -213,11 +233,18 @@ def _notify_owner(text: str) -> None:
     """Invia notifica post-hoc all'admin via send_messages (Telegram).
     Best-effort: failure logged ma watcher continua."""
     try:
+        # Contratto canonico send_messages (vedi builtin_callbacks): wrapper
+        # `messages: [{to_user, subject, body}]`. Prima usava {to:["host"]} +
+        # body top-level → arg invalidi → notifica mai recapitata (§2.8).
         res = _invoke("send_messages", {
-            "to": ["host"], "subject": "GitHub watcher",
-            "body": text,
+            "messages": [{
+                "to_user": "host",
+                "subject": "GitHub watcher",
+                "body": text,
+            }],
         })
-        if res is None or not (isinstance(res, dict) and res.get("ok")):
+        ok = isinstance(res, dict) and int(res.get("ok_count") or 0) >= 1
+        if not ok:
             _LOG.info("github_watcher: notify_owner non recapitato (%r)", res)
     except Exception as e:
         _LOG.info("github_watcher: notify_owner fail: %r", e)
@@ -272,6 +299,23 @@ def _open_gate_dialog(repo: str, kind: str, number: int,
     return bool(res and isinstance(res, dict) and res.get("ok"))
 
 
+def _event_age_s(event: dict[str, Any]) -> float:
+    """Età in secondi dell'evento da `updated_at`/`created_at` (ISO) del raw.
+    `inf` se ignota (non blocca: età sconosciuta = considerata non-fresca)."""
+    import datetime as _dt
+    raw = event.get("raw") or {}
+    ts = raw.get("updated_at") or raw.get("created_at")
+    if not ts:
+        return float("inf")
+    try:
+        t = _dt.datetime.fromisoformat(str(ts).replace("Z", "+00:00"))
+        if t.tzinfo is None:
+            t = t.replace(tzinfo=_dt.timezone.utc)
+        return (_dt.datetime.now(_dt.timezone.utc) - t).total_seconds()
+    except Exception:
+        return float("inf")
+
+
 def _process_event(
     repo: str, event: dict[str, Any], dedup_cfg: dict[str, Any],
 ) -> dict[str, Any]:
@@ -296,9 +340,16 @@ def _process_event(
     if qe is not None:
         top_matches = find_similar(repo, qe, top_n=5)
 
-    # Stage 1b: 4-AND safety check
+    # Stage 1b: 4-AND safety check. Soglia da config `auto_reply_threshold`
+    # (prima hardcoded 0.85, config inerte) + anti-race `min_event_age_s`:
+    # non auto-rispondere a eventi troppo recenti (utente potrebbe star
+    # ancora editando / commento appena arrivato).
+    threshold = float(dedup_cfg.get("auto_reply_threshold") or 0.85)
+    min_age = int(dedup_cfg.get("min_event_age_s") or 0)
+    fresh_enough = min_age <= 0 or _event_age_s(event) >= min_age
     auto = False
-    if top_matches and check_4_and_safety(top_matches[0], hint):
+    if (fresh_enough and top_matches
+            and check_4_and_safety(top_matches[0], hint, min_similarity=threshold)):
         body_reply = format_auto_reply_body(
             top_matches, similarity_band_of(top_matches[0]["similarity"]),
         )
