@@ -83,13 +83,31 @@ def _audit_path(name_hint: str) -> Path:
     return VERIFY_AUDIT_DIR / f"verify_{ts}_{h}.jsonl"
 
 
+_VERIFY_SYSTEM_DEFAULT = (
+    "Sei un revisore stretto di executor Metnos. Rispondi SOLO con il JSON "
+    "richiesto, nessun preamble."
+)
+
+
 def _default_llm_call(prompt: str, model: str) -> dict:
-    """LLM call wrapper: usa runtime.llm_router se disponibile.
+    """LLM call wrapper: usa `LLMRouter().provider(<tier>).chat(...)`.
     Ritorna dict con `text`. Determinismo §7.9: nessun fallback silente —
-    se LLM offline, chiama l'eccezione e il caller usa fail-safe."""
-    from llm_router import call as _router_call  # type: ignore
-    res = _router_call(model, prompt, max_tokens=300, think=False)
-    return res or {}
+    se LLM offline, l'eccezione propaga e il caller (`_single_verify`) usa
+    fail-safe.
+
+    NB (1/6/2026): `llm_router` NON espone una `call()` module-level — solo
+    la classe `LLMRouter` con `.chat()`. Il vecchio `from llm_router import
+    call` falliva con ImportError ad OGNI invocazione, mandando in fail-safe
+    `aligned=False` qualunque import di skill (L6 sempre rigettante). Allineato
+    al pattern di `skill_description_llm._call_llm` (stesso stadio pipeline)."""
+    from llm_router import LLMRouter  # type: ignore
+    router = LLMRouter()
+    provider = router.provider(model)
+    res = provider.chat(
+        _VERIFY_SYSTEM_DEFAULT, prompt,
+        max_tokens=300, temperature=0, think=False,
+    )
+    return {"text": getattr(res, "text", None) or ""}
 
 
 def verify_semantic_alignment(

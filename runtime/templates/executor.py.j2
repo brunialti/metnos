@@ -253,6 +253,21 @@ def invoke(args):
         return _err_obj(f"invalid JSON from skill: {e}", "server_error", partial_keys=True)
 
 {% if output_kind == 'entries' %}
+    # Normalizza l'output dello skill script. Alcune skill ritornano un array
+    # nudo (convenzione google_api.py); altre (es. github_api.py) un dict
+    # {ok, results/entries/items, error_class}. §2.8: propaga ok:false invece
+    # di fingere una lista vuota; estrai la lista dal campo canonico.
+    if isinstance(raw, dict):
+        _ec = raw.get("error_class")
+        if raw.get("ok") is False or _ec or raw.get("error"):
+            if _ec == "auth_required":
+                return _auth_needs_inputs(dict(args))
+            return _err_obj(str(raw.get("error") or "skill error"),
+                            _ec or "server_error", partial_keys=True)
+        for _lk in ("results", "entries", "items", "data"):
+            if isinstance(raw.get(_lk), list):
+                raw = raw[_lk]
+                break
     if not isinstance(raw, list):
         return _err_obj("skill did not return a JSON array", "server_error", partial_keys=True)
 
@@ -284,9 +299,27 @@ def invoke(args):
 {% endif %}
     return out
 {% else %}
-    # Output trasformativo: results (§2.6).
-    if isinstance(raw, dict) and raw.get("status"):
-        results = [raw]
+    # Output trasformativo: results (§2.6). Normalizza come per entries:
+    # propaga ok:false (§2.8); estrai la lista dal campo canonico, oppure usa
+    # il dict come singolo result (es. issue creata → {ok, number, url}).
+    if isinstance(raw, dict):
+        _ec = raw.get("error_class")
+        if raw.get("ok") is False or _ec or raw.get("error"):
+            if _ec == "auth_required":
+                return _auth_needs_inputs(dict(args))
+            return _err_obj(str(raw.get("error") or "skill error"),
+                            _ec or "server_error", partial_keys=True)
+        _lst = None
+        for _lk in ("results", "entries", "items", "data"):
+            if isinstance(raw.get(_lk), list):
+                _lst = raw[_lk]
+                break
+        if _lst is not None:
+            results = [r for r in _lst if isinstance(r, dict)]
+        elif raw.get("status"):
+            results = [raw]
+        else:
+            results = [{k: v for k, v in raw.items() if k != "ok"}]
     elif isinstance(raw, list):
         results = [r for r in raw if isinstance(r, dict)]
     else:

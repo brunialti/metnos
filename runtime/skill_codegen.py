@@ -238,9 +238,17 @@ def _en_fallback(it: str) -> str:
 
 def _vectorial_hint_from_plan(plan) -> Optional[dict]:
     """Per delete/send executor che iterano N volte uno script che accetta
-    UN id per chiamata, prepara il blocco vettoriale (_coalesce_<entity>).
+    UN id POSIZIONALE per chiamata, prepara il blocco vettoriale
+    (_coalesce_<entity>).
 
     Ritorna None se l'executor non e' iterativo (output entries o N=1 fisso).
+
+    1/6/2026: emetti il blocco SOLO se il plan ha davvero un arg id su cui
+    iterare — `<obj>_id`/`<obj>_ids` (derivati da un positional MAIUSCOLO della
+    `## Usage`) o `entries`. Skill flag-based (es. GitHub, dove l'id passa come
+    `--number`/`--comment-id` via passthrough) NON hanno questi arg: in quel
+    caso il coalesce inventerebbe nomi inesistenti e appenderebbe un positional
+    che lo script non accetta (mismatch description-vs-code + chiamata rotta).
     """
     if plan.output_kind != "results":
         return None
@@ -253,10 +261,16 @@ def _vectorial_hint_from_plan(plan) -> Optional[dict]:
         "files":    "file",
         "contacts": "contact",
     }.get(plan.obj, plan.obj.rstrip("s"))
+    singular = f"{obj_singular}_id"
+    plural = f"{obj_singular}_ids"
+    arg_names = {a.name for a in plan.args}
+    if not (singular in arg_names or plural in arg_names or "entries" in arg_names):
+        # Niente id posizionale da iterare: executor single-call flag-based.
+        return None
     return {
         "entity": "rows",
-        "singular": f"{obj_singular}_id",
-        "plural":   f"{obj_singular}_ids",
+        "singular": singular,
+        "plural":   plural,
     }
 
 
@@ -289,12 +303,26 @@ def _passthrough_flags(plan) -> list:
         "sheet_name":    "sheet-name",
         "export_mime":   "export-mime",
     }
+    # Set dei flag scalari `<x>_id` presenti: il loro auto-plurale `<x>_ids`
+    # (aggiunto da skill_translator.build_args per §2.1) NON corrisponde a un
+    # flag CLI reale quando lo script prende l'id come `--<x>-id` singolo (skill
+    # flag-based, es. GitHub `--comment-id`). Emettere `--<x>-ids` produrrebbe un
+    # argomento sconosciuto + codice non dichiarato (drift L6). 1/6/2026: in quel
+    # caso saltiamo il plurale; la forma scalare passa via `--<x>-id`.
+    singular_id_flags = {
+        a.name for a in plan.args
+        if a.name.endswith("_id") and a.name not in _NON_PASSTHROUGH
+    }
     out = []
     for a in plan.args:
         if a.name in _NON_PASSTHROUGH:
             continue
         if a.type == "array" and a.items_type == "object":
             # Es. events: list[dict] -> non e' passthrough, viene splittato in N call
+            continue
+        if (a.name.endswith("_ids") and a.type == "array"
+                and a.name[:-1] in singular_id_flags):
+            # Auto-plurale di un flag id scalare: niente flag CLI corrispondente.
             continue
         cli = kebab_known.get(a.name, a.name.replace("_", "-"))
         out.append({
@@ -312,6 +340,13 @@ def _passthrough_flags(plan) -> list:
 
 
 def _iso_validations(plan) -> list:
+    # ISO 8601-con-offset e' un vincolo dei soli eventi calendario (Google
+    # Calendar esige timezone). Altri provider usano date-time piu' libere
+    # (es. GitHub `since` accetta ISO senza offset stretto): NON imporre una
+    # validazione che la description non dichiara, o L6 segnala drift
+    # (1/6/2026). Limitiamo al dominio calendar.
+    if plan.obj != "events":
+        return []
     out = []
     for a in plan.args:
         if a.format == "date-time" and a.name not in ("start", "end"):
@@ -488,11 +523,12 @@ def _tests_for_plan(plan) -> list:
         "input_toml": _toml_inline_value({"_force_invalid_type": True}),
         "expect_toml": _toml_inline_value({"ok": True}),  # placeholder
     })
-    # Test 2: happy path mocked (richiede _force_empty per non chiamare il subprocess)
-    happy_input = {"_force_empty": True} if plan.output_kind == "entries" else \
-        ({"summary": "Test", "start": "2026-03-01T10:00:00Z",
-          "end": "2026-03-01T11:00:00Z"} if plan.skill_action == "create"
-         else {"event_id": "test-id-1"})
+    # Test 2: happy path mocked. `_force_empty` corto-circuita il subprocess
+    # (nessuna chiamata reale) ed e' domain-agnostico: niente literal
+    # calendar-specifici (summary/start/end/event_id) che, su skill non-Google,
+    # divergono dagli arg dichiarati nel manifest e fanno fallire la verifica
+    # description-vs-code (L6 stage 6). Fix 1/6/2026.
+    happy_input = {"_force_empty": True}
     out.append({
         "name": "happy_path_mocked",
         "input_toml": _toml_inline_value(happy_input),
@@ -550,12 +586,17 @@ def _output_schema_inline(plan) -> str:
             "  final_message_hint?: str\n"
             "}"
         )
+    # Transformative: il code emette `n_<status_word>` (es. n_created/n_updated/
+    # n_deleted/n_sent). Lo dichiariamo nello schema cosi' la verifica
+    # description-vs-code (L6 stage 6) non flagga drift (1/6/2026).
+    status_word = _STATUS_WORD_BY_VERB.get(plan.verb, "done")
     return (
         "{\n"
         "  ok: bool,\n"
         "  decision?: 'needs_inputs',\n"
         "  needs_inputs?: {title, dialog, fmt, on_complete},\n"
         "  results: Array<dict>,\n"
+        f"  n_{status_word}: int,\n"
         "  used: int,\n"
         "  partial?: bool,\n"
         "  failures?: Array<{id, error, error_class}>,\n"
@@ -643,10 +684,37 @@ def _infer_oauth_provider(parsed_skill) -> dict:
     return {}
 
 
+def _derive_skill_script(parsed_skill) -> str:
+    """Deriva il path dello script API dalla `## Scripts` della SKILL.md.
+
+    Pre-1/6/2026 era hardcoded `scripts/google_api.py` -> ogni skill non-Google
+    (github, ...) generava executor che invocano uno script inesistente (bug
+    funzionale silenzioso). §7.3: la sorgente unica e' `parsed_skill.scripts`.
+
+    Euristica: fra gli script dichiarati, preferisci quello che assomiglia a
+    un client API (`*_api.py`), poi il primo che NON e' di setup/OAuth, poi il
+    primo in assoluto. Fallback storico `scripts/google_api.py` solo se la
+    skill non dichiara alcuno script.
+    """
+    scripts = [str(s).strip() for s in (parsed_skill.scripts or []) if str(s).strip()]
+    if not scripts:
+        return "scripts/google_api.py"
+    api_like = [s for s in scripts if Path(s).name.endswith("_api.py") or "api" in Path(s).stem.lower()]
+    if api_like:
+        return api_like[0]
+    non_setup = [s for s in scripts if "setup" not in Path(s).stem.lower()
+                 and "oauth" not in Path(s).stem.lower()]
+    if non_setup:
+        return non_setup[0]
+    return scripts[0]
+
+
 def build_context(plan, parsed_skill, *, description_it=None,
                   description_en=None, affinity=None,
-                  skill_script: str = "scripts/google_api.py") -> dict:
+                  skill_script: str | None = None) -> dict:
     """Costruisce il context jinja completo a partire dall'ExecutorPlan."""
+    if skill_script is None:
+        skill_script = _derive_skill_script(parsed_skill)
     if description_it is None or description_en is None:
         d_it, d_en = _description_boilerplate(plan)
         description_it = description_it or d_it
@@ -659,7 +727,26 @@ def build_context(plan, parsed_skill, *, description_it=None,
     iso_validations = _iso_validations(plan)
     passthrough = _passthrough_flags(plan)
 
-    args_ctx = [_arg_to_ctx(a) for a in plan.args]
+    # Drop degli arg auto-plurali `<x>_ids` orfani (1/6/2026): build_args
+    # (§2.1) aggiunge il plurale per ogni flag id scalare `<x>_id`, ma se
+    # l'executor e' flag-based single-call (niente _coalesce, l'id va come
+    # `--<x>-id`) il plurale non e' ne' un flag CLI ne' iterabile: il code lo
+    # ignora. Dichiararlo nel manifest crea drift description-vs-code (L6). Lo
+    # rimuoviamo dagli arg dichiarati cosi' il manifest riflette cio' che il
+    # code usa davvero. NB: con _coalesce attivo il plurale E' consumato →
+    # nessun drop.
+    _orphan_plurals: set = set()
+    if vectorial_coalesce is None:
+        _singular_id = {
+            a.name for a in plan.args
+            if a.name.endswith("_id") and a.name not in _NON_PASSTHROUGH
+        }
+        for a in plan.args:
+            if (a.name.endswith("_ids") and a.type == "array"
+                    and a.name[:-1] in _singular_id):
+                _orphan_plurals.add(a.name)
+
+    args_ctx = [_arg_to_ctx(a) for a in plan.args if a.name not in _orphan_plurals]
 
     # has_oauth_setup: la skill richiede credenziali OAuth (presente in
     # required_credential_files del parsed_skill).
@@ -791,7 +878,7 @@ def _lang_state_placeholder() -> str:
 
 def generate_executor_files(plan, parsed_skill, executor_dir, *,
                             description_it=None, description_en=None,
-                            affinity=None, skill_script: str = "scripts/google_api.py"):
+                            affinity=None, skill_script: str | None = None):
     """Genera 3 file in `executor_dir/<plan.name>/`. Crea la dir.
 
     Ritorna dict `{manifest_path, code_path, lang_state_path}`.

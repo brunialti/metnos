@@ -29,7 +29,11 @@
     "sheets":   "files",
     "docs":     "files",
     "contacts": "contacts",
-    "people":   "contacts"
+    "people":   "contacts",
+    "issues":    "issues",
+    "pulls":     "pulls",
+    "comments":  "messages",
+    "workflows": "tasks"
   },
 
   "domain_qualifier": {
@@ -84,7 +88,24 @@
     "contacts:search": {"target_kind": "content",       "side_effect": "fetch_content",     "verb": "find"},
     "contacts:create": {"target_kind": "create_only",   "side_effect": "resource_create",   "verb": "create"},
     "contacts:update": {"target_kind": "state_labels",  "side_effect": "state_update",      "verb": "set"},
-    "contacts:delete": {"target_kind": "create_only",   "side_effect": "resource_delete",   "verb": "delete"}
+    "contacts:delete": {"target_kind": "create_only",   "side_effect": "resource_delete",   "verb": "delete"},
+
+    "issues:search":   {"target_kind": "content",       "side_effect": "fetch_content",     "verb": "find"},
+    "issues:read":     {"target_kind": "content",       "side_effect": "fetch_content",     "verb": "read"},
+    "issues:create":   {"target_kind": "create_only",   "side_effect": "resource_create",   "verb": "create"},
+    "issues:set":      {"target_kind": "state_labels",  "side_effect": "state_update",      "verb": "set"},
+    "issues:delete":   {"target_kind": "create_only",   "side_effect": "resource_delete",   "verb": "delete"},
+
+    "pulls:search":    {"target_kind": "content",       "side_effect": "fetch_content",     "verb": "find"},
+    "pulls:read":      {"target_kind": "content",       "side_effect": "fetch_content",     "verb": "read"},
+    "pulls:set":       {"target_kind": "state_labels",  "side_effect": "state_update",      "verb": "set"},
+    "pulls:change":    {"target_kind": "shape",         "side_effect": "shape_modify",      "verb": "change"},
+
+    "comments:send":   {"target_kind": "create_only",   "side_effect": "resource_create",   "verb": "send"},
+    "comments:delete": {"target_kind": "create_only",   "side_effect": "resource_delete",   "verb": "delete"},
+
+    "workflows:dispatch":  {"target_kind": "create_only", "side_effect": "resource_create", "verb": "create"},
+    "workflows:runs_read": {"target_kind": "content",     "side_effect": "fetch_content",   "verb": "read"}
   },
 
   "verb_by_target_side": {
