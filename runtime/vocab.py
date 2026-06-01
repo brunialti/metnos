@@ -132,6 +132,18 @@ OBJECTS = (
     # `metnos:credentials_metadata_only` — il vaglio rifiuta payload con
     # campi `value`/`token`/`secret`/`api_key` nel return.
     "credentials",
+    # Issues (ADR 0141, 17/5/2026): entita' remota GitHub mutabile e threaded,
+    # con stato (open/closed), label, assignee, reazioni. Provider qualifier
+    # `_github`. 5 executor `*_issues_github` (find/read/create/set/delete).
+    # Distinta da `pulls`: una issue NON ha diff ne' azione `merge`.
+    "issues",
+    # Pulls (ADR 0141): pull request GitHub. Distinta da `issues` per 3
+    # proprieta' che romperebbero l'invariante schema §2.6 se collassate:
+    # diff sempre presente, azione `merge`, review strutturate
+    # (approve/request_changes/comment). 6 executor `*_pulls_github`
+    # (find/read/create/set/change/delete). Le review sono una sub-forma di
+    # `messages` (send_messages_github con `review_event`), non un OBJECT.
+    "pulls",
     # Entries: meta-oggetto per pipeline in-memory dello stesso turno
     # (12/5/2026, formalizzazione audit). NON una risorsa esterna: e' una
     # lista runtime prodotta da step precedenti e consumata da operatori
@@ -231,6 +243,11 @@ QUALIFIERS = (
     # Candidati a promozione graylist→whitelist
     # (find_signatures_promotion_candidates → qualifier "promotion").
     "promotion", "candidates",
+    # Famiglia 4 — Provider (ADR 0136): backend non-default come 4° qualifier.
+    # `_metnos` (default) e' omesso; i provider espliciti sono token vocab.
+    # `github` (ADR 0141): issues/pulls/messages/tasks su GitHub REST v3.
+    # (`google_workspace` resta gestito a livello skill importer.)
+    "github",
 )
 
 # ── Qualifier → Object compatibility map (Naming Authority R4) ────────
@@ -265,6 +282,9 @@ QUALIFIER_OBJECT_COMPAT = {
     "reversibility": frozenset({"signatures"}),
     "promotion": frozenset({"signatures"}),
     "candidates": frozenset({"signatures", "proposals"}),
+    # Provider GitHub (ADR 0141): issues/pulls + messages (commenti/review) +
+    # tasks (workflow runs). NON files/dirs/ecc.
+    "github": frozenset({"issues", "pulls", "messages", "tasks"}),
     # Granularita' testo
     "lines": frozenset({"texts", "messages"}),
     "paragraphs": frozenset({"texts", "messages"}),
@@ -845,6 +865,12 @@ _OBJECT_SYNONYMS_IT: dict[str, str] = {
     "registrato": "persons", "registrati": "persons",
     "volto": "persons", "volti": "persons",
     "viso": "persons", "visi": "persons",
+    # GitHub (ADR 0141). NB: "issue"/"pr" sono anche nei marker provider
+    # `_github` di tool_grammar; qui mappano l'OBJECT canonico.
+    "issue": "issues", "issues": "issues",
+    "segnalazione": "issues", "segnalazioni": "issues", "ticket": "issues",
+    "pr": "pulls", "pull request": "pulls", "pull": "pulls",
+    "merge request": "pulls",
 }
 _OBJECT_SYNONYMS_EN: dict[str, str] = {
     "appointment": "events", "appointments": "events",
@@ -865,6 +891,10 @@ _OBJECT_SYNONYMS_EN: dict[str, str] = {
     "person": "persons", "persons": "persons", "people": "persons",
     "enrolled": "persons", "registered": "persons",
     "face": "persons", "faces": "persons",
+    # GitHub (ADR 0141)
+    "issue": "issues", "issues": "issues", "ticket": "issues",
+    "pull": "pulls", "pulls": "pulls", "pull request": "pulls",
+    "pr": "pulls", "merge request": "pulls",
 }
 
 
