@@ -35,6 +35,45 @@ from persons_registry import PersonsRegistry, slugify  # noqa: E402
 import config as _C  # noqa: E402
 
 
+def _provider_label(imap_host: str) -> str:
+    """Etichetta provider leggibile dall'host IMAP (no lista hardcoded §7.3)."""
+    h = (imap_host or "").strip().lower()
+    for pfx in ("imap.", "imaps.", "mail.", "in."):
+        if h.startswith(pfx):
+            return h[len(pfx):]
+    return h
+
+
+def _list_actor_mail_accounts() -> list[dict]:
+    """Vista LIVE degli account mail configurati (SoT = mail_client/env, ADR 0163
+    «contacts futuro»). Profilo = vista, NON copia: zero duplicazione, niente
+    doppio pool. Espone SOLO account+indirizzo+provider; MAI segreti.
+    §7.9 deterministico (lettura env/config). Robusto: ogni errore → []."""
+    try:
+        import mail_client as _mc  # _RUNTIME gia' su sys.path
+    except Exception:
+        return []
+    out: list[dict] = []
+    try:
+        known = _mc.list_known_accounts()
+    except Exception:
+        return []
+    for acc in known:
+        try:
+            c = _mc._account_creds(acc)
+        except Exception:
+            continue
+        addr = (c.get("user") or "").strip()
+        if not addr:
+            continue
+        out.append({
+            "account": acc,
+            "address": addr,
+            "provider": _provider_label(c.get("imap_host") or ""),
+        })
+    return out
+
+
 def _persons_db_path() -> Path | None:
     v = os.environ.get("METNOS_USER_DATA")
     return (Path(v) / "persons.sqlite") if v else None
@@ -85,7 +124,8 @@ def _load_users_by_slug() -> dict:
 def _merge_entry(person: dict | None, user: dict | None,
                   *, is_self: bool = False,
                   include_examples: bool = True,
-                  include_channels: bool = True) -> dict:
+                  include_channels: bool = True,
+                  include_mail_accounts: bool = False) -> dict:
     """Fonde un record persons + un record users in una entry unificata."""
     if person is None and user is None:
         return {}
@@ -113,6 +153,12 @@ def _merge_entry(person: dict | None, user: dict | None,
             entry["channels"] = user["channels"]
     if is_self:
         entry["is_self"] = True
+    # Account mail come VISTA del profilo (no duplicazione, ADR 0163).
+    # Solo per host/self: gli account operati da Metnos appartengono al host.
+    if include_mail_accounts:
+        ma = _list_actor_mail_accounts()
+        if ma:
+            entry["mail_accounts"] = ma
     return entry
 
 
@@ -157,7 +203,7 @@ def invoke(args):
         # Modalita' A: lookup specifico per name
         if name:
             if not isinstance(name, str):
-                return {"ok": False, "error": "name must be a string"}
+                return {"ok": False, "error": _msg("ERR_ARG_NOT_STRING", arg="name")}
             slugs = reg.resolve_name(name)
             person = reg.get(slugs[0]) if slugs else None
             # User match: prima slug diretto, poi token-anywhere su display_name/name
@@ -188,10 +234,13 @@ def invoke(args):
                 slugify(actor) in target_slug
                 or target_slug in slugify(actor)
                 or (user is not None and user.get("name") == actor))
+            attach_mail = is_self or (
+                user is not None and user.get("role") == "host")
             entry = _merge_entry(
                 person, user, is_self=is_self,
                 include_examples=include_examples,
-                include_channels=include_channels)
+                include_channels=include_channels,
+                include_mail_accounts=attach_mail)
             return {
                 "ok": True,
                 "entries": [entry],
@@ -230,10 +279,12 @@ def invoke(args):
             is_self = bool(actor) and (
                 slugify(actor) == key
                 or (u is not None and u.get("name") == actor))
+            attach_mail = is_self or (u is not None and u.get("role") == "host")
             entry = _merge_entry(
                 p, u, is_self=is_self,
                 include_examples=include_examples,
-                include_channels=include_channels)
+                include_channels=include_channels,
+                include_mail_accounts=attach_mail)
             entries.append(entry)
         return {
             "ok": True,
@@ -248,7 +299,7 @@ def main():
     try:
         args = json.load(sys.stdin)
     except json.JSONDecodeError as e:
-        sys.stdout.write(json.dumps({"ok": False, "error": f"invalid input json: {e}"}))
+        sys.stdout.write(json.dumps({"ok": False, "error": _msg("ERR_JSON_INVALID")}))
         return
     result = invoke(args)
     sys.stdout.write(json.dumps(result, ensure_ascii=False, default=str))

@@ -71,7 +71,15 @@ def _render_tool_pool(pool: list[str], catalog: Optional[list]) -> str:
         schema = getattr(e, "args_schema", None) or {}
         required = schema.get("required") or []
         roo = schema.get("requires_one_of") or []
-        props = list((schema.get("properties") or {}).keys())[:8]
+        props_map = schema.get("properties") or {}
+        # Arg di CONFIGURAZIONE (non intento) marcati `runtime_resolved`: NON
+        # esposti all'LLM. Lesson A3/B1 (lessons_learned.md): l'enum di un arg
+        # come `client`/`account`/`provider` induce un BIAS (il pattern vince
+        # sul colloquiale "OMETTI") → il backend lo risolve il RUNTIME, non il
+        # proposer. L'arg resta nello schema per validazione/umani/iniezione.
+        props = [p for p in props_map.keys()
+                 if not (isinstance(props_map.get(p), dict)
+                         and props_map[p].get("runtime_resolved"))][:8]
         bits = [f"- {name}"]
         if desc_short:
             bits.append(f" — {desc_short}")
@@ -81,6 +89,18 @@ def _render_tool_pool(pool: list[str], catalog: Optional[list]) -> str:
             bits.append(f" [requires_one_of: {roo}]")
         if props:
             bits.append(f" args=[{','.join(props)}]")
+        # §8.3 anti-invenzione: esponi gli enum degli arg così il Proposer
+        # sceglie un valore valido invece di inventarlo (universal §7.3 — vale
+        # per qualunque tool con enum: style, via_channel, ecc.).
+        enum_bits = []
+        for pname in props:
+            decl = props_map.get(pname) or {}
+            enum_vals = decl.get("enum")
+            if enum_vals:
+                vals = ",".join(str(v) for v in enum_vals[:8])
+                enum_bits.append(f"{pname}∈{{{vals}}}")
+        if enum_bits:
+            bits.append(f" enums=[{'; '.join(enum_bits)}]")
         lines.append("".join(bits))
     return "\n".join(lines)
 
@@ -187,13 +207,7 @@ class SimpleProposer:
         }
         if use_grammar:
             try:
-                # Lazy import GRAMMAR_FRAMEWORK da praxis_propose (riuso §7.3)
-                import sys as _sys
-                from pathlib import Path as _P
-                _legacy = _P("/opt/metnos/runtime/_legacy")
-                if str(_legacy) not in _sys.path:
-                    _sys.path.insert(0, str(_legacy))
-                from praxis_propose import GRAMMAR_FRAMEWORK
+                from .grammar_framework import GRAMMAR_FRAMEWORK
                 llm_kwargs["grammar"] = GRAMMAR_FRAMEWORK
             except Exception as ex:
                 log.warning("GBNF grammar load fallita: %r — fallback no-grammar", ex)

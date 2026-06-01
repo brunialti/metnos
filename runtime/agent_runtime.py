@@ -3271,6 +3271,129 @@ class TurnLog:
         "read_files_xlsx":    "max_rows",
     }
 
+    # Counter di successo per verbo mutating (§2.6). Primo presente vince.
+    _MUTATE_SUCCESS_KEYS = (
+        "n_deleted", "n_moved", "n_sent", "n_created", "n_written",
+        "n_set", "n_shared", "n_changed", "n_ordered", "ok_count",
+    )
+
+    def _enforce_mutating_honesty(self):
+        """§2.8 (mai negoziabile): un final che CLAIMA un esito mutating deve
+        riflettere il result. Caso: lo step mutating ha ok=True ma success=0 E
+        ha `not_found`/`failed` non vuoti (l'utente ha nominato target che NON
+        esistono) → il final ottimistico del proposer ("...e' stato cancellato")
+        e' DISONESTO. Sostituiscilo con un messaggio onesto deterministico.
+
+        Complementare a `_detect_unfulfilled_mutating_intent` (che gestisce
+        ok=False / nessuno step). Trigger STRETTO su not_found/failed: il caso
+        legittimo "0 match" (cancella spam → 0 da spostare) NON viene toccato.
+        §7.9 zero LLM, generale per delete/move/send/...
+        """
+        if not self.steps:
+            return
+        mut = None
+        for s in reversed(self.steps):
+            res = s.result if isinstance(s.result, dict) else {}
+            if not res:
+                continue
+            has_signals = (
+                any(k in res for k in self._MUTATE_SUCCESS_KEYS)
+                or "not_found" in res or "failed" in res)
+            if "results" in res and has_signals:
+                mut = res
+                break
+            # primo result puramente di lettura (entries, no segnali) → il turno
+            # non e' mutating in coda: non intervenire.
+            if "entries" in res and not has_signals:
+                return
+        if mut is None:
+            return
+        not_found = mut.get("not_found") or []
+        failed = mut.get("failed") or []
+        not_found = not_found if isinstance(not_found, list) else [not_found]
+        failed = failed if isinstance(failed, list) else [failed]
+        if not not_found and not failed:
+            return  # esito pieno: nessun claim da correggere
+        success = None
+        for k in self._MUTATE_SUCCESS_KEYS:
+            if isinstance(mut.get(k), int):
+                success = mut[k]
+                break
+        if success is None:
+            results = mut.get("results") or []
+            success = sum(1 for r in results
+                          if not isinstance(r, dict) or r.get("ok", True))
+
+        def _ids(lst):
+            out = []
+            for it in lst:
+                if isinstance(it, dict):
+                    out.append(str(it.get("id") or it.get("event_id")
+                                   or it.get("path") or it.get("error") or it))
+                else:
+                    out.append(str(it))
+            return ", ".join(out[:8])
+
+        detail = _ids(not_found) or _ids(failed)
+        from i18n import register_key_if_missing as _rk
+        if success == 0:
+            _rk("MSG_MUTATE_NONE_DONE",
+                "Nessun elemento «{detail}» trovato: nessuna operazione "
+                "eseguita.",
+                "No item «{detail}» found: no operation performed.")
+            self.final_message = msg("MSG_MUTATE_NONE_DONE", detail=detail)
+        else:
+            _rk("MSG_MUTATE_PARTIAL",
+                "Attenzione: {n} elemento/i non trovato/i o fallito/i "
+                "({detail}).",
+                "Warning: {n} item(s) not found or failed ({detail}).")
+            notice = msg("MSG_MUTATE_PARTIAL",
+                         n=len(not_found) + len(failed), detail=detail)
+            if notice not in (self.final_message or ""):
+                self.final_message = ((self.final_message or "").rstrip()
+                                      + "\n\n" + notice).strip()
+
+    def _collect_failure_notices(self):
+        """§2.8 (mai silent failure): rende VISIBILI i fallimenti per-item/account
+        (`failed[]`/`fail_count`) di uno step producer. Senza questo, account IMAP
+        falliti (es. SSL 'bad record mac') → il conteggio cade a 0 e il final
+        dichiara 'Hai 0 mail' mentre in realtà N account NON sono stati controllati
+        (bug 1/6). Generale per qualunque executor con `failed[]`."""
+        notices, seen = [], set()
+        for s in self.steps:
+            res = s.result if isinstance(s.result, dict) else {}
+            failed = res.get("failed")
+            if not (isinstance(failed, list) and failed):
+                continue
+            # Skip i risultati MUTATING (§2.6: hanno `results`): i loro fallimenti
+            # sono gestiti da _enforce_mutating_honesty → evita doppio-avviso.
+            # Qui solo PRODUCER read/find/get (entries) con failed[] per-item
+            # (es. read_messages account SSL-fail). NB: niente `ok_count` come
+            # marker — read_messages lo espone, romperebbe questo ramo.
+            if "results" in res:
+                continue
+            labels = []
+            for f in failed[:6]:
+                if isinstance(f, dict):
+                    lab = (f.get("account") or f.get("url") or f.get("path")
+                           or f.get("message_id") or f.get("id") or f.get("uid")
+                           or f.get("to") or f.get("index"))
+                    labels.append(str(lab)[:50] if lab is not None else "?")
+            n = len(failed)
+            key = (s.chosen_tool, n, tuple(labels))
+            if key in seen:
+                continue
+            seen.add(key)
+            from i18n import register_key_if_missing as _rk
+            _rk("MSG_PARTIAL_ITEM_FAILURE",
+                "Attenzione: {n} non controllati per errore ({labels}); il "
+                "risultato è incompleto, il conteggio può non essere reale.",
+                "Warning: {n} not checked due to error ({labels}); the result "
+                "is incomplete, the count may not be real.")
+            notices.append(msg("MSG_PARTIAL_ITEM_FAILURE", n=n,
+                               labels=", ".join(labels) or "?"))
+        return notices
+
     def _collect_expandable_caps(self):
         """Per ogni step truncated dove conosciamo (a) il cap_field e (b)
         l'available_total > used, costruisce una proposta di re-run con
@@ -3337,6 +3460,21 @@ class TurnLog:
             # Skip explicit user-set cap (truncated_intentional, ADR 0062).
             if res.get("truncated_intentional"):
                 continue
+            # Skip producer a RANKING (output_policy modi G/W/TG): il top-K E'
+            # la risposta, available_total e' solo informazione → "allargo?" e'
+            # rumore E lascia un dialog pendente che mangia la query successiva
+            # (bug 31/5: ricerche foto/web). §7.9 deterministico, generale
+            # (copre find_images_indices/find_urls e futuri ranked producer).
+            try:
+                from output_policy import (
+                    resolve as _op_resolve, RANKED_MODES as _RANKED)
+                if _op_resolve(getattr(self, "intent_verb", ""),
+                               s.chosen_tool,
+                               getattr(self, "user_query", "")
+                               ).get("mode") in _RANKED:
+                    continue
+            except Exception as _e:
+                log.debug("output_policy ranked-skip noop: %r", _e)
             used = res.get("used") or res.get("ok_count") or res.get("count")
             available = res.get("available_total")
             if not available or not used or available <= used:
@@ -3850,6 +3988,20 @@ class TurnLog:
             # generale via suffix qualifier, parallelo a cap-expand suppression.
             if s.chosen_tool and s.chosen_tool.endswith("_empty"):
                 continue
+            # Producer a RANKING (output_policy G/W/TG): il top-K E' la
+            # risposta, available_total e' il pool scoreggiato (non risultati
+            # "tagliati") → il notice "Hai N, troppi, considero K" e'
+            # fuorviante. Parallelo alla soppressione cap_expand (§2.7).
+            try:
+                from output_policy import (
+                    resolve as _op_resolve, RANKED_MODES as _RANKED)
+                if _op_resolve(getattr(self, "intent_verb", ""),
+                               s.chosen_tool,
+                               getattr(self, "user_query", "")
+                               ).get("mode") in _RANKED:
+                    continue
+            except Exception as _e:
+                log.debug("output_policy ranked-notice skip noop: %r", _e)
             # Solo i PRODUCER (read/find/list/get) emettono notice di
             # truncation user-facing: rappresentano l'evento "dato sorgente
             # > cap". I PROCESSOR (vocab.PROCESSOR_VERBS) trasformano una
@@ -3944,6 +4096,13 @@ class TurnLog:
         # messaggio utile (bug live 15/5/2026 mail run 1: prepend mascherava
         # la sintesi LLM del riassunto mail).
         if self.final_kind == "answer":
+            # §2.8: un final mutating non puo' claimare un esito non avvenuto.
+            self._enforce_mutating_honesty()
+            # §2.8: rendi visibili i fallimenti per-item/account (no silent "Hai 0").
+            for _fn in self._collect_failure_notices():
+                if _fn and _fn not in (self.final_message or ""):
+                    self.final_message = ((self.final_message or "").rstrip()
+                                          + "\n\n" + _fn).strip()
             _llm_synth_final = bool(
                 self.steps and self.steps[-1].chosen_tool == "final_answer"
             )
@@ -4027,6 +4186,31 @@ class TurnLog:
             if isinstance(atts, list) and atts:
                 self.attachments = atts
                 break
+
+        # Universal §7.3: se reference_images allegate via drag&drop,
+        # PREPEND le foto input agli attachments cosi' la chat mostra
+        # anche le N foto di reference (utile per reverse image search:
+        # vedere visivamente input vs simili web).
+        upload_step = next((s for s in self.steps if s.chosen_tool == "@uploaded"), None)
+        if upload_step is not None and isinstance(upload_step.result, dict):
+            up_entries = upload_step.result.get("entries") or []
+            input_atts = []
+            for e in up_entries:
+                if not isinstance(e, dict):
+                    continue
+                p = e.get("path") or e.get("reference_image")
+                if not isinstance(p, str) or not p:
+                    continue
+                from pathlib import Path as _P
+                input_atts.append({
+                    "kind": "image",
+                    "path": p,
+                    "basename": _P(p).name,
+                    "caption": "input",
+                })
+            if input_atts:
+                # Prepend: input prima, web/local risultati dopo
+                self.attachments = input_atts + list(self.attachments or [])
 
         # Invariante §2.8 (no silent failure): un turno terminale che parla
         # all'utente non puo' avere final_message vuoto. Indipendente dal
@@ -4411,6 +4595,89 @@ _BUILTIN_TOOL_HANDLERS: dict = {
     "set_tasks": handle_set_tasks,
 }
 
+# Tool-spec OpenAI-style per i builtin in-process che NON sono iniettati nel
+# catalog via loader (`*_tasks` lo sono via BUILTIN_INPROC_SPECS; describe/
+# classify no). Serve a Engine v2 per costruire Executor virtuali da passare
+# al Validator (altrimenti `tool_unknown` falso su helper universali §11).
+# Universal §7.3: aggiungere una riga = nuovo builtin coperto, niente
+# special-case per-tool.
+_BUILTIN_TOOL_SPECS: dict = {
+    "describe_entries": DESCRIBE_ENTRIES_TOOL,
+    "classify_entries": CLASSIFY_ENTRIES_TOOL,
+}
+
+
+def _engine_v2_catalog_with_builtins(catalog: list) -> list:
+    """Augmenta il catalog con Executor virtuali per i builtin in-process
+    (describe_entries/classify_entries/...) mancanti.
+
+    Engine v2 (`dispatch.run_turn`) passa lo STESSO catalog al Proposer e al
+    `Validator`. I builtin in-process invocabili (`_BUILTIN_TOOL_HANDLERS`)
+    NON sono tutti nel catalog del loader → il Validator li flaggerebbe come
+    `tool_unknown` (falso positivo → re-propose sprecato). Allinea Engine v2
+    al path legacy che fa `{e.name} | _BUILTIN_TOOL_HANDLERS.keys()`.
+
+    Idempotente: builtin gia' presente (es. `*_tasks` via loader) → skip.
+    `final_answer` resta virtual (gestito dal Validator nativamente).
+    """
+    try:
+        from loader import Executor as _LExec
+    except Exception:
+        return catalog
+    present = {getattr(e, "name", None) for e in catalog}
+    out = list(catalog)
+    for name in _BUILTIN_TOOL_HANDLERS:
+        if name in present:
+            continue
+        spec = _BUILTIN_TOOL_SPECS.get(name)
+        fn_block = (spec or {}).get("function") or {}
+        params = fn_block.get("parameters") or {"type": "object", "properties": {}}
+        desc = fn_block.get("description") or ""
+        out.append(_LExec(
+            name=name, version="1.0.0", description=desc,
+            affinity=[], args_schema=params, capabilities=[], tests=[],
+            code_path=None, manifest_path=Path(""),
+            signed_by="(inproc builtin)", revertible=False,
+            lifecycle="active",
+        ))
+    return out
+
+
+def _invoke_builtin_handler(tool_name: str, args: dict, *,
+                              actor: str | None = None,
+                              channel: str | None = None,
+                              turn_id: str | None = None) -> dict:
+    """Universal §7.9 wrapper: invoca handler builtin passando solo i kwargs
+    che la signature accetta (introspection). Risolve crash su
+    list_tasks/create_tasks/delete_tasks (kwarg actor/channel required).
+    """
+    handler = _BUILTIN_TOOL_HANDLERS.get(tool_name)
+    if handler is None:
+        return {"ok": False, "error": f"unknown builtin: {tool_name}"}
+    import inspect as _inspect
+    try:
+        sig = _inspect.signature(handler)
+        accepts = set(sig.parameters.keys())
+    except (ValueError, TypeError):
+        accepts = set()
+    kwargs = {}
+    if "actor" in accepts:
+        kwargs["actor"] = actor or "host"
+    if "channel" in accepts:
+        kwargs["channel"] = channel or ""
+    if "turn_id" in accepts:
+        kwargs["turn_id"] = turn_id or ""
+    # Se signature ha **_ catch-all, possiamo passare safe.
+    try:
+        return handler(args, **kwargs)
+    except TypeError as te:
+        # Fallback: prova senza kwargs (handler legacy che vuole solo args)
+        if "actor" in str(te) or "channel" in str(te):
+            log.error("Builtin %s requires kwargs not provided: %s",
+                      tool_name, te)
+        return {"ok": False, "error": f"builtin call failed: {te}",
+                "tool": tool_name}
+
 
 # --- Auto-remediation generalizzata (ADR 0153) -----------------------------
 
@@ -4452,7 +4719,10 @@ def _maybe_remediate_obs(
     def _invoke_prereq(tool_name: str, prereq_args: dict) -> dict:
         # Dispatcher uniforme builtin vs executor reale.
         if tool_name in _BUILTIN_TOOL_HANDLERS:
-            return _BUILTIN_TOOL_HANDLERS[tool_name](prereq_args)
+            return _invoke_builtin_handler(
+                tool_name, prereq_args,
+                actor=actor, channel=channel, turn_id=turn_id,
+            )
         _exec = next(
             (e for e in catalog if e.name == tool_name), None,
         )
@@ -4499,7 +4769,10 @@ def _maybe_remediate_obs(
     # Retry dell'executor originale con args arricchiti. Dispatcher
     # uniforme builtin vs executor reale (registry modulo-level).
     if original_tool in _BUILTIN_TOOL_HANDLERS:
-        retry_obs = _BUILTIN_TOOL_HANDLERS[original_tool](retry_args)
+        retry_obs = _invoke_builtin_handler(
+            original_tool, retry_args,
+            actor=actor, channel=channel, turn_id=turn_id,
+        )
     else:
         _orig_exec = next(
             (e for e in catalog if e.name == original_tool), None,
@@ -4519,9 +4792,9 @@ def _maybe_remediate_obs(
     return (_rh_step, prereq_obs, retry_obs)
 
 
-# --- L3 Praxis Engine cascata (ADR 0161) ---------------------------------
+# --- L3 Engine v2 dispatcher (ADR 0164) ----------------------------------
 
-def _try_praxis_cascade(
+def _try_engine_v2(
     query: str,
     catalog: list,
     *,
@@ -4531,207 +4804,127 @@ def _try_praxis_cascade(
     lang: str = "it",
     verbose: bool = False,
 ) -> "dict | None":
-    """Cascata Praxis: cache O(1) → LLM 1-shot framework → execute deterministico.
+    """Bridge agent_runtime → engine.dispatch.run_turn.
 
-    Returns:
-      None: skip (intent fail, framework parse fail, ecc.).
-      dict {steps (StepLog list), final_text, final_kind, framework,
-            framework_hash, intent_sig, verb, object, keywords,
-            match_source, elapsed_ms}: ready for run_turn caller.
+    Adatta i parametri legacy al nuovo dispatcher, gestisce intent
+    extraction, costruisce runtime_ctx, e converte DispatchResult →
+    dict legacy shape per minimal changes a caller.
     """
     try:
-        from praxis_executor import try_praxis_path as _praxis_entry
-    except Exception as _ex:
-        import logging as _logging
-        _logging.getLogger(__name__).warning("praxis import failed: %r", _ex)
+        from engine import dispatch as _dispatch
+        from engine.types import Intent
+        from intent_extractor import extract_intent
+    except Exception as ex:
+        log.warning("engine v2 import failed: %r", ex)
         return None
 
-    # Provider LLM fast (intent_extractor + filler args)
-    def _llm_call_fast(sys_msg: str, user_msg: str, *,
-                        max_tokens: int = 80, think: bool = False,
-                        **_kw) -> str:
+    # Provider LLM fast (per filler resolve)
+    def _llm_call_fast(sys_msg, user_msg, *, max_tokens=80, think=False, **_):
         try:
             from llm_router import LLMRouter
-            router = LLMRouter()
-            provider = router.provider("fast")
-            res = provider.chat(sys_msg, user_msg,
-                                  max_tokens=max_tokens, think=think)
-            txt = getattr(res, "text", res)
-            return (txt or "").strip()
-        except Exception as ex:
-            import logging as _logging
-            _logging.getLogger(__name__).warning(
-                "praxis._llm_call_fast failed: %r", ex)
+            res = LLMRouter().provider("fast").chat(
+                sys_msg, user_msg, max_tokens=max_tokens, think=think)
+            return (getattr(res, "text", res) or "").strip()
+        except Exception:
             return ""
 
-    # Provider LLM wise (framework proposer Mētis, fisso wise)
-    # Pronoia puo' scalare a frontier via env METNOS_PRONOIA_TIER.
-    def _llm_call_wise(sys_msg: str, user_msg: str, *,
-                        max_tokens: int = 2048, think: bool = True,
-                        grammar: "str | None" = None,
-                        tier_override: "str | None" = None,
-                        **_kw) -> str:
-        from llm_router import LLMRouter
-        router = LLMRouter()
-        provider = router.provider(tier_override or "wise")
-        kw: dict = {"max_tokens": max_tokens, "think": think}
-        if grammar:
-            kw["grammar"] = grammar
+    # Provider LLM wise (per Proposer)
+    def _llm_call_wise(sys_msg, user_msg, *, max_tokens=2048, think=True, **kw):
         try:
-            res = provider.chat(sys_msg, user_msg, **kw)
-        except TypeError as ex:
-            # Provider non supporta grammar (es. AnthropicProvider) → retry senza
-            if "grammar" in str(ex) and "grammar" in kw:
-                kw.pop("grammar", None)
-                kw["think"] = True  # reabilita thinking se grammar dropped
-                try:
-                    res = provider.chat(sys_msg, user_msg, **kw)
-                except Exception as ex2:
-                    import logging as _logging
-                    _logging.getLogger(__name__).warning(
-                        "praxis._llm_call_wise (no grammar) failed: %r", ex2)
-                    return ""
-            else:
-                import logging as _logging
-                _logging.getLogger(__name__).warning(
-                    "praxis._llm_call_wise TypeError: %r", ex)
-                return ""
+            from llm_router import LLMRouter
+            tier = kw.get("tier_override") or "wise"
+            res = LLMRouter().provider(tier).chat(
+                sys_msg, user_msg, max_tokens=max_tokens, think=think)
+            return (getattr(res, "text", res) or "").strip()
         except Exception as ex:
-            import logging as _logging
-            _logging.getLogger(__name__).warning(
-                "praxis._llm_call_wise failed: %r", ex)
+            log.warning("engine v2 _llm_call_wise: %r", ex)
             return ""
-        txt = getattr(res, "text", res)
-        return (txt or "").strip()
 
-    # Catalog by name + invoke wrapper.
-    # Include sia executor subprocess che builtin in-process handlers
-    # (classify_entries, describe_entries, *_tasks) — il LLM proposer
-    # deve poterli vedere nel pool, il dispatcher deve poterli invocare.
-    catalog_by_name = {e.name: e for e in catalog if getattr(e, "name", None)}
+    # Intent extraction
+    intent_raw = extract_intent(query, _llm_call_fast)
+    if not intent_raw:
+        return None
+    intent = Intent(
+        verb=(intent_raw.get("verb") or "").lower(),
+        object=(intent_raw.get("object") or "").lower(),
+        keywords=list(intent_raw.get("keywords") or []),
+        confidence=float(intent_raw.get("confidence") or 1.0),
+        lang=lang,
+    )
 
-    # Extend catalog logically con i builtin (oggetti shim con .name).
-    # Non li aggiungo a catalog_by_name in modo da preservare il dispatch
-    # via _BUILTIN_TOOL_HANDLERS check sotto.
-    class _BuiltinShim:
-        def __init__(self, name):
-            self.name = name
-    builtin_catalog = [_BuiltinShim(n) for n in _BUILTIN_TOOL_HANDLERS.keys()]
-    catalog_augmented = list(catalog) + builtin_catalog
-
-    def _invoke_wrap(tool_name: str, args: dict) -> dict:
-        # Pre-resolve entries → consumer_arg (from_entries_key o singolare).
-        # Riusa _consumer_match_arg esistente (PLANNER step-by-step logic).
-        if "entries" in args and tool_name not in _BUILTIN_TOOL_HANDLERS:
-            ex_obj = catalog_by_name.get(tool_name)
-            schema = getattr(ex_obj, "args_schema", None) if ex_obj else None
-            if schema:
-                entries = args.get("entries") or []
-                consumer_arg = _consumer_match_arg(schema, entries)
-                if consumer_arg and consumer_arg != "entries":
-                    props = schema.get("properties") or {}
-                    spec = props.get(consumer_arg) or {}
-                    from_key = spec.get("from_entries_key")
-                    if not from_key and consumer_arg.endswith("s"):
-                        from_key = consumer_arg[:-1]
-                    if from_key:
-                        values = [e[from_key] for e in entries
-                                    if isinstance(e, dict) and from_key in e]
-                        if values:
-                            args = {k: v for k, v in args.items()
-                                     if k != "entries"}
-                            args[consumer_arg] = values
-        # 1. Builtin in-process handler (classify_entries, describe_entries,
-        # list_tasks, ...). Alcuni handler richiedono actor/channel/turn_id
-        # come kwargs (es. recurring_tasks). Passali sempre, gli handler che
-        # non li usano hanno **_ catch-all.
+    # Invoke executor callback wrapped — Executor v2 chiama via tool name
+    def _invoke(tool_name: str, args: dict) -> dict:
         if tool_name in _BUILTIN_TOOL_HANDLERS:
-            try:
-                return _BUILTIN_TOOL_HANDLERS[tool_name](
-                    args,
-                    actor=actor or "host",
-                    channel=channel or "",
-                    turn_id=turn_id or "",
-                )
-            except TypeError:
-                # Handler legacy senza kwargs (es. describe_entries)
-                try:
-                    return _BUILTIN_TOOL_HANDLERS[tool_name](args)
-                except Exception as exc:
-                    return {"ok": False, "error": str(exc),
-                             "error_class": "exception"}
-            except Exception as exc:
-                return {"ok": False, "error": str(exc),
-                         "error_class": "exception"}
-        # 2. Executor subprocess
-        ex = catalog_by_name.get(tool_name)
-        if ex is None:
-            return {"ok": False,
-                     "error": f"tool unknown: {tool_name}",
+            # Estrai actor/channel se disponibili nel closure scope
+            _ac = locals().get("actor") or "host"
+            _ch = locals().get("channel") or ""
+            return _invoke_builtin_handler(tool_name, args, actor=_ac, channel=_ch)
+        exec_obj = next((e for e in catalog if e.name == tool_name), None)
+        if exec_obj is None:
+            return {"ok": False, "error": f"tool '{tool_name}' non in catalog",
                      "error_class": "tool_unknown"}
         try:
             return invoke_executor(
-                ex, args,
-                timeout_s=getattr(ex, "timeout_s", None) or 30,
+                exec_obj, args,
+                timeout_s=(getattr(exec_obj, "timeout_s", None) or 120),
                 autonomy="supervised", turn_id=turn_id,
-                actor=actor, channel=channel,
-            )
-        except Exception as exc:
-            return {"ok": False, "error": str(exc),
+                actor=actor, channel=channel)
+        except Exception as ex:
+            return {"ok": False, "error": f"{type(ex).__name__}: {ex}",
                      "error_class": "exception"}
 
-    # Recovery deterministico G2: error_class=invalid_args → tenta
-    # args_extractor.regex_extract sulla query + retry once.
-    def _remediate_args_cb(*, tool, args, result, query_context):
-        ex_obj = catalog_by_name.get(tool)
-        schema = getattr(ex_obj, "args_schema", None) if ex_obj else None
-        if not schema:
-            return None
-        try:
-            from args_extractor import regex_extract
-            extracted = regex_extract(query_context, schema)
-        except Exception:
-            return None
-        if not extracted:
-            return None
-        merged = dict(args)
-        changed = False
-        for k, v in extracted.items():
-            if k not in merged or merged.get(k) in (None, "", [], {}):
-                merged[k] = v
-                changed = True
-        return merged if changed else None
+    runtime_ctx = {
+        "actor": actor or "",
+        "lang": lang,
+        "channel": channel or "",
+    }
 
-    res = _praxis_entry(
-        query=query, catalog=catalog_augmented,
-        invoke_executor_cb=_invoke_wrap,
-        llm_call_wise=_llm_call_wise,
-        llm_call_fast=_llm_call_fast,
-        remediate_args_cb=_remediate_args_cb,
-        lang=lang,
-        runtime_ctx={"actor": actor or "", "lang": lang,
-                      "channel": channel or ""},
-        verbose=verbose,
-    )
-    if res is None:
+    # Engine v2 passa lo stesso catalog a Proposer e Validator: includi i
+    # builtin in-process (describe_entries/classify_entries) altrimenti
+    # mancanti → Validator falsa `tool_unknown` (§11, fix wiring B).
+    catalog_v2 = _engine_v2_catalog_with_builtins(catalog)
+
+    try:
+        result = _dispatch.run_turn(
+            query=query, intent=intent, catalog=catalog_v2,
+            invoke_executor_cb=_invoke,
+            llm_call_wise=_llm_call_wise,
+            llm_call_fast=_llm_call_fast,
+            runtime_ctx=runtime_ctx,
+            turn_id=turn_id, lang=lang, verbose=verbose)
+    except Exception as ex:
+        import traceback as _tb
+        log.warning("engine.dispatch.run_turn failed: %r\n%s", ex, _tb.format_exc())
         return None
 
-    # Convert PraxisRun.steps (dataclass) → StepLog per log.steps
-    steps_out: list = []
-    for s in res["steps"]:
-        sl = StepLog(step_num=s.step_idx)
-        sl.chosen_tool = s.tool
-        sl.raw_args = dict(s.args)
-        sl.resolved_args = dict(s.args)
-        sl.exec_ms = s.latency_ms
-        sl.result = s.result
-        sl.vaglio_approved = True
-        if hasattr(sl, "__dict__"):
-            sl.__dict__["praxis"] = True
-            sl.__dict__["praxis_match_source"] = res.get("match_source", "")
-        steps_out.append(sl)
-    res["steps"] = steps_out
-    return res
+    # Converti DispatchResult → dict shape legacy (per minimal change caller)
+    steps_out = []
+    needs_inputs_obs = None
+    if result.run:
+        for s in result.run.steps:
+            sl = StepLog(step_num=s.step_idx)
+            sl.chosen_tool = s.tool
+            sl.raw_args = dict(s.args)
+            sl.resolved_args = dict(s.args)
+            sl.exec_ms = s.latency_ms
+            sl.result = s.result
+            steps_out.append(sl)
+            # §7.3: propaga needs_inputs all'upstream per dialog handling
+            if isinstance(s.result, dict) and s.result.get("decision") == "needs_inputs":
+                needs_inputs_obs = s.result
+    return {
+        "steps": steps_out,
+        "final_text": result.final_text,
+        "final_kind": result.final_kind,
+        "framework_hash": result.framework_hash,
+        "verb": intent.verb,
+        "object": intent.object,
+        "keywords": intent.keywords,
+        "match_source": result.match_source,
+        "elapsed_ms": result.elapsed_ms,
+        "error_class": result.error_class,
+        "needs_inputs_obs": needs_inputs_obs,
+    }
 
 
 # --- L2 multi-tool fast-path playback (ADR 0150) ---------------------------
@@ -4897,7 +5090,10 @@ def _try_multi_tool_path_playback(
         t0 = time.perf_counter()
         try:
             if _is_builtin:
-                obs = _BUILTIN_TOOL_HANDLERS[tool_name](resolved_args)
+                obs = _invoke_builtin_handler(
+                    tool_name, resolved_args,
+                    actor=actor, channel=channel, turn_id=turn_id,
+                )
             else:
                 obs = invoke_executor(
                     executor, resolved_args,
@@ -5077,23 +5273,25 @@ def _orchestrate_strato3_escalation(
         descr = (f"Pipelines attempted and rejected ({consec_errors} ✗): "
                   "the answer needs a different shape. Choose how to proceed.")
         choices = [
+            "retry: try the same path again (engine may have been updated)",
             "synth: build a dedicated executor for this",
             "frontier: ask an external high-stakes LLM",
             "reformulate: I rewrite the request",
             "abandon: stop here",
         ]
-        prompt_text = "Choose one of the four actions"
+        prompt_text = "Choose one of the five actions"
     else:
         title = "Ho provato 3 strade diverse, tutte rifiutate. Cosa preferisci?"
         descr = (f"Pipeline tentate e rifiutate ({consec_errors} ✗): "
                   "la risposta richiede una forma diversa. Scegli come procedere.")
         choices = [
+            "ritenta: prova di nuovo lo stesso path (motore puo' essere aggiornato)",
             "sintetizza: costruisci un executor dedicato",
             "frontier: chiedi a un LLM esterno di frontiera",
             "riformula: riscrivo la richiesta",
             "abbandona: fermati qui",
         ]
-        prompt_text = "Scegli una delle quattro azioni"
+        prompt_text = "Scegli una delle cinque azioni"
     sender_id = f"{channel}:{actor}" if channel else actor
     on_complete = {
         "type": "strato3_choice_dispatch",
@@ -5129,6 +5327,7 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
              reference_images=None,
              resume_with_scratchpad=None,
              allow_disambig_synth=True,
+             bypass_rejected_pipelines=False,
              verbose=False):
     """
     Se k=None (default v1.1), usa adaptive K fra k_min e k_max.
@@ -5200,6 +5399,10 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
         _consec = count_consecutive_errors_for_query(user_query_for_run)
     except Exception:
         _consec = 0
+    # bypass_rejected_pipelines (strato 3 "ritenta"): salta dialog escalation
+    # e qualsiasi anti_skill filter, esegue il turno come fresh.
+    if bypass_rejected_pipelines:
+        _consec = 0
     if _consec >= 3 and channel != "":
         try:
             _ask_result = _orchestrate_strato3_escalation(
@@ -5254,7 +5457,8 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
         project_paths=_render_project_paths_block(),
         users_known=_render_users_known_block(),
         telos_block=_render_telos_block(DEFAULT_LANG),
-        rejected_block=_render_rejected_pipelines_block(user_query, DEFAULT_LANG),
+        rejected_block=("" if bypass_rejected_pipelines
+                         else _render_rejected_pipelines_block(user_query, DEFAULT_LANG)),
         **_now_vars,
     )
     # ADR 0149 (18/5/2026): instruction block per il by-product
@@ -5517,13 +5721,120 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
                     print(f"[fast_path] match ma executor fallito ({_fp_obs.get('error')!r}), "
                           f"fallback PLANNER")
 
-        # ── L3 Praxis Engine (ADR 0161) ────────────────────────────────
-        # Cascata: intent_extractor → cache O(1) → LLM 1-shot framework
-        # → execute deterministico. Sostituisce PLANNER step-by-step per
-        # intent ricorrenti. Feature flag METNOS_PRAXIS=1 default ON.
-        if os.environ.get("METNOS_PRAXIS", "1") == "1":
+        # ── L3 Engine v2 (ADR 0164) ────────────────────────────────────
+        # Dispatcher 4-layer: fastpath → autopath → validator → engine.
+        # Sostituisce Praxis legacy. Feature flag METNOS_ENGINE_V2=1
+        # (default ON post-migration).
+        # Universal §7.9 — compound query: prova DECOMPOSER deterministico
+        # PRIMA di Engine v2/Praxis. Se decompose succeed → build Framework
+        # e esegui via ExecutorEngine direttamente (skip LLM Mētis).
+        # Fallback a legacy PLANNER ReAct se decomposer fail ma >=2 verbi.
+        _force_legacy_compound = False
+        _decomposed_steps = None
+        try:
+            from prefilter import (
+                tokenize as _pf_tokenize,
+                detect_canonical_verbs_all as _pf_detect_verbs,
+            )
+            _q_tokens = _pf_tokenize(user_query_for_run)
+            _q_verbs = _pf_detect_verbs(_q_tokens)
+            if len(set(_q_verbs)) >= 2:
+                # Try deterministic decomposer
+                try:
+                    from compound_decomposer import decompose_query
+                    # Union catalog + builtin in-process handlers (describe_entries,
+                    # classify_entries, create_tasks, ecc.) — universal §7.9.
+                    _avail_tools = ({e.name for e in catalog}
+                                    | set(_BUILTIN_TOOL_HANDLERS.keys())
+                                    | {"final_answer"})
+                    _decomposed_steps = decompose_query(
+                        user_query_for_run, _avail_tools)
+                except Exception as _ex_dec:
+                    import logging as _logging
+                    _logging.getLogger(__name__).warning(
+                        "decomposer failed: %s", _ex_dec)
+                if _decomposed_steps:
+                    import logging as _logging
+                    _logging.getLogger(__name__).info(
+                        "COMPOUND DECOMPOSED: %d steps %s",
+                        len(_decomposed_steps),
+                        [s["tool"] for s in _decomposed_steps])
+                else:
+                    _force_legacy_compound = True
+                    import logging as _logging
+                    _logging.getLogger(__name__).info(
+                        "COMPOUND query: %d verbs %s → decomposer failed, "
+                        "use legacy PLANNER", len(set(_q_verbs)),
+                        sorted(set(_q_verbs)))
+        except Exception:
+            pass
+
+        # Se decomposer ha prodotto steps → esegui via ExecutorEngine
+        if _decomposed_steps:
             try:
-                _praxis_res = _try_praxis_cascade(
+                from engine.executor import Executor as _EngineExec
+                from engine.types import Framework, StepSpec, FillerSpec
+                framework = Framework(
+                    steps=[StepSpec(tool=s["tool"], args=s.get("args") or {})
+                            for s in _decomposed_steps] + [StepSpec(tool="final_answer")],
+                    fillers={},
+                    final_message="",
+                )
+                # invoke_executor: dispatcher condiviso
+                def _exec_invoke(tool_name: str, args: dict) -> dict:
+                    if tool_name in _BUILTIN_TOOL_HANDLERS:
+                        return _invoke_builtin_handler(
+                            tool_name, args, actor=actor,
+                            channel=channel, turn_id=turn_id)
+                    _ex = next((e for e in catalog if e.name == tool_name), None)
+                    if _ex is None:
+                        return {"ok": False, "error": f"unknown tool: {tool_name}"}
+                    return invoke_executor(
+                        _ex, args,
+                        timeout_s=(getattr(_ex, "timeout_s", None) or 120),
+                        autonomy="supervised", turn_id=turn_id,
+                        actor=actor, channel=channel,
+                    )
+                _engine = _EngineExec(invoke_executor=_exec_invoke)
+                _runtime_ctx = {"actor": actor or "host",
+                                "lang": DEFAULT_LANG,
+                                "channel": channel or ""}
+                _eng_res = _engine.run(
+                    framework, query=user_query_for_run,
+                    runtime_ctx=_runtime_ctx,
+                )
+                # Convert RunResult to TurnLog
+                for _sr in _eng_res.steps:
+                    log.steps.append(StepLog(
+                        step_num=_sr.step_idx, chosen_tool=_sr.tool,
+                        raw_args=_sr.args, resolved_args=_sr.args,
+                        llm_text="", result=_sr.result,
+                    ))
+                log.final_kind = _eng_res.final_kind or "answer"
+                log.final_message = _eng_res.final_text or ""
+                log.intent_verb = ""
+                log.ts_end = time.time()
+                log.write()
+                return log
+            except Exception as _ex:
+                import logging as _logging
+                _logging.getLogger(__name__).warning(
+                    "decomposed execution failed: %s → fallthrough", _ex)
+                # Fallthrough to next engine
+
+        # Universal §7.3: con reference_images allegate via drag&drop/upload
+        # (ADR 0092), bypass Engine v2 e Praxis perché queste cascade non
+        # consumano `_ref_images_for_prompt`. Il PLANNER legacy ha il blocco
+        # FOTO ALLEGATE nel system prompt + virtual step `@uploaded` in
+        # scratchpad → routing corretto a find_images_indices(from_step=1).
+        _bypass_for_uploads = bool(_ref_images_for_prompt)
+
+        _engine_v2_res = None
+        if (os.environ.get("METNOS_ENGINE_V2", "1") == "1"
+            and not _force_legacy_compound
+            and not _bypass_for_uploads):
+            try:
+                _engine_v2_res = _try_engine_v2(
                     user_query_for_run, catalog,
                     turn_id=turn_id, actor=actor, channel=channel,
                     lang=DEFAULT_LANG, verbose=verbose,
@@ -5531,60 +5842,60 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
             except Exception as _ex:
                 import logging as _logging
                 _logging.getLogger(__name__).warning(
-                    "praxis fallito: %s", _ex)
-                _praxis_res = None
-            # HYBRID mode (ADR 0161 ext): se Praxis cascata produce kind=error
-            # AND METNOS_PRAXIS_FALLBACK=1 → fallthrough al PLANNER legacy
-            # (safety net per edge case fuori scope catalog/E2E). Universale:
-            # nessuna decisione per-query, solo final_kind di Praxis.
-            if (_praxis_res is not None
-                and _praxis_res.get("final_kind") == "error"
-                and os.environ.get("METNOS_PRAXIS_FALLBACK", "1") == "1"
-                and os.environ.get("METNOS_PLANNER_LEGACY", "0") == "1"):
-                if verbose:
-                    print(f"[praxis] kind=error → fallthrough to PLANNER legacy")
-                _praxis_res = None  # forza PLANNER fallback
-            if _praxis_res is not None:
-                log.steps.extend(_praxis_res["steps"])
-                log.final_kind = _praxis_res["final_kind"] or "answer"
-                log.final_message = _praxis_res["final_text"] or ""
-                log.intent_verb = _praxis_res.get("verb", "") or ""
-                # Record observation per feedback loop + auto-promote check
+                    "engine v2 fallito: %s", _ex)
+                _engine_v2_res = None
+        # Engine v2 wins when produces answer. Su error sintetizzato come
+        # answer (terminator), comunque vince — niente PLANNER legacy.
+        if _engine_v2_res is not None:
+            log.steps.extend(_engine_v2_res.get("steps") or [])
+            # §7.3: se Engine v2 ha ritornato needs_inputs → handle dialog
+            _ni = _engine_v2_res.get("needs_inputs_obs")
+            if _ni:
                 try:
-                    from praxis import get_store as _praxis_get_store
-                    _praxis_store = _praxis_get_store()
-                    _praxis_store.record_observation(
-                        turn_id=turn_id,
-                        verb=_praxis_res["verb"],
-                        obj=_praxis_res["object"],
-                        keywords=_praxis_res["keywords"],
-                        framework=_praxis_res["framework"],
-                        latency_ms=_praxis_res["elapsed_ms"],
-                        query=user_query,
+                    from orchestration import orchestrate_needs_inputs
+                    _sender_id = f"{channel or 'http'}:{actor or 'host'}"
+                    if conversation_id:
+                        _sender_id = f"{_sender_id}:{conversation_id}"
+                    _dlg = orchestrate_needs_inputs(
+                        _ni, sender_id=_sender_id,
+                        actor=actor or "host", channel=channel or "http",
                     )
-                    # Auto-promote (ADR 0161 ext): senza UI, se tutti gli step
-                    # ok=True AND no aborted_reason AND env flag → promote.
-                    # Soglia aggressive 2 obs + 100% ok (configurabile).
-                    _auto_promote = os.environ.get(
-                        "METNOS_PRAXIS_AUTO_PROMOTE", "1") == "1"
-                    _n_ok = sum(1 for s in _praxis_res["steps"]
-                                 if s.result.get("ok"))
-                    _n_total = max(1, len(_praxis_res["steps"]))
-                    _ok_ratio = _n_ok / _n_total
-                    _no_abort = not _praxis_res.get("aborted_reason")
-                    if (_auto_promote and _ok_ratio >= 1.0 and _no_abort):
-                        # Hook synthetic ok feedback → promote check
-                        _praxis_store.record_feedback(turn_id, "ok")
+                    if isinstance(_dlg, dict) and _dlg.get("ok"):
+                        _hint = (_dlg.get("final_message_hint")
+                                  or _ni.get("final_message_hint") or "")
+                        if _hint:
+                            log.final_kind = "ask"
+                            log.final_message = _hint
+                            log.intent_verb = _engine_v2_res.get("verb", "") or ""
+                            # Propaga expandable_caps cosi' HTTP route puo'
+                            # salvare cap_pending per consume next-turn.
+                            _caps = _dlg.get("expandable_caps")
+                            if isinstance(_caps, list) and _caps:
+                                log.expandable_caps = _caps
+                            log.ts_end = time.time()
+                            log.write()
+                            return log
                 except Exception as _ex:
                     import logging as _logging
                     _logging.getLogger(__name__).warning(
-                        "praxis.record_observation fallito: %s", _ex)
-                if verbose:
-                    print(f"[praxis] {len(_praxis_res['steps'])} steps exec, "
-                          f"source={_praxis_res['match_source']}, "
-                          f"elapsed={_praxis_res['elapsed_ms']}ms, "
-                          f"final={(_praxis_res['final_text'] or '')[:80]!r}")
-                log.ts_end = time.time(); log.write(); return log
+                        "engine v2 needs_inputs handler failed: %s", _ex)
+                    # fallthrough: render hint plain
+            log.final_kind = _engine_v2_res.get("final_kind") or "answer"
+            log.final_message = _engine_v2_res.get("final_text") or ""
+            # Universal §7.3: se needs_inputs e nessun handler, ma c'e' un
+            # final_message_hint nel result, usa quello (UX onestà).
+            if not log.final_message and _ni and isinstance(_ni, dict):
+                hint = _ni.get("final_message_hint")
+                if isinstance(hint, str) and hint:
+                    log.final_message = hint
+            log.intent_verb = _engine_v2_res.get("verb", "") or ""
+            log.ts_end = time.time()
+            log.write()
+            return log
+        # NOTA bonifica 2026-05-28: rimosso il ramo Praxis legacy morto+rotto
+        # (cascata _legacy via shim). Engine v2 (sopra) ritorna SEMPRE non-None
+        # — terminator sintetizza error→answer. Quindi questo punto è raggiunto
+        # solo se Engine v2 ritorna None (crash) → cade sul blocco G3 sotto.
 
         # G3 (ADR 0161 ext): PLANNER step-by-step DEPRECATO da 25/5/2026.
         # Default METNOS_PLANNER_LEGACY=0 → return error invece di entrare nel
@@ -5840,7 +6151,8 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
                 project_paths=_render_project_paths_block(),
                 users_known=_render_users_known_block(),
                 telos_block=_render_telos_block(DEFAULT_LANG),
-                rejected_block=_render_rejected_pipelines_block(user_query, DEFAULT_LANG),
+                rejected_block=("" if bypass_rejected_pipelines
+                         else _render_rejected_pipelines_block(user_query, DEFAULT_LANG)),
                 **_now_vars,
             )
             # Riapplica gli addenda (credenziali + reference images) gia'
@@ -5854,7 +6166,8 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
                 project_paths=_render_project_paths_block(),
                 users_known=_render_users_known_block(),
                 telos_block=_render_telos_block(DEFAULT_LANG),
-                rejected_block=_render_rejected_pipelines_block(user_query, DEFAULT_LANG),
+                rejected_block=("" if bypass_rejected_pipelines
+                         else _render_rejected_pipelines_block(user_query, DEFAULT_LANG)),
                 **_now_vars,
             )
             if planner_system.startswith(_planner_all):

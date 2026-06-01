@@ -16,12 +16,12 @@ revertible  = false
 lifecycle   = "active"
 
 [description]
-it = "Legge gli appuntamenti del calendario. Dispatcher canonical: instrada al backend giusto in base a `client` (default `local`). USO CORRETTO: read_events(time_window='today'|'tomorrow'|'next-7d'|range ISO). NON DEVI usarla per LEGGERE mail (usa read_messages) ne' per CREARE eventi (usa create_events). NON CONFONDERE CON: `list_tasks` (task ricorrenti / timer / promemoria Metnos, NON eventi calendar), `read_tasks` (dettaglio task ricorrente), `read_tasks_history` (storico esecuzioni task). Vettoriale §2.1: ritorna `entries: list` con {kind:'calendar_event', id, start, end, summary, location, ...}. Backend `local` (default) e' uno STUB esplicito (§2.8 no silent failure): ritorna ok=false con error_class='not_implemented' finche' un plugin calendar (gcal/outlook/caldav) o un'implementazione iCal-locale non viene aggiunta. Plugin esterni futuri (es. cloud-calendar-gcal) potranno aggiungere altri client. OK: read_events(time_window='tomorrow'). ERRORE: invocare con client sconosciuto."
-en = "Reads calendar appointments. Canonical dispatcher: routes to the right backend based on `client` (default `local`). CORRECT USE: read_events(time_window='today'|'tomorrow'|'next-7d'|ISO range). MUST NOT be used to READ mail (use read_messages) nor to CREATE events (use create_events). DO NOT CONFUSE WITH: `list_tasks` (recurring tasks / timers / reminders in Metnos, NOT calendar events), `read_tasks` (detail of one recurring task), `read_tasks_history` (execution history of tasks). Vectorial §2.1: returns `entries: list` with {kind:'calendar_event', id, start, end, summary, location, ...}. Backend `local` (default) is an explicit STUB (§2.8 no silent failure): returns ok=false with error_class='not_implemented' until a calendar plugin (gcal/outlook/caldav) or a local iCal implementation is added. Future external plugins (e.g. cloud-calendar-gcal) may add other clients. OK: read_events(time_window='tomorrow'). ERROR: invoking with unknown client."
+it = "Legge gli appuntamenti del calendario. Dispatcher canonical: backend AUTO-RILEVATO dal runtime (OMETTI `client`). USO CORRETTO: read_events(time_window='today'|'tomorrow'|'next-7d'|range ISO). NON DEVI usarla per LEGGERE mail (usa read_messages) ne' per CREARE eventi (usa create_events). NON CONFONDERE CON: `list_tasks` (task ricorrenti / timer / promemoria Metnos, NON eventi calendar), `read_tasks` (dettaglio task ricorrente), `read_tasks_history` (storico esecuzioni task). Vettoriale §2.1: ritorna `entries: list` con {kind:'calendar_event', id, start, end, summary, location, ...}. Backend auto-rilevato (OMETTI `client`): google_workspace se OAuth presente, altrimenti local ICS — entrambi implementati. OK: read_events(time_window='tomorrow'). ERRORE: passare `client` non richiesto dall'utente."
+en = "Reads calendar appointments. Canonical dispatcher: backend AUTO-DETECTED by the runtime (OMIT `client`). CORRECT USE: read_events(time_window='today'|'tomorrow'|'next-7d'|ISO range). MUST NOT be used to READ mail (use read_messages) nor to CREATE events (use create_events). DO NOT CONFUSE WITH: `list_tasks` (recurring tasks / timers / reminders in Metnos, NOT calendar events), `read_tasks` (detail of one recurring task), `read_tasks_history` (execution history of tasks). Vectorial §2.1: returns `entries: list` with {kind:'calendar_event', id, start, end, summary, location, ...}. Backend auto-detected (OMIT `client`): google_workspace if OAuth present, else local ICS — both implemented. OK: read_events(time_window='tomorrow'). ERROR: passing `client` not requested by the user."
 
 [code]
 files  = ["read_events.py"]
-digest = "sha256:6e9da2f7ce98903bb658f087893bca5a2b86dbbbe466d7f8268d82414c79ea86"
+digest = "sha256:5cc69e7ac5dd9567f2e50dc8d0c5f2c010e7cc4acfcc32c30b58b608ad1662be"
 
 [args]
 type     = "object"
@@ -70,12 +70,14 @@ en = "Calendar identifier. Default 'primary'. Backend-specific semantics (for cl
 
 [args.properties.client]
 type        = "string"
-enum        = ["local"]
-default     = "local"
+enum        = ["local", "google_workspace"]
+# backend = configurazione, NON intento → risolto dal runtime, NON esposto
+# all'LLM (lessons A3/B1: l'enum induce bias). L'utente non lo sceglie via LLM.
+runtime_resolved = true
 
 [args.properties.client.description]
-it = "Implementazione backend (default 'local' = calendar locale via ICS file, attualmente stub). Plugin esterni futuri (gcal, outlook, caldav, ecc.) potranno aggiungere altri client."
-en = "Backend implementation (default 'local' = local calendar via ICS file, currently stub). Future external plugins (gcal, outlook, caldav, etc.) may add other clients."
+it = "Backend calendario. DEVI OMETTERLO: il runtime auto-rileva (google_workspace se OAuth, altrimenti local ICS). NON DEVI passare 'client' a meno che l'utente non lo chieda esplicitamente."
+en = "Calendar backend. YOU MUST OMIT IT: the runtime auto-detects (google_workspace if OAuth, else local ICS). YOU MUST NOT pass 'client' unless the user explicitly asks."
 
 [output]
 schema_inline = """
@@ -98,11 +100,11 @@ name = "metnos:read"
 hint = ["~/.local/share/metnos/calendar.ics"]
 
 [[tests]]
-name   = "stub_returns_not_implemented"
-input  = { time_window = "today" }
-expect = { ok = false, error_contains = "non ancora implementato" }
+name   = "reads_local_ok"
+input  = { time_window = "today", client = "local" }
+expect = { ok = true }
 
 [[tests]]
-name   = "unsupported_client_fails"
+name   = "invalid_client_rejected"
 input  = { client = "gdrive" }
-expect = { ok = false, error_contains = "unsupported calendar client" }
+expect = { ok = false, error_contains = "gdrive" }

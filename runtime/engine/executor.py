@@ -317,6 +317,16 @@ def _resolve_stepref_with_fallback(result: dict, path: str):
     direct = _resolve_dotted_with_synonyms(result, path)
     if direct is not None:
         return direct
+    # Fallback metadata: molti executor espongono aggregati scalari in
+    # `metadata` (total_count, total_size_gb, ...). Il proposer scrive spesso
+    # `${stepN.total_size_gb}` invece di `${stepN.metadata.total_size_gb}`.
+    # Cerca lo scalare in metadata PRIMA del fallback entries (che per uno
+    # scalare ritornerebbe la lista path → "(N entries)" fuorviante).
+    meta = result.get("metadata")
+    if isinstance(meta, dict):
+        mv = _resolve_dotted_with_synonyms(meta, path)
+        if mv is not None:
+            return mv
     # Fallback: prova entries.*.path (es. step1.urls → step1.entries.*.url)
     if "." not in path:
         # path è singolo field; prova singular form
@@ -599,6 +609,12 @@ def _render_is_degenerate(template: str, rendered: str) -> bool:
     # all'utente è sempre degenere.
     if _PLACEHOLDER_RE.search(r):
         return True
+    # Artefatto "(N entries)": _format_value su una lista quando un campo
+    # scalare del template non si e' risolto (es. ${step1.uuid} → fallback a
+    # entries → "(1 entries)"). Mai contenuto reale → degenere, sintetizza
+    # dall'observation (§2.8 no silent failure).
+    if re.search(r"\(\d+ entries\)", r):
+        return True
     # Rimuovi punteggiatura/whitespace residui: se resta quasi nulla rispetto
     # alle parti statiche del template, il placeholder è stato perso.
     # Heuristica: il template senza i placeholder dà le parti statiche; se il
@@ -626,21 +642,80 @@ def _synthesize_final_from_steps(query: str, steps: list, llm_fast) -> str:
         res = getattr(s, "result", None)
         tool = getattr(s, "tool", "?")
         if isinstance(res, dict):
-            # privilegia content/value/summary; altrimenti dump compatto
-            val = (res.get("content") or res.get("value")
-                   or res.get("summary"))
-            if val is None:
+            parts = []
+            # 1) scalare top-level utile (content/value/summary)
+            for k in ("content", "value", "summary"):
+                v = res.get(k)
+                if v:
+                    parts.append(str(v)[:400])
+                    break
+            # 2) contenuto delle entries: spesso il dato utile sta QUI, non nel
+            # summary generico. Es. «scarica X e dimmi Y» → body_text di get_urls
+            # contiene la risposta. Privilegia campi testuali per-entry.
+            entries = res.get("entries")
+            if isinstance(entries, list) and entries:
+                ebits = []
+                for e in entries[:5]:
+                    if not isinstance(e, dict):
+                        ebits.append(str(e)[:200])
+                        continue
+                    fields = []
+                    # 2a) campo testuale lungo (body/content/text esaustivo → stop)
+                    picked_long = False
+                    for k in ("body_text", "content", "text"):
+                        if e.get(k):
+                            fields.append(f"{k}={str(e[k])[:300]}")
+                            picked_long = True
+                            break
+                    if not picked_long:
+                        # 2b) scalari salienti (identita'/valori)
+                        for k in ("name", "subject", "title", "description",
+                                  "value", "summary", "email", "role", "path",
+                                  "date", "status"):
+                            if e.get(k):
+                                fields.append(f"{k}={str(e[k])[:120]}")
+                            if len(fields) >= 4:
+                                break
+                        # 2c) campi-LISTA salienti (mail_accounts, channels, ...):
+                        # proietta un campo identificativo per elemento. Senza
+                        # questo la sintesi e' cieca sul dato nidificato (bug
+                        # 31/5: "quali account mail" → mail_accounts mai vista).
+                        for k, v in e.items():
+                            if not (isinstance(v, list) and v):
+                                continue
+                            items = []
+                            for it in v[:12]:
+                                if isinstance(it, dict):
+                                    iv = next((str(it[x]) for x in (
+                                        "address", "email", "name", "title",
+                                        "value", "summary", "channel", "path")
+                                        if it.get(x)), None)
+                                    items.append(iv or _json.dumps(
+                                        it, ensure_ascii=False)[:60])
+                                else:
+                                    items.append(str(it)[:60])
+                            if items:
+                                fields.append(f"{k}=[{', '.join(items)}]")
+                    ebits.append(" ".join(fields) if fields else _json.dumps(
+                        {k: v for k, v in e.items()
+                         if not isinstance(v, (dict, list))},
+                        ensure_ascii=False)[:200])
+                parts.append(f"entries[{len(entries)}]: " + " | ".join(ebits))
+            if not parts:
                 slim = {k: v for k, v in res.items()
                         if k not in ("ok", "metadata", "attachments", "entries")}
-                val = _json.dumps(slim, ensure_ascii=False)[:500]
-            obs_lines.append(f"{tool}: {str(val)[:500]}")
+                parts.append(_json.dumps(slim, ensure_ascii=False)[:400])
+            obs_lines.append(f"{tool}: " + " ; ".join(parts))
     if not obs_lines:
         return ""
     sys_msg = (
         "Sei l'assemblatore della risposta finale. Data la richiesta utente e "
         "i risultati degli strumenti, scrivi UNA risposta diretta, concisa, in "
         "linguaggio naturale, nella lingua della richiesta. Niente preamboli, "
-        "niente JSON, niente placeholder."
+        "niente JSON, niente placeholder. I risultati contengono dati gia' "
+        "recuperati e autorizzati per l'utente proprietario che li richiede: se "
+        "l'informazione richiesta e' presente nei risultati, RIPORTALA "
+        "fedelmente. NON rifiutare e NON dire di non avervi accesso."
     )
     user_msg = (
         f"Richiesta: {query}\n\nRisultati strumenti:\n" + "\n".join(obs_lines)
@@ -738,6 +813,15 @@ class Executor:
             args = {k: _resolve_stepref(v, result.steps) for k, v in args.items()}
             args = _resolve_fillers(args, framework.fillers, self.llm_fast, query)
             args = _resolve_runtime_placeholders(args, runtime_ctx or {})
+            # Backend UNIFORME (lessons_learned.md §B): per gli object
+            # multi-provider il RUNTIME risolve il provider (default per-creds +
+            # esplicito da query), LLM-invisibile. Override deterministico — il
+            # backend non è scelta del planner (ADR 0155: runtime proprietario).
+            try:
+                from backend_resolver import resolve_backend_arg
+                args = resolve_backend_arg(step.tool, args, query)
+            except Exception as _bre:
+                log.debug("backend_resolver noop: %r", _bre)
             # Universal §7.9: convert list[dict] entries to 2D matrix
             # quando arg name è "values" (write_files_spreadsheet pattern).
             if isinstance(args.get("values"), list) and args["values"]:

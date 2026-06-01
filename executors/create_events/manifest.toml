@@ -17,12 +17,12 @@ reverse_pattern  = "delete_events_by_id"
 lifecycle        = "active"
 
 [description]
-it = "Crea un nuovo appuntamento sul calendario. Dispatcher canonical: instrada al backend giusto in base a `client` (default `local`). USO CORRETTO: create_events(summary='...', start='2026-05-14T09:00:00+02:00', end='2026-05-14T10:00:00+02:00'). DEVI risolvere prima la data con get_now se l'utente dice 'mercoledi'/'domani', poi richiamare con start/end ISO 8601 con offset. NON DEVI usarla per LEGGERE eventi (usa read_events) ne' per cancellare (usa delete_events). §2.6 trasformativo: ritorna `results: list`. §2.3 reverse_pattern='delete_events_by_id'. Backend `local` (default) e' uno STUB esplicito: ritorna ok=false con error_class='not_implemented' finche' un plugin calendar non viene aggiunto. Validazione preventiva: campi mancanti (summary/start/end) ritornano error_class='invalid_args' con hint per il PLANNER. ERRORE: invocare senza start/end ISO 8601 con offset esplicito."
-en = "Creates a new calendar appointment. Canonical dispatcher: routes to the right backend based on `client` (default `local`). CORRECT USE: create_events(summary='...', start='2026-05-14T09:00:00+02:00', end='2026-05-14T10:00:00+02:00'). MUST first resolve the date with get_now if the user says 'wednesday'/'tomorrow', then call with ISO 8601 start/end with offset. MUST NOT be used to READ events (use read_events) nor to delete (use delete_events). §2.6 transformative: returns `results: list`. §2.3 reverse_pattern='delete_events_by_id'. Backend `local` (default) is an explicit STUB: returns ok=false with error_class='not_implemented' until a calendar plugin is added. Preventive validation: missing fields (summary/start/end) return error_class='invalid_args' with PLANNER hint. ERROR: invoking without ISO 8601 start/end with explicit offset."
+it = "Crea un nuovo appuntamento sul calendario. Dispatcher canonical: backend AUTO-RILEVATO dal runtime (OMETTI `client`). USO CORRETTO: create_events(summary='...', start='2026-05-14T09:00:00+02:00', end='2026-05-14T10:00:00+02:00'). DEVI risolvere prima la data con get_now se l'utente dice 'mercoledi'/'domani', poi richiamare con start/end ISO 8601 con offset. NON DEVI usarla per LEGGERE eventi (usa read_events) ne' per cancellare (usa delete_events). §2.6 trasformativo: ritorna `results: list`. §2.3 reverse_pattern='delete_events_by_id'. Backend auto-rilevato (OMETTI `client`): google_workspace se OAuth presente, altrimenti local ICS (implementato). start/end accettano ISO 8601 con offset O date relative ('domani alle 10', 'oggi 15:30') risolte dal runtime. Validazione preventiva: campi mancanti (summary/start/end) ritornano error_class='invalid_args' con hint per il PLANNER. ERRORE: invocare senza start/end ISO 8601 con offset esplicito."
+en = "Creates a new calendar appointment. Canonical dispatcher: backend AUTO-DETECTED by the runtime (OMIT `client`). CORRECT USE: create_events(summary='...', start='2026-05-14T09:00:00+02:00', end='2026-05-14T10:00:00+02:00'). MUST first resolve the date with get_now if the user says 'wednesday'/'tomorrow', then call with ISO 8601 start/end with offset. MUST NOT be used to READ events (use read_events) nor to delete (use delete_events). §2.6 transformative: returns `results: list`. §2.3 reverse_pattern='delete_events_by_id'. Backend auto-detected (OMIT `client`): google_workspace if OAuth present, else local ICS (implemented). start/end accept ISO 8601 with offset OR relative dates ('tomorrow 10:00', 'today 15:30') resolved by the runtime. Preventive validation: missing fields (summary/start/end) return error_class='invalid_args' with PLANNER hint. ERROR: invoking without ISO 8601 start/end with explicit offset."
 
 [code]
 files  = ["create_events.py"]
-digest = "sha256:03651d090d75642d11c40c02e477457a5fd0be504d230852f4c6b048b4047a90"
+digest = "sha256:11a96b7f7eb164f08b7419d318bb66c94c13c68ee161116250bed2d44567e0f3"
 
 [args]
 type     = "object"
@@ -76,12 +76,14 @@ en = "Target calendar identifier. Default 'primary'."
 
 [args.properties.client]
 type        = "string"
-enum        = ["local"]
-default     = "local"
+enum        = ["local", "google_workspace"]
+# backend = configurazione, NON intento → risolto dal runtime, NON esposto
+# all'LLM (lessons A3/B1: l'enum induce bias). L'utente non lo sceglie via LLM.
+runtime_resolved = true
 
 [args.properties.client.description]
-it = "Implementazione backend (default 'local' = calendar locale via ICS file, attualmente stub). Plugin esterni futuri (gcal, outlook, caldav, ecc.) potranno aggiungere altri client."
-en = "Backend implementation (default 'local' = local calendar via ICS file, currently stub). Future external plugins may add other clients."
+it = "Backend calendario. DEVI OMETTERLO: il runtime auto-rileva (google_workspace se OAuth presente, altrimenti local ICS). NON DEVI passare 'client' a meno che l'utente NON chieda esplicitamente un backend (es. 'sul calendario locale'). Coerenza: create e delete devono usare lo STESSO backend → ometti in entrambi."
+en = "Calendar backend. YOU MUST OMIT IT: the runtime auto-detects (google_workspace if OAuth present, else local ICS). YOU MUST NOT pass 'client' unless the user explicitly asks for a backend (e.g. 'on the local calendar'). Consistency: create and delete must use the SAME backend → omit in both."
 
 [output]
 schema_inline = """
@@ -111,11 +113,6 @@ input  = { summary = "Test", end = "2026-05-14T10:00:00+02:00" }
 expect = { ok = false, error_contains = "start" }
 
 [[tests]]
-name   = "stub_returns_not_implemented_with_full_args"
-input  = { summary = "Test", start = "2026-05-14T09:00:00+02:00", end = "2026-05-14T10:00:00+02:00" }
-expect = { ok = false, error_contains = "non ancora implementato" }
-
-[[tests]]
-name   = "unsupported_client_fails"
+name   = "invalid_client_rejected"
 input  = { summary = "Test", start = "2026-05-14T09:00:00+02:00", end = "2026-05-14T10:00:00+02:00", client = "gdrive" }
-expect = { ok = false, error_contains = "unsupported calendar client" }
+expect = { ok = false, error_contains = "gdrive" }

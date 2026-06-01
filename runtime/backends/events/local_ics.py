@@ -1,9 +1,11 @@
 """Calendar backend local ICS — implementazione minimale (14/5/2026).
 
-Builtin per `client="local"` dei verbi events. `read` + `find_empty` sono
-implementati su storage `~/.local/share/metnos/calendar.ics` (singolo file
-iCal). `create`/`delete` restano stub esplicito (§2.8 no silent failure)
-finche' un parser/writer iCal completo non e' giustificato dall'uso.
+Builtin per `client="local"` dei verbi events. `read`, `create`, `delete`,
+`find_empty` sono TUTTI implementati su storage
+`~/.local/share/metnos/calendar.ics` (singolo file iCal): read = parser
+tollerante, create = append VEVENT, delete = rewrite atomico idempotente.
+"local" e' un backend a pieno titolo come google_workspace (non un default
+forzato): la SELEZIONE del backend e' compito del runtime, non dell'LLM.
 
 Calendar vuoto: file mancante o vuoto = nessun evento. `read` ritorna
 entries=[] ok=true (stato legittimo, non not_implemented). `find_empty`
@@ -15,8 +17,8 @@ DTEND ISO). Stesura completa rimandata quando `create` sara' necessario.
 
 Verbi esposti:
 - `read(args) -> dict`: lettura eventi per finestra (entries §2.6).
-- `create(args) -> dict`: stub (§2.8).
-- `delete(args) -> dict`: stub (§2.8).
+- `create(args) -> dict`: append VEVENT al file iCal (results §2.6).
+- `delete(args) -> dict`: rewrite atomico idempotente per uid (results §2.6).
 - `find_events_empty(args) -> dict`: gap calculation (entries §2.6, ADR 0127).
   Nome 1:1 con l'executor `find_events_empty` perche' il qualifier `_empty`
   da solo (`find_empty`) violerebbe la lettura intuitiva del vocab §2.2
@@ -350,7 +352,7 @@ def read(args: dict) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# create / delete — stub espliciti (§2.8)
+# create / delete — writer iCal (append VEVENT / rewrite atomico idempotente)
 # ---------------------------------------------------------------------------
 
 def _ical_escape(s: str) -> str:
@@ -571,9 +573,15 @@ def delete(args: dict) -> dict:
     tmp_path.replace(path)
 
     n_deleted = sum(1 for d in deleted if d.get("ok"))
+    not_found = [d.get("uid") for d in deleted if not d.get("ok")]
+    # §2.8 + docstring "idempotente": cancellare un uid inesistente NON è un
+    # fallimento, è un no-op onesto. ok=True (azione eseguita), con n_deleted e
+    # not_found per un esito veritiero. Prima `ok = n_deleted > 0` faceva
+    # scattare il terminator "azione delete non completata" su id assenti.
     return {
-        "ok": n_deleted > 0,
+        "ok": True,
         "n_deleted": n_deleted,
+        "not_found": not_found,
         "results": deleted,
         "calendar_source": "local_ics",
     }

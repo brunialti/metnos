@@ -227,9 +227,22 @@ def open_imap(account: str = "metnos_system") -> imaplib.IMAP4_SSL:
         ctx = ssl.create_default_context()
     else:
         ctx = ssl._create_unverified_context()
-    conn = imaplib.IMAP4_SSL(c["imap_host"], c["imap_port"], ssl_context=ctx)
-    conn.login(c["user"], c["password"])
-    return conn
+    # ADR 0130: retry 3× su errori TRANSIENTI di handshake/rete (SSL
+    # 'bad record mac'/'decryption failed', reset, timeout — osservati su
+    # knowcastle/register.it). Connect+login idempotenti: ogni tentativo apre
+    # una connessione FRESCA. §2.8: se tutti falliscono, l'ultima eccezione
+    # propaga onestamente (il caller la mette in failed[]).
+    last = None
+    for attempt in range(3):
+        try:
+            conn = imaplib.IMAP4_SSL(c["imap_host"], c["imap_port"], ssl_context=ctx)
+            conn.login(c["user"], c["password"])
+            return conn
+        except (ssl.SSLError, OSError) as e:
+            last = e
+            log.warning("open_imap %s transient handshake (try %d/3): %r",
+                        account, attempt + 1, e)
+    raise last
 
 
 def open_smtp(account: str = "metnos_system") -> smtplib.SMTP_SSL:
