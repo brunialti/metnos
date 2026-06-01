@@ -835,7 +835,8 @@ class Executor:
     def run(self, framework: Framework, *,
             query: str = "",
             runtime_ctx: Optional[dict] = None,
-            remediate_args_cb: Optional[Callable] = None) -> RunResult:
+            remediate_args_cb: Optional[Callable] = None,
+            progress=None) -> RunResult:
         result = RunResult()
         result.framework_hash = compute_framework_hash(framework)
         t_start = time.time()
@@ -1014,6 +1015,19 @@ class Executor:
             log.info("Executor: invoke %s args=%s", step.tool,
                      {k: v for k, v in args.items()
                       if k not in ("entries",)})
+            # Breadcrumb live in chat: emette `tool_call` sul progress (sia
+            # TurnEventProgress sia _SSEProgress lo accettano). Senza, engine v2
+            # mostrava solo `start` poi `final` (⏳ muto per tutto il turno).
+            if progress is not None and hasattr(progress, "tool_call"):
+                try:
+                    progress.tool_call(
+                        tool=step.tool, step_num=len(result.steps) + 1,
+                        path_so_far=[s.tool for s in result.steps] + [step.tool],
+                        args={k: v for k, v in args.items()
+                              if not k.startswith("_") and k != "entries"},
+                        predicted_remaining=[])
+                except Exception as _pe:
+                    log.debug("progress.tool_call noop: %r", _pe)
             t0 = time.time()
             try:
                 r = self.invoke(step.tool, args)

@@ -52,7 +52,8 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
               runtime_ctx: Optional[dict] = None,
               turn_id: str = "",
               lang: str = "it",
-              verbose: bool = False) -> DispatchResult:
+              verbose: bool = False,
+              progress=None) -> DispatchResult:
     """Entry point engine v2. Orchestrazione 4 layer.
 
     Returns:
@@ -126,7 +127,8 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
                           fp_hit.canonical_text)
             run = executor.run(fp_hit.framework, query=query,
                                 runtime_ctx=runtime_ctx,
-                                remediate_args_cb=remediate_args_cb)
+                                remediate_args_cb=remediate_args_cb,
+                                progress=progress)
             return DispatchResult(
                 final_text=run.final_text, final_kind=run.final_kind,
                 match_source="fastpath", framework_hash=run.framework_hash,
@@ -141,7 +143,8 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
                 log.info("[L1 autopath] hit skill=%s uses=%d", ap_hit.skill_id, ap_hit.uses)
             run = executor.run(ap_hit.framework, query=query,
                                 runtime_ctx=runtime_ctx,
-                                remediate_args_cb=remediate_args_cb)
+                                remediate_args_cb=remediate_args_cb,
+                                progress=progress)
             # Record observation per future feedback hooks
             if turn_id and intent.is_complete():
                 _ap.record_observation(
@@ -199,7 +202,8 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
     # Execute
     run = executor.run(framework, query=query,
                         runtime_ctx=runtime_ctx,
-                        remediate_args_cb=remediate_args_cb)
+                        remediate_args_cb=remediate_args_cb,
+                        progress=progress)
 
     # Record observation always (per future feedback)
     if turn_id and intent.is_complete():
@@ -223,7 +227,8 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
             if framework_alt is not None:
                 run2 = executor.run(framework_alt, query=query,
                                      runtime_ctx=runtime_ctx,
-                                     remediate_args_cb=remediate_args_cb)
+                                     remediate_args_cb=remediate_args_cb,
+                                progress=progress)
                 if run2.final_kind == "answer":
                     return DispatchResult(
                         final_text=run2.final_text, final_kind="answer",

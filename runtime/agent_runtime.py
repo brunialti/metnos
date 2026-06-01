@@ -4803,6 +4803,7 @@ def _try_engine_v2(
     channel: str | None,
     lang: str = "it",
     verbose: bool = False,
+    progress=None,
 ) -> "dict | None":
     """Bridge agent_runtime → engine.dispatch.run_turn.
 
@@ -4891,7 +4892,8 @@ def _try_engine_v2(
             llm_call_wise=_llm_call_wise,
             llm_call_fast=_llm_call_fast,
             runtime_ctx=runtime_ctx,
-            turn_id=turn_id, lang=lang, verbose=verbose)
+            turn_id=turn_id, lang=lang, verbose=verbose,
+            progress=progress)
     except Exception as ex:
         import traceback as _tb
         log.warning("engine.dispatch.run_turn failed: %r\n%s", ex, _tb.format_exc())
@@ -5837,7 +5839,7 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
                 _engine_v2_res = _try_engine_v2(
                     user_query_for_run, catalog,
                     turn_id=turn_id, actor=actor, channel=channel,
-                    lang=DEFAULT_LANG, verbose=verbose,
+                    lang=DEFAULT_LANG, verbose=verbose, progress=progress,
                 )
             except Exception as _ex:
                 import logging as _logging

@@ -308,6 +308,11 @@ class TurnEventProgress:
         # args (dict), path_so_far (list[str]), predicted_remaining (list[str])
         for k, v in kwargs.items():
             payload[k] = v
+        # Allinea la shape a _SSEProgress: la chat HTML legge `data.path` per il
+        # breadcrumb badge (path crescente). Senza, mostrerebbe solo il tool
+        # corrente. `path_so_far` → `path`.
+        if "path" not in payload and "path_so_far" in payload:
+            payload["path"] = payload.pop("path_so_far")
         self._log.append(self.turn_id, "tool_call", payload)
 
     def emit(self, event_type: str, payload: dict) -> None:
