@@ -320,11 +320,45 @@ def _read_disk() -> list[dict]:
 _METNOS_SERVICES = (
     "metnos-http",
     "metnos-telegram-daemon",
-    "metnos-scheduler",
-    "metnos-i18n-translator.timer",
     "metnos-prompts-translator.timer",
     "metnos-backup.timer",
 )
+# NB: `metnos-scheduler` e `metnos-i18n-translator.timer` NON sono qui: lo
+# scheduler v2 è co-hosted nel processo http (ADR 0112), non un servizio
+# systemd, e l'i18n è un suo job (`i18n_translate_pending`, every_6h), non un
+# servizio a sé. Verificarli via `systemctl is-active` dava un falso ✗ su
+# unità inesistenti. Lo scheduler è riportato sotto via heartbeat reale.
+
+
+def _scheduler_cohost_status() -> str:
+    """Stato REALE dello scheduler v2 co-host (ADR 0112): heartbeat del db.
+    L'ultimo run < 180s ⇒ vivo (esiste un job `dialog_pending_sweep` every_1m).
+    Niente assunzioni: se il co-host muore (raro init-fail silenzioso), i run
+    si fermano e questo diventa 'inactive' davvero (§2.8)."""
+    try:
+        import sqlite3
+        import datetime as _dt
+        try:
+            import config as _C
+            db = Path(_C.PATH_USER_STATE) / "scheduler_v2.sqlite"
+        except Exception:
+            db = Path.home() / ".local/state/metnos/scheduler_v2.sqlite"
+        if not Path(db).exists():
+            return "inactive"
+        con = sqlite3.connect(f"file:{db}?mode=ro", uri=True, timeout=2)
+        try:
+            row = con.execute("SELECT max(finished_at) FROM runs").fetchone()
+        finally:
+            con.close()
+        if not row or not row[0]:
+            return "inactive"
+        t = _dt.datetime.fromisoformat(str(row[0]))
+        if t.tzinfo is None:
+            t = t.replace(tzinfo=_dt.timezone.utc)
+        delta = (_dt.datetime.now(_dt.timezone.utc) - t).total_seconds()
+        return "active" if 0 <= delta < 180 else "inactive"
+    except Exception:
+        return "unknown"
 
 
 def _user_runtime_env() -> dict:
@@ -399,6 +433,8 @@ def _read_services(unit_names: tuple[str, ...] = _METNOS_SERVICES) -> list[dict]
         except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
             pass
         out.append(entry)
+    # Scheduler v2 co-host (ADR 0112): stato reale via heartbeat, non systemd.
+    out.append({"name": "scheduler", "status": _scheduler_cohost_status()})
     return out
 
 
@@ -598,7 +634,7 @@ def invoke(args: dict, ctx: dict | None = None) -> dict:
     if not isinstance(filters_in, list):
         return {
             "ok": False, "ok_count": 0, "fail_count": 1,
-            "entries": [], "failed": [{"error": "'filters' must be a list"}],
+            "entries": [], "failed": [{"error": _msg("ERR_ARG_NOT_LIST", arg="filters")}],
         }
     top = args.get("top")
     if top is not None:
@@ -609,7 +645,7 @@ def invoke(args: dict, ctx: dict | None = None) -> dict:
         except (TypeError, ValueError):
             return {
                 "ok": False, "ok_count": 0, "fail_count": 1,
-                "entries": [], "failed": [{"error": "'top' must be a positive int"}],
+                "entries": [], "failed": [{"error": _msg("ERR_ARG_NOT_POSITIVE_INT", arg="top")}],
             }
     include_health = bool(args.get("include_health"))
     services_extra_in = args.get("services_extra") or []
@@ -617,7 +653,7 @@ def invoke(args: dict, ctx: dict | None = None) -> dict:
         return {
             "ok": False, "ok_count": 0, "fail_count": 1,
             "entries": [],
-            "failed": [{"error": "'services_extra' must be a list of unit names"}],
+            "failed": [{"error": _msg("ERR_ARG_NOT_LIST_OF", arg="services_extra", of="unit")}],
         }
 
     # Parse predicati: se filter parse fail MA include_health=true, ritorna
