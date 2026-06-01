@@ -1411,18 +1411,34 @@ form.addEventListener('submit', async (e) => {
       // connessione cade. Quando il server emette `final` o `error`,
       // chiudiamo esplicitamente.
       const es = new EventSource(streamUrl);
+      // NB: 'error' NON va in questa lista. EventSource consegna allo stesso
+      // listener 'error' SIA l'evento SSE `event: error` del server (con data)
+      // SIA gli errori NATIVI di connessione (ev.data undefined, frequenti su
+      // mobile durante turni lunghi). Trattarli insieme faceva apparire
+      // "✗ errore" su un semplice drop di connessione. Gestiti separati sotto.
       const evtKinds = ['start', 'update', 'tool_call', 'tool_result',
-                         'final', 'error', 'thinking', 'progress'];
+                         'final', 'thinking', 'progress'];
       evtKinds.forEach(k => {
         es.addEventListener(k, (ev) => {
           let data = {};
           try { data = JSON.parse(ev.data); } catch(_) {}
           processSSEEvent(k, data);
-          if(k === 'final' || k === 'error'){
+          if(k === 'final'){
             es.close();
             busy = false; btn.disabled = false; q.focus();
           }
         });
+      });
+      // Errore SSE REALE dal server: ha `data` JSON. L'errore nativo di
+      // connessione (data assente) NON marca ✗ — lo gestisce es.onerror
+      // (recover sotto), così un drop su mobile non distrugge il turno.
+      es.addEventListener('error', (ev) => {
+        if(!ev || ev.data == null) return;  // errore nativo → a es.onerror
+        let data = {};
+        try { data = JSON.parse(ev.data); } catch(_) { return; }
+        processSSEEvent('error', data);
+        es.close();
+        busy = false; btn.disabled = false; q.focus();
       });
       // Cede il placeholder ⏳ al poller infinito `pollInFlight` (ogni 5s,
       // senza scadenza): il turn completa lato server comunque, e il poller
