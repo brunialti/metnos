@@ -759,11 +759,14 @@ async function fetchServerHistory(){
       // User input come messaggio "me"
       if(t.query) add('me', t.query, '', true);
       if(t.in_flight){
-        // Placeholder con classe speciale; verra' aggiornato da pollInFlight()
+        // Turn ancora in esecuzione server-side: riaggancia lo stream
+        // resumable (il `final` arriva dall'event log, robusto al reload e
+        // all'id JSONL diverso). Fallback: pollInFlight via dataset.
         const ph = add('bot', '⏳ in elaborazione…',
                        'turn ' + (t.turn_id || '').slice(0,8), false);
         if(ph) ph.dataset.turnId = t.turn_id;
         if(ph) ph.dataset.inFlight = '1';
+        reattachTurnStream(t.turn_id, ph);
       } else if(t.final_message){
         const metaLeft = 'turn ' + (t.turn_id || '').slice(0,8) +
                           (t.total_ms ? ' · ' + (t.total_ms/1000).toFixed(1) + 's' : '');
@@ -784,6 +787,45 @@ async function fetchServerHistory(){
   } catch(e){
     console.warn('fetchServerHistory failed', e);
   }
+}
+
+// Riaggancio a un turn in-flight dopo reload pagina (navigazione chat →
+// dashboard → chat). Apre lo stream resumable: il `final`/`error` è
+// nell'event log keyed by turn_id (submit), quindi arriva anche se il turn
+// è partito su un'altra istanza di pagina. Se l'event log è stato gc-ed dopo
+// il TTL, fallback al risultato persistente via GET /agent/turns/{id}.
+function reattachTurnStream(turnId, ph){
+  if(!turnId || !ph) return;
+  const settle = (html) => {
+    if(!ph) return;
+    delete ph.dataset.inFlight;
+    ph.innerHTML = '';
+    const inner = document.createElement('div');
+    inner.className = 'msg';
+    inner.innerHTML = html;
+    ph.appendChild(inner);
+  };
+  let done = false;
+  const es = new EventSource('/agent/turns/' + turnId + '/stream');
+  ['final', 'error'].forEach(k => es.addEventListener(k, (ev) => {
+    let data = {}; try { data = JSON.parse(ev.data); } catch(_) {}
+    done = true; es.close();
+    settle(k === 'final'
+      ? (data.final_message_html || data.final_message || '(nessuna risposta)')
+      : ('✗ ' + (data.message || 'errore')));
+  }));
+  es.onerror = () => {
+    if(es.readyState === EventSource.CLOSED && !done){
+      // Event log non più disponibile: recupera l'esito persistente.
+      fetch('/agent/turns/' + turnId).then(r => r.ok ? r.json() : null).then(dd => {
+        if(!dd) return;
+        const fin = (dd.events || []).find(e => e.event_type === 'final');
+        if(fin){ settle(fin.payload.final_message_html || fin.payload.final_message || ''); return; }
+        if(dd.persistent && dd.final_message != null){ settle(dd.final_message); return; }
+        // Ancora running (reconnect transitorio): lascia ⏳, il poller riprende.
+      }).catch(() => {});
+    }
+  };
 }
 
 let pollTimer = null;
