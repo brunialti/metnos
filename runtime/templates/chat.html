@@ -819,6 +819,16 @@ async function pollInFlight(){
   }
 }
 
+// Al ritorno del focus sulla pagina: se c'e' un turn ⏳ in attesa, ri-sondalo
+// subito (i timer in background sono throttlati → senza questo l'esito puo'
+// tardare fino a 5s dopo il rientro). Idempotente: pollInFlight azzera il timer.
+document.addEventListener('visibilitychange', () => {
+  if(document.visibilityState === 'visible'
+     && log.querySelectorAll('[data-in-flight="1"]').length){
+    pollInFlight();
+  }
+});
+
 // Boot di session + history viene fatto in fondo allo script,
 // dopo che tutte le const/let sono fuori dal TDZ (deviceToken, sessionBanner).
 
@@ -1256,11 +1266,10 @@ form.addEventListener('submit', async (e) => {
   // Cache stato breadcrumb del turno corrente.
   let lastLivePath = null;
   let lastPredicted = null;
-  let watchdogFired = false;  // dichiarato anche nel path legacy
 
-  // Handler unico per ogni evento SSE (formato {kind, data}). Usato sia
-  // dal nuovo path resumable EventSource sia dal legacy fetch-stream
-  // (multipart con file). Tutta la logica di rendering qui.
+  // Handler unico per ogni evento SSE (formato {kind, data}), condiviso fra
+  // gli eventi dello stream resumable EventSource. Tutta la logica di
+  // rendering del turno (thinking/tool/final/error) vive qui.
   let receivedFinal = false;
   const processSSEEvent = (kind, data) => {
     if(kind === 'thinking' || kind === 'progress' || kind === 'start'
@@ -1321,18 +1330,31 @@ form.addEventListener('submit', async (e) => {
     }
   };
 
-  // PATH 1 (nuovo, resumable): POST /agent/turn/submit -> EventSource.
-  // L'esecuzione del turn e' indipendente dalla connessione: refresh,
-  // tab hidden, network drop → EventSource auto-reconnect con
-  // Last-Event-ID. Nessun watchdog client-side: il browser gestisce
-  // la liveness nativamente.
-  if(!filesForTurn.length){
+  // PATH UNICO (resumable): POST /agent/turn/submit -> EventSource.
+  // Vale per testo (JSON) e immagini (multipart): l'esecuzione del turn e'
+  // indipendente dalla connessione — refresh, tab hidden, network drop →
+  // EventSource auto-reconnect con Last-Event-ID. Nessun watchdog client-side.
+  {
     try {
-      const submitResp = await fetch('/agent/turn/submit', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query, conversation_id: conversationId }),
-      });
+      let submitOpts;
+      if(filesForTurn.length){
+        // Multipart: campo `query` + `image_<i>` per ogni file. Il browser
+        // imposta da solo il Content-Type con boundary multipart.
+        const fd = new FormData();
+        fd.append('query', query || 'trova foto simili a queste');
+        fd.append('conversation_id', conversationId);
+        filesForTurn.forEach((f, i) => {
+          fd.append('image_' + i, f, f.name || ('photo_' + i + '.jpg'));
+        });
+        submitOpts = { method: 'POST', body: fd };
+      } else {
+        submitOpts = {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ query, conversation_id: conversationId }),
+        };
+      }
+      const submitResp = await fetch('/agent/turn/submit', submitOpts);
       if(!submitResp.ok){
         const text = await submitResp.text();
         if(pending){ pending.remove(); }
@@ -1360,14 +1382,53 @@ form.addEventListener('submit', async (e) => {
           }
         });
       });
+      // Cede il placeholder ⏳ al poller infinito `pollInFlight` (ogni 5s,
+      // senza scadenza): il turn completa lato server comunque, e il poller
+      // sostituira' il ⏳ con l'esito reale per quanto lungo sia (ricerca web).
+      // NON rimuove il pending (l'esito non deve sparire) e NON marca ✗.
+      const handoffInFlight = () => {
+        busy = false; btn.disabled = false;
+        if(pending){
+          pending.dataset.turnId = turnId;
+          pending.dataset.inFlight = '1';
+          pending = null;
+        }
+        pollInFlight();
+      };
       // onerror: EventSource gestisce il reconnect automatico. Se la
       // connessione e' definitivamente chiusa (turn complete + log
       // gc-ed dopo TTL), il browser smette di riconnettersi.
       es.onerror = () => {
         if(es.readyState === EventSource.CLOSED && !receivedFinal){
-          if(pending){ pending.remove(); pending = null; }
-          add('err', '⚠ stream chiuso senza final. Il turn potrebbe essere completato — usa /agent/turns/' + turnId.slice(0,8) + ' per recuperare il risultato.');
-          busy = false; btn.disabled = false;
+          // Connessione SSE chiusa senza `final` — caso tipico: la pagina ha
+          // perso il focus / e' andata in background mentre il turn girava. Il
+          // turn e' RESUMABLE e completa lato server: NON marcare errore.
+          // Recupera l'esito reale via GET /agent/turns/{id}.
+          (async function recover(attempt){
+            try {
+              const rr = await fetch('/agent/turns/' + turnId);
+              if(!rr.ok){
+                // 404 transitorio (log non ancora pronto o gia' gc-ed): qualche
+                // retry, poi affida al poller in-flight (mai ✗, mai vuoto).
+                if(attempt < 8){ setTimeout(() => recover(attempt + 1), 2000); return; }
+                handoffInFlight(); return;
+              }
+              const dd = await rr.json();
+              const evs = dd.events || [];
+              const finalEv = evs.find(e => e.event_type === 'final');
+              const errEv = evs.find(e => e.event_type === 'error');
+              const running = (dd.state === 'running');
+              if(finalEv){ processSSEEvent('final', finalEv.payload); busy = false; btn.disabled = false; return; }
+              if(dd.persistent && dd.final_message != null){ processSSEEvent('final', dd); busy = false; btn.disabled = false; return; }
+              // ✗ SOLO se il turn e' davvero concluso: mai durante l'esecuzione.
+              if(errEv && !running){ processSSEEvent('error', errEv.payload); busy = false; btn.disabled = false; return; }
+              // Ancora in corso (o stato indeterminato): niente ✗, niente
+              // rimozione del pending — il poller infinito porta a casa l'esito.
+              handoffInFlight();
+            } catch(_){
+              handoffInFlight();
+            }
+          })(0);
         }
       };
       return;
@@ -1382,83 +1443,6 @@ form.addEventListener('submit', async (e) => {
       busy = false; btn.disabled = false;
       return;
     }
-  }
-
-  // PATH 2 (legacy, multipart file upload): POST /agent/turn con SSE
-  // streaming inline. Mantenuto fino a quando turn_submit supportera'
-  // upload multipart.
-  let reader = null;
-  try {
-    let fetchOpts;
-    if(filesForTurn.length){
-      // Multipart: campo `query` + `image_<i>` per ogni file. Il browser
-      // imposta automaticamente il Content-Type con boundary multipart.
-      const fd = new FormData();
-      // Caption default se utente non ha digitato testo: hint per il PLANNER.
-      fd.append('query', query || 'trova foto simili a queste');
-      fd.append('conversation_id', conversationId);
-      filesForTurn.forEach((f, i) => {
-        fd.append('image_' + i, f, f.name || ('photo_' + i + '.jpg'));
-      });
-      fetchOpts = {
-        method: 'POST',
-        headers: { 'Accept': 'text/event-stream' },
-        body: fd,
-      };
-    } else {
-      fetchOpts = {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'text/event-stream',
-        },
-        body: JSON.stringify({ query, conversation_id: conversationId }),
-      };
-    }
-    const resp = await fetch('/agent/turn', fetchOpts);
-
-    if(!resp.ok){
-      pending.remove();
-      const text = await resp.text();
-      add('err', 'errore HTTP ' + resp.status + ': ' + text.slice(0, 200));
-      return;
-    }
-
-    reader = resp.body.getReader();
-    const decoder = new TextDecoder();
-    let buf = '';
-
-    while(true){
-      const { done, value } = await reader.read();
-      if(done) break;
-      buf += decoder.decode(value, { stream: true });
-      const events = buf.split('\n\n');
-      buf = events.pop();
-      for(const ev of events){
-        if(ev.startsWith(':')) continue;  // SSE comment (: keepalive)
-        const m = ev.match(/^event:\s*(\w+)\s*\n+data:\s*(.+)$/s);
-        if(!m) continue;
-        const kind = m[1];
-        let data;
-        try{ data = JSON.parse(m[2]); }catch(_){ data = {}; }
-        processSSEEvent(kind, data);
-      }
-    }
-    if(!receivedFinal){
-      if(pending){ pending.remove(); pending = null; }
-      add('err', '⚠ connessione interrotta. Il messaggio potrebbe essere arrivato — ricarica e verifica.');
-    }
-  } catch(err){
-    if(err && err.name === 'AbortError'){
-      if(pending){ pending.remove(); pending = null; }
-    } else {
-      if(pending){ pending.remove(); }
-      add('err', 'errore rete: ' + err.message);
-    }
-  } finally {
-    busy = false;
-    btn.disabled = false;
-    q.focus();
   }
 });
 

@@ -91,7 +91,13 @@ class TurnEventLog:
     # ─── publisher API ────────────────────────────────────────────────────
 
     def create(self, turn_id: str) -> None:
-        """Inizializza il record del turno. Idempotente."""
+        """Inizializza il record del turno. Idempotente.
+
+        gc() opportunistico: sfoltisce i turn chiusi oltre TTL prima di
+        aggiungere, così il dict in-memory non cresce per tutta la vita del
+        daemon HTTP (gc() non era invocata da nessuna parte → leak di RAM).
+        """
+        self.gc()
         if turn_id not in self._turns:
             self._turns[turn_id] = _TurnState(turn_id=turn_id)
 

@@ -9,8 +9,11 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import ipaddress
 import json
+import socket
 import time
+import urllib.parse
 from pathlib import Path
 
 from aiohttp import web
@@ -35,7 +38,7 @@ VERSION = "1.1"
 #   (b) consente al watchdog client-side di resettare il timer "ultimo byte
 #       ricevuto" e capire che il server e' ancora vivo.
 # Esposto come modulo-level constant per i test (override via monkeypatch).
-SSE_KEEPALIVE_INTERVAL_S = 15.0
+SSE_KEEPALIVE_INTERVAL_S = 8.0
 
 
 def _error(status: int, code: str, message: str) -> web.Response:
@@ -304,6 +307,68 @@ def _apply_dialog_cancel(sender_id: str, query: str) -> str | None:
     return f"Dialogo annullato ({cancelled} pending)."
 
 
+def _apply_dialog_pending(sender_id: str, query: str,
+                            actor: str = "host",
+                            channel: str = "http",
+                            conversation_id: str = "") -> str | None:
+    """Universal §7.9: se sender ha un dialog pending (get_inputs aperto),
+    intercetta il prossimo messaggio utente come risposta al dialog.
+
+    Risolve gap critico: dialog strato3 (5 azioni) aperto, utente digita
+    "1" / "ritenta" → senza questo handler, "1" viene trattato come nuova
+    query (echo). Ora viene routed correttamente al dispatcher on_complete.
+
+    Ritorna messaggio finale se dialog consumato, None altrimenti (passa
+    a flusso normale run_turn).
+    """
+    try:
+        from dialog_pending import list_pending, consume_pending_step
+    except ImportError:
+        return None
+    # Universal §7.9: prova multipli sender_id formats per backward compat.
+    # HTTP nuovo: _http_sender_id(actor, conv_id) = "http:host:xyz"
+    # Strato3 legacy: "channel:actor" = "http:host"
+    pending = list_pending(sender_id)
+    sender_id_used = sender_id
+    if not pending:
+        alt_sender = f"{channel}:{actor}" if channel else actor
+        if alt_sender != sender_id:
+            pending = list_pending(alt_sender)
+            if pending:
+                sender_id_used = alt_sender
+    if not pending:
+        return None
+    # Prendi il dialog piu' recente (last started)
+    dlg = pending[-1]
+    dialog_id = dlg.get("dialog_id", "")
+    steps = dlg.get("dialog", []) or []
+    # `step_index` è il nome canonical (dialog_pending.py consume usa questo)
+    step_index = int(dlg.get("step_index") or 0)
+    if step_index >= len(steps):
+        return None
+    current_var = steps[step_index].get("var", "")
+    if not current_var:
+        return None
+    # Avanza dialog con valore raccolto
+    consume_res = consume_pending_step(
+        sender_id_used, dialog_id, current_var, query.strip())
+    if not consume_res.get("ok"):
+        return None
+    # Se dialog completato → call canonical dispatcher process_completion_callback
+    if consume_res.get("completed"):
+        try:
+            from orchestration import process_completion_callback
+            return process_completion_callback(
+                sender_id_used, dialog_id, actor=actor, channel=channel,
+            )
+        except Exception as ex:
+            import logging
+            logging.getLogger(__name__).warning(
+                "dialog on_complete dispatch failed: %s", ex)
+            return f"Dialog dispatch fallito: {ex}"
+    return None  # dialog ha più step, attendi prossimo input
+
+
 def _apply_cap_pending(sender_id: str, query: str,
                         actor: str = "host") -> tuple[str, dict | None, str | None]:
     """Se c'e' un cap-expand pending e la query e' un sì, ritorna la
@@ -536,15 +601,48 @@ def _enrich_attachments(log_obj, admin_key: str, *, cap: int = CHAT_INLINE_ATT_C
 
     Cap default = 20: la chat compatta mostra le prime 20 inline; le
     eventuali extra restano accessibili dalla gallery (`gallery_url`).
-    Cap=0 → nessun limite (placeholder convention §2.4)."""
+    Cap=0 → nessun limite (placeholder convention §2.4).
+
+    Universal §7.3 — supporto dual-source:
+      (1) attachment con `path` (local file) → URL signed via photo_endpoint
+      (2) attachment con `url` (web URL, es. da find_images_web) → URL diretto
+
+    Universal §7.3 — input + results coexist (drag&drop reverse search):
+    quando ci sono input photos (`caption=='input'`), mostra TUTTI gli
+    input + i primi `cap` risultati. Gli input sono significativi per
+    l'utente (cosa ha caricato), non vanno troncati per stare nel cap.
+    """
     import photo_endpoint
     atts = getattr(log_obj, "attachments", []) or []
     if cap and cap > 0:
-        atts = atts[:cap]
+        inputs = [a for a in atts if isinstance(a, dict) and a.get("caption") == "input"]
+        others = [a for a in atts if isinstance(a, dict) and a.get("caption") != "input"]
+        if inputs and others:
+            # Tutti gli input + cap risultati. Ordine: input prima, results dopo.
+            atts = inputs + others[:cap]
+        else:
+            atts = atts[:cap]
     out = []
     for idx, att in enumerate(atts):
         if not isinstance(att, dict):
             continue
+        # Attachment web-sourced (url): proxy via /agent/photos/web per
+        # bypassare hotlinking-block dei CDN (TikTok, Instagram, FB).
+        web_url = att.get("url")
+        if isinstance(web_url, str) and (web_url.startswith("http://") or web_url.startswith("https://")):
+            import urllib.parse as _up
+            proxy = "/agent/photos/web?u=" + _up.quote(web_url, safe="")
+            out.append({
+                "kind": att.get("kind", "image"),
+                "basename": att.get("basename"),
+                "score": att.get("score"),
+                "caption": att.get("caption"),
+                "thumb_url": proxy,
+                "full_url": proxy,
+                "open_url": web_url,  # link a sorgente reale per click esterno
+            })
+            continue
+        # Attachment local-sourced (path): URL signed via photo_endpoint.
         out.append({
             "kind": att.get("kind", "image"),
             "basename": att.get("basename"),
@@ -568,22 +666,50 @@ def _gallery_url_for(log_obj) -> tuple[str | None, int]:
     return f"/agent/gallery/{log_obj.turn_id}", n_total
 
 
-async def turn(request: web.Request) -> web.Response:
-    """POST /agent/turn
+def _build_final_event_payload(log_obj, admin_key: str) -> dict:
+    """Payload unico dell'evento `final` (SSE inline + event-log resumable).
+    Condiviso da `_turn_sse` e `turn_submit`: ogni path espone gli stessi
+    campi — inclusi attachments/gallery per i turni con immagini. Salta gli
+    step senza tool e i phantom `auto_final_on_duplicate` nel path badge."""
+    gallery_url, n_total = _gallery_url_for(log_obj)
+    path_summary = []
+    for s in getattr(log_obj, "steps", []) or []:
+        tool = getattr(s, "chosen_tool", "") or ""
+        if not tool:
+            continue
+        if getattr(s, "error", None) == "auto_final_on_duplicate":
+            continue
+        res = s.result if isinstance(s.result, dict) else {}
+        path_summary.append({"tool": tool, "ok": bool(res.get("ok", True))})
+    return {
+        "turn_id": log_obj.turn_id,
+        "final_message": log_obj.final_message,
+        "final_message_html": _safe_final_html(log_obj.final_message),
+        "final_kind": log_obj.final_kind,
+        "total_ms": int((log_obj.ts_end - log_obj.ts_start) * 1000),
+        "ts_end": float(log_obj.ts_end),
+        "expandable_caps": getattr(log_obj, "expandable_caps", []) or [],
+        "attachments": _enrich_attachments(log_obj, admin_key),
+        "gallery_url": gallery_url,
+        "n_total_matches": n_total,
+        "path": path_summary,
+    }
 
-    Body shapes (alternativi, NON shim retro-compat — CLAUDE.md §7.1):
-      - JSON `application/json`: `{ query: str, conversation_id?, actor? }`
-      - Multipart `multipart/form-data` (ADR 0092): campo `query` (text) +
-        N campi `image_<i>` (FileField, image/*) + opzionale
-        `conversation_id`. Le immagini vengono salvate in
-        `/tmp/metnos_uploads/<sender>/<turn-pre>_<idx>.jpg` e propagate a
-        run_turn come `reference_images=[paths]`.
 
-    Header Accept: text/event-stream → SSE; default → JSON.
+async def _preprocess_turn(request: web.Request):
+    """Pre-elabora una richiesta di turno (JSON o multipart immagini) in modo
+    condiviso fra `turn()` (streaming inline legacy) e `turn_submit()`
+    (resumable EventSource). Esegue: parse body, salvataggio campi `image_*`
+    in upload dir → `reference_images`, e interception dialog/cap pending.
+
+    Ritorna `(err_response, data)`:
+      - `err_response` = web.Response su validazione fallita (`data` None);
+      - altrimenti `data` = dict con `query_for_run`, `immediate_msg`,
+        `actor`, `conversation_id`, `sender_id`, `reference_images`,
+        `original_query`.
     """
     ctype = (request.content_type or "").lower()
     reference_images: list[str] = []
-    body: dict = {}
     if ctype.startswith("multipart/"):
         try:
             form = await request.post()
@@ -591,19 +717,18 @@ async def turn(request: web.Request) -> web.Response:
             log.exception("multipart form parse failed: ctype=%r len=%s",
                           ctype, request.content_length)
             return _error(400, "invalid_form",
-                          f"multipart form data non valido: {type(ex).__name__}: {ex}")
+                          f"multipart form data non valido: "
+                          f"{type(ex).__name__}: {ex}"), None
         query = form.get("query") or form.get("text") or ""
         if not isinstance(query, str):
             query = str(query) if query is not None else ""
         if not query.strip():
-            return _error(400, "missing_field", "query (string) required")
+            return _error(400, "missing_field", "query (string) required"), None
         body = {
             "query": query,
             "conversation_id": form.get("conversation_id") or "",
             "actor": form.get("actor") or None,
         }
-        # Estrai e salva tutti i campi `image_*` (qualsiasi ordine), valida
-        # MIME image/*. Skip silenzioso dei field non-image (mixed types).
         actor = _resolve_actor(request, body)
         conversation_id = body.get("conversation_id") or ""
         sender_id = _http_sender_id(actor, conversation_id)
@@ -615,7 +740,6 @@ async def turn(request: web.Request) -> web.Response:
             f"{time.time()}_{sender_id}".encode()
         ).hexdigest()[:12]
         idx = 0
-        # iter su tutti i field nel form: aiohttp `MultiDictProxy` items().
         items = form.items() if hasattr(form, "items") else []
         for key, val in items:
             if not (isinstance(key, str) and key.startswith("image")):
@@ -648,32 +772,81 @@ async def turn(request: web.Request) -> web.Response:
         try:
             body = await request.json()
         except Exception:
-            return _error(400, "invalid_json", "request body must be JSON")
-
+            return _error(400, "invalid_json", "request body must be JSON"), None
         query = body.get("query")
         if not isinstance(query, str) or not query.strip():
-            return _error(400, "missing_field", "query (string) required")
-
+            return _error(400, "missing_field", "query (string) required"), None
         actor = _resolve_actor(request, body)
         conversation_id = body.get("conversation_id") or ""
         sender_id = _http_sender_id(actor, conversation_id)
 
-    # Dialog cancel intercept (24/5/2026): se c'e' un dialog pending per
-    # questo sender e l'utente scrive "annulla"/"undo"/..., cancella il
-    # dialog invece di routare a undo_last_turn (che non trova nulla di
-    # mutante e risponde "Nessuna operazione recente da annullare").
-    _dialog_cancel_msg = _apply_dialog_cancel(sender_id, query)
-    if _dialog_cancel_msg is not None:
+    # Universal §7.3: drag&drop con immagini + query = NUOVA intenzione
+    # esplicita, mai una risposta a dialog precedenti. Skip TUTTI gli
+    # interceptor (cancel, dialog_pending, cap_pending).
+    if reference_images:
+        from channels.daemon import _cap_pending_clear
+        _cap_pending_clear(sender_id)
+        try:
+            from dialog_pending import list_pending, cancel_pending
+            for d in list_pending(sender_id):
+                cancel_pending(sender_id, d.get("dialog_id", ""))
+        except Exception:
+            pass
         query_for_run = query
-        immediate_msg = _dialog_cancel_msg
+        immediate_msg = None
     else:
-        # Cap-expand fase 2 (CLAUDE.md §2.11): se nel turno precedente HTTP
-        # abbiamo registrato un offer di cap-expand su questa conversation_id,
-        # e ora l'utente risponde "sì", riscrivi la query originale forzando
-        # il cap e rilancia (poi pulisci stato).
-        # Per pending kind="admin_approval" (ADR 0088): direct-call admin,
-        # niente PLANNER round-trip.
-        query_for_run, _, immediate_msg = _apply_cap_pending(sender_id, query, actor=actor)
+        # Dialog cancel intercept: se c'e' un dialog pending e l'utente scrive
+        # "annulla"/"undo", cancella il dialog invece di routare a undo.
+        _dialog_cancel_msg = _apply_dialog_cancel(sender_id, query)
+        if _dialog_cancel_msg is not None:
+            query_for_run = query
+            immediate_msg = _dialog_cancel_msg
+        else:
+            # Universal §7.9: se sender ha dialog pending, intercetta come risposta.
+            _dlg_resp = _apply_dialog_pending(
+                sender_id, query, actor=actor, channel="http",
+                conversation_id=conversation_id or "",
+            )
+            if _dlg_resp is not None:
+                query_for_run = query
+                immediate_msg = _dlg_resp
+            else:
+                query_for_run, _, immediate_msg = _apply_cap_pending(
+                    sender_id, query, actor=actor)
+    return None, {
+        "query_for_run": query_for_run,
+        "immediate_msg": immediate_msg,
+        "actor": actor,
+        "conversation_id": conversation_id,
+        "sender_id": sender_id,
+        "reference_images": reference_images,
+        "original_query": query,
+    }
+
+
+async def turn(request: web.Request) -> web.Response:
+    """POST /agent/turn
+
+    Body shapes (alternativi, NON shim retro-compat — CLAUDE.md §7.1):
+      - JSON `application/json`: `{ query: str, conversation_id?, actor? }`
+      - Multipart `multipart/form-data` (ADR 0092): campo `query` (text) +
+        N campi `image_<i>` (FileField, image/*) + opzionale
+        `conversation_id`. Le immagini vengono salvate in
+        `/tmp/metnos_uploads/<sender>/<turn-pre>_<idx>.jpg` e propagate a
+        run_turn come `reference_images=[paths]`.
+
+    Header Accept: text/event-stream → SSE; default → JSON.
+    """
+    err, data = await _preprocess_turn(request)
+    if err is not None:
+        return err
+    query = data["original_query"]
+    query_for_run = data["query_for_run"]
+    immediate_msg = data["immediate_msg"]
+    actor = data["actor"]
+    conversation_id = data["conversation_id"]
+    sender_id = data["sender_id"]
+    reference_images = data["reference_images"]
     accept = request.headers.get("Accept", "")
     want_sse = "text/event-stream" in accept
     if immediate_msg is not None:
@@ -808,36 +981,8 @@ async def _turn_sse(request: web.Request, agent_runtime,
         log_obj = await loop.run_in_executor(None, _run_blocking)
         _save_cap_pending_if_any(sender_id, original_for_pending, log_obj)
         admin_key = request.app.get("admin_key", "")
-        gallery_url, n_total = _gallery_url_for(log_obj)
-        # Path eseguito (lista di {tool, ok}) per i badge nella chat HTML.
-        # Salta:
-        # - gli step senza chosen_tool (es. final_answer puro)
-        # - gli step di tipo "auto_final_on_duplicate" (phantom registrati
-        #   dal runtime quando il PLANNER chiama lo stesso tool 2 volte:
-        #   la duplicate detection sintetizza la final_answer dai
-        #   risultati precedenti, ma il tool NON viene rieseguito —
-        #   nel path UI non ha senso mostrarlo come passo eseguito).
-        path_summary = []
-        for s in getattr(log_obj, "steps", []) or []:
-            tool = getattr(s, "chosen_tool", "") or ""
-            if not tool:
-                continue
-            if getattr(s, "error", None) == "auto_final_on_duplicate":
-                continue
-            res = s.result if isinstance(s.result, dict) else {}
-            path_summary.append({"tool": tool, "ok": bool(res.get("ok", True))})
-        await progress._emit("final", {
-            "turn_id": log_obj.turn_id,
-            "final_message": log_obj.final_message,
-            "final_message_html": _safe_final_html(log_obj.final_message),
-            "final_kind": log_obj.final_kind,
-            "total_ms": int((log_obj.ts_end - log_obj.ts_start) * 1000),
-            "expandable_caps": getattr(log_obj, "expandable_caps", []) or [],
-            "attachments": _enrich_attachments(log_obj, admin_key),
-            "gallery_url": gallery_url,
-            "n_total_matches": n_total,
-            "path": path_summary,
-        })
+        await progress._emit(
+            "final", _build_final_event_payload(log_obj, admin_key))
     except Exception as e:
         log.exception("turn SSE error")
         await progress._emit("error", {"message": str(e)})
@@ -1255,6 +1400,164 @@ async def dialog_cancel(request: web.Request) -> web.Response:
 
 # --- Photo thumbnail serving (Opzione 1, 5/5/2026) -------------------------
 #
+# GET /agent/photos/web?u=<url> — proxy fetch per immagini esterne (Vision API
+# results). Bypassa hotlinking-block dei CDN (TikTok, Instagram, Facebook
+# lookaside) usando UA Mozilla + Referer locale. Cache disk.
+_WEB_PHOTO_CACHE_DIR = Path.home() / ".cache" / "metnos" / "web_photos"
+_WEB_PHOTO_CACHE_TTL_S = 7 * 24 * 3600
+
+# SSRF guard: l'endpoint e' anonimo (whitelist `/agent/photos/` in
+# http_auth.py), quindi un URL fornito dall'utente NON deve poter colpire
+# servizi interni. Rifiutiamo ogni host che risolve a IP loopback/privato/
+# link-local/riservato (es. 127.0.0.1, 169.254.169.254 metadata, 10/8, ...).
+_WEB_PHOTO_MAX_REDIRECTS = 4
+
+
+def _ip_is_blocked(ip_str: str) -> bool:
+    """True se l'IP NON e' un indirizzo pubblico instradabile.
+
+    Blocca loopback, link-local (incl. 169.254.169.254 cloud-metadata),
+    privati (RFC1918 / ULA), multicast, riservati, unspecified. Consente
+    solo IP global-scope. Su parse-error → blocca (fail-closed)."""
+    try:
+        ip = ipaddress.ip_address(ip_str)
+    except ValueError:
+        return True
+    if isinstance(ip, ipaddress.IPv6Address) and ip.ipv4_mapped is not None:
+        ip = ip.ipv4_mapped
+    return (
+        ip.is_private or ip.is_loopback or ip.is_link_local
+        or ip.is_multicast or ip.is_reserved or ip.is_unspecified
+        or not ip.is_global
+    )
+
+
+def _resolve_public_host(host: str) -> tuple[str | None, str | None]:
+    """Risolve `host` e ritorna `(error, error_detail)`.
+
+    Ritorna `(None, None)` se TUTTI gli indirizzi risolti sono pubblici.
+    Ritorna `("blocked"|"resolve_failed", detail)` altrimenti. Controlliamo
+    OGNI record (un host puo' risolvere a piu' IP, alcuni interni)."""
+    if not host:
+        return ("blocked", "empty host")
+    try:
+        infos = socket.getaddrinfo(host, None)
+    except (socket.gaierror, UnicodeError, OSError) as ex:
+        return ("resolve_failed", f"{type(ex).__name__}: {ex}")
+    if not infos:
+        return ("resolve_failed", "no address")
+    for info in infos:
+        ip_str = info[4][0]
+        if _ip_is_blocked(ip_str):
+            return ("blocked", f"{host} -> {ip_str} not public")
+    return (None, None)
+
+
+def _validate_fetch_url(raw_url: str) -> tuple[str | None, str | None]:
+    """Valida schema (http/https) + host pubblico per un URL da proxare.
+
+    Ritorna `(error_code, detail)`; `(None, None)` se l'URL e' fetchabile."""
+    try:
+        parsed = urllib.parse.urlsplit(raw_url)
+    except ValueError as ex:
+        return ("invalid_url", str(ex))
+    if parsed.scheme not in ("http", "https"):
+        return ("invalid_url", "scheme must be http or https")
+    if not parsed.hostname:
+        return ("invalid_url", "missing host")
+    return _resolve_public_host(parsed.hostname)
+
+
+async def photo_web_proxy(request: web.Request) -> web.Response:
+    """GET /agent/photos/web?u=<url> — fetch + cache + serve.
+
+    §7.3 universal: rimuove hotlinking-block per attachment con URL esterni
+    (Vision similar_images). Header UA Mozilla; timeout 8s; cache disk 7d.
+    """
+    raw_url = request.query.get("u", "")
+    if not raw_url or not (raw_url.startswith("http://") or raw_url.startswith("https://")):
+        return _error(400, "invalid_url", "u must be http(s) URL")
+    # SSRF guard (endpoint anonimo): rifiuta host che risolvono a IP non
+    # pubblici (loopback / privati / link-local metadata / riservati).
+    err, detail = _validate_fetch_url(raw_url)
+    if err:
+        status = 400 if err in ("invalid_url", "blocked") else 502
+        return _error(status, err, detail or err)
+    import hashlib as _hl
+    key = _hl.sha256(raw_url.encode()).hexdigest()
+    _WEB_PHOTO_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    cache_path = _WEB_PHOTO_CACHE_DIR / f"{key[:2]}" / f"{key}.bin"
+    if cache_path.is_file():
+        try:
+            age = time.time() - cache_path.stat().st_mtime
+            if age < _WEB_PHOTO_CACHE_TTL_S:
+                data = cache_path.read_bytes()
+                ctype = "image/jpeg"
+                if data[:8].startswith(b"\x89PNG"):
+                    ctype = "image/png"
+                elif data[:6] in (b"GIF87a", b"GIF89a"):
+                    ctype = "image/gif"
+                elif data[:4] == b"RIFF":
+                    ctype = "image/webp"
+                return web.Response(body=data, content_type=ctype,
+                                     headers={"Cache-Control": "public, max-age=86400"})
+        except OSError:
+            pass
+    # Fetch fresh. I redirect NON sono seguiti automaticamente: ogni hop e'
+    # ri-validato (un CDN potrebbe redirigere verso un host interno → SSRF).
+    import urllib.request as _ur
+    import urllib.error as _ue
+
+    class _NoRedirect(_ur.HTTPRedirectHandler):
+        def redirect_request(self, req, fp, code, msg, headers, newurl):
+            # Disabilita il follow automatico: lo gestiamo a mano sotto.
+            return None
+
+    opener = _ur.build_opener(_NoRedirect)
+    cur_url = raw_url
+    data = b""
+    ctype = "image/jpeg"
+    try:
+        for _hop in range(_WEB_PHOTO_MAX_REDIRECTS + 1):
+            req = _ur.Request(cur_url, headers={
+                "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36",
+                "Accept": "image/avif,image/webp,image/*,*/*;q=0.8",
+            })
+            try:
+                with opener.open(req, timeout=8) as r:
+                    data = r.read()
+                    ctype = r.headers.get("Content-Type", "image/jpeg")
+                break
+            except _ue.HTTPError as he:
+                # 3xx senza follow → HTTPError con Location: valida e itera.
+                if he.code in (301, 302, 303, 307, 308):
+                    loc = he.headers.get("Location", "")
+                    nxt = urllib.parse.urljoin(cur_url, loc)
+                    verr, vdetail = _validate_fetch_url(nxt)
+                    if verr:
+                        return _error(400, "blocked_redirect",
+                                      vdetail or "redirect to non-public host")
+                    cur_url = nxt
+                    continue
+                raise
+        else:
+            return _error(400, "too_many_redirects", "redirect limit exceeded")
+    except (_ue.HTTPError, _ue.URLError, OSError, TimeoutError) as ex:
+        return _error(404, "fetch_failed", f"{type(ex).__name__}: {ex}")
+    # Limit cache size: skip > 5MB
+    if len(data) < 5 * 1024 * 1024:
+        try:
+            cache_path.parent.mkdir(parents=True, exist_ok=True)
+            cache_path.write_bytes(data)
+        except OSError:
+            pass
+    if not ctype.startswith("image/"):
+        # Non un'immagine reale (es. HTML login page)
+        return _error(404, "not_image", f"content-type {ctype} not image")
+    return web.Response(body=data, content_type=ctype,
+                         headers={"Cache-Control": "public, max-age=86400"})
+
+
 # GET /agent/photos/<turn_id>/<idx>?size=thumb|full&exp=<ts>&t=<sig>
 # Auth: signed HMAC token nel querystring (TTL 24h). Whitelist anonymous
 # in http_auth.py: l URL stesso fa da capability.
@@ -1601,21 +1904,25 @@ async def turn_submit(request: web.Request) -> web.Response:
     Last-Event-ID). Disaccoppia esecuzione da connessione: refresh,
     tab hidden, network drop non interrompono il turn.
 
-    Body JSON: stesso shape di `POST /agent/turn`
-      `{ query: str, conversation_id?: str, actor?: str }`.
+    Body: JSON `{ query, conversation_id?, actor? }` OPPURE multipart
+    `multipart/form-data` con campo `query` + N campi `image_<i>` (turni
+    image-to-image). Stesso pre-processing di `POST /agent/turn`
+    (`_preprocess_turn`): salvataggio immagini + interception dialog/cap.
 
     Errori 400/401 come `turn()`. Niente fallback Telegram-style: e' un
     endpoint asincrono dedicato al client HTTP dashboard.
     """
-    try:
-        body = await request.json()
-    except Exception:
-        return _error(400, "invalid_json", "body JSON non valido")
-    query = body.get("query")
-    if not isinstance(query, str) or not query.strip():
-        return _error(400, "missing_field", "query (string) required")
-    actor = _resolve_actor(request, body)
-    conv_id = body.get("conversation_id") or ""
+    err, data = await _preprocess_turn(request)
+    if err is not None:
+        return err
+    query_for_run = data["query_for_run"]
+    immediate_msg = data["immediate_msg"]
+    actor = data["actor"]
+    conv_id = data["conversation_id"]
+    sender_id = data["sender_id"]
+    original_query = data["original_query"]
+    reference_images = data["reference_images"]
+    admin_key = request.app.get("admin_key", "")
 
     from turn_events import TurnEventLog, TurnEventProgress
     import uuid as _uuid
@@ -1623,8 +1930,30 @@ async def turn_submit(request: web.Request) -> web.Response:
     turn_id = _uuid.uuid4().hex[:16]
     event_log.create(turn_id)
 
+    # Risposta immediata (dialog/cap pending): nessun run_turn, append `final`
+    # nel log e chiudi. Il client si attacca e riceve subito l'esito.
+    if immediate_msg is not None:
+        event_log.append(turn_id, "final", {
+            "turn_id": turn_id,
+            "final_message": immediate_msg,
+            "final_message_html": _safe_final_html(immediate_msg),
+            "final_kind": "answer",
+            "total_ms": 0,
+            "expandable_caps": [],
+            "attachments": [],
+            "gallery_url": None,
+            "n_total_matches": 0,
+            "path": [],
+        })
+        event_log.close(turn_id)
+        return web.json_response({
+            "turn_id": turn_id,
+            "stream_url": f"/agent/turns/{turn_id}/stream",
+        }, status=202)
+
     # Spawn task. Esegue run_turn in executor + scrive eventi nel log.
     loop = asyncio.get_running_loop()
+    refs = list(reference_images or [])
 
     import agent_runtime as _agent_runtime
     async def _run_async():
@@ -1633,25 +1962,15 @@ async def turn_submit(request: web.Request) -> web.Response:
             log_obj = await loop.run_in_executor(
                 None,
                 lambda: _agent_runtime.run_turn(
-                    query, actor=actor, channel="http",
+                    query_for_run, actor=actor, channel="http",
                     conversation_id=conv_id,
                     progress=progress,
+                    reference_images=refs or None,
                 ),
             )
-            # Final event con il risultato completo.
-            event_log.append(turn_id, "final", {
-                "turn_id": log_obj.turn_id,
-                "final_message": log_obj.final_message,
-                "final_message_html": _safe_final_html(log_obj.final_message),
-                "final_kind": log_obj.final_kind,
-                "total_ms": int((log_obj.ts_end - log_obj.ts_start) * 1000),
-                "steps_summary": [
-                    {"step": s.step_num, "tool": s.chosen_tool,
-                     "ok": bool(s.result and s.result.get("ok", True))
-                            if isinstance(s.result, dict) else None}
-                    for s in log_obj.steps
-                ],
-            })
+            _save_cap_pending_if_any(sender_id, original_query, log_obj)
+            event_log.append(turn_id, "final",
+                             _build_final_event_payload(log_obj, admin_key))
         except Exception as ex:
             log.exception("turn_submit run failed: %s", turn_id)
             event_log.append(turn_id, "error", {
@@ -2000,7 +2319,7 @@ async def oauth_callback(request: web.Request) -> web.Response:
         return _oauth_result_page(
             ok=False,
             title="Autorizzazione rifiutata",
-            body=(f"Google ha riportato: <code>{error}</code>. "
+            body=(f"Google ha riportato: <code>{html_escape(error)}</code>. "
                   f"Riprova dalla chat se vuoi rifare il setup."),
         )
 
@@ -2038,13 +2357,13 @@ async def oauth_callback(request: web.Request) -> web.Response:
     except (ImportError, OSError, RuntimeError, ValueError) as ex:
         return _oauth_result_page(
             ok=False, title="Scambio token fallito",
-            body=f"<code>{type(ex).__name__}: {ex}</code>",
+            body=f"<code>{html_escape(type(ex).__name__)}: {html_escape(str(ex))}</code>",
         )
 
     if not ok:
         return _oauth_result_page(
             ok=False, title="Scambio token fallito",
-            body=f"<code>{err}</code>",
+            body=f"<code>{html_escape(str(err))}</code>",
         )
 
     executor = entry.get("executor") or ""
@@ -2057,7 +2376,7 @@ async def oauth_callback(request: web.Request) -> web.Response:
             ex = cat.executors.get(executor)
             if ex is None:
                 resume_body = (
-                    f"Token salvato. Executor <code>{executor}</code> non "
+                    f"Token salvato. Executor <code>{html_escape(str(executor))}</code> non "
                     f"in catalog: rilancio annullato.")
             else:
                 import agent_runtime as _ar
@@ -2070,8 +2389,8 @@ async def oauth_callback(request: web.Request) -> web.Response:
         except (PermissionError, KeyError, RuntimeError, TypeError) as ex:
             log.exception("oauth_callback: resume_call fallito")
             resume_body = (
-                f"Token salvato, ma rilancio di <code>{executor}</code> "
-                f"fallito: {type(ex).__name__}: {ex}")
+                f"Token salvato, ma rilancio di <code>{html_escape(str(executor))}</code> "
+                f"fallito: {html_escape(type(ex).__name__)}: {html_escape(str(ex))}")
     else:
         resume_body = "Token salvato. Nessun executor da ri-invocare."
 
@@ -2084,10 +2403,10 @@ async def oauth_callback(request: web.Request) -> web.Response:
 def _format_resume_result(res) -> str:
     """Markdown/HTML compatto per il risultato della ri-invocazione."""
     if not isinstance(res, dict):
-        return f"<pre>{str(res)[:600]}</pre>"
+        return f"<pre>{html_escape(str(res)[:600])}</pre>"
     if not res.get("ok"):
         err = res.get("error", "errore sconosciuto")
-        return f"Executor ha risposto errore: <code>{err}</code>"
+        return f"Executor ha risposto errore: <code>{html_escape(str(err))}</code>"
     summary = res.get("summary") or res.get("final_message_hint") or ""
     entries = res.get("entries") or []
     if summary and not entries:
@@ -2280,6 +2599,7 @@ ROUTES = (
     ("GET",  "/agent/dialog/{dialog_id}/preview/{option_idx}",            dialog_preview),
     ("GET",  "/agent/dialog/{dialog_id}/context/{step_idx}",              dialog_context),
     ("GET",  "/agent/dialog/{dialog_id}/context",                         dialog_context),
+    ("GET",  "/agent/photos/web",                 photo_web_proxy),
     ("GET",  "/agent/photos/{turn_id}/{idx}",     photo_serve),
     ("GET",  "/agent/gallery/{turn_id}",          gallery),
     ("GET",  "/oauth/callback",                   oauth_callback),
