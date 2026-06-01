@@ -66,15 +66,40 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
     pool_size = int(os.environ.get("METNOS_ENGINE_POOL_SIZE", "12"))
     if intent.is_complete():
         try:
-            from prefilter import rank_with_intent
+            from prefilter import rank_with_intent, rank as _rank_bow
             intent_dict = {"verb": intent.verb, "object": intent.object,
                             "keywords": intent.keywords}
             filtered = rank_with_intent(query, catalog, intent_dict, k=pool_size)
+            # rank_with_intent ritorna None PER DESIGN quando il verbo intent
+            # non matcha alcun executor (es. object=entries meta-oggetto, o
+            # verbo intermedio di una query compound): non e' un errore, e' il
+            # contratto di fallback bag-of-words (vedi prefilter.py §776). Senza
+            # questo ramo il `len(pool_for_propose)` sotto crashava con
+            # `len(None)` → except → full pool (80 tool) → grammar Mētis gigante
+            # → wise LLM lentissimo (regressione web-search: "fondi ark" ~8min).
+            if not filtered:
+                filtered = _rank_bow(query, catalog, k=pool_size, min_score=0)
             # Garantisci che fastpath / autopath catalog completo resti
             # disponibile a executor (callback usa il NOME, non il pool).
             # Pool ridotto è SOLO per il prompt Proposer.
-            pool_for_propose = filtered
-            log.debug("dispatch: pool reduced %d → %d via prefilter",
+            pool_for_propose = filtered or catalog
+            # §7.3: universal helpers (describe_entries/classify_entries/...)
+            # sono referenziati dai PATTERN STRUTTURALI del prompt Proposer
+            # (es. READ/LIST = producer + describe_entries + final_answer) ma
+            # il prefilter per-verbo non li include. Senza il loro schema nel
+            # pool, il Proposer inventa valori (es. style fuori enum §8.3).
+            # Append idempotente dei helper presenti nel catalog.
+            try:
+                from tool_grammar import _UNIVERSAL_HELPERS
+                present = {getattr(e, "name", None) for e in pool_for_propose}
+                for ex_obj in catalog:
+                    nm = getattr(ex_obj, "name", None)
+                    if nm in _UNIVERSAL_HELPERS and nm not in present:
+                        pool_for_propose = pool_for_propose + [ex_obj]
+                        present.add(nm)
+            except Exception:
+                pass
+            log.debug("dispatch: pool reduced %d → %d via prefilter (+helpers)",
                        len(catalog), len(pool_for_propose))
         except Exception as ex:
             log.warning("dispatch: prefilter failed (%r), full pool", ex)
@@ -88,6 +113,7 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
         invoke_executor=invoke_executor_cb,
         llm_call_fast=llm_call_fast,
         vaglio_judge=vaglio_judge,
+        catalog=catalog,
     )
 
     # ── Layer 0: Fastpath ────────────────────────────────────────────────
@@ -193,7 +219,7 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
             framework_alt = recovery.recover(
                 failed_run=run, query=query, intent=intent,
                 pool=pool_names, proposer=proposer,
-                llm_call=llm_call_wise, lang=lang)
+                llm_call=llm_call_wise, lang=lang, catalog=catalog)
             if framework_alt is not None:
                 run2 = executor.run(framework_alt, query=query,
                                      runtime_ctx=runtime_ctx,

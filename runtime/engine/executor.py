@@ -246,8 +246,67 @@ def _find_list_of_dicts(result: dict) -> list:
 
 # ── from_step resolver ────────────────────────────────────────────────────
 
-def _resolve_from_step(args: dict, history: list[StepRun]) -> dict:
-    """Espande from_step: N → entries da step N (1-based)."""
+# Helper universali che consumano una lista `entries` (auto-wire prev step).
+_ENTRIES_CONSUMERS = frozenset({
+    "describe_entries", "classify_entries", "filter_entries", "sort_entries",
+    "group_entries", "compute_entries", "compare_entries",
+})
+
+
+def _consumer_match_arg(consumer_schema, prev_entries):
+    """Rileva l'arg-lista consumer naturale per una lista di entries via
+    convenzione I/O Metnos (plurale↔singolare + `from_entries_key`).
+
+    Replica `agent_runtime._consumer_match_arg` — replicato qui per evitare
+    l'import circolare engine←agent_runtime. Es: find_urls produce
+    entries=[{url, title, ...}], read_urls_html consuma `urls` → singolare
+    `url` presente in entries[0] → estrai entries[*].url. Ritorna il nome
+    dell'arg consumer o None. Esclude `entries`/`from_step`."""
+    if not isinstance(consumer_schema, dict) or not isinstance(prev_entries, list):
+        return None
+    props = consumer_schema.get("properties") or {}
+    if not isinstance(props, dict):
+        return None
+    required = consumer_schema.get("required") or []
+    if not isinstance(required, list):
+        required = []
+    # Caso degenere lista vuota: primo array required (escluso entries/from_step).
+    if not prev_entries:
+        for arg_name in required:
+            if arg_name in ("entries", "from_step"):
+                continue
+            spec = props.get(arg_name)
+            if isinstance(spec, dict) and spec.get("type") and spec.get("type") != "array":
+                continue
+            return arg_name
+        return None
+    if not isinstance(prev_entries[0], dict):
+        return None
+    sample_keys = set(prev_entries[0].keys())
+    candidates = []
+    for arg_name, spec in props.items():
+        if arg_name in ("entries", "from_step"):
+            continue
+        if isinstance(spec, dict) and spec.get("type") and spec.get("type") != "array":
+            continue
+        from_key = spec.get("from_entries_key") if isinstance(spec, dict) else None
+        if isinstance(from_key, str) and from_key in sample_keys:
+            candidates.append(((0 if arg_name in required else 1) - 1, arg_name))
+            continue
+        singular = (arg_name[:-1] if arg_name.endswith("s") and len(arg_name) > 1
+                    else arg_name)
+        if singular in sample_keys:
+            candidates.append((0 if arg_name in required else 1, arg_name))
+    if not candidates:
+        return None
+    candidates.sort(key=lambda t: (t[0], t[1]))
+    return candidates[0][1]
+
+
+def _resolve_from_step(args: dict, history: list[StepRun],
+                       consumer_schema=None) -> dict:
+    """Espande from_step: N → entries da step N (1-based), con proiezione
+    consumer-arg (parità con agent_runtime.resolve_from_step Layer 4)."""
     if "from_step" not in args:
         return args
     n = args.get("from_step")
@@ -265,6 +324,28 @@ def _resolve_from_step(args: dict, history: list[StepRun]) -> dict:
     else:
         entries = _find_list_of_dicts(src) or []
     out = {k: v for k, v in args.items() if k != "from_step"}
+    # Proiezione consumer-arg: se lo schema del consumer dichiara un arg-lista
+    # naturale (es. read_urls_html→`urls`) e non è già presente, proietta
+    # entries[*].<key> in quell'arg. Senza questo, executor che consumano
+    # `urls`/`paths`/`ids` (NON `entries`) ricevevano solo `entries` →
+    # arg required mancante → terminator "Pipeline malformata o argomenti
+    # insufficienti" (bug web pipeline find_urls→read_urls_html via engine v2).
+    consumer_arg = _consumer_match_arg(consumer_schema, entries)
+    if consumer_arg and consumer_arg not in out:
+        match_key = None
+        _spec = (consumer_schema.get("properties") or {}).get(consumer_arg) \
+            if isinstance(consumer_schema, dict) else None
+        if isinstance(_spec, dict):
+            fek = _spec.get("from_entries_key")
+            if isinstance(fek, str) and fek:
+                match_key = fek
+        if not match_key:
+            match_key = (consumer_arg[:-1]
+                         if consumer_arg.endswith("s") and len(consumer_arg) > 1
+                         else consumer_arg)
+        out[consumer_arg] = [e[match_key] for e in entries
+                             if isinstance(e, dict) and e.get(match_key) is not None]
+        return out
     out["entries"] = entries
     return out
 
@@ -736,11 +817,20 @@ class Executor:
                  invoke_executor: Callable[[str, dict], dict],
                  llm_call_fast: Optional[Callable] = None,
                  vaglio_judge: Optional[Callable] = None,
-                 max_steps: int = 12):
+                 max_steps: int = 12,
+                 catalog: Optional[list] = None):
         self.invoke = invoke_executor
         self.llm_fast = llm_call_fast
         self.vaglio = vaglio_judge
         self.max_steps = max_steps
+        # Map name→args_schema per la proiezione consumer-arg in from_step
+        # (es. read_urls_html.urls ← entries[*].url). Senza catalog la
+        # proiezione è no-op (degrade graceful, comportamento pre-fix).
+        self._schema_map = {}
+        for e in (catalog or []):
+            nm = getattr(e, "name", None)
+            if nm:
+                self._schema_map[nm] = getattr(e, "args_schema", None)
 
     def run(self, framework: Framework, *,
             query: str = "",
@@ -809,7 +899,24 @@ class Executor:
                 break
 
             # Resolve in ordine: from_step → stepref → fillers → runtime
-            args = _resolve_from_step(step.args, result.steps)
+            args = _resolve_from_step(
+                step.args, result.steps,
+                consumer_schema=self._schema_map.get(step.tool))
+            # Universal §7.3: gli helper che consumano `entries` (describe/
+            # classify/filter/sort/group/compute/compare_entries) sono spesso
+            # emessi dal Proposer SENZA from_step → ricevono 0 entries →
+            # risultato degenere → terminator "Pipeline malformata" (bug live
+            # find_urls→describe_entries). Auto-wire deterministico: se manca
+            # `entries`, eredita la lista dall'ultimo step che ne ha prodotta
+            # una (equivale alla precursor-injection del path legacy).
+            if (step.tool in _ENTRIES_CONSUMERS and not args.get("entries")
+                    and result.steps):
+                for _prev in reversed(result.steps):
+                    _pr = _prev.result if isinstance(_prev.result, dict) else {}
+                    _pe = _pr.get("entries")
+                    if isinstance(_pe, list) and _pe:
+                        args["entries"] = _pe
+                        break
             args = {k: _resolve_stepref(v, result.steps) for k, v in args.items()}
             args = _resolve_fillers(args, framework.fillers, self.llm_fast, query)
             args = _resolve_runtime_placeholders(args, runtime_ctx or {})
@@ -840,6 +947,25 @@ class Executor:
                     import re as _re_tk
                     if not _re_tk.search(r"\b\d+\b", query or ""):
                         args["top_k"] = 100
+
+            # Universal §7.3 (safety net deterministico): il Proposer vede solo
+            # gli enum di `mode` (non la loro descrizione) e tende a scegliere
+            # 'research' per query informative ('cerca informazioni su X') →
+            # crawl ricorsivo fino a 900s che blocca il turno interattivo.
+            # Downgrade research/archive → default salvo intento ESPLICITO di
+            # esplorare/archiviare un INTERO sito. Causa generalizzata: enum
+            # pericoloso scelto senza la semantica dell'arg (§7.9 code>LLM).
+            if step.tool == "find_urls" and args.get("mode") in ("research", "archive"):
+                import re as _re_mode
+                _deepcrawl = _re_mode.search(
+                    r"(esplor|mappa|archivi|scandagli|ricorsiv|intero sito|"
+                    r"tutto il sito|crawl|approfondit|exhaustive|entire site|"
+                    r"whole site|recursiv|\bexplore)", (query or "").lower())
+                if not _deepcrawl:
+                    log.info("Executor: find_urls mode=%s → default "
+                             "(query informativa, no deep-crawl intent)",
+                             args.get("mode"))
+                    args["mode"] = "default"
 
             # Universal §7.3: describe_entries dopo step con attachments
             # immagini è ridondante (thumbnail parlano da soli). Skip per
@@ -882,6 +1008,12 @@ class Executor:
                 continue
 
             # Invoke
+            # Osservabilità (#4): logga tool + args risolti (escluso il payload
+            # `entries`, voluminoso) appena prima dell'invoke. Senza, un turn
+            # engine v2 che si blocca su un executor è una scatola nera.
+            log.info("Executor: invoke %s args=%s", step.tool,
+                     {k: v for k, v in args.items()
+                      if k not in ("entries",)})
             t0 = time.time()
             try:
                 r = self.invoke(step.tool, args)

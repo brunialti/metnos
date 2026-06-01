@@ -57,6 +57,14 @@ class _TurnState:
     events: list[TurnEvent] = field(default_factory=list)
     closed: bool = False
     closed_at: float | None = None
+    # Contesto per il recupero in-flight su reload pagina (turns_recent):
+    # un turn ancora running NON è nei JSONL persistiti, quindi il client che
+    # ricarica la chat (navigazione → dashboard → chat su Android) deve poterlo
+    # ritrovare via event log filtrando per conversation+actor.
+    conversation_id: str = ""
+    actor: str = ""
+    query: str = ""
+    created_at: float = field(default_factory=time.time)
     # asyncio.Event per signalling: subscribers fanno wait() su questo
     # quando arrivano alla fine della lista; il publisher set() ad ogni
     # append + clear(). Pattern condition variable.
@@ -90,16 +98,43 @@ class TurnEventLog:
 
     # ─── publisher API ────────────────────────────────────────────────────
 
-    def create(self, turn_id: str) -> None:
+    def create(self, turn_id: str, *, conversation_id: str = "",
+               actor: str = "", query: str = "") -> None:
         """Inizializza il record del turno. Idempotente.
 
         gc() opportunistico: sfoltisce i turn chiusi oltre TTL prima di
         aggiungere, così il dict in-memory non cresce per tutta la vita del
         daemon HTTP (gc() non era invocata da nessuna parte → leak di RAM).
+
+        `conversation_id`/`actor`/`query`: contesto per il recupero in-flight
+        su reload pagina (vedi running_turns()).
         """
         self.gc()
         if turn_id not in self._turns:
-            self._turns[turn_id] = _TurnState(turn_id=turn_id)
+            self._turns[turn_id] = _TurnState(
+                turn_id=turn_id, conversation_id=conversation_id,
+                actor=actor, query=query)
+
+    def running_turns(self, conversation_id: str, actor: str) -> list[dict]:
+        """Turn ancora in esecuzione (non chiusi) per una conversation+actor.
+
+        Usato da `turns_recent` per esporre al client i turn in-flight che NON
+        sono ancora nei JSONL persistiti (scritti solo a fine turno). Senza
+        questo, ricaricare la chat mentre un turn gira lo perde → ⏳ mai
+        risolto / falso errore.
+        """
+        out: list[dict] = []
+        for st in self._turns.values():
+            if st.closed:
+                continue
+            if st.conversation_id != conversation_id or st.actor != actor:
+                continue
+            out.append({
+                "turn_id": st.turn_id,
+                "query": st.query,
+                "ts_start": st.created_at,
+            })
+        return out
 
     def append(self, turn_id: str, event_type: str,
                 payload: dict) -> int:

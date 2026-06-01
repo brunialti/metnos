@@ -1928,7 +1928,11 @@ async def turn_submit(request: web.Request) -> web.Response:
     import uuid as _uuid
     event_log = TurnEventLog.get()
     turn_id = _uuid.uuid4().hex[:16]
-    event_log.create(turn_id)
+    # conversation_id/actor/query: consentono a turns_recent di ritrovare il
+    # turn ancora running se il client ricarica la pagina (navigazione chat →
+    # dashboard → chat). Il turn non è ancora nei JSONL persistiti.
+    event_log.create(turn_id, conversation_id=conv_id, actor=actor,
+                     query=original_query)
 
     # Risposta immediata (dialog/cap pending): nessun run_turn, append `final`
     # nel log e chiudi. Il client si attacca e riceve subito l'esito.
@@ -2190,6 +2194,36 @@ async def turns_recent(request: web.Request) -> web.Response:
             log.warning("turns_recent scan %s failed: %s", f, e)
         if len(out) >= limit * 2:
             break
+
+    # Merge turn IN-FLIGHT dall'event log: girano ancora e NON sono nei JSONL
+    # (scritti solo a fine turno). Senza questo, ricaricare la chat mentre un
+    # turn gira lo perde (navigazione chat→dashboard→chat su Android) → il
+    # client non riaggancia lo stream → ⏳ infinito o falso errore.
+    try:
+        from turn_events import TurnEventLog
+        seen_ids = {t["turn_id"] for t in out}
+        for rt in TurnEventLog.get().running_turns(conv_id, actor):
+            if rt["turn_id"] in seen_ids:
+                continue
+            ts_start = float(rt.get("ts_start") or 0)
+            if since_ts and ts_start <= since_ts:
+                continue
+            out.append({
+                "turn_id": rt["turn_id"],
+                "query": rt.get("query", ""),
+                "final_message": "",
+                "final_message_html": "",
+                "final_kind": "",
+                "ts_start": ts_start,
+                "ts_end": None,
+                "total_ms": None,
+                "in_flight": True,
+                "expandable_caps": [],
+                "attachments": [],
+            })
+    except Exception as e:
+        log.warning("turns_recent in-flight merge failed: %s", e)
+
     out.sort(key=lambda x: x["ts_start"], reverse=True)
     return web.json_response({"turns": out[:limit]})
 
