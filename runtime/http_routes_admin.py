@@ -2019,7 +2019,16 @@ async def admin_timers(request: web.Request) -> web.Response:
             return f"{base} · tra {d / 3600:.1f}h"
         return f"{base} · tra {int(d // 86400)}g"
 
-    rows = []
+    from scheduler_v2.builtin_callbacks import _BUILTIN_JOBS as _BJ
+    # Classifica per appartenenza a _BUILTIN_JOBS (autoritativo): la colonna
+    # `origin` nel DB puo' essere errata (es. multi_tool_maintenance, builtin,
+    # marcato 'user' da una vecchia migrate).
+    # Builtin CONCETTUALMENTE utente: i monitor github nascono da una richiesta
+    # utente (come le altre query), NON sono housekeeping interno → vanno fra i
+    # task utente. I `user_*` e i non-builtin sono gia' utente per esclusione.
+    _user_facing_builtin = {"github_watcher"}
+    _sys_names = {j.get("name") for j in _BJ} - _user_facing_builtin
+    sys_rows, user_rows = [], []
     for e in entries:
         en = bool(e.enabled)
         badge = ("<span style='color:#16a34a'>● attivo</span>" if en
@@ -2029,7 +2038,7 @@ async def admin_timers(request: web.Request) -> web.Response:
         toggle = "disable" if en else "enable"
         toggle_lbl = "Disabilita" if en else "Abilita"
         nm = _html.escape(e.name)
-        rows.append(
+        (sys_rows if e.name in _sys_names else user_rows).append(
             "<tr>"
             f"<td><b>{nm}</b><br><small style='color:#6b7280'>{_html.escape((e.description or '')[:140])}</small></td>"
             f"<td><code>{_html.escape(e.trigger)}</code></td>"
@@ -2060,12 +2069,18 @@ async def admin_timers(request: web.Request) -> web.Response:
         "button:hover{background:#f3f4f6}code{background:#f3f4f6;padding:1px 5px;border-radius:4px;font-size:12px}"
         "a{color:#2563eb;text-decoration:none}h1{font-size:1.4rem;margin-bottom:.2rem}</style></head><body>"
         "<p><a href='/admin'>← admin</a></p>"
-        "<h1>Timer di sistema</h1>"
-        f"<p style='color:#6b7280'>{len(entries)} timer · {n_on} attivi · scheduler v2 · ordinati per prossima esecuzione</p>"
+        "<h1>Scheduler · timer &amp; task</h1>"
+        f"<p style='color:#6b7280'>{len(user_rows)} task utente · {len(sys_rows)} timer di sistema · {n_on} attivi · scheduler v2</p>"
         f"{flash_html}"
+        "<h2 style='font-size:1.05rem;margin:1.2rem 0 .3rem'>Task utente</h2>"
+        + ("<table><tr><th>Task</th><th>Trigger</th><th>Stato</th><th>Prossimo</th>"
+           "<th>Ultima esec.</th><th>Esito</th><th>Run/Fail</th><th>Azioni</th></tr>"
+           f"{''.join(user_rows)}</table>" if user_rows
+           else "<p style='color:#9ca3af'>nessun task utente</p>")
+        + "<h2 style='font-size:1.05rem;margin:1.4rem 0 .3rem'>Timer di sistema</h2>"
         "<table><tr><th>Job</th><th>Trigger</th><th>Stato</th><th>Prossimo</th>"
         "<th>Ultima esec.</th><th>Esito</th><th>Run/Fail</th><th>Azioni</th></tr>"
-        f"{''.join(rows)}</table></body></html>"
+        f"{''.join(sys_rows)}</table></body></html>"
     )
     return web.Response(body=body.encode("utf-8"), content_type="text/html")
 
