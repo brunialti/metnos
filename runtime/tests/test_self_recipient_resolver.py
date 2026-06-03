@@ -29,6 +29,14 @@ def test_self_send_email_no_recipient_fills_actor():
     assert out["messages"][0]["to"] == EMAIL
 
 
+def test_via_channel_none_email_query_fills_and_sets_channel():
+    # turn 805ba95c: Qwen omette via_channel → l'intento email viene dalla QUERY.
+    out = resolve_self_recipient("send_messages", _args(via_channel=None),
+                                 "persone in montagna, metti in spreadsheet e invia alla mia email")
+    assert out["messages"][0]["to"] == EMAIL
+    assert out["via_channel"] == "email"
+
+
 def test_mandami_self_fills():
     out = resolve_self_recipient("send_messages", _args(),
                                  "mandami via email il riepilogo")
