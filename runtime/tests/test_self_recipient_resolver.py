@@ -37,6 +37,26 @@ def test_via_channel_none_email_query_fills_and_sets_channel():
     assert out["via_channel"] == "email"
 
 
+def test_placeholder_recipient_treated_as_missing():
+    # Qwen emette to="${FILLER:email}" (placeholder NON risolto) → assente → actor.
+    a = _args(messages=[{"body": "x", "to": "${FILLER:email}"}])
+    out = resolve_self_recipient("send_messages", a, "invia alla mia email")
+    assert out["messages"][0]["to"] == EMAIL
+
+
+def test_messages_dict_coerced_to_list_with_recipient():
+    a = _args(messages={"body": "x"})
+    out = resolve_self_recipient("send_messages", a, "invia alla mia email")
+    assert isinstance(out["messages"], list)
+    assert out["messages"][0]["to"] == EMAIL
+
+
+def test_real_email_recipient_preserved():
+    a = _args(messages=[{"body": "x", "to": "vero@dest.com"}])
+    out = resolve_self_recipient("send_messages", a, "invia alla mia email")
+    assert out["messages"][0]["to"] == "vero@dest.com"
+
+
 def test_mandami_self_fills():
     out = resolve_self_recipient("send_messages", _args(),
                                  "mandami via email il riepilogo")

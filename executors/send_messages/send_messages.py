@@ -282,9 +282,15 @@ def invoke(args):
                                    "error": _msg("ERR_ARG_MISSING_ONE_OF", options="to, to_user")})
                 continue
             msg_n = dict(m)
-            if "subject" not in msg_n or not isinstance(msg_n["subject"], str):
-                failed_pre.append({"index": i, "error": _msg("ERR_ARG_MISSING", arg="subject")})
-                continue
+            # Subject defaultabile (§2.8): un send con destinatario+corpo NON deve
+            # fallire per subject mancante (il planner lo omette spesso). Derivalo
+            # dal corpo (prima riga non vuota, troncata) o usa un generico.
+            # Universale, model-independent.
+            _subj = msg_n.get("subject")
+            if not isinstance(_subj, str) or not _subj.strip():
+                _body = str(msg_n.get("body") or "")
+                _first = next((ln.strip() for ln in _body.splitlines() if ln.strip()), "")
+                msg_n["subject"] = _first[:78] if _first else "Metnos"
             requests.append({"channel": "email",
                              "client": client or _DEFAULT_CLIENT,
                              "msg": msg_n, "index": i,
