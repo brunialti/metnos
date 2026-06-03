@@ -581,9 +581,16 @@ def _process_resume_executor_with_values(on_complete: dict, values: dict,
         return (f"Rilancio fallito: {type(ex).__name__}: {ex}")
 
     if isinstance(res, dict):
-        return (res.get("final_message_hint")
-                or res.get("summary")
-                or json.dumps(res, ensure_ascii=False)[:600])
+        msg = res.get("final_message_hint") or res.get("summary")
+        if msg:
+            return msg
+        # Backstop universale (§ output formatter, no-raw-leak): MAI json.dumps
+        # grezzo in chat (l'utente vedeva «{...}»). Sintesi pulita e i18n da
+        # ok/error: l'executor che vuole testo ricco espone `summary`.
+        if res.get("ok") is False:
+            err = res.get("error") or res.get("error_class") or ""
+            return f"✗ {err}" if err else _msg("ERR_GENERIC")
+        return _msg("MSG_ACTION_DONE")
     return str(res)
 
 

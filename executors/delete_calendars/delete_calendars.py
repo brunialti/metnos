@@ -136,8 +136,14 @@ def invoke(args):
         confirm = confirm.strip().lower() in ("si", "sì", "yes", "y", "ok", "true", "1")
     if "confirm" in a and not confirm:
         return {"ok": True, "results": [], "used": 0, "ok_count": 0,
-                "summary": "Cancellazione annullata."}
-    return google_workspace.delete_calendar({**a, "ids": [cid for cid, _ in targets]})
+                "summary": _msg("MSG_ACTION_CANCELLED")}
+    res = google_workspace.delete_calendar({**a, "ids": [cid for cid, _ in targets]})
+    # summary user-facing (i18n) → chat pulita, non JSON grezzo (vedi
+    # orchestration resume_executor_with_values fallback).
+    if isinstance(res, dict) and res.get("ok") and "summary" not in res:
+        names = ", ".join(s for _, s in targets)  # «» le aggiunge il template
+        res["summary"] = _msg("MSG_CALENDAR_DELETED", name=names)
+    return res
 
 
 def main():

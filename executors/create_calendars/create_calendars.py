@@ -75,7 +75,12 @@ def invoke(args):
     # Confermato: il nome eventualmente vuoto ricade sul default.
     if not (isinstance(a.get("summary"), str) and a["summary"].strip()):
         a["summary"] = proposed
-    return google_workspace.create_calendar(a)
+    res = google_workspace.create_calendar(a)
+    # summary user-facing (i18n) → la chat mostra un messaggio pulito, non il
+    # JSON grezzo del result (resume_executor_with_values fallback orchestration).
+    if isinstance(res, dict) and res.get("ok") and "summary" not in res:
+        res["summary"] = _msg("MSG_CALENDAR_CREATED", name=a["summary"])
+    return res
 
 
 def main():
