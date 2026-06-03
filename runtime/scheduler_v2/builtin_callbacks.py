@@ -24,29 +24,26 @@ from typing import Any, Callable
 from .models import ScheduleEntry
 from .schedule_parser import next_fire_at as compute_next_fire
 
+import os
+
+# L3.6 (30/5/2026): cadenza dei 2 job notturni GPU-pesanti, settabile via env.
+# `every_Nh` con N multiplo di 24 resta ancorato all'orario del primo fire.
+# Default 72h = ogni 3 giorni (era daily: telos 10 lenti LLM + retrain Qwen-Emb).
+_TELOS_INTROSPECT_INTERVAL_H = int(os.environ.get("METNOS_TELOS_INTROSPECT_INTERVAL_H", "72"))
+_INTENT_RETRAIN_INTERVAL_H = int(os.environ.get("METNOS_INTENT_RETRAIN_INTERVAL_H", "72"))
+
 
 _BUILTIN_JOBS: list[dict[str, Any]] = [
     {
-        "name": "apply_executor_ager",
+        "name": "nightly_aging",
         "trigger": "daily@03:30",
-        "callback_key": "apply_executor_ager",
+        "callback_key": "nightly_aging",
         "description": (
-            "Decay degli executor inattivi (simmetrico ad apply_ager dei "
-            "mnest): active → deprecated dopo 30g di inattivita'; "
-            "deprecated → archived dopo altri 14g."
+            "Decay notturno UNIFICATO (consolida apply_executor_ager + "
+            "apply_ager, L2 30/5/2026): executor inattivi "
+            "active→deprecated→archived + decay/demote/proto-purge mnestoma. "
+            "Sequenziale, un solo job."
         ),
-    },
-    {
-        "name": "apply_ager",
-        "trigger": "daily@04:00",
-        "callback_key": "apply_ager",
-        "description": "Decay + demote + proto purge sul mnestoma.",
-    },
-    {
-        "name": "synt_suggest",
-        "trigger": "daily@04:30",
-        "callback_key": "synt_suggest",
-        "description": "Cascata reattiva su proto-mnest ricorrenti.",
     },
     {
         "name": "introvertiva_propose",
@@ -55,15 +52,6 @@ _BUILTIN_JOBS: list[dict[str, Any]] = [
         "description": (
             "Cascata introvertiva: produce proposte DEDUPE/GENERALIZE/"
             "SPECIALIZE sul corpus accumulato (no auto-apply, audit JSONL)."
-        ),
-    },
-    {
-        "name": "introvertiva_apply",
-        "trigger": "daily@05:30",
-        "callback_key": "introvertiva_apply",
-        "description": (
-            "Auto-apply specialize ad altissima confidenza (dom>=0.9, "
-            "uses>=30, finestra <=14g)."
         ),
     },
     {
@@ -96,7 +84,7 @@ _BUILTIN_JOBS: list[dict[str, Any]] = [
     },
     {
         "name": "proposals_eta_aggregate",
-        "trigger": "daily@04:30",
+        "trigger": "daily@04:25",
         "callback_key": "proposals_eta_aggregate",
         "description": (
             "Aggregator delle latenze per path_shape (ADR 0122): scansiona "
@@ -106,8 +94,41 @@ _BUILTIN_JOBS: list[dict[str, Any]] = [
         ),
     },
     {
+        "name": "state_reaper",
+        "trigger": "daily@03:40",
+        "callback_key": "state_reaper",
+        "description": (
+            "Reaper unico dello stato persistente che cresceva senza pulizia: "
+            "undo.jsonl + _history blob (retention METNOS_UNDO_RETENTION_DAYS), "
+            "http_cache, location_pending, skill_fetch, install_resume, "
+            "approval_registry, turns/ (METNOS_TURN_LOG_RETENTION_DAYS). "
+            "Wire dei reaper esistenti mai schedulati. Idempotente."
+        ),
+    },
+    {
+        "name": "telos_synth_consume",
+        "trigger": "daily@03:32",
+        "callback_key": "telos_synth_consume",
+        "description": (
+            "Consumer marker synt_pending → handle_synth_request (C.8 fase 2). "
+            "Callback gia' registrato ma mancante da _BUILTIN_JOBS → mai "
+            "schedulato: il consumer telos→synth non girava mai (fix 29/5/2026)."
+        ),
+    },
+    {
+        "name": "dialog_pending_sweep",
+        "trigger": "every_1m",
+        "callback_key": "dialog_pending_sweep",
+        "description": (
+            "Auto-chiude i dialoghi get_inputs scaduti (TTL timeout_s o "
+            "METNOS_DIALOG_TTL_S, default 60s) e da' feedback di chiusura "
+            "sullo stesso canale (send_messages via_channel). "
+            "Deterministico, no PLANNER."
+        ),
+    },
+    {
         "name": "i18n_translate_pending",
-        "trigger": "daily@02:00",
+        "trigger": "every_6h",
         "callback_key": "i18n_translate_pending",
         "description": (
             "Traduce fino a 20 righe pending del DB i18n via LLM tier "
@@ -196,29 +217,10 @@ _BUILTIN_JOBS: list[dict[str, Any]] = [
             "jsonl). Cap 20 intent per fire."
         ),
     },
-    {
-        "name": "praxis_template_refresh",
-        "trigger": "daily@04:00",
-        "callback_key": "praxis_template_refresh",
-        "description": (
-            "Refresh skill con template_issue=1 (ADR 0161 ext): Mētis "
-            "re-propose framework escludendo fw_hash corrente, salva, "
-            "marca template_issue=0. Safety net per format_fail rilevati "
-            "ma non rigenerati immediatamente (retry inline disabilitato "
-            "o fallito). Idempotente: salta skill template_issue=0."
-        ),
-    },
-    {
-        "name": "praxis_cluster_merge",
-        "trigger": "daily@03:30",
-        "callback_key": "praxis_cluster_merge",
-        "description": (
-            "Consolidation cluster piccoli (ADR 0162): rivisita cluster "
-            "singleton/piccoli, find_neighbors centroide, LLM judge merge "
-            "se cosine 0.75-0.90 + same intent. Cap 20 pair/fire. "
-            "Risolve frammentazione iniziale Praxis."
-        ),
-    },
+    # Bonifica 2026-05-28: rimossi i default schedule praxis_template_refresh
+    # e praxis_cluster_merge (callback zero-arg → TypeError al fire + store
+    # legacy praxis.sqlite non popolato da Engine v2). Le 2 entry live nel DB
+    # vengono disabilitate dalla bonifica; nessuna ri-seed qui.
     {
         "name": "change_observer",
         "trigger": "daily@03:15",
@@ -233,7 +235,7 @@ _BUILTIN_JOBS: list[dict[str, Any]] = [
     },
     {
         "name": "telos_introspect_nightly",
-        "trigger": "daily@02:30",
+        "trigger": f"every_{_TELOS_INTROSPECT_INTERVAL_H}h",
         "callback_key": "telos_introspect_nightly",
         "description": (
             "Telos engine: 10 lenti laterali (scamper/oulipo/inverse_rl/"
@@ -242,6 +244,18 @@ _BUILTIN_JOBS: list[dict[str, Any]] = [
             "constitutional) su tutti i telos dichiarati. Opt-in via "
             "env METNOS_TELOS_NIGHTLY=1 (default OFF). Output: "
             "~/.local/share/metnos/telos_proposals.jsonl (ADR 0156)."
+        ),
+    },
+    {
+        "name": "intent_classifier_retrain",
+        "trigger": f"every_{_INTENT_RETRAIN_INTERVAL_H}h",
+        "callback_key": "intent_classifier_retrain",
+        "description": (
+            "Re-train Qwen3-Embedding-0.6B fine-tuned per intent "
+            "classification query→canonical_object. Estrae nuove pair "
+            "da turn log ultimi 7gg, train 5 epoch, eval gate min 70% "
+            "+ delta>=0 vs current. LWW promotion v<N+1>. Skip se "
+            "<20 nuove pair (METNOS_INTENT_RETRAIN_MIN_NEW)."
         ),
     },
 ]
@@ -433,30 +447,77 @@ def task_temp_threshold_alert(payload: dict | None = None) -> dict:
             "send_result": send_res}
 
 
+def task_sweep_expired_dialogs(payload=None):
+    """Auto-chiude i dialoghi `get_inputs` scaduti (TTL, default 1 min) e da'
+    FEEDBACK di chiusura sullo STESSO CANALE d'origine.
+
+    Deterministico (§7.9): nessun PLANNER. `dialog_pending.sweep_expired`
+    rimuove i pending scaduti e ritorna i descrittori di quelli ABBANDONATI
+    (attivi, mai risposti) con `actor` + `channel`. La consegna usa l'executor
+    `send_messages` con `to_user=actor` + `via_channel=channel` (stesso path
+    delle altre notifiche proattive, ADR 0090): instrada su telegram/http.
+    """
+    import sys as _sys
+    from pathlib import Path as _P
+    from dialog_pending import sweep_expired
+    abandoned = sweep_expired()
+    notified = 0
+    errors: list[dict] = []
+    if abandoned:
+        _sm_dir = _P(__file__).resolve().parents[2] / "executors" / "send_messages"
+        if str(_sm_dir) not in _sys.path:
+            _sys.path.insert(0, str(_sm_dir))
+    for d in abandoned:
+        actor = d.get("actor") or ""
+        if not actor:
+            continue  # nessun destinatario noto → niente feedback
+        channel = d.get("channel") or ""
+        title = d.get("title") or "in sospeso"
+        minutes = max(1, round((d.get("age_s") or 0) / 60))
+        try:
+            from messages import get as _msg
+            body = _msg("MSG_DIALOG_AUTOCLOSED", title=title, minutes=minutes)
+            subject = _msg("MSG_DIALOG_AUTOCLOSED_SUBJECT")
+        except Exception:
+            body = f"Dialogo «{title}» chiuso dopo {minutes} min senza risposta."
+            subject = "Dialogo chiuso"
+        msg = {"to_user": actor, "subject": subject, "body": body}
+        if channel:
+            msg["via_channel"] = channel
+        try:
+            import send_messages as _sm  # type: ignore
+            out = _sm.invoke({"messages": [msg]})
+            if (isinstance(out, dict) and out.get("ok")
+                    and int(out.get("ok_count") or 0) > 0):
+                notified += 1
+            else:
+                errors.append({"actor": actor, "channel": channel,
+                                "send_result": out})
+        except Exception as ex:
+            errors.append({"actor": actor, "error": repr(ex)})
+    return {"ok": True, "expired_closed": len(abandoned),
+            "notified": notified, "errors": errors}
+
+
 def install_default_callbacks(scheduler) -> None:
     """Register all builtin + user callbacks on `scheduler.callbacks`.
 
     Idempotent across re-installation: uses `replace=True` so re-running
     on a daemon that already has them registered does not raise.
     """
-    # Task implementations live in `_v1_tasks.pyc` (bytecode frozen from
-    # legacy `runtime/scheduler.py` PR7-deleted). Loaded lazily via
-    # SourcelessFileLoader so we don't need to ship Python source for them.
-    # TODO ADR 0112 follow-up: estrarre le 7 task functions in
-    # runtime/jobs/<name>.py come sorgenti propri (ora vivono in bytecode).
-    from importlib.machinery import SourcelessFileLoader
-    from pathlib import Path as _P
-    _v1 = SourcelessFileLoader(
-        "metnos_scheduler_v1_tasks",
-        str(_P(__file__).with_name("_v1_tasks.pyc")),
-    ).load_module()
-    task_apply_ager = _v1.task_apply_ager
-    task_apply_executor_ager = _v1.task_apply_executor_ager
-    task_synt_suggest = _v1.task_synt_suggest
-    task_introvertiva_propose = _v1.task_introvertiva_propose
-    task_introvertiva_apply = _v1.task_introvertiva_apply
-    task_proposals_cleanup = _v1.task_proposals_cleanup
-    task_lifecycle_summary = _v1.task_lifecycle_summary
+    # 7 task notturni builtin: sorgente vera in runtime/jobs/maintenance_tasks.py
+    # (ricostruita 2026-05-28 dopo la perdita di _v1_tasks.pyc — bytecode frozen
+    # da `runtime/scheduler.py` mai versionato, cancellato dal commit 078796a).
+    # Niente piu' SourcelessFileLoader/bytecode come sorgente di verita' (§7.1/§7.10).
+    from jobs.maintenance_tasks import (
+        task_apply_ager,
+        task_apply_executor_ager,
+        task_nightly_aging,
+        task_introvertiva_propose,
+        task_proposals_cleanup,
+        task_lifecycle_summary,
+        task_state_reaper,
+    )
 
     cb = scheduler.callbacks
     cb.register(
@@ -472,21 +533,15 @@ def install_default_callbacks(scheduler) -> None:
         replace=True,
     )
     cb.register(
-        "synt_suggest",
-        _wrap_zero_arg(task_synt_suggest),
-        "Suggerisci proposte synth",
+        "nightly_aging",
+        _wrap_zero_arg(task_nightly_aging),
+        "Decay notturno unificato (executor ager + mnest ager)",
         replace=True,
     )
     cb.register(
         "introvertiva_propose",
         _wrap_zero_arg(task_introvertiva_propose),
         "Genera candidati introvertiva (no apply)",
-        replace=True,
-    )
-    cb.register(
-        "introvertiva_apply",
-        _wrap_zero_arg(task_introvertiva_apply),
-        "Auto-apply specialize ad alta confidenza",
         replace=True,
     )
     cb.register(
@@ -517,6 +572,18 @@ def install_default_callbacks(scheduler) -> None:
         "temp_threshold_alert",
         task_temp_threshold_alert,
         "Alert deterministic se temperatura HW supera soglia (24/5/2026)",
+        replace=True,
+    )
+    cb.register(
+        "dialog_pending_sweep",
+        task_sweep_expired_dialogs,
+        "Auto-chiude dialoghi get_inputs scaduti (TTL) + avvisa utente (every_5m)",
+        replace=True,
+    )
+    cb.register(
+        "state_reaper",
+        _wrap_zero_arg(task_state_reaper),
+        "Reaper unico stato persistente (undo/_history/http_cache/turns/...)",
         replace=True,
     )
 
@@ -610,29 +677,10 @@ def install_default_callbacks(scheduler) -> None:
         replace=True,
     )
 
-    # Praxis template refresh nightly (ADR 0161 ext, 26/5/2026).
-    # daily@04:00 safety net per skill con template_issue=1.
-    def _task_praxis_template_refresh():
-        from jobs.praxis_template_refresh import run as _run
-        return _run()
-    cb.register(
-        "praxis_template_refresh",
-        _task_praxis_template_refresh,
-        "Refresh template skill con template_issue=1 (ADR 0161 ext)",
-        replace=True,
-    )
-
-    # Praxis cluster merge nightly (ADR 0162, 26/5/2026).
-    # daily@03:30 consolidation cluster singleton via LLM judge.
-    def _task_praxis_cluster_merge():
-        from jobs.praxis_cluster_merge import run as _run
-        return _run()
-    cb.register(
-        "praxis_cluster_merge",
-        _task_praxis_cluster_merge,
-        "Merge cluster piccoli via LLM judge (ADR 0162)",
-        replace=True,
-    )
+    # Bonifica 2026-05-28: rimosse le registrazioni callback
+    # praxis_template_refresh / praxis_cluster_merge. Erano zero-arg (TypeError
+    # quando il daemon le invoca con payload) e alimentavano lo store legacy
+    # praxis.sqlite, inutilizzato da Engine v2. Job file spostati in trash.
 
     # Sandbox watchdog soglia (mini-version Fase C, ADR 0140).
     # daily@06:35 controlla #skill third-party + #guest paired,
@@ -678,11 +726,25 @@ def install_default_callbacks(scheduler) -> None:
         replace=True,
     )
 
+    # Intent classifier retrain weekly (27/5/2026): Qwen3-Embedding-0.6B FT
+    # daily@04:15 estrae nuove pair da turn log ultimi 7gg, re-train 5ep,
+    # LWW promotion v<N+1>/ se eval > current.
+    def _task_intent_classifier_retrain(payload=None):
+        from jobs.intent_retrain import callback as _cb
+        return _cb(payload)
+    cb.register(
+        "intent_classifier_retrain",
+        _task_intent_classifier_retrain,
+        "Re-train Qwen3-Emb FT intent classifier (daily@04:15)",
+        replace=True,
+    )
+
     # User-task callback: payload is the full recurring_tasks record dict
     # (query, channel, actor, chat_id, name, label).
     from recurring_tasks import (  # type: ignore
         _run_user_query_callback,
         _wrap_with_times_tracking,
+        _notify_circuit_break,
     )
 
     user_cb = _wrap_with_times_tracking(_run_user_query_callback)
@@ -692,6 +754,10 @@ def install_default_callbacks(scheduler) -> None:
         "Esegue una query utente come turno agent + push canale",
         replace=True,
     )
+
+    # Circuit-breaker: il daemon e' channel-agnostico; qui gli diamo il
+    # notifier che conosce il canale del task (continua/sospendi/cancella).
+    scheduler.on_circuit_break = _notify_circuit_break
 
 
 def install_default_jobs(scheduler) -> int:

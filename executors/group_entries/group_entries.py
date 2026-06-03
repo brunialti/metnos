@@ -17,7 +17,14 @@ Output: entries=[merged...], total_in:int, dedupes:int.
 from __future__ import annotations
 
 import json
+import os
 import sys
+from pathlib import Path
+
+sys.path.insert(0, os.environ.get("METNOS_RUNTIME") or next(
+    str(p / "runtime") for p in Path(__file__).resolve().parents
+    if (p / "runtime" / "config.py").is_file()))
+from messages import get as _msg  # noqa: E402
 
 
 def invoke(args: dict) -> dict:
@@ -36,7 +43,7 @@ def invoke(args: dict) -> dict:
             entries_lists = []
 
     if not isinstance(entries_lists, list):
-        return {"ok": False, "error": "entries_lists must be a list of lists"}
+        return {"ok": False, "error": _msg("ERR_ARG_NOT_LIST_OF", arg="entries_lists", of="lists")}
 
     dedup_key = args.get("dedup_key", "url")
     if dedup_key in ("", None, 0):
@@ -82,7 +89,7 @@ def main():
     try:
         args = json.load(sys.stdin)
     except json.JSONDecodeError as e:
-        sys.stdout.write(json.dumps({"ok": False, "error": f"invalid input json: {e}"}))
+        sys.stdout.write(json.dumps({"ok": False, "error": _msg("ERR_JSON_INVALID")}))
         return
     sys.stdout.write(json.dumps(invoke(args), ensure_ascii=False))
 

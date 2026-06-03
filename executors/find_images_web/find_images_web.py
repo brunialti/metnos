@@ -11,6 +11,7 @@ _RUNTIME = Path(__file__).resolve().parent.parent.parent / "runtime"
 if str(_RUNTIME) not in sys.path:
     sys.path.insert(0, str(_RUNTIME))
 
+from messages import get as _msg  # noqa: E402
 from backends.images.google_vision import find_images_web as _backend  # noqa: E402
 
 
@@ -23,7 +24,7 @@ def main():
         args = json.load(sys.stdin)
     except json.JSONDecodeError as e:
         sys.stdout.write(json.dumps({"ok": False,
-                                      "error": f"invalid input json: {e}"}))
+                                      "error": _msg("ERR_JSON_INVALID")}))
         return
     sys.stdout.write(json.dumps(invoke(args), ensure_ascii=False))
 

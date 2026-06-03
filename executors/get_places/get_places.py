@@ -28,6 +28,7 @@ sys.path.insert(0, os.environ.get("METNOS_RUNTIME") or next(
     str(p / "runtime") for p in Path(__file__).resolve().parents
     if (p / "runtime" / "config.py").is_file()))
 from messages import get as msg  # noqa: E402
+_msg = msg  # alias: alcuni rami di validazione usano _msg (unifica i nomi)
 # Geo provider unico via wrapper (1/5/2026 v0.4.0): chain configurabile.
 from geo_provider import reverse_geocode  # noqa: E402
 
@@ -36,13 +37,13 @@ def invoke(args):
     coords = args.get("coords")
     entries_in = args.get("entries")
     if coords is None and entries_in is None:
-        return {"ok": False, "error": "missing required arg: pass either 'coords' (list of {lat,lon}) or 'entries' (list with gps field)"}
+        return {"ok": False, "error": _msg("ERR_ARG_MISSING_ONE_OF", options="coords, entries")}
     if coords is not None and entries_in is not None:
-        return {"ok": False, "error": "pass only ONE of coords|entries, not both"}
+        return {"ok": False, "error": _msg("ERR_INVALID_ARGS", detail="coords XOR entries")}
     use_entries = entries_in is not None
     items = entries_in if use_entries else coords
     if not isinstance(items, list):
-        return {"ok": False, "error": f"'{'entries' if use_entries else 'coords'}' must be a list"}
+        return {"ok": False, "error": _msg("ERR_ARG_NOT_LIST", arg=("entries" if use_entries else "coords"))}
 
     out, failed = [], []
     p_resolved = p_unknown = p_failed = 0
@@ -51,7 +52,7 @@ def invoke(args):
     try:
         for i, item in enumerate(items):
             if not isinstance(item, dict):
-                failed.append({"index": i, "error": "item must be a dict"})
+                failed.append({"index": i, "error": _msg("ERR_ARG_NOT_DICT", arg="item")})
                 continue
             if use_entries:
                 gps = item.get("gps") or {}
@@ -67,7 +68,7 @@ def invoke(args):
                     out.append(enriched)
                     p_unknown += 1
                 else:
-                    failed.append({"index": i, "error": "invalid lat/lon (must be float)"})
+                    failed.append({"index": i, "error": _msg("ERR_ARG_INVALID", arg="lat/lon", reason="float")})
                 continue
             place = reverse_geocode(lat, lon)
             if place:
@@ -102,7 +103,7 @@ def main():
     try:
         args = json.load(sys.stdin)
     except json.JSONDecodeError as e:
-        sys.stdout.write(json.dumps({"ok": False, "error": f"invalid input json: {e}"}))
+        sys.stdout.write(json.dumps({"ok": False, "error": msg("ERR_JSON_INVALID")}))
         return
     sys.stdout.write(json.dumps(invoke(args), ensure_ascii=False))
 

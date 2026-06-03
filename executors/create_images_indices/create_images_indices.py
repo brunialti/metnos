@@ -314,6 +314,105 @@ def _vlm_prompt(lang: str, filename: str, parent_dir: str) -> str:
     )
 
 
+# ── Indicizzazione intelligente: contesto di cartella (ADR 0166) ──────────────
+# Il VLM-7B descrive la SCENA ma scarta gli indizi di path: una foto di
+# Notre-Dame resta "una vetrata gotica", senza "Parigi". La conoscenza del
+# mondo "Parigi→viaggio" ce l'ha l'LLM-testo, non l'embedding né il VLM.
+# Quindi classifichiamo la CARTELLA una volta (per cartella-unica, cache) e
+# fondiamo un contesto ESPLICITO nell'embedding testuale → ricerca di categorie
+# astratte ("foto dei viaggi") diventa possibile. §7.9: l'LLM è giustificato (un
+# gazetteer place→trip sarebbe hardcoding vietato §7.3); §2.2 generale.
+_FOLDER_CATEGORIES = {"VIAGGIO", "EVENTO", "PERSONE", "DOCUMENTI", "ALTRO"}
+_FOLDER_CTX_CACHE: dict[str, tuple[str, str]] = {}  # label → (categoria, luogo)
+_FOLDER_CTX_LLM = None
+
+
+def _folder_ctx_llm():
+    global _FOLDER_CTX_LLM
+    if _FOLDER_CTX_LLM is None:
+        from llm_router import LLMRouter
+        _FOLDER_CTX_LLM = LLMRouter()
+    return _FOLDER_CTX_LLM
+
+
+def _classify_folder_label(label: str, lang: str) -> tuple[str, str]:
+    """LLM → (categoria∈_FOLDER_CATEGORIES, luogo). Output STRUTTURATO (vs
+    framing free-form, inaffidabile). Memoizzato per label. L'enum è universale;
+    il prompt è nella lingua dell'istanza (i nomi cartella sono in quella lingua)."""
+    label = (label or "").strip()
+    if not label:
+        return ("ALTRO", "")
+    if label in _FOLDER_CTX_CACHE:
+        return _FOLDER_CTX_CACHE[label]
+    if (lang or "it").lower().startswith("en"):
+        sysp = (
+            "Classify a photo folder by its NAME. Answer EXACTLY 'CATEGORY|PLACE'.\n"
+            "CATEGORY in {VIAGGIO, EVENTO, PERSONE, DOCUMENTI, ALTRO} (use these "
+            "exact words). VIAGGIO = trip/holiday/tourist place away from home, "
+            "PLACE = place name (or empty). EVENTO = birthday/school/ceremony/"
+            "home. DOCUMENTI = scans/certificates. PERSONE = a named person. "
+            "ALTRO = unclear.\nExamples:\n  'march malta' => VIAGGIO|Malta\n"
+            "  'roberto birthday' => EVENTO|\n  'misc to sort' => ALTRO|\n"
+            "Only 'CATEGORY|PLACE', nothing else."
+        )
+    else:
+        sysp = (
+            "Classifica una cartella di foto dal suo NOME. Rispondi ESATTAMENTE "
+            "'CATEGORIA|LUOGO'.\nCATEGORIA in {VIAGGIO, EVENTO, PERSONE, "
+            "DOCUMENTI, ALTRO} (usa queste parole esatte). VIAGGIO = gita/"
+            "vacanza/luogo turistico lontano da casa, LUOGO = nome del posto (o "
+            "vuoto). EVENTO = compleanno/scuola/cerimonia/casa. DOCUMENTI = "
+            "scansioni/certificati. PERSONE = una persona con nome. ALTRO = "
+            "incerto.\nEsempi:\n  'marzo malta' => VIAGGIO|Malta\n  "
+            "'compleanno roberto' => EVENTO|\n  'varie da classificare' => ALTRO|\n"
+            "Solo 'CATEGORIA|LUOGO', niente altro."
+        )
+    cat, place = "ALTRO", ""
+    try:
+        out = _folder_ctx_llm().chat(sysp, f"'{label}' =>", tier="middle").text
+        line = (out or "").strip().splitlines()[0] if out else ""
+        line = re.sub(r"^[\*\s>]+", "", line).strip()
+        parts = (line.split("|") + [""])[:2]
+        c = parts[0].strip().upper()
+        if c in _FOLDER_CATEGORIES:
+            cat = c
+            place = parts[1].strip().strip("'\"")
+    except Exception as ex:
+        log.debug("folder classify fallita %r: %r", label, ex)
+    _FOLDER_CTX_CACHE[label] = (cat, place)
+    return (cat, place)
+
+
+def _assemble_path_context(cat: str, place: str, label: str, lang: str) -> str:
+    """Frase di contesto (lingua istanza) dalla classificazione. DISCRIMINANTE:
+    solo VIAGGIO contiene 'viaggio'/'trip' → il coseno separa viaggi da casa."""
+    en = (lang or "it").lower().startswith("en")
+    if cat == "VIAGGIO":
+        if en:
+            return f"Photos of a trip to {place}." if place else "Photos of a trip."
+        return f"Foto di un viaggio a {place}." if place else "Foto di un viaggio."
+    if cat == "EVENTO":
+        return f"Photos of an event: {label}." if en else f"Foto di un evento: {label}."
+    if cat == "PERSONE":
+        return f"Photos of: {label}." if en else f"Foto di: {label}."
+    if cat == "DOCUMENTI":
+        return (f"Photos of documents and scans: {label}." if en
+                else f"Foto di documenti e scansioni: {label}.")
+    return f"Photos: {label}." if en else f"Foto: {label}."
+
+
+def folder_path_context(parent_dir: str, lang: str) -> str:
+    """Contesto di cartella da fondere nell'embedding testuale (intelligent
+    indexing). Rimuove l'anno (rumore) dal nome prima di classificare. Vuoto se
+    label vuoto. API pubblica: la usa anche il re-embed retroattivo."""
+    label = re.sub(r"\b(19|20)\d\d\b", "", parent_dir or "").replace("-", " ")
+    label = re.sub(r"\s+", " ", label).strip()
+    if not label:
+        return ""
+    cat, place = _classify_folder_label(label, lang)
+    return _assemble_path_context(cat, place, label, lang)
+
+
 _LAZY_START_ATTEMPTED = False
 
 
@@ -650,6 +749,12 @@ def _build_unified(
     """
     import numpy as np
 
+    # Lingua istanza per il contesto di cartella (intelligent indexing, ADR 0166).
+    try:
+        from config import DEFAULT_LANG as _lang  # type: ignore
+    except Exception:
+        _lang = "it"
+
     # Lazy imports
     from face_embedding import get_face_engine
     try:
@@ -849,10 +954,14 @@ def _build_unified(
                         face_idx_counter += 1
                     new_faces.append(nf)
                 new_e["faces"] = new_faces
-                # Text emb fresco dalla nuova description
+                # Text emb fresco da path_context + description (ADR 0166).
                 new_e.pop("embedding_text_idx", None)
                 desc = new_e.get("description") or ""
-                if desc and text_model_name != "none":
+                _ctx = folder_path_context(
+                    Path(new_e.get("path", "")).parent.name, _lang)
+                new_e["path_context"] = _ctx
+                _emb_input = (_ctx + " " + desc).strip()
+                if _emb_input and text_model_name != "none":
                     if text_engine is None:
                         try:
                             text_engine = BGEEmbeddingService()
@@ -864,7 +973,7 @@ def _build_unified(
                             text_engine = False
                     if text_engine and text_engine is not False:
                         try:
-                            vec = text_engine.embed_texts([desc])
+                            vec = text_engine.embed_texts([_emb_input])
                             if vec.ndim == 2 and vec.shape[0] == 1:
                                 new_emb_text_list.append(vec[0])
                                 new_e["embedding_text_idx"] = text_idx_counter
@@ -895,7 +1004,10 @@ def _build_unified(
                     face["embedding_face_idx"] = face_idx_counter
                     face_idx_counter += 1
             desc = entry.get("description") or ""
-            if desc and text_model_name != "none":
+            _ctx = folder_path_context(Path(entry.get("path", "")).parent.name, _lang)
+            entry["path_context"] = _ctx
+            _emb_input = (_ctx + " " + desc).strip()
+            if _emb_input and text_model_name != "none":
                 if text_engine is None:
                     try:
                         text_engine = BGEEmbeddingService()
@@ -907,7 +1019,7 @@ def _build_unified(
                         text_engine = False
                 if text_engine and text_engine is not False:
                     try:
-                        vec = text_engine.embed_texts([desc])
+                        vec = text_engine.embed_texts([_emb_input])
                         if vec.ndim == 2 and vec.shape[0] == 1:
                             new_emb_text_list.append(vec[0])
                             entry["embedding_text_idx"] = text_idx_counter

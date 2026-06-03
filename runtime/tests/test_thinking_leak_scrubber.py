@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import pytest
 
-from runtime.agent_runtime import _scrub_thinking_leak
+from runtime.agent_runtime import _scrub_thinking_leak, _scrub_raw_html_leak
 
 
 def test_scrub_wait_actually_lines():
@@ -369,6 +369,45 @@ def test_convergence_q5_federvolley_it_paren_leak():
         must_contain=["girone F", "giornata 22", "2026-05-06"],
         must_not_contain=["posso provare a cercarli nei PDF"],
     )
+
+
+# --- raw-HTML leak backstop (bug "azione schedulata invia messaggio errato") -
+
+def test_raw_html_doctype_leak_scrubbed():
+    """HTML document-level (<!DOCTYPE/<html) trapelato in un messaggio viene
+    rimosso; resta solo il testo. Caso reale: task schedulato web-search."""
+    text = (
+        "Ricerca interrotta prima di una risposta diretta.\n"
+        "- https://rocm.docs.amd.com/versions.html\n"
+        '  <!DOCTYPE html> <html lang="en"><head><title>ROCm 6.2</title>'
+        "</head><body>x</body></html>"
+    )
+    out = _scrub_raw_html_leak(text)
+    assert "<!DOCTYPE" not in out and "<html" not in out
+    assert "ROCm 6.2" in out          # il testo utile sopravvive
+    assert "rocm.docs.amd.com" in out  # l'URL resta
+
+
+def test_raw_html_script_style_removed():
+    out = _scrub_raw_html_leak("ciao <script>alert(1)</script> mondo <html>")
+    assert "alert(1)" not in out and "<script" not in out
+    assert "ciao" in out and "mondo" in out
+
+
+def test_legit_markdown_with_autolink_untouched():
+    """Senza marker di documento, il backstop e' no-op: markdown e autolink
+    `<url>` legittimi NON vengono toccati."""
+    md = (
+        "Versione **6.2**. Vedi <https://rocm.docs.amd.com/v.html> per i "
+        "dettagli.\n- [Release notes](https://x/rel)"
+    )
+    assert _scrub_raw_html_leak(md) == md
+
+
+def test_scrub_raw_html_idempotent():
+    text = "Testo <body><p>ciao</p></body>"
+    once = _scrub_raw_html_leak(text)
+    assert _scrub_raw_html_leak(once) == once
 
 
 if __name__ == "__main__":

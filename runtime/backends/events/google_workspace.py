@@ -155,8 +155,15 @@ def read(args: dict) -> dict:
         except (ImportError, ValueError) as ex:
             return _err(str(ex), "invalid_args", with_entries=True)
 
-    calendar_id = _resolve_calendar_id(args.get("calendar_id"))
-    max_results = int(args.get("max_results") or 25)
+    # Default "all" calendars per query non specificata: include primary +
+    # secondari (work, shared, family birthdays, ecc.). User può forzare
+    # singolo calendar via calendar_id esplicito.
+    raw_cid = args.get("calendar_id")
+    if raw_cid is None or str(raw_cid).strip().lower() in ("", "all", "tutti"):
+        calendar_id = "all"
+    else:
+        calendar_id = _resolve_calendar_id(raw_cid)
+    max_results = int(args.get("max_results") or 100)  # was 25, bumped per all
     argv = ["calendar", "list", "--calendar", calendar_id,
             "--max", str(max_results)]
     if start_iso: argv.extend(["--start", str(start_iso)])
@@ -410,11 +417,18 @@ def delete(args: dict) -> dict:
         results.append({"ok": True, "id": rid, "uid": rid,
                          "status": "deleted"})
 
+    # §2.8: una delete su id INESISTENTE (error_class=not_found) è un no-op
+    # idempotente, NON un fallimento. ok=False solo per errori VERI (auth, rete,
+    # quota). not_found esposto per un esito onesto. Prima `len(results)>0 or
+    # not failed` → ok=False su id assente → terminator "azione non completata".
+    not_found = [f.get("id") for f in failed if f.get("error_class") == "not_found"]
+    real_failed = [f for f in failed if f.get("error_class") != "not_found"]
     return {
-        "ok": len(results) > 0 or not failed,
+        "ok": not real_failed,
         "n_deleted": len(results),
+        "not_found": not_found,
         "results": results,
-        "failed": failed,
+        "failed": real_failed,
         "used": len(results),
         "calendar_source": "google_workspace",
         "calendar_id": calendar_id,

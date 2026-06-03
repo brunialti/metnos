@@ -35,8 +35,14 @@ def embed(query: str) -> Optional[bytes]:
     if not query or not query.strip():
         return None
     try:
-        from affinity_semantic import embed_query
-        vec = embed_query(query)  # ritorna list[float] o ndarray
+        # affinity_semantic non espone `embed_query` a modulo: il vero
+        # embedder è BGEEmbeddingService (bge_embedding.py). Riusa il
+        # singleton lazy `_get_embedder()` (degrade graceful → None).
+        from affinity_semantic import _get_embedder
+        emb = _get_embedder()
+        if emb is None:
+            return None
+        vec = emb.embed_query(query)  # ndarray (1024,) L2-normalized
         if vec is None or len(vec) == 0:
             return None
         # Pack come float32 raw bytes (compatibile con praxis_cluster legacy)

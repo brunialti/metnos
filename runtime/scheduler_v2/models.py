@@ -38,6 +38,11 @@ class ScheduleEntry:
     last_error: str | None = None
     total_runs: int = 0
     total_failures: int = 0
+    # Streak di fallimenti CONSECUTIVI (azzerato al primo success). Alimenta il
+    # circuit-breaker: a soglia, il task ricorrente viene disabilitato e l'owner
+    # notificato (continua/sospendi/cancella). Distinto da total_failures
+    # (cumulativo, mai resettato).
+    consecutive_failures: int = 0
     description: str = ""
     id: int | None = None
 
@@ -84,6 +89,7 @@ class ScheduleEntry:
             last_error=d.get("last_error"),
             total_runs=int(d.get("total_runs") or 0),
             total_failures=int(d.get("total_failures") or 0),
+            consecutive_failures=int(d.get("consecutive_failures") or 0),
             description=d.get("description") or "",
         )
 

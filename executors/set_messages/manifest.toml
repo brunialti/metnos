@@ -22,7 +22,7 @@ en = "Add/remove labels on one or more messages (Gmail). Idempotent state upsert
 
 [code]
 files  = ["set_messages.py"]
-digest = "sha256:d011ca91d3a4576f2ccee904b9f09e3a749dc1a97797718c28a17803e7adf293"
+digest = "sha256:95f7ea220bf15c78d9ceed76ae90162ad3817c4cd8ad7159b350a8bb30cb7d3e"
 
 [args]
 type = "object"
@@ -93,7 +93,7 @@ expect = { ok = false, error_contains = "add/remove" }
 [[tests]]
 name   = "args_invalidi_client_imap"
 input  = { message_ids = ["x"], add = ["IMPORTANT"], client = "metnos" }
-expect = { ok = false, error_contains = "unsupported" }
+expect = { ok = false, error_contains = "Operazione non applicabile per questo provider" }
 
 [[tests]]
 name   = "args_invalidi_lista_vuota_add"

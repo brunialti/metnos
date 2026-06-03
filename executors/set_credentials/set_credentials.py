@@ -34,6 +34,8 @@ from pathlib import Path
 _RUNTIME = Path(__file__).resolve().parent.parent.parent / "runtime"
 sys.path.insert(0, str(_RUNTIME))
 
+from messages import get as _msg  # noqa: E402
+
 import credentials as _cred  # noqa: E402
 
 
@@ -167,21 +169,21 @@ def invoke(args):
     pending_id = args.get("pending_id")
 
     if not isinstance(binding, str) or not binding.strip():
-        return {"ok": False, "error": "binding must be a non-empty string"}
+        return {"ok": False, "error": _msg("ERR_ARG_NOT_NONEMPTY_STRING", arg="binding")}
     try:
         _cred._validate_domain(binding)
     except ValueError as e:
-        return {"ok": False, "error": f"binding invalid: {e}"}
+        return {"ok": False, "error": _msg("ERR_ARG_INVALID", arg="binding", reason=str(e))}
 
     # Resume path (pending_id): risolvi i fields da pending store.
     if pending_id is not None:
         if not isinstance(pending_id, str) or not pending_id.strip():
-            return {"ok": False, "error": "pending_id must be a non-empty string"}
+            return {"ok": False, "error": _msg("ERR_ARG_NOT_NONEMPTY_STRING", arg="pending_id")}
         stashed, perr = _consume_pending(pending_id)
         if perr is not None:
             return {"ok": False, "error": perr}
         if not isinstance(stashed, dict):
-            return {"ok": False, "error": "pending payload malformed"}
+            return {"ok": False, "error": _msg("ERR_PENDING_PAYLOAD_MALFORMED")}
         fields = stashed.get("fields", fields)
         if scopes is None:
             scopes = stashed.get("scopes")
@@ -193,9 +195,9 @@ def invoke(args):
         return {"ok": False, "error": err}
 
     if scopes is not None and not isinstance(scopes, list):
-        return {"ok": False, "error": "scopes must be a list of strings"}
+        return {"ok": False, "error": _msg("ERR_ARG_NOT_LIST_OF", arg="scopes", of="strings")}
     if expires_at is not None and not isinstance(expires_at, str):
-        return {"ok": False, "error": "expires_at must be an ISO 8601 string"}
+        return {"ok": False, "error": _msg("ERR_ARG_INVALID", arg="expires_at", reason="ISO 8601")}
 
     exists = _cred._file_for(binding).exists()
     confirmed = replace or (overwrite_confirmed is True)
@@ -265,7 +267,7 @@ def main():
     try:
         args = json.load(sys.stdin)
     except json.JSONDecodeError as e:
-        sys.stdout.write(json.dumps({"ok": False, "error": f"invalid input json: {e}"}))
+        sys.stdout.write(json.dumps({"ok": False, "error": _msg("ERR_JSON_INVALID")}))
         return
     result = invoke(args)
     sys.stdout.write(json.dumps(result, ensure_ascii=False, default=str))

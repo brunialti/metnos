@@ -49,7 +49,7 @@ Output: `{ok, schema_version=4, ok_count, fail_count, base_path, n_entries_total
 
 [code]
 files  = ["create_images_indices.py"]
-digest = "sha256:3bbe9c12d4bb6febd770c487a9d9628b064ba1b3b0dab34406968fb8e1bd7263"
+digest = "sha256:4755dceb7f4b19ebd213a8ec7827a98e632dc689b07169b276a017f45d54fcf2"
 
 [args]
 type     = "object"
@@ -113,7 +113,7 @@ hint = ["~/.local/share/metnos/index/image/**"]
 [[tests]]
 name     = "base_path_inesistente_fallisce"
 input    = { base_path = "/tmp/metnos_does_not_exist_xyz_unified_create" }
-expect   = { ok = false, error_contains = "not found" }
+expect   = { ok = false, error_contains = "Percorso non trovato" }
 
 [[tests]]
 name     = "missing_base_path_fallisce"

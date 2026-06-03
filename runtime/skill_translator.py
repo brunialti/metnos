@@ -18,6 +18,7 @@ Riferimenti CLAUDE.md:
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -275,6 +276,32 @@ def _flag_name_normalize(name: str) -> str:
     return name.replace("-", "_").lower()
 
 
+def _flag_required_in_all_examples(sc, flag_name: str) -> bool:
+    """`required` IFF il flag CLI compare in OGNI esempio del sub-command.
+
+    Determinismo §7.9 + universale: deriva il required da SKILL.md (gli esempi),
+    NON da argparse (che non ha il concetto per i flag → marcava tutto optional,
+    bug pre-2/6). Cattura repo/target/body (sempre presenti) senza marker
+    espliciti. Un bool-switch non e' mai required (la presenza E' il valore).
+    I positional resource-id sono gestiti a parte e NON resi hard-required
+    (§2.1 vettoriale: l'executor valida 'almeno uno' fra singolare/plurale/
+    entries). Conservativo: 0 esempi → non-required."""
+    fl = sc.flags.get(flag_name)
+    if getattr(fl, "is_bool_switch", False):
+        return False
+    examples = [e for e in (getattr(sc, "examples", None) or [])
+                if isinstance(e, str)]
+    if not examples:
+        return False
+    needles = {f"--{flag_name}", f"--{flag_name.replace('_', '-')}",
+               f"--{_flag_name_normalize(flag_name)}"}
+    # Boundary match: il flag deve essere seguito da spazio, '=' o fine token.
+    # Evita che `--label` matchi spuriamente `--labels` (substring) → required
+    # errato (bug review 2/6).
+    pats = [re.compile(re.escape(n) + r"(?=[\s=]|$)") for n in needles]
+    return all(any(p.search(ex) for p in pats) for ex in examples)
+
+
 def _is_singular_resource(name_norm: str) -> bool:
     if name_norm in _SINGULAR_RESOURCE_HINTS:
         return True
@@ -316,6 +343,7 @@ def build_args(sc, *, has_entries_output: bool) -> list:
             format=fmt,
             items_type=items_t,
             description=_describe_flag(norm, flag),
+            required=_flag_required_in_all_examples(sc, flag_name),
         )
         out.append(spec)
 

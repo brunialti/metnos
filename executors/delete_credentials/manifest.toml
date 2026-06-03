@@ -19,7 +19,7 @@ en = "Removes credentials from encrypted storage. Vectorial (§2.1): accepts `bi
 
 [code]
 files  = ["delete_credentials.py"]
-digest = "sha256:fd6e90c8a26ceaf6f866357495023ecef8c42ea0c55510e440f2b9d20c3da497"
+digest = "sha256:5bdf721d83a6a9373e63161c11847c4d8d141de14f87d58d6d03c18a5b01e3df"
 
 [args]
 type     = "object"

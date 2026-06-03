@@ -36,7 +36,7 @@ Truncation: truncated_what='file' + used + cap_field='max_results'."""
 
 [code]
 files  = ["find_files.py"]
-digest = "sha256:1573288ff8faa95565a0414b120a9e13a0988034fcefe673948238e5201dca71"
+digest = "sha256:375b5626c7d196a062ab0a598d3168cfa68b0bff1947f6a08a793fe192ffe566"
 
 [args]
 type     = "object"
@@ -190,7 +190,7 @@ teardown = "rm -rf /tmp/metnos_test_find"
 [[tests]]
 name   = "fallisce_su_base_path_inesistente"
 input  = { pattern = "*.txt", base_path = "/tmp/metnos_does_not_exist_xyz" }
-expect = { ok = false, error_contains = "not found" }
+expect = { ok = false, error_contains = "Percorso non trovato" }
 
 [[tests]]
 name   = "blocca_base_path_fuori_scope"

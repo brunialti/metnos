@@ -21,7 +21,7 @@ en = "Removes one or more files (NOT directories: use `delete_dirs`). Always acc
 
 [code]
 files  = ["delete_files.py"]
-digest = "sha256:2576216cd748ca20bf721a6d8579ff256985f2a481e553a13b6922223baf7677"
+digest = "sha256:44ecfb481ff08b7b28c60ea4330fa9a8400f43c30e17ea6f94dc0e70f8e1bb99"
 
 [args]
 type     = "object"

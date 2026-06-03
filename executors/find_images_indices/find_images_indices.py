@@ -125,6 +125,11 @@ def _discover_indexed_dirs() -> list[Path]:
     return dirs
 
 
+# Sentinel nel campo `message`: path-like esplicito ben formato ma inesistente
+# → il caller traduce in ERR_PATH_NOT_FOUND (no fallback silenzioso, opz 3).
+_BP_NOT_FOUND = "\x00bp_not_found:"
+
+
 def _resolve_base_path(base_path_arg) -> tuple[Path | None, list[Path] | None, str | None]:
     """Risolve `base_path` arg (3 modalita').
 
@@ -158,16 +163,12 @@ def _resolve_base_path(base_path_arg) -> tuple[Path | None, list[Path] | None, s
                     f"({len(discovered)} indici trovati)"
                 )
             return logical, None, None  # nessun indice altrove: build su questo
-        # Path-like ma INESISTENTE (es. LLM inventa `/home/roberto/Immagini`).
-        # §7.3: non proporre indicizzazione se esistono gia' indici altrove;
-        # fai fallback a discovery. Il dialog di build resta solo per ZERO indici.
-        discovered = _discover_indexed_dirs()
-        if discovered:
-            return None, discovered, (
-                f"base_path '{arg}' non trovato → fallback discovery "
-                f"({len(discovered)} indici trovati)"
-            )
-        return None, None, f"base_path not found: {arg}"
+        # Path-like (ben formato) ma INESISTENTE → ERRORE (decisione 2/6, opz 3):
+        # un path esplicito che non esiste e' un errore, NON un fallback
+        # silenzioso a un altro corpus (coerente con find_dirs §path-not-found).
+        # Il fallback discovery resta SOLO per base_path vuoto o NOME SIMBOLICO
+        # (categoria astratta tipo 'Immagini'/'viaggi', gestita sotto).
+        return None, None, _BP_NOT_FOUND + arg
     # Arg simbolico (nome cartella, non un path). Match esatto sui figli di
     # user_data; altrimenti fallback discovery prima del dialog di build.
     root = _user_data_root()
@@ -650,6 +651,56 @@ def _parse_time_window(window: str) -> tuple[float, float] | None:
     return None
 
 
+# Mesi IT+EN → numero. Usato per estrarre un time_window da query_text (§2.4).
+_MONTHS_NUM = {
+    "gennaio": 1, "febbraio": 2, "marzo": 3, "aprile": 4, "maggio": 5,
+    "giugno": 6, "luglio": 7, "agosto": 8, "settembre": 9, "ottobre": 10,
+    "novembre": 11, "dicembre": 12,
+    "january": 1, "february": 2, "march": 3, "april": 4, "may": 5,
+    "june": 6, "july": 7, "august": 8, "september": 9, "october": 10,
+    "november": 11, "december": 12,
+}
+# Filler temporali (IT+EN) da scartare se restano orfani dopo l'estrazione.
+_TEMPORAL_FILLERS = {
+    "del", "dello", "della", "dell", "dei", "degli", "delle", "nel", "nell",
+    "nello", "nella", "di", "da", "l", "the", "of", "in", "anno", "year",
+    "mese", "month",
+}
+
+
+def _split_temporal_from_query(query_text: str) -> tuple[str, str | None]:
+    """Estrae un riferimento temporale (anno, o mese+anno) da `query_text` e lo
+    converte in time_window canonico ('YYYY' / 'YYYY-MM'). Ritorna
+    (query_residua, time_window|None).
+
+    Razionale §2.4/§7.9: un anno in query_text è un FILTRO, non contenuto
+    semantico. Lasciarlo nell'embedding inquina la ricerca (bug live "viaggi
+    2016" → documenti che CITANO '2016' vincono sui viaggi reali). Estrazione
+    deterministica, dominio-agnostica (solo grammatica data: anno 19xx/20xx +
+    nomi mese IT/EN). Mese senza anno NON viene estratto (ambiguo)."""
+    if not query_text:
+        return query_text, None
+    year: int | None = None
+    month: int | None = None
+    keep: list[str] = []
+    for tok in query_text.split():
+        core = tok.strip(".,;:!?()[]'\"«»").lower()
+        if re.fullmatch(r"(19|20)\d\d", core):
+            year = int(core)
+            continue
+        if core in _MONTHS_NUM:
+            month = _MONTHS_NUM[core]
+            continue
+        keep.append(tok)
+    if year is None:
+        return query_text, None  # niente anno → nessuna estrazione
+    cleaned = [w for w in keep
+               if w.strip(".,;:!?()[]'\"«»").lower() not in _TEMPORAL_FILLERS]
+    residual = " ".join(cleaned).strip()
+    tw = f"{year:04d}-{month:02d}" if month is not None else f"{year:04d}"
+    return residual, tw
+
+
 def _extract_face_embeddings_from_reference(ref_paths: list[str]):
     try:
         from face_embedding import get_face_engine
@@ -742,6 +793,15 @@ def _filter_unified(
         text_score_min = 0.40
     else:
         text_score_min = 0.0
+
+    # match_all (31/5/2026): enumera TUTTO il corpus SOLO quando e' l'UNICO
+    # criterio (caso «quante foto in totale» / «quanti GB occupano»). Se il
+    # proposer lo combina con un criterio SPECIFICO (query_text/name/gps/volti),
+    # quel criterio VINCE e match_all e' ignorato — l'utente vuole una ricerca
+    # filtrata, non tutto il corpus. Bug 31/5: «fammi vedere foto di persone in
+    # montagna» con match_all=true azzerava query_text → 31445 random. §2.4.
+    # match_all=true da solo non ha criteri da azzerare → passa _check_args e
+    # il downstream (nessun narrowing) ritorna tutto.
 
     applied_paths_filter = None
     if paths_filter:
@@ -1009,6 +1069,7 @@ def _filter_unified(
                         cos_score = _cosine(q_vec, _l2_normalize(emb_text[t_idx_int]))
             doc_terms = _normalize_text_for_bm25(
                 e.get("description", "") + " "
+                + e.get("path_context", "") + " "  # ADR 0166: contesto cartella
                 + " ".join(e.get("keywords", [])) + " "
                 + " ".join(e.get("path_tokens", []))
             )
@@ -1018,26 +1079,28 @@ def _filter_unified(
             text_components[i] = (cos_score, bm25)
 
     # Text filter (15/5/2026 §7.3).
-    # Strategia in base alla query:
-    # (A) q_expanded valido (BGE-M3 corpus expansion ok) → BM25 hard match
-    #     sull'expansion. Doc deve contenere ALMENO UN keyword espanso.
-    # (B) q_expanded assente o degenere (query brevi mono-token <=5 char,
-    #     BGE-M3 mappa cosine alto con token irrelati → expansion inquinata)
-    #     → fallback hybrid: bm25 > 0 con cosine >= text_score_min OR
-    #     cosine >= _COSINE_STRONG (0.55). Precision sub-ottimale ma stable.
-    _COSINE_STRONG = 0.55
     if query_text and text_score_min > 0.0:
-        keep_paths = set()
-        for i, e in enumerate(entries):
-            cos_s, bm25_s = text_components.get(i, (0.0, 0.0))
-            if q_expanded and len(q_expanded) >= 2:
-                if bm25_s > 0 and cos_s >= 0.25:
-                    keep_paths.add(e.get("path"))
-            else:
-                if bm25_s > 0 and cos_s >= text_score_min:
-                    keep_paths.add(e.get("path"))
-                elif cos_s >= _COSINE_STRONG:
-                    keep_paths.add(e.get("path"))
+        # Taglio di rilevanza ADATTIVO (core: runtime/relevance_cut.py, §7.3).
+        # Gli embedding densi collassano le similarita' coseno in una banda
+        # stretta ad alta media (μ~0.6 misurato su questo corpus): una soglia
+        # ASSOLUTA e' priva di senso (99% del corpus supera 0.40; 91% supera
+        # 0.55) — per questo il vecchio filtro a soglia fissa lasciava passare
+        # l'intero corpus ("persone in montagna" → 31062/31062). La rilevanza
+        # e' RELATIVA: solo gli outlier nella coda superiore della distribuzione
+        # PER-QUERY. Regola 3-sigma: tieni cos >= μ+3σ (soglia statistica, non
+        # un valore di dominio), con `text_score_min` come pavimento assoluto
+        # anti-rumore per query senza match reali. Il segnale di gating e' il
+        # coseno (semantica pura); il bm25 resta nel composito SOLO per il
+        # ranking (sotto): "persone" matcha quasi tutte le foto → come gate
+        # inquina, come tie-break ordina.
+        from relevance_cut import adaptive_relevance_threshold
+        cos_all = [text_components.get(i, (0.0, 0.0))[0]
+                   for i in range(len(entries))]
+        rel_thr = adaptive_relevance_threshold(cos_all, floor=text_score_min)
+        keep_paths = {
+            e.get("path") for i, e in enumerate(entries)
+            if text_components.get(i, (0.0, 0.0))[0] >= rel_thr
+        }
         score_by_path = {e.get("path"): text_scores.get(i, 0.0)
                          for i, e in enumerate(entries)}
         entries = [e for e in entries if e.get("path") in keep_paths]
@@ -1130,6 +1193,7 @@ def _filter_unified(
         "metadata": {
             "total_count": n_above_threshold,
             "total_size_bytes": total_size_bytes,
+            "total_size_gb": round(total_size_bytes / (1024 ** 3), 2),
             "n_with_size": n_with_size,
         },
     }
@@ -1143,6 +1207,8 @@ def _filter_unified(
 
 
 def _check_args(args: dict) -> str | None:
+    if bool(args.get("match_all")):
+        return None  # match_all=true e' un criterio valido: enumera tutto il corpus
     has_query = bool(args.get("query_text"))
     has_ref = bool(args.get("reference_images"))
     _names = args.get("names")
@@ -1366,12 +1432,35 @@ def invoke(args):
     if err:
         return {"ok": False, "error": err}
 
+    # §2.4: un anno/mese-anno in query_text è un filtro temporale, non
+    # contenuto. Estrailo in time_window (se non già esplicito) prima dello
+    # scoring, così l'embedding semantico non viene inquinato dall'anno.
+    if args.get("query_text") and not args.get("time_window"):
+        _residual, _tw = _split_temporal_from_query(str(args["query_text"]))
+        if _tw is not None:
+            args = dict(args)
+            args["time_window"] = _tw
+            if _residual:
+                args["query_text"] = _residual
+            else:
+                # query SOLO temporale ("foto del 2016") → enumera la finestra
+                args.pop("query_text", None)
+                args["match_all"] = True
+            log.info("find_images_indices: temporal split → time_window=%r, "
+                     "query_text=%r", _tw, args.get("query_text"))
+
     top_k = int(args.get("top_k", _TOP_K_DEFAULT))
     if top_k < 1:
         return {"ok": False, "error": _msg("ERR_ARG_NOT_POSITIVE_INT", arg="top_k")}
 
     single_dir, multi_dirs, msg = _resolve_base_path(args.get("base_path"))
     if single_dir is None and multi_dirs is None:
+        # Path-like esplicito inesistente (opz 3): errore, non dialog di build.
+        if msg and msg.startswith(_BP_NOT_FOUND):
+            _bad = msg[len(_BP_NOT_FOUND):]
+            return {"ok": False, "entries": [], "error_class": "not_found",
+                    "error_code": "ERR_PATH_NOT_FOUND",
+                    "error": _msg("ERR_PATH_NOT_FOUND", path=_bad)}
         # §7.3 lazy index: 0 indici E query SENZA base_path esplicito →
         # ritorna needs_inputs dialog per scelta dir + spawn build su scelta.
         # Default suggerito: ~/.local/share/metnos/Immagini.
@@ -1533,6 +1622,7 @@ def _invoke_multi_dirs(dirs: list[Path], args: dict, msg: str | None) -> dict:
         "metadata": {
             "total_count": n_above,
             "total_size_bytes": total_size_bytes,
+            "total_size_gb": round(total_size_bytes / (1024 ** 3), 2),
             "n_with_size": n_with_size,
         },
     }

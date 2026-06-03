@@ -25,7 +25,7 @@ en = "Search POIs/places/addresses by text query. USE THIS TOOL for any 'find/se
 
 [code]
 files  = ["find_places.py"]
-digest = "sha256:34b22c3655c94d779addf519e505b3e0def61bf076b68711ea4f702b4fd7b9da"
+digest = "sha256:306d61474da2ff115c9730c0efdea23331b6d6540b215537f022243fa52e3f3e"
 
 [args]
 type     = "object"
@@ -109,12 +109,12 @@ expect = { ok = true, ok_count_eq = 0 }
 [[tests]]
 name   = "args_invalidi_queries_non_lista"
 input  = { queries = "Roma" }
-expect = { ok = false, error_contains = "must be a list" }
+expect = { ok = false, error_contains = "deve essere una lista di strings" }
 
 [[tests]]
 name   = "max_results_invalido"
 input  = { queries = ["Roma"], max_results = 0 }
-expect = { ok = false, error_contains = "max_results must be" }
+expect = { ok = false, error_contains = "deve essere compreso fra" }
 
 [[tests]]
 name   = "query_non_stringa_fallisce_solo_quella"

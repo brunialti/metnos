@@ -81,13 +81,20 @@ def _candidate_dirs() -> list[Path]:
 
 
 def _resolve_path(name: str) -> Optional[Path]:
-    """Trova il file <name>.json nella prima dir disponibile."""
+    """Trova il file <name>.json nella prima dir disponibile.
+
+    Fallback `_<name>.json`: i builtin runtime (classify_entries, describe_entries,
+    admin, *_tasks, final_answer, get_inputs, undo_last_turn) sono salvati nel
+    typing_cache con prefisso underscore (`_classify_entries.json`). Senza questo
+    fallback le typed rules sarebbero silenziosamente no-op per quei tool.
+    """
     for d in _candidate_dirs():
         p = d / f"{name}.json"
         if p.exists():
             return p
-        # Convenzione builtin: nomi tipo `read_messages` → underscore-prefixed
-        # legacy convention non applicabile (typing_cache usa nomi puliti).
+        pu = d / f"_{name}.json"
+        if pu.exists():
+            return pu
     return None
 
 

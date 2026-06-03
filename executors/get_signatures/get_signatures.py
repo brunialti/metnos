@@ -15,6 +15,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "runtime"))
 
+from messages import get as _msg  # noqa: E402
+
 if sys.version_info >= (3, 11):
     import tomllib
 else:  # pragma: no cover
@@ -55,7 +57,7 @@ def _check_blacklist(store: SafetyStore, signature: str) -> dict:
     try:
         sig = Signature.parse(signature)
     except ValueError as e:
-        return {"ok": False, "error": f"invalid signature: {e}"}
+        return {"ok": False, "error": _msg("ERR_ARG_INVALID", arg="signature", reason=str(e))}
     for kind in ("blacklist", "forbidden"):
         for row in store.find_by_kind(kind):
             if signature_matches(sig, row.signature):
@@ -75,7 +77,7 @@ def _check_whitelist(
     try:
         sig = Signature.parse(signature)
     except ValueError as e:
-        return {"ok": False, "error": f"invalid signature: {e}"}
+        return {"ok": False, "error": _msg("ERR_ARG_INVALID", arg="signature", reason=str(e))}
     for kind in ("whitelist", "graylist"):
         for row in store.find_by_kind(kind):
             if signature_matches(sig, row.signature):
@@ -103,7 +105,7 @@ def _check_whitelist(
 
 def _check_forbidden(argv: list[str]) -> dict:
     if not argv:
-        return {"ok": False, "error": "argv must be non-empty"}
+        return {"ok": False, "error": _msg("ERR_ARG_NOT_LIST", arg="argv")}
     binary = os.path.basename(argv[0])
     rest = argv[1:]
     if binary in _SUDO_WRAPPERS and rest:
@@ -125,14 +127,14 @@ def _check_forbidden(argv: list[str]) -> dict:
                 "ok": True,
                 "negate": True,
                 "matched_path": value,
-                "reason": f"destructive '{binary}' on '{value}' (Law 1)",
+                "reason": _msg("MSG_SIG_LAW1_DESTRUCTIVE", binary=binary, value=value),
             }
         if _BLOCK_DEVICE_RE.match(value):
             return {
                 "ok": True,
                 "negate": True,
                 "matched_path": value,
-                "reason": f"destructive '{binary}' on block device '{value}' (Law 1)",
+                "reason": _msg("MSG_SIG_LAW1_BLOCKDEV", binary=binary, value=value),
             }
     return {"ok": True, "negate": False, "matched_path": None}
 
@@ -198,7 +200,7 @@ def _list_all(store: SafetyStore) -> dict:
 
 def _seed_diff(store: SafetyStore, seed_path: Path) -> dict:
     if not seed_path.exists():
-        return {"ok": False, "error": f"seed file not found: {seed_path}"}
+        return {"ok": False, "error": _msg("ERR_PATH_NOT_FOUND", path=seed_path)}
     with open(seed_path, "rb") as f:
         seed = tomllib.load(f)
     seed_entries = {e["sig"]: e for e in seed.get("signatures", [])}
@@ -249,26 +251,26 @@ def _seed_diff(store: SafetyStore, seed_path: Path) -> dict:
 def invoke(args: dict, ctx: dict | None = None) -> dict:
     kind = args.get("kind")
     if not kind:
-        return {"ok": False, "error": "missing required: kind"}
+        return {"ok": False, "error": _msg("ERR_ARG_MISSING", arg="kind")}
 
     store = SafetyStore()
     try:
         if kind == "blacklist":
             sig = args.get("signature")
             if not sig:
-                return {"ok": False, "error": "kind='blacklist' requires 'signature'"}
+                return {"ok": False, "error": _msg("ERR_ARG_MISSING", arg="signature")}
             return _check_blacklist(store, sig)
         if kind == "whitelist":
             sig = args.get("signature")
             if not sig:
-                return {"ok": False, "error": "kind='whitelist' requires 'signature'"}
+                return {"ok": False, "error": _msg("ERR_ARG_MISSING", arg="signature")}
             return _check_whitelist(
                 store, sig, bool(args.get("record_use", False))
             )
         if kind == "forbidden":
             argv = args.get("argv")
             if not isinstance(argv, list):
-                return {"ok": False, "error": "kind='forbidden' requires argv (list)"}
+                return {"ok": False, "error": _msg("ERR_ARG_MISSING", arg="argv")}
             return _check_forbidden(argv)
         if kind == "graylist":
             return _list_graylist(store)
@@ -283,7 +285,7 @@ def invoke(args: dict, ctx: dict | None = None) -> dict:
         if kind == "seed_diff":
             seed_path = Path(args.get("seed_path") or DEFAULT_SEED_PATH)
             return _seed_diff(store, seed_path)
-        return {"ok": False, "error": f"unknown kind: {kind}"}
+        return {"ok": False, "error": _msg("ERR_ARG_ENUM", arg="kind", allowed=str(kind))}
     finally:
         store.close()
 

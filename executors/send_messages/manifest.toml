@@ -18,7 +18,7 @@ en = "Send one or more messages via mail (SMTPS) or Telegram. Vectorial: the lis
 
 [code]
 files  = ["send_messages.py"]
-digest = "sha256:85b184527c1de4331f24bd1e3cef8e31f8237507e6de1d78c3f2bce8687af60c"
+digest = "sha256:b6f36f336c795b644eb8b1f34a3b15a73cad68c51e07a79b12bb8008e54024d7"
 
 [args]
 type     = "object"
@@ -117,12 +117,17 @@ hint = ["~/.config/metnos/mail.env", "~/.config/mykleos/mail.env"]
 [[tests]]
 name   = "messages_non_lista"
 input  = { messages = "ciao" }
-expect = { ok = false, error_contains = "must be a list" }
+expect = { ok = false, error_contains = "deve essere una lista" }
 
 [[tests]]
 name   = "account_invalido"
 input  = { messages = [], account = "ghost" }
-expect = { ok = false, error_contains = "unknown account" }
+expect = { ok = false, field_eq = { error_code = "ERR_UNKNOWN_ACCOUNT" } }
+
+[[tests]]
+name   = "vuoto_con_account_valido_noop"
+input  = { messages = [], account = "metnos_system" }
+expect = { ok = true, metadata_field_eq = { ok_count = 0 } }
 
 [[tests]]
 name   = "rate_limit_max_50"

@@ -35,7 +35,7 @@ Output entries=[contact] (0 or 1). At least one of contact_id/email/phone requir
 
 [code]
 files  = ["read_contacts.py"]
-digest = "sha256:fde8c6bbedce98acb7433ed57ac998a42732d03b88f0dd12f3ba1e80bf32ab9c"
+digest = "sha256:df87bf64a23ffb53d466c6a331f4c7a625201257b009cad9fefa873aac5447af"
 
 [args]
 type     = "object"

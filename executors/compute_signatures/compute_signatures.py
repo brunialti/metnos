@@ -12,6 +12,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "runtime"))
 
+from messages import get as _msg  # noqa: E402
 from safety.canonicalize import Signature, compute_signature, has_sudo_wrapper
 from safety.seed_bootstrap import bootstrap_safety_seed
 
@@ -42,9 +43,9 @@ _REVERSIBLE_HINTS: dict[tuple[str, str], str] = {
 
 def _op_command(argv: list[str]) -> dict:
     if not isinstance(argv, list) or not argv:
-        return {"ok": False, "error": "argv must be a non-empty list"}
+        return {"ok": False, "error": _msg("ERR_ARG_NOT_LIST", arg="argv")}
     if not all(isinstance(a, str) for a in argv):
-        return {"ok": False, "error": "argv elements must all be strings"}
+        return {"ok": False, "error": _msg("ERR_ARG_NOT_LIST_OF", arg="argv", of="strings")}
     sig = compute_signature(argv)
     return {
         "ok": True,
@@ -60,14 +61,14 @@ def _op_reversibility(signature: str) -> dict:
     try:
         sig = Signature.parse(signature)
     except ValueError as e:
-        return {"ok": False, "error": f"invalid signature: {e}"}
+        return {"ok": False, "error": _msg("ERR_ARG_INVALID", arg="signature", reason=str(e))}
 
     if sig.binary in _IRREVERSIBLE_BINARIES:
         return {
             "ok": True,
             "class": "irreversible",
             "undo_hint": None,
-            "reason": f"binary '{sig.binary}' is destructive by nature",
+            "reason": _msg("MSG_SIG_DESTRUCTIVE_BINARY", binary=sig.binary),
         }
     hint = _REVERSIBLE_HINTS.get((sig.binary, sig.subcommand_or_flag))
     if hint is None:
@@ -77,13 +78,13 @@ def _op_reversibility(signature: str) -> dict:
             "ok": True,
             "class": "reversible",
             "undo_hint": hint,
-            "reason": "known reversible operation",
+            "reason": _msg("MSG_SIG_KNOWN_REVERSIBLE"),
         }
     return {
         "ok": True,
         "class": "unknown",
         "undo_hint": None,
-        "reason": "no rule matches; treat as potentially irreversible",
+        "reason": _msg("MSG_SIG_NO_RULE"),
     }
 
 
@@ -105,7 +106,7 @@ def _op_seed_apply(seed_path: str | None) -> dict:
 def invoke(args: dict, ctx: dict | None = None) -> dict:
     op = args.get("op")
     if not op:
-        return {"ok": False, "error": "missing required: op"}
+        return {"ok": False, "error": _msg("ERR_ARG_MISSING", arg="op")}
 
     if op == "command":
         argv = args.get("argv")
@@ -113,11 +114,11 @@ def invoke(args: dict, ctx: dict | None = None) -> dict:
     if op == "reversibility":
         sig = args.get("signature")
         if not sig:
-            return {"ok": False, "error": "op='reversibility' requires 'signature'"}
+            return {"ok": False, "error": _msg("ERR_ARG_MISSING", arg="signature")}
         return _op_reversibility(sig)
     if op == "seed_apply":
         return _op_seed_apply(args.get("seed_path"))
-    return {"ok": False, "error": f"unknown op: {op}"}
+    return {"ok": False, "error": _msg("ERR_ARG_ENUM", arg="op", allowed=str(op))}
 
 
 

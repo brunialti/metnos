@@ -345,17 +345,28 @@ def task_change_observer(payload: dict | None = None) -> dict:
 def _physical_rollback(ci: ChangeIntent, reason: str) -> dict:
     """Esegue il rollback fisico per kind, poi transition state DB.
 
-    Delegato a `change_rollback` module (Fase 3.2). Se non ancora disponibile,
-    fa solo lo state transition (marker logico).
+    Delegato a `change_rollback` module (Fase 3.2). Import flat coerente col
+    resto dei moduli runtime (config/change_intents importati flat sopra).
+
+    §2.8 no-silent-failure: lo state passa a ROLLED_BACK SOLO se il rollback
+    fisico è stato eseguito davvero. Se `change_rollback` non è importabile o
+    solleva eccezione, NON marchiamo `rolled_back` (sarebbe una bugia): lasciamo
+    l'intent nello stato corrente e ritorniamo l'errore al chiamante, che lo
+    conta come errore e lo riproverà al prossimo fire.
     """
     try:
-        from runtime.change_rollback import rollback_for_kind
-        effect = rollback_for_kind(ci)
-    except ImportError:
-        effect = {"physical_rollback": "deferred",
-                  "note": "change_rollback module not yet deployed"}
-    except Exception as exc:
-        effect = {"physical_rollback": "error", "error": str(exc)[:200]}
+        from change_rollback import rollback_for_kind
+    except ImportError as exc:
+        # Modulo non disponibile: fail-loud, NON falso rolled_back.
+        raise RuntimeError(
+            f"change_rollback non importabile, rollback fisico impossibile "
+            f"per intent {ci.id}: {exc}") from exc
+    effect = rollback_for_kind(ci)
+    if isinstance(effect, dict) and effect.get("physical_rollback") == "error":
+        # Rollback fisico fallito: NON marcare rolled_back (§2.8).
+        raise RuntimeError(
+            f"rollback fisico fallito per intent {ci.id}: "
+            f"{effect.get('error')}")
     mark_rolled_back(ci.id, reason=reason)
     return effect
 

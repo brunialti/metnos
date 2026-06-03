@@ -16,7 +16,7 @@ en = "Lookup in the named registry of persons. Without arguments returns the ful
 
 [code]
 files  = ["get_persons.py"]
-digest = "sha256:3e531c33e0094d49dfd329c83014946d35268fed1375f96b64c8080633c00009"
+digest = "sha256:48c5ac8ff34ec30a7b48c949b44b28cd08ab9c2afcfe608e7b8e452b71dde4d2"
 
 [args]
 type     = "object"

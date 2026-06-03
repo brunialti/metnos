@@ -59,6 +59,45 @@ LAN_NETS = (
     ipaddress.ip_network("10.0.0.0/8"),
 )
 
+# Proxy fidati: SOLO se il peer TCP reale (`request.remote`) cade in queste
+# reti gli header `CF-Connecting-IP` / `X-Forwarded-For` vengono onorati per
+# derivare l'IP del client. Altrimenti chiunque potrebbe spoofare
+# `X-Forwarded-For: 127.0.0.1` e ottenere il bypass LAN → ruolo `user`.
+#
+# Default = loopback: il tunnel Cloudflare (`cloudflared`) gira sullo stesso
+# host e consegna a 127.0.0.1, quindi il deploy resta funzionante. Override
+# (es. reverse-proxy su altro host LAN) via env `METNOS_TRUSTED_PROXIES`
+# come lista CIDR separata da virgole (es. "127.0.0.0/8,10.0.0.5/32").
+def _parse_trusted_proxies() -> tuple:
+    raw = _os.environ.get("METNOS_TRUSTED_PROXIES", "").strip()
+    if not raw:
+        return (ipaddress.ip_network("127.0.0.0/8"),
+                ipaddress.ip_network("::1/128"))
+    nets = []
+    for tok in raw.split(","):
+        tok = tok.strip()
+        if not tok:
+            continue
+        try:
+            nets.append(ipaddress.ip_network(tok, strict=False))
+        except ValueError:
+            log.warning("[http] METNOS_TRUSTED_PROXIES: CIDR invalido ignorato: %r", tok)
+    return tuple(nets)
+
+
+TRUSTED_PROXY_NETS = _parse_trusted_proxies()
+
+
+def _is_trusted_proxy(remote: str | None) -> bool:
+    """True se il peer TCP reale e' un proxy fidato (puo' dettare XFF/CF-IP)."""
+    if not remote:
+        return False
+    try:
+        ip = ipaddress.ip_address(remote)
+    except ValueError:
+        return False
+    return any(ip in net for net in TRUSTED_PROXY_NETS)
+
 
 def get_or_create_admin_key() -> str:
     """Legge la admin key da ADMIN_KEY_PATH; se non esiste la crea (mode 0600)."""
@@ -202,14 +241,19 @@ async def auth_middleware(request: web.Request, handler):
         # logica, chiunque dietro tunnel HTTPS si vedrebbe ruolo `user`
         # automatico (request.remote == 127.0.0.1).
         effective_remote = request.remote
-        cf_ip = request.headers.get("CF-Connecting-IP", "").strip()
-        if cf_ip:
-            effective_remote = cf_ip
-        else:
-            xff = request.headers.get("X-Forwarded-For", "").strip()
-            if xff:
-                # XFF puo' essere lista "client, proxy1, proxy2": usa il primo.
-                effective_remote = xff.split(",")[0].strip()
+        # Gli header forwarded sono fidati SOLO se il peer TCP reale e' un
+        # proxy fidato (default: loopback = tunnel Cloudflare). Senza questo
+        # gate, `X-Forwarded-For: 127.0.0.1` da Internet otterrebbe il bypass
+        # LAN → ruolo `user` (spoofing).
+        if _is_trusted_proxy(request.remote):
+            cf_ip = request.headers.get("CF-Connecting-IP", "").strip()
+            if cf_ip:
+                effective_remote = cf_ip
+            else:
+                xff = request.headers.get("X-Forwarded-For", "").strip()
+                if xff:
+                    # XFF puo' essere lista "client, proxy1, proxy2": usa il primo.
+                    effective_remote = xff.split(",")[0].strip()
         if _is_lan_trusted(effective_remote) and not token:
             role = "user"
 

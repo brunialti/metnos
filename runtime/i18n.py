@@ -77,6 +77,12 @@ def _open() -> sqlite3.Connection:
     if _conn is None:
         DB_PATH.parent.mkdir(parents=True, exist_ok=True)
         c = sqlite3.connect(str(DB_PATH), check_same_thread=False)
+        # Concorrenza-safe: WAL consente 1 writer + N reader senza lock; il
+        # busy_timeout assorbe la contesa fra turno utente e job notturno
+        # (i18n_translate_pending) anziche' fallire subito con "database is
+        # locked" (§2.8 no silent failure).
+        c.execute("PRAGMA journal_mode=WAL")
+        c.execute("PRAGMA busy_timeout=5000")
         c.executescript(_SCHEMA)
         # Migration legacy: source_hash colonna aggiunta 1/5/2026 sera.
         # Migration v2 (6/5/2026): version_hash + source_text_hash per

@@ -41,8 +41,11 @@ def test_install_preserves_metrics_on_reinstall(db_path):
     """If a row already has last_run_at / total_runs, reinstall keeps them."""
     d = SchedulerDaemon(db_path)
     install_default_jobs(d)
-    # Simulate a successful run on apply_ager
-    entry = d.storage.get_by_name("apply_ager")
+    # Soggetto derivato dalla fonte di verita' (§7.3): un builtin qualsiasi
+    # del set corrente, cosi' il test non si lega a un nome consolidato-via
+    # (es. ADR 0167 ha rimosso `apply_ager` → `nightly_aging`).
+    name = _BUILTIN_JOBS[0]["name"]
+    entry = d.storage.get_by_name(name)
     assert entry is not None
     d.storage.record_outcome(
         entry.id,  # type: ignore[arg-type]
@@ -53,11 +56,11 @@ def test_install_preserves_metrics_on_reinstall(db_path):
         decrement_remaining=False,
         disable=False,
     )
-    before = d.storage.get_by_name("apply_ager")
+    before = d.storage.get_by_name(name)
     assert before.total_runs == 1  # type: ignore[union-attr]
     # Re-install: must not reset metrics.
     install_default_jobs(d)
-    after = d.storage.get_by_name("apply_ager")
+    after = d.storage.get_by_name(name)
     assert after.total_runs == 1  # type: ignore[union-attr]
     assert after.last_duration_ms == 1234  # type: ignore[union-attr]
 

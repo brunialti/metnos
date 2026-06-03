@@ -1,4 +1,4 @@
-"""E2E scheduler_v2 — verifica 18 builtin entries presenti al boot.
+"""E2E scheduler_v2 — verifica che ogni builtin entry sia presente al boot.
 
 Per ognuna delle entry canonical, verifica:
   - callback registrato (POST /admin/jobs/{key}/fire → ok)
@@ -13,34 +13,18 @@ import pytest
 import pytest_asyncio
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+# runtime su path per derivare la lista builtin dalla FONTE DI VERITA'
+# (§7.3 universale): cosi' il test non resta stale a ogni consolidamento
+# (ADR 0167 ha fuso apply_*ager+synt_suggest→nightly_aging, +state_reaper, ...).
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "runtime"))
 
 from driver import E2EClient, E2EServer
+from scheduler_v2.builtin_callbacks import _BUILTIN_JOBS
 
 pytestmark = pytest.mark.asyncio
 
 
-_BUILTIN_CALLBACKS = [
-    "apply_ager",
-    "apply_executor_ager",
-    "synt_suggest",
-    "introvertiva_propose",
-    "introvertiva_apply",
-    "proposals_cleanup",
-    "lifecycle_summary",
-    "images_index_refresh",
-    "proposals_eta_aggregate",
-    "i18n_translate_pending",
-    "promoter",
-    "promoter_digest",
-    "skill_sandbox_watchdog",
-    "github_watcher",
-    "multi_tool_maintenance",
-    "telos_introspect_nightly",
-    # ADR 0158 (23/5/2026):
-    "change_intent_materialize",
-    "change_applier",
-    "change_observer",
-]
+_BUILTIN_CALLBACKS = [j["callback_key"] for j in _BUILTIN_JOBS]
 
 
 @pytest.fixture(scope="module")
@@ -63,12 +47,12 @@ async def test_callback_registered(driver, callback_key: str):
     # Alcuni callback richiedono il LLM live: per evitare timeout slow,
     # skip i 3 callback che invocano LLM heavy
     skip_llm_heavy = {
-        "synt_suggest",          # synt multistage ~150s
-        "i18n_translate_pending", # LLM tier wise
-        "telos_introspect_nightly",  # 10 lenses × N targets ~5min
-        "github_watcher",        # network + LLM
-        "promoter",              # synth_request via proposal_evaluator
-        "images_index_refresh",  # CLIP + EXIF su 30k foto
+        "i18n_translate_pending",      # LLM tier wise
+        "telos_introspect_nightly",    # 10 lenses × N targets ~5min
+        "intent_classifier_retrain",   # retrain Qwen-Emb (ADR 0167)
+        "github_watcher",              # network + LLM
+        "promoter",                    # synth_request via proposal_evaluator
+        "images_index_refresh",        # CLIP + EXIF su 30k foto
     }
     if callback_key in skip_llm_heavy:
         pytest.skip(f"{callback_key}: LLM-heavy, separate slow test")

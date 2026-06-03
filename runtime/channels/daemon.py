@@ -1001,15 +1001,72 @@ class ChannelDaemon:
                     "result": result}
         return {"ok": False, "reason": "unknown_action", "action": action}
 
+    def _handle_scheduler_callback(self, msg: InboundMessage,
+                                    data: str) -> dict:
+        """Gestisce i bottoni della notifica circuit-breaker dello scheduler
+        (recurring_tasks._notify_circuit_break). Formato
+        `sched:<azione>:<entry_name>` con azione cont|susp|canc.
+
+        - cont  → resume_job: riabilita + azzera streak + ricalcola next_fire.
+        - susp  → resta disabilitato (toggle off idempotente). Ripristinabile.
+        - canc  → cancella la schedulazione (scheduler entry + record utente).
+
+        entry_name e' il nome scheduler (`user_<task>`); per la pulizia del
+        record utente si rimuove il prefisso `user_`. Determinismo §7.9: niente
+        LLM, parsing strict, errori esposti come reply (mai stacktrace). Testo
+        user-facing via i18n DB (§11): chiavi MSG_SCHED_*."""
+        from messages import get as _msg
+        parts = data.split(":", 2)
+        if len(parts) != 3 or not parts[2]:
+            return {"ok": False, "reason": "bad_callback_data", "data": data}
+        _, action, entry_name = parts
+        try:
+            from scheduler_v2 import client as sched_client
+        except Exception as ex:  # noqa: BLE001
+            self._send_text(msg.sender_id,
+                            _msg("MSG_SCHED_UNREACHABLE", error=ex),
+                            reply_to=msg.message_id)
+            return {"ok": False, "reason": "scheduler_unreachable", "error": str(ex)}
+
+        if action == "cont":
+            ok = sched_client.resume_job(entry_name)
+            reply = _msg("MSG_SCHED_RESUMED" if ok else "MSG_SCHED_NOT_FOUND")
+            return self._sched_cb_reply(msg, ok, reply, "resume", entry_name)
+        if action == "susp":
+            ok = sched_client.toggle_job(entry_name, False)
+            reply = _msg("MSG_SCHED_SUSPENDED" if ok else "MSG_SCHED_NOT_FOUND")
+            return self._sched_cb_reply(msg, ok, reply, "suspend", entry_name)
+        if action == "canc":
+            ok = sched_client.cancel_job(entry_name)
+            # Pulisci anche il record recurring_tasks (chiave senza `user_`).
+            rec_name = entry_name[len("user_"):] if entry_name.startswith("user_") else entry_name
+            try:
+                from recurring_tasks import cancel_user_task
+                cancel_user_task(rec_name)
+            except Exception as ex:  # noqa: BLE001
+                log.warning("cancel_user_task('%s') fallita: %s", rec_name, ex)
+            reply = _msg("MSG_SCHED_CANCELLED" if ok else "MSG_SCHED_NOT_FOUND")
+            return self._sched_cb_reply(msg, ok, reply, "cancel", entry_name)
+        return {"ok": False, "reason": "unknown_action", "action": action}
+
+    def _sched_cb_reply(self, msg: InboundMessage, ok: bool, reply: str,
+                         action: str, entry_name: str) -> dict:
+        self._send_text(msg.sender_id, reply, reply_to=msg.message_id)
+        return {"ok": bool(ok), "callback": f"sched_{action}",
+                "entry_name": entry_name}
+
     def _handle_callback(self, msg: InboundMessage) -> dict:
         """Risolve un callback_query 'approve:<token>' / 'reject:<token>' /
         'loc_cancel' / 'dlg:...' (dialog inline keyboard, ADR 0090) /
-        'promoter:<id>:ok|rollback' (digest promoter daemon)."""
+        'promoter:<id>:ok|rollback' (digest promoter daemon) /
+        'sched:<azione>:<entry>' (circuit-breaker scheduler)."""
         data = (msg.text or "").strip()
         if data.startswith("dlg:"):
             return self._handle_dialog_callback(msg, data)
         if data.startswith("promoter:"):
             return self._handle_promoter_callback(msg, data)
+        if data.startswith("sched:"):
+            return self._handle_scheduler_callback(msg, data)
         if data == "loc_cancel":
             try:
                 # runtime/ già su sys.path (channels VIVE in runtime/).

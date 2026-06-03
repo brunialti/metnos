@@ -17,7 +17,7 @@ en = "Removes persons from the named registry. Vectorial (§2.1): accepts `names
 
 [code]
 files  = ["delete_persons.py"]
-digest = "sha256:f208cb232d73f05026a926e409c303b24988336e680a068364fd6ddfdece2e5b"
+digest = "sha256:787630586240d2a689ac048abea48a51392fb58bf5fa900e20266bd9540aed0b"
 
 [args]
 type     = "object"

@@ -1,69 +1,110 @@
 # Manifest dell'executor `create_files_spreadsheet` — Metnos v1.1
 # Naming compositivo §2.2: azione_oggetto_qualifier.
-# Dispatcher canonical Google Sheets create (24/5/2026).
+# Dispatcher canonical spreadsheet: default LOCALE (.xlsx), Google opt-in.
 
 manifest_format = "1.0"
 
 name             = "create_files_spreadsheet"
-version          = "0.1.0"
+version          = "0.2.0"
 author           = "Roberto Brunialti <roberto.brunialti@metnos.com>"
 affinity         = [
-    "spreadsheet", "foglio elettronico", "google sheets", "sheets",
+    "spreadsheet", "foglio elettronico", "foglio di calcolo", "xlsx", "csv",
     "crea foglio", "nuovo foglio", "create sheet", "new spreadsheet",
-    "tabella nuova", "workbook"
+    "metti in uno spreadsheet", "metti in un foglio", "metti in tabella",
+    "salva in uno spreadsheet", "esporta in spreadsheet", "tabella nuova"
 ]
 revertible       = true
-reverse_pattern  = "delete_files_by_id"
+reverse_pattern  = "delete_created_paths"
 lifecycle        = "active"
 
 [description]
-it = "Crea un nuovo Google Sheets (foglio elettronico online). Dispatcher canonical: instrada al backend `client` (default `google_workspace`). USO CORRETTO: create_files_spreadsheet(title='Budget 2026', sheet_name='Spese'). NON CONFONDERE CON: `write_files_spreadsheet` (scrive in foglio esistente), `create_files_doc` (crea Google Doc, NON foglio), `create_dirs` (cartella). §2.3 reverse_pattern='delete_files_by_id' (Drive trash, reversibile via gmail/drive UI). §2.6 trasformativo: ritorna `results: list[{spreadsheet_id, title, web_view_url}]`. Se OAuth manca, decision='needs_inputs'."
-en = "Creates a new Google Sheets (online spreadsheet). Canonical dispatcher: routes to backend `client` (default `google_workspace`). CORRECT USE: create_files_spreadsheet(title='Budget 2026', sheet_name='Expenses'). DO NOT CONFUSE WITH: `write_files_spreadsheet` (writes to existing sheet), `create_files_doc` (creates Google Doc, NOT sheet), `create_dirs` (folder). §2.3 reverse_pattern='delete_files_by_id' (Drive trash, reversible via Gmail/Drive UI). §2.6 transformative: returns `results: list[{spreadsheet_id, title, web_view_url}]`. If OAuth missing, decision='needs_inputs'."
+it = "SCOPO: crea e POPOLA un NUOVO foglio di calcolo locale .xlsx da `values` o da `from_step`+`columns` (dati di uno step); «mettere/salvare dati in uno spreadsheet» da zero, allegabile a email. PATTERN: create_files_spreadsheet(title=\"foto montagna\", values=[[\"path\",\"descrizione\"]]). NON: foglio GIA' ESISTENTE -> write_files_spreadsheet; Google -> client=\"google_workspace\"; MAI placeholder ${stepN...} in values. OUT: results: list[{spreadsheet_id, path, title, rows}]; spreadsheet_id E' il PATH, allegabile a send_messages."
+en = "SCOPO: creates and POPULATES a NEW local .xlsx spreadsheet from `values` or from `from_step`+`columns` (data of a step); «put/save data into a spreadsheet» from scratch, attachable to email. PATTERN: create_files_spreadsheet(title=\"mountain photos\", values=[[\"path\",\"description\"]]). NON: ALREADY EXISTING sheet -> write_files_spreadsheet; Google -> client=\"google_workspace\"; NEVER ${stepN...} placeholders in values. OUT: results: list[{spreadsheet_id, path, title, rows}]; spreadsheet_id IS the PATH, attachable to send_messages."
 
 [code]
 files  = ["create_files_spreadsheet.py"]
-digest = "sha256:ad575a3041ecb9b98d7db994477867f6338d3a2a28b2dc6e6592ec623ecf1de9"
+digest = "sha256:d53fbe97198ccff69ea9d091d2921d05a10f2b6840ce66191d665099b2aeb21c"
 
 [args]
 type     = "object"
-required = ["title"]
+required = []
+# title NON obbligatorio: senza, l'executor auto-genera il nome col timestamp.
+# Riduce la frizione che spingeva il planner verso write (che chiede values,
+# forniti dalla query) invece di create (che chiedeva un title da inventare).
+requires_one_of = [["values", "entries", "from_step", "title", "path"]]
+
+[args.properties.entries]
+type    = "array"
+items   = { type = "object" }
+runtime_resolved = true
+
+[args.properties.entries.description]
+it = "Lista di record (dict) da un passo precedente, popolata via `from_step`. Mappata a righe secondo `columns`. Non passare a mano: usa from_step=N."
+en = "List of records (dict) from a previous step, populated via `from_step`. Mapped to rows per `columns`. Do not pass by hand: use from_step=N."
+
+[args.properties.columns]
+type    = "array"
+items   = { type = "string" }
+default = []
+
+[args.properties.columns.description]
+it = "Campi delle entries da usare come colonne, in ordine (es. ['path','descrizione']). Sinonimi risolti (descrizione->description). Vuoto = tutti i campi non interni."
+en = "Entry fields to use as columns, in order (e.g. ['path','description']). Synonyms resolved (descrizione->description). Empty = all non-internal fields."
 
 [args.properties.title]
 type    = "string"
+default = ""
 
 [args.properties.title.description]
-it = "Titolo del nuovo Google Sheets (es. 'Budget 2026', 'Lista invitati'). Testo libero, visibile in Drive."
-en = "Title of the new Google Sheets (e.g. 'Budget 2026', 'Invitee list'). Free text, visible in Drive."
+it = "Titolo del foglio = nome del file (es. 'foto montagna' -> 'foto montagna.xlsx'). OPZIONALE: se assente, nome auto col timestamp."
+en = "Sheet title = file name (e.g. 'mountain photos' -> 'mountain photos.xlsx'). OPTIONAL: if absent, auto name with timestamp."
+
+[args.properties.values]
+type    = "array"
+default = []
+
+[args.properties.values.description]
+it = "Righe iniziali, matrice riga x colonna (es. [['path','descrizione'],['/x.jpg','...']]). Prima riga = intestazione. Opzionale: crea un foglio vuoto se assente."
+en = "Initial rows, row x column matrix (e.g. [['path','description'],['/x.jpg','...']]). First row = header. Optional: creates an empty sheet if absent."
 
 [args.properties.sheet_name]
 type    = "string"
 default = ""
 
 [args.properties.sheet_name.description]
-it = "Nome della prima tab del foglio (es. 'Dati', 'Q1 2026'). Se vuoto, Google usa il default 'Sheet1'."
-en = "Name of the first tab (e.g. 'Data', 'Q1 2026'). If empty, Google uses default 'Sheet1'."
+it = "Nome della prima tab (es. 'Dati'). Se vuoto: 'Sheet1'."
+en = "Name of the first tab (e.g. 'Data'). If empty: 'Sheet1'."
+
+[args.properties.path]
+type    = "string"
+default = ""
+
+[args.properties.path.description]
+it = "Path esplicito del file (override del default ~/.local/share/metnos/spreadsheets/<title>.xlsx). Estensione .csv = formato CSV."
+en = "Explicit file path (overrides default ~/.local/share/metnos/spreadsheets/<title>.xlsx). .csv extension = CSV format."
 
 [args.properties.client]
 type    = "string"
-enum    = ["google_workspace"]
-default = "google_workspace"
+enum    = ["local", "google_workspace"]
+default = "local"
 
 [args.properties.client.description]
-it = "Backend (oggi solo 'google_workspace'). Plugin esterni futuri potranno aggiungerne altri."
-en = "Backend (today only 'google_workspace'). Future external plugins may add others."
+it = "Backend: 'local' (default, file .xlsx/.csv allegabile) o 'google_workspace' (Google Sheets online, richiede OAuth)."
+en = "Backend: 'local' (default, attachable .xlsx/.csv file) or 'google_workspace' (online Google Sheets, requires OAuth)."
 
 [output]
 schema_inline = """
 {
   ok: bool,
   n_created: int,
-  spreadsheet_id: str,
-  web_view_url: str,
+  spreadsheet_id: str,   // LOCAL: file path; google_workspace: Drive id
+  path?: str,            // LOCAL only
+  web_view_url?: str,    // google_workspace only
   title: str,
-  results: Array<{file_id, id, spreadsheet_id, title, web_view_url, kind: 'spreadsheet'}>,
+  results: Array<{ok, spreadsheet_id, path?, title, rows?, kind: 'spreadsheet'}>,
   used: int,
-  files_source: 'google_workspace',
-  _undo?: {reverse_pattern, ids, scope},
+  files_source: 'local' | 'google_workspace',
+  _undo?: {reverse_pattern, paths|ids, scope?},
   error?: str,
   error_class?: str,
   decision?: 'needs_inputs'
@@ -72,24 +113,29 @@ schema_inline = """
 
 [[capabilities]]
 name = "metnos:create"
-hint = ["spreadsheet:remote"]
+hint = ["spreadsheet:local"]
 
 [[tests]]
-name   = "missing_title_fails"
-input  = {}
-expect = { ok = false, error_contains = "title" }
+name   = "values_only_auto_title_succeeds"
+input  = { values = [["a", "b"], [1, 2]] }
+expect = { ok = true }
 
 [[tests]]
-name   = "empty_title_fails"
-input  = { title = "   " }
-expect = { ok = false, error_contains = "title" }
+name   = "title_only_empty_sheet_succeeds"
+input  = { title = "metnos_test_empty" }
+expect = { ok = true }
+
+[[tests]]
+name   = "entries_columns_succeeds"
+input  = { entries = [{ path = "/a.jpg", description = "x" }], columns = ["path", "descrizione"] }
+expect = { ok = true }
 
 [[tests]]
 name   = "unsupported_client_fails"
 input  = { title = "Test", client = "dropbox" }
-expect = { ok = false, error_contains = "unsupported" }
+expect = { ok = false, error_contains = "Operazione non applicabile per questo provider" }
 
 [[tests]]
-name   = "happy_path_with_sheet_name"
-input  = { title = "Budget 2026", sheet_name = "Spese" }
+name   = "happy_path_local_with_values"
+input  = { title = "metnos_test_sheet", values = [["a", "b"], [1, 2]] }
 expect = { ok = true }

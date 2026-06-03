@@ -45,6 +45,7 @@ from pathlib import Path
 sys.path.insert(0, os.environ.get("METNOS_RUNTIME") or next(
     str(p / "runtime") for p in Path(__file__).resolve().parents
     if (p / "runtime" / "config.py").is_file()))
+from messages import get as _msg  # noqa: E402
 from backends.messages import email_metnos, telegram_bot  # noqa: E402
 from backends.messages import gmail_google_workspace  # noqa: E402
 
@@ -158,12 +159,26 @@ def invoke(args):
 
     if not isinstance(messages, list):
         return {"ok": False,
-                "error": "missing or invalid required arg 'messages' (must be a list)"}
+                "error": _msg("ERR_ARG_NOT_LIST", arg="messages")}
     if not isinstance(account, str) or not account.strip():
-        return {"ok": False, "error": "account must be a non-empty string"}
+        return {"ok": False, "error": _msg("ERR_ARG_NOT_NONEMPTY_STRING", arg="account")}
+    # Intercetta SUBITO un account INESISTENTE (decisione 2/6): un account che
+    # non risolve a uno noto e' una probabile ALLUCINAZIONE dell'LLM → errore.
+    # Va PRIMA del no-op su messages=[] (§2.1: lista vuota = "niente da fare",
+    # non un errore — ma solo se l'account e' valido). Riservati esclusi.
+    if account.strip().lower() not in ("all", "auto", "noreply", "dyn"):
+        try:
+            from mail_client import resolve_account as _resolve_acc
+            if _resolve_acc(account) is None:
+                return {"ok": False, "error_code": "ERR_UNKNOWN_ACCOUNT",
+                        "error": _msg("ERR_UNKNOWN_ACCOUNT", account=account),
+                        "error_class": "invalid_args",
+                        "results": [], "failed": [], "ok_count": 0, "fail_count": 0}
+        except Exception:
+            pass  # mail_client non disponibile → degradazione sicura, non bloccare
     if len(messages) > 50:
         return {"ok": False,
-                "error": "send rate limit: max 50 messaggi per call (anti-spam guard)"}
+                "error": _msg("ERR_SEND_RATE_LIMIT", max=50)}
 
     # Risolvi ogni messaggio in una "request" {channel, client, msg_normalized}.
     # Una entry input puo' espandere in N entry output (multi-target/multi-user).
@@ -172,7 +187,7 @@ def invoke(args):
 
     for i, m in enumerate(messages):
         if not isinstance(m, dict):
-            failed_pre.append({"index": i, "error": "message must be a dict"})
+            failed_pre.append({"index": i, "error": _msg("ERR_ARG_NOT_DICT", arg="message")})
             continue
         per_msg_to_user = m.get("to_user") or top_to_user
         per_msg_via = _normalize_via(m.get("via_channel") or via_channel or "auto")
@@ -198,7 +213,7 @@ def invoke(args):
                     chan = "telegram" if per_msg_via == "auto" else per_msg_via
                     if chan != "telegram":
                         failed_pre.append({"index": i, "target": tgt,
-                                           "error": f"@chat_id only valid for telegram, got {chan}"})
+                                           "error": _msg("ERR_CHATID_TELEGRAM_ONLY", chan=chan)})
                         continue
                     msg_n = dict(m)
                     msg_n["recipient_id"] = s[1:]
@@ -264,11 +279,11 @@ def invoke(args):
             # Resta su email/SMTP.
             if not m.get("to"):
                 failed_pre.append({"index": i,
-                                   "error": "missing 'to' (string or list) or 'to_user'"})
+                                   "error": _msg("ERR_ARG_MISSING_ONE_OF", options="to, to_user")})
                 continue
             msg_n = dict(m)
             if "subject" not in msg_n or not isinstance(msg_n["subject"], str):
-                failed_pre.append({"index": i, "error": "missing 'subject' string"})
+                failed_pre.append({"index": i, "error": _msg("ERR_ARG_MISSING", arg="subject")})
                 continue
             requests.append({"channel": "email",
                              "client": client or _DEFAULT_CLIENT,
@@ -288,8 +303,7 @@ def invoke(args):
             avail = sorted({k[0] for k in _HANDLERS})
             for m in msgs:
                 failed.append({"index": -1,
-                               "error": f"unsupported backend {key}. "
-                                        f"Available channels: {avail}"})
+                               "error": _msg("ERR_NOT_APPLICABLE", what=str(key))})
             continue
         backend_args = {"messages": msgs}
         if key[0] == "email":
@@ -323,7 +337,7 @@ def main():
     try:
         args = json.load(sys.stdin)
     except json.JSONDecodeError as e:
-        sys.stdout.write(json.dumps({"ok": False, "error": f"invalid input json: {e}"}))
+        sys.stdout.write(json.dumps({"ok": False, "error": _msg("ERR_JSON_INVALID")}))
         return
     sys.stdout.write(json.dumps(invoke(args), ensure_ascii=False))
 

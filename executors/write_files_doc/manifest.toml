@@ -21,7 +21,7 @@ en = "Appends text to the end of an existing Google Doc. Append is `write` seman
 
 [code]
 files  = ["write_files_doc.py"]
-digest = "sha256:bb1a85abc4bacba0586ffe084686601fee6b1ac1f39aaa187d0c93b6e4a5fe3f"
+digest = "sha256:22b01bad8cab309c535cc24d0171bdad2fb7c0ec75a07019fa4a9e20c5bdb8cf"
 
 [args]
 type     = "object"
@@ -89,7 +89,7 @@ expect = { ok = false, error_contains = "text" }
 [[tests]]
 name   = "unsupported_client_fails"
 input  = { document_id = "1abc", text = "x", client = "dropbox" }
-expect = { ok = false, error_contains = "unsupported" }
+expect = { ok = false, error_contains = "Operazione non applicabile per questo provider" }
 
 [[tests]]
 name   = "happy_path_oauth_missing_returns_needs_inputs"

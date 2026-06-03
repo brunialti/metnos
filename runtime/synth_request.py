@@ -503,10 +503,12 @@ def handle_synth_request(args, *, user_query, progress=None, verbose=False, curr
             return {"think": True, "reasoning_budget": int(_synt_budget_env)}
         return {"think": True, "reasoning_budget": default_budget}
 
-    def _llm_middle(system, user, max_tokens=2500):
+    def _llm_middle(system, user, max_tokens=2500, **kwargs):
         t0 = time.time()
+        # caller override > budget default (es. stage 6 passa think=False)
+        _kw = {**_synt_budget_kwargs(1024), **kwargs}
         r = _middle_provider.chat(system, user, max_tokens=max_tokens,
-                                  temperature=0.0, **_synt_budget_kwargs(1024))
+                                  temperature=0.0, **_kw)
         return {
             "text": r.text or "",
             "in_tokens": r.in_tokens,
@@ -514,10 +516,12 @@ def handle_synth_request(args, *, user_query, progress=None, verbose=False, curr
             "latency_ms": int((time.time() - t0) * 1000),
         }
 
-    def _llm_wise(system, user, max_tokens=5000):
+    def _llm_wise(system, user, max_tokens=5000, **kwargs):
         t0 = time.time()
+        # caller override > budget default (es. stage 6 passa think=False)
+        _kw = {**_synt_budget_kwargs(1024), **kwargs}
         r = _wise_provider.chat(system, user, max_tokens=max_tokens,
-                                temperature=0.0, **_synt_budget_kwargs(1024))
+                                temperature=0.0, **_kw)
         return {
             "text": r.text or "",
             "in_tokens": r.in_tokens,

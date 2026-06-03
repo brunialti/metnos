@@ -26,6 +26,7 @@ from __future__ import annotations
 import base64
 import datetime
 import fnmatch
+import json
 import mimetypes
 import os
 import re
@@ -77,7 +78,96 @@ def read(args: dict) -> dict:
     ritorna content come base64. Truncation visibility (§2.7+§2.11): se la
     lettura non copre l'intero file, espone truncated/used/available_total/
     cap_field/cap_value.
+
+    Vettoriale §2.1: con `paths=[...]` o `entries` (da from_step, proietta
+    entries[*].path) legge N file e ritorna `entries=[{path, content, ...}]`
+    (§2.6: read arricchisce una lista). La forma scalare `path` resta {ok,
+    content, metadata} (back-compat).
     """
+    # Espansione DIRECTORY → file dentro (universale: "leggi i file in una
+    # cartella" in 1 call deterministica, niente find_files+read_files a 2
+    # passi). `pattern` (default '*') filtra; ricorsione no. Vale per path
+    # scalare-dir e per ogni elemento-dir di paths.
+    import glob as _glob
+
+    def _expand_dir(p):
+        if not isinstance(p, str) or not p:
+            return []
+        ap = os.path.abspath(os.path.expanduser(p))
+        if os.path.isdir(ap):
+            pat = args.get("pattern") or "*"
+            return sorted(f for f in _glob.glob(os.path.join(ap, pat))
+                          if os.path.isfile(f))
+        return [p]
+
+    _vec = None
+    _ps = args.get("paths")
+    _es = args.get("entries")
+    _scalar = args.get("path")
+    if isinstance(_ps, list):
+        _vec = []
+        for p in _ps:
+            _vec.extend(_expand_dir(p))
+    elif isinstance(_es, list):
+        _vec = []
+        for e in _es:
+            if isinstance(e, dict) and isinstance(e.get("path"), str) and e.get("path"):
+                _vec.extend(_expand_dir(e["path"]))
+    elif isinstance(_scalar, str) and os.path.isdir(
+            os.path.abspath(os.path.expanduser(_scalar))):
+        _vec = _expand_dir(_scalar)  # path scalare = directory → vettoriale
+    if _vec is not None:
+        try:
+            _maxf = int(args.get("max_files") or _DEFAULT_MAX_FILES)
+        except (TypeError, ValueError):
+            _maxf = _DEFAULT_MAX_FILES
+        _avail = len(_vec)
+        _trunc = _maxf > 0 and len(_vec) > _maxf
+        if _trunc:
+            _vec = _vec[:_maxf]
+        _base = {k: v for k, v in args.items()
+                 if k not in ("paths", "entries", "parse")}
+        _parse = args.get("parse")
+        out_entries = []
+        ok_count = fail_count = 0
+        for _p in _vec:
+            r = read({**_base, "path": _p})  # delega alla logica scalare
+            if r.get("ok"):
+                ent = {"path": _p, "ok": True}
+                # parse="json": fonde i campi del JSON nell'entry (record
+                # interrogabile da filter_entries) — simmetrico al write JSON
+                # dell'inbound. Default: content come stringa + metadata.
+                if _parse == "json":
+                    try:
+                        _pj = json.loads(r.get("content") or "")
+                        if isinstance(_pj, dict):
+                            ent.update(_pj)
+                        else:
+                            ent["content"] = _pj
+                    except (ValueError, TypeError):
+                        ent["content"] = r.get("content")
+                else:
+                    ent["content"] = r.get("content")
+                    ent.update(r.get("metadata") or {})
+                ok_count += 1
+            else:
+                ent = {"path": _p, "ok": False,
+                       "error_code": r.get("error_code"), "error": r.get("error")}
+                fail_count += 1
+            out_entries.append(ent)
+        out = {"ok": fail_count == 0, "ok_count": ok_count,
+               "fail_count": fail_count, "entries": out_entries}
+        if fail_count:
+            _ff = next((e for e in out_entries if not e.get("ok")), None)
+            if _ff:
+                out["error_code"] = _ff.get("error_code")
+                out["error"] = _ff.get("error")
+        if _trunc:
+            out.update({"truncated": True, "truncated_what": "files",
+                        "used": len(_vec), "available_total": _avail,
+                        "cap_field": "max_files", "cap_value": _maxf})
+        return out
+
     path = args.get("path")
     encoding = args.get("encoding", "utf-8")
     max_bytes = args.get("max_bytes")
@@ -185,35 +275,143 @@ def read(args: dict) -> dict:
 # --- write -----------------------------------------------------------------
 
 
-def write(args: dict) -> dict:
-    """Scrive contenuto in UN file. Args: path, content, encoding, mode."""
+_VALID_WRITE_MODES = ("overwrite", "append", "fail_if_exists", "skip_if_exists")
+_DEFAULT_MAX_FILES = 500
+
+
+def _safe_format(template: str, entry: dict):
+    """`template.format(**entry)` deterministico §7.9. Ritorna (ok, valore_o_errore).
+    Campo mancante o spec invalido → (False, messaggio onesto), niente raise."""
+    try:
+        return True, template.format(**entry)
+    except (KeyError, IndexError) as ex:
+        return False, _msg("ERR_ARG_INVALID", arg="template",
+                            reason=f"campo mancante nell'entry: {ex}")
+    except (ValueError, TypeError) as ex:
+        return False, _msg("ERR_ARG_INVALID", arg="template",
+                            reason=f"template non valido: {ex}")
+
+
+def _derive_content(entry, content_field, content_template, content_format):
+    """Deriva il contenuto (stringa) di un file da una `entry`. Precedenza:
+    content_field > content_template > content_format(text) > JSON (default).
+    Deterministico §7.9. Ritorna (ok, valore_o_errore)."""
+    if content_field:
+        if isinstance(entry, dict) and content_field in entry:
+            v = entry[content_field]
+            return True, (v if isinstance(v, str)
+                          else json.dumps(v, ensure_ascii=False, indent=2))
+        return False, _msg("ERR_ARG_INVALID", arg="content_field",
+                            reason=f"'{content_field}' assente nell'entry")
+    if content_template:
+        return _safe_format(
+            content_template,
+            entry if isinstance(entry, dict) else {"value": entry})
+    if content_format == "text":
+        return True, (entry if isinstance(entry, str)
+                      else json.dumps(entry, ensure_ascii=False, indent=2))
+    return True, json.dumps(entry, ensure_ascii=False, indent=2)
+
+
+def _collect_write_specs(args: dict):
+    """Normalizza gli input in una lista di spec {path, content, encoding,
+    mode}. Vettoriale §2.1: la lista ammette anche un solo elemento. Shape
+    in ordine di precedenza: files[] esplicito → entries[]+path_template →
+    paths[]+contents[] → path+content scalare. Ritorna (specs, errore_o_None)."""
+    enc_default = args.get("encoding", "utf-8")
+    mode_default = args.get("mode", "overwrite")
+    specs: list[dict] = []
+
+    files = args.get("files")
+    entries = args.get("entries")
+    paths = args.get("paths")
+    contents = args.get("contents")
+
+    if isinstance(files, list):
+        for i, f in enumerate(files):
+            if not isinstance(f, dict) or not f.get("path"):
+                return None, _msg("ERR_ARG_INVALID", arg="files",
+                                  reason=f"elemento {i} senza 'path'")
+            if f.get("content") is None:
+                return None, _msg("ERR_ARG_INVALID", arg="files",
+                                  reason=f"elemento {i} senza 'content'")
+            specs.append({"path": f["path"], "content": f["content"],
+                          "encoding": f.get("encoding", enc_default),
+                          "mode": f.get("mode", mode_default)})
+        return specs, None
+
+    if isinstance(entries, list):
+        path_template = args.get("path_template")
+        content_field = args.get("content_field")
+        content_template = args.get("content_template")
+        content_format = args.get("content_format")
+        # set_fields: campi costanti fusi in OGNI entry prima di serializzare
+        # (read-modify-write: es. set_fields={"status":"answered"} per marcare
+        # le issue gestite). Universale: persisti la lista con un campo aggiornato.
+        set_fields = args.get("set_fields")
+        for entry in entries:
+            if isinstance(set_fields, dict) and isinstance(entry, dict):
+                entry = {**entry, **set_fields}
+            if path_template:
+                ok, p = _safe_format(
+                    path_template,
+                    entry if isinstance(entry, dict) else {"value": entry})
+                if not ok:
+                    return None, p
+            elif isinstance(entry, dict) and entry.get("path"):
+                p = entry["path"]
+            else:
+                return None, _msg("ERR_ARG_MISSING", arg="path_template")
+            ok, c = _derive_content(entry, content_field,
+                                    content_template, content_format)
+            if not ok:
+                return None, c
+            specs.append({"path": p, "content": c,
+                          "encoding": enc_default, "mode": mode_default})
+        return specs, None
+
+    if isinstance(paths, list) and isinstance(contents, list):
+        if len(paths) != len(contents):
+            return None, _msg("ERR_ARG_INVALID", arg="contents",
+                              reason="paths e contents hanno lunghezza diversa")
+        for p, c in zip(paths, contents):
+            specs.append({"path": p, "content": c,
+                          "encoding": enc_default, "mode": mode_default})
+        return specs, None
+
+    # Scalare: degenere N=1 (la "lista" ha un solo elemento).
     path = args.get("path")
     content = args.get("content")
-    encoding = args.get("encoding", "utf-8")
-    mode = args.get("mode", "overwrite")
-
-    if not path:
-        return {"ok": False, "error_code": "ERR_ARG_MISSING",
-                "error": _msg("ERR_ARG_MISSING", arg="path")}
+    if path is None or not str(path).strip():
+        return None, _msg("ERR_ARG_MISSING", arg="path")
     if content is None:
-        return {"ok": False, "error_code": "ERR_ARG_MISSING",
-                "error": _msg("ERR_ARG_MISSING", arg="content")}
-    if mode not in ("overwrite", "append", "fail_if_exists"):
-        return {"ok": False, "error_code": "ERR_ARG_INVALID",
-                "error": _msg("ERR_ARG_INVALID", arg="mode", reason=f"invalid value '{mode}'")}
+        return None, _msg("ERR_ARG_MISSING", arg="content")
+    specs.append({"path": path, "content": content,
+                  "encoding": enc_default, "mode": mode_default})
+    return specs, None
 
-    # D.3: ambiguita' alias bilingue → ERR_AMBIGUOUS_PATH se parent non
-    # esiste e ci sono >0 candidati. Mai auto-resolve su mutating.
+
+def _write_one(path, content, encoding, mode):
+    """Scrive UN file. Ritorna (ok, entry_o_errordict, created_parents).
+    Estratto dal write() scalare per riuso nella forma vettoriale."""
     ambig = _check_mutating_path_ambiguity(path, target_must_exist=False)
     if ambig is not None:
-        return ambig
+        return False, dict(ambig, path=path), []
 
     abs_path = os.path.abspath(os.path.expanduser(path))
     pre_existed = os.path.exists(abs_path)
 
     if mode == "fail_if_exists" and pre_existed:
-        return {"ok": False, "error_code": "ERR_DST_EXISTS",
-                "error": _msg("ERR_DST_EXISTS"), "detail": str(abs_path)}
+        return False, {"path": abs_path, "ok": False,
+                       "error_code": "ERR_DST_EXISTS",
+                       "error": _msg("ERR_DST_EXISTS"),
+                       "detail": str(abs_path)}, []
+    if mode == "skip_if_exists" and pre_existed:
+        # Idempotenza deterministica (dedup): file gia' presente → no-op
+        # onesto (created=False, skipped=True), non un errore.
+        return True, {"path": abs_path, "created": False, "skipped": True,
+                      "bytes_written": 0, "encoding": encoding,
+                      "mode": mode}, []
 
     # mkdir -p del parent + registro per undo (§2.4 robustezza NL→det).
     parent = os.path.dirname(abs_path)
@@ -231,61 +429,130 @@ def write(args: dict) -> dict:
             os.makedirs(parent, exist_ok=True)
             created_parents = list(reversed(chain))
         except OSError as e:
-            return {"ok": False, "error_code": "ERR_PARENT_MKDIR_FAIL",
-                    "error": _msg("ERR_PARENT_MKDIR_FAIL", path=str(parent), reason=str(e))}
+            return False, {"path": abs_path, "ok": False,
+                           "error_code": "ERR_PARENT_MKDIR_FAIL",
+                           "error": _msg("ERR_PARENT_MKDIR_FAIL",
+                                         path=str(parent), reason=str(e))}, []
 
     try:
         if encoding == "binary":
             data = base64.b64decode(content)
-            file_mode = "ab" if mode == "append" else "wb"
-            with open(abs_path, file_mode) as f:
+            with open(abs_path, "ab" if mode == "append" else "wb") as f:
                 f.write(data)
-            bytes_written = len(data)
-            entry = {
-                "path": abs_path,
-                "created": (not pre_existed),
-                "bytes_written": bytes_written,
-                "encoding": "binary",
-                "mode": mode,
-            }
-            return {
-                "ok": True,
-                "ok_count": 1,
-                "fail_count": 0,
-                "results": [entry],
-                "dirs_created": created_parents,
-            }
+            entry = {"path": abs_path, "created": (not pre_existed),
+                     "bytes_written": len(data), "encoding": "binary",
+                     "mode": mode}
+            return True, entry, created_parents
         else:
-            file_mode = "a" if mode == "append" else "w"
-            with open(abs_path, file_mode, encoding=encoding) as f:
+            with open(abs_path, "a" if mode == "append" else "w",
+                      encoding=encoding) as f:
                 f.write(content)
-            bytes_written = len(content.encode(encoding))
-            entry = {
-                "path": abs_path,
-                "created": (not pre_existed),
-                "bytes_written": bytes_written,
-                "encoding": encoding,
-                "mode": mode,
-            }
-            return {
-                "ok": True,
-                "ok_count": 1,
-                "fail_count": 0,
-                "results": [entry],
-                "dirs_created": created_parents,
-            }
+            entry = {"path": abs_path, "created": (not pre_existed),
+                     "bytes_written": len(content.encode(encoding)),
+                     "encoding": encoding, "mode": mode}
+            return True, entry, created_parents
     except PermissionError:
-        return {"ok": False, "error_code": "ERR_PERMISSION_DENIED",
-                "error": _msg("ERR_PERMISSION_DENIED"), "detail": f"path outside allowed scope: {abs_path}"}
+        return False, {"path": abs_path, "ok": False,
+                       "error_code": "ERR_PERMISSION_DENIED",
+                       "error": _msg("ERR_PERMISSION_DENIED"),
+                       "detail": f"path outside allowed scope: {abs_path}"}, []
     except IsADirectoryError:
-        return {"ok": False, "error_code": "ERR_PATH_WRONG_TYPE",
-                "error": _msg("ERR_PATH_WRONG_TYPE", expected="file", actual="directory", path=str(abs_path))}
+        return False, {"path": abs_path, "ok": False,
+                       "error_code": "ERR_PATH_WRONG_TYPE",
+                       "error": _msg("ERR_PATH_WRONG_TYPE", expected="file",
+                                     actual="directory", path=str(abs_path))}, []
     except OSError as e:
-        return {"ok": False, "error_code": "ERR_OP_FAILED",
-                "error": _msg("ERR_OP_FAILED", reason=f"os error: {e}")}
+        return False, {"path": abs_path, "ok": False,
+                       "error_code": "ERR_OP_FAILED",
+                       "error": _msg("ERR_OP_FAILED", reason=f"os error: {e}")}, []
     except Exception as e:
-        return {"ok": False, "error_code": "ERR_OP_FAILED",
-                "error": _msg("ERR_OP_FAILED", reason=f"unexpected {type(e).__name__}: {e}")}
+        return False, {"path": abs_path, "ok": False,
+                       "error_code": "ERR_OP_FAILED",
+                       "error": _msg("ERR_OP_FAILED",
+                                     reason=f"unexpected {type(e).__name__}: {e}")}, []
+
+
+def write(args: dict) -> dict:
+    """Scrive contenuto in uno o piu' file. Vettoriale §2.1: la lista ammette
+    anche un solo elemento (degenere N=1). Shape input (precedenza):
+      - files=[{path, content, encoding?, mode?}, ...]   vettore esplicito;
+      - entries=[...] + path_template (+ content_field | content_template |
+        content_format)   persiste record piped via from_step come file;
+      - paths=[...] + contents=[...]   array paralleli;
+      - path + content   scalare (N=1).
+    Output (§2.6 trasformativo → results): {ok, ok_count, fail_count,
+    created_count, skipped_count, results:[...], dirs_created:[...]}.
+    `mode='skip_if_exists'` rende la scrittura idempotente (dedup)."""
+    mode_default = args.get("mode", "overwrite")
+    if mode_default not in _VALID_WRITE_MODES:
+        return {"ok": False, "error_code": "ERR_ARG_INVALID",
+                "error": _msg("ERR_ARG_INVALID", arg="mode",
+                              reason=f"invalid value '{mode_default}'")}
+
+    specs, err = _collect_write_specs(args)
+    if err is not None:
+        return {"ok": False, "error_code": "ERR_ARG_INVALID", "error": err}
+    for sp in specs:
+        if sp["mode"] not in _VALID_WRITE_MODES:
+            return {"ok": False, "error_code": "ERR_ARG_INVALID",
+                    "error": _msg("ERR_ARG_INVALID", arg="mode",
+                                  reason=f"invalid value '{sp['mode']}'")}
+
+    # Cap superiore esplicito §2.1/§2.7.
+    try:
+        max_files = int(args.get("max_files") or _DEFAULT_MAX_FILES)
+    except (TypeError, ValueError):
+        max_files = _DEFAULT_MAX_FILES
+    available_total = len(specs)
+    truncated = max_files > 0 and len(specs) > max_files
+    if truncated:
+        specs = specs[:max_files]
+
+    results: list[dict] = []
+    dirs_created: list[str] = []
+    ok_count = fail_count = created_count = skipped_count = 0
+    for sp in specs:
+        ok, entry, parents = _write_one(
+            sp["path"], sp["content"], sp["encoding"], sp["mode"])
+        results.append(entry)
+        if ok:
+            ok_count += 1
+            if entry.get("skipped"):
+                skipped_count += 1
+            elif entry.get("created"):
+                created_count += 1
+            for d in parents:
+                if d not in dirs_created:
+                    dirs_created.append(d)
+        else:
+            fail_count += 1
+
+    out = {
+        "ok": fail_count == 0,
+        "ok_count": ok_count,
+        "fail_count": fail_count,
+        "created_count": created_count,
+        "skipped_count": skipped_count,
+        "results": results,
+        "dirs_created": dirs_created,
+    }
+    # §2.8: superficie l'errore al top-level (parità con la forma scalare
+    # storica: error_code/error/detail) cosi' la sintesi error-first del
+    # runtime e i matcher non perdono il fallimento dentro results[].
+    if fail_count:
+        first_fail = next((r for r in results if isinstance(r, dict)
+                           and r.get("ok") is False), None)
+        if first_fail:
+            out["error_code"] = first_fail.get("error_code")
+            out["error"] = first_fail.get("error")
+            if first_fail.get("detail"):
+                out["detail"] = first_fail["detail"]
+    # §2.7 truncation visibility.
+    if truncated:
+        out.update({"truncated": True, "truncated_what": "files",
+                    "used": len(specs), "available_total": available_total,
+                    "cap_field": "max_files", "cap_value": max_files})
+    return out
 
 
 # --- find ------------------------------------------------------------------
@@ -809,36 +1076,34 @@ def find_dirs(args: dict) -> dict:
         except OSError:
             return None
 
+    # La base NON e' una "directory IN base" (e' il contenitore della ricerca):
+    # ne misuriamo i file diretti SOLO per l'aggregato file_count_total, ma non
+    # entra in `entries`. recursive=false → figli immediati (iterdir);
+    # recursive=true → tutti i discendenti (rglob). Bug 31/5/2026: prima la base
+    # era l'unica entry con recursive=false → "quante directory in /etc" = 1.
+    base_entry = _scan_dir(base)
+    base_file_count = int((base_entry or {}).get("file_count", 0) or 0)
     try:
-        base_entry = _scan_dir(base)
-        if base_entry is not None:
-            entries.append(base_entry)
+        iterator = base.rglob("*") if recursive else base.iterdir()
+        for p in iterator:
+            try:
+                if p.is_symlink() or not p.is_dir():
+                    continue
+                rel_parts = p.relative_to(base).parts
+            except (ValueError, OSError):
+                continue
+            if recursive and len(rel_parts) > max_depth:
+                continue
+            if not include_hidden and any(seg.startswith(".") for seg in rel_parts):
+                continue
+            entry = _scan_dir(p)
             visited_dirs += 1
+            if entry is None:
+                continue
+            entries.append(entry)
             if len(entries) >= max_results:
                 truncated = True
-
-        if recursive and not truncated:
-            for p in base.rglob("*"):
-                try:
-                    if p.is_symlink() or not p.is_dir():
-                        continue
-                    depth = len(p.relative_to(base).parts)
-                except (ValueError, OSError):
-                    continue
-                if depth > max_depth:
-                    continue
-                if not include_hidden and any(
-                    seg.startswith(".") for seg in p.relative_to(base).parts
-                ):
-                    continue
-                entry = _scan_dir(p)
-                visited_dirs += 1
-                if entry is None:
-                    continue
-                entries.append(entry)
-                if len(entries) >= max_results:
-                    truncated = True
-                    break
+                break
     except PermissionError as e:
         return {"ok": False,
                 "error_code": "ERR_PERMISSION_DENIED",
@@ -856,7 +1121,7 @@ def find_dirs(args: dict) -> dict:
     #   totale di file ricorsivo sotto base_path, senza dover lanciare anche
     #   find_files).
     count_dirs = len(entries)
-    file_count_total = sum(int(e.get("file_count", 0) or 0) for e in entries)
+    file_count_total = base_file_count + sum(int(e.get("file_count", 0) or 0) for e in entries)
     out = {
         "ok": True,
         "entries": entries,
@@ -1177,3 +1442,339 @@ def delete_dirs(args: dict) -> dict:
         "results": results,
         "failed": failed,
     }
+
+
+# --- spreadsheet (LOCAL, default client) -----------------------------------
+# §10.3 self-hosted default: lo spreadsheet canonico e' un file LOCALE (.xlsx
+# via openpyxl, .csv via stdlib), allegabile a un'email. Google Sheets e' il
+# backend provider-qualified opt-in (client="google_workspace"). Per il backend
+# locale `spreadsheet_id` == il PATH del file (non un Drive id).
+
+def _spreadsheet_out_dir() -> Path:
+    """Directory di default per i nuovi spreadsheet locali (auto-creata)."""
+    d = _C.PATH_USER_DATA / "spreadsheets"
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def _sanitize_filename(title: str) -> str:
+    """title → filename safe (no separatori di path, no caratteri riservati)."""
+    name = re.sub(r"[^\w\-. ]", "_", (title or "").strip()) or "spreadsheet"
+    return name[:120]
+
+
+def _resolve_xlsx_path(args: dict, *, must_exist: bool):
+    """Risolve il path del file spreadsheet locale da `spreadsheet_id`|`path`.
+
+    Per il backend locale `spreadsheet_id` E' il path. `must_exist` distingue
+    read/write (richiedono il file) da create (lo genera).
+    """
+    raw = args.get("spreadsheet_id") or args.get("path")
+    if raw is not None and not isinstance(raw, str):
+        return None, {"ok": False, "error_code": "ERR_ARG_NOT_STRING",
+                      "error": _msg("ERR_ARG_NOT_STRING", arg="spreadsheet_id"),
+                      "error_class": "invalid_args"}
+    raw = (raw or "").strip()
+    if not raw:
+        return None, {"ok": False, "error_code": "ERR_ARG_MISSING",
+                      "error": _msg("ERR_ARG_MISSING", arg="spreadsheet_id"),
+                      "error_class": "invalid_args"}
+    p = Path(raw).expanduser()
+    if not p.is_absolute():
+        p = _spreadsheet_out_dir() / p
+    if must_exist and not p.is_file():
+        return None, {"ok": False, "error_code": "ERR_PATH_NOT_FOUND",
+                      "error": _msg("ERR_PATH_NOT_FOUND", path=str(p)),
+                      "error_class": "not_found"}
+    return p, None
+
+
+def _normalize_rows(values) -> list:
+    """values → matrice list[list] (tollera lista piatta = 1 colonna)."""
+    if not isinstance(values, list):
+        return []
+    rows = []
+    for r in values:
+        rows.append(list(r) if isinstance(r, (list, tuple)) else [r])
+    return rows
+
+
+def _is_csv(path: Path) -> bool:
+    return path.suffix.lower() == ".csv"
+
+
+# Sinonimi di campo bilingui per il mapping entries→colonne (§2.10): il planner
+# nomina le colonne in linguaggio utente ("descrizione", "percorso") mentre le
+# entries hanno chiavi tecniche ("description", "path"). Riusabile/estendibile.
+_FIELD_SYNONYMS = {
+    "path": ("percorso", "image_path", "filepath", "file", "src"),
+    "description": ("descrizione", "desc", "caption"),
+    "name": ("nome", "filename", "title", "titolo"),
+    "size_bytes": ("size", "dimensione", "bytes"),
+    "score": ("punteggio", "rilevanza", "relevance"),
+    "keywords": ("parole_chiave", "tags", "tag"),
+    "date": ("data", "datetime", "timestamp"),
+}
+
+
+def _entry_cell(entry: dict, col: str):
+    """Valore di `entry` per la colonna `col`, risolvendo i sinonimi di campo."""
+    if col in entry:
+        return entry[col]
+    cl = col.strip().lower()
+    if cl in entry:
+        return entry[cl]
+    for canon, syns in _FIELD_SYNONYMS.items():
+        names = (canon,) + syns
+        if cl in names:
+            for n in names:
+                if n in entry:
+                    v = entry[n]
+                    return ", ".join(map(str, v)) if isinstance(v, (list, tuple)) else v
+    return ""
+
+
+def _entries_to_values(entries, columns) -> list:
+    """Costruisce la matrice [header + righe] da una LISTA di entries (dict) e
+    una lista di colonne (nomi di campo). Risolve la frizione list→matrice che
+    il planner non sa esprimere coi placeholder (§2.10). Colonne assenti =
+    chiavi non-interne della prima entry."""
+    rows_in = [e for e in (entries or []) if isinstance(e, dict)]
+    cols = [c for c in (columns or []) if isinstance(c, str) and c.strip()]
+    if not cols and rows_in:
+        cols = [k for k in rows_in[0].keys() if not str(k).startswith("_")]
+    if not cols:
+        return []
+    out = [list(cols)]
+    for e in rows_in:
+        out.append([_entry_cell(e, c) for c in cols])
+    return out
+
+
+def _resolve_values(args: dict):
+    """Risolve la matrice di celle da `values` (diretta) o `entries`+`columns`
+    (pipe §2.10/§4.1). Ritorna list[list] o None se nessuna fonte valida."""
+    values = args.get("values")
+    if isinstance(values, list) and values:
+        return _normalize_rows(values)
+    entries = args.get("entries")
+    if isinstance(entries, list) and entries:
+        return _entries_to_values(entries, args.get("columns"))
+    if isinstance(values, list):  # lista vuota esplicita = foglio vuoto
+        return []
+    return None
+
+
+def create_spreadsheet(args: dict) -> dict:
+    """Crea un nuovo spreadsheet LOCALE (.xlsx default, .csv se path .csv).
+
+    Args:
+      - `title`: str (richiesto) → nome file (se `path` assente).
+      - `values`: list[list] (opzionale) → righe iniziali (es. header + dati).
+      - `sheet_name`: str (opzionale, default "Sheet1").
+      - `path`: str (opzionale) → path esplicito; altrimenti
+        `~/.local/share/metnos/spreadsheets/<title>.xlsx`.
+    Output §2.6 trasformativo: `results: [{spreadsheet_id, path, title, rows}]`.
+    Reverse: `delete_created_paths`.
+    """
+    if not isinstance(args, dict):
+        return {"ok": False, "error_code": "ERR_ARG_INVALID",
+                "error": _msg("ERR_ARG_INVALID", arg="args", reason="must be an object"),
+                "error_class": "invalid_args", "results": [], "used": 0, "n_created": 0}
+    title = (args.get("title") or "").strip()
+    explicit_path = args.get("path") or args.get("spreadsheet_id")
+    if not title and not explicit_path:
+        # `title` NON è obbligatorio: auto-nome col timestamp. Rationale: create
+        # richiedeva title (che il planner doveva INVENTARE) mentre write
+        # richiede values (che la query fornisce) → la frizione spingeva il
+        # planner verso write per "metti i valori in uno spreadsheet". Senza
+        # title forzato, create ha la stessa bassa frizione di write.
+        title = "spreadsheet_" + datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    if explicit_path:
+        path = Path(str(explicit_path)).expanduser()
+        if not path.is_absolute():
+            path = _spreadsheet_out_dir() / path
+    else:
+        path = _spreadsheet_out_dir() / f"{_sanitize_filename(title)}.xlsx"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    rows = _resolve_values(args) or []
+    sheet_name = (args.get("sheet_name") or "Sheet1").strip() or "Sheet1"
+    try:
+        if _is_csv(path):
+            import csv
+            with path.open("w", newline="", encoding="utf-8") as fh:
+                csv.writer(fh).writerows(rows)
+        else:
+            import openpyxl
+            wb = openpyxl.Workbook()
+            ws = wb.active
+            ws.title = sheet_name[:31]  # Excel cap nome foglio
+            for r in rows:
+                ws.append(r)
+            wb.save(str(path))
+    except ImportError:
+        return {"ok": False, "error_code": "ERR_DEPENDENCY_MISSING",
+                "error": _msg("ERR_DEPENDENCY_MISSING", what="openpyxl"),
+                "error_class": "dependency_missing", "results": [], "used": 0, "n_created": 0}
+    except Exception as e:  # noqa: BLE001
+        return {"ok": False, "error_code": "ERR_IO",
+                "error": _msg("ERR_IO", detail=str(e)),
+                "error_class": "io_error", "results": [], "used": 0, "n_created": 0}
+    sid = str(path)
+    # `created: True` + `path`: contratto richiesto da reverse_patterns.
+    # _delete_created_paths (undo: il file appena creato viene rimosso, §2.8).
+    result_row = {"ok": True, "created": True, "spreadsheet_id": sid, "path": sid,
+                  "title": title or path.stem, "rows": len(rows), "kind": "spreadsheet"}
+    return {
+        "ok": True, "n_created": 1, "spreadsheet_id": sid, "path": sid,
+        "title": title or path.stem, "results": [result_row], "used": 1,
+        "files_source": "local",
+    }
+
+
+def write_spreadsheet(args: dict) -> dict:
+    """Scrive/appende righe in uno spreadsheet LOCALE esistente.
+
+    Args:
+      - `spreadsheet_id`: str (richiesto) = PATH del file locale.
+      - `values`: list[list] (richiesto).
+      - `mode`: "overwrite" (default, riscrive il foglio) | "append".
+      - `sheet_name`: str (opzionale, default primo foglio).
+    Output §2.6: `results: [{spreadsheet_id, updated_cells, mode}]`.
+    """
+    if not isinstance(args, dict):
+        return {"ok": False, "error_code": "ERR_ARG_INVALID",
+                "error": _msg("ERR_ARG_INVALID", arg="args", reason="must be an object"),
+                "error_class": "invalid_args", "results": [], "used": 0, "n_written": 0}
+    # Valida gli ARGS prima di toccare il filesystem (no I/O su input malformato).
+    # `rows` da `values` (matrice diretta) o da `entries`+`columns` (pipe §2.10):
+    # il planner non sa comporre una matrice con placeholder su una LISTA, quindi
+    # accettiamo le entries (from_step) + le colonne e costruiamo la matrice qui.
+    rows = _resolve_values(args)
+    if rows is None:
+        return {"ok": False, "error_code": "ERR_ARG_INVALID",
+                "error": _msg("ERR_ARG_INVALID", arg="values",
+                                reason="provide `values` (matrix) or `entries`+`columns`"),
+                "error_class": "invalid_args", "results": [], "used": 0, "n_written": 0}
+    mode = (args.get("mode") or "overwrite").strip().lower()
+    if mode not in ("overwrite", "append"):
+        return {"ok": False, "error_code": "ERR_ARG_INVALID",
+                "error": _msg("ERR_ARG_INVALID", arg="mode", reason="must be 'overwrite' or 'append'"),
+                "error_class": "invalid_args", "results": [], "used": 0, "n_written": 0}
+    # UPSERT (§2.4 robustezza NL→determinismo): `spreadsheet_id` OPZIONALE per
+    # il backend locale. "metti/salva … in uno spreadsheet" presuppone
+    # linguisticamente un contenitore esistente; quando NON esiste (nessun id,
+    # o un path inesistente) accomodiamo la presupposizione CREANDO il file,
+    # invece di fallire o chiedere l'id. Cosi' l'ambiguita' verbale create-vs-
+    # write non rompe la pipeline: qualunque verbo scelga il planner, esce un
+    # .xlsx locale. Se invece l'id punta a un file esistente, lo MODIFICA.
+    raw = args.get("spreadsheet_id") or args.get("path")
+    if raw is not None and not isinstance(raw, str):
+        return {"ok": False, "error_code": "ERR_ARG_NOT_STRING",
+                "error": _msg("ERR_ARG_NOT_STRING", arg="spreadsheet_id"),
+                "error_class": "invalid_args", "results": [], "used": 0, "n_written": 0}
+    raw = (raw or "").strip()
+    if raw:
+        path = Path(raw).expanduser()
+        if not path.is_absolute():
+            path = _spreadsheet_out_dir() / path
+    else:
+        path = _spreadsheet_out_dir() / (
+            "spreadsheet_" + datetime.datetime.now().strftime("%Y%m%d_%H%M%S") + ".xlsx")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    existed = path.is_file()
+    sheet_name = (args.get("sheet_name") or "").strip()
+    try:
+        if _is_csv(path):
+            import csv
+            file_mode = "a" if (mode == "append" and existed) else "w"
+            with path.open(file_mode, newline="", encoding="utf-8") as fh:
+                csv.writer(fh).writerows(rows)
+        else:
+            import openpyxl
+            if existed:
+                wb = openpyxl.load_workbook(str(path))
+                ws = (wb[sheet_name] if sheet_name and sheet_name in wb.sheetnames
+                      else wb.active)
+                if mode == "overwrite":
+                    ws.delete_rows(1, ws.max_row)
+            else:
+                wb = openpyxl.Workbook()
+                ws = wb.active
+                if sheet_name:
+                    ws.title = sheet_name[:31]
+            for r in rows:
+                ws.append(r)
+            wb.save(str(path))
+    except ImportError:
+        return {"ok": False, "error_code": "ERR_DEPENDENCY_MISSING",
+                "error": _msg("ERR_DEPENDENCY_MISSING", what="openpyxl"),
+                "error_class": "dependency_missing", "results": [], "used": 0, "n_written": 0}
+    except Exception as e:  # noqa: BLE001
+        return {"ok": False, "error_code": "ERR_IO",
+                "error": _msg("ERR_IO", detail=str(e)),
+                "error_class": "io_error", "results": [], "used": 0, "n_written": 0}
+    sid = str(path)
+    updated_cells = sum(len(r) for r in rows)
+    created = not existed
+    result_row = {"ok": True, "spreadsheet_id": sid, "path": sid,
+                  "updated_cells": updated_cells, "mode": mode, "created": created}
+    out = {
+        "ok": True, "n_written": 1, "updated_cells": updated_cells,
+        "updated_rows": len(rows), "spreadsheet_id": sid, "path": sid,
+        "mode": mode, "created": created,
+        "results": [result_row], "used": 1, "files_source": "local",
+    }
+    # Undo onesto (§2.8): se il file e' stato CREATO da questa write, l'undo lo
+    # rimuove (delete_created_paths); se modificava un file preesistente, non e'
+    # reversibile (niente blob backup) e non si dichiara _undo.
+    if created:
+        out["_undo"] = {"reverse_pattern": "delete_created_paths", "paths": [sid]}
+    return out
+
+
+def append_spreadsheet(args: dict) -> dict:
+    """Append-only wrapper di `write_spreadsheet` (mode='append')."""
+    a = dict(args or {})
+    a["mode"] = "append"
+    return write_spreadsheet(a)
+
+
+def read_spreadsheet(args: dict) -> dict:
+    """Legge tutte le righe da uno spreadsheet LOCALE.
+
+    Args:
+      - `spreadsheet_id`: str (richiesto) = PATH del file locale.
+      - `sheet_name`: str (opzionale, default primo foglio).
+    Output: `{ok, values: [[...]], entries, spreadsheet_id, used}`.
+    """
+    if not isinstance(args, dict):
+        return {"ok": False, "error_code": "ERR_ARG_INVALID",
+                "error": _msg("ERR_ARG_INVALID", arg="args", reason="must be an object"),
+                "error_class": "invalid_args", "entries": [], "used": 0}
+    path, err = _resolve_xlsx_path(args, must_exist=True)
+    if err is not None:
+        return {**err, "entries": [], "used": 0}
+    sheet_name = (args.get("sheet_name") or "").strip()
+    try:
+        if _is_csv(path):
+            import csv
+            with path.open("r", newline="", encoding="utf-8") as fh:
+                values = [list(r) for r in csv.reader(fh)]
+        else:
+            import openpyxl
+            wb = openpyxl.load_workbook(str(path), read_only=True, data_only=True)
+            ws = wb[sheet_name] if sheet_name and sheet_name in wb.sheetnames else wb.active
+            values = [list(row) for row in ws.iter_rows(values_only=True)]
+    except ImportError:
+        return {"ok": False, "error_code": "ERR_DEPENDENCY_MISSING",
+                "error": _msg("ERR_DEPENDENCY_MISSING", what="openpyxl"),
+                "error_class": "dependency_missing", "entries": [], "used": 0}
+    except Exception as e:  # noqa: BLE001
+        return {"ok": False, "error_code": "ERR_IO",
+                "error": _msg("ERR_IO", detail=str(e)),
+                "error_class": "io_error", "entries": [], "used": 0}
+    sid = str(path)
+    return {"ok": True, "values": values, "spreadsheet_id": sid,
+            "entries": values, "used": len(values),
+            "available_total": len(values), "files_source": "local"}

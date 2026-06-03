@@ -742,10 +742,14 @@ def _synthesize_final_from_steps(query: str, steps: list, llm_fast) -> str:
                         continue
                     fields = []
                     # 2a) campo testuale lungo (body/content/text esaustivo → stop)
+                    # HTML→testo: body_text grezzo (SPA non parsata) inquina il
+                    # contesto LLM e rischia l'eco nel final_message. No-op se
+                    # gia' testo (§7.9). Import lazy per evitare cicli.
                     picked_long = False
+                    from output_format import _strip_html_to_text as _sht
                     for k in ("body_text", "content", "text"):
                         if e.get(k):
-                            fields.append(f"{k}={str(e[k])[:300]}")
+                            fields.append(f"{k}={_sht(str(e[k]))[:300]}")
                             picked_long = True
                             break
                     if not picked_long:

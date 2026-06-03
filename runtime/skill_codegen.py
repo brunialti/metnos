@@ -112,6 +112,14 @@ _AFFINITY_BY_OBJ = {
     "packages":    ["pacchetto", "pacchetti", "package", "packages"],
     "entries":     ["voce", "voci", "entry", "entries", "elemento",
                     "elementi"],
+    # OBJECTS estesi a 21 per GitHub (ADR 0141): issues/pulls. Senza queste
+    # entry l'affinity cadeva sul fallback verb-only (['cerca','find',...]),
+    # IDENTICA fra find_issues_github e find_pulls_github → il proposer non
+    # disambiguava issue vs pull (bug 2/6/2026). Termini object-specifici.
+    "issues":      ["issue", "issues", "segnalazione", "segnalazioni",
+                    "bug", "ticket", "problema", "problemi"],
+    "pulls":       ["pull request", "pull requests", "pr", "merge",
+                    "richiesta di merge", "patch", "contributo"],
 }
 
 
@@ -452,40 +460,38 @@ def _description_boilerplate(plan) -> tuple[str, str]:
     }.get(plan.verb, "Performs operation on")
     output_field = plan.output_kind
 
+    # FORMATO A CAPITOLI (REGOLA UNIVERSALE §2.5): SCOPO/PATTERN/NON/OUT.
+    # Era prosa colloquiale ("DEVI usarla per operazioni su X dello skill
+    # backend. USO CORRETTO: name(...)"); ora pattern-oriented e stringato
+    # (fix 2/6/2026). PATTERN = call literal con gli arg richiesti (o i primi).
+    _args = list(getattr(plan, "args", None) or [])
+    _req = [a for a in _args if getattr(a, "required", False)] or _args[:2]
+
+    def _ph(a):
+        t = getattr(a, "type", "string")
+        return "N" if t in ("integer", "number") else '"..."'
+    _sig = ", ".join(f"{a.name}={_ph(a)}" for a in _req)
+    call = f"{plan.name}({_sig})"
+
     phrase = _SKILL_DOMAIN_PHRASING.get(plan.skill_domain or "")
     if phrase:
-        it = (
-            f"{verb_desc_it} {phrase['noun_it']} di {phrase['service_it']} "
-            f"via OAuth. DEVI usarla per query su {phrase['examples_it']}. "
-            f"NON DEVI usarla per altri provider (es. iCloud, Outlook, IMAP). "
-            f"Vettoriale (§2.1): ritorna `{output_field}: list`. "
-            f"USO CORRETTO: {plan.name}(...). "
-            f"ERRORE: invocarla senza credenziali (richiedera' setup OAuth)."
-        )
-        en = (
-            f"{verb_desc_en} {phrase['noun_en']} of {phrase['service_en']} "
-            f"via OAuth. MUST be used for queries about "
-            f"{phrase['examples_en']}. MUST NOT be used for other providers "
-            f"(e.g. iCloud, Outlook, IMAP). Vectorial (§2.1): returns "
-            f"`{output_field}: list`. CORRECT USE: {plan.name}(...). "
-            f"ERROR: invoking without credentials (will require OAuth setup)."
-        )
+        it = (f"SCOPO: {verb_desc_it} {phrase['noun_it']} di "
+              f"{phrase['service_it']} (OAuth). PATTERN: {call}. NON: usare "
+              f"per altri provider (iCloud, Outlook, IMAP); invocare senza "
+              f"credenziali. OUT: {output_field}=[...].")
+        en = (f"SCOPO: {verb_desc_en} {phrase['noun_en']} of "
+              f"{phrase['service_en']} (OAuth). PATTERN: {call}. NON: use for "
+              f"other providers (iCloud, Outlook, IMAP); invoke without "
+              f"credentials. OUT: {output_field}=[...].")
         return it, en
 
     # Fallback generico per domini non in mapping (skill nuova non Google).
     obj = plan.obj
-    it = (
-        f"{verb_desc_it} {obj} via skill `{plan.skill_domain} {plan.skill_action}`. "
-        f"Vettoriale (§2.1): ritorna `{output_field}: list`. "
-        f"DEVI usarla per operazioni su {obj} dello skill backend. "
-        f"USO CORRETTO: {plan.name}(...)."
-    )
-    en = (
-        f"{verb_desc_en} {obj} via skill `{plan.skill_domain} {plan.skill_action}`. "
-        f"Vectorial (§2.1): returns `{output_field}: list`. "
-        f"MUST be used for operations on {obj} from the skill backend. "
-        f"CORRECT USE: {plan.name}(...)."
-    )
+    dom = plan.skill_domain or ""
+    it = (f"SCOPO: {verb_desc_it} {obj} (skill {dom}). PATTERN: {call}. "
+          f"NON: omettere gli argomenti richiesti. OUT: {output_field}=[...].")
+    en = (f"SCOPO: {verb_desc_en} {obj} (skill {dom}). PATTERN: {call}. "
+          f"NON: omit required arguments. OUT: {output_field}=[...].")
     return it, en
 
 
@@ -827,6 +833,11 @@ def build_context(plan, parsed_skill, *, description_it=None,
         "has_top_k": has_top_k,
         "top_k_default": int(top_k_default) if top_k_default is not None else 50,
         "vectorial_coalesce": vectorial_coalesce,
+        # §2.1: azioni MUTANTI per-item (send/create/set/change) diventano
+        # vettoriali via `entries` (from_step) + `<arg>_template` — un loop sul
+        # singolo CLI, aggregato in results. delete usa gia' vectorial_coalesce
+        # (id-loop); find/read ritornano gia' liste dall'API.
+        "vectorial_entries": plan.verb in ("send", "create", "set", "change"),
         "iso_validations": iso_validations,
         "passthrough_flags": passthrough,
         "status_word": status_word,

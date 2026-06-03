@@ -35,6 +35,7 @@ from typing import Any, Optional
 _RUNTIME = Path(__file__).resolve().parent.parent.parent / "runtime"
 if str(_RUNTIME) not in sys.path:
     sys.path.insert(0, str(_RUNTIME))
+from messages import get as _msg  # noqa: E402
 
 # ---- Tools whitelist (read-only by hard constraint) ----------------------
 
@@ -200,7 +201,7 @@ def _run_github_subcmd(subcmd: str, extra_argv: list[str], timeout_s: int = 30) 
     if script is None:
         return {
             "ok": False, "results": [],
-            "error": "github skill not installed (run: metnos-skills import github)",
+            "error": _msg("ERR_GITHUB_SKILL_MISSING"),
             "error_class": "missing_skill",
         }
     cmd = [sys.executable, str(script), subcmd] + extra_argv
@@ -231,10 +232,10 @@ def _tool_github_read_file(tool_input: dict) -> dict:
     path = tool_input.get("path")
     ref = tool_input.get("ref")
     if not isinstance(repo, str) or "/" not in repo:
-        return {"ok": False, "error": "repo must be 'owner/name'",
+        return {"ok": False, "error": _msg("ERR_ARG_INVALID", arg="repo", reason="owner/name"),
                 "error_class": "invalid_args"}
     if not isinstance(path, str) or not path:
-        return {"ok": False, "error": "path required",
+        return {"ok": False, "error": _msg("ERR_ARG_MISSING", arg="path"),
                 "error_class": "invalid_args"}
     argv = ["--repo", repo, "--path", path]
     if isinstance(ref, str) and ref:
@@ -246,7 +247,7 @@ def _tool_github_list_dir(tool_input: dict) -> dict:
     repo = tool_input.get("repo")
     path = tool_input.get("path", "")
     if not isinstance(repo, str) or "/" not in repo:
-        return {"ok": False, "error": "repo must be 'owner/name'",
+        return {"ok": False, "error": _msg("ERR_ARG_INVALID", arg="repo", reason="owner/name"),
                 "error_class": "invalid_args"}
     return _run_github_subcmd("repos_list_dir", ["--repo", repo, "--path", path])
 
@@ -255,10 +256,10 @@ def _tool_github_search_code(tool_input: dict) -> dict:
     repo = tool_input.get("repo")
     query = tool_input.get("query")
     if not isinstance(repo, str) or "/" not in repo:
-        return {"ok": False, "error": "repo must be 'owner/name'",
+        return {"ok": False, "error": _msg("ERR_ARG_INVALID", arg="repo", reason="owner/name"),
                 "error_class": "invalid_args"}
     if not isinstance(query, str) or not query:
-        return {"ok": False, "error": "query required",
+        return {"ok": False, "error": _msg("ERR_ARG_MISSING", arg="query"),
                 "error_class": "invalid_args"}
     return _run_github_subcmd("code_search", ["--repo", repo, "--query", query])
 
@@ -267,12 +268,12 @@ def _tool_github_read_issue(tool_input: dict) -> dict:
     repo = tool_input.get("repo")
     number = tool_input.get("number")
     if not isinstance(repo, str) or "/" not in repo:
-        return {"ok": False, "error": "repo must be 'owner/name'",
+        return {"ok": False, "error": _msg("ERR_ARG_INVALID", arg="repo", reason="owner/name"),
                 "error_class": "invalid_args"}
     try:
         n = int(number)
     except (TypeError, ValueError):
-        return {"ok": False, "error": "number must be integer",
+        return {"ok": False, "error": _msg("ERR_ARG_NOT_INT", arg="number"),
                 "error_class": "invalid_args"}
     argv = ["--repo", repo, "--number", str(n)]
     if tool_input.get("include_comments"):
@@ -283,14 +284,14 @@ def _tool_github_read_issue(tool_input: dict) -> dict:
 def _tool_fs_read_local_file(tool_input: dict) -> dict:
     raw = tool_input.get("path")
     if not isinstance(raw, str) or not raw:
-        return {"ok": False, "error": "path required",
+        return {"ok": False, "error": _msg("ERR_ARG_MISSING", arg="path"),
                 "error_class": "invalid_args"}
     p = Path(raw).expanduser()
     if not _path_allowed(p):
-        return {"ok": False, "error": f"path outside allowed roots: {raw}",
+        return {"ok": False, "error": _msg("ERR_PATH_OUTSIDE_SCOPE", path=raw),
                 "error_class": "forbidden"}
     if not p.exists() or not p.is_file():
-        return {"ok": False, "error": f"file not found: {p}",
+        return {"ok": False, "error": _msg("ERR_PATH_NOT_FOUND", path=p),
                 "error_class": "not_found"}
     try:
         max_b = int(tool_input.get("max_bytes") or 100000)
@@ -478,42 +479,40 @@ _VALID_REMOTE_KINDS = {"github_repo", "github_issue", "url"}
 def _validate_args(args: dict) -> Optional[dict]:
     """Ritorna dict di errore se invalido, None altrimenti."""
     if not isinstance(args, dict):
-        return {"ok": False, "error": "args must be an object",
+        return {"ok": False, "error": _msg("ERR_ARGS_NOT_OBJECT"),
                 "error_class": "invalid_args"}
     role = args.get("role")
     if not isinstance(role, str) or not role.strip():
-        return {"ok": False, "error": "role required (non-empty string)",
+        return {"ok": False, "error": _msg("ERR_ARG_NOT_NONEMPTY_STRING", arg="role"),
                 "error_class": "invalid_args"}
     output_spec = args.get("output_spec")
     if not isinstance(output_spec, dict):
-        return {"ok": False, "error": "output_spec required (object)",
+        return {"ok": False, "error": _msg("ERR_ARG_NOT_DICT", arg="output_spec"),
                 "error_class": "invalid_args"}
     fmt = output_spec.get("format")
     if fmt is not None and fmt not in _VALID_FORMATS:
         return {"ok": False,
-                "error": f"output_spec.format invalid: {fmt!r}; "
-                          f"allowed: {sorted(_VALID_FORMATS)}",
+                "error": _msg("ERR_ARG_INVALID", arg="output_spec.format", reason=str(fmt)),
                 "error_class": "invalid_args"}
     rc = args.get("remote_context")
     if rc is not None:
         if not isinstance(rc, list):
-            return {"ok": False, "error": "remote_context must be a list",
+            return {"ok": False, "error": _msg("ERR_ARG_NOT_LIST", arg="remote_context"),
                     "error_class": "invalid_args"}
         for i, entry in enumerate(rc):
             if not isinstance(entry, dict):
                 return {"ok": False,
-                        "error": f"remote_context[{i}] must be an object",
+                        "error": _msg("ERR_ARG_NOT_DICT", arg=f"remote_context[{i}]"),
                         "error_class": "invalid_args"}
             k = entry.get("kind")
             if k not in _VALID_REMOTE_KINDS:
                 return {"ok": False,
-                        "error": f"remote_context[{i}].kind invalid: {k!r}; "
-                                  f"allowed: {sorted(_VALID_REMOTE_KINDS)}",
+                        "error": _msg("ERR_ARG_INVALID", arg=f"remote_context[{i}].kind", reason=str(k)),
                         "error_class": "invalid_args"}
     tier = args.get("tier", "wise")
     if tier not in ("fast", "middle", "wise", "frontier"):
         return {"ok": False,
-                "error": f"tier invalid: {tier!r}",
+                "error": _msg("ERR_ARG_INVALID", arg="tier", reason=repr(tier)),
                 "error_class": "invalid_args"}
     return None
 
@@ -608,7 +607,7 @@ def _run_mode_a(args: dict, tier: str, system: str, user: str,
     chain = router.fallback_chain(tier)
     if not chain:
         return {"ok": False,
-                "error": f"tier {tier!r} not configured in llm_tiers.toml",
+                "error": _msg("ERR_TIER_NOT_CONFIGURED", tier=tier),
                 "error_class": "tier_not_configured",
                 "mode": "A", "tier_used": tier, "files_read": files_read,
                 "remote_bytes_read": 0, "iters_done": 0, "cached": False}
@@ -644,14 +643,14 @@ def _run_mode_b(args: dict, tier: str, system: str, user: str,
     chain = router.fallback_chain(tier)
     if not chain:
         return {"ok": False,
-                "error": f"tier {tier!r} not configured in llm_tiers.toml",
+                "error": _msg("ERR_TIER_NOT_CONFIGURED", tier=tier),
                 "error_class": "tier_not_configured",
                 "mode": "B", "tier_used": tier, "files_read": files_read,
                 "remote_bytes_read": 0, "iters_done": 0, "cached": False,
                 "tools_allowed": tools_allowed}
     if not tools_allowed:
         return {"ok": False,
-                "error": "mode B requested but no tools_allowed resolved",
+                "error": _msg("ERR_NO_TOOLS_RESOLVED"),
                 "error_class": "no_tools",
                 "mode": "B", "tier_used": tier, "files_read": files_read,
                 "remote_bytes_read": 0, "iters_done": 0, "cached": False}
@@ -768,7 +767,7 @@ def _tool_loop_once(spec: dict, system: str, user: str,
                 user_blocks.append({
                     "type": "tool_result", "tool_use_id": tc.call_id,
                     "content": json.dumps({"ok": False,
-                                            "error": f"tool {name!r} not allowed",
+                                            "error": _msg("ERR_TOOL_NOT_ALLOWED", name=name),
                                             "error_class": "forbidden"}),
                     "is_error": True,
                 })
@@ -784,7 +783,7 @@ def _tool_loop_once(spec: dict, system: str, user: str,
             payload_bytes = len(payload_str.encode("utf-8"))
             if remote_bytes + payload_bytes > max_bytes:
                 tool_res = {"ok": False,
-                             "error": "max_remote_bytes exceeded",
+                             "error": _msg("ERR_MAX_BYTES_EXCEEDED"),
                              "error_class": "budget_exceeded"}
                 payload_str = json.dumps(tool_res, ensure_ascii=False)
             remote_bytes += min(payload_bytes,
@@ -812,7 +811,7 @@ def _tool_loop_once(spec: dict, system: str, user: str,
         "iters_done": iters, "remote_bytes_read": remote_bytes,
         "files_read": files_read, "mode": "B",
         "fallback_used": fallback_used, "tools_allowed": tools_allowed,
-        "error": f"max_tool_iters reached ({max_iters})",
+        "error": _msg("ERR_MAX_ITERS_REACHED", max_iters=max_iters),
         "error_class": "iters_exceeded",
     }
 
@@ -921,7 +920,7 @@ def main():
         args = json.load(sys.stdin)
     except json.JSONDecodeError as e:
         sys.stdout.write(json.dumps(
-            {"ok": False, "error": f"invalid input json: {e}",
+            {"ok": False, "error": _msg("ERR_JSON_INVALID"),
               "error_class": "invalid_args"},
         ))
         return

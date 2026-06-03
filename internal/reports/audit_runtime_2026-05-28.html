@@ -1,0 +1,470 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Audit architetturale runtime Metnos — 2026-05-28</title>
+<style>
+  :root{
+    --bg:#0f1115; --panel:#171a21; --panel2:#1d212b; --ink:#e6e9ef; --muted:#9aa4b2;
+    --line:#2a2f3a; --accent:#6ea8fe; --code:#0b0d11;
+    --crit:#ff5a5f; --high:#ff9f43; --med:#ffd24d; --low:#8a93a3; --ok:#3ddc97;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font:15px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    -webkit-font-smoothing:antialiased}
+  .wrap{max-width:980px;margin:0 auto;padding:48px 24px 96px}
+  header.doc{border-bottom:1px solid var(--line);padding-bottom:24px;margin-bottom:8px}
+  h1{font-size:30px;line-height:1.2;margin:0 0 6px}
+  .sub{color:var(--muted);font-size:14px;margin:0}
+  blockquote{margin:18px 0;padding:14px 18px;background:var(--panel);border-left:3px solid var(--accent);
+    border-radius:6px;color:var(--muted);font-size:14px}
+  h2{font-size:22px;margin:44px 0 14px;padding-bottom:8px;border-bottom:1px solid var(--line)}
+  h3{font-size:17px;margin:26px 0 8px}
+  p{margin:10px 0}
+  code{font-family:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace;
+    background:var(--panel2);padding:1px 6px;border-radius:5px;font-size:13px;color:#cfe3ff}
+  pre{background:var(--code);border:1px solid var(--line);border-radius:8px;padding:14px 16px;
+    overflow:auto;font-size:13px;line-height:1.5}
+  pre code{background:none;padding:0;color:#d7e0ee}
+  a{color:var(--accent);text-decoration:none}
+  a:hover{text-decoration:underline}
+  table{width:100%;border-collapse:collapse;margin:14px 0;font-size:13.5px}
+  th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{color:var(--muted);font-weight:600;background:var(--panel)}
+  tr:nth-child(even) td{background:rgba(255,255,255,.02)}
+  .badge{display:inline-block;font-size:11px;font-weight:700;letter-spacing:.04em;
+    padding:2px 8px;border-radius:999px;color:#0b0d11;vertical-align:middle}
+  .b-crit{background:var(--crit)} .b-high{background:var(--high)} .b-med{background:var(--med)}
+  .b-low{background:var(--low);color:#fff} .b-ok{background:var(--ok)}
+  .b-sec{background:#c678dd;color:#fff}
+  .finding{background:var(--panel);border:1px solid var(--line);border-left-width:4px;border-radius:8px;
+    padding:14px 18px;margin:14px 0}
+  .finding.crit{border-left-color:var(--crit)}
+  .finding.high{border-left-color:var(--high)}
+  .finding.med{border-left-color:var(--med)}
+  .finding h3{margin-top:0}
+  .meta{color:var(--muted);font-size:12.5px;margin:2px 0 8px}
+  .ok{color:var(--ok)} .warn{color:var(--high)} .danger{color:var(--crit)}
+  .verified{color:var(--ok);font-weight:700}
+  ul,ol{margin:10px 0;padding-left:22px} li{margin:5px 0}
+  .urgent{background:linear-gradient(180deg,#2a1416,#1a0f12);border:1px solid #5a2327;
+    border-radius:10px;padding:20px 22px;margin:20px 0}
+  .urgent h2{border:none;color:var(--crit);margin-top:0}
+  .toc{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px 20px;margin:24px 0}
+  .toc ol{columns:2;column-gap:36px}
+  .toc a{color:var(--ink)}
+  footer{margin-top:60px;padding-top:20px;border-top:1px solid var(--line);color:var(--muted);font-size:12.5px}
+  .tag{font-size:11px;color:var(--muted);border:1px solid var(--line);padding:1px 7px;border-radius:5px}
+  .kvt td:first-child{white-space:nowrap;color:#cfe3ff;font-family:ui-monospace,monospace;font-size:12.5px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="doc">
+  <h1>Audit architetturale — runtime Metnos</h1>
+  <p class="sub">2026-05-28 · branch <code>main</code> · top-down + bottom-up · postura adversariale ·
+  12 agenti di audit paralleli (11 sottosistemi + 1 ricerca letteratura) + verifica personale delle affermazioni-titolo</p>
+</header>
+
+<blockquote>
+Logica/algoritmi, corretta implementazione, connessioni con tutti gli elementi interessati, codice
+morto/duplicato, efficienza, sicurezza, confronto con lo stato dell'arte di sistemi simili.
+«Niente da salvare se non funziona». I findings marcati <span class="verified">✓</span> sono stati
+riprodotti/verificati in questa sessione; gli altri riportano l'evidenza <code>file:line</code> dell'agente.
+</blockquote>
+
+<div class="toc">
+<strong>Indice</strong>
+<ol>
+  <li><a href="#verdetto">Verdetto</a></li>
+  <li><a href="#urgente">🔴 Urgente prima di un restart</a></li>
+  <li><a href="#causa">Causa-radice: migrazione Engine v2 incompleta</a></li>
+  <li><a href="#critical">Findings CRITICAL (C1–C8)</a></li>
+  <li><a href="#high">Findings HIGH per sottosistema</a></li>
+  <li><a href="#morto">Codice morto / over-engineering</a></li>
+  <li><a href="#sota">Convergenza con lo stato dell'arte</a></li>
+  <li><a href="#decisioni">Decisioni che spettano a Roberto</a></li>
+  <li><a href="#piano">Piano di fix proposto</a></li>
+</ol>
+</div>
+
+<h2 id="verdetto">0 · Verdetto</h2>
+<p>Il sistema <strong>funziona nella configurazione di default</strong> (Engine v2 attivo), ma l'audit
+ha trovato un quadro coerente e serio: la <strong>migrazione a Engine v2 è a metà strada</strong> e ha
+lasciato dietro di sé <strong>(a)</strong> ~9.000 LOC di codice morto/duplicato eliminabili,
+<strong>(b)</strong> una fascia di componenti <em>dichiarati attivi ma di fatto inerti o no-op</em>
+(«latent-broken», violano §2.8), <strong>(c)</strong> diversi <span class="danger">buchi di sicurezza
+sfruttabili</span>, <strong>(d)</strong> una <span class="danger">bomba a orologeria nello scheduler</span>
+che azzera tutto il lavoro in background al prossimo restart, <strong>(e)</strong> drift doc↔codice
+pervasivo (ADR fantasma, default dichiarati diversi da quelli reali). Nulla di irrecuperabile a livello
+di impianto — l'architettura ibrida, il retrieval con vocabolario chiuso e la synthesis test-first sono
+<span class="ok">confermati validi dalla letteratura</span>. Ma una lista precisa di cose va uccisa,
+riparata o decisa.</p>
+
+<p><strong>Convergenza fra agenti indipendenti</strong> (alza la confidenza):</p>
+<ul>
+  <li>Il bug «cascata Praxis eseguita e scartata» trovato <strong>indipendentemente da 2 agenti</strong> → verificato di persona <span class="verified">✓</span>.</li>
+  <li>La tensione «ML retrain vs no-training/amplify-reality» trovata da <strong>3 agenti</strong> (intent, governance, scheduler) → verificata <span class="verified">✓</span>.</li>
+  <li>«Fastpath cosine su azioni irreversibili» = anti-pattern: agente Engine v2 <strong>+ letteratura</strong> 2025-2026.</li>
+  <li>«14 strategie prefilter = over-engineering»: agente prefilter <strong>+ letteratura IR</strong>.</li>
+  <li>«Sandbox planned mentre si esegue codice»: agente synthesis (L4 stub) <strong>+ letteratura</strong> (gap n.1).</li>
+</ul>
+
+<div class="urgent" id="urgente">
+<h2>1 · 🔴 URGENTE — prima di qualsiasi restart o deploy</h2>
+<p><strong>Lo scheduler intero muore al prossimo riavvio.</strong>
+<code>runtime/scheduler_v2/builtin_callbacks.py:459-464</code> carica 7 task builtin
+(<code>apply_ager</code>, <code>apply_executor_ager</code>, <code>synt_suggest</code>,
+<code>introvertiva_propose/apply</code>, <code>proposals_cleanup</code>, <code>lifecycle_summary</code>)
+via <code>SourcelessFileLoader(".../_v1_tasks.pyc")</code>.</p>
+
+<p><span class="verified">Verificato ✓:</span> <code>_v1_tasks.pyc</code> <strong>non esiste</strong>
+(e <code>.gitignore</code> esclude <code>*.pyc</code>); la sorgente <code>runtime/scheduler.py</code>
+da cui sarebbe «frozen» <strong>non esiste</strong> e non è mai stata in git. Il commit <code>078796a</code>
+(migrazione <code>_legacy</code>) ha rimosso l'artefatto. Il servizio gira <em>ora</em> solo perché il
+<code>.pyc</code> è caricato in RAM da un boot precedente. <code>install_default_callbacks</code> solleva
+<code>FileNotFoundError</code> a metà → <strong>nessun callback registrato</strong>; il boot wrap
+(<code>metnos_http_server.py:160</code>) lo cattura come «non-fatal» → il daemon parte senza alcun job in
+background, in silenzio. Secondo sito: <code>http_routes_admin.py:1141</code> → HTTP 500.</p>
+
+<p><strong>Azione immediata</strong> (finestra: finché il processo vivo ha il bytecode in RAM) — estrarre
+la sorgente dal processo in esecuzione e materializzarla in <code>runtime/jobs/</code>:</p>
+<pre><code>import inspect, sys
+m = sys.modules.get("metnos_scheduler_v1_tasks")
+for name in ("task_apply_ager","task_apply_executor_ager","task_synt_suggest",
+             "task_introvertiva_propose","task_introvertiva_apply",
+             "task_proposals_cleanup","task_lifecycle_summary"):
+    fn = getattr(m, name, None)
+    if fn: open(f"/opt/metnos/runtime/jobs/_recovered_{name}.py","w").write(inspect.getsource(fn))</code></pre>
+<p>Poi rimuovere l'anti-pattern <code>SourcelessFileLoader</code> (viola §7.1 e §7.10) e wirare le 7 task
+da sorgenti <code>jobs/</code> — è il TODO già scritto a <code>builtin_callbacks.py:457</code>.</p>
+</div>
+
+<h2 id="causa">2 · Causa-radice trasversale: migrazione Engine v2 incompleta</h2>
+<p>Convivono <strong>due sistemi decisionali</strong>: Engine v2 (<code>runtime/engine/</code>, default
+<code>METNOS_ENGINE_V2=1</code>) e la cascata Praxis legacy (<code>runtime/_legacy/</code> via shim
+<code>sys.modules</code>). Engine v2 è <strong>l'unico vivo nel default</strong>:
+<code>engine.dispatch.run_turn</code> ritorna sempre un risultato (il terminator sintetizza
+error→answer), quindi tutto ciò che segue <code>if _engine_v2_res is not None: return log</code> è
+<strong>morto su query normali</strong>.</p>
+<p>Da questa migrazione a metà discendono, a cascata:</p>
+<ul>
+  <li>ADR fantasma: <strong>ADR 0164 non esiste</strong> (<code>decisions/0164*</code> assente), né
+    <code>engine/ARCHITECTURE.md</code>, ma sono citati ovunque in <code>engine/</code>. <span class="verified">Verificato ✓</span>.</li>
+  <li>Ramo di fallback Praxis <strong>morto E rotto</strong> (C1).</li>
+  <li>Doppio store di feedback disallineato (<code>autopath</code> vs <code>multi_tool_paths</code>).</li>
+  <li>Dashboard admin che leggono store legacy svuotati (<code>/admin/praxis</code>, <code>/admin/aporiae</code>).</li>
+  <li>Job legacy con wrapper rotto su store congelati.</li>
+  <li>Duplicazione <code>engine/executor.py</code> ↔ <code>_legacy/praxis_executor.py</code> (~80%).</li>
+  <li>Champion/challenger darwiniano (ADR 0162) <strong>non portato</strong> in Engine v2 → dormiente.</li>
+</ul>
+
+<h2 id="critical">3 · Findings CRITICAL</h2>
+<p class="meta">Legenda: <span class="verified">✓</span> verificato di persona · <span class="tag">A</span> alta confidenza (agente, evidenza citata) · <span class="badge b-sec">SEC</span> sicurezza</p>
+
+<div class="finding crit">
+  <h3>C1 — Cascata Praxis eseguita e risultato scartato + blocco di consumo morto <span class="verified">✓</span></h3>
+  <p class="meta"><code>agent_runtime.py:5899-5966</code></p>
+  <p>Nel path default (<code>METNOS_PRAXIS=1</code>, non force-compound) la <code>if</code> a 5899 chiama
+  <code>_try_praxis_cascade</code> (costo LLM + side-effect) e salva in <code>_praxis_res</code>; ma il
+  blocco che lo <em>consuma</em> (extend steps, record_observation, <code>return log</code>) è nidificato
+  sotto <code>elif _force_legacy_compound:</code> (5913) → mai eseguito quando la <code>if</code> è presa.
+  E nel ramo <code>elif</code>, <code>_praxis_res</code> è azzerato a 5914, quindi i controlli a 5919/5926
+  sono <strong>sempre falsi</strong>. Il blocco 5919-5966 è dead code in entrambi i rami; nel path
+  <code>if</code> la cascata gira e l'esito è buttato → si cade su <code>return error</code>.</p>
+  <p class="meta">Impatto reale basso (raggiunto solo se Engine v2 crasha), ma bug logico + spreco netto.</p>
+  <p><strong>Fix:</strong> eliminare l'intero ramo 5898-5980 + <code>_try_praxis_cascade</code> (§7.1).</p>
+</div>
+
+<div class="finding crit">
+  <h3>C2 — Validator <code>_check_args</code>: required-check è un no-op, ma default-ON e costa una 2ª LLM call <span class="verified">✓</span></h3>
+  <p class="meta"><code>engine/validator.py:83-88</code> · <code>engine/__init__.py:47-50</code></p>
+  <p>Il loop <code>for r in required:</code> ha solo <code>continue</code>/fall-through, <strong>non appende
+  mai un errore</strong>. Il required-check promesso non esiste; resta solo <code>requires_one_of</code> +
+  type-check superficiale. Eppure <code>is_validator_enabled()</code> è <strong>default True</strong>
+  (contro la docstring del validator che dice «default OFF»), e al fallimento dispatch chiama un
+  <strong>secondo</strong> <code>proposer.propose</code> (LLM wise, 25-30s) prima di eseguire. Costo &gt; valore.</p>
+  <p><strong>Fix:</strong> required-check <em>placeholder-aware</em> (<code>from_step</code>/<code>${...}</code>
+  risolti a runtime non sono «mancanti») oppure declassare il validator a sola annotazione e default OFF.</p>
+</div>
+
+<div class="finding crit">
+  <h3>C3 — Stage 6 (verifier semantico description↔code, ADR 0114 L6) silenziosamente disattivato <span class="tag">A</span></h3>
+  <p class="meta"><code>synth_request.py:517</code> · <code>synt_multistage.py:502,517</code></p>
+  <p><code>_llm_wise(system,user,max_tokens=5000)</code> chiamato con <code>think=False</code> →
+  <code>TypeError</code>, inghiottito da un <code>try/except</code> il cui ramo <strong>ammette il synth</strong>.
+  Ogni synth-on-the-fly di produzione salta la verifica semantica. Il provider sotto accetta <code>think</code>
+  — è solo il wrapper a non forwardare.</p>
+  <p><strong>Fix:</strong> <code>def _llm_wise(system,user,max_tokens=5000,**kwargs)</code> + passare
+  <code>**kwargs</code>. Idem <code>_llm_middle</code>.</p>
+</div>
+
+<div class="finding crit">
+  <h3>C4 — Tier <code>think</code>/<code>num_predict</code> scartati → fast/middle/wise identici a livello provider <span class="verified">✓</span></h3>
+  <p class="meta"><code>llm_router.py:76-82</code> · <code>llm_provider.py:1059-1063</code></p>
+  <p><code>make_provider_from_spec</code> legge solo <code>model</code>+<code>endpoint</code>;
+  <code>LlamaCppProvider.__init__</code> non accetta <code>think</code>/<code>num_predict</code> → <strong>inerti</strong>.
+  La SoT §11/ADR 0146 («la differenza fra tier è solo think/num_predict») è contraddetta: i 3 tier locali sono
+  identici salvo che un caller passi esplicitamente quei parametri. Analogamente il commento «default OFF in prod»
+  del classifier è falso: il drop-in systemd setta <code>METNOS_INTENT_CLASSIFIER=1</code> (verificato ✓).</p>
+  <p><strong>Fix:</strong> propagare gli extra-key della spec al provider come default, oppure rimuovere i campi
+  morti e dichiarare onestamente in ADR 0146.</p>
+</div>
+
+<div class="finding crit">
+  <h3>C5 — <span class="badge b-sec">SEC</span> Guard di irreversibilità aggirabile da trailing-slash e set binari incompleto <span class="verified">✓</span></h3>
+  <p class="meta"><code>system/admin.py:376-417</code></p>
+  <p>L'unico blocco hardcoded non-derogabile (re-validato a fire-time) è sconfitto: <code>_FORBIDDEN_PATHS</code>
+  confrontato con <code>==</code> senza normalizzazione → <code>rm -rf /etc</code> BLOCCATO ma
+  <span class="danger"><code>rm -rf /etc/</code> PASSA</span> (idem <code>//</code>, <code>/usr/</code>). E il guard
+  scatta solo per <code>rm/mv/cp/dd/mkfs/shred/wipefs</code> → passano <code>find / -delete</code>,
+  <code>chmod -R 777 /etc</code>, <code>truncate -s0 /etc/passwd</code>, <code>tee /etc/sudoers.d/x</code>,
+  <code>ln -sf /dev/null /etc/shadow</code>.</p>
+  <p><strong>Fix:</strong> <code>os.path.normpath(value.rstrip("/"))</code> + match per prefix-containment;
+  classificare per <em>target_kind</em> della signature, non per lista binari.</p>
+</div>
+
+<div class="finding crit">
+  <h3>C6 — <span class="badge b-sec">SEC</span> Signature whitelist troppo grossolane → esecuzione silenziosa di codice/file-delete <span class="tag">A</span></h3>
+  <p class="meta"><code>safety/canonicalize.py:219-301</code> · <code>safety_seeds/v1.toml</code></p>
+  <p>La signature cattura <code>binario:subcomando:target_kind</code> e ignora i flag che portano l'azione:
+  <code>find ~ -delete</code> → <code>find:*:fs:user</code> (whitelist) → <strong>esecuzione silenziosa, nessuna
+  card</strong>; <code>env X=1 /tmp/evil.sh</code> → <code>env:*:*</code> → esegue binario arbitrario; graylist
+  copre <code>awk 'BEGIN{system(...)}'</code>, <code>sed … e</code>, <code>tee /etc/sudoers.d/x</code>.
+  <code>admin</code> è <code>EXPOSE_TO_PLANNER=True</code> → un LLM pilotabile può emettere argv whitelisted-ma-distruttivo.</p>
+  <p><strong>Fix:</strong> codificare il flag pericoloso nel subcomando (<code>find -exec/-delete</code> → subcomando
+  mai matchato da whitelist <code>*</code>); denylist di token «shell-equivalent» in <code>_check_forbidden_argv</code>;
+  trattare <code>env</code>/<code>xargs</code>/<code>find -exec</code> come wrapper trasparenti.
+  <strong>Fix a leva più alta dell'audit.</strong></p>
+</div>
+
+<div class="finding crit">
+  <h3>C7 — <span class="badge b-sec">SEC</span> SSRF non autenticato in <code>photo_web_proxy</code> <span class="verified">✓</span></h3>
+  <p class="meta"><code>http_routes_agent.py:1379-1432</code> (route 2460, urlopen 1416)</p>
+  <p><code>/agent/photos/web?u=&lt;url&gt;</code> è sotto il prefisso anonimo <code>ANON_WHITELIST_PREFIXES</code>
+  (<code>/agent/photos/</code>) e fa <code>urllib.request.urlopen(raw_url, timeout=8)</code> con unica validazione
+  <code>startswith("http")</code>. Verificato ✓ (nessun <code>is_private</code>/<code>is_loopback</code>). Un remoto
+  non-auth forza GET verso <code>127.0.0.1:8770/8765</code>, metadata cloud <code>169.254.169.254</code>, LAN interna;
+  segue i redirect.</p>
+  <p><strong>Fix:</strong> risolvere l'IP e rifiutare private/loopback/link-local/reserved a ogni hop; limitare a
+  <code>https://</code> + allowlist host CDN; togliere l'endpoint dal prefisso anonimo.</p>
+</div>
+
+<div class="finding crit">
+  <h3>C8 — <span class="badge b-sec">SEC</span> Sandbox di esecuzione codice «planned», non attiva <span class="tag">A</span> + letteratura</h3>
+  <p class="meta">ADR 0159 L4 · <code>skill_audit.py</code></p>
+  <p>Metnos <strong>genera ed esegue codice Python a runtime</strong> (synth + skill importate) su un host con file
+  personali, mail, <strong>credential store Fernet decifrabile</strong> e sudoer. Esecuzione in-process (Level 0) =
+  un solo codegen sbagliato o un manifest importato malevolo ha pieno accesso al processo. La letteratura (smolagents,
+  microVM/seccomp) considera l'<code>exec</code> diretto di codice non fidato <strong>inaccettabile</strong>.
+  Sign+Jaccard verificano provenienza/somiglianza, non il comportamento a runtime.</p>
+  <p><strong>Fix (prioritario):</strong> 3 livelli di trust → handcrafted in-process; synth locale in subprocess
+  <strong>seccomp-BPF + netns vuoto + rootfs read-only + no credential store</strong>; importate in container/microVM
+  no-network-by-default. Attivare <em>prima</em> di abilitare skill importate in produzione.</p>
+</div>
+
+<h2 id="high">4 · Findings HIGH (condensati per sottosistema)</h2>
+
+<h3>Orchestrazione / Engine v2 / legacy</h3>
+<ul>
+  <li><span class="badge b-high">HIGH</span> <code>log</code> shadowing in <code>run_turn</code>: <code>log</code> è un
+    <code>TurnLog</code> (5356), non il logger (809); <code>log.warning(...) if hasattr(...) else None</code> = no-op
+    → 6+ workaround <code>import logging as _logging</code>. Rinominare il TurnLog locale.</li>
+  <li><span class="badge b-high">HIGH</span> Doppio fast-path/cache in serie ogni turno (3 sqlite:
+    <code>multi_tool_paths</code> + <code>fastpaths</code> + <code>autopath</code>). Hot-path, nessuno speedup (§7.4). Scegliere 1.</li>
+  <li><span class="badge b-high">HIGH</span> Autopath <code>MIN_OBS_PROMOTE=1</code> (<code>autopath.py:40</code>):
+    <strong>un solo ✓ promuove</strong> a champion (cosine≥0.90), demote richiede 3 fail → asimmetria pro-promozione
+    contro doc/ADR. Verdict <code>repeat</code> documentato ma non gestito.</li>
+  <li><span class="badge b-high">HIGH</span> Fastpath senza path di scrittura in produzione
+    (<code>fastpath.approve</code> chiamato solo dai test) → Layer 0 <strong>inerte</strong>, ma <code>lookup</code>
+    gira ogni turno (costo, zero beneficio).</li>
+  <li><span class="badge b-high">HIGH</span> Cosine O(N) pure-Python (<code>cluster.py:54-67</code>,
+    <code>fastpath.py:108</code>, <code>autopath.py:148</code>): fino a 3 full-scan + embed BGE-M3 1024-dim per turno,
+    niente numpy/ANN.</li>
+  <li><span class="badge b-high">HIGH</span> §7.11 violato: <code>engine/proposer.py:193</code> fa
+    <code>sys.path.insert("/opt/metnos/runtime/_legacy")</code> (path assoluto) per <code>GRAMMAR_FRAMEWORK</code>.</li>
+</ul>
+
+<h3>Intent</h3>
+<ul>
+  <li><span class="badge b-high">HIGH</span> <code>intent_classifier</code> ML: <strong>gate champion/challenger mai
+    scatta</strong> (<code>train.py:185-228</code>, <code>current_dir==out_dir</code>) → un modello che regredisce
+    sarebbe promosso purché ≥0.70. Eval <strong>auto-confermante</strong> (train/eval condividono i 19 anchor) → il
+    73.98% ≈ baseline zero-shot, nessun guadagno reale. Audit dice «v2 promoted», su disco c'è <strong>solo v1</strong>
+    (verificato ✓).</li>
+  <li><span class="badge b-high">HIGH</span> <code>compound_decomposer</code>: split su «e»/«and» nudo spezza «Mario e
+    Anna», «pane e burro»; mitigato dal gate ≥2 verbi ma non eliminato. Auto-inietta
+    <code>send_messages(to="${RUNTIME:actor_email}")</code> che può risolvere a <strong>stringa vuota</strong> → send a
+    destinatario vuoto non intercettato (§2.8).</li>
+</ul>
+
+<h3>Prefilter</h3>
+<ul>
+  <li><span class="badge b-high">HIGH</span> Default reale = <code>legacy</code>; <strong>13 strategie su 14 sono
+    codice morto</strong> (~1549 LOC). ADR 0140 dichiara default <code>token_flat_v2</code> (drop-in su unit utente,
+    ma il servizio attivo è quello di sistema che non setta <code>METNOS_PREFILTER</code>). <code>bloom</code> è
+    bug-degenere noto e resta selezionabile.</li>
+  <li><span class="badge b-high">HIGH</span> Rule applicate asimmetricamente: path BoW applica
+    <code>rule_boost</code>+<code>rare_penalty</code>, path intent (produzione) solo <code>rule_boost</code>. Il bench
+    +8.1pp gira sul path BoW → <strong>non è il guadagno di produzione</strong>. <code>_VERB_TO_CANONICAL</code> vive in
+    <code>prefilter.py</code>, non in <code>vocab.py</code> (§2.2).</li>
+  <li><span class="badge b-med">MED</span> <code>executor_typing._resolve_path</code> non trova i typing dei builtin
+    underscore-prefixed → rule typed no-op per <code>_admin</code>, <code>_classify_entries</code>.</li>
+</ul>
+
+<h3>Synthesis / loader / aging</h3>
+<ul>
+  <li><span class="badge b-high">HIGH</span> <code>executor_aging.apply_executor_ager</code> <strong>deprecata/archivia
+    handcrafted</strong> fuori whitelist (viola «handcrafted mai demoted»; <code>apply_efficacy_ager</code> lo rispetta).</li>
+  <li><span class="badge b-high">HIGH</span> Stage 1 NAMING non usa la Naming Authority
+    (<code>naming_grammar.validate_name</code>) ma una regex locale → non valida il 4° livello descriptor né R1/R2/R3 →
+    drift con lo skill importer.</li>
+  <li><span class="badge b-med">MED</span> «7-layer» reali = 5: L3 ager non a admission-time, <strong>L4 sandbox = stub</strong> (vedi C8).</li>
+</ul>
+
+<h3>Governance</h3>
+<ul>
+  <li><span class="badge b-high">HIGH</span> Doppio decision-path <strong>desincronizzato</strong>: un reject in
+    <code>/admin/proposals</code> non si propaga a <code>/admin/changes</code> e viceversa → proposte «zombie». Il
+    materializer non applica le decisioni storiche pur promettendolo in docstring.</li>
+  <li><span class="badge b-high">HIGH</span> <code>change_observer._physical_rollback</code> import package-style
+    mentre il resto usa import flat; in contesti senza <code>/opt/metnos</code> sul path → <code>ImportError</code>
+    catturato che marca <code>rolled_back</code> <strong>senza eseguire il rollback fisico</strong> (§2.8).</li>
+</ul>
+
+<h3>HTTP / I/O</h3>
+<ul>
+  <li><span class="badge b-high">HIGH</span> <span class="badge b-sec">SEC</span> XSS via schema URL nei link Markdown
+    (<code>html_sanitizer._link</code>): <code>[x](javascript:…)</code> e <code>data:text/html,…</code> producono
+    <code>&lt;a href&gt;</code> cliccabili. Sorgente: final answer LLM + URL di pagine crawlate. Allowlist schema.</li>
+  <li><span class="badge b-high">HIGH</span> <span class="badge b-sec">SEC</span> XFF/CF-Connecting-IP fidati
+    incondizionatamente (<code>http_auth.py:196-214</code>) → <code>X-Forwarded-For: 127.0.0.1</code> promuove a
+    <code>role=user</code>. Fidarsi solo se <code>request.remote</code> ∈ proxy fidati.</li>
+  <li><span class="badge b-high">HIGH</span> <span class="badge b-sec">SEC</span> <code>read_persons</code> discloses
+    profili (email, canali, autonomy, path biometrici) <strong>cross-utente senza authz</strong>. Scope all'attore
+    autenticato salvo admin.</li>
+  <li><span class="badge b-high">HIGH</span> Dashboard <code>/admin/praxis</code> e <code>/admin/aporiae</code> leggono
+    store legacy svuotati (il feedback vivo scrive su <code>autopath.sqlite</code>).</li>
+</ul>
+
+<h3>Scheduler / backends (oltre alla bomba §1)</h3>
+<ul>
+  <li><span class="badge b-high">HIGH</span> Wrapper <code>praxis_template_refresh</code>/<code>praxis_cluster_merge</code>
+    zero-arg ma il daemon passa <code>payload</code> → <strong>TypeError, 100% fail</strong> dall'introduzione. Fix:
+    <code>(payload=None)</code>.</li>
+  <li><span class="badge b-high">HIGH</span> 24/25 entry con <code>timeout_s=None</code>: un job appeso congela
+    l'intero loop (<code>asyncio.gather</code> senza <code>wait_for</code>). Default timeout per categoria.</li>
+  <li><span class="badge b-high">HIGH</span> <code>intent_classifier_retrain</code> (daily@04:15, enabled) — FT
+    Qwen3-Emb schedulato, non in alcun ADR, contraddice il feedback no-training. Decisione Roberto.</li>
+  <li><span class="badge b-med">MED</span> <code>backends/images/google_vision.py</code> usa token su path orfano
+    <code>~/.hermes/</code> (nome proprio terzo, §7.5) + retry duplicato invece del runner condiviso.</li>
+</ul>
+
+<h3>LLM / memoria / i18n</h3>
+<ul>
+  <li><span class="badge b-high">HIGH</span> <code>i18n.py</code> connessione singleton fra thread <strong>senza WAL né
+    busy_timeout</strong> + secondo writer notturno → <code>database is locked</code> latente.</li>
+  <li><span class="badge b-high">HIGH</span> <code>Mnestoma()</code> aperto per-turno e <strong>mai chiuso</strong>
+    (<code>agent_runtime.py:6339</code>, secondo a 4239) → leak fd fino a «Too many open files».</li>
+  <li><span class="badge b-high">HIGH</span> Logica di traduzione <strong>duplicata</strong>:
+    <code>i18n_translator.py</code> (1520 LOC, daemon morto via CLI) vs <code>jobs/i18n_translate_pending.py</code>
+    (schedulato). Far importare il job dalla libreria.</li>
+</ul>
+
+<h2 id="morto">5 · Codice morto / over-engineering quantificato</h2>
+<table class="kvt">
+  <tr><th>Voce</th><th>LOC</th><th>Azione</th></tr>
+  <tr><td>Cascata <code>_legacy/</code> (praxis*, pronoia*, aporia, cluster, constants)</td><td>~3.278</td><td>KILL dopo migrazione store/dashboard/job</td></tr>
+  <tr><td><code>_try_praxis_cascade</code> + ramo 5898-5980</td><td>~320</td><td>KILL</td></tr>
+  <tr><td>PLANNER legacy ReAct (gated LEGACY=0)</td><td>~3.000</td><td>KILL (estrarre prima cap_same + implicit actions)</td></tr>
+  <tr><td>Strategie prefilter non-default (13/14)</td><td>~1.549</td><td>Spostare in <code>e2e/</code>/bench-only; KILL <code>bloom</code></td></tr>
+  <tr><td><code>proposals_unified.py</code> + 2 handler telos/introvertiva</td><td>~700</td><td>KILL → redirect <code>/admin/changes</code></td></tr>
+  <tr><td><code>i18n_translator</code> daemon (run_loop/run_one_cycle)</td><td>~?</td><td>KILL daemon, tenere libreria</td></tr>
+  <tr><td><code>OllamaProvider</code> + <code>make_provider_from_config</code> + demo qwen3</td><td>~150</td><td>KILL (post-ADR 0146)</td></tr>
+  <tr><td><code>_token_saving_pct</code>, <code>_DB_INIT_DONE</code> (×3), <code>_heuristic_score</code></td><td>~30</td><td>KILL</td></tr>
+</table>
+<p><strong>Totale grossolano eliminabile: ~9.000-9.500 LOC</strong> (su ~120k non-test). <code>agent_runtime.py</code>
+(9.333 LOC monolite) scende drasticamente e va poi spezzato (§7.2).</p>
+
+<h2 id="sota">6 · Convergenza con lo stato dell'arte (2023-2026)</h2>
+<p><strong>Punti di forza confermati:</strong></p>
+<ol>
+  <li><span class="ok">✓</span> Modalità ibrida ReAct + piano-in-una-shot (LLMCompiler, LangChain plan-execute: il
+    piano multi-step taglia costo/latenza vs ReAct puro).</li>
+  <li><span class="ok">✓</span> Retrieval ibrido lessicale+dense con RRF (RAG-MCP: 3.2× accuracy, −50% token) +
+    vocabolario chiuso <code>verbo_oggetto</code> come vantaggio sui framework con API di terzi.</li>
+  <li><span class="ok">✓</span> Synthesis test-first + self-verification + admission multi-layer (Voyager, Self-Debug
+    ICLR 2024 +12% con test).</li>
+</ol>
+<p><strong>Divergenze/rischi confermati:</strong></p>
+<ul>
+  <li><strong>Fastpath cosine su azioni irreversibili</strong> = anti-pattern: «check email vs send email»
+    semanticamente vicine ma azioni opposte (Agentic Plan Caching NeurIPS 2025; CacheAttack 86% hijack, arXiv
+    2601.23088). In tensione con §2.8/§2.9. → match su intent canonicalizzato per i piani con action-verb + gate
+    pre-esecuzione.</li>
+  <li><strong>14 strategie prefilter = over-engineering</strong>: l'IR conferma rendimenti decrescenti oltre 2-3
+    ranker; trie/bloom non sono ranker (indici/membership). Rischio ToolFlood/Attractive-Metadata. → potare a 2-3
+    segnali + cross-encoder re-rank + penalità di provenienza non-first-party.</li>
+  <li><strong>Eval auto-confermante del classifier FT</strong> (arXiv 2406.08660): holdout non indipendente gonfia
+    l'accuratezza. → holdout di query reali vs baseline embedding-anchor zero-shot; se Δ&lt;5-8pp il FT non si ripaga.</li>
+  <li><strong>Split compound deterministico su congiunzioni</strong>: la letteratura raccomanda LLM per il multi-intent.
+    → regex solo ad alta precisione, LLM-fallback, guardie su entità quotate. Applicazione corretta di §7.9.</li>
+  <li><strong>Replan non di prima classe</strong>: il piano-in-una-shot senza replan esplicito è datato (LATS/LangChain
+    hanno un replan node). → rendere il replan un nodo esplicito su violazione di precondizione.</li>
+</ul>
+
+<h2 id="decisioni">7 · Decisioni che spettano a Roberto (§10.2)</h2>
+<ol>
+  <li><strong>Completare la migrazione Engine v2</strong> (kill <code>_legacy</code> + PLANNER legacy + cascata) vs
+    mantenere il doppio path. Raccomandazione: completare (§7.1 lo impone; il doppio path è già non-funzionale).</li>
+  <li><strong>ML <code>intent_classifier</code> + retrain</strong>: attivo in prod contro la sua doc, ridondante con
+    <code>affinity_semantic</code>, gate rotto, eval auto-confermante. Tenere (ADR-izzare + eval onesta) o spegnere?</li>
+  <li><strong>Sandbox (C8)</strong>: attivare l'isolamento prima di abilitare skill importate, o congelare l'import.</li>
+  <li><strong>Prefilter</strong>: potare a 2-3 strategie + cross-encoder, o mantenere il parco a 14.</li>
+  <li><strong><code>multi_tool_paths</code></strong> (1041 LOC): ritirare il write-path o portarlo in Engine v2 come L2 memo.</li>
+</ol>
+
+<h2 id="piano">8 · Piano di fix proposto (ordinato per leva/rischio)</h2>
+
+<p><strong>Tier 0 — fix meccanici sicuri ad alta confidenza (applicabili subito):</strong></p>
+<ul>
+  <li>Scheduler: estrarre <code>_v1_tasks.pyc</code> → sorgenti <code>jobs/</code> + rimuovere <code>SourcelessFileLoader</code> (§1).</li>
+  <li><code>praxis_*</code> wrapper: <code>def _task_…(payload=None)</code> (2 righe).</li>
+  <li><code>synth_request._llm_wise</code>/<code>_llm_middle</code>: aggiungere <code>**kwargs</code> (C3).</li>
+  <li><code>executor_aging.apply_executor_ager</code>: skip <code>source in (None,"handcrafted")</code> (aging).</li>
+  <li><code>html_sanitizer._link</code>: allowlist schema URL (XSS).</li>
+  <li><code>Mnestoma</code> lifecycle: <code>try/finally: close()</code> in run_turn (leak fd).</li>
+  <li><code>i18n._open</code>: <code>PRAGMA journal_mode=WAL</code> + <code>busy_timeout</code>.</li>
+</ul>
+
+<p><strong>Tier 1 — sicurezza (richiede test, alta priorità):</strong></p>
+<ul>
+  <li>C5 path-normalization nel guard irreversibilità; C6 signature flag-aware (leva più alta); C7 SSRF guard IP-privato;
+    XFF trusted-proxy allowlist; <code>read_persons</code> authz per-actor.</li>
+</ul>
+
+<p><strong>Tier 2 — correttezza Engine v2:</strong></p>
+<ul>
+  <li>Validator placeholder-aware o declassato (C2); tier think/num_predict propagati (C4); autopath promote/demote
+    simmetrico; cosine vettorizzato; <code>GRAMMAR_FRAMEWORK</code> fuori da <code>_legacy</code> (§7.11).</li>
+</ul>
+
+<p><strong>Tier 3 — kill/migrazione (sessione dedicata):</strong></p>
+<ul>
+  <li>Kill cascata <code>_legacy</code> + PLANNER legacy + <code>proposals_unified</code>; ripuntare
+    dashboard/job/feedback su store Engine v2; potare strategie prefilter; spezzare <code>agent_runtime.py</code>.</li>
+</ul>
+
+<footer>
+Generato da audit multi-agente (12 agenti: orchestrazione, Engine v2, legacy Praxis, intent, prefilter, synthesis,
+governance, scheduler/backends, HTTP/canali, identità/sicurezza, LLM/memoria/i18n, ricerca letteratura) + verifica
+personale. I findings marcati <span class="verified">✓</span> sono stati riprodotti/verificati in questa sessione.
+</footer>
+
+</div>
+</body>
+</html>

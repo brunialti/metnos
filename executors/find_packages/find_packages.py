@@ -4,7 +4,16 @@ find_packages.py
 Verifica se un comando o un pacchetto specifico è installato sul sistema operativo.
 """
 
+import os
 import shutil
+import sys
+from pathlib import Path
+
+sys.path.insert(0, os.environ.get("METNOS_RUNTIME") or next(
+    str(p / "runtime") for p in Path(__file__).resolve().parents
+    if (p / "runtime" / "config.py").is_file()))
+from messages import get as _msg  # noqa: E402
+
 
 def invoke(args: dict) -> dict:
     package_name = args.get("package_name")
@@ -16,7 +25,7 @@ def invoke(args: dict) -> dict:
 
     if not package_name or not isinstance(package_name, str):
         fail_count = 1
-        failed.append({"error": "Argument 'package_name' is required and must be a string."})
+        failed.append({"error": _msg("ERR_ARG_NOT_STRING", arg="package_name")})
         return {
             "ok": False,
             "ok_count": 0,
@@ -39,7 +48,7 @@ def invoke(args: dict) -> dict:
             fail_count = 1
             failed.append({
                 "package_name": package_name,
-                "error": f"Package or command '{package_name}' not found in system PATH."
+                "error": _msg("ERR_PACKAGE_NOT_FOUND", name=package_name)
             })
             
     except Exception as e:

@@ -19,7 +19,7 @@ en = "Encrypts and stores a credential in Metnos storage (Fernet+HKDF). MUST be 
 
 [code]
 files  = ["set_credentials.py"]
-digest = "sha256:b39043a83e174ce9cf9cc55a7d3e106ef7a9b652d04114aa28dd3c04d1c9d551"
+digest = "sha256:e26dcb831f99713092b1fb195f0073399073f5719bd4744da6458d1834c958f3"
 
 [args]
 type     = "object"

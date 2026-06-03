@@ -56,6 +56,8 @@ _VAR_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 # `runtime/` cosi' possiamo importare moduli condivisi.
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent / "runtime"))
 
+from messages import get as _msg  # noqa: E402
+
 
 def _safe_sender(actor: str, channel: str | None) -> str:
     """Deriva un sender_id stabile per lo storage. Usa actor (multi-user)
@@ -460,15 +462,20 @@ def invoke(args: dict) -> dict:
     # Creazione di un nuovo dialogo: valida tutto.
     title = args.get("title")
     if not isinstance(title, str) or not title.strip():
-        return {"ok": False, "error": "missing required arg 'title'"}
+        return {"ok": False, "error": _msg("ERR_ARG_MISSING", arg="title")}
     if len(title) > 80:
-        return {"ok": False, "error": "title troppo lungo (max 80 char)"}
+        return {"ok": False, "error": _msg("ERR_TITLE_TOO_LONG", max=80)}
 
     description = args.get("description")
     if description is not None and not isinstance(description, str):
-        return {"ok": False, "error": "'description' deve essere stringa"}
+        return {"ok": False, "error": _msg("ERR_ARG_NOT_STRING", arg="description")}
 
     dialog = args.get("dialog")
+    # §2.4 robustezza NL→determinismo: il proposer emette talvolta un SINGOLO
+    # step dict invece della lista di uno → wrap deterministico in [dialog].
+    # (Una stringa NON è uno step valido: resta errore onesto via _validate.)
+    if isinstance(dialog, dict):
+        dialog = [dialog]
     # ADR 0127 + 15/5/2026: auto-inject `from_entries=true` su step
     # `kind=choice`/`multi_choice` SE `from_step` top-level presente E
     # nessun campo (choices/display_template/from_entries) e' specificato.
@@ -496,7 +503,7 @@ def invoke(args: dict) -> dict:
 
     ok, err = _validate_dialog(dialog)
     if not ok:
-        return {"ok": False, "error": f"dialog non valido: {err}"}
+        return {"ok": False, "error": _msg("ERR_DIALOG_INVALID", detail=err)}
 
     # Pattern propose-and-fire (ADR 0127): se l'arg `entries` e' presente
     # (popolato a runtime quando il PLANNER chiama get_inputs con
@@ -576,15 +583,20 @@ def invoke(args: dict) -> dict:
 
     fmt_arg = args.get("fmt") or "auto"
     if fmt_arg not in ("auto", "dialogue", "form", "voice"):
-        return {"ok": False, "error": f"fmt non valido: {fmt_arg!r}"}
+        return {"ok": False, "error": _msg("ERR_FMT_INVALID", value=repr(fmt_arg))}
 
     timeout_s = args.get("timeout_s")
     if timeout_s is not None:
         if not isinstance(timeout_s, int) or timeout_s < 1 or timeout_s > MAX_TIMEOUT_S:
             return {"ok": False,
-                    "error": f"timeout_s deve essere int 1..{MAX_TIMEOUT_S}"}
+                    "error": _msg("ERR_TIMEOUT_RANGE", max=MAX_TIMEOUT_S)}
     else:
-        timeout_s = DEFAULT_TIMEOUT_S
+        # Default per FORMA del dialogo (§7.3): 60s per i dialoghi semplici
+        # (1 step si/no/scelta), 600s per form (>=2 step) e credenziali, cosi'
+        # i dialoghi abbandonati si chiudono in fretta ma quelli da compilare
+        # hanno tempo. Override esplicito via arg `timeout_s` resta sovrano.
+        import dialog_pending as _dp_ttl
+        timeout_s = _dp_ttl.default_timeout_for(dialog)
 
     fmt = _decide_fmt(fmt_arg, len(dialog), channel, dialog)
 
@@ -644,7 +656,7 @@ def main():
     try:
         args = json.loads(raw) if raw.strip() else {}
     except json.JSONDecodeError as e:
-        sys.stdout.write(json.dumps({"ok": False, "error": f"invalid input json: {e}"}))
+        sys.stdout.write(json.dumps({"ok": False, "error": _msg("ERR_JSON_INVALID")}))
         return
     result = invoke(args)
     sys.stdout.write(json.dumps(result, ensure_ascii=False))

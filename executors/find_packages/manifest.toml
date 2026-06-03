@@ -15,7 +15,7 @@ en = "Check if a specific command or package is installed on the operating syste
 
 [code]
 files  = ["find_packages.py"]
-digest = "sha256:37ffcce4a7110434ec3b9ceadd656fd1da71d4ac8e1cf7c8f22af0c2f1efb723"
+digest = "sha256:9bfa7fb13ac0759b66d12efd2b5690b4d9a58b00cf3d00eaa881c0e34cc10f59"
 
 [args]
 type     = "object"

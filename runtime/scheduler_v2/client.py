@@ -199,17 +199,37 @@ def cancel_timer(timer_id: str) -> bool:
 
 
 def toggle_job(name: str, enabled: bool) -> bool:
-    """Enable/disable a job by name. Returns True if the row existed."""
+    """Enable/disable a job by name. Returns True if the row existed.
+
+    Usa gli UPDATE targeted di storage (no upsert): `enable()` riabilita +
+    azzera la streak + RICALCOLA next_fire_at dal trigger (niente catch-up
+    immediato per il tempo trascorso da disabilitato)."""
     storage = get_storage()
     try:
         entry = storage.get_by_name(name)
-        if entry is None:
+        if entry is None or entry.id is None:
             return False
-        if entry.enabled == bool(enabled):
-            return True
-        entry.enabled = bool(enabled)
-        # Re-upsert: storage.upsert handles UPDATE on conflict(name).
-        storage.upsert(entry)
+        if bool(enabled):
+            storage.enable(entry.id)
+        else:
+            storage.disable(entry.id)
+    finally:
+        storage.close()
+    _try_kick_local_daemon()
+    return True
+
+
+def resume_job(name: str) -> bool:
+    """Riattiva un task auto-disabilitato dal circuit-breaker: enabled=1 +
+    azzera consecutive_failures + ricalcola next_fire_at dal trigger (riparte
+    dal prossimo slot, non spara subito). Returns True se esisteva.
+    L'invariante vive in `storage.enable()`."""
+    storage = get_storage()
+    try:
+        entry = storage.get_by_name(name)
+        if entry is None or entry.id is None:
+            return False
+        storage.enable(entry.id)
     finally:
         storage.close()
     _try_kick_local_daemon()
@@ -255,19 +275,13 @@ def list_timers() -> list[dict]:
 
 def history(name: str | None = None, limit: int = 20) -> list[dict]:
     """Return the last N runs, optionally filtered by entry name."""
+    n = max(1, int(limit))
     storage = get_storage()
     try:
-        runs = storage.list_runs(limit=max(1, int(limit)) if name is None else 500)
+        runs = storage.list_runs(limit=n, entry_name=name)
     finally:
         storage.close()
-    out: list[dict] = []
-    for r in runs:
-        if name is not None and r.entry_name != name:
-            continue
-        out.append(dataclasses.asdict(r))
-        if name is not None and len(out) >= max(1, int(limit)):
-            break
-    return out
+    return [dataclasses.asdict(r) for r in runs]
 
 
 def run_now(name: str) -> dict:
@@ -284,6 +298,11 @@ def run_now(name: str) -> dict:
             return {"ok": False, "error": f"unknown job: {name!r}"}
         if entry.id is None:
             return {"ok": False, "error": f"entry {name!r} has no id (storage corruption?)"}
+        # Se disabilitato, riabilita: altrimenti fetch_due (WHERE enabled=1) non
+        # lo raccoglie mai e il fire richiesto non avviene (§2.8: niente "lo
+        # eseguira'" se in realta' resta fermo).
+        if not entry.enabled:
+            storage.enable(entry.id)
         storage.update_next_fire(entry.id, time.time())
         # Re-read for fresh next_fire_at.
         entry = storage.get_by_name(name)

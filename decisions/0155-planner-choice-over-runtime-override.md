@@ -57,6 +57,13 @@ non via uno dei meccanismi disciplinati esistenti:
 3. **Fast-path L1/L2** (ADR 0094 / 0150): short-circuit `pre-planner`,
    non override `post-planner`. Il fast-path SCAVALCA il planner, non
    lo CONTRADDICE.
+4. **Risoluzione deterministica di configurazione** (ADR 0165, aggiunta
+   1/6/2026): il runtime sovrascrive un arg di **configurazione** (non
+   di intento) marcato `runtime_resolved` e NON esposto al planner — es.
+   il backend/provider di un object multi-backend. Non è un interceptor:
+   il valore è fuori dalla superficie decisionale del planner (questo ADR
+   governa forma/flusso, non valori di config) ed è risolto in modo
+   deterministico (zero LLM), non con pattern-match linguistico.
 
 Sono **vietati**:
 

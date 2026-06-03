@@ -14,7 +14,7 @@ en = "Joins N lists of entries (coming from different steps of the ReAct plan) i
 
 [code]
 files  = ["group_entries.py"]
-digest = "sha256:dc6f3f81e17bc01018e32227954c02d0763e97644903ea200584deb793b4f07f"
+digest = "sha256:1a6b78b046750fec42a694819d6526d34ccaabc79dfab4fc9ec7384105c6558b"
 
 [args]
 type     = "object"

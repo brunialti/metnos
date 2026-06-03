@@ -82,6 +82,67 @@ def _annotate(image_payload: dict, access_token: str,
     return item
 
 
+def _resize_for_vision(path: str, *, max_side: int = 1280, quality: int = 85) -> bytes:
+    """Resize immagine se lato max > `max_side`. Riduce payload Vision API
+    (~80% size reduction tipico), abbassa latency e probabilita' SSL EOF
+    su connessioni con MTU constrained.
+
+    §7.3 universal: opt-in passivo — file < max_side ritornati così come sono.
+    Pillow opzionale; se assente, ritorna bytes raw.
+    """
+    try:
+        from PIL import Image
+    except ImportError:
+        return Path(path).read_bytes()
+    try:
+        img = Image.open(path)
+        W, H = img.size
+        scale = max_side / max(W, H)
+        if scale >= 1.0:
+            return Path(path).read_bytes()
+        new_w, new_h = int(W * scale), int(H * scale)
+        img = img.resize((new_w, new_h), Image.LANCZOS).convert("RGB")
+        from io import BytesIO
+        out = BytesIO()
+        img.save(out, format="JPEG", quality=quality)
+        return out.getvalue()
+    except (OSError, ValueError):
+        return Path(path).read_bytes()
+
+
+def _crop_face_to_bytes(path: str, face_box, *, pad_pct: float = 0.30) -> bytes:
+    """Ritaglia area facciale con padding dal `face_box=[x,y,w,h]` e ritorna
+    bytes JPEG. Padding 30% aumenta contesto (capelli/spalle) → Vision Web
+    Detection migliora il matching faccia-a-faccia vs scena dominante.
+
+    Universal §7.3: enable face-aware reverse image search. Se face_box
+    invalido o Pillow assente, fallback a file completo.
+    """
+    try:
+        from PIL import Image
+    except ImportError:
+        return Path(path).read_bytes()
+    try:
+        x, y, w, h = (int(v) for v in face_box[:4])
+        if w <= 0 or h <= 0:
+            return Path(path).read_bytes()
+    except (TypeError, ValueError, IndexError):
+        return Path(path).read_bytes()
+    img = Image.open(path)
+    W, H = img.size
+    pad_x = int(w * pad_pct)
+    pad_y = int(h * pad_pct)
+    left = max(0, x - pad_x)
+    top = max(0, y - pad_y)
+    right = min(W, x + w + pad_x)
+    bottom = min(H, y + h + pad_y)
+    crop = img.crop((left, top, right, bottom)).convert("RGB")
+    from io import BytesIO
+    out = BytesIO()
+    crop.save(out, format="JPEG", quality=88)
+    return out.getvalue()
+
+
 def _download_to_bytes(url: str) -> bytes:
     """Scarica URL come bytes con UA standard (Wikipedia/CDN bloccano UA
     generici tipo Vision-Backend). Usato come fallback quando Vision
@@ -144,6 +205,12 @@ def find_images_web(args: dict) -> dict:
     paths = args.get("paths") or []
     urls = args.get("urls") or []
     max_results = int(args.get("max_results") or 10)
+    # §7.3 face-aware: face_boxes parallel a paths/urls per ritagliare
+    # area facciale prima dell'invio a Vision (faccia-a-faccia vs scena
+    # dominante). Stesso ordine di paths+urls (paths first).
+    face_boxes = args.get("face_boxes") or []
+    if isinstance(face_boxes, str):
+        face_boxes = [face_boxes] if face_boxes else []
 
     if not paths and not urls:
         return {"ok": False, "error": "almeno uno fra `paths` e `urls` "
@@ -173,24 +240,64 @@ def find_images_web(args: dict) -> dict:
     entries: list[dict] = []
     errors: list[dict] = []
 
-    for path_str in paths:
+    for idx, path_str in enumerate(paths):
         p = Path(path_str)
         if not p.is_file():
             errors.append({"source": path_str,
                            "error": "file non trovato",
                            "error_class": "not_found"})
             continue
+        # §7.3 face crop: se face_boxes[idx] disponibile e valido,
+        # invia solo l'area del volto (con padding) a Vision invece
+        # del file intero. Migliora face similarity vs scene matching.
+        # §7.3 resize: limita payload a 1280px lato max (riduce ~80% size
+        # e latency, abbatte rischio SSL EOF su MTU constrained).
+        box = face_boxes[idx] if idx < len(face_boxes) else None
         try:
-            content_b64 = base64.b64encode(p.read_bytes()).decode("ascii")
-            resp = _annotate({"content": content_b64},
-                             access_token, max_results)
-            entries.append(_normalize_response(path_str, resp))
-        except urllib.error.HTTPError as e:
-            errors.append({"source": path_str, "error": str(e),
-                           "error_class": _classify_http(e.code)})
+            if box:
+                img_bytes = _crop_face_to_bytes(str(p), box)
+            else:
+                img_bytes = _resize_for_vision(str(p))
+            content_b64 = base64.b64encode(img_bytes).decode("ascii")
         except OSError as e:
             errors.append({"source": path_str, "error": str(e),
                            "error_class": "network"})
+            continue
+        # §7.9 retry transient: SSL EOF, sslv3 alert bad_record_mac, etc
+        # sono noti su Vision API con MTU edge cases. Retry 2× con backoff.
+        last_err = None
+        for attempt in range(3):
+            try:
+                resp = _annotate({"content": content_b64},
+                                 access_token, max_results)
+                entries.append(_normalize_response(path_str, resp))
+                last_err = None
+                break
+            except urllib.error.HTTPError as e:
+                # 5xx retry, 4xx no.
+                if 500 <= e.code < 600 and attempt < 2:
+                    import time as _t
+                    _t.sleep(1.0 * (attempt + 1))
+                    last_err = (e, _classify_http(e.code))
+                    continue
+                last_err = (e, _classify_http(e.code))
+                break
+            except (OSError, urllib.error.URLError) as e:
+                msg = str(e)
+                is_transient = ("SSL" in msg or "EOF" in msg or
+                                 "bad_record_mac" in msg or
+                                 "timed out" in msg)
+                if is_transient and attempt < 2:
+                    import time as _t
+                    _t.sleep(1.0 * (attempt + 1))
+                    last_err = (e, "network")
+                    continue
+                last_err = (e, "network")
+                break
+        if last_err is not None:
+            errors.append({"source": path_str,
+                           "error": str(last_err[0]),
+                           "error_class": last_err[1]})
 
     for url in urls:
         try:
@@ -223,11 +330,31 @@ def find_images_web(args: dict) -> dict:
     # elementi)» disonesto invece di riportare gli errori reali.
     has_entries = bool(entries)
     has_errors = bool(errors)
+    # Universal §7.3: attachments rendering chat — esplode similar_images
+    # (URL) di ogni entry in attachment kind=image, score decrescente per
+    # ordine API. Standard 20 inline + 100 gallery via http_routes_agent.
+    attachments: list[dict] = []
+    for entry in entries:
+        sims = entry.get("similar_images") or []
+        label = entry.get("best_guess_label") or ""
+        for rank, url in enumerate(sims):
+            if not isinstance(url, str) or not url:
+                continue
+            att: dict = {
+                "kind": "image",
+                "url": url,
+                "basename": url.rsplit("/", 1)[-1][:80],
+                "score": round(1.0 - rank * 0.02, 3),
+            }
+            if label:
+                att["caption"] = label
+            attachments.append(att)
     out = {
         "ok": has_entries or not has_errors,
         "entries": entries,
         "ok_count": len(entries),
         "errors": errors,
+        "attachments": attachments,
     }
     if _truncated_sources:
         out.update({

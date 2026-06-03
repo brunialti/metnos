@@ -30,6 +30,7 @@ from pathlib import Path
 sys.path.insert(0, os.environ.get("METNOS_RUNTIME") or next(
     str(p / "runtime") for p in Path(__file__).resolve().parents
     if (p / "runtime" / "config.py").is_file()))
+from messages import get as _msg  # noqa: E402
 from backends.messages import gmail_google_workspace  # noqa: E402
 
 _VIA_CHANNEL_ALIAS = {"mail": "email"}
@@ -52,8 +53,7 @@ def invoke(args):
     if backend is None:
         avail = sorted({k for k in _HANDLERS})
         return {"ok": False,
-                "error": f"unsupported backend ({via_channel}, {client}). "
-                         f"Available: {avail}. SMTP/IMAP reply non implementato in MVP."}
+                "error": _msg("ERR_NOT_APPLICABLE", what=f"{via_channel}/{client}")}
     return backend.reply(args)
 
 
@@ -61,7 +61,7 @@ def main():
     try:
         args = json.load(sys.stdin)
     except json.JSONDecodeError as e:
-        sys.stdout.write(json.dumps({"ok": False, "error": f"invalid input json: {e}"}))
+        sys.stdout.write(json.dumps({"ok": False, "error": _msg("ERR_JSON_INVALID")}))
         return
     sys.stdout.write(json.dumps(invoke(args), ensure_ascii=False))
 

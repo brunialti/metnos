@@ -30,6 +30,11 @@ import subprocess
 import sys
 from pathlib import Path
 
+sys.path.insert(0, os.environ.get("METNOS_RUNTIME") or next(
+    str(p / "runtime") for p in Path(__file__).resolve().parents
+    if (p / "runtime" / "config.py").is_file()))
+from messages import get as _msg  # noqa: E402
+
 
 def _exif_date_epoch(path):
     """Ritorna (epoch, 'exif') se EXIF DateTime* disponibile e parsabile."""
@@ -105,17 +110,17 @@ def _pick_date(path, entry):
 def invoke(args):
     entries = args.get("entries")
     if entries is None or not isinstance(entries, list):
-        return {"ok": False, "error": "missing or invalid required arg 'entries' (must be a list)"}
+        return {"ok": False, "error": _msg("ERR_ARG_NOT_LIST", arg="entries")}
 
     out_entries = []
     failed = []
     for i, entry in enumerate(entries):
         if not isinstance(entry, dict):
-            failed.append({"index": i, "error": "entry must be a dict"})
+            failed.append({"index": i, "error": _msg("ERR_ARG_NOT_DICT", arg="entry")})
             continue
         src_arg = entry.get("path") or entry.get("src")
         if not src_arg or not isinstance(src_arg, str):
-            failed.append({"index": i, "error": "entry missing 'path' (or 'src') string"})
+            failed.append({"index": i, "error": _msg("ERR_ARG_MISSING", arg="path")})
             continue
         path = Path(os.path.expanduser(src_arg))
         epoch, source = _pick_date(path, entry)
@@ -140,7 +145,7 @@ def main():
     try:
         args = json.load(sys.stdin)
     except json.JSONDecodeError as e:
-        sys.stdout.write(json.dumps({"ok": False, "error": f"invalid input json: {e}"}))
+        sys.stdout.write(json.dumps({"ok": False, "error": _msg("ERR_JSON_INVALID")}))
         return
     sys.stdout.write(json.dumps(invoke(args), ensure_ascii=False))
 

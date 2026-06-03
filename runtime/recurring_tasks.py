@@ -312,6 +312,51 @@ def _run_user_query_callback(record: dict) -> str:
     return out
 
 
+def _notify_circuit_break(entry, error) -> None:
+    """Notifica l'owner che il suo task ricorrente e' stato auto-disabilitato
+    dal circuit-breaker (N fallimenti consecutivi). Offre 3 scelte inline:
+    Continua (riattiva) / Sospendi (resta off, ripristinabile) / Cancella
+    (rimuove la schedulazione). callback_data = `sched:<azione>:<entry_name>`.
+
+    Best-effort: nessuna eccezione propagata (il disable e' gia' persistito).
+    Solo canale telegram con chat_id noto; altri canali → solo log.
+    Testo user-facing via i18n DB (§11, builtin=multilang): chiavi
+    MSG_SCHED_CIRCUIT_BREAK + MSG_BTN_SCHED_*."""
+    from messages import get as _msg
+    payload = getattr(entry, "payload", None) or {}
+    channel = payload.get("channel")
+    chat_id = payload.get("chat_id")
+    label = payload.get("label") or payload.get("name") or getattr(entry, "name", "?")
+    entry_name = getattr(entry, "name", "")
+    try:
+        from scheduler_v2.daemon import _CIRCUIT_BREAK_AFTER as _n
+    except Exception:
+        _n = 3
+    if channel != "telegram" or not chat_id:
+        log.warning(
+            "circuit-break su task '%s' ma canale non notificabile "
+            "(channel=%s chat_id=%s) — task disabilitato senza notifica",
+            entry_name, channel, chat_id,
+        )
+        return
+    err_line = (str(error)[:300]) if error else _msg("MSG_ERR_UNKNOWN")
+    text = _msg("MSG_SCHED_CIRCUIT_BREAK", label=label, n=_n, error=err_line)
+    buttons = [[
+        {"text": _msg("MSG_BTN_SCHED_CONTINUE"), "data": f"sched:cont:{entry_name}"},
+        {"text": _msg("MSG_BTN_SCHED_SUSPEND"), "data": f"sched:susp:{entry_name}"},
+        {"text": _msg("MSG_BTN_SCHED_CANCEL"), "data": f"sched:canc:{entry_name}"},
+    ]]
+    try:
+        from channels.telegram import TelegramChannel
+        from channels import OutboundMessage
+        ch = TelegramChannel()
+        ch.send(chat_id, OutboundMessage(text=text, buttons=buttons))
+        log.info("circuit-break notificato a chat=%s per task '%s'",
+                 chat_id, entry_name)
+    except Exception as e:
+        log.warning("circuit-break notify failed for '%s': %s", entry_name, e)
+
+
 def _wrap_with_times_tracking(fn):
     """Wrap callback con auto-increment fired_count + auto-cancel se done."""
     def _wrapped(record):

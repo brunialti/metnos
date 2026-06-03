@@ -1,0 +1,5498 @@
+[
+  {
+    "query": "che ora è a Tokyo?",
+    "expected_path": [
+      "get_now"
+    ],
+    "accepted_first": [
+      "find_now",
+      "get_now",
+      "list_now",
+      "read_now"
+    ]
+  },
+  {
+    "query": "che ora è?",
+    "expected_path": [
+      "get_now"
+    ],
+    "accepted_first": [
+      "find_now",
+      "get_now",
+      "list_now",
+      "read_now"
+    ]
+  },
+  {
+    "query": "scarica https://httpbin.org/get e salva in /tmp/metnos_cluster_test_dl.txt",
+    "expected_path": [
+      "get_urls",
+      "write_files"
+    ],
+    "accepted_first": [
+      "find_urls",
+      "get_urls",
+      "list_urls",
+      "read_urls",
+      "read_urls_html",
+      "read_urls_pdf",
+      "write_files"
+    ]
+  },
+  {
+    "query": "leggi /tmp/metnos_cluster_scratchpad_big.txt",
+    "expected_path": [
+      "read_files",
+      "read_files"
+    ],
+    "accepted_first": [
+      "find_files",
+      "get_files",
+      "list_files",
+      "read_files"
+    ]
+  },
+  {
+    "query": "che ora e'?",
+    "expected_path": [
+      "get_now",
+      "get_now"
+    ],
+    "accepted_first": [
+      "find_now",
+      "get_now",
+      "list_now",
+      "read_now"
+    ]
+  },
+  {
+    "query": "sposta i file /tmp/a.txt e /tmp/b.txt in /tmp/archivio/",
+    "expected_path": [
+      "move_files"
+    ],
+    "accepted_first": [
+      "move_files"
+    ]
+  },
+  {
+    "query": "Riassumi le foto in /home/roberto/images per anno e luogo di scatto",
+    "expected_path": [
+      "find_files",
+      "get_files",
+      "describe_entries"
+    ],
+    "accepted_first": [
+      "find_files",
+      "get_files",
+      "list_files",
+      "read_files"
+    ]
+  },
+  {
+    "query": "mostrami le foto di roma",
+    "expected_path": [
+      "find_files",
+      "get_files",
+      "get_files"
+    ],
+    "accepted_first": [
+      "find_files",
+      "get_files",
+      "list_files",
+      "read_files"
+    ]
+  },
+  {
+    "query": "Calcola SHA-256 di /tmp/test_sha.txt",
+    "expected_path": [
+      "compute_files_loc"
+    ],
+    "accepted_first": [
+      "compute_files_loc",
+      "request_new_executor"
+    ]
+  },
+  {
+    "query": "read /tmp/audit/fs/read/notes.txt",
+    "expected_path": [
+      "read_files_csv",
+      "read_files"
+    ],
+    "accepted_first": [
+      "find_files_csv",
+      "get_files_csv",
+      "list_files_csv",
+      "read_files_csv"
+    ]
+  },
+  {
+    "query": "fammi vedere il contenuto di /tmp/audit/fs/read/data.csv",
+    "expected_path": [
+      "read_files_csv",
+      "read_files"
+    ],
+    "accepted_first": [
+      "find_files_csv",
+      "get_files_csv",
+      "list_files_csv",
+      "read_files_csv"
+    ]
+  },
+  {
+    "query": "elenca i file in /tmp/audit/fs/list",
+    "expected_path": [
+      "list_dirs",
+      "list_dirs",
+      "list_dirs"
+    ],
+    "accepted_first": [
+      "find_dirs",
+      "get_dirs",
+      "list_dirs",
+      "read_dirs"
+    ]
+  },
+  {
+    "query": "che ora e?",
+    "expected_path": [
+      "get_now"
+    ],
+    "accepted_first": [
+      "find_now",
+      "get_now",
+      "list_now",
+      "read_now"
+    ]
+  },
+  {
+    "query": "dove sono?",
+    "expected_path": [
+      "get_location"
+    ],
+    "accepted_first": [
+      "find_location",
+      "find_places",
+      "get_location",
+      "get_places",
+      "list_location",
+      "list_places",
+      "read_location",
+      "read_places"
+    ]
+  },
+  {
+    "query": "Crea la cartella /tmp/metnos_uc7_test e dentro scrivici un file readme.txt con il contenuto \"live test UC7 30/4/2026\n  ▎  ok\".",
+    "expected_path": [
+      "write_files",
+      "request_new_executor",
+      "request_new_executor"
+    ],
+    "accepted_first": [
+      "write_files"
+    ]
+  },
+  {
+    "query": "Farmacia piu vicina",
+    "expected_path": [
+      "get_location",
+      "get_location"
+    ],
+    "accepted_first": [
+      "find_location",
+      "find_places",
+      "get_location",
+      "get_places",
+      "list_location",
+      "list_places",
+      "read_location",
+      "read_places"
+    ]
+  },
+  {
+    "query": "mostra le proposte introvertive",
+    "expected_path": [
+      "get_proposals",
+      "get_proposals",
+      "get_proposals"
+    ],
+    "accepted_first": [
+      "find_proposals",
+      "get_proposals",
+      "list_proposals",
+      "read_messages",
+      "read_proposals"
+    ]
+  },
+  {
+    "query": "mostra i dedupe",
+    "expected_path": [
+      "get_proposals"
+    ],
+    "accepted_first": [
+      "find_proposals",
+      "get_processes",
+      "get_proposals",
+      "list_proposals",
+      "read_proposals"
+    ]
+  },
+  {
+    "query": "mostra i generalize",
+    "expected_path": [
+      "get_proposals"
+    ],
+    "accepted_first": [
+      "find_proposals",
+      "get_proposals",
+      "list_proposals",
+      "read_proposals"
+    ]
+  },
+  {
+    "query": "mostra gli specialize",
+    "expected_path": [
+      "get_proposals",
+      "describe_entries"
+    ],
+    "accepted_first": [
+      "find_packages",
+      "find_proposals",
+      "get_proposals",
+      "list_proposals",
+      "read_proposals"
+    ]
+  },
+  {
+    "query": "mostra le proposte specialize",
+    "expected_path": [
+      "get_proposals"
+    ],
+    "accepted_first": [
+      "find_proposals",
+      "get_proposals",
+      "list_proposals",
+      "read_proposals"
+    ]
+  },
+  {
+    "query": "monta nella mia area personale lo share \\\\192.168.1.20\\\\Public\\\\media\\\\Immagini del server 192.168.1.20",
+    "expected_path": [
+      "admin",
+      "admin",
+      "admin"
+    ],
+    "accepted_first": [
+      "admin"
+    ]
+  },
+  {
+    "query": "monta nella mia area personale lo share \\\\192.168.1.20\\Public\\media\\Immagini del server 192.168.1.20",
+    "expected_path": [
+      "admin",
+      "admin"
+    ],
+    "accepted_first": [
+      "admin"
+    ]
+  },
+  {
+    "query": "cerca foto di festa di compleanno in /home/roberto/.local/share/metnos/Immagini",
+    "expected_path": [
+      "find_images_indices"
+    ],
+    "accepted_first": [
+      "find_files",
+      "find_images_indices",
+      "get_images_indices",
+      "list_images_indices",
+      "read_images_indices"
+    ]
+  },
+  {
+    "query": "where am I?",
+    "expected_path": [
+      "get_location",
+      "get_places",
+      "get_places"
+    ],
+    "accepted_first": [
+      "find_location",
+      "find_places",
+      "get_location",
+      "get_places",
+      "list_location",
+      "list_places",
+      "read_location",
+      "read_places"
+    ]
+  },
+  {
+    "query": "cerca in /home/roberto/.local/share/metnos/Immagini foto con il mare",
+    "expected_path": [
+      "find_images_indices",
+      "find_files",
+      "find_images_indices"
+    ],
+    "accepted_first": [
+      "find_images_indices",
+      "get_images_indices",
+      "list_images_indices",
+      "read_images_indices"
+    ]
+  },
+  {
+    "query": "cerca foto simili in Immagini",
+    "expected_path": [
+      "get_files",
+      "find_images_indices",
+      "describe_entries"
+    ],
+    "accepted_first": [
+      "find_files",
+      "get_files",
+      "list_files",
+      "read_files"
+    ]
+  },
+  {
+    "query": "cerca queste persone in Immagini",
+    "expected_path": [
+      "get_files"
+    ],
+    "accepted_first": [
+      "find_files",
+      "get_files",
+      "list_files",
+      "read_files"
+    ]
+  },
+  {
+    "query": "stato del server",
+    "expected_path": [
+      "get_processes"
+    ],
+    "accepted_first": [
+      "find_processes",
+      "get_images_indices",
+      "get_processes",
+      "list_processes",
+      "read_processes"
+    ]
+  },
+  {
+    "query": "Stato sistema",
+    "expected_path": [
+      "get_processes"
+    ],
+    "accepted_first": [
+      "find_processes",
+      "get_processes",
+      "list_processes",
+      "read_processes"
+    ]
+  },
+  {
+    "query": "Leggi https://invalid-domain-xyzzz.invalid/page",
+    "expected_path": [
+      "read_urls_html"
+    ],
+    "accepted_first": [
+      "find_urls",
+      "find_urls_html",
+      "get_urls",
+      "get_urls_html",
+      "list_urls_html",
+      "read_urls_html",
+      "read_urls_pdf"
+    ]
+  },
+  {
+    "query": "Quali sono i timer",
+    "expected_path": [
+      "list_tasks"
+    ],
+    "accepted_first": [
+      "find_tasks",
+      "get_tasks",
+      "list_tasks",
+      "read_tasks"
+    ]
+  },
+  {
+    "query": "quali sono le persone enrolled",
+    "expected_path": [
+      "get_persons"
+    ],
+    "accepted_first": [
+      "find_contacts",
+      "find_persons",
+      "find_persons_indices",
+      "get_contacts",
+      "get_persons",
+      "list_contacts",
+      "list_persons",
+      "read_contacts",
+      "read_persons"
+    ]
+  },
+  {
+    "query": "questo è Iacopo Brunialti",
+    "expected_path": [
+      "get_files",
+      "set_persons"
+    ],
+    "accepted_first": [
+      "find_files",
+      "get_files",
+      "list_files",
+      "read_files"
+    ]
+  },
+  {
+    "query": "questo è Roberto Brunialti",
+    "expected_path": [
+      "get_files",
+      "set_persons"
+    ],
+    "accepted_first": [
+      "find_files",
+      "get_files",
+      "list_files",
+      "read_files"
+    ]
+  },
+  {
+    "query": "fissa un appuntamento mercoledi mattina dopo le 9 per un ora se c'è posto e mandami una email di conferma",
+    "expected_path": [
+      "create_events"
+    ],
+    "accepted_first": [
+      "create_events"
+    ]
+  },
+  {
+    "query": "fissa un appuntamento il prossimo mercoledi mattina dopo le 9 per un ora se c'è posto e mandami una email di conferma",
+    "expected_path": [
+      "create_events"
+    ],
+    "accepted_first": [
+      "create_events"
+    ]
+  },
+  {
+    "query": "proponi per la prossima settimana 3 possibili orari per un appuntamento di una ora la mattina e mandami una email col la scelta",
+    "expected_path": [
+      "read_messages",
+      "send_messages",
+      "find_events_empty"
+    ],
+    "accepted_first": [
+      "find_events_empty",
+      "find_messages",
+      "get_messages",
+      "list_messages",
+      "read_messages"
+    ]
+  },
+  {
+    "query": "proponi 3 orari mercoledi mattina per un appuntamento di 1 ora, poi mandami una mail con la scelta",
+    "expected_path": [
+      "find_events_empty",
+      "get_inputs"
+    ],
+    "accepted_first": [
+      "find_events_empty",
+      "get_events_empty",
+      "list_events_empty",
+      "read_events_empty"
+    ]
+  },
+  {
+    "query": "propose 3 morning slots next week for a 1 hour appointment and email me the choice",
+    "expected_path": [
+      "find_events_empty",
+      "get_inputs"
+    ],
+    "accepted_first": [
+      "find_events_empty",
+      "get_events_empty",
+      "list_events_empty",
+      "read_events_empty"
+    ]
+  },
+  {
+    "query": "trova 3 orari liberi per un meeting di un'ora prossima settimana mattina e mandami via email la scelta",
+    "expected_path": [
+      "find_events_empty",
+      "get_inputs"
+    ],
+    "accepted_first": [
+      "find_events_empty",
+      "get_events_empty",
+      "list_events_empty",
+      "read_events_empty"
+    ]
+  },
+  {
+    "query": "proponi 3 orari per un appuntamento di una ora la mattina settimana prossima",
+    "expected_path": [
+      "find_events_empty",
+      "get_inputs"
+    ],
+    "accepted_first": [
+      "find_events_empty",
+      "get_events_empty",
+      "list_events_empty",
+      "read_events_empty"
+    ]
+  },
+  {
+    "query": "fai qualcosa di interessante",
+    "expected_path": [
+      "get_location"
+    ],
+    "accepted_first": [
+      "find_location",
+      "find_places",
+      "get_location",
+      "get_places",
+      "list_location",
+      "list_places",
+      "read_events",
+      "read_location",
+      "read_places",
+      "request_new_executor"
+    ]
+  },
+  {
+    "query": "mostrami lo storico esecuzioni del task ricorrente",
+    "expected_path": [
+      "get_processes",
+      "get_processes"
+    ],
+    "accepted_first": [
+      "find_processes",
+      "get_processes",
+      "list_processes",
+      "read_processes"
+    ]
+  },
+  {
+    "query": "mandami un ping",
+    "expected_path": [
+      "send_messages"
+    ],
+    "accepted_first": [
+      "request_new_executor",
+      "send_messages"
+    ]
+  },
+  {
+    "query": "Lista timer",
+    "expected_path": [
+      "list_tasks"
+    ],
+    "accepted_first": [
+      "find_tasks",
+      "get_tasks",
+      "list_tasks",
+      "read_tasks"
+    ]
+  },
+  {
+    "query": "cancella il task ricorrente riassunto_mail_quotidiano",
+    "expected_path": [
+      "delete_events",
+      "delete_events",
+      "delete_events"
+    ],
+    "accepted_first": [
+      "delete_credentials",
+      "delete_events"
+    ]
+  },
+  {
+    "query": "cancella il task ricorrente test_regressione",
+    "expected_path": [
+      "delete_tasks",
+      "delete_tasks",
+      "delete_tasks"
+    ],
+    "accepted_first": [
+      "delete_tasks"
+    ]
+  },
+  {
+    "query": "cancella il task ricorrente test_inesistente",
+    "expected_path": [
+      "list_tasks",
+      "delete_tasks",
+      "delete_tasks"
+    ],
+    "accepted_first": [
+      "find_tasks",
+      "get_tasks",
+      "list_tasks",
+      "read_tasks"
+    ]
+  },
+  {
+    "query": "fissa un appuntamento mercoledi mattina dopo le 9 per un ora se ce posto",
+    "expected_path": [
+      "filter_entries",
+      "create_events",
+      "read_events"
+    ],
+    "accepted_first": [
+      "filter_entries",
+      "read_events"
+    ]
+  },
+  {
+    "query": "Cè un evento HLT che si sovrappone con uno MNM nei prossimi 3 mesi?",
+    "expected_path": [
+      "find_events_empty",
+      "read_events",
+      "filter_entries"
+    ],
+    "accepted_first": [
+      "find_events_empty",
+      "get_events_empty",
+      "list_events_empty",
+      "read_events_empty"
+    ]
+  },
+  {
+    "query": "trova i file .py in /tmp",
+    "expected_path": [
+      "find_files"
+    ],
+    "accepted_first": [
+      "find_files",
+      "get_files",
+      "list_files",
+      "read_files"
+    ]
+  },
+  {
+    "query": "scrivi a Roberto: ciao, ci vediamo alle 8",
+    "expected_path": [
+      "send_messages",
+      "send_messages"
+    ],
+    "accepted_first": [
+      "send_messages"
+    ]
+  },
+  {
+    "query": "Notificami via mail quando trovi una foto di Matteo",
+    "expected_path": [
+      "create_tasks",
+      "create_tasks",
+      "create_tasks"
+    ],
+    "accepted_first": [
+      "create_tasks",
+      "get_inputs"
+    ]
+  },
+  {
+    "query": "Crea un foglio di calcolo con google",
+    "expected_path": [
+      "create_files_spreadsheet",
+      "create_files_spreadsheet"
+    ],
+    "accepted_first": [
+      "create_files_spreadsheet"
+    ]
+  },
+  {
+    "query": "Lista dei timer",
+    "expected_path": [
+      "list_tasks",
+      "list_tasks"
+    ],
+    "accepted_first": [
+      "find_tasks",
+      "get_tasks",
+      "list_tasks",
+      "read_tasks"
+    ]
+  },
+  {
+    "query": "Lista dei task",
+    "expected_path": [
+      "list_tasks"
+    ],
+    "accepted_first": [
+      "find_tasks",
+      "get_tasks",
+      "list_tasks",
+      "read_tasks"
+    ]
+  },
+  {
+    "query": "leggi /etc/pass<REDACTED:cred>",
+    "expected_path": [
+      "read_files"
+    ],
+    "accepted_first": [
+      "find_files",
+      "get_files",
+      "list_files",
+      "read_files"
+    ]
+  },
+  {
+    "query": "trova i file *.py in /tmp",
+    "expected_path": [
+      "find_files"
+    ],
+    "accepted_first": [
+      "find_files",
+      "get_files",
+      "list_files",
+      "read_files"
+    ]
+  },
+  {
+    "query": "temperatura cpu",
+    "expected_path": [
+      "get_processes"
+    ],
+    "accepted_first": [
+      "find_processes",
+      "get_processes",
+      "list_processes",
+      "read_processes"
+    ]
+  },
+  {
+    "query": "quante righe di codice ci sono in /opt/metnos/runtime",
+    "expected_path": [
+      "compute_files_loc"
+    ],
+    "accepted_first": [
+      "compute_files_loc"
+    ]
+  },
+  {
+    "query": "media e mediana dei numeri 12 18 25 30 7 14",
+    "expected_path": [
+      "describe_numbers"
+    ],
+    "accepted_first": [
+      "describe_numbers"
+    ]
+  },
+  {
+    "query": "filtra le righe con ERROR nel file /tmp/log.txt",
+    "expected_path": [
+      "read_files"
+    ],
+    "accepted_first": [
+      "find_files",
+      "get_files",
+      "list_files",
+      "read_files"
+    ]
+  },
+  {
+    "query": "trova foto del cane al mare nel 2024",
+    "expected_path": [
+      "find_images_indices"
+    ],
+    "accepted_first": [
+      "find_images_indices",
+      "get_images_indices",
+      "list_images_indices",
+      "read_images_indices"
+    ]
+  },
+  {
+    "query": "dimmi la lista delle persone conosciute",
+    "expected_path": [
+      "get_persons"
+    ],
+    "accepted_first": [
+      "find_contacts",
+      "find_persons",
+      "get_contacts",
+      "get_persons",
+      "list_contacts",
+      "list_persons",
+      "read_contacts",
+      "read_persons"
+    ]
+  },
+  {
+    "query": "quali porte tcp sono aperte sul server",
+    "expected_path": [
+      "admin"
+    ],
+    "accepted_first": [
+      "admin",
+      "get_now",
+      "request_new_executor"
+    ]
+  },
+  {
+    "query": "quanti file e quante  cartelle ci sono in Immagini",
+    "expected_path": [
+      "find_dirs",
+      "compute_entries"
+    ],
+    "accepted_first": [
+      "find_dirs",
+      "get_dirs",
+      "list_dirs",
+      "read_dirs"
+    ]
+  },
+  {
+    "query": "monta nella mia area personale lo share \\\\<ip>\\Public\\media\\Immagini del server <ip>",
+    "expected_path": [
+      "admin"
+    ],
+    "accepted_first": [
+      "admin",
+      "list_dirs",
+      "request_new_executor"
+    ]
+  },
+  {
+    "query": "quanti sono i task",
+    "expected_path": [
+      "list_tasks"
+    ],
+    "accepted_first": [
+      "find_tasks",
+      "get_tasks",
+      "list_tasks",
+      "read_tasks"
+    ]
+  },
+  {
+    "query": "conta i file in /opt",
+    "expected_path": [
+      "list_dirs"
+    ],
+    "accepted_first": [
+      "find_dirs",
+      "get_dirs",
+      "list_dirs",
+      "read_dirs"
+    ]
+  },
+  {
+    "query": "quanti file ci sono in /opt",
+    "expected_path": [
+      "list_dirs"
+    ],
+    "accepted_first": [
+      "find_dirs",
+      "get_dirs",
+      "list_dirs",
+      "read_dirs"
+    ]
+  },
+  {
+    "query": "lista guest paired",
+    "expected_path": [
+      "read_persons"
+    ],
+    "accepted_first": [
+      "find_contacts",
+      "find_persons",
+      "get_contacts",
+      "get_persons",
+      "list_contacts",
+      "list_persons",
+      "read_contacts",
+      "read_persons"
+    ]
+  },
+  {
+    "query": "Cerca foto sul web simile alle foto di enrollement di Roberto",
+    "expected_path": [
+      "find_persons_indices",
+      "find_images_web"
+    ],
+    "accepted_first": [
+      "find_contacts",
+      "find_persons",
+      "find_persons_indices",
+      "get_contacts",
+      "get_persons",
+      "get_persons_indices",
+      "list_contacts",
+      "list_persons",
+      "list_persons_indices",
+      "read_contacts",
+      "read_persons",
+      "read_persons_indices"
+    ]
+  },
+  {
+    "query": "quanti file in Immagini",
+    "expected_path": [
+      "find_files"
+    ],
+    "accepted_first": [
+      "find_files",
+      "get_files",
+      "list_files",
+      "read_files"
+    ]
+  },
+  {
+    "query": "query plain",
+    "expected_path": [
+      "get_inputs"
+    ],
+    "accepted_first": [
+      "find_inputs",
+      "get_inputs",
+      "list_inputs",
+      "read_inputs",
+      "read_messages"
+    ]
+  },
+  {
+    "query": "estrai testo da github metnos readme.md",
+    "expected_path": [
+      "find_urls",
+      "read_urls_html"
+    ],
+    "accepted_first": [
+      "find_urls",
+      "read_urls_html"
+    ]
+  },
+  {
+    "query": "scarica readme di repo github e salvalo in /tmp",
+    "expected_path": [
+      "read_urls_html",
+      "write_files"
+    ],
+    "accepted_first": [
+      "read_urls_html"
+    ]
+  },
+  {
+    "query": "apri ultima release github metnos in /tmp",
+    "expected_path": [
+      "read_urls_html",
+      "write_files"
+    ],
+    "accepted_first": [
+      "read_urls_html"
+    ]
+  },
+  {
+    "query": "scrivi report con mail e appuntamenti settimana",
+    "expected_path": [
+      "read_messages",
+      "read_events",
+      "write_files_doc"
+    ],
+    "accepted_first": [
+      "read_events",
+      "read_messages"
+    ]
+  },
+  {
+    "query": "scarica immagini da pagina web e indicizzale",
+    "expected_path": [
+      "read_urls_html",
+      "get_urls",
+      "create_images_indices"
+    ],
+    "accepted_first": [
+      "read_urls_html"
+    ]
+  },
+  {
+    "query": "genera spreadsheet eventi settimana per persona",
+    "expected_path": [
+      "read_events",
+      "group_entries",
+      "write_files_spreadsheet"
+    ],
+    "accepted_first": [
+      "read_events"
+    ]
+  },
+  {
+    "query": "eventi più lunghi della settimana classificali per tipo",
+    "expected_path": [
+      "read_events",
+      "sort_entries",
+      "classify_entries"
+    ],
+    "accepted_first": [
+      "read_events"
+    ]
+  },
+  {
+    "query": "scrivi documento con riassunto giornata",
+    "expected_path": [
+      "read_events",
+      "read_messages",
+      "write_files_doc"
+    ],
+    "accepted_first": [
+      "read_events",
+      "read_messages"
+    ]
+  },
+  {
+    "query": "aggiorna spreadsheet spese mensile con dati banca pdf",
+    "expected_path": [
+      "find_files",
+      "read_files",
+      "write_files_spreadsheet"
+    ],
+    "accepted_first": [
+      "find_files"
+    ]
+  },
+  {
+    "query": "riassumi le issue di github metnos e mandami report email",
+    "expected_path": [
+      "read_urls_html",
+      "describe_entries",
+      "send_messages"
+    ],
+    "accepted_first": [
+      "read_urls_html"
+    ]
+  },
+  {
+    "query": "riassumi 10 issue github più discusse e mandami via mail",
+    "expected_path": [
+      "read_urls_html",
+      "sort_entries",
+      "describe_entries",
+      "send_messages"
+    ],
+    "accepted_first": [
+      "read_urls_html"
+    ]
+  },
+  {
+    "query": "scarica nuovi pdf da arxiv RSS e indicizza per topic",
+    "expected_path": [
+      "find_urls",
+      "read_urls_pdf",
+      "create_files_doc"
+    ],
+    "accepted_first": [
+      "find_urls"
+    ]
+  },
+  {
+    "query": "monitora prezzo prodotto amazon e avvisa se scende sotto soglia",
+    "expected_path": [
+      "create_tasks",
+      "read_urls_html",
+      "send_messages"
+    ],
+    "accepted_first": [
+      "create_tasks",
+      "read_urls_html"
+    ]
+  },
+  {
+    "query": "scrivi documento con riassunto giornata e appuntamenti",
+    "expected_path": [
+      "read_events",
+      "read_messages",
+      "write_files_doc"
+    ],
+    "accepted_first": [
+      "read_events",
+      "read_messages"
+    ]
+  },
+  {
+    "query": "conta volti per persona indicizzata",
+    "expected_path": [
+      "find_persons_indices",
+      "compute_entries",
+      "group_entries"
+    ],
+    "accepted_first": [
+      "find_persons_indices"
+    ]
+  },
+  {
+    "query": "dimensione del file /home/roberto/grosso.bin",
+    "expected_path": [
+      "get_files"
+    ],
+    "accepted_first": [
+      "get_file_dates",
+      "get_files"
+    ]
+  },
+  {
+    "query": "permessi del file /etc/hosts",
+    "expected_path": [
+      "get_files"
+    ],
+    "accepted_first": [
+      "get_files"
+    ]
+  },
+  {
+    "query": "sposta /tmp/a.txt in /home/roberto",
+    "expected_path": [
+      "move_files"
+    ],
+    "accepted_first": [
+      "move_files"
+    ]
+  },
+  {
+    "query": "rinomina /tmp/test.py in test_v2.py",
+    "expected_path": [
+      "move_files"
+    ],
+    "accepted_first": [
+      "move_files"
+    ]
+  },
+  {
+    "query": "crea file vuoto /tmp/lock",
+    "expected_path": [
+      "write_files"
+    ],
+    "accepted_first": [
+      "write_files"
+    ]
+  },
+  {
+    "query": "converti /home/x.png in jpg",
+    "expected_path": [
+      "change_files_format"
+    ],
+    "accepted_first": [
+      "change_files_format"
+    ]
+  },
+  {
+    "query": "checksum sha256 di /tmp/a.iso",
+    "expected_path": [
+      "compute_signatures"
+    ],
+    "accepted_first": [
+      "compute_signatures"
+    ]
+  },
+  {
+    "query": "verifica firma di /tmp/release.tar.gz",
+    "expected_path": [
+      "compute_signatures"
+    ],
+    "accepted_first": [
+      "compute_signatures"
+    ]
+  },
+  {
+    "query": "share /home/roberto/x.pdf con marco@x.it",
+    "expected_path": [
+      "share_files"
+    ],
+    "accepted_first": [
+      "share_files"
+    ]
+  },
+  {
+    "query": "filtra righe con TODO da /tmp/log.txt",
+    "expected_path": [
+      "read_files",
+      "filter_texts_lines"
+    ],
+    "accepted_first": [
+      "filter_texts_lines",
+      "read_files"
+    ]
+  },
+  {
+    "query": "cerca pattern ERROR in /var/log/syslog",
+    "expected_path": [
+      "read_files",
+      "filter_texts_lines"
+    ],
+    "accepted_first": [
+      "filter_texts_lines",
+      "read_files"
+    ]
+  },
+  {
+    "query": "conta linee di /tmp/data.csv",
+    "expected_path": [
+      "compute_files_loc"
+    ],
+    "accepted_first": [
+      "compute_files_loc",
+      "read_files"
+    ]
+  },
+  {
+    "query": "dimensione cartella Documenti più grande di Downloads",
+    "expected_path": [
+      "find_files",
+      "compare_entries"
+    ],
+    "accepted_first": [
+      "find_dirs",
+      "find_files"
+    ]
+  },
+  {
+    "query": "elimina cartella /tmp/oldproject",
+    "expected_path": [
+      "delete_dirs"
+    ],
+    "accepted_first": [
+      "delete_dirs"
+    ]
+  },
+  {
+    "query": "dir profonde più di 5 livelli",
+    "expected_path": [
+      "find_dirs"
+    ],
+    "accepted_first": [
+      "find_dirs"
+    ]
+  },
+  {
+    "query": "backup dir in /var/backups",
+    "expected_path": [
+      "list_dirs"
+    ],
+    "accepted_first": [
+      "find_dirs",
+      "list_dirs"
+    ]
+  },
+  {
+    "query": "home utenti su questa macchina",
+    "expected_path": [
+      "list_dirs"
+    ],
+    "accepted_first": [
+      "find_dirs",
+      "list_dirs"
+    ]
+  },
+  {
+    "query": "svuota cartella /tmp/cache",
+    "expected_path": [
+      "find_files",
+      "delete_files"
+    ],
+    "accepted_first": [
+      "find_files"
+    ]
+  },
+  {
+    "query": "compara /home/a e /home/b",
+    "expected_path": [
+      "find_files",
+      "compare_entries"
+    ],
+    "accepted_first": [
+      "find_dirs",
+      "find_files"
+    ]
+  },
+  {
+    "query": "home directory dell'utente roberto",
+    "expected_path": [
+      "list_dirs"
+    ],
+    "accepted_first": [
+      "find_dirs",
+      "list_dirs"
+    ]
+  },
+  {
+    "query": "rinomina /home/old in /home/new",
+    "expected_path": [
+      "move_files"
+    ],
+    "accepted_first": [
+      "move_files"
+    ]
+  },
+  {
+    "query": "leggi il file /etc/passwd",
+    "expected_path": [
+      "read_files",
+      "read_files"
+    ],
+    "accepted_first": [
+      "find_files",
+      "get_files",
+      "list_files",
+      "read_files"
+    ]
+  },
+  {
+    "query": "scarica https://httpbin.org/get e salva la risposta in /tmp/metnos_e2e_pipe.txt",
+    "expected_path": [
+      "get_urls",
+      "write_files"
+    ],
+    "accepted_first": [
+      "find_urls",
+      "get_urls",
+      "list_urls",
+      "read_urls",
+      "read_urls_html",
+      "read_urls_pdf",
+      "write_files"
+    ]
+  },
+  {
+    "query": "leggi /etc/passwd",
+    "expected_path": [
+      "read_files",
+      "read_files"
+    ],
+    "accepted_first": [
+      "find_files",
+      "get_files",
+      "list_files",
+      "read_files"
+    ]
+  },
+  {
+    "query": "trova il file README.md",
+    "expected_path": [
+      "read_files",
+      "read_files"
+    ],
+    "accepted_first": [
+      "find_files",
+      "get_files",
+      "list_files",
+      "read_files"
+    ]
+  },
+  {
+    "query": "trova il file README.md in /opt/myclaw",
+    "expected_path": [
+      "read_files",
+      "read_files"
+    ],
+    "accepted_first": [
+      "find_files",
+      "get_files",
+      "list_files",
+      "read_files"
+    ]
+  },
+  {
+    "query": "riassumi le mail metnos di oggi",
+    "expected_path": [
+      "read_messages",
+      "read_messages",
+      "read_messages"
+    ],
+    "accepted_first": [
+      "find_messages",
+      "get_files",
+      "get_messages",
+      "list_messages",
+      "read_messages"
+    ]
+  },
+  {
+    "query": "Riassumi le mail knowcastle di oggi",
+    "expected_path": [
+      "read_messages",
+      "describe_entries",
+      "describe_entries"
+    ],
+    "accepted_first": [
+      "find_messages",
+      "get_messages",
+      "list_messages",
+      "read_messages"
+    ]
+  },
+  {
+    "query": "Riassumi solo le mail rilevanti di oggi su knowcastle, scarta le newsletter",
+    "expected_path": [
+      "read_messages",
+      "classify_entries",
+      "classify_entries"
+    ],
+    "accepted_first": [
+      "find_messages",
+      "get_messages",
+      "list_messages",
+      "read_messages"
+    ]
+  },
+  {
+    "query": "Riassumi le mail di tutti i miei account di oggi",
+    "expected_path": [
+      "read_messages",
+      "describe_entries"
+    ],
+    "accepted_first": [
+      "find_messages",
+      "get_messages",
+      "list_messages",
+      "read_messages"
+    ]
+  },
+  {
+    "query": "Cerca le mail con 'newsletter' nel subject degli ultimi 7 giorni su knowcastle",
+    "expected_path": [
+      "read_messages",
+      "describe_entries"
+    ],
+    "accepted_first": [
+      "find_messages",
+      "get_messages",
+      "list_messages",
+      "read_messages"
+    ]
+  },
+  {
+    "query": "Quanti file PDF ho in /home/roberto/Documents?",
+    "expected_path": [
+      "find_files",
+      "find_files"
+    ],
+    "accepted_first": [
+      "find_files",
+      "get_files",
+      "list_files",
+      "read_files"
+    ]
+  },
+  {
+    "query": "Mostrami le 5 mail più recenti su tiscali e qualifica per importanza",
+    "expected_path": [
+      "read_messages",
+      "classify_entries",
+      "describe_entries"
+    ],
+    "accepted_first": [
+      "find_messages",
+      "get_messages",
+      "list_messages",
+      "read_messages"
+    ]
+  },
+  {
+    "query": "le mail di roberto",
+    "expected_path": [
+      "read_messages",
+      "read_messages",
+      "read_files"
+    ],
+    "accepted_first": [
+      "find_messages",
+      "get_messages",
+      "list_messages",
+      "read_messages"
+    ]
+  },
+  {
+    "query": "Sposta in spam le mail di pubblicita' di oggi",
+    "expected_path": [
+      "read_messages",
+      "classify_entries",
+      "filter_entries"
+    ],
+    "accepted_first": [
+      "find_messages",
+      "get_messages",
+      "list_messages",
+      "read_messages"
+    ]
+  },
+  {
+    "query": "Sposta in Junk le mail di pubblicita' di oggi su metnos_system",
+    "expected_path": [
+      "read_messages",
+      "classify_entries",
+      "filter_entries"
+    ],
+    "accepted_first": [
+      "find_messages",
+      "get_messages",
+      "list_messages",
+      "read_messages"
+    ]
+  },
+  {
+    "query": "Sposta in Junk le mail PROMO di oggi su metnos_system",
+    "expected_path": [
+      "read_messages",
+      "classify_entries",
+      "filter_entries"
+    ],
+    "accepted_first": [
+      "find_messages",
+      "get_messages",
+      "list_messages",
+      "read_messages"
+    ]
+  },
+  {
+    "query": "Sposta in Junk le mail PROMO/Newsletter/Pubblicita di oggi su metnos_system",
+    "expected_path": [
+      "read_messages",
+      "classify_entries",
+      "filter_entries"
+    ],
+    "accepted_first": [
+      "find_messages",
+      "get_messages",
+      "list_messages",
+      "read_messages"
+    ]
+  },
+  {
+    "query": "sposta in \"Posta indesiderata\" le mail di pubblicita di oggi knowcastle",
+    "expected_path": [
+      "read_messages",
+      "read_messages",
+      "read_messages"
+    ],
+    "accepted_first": [
+      "find_messages",
+      "get_messages",
+      "list_messages",
+      "move_messages",
+      "read_messages",
+      "request_new_executor"
+    ]
+  },
+  {
+    "query": "sposta in \"Posta indesiderata\" le mail di pubblicita di oggi tiscali",
+    "expected_path": [
+      "read_messages",
+      "classify_entries",
+      "filter_entries"
+    ],
+    "accepted_first": [
+      "find_messages",
+      "get_messages",
+      "list_messages",
+      "read_messages"
+    ]
+  },
+  {
+    "query": "leggi le mie ultime 3 mail",
+    "expected_path": [
+      "read_messages",
+      "describe_entries"
+    ],
+    "accepted_first": [
+      "find_messages",
+      "get_messages",
+      "list_messages",
+      "read_messages"
+    ]
+  },
+  {
+    "query": "show last 5 emails",
+    "expected_path": [
+      "read_messages",
+      "describe_entries"
+    ],
+    "accepted_first": [
+      "find_messages",
+      "get_messages",
+      "list_messages",
+      "read_messages"
+    ]
+  },
+  {
+    "query": "riassumi le mail di oggi, solo le piu importanti",
+    "expected_path": [
+      "read_messages",
+      "classify_entries",
+      "filter_entries"
+    ],
+    "accepted_first": [
+      "describe_entries",
+      "find_messages",
+      "get_messages",
+      "get_now",
+      "list_messages",
+      "read_messages"
+    ]
+  },
+  {
+    "query": "elimina /tmp/audit/fs/delete/d1.txt",
+    "expected_path": [
+      "filter_entries",
+      "delete_files",
+      "delete_files"
+    ],
+    "accepted_first": [
+      "delete_files",
+      "filter_entries"
+    ]
+  },
+  {
+    "query": "elenca i file in /tmp",
+    "expected_path": [
+      "list_dirs",
+      "describe_entries"
+    ],
+    "accepted_first": [
+      "find_dirs",
+      "get_dirs",
+      "list_dirs",
+      "read_dirs"
+    ]
+  },
+  {
+    "query": "controlla posta metnos",
+    "expected_path": [
+      "read_messages",
+      "describe_entries",
+      "read_messages"
+    ],
+    "accepted_first": [
+      "find_messages",
+      "get_messages",
+      "list_messages",
+      "read_messages"
+    ]
+  },
+  {
+    "query": "Trova le 5 mail più grandi che ho ricevuto questa settimana sulla casella metnos e dimmi mittenti e dimensioni.",
+    "expected_path": [
+      "read_messages",
+      "read_messages",
+      "read_messages"
+    ],
+    "accepted_first": [
+      "find_files",
+      "find_messages",
+      "get_messages",
+      "list_messages",
+      "read_messages"
+    ]
+  },
+  {
+    "query": "Trova le 3 directory piu popolose dentro /opt/myclaw/runtime e dimmi quanti file e quanti byte ognuna.",
+    "expected_path": [
+      "find_dirs",
+      "filter_entries",
+      "find_dirs"
+    ],
+    "accepted_first": [
+      "find_dirs",
+      "get_dirs",
+      "list_dirs",
+      "read_dirs"
+    ]
+  },
+  {
+    "query": "Trova le 5 directory piu grandi (per total_bytes) dentro /opt/myclaw e dimmi i loro path e dimensioni.",
+    "expected_path": [
+      "find_dirs",
+      "sort_entries",
+      "sort_entries"
+    ],
+    "accepted_first": [
+      "find_dirs",
+      "get_dirs",
+      "list_dirs",
+      "read_dirs"
+    ]
+  },
+  {
+    "query": "Quanti file totali contiene /opt/myclaw/runtime sommando i file count delle sue sottocartelle?",
+    "expected_path": [
+      "find_files",
+      "find_files",
+      "find_files"
+    ],
+    "accepted_first": [
+      "find_dirs",
+      "find_files",
+      "get_files",
+      "list_files",
+      "read_files"
+    ]
+  },
+  {
+    "query": "le 5 cartelle più grandi sotto /opt/myclaw",
+    "expected_path": [
+      "find_dirs",
+      "sort_entries",
+      "sort_entries"
+    ],
+    "accepted_first": [
+      "find_dirs",
+      "get_dirs",
+      "list_dirs",
+      "read_dirs"
+    ]
+  },
+  {
+    "query": "i 3 file piu grandi in /opt/myclaw/runtime",
+    "expected_path": [
+      "find_files",
+      "sort_entries"
+    ],
+    "accepted_first": [
+      "find_files",
+      "get_files",
+      "list_files",
+      "read_files"
+    ]
+  },
+  {
+    "query": "primi 5 file *.py per dimensione in /opt/myclaw/runtime",
+    "expected_path": [
+      "find_files",
+      "sort_entries"
+    ],
+    "accepted_first": [
+      "find_files",
+      "get_files",
+      "list_files",
+      "read_files"
+    ]
+  },
+  {
+    "query": "le 10 directory piu grandi in /opt/myclaw",
+    "expected_path": [
+      "find_dirs",
+      "sort_entries"
+    ],
+    "accepted_first": [
+      "find_dirs",
+      "get_dirs",
+      "list_dirs",
+      "read_dirs"
+    ]
+  },
+  {
+    "query": "descrivi i file *.md in /opt/myclaw/decisions",
+    "expected_path": [
+      "find_files",
+      "describe_entries"
+    ],
+    "accepted_first": [
+      "find_files",
+      "get_files",
+      "list_files",
+      "read_files"
+    ]
+  },
+  {
+    "query": "trova i file *.py modificati oggi in /opt/myclaw/runtime",
+    "expected_path": [
+      "find_files",
+      "find_files"
+    ],
+    "accepted_first": [
+      "find_files",
+      "get_files",
+      "list_files",
+      "read_files"
+    ]
+  },
+  {
+    "query": "classifica le mail di oggi in importanti e meno importanti",
+    "expected_path": [
+      "read_messages",
+      "classify_entries",
+      "describe_entries"
+    ],
+    "accepted_first": [
+      "find_messages",
+      "get_messages",
+      "list_messages",
+      "read_messages"
+    ]
+  },
+  {
+    "query": "filtra le mail spam di oggi",
+    "expected_path": [
+      "read_messages",
+      "classify_entries",
+      "filter_entries"
+    ],
+    "accepted_first": [
+      "find_messages",
+      "get_messages",
+      "list_messages",
+      "read_messages"
+    ]
+  },
+  {
+    "query": "leggi le mail di oggi",
+    "expected_path": [
+      "read_messages",
+      "describe_entries"
+    ],
+    "accepted_first": [
+      "find_messages",
+      "get_messages",
+      "get_now",
+      "list_messages",
+      "read_messages"
+    ]
+  },
+  {
+    "query": "ultime mail ricevute",
+    "expected_path": [
+      "read_messages",
+      "describe_entries",
+      "describe_entries"
+    ],
+    "accepted_first": [
+      "find_messages",
+      "get_messages",
+      "list_messages",
+      "read_messages"
+    ]
+  },
+  {
+    "query": "ristorante vicino a me",
+    "expected_path": [
+      "get_location",
+      "find_places"
+    ],
+    "accepted_first": [
+      "find_location",
+      "find_places",
+      "get_location",
+      "get_places",
+      "list_location",
+      "list_places",
+      "read_location",
+      "read_places"
+    ]
+  },
+  {
+    "query": "stazione piu vicina",
+    "expected_path": [
+      "get_location",
+      "find_places"
+    ],
+    "accepted_first": [
+      "find_location",
+      "find_places",
+      "get_location",
+      "get_places",
+      "list_location",
+      "list_places",
+      "read_location",
+      "read_places"
+    ]
+  },
+  {
+    "query": "scrivi 'contenuto x' in /tmp/uc_test_dir/x.txt",
+    "expected_path": [
+      "write_files",
+      "write_files",
+      "write_files"
+    ],
+    "accepted_first": [
+      "write_files"
+    ]
+  },
+  {
+    "query": "qual e la mia posizione",
+    "expected_path": [
+      "get_location",
+      "get_places"
+    ],
+    "accepted_first": [
+      "find_location",
+      "find_places",
+      "get_location",
+      "get_places",
+      "list_location",
+      "list_places",
+      "read_location",
+      "read_places"
+    ]
+  },
+  {
+    "query": "trova i 3 file *.py piu grandi in /opt/myclaw/runtime e descrivili",
+    "expected_path": [
+      "find_files",
+      "sort_entries",
+      "describe_entries"
+    ],
+    "accepted_first": [
+      "find_files",
+      "get_files",
+      "list_files",
+      "read_files"
+    ]
+  },
+  {
+    "query": "le 3 mail piu recenti",
+    "expected_path": [
+      "read_messages",
+      "describe_entries",
+      "sort_entries"
+    ],
+    "accepted_first": [
+      "find_messages",
+      "get_messages",
+      "list_messages",
+      "read_messages"
+    ]
+  },
+  {
+    "query": "sposta /tmp/uc_test_b.txt in /tmp/uc_test_dir/b.txt",
+    "expected_path": [
+      "find_files",
+      "move_files"
+    ],
+    "accepted_first": [
+      "find_files",
+      "get_files",
+      "list_files",
+      "read_files"
+    ]
+  },
+  {
+    "query": "elenca le sottodirectory in /opt/myclaw",
+    "expected_path": [
+      "list_dirs",
+      "filter_entries"
+    ],
+    "accepted_first": [
+      "find_dirs",
+      "get_dirs",
+      "list_dirs",
+      "read_dirs"
+    ]
+  },
+  {
+    "query": "trova file *.py in /opt/myclaw/runtime, prendi i piu grandi 5 e descrivili",
+    "expected_path": [
+      "find_files",
+      "sort_entries",
+      "describe_entries"
+    ],
+    "accepted_first": [
+      "find_files",
+      "get_files",
+      "list_files",
+      "read_files"
+    ]
+  },
+  {
+    "query": "che giorno della settimana e oggi",
+    "expected_path": [
+      "read_messages",
+      "read_messages"
+    ],
+    "accepted_first": [
+      "find_messages",
+      "get_messages",
+      "get_now",
+      "list_messages",
+      "read_messages"
+    ]
+  },
+  {
+    "query": "file NON modificati oggi in /opt/myclaw/runtime",
+    "expected_path": [
+      "get_files",
+      "find_files",
+      "get_files"
+    ],
+    "accepted_first": [
+      "find_files",
+      "get_files",
+      "list_files",
+      "read_files"
+    ]
+  },
+  {
+    "query": "trova *.py in /opt/myclaw/runtime, prendi i 3 piu grandi e calcola la dimensione totale",
+    "expected_path": [
+      "find_files",
+      "sort_entries",
+      "compute_entries"
+    ],
+    "accepted_first": [
+      "find_files",
+      "get_files",
+      "list_files",
+      "read_files"
+    ]
+  },
+  {
+    "query": "trova i file *.md in /opt/myclaw/decisions, conta quanti sono e dimmi il piu grande",
+    "expected_path": [
+      "find_files",
+      "sort_entries"
+    ],
+    "accepted_first": [
+      "find_files",
+      "get_files",
+      "list_files",
+      "read_files"
+    ]
+  },
+  {
+    "query": "verifica le mail importanti",
+    "expected_path": [
+      "read_messages",
+      "classify_entries",
+      "filter_entries"
+    ],
+    "accepted_first": [
+      "find_messages",
+      "get_messages",
+      "list_messages",
+      "read_messages"
+    ]
+  },
+  {
+    "query": "verifica le mail importanti delle ultime 24 ore in tutte le mie mailbox",
+    "expected_path": [
+      "read_messages",
+      "classify_entries",
+      "filter_entries"
+    ],
+    "accepted_first": [
+      "find_credentials",
+      "find_messages",
+      "get_messages",
+      "get_now",
+      "list_messages",
+      "read_messages"
+    ]
+  },
+  {
+    "query": "riassumi notizie su roma in repubblica.it",
+    "expected_path": [
+      "find_urls",
+      "find_urls",
+      "find_urls"
+    ],
+    "accepted_first": [
+      "find_urls",
+      "get_urls",
+      "list_urls",
+      "read_urls",
+      "read_urls_html",
+      "read_urls_pdf"
+    ]
+  },
+  {
+    "query": "riassumi notizie su roma in repubblica.it degli ultimi 7 giorni",
+    "expected_path": [
+      "find_urls",
+      "read_urls_html"
+    ],
+    "accepted_first": [
+      "find_urls",
+      "get_urls",
+      "list_urls",
+      "read_urls",
+      "read_urls_html",
+      "read_urls_pdf",
+      "request_new_executor"
+    ]
+  },
+  {
+    "query": "cerca in  icsmargheritahack.edu.it i numeri dell'organico di diritto, ovvero organico dell'autonomia, per la scuola dell'infanzia",
+    "expected_path": [
+      "find_urls",
+      "read_urls_html"
+    ],
+    "accepted_first": [
+      "find_urls",
+      "get_urls",
+      "list_urls",
+      "read_urls",
+      "read_urls_html",
+      "read_urls_pdf",
+      "request_new_executor"
+    ]
+  },
+  {
+    "query": "summarize today's emails, only the most important ones",
+    "expected_path": [
+      "read_messages",
+      "classify_entries",
+      "filter_entries"
+    ],
+    "accepted_first": [
+      "find_messages",
+      "get_messages",
+      "list_messages",
+      "read_messages"
+    ]
+  },
+  {
+    "query": "Controlla se ci sono aggiornamenti o novità sul sito https://www.icsmargheritahack.edu.it/",
+    "expected_path": [
+      "find_urls",
+      "read_urls_html"
+    ],
+    "accepted_first": [
+      "find_urls",
+      "get_urls",
+      "list_urls",
+      "read_urls",
+      "read_urls_html",
+      "read_urls_pdf"
+    ]
+  },
+  {
+    "query": "Cerca informazioni su https://en.wikipedia.org/wiki/Metis_(mythology)",
+    "expected_path": [
+      "read_urls_html",
+      "get_urls",
+      "read_files"
+    ],
+    "accepted_first": [
+      "find_urls",
+      "find_urls_html",
+      "get_urls",
+      "get_urls_html",
+      "list_urls_html",
+      "read_urls_html",
+      "read_urls_pdf"
+    ]
+  },
+  {
+    "query": "Leggi questa pagina e dimmi di che parla: https://www.python.org/about/",
+    "expected_path": [
+      "read_urls_html",
+      "describe_entries"
+    ],
+    "accepted_first": [
+      "find_urls",
+      "find_urls_html",
+      "get_urls",
+      "get_urls_html",
+      "list_urls_html",
+      "read_urls_html",
+      "read_urls_pdf"
+    ]
+  },
+  {
+    "query": "Cosa contiene https://en.wikipedia.org/wiki/Metis_(mythology)",
+    "expected_path": [
+      "read_urls_html",
+      "read_urls_html",
+      "describe_entries"
+    ],
+    "accepted_first": [
+      "find_urls",
+      "find_urls_html",
+      "get_urls",
+      "get_urls_html",
+      "list_urls_html",
+      "read_urls_html",
+      "read_urls_pdf"
+    ]
+  },
+  {
+    "query": "Leggi e confronta https://en.wikipedia.org/wiki/Metis_(mythology) e https://invalid-xyz.invalid/",
+    "expected_path": [
+      "read_urls_html",
+      "read_urls_html"
+    ],
+    "accepted_first": [
+      "find_urls",
+      "find_urls_html",
+      "get_urls",
+      "get_urls_html",
+      "list_urls_html",
+      "read_urls_html",
+      "read_urls_pdf"
+    ]
+  },
+  {
+    "query": "Controlla se è uscita la versione 8 di AMD ROCm su https://rocm.docs.amd.com/en/latest/release/versions.html",
+    "expected_path": [
+      "read_urls_html",
+      "describe_entries"
+    ],
+    "accepted_first": [
+      "find_urls",
+      "find_urls_html",
+      "get_urls",
+      "get_urls_html",
+      "list_urls_html",
+      "read_urls_html",
+      "read_urls_pdf"
+    ]
+  },
+  {
+    "query": "cerca volti in primo piano in Immagini",
+    "expected_path": [
+      "find_images_indices",
+      "find_images_indices",
+      "describe_entries"
+    ],
+    "accepted_first": [
+      "find_images_indices",
+      "get_images_indices",
+      "list_images_indices",
+      "read_images_indices"
+    ]
+  },
+  {
+    "query": "cerca foto con primi piani",
+    "expected_path": [
+      "find_images_indices",
+      "find_images_indices"
+    ],
+    "accepted_first": [
+      "find_images_indices",
+      "get_images_indices",
+      "list_images_indices",
+      "read_images_indices"
+    ]
+  },
+  {
+    "query": "cerca foto portrait",
+    "expected_path": [
+      "find_images_indices",
+      "find_images_indices"
+    ],
+    "accepted_first": [
+      "find_images_indices",
+      "get_images_indices",
+      "list_images_indices",
+      "read_images_indices"
+    ]
+  },
+  {
+    "query": "cerca foto con una sola persona e viso in primo piano",
+    "expected_path": [
+      "find_images_indices",
+      "find_images_indices",
+      "find_images_indices"
+    ],
+    "accepted_first": [
+      "find_images_indices",
+      "get_images_indices",
+      "list_images_indices",
+      "read_images_indices"
+    ]
+  },
+  {
+    "query": "cerca foto di silvia al mare",
+    "expected_path": [
+      "find_persons_indices",
+      "find_persons_indices",
+      "find_images_indices"
+    ],
+    "accepted_first": [
+      "find_contacts",
+      "find_images_indices",
+      "find_persons",
+      "find_persons_indices",
+      "get_contacts",
+      "get_persons",
+      "get_persons_indices",
+      "list_contacts",
+      "list_persons",
+      "list_persons_indices",
+      "read_contacts",
+      "read_persons",
+      "read_persons_indices"
+    ]
+  },
+  {
+    "query": "cerca foto con iacopo",
+    "expected_path": [
+      "find_images_indices",
+      "describe_entries"
+    ],
+    "accepted_first": [
+      "find_images_indices",
+      "get_images_indices",
+      "list_images_indices",
+      "read_images_indices"
+    ]
+  },
+  {
+    "query": "cerca su web il file sull'organico di diritto della scuola primaria nella provincia di roma",
+    "expected_path": [
+      "find_urls",
+      "find_urls",
+      "find_urls"
+    ],
+    "accepted_first": [
+      "find_urls",
+      "get_urls",
+      "list_urls",
+      "read_urls",
+      "read_urls_html",
+      "read_urls_pdf"
+    ]
+  },
+  {
+    "query": "cancella Roberto Brunialti",
+    "expected_path": [
+      "find_files",
+      "delete_persons",
+      "delete_persons"
+    ],
+    "accepted_first": [
+      "delete_persons",
+      "find_files",
+      "get_files",
+      "list_files",
+      "read_files"
+    ]
+  },
+  {
+    "query": "cerca su web il file sull'organico di diritto della scuola primaria  2026-27 nella provincia di roma",
+    "expected_path": [
+      "find_urls",
+      "find_urls",
+      "describe_entries"
+    ],
+    "accepted_first": [
+      "find_dirs",
+      "find_urls",
+      "get_urls",
+      "list_urls",
+      "read_urls",
+      "read_urls_html",
+      "read_urls_pdf"
+    ]
+  },
+  {
+    "query": "proponi 3 orari mattina prossima settimana",
+    "expected_path": [
+      "find_events_empty",
+      "find_events_empty",
+      "find_events_empty"
+    ],
+    "accepted_first": [
+      "find_events_empty",
+      "get_events_empty",
+      "get_now",
+      "list_events_empty",
+      "read_events_empty"
+    ]
+  },
+  {
+    "query": "cerca le mail non lette",
+    "expected_path": [
+      "read_messages",
+      "describe_entries"
+    ],
+    "accepted_first": [
+      "find_messages",
+      "get_messages",
+      "list_messages",
+      "read_messages"
+    ]
+  },
+  {
+    "query": "get messages",
+    "expected_path": [
+      "read_messages",
+      "describe_entries",
+      "read_messages"
+    ],
+    "accepted_first": [
+      "find_messages",
+      "get_messages",
+      "list_messages",
+      "read_messages"
+    ]
+  },
+  {
+    "query": "cancella l'evento abc-123",
+    "expected_path": [
+      "read_events",
+      "delete_events"
+    ],
+    "accepted_first": [
+      "delete_events",
+      "find_events",
+      "find_events_empty",
+      "get_events",
+      "list_events",
+      "read_events"
+    ]
+  },
+  {
+    "query": "cerca i miei documenti",
+    "expected_path": [
+      "find_files",
+      "describe_entries"
+    ],
+    "accepted_first": [
+      "find_files",
+      "get_files",
+      "list_files",
+      "read_files"
+    ]
+  },
+  {
+    "query": "appuntamenti questa settimana",
+    "expected_path": [
+      "read_events",
+      "describe_entries"
+    ],
+    "accepted_first": [
+      "find_events",
+      "get_events",
+      "get_now",
+      "list_events",
+      "read_events"
+    ]
+  },
+  {
+    "query": "appuntamenti la prossima settimana",
+    "expected_path": [
+      "read_events",
+      "describe_entries"
+    ],
+    "accepted_first": [
+      "find_events",
+      "find_events_empty",
+      "get_events",
+      "get_now",
+      "list_events",
+      "read_events"
+    ]
+  },
+  {
+    "query": "calendario prossimo mese",
+    "expected_path": [
+      "read_events",
+      "describe_entries",
+      "read_events"
+    ],
+    "accepted_first": [
+      "find_events",
+      "get_events",
+      "get_now",
+      "list_events",
+      "read_events"
+    ]
+  },
+  {
+    "query": "che impegni ho venerdi",
+    "expected_path": [
+      "read_events",
+      "read_events"
+    ],
+    "accepted_first": [
+      "find_events",
+      "get_events",
+      "get_now",
+      "list_events",
+      "read_events"
+    ]
+  },
+  {
+    "query": "che mail ho oggi",
+    "expected_path": [
+      "read_messages",
+      "describe_entries"
+    ],
+    "accepted_first": [
+      "find_messages",
+      "get_messages",
+      "get_now",
+      "list_messages",
+      "read_messages"
+    ]
+  },
+  {
+    "query": "mail urgenti questa settimana",
+    "expected_path": [
+      "read_messages",
+      "classify_entries",
+      "filter_entries"
+    ],
+    "accepted_first": [
+      "find_messages",
+      "get_messages",
+      "get_now",
+      "list_messages",
+      "read_messages"
+    ]
+  },
+  {
+    "query": "ultime 5 mail",
+    "expected_path": [
+      "read_messages",
+      "sort_entries"
+    ],
+    "accepted_first": [
+      "find_messages",
+      "get_messages",
+      "list_messages",
+      "read_messages"
+    ]
+  },
+  {
+    "query": "mostra mail di ieri",
+    "expected_path": [
+      "read_messages",
+      "describe_entries"
+    ],
+    "accepted_first": [
+      "find_messages",
+      "get_messages",
+      "list_messages",
+      "read_messages"
+    ]
+  },
+  {
+    "query": "trova i file pdf in /tmp",
+    "expected_path": [
+      "find_files",
+      "find_files"
+    ],
+    "accepted_first": [
+      "find_files",
+      "get_files",
+      "list_files",
+      "read_files"
+    ]
+  },
+  {
+    "query": "leggi le ultime mail",
+    "expected_path": [
+      "read_messages",
+      "describe_entries"
+    ],
+    "accepted_first": [
+      "find_messages",
+      "get_messages",
+      "list_messages",
+      "read_messages"
+    ]
+  },
+  {
+    "query": "trovami foto al mare",
+    "expected_path": [
+      "find_images_indices",
+      "describe_entries",
+      "find_images_indices"
+    ],
+    "accepted_first": [
+      "find_images_indices",
+      "get_images_indices",
+      "list_images_indices",
+      "read_images_indices"
+    ]
+  },
+  {
+    "query": "foto di Iacopo al mare",
+    "expected_path": [
+      "find_images_indices",
+      "describe_entries",
+      "find_images_indices"
+    ],
+    "accepted_first": [
+      "find_images_indices",
+      "get_images_indices",
+      "list_images_indices",
+      "read_images_indices"
+    ]
+  },
+  {
+    "query": "storico esecuzioni del task ricorrente",
+    "expected_path": [
+      "list_tasks",
+      "list_tasks"
+    ],
+    "accepted_first": [
+      "find_tasks",
+      "get_tasks",
+      "list_tasks",
+      "read_tasks",
+      "read_tasks_history"
+    ]
+  },
+  {
+    "query": "open the messages",
+    "expected_path": [
+      "read_messages",
+      "describe_entries"
+    ],
+    "accepted_first": [
+      "find_messages",
+      "get_messages",
+      "list_messages",
+      "read_messages"
+    ]
+  },
+  {
+    "query": "Trova tutti gli appuntamenti 2026 che iniziano con HLT",
+    "expected_path": [
+      "read_events",
+      "read_events",
+      "filter_entries"
+    ],
+    "accepted_first": [
+      "find_events",
+      "get_events",
+      "list_events",
+      "read_events"
+    ]
+  },
+  {
+    "query": "Storico esecuzioni dei task ricorrenti degli ultimi 7 giorni",
+    "expected_path": [
+      "read_tasks_history",
+      "read_tasks_history"
+    ],
+    "accepted_first": [
+      "find_tasks",
+      "find_tasks_history",
+      "get_tasks",
+      "get_tasks_history",
+      "list_tasks",
+      "list_tasks_history",
+      "read_tasks",
+      "read_tasks_history"
+    ]
+  },
+  {
+    "query": "Manda via telegram la lista delle mail di oggi",
+    "expected_path": [
+      "read_messages",
+      "send_messages"
+    ],
+    "accepted_first": [
+      "find_messages",
+      "get_messages",
+      "get_now",
+      "list_messages",
+      "read_messages"
+    ]
+  },
+  {
+    "query": "Mandami via telegram un riassunto delle attività di ieri",
+    "expected_path": [
+      "read_messages",
+      "send_messages",
+      "read_messages"
+    ],
+    "accepted_first": [
+      "find_messages",
+      "get_messages",
+      "list_messages",
+      "read_messages"
+    ]
+  },
+  {
+    "query": "Salva su drive la lista delle foto del 2024",
+    "expected_path": [
+      "find_files",
+      "find_images_indices",
+      "find_images_indices"
+    ],
+    "accepted_first": [
+      "find_files",
+      "get_files",
+      "list_files",
+      "read_files"
+    ]
+  },
+  {
+    "query": "trova foto simili a Matteo",
+    "expected_path": [
+      "find_packages",
+      "find_packages",
+      "find_packages"
+    ],
+    "accepted_first": [
+      "find_images_indices",
+      "find_packages",
+      "get_packages",
+      "list_packages",
+      "read_packages"
+    ]
+  },
+  {
+    "query": "converti /tmp/test_input.jpg in formato png",
+    "expected_path": [
+      "change_files_format",
+      "change_files_format"
+    ],
+    "accepted_first": [
+      "change_files_format"
+    ]
+  },
+  {
+    "query": "elenca appuntamenti prossimi 20 giorni",
+    "expected_path": [
+      "read_events",
+      "describe_entries",
+      "read_events"
+    ],
+    "accepted_first": [
+      "find_events",
+      "get_events",
+      "list_events",
+      "read_events"
+    ]
+  },
+  {
+    "query": "trova i file .py più grandi nella home",
+    "expected_path": [
+      "find_files",
+      "sort_entries"
+    ],
+    "accepted_first": [
+      "find_files",
+      "get_files",
+      "list_files",
+      "read_files"
+    ]
+  },
+  {
+    "query": "elenca le directory in /opt/metnos",
+    "expected_path": [
+      "list_dirs",
+      "filter_entries",
+      "describe_entries"
+    ],
+    "accepted_first": [
+      "find_dirs",
+      "get_dirs",
+      "list_dirs",
+      "read_dirs"
+    ]
+  },
+  {
+    "query": "che città è alle coordinate 41.9 12.5",
+    "expected_path": [
+      "get_places",
+      "get_places"
+    ],
+    "accepted_first": [
+      "find_places",
+      "get_location",
+      "get_places",
+      "list_places",
+      "read_places"
+    ]
+  },
+  {
+    "query": "sposta i file .pdf vecchi più di 6 mesi in /tmp/old",
+    "expected_path": [
+      "find_files",
+      "filter_entries",
+      "create_dirs"
+    ],
+    "accepted_first": [
+      "find_files",
+      "get_files",
+      "get_inputs",
+      "list_files",
+      "read_files"
+    ]
+  },
+  {
+    "query": "cancella i file .tmp in /tmp",
+    "expected_path": [
+      "find_files",
+      "delete_files"
+    ],
+    "accepted_first": [
+      "find_files",
+      "get_files",
+      "list_files",
+      "read_files"
+    ]
+  },
+  {
+    "query": "aggiungi promemoria fra 2 ore: chiamare dentista",
+    "expected_path": [
+      "create_tasks",
+      "create_tasks"
+    ],
+    "accepted_first": [
+      "create_tasks"
+    ]
+  },
+  {
+    "query": "riassumi la pagina https://it.wikipedia.org/wiki/Roma",
+    "expected_path": [
+      "read_urls_html",
+      "describe_entries"
+    ],
+    "accepted_first": [
+      "find_urls",
+      "find_urls_html",
+      "get_urls",
+      "get_urls_html",
+      "list_urls_html",
+      "read_urls_html",
+      "read_urls_pdf"
+    ]
+  },
+  {
+    "query": "trova mail di posta indesiderata da ultimo mese",
+    "expected_path": [
+      "read_messages",
+      "read_messages"
+    ],
+    "accepted_first": [
+      "find_messages",
+      "get_messages",
+      "list_messages",
+      "read_messages"
+    ]
+  },
+  {
+    "query": "Cerca le ultime notizie su Anthropic Claude e fammi un riassunto in 4 righe italiane di cosa è uscito nell'ultima   settimana",
+    "expected_path": [
+      "find_urls",
+      "find_urls"
+    ],
+    "accepted_first": [
+      "find_urls",
+      "get_urls",
+      "list_urls",
+      "read_urls",
+      "read_urls_html",
+      "read_urls_pdf"
+    ]
+  },
+  {
+    "query": "cerca informazioni delle ultime 24 ore sulle tendenze e previsioni riguardo ai bitcoin",
+    "expected_path": [
+      "find_urls",
+      "describe_entries"
+    ],
+    "accepted_first": [
+      "find_urls",
+      "get_urls",
+      "list_urls",
+      "read_urls",
+      "read_urls_html",
+      "read_urls_pdf"
+    ]
+  },
+  {
+    "query": "cerca e riassumi  informazioni delle ultime 24 ore sulle tendenze e previsioni riguardo ai bitcoin",
+    "expected_path": [
+      "find_urls",
+      "describe_entries"
+    ],
+    "accepted_first": [
+      "find_urls",
+      "get_urls",
+      "list_urls",
+      "read_urls",
+      "read_urls_html",
+      "read_urls_pdf"
+    ]
+  },
+  {
+    "query": "Conta le email di oggi e dimmi i 3 mittenti    principali",
+    "expected_path": [
+      "read_messages",
+      "compute_entries",
+      "sort_entries"
+    ],
+    "accepted_first": [
+      "find_messages",
+      "get_messages",
+      "list_messages",
+      "read_messages"
+    ]
+  },
+  {
+    "query": "\"trova 5 notizie su bitcoin oggi e   riassumimele\"",
+    "expected_path": [
+      "find_urls",
+      "classify_entries",
+      "describe_entries"
+    ],
+    "accepted_first": [
+      "find_urls",
+      "get_urls",
+      "list_urls",
+      "read_urls",
+      "read_urls_html",
+      "read_urls_pdf"
+    ]
+  },
+  {
+    "query": "cerca e riassumi info delle ultime 24 ore sulla guerra in ucraina",
+    "expected_path": [
+      "find_urls",
+      "find_urls",
+      "read_urls_html"
+    ],
+    "accepted_first": [
+      "find_urls",
+      "get_now",
+      "get_urls",
+      "list_urls",
+      "read_files",
+      "read_urls",
+      "read_urls_html",
+      "read_urls_pdf"
+    ]
+  },
+  {
+    "query": "Dammi le notizie delle ultime 24 ore sulla guerra in ucraina",
+    "expected_path": [
+      "find_urls",
+      "read_urls_html",
+      "describe_entries"
+    ],
+    "accepted_first": [
+      "find_urls",
+      "get_urls",
+      "list_urls",
+      "read_urls",
+      "read_urls_html",
+      "read_urls_pdf"
+    ]
+  },
+  {
+    "query": "Riassumi tutte le novita degli ultimi 7 giorni sull'ambiente llama.cpp",
+    "expected_path": [
+      "find_urls",
+      "read_urls_html",
+      "describe_entries"
+    ],
+    "accepted_first": [
+      "find_urls",
+      "get_urls",
+      "list_urls",
+      "read_urls",
+      "read_urls_html",
+      "read_urls_pdf"
+    ]
+  },
+  {
+    "query": "Riassumi le ultime novita di Anthropic",
+    "expected_path": [
+      "describe_entries",
+      "request_new_executor",
+      "request_new_executor"
+    ],
+    "accepted_first": [
+      "describe_entries",
+      "find_urls"
+    ]
+  },
+  {
+    "query": "Cerca nel sito inps.it i documenti e i link su Soggiorni estivi 2026 presso le Case del Maestro",
+    "expected_path": [
+      "find_urls",
+      "describe_entries"
+    ],
+    "accepted_first": [
+      "find_urls",
+      "get_urls",
+      "list_urls",
+      "read_urls",
+      "read_urls_html",
+      "read_urls_pdf"
+    ]
+  },
+  {
+    "query": "conta quanti file ci sono nella cartella Immagini",
+    "expected_path": [
+      "find_files",
+      "find_files"
+    ],
+    "accepted_first": [
+      "find_files",
+      "get_files",
+      "list_files",
+      "read_files"
+    ]
+  },
+  {
+    "query": "conta quanti file ci sono nella cartella Immagini e intutte le sottocartelle",
+    "expected_path": [
+      "find_files",
+      "find_files",
+      "compute_entries"
+    ],
+    "accepted_first": [
+      "find_files",
+      "get_files",
+      "list_files",
+      "read_files"
+    ]
+  },
+  {
+    "query": "Quanti sono i files nella cartella Immagini",
+    "expected_path": [
+      "find_files",
+      "list_dirs",
+      "list_dirs"
+    ],
+    "accepted_first": [
+      "find_dirs",
+      "find_files",
+      "get_files",
+      "list_files",
+      "read_files"
+    ]
+  },
+  {
+    "query": "quali sono i task attivi",
+    "expected_path": [
+      "list_tasks",
+      "list_tasks"
+    ],
+    "accepted_first": [
+      "find_tasks",
+      "get_tasks",
+      "list_tasks",
+      "read_tasks"
+    ]
+  },
+  {
+    "query": "cerca mail da bookings",
+    "expected_path": [
+      "read_tasks_history",
+      "read_tasks_history"
+    ],
+    "accepted_first": [
+      "find_tasks",
+      "find_tasks_history",
+      "get_tasks",
+      "get_tasks_history",
+      "list_tasks",
+      "list_tasks_history",
+      "read_messages",
+      "read_tasks",
+      "read_tasks_history"
+    ]
+  },
+  {
+    "query": "cerca mail con oggetto fattura",
+    "expected_path": [
+      "read_messages",
+      "read_messages"
+    ],
+    "accepted_first": [
+      "find_messages",
+      "get_messages",
+      "list_messages",
+      "read_messages"
+    ]
+  },
+  {
+    "query": "eventi della prossima settimana",
+    "expected_path": [
+      "read_events",
+      "describe_entries"
+    ],
+    "accepted_first": [
+      "find_events",
+      "get_events",
+      "list_events",
+      "read_events"
+    ]
+  },
+  {
+    "query": "leggi le 3 mail piu recenti",
+    "expected_path": [
+      "read_messages",
+      "describe_entries"
+    ],
+    "accepted_first": [
+      "find_messages",
+      "get_messages",
+      "list_messages",
+      "read_messages"
+    ]
+  },
+  {
+    "query": "cerca immagini di roberto su web",
+    "expected_path": [
+      "find_images_web",
+      "find_images_web"
+    ],
+    "accepted_first": [
+      "find_images_indices",
+      "find_images_web",
+      "get_images_web",
+      "list_images_web",
+      "read_images_web"
+    ]
+  },
+  {
+    "query": "Cerca una foto di roberto sul web simile alle foto di enrollment",
+    "expected_path": [
+      "find_images_indices",
+      "find_images_web",
+      "find_images_web"
+    ],
+    "accepted_first": [
+      "find_images_indices",
+      "get_images_indices",
+      "list_images_indices",
+      "read_images_indices"
+    ]
+  },
+  {
+    "query": "cerca le mail di spam o commerciali sulla mia mail e mettili in spam",
+    "expected_path": [
+      "read_messages",
+      "classify_entries",
+      "filter_entries"
+    ],
+    "accepted_first": [
+      "find_messages",
+      "get_messages",
+      "list_messages",
+      "read_messages"
+    ]
+  },
+  {
+    "query": "appuntamenti prossimi 30 giorni",
+    "expected_path": [
+      "read_events",
+      "describe_entries"
+    ],
+    "accepted_first": [
+      "find_events",
+      "get_events",
+      "list_events",
+      "read_events"
+    ]
+  },
+  {
+    "query": "quanti files ci sono in Immagini",
+    "expected_path": [
+      "find_files",
+      "compute_entries"
+    ],
+    "accepted_first": [
+      "find_files",
+      "get_files",
+      "list_files",
+      "read_files"
+    ]
+  },
+  {
+    "query": "contributors top di https://github.com/x/metnos",
+    "expected_path": [
+      "read_urls_html",
+      "sort_entries"
+    ],
+    "accepted_first": [
+      "read_urls_html"
+    ]
+  },
+  {
+    "query": "riassumi documenti pdf in /home/Docs",
+    "expected_path": [
+      "find_files",
+      "read_files",
+      "describe_entries"
+    ],
+    "accepted_first": [
+      "find_files"
+    ]
+  },
+  {
+    "query": "genera report excel con conteggio mail per mittente",
+    "expected_path": [
+      "read_messages",
+      "group_entries",
+      "write_files_spreadsheet"
+    ],
+    "accepted_first": [
+      "read_messages"
+    ]
+  },
+  {
+    "query": "statistiche righe codice per linguaggio in /opt/metnos",
+    "expected_path": [
+      "find_files",
+      "compute_files_loc",
+      "group_entries"
+    ],
+    "accepted_first": [
+      "compute_files_loc",
+      "find_files"
+    ]
+  },
+  {
+    "query": "trova file duplicati per hash e cancellali",
+    "expected_path": [
+      "find_files",
+      "compute_signatures",
+      "delete_files"
+    ],
+    "accepted_first": [
+      "find_files"
+    ]
+  },
+  {
+    "query": "statistiche mail mensili come spreadsheet",
+    "expected_path": [
+      "read_messages",
+      "group_entries",
+      "write_files_spreadsheet"
+    ],
+    "accepted_first": [
+      "read_messages"
+    ]
+  },
+  {
+    "query": "conta righe codice python in repo e salva report",
+    "expected_path": [
+      "find_files",
+      "compute_files_loc",
+      "write_files_doc"
+    ],
+    "accepted_first": [
+      "compute_files_loc",
+      "find_files"
+    ]
+  },
+  {
+    "query": "leggi mail di Mario, riassumi e pubblica come issue github",
+    "expected_path": [
+      "read_messages",
+      "describe_entries",
+      "request_new_executor"
+    ],
+    "accepted_first": [
+      "read_messages"
+    ]
+  },
+  {
+    "query": "scarica feed RSS phoronix e crea task per ogni notizia importante",
+    "expected_path": [
+      "get_urls",
+      "filter_entries",
+      "create_tasks"
+    ],
+    "accepted_first": [
+      "find_urls",
+      "get_urls"
+    ]
+  },
+  {
+    "query": "estrai codice da file github metnos e indicizza per ricerca",
+    "expected_path": [
+      "read_urls_html",
+      "create_files_doc",
+      "request_new_executor"
+    ],
+    "accepted_first": [
+      "read_urls_html"
+    ]
+  },
+  {
+    "query": "genera CV da mie esperienze in github commits",
+    "expected_path": [
+      "read_urls_html",
+      "describe_entries",
+      "write_files_doc"
+    ],
+    "accepted_first": [
+      "read_urls_html"
+    ]
+  },
+  {
+    "query": "evento più frequente del mese",
+    "expected_path": [
+      "read_events",
+      "group_entries",
+      "sort_entries"
+    ],
+    "accepted_first": [
+      "read_events"
+    ]
+  },
+  {
+    "query": "apri documento pdf più recente",
+    "expected_path": [
+      "find_files",
+      "sort_entries",
+      "read_files"
+    ],
+    "accepted_first": [
+      "find_files"
+    ]
+  },
+  {
+    "query": "script python con più di 500 righe in /opt/metnos",
+    "expected_path": [
+      "find_files",
+      "compute_files_loc",
+      "filter_entries"
+    ],
+    "accepted_first": [
+      "compute_files_loc",
+      "find_files"
+    ]
+  },
+  {
+    "query": "genera spreadsheet con statistiche file per dir",
+    "expected_path": [
+      "find_files",
+      "group_entries",
+      "write_files_spreadsheet"
+    ],
+    "accepted_first": [
+      "find_files"
+    ]
+  },
+  {
+    "query": "conta file in /tmp",
+    "expected_path": [
+      "find_files",
+      "compute_entries"
+    ],
+    "accepted_first": [
+      "find_files"
+    ]
+  },
+  {
+    "query": "file più pesanti in /var",
+    "expected_path": [
+      "find_files",
+      "sort_entries"
+    ],
+    "accepted_first": [
+      "find_files"
+    ]
+  },
+  {
+    "query": "ultimo backup creato in /var/backups",
+    "expected_path": [
+      "find_files",
+      "sort_entries"
+    ],
+    "accepted_first": [
+      "find_files"
+    ]
+  },
+  {
+    "query": "conta pdf in /home/roberto/docs",
+    "expected_path": [
+      "find_files",
+      "compute_entries"
+    ],
+    "accepted_first": [
+      "find_files"
+    ]
+  },
+  {
+    "query": "file più recente in Downloads",
+    "expected_path": [
+      "find_files",
+      "sort_entries"
+    ],
+    "accepted_first": [
+      "find_files"
+    ]
+  },
+  {
+    "query": "copia jpg da Foto a Backup",
+    "expected_path": [
+      "find_files",
+      "move_files"
+    ],
+    "accepted_first": [
+      "find_files"
+    ]
+  },
+  {
+    "query": "elimina file *.bak in /tmp",
+    "expected_path": [
+      "find_files",
+      "delete_files"
+    ],
+    "accepted_first": [
+      "delete_files",
+      "find_files"
+    ]
+  },
+  {
+    "query": "size totale cartella /home/roberto",
+    "expected_path": [
+      "find_files",
+      "compute_entries"
+    ],
+    "accepted_first": [
+      "find_files"
+    ]
+  },
+  {
+    "query": "ultimi 5 file creati",
+    "expected_path": [
+      "find_files",
+      "sort_entries"
+    ],
+    "accepted_first": [
+      "find_files"
+    ]
+  },
+  {
+    "query": "conta linee python in /tmp",
+    "expected_path": [
+      "find_files",
+      "compute_files_loc"
+    ],
+    "accepted_first": [
+      "compute_files_loc",
+      "find_files"
+    ]
+  },
+  {
+    "query": "ordina file in Downloads per dimensione",
+    "expected_path": [
+      "find_files",
+      "sort_entries"
+    ],
+    "accepted_first": [
+      "find_files"
+    ]
+  },
+  {
+    "query": "file con timestamp più antico in /var",
+    "expected_path": [
+      "find_files",
+      "sort_entries"
+    ],
+    "accepted_first": [
+      "find_files"
+    ]
+  },
+  {
+    "query": "file duplicati per hash in /Backup",
+    "expected_path": [
+      "find_files",
+      "compute_signatures"
+    ],
+    "accepted_first": [
+      "find_files"
+    ]
+  },
+  {
+    "query": "dimensione media file in /opt/metnos",
+    "expected_path": [
+      "find_files",
+      "compute_entries"
+    ],
+    "accepted_first": [
+      "find_files"
+    ]
+  },
+  {
+    "query": "totale spazio occupato da /home/roberto/Documenti",
+    "expected_path": [
+      "find_files",
+      "compute_entries"
+    ],
+    "accepted_first": [
+      "find_files"
+    ]
+  },
+  {
+    "query": "file di log con errori di stamani",
+    "expected_path": [
+      "find_files",
+      "read_files"
+    ],
+    "accepted_first": [
+      "find_files"
+    ]
+  },
+  {
+    "query": "conta cartelle in /opt",
+    "expected_path": [
+      "find_dirs",
+      "compute_entries"
+    ],
+    "accepted_first": [
+      "find_dirs",
+      "list_dirs"
+    ]
+  },
+  {
+    "query": "cartella più pesante in /var",
+    "expected_path": [
+      "find_dirs",
+      "sort_entries"
+    ],
+    "accepted_first": [
+      "find_dirs"
+    ]
+  },
+  {
+    "query": "dimensione cartella /usr/share",
+    "expected_path": [
+      "find_files",
+      "compute_entries"
+    ],
+    "accepted_first": [
+      "find_dirs",
+      "find_files"
+    ]
+  },
+  {
+    "query": "ultima cartella creata in /home",
+    "expected_path": [
+      "find_dirs",
+      "sort_entries"
+    ],
+    "accepted_first": [
+      "find_dirs"
+    ]
+  },
+  {
+    "query": "conta sottocartelle ricorsivo in /etc",
+    "expected_path": [
+      "find_dirs",
+      "compute_entries"
+    ],
+    "accepted_first": [
+      "find_dirs",
+      "list_dirs"
+    ]
+  },
+  {
+    "query": "cartelle con file modificati ultima settimana",
+    "expected_path": [
+      "find_dirs",
+      "find_files"
+    ],
+    "accepted_first": [
+      "find_dirs",
+      "find_files"
+    ]
+  },
+  {
+    "query": "totale file in tutte le cartelle di /home",
+    "expected_path": [
+      "find_files",
+      "compute_entries"
+    ],
+    "accepted_first": [
+      "find_dirs",
+      "find_files"
+    ]
+  },
+  {
+    "query": "cartelle vuote da cancellare in /tmp",
+    "expected_path": [
+      "find_dirs",
+      "delete_dirs"
+    ],
+    "accepted_first": [
+      "find_dirs"
+    ]
+  },
+  {
+    "query": "cartella più recente in Downloads",
+    "expected_path": [
+      "find_dirs",
+      "sort_entries"
+    ],
+    "accepted_first": [
+      "find_dirs"
+    ]
+  },
+  {
+    "query": "classifica cartelle per linguaggio progetto",
+    "expected_path": [
+      "find_dirs",
+      "classify_entries"
+    ],
+    "accepted_first": [
+      "find_dirs"
+    ]
+  },
+  {
+    "query": "raggruppa file per estensione in /tmp",
+    "expected_path": [
+      "find_files",
+      "group_entries"
+    ],
+    "accepted_first": [
+      "find_files"
+    ]
+  },
+  {
+    "query": "ordina cartelle per data modifica",
+    "expected_path": [
+      "find_dirs",
+      "sort_entries"
+    ],
+    "accepted_first": [
+      "find_dirs",
+      "list_dirs"
+    ]
+  },
+  {
+    "query": "scrivi 'hello e2e' nel file /tmp/metnos_e2e_out.txt",
+    "expected_path": [
+      "write_files"
+    ],
+    "accepted_first": [
+      "write_files"
+    ]
+  },
+  {
+    "query": "scrivi una poesia di 3 righe sull'autunno nel file /tmp/autunno.txt, poi confermami quanti byte hai scritto",
+    "expected_path": [
+      "write_files"
+    ],
+    "accepted_first": [
+      "write_files"
+    ]
+  },
+  {
+    "query": "scrivi 'esempio' nel file /tmp/metnos_e2e_leak.txt e dimmi quanti byte hai scritto",
+    "expected_path": [
+      "write_files"
+    ],
+    "accepted_first": [
+      "write_files"
+    ]
+  },
+  {
+    "query": "scrivi 'hello world' nel file /tmp/metnos_unit_leak.txt e dimmi quanti byte hai scritto",
+    "expected_path": [
+      "write_files"
+    ],
+    "accepted_first": [
+      "write_files"
+    ]
+  },
+  {
+    "query": "scrivi 'hello uc' nel file /tmp/uc_test_b.txt",
+    "expected_path": [
+      "write_files"
+    ],
+    "accepted_first": [
+      "write_files"
+    ]
+  },
+  {
+    "query": "Manda a me via email gli appuntamenti di domani",
+    "expected_path": [
+      "get_inputs"
+    ],
+    "accepted_first": [
+      "find_inputs",
+      "get_inputs",
+      "get_now",
+      "list_inputs",
+      "read_inputs",
+      "read_messages",
+      "send_messages"
+    ]
+  },
+  {
+    "query": "Mandami via email la lista dei miei appuntamenti di domani",
+    "expected_path": [
+      "get_inputs"
+    ],
+    "accepted_first": [
+      "find_inputs",
+      "get_inputs",
+      "list_inputs",
+      "read_inputs",
+      "read_messages"
+    ]
+  },
+  {
+    "query": "scrivi 'hello bench' nel file /tmp/bench_thinking_write.txt",
+    "expected_path": [
+      "write_files"
+    ],
+    "accepted_first": [
+      "write_files"
+    ]
+  },
+  {
+    "query": "manda una mail a mario@example.com con oggetto Test",
+    "expected_path": [
+      "send_messages"
+    ],
+    "accepted_first": [
+      "send_messages"
+    ]
+  },
+  {
+    "query": "mail con link a github.com",
+    "expected_path": [
+      "read_messages"
+    ],
+    "accepted_first": [
+      "read_messages"
+    ]
+  },
+  {
+    "query": "github stars di repo metnos",
+    "expected_path": [
+      "read_urls_html"
+    ],
+    "accepted_first": [
+      "read_urls_html"
+    ]
+  },
+  {
+    "query": "issue aperti su https://github.com/x/metnos",
+    "expected_path": [
+      "read_urls_html"
+    ],
+    "accepted_first": [
+      "read_urls_html"
+    ]
+  },
+  {
+    "query": "ultimo commit su https://github.com/x/metnos",
+    "expected_path": [
+      "read_urls_html"
+    ],
+    "accepted_first": [
+      "read_urls_html"
+    ]
+  },
+  {
+    "query": "pull request aperti su https://github.com/x/metnos",
+    "expected_path": [
+      "read_urls_html"
+    ],
+    "accepted_first": [
+      "read_urls_html"
+    ]
+  },
+  {
+    "query": "releases di https://github.com/x/metnos",
+    "expected_path": [
+      "read_urls_html"
+    ],
+    "accepted_first": [
+      "read_urls_html"
+    ]
+  },
+  {
+    "query": "README di https://github.com/x/metnos",
+    "expected_path": [
+      "read_urls_html"
+    ],
+    "accepted_first": [
+      "read_urls_html"
+    ]
+  },
+  {
+    "query": "file LICENSE in https://github.com/x/metnos",
+    "expected_path": [
+      "read_urls_html"
+    ],
+    "accepted_first": [
+      "read_urls_html"
+    ]
+  },
+  {
+    "query": "issue chiusi ultima settimana su github metnos",
+    "expected_path": [
+      "read_urls_html"
+    ],
+    "accepted_first": [
+      "read_urls_html"
+    ]
+  },
+  {
+    "query": "apri release notes ultima versione di https://github.com/x/y",
+    "expected_path": [
+      "read_urls_html"
+    ],
+    "accepted_first": [
+      "read_urls_html"
+    ]
+  },
+  {
+    "query": "controlla github metnos ultimi 5 commit",
+    "expected_path": [
+      "read_urls_html"
+    ],
+    "accepted_first": [
+      "read_urls_html"
+    ]
+  },
+  {
+    "query": "status build di repo github metnos",
+    "expected_path": [
+      "read_urls_html"
+    ],
+    "accepted_first": [
+      "read_urls_html"
+    ]
+  },
+  {
+    "query": "ultimo commit su main di https://github.com/x/metnos",
+    "expected_path": [
+      "read_urls_html"
+    ],
+    "accepted_first": [
+      "read_urls_html"
+    ]
+  },
+  {
+    "query": "pull request da fare review su https://github.com/x/metnos",
+    "expected_path": [
+      "read_urls_html"
+    ],
+    "accepted_first": [
+      "read_urls_html"
+    ]
+  },
+  {
+    "query": "releases pubblicate su https://github.com/x/metnos",
+    "expected_path": [
+      "read_urls_html"
+    ],
+    "accepted_first": [
+      "read_urls_html"
+    ]
+  },
+  {
+    "query": "contributors di https://github.com/x/metnos",
+    "expected_path": [
+      "read_urls_html"
+    ],
+    "accepted_first": [
+      "read_urls_html"
+    ]
+  },
+  {
+    "query": "scrivi /tmp/note.txt con 'hello world'",
+    "expected_path": [
+      "write_files"
+    ],
+    "accepted_first": [
+      "write_files"
+    ]
+  },
+  {
+    "query": "estrai testo da /tmp/contratto.pdf",
+    "expected_path": [
+      "read_files"
+    ],
+    "accepted_first": [
+      "read_files"
+    ]
+  },
+  {
+    "query": "che ora è a Roma?",
+    "expected_path": [
+      "get_now"
+    ],
+    "accepted_first": [
+      "find_now",
+      "get_now",
+      "list_now",
+      "read_now"
+    ]
+  },
+  {
+    "query": "dimmi che ora è a Roma",
+    "expected_path": [
+      "get_now"
+    ],
+    "accepted_first": [
+      "find_now",
+      "get_location",
+      "get_now",
+      "list_now",
+      "read_now"
+    ]
+  },
+  {
+    "query": "what time is it in Tokyo?",
+    "expected_path": [
+      "get_now"
+    ],
+    "accepted_first": [
+      "find_now",
+      "get_now",
+      "list_now",
+      "read_now"
+    ]
+  },
+  {
+    "query": "scarica https://httpbin.org/get",
+    "expected_path": [
+      "get_urls"
+    ],
+    "accepted_first": [
+      "find_urls",
+      "get_urls",
+      "list_urls",
+      "read_urls",
+      "read_urls_html",
+      "read_urls_pdf"
+    ]
+  },
+  {
+    "query": "leggi /tmp/metnos_cluster_scratchpad_query.txt e dimmi cosa contiene la fine del file",
+    "expected_path": [
+      "read_files"
+    ],
+    "accepted_first": [
+      "find_files",
+      "get_files",
+      "list_files",
+      "read_files"
+    ]
+  },
+  {
+    "query": "vai su https://httpbin.org/uuid e dimmi solo l'UUID, senza altro",
+    "expected_path": [
+      "get_urls"
+    ],
+    "accepted_first": [
+      "find_urls",
+      "get_urls",
+      "list_urls",
+      "read_urls",
+      "read_urls_html",
+      "read_urls_pdf"
+    ]
+  },
+  {
+    "query": "leggi il file /tmp/big_log.txt (è grosso) e dimmi cosa c'è scritto negli ultimi 80 caratteri",
+    "expected_path": [
+      "read_files"
+    ],
+    "accepted_first": [
+      "find_files",
+      "get_files",
+      "list_files",
+      "read_files"
+    ]
+  },
+  {
+    "query": "leggi il file /tmp/metnos_e2e_tail.txt e dimmi cosa c'è negli ultimi 10 caratteri",
+    "expected_path": [
+      "read_files"
+    ],
+    "accepted_first": [
+      "find_files",
+      "get_files",
+      "list_files",
+      "read_files"
+    ]
+  },
+  {
+    "query": "leggi /tmp/metnos_unit_tail.txt e dimmi gli ultimi 10 byte",
+    "expected_path": [
+      "read_files"
+    ],
+    "accepted_first": [
+      "find_files",
+      "get_files",
+      "list_files",
+      "read_files"
+    ]
+  },
+  {
+    "query": "leggi /tmp/metnos_edge_dup.txt, poi rileggi /tmp/metnos_edge_dup.txt, e riportami solo il contenuto",
+    "expected_path": [
+      "read_files"
+    ],
+    "accepted_first": [
+      "find_files",
+      "get_files",
+      "list_files",
+      "read_files"
+    ]
+  },
+  {
+    "query": "che ora è? 🕐",
+    "expected_path": [
+      "get_now"
+    ],
+    "accepted_first": [
+      "find_now",
+      "get_now",
+      "list_now",
+      "read_now"
+    ]
+  },
+  {
+    "query": "trova il file README.md in /opt",
+    "expected_path": [
+      "find_files"
+    ],
+    "accepted_first": [
+      "find_files",
+      "get_files",
+      "list_files",
+      "read_files"
+    ]
+  },
+  {
+    "query": "riassumi in 3 righe il README di /opt/myclaw",
+    "expected_path": [
+      "read_files"
+    ],
+    "accepted_first": [
+      "find_files",
+      "get_files",
+      "list_files",
+      "read_files"
+    ]
+  },
+  {
+    "query": "leggi il file /tmp/notes.txt e mostrami il contenuto",
+    "expected_path": [
+      "read_files"
+    ],
+    "accepted_first": [
+      "find_files",
+      "get_files",
+      "list_files",
+      "read_files"
+    ]
+  },
+  {
+    "query": "trova i file *.py in /opt/myclaw/runtime",
+    "expected_path": [
+      "find_files"
+    ],
+    "accepted_first": [
+      "find_files",
+      "get_files",
+      "list_files",
+      "read_files"
+    ]
+  },
+  {
+    "query": "leggi /etc/hostname",
+    "expected_path": [
+      "read_files"
+    ],
+    "accepted_first": [
+      "find_files",
+      "get_files",
+      "list_files",
+      "read_files",
+      "request_new_executor"
+    ]
+  },
+  {
+    "query": "che data e oggi",
+    "expected_path": [
+      "get_now"
+    ],
+    "accepted_first": [
+      "find_now",
+      "get_now",
+      "list_now",
+      "read_now"
+    ]
+  },
+  {
+    "query": "trova 5 ristoranti vicino a me",
+    "expected_path": [
+      "find_places"
+    ],
+    "accepted_first": [
+      "find_places",
+      "get_location",
+      "get_places",
+      "list_places",
+      "read_places"
+    ]
+  },
+  {
+    "query": "che ora e adesso",
+    "expected_path": [
+      "get_now"
+    ],
+    "accepted_first": [
+      "find_now",
+      "get_now",
+      "list_now",
+      "read_now"
+    ]
+  },
+  {
+    "query": "leggi il file /tmp/uc_test_a.txt",
+    "expected_path": [
+      "read_files"
+    ],
+    "accepted_first": [
+      "find_files",
+      "get_files",
+      "list_files",
+      "read_files"
+    ]
+  },
+  {
+    "query": "dimmi data e ora correnti",
+    "expected_path": [
+      "get_now"
+    ],
+    "accepted_first": [
+      "find_now",
+      "get_now",
+      "list_now",
+      "read_now"
+    ]
+  },
+  {
+    "query": "mostra contenuto /tmp/uc_test_csv.csv",
+    "expected_path": [
+      "read_files_csv"
+    ],
+    "accepted_first": [
+      "find_files_csv",
+      "get_files_csv",
+      "list_files_csv",
+      "read_files",
+      "read_files_csv"
+    ]
+  },
+  {
+    "query": "trova i file *.md in /opt/myclaw/decisions",
+    "expected_path": [
+      "find_files"
+    ],
+    "accepted_first": [
+      "find_files",
+      "get_files",
+      "list_files",
+      "read_files"
+    ]
+  },
+  {
+    "query": "trova i file *.toml in /opt/myclaw/executors",
+    "expected_path": [
+      "find_files"
+    ],
+    "accepted_first": [
+      "find_files",
+      "get_files",
+      "list_files",
+      "read_files"
+    ]
+  },
+  {
+    "query": "quanti file *.py ci sono in /opt/myclaw/runtime",
+    "expected_path": [
+      "find_files"
+    ],
+    "accepted_first": [
+      "find_files",
+      "get_files",
+      "list_files",
+      "read_files"
+    ]
+  },
+  {
+    "query": "quante directory in /opt/myclaw",
+    "expected_path": [
+      "find_dirs"
+    ],
+    "accepted_first": [
+      "find_dirs",
+      "get_dirs",
+      "list_dirs",
+      "read_dirs"
+    ]
+  },
+  {
+    "query": "leggi le ultime 5 mail",
+    "expected_path": [
+      "read_messages"
+    ],
+    "accepted_first": [
+      "find_messages",
+      "get_messages",
+      "list_messages",
+      "read_messages"
+    ]
+  },
+  {
+    "query": "Roma centro storico",
+    "expected_path": [
+      "find_places"
+    ],
+    "accepted_first": [
+      "find_places",
+      "get_location",
+      "get_places",
+      "list_places",
+      "read_places"
+    ]
+  },
+  {
+    "query": "Bar Centrale Milano",
+    "expected_path": [
+      "find_places"
+    ],
+    "accepted_first": [
+      "find_places",
+      "get_location",
+      "get_places",
+      "list_places",
+      "read_places"
+    ]
+  },
+  {
+    "query": "Stazione di Bologna",
+    "expected_path": [
+      "find_places"
+    ],
+    "accepted_first": [
+      "find_places",
+      "get_location",
+      "get_places",
+      "list_places",
+      "read_places"
+    ]
+  },
+  {
+    "query": "crea la directory /tmp/uc_test_dir",
+    "expected_path": [
+      "create_dirs"
+    ],
+    "accepted_first": [
+      "create_dirs"
+    ]
+  },
+  {
+    "query": "scarica e mostrami il contenuto di https://httpbin.org/json",
+    "expected_path": [
+      "get_urls"
+    ],
+    "accepted_first": [
+      "find_urls",
+      "get_urls",
+      "list_urls",
+      "read_urls",
+      "read_urls_html",
+      "read_urls_pdf"
+    ]
+  },
+  {
+    "query": "trova le righe che contengono 'def' nel file /tmp/uc_test_a.txt",
+    "expected_path": [
+      "read_files"
+    ],
+    "accepted_first": [
+      "find_files",
+      "get_files",
+      "list_files",
+      "read_files"
+    ]
+  },
+  {
+    "query": "metadata del file /tmp/uc_test_a.txt",
+    "expected_path": [
+      "get_files"
+    ],
+    "accepted_first": [
+      "find_files",
+      "get_files",
+      "get_now",
+      "list_files",
+      "read_files"
+    ]
+  },
+  {
+    "query": "elenca /tmp/dir_che_non_esiste_xyz",
+    "expected_path": [
+      "list_dirs"
+    ],
+    "accepted_first": [
+      "find_dirs",
+      "get_dirs",
+      "list_dirs",
+      "read_dirs"
+    ]
+  },
+  {
+    "query": "list files in /tmp",
+    "expected_path": [
+      "list_dirs"
+    ],
+    "accepted_first": [
+      "find_dirs",
+      "get_dirs",
+      "list_dirs",
+      "read_dirs"
+    ]
+  },
+  {
+    "query": "find python files in /opt/myclaw/runtime",
+    "expected_path": [
+      "find_files"
+    ],
+    "accepted_first": [
+      "find_files",
+      "get_files",
+      "list_files",
+      "read_files"
+    ]
+  },
+  {
+    "query": "media tra 10, 20, 30, 40 e 50",
+    "expected_path": [
+      "describe_numbers"
+    ],
+    "accepted_first": [
+      "describe_numbers"
+    ]
+  },
+  {
+    "query": "leggi /tmp/uc_test_csv.csv come csv",
+    "expected_path": [
+      "read_files_csv"
+    ],
+    "accepted_first": [
+      "find_files_csv",
+      "get_files_csv",
+      "list_files_csv",
+      "read_files_csv"
+    ]
+  },
+  {
+    "query": "leggi le mail di oggi e dimmi quante sono",
+    "expected_path": [
+      "read_messages"
+    ],
+    "accepted_first": [
+      "find_messages",
+      "get_messages",
+      "list_messages",
+      "read_messages"
+    ]
+  },
+  {
+    "query": "leggi '/tmp/uc test spaces.txt'",
+    "expected_path": [
+      "read_files"
+    ],
+    "accepted_first": [
+      "find_files",
+      "get_files",
+      "list_files",
+      "read_files"
+    ]
+  },
+  {
+    "query": "trova tutti i file in /opt/myclaw",
+    "expected_path": [
+      "find_files"
+    ],
+    "accepted_first": [
+      "find_files",
+      "get_files",
+      "list_files",
+      "read_files"
+    ]
+  },
+  {
+    "query": "che data era ieri",
+    "expected_path": [
+      "get_now"
+    ],
+    "accepted_first": [
+      "find_now",
+      "get_now",
+      "list_now",
+      "read_now"
+    ]
+  },
+  {
+    "query": "leggi the file /tmp/uc_test_a.txt",
+    "expected_path": [
+      "read_files"
+    ],
+    "accepted_first": [
+      "find_files",
+      "get_files",
+      "list_files",
+      "read_files"
+    ]
+  },
+  {
+    "query": "leggi /etc/shadow",
+    "expected_path": [
+      "read_files"
+    ],
+    "accepted_first": [
+      "find_files",
+      "get_files",
+      "list_files",
+      "read_files"
+    ]
+  },
+  {
+    "query": "leggi /opt/myclaw/runtime/agent_runtime.py",
+    "expected_path": [
+      "read_files"
+    ],
+    "accepted_first": [
+      "find_files",
+      "get_files",
+      "list_files",
+      "read_files"
+    ]
+  },
+  {
+    "query": "che ora era 2 ore fa",
+    "expected_path": [
+      "get_now"
+    ],
+    "accepted_first": [
+      "find_now",
+      "get_now",
+      "list_now",
+      "read_now"
+    ]
+  },
+  {
+    "query": "elimina il file /tmp/uc_test_b.txt",
+    "expected_path": [
+      "find_files"
+    ],
+    "accepted_first": [
+      "find_files",
+      "get_files",
+      "list_files",
+      "read_files"
+    ]
+  },
+  {
+    "query": "conta i file *.md in /opt/myclaw/decisions",
+    "expected_path": [
+      "find_files"
+    ],
+    "accepted_first": [
+      "filter_entries",
+      "find_files",
+      "get_files",
+      "list_files",
+      "read_files"
+    ]
+  },
+  {
+    "query": "mostra i task attivi",
+    "expected_path": [
+      "list_tasks"
+    ],
+    "accepted_first": [
+      "find_tasks",
+      "get_tasks",
+      "list_tasks",
+      "read_tasks"
+    ]
+  },
+  {
+    "query": "mostra le proposte",
+    "expected_path": [
+      "get_proposals"
+    ],
+    "accepted_first": [
+      "find_proposals",
+      "get_proposals",
+      "list_proposals",
+      "read_proposals"
+    ]
+  },
+  {
+    "query": "mostra le proposte di generalize",
+    "expected_path": [
+      "get_proposals"
+    ],
+    "accepted_first": [
+      "find_proposals",
+      "get_proposals",
+      "list_proposals",
+      "read_proposals"
+    ]
+  },
+  {
+    "query": "che ore sono",
+    "expected_path": [
+      "get_now"
+    ],
+    "accepted_first": [
+      "compute_signatures",
+      "describe_entries",
+      "find_now",
+      "get_now",
+      "list_now",
+      "list_tasks",
+      "read_now"
+    ]
+  },
+  {
+    "query": "what time is it?",
+    "expected_path": [
+      "get_now"
+    ],
+    "accepted_first": [
+      "find_now",
+      "get_now",
+      "list_now",
+      "read_now"
+    ]
+  },
+  {
+    "query": "find *.py files in /opt/myclaw/runtime",
+    "expected_path": [
+      "find_files"
+    ],
+    "accepted_first": [
+      "find_files",
+      "get_files",
+      "list_files",
+      "read_files"
+    ]
+  },
+  {
+    "query": "fetch https://httpbin.org/get",
+    "expected_path": [
+      "get_urls"
+    ],
+    "accepted_first": [
+      "find_urls",
+      "get_urls",
+      "list_urls",
+      "read_urls",
+      "read_urls_html",
+      "read_urls_pdf"
+    ]
+  },
+  {
+    "query": "what date is today",
+    "expected_path": [
+      "get_now"
+    ],
+    "accepted_first": [
+      "find_now",
+      "get_now",
+      "list_now",
+      "read_messages",
+      "read_now"
+    ]
+  },
+  {
+    "query": "trova foto simili",
+    "expected_path": [
+      "get_files"
+    ],
+    "accepted_first": [
+      "find_files",
+      "find_images_indices",
+      "find_images_web",
+      "get_files",
+      "get_inputs",
+      "list_files",
+      "read_files",
+      "request_new_executor"
+    ]
+  },
+  {
+    "query": "stato delle risorse del server",
+    "expected_path": [
+      "get_processes"
+    ],
+    "accepted_first": [
+      "find_processes",
+      "get_processes",
+      "list_processes",
+      "read_processes"
+    ]
+  },
+  {
+    "query": "Esplora https://example.com/test e dimmi cosa contiene",
+    "expected_path": [
+      "read_urls_html"
+    ],
+    "accepted_first": [
+      "find_urls",
+      "find_urls_html",
+      "get_urls",
+      "get_urls_html",
+      "list_urls_html",
+      "read_urls_html",
+      "read_urls_pdf"
+    ]
+  },
+  {
+    "query": "Esplora https://www.beelink.com/ e elencami i prodotti",
+    "expected_path": [
+      "read_urls_html"
+    ],
+    "accepted_first": [
+      "find_urls",
+      "find_urls_html",
+      "get_urls",
+      "get_urls_html",
+      "list_urls_html",
+      "read_urls_html",
+      "read_urls_pdf"
+    ]
+  },
+  {
+    "query": "cerca su web il file sull'organico di diritto della scuola nella provincia di roma",
+    "expected_path": [
+      "find_urls"
+    ],
+    "accepted_first": [
+      "find_files",
+      "find_urls",
+      "get_urls",
+      "list_urls",
+      "read_urls",
+      "read_urls_html",
+      "read_urls_pdf"
+    ]
+  },
+  {
+    "query": "che appuntamenti ho domani",
+    "expected_path": [
+      "read_events"
+    ],
+    "accepted_first": [
+      "find_events",
+      "get_events",
+      "get_now",
+      "list_events",
+      "read_events"
+    ]
+  },
+  {
+    "query": "che appuntamento ho domani",
+    "expected_path": [
+      "read_events"
+    ],
+    "accepted_first": [
+      "find_events",
+      "get_events",
+      "get_now",
+      "list_events",
+      "read_events"
+    ]
+  },
+  {
+    "query": "fissa un appuntamento mercoledi mattina dopo le 9 per un ora se c'è posto",
+    "expected_path": [
+      "create_events"
+    ],
+    "accepted_first": [
+      "create_events",
+      "find_events_empty",
+      "get_now",
+      "get_proposals",
+      "read_events"
+    ]
+  },
+  {
+    "query": "proponi per la prossima settimana 3 possibili orari per un appuntamento di una ora la mattina",
+    "expected_path": [
+      "create_events"
+    ],
+    "accepted_first": [
+      "create_events",
+      "describe_numbers",
+      "find_events_empty",
+      "get_now",
+      "read_events"
+    ]
+  },
+  {
+    "query": "cerca organico scuola provincia Roma sul web",
+    "expected_path": [
+      "find_urls"
+    ],
+    "accepted_first": [
+      "find_urls",
+      "get_urls",
+      "list_urls",
+      "read_urls",
+      "read_urls_html",
+      "read_urls_pdf"
+    ]
+  },
+  {
+    "query": "stato del sistema",
+    "expected_path": [
+      "get_processes"
+    ],
+    "accepted_first": [
+      "find_processes",
+      "get_processes",
+      "list_processes",
+      "read_processes"
+    ]
+  },
+  {
+    "query": "trova foto di Matteo",
+    "expected_path": [
+      "find_persons_indices"
+    ],
+    "accepted_first": [
+      "find_contacts",
+      "find_images_indices",
+      "find_persons",
+      "find_persons_indices",
+      "get_contacts",
+      "get_persons",
+      "get_persons_indices",
+      "list_contacts",
+      "list_persons",
+      "list_persons_indices",
+      "read_contacts",
+      "read_persons",
+      "read_persons_indices"
+    ]
+  },
+  {
+    "query": "elenca i miei appuntamenti di domani",
+    "expected_path": [
+      "read_events"
+    ],
+    "accepted_first": [
+      "find_events",
+      "get_events",
+      "list_events",
+      "read_events"
+    ]
+  },
+  {
+    "query": "crea un evento standup alle 10",
+    "expected_path": [
+      "create_events"
+    ],
+    "accepted_first": [
+      "create_events",
+      "get_now"
+    ]
+  },
+  {
+    "query": "read contacts",
+    "expected_path": [
+      "read_contacts"
+    ],
+    "accepted_first": [
+      "find_contacts",
+      "find_persons",
+      "get_contacts",
+      "get_persons",
+      "list_contacts",
+      "list_persons",
+      "read_contacts",
+      "read_persons"
+    ]
+  },
+  {
+    "query": "get files",
+    "expected_path": [
+      "get_inputs"
+    ],
+    "accepted_first": [
+      "find_files",
+      "find_inputs",
+      "get_inputs",
+      "list_inputs",
+      "read_inputs"
+    ]
+  },
+  {
+    "query": "consumo in watt del server",
+    "expected_path": [
+      "get_processes"
+    ],
+    "accepted_first": [
+      "delete_credentials",
+      "find_processes",
+      "get_processes",
+      "list_processes",
+      "read_processes"
+    ]
+  },
+  {
+    "query": "data di oggi",
+    "expected_path": [
+      "get_now"
+    ],
+    "accepted_first": [
+      "find_now",
+      "get_now",
+      "get_processes",
+      "list_now",
+      "read_now"
+    ]
+  },
+  {
+    "query": "che ho oggi pomeriggio",
+    "expected_path": [
+      "read_events"
+    ],
+    "accepted_first": [
+      "find_events",
+      "get_events",
+      "get_now",
+      "list_events",
+      "read_events"
+    ]
+  },
+  {
+    "query": "che impegni ho stamattina",
+    "expected_path": [
+      "read_events"
+    ],
+    "accepted_first": [
+      "find_events",
+      "get_events",
+      "get_now",
+      "list_events",
+      "read_events"
+    ]
+  },
+  {
+    "query": "ho un evento alle 15 oggi?",
+    "expected_path": [
+      "read_events"
+    ],
+    "accepted_first": [
+      "find_events",
+      "find_events_empty",
+      "get_events",
+      "get_now",
+      "list_events",
+      "read_events"
+    ]
+  },
+  {
+    "query": "che ho il 20 maggio",
+    "expected_path": [
+      "read_events"
+    ],
+    "accepted_first": [
+      "find_events",
+      "get_events",
+      "list_events",
+      "read_events"
+    ]
+  },
+  {
+    "query": "appuntamenti lunedi prossimo",
+    "expected_path": [
+      "read_events"
+    ],
+    "accepted_first": [
+      "find_events",
+      "get_events",
+      "get_now",
+      "list_events",
+      "read_events"
+    ]
+  },
+  {
+    "query": "mail di Mario",
+    "expected_path": [
+      "read_messages"
+    ],
+    "accepted_first": [
+      "find_contacts",
+      "find_messages",
+      "get_messages",
+      "list_messages",
+      "read_messages"
+    ]
+  },
+  {
+    "query": "trova file .py in /tmp/bf_test",
+    "expected_path": [
+      "find_files"
+    ],
+    "accepted_first": [
+      "find_files",
+      "get_files",
+      "list_files",
+      "read_files"
+    ]
+  },
+  {
+    "query": "crea la cartella /tmp/metnos_bench_test",
+    "expected_path": [
+      "create_dirs"
+    ],
+    "accepted_first": [
+      "create_dirs",
+      "get_location",
+      "request_new_executor"
+    ]
+  },
+  {
+    "query": "mostrami i task ricorrenti che ho schedulato",
+    "expected_path": [
+      "list_tasks"
+    ],
+    "accepted_first": [
+      "find_tasks",
+      "get_processes",
+      "get_tasks",
+      "list_tasks",
+      "read_events",
+      "read_tasks"
+    ]
+  },
+  {
+    "query": "mostrami i task ricorrenti",
+    "expected_path": [
+      "list_tasks"
+    ],
+    "accepted_first": [
+      "find_tasks",
+      "get_processes",
+      "get_tasks",
+      "list_tasks",
+      "read_tasks"
+    ]
+  },
+  {
+    "query": "lista task schedulati",
+    "expected_path": [
+      "list_tasks"
+    ],
+    "accepted_first": [
+      "find_tasks",
+      "get_tasks",
+      "list_tasks",
+      "read_tasks"
+    ]
+  },
+  {
+    "query": "Sutuazione server",
+    "expected_path": [
+      "get_processes"
+    ],
+    "accepted_first": [
+      "compute_files_loc",
+      "find_processes",
+      "get_processes",
+      "list_processes",
+      "read_processes"
+    ]
+  },
+  {
+    "query": "Situazione server",
+    "expected_path": [
+      "get_processes"
+    ],
+    "accepted_first": [
+      "find_processes",
+      "get_processes",
+      "list_processes",
+      "read_processes"
+    ]
+  },
+  {
+    "query": "trova i file .py in /opt/myclaw/runtime",
+    "expected_path": [
+      "find_files"
+    ],
+    "accepted_first": [
+      "find_files",
+      "get_files",
+      "list_files",
+      "read_files"
+    ]
+  },
+  {
+    "query": "mostrami il quadro generale del sistema",
+    "expected_path": [
+      "get_processes"
+    ],
+    "accepted_first": [
+      "find_processes",
+      "get_processes",
+      "list_processes",
+      "read_processes"
+    ]
+  },
+  {
+    "query": "che timer ho attivi",
+    "expected_path": [
+      "list_tasks"
+    ],
+    "accepted_first": [
+      "find_tasks",
+      "get_now",
+      "get_tasks",
+      "list_tasks",
+      "read_tasks"
+    ]
+  },
+  {
+    "query": "Quante foto di Matteo al mare ho dal 2020 al 2024?",
+    "expected_path": [
+      "find_images_indices"
+    ],
+    "accepted_first": [
+      "find_images_indices",
+      "get_images_indices",
+      "list_images_indices",
+      "read_images_indices"
+    ]
+  },
+  {
+    "query": "13:58:12 Quante foto di Matteo al mare ho dal 2020 al 2024?",
+    "expected_path": [
+      "find_images_indices"
+    ],
+    "accepted_first": [
+      "find_images_indices",
+      "get_images_indices",
+      "list_images_indices",
+      "read_images_indices"
+    ]
+  },
+  {
+    "query": "foto di gruppo con almeno Iacopo e Matteo del 2024",
+    "expected_path": [
+      "find_images_indices"
+    ],
+    "accepted_first": [
+      "find_images_indices",
+      "get_images_indices",
+      "list_images_indices",
+      "read_images_indices"
+    ]
+  },
+  {
+    "query": "Trova le foto di gruppo con almeno Iacopo e Matteo del 2024",
+    "expected_path": [
+      "find_images_indices"
+    ],
+    "accepted_first": [
+      "find_images_indices",
+      "get_images_indices",
+      "list_images_indices",
+      "read_images_indices"
+    ]
+  },
+  {
+    "query": "Quante foto in totale ho di Matteo, e quanti GB occupano?",
+    "expected_path": [
+      "find_images_indices"
+    ],
+    "accepted_first": [
+      "find_images_indices",
+      "get_images_indices",
+      "list_images_indices",
+      "read_images_indices"
+    ]
+  },
+  {
+    "query": "mostrami le foto di Matteo",
+    "expected_path": [
+      "find_persons_indices"
+    ],
+    "accepted_first": [
+      "find_contacts",
+      "find_images_indices",
+      "find_persons",
+      "find_persons_indices",
+      "get_contacts",
+      "get_persons",
+      "get_persons_indices",
+      "list_contacts",
+      "list_persons",
+      "list_persons_indices",
+      "read_contacts",
+      "read_persons",
+      "read_persons_indices"
+    ]
+  },
+  {
+    "query": "appuntamenti di domani",
+    "expected_path": [
+      "read_events"
+    ],
+    "accepted_first": [
+      "find_events",
+      "get_events",
+      "list_events",
+      "read_events"
+    ]
+  },
+  {
+    "query": "crea un evento standup domani alle 10",
+    "expected_path": [
+      "create_events"
+    ],
+    "accepted_first": [
+      "create_events"
+    ]
+  },
+  {
+    "query": "cerca i documenti pdf in /tmp",
+    "expected_path": [
+      "find_files"
+    ],
+    "accepted_first": [
+      "find_files",
+      "get_files",
+      "list_files",
+      "read_files"
+    ]
+  },
+  {
+    "query": "test falliti ultima settimana su CI di https://github.com/x/metnos",
+    "expected_path": [
+      "read_urls_html"
+    ],
+    "accepted_first": [
+      "read_urls_html"
+    ]
+  },
+  {
+    "query": "compare branch main vs dev su https://github.com/x/metnos",
+    "expected_path": [
+      "read_urls_html",
+      "compare_entries"
+    ],
+    "accepted_first": [
+      "read_urls_html"
+    ]
+  },
+  {
+    "query": "statistiche commit per autore di https://github.com/x/metnos",
+    "expected_path": [
+      "read_urls_html",
+      "group_entries"
+    ],
+    "accepted_first": [
+      "read_urls_html"
+    ]
+  },
+  {
+    "query": "storia release ultimi 6 mesi di https://github.com/x/metnos",
+    "expected_path": [
+      "read_urls_html"
+    ],
+    "accepted_first": [
+      "read_urls_html"
+    ]
+  },
+  {
+    "query": "issue label 'bug' su https://github.com/x/metnos",
+    "expected_path": [
+      "read_urls_html"
+    ],
+    "accepted_first": [
+      "read_urls_html"
+    ]
+  },
+  {
+    "query": "activity recente su https://github.com/x/metnos",
+    "expected_path": [
+      "read_urls_html"
+    ],
+    "accepted_first": [
+      "read_urls_html"
+    ]
+  },
+  {
+    "query": "watchers e stars di https://github.com/x/metnos",
+    "expected_path": [
+      "read_urls_html"
+    ],
+    "accepted_first": [
+      "read_urls_html"
+    ]
+  },
+  {
+    "query": "controlla CI status main su https://github.com/x/metnos",
+    "expected_path": [
+      "read_urls_html"
+    ],
+    "accepted_first": [
+      "read_urls_html"
+    ]
+  },
+  {
+    "query": "apri ultima release github e salva note in /tmp/notes.md",
+    "expected_path": [
+      "read_urls_html",
+      "write_files"
+    ],
+    "accepted_first": [
+      "read_urls_html"
+    ]
+  },
+  {
+    "query": "scarica file source da https://github.com/x/metnos/blob/X.py",
+    "expected_path": [
+      "read_urls_html"
+    ],
+    "accepted_first": [
+      "get_urls",
+      "read_urls_html"
+    ]
+  },
+  {
+    "query": "rileva nuove issue su https://github.com/x/metnos",
+    "expected_path": [
+      "read_urls_html"
+    ],
+    "accepted_first": [
+      "find_urls",
+      "read_urls_html"
+    ]
+  },
+  {
+    "query": "scopri issue aperte su https://github.com/x/metnos negli ultimi 7 giorni",
+    "expected_path": [
+      "read_urls_html"
+    ],
+    "accepted_first": [
+      "find_urls",
+      "read_urls_html"
+    ]
+  },
+  {
+    "query": "monitora issue label 'bug' su https://github.com/x/metnos",
+    "expected_path": [
+      "read_urls_html"
+    ],
+    "accepted_first": [
+      "read_urls_html"
+    ]
+  },
+  {
+    "query": "genera report admin con dettaglio issue aperti su github metnos",
+    "expected_path": [
+      "read_urls_html",
+      "write_files_doc"
+    ],
+    "accepted_first": [
+      "read_urls_html"
+    ]
+  },
+  {
+    "query": "analizza issue #456 di github metnos e proponi soluzione",
+    "expected_path": [
+      "read_urls_html",
+      "describe_entries"
+    ],
+    "accepted_first": [
+      "read_urls_html"
+    ]
+  },
+  {
+    "query": "filtra issue github per autore 'roberto'",
+    "expected_path": [
+      "read_urls_html",
+      "filter_entries"
+    ],
+    "accepted_first": [
+      "read_urls_html"
+    ]
+  },
+  {
+    "query": "conta issue chiuse questo mese su github metnos",
+    "expected_path": [
+      "read_urls_html",
+      "compute_entries"
+    ],
+    "accepted_first": [
+      "read_urls_html"
+    ]
+  },
+  {
+    "query": "ordina issue github per priorità",
+    "expected_path": [
+      "read_urls_html",
+      "sort_entries"
+    ],
+    "accepted_first": [
+      "read_urls_html"
+    ]
+  },
+  {
+    "query": "raggruppa issue github per label",
+    "expected_path": [
+      "read_urls_html",
+      "group_entries"
+    ],
+    "accepted_first": [
+      "read_urls_html"
+    ]
+  },
+  {
+    "query": "analizza con LLM le ultime 5 issue github e suggerisci priorità",
+    "expected_path": [
+      "read_urls_html",
+      "describe_entries"
+    ],
+    "accepted_first": [
+      "read_urls_html"
+    ]
+  },
+  {
+    "query": "scarica issue github e indicizza per ricerca semantica",
+    "expected_path": [
+      "read_urls_html",
+      "create_files_doc"
+    ],
+    "accepted_first": [
+      "read_urls_html"
+    ]
+  },
+  {
+    "query": "statistiche issue github ultimo trimestre come spreadsheet",
+    "expected_path": [
+      "read_urls_html",
+      "write_files_spreadsheet"
+    ],
+    "accepted_first": [
+      "read_urls_html"
+    ]
+  },
+  {
+    "query": "crea task settimanale per check issue github metnos",
+    "expected_path": [
+      "create_tasks"
+    ],
+    "accepted_first": [
+      "create_tasks"
+    ]
+  },
+  {
+    "query": "notifica admin se issue critica aperta su github",
+    "expected_path": [
+      "create_tasks",
+      "send_messages"
+    ],
+    "accepted_first": [
+      "create_tasks"
+    ]
+  },
+  {
+    "query": "rispondi all'issue #123 su https://github.com/x/metnos con 'thanks for reporting'",
+    "expected_path": [
+      "request_new_executor"
+    ],
+    "accepted_first": [
+      "request_new_executor"
+    ]
+  },
+  {
+    "query": "chiudi issue #789 su github metnos",
+    "expected_path": [
+      "request_new_executor"
+    ],
+    "accepted_first": [
+      "request_new_executor"
+    ]
+  },
+  {
+    "query": "auto-rispondi a nuove issue github con template benvenuto",
+    "expected_path": [
+      "request_new_executor"
+    ],
+    "accepted_first": [
+      "create_tasks",
+      "request_new_executor"
+    ]
+  },
+  {
+    "query": "ogni 5 min cerca nuove issue github e se urgenti rispondi auto",
+    "expected_path": [
+      "create_tasks"
+    ],
+    "accepted_first": [
+      "create_tasks"
+    ]
+  },
+  {
+    "query": "scarica logs CI di repo github e classifica errori per tipo",
+    "expected_path": [
+      "read_urls_html",
+      "classify_entries"
+    ],
+    "accepted_first": [
+      "read_urls_html"
+    ]
+  },
+  {
+    "query": "crea pdf report stato issue github settimanale e invia a admin",
+    "expected_path": [
+      "create_tasks"
+    ],
+    "accepted_first": [
+      "create_tasks",
+      "read_urls_html"
+    ]
+  },
+  {
+    "query": "leggi commit recenti github metnos e estrai TODO menzionati",
+    "expected_path": [
+      "read_urls_html",
+      "filter_texts_lines"
+    ],
+    "accepted_first": [
+      "read_urls_html"
+    ]
+  },
+  {
+    "query": "notifica via mail quando arriva nuova PR su github metnos",
+    "expected_path": [
+      "create_tasks",
+      "send_messages"
+    ],
+    "accepted_first": [
+      "create_tasks"
+    ]
+  },
+  {
+    "query": "issue github per progetto torchvision",
+    "expected_path": [
+      "read_urls_html"
+    ],
+    "accepted_first": [
+      "read_urls_html"
+    ]
+  },
+  {
+    "query": "scarica readme.md da github mlflow",
+    "expected_path": [
+      "read_urls_html"
+    ],
+    "accepted_first": [
+      "read_urls_html"
+    ]
+  }
+]

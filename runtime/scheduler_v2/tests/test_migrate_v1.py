@@ -6,8 +6,19 @@ from pathlib import Path
 
 import pytest
 
+from scheduler_v2.builtin_callbacks import _BUILTIN_JOBS
 from scheduler_v2.migrate_v1 import migrate
 from scheduler_v2.storage import SchedulerStorage
+
+
+# Builtin di fixture derivati dalla FONTE DI VERITA' (§7.3 universale): la
+# migrate v1→v2 riconosce SOLO i nomi presenti nel set corrente
+# (`_BUILTIN_NAME_TO_KEY`). Usare nomi correnti evita che il test resti stale
+# quando i builtin vengono consolidati (ADR 0167: apply_ager+apply_executor_ager
+# +synt_suggest → nightly_aging, introvertiva_apply rimosso). Il PRIMO porta
+# storia di run (last_status="ok") per verificare che venga preservata.
+_FIXTURE_BUILTINS = [j["name"] for j in _BUILTIN_JOBS[:7]]
+_HISTORY_BUILTIN = _FIXTURE_BUILTINS[0]
 
 
 # --- v1 schema fixtures -----------------------------------------------------
@@ -81,34 +92,26 @@ def _make_v1_state(path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(str(path))
     conn.executescript(_V1_STATE_SCHEMA)
+    rows = []
+    for i, name in enumerate(_FIXTURE_BUILTINS):
+        # Il primo builtin porta storia di run (last_run_at/last_status="ok")
+        # per verificare che la migrate la preservi; gli altri "vergini".
+        last_run = "2026-05-07T04:00:00+00:00" if i == 0 else None
+        last_status = "ok" if i == 0 else None
+        rows.append((name, f"daily@0{(i % 6) + 1}:00", last_run, last_status,
+                     "2026-04-01T00:00:00+00:00", None, 1))
+    # User mirror in state.sqlite — must be skipped (source of truth is
+    # recurring_tasks.db).
+    rows.append(("user_morning_mail", "daily@08:00",
+                 "2026-05-07T08:00:00+00:00", "ok",
+                 "2026-04-15T00:00:00+00:00", 240, 1))
+    # Unknown builtin: must be skipped (no invent).
+    rows.append(("legacy_dead_task", "daily@02:00", None, None,
+                 "2026-04-01T00:00:00+00:00", None, 1))
     conn.executemany(
         "INSERT INTO tasks (name, schedule, last_run_at, last_status, "
         "created_at, grace_window_minutes, enabled) VALUES (?,?,?,?,?,?,?)",
-        [
-            ("apply_ager", "daily@04:00", "2026-05-07T04:00:00+00:00",
-             "ok", "2026-04-01T00:00:00+00:00", None, 1),
-            ("synt_suggest", "daily@04:30", None, None,
-             "2026-04-01T00:00:00+00:00", None, 1),
-            ("apply_executor_ager", "daily@03:30",
-             "2026-05-07T03:30:00+00:00", "ok",
-             "2026-04-01T00:00:00+00:00", None, 1),
-            ("introvertiva_propose", "daily@05:00", None, None,
-             "2026-04-01T00:00:00+00:00", None, 1),
-            ("introvertiva_apply", "daily@05:30", None, None,
-             "2026-04-01T00:00:00+00:00", None, 1),
-            ("proposals_cleanup", "daily@06:00", None, None,
-             "2026-04-01T00:00:00+00:00", None, 1),
-            ("lifecycle_summary", "daily@06:30", None, None,
-             "2026-04-01T00:00:00+00:00", None, 1),
-            # User mirror in state.sqlite — must be skipped (source of truth
-            # is recurring_tasks.db).
-            ("user_morning_mail", "daily@08:00",
-             "2026-05-07T08:00:00+00:00", "ok",
-             "2026-04-15T00:00:00+00:00", 240, 1),
-            # Unknown builtin: must be skipped (no invent).
-            ("legacy_dead_task", "daily@02:00", None, None,
-             "2026-04-01T00:00:00+00:00", None, 1),
-        ],
+        rows,
     )
     conn.commit()
     conn.close()
@@ -129,9 +132,10 @@ def test_migrate_inserts_user_and_builtin(tmp_path, v1_dbs):
     summary = migrate(
         recurring_db=rec, state_db=state, target_db=target, dry_run=False
     )
-    # 3 user tasks (incl. disabled), 7 builtin (user_ + legacy skipped).
+    # 3 user tasks (incl. disabled), len(_FIXTURE_BUILTINS) builtin
+    # (user_ mirror + legacy skipped).
     assert summary["migrated_user"] == 3
-    assert summary["migrated_builtin"] == 7
+    assert summary["migrated_builtin"] == len(_FIXTURE_BUILTINS)
     assert summary["errors"] == 0
     # legacy_dead_task + user_morning_mail in state.sqlite both skipped.
     assert summary["skipped"] >= 2
@@ -143,9 +147,8 @@ def test_migrate_inserts_user_and_builtin(tmp_path, v1_dbs):
         assert "user_morning_mail" in names
         assert "user_ten_pings" in names
         assert "user_disabled_task" in names
-        assert "apply_ager" in names
-        assert "synt_suggest" in names
-        assert "lifecycle_summary" in names
+        for _bn in _FIXTURE_BUILTINS:
+            assert _bn in names, f"builtin {_bn} non migrato"
         assert "legacy_dead_task" not in names
 
         morning = s.get_by_name("user_morning_mail")
@@ -167,12 +170,12 @@ def test_migrate_inserts_user_and_builtin(tmp_path, v1_dbs):
         assert ten is not None
         assert ten.remaining_runs == 7  # 10 times - 3 fired_count
 
-        ager = s.get_by_name("apply_ager")
+        ager = s.get_by_name(_HISTORY_BUILTIN)
         assert ager is not None
-        assert ager.callback_key == "apply_ager"
+        assert ager.callback_key == _BUILTIN_JOBS[0]["callback_key"]
         assert ager.origin == "system"
         assert ager.payload == {}
-        assert ager.last_status == "ok"
+        assert ager.last_status == "ok"        # storia di run preservata
         assert ager.last_run_at is not None
     finally:
         s.close()
@@ -183,7 +186,8 @@ def test_migrate_idempotent(tmp_path, v1_dbs):
     target = tmp_path / "v2.sqlite"
     first = migrate(recurring_db=rec, state_db=state, target_db=target)
     second = migrate(recurring_db=rec, state_db=state, target_db=target)
-    assert first["migrated_user"] == 3 and first["migrated_builtin"] == 7
+    assert first["migrated_user"] == 3
+    assert first["migrated_builtin"] == len(_FIXTURE_BUILTINS)
     assert second["migrated_user"] == 0
     assert second["migrated_builtin"] == 0
     # The skipped count on the second pass includes everything we previously
@@ -200,7 +204,7 @@ def test_dry_run_does_not_write(tmp_path, v1_dbs):
     )
     # Counts still reported, but the v2 DB must be empty.
     assert summary["migrated_user"] == 3
-    assert summary["migrated_builtin"] == 7
+    assert summary["migrated_builtin"] == len(_FIXTURE_BUILTINS)
     s = SchedulerStorage(target)
     try:
         assert s.list_all() == []
@@ -233,4 +237,4 @@ def test_only_state_db_present(tmp_path):
         target_db=target,
     )
     assert summary["migrated_user"] == 0
-    assert summary["migrated_builtin"] == 7
+    assert summary["migrated_builtin"] == len(_FIXTURE_BUILTINS)

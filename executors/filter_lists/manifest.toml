@@ -12,62 +12,12 @@ affinity    = ["intersect", "intersezione", "union", "unione",
                 "set", "AND tra liste", "filter lists"]
 
 [description]
-it = """Operatori logici set ops fra DUE liste di entries. Pattern §7.3 general-purpose: parametrizza via `op` + `on_keys` invece di creare un executor per ogni operazione (intersect_entries, union_entries, ecc.).
-
-USO CORRETTO:
-- AND fra 2 liste su una chiave: op='intersect', from_step=A, with_step=B, on_keys=['path']
-- AND temporale (overlap eventi): op='overlap', from_step=A, with_step=B (auto-detect start/end)
-- A \\ B (entries di A non in B): op='difference', on_keys=['id']
-- A ∪ B deduplicato: op='union', on_keys=['sha256']
-- (A\\B) ∪ (B\\A): op='symdiff', on_keys=['date']
-
-Pattern pipeline classico (test 4 «HLT che si sovrappone con MNM»):
-1. read_events(time_window='next-3m')  → tutti gli eventi
-2. filter_entries(from_step=1, where_field='summary', where_starts_with='HLT')  → A
-3. filter_entries(from_step=1, where_field='summary', where_starts_with='MNM')  → B
-4. filter_lists(op='overlap', from_step=2, with_step=3) → A ∩temporal B
-5. final_answer
-
-OUTPUT: `{ok, op, entries: list[dict], metadata: {count_a, count_b, count_out, on_keys}}`. Per op='overlap', entries hanno `_overlap_with` con label degli incontri.
-
-NON CONFONDERE CON:
-- `filter_entries`: filtri MONO-LISTA (where_field/where_in/where_starts_with). filter_lists e' BI-LISTA (set ops).
-- `compute_entries`: aggregati numerici su 1 lista (max/min/avg/sum). filter_lists ritorna LISTE, compute_entries ritorna SCALARI.
-
-DEVI: passare `op` (uno fra: intersect, union, difference, symdiff, overlap).
-DEVI: per ops ≠ overlap, passare `on_keys` come lista di field name.
-NON DEVI: usare set ops senza `with_step` (manca la lista B).
-NON DEVI: usare op='overlap' su liste senza campi temporali — restituisce vuoto."""
-en = """Logical set operators between TWO lists of entries. General §7.3 pattern: parametrize via `op` + `on_keys` instead of one executor per operation.
-
-CORRECT USE:
-- AND between 2 lists on a key: op='intersect', from_step=A, with_step=B, on_keys=['path']
-- Temporal AND (event overlap): op='overlap', from_step=A, with_step=B (auto-detect start/end)
-- A \\ B: op='difference', on_keys=['id']
-- A ∪ B deduped: op='union', on_keys=['sha256']
-- Symmetric diff: op='symdiff', on_keys=['date']
-
-Pipeline pattern (test 4):
-1. read_events(time_window='next-3m')
-2. filter_entries(from_step=1, where_starts_with='HLT') → A
-3. filter_entries(from_step=1, where_starts_with='MNM') → B
-4. filter_lists(op='overlap', from_step=2, with_step=3)
-5. final_answer
-
-OUTPUT: `{ok, op, entries: list[dict], metadata: {count_a, count_b, count_out, on_keys}}`. For op='overlap', entries have `_overlap_with`.
-
-DO NOT CONFUSE WITH:
-- `filter_entries`: MONO-list filters (where_field/where_in/where_starts_with).
-- `compute_entries`: numeric aggregates on 1 list (max/min/avg/sum). filter_lists returns LISTS, compute_entries returns SCALARS.
-
-MUST: pass `op` (one of: intersect, union, difference, symdiff, overlap).
-MUST: for ops ≠ overlap, pass `on_keys` as list of field names.
-MUST NOT: use set ops without `with_step`.
-MUST NOT: use op='overlap' on lists without temporal fields — returns empty."""
+it = "SCOPO: operazioni fra DUE liste di entries (A=from_step, B=with_step) abbinate su `on_keys` (§7.3: parametrico via `op`, non un executor per operazione). PATTERN: dedup monitor -> filter_lists(op=\"delta\", from_step=A, with_step=B, on_keys=[\"number\"], delta_field=\"updated_at\") = nuovi + cambiati dal watermark (gestisce le RIAPERTURE: replica utente -> updated_at avanza -> torna nel delta); altri op: intersect (AND su chiave), union, difference (A\\B), symdiff, overlap (AND temporale auto-detect). NON: set ops senza `with_step`/`on_keys`; confondere con filter_entries (filtri MONO-lista) o compute_entries (aggregati SCALARI). OUT: {ok, op, entries, metadata{count_a,count_b,count_out}}."
+en = "SCOPO: operations between TWO lists of entries (A=from_step, B=with_step) matched on `on_keys` (§7.3: parametric via `op`, not one executor per operation). PATTERN: monitor dedup -> filter_lists(op=\"delta\", from_step=A, with_step=B, on_keys=[\"number\"], delta_field=\"updated_at\") = new + changed since watermark (handles RE-OPENS: user reply -> updated_at advances -> back in delta); other ops: intersect (AND on key), union, difference (A\\B), symdiff, overlap (temporal AND auto-detect). NON: set ops without `with_step`/`on_keys`; confuse with filter_entries (MONO-list filters) or compute_entries (SCALAR aggregates). OUT: {ok, op, entries, metadata{count_a,count_b,count_out}}."
 
 [code]
 files  = ["filter_lists.py"]
-digest = "sha256:b69b263b3e7c645465577e2aa0b8a86cf7d095cec17ff346e8f023582fa19ac7"
+digest = "sha256:94030e7ee235fa4e4dfbf7834cdc71862c5e2d410f191fee78a9381ac492bc35"
 
 [args]
 type     = "object"
@@ -75,11 +25,18 @@ required = ["op"]
 
 [args.properties.op]
 type        = "string"
-enum        = ["intersect", "union", "difference", "symdiff", "overlap"]
+enum        = ["intersect", "union", "difference", "symdiff", "overlap", "delta"]
 
 [args.properties.op.description]
-it = "Operazione set. Set ops (intersect/union/difference/symdiff) richiedono with_step + on_keys. Overlap e' shortcut: AND temporale auto-detect su campi start/end/started_at/finished_at/taken_at_iso/mtime_iso/fired_at/ts."
-en = "Set operation. Set ops (intersect/union/difference/symdiff) require with_step + on_keys. Overlap is shortcut: temporal AND auto-detect on fields start/end/started_at/finished_at/taken_at_iso/mtime_iso/fired_at/ts."
+it = "Operazione. delta = da A ritorna NUOVI (chiave non in B) + CAMBIATI (con `delta_field`, A>B) — dedup universale dei monitor. Set ops (intersect/union/difference/symdiff) richiedono with_step + on_keys. Overlap = AND temporale auto-detect."
+en = "Operation. delta = from A returns NEW (key not in B) + CHANGED (with `delta_field`, A>B) — universal monitor dedup. Set ops (intersect/union/difference/symdiff) require with_step + on_keys. Overlap = temporal AND auto-detect."
+
+[args.properties.delta_field]
+type        = "string"
+
+[args.properties.delta_field.description]
+it = "Solo op=delta: campo-watermark confrontato fra A e B (es. 'updated_at'). Un'entry abbinata e' CAMBIATA se A[delta_field] > B[delta_field] (ISO/numeri). Omesso = solo nuovi."
+en = "op=delta only: watermark field compared between A and B (e.g. 'updated_at'). A matched entry is CHANGED if A[delta_field] > B[delta_field] (ISO/numbers). Omitted = new only."
 
 [args.properties.from_step]
 type        = "integer"
@@ -123,6 +80,16 @@ en = "Inline SECONDARY list (alternative to with_step). Usually not passed direc
 name   = "intersect_path"
 input  = { op = "intersect", entries = [{path="a"},{path="b"},{path="c"}], entries_b = [{path="b"},{path="c"},{path="d"}], on_keys = ["path"] }
 expect = { ok = true, metadata_field_eq = { count_out = 2 } }
+
+[[tests]]
+name   = "delta_nuovi_e_cambiati_dal_watermark"
+input  = { op = "delta", entries = [{number=6, updated_at="2026-06-02T10:00:00Z"},{number=7, updated_at="2026-06-01T08:00:00Z"},{number=9, updated_at="2026-06-02T11:00:00Z"}], entries_b = [{number=6, updated_at="2026-06-01T09:00:00Z"},{number=7, updated_at="2026-06-01T08:00:00Z"}], on_keys = ["number"], delta_field = "updated_at" }
+expect = { ok = true, metadata_field_eq = { count_out = 2 } }
+
+[[tests]]
+name   = "delta_senza_field_solo_nuovi"
+input  = { op = "delta", entries = [{id="a"},{id="b"}], entries_b = [{id="a"}], on_keys = ["id"] }
+expect = { ok = true, metadata_field_eq = { count_out = 1 } }
 
 [[tests]]
 name   = "difference_id"

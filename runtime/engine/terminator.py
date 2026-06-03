@@ -101,16 +101,13 @@ def _record_lacuna(query: str, intent: Intent, error_class: str,
 
 # ── SimpleTerminator ──────────────────────────────────────────────────────
 
-_CAUSE_TEMPLATES = {
-    "wrong_tool": ("Strumento sbagliato per la richiesta",
-                    "Riformula con dettagli o usa /engine metis|frontier"),
-    "wrong_args": ("Pipeline malformata o argomenti insufficienti",
-                    "Aggiungi dettagli concreti (percorso, nome, periodo)"),
-    "missing_input": ("Dati o backend non disponibili",
-                       "Verifica path/indice o configura il provider"),
-    "out_of_scope": ("Richiesta fuori scope del sistema",
-                      "Richiede azione fisica (es. condivisione posizione) "
-                      "o capability esterna non installata"),
+# §11: cause/azione user-facing risolte via DB i18n nella lingua dell'istanza
+# (prima erano stringhe IT hardcoded nel final_text mostrato all'utente).
+_CAUSE_KEYS = {
+    "wrong_tool": ("MSG_TERM_WRONG_TOOL_CAUSE", "MSG_TERM_WRONG_TOOL_ACTION"),
+    "wrong_args": ("MSG_TERM_WRONG_ARGS_CAUSE", "MSG_TERM_WRONG_ARGS_ACTION"),
+    "missing_input": ("MSG_TERM_MISSING_INPUT_CAUSE", "MSG_TERM_MISSING_INPUT_ACTION"),
+    "out_of_scope": ("MSG_TERM_OUT_OF_SCOPE_CAUSE", "MSG_TERM_OUT_OF_SCOPE_ACTION"),
 }
 
 
@@ -120,9 +117,11 @@ class SimpleTerminator:
     def explain(self, *, query: str, intent: Intent,
                 failed_run: Optional[RunResult],
                 error_class: str = "") -> TerminatorResponse:
-        cause, action = _CAUSE_TEMPLATES.get(
-            error_class, _CAUSE_TEMPLATES["out_of_scope"])
-        text = f"Non posso risolvere: {cause}. Per procedere: {action}."
+        from messages import get as _msg
+        ck, ak = _CAUSE_KEYS.get(error_class, _CAUSE_KEYS["out_of_scope"])
+        cause = _msg(ck)
+        action = _msg(ak)
+        text = _msg("MSG_TERM_WRAPPER", cause=cause, action=action)
         lid = _record_lacuna(query, intent, error_class, cause, action)
         return TerminatorResponse(
             final_text=text, root_cause=cause,

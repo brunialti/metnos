@@ -54,7 +54,7 @@ def invoke(args):
             }
 
         if not isinstance(name, str):
-            return {"ok": False, "error": "name must be a string"}
+            return {"ok": False, "error": _msg("ERR_ARG_NOT_STRING", arg="name")}
 
         slugs = reg.resolve_name(name)
         if not slugs:
@@ -94,7 +94,7 @@ def main():
     try:
         args = json.load(sys.stdin)
     except json.JSONDecodeError as e:
-        sys.stdout.write(json.dumps({"ok": False, "error": f"invalid input json: {e}"}))
+        sys.stdout.write(json.dumps({"ok": False, "error": _msg("ERR_JSON_INVALID")}))
         return
     result = invoke(args)
     sys.stdout.write(json.dumps(result, ensure_ascii=False, default=str))

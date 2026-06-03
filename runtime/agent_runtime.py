@@ -377,6 +377,24 @@ def _detect_unfulfilled_mutating_intent(log) -> str:
     intent_verb = (getattr(log, "intent_verb", "") or "").strip()
     intent_is_mutating = intent_verb in DESTRUCTIVE_VERBS
 
+    # §dominio + compound rule (ea1ba7e): un `send` SENZA destinatario
+    # esplicito ("mandami il riassunto", "mandami in chat") NON e' outbound —
+    # e' una richiesta di risposta in chat, gia' soddisfatta da
+    # describe_entries. Riusa lo STESSO predicato del compound_decomposer
+    # (single source of truth con il routing send->chat) cosi' la honesty
+    # guard §2.8 non marca "send non completata" un turno che ha
+    # correttamente risposto in chat (bug live 1/6/2026: la decomposizione
+    # find->classify->filter->describe era giusta, ma il final_message
+    # veniva sovrascritto con "L'azione send non e' stata completata").
+    if intent_verb == "send":
+        try:
+            from compound_decomposer import _send_has_explicit_recipient
+            if not _send_has_explicit_recipient(
+                    getattr(log, "user_query", "") or ""):
+                intent_is_mutating = False
+        except Exception:
+            pass
+
     # Cerca step chiamati con verbo mutating + esito. `ok=True` (qualunque
     # ok_count, anche 0) significa azione TENTATA correttamente — count=0
     # e' un esito LEGITTIMO (es. filter ha selezionato 0 spam, move ha 0
@@ -501,6 +519,41 @@ def _scrub_thinking_leak(text):
     # Collapse multi-blank-lines residue dopo rimozioni.
     out = re.sub(r"\n{3,}", "\n\n", out)
     return out
+
+
+# Markup HTML document-level: se compare nel final_message e' SEMPRE un leak
+# (observation/fetch grezzo trapelato), mai contenuto legittimo. Il messaggio
+# canonico e' markdown per i canali (autolink `<url>` e inline-code restano
+# intatti finche' non c'e' un marker di documento).
+_RE_HTML_DOC_MARKER = re.compile(
+    r"<!DOCTYPE|<html[\s>]|</html>|<head[\s>]|<body[\s>]|<script[\s>]|<style[\s>]",
+    re.IGNORECASE,
+)
+_RE_HTML_SCRIPT_STYLE = re.compile(
+    r"<(script|style)\b[^>]*>.*?</\1>", re.DOTALL | re.IGNORECASE)
+_RE_HTML_ANY_TAG = re.compile(r"<[^>]+>")
+
+
+def _scrub_raw_html_leak(text):
+    """Backstop (§2.8/§7.9) applicato al final_message degli answer-turn (dopo
+    i formatter): se contiene markup HTML document-level (fetch/observation
+    grezza trapelata, es. bug "azione schedulata invia messaggio errato"),
+    rimuove script/style + TUTTI i tag e normalizza. Le sorgenti note
+    (terminator_metis, format_search_results, observation builder) sanificano
+    a monte; questo e' la rete di sicurezza finale. CONSERVATIVO: agisce solo
+    in presenza di un marker di documento, cosi' markdown e autolink `<url>`
+    legittimi restano intatti. Idempotente."""
+    if not text or not isinstance(text, str):
+        return text
+    if not _RE_HTML_DOC_MARKER.search(text):
+        return text
+    import html as _html
+    cleaned = _RE_HTML_SCRIPT_STYLE.sub(" ", text)
+    cleaned = _RE_HTML_ANY_TAG.sub(" ", cleaned)
+    cleaned = _html.unescape(cleaned)
+    cleaned = re.sub(r"[ \t]{2,}", " ", cleaned)
+    cleaned = re.sub(r"\n{3,}", "\n\n", cleaned)
+    return cleaned.strip()
 
 
 def _scrub_args_recursive(node, total: list[int]) -> object:
@@ -1270,6 +1323,24 @@ def render_tools_for_provider(executors):
 
 # --- Validazione args (subset JSON Schema v1.1) ----------------------------
 
+# Marker auto-referenziali di RIFIUTO/meta-commento del modello (IT+EN, Gemma
+# risponde in-lang). Frasi distintive che non compaiono mai come valore
+# legittimo di un argomento (titolo, path, id, query). Usate da validate_args
+# per intercettare i rifiuti che il PLANNER trapela DENTRO un arg.
+_LLM_REFUSAL_MARKERS = (
+    "come modello linguistico", "come un modello linguistico",
+    "in qualità di assistente", "in qualita di assistente",
+    "in qualità di modello", "in qualita di modello",
+    "non ho accesso diretto", "non ho accesso ai tuoi",
+    "non posso eseguire questa", "non posso completare questa",
+    "non sono in grado di", "mi dispiace, non posso", "mi dispiace ma non posso",
+    "non posso fornire", "non posso accedere",
+    "as a language model", "as an ai", "as an a.i", "as an artificial intelligence",
+    "i do not have access", "i don't have access", "i'm unable to", "i am unable to",
+    "i cannot fulfill", "i cannot assist", "i can't assist", "i'm sorry, i can",
+)
+
+
 def validate_args(args, schema):
     failures = []
     schema = schema or {}
@@ -1359,6 +1430,27 @@ def validate_args(args, schema):
             failures.append(f"arg '{name}' deve essere object, e' {type(value).__name__}")
         if "enum" in spec and value not in spec["enum"]:
             failures.append(f"arg '{name}' deve essere in {spec['enum']}, e' {value!r}")
+    # LLM refusal / meta-text leak detection §7.3 (2/6/2026): il PLANNER LLM,
+    # se gli si chiede di riempire un arg che non sa valorizzare (es. uno
+    # spreadsheet_id Drive per un foglio ancora da creare), a volte emette un
+    # RIFIUTO in linguaggio naturale COME VALORE dell'arg ("Non posso
+    # eseguire... Come modello linguistico, non ho accesso..."): garbage che
+    # non deve mai raggiungere l'executor (§2.8). Nessun valore legittimo e' un
+    # rifiuto auto-referenziale del modello. Universale (ogni arg), §7.9.
+    def _is_refusal(v):
+        if not isinstance(v, str):
+            return False
+        lo = v.lower()
+        return any(m in lo for m in _LLM_REFUSAL_MARKERS)
+    for name, value in (args or {}).items():
+        if _is_refusal(value) or (
+            isinstance(value, list) and any(_is_refusal(x) for x in value)
+        ):
+            failures.append(
+                f"arg '{name}' contiene un rifiuto/meta-testo del modello, non "
+                f"un valore reale: il PLANNER ha generato un rifiuto al posto "
+                f"dell'argomento. Step malformato."
+            )
     return failures
 
 
@@ -4049,6 +4141,9 @@ class TurnLog:
         # riga aggiunta dal runtime viene scartata. Idempotente.
         if self.final_kind == "answer" and self.final_message:
             self.final_message = _scrub_thinking_leak(self.final_message)
+            # §2.8 raw-HTML leak guard: HTML document-level mai user-facing
+            # (fetch grezzo trapelato). Backstop universale dopo i formatter.
+            self.final_message = _scrub_raw_html_leak(self.final_message)
             # §2.8 universal leak guard: marker runtime-internal in
             # final_message (DUPLICATE_CALL, "validation failed:", etc.)
             # sono gergo destinato al PLANNER, non all'utente. Detection
@@ -4820,11 +4915,13 @@ def _try_engine_v2(
         return None
 
     # Provider LLM fast (per filler resolve)
-    def _llm_call_fast(sys_msg, user_msg, *, max_tokens=80, think=False, **_):
+    def _llm_call_fast(sys_msg, user_msg, *, max_tokens=80, think=False, **kw):
         try:
             from llm_router import LLMRouter
-            res = LLMRouter().provider("fast").chat(
-                sys_msg, user_msg, max_tokens=max_tokens, think=think)
+            ck = {"max_tokens": max_tokens, "think": think}
+            if kw.get("grammar") is not None:
+                ck["grammar"] = kw["grammar"]
+            res = LLMRouter().provider("fast").chat(sys_msg, user_msg, **ck)
             return (getattr(res, "text", res) or "").strip()
         except Exception:
             return ""
@@ -4834,8 +4931,17 @@ def _try_engine_v2(
         try:
             from llm_router import LLMRouter
             tier = kw.get("tier_override") or "wise"
-            res = LLMRouter().provider(tier).chat(
-                sys_msg, user_msg, max_tokens=max_tokens, think=think)
+            # Inoltra `grammar` (GBNF) e `reasoning_budget` al provider: senza
+            # questo il Proposer girava SEMPRE non vincolato anche con
+            # METNOS_PROPOSER_GRAMMAR=1 → nomi tool allucinati (es. get_issues)
+            # fuori dal pool (bug 2/6/2026). chat() supporta grammar →
+            # payload['grammar'] a llama-server.
+            ck = {"max_tokens": max_tokens, "think": think}
+            if kw.get("grammar") is not None:
+                ck["grammar"] = kw["grammar"]
+            if kw.get("reasoning_budget") is not None:
+                ck["reasoning_budget"] = kw["reasoning_budget"]
+            res = LLMRouter().provider(tier).chat(sys_msg, user_msg, **ck)
             return (getattr(res, "text", res) or "").strip()
         except Exception as ex:
             log.warning("engine v2 _llm_call_wise: %r", ex)
@@ -5749,8 +5855,13 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
                     _avail_tools = ({e.name for e in catalog}
                                     | set(_BUILTIN_TOOL_HANDLERS.keys())
                                     | {"final_answer"})
+                    # Schemi per il confidence gate del decomposer (§7.9/§2.8):
+                    # se gli args euristici non sono schema-coerenti, deferisce
+                    # al PLANNER LLM invece di emettere una pipeline rotta.
+                    _tool_schemas = {e.name: getattr(e, "args_schema", None)
+                                     for e in catalog}
                     _decomposed_steps = decompose_query(
-                        user_query_for_run, _avail_tools)
+                        user_query_for_run, _avail_tools, _tool_schemas)
                 except Exception as _ex_dec:
                     import logging as _logging
                     _logging.getLogger(__name__).warning(
@@ -5762,11 +5873,16 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
                         len(_decomposed_steps),
                         [s["tool"] for s in _decomposed_steps])
                 else:
-                    _force_legacy_compound = True
+                    # Decomposer deterministico non confidente → NON forzare il
+                    # PLANNER legacy (deprecato, ADR 0161/0163): fall-through a
+                    # Engine v2 metis (proposer_metis), che e' il path moderno e
+                    # gestisce il multi-step via LLM. Il legacy ReAct tentava
+                    # request_new_executor (synth) invece di usare gli executor
+                    # esistenti (es. find_issues_github) — bug 2/6/2026.
                     import logging as _logging
                     _logging.getLogger(__name__).info(
-                        "COMPOUND query: %d verbs %s → decomposer failed, "
-                        "use legacy PLANNER", len(set(_q_verbs)),
+                        "COMPOUND query: %d verbs %s → decomposer deferred, "
+                        "use Engine v2 metis", len(set(_q_verbs)),
                         sorted(set(_q_verbs)))
         except Exception:
             pass

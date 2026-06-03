@@ -17,7 +17,7 @@ en = "Returns the last position shared by the user via channel (Telegram 📎 Lo
 
 [code]
 files  = ["get_location.py"]
-digest = "sha256:14b7c1c89911ecc004572662480b5b09ddf5c86745dcefe7a7f150e0fb4cc047"
+digest = "sha256:5b270340315e6a0fe330a935baa26f1c42cd8867f93a0b05aaf2f6bc58db00c6"
 
 [args]
 type     = "object"
@@ -52,12 +52,12 @@ hint = ["~/.local/share/metnos/locations.jsonl"]
 name   = "no_location_ancora_condivisa"
 setup  = "rm -f /tmp/metnos_loc_test.jsonl"
 input  = { actor = "test_no_data" }
-expect = { ok = false, error_contains = "no location received yet" }
+expect = { ok = false, error_contains = "Nessuna posizione ricevuta per ora. Condividi una posizione su Telegram con il bottone allegati e riprova" }
 
 [[tests]]
 name   = "actor_invalido_non_stringa"
 input  = { actor = 42 }
-expect = { ok = false, error_contains = "must be a string" }
+expect = { ok = false, error_contains = "deve essere una stringa" }
 
 # Sample concreto di output (one-shot per synt + fast-path generator).
 [[tests]]

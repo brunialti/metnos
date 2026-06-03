@@ -53,7 +53,7 @@ async def test_live_files_unchanged_after_full_e2e_session():
     try:
         async with E2EClient(srv.url, srv.admin_key, timeout_s=60.0) as drv:
             await drv.run_job("change_intent_materialize")
-            await drv.run_job("apply_ager")
+            await drv.run_job("nightly_aging")
             await drv.run_job("multi_tool_maintenance")
             await drv.admin_get("/admin/changes?state=proposed&limit=5")
             await drv.admin_get("/admin/executors")

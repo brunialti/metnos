@@ -26,7 +26,14 @@ Contratto:
 from __future__ import annotations
 
 import json
+import os
 import sys
+from pathlib import Path
+
+sys.path.insert(0, os.environ.get("METNOS_RUNTIME") or next(
+    str(p / "runtime") for p in Path(__file__).resolve().parents
+    if (p / "runtime" / "config.py").is_file()))
+from messages import get as _msg  # noqa: E402
 
 
 _OPS_NUMERIC = {"max", "min", "avg", "sum"}
@@ -41,14 +48,14 @@ def invoke(args):
     return_entry = bool(args.get("return_entry", False))
 
     if not isinstance(entries, list):
-        return {"ok": False, "error": "missing or invalid 'entries' (must be a list)"}
+        return {"ok": False, "error": _msg("ERR_ARG_NOT_LIST", arg="entries")}
     if op not in _OPS:
         return {"ok": False,
-                "error": f"invalid op {op!r}. Valid: {sorted(_OPS)}"}
+                "error": _msg("ERR_ARG_ENUM", arg="op", allowed=", ".join(sorted(_OPS)))}
     # 'count' (senza key) e' permesso: count totale di entries.
     if op != "count" and (not isinstance(key, str) or not key):
         return {"ok": False,
-                "error": f"missing 'key' (string) for op={op!r}"}
+                "error": _msg("ERR_ARG_MISSING", arg="key")}
 
     count_input = len(entries)
     ignored = 0
@@ -128,7 +135,7 @@ def invoke(args):
     elif op == "min":
         result, winner_entry = min(values, key=lambda t: t[0])
     else:
-        return {"ok": False, "error": f"unreachable op: {op}"}
+        return {"ok": False, "error": _msg("ERR_ARG_ENUM", arg="op", allowed=", ".join(sorted(_OPS)))}
 
     out = {
         "ok": True,
@@ -147,7 +154,7 @@ def main():
     try:
         args = json.load(sys.stdin)
     except json.JSONDecodeError as e:
-        sys.stdout.write(json.dumps({"ok": False, "error": f"invalid input json: {e}"}))
+        sys.stdout.write(json.dumps({"ok": False, "error": _msg("ERR_JSON_INVALID")}))
         return
     sys.stdout.write(json.dumps(invoke(args), ensure_ascii=False))
 

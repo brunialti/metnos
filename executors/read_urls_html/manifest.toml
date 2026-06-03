@@ -19,7 +19,7 @@ en = "Download a list of HTML URLs and return the main content as deterministic 
 
 [code]
 files  = ["read_urls_html.py"]
-digest = "sha256:406f607cfc71988a4b58e376da332b55c370c66ed2a4acd3faff3c5945594c54"
+digest = "sha256:646935e9b41b0016ae402d94254c361f7ff5fc1157bb75cb062d34de14900ab3"
 
 [args]
 type     = "object"

@@ -47,7 +47,7 @@ Output: identical to find_images_indices (entries, score, match_type, ...)."""
 
 [code]
 files  = ["find_persons_indices.py"]
-digest = "sha256:9d9cb23a7e74338e6f843f354e45bc3b1dec9f8bce6214e80e39d53528f243a4"
+digest = "sha256:80564565c3cbceb2b9eca270587f59d15be6f4217c07012280d80112d7e7f4d4"
 
 [args]
 type     = "object"

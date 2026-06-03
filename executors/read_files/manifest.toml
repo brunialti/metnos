@@ -15,24 +15,63 @@ affinity    = ["read", "leggi", "lettura", "apri", "file", "documento", "testo",
 # qui dichiarato. Mismatch → executor rifiutato.
 
 [description]
-it = "Legge il contenuto di un file dal filesystem locale e lo restituisce come testo o bytes. Supporta limite di dimensione e scelta di encoding."
-en = "Reads the content of a file from the local filesystem and returns it as text or bytes. Supports size limit and encoding selection."
+it = "SCOPO: legge il contenuto di file dal filesystem locale (vettoriale §2.1). PATTERN: tutti i file di una CARTELLA -> read_files(path=\"/opt/metnos/issues\", pattern=\"*.json\", parse=\"json\") (1 call, campi JSON interrogabili); record da uno step -> read_files(from_step=N, parse=\"json\"); 1 file -> read_files(path=\"/dir/f.txt\"). ARGS: path=cartella legge i file dentro (pattern, no find_files); parse=json fonde i campi nell'entry; tail_bytes/max_bytes. NON: max_bytes e tail_bytes insieme. OUT: vettoriale entries=[...]; 1 file scalare {content,metadata}."
+en = "SCOPO: read file content from the local filesystem (vectorial §2.1). PATTERN: all files in a FOLDER -> read_files(path=\"/opt/metnos/issues\", pattern=\"*.json\", parse=\"json\") (1 call, queryable JSON fields); records from a step -> read_files(from_step=N, parse=\"json\"); 1 file -> read_files(path=\"/dir/f.txt\"). ARGS: path=folder reads files within (pattern, no find_files); parse=json merges fields into the entry; tail_bytes/max_bytes. NON: max_bytes and tail_bytes together. OUT: vectorial entries=[...]; single file scalar {content,metadata}."
 
 [code]
 files  = ["read_files.py"]
-digest = "sha256:cf2fa48e465ce022eccc298b519b8a155b116814d8d699352fb889377595aa37"  # sostituito al momento della firma
+digest = "sha256:06d2802220b5a887472a45bc3f75a116cc20591965b7bc266d899dfecce184f4"  # sostituito al momento della firma
 
 # --- Argomenti accettati (JSON Schema, sottoinsieme v1.1) -------------------
 [args]
 type     = "object"
-required = ["path"]
+# Niente required hard: la forma valida (scalare path / vettoriale paths|entries)
+# e' verificata dall'executor con errore onesto. from_step proietta i path.
+required = []
 
 [args.properties.path]
 type        = "string"
 
 [args.properties.path.description]
-it = "Path assoluto del file da leggere. Path relativi sono risolti rispetto al working dir del runtime."
-en = "Absolute path of the file to read. Relative paths are resolved with respect to the runtime working dir."
+it = "Forma scalare (UN file): path assoluto del file da leggere. Per piu' file usa `paths` o `from_step` (entries), NON ripetere path."
+en = "Scalar form (ONE file): absolute path of the file to read. For many files use `paths` or `from_step` (entries), do NOT repeat path."
+
+[args.properties.paths]
+type        = "array"
+
+[args.properties.paths.description]
+it = "Vettoriale: lista di path assoluti da leggere. Anche un solo elemento. Tipicamente popolata da `from_step` (proietta entries[*].path)."
+en = "Vectorial: list of absolute paths to read. Even a single element. Typically filled by `from_step` (projects entries[*].path)."
+
+[args.properties.entries]
+type        = "array"
+
+[args.properties.entries.description]
+it = "Lista di record con un campo `path`, tipicamente passata via `from_step: N` (es. l'output di find_files). Legge il file di ogni record."
+en = "List of records with a `path` field, typically piped via `from_step: N` (e.g. find_files output). Reads each record's file."
+
+[args.properties.pattern]
+type        = "string"
+
+[args.properties.pattern.description]
+it = "Quando `path` e' una CARTELLA: glob dei file da leggere al suo interno (es. '*.json'). Default '*' (tutti). Non ricorsivo."
+en = "When `path` is a FOLDER: glob of files to read inside it (e.g. '*.json'). Default '*' (all). Non-recursive."
+
+[args.properties.parse]
+type        = "string"
+enum        = ["json"]
+
+[args.properties.parse.description]
+it = "Se 'json', interpreta il contenuto di ogni file come JSON e fonde i campi nell'entry (record interrogabile da filter_entries). Solo vettoriale."
+en = "If 'json', parses each file content as JSON and merges the fields into the entry (record queryable by filter_entries). Vectorial only."
+
+[args.properties.max_files]
+type        = "integer"
+default     = 500
+
+[args.properties.max_files.description]
+it = "Cap superiore sul numero di file letti per chiamata (§2.1). Default 500. Oltre il cap: truncated=true."
+en = "Upper cap on files read per call (§2.1). Default 500. Beyond the cap: truncated=true."
 
 [args.properties.encoding]
 type        = "string"
@@ -101,7 +140,7 @@ teardown = "rm -rf /tmp/metnos_test_fs_read"
 [[tests]]
 name   = "fallisce_su_file_assente"
 input  = { path = "/tmp/metnos_test_fs_read/non_esiste_xyz.txt" }
-expect = { ok = false, error_contains = "not found" }
+expect = { ok = false, field_eq = { error_code = "ERR_PATH_NOT_FOUND" } }
 
 [[tests]]
 name     = "rispetta_max_bytes"
@@ -120,7 +159,7 @@ teardown = "rm -rf /tmp/metnos_test_fs_read"
 [[tests]]
 name   = "blocca_path_fuori_scope"
 input  = { path = "/etc/passwd" }
-expect = { ok = false, error_contains = "outside allowed scope" }
+expect = { ok = false, field_eq = { error_code = "ERR_PERMISSION_DENIED" } }
 
 [[tests]]
 name     = "tail_bytes_legge_dalla_fine"
@@ -140,5 +179,12 @@ teardown = "rm -rf /tmp/metnos_test_fs_read"
 name     = "max_bytes_e_tail_bytes_insieme_falliscono"
 setup    = "mkdir -p /tmp/metnos_test_fs_read && echo 'x' > /tmp/metnos_test_fs_read/x.txt"
 input    = { path = "/tmp/metnos_test_fs_read/x.txt", max_bytes = 5, tail_bytes = 5 }
-expect   = { ok = false, error_contains = "mutuamente esclusivi" }
+expect   = { ok = false, field_eq = { error_code = "ERR_ARG_INVALID" } }
+teardown = "rm -rf /tmp/metnos_test_fs_read"
+
+[[tests]]
+name     = "vettoriale_paths_ritorna_entries"
+setup    = "mkdir -p /tmp/metnos_test_fs_read && printf 'A' > /tmp/metnos_test_fs_read/a.txt && printf 'B' > /tmp/metnos_test_fs_read/b.txt"
+input    = { paths = [ "/tmp/metnos_test_fs_read/a.txt", "/tmp/metnos_test_fs_read/b.txt" ] }
+expect   = { ok = true, field_eq = { ok_count = 2 } }
 teardown = "rm -rf /tmp/metnos_test_fs_read"

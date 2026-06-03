@@ -41,6 +41,8 @@ MIN_OBS_PROMOTE = int(os.environ.get("METNOS_AUTOPATH_MIN_OBS", "1"))
 # v2: 1 obs sufficient se cluster cosine ≥ COSINE_HIGH (semantic equivalence).
 # Cache hit prima → -50% latency su ricorrenze.
 TTL_ANTISKILL_SECS = int(os.environ.get("METNOS_AUTOPATH_TTL_ANTI", "2592000"))  # 30gg
+TTL_ANTISKILL_REPEAT_SECS = int(
+    os.environ.get("METNOS_AUTOPATH_TTL_REPEAT", "3600"))  # 1h soft (verdict repeat)
 
 
 @dataclass
@@ -116,6 +118,43 @@ def _conn() -> sqlite3.Connection:
         """)
         c.commit()
     return c
+
+
+def prune(*, keep_observations: int | None = None) -> dict:
+    """Reaper dello storage autopath (chiamato dal state_reaper builtin).
+
+    - anti_skills: rimuove le righe con TTL scaduto (`ttl_expires_at < now`),
+      che prima venivano cancellate SOLO via feedback ✓ matching (LWW) →
+      accumulo silenzioso.
+    - observations: tiene solo le piu' recenti N (la lookup legge una finestra
+      breve via LIMIT, lo storico illimitato e' solo crescita disco: una riga
+      ~4KB di embedding per turno engine).
+    Idempotente. Ritorna un report dei conteggi rimossi.
+    """
+    from datetime import datetime, timezone
+    if keep_observations is None:
+        keep_observations = int(os.environ.get("METNOS_AUTOPATH_KEEP_OBS", "5000"))
+    now_iso = datetime.now(timezone.utc).isoformat()
+    c = _conn()
+    try:
+        anti = c.execute(
+            "DELETE FROM anti_skills WHERE ttl_expires_at < ?", (now_iso,)
+        ).rowcount
+        obs = c.execute(
+            "DELETE FROM observations WHERE rowid NOT IN "
+            "(SELECT rowid FROM observations ORDER BY rowid DESC LIMIT ?)",
+            (int(keep_observations),),
+        ).rowcount
+        c.commit()
+        try:
+            c.execute("VACUUM")
+        except sqlite3.Error:
+            pass
+        return {"anti_skills_removed": max(0, anti),
+                "observations_removed": max(0, obs),
+                "kept_observations": int(keep_observations)}
+    finally:
+        c.close()
 
 
 # ── Intent signature ──────────────────────────────────────────────────────
@@ -310,6 +349,24 @@ def record_feedback(turn_id: str, verdict: str) -> dict:
                     "WHERE intent_hash = ? AND framework_hash = ?",
                     (ihash, fhash))
                 out["anti_skill_added"] = True
+        elif verdict == "repeat":
+            # Soft anti-skill TTL breve (1h): il framework è stato ri-proposto
+            # ma l'utente ha chiesto un retry → escludilo temporaneamente cosi'
+            # il caller (recovery) ri-propone una shape diversa. Riusa lo stesso
+            # path di insert anti_skill del ramo `fail`, con TTL corto.
+            ttl = time.strftime(
+                "%Y-%m-%dT%H:%M:%SZ",
+                time.gmtime(time.time() + TTL_ANTISKILL_REPEAT_SECS))
+            c.execute(
+                "INSERT INTO anti_skills(intent_hash, framework_hash, "
+                "fail_count, ttl_expires_at, reason, ts_last_fail) "
+                "VALUES (?, ?, ?, ?, ?, ?) "
+                "ON CONFLICT DO UPDATE SET "
+                "fail_count = anti_skills.fail_count + 1, "
+                "ttl_expires_at = excluded.ttl_expires_at, "
+                "ts_last_fail = excluded.ts_last_fail",
+                (ihash, fhash, 1, ttl, "feedback_repeat", ts))
+            out["anti_skill_repeat"] = True
         c.commit()
         c.close()
         return out

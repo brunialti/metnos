@@ -42,8 +42,9 @@ sys.path.insert(0, os.environ.get("METNOS_RUNTIME") or next(
     str(p / "runtime") for p in Path(__file__).resolve().parents
     if (p / "runtime" / "config.py").is_file()))
 from messages import get as msg
+_msg = msg  # alias: alcuni rami di validazione usano _msg (unifica i nomi)
 
-ALL_FIELDS = ["dates.semantic", "dates.created", "dates.modified", "gps", "place", "device", "image_dimensions"]
+ALL_FIELDS =["dates.semantic", "dates.created", "dates.modified", "gps", "place", "device", "image_dimensions"]
 
 
 def _exif(path):
@@ -155,12 +156,12 @@ def invoke(args):
     if entries is None and isinstance(paths, list):
         entries = [{"path": p} for p in paths if isinstance(p, str)]
     if not isinstance(entries, list):
-        return {"ok": False, "error": "missing or invalid required arg 'entries' (must be a list) or 'paths' (list of strings)"}
+        return {"ok": False, "error": _msg("ERR_ARG_MISSING_ONE_OF", options="entries, paths")}
     if not isinstance(fields, list):
-        return {"ok": False, "error": "fields must be a list of strings or 'all'"}
+        return {"ok": False, "error": _msg("ERR_ARG_NOT_LIST_OF", arg="fields", of="strings | 'all'")}
     unknown_fields = [f for f in fields if f not in ALL_FIELDS]
     if unknown_fields:
-        return {"ok": False, "error": f"unknown fields: {unknown_fields}; supported: {ALL_FIELDS}"}
+        return {"ok": False, "error": _msg("ERR_ARG_ENUM", arg="fields", allowed=", ".join(sorted(ALL_FIELDS)))}
 
     fset = set(fields)
     need_geo = "place" in fset
@@ -177,15 +178,15 @@ def invoke(args):
 
     for i, entry in enumerate(entries):
         if not isinstance(entry, dict):
-            failed.append({"index": i, "error": "entry must be a dict"})
+            failed.append({"index": i, "error": _msg("ERR_ARG_NOT_DICT", arg="entry")})
             continue
         src = entry.get("path") or entry.get("src")
         if not isinstance(src, str) or not src:
-            failed.append({"index": i, "error": "entry missing 'path' (or 'src') string"})
+            failed.append({"index": i, "error": _msg("ERR_ARG_MISSING", arg="path")})
             continue
         path = Path(os.path.expanduser(src)).resolve()
         if not path.exists():
-            failed.append({"index": i, "path": str(path), "error": "path does not exist"})
+            failed.append({"index": i, "path": str(path), "error": _msg("ERR_PATH_NOT_FOUND", path=str(path))})
             continue
         out = dict(entry)
         out["path"] = str(path)
@@ -262,7 +263,7 @@ def main():
     try:
         args = json.load(sys.stdin)
     except json.JSONDecodeError as e:
-        sys.stdout.write(json.dumps({"ok": False, "error": f"invalid input json: {e}"}))
+        sys.stdout.write(json.dumps({"ok": False, "error": _msg("ERR_JSON_INVALID")}))
         return
     sys.stdout.write(json.dumps(invoke(args), ensure_ascii=False))
 

@@ -16,7 +16,7 @@ from pathlib import Path
 _RUNTIME = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_RUNTIME))
 
-from html_sanitizer import to_safe_html_full  # noqa: E402
+from html_sanitizer import to_safe_html, to_safe_html_full  # noqa: E402
 
 
 class TestToSafeHtmlFullEmpty(unittest.TestCase):
@@ -210,6 +210,56 @@ class TestToSafeHtmlFullSecurity(unittest.TestCase):
     def test_html_escape_ampersand(self):
         html = to_safe_html_full("a & b")
         self.assertIn("a &amp; b", html)
+
+
+class TestLinkSchemeAllowlist(unittest.TestCase):
+    """Bonifica 28/5: gli href dei link markdown rispettano una allowlist di
+    schemi. Schemi attivi (javascript:/data:/vbscript:) → href scartato,
+    solo il testo viene emesso (no XSS cliccabile). Testato su entrambe le
+    funzioni: to_safe_html (subset Telegram) e to_safe_html_full (browser)."""
+
+    BAD = (
+        "[x](javascript:alert(1))",
+        "[x](JaVaScRiPt:alert(1))",
+        "[x](data:text/html,<b>boom</b>)",
+        "[x](vbscript:msgbox(1))",
+        "[x](file:///etc/passwd)",
+    )
+    GOOD = (
+        ("[ok](https://example.com)", 'href="https://example.com"'),
+        ("[ok](http://example.com)", 'href="http://example.com"'),
+        ("[ok](mailto:a@b.com)", 'href="mailto:a@b.com"'),
+        ("[rel](/local/path)", 'href="/local/path"'),
+        ("[anchor](#sec)", 'href="#sec"'),
+    )
+
+    def test_bad_schemes_drop_href_full(self):
+        for md in self.BAD:
+            html = to_safe_html_full(md)
+            self.assertNotIn("href=", html, f"href leaked for {md!r}: {html!r}")
+            self.assertIn("x", html, f"link text lost for {md!r}: {html!r}")
+
+    def test_bad_schemes_drop_href_telegram(self):
+        for md in self.BAD:
+            html = to_safe_html(md)
+            self.assertNotIn("href=", html, f"href leaked for {md!r}: {html!r}")
+            self.assertIn("x", html, f"link text lost for {md!r}: {html!r}")
+
+    def test_obfuscated_javascript_blocked(self):
+        # Byte di controllo nello schema (i browser li ignorano risolvendo).
+        for md in ("[x](java\tscript:alert(1))", "[x](\x01javascript:alert(1))"):
+            for html in (to_safe_html(md), to_safe_html_full(md)):
+                self.assertNotIn("javascript:alert", html, html)
+
+    def test_good_schemes_preserved_full(self):
+        for md, needle in self.GOOD:
+            html = to_safe_html_full(md)
+            self.assertIn(needle, html, f"{md!r} -> {html!r}")
+
+    def test_good_schemes_preserved_telegram(self):
+        for md, needle in self.GOOD:
+            html = to_safe_html(md)
+            self.assertIn(needle, html, f"{md!r} -> {html!r}")
 
 
 class TestToSafeHtmlFullCombined(unittest.TestCase):

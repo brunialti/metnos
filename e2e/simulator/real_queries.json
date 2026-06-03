@@ -1,0 +1,6215 @@
+[
+  {
+    "query": "che ora è a Tokyo?",
+    "expected_path": [
+      "get_now"
+    ],
+    "accepted_first": [
+      "find_now",
+      "get_now",
+      "list_now",
+      "read_now"
+    ],
+    "_freq": 136,
+    "_status": "answer,error",
+    "_catalog_gap": false
+  },
+  {
+    "query": "che ora è?",
+    "expected_path": [
+      "get_now"
+    ],
+    "accepted_first": [
+      "find_now",
+      "get_now",
+      "list_now",
+      "read_now"
+    ],
+    "_freq": 159,
+    "_status": "answer,error",
+    "_catalog_gap": false
+  },
+  {
+    "query": "scarica https://httpbin.org/get e salva in /tmp/metnos_cluster_test_dl.txt",
+    "expected_path": [
+      "get_urls",
+      "write_files"
+    ],
+    "accepted_first": [
+      "find_urls",
+      "get_urls",
+      "list_urls",
+      "read_urls",
+      "read_urls_html",
+      "read_urls_pdf",
+      "write_files"
+    ],
+    "_freq": 54,
+    "_status": "answer,error,loop_break",
+    "_catalog_gap": false
+  },
+  {
+    "query": "che ora è a Roma?",
+    "expected_path": [
+      "get_now"
+    ],
+    "accepted_first": [
+      "find_now",
+      "get_now",
+      "list_now",
+      "read_now"
+    ],
+    "_freq": 59,
+    "_status": "answer,error",
+    "_catalog_gap": false
+  },
+  {
+    "query": "leggi il file /etc/passwd",
+    "expected_path": [
+      "read_files",
+      "read_files"
+    ],
+    "accepted_first": [
+      "find_files",
+      "get_files",
+      "list_files",
+      "read_files"
+    ],
+    "_freq": 36,
+    "_status": ",answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "dimmi che ora è a Roma",
+    "expected_path": [
+      "get_now"
+    ],
+    "accepted_first": [
+      "find_now",
+      "get_location",
+      "get_now",
+      "list_now",
+      "read_now"
+    ],
+    "_freq": 83,
+    "_status": "answer,error",
+    "_catalog_gap": false
+  },
+  {
+    "query": "scarica https://httpbin.org/get e salva la risposta in /tmp/metnos_e2e_pipe.txt",
+    "expected_path": [
+      "get_urls",
+      "write_files"
+    ],
+    "accepted_first": [
+      "find_urls",
+      "get_urls",
+      "list_urls",
+      "read_urls",
+      "read_urls_html",
+      "read_urls_pdf",
+      "write_files"
+    ],
+    "_freq": 54,
+    "_status": "answer,error",
+    "_catalog_gap": false
+  },
+  {
+    "query": "what time is it in Tokyo?",
+    "expected_path": [
+      "get_now"
+    ],
+    "accepted_first": [
+      "find_now",
+      "get_now",
+      "list_now",
+      "read_now"
+    ],
+    "_freq": 84,
+    "_status": "answer,error",
+    "_catalog_gap": false
+  },
+  {
+    "query": "scrivi 'hello e2e' nel file /tmp/metnos_e2e_out.txt",
+    "expected_path": [
+      "write_files"
+    ],
+    "accepted_first": [
+      "write_files"
+    ],
+    "_freq": 83,
+    "_status": "answer,error",
+    "_catalog_gap": false
+  },
+  {
+    "query": "scarica https://httpbin.org/get",
+    "expected_path": [
+      "get_urls"
+    ],
+    "accepted_first": [
+      "find_urls",
+      "get_urls",
+      "list_urls",
+      "read_urls",
+      "read_urls_html",
+      "read_urls_pdf"
+    ],
+    "_freq": 54,
+    "_status": ",answer,cap_same_executor,cap_steps,error,loop_break",
+    "_catalog_gap": false
+  },
+  {
+    "query": "leggi /etc/passwd",
+    "expected_path": [
+      "read_files",
+      "read_files"
+    ],
+    "accepted_first": [
+      "find_files",
+      "get_files",
+      "list_files",
+      "read_files"
+    ],
+    "_freq": 33,
+    "_status": "answer,cap_same_executor",
+    "_catalog_gap": false
+  },
+  {
+    "query": "leggi /tmp/metnos_e2e_note.txt",
+    "expected_path": [
+      "read_files"
+    ],
+    "accepted_first": [
+      "find_files",
+      "get_files",
+      "list_files",
+      "read_files"
+    ],
+    "_freq": 61,
+    "_status": "answer,cap_same_executor,error",
+    "_catalog_gap": false
+  },
+  {
+    "query": "leggi /tmp/metnos_cluster_scratchpad_query.txt e dimmi cosa contiene la fine del file",
+    "expected_path": [
+      "read_files"
+    ],
+    "accepted_first": [
+      "find_files",
+      "get_files",
+      "list_files",
+      "read_files"
+    ],
+    "_freq": 67,
+    "_status": "answer,error",
+    "_catalog_gap": false
+  },
+  {
+    "query": "leggi /tmp/metnos_cluster_scratchpad_big.txt",
+    "expected_path": [
+      "read_files",
+      "read_files"
+    ],
+    "accepted_first": [
+      "find_files",
+      "get_files",
+      "list_files",
+      "read_files"
+    ],
+    "_freq": 59,
+    "_status": "answer,cap_steps,error",
+    "_catalog_gap": false
+  },
+  {
+    "query": "vai su https://httpbin.org/uuid e dimmi solo l'UUID, senza altro",
+    "expected_path": [
+      "get_urls"
+    ],
+    "accepted_first": [
+      "find_urls",
+      "get_urls",
+      "list_urls",
+      "read_urls",
+      "read_urls_html",
+      "read_urls_pdf"
+    ],
+    "_freq": 2,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "scrivi una poesia di 3 righe sull'autunno nel file /tmp/autunno.txt, poi confermami quanti byte hai scritto",
+    "expected_path": [
+      "write_files"
+    ],
+    "accepted_first": [
+      "write_files"
+    ],
+    "_freq": 1,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "leggi il file /tmp/big_log.txt (è grosso) e dimmi cosa c'è scritto negli ultimi 80 caratteri",
+    "expected_path": [
+      "read_files"
+    ],
+    "accepted_first": [
+      "find_files",
+      "get_files",
+      "list_files",
+      "read_files"
+    ],
+    "_freq": 4,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "scrivi 'esempio' nel file /tmp/metnos_e2e_leak.txt e dimmi quanti byte hai scritto",
+    "expected_path": [
+      "write_files"
+    ],
+    "accepted_first": [
+      "write_files"
+    ],
+    "_freq": 70,
+    "_status": "answer,error",
+    "_catalog_gap": false
+  },
+  {
+    "query": "leggi il file /tmp/metnos_e2e_tail.txt e dimmi cosa c'è negli ultimi 10 caratteri",
+    "expected_path": [
+      "read_files"
+    ],
+    "accepted_first": [
+      "find_files",
+      "get_files",
+      "list_files",
+      "read_files"
+    ],
+    "_freq": 68,
+    "_status": "answer,cap_same_executor,error",
+    "_catalog_gap": false
+  },
+  {
+    "query": "scrivi 'hello world' nel file /tmp/metnos_unit_leak.txt e dimmi quanti byte hai scritto",
+    "expected_path": [
+      "write_files"
+    ],
+    "accepted_first": [
+      "write_files"
+    ],
+    "_freq": 59,
+    "_status": "answer,error",
+    "_catalog_gap": false
+  },
+  {
+    "query": "leggi /tmp/metnos_unit_tail.txt e dimmi gli ultimi 10 byte",
+    "expected_path": [
+      "read_files"
+    ],
+    "accepted_first": [
+      "find_files",
+      "get_files",
+      "list_files",
+      "read_files"
+    ],
+    "_freq": 59,
+    "_status": "answer,error",
+    "_catalog_gap": false
+  },
+  {
+    "query": "leggi /tmp/metnos_edge_dup.txt, poi rileggi /tmp/metnos_edge_dup.txt, e riportami solo il contenuto",
+    "expected_path": [
+      "read_files"
+    ],
+    "accepted_first": [
+      "find_files",
+      "get_files",
+      "list_files",
+      "read_files"
+    ],
+    "_freq": 39,
+    "_status": "answer,error",
+    "_catalog_gap": false
+  },
+  {
+    "query": "che ora è? 🕐",
+    "expected_path": [
+      "get_now"
+    ],
+    "accepted_first": [
+      "find_now",
+      "get_now",
+      "list_now",
+      "read_now"
+    ],
+    "_freq": 58,
+    "_status": "answer,error",
+    "_catalog_gap": false
+  },
+  {
+    "query": "che ora e'?",
+    "expected_path": [
+      "get_now",
+      "get_now"
+    ],
+    "accepted_first": [
+      "find_now",
+      "get_now",
+      "list_now",
+      "read_now"
+    ],
+    "_freq": 10,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "trova il file README.md",
+    "expected_path": [
+      "read_files",
+      "read_files"
+    ],
+    "accepted_first": [
+      "find_files",
+      "get_files",
+      "list_files",
+      "read_files"
+    ],
+    "_freq": 1,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "trova il file README.md in /opt/myclaw",
+    "expected_path": [
+      "read_files",
+      "read_files"
+    ],
+    "accepted_first": [
+      "find_files",
+      "get_files",
+      "list_files",
+      "read_files"
+    ],
+    "_freq": 1,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "trova il file README.md in /opt",
+    "expected_path": [
+      "find_files"
+    ],
+    "accepted_first": [
+      "find_files",
+      "get_files",
+      "list_files",
+      "read_files"
+    ],
+    "_freq": 1,
+    "_status": "answer,cap_same_executor",
+    "_catalog_gap": false
+  },
+  {
+    "query": "riassumi in 3 righe il README di /opt/myclaw",
+    "expected_path": [
+      "read_files"
+    ],
+    "accepted_first": [
+      "find_files",
+      "get_files",
+      "list_files",
+      "read_files"
+    ],
+    "_freq": 2,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "che ora è",
+    "expected_path": [
+      "get_now"
+    ],
+    "accepted_first": [
+      "find_now",
+      "get_now",
+      "list_now",
+      "read_now"
+    ],
+    "_freq": 5,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "stampa la mia foto profilo sulla stampante",
+    "expected_path": [
+      "request_new_executor"
+    ],
+    "accepted_first": [
+      "find_files",
+      "get_files",
+      "request_new_executor"
+    ],
+    "_freq": 26,
+    "_status": "answer,error,loop_break",
+    "_catalog_gap": true
+  },
+  {
+    "query": "leggi il file /tmp/notes.txt e mostrami il contenuto",
+    "expected_path": [
+      "read_files"
+    ],
+    "accepted_first": [
+      "find_files",
+      "get_files",
+      "list_files",
+      "read_files"
+    ],
+    "_freq": 6,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "sposta i file /tmp/a.txt e /tmp/b.txt in /tmp/archivio/",
+    "expected_path": [
+      "move_files"
+    ],
+    "accepted_first": [
+      "move_files"
+    ],
+    "_freq": 5,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "comprimi /tmp/cfg.json con gzip e salva in /tmp/cfg.json.gz",
+    "expected_path": [
+      "request_new_executor"
+    ],
+    "accepted_first": [
+      "get_files",
+      "get_now",
+      "request_new_executor"
+    ],
+    "_freq": 2,
+    "_status": "answer,error,loop_break",
+    "_catalog_gap": true
+  },
+  {
+    "query": "comprimi /tmp/cfg.json con gzip",
+    "expected_path": [
+      "request_new_executor"
+    ],
+    "accepted_first": [
+      "request_new_executor"
+    ],
+    "_freq": 2,
+    "_status": "answer",
+    "_catalog_gap": true
+  },
+  {
+    "query": "riassumi le mail metnos di oggi",
+    "expected_path": [
+      "read_messages",
+      "read_messages",
+      "read_messages"
+    ],
+    "accepted_first": [
+      "find_messages",
+      "get_files",
+      "get_messages",
+      "list_messages",
+      "read_messages"
+    ],
+    "_freq": 4,
+    "_status": "answer,loop_break",
+    "_catalog_gap": false
+  },
+  {
+    "query": "Riassumi le mail knowcastle di oggi",
+    "expected_path": [
+      "read_messages",
+      "describe_entries",
+      "describe_entries"
+    ],
+    "accepted_first": [
+      "find_messages",
+      "get_messages",
+      "list_messages",
+      "read_messages"
+    ],
+    "_freq": 1,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "Riassumi solo le mail rilevanti di oggi su knowcastle, scarta le newsletter",
+    "expected_path": [
+      "read_messages",
+      "classify_entries",
+      "classify_entries"
+    ],
+    "accepted_first": [
+      "find_messages",
+      "get_messages",
+      "list_messages",
+      "read_messages"
+    ],
+    "_freq": 3,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "Riassumi le mail di tutti i miei account di oggi",
+    "expected_path": [
+      "read_messages",
+      "describe_entries"
+    ],
+    "accepted_first": [
+      "find_messages",
+      "get_messages",
+      "list_messages",
+      "read_messages"
+    ],
+    "_freq": 4,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "Cerca le mail con 'newsletter' nel subject degli ultimi 7 giorni su knowcastle",
+    "expected_path": [
+      "read_messages",
+      "describe_entries"
+    ],
+    "accepted_first": [
+      "find_messages",
+      "get_messages",
+      "list_messages",
+      "read_messages"
+    ],
+    "_freq": 4,
+    "_status": "answer,loop_break",
+    "_catalog_gap": false
+  },
+  {
+    "query": "Quanti file PDF ho in /home/roberto/Documents?",
+    "expected_path": [
+      "find_files",
+      "find_files"
+    ],
+    "accepted_first": [
+      "find_files",
+      "get_files",
+      "list_files",
+      "read_files"
+    ],
+    "_freq": 5,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "Riassumi le foto in /home/roberto/images per anno e luogo di scatto",
+    "expected_path": [
+      "find_files",
+      "get_files",
+      "describe_entries"
+    ],
+    "accepted_first": [
+      "find_files",
+      "get_files",
+      "list_files",
+      "read_files"
+    ],
+    "_freq": 3,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "Mostrami le 5 mail più recenti su tiscali e qualifica per importanza",
+    "expected_path": [
+      "read_messages",
+      "classify_entries",
+      "describe_entries"
+    ],
+    "accepted_first": [
+      "find_messages",
+      "get_messages",
+      "list_messages",
+      "read_messages"
+    ],
+    "_freq": 1,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "le mail di roberto",
+    "expected_path": [
+      "read_messages",
+      "read_messages",
+      "read_files"
+    ],
+    "accepted_first": [
+      "find_messages",
+      "get_messages",
+      "list_messages",
+      "read_messages"
+    ],
+    "_freq": 1,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "mostrami le foto di roma",
+    "expected_path": [
+      "find_files",
+      "get_files",
+      "get_files"
+    ],
+    "accepted_first": [
+      "find_files",
+      "get_files",
+      "list_files",
+      "read_files"
+    ],
+    "_freq": 1,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "Calcola SHA-256 di /tmp/test_sha.txt",
+    "expected_path": [
+      "compute_files_loc"
+    ],
+    "accepted_first": [
+      "compute_files_loc",
+      "request_new_executor"
+    ],
+    "_freq": 2,
+    "_status": "answer,loop_break",
+    "_catalog_gap": false
+  },
+  {
+    "query": "Sposta in spam le mail di pubblicita' di oggi",
+    "expected_path": [
+      "read_messages",
+      "classify_entries",
+      "filter_entries"
+    ],
+    "accepted_first": [
+      "find_messages",
+      "get_messages",
+      "list_messages",
+      "read_messages"
+    ],
+    "_freq": 6,
+    "_status": "answer,loop_break",
+    "_catalog_gap": false
+  },
+  {
+    "query": "Sposta in Junk le mail di pubblicita' di oggi su metnos_system",
+    "expected_path": [
+      "read_messages",
+      "classify_entries",
+      "filter_entries"
+    ],
+    "accepted_first": [
+      "find_messages",
+      "get_messages",
+      "list_messages",
+      "read_messages"
+    ],
+    "_freq": 3,
+    "_status": "answer,loop_break",
+    "_catalog_gap": false
+  },
+  {
+    "query": "Sposta in Junk le mail PROMO di oggi su metnos_system",
+    "expected_path": [
+      "read_messages",
+      "classify_entries",
+      "filter_entries"
+    ],
+    "accepted_first": [
+      "find_messages",
+      "get_messages",
+      "list_messages",
+      "read_messages"
+    ],
+    "_freq": 4,
+    "_status": "answer,loop_break",
+    "_catalog_gap": false
+  },
+  {
+    "query": "Sposta in Junk le mail PROMO/Newsletter/Pubblicita di oggi su metnos_system",
+    "expected_path": [
+      "read_messages",
+      "classify_entries",
+      "filter_entries"
+    ],
+    "accepted_first": [
+      "find_messages",
+      "get_messages",
+      "list_messages",
+      "read_messages"
+    ],
+    "_freq": 2,
+    "_status": "answer,loop_break",
+    "_catalog_gap": false
+  },
+  {
+    "query": "sposta in spam mail di pubblicita di oggi knowcastle",
+    "expected_path": [
+      "request_new_executor",
+      "read_messages",
+      "classify_entries"
+    ],
+    "accepted_first": [
+      "read_messages",
+      "request_new_executor"
+    ],
+    "_freq": 2,
+    "_status": "answer",
+    "_catalog_gap": true
+  },
+  {
+    "query": "sposta in \"Posta indesiderata\" le mail di pubblicita di oggi knowcastle",
+    "expected_path": [
+      "read_messages",
+      "read_messages",
+      "read_messages"
+    ],
+    "accepted_first": [
+      "find_messages",
+      "get_messages",
+      "list_messages",
+      "move_messages",
+      "read_messages",
+      "request_new_executor"
+    ],
+    "_freq": 2,
+    "_status": "answer,loop_break",
+    "_catalog_gap": false
+  },
+  {
+    "query": "sposta in \"Posta indesiderata\" le mail di pubblicita di oggi tiscali",
+    "expected_path": [
+      "read_messages",
+      "classify_entries",
+      "filter_entries"
+    ],
+    "accepted_first": [
+      "find_messages",
+      "get_messages",
+      "list_messages",
+      "read_messages"
+    ],
+    "_freq": 2,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "annulla ultima azione",
+    "expected_path": [
+      "request_new_executor"
+    ],
+    "accepted_first": [
+      "delete_files",
+      "get_location",
+      "request_new_executor"
+    ],
+    "_freq": 1,
+    "_status": "answer,loop_break",
+    "_catalog_gap": true
+  },
+  {
+    "query": "leggi /tmp/audit/fs/read/notes.txt",
+    "expected_path": [
+      "request_new_executor",
+      "read_files",
+      "read_files"
+    ],
+    "accepted_first": [
+      "read_files",
+      "read_files_csv",
+      "request_new_executor"
+    ],
+    "_freq": 1,
+    "_status": "answer",
+    "_catalog_gap": true
+  },
+  {
+    "query": "read /tmp/audit/fs/read/notes.txt",
+    "expected_path": [
+      "read_files_csv",
+      "read_files"
+    ],
+    "accepted_first": [
+      "find_files_csv",
+      "get_files_csv",
+      "list_files_csv",
+      "read_files_csv"
+    ],
+    "_freq": 2,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "fammi vedere il contenuto di /tmp/audit/fs/read/data.csv",
+    "expected_path": [
+      "read_files_csv",
+      "read_files"
+    ],
+    "accepted_first": [
+      "find_files_csv",
+      "get_files_csv",
+      "list_files_csv",
+      "read_files_csv"
+    ],
+    "_freq": 2,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "leggi le mie ultime 3 mail",
+    "expected_path": [
+      "read_messages",
+      "describe_entries"
+    ],
+    "accepted_first": [
+      "find_messages",
+      "get_messages",
+      "list_messages",
+      "read_messages"
+    ],
+    "_freq": 1,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "show last 5 emails",
+    "expected_path": [
+      "read_messages",
+      "describe_entries"
+    ],
+    "accepted_first": [
+      "find_messages",
+      "get_messages",
+      "list_messages",
+      "read_messages"
+    ],
+    "_freq": 2,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "riassumi le mail di oggi, solo le piu importanti",
+    "expected_path": [
+      "read_messages",
+      "classify_entries",
+      "filter_entries"
+    ],
+    "accepted_first": [
+      "describe_entries",
+      "find_messages",
+      "get_messages",
+      "get_now",
+      "list_messages",
+      "read_messages"
+    ],
+    "_freq": 37,
+    "_status": "answer,loop_break",
+    "_catalog_gap": false
+  },
+  {
+    "query": "elenca i file in /tmp/audit/fs/list",
+    "expected_path": [
+      "list_dirs",
+      "list_dirs",
+      "list_dirs"
+    ],
+    "accepted_first": [
+      "find_dirs",
+      "get_dirs",
+      "list_dirs",
+      "read_dirs"
+    ],
+    "_freq": 1,
+    "_status": "answer,loop_break",
+    "_catalog_gap": false
+  },
+  {
+    "query": "elimina /tmp/audit/fs/delete/d1.txt",
+    "expected_path": [
+      "filter_entries",
+      "delete_files",
+      "delete_files"
+    ],
+    "accepted_first": [
+      "delete_files",
+      "filter_entries"
+    ],
+    "_freq": 1,
+    "_status": "answer,loop_break",
+    "_catalog_gap": false
+  },
+  {
+    "query": "che ora e?",
+    "expected_path": [
+      "get_now"
+    ],
+    "accepted_first": [
+      "find_now",
+      "get_now",
+      "list_now",
+      "read_now"
+    ],
+    "_freq": 66,
+    "_status": "answer,error",
+    "_catalog_gap": false
+  },
+  {
+    "query": "elenca i file in /tmp",
+    "expected_path": [
+      "list_dirs",
+      "describe_entries"
+    ],
+    "accepted_first": [
+      "find_dirs",
+      "get_dirs",
+      "list_dirs",
+      "read_dirs"
+    ],
+    "_freq": 64,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "trova i file *.py in /opt/myclaw/runtime",
+    "expected_path": [
+      "find_files"
+    ],
+    "accepted_first": [
+      "find_files",
+      "get_files",
+      "list_files",
+      "read_files"
+    ],
+    "_freq": 44,
+    "_status": "answer,error",
+    "_catalog_gap": false
+  },
+  {
+    "query": "leggi /etc/hostname",
+    "expected_path": [
+      "read_files"
+    ],
+    "accepted_first": [
+      "find_files",
+      "get_files",
+      "list_files",
+      "read_files",
+      "request_new_executor"
+    ],
+    "_freq": 3,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "dove sono?",
+    "expected_path": [
+      "get_location"
+    ],
+    "accepted_first": [
+      "find_location",
+      "find_places",
+      "get_location",
+      "get_places",
+      "list_location",
+      "list_places",
+      "read_location",
+      "read_places"
+    ],
+    "_freq": 12,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "che data e oggi",
+    "expected_path": [
+      "get_now"
+    ],
+    "accepted_first": [
+      "find_now",
+      "get_now",
+      "list_now",
+      "read_now"
+    ],
+    "_freq": 50,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "leggi /tmp/smoke_test.txt",
+    "expected_path": [
+      "read_files"
+    ],
+    "accepted_first": [
+      "find_files",
+      "get_files",
+      "list_files",
+      "read_files"
+    ],
+    "_freq": 47,
+    "_status": "answer,error",
+    "_catalog_gap": false
+  },
+  {
+    "query": "controlla posta metnos",
+    "expected_path": [
+      "read_messages",
+      "describe_entries",
+      "read_messages"
+    ],
+    "accepted_first": [
+      "find_messages",
+      "get_messages",
+      "list_messages",
+      "read_messages"
+    ],
+    "_freq": 2,
+    "_status": "answer,loop_break",
+    "_catalog_gap": false
+  },
+  {
+    "query": "Trova le 5 mail più grandi che ho ricevuto questa settimana sulla casella metnos e dimmi mittenti e dimensioni.",
+    "expected_path": [
+      "read_messages",
+      "read_messages",
+      "read_messages"
+    ],
+    "accepted_first": [
+      "find_files",
+      "find_messages",
+      "get_messages",
+      "list_messages",
+      "read_messages"
+    ],
+    "_freq": 6,
+    "_status": "answer,cap_same_executor,loop_break",
+    "_catalog_gap": false
+  },
+  {
+    "query": "Crea la cartella /tmp/metnos_uc7_test e dentro scrivici un file readme.txt con il contenuto \"live test UC7 30/4/2026\n  ▎  ok\".",
+    "expected_path": [
+      "write_files",
+      "request_new_executor",
+      "request_new_executor"
+    ],
+    "accepted_first": [
+      "write_files"
+    ],
+    "_freq": 1,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "Trova le 3 directory piu popolose dentro /opt/myclaw/runtime e dimmi quanti file e quanti byte ognuna.",
+    "expected_path": [
+      "find_dirs",
+      "filter_entries",
+      "find_dirs"
+    ],
+    "accepted_first": [
+      "find_dirs",
+      "get_dirs",
+      "list_dirs",
+      "read_dirs"
+    ],
+    "_freq": 1,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "Trova le 5 directory piu grandi (per total_bytes) dentro /opt/myclaw e dimmi i loro path e dimensioni.",
+    "expected_path": [
+      "find_dirs",
+      "sort_entries",
+      "sort_entries"
+    ],
+    "accepted_first": [
+      "find_dirs",
+      "get_dirs",
+      "list_dirs",
+      "read_dirs"
+    ],
+    "_freq": 2,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "Quanti file totali contiene /opt/myclaw/runtime sommando i file count delle sue sottocartelle?",
+    "expected_path": [
+      "find_files",
+      "find_files",
+      "find_files"
+    ],
+    "accepted_first": [
+      "find_dirs",
+      "find_files",
+      "get_files",
+      "list_files",
+      "read_files"
+    ],
+    "_freq": 3,
+    "_status": "answer,cap_same_executor",
+    "_catalog_gap": false
+  },
+  {
+    "query": "le 5 cartelle più grandi sotto /opt/myclaw",
+    "expected_path": [
+      "find_dirs",
+      "sort_entries",
+      "sort_entries"
+    ],
+    "accepted_first": [
+      "find_dirs",
+      "get_dirs",
+      "list_dirs",
+      "read_dirs"
+    ],
+    "_freq": 5,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "trova 5 ristoranti vicino a me",
+    "expected_path": [
+      "find_places"
+    ],
+    "accepted_first": [
+      "find_places",
+      "get_location",
+      "get_places",
+      "list_places",
+      "read_places"
+    ],
+    "_freq": 1,
+    "_status": "answer,loop_break",
+    "_catalog_gap": false
+  },
+  {
+    "query": "controlla se ffmpeg e' installato sul sistema",
+    "expected_path": [
+      "request_new_executor",
+      "find_packages"
+    ],
+    "accepted_first": [
+      "find_packages",
+      "request_new_executor"
+    ],
+    "_freq": 1,
+    "_status": "answer",
+    "_catalog_gap": true
+  },
+  {
+    "query": "estrai il contenuto di /tmp/uc31_input.zip in /tmp/uc31_dest mantenendo la struttura delle cartelle",
+    "expected_path": [
+      "request_new_executor"
+    ],
+    "accepted_first": [
+      "find_files",
+      "request_new_executor"
+    ],
+    "_freq": 1,
+    "_status": "answer",
+    "_catalog_gap": true
+  },
+  {
+    "query": "ridimensiona /tmp/uc_change_test.jpg a 200x200 e salvalo in /tmp/uc_change_test_thumb.jpg",
+    "expected_path": [
+      "request_new_executor"
+    ],
+    "accepted_first": [
+      "request_new_executor"
+    ],
+    "_freq": 1,
+    "_status": "answer",
+    "_catalog_gap": true
+  },
+  {
+    "query": "Farmacia piu vicina",
+    "expected_path": [
+      "get_location",
+      "get_location"
+    ],
+    "accepted_first": [
+      "find_location",
+      "find_places",
+      "get_location",
+      "get_places",
+      "list_location",
+      "list_places",
+      "read_location",
+      "read_places"
+    ],
+    "_freq": 4,
+    "_status": "answer,awaiting",
+    "_catalog_gap": false
+  },
+  {
+    "query": "farmacia piu vicina",
+    "expected_path": [
+      "get_location",
+      "find_places"
+    ],
+    "accepted_first": [
+      "find_location",
+      "find_places",
+      "get_location",
+      "get_places",
+      "list_location",
+      "list_places",
+      "read_location",
+      "read_places"
+    ],
+    "_freq": 3,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "che ora e adesso",
+    "expected_path": [
+      "get_now"
+    ],
+    "accepted_first": [
+      "find_now",
+      "get_now",
+      "list_now",
+      "read_now"
+    ],
+    "_freq": 5,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "leggi il file /tmp/uc_test_a.txt",
+    "expected_path": [
+      "read_files"
+    ],
+    "accepted_first": [
+      "find_files",
+      "get_files",
+      "list_files",
+      "read_files"
+    ],
+    "_freq": 3,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "dimmi data e ora correnti",
+    "expected_path": [
+      "get_now"
+    ],
+    "accepted_first": [
+      "find_now",
+      "get_now",
+      "list_now",
+      "read_now"
+    ],
+    "_freq": 3,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "mostra contenuto /tmp/uc_test_csv.csv",
+    "expected_path": [
+      "read_files_csv"
+    ],
+    "accepted_first": [
+      "find_files_csv",
+      "get_files_csv",
+      "list_files_csv",
+      "read_files",
+      "read_files_csv"
+    ],
+    "_freq": 1,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "trova i file *.md in /opt/myclaw/decisions",
+    "expected_path": [
+      "find_files"
+    ],
+    "accepted_first": [
+      "find_files",
+      "get_files",
+      "list_files",
+      "read_files"
+    ],
+    "_freq": 2,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "trova i file *.toml in /opt/myclaw/executors",
+    "expected_path": [
+      "find_files"
+    ],
+    "accepted_first": [
+      "find_files",
+      "get_files",
+      "list_files",
+      "read_files"
+    ],
+    "_freq": 1,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "i 3 file piu grandi in /opt/myclaw/runtime",
+    "expected_path": [
+      "find_files",
+      "sort_entries"
+    ],
+    "accepted_first": [
+      "find_files",
+      "get_files",
+      "list_files",
+      "read_files"
+    ],
+    "_freq": 2,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "primi 5 file *.py per dimensione in /opt/myclaw/runtime",
+    "expected_path": [
+      "find_files",
+      "sort_entries"
+    ],
+    "accepted_first": [
+      "find_files",
+      "get_files",
+      "list_files",
+      "read_files"
+    ],
+    "_freq": 2,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "le 10 directory piu grandi in /opt/myclaw",
+    "expected_path": [
+      "find_dirs",
+      "sort_entries"
+    ],
+    "accepted_first": [
+      "find_dirs",
+      "get_dirs",
+      "list_dirs",
+      "read_dirs"
+    ],
+    "_freq": 2,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "quanti file *.py ci sono in /opt/myclaw/runtime",
+    "expected_path": [
+      "find_files"
+    ],
+    "accepted_first": [
+      "find_files",
+      "get_files",
+      "list_files",
+      "read_files"
+    ],
+    "_freq": 2,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "quante directory in /opt/myclaw",
+    "expected_path": [
+      "find_dirs"
+    ],
+    "accepted_first": [
+      "find_dirs",
+      "get_dirs",
+      "list_dirs",
+      "read_dirs"
+    ],
+    "_freq": 2,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "descrivi i file *.md in /opt/myclaw/decisions",
+    "expected_path": [
+      "find_files",
+      "describe_entries"
+    ],
+    "accepted_first": [
+      "find_files",
+      "get_files",
+      "list_files",
+      "read_files"
+    ],
+    "_freq": 2,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "trova i file *.py modificati oggi in /opt/myclaw/runtime",
+    "expected_path": [
+      "find_files",
+      "find_files"
+    ],
+    "accepted_first": [
+      "find_files",
+      "get_files",
+      "list_files",
+      "read_files"
+    ],
+    "_freq": 2,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "classifica le mail di oggi in importanti e meno importanti",
+    "expected_path": [
+      "read_messages",
+      "classify_entries",
+      "describe_entries"
+    ],
+    "accepted_first": [
+      "find_messages",
+      "get_messages",
+      "list_messages",
+      "read_messages"
+    ],
+    "_freq": 1,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "filtra le mail spam di oggi",
+    "expected_path": [
+      "read_messages",
+      "classify_entries",
+      "filter_entries"
+    ],
+    "accepted_first": [
+      "find_messages",
+      "get_messages",
+      "list_messages",
+      "read_messages"
+    ],
+    "_freq": 2,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "leggi le mail di oggi",
+    "expected_path": [
+      "read_messages",
+      "describe_entries"
+    ],
+    "accepted_first": [
+      "find_messages",
+      "get_messages",
+      "get_now",
+      "list_messages",
+      "read_messages"
+    ],
+    "_freq": 8,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "leggi le ultime 5 mail",
+    "expected_path": [
+      "read_messages"
+    ],
+    "accepted_first": [
+      "find_messages",
+      "get_messages",
+      "list_messages",
+      "read_messages"
+    ],
+    "_freq": 3,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "ultime mail ricevute",
+    "expected_path": [
+      "read_messages",
+      "describe_entries",
+      "describe_entries"
+    ],
+    "accepted_first": [
+      "find_messages",
+      "get_messages",
+      "list_messages",
+      "read_messages"
+    ],
+    "_freq": 2,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "ristorante vicino a me",
+    "expected_path": [
+      "get_location",
+      "find_places"
+    ],
+    "accepted_first": [
+      "find_location",
+      "find_places",
+      "get_location",
+      "get_places",
+      "list_location",
+      "list_places",
+      "read_location",
+      "read_places"
+    ],
+    "_freq": 2,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "stazione piu vicina",
+    "expected_path": [
+      "get_location",
+      "find_places"
+    ],
+    "accepted_first": [
+      "find_location",
+      "find_places",
+      "get_location",
+      "get_places",
+      "list_location",
+      "list_places",
+      "read_location",
+      "read_places"
+    ],
+    "_freq": 2,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "Roma centro storico",
+    "expected_path": [
+      "find_places"
+    ],
+    "accepted_first": [
+      "find_places",
+      "get_location",
+      "get_places",
+      "list_places",
+      "read_places"
+    ],
+    "_freq": 2,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "Bar Centrale Milano",
+    "expected_path": [
+      "find_places"
+    ],
+    "accepted_first": [
+      "find_places",
+      "get_location",
+      "get_places",
+      "list_places",
+      "read_places"
+    ],
+    "_freq": 2,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "Stazione di Bologna",
+    "expected_path": [
+      "find_places"
+    ],
+    "accepted_first": [
+      "find_places",
+      "get_location",
+      "get_places",
+      "list_places",
+      "read_places"
+    ],
+    "_freq": 2,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "scrivi 'hello uc' nel file /tmp/uc_test_b.txt",
+    "expected_path": [
+      "write_files"
+    ],
+    "accepted_first": [
+      "write_files"
+    ],
+    "_freq": 2,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "crea la directory /tmp/uc_test_dir",
+    "expected_path": [
+      "create_dirs"
+    ],
+    "accepted_first": [
+      "create_dirs"
+    ],
+    "_freq": 1,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "scrivi 'contenuto x' in /tmp/uc_test_dir/x.txt",
+    "expected_path": [
+      "write_files",
+      "write_files",
+      "write_files"
+    ],
+    "accepted_first": [
+      "write_files"
+    ],
+    "_freq": 1,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "dove sono",
+    "expected_path": [
+      "get_location",
+      "find_places",
+      "get_places"
+    ],
+    "accepted_first": [
+      "find_location",
+      "find_places",
+      "get_location",
+      "get_places",
+      "list_location",
+      "list_places",
+      "read_location",
+      "read_places"
+    ],
+    "_freq": 2,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "qual e la mia posizione",
+    "expected_path": [
+      "get_location",
+      "get_places"
+    ],
+    "accepted_first": [
+      "find_location",
+      "find_places",
+      "get_location",
+      "get_places",
+      "list_location",
+      "list_places",
+      "read_location",
+      "read_places"
+    ],
+    "_freq": 1,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "scarica e mostrami il contenuto di https://httpbin.org/json",
+    "expected_path": [
+      "get_urls"
+    ],
+    "accepted_first": [
+      "find_urls",
+      "get_urls",
+      "list_urls",
+      "read_urls",
+      "read_urls_html",
+      "read_urls_pdf"
+    ],
+    "_freq": 2,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "trova le righe che contengono 'def' nel file /tmp/uc_test_a.txt",
+    "expected_path": [
+      "read_files"
+    ],
+    "accepted_first": [
+      "find_files",
+      "get_files",
+      "list_files",
+      "read_files"
+    ],
+    "_freq": 1,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "metadata del file /tmp/uc_test_a.txt",
+    "expected_path": [
+      "get_files"
+    ],
+    "accepted_first": [
+      "find_files",
+      "get_files",
+      "get_now",
+      "list_files",
+      "read_files"
+    ],
+    "_freq": 2,
+    "_status": "answer,loop_break",
+    "_catalog_gap": false
+  },
+  {
+    "query": "trova i 3 file *.py piu grandi in /opt/myclaw/runtime e descrivili",
+    "expected_path": [
+      "find_files",
+      "sort_entries",
+      "describe_entries"
+    ],
+    "accepted_first": [
+      "find_files",
+      "get_files",
+      "list_files",
+      "read_files"
+    ],
+    "_freq": 2,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "leggi /tmp/non_esiste_xyz.txt",
+    "expected_path": [
+      "read_files"
+    ],
+    "accepted_first": [
+      "find_files",
+      "get_files",
+      "list_files",
+      "read_files"
+    ],
+    "_freq": 2,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "elenca /tmp/dir_che_non_esiste_xyz",
+    "expected_path": [
+      "list_dirs"
+    ],
+    "accepted_first": [
+      "find_dirs",
+      "get_dirs",
+      "list_dirs",
+      "read_dirs"
+    ],
+    "_freq": 2,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "list files in /tmp",
+    "expected_path": [
+      "list_dirs"
+    ],
+    "accepted_first": [
+      "find_dirs",
+      "get_dirs",
+      "list_dirs",
+      "read_dirs"
+    ],
+    "_freq": 2,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "find python files in /opt/myclaw/runtime",
+    "expected_path": [
+      "find_files"
+    ],
+    "accepted_first": [
+      "find_files",
+      "get_files",
+      "list_files",
+      "read_files"
+    ],
+    "_freq": 1,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "media tra 10, 20, 30, 40 e 50",
+    "expected_path": [
+      "describe_numbers"
+    ],
+    "accepted_first": [
+      "describe_numbers"
+    ],
+    "_freq": 2,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "leggi /tmp/uc_test_csv.csv come csv",
+    "expected_path": [
+      "read_files_csv"
+    ],
+    "accepted_first": [
+      "find_files_csv",
+      "get_files_csv",
+      "list_files_csv",
+      "read_files_csv"
+    ],
+    "_freq": 2,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "leggi le mail di oggi e dimmi quante sono",
+    "expected_path": [
+      "read_messages"
+    ],
+    "accepted_first": [
+      "find_messages",
+      "get_messages",
+      "list_messages",
+      "read_messages"
+    ],
+    "_freq": 2,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "le 3 mail piu recenti",
+    "expected_path": [
+      "read_messages",
+      "describe_entries",
+      "sort_entries"
+    ],
+    "accepted_first": [
+      "find_messages",
+      "get_messages",
+      "list_messages",
+      "read_messages"
+    ],
+    "_freq": 1,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "sposta /tmp/uc_test_b.txt in /tmp/uc_test_dir/b.txt",
+    "expected_path": [
+      "find_files",
+      "move_files"
+    ],
+    "accepted_first": [
+      "find_files",
+      "get_files",
+      "list_files",
+      "read_files"
+    ],
+    "_freq": 1,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "elenca le sottodirectory in /opt/myclaw",
+    "expected_path": [
+      "list_dirs",
+      "filter_entries"
+    ],
+    "accepted_first": [
+      "find_dirs",
+      "get_dirs",
+      "list_dirs",
+      "read_dirs"
+    ],
+    "_freq": 1,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "trova file *.py in /opt/myclaw/runtime, prendi i piu grandi 5 e descrivili",
+    "expected_path": [
+      "find_files",
+      "sort_entries",
+      "describe_entries"
+    ],
+    "accepted_first": [
+      "find_files",
+      "get_files",
+      "list_files",
+      "read_files"
+    ],
+    "_freq": 2,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "che giorno della settimana e oggi",
+    "expected_path": [
+      "read_messages",
+      "read_messages"
+    ],
+    "accepted_first": [
+      "find_messages",
+      "get_messages",
+      "get_now",
+      "list_messages",
+      "read_messages"
+    ],
+    "_freq": 1,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "elenca i file in /tmp/uc_test_dir_empty",
+    "expected_path": [
+      "list_dirs"
+    ],
+    "accepted_first": [
+      "find_dirs",
+      "get_dirs",
+      "list_dirs",
+      "read_dirs"
+    ],
+    "_freq": 2,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "leggi '/tmp/uc test spaces.txt'",
+    "expected_path": [
+      "read_files"
+    ],
+    "accepted_first": [
+      "find_files",
+      "get_files",
+      "list_files",
+      "read_files"
+    ],
+    "_freq": 2,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "trova tutti i file in /opt/myclaw",
+    "expected_path": [
+      "find_files"
+    ],
+    "accepted_first": [
+      "find_files",
+      "get_files",
+      "list_files",
+      "read_files"
+    ],
+    "_freq": 1,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "file NON modificati oggi in /opt/myclaw/runtime",
+    "expected_path": [
+      "get_files",
+      "find_files",
+      "get_files"
+    ],
+    "accepted_first": [
+      "find_files",
+      "get_files",
+      "list_files",
+      "read_files"
+    ],
+    "_freq": 1,
+    "_status": "answer,loop_break",
+    "_catalog_gap": false
+  },
+  {
+    "query": "che data era ieri",
+    "expected_path": [
+      "get_now"
+    ],
+    "accepted_first": [
+      "find_now",
+      "get_now",
+      "list_now",
+      "read_now"
+    ],
+    "_freq": 2,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "leggi the file /tmp/uc_test_a.txt",
+    "expected_path": [
+      "read_files"
+    ],
+    "accepted_first": [
+      "find_files",
+      "get_files",
+      "list_files",
+      "read_files"
+    ],
+    "_freq": 2,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "trova *.py in /opt/myclaw/runtime, prendi i 3 piu grandi e calcola la dimensione totale",
+    "expected_path": [
+      "find_files",
+      "sort_entries",
+      "compute_entries"
+    ],
+    "accepted_first": [
+      "find_files",
+      "get_files",
+      "list_files",
+      "read_files"
+    ],
+    "_freq": 2,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "leggi /etc/shadow",
+    "expected_path": [
+      "read_files"
+    ],
+    "accepted_first": [
+      "find_files",
+      "get_files",
+      "list_files",
+      "read_files"
+    ],
+    "_freq": 2,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "leggi /opt/myclaw/runtime/agent_runtime.py",
+    "expected_path": [
+      "read_files"
+    ],
+    "accepted_first": [
+      "find_files",
+      "get_files",
+      "list_files",
+      "read_files"
+    ],
+    "_freq": 1,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "scrivi una mail a roberto@knowcastle.com con oggetto 'test' e corpo 'ciao'",
+    "expected_path": [
+      "request_new_executor",
+      "send_messages"
+    ],
+    "accepted_first": [
+      "request_new_executor",
+      "send_messages"
+    ],
+    "_freq": 2,
+    "_status": "answer",
+    "_catalog_gap": true
+  },
+  {
+    "query": "che ora era 2 ore fa",
+    "expected_path": [
+      "get_now"
+    ],
+    "accepted_first": [
+      "find_now",
+      "get_now",
+      "list_now",
+      "read_now"
+    ],
+    "_freq": 2,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "trova i file *.md in /opt/myclaw/decisions, conta quanti sono e dimmi il piu grande",
+    "expected_path": [
+      "find_files",
+      "sort_entries"
+    ],
+    "accepted_first": [
+      "find_files",
+      "get_files",
+      "list_files",
+      "read_files"
+    ],
+    "_freq": 2,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "dammi piu informazioni sul processo 313291",
+    "expected_path": [
+      "request_new_executor",
+      "get_processes"
+    ],
+    "accepted_first": [
+      "get_processes",
+      "request_new_executor"
+    ],
+    "_freq": 1,
+    "_status": "answer",
+    "_catalog_gap": true
+  },
+  {
+    "query": "elimina il file /tmp/uc_test_b.txt",
+    "expected_path": [
+      "find_files"
+    ],
+    "accepted_first": [
+      "find_files",
+      "get_files",
+      "list_files",
+      "read_files"
+    ],
+    "_freq": 1,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "conta i file *.md in /opt/myclaw/decisions",
+    "expected_path": [
+      "find_files"
+    ],
+    "accepted_first": [
+      "filter_entries",
+      "find_files",
+      "get_files",
+      "list_files",
+      "read_files"
+    ],
+    "_freq": 2,
+    "_status": "answer,loop_break",
+    "_catalog_gap": false
+  },
+  {
+    "query": "ogni 5 minuti verifica le mail importanti",
+    "expected_path": [
+      "request_new_executor"
+    ],
+    "accepted_first": [
+      "create_events",
+      "request_new_executor"
+    ],
+    "_freq": 1,
+    "_status": "answer",
+    "_catalog_gap": true
+  },
+  {
+    "query": "che ora e",
+    "expected_path": [
+      "get_now"
+    ],
+    "accepted_first": [
+      "find_now",
+      "get_now",
+      "list_now",
+      "read_now"
+    ],
+    "_freq": 18,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "mostra i task attivi",
+    "expected_path": [
+      "list_tasks"
+    ],
+    "accepted_first": [
+      "find_tasks",
+      "get_tasks",
+      "list_tasks",
+      "read_tasks"
+    ],
+    "_freq": 3,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "verifica le mail importanti",
+    "expected_path": [
+      "read_messages",
+      "classify_entries",
+      "filter_entries"
+    ],
+    "accepted_first": [
+      "find_messages",
+      "get_messages",
+      "list_messages",
+      "read_messages"
+    ],
+    "_freq": 3,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "verifica le mail importanti delle ultime 24 ore in tutte le mie mailbox",
+    "expected_path": [
+      "read_messages",
+      "classify_entries",
+      "filter_entries"
+    ],
+    "accepted_first": [
+      "find_credentials",
+      "find_messages",
+      "get_messages",
+      "get_now",
+      "list_messages",
+      "read_messages"
+    ],
+    "_freq": 18,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "imposta ora di sistema : zona Roma, gmt -2",
+    "expected_path": [
+      "request_new_executor"
+    ],
+    "accepted_first": [
+      "request_new_executor"
+    ],
+    "_freq": 2,
+    "_status": "answer",
+    "_catalog_gap": true
+  },
+  {
+    "query": "mostra le proposte introvertive",
+    "expected_path": [
+      "get_proposals",
+      "get_proposals",
+      "get_proposals"
+    ],
+    "accepted_first": [
+      "find_proposals",
+      "get_proposals",
+      "list_proposals",
+      "read_messages",
+      "read_proposals"
+    ],
+    "_freq": 2,
+    "_status": "answer,loop_break",
+    "_catalog_gap": false
+  },
+  {
+    "query": "mostra le proposte",
+    "expected_path": [
+      "get_proposals"
+    ],
+    "accepted_first": [
+      "find_proposals",
+      "get_proposals",
+      "list_proposals",
+      "read_proposals"
+    ],
+    "_freq": 3,
+    "_status": "answer,loop_break",
+    "_catalog_gap": false
+  },
+  {
+    "query": "mostra i dedupe",
+    "expected_path": [
+      "get_proposals"
+    ],
+    "accepted_first": [
+      "find_proposals",
+      "get_processes",
+      "get_proposals",
+      "list_proposals",
+      "read_proposals"
+    ],
+    "_freq": 3,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "mostra i generalize",
+    "expected_path": [
+      "get_proposals"
+    ],
+    "accepted_first": [
+      "find_proposals",
+      "get_proposals",
+      "list_proposals",
+      "read_proposals"
+    ],
+    "_freq": 4,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "mostra gli specialize",
+    "expected_path": [
+      "get_proposals",
+      "describe_entries"
+    ],
+    "accepted_first": [
+      "find_packages",
+      "find_proposals",
+      "get_proposals",
+      "list_proposals",
+      "read_proposals"
+    ],
+    "_freq": 2,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "mostra le proposte di generalize",
+    "expected_path": [
+      "get_proposals"
+    ],
+    "accepted_first": [
+      "find_proposals",
+      "get_proposals",
+      "list_proposals",
+      "read_proposals"
+    ],
+    "_freq": 4,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "mostra le proposte specialize",
+    "expected_path": [
+      "get_proposals"
+    ],
+    "accepted_first": [
+      "find_proposals",
+      "get_proposals",
+      "list_proposals",
+      "read_proposals"
+    ],
+    "_freq": 3,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "Quante istanze di claude sono running",
+    "expected_path": [
+      "request_new_executor",
+      "get_processes"
+    ],
+    "accepted_first": [
+      "get_processes",
+      "request_new_executor"
+    ],
+    "_freq": 2,
+    "_status": "answer",
+    "_catalog_gap": true
+  },
+  {
+    "query": "riassumi notizie su roma in repubblica.it",
+    "expected_path": [
+      "find_urls",
+      "find_urls",
+      "find_urls"
+    ],
+    "accepted_first": [
+      "find_urls",
+      "get_urls",
+      "list_urls",
+      "read_urls",
+      "read_urls_html",
+      "read_urls_pdf"
+    ],
+    "_freq": 2,
+    "_status": "answer,loop_break",
+    "_catalog_gap": false
+  },
+  {
+    "query": "riassumi notizie su roma in repubblica.it degli ultimi 7 giorni",
+    "expected_path": [
+      "find_urls",
+      "read_urls_html"
+    ],
+    "accepted_first": [
+      "find_urls",
+      "get_urls",
+      "list_urls",
+      "read_urls",
+      "read_urls_html",
+      "read_urls_pdf",
+      "request_new_executor"
+    ],
+    "_freq": 3,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "monta nella mia area personale lo share \\\\192.168.1.20\\\\Public\\\\media\\\\Immagini del server 192.168.1.20",
+    "expected_path": [
+      "admin",
+      "admin",
+      "admin"
+    ],
+    "accepted_first": [
+      "admin"
+    ],
+    "_freq": 1,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "monta nella mia area personale lo share \\\\192.168.1.20\\Public\\media\\Immagini del server 192.168.1.20",
+    "expected_path": [
+      "admin",
+      "admin"
+    ],
+    "accepted_first": [
+      "admin"
+    ],
+    "_freq": 8,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "cerca foto di festa di compleanno in /home/roberto/.local/share/metnos/Immagini",
+    "expected_path": [
+      "find_images_indices"
+    ],
+    "accepted_first": [
+      "find_files",
+      "find_images_indices",
+      "get_images_indices",
+      "list_images_indices",
+      "read_images_indices"
+    ],
+    "_freq": 3,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "che ore sono",
+    "expected_path": [
+      "get_now"
+    ],
+    "accepted_first": [
+      "compute_signatures",
+      "describe_entries",
+      "find_now",
+      "get_now",
+      "list_now",
+      "list_tasks",
+      "read_now"
+    ],
+    "_freq": 44,
+    "_status": "answer,loop_break",
+    "_catalog_gap": false
+  },
+  {
+    "query": "cerca in  icsmargheritahack.edu.it i numeri dell'organico di diritto, ovvero organico dell'autonomia, per la scuola dell'infanzia",
+    "expected_path": [
+      "find_urls",
+      "read_urls_html"
+    ],
+    "accepted_first": [
+      "find_urls",
+      "get_urls",
+      "list_urls",
+      "read_urls",
+      "read_urls_html",
+      "read_urls_pdf",
+      "request_new_executor"
+    ],
+    "_freq": 3,
+    "_status": "answer,loop_break",
+    "_catalog_gap": false
+  },
+  {
+    "query": "what time is it?",
+    "expected_path": [
+      "get_now"
+    ],
+    "accepted_first": [
+      "find_now",
+      "get_now",
+      "list_now",
+      "read_now"
+    ],
+    "_freq": 3,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "find *.py files in /opt/myclaw/runtime",
+    "expected_path": [
+      "find_files"
+    ],
+    "accepted_first": [
+      "find_files",
+      "get_files",
+      "list_files",
+      "read_files"
+    ],
+    "_freq": 2,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "read /tmp/smoke_test.txt",
+    "expected_path": [
+      "read_files"
+    ],
+    "accepted_first": [
+      "find_files",
+      "get_files",
+      "list_files",
+      "read_files"
+    ],
+    "_freq": 2,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "summarize today's emails, only the most important ones",
+    "expected_path": [
+      "read_messages",
+      "classify_entries",
+      "filter_entries"
+    ],
+    "accepted_first": [
+      "find_messages",
+      "get_messages",
+      "list_messages",
+      "read_messages"
+    ],
+    "_freq": 2,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "where am I?",
+    "expected_path": [
+      "get_location",
+      "get_places",
+      "get_places"
+    ],
+    "accepted_first": [
+      "find_location",
+      "find_places",
+      "get_location",
+      "get_places",
+      "list_location",
+      "list_places",
+      "read_location",
+      "read_places"
+    ],
+    "_freq": 1,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "fetch https://httpbin.org/get",
+    "expected_path": [
+      "get_urls"
+    ],
+    "accepted_first": [
+      "find_urls",
+      "get_urls",
+      "list_urls",
+      "read_urls",
+      "read_urls_html",
+      "read_urls_pdf"
+    ],
+    "_freq": 2,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "what date is today",
+    "expected_path": [
+      "get_now"
+    ],
+    "accepted_first": [
+      "find_now",
+      "get_now",
+      "list_now",
+      "read_messages",
+      "read_now"
+    ],
+    "_freq": 1,
+    "_status": "answer,loop_break",
+    "_catalog_gap": false
+  },
+  {
+    "query": "cerca in /home/roberto/.local/share/metnos/Immagini foto con il mare",
+    "expected_path": [
+      "find_images_indices",
+      "find_files",
+      "find_images_indices"
+    ],
+    "accepted_first": [
+      "find_images_indices",
+      "get_images_indices",
+      "list_images_indices",
+      "read_images_indices"
+    ],
+    "_freq": 1,
+    "_status": "answer,error",
+    "_catalog_gap": false
+  },
+  {
+    "query": "trova foto simili",
+    "expected_path": [
+      "get_files"
+    ],
+    "accepted_first": [
+      "find_files",
+      "find_images_indices",
+      "find_images_web",
+      "get_files",
+      "get_inputs",
+      "list_files",
+      "read_files",
+      "request_new_executor"
+    ],
+    "_freq": 262,
+    "_status": "answer,loop_break",
+    "_catalog_gap": false
+  },
+  {
+    "query": "cerca foto simili in Immagini",
+    "expected_path": [
+      "get_files",
+      "find_images_indices",
+      "describe_entries"
+    ],
+    "accepted_first": [
+      "find_files",
+      "get_files",
+      "list_files",
+      "read_files"
+    ],
+    "_freq": 2,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "Controlla se ci sono aggiornamenti o novità sul sito https://www.icsmargheritahack.edu.it/",
+    "expected_path": [
+      "find_urls",
+      "read_urls_html"
+    ],
+    "accepted_first": [
+      "find_urls",
+      "get_urls",
+      "list_urls",
+      "read_urls",
+      "read_urls_html",
+      "read_urls_pdf"
+    ],
+    "_freq": 1,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "cerca queste persone in Immagini",
+    "expected_path": [
+      "get_files"
+    ],
+    "accepted_first": [
+      "find_files",
+      "get_files",
+      "list_files",
+      "read_files"
+    ],
+    "_freq": 1,
+    "_status": "answer,error",
+    "_catalog_gap": false
+  },
+  {
+    "query": "stato delle risorse del server",
+    "expected_path": [
+      "get_processes"
+    ],
+    "accepted_first": [
+      "find_processes",
+      "get_processes",
+      "list_processes",
+      "read_processes"
+    ],
+    "_freq": 5,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "stato del server",
+    "expected_path": [
+      "get_processes"
+    ],
+    "accepted_first": [
+      "find_processes",
+      "get_images_indices",
+      "get_processes",
+      "list_processes",
+      "read_processes"
+    ],
+    "_freq": 7,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "Stato sistema",
+    "expected_path": [
+      "get_processes"
+    ],
+    "accepted_first": [
+      "find_processes",
+      "get_processes",
+      "list_processes",
+      "read_processes"
+    ],
+    "_freq": 6,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "stato sistema",
+    "expected_path": [
+      "get_processes"
+    ],
+    "accepted_first": [
+      "find_processes",
+      "get_images_indices",
+      "get_processes",
+      "list_processes",
+      "read_processes"
+    ],
+    "_freq": 20,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "Cerca informazioni su https://en.wikipedia.org/wiki/Metis_(mythology)",
+    "expected_path": [
+      "read_urls_html",
+      "get_urls",
+      "read_files"
+    ],
+    "accepted_first": [
+      "find_urls",
+      "find_urls_html",
+      "get_urls",
+      "get_urls_html",
+      "list_urls_html",
+      "read_urls_html",
+      "read_urls_pdf"
+    ],
+    "_freq": 1,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "Esplora https://example.com/test e dimmi cosa contiene",
+    "expected_path": [
+      "read_urls_html"
+    ],
+    "accepted_first": [
+      "find_urls",
+      "find_urls_html",
+      "get_urls",
+      "get_urls_html",
+      "list_urls_html",
+      "read_urls_html",
+      "read_urls_pdf"
+    ],
+    "_freq": 2,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "Leggi questa pagina e dimmi di che parla: https://www.python.org/about/",
+    "expected_path": [
+      "read_urls_html",
+      "describe_entries"
+    ],
+    "accepted_first": [
+      "find_urls",
+      "find_urls_html",
+      "get_urls",
+      "get_urls_html",
+      "list_urls_html",
+      "read_urls_html",
+      "read_urls_pdf"
+    ],
+    "_freq": 4,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "Cosa contiene https://en.wikipedia.org/wiki/Metis_(mythology)",
+    "expected_path": [
+      "read_urls_html",
+      "read_urls_html",
+      "describe_entries"
+    ],
+    "accepted_first": [
+      "find_urls",
+      "find_urls_html",
+      "get_urls",
+      "get_urls_html",
+      "list_urls_html",
+      "read_urls_html",
+      "read_urls_pdf"
+    ],
+    "_freq": 4,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "Leggi https://invalid-domain-xyzzz.invalid/page",
+    "expected_path": [
+      "read_urls_html"
+    ],
+    "accepted_first": [
+      "find_urls",
+      "find_urls_html",
+      "get_urls",
+      "get_urls_html",
+      "list_urls_html",
+      "read_urls_html",
+      "read_urls_pdf"
+    ],
+    "_freq": 2,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "Leggi e confronta https://en.wikipedia.org/wiki/Metis_(mythology) e https://invalid-xyz.invalid/",
+    "expected_path": [
+      "read_urls_html",
+      "read_urls_html"
+    ],
+    "accepted_first": [
+      "find_urls",
+      "find_urls_html",
+      "get_urls",
+      "get_urls_html",
+      "list_urls_html",
+      "read_urls_html",
+      "read_urls_pdf"
+    ],
+    "_freq": 1,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "Esplora https://www.beelink.com/ e elencami i prodotti",
+    "expected_path": [
+      "read_urls_html"
+    ],
+    "accepted_first": [
+      "find_urls",
+      "find_urls_html",
+      "get_urls",
+      "get_urls_html",
+      "list_urls_html",
+      "read_urls_html",
+      "read_urls_pdf"
+    ],
+    "_freq": 1,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "Quali sono i timer",
+    "expected_path": [
+      "list_tasks"
+    ],
+    "accepted_first": [
+      "find_tasks",
+      "get_tasks",
+      "list_tasks",
+      "read_tasks"
+    ],
+    "_freq": 2,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "Controlla se è uscita la versione 8 di AMD ROCm su https://rocm.docs.amd.com/en/latest/release/versions.html",
+    "expected_path": [
+      "read_urls_html",
+      "describe_entries"
+    ],
+    "accepted_first": [
+      "find_urls",
+      "find_urls_html",
+      "get_urls",
+      "get_urls_html",
+      "list_urls_html",
+      "read_urls_html",
+      "read_urls_pdf"
+    ],
+    "_freq": 15,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "cerca volti in primo piano in Immagini",
+    "expected_path": [
+      "find_images_indices",
+      "find_images_indices",
+      "describe_entries"
+    ],
+    "accepted_first": [
+      "find_images_indices",
+      "get_images_indices",
+      "list_images_indices",
+      "read_images_indices"
+    ],
+    "_freq": 2,
+    "_status": "answer,loop_break",
+    "_catalog_gap": false
+  },
+  {
+    "query": "cerca foto con primi piani",
+    "expected_path": [
+      "find_images_indices",
+      "find_images_indices"
+    ],
+    "accepted_first": [
+      "find_images_indices",
+      "get_images_indices",
+      "list_images_indices",
+      "read_images_indices"
+    ],
+    "_freq": 13,
+    "_status": "answer,loop_break",
+    "_catalog_gap": false
+  },
+  {
+    "query": "cerca su web il file sull'organico di diritto della scuola nella provincia di roma",
+    "expected_path": [
+      "find_urls"
+    ],
+    "accepted_first": [
+      "find_files",
+      "find_urls",
+      "get_urls",
+      "list_urls",
+      "read_urls",
+      "read_urls_html",
+      "read_urls_pdf"
+    ],
+    "_freq": 3,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "cerca foto portrait",
+    "expected_path": [
+      "find_images_indices",
+      "find_images_indices"
+    ],
+    "accepted_first": [
+      "find_images_indices",
+      "get_images_indices",
+      "list_images_indices",
+      "read_images_indices"
+    ],
+    "_freq": 2,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "cerca foto con una sola persona e viso in primo piano",
+    "expected_path": [
+      "find_images_indices",
+      "find_images_indices",
+      "find_images_indices"
+    ],
+    "accepted_first": [
+      "find_images_indices",
+      "get_images_indices",
+      "list_images_indices",
+      "read_images_indices"
+    ],
+    "_freq": 3,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "cerca foto di silvia al mare",
+    "expected_path": [
+      "find_persons_indices",
+      "find_persons_indices",
+      "find_images_indices"
+    ],
+    "accepted_first": [
+      "find_contacts",
+      "find_images_indices",
+      "find_persons",
+      "find_persons_indices",
+      "get_contacts",
+      "get_persons",
+      "get_persons_indices",
+      "list_contacts",
+      "list_persons",
+      "list_persons_indices",
+      "read_contacts",
+      "read_persons",
+      "read_persons_indices"
+    ],
+    "_freq": 4,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "cerca foto con iacopo",
+    "expected_path": [
+      "find_images_indices",
+      "describe_entries"
+    ],
+    "accepted_first": [
+      "find_images_indices",
+      "get_images_indices",
+      "list_images_indices",
+      "read_images_indices"
+    ],
+    "_freq": 2,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "cerca su web il file sull'organico di diritto della scuola primaria nella provincia di roma",
+    "expected_path": [
+      "find_urls",
+      "find_urls",
+      "find_urls"
+    ],
+    "accepted_first": [
+      "find_urls",
+      "get_urls",
+      "list_urls",
+      "read_urls",
+      "read_urls_html",
+      "read_urls_pdf"
+    ],
+    "_freq": 3,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "quali sono le persone enrolled",
+    "expected_path": [
+      "get_persons"
+    ],
+    "accepted_first": [
+      "find_contacts",
+      "find_persons",
+      "find_persons_indices",
+      "get_contacts",
+      "get_persons",
+      "list_contacts",
+      "list_persons",
+      "read_contacts",
+      "read_persons"
+    ],
+    "_freq": 6,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "questo è Iacopo Brunialti",
+    "expected_path": [
+      "get_files",
+      "set_persons"
+    ],
+    "accepted_first": [
+      "find_files",
+      "get_files",
+      "list_files",
+      "read_files"
+    ],
+    "_freq": 2,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "quali sono le persone enrolled?",
+    "expected_path": [
+      "get_persons"
+    ],
+    "accepted_first": [
+      "find_contacts",
+      "find_persons",
+      "get_contacts",
+      "get_persons",
+      "list_contacts",
+      "list_persons",
+      "read_contacts",
+      "read_persons"
+    ],
+    "_freq": 3,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "questo è Roberto Brunialti",
+    "expected_path": [
+      "get_files",
+      "set_persons"
+    ],
+    "accepted_first": [
+      "find_files",
+      "get_files",
+      "list_files",
+      "read_files"
+    ],
+    "_freq": 7,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "cancella Roberto Brunialti",
+    "expected_path": [
+      "find_files",
+      "delete_persons",
+      "delete_persons"
+    ],
+    "accepted_first": [
+      "delete_persons",
+      "find_files",
+      "get_files",
+      "list_files",
+      "read_files"
+    ],
+    "_freq": 1,
+    "_status": "answer,loop_break",
+    "_catalog_gap": false
+  },
+  {
+    "query": "cerca su web il file sull'organico di diritto della scuola primaria  2026-27 nella provincia di roma",
+    "expected_path": [
+      "find_urls",
+      "find_urls",
+      "describe_entries"
+    ],
+    "accepted_first": [
+      "find_dirs",
+      "find_urls",
+      "get_urls",
+      "list_urls",
+      "read_urls",
+      "read_urls_html",
+      "read_urls_pdf"
+    ],
+    "_freq": 5,
+    "_status": "answer,error,loop_break",
+    "_catalog_gap": false
+  },
+  {
+    "query": "che appuntamenti ho domani",
+    "expected_path": [
+      "read_events"
+    ],
+    "accepted_first": [
+      "find_events",
+      "get_events",
+      "get_now",
+      "list_events",
+      "read_events"
+    ],
+    "_freq": 34,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "che appuntamento ho domani",
+    "expected_path": [
+      "read_events"
+    ],
+    "accepted_first": [
+      "find_events",
+      "get_events",
+      "get_now",
+      "list_events",
+      "read_events"
+    ],
+    "_freq": 6,
+    "_status": "answer,loop_break",
+    "_catalog_gap": false
+  },
+  {
+    "query": "fissa un appuntamento mercoledi mattina dopo le 9 per un ora se c'è posto",
+    "expected_path": [
+      "create_events"
+    ],
+    "accepted_first": [
+      "create_events",
+      "find_events_empty",
+      "get_now",
+      "get_proposals",
+      "read_events"
+    ],
+    "_freq": 5,
+    "_status": "answer,loop_break",
+    "_catalog_gap": false
+  },
+  {
+    "query": "fissa un appuntamento mercoledi mattina dopo le 9 per un ora se c'è posto e mandami una email di conferma",
+    "expected_path": [
+      "create_events"
+    ],
+    "accepted_first": [
+      "create_events"
+    ],
+    "_freq": 2,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "fissa un appuntamento il prossimo mercoledi mattina dopo le 9 per un ora se c'è posto e mandami una email di conferma",
+    "expected_path": [
+      "create_events"
+    ],
+    "accepted_first": [
+      "create_events"
+    ],
+    "_freq": 2,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "proponi per la prossima settimana 3 possibili orari per un appuntamento di una ora la mattina",
+    "expected_path": [
+      "create_events"
+    ],
+    "accepted_first": [
+      "create_events",
+      "describe_numbers",
+      "find_events_empty",
+      "get_now",
+      "read_events"
+    ],
+    "_freq": 2,
+    "_status": "answer,loop_break",
+    "_catalog_gap": false
+  },
+  {
+    "query": "proponi per la prossima settimana 3 possibili orari per un appuntamento di una ora la mattina e mandami una email col la scelta",
+    "expected_path": [
+      "read_messages",
+      "send_messages",
+      "find_events_empty"
+    ],
+    "accepted_first": [
+      "find_events_empty",
+      "find_messages",
+      "get_messages",
+      "list_messages",
+      "read_messages"
+    ],
+    "_freq": 1,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "proponi 3 orari mattina prossima settimana",
+    "expected_path": [
+      "find_events_empty",
+      "find_events_empty",
+      "find_events_empty"
+    ],
+    "accepted_first": [
+      "find_events_empty",
+      "get_events_empty",
+      "get_now",
+      "list_events_empty",
+      "read_events_empty"
+    ],
+    "_freq": 2,
+    "_status": "answer,loop_break",
+    "_catalog_gap": false
+  },
+  {
+    "query": "cerca organico scuola provincia Roma sul web",
+    "expected_path": [
+      "find_urls"
+    ],
+    "accepted_first": [
+      "find_urls",
+      "get_urls",
+      "list_urls",
+      "read_urls",
+      "read_urls_html",
+      "read_urls_pdf"
+    ],
+    "_freq": 5,
+    "_status": "answer,cap_same_executor",
+    "_catalog_gap": false
+  },
+  {
+    "query": "stato del sistema",
+    "expected_path": [
+      "get_processes"
+    ],
+    "accepted_first": [
+      "find_processes",
+      "get_processes",
+      "list_processes",
+      "read_processes"
+    ],
+    "_freq": 29,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "trova foto di Matteo",
+    "expected_path": [
+      "find_persons_indices"
+    ],
+    "accepted_first": [
+      "find_contacts",
+      "find_images_indices",
+      "find_persons",
+      "find_persons_indices",
+      "get_contacts",
+      "get_persons",
+      "get_persons_indices",
+      "list_contacts",
+      "list_persons",
+      "list_persons_indices",
+      "read_contacts",
+      "read_persons",
+      "read_persons_indices"
+    ],
+    "_freq": 12,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "cerca le mail non lette",
+    "expected_path": [
+      "read_messages",
+      "describe_entries"
+    ],
+    "accepted_first": [
+      "find_messages",
+      "get_messages",
+      "list_messages",
+      "read_messages"
+    ],
+    "_freq": 4,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "get messages",
+    "expected_path": [
+      "read_messages",
+      "describe_entries",
+      "read_messages"
+    ],
+    "accepted_first": [
+      "find_messages",
+      "get_messages",
+      "list_messages",
+      "read_messages"
+    ],
+    "_freq": 2,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "elenca i miei appuntamenti di domani",
+    "expected_path": [
+      "read_events"
+    ],
+    "accepted_first": [
+      "find_events",
+      "get_events",
+      "list_events",
+      "read_events"
+    ],
+    "_freq": 27,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "crea un evento standup alle 10",
+    "expected_path": [
+      "create_events"
+    ],
+    "accepted_first": [
+      "create_events",
+      "get_now"
+    ],
+    "_freq": 9,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "cancella l'evento abc-123",
+    "expected_path": [
+      "read_events",
+      "delete_events"
+    ],
+    "accepted_first": [
+      "delete_events",
+      "find_events",
+      "find_events_empty",
+      "get_events",
+      "list_events",
+      "read_events"
+    ],
+    "_freq": 4,
+    "_status": "answer,loop_break",
+    "_catalog_gap": false
+  },
+  {
+    "query": "cerca i miei documenti",
+    "expected_path": [
+      "find_files",
+      "describe_entries"
+    ],
+    "accepted_first": [
+      "find_files",
+      "get_files",
+      "list_files",
+      "read_files"
+    ],
+    "_freq": 4,
+    "_status": "answer,error",
+    "_catalog_gap": false
+  },
+  {
+    "query": "read contacts",
+    "expected_path": [
+      "read_contacts"
+    ],
+    "accepted_first": [
+      "find_contacts",
+      "find_persons",
+      "get_contacts",
+      "get_persons",
+      "list_contacts",
+      "list_persons",
+      "read_contacts",
+      "read_persons"
+    ],
+    "_freq": 3,
+    "_status": "answer,error",
+    "_catalog_gap": false
+  },
+  {
+    "query": "get files",
+    "expected_path": [
+      "get_inputs"
+    ],
+    "accepted_first": [
+      "find_files",
+      "find_inputs",
+      "get_inputs",
+      "list_inputs",
+      "read_inputs"
+    ],
+    "_freq": 3,
+    "_status": "answer,error",
+    "_catalog_gap": false
+  },
+  {
+    "query": "proponi 3 orari mercoledi mattina per un appuntamento di 1 ora, poi mandami una mail con la scelta",
+    "expected_path": [
+      "find_events_empty",
+      "get_inputs"
+    ],
+    "accepted_first": [
+      "find_events_empty",
+      "get_events_empty",
+      "list_events_empty",
+      "read_events_empty"
+    ],
+    "_freq": 2,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "consumo in watt del server",
+    "expected_path": [
+      "get_processes"
+    ],
+    "accepted_first": [
+      "delete_credentials",
+      "find_processes",
+      "get_processes",
+      "list_processes",
+      "read_processes"
+    ],
+    "_freq": 3,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "change files",
+    "expected_path": [
+      "request_new_executor"
+    ],
+    "accepted_first": [
+      "request_new_executor"
+    ],
+    "_freq": 2,
+    "_status": "answer,error",
+    "_catalog_gap": true
+  },
+  {
+    "query": "data di oggi",
+    "expected_path": [
+      "get_now"
+    ],
+    "accepted_first": [
+      "find_now",
+      "get_now",
+      "get_processes",
+      "list_now",
+      "read_now"
+    ],
+    "_freq": 11,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "appuntamenti questa settimana",
+    "expected_path": [
+      "read_events",
+      "describe_entries"
+    ],
+    "accepted_first": [
+      "find_events",
+      "get_events",
+      "get_now",
+      "list_events",
+      "read_events"
+    ],
+    "_freq": 11,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "che ho oggi pomeriggio",
+    "expected_path": [
+      "read_events"
+    ],
+    "accepted_first": [
+      "find_events",
+      "get_events",
+      "get_now",
+      "list_events",
+      "read_events"
+    ],
+    "_freq": 9,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "appuntamenti la prossima settimana",
+    "expected_path": [
+      "read_events",
+      "describe_entries"
+    ],
+    "accepted_first": [
+      "find_events",
+      "find_events_empty",
+      "get_events",
+      "get_now",
+      "list_events",
+      "read_events"
+    ],
+    "_freq": 11,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "che impegni ho stamattina",
+    "expected_path": [
+      "read_events"
+    ],
+    "accepted_first": [
+      "find_events",
+      "get_events",
+      "get_now",
+      "list_events",
+      "read_events"
+    ],
+    "_freq": 7,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "ho un evento alle 15 oggi?",
+    "expected_path": [
+      "read_events"
+    ],
+    "accepted_first": [
+      "find_events",
+      "find_events_empty",
+      "get_events",
+      "get_now",
+      "list_events",
+      "read_events"
+    ],
+    "_freq": 9,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "calendario prossimo mese",
+    "expected_path": [
+      "read_events",
+      "describe_entries",
+      "read_events"
+    ],
+    "accepted_first": [
+      "find_events",
+      "get_events",
+      "get_now",
+      "list_events",
+      "read_events"
+    ],
+    "_freq": 7,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "che ho il 20 maggio",
+    "expected_path": [
+      "read_events"
+    ],
+    "accepted_first": [
+      "find_events",
+      "get_events",
+      "list_events",
+      "read_events"
+    ],
+    "_freq": 11,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "appuntamenti lunedi prossimo",
+    "expected_path": [
+      "read_events"
+    ],
+    "accepted_first": [
+      "find_events",
+      "get_events",
+      "get_now",
+      "list_events",
+      "read_events"
+    ],
+    "_freq": 9,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "che impegni ho venerdi",
+    "expected_path": [
+      "read_events",
+      "read_events"
+    ],
+    "accepted_first": [
+      "find_events",
+      "get_events",
+      "get_now",
+      "list_events",
+      "read_events"
+    ],
+    "_freq": 4,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "che mail ho oggi",
+    "expected_path": [
+      "read_messages",
+      "describe_entries"
+    ],
+    "accepted_first": [
+      "find_messages",
+      "get_messages",
+      "get_now",
+      "list_messages",
+      "read_messages"
+    ],
+    "_freq": 12,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "mail urgenti questa settimana",
+    "expected_path": [
+      "read_messages",
+      "classify_entries",
+      "filter_entries"
+    ],
+    "accepted_first": [
+      "find_messages",
+      "get_messages",
+      "get_now",
+      "list_messages",
+      "read_messages"
+    ],
+    "_freq": 7,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "mail di Mario",
+    "expected_path": [
+      "read_messages"
+    ],
+    "accepted_first": [
+      "find_contacts",
+      "find_messages",
+      "get_messages",
+      "list_messages",
+      "read_messages"
+    ],
+    "_freq": 10,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "ultime 5 mail",
+    "expected_path": [
+      "read_messages",
+      "sort_entries"
+    ],
+    "accepted_first": [
+      "find_messages",
+      "get_messages",
+      "list_messages",
+      "read_messages"
+    ],
+    "_freq": 5,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "mostra mail di ieri",
+    "expected_path": [
+      "read_messages",
+      "describe_entries"
+    ],
+    "accepted_first": [
+      "find_messages",
+      "get_messages",
+      "list_messages",
+      "read_messages"
+    ],
+    "_freq": 8,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "trova file .py in /tmp/bf_test",
+    "expected_path": [
+      "find_files"
+    ],
+    "accepted_first": [
+      "find_files",
+      "get_files",
+      "list_files",
+      "read_files"
+    ],
+    "_freq": 2,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "leggi https://www.python.org/about/",
+    "expected_path": [
+      "read_urls_html",
+      "describe_entries"
+    ],
+    "accepted_first": [
+      "find_urls",
+      "find_urls_html",
+      "get_urls",
+      "get_urls_html",
+      "list_urls_html",
+      "read_urls_html",
+      "read_urls_pdf"
+    ],
+    "_freq": 3,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "propose 3 morning slots next week for a 1 hour appointment and email me the choice",
+    "expected_path": [
+      "find_events_empty",
+      "get_inputs"
+    ],
+    "accepted_first": [
+      "find_events_empty",
+      "get_events_empty",
+      "list_events_empty",
+      "read_events_empty"
+    ],
+    "_freq": 6,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "trova 3 orari liberi per un meeting di un'ora prossima settimana mattina e mandami via email la scelta",
+    "expected_path": [
+      "find_events_empty",
+      "get_inputs"
+    ],
+    "accepted_first": [
+      "find_events_empty",
+      "get_events_empty",
+      "list_events_empty",
+      "read_events_empty"
+    ],
+    "_freq": 5,
+    "_status": "answer,loop_break",
+    "_catalog_gap": false
+  },
+  {
+    "query": "trova i file pdf in /tmp",
+    "expected_path": [
+      "find_files",
+      "find_files"
+    ],
+    "accepted_first": [
+      "find_files",
+      "get_files",
+      "list_files",
+      "read_files"
+    ],
+    "_freq": 10,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "leggi https://example.com",
+    "expected_path": [
+      "read_urls_html",
+      "describe_entries",
+      "describe_entries"
+    ],
+    "accepted_first": [
+      "find_urls",
+      "find_urls_html",
+      "get_urls",
+      "get_urls_html",
+      "list_urls_html",
+      "read_urls_html",
+      "read_urls_pdf"
+    ],
+    "_freq": 10,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "leggi le ultime mail",
+    "expected_path": [
+      "read_messages",
+      "describe_entries"
+    ],
+    "accepted_first": [
+      "find_messages",
+      "get_messages",
+      "list_messages",
+      "read_messages"
+    ],
+    "_freq": 13,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "crea la cartella /tmp/metnos_bench_test",
+    "expected_path": [
+      "create_dirs"
+    ],
+    "accepted_first": [
+      "create_dirs",
+      "get_location",
+      "request_new_executor"
+    ],
+    "_freq": 6,
+    "_status": "answer,awaiting,loop_break",
+    "_catalog_gap": false
+  },
+  {
+    "query": "trovami foto al mare",
+    "expected_path": [
+      "find_images_indices",
+      "describe_entries",
+      "find_images_indices"
+    ],
+    "accepted_first": [
+      "find_images_indices",
+      "get_images_indices",
+      "list_images_indices",
+      "read_images_indices"
+    ],
+    "_freq": 9,
+    "_status": "answer,loop_break",
+    "_catalog_gap": false
+  },
+  {
+    "query": "proponi 3 orari per un appuntamento di una ora la mattina settimana prossima",
+    "expected_path": [
+      "find_events_empty",
+      "get_inputs"
+    ],
+    "accepted_first": [
+      "find_events_empty",
+      "get_events_empty",
+      "list_events_empty",
+      "read_events_empty"
+    ],
+    "_freq": 5,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "fai qualcosa di interessante",
+    "expected_path": [
+      "get_location"
+    ],
+    "accepted_first": [
+      "find_location",
+      "find_places",
+      "get_location",
+      "get_places",
+      "list_location",
+      "list_places",
+      "read_events",
+      "read_location",
+      "read_places",
+      "request_new_executor"
+    ],
+    "_freq": 2,
+    "_status": "answer,awaiting,loop_break",
+    "_catalog_gap": false
+  },
+  {
+    "query": "foto di Iacopo al mare",
+    "expected_path": [
+      "find_images_indices",
+      "describe_entries",
+      "find_images_indices"
+    ],
+    "accepted_first": [
+      "find_images_indices",
+      "get_images_indices",
+      "list_images_indices",
+      "read_images_indices"
+    ],
+    "_freq": 2,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "mostrami i task ricorrenti che ho schedulato",
+    "expected_path": [
+      "list_tasks"
+    ],
+    "accepted_first": [
+      "find_tasks",
+      "get_processes",
+      "get_tasks",
+      "list_tasks",
+      "read_events",
+      "read_tasks"
+    ],
+    "_freq": 3,
+    "_status": "answer,loop_break",
+    "_catalog_gap": false
+  },
+  {
+    "query": "mostrami lo storico esecuzioni del task ricorrente",
+    "expected_path": [
+      "get_processes",
+      "get_processes"
+    ],
+    "accepted_first": [
+      "find_processes",
+      "get_processes",
+      "list_processes",
+      "read_processes"
+    ],
+    "_freq": 1,
+    "_status": "answer,loop_break",
+    "_catalog_gap": false
+  },
+  {
+    "query": "mandami un ping",
+    "expected_path": [
+      "send_messages"
+    ],
+    "accepted_first": [
+      "request_new_executor",
+      "send_messages"
+    ],
+    "_freq": 63,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "Lista timer",
+    "expected_path": [
+      "list_tasks"
+    ],
+    "accepted_first": [
+      "find_tasks",
+      "get_tasks",
+      "list_tasks",
+      "read_tasks"
+    ],
+    "_freq": 2,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "mostrami i task ricorrenti",
+    "expected_path": [
+      "list_tasks"
+    ],
+    "accepted_first": [
+      "find_tasks",
+      "get_processes",
+      "get_tasks",
+      "list_tasks",
+      "read_tasks"
+    ],
+    "_freq": 8,
+    "_status": "answer,loop_break",
+    "_catalog_gap": false
+  },
+  {
+    "query": "lista task schedulati",
+    "expected_path": [
+      "list_tasks"
+    ],
+    "accepted_first": [
+      "find_tasks",
+      "get_tasks",
+      "list_tasks",
+      "read_tasks"
+    ],
+    "_freq": 10,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "storico esecuzioni del task ricorrente",
+    "expected_path": [
+      "list_tasks",
+      "list_tasks"
+    ],
+    "accepted_first": [
+      "find_tasks",
+      "get_tasks",
+      "list_tasks",
+      "read_tasks",
+      "read_tasks_history"
+    ],
+    "_freq": 3,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "cancella il task ricorrente riassunto_mail_quotidiano",
+    "expected_path": [
+      "delete_events",
+      "delete_events",
+      "delete_events"
+    ],
+    "accepted_first": [
+      "delete_credentials",
+      "delete_events"
+    ],
+    "_freq": 2,
+    "_status": "answer,loop_break",
+    "_catalog_gap": false
+  },
+  {
+    "query": "cancella il task ricorrente test_regressione",
+    "expected_path": [
+      "delete_tasks",
+      "delete_tasks",
+      "delete_tasks"
+    ],
+    "accepted_first": [
+      "delete_tasks"
+    ],
+    "_freq": 2,
+    "_status": "answer,loop_break",
+    "_catalog_gap": false
+  },
+  {
+    "query": "Sutuazione server",
+    "expected_path": [
+      "get_processes"
+    ],
+    "accepted_first": [
+      "compute_files_loc",
+      "find_processes",
+      "get_processes",
+      "list_processes",
+      "read_processes"
+    ],
+    "_freq": 13,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "Situazione server",
+    "expected_path": [
+      "get_processes"
+    ],
+    "accepted_first": [
+      "find_processes",
+      "get_processes",
+      "list_processes",
+      "read_processes"
+    ],
+    "_freq": 13,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "trova i file .py in /opt/myclaw/runtime",
+    "expected_path": [
+      "find_files"
+    ],
+    "accepted_first": [
+      "find_files",
+      "get_files",
+      "list_files",
+      "read_files"
+    ],
+    "_freq": 6,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "mostrami il quadro generale del sistema",
+    "expected_path": [
+      "get_processes"
+    ],
+    "accepted_first": [
+      "find_processes",
+      "get_processes",
+      "list_processes",
+      "read_processes"
+    ],
+    "_freq": 6,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "open the messages",
+    "expected_path": [
+      "read_messages",
+      "describe_entries"
+    ],
+    "accepted_first": [
+      "find_messages",
+      "get_messages",
+      "list_messages",
+      "read_messages"
+    ],
+    "_freq": 4,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "che timer ho attivi",
+    "expected_path": [
+      "list_tasks"
+    ],
+    "accepted_first": [
+      "find_tasks",
+      "get_now",
+      "get_tasks",
+      "list_tasks",
+      "read_tasks"
+    ],
+    "_freq": 2,
+    "_status": "answer,loop_break",
+    "_catalog_gap": false
+  },
+  {
+    "query": "cancella il task ricorrente test_inesistente",
+    "expected_path": [
+      "list_tasks",
+      "delete_tasks",
+      "delete_tasks"
+    ],
+    "accepted_first": [
+      "find_tasks",
+      "get_tasks",
+      "list_tasks",
+      "read_tasks"
+    ],
+    "_freq": 5,
+    "_status": "answer,loop_break",
+    "_catalog_gap": false
+  },
+  {
+    "query": "fissa un appuntamento mercoledi mattina dopo le 9 per un ora se ce posto",
+    "expected_path": [
+      "filter_entries",
+      "create_events",
+      "read_events"
+    ],
+    "accepted_first": [
+      "filter_entries",
+      "read_events"
+    ],
+    "_freq": 3,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "Stato del server",
+    "expected_path": [
+      "get_processes"
+    ],
+    "accepted_first": [
+      "find_processes",
+      "get_processes",
+      "list_processes",
+      "read_processes"
+    ],
+    "_freq": 2,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "Trova tutti gli appuntamenti 2026 che iniziano con HLT",
+    "expected_path": [
+      "read_events",
+      "read_events",
+      "filter_entries"
+    ],
+    "accepted_first": [
+      "find_events",
+      "get_events",
+      "list_events",
+      "read_events"
+    ],
+    "_freq": 4,
+    "_status": "answer,loop_break",
+    "_catalog_gap": false
+  },
+  {
+    "query": "Quante foto di Matteo al mare ho dal 2020 al 2024?",
+    "expected_path": [
+      "find_images_indices"
+    ],
+    "accepted_first": [
+      "find_images_indices",
+      "get_images_indices",
+      "list_images_indices",
+      "read_images_indices"
+    ],
+    "_freq": 5,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "13:58:12 Quante foto di Matteo al mare ho dal 2020 al 2024?",
+    "expected_path": [
+      "find_images_indices"
+    ],
+    "accepted_first": [
+      "find_images_indices",
+      "get_images_indices",
+      "list_images_indices",
+      "read_images_indices"
+    ],
+    "_freq": 3,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "foto di gruppo con almeno Iacopo e Matteo del 2024",
+    "expected_path": [
+      "find_images_indices"
+    ],
+    "accepted_first": [
+      "find_images_indices",
+      "get_images_indices",
+      "list_images_indices",
+      "read_images_indices"
+    ],
+    "_freq": 2,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "Trova le foto di gruppo con almeno Iacopo e Matteo del 2024",
+    "expected_path": [
+      "find_images_indices"
+    ],
+    "accepted_first": [
+      "find_images_indices",
+      "get_images_indices",
+      "list_images_indices",
+      "read_images_indices"
+    ],
+    "_freq": 3,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "Storico esecuzioni dei task ricorrenti degli ultimi 7 giorni",
+    "expected_path": [
+      "read_tasks_history",
+      "read_tasks_history"
+    ],
+    "accepted_first": [
+      "find_tasks",
+      "find_tasks_history",
+      "get_tasks",
+      "get_tasks_history",
+      "list_tasks",
+      "list_tasks_history",
+      "read_tasks",
+      "read_tasks_history"
+    ],
+    "_freq": 6,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "Cè un evento HLT che si sovrappone con uno MNM nei prossimi 3 mesi?",
+    "expected_path": [
+      "find_events_empty",
+      "read_events",
+      "filter_entries"
+    ],
+    "accepted_first": [
+      "find_events_empty",
+      "get_events_empty",
+      "list_events_empty",
+      "read_events_empty"
+    ],
+    "_freq": 5,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "Quante foto in totale ho di Matteo, e quanti GB occupano?",
+    "expected_path": [
+      "find_images_indices"
+    ],
+    "accepted_first": [
+      "find_images_indices",
+      "get_images_indices",
+      "list_images_indices",
+      "read_images_indices"
+    ],
+    "_freq": 4,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "mostrami le foto di Matteo",
+    "expected_path": [
+      "find_persons_indices"
+    ],
+    "accepted_first": [
+      "find_contacts",
+      "find_images_indices",
+      "find_persons",
+      "find_persons_indices",
+      "get_contacts",
+      "get_persons",
+      "get_persons_indices",
+      "list_contacts",
+      "list_persons",
+      "list_persons_indices",
+      "read_contacts",
+      "read_persons",
+      "read_persons_indices"
+    ],
+    "_freq": 4,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "trova i file .py in /tmp",
+    "expected_path": [
+      "find_files"
+    ],
+    "accepted_first": [
+      "find_files",
+      "get_files",
+      "list_files",
+      "read_files"
+    ],
+    "_freq": 4,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "trova i file py in /tmp",
+    "expected_path": [
+      "find_files"
+    ],
+    "accepted_first": [
+      "find_files",
+      "get_files",
+      "list_files",
+      "read_files"
+    ],
+    "_freq": 2,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "appuntamenti di domani",
+    "expected_path": [
+      "read_events"
+    ],
+    "accepted_first": [
+      "find_events",
+      "get_events",
+      "list_events",
+      "read_events"
+    ],
+    "_freq": 2,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "scrivi a Roberto: ciao, ci vediamo alle 8",
+    "expected_path": [
+      "send_messages",
+      "send_messages"
+    ],
+    "accepted_first": [
+      "send_messages"
+    ],
+    "_freq": 6,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "crea un evento standup domani alle 10",
+    "expected_path": [
+      "create_events"
+    ],
+    "accepted_first": [
+      "create_events"
+    ],
+    "_freq": 6,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "cerca i documenti pdf in /tmp",
+    "expected_path": [
+      "find_files"
+    ],
+    "accepted_first": [
+      "find_files",
+      "get_files",
+      "list_files",
+      "read_files"
+    ],
+    "_freq": 5,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "Manda a me via email gli appuntamenti di domani",
+    "expected_path": [
+      "get_inputs"
+    ],
+    "accepted_first": [
+      "find_inputs",
+      "get_inputs",
+      "get_now",
+      "list_inputs",
+      "read_inputs",
+      "read_messages",
+      "send_messages"
+    ],
+    "_freq": 8,
+    "_status": "answer,loop_break",
+    "_catalog_gap": false
+  },
+  {
+    "query": "Mandami via email la lista dei miei appuntamenti di domani",
+    "expected_path": [
+      "get_inputs"
+    ],
+    "accepted_first": [
+      "find_inputs",
+      "get_inputs",
+      "list_inputs",
+      "read_inputs",
+      "read_messages"
+    ],
+    "_freq": 2,
+    "_status": "answer,loop_break",
+    "_catalog_gap": false
+  },
+  {
+    "query": "Manda via telegram la lista delle mail di oggi",
+    "expected_path": [
+      "read_messages",
+      "send_messages"
+    ],
+    "accepted_first": [
+      "find_messages",
+      "get_messages",
+      "get_now",
+      "list_messages",
+      "read_messages"
+    ],
+    "_freq": 10,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "Notificami via mail quando trovi una foto di Matteo",
+    "expected_path": [
+      "create_tasks",
+      "create_tasks",
+      "create_tasks"
+    ],
+    "accepted_first": [
+      "create_tasks",
+      "get_inputs"
+    ],
+    "_freq": 4,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "Mandami via telegram un riassunto delle attività di ieri",
+    "expected_path": [
+      "read_messages",
+      "send_messages",
+      "read_messages"
+    ],
+    "accepted_first": [
+      "find_messages",
+      "get_messages",
+      "list_messages",
+      "read_messages"
+    ],
+    "_freq": 4,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "Crea un foglio di calcolo con google",
+    "expected_path": [
+      "create_files_spreadsheet",
+      "create_files_spreadsheet"
+    ],
+    "accepted_first": [
+      "create_files_spreadsheet"
+    ],
+    "_freq": 6,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "Salva su drive la lista delle foto del 2024",
+    "expected_path": [
+      "find_files",
+      "find_images_indices",
+      "find_images_indices"
+    ],
+    "accepted_first": [
+      "find_files",
+      "get_files",
+      "list_files",
+      "read_files"
+    ],
+    "_freq": 5,
+    "_status": "answer,cap_same_executor",
+    "_catalog_gap": false
+  },
+  {
+    "query": "cerca foto di Matteo e se ne trovi mandami una mail con l'elenco",
+    "expected_path": [
+      "request_new_executor",
+      "read_messages",
+      "find_images_indices"
+    ],
+    "accepted_first": [
+      "classify_entries",
+      "find_persons_indices",
+      "read_messages",
+      "request_new_executor",
+      "send_messages"
+    ],
+    "_freq": 17,
+    "_status": "answer",
+    "_catalog_gap": true
+  },
+  {
+    "query": "Ristorante piu vicino",
+    "expected_path": [
+      "get_location"
+    ],
+    "accepted_first": [
+      "find_location",
+      "find_places",
+      "get_location",
+      "get_places",
+      "list_location",
+      "list_places",
+      "read_location",
+      "read_places"
+    ],
+    "_freq": 1,
+    "_status": "answer,awaiting",
+    "_catalog_gap": false
+  },
+  {
+    "query": "Lista dei timer",
+    "expected_path": [
+      "list_tasks",
+      "list_tasks"
+    ],
+    "accepted_first": [
+      "find_tasks",
+      "get_tasks",
+      "list_tasks",
+      "read_tasks"
+    ],
+    "_freq": 2,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "Lista dei task",
+    "expected_path": [
+      "list_tasks"
+    ],
+    "accepted_first": [
+      "find_tasks",
+      "get_tasks",
+      "list_tasks",
+      "read_tasks"
+    ],
+    "_freq": 2,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "trova foto simili a Matteo",
+    "expected_path": [
+      "find_packages",
+      "find_packages",
+      "find_packages"
+    ],
+    "accepted_first": [
+      "find_images_indices",
+      "find_packages",
+      "get_packages",
+      "list_packages",
+      "read_packages"
+    ],
+    "_freq": 1,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "converti /tmp/test_input.pdf in testo",
+    "expected_path": [
+      "request_new_executor"
+    ],
+    "accepted_first": [
+      "request_new_executor"
+    ],
+    "_freq": 5,
+    "_status": "answer",
+    "_catalog_gap": true
+  },
+  {
+    "query": "converti /tmp/test_input.jpg in formato png",
+    "expected_path": [
+      "change_files_format",
+      "change_files_format"
+    ],
+    "accepted_first": [
+      "change_files_format"
+    ],
+    "_freq": 3,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "converti /tmp/test_recovery.heic in formato jpg",
+    "expected_path": [
+      "request_new_executor",
+      "compute_entries",
+      "find_files"
+    ],
+    "accepted_first": [
+      "compute_entries",
+      "get_images_indices",
+      "request_new_executor"
+    ],
+    "_freq": 3,
+    "_status": "answer",
+    "_catalog_gap": true
+  },
+  {
+    "query": "temperatura gpu",
+    "expected_path": [
+      "get_processes"
+    ],
+    "accepted_first": [
+      "find_processes",
+      "get_processes",
+      "list_processes",
+      "read_processes",
+      "request_new_executor"
+    ],
+    "_freq": 4,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "elenca appuntamenti prossimi 20 giorni",
+    "expected_path": [
+      "read_events",
+      "describe_entries",
+      "read_events"
+    ],
+    "accepted_first": [
+      "find_events",
+      "get_events",
+      "list_events",
+      "read_events"
+    ],
+    "_freq": 1,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "leggi il file /etc/pass<REDACTED:cred>",
+    "expected_path": [
+      "read_files"
+    ],
+    "accepted_first": [
+      "find_files",
+      "get_files",
+      "list_files",
+      "read_files"
+    ],
+    "_freq": 35,
+    "_status": "answer,error",
+    "_catalog_gap": false
+  },
+  {
+    "query": "leggi /etc/pass<REDACTED:cred>",
+    "expected_path": [
+      "read_files"
+    ],
+    "accepted_first": [
+      "find_files",
+      "get_files",
+      "list_files",
+      "read_files"
+    ],
+    "_freq": 31,
+    "_status": "answer,error",
+    "_catalog_gap": false
+  },
+  {
+    "query": "scrivi 'hello bench' nel file /tmp/bench_thinking_write.txt",
+    "expected_path": [
+      "write_files"
+    ],
+    "accepted_first": [
+      "write_files"
+    ],
+    "_freq": 11,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "scarica https://httpbin.org/get e salva in /tmp/bench_thinking_dl.txt",
+    "expected_path": [
+      "read_urls_html",
+      "get_urls",
+      "request_new_executor"
+    ],
+    "accepted_first": [
+      "find_urls",
+      "find_urls_html",
+      "get_urls",
+      "get_urls_html",
+      "list_urls_html",
+      "read_urls_html",
+      "read_urls_pdf"
+    ],
+    "_freq": 5,
+    "_status": "answer,loop_break",
+    "_catalog_gap": false
+  },
+  {
+    "query": "che pacchetti python sono installati relativi a flask",
+    "expected_path": [
+      "request_new_executor",
+      "find_packages",
+      "request_new_executor"
+    ],
+    "accepted_first": [
+      "find_packages",
+      "request_new_executor"
+    ],
+    "_freq": 1,
+    "_status": "answer,loop_break",
+    "_catalog_gap": true
+  },
+  {
+    "query": "trova i file *.py in /tmp",
+    "expected_path": [
+      "find_files"
+    ],
+    "accepted_first": [
+      "find_files",
+      "get_files",
+      "list_files",
+      "read_files"
+    ],
+    "_freq": 2,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "temperatura cpu",
+    "expected_path": [
+      "get_processes"
+    ],
+    "accepted_first": [
+      "find_processes",
+      "get_processes",
+      "list_processes",
+      "read_processes"
+    ],
+    "_freq": 6,
+    "_status": "answer,cap_same_executor",
+    "_catalog_gap": false
+  },
+  {
+    "query": "trova i file .py più grandi nella home",
+    "expected_path": [
+      "find_files",
+      "sort_entries"
+    ],
+    "accepted_first": [
+      "find_files",
+      "get_files",
+      "list_files",
+      "read_files"
+    ],
+    "_freq": 5,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "elenca le directory in /opt/metnos",
+    "expected_path": [
+      "list_dirs",
+      "filter_entries",
+      "describe_entries"
+    ],
+    "accepted_first": [
+      "find_dirs",
+      "get_dirs",
+      "list_dirs",
+      "read_dirs"
+    ],
+    "_freq": 2,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "quante righe di codice ci sono in /opt/metnos/runtime",
+    "expected_path": [
+      "compute_files_loc"
+    ],
+    "accepted_first": [
+      "compute_files_loc"
+    ],
+    "_freq": 4,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "che pacchetti debian relativi a postgres sono installati",
+    "expected_path": [
+      "request_new_executor",
+      "find_packages",
+      "request_new_executor"
+    ],
+    "accepted_first": [
+      "find_packages",
+      "request_new_executor"
+    ],
+    "_freq": 3,
+    "_status": "answer,loop_break",
+    "_catalog_gap": true
+  },
+  {
+    "query": "media e mediana dei numeri 12 18 25 30 7 14",
+    "expected_path": [
+      "describe_numbers"
+    ],
+    "accepted_first": [
+      "describe_numbers"
+    ],
+    "_freq": 4,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "filtra le righe con ERROR nel file /tmp/log.txt",
+    "expected_path": [
+      "read_files"
+    ],
+    "accepted_first": [
+      "find_files",
+      "get_files",
+      "list_files",
+      "read_files"
+    ],
+    "_freq": 2,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "che città è alle coordinate 41.9 12.5",
+    "expected_path": [
+      "get_places",
+      "get_places"
+    ],
+    "accepted_first": [
+      "find_places",
+      "get_location",
+      "get_places",
+      "list_places",
+      "read_places"
+    ],
+    "_freq": 2,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "manda una mail a mario@example.com con oggetto Test",
+    "expected_path": [
+      "send_messages"
+    ],
+    "accepted_first": [
+      "send_messages"
+    ],
+    "_freq": 2,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "che eventi ho domani in calendario",
+    "expected_path": [
+      "read_events"
+    ],
+    "accepted_first": [
+      "find_events",
+      "get_events",
+      "list_events",
+      "read_events"
+    ],
+    "_freq": 4,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "crea un evento martedì alle 15 dentista",
+    "expected_path": [
+      "create_events"
+    ],
+    "accepted_first": [
+      "create_events"
+    ],
+    "_freq": 4,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "cerca le ultime notizie su elezioni 2026",
+    "expected_path": [
+      "find_urls"
+    ],
+    "accepted_first": [
+      "find_urls",
+      "get_urls",
+      "list_urls",
+      "read_urls",
+      "read_urls_html",
+      "read_urls_pdf"
+    ],
+    "_freq": 3,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "trova foto del cane al mare nel 2024",
+    "expected_path": [
+      "find_images_indices"
+    ],
+    "accepted_first": [
+      "find_images_indices",
+      "get_images_indices",
+      "list_images_indices",
+      "read_images_indices"
+    ],
+    "_freq": 3,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "che processi consumano più CPU",
+    "expected_path": [
+      "get_processes"
+    ],
+    "accepted_first": [
+      "find_processes",
+      "get_processes",
+      "list_processes",
+      "read_processes"
+    ],
+    "_freq": 8,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "sposta i file .pdf vecchi più di 6 mesi in /tmp/old",
+    "expected_path": [
+      "find_files",
+      "filter_entries",
+      "create_dirs"
+    ],
+    "accepted_first": [
+      "find_files",
+      "get_files",
+      "get_inputs",
+      "list_files",
+      "read_files"
+    ],
+    "_freq": 10,
+    "_status": "answer,cap_same_executor,loop_break",
+    "_catalog_gap": false
+  },
+  {
+    "query": "cancella i file .tmp in /tmp",
+    "expected_path": [
+      "find_files",
+      "delete_files"
+    ],
+    "accepted_first": [
+      "find_files",
+      "get_files",
+      "list_files",
+      "read_files"
+    ],
+    "_freq": 8,
+    "_status": "answer,loop_break",
+    "_catalog_gap": false
+  },
+  {
+    "query": "comprimi la cartella /tmp/log in zip",
+    "expected_path": [
+      "request_new_executor",
+      "request_new_executor"
+    ],
+    "accepted_first": [
+      "create_dirs",
+      "request_new_executor"
+    ],
+    "_freq": 2,
+    "_status": "answer",
+    "_catalog_gap": true
+  },
+  {
+    "query": "che ora è a Tokyo",
+    "expected_path": [
+      "get_now",
+      "get_now"
+    ],
+    "accepted_first": [
+      "find_now",
+      "get_now",
+      "list_now",
+      "read_now"
+    ],
+    "_freq": 4,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "dimmi la lista delle persone conosciute",
+    "expected_path": [
+      "get_persons"
+    ],
+    "accepted_first": [
+      "find_contacts",
+      "find_persons",
+      "get_contacts",
+      "get_persons",
+      "list_contacts",
+      "list_persons",
+      "read_contacts",
+      "read_persons"
+    ],
+    "_freq": 8,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "aggiungi promemoria fra 2 ore: chiamare dentista",
+    "expected_path": [
+      "create_tasks",
+      "create_tasks"
+    ],
+    "accepted_first": [
+      "create_tasks"
+    ],
+    "_freq": 4,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "cosa ho fatto ieri",
+    "expected_path": [
+      "read_events"
+    ],
+    "accepted_first": [
+      "find_events",
+      "get_events",
+      "list_events",
+      "read_events"
+    ],
+    "_freq": 4,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "riassumi la pagina https://it.wikipedia.org/wiki/Roma",
+    "expected_path": [
+      "read_urls_html",
+      "describe_entries"
+    ],
+    "accepted_first": [
+      "find_urls",
+      "find_urls_html",
+      "get_urls",
+      "get_urls_html",
+      "list_urls_html",
+      "read_urls_html",
+      "read_urls_pdf"
+    ],
+    "_freq": 4,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "trova mail di posta indesiderata da ultimo mese",
+    "expected_path": [
+      "read_messages",
+      "read_messages"
+    ],
+    "accepted_first": [
+      "find_messages",
+      "get_messages",
+      "list_messages",
+      "read_messages"
+    ],
+    "_freq": 2,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "rinomina file_old.txt in file_new.txt nella home",
+    "expected_path": [
+      "find_files"
+    ],
+    "accepted_first": [
+      "find_files",
+      "get_files",
+      "list_files",
+      "read_files"
+    ],
+    "_freq": 2,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "salva nota: spesa supermercato 35€",
+    "expected_path": [
+      "request_new_executor",
+      "write_files",
+      "write_files"
+    ],
+    "accepted_first": [
+      "create_files_doc",
+      "request_new_executor",
+      "write_files",
+      "write_files_doc"
+    ],
+    "_freq": 9,
+    "_status": "answer,loop_break",
+    "_catalog_gap": true
+  },
+  {
+    "query": "Cerca le ultime notizie su Anthropic Claude e fammi un riassunto in 4 righe italiane di cosa è uscito nell'ultima   settimana",
+    "expected_path": [
+      "find_urls",
+      "find_urls"
+    ],
+    "accepted_first": [
+      "find_urls",
+      "get_urls",
+      "list_urls",
+      "read_urls",
+      "read_urls_html",
+      "read_urls_pdf"
+    ],
+    "_freq": 1,
+    "_status": "answer,loop_break",
+    "_catalog_gap": false
+  },
+  {
+    "query": "cerca informazioni delle ultime 24 ore sulle tendenze e previsioni riguardo ai bitcoin",
+    "expected_path": [
+      "find_urls",
+      "describe_entries"
+    ],
+    "accepted_first": [
+      "find_urls",
+      "get_urls",
+      "list_urls",
+      "read_urls",
+      "read_urls_html",
+      "read_urls_pdf"
+    ],
+    "_freq": 2,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "cerca e riassumi  informazioni delle ultime 24 ore sulle tendenze e previsioni riguardo ai bitcoin",
+    "expected_path": [
+      "find_urls",
+      "describe_entries"
+    ],
+    "accepted_first": [
+      "find_urls",
+      "get_urls",
+      "list_urls",
+      "read_urls",
+      "read_urls_html",
+      "read_urls_pdf"
+    ],
+    "_freq": 3,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "Conta le email di oggi e dimmi i 3 mittenti    principali",
+    "expected_path": [
+      "read_messages",
+      "compute_entries",
+      "sort_entries"
+    ],
+    "accepted_first": [
+      "find_messages",
+      "get_messages",
+      "list_messages",
+      "read_messages"
+    ],
+    "_freq": 6,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "\"trova 5 notizie su bitcoin oggi e   riassumimele\"",
+    "expected_path": [
+      "find_urls",
+      "classify_entries",
+      "describe_entries"
+    ],
+    "accepted_first": [
+      "find_urls",
+      "get_urls",
+      "list_urls",
+      "read_urls",
+      "read_urls_html",
+      "read_urls_pdf"
+    ],
+    "_freq": 1,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "cerca e riassumi info delle ultime 24 ore sulla guerra in ucraina",
+    "expected_path": [
+      "find_urls",
+      "find_urls",
+      "read_urls_html"
+    ],
+    "accepted_first": [
+      "find_urls",
+      "get_now",
+      "get_urls",
+      "list_urls",
+      "read_files",
+      "read_urls",
+      "read_urls_html",
+      "read_urls_pdf"
+    ],
+    "_freq": 3,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "Dammi le notizie delle ultime 24 ore sulla guerra in ucraina",
+    "expected_path": [
+      "find_urls",
+      "read_urls_html",
+      "describe_entries"
+    ],
+    "accepted_first": [
+      "find_urls",
+      "get_urls",
+      "list_urls",
+      "read_urls",
+      "read_urls_html",
+      "read_urls_pdf"
+    ],
+    "_freq": 3,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "Riassumi tutte le novita degli ultimi 7 giorni sull'ambiente llama.cpp",
+    "expected_path": [
+      "find_urls",
+      "read_urls_html",
+      "describe_entries"
+    ],
+    "accepted_first": [
+      "find_urls",
+      "get_urls",
+      "list_urls",
+      "read_urls",
+      "read_urls_html",
+      "read_urls_pdf"
+    ],
+    "_freq": 2,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "Riassumi le ultime novita di Anthropic",
+    "expected_path": [
+      "describe_entries",
+      "request_new_executor",
+      "request_new_executor"
+    ],
+    "accepted_first": [
+      "describe_entries",
+      "find_urls"
+    ],
+    "_freq": 1,
+    "_status": "answer,loop_break",
+    "_catalog_gap": false
+  },
+  {
+    "query": "Cerca online e riassumi le ultime novita di Anthropic",
+    "expected_path": [
+      "find_urls"
+    ],
+    "accepted_first": [
+      "find_urls",
+      "get_urls",
+      "list_urls",
+      "read_urls",
+      "read_urls_html",
+      "read_urls_pdf"
+    ],
+    "_freq": 2,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "Cerca nel sito inps.it i documenti e i link su Soggiorni estivi 2026 presso le Case del Maestro",
+    "expected_path": [
+      "find_urls",
+      "describe_entries"
+    ],
+    "accepted_first": [
+      "find_urls",
+      "get_urls",
+      "list_urls",
+      "read_urls",
+      "read_urls_html",
+      "read_urls_pdf"
+    ],
+    "_freq": 2,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "quali sono i timer",
+    "expected_path": [
+      "get_processes",
+      "list_tasks"
+    ],
+    "accepted_first": [
+      "find_processes",
+      "get_processes",
+      "list_processes",
+      "list_tasks",
+      "read_events",
+      "read_processes"
+    ],
+    "_freq": 3,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "quali sono gli ip del server",
+    "expected_path": [
+      "get_processes"
+    ],
+    "accepted_first": [
+      "admin",
+      "find_processes",
+      "get_processes",
+      "list_processes",
+      "read_processes",
+      "request_new_executor"
+    ],
+    "_freq": 10,
+    "_status": "answer,cap_same_executor,loop_break",
+    "_catalog_gap": false
+  },
+  {
+    "query": "quanta ram e' usata",
+    "expected_path": [
+      "get_processes"
+    ],
+    "accepted_first": [
+      "find_processes",
+      "get_processes",
+      "list_processes",
+      "read_processes"
+    ],
+    "_freq": 2,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "quali porte tcp sono aperte sul server",
+    "expected_path": [
+      "admin"
+    ],
+    "accepted_first": [
+      "admin",
+      "get_now",
+      "request_new_executor"
+    ],
+    "_freq": 2,
+    "_status": "answer,loop_break",
+    "_catalog_gap": false
+  },
+  {
+    "query": "conta quanti file ci sono nella cartella Immagini",
+    "expected_path": [
+      "find_files",
+      "find_files"
+    ],
+    "accepted_first": [
+      "find_files",
+      "get_files",
+      "list_files",
+      "read_files"
+    ],
+    "_freq": 2,
+    "_status": "answer,loop_break",
+    "_catalog_gap": false
+  },
+  {
+    "query": "conta quanti file ci sono nella cartella Immagini e intutte le sottocartelle",
+    "expected_path": [
+      "find_files",
+      "find_files",
+      "compute_entries"
+    ],
+    "accepted_first": [
+      "find_files",
+      "get_files",
+      "list_files",
+      "read_files"
+    ],
+    "_freq": 2,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "Quanti sono i files nella cartella Immagini",
+    "expected_path": [
+      "find_files",
+      "list_dirs",
+      "list_dirs"
+    ],
+    "accepted_first": [
+      "find_dirs",
+      "find_files",
+      "get_files",
+      "list_files",
+      "read_files"
+    ],
+    "_freq": 1,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "quanti file e quante  cartelle ci sono in Immagini",
+    "expected_path": [
+      "find_dirs",
+      "compute_entries"
+    ],
+    "accepted_first": [
+      "find_dirs",
+      "get_dirs",
+      "list_dirs",
+      "read_dirs"
+    ],
+    "_freq": 10,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "quanto consuma gpu",
+    "expected_path": [
+      "get_processes"
+    ],
+    "accepted_first": [
+      "find_processes",
+      "get_processes",
+      "list_processes",
+      "read_processes"
+    ],
+    "_freq": 14,
+    "_status": "answer,ask",
+    "_catalog_gap": false
+  },
+  {
+    "query": "quali sono i task attivi",
+    "expected_path": [
+      "list_tasks",
+      "list_tasks"
+    ],
+    "accepted_first": [
+      "find_tasks",
+      "get_tasks",
+      "list_tasks",
+      "read_tasks"
+    ],
+    "_freq": 3,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "quanto spazio su disco è ancora libero in GB",
+    "expected_path": [
+      "get_processes"
+    ],
+    "accepted_first": [
+      "find_processes",
+      "get_processes",
+      "list_processes",
+      "read_processes"
+    ],
+    "_freq": 8,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "monta nella mia area personale lo share \\\\<ip>\\Public\\media\\Immagini del server <ip>",
+    "expected_path": [
+      "admin"
+    ],
+    "accepted_first": [
+      "admin",
+      "list_dirs",
+      "request_new_executor"
+    ],
+    "_freq": 2,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "leggi le 3 mail piu' recenti",
+    "expected_path": [
+      "read_messages"
+    ],
+    "accepted_first": [
+      "find_messages",
+      "get_messages",
+      "list_messages",
+      "read_messages"
+    ],
+    "_freq": 8,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "cerca mail da bookings",
+    "expected_path": [
+      "read_tasks_history",
+      "read_tasks_history"
+    ],
+    "accepted_first": [
+      "find_tasks",
+      "find_tasks_history",
+      "get_tasks",
+      "get_tasks_history",
+      "list_tasks",
+      "list_tasks_history",
+      "read_messages",
+      "read_tasks",
+      "read_tasks_history"
+    ],
+    "_freq": 6,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "appuntamenti di domani in calendario",
+    "expected_path": [
+      "read_events"
+    ],
+    "accepted_first": [
+      "find_events",
+      "get_events",
+      "list_events",
+      "read_events",
+      "read_tasks_history"
+    ],
+    "_freq": 11,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "cerca mail con oggetto fattura",
+    "expected_path": [
+      "read_messages",
+      "read_messages"
+    ],
+    "accepted_first": [
+      "find_messages",
+      "get_messages",
+      "list_messages",
+      "read_messages"
+    ],
+    "_freq": 6,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "appuntamenti di oggi",
+    "expected_path": [
+      "read_events"
+    ],
+    "accepted_first": [
+      "find_events",
+      "get_events",
+      "list_events",
+      "read_events"
+    ],
+    "_freq": 8,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "che ora e'",
+    "expected_path": [
+      "get_now"
+    ],
+    "accepted_first": [
+      "find_now",
+      "get_now",
+      "list_now",
+      "read_now"
+    ],
+    "_freq": 4,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "where am i",
+    "expected_path": [
+      "get_location"
+    ],
+    "accepted_first": [
+      "find_location",
+      "find_places",
+      "get_location",
+      "get_places",
+      "list_location",
+      "list_places",
+      "read_location",
+      "read_places"
+    ],
+    "_freq": 4,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "eventi della prossima settimana",
+    "expected_path": [
+      "read_events",
+      "describe_entries"
+    ],
+    "accepted_first": [
+      "find_events",
+      "get_events",
+      "list_events",
+      "read_events"
+    ],
+    "_freq": 2,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "cerca documenti su drive con titolo metnos",
+    "expected_path": [
+      "request_new_executor",
+      "find_credentials"
+    ],
+    "accepted_first": [
+      "find_credentials",
+      "find_files",
+      "request_new_executor"
+    ],
+    "_freq": 3,
+    "_status": "answer,loop_break",
+    "_catalog_gap": true
+  },
+  {
+    "query": "leggi le 3 mail piu recenti",
+    "expected_path": [
+      "read_messages",
+      "describe_entries"
+    ],
+    "accepted_first": [
+      "find_messages",
+      "get_messages",
+      "list_messages",
+      "read_messages"
+    ],
+    "_freq": 2,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "cerca immagini di roberto su web",
+    "expected_path": [
+      "find_images_web",
+      "find_images_web"
+    ],
+    "accepted_first": [
+      "find_images_indices",
+      "find_images_web",
+      "get_images_web",
+      "list_images_web",
+      "read_images_web"
+    ],
+    "_freq": 9,
+    "_status": "answer,loop_break",
+    "_catalog_gap": false
+  },
+  {
+    "query": "manda un ping a questo computer",
+    "expected_path": [
+      "request_new_executor",
+      "send_messages",
+      "request_new_executor"
+    ],
+    "accepted_first": [
+      "request_new_executor",
+      "send_messages"
+    ],
+    "_freq": 1,
+    "_status": "answer,loop_break",
+    "_catalog_gap": true
+  },
+  {
+    "query": "Cerca una foto sul web simile alle foto di enrollement di roberto",
+    "expected_path": [
+      "find_images_indices"
+    ],
+    "accepted_first": [
+      "find_images_indices",
+      "find_persons_indices",
+      "get_images_indices",
+      "list_images_indices",
+      "read_images_indices"
+    ],
+    "_freq": 3,
+    "_status": "answer,ask",
+    "_catalog_gap": false
+  },
+  {
+    "query": "Cerca una foto di roberto sul web simile alle foto di enrollment",
+    "expected_path": [
+      "find_images_indices",
+      "find_images_web",
+      "find_images_web"
+    ],
+    "accepted_first": [
+      "find_images_indices",
+      "get_images_indices",
+      "list_images_indices",
+      "read_images_indices"
+    ],
+    "_freq": 2,
+    "_status": "answer,loop_break",
+    "_catalog_gap": false
+  },
+  {
+    "query": "cerca le mail di spam o commerciali sulla mia mail e mettili in spam",
+    "expected_path": [
+      "read_messages",
+      "classify_entries",
+      "filter_entries"
+    ],
+    "accepted_first": [
+      "find_messages",
+      "get_messages",
+      "list_messages",
+      "read_messages"
+    ],
+    "_freq": 5,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "cerca foto di roberto al mare",
+    "expected_path": [
+      "find_images_indices"
+    ],
+    "accepted_first": [
+      "find_images_indices",
+      "get_images_indices",
+      "list_images_indices",
+      "read_images_indices"
+    ],
+    "_freq": 9,
+    "_status": "answer,error",
+    "_catalog_gap": false
+  },
+  {
+    "query": "stato server",
+    "expected_path": [
+      "get_processes"
+    ],
+    "accepted_first": [
+      "find_processes",
+      "get_processes",
+      "list_processes",
+      "read_processes"
+    ],
+    "_freq": 4,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "appuntamenti prossimi 30 giorni",
+    "expected_path": [
+      "read_events",
+      "describe_entries"
+    ],
+    "accepted_first": [
+      "find_events",
+      "get_events",
+      "list_events",
+      "read_events"
+    ],
+    "_freq": 3,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "quanti sono i task",
+    "expected_path": [
+      "list_tasks"
+    ],
+    "accepted_first": [
+      "find_tasks",
+      "get_tasks",
+      "list_tasks",
+      "read_tasks"
+    ],
+    "_freq": 1,
+    "_status": "answer,error",
+    "_catalog_gap": false
+  },
+  {
+    "query": "lista dei task",
+    "expected_path": [
+      "list_tasks",
+      "describe_entries"
+    ],
+    "accepted_first": [
+      "find_tasks",
+      "get_tasks",
+      "list_tasks",
+      "read_tasks"
+    ],
+    "_freq": 2,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "quanti files ci sono in Immagini",
+    "expected_path": [
+      "find_files",
+      "compute_entries"
+    ],
+    "accepted_first": [
+      "find_files",
+      "get_files",
+      "list_files",
+      "read_files"
+    ],
+    "_freq": 4,
+    "_status": "answer,ask",
+    "_catalog_gap": false
+  },
+  {
+    "query": "chi sono io",
+    "expected_path": [
+      "read_persons"
+    ],
+    "accepted_first": [
+      "find_contacts",
+      "find_persons",
+      "get_contacts",
+      "get_persons",
+      "list_contacts",
+      "list_persons",
+      "read_contacts",
+      "read_persons"
+    ],
+    "_freq": 6,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "quanti file in /tmp",
+    "expected_path": [
+      "find_files"
+    ],
+    "accepted_first": [
+      "find_files",
+      "get_files",
+      "list_dirs",
+      "list_files",
+      "read_files"
+    ],
+    "_freq": 15,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "quante directory ci sono in Immagini",
+    "expected_path": [
+      "find_dirs"
+    ],
+    "accepted_first": [
+      "find_dirs",
+      "get_dirs",
+      "list_dirs",
+      "read_dirs"
+    ],
+    "_freq": 5,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "conta i file in /opt",
+    "expected_path": [
+      "list_dirs"
+    ],
+    "accepted_first": [
+      "find_dirs",
+      "get_dirs",
+      "list_dirs",
+      "read_dirs"
+    ],
+    "_freq": 6,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "quanti file ci sono in /opt",
+    "expected_path": [
+      "list_dirs"
+    ],
+    "accepted_first": [
+      "find_dirs",
+      "get_dirs",
+      "list_dirs",
+      "read_dirs"
+    ],
+    "_freq": 2,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "quanti file ci sono in Immagini",
+    "expected_path": [
+      "find_files"
+    ],
+    "accepted_first": [
+      "find_files",
+      "get_files",
+      "list_files",
+      "read_files"
+    ],
+    "_freq": 2,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "dimmi tutto su Silvia",
+    "expected_path": [
+      "read_persons"
+    ],
+    "accepted_first": [
+      "find_contacts",
+      "find_persons",
+      "get_contacts",
+      "get_persons",
+      "list_contacts",
+      "list_persons",
+      "read_contacts",
+      "read_persons"
+    ],
+    "_freq": 4,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "lista guest paired",
+    "expected_path": [
+      "read_persons"
+    ],
+    "accepted_first": [
+      "find_contacts",
+      "find_persons",
+      "get_contacts",
+      "get_persons",
+      "list_contacts",
+      "list_persons",
+      "read_contacts",
+      "read_persons"
+    ],
+    "_freq": 2,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "Cerca foto sul web simile alle foto di enrollement di Roberto",
+    "expected_path": [
+      "find_persons_indices",
+      "find_images_web"
+    ],
+    "accepted_first": [
+      "find_contacts",
+      "find_persons",
+      "find_persons_indices",
+      "get_contacts",
+      "get_persons",
+      "get_persons_indices",
+      "list_contacts",
+      "list_persons",
+      "list_persons_indices",
+      "read_contacts",
+      "read_persons",
+      "read_persons_indices"
+    ],
+    "_freq": 1,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "quanti file in Immagini",
+    "expected_path": [
+      "find_files"
+    ],
+    "accepted_first": [
+      "find_files",
+      "get_files",
+      "list_files",
+      "read_files"
+    ],
+    "_freq": 2,
+    "_status": "answer",
+    "_catalog_gap": false
+  },
+  {
+    "query": "query plain",
+    "expected_path": [
+      "get_inputs"
+    ],
+    "accepted_first": [
+      "find_inputs",
+      "get_inputs",
+      "list_inputs",
+      "read_inputs",
+      "read_messages"
+    ],
+    "_freq": 1,
+    "_status": "answer,loop_break",
+    "_catalog_gap": false
+  }
+]

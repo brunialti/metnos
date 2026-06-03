@@ -21,7 +21,7 @@ en = "Reads the text content of a Google Doc. Canonical dispatcher: routes to ba
 
 [code]
 files  = ["read_files_doc.py"]
-digest = "sha256:a9d64812c79760ae4e683ba0d5956d96f06035b59a44b1775994db0152143775"
+digest = "sha256:87ea00cffa6485f22528be65819857f97369759b1258deb285d3a8169c491e31"
 
 [args]
 type     = "object"
@@ -77,7 +77,7 @@ expect = { ok = false, error_contains = "document_id" }
 [[tests]]
 name   = "unsupported_client_fails"
 input  = { document_id = "1abc", client = "dropbox" }
-expect = { ok = false, error_contains = "unsupported" }
+expect = { ok = false, error_contains = "Operazione non applicabile per questo provider" }
 
 [[tests]]
 name   = "happy_path_oauth_missing_returns_needs_inputs"

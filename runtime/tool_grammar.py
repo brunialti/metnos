@@ -40,6 +40,7 @@ API:
 from __future__ import annotations
 
 import json
+import os
 import re
 from typing import Any, Sequence
 
@@ -734,14 +735,59 @@ _TASKS_MARKERS: tuple[str, ...] = (
     "task", "tasks", "schedule", "scheduled", "schedula", "schedulare",
     "ricorrente", "ricorrenti", "promemoria", "reminder", "timer",
     "ricordami", "ricordati", "ricorda", "remind",
-    "ogni", "every", "daily", "weekly", "hourly", "fra",
+    "daily", "weekly", "hourly",
     "storico", "history", "esecuzione", "esecuzioni",
     "cancella task", "elenca task", "lista task",
+)
+
+# "ogni"/"fra"/"every" da soli sono parole COMUNI (es. "leggi ogni messaggio",
+# "differenza fra A e B") e baiterebbero i `*_tasks` nel pool. Ma sono marker
+# di scheduling QUANDO adiacenti a un'unita' temporale ("ogni giorno", "ogni 30
+# minuti", "fra 2 ore"). Regex deterministico (§7.9), complementare a
+# _TASKS_MARKERS, preserva la rilevazione dei monitor schedulati.
+_RE_SCHEDULE_PHRASE = re.compile(
+    r"\b(?:ogni|every)\s+(?:\d+\s*)?"
+    r"(?:second|minut|min\b|or[ae]\b|giorn|d[ìi]\b|settiman|mes[ei]\b|ann|"
+    r"day|hour|week|month|year)"
+    r"|\b(?:fra|tra)\s+(?:\d+|un[ao']?|mezz)",
+    re.IGNORECASE,
 )
 _TASKS_NAMES: tuple[str, ...] = (
     "create_tasks", "list_tasks", "delete_tasks",
     "read_tasks", "set_tasks", "read_tasks_history",
 )
+
+
+# Token candidato a path filesystem: sequenza non-spazio con almeno uno '/'.
+_RE_FS_PATH_TOKEN = re.compile(r"\S*/\S*")
+# Estensione file alla fine di un segmento (`/issues.md`, `/foo.py`).
+_RE_PATH_EXT = re.compile(r"/[^/]+\.[A-Za-z0-9]{1,5}$")
+
+
+def _looks_like_fs_path(tok: str) -> bool:
+    """True se `tok` e' CHIARAMENTE un path filesystem (non un compound di
+    dominio come 'issue/PR' ne' 'e/o'). Criteri: URL escluso; anchor esplicito
+    (`/`, `~`, `./`, `../`); oppure >=3 segmenti (a/b/c); oppure termina con
+    `/file.ext`. Cosi' '/opt/metnos/issues' e 'github/issues.md' sono path, ma
+    'issue/PR', 'e/o', 'and/or' NON lo sono (preserva i loro marker)."""
+    if "://" in tok:
+        return False
+    if tok[:1] in "/~" or tok.startswith(("./", "../")):
+        return True
+    if tok.count("/") >= 2:
+        return True
+    return bool(_RE_PATH_EXT.search(tok))
+
+
+def _strip_fs_paths(query_lc: str) -> str:
+    """Rimuove SOLO i token che sono path-filesystem (preserva URL e compound
+    di dominio). Usato prima del match dei marker: 'issues' in
+    '/opt/metnos/issues' non deve innescare il provider github, ma 'issue/PR'
+    SI'. Deterministico §7.9."""
+    def _drop(m: "re.Match[str]") -> str:
+        tok = m.group(0)
+        return " " if _looks_like_fs_path(tok) else tok
+    return _RE_FS_PATH_TOKEN.sub(_drop, query_lc)
 
 
 def _has_word(query_lc: str, words: tuple[str, ...]) -> bool:
@@ -752,6 +798,83 @@ def _has_word(query_lc: str, words: tuple[str, ...]) -> bool:
         if re.search(pat, query_lc):
             return True
     return False
+
+
+# §7.3 verb-aware filtering: universal helpers che vanno SEMPRE inclusi
+# anche quando filtriamo per verbo (servono a quasi tutti i framework).
+_UNIVERSAL_HELPERS = frozenset({
+    "describe_entries", "filter_entries", "sort_entries",
+    "classify_entries", "compute_entries", "get_inputs",
+    "undo_last_turn",
+})
+
+
+def filter_pool_by_intent_verb(tools: Sequence[Any], intent_verb: str,
+                                 *, include_universals: bool = True,
+                                 always_include: Sequence[str] = ()
+                                 ) -> tuple[list[Any], list[str]]:
+    """§7.3 Task #40 — Verb-aware GBNF: restringe il pool ai tool che
+    matchano il verbo dell'intent + universal helpers + always_include.
+
+    Pattern:
+      - intent_verb='find' → tool tipo find_files, find_messages, ...
+      - intent_verb='read' → tool read_files, read_messages, ...
+      - intent_verb='get'  → tool get_now, get_files, get_processes, ...
+
+    Esclusi:
+      - tool con first_segment != intent_verb (eccetto universal helpers)
+      - SE intent_verb assente/vuoto: ritorna pool invariato (no filter)
+
+    Safety: se filter azzera il pool, ritorna originale.
+
+    Args:
+      tools: pool corrente (sequence di Executor o dict-like)
+      intent_verb: verbo canonico (lowercase) da intent_extractor
+      include_universals: includi describe/filter/sort/... entries
+      always_include: nomi tool sempre presenti (override filtro)
+
+    Returns:
+      (pool_filtrato, lista nomi esclusi)
+    """
+    if not intent_verb:
+        return list(tools), []
+    verb = intent_verb.lower().strip()
+    if not verb:
+        return list(tools), []
+    excluded: list[str] = []
+    keep: list = []
+    always_set = set(always_include) | (_UNIVERSAL_HELPERS if include_universals else set())
+    # §2.2 — i verbi-produttori (find/get/read/list) sono la SORGENTE di quasi
+    # ogni pipeline e vanno SEMPRE tenuti nel pool, oltre al verbo dell'intent:
+    #  - intent produttore (get/find/...): sono intercambiabili a livello di
+    #    routing ("quanti file/foto" estrae verb=get ma l'enumeratore e' find_*);
+    #  - intent transformer (sort/filter/classify/...): richiede un producer a
+    #    monte (regola TRANSFORMER RICHIEDE PRODUCER) → senza producer il
+    #    Proposer ALLUCINA un tool (es. list_processes per "che processi
+    #    consumano memoria" con intent=sort) → malformata;
+    #  - intent mutating (delete/move/...): serve un producer per individuare i
+    #    target ("cancella i file vecchi" → find_files + delete_files).
+    # Il prefilter inietta gia' i precursor: il verb-filter NON deve stripparli.
+    try:
+        from vocab import PRODUCER_VERBS as _PROD
+    except Exception:
+        _PROD = frozenset({"read", "find", "get", "list"})
+    allowed_segs = set(_PROD) | {verb}
+    for t in tools:
+        name = _extract_name(t)
+        if not name:
+            continue
+        if name in always_set:
+            keep.append(t)
+            continue
+        first_seg = name.split("_", 1)[0]
+        if first_seg in allowed_segs:
+            keep.append(t)
+        else:
+            excluded.append(name)
+    if not keep:
+        return list(tools), []  # safety: filter vuoto → restore
+    return keep, excluded
 
 
 def filter_pool_for_grammar(tools: Sequence[Any], user_query: str,
@@ -771,6 +894,9 @@ def filter_pool_for_grammar(tools: Sequence[Any], user_query: str,
     Determinismo §7.9. Niente LLM, niente IO.
     """
     query_lc = (user_query or "").lower()
+    # I marker di dominio si valutano sulla query SENZA i path filesystem:
+    # 'issues' in '/opt/metnos/issues' non e' il provider github (URL intatti).
+    query_markers = _strip_fs_paths(query_lc)
     excluded: list[str] = []
     # Canonical = tutto tranne escape-hatch globali
     canonical = [
@@ -782,29 +908,35 @@ def filter_pool_for_grammar(tools: Sequence[Any], user_query: str,
     ]
     if len(canonical) >= 3:
         excluded.append("request_new_executor")
-    if not _has_word(query_lc, proximity_markers):
+    if not _has_word(query_markers, proximity_markers):
         excluded.append("request_location_from_user")
-    if not _has_word(query_lc, _UNDO_MARKERS):
+    if not _has_word(query_markers, _UNDO_MARKERS):
         excluded.append("undo_last_turn")
     # Tasks builtin: escludi se query non ha marker scheduling (anti-bait
     # del PLANNER LLM su query mail/file ambigue).
-    if not _has_word(query_lc, _TASKS_MARKERS):
+    if not (_has_word(query_markers, _TASKS_MARKERS)
+            or _RE_SCHEDULE_PHRASE.search(query_markers)):
         excluded.extend(_TASKS_NAMES)
     # Indice nomi presenti nel pool (per il check "esiste canonical?")
     _names_in_pool = {_extract_name(t) for t in tools}
     for suffix, markers in _PROVIDER_SUFFIX_MARKERS.items():
-        if not _has_word(query_lc, markers):
-            # Marker provider ASSENTE → escludi tool con suffix
+        if not _has_word(query_markers, markers):
+            # Marker provider ASSENTE → escludi tool con suffix.
+            # In produzione l'esclusione e' INCONDIZIONATA: un tool con
+            # provider-suffix non deve mai entrare nel pool grammar senza il
+            # suo marker (es. find_issues_github su "leggi i file in
+            # /opt/metnos/issues" → deve restare find_files locale, anche se
+            # non esiste un canonical 'find_issues').
+            # Eccezione SOLO E2E: con METNOS_HIDE_EXECUTORS i canonical sono
+            # nascosti di proposito, quindi se il canonical equivalente manca
+            # si tiene il provider-suffixed come unica opzione semantica.
+            _hide_mode = bool(os.environ.get("METNOS_HIDE_EXECUTORS"))
             for t in tools:
                 name = _extract_name(t)
                 if not name.endswith(suffix):
                     continue
-                # Canonical equivalente = name senza il suffix provider.
-                # Se il canonical NON e' nel pool (es. nascosto via
-                # METNOS_HIDE_EXECUTORS in test E2E), tenere il provider-
-                # suffixed: e' l'unica opzione semantica disponibile.
                 canonical_name = name[: -len(suffix)].rstrip("_")
-                if canonical_name in _names_in_pool:
+                if canonical_name in _names_in_pool or not _hide_mode:
                     excluded.append(name)
         else:
             # Marker provider PRESENTE → escludi canonical (non-suffixed)

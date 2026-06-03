@@ -16,7 +16,7 @@ en = "Reverse geocoding: given a list of coordinates or entries with field `gps`
 
 [code]
 files  = ["get_places.py"]
-digest = "sha256:4560bd5ec4fa370add8ca0fac602bb9ab815823ff7fe5704d86bdca7701b8d5c"
+digest = "sha256:0874ccaef4297ebaf4fee06f8719b92d0d0a74577cbe45007c41e9d1296715df"
 
 [args]
 type     = "object"
@@ -44,12 +44,12 @@ hint = ["nominatim.openstreetmap.org", "localhost"]
 [[tests]]
 name   = "args_invalidi_nessuno_dei_due"
 input  = { }
-expect = { ok = false, error_contains = "either 'coords'" }
+expect = { ok = false, error_contains = "Manca un argomento obbligatorio" }
 
 [[tests]]
 name   = "args_invalidi_entrambi"
 input  = { coords = [], entries = [] }
-expect = { ok = false, error_contains = "only ONE" }
+expect = { ok = false, error_contains = "Argomenti non validi" }
 
 [[tests]]
 name   = "lista_coords_vuota_ok"

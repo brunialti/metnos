@@ -15,7 +15,7 @@ en = "Performs the login to the web form of an already registered domain (creden
 
 [code]
 files  = ["login_session.py"]
-digest = "sha256:ede232e59e60821d8bba8843f455e693e70cff99e81cb9031c5819a48125ede5"
+digest = "sha256:edb156f21a8caa3f3cbb58c70dbc7a7706c57a8bccafaf6b5469d4b70642c8b9"
 
 [args]
 type     = "object"

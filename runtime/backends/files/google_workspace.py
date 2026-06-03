@@ -23,8 +23,12 @@ gmail/calendar google_workspace backend).
 from __future__ import annotations
 
 import json
+import logging
+import os
 import sys
 from pathlib import Path
+
+log = logging.getLogger(__name__)
 
 _RUNTIME = Path(__file__).resolve().parent.parent.parent
 if str(_RUNTIME) not in sys.path:
@@ -42,6 +46,44 @@ SKILL_NAME = "google-workspace"
 
 def _has_creds() -> bool:
     return (_skill_home(SKILL_NAME) / "google_token.json").is_file()
+
+
+def _ensure_fresh_token() -> bool:
+    """Fallback di refresh OAuth (resilienza): l'access token google scade ~1h,
+    quindi senza refresh ogni op fallirebbe dopo un'ora. Se il token e' scaduto
+    ma ha `refresh_token`, lo rinnova e lo RISALVA (cosi' il subprocess skill
+    riceve un token fresco). Ritorna:
+      - True  → token utilizzabile (valido o rinnovato con successo);
+      - False → assente / scaduto-senza-refresh / refresh fallito (rete o
+        refresh_token revocato) → il chiamante ritorna needs_inputs (no traceback).
+    Determinismo §7.9. Robusto: qualunque errore → False (mai eccezione propagata)."""
+    tok = _skill_home(SKILL_NAME) / "google_token.json"
+    if not tok.is_file():
+        return False
+    try:
+        import json as _json
+        from google.oauth2.credentials import Credentials
+        from google.auth.transport.requests import Request
+        info = _json.loads(tok.read_text(encoding="utf-8"))
+        creds = Credentials.from_authorized_user_info(info, info.get("scopes"))
+        if creds.valid:
+            return True
+        if creds.expired and creds.refresh_token:
+            creds.refresh(Request())
+            out = _json.loads(creds.to_json())
+            # preserva i campi extra non gestiti da to_json()
+            for k in ("account", "type", "universe_domain"):
+                if k in info and k not in out:
+                    out[k] = info[k]
+            tmp = tok.parent / (tok.name + ".tmp")
+            tmp.write_text(_json.dumps(out, indent=2), encoding="utf-8")
+            os.replace(tmp, tok)  # atomico
+            log.info("google OAuth token rinnovato (scadenza %s)", out.get("expiry"))
+            return True
+        return False  # scaduto senza refresh_token
+    except Exception as ex:  # rete assente, refresh_token revocato, lib mancante
+        log.warning("refresh token google fallito: %s", ex)
+        return False
 
 
 def _auth_needs_inputs(args_base: dict, *, executor: str,
@@ -81,6 +123,14 @@ def _run_drive(argv: list[str], *, executor: str, args_base: dict,
     """Thin wrapper su `run_with_retry` per CLI `google_api.py drive ...`.
     `result_kind` propagato all'`_auth_needs_inputs` per shape return
     (entries vs results) coerente con il verb canonical."""
+    # Guard PROATTIVO (§7.3, universale per ogni op google): assicura un token
+    # OAuth fresco PRIMA di lanciare il subprocess skill. _ensure_fresh_token
+    # rinnova automaticamente un token scaduto (fallback resilienza, scade ~1h);
+    # se assente / non rinnovabile / refresh fallito → needs_inputs (ok:True),
+    # mai un traceback mal-classificato (es. ERR_PATH_NOT_FOUND con la traccia).
+    if not _ensure_fresh_token():
+        return None, _auth_needs_inputs(
+            args_base, executor=executor, result_kind=result_kind)
     return run_with_retry(
         argv, executor=executor, args_base=args_base,
         auth_handler=lambda ab: _auth_needs_inputs(
@@ -244,7 +294,7 @@ def write(args: dict) -> dict:
                          "webViewLink": (data or {}).get("webViewLink", "")})
 
     out = {
-        "ok": len(results) > 0 or not failed,
+        "ok": len(failed) == 0,
         "n_written": len(results),
         "results": results,
         "used": len(results),
@@ -314,7 +364,7 @@ def delete(args: dict) -> dict:
                          "status": "permanently_deleted" if permanent else "trashed"})
 
     return {
-        "ok": len(results) > 0 or not failed,
+        "ok": len(failed) == 0,
         "n_deleted": len(results),
         "results": results,
         "failed": failed,
@@ -384,7 +434,7 @@ def share(args: dict) -> dict:
                          "permission_id": (data or {}).get("permissionId", "")})
 
     return {
-        "ok": len(results) > 0 or not failed,
+        "ok": len(failed) == 0,
         "n_shared": len(results),
         "results": results,
         "failed": failed,
@@ -440,7 +490,7 @@ def create_dirs(args: dict) -> dict:
                          "webViewLink": (data or {}).get("webViewLink", "")})
 
     out = {
-        "ok": len(results) > 0 or not failed,
+        "ok": len(failed) == 0,
         "n_created": len(results),
         "results": results,
         "used": len(results),
@@ -605,7 +655,7 @@ def download(args: dict) -> dict:
                         "bytes": size_b})
 
     out = {
-        "ok": len(results) > 0 or not failed,
+        "ok": len(failed) == 0,
         "ok_count": len(results),
         "fail_count": len(failed),
         "results": results,
@@ -670,7 +720,12 @@ def read_spreadsheet(args: dict) -> dict:
         return {"ok": False, "error_code": "ERR_ARG_INVALID",
                 "error": _msg("ERR_ARG_INVALID", arg="args", reason="must be an object"),
                 "error_class": "invalid_args", "entries": [], "used": 0}
-    sid = (args.get("spreadsheet_id") or "").strip()
+    _sid_raw = args.get("spreadsheet_id")
+    if _sid_raw is not None and not isinstance(_sid_raw, str):
+        return {"ok": False, "error_code": "ERR_ARG_NOT_STRING",
+                "error": _msg("ERR_ARG_NOT_STRING", arg="spreadsheet_id"),
+                "error_class": "invalid_args", "entries": [], "used": 0}
+    sid = (_sid_raw or "").strip()
     if not sid:
         return {"ok": False, "error_code": "ERR_ARG_MISSING",
                 "error": _msg("ERR_ARG_MISSING", arg="spreadsheet_id"),
@@ -711,7 +766,12 @@ def write_spreadsheet(args: dict) -> dict:
                 "error": _msg("ERR_ARG_INVALID", arg="args", reason="must be an object"),
                 "error_class": "invalid_args",
                 "results": [], "used": 0, "n_written": 0}
-    sid = (args.get("spreadsheet_id") or "").strip()
+    _sid_raw = args.get("spreadsheet_id")
+    if _sid_raw is not None and not isinstance(_sid_raw, str):
+        return {"ok": False, "error_code": "ERR_ARG_NOT_STRING",
+                "error": _msg("ERR_ARG_NOT_STRING", arg="spreadsheet_id"),
+                "error_class": "invalid_args", "entries": [], "used": 0}
+    sid = (_sid_raw or "").strip()
     if not sid:
         return {"ok": False, "error_code": "ERR_ARG_MISSING",
                 "error": _msg("ERR_ARG_MISSING", arg="spreadsheet_id"),

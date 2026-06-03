@@ -45,6 +45,7 @@ from pathlib import Path
 sys.path.insert(0, os.environ.get("METNOS_RUNTIME") or next(
     str(p / "runtime") for p in Path(__file__).resolve().parents
     if (p / "runtime" / "config.py").is_file()))
+from messages import get as _msg  # noqa: E402
 from host_throttle import HostThrottle  # noqa: E402
 # HTTP cache disk-based (ADR 0105).
 from http_cache import HttpCache, DEFAULT_TTL_S  # noqa: E402
@@ -373,7 +374,7 @@ def _fetch_one(url: str, opener, timeout_s: float, max_bytes: int,
                     ctype = resp.headers.get("Content-Type", "")
                     if "text/html" not in ctype.lower():
                         return None, {
-                            "error": f"non-html content-type: {ctype}",
+                            "error": _msg("ERR_NON_HTML_CONTENT", ctype=ctype),
                             "error_class": "non_html",
                         }
                     body = resp.read(max_bytes)
@@ -432,7 +433,7 @@ def _fetch_one(url: str, opener, timeout_s: float, max_bytes: int,
                 }
             except TimeoutError:
                 return None, {
-                    "error": f"timeout after {timeout_s}s",
+                    "error": _msg("ERR_TIMEOUT"),
                     "error_class": "timeout",
                 }
             except Exception as e:
@@ -562,7 +563,7 @@ def _invoke_default(args: dict) -> dict:
     if urls is None:
         urls = []
     if not isinstance(urls, list):
-        return {"ok": False, "error": "urls must be a list[str]"}
+        return {"ok": False, "error": _msg("ERR_ARG_NOT_LIST_OF", arg="urls", of="strings")}
 
     auth_cookies_file = args.get("auth_cookies_file")
     timeout_s = float(args.get("timeout_s", 10.0))
@@ -582,7 +583,7 @@ def _invoke_default(args: dict) -> dict:
     except FileNotFoundError as e:
         return {"ok": False, "error": str(e)}
     except Exception as e:
-        return {"ok": False, "error": f"opener build failed: {e}"}
+        return {"ok": False, "error": _msg("ERR_OP_FAILED", reason=str(e))}
 
     follow_iframes = bool(args.get("follow_iframes", True))
     # ADR 0125: opt-in JS-rendering via sidecar Playwright. Default false
@@ -598,7 +599,7 @@ def _invoke_default(args: dict) -> dict:
     failed: list[dict] = []
     for i, url in enumerate(urls):
         if not isinstance(url, str) or not url:
-            failed.append({"url": str(url), "error": "invalid url",
+            failed.append({"url": str(url), "error": _msg("ERR_INVALID_URL"),
                            "error_class": "unknown", "_idx": i})
             continue
         valid_jobs.append((i, url))
@@ -818,8 +819,7 @@ def invoke(args: dict) -> dict:
     backend = _resolve_backend(client)
     if backend is None:
         return {"ok": False,
-                "error": f"unsupported web client: {client!r}. "
-                         f"Available: ['httpx', 'playwright']"}
+                "error": _msg("ERR_NOT_APPLICABLE", what=f"client {client!r}")}
     return backend.read_html(args)
 
 
@@ -827,7 +827,7 @@ def main():
     try:
         args = json.load(sys.stdin)
     except json.JSONDecodeError as e:
-        sys.stdout.write(json.dumps({"ok": False, "error": f"invalid input json: {e}"}))
+        sys.stdout.write(json.dumps({"ok": False, "error": _msg("ERR_JSON_INVALID")}))
         return
     result = invoke(args)
     sys.stdout.write(json.dumps(result, ensure_ascii=False))

@@ -30,7 +30,7 @@ en = "Converts files between formats (JPG<->PNG/WEBP/GIF, MP4<->WEBM, video->mp3
 
 [code]
 files  = ["change_files_format.py"]
-digest = "sha256:f3d267b4992390d6b9f3f6a83deaa99829ed420c89470b3af6fd0000edfe52f3"
+digest = "sha256:fedba85f752c0edf4fe1c8f3e521285bd2f7823a2647f0abe82fb2c1e8e0449e"
 
 [args]
 type     = "object"

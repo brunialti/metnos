@@ -23,7 +23,14 @@ Contratto:
 from __future__ import annotations
 
 import json
+import os
 import sys
+from pathlib import Path
+
+sys.path.insert(0, os.environ.get("METNOS_RUNTIME") or next(
+    str(p / "runtime") for p in Path(__file__).resolve().parents
+    if (p / "runtime" / "config.py").is_file()))
+from messages import get as _msg  # noqa: E402
 
 
 def invoke(args):
@@ -33,28 +40,38 @@ def invoke(args):
     top = args.get("top")
 
     if not isinstance(entries, list):
-        return {"ok": False, "error": "missing or invalid 'entries' (must be a list)"}
+        return {"ok": False, "error": _msg("ERR_ARG_NOT_LIST", arg="entries")}
     if not isinstance(by, str) or not by:
-        return {"ok": False, "error": "missing required arg 'by' (string, name of field to sort by)"}
+        return {"ok": False, "error": _msg("ERR_ARG_MISSING", arg="by")}
     if top is not None:
         if not isinstance(top, int) or top < 0:
-            return {"ok": False, "error": "'top' must be a non-negative integer or null"}
+            return {"ok": False, "error": _msg("ERR_ARG_NOT_INT", arg="top")}
 
-    # Estrai chiave di ordinamento. Entries che non hanno il campo o
-    # hanno valore non comparabile finiscono in coda (treated as -inf
-    # for desc, +inf for asc) — coerente con CLAUDE.md 2.4 robustezza
-    # NL→det: niente errore se una entry e' incompleta.
-    def _key(e):
+    # Chiave di ordinamento. Le entry senza il campo / con valore non
+    # comparabile finiscono SEMPRE IN CODA, a prescindere da desc (CLAUDE.md
+    # §2.4). Per ottenerlo NON usiamo reverse= sull'intera lista (invertirebbe
+    # anche il sentinel, portandolo in testa con desc=True): partizioniamo
+    # have/missing, ordiniamo solo `have` e accodiamo `missing`. Il bucket di
+    # tipo (numeri vs stringhe) evita il TypeError su colonne a tipo misto
+    # (int vs str non sono confrontabili in Python 3).
+    def _val(e):
         if not isinstance(e, dict):
-            return (1, 0)  # always last
+            return None
         v = e.get(by)
-        if v is None:
-            return (1, 0)
-        if isinstance(v, (int, float, str)):
-            return (0, v)
-        return (1, 0)
+        if isinstance(v, (int, float, str)):  # bool e' sottotipo int: ok 0/1
+            return v
+        return None
 
-    sorted_entries = sorted(entries, key=_key, reverse=desc)
+    def _key(e):
+        v = _val(e)
+        if isinstance(v, (int, float)):
+            return (0, v)        # bucket numeri
+        return (1, v)            # bucket stringhe (nessun confronto cross-tipo)
+
+    have = [e for e in entries if _val(e) is not None]
+    missing = [e for e in entries if _val(e) is None]
+    have.sort(key=_key, reverse=desc)
+    sorted_entries = have + missing
     total_input = len(entries)
     truncated = False
     if top is not None and 0 < top < len(sorted_entries):
@@ -85,7 +102,7 @@ def main():
     try:
         args = json.load(sys.stdin)
     except json.JSONDecodeError as e:
-        sys.stdout.write(json.dumps({"ok": False, "error": f"invalid input json: {e}"}))
+        sys.stdout.write(json.dumps({"ok": False, "error": _msg("ERR_JSON_INVALID")}))
         return
     sys.stdout.write(json.dumps(invoke(args), ensure_ascii=False))
 

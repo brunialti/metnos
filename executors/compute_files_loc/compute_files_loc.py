@@ -31,6 +31,11 @@ import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
+sys.path.insert(0, os.environ.get("METNOS_RUNTIME") or next(
+    str(p / "runtime") for p in Path(__file__).resolve().parents
+    if (p / "runtime" / "config.py").is_file()))
+from messages import get as _msg  # noqa: E402
+
 # Parallelismo (ADR 0100). I/O FS dominante: thread bastano (open+read
 # rilascia il GIL). SSD locale gestisce 4-8 letture in parallelo senza
 # saturare bandwidth; bilanciamo con cpu*2.
@@ -159,7 +164,7 @@ def _count_one(path: Path, count_blank: bool, count_comments: bool):
 def invoke(args):
     paths = args.get("paths")
     if not isinstance(paths, list) or not paths:
-        return {"ok": False, "error": "missing or empty 'paths' (must be non-empty list)"}
+        return {"ok": False, "error": _msg("ERR_ARG_NOT_LIST", arg="paths")}
 
     include_ext_arg = args.get("include_ext")
     if include_ext_arg is None:
@@ -172,9 +177,9 @@ def invoke(args):
             if isinstance(e, str) and e.strip()
         )
         if not include_ext:
-            return {"ok": False, "error": "include_ext must contain at least one extension"}
+            return {"ok": False, "error": _msg("ERR_ARG_NOT_LIST_OF", arg="include_ext", of="strings")}
     else:
-        return {"ok": False, "error": "include_ext must be a list of strings"}
+        return {"ok": False, "error": _msg("ERR_ARG_NOT_LIST_OF", arg="include_ext", of="strings")}
 
     exclude_subs_arg = args.get("exclude_path_substrings")
     if exclude_subs_arg is None:
@@ -182,7 +187,7 @@ def invoke(args):
     elif isinstance(exclude_subs_arg, list):
         exclude_subs = tuple(s for s in exclude_subs_arg if isinstance(s, str) and s)
     else:
-        return {"ok": False, "error": "exclude_path_substrings must be a list of strings"}
+        return {"ok": False, "error": _msg("ERR_ARG_NOT_LIST_OF", arg="exclude_path_substrings", of="strings")}
 
     count_blank = bool(args.get("count_blank", False))
     count_comments = bool(args.get("count_comments", True))
@@ -193,7 +198,7 @@ def invoke(args):
         if max_files == 0:
             max_files = 50000
         else:
-            return {"ok": False, "error": "max_files must be a positive integer"}
+            return {"ok": False, "error": _msg("ERR_ARG_NOT_POSITIVE_INT", arg="max_files")}
 
     # Walk seriale (deterministico) → lista di candidati. Cap a max_files.
     candidates: list[Path] = list(_walk_paths(paths, include_ext, exclude_subs, max_files))
@@ -299,7 +304,7 @@ def main():
     try:
         args = json.load(sys.stdin)
     except json.JSONDecodeError as e:
-        sys.stdout.write(json.dumps({"ok": False, "error": f"invalid input json: {e}"}))
+        sys.stdout.write(json.dumps({"ok": False, "error": _msg("ERR_JSON_INVALID")}))
         return
     sys.stdout.write(json.dumps(invoke(args), ensure_ascii=False))
 

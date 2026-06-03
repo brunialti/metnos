@@ -15,7 +15,7 @@ en = "ONLY tool for reading/searching IMAP messages. Freely combine time window 
 
 [code]
 files  = ["read_messages.py"]
-digest = "sha256:ec5dc6e2e20a8ecbe191e3d197602365b726eca167559b0f9092298a970d4c66"
+digest = "sha256:f727861f0faf03cc4fb28d3afc7ee527a70bbcb09688be6fc911309779b2d197"
 
 [args]
 type     = "object"
@@ -165,7 +165,7 @@ hint = ["~/.config/metnos/mail.env", "~/.config/mykleos/mail.env"]
 [[tests]]
 name   = "account_invalido"
 input  = { account = "ghost" }
-expect = { ok = false, error_contains = "unknown account" }
+expect = { ok = false, error_contains = "knowcastle, metnos_roberto, metnos_system, mykleos, tiscali" }
 
 [[tests]]
 name   = "max_results_invalido"

@@ -14,7 +14,7 @@ en = "Filter a list of entries (dict) based on arbitrary criteria. Work ONLY IN 
 
 [code]
 files  = ["filter_entries.py"]
-digest = "sha256:0d8da00dddc4164a6f7dd0efa11b3e6544d67fa6c58d9bbf601f8ebc72b1fa2f"
+digest = "sha256:0e8da54de363feb9eb00aca0e41a27a33bc17fa170330c8af56694092899e3a6"
 
 [args]
 type     = "object"
@@ -202,7 +202,7 @@ expect = { ok = true, metadata_field_eq = { count_out = 2 } }
 [[tests]]
 name   = "entries_invalid_fallisce"
 input  = { entries = "non una lista" }
-expect = { ok = false, error_contains = "missing or invalid arg 'entries'" }
+expect = { ok = false, error_contains = "deve essere una lista" }
 
 [[tests]]
 name   = "where_in_relevance"

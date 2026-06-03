@@ -16,7 +16,7 @@ en = "Sort a list of entries by the value of a dictionary key. Spec: input must 
 
 [code]
 files  = ["sort_entries.py"]
-digest = "sha256:4a9a9e31b375f9160bf0ae3ff772f2af9b9257ce7f3fa025d6ce5cfe3686228b"
+digest = "sha256:0b31649d83e76f4e4a625b7e4306b69859f62cda77c22e6e3937eb4a6fb0c2df"
 
 [args]
 type     = "object"

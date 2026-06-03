@@ -36,7 +36,7 @@ en = "Delegate a deep reasoning task to an external frontier LLM (Opus 4.7 / Son
 
 [code]
 files  = ["consult_frontier.py"]
-digest = "sha256:858606e8afc3a384e73ab056a3bdea51dff8f66b10a447c4cbbcf9aa90a15677"
+digest = "sha256:df8214717cf119914b8fab843e34edc733cb737bca6d86a1fdb09db2ab6a2cf8"
 
 [args]
 type     = "object"

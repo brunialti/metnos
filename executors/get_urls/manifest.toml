@@ -15,7 +15,7 @@ en = "Executes an HTTP/HTTPS request (GET or HEAD) towards one or more URLs and 
 
 [code]
 files  = ["get_urls.py"]
-digest = "sha256:24578ce21dac56873870f40046d9e4146db2418929c55b744f09ed327b15cc0b"
+digest = "sha256:d8354fdb996a33d875aeb057f817d2c1886edaf703f7ec9be3aefc743027bf49"
 
 [args]
 type     = "object"

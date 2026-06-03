@@ -45,6 +45,41 @@ _LATEX_REPLACEMENTS = (
 _LATEX_INLINE_RE = re.compile(r"(?<!\\)\$([^$\n]+?)\$")
 _LATEX_DISPLAY_RE = re.compile(r"\$\$([^$]+?)\$\$", flags=re.DOTALL)
 
+# Schemi consentiti negli href dei link markdown. Tutto il resto
+# (javascript:, data:, vbscript:, file:, ...) e' rifiutato: l'href viene
+# scartato e si emette solo il testo. Funzione prevista di un sanitizer:
+# bloccare gli URL attivi (XSS). I link relativi (`/`, `#`, `?`, `.`) e i
+# frammenti sono consentiti perche' privi di schema attivo.
+_SAFE_URL_SCHEMES = ("http", "https", "mailto", "tel")
+_SCHEME_RE = re.compile(r"^([a-zA-Z][a-zA-Z0-9+.\-]*):")
+
+
+def _safe_href(url: str) -> str | None:
+    """Ritorna l'href se lo schema e' consentito, altrimenti None.
+
+    - URL relativi/ancora (iniziano con `/`, `#`, `?`, `.`) → consentiti.
+    - URL con schema in `_SAFE_URL_SCHEMES` → consentiti.
+    - Qualunque altro schema (es. `javascript:`, `data:`) → None (drop href).
+
+    Lo schema viene valutato sulla stringa con whitespace di controllo
+    (tab/newline/NUL) rimossi: i browser ignorano questi byte quando
+    risolvono `javascript:`, quindi `java\\tscript:` deve essere bloccato.
+    """
+    raw = (url or "").strip()
+    if not raw:
+        return None
+    # Rimuove i byte di controllo che i browser ignorano nella risoluzione
+    # dello schema (evita bypass tipo `java&#9;script:`).
+    probe = re.sub(r"[\x00-\x20]", "", raw)
+    m = _SCHEME_RE.match(probe)
+    if not m:
+        # Nessuno schema → relativo o ancora: consentito.
+        return raw
+    scheme = m.group(1).lower()
+    if scheme in _SAFE_URL_SCHEMES:
+        return raw
+    return None
+
 
 def _strip_latex(s: str) -> str:
     """Mappa notazione LaTeX/MathJax tipica del planner LLM su Unicode.
@@ -179,8 +214,13 @@ def to_safe_html(md: str) -> str:
 
     def _link(m: re.Match) -> str:
         text, url = m.group(1), m.group(2)
-        url = url.replace('"', "%22")
-        return f'<a href="{url}">{text}</a>'
+        href = _safe_href(url)
+        if href is None:
+            # Schema non consentito (javascript:/data:/...): scarta l'href,
+            # emette solo il testo (gia' html-escaped). No XSS.
+            return text
+        href = href.replace('"', "%22")
+        return f'<a href="{href}">{text}</a>'
     s = re.sub(r"\[([^\]\n]+)\]\(([^)\n]+)\)", _link, s)
 
     s = re.sub(r"(?m)^#{1,6}\s+(.+)$", r"<b>\1</b>", s)
@@ -281,8 +321,11 @@ def _apply_inline(s: str) -> str:
     # link [text](url)
     def _link(m: "re.Match") -> str:
         text, url = m.group(1), m.group(2)
-        url = url.replace('"', "%22")
-        return f'<a href="{url}">{text}</a>'
+        href = _safe_href(url)
+        if href is None:
+            return text
+        href = href.replace('"', "%22")
+        return f'<a href="{href}">{text}</a>'
     s = re.sub(r"\[([^\]\n]+)\]\(([^)\n]+)\)", _link, s)
     return s
 

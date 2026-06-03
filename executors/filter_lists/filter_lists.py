@@ -27,10 +27,31 @@ Determinismo §7.9: zero LLM, zero I/O. Pure compute in memoria.
 from __future__ import annotations
 
 import json
+import os
 import sys
+from pathlib import Path
+
+sys.path.insert(0, os.environ.get("METNOS_RUNTIME") or next(
+    str(p / "runtime") for p in Path(__file__).resolve().parents
+    if (p / "runtime" / "config.py").is_file()))
+from messages import get as _msg  # noqa: E402
 
 
-_VALID_OPS = {"intersect", "union", "difference", "symdiff", "overlap"}
+_VALID_OPS = {"intersect", "union", "difference", "symdiff", "overlap", "delta"}
+
+
+def _is_advanced(av, bv) -> bool:
+    """True se `av` (corrente) e' "piu' avanti" di `bv` (baseline/watermark).
+    Universale §7.9: ISO timestamp (stringa) e numeri si confrontano con `>`;
+    fallback a confronto stringa. bv assente = nessun baseline → avanzato."""
+    if av is None:
+        return False
+    if bv is None:
+        return True
+    try:
+        return av > bv
+    except TypeError:
+        return str(av) > str(bv)
 
 _TIME_START_FIELDS = ("start", "started_at", "taken_at_iso", "mtime_iso",
                        "fired_at", "ts")
@@ -114,12 +135,12 @@ def _normalize_list(arg):
 
 def invoke(args: dict) -> dict:
     if not isinstance(args, dict):
-        return {"ok": False, "error": "args must be an object",
+        return {"ok": False, "error": _msg("ERR_ARGS_NOT_OBJECT"),
                 "error_class": "invalid_args"}
     op = args.get("op")
     if not op or op not in _VALID_OPS:
         return {"ok": False,
-                "error": f"op must be one of {sorted(_VALID_OPS)}, got {op!r}",
+                "error": _msg("ERR_ARG_ENUM", arg="op", allowed=", ".join(sorted(_VALID_OPS))),
                 "error_class": "invalid_args"}
     entries_a = _normalize_list(args.get("entries"))
     entries_b = _normalize_list(args.get("entries_b"))
@@ -199,8 +220,29 @@ def invoke(args: dict) -> dict:
         only_b = keys_b - keys_a_set
         entries_out = [a_by_key[k] for k in only_a]
         entries_out.extend(b_by_key[k] for k in only_b)
+    elif op == "delta":
+        # DELTA universale per monitor (§7.9 deterministico): da A (snapshot
+        # corrente) ritorna ciò che e' NUOVO o CAMBIATO rispetto a B (baseline/
+        # stato salvato). NUOVO = chiave in A non in B. CAMBIATO = chiave in
+        # entrambe ma A[delta_field] > B[delta_field] (watermark avanzato, es.
+        # updated_at). Senza delta_field = solo nuovi (come difference).
+        # Risolve dedup anti-duplicato di QUALSIASI ciclo di monitoraggio
+        # (github/mail/rss): "processa solo ciò che ha attività nuova dal
+        # watermark"; copre anche la RIAPERTURA (replica utente → updated_at
+        # avanza → torna nel delta).
+        delta_field = args.get("delta_field")
+        out_keys = []
+        for k in keys_a:
+            if k in out_keys:
+                continue
+            if k not in keys_b:
+                out_keys.append(k)               # nuovo
+            elif delta_field and _is_advanced(
+                    a_by_key[k].get(delta_field), b_by_key[k].get(delta_field)):
+                out_keys.append(k)               # cambiato dal watermark
+        entries_out = [a_by_key[k] for k in out_keys]
     else:
-        return {"ok": False, "error": f"unimplemented set op {op!r}",
+        return {"ok": False, "error": _msg("ERR_ARG_INVALID", arg="op", reason=repr(op)),
                 "error_class": "invalid_args"}
     return {
         "ok": True, "op": op, "entries": entries_out,
@@ -217,7 +259,7 @@ def main():
     try:
         args = json.load(sys.stdin)
     except json.JSONDecodeError as e:
-        sys.stdout.write(json.dumps({"ok": False, "error": f"invalid input json: {e}"}))
+        sys.stdout.write(json.dumps({"ok": False, "error": _msg("ERR_JSON_INVALID")}))
         return
     sys.stdout.write(json.dumps(invoke(args), ensure_ascii=False))
 

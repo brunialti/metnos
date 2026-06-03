@@ -16,7 +16,7 @@ en = "Returns the current time as ISO 8601, in UTC or in a specified IANA time z
 
 [code]
 files  = ["get_now.py"]
-digest = "sha256:e6e609f6d71a497d6685dddf0197a18d4f6ab823583c562864e5d955f2108e76"
+digest = "sha256:fe5d8a0b7fb26fec07f657bbd8a2f41abe72a37ce73bc754e99368b6f56ff8f1"
 
 [args]
 type = "object"
@@ -56,7 +56,7 @@ expect = { ok = true, metadata_field_eq = { timezone = "Europe/Rome" } }
 [[tests]]
 name   = "fallisce_su_timezone_invalido"
 input  = { timezone = "Mars/Olympus" }
-expect = { ok = false, error_contains = "unknown timezone" }
+expect = { ok = false, error_contains = "non valido" }
 
 # Sample concreto di output (one-shot per synt + fast-path generator).
 [[tests]]

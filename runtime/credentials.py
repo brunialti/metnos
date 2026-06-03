@@ -114,8 +114,13 @@ def store(domain: str, payload: dict) -> Path:
     # Layout file: <salt_b64>\n<fernet_token>
     blob = base64.urlsafe_b64encode(salt) + b"\n" + ciphertext
     path = _file_for(domain)
-    path.write_bytes(blob)
-    os.chmod(path, 0o600)
+    # Scrittura atomica (tmp + os.replace): un load() concorrente non deve mai
+    # leggere un blob troncato (→ falso errore di decifratura). chmod sul tmp
+    # PRIMA del replace così il file finale nasce gia' 0600.
+    tmp = path.parent / (path.name + ".tmp")
+    tmp.write_bytes(blob)
+    os.chmod(tmp, 0o600)
+    os.replace(tmp, path)
     return path
 
 

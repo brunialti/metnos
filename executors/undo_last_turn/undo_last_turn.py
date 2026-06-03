@@ -28,6 +28,7 @@ from pathlib import Path
 sys.path.insert(0, os.environ.get("METNOS_RUNTIME") or next(
     str(p / "runtime") for p in Path(__file__).resolve().parents
     if (p / "runtime" / "config.py").is_file()))
+from messages import get as _msg  # noqa: E402
 from loader import load_catalog
 from reverse_patterns import apply_patterns
 from undo import UndoLog
@@ -54,7 +55,7 @@ def invoke(args):
             "ok": True,
             "undone_count": 0,
             "skipped_count": 0,
-            "message": "nessuna operazione revertibile da annullare nell'ultimo turno",
+            "message": _msg("ERR_NO_UNDOABLE"),
             "details": [],
         }
 
@@ -67,11 +68,11 @@ def invoke(args):
         executor_name = rec["executor"]
         ex = catalog.get(executor_name)
         if ex is None:
-            details.append({"op_id": rec["op_id"], "executor": executor_name, "status": "skipped", "reason": "executor non piu' nel catalogo"})
+            details.append({"op_id": rec["op_id"], "executor": executor_name, "status": "skipped", "reason": _msg("ERR_UNDO_NOT_IN_CATALOG")})
             skipped += 1
             continue
         if not ex.revertible:
-            details.append({"op_id": rec["op_id"], "executor": executor_name, "status": "skipped", "reason": "executor non piu' revertibile"})
+            details.append({"op_id": rec["op_id"], "executor": executor_name, "status": "skipped", "reason": _msg("ERR_UNDO_NOT_REVERTIBLE")})
             skipped += 1
             continue
         rev_result = None
@@ -87,7 +88,7 @@ def invoke(args):
             # priority 2: fallback a reverse() custom del modulo (back-compat)
             mod = _load_module(ex.code_path)
             if mod is None or not hasattr(mod, "reverse"):
-                details.append({"op_id": rec["op_id"], "executor": executor_name, "status": "skipped", "reason": "ne' reverse_pattern ne' reverse() implementati"})
+                details.append({"op_id": rec["op_id"], "executor": executor_name, "status": "skipped", "reason": _msg("ERR_UNDO_NO_REVERSE")})
                 skipped += 1
                 continue
             try:
@@ -150,7 +151,7 @@ def main():
     try:
         args = json.load(sys.stdin)
     except json.JSONDecodeError as e:
-        sys.stdout.write(json.dumps({"ok": False, "error": f"invalid input json: {e}"}))
+        sys.stdout.write(json.dumps({"ok": False, "error": _msg("ERR_JSON_INVALID")}))
         return
     sys.stdout.write(json.dumps(invoke(args), ensure_ascii=False))
 

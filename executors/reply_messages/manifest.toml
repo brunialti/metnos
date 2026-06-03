@@ -23,7 +23,7 @@ en = "Reply in-thread to one or more messages (Gmail). Distinct from `send_messa
 
 [code]
 files  = ["reply_messages.py"]
-digest = "sha256:b07e1f7f42edbd33fdb739581528fa517fc55060220de37d59a87a05faef84f2"
+digest = "sha256:73b449d773b83152d8970534b3d692880b988b923b44f8856f252224af81db92"
 
 [args]
 type     = "object"
@@ -99,4 +99,4 @@ expect = { ok = false }
 [[tests]]
 name   = "args_invalidi_client_imap"
 input  = { message_ids = ["x"], body = "ok", client = "metnos" }
-expect = { ok = false, error_contains = "unsupported" }
+expect = { ok = false, error_contains = "Operazione non applicabile per questo provider" }

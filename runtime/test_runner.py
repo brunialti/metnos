@@ -268,6 +268,25 @@ def check_expect(actual, expected):
         elif matcher == "fail_count_eq":
             if actual.get("fail_count") != value:
                 failures.append(f"fail_count_eq: atteso {value}, ottenuto {actual.get('fail_count')}")
+        elif matcher == "has_field":
+            # Il campo `value` deve essere presente e non-None nel risultato.
+            if actual.get(value) is None:
+                failures.append(f"has_field: campo '{value}' assente/None")
+        elif matcher == "entries_min":
+            n = len(actual.get("entries") or [])
+            if n < value:
+                failures.append(f"entries_min: atteso >= {value}, ottenuto {n}")
+        elif matcher == "entries_max":
+            n = len(actual.get("entries") or [])
+            if n > value:
+                failures.append(f"entries_max: atteso <= {value}, ottenuto {n}")
+        elif matcher == "ok_or_err_class":
+            # Passa se l'op e' andata (ok:True) OPPURE e' fallita con la classe
+            # d'errore attesa (es. missing_credentials in ambienti senza creds).
+            if not (actual.get("ok") is True or actual.get("error_class") == value):
+                failures.append(
+                    f"ok_or_err_class: atteso ok:true o error_class='{value}', "
+                    f"ottenuto ok={actual.get('ok')} err_class={actual.get('error_class')}")
         else:
             failures.append(f"matcher sconosciuto: {matcher}")
     return failures
@@ -319,7 +338,12 @@ def main():
         # Pseudo-sandbox: pre-check hint
         scope_violation = check_hints(args, capabilities)
         if scope_violation:
-            actual = {"ok": False, "error": scope_violation}
+            # Mirror del contratto canonico del runtime (local.py: violazione
+            # di scope = ERR_PERMISSION_DENIED). Il pre-check e' test-only ma
+            # deve emettere la stessa shape, cosi' i test possono asserire
+            # error_code in modo uniforme (oltre a error_contains).
+            actual = {"ok": False, "error": scope_violation,
+                      "error_code": "ERR_PERMISSION_DENIED"}
         else:
             rc, actual, stderr = run_executor(executor_path, args)
             if actual is None:

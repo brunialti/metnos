@@ -70,7 +70,35 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
             from prefilter import rank_with_intent, rank as _rank_bow
             intent_dict = {"verb": intent.verb, "object": intent.object,
                             "keywords": intent.keywords}
-            filtered = rank_with_intent(query, catalog, intent_dict, k=pool_size)
+            # Compound multi-verbo (§7.3): se la query ha >=2 verbi canonici,
+            # il pool MONO-verbo di rank_with_intent escluderebbe i tool degli
+            # altri sotto-intenti (es. find+write+send → "trova le issue,
+            # salvale, mandami il riassunto"). Uniamo il ranking per OGNI verbo
+            # canonico presente nella query cosi' il Proposer vede l'intera
+            # pipeline. Bug 2/6/2026: senza unione il pool era solo find_* →
+            # niente write_files/send_messages → "salva"/"manda" impossibili.
+            filtered = None
+            try:
+                from prefilter import (tokenize as _pf_tok,
+                                        detect_canonical_verbs_all as _pf_dv)
+                _qverbs = list(dict.fromkeys(_pf_dv(_pf_tok(query))))
+            except Exception:
+                _qverbs = []
+            if len(_qverbs) >= 2:
+                _seen = {}
+                for _v in _qverbs:
+                    _sub = rank_with_intent(
+                        query, catalog,
+                        {"verb": _v, "object": intent.object,
+                         "keywords": intent.keywords},
+                        k=pool_size) or []
+                    for _e in _sub:
+                        _seen[getattr(_e, "name", None)] = _e
+                if _seen:
+                    filtered = list(_seen.values())
+            if filtered is None:
+                filtered = rank_with_intent(query, catalog, intent_dict,
+                                            k=pool_size)
             # rank_with_intent ritorna None PER DESIGN quando il verbo intent
             # non matcha alcun executor (es. object=entries meta-oggetto, o
             # verbo intermedio di una query compound): non e' un errore, e' il

@@ -28,14 +28,19 @@ class MetisTerminator:
         entries = self._best_entries(failed_run)
         if entries:
             from messages import get as _msg
+            # HTML→testo: body_text/snippet di una pagina possono contenere
+            # markup grezzo (es. SPA non parsata) — mai user-facing (§2.8).
+            from output_format import _strip_html_to_text
             header = _msg("MSG_SEARCH_PARTIAL_OR_INTERRUPTED", n=len(entries))
             lines = []
             for e in entries[:10]:
                 if not isinstance(e, dict):
                     continue
-                title = str(e.get("title") or e.get("url") or "").strip()[:90]
+                title = _strip_html_to_text(
+                    str(e.get("title") or e.get("url") or "").strip())[:90]
                 url = str(e.get("url") or "").strip()
-                snippet = str(e.get("snippet") or e.get("body_text") or "").strip()
+                snippet = _strip_html_to_text(
+                    str(e.get("snippet") or e.get("body_text") or "").strip())
                 snippet = " ".join(snippet.split())[:140]
                 bit = f"- {title}" if title else "-"
                 if url and url != title:

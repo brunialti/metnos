@@ -15,7 +15,7 @@ en = "Enriches a list of photo files on a filesystem (local paths like /home/...
 
 [code]
 files  = ["get_files.py"]
-digest = "sha256:c53dc8262d119fa6aff693bc42a2da3ab5b37ceb05c6dbef6c2ad57d7525536e"
+digest = "sha256:ed06506d3dda0daff297441aede3ba8cfe9e0e17740bff96ef0ed17ff762cb98"
 
 [args]
 type     = "object"
@@ -68,17 +68,17 @@ expect = { ok = true, ok_count_eq = 0 }
 [[tests]]
 name   = "fields_invalido_fallisce"
 input  = { entries = [], fields = ["pippo"] }
-expect = { ok = false, error_contains = "unknown fields" }
+expect = { ok = false, error_contains = "deve essere uno fra" }
 
 [[tests]]
 name     = "path_inesistente_fallisce_solo_quella"
 input    = { entries = [{path = "/tmp/metnos_does_not_exist_xyz/foo.txt"}] }
-expect   = { ok = false, fail_count_eq = 1, error_contains = "does not exist" }
+expect   = { ok = false, fail_count_eq = 1, error_contains = "non trovato" }
 
 [[tests]]
 name   = "args_invalidi_entries_non_lista"
 input  = { entries = "/tmp/foo" }
-expect = { ok = false, error_contains = "must be a list" }
+expect = { ok = false, error_contains = "obbligatorio" }
 
 [[tests]]
 name   = "fields_all_keyword"

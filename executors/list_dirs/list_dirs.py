@@ -26,6 +26,7 @@ from pathlib import Path
 sys.path.insert(0, os.environ.get("METNOS_RUNTIME") or next(
     str(p / "runtime") for p in Path(__file__).resolve().parents
     if (p / "runtime" / "config.py").is_file()))
+from messages import get as _msg  # noqa: E402
 from path_alias import resolve_path_with_alias  # noqa: E402
 
 _KIND_PREFIX = {
@@ -62,23 +63,23 @@ def invoke(args):
     max_depth = args.get("max_depth", 10)
 
     if not path:
-        return {"ok": False, "error": "missing required arg 'path'"}
+        return {"ok": False, "error": _msg("ERR_ARG_MISSING", arg="path")}
     if max_results == 0:
         max_results = 1000
     if not isinstance(max_results, int) or max_results < 1:
-        return {"ok": False, "error": "max_results must be a positive integer"}
+        return {"ok": False, "error": _msg("ERR_ARG_NOT_POSITIVE_INT", arg="max_results")}
     if not isinstance(max_depth, int) or max_depth < 0:
-        return {"ok": False, "error": "max_depth must be >= 0"}
+        return {"ok": False, "error": _msg("ERR_ARG_INVALID", arg="max_depth", reason=">= 0")}
     if sort_by not in ("name", "mtime", "size"):
-        return {"ok": False, "error": "sort must be one of name|mtime|size"}
+        return {"ok": False, "error": _msg("ERR_ARG_ENUM", arg="sort", allowed="name | mtime | size")}
 
     # path_alias resolver: workspace-default + bilingue IT/EN + multi-root.
     base, alias_note = resolve_path_with_alias(path)
     if not base.exists():
         return {"ok": False, "error_code": "ERR_PATH_NOT_FOUND",
-                "error": f"path not found: {base}"}
+                "error": _msg("ERR_PATH_NOT_FOUND", path=base)}
     if not base.is_dir():
-        return {"ok": False, "error": f"path is not a directory: {base}"}
+        return {"ok": False, "error": _msg("ERR_PATH_WRONG_TYPE", expected="dir", actual="file", path=base)}
 
     entries: list[dict] = []
     truncated = False
@@ -126,7 +127,7 @@ def invoke(args):
                 truncated = True
                 break
     except PermissionError as e:
-        return {"ok": False, "error": f"permission denied (possibly outside allowed scope): {e}"}
+        return {"ok": False, "error": _msg("ERR_PERMISSION_DENIED", path=str(e))}
     except OSError as e:
         return {"ok": False, "error": f"os error: {e}"}
 
@@ -155,7 +156,7 @@ def main():
     try:
         args = json.load(sys.stdin)
     except json.JSONDecodeError as e:
-        sys.stdout.write(json.dumps({"ok": False, "error": f"invalid input json: {e}"}))
+        sys.stdout.write(json.dumps({"ok": False, "error": _msg("ERR_JSON_INVALID")}))
         return
     sys.stdout.write(json.dumps(invoke(args), ensure_ascii=False))
 

@@ -20,7 +20,7 @@ en = "Create one or more directories at the indicated paths. Always accept a lis
 
 [code]
 files  = ["create_dirs.py"]
-digest = "sha256:fb11f69bf71dba1841bda7ea60d993eff228f21cbbd0446e29da6e7f44047294"
+digest = "sha256:4701a81ab772fcd374a4aabee157152bd3c168f4ba2f9f71452895070c069247"
 
 [args]
 type     = "object"

@@ -47,7 +47,7 @@ Truncation: truncated_what='directory' + used + cap_field='max_results'."""
 
 [code]
 files  = ["find_dirs.py"]
-digest = "sha256:a71c84c49d5c80ef2c24f8bd654b0688b53c24f91ac8557ac78deff642bb75e3"
+digest = "sha256:4a270be02868c41e6b0a9964363ee58ef245fb32e3879706c430d0ae44c83dab"
 
 [args]
 type     = "object"
@@ -111,7 +111,7 @@ hint = ["~/**", "/opt/**", "/tmp/**"]
 name     = "walk_semplice"
 setup    = "mkdir -p /tmp/metnos_test_finddirs/a/aa /tmp/metnos_test_finddirs/b && echo 1 > /tmp/metnos_test_finddirs/a/x.txt && echo 2 > /tmp/metnos_test_finddirs/a/aa/y.txt && echo 3 > /tmp/metnos_test_finddirs/b/z.txt"
 input    = { base_path = "/tmp/metnos_test_finddirs" }
-expect   = { ok = true, metadata_field_eq = { count = 4 } }
+expect   = { ok = true, metadata_field_eq = { count = 3 } }
 teardown = "rm -rf /tmp/metnos_test_finddirs"
 
 [[tests]]
@@ -132,10 +132,10 @@ teardown = "rm -rf /tmp/metnos_test_finddirs"
 name     = "exclude_hidden_default"
 setup    = "mkdir -p /tmp/metnos_test_finddirs/visible /tmp/metnos_test_finddirs/.hidden && echo 1 > /tmp/metnos_test_finddirs/visible/x.txt"
 input    = { base_path = "/tmp/metnos_test_finddirs" }
-expect   = { ok = true, metadata_field_eq = { count = 2 } }
+expect   = { ok = true, metadata_field_eq = { count = 1 } }
 teardown = "rm -rf /tmp/metnos_test_finddirs"
 
 [[tests]]
 name   = "fallisce_su_base_path_inesistente"
 input  = { base_path = "/tmp/metnos_does_not_exist_xyz" }
-expect = { ok = false, error_contains = "not found" }
+expect = { ok = false, error_contains = "Percorso non trovato" }

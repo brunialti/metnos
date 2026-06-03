@@ -7,6 +7,13 @@
   ADR <a href="#">0161</a>. Storage <code>~/.local/share/metnos/praxis.sqlite</code>.
 </p>
 
+{% if legacy_notice %}
+<div style="background:#fff3cd;border:1px solid #ffe69c;border-radius:6px;padding:.8rem 1rem;margin:.8rem 0">
+  <b>{{ legacy_notice }}</b> — il flusso decisionale vivo è Engine v2;
+  questo pannello legacy non riceve più dati.
+</div>
+{% endif %}
+
 <h2>Pronoia config</h2>
 <div style="background:#f8f9fa;padding:.8rem 1rem;border:1px solid #ddd;border-radius:6px;margin:.8rem 0">
   <p>Pronoia tier (interviene quando Praxis fail):

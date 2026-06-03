@@ -132,12 +132,19 @@ def derive_tool_name(verb: str, obj: str, available_tools: set[str]) -> Optional
 
 
 def build_step_args(verb: str, obj: str, chunk: str,
-                     prev_step_idx: Optional[int] = None) -> dict:
+                     prev_step_idx: Optional[int] = None,
+                     tool_name: Optional[str] = None,
+                     tool_schemas: Optional[dict] = None) -> dict:
     """Costruisci args di base per uno step.
 
     Universal §7.9 — pattern derivati da prefilter+vocab:
       - producer step 1: estrai possibili input (paths/urls/dates)
       - mutating/transform step N>1: usa from_step per piping
+
+    Schema-aware (§7.9): se `tool_schemas` e' fornito, gli args di default
+    (es. title/name su create/write) vengono POTATI a quelli realmente
+    dichiarati dal tool — niente arg bogus che il tool ignorerebbe (e che
+    falserebbero il confidence gate del decomposer).
     """
     args: dict = {}
 
@@ -201,6 +208,17 @@ def build_step_args(verb: str, obj: str, chunk: str,
             "body": body_template,
         }]
 
+    # Potatura schema-aware §7.9: scarta gli args che il tool NON dichiara
+    # (es. 'name' di default ma non previsto da create_files_spreadsheet).
+    # Preserva piping (from_step/entries) e runtime args (_*).
+    if tool_schemas and tool_name:
+        sch = tool_schemas.get(tool_name)
+        if isinstance(sch, dict) and sch.get("properties"):
+            props = set(sch["properties"].keys())
+            args = {k: v for k, v in args.items()
+                    if k in props or k in ("from_step", "entries")
+                    or k.startswith("_")}
+
     return args
 
 
@@ -220,7 +238,53 @@ def _send_has_explicit_recipient(chunk: str) -> bool:
     return False
 
 
-def decompose_query(query: str, available_tools: set[str]) -> Optional[list[dict]]:
+def _step_schema_coherent(tool: str, args: dict,
+                          tool_schemas: Optional[dict]) -> bool:
+    """True se lo step e' COERENTE con lo schema del tool (decomposer confident).
+
+    Deterministico §7.9. Senza schema (builtin/ignoto) → True (non giudica).
+    Reietta (False) quando il decomposer euristico ha prodotto uno step rotto:
+      - arg NON dichiarato nello schema (mapping sbagliato, es. write_files con
+        `title`/`name` che non sono suoi argomenti);
+      - required non soddisfatto e non coperto da piping from_step/entries.
+    In quei casi `decompose_query` ritorna None e il runtime DEFERISCE al
+    PLANNER LLM (che estrae gli args dal NL), invece di eseguire una pipeline
+    malformata (§2.8). Generale: vale per QUALSIASI tool, non per casi cablati."""
+    if not tool_schemas:
+        return True
+    sch = tool_schemas.get(tool)
+    if not isinstance(sch, dict) or not sch.get("properties"):
+        return True  # builtin o schema assente → non valutabile
+    props = set((sch.get("properties") or {}).keys())
+    required = set(sch.get("required") or [])
+    piped = ("from_step" in args) or ("entries" in args)
+    for k in args:
+        if k in ("from_step", "entries") or k.startswith("_"):
+            continue
+        if k not in props:
+            return False  # arg bogus → mapping non confidente
+    for r in required:
+        if r in args or piped:
+            continue
+        return False  # required mancante e non pipeable
+    # `requires_one_of` (§7.3 universale): ogni gruppo richiede ALMENO un arg
+    # non-vuoto. Se l'euristica non ha popolato nessun criterio di un gruppo
+    # (es. find_images_indices senza query_text/name/... → "missing search
+    # criterion"), lo step e' INCOMPLETO → defer al PLANNER LLM (che estrae il
+    # criterio dal NL). Vale per QUALSIASI tool con requires_one_of, non cablato.
+    def _provided(k: str) -> bool:
+        if k in ("from_step", "entries"):
+            return piped
+        v = args.get(k)
+        return v not in (None, "", [], {}, 0) and not (isinstance(v, str) and not v.strip())
+    for group in (sch.get("requires_one_of") or []):
+        if isinstance(group, list) and group and not any(_provided(k) for k in group):
+            return False  # nessun criterio del gruppo → defer
+    return True
+
+
+def decompose_query(query: str, available_tools: set[str],
+                    tool_schemas: Optional[dict] = None) -> Optional[list[dict]]:
     """Decompose query in framework multi-step. Universal §7.9.
 
     Ritorna lista di step `[{tool, args}, ...]` (senza final_answer).
@@ -230,6 +294,11 @@ def decompose_query(query: str, available_tools: set[str]) -> Optional[list[dict
       - Query split in >=2 chunks su connettori standard
       - Almeno 2 chunks devono produrre (verb, object) → tool valido
       - Tutti i tool derivati devono essere nel catalog
+      - `tool_schemas` (opzionale, {tool: args_schema}): se fornito, OGNI step
+        deve essere schema-coerente (vedi `_step_schema_coherent`); altrimenti
+        il decomposer DEFERISCE al PLANNER LLM (return None). Evita di
+        short-circuitare con pipeline rotte su domini che richiedono estrazione
+        args non banale (es. repo GitHub, path_template) — territorio LLM §7.9.
 
     Pronoun resolution universal: se chunk ha verbo ma no object → eredita
     object dal chunk precedente (es. "mandameli" / "cancellale" referenziano
@@ -362,7 +431,13 @@ def decompose_query(query: str, available_tools: set[str]) -> Optional[list[dict
             continue  # skip chunk, don't abort whole decomposition
         # prev_idx = ultimo step USER-INTENDED (skip auto-injects)
         prev_idx = user_step_idxs[-1] if user_step_idxs else None
-        args = build_step_args(verb, obj, chunk, prev_idx)
+        args = build_step_args(verb, obj, chunk, prev_idx,
+                               tool_name=tool_name, tool_schemas=tool_schemas)
+        # Confidence gate (§7.9/§2.8): se gli args euristici non sono coerenti
+        # con lo schema del tool, il decomposer NON e' confidente → deferisce
+        # al PLANNER LLM invece di eseguire una pipeline rotta.
+        if not _step_schema_coherent(tool_name, args, tool_schemas):
+            return None
         steps.append({"tool": tool_name, "args": args})
         user_step_idxs.append(len(steps))  # 1-indexed of THIS step
         # Universal §7.9: dopo create_X_qualifier che ritorna un blob vuoto

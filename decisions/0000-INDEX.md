@@ -74,4 +74,11 @@ for format and discipline; see `_template.md` for the template.
 - [0068](0068-recurring-tasks-callback-registry.md) — Recurring tasks — callback registry by string key (restart-safe scheduler).
 
 > Note. ADR `0055` is intentionally skipped (placeholder reserved during the
-> 29 April reorganisation; not used). The next ADR is `0069`.
+> 29 April reorganisation; not used).
+>
+> **This flat index stops at `0068`.** From `0069` onward the canonical ADR
+> registry is the `decisions/` directory itself (one file per ADR), per
+> `CLAUDE.md` §1 — not this list. Latest at time of writing: `0169`
+> (taglio di rilevanza adattivo + spreadsheet locale default + guard
+> refusal-in-args, sessione 2/6). The next ADR number is `0170`. ADRs
+> `0115`, `0116`, `0121` are also skipped.

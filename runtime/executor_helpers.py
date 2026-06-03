@@ -63,6 +63,12 @@ def normalize_paths_urls(args: dict) -> dict:
         return args
     paths_in = args.get("paths")
     urls_in = args.get("urls")
+    # §2.4 forgiving: stringa singola → wrap in list (placeholder che
+    # risolve a un solo valore non viene quasi mai dentro una list dal LLM).
+    if isinstance(paths_in, str):
+        paths_in = [paths_in] if paths_in else []
+    if isinstance(urls_in, str):
+        urls_in = [urls_in] if urls_in else []
     # Se nessuno dei due e' una lista, nulla da normalizzare.
     paths_is_list = isinstance(paths_in, list)
     urls_is_list = isinstance(urls_in, list)
@@ -88,9 +94,6 @@ def normalize_paths_urls(args: dict) -> dict:
             moved_to_urls.append(p)
         else:
             keep_paths.append(p)
-
-    if not moved_to_paths and not moved_to_urls:
-        return args
 
     out = dict(args)
     out["paths"] = keep_paths + moved_to_paths

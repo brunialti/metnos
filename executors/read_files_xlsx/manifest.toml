@@ -15,7 +15,7 @@ en = "Reads Excel files (.xlsx) and returns the rows as a list of dicts (key=hea
 
 [code]
 files  = ["read_files_xlsx.py"]
-digest = "sha256:6accde8143c6ded54a003e6146b13059857bff9fb1376f8b3ca134854fac7efa"
+digest = "sha256:ff81476df7449b9cfde7eb81af45340b9c1f4b592db347fb364ca082d4f6b265"
 
 [args]
 type     = "object"
@@ -78,7 +78,7 @@ expect = { ok = true, ok_count_eq = 0 }
 [[tests]]
 name   = "args_invalidi_paths_non_lista"
 input  = { paths = "/tmp/foo.xlsx" }
-expect = { ok = false, error_contains = "must be a list" }
+expect = { ok = false, error_contains = "deve essere una lista" }
 
 [[tests]]
 name   = "path_inesistente_fallisce_solo_quella"

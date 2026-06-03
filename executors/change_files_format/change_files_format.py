@@ -28,6 +28,12 @@ import os
 import shutil
 import subprocess
 import sys
+from pathlib import Path
+
+sys.path.insert(0, os.environ.get("METNOS_RUNTIME") or next(
+    str(p / "runtime") for p in Path(__file__).resolve().parents
+    if (p / "runtime" / "config.py").is_file()))
+from messages import get as _msg  # noqa: E402
 import time
 from pathlib import Path
 from typing import Any
@@ -182,7 +188,7 @@ def _binary_missing(cmd_argv: list[str]) -> dict | None:
             "missing_binary": bin_name,
             "package": bin_name,
             "suggested_install": f"sudo apt install -y {bin_name}",
-            "error": f"binary '{bin_name}' non installato.",
+            "error": _msg("ERR_PACKAGE_NOT_FOUND", name=bin_name),
         }
     return None
 
@@ -199,7 +205,7 @@ def invoke(args: dict | None = None, **kwargs: Any) -> dict[str, Any]:
     max_files = int(args.get("max_files", 50))
     to_format = _norm_ext(to_format)
     if not to_format:
-        return {"ok": False, "error": "to_format e' obbligatorio (es. 'txt', 'jpg', 'webm')",
+        return {"ok": False, "error": _msg("ERR_TO_FORMAT_REQUIRED"),
                   "error_class": "missing_arg"}
     if not paths:
         return {"ok": True, "results": [], "summary": "Nessun file da convertire."}
@@ -217,31 +223,31 @@ def invoke(args: dict | None = None, **kwargs: Any) -> dict[str, Any]:
         src_ext = _ext_of(src)
         if not src_ext:
             results.append({"src": src, "dst": None, "ok": False,
-                             "error": "estensione sorgente non determinabile",
+                             "error": _msg("ERR_SRC_EXT_UNKNOWN"),
                              "error_class": "no_src_ext"})
             continue
         if src_ext == to_format:
             results.append({"src": src, "dst": src, "ok": True,
-                             "error": "stesso formato, nessuna conversione",
+                             "error": _msg("ERR_FORMAT_SAME"),
                              "error_class": "noop_same_format",
                              "elapsed_ms": 0})
             continue
         if not Path(src).is_file():
             results.append({"src": src, "dst": None, "ok": False,
-                             "error": "file non trovato",
+                             "error": _msg("ERR_PATH_NOT_FOUND", path=src),
                              "error_class": "src_not_found"})
             continue
         key = (src_ext, to_format)
         builder = _CONVERTERS.get(key)
         if builder is None:
             results.append({"src": src, "dst": None, "ok": False,
-                             "error": f"conversione {src_ext}->{to_format} non supportata",
+                             "error": _msg("ERR_FORMAT_UNSUPPORTED", src=src_ext, dst=to_format),
                              "error_class": "unsupported_pair"})
             continue
         dst = _dst_path(src, to_format, dst_dir, dst_suffix)
         if Path(dst).exists() and not overwrite:
             results.append({"src": src, "dst": dst, "ok": False,
-                             "error": "destinazione esiste (passa overwrite=true)",
+                             "error": _msg("ERR_DST_EXISTS", path=dst),
                              "error_class": "dst_exists"})
             continue
         cmd_argv = builder(src, dst, src_ext, to_format, quality)
@@ -267,7 +273,7 @@ def invoke(args: dict | None = None, **kwargs: Any) -> dict[str, Any]:
                              "size_bytes_out": size_out})
         except subprocess.TimeoutExpired:
             results.append({"src": src, "dst": None, "ok": False,
-                             "error": "timeout 300s",
+                             "error": _msg("ERR_TIMEOUT"),
                              "error_class": "timeout"})
         except OSError as e:
             results.append({"src": src, "dst": None, "ok": False,
@@ -276,8 +282,8 @@ def invoke(args: dict | None = None, **kwargs: Any) -> dict[str, Any]:
 
     ok_count = sum(1 for r in results if r["ok"])
     fail_count = len(results) - ok_count
-    summary = (f"Convertiti {ok_count}/{len(results)} file in {to_format}."
-                + (f" {fail_count} falliti." if fail_count else ""))
+    summary = (_msg("MSG_CONVERT_SUMMARY", ok=ok_count, total=len(results), fmt=to_format)
+                + (_msg("MSG_CONVERT_FAILED", n=fail_count) if fail_count else ""))
 
     out: dict[str, Any] = {
         "ok": True,
@@ -301,7 +307,7 @@ def main():
     try:
         args = json.load(sys.stdin)
     except json.JSONDecodeError as e:
-        sys.stdout.write(json.dumps({"ok": False, "error": f"invalid input json: {e}"}))
+        sys.stdout.write(json.dumps({"ok": False, "error": _msg("ERR_JSON_INVALID")}))
         return
     sys.stdout.write(json.dumps(invoke(args), ensure_ascii=False))
 

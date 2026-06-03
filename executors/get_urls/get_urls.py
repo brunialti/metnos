@@ -1,10 +1,17 @@
 #!/usr/bin/env python3
 """get_urls — executor Metnos: HTTP GET/HEAD, entries-pattern output."""
 import json
+import os
 import sys
 import urllib.error
 import urllib.request
+from pathlib import Path
 from urllib.parse import urlparse
+
+sys.path.insert(0, os.environ.get("METNOS_RUNTIME") or next(
+    str(p / "runtime") for p in Path(__file__).resolve().parents
+    if (p / "runtime" / "config.py").is_file()))
+from messages import get as _msg  # noqa: E402
 
 
 USER_AGENT = "Metnos/1.1 web_fetch"
@@ -15,14 +22,14 @@ def _fetch_one(url: str, method: str, timeout: int) -> dict:
     """Fetch a single URL. Returns either an entry dict (success) or
     a failed dict with url/error (failure)."""
     if not url:
-        return {"failed": True, "url": "", "error": "missing url"}
+        return {"failed": True, "url": "", "error": _msg("ERR_ARG_MISSING", arg="url")}
     try:
         parsed = urlparse(url)
     except Exception as e:
-        return {"failed": True, "url": url, "error": f"invalid url: {e}"}
+        return {"failed": True, "url": url, "error": _msg("ERR_ARG_INVALID", arg="url", reason=str(e))}
     if parsed.scheme not in ("http", "https"):
         return {"failed": True, "url": url,
-                "error": f"unsupported scheme '{parsed.scheme}'"}
+                "error": _msg("ERR_NOT_APPLICABLE", what=f"scheme '{parsed.scheme}'")}
 
     req = urllib.request.Request(
         url, method=method, headers={"User-Agent": USER_AGENT}
@@ -54,7 +61,7 @@ def _fetch_one(url: str, method: str, timeout: int) -> dict:
     except urllib.error.URLError as e:
         return {"failed": True, "url": url, "error": f"url error: {e.reason}"}
     except TimeoutError:
-        return {"failed": True, "url": url, "error": f"timeout after {timeout}s"}
+        return {"failed": True, "url": url, "error": _msg("ERR_TIMEOUT")}
     except Exception as e:
         return {"failed": True, "url": url,
                 "error": f"unexpected: {type(e).__name__}: {e}"}
@@ -66,8 +73,8 @@ def invoke(args):
 
     if method not in ("GET", "HEAD"):
         return {"ok": False, "entries": [], "ok_count": 0, "fail_count": 1,
-                "failed": [{"url": "", "error": f"unsupported method '{method}'"}],
-                "summary": f"unsupported method '{method}'"}
+                "failed": [{"url": "", "error": _msg("ERR_NOT_APPLICABLE", what=f"method '{method}'")}],
+                "summary": _msg("ERR_NOT_APPLICABLE", what=f"method '{method}'")}
 
     # Accept either `url` (singular, manifest contract) or `urls` (vectorial).
     urls_arg = args.get("urls")
@@ -81,8 +88,8 @@ def invoke(args):
 
     if not urls:
         return {"ok": False, "entries": [], "ok_count": 0, "fail_count": 1,
-                "failed": [{"url": "", "error": "missing required arg 'url'"}],
-                "summary": "missing required arg 'url'"}
+                "failed": [{"url": "", "error": _msg("ERR_ARG_MISSING", arg="url")}],
+                "summary": _msg("ERR_ARG_MISSING", arg="url")}
 
     entries: list = []
     failed: list = []
@@ -120,15 +127,15 @@ def main():
     raw = sys.stdin.read()
     if not raw.strip():
         result = {"ok": False, "entries": [], "ok_count": 0, "fail_count": 1,
-                  "failed": [{"url": "", "error": "empty input"}],
-                  "summary": "empty input"}
+                  "failed": [{"url": "", "error": _msg("ERR_EMPTY_INPUT")}],
+                  "summary": _msg("ERR_EMPTY_INPUT")}
     else:
         try:
             args = json.loads(raw)
             result = invoke(args)
         except json.JSONDecodeError as e:
             result = {"ok": False, "entries": [], "ok_count": 0, "fail_count": 1,
-                      "failed": [{"url": "", "error": f"invalid input json: {e}"}],
+                      "failed": [{"url": "", "error": _msg("ERR_JSON_INVALID")}],
                       "summary": f"invalid input json: {e}"}
     sys.stdout.write(json.dumps(result, ensure_ascii=False))
 

@@ -32,8 +32,15 @@ Contratto:
 import datetime as _dt
 import fnmatch
 import json
+import os
 import re
 import sys
+from pathlib import Path
+
+sys.path.insert(0, os.environ.get("METNOS_RUNTIME") or next(
+    str(p / "runtime") for p in Path(__file__).resolve().parents
+    if (p / "runtime" / "config.py").is_file()))
+from messages import get as _msg  # noqa: E402
 
 
 def _ensure_list(v):
@@ -158,7 +165,7 @@ def _extract_time_windows(entries: list, field_start: str | None = None,
 def invoke(args):
     entries = args.get("entries")
     if not isinstance(entries, list):
-        return {"ok": False, "error": "missing or invalid arg 'entries' (must be a list of dicts)"}
+        return {"ok": False, "error": _msg("ERR_ARG_NOT_LIST_OF", arg="entries", of="dicts")}
 
     kinds = _ensure_list(args.get("kind"))
     types = _ensure_list(args.get("type"))
@@ -170,7 +177,7 @@ def invoke(args):
         try:
             name_regex = re.compile(name_regex_str, re.IGNORECASE)
         except re.error as e:
-            return {"ok": False, "error": f"invalid name_regex: {e}"}
+            return {"ok": False, "error": _msg("ERR_ARG_INVALID", arg="name_regex", reason=str(e))}
     size_min = args.get("size_min")
     size_max = args.get("size_max")
     mtime_after = _parse_iso_to_epoch(args.get("mtime_after"))
@@ -199,7 +206,7 @@ def invoke(args):
         try:
             where_regex_re = re.compile(where_regex_str, re.IGNORECASE)
         except re.error as e:
-            return {"ok": False, "error": f"invalid where_regex: {e}"}
+            return {"ok": False, "error": _msg("ERR_ARG_INVALID", arg="where_regex", reason=str(e))}
     _has_where_str_op = any(x is not None for x in (
         where_starts_with, where_contains, where_glob, where_regex_str))
     if (where_in or where_not_in or _has_where_str_op) and not where_field:
@@ -357,7 +364,7 @@ def main():
     try:
         args = json.load(sys.stdin)
     except json.JSONDecodeError as e:
-        sys.stdout.write(json.dumps({"ok": False, "error": f"invalid input json: {e}"}))
+        sys.stdout.write(json.dumps({"ok": False, "error": _msg("ERR_JSON_INVALID")}))
         return
     sys.stdout.write(json.dumps(invoke(args), ensure_ascii=False))
 

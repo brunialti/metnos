@@ -21,6 +21,7 @@ from pathlib import Path
 sys.path.insert(0, os.environ.get("METNOS_RUNTIME") or next(
     str(p / "runtime") for p in Path(__file__).resolve().parents
     if (p / "runtime" / "config.py").is_file()))
+from messages import get as _msg  # noqa: E402
 from config import PATH_EXECUTORS as _PATH_EXECUTORS  # noqa: E402
 
 AUDIT_DIR = Path.home() / ".local" / "share" / "metnos" / "introvertiva"
@@ -153,10 +154,10 @@ def _canonical_key(kind: str, payload: dict) -> tuple:
 def invoke(args: dict, ctx: dict | None = None) -> dict:
     kind = args.get("kind", "all")
     if kind not in ("dedupe", "generalize", "specialize", "all"):
-        return {"ok": False, "error": "kind must be 'dedupe' | 'generalize' | 'specialize' | 'all'"}
+        return {"ok": False, "error": _msg("ERR_ARG_ENUM", arg="kind", allowed="dedupe | generalize | specialize | all")}
     max_results = int(args.get("max_results", 50))
     if max_results < 1:
-        return {"ok": False, "error": "max_results must be >= 1"}
+        return {"ok": False, "error": _msg("ERR_ARG_NOT_POSITIVE_INT", arg="max_results")}
     include_dormant = bool(args.get("include_dormant", False))
 
     # Default since: 7 days ago

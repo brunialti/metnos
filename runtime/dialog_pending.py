@@ -67,9 +67,16 @@ log = get_logger(__name__)
 import config as _C
 DIALOG_DIR = _C.PATH_USER_DATA / "get_inputs"
 
-# Soft TTL: scaduti dopo 1h senza progressi (override per dialogo via
-# `timeout_s`). Lavora insieme al cleanup_expired chiamato a inizio turno.
-DEFAULT_TTL_S = 3600
+# Soft TTL: scaduti dopo 1 minuto senza risposta (regola Roberto 29/5/2026;
+# override per-dialogo via `timeout_s` per i casi che ne richiedono di piu',
+# es. inserimento credenziali; override globale via env METNOS_DIALOG_TTL_S).
+# Lo sweep scheduler (dialog_pending_sweep, every_1m) chiude+notifica sullo
+# stesso canale; list_pending salta gli scaduti cosi' non mangiano una query
+# fresca a turn-time.
+DEFAULT_TTL_S = int(os.environ.get("METNOS_DIALOG_TTL_S", "60"))
+# I form (>=2 step) e i dialoghi di credenziali richiedono tempo per essere
+# compilati: TTL piu' lungo (default 10 min) per non chiuderli sotto le dita.
+FORM_TTL_S = int(os.environ.get("METNOS_DIALOG_FORM_TTL_S", "600"))
 
 
 # ── Helper interni ────────────────────────────────────────────────────
@@ -97,6 +104,50 @@ def _utc_now_iso() -> str:
     return datetime.now(tz=timezone.utc).replace(microsecond=0).isoformat()
 
 
+def _started_ts(payload: dict) -> float:
+    """Epoch del `started_at` ISO del dialogo, 0.0 se mancante/illeggibile."""
+    iso = payload.get("started_at") or ""
+    try:
+        return datetime.fromisoformat(iso.replace("Z", "+00:00")).timestamp()
+    except (ValueError, AttributeError):
+        return 0.0
+
+
+def default_timeout_for(dialog: list | None,
+                        on_complete: dict | None = None) -> int:
+    """TTL di default in base alla FORMA del dialogo (§7.3, non per-caller).
+
+    Regola: form (>=2 step) o dialoghi di credenziali → `FORM_TTL_S` (l'utente
+    deve digitare/compilare); dialoghi semplici (1 step si/no/scelta) →
+    `DEFAULT_TTL_S` (chiusura rapida ~1 min). Un `timeout_s` esplicito passato
+    dal chiamante resta sovrano (questa funzione e' solo il default).
+    """
+    steps = dialog or []
+    is_cred = (isinstance(on_complete, dict)
+               and on_complete.get("type") == "save_credentials_and_resume")
+    if not is_cred:
+        for s in steps:
+            if isinstance(s, dict) and (s.get("schema") or {}).get("kind") == "credentials":
+                is_cred = True
+                break
+    if is_cred or len(steps) >= 2:
+        return FORM_TTL_S
+    return DEFAULT_TTL_S
+
+
+def is_expired(payload: dict, now_ts: float | None = None) -> bool:
+    """True se il dialogo ha superato il TTL (`timeout_s` per-dialogo, altrimenti
+    DEFAULT_TTL_S) dal `started_at`. Senza `started_at` valido → NON scaduto
+    (assenza di evidenza non giustifica la rimozione)."""
+    started = _started_ts(payload)
+    if not started:
+        return False
+    if now_ts is None:
+        now_ts = time.time()
+    ttl = int(payload.get("timeout_s") or DEFAULT_TTL_S)
+    return (now_ts - started) > ttl
+
+
 # ── API pubblica ──────────────────────────────────────────────────────
 
 def save_pending(sender_id: str, dialog_id: str, payload: dict) -> Path:
@@ -117,11 +168,16 @@ def save_pending(sender_id: str, dialog_id: str, payload: dict) -> Path:
     except OSError as ex:
         log.debug("chmod 0700 fallito su %s: %s", sd, ex)
     p = _dialog_path(sender_id, dialog_id)
-    p.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+    # Scrittura atomica (tmp + os.replace): list_pending/consume/sweep non
+    # devono mai leggere JSON parziale (lost update / parse error spuri).
+    # chmod sul tmp PRIMA del replace così il file finale nasce 0600.
+    tmp = p.with_name(p.name + ".tmp")
+    tmp.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
     try:
-        os.chmod(p, 0o600)
+        os.chmod(tmp, 0o600)
     except OSError as ex:
-        log.debug("chmod 0600 fallito su %s: %s", p, ex)
+        log.debug("chmod 0600 fallito su %s: %s", tmp, ex)
+    os.replace(tmp, p)
     return p
 
 
@@ -155,6 +211,8 @@ def list_pending(sender_id: str) -> list[dict]:
             continue
         if d.get("completed") or d.get("cancelled"):
             continue
+        if is_expired(d):
+            continue  # scaduto: non e' piu' "attivo" → non consumare la query
         out.append(d)
     out.sort(key=lambda d: d.get("started_at", ""))
     return out
@@ -227,43 +285,60 @@ def cancel_pending(sender_id: str, dialog_id: str) -> bool:
     return True
 
 
-def cleanup_expired(now_ts: float | None = None) -> int:
-    """Rimuove i dialoghi scaduti (timeout_s o DEFAULT_TTL_S dal `started_at`).
+def sweep_expired(now_ts: float | None = None) -> list[dict]:
+    """Rimuove i dialoghi scaduti e ritorna i descrittori degli ABBANDONATI
+    (attivi + scaduti) per la notifica utente da parte dello scheduler.
 
-    Ritorna il numero di file rimossi. Sicuro chiamato in concorrenza:
-    rimozioni race-safe (ENOENT swallowed). Il caller (channel daemon o
-    scheduler) decide la cadenza.
+    Ogni descrittore: `{sender_id, dialog_id, title, age_s, timeout_s}`.
+    Comportamento housekeeping (senza descrittore, niente notifica):
+      - file corrotti → rimossi (no JSON);
+      - dialoghi gia' `completed`/`cancelled` ma scaduti → rimossi (l'utente
+        ha gia' risposto/annullato: nulla da notificare).
+    Solo i dialoghi ATTIVI scaduti generano un descrittore (= avviso utente).
+    Race-safe: ENOENT ignorato. Il caller decide la cadenza.
     """
     if not DIALOG_DIR.exists():
-        return 0
+        return []
     if now_ts is None:
         now_ts = time.time()
-    n_removed = 0
+    abandoned: list[dict] = []
     for sender_dir in DIALOG_DIR.iterdir():
         if not sender_dir.is_dir():
             continue
+        sender_id = sender_dir.name
         for p in sender_dir.glob("*.json"):
             try:
                 d = json.loads(p.read_text(encoding="utf-8"))
             except (OSError, json.JSONDecodeError):
-                # File corrotto: rimuovilo per non lasciare zombie.
                 try:
-                    p.unlink()
-                    n_removed += 1
+                    p.unlink()  # corrotto: niente zombie
                 except OSError:
                     pass
                 continue
-            ttl = int(d.get("timeout_s") or DEFAULT_TTL_S)
-            started_iso = d.get("started_at") or ""
+            terminal = bool(d.get("completed") or d.get("cancelled"))
+            if not is_expired(d, now_ts):
+                continue
+            started = _started_ts(d)
             try:
-                started_dt = datetime.fromisoformat(started_iso.replace("Z", "+00:00"))
-                started_ts = started_dt.timestamp()
-            except (ValueError, AttributeError):
-                started_ts = 0.0
-            if started_ts and now_ts - started_ts > ttl:
-                try:
-                    p.unlink()
-                    n_removed += 1
-                except OSError:
-                    pass
-    return n_removed
+                p.unlink()
+            except OSError:
+                continue
+            if terminal:
+                continue  # rimosso per housekeeping, nessuna notifica
+            abandoned.append({
+                "sender_id": sender_id,
+                "dialog_id": d.get("dialog_id") or p.stem,
+                "title": d.get("title") or "",
+                "actor": d.get("actor") or "",
+                "channel": d.get("channel") or "",
+                "age_s": int(now_ts - started) if started else 0,
+                "timeout_s": int(d.get("timeout_s") or DEFAULT_TTL_S),
+            })
+    return abandoned
+
+
+def cleanup_expired(now_ts: float | None = None) -> int:
+    """Compat: numero di dialoghi ATTIVI scaduti rimossi. Housekeeping di
+    corrotti/terminali avviene comunque. Vedi `sweep_expired` per i dettagli
+    (descrittori per la notifica utente)."""
+    return len(sweep_expired(now_ts))

@@ -32,7 +32,7 @@ Alternative: find_files(patterns=["*.jpg",...]) filters at source."""
 
 [code]
 files  = ["list_dirs.py"]
-digest = "sha256:57bbb36750f5a85baa837d5126f3900fea8d518c41fdb49623e208e403f2de6b"
+digest = "sha256:3db65261bbdd9b559f69ed0a516adffbaf2836db232a502f34fd80dea1a64397"
 
 [args]
 type     = "object"
@@ -101,7 +101,7 @@ teardown = "rm -rf /tmp/metnos_test_fs_list"
 [[tests]]
 name   = "fallisce_su_path_inesistente"
 input  = { path = "/tmp/metnos_does_not_exist_xyz" }
-expect = { ok = false, error_contains = "not found" }
+expect = { ok = false, error_contains = "Percorso non trovato" }
 
 [[tests]]
 name   = "blocca_path_fuori_scope"

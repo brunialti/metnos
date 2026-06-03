@@ -19,7 +19,31 @@ Niente HTML hardcoded qui. Niente LLM call (§7.9 determinismo > LLM).
 """
 from __future__ import annotations
 
+import html as _html
+import re as _re
 from typing import Iterable, Sequence
+
+
+# HTML→testo deterministico (§7.9, ADR 0095: NIENTE LLM). Impedisce che HTML
+# grezzo (es. "<!DOCTYPE html><html>..." da un fetch interrotto) trapeli in un
+# messaggio user-facing — bug "azione schedulata invia messaggio errato".
+_RE_SCRIPT_STYLE = _re.compile(
+    r"<(script|style)\b[^>]*>.*?</\1>", _re.DOTALL | _re.IGNORECASE)
+_RE_TAG = _re.compile(r"<[^>]+>")
+_RE_WS = _re.compile(r"\s+")
+
+
+def _strip_html_to_text(s: str) -> str:
+    """Riduce una stringa a testo semplice: via blocchi script/style, poi tutti
+    i tag, unescape entita', normalizza whitespace. No-op solo se non c'e' ne'
+    tag ('<') ne' entita' ('&'): cosi' anche 'Tom &amp; Jerry' (entita' senza
+    tag) viene de-escapato."""
+    if not s or ("<" not in s and "&" not in s):
+        return s
+    s = _RE_SCRIPT_STYLE.sub(" ", s)
+    s = _RE_TAG.sub(" ", s)
+    s = _html.unescape(s)
+    return _RE_WS.sub(" ", s).strip()
 
 
 def _strip(s: object) -> str:
@@ -259,10 +283,21 @@ def format_search_results(
         score_part = ""
         if isinstance(score, (int, float)) and score > 0:
             score_part = f" — score {float(score):.2f}"
-        # 11/5/2026: drop snippet dal listato compatto. Snippet
-        # inconsistenti (alcune entries lo hanno, altre no; cookie banner,
-        # ripetizioni del titolo) generavano line-height irregolare e
-        # confusione. Una riga per entry, click sul link per il contenuto.
+        # 28/5/2026: snippet ripristinato (request live). Skip se cookie
+        # banner o se duplica il titolo (dist Levenshtein-lite via lower).
+        # HTML→testo PRIMA di tutto: uno snippet con markup grezzo (fetch
+        # interrotto) non deve mai raggiungere il messaggio (§2.8 onesta').
+        snippet = _strip_html_to_text(_strip(e.get("snippet") if isinstance(e, dict) else ""))
+        if snippet and not _is_cookie_banner(snippet):
+            # Skip se snippet quasi identico al titolo (rumore)
+            t_low = title.lower().strip()
+            s_low = snippet.lower().strip()
+            if not (s_low == t_low or s_low in t_low or t_low in s_low):
+                if len(snippet) > snippet_max:
+                    snippet = snippet[:snippet_max].rstrip() + "…"
+                lines.append(f"**{counter}.** [{title_safe}]({url}){score_part}")
+                lines.append(f"  {snippet}")
+                continue
         lines.append(f"**{counter}.** [{title_safe}]({url}){score_part}")
     if n > max_show:
         lines.append(_msg("MSG_SEARCH_RESULTS_MORE",

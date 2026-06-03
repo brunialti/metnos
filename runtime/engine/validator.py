@@ -39,6 +39,21 @@ class ValidationResult:
     errors: list[ValidationError] = field(default_factory=list)
 
 
+def _is_placeholder(value) -> bool:
+    """True se il valore contiene un placeholder ${...} che l'Executor
+    risolve a runtime (${stepN.field}, ${steps.N.field}, ${RUNTIME:key},
+    ${FILLER:name}). Un required così "valorizzato" NON è mancante:
+    il check va delegato a runtime, non bloccato qui (§7.9).
+    """
+    if isinstance(value, str):
+        return "${" in value
+    if isinstance(value, dict):
+        return any(_is_placeholder(v) for v in value.values())
+    if isinstance(value, list):
+        return any(_is_placeholder(v) for v in value)
+    return False
+
+
 class Validator:
     """Typecheck framework prima di Executor.run()."""
 
@@ -80,12 +95,26 @@ class Validator:
         """Lightweight: required + requires_one_of + type check sui top-level."""
         props = schema.get("properties") or {}
         required = schema.get("required") or []
-        # Required
+        # Required: la chiave deve essere presente in args. Placeholder-aware
+        # §7.9 — un required coperto da from_step/entries (piping upstream) o
+        # da un placeholder `${...}` (risolto a runtime dall'Executor:
+        # ${stepN.field}, ${RUNTIME:key}, ${FILLER:name}) NON è "mancante".
+        # Coerente con agent_runtime.validate_args (from_step → entries).
         for r in required:
-            v = args.get(r)
-            if v is None and r != "from_step":
-                # from_step coerce a entries se presente: tollerato in Executor
-                continue  # delegato a Executor + remediate_args
+            if r in args and not _is_placeholder(args.get(r)):
+                continue  # valore concreto presente
+            if r in args:
+                continue  # placeholder ${...}: risolto dall'Executor
+            # chiave assente: tollerata solo se coperta da piping upstream
+            if r == "from_step" and "entries" in args:
+                continue
+            if r == "entries" and (args.get("from_step") is not None):
+                continue
+            # qualsiasi required soddisfatto da from_step (resolver lo espande
+            # a `entries` prima dell'invoke) → non mancante
+            if "from_step" in args and r not in ("from_step",):
+                continue
+            return f"missing required arg '{r}'"
         # requires_one_of
         for group in schema.get("requires_one_of") or []:
             if not isinstance(group, list) or not group:

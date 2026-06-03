@@ -20,7 +20,7 @@ en = "Filter textual content at the line granularity, keeping only those that sa
 
 [code]
 files  = ["filter_texts_lines.py"]
-digest = "sha256:18e6f0fc99b408db59b6f60b8e6ae91342459472a54dbbcdec0029fa5a1178dd"
+digest = "sha256:137a4b4cc19878331ed33cb0c05035d802acf096334913f38cadf65e91dc1360"
 
 [args]
 type     = "object"
@@ -96,12 +96,12 @@ expect = { ok = true, ok_count_eq = 1 }
 [[tests]]
 name   = "regex_invalido"
 input  = { content = "x", regex = "[invalido" }
-expect = { ok = false, error_contains = "invalid regex" }
+expect = { ok = false, error_contains = "unterminated character set at position" }
 
 [[tests]]
 name   = "manca_filtro"
 input  = { content = "x" }
-expect = { ok = false, error_contains = "specify at least one filter" }
+expect = { ok = false, error_contains = "Manca un argomento obbligatorio" }
 
 [[tests]]
 name   = "with_line_numbers"

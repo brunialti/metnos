@@ -24,7 +24,8 @@ class Recovery(Protocol):
     def recover(self, *, failed_run: RunResult, query: str, intent: Intent,
                 pool: list[str], proposer,
                 llm_call: Optional[Callable] = None,
-                lang: str = "it") -> Optional[Framework]: ...
+                lang: str = "it",
+                catalog: Optional[list] = None) -> Optional[Framework]: ...
 
 
 # ── classify_error deterministic ──────────────────────────────────────────
@@ -72,7 +73,8 @@ class SimpleRecovery:
     def recover(self, *, failed_run: RunResult, query: str, intent: Intent,
                 pool: list[str], proposer,
                 llm_call: Optional[Callable] = None,
-                lang: str = "it") -> Optional[Framework]:
+                lang: str = "it",
+                catalog: Optional[list] = None) -> Optional[Framework]:
         err = classify_error(failed_run)
         if not is_recoverable(err):
             return None  # out_of_scope → terminator
@@ -89,6 +91,7 @@ class SimpleRecovery:
             return proposer.propose(
                 query=query, intent=intent, pool=excluded_pool,
                 excluded_hashes=excluded, llm_call=llm_call, lang=lang,
+                catalog=catalog,
             )
         except Exception as ex:
             log.warning("SimpleRecovery propose failed: %r", ex)

@@ -486,6 +486,48 @@ def run_full(user_request: str, llm_call_middle, llm_call_wise, *, progress=None
 
     run.code_text = s5.output["code"]
 
+    # Stage 5.5 — LINT STRUTTURALE del manifest (ADR 0169, deterministico §7.9).
+    # Gira PRIMA del verifier LLM (stage6): becca i difetti di FORMA della scheda
+    # (PATTERN con arg inventato, arg runtime_resolved citato, output-shape) senza
+    # spendere una call LLM. Rigetta solo su severity 'error' (difetti genuini);
+    # i 'warn' (es. SCOPO lungo) sono loggati. Disable: METNOS_SYNT_LINT_DISABLED=1.
+    import os as _os_lint
+    if _os_lint.environ.get("METNOS_SYNT_LINT_DISABLED") != "1":
+        try:
+            from manifest_lint import lint_manifest as _lint
+            _man = {
+                "name": run.name or (s1.output.get("name") if s1.output else "") or "",
+                "description": (s4.output.get("description") if s4.output else "") or "",
+                "affinity": (s4.output.get("affinity") if s4.output else []) or [],
+                "args": {
+                    "properties": (s2.output.get("args_properties") if s2.output else {}) or {},
+                    "required": (s2.output.get("args_required") if s2.output else []) or [],
+                },
+            }
+            _findings = _lint(_man)
+            _errs = [f for f in _findings if f.severity == "error"]
+            _warns = [f for f in _findings if f.severity == "warn"]
+            if _warns:
+                try:
+                    from logging_setup import get_logger
+                    get_logger(__name__).info(
+                        "[synt.lint] %s: %d warn — %s", _man["name"], len(_warns),
+                        "; ".join(w.message for w in _warns[:3]))
+                except Exception:
+                    pass
+            if _errs:
+                run.final_state = "rejected_lint_structural"
+                run.abandon_reason = "manifest_lint: " + "; ".join(
+                    e.message for e in _errs[:3])
+                return run
+        except Exception as ex:
+            # best-effort §7.9: un errore d'infra del linter non blocca la synt.
+            try:
+                from logging_setup import get_logger
+                get_logger(__name__).warning("[synt.lint] failed: %s", ex)
+            except Exception:
+                pass
+
     # Stage 6 — semantic verification (ADR 0114 Layer 6, 8/5/2026).
     # Confronta description (s4) vs code (s5). Se misaligned → rejected.
     # Determinismo §7.9: LLM solo per il giudizio, mai per la decisione.

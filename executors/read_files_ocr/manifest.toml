@@ -16,7 +16,7 @@ en = "Extracts text from image files (jpg/png/tiff/heic/...) or scanned PDFs via
 
 [code]
 files  = ["read_files_ocr.py"]
-digest = "sha256:096bcfe64733db1d394a2fbb38144736245abda8cd76a39d44e6ed2cadd08769"
+digest = "sha256:a08eb1b801848ccfeaf73723aa596079d3a85afe1a3a07a7780496f0271407ae"
 
 [args]
 type     = "object"
@@ -54,7 +54,7 @@ expect = { ok = true, ok_count_eq = 0 }
 [[tests]]
 name   = "args_invalidi_paths_non_lista"
 input  = { paths = "/tmp/foo.png" }
-expect = { ok = false, error_contains = "must be a list" }
+expect = { ok = false, error_contains = "deve essere una lista" }
 
 [[tests]]
 name   = "path_inesistente_fallisce_solo_quella"

@@ -18,7 +18,7 @@ en = "Count lines of code (LOC) in one or more directories/files, filtered by ex
 
 [code]
 files  = ["compute_files_loc.py"]
-digest = "sha256:376245d6fbc9a13924c3692c1157dd8fc86d2e2ce1d4f063a4889b34f42643cc"
+digest = "sha256:dac360d076ac34bf7030ebeba6202eb0ace5d9a903e10d683f232aee0d74a310"
 
 [args]
 type     = "object"

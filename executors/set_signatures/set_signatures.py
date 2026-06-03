@@ -13,6 +13,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "runtime"))
 
+from messages import get as _msg  # noqa: E402
 from safety.canonicalize import Signature
 from safety.storage import SafetyStore
 
@@ -21,7 +22,7 @@ def _set_blacklist(
     store: SafetyStore, sig: str, reason: str, severity: str, actor: str
 ) -> dict:
     if severity not in ("forbidden", "irreversible", "dangerous", "reversible"):
-        return {"ok": False, "error": f"invalid severity: {severity}"}
+        return {"ok": False, "error": _msg("ERR_ARG_INVALID", arg="severity", reason=str(severity))}
     row = store.upsert_user(
         sig, "blacklist",
         severity=severity, reason=reason, created_by=actor,
@@ -32,7 +33,7 @@ def _set_blacklist(
         "kind": row.kind,
         "severity": row.severity,
         "source": row.source,
-        "message": f"Signature '{row.signature}' set in blacklist (severity={severity}).",
+        "message": _msg("MSG_SIG_BLACKLISTED", signature=row.signature, severity=severity),
     }
 
 
@@ -48,7 +49,7 @@ def _set_whitelist(
         "signature": row.signature,
         "kind": row.kind,
         "source": row.source,
-        "message": f"Signature '{row.signature}' set in whitelist.",
+        "message": _msg("MSG_SIG_WHITELISTED", signature=row.signature),
     }
 
 
@@ -58,7 +59,7 @@ def _set_unknown(store: SafetyStore, sig: str) -> dict:
         return {
             "ok": True,
             "removed": False,
-            "message": f"Signature '{sig}' was already unknown.",
+            "message": _msg("MSG_SIG_ALREADY_UNKNOWN", signature=sig),
         }
     if existing.severity == "forbidden":
         return {
@@ -73,7 +74,7 @@ def _set_unknown(store: SafetyStore, sig: str) -> dict:
         "ok": True,
         "removed": ok,
         "previous_kind": existing.kind,
-        "message": f"Signature '{sig}' removed from {existing.kind}; now unknown.",
+        "message": _msg("MSG_SIG_REMOVED", signature=sig, kind=existing.kind),
     }
 
 
@@ -84,17 +85,17 @@ def invoke(args: dict, ctx: dict | None = None) -> dict:
     severity = args.get("severity", "dangerous")
 
     if kind not in ("blacklist", "whitelist", "unknown"):
-        return {"ok": False, "error": "kind must be 'blacklist', 'whitelist', or 'unknown'"}
+        return {"ok": False, "error": _msg("ERR_ARG_ENUM", arg="kind", allowed="blacklist | whitelist | unknown")}
     if not signature or not isinstance(signature, str):
-        return {"ok": False, "error": "missing required: signature"}
+        return {"ok": False, "error": _msg("ERR_ARG_MISSING", arg="signature")}
 
     try:
         Signature.parse(signature)
     except ValueError as e:
-        return {"ok": False, "error": f"invalid signature: {e}"}
+        return {"ok": False, "error": _msg("ERR_ARG_INVALID", arg="signature", reason=str(e))}
 
     if kind != "unknown" and not reason:
-        return {"ok": False, "error": f"reason is required for kind='{kind}'"}
+        return {"ok": False, "error": _msg("ERR_ARG_MISSING", arg="reason")}
 
     actor = (ctx or {}).get("actor", "host")
     store = SafetyStore()

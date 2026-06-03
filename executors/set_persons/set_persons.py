@@ -92,17 +92,17 @@ def invoke(args):
 
     # Validation deterministica (§7.9)
     if not isinstance(name, str) or not name.strip():
-        return {"ok": False, "error": "name must be a non-empty string"}
+        return {"ok": False, "error": _msg("ERR_ARG_NOT_NONEMPTY_STRING", arg="name")}
     if not isinstance(paths, list) or not paths:
-        return {"ok": False, "error": "paths must be a non-empty list"}
+        return {"ok": False, "error": _msg("ERR_ARG_NOT_LIST", arg="paths")}
     if mode not in ("add", "replace"):
-        return {"ok": False, "error": f"mode must be 'add' or 'replace', got {mode!r}"}
+        return {"ok": False, "error": _msg("ERR_ARG_ENUM", arg="mode", allowed="add | replace")}
 
     # Slug derivation: validazione precoce (rifiuta nomi non slugifiable)
     try:
         slug_check = slugify(name)
     except ValueError as e:
-        return {"ok": False, "error": f"name not slugifiable: {e}"}
+        return {"ok": False, "error": _msg("ERR_ARG_INVALID", arg="name", reason=str(e))}
 
     # Dry-run short-circuit: NIENTE write su persons.sqlite. Ritorna preview
     # delle enroll che AVREMMO fatto basandosi su file path validi (no detect).
@@ -113,7 +113,7 @@ def invoke(args):
             ps = os.path.expanduser(str(p))
             pp = Path(ps)
             if not pp.exists():
-                skipped.append({"path": ps, "reason": "file not found"})
+                skipped.append({"path": ps, "reason": _msg("ERR_PATH_NOT_FOUND", path=ps)})
                 continue
             would_enroll.append({
                 "name": name,
@@ -145,7 +145,7 @@ def invoke(args):
             ps = os.path.expanduser(str(p))
             pp = Path(ps)
             if not pp.exists():
-                errors.append({"path": ps, "error": "file not found"})
+                errors.append({"path": ps, "error": _msg("ERR_PATH_NOT_FOUND", path=ps)})
                 continue
             try:
                 data = _read_image_bytes(pp)
@@ -185,13 +185,13 @@ def invoke(args):
                 except (ValueError, TypeError):
                     errors.append({
                         "path": ps,
-                        "error": f"face_choices invalid for {ps}: {chosen!r}",
+                        "error": _msg("ERR_ARG_INVALID", arg="face_choices", reason=str(chosen)),
                     })
                     continue
                 if fi < 0 or fi >= len(faces):
                     errors.append({
                         "path": ps,
-                        "error": f"face_choices out of range for {ps}: {fi}",
+                        "error": _msg("ERR_ARG_INVALID", arg="face_choices", reason=str(fi)),
                     })
                     continue
                 f = faces[fi]
@@ -317,7 +317,7 @@ def main():
     try:
         args = json.load(sys.stdin)
     except json.JSONDecodeError as e:
-        sys.stdout.write(json.dumps({"ok": False, "error": f"invalid input json: {e}"}))
+        sys.stdout.write(json.dumps({"ok": False, "error": _msg("ERR_JSON_INVALID")}))
         return
     result = invoke(args)
     # Embeddings non vanno in stdout: non sono serializzabili JSON e non

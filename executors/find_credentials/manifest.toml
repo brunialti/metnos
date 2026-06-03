@@ -18,7 +18,7 @@ en = "Lists credentials configured in Metnos encrypted storage. MUST be used for
 
 [code]
 files  = ["find_credentials.py"]
-digest = "sha256:5a82c7bd7e028931711b1232910b4ce82be38c6191fabfdf12cf629d0184c470"
+digest = "sha256:723200802f10085d0b8314f0f55ee95b578098d22318730133979335fd7dd761"
 
 [args]
 type     = "object"

@@ -20,6 +20,12 @@ PORT=8081
 MODEL="$HOME/models/Qwen3VL-2B-Instruct-Q4_K_M.gguf"
 MMPROJ="$HOME/models/mmproj-Qwen3VL-2B-Instruct-F16.gguf"
 LLAMA_BIN="$HOME/llama.cpp/build/bin/llama-server"
+# Contesto totale e slot paralleli settabili. Ctx/slot = CTX/NPAR deve
+# coprire i vision-token dell'immagine (a long-edge 1536 ~1950 tok) + il
+# budget di output. Default 16384/4 = 4096/slot (room per 1536 + caption
+# ricca). A 1024 bastava 8192/4=2048; il bump risolve il troncamento JSON.
+CTX="${METNOS_VLM_CTX:-16384}"
+NPAR="${METNOS_VLM_SLOTS:-4}"
 LOG_DIR="$HOME/.local/share/metnos/logs"
 LOG_FILE="$LOG_DIR/vlm_server.log"
 WD_LOG_FILE="$LOG_DIR/vlm_watchdog.log"
@@ -34,7 +40,10 @@ _pid_alive() {
 }
 
 _find_server_pid() {
-  pgrep -f "llama-server.*Qwen3VL.*--port $PORT" 2>/dev/null | head -1
+  # `|| true`: pgrep ritorna 1 se nessun match → con `set -euo pipefail` la
+  # pipeline propagherebbe l'errore e abortirebbe lo script al primo cold-start
+  # (server non ancora avviato). Empty stdout E' il segnale "non trovato".
+  pgrep -f "llama-server.*Qwen3VL.*--port $PORT" 2>/dev/null | head -1 || true
 }
 
 _find_watchdog_pid() {
@@ -97,7 +106,7 @@ cmd_start() {
     --mmproj "$MMPROJ" \
     -ngl 999 \
     --host 127.0.0.1 --port "$PORT" \
-    -c 8192 --parallel 4 --cont-batching --jinja \
+    -c "$CTX" --parallel "$NPAR" --cont-batching --jinja \
     -fa on --batch-size 2048 --ubatch-size 512 \
     >> "$LOG_FILE" 2>&1 &
   pid=$!

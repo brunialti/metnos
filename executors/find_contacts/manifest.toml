@@ -36,7 +36,7 @@ Output entries=[{id, name, emails, phones}]. Cap default 50 (theoretical max 100
 
 [code]
 files  = ["find_contacts.py"]
-digest = "sha256:9dae259645d31307418a11856ee3c0d9b90a73e6150ede60edc36e7c5c6be6f7"
+digest = "sha256:5c8eeb3ef559e87dbabe71b04a8fc7da66c96ff799fad04152fcfa2e33cea305"
 
 [args]
 type     = "object"

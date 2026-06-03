@@ -18,7 +18,9 @@ def test_proposals_eta_aggregate_in_builtin_jobs():
     by_name = {j["name"]: j for j in _BUILTIN_JOBS}
     assert "proposals_eta_aggregate" in by_name
     job = by_name["proposals_eta_aggregate"]
-    assert job["trigger"] == "daily@04:30"
+    # Invariante (non l'orario esatto, dettaglio di de-collisione che cambia —
+    # es. ADR 0167 04:30→04:25): trigger giornaliero valido + callback_key.
+    assert job["trigger"].startswith("daily@")
     assert job["callback_key"] == "proposals_eta_aggregate"
 
 

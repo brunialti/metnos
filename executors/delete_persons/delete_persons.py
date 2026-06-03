@@ -193,7 +193,7 @@ def invoke(args):
                 if entry is None:
                     return {
                         "ok": False,
-                        "error": f"chosen_slug '{cs}' non trovato nel registro",
+                        "error": _msg("ERR_SLUG_NOT_FOUND", slug=cs),
                     }
                 out = reg.delete(cs)
                 results.append({
@@ -310,7 +310,7 @@ def main():
     try:
         args = json.load(sys.stdin)
     except json.JSONDecodeError as e:
-        sys.stdout.write(json.dumps({"ok": False, "error": f"invalid input json: {e}"}))
+        sys.stdout.write(json.dumps({"ok": False, "error": _msg("ERR_JSON_INVALID")}))
         return
     result = invoke(args)
     sys.stdout.write(json.dumps(result, ensure_ascii=False, default=str))

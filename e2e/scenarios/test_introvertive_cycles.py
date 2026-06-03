@@ -77,15 +77,10 @@ async def test_proposals_eta_aggregate_runs(driver, introvertive_server):
     assert r.get("ok"), f"job failed: {r}"
 
 
-async def test_apply_ager_runs(driver, introvertive_server):
-    """apply_ager: decay + demote mnest deboli."""
-    r = await driver.run_job("apply_ager")
-    assert r.get("ok"), f"job failed: {r}"
-
-
-async def test_apply_executor_ager_runs(driver, introvertive_server):
-    """apply_executor_ager: demote executor inattivi."""
-    r = await driver.run_job("apply_executor_ager")
+async def test_nightly_aging_runs(driver, introvertive_server):
+    """nightly_aging: decay+demote mnest deboli + demote executor inattivi
+    (job UNIFICATO ADR 0167, consolida apply_ager + apply_executor_ager)."""
+    r = await driver.run_job("nightly_aging")
     assert r.get("ok"), f"job failed: {r}"
 
 

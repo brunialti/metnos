@@ -122,6 +122,15 @@ cloudflare/
 # --- GitHub Actions cache locali / artefatti tooling ---------------------
 .github/cache/
 
+# --- E2E simulator: cache di parsing/typing (artefatti generati) ---------
+e2e/simulator/parse_cache/
+e2e/simulator/parse_cache_dedicated/
+e2e/simulator/parse_cache.pre_D/
+e2e/simulator/typing_cache/
+
+# --- GitHub workflow: stato runtime delle issue (dati, non codice) -------
+/issues/
+
 # --- Memoria persistente assistente (mai in repo) ------------------------
 MEMORY.md
 SOUL.md

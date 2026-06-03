@@ -931,6 +931,8 @@ async def admin_praxis(request: web.Request) -> web.Response:
     Mostra: stats globali, skill catalog (active/shadow/pending/demoted/archived),
     observations recenti, anti_skills attivi, filler_cache stats.
     """
+    import sqlite3 as _sqlite3
+    legacy_notice = ""
     try:
         from praxis import get_store
         store = get_store()
@@ -966,6 +968,16 @@ async def admin_praxis(request: web.Request) -> web.Response:
             "FROM filler_cache ORDER BY uses DESC LIMIT 30")
         fc_cols = ["intent_hash", "filler_name", "value", "uses", "ts_last"]
         filler_cache = [dict(zip(fc_cols, r)) for r in cur]
+    except (ImportError, ModuleNotFoundError, _sqlite3.OperationalError) as ex:
+        # Bonifica 2026-05-28: store legacy Praxis dismesso con Engine v2.
+        # Vista vuota + avviso, NIENTE 500. Stats con shape well-formed
+        # (zeri) cosi' il template Jinja2 non solleva UndefinedError.
+        log.info("admin_praxis: store legacy dismesso (Engine v2): %r", ex)
+        legacy_notice = "store legacy dismesso (Engine v2)"
+        stats = {"skills_by_status": {}, "observations_total": 0,
+                  "anti_skills_active": 0}
+        skills_active = skills_shadow = skills_demoted = []
+        observations = anti_skills = filler_cache = []
     except Exception as ex:
         log.warning("admin_praxis failed: %r", ex)
         stats = {"error": str(ex)}
@@ -984,6 +996,7 @@ async def admin_praxis(request: web.Request) -> web.Response:
         "anti_skills": anti_skills,
         "filler_cache": filler_cache,
         "pronoia_tier": pronoia_tier,
+        "legacy_notice": legacy_notice,
     }
     return negotiate_collection(
         request,
@@ -998,16 +1011,24 @@ async def admin_aporiae(request: web.Request) -> web.Response:
 
     Pentade Praxis Engine ADR 0161 ext: Aporia (ἀπορία).
     """
+    import sqlite3 as _sqlite3
+    legacy_notice = ""
     try:
         import aporia
         store = aporia.get_store()
         stats = store.stats()
         lacune = store.list_open(limit=100)
+    except (ImportError, ModuleNotFoundError, _sqlite3.OperationalError) as ex:
+        # Bonifica 2026-05-28: store legacy Aporia dismesso con Engine v2.
+        log.info("admin_aporiae: store legacy dismesso (Engine v2): %r", ex)
+        legacy_notice = "store legacy dismesso (Engine v2)"
+        stats = {}
+        lacune = []
     except Exception as ex:
         log.warning("admin_aporiae failed: %r", ex)
         stats = {"error": str(ex)}
         lacune = []
-    payload = {"stats": stats, "lacune": lacune}
+    payload = {"stats": stats, "lacune": lacune, "legacy_notice": legacy_notice}
     return negotiate_collection(
         request,
         json_payload=payload,
@@ -1026,10 +1047,16 @@ async def admin_aporiae_resolve(request: web.Request) -> web.Response:
         lid = int(lid_str)
     except ValueError:
         return _error(request, 400, "bad_id", f"id must be int, got {lid_str!r}")
+    import sqlite3 as _sqlite3
     try:
         import aporia
         aporia.get_store().mark_resolved(lid)
         return web.json_response({"ok": True, "id": lid, "status": "resolved"})
+    except (ImportError, ModuleNotFoundError, _sqlite3.OperationalError) as ex:
+        # Bonifica 2026-05-28: store legacy Aporia dismesso con Engine v2.
+        log.info("admin_aporiae_resolve: store legacy dismesso: %r", ex)
+        return _error(request, 410, "legacy_dismissed",
+                       "store legacy dismesso (Engine v2)")
     except Exception as ex:
         return _error(request, 500, "internal", str(ex))
 
@@ -1616,6 +1643,7 @@ async def admin_login(request: web.Request) -> web.Response:
         ADMIN_COOKIE, cookie_val,
         max_age=ADMIN_COOKIE_TTL_S,
         httponly=True,
+        secure=True,  # servito via HTTPS (Cloudflare); allinea al cookie user
         samesite="Strict",
         path="/",
     )
@@ -1864,9 +1892,13 @@ async def admin_skill_history(request):
     Ritorna lista append-only di event (created/refresh_template/retry_repeat/
     champion_swap) con old/new fw_hash + reason + timestamp. ADR 0162."""
     from aiohttp import web
+    import sqlite3 as _sqlite3
     skill_id = request.match_info.get("skill_id", "")
     if not skill_id:
         return web.json_response({"error": "missing_skill_id"}, status=400)
+    meta = None
+    history = []
+    legacy_notice = ""
     try:
         from praxis import get_store as _gs
         store = _gs()
@@ -1885,7 +1917,6 @@ async def admin_skill_history(request):
             "template_issue, status, ts_created, ts_last_used "
             "FROM skills WHERE id = ?", (skill_id,))
         row = cur.fetchone()
-        meta = None
         if row:
             meta = {
                 "id": row[0], "intent_sig": row[1], "cluster_id": row[2],
@@ -1895,12 +1926,18 @@ async def admin_skill_history(request):
                 "template_issue": row[9], "status": row[10],
                 "ts_created": row[11], "ts_last_used": row[12],
             }
+    except (ImportError, ModuleNotFoundError, _sqlite3.OperationalError) as ex:
+        # Bonifica 2026-05-28: store legacy Praxis dismesso con Engine v2.
+        # Vista vuota + avviso, NIENTE 500.
+        log.info("admin_skill_history: store legacy dismesso (Engine v2): %r", ex)
+        legacy_notice = "store legacy dismesso (Engine v2)"
     except Exception as ex:
         return web.json_response({"error": str(ex)}, status=500)
     accept = request.headers.get("Accept", "")
     if "text/html" in accept:
         return _render_skill_history_html(meta, history)
-    return web.json_response({"skill": meta, "history": history})
+    return web.json_response(
+        {"skill": meta, "history": history, "legacy_notice": legacy_notice})
 
 
 def _render_skill_history_html(meta: dict | None, history: list) -> "web.Response":
@@ -1955,8 +1992,136 @@ th{{background:#f4f4f4}}
     return web.Response(text=html, content_type="text/html")
 
 
+async def admin_timers(request: web.Request) -> web.Response:
+    """GET /admin/timers — gestione timer di sistema (scheduler v2).
+
+    Tabella semplice (§14 admin-only): nome+descrizione, trigger, stato,
+    prossima esecuzione, ultima esec.+esito, run/fail, azioni (abilita/
+    disabilita/esegui-ora). Legge da SchedulerStorage.list_all().
+    """
+    import html as _html
+    from scheduler_v2.storage import SchedulerStorage, DEFAULT_DB_PATH
+    entries = SchedulerStorage(DEFAULT_DB_PATH).list_all()
+    flash = request.query.get("flash", "")
+
+    def _next(ts):
+        try:
+            ts = float(ts)
+        except (TypeError, ValueError):
+            return "—"
+        d = ts - time.time()
+        base = time.strftime("%d/%m %H:%M", time.localtime(ts))
+        if d < 0:
+            return f"{base} · scaduto"
+        if d < 3600:
+            return f"{base} · tra {int(d // 60)}m"
+        if d < 86400:
+            return f"{base} · tra {d / 3600:.1f}h"
+        return f"{base} · tra {int(d // 86400)}g"
+
+    rows = []
+    for e in entries:
+        en = bool(e.enabled)
+        badge = ("<span style='color:#16a34a'>● attivo</span>" if en
+                 else "<span style='color:#9ca3af'>○ disattivo</span>")
+        stt = e.last_status or "—"
+        col = "#16a34a" if stt == "success" else ("#dc2626" if stt not in ("—", None) else "#9ca3af")
+        toggle = "disable" if en else "enable"
+        toggle_lbl = "Disabilita" if en else "Abilita"
+        nm = _html.escape(e.name)
+        rows.append(
+            "<tr>"
+            f"<td><b>{nm}</b><br><small style='color:#6b7280'>{_html.escape((e.description or '')[:140])}</small></td>"
+            f"<td><code>{_html.escape(e.trigger)}</code></td>"
+            f"<td>{badge}</td>"
+            f"<td><small>{_next(e.next_fire_at)}</small></td>"
+            f"<td><small>{_html.escape(str(e.last_run_at or '—'))}</small></td>"
+            f"<td style='color:{col}'><small>{_html.escape(str(stt))}</small></td>"
+            f"<td><small>{e.total_runs}/{e.total_failures}</small></td>"
+            "<td style='white-space:nowrap'>"
+            f"<form method='post' action='/admin/timers/{nm}/{toggle}' style='display:inline'><button>{toggle_lbl}</button></form> "
+            f"<form method='post' action='/admin/timers/{nm}/fire' style='display:inline'><button>Esegui ora</button></form>"
+            "</td></tr>"
+        )
+
+    flash_html = (
+        f"<div style='background:#eef2ff;border:1px solid #c7d2fe;padding:8px 12px;"
+        f"border-radius:6px;margin:10px 0'>{_html.escape(flash)}</div>"
+    ) if flash else ""
+    n_on = sum(1 for e in entries if e.enabled)
+    body = (
+        "<!doctype html><html lang='it'><head><meta charset='utf-8'>"
+        "<title>Timer di sistema · Metnos</title><style>"
+        "body{font-family:system-ui,-apple-system,sans-serif;max-width:1150px;margin:1.5rem auto;padding:0 1rem;color:#1f2937}"
+        "table{border-collapse:collapse;width:100%;font-size:13.5px}"
+        "th,td{border-bottom:1px solid #e5e7eb;padding:7px 9px;text-align:left;vertical-align:top}"
+        "th{background:#f9fafb;font-size:11px;text-transform:uppercase;color:#6b7280;letter-spacing:.04em}"
+        "button{cursor:pointer;padding:3px 9px;font-size:12px;border:1px solid #d1d5db;border-radius:5px;background:#fff}"
+        "button:hover{background:#f3f4f6}code{background:#f3f4f6;padding:1px 5px;border-radius:4px;font-size:12px}"
+        "a{color:#2563eb;text-decoration:none}h1{font-size:1.4rem;margin-bottom:.2rem}</style></head><body>"
+        "<p><a href='/admin'>← admin</a></p>"
+        "<h1>Timer di sistema</h1>"
+        f"<p style='color:#6b7280'>{len(entries)} timer · {n_on} attivi · scheduler v2 · ordinati per prossima esecuzione</p>"
+        f"{flash_html}"
+        "<table><tr><th>Job</th><th>Trigger</th><th>Stato</th><th>Prossimo</th>"
+        "<th>Ultima esec.</th><th>Esito</th><th>Run/Fail</th><th>Azioni</th></tr>"
+        f"{''.join(rows)}</table></body></html>"
+    )
+    return web.Response(body=body.encode("utf-8"), content_type="text/html")
+
+
+async def admin_timer_action(request: web.Request) -> web.Response:
+    """POST /admin/timers/{name}/{action} — enable|disable|fire di un timer."""
+    from urllib.parse import quote
+    import json as _json
+    name = request.match_info["name"]
+    action = request.match_info["action"]
+    from scheduler_v2.storage import SchedulerStorage, DEFAULT_DB_PATH
+    st = SchedulerStorage(DEFAULT_DB_PATH)
+    entry = st.get_by_name(name)
+    if entry is None:
+        raise web.HTTPFound("/admin/timers?flash=" + quote(f"timer '{name}' non trovato"))
+    if action == "disable":
+        st.disable(entry.id)
+        msg = f"'{name}' disabilitato"
+    elif action == "enable":
+        st.enable(entry.id)
+        msg = f"'{name}' abilitato (next_fire ricalcolato)"
+    elif action == "fire":
+        try:
+            from scheduler_v2 import builtin_callbacks
+            from scheduler_v2.callbacks import CallbackRegistry
+
+            class _Stub:
+                callbacks = CallbackRegistry()
+            stub = _Stub()
+            builtin_callbacks.install_default_callbacks(stub)
+            info = stub.callbacks.get(entry.callback_key)
+            if info is None:
+                msg = f"'{name}': callback '{entry.callback_key}' non registrato"
+            else:
+                # Passa il payload reale dell'entry: per i task utente
+                # (run_user_query) e' il `record` con query/actor/channel;
+                # per i builtin e' {} (ignorato).
+                pl = getattr(entry, "payload", None)
+                if isinstance(pl, str):
+                    try:
+                        pl = _json.loads(pl)
+                    except Exception:
+                        pl = {}
+                res = info.fn(pl if isinstance(pl, dict) else {})
+                msg = f"'{name}' eseguito → {str(res)[:160]}"
+        except Exception as ex:
+            msg = f"'{name}' errore: {type(ex).__name__}: {ex}"
+    else:
+        msg = f"azione '{action}' ignota"
+    raise web.HTTPFound("/admin/timers?flash=" + quote(msg))
+
+
 ROUTES = (
     ("GET",  r"/admin/skills/{skill_id}/history",  admin_skill_history),
+    ("GET",  "/admin/timers",                     admin_timers),
+    ("POST", r"/admin/timers/{name}/{action:enable|disable|fire}", admin_timer_action),
     ("GET",  "/admin/login",                      admin_login),
     ("POST", "/admin/login",                      admin_login),
     ("POST", "/admin/logout",                     admin_logout),

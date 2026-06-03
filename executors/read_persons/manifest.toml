@@ -37,7 +37,7 @@ Output: entries=[{slug, name, role?, autonomy_level?, n_examples, examples?, cha
 
 [code]
 files  = ["read_persons.py"]
-digest = "sha256:68463f6314be23ca447750c90557019eaa397a636dea178a9ce6614c2da94a21"
+digest = "sha256:07b5b2c2debdef98cd8435318d2a0f6608cf65311d4216f7a8d170192bea63ea"
 
 [args]
 type     = "object"

@@ -14,7 +14,7 @@ en = "Cancel ALL reversible operations of the last user turn that contains at le
 
 [code]
 files  = ["undo_last_turn.py"]
-digest = "sha256:d0a770707f0442d72bcd43a63eee88ae086e7eb3e16697ccabcca20628ff3c0e"
+digest = "sha256:6959678457c576a186439e38109f1c1f73fa7320e2904ae2a3bed59901bfd8fa"
 
 [args]
 type     = "object"

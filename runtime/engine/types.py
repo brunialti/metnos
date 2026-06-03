@@ -60,6 +60,10 @@ class Framework:
         """Costruisce Framework da dict (output Proposer JSON parse)."""
         if not isinstance(d, dict):
             return cls()
+        # Tollera output LLM malformato (§2.8/§7.3): uno step o un filler
+        # emesso come stringa invece che come oggetto NON deve far crashare il
+        # parse dei candidati (prima: `s.get`/`v.get` su str → AttributeError →
+        # planner a mani vuote). Gli elementi non-dict vengono ignorati.
         steps = [
             StepSpec(
                 tool=s.get("tool", ""),
@@ -67,6 +71,7 @@ class Framework:
                 if_prev_entries_nonempty=bool(s.get("if_prev_entries_nonempty")),
             )
             for s in (d.get("steps") or [])
+            if isinstance(s, dict)
         ]
         fillers = {
             k: FillerSpec(
@@ -75,6 +80,7 @@ class Framework:
                 tier=v.get("tier", "fast"),
             )
             for k, v in (d.get("fillers") or {}).items()
+            if isinstance(v, dict)
         }
         return cls(
             steps=steps,

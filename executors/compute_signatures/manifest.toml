@@ -13,7 +13,7 @@ en = "Calculation / transformation operations on signatures. A single executor, 
 
 [code]
 files  = ["compute_signatures.py"]
-digest = "sha256:49b7ec05932e8162346513b9867ddca44d7fb3d0305a46c83dfc9af28546646f"
+digest = "sha256:9fc2a9e9975817b7363e3990dd766b390e540123e3873ddd4aaa15e67f1d6673"
 
 [args]
 type     = "object"

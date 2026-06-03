@@ -25,6 +25,7 @@ from pathlib import Path
 _RUNTIME = Path(__file__).resolve().parent.parent.parent / "runtime"
 sys.path.insert(0, str(_RUNTIME))
 
+from messages import get as _msg  # noqa: E402
 import credentials as _cred  # noqa: E402
 
 
@@ -166,15 +167,15 @@ def invoke(args):
 
     if query is not None:
         if not isinstance(query, str):
-            return {"ok": False, "error": "query must be a string"}
+            return {"ok": False, "error": _msg("ERR_ARG_NOT_STRING", arg="query")}
         if not query.strip():
             return {"ok": False,
-                    "error": "query must be non-empty (omit it for full list)"}
+                    "error": _msg("ERR_ARG_NOT_NONEMPTY_STRING", arg="query")}
     if top_k is not None:
         if not isinstance(top_k, int) or isinstance(top_k, bool):
-            return {"ok": False, "error": "top_k must be an integer"}
+            return {"ok": False, "error": _msg("ERR_ARG_NOT_INT", arg="top_k")}
         if top_k <= 0:
-            return {"ok": False, "error": "top_k must be > 0"}
+            return {"ok": False, "error": _msg("ERR_ARG_NOT_POSITIVE_INT", arg="top_k")}
 
     bindings = _cred.list_domains()
     entries = []
@@ -214,7 +215,7 @@ def main():
     try:
         args = json.load(sys.stdin)
     except json.JSONDecodeError as e:
-        sys.stdout.write(json.dumps({"ok": False, "error": f"invalid input json: {e}"}))
+        sys.stdout.write(json.dumps({"ok": False, "error": _msg("ERR_JSON_INVALID")}))
         return
     result = invoke(args)
     sys.stdout.write(json.dumps(result, ensure_ascii=False, default=str))

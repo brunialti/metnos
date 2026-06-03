@@ -16,7 +16,7 @@ en = "Calculate descriptive statistics on a list of numbers (int or float). Patt
 
 [code]
 files  = ["describe_numbers.py"]
-digest = "sha256:3f649220de33b4faea7e29203eb0fe868fac0a6bf1a6833d732c291eac438c91"
+digest = "sha256:fd61222770ae543014c4cffd8884c2ff523131a7af5a14cb05ae3709d26f3246"
 
 [args]
 type     = "object"
@@ -58,7 +58,7 @@ expect = { ok = true }
 [[tests]]
 name   = "field_invalido"
 input  = { values = [1, 2, 3], fields = ["mean", "kurtosis"] }
-expect = { ok = false, error_contains = "unknown fields" }
+expect = { ok = false, error_contains = "Campi sconosciuti" }
 
 [[tests]]
 name   = "scarta_non_numerici"
@@ -70,7 +70,7 @@ expect = { ok = true }
 [[tests]]
 name   = "values_non_lista"
 input  = { values = 42 }
-expect = { ok = false, error_contains = "must be a list" }
+expect = { ok = false, error_contains = "deve essere una lista" }
 
 [[tests]]
 name   = "percentili_su_dataset_grande"

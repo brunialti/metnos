@@ -10,16 +10,12 @@ from scheduler_v2.builtin_callbacks import (
 from scheduler_v2.daemon import SchedulerDaemon
 
 
-_EXPECTED_KEYS = {
-    "apply_executor_ager",
-    "apply_ager",
-    "synt_suggest",
-    "introvertiva_propose",
-    "introvertiva_apply",
-    "proposals_cleanup",
-    "lifecycle_summary",
-    "run_user_query",
-}
+# Derivato dalla FONTE DI VERITA' (§7.3 universale): ogni callback_key
+# referenziata da _BUILTIN_JOBS DEVE essere registrata, piu' `run_user_query`
+# (callback dei task utente, non un builtin job). Cosi' il test non va stale
+# quando i builtin vengono consolidati/aggiunti (es. ADR 0167: nightly_aging,
+# state_reaper, ...).
+_EXPECTED_KEYS = {j["callback_key"] for j in _BUILTIN_JOBS} | {"run_user_query"}
 
 
 def test_install_registers_all_keys(db_path):

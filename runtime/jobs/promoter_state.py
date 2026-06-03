@@ -315,11 +315,13 @@ def mark_finalized(proposal_id: str) -> bool:
 
 
 def resurrect_from_archive(proposal_id: str) -> bool:
-    """Riporta una proposta `archived` in stato `review_needed`.
+    """Riporta una proposta `archived` o `rolled_back` in stato `review_needed`.
 
-    Usato dalla review form admin (E3) quando l'admin contesta un
-    archive (es. evaluator reject discutibile). Idempotente: ritorna
-    False se la row non esiste o non e' in `archived`.
+    Usato dalla review form admin (E3) quando l'admin contesta un archive
+    (evaluator reject discutibile) OPPURE un ritiro del kill-switch grace (L3.5,
+    falso positivo: executor buono ritirato per errori transienti). Idempotente:
+    False se la row non esiste o non e' in (`archived`|`rolled_back`).
+    NB: rimette in review; il re-add al catalog avviene via re-promozione.
     """
     if not proposal_id:
         return False
@@ -332,11 +334,11 @@ def resurrect_from_archive(proposal_id: str) -> bool:
         ).fetchone()
         if row is None:
             return False
-        if (row["state"] or "") != "archived":
+        if (row["state"] or "") not in ("archived", "rolled_back"):
             return False
         conn.execute(
             "UPDATE proposal_promote SET state = 'review_needed', "
-            "needs_human_review = 1, archived_at = NULL "
+            "needs_human_review = 1, archived_at = NULL, rolled_back_at = NULL "
             "WHERE proposal_id = ?",
             (proposal_id,),
         )

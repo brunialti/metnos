@@ -1,0 +1,121 @@
+# Builtin system verbs manifest (§2.2 RESERVED).
+# Data/config for system tools whose CODE lives in runtime/system/<verb>.py
+# but need semantic metadata (affinity, description) for discovery by:
+#  - parser (intent extraction)
+#  - planner (tool selection)
+#  - simulator (test set affinity matching)
+#  - Qwen-Emb FT classifier (training seed pairs)
+#  - vaglio (safety pipeline)
+#
+# Universal §7.3: loader merges these with executors/*/manifest.toml.
+# These manifests have NO [code] section — execution dispatched via
+# runtime/system/<verb>.py.
+
+[admin]
+verb_kind = "system"
+revertible = false
+critical = true
+exposed_to_planner = true
+affinity = [
+    # mount / share
+    "monta", "smonta", "mount", "umount", "share", "cifs", "smb", "nfs",
+    "network share", "network mount", "fstab",
+    # ports / firewall
+    "porte tcp", "porte udp", "tcp ports", "udp ports", "porte aperte",
+    "firewall", "iptables", "ufw", "nftables", "tcp open", "listening",
+    # permissions / ownership
+    "chmod", "chown", "permission", "permessi", "owner", "proprietario",
+    "setuid", "setgid", "sudo", "root",
+    # services / units
+    "systemctl", "service", "servizio", "daemon", "unit", "systemd",
+    # packages (sudo-required)
+    "apt install", "apt remove", "dpkg", "installa pacchetto",
+    "system install", "package install",
+    # disk / lvm
+    "mkfs", "fdisk", "lvm", "raid", "format disk",
+    # routing / dns
+    "iproute", "route", "ip addr", "dns config",
+    # generic system
+    "admin", "amministratore", "sistema", "system command",
+]
+
+[admin.description]
+it = """Verb riservato §2.2 per operazioni privilegiate di sistema.
+Emette carta vaglio per approvazione utente; esecuzione delegata a sudoer (ADR 0070).
+Coperti: mount/umount/share network, port scan, chmod/chown, systemctl,
+apt install/remove, disk operations, routing/dns config."""
+en = """Reserved verb §2.2 for privileged system operations.
+Emits approval card; execution delegated to sudoer (ADR 0070).
+Covers: mount/umount/share network, port scan, chmod/chown, systemctl,
+apt install/remove, disk operations, routing/dns config."""
+
+[undo]
+verb_kind = "system"
+revertible = false
+critical = false
+exposed_to_planner = true
+affinity = [
+    "annulla", "undo", "ripristina", "revert", "rollback",
+    "cancella ultimo", "torna indietro", "previous state",
+    "stato precedente", "disfa", "indietro",
+]
+
+[undo.description]
+it = "Annulla l'ultima azione mutating del turno precedente. Builtin runtime."
+en = "Reverts the last mutating action of the previous turn. Builtin runtime."
+
+[request_new_executor]
+verb_kind = "system"
+revertible = true
+critical = false
+exposed_to_planner = true
+affinity = [
+    # github write ops (no tool exists)
+    "rispondi issue", "reply issue", "chiudi issue", "close issue",
+    "apri issue", "open issue", "auto-rispondi", "auto reply",
+    "merge pull request", "approve pr",
+    # generic "no tool available" signals
+    "tool mancante", "no tool", "richiesta nuovo executor",
+    "request new", "executor nuovo", "creare executor",
+]
+
+[request_new_executor.description]
+it = "Builtin per richiedere creazione nuovo executor quando nessun tool catalog soddisfa intent."
+en = "Builtin to request creation of new executor when no catalog tool satisfies intent."
+
+[create_tasks]
+verb_kind = "builtin"
+revertible = true
+critical = false
+exposed_to_planner = true
+affinity = [
+    # recurring / scheduled triggers
+    "ogni minuto", "ogni ora", "ogni giorno", "ogni mattina",
+    "every minute", "every hour", "every day", "every morning",
+    "ricorda", "ricorrente", "promemoria", "scheduled", "schedule",
+    "notificami", "notify me", "avvisa", "alert", "monitora", "monitor",
+    "watch", "trigger", "interval", "cron",
+    # compound queries: when X happens, do Y
+    "quando trovi", "when found", "quando arriva", "when arrives",
+    "se urgenti", "if urgent",
+]
+
+[create_tasks.description]
+it = "Builtin scheduler v2 per creare task ricorrenti o triggered."
+en = "Builtin scheduler v2 to create recurring or triggered tasks."
+
+[list_tasks]
+verb_kind = "builtin"
+exposed_to_planner = true
+affinity = [
+    "lista task", "timer attivi", "list timers", "elenco task",
+    "task attivi", "scheduled tasks", "promemoria attivi",
+]
+
+[delete_tasks]
+verb_kind = "builtin"
+exposed_to_planner = true
+affinity = [
+    "cancella task", "delete task", "rimuovi task ricorrente",
+    "remove timer", "elimina promemoria",
+]

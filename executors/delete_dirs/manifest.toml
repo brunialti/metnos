@@ -19,7 +19,7 @@ en = "Removes one or more directories within writing scope. Always accepts a lis
 
 [code]
 files  = ["delete_dirs.py"]
-digest = "sha256:7a0d6d00fe86b22d644485cac2a68e37f4f85b145b352091d843cdbf70e57de1"
+digest = "sha256:fd01e9c28f503ca229201f2d72b4518eebe6f985516b8dccdaba92bb967ca91b"
 
 [args]
 type     = "object"

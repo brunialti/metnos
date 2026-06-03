@@ -35,11 +35,11 @@ REGOLE STILE MANIFEST TOML (CLAUDE.md §6 + §7.12):
    "Esempio: top=5". Niente bullet ridondanti. IT/EN paralleli, non
    identici-tradotti.
 
-VINCOLI description:
-- Stringa unica, NIENTE newline (manifest TOML).
-- 2-5 frasi, ognuna ≤25 parole.
-- Cosa fa + OUTPUT shape inline + 1 pattern di chiamata.
-- NO gergo Python (no Path(), subprocess, lambda).
+VINCOLI description — FORMATO A CAPITOLI (REGOLA UNIVERSALE §2.5):
+- Stringa unica, NIENTE newline (manifest TOML). NO gergo Python.
+- ESATTAMENTE 4 capitoli in quest'ordine, stringati e pattern-oriented:
+  SCOPO: <1 frase: cosa fa>. PATTERN: <chiamata literal: name(arg="...", arg=N)>. NON: <anti-pattern + disambiguazione vs tool simili>. OUT: <shape output pipeable>.
+- SCOPO+PATTERN front-loaded (li legge il proposer). Il boundary verbo §2.2 va in NON: (es. "NON usare per directory -> delete_dirs").
 
 REGOLE affinity:
 - 6-10 keyword italiano + inglese, lowercase.
@@ -47,7 +47,7 @@ REGOLE affinity:
 
 OK pattern (name=delete_files):
 {
-  "description": "Cancella file dal filesystem. Vettoriale: lista paths anche 1 elemento o vuota. OUTPUT: {ok, ok_count, fail_count, results, failed}; best-effort, una entry fallita non blocca. PATTERN: `paths=['/tmp/old.log']`. Critical irreversibile.",
+  "description": "SCOPO: cancella file dal filesystem (vettoriale §2.1, anche 1 o 0). PATTERN: delete_files(paths=[\"/tmp/old.log\"]). NON: passare 'files'/'targets'; usare per directory (-> delete_dirs). OUT: {ok,ok_count,fail_count,results,failed}, best-effort.",
   "affinity": ["delete", "cancella", "rimuovi", "elimina", "rm", "del", "fs"]
 }
 

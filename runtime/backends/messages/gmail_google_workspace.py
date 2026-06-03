@@ -152,7 +152,7 @@ def send(args: dict) -> dict:
 
     n_done = len(results)
     out = {
-        "ok": n_done > 0 or not failed,
+        "ok": len(failed) == 0,
         "ok_count": n_done,
         "fail_count": len(failed),
         "results": results,
@@ -310,7 +310,7 @@ def delete(args: dict) -> dict:
         results.append({"ok": True, "id": mid, "status": "trashed"})
 
     return {
-        "ok": len(results) > 0 or not failed,
+        "ok": len(failed) == 0,
         "n_deleted": len(results),
         "results": results,
         "failed": failed,
@@ -374,7 +374,7 @@ def reply(args: dict) -> dict:
                         "thread_id": d.get("threadId", "")})
 
     out = {
-        "ok": len(results) > 0 or not failed,
+        "ok": len(failed) == 0,
         "ok_count": len(results),
         "fail_count": len(failed),
         "results": results,
@@ -468,7 +468,7 @@ def labels(args: dict) -> dict:
                         "labels_now": d.get("labels", [])})
 
     out = {
-        "ok": len(results) > 0 or not failed,
+        "ok": len(failed) == 0,
         "ok_count": len(results),
         "fail_count": len(failed),
         "results": results,
@@ -598,7 +598,7 @@ def modify(args: dict) -> dict:
                         "moved": True, "new_folder": new_folder})
 
     out = {
-        "ok": len(results) > 0 or not failed,
+        "ok": len(failed) == 0,
         "ok_count": len(results),
         "fail_count": len(failed),
         "results": results,

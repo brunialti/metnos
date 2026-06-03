@@ -281,27 +281,21 @@ def apply_feedback(turn_id: str, action: str, by: str = "user") -> dict:
                                "reason": f"ager_error: {ex}"}
                     effects.append({"type": "feedback_demote", **out})
 
-    # ── Praxis/Autopath hook (ADR 0161 + engine v2 wiring fix) ────────
-    # Dispatcha verdict a engine.autopath.record_feedback se METNOS_ENGINE_V2=1
-    # (default), altrimenti praxis legacy. Bug pre-fix: caller scriveva su
-    # praxis.sqlite (vuoto) mentre engine.dispatch scriveva observations su
-    # autopath.sqlite → _promote_skill mai chiamato → 0% praxis coverage.
+    # ── Autopath feedback hook (engine v2) ────────────────────────────
+    # Dispatcha verdict a engine.autopath.record_feedback (flusso vivo).
+    # Bonifica 2026-05-28: rimosso il ramo legacy V2=0 (praxis.sqlite vuoto,
+    # store dismesso con Engine v2). Engine v2 è l'unico flusso decisionale.
     # Vedi decisions/_metis_wiring_consolidation.md §3.
     try:
         _verdict_map = {"ok": "ok", "error": "fail", "repeat": "repeat"}
         _verdict = _verdict_map.get(action)
         if _verdict:
-            import os as _os_ev2
-            if _os_ev2.environ.get("METNOS_ENGINE_V2", "1") == "1":
-                from engine.autopath import record_feedback as _rec_fb
-                _out = _rec_fb(turn_id, _verdict)
-            else:
-                from praxis import get_store as _praxis_get_store
-                _out = _praxis_get_store().record_feedback(turn_id, _verdict)
+            from engine.autopath import record_feedback as _rec_fb
+            _out = _rec_fb(turn_id, _verdict)
             if _out.get("ok"):
                 effects.append({"type": "praxis_feedback", **_out})
     except Exception as ex:
-        log.warning("turn_feedback: praxis/autopath hook failed: %r", ex)
+        log.warning("turn_feedback: autopath hook failed: %r", ex)
 
     _append_feedback(record)
     return record

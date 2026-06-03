@@ -24,7 +24,7 @@ en = "Grant access (ACL grant) to one or more remote files without moving or dup
 
 [code]
 files  = ["share_files.py"]
-digest = "sha256:31402874beb6c5ec0bcd9501900e81fc7f1b38e829c8ecb14fd8cf76b935461e"
+digest = "sha256:07af8c144e3cc7ffd2b0c4ae4cc363bc2b1ece0d14af96fc0171b02442b6567e"
 
 [args]
 type = "object"
@@ -110,7 +110,7 @@ expect = { ok = false, error_contains = "email" }
 [[tests]]
 name   = "args_invalidi_client_local"
 input  = { file_id = "abc", email = "x@y.z", client = "local" }
-expect = { ok = false, error_contains = "unsupported" }
+expect = { ok = false, error_contains = "Operazione non applicabile per questo provider" }
 
 [[tests]]
 name   = "args_invalidi_lista_vuota_ids"

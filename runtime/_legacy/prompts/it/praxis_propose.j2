@@ -129,19 +129,21 @@ NO MATCH
 
 PIPELINE_ENROLLMENT (preferita quando query menziona "enrollement"/"registrate"/"enrolled")
 - step1: read_persons(name=TOKEN_PROPER_NOUN) ritorna profilo + examples enrollate
-- step2: find_images_web(paths=${step1.entries.0.examples.*.image_path}) reverse search SOLO sulle foto enrollate
+- step2: find_images_web(paths=${step1.entries.0.examples.*.image_path}) reverse search SU TUTTE le foto enrollate (projection `*`, NON 0)
 - step3: final_answer
 - VANTAGGIO: read_persons ritorna 4 foto canoniche enrollate, NON 3381 face-match corpus
 
 PIPELINE_FACE_MATCH (fallback senza menzione enrollement)
 - step1: find_persons_indices(name=TOKEN_PROPER_NOUN) sul corpus locale (face match)
-- step2: find_images_web(reference_images=from_step:1) reverse image search
+- step2: find_images_web(paths=${step1.entries.*.path}) reverse image search MULTI-SOURCE (projection `*` su entries, NON entries.0)
 - step3: final_answer
+- DEVI: usare `paths=${step1.entries.*.path}` per inviare TUTTE le foto matched a Vision API (cap interno 10/call gestito dal backend).
+- NON DEVI: usare `urls=${step1.entries.0.image_path}` — un solo path = un solo lookup = pochi risultati.
 - NIENTE find_images_indices intermedio (e' ricerca locale, non web)
 - NIENTE describe_entries fra step (riduce rumore output)
 
 OUTPUT
-final_message asciutto con count: "${step2.@count} immagini sul web simili"
+final_message asciutto: "${step2.ok_count} foto sorgente analizzate, immagini web simili nei thumbnail" (NON usare ${step2.entries} che renderizza «(N entries)» fuorviante)
 
 ───────────────────────────────────────────────
 

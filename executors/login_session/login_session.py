@@ -39,6 +39,8 @@ from pathlib import Path
 _RUNTIME = Path(__file__).resolve().parent.parent.parent / "runtime"
 sys.path.insert(0, str(_RUNTIME))
 
+from messages import get as _msg  # noqa: E402
+
 
 COOKIES_DIR = Path.home() / ".config" / "metnos" / "cookies"
 USER_AGENT = "metnos-crawler/1.1 (+contact@metnos.com)"
@@ -132,7 +134,7 @@ def _invoke_default(args: dict) -> dict:
     timeout_s = float(args.get("timeout_s", 15.0))
 
     if not domain or not isinstance(domain, str):
-        return {"ok": False, "error": "missing required arg 'domain' (str)"}
+        return {"ok": False, "error": _msg("ERR_ARG_MISSING", arg="domain")}
 
     _ensure_cookies_dir()
 
@@ -163,7 +165,7 @@ def _invoke_default(args: dict) -> dict:
     session_cookie_names = list(payload.get("session_cookie_names") or [])
 
     if not login_url:
-        return {"ok": False, "error": "credential payload missing login_url"}
+        return {"ok": False, "error": _msg("ERR_ARG_MISSING", arg="login_url")}
 
     # 1. Cookie cached?
     if not force:
@@ -201,9 +203,9 @@ def _invoke_default(args: dict) -> dict:
                 csrf_name = p.csrf_name
                 csrf_value = p.csrf_value
     except urllib.error.URLError as e:
-        return {"ok": False, "error": f"login GET failed: {e}"}
+        return {"ok": False, "error": _msg("ERR_OP_FAILED", reason=str(e))}
     except Exception as e:
-        return {"ok": False, "error": f"login GET unexpected: {e}"}
+        return {"ok": False, "error": _msg("ERR_OP_FAILED", reason=str(e))}
 
     if csrf_name and csrf_value and csrf_name not in form_data:
         form_data[csrf_name] = csrf_value
@@ -234,11 +236,11 @@ def _invoke_default(args: dict) -> dict:
             body = b""
         else:
             return {"ok": False,
-                    "error": f"login POST failed status={e.code}: {e.reason}"}
+                    "error": _msg("ERR_OP_FAILED", reason=f"{e.code}: {e.reason}")}
     except urllib.error.URLError as e:
-        return {"ok": False, "error": f"login POST URL error: {e.reason}"}
+        return {"ok": False, "error": _msg("ERR_OP_FAILED", reason=str(e.reason))}
     except Exception as e:
-        return {"ok": False, "error": f"login POST unexpected: {e}"}
+        return {"ok": False, "error": _msg("ERR_OP_FAILED", reason=str(e))}
 
     # 3. Verifica successo
     found_cookies = _has_session_cookies(jar, session_cookie_names) \
@@ -271,7 +273,7 @@ def _invoke_default(args: dict) -> dict:
         os.chmod(cookie_path, 0o600)
     except Exception as e:
         return {"ok": False,
-                "error": f"failed to save cookie file {cookie_path}: {e}"}
+                "error": _msg("ERR_OP_FAILED", reason=str(e))}
 
     return {
         "ok": True,
@@ -303,8 +305,7 @@ def invoke(args: dict) -> dict:
     backend = _resolve_backend(client)
     if backend is None:
         return {"ok": False,
-                "error": f"unsupported web client: {client!r}. "
-                         f"Available: ['httpx', 'playwright']"}
+                "error": _msg("ERR_NOT_APPLICABLE", what=f"client {client!r}")}
     return backend.login(args)
 
 
@@ -312,7 +313,7 @@ def main():
     try:
         args = json.load(sys.stdin)
     except json.JSONDecodeError as e:
-        sys.stdout.write(json.dumps({"ok": False, "error": f"invalid input json: {e}"}))
+        sys.stdout.write(json.dumps({"ok": False, "error": _msg("ERR_JSON_INVALID")}))
         return
     result = invoke(args)
     sys.stdout.write(json.dumps(result, ensure_ascii=False))

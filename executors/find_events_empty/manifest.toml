@@ -23,7 +23,7 @@ en = "Computes the EMPTY/FREE windows of the calendar within time_windows, subtr
 
 [code]
 files  = ["find_events_empty.py"]
-digest = "sha256:27faf39d9823539829d399789af99220551001222219121bbf4f232e4dd939a5"
+digest = "sha256:84dbcb35ddc434c40d18dc56e5c39d722b7d36dd722fe8c986364adee187e195"
 
 [args]
 type     = "object"
@@ -101,11 +101,11 @@ name = "metnos:read"
 hint = ["~/.local/share/metnos/calendar.ics"]
 
 [[tests]]
-name   = "stub_returns_not_implemented"
+name   = "ritorna_entries_implementato"
 input  = { time_windows = ["tomorrow"], size = "1hour" }
-expect = { ok = false, error_contains = "non ancora implementato" }
+expect = { ok = true, has_field = "entries" }
 
 [[tests]]
 name   = "unsupported_client_fails"
 input  = { client = "gdrive" }
-expect = { ok = false, error_contains = "unsupported calendar client" }
+expect = { ok = false, error_contains = "Operazione non applicabile per questo provider" }

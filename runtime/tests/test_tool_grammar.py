@@ -573,6 +573,45 @@ def test_filter_is_deterministic():
     assert e1 == e2
 
 
+def test_filter_marker_word_in_fs_path_does_not_trigger_provider():
+    # 'issues' dentro un path filesystem NON e' il provider github → il
+    # tool provider-suffixed deve essere escluso, resta find_files locale.
+    tools = [_mk("find_files"), _mk("find_issues_github"),
+             _mk("read_files"), _mk("describe_entries")]
+    pool, excluded = filter_pool_for_grammar(
+        tools, "leggi i file in /opt/metnos/issues")
+    assert "find_issues_github" in excluded
+    assert "find_files" not in excluded
+
+
+def test_filter_provider_excluded_without_marker_even_if_no_canonical():
+    # find_issues_github non ha canonical 'find_issues' nel pool: senza
+    # marker github deve comunque essere escluso (no HIDE_EXECUTORS).
+    tools = [_mk("find_files"), _mk("find_issues_github"),
+             _mk("describe_entries")]
+    pool, excluded = filter_pool_for_grammar(
+        tools, "elenca i file nella cartella note")
+    assert "find_issues_github" in excluded
+
+
+def test_filter_github_url_keeps_provider_marker():
+    # Un URL github (con '://') NON viene strippato: 'github' resta marker.
+    tools = [_mk("find_files"), _mk("find_issues_github"), _mk("get_urls")]
+    pool, excluded = filter_pool_for_grammar(
+        tools, "apri https://github.com/owner/repo/issues/5")
+    assert "find_issues_github" not in excluded
+
+
+def test_filter_hide_executors_keeps_orphan_provider(monkeypatch):
+    # In HIDE_EXECUTORS (E2E) il canonical e' nascosto di proposito: senza
+    # marker e senza canonical, il provider-suffixed resta unica opzione.
+    monkeypatch.setenv("METNOS_HIDE_EXECUTORS", "1")
+    tools = [_mk("find_issues_github"), _mk("describe_entries")]
+    pool, excluded = filter_pool_for_grammar(
+        tools, "leggi i file in /opt/metnos/issues")
+    assert "find_issues_github" not in excluded
+
+
 # --------------------------------------------------------------------------
 # Synthetic final_answer (ADR 0133 ext, 15/5/2026)
 # --------------------------------------------------------------------------

@@ -20,7 +20,7 @@ en = "Move or rename one or more entries (files) in a single call. LIST PASSING:
 
 [code]
 files  = ["move_files.py"]
-digest = "sha256:1827370f6a4b7f08107868d153d5d5de7b44989916681d656cec8f9fa32efab7"
+digest = "sha256:01d1671b5e09e4e85a775d93f9d496f3d237f495856309a33e2ab2a783ac78a2"
 
 [args]
 type     = "object"
@@ -154,7 +154,7 @@ expect = { ok = false, error_contains = "dst_template" }
 name     = "rifiuta_directory_di_default"
 setup    = "mkdir -p /tmp/metnos_test_move_files/sub"
 input    = { entries = [{path = "/tmp/metnos_test_move_files/sub", kind = "dir"}], dst_template = "/tmp/metnos_test_move_files/dst_{name}" }
-expect   = { ok = false, fail_count_eq = 1, error_contains = "refusing to move a directory" }
+expect   = { ok = false, fail_count_eq = 1, error_contains = "passa allow_dirs=true o filtra prima con filter_entries" }
 teardown = "rm -rf /tmp/metnos_test_move_files"
 
 [[tests]]

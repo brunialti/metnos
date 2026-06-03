@@ -16,7 +16,7 @@ en = "Reads a CSV file and returns the rows as a list of dicts (key=header) or a
 
 [code]
 files  = ["read_files_csv.py"]
-digest = "sha256:4362707cc4867f2f4e053c362ab4382909dd32e4077f25fdf3b3aad2a08203a6"
+digest = "sha256:7f9c1e8a35950365effb307f401db73ed786c11536b09d6ba8c13b7926dddfdd"
 
 [args]
 type     = "object"
@@ -94,7 +94,7 @@ expect = { ok = true, ok_count_eq = 0 }
 [[tests]]
 name   = "args_invalidi_paths_non_lista"
 input  = { paths = "/tmp/foo.csv" }
-expect = { ok = false, error_contains = "must be a list" }
+expect = { ok = false, error_contains = "deve essere una lista" }
 
 [[tests]]
 name   = "path_inesistente_fallisce_solo_quella"

@@ -137,5 +137,35 @@ class TestFormatOffer(unittest.TestCase):
         self.assertIn("Allargo a 1000?", out)
 
 
+class TestSearchResultsHtmlStrip(unittest.TestCase):
+    """Bug 'azione schedulata invia messaggio errato': uno snippet con HTML
+    grezzo (fetch interrotto) non deve trapelare nel blocco risultati."""
+
+    def test_raw_html_snippet_stripped(self):
+        from output_format import format_search_results
+        entries = [{
+            "url": "https://rocm.docs.amd.com/versions.html",
+            "title": "ROCm versions",
+            "score": 0.8,
+            "snippet": ('<!DOCTYPE html> <html lang="en"><head>'
+                        "<title>ROCm</title></head><body>x</body></html>"),
+        }]
+        out = format_search_results(entries, query="versione AMD ROCm")
+        self.assertNotIn("<!DOCTYPE", out)
+        self.assertNotIn("<html", out)
+        self.assertIn("rocm.docs.amd.com", out)  # il link resta
+
+    def test_clean_snippet_preserved(self):
+        from output_format import format_search_results
+        entries = [{
+            "url": "https://x/y",
+            "title": "Titolo",
+            "score": 0.9,
+            "snippet": "ROCm 6.2 rilasciata a giugno.",
+        }]
+        out = format_search_results(entries, query="rocm")
+        self.assertIn("ROCm 6.2", out)
+
+
 if __name__ == "__main__":
     unittest.main()

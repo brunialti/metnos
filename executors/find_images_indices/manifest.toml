@@ -18,100 +18,21 @@ affinity    = ["cerca", "find", "search", "ricerca-foto", "ricerca-volti",
 timeout_s = 14400
 
 [description]
-it = """Cerca foto in indice unificato (ADR 0117 v4). Combina identita' + contenuto + composizione + EXIF/GPS in UNA call.
-
-Args:
-- `name='silvia'`: persona enrollata via set_persons.
-- `query_text='mare'`: contenuto via VLM description+keywords.
-- `reference_images=[paths]`: similarita' ArcFace.
-- `min_face_pixels=40000`: primo piano.
-- `min_face_count`/`max_face_count`: foto di gruppo o singolo.
-- `near_lat`/`near_lon`/`radius_km`: filtro geografico.
-- `time_window='last-3y'`/`'2024'`: filtro temporale.
-- `paths_filter=[...]`: restringe scan.
-- `top_k=100`: default — NON PASSARLO a meno che l'utente non chieda esplicitamente «mostrami le prime N» o «top N». Passare top_k basso genera truncation confusa per l'utente.
-
-Args si combinano (AND) in una sola passata.
-
-Pattern:
-- «foto del mare» → query_text='mare'.
-- «primo piano di Matteo» → name='matteo', min_face_pixels=40000.
-- «Silvia al mare nel 2024» → name='silvia', query_text='mare', time_window='2024'.
-- «foto vicino a Roma» → near_lat=41.9, near_lon=12.5, radius_km=20.
-
-Anti-pattern:
-- `idx='scene'` → deprecato, ignorato.
-- pipeline 2-step con paths_filter ponte → usa una sola call con args combinati.
-
-base_path:
-- DEVI omettere `base_path` per default → discovery automatica (usa tutti gli indici esistenti).
-- NON DEVI inventare path tipo `/home/roberto/images` o `/home/user/Pictures` se l'utente non lo menziona.
-- OK: query «foto al mare» → `find_images_indices(query_text='mare')` SENZA base_path.
-- ERRORE: «foto al mare» → `find_images_indices(base_path='/home/roberto/images', query_text='mare')` (path inventato, non esiste indice).
-- Solo se l'utente cita un path esplicito (es. «in /mnt/foto»), passalo come `base_path`.
-- Stringa simbolica `Immagini`: match in ~/.local/share/metnos/Immagini se esiste.
-
-Output: `entries=[{path, score, match_type, description, size_bytes, bbox?, gps?, taken_at?}]` ordinato per score desc. Pattern §2.7: `truncated`, `used`, `available_total`, `cap_field='top_k'`.
-
-`metadata` (su corpus COMPLETO, non solo entries restituite):
-- `total_count`: numero TOTALE di foto matched (= `n_above_threshold`).
-- `total_size_bytes`: somma byte di TUTTE le foto matched.
-- `n_with_size`: quante avevano `size` valida.
-
-USO METADATA: per query aggregate «quante X / quanti GB di X» DEVI leggere `metadata.total_count` e `metadata.total_size_bytes` DIRETTAMENTE da questa observation. NON DEVI chiamare `compute_entries(op=count|sum)` su entries truncated (ti darebbe il count/sum dei soli top_k, non del corpus completo).
-
-error_class: low_confidence, paths_filter_empty, no_faces_above_size_threshold, index_missing, schema_too_old."""
-en = """Search photos in unified index (ADR 0117 v4). Combines identity + content + composition + EXIF/GPS in ONE call.
-
-Args:
-- `name='silvia'`: person enrolled via set_persons.
-- `query_text='sea'`: content via VLM description+keywords.
-- `reference_images=[paths]`: ArcFace similarity.
-- `min_face_pixels=40000`: close-up.
-- `min_face_count`/`max_face_count`: group or single.
-- `near_lat`/`near_lon`/`radius_km`: geographic filter.
-- `time_window='last-3y'`/`'2024'`: temporal filter.
-- `paths_filter=[...]`: restrict scan.
-- `top_k=100`: default — DO NOT pass it unless the user explicitly asks "show me the first N" or "top N". Passing low top_k produces confusing truncation for the user.
-
-Args combine (AND) in single pass.
-
-Patterns:
-- «sea photos» → query_text='sea'.
-- «close-up of Matteo» → name='matteo', min_face_pixels=40000.
-- «Silvia at the sea in 2024» → name='silvia', query_text='sea', time_window='2024'.
-- «photos near Rome» → near_lat=41.9, near_lon=12.5, radius_km=20.
-
-Anti-patterns:
-- `idx='scene'` → deprecated, ignored.
-- 2-step pipeline with paths_filter bridge → use single call with combined args.
-
-base_path:
-- MUST omit `base_path` by default → automatic discovery (uses all existing indices).
-- MUST NOT invent paths like `/home/user/images` or `/home/user/Pictures` if the user didn't mention one.
-- OK: query «sea photos» → `find_images_indices(query_text='sea')` WITHOUT base_path.
-- ERROR: «sea photos» → `find_images_indices(base_path='/home/user/images', query_text='sea')` (made-up path, no index there).
-- Only if the user cites an explicit path (e.g. «in /mnt/photos»), pass it as `base_path`.
-- Symbolic string `Images`: matches ~/.local/share/metnos/Images if it exists.
-
-Output: `entries=[{path, score, match_type, description, size_bytes, bbox?, gps?, taken_at?}]` ordered by score desc. Pattern §2.7: `truncated`, `used`, `available_total`, `cap_field='top_k'`.
-
-`metadata` (computed on FULL matched corpus, not just returned entries):
-- `total_count`: TOTAL number of matched photos (= `n_above_threshold`).
-- `total_size_bytes`: sum of bytes over ALL matched photos.
-- `n_with_size`: how many had valid `size`.
-
-METADATA USE: for aggregate queries «how many X / how many GB of X» you MUST read `metadata.total_count` and `metadata.total_size_bytes` DIRECTLY from this observation. You MUST NOT call `compute_entries(op=count|sum)` on truncated entries (it would give you the count/sum of just top_k, not the full corpus).
-
-error_class: low_confidence, paths_filter_empty, no_faces_above_size_threshold, index_missing, schema_too_old."""
+it = """SCOPO: cerca foto in indice unificato (ADR 0117 v4) combinando identita' + contenuto + composizione + EXIF/GPS in UNA call. PATTERN: find_images_indices(query_text="mare"); name="silvia"+time_window="2024"; near_lat=41.9+near_lon=12.5+radius_km=20; min_face_pixels=40000 (primo piano); min_face_count/max_face_count (gruppo/singolo); reference_images=[paths] (simili ArcFace). Gli args si combinano in AND; serve ALMENO un criterio (query_text|name|reference_images|near_lat+near_lon|paths_filter|min_face_*). NON: inventare base_path (es. "/home/roberto/images") -> OMETTILO per discovery automatica su tutti gli indici, passalo solo se l'utente cita un path esplicito; idx="scene" (deprecato, ignorato); pipeline 2-step con paths_filter ponte (usa una sola call); compute_entries(op=count|sum) su entries truncated per query aggregate -> leggi metadata.total_count/total_size_bytes; passare top_k salvo richiesta esplicita "top N" (genera truncation confusa). OUT: entries=[{path,score,match_type,description,size_bytes,bbox?,gps?,taken_at?}] ord. score desc + metadata{total_count,total_size_bytes,n_with_size} sul corpus COMPLETO (non solo entries). §2.7: truncated/used/available_total/cap_field="top_k". error_class: low_confidence, paths_filter_empty, no_faces_above_size_threshold, index_missing, schema_too_old."""
+en = """SCOPO: search photos in unified index (ADR 0117 v4) combining identity + content + composition + EXIF/GPS in ONE call. PATTERN: find_images_indices(query_text="sea"); name="silvia"+time_window="2024"; near_lat=41.9+near_lon=12.5+radius_km=20; min_face_pixels=40000 (close-up); min_face_count/max_face_count (group/single); reference_images=[paths] (ArcFace similar). Args combine in AND; need AT LEAST one criterion (query_text|name|reference_images|near_lat+near_lon|paths_filter|min_face_*). NON: invent base_path (e.g. "/home/user/images") -> OMIT it for automatic discovery over all indices, pass it only if the user cites an explicit path; idx="scene" (deprecated, ignored); 2-step pipeline with paths_filter bridge (use a single call); compute_entries(op=count|sum) on truncated entries for aggregate queries -> read metadata.total_count/total_size_bytes; pass top_k unless the user explicitly asks "top N" (causes confusing truncation). OUT: entries=[{path,score,match_type,description,size_bytes,bbox?,gps?,taken_at?}] ordered by score desc + metadata{total_count,total_size_bytes,n_with_size} over the FULL corpus (not just entries). §2.7: truncated/used/available_total/cap_field="top_k". error_class: low_confidence, paths_filter_empty, no_faces_above_size_threshold, index_missing, schema_too_old."""
 
 [code]
 files  = ["find_images_indices.py"]
-digest = "sha256:20b6fd51768a97f9db85f59ca3a5e0737bd4b4ffa82377cde0f0140559331b84"
+digest = "sha256:65de10d35548ae7797c4ecb57b9829248e34a76467e3d78820c93111a91b360f"
 
 [args]
 type     = "object"
 required = []
+# Almeno UN criterio di ricerca (§7.3, convenzione requires_one_of): senza, lo
+# step e' incompleto → l'executor da' "missing search criterion" e il
+# compound-decomposer DEFERISCE al planner (gate _step_schema_coherent). Allinea
+# la validazione interna find_images_indices.py:1217-1230 allo schema.
+requires_one_of = [["query_text", "name", "names", "reference_images", "near_lat", "paths_filter", "min_face_pixels", "min_face_count", "max_face_count"]]
 
 [args.properties.base_path]
 type        = "string"
@@ -119,6 +40,13 @@ type        = "string"
 [args.properties.base_path.description]
 it = "Directory radice della collezione. OPZIONALE: (a) PATH ASSOLUTO/relativo = uso diretto; (b) STRINGA SIMBOLICA = match in ~/.local/share/metnos/; (c) OMESSO = discovery + multi-dir merge."
 en = "Root directory of the collection. OPTIONAL: (a) ABSOLUTE/relative PATH = direct use; (b) SYMBOLIC STRING = match in ~/.local/share/metnos/; (c) OMITTED = discovery + multi-dir merge."
+
+[args.properties.match_all]
+type        = "boolean"
+
+[args.properties.match_all.description]
+it = "Se true, enumera TUTTE le foto indicizzate del corpus, senza criterio di ricerca. USO CORRETTO: \"quante foto in totale\" (final \"${stepN.@count} foto\"); \"quanti GB occupano le foto\" (final \"${stepN.metadata.total_size_gb} GB\"). Conteggio in metadata.total_count, spazio in metadata.total_size_gb / total_size_bytes. NON combinare con query_text/name/gps: match_all vince e azzera gli altri criteri. Default false."
+en = "If true, enumerate ALL indexed photos in the corpus, with no search criterion. CORRECT USE: \"how many photos in total\" (final \"${stepN.@count} photos\"); \"how many GB do photos take\" (final \"${stepN.metadata.total_size_gb} GB\"). Count in metadata.total_count, size in metadata.total_size_gb / total_size_bytes. Do NOT combine with query_text/name/gps: match_all wins and clears the other criteria. Default false."
 
 [args.properties.query_text]
 type        = "string"
@@ -259,7 +187,7 @@ expect = { ok = false, error_contains = "criterion" }
 [[tests]]
 name   = "base_path_inesistente_fallisce"
 input  = { base_path = "/tmp/metnos_does_not_exist_xyz_unified", query_text = "mare" }
-expect = { ok = false, error_contains = "not found" }
+expect = { ok = false, error_contains = "non trovato" }
 
 [[tests]]
 name   = "idx_arg_ignored_no_crash"

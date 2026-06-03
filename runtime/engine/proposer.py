@@ -49,6 +49,13 @@ class Proposer(Protocol):
 
 _FRAMEWORK_RE = re.compile(r"\{[\s\S]*\}")
 
+# Budget di prompt PER-TOOL: quanto della description (SCOPO+PATTERN, fino a
+# OUT:) viene mostrato all'LLM nel pool. Il pool puo' avere 10-20 tool; mostrare
+# la description completa di ognuno gonfia il prompt e distrae il modello medio.
+# 260 char ≈ SCOPO+PATTERN front-loaded (§2.5). E' un'euristica di tuning, non un
+# limite fisico. Single-source: `manifest_lint` lo importa per allineare i check.
+TOOL_DESC_BUDGET = 260
+
 
 def _render_tool_pool(pool: list[str], catalog: Optional[list]) -> str:
     """Costruisce blocco tools con schema per il prompt.
@@ -65,9 +72,17 @@ def _render_tool_pool(pool: list[str], catalog: Optional[list]) -> str:
         if e is None:
             lines.append(f"- {name}")
             continue
-        desc = (getattr(e, "description", "") or "").strip()
-        # Prendi solo prima frase, max ~120 char
-        desc_short = desc.split(".")[0][:120] if desc else ""
+        desc = (getattr(e, "description", "") or "").strip().replace("\n", " ")
+        # Manifest a capitoli (convenzione §2.5: "SCOPO: … PATTERN: … NON: …
+        # OUT: …"): esponi SCOPO+PATTERN (+NON se entra) cosi' il Proposer vede
+        # la FORMA di chiamata, non solo lo scopo (bug args 2/6/2026: l'LLM
+        # vedeva solo "Scrive uno o piu' file" → inventava write_files(files=…)).
+        # Manifest legacy (senza capitoli): prima frase [:120] (back-compat).
+        if "PATTERN:" in desc:
+            _cut = desc.find("OUT:")
+            desc_short = (desc[:_cut] if _cut > 0 else desc)[:TOOL_DESC_BUDGET].strip()
+        else:
+            desc_short = desc.split(".")[0][:120] if desc else ""
         schema = getattr(e, "args_schema", None) or {}
         required = schema.get("required") or []
         roo = schema.get("requires_one_of") or []
@@ -169,7 +184,21 @@ class SimpleProposer:
         # LLM non puo' sbagliare verb family. Bench 446q baseline 47% top-1
         # prefilter → atteso 75%+ con verb constraint.
         effective_pool = pool
-        if os.environ.get("METNOS_PROPOSER_VERB_FILTER", "0") == "1" and intent.verb:
+        # Compound-aware (§7.3): per query multi-azione (>=2 verbi canonici) il
+        # filtro mono-verbo escluderebbe i tool degli altri sotto-intenti
+        # (find+write+send) — il pool e' gia' multi-verbo da dispatch. Skip il
+        # filtro sui compound, cosi' la pipeline completa resta proponibile
+        # (bug 2/6/2026: "trova le issue, salvale, mandami il riassunto" perdeva
+        # write_files/send_messages col verb-filter).
+        _is_compound = False
+        try:
+            from prefilter import (tokenize as _vf_tok,
+                                    detect_canonical_verbs_all as _vf_dv)
+            _is_compound = len(set(_vf_dv(_vf_tok(query)))) >= 2
+        except Exception:
+            _is_compound = False
+        if (os.environ.get("METNOS_PROPOSER_VERB_FILTER", "0") == "1"
+                and intent.verb and not _is_compound):
             try:
                 from tool_grammar import filter_pool_by_intent_verb
                 pool_objs = [next((e for e in catalog if e.name == n), None) for n in pool] \
@@ -207,8 +236,13 @@ class SimpleProposer:
         }
         if use_grammar:
             try:
-                from .grammar_framework import GRAMMAR_FRAMEWORK
-                llm_kwargs["grammar"] = GRAMMAR_FRAMEWORK
+                from .grammar_framework import build_framework_grammar
+                # Vincola `tool` ai nomi del pool effettivo: l'LLM non puo'
+                # piu' allucinare nomi inesistenti (es. get_issues) ne' uscire
+                # dal pool. Bug 2/6/2026: grammar vincolava solo la FORMA JSON,
+                # non i nomi tool → find_urls/get_issues invece di
+                # find_issues_github (in pool).
+                llm_kwargs["grammar"] = build_framework_grammar(effective_pool)
             except Exception as ex:
                 log.warning("GBNF grammar load fallita: %r — fallback no-grammar", ex)
         try:

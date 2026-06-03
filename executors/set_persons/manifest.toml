@@ -16,7 +16,7 @@ en = "Enrolls a person into the named registry for name-based searches via `find
 
 [code]
 files  = ["set_persons.py"]
-digest = "sha256:51e971dbb8cecc48c130f23e1059558529e44af024babaea1ebf4572c8fc5f52"
+digest = "sha256:6bcf5021db07eee1183eb9ba787be305c5b76331539ad105ce1fdaae143e9f94"
 
 [args]
 type     = "object"
@@ -83,12 +83,12 @@ reversible = false
 [[tests]]
 name   = "validates_empty_name"
 input  = { name = "", paths = ["/tmp/x.jpg"] }
-expect = { ok = false, error_contains = "non-empty" }
+expect = { ok = false, error_contains = "non vuota" }
 
 [[tests]]
 name   = "validates_empty_paths"
 input  = { name = "Matteo", paths = [] }
-expect = { ok = false, error_contains = "non-empty list" }
+expect = { ok = false, error_contains = "deve essere una lista" }
 
 [[tests]]
 name   = "validates_bad_mode"

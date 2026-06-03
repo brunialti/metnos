@@ -51,6 +51,9 @@ from .promoter_state import (
     upsert_review_needed,
 )
 
+import logging
+log = logging.getLogger("metnos.jobs.promoter")
+
 
 # Default cap per fire — protezione contro flood al primo giro.
 CAP_PER_FIRE_DEFAULT = 5
@@ -290,6 +293,123 @@ def _process_one(proposal: dict, dry_run: bool, grace_hours: int) -> dict:
     return base_ev
 
 
+def _executor_grace_failures(name: str, since_epoch: float) -> tuple[int, int]:
+    """Conta (uses, hard_fails) dell'executor `name` nei turni dal `since_epoch`
+    (inizio grace). hard_fail = step con `error` o `scope_violation`. Scansione
+    deterministica del turn-log (§7.9, nessun LLM). Per il kill-switch grace.
+    """
+    import glob
+    tdir = _C.PATH_USER_DATA / "turns"
+    uses = 0
+    fails = 0
+    for fp in glob.glob(str(tdir / "*.jsonl")):
+        try:
+            if os.path.getmtime(fp) < since_epoch - 86400:
+                continue  # file interamente precedente alla finestra (slack 1g)
+        except OSError:
+            continue
+        try:
+            with open(fp, encoding="utf-8") as fh:
+                for line in fh:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        d = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    ts = d.get("ts_start") or d.get("ts_end") or 0
+                    try:
+                        ts = float(ts)
+                    except (TypeError, ValueError):
+                        ts = 0.0
+                    if ts and ts < since_epoch:
+                        continue  # turno precedente alla promozione → ignora
+                    for s in (d.get("steps") or []):
+                        if isinstance(s, dict) and s.get("chosen_tool") == name:
+                            uses += 1
+                            if s.get("error") or s.get("scope_violation"):
+                                fails += 1
+        except OSError:
+            continue
+    return uses, fails
+
+
+def _notify_killswitch(candidates: list, enforce: bool) -> None:
+    """Notifica Telegram all'admin dei candidati kill-switch (osserva) o dei
+    ritiri (enforce). Destinatario via `_resolve_admin_recipient` (users.db).
+    Gated da METNOS_PROMOTER_NOTIFY_ADMIN. Best-effort: mai solleva.
+    """
+    if os.environ.get("METNOS_PROMOTER_NOTIFY_ADMIN", "true").strip().lower() \
+            in ("0", "false", "no"):
+        return
+    try:
+        from .promoter_digest import _resolve_admin_recipient
+        rid, _err = _resolve_admin_recipient()
+        if not rid:
+            return
+        body = "\n".join(
+            f"• {c.get('name')} ({c.get('fails')}×)" for c in candidates)
+        from messages import get as _msg
+        key = "MSG_KILLSWITCH_ENFORCE" if enforce else "MSG_KILLSWITCH_OBSERVE"
+        text = _msg(key, body=body)
+        from backends.messages import telegram_bot
+        telegram_bot.send({"messages": [{"recipient_id": rid, "body": text}]})
+    except Exception as ex:
+        log.warning("killswitch notify fallita: %r", ex)
+
+
+def _grace_killswitch(dry_run: bool) -> dict:
+    """Grazia probatoria a esito (L3.5, 30/5/2026): rileva gli executor in
+    `promoted_grace` con segnale negativo (>= ROLLBACK_FAILS fallimenti duri nei
+    turni dall'inizio grace) e li ritira via `rollback_promotion`.
+
+    PRUDENZA — di default OSSERVA soltanto: logga "would_rollback" e lo riporta,
+    ma il rollback REALE avviene solo con `METNOS_PROMOTER_KILLSWITCH_ENFORCE=1`.
+    Cosi' il segnale si valida per qualche ciclo prima di armare l'auto-rollback.
+    """
+    import datetime as _dt
+    rollback_fails = int(os.environ.get("METNOS_PROMOTER_ROLLBACK_FAILS", "2"))
+    enforce = os.environ.get("METNOS_PROMOTER_KILLSWITCH_ENFORCE", "0") == "1"
+    candidates: list[dict] = []
+    try:
+        from .promoter_state import list_by_state
+        grace_rows = list_by_state(["promoted_grace"])
+    except Exception as ex:  # difensivo: il kill-switch non deve mai rompere il promoter
+        log.warning("killswitch: list_by_state fallito: %r", ex)
+        return {"enforce": enforce, "error": repr(ex), "candidates": []}
+    for rec in grace_rows:
+        name = rec.get("name") or ""
+        pid = rec.get("proposal_id") or ""
+        if not name or not pid:
+            continue
+        promoted_at = rec.get("promoted_at") or ""
+        try:
+            since = _dt.datetime.fromisoformat(
+                promoted_at.replace("Z", "+00:00")).timestamp()
+        except (ValueError, AttributeError):
+            since = 0.0
+        uses, fails = _executor_grace_failures(name, since)
+        if fails < rollback_fails:
+            continue
+        action = "would_rollback"
+        if enforce and not dry_run:
+            try:
+                from .promoter_rollback import rollback_promotion
+                rollback_promotion(pid)
+                action = "rolled_back"
+            except Exception as ex:
+                action = f"rollback_error:{ex!r}"
+        log.warning("promoter killswitch: %s %s (uses=%d fails=%d enforce=%s)",
+                     name, action, uses, fails, enforce)
+        candidates.append({"name": name, "proposal_id": pid,
+                            "uses": uses, "fails": fails, "action": action})
+    if candidates:
+        _notify_killswitch(candidates, enforce)
+    return {"enforce": enforce, "rollback_fails": rollback_fails,
+            "candidates": candidates}
+
+
 def task_promoter(payload: dict | None = None) -> dict:
     """Callback scheduler v2 `promoter` (daily@04:45).
 
@@ -310,6 +430,11 @@ def task_promoter(payload: dict | None = None) -> dict:
         cols_added = ensure_schema(conn)
     finally:
         conn.close()
+
+    # 0. Kill-switch grace a esito (L3.5): ritira/segnala gli executor in grace
+    #    con segnale negativo PRIMA del finalize, cosi' un cattivo non si
+    #    consolida. Osserva-di-default (enforce via env).
+    killswitch = _grace_killswitch(dry_run)
 
     # 1. Grace expiry (sempre prima, anche se cap=0 di candidates).
     finalized = expire_grace()
@@ -369,6 +494,7 @@ def task_promoter(payload: dict | None = None) -> dict:
             "dry_run": dry_run,
             "finalized_via_grace_expiry": len(finalized),
             "candidates_seen": len(candidates),
+            "killswitch": killswitch,
             "schema_migration": cols_added,
             "audit_path": str(audit_path) if audit_path else None,
         },

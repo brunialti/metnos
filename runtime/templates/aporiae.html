@@ -8,11 +8,18 @@
   Path evolutivo: <b>utente risolve la lacuna → Praxis impara la nuova capability</b>.
 </p>
 
+{% if legacy_notice %}
+<div style="background:#fff3cd;border:1px solid #ffe69c;border-radius:6px;padding:.8rem 1rem;margin:.8rem 0">
+  <b>{{ legacy_notice }}</b> — il flusso decisionale vivo è Engine v2;
+  questo pannello legacy non riceve più dati.
+</div>
+{% endif %}
+
 <h2>Stats per root cause</h2>
 <table class="compact">
   <thead><tr><th>root_cause</th><th>n distinct</th><th>n occurrences</th></tr></thead>
   <tbody>
-  {% for cause, c in stats.by_root_cause.items() %}
+  {% for cause, c in (stats.by_root_cause or {}).items() %}
     <tr>
       <td><code>{{ cause }}</code></td>
       <td>{{ c.count }}</td>

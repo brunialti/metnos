@@ -108,12 +108,12 @@ def _build_action_dialog_args(obs: dict) -> dict:
     return {
         "title": f"Specifica il target per {verb}",
         "dialog": [{
-            "kind": "free_text",
             "var": "target",
-            "label": (
+            "prompt": (
                 f"Per «{query[:60]}» serve un target esplicito ({obj}). "
                 f"Puoi indicarlo?"
             ),
+            "schema": {"kind": "text"},
         }],
     }
 

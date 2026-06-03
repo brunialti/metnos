@@ -1,0 +1,14 @@
+Q: quanti file ci sono in /tmp 1780222538
+
+Q: quanti file ci sono in /tmp 1780231754
+
+Q: quanti file ci sono in /tmp
+
+Q: quanti file ci sono in /tmp
+
+Q: quante directory ci sono in /etc
+
+Q: trova i file .conf in /etc
+  tool=find_files
+  raw_args={"base_path": "/etc", "pattern": "*.conf", "recursive": true, "_actor": "Roberto", "_actor_email": "roberto.brunialti@knowcastle.com", "_lang": "it", "_channel": "http"}
+  result.ok=True ok_count=None n_entries=170

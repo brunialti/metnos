@@ -31,7 +31,7 @@ Output: entries=[{source, best_guess_label, matching_pages, similar_images, web_
 
 [code]
 files  = ["find_images_web.py"]
-digest = "sha256:512f44312d598f92204a42064a4aec4f842597ca04bbf0fea5621be8a3b36b6b"
+digest = "sha256:38bbcff4c18773c6e67041bdd3f3d193873eaa58e237775cdf8c3cc21870ea2a"
 
 [args]
 type = "object"
@@ -57,6 +57,14 @@ default = []
 [args.properties.urls.description]
 it = "Lista di URL pubblici di immagini. Vision fa fetch diretto. Es: [\"https://example.com/img.jpg\"]."
 en = "List of public image URLs. Vision direct-fetches. E.g.: [\"https://example.com/img.jpg\"]."
+
+[args.properties.face_boxes]
+type = "array"
+items = {type = "array", items = {type = "integer"}}
+default = []
+[args.properties.face_boxes.description]
+it = "Lista di bbox `[x,y,w,h]` PARALLELA a `paths` (stesso ordine). Se presente, ogni foto viene ritagliata sull'area facciale prima dell'invio a Vision (face similarity vs scene). Pattern: `face_boxes=${step1.entries.*.bbox}`."
+en = "List of `[x,y,w,h]` bboxes PARALLEL to `paths` (same order). If present, each photo is cropped to face area before sending to Vision (face similarity vs scene). Pattern: `face_boxes=${step1.entries.*.bbox}`."
 
 [args.properties.max_results]
 type = "integer"

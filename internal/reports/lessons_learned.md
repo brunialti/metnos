@@ -89,7 +89,7 @@ emette `client='local'` + query senza "locale" → resolver corregge a
 coerenza. Corollario test: verifica l'ESITO (backend coerente), non il dettaglio
 interno (se l'LLM ha emesso l'arg).
 
-**Direzione (ADR da aprire).** Resolver backend UNIFORME e deterministico:
+**Direzione (ADR 0165, accepted 1/6/2026).** Resolver backend UNIFORME e deterministico:
 1. `client`/`account`/`provider` spariscono dagli args visibili all'LLM
    (flag `runtime_resolved` saltato da `proposer.py::_tools_block`).
 2. Il runtime risolve il backend: provider esplicitamente nominato dall'utente

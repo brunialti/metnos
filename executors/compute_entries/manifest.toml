@@ -40,7 +40,7 @@ Output: {value, op, key, count_input, ignored_non_numeric}. return_entry=true ad
 
 [code]
 files  = ["compute_entries.py"]
-digest = "sha256:cfe45f34dc12cd73acea9cb415500d6e40ec31afb08f5b0505281bacb274ca19"
+digest = "sha256:1d7c66ea0ed5c58f7b5c8fabcac799e254c96355f62d79895ef35abd30bba7a5"
 
 [args]
 type     = "object"
@@ -117,4 +117,4 @@ expect = { ok = false, error_contains = "op" }
 [[tests]]
 name   = "invalid_op"
 input  = { entries = [{x = 1}], key = "x", op = "median" }
-expect = { ok = false, error_contains = "invalid op" }
+expect = { ok = false, error_contains = "avg, count, count_distinct, max, min, sum" }

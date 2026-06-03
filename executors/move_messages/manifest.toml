@@ -24,7 +24,7 @@ en = "Move one or more messages between folders (IMAP folder or Gmail label). Ve
 
 [code]
 files  = ["move_messages.py"]
-digest = "sha256:35e4741200e94a073cff449899411139da68f7df710ff5f6d8be42b0587655c6"
+digest = "sha256:6f661e635cd6b6eee4c3e0638495e3172d1d29e3ab8c33fe160cbff0b0f3719b"
 
 [args]
 type = "object"
@@ -117,7 +117,7 @@ expect = { ok = false }
 [[tests]]
 name   = "args_invalidi_client_sconosciuto"
 input  = { message_ids = ["x"], dst_folder = "Trash", client = "outlook" }
-expect = { ok = false, error_contains = "unsupported" }
+expect = { ok = false, error_contains = "Operazione non applicabile per questo provider" }
 
 [[tests]]
 name   = "args_invalidi_lista_vuota_ids"

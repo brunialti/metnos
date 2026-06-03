@@ -212,8 +212,12 @@ def _dispatch_call(call):
     from pathlib import Path
     name = call["executor"]
     args = call["args"]
+    # §7.11: la install-root reale via config.PATH_EXECUTORS. Prima il bug
+    # usava il placeholder letterale "<install_root>" (mai sostituito) → path
+    # inesistente → undo di delete_<obj>_by_id no-op silenzioso sui builtin.
+    import config as _C
     candidates = [
-        Path(f"<install_root>/executors/{name}/{name}.py"),
+        _C.PATH_EXECUTORS / name / f"{name}.py",
     ]
     from skills_paths import skill_roots as _sr
     for base in _sr():

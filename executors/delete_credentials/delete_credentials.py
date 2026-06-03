@@ -25,6 +25,7 @@ from pathlib import Path
 _RUNTIME = Path(__file__).resolve().parent.parent.parent / "runtime"
 sys.path.insert(0, str(_RUNTIME))
 
+from messages import get as _msg  # noqa: E402
 import credentials as _cred  # noqa: E402
 
 
@@ -97,7 +98,7 @@ def invoke(args):
         if not all_bindings:
             result = {
                 "ok": True, "results": [], "n_deleted": 0,
-                "final_message_hint": "Nessuna credenziale da cancellare.",
+                "final_message_hint": _msg("MSG_NO_CREDENTIALS_TO_DELETE"),
             }
             _assert_no_secrets_in_return(result)
             return result
@@ -109,7 +110,7 @@ def invoke(args):
                 results.append({
                     "binding": b, "deleted": False,
                     "removed_fields_count": 0,
-                    "error": f"remove failed: {e}",
+                    "error": _msg("ERR_OP_FAILED", reason=str(e)),
                 })
                 continue
             results.append({
@@ -125,7 +126,7 @@ def invoke(args):
                 results.append({
                     "binding": b, "deleted": False,
                     "removed_fields_count": 0,
-                    "error": f"invalid binding: {e}",
+                    "error": _msg("ERR_ARG_INVALID", arg="binding", reason=str(e)),
                 })
                 continue
             path = _cred._file_for(b)
@@ -143,7 +144,7 @@ def invoke(args):
                 results.append({
                     "binding": b, "deleted": False,
                     "removed_fields_count": 0,
-                    "error": f"remove failed: {e}",
+                    "error": _msg("ERR_OP_FAILED", reason=str(e)),
                 })
                 continue
             results.append({
@@ -176,7 +177,7 @@ def main():
     try:
         args = json.load(sys.stdin)
     except json.JSONDecodeError as e:
-        sys.stdout.write(json.dumps({"ok": False, "error": f"invalid input json: {e}"}))
+        sys.stdout.write(json.dumps({"ok": False, "error": _msg("ERR_JSON_INVALID")}))
         return
     result = invoke(args)
     sys.stdout.write(json.dumps(result, ensure_ascii=False, default=str))

@@ -26,6 +26,13 @@ log = logging.getLogger(__name__)
 _MAX_SLEEP_S = 60.0   # cap on idle sleep so DST transitions can't strand us
 _MIN_SLEEP_S = 0.001  # floor to avoid busy-spin if a timer is in the past
 
+# Circuit-breaker: dopo N fallimenti CONSECUTIVI (error/timeout) un task
+# ricorrente viene auto-disabilitato, per non ri-sparare all'infinito una
+# pipeline rotta (PAT scaduto, repo rimosso, ...). L'owner viene notificato
+# via hook `on_circuit_break` (continua/sospendi/cancella). Soglia override
+# via env per ops. Allineato a 3 come l'escalation Strato 3 (≥3 ✗).
+_CIRCUIT_BREAK_AFTER = int(os.environ.get("METNOS_SCHED_CIRCUIT_BREAK_AFTER") or 3)
+
 
 def _utc_iso(epoch: float | None = None) -> str:
     if epoch is None:
@@ -65,6 +72,11 @@ class SchedulerDaemon:
         # created in start() so it binds to the running loop).
         self._running: dict[int, int] = {}
         self._running_lock: asyncio.Lock | None = None
+        # Hook opzionale invocato quando un task ricorrente viene
+        # auto-disabilitato dal circuit-breaker. Firma: (entry, error: str|None).
+        # Settato da chi conosce i canali (recurring_tasks): il daemon resta
+        # channel-agnostico. None = solo log.
+        self.on_circuit_break = None
 
     # --- lifecycle ---------------------------------------------------
 
@@ -265,6 +277,7 @@ class SchedulerDaemon:
             # Decide next_fire_at and enabled
             disable = False
             decrement_remaining = False
+            circuit_broken = False
             new_next: float | None = None
             if entry.recurring:
                 try:
@@ -280,6 +293,13 @@ class SchedulerDaemon:
                     decrement_remaining = True
                     if entry.remaining_runs - 1 <= 0:
                         disable = True
+                # Circuit-breaker: N fallimenti CONSECUTIVI → auto-disable.
+                # entry.consecutive_failures e' il valore PRE-run; +1 = quello
+                # che record_outcome scrivera' (coerente, stesso incremento).
+                if status != "success" and _CIRCUIT_BREAK_AFTER > 0:
+                    if (entry.consecutive_failures or 0) + 1 >= _CIRCUIT_BREAK_AFTER:
+                        disable = True
+                        circuit_broken = True
             else:
                 disable = True  # one-shot fired (success or error): disable
             self.storage.record_outcome(
@@ -291,6 +311,28 @@ class SchedulerDaemon:
                 decrement_remaining=decrement_remaining,
                 disable=disable,
             )
+            if circuit_broken:
+                log.warning(
+                    "entry %s: circuit-break dopo %d fallimenti consecutivi "
+                    "(last_error=%s) → disabilitato",
+                    entry.name, _CIRCUIT_BREAK_AFTER, error,
+                )
+                hook = self.on_circuit_break
+                if hook is not None:
+                    def _safe_hook(_e=entry, _err=error, _h=hook):
+                        try:
+                            _h(_e, _err)
+                        except Exception:
+                            # Notifica mai-bloccante: auto-disable gia' persistito.
+                            log.exception(
+                                "entry %s: on_circuit_break hook fallito", _e.name)
+                    # Il hook fa I/O bloccante (send Telegram, timeout 30s): NON
+                    # eseguirlo nell'event loop co-hostato con l'HTTP server →
+                    # thread pool fire-and-forget (come i callback sync).
+                    if self._pool is not None:
+                        self._pool.submit(_safe_hook)
+                    else:
+                        _safe_hook()
             async with self._running_lock:
                 cur = self._running.get(entry.id, 0)
                 if cur <= 1:

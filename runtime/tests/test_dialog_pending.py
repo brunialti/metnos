@@ -101,7 +101,10 @@ def test_cancel_pending_marks_state(dp):
 
 
 def test_list_pending_orders_by_started(dp):
-    older = (datetime.now(tz=timezone.utc) - timedelta(hours=1)).isoformat()
+    # list_pending salta gli scaduti: i fixture di ordinamento restano "attivi"
+    # perche' _make_state imposta timeout_s=3600 per-dialogo (override del
+    # DEFAULT_TTL_S, oggi 60s). Il gap di 10 min verifica solo l'ordinamento.
+    older = (datetime.now(tz=timezone.utc) - timedelta(minutes=10)).isoformat()
     newer = datetime.now(tz=timezone.utc).isoformat()
     dp.save_pending("host", "old", _make_state(dialog_id="old", started_iso=older))
     dp.save_pending("host", "new", _make_state(dialog_id="new", started_iso=newer))

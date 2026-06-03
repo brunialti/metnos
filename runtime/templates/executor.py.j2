@@ -154,12 +154,65 @@ def _coalesce_{{ vectorial_coalesce.entity }}(args):
     return [], f"must provide one of: {plural}, entries, {singular}"
 {% endif %}
 
+{% if vectorial_entries %}
+def _expand_row_args(args, entry):
+    """Args per UNA entry (vettoriale §2.1). Ogni `<name>_template` viene
+    format-ato coi campi dell'entry; i campi dell'entry riempiono gli args
+    mancanti; gli scalari restano costanti. Rimuove `entries` (no ricorsione)."""
+    out = {k: v for k, v in args.items()
+           if k != "entries" and not (isinstance(k, str) and k.endswith("_template"))}
+    if isinstance(entry, dict):
+        for k, v in args.items():
+            if isinstance(k, str) and k.endswith("_template") and isinstance(v, str):
+                base = k[:-len("_template")]
+                try:
+                    out[base] = v.format(**entry)
+                except Exception:
+                    out[base] = v
+        for k, v in entry.items():
+            out.setdefault(k, v)
+    return out
+{% endif %}
+
 
 # ----- invoke ---------------------------------------------------------------
 
 def invoke(args):
     if not isinstance(args, dict):
         return _err_obj("args must be an object", "invalid_args")
+{% if vectorial_entries %}
+    # Vettoriale §2.1: con `entries` (da from_step) UNA invocazione per entry,
+    # args derivati via `<name>_template`/campi entry; aggrega in results. La
+    # forma scalare (sotto) resta il caso degenere N=1.
+    _ents = args.get("entries")
+    if isinstance(_ents, list):
+        _res = []
+        _fail = []
+        _auth = False
+        for _e in _ents:
+            _r = invoke(_expand_row_args(args, _e))
+            if isinstance(_r, dict) and _r.get("decision") == "needs_inputs":
+                _auth = True
+                break
+            if isinstance(_r, dict) and _r.get("ok"):
+                _res.extend(_r.get("results") or _r.get("entries") or [])
+            else:
+                _fail.append({"error": (_r or {}).get("error"),
+                              "error_class": (_r or {}).get("error_class")})
+        if _auth and not _res:
+            return _auth_needs_inputs(dict(args))
+        _out = {"ok": (len(_res) > 0 or not _fail), "results": _res,
+                "used": len(_res)}
+        if _fail:
+            if _res:
+                _out["partial"] = True
+            else:
+                _out["ok"] = False
+                _out["error"] = _fail[0].get("error")
+                _out["error_class"] = _fail[0].get("error_class")
+            _out["failures"] = _fail
+        return _out
+{% endif %}
 
 {% if needs_time_window %}
     start_iso, end_iso, err = _resolve_window(args)

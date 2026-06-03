@@ -1320,7 +1320,15 @@ form.addEventListener('submit', async (e) => {
         if(pending){ pending.remove(); }
         pending = renderLivePath(lastLivePath, lastPredicted || []);
       } else if(pending) {
-        const msg = data.message || data.label || 'lavoro';
+        // Fallback fase-aware (pre-pipeline, nessun tool ancora): se l'evento
+        // non porta message/label, mostra la fase corrente invece del generico
+        // 'lavoro'. thinking = ragionamento LLM; start/progress/update = planner.
+        // Stringhe via i18n DB (§11): MSG_PHASE_THINKING / MSG_PHASE_PLANNING.
+        const phaseMsg = {thinking: {{ msg("MSG_PHASE_THINKING")|tojson }},
+                          start: {{ msg("MSG_PHASE_PLANNING")|tojson }},
+                          progress: {{ msg("MSG_PHASE_PLANNING")|tojson }},
+                          update: {{ msg("MSG_PHASE_PLANNING")|tojson }}};
+        const msg = data.message || data.label || phaseMsg[kind] || {{ msg("MSG_PHASE_PLANNING")|tojson }};
         if(msg) pending.textContent = '… ' + msg;
       }
     } else if(kind === 'tool_call'){

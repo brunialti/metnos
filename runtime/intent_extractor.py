@@ -90,12 +90,36 @@ def extract_intent(query: str, llm_call) -> Optional[dict]:
     parsed = _parse_json(text)
     if not parsed:
         return None
+    # Compound: per una query multi-azione l'LLM puo' restituire una LISTA di
+    # sotto-intenti (un dict {verb,object} per azione). Prendi il PRIMO come
+    # intent PRIMARIO (per il ranking); la copertura multi-step e' garantita a
+    # valle dal pool multi-verbo (engine/dispatch). Senza questo, `.get` su una
+    # lista crashava Engine v2 ('list' object has no attribute 'get', 2/6/2026).
+    if isinstance(parsed, list):
+        parsed = next((p for p in parsed if isinstance(p, dict)), None)
+        if not parsed:
+            return None
     verb = (parsed.get("verb") or "").strip().lower()
     obj = (parsed.get("object") or "").strip().lower()
     if verb not in VOCAB_VERBS:
         verb = None
     if obj not in VOCAB_OBJECTS:
         obj = None
+    # Universal §7.3: se LLM non produce object valido o produce "entries"
+    # generico, prova Qwen3-Emb FT classifier (intent_classifier package).
+    # Opt-in via env METNOS_INTENT_CLASSIFIER=1 (default OFF in prod).
+    import os as _os
+    if _os.environ.get("METNOS_INTENT_CLASSIFIER", "0") == "1":
+        if not obj or obj == "entries":
+            try:
+                from runtime.intent_classifier import classify_query_object, is_available
+                if is_available():
+                    qwen_obj = classify_query_object(query, lang=DEFAULT_LANG)
+                    if qwen_obj and qwen_obj in VOCAB_OBJECTS:
+                        obj = qwen_obj
+                        log.info("intent_classifier override: object=%s", obj)
+            except Exception as e:
+                log.warning("intent_classifier fail: %s", e)
     if not verb and not obj:
         return None
     out = {"verb": verb, "object": obj}

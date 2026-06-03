@@ -22,7 +22,7 @@ en = "Creates a new Google Doc (online document). Canonical dispatcher: routes t
 
 [code]
 files  = ["create_files_doc.py"]
-digest = "sha256:2836a410926e3b7bf0a7f4cbd709cfd8d51b81b4e7eb9352da6c0b7d54f461da"
+digest = "sha256:c760100c4c7a1ade946a5554d55329200dabf616a9b373bc46962c37875d08dd"
 
 [args]
 type     = "object"
@@ -87,7 +87,7 @@ expect = { ok = false, error_contains = "title" }
 [[tests]]
 name   = "unsupported_client_fails"
 input  = { title = "Test", client = "dropbox" }
-expect = { ok = false, error_contains = "unsupported" }
+expect = { ok = false, error_contains = "Operazione non applicabile per questo provider" }
 
 [[tests]]
 name   = "happy_path_with_body"

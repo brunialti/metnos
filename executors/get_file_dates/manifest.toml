@@ -20,7 +20,7 @@ en = "[DEPRECATED 28/4/2026 — use get_files with fields=['dates.semantic']] En
 
 [code]
 files  = ["get_file_dates.py"]
-digest = "sha256:fb45511c4ec0a3b9df386f7d05e6d1bab6b0025cdaf8046fc71c5e7f2828317a"
+digest = "sha256:ae0db3d282fe8eda10e2e1466c85fde0678a64a2bf1d3818deb400d3aa4796d5"
 
 [args]
 type     = "object"
@@ -58,4 +58,4 @@ expect   = { ok = false, ok_count_eq = 0, fail_count_eq = 1 }
 [[tests]]
 name   = "args_invalidi_entries_non_lista"
 input  = { entries = "/tmp/foo" }
-expect = { ok = false, error_contains = "must be a list" }
+expect = { ok = false, error_contains = "deve essere una lista" }

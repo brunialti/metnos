@@ -158,13 +158,15 @@ NO MATCH
 
 PIPELINE
 - step1: find_persons_indices(name=TOKEN_PROPER_NOUN) on local corpus
-- step2: find_images_web(reference_images=from_step:1) reverse image search
+- step2: find_images_web(paths=${step1.entries.*.path}) reverse image search MULTI-SOURCE (projection `*`, NOT entries.0)
 - step3: final_answer
+- MUST: use `paths=${step1.entries.*.path}` to send ALL matched photos (backend caps at 10/call internally).
+- MUST NOT: use `urls=${step1.entries.0.image_path}` — single path = single lookup = few results.
 - NO find_images_indices intermediate (that's local search, not web)
 - NO describe_entries between steps (reduces output noise)
 
 OUTPUT
-terse final_message with count: "${step2.@count} similar images on the web"
+terse final_message: "${step2.ok_count} source photos analyzed, similar web images in thumbnails" (do NOT use ${step2.entries} which renders misleading «(N entries)»)
 
 ───────────────────────────────────────────────
 LIST_OR_DESCRIBE

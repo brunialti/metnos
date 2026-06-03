@@ -34,6 +34,34 @@ import numpy as np
 import config as _C  # §7.11
 
 DEFAULT_DB_PATH = _C.PATH_USER_DATA / "persons.sqlite"
+PERSISTENT_EXAMPLES_DIR = _C.PATH_USER_DATA / "persons_examples"
+
+
+def _persist_example_image(image_path: str, slug: str, sha256: str) -> str:
+    """Copia l'immagine in `PERSISTENT_EXAMPLES_DIR/<slug>/<sha256>.<ext>` se
+    sorgente è in storage volatile (/tmp/...) o NON è già sotto la dir
+    persistente. Ritorna il path persistente.
+
+    Universal §7.3: enrollment storage deve sopravvivere a TTL upload_cleanup
+    (default 1h). Sorgente in /tmp è rischio strutturale.
+    Idempotente: se file destinazione esiste già (stesso sha256 + ext),
+    nessuna copia.
+    """
+    src = Path(image_path)
+    target_dir = PERSISTENT_EXAMPLES_DIR / slug
+    # Se già sotto dir persistente, nessuna copia.
+    try:
+        src.resolve().relative_to(PERSISTENT_EXAMPLES_DIR.resolve())
+        return str(src)
+    except ValueError:
+        pass
+    target_dir.mkdir(parents=True, exist_ok=True)
+    ext = src.suffix.lower() if src.suffix.lower() in (".jpg", ".jpeg", ".png", ".webp") else ".jpg"
+    target = target_dir / f"{sha256}{ext}"
+    if not target.is_file() and src.is_file():
+        import shutil
+        shutil.copy2(src, target)
+    return str(target)
 EMBEDDING_DIM = 512
 WARN_EXAMPLES_PER_PERSON = 50
 
@@ -280,11 +308,15 @@ class PersonsRegistry:
                             "similar_to_id": similar_id,
                         }
 
+                # §7.3 persistenza: copia in storage stabile prima dell'INSERT.
+                # Sorgente da /tmp/metnos_uploads/ ha TTL 1h, registry non puo'
+                # tenere path orfani.
+                persistent_path = _persist_example_image(image_path, slug, sha256)
                 cur.execute(
                     "INSERT INTO person_examples(person_slug,image_path,face_box,"
                     "embedding,embedding_dim,sha256,created_at) "
                     "VALUES (?,?,?,?,?,?,?)",
-                    (slug, image_path, box_s, blob, dim, sha256, now),
+                    (slug, persistent_path, box_s, blob, dim, sha256, now),
                 )
                 cur.execute(
                     "UPDATE persons SET n_examples=n_examples+1, updated_at=? "

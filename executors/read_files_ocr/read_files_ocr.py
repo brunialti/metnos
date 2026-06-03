@@ -24,6 +24,11 @@ import sys
 import tempfile
 from pathlib import Path
 
+sys.path.insert(0, os.environ.get("METNOS_RUNTIME") or next(
+    str(p / "runtime") for p in Path(__file__).resolve().parents
+    if (p / "runtime" / "config.py").is_file()))
+from messages import get as _msg  # noqa: E402
+
 IMG_EXTS = {".jpg", ".jpeg", ".png", ".tiff", ".tif", ".bmp", ".gif", ".webp", ".heic"}
 
 
@@ -82,16 +87,16 @@ def invoke(args):
     paths = args.get("paths")
     lang = args.get("lang") or "ita+eng"
     if paths is None or not isinstance(paths, list):
-        return {"ok": False, "error": "missing or invalid required arg 'paths' (must be a list)"}
+        return {"ok": False, "error": _msg("ERR_ARG_NOT_LIST", arg="paths")}
     if not isinstance(lang, str):
-        return {"ok": False, "error": "lang must be a string (e.g. 'ita', 'eng', 'ita+eng')"}
+        return {"ok": False, "error": _msg("ERR_ARG_NOT_STRING", arg="lang")}
     if not shutil.which("tesseract"):
-        return {"ok": False, "error": "tesseract not installed (apt install tesseract-ocr)"}
+        return {"ok": False, "error": _msg("ERR_TESSERACT_MISSING")}
 
     entries, failed = [], []
     for i, p in enumerate(paths):
         if not isinstance(p, str) or not p:
-            failed.append({"index": i, "path": p, "error": "path must be a non-empty string"})
+            failed.append({"index": i, "path": p, "error": _msg("ERR_ARG_NOT_NONEMPTY_STRING", arg="path")})
             continue
         content, err = _read_one(p, lang)
         if err is not None:
@@ -117,7 +122,7 @@ def main():
     try:
         args = json.load(sys.stdin)
     except json.JSONDecodeError as e:
-        sys.stdout.write(json.dumps({"ok": False, "error": f"invalid input json: {e}"}))
+        sys.stdout.write(json.dumps({"ok": False, "error": _msg("ERR_JSON_INVALID")}))
         return
     sys.stdout.write(json.dumps(invoke(args), ensure_ascii=False))
 

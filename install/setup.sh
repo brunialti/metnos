@@ -305,7 +305,7 @@ EOF
 # ── 6. Modelli ─────────────────────────────────────────────────────
 
 step_models() {
-    log "[6/7] Modelli ML"
+    log "[6/8] Modelli ML"
     if [[ $SKIP_MODELS -eq 1 ]]; then
         log "  skip (--skip-models)"
         return 0
@@ -317,10 +317,60 @@ step_models() {
     fi
 }
 
+# ── 7. Intent classifier (Qwen3-Embedding-0.6B fine-tuned) ─────────
+
+step_intent_classifier() {
+    log "[7/8] Intent classifier — Qwen3-Embedding-0.6B fine-tuned"
+    if [[ $SKIP_MODELS -eq 1 ]]; then
+        log "  skip (--skip-models)"
+        return 0
+    fi
+
+    local data_dir="${DATA_DIR:-$HOME/.local/share/metnos}/intent_classifier"
+    if [[ -d "$data_dir/v1" ]] && ls "$data_dir/v1"/*.safetensors >/dev/null 2>&1; then
+        log "  Già installato in $data_dir/v1 — skip."
+        return 0
+    fi
+
+    log "  AVVISO: Metnos installa un modello di intent classification (~1.2 GB)"
+    log "          + esegue un training locale iniziale (~5 min CPU)."
+    log "          Rimpiazza il vocabolario hardcoded con un classificatore"
+    log "          che si auto-migliora dal turn log via re-train weekly."
+    log "          Senza, Metnos cade in fallback hardcoded+affinity (~62% acc)."
+    log ""
+    if [[ $DRY_RUN -eq 1 ]]; then
+        log "  [dry-run] Would: hf download Qwen/Qwen3-Embedding-0.6B"
+        log "  [dry-run] Would: python -m runtime.intent_classifier.train --initial"
+        return 0
+    fi
+    if [[ -t 0 ]]; then
+        read -p "  Procedere con download + training iniziale? [Y/n] " resp
+        if [[ "$resp" =~ ^[nN] ]]; then
+            log "  Skipped per scelta utente."
+            return 0
+        fi
+    fi
+
+    log "  Download modello base Qwen3-Embedding-0.6B (~1.2 GB)..."
+    if ! python3 -c "from huggingface_hub import snapshot_download; snapshot_download('Qwen/Qwen3-Embedding-0.6B')" 2>&1 | tail -3; then
+        err "  Download fallito. Verificare connettività (vedi reference_mtu_fix se SSL bad record mac)."
+        return 1
+    fi
+
+    log "  Training iniziale (5 epoch su ~870 pair seed bundled, ~5 min CPU)..."
+    if ! (cd "$INSTALL_DIR/.." && python3 -m runtime.intent_classifier.train --initial 2>&1 | tail -10); then
+        err "  Training fallito. Fallback automatico a hardcoded+affinity al boot."
+        return 1
+    fi
+
+    log "  ✓ Intent classifier pronto in $data_dir/v1/"
+    log "  Re-train automatico settimanale via scheduler v2 (daily@04:15)."
+}
+
 # ── 7. Pacchetti Python ────────────────────────────────────────────
 
 step_python_packages() {
-    log "[7/7] Pacchetti Python"
+    log "[8/8] Pacchetti Python"
     log "  NB: il setup non installa pacchetti pip in modo automatico."
     log "  L'installazione si appoggia al venv esistente di suprastructure"
     log "  (/opt/suprastructure/.venv). Per ricreare un venv stand-alone:"
@@ -348,6 +398,7 @@ step_runtime_config
 step_scripts
 step_systemd
 step_models
+step_intent_classifier
 step_python_packages
 
 log "=== Setup completato ==="

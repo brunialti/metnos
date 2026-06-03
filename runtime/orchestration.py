@@ -88,7 +88,7 @@ def invoke_get_inputs_internal(*,
                                 on_complete: Optional[dict] = None,
                                 actor: str = "host",
                                 channel: Optional[str] = None,
-                                timeout_s: int = 3600) -> dict:
+                                timeout_s: Optional[int] = None) -> dict:
     """Orchestrazione runtime-side di `get_inputs` (ADR 0091).
 
     Replica il comportamento dell'executor `get_inputs.invoke()` ma vive nel
@@ -107,7 +107,8 @@ def invoke_get_inputs_internal(*,
       on_complete: dict callback dichiarativo (vedi process_completion_callback).
       actor: identita' user (multi-user, ADR 0035).
       channel: 'http' | 'telegram' | None (auto-detect lato fmt='auto').
-      timeout_s: TTL del dialogo (default 1h).
+      timeout_s: TTL del dialogo. Se None, default per forma via
+                 `dialog_pending.default_timeout_for` (60s semplici, 600s form/credenziali).
 
     Returns:
       dict con la stessa shape di get_inputs.invoke():
@@ -142,6 +143,9 @@ def invoke_get_inputs_internal(*,
         resolved_fmt = "dialogue"  # stub: voice degrada a dialogue
     else:
         resolved_fmt = fmt
+
+    if timeout_s is None:
+        timeout_s = dialog_pending.default_timeout_for(dialog, on_complete)
 
     dialog_id = uuid.uuid4().hex[:16]
     state = {
@@ -589,19 +593,35 @@ def _process_strato3_choice_dispatch(
     original_query = on_complete.get("original_query") or ""
     lang = on_complete.get("lang") or "it"
     conversation_id = on_complete.get("conversation_id") or ""
-    # Normalizza scelta: il dialog choice puo' ritornare l'indice (str/int)
-    # o la stringa intera. Dispatch per prefix univoco.
-    txt = str(raw).strip().lower()
-    if txt.startswith(("0", "1.", "synth", "sintetiz")):
-        action_key = "synth"
-    elif txt.startswith(("1", "2.", "frontier")):
-        action_key = "frontier"
-    elif txt.startswith(("2", "3.", "reformul", "riformul")):
-        action_key = "reformulate"
-    elif txt.startswith(("3", "4.", "abandon", "abbandon")):
-        action_key = "abandon"
+    # Normalizza scelta. Accetta:
+    #  - 1-indexed integer "1".."5" (user-facing label)
+    #  - 0-indexed integer "0".."4" (programmatic)
+    #  - prefix string ("retry"/"synth"/"frontier"/"reformulate"/"abandon")
+    #  - IT prefix ("ritent"/"sintetiz"/"riformul"/"abbandon")
+    txt = str(raw).strip().lower().rstrip(".")
+    # Map ordinato: index 0-based corrisponde a action_key
+    ACTIONS_ORDER = ["retry", "synth", "frontier", "reformulate", "abandon"]
+    PREFIX_MAP = {
+        "retry": "retry", "ritent": "retry",
+        "synth": "synth", "sintetiz": "synth",
+        "frontier": "frontier",
+        "reformul": "reformulate", "riformul": "reformulate",
+        "abandon": "abandon", "abbandon": "abandon",
+    }
+    action_key = "abandon"
+    # Try numeric (1-indexed primary, 0-indexed fallback)
+    if txt.isdigit():
+        n = int(txt)
+        if 1 <= n <= len(ACTIONS_ORDER):
+            action_key = ACTIONS_ORDER[n - 1]  # user-facing 1-indexed
+        elif 0 <= n < len(ACTIONS_ORDER):
+            action_key = ACTIONS_ORDER[n]
     else:
-        action_key = "abandon"
+        # Prefix match
+        for prefix, key in PREFIX_MAP.items():
+            if txt.startswith(prefix):
+                action_key = key
+                break
 
     if action_key == "abandon":
         return ("Ok, mi fermo qui." if lang != "en"
@@ -610,6 +630,35 @@ def _process_strato3_choice_dispatch(
         return ("Riformula la richiesta nel prossimo messaggio."
                 if lang != "en"
                 else "Reformulate your request in the next message.")
+    if action_key == "retry":
+        # Ritenta query originale bypassando anti_skill demote del
+        # turn_feedback. Universal §7.9: se il motore o lo stato sono
+        # cambiati (training, manifest update, ecc.), la pipeline che
+        # prima falliva può ora funzionare. Bypass viene segnalato via
+        # env temporanea + flag su run_turn.
+        try:
+            import agent_runtime
+            new_log = agent_runtime.run_turn(
+                original_query,
+                actor=actor or "host",
+                channel=channel or "",
+                conversation_id=conversation_id,
+                allow_disambig_synth=False,
+                bypass_rejected_pipelines=True,
+            )
+            final = getattr(new_log, "final_message", "") or ""
+            # Se ritenta SUCCESS (no error, no escalation), reset anti_skill
+            # per questa query (compensa il demote precedente).
+            try:
+                if new_log and getattr(new_log, "final_kind", "") == "answer":
+                    from turn_feedback import reset_rejected_for_query
+                    reset_rejected_for_query(original_query)
+            except Exception as _ex:
+                log.warning("reset_rejected_for_query failed: %s", _ex)
+            return final
+        except (RuntimeError, TypeError, ImportError) as ex:
+            log.exception("strato3 retry failed")
+            return f"Ritenta fallita: {type(ex).__name__}: {ex}"
     if action_key == "synth":
         new_query = (
             f"request_new_executor per: {original_query}"
