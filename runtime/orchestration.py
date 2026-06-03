@@ -143,6 +143,13 @@ def invoke_get_inputs_internal(*,
         resolved_fmt = "dialogue"  # stub: voice degrada a dialogue
     else:
         resolved_fmt = fmt
+    # `form` e' un concetto della chat HTTP (iframe inline / pagina standalone).
+    # Su canali non-HTTP (Telegram, voce) non c'e' modo di renderizzare un form
+    # con campi editabili → degrada a dialogue (sequenza testuale). Regola
+    # generale, channel-aware: un executor puo' chiedere fmt='form' senza dover
+    # conoscere il canale; il runtime fa il downgrade dove serve.
+    if resolved_fmt == "form" and channel and channel != "http":
+        resolved_fmt = "dialogue"
 
     if timeout_s is None:
         timeout_s = dialog_pending.default_timeout_for(dialog, on_complete)

@@ -110,13 +110,17 @@ def invoke(args):
             "decision": "needs_inputs",
             "needs_inputs": {
                 "title": "Conferma cancellazione calendario",
+                "description": (f"Stai per cancellare {names}. Verranno eliminati "
+                                f"anche TUTTI gli eventi al loro interno. "
+                                f"IRREVERSIBILE."),
                 "dialog": [{
                     "var": "confirm",
-                    "prompt": (f"Cancello DEFINITIVAMENTE {names}? Verranno eliminati "
-                               f"anche TUTTI gli eventi al loro interno. IRREVERSIBILE."),
+                    "prompt": f"Cancellare definitivamente {names}?",
                     "schema": {"kind": "yes_no"},
                 }],
-                "fmt": "dialogue",
+                # form: radio Sì/No + pulsanti Invia/Annulla (HTTP). Su canali
+                # non-HTTP degrada a dialogue lato runtime.
+                "fmt": "form",
                 "on_complete": {
                     "type": "resume_executor_with_values",
                     "executor": "delete_calendars",

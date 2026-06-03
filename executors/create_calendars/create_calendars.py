@@ -49,13 +49,21 @@ def invoke(args):
             "decision": "needs_inputs",
             "needs_inputs": {
                 "title": "Nuovo calendario",
+                "description": ("Crea un calendario Google. Modifica il nome se "
+                                "vuoi, poi Invia per confermare o Annulla."),
                 "dialog": [{
                     "var": "summary",
-                    "prompt": (f"Creo un nuovo calendario Google. Nome "
-                               f"(modificabile, default «{proposed}»):"),
-                    "schema": {"kind": "text"},
+                    "prompt": "Nome del calendario",
+                    "schema": {"kind": "text", "placeholder": proposed},
+                    "default": proposed,
+                    # vuoto → ricade sul default (executor §68), no errore form.
+                    "optional": True,
                 }],
-                "fmt": "dialogue",
+                # form: campo NOME editabile pre-compilato + pulsanti
+                # Invia/Annulla (HTTP). Su canali non-HTTP degrada a dialogue
+                # lato runtime. Evita che un «si» di conferma venga preso come
+                # nome del calendario (bug live 3/6).
+                "fmt": "form",
                 "on_complete": {
                     "type": "resume_executor_with_values",
                     "executor": "create_calendars",

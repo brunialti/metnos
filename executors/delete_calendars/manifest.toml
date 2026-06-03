@@ -20,7 +20,7 @@ en = "SCOPO: delete one or more Google calendar containers (DESTRUCTIVE: also re
 
 [code]
 files  = ["delete_calendars.py"]
-digest = "sha256:76e3d8a9f6e032dcc0be8b684138a5a6c797fa649a89fc2d003f591567303f95"
+digest = "sha256:52573cd58e32c928984cfc485474f0f1369db6700b11685f60d07482e8886d50"
 
 [args]
 type     = "object"
