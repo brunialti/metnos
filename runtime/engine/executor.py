@@ -934,6 +934,15 @@ class Executor:
                 args = resolve_backend_arg(step.tool, args, query)
             except Exception as _bre:
                 log.debug("backend_resolver noop: %r", _bre)
+            # Self-recipient UNIFORME (§7.9, gemello di backend_resolver): un send
+            # via email senza destinatario esplicito esterno → destinatario =
+            # actor ("inviami/alla mia email" = identità, non intento LLM; ADR
+            # 0163/0155). Model-independent. Vedi self_recipient_resolver.py.
+            try:
+                from self_recipient_resolver import resolve_self_recipient
+                args = resolve_self_recipient(step.tool, args, query)
+            except Exception as _sre:
+                log.debug("self_recipient_resolver noop: %r", _sre)
             # Universal §7.9: convert list[dict] entries to 2D matrix
             # quando arg name è "values" (write_files_spreadsheet pattern).
             if isinstance(args.get("values"), list) and args["values"]:
