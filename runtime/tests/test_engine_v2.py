@@ -100,6 +100,56 @@ class TestExecutorPlaceholders(unittest.TestCase):
         self.assertIn("query_text", seen)
         self.assertNotIn("base_path", seen)
 
+    def test_proposer_exclude_tools_removes_from_prompt(self):
+        from engine.proposer import SimpleProposer
+        from engine.types import Intent
+        E = type("E", (), {})
+        cat = []
+        for nm in ("find_images_indices", "get_inputs", "send_messages"):
+            e = E(); e.name = nm; e.description = f"SCOPO: {nm}. OUT: x"
+            e.args_schema = {"properties": {}, "required": []}
+            cat.append(e)
+        seen = {}
+
+        def _cap_llm(system, user, **kw):
+            seen["system"] = system
+            return '{"steps":[{"tool":"send_messages","args":{}}]}'
+
+        def _pool_block(system):
+            # isola la sezione "POOL TOOL DISPONIBILI" (il template menziona
+            # get_inputs anche nelle REGOLE: l'esclusione tocca solo il pool).
+            lo = system.find("POOL TOOL")
+            hi = system.find("FRAMEWORK GIA")
+            return system[lo:hi] if lo >= 0 and hi > lo else system
+
+        p = SimpleProposer()
+        # senza esclusione: get_inputs nel pool
+        p.propose(query="q", intent=Intent(verb="send", object="messages"),
+                  pool=[e.name for e in cat], excluded_hashes=set(),
+                  llm_call=_cap_llm, catalog=cat)
+        self.assertIn("get_inputs", _pool_block(seen["system"]))
+        # con esclusione: get_inputs FUORI dal pool (→ fuori dalla grammar GBNF)
+        p.propose(query="q", intent=Intent(verb="send", object="messages"),
+                  pool=[e.name for e in cat], excluded_hashes=set(),
+                  llm_call=_cap_llm, catalog=cat, exclude_tools=("get_inputs",))
+        self.assertNotIn("get_inputs", _pool_block(seen["system"]))
+
+    def test_get_inputs_misroute_detect(self):
+        from engine.dispatch import _is_get_inputs_misroute
+        from engine.types import Framework, StepSpec
+        # sole step get_inputs → misroute
+        self.assertTrue(_is_get_inputs_misroute(Framework(steps=[
+            StepSpec(tool="get_inputs", args={}),
+            StepSpec(tool="final_answer", args={})])))
+        # get_inputs seguita da azione → NON misroute (uso legittimo)
+        self.assertFalse(_is_get_inputs_misroute(Framework(steps=[
+            StepSpec(tool="get_inputs", args={}),
+            StepSpec(tool="create_events", args={})])))
+        # pipeline reale → NON misroute
+        self.assertFalse(_is_get_inputs_misroute(Framework(steps=[
+            StepSpec(tool="find_images_indices", args={"query_text": "x"}),
+            StepSpec(tool="send_messages", args={})])))
+
     def test_keep_required_unresolved_errors(self):
         # Placeholder su arg REQUIRED → NON droppato (resta unresolved error,
         # executor non invocato).

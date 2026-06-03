@@ -43,6 +43,15 @@ class DispatchResult:
     error_class: str = ""
 
 
+def _is_get_inputs_misroute(framework: Framework) -> bool:
+    """True se l'UNICO step-executor del framework (escluso final_answer) è
+    get_inputs → non-decomposizione (il planner chiede invece di agire). Vedi
+    guard §7.9 in run_turn. Deterministico, model-independent."""
+    exec_steps = [s.tool for s in framework.steps
+                  if s.tool and s.tool != "final_answer"]
+    return exec_steps == ["get_inputs"]
+
+
 def run_turn(*, query: str, intent: Intent, catalog: list,
               invoke_executor_cb: Callable,
               llm_call_wise: Optional[Callable] = None,
@@ -210,6 +219,33 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
             match_source="terminator", framework_hash="",
             elapsed_ms=int((time.time() - t_start) * 1000),
             error_class="propose_failed")
+
+    # Guard misroute get_inputs (§7.9, deterministico, universale): un
+    # framework il cui UNICO step-executor (escluso final_answer) è get_inputs
+    # è una NON-decomposizione — il planner "chiede" invece di "fare" (sweep
+    # compound P3/P6/P7: comando d'azione collassato in una sola get_inputs,
+    # spesso pure con dialog malformato). Una get_inputs isolata raccoglie
+    # input e poi NON agisce: mai una risposta utile a un comando. Ri-propone
+    # UNA volta escludendo get_inputs dal pool, forzando la scomposizione in
+    # executor reali. L'uso legittimo (get_inputs SEGUITA da azione, o
+    # orchestrata via needs_inputs decision) non passa di qui. Model-indep.
+    if _is_get_inputs_misroute(framework):
+        if verbose:
+            log.info("[guard] get_inputs misroute (unico step) → "
+                     "re-propose senza get_inputs")
+        _failed_hash = compute_framework_hash(framework)
+        # exclude_tools sopravvive alla re-iniezione degli universal helpers
+        # (get_inputs è in _UNIVERSAL_HELPERS): rimuoverlo dal pool non basta,
+        # il proposer lo riaggiunge. Lo escludiamo a valle (prompt + grammar).
+        _framework_gi = proposer.propose(
+            query=query, intent=intent, pool=pool_names,
+            excluded_hashes=excluded | {_failed_hash},
+            llm_call=llm_call_wise, lang=lang, catalog=catalog,
+            exclude_tools=("get_inputs",))
+        # Solo se la ri-proposta NON è a sua volta una get_inputs-misroute
+        # (difesa: re-propose potrebbe fallire o degenerare).
+        if _framework_gi is not None and not _is_get_inputs_misroute(_framework_gi):
+            framework = _framework_gi
 
     # Layer 2: Validator (opt-in)
     if is_validator_enabled():

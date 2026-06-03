@@ -19,7 +19,7 @@ from __future__ import annotations
 import json
 import logging
 import re
-from typing import Optional, Callable, Protocol
+from typing import Optional, Callable, Protocol, Sequence
 
 from .types import Intent, Framework
 
@@ -42,7 +42,8 @@ class Proposer(Protocol):
                 pool: list[str], excluded_hashes: set[str],
                 llm_call: Optional[Callable] = None,
                 lang: str = "it",
-                catalog: Optional[list] = None) -> Optional[Framework]: ...
+                catalog: Optional[list] = None,
+                exclude_tools: Sequence[str] = ()) -> Optional[Framework]: ...
 
 
 # ── SimpleProposer (default) ──────────────────────────────────────────────
@@ -158,7 +159,8 @@ class SimpleProposer:
                 pool: list[str], excluded_hashes: set[str],
                 llm_call: Optional[Callable] = None,
                 lang: str = "it",
-                catalog: Optional[list] = None) -> Optional[Framework]:
+                catalog: Optional[list] = None,
+                exclude_tools: Sequence[str] = ()) -> Optional[Framework]:
         if not query or llm_call is None:
             return None
         # Tier downgrade per intent high-confidence.
@@ -212,6 +214,15 @@ class SimpleProposer:
                                   len(pool), len(effective_pool), intent.verb)
             except Exception as ex:
                 log.warning("verb filter fallito: %r — fallback full pool", ex)
+
+        # Esclusione esplicita (es. guard get_inputs misroute in dispatch):
+        # applicata DOPO la costruzione del pool, così sopravvive alla
+        # re-iniezione degli universal helpers in filter_pool_by_intent_verb.
+        # Toglie i nomi sia dal prompt sia dalla grammar GBNF (entrambi usano
+        # effective_pool). Universale, deterministico §7.9.
+        if exclude_tools:
+            _excl = set(exclude_tools)
+            effective_pool = [n for n in effective_pool if n not in _excl]
 
         # Render tool schemas inline (Mētis needs arg names + required)
         tools_inline = _render_tool_pool(effective_pool, catalog)

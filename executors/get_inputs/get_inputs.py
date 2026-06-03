@@ -503,7 +503,11 @@ def invoke(args: dict) -> dict:
 
     ok, err = _validate_dialog(dialog)
     if not ok:
-        return {"ok": False, "error": _msg("ERR_DIALOG_INVALID", detail=err)}
+        # error_class strutturato (§7.3): un dialog malformato dal planner è
+        # un arg invalido RECUPERABILE → l'engine fa recovery/re-propose, non
+        # un dead-end con stringa grezza in faccia all'utente.
+        return {"ok": False, "error": _msg("ERR_DIALOG_INVALID", detail=err),
+                "error_class": "invalid_args"}
 
     # Pattern propose-and-fire (ADR 0127): se l'arg `entries` e' presente
     # (popolato a runtime quando il PLANNER chiama get_inputs con
