@@ -280,6 +280,86 @@ def create(args: dict) -> dict:
 
 
 # --------------------------------------------------------------------------
+# CALENDARS (container — non eventi): create / list / delete
+# --------------------------------------------------------------------------
+
+def create_calendar(args: dict) -> dict:
+    """Crea un CALENDARIO-contenitore (non un evento). Args: summary (nome),
+    description?, timezone?. Output §2.6: results:[{ok, calendar_id, summary}].
+    Reverse §2.3: delete_calendars_by_id."""
+    if not isinstance(args, dict):
+        return _err("args must be an object", "invalid_args", with_results=True)
+    summary = args.get("summary") or args.get("name") or args.get("title")
+    if not (isinstance(summary, str) and summary.strip()):
+        return _err("summary (nome calendario) obbligatorio", "invalid_args",
+                    with_results=True)
+    argv = ["calendar", "new-calendar", "--summary", summary]
+    if args.get("description"):
+        argv.extend(["--description", str(args["description"])])
+    if args.get("timezone"):
+        argv.extend(["--timezone", str(args["timezone"])])
+    data, err = _run_calendar(argv, executor="create_calendars",
+                              args_base=dict(args))
+    if err is not None:
+        if err.get("decision") == "needs_inputs":
+            return err
+        return {**err, "results": [], "used": 0, "n_created": 0}
+    cid = (data or {}).get("calendarId", "")
+    rec = {"ok": True, "created": True, "calendar_id": cid,
+           "summary": (data or {}).get("summary", summary), "kind": "calendar",
+           "calendar_source": "google_workspace"}
+    out = {"ok": True, "n_created": 1, "results": [rec], "used": 1}
+    if cid:
+        out["_undo"] = {"reverse_pattern": "delete_calendars_by_id",
+                        "ids": [cid], "scope": {"client": "google_workspace"}}
+    return out
+
+
+def list_calendars(args: dict) -> dict:
+    """Elenca i CALENDARI dell'utente. Output §2.6: entries:[{id, summary,
+    primary, access_role}]."""
+    if not isinstance(args, dict):
+        return _err("args must be an object", "invalid_args", with_entries=True)
+    data, err = _run_calendar(["calendar", "list-calendars"],
+                              executor="list_calendars", args_base=dict(args))
+    if err is not None:
+        return err if err.get("decision") == "needs_inputs" else {**err, "entries": []}
+    cals = (data or {}).get("calendars") or []
+    return {"ok": True, "entries": [
+        {"id": c.get("id"), "summary": c.get("summary"),
+         "primary": bool(c.get("primary")), "access_role": c.get("accessRole")}
+        for c in cals]}
+
+
+def delete_calendar(args: dict) -> dict:
+    """Cancella uno o piu' CALENDARI-contenitore. Args: ids (list) o
+    calendar_id. Output §2.6: results."""
+    if not isinstance(args, dict):
+        return _err("args must be an object", "invalid_args", with_results=True)
+    ids = args.get("ids") or args.get("calendar_ids") or []
+    if not ids and args.get("calendar_id"):
+        ids = [args["calendar_id"]]
+    ids = [str(i) for i in (ids if isinstance(ids, list) else [ids]) if i]
+    if not ids:
+        return _err("ids / calendar_id obbligatorio", "invalid_args",
+                    with_results=True)
+    results = []
+    for cid in ids:
+        data, err = _run_calendar(["calendar", "delete-calendar", cid],
+                                  executor="delete_calendars", args_base=dict(args))
+        if err is not None and err.get("decision") == "needs_inputs":
+            return err
+        if err is not None:
+            results.append({"ok": False, "calendar_id": cid,
+                            "error": err.get("error")})
+        else:
+            results.append({"ok": True, "deleted": True, "calendar_id": cid,
+                            "kind": "calendar"})
+    return {"ok": all(r["ok"] for r in results), "results": results,
+            "used": len(results), "ok_count": sum(1 for r in results if r["ok"])}
+
+
+# --------------------------------------------------------------------------
 # UPDATE  (PATCH semantics — solo i field passati vengono modificati)
 # --------------------------------------------------------------------------
 

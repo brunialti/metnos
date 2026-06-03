@@ -144,6 +144,14 @@ OBJECTS = (
     # (find/read/create/set/change/delete). Le review sono una sub-forma di
     # `messages` (send_messages_github con `review_event`), non un OBJECT.
     "pulls",
+    # Calendars (3/6/2026): CALENDARIO-contenitore (non l'evento). Distinto da
+    # `events` (item) per §2.6: un calendario AGGREGA eventi, ha id/summary/
+    # timezone propri; create/list/delete operano sul container, non sull'evento.
+    # Esposto dal backend Google (calendars().insert / calendarList.list /
+    # calendars().delete) — il `.ics` locale gestisce un solo calendario.
+    # 3 executor `*_calendars`. §2.2: necessario (no equivalente in `events`),
+    # generale (concetto cross-provider), comprensibile. Approvato Roberto 3/6.
+    "calendars",
     # Entries: meta-oggetto per pipeline in-memory dello stesso turno
     # (12/5/2026, formalizzazione audit). NON una risorsa esterna: e' una
     # lista runtime prodotta da step precedenti e consumata da operatori

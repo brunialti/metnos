@@ -282,6 +282,11 @@ _OBJECT_HINTS = {
                   # sono universali per il dominio calendar.
                   "orari", "orario", "fascia", "fasce", "slot", "slots",
                   "mattina", "pomeriggio", "morning", "afternoon"],
+    # Calendars (3/6): il CONTENITORE-calendario. "calendario/calendar" restano
+    # anche hint di `events` (ambiguo: "leggi il calendario"=eventi) — la
+    # disambiguazione create-container vs evento la fa il SCOPO del manifest +
+    # entrambi i producer nel pool.
+    "calendars": ["calendario", "calendari", "calendar", "calendars"],
     "contacts": ["contatto", "contatti", "contact", "rubrica"],
     "processes": ["processo", "processi", "process", "processes", "ps",
                    "task", "pid", "cpu", "ram", "memoria", "memory",
@@ -610,6 +615,7 @@ _OBJECT_PRIMARY_TOOLS = {
     # rinominato ADR 0128 12/5/2026: set_events -> create_events).
     # create_events (crea), read_events (lettura), delete_events (cancella).
     "events":    ("create_events", "read_events", "delete_events"),
+    "calendars": ("create_calendars", "delete_calendars"),
     # Contatti Google Workspace (read_contacts dal skill):
     "contacts":  ("read_contacts",),
     "images":    ("find_images_indices", "change_images", "find_files"),
