@@ -555,9 +555,11 @@ ACTION_MAPPING = {
         "boundary": "Format di dati gia' disponibili (markdown/html/json). Non prende dati nuovi.",
     },
     "extract": {
-        "it": ["scompatta", "decomprimi", "estrai-da-archivio", "unzip", "untar"],
-        "en": ["extract", "unpack", "decompress", "unzip", "untar"],
-        "boundary": "RISTRETTO: solo decompressione di archivi (zip / tar / gz). NIENT'ALTRO: «estrai righe da un testo» = `filter`; «estrai campi da entries» = `get`; «estrai testo da PDF/HTML» = `read` (read_files_pdf, read_files_html). Sinonimi italiani come «estrai» vanno disambiguati al contesto dall'intent extractor.",
+        "it": ["scompatta", "decomprimi", "estrai-da-archivio", "unzip", "untar",
+               "estrai-record", "estrai-strutturati", "ricava-dati", "parsa"],
+        "en": ["extract", "unpack", "decompress", "unzip", "untar",
+               "extract-records", "structured-extract", "parse-out"],
+        "boundary": "Tira fuori STRUTTURA incapsulata in un contenitore. Due usi (§2.2, allargato 3/6): (1) decompressione archivi zip/tar/gz → `extract_files`; (2) RECORD STRUTTURATI da testo NON strutturato (web, mail, pdf) → `extract_entries` (es. eventi {summary,start,end}, voci di spesa). NON: «estrai righe da un testo» = `filter` (filter_texts_lines); «estrai campi da entries GIÀ strutturate» = `get`; «estrai testo GREZZO da PDF/HTML» = `read` (read_files_pdf/html). Differenza con (2): qui il testo è libero e produci record TIPIZZATI nuovi, non selezioni/leggi.",
     },
     "compress": {
         "it": ["comprimi", "archivia", "zippa", "gzippa", "crea-archivio"],

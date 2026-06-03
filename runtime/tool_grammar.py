@@ -804,7 +804,7 @@ def _has_word(query_lc: str, words: tuple[str, ...]) -> bool:
 # anche quando filtriamo per verbo (servono a quasi tutti i framework).
 _UNIVERSAL_HELPERS = frozenset({
     "describe_entries", "filter_entries", "sort_entries",
-    "classify_entries", "compute_entries", "get_inputs",
+    "classify_entries", "extract_entries", "compute_entries", "get_inputs",
     "undo_last_turn",
 })
 

@@ -84,6 +84,7 @@ LOCATION_REQUEST_TOOL = {
 }
 from describe_entries import DESCRIBE_ENTRIES_TOOL, handle_describe_entries
 from classify_entries import CLASSIFY_ENTRIES_TOOL, handle_classify_entries
+from extract_entries import EXTRACT_ENTRIES_TOOL, handle_extract_entries
 from recurring_tasks import (
     CREATE_TASKS_TOOL, LIST_TASKS_TOOL,
     DELETE_TASKS_TOOL, READ_TASKS_TOOL,
@@ -4687,6 +4688,7 @@ def _try_synt_compose(mnestoma, target_intent: str, mnest_id: str, *, verbose: b
 _BUILTIN_TOOL_HANDLERS: dict = {
     "describe_entries": handle_describe_entries,
     "classify_entries": handle_classify_entries,
+    "extract_entries": handle_extract_entries,
     "create_tasks": handle_create_tasks,
     "list_tasks": handle_list_tasks,
     "delete_tasks": handle_delete_tasks,
@@ -4703,6 +4705,7 @@ _BUILTIN_TOOL_HANDLERS: dict = {
 _BUILTIN_TOOL_SPECS: dict = {
     "describe_entries": DESCRIBE_ENTRIES_TOOL,
     "classify_entries": CLASSIFY_ENTRIES_TOOL,
+    "extract_entries": EXTRACT_ENTRIES_TOOL,
 }
 
 

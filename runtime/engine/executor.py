@@ -248,8 +248,8 @@ def _find_list_of_dicts(result: dict) -> list:
 
 # Helper universali che consumano una lista `entries` (auto-wire prev step).
 _ENTRIES_CONSUMERS = frozenset({
-    "describe_entries", "classify_entries", "filter_entries", "sort_entries",
-    "group_entries", "compute_entries", "compare_entries",
+    "describe_entries", "classify_entries", "extract_entries", "filter_entries",
+    "sort_entries", "group_entries", "compute_entries", "compare_entries",
 })
 
 
