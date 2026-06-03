@@ -4234,12 +4234,16 @@ class TurnLog:
                 if p.get("kind") in ("get_inputs_response", "admin_approval"):
                     pass
                 elif p.get("kind") == "cap_expand" and "available_total" in p and "cap_field" in p:
-                    # Migrazione 6/5/2026: invece della stringa testuale "rispondi
-                    # sì" + bespoke cap_pending storage, sintetizziamo un
-                    # get_inputs (1 step yes_no) con on_complete=expand_cap_and_resume.
-                    # Persistente su disco (dialog_pending), sopravvive al daemon
-                    # restart, riusa la pipeline get_inputs_response gia' rodata.
-                    self._orchestrate_cap_expand_dialog(p)
+                    # Feedback utente (3/6): NON aprire un dialog yes_no bloccante a
+                    # fine query — obbligava l'utente a rispondere a OGNI troncamento.
+                    # La notifica di troncamento §2.7 ("Hai N, considero K") e' gia'
+                    # nel final_message (sopra): informa senza forzare. Se vuole il
+                    # resto l'utente lo chiede in linguaggio naturale ("dammi tutte").
+                    # §2.11 reso NON-blocking. Rimuovi il cap_expand dalle
+                    # expandable_caps cosi' il channel non crea un dialog pendente.
+                    self.expandable_caps = [
+                        c for c in self.expandable_caps
+                        if c.get("kind") != "cap_expand"]
             # Anti-allucinazione (Bug B, 5/5/2026): notice additiva quando il
             # final_message contiene promesse di azione futura ma nessuno step
             # ok ha registrato l'azione. §2.8 No silent failure: la falsa
