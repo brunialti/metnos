@@ -70,6 +70,47 @@ class TestExecutorPlaceholders(unittest.TestCase):
         v2 = _resolve_stepref("paths=${step1.entries.0.path}", h)
         self.assertEqual(v2, "paths=/a")  # embedded stringified
 
+    def _run_single(self, tool, args, args_schema):
+        """Esegue UN executor via Engine con invoke fittizio che cattura gli
+        args effettivamente passati. Ritorna gli args visti dall'executor."""
+        from engine.executor import Executor
+        from engine.types import Framework, StepSpec
+        E = type("E", (), {})
+        e = E(); e.name = tool; e.args_schema = args_schema
+        seen = {}
+
+        def _fake_invoke(name, a):
+            seen.update(a)
+            return {"ok": True, "entries": []}
+
+        eng = Executor(invoke_executor=_fake_invoke, catalog=[e])
+        fw = Framework(steps=[StepSpec(tool=tool, args=dict(args))])
+        eng.run(fw, query="q")
+        return seen
+
+    def test_drop_optional_filler_unresolved(self):
+        # ${FILLER:base_path} su arg OPZIONALE (required=[]) → dropped,
+        # l'executor riceve gli altri arg (default = discovery).
+        seen = self._run_single(
+            "find_images_indices",
+            {"query_text": "montagna", "base_path": "${FILLER:base_path}"},
+            {"required": [], "properties": {
+                "query_text": {"type": "string"},
+                "base_path": {"type": "string"}}})
+        self.assertIn("query_text", seen)
+        self.assertNotIn("base_path", seen)
+
+    def test_keep_required_unresolved_errors(self):
+        # Placeholder su arg REQUIRED → NON droppato (resta unresolved error,
+        # executor non invocato).
+        seen = self._run_single(
+            "read_files",
+            {"paths": "${FILLER:paths}"},
+            {"required": ["paths"], "properties": {
+                "paths": {"type": "array"}}})
+        # executor non invocato → seen vuoto (lo step fallisce unresolved).
+        self.assertEqual(seen, {})
+
 
 class TestValidator(unittest.TestCase):
     def _catalog(self):

@@ -998,7 +998,30 @@ class Executor:
                     ))
                     continue
 
-            # Universal §7.9: rileva placeholder NON risolti.
+            # Universal §7.9 (drop-optional-unresolved): un placeholder rimasto
+            # letterale su un arg OPZIONALE = filler/ref che il planner ha emesso
+            # ma il runtime non sa valorizzare (es. find_images
+            # base_path=${FILLER:base_path}, o ${stepN.x} da step a entries
+            # vuote). Per gli arg NON-required lo si LASCIA CADERE invece di
+            # fallire: l'executor applica il suo default (find_images →
+            # discovery automatica su tutti gli indici). Deterministico §7.9,
+            # model-independent (Qwen emette filler spuri su arg opzionali);
+            # stessa logica del self_recipient_resolver per il send.
+            schema = self._schema_map.get(step.tool) or {}
+            required = set(schema.get("required") or [])
+            dropped = []
+            for _k in list(args.keys()):
+                if _k in required:
+                    continue
+                if _detect_unresolved_placeholders(args[_k]):
+                    del args[_k]
+                    dropped.append(_k)
+            if dropped:
+                log.info("Executor: %s drop arg opzionali con placeholder non "
+                         "risolti: %s (default executor)", step.tool, dropped)
+
+            # Universal §7.9: rileva placeholder NON risolti rimasti su arg
+            # REQUIRED (i soli che non possiamo lasciar cadere).
             # Pattern: `${stepN.X}`, `${steps.N.X}`, `${RUNTIME:X}`, `${FILLER:X}`
             # rimasti letterali → marca errore prima di invocare executor
             # (evita pass-through di placeholder a API esterne come Google).
