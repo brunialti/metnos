@@ -5882,12 +5882,13 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
                 # extract_entries + guard). Vale per ogni executor/dominio.
                 if _decomposed_steps:
                     try:
-                        from vocab import PRODUCER_VERBS as _PV, ACTIONS as _ACT
+                        from vocab import (COVERAGE_REQUIRED_VERBS as _CRV,
+                                            ACTIONS as _ACT)
                         _step_vrb = {s["tool"].split("_", 1)[0]
                                      for s in _decomposed_steps
                                      if s.get("tool") and s["tool"] != "final_answer"
                                      and s["tool"].split("_", 1)[0] in _ACT}
-                        _missing = (set(_q_verbs) & set(_PV)) - _step_vrb
+                        _missing = (set(_q_verbs) & set(_CRV)) - _step_vrb
                         if _missing:
                             import logging as _logging
                             _logging.getLogger(__name__).info(

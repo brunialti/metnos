@@ -150,29 +150,37 @@ class TestExecutorPlaceholders(unittest.TestCase):
             StepSpec(tool="find_images_indices", args={"query_text": "x"}),
             StepSpec(tool="send_messages", args={})])))
 
-    def test_dropped_producer_verbs(self):
-        from engine.dispatch import _dropped_producer_verbs
+    def test_dropped_required_verbs(self):
+        from engine.dispatch import _dropped_required_verbs
         from engine.types import Framework, StepSpec
         Q = ("cerca online le conferenze AMD ROCm, crea un evento per ciascuna "
              "e mandami una mail")
-        # collasso a create_events-only → 'find' producer droppato
+        # collasso a create_events-only → 'find' (producer) E 'send' droppati
         fw_bad = Framework(steps=[
             StepSpec(tool="create_events", args={}),
             StepSpec(tool="describe_entries", args={}),
             StepSpec(tool="final_answer", args={})])
-        self.assertIn("find", _dropped_producer_verbs(fw_bad, Q))
-        # pipeline completa con find_urls davanti → nessun producer droppato
+        d = _dropped_required_verbs(fw_bad, Q)
+        self.assertIn("find", d)
+        self.assertIn("send", d)
+        # find→create senza send → solo 'send' droppato (il bug "niente mail")
+        fw_no_send = Framework(steps=[
+            StepSpec(tool="find_urls", args={"query": "x"}),
+            StepSpec(tool="create_events", args={"from_step": 1}),
+            StepSpec(tool="final_answer", args={})])
+        self.assertEqual(_dropped_required_verbs(fw_no_send, Q), {"send"})
+        # pipeline completa → niente droppato
         fw_ok = Framework(steps=[
             StepSpec(tool="find_urls", args={"query": "x"}),
             StepSpec(tool="create_events", args={"from_step": 1}),
             StepSpec(tool="send_messages", args={}),
             StepSpec(tool="final_answer", args={})])
-        self.assertEqual(_dropped_producer_verbs(fw_ok, Q), set())
+        self.assertEqual(_dropped_required_verbs(fw_ok, Q), set())
         # query mono-azione → mai scatta
         fw_single = Framework(steps=[
             StepSpec(tool="create_events", args={}),
             StepSpec(tool="final_answer", args={})])
-        self.assertEqual(_dropped_producer_verbs(fw_single, "crea un evento domani"), set())
+        self.assertEqual(_dropped_required_verbs(fw_single, "crea un evento domani"), set())
 
     def test_keep_required_unresolved_errors(self):
         # Placeholder su arg REQUIRED → NON droppato (resta unresolved error,

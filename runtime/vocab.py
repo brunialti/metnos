@@ -376,6 +376,16 @@ ACTION_CATEGORIES = {
 # canonico, va mappato a `find`.
 PRODUCER_VERBS = frozenset({"read", "find", "list", "get"})
 
+# Verbi la cui ASSENZA dal framework — se RICHIESTI dalla query — segnala una
+# decomposizione INCOMPLETA (guard coverage §4.3/§2.8, usato da dispatch +
+# decomposer). Producer (senza i dati la pipeline è monca) + side-effecting
+# espliciti (l'utente li ha chiesti: «mandami»/«crea»/«salva» → vanno portati a
+# termine). ESCLUSI i soft (describe/get/classify/sort/filter): si fondono nel
+# final_answer o sono trasformatori, non azioni dovute. Multilingue: i verbi
+# sono CANONICI (detect_canonical_verbs_all normalizza già IT+EN).
+COVERAGE_REQUIRED_VERBS = PRODUCER_VERBS | frozenset({
+    "send", "create", "write", "move", "delete", "share"})
+
 # Verbi PROCESSOR: trasformano una lista gia' presente nello scratchpad
 # (input via `from_step`), non producono dati nuovi. Conseguenze runtime:
 # (a) `_collect_truncation_notices` NON emette notice user-facing per questi
