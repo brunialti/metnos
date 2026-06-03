@@ -943,6 +943,14 @@ class Executor:
                 args = resolve_self_recipient(step.tool, args, query)
             except Exception as _sre:
                 log.debug("self_recipient_resolver noop: %r", _sre)
+            # Calendario UNIFORME (gemello backend_resolver): QUALE calendario
+            # (target NL fra gli owned, default primary) è configurazione risolta
+            # dal runtime, non scelta dell'LLM. Vedi calendar_resolver.py.
+            try:
+                from calendar_resolver import resolve_calendar
+                args = resolve_calendar(step.tool, args, query)
+            except Exception as _cre:
+                log.debug("calendar_resolver noop: %r", _cre)
             # Universal §7.9: convert list[dict] entries to 2D matrix
             # quando arg name è "values" (write_files_spreadsheet pattern).
             if isinstance(args.get("values"), list) and args["values"]:

@@ -29,6 +29,25 @@ from backends.events import google_workspace  # noqa: E402
 _DEFAULT_NAME = "Metnos"
 
 
+def _find_owned_calendar_id(name):
+    """ID del calendario OWNED con `name` (case-insensitive), o None. Solo di
+    proprietà: un nome che collide con un calendario condiviso/iscritto NON
+    blocca la creazione (non è un doppione tuo)."""
+    try:
+        lst = google_workspace.list_calendars({})
+    except Exception:
+        return None
+    if not (isinstance(lst, dict) and lst.get("ok")):
+        return None
+    tgt = (name or "").strip().lower()
+    for e in (lst.get("entries") or []):
+        if ((e.get("summary") or "").strip().lower() == tgt
+                and (e.get("access_role") or "").lower() == "owner"
+                and e.get("id")):
+            return e["id"]
+    return None
+
+
 def invoke(args):
     if not isinstance(args, dict):
         return {"ok": False, "error": _msg("ERR_ARGS_NOT_OBJECT"),
@@ -75,6 +94,45 @@ def invoke(args):
     # Confermato: il nome eventualmente vuoto ricade sul default.
     if not (isinstance(a.get("summary"), str) and a["summary"].strip()):
         a["summary"] = proposed
+    name = a["summary"]
+
+    # UPSERT / dedup-on-create (§2.9-spirito): se esiste GIÀ un calendario
+    # OWNED con lo stesso nome, non creare un doppione silenzioso → conferma.
+    # `dup_confirm` assente = primo passaggio (controlla); presente = scelta.
+    dup_confirm = a.get("dup_confirm")
+    if dup_confirm is None:
+        existing_id = _find_owned_calendar_id(name)
+        if existing_id:
+            return {
+                "ok": True,
+                "decision": "needs_inputs",
+                "needs_inputs": {
+                    "title": "Calendario già esistente",
+                    "dialog": [{
+                        "var": "dup_confirm",
+                        "prompt": _msg("MSG_CALENDAR_EXISTS_CONFIRM", name=name),
+                        "schema": {"kind": "yes_no"},
+                    }],
+                    "fmt": "form",
+                    "on_complete": {
+                        "type": "resume_executor_with_values",
+                        "executor": "create_calendars",
+                        "args_base": {**a, "_existing_id": existing_id},
+                    },
+                },
+            }
+    else:
+        yes = dup_confirm
+        if isinstance(yes, str):
+            yes = yes.strip().lower() in ("si", "sì", "yes", "y", "ok", "true", "1")
+        if not yes:
+            # No duplicato: tieni l'esistente (onestà §2.8).
+            return {"ok": True, "used": 0, "ok_count": 0,
+                    "summary": _msg("MSG_CALENDAR_NOT_DUPLICATED", name=name),
+                    "results": [{"ok": True, "calendar_id": a.get("_existing_id"),
+                                 "summary": name, "reused": True, "kind": "calendar"}]}
+        # Sì: procede a creare il secondo omonimo (fallthrough).
+
     res = google_workspace.create_calendar(a)
     # summary user-facing (i18n) → la chat mostra un messaggio pulito, non il
     # JSON grezzo del result (resume_executor_with_values fallback orchestration).
