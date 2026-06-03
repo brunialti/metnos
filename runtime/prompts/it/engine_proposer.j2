@@ -108,6 +108,13 @@ C. MUTATING (move/delete/send/write/create/set)
 - NIENTE describe finale: verbo mutating produce final_message strutturato.
 - Se prima del mutating c'è filter che puo' produrre 0 entries → aggiungi `if_prev_entries_nonempty: true` allo step mutating.
 
+J. TESTO→RECORD→AZIONE (estrai dati strutturati da web/mail/pdf e poi AGISCI)
+- Intent: una sorgente di TESTO + un'azione che richiede dati STRUTTURATI. Es. «cerca online le conferenze e crea un evento per ciascuna», «dalle mail di oggi metti mittente e importo in un foglio».
+- DEVI: inserire `extract_entries(from_step=N, fields=[...], instruction="...")` FRA il producer-di-testo e l'azione. MAI usare create_events/*_spreadsheet/send_messages come PRIMO step su dati che vanno presi da web/testo (niente dati → fallisce).
+- Pipeline: producer-testo (find_urls→read_urls_html | read_messages | read_files_pdf) → extract_entries → azione(from_step=M) → final_answer.
+- OK: «cerca online conferenze ROCm e crea un evento per ciascuna» → [find_urls(search_query="conferenze AMD ROCm 2026"), read_urls_html(urls=${step1.entries.*.url}), extract_entries(from_step=2, fields=["summary","start","end"], instruction="conferenze con data"), create_events(from_step=3), final_answer].
+- ERRORE: [create_events(...), final_answer] come PRIMO step per eventi presi dal web (summary/start/end mancanti → errore).
+
 D. METRIC
 - Intent metric strutturata (temperatura, ip, percentuale): producer single + final_answer.
 - Template dot-path verso scalare finale: "${step1.health.thermal}".

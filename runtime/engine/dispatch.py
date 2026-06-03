@@ -43,6 +43,13 @@ class DispatchResult:
     error_class: str = ""
 
 
+# Producer → consumer naturale da iniettare sempre nel pool (§7.3 companion).
+# Un producer il cui output non è azionabile senza il consumer.
+_POOL_COMPANIONS = {
+    "find_urls": ["read_urls_html", "read_urls_pdf"],
+}
+
+
 def _is_get_inputs_misroute(framework: Framework) -> bool:
     """True se l'UNICO step-executor del framework (escluso final_answer) è
     get_inputs → non-decomposizione (il planner chiede invece di agire). Vedi
@@ -164,6 +171,22 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
                     if nm in _UNIVERSAL_HELPERS and nm not in present:
                         pool_for_propose = pool_for_propose + [ex_obj]
                         present.add(nm)
+                # §7.3 COMPANION injection (universale): un producer il cui
+                # output è inutile senza un CONSUMER naturale porta sempre il
+                # consumer nel pool, anche se il verbo del consumer non è nella
+                # query. find_urls produce URL → senza read_urls_html/pdf la
+                # catena web→contenuto è monca (il proposer non può chiuderla,
+                # bug ROCm 3/6). Mappa estendibile a ogni coppia simile.
+                for _prod, _comps in _POOL_COMPANIONS.items():
+                    if _prod in present:
+                        for _c in _comps:
+                            if _c in present:
+                                continue
+                            _co = next((e for e in catalog
+                                        if getattr(e, "name", None) == _c), None)
+                            if _co is not None:
+                                pool_for_propose = pool_for_propose + [_co]
+                                present.add(_c)
             except Exception:
                 pass
             log.debug("dispatch: pool reduced %d → %d via prefilter (+helpers)",

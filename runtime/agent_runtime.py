@@ -5873,6 +5873,29 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
                     import logging as _logging
                     _logging.getLogger(__name__).warning(
                         "decomposer failed: %s", _ex_dec)
+                # Guard coverage produttori (§2.8/§7.3, universale): se il
+                # decomposer deterministico ha SALTATO un verbo PRODUCER
+                # (find/read/get/list) richiesto dalla query, la decomposizione
+                # è INCOMPLETA — parte da un consumer/mutating senza i dati (es.
+                # "cerca online ... crea evento" → solo create_events, find_urls
+                # droppato). Defer all'Engine v2 (proposer: pattern J +
+                # extract_entries + guard). Vale per ogni executor/dominio.
+                if _decomposed_steps:
+                    try:
+                        from vocab import PRODUCER_VERBS as _PV, ACTIONS as _ACT
+                        _step_vrb = {s["tool"].split("_", 1)[0]
+                                     for s in _decomposed_steps
+                                     if s.get("tool") and s["tool"] != "final_answer"
+                                     and s["tool"].split("_", 1)[0] in _ACT}
+                        _missing = (set(_q_verbs) & set(_PV)) - _step_vrb
+                        if _missing:
+                            import logging as _logging
+                            _logging.getLogger(__name__).info(
+                                "decomposer DROP producer %s → defer Engine v2",
+                                sorted(_missing))
+                            _decomposed_steps = None
+                    except Exception:
+                        pass
                 if _decomposed_steps:
                     import logging as _logging
                     _logging.getLogger(__name__).info(
