@@ -499,8 +499,11 @@ function add(cls, text, meta, persist, attachments, galleryInfo, htmlMode){
           if(ctxt){
             // Sostituisci l'iframe del form con una bolla regolare in chat
             // contenente il messaggio del callback (errori, info, etc.).
+            // cls='bot' + turn_id → la bolla riaggancia i badge feedback ✓/✗
+            // sul turno che ha emesso il dialog (regressione 3/6 form).
             d.innerHTML = '';
-            add('asst', ctxt, '', true);
+            const tid = ev.data.turn_id || '';
+            add('bot', ctxt, tid ? {turn_id: tid, left: '', right: ''} : '', true);
           } else {
             d.innerHTML = '<div style="padding:.4rem;color:#0a7;font-size:.9em;">'
                         + '✓ Risposta dialog inviata.'
@@ -544,7 +547,7 @@ function add(cls, text, meta, persist, attachments, galleryInfo, htmlMode){
         });
         d.appendChild(row);
       }
-      if(meta.left || meta.right){
+      if(meta.left || meta.right || meta.turn_id){
         const m = document.createElement('div');
         m.className = 'meta';
         const left = document.createElement('span');

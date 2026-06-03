@@ -88,7 +88,8 @@ def invoke_get_inputs_internal(*,
                                 on_complete: Optional[dict] = None,
                                 actor: str = "host",
                                 channel: Optional[str] = None,
-                                timeout_s: Optional[int] = None) -> dict:
+                                timeout_s: Optional[int] = None,
+                                origin_turn_id: str = "") -> dict:
     """Orchestrazione runtime-side di `get_inputs` (ADR 0091).
 
     Replica il comportamento dell'executor `get_inputs.invoke()` ma vive nel
@@ -178,6 +179,12 @@ def invoke_get_inputs_internal(*,
         # cap-pending registry, cosi' il daemon trova lo state al posto
         # giusto senza dover ricalcolarlo.
         "sender_id": sender_id,
+        # turn_id del turno che ha EMESSO il dialog (es. "crea calendario" →
+        # needs_inputs): persisterlo permette al completamento-form di
+        # agganciare i badge feedback ✓/✗ alla bolla risultato (chat.html) su
+        # un turn REALE gia' nel JSONL. Senza, il form-completion non e' un
+        # turn → niente badge (regressione 3/6 passaggio dialogue→form).
+        "origin_turn_id": origin_turn_id,
     }
     try:
         dialog_pending.save_pending(sender_id, dialog_id, state)
@@ -1484,7 +1491,8 @@ def _inject_state_param(url: str, state: str) -> str:
 def orchestrate_needs_inputs(obs: dict, *,
                               sender_id: str,
                               actor: str = "host",
-                              channel: Optional[str] = None) -> dict:
+                              channel: Optional[str] = None,
+                              origin_turn_id: str = "") -> dict:
     """Helper di alto livello: dato l'observation di un tool che ha emesso
     `decision="needs_inputs"`, costruisce il payload e chiama
     `invoke_get_inputs_internal`. Ritorna il dict di get_inputs.
@@ -1518,6 +1526,7 @@ def orchestrate_needs_inputs(obs: dict, *,
         actor=actor,
         channel=channel,
         timeout_s=timeout_s,
+        origin_turn_id=origin_turn_id,
     )
 
 

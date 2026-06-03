@@ -1188,6 +1188,9 @@ async def dialog_submit(request: web.Request) -> web.Response:
     final_state = dialog_pending.load_pending(sender_id, dialog_id) or {}
     on_complete = final_state.get("on_complete")
     actor = final_state.get("actor") or "host"
+    # turn_id del turno che ha emesso il dialog → la bolla risultato in chat
+    # riaggancia i badge feedback ✓/✗ (chat.html li mostra solo con turn_id).
+    origin_turn_id = final_state.get("origin_turn_id") or ""
     completion_message = ""
     if on_complete:
         try:
@@ -1234,8 +1237,10 @@ async def dialog_submit(request: web.Request) -> web.Response:
             # cosi' il parent (chat.html) puo' mostrarlo come bolla regolare in
             # chat invece del laconico "Risposta dialog inviata".
             esc_text = _escape_html(msg_for_display)
+            esc_tid = origin_turn_id.replace('"', "&quot;")
             body_html = (
-                f"<div data-completion-text=\"{esc_text}\">"
+                f"<div data-completion-text=\"{esc_text}\" "
+                f"data-turn-id=\"{esc_tid}\">"
                 "<h2>Dialogo completato</h2>"
                 f"<pre>{esc_text}</pre>"
                 "<p><a href=\"/\">Torna a Metnos</a></p>"

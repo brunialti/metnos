@@ -5981,6 +5981,7 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
                     _dlg = orchestrate_needs_inputs(
                         _ni, sender_id=_sender_id,
                         actor=actor or "host", channel=channel or "http",
+                        origin_turn_id=turn_id or log.turn_id or "",
                     )
                     if isinstance(_dlg, dict) and _dlg.get("ok"):
                         _hint = (_dlg.get("final_message_hint")

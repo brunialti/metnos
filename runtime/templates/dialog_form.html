@@ -158,8 +158,11 @@
           if(mU){ redirect_url = unescape(mU[1]); }
           const mT = txt.match(/data-completion-text="([^"]*)"/);
           if(mT){ completion_text = unescape(mT[1]); }
+          let turn_id = '';
+          const mI = txt.match(/data-turn-id="([^"]*)"/);
+          if(mI){ turn_id = unescape(mI[1]); }
           window.parent.postMessage(
-            {type:'metnos.dialog.done', redirect_url, completion_text}, '*');
+            {type:'metnos.dialog.done', redirect_url, completion_text, turn_id}, '*');
         } else {
           const t = await r.text();
           // Mostra errore inline nel form
