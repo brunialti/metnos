@@ -945,7 +945,12 @@ def _searxng_search_full(query: str, top_n: int = SEARXNG_TOP_N,
     base = (base_url
             or os.environ.get("METNOS_SEARXNG_URL", SEARXNG_URL_DEFAULT)
             ).rstrip("/")
-    params = {"q": query, "format": "json"}
+    # §7.9: NIENTE restrizione di lingua. Senza questo, l'istanza SearXNG usa il
+    # suo default (IT) → filtra/penalizza i risultati EN PRIMA del rerank (bug
+    # "AMD ROCm" → congressi medici IT invece di AMD-chip/ROCm). La lingua giusta
+    # è un OUTCOME della rilevanza (rerank topico + relevance-gate), non un input
+    # da indovinare. Override esplicito a 'all' = neutro multi-lingua.
+    params = {"q": query, "format": "json", "language": "all"}
     if time_range:
         params["time_range"] = time_range
     qs = urllib.parse.urlencode(params)
