@@ -430,6 +430,43 @@ def _resolve_stepref_with_fallback(result: dict, path: str):
     return None
 
 
+def _render_embedded(val) -> str:
+    """Rende un valore (lista/dict/scalare) come TESTO leggibile per la
+    sostituzione EMBEDDED in un template-stringa (§output-format, no Python-repr
+    user-facing). list[dict] → una riga per item (label + data + link);
+    list scalari → CSV; dict → idem 1 item; scalare → str. Universale."""
+    def _one(d):
+        if not isinstance(d, dict):
+            return str(d)
+        label = next((d[k] for k in ("summary", "title", "name", "subject",
+                                      "description", "path") if d.get(k)), None)
+        when = next((d[k] for k in ("start", "date", "taken_at", "when",
+                                    "datetime", "due") if d.get(k)), None)
+        link = next((d[k] for k in ("htmlLink", "url", "link", "permalink")
+                     if d.get(k)), None)
+        parts = []
+        if label:
+            parts.append(str(label))
+        if when:
+            parts.append(f"({when})")
+        if link:
+            parts.append(str(link))
+        if parts:
+            return "• " + " ".join(parts)
+        vis = {k: v for k, v in d.items()
+               if not str(k).startswith("_") and k not in ("ok", "id", "uid")}
+        return "• " + ", ".join(f"{k}: {v}" for k, v in vis.items())
+    if isinstance(val, list):
+        if not val:
+            return ""
+        if all(not isinstance(x, dict) for x in val):
+            return ", ".join(str(x) for x in val)
+        return "\n".join(_one(x) for x in val)
+    if isinstance(val, dict):
+        return _render_embedded([val])
+    return str(val)
+
+
 def _resolve_stepref(value: Any, history: list[StepRun]) -> Any:
     """Sostituisce ${stepN.field} (1-indexed) e ${steps.N.field} (0-indexed).
     Full-match preserva tipo nativo (list/dict/int), embedded stringifica.
@@ -460,20 +497,22 @@ def _resolve_stepref(value: Any, history: list[StepRun]) -> Any:
             val = _resolve_stepref_with_fallback(history[n].result, path)
             return val if val is not None else value
         return value
-    # Embedded substitutions (mix in template strings)
+    # Embedded substitutions (mix in template strings). §output-format:
+    # NIENTE Python-repr di list/dict in testo user-facing (es. body
+    # send_messages con ${stepN.results}); _render_embedded → testo leggibile.
     def _sub_step(m):
         n = int(m.group(1))
         path = m.group(2)
         if 1 <= n <= len(history):
             val = _resolve_stepref_with_fallback(history[n - 1].result, path)
-            return "" if val is None else str(val)
+            return "" if val is None else _render_embedded(val)
         return ""
     def _sub_steps(m):
         n = int(m.group(1))
         path = m.group(2)
         if 0 <= n < len(history):
             val = _resolve_stepref_with_fallback(history[n].result, path)
-            return "" if val is None else str(val)
+            return "" if val is None else _render_embedded(val)
         return ""
     value = _STEPREF_RE.sub(_sub_step, value)
     value = _STEPSREF_RE.sub(_sub_steps, value)
