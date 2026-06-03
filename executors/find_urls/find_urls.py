@@ -1135,6 +1135,7 @@ def _invoke_default(args: dict) -> dict:
     # alias la query web cadeva in invalid_args→terminator ("Pipeline
     # malformata") su "cerca chi è X". Dominio aperto: accetta entrambi.
     search_query = args.get("search_query") or args.get("query")
+    search_query = _inject_current_date(search_query)
     search_top_n = args.get("search_top_n")
     try:
         top_n = int(search_top_n) if search_top_n is not None else SEARXNG_TOP_N
@@ -1988,6 +1989,28 @@ def _resolve_backend(client: str):
         from backends.urls import playwright_stub
         return playwright_stub
     return None
+
+
+def _inject_current_date(q):
+    """§7.9: l'LLM emette anni dal suo training (es. '2024 2025') ignorando la
+    data reale → ricerche temporali fuori fuoco (bug 'prossime conferenze' →
+    anni passati). SOLO per intento FUTURO/RECENTE: rimuove gli anni stantii
+    emessi e inietta l'anno corrente (+successivo se 'prossime'). Query con anno
+    ESPLICITO e nessun marcatore future/recent (es. 'conferenze 2019') restano
+    intatte. Deterministico, niente LLM."""
+    if not isinstance(q, str) or not q.strip():
+        return q
+    import re as _re
+    from datetime import datetime as _dt
+    yr = _dt.now().year
+    ql = q.lower()
+    fut = _re.search(r"prossim|upcoming|\bnext\b|futur|in arrivo|ventur", ql)
+    recent = _re.search(r"recent|ultim|latest|\bnew\b|novit|aggiornat", ql)
+    if not (fut or recent):
+        return q
+    q2 = _re.sub(r"\b20\d{2}\b", " ", q)          # via gli anni stantii
+    q2 = _re.sub(r"\s{2,}", " ", q2).strip()
+    return f"{q2} {yr} {yr + 1}".strip() if fut else f"{q2} {yr}".strip()
 
 
 def invoke(args: dict) -> dict:
