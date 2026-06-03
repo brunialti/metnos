@@ -22,7 +22,7 @@ en = "SCOPO: create calendar appointments (one or many). PATTERN: single create_
 
 [code]
 files  = ["create_events.py"]
-digest = "sha256:11a96b7f7eb164f08b7419d318bb66c94c13c68ee161116250bed2d44567e0f3"
+digest = "sha256:3838009483762cca7a32081f05807549f08f363d01b212dfba300fe61e7d32b2"
 
 [args]
 type     = "object"

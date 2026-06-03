@@ -169,9 +169,40 @@ def invoke(args):
                 "error": _msg("ERR_NOT_APPLICABLE", what=f"client '{client}'"),
                 "error_class": "invalid_args",
                 "results": [], "used": 0, "n_created": 0}
-    # §2.4: normalizza date NL ("domani alle 10") → ISO prima del backend, una
-    # sola volta per tutti i backend. Deterministico (now Rome al momento call).
     now = datetime.now(_ROME)
+    # §2.1 VETTORIALE: se arrivano `entries` (lista di record evento via
+    # from_step — es. extract_entries(web)→create_events), crea UN evento per
+    # entry. Senza questo create_events ignorava la lista e cercava
+    # summary/start/end top-level → "mandatory" sui dati piped (bug ROCm 3/6).
+    entries = args.get("entries")
+    if isinstance(entries, list) and entries:
+        _EV = ("summary", "start", "end", "location", "description", "attendees")
+        results, ok_count, undo_ids = [], 0, []
+        for rec in entries:
+            if not isinstance(rec, dict):
+                continue
+            ev = {k: rec[k] for k in _EV if rec.get(k) not in (None, "")}
+            for k in ("client", "calendar_id"):  # eredita config top-level
+                if args.get(k) and not ev.get(k):
+                    ev[k] = args[k]
+            for _k in ("start", "end"):
+                if _k in ev:
+                    ev[_k] = _resolve_dt_nl(ev[_k], now)
+            r = backend.create(ev)
+            results.extend(r.get("results") or [])
+            if r.get("ok"):
+                ok_count += int(r.get("n_created") or len(r.get("results") or []))
+            undo_ids.extend((r.get("_undo") or {}).get("ids") or [])
+        out = {"ok": ok_count > 0, "results": results,
+               "used": len(results), "n_created": ok_count}
+        if ok_count == 0:
+            out["error"] = _msg("ERR_ARG_MISSING", arg="summary/start/end")
+            out["error_class"] = "invalid_args"
+        if undo_ids:
+            out["_undo"] = {"reverse_pattern": "delete_events_by_id",
+                            "ids": undo_ids, "scope": {"client": client}}
+        return out
+    # Singolo evento (campi top-level). §2.4: normalizza date NL → ISO.
     for _k in ("start", "end"):
         if _k in args:
             args[_k] = _resolve_dt_nl(args[_k], now)
