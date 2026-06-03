@@ -34,7 +34,7 @@ PHOTO/EXIF/CAPTURE/GPS/PLACE-OF-CAPTURE/CAMERA
         args combine).
     OK: «Silvia at the sea» → find_images_indices(name="silvia", query_text="sea").
     OK: «Matteo close-up» → find_images_indices(name="matteo", min_face_pixels=40000).
-    OK: «2024 birthday photos» → find_images_indices(query_text="birthday", time_window="2024").
+    OK: «{{ current_year }} birthday photos» → find_images_indices(query_text="birthday", time_window="{{ current_year }}").
     ERROR: «Silvia at the sea» → find_persons_indices(name="silvia") →
         find_images_indices(idx="scene", query_text="sea", paths_filter=from_step:1).
         THIS IS AN ERROR: the 2-step pattern is superseded by ADR 0117.

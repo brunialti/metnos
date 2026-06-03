@@ -49,7 +49,7 @@ WEB / CONTENT MANAGEMENT (post-read, history, results list)
         context=<original query>) -> final_answer.
         The LLM synthesis is built on the HTML CONTENT read, not the URL
         list. The answer may come from the body of an HTML page (not just
-        from an attached PDF): "on site X the 2024 staffing table shows
+        from an attached PDF): "on site X the {{ current_year }} staffing table shows
         1234 positions". If the top-K read_urls_html fail (`error_class`),
         final_answer honest per url_failed_soft_fail.
 

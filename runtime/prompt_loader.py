@@ -215,11 +215,20 @@ def _default_vars() -> dict:
     suggerire location di storage al LLM senza hardcodare `/opt/metnos`
     nel template (B.4 fix 19/5/2026 v4).
     """
+    # current_year / current_date: §7.11-per-le-date. Gli ESEMPI nei prompt non
+    # devono hardcodare anni letterali (es. time_window="2024") → invecchiano e
+    # biasano l'LLM verso anni stantii. Usa {{ current_year }} / {{ current_date }}
+    # negli esempi: il valore è sempre quello reale al render.
+    from datetime import datetime as _dt
+    _now = _dt.now()
+    out = {"current_year": _now.year,
+           "current_date": _now.strftime("%Y-%m-%d")}
     try:
         from config import PATH_ROOT
-        return {"install_root": str(PATH_ROOT)}
+        out["install_root"] = str(PATH_ROOT)
     except Exception:
-        return {"install_root": "/opt/metnos"}
+        out["install_root"] = "/opt/metnos"
+    return out
 
 
 def get(role: str, lang: str, **vars) -> str:

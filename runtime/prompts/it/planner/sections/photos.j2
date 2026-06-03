@@ -34,7 +34,7 @@ FOTO/EXIF/SCATTO/GPS/LUOGO-DI-SCATTO/CAMERA
         args si combinano).
     OK: «Silvia al mare» → find_images_indices(name="silvia", query_text="mare").
     OK: «Matteo primo piano» → find_images_indices(name="matteo", min_face_pixels=40000).
-    OK: «foto del compleanno 2024» → find_images_indices(query_text="compleanno", time_window="2024").
+    OK: «foto del compleanno {{ current_year }}» → find_images_indices(query_text="compleanno", time_window="{{ current_year }}").
     ERRORE: «Silvia al mare» → find_persons_indices(name="silvia") → find_images_indices(idx="scene", query_text="mare", paths_filter=from_step:1). E' UN ERRORE: il pattern a 2 step e' superseded da ADR 0117.
 
   (W.alias) PERSONS THIN ALIAS

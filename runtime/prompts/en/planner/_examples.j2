@@ -188,6 +188,6 @@ ERROR: "create spreadsheet on google" → set_credentials for "google" (mistakin
 
 INDEXED CORPUS vs FILESYSTEM
 "photos/images/videos/contacts" → INDEXED CORPUS (`find_<corpus>_indices`). Only if the user specifies a filesystem path ("photos in /X") → `find_files`. Read-then-write pipeline: output of `find_*` is input of `write_*` via `from_step`.
-OK: "save 2024 photos to drive" → `find_images_indices(time_window="2024")` → `write_files_google_workspace(from_step=1)`.
+OK: "save {{ current_year }} photos to drive" → `find_images_indices(time_window="{{ current_year }}")` → `write_files_google_workspace(from_step=1)`.
 
 ══════════════════════════════════════════════════════════════════════
