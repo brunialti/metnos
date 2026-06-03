@@ -52,6 +52,35 @@ def _is_get_inputs_misroute(framework: Framework) -> bool:
     return exec_steps == ["get_inputs"]
 
 
+def _dropped_producer_verbs(framework: Framework, query: str) -> set:
+    """Verbi PRODUCER (find/read/get/list) richiesti dalla query ma ASSENTI dal
+    framework → decomposizione incompleta (il planner ha saltato il producer:
+    es. "cerca online ... crea evento ... manda mail" collassa a create_events
+    senza find_urls davanti). Universale §7.3/§7.9, schema-driven, model-indep.
+
+    Conservativo: scatta solo su query MULTI-azione (≥2 verbi canonici) e solo
+    per verbi PRODUCER mancanti (un'azione di consumo/mutazione può legittimamente
+    stare da sola; un producer saltato no — i dati non arrivano da nessuna parte).
+    """
+    try:
+        from prefilter import tokenize, detect_canonical_verbs_all
+        from vocab import PRODUCER_VERBS, ACTIONS
+    except Exception:
+        return set()
+    qverbs = set(detect_canonical_verbs_all(tokenize(query or "")))
+    if len(qverbs) < 2:
+        return set()
+    fw_verbs = set()
+    for s in framework.steps:
+        t = s.tool or ""
+        if not t or t == "final_answer":
+            continue
+        head = t.split("_", 1)[0]
+        if head in ACTIONS:
+            fw_verbs.add(head)
+    return (qverbs & set(PRODUCER_VERBS)) - fw_verbs
+
+
 def run_turn(*, query: str, intent: Intent, catalog: list,
               invoke_executor_cb: Callable,
               llm_call_wise: Optional[Callable] = None,
@@ -246,6 +275,28 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
         # (difesa: re-propose potrebbe fallire o degenerare).
         if _framework_gi is not None and not _is_get_inputs_misroute(_framework_gi):
             framework = _framework_gi
+
+    # Guard decomposizione incompleta (§7.3/§7.9, universale, adottabile da
+    # OGNI executor): query multi-azione in cui il planner ha SALTATO un verbo
+    # PRODUCER (find/read/get/list) → il framework parte da un consumer/mutating
+    # senza i dati (es. "cerca online ... crea evento ... manda mail" collassa a
+    # create_events-only, che poi fallisce con args obbligatori mancanti). Si
+    # ri-propone UNA volta escludendo il framework collassato: forza il planner
+    # a includere il producer. Best-effort: se anche la ri-proposta è incompleta
+    # si procede comunque (l'esecuzione/terminator daranno l'esito onesto).
+    _dropped = _dropped_producer_verbs(framework, query)
+    if _dropped:
+        if verbose:
+            log.info("[guard] decomposizione incompleta: producer mancanti %s "
+                     "→ re-propose", sorted(_dropped))
+        _fh = compute_framework_hash(framework)
+        _fw2 = proposer.propose(
+            query=query, intent=intent, pool=pool_names,
+            excluded_hashes=excluded | {_fh},
+            llm_call=llm_call_wise, lang=lang, catalog=catalog)
+        # Accetta la ri-proposta solo se copre PIÙ producer (meno verbi droppati).
+        if _fw2 is not None and len(_dropped_producer_verbs(_fw2, query)) < len(_dropped):
+            framework = _fw2
 
     # Layer 2: Validator (opt-in)
     if is_validator_enabled():
