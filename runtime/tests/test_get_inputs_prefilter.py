@@ -25,13 +25,13 @@ def test_vocab_includes_inputs_object():
     assert "inputs" in OBJECTS
     assert "credentials" in OBJECTS
     assert "entries" in OBJECTS
-    # 19 oggetti: `indices` declassato a qualifier "modalita'" 5/5/2026,
-    # `credentials` aggiunto come 16° object 10/5/2026 (ADR 0123),
-    # `entries` formalizzato come 17° object 12/5/2026 (meta-oggetto
-    # pipeline in-memory). `tasks` 18° object 15/5/2026 (scheduler v2
-    # ADR 0112). `persons` 19° object 15/5/2026 (registro nominale
-    # ADR 0113). Vedi ADR 0137.
-    assert len(OBJECTS) == 19
+    # 21 oggetti: `indices` declassato a qualifier "modalita'" 5/5/2026,
+    # `credentials` 10/5/2026 (ADR 0123), `entries` meta-oggetto pipeline
+    # 12/5/2026, `tasks` 15/5/2026 (scheduler v2 ADR 0112), `persons`
+    # 15/5/2026 (ADR 0113), `issues`+`pulls` provider github 2/6/2026
+    # (ADR 0141). Vedi ADR 0137/0141.
+    assert "issues" in OBJECTS and "pulls" in OBJECTS
+    assert len(OBJECTS) == 21
 
 
 def test_get_inputs_in_canonical_naming():

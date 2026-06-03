@@ -296,7 +296,19 @@ def _open_gate_dialog(repo: str, kind: str, number: int,
         "on_complete": on_complete,
     }
     res = _invoke("get_inputs", args)
-    return bool(res and isinstance(res, dict) and res.get("ok"))
+    registered = bool(res and isinstance(res, dict) and res.get("ok"))
+    # Headless (§2.8): in un task schedulato get_inputs SOLO registra il dialog
+    # (sender_id="host", channel="") — nessun channel adapter lo spinge. Senza
+    # questo, il gate e' un drop SILENZIOSO: il dialog resta nello storage ma
+    # Roberto non lo vede mai (era il bug "dialog_failed"). Notifichiamo l'owner
+    # via il path PROVATO (send_messages -> Telegram host, vedi _notify_owner)
+    # cosi' la richiesta di decisione lo raggiunge; il dialog registrato resta
+    # azionabile quando apre un canale.
+    _notify_owner(
+        f"{prompt}\n\nDecisione richiesta (analizza / skip / snooze): "
+        f"apri Metnos per rispondere."
+    )
+    return registered
 
 
 def _event_age_s(event: dict[str, Any]) -> float:

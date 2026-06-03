@@ -158,6 +158,25 @@ _VERB_TO_CANONICAL = {
     "compute": "compute", "calculate": "compute", "hash": "compute",
 }
 
+# Verbi-superficie polisemici per CONTENITORE (§7.3, fix 3/6/2026). Il
+# vocabolario context-free _VERB_TO_CANONICAL e' 1:1 e quindi LOSSY: "metti/
+# salva" -> "write" soltanto, cosi' i producer `create_*` perdono il verb-boost
+# e il planner sceglie write inventando un path (bug spreadsheet 2-3/6). Qui
+# dichiariamo i SIBLING di lifecycle di un canonical: oltre al primario,
+# surfacciamo anche questi producer (recall pieno) e lasciamo decidere ai
+# layer a valle (write=UPSERT, SCOPO manifest, verifier L6). Auto-limitante:
+# il sibling boosta solo se quel producer esiste DAVVERO per l'oggetto (es.
+# write_files_spreadsheet <-> create_files_spreadsheet); per oggetti con un
+# solo producer (create_events, niente write_events) e' un no-op.
+_VERB_ALSO_CANONICAL: dict[str, tuple[str, ...]] = {
+    "write": ("create",),   # scrivi-in-esistente <-> crea-nuovo
+    "create": ("write",),
+}
+
+# Boost ridotto per il sibling: entra nel pool ma sotto il primario (che resta
+# preferito a parita' di object/qualifier).
+_VERB_SIBLING_BOOST = 7
+
 
 def detect_canonical_verb(qtokens):
     """Ritorna il primo verbo canonico (move/delete/read/...) trovato fra i
@@ -435,8 +454,12 @@ def affinity_score(query_tokens, executor, *,
     soft_pool = (query_tokens & desc_tokens) - hard_matches - _STOPWORDS
     soft = min(len(soft_pool), 3)
     verb_boost = 0
-    if query_canonical_verb and executor.name.startswith(query_canonical_verb + "_"):
-        verb_boost = 10
+    if query_canonical_verb:
+        _first = executor.name.split("_", 1)[0]
+        if _first == query_canonical_verb:
+            verb_boost = 10
+        elif _first in _VERB_ALSO_CANONICAL.get(query_canonical_verb, ()):
+            verb_boost = _VERB_SIBLING_BOOST  # producer sibling di lifecycle
     object_boost = 0
     if query_canonical_object:
         # Match se l'object canonico e' parte del nome dell'executor (es.
@@ -746,9 +769,13 @@ def rank_with_intent(query, catalog, intent, *, k=3):
     primary = []
     for e in catalog:
         parts = e.name.split("_")
-        if not parts or parts[0] != verb:
+        _first = parts[0] if parts else ""
+        if _first == verb:
+            s = 10
+        elif _first in _VERB_ALSO_CANONICAL.get(verb, ()):
+            s = _VERB_SIBLING_BOOST  # sibling di lifecycle: nel pool, sotto il primario
+        else:
             continue
-        s = 10
         if obj and obj in parts:
             s += 6
         # Qualifier bonus SOLO se il qualifier matcha un token nella query

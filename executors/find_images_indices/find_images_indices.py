@@ -724,6 +724,20 @@ def _extract_face_embeddings_from_reference(ref_paths: list[str]):
     return embs
 
 
+def _apply_relevance_gate(entries, text_components, text_scores, rel_thr):
+    """Filtra le entries tenendo solo coseno >= rel_thr e ri-mappa text_scores
+    sui nuovi indici. Identita' = INDICE originale (univoco per costruzione):
+    il path NON e' affidabile come chiave (duplicati symlink/copie, oppure
+    None) -> con un set di path i dupe sotto-soglia passerebbero il gate e i
+    punteggi collasserebbero (last-wins). Ritorna (entries, text_scores)."""
+    kept = [(i, e) for i, e in enumerate(entries)
+            if text_components.get(i, (0.0, 0.0))[0] >= rel_thr]
+    entries_out = [e for _, e in kept]
+    scores_out = {new_i: text_scores.get(old_i, 0.0)
+                  for new_i, (old_i, _) in enumerate(kept)}
+    return entries_out, scores_out
+
+
 def _filter_unified(
     entries: list[dict], emb_text, emb_face, meta: dict, args: dict,
     idx_dir=None,
@@ -1097,15 +1111,8 @@ def _filter_unified(
         cos_all = [text_components.get(i, (0.0, 0.0))[0]
                    for i in range(len(entries))]
         rel_thr = adaptive_relevance_threshold(cos_all, floor=text_score_min)
-        keep_paths = {
-            e.get("path") for i, e in enumerate(entries)
-            if text_components.get(i, (0.0, 0.0))[0] >= rel_thr
-        }
-        score_by_path = {e.get("path"): text_scores.get(i, 0.0)
-                         for i, e in enumerate(entries)}
-        entries = [e for e in entries if e.get("path") in keep_paths]
-        text_scores = {i: score_by_path[e.get("path")]
-                       for i, e in enumerate(entries)}
+        entries, text_scores = _apply_relevance_gate(
+            entries, text_components, text_scores, rel_thr)
 
     # Composito
     scored = []
