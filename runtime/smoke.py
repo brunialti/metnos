@@ -58,7 +58,11 @@ BATTERY = [
      "expected_arg_keys": set(),
      "min_pass_rate": 0.9},
     {"q": "elenca i file in /tmp",
-     "tool_re": r"^list_dirs$",
+     # ADR 0155 (planner choice > runtime override): "elenca i file" e' list_dirs
+     # (canonico, prefilter #1) ma find_files e' scelta planner legittima ed
+     # equivalente (enumera i file). Qwen 35B-A3B preferisce find_files (det. 3/3);
+     # accettiamo entrambi — imporre list_dirs sarebbe l'override vietato da 0155.
+     "tool_re": r"^(list_dirs|find_files)$",
      "kind": "answer",
      "expected_first_tool": "list_dirs",
      "expected_arg_keys": {"path"},
