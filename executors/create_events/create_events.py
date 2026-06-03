@@ -175,6 +175,13 @@ def invoke(args):
     # entry. Senza questo create_events ignorava la lista e cercava
     # summary/start/end top-level → "mandatory" sui dati piped (bug ROCm 3/6).
     entries = args.get("entries")
+    # §2.1 cap inferiore = 0: la lista piped (from_step) può essere VUOTA
+    # (es. extract_entries non ha trovato eventi databili). NON è un errore di
+    # create_events: 0 in ingresso → 0 creati, esito ONESTO (§2.8), non il
+    # criptico "summary/start/end mandatory".
+    if "entries" in args and isinstance(entries, list) and not entries:
+        return {"ok": True, "n_created": 0, "results": [], "used": 0,
+                "summary": _msg("MSG_EVENTS_NONE_TO_CREATE")}
     if isinstance(entries, list) and entries:
         _EV = ("summary", "start", "end", "location", "description", "attendees")
         results, ok_count, undo_ids = [], 0, []

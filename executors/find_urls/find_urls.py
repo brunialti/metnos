@@ -2011,11 +2011,17 @@ def _inject_current_date(q):
     ql = q.lower()
     fut = _re.search(r"prossim|upcoming|\bnext\b|futur|in arrivo|ventur", ql)
     recent = _re.search(r"recent|ultim|latest|\bnew\b|novit|aggiornat", ql)
-    if not (fut or recent):
+    # Drift cutoff LLM: ≥2 anni recenti-ma-passati consecutivi (es. "2024 2025")
+    # = il modello tenta di essere "attuale" coi suoi anni di training. Segnale
+    # forte; un anno singolo (es. "bilancio 2025") resta intenzionale.
+    years = sorted({int(y) for y in _re.findall(r"\b(20\d{2})\b", q)})
+    multi_stale = len([y for y in years if yr - 3 <= y < yr]) >= 2
+    if not (fut or recent or multi_stale):
         return q
     q2 = _re.sub(r"\b20\d{2}\b", " ", q)          # via gli anni stantii
     q2 = _re.sub(r"\s{2,}", " ", q2).strip()
-    return f"{q2} {yr} {yr + 1}".strip() if fut else f"{q2} {yr}".strip()
+    return (f"{q2} {yr} {yr + 1}".strip() if (fut or multi_stale)
+            else f"{q2} {yr}".strip())
 
 
 def invoke(args: dict) -> dict:
