@@ -3,7 +3,7 @@
 > **OBBLIGO**: leggere integralmente all'inizio di ogni sessione. Codifica decisioni architetturali, convenzioni di codice e norme di processo. Punto obsoleto/errato → AGGIORNA subito.
 >
 > Mantenuto da: agente. Aggiornamento quando si fissa una nuova norma duratura. Storia in `git log CLAUDE.md`. Dettagli implementativi vivono negli ADR (`decisions/`), non qui.
-> Ultimo: 2026-06-04 v19 (manutenzione: prosa §2.5/§7.10/§7.11 + indice §10.6 stringati a 1-riga/meccanismo, dettagli→ADR). Norme correnti negli ADR 0150-0169; changelog completo in `git log CLAUDE.md`.
+> Ultimo: 2026-06-04 v20 (manutenzione: §10.6 voci fuori-budget ricompresse a 1-riga reale — nome+ADR+call-site, env-vars/bench/prosa→ADR). Norme correnti negli ADR 0150-0169; changelog completo in `git log CLAUDE.md`.
 
 ---
 
@@ -235,7 +235,7 @@ Tipi: `user`, `feedback`, `project`, `reference`. Indice in `~/.claude/projects/
 
 **Naming / vocab / grammatica**
 - **Naming Authority** (ADR 0156): `runtime/naming_grammar.py` valida nome + genera GBNF da `vocab.py`. Single source per stage 1/telos/skill importer.
-- **Manifest linter strutturale** (ADR 0169): `runtime/manifest_lint.py` deterministico (§7.9) — check di FORMA scheda-tool (CAPITOLI ordinati, PATTERN entro budget, PATTERN-args ⊆ schema, `runtime_resolved` non citato in uso, output-shape per verbo §2.6, affinity-overlap, NON→sibling). Wired synt stage 5.5 (rigetta `error`). CLI `--all`. Baseline 0 error / 70 warn.
+- **Manifest linter strutturale** (ADR 0169): `runtime/manifest_lint.py` deterministico (§7.9) — check FORMA scheda-tool (CAPITOLI, PATTERN-budget, PATTERN-args ⊆ schema, output-shape §2.6, affinity-overlap, NON→sibling). Wired synt stage 5.5. CLI `--all`.
 - **Constrained generation** (ADR 0133): `runtime/tool_grammar.py` GBNF per ogni step. Loop-detect `runtime/loop_detect.py`. Opt-in `METNOS_GRAMMAR=1`.
 - **Grammar pool extensions** (ADR 0135): `final_answer` synthetic from step≥2; `_parse_tool_call_tolerant` JSON recovery; `_FROM_STEP_HELPERS` esclusi al primo step.
 - **Skill dormancy + provider qualifier** (ADR 0136): `Executor.dormant` se skill senza credenziali (`runtime/skill_credentials.py`). `tool_grammar._PROVIDER_SUFFIX_MARKERS` filtra pool.
@@ -245,9 +245,9 @@ Tipi: `user`, `feedback`, `project`, `reference`. Indice in `~/.claude/projects/
 - **`*_tasks` conditional injection**: iniettati nel pool PLANNER solo se query ha marker scheduling (`_TASKS_MARKERS` in `tool_grammar.py`).
 
 **Planner / Praxis / runtime flow**
-- **Praxis Engine — pentade** (ADR 0161): cascata `fast_path → intent_extractor → Praxis.try_match → Mētis → Noûs → Pronoia → Aporia`. Moduli `runtime/{praxis,praxis_propose,praxis_executor,pronoia,aporia}.py`, wire pre-PLANNER in `agent_runtime.run_turn`.
+- **Praxis Engine — pentade** (ADR 0161): cascata `fast_path→intent_extractor→Praxis.try_match→Mētis→Noûs→Pronoia→Aporia`. `runtime/{praxis,praxis_propose,praxis_executor,pronoia,aporia}.py`, wire pre-PLANNER `agent_runtime.run_turn`.
 - **ClusterLLM + classify_fail** (ADR 0162): estende 0161. `runtime/praxis_cluster.py` BGE-M3 + cosine + champion/challenger. `runtime/pronoia_classify_fail.py` dispatch ✗. Constants in `runtime/praxis_constants.py`.
-- **persons aggregator + ${RUNTIME:*}** (ADR 0163): `get_persons` (scheda) vs `read_persons` (profilo, JOIN persons+users.db). Placeholder `${RUNTIME:key}` in `praxis_executor.py` con whitelist `{actor, lang, channel}`. `compute_intent_sig` con scope marker.
+- **persons aggregator + ${RUNTIME:*}** (ADR 0163): `get_persons` (scheda) vs `read_persons` (profilo JOIN). `${RUNTIME:key}` in `praxis_executor.py`, whitelist `{actor,lang,channel}`; `compute_intent_sig` con scope marker.
 - **Pipeline shape FSM** (ADR 0154): `runtime/pipeline_shape.py` invariante `E+ (F|A)?` + hook in `agent_runtime`.
 - **Planner choice > runtime override** (ADR 0155): runtime non sovrascrive il planner (eccetto auto_remediation / vaglio / fast-path). Vietato interceptor pattern-match.
 - **Fast path deterministico** (ADR 0094): `runtime/fast_path.py` short-circuit pre-PLANNER. Tabella chiusa `_FAST_PATTERNS`. ZERO LLM.
@@ -255,6 +255,7 @@ Tipi: `user`, `feedback`, `project`, `reference`. Indice in `~/.claude/projects/
 - **args_extractor V1.5** (ADR 0149+0150): `runtime/args_extractor.py` regex + memoization `args_observed` + LLM fallback opt-in.
 - **PLANNER split GBNF** (ADR 0151): `runtime/planner_split.py::chat_with_tools_split` 2-call. Opt-in `METNOS_PLANNER_SPLIT=1`. 1.72× speedup.
 - **Pattern intent-implicit** (ADR 0129): `vocab.detect_implicit_actions(query)` deterministico. Wire `intent_extractor → agent_runtime → orchestration._orchestrate_implicit_actions`.
+- **Compound query decomposition** (4/6): intent LLM → `actions=[{verb,object}]` per CLAUSOLA (`intent_extractor.j2` it+en); `dispatch` rank pool per-PAIR (object reale per clausola); `proposer` salta verb-filter se `len(actions)>=2`. No dizionari sinonimi; `detect_canonical_verbs_all` = fallback lessicale.
 - **Shape FSM normalization**: `TurnLog.write()` normalizza ultimo step a `final_answer` se vuoto. Lint regex `^E*F?$`.
 - **Inproc tool catalog injection**: `loader._inject_inproc_tool_specs` + `BUILTIN_INPROC_SPECS` espone tool moduli runtime al catalog admin.
 - **Adaptive re-rank intra-turno** (ADR 0072): `runtime/adaptive_rerank.py` add-only, cap `2×k_max`.
@@ -280,14 +281,14 @@ Tipi: `user`, `feedback`, `project`, `reference`. Indice in `~/.claude/projects/
 
 **Backend / executor / domini**
 - **Backend tree per OBJECT** (ADR 0130): `runtime/backends/<OBJECT>/<provider>.py`. Retry 3× su transient.
-- **Backend resolver uniforme** (ADR 0165): provider = configurazione, non intento. `runtime/backend_resolver.py` risolve `client/account/provider` in modo deterministico (no enum esposto all'LLM). 4ª eccezione disciplinata a §4.1/ADR 0155 (governa valori-config, non forma/flusso).
+- **Backend resolver uniforme** (ADR 0165): provider=config non intento; `backend_resolver.py` risolve `client/account/provider` deterministico (no enum all'LLM). 4ª eccezione §4.1/0155 (valori-config, non forma/flusso).
 - **Plugin esterni** (ADR 0132 **DEPRECATED**): superseded da skill imported + `METNOS_HIDE_EXECUTORS`. `plugin_loader.py` rimosso.
 - **Indici di dominio** (ADR 0086, image superseded by 0117): pattern `{create,find}_<dom>_indices`. Storage `~/.local/share/metnos/index/<dom>/<sha8>/<idx>/`.
 - **Unified image enrichment index** (ADR 0117): single asse `unified/` per corpus. Schema v4 in `runtime/index_schema.py`. Pipeline EXIF+ArcFace+VLM+BGE-M3.
-- **Intelligent path-aware indexing** (ADR 0166): `folder_path_context` in `create_images_indices.py` → campo `path_context` fuso nell'embedding testuale (query di categoria astratta). Parse temporale + escape coseno in `find_images_indices.py`. Re-embed `jobs/reembed_path_context.py`.
-- **Taglio di rilevanza adattivo** (ADR 0169): `runtime/relevance_cut.py::adaptive_relevance_threshold` — taglio RELATIVO per-query `μ+3σ` + `floor` (il coseno denso collassa in banda stretta → soglia assoluta inutile). Wire `find_images_indices` (gate sul coseno). Riusabile da ogni retrieval scored.
-- **Spreadsheet LOCALE di default** (ADR 0169): `backends/files/local.py::{create,write,append,read}_spreadsheet` (.xlsx/.csv). I 3 dispatcher `*_files_spreadsheet` defaultano `client="local"` (§10.3), Google opt-in. `spreadsheet_id` locale == PATH file.
-- **Guard refusal-in-args** (ADR 0169): `agent_runtime.validate_args` + `_LLM_REFUSAL_MARKERS` (IT+EN) — un rifiuto/meta-testo LLM trapelato come VALORE di un arg = step malformato, non raggiunge l'executor (§2.8). Universale, deterministico §7.9.
+- **Intelligent path-aware indexing** (ADR 0166): `folder_path_context` (`create_images_indices.py`) → `path_context` fuso nell'embedding; parse temporale + escape coseno `find_images_indices.py`; re-embed `jobs/reembed_path_context.py`.
+- **Taglio di rilevanza adattivo** (ADR 0169): `relevance_cut.py::adaptive_relevance_threshold` — taglio RELATIVO per-query `μ+3σ`+floor (coseno denso in banda stretta). Wire `find_images_indices`. Riusabile da ogni retrieval scored.
+- **Spreadsheet LOCALE di default** (ADR 0169): `local.py::{create,write,append,read}_spreadsheet` (.xlsx/.csv); i 3 `*_files_spreadsheet` default `client="local"` (§10.3), Google opt-in; `spreadsheet_id`==PATH.
+- **Guard refusal-in-args** (ADR 0169): `agent_runtime.validate_args` + `_LLM_REFUSAL_MARKERS` (IT+EN) — rifiuto LLM come VALORE di un arg = step malformato (§2.8). Deterministico §7.9.
 - **Named persons registry** (ADR 0113): `~/.local/share/metnos/persons.sqlite` (slug case+accent-insensitive). 4 executor `*_persons` con ambiguity → dialog `kind="choice_with_preview"`.
 - **GitHub provider first-party** (ADR 0141): 13 executor `*_github`. Watcher scheduler v2 + dedup `jobs/github_dedup.py`. Config `~/.config/metnos/github_watched_repos.json`.
 - **consult_frontier system verb** (ADR 0142): `executors/consult_frontier/` modo A single-call + modo B agentic tool use. Tier config `~/.config/metnos/llm_tiers.toml`.
@@ -312,7 +313,7 @@ Tipi: `user`, `feedback`, `project`, `reference`. Indice in `~/.claude/projects/
 - **Output formatter deterministico** (ADR 0095): `runtime/output_format.py` channel-agnostic markdown. NIENTE LLM.
 - **Channel-aware HTML** (ADR 0109+0110): `runtime/html_sanitizer.py::{to_safe_html, to_safe_html_full}`. Dispatch in `http_routes_agent::_safe_final_html`.
 - **Prompt-as-data + multilingua** (ADR 0092): `runtime/prompts/<lang>/<role>.j2`. `prompt_loader.get/compose()`. CLI `metnos-prompts`. Sub-dir lingua secondaria deve avere stesso set di `it/` (boot check).
-- **Token-data nei prompt non-Jinja** (§7.11-per-le-date): `runtime/date_tokens.py::substitute_date_tokens` risolve `{{ current_year }}`/`{{ current_date }}` deterministicamente dove Jinja non arriva — sezioni `.yaml` (`prompt_loader._render_yaml_section`) e description manifest (`engine/proposer._render_tool_pool`). Convenzione unica .j2/.yaml/.toml; il manifest resta col token LETTERALE (no re-sign §7.10).
+- **Token-data nei prompt non-Jinja** (§7.11-date): `date_tokens.py::substitute_date_tokens` (`{{current_year}}`/`{{current_date}}`) ai render `.yaml` (`prompt_loader._render_yaml_section`) + manifest (`engine/proposer._render_tool_pool`); manifest col token LETTERALE (no re-sign §7.10).
 - **Prompt architecture A+B+C + linter** (§6.1): split `planner.j2` in `_core` + sezioni + `_footer`. Linter `runtime/prompts_lint.py`. Daemon `i18n_translate_pending.py`.
 - **Report runtime user-facing i18n** (ADR 0104): chiavi `MSG_*` in `i18n.sqlite` IT+EN.
 - **i18n pipeline strutturale** (ADR 0152): subset chiavi nel synt stage 5; daemon `_materialize_auto_synth_stubs` con `auto_translated` flag.
@@ -329,14 +330,14 @@ Tipi: `user`, `feedback`, `project`, `reference`. Indice in `~/.claude/projects/
 **Scheduler / lifecycle / unified changes**
 - **Scheduler v2 asyncio co-host** (ADR 0112): `runtime/scheduler_v2/` single Task. Trigger grammar `daily@HH:MM`/`every_N{s,m,h}`/`at:<ISO>`/`cron:<5-field>`. Callbacks via `builtin_callbacks.install_default_callbacks`.
 - **Scheduler gate user-activity** (ADR 0074): task notturni age-based sospesi se user idle. Sorgente turns JSONL.
-- **Scheduler circuit-breaker** (ADR 0168): N=3 fail CONSECUTIVI di task ricorrente → auto-disable + notifica owner 3-opzioni. Colonna `consecutive_failures`, hook `daemon._fire_entry::on_circuit_break` → `recurring_tasks._notify_circuit_break`; dispatch `channels/daemon._handle_scheduler_callback`.
-- **Nightly maintenance orchestrator** (ADR 0167 ext): i 14 task housekeeping notturni = UNA entry `nightly_maintenance` (daily@03:00) eseguiti in sequenza GPU-safe da `runtime/nightly_orchestrator.py::run_nightly` (error-isolation §2.8, sync via executor). Single-source ordine `NIGHTLY_SEQUENCE`; `install_default_jobs` auto-pulisce le entry standalone obsolete (idempotente). I 14 callback restano registrati/invocabili.
+- **Scheduler circuit-breaker** (ADR 0168): N=3 fail consecutivi → auto-disable + notifica owner 3-opzioni; col `consecutive_failures`; `daemon._fire_entry::on_circuit_break` → `recurring_tasks._notify_circuit_break`.
+- **Nightly maintenance orchestrator** (ADR 0167 ext): 14 task housekeeping = 1 entry `nightly_maintenance` (daily@03:00), sequenza GPU-safe `nightly_orchestrator.py::run_nightly` (error-isolation §2.8); ordine `NIGHTLY_SEQUENCE`; `install_default_jobs` auto-pulisce le standalone obsolete (idempotente).
 - **Async indexing build** (ADR 0093): systemd transient unit. Atomic write + resume checkpoint.
 - **Proposals cleanup** (ADR 0096): `runtime/proposals_cleanup.py` 4 op (move + UPDATE, NIENTE delete).
 - **Lifecycle summary** (ADR 0097): `runtime/lifecycle_summary.py` aggregatore READ-ONLY ager.
 - **Proposal auto-evaluator** (ADR 0122): `proposals_eta_index.py` + `proposal_evaluator.py` 6 killer + 7 signal. CLI `admin.proposals_cli evaluate`.
 - **Unified change_intent lifecycle** (ADR 0158): single object/FSM/UI `/admin/changes`. 6 kind. Storage sqlite. Jobs `change_intent_materialize/applier/observer`. Soft-deprecation `/admin/{proposals,promotions}`.
-- **Note operative sessione 30/5** (ADR 0167): 9 meccanismi consolidati. Salienti: scheduler builtin (`nightly_aging` 03:30, `state_reaper` 03:40 reaper UNICO; migrate SALTA builtin esistenti → `UPDATE schedule_entries`); **reaper sempre WIRED** (ogni `cleanup/sweep/purge/gc` ha call-site reale — grep i chiamanti); engine_proposer pattern H (`classify_entries(dimension=D)`→`filter_entries(where_field=D)`, MAI `kind`/`type`). Altri (timer UI, promoter grace, dialog sweep, SSE resumable, NOPASSWD restart, workflow 429) → ADR 0167.
+- **Note operative sessione 30/5** (ADR 0167): scheduler builtin (`nightly_aging` 03:30, `state_reaper` 03:40 UNICO; migrate SALTA builtin → `UPDATE schedule_entries`); reaper sempre WIRED (ogni cleanup/sweep/purge/gc ha chiamante reale); engine_proposer pattern H (`classify_entries(dimension=D)`→`filter_entries(where_field=D)`, mai `kind`/`type`). Altri → ADR 0167.
 
 **Multi-user / sync / introvertiva**
 - **Multi-user sync** (ADR 0083): `runtime/users_pairings_sync.py` idempotente al boot.
@@ -362,14 +363,14 @@ Tipi: `user`, `feedback`, `project`, `reference`. Indice in `~/.claude/projects/
 - **`tool_grammar.filter_pool_for_grammar` canonical-aware**: provider-suffixed NON rimosso se canonical equivalente assente (compat HIDE_EXECUTORS).
 
 **Strato 3 escalation**
-- **Escalation UI ≥3 ✗ consecutive** (task #30): `agent_runtime._orchestrate_strato3_escalation` early-exit. Dialog 4-choice (synth/frontier/reformulate/abandon) → `strato3_choice_dispatch` in `orchestration.py`. Strati 1+2 in `_render_rejected_pipelines_block`.
+- **Escalation UI ≥3 ✗** (task #30): `agent_runtime._orchestrate_strato3_escalation` early-exit; dialog 4-choice → `strato3_choice_dispatch` (`orchestration.py`); strati 1+2 `_render_rejected_pipelines_block`.
 
 ## 11. Decisioni di runtime
 
 - **LLM tier**: 4 tier (fast/middle/wise/frontier). **SoT canonica**: `runtime/llm_router.py::DEFAULT_TIERS` + ADR 0146 (consolidamento 18/5/2026). I tre tier locali (fast/middle/wise) puntano tutti allo stesso `llama-server :8080` (Gemma 4 26B + drafter E2B speculative); la differenza fra tier sono i parametri per-call (`think`, `num_predict`). frontier = Anthropic Opus 4.7 opt-in. Niente piu' `qwen3:8b` (ADR 0044 superseded da 0106+0146).
 - **Tool-use protocol**: nativo Ollama+Qwen+Gemma (tool_calls strutturati). NIENTE parser JSON fragile.
 - **Data piping**: `from_step: int` (schema-guided) + `{{stepN.field}}` per scalari.
-- **Intent extractor**: LLM-based gemma 4 26B middle, ~370ms/query, 100/100 su test corpus. Fallback bag-of-words. Bypass deterministico per undo.
+- **Intent extractor**: LLM-based gemma 4 26B middle, ~370ms/query, 100/100 su test corpus. Fallback bag-of-words. Bypass deterministico per undo. Compound → lista ordinata `actions=[{verb,object}]` per clausola (routing pool per-clausola in dispatch, no dizionari sinonimi).
 - **Universal helpers**: `classify_entries`, `filter_entries`, `extract_entries`, `undo_last_turn` sempre. `describe_entries` SOLO se intent.verb NOT in action_verbs. `extract_entries` (builtin inproc `runtime/extract_entries.py`, ADR-pending): testo non strutturato→record tipizzati via LLM (1:N), campi-data in ISO 8601; pipeable verso create_events/*_spreadsheet. Confine `extract` allargato §2.2.
 - **Reverse patterns**: `runtime/reverse_patterns.py` — 5 entry deterministiche (vedi §2.3).
 - **Platform policy**: `runtime/platform_policy.py` — system files cross-mount-safe + protected paths host-aware.
