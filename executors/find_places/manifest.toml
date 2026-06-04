@@ -25,7 +25,7 @@ en = "Search POIs/places/addresses by text query. USE THIS TOOL for any 'find/se
 
 [code]
 files  = ["find_places.py"]
-digest = "sha256:306d61474da2ff115c9730c0efdea23331b6d6540b215537f022243fa52e3f3e"
+digest = "sha256:af49750783e23145b6bf6a0968e21fe697a72708cd8a42810eb5432ed8f32758"
 
 [args]
 type     = "object"

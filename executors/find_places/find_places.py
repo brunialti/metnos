@@ -33,6 +33,12 @@ from geo_provider import forward_search as _geo_forward  # noqa: E402
 def invoke(args):
     queries = args.get("queries")
     max_results = int(args.get("max_results", 5))
+    # §2.4 robustezza NL→determinismo: l'LLM passa spesso un singolo string per
+    # un arg-lista (queries="ospedali" invece di ["ospedali"]). Coalesce a lista
+    # (caso degenere N=1, §2.1). Senza questo "trova gli ospedali" falliva con
+    # "Pipeline malformata" (q22 4/6).
+    if isinstance(queries, str):
+        queries = [queries]
     if not isinstance(queries, list):
         return {"ok": False, "error": _msg("ERR_ARG_NOT_LIST_OF", arg="queries", of="strings")}
     if max_results <= 0 or max_results > 50:
@@ -51,6 +57,19 @@ def invoke(args):
                 near = {"lat": loc["lat"], "lon": loc["lon"]}
     elif isinstance(near_raw, (list, tuple)) and len(near_raw) == 2:
         near = {"lat": near_raw[0], "lon": near_raw[1]}
+    # `near` come STRINGA (nome città/zona, non coordinate): l'LLM lo passa per
+    # query compound "<POI> a <city>" (es. "ospedali" + near="Padova"). Non
+    # scartarlo in silenzio (§2.8: si perderebbe il vincolo geografico) né
+    # geocodificarlo qui: foldalo nel testo di OGNI query → Nominatim risolve
+    # "ospedali Padova" nativamente (§2.4, deterministico). Se near è già
+    # coords (sopra), salta.
+    if near is None and isinstance(near_raw, str) and near_raw.strip():
+        _near_s = near_raw.strip()
+        queries = [
+            (f"{q} {_near_s}" if isinstance(q, str)
+             and _near_s.lower() not in q.lower() else q)
+            for q in queries
+        ]
     radius_km = args.get("radius_km")
     # bounded default: TRUE quando near e' presente (1/5/2026 fix).
     # Senza bounded, Nominatim viewbox e' solo bias di ranking debole
@@ -89,7 +108,16 @@ def invoke(args):
                 failed.append({"index": i, "query": q, "error_code": "WARN_EXT_SVC_DEGRADED", "error": msg("WARN_EXT_SVC_DEGRADED")})
                 continue
             rate_streak = 0
-            entries.append({"query": q, "matches": matches})
+            # §2.1/§2.6/§2.10 output FLAT pipeable: ogni MATCH è una entry (con
+            # attribuzione `query`), NON un wrapper {query, matches:[...]} — il
+            # from_step/scratchpad espande il wrapper a 1-entry-per-query e i POI
+            # nidificati si perdono (consumer a valle scriveva lista vuota, bug
+            # q22 4/6). Una query con 0 match contribuisce 0 entries (find onesto).
+            for _m in (matches or []):
+                if isinstance(_m, dict):
+                    entries.append({**_m, "query": q})
+                else:
+                    entries.append({"match": _m, "query": q})
     finally:
         pass  # Photon: no cache locale da chiudere
 
