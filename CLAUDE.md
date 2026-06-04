@@ -3,7 +3,7 @@
 > **OBBLIGO**: leggere integralmente all'inizio di ogni sessione. Codifica decisioni architetturali, convenzioni di codice e norme di processo. Punto obsoleto/errato → AGGIORNA subito.
 >
 > Mantenuto da: agente. Aggiornamento quando si fissa una nuova norma duratura. Storia in `git log CLAUDE.md`. Dettagli implementativi vivono negli ADR (`decisions/`), non qui.
-> Ultimo: 2026-06-02 v18 (taglio rilevanza adattivo μ+3σ + spreadsheet LOCALE default + guard refusal-in-args ADR 0169 §10.6; scheduler circuit-breaker ADR 0168; manifest CAPITOLI §2.5; backend resolver uniforme ADR 0165; path-aware indexing ADR 0166; norme recenti in ADR 0150-0169).
+> Ultimo: 2026-06-04 v19 (manutenzione: prosa §2.5/§7.10/§7.11 + indice §10.6 stringati a 1-riga/meccanismo, dettagli→ADR). Norme correnti negli ADR 0150-0169; changelog completo in `git log CLAUDE.md`.
 
 ---
 
@@ -56,7 +56,7 @@ Manifest TOML = "prompt del tool" per Gemma 4 26B (NON Sonnet/Opus). Modello can
 ```
 SCOPO: <1 frase: cosa fa>. PATTERN: <forma di chiamata canonica, literal: tool(arg="...", arg=N)>. NON: <anti-pattern + disambiguazione vs tool simili>. OUT: <shape output pipeable>.
 ```
-`SCOPO`+`PATTERN` sono front-loaded: il proposer li vede via `engine/proposer.py::_render_tool_pool` (estrae fino a `OUT:`). Razionale: l'LLM medium copiava la FORMA dal `PATTERN`, non inventava args (bug args 2/6/2026). Vale per: (a) ogni manifest NUOVO; (b) ogni manifest VECCHIO che si tocca per un fix. **NON** rifattorizzare in massa gli esistenti. Generazione automatica conforme: synt stage 4 (`prompts/<lang>/synt_description.j2`) + importer (`skill_codegen._description_boilerplate`). Boundary verbo §2.2 va nel capitolo `NON:` (es. "NON usare per pull request -> find_pulls_github"). Esempio canonico nuovo formato: `executors/write_files/manifest.toml`.
+`SCOPO`+`PATTERN` front-loaded: il proposer li estrae fino a `OUT:` (`engine/proposer.py::_render_tool_pool`) — l'LLM medium copia la FORMA dal `PATTERN`, non inventa args. Vale per ogni manifest NUOVO e ogni VECCHIO toccato per un fix; **NON** rifattorizzare in massa. Generazione conforme: synt stage 4 (`synt_description.j2`) + importer (`skill_codegen._description_boilerplate`). Boundary verbo §2.2 nel capitolo `NON:` (es. "NON pull request -> find_pulls_github"). Esempio canonico: `executors/write_files/manifest.toml`.
 **Multilingua** (ADR 0092): `[description]` tabella per lingua + companion `manifest.lang_state.json` traccia hash. Doc canonico: `docs/it/architecture/multilang.html`.
 
 ### 2.6 Output naming consistency
@@ -167,22 +167,10 @@ Caccia ad anglicismi (peer, trigger, goal, plumbing, gate) e calchi (costosa/mor
 **Codice deterministico > LLM se equipotente, equiefficace o se codice deterministico [sarebbe] troppo complesso.** LLM solo quando deterministico e' inefficace, troppo complesso da scrivere/mantenere, o impossibile. Anti-pattern: LLM per validare/classificare cose che `vocab.py` o un regex coprono. LLM giustificato: intent extractor (parser linguistico equipotente troppo complesso).
 
 ### 7.10 Re-sign executor dopo edit del codice
-Edit di `<executor>.py` cambia il digest sha256 del codice ma NON il `manifest.toml`. Al boot/reload, `runtime/loader.py::verify_executor` scarta silenziosamente l'executor se `declared digest != actual digest`. Workflow OBBLIGATORIO dopo ogni edit di un `.py` di executor: `python3 runtime/sign.py sign executors/<name>` (dalla repo root) + restart `metnos-http.service`. NB: `python -m runtime.sign` NON funziona (`runtime` non è un package, manca `__init__`/`__main__`); usare lo script diretto. Verificato 30/5/2026.
+Edit di `<executor>.py` cambia il digest sha256 ma NON il `manifest.toml` → `loader.py::verify_executor` scarta silenziosamente l'executor (`declared != actual`). OBBLIGATORIO dopo ogni edit `.py`: `python3 runtime/sign.py sign executors/<name>` (da repo root) + restart `metnos-http.service`. NB: `python -m runtime.sign` NON funziona (manca `__init__`/`__main__`); usare lo script diretto.
 
 ### 7.11 No path assoluti hardcoded (rename-resilient)
-
-Niente `Path("/opt/myclaw/...")` o `Path("/opt/metnos/...")` nel codice
-attivo. La install root si auto-deriva via `Path(__file__).resolve().parents[N]`
-in `runtime/config.py::PATH_ROOT`; tutti i path derivati (`PATH_RUNTIME`,
-`PATH_EXECUTORS`, `PATH_WORKSPACE`, `DB_*`) seguono. Override esplicito via
-env `METNOS_INSTALL_ROOT` (con alias deprecato `METNOS_HOME`).
-
-Razionale: la rinomina futura `/opt/myclaw → /opt/metnos` su `.33` deve
-essere zero-config. Convenzione: ogni callsite con un path assoluto verso
-la install root usa `from runtime import config as C` e poi `C.PATH_*`.
-Per i sotto-directory `models/`, `decisions/`, `install/` derivati dalla
-install root: `C.PATH_ROOT / "<sub>"`. ADR 0148 documenta le 8 categorie
-di disalignment e lo stato del refactor R2.
+Niente `Path("/opt/...")` verso la install root nel codice attivo. Root auto-derivata via `Path(__file__).resolve().parents[N]` in `runtime/config.py::PATH_ROOT`; derivati (`PATH_RUNTIME/EXECUTORS/WORKSPACE`, `DB_*`) seguono. Override env `METNOS_INSTALL_ROOT` (alias deprecato `METNOS_HOME`). Convenzione: ogni callsite usa `from runtime import config as C` → `C.PATH_*`; sotto-dir derivate `C.PATH_ROOT / "<sub>"`. Razionale: rename `/opt/myclaw→/opt/metnos` zero-config. ADR 0148: 8 categorie disalignment + stato refactor R2.
 
 ### 7.12 Output stringato preferenziale
   - Risposta media: max 3-5 righe, no preamble, no riepilogo finale.
@@ -247,7 +235,7 @@ Tipi: `user`, `feedback`, `project`, `reference`. Indice in `~/.claude/projects/
 
 **Naming / vocab / grammatica**
 - **Naming Authority** (ADR 0156): `runtime/naming_grammar.py` valida nome + genera GBNF da `vocab.py`. Single source per stage 1/telos/skill importer.
-- **Manifest linter strutturale** (ADR 0169, 3/6): `runtime/manifest_lint.py` deterministico (§7.9). Check di FORMA della scheda-tool: CAPITOLI ordinati, `PATTERN:` entro budget Proposer (`TOOL_DESC_BUDGET=260`, single-source in `engine/proposer.py`, WARN), PATTERN-args ⊆ schema (solo dalle chiamate `name(...)`), `runtime_resolved` ⟹ NON citato in contesto d'USO nel testo visibile (apprendimento 2/6; ECCEZIONE «OMETTI <arg>» = gestione corretta), output-shape per verbo (§2.6), affinity-overlap fra verbi diversi, NON→sibling esistente. Evita la *trappola semantica* codificando le "ombre strutturali" dei bug; il bias-verbo resta al verifier L6 LLM. **Wired in synt** (`synt_multistage` "stage 5.5" PRE-stage6: rigetta `error` → `rejected_lint_structural`, logga `warn`; disable `METNOS_SYNT_LINT_DISABLED=1`). CLI `python3 runtime/manifest_lint.py [--all]`. Baseline catalog: 0 error / 70 warn (legacy non-CAPITOLI, §2.5 no mass-refactor).
+- **Manifest linter strutturale** (ADR 0169): `runtime/manifest_lint.py` deterministico (§7.9) — check di FORMA scheda-tool (CAPITOLI ordinati, PATTERN entro budget, PATTERN-args ⊆ schema, `runtime_resolved` non citato in uso, output-shape per verbo §2.6, affinity-overlap, NON→sibling). Wired synt stage 5.5 (rigetta `error`). CLI `--all`. Baseline 0 error / 70 warn.
 - **Constrained generation** (ADR 0133): `runtime/tool_grammar.py` GBNF per ogni step. Loop-detect `runtime/loop_detect.py`. Opt-in `METNOS_GRAMMAR=1`.
 - **Grammar pool extensions** (ADR 0135): `final_answer` synthetic from step≥2; `_parse_tool_call_tolerant` JSON recovery; `_FROM_STEP_HELPERS` esclusi al primo step.
 - **Skill dormancy + provider qualifier** (ADR 0136): `Executor.dormant` se skill senza credenziali (`runtime/skill_credentials.py`). `tool_grammar._PROVIDER_SUFFIX_MARKERS` filtra pool.
@@ -257,7 +245,7 @@ Tipi: `user`, `feedback`, `project`, `reference`. Indice in `~/.claude/projects/
 - **`*_tasks` conditional injection**: iniettati nel pool PLANNER solo se query ha marker scheduling (`_TASKS_MARKERS` in `tool_grammar.py`).
 
 **Planner / Praxis / runtime flow**
-- **Praxis Engine — pentade** (ADR 0161): cascata `fast_path → intent_extractor → Praxis.try_match → Mētis → Noûs → Pronoia → Aporia`. 5 moduli `runtime/{praxis,praxis_propose,praxis_executor,pronoia,aporia}.py`. Wire pre-PLANNER in `agent_runtime.run_turn`.
+- **Praxis Engine — pentade** (ADR 0161): cascata `fast_path → intent_extractor → Praxis.try_match → Mētis → Noûs → Pronoia → Aporia`. Moduli `runtime/{praxis,praxis_propose,praxis_executor,pronoia,aporia}.py`, wire pre-PLANNER in `agent_runtime.run_turn`.
 - **ClusterLLM + classify_fail** (ADR 0162): estende 0161. `runtime/praxis_cluster.py` BGE-M3 + cosine + champion/challenger. `runtime/pronoia_classify_fail.py` dispatch ✗. Constants in `runtime/praxis_constants.py`.
 - **persons aggregator + ${RUNTIME:*}** (ADR 0163): `get_persons` (scheda) vs `read_persons` (profilo, JOIN persons+users.db). Placeholder `${RUNTIME:key}` in `praxis_executor.py` con whitelist `{actor, lang, channel}`. `compute_intent_sig` con scope marker.
 - **Pipeline shape FSM** (ADR 0154): `runtime/pipeline_shape.py` invariante `E+ (F|A)?` + hook in `agent_runtime`.
@@ -296,9 +284,9 @@ Tipi: `user`, `feedback`, `project`, `reference`. Indice in `~/.claude/projects/
 - **Plugin esterni** (ADR 0132 **DEPRECATED**): superseded da skill imported + `METNOS_HIDE_EXECUTORS`. `plugin_loader.py` rimosso.
 - **Indici di dominio** (ADR 0086, image superseded by 0117): pattern `{create,find}_<dom>_indices`. Storage `~/.local/share/metnos/index/<dom>/<sha8>/<idx>/`.
 - **Unified image enrichment index** (ADR 0117): single asse `unified/` per corpus. Schema v4 in `runtime/index_schema.py`. Pipeline EXIF+ArcFace+VLM+BGE-M3.
-- **Intelligent path-aware indexing** (ADR 0166): cartella-unica classificata via LLM-testo (`folder_path_context` in `create_images_indices.py`) → campo `path_context` fuso nell'embedding testuale. Abilita query di categoria astratta ("foto dei viaggi"). Parse temporale + escape coseno in `find_images_indices.py`. Re-embed retroattivo `jobs/reembed_path_context.py`.
-- **Taglio di rilevanza adattivo** (ADR 0169): `runtime/relevance_cut.py::adaptive_relevance_threshold` — gli embedding densi collassano il coseno in banda stretta ad alta media (μ~0.6) → soglia ASSOLUTA inutile (99% del corpus la supera). Taglio RELATIVO per-query `μ+3σ` (regola 3-sigma) + `floor` anti-rumore. Wire `find_images_indices` (gate sul coseno, bm25 solo per ranking). Funzione core riusabile da ogni retrieval scored.
-- **Spreadsheet LOCALE di default** (ADR 0169): `backends/files/local.py::{create,write,append,read}_spreadsheet` (.xlsx openpyxl / .csv). I 3 dispatcher `*_files_spreadsheet` defaultano `client="local"` (§10.3/§2.2), Google opt-in. `spreadsheet_id` locale == PATH file, allegabile a `send_messages`.
+- **Intelligent path-aware indexing** (ADR 0166): `folder_path_context` in `create_images_indices.py` → campo `path_context` fuso nell'embedding testuale (query di categoria astratta). Parse temporale + escape coseno in `find_images_indices.py`. Re-embed `jobs/reembed_path_context.py`.
+- **Taglio di rilevanza adattivo** (ADR 0169): `runtime/relevance_cut.py::adaptive_relevance_threshold` — taglio RELATIVO per-query `μ+3σ` + `floor` (il coseno denso collassa in banda stretta → soglia assoluta inutile). Wire `find_images_indices` (gate sul coseno). Riusabile da ogni retrieval scored.
+- **Spreadsheet LOCALE di default** (ADR 0169): `backends/files/local.py::{create,write,append,read}_spreadsheet` (.xlsx/.csv). I 3 dispatcher `*_files_spreadsheet` defaultano `client="local"` (§10.3), Google opt-in. `spreadsheet_id` locale == PATH file.
 - **Guard refusal-in-args** (ADR 0169): `agent_runtime.validate_args` + `_LLM_REFUSAL_MARKERS` (IT+EN) — un rifiuto/meta-testo LLM trapelato come VALORE di un arg = step malformato, non raggiunge l'executor (§2.8). Universale, deterministico §7.9.
 - **Named persons registry** (ADR 0113): `~/.local/share/metnos/persons.sqlite` (slug case+accent-insensitive). 4 executor `*_persons` con ambiguity → dialog `kind="choice_with_preview"`.
 - **GitHub provider first-party** (ADR 0141): 13 executor `*_github`. Watcher scheduler v2 + dedup `jobs/github_dedup.py`. Config `~/.config/metnos/github_watched_repos.json`.
@@ -324,6 +312,7 @@ Tipi: `user`, `feedback`, `project`, `reference`. Indice in `~/.claude/projects/
 - **Output formatter deterministico** (ADR 0095): `runtime/output_format.py` channel-agnostic markdown. NIENTE LLM.
 - **Channel-aware HTML** (ADR 0109+0110): `runtime/html_sanitizer.py::{to_safe_html, to_safe_html_full}`. Dispatch in `http_routes_agent::_safe_final_html`.
 - **Prompt-as-data + multilingua** (ADR 0092): `runtime/prompts/<lang>/<role>.j2`. `prompt_loader.get/compose()`. CLI `metnos-prompts`. Sub-dir lingua secondaria deve avere stesso set di `it/` (boot check).
+- **Token-data nei prompt non-Jinja** (§7.11-per-le-date): `runtime/date_tokens.py::substitute_date_tokens` risolve `{{ current_year }}`/`{{ current_date }}` deterministicamente dove Jinja non arriva — sezioni `.yaml` (`prompt_loader._render_yaml_section`) e description manifest (`engine/proposer._render_tool_pool`). Convenzione unica .j2/.yaml/.toml; il manifest resta col token LETTERALE (no re-sign §7.10).
 - **Prompt architecture A+B+C + linter** (§6.1): split `planner.j2` in `_core` + sezioni + `_footer`. Linter `runtime/prompts_lint.py`. Daemon `i18n_translate_pending.py`.
 - **Report runtime user-facing i18n** (ADR 0104): chiavi `MSG_*` in `i18n.sqlite` IT+EN.
 - **i18n pipeline strutturale** (ADR 0152): subset chiavi nel synt stage 5; daemon `_materialize_auto_synth_stubs` con `auto_translated` flag.
@@ -340,17 +329,14 @@ Tipi: `user`, `feedback`, `project`, `reference`. Indice in `~/.claude/projects/
 **Scheduler / lifecycle / unified changes**
 - **Scheduler v2 asyncio co-host** (ADR 0112): `runtime/scheduler_v2/` single Task. Trigger grammar `daily@HH:MM`/`every_N{s,m,h}`/`at:<ISO>`/`cron:<5-field>`. Callbacks via `builtin_callbacks.install_default_callbacks`.
 - **Scheduler gate user-activity** (ADR 0074): task notturni age-based sospesi se user idle. Sorgente turns JSONL.
-- **Scheduler circuit-breaker** (ADR 0168): N=3 fallimenti CONSECUTIVI di un task ricorrente → auto-disable + notifica owner 3-opzioni (continua/sospendi/cancella). Colonna `consecutive_failures` + `daemon._fire_entry` hook `on_circuit_break` → `recurring_tasks._notify_circuit_break`; dispatch bottoni `channels/daemon._handle_scheduler_callback` (`sched:<azione>:<entry>`). Env soglia `METNOS_SCHED_CIRCUIT_BREAK_AFTER`.
+- **Scheduler circuit-breaker** (ADR 0168): N=3 fail CONSECUTIVI di task ricorrente → auto-disable + notifica owner 3-opzioni. Colonna `consecutive_failures`, hook `daemon._fire_entry::on_circuit_break` → `recurring_tasks._notify_circuit_break`; dispatch `channels/daemon._handle_scheduler_callback`.
+- **Nightly maintenance orchestrator** (ADR 0167 ext): i 14 task housekeeping notturni = UNA entry `nightly_maintenance` (daily@03:00) eseguiti in sequenza GPU-safe da `runtime/nightly_orchestrator.py::run_nightly` (error-isolation §2.8, sync via executor). Single-source ordine `NIGHTLY_SEQUENCE`; `install_default_jobs` auto-pulisce le entry standalone obsolete (idempotente). I 14 callback restano registrati/invocabili.
 - **Async indexing build** (ADR 0093): systemd transient unit. Atomic write + resume checkpoint.
 - **Proposals cleanup** (ADR 0096): `runtime/proposals_cleanup.py` 4 op (move + UPDATE, NIENTE delete).
 - **Lifecycle summary** (ADR 0097): `runtime/lifecycle_summary.py` aggregatore READ-ONLY ager.
 - **Proposal auto-evaluator** (ADR 0122): `proposals_eta_index.py` + `proposal_evaluator.py` 6 killer + 7 signal. CLI `admin.proposals_cli evaluate`.
 - **Unified change_intent lifecycle** (ADR 0158): single object/FSM/UI `/admin/changes`. 6 kind. Storage sqlite. Jobs `change_intent_materialize/applier/observer`. Soft-deprecation `/admin/{proposals,promotions}`.
-- **Note operative sessione 30/5** (ADR 0167): dettaglio env/gotcha consolidato. 9 meccanismi, pointer 1-riga qui sotto:
-  - **Scheduler builtin consolidati**: `nightly_aging` 03:30, `state_reaper` 03:40 (reaper UNICO stato persistente), GPU-heavy `every_72h`, `i18n` `every_6h`. GOTCHA: la migrate SALTA i builtin esistenti → `UPDATE schedule_entries`, NON `_BUILTIN_JOBS`.
-  - **Reaper sempre WIRED** (regola): ogni `cleanup*/sweep*/purge*/gc*` DEVE avere call-site reale (grep i chiamanti, no assunzioni). Reaper mai chiamato = stato che accumula in silenzio.
-  - **engine_proposer pattern H**: `classify_entries(dimension=D)` → `filter_entries(where_field=D, where_value=…)`, MAI `kind`/`type` (→ 0 risultati). In `engine_proposer.j2`.
-  - **Altri** (dettaglio in ADR 0167): UI gestione timer (`/admin/timers`) · promoter kill-switch grace (osserva-di-default) · dialog TTL+sweep (`dialog_pending_sweep` every_1m) · chat.html SSE resumable · NOPASSWD restart metnos-http + VLM env · workflow rate-limit 429 (ondate da ~5).
+- **Note operative sessione 30/5** (ADR 0167): 9 meccanismi consolidati. Salienti: scheduler builtin (`nightly_aging` 03:30, `state_reaper` 03:40 reaper UNICO; migrate SALTA builtin esistenti → `UPDATE schedule_entries`); **reaper sempre WIRED** (ogni `cleanup/sweep/purge/gc` ha call-site reale — grep i chiamanti); engine_proposer pattern H (`classify_entries(dimension=D)`→`filter_entries(where_field=D)`, MAI `kind`/`type`). Altri (timer UI, promoter grace, dialog sweep, SSE resumable, NOPASSWD restart, workflow 429) → ADR 0167.
 
 **Multi-user / sync / introvertiva**
 - **Multi-user sync** (ADR 0083): `runtime/users_pairings_sync.py` idempotente al boot.
