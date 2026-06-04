@@ -1,27 +1,30 @@
 """Test del callback `proposals_eta_aggregate` (ADR 0122).
 
-Verifica che (a) la job entry sia registrata in _BUILTIN_JOBS con il
-trigger daily@04:30, (b) la callback venga installata con la giusta
-chiave, (c) la callback accetti payload e ritorni un dict shape-compatibile.
+Verifica che (a) il task sia consolidato sotto `nightly_maintenance`
+(ADR 0167 ext, 2026-06-04): non piu' entry standalone ma membro della
+NIGHTLY_SEQUENCE, callback ancora registrato e invocabile per chiave;
+(b) la callback venga installata con la giusta chiave; (c) la callback
+accetti payload e ritorni un dict shape-compatibile.
 """
 from __future__ import annotations
 
 from scheduler_v2.builtin_callbacks import (
     _BUILTIN_JOBS,
+    _NIGHTLY_CONSOLIDATED,
     install_default_callbacks,
     task_proposals_eta_aggregate,
 )
 from scheduler_v2.daemon import SchedulerDaemon
 
 
-def test_proposals_eta_aggregate_in_builtin_jobs():
+def test_proposals_eta_aggregate_consolidated_under_nightly():
     by_name = {j["name"]: j for j in _BUILTIN_JOBS}
-    assert "proposals_eta_aggregate" in by_name
-    job = by_name["proposals_eta_aggregate"]
-    # Invariante (non l'orario esatto, dettaglio di de-collisione che cambia —
-    # es. ADR 0167 04:30→04:25): trigger giornaliero valido + callback_key.
-    assert job["trigger"].startswith("daily@")
-    assert job["callback_key"] == "proposals_eta_aggregate"
+    # Consolidato (2026-06-04): NON e' piu' una schedule entry standalone...
+    assert "proposals_eta_aggregate" not in by_name
+    # ...ma e' membro della sequenza notturna eseguita da nightly_maintenance.
+    assert "proposals_eta_aggregate" in _NIGHTLY_CONSOLIDATED
+    assert "nightly_maintenance" in by_name
+    assert by_name["nightly_maintenance"]["trigger"].startswith("daily@")
 
 
 def test_proposals_eta_aggregate_callback_registered(db_path):

@@ -261,6 +261,38 @@ _BUILTIN_JOBS: list[dict[str, Any]] = [
 ]
 
 
+# --- Nightly consolidation (2026-06-04, ADR 0167 ext) --------------------
+# I 14 task housekeeping notturni erano entry separate (01:00–07:00) che
+# affollavano la dashboard. Consolidati in UNA entry `nightly_maintenance`
+# (daily@03:00): il callback li esegue in sequenza ordinata via
+# nightly_orchestrator (GPU-safe sequenziale, error-isolation §2.8). I 14
+# callback restano REGISTRATI in install_default_callbacks (invocabili per
+# chiave) — l'orchestratore li sequenzia, non li reimplementa.
+# Single-source di elenco+ordine: nightly_orchestrator.NIGHTLY_SEQUENCE (§7.3).
+import sys as _sys_nm
+from pathlib import Path as _Path_nm
+_sys_nm.path.insert(0, str(_Path_nm(__file__).resolve().parents[1]))  # runtime/ su path
+from nightly_orchestrator import NIGHTLY_SEQUENCE as _NIGHTLY_SEQUENCE
+
+_NIGHTLY_CONSOLIDATED: frozenset[str] = frozenset(_NIGHTLY_SEQUENCE)
+
+_BUILTIN_JOBS = [
+    j for j in _BUILTIN_JOBS if j["callback_key"] not in _NIGHTLY_CONSOLIDATED
+] + [
+    {
+        "name": "nightly_maintenance",
+        "trigger": "daily@03:00",
+        "callback_key": "nightly_maintenance",
+        "description": (
+            "Orchestratore manutenzione notturna: esegue in sequenza ordinata "
+            "i 14 task housekeeping (ex-entry separate 01:00–07:00) via "
+            "nightly_orchestrator. GPU-safe (sequenziale), error-isolation §2.8. "
+            "I singoli callback restano invocabili per chiave."
+        ),
+    }
+]
+
+
 def task_images_index_refresh() -> dict:
     """Refresh incrementale dell'indice unificato immagini (ADR 0117).
 
@@ -593,7 +625,7 @@ def install_default_callbacks(scheduler) -> None:
     cb.register(
         "i18n_translate_pending",
         task_i18n_translate_pending,
-        "Traduce 20 righe pending del DB i18n (daily@02:00, tier wise default)",
+        "Traduce 20 righe pending del DB i18n (every_6h, tier wise default)",
         replace=True,
     )
 
@@ -739,6 +771,20 @@ def install_default_callbacks(scheduler) -> None:
         replace=True,
     )
 
+    # Nightly maintenance orchestrator (2026-06-04): UNA entry daily@03:00 che
+    # esegue in sequenza i 14 task housekeeping via nightly_orchestrator. I loro
+    # callback sono gia' registrati sopra (invocabili per chiave). is_async=True
+    # auto-rilevato da register() → il daemon fa `await fn(payload)`.
+    async def _task_nightly_maintenance(payload=None):
+        import nightly_orchestrator
+        return await nightly_orchestrator.run_nightly(cb, payload)
+    cb.register(
+        "nightly_maintenance",
+        _task_nightly_maintenance,
+        "Orchestratore housekeeping notturno: 14 task in sequenza (daily@03:00)",
+        replace=True,
+    )
+
     # User-task callback: payload is the full recurring_tasks record dict
     # (query, channel, actor, chat_id, name, label).
     from recurring_tasks import (  # type: ignore
@@ -771,6 +817,19 @@ def install_default_jobs(scheduler) -> int:
     inserted = 0
     now = time.time()
     tz_name = getattr(scheduler, "tz_name", "Europe/Rome")
+
+    # Consolidation cleanup (2026-06-04, ADR 0167 ext): rimuove le entry
+    # standalone obsolete dei 14 task housekeeping ora orchestrati da
+    # `nightly_maintenance`. Senza, dopo il seed girerebbero SIA loro SIA
+    # l'orchestratore (doppia esecuzione). Idempotente (dopo il primo boot
+    # non resta nulla). Guard origin=="system" + callback_key: i task UTENTE
+    # usano callback_key "run_user_query", mai uno dei 14 → mai toccati.
+    removed = 0
+    for ent in storage.list_all():
+        if ent.origin == "system" and ent.callback_key in _NIGHTLY_CONSOLIDATED:
+            if storage.delete(ent.name):
+                removed += 1
+
     for spec in _BUILTIN_JOBS:
         if storage.get_by_name(spec["name"]) is not None:
             continue
@@ -786,6 +845,6 @@ def install_default_jobs(scheduler) -> int:
         )
         storage.upsert(entry)
         inserted += 1
-    if inserted:
+    if inserted or removed:
         scheduler.kick()
     return inserted

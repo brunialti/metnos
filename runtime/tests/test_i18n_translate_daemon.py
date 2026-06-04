@@ -338,7 +338,7 @@ class TestI18nTranslateTask(unittest.TestCase):
         `_BUILTIN_JOBS` + `install_default_jobs` (idempotent INSERT-OR-IGNORE).
         """
         from scheduler_v2.daemon import SchedulerDaemon
-        from scheduler_v2.builtin_callbacks import install_default_jobs
+        from scheduler_v2.builtin_callbacks import _BUILTIN_JOBS, install_default_jobs
         db_path = self._tmpdir / "scheduler_seed.sqlite"
         d = SchedulerDaemon(db_path)
         install_default_jobs(d)
@@ -347,7 +347,11 @@ class TestI18nTranslateTask(unittest.TestCase):
         matches = [e for e in entries if e.name == "i18n_translate_pending"]
         self.assertEqual(len(matches), 1)
         self.assertEqual(matches[0].callback_key, "i18n_translate_pending")
-        self.assertEqual(matches[0].trigger, "daily@02:00")
+        # Trigger = quello dichiarato in _BUILTIN_JOBS (single source §7.3):
+        # l'orario esatto e' un dettaglio di de-collisione (era daily@02:00,
+        # oggi every_6h per ADR 0167) — l'invariante e' che il seed lo rispetti.
+        spec = next(j for j in _BUILTIN_JOBS if j["name"] == "i18n_translate_pending")
+        self.assertEqual(matches[0].trigger, spec["trigger"])
         self.assertTrue(matches[0].recurring)
 
 

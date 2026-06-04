@@ -27,6 +27,7 @@ UTENTE (github_watcher e i `user_*`): restano entry separate.
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 
 log = logging.getLogger("metnos.nightly_orchestrator")
@@ -58,6 +59,7 @@ async def run_nightly(callbacks, payload: dict | None = None) -> dict:
     Ritorna `{ok, ran: {key: "ok"|"missing"|"error: ..."}, ok_count, fail_count}`.
     """
     ran: dict[str, str] = {}
+    loop = asyncio.get_running_loop()
     for key in NIGHTLY_SEQUENCE:
         info = callbacks.get(key) if callbacks is not None else None
         if info is None:
@@ -65,9 +67,13 @@ async def run_nightly(callbacks, payload: dict | None = None) -> dict:
             log.warning("nightly_maintenance: callback %r non registrato, skip", key)
             continue
         try:
-            res = info.fn(None)
+            # Sync → offload su executor (come daemon._invoke): un callback sync
+            # pesante (image refresh GPU) NON deve bloccare l'event loop per la
+            # finestra notturna. Sequenziale per costruzione (un await per volta).
             if getattr(info, "is_async", False):
-                res = await res
+                res = await info.fn(None)
+            else:
+                res = await loop.run_in_executor(None, info.fn, None)
             ran[key] = "ok"
             log.info("nightly_maintenance: %s ok", key)
         except Exception as e:  # §2.8 error-isolation: un fallimento non aborta
