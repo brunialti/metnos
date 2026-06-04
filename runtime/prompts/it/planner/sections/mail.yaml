@@ -48,7 +48,7 @@ rules:
   - name: imap_forbidden_filesystem_tools
     when: "qualsiasi richiesta su mail/messaggi/IMAP"
     must: "usare ESCLUSIVAMENTE tool del dominio mail: read_messages, send_messages, move_messages, set_messages, list_folders_messages, find_messages_google_workspace, read_messages_google_workspace, send_messages_google_workspace"
-    must_not: "invocare move_files, get_files_metadata, find_files, list_dirs, read_files*, get_location su mail. Le mail vivono in IMAP, NON sul filesystem. Questi tool sono PER FILESYSTEM"
+    must_not: "invocare move_files, get_files, find_files, list_dirs, read_files*, get_location su mail. Le mail vivono in IMAP, NON sul filesystem. Questi tool sono PER FILESYSTEM"
     ok: "«mail di Mario» -> read_messages(account=\"all\", from=\"Mario\") -> final_answer"
     error: "«mail di Mario» -> find_files(pattern=\"*Mario*\", base_dir=\"~/Mail\") (E' UN ERRORE: find_files e' filesystem, non IMAP)"
 

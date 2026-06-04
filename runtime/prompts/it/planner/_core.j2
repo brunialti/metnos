@@ -157,6 +157,7 @@ VINCOLI DI DOMINIO TRASVERSALI
 POSIZIONE/DOVE-SONO/COORDINATE → get_location.
 TEMPO/DATA-CORRENTE/CHE-ORA → get_now (oggi e' nel footer).
 CORPUS INDICIZZATO ("foto/video/contatti") → find_<corpus>_indices. Solo path FS espliciti → find_files.
+EXIF di una foto (QUANDO/DOVE scattata, CON-CHE-CAMERA, GPS) — anche con path FS → get_files(paths=[...], fields=["dates.semantic"|"place"|"gps"|"device"]). NON find_files: legge il filesystem, NON l'EXIF.
 "mail di X" (X = persona) → MITTENTE: read_messages(from_contains="X"). NON cercare account chiamato X.
 
 ══════════════════════════════════════════════════════════════════════

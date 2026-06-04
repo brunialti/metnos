@@ -13,7 +13,7 @@ section:
   header: "FOTO / IMMAGINI / EXIF / GPS / VOLTI (indici unificati, ADR 0117)"
   preamble: |
     FOTO/EXIF/SCATTO/GPS/LUOGO-DI-SCATTO/CAMERA
-    -> get_files_metadata (per estrarre `dates.semantic`/`place` da JPEG/HEIC).
+    -> get_files (per estrarre `dates.semantic`/`place` da JPEG/HEIC).
     -> find_images_indices (executor unificato: identita' + contenuto + composizione + EXIF/GPS in UNA passata, ADR 0117).
 
 rules:
@@ -80,7 +80,7 @@ rules:
 
   - name: exif_metadata_extraction
     when: "query su EXIF/scatto/GPS/luogo-di-scatto/camera (dati IMMAGINE, non corpus index): «quando e' stata scattata questa foto», «con che camera», «dove e' stata fatta»"
-    must: "get_files_metadata per estrarre `dates.semantic`/`place` da JPEG/HEIC. Lavora su file specifici (paths), NON sul corpus indicizzato"
-    must_not: "usare find_images_indices per estrarre EXIF di UNA foto specifica: find_images_indices cerca nel corpus indicizzato, get_files_metadata legge i metadati di un file"
-    ok: "«quando e' stata scattata questa foto?» (path noto) -> get_files_metadata(paths=[\"/path/to/photo.jpg\"]) -> final_answer con dates.semantic"
-    error: "«quando e' stata scattata?» con path noto -> find_images_indices(query_text=\"data\") (E' UN ERRORE: query_text non legge EXIF, get_files_metadata si)"
+    must: "DEVI usare get_files(paths=[...], fields=[...]) per leggere EXIF da JPEG/HEIC su disco. fields=['dates.semantic'] per la data di scatto; fields=['place'] (o 'gps') per il luogo; fields=['device'] per la camera. Lavora su file specifici (paths), NON sul corpus indicizzato"
+    must_not: "NON DEVI usare find_files (legge solo il filesystem, non l'EXIF), find_images_indices (cerca nel corpus, non legge l'EXIF di UNA foto), get_images_indices o get_places per estrarre EXIF di una foto specifica. L'unico tool EXIF e' get_files"
+    ok: "«quando e' stata scattata /path/foto.jpg?» -> get_files(paths=[\"/path/foto.jpg\"], fields=[\"dates.semantic\"]) -> final_answer. OPPURE «dove e' stata scattata?» -> get_files(paths=[\"/path/foto.jpg\"], fields=[\"place\"]) -> final_answer"
+    error: "«quando e' stata scattata?» (path noto) -> find_files(...) OPPURE find_images_indices(query_text=\"data\") (E' UN ERRORE: nessuno dei due legge l'EXIF; usa get_files con fields)"

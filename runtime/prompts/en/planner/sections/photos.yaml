@@ -13,7 +13,7 @@ section:
   header: "PHOTOS / IMAGES / EXIF / GPS / FACES (unified indices, ADR 0117)"
   preamble: |
     PHOTO/EXIF/CAPTURE/GPS/PLACE-OF-CAPTURE/CAMERA
-    -> get_files_metadata (to extract `dates.semantic`/`place` from JPEG/HEIC).
+    -> get_files (to extract `dates.semantic`/`place` from JPEG/HEIC).
     -> find_images_indices (unified executor: identity + content + composition + EXIF/GPS in ONE pass, ADR 0117).
 
 rules:
@@ -80,7 +80,7 @@ rules:
 
   - name: exif_metadata_extraction
     when: "query on EXIF/capture/GPS/place-of-capture/camera (IMAGE data, not corpus index): «when was this photo taken», «with what camera», «where was it taken»"
-    must: "get_files_metadata to extract `dates.semantic`/`place` from JPEG/HEIC. Works on specific files (paths), NOT on indexed corpus"
-    must_not: "use find_images_indices to extract EXIF of ONE specific photo: find_images_indices searches the indexed corpus, get_files_metadata reads file metadata"
-    ok: "«when was this photo taken?» (path known) -> get_files_metadata(paths=[\"/path/to/photo.jpg\"]) -> final_answer with dates.semantic"
-    error: "«when was it taken?» with known path -> find_images_indices(query_text=\"date\") (THIS IS AN ERROR: query_text does not read EXIF, get_files_metadata does)"
+    must: "DEVI use get_files(paths=[...], fields=[...]) to read EXIF from JPEG/HEIC on disk. fields=['dates.semantic'] for capture date; fields=['place'] (or 'gps') for location; fields=['device'] for camera. Works on specific files (paths), NOT on the indexed corpus"
+    must_not: "NON DEVI use find_files (reads only the filesystem, not EXIF), find_images_indices (searches the corpus, does not read EXIF of ONE photo), get_images_indices or get_places to extract EXIF of a specific photo. The only EXIF tool is get_files"
+    ok: "«when was /path/photo.jpg taken?» -> get_files(paths=[\"/path/photo.jpg\"], fields=[\"dates.semantic\"]) -> final_answer. OR «where was it taken?» -> get_files(paths=[\"/path/photo.jpg\"], fields=[\"place\"]) -> final_answer"
+    error: "«when was it taken?» (path known) -> find_files(...) OR find_images_indices(query_text=\"date\") (THIS IS AN ERROR: neither reads EXIF; use get_files with fields)"

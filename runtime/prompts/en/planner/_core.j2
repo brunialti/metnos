@@ -147,6 +147,7 @@ CROSS-CUTTING DOMAIN CONSTRAINTS
 LOCATION/WHERE-AM-I/COORDINATES → get_location.
 TIME/CURRENT-DATE → get_now (today is in footer).
 INDEXED CORPUS ("photos/videos/contacts") → find_<corpus>_indices. Only explicit FS path → find_files.
+EXIF of a photo (WHEN/WHERE taken, WITH-WHAT-CAMERA, GPS) — even with an FS path → get_files(paths=[...], fields=["dates.semantic"|"place"|"gps"|"device"]). NOT find_files: it reads the filesystem, NOT the EXIF.
 "X's mail" (X = person) → SENDER: read_messages(from_contains="X"). Do NOT search for account named X.
 
 ══════════════════════════════════════════════════════════════════════
