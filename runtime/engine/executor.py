@@ -953,8 +953,14 @@ class Executor:
             # find_urls→describe_entries). Auto-wire deterministico: se manca
             # `entries`, eredita la lista dall'ultimo step che ne ha prodotta
             # una (equivale alla precursor-injection del path legacy).
-            if (step.tool in _ENTRIES_CONSUMERS and not args.get("entries")
-                    and result.steps):
+            # NB: `entries` può arrivare come PLACEHOLDER non risolto (anti-pattern
+            # §4.1 `entries:"{{stepN.entries}}"` invece di from_step) → è truthy ma
+            # verrebbe droppato più sotto (1060) lasciando l'helper a 0 entries
+            # (bug q13 4/6: describe_entries terminale ok=False → terminator). Va
+            # trattato come ASSENTE: l'auto-wire lo ripesca dallo scratchpad.
+            if (step.tool in _ENTRIES_CONSUMERS and result.steps
+                    and (not args.get("entries")
+                         or _detect_unresolved_placeholders(args.get("entries")))):
                 for _prev in reversed(result.steps):
                     _pr = _prev.result if isinstance(_prev.result, dict) else {}
                     _pe = _pr.get("entries")
