@@ -15,7 +15,7 @@ en = "Enriches a list of photo files on a filesystem (local paths like /home/...
 
 [code]
 files  = ["get_files.py"]
-digest = "sha256:ed06506d3dda0daff297441aede3ba8cfe9e0e17740bff96ef0ed17ff762cb98"
+digest = "sha256:ad909bed04be984390beac9ce970a8c781bbee03d4e47a70cb3aeb2e200cc982"
 
 [args]
 type     = "object"
@@ -42,8 +42,8 @@ type        = "array"
 items       = { type = "string" }
 
 [args.properties.fields.description]
-it = "Lista di metadata da estrarre. Valori validi: 'dates.semantic', 'dates.created', 'dates.modified', 'gps', 'place', 'device', 'image_dimensions'. In alternativa la stringa 'all' per tutti. Default: ['dates.semantic']. Esempio per ordinamento foto con luogo: ['dates.semantic', 'place']."
-en = "List of metadata to extract. Valid values: 'dates.semantic', 'dates.created', 'dates.modified', 'gps', 'place', 'device', 'image_dimensions'. Alternatively, the string 'all' for all. Default: ['dates.semantic']. Example for sorting photos with location: ['dates.semantic', 'place']."
+it = "Lista di metadata da estrarre. Valori validi: 'size' (dimensione file in byte → `size_bytes`, vale per QUALSIASI file), 'dates.semantic', 'dates.created', 'dates.modified', 'gps', 'place', 'device', 'image_dimensions' (ultimi 5 = EXIF, solo foto). In alternativa la stringa 'all'. Default: ['dates.semantic']. Esempio dimensione: ['size']; foto con luogo: ['dates.semantic', 'place']."
+en = "List of metadata to extract. Valid values: 'size' (file size in bytes → `size_bytes`, works for ANY file), 'dates.semantic', 'dates.created', 'dates.modified', 'gps', 'place', 'device', 'image_dimensions' (last 5 = EXIF, photos only). Alternatively the string 'all'. Default: ['dates.semantic']. Example size: ['size']; photo with location: ['dates.semantic', 'place']."
 
 [[capabilities]]
 name = "fs:read"

@@ -44,7 +44,7 @@ sys.path.insert(0, os.environ.get("METNOS_RUNTIME") or next(
 from messages import get as msg
 _msg = msg  # alias: alcuni rami di validazione usano _msg (unifica i nomi)
 
-ALL_FIELDS =["dates.semantic", "dates.created", "dates.modified", "gps", "place", "device", "image_dimensions"]
+ALL_FIELDS =["dates.semantic", "dates.created", "dates.modified", "gps", "place", "device", "image_dimensions", "size"]
 
 
 def _exif(path):
@@ -168,6 +168,7 @@ def invoke(args):
     need_gps = need_geo or "gps" in fset
     need_device = "device" in fset
     need_dims = "image_dimensions" in fset
+    need_size = "size" in fset
     need_d_sem = "dates.semantic" in fset
     need_d_cre = "dates.created" in fset
     need_d_mod = "dates.modified" in fset
@@ -237,6 +238,11 @@ def invoke(args):
             out["device"] = _read_device(exif)
         if need_dims:
             out["image_dimensions"] = _read_image_dimensions(path)
+        if need_size:
+            try:
+                out["size_bytes"] = path.stat().st_size
+            except OSError:
+                out["size_bytes"] = None
 
         enriched.append(out)
 
