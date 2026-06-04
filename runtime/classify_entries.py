@@ -330,6 +330,32 @@ CLASSIFY_ENTRIES_TOOL = {
 }
 
 
+def _resolve_open_field(entries: list, dimension: str) -> str | None:
+    """Trova il campo delle entries che realizza una `dimension` APERTA
+    (group-by-field). Match lessicale puro sui NOMI dei campi presenti
+    (esatto → case-insensitive → substring bidirezionale): nessun dizionario
+    di sinonimi NL. Ritorna il nome-campo o None se nessuno combacia."""
+    keys: list[str] = []
+    for e in entries[:20]:
+        if isinstance(e, dict):
+            for k in e.keys():
+                if isinstance(k, str) and k not in keys:
+                    keys.append(k)
+    if not keys:
+        return None
+    d = (dimension or "").strip().lower()
+    if not d:
+        return None
+    for k in keys:                       # esatto / case-insensitive
+        if k.lower() == d:
+            return k
+    for k in keys:                       # substring bidirezionale
+        kl = k.lower()
+        if d in kl or kl in d:
+            return k
+    return None
+
+
 def handle_classify_entries(args, *, verbose: bool = False) -> dict:
     entries = (args or {}).get("entries")
     if not isinstance(entries, list):
@@ -339,10 +365,39 @@ def handle_classify_entries(args, *, verbose: bool = False) -> dict:
     classes = (args or {}).get("classes")
     if not classes:
         classes = list(DEFAULT_CLASSES.get(dimension) or [])
+    # Dimensione APERTA (4/6): nessun set CHIUSO di classi (es. dimension=
+    # 'sender'/'domain'/'topic' → valori illimitati, data-derivati).
+    # classify_entries è per tassonomie chiuse; su un campo aperto NON va in
+    # errore (romperebbe la pipeline, §2.8/§2.11). Se le entries hanno quel
+    # campo, raggruppa DETERMINISTICAMENTE etichettando ogni entry col proprio
+    # valore (group-by-field, no LLM, §7.9); altrimenti passthrough onesto con
+    # nota (il describe a valle riassume). Universale, ZERO dizionari sinonimi.
     if not classes:
-        return {"ok": False,
-                "error": f"missing 'classes' for dimension {dimension!r}: "
-                         f"no defaults available, caller must provide"}
+        ent_list = entries if isinstance(entries, list) else []
+        _kind = _detect_kind(ent_list, (args or {}).get("data_kind"))
+        result_entries = [dict(e) if isinstance(e, dict) else e for e in ent_list]
+        field = _resolve_open_field(ent_list, dimension)
+        if field:
+            counts: dict = {}
+            for e in result_entries:
+                if isinstance(e, dict):
+                    val = e.get(field)
+                    lbl = str(val).strip() if val not in (None, "") else "(unknown)"
+                    e[dimension] = lbl
+                    counts[lbl] = counts.get(lbl, 0) + 1
+            return {"ok": True, "entries": result_entries, "counts": counts,
+                    "dimension": dimension, "classes": sorted(counts),
+                    "kind": _kind, "open_dimension": True,
+                    "grouped_by_field": field, "pre_filtered": 0,
+                    "llm_classified": 0, "in_tokens": 0, "out_tokens": 0,
+                    "latency_ms": 0}
+        return {"ok": True, "entries": result_entries, "counts": {},
+                "dimension": dimension, "classes": [], "kind": _kind,
+                "open_dimension": True,
+                "note": (f"dimension {dimension!r} is open-ended and no matching "
+                         f"field was found; entries returned unchanged"),
+                "pre_filtered": 0, "llm_classified": 0, "in_tokens": 0,
+                "out_tokens": 0, "latency_ms": 0}
     if not isinstance(classes, list) or not all(isinstance(c, str) for c in classes):
         return {"ok": False, "error": "'classes' must be list[str]"}
 
