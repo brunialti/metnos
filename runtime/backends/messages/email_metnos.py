@@ -80,11 +80,13 @@ def _parse_addr(addr: str) -> str | None:
     return m.group(1).lower() if m else None
 
 
-def _query_mx(domain: str, *, timeout_s: int = 3) -> tuple[bool, bool]:
-    """Ritorna (has_valid_mx, is_null_mx). NullMX RFC 7505: record `0 .`.
+def _query_mx(domain: str, *, timeout_s: int = 3) -> tuple[bool, bool, bool]:
+    """Ritorna (has_valid_mx, is_null_mx, ok). `ok=False` = lookup NON
+    determinato (timeout/SERVFAIL/`host` assente): non è "nessun MX", è "non
+    lo so" → il chiamante deve fail-OPEN (§2.8: mai rigettare un dominio valido
+    per un transiente DNS). NullMX RFC 7505: record `0 .`.
 
-    Determinismo §7.9: subprocess `host -t MX -W <s> <domain>`. Niente DNS
-    in-proc (dnspython non installato). Output forma `<dom> mail is handled by <pref> <target>`.
+    Determinismo §7.9: subprocess `host -t MX -W <s> <domain>`.
     """
     import subprocess
     try:
@@ -93,9 +95,10 @@ def _query_mx(domain: str, *, timeout_s: int = 3) -> tuple[bool, bool]:
             capture_output=True, text=True, timeout=timeout_s + 1,
         )
     except (subprocess.TimeoutExpired, FileNotFoundError):
-        return False, False
+        return False, False, False
     if out.returncode != 0:
-        return False, False
+        # NXDOMAIN e SERVFAIL/timeout condividono returncode≠0 → indeterminato.
+        return False, False, False
     has_mx, is_null = False, False
     for line in out.stdout.splitlines():
         m = re.search(r"mail is handled by\s+(\d+)\s+(\S+)", line)
@@ -106,35 +109,46 @@ def _query_mx(domain: str, *, timeout_s: int = 3) -> tuple[bool, bool]:
             is_null = True
         else:
             has_mx = True
-    return has_mx, is_null
+    return has_mx, is_null, True
 
 
-def _query_a(domain: str, *, timeout_s: int = 3) -> bool:
-    """Fallback A-record check. RFC 5321 implicit MX: A record → mail dovrebbe arrivare."""
+def _query_a(domain: str, *, timeout_s: int = 3):
+    """Fallback A-record (RFC 5321 implicit MX). Ritorna True (risolve) /
+    False (NXDOMAIN definitivo) / None (errore transiente → fail-OPEN)."""
     import socket
     try:
         socket.setdefaulttimeout(timeout_s)
         socket.getaddrinfo(domain, 25)
         return True
-    except (socket.gaierror, socket.timeout, OSError):
-        return False
+    except socket.gaierror as e:
+        # EAI_NONAME = non risolve (definitivo); EAI_AGAIN/altri = transiente.
+        return False if getattr(e, "errno", None) == socket.EAI_NONAME else None
+    except (socket.timeout, OSError):
+        return None
     finally:
         socket.setdefaulttimeout(None)
 
 
 def _domain_deliverable(domain: str, cache: dict) -> tuple[bool, str]:
-    """Ritorna (ok, reason). Cache per-call su domain → (ok, reason)."""
+    """Ritorna (ok, reason). Fail-OPEN sui transienti (§2.8): rigetta SOLO su
+    negativo DEFINITIVO (null MX, oppure MX e A entrambi risolti e vuoti). Un
+    lookup non determinato → accetta (SMTP è l'autorità finale), così un hiccup
+    DNS non fa fallire un invio verso un dominio valido (bug q24 4/6)."""
     if domain in cache:
         return cache[domain]
-    has_mx, is_null = _query_mx(domain)
+    has_mx, is_null, mx_ok = _query_mx(domain)
     if is_null:
         res = (False, "null_mx")
     elif has_mx:
         res = (True, "")
-    elif _query_a(domain):
-        res = (True, "")  # implicit MX via A record
     else:
-        res = (False, "no_dns_record")
+        a = _query_a(domain)
+        if a is True:
+            res = (True, "")  # implicit MX via A record
+        elif mx_ok and a is False:
+            res = (False, "no_dns_record")  # entrambi definitivi e negativi
+        else:
+            res = (True, "mx_check_unavailable")  # indeterminato → fail-OPEN
     cache[domain] = res
     return res
 
