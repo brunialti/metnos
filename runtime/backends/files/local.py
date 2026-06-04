@@ -349,6 +349,25 @@ def _collect_write_specs(args: dict):
         # (read-modify-write: es. set_fields={"status":"answered"} per marcare
         # le issue gestite). Universale: persisti la lista con un campo aggiornato.
         set_fields = args.get("set_fields")
+        # AGGREGATO (§2.10, 4/6/2026): entries + `path` SCALARE senza
+        # `path_template` → UN solo file con TUTTE le entries serializzate
+        # (es. extract_entries → write_files(path="/dir/out.txt", from_step=N)).
+        # Senza questo, il caso "salva la lista in un unico file" falliva con
+        # "path_template/content mancante" (fix q4 live-test).
+        scalar_path = args.get("path")
+        if not path_template and scalar_path and str(scalar_path).strip():
+            parts = []
+            for entry in entries:
+                if isinstance(set_fields, dict) and isinstance(entry, dict):
+                    entry = {**entry, **set_fields}
+                ok, c = _derive_content(entry, content_field,
+                                        content_template, content_format)
+                if not ok:
+                    return None, c
+                parts.append(c if isinstance(c, str) else str(c))
+            specs.append({"path": scalar_path, "content": "\n".join(parts),
+                          "encoding": enc_default, "mode": mode_default})
+            return specs, None
         for entry in entries:
             if isinstance(set_fields, dict) and isinstance(entry, dict):
                 entry = {**entry, **set_fields}
@@ -386,9 +405,38 @@ def _collect_write_specs(args: dict):
         return None, _msg("ERR_ARG_MISSING", arg="path")
     if content is None:
         return None, _msg("ERR_ARG_MISSING", arg="content")
+    # content NON-stringa (§2.10, 4/6/2026): il planner spesso pipa una LISTA o
+    # un record come `content` (es. content={{stepN.entries}} risolto a lista) →
+    # serializza in testo leggibile invece di passare un oggetto a file.write()
+    # (TypeError: write() argument must be str, not list). Fix q4 live-test.
+    if not isinstance(content, (str, bytes)):
+        content = _serialize_content(content)
     specs.append({"path": path, "content": content,
                   "encoding": enc_default, "mode": mode_default})
     return specs, None
+
+
+def _serialize_content(c):
+    """Serializza un content non-stringa (lista/record/scalare) in testo
+    leggibile (§2.10). Lista di record monocampo → valori; record multi-campo
+    o annidati → JSON; scalari → str."""
+    import json as _json
+    if isinstance(c, list):
+        parts = []
+        for x in c:
+            if isinstance(x, str):
+                parts.append(x)
+            elif isinstance(x, dict):
+                if len(x) == 1:
+                    parts.append(str(next(iter(x.values()))))
+                else:
+                    parts.append(_json.dumps(x, ensure_ascii=False))
+            else:
+                parts.append(str(x))
+        return "\n".join(parts)
+    if isinstance(c, dict):
+        return _json.dumps(c, ensure_ascii=False)
+    return str(c)
 
 
 def _write_one(path, content, encoding, mode):
