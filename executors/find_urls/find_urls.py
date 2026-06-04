@@ -95,12 +95,20 @@ BLOCKED_FILE = CONFIG_DIR / "blocked_origins.json"
 # per ottenere automaticamente i seed_urls top-N. Backend default: porta
 # 8888 di localhost; override via env METNOS_SEARXNG_URL.
 SEARXNG_URL_DEFAULT = "http://localhost:8888"
-SEARXNG_TIMEOUT_S = 3.0
+# Profilo batch+interattivo: 3s tagliava i motori lenti-ma-buoni → pool
+# candidati parziale/ballerino che AFFAMA il rerank wide_n (sotto). 12s (≤
+# max_request_timeout istanza) lascia completare l'aggregazione. Tuning via env
+# senza re-sign (report searxng 4/6 §5.A.2/§5.A.4; §7.11 config-hierarchy).
+SEARXNG_TIMEOUT_S = float(os.environ.get("METNOS_SEARXNG_TIMEOUT_S", "12.0"))
 # Budget di tempo del rerank LLM: oltre questo, fallback all'ordine SearXNG.
 # Senza budget, sotto contesa GPU col planner la chat si appende e
 # l'executor va in timeout (bug ARK/people-search). Override via env.
 _RERANK_TIMEOUT_S = float(os.environ.get("METNOS_FINDURLS_RERANK_TIMEOUT_S", "8.0"))
-SEARXNG_TOP_N = 5
+# Risultati FINALI (seed per BFS). NB: il rerank NON è affamato da questo — vede
+# `wide_n` candidati (METNOS_FIND_URLS_RERANK_WIDE, default 30) e ne promuove i
+# migliori top_n (recupera i rank 6-15: report §7 crit.1 già soddisfatto). Default
+# 5 invariato; env-override per tuning senza re-sign (report §5.A.4).
+SEARXNG_TOP_N = int(os.environ.get("METNOS_SEARXNG_TOP_N", "5"))
 
 
 # ─── Parsing HTML semplice ──────────────────────────────────────────────
