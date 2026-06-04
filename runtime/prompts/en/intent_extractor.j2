@@ -134,7 +134,23 @@ container), otherwise it is the element.
 "subdirectory structure" → dirs (on the container).
 "create the folder" → dirs (action on the container itself).
 
+COMPOUND (MULTIPLE ACTIONS IN SEQUENCE):
+If the request contains MULTIPLE sequential actions (typically "do X then Y",
+"find ... and write ...", "take ... and put ...", "download ... and send ..."),
+respond with a JSON ARRAY of {verb,object} objects, ONE per action, IN execution
+ORDER. Each clause carries ITS OWN real object (the object THAT action operates
+on), NEVER one global object repeated. Single action → one JSON object, not an array.
+Compound examples:
+"find the processes using the most memory and write a report" →
+  [{"verb":"find","object":"processes"},{"verb":"write","object":"files"}]
+"read the closed issues and put them in a spreadsheet" →
+  [{"verb":"find","object":"issues"},{"verb":"create","object":"files"}]
+"download the invoices from the site and email them to me" →
+  [{"verb":"find","object":"urls"},{"verb":"send","object":"messages"}]
+"find the 2020 photos, compress them and send them to me" →
+  [{"verb":"find","object":"files"},{"verb":"compress","object":"files"},{"verb":"send","object":"messages"}]
+
 Respond ONLY with the JSON, no prose.
 
-User request: 
+User request:
 ────────────────────────────────────────────

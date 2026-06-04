@@ -97,13 +97,24 @@ class MetisProposer:
                 pool: list[str], excluded_hashes: set[str],
                 llm_call: Optional[Callable] = None,
                 lang: str = "it",
-                catalog: Optional[list] = None) -> Optional[Framework]:
+                catalog: Optional[list] = None,
+                exclude_tools: tuple = ()) -> Optional[Framework]:
         if not query or llm_call is None:
             return None
+        # exclude_tools (guard get_inputs-misroute in dispatch): rimuovi dal
+        # pool PRIMA del render/grammar e propaga a SimpleProposer (i tool
+        # esclusi possono rientrare come universal-helper → SimpleProposer li
+        # toglie DOPO la re-iniezione). Senza questo param MetisProposer.propose
+        # crashava con TypeError sulla chiamata-guard di dispatch (bug 4/6).
+        _excl = set(exclude_tools or ())
+        if _excl:
+            pool = [n for n in pool if n not in _excl]
         cache_key = self._cache_key(query, intent, lang)
 
-        # Retry path: serve alternativa cached senza LLM call.
-        if excluded_hashes:
+        # Retry path: serve alternativa cached senza LLM call. SKIP se
+        # exclude_tools attivo: la cache NON è filtrata per tool esclusi →
+        # ri-servirebbe il framework con get_inputs che il guard sta escludendo.
+        if excluded_hashes and not _excl:
             cached_list = self._cache_get(cache_key)
             if cached_list:
                 for cached in cached_list:
@@ -122,14 +133,14 @@ class MetisProposer:
         candidates = self._generate_candidates(
             query=query, intent=intent, pool=pool, tools_inline=tools_inline,
             excluded_hashes=excluded_hashes, llm_call=llm_call, lang=lang,
-            catalog=catalog)
+            catalog=catalog, exclude_tools=tuple(_excl))
 
         if not candidates:
             # Fallback a SimpleProposer (preserva produzione anche su LLM fail).
             return self._simple.propose(
                 query=query, intent=intent, pool=pool,
                 excluded_hashes=excluded_hashes, llm_call=llm_call,
-                lang=lang, catalog=catalog)
+                lang=lang, catalog=catalog, exclude_tools=tuple(_excl))
 
         ranked = self._rank_by_telos(candidates, intent=intent, lang=lang)
         self._cache_put(cache_key, ranked)
@@ -145,7 +156,8 @@ class MetisProposer:
         return ranked[0] if ranked else candidates[0]
 
     def _generate_candidates(self, *, query, intent, pool, tools_inline,
-                              excluded_hashes, llm_call, lang, catalog):
+                              excluded_hashes, llm_call, lang, catalog,
+                              exclude_tools=()):
         """Genera N candidati. Fix #1: gestisce grammar+metis path.
 
         Due modi:
@@ -163,7 +175,8 @@ class MetisProposer:
             return self._generate_grammar_multi(
                 query=query, intent=intent, pool=pool,
                 excluded_hashes=excluded_hashes, llm_call=llm_call,
-                lang=lang, catalog=catalog, n=n_cands)
+                lang=lang, catalog=catalog, n=n_cands,
+                exclude_tools=exclude_tools)
         # Default: 1 call, array output.
         try:
             system = self._load_prompt(
@@ -187,7 +200,8 @@ class MetisProposer:
         return _parse_candidates(raw or "")
 
     def _generate_grammar_multi(self, *, query, intent, pool,
-                                  excluded_hashes, llm_call, lang, catalog, n):
+                                  excluded_hashes, llm_call, lang, catalog, n,
+                                  exclude_tools=()):
         """Fix #1: N single-shot via SimpleProposer (riusa grammar+verb-filter
         path). Ogni call esclude i framework_hash già generati per forzare
         diversità. Costo: N× LLM call vs 1× del default path."""
@@ -199,7 +213,8 @@ class MetisProposer:
                     query=query, intent=intent,
                     pool=pool,  # propaga pool reale (SimpleProposer rendera' inline)
                     excluded_hashes=seen_hashes,
-                    llm_call=llm_call, lang=lang, catalog=catalog)
+                    llm_call=llm_call, lang=lang, catalog=catalog,
+                    exclude_tools=exclude_tools)
             except Exception as ex:
                 log.warning(
                     "MetisProposer grammar-multi call %d/%d failed: %r",

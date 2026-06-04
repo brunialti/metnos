@@ -59,7 +59,7 @@ def _is_get_inputs_misroute(framework: Framework) -> bool:
     return exec_steps == ["get_inputs"]
 
 
-def _dropped_required_verbs(framework: Framework, query: str) -> set:
+def _dropped_required_verbs(framework: Framework, query: str, intent=None) -> set:
     """Verbi RICHIESTI dalla query ma ASSENTI dal framework → decomposizione
     incompleta. Copre PRODUCER (find/read/get/list: senza i dati la pipeline è
     monca) + side-effecting espliciti (send/create/write/move/delete/share: «manda
@@ -75,6 +75,15 @@ def _dropped_required_verbs(framework: Framework, query: str) -> set:
     except Exception:
         return set()
     qverbs = set(detect_canonical_verbs_all(tokenize(query or "")))
+    # Unisci i verbi della decomposizione LLM (intent.actions): il detector
+    # lessicale non copre tutti i verbi NL ("salva"→write, "prendi"→get); la
+    # decomposizione sì (multilingue, ZERO dizionari). Così la guard vede i
+    # side-effecting reali della query (fix q13: clausola "salva" → write
+    # droppata → describe usato come finale, nessun file scritto).
+    for _a in (getattr(intent, "actions", None) or []):
+        _v = _a.get("verb") if isinstance(_a, dict) else None
+        if _v:
+            qverbs.add(_v)
     if len(qverbs) < 2:
         return set()
     fw_verbs = set()
@@ -123,22 +132,72 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
             # pipeline. Bug 2/6/2026: senza unione il pool era solo find_* →
             # niente write_files/send_messages → "salva"/"manda" impossibili.
             filtered = None
-            try:
-                from prefilter import (tokenize as _pf_tok,
-                                        detect_canonical_verbs_all as _pf_dv)
-                _qverbs = list(dict.fromkeys(_pf_dv(_pf_tok(query))))
-            except Exception:
-                _qverbs = []
-            if len(_qverbs) >= 2:
+            # Compound routing (4/6): PREFERISCI la decomposizione per-clausola
+            # dell'intent LLM (`intent.actions` = [{verb,object}, ...]). Ogni
+            # clausola rankizza il pool con il SUO object reale → i producer di
+            # OGNI sotto-azione entrano nel pool. Prima il ramo rankizzava ogni
+            # verbo con un UNICO `intent.object` (quello di UNA sola clausola, di
+            # solito il bersaglio finale): "trova i processi ... scrivi un report"
+            # → object=files per tutti → get_processes mai nel pool → Proposer
+            # collassa su get_inputs (bug q20/q21 4/6). La decomposizione è
+            # multilingue per costruzione (LLM) e NON usa dizionari di sinonimi.
+            _pairs = []
+            _acts = getattr(intent, "actions", None) or []
+            if len(_acts) >= 2:
+                _pairs = [((a.get("verb") or intent.verb),
+                           (a.get("object") or intent.object)) for a in _acts]
+            if not _pairs:
+                # Fallback deterministico (LLM non ha decomposto): verbi canonici
+                # rilevati nella query, con l'object PRIMARIO condiviso (storico).
+                try:
+                    from prefilter import (tokenize as _pf_tok,
+                                            detect_canonical_verbs_all as _pf_dv)
+                    _qverbs = list(dict.fromkeys(_pf_dv(_pf_tok(query))))
+                except Exception:
+                    _qverbs = []
+                if len(_qverbs) >= 2:
+                    _pairs = [(_v, intent.object) for _v in _qverbs]
+            if _pairs:
+                # Object-completezza per-clausola (4/6): l'LLM assegna verbi
+                # ASTRATTI ("list"/"change") che spesso NON hanno un tool esatto
+                # (no list_pulls, no change_issues) → rank_with_intent(verb,obj)
+                # filtra per prefisso-verbo e PERDE il producer reale dell'object
+                # (find_pulls_github, set_issues_github). Garantisci che TUTTI i
+                # tool del catalog con QUELL'object (derivato dal NOME canonico,
+                # 2° token in vocab.OBJECTS) siano candidati nel pool: il
+                # Proposer (che vede le description) sceglie il verbo giusto.
+                # Universale, deterministico §7.9, ZERO dizionari di sinonimi —
+                # scala a nuove lingue (l'object è canonico, non NL). Fix q14
+                # (pulls→find_pulls_github) + q15 (close→set_issues_github).
+                try:
+                    from vocab import OBJECTS as _VOBJ_SET
+                    _VOBJ = set(_VOBJ_SET)
+                except Exception:
+                    _VOBJ = set()
+
+                def _tool_object(_nm):
+                    for _tok in (_nm or "").split("_")[1:]:
+                        if _tok in _VOBJ:
+                            return _tok
+                    return ""
+
                 _seen = {}
-                for _v in _qverbs:
+                _clause_objs = set()
+                for _v, _o in _pairs:
+                    if _o:
+                        _clause_objs.add(_o)
                     _sub = rank_with_intent(
                         query, catalog,
-                        {"verb": _v, "object": intent.object,
+                        {"verb": _v, "object": _o,
                          "keywords": intent.keywords},
                         k=pool_size) or []
                     for _e in _sub:
                         _seen[getattr(_e, "name", None)] = _e
+                # Famiglia-object completa per ogni object delle clausole.
+                for _e in catalog:
+                    _nm = getattr(_e, "name", None)
+                    if _nm and _nm not in _seen and _tool_object(_nm) in _clause_objs:
+                        _seen[_nm] = _e
                 if _seen:
                     filtered = list(_seen.values())
             if filtered is None:
@@ -306,7 +365,7 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
     # manda" → create-only (find+send droppati) o find→create senza send (niente
     # mail). Ri-propone UNA volta. Best-effort: se la ri-proposta è incompleta si
     # procede (esecuzione/terminator danno l'esito onesto).
-    _dropped = _dropped_required_verbs(framework, query)
+    _dropped = _dropped_required_verbs(framework, query, intent)
     if _dropped:
         if verbose:
             log.info("[guard] decomposizione incompleta: verbi mancanti %s "
@@ -317,7 +376,7 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
             excluded_hashes=excluded | {_fh},
             llm_call=llm_call_wise, lang=lang, catalog=catalog)
         # Accetta la ri-proposta solo se copre PIÙ verbi (meno droppati).
-        if _fw2 is not None and len(_dropped_required_verbs(_fw2, query)) < len(_dropped):
+        if _fw2 is not None and len(_dropped_required_verbs(_fw2, query, intent)) < len(_dropped):
             framework = _fw2
 
     # Layer 2: Validator (opt-in)

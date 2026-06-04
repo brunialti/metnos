@@ -194,13 +194,20 @@ class SimpleProposer:
         # filtro sui compound, cosi' la pipeline completa resta proponibile
         # (bug 2/6/2026: "trova le issue, salvale, mandami il riassunto" perdeva
         # write_files/send_messages col verb-filter).
-        _is_compound = False
-        try:
-            from prefilter import (tokenize as _vf_tok,
-                                    detect_canonical_verbs_all as _vf_dv)
-            _is_compound = len(set(_vf_dv(_vf_tok(query)))) >= 2
-        except Exception:
-            _is_compound = False
+        # Compound signal PRIMARIO = decomposizione intent LLM (multilingue, no
+        # dizionari di sinonimi): >=2 clausole {verb,object} → compound. Il
+        # detector lessicale resta SOLO come fallback se l'LLM non ha decomposto
+        # (es. "Prendi le issue ... mettile in un foglio" — "prendi"/"mettile"
+        # non sono nel dizionario lessicale → mono-verbo falso → verb-filter
+        # stripava create_files_spreadsheet, bug q21 4/6).
+        _is_compound = len(getattr(intent, "actions", None) or []) >= 2
+        if not _is_compound:
+            try:
+                from prefilter import (tokenize as _vf_tok,
+                                        detect_canonical_verbs_all as _vf_dv)
+                _is_compound = len(set(_vf_dv(_vf_tok(query)))) >= 2
+            except Exception:
+                _is_compound = False
         if (os.environ.get("METNOS_PROPOSER_VERB_FILTER", "0") == "1"
                 and intent.verb and not _is_compound):
             try:

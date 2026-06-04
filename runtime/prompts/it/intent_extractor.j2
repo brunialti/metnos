@@ -135,6 +135,23 @@ contenitore), altrimenti e' l'elemento.
 "struttura delle subdirectory" → dirs (sul contenitore).
 "crea la cartella" → dirs (azione sul contenitore stesso).
 
+COMPOUND (PIÙ AZIONI IN SEQUENZA):
+Se la richiesta contiene PIÙ azioni in sequenza (tipico: "fai X e poi Y",
+"trova ... e scrivi ...", "prendi ... e mettile ...", "scarica ... e invia ..."),
+rispondi con un ARRAY JSON di oggetti {verb,object}, UNO per azione, NELL'ORDINE
+di esecuzione. Ogni clausola porta il SUO object reale (l'oggetto su cui agisce
+QUELLA azione), MAI un unico object globale ripetuto. Azione singola → un solo
+oggetto JSON, non un array.
+Esempi compound:
+"trova i processi che usano più memoria e scrivi un report" →
+  [{"verb":"find","object":"processes"},{"verb":"write","object":"files"}]
+"leggi le issue chiuse e mettile in un foglio di calcolo" →
+  [{"verb":"find","object":"issues"},{"verb":"create","object":"files"}]
+"scarica le fatture dal sito e mandamele via mail" →
+  [{"verb":"find","object":"urls"},{"verb":"send","object":"messages"}]
+"trova le foto del 2020, comprimile e inviamele" →
+  [{"verb":"find","object":"files"},{"verb":"compress","object":"files"},{"verb":"send","object":"messages"}]
+
 Rispondi SOLO con il JSON, niente prosa.
 
-Richiesta utente: 
+Richiesta utente:

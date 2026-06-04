@@ -90,15 +90,37 @@ def extract_intent(query: str, llm_call) -> Optional[dict]:
     parsed = _parse_json(text)
     if not parsed:
         return None
-    # Compound: per una query multi-azione l'LLM puo' restituire una LISTA di
-    # sotto-intenti (un dict {verb,object} per azione). Prendi il PRIMO come
-    # intent PRIMARIO (per il ranking); la copertura multi-step e' garantita a
-    # valle dal pool multi-verbo (engine/dispatch). Senza questo, `.get` su una
-    # lista crashava Engine v2 ('list' object has no attribute 'get', 2/6/2026).
-    if isinstance(parsed, list):
-        parsed = next((p for p in parsed if isinstance(p, dict)), None)
-        if not parsed:
+    # Compound: per una query multi-azione l'LLM ritorna una LISTA ordinata di
+    # sotto-intenti (un dict {verb,object} per clausola). Normalizziamo OGNI
+    # clausola al vocabolario chiuso e la conserviamo in `actions`: dispatch
+    # rankizza il pool per-clausola con l'OGGETTO REALE di quella clausola
+    # (es. "trova i processi"→object=processes), non un unico object globale.
+    # Fix routing compound SENZA dizionari di sinonimi (multilingue via LLM).
+    # Il PRIMO valido resta l'intent PRIMARIO per back-compat del ranking.
+    def _norm_action(d):
+        if not isinstance(d, dict):
             return None
+        v = (d.get("verb") or "").strip().lower()
+        o = (d.get("object") or "").strip().lower()
+        if v not in VOCAB_VERBS:
+            v = None
+        if o not in VOCAB_OBJECTS:
+            o = None
+        if not v and not o:
+            return None
+        return {"verb": v, "object": o}
+
+    actions: list[dict] = []
+    if isinstance(parsed, list):
+        for _d in parsed:
+            _a = _norm_action(_d)
+            if _a is not None:
+                actions.append(_a)
+        parsed = next((p for p in parsed if isinstance(p, dict)), None) or {}
+    else:
+        _a = _norm_action(parsed)
+        if _a is not None:
+            actions.append(_a)
     verb = (parsed.get("verb") or "").strip().lower()
     obj = (parsed.get("object") or "").strip().lower()
     if verb not in VOCAB_VERBS:
@@ -123,6 +145,11 @@ def extract_intent(query: str, llm_call) -> Optional[dict]:
     if not verb and not obj:
         return None
     out = {"verb": verb, "object": obj}
+    # Esponi la decomposizione SOLO se compound reale (>=2 clausole distinte):
+    # dispatch la usa per il ranking pool per-clausola. Mono-azione → assente
+    # (back-compat: il ramo compound resta inattivo).
+    if len(actions) >= 2:
+        out["actions"] = actions
     # Enrichment ADR 0129: pattern intent-implicit. Detection deterministica
     # (§7.9) di azioni mutating implicite — sostantivi che realizzano un
     # OBJECT §2.2 in pipeline multi-azione dove manca il verbo mutating per

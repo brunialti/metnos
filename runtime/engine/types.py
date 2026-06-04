@@ -24,6 +24,12 @@ class Intent:
     keywords: list[str] = field(default_factory=list)
     confidence: float = 1.0
     lang: str = "it"
+    # Decomposizione compound (4/6): per una query multi-azione l'intent LLM
+    # ritorna la LISTA ordinata dei sotto-intenti {verb,object}, uno per
+    # clausola. `verb`/`object` restano il PRIMARIO (actions[0]) per back-compat;
+    # `actions` abilita il ranking pool per-clausola in dispatch (fix routing
+    # compound SENZA dizionari di sinonimi — multilingue via LLM).
+    actions: list[dict] = field(default_factory=list)
 
     def is_complete(self) -> bool:
         return bool(self.verb and self.object)

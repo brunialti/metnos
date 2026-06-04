@@ -25,9 +25,9 @@
     "version_hash": "sha256:296f5d9fc8eaa0dd93cd25d96fbb5fc801bb49bc53d3f2e030bebc20e05a1025"
   },
   "engine_proposer": {
-    "source_hash": "sha256:7f95892241b2b233db3d50d1aa2c0efe3a003401ff77cd986ff1d22002c3b2b6",
+    "source_hash": "sha256:f1f8bfe43a0f32386100020915428139bd229f9bb09d00dbcc9f3b7b44f30c4b",
     "source_lang": "en",
-    "version_hash": "sha256:37afdf890c47892baba91779cdf2cf3f9902da8f226feeaf910e8e3ac5fea45d"
+    "version_hash": "sha256:19e07e20578816a76ef8a2333cc3884e82086c00ff182ced29fb045542d16704"
   },
   "engine_proposer_metis": {
     "source_hash": "sha256:b0ce56f6fd80cd82175b8d22fe984b4c4e3ea4627fb9ef0fc5d93f16db0ddc13",
@@ -37,7 +37,7 @@
   "intent_extractor": {
     "source_hash": "sha256:a68975b54689f5f75b84e354cf0527555576fca01f9e52c6602b10b9fbd14854",
     "source_lang": "en",
-    "version_hash": "sha256:e11e7d4160f9a614c39d6aec3b46e0e4610cf22d3efa47cb86fd89d45c9da019"
+    "version_hash": "sha256:79a239ca83a5068529a83611bc0edc5ee2aef48d8702f901b9df09ee01f12788"
   },
   "planner": {
     "source_hash": "sha256:e1c7da82ff17b8c5e92f21e9b2cc98f69749bab3e82b3df78419aa772c7a78ad",

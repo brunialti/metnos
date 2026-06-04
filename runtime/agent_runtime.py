@@ -4964,6 +4964,7 @@ def _try_engine_v2(
         keywords=list(intent_raw.get("keywords") or []),
         confidence=float(intent_raw.get("confidence") or 1.0),
         lang=lang,
+        actions=list(intent_raw.get("actions") or []),
     )
 
     # Invoke executor callback wrapped — Executor v2 chiama via tool name
