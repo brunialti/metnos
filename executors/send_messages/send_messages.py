@@ -156,7 +156,13 @@ def _normalize_via(via: str) -> str:
 
 def invoke(args):
     messages = args.get("messages")
-    account = args.get("account") or "metnos_system"
+    # Default account configurabile (config-hierarchy env>default §11): permette
+    # di dirottare l'uscita su un account con quota quando il provider di default
+    # è esaurito (es. Migadu out-quota → METNOS_DEFAULT_MAIL_ACCOUNT=knowcastle),
+    # senza che l'LLM/planner scelga l'account (resta config, non intento).
+    account = (args.get("account")
+               or os.environ.get("METNOS_DEFAULT_MAIL_ACCOUNT")
+               or "metnos_system")
     actor = args.get("actor") or "host"
     via_channel = _normalize_via(args.get("via_channel") or "auto")
     client = args.get("client")  # None => default per channel
