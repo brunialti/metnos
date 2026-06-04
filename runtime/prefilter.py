@@ -608,7 +608,7 @@ _OBJECT_PRIMARY_TOOLS = {
                    "find_persons_indices", "delete_persons"),
     "tasks":     ("list_tasks", "read_tasks", "create_tasks",
                    "delete_tasks", "set_tasks", "read_tasks_history"),
-    "files":     ("find_files", "read_files", "get_files"),
+    "files":     ("find_files", "read_files"),
     "dirs":      ("list_dirs", "find_dirs"),
     "urls":      ("find_urls", "get_urls", "read_urls_html", "read_urls_pdf"),
     # Calendar events (Google Workspace skill, importati 10/5/2026,
@@ -618,7 +618,7 @@ _OBJECT_PRIMARY_TOOLS = {
     "calendars": ("create_calendars", "delete_calendars"),
     # Contatti Google Workspace (read_contacts dal skill):
     "contacts":  ("read_contacts",),
-    "images":    ("find_images_indices", "change_images", "find_files", "get_files"),
+    "images":    ("find_images_indices", "change_images", "find_files"),
     "packages":  ("find_packages",),  # canonical handcrafted name (no get_packages)
     "numbers":   (),  # niente primary, lascia al ranker
     "texts":     ("read_files", "filter_texts_lines"),
@@ -646,6 +646,27 @@ _QUERY_DEPENDENT_PRECURSORS = (
         "nearby", "nearest", "closest", "close by", "close-by",
         "in the area", "in proximity",
     )),
+)
+
+
+# EXIF-intent markers (4/6/2026): `get_files` (azione_oggetto = get+files, il
+# tool EXIF/dates/place/gps/device) va iniettato nel pool SOLO quando la query
+# riguarda i METADATI di scatto di una foto, NON per query generiche su file
+# (es. "elenca i file con la dimensione" → get_files NON serve, find_files ha
+# gia' size → evita il misroute get_files(fields=["size"]) che e' enum-invalid).
+# Deterministico §7.9: substring match. Vedi core-rule §5 EXIF→get_files.
+_EXIF_MARKERS = (
+    # IT
+    "exif", "scattat", "metadati foto", "metadati della foto", "geotag",
+    "luogo di scatto", "dove e' stata fatta", "dove è stata fatta",
+    "dove e' stata scattata", "dove è stata scattata",
+    "quando e' stata scattata", "quando è stata scattata",
+    "con che camera", "con quale camera", "con che fotocamera",
+    "che fotocamera", "modello di fotocamera", "coordinate gps",
+    # EN
+    "with what camera", "which camera", "where was it taken",
+    "when was it taken", "where was this photo", "when was this photo",
+    "capture date", "gps coordinates",
 )
 
 
@@ -870,6 +891,18 @@ def rank_with_intent(query, catalog, intent, *, k=3):
         if prov_exec is not None:
             primary.append((7, prov_exec))  # score sopra precursor generici
             seen_names.add(prov_name)
+
+    # EXIF injection condizionale (4/6/2026): get_files entra nel pool SOLO se
+    # la query ha marker EXIF (scatto/gps/camera/...) e l'object e' files/images.
+    # Cosi' le query EXIF-by-path lo vedono (core-rule §5), ma le query generiche
+    # su file ("dimensione/elenco") NON sono tentate da get_files (che e' EXIF-only
+    # → get_files(fields=["size"]) = enum-invalid, misroute 4/6). Deterministico §7.9.
+    if obj in ("files", "images") and "get_files" not in seen_names \
+            and _query_has_marker(qlow, _EXIF_MARKERS):
+        gf = next((e for e in catalog if e.name == "get_files"), None)
+        if gf is not None:
+            primary.append((9, gf))  # alta priorita': intento EXIF esplicito
+            seen_names.add("get_files")
 
     # Admin shell injection (ADR 0088, 4/5/2026): query con shell-intent
     # marker (mount/kill/systemctl/...) → admin a priorità massima.
