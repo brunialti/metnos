@@ -330,6 +330,28 @@ def _build_it_range(d1, mo1, y1, d2, mo2, y2, now):
     return _aware(a, time(0, 0, 0)), _aware(b, time(23, 59, 59))
 
 
+def _normalize_llm_spec(s: str) -> str:
+    """Normalizza le varianti che l'LLM INVENTA verso le forme canoniche
+    (deterministico §7.9). L'LLM emette spesso `now_plus_7d`/`in 3 days`/
+    `prossimi 7 giorni` invece di `next-7d` → qui le canonicalizziamo cosi'
+    il resolver le accetta (fix q11 read_events 4/6/2026). Generale: vale per
+    ogni executor che usa parse_time_window. Non-match → invariato."""
+    t = s.strip().lower()
+    m = (re.match(r"^now[\s_+]*plus[\s_]*(\d+)[\s_]*d(?:ays?)?$", t)
+         or re.match(r"^now\s*\+\s*(\d+)\s*d(?:ays?)?$", t)
+         or re.match(r"^(?:in|fra|tra)[\s_]+(\d+)[\s_]+(?:days?|giorni)$", t)
+         or re.match(r"^prossim[ie][\s_]+(\d+)[\s_]+giorni$", t))
+    if m:
+        return f"next-{m.group(1)}d"
+    m = (re.match(r"^now[\s_]*minus[\s_]*(\d+)[\s_]*d(?:ays?)?$", t)
+         or re.match(r"^now\s*-\s*(\d+)\s*d(?:ays?)?$", t)
+         or re.match(r"^(\d+)[\s_]+(?:days?[\s_]+ago|giorni[\s_]+fa)$", t)
+         or re.match(r"^ultim[ie][\s_]+(\d+)[\s_]+giorni$", t))
+    if m:
+        return f"last-{m.group(1)}d"
+    return s
+
+
 def parse_time_window(spec, now=None):
     """Risolve `spec` in `(start_iso, end_iso)` aware su Europe/Rome.
 
@@ -338,7 +360,7 @@ def parse_time_window(spec, now=None):
     """
     if not isinstance(spec, str) or not spec.strip():
         raise ValueError("time_window must be a non-empty string")
-    s = spec.strip()
+    s = _normalize_llm_spec(spec.strip())
 
     if now is None:
         now = datetime.now(tz=ROME)
