@@ -103,7 +103,9 @@ class TestByteEquivalenceWithLegacy(unittest.TestCase):
         # devono essere presenti i marker stabili del PLANNER.
         self.assertIn("Sei il pianificatore di Metnos", out)
         self.assertIn("DATA PIPING", out)
-        self.assertIn("CHIUSURA TURNO", out)
+        # Marker stabile del _footer (l'heading "CHIUSURA TURNO" e' stato
+        # rimosso dai prompt → marker stale: uso uno attuale del footer).
+        self.assertIn("DATA E ORA CORRENTI", out)
         self.assertIn("SCOPE DEFAULT", out)
         # Non deve restare nessun __PLACEHOLDER__ non risolto.
         self.assertNotIn("__VOCAB_OBJECTS__", out)
