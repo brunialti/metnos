@@ -66,6 +66,7 @@ def _render_tool_pool(pool: list[str], catalog: Optional[list]) -> str:
     """
     if not catalog:
         return "\n".join(f"- {n}" for n in pool)
+    from date_tokens import substitute_date_tokens  # §7.11: anni-esempio freschi
     cat_by_name = {getattr(e, "name", None): e for e in catalog}
     lines = []
     for name in pool:
@@ -73,7 +74,8 @@ def _render_tool_pool(pool: list[str], catalog: Optional[list]) -> str:
         if e is None:
             lines.append(f"- {name}")
             continue
-        desc = (getattr(e, "description", "") or "").strip().replace("\n", " ")
+        desc = substitute_date_tokens(
+            (getattr(e, "description", "") or "").strip().replace("\n", " "))
         # Manifest a capitoli (convenzione §2.5: "SCOPO: … PATTERN: … NON: …
         # OUT: …"): esponi SCOPO+PATTERN (+NON se entra) cosi' il Proposer vede
         # la FORMA di chiamata, non solo lo scopo (bug args 2/6/2026: l'LLM

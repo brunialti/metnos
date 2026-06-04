@@ -20,8 +20,8 @@ rules:
     when: "the query mentions Drive/Google-Drive/cloud-files/cloud-documents, OR concerns files on Google Workspace"
     must: "use Google Workspace domain tools: find_files_google_workspace (search), read_files_google_workspace (download), write_files_google_workspace (upload), delete_files_google_workspace (delete), create_dirs_google_workspace (folder), share_files_google_workspace (share)"
     must_not: "confuse with find_files/read_files (local filesystem on .33). The two endpoints are separate: find_files/read_files work on local .33 filesystem, NOT on Drive"
-    ok: "«search Drive for the budget 2024 file» -> find_files_google_workspace(query=\"budget 2024\") -> final_answer"
-    error: "«search Drive for the budget 2024 file» -> find_files(pattern=\"budget*\") (THIS IS AN ERROR: find_files is local filesystem, not Drive)"
+    ok: "«search Drive for the budget {{ current_year }} file» -> find_files_google_workspace(query=\"budget {{ current_year }}\") -> final_answer"
+    error: "«search Drive for the budget {{ current_year }} file» -> find_files(pattern=\"budget*\") (THIS IS AN ERROR: find_files is local filesystem, not Drive)"
 
   - name: share_outbound_consent
     when: "the user asks to SHARE a Drive file with another user («share with Mario», «give Mario access to this doc»)"

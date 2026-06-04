@@ -20,8 +20,8 @@ rules:
     when: "la query menziona Drive/Google-Drive/file-cloud/documenti-cloud, OPPURE riguarda file su Google Workspace"
     must: "usare i tool del dominio Google Workspace: find_files_google_workspace (ricerca), read_files_google_workspace (download), write_files_google_workspace (upload), delete_files_google_workspace (cancella), create_dirs_google_workspace (cartella), share_files_google_workspace (condividi)"
     must_not: "confondere con find_files/read_files (filesystem locale .33). I due endpoint sono separati: find_files/read_files lavorano sul filesystem locale di .33, NON su Drive"
-    ok: "«cerca su Drive il file budget 2024» -> find_files_google_workspace(query=\"budget 2024\") -> final_answer"
-    error: "«cerca su Drive il file budget 2024» -> find_files(pattern=\"budget*\") (E' UN ERRORE: find_files e' filesystem locale, non Drive)"
+    ok: "«cerca su Drive il file budget {{ current_year }}» -> find_files_google_workspace(query=\"budget {{ current_year }}\") -> final_answer"
+    error: "«cerca su Drive il file budget {{ current_year }}» -> find_files(pattern=\"budget*\") (E' UN ERRORE: find_files e' filesystem locale, non Drive)"
 
   - name: share_outbound_consent
     when: "l'utente chiede di CONDIVIDERE un file Drive con un altro utente («condividi con Mario», «share with Mario», «dai accesso a Mario a questo doc»)"

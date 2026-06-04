@@ -32,8 +32,8 @@ required = []
 type        = "string"
 
 [args.properties.search_query.description]
-it = "MODO SEARCH: query in linguaggio naturale per SearXNG meta-search + LLM rerank. Usa questa quando l'utente NON nomina un dominio specifico ('cerca su web X', 'trova X', 'informazioni su Y'). Mutuamente esclusivo con `seed_urls`: se passi entrambi, `seed_urls` viene SCARTATO (SearXNG e' la fonte autoritativa). Default max_depth=1 (SearXNG roots + 1 hop documenti). Esempio: 'organico scuola primaria Roma 2026-27'."
-en = "SEARCH MODE: natural language query for SearXNG meta-search + LLM rerank. Use when user does NOT name a specific domain ('search the web for X', 'find X', 'info on Y'). Mutually exclusive with `seed_urls`: passing both DROPS `seed_urls` (SearXNG is authoritative). Default max_depth=1 (SearXNG roots + 1 hop documents). Example: 'school primary organic Rome 2026-27'."
+it = "MODO SEARCH: query in linguaggio naturale per SearXNG meta-search + LLM rerank. Usa questa quando l'utente NON nomina un dominio specifico ('cerca su web X', 'trova X', 'informazioni su Y'). Mutuamente esclusivo con `seed_urls`: se passi entrambi, `seed_urls` viene SCARTATO (SearXNG e' la fonte autoritativa). Default max_depth=1 (SearXNG roots + 1 hop documenti). Esempio: 'organico scuola primaria Roma {{ current_year }}'."
+en = "SEARCH MODE: natural language query for SearXNG meta-search + LLM rerank. Use when user does NOT name a specific domain ('search the web for X', 'find X', 'info on Y'). Mutually exclusive with `seed_urls`: passing both DROPS `seed_urls` (SearXNG is authoritative). Default max_depth=1 (SearXNG roots + 1 hop documents). Example: 'school primary organic Rome {{ current_year }}'."
 
 [args.properties.seed_urls]
 type        = "array"
@@ -129,8 +129,8 @@ en = "If true (default), discard links that exit the origin of the seed (schema:
 type        = "array"
 
 [args.properties.path_include.description]
-it = "Lista di regex/glob su URL.path. Se non vuota, l'URL e' incluso solo se almeno una pattern matcha. Esempio: ['/blog/*', '/news/2026/*']."
-en = "List of regex/glob on URL.path. If not empty, the URL is included only if at least one pattern matches. Example: ['/blog/*', '/news/2026/*']."
+it = "Lista di regex/glob su URL.path. Se non vuota, l'URL e' incluso solo se almeno una pattern matcha. Esempio: ['/blog/*', '/news/{{ current_year }}/*']."
+en = "List of regex/glob on URL.path. If not empty, the URL is included only if at least one pattern matches. Example: ['/blog/*', '/news/{{ current_year }}/*']."
 
 [args.properties.path_exclude]
 type        = "array"

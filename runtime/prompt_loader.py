@@ -305,17 +305,23 @@ def _render_yaml_section(yaml_path: Path, fmt: str | None = None) -> str:
 
     if fmt == "yaml_raw":
         clean = {k: v for k, v in data.items() if k not in _SECTION_FRONTMATTER_KEYS}
-        return yaml.safe_dump(
+        out = yaml.safe_dump(
             clean,
             sort_keys=False,
             allow_unicode=True,
             default_flow_style=False,
         )
-    if fmt == "json_raw":
+    elif fmt == "json_raw":
         clean = {k: v for k, v in data.items() if k not in _SECTION_FRONTMATTER_KEYS}
-        return json.dumps(clean, ensure_ascii=False, indent=2) + "\n"
+        out = json.dumps(clean, ensure_ascii=False, indent=2) + "\n"
+    else:
+        out = _render_yaml_section_prose(yaml_path, data)
 
-    return _render_yaml_section_prose(yaml_path, data)
+    # Token-data §7.11: le sezioni .yaml NON passano da Jinja, quindi
+    # `{{ current_year }}`/`{{ current_date }}` negli esempi vanno risolti qui,
+    # deterministicamente, con la STESSA convenzione dei .j2 (date_tokens §7.3/§7.9).
+    from date_tokens import substitute_date_tokens
+    return substitute_date_tokens(out)
 
 
 def _render_yaml_section_prose(yaml_path: Path, data: dict | None = None) -> str:
