@@ -779,13 +779,22 @@ def _invoke_default(args: dict) -> dict:
     for d in failed:
         d.pop("_idx", None)
 
+    # §2.8/§2.1/§2.6: successo PARZIALE = successo. Se almeno una pagina e'
+    # stata letta (ok_count>0) lo step e' ok=True e le entries fluiscono al
+    # consumer (summary/extract); i fallimenti (429/404/non_html di SINGOLI
+    # URL esterni) restano visibili in fail_count/failed (§2.7). ok=False SOLO
+    # se ZERO contenuto E c'erano URL da leggere (fallimento totale onesto).
+    # Bug pre-fix: `ok = len(failed)==0` scartava 17 pagine buone per 1 URL 429
+    # → il planner trattava lo step come fallito → loop_break/resa.
     result = {
-        "ok": len(failed) == 0,
+        "ok": len(entries) > 0 or len(failed) == 0,
         "ok_count": len(entries),
         "fail_count": len(failed),
         "entries": entries,
         "failed": failed,
     }
+    if entries and failed:
+        result["partial"] = True
     # Telemetria JS-render (ADR 0125): esposta solo quando l'utente ha
     # chiesto js_render=true. Cosi' i turn senza opt-in restano puliti.
     if js_render:

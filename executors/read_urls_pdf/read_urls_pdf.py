@@ -269,13 +269,19 @@ def _invoke_default(args: dict) -> dict:
     for d in failed:
         d.pop("_idx", None)
 
-    return {
-        "ok": len(failed) == 0,
+    # §2.8/§2.1: successo PARZIALE = successo (fetch remoto, fallimenti di
+    # singoli URL esterni sono la norma). ok=False solo se ZERO contenuto E
+    # c'erano URL. Fallimenti visibili in fail_count/failed (§2.7).
+    result = {
+        "ok": len(entries) > 0 or len(failed) == 0,
         "ok_count": len(entries),
         "fail_count": len(failed),
         "entries": entries,
         "failed": failed,
     }
+    if entries and failed:
+        result["partial"] = True
+    return result
 
 
 # --- Dispatcher (refactor 13/5/2026, ADR pending) -------------------------
