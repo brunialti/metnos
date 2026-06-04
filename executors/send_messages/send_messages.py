@@ -39,8 +39,14 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import sys
 from pathlib import Path
+
+# Indirizzo email "vero" (fix q10 4/6/2026): l'LLM mette spesso un'email in
+# `to_user`; va trattata come destinatario email diretto, NON cercata nel
+# registro utenti (→ user_not_found). Deterministico §7.9.
+_RE_EMAIL = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
 sys.path.insert(0, os.environ.get("METNOS_RUNTIME") or next(
     str(p / "runtime") for p in Path(__file__).resolve().parents
@@ -221,6 +227,28 @@ def invoke(args):
                     msg_n.pop("to", None)
                     msg_n.pop("to_user", None)
                     requests.append({"channel": "telegram",
+                                     "client": client or _DEFAULT_CLIENT,
+                                     "msg": msg_n, "index": i,
+                                     "recipient_user": None})
+                    continue
+                if _RE_EMAIL.match(s):
+                    # `to_user` e' un INDIRIZZO EMAIL → invio diretto via email,
+                    # niente lookup nel registro utenti (fix q10 4/6/2026).
+                    chan = "email" if per_msg_via == "auto" else per_msg_via
+                    if chan not in ("email", "mail"):
+                        failed_pre.append({"index": i, "target": tgt,
+                                           "error": _msg("ERR_NOT_APPLICABLE", what=f"email via {chan}")})
+                        continue
+                    msg_n = dict(m)
+                    msg_n["to"] = s
+                    msg_n.pop("to_user", None)
+                    msg_n["target"] = tgt
+                    _subj = msg_n.get("subject")
+                    if not isinstance(_subj, str) or not _subj.strip():
+                        _body = str(msg_n.get("body") or "")
+                        _first = next((ln.strip() for ln in _body.splitlines() if ln.strip()), "")
+                        msg_n["subject"] = _first[:78] if _first else "Metnos"
+                    requests.append({"channel": "email",
                                      "client": client or _DEFAULT_CLIENT,
                                      "msg": msg_n, "index": i,
                                      "recipient_user": None})
