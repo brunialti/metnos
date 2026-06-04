@@ -163,12 +163,23 @@ def _count_one(path: Path, count_blank: bool, count_comments: bool):
 
 def invoke(args):
     paths = args.get("paths")
+    # §2.4 robustezza NL→determinismo: l'LLM passa spesso un singolo string per
+    # un arg-lista (paths="/tmp/x" o una DIRECTORY invece di ["/tmp/x"]).
+    # Coalesce a lista (caso degenere N=1, §2.1). _walk_paths espande già le
+    # directory via rglob → "conta le righe dei .txt in <dir>" funziona diretto
+    # senza precursore find_files (bug q23 4/6).
+    if isinstance(paths, str):
+        paths = [paths]
     if not isinstance(paths, list) or not paths:
         return {"ok": False, "error": _msg("ERR_ARG_NOT_LIST", arg="paths")}
 
     include_ext_arg = args.get("include_ext")
     if include_ext_arg is None:
         include_ext = tuple(DEFAULT_INCLUDE_EXT)
+    elif isinstance(include_ext_arg, str) and include_ext_arg.strip():
+        # §2.4: singolo string per arg-lista (include_ext="txt" → [".txt"]).
+        _e = include_ext_arg.strip()
+        include_ext = ((_e if _e.startswith(".") else "." + _e).lower(),)
     elif isinstance(include_ext_arg, list):
         # Normalizza: lowercase, garantisci il punto in testa.
         include_ext = tuple(
