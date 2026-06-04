@@ -19,10 +19,70 @@ Determinismo §7.9: nessun LLM. Nessuna mutazione di stato globale.
 from __future__ import annotations
 
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
 from typing import Callable, Optional, Sequence
+
+# --- Normalizzazione flag booleani argparse (4/6/2026, §7.3 generale) --------
+# Gli executor skill generati dall'importer costruiscono argv col pattern
+# `argv.extend(["--flag", str(value)])` per OGNI arg. Per i flag argparse
+# `action="store_true"` questo e' SBAGLIATO: vanno passati NUDI (`--flag`),
+# altrimenti il valore diventa un positional extra → "usage: ... " (usage leak,
+# §2.8). Fix centralizzato in _run_api: rileva i flag store_true del CLI e
+# normalizza l'argv. Vale per QUALSIASI skill/CLI (github, google_workspace, ...),
+# esistente e futuro, senza toccare i singoli executor.
+_STORE_TRUE_CACHE: dict = {}  # str(script_path) -> (mtime, frozenset[flag])
+_TRUTHY = {"1", "true", "yes", "si", "sì", "on", "y", "t", "vero"}
+_FALSY = {"0", "false", "no", "off", "n", "f", "", "none", "null", "falso"}
+
+
+def _store_true_flags(script_path: Path) -> frozenset:
+    """Rileva i flag `--x` con `action="store_true"` di un CLI argparse
+    (cache per mtime). Regex tollerante a definizioni multiriga."""
+    try:
+        mt = script_path.stat().st_mtime
+    except OSError:
+        return frozenset()
+    key = str(script_path)
+    hit = _STORE_TRUE_CACHE.get(key)
+    if hit and hit[0] == mt:
+        return hit[1]
+    try:
+        text = script_path.read_text(encoding="utf-8", errors="ignore")
+    except OSError:
+        return frozenset()
+    # add_argument("--flag", ... action="store_true" ...) — `[^)]` matcha anche
+    # i newline, quindi copre le definizioni su piu' righe.
+    flags = frozenset(re.findall(
+        r'add_argument\(\s*["\'](--[\w-]+)["\'][^)]*?store_true', text))
+    _STORE_TRUE_CACHE[key] = (mt, flags)
+    return flags
+
+
+def _normalize_bool_flags(argv: Sequence[str], flags: frozenset) -> list:
+    """Per ogni flag store_true presente in argv con un VALORE attaccato
+    (`--flag val`): truthy → tieni il flag NUDO (scarta il valore); falsy →
+    scarta flag+valore. Idempotente sui flag gia' nudi."""
+    if not flags:
+        return list(argv)
+    argv = list(argv)
+    out: list = []
+    i = 0
+    while i < len(argv):
+        tok = argv[i]
+        if tok in flags and i + 1 < len(argv) and not str(argv[i + 1]).startswith("-"):
+            v = str(argv[i + 1]).strip().lower()
+            if v in _FALSY:
+                i += 2          # falsy → droppa flag + valore
+                continue
+            out.append(tok)     # truthy → flag nudo, scarta il valore
+            i += 2
+            continue
+        out.append(tok)
+        i += 1
+    return out
 
 
 def _skill_home(skill_name: str) -> Path:
@@ -87,6 +147,13 @@ def _run_api(
     env.setdefault("METNOS_SKILL_HOME", str(home))
     if extra_env:
         env.update(extra_env)
+
+    # Normalizza i flag booleani store_true (§7.3 generale, vedi sopra). Robusto:
+    # un errore di normalizzazione non deve mai impedire il run.
+    try:
+        argv = _normalize_bool_flags(argv, _store_true_flags(Path(script_path)))
+    except Exception:
+        pass
 
     if fake is not None:
         return fake(list(argv), env, timeout_s)
