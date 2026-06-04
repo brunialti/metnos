@@ -65,8 +65,9 @@ def _build_prompt(fields, instruction, max_per_text) -> str:
         "markdown, niente <think>.",
         f"Ogni record è un oggetto con ESATTAMENTE questi campi: {fields}.",
         "Se un campo non è deducibile dal testo, usa stringa vuota \"\".",
-        f"Estrai al massimo {max_per_text} record dal testo. Se non c'è nulla "
-        "di pertinente, restituisci [].",
+        f"Estrai TUTTI i record pertinenti presenti nel testo (non fermarti ai "
+        f"primi), fino a un massimo di {max_per_text}. Se non c'è nulla di "
+        "pertinente, restituisci [].",
     ]
     if instruction:
         lines.append(f"COSA estrarre: {instruction}")
@@ -80,22 +81,98 @@ def _build_prompt(fields, instruction, max_per_text) -> str:
     return "\n".join(lines)
 
 
-def _parse_json_array(raw: str) -> list:
-    """Estrae il primo array JSON dal testo (tollerante a fence/prosa)."""
+def _coerce_records(data, fields) -> list:
+    """Normalizza i vari shape che l'LLM puo' produrre in lista di dict-record:
+    array diretto, wrapper `{"records":[...]}`/`{"events":[...]}`, o singolo
+    oggetto. Recall §2.8: non perdere record per una forma inattesa."""
+    if isinstance(data, list):
+        return [r for r in data if isinstance(r, dict)]
+    if isinstance(data, dict):
+        # wrapper {"<chiave>": [ {...}, ... ]}: prendi la prima lista di dict.
+        for v in data.values():
+            if isinstance(v, list) and any(isinstance(x, dict) for x in v):
+                return [r for r in v if isinstance(r, dict)]
+        # singolo record: tienilo se ha almeno un field richiesto.
+        if any(f in data for f in fields):
+            return [data]
+    return []
+
+
+def _salvage_objects(s: str) -> list:
+    """Recupero tollerante: ogni oggetto `{…}` top-level BILANCIATO che parsa
+    da solo. Cosi' un array TRONCATO dal token-cap (l'ultimo oggetto incompleto)
+    non azzera TUTTI i record gia' completi (recall §2.8). String-aware: ignora
+    parentesi dentro le stringhe JSON."""
+    out: list = []
+    depth = 0
+    start = None
+    in_str = False
+    esc = False
+    for i, ch in enumerate(s):
+        if in_str:
+            if esc:
+                esc = False
+            elif ch == "\\":
+                esc = True
+            elif ch == '"':
+                in_str = False
+            continue
+        if ch == '"':
+            in_str = True
+        elif ch == "{":
+            if depth == 0:
+                start = i
+            depth += 1
+        elif ch == "}" and depth > 0:
+            depth -= 1
+            if depth == 0 and start is not None:
+                try:
+                    obj = json.loads(s[start:i + 1])
+                    if isinstance(obj, dict):
+                        out.append(obj)
+                except json.JSONDecodeError:
+                    pass
+                start = None
+    return out
+
+
+def _parse_records(raw: str, fields: list) -> list:
+    """Estrae i record dict dall'output LLM, tollerante a fence/prosa/troncamento
+    e a shape alternativi (array, wrapper, singolo oggetto). Un array tagliato
+    dal token-cap NON azzera i record gia' completi (recall §2.8)."""
     if not raw:
         return []
     s = raw.strip()
     # togli eventuali fence ```json ... ```
     s = re.sub(r"^```[a-zA-Z]*", "", s).strip()
     s = re.sub(r"```$", "", s).strip()
-    m = re.search(r"\[[\s\S]*\]", s)
-    if not m:
-        return []
+    # 1) JSON intero ben formato (lista, wrapper, o singolo record).
     try:
-        data = json.loads(m.group(0))
-        return data if isinstance(data, list) else []
+        recs = _coerce_records(json.loads(s), fields)
+        if recs:
+            return recs
     except json.JSONDecodeError:
-        return []
+        pass
+    # 2) Array embedded in prosa.
+    m = re.search(r"\[[\s\S]*\]", s)
+    if m:
+        try:
+            recs = _coerce_records(json.loads(m.group(0)), fields)
+            if recs:
+                return recs
+        except json.JSONDecodeError:
+            pass
+    # 3) Recupero tollerante (troncamento/JSON malformato): oggetti top-level
+    #    che parsano e contengono ≥1 field richiesto (esclude wrapper spuri).
+    return [o for o in _salvage_objects(s) if any(f in o for f in fields)]
+
+
+def _extract_max_tokens(max_per_text: int) -> int:
+    """Budget output scalato col numero di record attesi (~120 tok/record +
+    margine). Cap a 8192 per evitare runaway. Evita il troncamento a monte
+    (causa #1 di recall=0: array tagliato a meta'), il parser tollerante e' la
+    rete di sicurezza a valle."""
+    return max(1200, min(8192, 512 + int(max_per_text) * 120))
 
 
 def handle_extract_entries(args, *, verbose: bool = False) -> dict:
@@ -128,26 +205,29 @@ def handle_extract_entries(args, *, verbose: bool = False) -> dict:
     truncated_inputs = len(entries) > _MAX_INPUTS
     prompt = _build_prompt(fields, instruction, max_per_text)
 
+    mt = _extract_max_tokens(max_per_text)
     out: list = []
     in_tok = out_tok = lat = 0
     failed = 0
+    out_truncated = 0  # sorgenti il cui output ha (probabilmente) toccato il cap
     for entry in sources:
         text = _pick_text(entry)[:_MAX_TEXT_CHARS]
         if not text.strip():
             continue
         try:
             raw, meta = call_llm(text, prompt, tier=tier,
-                                 max_tokens=1200, think=False)
+                                 max_tokens=mt, think=False)
             in_tok += int(meta.get("in_tokens") or 0)
-            out_tok += int(meta.get("out_tokens") or 0)
+            _ot = int(meta.get("out_tokens") or 0)
+            out_tok += _ot
             lat += int(meta.get("latency_ms") or 0)
+            if _ot >= mt - 16:  # euristica: output tagliato dal token-cap
+                out_truncated += 1
         except Exception as ex:
             failed += 1
             log.warning("extract_entries: LLM call failed: %r", ex)
             continue
-        for rec in _parse_json_array(raw)[:max_per_text]:
-            if not isinstance(rec, dict):
-                continue
+        for rec in _parse_records(raw, fields)[:max_per_text]:
             # normalizza: tieni solo i fields richiesti, riempi i mancanti.
             norm = {f: rec.get(f, "") for f in fields}
             out.append(norm)
@@ -167,6 +247,13 @@ def handle_extract_entries(args, *, verbose: bool = False) -> dict:
     }
     if failed:
         res["failed_sources"] = failed
+    if out_truncated:
+        # §2.7 visibility: l'output LLM ha toccato il token-cap su ≥1 sorgente →
+        # qualche record oltre il cap puo' mancare (il parser tollerante ha
+        # salvato i completi). Alza max_per_text o spezza la sorgente.
+        res["output_truncated_sources"] = out_truncated
+        res["cap_field"] = "max_per_text"
+        res["cap_value"] = max_per_text
     if truncated_inputs:
         # §2.7 visibility
         res["truncated"] = True
