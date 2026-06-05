@@ -122,22 +122,23 @@ supply a backend for.
 ## Install
 
 ```bash
-git clone <this-repo> metnos && cd metnos
-./install.sh --check      # congruence checks only — writes nothing
-./install.sh              # interactive, multi-stage setup
+git clone https://github.com/brunialti/metnos.git && cd metnos
+bash install/bootstrap.sh --check   # pre-flight only — writes nothing
+bash install/bootstrap.sh           # interactive, six-phase setup
 ```
 
-The installer (English-only) walks you through system checks, AI-backend selection,
-skill selection, and writes a minimal config (data dirs, a 0600 admin key,
-`runtime.toml`). It never pretends a missing prerequisite is fine — it tells you
-what stays dormant and why. Then:
+The installer (English-only) is idempotent and safe to re-run. It walks you
+through system checks, AI-backend setup, encrypted credentials, optional systemd
+units, and **skill selection** — and it never pretends a missing prerequisite is
+fine: it tells you what stays *dormant* and why. Full details, options, and the
+phase breakdown are in [`install/README.md`](install/README.md). Then:
 
 ```bash
 python3 runtime/metnos_http_server.py --host 0.0.0.0 --port 8770
 curl http://127.0.0.1:8770/agent/health
 ```
 
-A sample `systemd` unit lives in [`install/metnos-http.service.example`](install/metnos-http.service.example).
+Systemd unit templates live in [`install/units/`](install/units/).
 
 ## Metnos in the service of Metnos
 

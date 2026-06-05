@@ -96,6 +96,43 @@ def _write_summary(rows: list[dict]) -> Path:
     return p
 
 
+def _select_skills(args: Any) -> dict[str, bool]:
+    """Pick which first-party SKILLS (modular capabilities) start enabled.
+
+    All default to ON (auto_enable) so a fresh install matches the reference
+    instance; a skill you enable but haven't configured stays DORMANT (visible,
+    inert) until its prerequisite is met. You can change this any time later
+    with ``metnos-skills enable/disable`` or by asking in chat. Honours
+    ``--yes`` (enable every auto_enable default, no prompts)."""
+    try:
+        from runtime.skills_catalog import FIRST_PARTY_SKILLS
+        from runtime.skill_registry import set_skill_enabled
+    except Exception as e:  # pragma: no cover — never block first boot on this
+        ui.warn(f"skill selection unavailable ({e}); leaving defaults.")
+        return {}
+    ui.step("Skills (modular capabilities)")
+    ui.info("'core' is always on. Each skill below is dormant until its "
+            "backend/credential is configured. Change later: metnos-skills.")
+    decisions: dict[str, bool] = {}
+    for sk in FIRST_PARTY_SKILLS:
+        name = sk["name"]
+        default_on = bool(sk.get("auto_enable", True))
+        if getattr(args, "yes", False):
+            enabled = default_on
+        else:
+            enabled = ui.confirm(
+                f"Enable '{name}' — {sk.get('desc', '')} (needs {sk.get('requires','—')})",
+                default=default_on)
+        try:
+            set_skill_enabled(name, enabled)
+        except Exception as e:  # pragma: no cover
+            ui.warn(f"could not persist skill '{name}': {e}")
+        decisions[name] = enabled
+    on = [k for k, v in decisions.items() if v]
+    ui.ok(f"skills enabled: {', '.join(on) if on else '(core only)'}")
+    return decisions
+
+
 def run(args: Any) -> dict[str, Any]:
     notes: dict[str, Any] = {}
     ui.banner("Phase 6 — First boot", "Admin onboarding + summary + next steps")
@@ -127,6 +164,9 @@ def run(args: Any) -> dict[str, Any]:
         ui.console().print("    2) Send /start.")
         ui.console().print("    3) Paste the pairing code from the metnos-http dashboard.")
         ui.console().print()
+
+    # 2b. Skill selection (modular capabilities)
+    notes["skills"] = _select_skills(args)
 
     # 3. Write the summary
     ui.step("Writing install summary")
