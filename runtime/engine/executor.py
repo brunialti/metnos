@@ -252,6 +252,27 @@ _ENTRIES_CONSUMERS = frozenset({
     "sort_entries", "group_entries", "compute_entries", "compare_entries",
 })
 
+# Executor TRASFORMATIVI che consumano `entries` via un *_template/_field ma NON
+# sono _ENTRIES_CONSUMERS: stesso bug (proposer emette content_template/path_template
+# senza from_step → 0 entries → output vuoto → ok=False). Auto-wire entries quando
+# c'è un template ma manca ogni sorgente-lista (bug q28 5/6).
+_TEMPLATE_CONSUMERS = frozenset({"write_files", "move_files"})
+_TEMPLATE_ARGS = ("content_template", "path_template", "dst_template", "content_field")
+
+
+def _step_list_payload(step_result: dict):
+    """Estrae la lista-payload prodotta da uno step, indipendentemente dalla
+    chiave (§2.10): entries > results > lines > matches. Universale — l'auto-wire
+    non deve dipendere dal nome-chiave del produttore (bug q45: filter_texts_lines
+    ritorna `lines`, non `entries`)."""
+    if not isinstance(step_result, dict):
+        return None
+    for _k in ("entries", "results", "lines", "matches"):
+        _v = step_result.get(_k)
+        if isinstance(_v, list) and _v:
+            return _v
+    return None
+
 
 def _consumer_match_arg(consumer_schema, prev_entries):
     """Rileva l'arg-lista consumer naturale per una lista di entries via
@@ -398,6 +419,16 @@ def _resolve_stepref_with_fallback(result: dict, path: str):
     direct = _resolve_dotted_with_synonyms(result, path)
     if direct is not None:
         return direct
+    # entries↔results synonym (§2.6): gli executor TRASFORMATIVI (create/write/
+    # move/set/delete) ritornano `results`, non `entries`. Un placeholder
+    # ${stepN.entries.M.X} verso un produttore trasformativo va risolto su
+    # `results` (e viceversa). Bug q38 5/6: create_issues_github→results, ma
+    # set_issues_github pipava ${step1.entries.0.number} → non risolto.
+    for _a, _b in (("entries.", "results."), ("results.", "entries.")):
+        if path.startswith(_a):
+            alt = _resolve_dotted_with_synonyms(result, _b + path[len(_a):])
+            if alt is not None:
+                return alt
     # Fallback metadata: molti executor espongono aggregati scalari in
     # `metadata` (total_count, total_size_gb, ...). Il proposer scrive spesso
     # `${stepN.total_size_gb}` invece di `${stepN.metadata.total_size_gb}`.
@@ -963,8 +994,27 @@ class Executor:
                          or _detect_unresolved_placeholders(args.get("entries")))):
                 for _prev in reversed(result.steps):
                     _pr = _prev.result if isinstance(_prev.result, dict) else {}
-                    _pe = _pr.get("entries")
-                    if isinstance(_pe, list) and _pe:
+                    _pe = _step_list_payload(_pr)
+                    if _pe:
+                        args["entries"] = _pe
+                        break
+            # write/move trasformativi con un *_template/_field ma SENZA alcuna
+            # sorgente-lista (entries/files/paths) → eredita entries dall'ultimo
+            # step produttore (bug q28: write_files(content_template=...) senza
+            # from_step → 0 entries → write vuoto → ok=False).
+            if (step.tool in _TEMPLATE_CONSUMERS and result.steps
+                    and not args.get("entries") and not args.get("files")
+                    and not args.get("paths") and not args.get("content")
+                    and (any(args.get(_t) for _t in _TEMPLATE_ARGS)
+                         or args.get("path"))):
+                # template-arg presente, OPPURE solo un `path` di output scalare
+                # senza alcun content/sorgente-lista → è un write AGGREGATO della
+                # lista prodotta a monte (bug q45: write_files(path=X) con i dati
+                # da filter/read non pipati → 'write non completata').
+                for _prev in reversed(result.steps):
+                    _pr = _prev.result if isinstance(_prev.result, dict) else {}
+                    _pe = _step_list_payload(_pr)
+                    if _pe:
                         args["entries"] = _pe
                         break
             args = {k: _resolve_stepref(v, result.steps) for k, v in args.items()}
