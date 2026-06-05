@@ -18,7 +18,7 @@ en = "URL and document discovery on the web. TWO mutually exclusive modes.\n\nSE
 
 [code]
 files  = ["find_urls.py"]
-digest = "sha256:923512725c06eb959d904b22b96b372581d910539526bb407e6433daf64c75ef"
+digest = "sha256:e37f0fab2b92decd309ccd35fbeb4b67d9a722da2cd6988ccf77f30e8276320f"
 
 [args]
 type     = "object"

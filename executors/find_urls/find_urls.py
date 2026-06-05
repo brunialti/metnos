@@ -727,15 +727,14 @@ def _matches_any(path: str, patterns: list[str]) -> bool:
 
 
 def _embedding_service():
-    """Carica una EmbeddingService singleton se disponibile. None se model
-    non e' presente sul nodo (fallback graceful)."""
+    """Servizio embedding via SHIM ai_backend (esercizio→suprastructure,
+    pubblico→BGE ONNX standalone). None se non disponibile (fallback graceful).
+    Rimosso l'import diretto `suprastructure.*` (fix dipendenza B1 rilascio
+    pubblico): la selezione del backend è centralizzata in runtime/ai_backend."""
     try:
-        from suprastructure.embedding.onnx_embedding import EmbeddingService
-        emb = EmbeddingService()
-        # Test rapido: forza load.
-        emb._ensure_loaded()
-        return emb
-    except (ImportError, FileNotFoundError, OSError, RuntimeError):
+        from ai_backend import embedding_service
+        return embedding_service()
+    except Exception:
         return None
 
 
