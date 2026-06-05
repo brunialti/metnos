@@ -555,6 +555,10 @@ controparte inglese in
  <td><a href="skill_importer.html"><code>skill_importer</code></a></td>
  <td>Importa skill di terzi da <code>agentskills.io</code> e ne ricava executor Metnos: pipeline a cinque stadi (fetch, parse, map, wrap, register), tabella di mapping verbi <code>skill_vocab_map.json</code>, helper di wrapping con <em>confine del verbo</em> e CLI <code>metnos-skills import|list|uninstall|status|evaluate</code>.</td>
 </tr>
+<tr>
+ <td><a href="skills_backends.html"><code>skills &amp; backends</code></a></td>
+ <td>Perch&eacute; skill e backend sono due assi ortogonali: il backend dice <em>COME</em> esegui un <code>verbo_oggetto</code> (configurazione, <code>backend_resolver</code>, invisibile all'LLM), la skill dice <em>SE/QUALI</em> capacit&agrave; sono sbloccate (attivazione, dormienza, recinto). Tre tier (core / first_party / imported), evoluzione mono&rarr;multi provider, promozione con frontier una-tantum. Fonte: ADR 0170.</td>
+</tr>
 </tbody>
 </table>
 

@@ -85,3 +85,48 @@ Il **gap**: l'import grezzo produce *executor standalone*, non *backend sotto il
 - Quando arriverà gitlab/altri: percorso §4 prescritto, niente sdoppiamento di executor.
 - `skills_catalog` e SKILL.md guadagnano `tier`; gating e packaging pubblico ne derivano.
 - Resta aperto: vendoring futuro di altre Tier-2 oggi solo "classificate" (i loro backend sono già in repo; mancano eventuali script esterni come per gws).
+
+## 6. Confronto: come fanno Hermes e gli agent MCP-based
+
+Per capire *perché* Metnos separa skill e backend (mentre gli altri li fondono):
+
+| | Hermes (Nous) / drop-in skills | Claude-Code + MCP family | **Metnos** |
+|---|---|---|---|
+| cervello che sceglie il provider | **frontier** (legge SKILL.md, disambigua) | **frontier** (legge tool descriptions) | **locale medio** (Gemma): ha **bias** sul provider |
+| skill vs backend | **fusi** (skill = cartella di script eseguibili = provider) | **fusi** (tool/MCP-server = provider) | **separati** (backend=esecuzione, skill=attivazione) |
+| multi-provider | **skill parallele** per-provider, l'agente sceglie | tool/server paralleli, il modello sceglie | **un executor canonico + backend per provider** (resolver) |
+| credenziale/dormancy | `required_credential_files` + setup | implicita (server connesso o no) | **dormancy formalizzata** |
+| fiducia | esegue codice skill coi privilegi (RCE) | esegue tool/server | **vocab chiuso + sandbox 7-layer** (ADR 0159) |
+
+**Conseguenza chiave**: Hermes e gli MCP-clone mettono un **frontier al centro** → si possono permettere skill/tool paralleli per-provider (opzione (a)) perché il modello disambigua dalla prosa. **Metnos gira su modello locale**, dove (a) genera **bias sul provider** (lessons_learned §B1, ADR 0165) → **deve** astrarre (opzione (b)). La separazione skill↔backend non è un ritardo: è una **conseguenza obbligata** del planner locale + del modello di sicurezza per-costruzione.
+
+## 7. Gating per-backend nel modello multi-provider (DA COSTRUIRE)
+
+Astraendo, il gating skill si **sposta dall'executor al backend**:
+
+- **executor** `find_issues` (provider-agnostico): disponibile se **≥1** dei suoi backend è abilitato+configurato; dormant se ZERO.
+- **skill = un backend** (confine credenziale): skill ON → quel backend entra nel pool del `backend_resolver`.
+- **resolver** (ADR 0165): sceglie fra i backend abilitati+configurati; onesto (§2.8) se chiedi un provider la cui skill è spenta.
+
+Effetto desiderato: **accendere/spegnere un provider NON cambia il pool di tool del planner** (vede sempre `find_issues`), cambia solo il routing. Disabilitare uno dei due → l'altro continua a servire; disabilitare entrambi → executor dormant.
+
+Oggi il gating è **per pattern sul nome executor** (`skills_catalog`) — funziona solo mono-provider. Pezzo nuovo richiesto: **mappa skill→backend** + regola "executor dormant = AND su tutti i suoi backend spenti". È il primo mattone da costruire (serve appena esiste il primo executor multi-backend).
+
+## 8. Promozione mono→multi provider: meccanismo (frontier una-tantum, bordi deterministici)
+
+Operazione **straordinaria** (fondere una skill mono-provider cotta `*_github` in `find_issues` + backend). Ammesso l'uso di un **LLM frontier una-tantum SOLO per il refactoring**; detection e apply restano deterministici + gate umano (auto-firmare codice frontier romperebbe la fiducia).
+
+**QUANDO** (trigger, deterministico): all'arrivo del 2° provider — tipicamente **import** di una skill (ADR 0123/0159) che mappa su un OGGETTO già coperto solo da executor **provider-suffixed** (`*_github`, parse Naming Authority ADR 0156). Object-overlap + provider mismatch → "promotion candidate". Niente LLM per accorgersene.
+
+**DOVE** (seam, riuso infra):
+- detect → layer admission importer;
+- refactor → routine `promote_provider` via **`consult_frontier` modo B agentico** (ADR 0142);
+- atterraggio → **`/admin/changes`** kind `promote_provider` (change_intent lifecycle ADR 0158), NIENTE auto-apply;
+- apply → `change_intent_applier`: scrive file + **re-sign** (§7.10) + registra skill-backend + gating per-backend (§7);
+- verify → admission 7-layer (ADR 0114) + smoke.
+
+**COME** (pipeline): detect(det.) → frontier genera {executor canonico + `backends/<obj>/{p1,p2}.py` per ADR 0130 + mappa skill→backend} → change_intent → **review umana** → apply+sign+verify. Frontier solo nel mezzo; bordi deterministici e firmati a mano.
+
+**Pezzi nuovi** (incrementali, indipendenti): (1) `promotion_detector`; (2) prompt di promozione per `consult_frontier`; (3) gating per-backend (§7, serve comunque). Il #3 è il candidato da fare per primo.
+
+**Regola generale**: un provider che plausibilmente avrà fratelli (github→gitlab/gitea, mail-IMAP, calendar) va **astratto da subito** (non cuocere il provider nel nome); uno che resterà unico può restare cotto. github è oggi cotto (`*_github`, ADR 0141) = debito tecnico noto.

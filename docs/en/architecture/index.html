@@ -408,6 +408,10 @@ counterpart at
  <td><a href="skill_importer.html"><code>skill_importer</code></a></td>
  <td>Imports third-party skills from <code>agentskills.io</code> and turns them into Metnos executors: five-stage pipeline (fetch, parse, map, wrap, register), verb mapping table <code>skill_vocab_map.json</code>, wrapping helpers with <em>verb boundary</em>, and CLI <code>metnos-skills import|list|uninstall|status|evaluate</code>.</td>
 </tr>
+<tr>
+ <td><a href="skills_backends.html"><code>skills &amp; backends</code></a></td>
+ <td>Why skills and backends are two orthogonal axes: the backend says <em>HOW</em> you run a <code>verb_object</code> (configuration, <code>backend_resolver</code>, invisible to the LLM), the skill says <em>WHETHER/WHICH</em> capabilities are unlocked (activation, dormancy, sandbox). Three tiers (core / first_party / imported), mono&rarr;multi provider evolution, promotion with a one-off frontier. Source: ADR 0170.</td>
+</tr>
 </tbody>
 </table>
 

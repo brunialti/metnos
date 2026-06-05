@@ -106,6 +106,40 @@ Enabling a skill you haven't configured is harmless: it stays visible but inert
 until its prerequisite (an IMAP account, a SearXNG instance, a GitHub token, …) is
 present.
 
+### Skills vs backends — two orthogonal layers
+
+This is where Metnos diverges most from drop-in frameworks, and it is a deliberate
+consequence of running a **local** planner instead of a frontier model.
+
+- A **backend** answers *how* an action runs against a concrete service
+  (`backends/events/google_workspace.py`, `backends/events/local_ics.py`). The
+  provider is chosen **from configuration**, deterministically, and is never
+  exposed to the LLM — picking a provider is configuration, not intent.
+- A **skill** answers *whether/which* capabilities are unlocked, trusted, and
+  shipped. It governs activation (enable/disable), dormancy, sandboxing, and
+  packaging.
+
+They are **orthogonal**. They only coincide for a single-provider skill; they
+diverge when one capability has several backends (calendar = local ICS / Google /
+CalDAV) or none (photos = local models). The external dependency is declared
+**once, at the backend**; the skill merely aggregates it.
+
+Skills come in three tiers: **core** (always on, no external dependency),
+**first-party** (shipped with Metnos, same audited standard, dormant until
+configured), and **imported** (third-party, sandboxed behind the 7-layer gate).
+Only core + first-party ship in this repo; imported skills are something *you*
+install, and the "don't trust the package" thesis above is exactly about them.
+
+**Adding a second provider (e.g. GitLab next to GitHub).** Drop-in frameworks add
+a *parallel* skill per provider and let a frontier model disambiguate by reading
+descriptions. A local planner can't do that reliably — it develops a provider
+bias. So Metnos keeps **one provider-agnostic executor** (`find_issues`) and adds
+a **backend** per provider; the resolver routes by configuration. Adding a
+provider is *+1 backend file + 1 skill, zero new executors* — and the planner
+never sees the choice. Promoting an already provider-baked tool into this shape is
+an extraordinary, human-gated refactor (a one-time frontier pass generates it; you
+review and sign it). See the architecture docs for the full design.
+
 ## Requirements (the honest version)
 
 The code is the easy part. The real barrier is **hardware**: Metnos wants a machine
