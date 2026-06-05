@@ -15,7 +15,7 @@ en = "Enriches a list of photo files on a filesystem (local paths like /home/...
 
 [code]
 files  = ["get_files.py"]
-digest = "sha256:ad909bed04be984390beac9ce970a8c781bbee03d4e47a70cb3aeb2e200cc982"
+digest = "sha256:4691cbf0715f0f62a59003e265e2e1a9981331cbd3f51f0dd3cb7bdca62c1caf"
 
 [args]
 type     = "object"
