@@ -494,12 +494,16 @@ def read(args: dict) -> dict:
                                    reason=f"unknown; configurati: {hint}")}
         accounts = resolved
 
-    if max_results <= 0 or max_results > 200:
-        return {"ok": False, "error_code": "ERR_ARG_INVALID",
-                "error": _msg("ERR_ARG_INVALID", arg="max_results", reason="must be in 1..200")}
-    if max_total <= 0 or max_total > 1000:
-        return {"ok": False, "error_code": "ERR_ARG_INVALID",
-                "error": _msg("ERR_ARG_INVALID", arg="max_total", reason="must be in 1..1000")}
+    # §2.4 robustezza NL→determinismo: l'LLM sceglie spesso max_results/max_total
+    # grandi ("ultime mail", "tutte le mail") → CLAMP al cap invece di fallire
+    # (cap superiore = parametro §2.1, non errore; 0-as-placeholder → default).
+    # Bug q34 5/6: max_results=1000 faceva ok=False prima della lettura.
+    if not isinstance(max_results, int) or max_results <= 0:
+        max_results = 200
+    max_results = min(max_results, 200)
+    if not isinstance(max_total, int) or max_total <= 0:
+        max_total = 1000
+    max_total = min(max_total, 1000)
 
     since, before, window_label = _resolve_window(time_window)
     if time_window and window_label and window_label.startswith(("invalid:", "unknown_preset:")):
