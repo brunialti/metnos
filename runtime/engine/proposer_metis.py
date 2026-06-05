@@ -35,12 +35,34 @@ from .proposer import SimpleProposer, _parse_framework_json, _render_tool_pool
 log = logging.getLogger(__name__)
 
 
-def _n_candidates() -> int:
-    """N candidates da env, default 3. §7.3 — fix #5."""
+def _n_candidates(intent=None) -> int:
+    """N candidati ADATTIVO per confidenza (deterministico, no ML — §7.9).
+
+    Il proposer metis genera N piani-candidato (N chiamate LLM grammar-constrained
+    sulla GPU SINGOLA → costo dominante del turno) e ne sceglie uno via telos-rank
+    euristico. Su query ad ALTA confidenza e NON-compound la prima proposta è
+    affidabile → N=1 (niente spreco, ~3-5x più veloce). Su BASSA confidenza o
+    COMPOUND (>=2 azioni) si mantiene l'hedge champion+challenger → N=ceiling.
+    Gating sul segnale `intent.confidence` GIÀ esistente (stessa soglia di
+    `use_fast`). Nessun ranker ML ([[no_training_amplify_reality]]). Env: ceiling
+    `METNOS_METIS_N_CANDIDATES` (default 2), floor `_FAST` (default 1)."""
     try:
-        return max(1, int(os.environ.get("METNOS_METIS_N_CANDIDATES", "3")))
+        ceil = max(1, int(os.environ.get("METNOS_METIS_N_CANDIDATES", "2")))
     except ValueError:
-        return 3
+        ceil = 2
+    try:
+        fast = max(1, int(os.environ.get("METNOS_METIS_N_CANDIDATES_FAST", "1")))
+    except ValueError:
+        fast = 1
+    if intent is None:
+        return ceil
+    try:
+        conf = float(getattr(intent, "confidence", 0.0) or 0.0)
+        thr = float(os.environ.get("METNOS_PROPOSER_FAST_CONFIDENCE", "0.70"))
+        compound = len(getattr(intent, "actions", None) or []) >= 2
+    except Exception:
+        return ceil
+    return fast if (conf >= thr and not compound) else ceil
 
 
 def _cache_max() -> int:
@@ -170,7 +192,7 @@ class MetisProposer:
         ignorata dal metis path → parse rate degrada vs claim hardening.
         """
         use_grammar = os.environ.get("METNOS_PROPOSER_GRAMMAR", "0") == "1"
-        n_cands = _n_candidates()
+        n_cands = _n_candidates(intent)
         if use_grammar:
             return self._generate_grammar_multi(
                 query=query, intent=intent, pool=pool,
