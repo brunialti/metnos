@@ -43,11 +43,9 @@ docs/|
 runtime/tests/|
 runtime/testing/|
 runtime/stress/|
-runtime/_legacy/|
 runtime/bench_|
 runtime/smoke|
 runtime/run_all_tests\.py$|
-runtime/test_runner\.py$|
 scripts/(scrub-scan|audit_introvertiva|audit_quality_with_email|myclaw-unattended|migrate-syspath-to-package|rename-myclaw-to-metnos)|
 scripts/scrub_names\.txt$|
 scripts/export-public\.sh$|

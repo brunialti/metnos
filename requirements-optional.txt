@@ -1,0 +1,16 @@
+# Metnos — dipendenze OPZIONALI. Si installano SOLO se attivi la skill relativa
+# (vedi tassonomia skill: dormant finché non configurata).
+#
+#   pip install -r requirements.txt -r requirements-optional.txt
+
+# --- skill google-workspace (gmail/calendar/drive/docs/sheets, OAuth) ---
+google-api-python-client==2.196.0
+google-auth-oauthlib==1.4.0
+google-auth
+
+# --- intent-classifier, path ML (altrimenti fallback bag-of-words) ---
+torch
+sentence-transformers
+
+# --- sidecar automazione web (playwright) ---
+playwright
