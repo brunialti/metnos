@@ -35,6 +35,11 @@ _CONTENT_CONSUMERS = (
     "describe_entries", "classify_entries", "filter_entries",
     "compute_entries", "compare_entries",
 )
+# Reader su filesystem: richiedono una lista di path. Se invocati SENZA
+# path/paths/from_step/entries manca il precursore find_files (bug q29 5/6).
+_FILE_READERS = (
+    "read_files", "read_files_pdf", "read_files_html", "read_files_ocr",
+)
 
 
 class MetisRecovery:
@@ -52,6 +57,14 @@ class MetisRecovery:
         if corrected is not None:
             log.info("MetisRecovery: inserito read_urls_html (needs_content_fetch)")
             return corrected
+
+        # 1.bis Precursore find_files mancante: un file-reader invocato senza
+        # alcuna sorgente-path (proposer ha saltato find_files). Ricostruisce
+        # [find_files(base_path=<dir dalla query>), reader(from_step=1)].
+        corrected_ff = self._fix_needs_file_discovery(failed_run, query, catalog)
+        if corrected_ff is not None:
+            log.info("MetisRecovery: inserito find_files (needs_file_discovery)")
+            return corrected_ff
 
         # 2. Re-propose escludendo SOLO il framework fallito (NON il tool: a
         #    differenza di SimpleRecovery, che escludendo il tool dell'ultimo
@@ -114,6 +127,51 @@ class MetisRecovery:
         consumer_args = self._clean_args(last.args)
         consumer_args["from_step"] = read_idx
         steps.append(StepSpec(tool=last.tool, args=consumer_args))
+        return Framework(steps=steps, final_message="")
+
+    def _fix_needs_file_discovery(self, failed_run: RunResult, query: str,
+                                  catalog: Optional[list]) -> Optional[Framework]:
+        """Un file-reader (read_files/_pdf/_html/_ocr) invocato SENZA alcuna
+        sorgente-path (path/paths/from_step/entries) = manca il precursore
+        find_files (il proposer è andato diretto al reader). Ricostruisce
+        [find_files(base_path=<dir assoluta dalla query>, patterns=[*.ext]),
+        reader(from_step=1)]. Deterministico §7.9 (precursor universale).
+        Bug q29 5/6: 'leggi i file .txt in /tmp/... e raggruppa' → read_files
+        senza path → 'argomento obbligatorio mancante: path'."""
+        if not failed_run.steps:
+            return None
+        last = failed_run.steps[-1]
+        if last.tool not in _FILE_READERS or last.ok:
+            return None
+        a = last.args if isinstance(last.args, dict) else {}
+        if any(a.get(k) for k in ("path", "paths", "from_step", "entries")):
+            return None  # aveva un input → fallimento per altra causa
+        # find_files è canonico (invocato PER NOME dall'executor): NON si gate
+        # sul catalog/pool (che può essere verb-filtered a read/get e non
+        # contenerlo) — stessa filosofia di _fix_needs_content_fetch.
+        import os
+        import re as _re
+        # Estrai una directory ESISTENTE dalla query (path assoluto o ~).
+        base = None
+        for p in _re.findall(r"((?:~|/)[^\s'\";:,]+)", query or ""):
+            cand = os.path.expanduser(p)
+            if os.path.isdir(cand):
+                base = p
+                break
+            parent = os.path.dirname(cand)
+            if parent and os.path.isdir(parent):
+                base = os.path.dirname(p) or p
+                break
+        if not base:
+            return None
+        ff_args = {"base_path": base, "recursive": True}
+        m = _re.search(r"\.([a-z0-9]{1,5})\b", query or "", _re.IGNORECASE)
+        if m:
+            ff_args["patterns"] = [f"*.{m.group(1).lower()}"]
+        steps = [
+            StepSpec(tool="find_files", args=ff_args),
+            StepSpec(tool=last.tool, args={"from_step": 1}),
+        ]
         return Framework(steps=steps, final_message="")
 
     @staticmethod
