@@ -3,7 +3,7 @@
 > **OBBLIGO**: leggere integralmente all'inizio di ogni sessione. Codifica decisioni architetturali, convenzioni di codice e norme di processo. Punto obsoleto/errato → AGGIORNA subito.
 >
 > Mantenuto da: agente. Aggiornamento quando si fissa una nuova norma duratura. Storia in `git log CLAUDE.md`. Dettagli implementativi vivono negli ADR (`decisions/`), non qui.
-> Ultimo: 2026-06-04 v20 (manutenzione: §10.6 voci fuori-budget ricompresse a 1-riga reale — nome+ADR+call-site, env-vars/bench/prosa→ADR). Norme correnti negli ADR 0150-0169; changelog completo in `git log CLAUDE.md`.
+> Ultimo: 2026-06-05 v21 (rilascio pubblico: +norma «Distribuzione public-subset» §10.6 — baseline completo vs export deterministico, ADR/docs non pubblici). v20: §10.6 voci ricompresse a 1-riga. Norme correnti negli ADR 0150-0169; changelog completo in `git log CLAUDE.md`.
 
 ---
 
@@ -351,6 +351,7 @@ Tipi: `user`, `feedback`, `project`, `reference`. Indice in `~/.claude/projects/
 **Project paths / config**
 - **PROJECT PATHS** (ADR 0079): `runtime/project_paths.json` mappa progetti → root.
 - **Config persistente** (Fase 12): `runtime/runtime_settings.py` + `~/.config/metnos/runtime.toml`. Hierarchy `env > toml > default`.
+- **Distribuzione public-subset** (ADR 0145 ext): `/opt/metnos` = baseline completo (`decisions/` TRACCIATO, `docs/` ignorato); repo pubblico = export deterministico `scripts/export-public.sh` (git ls-files − e2e/tests/bench/stress/internal/decisions/docs/CLAUDE.md/binari; IP funzionali→localhost; manifest firmati+`.sig` preservati). Audit `scripts/scrub-scan.sh [--strict]`. ADR/docs NON pubblici.
 
 **PLANNER difese specifiche**
 - **PLANNER skip describe after health** (ADR 0111): 4 difese post `get_processes(include_health=true)`. Safety net `_prepend_health_block_if_any`.
