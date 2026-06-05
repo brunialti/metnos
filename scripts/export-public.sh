@@ -104,13 +104,23 @@ mkdir -p "$DEST"
 printf '%s\0' "${KEEP[@]}" | rsync -a --files-from=- --from0 ./ "$DEST/" 2>/dev/null \
   || { while IFS= read -r -d '' f; do mkdir -p "$DEST/$(dirname "$f")"; cp -p "$f" "$DEST/$f"; done < <(printf '%s\0' "${KEEP[@]}"); }
 
-# --- Sanificazione default funzionali locali (NON tocca .toml/.sig firmati) ---
+# --- Sanificazione contenuto nei file esportati -------------------------------
+# Regole:
+#   - IP funzionale locale 192.168.1.33 -> localhost.
+#   - Riferimenti penzolanti al doc interno "CLAUDE.md" (non pubblicato) ->
+#     "the design guide" (i §X restano coerenti come rationale interno).
+# I manifest executor FIRMATI e i .sig non vengono toccati (firma valida);
+# nessun manifest firmato cita CLAUDE.md, quindi nessuna perdita.
 while IFS= read -r -d '' f; do
   case "$f" in
-    *.toml|*.sig) continue ;;  # preserva le firme
+    *.sig) continue ;;                       # mai le firme
+    "$DEST"/executors/*/manifest.toml) continue ;;  # manifest firmati
   esac
   if grep -q '192\.168\.1\.33' "$f" 2>/dev/null; then
     sed -i 's/192\.168\.1\.33/localhost/g' "$f"
+  fi
+  if grep -q 'CLAUDE\.md' "$f" 2>/dev/null; then
+    sed -i 's/CLAUDE\.md/the design guide/g' "$f"
   fi
 done < <(find "$DEST" -type f -print0)
 
