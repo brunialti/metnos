@@ -67,7 +67,7 @@ Output sessione 14/5/2026:
 [OK] created  smtp_metnos_system     user=metnos@metnos.com
 [OK] created  smtp_metnos_roberto    user=roberto.brunialti@metnos.com
 [OK] created  smtp_mykleos           user=mykleos@knowcastle.com
-[OK] created  smtp_knowcastle        user=roberto.brunialti@knowcastle.com
+[OK] created  smtp_knowcastle        user=roberto@example.com
 [OK] created  smtp_tiscali           user=roberto_brunialti@tiscali.it
 ```
 
@@ -84,7 +84,7 @@ segreti high-value in plaintext:
 | `ANTHROPIC_API_KEY` | `anthropic_api_key` | ALTA (billing Claude) |
 | `OPENAI_API_KEY` | `openai_api_key` | ALTA (billing OpenAI) |
 | `TELEGRAM_BOT_TOKEN` | `telegram_bot_token` | MEDIA-ALTA (bot intero) |
-| `TELEGRAM_CHAT_ID` (587627005) | `telegram_chat_id_host` | BASSA (chat id pubblico) |
+| `TELEGRAM_CHAT_ID` (100000001) | `telegram_chat_id_host` | BASSA (chat id pubblico) |
 | `~/.config/metnos/google_maps.env` GOOGLE_MAPS_API_KEY | `google_maps_api_key` | ALTA (billing Places) |
 
 Payload schema (uniforme per API keys):

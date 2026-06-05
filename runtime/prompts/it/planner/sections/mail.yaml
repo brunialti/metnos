@@ -63,7 +63,7 @@ rules:
     when: "la query dice «manda/invia/scrivi/spedisci email» (azione OUTBOUND), oppure «mandami email con la scelta» (notifica)"
     must: "send_messages (IMAP locale) o send_messages_google_workspace (Gmail). Args canonici: messages=[{to:..., subject:..., body:...}] o to_user/via_channel per routing automatico. Se l'utente specifica «email/mail/posta» come canale -> via_channel=\"mail\" ESPLICITO. Se «telegram» -> via_channel=\"telegram\""
     must_not: "invocare find_messages_*/read_messages: la query INVIA mail, non CERCA mail. «email» qui e' il MEZZO di consegna, non il dato cercato"
-    ok: "«manda email a roberto con riassunto giornata» -> send_messages(messages=[{to:\"roberto.brunialti@knowcastle.com\", subject:\"Riassunto\", body:\"...\"}]) -> final_answer"
+    ok: "«manda email a roberto con riassunto giornata» -> send_messages(messages=[{to:\"roberto@example.com\", subject:\"Riassunto\", body:\"...\"}]) -> final_answer"
     error: "«manda email» -> find_messages_google_workspace (E' UN ERRORE: la query INVIA, non CERCA). OPPURE «mandami con la scelta» -> send_messages al primo step prima di avere la scelta (E' UN ERRORE: body vuoto)"
 
   - name: classify_relevance_pipeline

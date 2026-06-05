@@ -8,7 +8,7 @@ Two storage fields parallel:
 
 Senza sync, `users.email` resta inutilizzata e `send_messages(via_channel="mail")`
 fallisce con `channel_not_paired:email` anche per host con email gia' nota
-(es. roberto.brunialti@knowcastle.com presente nella riga `users` ma assente
+(es. roberto@example.com presente nella riga `users` ma assente
 da `user_channels`).
 
 Strategia (deterministica, §7.9 — niente LLM):

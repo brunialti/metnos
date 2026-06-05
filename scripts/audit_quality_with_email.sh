@@ -17,7 +17,7 @@
 #   AUDIT_TARGET_LANG  (default: en)
 #   AUDIT_SAMPLE       (default: all)
 #   AUDIT_APPLY        (default: 1 — auto-apply config dopo audit)
-#   AUDIT_EMAIL_TO     (default: roberto.brunialti@knowcastle.com)
+#   AUDIT_EMAIL_TO     (default: roberto@example.com)
 #
 # Output:
 #   /tmp/metnos_audit_<ts>/  contiene:
@@ -31,7 +31,7 @@ VENV_PY=/opt/suprastructure/.venv/bin/python
 TARGET_LANG="${AUDIT_TARGET_LANG:-en}"
 SAMPLE="${AUDIT_SAMPLE:-all}"
 APPLY="${AUDIT_APPLY:-1}"
-EMAIL_TO="${AUDIT_EMAIL_TO:-roberto.brunialti@knowcastle.com}"
+EMAIL_TO="${AUDIT_EMAIL_TO:-roberto@example.com}"
 
 TS=$(date +%Y%m%d_%H%M%S)
 WORKDIR=/tmp/metnos_audit_$TS

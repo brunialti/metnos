@@ -11,7 +11,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from self_recipient_resolver import resolve_self_recipient  # noqa: E402
 
-EMAIL = "roberto.brunialti@knowcastle.com"
+EMAIL = "roberto@example.com"
 
 
 def _args(**over):

@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import sqlite3
 import time
@@ -33,9 +34,10 @@ from pathlib import Path
 DB_PATH = Path(__file__).resolve().parent / "livetest.sqlite"
 ENDPOINT = "http://127.0.0.1:8770/agent/turn"
 TESTDIR = "/tmp/metnos_livetest"
-TEST_EMAIL = "mykleos@knowcastle.com"
-TEST_EMAIL2 = "roberto.brunialti@knowcastle.com"
-TEST_REPO = "brunialti/metnos"
+# Functional fixtures — overridable via env so the harness ships PII-clean.
+TEST_EMAIL = os.environ.get("METNOS_TEST_EMAIL", "tester@example.com")
+TEST_EMAIL2 = os.environ.get("METNOS_TEST_EMAIL2", "roberto@example.com")
+TEST_REPO = os.environ.get("METNOS_TEST_REPO", "owner/repo")
 
 # Messaggi di RESA/FALLBACK runtime = la query NON e' arrivata in fondo come
 # atteso (loop_break/recovery convertiti in final_kind=answer). = FAIL.

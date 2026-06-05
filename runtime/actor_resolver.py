@@ -28,7 +28,7 @@ from typing import Optional
 
 
 def _short_sender(sender_id: str) -> str:
-    """Tag breve da sender_id (es. ultimi 6 char di 587627005 → 627005).
+    """Tag breve da sender_id (es. ultimi 6 char di 100000001 → 000001).
     Used per generare nome guest auto-assegnato leggibile."""
     s = (sender_id or "").strip()
     if not s:

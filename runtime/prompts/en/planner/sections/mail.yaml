@@ -63,7 +63,7 @@ rules:
     when: "the query says «send/write/dispatch email» (OUTBOUND action), or «email me my choice» (notification)"
     must: "send_messages (local IMAP) or send_messages_google_workspace (Gmail). Canonical args: messages=[{to:..., subject:..., body:...}] or to_user/via_channel for automatic routing. If the user specifies «email/mail» as channel -> via_channel=\"mail\" EXPLICIT. If «telegram» -> via_channel=\"telegram\""
     must_not: "invoke find_messages_*/read_messages: the query SENDS mail, does not SEARCH mail. «email» here is the DELIVERY MEDIUM, not the data searched for"
-    ok: "«send email to roberto with day summary» -> send_messages(messages=[{to:\"roberto.brunialti@knowcastle.com\", subject:\"Summary\", body:\"...\"}]) -> final_answer"
+    ok: "«send email to roberto with day summary» -> send_messages(messages=[{to:\"roberto@example.com\", subject:\"Summary\", body:\"...\"}]) -> final_answer"
     error: "«send email» -> find_messages_google_workspace (THIS IS AN ERROR: the query SENDS, not SEARCHES). OR «email me my choice» -> send_messages at first step before having the choice (THIS IS AN ERROR: empty body)"
 
   - name: classify_relevance_pipeline

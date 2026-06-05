@@ -8,7 +8,7 @@
 | Canale | Sender fidato | Livello default | Note |
 |--------|---------------|-----------------|------|
 | CLI locale | Roberto su `metnos-server` | Full | LAN diretta, niente pairing necessario |
-| Telegram | `chat_id=587627005` (Roberto) | Supervised | Pairing automatico (vedi cap. 12) |
+| Telegram | `chat_id=100000001` (Roberto) | Supervised | Pairing automatico (vedi cap. 12) |
 | Telegram | qualunque altro chat_id | ReadOnly | Solo dopo approvazione esplicita di Roberto |
 | Headscale overlay | Roberto fuori casa | Full | Stessa fiducia di LAN, transport cifrato |
 

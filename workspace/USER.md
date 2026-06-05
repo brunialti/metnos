@@ -7,7 +7,7 @@
 ## Identita'
 
 - **Nome**: Roberto Brunialti
-- **Email**: roberto.brunialti@knowcastle.com
+- **Email**: roberto@example.com
 - **Ruolo**: progettista e unico utente di Metnos in fase di sviluppo
 
 ## Fuso orario

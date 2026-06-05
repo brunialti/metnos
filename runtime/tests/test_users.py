@@ -208,14 +208,14 @@ class UsersTests(unittest.TestCase):
     def test_autobind_host_telegram_idempotent(self):
         """autobind_host_telegram: prima volta binda, seconda volta no-op."""
         self.users.init_db()
-        ch1 = self.users.autobind_host_telegram("587627005")
+        ch1 = self.users.autobind_host_telegram("100000001")
         self.assertIsNotNone(ch1)
-        self.assertEqual(ch1["recipient_id"], "587627005")
+        self.assertEqual(ch1["recipient_id"], "100000001")
         self.assertIsNotNone(ch1["verified_at"])
-        ch2 = self.users.autobind_host_telegram("587627005")
+        ch2 = self.users.autobind_host_telegram("100000001")
         self.assertIsNotNone(ch2)
         # Stesso recipient
-        self.assertEqual(ch2["recipient_id"], "587627005")
+        self.assertEqual(ch2["recipient_id"], "100000001")
 
 
 if __name__ == "__main__":

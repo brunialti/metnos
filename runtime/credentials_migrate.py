@@ -15,7 +15,7 @@ Sorgenti pre-migrazione (centralizzate da qui):
 Classificazione user/system (direttiva 14/5/2026):
   - `*_api_key` (anthropic/openai/google_maps): system (billing).
   - `telegram_bot_token`: system (bot e' un servizio Metnos).
-  - `telegram_chat_id_host`: utente host (587627005 = Roberto).
+  - `telegram_chat_id_host`: utente host (100000001 = Roberto).
   - `smtp_*`: misto (system_account vs user_account; mapping caso-per-caso).
 
 NB: il file OAuth `~/.local/share/metnos/skills/google-workspace/google_token.json`
