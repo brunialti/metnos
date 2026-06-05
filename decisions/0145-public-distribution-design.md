@@ -175,10 +175,11 @@ models/*.onnx
 `scripts/pre-commit-scrub.sh` cerca pattern noti e blocca il commit
 se trova match:
 
-- email: `roberto\.brunialti@`, `mykleos@`, `metnos@knowcastle`, `@migadu`
+- email: local-part personali + domini company/personali (vedi
+  `PATTERN_EMAIL` in `scripts/scrub-scan.sh` per i pattern correnti)
 - nomi propri: regex configurabile in `scripts/scrub_names.txt`
   (default include nomi familiari noti)
-- host/IP: `\b192\.168\.1\.3[0-9]\b`, `\bbeelink\b`, `knowcastle\.com`
+- host/IP: `\b192\.168\.1\.3[0-9]\b`, `\bbeelink\b`, dominio company
 - secrets pattern: `BOT_TOKEN=`, `API_KEY=[A-Za-z0-9_-]{20,}`,
   `ghp_[A-Za-z0-9]{36}` (GitHub PAT), `sk-[A-Za-z0-9]{40,}` (API key)
 - HMAC key file content (`admin.key` shouldn't ever appear)
