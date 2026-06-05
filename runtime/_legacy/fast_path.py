@@ -353,6 +353,39 @@ def try_seed_step(query: str) -> Optional[dict]:
     }
 
 
+# ── Identità dell'ASSISTENTE (deterministico, prima di Praxis) ──────────
+# "chi sei" ≠ "chi sono io": la prima è l'identità dell'assistente, la seconda
+# il profilo dell'utente. Senza questo, il cache Praxis instrada entrambe a
+# read_persons(actor) → dump del profilo+email dell'utente (bug live 5/6/2026).
+_IDENTITY_EXACT = frozenset({
+    "chi sei", "chi sei tu", "tu chi sei", "ma chi sei", "e tu chi sei",
+    "chi sei esattamente", "cosa sei", "che cosa sei", "sei un assistente",
+    "sei un ai", "sei un'ai", "sei metnos", "presentati", "chi e metnos",
+    "who are you", "who are you?", "what are you", "what are you?",
+    "are you an assistant", "are you an ai", "are you metnos",
+    "introduce yourself", "tell me who you are",
+})
+_IDENTITY_ANSWER_IT = (
+    "Sono Metnos, un assistente personale self-hosted che gira sulla tua "
+    "macchina (via Telegram e interfaccia web). Ti aiuto con file, posta, "
+    "foto, calendario, web e altro — solo le funzioni che attivi tu. Come "
+    "posso aiutarti?"
+)
+_IDENTITY_ANSWER_EN = (
+    "I am Metnos, a self-hosted personal assistant running on your own machine "
+    "(via Telegram and a web UI). I help with files, mail, photos, calendar, "
+    "the web and more — only the capabilities you switch on. How can I help?"
+)
+
+
+def _identity_match(norm: str) -> bool:
+    if norm in _IDENTITY_EXACT:
+        return True
+    # Suffisso: «…tu chi sei», «no roberto sono io tu chi sei» → identità.
+    return norm.endswith(" chi sei") or norm.endswith(" tu chi sei") \
+        or norm.endswith(" who are you")
+
+
 def try_fast_path(query: str, lang: str = "it",
                    default_timezone: str = "Europe/Rome") -> Optional[dict]:
     """Tenta match deterministico di una query contro i pattern fast.
@@ -374,6 +407,14 @@ def try_fast_path(query: str, lang: str = "it",
     norm = _normalize(query)
     if not norm:
         return None
+    # Identità assistente: risposta diretta, nessun executor (no read_persons).
+    if _identity_match(norm):
+        return {
+            "direct_answer": _IDENTITY_ANSWER_IT if lang == "it" else _IDENTITY_ANSWER_EN,
+            "pattern": "identity:" + norm,
+            "executor": None,
+            "args": {},
+        }
     fp = _PATTERN_INDEX.get(norm)
     if fp is None:
         # Fallback safety-critical: prefisso UNDO (annulla/undo/...) cattura

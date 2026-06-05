@@ -5802,6 +5802,15 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
                         print(f"[multi_tool_fast_path] {len(_mtp_steps)} steps "
                               f"executed, msg={_mtp_msg[:80]!r}")
                     log.ts_end = time.time(); log.write(); return log
+        if _fp_hit is not None and _fp_hit.get("direct_answer"):
+            # Fast path a RISPOSTA DIRETTA (nessun executor): es. domanda di
+            # identità "chi sei" → l'assistente si presenta come Metnos, senza
+            # leggere il registro persone (§2.8: mai dumpare il profilo utente).
+            log.final_kind = "answer"
+            log.final_message = _fp_hit["direct_answer"]
+            if verbose:
+                print(f"[fast_path] direct-answer pattern='{_fp_hit.get('pattern')}'")
+            log.ts_end = time.time(); log.write(); return log
         if _fp_hit is not None:
             _fp_exec = next((e for e in catalog if e.name == _fp_hit["executor"]), None)
             if _fp_exec is not None:
