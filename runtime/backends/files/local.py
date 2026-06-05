@@ -1752,6 +1752,32 @@ def write_spreadsheet(args: dict) -> dict:
             "spreadsheet_" + datetime.datetime.now().strftime("%Y%m%d_%H%M%S") + ".xlsx")
     path.parent.mkdir(parents=True, exist_ok=True)
     existed = path.is_file()
+    # Undo §2.3: se il file ESISTE gia', backup blob dei bytes previ PRIMA di
+    # modificarlo (overwrite o append), cosi' `restore_blob_backup` puo'
+    # ripristinare lo stato pre-write. File NUOVO → niente blob (l'undo lo
+    # rimuove via `delete_created_paths`). Stessa convenzione di `delete_files`.
+    prev_blob_path = None
+    if existed:
+        try:
+            import shutil as _shutil
+            import hashlib as _hashlib
+            history_dir = os.environ.get("METNOS_HISTORY_DIR") or str(
+                _C.PATH_USER_DATA / "_history")
+            turn_id = os.environ.get("METNOS_TURN_ID") or "no_turn"
+            blob_dir = Path(history_dir) / turn_id / "blob"
+            h = _hashlib.sha256()
+            with path.open("rb") as _f:
+                for chunk in iter(lambda: _f.read(65536), b""):
+                    h.update(chunk)
+            blob_sha256 = h.hexdigest()
+            blob_dir.mkdir(parents=True, exist_ok=True)
+            _bp = blob_dir / f"{blob_sha256}.bin"
+            if not _bp.exists():
+                _shutil.copy2(str(path), str(_bp))
+            prev_blob_path = str(_bp)
+        except OSError:
+            # Backup fallito → onesti (§2.8): non dichiariamo undo per questo file.
+            prev_blob_path = None
     sheet_name = (args.get("sheet_name") or "").strip()
     try:
         if _is_csv(path):
@@ -1786,19 +1812,30 @@ def write_spreadsheet(args: dict) -> dict:
     sid = str(path)
     updated_cells = sum(len(r) for r in rows)
     created = not existed
+    # Schema result §2.6 con campi-undo §2.3 letti dal catalogo:
+    #   - file NUOVO → `created=true`+`path` → `delete_created_paths` lo rimuove.
+    #   - file PREESISTENTE → `path`+`prev_blob_path` → `restore_blob_backup`
+    #     ripristina i bytes previ (annulla overwrite/append).
     result_row = {"ok": True, "spreadsheet_id": sid, "path": sid,
                   "updated_cells": updated_cells, "mode": mode, "created": created}
+    if created:
+        result_row["created"] = True
+    elif prev_blob_path:
+        result_row["prev_blob_path"] = prev_blob_path
     out = {
         "ok": True, "n_written": 1, "updated_cells": updated_cells,
         "updated_rows": len(rows), "spreadsheet_id": sid, "path": sid,
         "mode": mode, "created": created,
         "results": [result_row], "used": 1, "files_source": "local",
     }
-    # Undo onesto (§2.8): se il file e' stato CREATO da questa write, l'undo lo
-    # rimuove (delete_created_paths); se modificava un file preesistente, non e'
-    # reversibile (niente blob backup) e non si dichiara _undo.
+    # Undo onesto (§2.8): reverse_pattern multistage nel manifest
+    # (`restore_blob_backup` + `delete_created_paths`); ogni stadio agisce sul
+    # campo che lo riguarda (prev_blob_path vs created), saltando gli altri.
     if created:
         out["_undo"] = {"reverse_pattern": "delete_created_paths", "paths": [sid]}
+    elif prev_blob_path:
+        out["_undo"] = {"reverse_pattern": "restore_blob_backup",
+                        "paths": [sid], "blob_path": prev_blob_path}
     return out
 
 

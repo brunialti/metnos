@@ -11,8 +11,10 @@ con flag; non c'e' verbo separato §2.2.
 
 Architettura: dispatcher sottile + backend in `runtime/backends/files/`.
 
-§2.3 reverse_pattern non applicabile (snapshot blob delle celle previe
-sarebbe oneroso e cross-sheet inaffidabile). `revertible=false` esplicito.
+§2.3 reversible: il backend LOCALE salva un blob dei bytes previ prima di
+modificare → undo via `restore_blob_backup` (file preesistente) o
+`delete_created_paths` (file nuovo). Backend Google: nessun blob locale,
+l'undo riporta onestamente nulla-ribaltato (§2.8).
 
 Contratto:
     stdin: JSON {spreadsheet_id, range, values: [[...]], mode?: 'overwrite'|'append',

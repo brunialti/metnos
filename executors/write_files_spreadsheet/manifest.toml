@@ -12,7 +12,12 @@ affinity    = [
     "aggiorna celle", "modifica celle", "scrivi nel foglio", "write sheet",
     "update sheet", "append rows", "aggiungi righe", "modifica foglio esistente"
 ]
-revertible  = false
+revertible  = true
+# §2.3 multistage: file NUOVO → `delete_created_paths`; file PREESISTENTE
+# (overwrite/append locale) → `restore_blob_backup` dai bytes previ (il backend
+# locale salva il blob prima di modificare). Backend Google: niente blob locale
+# → l'undo riporta onestamente nulla-ribaltato (§2.8), non e' un errore.
+reverse_pattern = ["restore_blob_backup", "delete_created_paths"]
 lifecycle   = "active"
 
 [description]
@@ -21,7 +26,7 @@ en = "SCOPO: writes a LOCAL spreadsheet from `values` (inline matrix) or from `f
 
 [code]
 files  = ["write_files_spreadsheet.py"]
-digest = "sha256:c0c6bcc52d321c92ad1266dcae3dda2213954de0970a59a28e9e270c91b56b56"
+digest = "sha256:2be6961fdb213479d544493c4edfec27d7ef2e9aa3e8a540b33a7f754084ec7c"
 
 [args]
 type     = "object"
