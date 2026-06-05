@@ -12,12 +12,12 @@ affinity    = ["dimentica", "rimuovi persona", "cancella persona", "elimina",
                 "wipe persons", "delete all persons"]
 
 [description]
-it = "Rimuove persone dal registro nominale. Vettoriale (§2.1): accetta `names: list` (plurale canonico), `entries: list` (da from_step di get_persons), `name: str` (singolare), o `all=true` (purge totale). Cancella TUTTI gli esempi (foto+embedding+bbox) per ogni persona via CASCADE. Operazione terminale: per ripristinare devi ri-enrollare con `set_persons`. DEVI usarla per 'dimentica X', 'rimuovi X dal registro', 'cancella tutte le persone'. Se almeno un nome e' ambiguo, ritorna `decision='needs_inputs'` con un dialog step per ogni ambiguo (i non-ambigui vengono comunque cancellati). NON DEVI usarla per cancellare le foto dal filesystem (uso `delete_files`); NON DEVI usarla per rimuovere singoli esempi (la granularita' minima e' la persona). USO CORRETTO: `delete_persons(names=['Matteo','Anna'])`, `delete_persons(all=true)`, `delete_persons(from_step=N)` dopo `get_persons`. ERRORE: `delete_persons()` senza nessun argomento. Output: `{ok, results:[{slug, name, removed_examples}], n_removed, removed_examples_total, unknown_names?, ambiguous?, decision?, needs_inputs?, final_message_hint?}`."
-en = "Removes persons from the named registry. Vectorial (§2.1): accepts `names: list` (canonical plural), `entries: list` (from get_persons via from_step), `name: str` (singular), or `all=true` (full purge). Deletes ALL examples (photos+embeddings+bboxes) for each person via CASCADE. Terminal operation: to restore you must re-enroll with `set_persons`. MUST be used for 'forget X', 'remove X from the registry', 'delete all persons'. If at least one name is ambiguous, returns `decision='needs_inputs'` with one dialog step per ambiguous name (non-ambiguous are deleted regardless). MUST NOT be used to delete photos from the filesystem (use `delete_files`); MUST NOT be used to remove single examples (minimal granularity is the person). CORRECT USE: `delete_persons(names=['Matteo','Anna'])`, `delete_persons(all=true)`, `delete_persons(from_step=N)` after `get_persons`. ERROR: `delete_persons()` with no argument. Output: `{ok, results:[{slug, name, removed_examples}], n_removed, removed_examples_total, unknown_names?, ambiguous?, decision?, needs_inputs?, final_message_hint?}`."
+it = "Rimuove persone dal registro nominale. Vettoriale (§2.1): accetta `names: list` (plurale canonico), `entries: list` (da from_step di get_persons), `name: str` (singolare), o `all=true` (purge totale). Cancella TUTTI gli esempi (foto+embedding+bbox) per ogni persona via CASCADE. Reversibile nel turno via `undo_last_turn` (backup riga+esempi+embedding prima di cancellare, poi restore verbatim). DEVI usarla per 'dimentica X', 'rimuovi X dal registro', 'cancella tutte le persone'. Se almeno un nome e' ambiguo, ritorna `decision='needs_inputs'` con un dialog step per ogni ambiguo (i non-ambigui vengono comunque cancellati). NON DEVI usarla per cancellare le foto dal filesystem (uso `delete_files`); NON DEVI usarla per rimuovere singoli esempi (la granularita' minima e' la persona). USO CORRETTO: `delete_persons(names=['Matteo','Anna'])`, `delete_persons(all=true)`, `delete_persons(from_step=N)` dopo `get_persons`. ERRORE: `delete_persons()` senza nessun argomento. Output: `{ok, results:[{slug, name, removed_examples}], n_removed, removed_examples_total, unknown_names?, ambiguous?, decision?, needs_inputs?, final_message_hint?}`."
+en = "Removes persons from the named registry. Vectorial (§2.1): accepts `names: list` (canonical plural), `entries: list` (from get_persons via from_step), `name: str` (singular), or `all=true` (full purge). Deletes ALL examples (photos+embeddings+bboxes) for each person via CASCADE. Reversible within the turn via `undo_last_turn` (backs up row+examples+embeddings before deleting, then restores verbatim). MUST be used for 'forget X', 'remove X from the registry', 'delete all persons'. If at least one name is ambiguous, returns `decision='needs_inputs'` with one dialog step per ambiguous name (non-ambiguous are deleted regardless). MUST NOT be used to delete photos from the filesystem (use `delete_files`); MUST NOT be used to remove single examples (minimal granularity is the person). CORRECT USE: `delete_persons(names=['Matteo','Anna'])`, `delete_persons(all=true)`, `delete_persons(from_step=N)` after `get_persons`. ERROR: `delete_persons()` with no argument. Output: `{ok, results:[{slug, name, removed_examples}], n_removed, removed_examples_total, unknown_names?, ambiguous?, decision?, needs_inputs?, final_message_hint?}`."
 
 [code]
 files  = ["delete_persons.py"]
-digest = "sha256:787630586240d2a689ac048abea48a51392fb58bf5fa900e20266bd9540aed0b"
+digest = "sha256:6c69c99c031a3fd25abacbbbcadde5a1a6b0efa85fc59b032282f233b93423ac"
 
 [args]
 type     = "object"
@@ -88,9 +88,11 @@ schema_inline = """
 name = "metnos:write"
 hint = ["~/.local/share/metnos/persons.sqlite"]
 
-# Reverse pattern: delete e' terminale (§2.3 catalogo chiuso non copre
-# delete_persons). L'utente ricostruisce via set_persons + foto.
-reversible = false
+# §2.3 reversibile via module.reverse(): il forward esporta riga+esempi+
+# biometria in un blob PRIMA di cancellare; reverse() li reinserisce verbatim
+# (restore_person). Senza reverse_pattern di catalogo → fallback al modulo.
+# NB: il loader legge `revertible` (con la v); `reversible` era typo morto.
+revertible = true
 
 [[tests]]
 name   = "validates_empty_name"

@@ -357,6 +357,95 @@ class PersonsRegistry:
                 raise
         return {"slug": slug, "deleted": True, "removed_examples": removed}
 
+    # -- backup / restore (undo §2.3) -------------------------------------
+
+    def export_person(self, name: str) -> dict | None:
+        """Dump COMPLETO e verbatim di una persona per il backup di undo.
+
+        Ritorna `{person: {row}, examples: [{...}]}` con gli embedding (BLOB)
+        codificati base64 per la serializzazione JSON. None se inesistente.
+        Usato da `delete_persons` PRIMA della cancellazione cosi' che
+        `reverse()` possa ripristinare riga + esempi identici (stessa
+        biometria), non un re-enroll approssimato.
+        """
+        import base64
+        slug = slugify(name)
+        cur = self._conn.cursor()
+        prow = cur.execute(
+            "SELECT slug,name,created_at,updated_at,n_examples,notes "
+            "FROM persons WHERE slug=?", (slug,)
+        ).fetchone()
+        if prow is None:
+            return None
+        ex_rows = cur.execute(
+            "SELECT image_path,face_box,embedding,embedding_dim,sha256,created_at "
+            "FROM person_examples WHERE person_slug=? ORDER BY id", (slug,)
+        ).fetchall()
+        examples = []
+        for r in ex_rows:
+            examples.append({
+                "image_path": r["image_path"],
+                "face_box": r["face_box"],
+                "embedding_b64": base64.b64encode(r["embedding"]).decode("ascii"),
+                "embedding_dim": int(r["embedding_dim"]),
+                "sha256": r["sha256"],
+                "created_at": r["created_at"],
+            })
+        return {
+            "person": {
+                "slug": prow["slug"], "name": prow["name"],
+                "created_at": prow["created_at"], "updated_at": prow["updated_at"],
+                "n_examples": int(prow["n_examples"]), "notes": prow["notes"],
+            },
+            "examples": examples,
+        }
+
+    def restore_person(self, backup: dict) -> dict:
+        """Ripristina una persona da un dump `export_person` (undo).
+
+        INSERT verbatim di riga + esempi (embedding decodificati da base64).
+        Idempotente: se lo slug esiste gia' → no-op `{restored: False}`.
+        """
+        import base64
+        if not isinstance(backup, dict) or "person" not in backup:
+            raise ValueError("backup must be a dict from export_person")
+        p = backup["person"]
+        slug = p["slug"]
+        examples = backup.get("examples") or []
+        with self._lock:
+            cur = self._conn.cursor()
+            cur.execute("BEGIN IMMEDIATE;")
+            try:
+                exists = cur.execute(
+                    "SELECT 1 FROM persons WHERE slug=?", (slug,)
+                ).fetchone()
+                if exists is not None:
+                    cur.execute("COMMIT;")
+                    return {"slug": slug, "restored": False,
+                            "reason": "slug_already_exists"}
+                cur.execute(
+                    "INSERT INTO persons(slug,name,created_at,updated_at,"
+                    "n_examples,notes) VALUES (?,?,?,?,?,?)",
+                    (slug, p["name"], p["created_at"], p["updated_at"],
+                     int(p.get("n_examples") or 0), p.get("notes") or ""),
+                )
+                for ex in examples:
+                    cur.execute(
+                        "INSERT INTO person_examples(person_slug,image_path,"
+                        "face_box,embedding,embedding_dim,sha256,created_at) "
+                        "VALUES (?,?,?,?,?,?,?)",
+                        (slug, ex["image_path"], ex["face_box"],
+                         base64.b64decode(ex["embedding_b64"]),
+                         int(ex.get("embedding_dim") or 512),
+                         ex["sha256"], ex["created_at"]),
+                    )
+                cur.execute("COMMIT;")
+            except Exception:
+                cur.execute("ROLLBACK;")
+                raise
+        return {"slug": slug, "restored": True,
+                "restored_examples": len(examples)}
+
     # -- read ops ----------------------------------------------------------
 
     def get(self, name: str) -> dict | None:

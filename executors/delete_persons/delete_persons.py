@@ -5,8 +5,9 @@ Pattern §2.1 (vettoriale per costruzione): accetta sia singolare (`name`)
 che plurale (`names`/`entries` da from_step) che `all=true` per purge.
 Output sempre `results: list`.
 
-§2.2 `delete` = mutazione terminale (non reversibile auto). Ricostruisci
-via `set_persons` + foto.
+§2.3 reversibile (module.reverse): prima di cancellare, ogni persona viene
+esportata in un blob (riga + esempi + embedding); `reverse()` la reinserisce
+verbatim. Undo onesto solo per i record con backup riuscito.
 
 Disambiguation pattern (ADR 0090): se almeno un nome matcha piu' slug,
 ritorna `decision="needs_inputs"` con un dialogo `choice_with_preview`
@@ -34,6 +35,77 @@ def _persons_db_path() -> Path | None:
 
 def _is_dry_run() -> bool:
     return os.environ.get("METNOS_DRY_RUN", "0") == "1"
+
+
+def _backup_dir() -> Path:
+    """Dir blob di backup-persona del turno (§2.3, come delete_files)."""
+    history = os.environ.get("METNOS_HISTORY_DIR")
+    if not history:
+        import config as _C  # §7.11
+        history = str(_C.PATH_USER_DATA / "_history")
+    turn_id = os.environ.get("METNOS_TURN_ID") or "no_turn"
+    return Path(history) / turn_id / "persons_backup"
+
+
+def _delete_with_backup(reg, slug: str, display: str) -> dict:
+    """Esporta la persona (riga+esempi+biometria) come blob PRIMA di
+    cancellarla, poi cancella. Il blob path va nel result → `reverse()` lo
+    rilegge per ripristinare (undo §2.3). Backup best-effort: se fallisce, la
+    cancellazione procede ma il result non porta backup_path (undo onesto §2.8).
+    """
+    backup_path = None
+    try:
+        dump = reg.export_person(slug)
+        if dump is not None:
+            bdir = _backup_dir()
+            bdir.mkdir(parents=True, exist_ok=True)
+            bp = bdir / f"{slug}.json"
+            bp.write_text(json.dumps(dump, ensure_ascii=False), encoding="utf-8")
+            backup_path = str(bp)
+    except OSError:
+        backup_path = None
+    out = reg.delete(slug)
+    row = {"slug": slug, "name": display,
+           "removed_examples": out["removed_examples"]}
+    if backup_path:
+        row["backup_path"] = backup_path
+    return row
+
+
+def reverse(plan, results):
+    """Undo §2.3 (module.reverse): ripristina le persone cancellate dai blob di
+    backup. Reversibile solo per i result con `backup_path` (export riuscito);
+    senza backup → quella persona non e' ribaltabile (conta come fail onesto).
+    """
+    res = results or {}
+    rows = res.get("results") or []
+    reg = PersonsRegistry(db_path=_persons_db_path())
+    out, failed = [], []
+    try:
+        for r in rows:
+            if not isinstance(r, dict):
+                continue
+            bp = r.get("backup_path")
+            if not bp:
+                failed.append({"slug": r.get("slug"),
+                               "error": "no backup_path: non ripristinabile"})
+                continue
+            try:
+                dump = json.loads(Path(bp).read_text(encoding="utf-8"))
+                rr = reg.restore_person(dump)
+                if rr.get("restored"):
+                    out.append({"slug": rr["slug"],
+                                "restored_examples": rr.get("restored_examples", 0)})
+                else:
+                    # slug gia' presente = gia' ripristinato/mai cancellato: noop ok
+                    out.append({"slug": rr["slug"], "restored_examples": 0,
+                                "note": rr.get("reason")})
+            except (OSError, ValueError, json.JSONDecodeError) as e:
+                failed.append({"slug": r.get("slug"), "error": str(e)})
+    finally:
+        reg.close()
+    return {"ok": len(failed) == 0, "ok_count": len(out),
+            "fail_count": len(failed), "results": out, "failed": failed}
 
 
 def _coalesce_targets(args) -> tuple[list[str], str | None]:
@@ -195,11 +267,7 @@ def invoke(args):
                         "ok": False,
                         "error": _msg("ERR_SLUG_NOT_FOUND", slug=cs),
                     }
-                out = reg.delete(cs)
-                results.append({
-                    "slug": cs, "name": entry["name"],
-                    "removed_examples": out["removed_examples"],
-                })
+                results.append(_delete_with_backup(reg, cs, entry["name"]))
             return {
                 "ok": True, "results": results,
                 "n_removed": len(results),
@@ -219,11 +287,7 @@ def invoke(args):
             for e in all_entries:
                 slug = e["slug"]
                 display = e.get("name") or slug
-                out = reg.delete(slug)
-                results.append({
-                    "slug": slug, "name": display,
-                    "removed_examples": out["removed_examples"],
-                })
+                results.append(_delete_with_backup(reg, slug, display))
             return {
                 "ok": True, "results": results,
                 "n_removed": len(results),
@@ -240,11 +304,7 @@ def invoke(args):
             if len(slugs) == 1:
                 entry = reg.get(slugs[0])
                 display = entry["name"] if entry else slugs[0]
-                out = reg.delete(slugs[0])
-                results.append({
-                    "slug": slugs[0], "name": display,
-                    "removed_examples": out["removed_examples"],
-                })
+                results.append(_delete_with_backup(reg, slugs[0], display))
                 continue
             options_pv = _build_preview_options(reg, slugs)
             ambiguous_dialogs.append({
