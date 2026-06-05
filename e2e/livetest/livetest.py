@@ -34,6 +34,7 @@ DB_PATH = Path(__file__).resolve().parent / "livetest.sqlite"
 ENDPOINT = "http://127.0.0.1:8770/agent/turn"
 TESTDIR = "/tmp/metnos_livetest"
 TEST_EMAIL = "mykleos@knowcastle.com"
+TEST_EMAIL2 = "roberto.brunialti@knowcastle.com"
 TEST_REPO = "brunialti/metnos"
 
 # Messaggi di RESA/FALLBACK runtime = la query NON e' arrivata in fondo come
@@ -123,6 +124,80 @@ QUERIES = [
     {"ord": 24, "domains": "calendar,web,mail", "kind": "compound",
      "text": f"Guarda i miei eventi dei prossimi 7 giorni, cerca online che tempo farà a Padova, e manda via mail a {TEST_EMAIL} un riepilogo che combina i due",
      "expect_re": r"send_messages"},
+
+    # --- BATTERIA 3 (5/6/2026): 24 query MOLTO lunghe, 4-5 domini, multi-clausola ---
+    {"ord": 25, "domains": "files,group,compute,sort,spreadsheet", "kind": "compound",
+     "text": f"Trova tutti i file dentro {TESTDIR}, raggruppali per estensione, conta quanti file ci sono per ciascun tipo, ordina i tipi dal più frequente al meno frequente e salva il risultato in un foglio di calcolo {TESTDIR}/per_tipo.xlsx con due colonne, estensione e conteggio",
+     "expect_re": r"create_files_spreadsheet|write_files_spreadsheet"},
+    {"ord": 26, "domains": "github,sort,compute,mail", "kind": "compound",
+     "text": f"Trova le issue aperte di {TEST_REPO}, ordinale dalla più recente alla più vecchia, conta quante sono in totale, prepara un elenco con titolo e data di apertura di ciascuna e mandami il riepilogo completo con il totale via mail a {TEST_EMAIL2}",
+     "expect_re": r"send_messages"},
+    {"ord": 27, "domains": "web,extract,files", "kind": "compound",
+     "text": f"Cerca online cos'è il linguaggio di programmazione Rust, estrai le 3 caratteristiche principali e i 2 svantaggi più citati, scrivi una scheda riassuntiva con la data di oggi in testa e salvala in {TESTDIR}/rust.txt",
+     "expect_re": r"find_urls"},
+    {"ord": 28, "domains": "processes,filter,sort,compute,files", "kind": "compound",
+     "text": f"Trova i processi che usano più di 50MB di memoria, ordinali per consumo di memoria decrescente, dimmi quanti sono e quanta memoria totale occupano insieme, e salva la classifica completa con nome processo e memoria in {TESTDIR}/proc50.txt",
+     "expect_re": r"get_processes"},
+    {"ord": 29, "domains": "files,read,classify,compute", "kind": "compound",
+     "text": f"Leggi tutti i file .txt dentro {TESTDIR}, classificali per argomento, dimmi quanti file ci sono per ciascun argomento e quali sono i 3 argomenti più frequenti",
+     "expect_re": r"find_files|read_files|classify_entries"},
+    {"ord": 30, "domains": "time,places,sort,compute,files", "kind": "compound",
+     "text": f"Dimmi prima che ore sono adesso, poi trova i 5 ospedali più vicini a Milano ordinati per distanza crescente, calcola la distanza media fra loro e salva nome, indirizzo e distanza di ciascuno in {TESTDIR}/ospedali_mi.txt",
+     "expect_re": r"find_places"},
+    {"ord": 31, "domains": "web,extract,sort,spreadsheet,mail", "kind": "compound",
+     "text": f"Cerca online i parchi nazionali italiani, estrai nome, regione e anno di istituzione di ciascuno, ordinali per anno di istituzione, salvali in un foglio {TESTDIR}/parchi.xlsx e poi mandami il foglio via mail a {TEST_EMAIL}",
+     "expect_re": r"send_messages"},
+    {"ord": 32, "domains": "github,web,extract,files", "kind": "compound",
+     "text": f"Prendi le pull request di {TEST_REPO} con il loro stato, cerca online cos'è una pull request e come funziona il flusso di revisione, e scrivi una guida che unisce l'elenco delle PR del repo e la spiegazione generale in {TESTDIR}/git_pr.txt",
+     "expect_re": r"find_pulls_github|read_pulls_github"},
+    {"ord": 33, "domains": "images,group,compute,spreadsheet", "kind": "compound",
+     "text": f"Trova le foto di montagna nel corpus, raggruppale per anno di scatto, dimmi quante ce ne sono per ciascun anno e qual è l'anno con più foto, e salva un foglio {TESTDIR}/montagna_anni.xlsx con anno e conteggio",
+     "expect_re": r"find_images_indices"},
+    {"ord": 34, "domains": "mail,group,sort,files", "kind": "compound",
+     "text": f"Prendi le ultime mail ricevute su metnos, raggruppale per mittente, ordina i mittenti per numero di messaggi decrescente, e salva un elenco con mittente e numero di messaggi in {TESTDIR}/mail_ord.txt",
+     "expect_re": r"read_messages|find_messages"},
+    {"ord": 35, "domains": "calendar,compute,mail", "kind": "compound",
+     "text": f"Guarda i miei eventi in calendario dei prossimi 7 giorni, contali, calcola quante ore totali occupano, prepara un riepilogo giorno per giorno e mandamelo via mail a {TEST_EMAIL2}",
+     "expect_re": r"send_messages"},
+    {"ord": 36, "domains": "files,compress,compute,mail", "kind": "compound",
+     "text": f"Trova i file .txt dentro {TESTDIR}, comprimili in un archivio {TESTDIR}/notte.tar.gz, dimmi quanti file contiene l'archivio, e poi mandami l'archivio via mail a {TEST_EMAIL2}",
+     "expect_re": r"compress_files"},
+    {"ord": 37, "domains": "web,extract,sort,compute,files", "kind": "compound",
+     "text": f"Cerca online l'altezza delle 5 montagne più alte d'Europa, estrai nome e altezza in metri di ciascuna, ordinale dalla più alta alla più bassa, calcola l'altezza media e salva il tutto in {TESTDIR}/montagne_eu.txt",
+     "expect_re": r"find_urls"},
+    {"ord": 38, "domains": "github,github,github,compute", "kind": "git_lifecycle",
+     "text": f"Crea una issue dal titolo '[livetest3] notturno' su {TEST_REPO} con una breve descrizione, poi leggi le issue aperte per confermare che esista e dimmi quante issue aperte ci sono in totale, e infine chiudi la issue che hai appena creato",
+     "expect_re": r"create_issues_github"},
+    {"ord": 39, "domains": "processes,web,extract,files", "kind": "compound",
+     "text": f"Trova il processo che usa più memoria in assoluto, cerca online a cosa serve quel programma, estrai una breve descrizione di cosa fa e perché può consumare memoria, e salva una scheda con nome del processo, memoria occupata e descrizione in {TESTDIR}/top_proc.txt",
+     "expect_re": r"get_processes"},
+    {"ord": 40, "domains": "files,filter,compress,github", "kind": "compound",
+     "text": f"Trova i file .txt dentro {TESTDIR}, comprimili in un archivio {TESTDIR}/soloTxt.zip, dimmi quanti file contiene l'archivio, e poi dimmi anche quante issue aperte ci sono attualmente su {TEST_REPO}",
+     "expect_re": r"compress_files"},
+    {"ord": 41, "domains": "web,extract,sort,spreadsheet,mail", "kind": "compound",
+     "text": f"Cerca online le prossime fiere tecnologiche in Europa, estrai nome, data e città di ciascuna, ordinale per data crescente, salvale in un foglio {TESTDIR}/fiere.xlsx e mandami il foglio via mail a {TEST_EMAIL}",
+     "expect_re": r"send_messages"},
+    {"ord": 42, "domains": "images,sort,spreadsheet", "kind": "compound",
+     "text": f"Trova le foto di mare nel corpus, prendi le prime 10 con la loro data di scatto, ordinale dalla più recente alla più vecchia, e salva un foglio {TESTDIR}/mare10.xlsx con nome del file e data di scatto",
+     "expect_re": r"find_images_indices"},
+    {"ord": 43, "domains": "places,web,extract,files", "kind": "compound",
+     "text": f"Trova le biblioteche vicino a Torino, cerca online qual è l'orario di apertura tipico delle biblioteche comunali italiane, unisci le due informazioni e salva una scheda con l'elenco delle biblioteche trovate e gli orari tipici in {TESTDIR}/biblio.txt",
+     "expect_re": r"find_places"},
+    {"ord": 44, "domains": "github,compute,spreadsheet", "kind": "compound",
+     "text": f"Prendi le issue chiuse di {TEST_REPO}, contale, calcola la percentuale che rappresentano sul totale delle issue del repo, e salvale in un foglio {TESTDIR}/chiuse.xlsx aggiungendo una colonna con la data di oggi",
+     "expect_re": r"find_issues_github|read_issues_github"},
+    {"ord": 45, "domains": "files,read,filter,compute", "kind": "compound",
+     "text": f"Nei file .txt dentro {TESTDIR} trova tutte le righe che contengono la parola 'nota', conta quante sono in totale e in quanti file diversi compaiono, e salva un report con il dettaglio in {TESTDIR}/note_report.txt",
+     "expect_re": r"find_files|filter|read_files"},
+    {"ord": 46, "domains": "mail,group,describe,files", "kind": "compound",
+     "text": f"Prendi le ultime mail ricevute su metnos, raggruppale per mittente, riassumi brevemente di cosa parlano i messaggi di ciascun mittente e salva il riepilogo per mittente in {TESTDIR}/raggr.txt",
+     "expect_re": r"read_messages|find_messages"},
+    {"ord": 47, "domains": "web,extract,files,mail", "kind": "compound",
+     "text": f"Cerca online cos'è il protocollo QUIC e in cosa differisce da TCP, estrai 3 punti chiave, scrivi una scheda con la data di oggi, salvala in {TESTDIR}/quic.txt e poi mandami quel file via mail a {TEST_EMAIL2}",
+     "expect_re": r"send_messages"},
+    {"ord": 48, "domains": "calendar,places,web,mail", "kind": "compound",
+     "text": f"Guarda i miei eventi in calendario dei prossimi 7 giorni, trova una farmacia vicino a Padova, cerca online qual è il numero di emergenza sanitaria in Italia, e mandami via mail a {TEST_EMAIL2} un promemoria che combina i miei eventi, la farmacia trovata e il numero di emergenza",
+     "expect_re": r"send_messages"},
 ]
 
 
@@ -186,6 +261,12 @@ def run(args):
     conn = ensure_db()
     rows = conn.execute(
         "SELECT id,ord,text,kind,expect_re,domains FROM queries WHERE active=1 ORDER BY ord").fetchall()
+    omin = getattr(args, "ord_min", 0) or 0
+    omax = getattr(args, "ord_max", 0) or 0
+    if omin:
+        rows = [r for r in rows if r[1] >= omin]
+    if omax:
+        rows = [r for r in rows if r[1] <= omax]
     if args.only_failed:
         keep = []
         for r in rows:
@@ -242,6 +323,8 @@ def main():
     p.add_argument("--round", default="r1")
     p.add_argument("--timeout", type=int, default=1800)  # alto: il tempo non fa fallire
     p.add_argument("--only-failed", action="store_true")
+    p.add_argument("--ord-min", type=int, default=0, dest="ord_min")
+    p.add_argument("--ord-max", type=int, default=0, dest="ord_max")
     p.add_argument("--report", action="store_true")
     args = p.parse_args()
     if args.report:
