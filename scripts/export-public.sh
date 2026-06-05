@@ -49,6 +49,8 @@ runtime/run_all_tests\.py$|
 scripts/(scrub-scan|audit_introvertiva|audit_quality_with_email|myclaw-unattended|migrate-syspath-to-package|rename-myclaw-to-metnos)|
 scripts/scrub_names\.txt$|
 scripts/export-public\.sh$|
+scripts/publish-public\.sh$|
+scripts/docs-align-nightly\.sh$|
 deploy\.sh$|
 claude_persistent\.sh$|
 CLAUDE\.md$|
