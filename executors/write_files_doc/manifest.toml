@@ -12,16 +12,18 @@ affinity    = [
     "appendi a documento", "aggiungi al doc", "append doc",
     "scrivi nel doc", "aggiorna documento", "update doc"
 ]
-revertible  = false
+# §2.3 reversibile via module.reverse(): l'append registra inserted_at +
+# characters_appended; l'undo elimina quel range (deleteContentRange).
+revertible  = true
 lifecycle   = "active"
 
 [description]
-it = "Appende testo alla fine di un Google Doc esistente. Append e' semantica `write` con tag implicito (§2.2: no verbo separato). USO CORRETTO: write_files_doc(document_id='1abc...', text='Nuovo paragrafo\\n'). NON CONFONDERE CON: `create_files_doc` (crea NUOVO doc, qui appende a uno esistente), `write_files` (file locale). Il backend calcola l'indice end-of-body e inserisce con batchUpdate. Newline trailing garantito. §2.6 trasformativo: ritorna `results: list[{document_id, characters_appended}]`. NON reversibile (ricostruire l'indice di insert pre-append richiederebbe stato). Se OAuth manca, decision='needs_inputs'."
-en = "Appends text to the end of an existing Google Doc. Append is `write` semantics with implicit tag (§2.2: no separate verb). CORRECT USE: write_files_doc(document_id='1abc...', text='New paragraph\\n'). DO NOT CONFUSE WITH: `create_files_doc` (creates NEW doc, here it appends to an existing one), `write_files` (local file). The backend computes the end-of-body index and inserts via batchUpdate. Trailing newline guaranteed. §2.6 transformative: returns `results: list[{document_id, characters_appended}]`. NOT reversible (rebuilding pre-append insert index would require state). If OAuth missing, decision='needs_inputs'."
+it = "Appende testo alla fine di un Google Doc esistente. Append e' semantica `write` con tag implicito (§2.2: no verbo separato). USO CORRETTO: write_files_doc(document_id='1abc...', text='Nuovo paragrafo\\n'). NON CONFONDERE CON: `create_files_doc` (crea NUOVO doc, qui appende a uno esistente), `write_files` (file locale). Il backend calcola l'indice end-of-body e inserisce con batchUpdate. Newline trailing garantito. §2.6 trasformativo: ritorna `results: list[{document_id, characters_appended}]`. Reversibile via undo_last_turn: elimina il range appeso (inserted_at + characters_appended). Se OAuth manca, decision='needs_inputs'."
+en = "Appends text to the end of an existing Google Doc. Append is `write` semantics with implicit tag (§2.2: no separate verb). CORRECT USE: write_files_doc(document_id='1abc...', text='New paragraph\\n'). DO NOT CONFUSE WITH: `create_files_doc` (creates NEW doc, here it appends to an existing one), `write_files` (local file). The backend computes the end-of-body index and inserts via batchUpdate. Trailing newline guaranteed. §2.6 transformative: returns `results: list[{document_id, characters_appended}]`. Reversible via undo_last_turn: deletes the appended range (inserted_at + characters_appended). If OAuth missing, decision='needs_inputs'."
 
 [code]
 files  = ["write_files_doc.py"]
-digest = "sha256:22b01bad8cab309c535cc24d0171bdad2fb7c0ec75a07019fa4a9e20c5bdb8cf"
+digest = "sha256:81efb3ed739bc4061f10515e5d7cb47c9e92568d9a2757519b96ce221f0684e0"
 
 [args]
 type     = "object"

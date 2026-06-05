@@ -1064,6 +1064,10 @@ def append_doc(args: dict) -> dict:
 
     info = data if isinstance(data, dict) else {}
     chars = int(info.get("characters") or len(text))
+    # Undo §2.3: `inserted_at` = indice (1-based) dove l'append ha iniziato a
+    # scrivere. Con `chars` definisce il range [inserted_at, inserted_at+chars)
+    # che `reverse()` rimuove via deleteContentRange (uniforme ai builtin).
+    inserted_at = info.get("inserted_at")
     result_row = {
         "ok": True,
         "document_id": did,
@@ -1071,7 +1075,9 @@ def append_doc(args: dict) -> dict:
         "characters_appended": chars,
         "kind": "doc",
     }
-    return {
+    if isinstance(inserted_at, int):
+        result_row["inserted_at"] = inserted_at
+    out = {
         "ok": True,
         "n_written": 1,
         "document_id": did,
@@ -1080,4 +1086,42 @@ def append_doc(args: dict) -> dict:
         "results": [result_row],
         "used": 1,
         "files_source": "google_workspace",
+    }
+    if isinstance(inserted_at, int):
+        out["_undo"] = {"document_id": did, "start": inserted_at,
+                        "end": inserted_at + chars}
+    return out
+
+
+def delete_doc_range(args: dict) -> dict:
+    """Rimuove un range di contenuto da un Google Doc (undo §2.3 dell'append).
+
+    Args: `document_id`, `start` (incluso), `end` (escluso). Esegue
+    `docs delete-range` via lo script google_api (deleteContentRange).
+    Output trasformativo §2.6: `results: [{document_id, removed_range}]`.
+    """
+    if not isinstance(args, dict):
+        return {"ok": False, "error_class": "invalid_args",
+                "results": [], "used": 0, "n_deleted": 0}
+    did = (args.get("document_id") or "").strip()
+    start = args.get("start")
+    end = args.get("end")
+    if not did or not isinstance(start, int) or not isinstance(end, int) or end <= start:
+        return {"ok": False, "error_code": "ERR_ARG_INVALID",
+                "error": _msg("ERR_ARG_INVALID", arg="range",
+                              reason="document_id + start<end (int) richiesti"),
+                "error_class": "invalid_args",
+                "results": [], "used": 0, "n_deleted": 0}
+    argv = ["docs", "delete-range", did, "--start", str(start), "--end", str(end)]
+    data, err = _run_drive(argv, executor="write_files_doc",
+                           args_base=dict(args), result_kind="results")
+    if err is not None:
+        if err.get("decision") == "needs_inputs":
+            return err
+        return {**err, "results": [], "used": 0, "n_deleted": 0}
+    return {
+        "ok": True, "n_deleted": 1,
+        "results": [{"ok": True, "document_id": did,
+                     "removed_range": [start, end]}],
+        "used": 1, "files_source": "google_workspace",
     }

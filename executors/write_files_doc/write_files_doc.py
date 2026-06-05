@@ -8,9 +8,10 @@ Dispatcher sottile che instrada al backend giusto in base a `client`
 
 Architettura: dispatcher sottile + backend in `runtime/backends/files/`.
 
-§2.3 reverse_pattern non applicabile: l'append modifica il flow del doc
-e ricostruire l'indice di insert pre-append richiederebbe stato. Vedi
-docs_append in google_api.py per la logica end-of-body. `revertible=false`.
+§2.3 reversibile (module.reverse): l'append registra `inserted_at` (indice
+di insert) + `characters_appended`; l'undo elimina il range
+[inserted_at, inserted_at+chars) via deleteContentRange
+(backend.delete_doc_range → `docs delete-range` in google_api.py).
 
 Contratto:
     stdin: JSON {document_id, text,
@@ -50,6 +51,39 @@ def invoke(args):
                 "error_class": "invalid_args",
                 "results": [], "used": 0, "n_written": 0}
     return backend.append_doc(args)
+
+
+def reverse(plan, results):
+    """Undo §2.3 (module.reverse): rimuove dal Doc il testo appeso.
+
+    L'append registra `inserted_at` (indice 1-based) + `characters_appended`;
+    il range [inserted_at, inserted_at+chars) viene eliminato via
+    deleteContentRange (backend.delete_doc_range). Reversibile solo per i
+    result con `inserted_at` (append riuscito col nuovo script). Senza
+    inserted_at → non ribaltabile onesto (§2.8).
+    """
+    res = results or {}
+    rows = res.get("results") or []
+    did = res.get("document_id")
+    out, failed = [], []
+    for r in rows:
+        if not isinstance(r, dict):
+            continue
+        doc = r.get("document_id") or did
+        start = r.get("inserted_at")
+        chars = r.get("characters_appended")
+        if not doc or not isinstance(start, int) or not isinstance(chars, int):
+            failed.append({"document_id": doc,
+                           "error": "inserted_at/characters mancanti: non ribaltabile"})
+            continue
+        dr = google_workspace.delete_doc_range(
+            {"document_id": doc, "start": start, "end": start + chars})
+        if dr.get("ok"):
+            out.append({"document_id": doc, "removed_range": [start, start + chars]})
+        else:
+            failed.append({"document_id": doc, "error": dr.get("error", "delete_range failed")})
+    return {"ok": len(failed) == 0, "ok_count": len(out),
+            "fail_count": len(failed), "results": out, "failed": failed}
 
 
 def main():
