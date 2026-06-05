@@ -8,8 +8,12 @@
 ![Status](https://img.shields.io/badge/status-pre--1.0%20(0.1.0)-orange)
 ![Python](https://img.shields.io/badge/python-%E2%89%A53.11-green)
 ![Self-hosted](https://img.shields.io/badge/cloud-not%20required-success)
+[![Docs](https://img.shields.io/badge/docs-metnos.com-1A477A.svg)](https://metnos.com)
 
 *mētis* (cunning intelligence) + *noûs* (mind). Runs on your hardware. Talks to your files, mail, photos, calendar, and the web — only the ones you switch on.
+
+### 📚 [**Read the architecture documentation → metnos.com**](https://metnos.com)
+*Bilingual (IT/EN), diagram-rich, one page per subsystem — a first-class part of the project.*
 
 </div>
 
@@ -92,7 +96,11 @@ Everything that ties Metnos to an external service, credential, or model is a
 can enable or disable at will. The **core** (local files, processes, time, the
 scheduler, and the in-memory helpers) is always on and needs nothing external.
 
-First-party skills: `photos` · `mail` · `web` · `geo` · `calendar` · `github` · `frontier`.
+First-party skills: `photos` · `mail` · `web` · `geo` · `calendar` · `github` · `google-workspace` · `frontier`.
+
+`google-workspace` is a first-party skill in its own right: one OAuth setup unlocks
+Gmail, Calendar, Drive, Docs and Sheets, exposed through the same canonical
+executors (so the planner never sees "Google" — it's a backend, chosen by config).
 
 Manage them from the CLI **or** just by asking in chat:
 
@@ -193,9 +201,21 @@ edges; that's the point.
 
 ## Documentation
 
-Architecture docs (bilingual IT/EN, diagram-heavy) live in [`docs/`](docs/) and at
-**metnos.com**. The design rationale for every non-obvious choice is recorded as an
-ADR under [`decisions/`](decisions/).
+Metnos ships with **extensive, first-class architecture documentation** — not a
+stub README, but a full reference site built and maintained alongside the code:
+
+- **[metnos.com](https://metnos.com)** — one richly illustrated page per subsystem:
+  the ReAct planner, the multi-stage synthesis pipeline, executors & the closed
+  vocabulary, the sandbox and *vaglio* safety layers, **skills ↔ backends**, the
+  Telos alignment engine, fast paths, observability, and more.
+- **Bilingual** (Italian + English), kept symmetric.
+- **Diagram-heavy** — inline SVG flowcharts for every non-trivial mechanism.
+
+It represents a large, ongoing effort and is the best way to understand *why*
+Metnos is built the way it is. The internal Architecture Decision Records (ADRs)
+that back every non-obvious choice are summarized there too.
+
+👉 **Start at [metnos.com](https://metnos.com).**
 
 ## Status & contributing
 
