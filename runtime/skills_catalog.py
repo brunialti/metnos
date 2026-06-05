@@ -51,6 +51,7 @@ FIRST_PARTY_SKILLS: list[dict] = [
 
 _CORE = {
     "name": "core",
+    "tier": "core",  # ADR 0170: core | first_party | imported
     "requires": "nessuna dipendenza esterna",
     "desc": "Capacità sempre disponibili: file locali, dir, processi, tempo, "
             "scheduler locale, persone/contatti, credenziali, firme, proposte, "
@@ -78,5 +79,19 @@ def skill_meta(name: str) -> dict | None:
         return dict(_CORE)
     for s in FIRST_PARTY_SKILLS:
         if s["name"] == name:
-            return {k: v for k, v in s.items() if k != "match"}
+            # ADR 0170: tutte le skill di questo catalogo sono Tier 2
+            # (first-party builtin). Le skill di Tier 3 (imported) sono
+            # tracciate altrove (skill_registry/provenance), non qui.
+            meta = {k: v for k, v in s.items() if k != "match"}
+            meta.setdefault("tier", "first_party")
+            return meta
     return None
+
+
+def skill_tier(name: str) -> str:
+    """Tier ADR 0170 della skill: 'core' | 'first_party' | 'imported'.
+
+    'core' e le first-party sono note al catalogo; ogni nome sconosciuto e'
+    trattato come 'imported' (Tier 3, sandboxed/provenance)."""
+    m = skill_meta(name)
+    return m["tier"] if m and m.get("tier") else "imported"

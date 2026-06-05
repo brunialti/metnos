@@ -3,7 +3,7 @@
 > **OBBLIGO**: leggere integralmente all'inizio di ogni sessione. Codifica decisioni architetturali, convenzioni di codice e norme di processo. Punto obsoleto/errato → AGGIORNA subito.
 >
 > Mantenuto da: agente. Aggiornamento quando si fissa una nuova norma duratura. Storia in `git log CLAUDE.md`. Dettagli implementativi vivono negli ADR (`decisions/`), non qui.
-> Ultimo: 2026-06-05 v21 (rilascio pubblico: +norma «Distribuzione public-subset» §10.6 — baseline completo vs export deterministico, ADR/docs non pubblici). v20: §10.6 voci ricompresse a 1-riga. Norme correnti negli ADR 0150-0169; changelog completo in `git log CLAUDE.md`.
+> Ultimo: 2026-06-05 v22 (ADR 0170: tassonomia skill 3-tier + confine skill↔backend ortogonale + mono→multi provider; google-workspace vendorizzata Tier-2; 5 executor resi reversibili §2.3). v21: norma «Distribuzione public-subset». Norme correnti negli ADR 0150-0170; changelog completo in `git log CLAUDE.md`.
 
 ---
 
@@ -274,6 +274,7 @@ Tipi: `user`, `feedback`, `project`, `reference`. Indice in `~/.claude/projects/
 - **Skill importer 5-stage + R1+R2+R3** (ADR 0123+0159 wiring): CLI `metnos-skills`. Mapping `runtime/skill_vocab_map.json`. R1 `skill_description_llm` pre-codegen; R2 `importer_verb_verify.check_plan` gate; R3 zero-fallback su `vocab.*`.
 - **Locale-aware skill bundle + rename → skills/** (ADR 0160): pattern bundle-per-locale `executors/skills/<locale>/`. Helper `runtime/skills_paths.py` dual-root scan. SKILL.md fields: `lang/trust/auto_enable/distribution/feature_modules`.
 - **Skill registry**: `runtime/skill_registry.py` espone `list_skills/enable/disable`, gating via `is_skill_enabled()`.
+- **Tassonomia skill 3-tier + confine skill↔backend** (ADR 0170): `tier ∈ {core, first_party, imported}` (`skills_catalog.skill_tier`). Backend=COME (config, `backend_resolver`), skill=SE/QUALI (attivazione/fiducia/packaging); ortogonali, dipendenza dichiarata UNA volta al backend, skill aggrega. Mono→multi provider = +backend +skill, 0 executor (`*_issues` resta canonico, provider→resolver). google-workspace = Tier 2 vendorizzata `executors/skills/google-workspace/`. Tier 3 = sandbox 7-layer (ADR 0159); pubblico spedisce solo Tier 1+2.
 - **Sandbox per-skill foundation** (ADR 0140 ext): `Executor.sandbox_profile/provenance/is_imported`. Audit `runtime/skill_audit.py`. Watchdog `jobs/skill_sandbox_watchdog.py`.
 - **Catalog invariants al load**: `runtime/loader.py` rifiuta synth con collision verso handcrafted. `_gc_collisions` sposta i rejected in tmp.
 - **No synth ridondanti**: stage 1 NAMING preferisce canonical esistente se intent coperto.
