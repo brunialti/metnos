@@ -85,9 +85,20 @@ def _write_summary(rows: list[dict]) -> Path:
         "python -m install --force-phase 4   # re-run secrets dialog",
         "```",
         "",
+        "## How to connect",
+        "",
+        "Metnos talks to you over **two channels**:",
+        "",
+        "- **Web UI (HTTP)** — open `http://127.0.0.1:<port>/` in a browser (from",
+        "  another device, replace `127.0.0.1` with this machine's IP). Chat lives at",
+        "  `/`; admin pages need the one-shot onboarding URL printed during install.",
+        "- **Telegram** — if configured, open your BotFather bot, send `/start`, and",
+        "  paste the pairing code from the Web UI. Not configured? Create a bot with",
+        "  @BotFather, then `python -m install --force-phase 4` to add the token.",
+        "",
         "## Next steps",
         "",
-        "- Open the dashboard URL printed above to claim admin access (token valid 15 min).",
+        "- Claim admin access via the one-shot onboarding URL printed during install (15 min).",
         "- Read the full architecture at https://metnos.com",
         "- Issues / questions: https://github.com/brunialti/metnos/issues",
         "",
@@ -157,13 +168,25 @@ def run(args: Any) -> dict[str, Any]:
         ui.warn("admin.key not found — was phase 4 completed?")
         notes["onboard_url_emitted"] = False
 
-    # 2. Telegram pairing hint
+    # 2. How to connect — Web UI
+    ui.console().print("  [bold green]Connect to the Web UI[/bold green]:")
+    ui.console().print(f"    • From this machine:   http://127.0.0.1:{port}/")
+    ui.console().print(f"    • From another device: http://<this-machine-ip>:{port}/")
+    ui.console().print("      (chat interface; admin pages need the one-shot URL above)")
+    ui.console().print()
+
+    # 3. How to connect — Telegram
     if telegram_on:
-        ui.console().print("  [bold]Telegram is enabled.[/bold] To pair your first user:")
-        ui.console().print("    1) On Telegram, search for the bot you configured in phase 4.")
+        ui.console().print("  [bold green]Connect via Telegram[/bold green] (enabled):")
+        ui.console().print("    1) On Telegram, open the bot you configured (the one BotFather gave you).")
         ui.console().print("    2) Send /start.")
-        ui.console().print("    3) Paste the pairing code from the metnos-http dashboard.")
-        ui.console().print()
+        ui.console().print("    3) Paste the pairing code shown on the Web UI to link your account.")
+    else:
+        ui.console().print("  [bold]Telegram[/bold] is not configured. To enable it later:")
+        ui.console().print("    1) Create a bot with @BotFather on Telegram and copy its token.")
+        ui.console().print("    2) Run:  python -m install --force-phase 4   (enter the token)")
+        ui.console().print("    3) Then /start the bot and pair as above.")
+    ui.console().print()
 
     # 2b. Skill selection (modular capabilities)
     notes["skills"] = _select_skills(args)

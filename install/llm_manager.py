@@ -302,8 +302,11 @@ def _pick_llama_asset(assets: list, backend: str) -> dict | None:
     pref = [a for a in cand if _re.search(kw, a["name"], _re.I)]
     if pref:
         return pref[0]
-    plain = [a for a in cand if not _re.search(r"cuda|hip|rocm|vulkan|sycl|musa",
-                                               a["name"], _re.I)]
+    # Plain CPU build: escludi OGNI variante specializzata (che richiede runtime
+    # extra: openvino/cann/sycl/musa/kompute oltre a cuda/hip/rocm/vulkan). Il
+    # live-test ha mostrato che un build openvino non parte senza i suoi libs.
+    _SPECIAL = r"cuda|hip|rocm|vulkan|sycl|musa|openvino|cann|kompute"
+    plain = [a for a in cand if not _re.search(_SPECIAL, a["name"], _re.I)]
     return (plain or cand or [None])[0]
 
 

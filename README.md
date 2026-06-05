@@ -35,6 +35,10 @@ audited vocabulary, then runs them through a ReAct planner backed by a **local L
 No cloud round-trip is required for the assistant to think or act — frontier models
 are an opt-in fallback, not the engine.
 
+You talk to it over **two channels out of the box**: a **web UI** (HTTP on port
+8770 — chat in the browser, plus admin dashboards) and **Telegram** (message your
+own bot). Both are set up by the installer; use either, or both.
+
 ```mermaid
 flowchart TD
     U([You]) -->|Telegram / HTTP| I[Intent extractor]
