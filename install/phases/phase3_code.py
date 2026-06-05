@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import os
 import sqlite3
+import subprocess
 from pathlib import Path
 from typing import Any
 
@@ -104,6 +105,40 @@ def _verify_source() -> dict[str, Any]:
     return {"source_ok": not missing, "repo_dir": str(root), "missing_dirs": missing}
 
 
+def _sign_executors() -> dict[str, Any]:
+    """Genera la keypair locale 'author' e firma TUTTI gli executor.
+
+    Indispensabile: gli `.sig` spediti nel repo sono firmati con la chiave
+    dell'autore upstream, NON trusted sulla macchina dell'utente → senza questo
+    passo il loader rifiuta tutti gli executor handcrafted e il catalogo resta
+    ai soli builtin (server vuoto). Idempotente.
+    """
+    repo = os.environ.get("METNOS_REPO_DIR")
+    venv = os.environ.get("METNOS_VENV")
+    if not repo or not venv:
+        ui.warn("METNOS_REPO_DIR/METNOS_VENV non settati — salto la firma executor")
+        return {"signed": False}
+    py = str(Path(venv) / "bin" / "python")
+    sign_py = str(Path(repo) / "runtime" / "sign.py")
+    env = dict(os.environ)
+    pp = f"{repo}:{repo}/runtime"
+    env["PYTHONPATH"] = pp + (":" + env["PYTHONPATH"] if env.get("PYTHONPATH") else "")
+    env.setdefault("METNOS_INSTALL_ROOT", repo)
+    try:
+        r = subprocess.run([py, sign_py, "sign-all"], env=env,
+                           capture_output=True, text=True, timeout=300)
+    except Exception as e:  # noqa: BLE001
+        ui.warn(f"firma executor fallita: {e}")
+        return {"signed": False, "error": str(e)}
+    if r.returncode != 0:
+        ui.warn(f"sign-all rc={r.returncode}: {(r.stderr or r.stdout)[:200]}")
+        return {"signed": False, "rc": r.returncode}
+    line = next((l for l in r.stdout.splitlines() if "sign-all:" in l),
+                r.stdout.strip()[:120])
+    ui.ok(line or "executor firmati")
+    return {"signed": True, "report": line}
+
+
 def run(args: Any) -> dict[str, Any]:
     notes: dict[str, Any] = {}
     ui.banner("Phase 3 — Metnos code & workspace", "Verify source, prepare empty databases")
@@ -125,5 +160,9 @@ def run(args: Any) -> dict[str, Any]:
     # 3. i18n bootstrap
     ui.step("Bootstrapping i18n message store")
     _init_i18n(data)
+
+    # 4. Firma degli executor (chiave locale) — senza questo il catalogo e' vuoto
+    ui.step("Signing executors with a local key (sign-all)")
+    notes["sign"] = _sign_executors()
 
     return notes

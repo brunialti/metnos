@@ -12,6 +12,8 @@ CLI:
     python3 sign.py keygen <name>             genera keypair
     python3 sign.py sign <manifest_dir>       firma con chiave 'author'
     python3 sign.py verify <manifest_dir>     verifica con tutte le chiavi trusted
+    python3 sign.py sign-all [name]           keygen-se-manca + firma TUTTI gli
+                                              executor (usato dall'installer)
 """
 import hashlib
 import os
@@ -280,6 +282,34 @@ def main():
         else:
             print(f"FAIL: {info['reason']}")
             sys.exit(1)
+
+    elif cmd == "sign-all":
+        # Firma-di-massa per l'INSTALLAZIONE: genera la keypair locale 'author'
+        # se manca, poi firma OGNI executor (manifest.toml) sotto la executors
+        # dir. Senza questo passo una install fresca lascia il catalogo VUOTO:
+        # gli .sig spediti sono firmati con la chiave dell'autore upstream, NON
+        # trusted sulla macchina dell'utente. Idempotente; rispetta
+        # METNOS_INSTALL_ROOT (executors dir derivata).
+        key_name = sys.argv[2] if len(sys.argv) > 2 else DEFAULT_AUTHOR_KEY
+        if not (KEYS_DIR / f"{key_name}_priv.bin").exists():
+            generate_keypair(key_name)
+            print(f"keypair '{key_name}' generato in {KEYS_DIR}")
+        ex_root = _C.PATH_EXECUTORS
+        manifests = sorted(ex_root.glob("**/manifest.toml"))
+        ok_n = 0
+        failed = []
+        for m in manifests:
+            try:
+                sign_executor(str(m.parent), key_name)
+                ok_n += 1
+            except Exception as e:  # noqa: BLE001
+                failed.append((str(m.parent), str(e)))
+        print(f"sign-all: {ok_n} executor firmati, {len(failed)} errori "
+              f"(executors dir: {ex_root})")
+        for d, e in failed:
+            print(f"  FAIL {d}: {e}")
+        sys.exit(1 if failed else 0)
+
     else:
         print(__doc__); sys.exit(2)
 
