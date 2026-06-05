@@ -72,6 +72,8 @@ Compared to drop-in agent frameworks (e.g. OpenClaw, Hermes and the broader
 | **Safety model** | Trust the author of the package | *Don't* trust the package — the package must pass the checks |
 | **LLM** | Often cloud-first | Local-first; frontier is opt-in fallback |
 | **Output** | Free-form per tool | Uniform list-in / list-out, pipeable between steps |
+| **Language** | English-only; strings hard-coded | i18n by construction — every user-facing string and prompt is *per-language data*, so a new language is a **drop-in** translation pack, no code change. IT + EN validated today; more by drop-in (not yet tested) |
+| **Setup** | Manual wiring | **Self-configuring** — the installer profiles your hardware to pick a fitting model/backend; each skill stays dormant until its service or credential appears, then activates on its own |
 
 ### Why Metnos did **not** adopt the standard skill format
 
