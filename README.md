@@ -36,15 +36,20 @@ No cloud round-trip is required for the assistant to think or act — frontier m
 are an opt-in fallback, not the engine.
 
 ```mermaid
-flowchart LR
-    U([You]) --> R[Intent + Praxis]
-    R --> P[Planner · local LLM]
-    P --> E[Executors<br/>vectorized, signed]
-    E --> O[Observation]
+flowchart TD
+    U([You]) -->|Telegram / HTTP| I[Intent extractor]
+    I --> PX{Praxis<br/>cache · match}
+    PX -->|known pattern · cost 0| A([Answer])
+    PX -->|novel| P[Planner · local LLM<br/>constrained to a closed vocabulary]
+    P --> V{Vaglio<br/>consent for risky ops}
+    V --> E[Executors<br/>vectorized · signed]
+    E --> B[(Backends<br/>provider chosen by config)]
+    B --> O[Observation]
     O --> P
-    P --> A([Answer])
-    P -. on demand .-> S[Synthesize<br/>new executor]
-    S --> E
+    O -. learns .-> PX
+    P --> A
+    P -. on demand .-> S[Synthesize executor]
+    S -->|7-layer admission gate| E
     P -. opt-in .-> F[Frontier LLM]
 ```
 
