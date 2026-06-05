@@ -631,11 +631,12 @@ def _collect_health(services_extra: tuple[str, ...] | None = None) -> dict:
 
 def invoke(args: dict, ctx: dict | None = None) -> dict:
     filters_in = args.get("filters") or []
+    # §2.4 robustezza NL→determinismo: l'LLM passa spesso `filters` come STRINGA
+    # (es. 'memory' per "processo che usa più memoria") invece di list[dict].
+    # Una forma non-lista non è un filtro valido → IGNORALA (coerce a []) invece
+    # di hard-fail: get_processes ritorna comunque i top processi (bug q39 5/6).
     if not isinstance(filters_in, list):
-        return {
-            "ok": False, "ok_count": 0, "fail_count": 1,
-            "entries": [], "failed": [{"error": _msg("ERR_ARG_NOT_LIST", arg="filters")}],
-        }
+        filters_in = []
     top = args.get("top")
     if top is not None:
         try:
