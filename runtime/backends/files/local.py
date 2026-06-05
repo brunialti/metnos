@@ -355,6 +355,14 @@ def _collect_write_specs(args: dict):
 
     if isinstance(entries, list):
         path_template = args.get("path_template")
+        # §2.8: un `path_template` SENZA placeholder (`{campo}`/`${campo}`) NON è
+        # un template per-entry — è un literal. Il planner ci mette per errore il
+        # CONTENUTO (es. path_template="RISC-V è ...") e, avendo precedenza sul
+        # `path` scalare, scriverebbe un file mal-nominato nel cwd invece che nel
+        # path dato. Scartalo → si ricade sull'AGGREGATO verso `path` (bug
+        # latente write path=contenuto, q4/q27). Deterministico §7.9.
+        if isinstance(path_template, str) and "{" not in path_template:
+            path_template = None
         content_field = args.get("content_field")
         content_template = args.get("content_template")
         content_format = args.get("content_format")
