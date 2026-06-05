@@ -73,10 +73,12 @@ claude_persistent.sh
 x.png
 *.png.bak
 
-# --- ADR registry + storia decisionale interna (NOT for GitHub) ----------
-# Scope distribuzione = solo file necessari per installare e avviare Metnos.
-# ADR e docs interne restano locali su /opt/metnos, fuori dal repo pubblico.
-decisions/
+# --- ADR registry: TRACCIATO nel git di lavoro (baseline), NON su GitHub ---
+# Modello distribuzione (5/6/2026): /opt/metnos = baseline completo versionato;
+# il repo pubblico = EXPORT-subset (scripts/export-public.sh) che ESCLUDE
+# decisions/ e docs/ (rationale interno, vivono su metnos.com). Gli ADR restano
+# tracciati qui per storia/backup ma NON entrano nel repo pubblico.
+# (decisions/ volutamente NON ignorato)
 
 # --- Tutta la documentazione (NOT for GitHub, vive su metnos.com) --------
 docs/
@@ -142,3 +144,6 @@ USER.md
 *~
 .~lock.*
 UTENZE E SPESE/
+
+# --- Artefatto export pubblico (rigenerabile) ---------------------------
+dist/
