@@ -282,12 +282,25 @@ _DEFAULT_MAX_FILES = 500
 def _safe_format(template: str, entry: dict):
     """`template.format(**entry)` deterministico §7.9. Ritorna (ok, valore_o_errore).
     Campo mancante o spec invalido → (False, messaggio onesto), niente raise."""
+    # §2.4: l'LLM usa spesso la sintassi ${entry.campo} o ${campo} (convenzione
+    # di piping) invece del {campo} di str.format → normalizza prima (bug q28
+    # 5/6). Lascia intatti i ${X:Y} con due punti (es. ${RUNTIME:..} già risolti).
+    if isinstance(template, str) and "${" in template:
+        import re as _re
+        template = _re.sub(r"\$\{\s*entry\.(\w+)\s*\}", r"{\1}", template)
+        template = _re.sub(r"\$\{\s*(\w+)\s*\}", r"{\1}", template)
     try:
-        return True, template.format(**entry)
-    except (KeyError, IndexError) as ex:
-        return False, _msg("ERR_ARG_INVALID", arg="template",
-                            reason=f"campo mancante nell'entry: {ex}")
-    except (ValueError, TypeError) as ex:
+        # §2.8: un campo del template ASSENTE nell'entry → stringa vuota, NON
+        # hard-fail. L'LLM sceglie i nomi-campo best-effort (es. {memory} ma
+        # l'entry processo ha 'mem_pct') → rendi i campi presenti, lascia vuoti
+        # i mancanti (bug q28/q34 5/6: il write falliva tutto per un nome
+        # leggermente diverso). Spec malformato → errore onesto.
+        class _SafeDict(dict):
+            def __missing__(self, _k):
+                return ""
+        flat = entry if isinstance(entry, dict) else {"value": entry}
+        return True, template.format_map(_SafeDict(flat))
+    except (ValueError, TypeError, IndexError, AttributeError) as ex:
         return False, _msg("ERR_ARG_INVALID", arg="template",
                             reason=f"template non valido: {ex}")
 
