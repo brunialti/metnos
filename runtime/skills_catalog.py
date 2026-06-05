@@ -88,10 +88,38 @@ def skill_meta(name: str) -> dict | None:
     return None
 
 
+def _bundle_tier(name: str) -> str | None:
+    """Tier dichiarato nel SKILL.md di un bundle in-repo `executors/skills/<name>/`.
+
+    I bundle (es. google-workspace) sono provider/capacità con script propri,
+    distinti dalle skill per-capacità classificate per pattern. Un bundle
+    versionato nel repo con `tier: first_party` E' first-party (ADR 0170).
+    None se il bundle non esiste o non dichiara tier."""
+    try:
+        import config as _C  # §7.11
+        skill_md = _C.PATH_EXECUTORS / "skills" / name / "SKILL.md"
+        if not skill_md.is_file():
+            return None
+        # Scan del frontmatter (prime righe) per `tier: <valore>`.
+        for line in skill_md.read_text(encoding="utf-8").splitlines()[:30]:
+            s = line.strip()
+            if s.startswith("tier:"):
+                return s.split(":", 1)[1].strip() or None
+    except Exception:
+        return None
+    return None
+
+
 def skill_tier(name: str) -> str:
     """Tier ADR 0170 della skill: 'core' | 'first_party' | 'imported'.
 
-    'core' e le first-party sono note al catalogo; ogni nome sconosciuto e'
-    trattato come 'imported' (Tier 3, sandboxed/provenance)."""
+    Ordine: (1) catalogo per-capacita' (core + first-party classificate);
+    (2) bundle in-repo `executors/skills/<name>/SKILL.md` (provider versionati,
+    es. google-workspace); (3) altrimenti 'imported' (Tier 3, sandbox/provenance)."""
     m = skill_meta(name)
-    return m["tier"] if m and m.get("tier") else "imported"
+    if m and m.get("tier"):
+        return m["tier"]
+    bt = _bundle_tier(name)
+    if bt:
+        return bt
+    return "imported"

@@ -62,6 +62,19 @@ Aggiungere un provider è una **promozione**, non uno sdoppiamento:
 
 Costo di un provider nuovo = **+1 file backend + +1 skill (se nuova credenziale), 0 nuovi executor**. Spostare il provider dal nome dell'executor (`_github`) al resolver è il percorso che calendar/files hanno già preso.
 
+#### 4.bis — «Distribuisco con github, domani importo gitlab»: cosa succede
+
+Due esiti distinti (il §4 sopra descrive il percorso «lo aggiungiamo NOI»; qui il percorso «lo IMPORTI TU»):
+
+| Cosa vuoi | Meccanismo | Lavoro manuale |
+|---|---|---|
+| gitlab **funziona**, capacità separata | importer ADR 0123/0159 → executor **Tier 3 sandboxed** (es. `*_gitlab`), NON sotto il dispatcher canonico | **0** (importi e basta) |
+| gitlab = **provider intercambiabile** sotto `find_issues` (resolver sceglie github/gitlab da config) | scrivere `backends/issues/gitlab.py` + registrare skill `gitlab` | **manuale** (oggi) |
+
+Il **gap**: l'import grezzo produce *executor standalone*, non *backend sotto il canonico*. L'unificazione provider è manuale.
+
+**Roadmap «import esterno robusto»** (iniziativa rilascio pubblico): l'importer deve **riconoscere** che una skill importata fornisce un OBJECT già canonico (`issues`/`pulls`) e **offrire di registrarla come backend** (`backends/issues/gitlab.py` + skill `gitlab`) invece che come executor standalone → il secondo esito diventa **quasi-automatico** (auto-detect oggetto → conferma utente → wiring + mapping vocab). Finché non c'è, vale la tabella sopra.
+
 ### 5. Campo `tier` nei metadata
 
 `skills_catalog.py` e `SKILL.md` dichiarano `tier ∈ {core, first_party, imported}`. Unifica i 3 meccanismi sotto un modello solo. Rilascio pubblico: **Tier 1+2 spediti** nel repo; **Tier 3 no** (li installa l'utente). La tesi-sicurezza del README ("non fidarti del pacchetto") si applica **esattamente al Tier 3**.

@@ -2,6 +2,7 @@
 name: it_locale
 description: "Bundle di funzionalità localizzate per il mercato italiano: bills_extractor (utility/telecom), in futuro codice fiscale, IBAN IT, P.IVA, parse date italiane, tariffe italiane."
 version: 0.1.0
+tier: first_party
 lang: it
 trust: metnos-official
 auto_enable: true
