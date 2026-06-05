@@ -48,6 +48,11 @@ def _percentile(values_sorted, p):
 
 def invoke(args):
     values = args.get("values")
+    # §2.1/§2.8: values non pipato (None) o non-lista (scalare/dict per piping
+    # impreciso) → lista vuota (stats n=0 ok), MAI hard-fail che spezza la
+    # pipeline (describe_numbers è spesso uno step accessorio). Bug q44 5/6.
+    if not isinstance(values, list):
+        values = [values] if isinstance(values, (int, float)) and not isinstance(values, bool) else []
     fields = args.get("fields")
     if fields is None:
         fields = ["n", "mean", "median", "stdev", "min", "max"]

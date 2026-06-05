@@ -16,11 +16,15 @@ en = "Calculate descriptive statistics on a list of numbers (int or float). Patt
 
 [code]
 files  = ["describe_numbers.py"]
-digest = "sha256:fd61222770ae543014c4cffd8884c2ff523131a7af5a14cb05ae3709d26f3246"
+digest = "sha256:b871de49c972e002cf3344a99e99465733f47c53d9cb9c6f91cbd485c9ad3e54"
 
 [args]
 type     = "object"
-required = ["values"]
+# `values` NON required (§2.8): se il planner lo pipa con un placeholder non
+# risolvibile (es. ${stepN.result} verso compute_entries che espone `value`),
+# il guard unresolved-placeholder lo DROPPA invece di rigettare lo step; l'
+# executor risponde n=0 ok (stats vuote) senza spezzare la pipeline. Bug q44 5/6.
+required = []
 
 [args.properties.values]
 type        = "array"
