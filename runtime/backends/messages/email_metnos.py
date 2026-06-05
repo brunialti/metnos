@@ -618,12 +618,45 @@ def _read_one_account(account, folder, max_results, unseen_only, since, before,
         while idx < cap_total and idx < len(ids):
             page = ids[idx:idx + page_size]
             for uid in page:
-                status, raw = conn.uid("FETCH", uid, "(RFC822.SIZE RFC822)")
-                if status != "OK" or not raw or not raw[0]:
-                    failed.append({"account": account,
-                                   "uid": uid.decode() if isinstance(uid, bytes) else str(uid),
-                                   "error_code": "ERR_IMAP_CMD",
-                                   "error": _msg("ERR_IMAP_CMD", cmd="fetch", reason="failed")})
+                # Retry+reconnect sul transiente: SSLError 'BAD_RECORD_MAC' =
+                # corruzione TLS a livello-rete (.33, path WiFi MTU/GRO) che a
+                # metà lettura faceva perdere i messaggi rimanenti dell'account
+                # (read partial → '"N non controllati"'). SSLError è sottoclasse
+                # di OSError, ma dopo la corruzione imaplib può alzare IMAP4.abort
+                # → cattura larga + riconnessione (la conn SSL è inutilizzabile).
+                # §7.3 robustezza, gemello del retry SMTP 3×.
+                status = raw = None
+                for _att in range(3):
+                    try:
+                        status, raw = conn.uid("FETCH", uid, "(RFC822.SIZE RFC822)")
+                        break
+                    except Exception as _fe:
+                        if _att >= 2:
+                            failed.append({"account": account,
+                                           "uid": uid.decode() if isinstance(uid, bytes) else str(uid),
+                                           "error_code": "ERR_IMAP_CMD",
+                                           "error": _msg("ERR_IMAP_CMD", cmd="fetch",
+                                                          reason=f"transient: {type(_fe).__name__}")})
+                            break
+                        try:
+                            conn.close()
+                        except Exception:
+                            pass
+                        try:
+                            conn.logout()
+                        except Exception:
+                            pass
+                        try:
+                            conn = open_imap(account)
+                            conn.select(folder, readonly=True)
+                        except Exception:
+                            break
+                if status is None or status != "OK" or not raw or not raw[0]:
+                    if status not in (None,) and status != "OK":
+                        failed.append({"account": account,
+                                       "uid": uid.decode() if isinstance(uid, bytes) else str(uid),
+                                       "error_code": "ERR_IMAP_CMD",
+                                       "error": _msg("ERR_IMAP_CMD", cmd="fetch", reason="failed")})
                     continue
                 try:
                     if isinstance(raw[0], tuple) and len(raw[0]) >= 2:
