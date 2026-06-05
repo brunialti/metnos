@@ -37,7 +37,10 @@ are an opt-in fallback, not the engine.
 
 You talk to it over **two channels out of the box**: a **web UI** (HTTP on port
 8770 — chat in the browser, plus admin dashboards) and **Telegram** (message your
-own bot). Both are set up by the installer; use either, or both.
+own bot). Both are set up by the installer; use either, or both. The web UI asks
+for an admin key on first connect — it's auto-created at
+`~/.config/metnos/admin.key`, and the installer prints a one-shot link that claims
+it for your browser.
 
 ```mermaid
 flowchart TD

@@ -90,8 +90,11 @@ def _write_summary(rows: list[dict]) -> Path:
         "Metnos talks to you over **two channels**:",
         "",
         "- **Web UI (HTTP)** — open `http://127.0.0.1:<port>/` in a browser (from",
-        "  another device, replace `127.0.0.1` with this machine's IP). Chat lives at",
-        "  `/`; admin pages need the one-shot onboarding URL printed during install.",
+        "  another device, replace `127.0.0.1` with this machine's IP).",
+        "  **First connect needs the admin key** (`~/.config/metnos/admin.key`,",
+        "  auto-created on first boot). Easiest path: the one-shot onboarding URL",
+        "  printed during install (valid 15 min) claims access for your browser; if it",
+        "  expired, `cat ~/.config/metnos/admin.key` or re-run `--force-phase 6`.",
         "- **Telegram** — if configured, open your BotFather bot, send `/start`, and",
         "  paste the pairing code from the Web UI. Not configured? Create a bot with",
         "  @BotFather, then `python -m install --force-phase 4` to add the token.",
@@ -168,11 +171,15 @@ def run(args: Any) -> dict[str, Any]:
         ui.warn("admin.key not found — was phase 4 completed?")
         notes["onboard_url_emitted"] = False
 
-    # 2. How to connect — Web UI
+    # 2. How to connect — Web UI (needs the admin key on first connect)
     ui.console().print("  [bold green]Connect to the Web UI[/bold green]:")
     ui.console().print(f"    • From this machine:   http://127.0.0.1:{port}/")
     ui.console().print(f"    • From another device: http://<this-machine-ip>:{port}/")
-    ui.console().print("      (chat interface; admin pages need the one-shot URL above)")
+    ui.console().print("    [bold]First connect needs the admin key.[/bold] Easiest: open the")
+    ui.console().print("    one-shot onboarding URL above (valid 15 min) — it claims access for")
+    ui.console().print("    your browser. The key itself lives at [cyan]~/.config/metnos/admin.key[/cyan]")
+    ui.console().print("    (`cat` it if you need it). Lost the URL? re-run")
+    ui.console().print("    `python -m install --force-phase 6` to print a fresh one.")
     ui.console().print()
 
     # 3. How to connect — Telegram
