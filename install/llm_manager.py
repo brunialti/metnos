@@ -249,6 +249,177 @@ def _render_tiers_toml(plan: Plan, model_file: Path) -> str:
     return "\n".join(lines)
 
 
+# ---------------------------------------------------------------------------
+# Provisioning reale — helper (rete; retry per l'instabilità TLS osservata)
+# ---------------------------------------------------------------------------
+import json as _json
+import re as _re
+import urllib.request as _ur
+import urllib.error as _ue
+
+
+def _http_json(url: str) -> dict:
+    hdr = {"User-Agent": "metnos-llm-manager",
+           "Accept": "application/vnd.github+json"}
+    # Token GitHub opzionale (env) → alza il rate-limit API da 60 a 5000/h.
+    tok = os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN")
+    if tok:
+        hdr["Authorization"] = f"Bearer {tok}"
+    req = _ur.Request(url, headers=hdr)
+    with _ur.urlopen(req, timeout=30) as r:
+        return _json.load(r)
+
+
+def _download(url: str, dest: Path, *, attempts: int = 5) -> bool:
+    """Scarica url→dest con retry (la rete .33 corrompe transfer grandi a tratti)."""
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    last = ""
+    for i in range(1, attempts + 1):
+        try:
+            req = _ur.Request(url, headers={"User-Agent": "metnos-llm-manager"})
+            with _ur.urlopen(req, timeout=120) as r, open(dest, "wb") as f:
+                shutil.copyfileobj(r, f, length=1024 * 256)
+            return True
+        except (_ue.URLError, OSError, Exception) as e:  # noqa: BLE001
+            last = str(e)
+            print(f"    download tentativo {i}/{attempts} fallito: {last[:80]}")
+            if dest.exists():
+                dest.unlink()
+    print(f"    download FALLITO dopo {attempts}: {last[:120]}")
+    return False
+
+
+def _pick_llama_asset(assets: list, backend: str) -> dict | None:
+    """Sceglie l'asset prebuilt giusto da una release ggml-org/llama.cpp."""
+    cand = [a for a in assets
+            if _re.search(r"(ubuntu|linux)", a["name"], _re.I)
+            and _re.search(r"(x64|x86_64|amd64)", a["name"], _re.I)
+            and a["name"].lower().endswith((".zip", ".tar.gz", ".tgz", ".tar.xz"))]
+    if not cand:
+        cand = [a for a in assets if a["name"].lower().endswith((".zip", ".tar.gz"))]
+    kw = {"cuda": "cuda", "rocm": "(hip|rocm)", "vulkan": "vulkan",
+          "metal": "macos", "cpu": "cpu"}.get(backend, "cpu")
+    pref = [a for a in cand if _re.search(kw, a["name"], _re.I)]
+    if pref:
+        return pref[0]
+    plain = [a for a in cand if not _re.search(r"cuda|hip|rocm|vulkan|sycl|musa",
+                                               a["name"], _re.I)]
+    return (plain or cand or [None])[0]
+
+
+def _find_llama_server(root: Path) -> Path | None:
+    for p in root.rglob("llama-server"):
+        if p.is_file():
+            return p
+    for p in root.rglob("server"):           # release piu' vecchie
+        if p.is_file():
+            return p
+    return None
+
+
+def acquire_llama(backend: str, dest: Path) -> Path | None:
+    """Scarica un binario prebuilt llama.cpp per il backend ed estrae llama-server.
+
+    Prebuilt da github ggml-org/llama.cpp latest release. Ritorna il path del
+    binario llama-server, o None (fallback: build da sorgente, fuori scope qui).
+    """
+    existing = _find_llama_server(dest)
+    if existing:
+        print(f"    llama-server già presente: {existing}")
+        return existing
+    try:
+        rel = _http_json("https://api.github.com/repos/ggml-org/llama.cpp/releases/latest")
+    except Exception as e:  # noqa: BLE001
+        print(f"    release API fallita: {e}")
+        return None
+    asset = _pick_llama_asset(rel.get("assets", []), backend)
+    if not asset:
+        print(f"    nessun asset prebuilt per backend '{backend}' "
+              "(fallback: build da sorgente con cmake — non automatizzato qui).")
+        return None
+    print(f"    asset: {asset['name']} ({asset.get('size',0)//(1024*1024)} MB)")
+    dest.mkdir(parents=True, exist_ok=True)
+    arc = dest / asset["name"]
+    if not _download(asset["browser_download_url"], arc):
+        return None
+    # estrazione
+    try:
+        if arc.name.endswith(".zip"):
+            import zipfile
+            with zipfile.ZipFile(arc) as z:
+                z.extractall(dest)
+        else:
+            import tarfile
+            with tarfile.open(arc) as t:
+                t.extractall(dest)
+    except Exception as e:  # noqa: BLE001
+        print(f"    estrazione fallita: {e}")
+        return None
+    binp = _find_llama_server(dest)
+    if binp:
+        binp.chmod(0o755)
+    return binp
+
+
+def download_model(hf_repo: str, hf_file: str, dest: Path) -> bool:
+    """Scarica un GGUF da HuggingFace (resolve URL). Idempotente."""
+    if dest.exists() and dest.stat().st_size > 1024 * 1024:
+        print(f"    modello già presente: {dest}")
+        return True
+    url = f"https://huggingface.co/{hf_repo}/resolve/main/{hf_file}?download=true"
+    print(f"    scarico {hf_repo}/{hf_file} …")
+    return _download(url, dest, attempts=6)
+
+
+def _write_systemd_unit(llama_bin: Path, model_file: Path, endpoint: str,
+                        ngl: int, unit_path: Path) -> None:
+    host = "127.0.0.1"
+    port = endpoint.rsplit(":", 1)[-1] if ":" in endpoint else "8080"
+    unit = f"""[Unit]
+Description=Metnos local LLM (llama-server)
+After=network-online.target
+
+[Service]
+ExecStart={llama_bin} -m {model_file} --host {host} --port {port} -ngl {ngl} -c 8192
+Restart=on-failure
+Nice=5
+
+[Install]
+WantedBy=default.target
+"""
+    unit_path.parent.mkdir(parents=True, exist_ok=True)
+    unit_path.write_text(unit, encoding="utf-8")
+
+
+def health_check(llama_bin: Path, model_file: Path, *, port: int, ngl: int,
+                 timeout_s: int = 60) -> bool:
+    """Avvia llama-server (breve) e fa il ping di /health. Stoppa subito.
+
+    Per la verifica usiamo ngl=0 (CPU) di default per NON contendere la GPU con
+    un eventuale llama-server di produzione."""
+    import time as _t
+    proc = subprocess.Popen(
+        [str(llama_bin), "-m", str(model_file), "--host", "127.0.0.1",
+         "--port", str(port), "-ngl", str(ngl), "-c", "2048"],
+        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    try:
+        deadline = _t.time() + timeout_s
+        while _t.time() < deadline:
+            try:
+                with _ur.urlopen(f"http://127.0.0.1:{port}/health", timeout=3) as r:
+                    if r.status == 200:
+                        return True
+            except Exception:  # noqa: BLE001
+                _t.sleep(2)
+        return False
+    finally:
+        proc.terminate()
+        try:
+            proc.wait(timeout=10)
+        except Exception:  # noqa: BLE001
+            proc.kill()
+
+
 def provision(plan: Plan, *, dry_run: bool = True, assume_yes: bool = False) -> dict:
     out: dict = {"dry_run": dry_run, "steps": []}
 
@@ -299,16 +470,51 @@ def provision(plan: Plan, *, dry_run: bool = True, assume_yes: bool = False) -> 
         return out
 
     models.mkdir(parents=True, exist_ok=True)
-    # NB: l'acquisizione di llama.cpp e il download del modello sono passi
-    # pesanti e dipendenti dalla rete; qui scrivo SOLO i tier (deterministico)
-    # e lascio i fetch a helper dedicati (download_llama.sh / hf download) per
-    # non simulare un esito non verificato (§2.8 onesta').
+    out["executed"] = True
+
+    # 1) llama.cpp prebuilt
+    print("\n[1/5] llama.cpp")
+    binp = acquire_llama(plan.backend, llama)
+    out["llama_server"] = str(binp) if binp else None
+    if not binp:
+        print("  ✗ llama-server non acquisito (fallback build da sorgente, "
+              "fuori scope). Mi fermo prima del modello.")
+        out["ok"] = False
+        return out
+    print(f"  ✓ {binp}")
+
+    # 2) modello GGUF
+    print("[2/5] modello")
+    if not download_model(plan.hf_repo, plan.hf_file, model_file):
+        print("  ✗ download modello fallito.")
+        out["ok"] = False
+        return out
+    print(f"  ✓ {model_file} ({model_file.stat().st_size // (1024*1024)} MB)")
+
+    # 3) tiers config
+    print("[3/5] tiers")
     tiers.parent.mkdir(parents=True, exist_ok=True)
     tiers.write_text(_render_tiers_toml(plan, model_file), encoding="utf-8")
-    print(f"  ✓ scritto {tiers}")
-    print("  ! llama.cpp + modello: esegui i fetch dedicati, poi avvia il servizio.")
-    out["executed"] = True
     out["tiers_written"] = str(tiers)
+    print(f"  ✓ {tiers}")
+
+    # 4) systemd unit (GPU offload pieno per il servizio reale)
+    print("[4/5] systemd unit")
+    ngl = 0 if plan.backend == "cpu" else 999
+    unit = llama.parent / "metnos-llm.service"
+    _write_systemd_unit(binp, model_file, plan.endpoint, ngl, unit)
+    out["systemd_unit"] = str(unit)
+    print(f"  ✓ {unit}  (abilita: sudo cp {unit} /etc/systemd/system/ && "
+          "sudo systemctl enable --now metnos-llm)")
+
+    # 5) health-check (CPU, porta di prova → non contende la GPU di produzione)
+    print("[5/5] health-check (CPU, porta 8084)")
+    healthy = health_check(binp, model_file, port=8084, ngl=0, timeout_s=90)
+    out["health"] = healthy
+    print("  ✓ llama-server risponde a /health" if healthy
+          else "  ! health-check non superato in tempo (modello grande su CPU? "
+               "il servizio reale usa la GPU).")
+    out["ok"] = bool(binp) and model_file.exists()
     return out
 
 
@@ -334,6 +540,9 @@ def main() -> int:
     pp = sub.add_parser("provision")
     pp.add_argument("--dry-run", action="store_true")
     pp.add_argument("--yes", action="store_true")
+    pp.add_argument("--test", action="store_true",
+                    help="verifica il meccanismo con un modello TINY su CPU "
+                         "(non scarica il modello grande, non tocca la GPU)")
     args = p.parse_args()
 
     if args.cmd == "detect":
@@ -358,6 +567,16 @@ def main() -> int:
 
     if args.cmd == "provision":
         plan = recommend(detect_hardware())
+        if getattr(args, "test", False):
+            # Modello TINY per verificare acquire→download→start→health a basso
+            # costo, su CPU, senza contendere la GPU di produzione.
+            plan.model_key = "qwen2.5-0.5b-test"
+            plan.model_label = "Qwen2.5 0.5B (TEST)"
+            plan.hf_repo = "Qwen/Qwen2.5-0.5B-Instruct-GGUF"
+            plan.hf_file = "qwen2.5-0.5b-instruct-q4_k_m.gguf"
+            plan.backend = "cpu"
+            plan.feasible = True
+            plan.warnings.append("MODALITÀ TEST: modello tiny su CPU.")
         res = provision(plan, dry_run=args.dry_run or not args.yes,
                         assume_yes=args.yes)
         return 0 if res.get("feasible", False) else 1

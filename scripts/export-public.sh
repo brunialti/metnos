@@ -51,6 +51,7 @@ scripts/scrub_names\.txt$|
 scripts/export-public\.sh$|
 scripts/publish-public\.sh$|
 scripts/docs-align-nightly\.sh$|
+scripts/e2e-fresh-install\.sh$|
 deploy\.sh$|
 claude_persistent\.sh$|
 CLAUDE\.md$|
