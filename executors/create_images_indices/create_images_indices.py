@@ -1233,6 +1233,53 @@ def _build_entry(
     return entry
 
 
+# ── Undo (§2.3 module.reverse fallback) ─────────────────────────────────
+
+
+def reverse(plan, results):
+    """Annulla un create_images_indices RIMUOVENDO l'indice creato dal turno.
+
+    Reversibile SOLO se il forward ha creato l'indice ex-novo
+    (`results.index_created == True`); un update incrementale di un indice
+    preesistente NON e' ribaltabile (servirebbe un blob dell'intero indice) →
+    ritorna `ok_count=0` onesto (§2.8). Safety: rmtree solo dentro la index
+    root di Metnos (mai path arbitrari).
+    """
+    import shutil
+    res = results or {}
+    if not res.get("index_created"):
+        return {"ok": True, "ok_count": 0, "fail_count": 0, "results": [],
+                "note": "indice pre-esistente aggiornato: non ribaltabile"}
+    idx_path = res.get("index_path")
+    if not idx_path:
+        return {"ok": True, "ok_count": 0, "fail_count": 0, "results": []}
+    p = Path(idx_path)
+    try:
+        p_res = p.resolve()
+        root_res = _index_image_root().resolve()
+    except OSError as e:
+        return {"ok": False, "ok_count": 0, "fail_count": 1, "results": [],
+                "error": str(e)}
+    if root_res not in p_res.parents:
+        return {"ok": False, "ok_count": 0, "fail_count": 1, "results": [],
+                "error": "index_path fuori dalla index root: rifiuto rmtree"}
+    if not p.exists():
+        return {"ok": True, "ok_count": 0, "fail_count": 0, "results": []}
+    try:
+        shutil.rmtree(str(p))
+        parent = p_res.parent  # <sha16>/ : rimuovi se ora vuoto
+        try:
+            if parent != root_res and not any(parent.iterdir()):
+                parent.rmdir()
+        except OSError:
+            pass
+        return {"ok": True, "ok_count": 1, "fail_count": 0,
+                "results": [{"removed": str(p)}]}
+    except OSError as e:
+        return {"ok": False, "ok_count": 0, "fail_count": 1, "results": [],
+                "error": str(e)}
+
+
 # ── Entry point ─────────────────────────────────────────────────────────
 
 
@@ -1300,6 +1347,11 @@ def invoke(args):
 
     paths, truncated = _walk_images(base, recursive, max_files)
     idx_dir = _index_dir(base)
+    # Undo §2.3 (module.reverse): l'indice e' ribaltabile SOLO se questo turno
+    # lo CREA ex-novo (idx_dir non esisteva). Un update incrementale di un
+    # indice preesistente non e' ribaltabile senza blob backup dell'intero
+    # indice (embeddings pesanti) → onesti, ok_count=0 nell'undo.
+    idx_existed_before = idx_dir.exists()
     existing_entries, existing_emb_text, existing_emb_face = (
         ([], None, None) if force else _load_existing(idx_dir)
     )
@@ -1368,6 +1420,7 @@ def invoke(args):
         "refreshed_count": int(refreshed_count),
         "last_refresh_at": time.time(),
         "index_path": str(idx_dir),
+        "index_created": (not idx_existed_before),
         "model_text": result["model_text"],
         "model_vlm": result["model_vlm"],
         "model_face": result["model_face"],
