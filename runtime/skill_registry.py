@@ -87,6 +87,8 @@ class SkillInfo:
     n_executors: int = 0
     is_imported: bool = True       # default: skill imported via ADR 0123
     is_builtin_repo: bool = False  # True se sotto <install>/executors/skills/
+    is_first_party: bool = False   # True se skill-capacità first-party (skills_catalog, non un bundle-dir)
+    requires: str = ""             # prerequisito esterno (backend/creds) per la dormancy/installer
 
     @property
     def is_metnos_official(self) -> bool:
@@ -157,6 +159,27 @@ def list_skills(lang: str | None = None) -> list[SkillInfo]:
         if lang is not None and info.lang not in ("any", lang.lower()):
             continue
         out.append(info)
+    # Skill-capacità FIRST-PARTY (asse 2): photos/mail/web/geo/calendar/github/
+    # frontier + core. Non sono bundle-dir ma gruppi di executor (skills_catalog).
+    # lang="any" → mai locale-gated; enabled = state override > auto_enable(True).
+    try:
+        from skills_catalog import FIRST_PARTY_SKILLS, _CORE
+        seen = {s.name for s in out}
+        for sk in list(FIRST_PARTY_SKILLS) + [_CORE]:
+            nm = sk["name"]
+            if nm in seen:
+                continue
+            ae = bool(sk.get("auto_enable", True))
+            enabled = bool(state[nm]) if nm in state else ae
+            out.append(SkillInfo(
+                name=nm, path=None, lang="any", trust="metnos-official",
+                auto_enable=ae, enabled=enabled, n_executors=0,
+                is_imported=False, is_builtin_repo=True, is_first_party=True,
+                requires=sk.get("requires", ""),
+            ))
+    except Exception as _e:  # pragma: no cover — first-party listing best-effort
+        import logging as _lg
+        _lg.getLogger(__name__).warning("first-party skills listing failed: %s", _e)
     out.sort(key=lambda s: s.name)
     return out
 

@@ -527,6 +527,17 @@ def _catalog_cache_signature(dirs: list) -> tuple:
             sig.append(("aging_db", 0.0))
     except Exception:
         sig.append(("aging_db", 0.0))
+    # Skill state (asse 2): enable/disable di una skill (skill_enabled.json)
+    # cambia la dormancy first-party → visibility del catalog diversa. Il mtime
+    # nella firma fa SÌ che set_skill_enabled invalidi la cache → gating live.
+    try:
+        from skill_registry import _state_file as _sf
+        try:
+            sig.append(("skill_state", _sf().stat().st_mtime))
+        except OSError:
+            sig.append(("skill_state", 0.0))
+    except Exception:
+        sig.append(("skill_state", 0.0))
     return tuple(sig)
 
 
@@ -1123,6 +1134,22 @@ def _load_dir_into_catalog(executors_dir: Path, catalog: Catalog, verify: bool,
             )
         except Exception:
             _dormant, _dormant_reason = False, ""
+
+        # Gating SKILL first-party (asse 2 rilascio pubblico): se l'executor
+        # appartiene a una skill-capacità DISABILITATA dall'utente, dormant →
+        # escluso dal pool del planner. Default auto_enable=True → is_skill_enabled
+        # True → nessun effetto (ambiente in esercizio INVARIATO); il gating
+        # nasconde solo ciò che l'utente disattiva (skill_enabled.json). §7.3.
+        if not _dormant:
+            try:
+                from skills_catalog import skill_for_executor as _sfe
+                from skill_registry import is_skill_enabled as _isen
+                _fp_skill = _sfe(name)
+                if _fp_skill != "core" and not _isen(_fp_skill):
+                    _dormant = True
+                    _dormant_reason = f"skill_disabled:{_fp_skill}"
+            except Exception:
+                pass
 
         # Sandbox profile dichiarativo (mini-version 17/5/2026):
         # legge [sandbox] dal manifest senza enforcement. Default vuoto
