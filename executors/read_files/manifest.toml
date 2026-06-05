@@ -28,6 +28,11 @@ type     = "object"
 # Niente required hard: la forma valida (scalare path / vettoriale paths|entries)
 # e' verificata dall'executor con errore onesto. from_step proietta i path.
 required = []
+# Almeno UNA sorgente d'input (o piping via from_step→entries). Senza, il
+# compound_decomposer emetteva read_files a vuoto come step-1 (manca find_files)
+# → 'argomento obbligatorio mancante: path'. Dichiarando il requisito il gate
+# `_step_schema_coherent` DEFERISCE all'Engine v2 (proposer+recovery). Bug q29 5/6.
+requires_one_of = [["path", "paths", "entries"]]
 
 [args.properties.path]
 type        = "string"
