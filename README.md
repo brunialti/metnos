@@ -103,7 +103,12 @@ Everything that ties Metnos to an external service, credential, or model is a
 can enable or disable at will. The **core** (local files, processes, time, the
 scheduler, and the in-memory helpers) is always on and needs nothing external.
 
-First-party skills: `photos` · `mail` · `web` · `geo` · `calendar` · `github` · `google-workspace` · `frontier`.
+First-party skills: `system` · `photos` · `mail` · `web` · `geo` · `calendar` · `github` · `google-workspace` · `frontier`.
+
+`system` is the one that makes Metnos a real *host* assistant, not just a chatbot:
+it can run shell commands, `sudo`, install packages and mount network shares — but
+**every privileged action requires explicit consent** (a *vaglio* judgment), and the
+skill can be **switched off entirely** to lock Metnos out of the system.
 
 `google-workspace` is a first-party skill in its own right: one OAuth setup unlocks
 Gmail, Calendar, Drive, Docs and Sheets, exposed through the same canonical

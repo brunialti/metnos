@@ -47,6 +47,15 @@ FIRST_PARTY_SKILLS: list[dict] = [
      "requires": "a frontier LLM API key (Anthropic/OpenAI), opt-in",
      "desc": "Escalation a un LLM frontier cloud quando il locale non basta.",
      "auto_enable": True},
+    # Amministrazione del sistema host: shell/sudo validati + esecuzione
+    # privilegiata, SEMPRE sotto consenso esplicito (vaglio). Disattivabile per
+    # togliere a Metnos qualunque accesso al sistema (guadagno di sicurezza).
+    {"name": "system", "match": r"^admin$",
+     "requires": "a sudoers configuration for privileged host operations "
+                 "(shell, sudo, package install, network mounts)",
+     "desc": "Amministrazione host: comandi shell/sudo validati, eseguiti solo "
+             "dopo consenso esplicito (vaglio) per ogni azione.",
+     "auto_enable": True},
 ]
 
 _CORE = {
