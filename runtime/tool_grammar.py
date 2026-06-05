@@ -757,6 +757,15 @@ _TASKS_NAMES: tuple[str, ...] = (
     "read_tasks", "set_tasks", "read_tasks_history",
 )
 
+# Skill-admin builtin (asse 2): `list_skills`/`set_skills` baiterebbero query
+# generiche di lista/attivazione ("elenca i file", "attiva il monitor"). Nel
+# pool grammar SOLO se la query nomina esplicitamente le SKILL/capacità.
+_SKILLS_MARKERS: tuple[str, ...] = (
+    "skill", "skills", "capacità", "capacita", "capability", "capabilities",
+    "modulo", "moduli", "module", "modules",
+)
+_SKILLS_NAMES: tuple[str, ...] = ("list_skills", "set_skills")
+
 
 # Token candidato a path filesystem: sequenza non-spazio con almeno uno '/'.
 _RE_FS_PATH_TOKEN = re.compile(r"\S*/\S*")
@@ -917,6 +926,9 @@ def filter_pool_for_grammar(tools: Sequence[Any], user_query: str,
     if not (_has_word(query_markers, _TASKS_MARKERS)
             or _RE_SCHEDULE_PHRASE.search(query_markers)):
         excluded.extend(_TASKS_NAMES)
+    # Skill-admin builtin: escludi se la query non nomina skill/capacità.
+    if not _has_word(query_markers, _SKILLS_MARKERS):
+        excluded.extend(_SKILLS_NAMES)
     # Indice nomi presenti nel pool (per il check "esiste canonical?")
     _names_in_pool = {_extract_name(t) for t in tools}
     for suffix, markers in _PROVIDER_SUFFIX_MARKERS.items():

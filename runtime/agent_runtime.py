@@ -93,6 +93,10 @@ from recurring_tasks import (
     handle_delete_tasks, handle_read_tasks,
     handle_set_tasks, handle_read_tasks_history,
 )
+from skill_admin import (
+    LIST_SKILLS_TOOL, SET_SKILLS_TOOL,
+    handle_list_skills, handle_set_skills,
+)
 from test_runner import check_hints
 from undo import UndoLog
 from vaglio import judge
@@ -4694,6 +4698,8 @@ _BUILTIN_TOOL_HANDLERS: dict = {
     "delete_tasks": handle_delete_tasks,
     "read_tasks": handle_read_tasks,
     "set_tasks": handle_set_tasks,
+    "list_skills": handle_list_skills,
+    "set_skills": handle_set_skills,
 }
 
 # Tool-spec OpenAI-style per i builtin in-process che NON sono iniettati nel

@@ -448,19 +448,33 @@ def _cmd_list(args) -> int:
     lang_filter = getattr(args, "lang", None)
     skills = _sr.list_skills(lang=lang_filter)
     if not skills:
-        print("(no imported skills)")
+        print("(no skills)")
         return 0
+    # Conteggi + dormancy reali dal catalog live (single source con la chat).
+    try:
+        from skill_admin import _catalog_skill_counts
+        counts = _catalog_skill_counts()
+    except Exception:
+        counts = {}
+    seen: set[str] = set()
     for s in skills:
+        if s.name in seen:
+            continue  # dedup bundle-dir vs first-party
+        seen.add(s.name)
         en = "on" if s.enabled else "off"
-        flags = []
-        if s.is_builtin_repo:
-            flags.append("builtin")
-        if s.trust == "metnos-official":
-            flags.append("official")
-        flag_str = f" [{','.join(flags)}]" if flags else ""
-        print(f"- {s.name} (lang={s.lang} trust={s.trust} enabled={en}){flag_str}: "
-              f"{s.n_executors} executors")
-        if args.verbose:
+        c = counts.get(s.name, {})
+        n_exec = c.get("total") or s.n_executors
+        n_dorm = c.get("dormant", 0)
+        kind = ("core" if s.name == "core"
+                else "first-party" if getattr(s, "is_first_party", False)
+                else "imported")
+        dorm = f" ({n_dorm} dormant)" if n_dorm else ""
+        print(f"- {s.name} [{kind}] enabled={en} trust={s.trust}: "
+              f"{n_exec} executors{dorm}")
+        req = getattr(s, "requires", "") or ""
+        if req:
+            print(f"    requires: {req}")
+        if args.verbose and s.path is not None:
             for child in sorted(s.path.iterdir()):
                 if child.is_dir() and (child / "manifest.toml").is_file():
                     print(f"    {child.name}")
