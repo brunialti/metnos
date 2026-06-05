@@ -15,7 +15,7 @@ On April 28, 2026, after the first live "sort photos by year" run had
 succeeded thanks to `get_file_dates`, Roberto proposed extending the
 capability to include the **place of capture** (reverse-geocoding from
 EXIF GPS coordinates). The target use case was: "sort all image files
-in /home/roberto/images, prepending date and place to the name; 'unknown'
+in /home/user/images, prepending date and place to the name; 'unknown'
 if missing".
 
 This raised an architectural choice: do we add a second specialized

@@ -42,7 +42,7 @@ if [ "$N" -gt 0 ]; then
 fi
 
 SECTION "L2.2 — Hostname / IP locali"
-PATTERN_HOST='\bbeelink\b|\b192\.168\.1\.3[0-9]\b|\b192\.168\.1\.31\b|/home/roberto/'
+PATTERN_HOST='\bbeelink\b|\b192\.168\.1\.3[0-9]\b|\b192\.168\.1\.31\b|/home/user/'
 N=$(count_matches "$PATTERN_HOST")
 if [ "$N" -gt 0 ]; then
   echo "VIOLAZIONI: $N file"

@@ -237,7 +237,7 @@ class TestPlaceholderGuard:
         res = invoke(
             intent="monta cifs share",
             command_proposed=("sudo mount -t cifs //<ip>/Public/media "
-                              "/home/roberto/Immagini "
+                              "/home/user/Immagini "
                               "-o credentials=${METNOS_CIFS_CREDS}"),
             actor="host",
         )

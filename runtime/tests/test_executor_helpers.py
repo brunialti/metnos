@@ -21,9 +21,9 @@ class TestNormalizePathsUrls(unittest.TestCase):
     def test_path_in_urls_moves_to_paths(self):
         from executor_helpers import normalize_paths_urls
         out = normalize_paths_urls({
-            "urls": ["/home/roberto/foto.jpg"], "max_results": 10,
+            "urls": ["/home/user/foto.jpg"], "max_results": 10,
         })
-        self.assertEqual(out["paths"], ["/home/roberto/foto.jpg"])
+        self.assertEqual(out["paths"], ["/home/user/foto.jpg"])
         self.assertEqual(out["urls"], [])
         self.assertEqual(out["max_results"], 10)
 

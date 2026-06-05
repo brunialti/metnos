@@ -372,7 +372,7 @@ In <code>runtime/policy.py</code> &egrave; un modulo separato, completo e testat
 
 <pre>def execute_step(step, ctx):
  cap = step.capability # es. "fs:write"
- target = step.target # es. "/home/roberto/Documents/fatture-2026/04.pdf"
+ target = step.target # es. "/home/user/Documents/fatture-2026/04.pdf"
  outcome = policy.effective_outcome(
  ctx.autonomy_level, # "ReadOnly" | "Supervised" | "Full"
  cap,

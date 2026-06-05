@@ -57,7 +57,7 @@ def seeded_db(temp_db):
 class TestCanonicalize:
     def test_basic_ls(self):
         from safety.canonicalize import compute_signature
-        sig = compute_signature(["ls", "-la", "/home/roberto/Documents"])
+        sig = compute_signature(["ls", "-la", "/home/user/Documents"])
         assert str(sig) == "ls:al:fs:user"
 
     def test_rm_root_is_forbidden_signature(self):

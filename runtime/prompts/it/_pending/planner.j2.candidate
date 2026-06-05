@@ -30,12 +30,12 @@ USER: "Summarize only today's relevant emails on knowcastle, discard newsletters
 final_answer: "Today's relevant emails are: ..."
 
 # Esempio 4 — foto da organizzare per data e luogo di scatto
-USER: "Move photos in /home/roberto/images by year and location"
-[step 1] find_files(base_path="/home/roberto/images", patterns=["*.jpg","*.heic","*.JPG"])
+USER: "Move photos in /home/user/images by year and location"
+[step 1] find_files(base_path="/home/user/images", patterns=["*.jpg","*.heic","*.JPG"])
 [step 2] filter_entries(from_step=1, kind="image")
 [step 3] get_files_metadata(from_step=2, fields=["dates.semantic","place"])
-[step 4] move_files(from_step=3, dst_template="/home/roberto/images/{date_year}/{date_yymmdd}_{place}_{name}")
-final_answer: "Moved 98 photos to /home/roberto/images/{date_year}/..."
+[step 4] move_files(from_step=3, dst_template="/home/user/images/{date_year}/{date_yymmdd}_{place}_{name}")
+final_answer: "Moved 98 photos to /home/user/images/{date_year}/..."
 
 # Esempio 5 — operazione semplice in 1 step
 USER: "What time is it?"
@@ -92,16 +92,16 @@ final_answer: "You have N emails sent by or regarding 'roberto': ..."
 # Esempio 6-quinquies — comando shell privilegiato (admin) — NO OVERTHINKING
 USER: "mount the share \\192.168.1.20\Public\media\Immagini from server 192.168.1.20 in my personal area"
 MUST: deriva il mountpoint predefinito dall'ULTIMA componente della share remota, sotto l'area dati Metnos:
-       `\\192.168.1.20\Public\media\Immagini` → `/home/roberto/.local/share/metnos/Immagini`
+       `\\192.168.1.20\Public\media\Immagini` → `/home/user/.local/share/metnos/Immagini`
 MUST NOT: mettere il mountpoint sotto altri percorsi (`/mnt/...`, `~/<nome>`, `/tmp/...`) a meno che non sia esplicitamente richiesto dall'utente.
 [step 1] admin(
     intent="create the destination directory for the mount",
-    command_proposed="mkdir -p /home/roberto/.local/share/metnos/Immagini"
+    command_proposed="mkdir -p /home/user/.local/share/metnos/Immagini"
 )
    → admin emette vetting slip (signature mkdir:p:literal)
 [step 2] admin(
     intent="mount cifs share NAS in Metnos data area",
-    command_proposed="sudo mount -t cifs //192.168.1.20/Public/media/Immagini /home/roberto/.local/share/metnos/Immagini -o credentials=${METNOS_CIFS_CREDS},uid=1000,gid=1000",
+    command_proposed="sudo mount -t cifs //192.168.1.20/Public/media/Immagini /home/user/.local/share/metnos/Immagini -o credentials=${METNOS_CIFS_CREDS},uid=1000,gid=1000",
     credentials_domain="cifs_192.168.1.20"
 )
    → admin emette vetting slip (signature mount:cifs:fs-mount-cifs)
@@ -110,7 +110,7 @@ final_answer: testo dell'ULTIMO vetting slip emesso (l'utente approva con "yes")
 MUST: emetti IMMEDIATAMENTE la tool_call admin con `intent` (1 frase) + `command_proposed` (SINGOLO argv concreto). No overthinking ad alta voce.
 MUST: emetti DUE chiamate admin separate quando sono necessari più comandi: prima `mkdir` (creazione target), POI `mount` (uso target). NON combinarli con `&&`/`|`/`;` — il gate sintattico admin BLOCCA il separatore di comandi.
 MUST: converti la backslash Windows `\\host\share` → la forward slash CIFS `//host/share`.
-MUST: usa letteralmente `/home/roberto/<dir>` per "personal area" (NON `$HOME` o `~`: il gate richiede percorsi assoluti senza variabili shell tranne `${METNOS_CIFS_CREDS}` e `$(id -u/g)`).
+MUST: usa letteralmente `/home/user/<dir>` per "personal area" (NON `$HOME` o `~`: il gate richiede percorsi assoluti senza variabili shell tranne `${METNOS_CIFS_CREDS}` e `$(id -u/g)`).
 MUST: usa `${METNOS_CIFS_CREDS}` come placeholder (sudoer materializza dal credentials store).
 MUST: imposta `credentials_domain="cifs_<host>"` derivato da IP/hostname.
 MUST NOT: scrivere riflessioni come "Aspetta, dovrei controllare..." senza una tool_call. THIS IS AN ERROR.
@@ -123,7 +123,7 @@ ERROR: 1 admin con `mkdir && mount`. ERROR: solo pensiero senza tool_call → lo
 USER: "mount NAS share \\HOST\share"
 [step 1] admin(
     intent="mount cifs share NAS",
-    command_proposed="sudo mount -t cifs //HOST/share /home/roberto/.local/share/metnos/share -o credentials=${METNOS_CIFS_CREDS},uid=1000",
+    command_proposed="sudo mount -t cifs //HOST/share /home/user/.local/share/metnos/share -o credentials=${METNOS_CIFS_CREDS},uid=1000",
 )
    → admin restituisce decision="needs_inputs" (manca il dominio cifs_HOST)
    → il runtime invoca automaticamente get_inputs e salva la callback on_complete (lato runtime)

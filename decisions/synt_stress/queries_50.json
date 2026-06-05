@@ -242,7 +242,7 @@
 
   {
     "id": "p01",
-    "query": "trova tutte le foto in /home/roberto/images e raggruppale per anno",
+    "query": "trova tutte le foto in /home/user/images e raggruppale per anno",
     "expected": "proto_mnest",
     "desired_executor": "find_files",
     "capability_hint": ["find_files"],
@@ -354,7 +354,7 @@
   },
   {
     "id": "p15",
-    "query": "mostrami i metadati EXIF di /home/roberto/images/050.JPG",
+    "query": "mostrami i metadati EXIF di /home/user/images/050.JPG",
     "expected": "proto_mnest",
     "desired_executor": "get_files_metadata",
     "capability_hint": ["get_files_metadata", "exif"],

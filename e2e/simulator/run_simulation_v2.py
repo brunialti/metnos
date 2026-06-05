@@ -91,7 +91,7 @@ TEST_QUERIES = [
     {"query": "elimina file *.tmp in /tmp",
      "expected_path": ["find_files", "delete_files"],
      "accepted_first": {"find_files"}},
-    {"query": "comprimi /home/roberto/docs",
+    {"query": "comprimi /home/user/docs",
      "expected_path": ["compress_dirs_gz"],
      "accepted_first": {"compress_dirs_gz", "compress_files_gz",
                           "find_dirs", "find_files", "list_dirs"}},
@@ -127,7 +127,7 @@ TEST_QUERIES = [
     # Files / Dirs
     {"query": "dimensione del file /tmp/x.log", "expected_path": ["get_files"],
      "accepted_first": {"get_files", "find_files"}},
-    {"query": "quanti pdf in /home/roberto/docs", "expected_path": ["find_files","compute_entries"],
+    {"query": "quanti pdf in /home/user/docs", "expected_path": ["find_files","compute_entries"],
      "accepted_first": {"find_files", "get_files"}},
     {"query": "file più grande in /var/log", "expected_path": ["find_files","sort_entries"],
      "accepted_first": {"find_files", "get_files"}},
@@ -248,7 +248,7 @@ TEST_QUERIES = [
      "accepted_first": {"find_images_indices", "get_files"}},
     {"query": "ultime foto vacanza", "expected_path": ["find_images_indices"],
      "accepted_first": {"find_images_indices", "find_files"}},
-    {"query": "indicizza foto in /home/roberto/Foto", "expected_path": ["create_images_indices"],
+    {"query": "indicizza foto in /home/user/Foto", "expected_path": ["create_images_indices"],
      "accepted_first": {"create_images_indices", "find_files"}},
     {"query": "trova foto del compleanno scorso", "expected_path": ["find_images_indices"],
      "accepted_first": {"find_images_indices", "find_files"}},
@@ -262,7 +262,7 @@ TEST_QUERIES = [
      "accepted_first": {"extract_files_zip", "find_files"}},
     {"query": "comprimi cartella /tmp/foo zip", "expected_path": ["compress_dirs_zip"],
      "accepted_first": {"compress_dirs_zip", "compress_dirs_gz", "find_dirs", "find_files", "list_dirs"}},
-    {"query": "esiste cartella /home/roberto/lavoro", "expected_path": ["find_dirs"],
+    {"query": "esiste cartella /home/user/lavoro", "expected_path": ["find_dirs"],
      "accepted_first": {"find_dirs", "list_dirs", "get_files"}},
     # Cross-domain
     {"query": "manda lista mail oggi in Telegram", "expected_path": ["read_messages","send_messages"],
@@ -277,7 +277,7 @@ TEST_QUERIES = [
      "accepted_first": {"find_files", "get_files", "list_dirs"}},
     {"query": "raggruppa mail per mittente", "expected_path": ["read_messages","group_entries"],
      "accepted_first": {"read_messages", "find_messages"}},
-    {"query": "share documento /home/roberto/x.pdf con marco@x.it", "expected_path": ["share_files"],
+    {"query": "share documento /home/user/x.pdf con marco@x.it", "expected_path": ["share_files"],
      "accepted_first": {"share_files", "find_files"}},
 ]
 

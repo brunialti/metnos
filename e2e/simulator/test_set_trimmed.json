@@ -75,7 +75,7 @@
     ]
   },
   {
-    "query": "Riassumi le foto in /home/roberto/images per anno e luogo di scatto",
+    "query": "Riassumi le foto in /home/user/images per anno e luogo di scatto",
     "expected_path": [
       "find_files",
       "get_files",
@@ -296,7 +296,7 @@
     ]
   },
   {
-    "query": "cerca foto di festa di compleanno in /home/roberto/.local/share/metnos/Immagini",
+    "query": "cerca foto di festa di compleanno in /home/user/.local/share/metnos/Immagini",
     "expected_path": [
       "find_images_indices"
     ],
@@ -327,7 +327,7 @@
     ]
   },
   {
-    "query": "cerca in /home/roberto/.local/share/metnos/Immagini foto con il mare",
+    "query": "cerca in /home/user/.local/share/metnos/Immagini foto con il mare",
     "expected_path": [
       "find_images_indices",
       "find_files",
@@ -1127,7 +1127,7 @@
     ]
   },
   {
-    "query": "dimensione del file /home/roberto/grosso.bin",
+    "query": "dimensione del file /home/user/grosso.bin",
     "expected_path": [
       "get_files"
     ],
@@ -1200,7 +1200,7 @@
     ]
   },
   {
-    "query": "share /home/roberto/x.pdf con marco@x.it",
+    "query": "share /home/user/x.pdf con marco@x.it",
     "expected_path": [
       "share_files"
     ],
@@ -1467,7 +1467,7 @@
     ]
   },
   {
-    "query": "Quanti file PDF ho in /home/roberto/Documents?",
+    "query": "Quanti file PDF ho in /home/user/Documents?",
     "expected_path": [
       "find_files",
       "find_files"
@@ -3394,7 +3394,7 @@
     ]
   },
   {
-    "query": "conta pdf in /home/roberto/docs",
+    "query": "conta pdf in /home/user/docs",
     "expected_path": [
       "find_files",
       "compute_entries"
@@ -3506,7 +3506,7 @@
     ]
   },
   {
-    "query": "totale spazio occupato da /home/roberto/Documenti",
+    "query": "totale spazio occupato da /home/user/Documenti",
     "expected_path": [
       "find_files",
       "compute_entries"

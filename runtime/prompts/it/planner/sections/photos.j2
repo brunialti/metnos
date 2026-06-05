@@ -76,14 +76,14 @@ FOTO/EXIF/SCATTO/GPS/LUOGO-DI-SCATTO/CAMERA
         Poi `find_images_web(from_step=N)` per reverse di ciascuna.
     DEVI: pattern_path / query coerente con la cartella nominata (es. utente
         dice «foto di enrollment» → find_files(base_path nominata o scope
-        default /home/roberto/images/<sub>)).
+        default /home/user/images/<sub>)).
     NON DEVI: chiamare find_images_indices per questo: il corpus indicizzato
         e' per ricerca SEMANTICA su libreria globale, non per file in una
         cartella specifica nominata dall'utente.
     NON DEVI: chiamare find_images_web SENZA from_step o paths reali (args
         invalid → loop). Le foto vengono dallo step find_files upstream.
     OK: «cerca sul web foto simili alle mie enrollment di Roberto» →
-        find_files(query="roberto", base_path="/home/roberto/images") →
+        find_files(query="roberto", base_path="/home/user/images") →
         find_images_web(from_step=1) → final_answer con pagine web trovate.
     ERRORE: stesso intent → find_images_indices(name="roberto") →
         find_images_web(from_step=1). L'indice e' per ricerca semantica

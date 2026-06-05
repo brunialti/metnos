@@ -36,7 +36,7 @@ from prefilter import rank_adaptive  # noqa: E402
 from suprastructure.embedding.onnx_embedding import EmbeddingService  # noqa: E402
 
 MODEL_DIR = "/opt/giorgio2/models/onnx"
-TURNS_GLOB = "/home/roberto/.local/share/metnos/turns/*.jsonl"
+TURNS_GLOB = "/home/user/.local/share/metnos/turns/*.jsonl"
 KS = (5, 8, 10)
 
 

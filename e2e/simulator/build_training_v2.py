@@ -173,7 +173,7 @@ TEMPLATES: dict[str, list[tuple[str, str]]] = {
     "read_files_xlsx": [
         ("leggi il file excel /tmp/data.xlsx", "read the excel file /tmp/data.xlsx"),
         ("apri il file xlsx e mostra le righe", "open the xlsx and show the rows"),
-        ("leggi tabella excel /home/roberto/budget.xlsx", "read excel table /home/roberto/budget.xlsx"),
+        ("leggi tabella excel /home/user/budget.xlsx", "read excel table /home/user/budget.xlsx"),
         ("estrai dati da spreadsheet xlsx", "extract data from xlsx spreadsheet"),
         ("mostra contenuto file excel", "show content of excel file"),
     ],
@@ -188,7 +188,7 @@ TEMPLATES: dict[str, list[tuple[str, str]]] = {
         ("elimina il file /tmp/old.log", "delete file /tmp/old.log"),
         ("cancella /tmp/test.txt", "delete /tmp/test.txt"),
         ("rimuovi i file /tmp/a.txt e /tmp/b.txt", "remove files /tmp/a.txt and /tmp/b.txt"),
-        ("delete /home/roberto/draft.md", "delete /home/roberto/draft.md"),
+        ("delete /home/user/draft.md", "delete /home/user/draft.md"),
         ("cancella i file backup vecchi", "delete old backup files"),
     ],
 
@@ -203,7 +203,7 @@ TEMPLATES: dict[str, list[tuple[str, str]]] = {
 
     # ---- file dates / metadata ----
     "get_file_dates": [
-        ("data exif di /home/roberto/foto.jpg", "exif date of /home/roberto/foto.jpg"),
+        ("data exif di /home/user/foto.jpg", "exif date of /home/user/foto.jpg"),
         ("arricchisci con data di scatto le foto", "enrich photos with shot date"),
         ("data sensata dei file in /tmp/img", "semantic date of files in /tmp/img"),
         ("estrai exif date dalle immagini", "extract exif date from images"),
@@ -371,7 +371,7 @@ TEMPLATES: dict[str, list[tuple[str, str]]] = {
 
     # ---- file sharing ----
     "share_files": [
-        ("condividi /home/roberto/x.pdf con guest@example.com", "share /home/roberto/x.pdf with guest@example.com"),
+        ("condividi /home/user/x.pdf con guest@example.com", "share /home/user/x.pdf with guest@example.com"),
         ("dai accesso in lettura al file", "grant read access to the file"),
         ("condividi il documento con il guest", "share the document with the guest"),
         ("permission grant sul file", "permission grant on the file"),
@@ -397,13 +397,13 @@ TEMPLATES: dict[str, list[tuple[str, str]]] = {
     # ---- images ----
     "create_images_indices": [
         ("indicizza la cartella foto", "index the photos folder"),
-        ("crea indice immagini in /home/roberto/Immagini", "build images index in /home/roberto/Immagini"),
+        ("crea indice immagini in /home/user/Immagini", "build images index in /home/user/Immagini"),
         ("rebuild indice scene", "rebuild scene index"),
         ("indicizza le foto del corpus", "index the corpus photos"),
         ("ricostruisci indice persone", "rebuild persons index"),
     ],
     "delete_images_indices": [
-        ("cancella indice immagini in /home/roberto/Immagini", "delete images index in /home/roberto/Immagini"),
+        ("cancella indice immagini in /home/user/Immagini", "delete images index in /home/user/Immagini"),
         ("rimuovi indice scene", "remove scene index"),
         ("elimina indice persons", "delete persons index"),
         ("free storage indice gps", "free storage gps index"),

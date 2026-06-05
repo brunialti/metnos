@@ -35,7 +35,7 @@
 - **idx 2**: `scarica https://httpbin.org/get e salva in /tmp/metnos_cluster_test_dl.txt`
   - current: `get_urls` → acceptable: `['get_urls', 'read_urls_html']`
   - rationale: multiple legit first tools
-- **idx 6**: `Riassumi le foto in /home/roberto/images per anno e luogo di scatto`
+- **idx 6**: `Riassumi le foto in /home/user/images per anno e luogo di scatto`
   - current: `find_files` → acceptable: `['find_files', 'find_images_indices']`
   - rationale: multiple legit first tools
 - **idx 7**: `mostrami le foto di roma`
@@ -44,10 +44,10 @@
 - **idx 11**: `elenca i file in /tmp/audit/fs/list`
   - current: `list_dirs` → acceptable: `['find_dirs', 'find_files', 'list_dirs']`
   - rationale: multiple legit first tools
-- **idx 23**: `cerca foto di festa di compleanno in /home/roberto/.local/share/metnos/Immagini`
+- **idx 23**: `cerca foto di festa di compleanno in /home/user/.local/share/metnos/Immagini`
   - current: `find_images_indices` → acceptable: `['find_files', 'find_images_indices']`
   - rationale: multiple legit first tools
-- **idx 25**: `cerca in /home/roberto/.local/share/metnos/Immagini foto con il mare`
+- **idx 25**: `cerca in /home/user/.local/share/metnos/Immagini foto con il mare`
   - current: `find_images_indices` → acceptable: `['find_files', 'find_images_indices', 'find_persons_indices']`
   - rationale: multiple legit first tools
 - **idx 63**: `trova foto del cane al mare nel 2024`

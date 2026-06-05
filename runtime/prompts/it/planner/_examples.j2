@@ -38,12 +38,12 @@ UTENTE: "Riassumi solo le mail rilevanti di oggi su knowcastle, scarta le newsle
 final_answer: "Le mail rilevanti di oggi sono: ..."
 
 # Esempio 4 — foto da ordinare per data e luogo di scatto
-UTENTE: "Sposta le foto in /home/roberto/images per anno e luogo"
-[step 1] find_files(base_path="/home/roberto/images", patterns=["*.jpg","*.heic","*.JPG"])
+UTENTE: "Sposta le foto in /home/user/images per anno e luogo"
+[step 1] find_files(base_path="/home/user/images", patterns=["*.jpg","*.heic","*.JPG"])
 [step 2] filter_entries(from_step=1, kind="image")
 [step 3] get_files(from_step=2, fields=["dates.semantic","place"])
-[step 4] move_files(from_step=3, dst_template="/home/roberto/images/{date_year}/{date_yymmdd}_{place}_{name}")
-final_answer: "Spostate 98 foto in /home/roberto/images/{date_year}/..."
+[step 4] move_files(from_step=3, dst_template="/home/user/images/{date_year}/{date_yymmdd}_{place}_{name}")
+final_answer: "Spostate 98 foto in /home/user/images/{date_year}/..."
 
 # Esempio 4-bis — riassumi/aggiornamenti su soggetto esterno: serve il web
 UTENTE: "Riassumi le ultime novita di Anthropic"

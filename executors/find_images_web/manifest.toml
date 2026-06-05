@@ -47,8 +47,8 @@ type = "array"
 items = {type = "string"}
 default = []
 [args.properties.paths.description]
-it = "Lista di path locali a file immagine (jpg/png/gif/bmp/webp). Es: [\"/home/roberto/foto/x.jpg\"]."
-en = "List of local paths to image files (jpg/png/gif/bmp/webp). E.g.: [\"/home/roberto/photos/x.jpg\"]."
+it = "Lista di path locali a file immagine (jpg/png/gif/bmp/webp). Es: [\"/home/user/foto/x.jpg\"]."
+en = "List of local paths to image files (jpg/png/gif/bmp/webp). E.g.: [\"/home/user/photos/x.jpg\"]."
 
 [args.properties.urls]
 type = "array"

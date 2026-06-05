@@ -17,7 +17,7 @@ Pattern: stringa singola ("*.jpg"), compound ("*.jpg,*.png" o "*.jpg|*.png"), ar
 
 USO: preferibile a list_dirs+filter_entries quando conosci le estensioni. Filtra alla sorgente, niente sistema, niente sub-dir indesiderate.
 
-OK: find_files(base_path="/home/roberto/images", patterns=["*.jpg","*.png","*.heic"], recursive=true).
+OK: find_files(base_path="/home/user/images", patterns=["*.jpg","*.png","*.heic"], recursive=true).
 
 Output entries=[{path,name,type,mime,kind,size,mtime}]. Per filtri/sort: filter_entries/sort_entries (no get_files).
 
@@ -28,7 +28,7 @@ Pattern: single string ("*.jpg"), compound ("*.jpg,*.png" or "*.jpg|*.png"), arr
 
 USE: preferable to list_dirs+filter_entries when you know extensions. Filters at the source, no system files, no unwanted sub-dirs.
 
-OK: find_files(base_path="/home/roberto/images", patterns=["*.jpg","*.png","*.heic"], recursive=true).
+OK: find_files(base_path="/home/user/images", patterns=["*.jpg","*.png","*.heic"], recursive=true).
 
 Output entries=[{path,name,type,mime,kind,size,mtime}]. For filter/sort: filter_entries/sort_entries (no get_files).
 
@@ -208,19 +208,19 @@ expect_full = """
 {
   "ok": true,
   "entries": [
-    {"path": "/home/roberto/images/2024/foto1.jpg", "name": "foto1.jpg",
+    {"path": "/home/user/images/2024/foto1.jpg", "name": "foto1.jpg",
      "type": "file", "mime": "image/jpeg", "kind": "image",
      "size": 2458123, "mtime": 1717234567.0},
-    {"path": "/home/roberto/images/2024/foto2.jpg", "name": "foto2.jpg",
+    {"path": "/home/user/images/2024/foto2.jpg", "name": "foto2.jpg",
      "type": "file", "mime": "image/jpeg", "kind": "image",
      "size": 1923456, "mtime": 1717234890.0}
   ],
   "matches": [
-    "/home/roberto/images/2024/foto1.jpg",
-    "/home/roberto/images/2024/foto2.jpg"
+    "/home/user/images/2024/foto1.jpg",
+    "/home/user/images/2024/foto2.jpg"
   ],
   "metadata": {
-    "base_path": "/home/roberto/images/2024",
+    "base_path": "/home/user/images/2024",
     "patterns": ["*.jpg"], "recursive": true,
     "case_sensitive": false, "count": 2, "visited": 47,
     "truncated": false

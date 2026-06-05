@@ -25,7 +25,7 @@
   },
   {
     "id": "f04",
-    "query": "trova le immagini piu' grandi di 5 MB in /home/roberto/images",
+    "query": "trova le immagini piu' grandi di 5 MB in /home/user/images",
     "expected": "proto_mnest",
     "desired_executor": "find_files",
     "capability_hint": ["find_files", "filter_entries"],
@@ -65,7 +65,7 @@
   },
   {
     "id": "f09",
-    "query": "ottieni i metadati di tutti i file in /home/roberto/images",
+    "query": "ottieni i metadati di tutti i file in /home/user/images",
     "expected": "proto_mnest",
     "desired_executor": "get_files_metadata",
     "capability_hint": ["list_dirs", "get_files_metadata"],
@@ -113,7 +113,7 @@
   },
   {
     "id": "f15",
-    "query": "elenca i file in /home/roberto/images e tieni solo le foto",
+    "query": "elenca i file in /home/user/images e tieni solo le foto",
     "expected": "proto_mnest",
     "desired_executor": "list_dirs",
     "capability_hint": ["list_dirs", "filter_entries"],
@@ -201,7 +201,7 @@
   },
   {
     "id": "f26",
-    "query": "raggruppa le foto in /home/roberto/images per anno e luogo, creando subdirectory",
+    "query": "raggruppa le foto in /home/user/images per anno e luogo, creando subdirectory",
     "expected": "proto_mnest",
     "desired_executor": "find_files",
     "capability_hint": ["find_files", "get_files_metadata", "create_dirs", "move_files"],
@@ -209,7 +209,7 @@
   },
   {
     "id": "f27",
-    "query": "ordina i file PDF in /home/roberto/Documents per anno di modifica e spostali nella subdirectory corrispondente",
+    "query": "ordina i file PDF in /home/user/Documents per anno di modifica e spostali nella subdirectory corrispondente",
     "expected": "proto_mnest",
     "desired_executor": "find_files",
     "capability_hint": ["find_files", "get_files_metadata", "move_files"],
@@ -233,7 +233,7 @@
   },
   {
     "id": "f30",
-    "query": "elenca i file piu' vecchi di un anno in /home/roberto/Documents",
+    "query": "elenca i file piu' vecchi di un anno in /home/user/Documents",
     "expected": "proto_mnest",
     "desired_executor": "find_files",
     "capability_hint": ["find_files", "filter_entries"],

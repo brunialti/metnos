@@ -260,10 +260,10 @@ Solo i path che esistono vengono effettivamente montati: un hint che punta a una
 Gli hint nel manifest sono glob-like (es. <code>~/notes/**</code>, <code>/tmp/**</code>): bwrap non li capisce, monta cartelle. <code>_expand_hints_to_paths</code> tronca ogni hint al primo segmento glob, espande la <code>~</code>, deduplica:
 </p>
 
-<pre>"~/notes/**" &rarr; "/home/roberto/notes"
+<pre>"~/notes/**" &rarr; "/home/user/notes"
 "/tmp/**" &rarr; "/tmp"
 "/tmp/*" &rarr; "/tmp"
-"~/Pictures" &rarr; "/home/roberto/Pictures"</pre>
+"~/Pictures" &rarr; "/home/user/Pictures"</pre>
 
 <p>
 Risultato: bwrap monta l'intera radice, non i singoli file matching. La granularit&agrave; fine resta al filtro applicativo del runtime (<code>runtime/sandbox.py:45-69</code>).

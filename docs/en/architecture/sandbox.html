@@ -262,10 +262,10 @@ Only paths that exist are actually mounted: a hint pointing to a not-yet-created
 Hints in the manifest are glob-like (e.g. <code>~/notes/**</code>, <code>/tmp/**</code>): bwrap does not understand them, it mounts directories. <code>_expand_hints_to_paths</code> truncates each hint at the first glob segment, expands <code>~</code>, deduplicates:
 </p>
 
-<pre>"~/notes/**" &rarr; "/home/roberto/notes"
+<pre>"~/notes/**" &rarr; "/home/user/notes"
 "/tmp/**" &rarr; "/tmp"
 "/tmp/*" &rarr; "/tmp"
-"~/Pictures" &rarr; "/home/roberto/Pictures"</pre>
+"~/Pictures" &rarr; "/home/user/Pictures"</pre>
 
 <p>
 Result: bwrap mounts the entire root, not the individual matching files. Fine-grained gating remains the runtime's application-level filter (<code>runtime/sandbox.py:45-69</code>).

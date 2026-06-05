@@ -61,7 +61,7 @@ USER_DIR_ALIASES = {
 
 # Workspace utente Metnos (convention 22/5/2026): default per path relativi
 # quando il planner non specifica un path esplicito. Convention utente:
-# "se non specifico un path esplicitamente, /home/roberto/.local/share/metnos".
+# "se non specifico un path esplicitamente, /home/user/.local/share/metnos".
 # Lazy (function) per supportare mocking di Path.home() nei test.
 def workspace_default() -> Path:
     return Path.home() / ".local" / "share" / "metnos"

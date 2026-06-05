@@ -37,12 +37,12 @@ USER: "Summarize only today's relevant emails on knowcastle, discard newsletters
 final_answer: "Today's relevant emails are: ..."
 
 # Example 4 — photos to organize by date and place of capture
-USER: "Move photos in /home/roberto/images by year and location"
-[step 1] find_files(base_path="/home/roberto/images", patterns=["*.jpg","*.heic","*.JPG"])
+USER: "Move photos in /home/user/images by year and location"
+[step 1] find_files(base_path="/home/user/images", patterns=["*.jpg","*.heic","*.JPG"])
 [step 2] filter_entries(from_step=1, kind="image")
 [step 3] get_files(from_step=2, fields=["dates.semantic","place"])
-[step 4] move_files(from_step=3, dst_template="/home/roberto/images/{date_year}/{date_yymmdd}_{place}_{name}")
-final_answer: "Moved 98 photos to /home/roberto/images/{date_year}/..."
+[step 4] move_files(from_step=3, dst_template="/home/user/images/{date_year}/{date_yymmdd}_{place}_{name}")
+final_answer: "Moved 98 photos to /home/user/images/{date_year}/..."
 
 # Example 4-bis — summarize/updates on external subject: web needed
 USER: "Summarize the latest news from Anthropic"

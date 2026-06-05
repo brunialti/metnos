@@ -77,14 +77,14 @@ PHOTO/EXIF/CAPTURE/GPS/PLACE-OF-CAPTURE/CAMERA
         Then `find_images_web(from_step=N)` for reverse of each.
     MUST: pattern_path / query coherent with the named folder (e.g., user
         says "enrollment photos" → find_files(query="X enrollment", base_path
-        named or default scope /home/roberto/images/<sub>)).
+        named or default scope /home/user/images/<sub>)).
     MUST NOT: call find_images_indices for this: the indexed corpus is for
         SEMANTIC search on a global library, not for files in a specific
         folder named by the user.
     MUST NOT: call find_images_web WITHOUT from_step or real paths (invalid
         args → loop). Photos come from the upstream find_files step.
     OK: «search the web for photos similar to my enrollment of Roberto» →
-        find_files(query="roberto", base_path="/home/roberto/images") →
+        find_files(query="roberto", base_path="/home/user/images") →
         find_images_web(from_step=1) → final_answer with web pages found.
     ERROR: same intent → find_images_indices(name="roberto") →
         find_images_web(from_step=1). The index is for global semantic

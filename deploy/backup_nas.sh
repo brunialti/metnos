@@ -13,13 +13,13 @@
 #
 # Sorgenti incluse:
 #   - /opt/metnos/                  (codice + decisions + executors + manifest + CLAUDE.md)
-#   - /home/roberto/.local/share/metnos/  (runtime data: scratchpad, undo, locations,
+#   - /home/user/.local/share/metnos/  (runtime data: scratchpad, undo, locations,
 #                                          executors synth, vaglio, turns, index,
 #                                          introvertiva, mirror, i18n.sqlite, ...)
-#   - /home/roberto/.local/state/metnos/ (devices.db, executor_stats.db, lockfile)
-#   - /home/roberto/.config/metnos/ (admin.key, credentials.env, mail.env, ...)
-#   - /home/roberto/.claude/projects/-opt-myclaw/memory/ (memorie persistenti Claude)
-#   - /home/roberto/.config/systemd/user/metnos-*.service
+#   - /home/user/.local/state/metnos/ (devices.db, executor_stats.db, lockfile)
+#   - /home/user/.config/metnos/ (admin.key, credentials.env, mail.env, ...)
+#   - /home/user/.claude/projects/-opt-myclaw/memory/ (memorie persistenti Claude)
+#   - /home/user/.config/systemd/user/metnos-*.service
 #   - /etc/systemd/system/metnos-*.service|timer            (incluso self-backup)
 #   - /etc/fstab                                            (per mount NAS)
 #
@@ -36,7 +36,7 @@
 #   - location_pending/         (state effimero)
 #   - get_inputs/               (dialog pending state effimero)
 #   - models/onnx/              (modelli ML scaricati separatamente)
-#   - /home/roberto/models/*.gguf (LLM ~57GB, ridownloadabili da HuggingFace)
+#   - /home/user/models/*.gguf (LLM ~57GB, ridownloadabili da HuggingFace)
 #
 # turns/ (storia turni, ~40MB) e index/ (foto SigLIP, ~95MB) INCLUSI: sono
 # stato di valore (audit + risultati build lunghi 50min CPU).
@@ -156,7 +156,7 @@ cp /etc/fstab "$BACKUP_DIR/systemd/fstab" 2>/dev/null || true
 
 # --- Crea manifest ---
 log "Creazione manifest..."
-EXCLUDED_NOTE="venv*/, node_modules/, __pycache__/, Immagini/ (CIFS NAS), thumbcache/, _history/blob/, cap_pending/, location_pending/, get_inputs/, *.lock, /home/roberto/models/*.gguf (~57GB ridownloadabili)"
+EXCLUDED_NOTE="venv*/, node_modules/, __pycache__/, Immagini/ (CIFS NAS), thumbcache/, _history/blob/, cap_pending/, location_pending/, get_inputs/, *.lock, /home/user/models/*.gguf (~57GB ridownloadabili)"
 {
     echo "Metnos Backup"
     echo "==============="

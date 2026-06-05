@@ -395,7 +395,7 @@ quali file di sistema sono comunque off limits anche se l'executor li chiedesse.
 <p>
 La regola d'oro &egrave; semplice: <strong>il recinto &egrave; sempre pi&ugrave; stretto del manifesto</strong>.
 Se un manifesto chiede di leggere <code>/home</code>, il recinto pu&ograve; comunque tagliare la
-richiesta a <code>/home/roberto/notes</code>. Se chiede di parlare con qualunque dominio,
+richiesta a <code>/home/user/notes</code>. Se chiede di parlare con qualunque dominio,
 il recinto pu&ograve; limitare a <code>imap.example.com</code>. La differenza &egrave; importante:
 il manifesto &egrave; quello che l'autore <em>sperava</em>, il recinto &egrave; quello che il sistema
 <em>ha deciso</em> dopo aver visto chi lo invoca, in che contesto, con che livello di
@@ -606,7 +606,7 @@ Cerca file per nome o per modello (le classiche "estensioni"). Restituisce la li
 con i metadati di base: percorso, nome, dimensione, data ultima modifica, tipo.
 </p>
 
-<pre>chiamata: find_files(base_path="/home/roberto/images", pattern="*.jpg")
+<pre>chiamata: find_files(base_path="/home/user/images", pattern="*.jpg")
 risposta: { ok: true,
  entries: [
  {path: "/home/.../foto1.jpg", size: 2458123,...},

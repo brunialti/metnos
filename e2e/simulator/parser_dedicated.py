@@ -65,8 +65,8 @@ A: {"intent_verb":"get","intent_object":"processes","inputs":[],"target":{"seman
 Q: lista pacchetti installati
 A: {"intent_verb":"find","intent_object":"packages","inputs":[],"target":{"semantic_type":"file_entry[]","shape":"list"},"constraints":[]}
 
-Q: indicizza foto in /home/roberto/Foto
-A: {"intent_verb":"create","intent_object":"images","inputs":[{"name":"base_path","semantic_type":"dir_path","value":"/home/roberto/Foto"}],"target":{"semantic_type":"image_entry[]","shape":"list"},"constraints":[{"kind":"transform","key":"indices","value":null}]}
+Q: indicizza foto in /home/user/Foto
+A: {"intent_verb":"create","intent_object":"images","inputs":[{"name":"base_path","semantic_type":"dir_path","value":"/home/user/Foto"}],"target":{"semantic_type":"image_entry[]","shape":"list"},"constraints":[{"kind":"transform","key":"indices","value":null}]}
 
 Q: dimensione del file /tmp/x.log
 A: {"intent_verb":"get","intent_object":"files","inputs":[{"name":"path","semantic_type":"file_path","value":"/tmp/x.log"}],"target":{"semantic_type":"scalar_metric","shape":"scalar"},"constraints":[{"kind":"filter","key":"field","value":"size"}]}

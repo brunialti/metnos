@@ -86,7 +86,7 @@ description = "BCC singolo (string) o lista."
 
 [args.properties.messages.items.properties.attachments]
 type        = "array"
-description = "Lista di path file da allegare a QUESTO messaggio. Ogni elemento e' una stringa (path assoluto, ~ espanso) oppure un dict {path, filename?, content_type?}. Mime-type rilevato automaticamente; default application/octet-stream. Cap 25MB totali per messaggio. ESEMPIO: [\"/tmp/contratto.pdf\", \"/home/roberto/foto.jpg\"]. NB: attachments va DENTRO il singolo message, NON a top-level."
+description = "Lista di path file da allegare a QUESTO messaggio. Ogni elemento e' una stringa (path assoluto, ~ espanso) oppure un dict {path, filename?, content_type?}. Mime-type rilevato automaticamente; default application/octet-stream. Cap 25MB totali per messaggio. ESEMPIO: [\"/tmp/contratto.pdf\", \"/home/user/foto.jpg\"]. NB: attachments va DENTRO il singolo message, NON a top-level."
 [args.properties.attachments]
 type        = "array"
 

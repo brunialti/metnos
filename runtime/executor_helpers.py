@@ -13,8 +13,8 @@ API attuale:
         paths a urls). Idempotente, deterministico §7.9.
 
 Razionale (turn live 2a5f2711, 25/5/2026): PLANNER ha emesso
-`find_images_web(urls=["/home/roberto/foto.jpg"])` invece di
-`paths=["/home/roberto/foto.jpg"]`. Confusione semantica diffusa fra i
+`find_images_web(urls=["/home/user/foto.jpg"])` invece di
+`paths=["/home/user/foto.jpg"]`. Confusione semantica diffusa fra i
 LLM medium su nomi argoment "url" generico. Normalizer al confine
 salva l'executor senza modificare la description (la description resta
 prescrittiva per il PLANNER ma il backend e' forgiving §2.4).

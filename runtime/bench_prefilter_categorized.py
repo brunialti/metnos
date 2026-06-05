@@ -53,7 +53,7 @@ CORPUS: list[tuple[str, str, set[str]]] = [
     ("time", "dimmi l'ora attuale", {"get_now"}),
 
     # ── FILE FIND (10) ────────────────────────────────────────────────
-    ("file_find", "trova tutte le foto in /home/roberto/images", {"find_files"}),
+    ("file_find", "trova tutte le foto in /home/user/images", {"find_files"}),
     ("file_find", "cerca file pdf in ~/Documents", {"find_files"}),
     ("file_find", "find all *.py files in the install root", {"find_files"}),
     ("file_find", "trova README.md in opt/myclaw", {"find_files"}),
@@ -103,7 +103,7 @@ CORPUS: list[tuple[str, str, set[str]]] = [
     ("photo", "cerca le mie foto al mare", {"find_images_indices"}),
     ("photo", "find photos of family", {"find_images_indices"}),
     ("photo", "foto scattate a Roma", {"find_images_indices"}),
-    ("photo", "indicizza le immagini in /home/roberto/images", {"create_images_indices"}),
+    ("photo", "indicizza le immagini in /home/user/images", {"create_images_indices"}),
     ("photo", "build the image index", {"create_images_indices"}),
     ("photo", "dimmi chi è in questa foto", {"find_images_indices"}),
     ("photo", "scene di mare nelle foto", {"find_images_indices"}),

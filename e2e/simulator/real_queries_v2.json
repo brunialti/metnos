@@ -404,7 +404,7 @@
     "_catalog_gap": false
   },
   {
-    "query": "Quanti file PDF ho in /home/roberto/Documents?",
+    "query": "Quanti file PDF ho in /home/user/Documents?",
     "expected_path": [
       "find_files",
       "find_files"
@@ -420,7 +420,7 @@
     "_catalog_gap": false
   },
   {
-    "query": "Riassumi le foto in /home/roberto/images per anno e luogo di scatto",
+    "query": "Riassumi le foto in /home/user/images per anno e luogo di scatto",
     "expected_path": [
       "find_files",
       "get_files",
@@ -2146,7 +2146,7 @@
     "_catalog_gap": false
   },
   {
-    "query": "cerca foto di festa di compleanno in /home/roberto/.local/share/metnos/Immagini",
+    "query": "cerca foto di festa di compleanno in /home/user/.local/share/metnos/Immagini",
     "expected_path": [
       "find_files",
       "classify_entries",
@@ -2275,7 +2275,7 @@
     "_catalog_gap": false
   },
   {
-    "query": "cerca in /home/roberto/.local/share/metnos/Immagini foto con il mare",
+    "query": "cerca in /home/user/.local/share/metnos/Immagini foto con il mare",
     "expected_path": [
       "find_images_indices",
       "find_files",

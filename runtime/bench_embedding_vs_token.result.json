@@ -192,7 +192,7 @@
     },
     {
       "kind": "token_wins",
-      "query": "cerca tutte i file di tipo picture in /home/roberto/images ed ordinali in sottocartelle con il nome dell'anno. rinomina i file premettendo la data nel formato aammgg",
+      "query": "cerca tutte i file di tipo picture in /home/user/images ed ordinali in sottocartelle con il nome dell'anno. rinomina i file premettendo la data nel formato aammgg",
       "gt": [
         "filter_entries",
         "move_files"
@@ -214,7 +214,7 @@
     },
     {
       "kind": "token_wins",
-      "query": "cerca tutte i file di tipo picture in /home/roberto/images ed ordinali in sottocartelle con l'anno di creazione del file. rinomina i file premettendo la data nel formato aammgg",
+      "query": "cerca tutte i file di tipo picture in /home/user/images ed ordinali in sottocartelle con l'anno di creazione del file. rinomina i file premettendo la data nel formato aammgg",
       "gt": [
         "filter_entries",
         "get_file_dates",

@@ -175,7 +175,7 @@
     "source": "template"
   },
   {
-    "query": "please conta pdf in /home/roberto/docs",
+    "query": "please conta pdf in /home/user/docs",
     "first_tool": "find_files",
     "source": "augmented"
   },
@@ -245,7 +245,7 @@
     "source": "template"
   },
   {
-    "query": "per favore dimensione del file /home/roberto/grosso.bin",
+    "query": "per favore dimensione del file /home/user/grosso.bin",
     "first_tool": "get_files",
     "source": "augmented"
   },
@@ -730,7 +730,7 @@
     "source": "augmented"
   },
   {
-    "query": "elimina indice immagini in /home/roberto/Immagini",
+    "query": "elimina indice immagini in /home/user/Immagini",
     "first_tool": "delete_images_indices",
     "source": "augmented"
   },
@@ -910,7 +910,7 @@
     "source": "augmented"
   },
   {
-    "query": "quanti file PDF ho in /home/roberto/Documents?",
+    "query": "quanti file PDF ho in /home/user/Documents?",
     "first_tool": "find_files",
     "source": "augmented"
   },
@@ -1170,7 +1170,7 @@
     "source": "template"
   },
   {
-    "query": "please delete /home/roberto/draft.md",
+    "query": "please delete /home/user/draft.md",
     "first_tool": "delete_files",
     "source": "augmented"
   },
@@ -1350,7 +1350,7 @@
     "source": "augmented"
   },
   {
-    "query": "cerca in /home/roberto/.local/share/metnos/Immagini foto con il mare",
+    "query": "cerca in /home/user/.local/share/metnos/Immagini foto con il mare",
     "first_tool": "find_images_indices",
     "source": "frozen"
   },
@@ -1505,7 +1505,7 @@
     "source": "template"
   },
   {
-    "query": "per favore condividi /home/roberto/x.pdf con guest@example.com",
+    "query": "per favore condividi /home/user/x.pdf con guest@example.com",
     "first_tool": "share_files",
     "source": "augmented"
   },
@@ -1610,7 +1610,7 @@
     "source": "augmented"
   },
   {
-    "query": "trova in /home/roberto/.local/share/metnos/Immagini foto con il mare",
+    "query": "trova in /home/user/.local/share/metnos/Immagini foto con il mare",
     "first_tool": "find_images_indices",
     "source": "augmented"
   },
@@ -1815,7 +1815,7 @@
     "source": "frozen"
   },
   {
-    "query": "conta pdf in /home/roberto/docs",
+    "query": "conta pdf in /home/user/docs",
     "first_tool": "find_files",
     "source": "frozen"
   },
@@ -2635,7 +2635,7 @@
     "source": "template"
   },
   {
-    "query": "crea indice immagini in /home/roberto/Immagini",
+    "query": "crea indice immagini in /home/user/Immagini",
     "first_tool": "create_images_indices",
     "source": "template"
   },
@@ -3225,7 +3225,7 @@
     "source": "augmented"
   },
   {
-    "query": "per favore totale spazio occupato da /home/roberto/Documenti",
+    "query": "per favore totale spazio occupato da /home/user/Documenti",
     "first_tool": "find_files",
     "source": "augmented"
   },
@@ -3495,7 +3495,7 @@
     "source": "augmented"
   },
   {
-    "query": "per favore share /home/roberto/x.pdf con marco@x.it",
+    "query": "per favore share /home/user/x.pdf con marco@x.it",
     "first_tool": "share_files",
     "source": "augmented"
   },
@@ -3640,7 +3640,7 @@
     "source": "template"
   },
   {
-    "query": "delete /home/roberto/draft.md",
+    "query": "delete /home/user/draft.md",
     "first_tool": "delete_files",
     "source": "template"
   },
@@ -3670,7 +3670,7 @@
     "source": "template"
   },
   {
-    "query": "please exif date of /home/roberto/foto.jpg",
+    "query": "please exif date of /home/user/foto.jpg",
     "first_tool": "get_file_dates",
     "source": "augmented"
   },
@@ -3710,7 +3710,7 @@
     "source": "template"
   },
   {
-    "query": "Riassumi le foto in /home/roberto/images per anno e luogo di scatto",
+    "query": "Riassumi le foto in /home/user/images per anno e luogo di scatto",
     "first_tool": "find_files",
     "source": "frozen"
   },
@@ -3740,7 +3740,7 @@
     "source": "template"
   },
   {
-    "query": "remove /home/roberto/draft.md",
+    "query": "remove /home/user/draft.md",
     "first_tool": "delete_files",
     "source": "augmented"
   },
@@ -4405,7 +4405,7 @@
     "source": "augmented"
   },
   {
-    "query": "per favore leggi tabella excel /home/roberto/budget.xlsx",
+    "query": "per favore leggi tabella excel /home/user/budget.xlsx",
     "first_tool": "read_files_xlsx",
     "source": "augmented"
   },
@@ -4610,7 +4610,7 @@
     "source": "augmented"
   },
   {
-    "query": "remove images index in /home/roberto/Immagini",
+    "query": "remove images index in /home/user/Immagini",
     "first_tool": "delete_images_indices",
     "source": "augmented"
   },
@@ -4665,7 +4665,7 @@
     "source": "augmented"
   },
   {
-    "query": "show excel table /home/roberto/budget.xlsx",
+    "query": "show excel table /home/user/budget.xlsx",
     "first_tool": "read_files_xlsx",
     "source": "augmented"
   },
@@ -4720,7 +4720,7 @@
     "source": "augmented"
   },
   {
-    "query": "exif date of /home/roberto/foto.jpg",
+    "query": "exif date of /home/user/foto.jpg",
     "first_tool": "get_file_dates",
     "source": "template"
   },
@@ -5010,7 +5010,7 @@
     "source": "augmented"
   },
   {
-    "query": "read excel table /home/roberto/budget.xlsx",
+    "query": "read excel table /home/user/budget.xlsx",
     "first_tool": "read_files_xlsx",
     "source": "template"
   },
@@ -5390,7 +5390,7 @@
     "source": "augmented"
   },
   {
-    "query": "condividi /home/roberto/x.pdf con guest@example.com",
+    "query": "condividi /home/user/x.pdf con guest@example.com",
     "first_tool": "share_files",
     "source": "template"
   },
@@ -5855,7 +5855,7 @@
     "source": "template"
   },
   {
-    "query": "share /home/roberto/x.pdf con marco@x.it",
+    "query": "share /home/user/x.pdf con marco@x.it",
     "first_tool": "share_files",
     "source": "frozen"
   },
@@ -5905,7 +5905,7 @@
     "source": "augmented"
   },
   {
-    "query": "cerca foto di festa di compleanno in /home/roberto/.local/share/metnos/Immagini",
+    "query": "cerca foto di festa di compleanno in /home/user/.local/share/metnos/Immagini",
     "first_tool": "find_images_indices",
     "source": "frozen"
   },
@@ -6115,7 +6115,7 @@
     "source": "frozen"
   },
   {
-    "query": "trova foto di festa di compleanno in /home/roberto/.local/share/metnos/Immagini",
+    "query": "trova foto di festa di compleanno in /home/user/.local/share/metnos/Immagini",
     "first_tool": "find_images_indices",
     "source": "augmented"
   },
@@ -6340,7 +6340,7 @@
     "source": "template"
   },
   {
-    "query": "delete images index in /home/roberto/Immagini",
+    "query": "delete images index in /home/user/Immagini",
     "first_tool": "delete_images_indices",
     "source": "template"
   },
@@ -6590,7 +6590,7 @@
     "source": "frozen"
   },
   {
-    "query": "please delete images index in /home/roberto/Immagini",
+    "query": "please delete images index in /home/user/Immagini",
     "first_tool": "delete_images_indices",
     "source": "augmented"
   },
@@ -6620,7 +6620,7 @@
     "source": "augmented"
   },
   {
-    "query": "please read excel table /home/roberto/budget.xlsx",
+    "query": "please read excel table /home/user/budget.xlsx",
     "first_tool": "read_files_xlsx",
     "source": "augmented"
   },
@@ -6825,7 +6825,7 @@
     "source": "template"
   },
   {
-    "query": "dimensione del file /home/roberto/grosso.bin",
+    "query": "dimensione del file /home/user/grosso.bin",
     "first_tool": "get_files",
     "source": "frozen"
   },
@@ -7595,7 +7595,7 @@
     "source": "augmented"
   },
   {
-    "query": "cancella indice immagini in /home/roberto/Immagini",
+    "query": "cancella indice immagini in /home/user/Immagini",
     "first_tool": "delete_images_indices",
     "source": "template"
   },
@@ -7785,7 +7785,7 @@
     "source": "real"
   },
   {
-    "query": "data exif di /home/roberto/foto.jpg",
+    "query": "data exif di /home/user/foto.jpg",
     "first_tool": "get_file_dates",
     "source": "template"
   },
@@ -7965,7 +7965,7 @@
     "source": "frozen"
   },
   {
-    "query": "build images index in /home/roberto/Immagini",
+    "query": "build images index in /home/user/Immagini",
     "first_tool": "create_images_indices",
     "source": "template"
   },
@@ -8240,12 +8240,12 @@
     "source": "template"
   },
   {
-    "query": "per favore Quanti file PDF ho in /home/roberto/Documents?",
+    "query": "per favore Quanti file PDF ho in /home/user/Documents?",
     "first_tool": "find_files",
     "source": "augmented"
   },
   {
-    "query": "genera indice immagini in /home/roberto/Immagini",
+    "query": "genera indice immagini in /home/user/Immagini",
     "first_tool": "create_images_indices",
     "source": "augmented"
   },
@@ -8445,7 +8445,7 @@
     "source": "frozen"
   },
   {
-    "query": "per favore data exif di /home/roberto/foto.jpg",
+    "query": "per favore data exif di /home/user/foto.jpg",
     "first_tool": "get_file_dates",
     "source": "augmented"
   },
@@ -9260,7 +9260,7 @@
     "source": "frozen"
   },
   {
-    "query": "per favore crea indice immagini in /home/roberto/Immagini",
+    "query": "per favore crea indice immagini in /home/user/Immagini",
     "first_tool": "create_images_indices",
     "source": "augmented"
   },
@@ -9875,7 +9875,7 @@
     "source": "augmented"
   },
   {
-    "query": "please build images index in /home/roberto/Immagini",
+    "query": "please build images index in /home/user/Immagini",
     "first_tool": "create_images_indices",
     "source": "augmented"
   },
@@ -10015,7 +10015,7 @@
     "source": "frozen"
   },
   {
-    "query": "per favore cerca foto di festa di compleanno in /home/roberto/.local/share/metnos/Immagini",
+    "query": "per favore cerca foto di festa di compleanno in /home/user/.local/share/metnos/Immagini",
     "first_tool": "find_images_indices",
     "source": "augmented"
   },
@@ -10370,7 +10370,7 @@
     "source": "template"
   },
   {
-    "query": "Quanti file PDF ho in /home/roberto/Documents?",
+    "query": "Quanti file PDF ho in /home/user/Documents?",
     "first_tool": "find_files",
     "source": "frozen"
   },
@@ -10805,17 +10805,17 @@
     "source": "augmented"
   },
   {
-    "query": "per favore Riassumi le foto in /home/roberto/images per anno e luogo di scatto",
+    "query": "per favore Riassumi le foto in /home/user/images per anno e luogo di scatto",
     "first_tool": "find_files",
     "source": "augmented"
   },
   {
-    "query": "totale spazio occupato da /home/roberto/Documenti",
+    "query": "totale spazio occupato da /home/user/Documenti",
     "first_tool": "find_files",
     "source": "frozen"
   },
   {
-    "query": "per favore cerca in /home/roberto/.local/share/metnos/Immagini foto con il mare",
+    "query": "per favore cerca in /home/user/.local/share/metnos/Immagini foto con il mare",
     "first_tool": "find_images_indices",
     "source": "augmented"
   },
@@ -10960,7 +10960,7 @@
     "source": "augmented"
   },
   {
-    "query": "per favore cancella indice immagini in /home/roberto/Immagini",
+    "query": "per favore cancella indice immagini in /home/user/Immagini",
     "first_tool": "delete_images_indices",
     "source": "augmented"
   },
@@ -10980,7 +10980,7 @@
     "source": "augmented"
   },
   {
-    "query": "leggi tabella excel /home/roberto/budget.xlsx",
+    "query": "leggi tabella excel /home/user/budget.xlsx",
     "first_tool": "read_files_xlsx",
     "source": "template"
   },
@@ -11020,7 +11020,7 @@
     "source": "augmented"
   },
   {
-    "query": "riassumi le foto in /home/roberto/images per anno e luogo di scatto",
+    "query": "riassumi le foto in /home/user/images per anno e luogo di scatto",
     "first_tool": "find_files",
     "source": "augmented"
   },
@@ -11210,7 +11210,7 @@
     "source": "augmented"
   },
   {
-    "query": "mostra tabella excel /home/roberto/budget.xlsx",
+    "query": "mostra tabella excel /home/user/budget.xlsx",
     "first_tool": "read_files_xlsx",
     "source": "augmented"
   },
@@ -11840,7 +11840,7 @@
     "source": "template"
   },
   {
-    "query": "per favore share /home/roberto/x.pdf with guest@example.com",
+    "query": "per favore share /home/user/x.pdf with guest@example.com",
     "first_tool": "share_files",
     "source": "augmented"
   },
@@ -11895,7 +11895,7 @@
     "source": "augmented"
   },
   {
-    "query": "share /home/roberto/x.pdf with guest@example.com",
+    "query": "share /home/user/x.pdf with guest@example.com",
     "first_tool": "share_files",
     "source": "template"
   },

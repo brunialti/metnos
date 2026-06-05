@@ -75,7 +75,7 @@ def test_canonicalize_mount_cifs_produces_expected_signature():
     from safety.canonicalize import compute_signature, has_sudo_wrapper
     argv = [
         "sudo", "mount", "-t", "cifs",
-        "//192.168.1.20/Public/Images", "/home/roberto/nas-images",
+        "//192.168.1.20/Public/Images", "/home/user/nas-images",
         "-o", "credentials=/tmp/foo.creds,uid=1000",
     ]
     sig = compute_signature(argv)
@@ -85,7 +85,7 @@ def test_canonicalize_mount_cifs_produces_expected_signature():
 
 def test_canonicalize_umount_user_path():
     from safety.canonicalize import compute_signature
-    sig = compute_signature(["sudo", "umount", "/home/roberto/nas-images"])
+    sig = compute_signature(["sudo", "umount", "/home/user/nas-images"])
     assert str(sig) == "umount:*:fs:user"
 
 
@@ -97,7 +97,7 @@ def test_seed_lookup_mount_cifs_is_graylist(seeded_db):
 
     sig = compute_signature([
         "mount", "-t", "cifs",
-        "//192.168.1.20/Public/Images", "/home/roberto/nas-images",
+        "//192.168.1.20/Public/Images", "/home/user/nas-images",
     ])
     store = SafetyStore()
     found = None
@@ -124,7 +124,7 @@ def test_admin_decide_mount_cifs_emits_approval_card(seeded_db):
 
     mock_argv = [
         "sudo", "mount", "-t", "cifs",
-        "//192.168.1.20/Public/Images", "/home/roberto/nas-images",
+        "//192.168.1.20/Public/Images", "/home/user/nas-images",
         "-o", "credentials=${METNOS_CIFS_CREDS},uid=1000",
     ]
 
@@ -171,7 +171,7 @@ def test_sudoer_substitutes_cifs_placeholder(seeded_db, isolated_creds):
 
     argv = [
         "mount", "-t", "cifs",
-        "//192.168.1.20/Public/Images", "/home/roberto/nas-images",
+        "//192.168.1.20/Public/Images", "/home/user/nas-images",
         "-o", "credentials=${METNOS_CIFS_CREDS},uid=1000",
     ]
 
@@ -263,7 +263,7 @@ def test_end_to_end_mount_cifs_chain(seeded_db, isolated_creds):
 
     mock_argv = [
         "sudo", "mount", "-t", "cifs",
-        "//192.168.1.20/Public/Images", "/home/roberto/nas-images",
+        "//192.168.1.20/Public/Images", "/home/user/nas-images",
         "-o", "credentials=${METNOS_CIFS_CREDS},uid=1000",
     ]
 

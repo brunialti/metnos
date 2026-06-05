@@ -53,7 +53,7 @@ def temp_credentials_file(domain: str) -> Iterator[Tuple[Optional[str], Optional
             if err:
                 return {"ok": False, "error": err}
             argv = ["sudo", "mount", "-t", "cifs",
-                    "//192.168.1.20/Public/Images", "/home/roberto/nas-images",
+                    "//192.168.1.20/Public/Images", "/home/user/nas-images",
                     "-o", f"credentials={cred_path},uid={os.getuid()}"]
             subprocess.run(argv, check=False)
     """

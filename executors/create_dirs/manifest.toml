@@ -31,8 +31,8 @@ type        = "array"
 items       = { type = "string" }
 
 [args.properties.paths.description]
-it = "Lista di path di directory da creare. Path assoluti o ~ espandibile. Tutti devono essere dentro lo scope fs:write autorizzato. Esempio: [\"/home/roberto/images/2026\", \"/home/roberto/images/2025\"]."
-en = "List of directory paths to create. Absolute paths or expandable ~. All must be within the authorized fs:write scope. Example: [\"/home/roberto/images/2026\", \"/home/roberto/images/2025\"]."
+it = "Lista di path di directory da creare. Path assoluti o ~ espandibile. Tutti devono essere dentro lo scope fs:write autorizzato. Esempio: [\"/home/user/images/2026\", \"/home/user/images/2025\"]."
+en = "List of directory paths to create. Absolute paths or expandable ~. All must be within the authorized fs:write scope. Example: [\"/home/user/images/2026\", \"/home/user/images/2025\"]."
 
 [args.properties.parents]
 type        = "boolean"

@@ -7,7 +7,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-CRED = Path("/home/roberto/.config/metnos/credentials.env")
+CRED = Path.home() / ".config/metnos/credentials.env"
 
 
 def load_env():

@@ -110,14 +110,14 @@ debian_optional = [
 
 # ── LLM tier locale (llama.cpp servito) ────────────────────────────
 # 8/5/2026: switch da Ollama a llama.cpp build-vulkan per perf su Strix Halo.
-# Modelli scaricati manualmente da Roberto in /home/roberto/models/.
+# Modelli scaricati manualmente da Roberto in /home/user/models/.
 # Future re-installazione: documenta il download manuale + verifica sha256.
 
 [[models.entry]]
 name        = "llm_mid_gemma4_26b"
 purpose     = "LLM tier middle/wise locale per PLANNER + synt + describe + intent + vaglio. Servito da metnos-llm-mid.service su :8080."
 source      = "manual_download"
-local_path  = "/home/roberto/models/gemma-4-26B-A4B-it-UD-Q4_K_M.gguf"
+local_path  = "/home/user/models/gemma-4-26B-A4B-it-UD-Q4_K_M.gguf"
 size_mb     = 15000
 required_for = ["agent_runtime PLANNER", "synt 5-stage", "describe_entries", "vaglio_llm", "intent_extractor"]
 notes       = "Gemma 4 26B quantizzato Q4_K_M. Throughput ~130 tok/s post-warmup con speculative decoding (draft E2B) e ctx 65K. Acc 0.97 sui prompt strutturati."
@@ -126,7 +126,7 @@ notes       = "Gemma 4 26B quantizzato Q4_K_M. Throughput ~130 tok/s post-warmup
 name        = "llm_draft_gemma4_e2b"
 purpose     = "Draft model per speculative decoding del mid tier. Predice token che il modello principale verifica."
 source      = "manual_download"
-local_path  = "/home/roberto/models/gemma-4-E2B-it-Q4_K_M.gguf"
+local_path  = "/home/user/models/gemma-4-E2B-it-Q4_K_M.gguf"
 size_mb     = 1600
 required_for = ["llm_mid_gemma4_26b speculative decoding"]
 notes       = "Servito inline al mid tier via flag --md di llama-server. Acceptance rate ~0.97 su prompt strutturati Metnos."
@@ -135,8 +135,8 @@ notes       = "Servito inline al mid tier via flag --md di llama-server. Accepta
 name        = "vlm_qwen2_vl_7b"
 purpose     = "Vision-Language Model per unified image enrichment (ADR 0117). Genera description+keywords+location+activity da ogni foto al build time."
 source      = "manual_download"
-local_path  = "/home/roberto/models/Qwen2-VL-7B-Instruct-Q4_K_M.gguf"
-mmproj_local = "/home/roberto/models/qwen2-vl-7b-mmproj-fp16.gguf"
+local_path  = "/home/user/models/Qwen2-VL-7B-Instruct-Q4_K_M.gguf"
+mmproj_local = "/home/user/models/qwen2-vl-7b-mmproj-fp16.gguf"
 size_mb     = 5500
 required_for = ["create_images_indices unified builder (ADR 0117)", "find_images query content/location"]
 notes       = "Servito da metnos-vlm.service su :8081 (separato da mid tier). mmproj e' il proiettore vision→text necessario per la modalita' multimodale di llama-server. ~1-2s/foto su Strix Halo Vulkan."
@@ -742,7 +742,7 @@ date    = "2026-05-10"
 session = "VLM swap Qwen3-VL-2B + llama.cpp upgrade b540"
 changes = [
     "llama.cpp aggiornato da b508 (7/5/2026) a b540 (5755a100c). Tensor support per Qwen3-VL ora presente.",
-    "Build path: cmake --build /home/roberto/llama.cpp/build --config Release. Vulkan attivo (gfx1151 unified).",
+    "Build path: cmake --build /home/user/llama.cpp/build --config Release. Vulkan attivo (gfx1151 unified).",
     "Download Qwen3-VL-2B-Instruct GGUF ufficiale Qwen: Qwen3VL-2B-Instruct-Q4_K_M.gguf (1.1GB) + mmproj-Qwen3VL-2B-Instruct-F16.gguf (782MB) in ~/models/.",
     "Swap llama-server :8081: Qwen2-VL-7B → Qwen3-VL-2B. Stessa config -c 65536 --parallel 8 --cont-batching, aggiunto --jinja (chat template Qwen3 lo richiede).",
     "Bench n=5 stesso seed (foto random Immagini/2014/): Qwen3-VL-2B avg 6.35s (idle parallel=2) vs Qwen2-VL-7B avg 16.87s (sotto carico parallel=8). Speedup 2.66x per-call. Descrizioni 147 vs 80 chars, keyword 9.4 vs 6.8.",

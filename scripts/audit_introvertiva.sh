@@ -21,7 +21,7 @@ cd /opt/metnos || exit 1
 
 {
   echo "=== auto-audit introvertiva start $(date -Iseconds) ==="
-  echo "claude version: $(/home/roberto/.local/bin/claude --version 2>&1 | head -1)"
+  echo "claude version: $(/home/user/.local/bin/claude --version 2>&1 | head -1)"
   echo "cwd: $(pwd)"
   echo
 } >> "$LOG_FILE"
@@ -29,7 +29,7 @@ cd /opt/metnos || exit 1
 # `--print` (alias `-p`) = single-prompt non-interattivo, stdout-only.
 # `--dangerously-skip-permissions` = no conferme tool (richiesto in cron).
 # Prompt da stdin tramite redirect (evita argv length limits).
-/home/roberto/.local/bin/claude \
+/home/user/.local/bin/claude \
   --print \
   --dangerously-skip-permissions \
   < "$PROMPT_FILE" \

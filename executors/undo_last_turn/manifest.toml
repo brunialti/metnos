@@ -28,7 +28,7 @@ en = "Override the undo log path (default: ~/.local/share/metnos/undo.jsonl). Fo
 
 [[capabilities]]
 name = "fs:write"
-hint = ["~/notes/**", "/tmp/**", "/home/roberto/**"]
+hint = ["~/notes/**", "/tmp/**", "/home/user/**"]
 
 [[tests]]
 name     = "log_inesistente_no_op"

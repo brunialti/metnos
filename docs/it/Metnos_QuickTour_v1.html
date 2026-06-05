@@ -590,7 +590,7 @@ approvando, la brevit&agrave; &egrave; cura. Vedi
 <p>L'utente ha qualche centinaio di foto sparse nella cartella
 <code>~/images</code>, scaricate da diverse fotocamere negli anni. Apre
 Telegram e scrive al bot:</p>
-<div class="dialog">&laquo;Ordina tutti i file immagine in /home/roberto/images creando subdirectory per anno, e premettendo al nome del file data e luogo di scatto. Se non disponibile il luogo, metti 'unknown'.&raquo;</div>
+<div class="dialog">&laquo;Ordina tutti i file immagine in /home/user/images creando subdirectory per anno, e premettendo al nome del file data e luogo di scatto. Se non disponibile il luogo, metti 'unknown'.&raquo;</div>
 <p>La richiesta &egrave; <em>composta</em>: filtrare solo le immagini, leggere data
 EXIF e coordinate GPS di ogni file, risolvere le coordinate in nome del
 luogo, e infine spostare ciascun file in una sotto-cartella per anno con un
@@ -633,7 +633,7 @@ passi.</p>
   <rect x="20" y="86" width="680" height="56" rx="6" class="stepbox"/>
   <circle cx="42" cy="114" r="14" fill="#1e3a5f"/>
   <text x="42" y="119" class="stepnum" text-anchor="middle" fill="white">1</text>
-  <text x="68" y="106" class="lbl"><tspan font-weight="600">find_files</tspan>(base_path="/home/roberto/images", patterns=["*.jpg","*.JPG","*.png","*.heic"], recursive=true)</text>
+  <text x="68" y="106" class="lbl"><tspan font-weight="600">find_files</tspan>(base_path="/home/user/images", patterns=["*.jpg","*.JPG","*.png","*.heic"], recursive=true)</text>
   <text x="68" y="125" class="mono">&rarr; 98 entries (immagini), 0 sotto-cartelle, 0.4 s</text>
   <text x="68" y="138" class="lblsm">il composer non riusa la lista raw: passa il riferimento <tspan class="mono">{{step1.matches}}</tspan> al passo 2</text>
 
@@ -658,7 +658,7 @@ passi.</p>
   <rect x="20" y="320" width="680" height="56" rx="6" class="stepbox"/>
   <circle cx="42" cy="348" r="14" fill="#1e3a5f"/>
   <text x="42" y="353" class="stepnum" text-anchor="middle" fill="white">4</text>
-  <text x="68" y="340" class="lbl"><tspan font-weight="600">move_files</tspan>(from_step=3, dst_template="/home/roberto/images/{date_year}/{date_yymmdd}_{place}_{name}")</text>
+  <text x="68" y="340" class="lbl"><tspan font-weight="600">move_files</tspan>(from_step=3, dst_template="/home/user/images/{date_year}/{date_yymmdd}_{place}_{name}")</text>
   <text x="68" y="358" class="mono">&rarr; 98 spostati, 0 errori, registrato nell'undo log</text>
   <text x="68" y="372" class="lblsm">se l'utente cambia idea: <tspan class="mono">undo_last_turn</tspan> ribalta la mossa in pochi secondi</text>
 </svg>
@@ -678,14 +678,14 @@ specificato.</p>
 concisi (run reale del 28 aprile 2026):</p>
 
 <div class="dialog">
-Ho organizzato le tue immagini in <code>/home/roberto/images</code>.<br><br>
+Ho organizzato le tue immagini in <code>/home/user/images</code>.<br><br>
 Ho analizzato i metadati EXIF di tutti i 98 file trovati e li ho spostati in
 sottocartelle divise per anno. Il nuovo formato del nome &egrave;
 <code>ggmmaaaa_luogo_nomeoriginale.jpg</code> (es.
 <code>140221_unknown_046.JPG</code>).<br><br>
 <strong>Dettaglio operazione:</strong><br>
 &bull; <strong>File spostati:</strong> 98<br>
-&bull; <strong>Struttura creata:</strong> <code>/home/roberto/images/{anno}/{data}_{luogo}_{nome}</code><br>
+&bull; <strong>Struttura creata:</strong> <code>/home/user/images/{anno}/{data}_{luogo}_{nome}</code><br>
 &bull; <strong>Luogo:</strong> impostato su <code>unknown</code> dove i dati GPS erano assenti.
 </div>
 

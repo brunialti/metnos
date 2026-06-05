@@ -577,7 +577,7 @@ already know what you are approving, brevity is care. See
 <h3>&laquo;Sort these photos by year and place&raquo;</h3>
 <p>The user has a few hundred photos sitting in <code>~/images</code>,
 imported from various cameras over the years. From Telegram:</p>
-<div class="dialog">&laquo;Sort all image files in /home/roberto/images, creating subdirectories per year, and prepending date and place of capture to the filename. If place is unavailable, use 'unknown'.&raquo;</div>
+<div class="dialog">&laquo;Sort all image files in /home/user/images, creating subdirectories per year, and prepending date and place of capture to the filename. If place is unavailable, use 'unknown'.&raquo;</div>
 <p>The request is <em>composed</em>: filter only images, read EXIF date and
 GPS coordinates of each file, resolve coordinates into a place name,
 finally move each file under a per-year subfolder with a name that begins
@@ -615,7 +615,7 @@ The diagram below shows how the <em>composer</em> &mdash; the LLM planner
   <rect x="20" y="86" width="680" height="56" rx="6" class="stepbox"/>
   <circle cx="42" cy="114" r="14" fill="#1e3a5f"/>
   <text x="42" y="119" class="stepnum" text-anchor="middle" fill="white">1</text>
-  <text x="68" y="106" class="lbl"><tspan font-weight="600">find_files</tspan>(base_path="/home/roberto/images", patterns=["*.jpg","*.JPG","*.png","*.heic"], recursive=true)</text>
+  <text x="68" y="106" class="lbl"><tspan font-weight="600">find_files</tspan>(base_path="/home/user/images", patterns=["*.jpg","*.JPG","*.png","*.heic"], recursive=true)</text>
   <text x="68" y="125" class="mono">&rarr; 98 entries (images), 0 subfolders, 0.4 s</text>
   <text x="68" y="138" class="lblsm">composer does not reuse the raw list: passes reference <tspan class="mono">{{step1.matches}}</tspan> to step 2</text>
 
@@ -637,7 +637,7 @@ The diagram below shows how the <em>composer</em> &mdash; the LLM planner
   <rect x="20" y="320" width="680" height="56" rx="6" class="stepbox"/>
   <circle cx="42" cy="348" r="14" fill="#1e3a5f"/>
   <text x="42" y="353" class="stepnum" text-anchor="middle" fill="white">4</text>
-  <text x="68" y="340" class="lbl"><tspan font-weight="600">move_files</tspan>(from_step=3, dst_template="/home/roberto/images/{date_year}/{date_yymmdd}_{place}_{name}")</text>
+  <text x="68" y="340" class="lbl"><tspan font-weight="600">move_files</tspan>(from_step=3, dst_template="/home/user/images/{date_year}/{date_yymmdd}_{place}_{name}")</text>
   <text x="68" y="358" class="mono">&rarr; 98 moved, 0 errors, recorded in the undo log</text>
   <text x="68" y="372" class="lblsm">if the user changes their mind: <tspan class="mono">undo_last_turn</tspan> reverses the move in seconds</text>
 </svg>
@@ -657,14 +657,14 @@ missing; same for <em>place</em>, which falls back to
 (actual run on 28 April 2026, translated from Italian):</p>
 
 <div class="dialog">
-I've organized your images in <code>/home/roberto/images</code>.<br><br>
+I've organized your images in <code>/home/user/images</code>.<br><br>
 I analyzed the EXIF metadata of all 98 files found and moved them into
 year-named subfolders. The new filename format is
 <code>yymmdd_place_originalname.jpg</code> (e.g.,
 <code>140221_unknown_046.JPG</code>).<br><br>
 <strong>Operation details:</strong><br>
 &bull; <strong>Files moved:</strong> 98<br>
-&bull; <strong>Structure created:</strong> <code>/home/roberto/images/{year}/{date}_{place}_{name}</code><br>
+&bull; <strong>Structure created:</strong> <code>/home/user/images/{year}/{date}_{place}_{name}</code><br>
 &bull; <strong>Place:</strong> set to <code>unknown</code> where GPS data was missing.
 </div>
 

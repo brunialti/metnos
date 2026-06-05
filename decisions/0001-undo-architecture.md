@@ -12,7 +12,7 @@ related:
 
 On the morning of April 28, 2026, after Metnos had executed its first "real"
 run that mutated the user's filesystem — sorting the 98 photos in
-`/home/roberto/images/` into per-year folders by EXIF date — we hit the
+`/home/user/images/` into per-year folders by EXIF date — we hit the
 absence of any undo capability from Telegram. The only recovery path was a
 manual bash command (`cd`, `for`, `mv`, `rmdir`) that I had to run myself.
 This is a product problem, not a feature gap: a personal assistant that

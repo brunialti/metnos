@@ -69,20 +69,20 @@ The target_kind taxonomy is extended with three new kinds:
 
 The specificity ordering ranks `fs-mount-cifs` and `fs-mount-nfs` above
 all `fs:*` kinds, so a mount of `//192.168.1.20/Public/Images` to
-`/home/roberto/nas-images` resolves to `fs-mount-cifs`, not `fs:user`
+`/home/user/nas-images` resolves to `fs-mount-cifs`, not `fs:user`
 (the destination path).
 
 Examples:
 
 ```
-mount -t cifs //192.168.1.20/Public/Images /home/roberto/nas-images \
+mount -t cifs //192.168.1.20/Public/Images /home/user/nas-images \
        -o credentials=/tmp/x.creds,uid=1000
    → mount:cifs:fs-mount-cifs
 
 mount -t nfs nas.lan:/exports/images /mnt/images
    → mount:nfs:fs-mount-nfs
 
-umount /home/roberto/nas-images
+umount /home/user/nas-images
    → umount:*:fs:user
 
 umount //192.168.1.20/Public/Images

@@ -350,7 +350,7 @@ if the executor were to ask for them.
 <p>
 The golden rule is simple: <strong>the fence is always tighter than the manifest</strong>.
 If a manifest asks to read <code>/home</code>, the fence may still cut the request down
-to <code>/home/roberto/notes</code>. If it asks to talk to any domain, the fence may
+to <code>/home/user/notes</code>. If it asks to talk to any domain, the fence may
 restrict it to <code>imap.example.com</code>. The difference matters: the manifest is
 what the author <em>hoped</em> for, the fence is what the system <em>decided</em> after
 looking at who is calling, in which context, with what trust level.
@@ -546,7 +546,7 @@ Searches files by name or pattern (the classic &laquo;extensions&raquo;). Return
 together with basic metadata: path, name, size, last modified, type.
 </p>
 
-<pre>call: find_files(base_path="/home/roberto/images", pattern="*.jpg")
+<pre>call: find_files(base_path="/home/user/images", pattern="*.jpg")
 response: { ok: true,
  entries: [
  {path: "/home/.../foto1.jpg", size: 2458123,...},

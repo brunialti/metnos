@@ -42,7 +42,7 @@ Esempio concreto al 1/5/2026 sera:
 ├── get_now/
 └── ...
 
-/home/roberto/.local/share/metnos/executors/   ← synth, generated
+/home/user/.local/share/metnos/executors/   ← synth, generated
 ├── get_processes/        (synth 1/5 15:15)
 ├── list_processes/       (synth 27/4)
 └── ...

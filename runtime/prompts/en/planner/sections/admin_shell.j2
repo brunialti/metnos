@@ -15,16 +15,16 @@ ADMIN SHELL / CREDENTIALS / MOUNT / SYSTEMCTL (privileged)
 # Admin example — privileged shell command (mount cifs) — NO OVERTHINKING
 USER: "mount the share \\192.168.1.20\Public\media\Immagini from server 192.168.1.20 in my personal area"
 MUST: derive the default mountpoint from the LAST component of the remote share, under the Metnos data area:
-       `\\192.168.1.20\Public\media\Immagini` → `/home/roberto/.local/share/metnos/Immagini`
+       `\\192.168.1.20\Public\media\Immagini` → `/home/user/.local/share/metnos/Immagini`
 MUST NOT: put the mountpoint under other paths (`/mnt/...`, `~/<name>`, `/tmp/...`) unless explicitly requested by the user.
 [step 1] admin(
     intent="create the destination directory for the mount",
-    command_proposed="mkdir -p /home/roberto/.local/share/metnos/Immagini"
+    command_proposed="mkdir -p /home/user/.local/share/metnos/Immagini"
 )
    → admin emits vetting slip (signature mkdir:p:literal)
 [step 2] admin(
     intent="mount cifs share NAS in Metnos data area",
-    command_proposed="sudo mount -t cifs //192.168.1.20/Public/media/Immagini /home/roberto/.local/share/metnos/Immagini -o credentials=${METNOS_CIFS_CREDS},uid=1000,gid=1000",
+    command_proposed="sudo mount -t cifs //192.168.1.20/Public/media/Immagini /home/user/.local/share/metnos/Immagini -o credentials=${METNOS_CIFS_CREDS},uid=1000,gid=1000",
     credentials_domain="cifs_192.168.1.20"
 )
    → admin emits vetting slip (signature mount:cifs:fs-mount-cifs)
@@ -33,7 +33,7 @@ final_answer: text of the LAST vetting slip emitted (the user approves with "yes
 MUST: IMMEDIATELY emit the admin tool_call with `intent` (1 sentence) + `command_proposed` (SINGLE concrete argv). No overthinking out loud.
 MUST: emit TWO separate admin calls when multiple commands are needed: first `mkdir` (target creation), THEN `mount` (target use). DO NOT combine them with `&&`/`|`/`;` — the admin syntactic gate BLOCKS the command separator.
 MUST: convert Windows backslash `\\host\share` → CIFS forward slash `//host/share`.
-MUST: use literal `/home/roberto/<dir>` for "personal area" (NOT `$HOME` or `~`: the gate requires absolute paths without shell variables other than `${METNOS_CIFS_CREDS}` and `$(id -u/g)`).
+MUST: use literal `/home/user/<dir>` for "personal area" (NOT `$HOME` or `~`: the gate requires absolute paths without shell variables other than `${METNOS_CIFS_CREDS}` and `$(id -u/g)`).
 MUST: use `${METNOS_CIFS_CREDS}` as a placeholder (sudoer materializes from the credentials store).
 MUST: set `credentials_domain="cifs_<host>"` derived from the IP/hostname.
 MUST NOT: write reflections like "Wait, I should check..." without a tool_call. THIS IS AN ERROR.
@@ -46,7 +46,7 @@ ERROR: 1 admin with `mkdir && mount`. ERROR: thinking-only without tool_call →
 USER: "mount NAS share \\HOST\share"
 [step 1] admin(
     intent="mount cifs share NAS",
-    command_proposed="sudo mount -t cifs //HOST/share /home/roberto/.local/share/metnos/share -o credentials=${METNOS_CIFS_CREDS},uid=1000",
+    command_proposed="sudo mount -t cifs //HOST/share /home/user/.local/share/metnos/share -o credentials=${METNOS_CIFS_CREDS},uid=1000",
 )
    → admin returns decision="needs_inputs" (cifs_HOST domain missing)
    → the runtime auto-invokes get_inputs and saves on_complete callback (runtime side)
