@@ -116,8 +116,21 @@ ok "Bootstrap dependencies installed"
 # requirements-optional.txt and are pulled by the skill selection (phase6).
 if [ -f "$REPO_DIR/requirements.txt" ]; then
   step "Installing Metnos runtime dependencies (requirements.txt)"
-  "$VENV_PIP" install --quiet -r "$REPO_DIR/requirements.txt" 2>&1 | tail -3 \
-    || fail "runtime dependency install failed (see requirements.txt)"
+  # Retry: alcune reti corrompono i transfer TLS grandi a tratti (bad record
+  # mac). Riprova l'intero install fino a 4 volte prima di arrendersi.
+  # Log su file (niente pipe) così l'exit status è quello di pip, non di tail.
+  _piplog="${METNOS_STATE:-/tmp}/install/pip.log"
+  mkdir -p "$(dirname "$_piplog")" 2>/dev/null || _piplog="/tmp/metnos-pip.log"
+  _deps_ok=0
+  for _a in 1 2 3 4; do
+    if "$VENV_PIP" install --no-cache-dir --timeout 90 --retries 5 \
+         -r "$REPO_DIR/requirements.txt" >"$_piplog" 2>&1; then
+      _deps_ok=1; break
+    fi
+    warn "dependency install attempt $_a failed (network?), retrying…"
+    sleep 4
+  done
+  [ "$_deps_ok" = 1 ] || { tail -4 "$_piplog"; fail "runtime dependency install failed after retries (see $_piplog)"; }
   ok "Runtime dependencies installed"
 else
   warn "requirements.txt not found in $REPO_DIR — the runtime may fail to start"
