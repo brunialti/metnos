@@ -7,7 +7,7 @@ classificazione LLM per cartella-unica, cache su disco) e ri-embedda solo il
 testo `path_context + ". " + description`. Backup + scrittura atomica.
 
 Uso:
-  python3 jobs/reembed_path_context.py [<unified_idx_dir>] [--lang it] [--dry]
+  python3 runtime/jobs/reembed_path_context.py [<unified_idx_dir>] [--lang it] [--dry]
 Senza dir: usa l'indice unificato di default (~/.local/share/metnos/index/image).
 """
 from __future__ import annotations
@@ -20,7 +20,8 @@ from pathlib import Path
 
 import numpy as np
 
-_ROOT = Path(__file__).resolve().parents[1]
+# In runtime/jobs/: parents[2] = repo root (parents[1] sarebbe runtime/).
+_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(_ROOT / "runtime"))
 sys.path.insert(0, str(_ROOT / "executors" / "create_images_indices"))
 

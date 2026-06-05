@@ -48,11 +48,11 @@ Falso: il corpus 2016 È PIENO di viaggi — Parigi (89 foto), Malta (34), Paler
 ## Consequences
 
 - **Nuovo campo entry** `path_context` (schema unified). Retro-compatibile: assente sulle entry vecchie finché non ri-embeddate (default "").
-- **Re-embed retroattivo** dell'indice esistente: `jobs/reembed_path_context.py` (riusa le caption VLM, ri-embedda solo il testo; cache cartelle persistente su disco `folder_context_cache.json`; backup + scrittura atomica). Costo: 796 classificazioni LLM (una-tantum, cache) + ~31k embed BGE-M3 (veloce). NON ri-esegue VLM/face/clip.
+- **Re-embed retroattivo** dell'indice esistente: `runtime/jobs/reembed_path_context.py` (riusa le caption VLM, ri-embedda solo il testo; cache cartelle persistente su disco `folder_context_cache.json`; backup + scrittura atomica). Costo: 796 classificazioni LLM (una-tantum, cache) + ~31k embed BGE-M3 (veloce). NON ri-esegue VLM/face/clip.
 - **Build futuri/distribuiti**: arricchimento automatico, per-lingua, generale per qualsiasi struttura di cartelle utente — "indicizzazione intelligente" come da requisito.
 - **Apre** query di categoria astratta su immagini (viaggi, eventi, documenti) prima impossibili. **Chiude** il falso-negativo §2.8 "nessuna foto" su corpus ricco.
 - Costo di un build incrementale: +1 chiamata LLM per ogni cartella NUOVA (cache evita ripetizioni).
 
 ## Implementation status
 
-Codice implementato 1/6/2026 (parse-fix + escape filtro + helper indexer + script re-embed); verificato in prototipo (93% top-100). **PENDENTE**: esecuzione `reembed_path_context.py` sul corpus live (carica il llama-server ~20-40 min → da fare off-peak per non disturbare il servizio, §8.6) + re-sign dei due executor + restart `metnos-http` + verifica live 2× (§8.5). Alla conferma live lo status passa ad `accepted`.
+Codice implementato 1/6/2026 (parse-fix + escape filtro + helper indexer + script re-embed); verificato in prototipo (93% top-100). **PENDENTE**: esecuzione `runtime/jobs/reembed_path_context.py` sul corpus live (carica il llama-server ~20-40 min → da fare off-peak per non disturbare il servizio, §8.6) + re-sign dei due executor + restart `metnos-http` + verifica live 2× (§8.5). Alla conferma live lo status passa ad `accepted`.
