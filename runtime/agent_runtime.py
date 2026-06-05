@@ -1258,7 +1258,7 @@ def planner_facing_schema(schema):
     - manifest che gia' usano `from_step` (filter_entries, get_files,
       move_files): nessuna trasformazione necessaria.
     - manifest che usano `entries` (sort_entries, compute_entries,
-      get_file_dates): vengono trasformati qui in modo consistente.
+      classify_entries): vengono trasformati qui in modo consistente.
     """
     if not isinstance(schema, dict):
         return schema

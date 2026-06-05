@@ -3,8 +3,8 @@
 get_files — executor di Metnos v1.1.
 
 Estrae metadata da file (immagini per ora). Vettoriale per costruzione:
-una sola call processa una lista di entries. Sostituisce get_file_dates
-(deprecato).
+una sola call processa una lista di entries. Copre anche le date semantiche
+EXIF/birth (fields=['dates.semantic']).
 
 Fields supportati (selezionabili via `fields`, default ['dates.semantic']):
   dates.semantic      date_epoch + date_source ('exif' | 'mtime')

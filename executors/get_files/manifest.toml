@@ -1,6 +1,6 @@
 # Manifest dell'executor `get_files` — Metnos v1.1
 # Naming compositivo: verbo_oggetto_plurale_qualificatore. Vettoriale per costruzione.
-# Sostituisce `get_file_dates` (deprecato).
+# Copre anche le date semantiche EXIF/birth (fields=['dates.semantic']).
 
 manifest_format = "1.0"
 
@@ -15,7 +15,7 @@ en = "Enriches a list of photo files on a filesystem (local paths like /home/...
 
 [code]
 files  = ["get_files.py"]
-digest = "sha256:4691cbf0715f0f62a59003e265e2e1a9981331cbd3f51f0dd3cb7bdca62c1caf"
+digest = "sha256:995323975e1192b785871611b06b88612601478b5b441c3d75b4244e5d03b583"
 
 [args]
 type     = "object"

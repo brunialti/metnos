@@ -187,7 +187,7 @@ VERBS = {
             {"q": "che ora e a Tokyo",
              "expect_executor_re": r"get_now"},
             {"q": "data di modifica di /tmp/audit/fs/get/file.txt",
-             "expect_executor_re": r"get_file_dates"},
+             "expect_executor_re": r"get_files"},
             {"q": "metadata di /tmp/audit/fs/get/file.txt",
              "expect_executor_re": r"get_files"},
             {"q": "where am I",
