@@ -403,9 +403,17 @@ def handle_classify_entries(args, *, verbose: bool = False) -> dict:
 
     criterion = (args or {}).get("criterion") or DEFAULT_CRITERIA.get(dimension)
     if not criterion:
-        return {"ok": False,
-                "error": f"missing 'criterion' for dimension {dimension!r}: "
-                         f"no default available, caller must provide"}
+        # §2.8/§7.9: nessun criterion esplicito né default per questa dimensione
+        # → sintetizza un criterion GENERICO da dimension+classes invece di
+        # fallire (un hard-fail romperebbe la pipeline — es. task 'mail
+        # importanti' → dimension='importance' senza criterion → terminator).
+        # L'LLM classifica con la guida generica. Universale, ZERO hardcoding
+        # per-dimensione (vale per importance/urgency/priority/topic/...).
+        criterion = (
+            f"Classifica ogni elemento in base alla dimensione «{dimension}», "
+            f"assegnando esattamente UNA fra le classi: {', '.join(classes)}. "
+            f"Usa il significato comune di «{dimension}» e il contenuto "
+            f"dell'elemento (es. mittente, oggetto, testo) per decidere.")
 
     data_kind = (args or {}).get("data_kind") or "auto"
     kind = _detect_kind(entries, data_kind)
