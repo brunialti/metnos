@@ -110,6 +110,19 @@ step "Installing bootstrap dependencies (rich, httpx)"
 "$VENV_PIP" install --quiet rich httpx 2>&1 | tail -3 || fail "pip install failed"
 ok "Bootstrap dependencies installed"
 
+# ─────── 4.bis Install Metnos runtime dependencies ────────────────
+# Core runtime deps (HTTP server boot + base operation) are declared in
+# requirements.txt. Optional deps (torch/google-*/playwright) live in
+# requirements-optional.txt and are pulled by the skill selection (phase6).
+if [ -f "$REPO_DIR/requirements.txt" ]; then
+  step "Installing Metnos runtime dependencies (requirements.txt)"
+  "$VENV_PIP" install --quiet -r "$REPO_DIR/requirements.txt" 2>&1 | tail -3 \
+    || fail "runtime dependency install failed (see requirements.txt)"
+  ok "Runtime dependencies installed"
+else
+  warn "requirements.txt not found in $REPO_DIR — the runtime may fail to start"
+fi
+
 # ─────── 5. Hand off to Python installer ──────────────────────────
 mkdir -p "$METNOS_STATE/install"
 export METNOS_HOME METNOS_STATE METNOS_VENV

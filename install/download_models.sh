@@ -8,12 +8,17 @@
 #
 # Modelli scaricati:
 #   1. SigLIP-base-patch16-224 (Xenova ONNX, quantized int8)
-#      → /opt/metnos/models/siglip/
+#      → $MODELS_DIR/siglip/
 #   2. InsightFace buffalo_l (RetinaFace det_10g + ArcFace w600k_r50)
-#      → /opt/metnos/models/face/
+#      → $MODELS_DIR/face/
 #
-# Nota: il modello text-embedding MiniLM e' in /opt/giorgio2/models/onnx/
-# e NON va riscaricato (e' condiviso con giorgio2/suprastructure).
+# MODELS_DIR deriva da METNOS_MODELS_DIR o da METNOS_INSTALL_ROOT (§7.11,
+# rename-resilient), default <install_root>/models.
+#
+# Nota: il modello text-embedding (MiniLM/BGE) e' usato in-process via il
+# backend embedding (ai_backend). Su un'installazione condivisa puo' essere
+# gia' presente (env METNOS_EMBEDDING_MODEL_DIR); su install ex-novo va
+# fornito/scaricato a parte. Questo script scarica solo SigLIP + face.
 #
 # Uso:
 #   ./download_models.sh           # scarica tutto
@@ -43,7 +48,10 @@ for arg in "$@"; do
 done
 [[ ${#TARGETS[@]} -eq 0 ]] && TARGETS=(siglip face)
 
-MODELS_DIR="/opt/metnos/models"
+# §7.11 rename-resilient: niente path assoluto hardcoded. Override esplicito
+# via METNOS_MODELS_DIR; altrimenti derivato da METNOS_INSTALL_ROOT (ADR 0148),
+# default <install_root>/models.
+MODELS_DIR="${METNOS_MODELS_DIR:-${METNOS_INSTALL_ROOT:-/opt/metnos}/models}"
 SIGLIP_DIR="${MODELS_DIR}/siglip"
 FACE_DIR="${MODELS_DIR}/face"
 

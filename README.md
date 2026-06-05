@@ -144,14 +144,23 @@ review and sign it). See the architecture docs for the full design.
 
 The code is the easy part. The real barrier is **hardware**: Metnos wants a machine
 that can run a capable LLM locally. The reference instance uses a 96 GB
-unified-memory box running a ~26B model via `llama-server`. You have two options:
+unified-memory box running a ~26B model via `llama-server`.
 
-1. **Bring your own LLM** — point Metnos at any OpenAI-compatible `llama-server`
-   endpoint (local or on another box) plus local ONNX embeddings.
-2. **Run it all locally** — if your machine is big enough.
+There are two install paths, and they are **not** equal:
 
-Everything else (web search, geocoding, mail, photos) is a skill you opt into and
-supply a backend for.
+1. **Managed (from scratch) — recommended.** Let the installer set up the whole
+   stack in a known-good configuration: LLM serving, models, the supporting
+   services (web search, geocoding, image VLM), and the wiring between them.
+   Deterministic, reproducible, supportable.
+2. **Custom (declare your existing LLM/services) — strongly discouraged.** If you
+   already run an LLM, you *can* declare its endpoint, model and tier mapping for
+   wiring. The installer will let you — and warn you loudly: this multiplies the
+   variables (wrong model family, mis-mapped tiers, version drift) and is **hard
+   to support**. Only pick this if you know your setup matches Metnos's
+   requirements.
+
+Everything else (web search, geocoding, mail, photos) is a skill you opt into; the
+managed install wires it for you, the custom path leaves it to you.
 
 ## Install
 

@@ -371,12 +371,17 @@ step_intent_classifier() {
 
 step_python_packages() {
     log "[8/8] Pacchetti Python"
-    log "  NB: il setup non installa pacchetti pip in modo automatico."
-    log "  L'installazione si appoggia al venv esistente di suprastructure"
-    log "  (/opt/suprastructure/.venv). Per ricreare un venv stand-alone:"
-    log "    python3 -m venv ~/.venvs/metnos"
-    log "    ~/.venvs/metnos/bin/pip install <required_python_packages>"
-    log "  La lista required e' nel manifest, sezione [runtime.python_packages]."
+    local req="${METNOS_REPO_DIR:-$(dirname "$MANIFEST")/..}/requirements.txt"
+    if [ -f "$req" ]; then
+        log "  Le dipendenze runtime sono dichiarate in requirements.txt."
+        log "  Per un venv stand-alone (consigliato per l'install ex-novo):"
+        log "    python3 -m venv ~/.venvs/metnos"
+        log "    ~/.venvs/metnos/bin/pip install -r $req"
+        log "  Opzionali (skill): aggiungi -r requirements-optional.txt"
+    else
+        log "  ATTENZIONE: requirements.txt non trovato — il runtime potrebbe non avviarsi."
+        log "    python3 -m venv ~/.venvs/metnos && pip install -r requirements.txt"
+    fi
 }
 
 # ── Main ──────────────────────────────────────────────────────────
