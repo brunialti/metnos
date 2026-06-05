@@ -27,7 +27,14 @@ from logging_setup import get_logger
 
 log = get_logger(__name__)
 
-VERSION = "1.1"
+VERSION = "1.1"  # versione dell'HTTP API (ADR 0078), DISTINTA dalla product version
+
+# Product version (SemVer) — sorgente UNICA runtime/__version__.py (axis versioning).
+try:
+    from __version__ import version_info as _metnos_version_info
+except Exception:  # pragma: no cover — fallback difensivo
+    def _metnos_version_info():
+        return {"metnos_version": "0.0.0", "ai_backend_api": 0}
 
 # SSE keepalive: ogni N secondi il server emette un comment SSE (": keepalive\n\n")
 # sulla connessione attiva. Comment = riga che inizia con `:` → il browser
@@ -141,7 +148,8 @@ async def health(request: web.Request) -> web.Response:
     """GET /agent/health"""
     started = request.app.get("started_at", time.time())
     return web.json_response(
-        {"ok": True, "version": VERSION, "uptime_s": round(time.time() - started, 1)}
+        {"ok": True, "version": VERSION, "uptime_s": round(time.time() - started, 1),
+         **_metnos_version_info()}
     )
 
 
@@ -159,6 +167,7 @@ async def well_known(request: web.Request) -> web.Response:
     return web.json_response({
         "name": "metnos",
         "version": VERSION,
+        **_metnos_version_info(),
         "channels": ["telegram", "http"],
         "capabilities": ["agent.turn", "admin.proposals", "admin.executors",
                          "admin.runs", "admin.safety", "admin.turns"],
