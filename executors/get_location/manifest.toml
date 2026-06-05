@@ -6,7 +6,7 @@ manifest_format = "1.0"
 
 name        = "get_location"
 version     = "0.1.0"
-author      = "Roberto Brunialti <roberto.brunialti@metnos.com>"
+author      = "Roberto Brunialti"
 affinity    = ["location", "posizione", "dove", "where", "GPS", "qui", "now", "current"]
 revertible  = false
 lifecycle   = "active"

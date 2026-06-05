@@ -12,7 +12,7 @@ final vuoto, uno step con ok=False, messaggio di resa/fallback (loop_break/
 recovery), o routing sbagliato. NIENTE timeout che fa fallire: si attende il
 completamento.
 
-OGGETTI DI TEST ONLY: file in /tmp/metnos_livetest, email → mykleos@knowcastle.com,
+OGGETTI DI TEST ONLY: file in /tmp/metnos_livetest, email → user@example.com,
 repo github proprio brunialti/metnos. Niente dati reali toccati.
 
 DB: e2e/livetest/livetest.sqlite

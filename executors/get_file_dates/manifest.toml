@@ -6,7 +6,7 @@ manifest_format = "1.0"
 
 name          = "get_file_dates"
 version       = "0.1.1"
-author        = "Roberto Brunialti <roberto.brunialti@metnos.com>"
+author        = "Roberto Brunialti"
 affinity    = [
     "data", "date", "exif", "scatto", "creazione", "foto", "image", "metadati", "metadata",
                 "ordina"

@@ -6,7 +6,7 @@ manifest_format = "1.0"
 name        = "find_urls"
 version     = "0.1.0"
 timeout_s   = 900
-author      = "Roberto Brunialti <roberto.brunialti@metnos.com>"
+author      = "Roberto Brunialti"
 affinity    = [
     "find", "trova", "cerca", "scopri", "explore", "crawl", "url", "web", "sito", "news",
                 "feed", "rss", "topic"

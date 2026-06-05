@@ -9,7 +9,7 @@ manifest_format = "1.0"
 
 name        = "filter_texts_lines"
 version     = "0.3.0"
-author      = "Roberto Brunialti <roberto.brunialti@metnos.com>"
+author      = "Roberto Brunialti"
 affinity    = ["filter", "filtra", "righe", "lines", "testi", "texts", "regex", "grep", "match", "log"]
 revertible  = false
 lifecycle   = "active"

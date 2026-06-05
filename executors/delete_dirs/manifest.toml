@@ -8,7 +8,7 @@ manifest_format = "1.0"
 
 name        = "delete_dirs"
 version     = "0.1.0"
-author      = "Roberto Brunialti <roberto.brunialti@metnos.com>"
+author      = "Roberto Brunialti"
 affinity    = [
     "delete", "elimina", "cancella", "rmdir", "rimuovi", "remove", "directory", "cartella"
             ]

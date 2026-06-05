@@ -6,7 +6,7 @@ manifest_format = "1.0"
 
 name        = "change_files_format"
 version     = "0.1.0"
-author      = "Roberto Brunialti <roberto.brunialti@metnos.com>"
+author      = "Roberto Brunialti"
 affinity    = ["converti", "convert", "cambia-formato", "change-format",
                  "transcode", "encode", "ricodifica", "format-conversion",
                  "jpg-to-png", "png-to-jpg", "to-webp", "to-gif",

@@ -172,7 +172,7 @@ def test_process_completion_callback_resume_planner_with_dialog_values(
     dialog_pending.save_pending("http:host", "rp01", state)
 
     fake_log = mock.Mock()
-    fake_log.final_message = "Email inviata a roberto@knowcastle.com"
+    fake_log.final_message = "Email inviata a roberto@example.com"
 
     with mock.patch("agent_runtime.run_turn",
                      return_value=fake_log) as mocked_rt:

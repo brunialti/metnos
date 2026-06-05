@@ -5,7 +5,7 @@ manifest_format = "1.0"
 
 name        = "set_persons"
 version     = "0.1.0"
-author      = "Roberto Brunialti <roberto.brunialti@metnos.com>"
+author      = "Roberto Brunialti"
 affinity    = ["enrolla", "registra", "memorizza", "ricorda persona", "questa è",
                 "questo è", "enroll", "register", "save name", "remember person",
                 "this is", "person", "volto", "viso", "face"]

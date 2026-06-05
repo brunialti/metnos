@@ -6,7 +6,7 @@ manifest_format = "1.0"
 
 name        = "find_events_empty"
 version     = "0.4.0"
-author      = "Roberto Brunialti <roberto.brunialti@metnos.com>"
+author      = "Roberto Brunialti"
 affinity    = [
     "slot libero", "slot liberi", "orari liberi", "finestre libere", "disponibilita",
                 "spazio libero in agenda", "buchi in agenda", "free slots", "availability",

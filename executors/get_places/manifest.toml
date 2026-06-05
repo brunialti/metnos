@@ -5,7 +5,7 @@ manifest_format = "1.0"
 
 name        = "get_places"
 version     = "0.3.0"
-author      = "Roberto Brunialti <roberto.brunialti@metnos.com>"
+author      = "Roberto Brunialti"
 affinity    = ["get", "place", "luogo", "reverse", "geocode", "coordinate", "indirizzo", "city", "GPS"]
 revertible  = false
 lifecycle   = "active"

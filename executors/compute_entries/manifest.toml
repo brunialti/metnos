@@ -5,7 +5,7 @@ manifest_format = "1.0"
 
 name        = "compute_entries"
 version     = "0.1.0"
-author      = "Roberto Brunialti <roberto.brunialti@metnos.com>"
+author      = "Roberto Brunialti"
 affinity        = ["compute", "calcola", "computa", "max", "min", "avg", "media", "average", "sum", "somma", "total", "totale", "count", "conta", "numero", "distinct", "distinti", "unique", "unici", "stats", "statistiche", "reduce"]
 revertible      = false
 lifecycle       = "active"

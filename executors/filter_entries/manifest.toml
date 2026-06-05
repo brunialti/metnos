@@ -5,7 +5,7 @@ manifest_format = "1.0"
 
 name        = "filter_entries"
 version     = "0.4.0"
-author      = "Roberto Brunialti <roberto.brunialti@metnos.com>"
+author      = "Roberto Brunialti"
 affinity    = ["filter", "filtra", "select", "where", "criterio", "subset", "match", "partiziona", "scarta", "tieni", "solo"]
 
 [description]

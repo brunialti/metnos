@@ -6,7 +6,7 @@ manifest_format = "1.0"
 
 name        = "find_credentials"
 version     = "0.1.0"
-author      = "Roberto Brunialti <roberto.brunialti@metnos.com>"
+author      = "Roberto Brunialti"
 affinity    = ["credenziali", "chiavi", "token", "segreti", "configurate",
                 "quali account", "elenca credenziali", "registro credenziali",
                 "credentials", "secrets", "stored keys", "list credentials",

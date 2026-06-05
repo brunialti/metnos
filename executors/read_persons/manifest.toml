@@ -5,7 +5,7 @@ manifest_format = "1.0"
 
 name        = "read_persons"
 version     = "0.1.0"
-author      = "Roberto Brunialti <roberto.brunialti@metnos.com>"
+author      = "Roberto Brunialti"
 affinity    = ["io", "me", "chi sono", "mio profilo", "il mio account",
                 "dimmi tutto su", "profilo di", "host", "guest",
                 "who am i", "my profile", "my account", "tell me about",

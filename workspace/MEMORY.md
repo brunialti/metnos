@@ -23,7 +23,7 @@
 ## Lavoro / progetti
 
 <!-- esempi commentati:
-- knowcastle.com e' la mia mail di lavoro.
+- example.com e' la mia mail di lavoro.
 - Il progetto Metnos e' in /opt/myclaw, deploy su Cloudflare Pages
   via `./deploy.sh` (token in ~/.config/mykleos/deploy.env).
 -->

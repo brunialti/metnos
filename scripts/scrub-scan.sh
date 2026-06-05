@@ -26,7 +26,9 @@ SECTION() { printf '\n=== %s ===\n' "$1"; }
 
 count_matches() {
   local n
-  n=$(git grep -lE "$1" 2>/dev/null | wc -l)
+  # Esclude lo script stesso: contiene i pattern come stringhe-definizione
+  # (self-match), non PII reale.
+  n=$(git grep -lE "$1" -- . ':(exclude)scripts/scrub-scan.sh' 2>/dev/null | wc -l)
   echo "$n"
 }
 

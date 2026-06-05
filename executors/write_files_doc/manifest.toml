@@ -6,7 +6,7 @@ manifest_format = "1.0"
 
 name        = "write_files_doc"
 version     = "0.1.0"
-author      = "Roberto Brunialti <roberto.brunialti@metnos.com>"
+author      = "Roberto Brunialti"
 affinity    = [
     "doc", "documento", "google doc", "google docs",
     "appendi a documento", "aggiungi al doc", "append doc",

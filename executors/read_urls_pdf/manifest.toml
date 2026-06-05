@@ -6,7 +6,7 @@ manifest_format = "1.0"
 name        = "read_urls_pdf"
 version     = "0.1.0"
 timeout_s   = 300
-author      = "Roberto Brunialti <roberto.brunialti@metnos.com>"
+author      = "Roberto Brunialti"
 affinity    = [
     "read", "leggi", "pdf", "documento", "circolare", "report", "fattura", "url", "fetch",
                 "scarica", "extract", "estrai", "testo", "content", "contenuto"

@@ -24,7 +24,7 @@
 name        = "metnos"
 version     = "1.1"
 description = "Metnos — assistente personale self-hosted (microarchitettura a executor sintetizzati al volo via synt multistage; runtime ReAct con planner LLM locale + frontier come fallback). Canale primario Telegram, lingua principale italiano."
-maintainer  = "Roberto Brunialti <roberto.brunialti@metnos.com>"
+maintainer  = "Roberto Brunialti"
 process_name = "myclaw"
 domain      = "metnos.com"
 generated_at = "2026-05-04T17:00:00Z"

@@ -5,7 +5,7 @@ manifest_format = "1.0"
 
 name        = "list_dirs"
 version     = "0.2.0"
-author      = "Roberto Brunialti <roberto.brunialti@metnos.com>"
+author      = "Roberto Brunialti"
 
 # Cosa fa: una frase per il LLM. Cosa NON fa: una frase di rinvio al composer.
 affinity    = [

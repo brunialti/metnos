@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# Invia un messaggio dalla casella mykleos@knowcastle.com (register.it).
+# Invia un messaggio dalla casella user@example.com (register.it).
 # Credenziali e host SMTP letti da ~/.config/mykleos/mail.env (chmod 600).
 #
 # Uso:
 #   ./send-mail.sh --to <indirizzo> --subject "<oggetto>" --body-file <path>
 #
 # Variabili attese in mail.env (riusa quelle di IMAP, aggiunge SMTP host/port):
-#   MYKLEOS_MAIL_USER   (es. mykleos@knowcastle.com)
+#   MYKLEOS_MAIL_USER   (es. user@example.com)
 #   MYKLEOS_MAIL_PASS
 #   MYKLEOS_SMTP_HOST   (default: authsmtp.securemail.pro — provider register.it)
 #   MYKLEOS_SMTP_PORT   (default: 465, SMTPS)

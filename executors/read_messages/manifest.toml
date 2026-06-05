@@ -4,7 +4,7 @@ manifest_format = "1.0"
 
 name        = "read_messages"
 version     = "0.4.0"
-author      = "Roberto Brunialti <roberto.brunialti@metnos.com>"
+author      = "Roberto Brunialti"
 affinity    = ["read", "leggi", "mail", "email", "inbox", "messages", "messaggi", "posta", "today", "oggi", "ieri", "ultime", "window", "settimana", "find", "trova", "cerca", "search", "from", "subject", "filter"]
 revertible  = false
 lifecycle   = "active"
@@ -156,7 +156,7 @@ schema_inline = """
 
 [[capabilities]]
 name = "mail:read"
-hint = ["imap.migadu.com", "imap.register.it"]
+hint = ["imap.example.com", "imap.register.it"]
 
 [[capabilities]]
 name = "fs:read"

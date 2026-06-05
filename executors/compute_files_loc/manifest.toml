@@ -7,7 +7,7 @@ manifest_format = "1.0"
 
 name        = "compute_files_loc"
 version     = "0.1.0"
-author      = "Roberto Brunialti <roberto.brunialti@metnos.com>"
+author      = "Roberto Brunialti"
 affinity    = ["compute", "calcola", "loc", "linee", "righe", "lines", "code", "codice", "count", "conta", "statistiche", "stats", "lines-of-code", "sloc"]
 revertible  = false
 lifecycle   = "active"

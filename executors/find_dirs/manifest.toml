@@ -5,7 +5,7 @@ manifest_format = "1.0"
 
 name        = "find_dirs"
 version     = "0.1.0"
-author      = "Roberto Brunialti <roberto.brunialti@metnos.com>"
+author      = "Roberto Brunialti"
 affinity    = [
     "find", "trova", "cerca", "list", "elenca", "search", "directory", "dirs", "cartelle",
                 "folder", "subdir", "sottocartella", "sottocartelle", "tree", "albero",

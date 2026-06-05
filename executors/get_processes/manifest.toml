@@ -6,7 +6,7 @@ manifest_format = "1.0"
 
 name        = "get_processes"
 version     = "0.2.0"
-author      = "Roberto Brunialti <roberto.brunialti@metnos.com>"
+author      = "Roberto Brunialti"
 affinity    = ["processi", "ps", "stato server", "server status",
                 "salute sistema", "system health", "uptime",
                 "carico", "load", "cpu", "ram", "situazione",

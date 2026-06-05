@@ -6,7 +6,7 @@ manifest_format = "1.0"
 
 name        = "write_files_spreadsheet"
 version     = "0.2.0"
-author      = "Roberto Brunialti <roberto.brunialti@metnos.com>"
+author      = "Roberto Brunialti"
 affinity    = [
     "spreadsheet", "foglio elettronico", "foglio di calcolo", "xlsx",
     "aggiorna celle", "modifica celle", "scrivi nel foglio", "write sheet",

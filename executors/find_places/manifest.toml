@@ -5,7 +5,7 @@ manifest_format = "1.0"
 
 name        = "find_places"
 version     = "0.6.0"
-author      = "Roberto Brunialti <roberto.brunialti@metnos.com>"
+author      = "Roberto Brunialti"
 # Affinity: verbi + preposizioni di luogo (IT+EN), nessun POI hardcoded.
 # I sostantivi (farmacia/restaurant/...) emergono dalla query utente, non
 # servono enumerati qui (cattura tutto il long-tail di POI).

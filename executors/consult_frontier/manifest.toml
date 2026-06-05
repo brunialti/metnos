@@ -10,7 +10,7 @@ manifest_format = "1.0"
 
 name        = "consult_frontier"
 version     = "0.1.0"
-author      = "Roberto Brunialti <roberto.brunialti@metnos.com>"
+author      = "Roberto Brunialti"
 affinity    = [
     "consulta", "consult", "chiedi", "ask", "frontier", "oracolo",
     "esperto", "review", "analisi-profonda", "deep-analysis",

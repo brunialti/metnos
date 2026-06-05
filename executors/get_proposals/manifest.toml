@@ -8,7 +8,7 @@ manifest_format = "1.0"
 
 name        = "get_proposals"
 version     = "0.1.0"
-author      = "Roberto Brunialti <roberto.brunialti@metnos.com>"
+author      = "Roberto Brunialti"
 affinity    = ["proposte introvertiva", "proposte introvertive",
                 "proposals introvertiva", "introvertiva", "introvertive",
                 "introvertivo", "review pending", "review introvertiva",

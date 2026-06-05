@@ -6,7 +6,7 @@ manifest_format = "1.0"
 
 name        = "get_images_indices"
 version     = "0.1.0"
-author      = "Roberto Brunialti <roberto.brunialti@metnos.com>"
+author      = "Roberto Brunialti"
 affinity    = ["status", "introspection", "indice", "index", "stato", "snapshot", "info", "foto", "image"]
 
 [description]

@@ -6,7 +6,7 @@ manifest_format = "1.0"
 
 name        = "set_messages"
 version     = "0.1.0"
-author      = "Roberto Brunialti <roberto.brunialti@metnos.com>"
+author      = "Roberto Brunialti"
 affinity = [
     "set", "label", "labels", "etichetta", "etichette", "tag",
     "messages", "messaggi", "mail", "email",

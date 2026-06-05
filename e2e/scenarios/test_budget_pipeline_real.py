@@ -192,7 +192,7 @@ def test_pipeline_send_email(bills: list[str]):
     from backends.messages import email_metnos
     r = email_metnos.send({
         "messages": [{
-            "to": "roberto.brunialti@metnos.com",
+            "to": "roberto@example.com",
             "subject": "Metnos E2E test bollette",
             "body": "Pipeline E2E reale: PDF → OCR/text → LLM → sheet.",
             "attachments": [{"path": p} for p in bills],

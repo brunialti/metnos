@@ -1,7 +1,7 @@
 manifest_format = "1.0"
 name        = "set_signatures"
 version     = "0.1.0"
-author      = "Roberto Brunialti <roberto.brunialti@metnos.com>"
+author      = "Roberto Brunialti"
 affinity    = ["imposta", "autorizza", "vieta", "permetti", "rimuovi",
                 "curatela", "gestione signatures", "configura permessi",
                 "approva comando", "blocca comando"]

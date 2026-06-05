@@ -5,7 +5,7 @@ manifest_format = "1.0"
 
 name        = "undo_last_turn"
 version     = "0.1.0"
-author      = "Roberto Brunialti <roberto.brunialti@metnos.com>"
+author      = "Roberto Brunialti"
 affinity    = ["undo", "annulla", "ripristina", "revert", "rollback", "torna", "indietro", "ribalta"]
 
 [description]

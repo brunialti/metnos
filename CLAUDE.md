@@ -213,7 +213,7 @@ Vedi 7.5.
 ## 10. Workflow operativo
 
 ### 10.1 Mailbox via script
-- `mykleos@knowcastle.com` (register.it) → `scripts/check-mail.sh` (relative).
+- `user@example.com` (register.it) → `scripts/check-mail.sh` (relative).
 - `metnos@metnos.com` (Migadu) → curl IMAPS inline con env in `~/.config/metnos/mail.env`. Spam = `Junk`.
 - Mai `curl` ad-hoc con password inline.
 

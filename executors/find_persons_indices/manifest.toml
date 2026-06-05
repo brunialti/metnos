@@ -5,7 +5,7 @@ manifest_format = "1.0"
 
 name        = "find_persons_indices"
 version     = "0.2.0"
-author      = "Roberto Brunialti <roberto.brunialti@metnos.com>"
+author      = "Roberto Brunialti"
 affinity    = ["cerca persona", "trova", "foto di", "find person",
                 "search person", "photos of", "matteo", "silvia",
                 "volti", "faces", "primo piano", "ritratto", "portrait",

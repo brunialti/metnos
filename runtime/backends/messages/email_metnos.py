@@ -44,8 +44,8 @@ _MONTHS_IMAP = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
 
 # MX validation (§7.9 deterministic): pre-flight check destinatari per evitare
 # bounce silenziosi. 4 bounce reali 1-19/5/2026 verso destinatari mai
-# raggiungibili (`example.com` nullMX RFC 7505, `roberto@migadu.com`,
-# `roberto@knowcastle.com`). Soft-fail per-recipient: se rimangono validi,
+# raggiungibili (`example.com` nullMX RFC 7505, `roberto@example.com`,
+# `roberto@example.com`). Soft-fail per-recipient: se rimangono validi,
 # il send procede; rejected vanno in `failed[]` con error_code ERR_INVALID_RECIPIENT_MX.
 _MX_KEY_REGISTERED = False
 _ADDR_RE = re.compile(r"^[^@\s]+@([A-Za-z0-9.\-]+)$")

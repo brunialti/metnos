@@ -5,7 +5,7 @@ manifest_format = "1.0"
 
 name        = "read_files_ocr"
 version     = "0.1.0"
-author      = "Roberto Brunialti <roberto.brunialti@metnos.com>"
+author      = "Roberto Brunialti"
 affinity    = ["read", "leggi", "ocr", "scansione", "image", "immagine", "pdf", "tesseract", "estrai", "testo"]
 revertible  = false
 lifecycle   = "active"

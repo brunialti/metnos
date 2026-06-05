@@ -7,7 +7,7 @@ manifest_format = "1.0"
 
 name        = "share_files"
 version     = "0.1.0"
-author      = "Roberto Brunialti <roberto.brunialti@metnos.com>"
+author      = "Roberto Brunialti"
 affinity = [
     "share", "condividi", "condividere", "grant", "give-access",
     "permesso", "permission", "permessi",

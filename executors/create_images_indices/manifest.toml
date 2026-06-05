@@ -5,7 +5,7 @@ manifest_format = "1.0"
 
 name        = "create_images_indices"
 version     = "0.2.0"
-author      = "Roberto Brunialti <roberto.brunialti@metnos.com>"
+author      = "Roberto Brunialti"
 affinity    = ["indicizza", "indicizza foto", "indicizza cartella",
                 "build index", "rebuild", "vlm", "qwen", "arcface",
                 "embedding", "foto", "image", "photos"]

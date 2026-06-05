@@ -6,7 +6,7 @@ manifest_format = "1.0"
 
 name        = "compress_files"
 version     = "0.1.0"
-author      = "Roberto Brunialti <roberto.brunialti@metnos.com>"
+author      = "Roberto Brunialti"
 affinity    = [
     "comprimi", "comprimere", "compressione", "archivia", "archiviare",
     "compress", "archive", "zip", "tar", "gzip", "archivio", "backup",

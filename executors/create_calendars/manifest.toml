@@ -6,7 +6,7 @@ manifest_format = "1.0"
 
 name        = "create_calendars"
 version     = "0.1.0"
-author      = "Roberto Brunialti <roberto.brunialti@metnos.com>"
+author      = "Roberto Brunialti"
 affinity    = [
     "crea calendario", "nuovo calendario", "create calendar", "new calendar",
     "aggiungi calendario", "add calendar", "calendario", "calendar"

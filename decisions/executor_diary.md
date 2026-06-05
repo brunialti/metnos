@@ -462,7 +462,7 @@ Naming compositivo `azione_oggetto[_modificatore]` adottato per i nuovi (vedi `f
 **Motivazioni:**
 - [22/4/2026, seed pool] Mail e' una delle interfacce primarie dell'utente con il mondo. Senza accesso, l'assistente perde meta' della sua utilita'.
 - [25/4/2026, simulazione fatture] Pattern "trova le fatture nell'inbox" e' uno dei casi guida.
-- [reference_mail_check] La casella mykleos@knowcastle.com (register.it IMAPS) e' gia' configurata via `~/.config/mykleos/mail.env`. Lo script `check-mail.sh` e' il prototipo di consumer.
+- [reference_mail_check] La casella user@example.com (register.it IMAPS) e' gia' configurata via `~/.config/mykleos/mail.env`. Lo script `check-mail.sh` e' il prototipo di consumer.
 
 **Storia degli incontri:**
 - 22/4: seed pool

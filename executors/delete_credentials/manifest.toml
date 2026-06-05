@@ -7,7 +7,7 @@ manifest_format = "1.0"
 
 name        = "delete_credentials"
 version     = "0.1.0"
-author      = "Roberto Brunialti <roberto.brunialti@metnos.com>"
+author      = "Roberto Brunialti"
 affinity    = ["dimentica credenziale", "rimuovi token", "cancella credenziali",
                 "revoca account", "elimina chiave", "purge credenziali",
                 "forget credential", "remove token", "delete credential",

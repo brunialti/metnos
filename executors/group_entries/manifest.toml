@@ -5,7 +5,7 @@ manifest_format = "1.0"
 
 name        = "group_entries"
 version     = "0.1.0"
-author      = "Roberto Brunialti <roberto.brunialti@metnos.com>"
+author      = "Roberto Brunialti"
 affinity    = ["group", "raggruppa", "merge", "unisci", "concatena", "dedup", "deduplicate", "join", "combine", "entries"]
 
 [description]

@@ -1,8 +1,8 @@
 """MX/nullMX pre-flight validation in email_metnos.send (bounce fix 22/5/2026).
 
 Razionale: 4 bounce reali (1-19/5/2026) verso indirizzi mai raggiungibili —
-`mario@example.com` (nullMX RFC 7505), `roberto@migadu.com` (user unknown),
-`roberto@knowcastle.com` (mailbox inesistente). Senza pre-flight, lo SMTP
+`mario@example.com` (nullMX RFC 7505), `roberto@example.com` (user unknown),
+`roberto@example.com` (mailbox inesistente). Senza pre-flight, lo SMTP
 locale accetta il messaggio e il bounce arriva ore dopo nella INBOX di
 `metnos@metnos.com` come MAILER-DAEMON. §2.8 — no silent failure.
 
@@ -133,7 +133,7 @@ class MXValidationTests(unittest.TestCase):
                          [{"addr": "bad@example.com", "reason": "null_mx"}])
 
     def test_per_call_cache_single_lookup_per_domain(self):
-        """5 destinatari `*@migadu.com` → 1 sola call a _query_mx (cache per-call)."""
+        """5 destinatari `*@example.com` → 1 sola call a _query_mx (cache per-call)."""
         from backends.messages import email_metnos as bem
         calls = []
 
@@ -147,10 +147,10 @@ class MXValidationTests(unittest.TestCase):
              mock.patch.object(bem, "_query_mx", side_effect=counting_mx), \
              mock.patch.object(bem, "_query_a", return_value=False):
             bem.send({"messages": [
-                {"to": [f"u{i}@migadu.com" for i in range(5)],
+                {"to": [f"u{i}@example.com" for i in range(5)],
                  "subject": "x", "body": "y"},
             ], "account": "metnos_system"})
-        self.assertEqual(calls.count("migadu.com"), 1)
+        self.assertEqual(calls.count("example.com"), 1)
 
     def test_parse_addr_with_display_name(self):
         """`Name <a@d.com>` deve estrarre `d.com`."""

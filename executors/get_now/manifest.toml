@@ -4,7 +4,7 @@ manifest_format = "1.0"
 
 name        = "get_now"
 version     = "0.1.0"
-author      = "Roberto Brunialti <roberto.brunialti@metnos.com>"
+author      = "Roberto Brunialti"
 affinity    = [
     "time", "ora", "ore", "data", "orario", "orari", "fuso", "calendario", "now", "adesso",
                 "current", "che ora", "what time", "today", "oggi", "epoch", "timestamp"

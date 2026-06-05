@@ -6,7 +6,7 @@ manifest_format = "1.0"
 
 name        = "read_files_doc"
 version     = "0.1.0"
-author      = "Roberto Brunialti <roberto.brunialti@metnos.com>"
+author      = "Roberto Brunialti"
 affinity    = [
     "doc", "documento", "google doc", "google docs", "docs",
     "leggi documento", "read doc", "testo documento", "document",

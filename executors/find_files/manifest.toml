@@ -5,7 +5,7 @@ manifest_format = "1.0"
 
 name        = "find_files"
 version     = "0.2.0"
-author      = "Roberto Brunialti <roberto.brunialti@metnos.com>"
+author      = "Roberto Brunialti"
 affinity    = [
     "find", "trova", "cerca", "search", "ricerca", "file", "documento", "glob", "pattern"
             ]

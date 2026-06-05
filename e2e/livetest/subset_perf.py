@@ -9,7 +9,7 @@ DB del test. Uso: python3 subset_perf.py [web]
 import json, sys, time, re, urllib.request
 
 EP = "http://127.0.0.1:8770/agent/turn"
-TD = "/tmp/metnos_livetest"; EM = "mykleos@knowcastle.com"; RP = "brunialti/metnos"
+TD = "/tmp/metnos_livetest"; EM = "user@example.com"; RP = "brunialti/metnos"
 
 # (ord, baseline_ms r_full_2, expect_re, query)
 SUB = [

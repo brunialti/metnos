@@ -1817,7 +1817,7 @@
     "_catalog_gap": false
   },
   {
-    "query": "scrivi una mail a roberto@knowcastle.com con oggetto 'test' e corpo 'ciao'",
+    "query": "scrivi una mail a roberto@example.com con oggetto 'test' e corpo 'ciao'",
     "expected_path": [
       "request_new_executor",
       "send_messages"

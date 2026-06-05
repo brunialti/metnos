@@ -7,7 +7,7 @@ manifest_format = "1.0"
 
 name        = "set_credentials"
 version     = "0.1.0"
-author      = "Roberto Brunialti <roberto.brunialti@metnos.com>"
+author      = "Roberto Brunialti"
 affinity    = ["salva credenziale", "configura account", "registra token",
                 "memorizza chiave", "imposta credenziali", "save credential",
                 "configure account", "register token", "set credentials",

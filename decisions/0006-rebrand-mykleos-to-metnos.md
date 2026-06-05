@@ -14,7 +14,7 @@ del corpus — era già un marchio AI registrato altrove. Continuare con quel
 nome significava esporsi a un conflitto, sia legale sia di SEO, prima ancora
 di lanciare. La decisione andava presa rapidamente perché ogni giorno in più
 il volume di documenti, link interni, glossari, dialoghi galileiani, e
-filename pubblicati su `mykleos.knowcastle.com` cresceva, e con lui il costo
+filename pubblicati su `mykleos.example.com` cresceva, e con lui il costo
 del cambio.
 
 Il nome interno del processo — `myclaw`, vivente in `/opt/myclaw/`, nei
@@ -43,7 +43,7 @@ Concretamente è stato fatto: 50+ file in `/opt/myclaw/docs/` aggiornati nei
 titoli, meta tag, canonical, link interni, keyword; 18 filename HTML
 rinominati `Mykleos_*.html` / `Myclaw_*.html` → `Metnos_*.html`; mappa di
 redirect Cloudflare 301 dai vecchi URL ai nuovi in `_redirects`. La email
-pubblica visibile è diventata `roberto.brunialti@metnos.com`. Le memorie
+pubblica visibile è diventata `roberto@example.com`. Le memorie
 locali Claude (`mykleos_*.md`) restano come sono, perché sono ID di memoria
 non pubblici: solo il loro contenuto è stato aggiornato.
 
@@ -72,7 +72,7 @@ Ubuntu il cui kernel resta `linux`) anche desiderabile.
 I documenti pubblici parlano sempre di Metnos; il codice e le memorie
 tecniche tollerano `myclaw` come riferimento al processo. Cloudflare Pages
 è da configurare con `metnos.com` come custom domain (il sito risponde
-ancora su `mykleos.knowcastle.com` come fallback finché il custom domain
+ancora su `mykleos.example.com` come fallback finché il custom domain
 non è attivo, ma i canonical nei file HTML puntano già al nome nuovo).
 
 Restano puliture residue da fare in batch quando ce ne sarà occasione: i

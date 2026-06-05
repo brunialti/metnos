@@ -6,7 +6,7 @@ manifest_format = "1.0"
 
 name        = "find_images_indices"
 version     = "0.2.0"
-author      = "Roberto Brunialti <roberto.brunialti@metnos.com>"
+author      = "Roberto Brunialti"
 affinity    = ["cerca", "find", "search", "ricerca-foto", "ricerca-volti",
                 "ricerca-semantica", "foto", "image", "volti", "faces",
                 "persons", "geotag", "near", "vicino", "primo-piano",

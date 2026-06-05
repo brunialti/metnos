@@ -67,9 +67,9 @@ def _load_from_credentials_store(account: str) -> dict | None:
     if not payload.get("user") or not payload.get("password"):
         return None
     return {
-        "imap_host":  payload.get("imap_host", "imap.migadu.com"),
+        "imap_host":  payload.get("imap_host", "imap.example.com"),
         "imap_port":  int(payload.get("imap_port", 993)),
-        "smtp_host":  payload.get("smtp_host", "smtp.migadu.com"),
+        "smtp_host":  payload.get("smtp_host", "smtp.example.com"),
         "smtp_port":  int(payload.get("smtp_port", 465)),
         "user":       payload["user"],
         "password":   payload["password"],
@@ -88,9 +88,9 @@ def _account_creds(account: str) -> dict:
     if account in ("metnos_system", "metnos"):
         env = _read_env(_C.PATH_USER_CONFIG / "mail.env")
         return {
-            "imap_host": env.get("METNOS_MAIL_HOST_IMAP", "imap.migadu.com"),
+            "imap_host": env.get("METNOS_MAIL_HOST_IMAP", "imap.example.com"),
             "imap_port": int(env.get("METNOS_MAIL_PORT_IMAP", "993")),
-            "smtp_host": env.get("METNOS_MAIL_HOST_SMTP", "smtp.migadu.com"),
+            "smtp_host": env.get("METNOS_MAIL_HOST_SMTP", "smtp.example.com"),
             "smtp_port": int(env.get("METNOS_MAIL_PORT_SMTP", "465")),
             "user": env.get("METNOS_SYSTEM_USER", ""),
             "password": env.get("METNOS_SYSTEM_PASS", ""),
@@ -99,9 +99,9 @@ def _account_creds(account: str) -> dict:
     if account == "metnos_roberto":
         env = _read_env(_C.PATH_USER_CONFIG / "mail.env")
         return {
-            "imap_host": env.get("METNOS_MAIL_HOST_IMAP", "imap.migadu.com"),
+            "imap_host": env.get("METNOS_MAIL_HOST_IMAP", "imap.example.com"),
             "imap_port": int(env.get("METNOS_MAIL_PORT_IMAP", "993")),
-            "smtp_host": env.get("METNOS_MAIL_HOST_SMTP", "smtp.migadu.com"),
+            "smtp_host": env.get("METNOS_MAIL_HOST_SMTP", "smtp.example.com"),
             "smtp_port": int(env.get("METNOS_MAIL_PORT_SMTP", "465")),
             "user": env.get("METNOS_ROBERTO_USER", ""),
             "password": env.get("METNOS_ROBERTO_PASS", ""),

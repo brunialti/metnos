@@ -5,7 +5,7 @@ manifest_format = "1.0"
 
 name        = "read_files_csv"
 version     = "0.1.0"
-author      = "Roberto Brunialti <roberto.brunialti@metnos.com>"
+author      = "Roberto Brunialti"
 affinity    = ["read", "csv", "leggi", "tabella", "spreadsheet", "foglio", "dati", "import"]
 revertible  = false
 lifecycle   = "active"

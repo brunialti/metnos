@@ -6,7 +6,7 @@ manifest_format = "1.0"
 
 name        = "delete_images_indices"
 version     = "0.1.0"
-author      = "Roberto Brunialti <roberto.brunialti@metnos.com>"
+author      = "Roberto Brunialti"
 affinity    = ["cancella", "delete", "rimuovi", "remove", "indice", "index", "rebuild", "free-storage", "foto", "image"]
 revertible  = false
 

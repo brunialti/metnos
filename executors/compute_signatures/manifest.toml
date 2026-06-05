@@ -1,7 +1,7 @@
 manifest_format = "1.0"
 name        = "compute_signatures"
 version     = "0.1.0"
-author      = "Roberto Brunialti <roberto.brunialti@metnos.com>"
+author      = "Roberto Brunialti"
 affinity = ["compute", "canonicalize", "signature", "reversibility", "seed", "bootstrap"]
 
 revertible       = true

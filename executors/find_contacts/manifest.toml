@@ -5,7 +5,7 @@ manifest_format = "1.0"
 
 name        = "find_contacts"
 version     = "0.1.0"
-author      = "Roberto Brunialti <roberto.brunialti@metnos.com>"
+author      = "Roberto Brunialti"
 affinity    = [
     "find", "trova", "cerca", "search", "ricerca",
     "contatto", "contatti", "contact", "contacts",

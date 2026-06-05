@@ -4,7 +4,7 @@ manifest_format = "1.0"
 
 name        = "send_messages"
 version     = "0.4.0"
-author      = "Roberto Brunialti <roberto.brunialti@metnos.com>"
+author      = "Roberto Brunialti"
 affinity    = ["send", "invia", "spedisci", "mail", "email", "mandare", "rispondere", "reply", "telegram", "messaggio", "manda a", "scrivi a"]
 revertible  = false
 lifecycle   = "active"
@@ -104,7 +104,7 @@ en = "SMTP Account to use. Valid: 'metnos_system' (metnos@metnos.com, default), 
 
 [[capabilities]]
 name = "mail:send"
-hint = ["smtp.migadu.com", "authsmtp.securemail.pro"]
+hint = ["smtp.example.com", "authsmtp.securemail.pro"]
 
 [[capabilities]]
 name = "messaging:send"

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Controlla la posta in arrivo della casella mykleos@knowcastle.com (register.it).
+# Controlla la posta in arrivo della casella user@example.com (register.it).
 # Credenziali lette da ~/.config/mykleos/mail.env (chmod 600), non da ambiente
 # interattivo n? da memoria della conversazione.
 #

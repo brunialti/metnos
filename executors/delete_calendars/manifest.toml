@@ -6,7 +6,7 @@ manifest_format = "1.0"
 
 name        = "delete_calendars"
 version     = "0.1.0"
-author      = "Roberto Brunialti <roberto.brunialti@metnos.com>"
+author      = "Roberto Brunialti"
 affinity    = [
     "cancella calendario", "elimina calendario", "rimuovi calendario",
     "delete calendar", "remove calendar", "calendario", "calendar"

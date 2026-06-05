@@ -37,9 +37,9 @@ Payload schema:
 {
   "user":       "metnos@metnos.com",
   "password":   "...",
-  "imap_host":  "imap.migadu.com",
+  "imap_host":  "imap.example.com",
   "imap_port":  993,
-  "smtp_host":  "smtp.migadu.com",
+  "smtp_host":  "smtp.example.com",
   "smtp_port":  465,
   "verify_tls": true
 }
@@ -65,8 +65,8 @@ python3 -m credentials_migrate             # applica
 Output sessione 14/5/2026:
 ```
 [OK] created  smtp_metnos_system     user=metnos@metnos.com
-[OK] created  smtp_metnos_roberto    user=roberto.brunialti@metnos.com
-[OK] created  smtp_mykleos           user=mykleos@knowcastle.com
+[OK] created  smtp_metnos_roberto    user=roberto@example.com
+[OK] created  smtp_mykleos           user=user@example.com
 [OK] created  smtp_knowcastle        user=roberto@example.com
 [OK] created  smtp_tiscali           user=roberto_brunialti@tiscali.it
 ```

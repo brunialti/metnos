@@ -5,7 +5,7 @@ manifest_format = "1.0"
 
 name        = "filter_lists"
 version     = "0.1.0"
-author      = "Roberto Brunialti <roberto.brunialti@metnos.com>"
+author      = "Roberto Brunialti"
 affinity    = ["intersect", "intersezione", "union", "unione",
                 "differenza", "difference", "overlap", "sovrappone",
                 "sovrapposizione", "in comune", "operazioni liste",

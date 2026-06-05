@@ -5,7 +5,7 @@ manifest_format = "1.0"
 
 name        = "delete_persons"
 version     = "0.1.0"
-author      = "Roberto Brunialti <roberto.brunialti@metnos.com>"
+author      = "Roberto Brunialti"
 affinity    = ["dimentica", "rimuovi persona", "cancella persona", "elimina",
                 "cancella tutte le persone", "purge persone",
                 "remove person", "forget", "delete person", "unenroll",

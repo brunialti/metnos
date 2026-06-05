@@ -6,7 +6,7 @@ manifest_format = "1.0"
 
 name        = "move_files"
 version     = "0.9.0"
-author      = "Roberto Brunialti <roberto.brunialti@metnos.com>"
+author      = "Roberto Brunialti"
 affinity    = [
     "move", "sposta", "rinomina", "rename", "mv", "spostare", "rinominare", "ordina",
                 "organizza", "batch"

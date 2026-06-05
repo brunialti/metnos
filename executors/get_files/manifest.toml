@@ -6,7 +6,7 @@ manifest_format = "1.0"
 
 name        = "get_files"
 version     = "0.4.0"
-author      = "Roberto Brunialti <roberto.brunialti@metnos.com>"
+author      = "Roberto Brunialti"
 affinity    = ["exif", "foto", "photo", "image", "gps", "geotag", "luogo", "place", "camera", "image_dimensions"]
 
 [description]
