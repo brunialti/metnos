@@ -560,10 +560,14 @@ def delete(args: dict) -> dict:
             r"BEGIN:VEVENT.*?UID:" + re.escape(uid) + r".*?END:VEVENT\r?\n",
             re.S,
         )
+        # Cattura il blocco VEVENT PRIMA di rimuoverlo: serve all'undo (§2.3)
+        # per re-inserirlo identico via `restore()`.
+        m = pat.search(raw)
         new_raw, n_sub = pat.subn("", raw, count=1)
         if n_sub > 0:
             raw = new_raw
-            deleted.append({"ok": True, "uid": uid, "id": uid})
+            deleted.append({"ok": True, "uid": uid, "id": uid,
+                            "vevent": m.group(0) if m else None})
         else:
             deleted.append({"ok": False, "uid": uid, "id": uid,
                             "error": "uid_not_found"})
@@ -585,6 +589,61 @@ def delete(args: dict) -> dict:
         "results": deleted,
         "calendar_source": "local_ics",
     }
+
+
+def restore(args: dict) -> dict:
+    """Undo §2.3 di `delete`: re-inserisce blocchi VEVENT (testo) nel calendar.
+
+    Args: `vevents: list[str]` = blocchi `BEGIN:VEVENT...END:VEVENT` catturati
+    dal delete. Idempotente: un uid gia' presente nel calendar viene saltato.
+    Rewrite atomico, stesso storage di create/delete.
+    """
+    if not isinstance(args, dict):
+        return _err("args must be an object", with_results=True,
+                    extra={"error_class": "invalid_args", "n_restored": 0})
+    vevents = [v for v in (args.get("vevents") or []) if isinstance(v, str) and v.strip()]
+    if not vevents:
+        return {"ok": True, "n_restored": 0, "results": [],
+                "calendar_source": "local_ics"}
+
+    path = _storage_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if not path.exists():
+        path.write_text(
+            "BEGIN:VCALENDAR\r\nVERSION:2.0\r\n"
+            "PRODID:-//Metnos//local_ics//IT\r\nCALSCALE:GREGORIAN\r\n"
+            "END:VCALENDAR\r\n", encoding="utf-8")
+    try:
+        existing = path.read_text(encoding="utf-8")
+    except OSError as ex:
+        return _err(f"calendar.ics non leggibile: {ex}", with_results=True,
+                    extra={"error_class": "storage_error", "n_restored": 0})
+
+    present_uids = {ev["uid"] for ev in _load_events(path) if ev.get("uid")}
+    end_marker = "END:VCALENDAR"
+    results = []
+    for block in vevents:
+        mu = _RE_UID.search(block)
+        uid = mu.group(1) if mu else ""
+        if uid and uid in present_uids:
+            results.append({"ok": True, "uid": uid, "restored": False,
+                            "reason": "already_present"})
+            continue
+        blk = block if block.endswith("\n") else block + "\r\n"
+        if end_marker in existing:
+            existing = existing.replace(end_marker, blk + end_marker, 1)
+        else:
+            existing = existing.rstrip("\r\n") + "\r\n" + blk + end_marker + "\r\n"
+        if uid:
+            present_uids.add(uid)
+        results.append({"ok": True, "uid": uid, "restored": True})
+
+    tmp_path = path.with_suffix(path.suffix + ".tmp")
+    tmp_path.write_text(existing, encoding="utf-8")
+    tmp_path.replace(path)
+    n_restored = sum(1 for r in results if r.get("restored"))
+    return {"ok": True, "n_restored": n_restored, "results": results,
+            "calendar_source": "local_ics"}
 
 
 # ---------------------------------------------------------------------------

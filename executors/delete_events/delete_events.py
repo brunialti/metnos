@@ -65,6 +65,31 @@ def invoke(args):
     return backend.delete(args)
 
 
+def reverse(plan, results):
+    """Undo §2.3 (module.reverse): ricrea gli eventi cancellati.
+
+    LOCAL ICS: re-inserisce i blocchi VEVENT catturati dal delete (restore
+    verbatim, stesso uid). GOOGLE: l'evento esterno non e' ricreabile dal solo
+    payload del delete → onesti, quei record contano come non-ribaltabili
+    (§2.8). Dispatch sul campo `vevent` presente nei result locali.
+    """
+    res = results or {}
+    rows = res.get("results") or []
+    vevents = [r.get("vevent") for r in rows
+               if isinstance(r, dict) and r.get("ok") and r.get("vevent")]
+    not_reversible = [r.get("uid") for r in rows
+                      if isinstance(r, dict) and r.get("ok") and not r.get("vevent")]
+    out, restored = [], 0
+    if vevents:
+        rr = local_ics.restore({"vevents": vevents})
+        out = rr.get("results") or []
+        restored = int(rr.get("n_restored") or 0)
+    failed = [{"uid": u, "error": "evento esterno (google): non ricreabile da undo"}
+              for u in not_reversible]
+    return {"ok": len(failed) == 0, "ok_count": restored,
+            "fail_count": len(failed), "results": out, "failed": failed}
+
+
 def main():
     try:
         args = json.load(sys.stdin)
