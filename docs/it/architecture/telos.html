@@ -4,7 +4,7 @@
  <meta charset="UTF-8">
  <meta name="viewport" content="width=device-width, initial-scale=1.0">
  <title>Metnos &mdash; telos (tested)</title>
- <meta name="description" content="Microprogettazione di telos: i fini ultimi dell'utente, la funzione di allineamento, il bother budget con quote di routine, il telos di non-rinuncia, la clausola di stop. Sostituisce telos.">
+ <meta name="description" content="Microprogettazione di telos: i fini ultimi dell'utente, la funzione di allineamento, il bother budget con quote di routine, la clausola di stop.">
  <meta name="keywords" content="telos, fini ultimi, allineamento, bother budget, non-rinuncia, coltivazione strumenti, anti-paternalismo, microprogettazione, metnos, Metnos">
  <meta name="author" content="Roberto Brunialti">
  <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large">
@@ -70,7 +70,7 @@ li { margin-bottom: 4px; }.lead { font-size: 12pt; color: var(--navy); border-le
 <body>
 <div style="margin: 18px 0; border-left: 5px solid #16a34a; background: #dcfce7; color: #14532d; padding: 14px 20px; border-radius: 0 8px 8px 0; font-size: 11pt; font-family: 'Segoe UI', Calibri, -apple-system, sans-serif; line-height: 1.55;">
 <strong>Microprogettazione &mdash; allineata al codice al 1&deg;.</strong>
-Doc canonico testato dopo l'implementazione: <code>TELOS.md</code> popolato in <code>workspace/</code> con i sette telos canonici, telos di non-rinuncia integrato nella cascata di <a href="synt.html" style="color: #14532d; text-decoration: underline;">synt</a> (compose+generate+on-the-fly), allineamento con l'<a href="../Metnos_Architettura_Intro_v1.html" style="color: #14532d; text-decoration: underline;">Architettura </a> e la triade <a href="executor.html" style="color: #14532d; text-decoration: underline;">executor</a>+<a href="mnest.html" style="color: #14532d; text-decoration: underline;">mnest</a>+<a href="mnestoma.html" style="color: #14532d; text-decoration: underline;">mnestoma</a>. Riferimento normativo per l'implementazione. Sostituisce la (metnos, neurone, sinapsi, proteoma).
+Doc canonico testato dopo l'implementazione: <code>TELOS.md</code> popolato in <code>workspace/</code> con i sette telos canonici, telos di non-rinuncia integrato nella cascata di <a href="synt.html" style="color: #14532d; text-decoration: underline;">synt</a> (compose+generate+on-the-fly), allineamento con l'<a href="../Metnos_Architettura_Intro_v1.html" style="color: #14532d; text-decoration: underline;">Architettura </a> e la triade <a href="executor.html" style="color: #14532d; text-decoration: underline;">executor</a>+<a href="mnest.html" style="color: #14532d; text-decoration: underline;">mnest</a>+<a href="mnestoma.html" style="color: #14532d; text-decoration: underline;">mnestoma</a>. Riferimento normativo per l'implementazione. Riferimento normativo per l'implementazione.
 </div>
 
 <nav aria-label="Language" style="position:fixed;top:16px;right:20px;z-index:9999;font-family:'Segoe UI',Calibri,sans-serif;font-size:10pt;letter-spacing:2px;background:#FAFBFC;border:1px solid #d0d7de;border-radius:14px;padding:4px 10px;box-shadow:0 1px 4px rgba(0,0,0,0.04);">
@@ -92,7 +92,6 @@ Doc canonico testato dopo l'implementazione: <code>TELOS.md</code> popolato in <
  <div class="meta">
  Microprogettazione &mdash; <br>
  Allineata con Architettura (cap. 11), executor/mnest/mnestoma e <a href="synt.html"><code>synt</code></a>.<br>
- Sostituisce telos (riscrittura completa).<br>
  <br>
  Pubblico: chi implementer&agrave; <code>TELOS.md</code>, la funzione di allineamento,<br>il bother budget e la clausola di stop.<br>
  Lettura: 22 minuti.
@@ -128,9 +127,9 @@ Framework comune in <code>runtime/telos_lenses/_base.py</code> con
 SHARED_PREAMBLE / SHARED_NAMING_SCHEMA / SHARED_OUTPUT_FORMAT in stile
 &sect;6 prescrittivo (DEVI / NON DEVI / OK / ERRORE). Naming Authority
 (<code>runtime/naming_grammar.py</code>) impone 5 regole R0..R4 a
-prove di GBNF + validator deterministico. Esecuzione finora SOLO offline
-via CLI <code>python3 -m runtime.telos_introspect</code>; integrazione
-scheduler v2 daily@03:30 pending. Toggle individuale per lente:
+prove di GBNF + validator deterministico. Esecuzione via CLI
+<code>python3 -m runtime.telos_introspect</code> e scheduler v2
+<code>daily@03:30</code>. Toggle individuale per lente:
 <code>METNOS_TELOS_LENS_&lt;NAME&gt;=1</code>. Telemetria persistente:
 <code>~/.local/share/metnos/telos_proposals.jsonl</code>.
 </div>
@@ -331,38 +330,8 @@ expected_alignment = (&alpha; &middot; top + &gamma; &middot; rest) &middot; urg
  <li><code>bother_cost &isin; [0, &infin;)</code>: vedi cap. 6.</li>
 </ul>
 
-<h2>Storia formula &mdash; come siamo arrivati a </h2>
-
-<table>
-<thead><tr><th>Versione</th><th>Formula base</th><th>Distribuzione su 481 proposte backfill</th><th>Esito</th></tr></thead>
-<tbody>
-<tr>
- <td><strong></strong> (22/5 mattina)</td>
- <td><code>&sum; peso &middot; fit</code> (sum-product)</td>
- <td>min 0.077, max 0.569, mean 0.302, stdev 0.075</td>
- <td>Ordering invertito: il tuttofare medio (fit&nbsp;~0.5 su tutti) superava lo specialista perfetto. Il segnale del Giudice (per-telos <em>chiaro</em>) veniva diluito dall'aggregazione.</td>
-</tr>
-<tr>
- <td><strong></strong> (22/5 pomeriggio)</td>
- <td><code>top + 0.3 &middot; rest</code></td>
- <td>min 0.072, max 0.278, mean 0.176, stdev 0.039</td>
- <td>Ordering corretto, ma stdev dimezzato: il top1 era limitato ai 6 pesi discreti (range [0.10, 0.25]), perdendo dispersione utile per il triage.</td>
-</tr>
-<tr>
- <td><strong></strong> (22/5 sera)</td>
- <td><code>2 &middot; top + 0.5 &middot; rest</code></td>
- <td>min 0.144, max 0.524, mean 0.338, stdev 0.073</td>
- <td>Ordering corretto + stdev al livello di. Il boost <code>&alpha;</code> espande la dinamica del termine dominante; <code>&gamma;</code> piu' alto valorizza le proposte multi-telos (98.5% del corpus).</td>
-</tr>
-</tbody>
-</table>
-
 <p>
-Il diagnostico chiave: il Giudice teleologico (LLM Gemma 4 26B locale)
-discrimina <em>benissimo</em> per-telos (mean(max(fit)) = 0.87, mean(stdev fit
-per proposta) = 0.32: distribuzione bimodale, l'LLM <em>sa</em> quali telos
-servono). Il problema era solo l'aggregazione che apparteneva al codice
-deterministico, non al giudizio.
+La formula corrente (<code>2 &middot; top + 0.5 &middot; rest</code>) garantisce che uno specialista perfetto su un telos pesante batta un tuttofare medio. Il Giudice teleologico (LLM Gemma 4 26B locale) discrimina per-telos con distribuzione bimodale; il <code>&alpha;</code> boost espande la dinamica del termine dominante e <code>&gamma;</code> valorizza le proposte multi-telos.
 </p>
 
 <h2>Come si stimano i <code>fit</code><sub>i</sub></h2>
@@ -396,7 +365,7 @@ Una proposta passa entrambi i filtri: synt produce qualcosa di buono (<code>R &g
 <p>
 Le proposte vengono ordinate per <code>expected_alignment</code> e
 sottoposte all'utente via <strong>dashboard
-<code>/admin/proposals/telos</code></strong> ( + 0157, wired. Per ogni proposta la UI mostra:
+<code>/admin/proposals/telos</code></strong> (wired). Per ogni proposta la UI mostra:
 </p>
 
 <ul>
@@ -440,89 +409,17 @@ top (0.6%); <code>&gt; 0.45</code> = 23 (5%, soglia review); <code>&gt;
 0.40</code> = 88 (18%, top decile).
 </p>
 
-<h1 id="cap5">5. Il telos di non-rinuncia (storico, rimosso )</h1>
-
-<div class="callout warning">
-<strong>: <code>t.coltivazione_strumenti</code> rimosso dal
-set canonico.</strong>
-Il backfill empirico ha mostrato che questo &laquo;telos&raquo; si comportava
-come una <em>clausola di runtime</em> universale, non come un fine ultimo:
-qualunque proposta di estensione capacit&agrave; lo soddisfaceva almeno
-parzialmente, e il fit moderato risultante diventava rumore di fondo
-sull'AlignmentEngine, riducendo il potere discriminativo del Giudice.
-La semantica anti-rinuncia (esaurisci la cascata synt prima di rispondere
-&laquo;non posso&raquo;) rimane attiva nel runtime ma come <em>policy
-deterministica</em>, non come telos pesato. Vedi.
-</div>
+<h1 id="cap5">5. La clausola anti-rinuncia e la clausola di stop</h1>
 
 <p class="lead">
-<code>t.coltivazione_strumenti</code> &egrave; il telos pi&ugrave; nuovo
-(introdotto) e quello che cambia di pi&ugrave; il significato
-di &laquo;non si applica alle richieste esplicite&raquo;. Lo facciamo vivere a
-parte perch&eacute; meccanicamente si comporta in modo diverso dagli altri.
-Il capitolo &egrave; conservato come riferimento storico al razionale
-originale.
+La semantica anti-rinuncia (esaurire la cascata synt prima di rispondere
+&laquo;non posso&raquo;) &egrave; attiva nel runtime come <em>policy
+deterministica</em>, non come telos pesato. Garantisce che il sistema
+tenti la cascata (comporre, generare, fondere) prima di emettere un
+fallimento.
 </p>
 
-<h2>5.1 Il problema che risolve</h2>
-
-<p>
-Senza questo telos, il design originale aveva un buco: di fronte a una
-richiesta utente che il pool non sapeva soddisfare, il sistema poteva
-rispondere &laquo;non posso&raquo; senza tentare strategie alternative. Il
-fallimento era lecito, ma era una <em>rinuncia silenziosa</em>: niente
-tracciava il tentativo, niente cresceva nel pool, l'utente perdeva fiducia.
-La risposta corretta &egrave; un telos esplicito che spinge synt a esaurire
-la cascata (comporre, generare; nei tempi pi&ugrave; lunghi: fondere,
-generalizzare) prima di rispondere &laquo;non posso&raquo;.
-</p>
-
-<h2>5.2 Differenza con gli altri telos</h2>
-
-<table>
-<thead><tr><th style="width:32%">Aspetto</th><th>Telos &laquo;classici&raquo;</th><th>t.coltivazione_strumenti</th></tr></thead>
-<tbody>
-<tr><td>Si applica a&hellip;</td><td>solo proposte spontanee di Metnos</td><td>anche a richieste esplicite dell'utente, ma solo per <em>provare strategie</em>, non per giudicarle</td></tr>
-<tr><td>Cosa influenza</td><td>l'<code>expected_alignment</code> di una proposta gi&agrave; formulata</td><td>il <em>comportamento di synt</em> nel formulare proposte (cascata)</td></tr>
-<tr><td>Costo di violazione</td><td>la proposta non arriva all'utente</td><td>una richiesta resta inattuata senza tentativi tracciati</td></tr>
-<tr><td>Misura il successo come</td><td>fit alto + urgency alta</td><td>cascata esaurita prima di emettere <code>abandoned</code></td></tr>
-</tbody>
-</table>
-
-<h2>5.3 La distinzione fallimento vs rinuncia</h2>
-
-<p>
-Il telos non chiede di soddisfare ogni richiesta, chiede di non rinunciare in
-silenzio. Sono due cose diverse.
-</p>
-
-<table>
-<thead><tr><th style="width:22%">Esito</th><th>Forma</th><th>Onora il telos?</th></tr></thead>
-<tbody>
-<tr>
- <td><strong>Successo</strong></td>
- <td>Una strategia della cascata chiude il proto-mnest.</td>
- <td>S&igrave;, naturalmente.</td>
-</tr>
-<tr>
- <td><strong>Fallimento motivato</strong></td>
- <td>&laquo;Ho tentato comporre con questi N executor, ho tentato generare con questa specifica, il test di nascita falliva sul caso X. Non posso ora; ti propongo Y come alternativa parziale&raquo;.</td>
- <td>S&igrave;: il tentativo &egrave; tracciato, l'utente sa cosa sapevi e cosa non sapevi.</td>
-</tr>
-<tr>
- <td><strong>Abbandono per budget/policy</strong></td>
- <td>&laquo;Ho iniziato la cascata, ho consumato il budget hard, mi fermo. Ecco cosa ho fatto finora.&raquo;</td>
- <td>S&igrave;: il limite &egrave; documentato, non &egrave; rinuncia.</td>
-</tr>
-<tr>
- <td><strong>Rinuncia silenziosa</strong></td>
- <td>&laquo;Non posso&raquo; senza tentativi, senza spiegazione.</td>
- <td><strong>No.</strong> Viola il telos.</td>
-</tr>
-</tbody>
-</table>
-
-<h2>5.4 La clausola di stop</h2>
+<h2>5.1 La clausola di stop</h2>
 
 <div class="callout danger">
 <strong>Stop esplicito disattiva il telos.</strong> Se l'utente dice
@@ -542,7 +439,7 @@ synt</a>). Lo stop &egrave; sempre udibile: l'LLM che gestisce il turno
 ha nel prompt un riconoscitore esplicito di formule di interruzione.
 </p>
 
-<h2>5.5 Soglie di abbandono</h2>
+<h2>5.2 Soglie di abbandono</h2>
 
 <p>
 Il telos di non-rinuncia non significa retry illimitato. Le soglie di
@@ -649,8 +546,7 @@ in finestra vanno al loro slot programmato, indipendentemente dal digest.
 <p>
 Tre tipi di feedback aggiornano i pesi <em>effettivi</em> dei telos &mdash;
 non i pesi dichiarati in <code>TELOS.md</code>, che restano la ground truth
-revisionabile dall'utente. Il <code>TrustStore</code> definito in
-<code>rl_offline.html</code> (da riscrivere) si estende con un asse
+revisionabile dall'utente. Il <code>TrustStore</code> si estende con un asse
 <code>telos_fitness: dict[telos_id, EMA]</code>.
 </p>
 
@@ -661,7 +557,7 @@ revisionabile dall'utente. Il <code>TrustStore</code> definito in
 <tr><td><strong>Accept con modifica</strong></td><td>+0.5</td><td>EMA sale un po'. Segnala che il telos era giusto, il piano no.</td></tr>
 <tr><td><strong>Rifiuto esplicito</strong></td><td>&minus;1.0</td><td>EMA scende. Il telos &egrave; meno importante di quanto dichiarato.</td></tr>
 <tr><td><strong>Rifiuto con &laquo;mai pi&ugrave;&raquo;</strong></td><td>&minus;2.0</td><td>EMA scende molto. L'<code>effect_class</code> entra nella never-list del telos.</td></tr>
-<tr><td><strong>Stop esplicito (cap. 5.4)</strong></td><td>&minus;0.7</td><td>EMA del solo <code>t.coltivazione_strumenti</code> scende: l'utente ha ridotto la voglia di insistere su quel filone.</td></tr>
+<tr><td><strong>Stop esplicito (cap. 5.1)</strong></td><td>&minus;0.7</td><td>EMA dei telos coinvolti scende: l'utente ha ridotto la voglia di insistere su quel filone.</td></tr>
 <tr><td><strong>Silenzio 48h</strong></td><td>&minus;0.3</td><td>Segnale debole ma presente.</td></tr>
 <tr><td><strong>Vista ma non decisa</strong></td><td>&minus;0.1</td><td>Effetto quasi nullo.</td></tr>
 </tbody>
@@ -754,12 +650,12 @@ from uuid import UUID
 
 @dataclass(frozen=True)
 class Telos:
- id: str # "t.coltivazione_strumenti"
- phrase: str # "Non lasciare inattuata una mia richiesta, se possibile"
+ id: str # "t.tempo"
+ phrase: str # "Liberare il mio tempo dalle incombenze ripetitive"
  weight_declared: float # [0,1], somma normalizzata
  activation_threshold: float # [0,1]
  notes: str # contesto per l'LLM
- is_non_retreat: bool = False # solo t.coltivazione_strumenti
+ is_non_retreat: bool = False # reserved, currently unused
 
 @dataclass(frozen=True)
 class FitEstimate:
@@ -911,7 +807,7 @@ Leggi.
 <tr><td>Stesso tipo di proposta 3 volte rifiutata con &laquo;mai pi&ugrave;&raquo;</td><td>L'<code>effect_class</code> entra in <code>telos_neverlist</code>: le successive vengono auto-reject senza chiamata LLM.</td></tr>
 <tr><td>Azione richiesta esplicitamente che viola un telos &laquo;classico&raquo; (es. spesa alta con telos parsimonia)</td><td>La funzione di allineamento <strong>non viene invocata</strong>. Anti-paternalismo (cap. 8).</td></tr>
 <tr><td>Richiesta che il pool non sa fare</td><td>synt entra in cascata. Il telos di non-rinuncia &egrave; attivo. Se la cascata fallisce, l'esito &egrave; <code>abandoned</code> motivato (non <code>cancelled</code>).</td></tr>
-<tr><td>Utente attiva clausola di stop a met&agrave; cascata</td><td>Stato passa a <code>cancelled_by_user</code>. EMA di <code>t.coltivazione_strumenti</code> scende di 0.7. Il pattern non si ritenta entro 24 h.</td></tr>
+<tr><td>Utente attiva clausola di stop a met&agrave; cascata</td><td>Stato passa a <code>cancelled_by_user</code>. EMA dei telos coinvolti scende di 0.7. Il pattern non si ritenta entro 24 h.</td></tr>
 <tr><td>Stop ambiguo (&laquo;hmm vediamo&raquo;)</td><td>Metnos chiede conferma: &laquo;vuoi che mi fermi su X?&raquo;. Non interrompe d'iniziativa.</td></tr>
 <tr><td>Firing di scheduler in finestra protetta</td><td>Differito al prossimo slot non-protetto. Non pubblicato immediatamente, non scartato.</td></tr>
 <tr><td>Firing di scheduler fuori dal ritmo concordato</td><td>Pesa 50% del bother di una proposta ad-hoc.</td></tr>
@@ -924,8 +820,7 @@ Leggi.
 <h1 id="cap13">13. Domande aperte</h1>
 
 <ol>
-<li><strong>Quanti telos di non-rinuncia.</strong> Oggi uno solo (<code>t.coltivazione_strumenti</code>). Ne servir&agrave; mai un altro? Per esempio, &laquo;non lasciare inattuata una segnalazione di sicurezza&raquo;? Aperta.</li>
-<li><strong>Stop &laquo;ricorrente&raquo;.</strong> Se l'utente ferma N volte di fila lo stesso pattern, il sistema dovrebbe abbassare il peso di <code>t.coltivazione_strumenti</code> sotto la soglia di attivazione e di fatto disabilitare il telos? Oppure restare al rifiuto puntuale? Aperta; default conservativo: rifiuto puntuale.</li>
+<li><strong>Stop &laquo;ricorrente&raquo;.</strong> Se l'utente ferma N volte di fila lo stesso pattern, il sistema dovrebbe disabilitare la clausola anti-rinuncia per quel filone? Oppure restare al rifiuto puntuale? Aperta; default conservativo: rifiuto puntuale.</li>
 <li><strong>Soglie di scheduling.</strong> Quando le schedule attive in un canale diventano &laquo;troppe&raquo;? Default tentativo: max 2/giorno per canale, max 1 schedule viva contemporaneamente per stesso topic. Da calibrare.</li>
 <li><strong>Telos legati a effect_class.</strong> Un telos pu&ograve; bloccare un'intera classe di effetto, non solo singole proposte. Il meccanismo della <code>telos_neverlist</code> oggi opera sull'effect_class; possibile estensione futura: legare effect_class a pi&ugrave; telos contemporaneamente. Aperta.</li>
 <li><strong>Multi-utente.</strong> Quando Metnos avr&agrave; pi&ugrave; sender pairati, i telos sono per-utente, condivisi, o un misto? Probabilmente per-utente con un set condiviso minimo (sicurezza, perimetro). Da decidere.</li>
@@ -1044,7 +939,7 @@ nuovi nomi 2-4 livelli (R0..R4).</p>
 
 <p style="text-align:center; color:var(--muted); font-size:9.5pt; margin-top:40px;">
 Metnos &mdash; <em>telos</em> microprogettazione <br>
-Riscrittura. Sostituisce telos (metnos, neuroni, sinapsi). Senza telos, la proattivit&agrave; &egrave; rumore.
+Senza telos, la proattivit&agrave; &egrave; rumore.
 </p>
 
 </body>

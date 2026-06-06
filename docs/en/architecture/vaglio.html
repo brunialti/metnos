@@ -327,7 +327,7 @@ decision pays one call to the middle tier. Implementation in
 
 <ul>
  <li><strong>Middle tier</strong>. The judge uses the <em>middle</em> tier
- of the 3-tier LLM architecture (see <a href="agent_runtime.html#cap4">agent_runtime ch.&nbsp;4</a>):
+ of the 4-tier LLM architecture (fast, middle, wise, frontier &mdash; see <a href="agent_runtime.html#cap4">agent_runtime ch.&nbsp;4</a>):
  not the fast tier (too coarse for ethical reasoning), not the wise
  tier (disproportionate for the frequency at which the <em>vaglio</em>
  runs).</li>
@@ -498,8 +498,8 @@ On top of these, integration in the <code>agent_runtime</code> cluster (green) e
 
 <table>
 <tr><th>Limit</th><th>Explanation</th><th>When it lifts</th></tr>
-<tr><td>The <em>vaglio</em> does not read the <a href="mnestoma.html">mnestoma</a>.</td><td>Separation-of-concerns decision: the <em>vaglio</em> evaluates only the declared intent + executor + args, it does not look at history. Meaning: it cannot see &laquo;this same action was denied 5 minutes ago&raquo; or &laquo;the user usually does not operate this way&raquo;.</td><td>Evolution: the LLM judge will receive context from the mnestoma (similar relevance, prior outcomes) to weigh better.</td></tr>
-<tr><td>The <a href="approval_ux.html">approval_ux</a> (card + buttons in the <a href="channel.html">channel</a>) is renderable, the callback dispatcher is not.</td><td>The card the user sees in the channels (Telegram, Slack, etc.) gets generated already via <code>runtime/channels/approval.py</code>. But if the user presses &laquo;Allow this once&raquo;, the callback does not yet re-enter the live plan.</td><td>Evolution: callback dispatcher with re-injection into the current turn.</td></tr>
+<tr><td>The <em>vaglio</em> does not read the <a href="mnestome.html">mnestome</a>.</td><td>Separation of concerns: the <em>vaglio</em> evaluates only the declared intent + executor + args, it does not look at history. It cannot see &laquo;this same action was denied 5 minutes ago&raquo; or &laquo;the user usually does not operate this way&raquo;.</td><td>Evolution: the LLM judge will receive context from the mnestome (similar relevance, prior outcomes) to weigh better.</td></tr>
+<tr><td>The <a href="approval_ux.html">approval_ux</a> callback dispatcher does not re-inject into the live turn.</td><td>The card the user sees in the channels (Telegram, Slack, etc.) gets generated via <code>runtime/channels/approval.py</code>. If the user presses &laquo;Allow this once&raquo;, the callback does not re-enter the live plan.</td><td>Evolution: callback dispatcher with re-injection into the current turn.</td></tr>
 <tr><td>The rule-based judge is very benevolent.</td><td>Default threshold <code>0.30</code> and base score <code>0.7</code>: even with several moderate penalties, the score stays above. Conscious: the real filter is the guard, the judge only marks outliers in the log.</td><td>With the LLM judge: the threshold will mean more, and the score distribution will be wider.</td></tr>
 <tr><td>No <em>structured explanation</em> of refusal to the user.</td><td>When the <em>vaglio</em> denies, the planner shows the textual <code>reason</code> but does not build a card &laquo;why I said no and what you can do&raquo;. The refusal UX is minimal.</td><td>Evolution: integration with approval_ux for dialogic refusals.</td></tr>
 <tr><td>No <em>interactive vaglio</em>.</td><td>The <em>vaglio</em> is a pure function: input args, output Verdict. It cannot ask &laquo;are you sure?&raquo; or request confirmation.</td><td>Evolution: integration with the dialog manager for authorisation requests (see <a href="approval_ux.html">approval_ux</a>).</td></tr>

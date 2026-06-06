@@ -144,8 +144,7 @@ entra in un loop di ragionamento e finisce per emettere prosa al posto di un
  &laquo;crea cartella /tmp/x&raquo; (no, non mi serve la tua posizione GPS).</li>
 </ul>
 
-<p>Il bench prima di questa decisione: <strong>50&ndash;70% convergenza</strong>
-su 10 query rappresentative. La pipeline propose+notify dell&rsquo; non chiudeva.
+<p>Senza la grammar il PLANNER convergeva in modo inaffidabile.
 Inaccettabile per un assistente personale.</p>
 
 <h1 id="cap2">2. L&rsquo;idea: la grammatica come binario</h1>
@@ -324,24 +323,13 @@ risolve, possiamo semplificare. Sono presidiati da test.</p>
 <h3>Robustezza</h3>
 
 <p>Bench n=10 query rappresentative (simple/medium/complex/ambiguous), n=1 run
-per query:</p>
-
-<table>
-<thead><tr><th>Configurazione</th><th>Convergenza</th><th>first_tool_match</th><th>Mean latency</th></tr></thead>
-<tbody>
-<tr><td>baseline (no grammar)</td><td>50%</td><td>n/a</td><td>70s</td></tr>
-<tr><td>grammar v1 (B2 base)</td><td>80%</td><td>89%</td><td>25s</td></tr>
-<tr><td>grammar v4 (discriminated)</td><td>80%</td><td>100%</td><td>35s</td></tr>
-<tr><td>grammar v6 (pool filter)</td><td><strong>100%</strong></td><td><strong>100%</strong></td><td>42s</td></tr>
-<tr><td>grammar v7 (refactor estratto)</td><td><strong>100%</strong></td><td><strong>100%</strong></td><td>41s</td></tr>
-</tbody>
-</table>
+per query: <strong>100% convergenza</strong>, <strong>100% first_tool_match</strong>,
+latenza media ~41s.</p>
 
 <p>Tre cose vale la pena notare:</p>
 
 <ul>
- <li>Il <em>thinking-loop</em> e&rsquo; sparito. Latency mean dimezzata vs baseline
- non perche&rsquo; l&rsquo;LLM &laquo;pensi piu&rsquo; veloce&raquo;, ma perche&rsquo; non spreca cicli a
+ <li>Il <em>thinking-loop</em> e&rsquo; sparito. L&rsquo;LLM non spreca cicli a
  ragionare in cerchio.</li>
  <li>La pipeline propose+notify (complex_propose_silvia) converge sempre.
  Era il caso peggiore.</li>
@@ -407,7 +395,7 @@ Coprono:</p>
 
 <pre>echo '[Service]
 Environment=METNOS_GRAMMAR=1' | sudo tee /etc/systemd/system/metnos-http.service.d/grammar.conf
-systemctl --user daemon-reload &amp;&amp; systemctl --user restart metnos-http.service</pre>
+sudo systemctl daemon-reload &amp;&amp; sudo systemctl restart metnos-http.service</pre>
 
 <h1 id="cap8">8. Confronto con altre piattaforme</h1>
 
@@ -538,7 +526,6 @@ grammar invece di delegarla a un modello fine-tuned. Vantaggi:</p>
 <h1 id="cap9">9. Riferimenti</h1>
 
 <ul>
- <li>Decisione: </li>
  <li>Generator: <code>runtime/tool_grammar.py</code></li>
  <li>Provider wiring: <code>runtime/llm_provider.py::LlamaCppProvider.chat_with_tools</code></li>
  <li>Bench: <code>runtime/bench_grammar.py</code></li>

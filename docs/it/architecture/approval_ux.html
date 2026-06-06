@@ -65,8 +65,7 @@ li { margin-bottom: 4px; }.lead { font-size: 12pt; color: var(--navy); border-le
 <div class="status-banner">
 
 <strong>Microprogettazione &mdash; allineata al codice al 1&deg;.</strong>
-Cluster <code>approval_registry</code> 6/6 verde + cluster <code>channels</code> callback approve/reject 5/5 verde + 3 module case di rendering carta. Riferimenti: <code>runtime/channels/approval.py</code>, <code>runtime/approval_registry.py</code>, <code>runtime/channels/daemon.py</code>, <code>runtime/channels/telegram.py</code>.
-<div class="seq">Stato nella sequenza dei microdesign: <em>under approval</em> &rarr; <em>approved</em> &rarr; <strong>tested</strong> &rarr; <em>implemented</em>. Sostituisce la versione obsoleta (~819 righe) scritta prima dell'implementazione.</div>
+Testato a livello modulo e cluster: rendering carta, registry, dispatcher callback. Riferimenti: <code>runtime/channels/approval.py</code>, <code>runtime/approval_registry.py</code>, <code>runtime/channels/daemon.py</code>, <code>runtime/channels/telegram.py</code>.
 </div>
 
 <nav aria-label="Language" style="position:fixed;top:16px;right:20px;z-index:9999;font-family:'Segoe UI',Calibri,sans-serif;font-size:10pt;letter-spacing:2px;background:#FAFBFC;border:1px solid #d0d7de;border-radius:14px;padding:4px 10px;box-shadow:0 1px 4px rgba(0,0,0,0.04);">
@@ -153,7 +152,7 @@ Sul retro della carta vive un'infrastruttura di tre componenti:
 </ul>
 
 <div class="callout note">
-<strong>Stato di.</strong> L'infrastruttura &egrave; testata e funzionante: rendering, registry, dispatcher, sicurezza identitaria. Il <a href="vaglio.html">Vaglio</a> in &egrave; ancora stub <em>always-approve</em>, dunque le richieste reali non emergono ancora dal pianificatore. La pipeline &egrave; pronta per quando il vaglio reale comincer&agrave; a sollevare approval; nel frattempo la si esercita per via di test.
+<strong>Stato attuale.</strong> L'infrastruttura &egrave; testata e funzionante: rendering, registry, dispatcher, sicurezza identitaria. Il <a href="vaglio.html">Vaglio</a> usa il giudice rule-based-v1 di default. La persistenza automatica dei grant di territorio non &egrave; ancora collegata: il marker nella carta dichiara l'intenzione ma non rende ancora silenziose le richieste future della stessa classe.
 </div>
 
 <h1 id="cap2">2. La carta a 3 righe</h1>
@@ -408,7 +407,7 @@ Il punto di tensione &egrave; <code>resolve</code>. Quattro verifiche, in ordine
 <li><strong>Token noto.</strong> Se il token non esiste, <code>ApprovalError("token sconosciuto")</code>.</li>
 <li><strong>Status <code>pending</code>.</strong> Se &egrave; gi&agrave; risolto (approved/rejected/expired), <code>ApprovalError("token gi&agrave; risolto")</code>: niente double-spending della decisione.</li>
 <li><strong>Non scaduto.</strong> Se <code>expires_at &lt; now</code>, viene <em>scritto</em> uno UPDATE che marca <code>status='expired'</code> e poi sollevato <code>ApprovalError</code>. La connessione &egrave; aperta in autocommit (<code>isolation_level=None</code>) proprio perch&eacute; la transizione a <code>expired</code> deve sopravvivere all'eccezione.</li>
-<li><strong>Decisore = richiedente.</strong> Se <code>row["channel"] != by_channel</code> o <code>row["sender_id"] != by_sender</code>, <code>ApprovalError("decisore non autorizzato")</code>: chi ha richiesto &egrave; chi pu&ograve; approvare. &Egrave; l'asse identit&agrave; descritto al cap.&nbsp;5 dell'<a href="../Metnos_Architecture_Intro_v1.html#cap5">Architettura</a>.</li>
+<li><strong>Decisore = richiedente.</strong> Se <code>row["channel"] != by_channel</code> o <code>row["sender_id"] != by_sender</code>, <code>ApprovalError("decisore non autorizzato")</code>: chi ha richiesto &egrave; chi pu&ograve; approvare. &Egrave; l'asse identit&agrave; descritto al cap.&nbsp;5 dell'Architettura.</li>
 </ol>
 
 <p>
@@ -612,8 +611,8 @@ In tutti i casi i due bottoni hanno <code>callback_data</code> della forma <code
  <td>Quando il pianificatore integrato deciso al capitolo precedente sar&agrave; in piedi: prima di costruire la <code>ApprovalRequest</code> consulter&agrave; le tracce delle approvazioni passate per la stessa classe e calcoler&agrave; il valore.</td>
 </tr>
 <tr>
- <td><strong>Niente Vaglio reale.</strong> In il <a href="vaglio.html">Vaglio</a> &egrave; stub <em>always-approve</em>: l'infrastruttura di approval esiste, ma le richieste reali non vengono ancora generate dal flusso di pianificazione.</td>
- <td>Fase 5 della roadmap: rilascio del Vaglio graduato che computa <code>effective_outcome</code> e solleva <code>approval_required</code> quando previsto. A quel punto la pipeline qui descritta entrer&agrave; in funzione end-to-end nel pianificatore reale.</td>
+ <td><strong>Vaglio rule-based-v1.</strong> Il <a href="vaglio.html">Vaglio</a> usa il giudice rule-based-v1 di default con pattern vietati reali e un giudice LLM opzionale. L'infrastruttura di approval &egrave; pronta per richieste end-to-end dal pianificatore.</td>
+ <td>La pipeline entrer&agrave; in funzione end-to-end quando il pianificatore integrer&agrave; completamente i flussi di approval.</td>
 </tr>
 </table>
 

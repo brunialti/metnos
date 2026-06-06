@@ -188,7 +188,7 @@ deterministico: stesso ingresso, stessa uscita.
 
 <div class="callout note">
 <strong>Il vocabolario chiuso, una bussola.</strong> Metnos accetta 23
-azioni (read, find, set, send, delete, share, &hellip;) e 19 oggetti
+azioni (read, find, set, send, delete, share, &hellip;) e 22 oggetti
 (files, messages, events, persons, tasks, &hellip;). Una skill che
 parla di <em>append rows to spreadsheet</em> non genera <code>append_rows</code>: diventa
 <code>change_files_xlsx</code>. Una che parla di <em>label messages</em>
@@ -244,9 +244,8 @@ trovi in un executor scritto a mano: il file Python con la funzione
 </pre>
 
 <p>
-La cartella di destinazione &egrave; <code>skills/</code> (; il
-nome precedente <code>_imports/</code> resta letto in modalit&agrave; back-
-compat), sotto la cartella degli executor sintetizzati. Questo separa
+La cartella di destinazione &egrave; <code>skills/</code>,
+sotto la cartella degli executor sintetizzati. Questo separa
 visivamente quanto
 viene da fuori da quanto Metnos ha scritto da solo, e da quanto &egrave;
 stato scritto a mano. Tutti e tre i tipi finiscono per&ograve; nello
@@ -297,11 +296,11 @@ parziale, mai un tutto-o-niente.
 </p>
 
 <div class="callout warning">
-<strong>Cosa NON viene fatto, oggi.</strong> L'importatore non esegue
-ancora l'analisi statica del codice degli script di supporto della
+<strong>Limitazione: niente analisi statica del codice.</strong> L'importatore non esegue
+l'analisi statica del codice degli script di supporto della
 skill. Una skill maliziosa che dichiara <em>leggo eventi</em> ma in
 realt&agrave; spedisce un file su un server remoto non viene catturata
-dai cinque controlli attuali. L'analisi statica &egrave; nella roadmap
+dai cinque controlli attuali. L'analisi statica &egrave; prevista
 come «controllo zero», pre-import: un passaggio in pi&ugrave; che cerca
 chiamate di rete inaspettate, scritture fuori cartella, e altri segnali
 sospetti, e mostra all'utente una scheda di sintesi prima di chiedere
@@ -416,7 +415,7 @@ distingue.
 <tr><td>come il Synt scrive un executor da zero (alternativa all'import)</td><td><a href="synt.html">synt</a></td></tr>
 <tr><td>il recinto in cui gli executor importati eseguono</td><td><a href="sandbox.html">sandbox</a></td></tr>
 <tr><td>i controlli prima di ogni azione rischiosa</td><td><a href="vaglio.html">vaglio</a></td></tr>
-<tr><td>l'archivio decisionale (perch&eacute; importare invece di adottare lo standard)</td><td></td></tr>
+<tr><td>l'archivio decisionale (perch&eacute; importare invece di adottare lo standard)</td><td>decisions/</td></tr>
 </table>
 
 <hr>

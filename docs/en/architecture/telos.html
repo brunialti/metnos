@@ -4,7 +4,7 @@
  <meta charset="UTF-8">
  <meta name="viewport" content="width=device-width, initial-scale=1.0">
  <title>Metnos &mdash; telos (tested)</title>
- <meta name="description" content="Microdesign of telos: the user's ultimate ends, the alignment function, the bother budget with scheduler quotas, the non-retreat telos, the stop clause. Replaces telos.">
+ <meta name="description" content="Microdesign of telos: the user's ultimate ends, the alignment function, the bother budget with scheduler quotas, the stop clause.">
  <meta name="keywords" content="telos, ultimate ends, alignment, bother budget, non-retreat, cultivate tools, anti-paternalism, microdesign, metnos, Metnos">
  <meta name="author" content="Roberto Brunialti">
  <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large">
@@ -72,7 +72,7 @@ li { margin-bottom: 4px; }.lead { font-size: 12pt; color: var(--navy); border-le
 <body>
 <div style="margin: 18px 0; border-left: 5px solid #16a34a; background: #dcfce7; color: #14532d; padding: 14px 20px; border-radius: 0 8px 8px 0; font-size: 11pt; font-family: 'Segoe UI', Calibri, -apple-system, sans-serif; line-height: 1.55;">
 <strong>&#10003; Microdesign &mdash; aligned with the code.</strong>
-Canonical doc tested after implementation: <code>TELOS.md</code> populated in <code>workspace/</code> with the seven canonical teloi, the non-renouncement telos integrated into the <a href="synt.html" style="color: #14532d; text-decoration: underline;">synt</a> cascade (compose+generate+on-the-fly), aligned with <a href="../Metnos_Architecture_Intro_v1.html" style="color: #14532d; text-decoration: underline;">Architecture </a> and the triad <a href="executor.html" style="color: #14532d; text-decoration: underline;">executor</a>+<a href="mnest.html" style="color: #14532d; text-decoration: underline;">mnest</a>+<a href="mnestome.html" style="color: #14532d; text-decoration: underline;">mnestome</a>. Normative reference for implementation. Replaces (metnos, neuron, synapse, proteome).
+Canonical doc tested after implementation: <code>TELOS.md</code> populated in <code>workspace/</code> with the seven canonical teloi, the non-renouncement telos integrated into the <a href="synt.html" style="color: #14532d; text-decoration: underline;">synt</a> cascade (compose+generate+on-the-fly), aligned with <a href="../Metnos_Architecture_Intro_v1.html" style="color: #14532d; text-decoration: underline;">Architecture </a> and the triad <a href="executor.html" style="color: #14532d; text-decoration: underline;">executor</a>+<a href="mnest.html" style="color: #14532d; text-decoration: underline;">mnest</a>+<a href="mnestome.html" style="color: #14532d; text-decoration: underline;">mnestome</a>. Normative reference for implementation.
 </div>
 
 <nav aria-label="Language" style="position:fixed;top:16px;right:20px;z-index:9999;font-family:'Segoe UI',Calibri,sans-serif;font-size:10pt;letter-spacing:2px;background:#FAFBFC;border:1px solid #d0d7de;border-radius:14px;padding:4px 10px;box-shadow:0 1px 4px rgba(0,0,0,0.04);">
@@ -94,7 +94,6 @@ Canonical doc tested after implementation: <code>TELOS.md</code> populated in <c
  <div class="meta">
  Microdesign &mdash; <br>
  Aligned with Architecture (ch. 11), executor/mnest/mnestome and <a href="synt.html"><code>synt</code></a>.<br>
- Replaces telos (full rewrite).<br>
  <br>
  Audience: those who will implement <code>TELOS.md</code>, the alignment function,<br>the bother budget and the stop clause.<br>
  Reading time: 22 minutes.
@@ -124,17 +123,14 @@ Canonical doc tested after implementation: <code>TELOS.md</code> populated in <c
 <h1 id="cap1">1. Scope and boundaries</h1>
 
 <div style="background:#fef3c7;border-left:4px solid #b45309;padding:14px 22px;margin:14px 0;border-radius:0 6px 6px 0;">
-<strong>Implementation status v6 session):</strong> the loader
-<code>runtime/telos_loader.py</code> and the first lens
-<code>runtime/telos_lenses/scamper.py</code> + orchestrator
-<code>runtime/telos_introspect.py</code> are present as MVP phase 1.
-Execution so far ONLY offline via CLI
-(<code>python -m runtime.telos_introspect --telos t.tempo --mock-llm</code>).
-No active scheduler integration, no daily loop, no proposals visible to
-the user. The other 8 lenses (OuLiPo, inverse-RL, endgame_book, analogy,
-Boden, Schmidhuber, Alexander, generative_design) are designed but not
-implemented (see the IT draft
-<code>drafts/telos_engine_v1</code> §6). Per-lens toggle:
+<strong>Implementation status (v8):</strong> 11 lenses
+implemented and tested (10 best in production).
+Common framework in <code>runtime/telos_lenses/_base.py</code> with
+SHARED_PREAMBLE / SHARED_NAMING_SCHEMA / SHARED_OUTPUT_FORMAT.
+Naming Authority (<code>runtime/naming_grammar.py</code>) enforces 5
+rules R0..R4 via GBNF + deterministic validator. Execution via CLI
+<code>python3 -m runtime.telos_introspect</code> and scheduler v2
+<code>daily@03:30</code>. Per-lens toggle:
 <code>METNOS_TELOS_LENS_&lt;NAME&gt;=1</code>. Persistent telemetry:
 <code>~/.local/share/metnos/telos_proposals.jsonl</code>.
 </div>
@@ -327,31 +323,9 @@ expected_alignment = (&alpha; &middot; top + &gamma; &middot; rest) &middot; urg
  <li><code>bother_cost &isin; [0, &infin;)</code>: see ch. 6.</li>
 </ul>
 
-<h2>Formula history &mdash; how we arrived at </h2>
-
-<table>
-<thead><tr><th>Version</th><th>Base formula</th><th>Distribution over 481 backfilled proposals</th><th>Outcome</th></tr></thead>
-<tbody>
-<tr>
- <td><strong></strong> (22/5 morning)</td>
- <td><code>&sum; weight &middot; fit</code> (sum-product)</td>
- <td>min 0.077, max 0.569, mean 0.302, stdev 0.075</td>
- <td>Inverted ordering: the mediocre generalist (fit&nbsp;~0.5 across all) beat the perfect specialist. The per-telos signal from the Judge (clear) was diluted by aggregation.</td>
-</tr>
-<tr>
- <td><strong></strong> (22/5 afternoon)</td>
- <td><code>top + 0.3 &middot; rest</code></td>
- <td>min 0.072, max 0.278, mean 0.176, stdev 0.039</td>
- <td>Correct ordering, but stdev halved: top1 was bounded by the 6 discrete weights (range [0.10, 0.25]), losing useful dispersion for triage.</td>
-</tr>
-<tr>
- <td><strong></strong> (22/5 evening)</td>
- <td><code>2 &middot; top + 0.5 &middot; rest</code></td>
- <td>min 0.144, max 0.524, mean 0.338, stdev 0.073</td>
- <td>Correct ordering + stdev at level. The <code>&alpha;</code> boost expands the dynamic range of the dominant term; higher <code>&gamma;</code> credits multi-telos proposals (98.5% of the corpus).</td>
-</tr>
-</tbody>
-</table>
+<p>
+The current formula (<code>2 &middot; top + 0.5 &middot; rest</code>) guarantees that a perfect specialist on a heavy telos beats a mediocre generalist. The teleological Judge (LLM Gemma 4 26B local) discriminates per-telos with a bimodal distribution; the <code>&alpha;</code> boost expands the dynamic range of the dominant term and <code>&gamma;</code> credits multi-telos proposals.
+</p>
 
 <h2>How <code>fit</code><sub>i</sub> values are estimated</h2>
 
@@ -385,7 +359,7 @@ A proposal must clear both filters: synt produces something good (<code>R &ge; t
 <p>
 Proposals are ranked by <code>expected_alignment</code> and surfaced to
 the user via the <strong><code>/admin/proposals/telos</code>
-dashboard</strong> ( + 0157, wired. For each proposal
+dashboard</strong> (wired). For each proposal
 the UI shows:
 </p>
 
@@ -429,85 +403,16 @@ on 481 proposals: <code>&gt; 0.50</code> = 3 top proposals (0.6%);
 = 88 (18%, top decile).
 </p>
 
-<h1 id="cap5">5. The non-retreat telos (historical, removed in )</h1>
-
-<div class="callout warning">
-<strong>: <code>t.coltivazione_strumenti</code> removed
-from the canonical set.</strong>
-Empirical backfill showed it behaved as a universal runtime clause, not
-an ultimate end: any capability extension partially satisfied it, and
-the resulting moderate fit became background noise on the AlignmentEngine,
-weakening the Judge's discriminative power. The anti-retreat semantics
-(exhaust the synt cascade before answering &laquo;cannot&raquo;) remain
-active in the runtime as <em>deterministic policy</em>, not as a weighted
-telos. See. The chapter below is preserved as a historical
-reference to the original rationale.
-</div>
+<h1 id="cap5">5. The anti-retreat clause and the stop clause</h1>
 
 <p class="lead">
-<code>t.coltivazione_strumenti</code> is the newest telos (introduced) and the one that most changes the meaning of
-&laquo;does not apply to explicit requests&raquo;. We let it live apart
-because mechanically it behaves differently from the others.
+The anti-retreat semantics (exhaust the synt cascade before answering
+&laquo;I cannot&raquo;) are active in the runtime as <em>deterministic
+policy</em>, not as a weighted telos. They guarantee that the system
+tries the cascade (compose, generate, merge) before emitting a failure.
 </p>
 
-<h2>5.1 The problem it solves</h2>
-
-<p>
-Without this telos, the original design had a hole: when a user request
-the pool could not satisfy, the system could answer &laquo;I cannot&raquo;
-without trying alternative strategies. Failure was allowed, but it was a
-<em>silent retreat</em>: nothing tracked the attempt, nothing grew in the
-pool, the user lost trust. The right answer is an explicit telos that
-pushes synt to exhaust the cascade (compose, generate; on longer
-horizons: merge, generalise) before answering &laquo;I cannot&raquo;.
-</p>
-
-<h2>5.2 Difference from other telos</h2>
-
-<table>
-<thead><tr><th style="width:32%">Aspect</th><th>&laquo;Classic&raquo; telos</th><th>t.coltivazione_strumenti</th></tr></thead>
-<tbody>
-<tr><td>Applies to&hellip;</td><td>only Metnos's spontaneous proposals</td><td>also explicit user requests, but only to <em>try strategies</em>, not to judge them</td></tr>
-<tr><td>What it influences</td><td>the <code>expected_alignment</code> of an already-formed proposal</td><td>synt's <em>behaviour</em> in forming proposals (the cascade)</td></tr>
-<tr><td>Cost of violation</td><td>the proposal does not reach the user</td><td>a request stays unmet without traced attempts</td></tr>
-<tr><td>Success measured by</td><td>high fit + high urgency</td><td>cascade exhausted before emitting <code>abandoned</code></td></tr>
-</tbody>
-</table>
-
-<h2>5.3 Failure vs retreat</h2>
-
-<p>
-The telos does not ask for every request to be satisfied; it asks not to
-retreat in silence. These are two different things.
-</p>
-
-<table>
-<thead><tr><th style="width:22%">Outcome</th><th>Form</th><th>Honours the telos?</th></tr></thead>
-<tbody>
-<tr>
- <td><strong>Success</strong></td>
- <td>One strategy of the cascade closes the proto-mnest.</td>
- <td>Yes, naturally.</td>
-</tr>
-<tr>
- <td><strong>Motivated failure</strong></td>
- <td>&laquo;I tried composing with these N executors, I tried generating with this specification, the birth test failed on case X. I cannot now; I propose Y as a partial alternative.&raquo;</td>
- <td>Yes: the attempt is traced, the user knows what you knew and what you didn't.</td>
-</tr>
-<tr>
- <td><strong>Abandonment for budget/policy</strong></td>
- <td>&laquo;I started the cascade, I consumed the hard budget, I stop. Here is what I have done so far.&raquo;</td>
- <td>Yes: the limit is documented, it is not a retreat.</td>
-</tr>
-<tr>
- <td><strong>Silent retreat</strong></td>
- <td>&laquo;I cannot&raquo; without attempts, without explanation.</td>
- <td><strong>No.</strong> Violates the telos.</td>
-</tr>
-</tbody>
-</table>
-
-<h2>5.4 The stop clause</h2>
+<h2>5.1 The stop clause</h2>
 
 <div class="callout danger">
 <strong>An explicit stop disengages the telos.</strong> If the user says
@@ -527,7 +432,7 @@ always audible: the LLM handling the turn carries in its prompt an
 explicit recogniser for stop phrases.
 </p>
 
-<h2>5.5 Abandonment thresholds</h2>
+<h2>5.2 Abandonment thresholds</h2>
 
 <p>
 The non-retreat telos does not mean unlimited retry. The abandonment
@@ -625,8 +530,7 @@ builtin, already pre-approved. The ad-hoc bother budget does not apply.
 <p>
 Three kinds of feedback update the <em>effective</em> weights of the
 telos &mdash; not the declared weights in <code>TELOS.md</code>, which
-remain the user-revisable ground truth. The <code>TrustStore</code>
-defined in <code>rl_offline.html</code> (to be rewritten) extends with
+remain the user-revisable ground truth. The <code>TrustStore</code> extends with
 an axis <code>telos_fitness: dict[telos_id, EMA]</code>.
 </p>
 
@@ -637,7 +541,7 @@ an axis <code>telos_fitness: dict[telos_id, EMA]</code>.
 <tr><td><strong>Accept with edit</strong></td><td>+0.5</td><td>EMA rises a little. Signals the telos was right, the plan was not.</td></tr>
 <tr><td><strong>Explicit reject</strong></td><td>&minus;1.0</td><td>EMA falls. The telos is less important than declared.</td></tr>
 <tr><td><strong>Reject with &laquo;never again&raquo;</strong></td><td>&minus;2.0</td><td>EMA falls a lot. The <code>effect_class</code> enters the telos's never-list.</td></tr>
-<tr><td><strong>Explicit stop (ch. 5.4)</strong></td><td>&minus;0.7</td><td>EMA of <code>t.coltivazione_strumenti</code> alone falls: the user has reduced the appetite to insist on that thread.</td></tr>
+<tr><td><strong>Explicit stop (ch. 5.1)</strong></td><td>&minus;0.7</td><td>EMA of the involved telos falls: the user has reduced the appetite to insist on that thread.</td></tr>
 <tr><td><strong>48h silence</strong></td><td>&minus;0.3</td><td>Weak but present signal.</td></tr>
 <tr><td><strong>Viewed but undecided</strong></td><td>&minus;0.1</td><td>Almost no effect.</td></tr>
 </tbody>
@@ -730,12 +634,12 @@ from uuid import UUID
 
 @dataclass(frozen=True)
 class Telos:
- id: str # "t.coltivazione_strumenti"
- phrase: str # "Don't leave a request of mine unmet, if possible"
+ id: str # "t.tempo"
+ phrase: str # "Free my time from repetitive chores"
  weight_declared: float # [0,1], normalised sum
  activation_threshold: float # [0,1]
  notes: str # context for the LLM
- is_non_retreat: bool = False # only t.coltivazione_strumenti
+ is_non_retreat: bool = False # reserved, currently unused
 
 @dataclass(frozen=True)
 class FitEstimate:
@@ -887,7 +791,7 @@ as that of the Laws.
 <tr><td>Same proposal type rejected 3 times with &laquo;never again&raquo;</td><td>The <code>effect_class</code> enters <code>telos_neverlist</code>: subsequent ones are auto-rejected without an LLM call.</td></tr>
 <tr><td>Explicit user request that violates a &laquo;classic&raquo; telos (e.g. high spend with parsimony telos)</td><td>The alignment function <strong>is not invoked</strong>. Anti-paternalism (ch. 8).</td></tr>
 <tr><td>Request the pool cannot serve</td><td>synt enters the cascade. The non-retreat telos is active. If the cascade fails, outcome is <code>abandoned</code> motivated (not <code>cancelled</code>).</td></tr>
-<tr><td>User activates the stop clause mid-cascade</td><td>State moves to <code>cancelled_by_user</code>. EMA of <code>t.coltivazione_strumenti</code> drops by 0.7. The pattern is not retried within 24h.</td></tr>
+<tr><td>User activates the stop clause mid-cascade</td><td>State moves to <code>cancelled_by_user</code>. EMA of involved telos drops by 0.7. The pattern is not retried within 24h.</td></tr>
 <tr><td>Ambiguous stop (&laquo;hmm let's see&raquo;)</td><td>Metnos asks for confirmation: &laquo;do you want me to stop on X?&raquo;. Does not interrupt on its own.</td></tr>
 <tr><td>Scheduler firing in protected window</td><td>Deferred to next non-protected slot. Not published immediately, not discarded.</td></tr>
 <tr><td>Scheduler firing outside the agreed cadence (exceptional event)</td><td>Weighs 50% of an ad-hoc proposal's bother.</td></tr>
@@ -900,8 +804,7 @@ as that of the Laws.
 <h1 id="cap13">13. Open questions</h1>
 
 <ol>
-<li><strong>How many non-retreat telos.</strong> Today only one (<code>t.coltivazione_strumenti</code>). Will another ever be needed? For example, &laquo;don't leave a security warning unaddressed&raquo;? Open.</li>
-<li><strong>&laquo;Recurrent&raquo; stop.</strong> If the user stops the same pattern N times in a row, should the system drop the weight of <code>t.coltivazione_strumenti</code> below the activation threshold and effectively disable the telos? Or stick to per-occurrence rejection? Open; conservative default: per-occurrence rejection.</li>
+<li><strong>&laquo;Recurrent&raquo; stop.</strong> If the user stops the same pattern N times in a row, should the system disable the anti-retreat clause for that thread? Or stick to per-occurrence rejection? Open; conservative default: per-occurrence rejection.</li>
 <li><strong>Scheduler thresholds.</strong> When are agreed schedules &laquo;too many&raquo;? Tentative default: max 2/day per channel, max 1 schedule alive at a time per same topic. To be calibrated.</li>
 <li><strong>Telos linked to effect_class.</strong> A telos may block an entire effect class, not just individual proposals. The <code>telos_neverlist</code> mechanism today operates on the effect_class; possible future extension: link an effect_class to several telos at once. Open.</li>
 <li><strong>Multi-user.</strong> When Metnos has more paired senders, will telos be per-user, shared, or a mix? Probably per-user with a shared minimum set (security, perimeter). To be decided.</li>
@@ -1011,7 +914,7 @@ generation time.</p>
 
 <p style="text-align:center; color:var(--muted); font-size:9.5pt; margin-top:40px;">
 Metnos &mdash; <em>telos</em> microdesign <br>
-Rewrite. Replaces telos (metnos, neurons, synapses). Without telos, proactivity is noise.
+Without telos, proactivity is noise.
 </p>
 
 </body>

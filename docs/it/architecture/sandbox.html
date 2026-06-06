@@ -66,7 +66,7 @@ li { margin-bottom: 4px; }.lead { font-size: 12pt; color: var(--navy); border-le
 
 <strong>Microprogettazione &mdash; allineata al codice al 1&deg;.</strong>
 Cluster <code>sandbox</code> 9/9 verde. Riferimento: <code>runtime/sandbox.py</code>.
-<div class="seq">Stato nella sequenza dei microdesign: <em>under approval</em> &rarr; <em>approved</em> &rarr; <strong>tested</strong> &rarr; <em>implemented</em>. Sostituisce la versione obsoleta (~700 righe) scritta prima dell'implementazione.</div>
+<div class="seq">Stato nella sequenza dei microdesign: <em>under approval</em> &rarr; <em>approved</em> &rarr; <strong>tested</strong> &rarr; <em>implemented</em>.</div>
 </div>
 
 <nav aria-label="Language" style="position:fixed;top:16px;right:20px;z-index:9999;font-family:'Segoe UI',Calibri,sans-serif;font-size:10pt;letter-spacing:2px;background:#FAFBFC;border:1px solid #d0d7de;border-radius:14px;padding:4px 10px;box-shadow:0 1px 4px rgba(0,0,0,0.04);">
@@ -303,7 +303,7 @@ La sandbox deve essere un beneficio, non un blocco. Tre livelli di fallback assi
 <table>
 <tr><th>Caso</th><th>Comportamento</th><th>Citazione</th></tr>
 <tr>
- <td><strong>(a)</strong> <code>bwrap</code> non installato</td>
+ <td><strong>(a)</strong> <code>bwrap</code> non installato (<code>bwrap</code> &egrave; opzionale; la sandbox degrada con grazia in sua assenza)</td>
  <td><code>bwrap_available</code> ritorna False, <code>wrap_command</code> ritorna il comando invariato.</td>
  <td><code>runtime/sandbox.py:30-32, 195-196</code></td>
 </tr>
@@ -380,7 +380,7 @@ L'<a href="../Metnos_Architecture_Intro_v1.html#cap12">Architettura cap. 12</a> 
 </p>
 
 <p>
-La riscrittura di <code>policy.html</code> &egrave; l'ultimo gate della fase 5: a quel punto <code>_build_bwrap_args</code> ricever&agrave; un argomento <code>profile</code> derivato e applicher&agrave; restrizioni differenziate (es. ReadOnly forza <code>--ro-bind</code> anche per capability che dichiarano <code>fs:write</code>; Full disabilita <code>--unshare-net</code> a prescindere dalle capability dichiarate).
+Quando l'integrazione di <code>policy</code> sar&agrave; completa, <code>_build_bwrap_args</code> ricever&agrave; un argomento <code>profile</code> derivato e applicher&agrave; restrizioni differenziate (es. ReadOnly forza <code>--ro-bind</code> anche per capability che dichiarano <code>fs:write</code>; Full disabilita <code>--unshare-net</code> a prescindere dalle capability dichiarate).
 </p>
 
 <h1 id="cap7">7. Test</h1>
@@ -450,8 +450,8 @@ Niente cambio di codice, niente riavvio del runtime. Al primo accesso successivo
  <td>Quando emergeranno minacce concrete che il default non copre. Oggi non vale la complessit&agrave; di mantenere profili seccomp per ogni capability.</td>
 </tr>
 <tr>
- <td><strong>Profili separati per autonomy.</strong> Oggi <code>autonomy</code> &egrave; pass-through e tutto deriva dal manifest in modo identico per ogni livello.</td>
- <td>Riscrittura di <code>policy.html</code> (ultimo gate della fase 5): introdurr&agrave; una tabella autonomy&times;capability che permetter&agrave; al runtime di passare un profilo computato a <code>wrap_command</code>.</td>
+ <td><strong>Profili separati per autonomy.</strong> <code>autonomy</code> &egrave; pass-through e tutto deriva dal manifest in modo identico per ogni livello.</td>
+ <td>L'integrazione della tabella autonomy&times;capability di <code>policy</code> permetter&agrave; al runtime di passare un profilo computato a <code>wrap_command</code>.</td>
 </tr>
 <tr>
  <td><strong>Niente whitelist di rete.</strong> Una capability <code>network:*</code> oggi lascia la rete completamente aperta; non si filtra per host (es. solo <code>*.example.com</code>).</td>

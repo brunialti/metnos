@@ -70,8 +70,8 @@ li { margin-bottom: 4px; }.lead { font-size: 12pt; color: var(--navy); border-le
 </head>
 <body>
 <div style="margin: 18px 0; border-left: 5px solid #16a34a; background: #dcfce7; color: #14532d; padding: 14px 20px; border-radius: 0 8px 8px 0; font-size: 11pt; font-family: 'Segoe UI', Calibri, -apple-system, sans-serif; line-height: 1.55;">
-<strong>Microprogettazione &mdash; under approval; codice in stato MVP, allineato.</strong>
-Storage e operazioni implementati in <code>runtime/mnestoma.py</code>, esercitati da 20 test module + 6 cluster + integrazione end-to-end con <a href="agent_runtime.html" style="color: #14532d; text-decoration: underline;">agent_runtime</a>. Schema del cap. 4 verbatim, soglie del cap. 6 verbatim, ager di base del cap. 6 implementato come funzione invocabile. Totale sistema 67/67 verde. Aggiornamento: l'<em>ager</em> notturno (<code>apply_executor_ager</code>, <code>introvertiva_propose</code>, <code>introvertiva_apply</code>) e' ora gated dal segnale &laquo;c'e' stata interazione utente dall'ultima esecuzione?&raquo;: un Metnos in vacanza non deprezza executor per inattivit&agrave; calendariale. L'introvertiva ha inoltre filtri qualit&agrave; deterministici: vocab validator sui <code>proposed_name</code>, skip di flow args (<code>entries</code>, <code>from_step</code>, <code>results</code>) e di valori template <code>{{stepN.field}}</code>, soglia <code>min_uses</code> portata da 3 a 10. Volume proposte 24 &rarr; 6 con qualit&agrave; attesa molto pi&ugrave; alta.
+<strong>Microprogettazione &mdash; testata, allineata al codice.</strong>
+Storage e operazioni implementati in <code>runtime/mnestoma.py</code>, esercitati da 20 test module + 6 cluster + integrazione end-to-end con <a href="agent_runtime.html" style="color: #14532d; text-decoration: underline;">agent_runtime</a>. Schema del cap. 4 e soglie del cap. 6 verbatim, ager di base implementato come funzione invocabile. L'<em>ager</em> notturno (<code>apply_executor_ager</code>, <code>introvertiva_propose</code>, <code>introvertiva_apply</code>) e' gated dal segnale di interazione utente: un Metnos in vacanza non deprezza executor per inattivit&agrave; calendariale. L'introvertiva ha filtri qualit&agrave; deterministici: vocab validator sui <code>proposed_name</code>, skip di flow args (<code>entries</code>, <code>from_step</code>, <code>results</code>) e di valori template <code>{{stepN.field}}</code>, soglia <code>min_uses</code> a 10. Volume proposte a 6 con qualit&agrave; attesa alta.
 <div style="font-size: 9.5pt; color: #2d4a32; margin-top: 8px;">Stato nella sequenza: <em>under approval</em> &rarr; <em>approved</em> &rarr; <strong>tested</strong> &rarr; <em>implemented</em>. <strong>Delta POC rispetto al doc</strong>: (a) <code>events.mnest_id</code> con <code>ON DELETE CASCADE</code> per supportare il purge dei proto-mnest senza orfani; (b) DB path default <code>workspace/.mnestoma/mnest.sqlite</code>, override via env <code>MNESTOMA_DB_PATH</code> per test isolati; (c) le query interne (top_k, by_tag, walk) vanno dirette sulla tabella <code>mnests</code> filtrando per stato; la vista <code>v_mnestoma</code> resta come da microdesign per consultazione esterna. Snapshot mensile e archiviazione decaying ancora non automatizzati (richiedono lo scheduler builtin).</div>
 </div>
 
@@ -101,19 +101,6 @@ Storage e operazioni implementati in <code>runtime/mnestoma.py</code>, esercitat
  </div>
 </div>
 
-<div class="callout" style="border-left:5px solid #16a34a;background:#dcfce7;color:#14532d;padding:14px 18px;border-radius:0 8px 8px 0;margin:18px 0;">
-<strong>Aggiornamento sessione sera.</strong> Refactor
-<code>events.turn_id</code>: la tabella eventi del mnestoma
-adotta <code>turn_id</code> come discriminante unico, sostituendo gli
-identificatori sparsi (run_id / session_id / batch_id) usati dalle prime
-versioni dell'introvertiva. Cambio di schema con migration in-place;
-nessun carico utente perso, audit log preservato. L'ager continua a girare
-come task <code>apply_ager</code> sotto lo scheduler builtin
-(<a href="agent_runtime.html#cap11_2">agent_runtime &sect;11.2</a>) con
-schedule <code>daily@04:00</code>; sopra di esso, l'introvertiva MVP (vedi
-<a href="synt.html">synt</a>) consuma il segnale di lungo periodo via
-<code>diff_audit</code>.
-</div>
 
 <div class="toc">
 <h2>Indice</h2>
@@ -160,8 +147,8 @@ fatto insieme.
 <ul>
 <li>la struttura del singolo mnest (vedi <a href="mnest.html">mnest.html</a>);</li>
 <li>la struttura del singolo executor (vedi <a href="executor.html">executor.html</a>);</li>
-<li>la pipeline di sintesi (vedi <a href="executor.html#cap7">executor.html cap. 7</a> e <a href="synthesizer.html">synthesizer.html</a>, da riscrivere);</li>
-<li>la memoria conversazionale dell'LLM (vedi <a href="memory.html">memory.html</a>, da riscrivere).</li>
+<li>la pipeline di sintesi (vedi <a href="executor.html#cap7">executor.html cap. 7</a> e <a href="synt.html">synt.html</a>);</li>
+<li>la memoria conversazionale dell'LLM (vedi <a href="mnestoma.html">mnestoma.html</a>, sezione episodica).</li>
 </ul>
 
 <h1 id="cap2">2. Cos'&egrave; il mnestoma</h1>
@@ -208,8 +195,8 @@ Vale la pena dire chiaramente cosa il mnestoma <em>non</em> &egrave;:
 <table>
 <thead><tr><th style="width:32%">Cosa il mnestoma NON &egrave;</th><th>Dov'&egrave; quel concetto, allora</th></tr></thead>
 <tbody>
-<tr><td>La memoria conversazionale dell'LLM (turni recenti, contesto in token).</td><td>Nel <em>working memory</em> dell'execution trace, vedi <a href="memory.html">memory.html</a> (da riscrivere).</td></tr>
-<tr><td>La memoria episodica delle conversazioni passate (cosa Roberto disse ieri).</td><td>Nella <em>episodic memory</em>, indicizzata per sender. Vedi <a href="memory.html">memory.html</a>.</td></tr>
+<tr><td>La memoria conversazionale dell'LLM (turni recenti, contesto in token).</td><td>Nel <em>working memory</em> dell'execution trace.</td></tr>
+<tr><td>La memoria episodica delle conversazioni passate (cosa Roberto disse ieri).</td><td>Nella <em>episodic memory</em>, indicizzata per sender.</td></tr>
 <tr><td>La memoria semantica dei fatti su Roberto e il suo mondo (&laquo;il cane si chiama Fido&raquo;).</td><td>Nella <em>semantic memory</em>, estratta via reflection e approvata dall'utente.</td></tr>
 <tr><td>L'audit log delle azioni svolte.</td><td>In <code>workspace/.audit/</code>, append-only, JSONL.</td></tr>
 <tr><td>Il workspace dei file dell'utente (note, fatture, foto).</td><td>In <code>workspace/</code>, gestito separatamente.</td></tr>

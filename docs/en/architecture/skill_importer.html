@@ -185,7 +185,7 @@ output.
 
 <div class="callout note">
 <strong>The closed vocabulary, a compass.</strong> Metnos accepts 23
-actions (read, find, set, send, delete, share, &hellip;) and 19 objects
+actions (read, find, set, send, delete, share, &hellip;) and 22 objects
 (files, messages, events, persons, tasks, &hellip;). A skill that speaks of
 <em>append rows to spreadsheet</em> does not produce
 <code>append_rows</code>: it becomes <code>change_files_xlsx</code>.
@@ -242,8 +242,8 @@ the signature, the fence profile.
 </pre>
 
 <p>
-The destination is <code>skills/</code> (; the prior name
-<code>_imports/</code> is still read in back-compat mode), under the folder of
+The destination is <code>skills/</code>,
+under the folder of
 synthesized executors. This visually separates what comes from outside
 from what Metnos has written on its own, and from what was hand-written.
 All three kinds end up in the same agent catalog, however, and all pass
@@ -292,11 +292,11 @@ on: imports are partial, never all-or-nothing.
 </p>
 
 <div class="callout warning">
-<strong>What is NOT done, today.</strong> The importer does not yet
+<strong>Limitation: no static code analysis.</strong> The importer does not
 perform static analysis on the helper scripts of a skill. A malicious
 skill that declares <em>I read events</em> but actually ships a file to
 a remote server is not caught by the five current checks. Static
-analysis is on the roadmap as &laquo;check zero&raquo;, pre-import: an
+analysis is planned as &laquo;check zero&raquo;, pre-import: an
 extra pass that looks for unexpected network calls, writes outside the
 folder, and other suspicious signals, and shows the user a summary card
 before asking for final authorization.
@@ -408,7 +408,7 @@ disambiguates.
 <tr><td>how Synt writes an executor from scratch (alternative to import)</td><td><a href="synt.html">synt</a></td></tr>
 <tr><td>the fence imported executors run inside</td><td><a href="sandbox.html">sandbox</a></td></tr>
 <tr><td>the checks before any risky action</td><td><a href="vaglio.html">vaglio</a></td></tr>
-<tr><td>the decision archive (why import instead of adopting the standard)</td><td></td></tr>
+<tr><td>the decision archive (why import instead of adopting the standard)</td><td>decisions/</td></tr>
 </table>
 
 <hr>

@@ -3,7 +3,7 @@
 <head>
  <meta charset="UTF-8">
  <meta name="viewport" content="width=device-width, initial-scale=1.0">
- <title>Metnos &mdash; multilang (under approval)</title>
+ <title>Metnos &mdash; multilang (tested)</title>
  <meta name="description" content="Metnos multilang microdesign: three layers (LLM prompts, manifest descriptions, user-facing messages), latest-wins source-of-truth, add-language workflow, METNOS_LANG process variable.">
  <meta name="keywords" content="multilang, multilingual, i18n, prompts, manifest, latest-wins, add-language, METNOS_LANG, metnos, Metnos">
  <meta name="author" content="Roberto Brunialti">
@@ -66,12 +66,11 @@ li { margin-bottom: 4px; }.lead { font-size: 12pt; color: var(--navy); border-le
  </style>
 </head>
 <body>
-<div style="margin: 18px 0; border-left: 5px solid #f59e0b; background: #fef3c7; color: #92400e; padding: 14px 20px; border-radius: 0 8px 8px 0; font-size: 11pt; font-family: 'Segoe UI', Calibri, -apple-system, sans-serif; line-height: 1.55;">
-<span style="display: inline-block; background: #b45309; color: #fff; padding: 2px 10px; border-radius: 12px; font-size: 9.5pt; letter-spacing: 1px; font-weight: 700; margin-right: 6px;">UNDER APPROVAL</span>
-<strong>Microdesign &mdash;.</strong> Canonical document for the
-multilingual subsystem of Metnos. Aligned with ADR
-
-(prompt-as-data + auto-bilingual alignment) and the three layers already live
+<div style="margin: 18px 0; border-left: 5px solid #16a34a; background: #dcfce7; color: #14532d; padding: 14px 20px; border-radius: 0 8px 8px 0; font-size: 11pt; font-family: 'Segoe UI', Calibri, -apple-system, sans-serif; line-height: 1.55;">
+<span style="display: inline-block; background: #14532d; color: #fff; padding: 2px 10px; border-radius: 12px; font-size: 9.5pt; letter-spacing: 1px; font-weight: 700; margin-right: 6px;">TESTED</span>
+<strong>Microdesign &mdash; aligned with the code.</strong> Canonical document for the
+multilingual subsystem of Metnos. Covers the
+prompt-as-data + auto-bilingual alignment pattern and the three layers live
 in code: <code>runtime/prompts/&lt;lang&gt;/&lt;role&gt;.j2</code> (MiniJinja, 26 roles),
 <code>runtime/i18n.sqlite</code> (118 keys), and the executor TOML manifests with
 <code>[description].&lt;lang&gt;</code> table + companion file
@@ -95,8 +94,8 @@ in code: <code>runtime/prompts/&lt;lang&gt;/&lt;role&gt;.j2</code> (MiniJinja, 2
  <h1>Metnos</h1>
  <div class="subtitle"><code>multilang</code> &mdash; three layers, latest-wins source-of-truth, add-language</div>
  <div class="meta">
- Microdesign &mdash; <br>
- Aligned with (prompt-as-data) and the modules<br>
+ Microdesign &mdash; aligned with the code.<br>
+ Covers the prompt-as-data pattern and the modules<br>
  <code>runtime/prompt_loader.py</code>, <code>runtime/i18n.py</code>,
  <code>runtime/i18n_translator.py</code>, <code>runtime/admin/prompts_cli.py</code>.<br>
  <br>
@@ -125,7 +124,7 @@ in code: <code>runtime/prompts/&lt;lang&gt;/&lt;role&gt;.j2</code> (MiniJinja, 2
 This document defines <em>how Metnos speaks more than one language</em>:
 where strings live, who can edit them, how a change in one language
 propagates to the others, how a new language is added. Italian and English
-have been present from day one; from the system must accept
+are both present; the system must accept
 a third language (French, Spanish, German) without code changes.
 </p>
 
@@ -538,11 +537,11 @@ not modify systemd units nor the manifest, only
 <h2>References</h2>
 
 <ul>
-<li>ADR &mdash; <code>indices_image</code> pattern: the same instrument-object + domain-qualifier scheme applies to <code>indices_text</code> for multilingual semantic search (future).</li>
-<li>ADR &mdash; <code>get_inputs</code>: dialogues require process-language LLM prompts for the <em>final_message_hint</em>.</li>
-<li>ADR &mdash; Tier 2 credentials via <code>get_inputs</code> + on_complete: same prompt loader, same languages.</li>
-<li>ADR &mdash; prompt-as-data, motivation and full schema of layer 1.</li>
-<li>ADR &mdash; async indexing build: progress messages flow from layer 3 (i18n.sqlite), naturally localised.</li>
+<li><code>indices_image</code> pattern: the same instrument-object + domain-qualifier scheme applies to <code>indices_text</code> for multilingual semantic search (future).</li>
+<li><code>get_inputs</code>: dialogues require process-language LLM prompts for the <em>final_message_hint</em>.</li>
+<li>Tier 2 credentials via <code>get_inputs</code> + on_complete: same prompt loader, same languages.</li>
+<li>Prompt-as-data: motivation and full schema of layer 1.</li>
+<li>Async indexing build: progress messages flow from layer 3 (i18n.sqlite), naturally localised.</li>
 <li>Code: <code>runtime/prompt_loader.py</code>, <code>runtime/i18n.py</code>, <code>runtime/i18n_translator.py</code>, <code>runtime/admin/prompts_cli.py</code>, <code>runtime/admin/i18n_cli.py</code>.</li>
 </ul>
 

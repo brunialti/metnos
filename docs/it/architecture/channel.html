@@ -65,10 +65,9 @@ li { margin-bottom: 4px; }.lead { font-size: 12pt; color: var(--navy); border-le
 <div class="status-banner">
 
 <strong>Microprogettazione &mdash; allineata al codice.</strong>
-La componente <code>channels</code> e' stata realizzata e testata a livello di modulo (cluster <code>channels</code> 19/19 verde) il e poi estesa il con il supporto multi-user: comando <code>/start &lt;token&gt;</code> per pairing dei guest, <code>send_to(chat_id, OutboundMessage)</code> e fallback multi-user su pairing senza riga in <code>pairings.db</code>.
+La componente <code>channels</code> e' realizzata e testata a livello di modulo. Supporta multi-user: comando <code>/start &lt;token&gt;</code> per pairing dei guest, <code>send_to(chat_id, OutboundMessage)</code> e fallback multi-user su pairing senza riga in <code>pairings.db</code>.
 Da affiancare ad <a href="http_api.html" style="color:#14532d;text-decoration:underline;"><code>http_api</code></a>: <strong>Telegram resta il canale primario per il dialogo</strong>; HTTP (porta 8770) e' il canale alternativo per dashboard host, automazioni curl/script e client Rust remoto.
 Riferimento di implementazione: <code>/opt/metnos/runtime/channels/</code>.
-<div class="seq">Stato nella sequenza dei microdesign: <em>under approval</em> &rarr; <em>approved</em> &rarr; <strong>tested</strong> &rarr; <em>implemented</em>. La di questo doc precedeva il codice; e' rimpiazzata da questa dopo l'implementazione di Channel Protocol, TelegramChannel, ChannelDaemon e l'integrazione col modulo <a href="pairing.html"><code>pairing</code></a>.</div>
 </div>
 
 <nav aria-label="Language" style="position:fixed;top:16px;right:20px;z-index:9999;font-family:'Segoe UI',Calibri,sans-serif;font-size:10pt;letter-spacing:2px;background:#FAFBFC;border:1px solid #d0d7de;border-radius:14px;padding:4px 10px;box-shadow:0 1px 4px rgba(0,0,0,0.04);">
@@ -148,7 +147,7 @@ vaglio &mdash; vive nel runtime; il canale &egrave; un tubo bidirezionale.
 La scelta di trattare il canale come adattatore (e non come modulo distinto
 per ciascuna integrazione) &egrave; quella che permette di partire con due
 canali (CLI + Telegram) e aggiungerne altri senza toccare il nucleo. Vedi
-cap.&nbsp;6 dell'<a href="../Metnos_Architettura_Intro_v1.html#cap6">Architettura</a>:
+cap.&nbsp;6 dell'Architettura:
 il canale sta nello strato 1 (Gateway), insieme all'autenticazione e al
 routing.
 </p>
@@ -222,8 +221,8 @@ un <code>inline_keyboard</code>. Ritorna <code>{ok, result?, error?, status_code
 <li><code>poll(timeout_s=25)</code> &rarr; long-poll <code>getUpdates</code>
 con offset interno; restituisce solo i <code>message</code> e
 <code>edited_message</code> con campo <code>text</code>. I
-<code>callback_query</code> (bottoni cliccati) saranno gestiti in con
-un dispatcher separato (vedi cap.&nbsp;6 e 9).</li>
+<code>callback_query</code> (bottoni cliccati) sono gestiti dal
+dispatcher dedicato (vedi cap.&nbsp;6 e 9).</li>
 </ul>
 
 <h1 id="cap4">4. Long-poll e persistenza dell'offset</h1>
@@ -306,8 +305,7 @@ La componente che produce le carte di approval e' in
 <code>runtime/channels/approval.py</code>:
 <code>render_approval_card(ApprovalRequest)</code> restituisce un
 <code>OutboundMessage</code> con la &laquo;carta a 3 righe&raquo; del
-dialog manager (vedi <a href="approval_ux.html">approval_ux</a>,
-da promuovere a quando il dispatcher arrivera'). Tre forme
+dialog manager (vedi <a href="approval_ux.html">approval_ux</a>). Tre forme
 modulate per ricorrenza:
 </p>
 
@@ -321,12 +319,10 @@ compatta da bottone.</li>
 </ul>
 
 <p>
-La carta e' gia' renderizzabile; il <em>dispatching</em> dei callback
+Il <em>dispatching</em> dei callback
 (cliccare "Approva" risolve il <code>token</code> in una pending request
-e applica la decisione) e' rinviato a perche' richiede un registro
-delle pending requests con TTL, che e' la prossima iterazione naturale
-ora che il <a href="vaglio.html">vaglio</a> reale (27/4) puo' iniziare a
-sollevare richieste di approval concrete.
+e applica la decisione) e' gestito dal daemon tramite
+<code>approval_registry.resolve</code> (vedi <a href="approval_ux.html">approval_ux</a>).
 </p>
 
 <h1 id="cap7">7. Rapporto col <code>pairing</code></h1>
@@ -413,7 +409,7 @@ deliberato:
 Multi-user: il comando <code>/start &lt;token&gt;</code> accettato dal
 daemon Telegram completa il pairing dei guest emesso dal pannello
 <code>/admin/users</code> dell'HTTP API. Il <code>send_messages</code>
-v0.4.0 supporta <code>to_user="lucia"</code> e <code>via_channel="auto"</code>:
+supporta <code>to_user="lucia"</code> e <code>via_channel="auto"</code>:
 risolve via <code>users.resolve_recipients</code>, vaglio cross-user
 applicato per non-host.
 </p>
@@ -426,10 +422,10 @@ canale alla volta. Per CLI + Telegram in parallelo servono due istanze
 (due unit systemd). Adeguato per ora; un'astrazione multi-canale piu'
 ricca arriva quando ci saranno tre o piu' canali attivi.</li>
 
-<li><strong>No callback dispatcher</strong>: i bottoni inline si
-renderizzano (cap.&nbsp;6) ma cliccarli non fa ancora nulla.
-Implementazione in, dopo il registro delle pending approval
-requests (legato al <a href="vaglio.html">vaglio</a> reale 27/4).</li>
+<li><strong>Callback dispatcher attivo</strong>: i bottoni inline si
+renderizzano (cap.&nbsp;6) e il dispatcher nel daemon risolve
+i click tramite <code>approval_registry.resolve</code> (vedi
+<a href="approval_ux.html">approval_ux</a>).</li>
 
 <li><strong>No file/voice/photo</strong>: solo testo. <code>poll</code>
 filtra esplicitamente i messaggi che non hanno <code>text</code>. Le
@@ -446,7 +442,7 @@ un IP pubblico o un proxy &mdash; e Metnos sceglie di non averli.</li>
 servisse, basta un token bucket a livello <code>send</code>.</li>
 
 <li><strong>No rate-limit per sender</strong>: un sender pairato puo'
-inondare il daemon. In con il vaglio reale piu' attivo questo
+inondare il daemon. Con il vaglio attivo questo
 diventa rilevante; per ora la cardinalita' di pairing &egrave; bassa
 (uno o pochi familiari).</li>
 </ul>

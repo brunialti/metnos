@@ -72,7 +72,7 @@ table.policy-table td:first-child { text-align: left; font-weight: 600; }
 
 <strong>Microprogettazione &mdash; allineata al codice.</strong>
 Cluster <code>policy</code> 10/10 verde. Aggiunte: due capability nuove, <code>auth.password_storage</code> per <code>login_session</code> e <code>crawl.recursive</code> per <code>find_urls(mode='research'/'archive')</code>, con tier-policy a tre livelli (default / trusted / owned) governata da <code>~/.config/metnos/owned_domains.json</code> e <code>~/.config/metnos/trusted_origins.json</code>. Riferimento: <code>runtime/policy.py</code>.
-<div class="seq">Stato nella sequenza dei microdesign: <em>under approval</em> &rarr; <em>approved</em> &rarr; <strong>tested</strong> &rarr; <em>implemented</em>. Sostituisce la versione obsoleta scritta prima dell'implementazione.</div>
+<div class="seq">Stato nella sequenza dei microdesign: <em>under approval</em> &rarr; <em>approved</em> &rarr; <strong>tested</strong> &rarr; <em>implemented</em>.</div>
 </div>
 
 <nav aria-label="Language" style="position:fixed;top:16px;right:20px;z-index:9999;font-family:'Segoe UI',Calibri,sans-serif;font-size:10pt;letter-spacing:2px;background:#FAFBFC;border:1px solid #d0d7de;border-radius:14px;padding:4px 10px;box-shadow:0 1px 4px rgba(0,0,0,0.04);">
@@ -316,7 +316,7 @@ Tutte e quattro le funzioni aprono e chiudono la connessione per chiamata: nessu
 <h2>4.3 Quando si scrivono i grants</h2>
 
 <p>
-In il modulo <code>policy</code> &egrave; <em>read-only</em> dal pianificatore: quest'ultimo legge la tabella e i grants, ma non li crea mai. La creazione avviene nel dispatcher di approval (cap. 5 fase 5, vedi <a href="approval_ux.html">approval_ux</a>): quando una pending request risolve come <em>approved</em> con scope <em>this and similar</em>, il dispatcher chiama <code>record_grant</code> e da quel momento la concessione &egrave; persistente.
+Il modulo <code>policy</code> &egrave; <em>read-only</em> dal pianificatore: quest'ultimo legge la tabella e i grants, ma non li crea mai. La creazione avviene nel dispatcher di approval (vedi <a href="approval_ux.html">approval_ux</a>): quando una pending request risolve come <em>approved</em> con scope <em>this and similar</em>, il dispatcher chiama <code>record_grant</code> e da quel momento la concessione &egrave; persistente.
 </p>
 
 <h1 id="cap5">5. Esito combinato (<code>effective_outcome</code>)</h1>
@@ -367,7 +367,7 @@ Tabella per (Full, mail:send) &rarr; <code>approval_required</code> (regola "alw
 <h1 id="cap6">6. Integrazione runtime</h1>
 
 <p>
-In <code>runtime/policy.py</code> &egrave; un modulo separato, completo e testato, ma non ancora cucito dentro il pianificatore. L'integrazione in <code>agent_runtime</code> &egrave; l'ultima riga della fase 5 e arriver&agrave; nella prossima iterazione. Lo schema previsto:
+In <code>runtime/policy.py</code> &egrave; un modulo separato, completo e testato. L'integrazione nel pianificatore &egrave; in corso. Lo schema previsto:
 </p>
 
 <pre>def execute_step(step, ctx):

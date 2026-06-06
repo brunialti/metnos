@@ -73,15 +73,14 @@ li { margin-bottom: 4px; }.lead { font-size: 12pt; color: var(--navy); border-le
 <body>
 <div style="margin: 18px 0; border-left: 5px solid #16a34a; background: #dcfce7; color: #14532d; padding: 14px 20px; border-radius: 0 8px 8px 0; font-size: 11pt; font-family: 'Segoe UI', Calibri, -apple-system, sans-serif; line-height: 1.55;">
 <strong>Aligned with the code.</strong>
-The pool currently holds <strong>55 executors</strong>, split between handcrafted ones in
+The pool currently holds <strong>75 executors</strong>, split between handcrafted ones in
 <code>/opt/metnos/executors/</code> and ones generated on the fly by Synt in
-<code>~/.local/share/metnos/executors/</code> (kept apart by design, ).
+<code>~/.local/share/metnos/executors/</code> (kept apart by design).
 Manifest signed with Ed25519, runtime fence built on the manifest itself, life cycle managed by the loader.
 See also <a href="agent_runtime.html" style="color: #14532d; text-decoration: underline;">agent_runtime</a>
 (planner loop), <a href="sandbox.html" style="color: #14532d; text-decoration: underline;">sandbox</a>
 (the fence) and <a href="synt.html" style="color: #14532d; text-decoration: underline;">synt</a>
 (automatic generation).
-<div style="font-size: 9.5pt; color: #2d4a32; margin-top: 8px;">Rewritten with a didactic angle: the reader wants to understand how an executor works, not to implement one.</div>
 </div>
 
 <nav aria-label="Language" style="position:fixed;top:16px;right:20px;z-index:9999;font-family:'Segoe UI',Calibri,sans-serif;font-size:10pt;letter-spacing:2px;background:#FAFBFC;border:1px solid #d0d7de;border-radius:14px;padding:4px 10px;box-shadow:0 1px 4px rgba(0,0,0,0.04);">
@@ -458,14 +457,14 @@ where on disk they live, and where the ideas behind them come from.
  <div>
  <h4 style="color:#9333ea;">Imported from an external skill</h4>
  <p style="color:#444;">A public skill (e.g. from <code>agentskills.io</code>) describes in plain English how to use a third-party service. A deterministic translator turns it into one or more Metnos executors.</p>
- <p><strong>Folder</strong>: <code>~/.local/share/metnos/executors/skills/</code> (legacy <code>_imports/</code> read in back-compat, ).</p>
+ <p><strong>Folder</strong>: <code>~/.local/share/metnos/executors/skills/</code></p>
  <p><strong>Examples</strong>: <code>read_events</code>, <code>set_events</code>, <code>delete_events</code> (from a calendar skill).</p>
  <p style="color:#64748B;font-style:italic;">Same checks as a generated one: no special treatment for coming from outside.</p>
  </div>
  <div>
  <h4 style="color:#16a34a;">Builtin</h4>
  <p style="color:#444;">Internal runtime services. They have no folder of their own; they live within Metnos.</p>
- <p><strong>Folder</strong>: <code>runtime/system/</code> (formerly <code>verb_unique/</code>, renamed by ).</p>
+ <p><strong>Folder</strong>: <code>runtime/system/</code></p>
  <p><strong>Examples</strong>: <code>undo_last_turn</code>, <code>scheduler</code>, <code>admin</code>.</p>
  <p style="color:#64748B;font-style:italic;">System services, not regular tools.</p>
  </div>
@@ -645,11 +644,10 @@ a time.
 
 <p>
 For design decisions (why this choice and not another) there is a registry in
-<code>/opt/metnos/decisions/</code>: more than ninety numbered entries, each
-explaining a dilemma resolved. Examples: (why generated executors live
-in a different folder from handwritten ones), (how to ask for a password
-without ending up with it in plain text in the logs), (how to index
-thirty thousand photos without blocking everything else).
+<code>/opt/metnos/decisions/</code>. Examples: why generated executors live
+in a different folder from handwritten ones; how to ask for a password
+without ending up with it in plain text in the logs; how to index
+thirty thousand photos without blocking everything else.
 </p>
 
 <div class="callout tip">

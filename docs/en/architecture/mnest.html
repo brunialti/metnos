@@ -4,7 +4,7 @@
  <meta charset="UTF-8">
  <meta name="viewport" content="width=device-width, initial-scale=1.0">
  <title>Metnos &mdash; mnest (under approval)</title>
- <meta name="description" content="Microdesign of the mnest: the trace of co-activation between two executors. Anatomy, proto-mnest, lifecycle, decay. Replaces synapse.html.">
+ <meta name="description" content="Microdesign of the mnest: the trace of co-activation between two executors. Anatomy, proto-mnest, lifecycle, decay.">
  <meta name="keywords" content="mnest, proto-mnest, co-activation, executor, decay, ager, mnestome, synapse, microdesign, metnos">
  <meta name="author" content="Roberto Brunialti">
  <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large">
@@ -31,7 +31,7 @@
  "inLanguage": "en",
  "isPartOf": {"@type": "WebSite", "name": "Metnos", "url": "https://metnos.com/"},
  "author": {"@type": "Person", "name": "Roberto Brunialti"},
- "about": "Metnos component: mnest (canonical, replaces synapse)"
+ "about": "Metnos component: mnest (canonical)"
 }
  </script>
  <style>:root {
@@ -71,7 +71,7 @@ li { margin-bottom: 4px; }.lead { font-size: 12pt; color: var(--navy); border-le
 <body>
 <div style="margin: 18px 0; border-left: 5px solid #16a34a; background: #dcfce7; color: #14532d; padding: 14px 20px; border-radius: 0 8px 8px 0; font-size: 11pt; font-family: 'Segoe UI', Calibri, -apple-system, sans-serif; line-height: 1.55;">
 <strong>&#10003; Microdesign &mdash; aligned with the code.</strong>
-Canonical doc approved after the end-to-end simulation, aligned with the <a href="../Metnos_Architecture_Intro_v1.html" style="color: #14532d; text-decoration: underline;">Architecture </a> and the <a href="../Metnos_Dialogue_Executors_v1.html" style="color: #14532d; text-decoration: underline;">Dialogue on executors and distributed memory</a>. Normative reference for implementation. Replaces the older <a href="../../it/architecture/synapse.html" style="color: #14532d; text-decoration: underline;">synapse.html</a> (deprecated, in Italian).
+Canonical doc approved after the end-to-end simulation, aligned with the <a href="../Metnos_Architecture_Intro_v1.html" style="color: #14532d; text-decoration: underline;">Architecture </a> and the <a href="../Metnos_Dialogue_Executors_v1.html" style="color: #14532d; text-decoration: underline;">Dialogue on executors and distributed memory</a>. Normative reference for implementation.
 </div>
 
 <nav aria-label="Language" style="position:fixed;top:16px;right:20px;z-index:9999;font-family:'Segoe UI',Calibri,sans-serif;font-size:10pt;letter-spacing:2px;background:#FAFBFC;border:1px solid #d0d7de;border-radius:14px;padding:4px 10px;box-shadow:0 1px 4px rgba(0,0,0,0.04);">
@@ -93,7 +93,6 @@ Canonical doc approved after the end-to-end simulation, aligned with the <a href
  <div class="meta">
  Microdesign &mdash; <br>
  Aligned with Architecture (ch. 9) and the Dialogue on executors.<br>
- Replaces <code>synapse.html</code> (renaming and redefinition).<br>
  <br>
  Audience: whoever implements the graph, the reinforcement, the decay.<br>
  Reading time: 14 minutes.
@@ -125,11 +124,8 @@ This document defines <em>what a mnest is</em>: the trace, kept in the
 <a href="mnestome.html">mnestome</a>, of an output passing between two
 <a href="executor.html">executors</a>. It is the second of three
 canonical docs introduced by the <em>Dialogue on executors and
-distributed memory</em>. It replaces and redefines the older
-<a href="../../it/architecture/synapse.html">synapse.html</a>: the name
-changes (synapse &rarr; mnest) and so does the semantics (the synapse
-was a passive &laquo;concomitance&raquo;, the mnest is an
-<em>observed data passing</em>).
+distributed memory</em>. The mnest records an <em>observed data passing</em>
+between two executors, not a passive concomitance.
 </p>
 
  <figure>
@@ -203,41 +199,19 @@ From this all its important properties follow:
 <li>It is <em>distinct per version pair</em>: <em>read_files &rarr; read_files_pdf v2.0</em> is one mnest, <em>read_files &rarr; read_files_pdf v3.0</em> is another.</li>
 </ul>
 
-<h1 id="cap3">3. Mnest vs. synapse</h1>
+<h1 id="cap3">3. Semantics of the mnest</h1>
 
 <p>
-The previous microdesign (<a href="../../it/architecture/synapse.html">synapse.html</a>,
-now deprecated) called this entity <em>synapse</em> and described it as
-&laquo;a declared or observed link between neurons: when A fires, B
-tends to fire too&raquo;. The redefinition changes three
-things:
+The mnest records a passing of data (&laquo;A's output was B's
+input&raquo;), generated deterministically by the gateway at turn close:
+either the passing happened or it did not. A strong mnest toward an
+executor that does not exist (proto-mnest, ch. 8) is a concrete
+operational gap, not an analogy.
 </p>
 
-<table>
-<thead><tr><th style="width:30%">Aspect</th><th>Synapse (, deprecated)</th><th>Mnest (, canonical)</th></tr></thead>
-<tbody>
-<tr>
- <td>What it records</td>
- <td>A correlation of activations: &laquo;A on, then B on shortly after&raquo;.</td>
- <td>A passing of data: &laquo;A's output was B's input&raquo;.</td>
-</tr>
-<tr>
- <td>Generation</td>
- <td>Inferred by statistical observation of co-occurrences across time windows.</td>
- <td>Generated deterministically by the gateway at turn close: either the passing happened or it did not.</td>
-</tr>
-<tr>
- <td>Meaning for synthesis</td>
- <td>A strong synapse suggests a conceptual proximity.</td>
- <td>A strong mnest toward an executor that does not exist (proto-mnest, ch. 8) is a concrete operational gap, not an analogy.</td>
-</tr>
-</tbody>
-</table>
-
 <p>
-The gain of the redefinition is that the mnest <em>sees data that
-moved</em>, not just events that fired. A mnest graph is a graph of real
-flows; a synapse graph was a graph of hints.
+The mnest <em>sees data that moved</em>, not just events that fired. A
+mnest graph is a graph of real flows.
 </p>
 
 <h1 id="cap4">4. Anatomy of a mnest</h1>
@@ -503,7 +477,7 @@ with its <code>dst_version</code> made concrete.
 <hr>
 <p style="text-align:center; color:var(--muted); font-size:9.5pt; margin-top:40px;">
 Metnos &mdash; <em>mnest</em> microdesign <br>
-New canonical doc. Replaces <code>synapse.html</code> (deprecated).
+Canonical doc.
 </p>
 </body>
 </html>

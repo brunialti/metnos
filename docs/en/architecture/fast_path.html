@@ -84,9 +84,7 @@ li { margin-bottom: 4px; }.lead { font-size: 12pt; color: var(--navy); border-le
  <h1>Metnos</h1>
  <div class="subtitle">introvertive fast-path &mdash; how the assistant learns to answer instantly</div>
  <div class="meta">
- Microarchitecture &mdash; <br>
- Aligned with (literal fast_path), 0149 (canonical_matcher),<br>
- 0150 (multi-tool memoization).<br>
+ Microarchitecture<br>
  <br>
  Audience: anyone who wants to understand why Metnos sometimes answers<br>
  in half a second, and sometimes takes ten.<br>
@@ -298,12 +296,9 @@ back to the planner. No harm done.
 </p>
 
 <div class="callout note">
-<strong>Even L2 needs a starting point.</strong> On day one the table
-is empty: the system accumulates observations while the user does
-normal things, and after a week of daily use it starts recognising
-recurring pipelines. For this reason L2 is born with the switch off
-by default (<code>enabled = false</code>): it gets turned on when the
-rows are sufficient to be useful.
+<strong>L2 starts disabled.</strong> The switch is off by default
+(<code>enabled = false</code>): the system accumulates observations from
+normal use and activates when the rows are sufficient to be useful.
 </div>
 
 <h1 id="cap7">7. A TTL that measures use, not time</h1>
@@ -478,8 +473,7 @@ formally bind it to playback in a later version.</li>
 
 <p style="margin-top:40px;color:#64748b;font-size:10pt;">
 &copy; 2026 Roberto Brunialti &middot;
-<a href="../../en/" style="color:#64748b;">Metnos documentation</a> &middot;
-Reference ADRs: 0094 / 0149 / 0150
+<a href="../../en/" style="color:#64748b;">Metnos documentation</a>
 </p>
 
 </body>

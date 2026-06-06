@@ -31,7 +31,7 @@
  "inLanguage": "en",
  "isPartOf": {"@type": "WebSite", "name": "Metnos", "url": "https://metnos.com/"},
  "author": {"@type": "Person", "name": "Roberto Brunialti"},
- "about": "Metnos component: synt (canonical, replaces synthesizer)"
+ "about": "Metnos component: synt (canonical)"
 }
  </script>
  <style>:root {
@@ -374,33 +374,12 @@ risk of cascading errors outweighs the reuse benefit. synt jumps to
 
 <h2>4.2 Generate</h2>
 
-<div class="callout note" style="margin-bottom:14px;">
-<strong>Update.</strong> The <em>LLM core</em> of generation
-(specification + skeleton + tests + description + code) has been rewritten
-as a five-stage <em>multistage</em> pipeline: see
-&sect;<a href="#cap4">4.2.3</a> below. The seven-stage pipeline described
-here remains valid as the <em>overall frame</em> (with the profile,
-approval, sign and install steps that surround it); only the three LLM
-steps (2-3-5 in the historical numbering) have been replaced by the
-multistage.
-</div>
-
 <p>
 When composing is not enough &mdash; because there is no chain, because it is
 too long, because a missing link is critical &mdash; synt enters the
-seven-stage pipeline described in
-<a href="executor.html#cap7">executor.html ch. 7</a>:
+multistage five-stage pipeline described in
+&sect;<a href="#cap4">4.2.3</a>.
 </p>
-
-<ol>
-<li><strong>Pattern detect</strong>: the <em>ager</em> confirms the recurrence of the proto-mnest.</li>
-<li><strong>Specification</strong>: a frontier-LLM call produces a textual specification (purpose, I/O, errors).</li>
-<li><strong>Skeleton</strong>: second frontier call for <code>main.py</code> and <code>schema.json</code>.</li>
-<li><strong>Profile</strong>: synt computes the tightest sandbox profile compatible with the tests.</li>
-<li><strong>Birth tests</strong>: all must pass with that profile.</li>
-<li><strong>Human approval</strong>: <em>not bypassable</em>, in any autonomy level.</li>
-<li><strong>Sign and install</strong>: HMAC, profile lock, executor enters the pool.</li>
-</ol>
 
 <p>
 Generating costs: typically 1&ndash;2 calls at the <em>wise</em> tier plus
@@ -509,16 +488,6 @@ repertoire.
 <h3>4.2.3 Multistage pipeline </h3>
 
 <p>
-The mammoth single prompt that should produce name, args, capabilities,
-tests and code in one call is fragile: tested on 35 non-trivial queries
-it synthesised correctly only <strong>2 out of 35 (5.7&thinsp;%)</strong>,
-and even with a frontier-grade wise tier the rate
-climbed only to 40&thinsp;%. The bottleneck was structural, not
-model-bound: the overcrowded prompt demanded too many simultaneous
-decisions.
-</p>
-
-<p>
 The architectural answer is <strong>multistage</strong>: five small
 stages, each with a prompt focused on its own task, ordered from the
 most procedural (closed-vocabulary lookup) to the most creative (code).
@@ -529,7 +498,7 @@ ONLY the slice it needs &mdash; no cumulative blob.
 <table>
 <thead><tr><th style="width:18%">Stage</th><th style="width:14%">Type</th><th style="width:18%">LLM Tier</th><th>Output</th></tr></thead>
 <tbody>
-<tr><td><strong>1. Naming + classification</strong></td><td>procedural</td><td>middle (Gemma 4 26B think=true)</td><td>name <code>{action}_{object}[_qualifier]</code> from the closed vocabulary (23 actions, 19 objects) + revertible/critical/target_kind. If no combination fits: explicit rejection with reason.</td></tr>
+<tr><td><strong>1. Naming + classification</strong></td><td>procedural</td><td>middle (Gemma 4 26B think=true)</td><td>name <code>{action}_{object}[_qualifier]</code> from the closed vocabulary (23 actions, 22 objects) + revertible/critical/target_kind. If no combination fits: explicit rejection with reason.</td></tr>
 <tr><td><strong>2. Signature</strong></td><td>procedural</td><td>middle</td><td>args_schema (JSON Schema), capabilities (closed set), reverse_pattern from the catalogue (see <a href="undo.html">undo</a>).</td></tr>
 <tr><td><strong>3. Birth tests</strong></td><td>procedural</td><td>middle</td><td>4-6 tests in fixed format (setup/input/expect/teardown), at minimum: happy path, empty list, invalid args, domain edge.</td></tr>
 <tr><td><strong>4. Description + affinity</strong></td><td>creative</td><td>middle</td><td>LLM-readable description (2-5 sentences, single string) + 6-10 affinity keywords for the composer.</td></tr>
@@ -546,17 +515,14 @@ born, by who can produce it.
 </p>
 
 <p>
-Measured results on the 35-query stress dataset :
+Measured results on the 35-query stress dataset:
 <strong>stage 1 (naming + classification) reaches 88.6&thinsp;% (31/35)</strong>
-under the bilingual prompt, against 5.7&thinsp;% for the monolithic
-single-prompt (ADR <a href="../../decisions/0050-synt-stress-test-50-queries.md">0050</a>) and
-~74&thinsp;% for the first monolingual multistage (ADR
-<a href="../../decisions/0052-synt-multistage-validation-35-queries.md">0052</a>).
+under the bilingual prompt.
 The remaining 4 escalations (resize, query SQL, validate YAML, crack)
 are explicit rejections for verbs semantically outside the closed
 vocabulary, not synthesis errors: the vocabulary is only worth
-extending if those patterns recur in real cases (<a href="../../decisions/0053-synt-stage1-bilingual-mapping.md">0053</a>:
-&laquo;synonyms before vocabulary&raquo;).
+extending if those patterns recur in real cases
+(&laquo;synonyms before vocabulary&raquo;).
 </p>
 
 <div class="callout note">
@@ -660,9 +626,7 @@ for preemptive optimisation.
 <p>
 Every synthesis proposal &mdash; any strategy &mdash; produces a score
 <code>R</code> &in; [0, 1] that synt computes on observed data and that
-Roberto sees in the approval dossier. The formula consolidates the one in
-the previous microdesign (<a href="../../it/architecture/synthesizer.html">synthesizer.html
-&sect;7.1</a>) and adds a <em>strategy_cost</em> component that rewards the
+Roberto sees in the approval dossier. The formula includes a <em>strategy_cost</em> component that rewards the
 cheaper strategies:
 </p>
 
@@ -953,8 +917,7 @@ Three invariants of the synt audit, guaranteed by loader and runtime:
 
 <hr>
 <p style="text-align:center; color:var(--muted); font-size:9.5pt; margin-top:40px;">
-Metnos &mdash; <em>synt</em> microdesign &mdash; 2026-04-25<br>
-New canonical doc. Replaces <code>synthesizer.html</code> (deprecated, in Italian).
+Metnos &mdash; <em>synt</em>, canonical microdesign.
 </p>
 </body>
 </html>

@@ -73,15 +73,14 @@ li { margin-bottom: 4px; }.lead { font-size: 12pt; color: var(--navy); border-le
 <body>
 <div style="margin: 18px 0; border-left: 5px solid #16a34a; background: #dcfce7; color: #14532d; padding: 14px 20px; border-radius: 0 8px 8px 0; font-size: 11pt; font-family: 'Segoe UI', Calibri, -apple-system, sans-serif; line-height: 1.55;">
 <strong>Allineata al codice.</strong>
-Al momento il pool conta <strong>55 executor</strong> fra scritti a mano in
+Il pool conta <strong>75 executor</strong> fra scritti a mano in
 <code>/opt/metnos/executors/</code> e generati al volo dal Synt in
-<code>~/.local/share/metnos/executors/</code> (separati per costruzione, ).
+<code>~/.local/share/metnos/executors/</code> (separati per costruzione).
 Manifesto firmato Ed25519, recinto di esecuzione costruito sul manifesto stesso, ciclo di vita gestito dal loader.
 Vedi anche <a href="agent_runtime.html" style="color: #14532d; text-decoration: underline;">agent_runtime</a>
 (loop pianificatore), <a href="sandbox.html" style="color: #14532d; text-decoration: underline;">sandbox</a>
 (recinto) e <a href="synt.html" style="color: #14532d; text-decoration: underline;">synt</a>
 (generazione automatica).
-<div style="font-size: 9.5pt; color: #2d4a32; margin-top: 8px;">Riscritto il con taglio didattico: chi legge vuole capire come funziona un executor, non implementarne uno.</div>
 </div>
 
 <nav aria-label="Language" style="position:fixed;top:16px;right:20px;z-index:9999;font-family:'Segoe UI',Calibri,sans-serif;font-size:10pt;letter-spacing:2px;background:#FAFBFC;border:1px solid #d0d7de;border-radius:14px;padding:4px 10px;box-shadow:0 1px 4px rgba(0,0,0,0.04);">
@@ -519,14 +518,14 @@ vivono sul disco, e da dove provengono le idee che li abitano.
  <div>
  <h4 style="color:#9333ea;">Importati da skill esterna</h4>
  <p style="color:#444;">Una skill pubblica (es. da <code>agentskills.io</code>) descrive in italiano l'uso di un servizio terzo. Un traduttore deterministico la converte in uno o pi&ugrave; executor Metnos.</p>
- <p><strong>Cartella</strong>: <code>~/.local/share/metnos/executors/skills/</code> (legacy <code>_imports/</code> letto in back-compat, ).</p>
+ <p><strong>Cartella</strong>: <code>~/.local/share/metnos/executors/skills/</code></p>
  <p><strong>Esempi</strong>: <code>read_events</code>, <code>set_events</code>, <code>delete_events</code> (da una skill calendario).</p>
  <p style="color:#64748B;font-style:italic;">Stessi controlli di un generato: niente trattamento di favore per il fatto di venire da fuori.</p>
  </div>
  <div>
  <h4 style="color:#16a34a;">Di sistema (builtin)</h4>
  <p style="color:#444;">Servizi interni del runtime. Non hanno cartella propria, vivono dentro Metnos.</p>
- <p><strong>Cartella</strong>: <code>runtime/system/</code> (ex <code>verb_unique/</code>, rinominato ).</p>
+ <p><strong>Cartella</strong>: <code>runtime/system/</code></p>
  <p><strong>Esempi</strong>: <code>undo_last_turn</code>, <code>scheduler</code>, <code>admin</code>.</p>
  <p style="color:#64748B;font-style:italic;">Servizi del sistema, non attrezzi normali.</p>
  </div>
@@ -713,11 +712,10 @@ i documenti seguenti vanno letti uno alla volta.
 
 <p>
 Per le decisioni di progetto (perch&eacute; questa scelta e non quella) &egrave; tenuto un registro
-in <code>/opt/metnos/decisions/</code>: oltre 90 voci numerate, ognuna spiega un dilemma
-risolto. Esempi: (perch&eacute; gli executor generati stanno in una cartella diversa
-da quelli scritti a mano), (come si chiede una password senza farla finire
-in chiaro nei log), (come si fa l'indicizzazione di trentamila foto senza
-bloccare tutto il resto).
+in <code>/opt/metnos/decisions/</code>. Esempi: perch&eacute; gli executor generati stanno in una cartella diversa
+da quelli scritti a mano; come si chiede una password senza farla finire
+in chiaro nei log; come si fa l'indicizzazione di trentamila foto senza
+bloccare tutto il resto.
 </p>
 
 <div class="callout tip">

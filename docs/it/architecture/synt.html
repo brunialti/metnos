@@ -29,7 +29,7 @@
  "inLanguage": "it",
  "isPartOf": {"@type": "WebSite", "name": "Metnos", "url": "https://metnos.com/"},
  "author": {"@type": "Person", "name": "Roberto Brunialti"},
- "about": "Metnos component: synt (canonical, replaces synthesizer)"
+ "about": "Metnos component: synt (canonical)"
 }
  </script>
  <style>:root {
@@ -377,33 +377,12 @@ Synt salta a <em>generare</em>. La soglia &egrave; tunabile.
 
 <h2>4.2 Generare</h2>
 
-<div class="callout note" style="margin-bottom:14px;">
-<strong>Aggiornamento.</strong> Il <em>cuore LLM</em> della
-generazione (specifica + scheletro + test + descrizione + codice) e' stato
-riscritto come pipeline <em>multistage</em> a cinque stadi: vedi
-&sect;<a href="#cap4">4.2.3</a> piu' avanti. La pipeline a sette stadi
-descritta qui sotto resta valida come <em>quadro generale</em> (con i
-passi di profilo, approvazione, firma, installazione che la circondano);
-solo i tre passi LLM (2-3-5 dell'ordinamento storico) sono stati
-sostituiti dal multistage.
-</div>
-
 <p>
 Quando comporre non basta &mdash; perch&eacute; non esiste catena, perch&eacute;
 &egrave; troppo lunga, perch&eacute; un anello mancante &egrave; cruciale &mdash;
-synt entra nella pipeline a sette stadi descritta in
-<a href="executor.html#cap7">executor.html cap. 7</a>:
+synt entra nella pipeline multistage a cinque stadi descritta in
+&sect;<a href="#cap4">4.2.3</a>.
 </p>
-
-<ol>
-<li><strong>Pattern detect</strong>: l'<em>ager</em> conferma la ricorrenza del proto-mnest.</li>
-<li><strong>Specifica</strong>: una chiamata LLM frontier produce una specifica testuale (purpose, I/O, errori).</li>
-<li><strong>Scheletro</strong>: seconda chiamata frontier per il <code>main.py</code> e lo <code>schema.json</code>.</li>
-<li><strong>Profilo</strong>: synt calcola il profilo di sandbox pi&ugrave; stretto compatibile con i test.</li>
-<li><strong>Test di nascita</strong>: tutti devono passare con quel profilo.</li>
-<li><strong>Approvazione umana</strong>: <em>non bypassabile</em>, in nessun livello di autonomy.</li>
-<li><strong>Firma e installazione</strong>: HMAC, profile lock, executor entra nel pool.</li>
-</ol>
 
 <p>
 Generare costa: tipicamente 1&ndash;2 chiamate al tier <em>wise</em> + il tempo
@@ -512,15 +491,6 @@ che si tocca e' il repertorio.
 <h3>4.2.3 Pipeline multistage </h3>
 
 <p>
-Il single-prompt mostro che dovrebbe produrre nome, args, capabilita',
-test e codice tutti in una chiamata e' fragile: testato su 35 query non
-banali ha sintetizzato correttamente solo <strong>2 su 35 (5.7&thinsp;%)</strong>,
-e anche con un wise di livello frontier il tasso
-saliva soltanto al 40&thinsp;%. Il bottleneck era strutturale, non di
-modello: il prompt sovraffollato pretendeva troppe decisioni simultanee.
-</p>
-
-<p>
 La risposta architetturale &egrave; <strong>multistage</strong>: cinque
 stadi piccoli, ognuno con prompt focalizzato sul proprio compito,
 ordinati dal piu' procedurale (lookup nel vocabolario chiuso) al piu'
@@ -532,7 +502,7 @@ cumulativo.
 <table>
 <thead><tr><th style="width:18%">Stadio</th><th style="width:14%">Tipo</th><th style="width:18%">Tier LLM</th><th>Output</th></tr></thead>
 <tbody>
-<tr><td><strong>1. Naming + classification</strong></td><td>procedurale</td><td>middle (Gemma 4 26B think=true)</td><td>nome <code>{azione}_{oggetto}[_qualifier]</code> dal vocabolario chiuso (23 azioni, 19 oggetti) + revertible/critical/target_kind. Se nessuna combinazione calza: rejection esplicita con motivo.</td></tr>
+<tr><td><strong>1. Naming + classification</strong></td><td>procedurale</td><td>middle (Gemma 4 26B think=true)</td><td>nome <code>{azione}_{oggetto}[_qualifier]</code> dal vocabolario chiuso (23 azioni, 22 oggetti) + revertible/critical/target_kind. Se nessuna combinazione calza: rejection esplicita con motivo.</td></tr>
 <tr><td><strong>2. Signature</strong></td><td>procedurale</td><td>middle</td><td>args_schema (JSON Schema), capabilities (set chiuso), reverse_pattern dal catalogo (vedi <a href="undo.html">undo</a>).</td></tr>
 <tr><td><strong>3. Birth tests</strong></td><td>procedurale</td><td>middle</td><td>4-6 test in formato fisso (setup/input/expect/teardown), almeno: caso felice, lista vuota, args invalidi, edge dominio.</td></tr>
 <tr><td><strong>4. Description + affinity</strong></td><td>creativo</td><td>middle</td><td>description LLM-readable (2-5 frasi, una stringa) + 6-10 keyword di affinity per il composer.</td></tr>
@@ -548,16 +518,14 @@ descrizione del manifest non la scrive il developer ma l'LLM dello stage
 </p>
 
 <p>
-Risultati misurati sui 35 query del dataset di stress :
+Risultati misurati sui 35 query del dataset di stress:
 <strong>stadio 1 (naming + classification) raggiunge l'88.6&thinsp;% (31/35)</strong>
-sul prompt bilingue, contro il 5.7&thinsp;% del single-prompt monolitico
-(ADR <a href="../../decisions/0050-synt-stress-test-50-queries.md">0050</a>) e il
-~74&thinsp;% del primo multistage monolingue (ADR <a href="../../decisions/0052-synt-multistage-validation-35-queries.md">0052</a>).
+sul prompt bilingue.
 Le 4 escalation residue (resize, query SQL, validate YAML, crack) sono
 rejection esplicite per verbi semanticamente fuori vocabolario chiuso,
 non errori di sintesi: il vocabolario va eventualmente esteso solo se
-quei pattern ricorrono in casi reali (<a href="../../decisions/0053-synt-stage1-bilingual-mapping.md">0053</a>:
-&laquo;synonyms before vocabulary&raquo;).
+quei pattern ricorrono in casi reali
+(&laquo;synonyms before vocabulary&raquo;).
 </p>
 
 <div class="callout note">
@@ -659,9 +627,7 @@ Non si specializza per ottimizzazione preventiva.
 <p>
 Ogni proposta di sintesi &mdash; qualunque strategia &mdash; produce un
 punteggio <code>R</code> &in; [0, 1] che synt calcola sui dati osservati e che
-Roberto vede nel dossier di approvazione. La formula consolida quella della
-microprogettazione precedente (<a href="synthesizer.html">synthesizer.html
-&sect;7.1</a>) e aggiunge una componente <em>strategy_cost</em> che premia le
+Roberto vede nel dossier di approvazione. La formula include una componente <em>strategy_cost</em> che premia le
 strategie pi&ugrave; economiche:
 </p>
 

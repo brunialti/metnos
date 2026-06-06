@@ -70,8 +70,8 @@ li { margin-bottom: 4px; }.lead { font-size: 12pt; color: var(--navy); border-le
 </head>
 <body>
 <div style="margin: 18px 0; border-left: 5px solid #16a34a; background: #dcfce7; color: #14532d; padding: 14px 20px; border-radius: 0 8px 8px 0; font-size: 11pt; font-family: 'Segoe UI', Calibri, -apple-system, sans-serif; line-height: 1.55;">
-<strong>Microdesign &mdash; under approval; MVP code aligned.</strong>
-Canonical doc approved after the end-to-end simulation, aligned with the <a href="../Metnos_Architecture_Intro_v1.html" style="color: #14532d; text-decoration: underline;">Architecture </a> and the <a href="../Metnos_Dialogue_Executors_v1.html" style="color: #14532d; text-decoration: underline;">Dialogue on executors and distributed memory</a>. Normative reference for implementation. <strong>New concept</strong> compared to the previous microdesign. Update: the nightly <em>ager</em> (<code>apply_executor_ager</code>, <code>introvertiva_propose</code>, <code>introvertiva_apply</code>) is now gated by the &laquo;has the user interacted since the last run?&raquo; signal: a Metnos on holiday no longer deprecates executors for calendar inactivity. The introvertiva also has deterministic quality filters: vocab validator on <code>proposed_name</code>, skip of flow args (<code>entries</code>, <code>from_step</code>, <code>results</code>) and template values <code>{{stepN.field}}</code>, <code>min_uses</code> threshold raised from 3 to 10. Proposal volume goes 24 &rarr; 6 with much higher expected quality.
+<strong>Microdesign &mdash; tested, aligned with the code.</strong>
+Normative reference for implementation. The nightly <em>ager</em> (<code>apply_executor_ager</code>, <code>introvertiva_propose</code>, <code>introvertiva_apply</code>) is gated by the user-interaction signal: a Metnos on holiday no longer deprecates executors for calendar inactivity. The introvertiva has deterministic quality filters: vocab validator on <code>proposed_name</code>, skip of flow args (<code>entries</code>, <code>from_step</code>, <code>results</code>) and template values <code>{{stepN.field}}</code>, <code>min_uses</code> threshold at 10. Proposal volume at 6 with high expected quality.
 </div>
 
 <nav aria-label="Language" style="position:fixed;top:16px;right:20px;z-index:9999;font-family:'Segoe UI',Calibri,sans-serif;font-size:10pt;letter-spacing:2px;background:#FAFBFC;border:1px solid #d0d7de;border-radius:14px;padding:4px 10px;box-shadow:0 1px 4px rgba(0,0,0,0.04);">
@@ -100,19 +100,6 @@ Canonical doc approved after the end-to-end simulation, aligned with the <a href
  </div>
 </div>
 
-<div class="callout" style="border-left:5px solid #16a34a;background:#dcfce7;color:#14532d;padding:14px 18px;border-radius:0 8px 8px 0;margin:18px 0;">
-<strong>Session update (evening).</strong>
-<code>events.turn_id</code> refactor: the mnestome events table
-adopts <code>turn_id</code> as the single discriminator, replacing the
-scattered identifiers (run_id / session_id / batch_id) used by the early
-versions of the introspective. Schema change with in-place migration;
-no user load lost, audit log preserved. The ager keeps running as the
-<code>apply_ager</code> task under the builtin scheduler
-(<a href="agent_runtime.html#cap11_2">agent_runtime &sect;11.2</a>) with
-schedule <code>daily@04:00</code>; on top of it, the introspective MVP
-(see <a href="synt.html">synt</a>) consumes the long-period signal via
-<code>diff_audit</code>.
-</div>
 
 <div class="toc">
 <h2>Contents</h2>
@@ -158,8 +145,8 @@ SQLite; ontologically it is <em>Metnos's relational memory</em>
 <ul>
 <li>the structure of a single mnest (see <a href="mnest.html">mnest.html</a>);</li>
 <li>the structure of a single executor (see <a href="executor.html">executor.html</a>);</li>
-<li>the synthesis pipeline (see <a href="executor.html#cap7">executor.html ch. 7</a> and <a href="../../it/architecture/synthesizer.html">synthesizer.html</a>, in Italian and pending rewrite);</li>
-<li>the LLM conversational memory (see <a href="../../it/architecture/memory.html">memory.html</a>, in Italian and pending rewrite).</li>
+<li>the synthesis pipeline (see <a href="executor.html#cap7">executor.html ch. 7</a> and <a href="synt.html">synt.html</a>);</li>
+<li>the LLM conversational memory (see <a href="mnestome.html">mnestome.html</a>, episodic section).</li>
 </ul>
 
 <h1 id="cap2">2. What the mnestome is</h1>
@@ -202,8 +189,8 @@ is worth saying clearly what the mnestome is <em>not</em>:
 <table>
 <thead><tr><th style="width:32%">What the mnestome is NOT</th><th>Where that concept lives, then</th></tr></thead>
 <tbody>
-<tr><td>The LLM's conversational memory (recent turns, in-token context).</td><td>In the <em>working memory</em> of the execution trace, see <a href="../../it/architecture/memory.html">memory.html</a> (in Italian and pending rewrite).</td></tr>
-<tr><td>The episodic memory of past conversations (what Roberto said yesterday).</td><td>In the <em>episodic memory</em>, indexed by sender. See <a href="../../it/architecture/memory.html">memory.html</a>.</td></tr>
+<tr><td>The LLM's conversational memory (recent turns, in-token context).</td><td>In the <em>working memory</em> of the execution trace.</td></tr>
+<tr><td>The episodic memory of past conversations (what Roberto said yesterday).</td><td>In the <em>episodic memory</em>, indexed by sender. In the episodic memory store.</td></tr>
 <tr><td>The semantic memory of facts about Roberto and his world (&laquo;the dog's name is Fido&raquo;).</td><td>In the <em>semantic memory</em>, extracted via reflection and approved by the user.</td></tr>
 <tr><td>The audit log of completed actions.</td><td>In <code>workspace/.audit/</code>, append-only, JSONL.</td></tr>
 <tr><td>The user's file workspace (notes, invoices, photos).</td><td>In <code>workspace/</code>, managed separately.</td></tr>
@@ -799,7 +786,7 @@ of a process you have already seen in motion.
 <h1 id="cap4">4. Data schema</h1>
 
 <p>
-The mnestome lives in <code>workspace/.mnestome/mnest.sqlite</code>, a
+The mnestome lives in <code>workspace/.mnestoma/mnest.sqlite</code>, a
 single SQLite file. The choice of SQLite is deliberate: zero services
 to start, zero external dependencies, trivial backup (file copy),
 proven reliability.
@@ -1002,7 +989,7 @@ transaction:
 <li><strong>Archive proposal</strong>: every <code>decaying</code> mnest below <code>archive weight</code> with <code>ts_last &gt; 90 days</code> enters the list of archival proposals shown to Roberto.</li>
 <li><strong>Proto purge</strong>: every proto-mnest that falls below <code>min proto weight</code> is deleted (anti-noise).</li>
 <li><strong>Recurring proto detection</strong>: search proto-mnests with <code>uses &gt;= SYNTH_TRIGGER_USES</code> and <code>weight &gt;= SYNTH_TRIGGER_WEIGHT</code>; signal them to the synt as candidates for synthesis.</li>
-<li><strong>Snapshot</strong>: on the first of the month, copy the SQLite file into <code>workspace/.mnestome/snapshots/YYYY-MM.sqlite</code>.</li>
+<li><strong>Snapshot</strong>: on the first of the month, copy the SQLite file into <code>workspace/.mnestoma/snapshots/YYYY-MM.sqlite</code>.</li>
 </ol>
 
 <p>
@@ -1022,9 +1009,9 @@ On the first of the month (UTC), the ager produces a snapshot of the
 live file:
 </p>
 
-<pre><code>workspace/.mnestome/snapshots/2026-04.sqlite # current month
-workspace/.mnestome/snapshots/2026-03.sqlite.zst # older, compressed
-workspace/.mnestome/snapshots/2026-02.sqlite.zst...
+<pre><code>workspace/.mnestoma/snapshots/2026-04.sqlite # current month
+workspace/.mnestoma/snapshots/2026-03.sqlite.zst # older, compressed
+workspace/.mnestoma/snapshots/2026-02.sqlite.zst...
 </code></pre>
 
 <p>
@@ -1108,8 +1095,7 @@ Metnos mnestome snapshot --month 2026-03 # opens the monthly snapshot
 </code></pre>
 
 <p>
-The web dashboard (see <a href="../../it/architecture/observability.html">observability.html</a>,
-in Italian and pending rewrite) has a graphical view of the same
+The web dashboard has a graphical view of the same
 content, with filters and drill-down. The transparency rule: the user
 can always know what Metnos thinks it knows.
 </p>

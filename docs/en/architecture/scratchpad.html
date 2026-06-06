@@ -69,9 +69,9 @@ li { margin-bottom: 4px; }.lead { font-size: 12pt; color: var(--navy); border-le
 <div class="status-banner">
 
 <strong>&#10003; Microdesign &mdash; aligned with the code.</strong>
-The component has been built and tested at module and cluster level in the POC (cluster <code>scratchpad</code> 34/34 green, integrated into <code>agent_runtime</code>). Update: the turn log now carries two new fields (<code>redacted: bool</code>, <code>n_redacted_fields: int</code>) produced by the credential scrub; the clear value of pwd/user is replaced with <code>&lt;REDACTED:cred&gt;</code> in <code>user_query</code>, <code>step.raw_args</code> and <code>step.resolved_args</code> before JSONL serialisation. Fine-grained StepLog telemetry adds five optional fields (<code>intent_ms</code>, <code>prefilter_ms</code>, <code>vaglio_ms</code>, <code>exec_ms</code>, <code>rerank_ms</code>) to the step record.
+Cluster <code>scratchpad</code> 34/34 green, integrated into <code>agent_runtime</code>. The turn log includes credential-scrub fields (<code>redacted: bool</code>, <code>n_redacted_fields: int</code>): clear values of pwd/user are replaced with <code>&lt;REDACTED:cred&gt;</code> in <code>user_query</code>, <code>step.raw_args</code> and <code>step.resolved_args</code> before JSONL serialisation. Fine-grained StepLog telemetry: five optional fields (<code>intent_ms</code>, <code>prefilter_ms</code>, <code>vaglio_ms</code>, <code>exec_ms</code>, <code>rerank_ms</code>) in the step record.
 Implementation reference: <code>/opt/metnos/runtime/scratchpad.py</code>.
-<div class="seq">Status in the microdesign sequence: <em>under approval</em> &rarr; <em>approved</em> &rarr; <strong>tested</strong> &rarr; <em>implemented</em>. Concept introduced in the POC of after the D-obs stress test (large observations) showed the need for a mechanism that separates <em>full observation</em> and <em>view in the LLM context</em>.</div>
+<div class="seq">Status in the microdesign sequence: <em>under approval</em> &rarr; <em>approved</em> &rarr; <strong>tested</strong> &rarr; <em>implemented</em>.</div>
 </div>
 
 <nav aria-label="Language" style="position:fixed;top:16px;right:20px;z-index:9999;font-family:'Segoe UI',Calibri,sans-serif;font-size:10pt;letter-spacing:2px;background:#FAFBFC;border:1px solid #d0d7de;border-radius:14px;padding:4px 10px;box-shadow:0 1px 4px rgba(0,0,0,0.04);">
@@ -119,7 +119,7 @@ Imagine a user asks: <em>&laquo;read the file /tmp/big_log.txt and tell me the e
 </p>
 
 <p>
-A first naive answer: we truncate. Say we keep only the first 1500 characters of the observation. It works for small files. But if the user looks for "errors" and the errors are at the end of the log, we have lost exactly the part that would matter. A blind truncation destroys useful information.
+A first naive answer: we truncate. Keep only the first N characters of the observation. It works for small files. But if the user looks for "errors" and the errors are at the end of the log, we have lost exactly the part that would matter. A blind truncation destroys useful information.
 </p>
 
 <p>
@@ -298,8 +298,8 @@ The LLM, seeing in the history an observation with <code>scratchpad_id</code>, k
 <p>User: "download https://httpbin.org/get and save it in /tmp/out.txt".</p>
 <p>Step 1: <code>get_urls(url=https://httpbin.org/get)</code> returns 14 KB of JSON. It goes into the scratchpad, id <code>eae04122bd704636</code>.</p>
 <p>Step 2: the LLM, seeing in the history the observation with scratchpad_id, knows that the actual content is there. It proposes:<br>
-<code>fs_write(path="/tmp/out.txt", content="{{step1.content}}")</code>.</p>
-<p>The runtime resolves <code>{{step1.content}}</code> by retrieving from the scratchpad the full content (not the summary), and passes it to fs_write.</p>
+<code>write_files(path="/tmp/out.txt", content="{{step1.content}}")</code>.</p>
+<p>The runtime resolves <code>{{step1.content}}</code> by retrieving from the scratchpad the full content (not the summary), and passes it to write_files.</p>
 <p>Result: file written correctly, 14 KB of actual bytes.</p>
 </div>
 
@@ -380,7 +380,7 @@ The scratchpad is a small component (~200 lines of Python) but architecturally i
 </p>
 
 <p>
-Concept that emerged from the POC after the D-obs stress test showed that blind truncation to 1500 characters was throwing away 99% of the content of read executors, even when that content would have been the key piece for the user's answer.
+Without the scratchpad, blind truncation would throw away nearly all the content of read executors, even when that content would be the key piece for the user's answer.
 </p>
 
 </body>

@@ -96,97 +96,6 @@ compone la risposta, con telemetria fine per ogni sotto-fase
  </div>
 </div>
 
-<div class="callout" style="border-left:5px solid #1A477A;background:#e3f2fd;color:#0d3a6b;padding:14px 18px;border-radius:0 8px 8px 0;margin:18px 0;">
-<strong>Prefilter modulare + scaling validato.</strong>
-Il prefilter del PLANNER e' organizzato come <em>plugin architecture</em>
-con sette strategie intercambiabili a runtime via la variabile
-<code>METNOS_PREFILTER</code>: <code>token_flat</code> (BM25-like classico
-con boost canonical verb/object), <code>token_flat_v2</code> (default in
-produzione: +2 pp Recall@1 con provider penalty + name-exact boost,
-&minus;5.8% tokens del prompt), <code>selective_semantic</code> (token +
-fallback BGE-M3 quando confidence bassa), <code>verb_first</code>
-(dispatch §2.2 cheap), <code>trie</code> e <code>hybrid_cascade</code>
-(navigazione depth-first verb&rarr;object&rarr;qualifier),
-<code>constraint</code> (SAT-style: -12.8% tokens, recall accettabile),
-<code>fts5</code> (SQLite full-text), <code>bloom</code>,
-<code>rrf_ensemble</code> (Reciprocal Rank Fusion), <code>length_adaptive</code>,
-<code>cached_token_flat</code>. Telemetria continua su
-<code>~/.local/share/metnos/prefilter_telemetry.jsonl</code>; CLI A/B
-<code>python3 -m prefilter_stats --compare a,b</code>.
-<br><br>
-<strong>Scaling validato a 1000 tool</strong> (bench su 300 query
-reali, catalog reale + distractor sintetici): le strategie top-3 mostrano
-degradazione di <strong>&minus;5.7 pp Recall@5</strong> tra pool 84 e
-pool 1000. Confronto con la letteratura: ToolBench/ToolLLM
-(Qin et&nbsp;al.,&nbsp;2024) riporta crollo del 50&ndash;70% nello stesso
-intervallo su corpora REST eterogenei. La differenza: Metnos lavora su
-<em>vocabolario chiuso §2.2</em> (23 azioni × 19 oggetti × 4 famiglie
-qualifier) che sopprime il rumore dei distractor. Riferimenti: bench
-report interno (<code>/it/internal/bench_prefilter_strategies</code>,
-<code>/it/internal/bench_prefilter_scaling</code>),
-<a href="https://arxiv.org/abs/2307.16789">ToolLLM (Qin et al.&nbsp;2023, arXiv:2307.16789)</a>,
-<a href="https://arxiv.org/abs/2305.18752">RestGPT (Song et al.&nbsp;2023, arXiv:2305.18752)</a>,
-<a href="https://arxiv.org/abs/2402.03216">BGE-M3 (Chen et al.&nbsp;2024, arXiv:2402.03216)</a>,
-<a href="https://dl.acm.org/doi/10.1145/1571941.1572114">RRF (Cormack, Clarke, Buettcher&nbsp;2009)</a>,
-<a href="https://arxiv.org/abs/2112.01488">ColBERTv2 (Khattab&nbsp;&amp; Zaharia&nbsp;2022, arXiv:2112.01488)</a>.
-</div>
-
-<div class="callout" style="border-left:5px solid #16a34a;background:#dcfce7;color:#14532d;padding:14px 18px;border-radius:0 8px 8px 0;margin:18px 0;">
-<strong>Aggiornamento sessione.</strong> Sei estensioni strutturali
-del blocco &ndash;0084, tutte non-bloccanti per il loop ReAct
-ma rilevanti per qualit&agrave; e diagnostica:
-<em>(0) adaptive re-rank intra-turno</em> &mdash;
-<code>runtime/adaptive_rerank.py</code> aggiunge keywords delle observation
-ai candidati del prefilter dopo ogni step ok, add-only, ranker-agnostic;
-<em>(1) PROJECT PATHS + ANTI-COLLISION</em> &mdash; il prompt PLANNER inietta
-il blocco letto da <code>runtime/project_paths.json</code> (es.
-<code>"metnos" = codebase in /opt/metnos</code>) e una guard prescrittiva
-contro <code>request_new_executor</code> per nomi gi&agrave; in catalog o
-alias di producer canonico;
-<em>(2) UTENTI NOTI</em> &mdash; <code>_render_users_known_block</code>
-itera <code>users.list_users</code> e rende risolvibile
-<code>to_user="lucia"</code> in <code>send_messages</code>;
-<em>(3) telemetria fine StepLog</em> &mdash; cinque nuovi campi
-(<code>intent_ms</code>, <code>prefilter_ms</code>, <code>vaglio_ms</code>,
-<code>exec_ms</code>, <code>rerank_ms</code>) per turn breakdown leggibile
-da <code>bench_latency_breakdown.py</code>;
-<em>(4) scrub credenziali</em> &mdash; regex su <code>user_query</code> e
-<code>step.raw_args</code>/<code>resolved_args</code>: pwd/user finiscono
-<code>&lt;REDACTED:cred&gt;</code> nel jsonl, campi <code>redacted</code> +
-<code>n_redacted_fields</code> sul record;
-<em>(5) HTTP API canale</em> &mdash; <code>run_turn(channel="http")</code>
-chiamato da <code>POST /agent/turn</code> dell'<a href="http_api.html"><code>http_api</code></a>
-con SSE Progress (eventi <code>thinking</code>/<code>progress</code>/<code>final</code>/<code>error</code>;
-<code>tool_call</code>/<code>tool_result</code> rinviati a una fase successiva).
-Le sezioni della sessione 1/5 (recurring scheduler, location request,
-multi-user step&nbsp;1) restano valide e sono ora supportate dai blocchi
-prompt deterministici sopra.
-</div>
-<div class="callout" style="border-left:5px solid #f59e0b;background:#fef3c7;color:#92400e;padding:14px 18px;border-radius:0 8px 8px 0;margin:18px 0;">
-<strong>Sessione (storica).</strong> Quattro estensioni
-strutturali validate dalla batteria UC <strong>67/67 verde</strong>
-(50 base + 15 edge + 2 process query):
-<em>(a) cornice teorica delle quattro forze + inerzia</em> &mdash; il
-comportamento del sistema si legge come quattro forze ortogonali
-(<em>compositiva</em> e <em>reattiva</em> verso l'esterno; <em>introspettiva</em>
-e <em>omeostatica</em> verso l'interno) con l'<em>inerzia</em> come scalare
-separato (soglie, lentezza, gate), mai come quinta forza;
-<em>(b) recurring scheduler MVP</em> &mdash; <code>runtime/scheduler.py</code>
-+ <code>runtime/recurring_tasks.py</code> con CRUD via Telegram, sette tool
-builtin (<code>schedule_recurring</code>, <code>cancel_recurring</code>,
-<code>list_recurring</code>, <code>show_recurring</code>,
-<code>toggle_recurring</code>, <code>history_recurring</code>,
-<code>run_now_recurring</code>), callback registry per chiave string, <code>times</code> + auto-cancel, <code>grace_window_minutes</code>
-per recover-missed, systemd user service <code>metnos-scheduler.service</code>;
-<em>(c) location request UX (&sect;2-quater PLANNER)</em> &mdash; quando
-<code>get_location</code> torna <code>ok:false</code> su query
-location-relative, viene attivato il tool builtin
-<code>request_location_from_user</code> con pattern atomico analogo a &sect;2-ter;
-<em>(d) multi-user step 1</em> &mdash; <code>pairing.actor</code> +
-<code>runtime/actor_resolver.py</code> con auto-assign host /
-<code>guest_&lt;id6&gt;</code> e propagazione end-to-end ( MVP).
-Le decisioni di questa sessione sono codificate negli ADR del registro.
-</div>
 
 <div class="toc">
 <h2>Indice</h2>
@@ -516,7 +425,6 @@ ERROR VALID ERROR
 
 <p>Il check vive in un solo punto in <code>agent_runtime.py</code>, subito dopo che il planner ha emesso <code>chosen_name</code>. La FSM e' safety net: il prompt del planner (regola <code>0-PRE</code> in <code>_core.j2</code>) insegna gia' il pattern upstream, cosi' la remediation runtime resta raramente attivata.</p>
 
-<p>Riferimenti: (questa decisione), (principio collaterale planner-choice over runtime-override), (auto-remediation pattern, prima applicazione <code>needs_content_fetch</code>).</p>
 
 <h1 id="cap4ter">4-ter. Auto-remediation registry</h1>
 
@@ -536,11 +444,11 @@ class RemediationPlan:
 <p>Registry attuale, append-only:</p>
 
 <table>
-<thead><tr><th>error_class</th><th>Prereq</th><th>Hint / Strategy</th><th>ADR</th></tr></thead>
+<thead><tr><th>error_class</th><th>Prereq</th><th>Hint / Strategy</th></tr></thead>
 <tbody>
-<tr><td><code>needs_content_fetch</code></td><td><code>read_urls_html</code></td><td>fetch top-5 URL da hint <code>needs_urls_html</code>, retry executor originale con entries arricchite</td><td>0153</td></tr>
-<tr><td><code>needs_data_source</code></td><td>chooser dinamico</td><td>cascade <code>intent.object &rarr; OBJECT_PRIMARY_TOOLS[obj][0] &rarr; find_urls</code>; retry con entries</td><td>0154</td></tr>
-<tr><td><code>needs_action_target</code></td><td><code>get_inputs</code></td><td>dialog free_text con <code>verb + object</code>; <code>skip_retry=True</code>, turno termina via <code>needs_inputs</code> orchestrator</td><td>0154</td></tr>
+<tr><td><code>needs_content_fetch</code></td><td><code>read_urls_html</code></td><td>fetch top-5 URL da hint <code>needs_urls_html</code>, retry executor originale con entries arricchite</td></tr>
+<tr><td><code>needs_data_source</code></td><td>chooser dinamico</td><td>cascade <code>intent.object &rarr; OBJECT_PRIMARY_TOOLS[obj][0] &rarr; find_urls</code>; retry con entries</td></tr>
+<tr><td><code>needs_action_target</code></td><td><code>get_inputs</code></td><td>dialog free_text con <code>verb + object</code>; <code>skip_retry=True</code>, turno termina via <code>needs_inputs</code> orchestrator</td></tr>
 </tbody>
 </table>
 

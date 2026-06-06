@@ -144,8 +144,7 @@ doesn&rsquo;t know what to run. Game over.</p>
  &ldquo;create folder /tmp/x&rdquo; (no, I don&rsquo;t need your GPS location).</li>
 </ul>
 
-<p>Bench before this decision: <strong>50&ndash;70% convergence</strong> on 10
-representative queries. The propose+notify pipeline was failing.
+<p>Without the grammar the PLANNER converged unreliably.
 Unacceptable for a personal assistant.</p>
 
 <h1 id="cap2">2. The idea: grammar as a guardrail</h1>
@@ -320,24 +319,13 @@ them, we can simplify. They&rsquo;re covered by tests.</p>
 <h3>Robustness</h3>
 
 <p>Bench n=10 representative queries (simple/medium/complex/ambiguous),
-n=1 run per query:</p>
-
-<table>
-<thead><tr><th>Config</th><th>Convergence</th><th>first_tool_match</th><th>Mean latency</th></tr></thead>
-<tbody>
-<tr><td>baseline (no grammar)</td><td>50%</td><td>n/a</td><td>70s</td></tr>
-<tr><td>grammar v1 (B2 base)</td><td>80%</td><td>89%</td><td>25s</td></tr>
-<tr><td>grammar v4 (discriminated)</td><td>80%</td><td>100%</td><td>35s</td></tr>
-<tr><td>grammar v6 (pool filter)</td><td><strong>100%</strong></td><td><strong>100%</strong></td><td>42s</td></tr>
-<tr><td>grammar v7 (extracted refactor)</td><td><strong>100%</strong></td><td><strong>100%</strong></td><td>41s</td></tr>
-</tbody>
-</table>
+n=1 run per query: <strong>100% convergence</strong>, <strong>100% first_tool_match</strong>,
+mean latency ~41s.</p>
 
 <p>Three things worth noting:</p>
 
 <ul>
- <li>The <em>thinking-loop</em> is gone. Mean latency halved vs baseline,
- not because the LLM &ldquo;thinks faster&rdquo;, but because it doesn&rsquo;t waste
+ <li>The <em>thinking-loop</em> is gone. The LLM doesn&rsquo;t waste
  cycles reasoning in a circle.</li>
  <li>The propose+notify pipeline (complex_propose_silvia) always converges.
  It was the worst case.</li>
@@ -403,7 +391,7 @@ Coverage:</p>
 
 <pre>echo '[Service]
 Environment=METNOS_GRAMMAR=1' | sudo tee /etc/systemd/system/metnos-http.service.d/grammar.conf
-systemctl --user daemon-reload &amp;&amp; systemctl --user restart metnos-http.service</pre>
+sudo systemctl daemon-reload &amp;&amp; sudo systemctl restart metnos-http.service</pre>
 
 <h1 id="cap8">8. Comparison with other platforms</h1>
 
@@ -531,7 +519,6 @@ instead of delegating to a fine-tuned model. Advantages:</p>
 <h1 id="cap9">9. References</h1>
 
 <ul>
- <li>Decision: </li>
  <li>Generator: <code>runtime/tool_grammar.py</code></li>
  <li>Provider wiring: <code>runtime/llm_provider.py::LlamaCppProvider.chat_with_tools</code></li>
  <li>Bench: <code>runtime/bench_grammar.py</code></li>

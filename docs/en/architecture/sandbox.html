@@ -67,7 +67,7 @@ li { margin-bottom: 4px; }.lead { font-size: 12pt; color: var(--navy); border-le
 
 <strong>&#10003; Microdesign &mdash; aligned with the code.</strong>
 Cluster <code>sandbox</code> 9/9 green. Reference: <code>runtime/sandbox.py</code>.
-<div class="seq">Status sequence: <em>under approval</em> &rarr; <em>approved</em> &rarr; <strong>tested</strong> &rarr; <em>implemented</em>. Replaces the obsolete (~700 lines) written before implementation.</div>
+<div class="seq">Status sequence: <em>under approval</em> &rarr; <em>approved</em> &rarr; <strong>tested</strong> &rarr; <em>implemented</em>.</div>
 </div>
 
 <nav aria-label="Language" style="position:fixed;top:16px;right:20px;z-index:9999;font-family:'Segoe UI',Calibri,sans-serif;font-size:10pt;letter-spacing:2px;background:#FAFBFC;border:1px solid #d0d7de;border-radius:14px;padding:4px 10px;box-shadow:0 1px 4px rgba(0,0,0,0.04);">
@@ -305,7 +305,7 @@ The sandbox must be a benefit, not a blocker. Three fallback levels ensure the s
 <table>
 <tr><th>Case</th><th>Behaviour</th><th>Citation</th></tr>
 <tr>
- <td><strong>(a)</strong> <code>bwrap</code> not installed</td>
+ <td><strong>(a)</strong> <code>bwrap</code> not installed (<code>bwrap</code> is optional; the sandbox degrades gracefully without it)</td>
  <td><code>bwrap_available</code> returns False, <code>wrap_command</code> returns the unchanged command.</td>
  <td><code>runtime/sandbox.py:30-32, 195-196</code></td>
 </tr>
@@ -382,7 +382,7 @@ This is a stated choice. The manifest already carries the needed capabilities an
 </p>
 
 <p>
-The rewrite of <code>policy.html</code> is the last gate of phase 5: at that point <code>_build_bwrap_args</code> will receive a derived <code>profile</code> argument and will apply differentiated restrictions (e.g. ReadOnly forces <code>--ro-bind</code> even for capabilities declaring <code>fs:write</code>; Full disables <code>--unshare-net</code> regardless of declared capabilities).
+Once the <code>policy</code> integration is complete, <code>_build_bwrap_args</code> will receive a derived <code>profile</code> argument and will apply differentiated restrictions (e.g. ReadOnly forces <code>--ro-bind</code> even for capabilities declaring <code>fs:write</code>; Full disables <code>--unshare-net</code> regardless of declared capabilities).
 </p>
 
 <h1 id="cap7">7. Tests</h1>
@@ -452,8 +452,8 @@ No code changes, no runtime restart. On the next access, <code>bwrap_available</
  <td>When concrete threats arise that the default does not cover. Today the complexity of maintaining seccomp profiles per capability is not worth it.</td>
 </tr>
 <tr>
- <td><strong>Separate profiles per autonomy level.</strong> Today <code>autonomy</code> is pass-through and everything is derived from the manifest identically for every level.</td>
- <td>Rewrite of <code>policy.html</code> (last gate of phase 5): it will introduce an autonomy&times;capability table that lets the runtime pass a computed profile to <code>wrap_command</code>.</td>
+ <td><strong>Separate profiles per autonomy level.</strong> <code>autonomy</code> is pass-through and everything is derived from the manifest identically for every level.</td>
+ <td>Integration of the <code>policy</code> autonomy&times;capability table will let the runtime pass a computed profile to <code>wrap_command</code>.</td>
 </tr>
 <tr>
  <td><strong>No network whitelist.</strong> A <code>network:*</code> capability today leaves the network fully open; no per-host filtering (e.g. only <code>*.example.com</code>).</td>

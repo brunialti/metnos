@@ -65,9 +65,9 @@ li { margin-bottom: 4px; }.lead { font-size: 12pt; color: var(--navy); border-le
 <div class="status-banner">
 
 <strong>Microprogettazione &mdash; allineata al codice.</strong>
-La componente &egrave; stata realizzata e testata a livello di modulo e di cluster nel POC (cluster <code>scratchpad</code> 34/34 verde, integrato in <code>agent_runtime</code>). Aggiornamento: il turn log ha ora due nuovi campi (<code>redacted: bool</code>, <code>n_redacted_fields: int</code>) prodotti dallo scrub credenziali; il valore in chiaro di pwd/user e' sostituito da <code>&lt;REDACTED:cred&gt;</code> in <code>user_query</code>, <code>step.raw_args</code> e <code>step.resolved_args</code> prima della serializzazione JSONL. Telemetria fine StepLog aggiunge cinque campi opzionali (<code>intent_ms</code>, <code>prefilter_ms</code>, <code>vaglio_ms</code>, <code>exec_ms</code>, <code>rerank_ms</code>) al record di passo.
+Cluster <code>scratchpad</code> 34/34 verde, integrato in <code>agent_runtime</code>. Il turn log include campi di scrub credenziali (<code>redacted: bool</code>, <code>n_redacted_fields: int</code>): i valori in chiaro di pwd/user sono sostituiti da <code>&lt;REDACTED:cred&gt;</code> in <code>user_query</code>, <code>step.raw_args</code> e <code>step.resolved_args</code> prima della serializzazione JSONL. Telemetria fine StepLog: cinque campi opzionali (<code>intent_ms</code>, <code>prefilter_ms</code>, <code>vaglio_ms</code>, <code>exec_ms</code>, <code>rerank_ms</code>) nel record di passo.
 Riferimento di implementazione: <code>/opt/metnos/runtime/scratchpad.py</code>.
-<div class="seq">Stato nella sequenza dei microdesign: <em>under approval</em> &rarr; <em>approved</em> &rarr; <strong>tested</strong> &rarr; <em>implemented</em>. Concept introdotto nel POC del dopo lo stress test D-obs (observation grandi) ha mostrato il bisogno di un meccanismo che separi <em>osservazione completa</em> e <em>vista nel context LLM</em>.</div>
+<div class="seq">Stato nella sequenza dei microdesign: <em>under approval</em> &rarr; <em>approved</em> &rarr; <strong>tested</strong> &rarr; <em>implemented</em>.</div>
 </div>
 
 <nav aria-label="Language" style="position:fixed;top:16px;right:20px;z-index:9999;font-family:'Segoe UI',Calibri,sans-serif;font-size:10pt;letter-spacing:2px;background:#FAFBFC;border:1px solid #d0d7de;border-radius:14px;padding:4px 10px;box-shadow:0 1px 4px rgba(0,0,0,0.04);">
@@ -114,7 +114,7 @@ Immagina che un utente chieda: <em>&laquo;leggi il file /tmp/big_log.txt e dimmi
 </p>
 
 <p>
-Una prima ingenua risposta: tronchiamo. Diciamo che teniamo solo i primi 1500 caratteri dell'observation. Funziona per file piccoli. Ma se l'utente cerca "errori" e gli errori stanno alla fine del log, abbiamo perso esattamente la parte che servirebbe. Una troncatura cieca distrugge informazione utile.
+Una prima ingenua risposta: tronchiamo. Teniamo solo i primi N caratteri dell'observation. Funziona per file piccoli. Ma se l'utente cerca "errori" e gli errori stanno alla fine del log, abbiamo perso esattamente la parte che servirebbe. Una troncatura cieca distrugge informazione utile.
 </p>
 
 <p>
@@ -293,8 +293,8 @@ Il LLM, vedendo nella history un'observation con <code>scratchpad_id</code>, sa 
 <p>Utente: "scarica https://httpbin.org/get e salvalo in /tmp/out.txt".</p>
 <p>Step 1: <code>get_urls(url=https://httpbin.org/get)</code> ritorna 14 KB di JSON. Va in scratchpad, id <code>eae04122bd704636</code>.</p>
 <p>Step 2: il LLM, vedendo nella history l'observation con scratchpad_id, sa che il contenuto vero &egrave; l&agrave;. Propone:<br>
-<code>fs_write(path="/tmp/out.txt", content="{{step1.content}}")</code>.</p>
-<p>Il runtime risolve <code>{{step1.content}}</code> recuperando dallo scratchpad il contenuto completo (non il summary), e lo passa a fs_write.</p>
+<code>write_files(path="/tmp/out.txt", content="{{step1.content}}")</code>.</p>
+<p>Il runtime risolve <code>{{step1.content}}</code> recuperando dallo scratchpad il contenuto completo (non il summary), e lo passa a write_files.</p>
 <p>Risultato: file scritto correttamente, 14 KB di byte effettivi.</p>
 </div>
 
@@ -375,7 +375,7 @@ Lo scratchpad &egrave; un componente piccolo (~200 righe di Python) ma architett
 </p>
 
 <p>
-Concept emerso dal POC dopo che lo stress test D-obs ha mostrato che la troncatura cieca a 1500 caratteri buttava via il 99% del contenuto degli executor di lettura, anche quando quel contenuto sarebbe stato il dato chiave per la risposta utente.
+Senza lo scratchpad, una troncatura cieca butterebbe via la quasi totalit&agrave; del contenuto degli executor di lettura, anche quando quel contenuto sarebbe il dato chiave per la risposta utente.
 </p>
 
 </body>

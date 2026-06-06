@@ -71,7 +71,7 @@ li { margin-bottom: 4px; }.lead { font-size: 12pt; color: var(--navy); border-le
 <strong>&#10003; Microdesign &mdash; aligned with the code.</strong>
 The <code>observability</code> component has been built and tested at module level (cluster <code>observability</code> 6/6 green) on, then extended on by the <code>/admin</code> dashboard of <a href="http_api.html" style="color:#14532d;text-decoration:underline;"><code>http_api</code></a> (htmx + Jinja2 + uPlot, ): <code>/admin/proposals</code>, <code>/admin/executors</code>, <code>/admin/executors/stats</code>, <code>/admin/runs</code>, <code>/admin/safety</code>, <code>/admin/turns</code>, <code>/admin/users</code>. Fine-grained StepLog telemetry: five sub-components (<code>intent_ms</code>, <code>prefilter_ms</code>, <code>vaglio_ms</code>, <code>exec_ms</code>, <code>rerank_ms</code>) readable from <code>bench_latency_breakdown.py</code>. The original static HTML generator remains as an offline fallback.
 Implementation reference: <code>/opt/metnos/runtime/observability.py</code>, <code>/opt/metnos/runtime/http_routes_admin.py</code>.
-<div class="seq">Status in the microdesign sequence: <em>under approval</em> &rarr; <em>approved</em> &rarr; <strong>tested</strong> &rarr; <em>implemented</em>. The of this doc preceded the code; it is replaced by this after the implementation of the static HTML generator that closes (together with <a href="mnestome.html">operational mnestome</a>) phase 4 of the roadmap.</div>
+<div class="seq">Status in the microdesign sequence: <em>under approval</em> &rarr; <em>approved</em> &rarr; <strong>tested</strong> &rarr; <em>implemented</em>.</div>
 </div>
 
 <nav aria-label="Language" style="position:fixed;top:16px;right:20px;z-index:9999;font-family:'Segoe UI',Calibri,sans-serif;font-size:10pt;letter-spacing:2px;background:#FAFBFC;border:1px solid #d0d7de;border-radius:14px;padding:4px 10px;box-shadow:0 1px 4px rgba(0,0,0,0.04);">
@@ -293,8 +293,7 @@ straight to the sources (SQLite + JSONL).
 
 <ul>
 <li><strong>No live update</strong>: the page does not auto-refresh. To
-see the current state one has to regenerate. Live is deferred to when
-the FastAPI gateway will arrive (ch.&nbsp;6 Architecture, phase 5+).</li>
+see the current state one has to regenerate. The live dashboard is served by the aiohttp server (port 8770) under <code>/admin</code>.</li>
 
 <li><strong>No web authentication</strong>: the file is a static page
 on the local filesystem. No login, no cookies, no session. That is

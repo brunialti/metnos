@@ -264,7 +264,7 @@ mezz&rsquo;ora di confusione fra trenta righe.
  tradurre un OCR, scoprire URL nuovi su un sito). Ogni executor accetta liste
  in ingresso e produce liste in uscita; ha un manifest che lo descrive, una
  firma Ed25519 che lo autentica e un profilo di sandbox che lo confina. Il
- pool corrente conta <strong>72 executor</strong> fra scritti a
+ pool corrente conta <strong>75 executor</strong> fra scritti a
  mano in <code>/opt/metnos/executors/</code> e sintetizzati al volo in
  <code>~/.local/share/metnos/executors/</code>, pi&ugrave; quelli importati da
  skill esterne.</dd>
@@ -273,8 +273,7 @@ mezz&rsquo;ora di confusione fra trenta righe.
  <dd>Il <em>filo</em> che collega due executor quando sono stati attivati
  insieme dal pianificatore. Non &egrave; un puntatore di codice, &egrave; una
  traccia: nasce dal contesto, si rinforza con la ripetizione,
- decade se non viene riusato. Il termine sostituisce il vecchio
- <code>sinapsi</code> della stagione &laquo;neurale&raquo;.</dd>
+ decade se non viene riusato.</dd>
 
  <dt>mnestoma</dt>
  <dd>Il <em>grafo emergente</em> di tutti i mnest. &Egrave; la memoria
@@ -359,7 +358,7 @@ Le frecce indicano chi <em>chiama</em> chi.
  <!-- Executor pool sotto il runtime -->
  <rect class="box service" x="320" y="290" width="240" height="50"/>
  <text x="440" y="312" class="lbl">executor (pool)</text>
- <text x="440" y="328" class="lbl-sm">72 fra scritti a mano e sintetizzati</text>
+ <text x="440" y="328" class="lbl-sm">75 fra scritti a mano e sintetizzati</text>
 
  <!-- Scratchpad e mnestoma sotto -->
  <rect class="box memory" x="200" y="380" width="160" height="50"/>
@@ -545,7 +544,7 @@ controparte inglese in
 <tbody>
 <tr>
  <td><a href="executor.html"><code>executor</code></a></td>
- <td>Introduzione didattica: cos'&egrave; un executor, anatomia in cinque file, manifesto firmato, recinto di esecuzione, ciclo di vita, tre origini (a mano / generato / di sistema). Tre esempi concreti. Per chi vuole capire, non per chi deve implementare. Pool corrente: 72 executor.</td>
+ <td>Introduzione didattica: cos'&egrave; un executor, anatomia in cinque file, manifesto firmato, recinto di esecuzione, ciclo di vita, tre origini (a mano / generato / di sistema). Tre esempi concreti. Per chi vuole capire, non per chi deve implementare. Pool corrente: 75 executor.</td>
 </tr>
 <tr>
  <td><a href="synt.html"><code>synt</code></a></td>
@@ -557,7 +556,7 @@ controparte inglese in
 </tr>
 <tr>
  <td><a href="skills_backends.html"><code>skills &amp; backends</code></a></td>
- <td>Perch&eacute; skill e backend sono due assi ortogonali: il backend dice <em>COME</em> esegui un <code>verbo_oggetto</code> (configurazione, <code>backend_resolver</code>, invisibile all'LLM), la skill dice <em>SE/QUALI</em> capacit&agrave; sono sbloccate (attivazione, dormienza, recinto). Tre tier (core / first_party / imported), evoluzione mono&rarr;multi provider, promozione con frontier una-tantum. Fonte: ADR 0170.</td>
+ <td>Perch&eacute; skill e backend sono due assi ortogonali: il backend dice <em>COME</em> esegui un <code>verbo_oggetto</code> (configurazione, <code>backend_resolver</code>, invisibile all'LLM), la skill dice <em>SE/QUALI</em> capacit&agrave; sono sbloccate (attivazione, dormienza, recinto). Tre tier (core / first_party / imported), evoluzione mono&rarr;multi provider, promozione con frontier una-tantum.</td>
 </tr>
 </tbody>
 </table>
@@ -568,7 +567,7 @@ controparte inglese in
 <tbody>
 <tr>
  <td><a href="mnest.html"><code>mnest</code></a></td>
- <td>La traccia di co-attivazione fra due executor: anatomia, lifecycle, decadimento, persistenza, proto-mnest. Sostituisce il vecchio <code>sinapsi</code>.</td>
+ <td>La traccia di co-attivazione fra due executor: anatomia, lifecycle, decadimento, persistenza, proto-mnest.</td>
 </tr>
 <tr>
  <td><a href="mnestoma.html"><code>mnestoma</code></a></td>
@@ -651,10 +650,10 @@ controparte inglese in
 Il vocabolario chiuso conta <strong>23 azioni</strong>
 (<code>read, write, move, delete, create, find, list, filter, sort,
 group, classify, get, set, send, describe, render, extract, compress,
-compute, compare, change, order, share</code>) e <strong>19 oggetti</strong>
+compute, compare, change, order, share</code>) e <strong>22 oggetti</strong>
 (<code>files, dirs, packages, messages, events, contacts, places,
 processes, urls, numbers, images, signatures, texts, proposals, inputs,
-credentials, entries, persons, tasks</code>). I qualifier sono divisi in
+credentials, entries, persons, tasks, issues, pulls</code>). I qualifier sono divisi in
 quattro famiglie: formato (codifica del dato), modalit&agrave; (come
 agisce l&rsquo;executor), criterio di sicurezza, provider (per indicare
 un backend diverso da quello predefinito, ad esempio
@@ -679,7 +678,7 @@ sei passi: <code>read_events</code> &rarr; due <code>filter_entries</code>
 </p>
 
 <p>
-Il pool di executor conta <strong>72 unit&agrave;</strong> fra scritti a
+Il pool di executor conta <strong>75 unit&agrave;</strong> fra scritti a
 mano e sintetizzati, pi&ugrave; gli executor importati da
 skill esterne (Google Workspace, ecc.). Verbi-produttori ortogonali a 5
 (<code>find</code> per pattern, <code>get</code> per id/stato,

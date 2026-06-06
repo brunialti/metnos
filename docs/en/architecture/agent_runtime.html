@@ -101,102 +101,6 @@ composes the answer, with fine-grained telemetry for each sub-phase
  </div>
 </div>
 
-<div class="callout" style="border-left:5px solid #1A477A;background:#e3f2fd;color:#0d3a6b;padding:14px 18px;border-radius:0 8px 8px 0;margin:18px 0;">
-<strong>Modular prefilter + scaling validated.</strong>
-The PLANNER prefilter is organized as a <em>plugin architecture</em>
-with seven swappable strategies (selected at runtime via
-<code>METNOS_PREFILTER</code>): <code>token_flat</code> (classic
-BM25-like with canonical verb/object boost), <code>token_flat_v2</code>
-(production default: +2 pp Recall@1 via provider penalty + name-exact
-boost, &minus;5.8% prompt tokens), <code>selective_semantic</code>
-(token + BGE-M3 fallback when confidence is low), <code>verb_first</code>
-(cheap §2.2 dispatch), <code>trie</code> and <code>hybrid_cascade</code>
-(depth-first verb&rarr;object&rarr;qualifier navigation),
-<code>constraint</code> (SAT-style: &minus;12.8% tokens, acceptable
-recall), <code>fts5</code> (SQLite full-text), <code>bloom</code>,
-<code>rrf_ensemble</code> (Reciprocal Rank Fusion),
-<code>length_adaptive</code>, <code>cached_token_flat</code>.
-Continuous telemetry at
-<code>~/.local/share/metnos/prefilter_telemetry.jsonl</code>; A/B CLI
-<code>python3 -m prefilter_stats --compare a,b</code>.
-<br><br>
-<strong>Scaling validated at 1000 tools</strong> ( bench,
-300 real queries, real catalog plus synthetic distractors): top-3
-strategies show <strong>&minus;5.7 pp Recall@5 degradation</strong>
-between pool 84 and pool 1000. Compare to the literature:
-ToolBench/ToolLLM (Qin et&nbsp;al.&nbsp;2024) reports a 50&ndash;70%
-recall collapse over the same range on heterogeneous REST corpora. The
-difference: Metnos operates on a <em>closed vocabulary §2.2</em>
-(23 actions × 19 objects × 4 qualifier families) that suppresses
-distractor noise. References: internal bench reports
-(<code>/it/internal/bench_prefilter_strategies</code>,
-<code>/it/internal/bench_prefilter_scaling</code>),
-<a href="https://arxiv.org/abs/2307.16789">ToolLLM (Qin et al.&nbsp;2023, arXiv:2307.16789)</a>,
-<a href="https://arxiv.org/abs/2305.18752">RestGPT (Song et al.&nbsp;2023, arXiv:2305.18752)</a>,
-<a href="https://arxiv.org/abs/2402.03216">BGE-M3 (Chen et al.&nbsp;2024, arXiv:2402.03216)</a>,
-<a href="https://dl.acm.org/doi/10.1145/1571941.1572114">RRF (Cormack, Clarke, Buettcher&nbsp;2009)</a>,
-<a href="https://arxiv.org/abs/2112.01488">ColBERTv2 (Khattab&nbsp;&amp; Zaharia&nbsp;2022, arXiv:2112.01488)</a>.
-</div>
-
-<div class="callout" style="border-left:5px solid #16a34a;background:#dcfce7;color:#14532d;padding:14px 18px;border-radius:0 8px 8px 0;margin:18px 0;">
-<strong>Session update.</strong> Six structural extensions
-from the &ndash;0084 block, all non-blocking for the ReAct
-loop yet relevant to quality and diagnostics:
-<em>(0) adaptive intra-turn re-rank</em> &mdash;
-<code>runtime/adaptive_rerank.py</code> adds observation keywords to the
-prefilter candidates after every ok step, add-only, ranker-agnostic;
-<em>(1) PROJECT PATHS + ANTI-COLLISION</em> &mdash; the PLANNER prompt
-injects a block read from <code>runtime/project_paths.json</code> (e.g.
-<code>"metnos" = codebase at /opt/metnos</code>) and a prescriptive guard
-against <code>request_new_executor</code> for names already in catalog or
-aliasing a canonical producer;
-<em>(2) KNOWN USERS</em> &mdash; <code>_render_users_known_block</code>
-iterates <code>users.list_users</code> and makes
-<code>to_user="lucia"</code> resolvable in <code>send_messages</code>;
-<em>(3) fine-grained StepLog telemetry</em> &mdash; five new fields
-(<code>intent_ms</code>, <code>prefilter_ms</code>, <code>vaglio_ms</code>,
-<code>exec_ms</code>, <code>rerank_ms</code>) for a turn breakdown
-readable from <code>bench_latency_breakdown.py</code>;
-<em>(4) credential scrubbing</em> &mdash; regex over
-<code>user_query</code> and <code>step.raw_args</code>/<code>resolved_args</code>:
-pwd/user become <code>&lt;REDACTED:cred&gt;</code> in the jsonl, with
-<code>redacted</code> + <code>n_redacted_fields</code> fields on the
-record;
-<em>(5) HTTP API channel</em> &mdash;
-<code>run_turn(channel="http")</code> invoked from
-<code>POST /agent/turn</code> in <a href="http_api.html"><code>http_api</code></a>
-with SSE Progress (events <code>thinking</code>/<code>progress</code>/<code>final</code>/<code>error</code>;
-<code>tool_call</code>/<code>tool_result</code> deferred to a later phase).
-The 1/5 session sections (recurring scheduler, location request,
-multi-user step&nbsp;1) remain valid and are now backed by the
-deterministic prompt blocks above.
-</div>
-<div class="callout" style="border-left:5px solid #f59e0b;background:#fef3c7;color:#92400e;padding:14px 18px;border-radius:0 8px 8px 0;margin:18px 0;">
-<strong>Sessi (historical).</strong> Four structural
-extensions validated by the UC battery <strong>67/67 green</strong>
-(50 base + 15 edge + 2 process queries):
-<em>(a) theoretical frame "four forces + inertia"</em> &mdash; the system's
-behaviour reads as four orthogonal forces (<em>compositive</em> and
-<em>reactive</em> outward; <em>introspective</em> and <em>homeostatic</em>
-inward) with <em>inertia</em> as a separate scalar (thresholds, slowness,
-gates), never a fifth force;
-<em>(b) recurring scheduler MVP</em> &mdash; <code>runtime/scheduler.py</code>
-+ <code>runtime/recurring_tasks.py</code> with CRUD over Telegram, seven
-builtin tools (<code>schedule_recurring</code>, <code>cancel_recurring</code>,
-<code>list_recurring</code>, <code>show_recurring</code>,
-<code>toggle_recurring</code>, <code>history_recurring</code>,
-<code>run_now_recurring</code>), callback registry by string key,
-<code>times</code> + auto-cancel, <code>grace_window_minutes</code> for
-recover-missed, systemd user service <code>metnos-scheduler.service</code>;
-<em>(c) location request UX (PLANNER &sect;2-quater)</em> &mdash; when
-<code>get_location</code> returns <code>ok:false</code> on a location-relative
-query, the builtin tool <code>request_location_from_user</code> is invoked
-with an atomic pattern analogous to &sect;2-ter;
-<em>(d) multi-user step 1</em> &mdash; <code>pairing.actor</code> +
-<code>runtime/actor_resolver.py</code> with auto-assign host /
-<code>guest_&lt;id6&gt;</code> and end-to-end propagation ( MVP).
-The decisions of this session are codified in the ADR registry.
-</div>
 
 <div class="toc">
 <h2>Index</h2>
@@ -521,7 +425,6 @@ ERROR VALID ERROR
 
 <p>The check lives in a single point in <code>agent_runtime.py</code>, right after the planner emits <code>chosen_name</code>. The FSM is a safety net: the planner prompt (rule <code>0-PRE</code> in <code>_core.j2</code>) already teaches the pattern upstream, so runtime remediation rarely fires.</p>
 
-<p>References: (this decision), (collateral principle planner-choice over runtime-override), (auto-remediation pattern, first application <code>needs_content_fetch</code>).</p>
 
 <h1 id="cap4ter">4-ter. Auto-remediation registry</h1>
 
@@ -541,11 +444,11 @@ class RemediationPlan:
 <p>Current registry, append-only:</p>
 
 <table>
-<thead><tr><th>error_class</th><th>Prereq</th><th>Hint / Strategy</th><th>ADR</th></tr></thead>
+<thead><tr><th>error_class</th><th>Prereq</th><th>Hint / Strategy</th></tr></thead>
 <tbody>
-<tr><td><code>needs_content_fetch</code></td><td><code>read_urls_html</code></td><td>fetch top-5 URLs from <code>needs_urls_html</code> hint, retry original executor with enriched entries</td><td>0153</td></tr>
-<tr><td><code>needs_data_source</code></td><td>dynamic chooser</td><td>cascade <code>intent.object &rarr; OBJECT_PRIMARY_TOOLS[obj][0] &rarr; find_urls</code>; retry with entries</td><td>0154</td></tr>
-<tr><td><code>needs_action_target</code></td><td><code>get_inputs</code></td><td>free_text dialog with <code>verb + object</code>; <code>skip_retry=True</code>, turn ends via <code>needs_inputs</code> orchestrator</td><td>0154</td></tr>
+<tr><td><code>needs_content_fetch</code></td><td><code>read_urls_html</code></td><td>fetch top-5 URLs from <code>needs_urls_html</code> hint, retry original executor with enriched entries</td></tr>
+<tr><td><code>needs_data_source</code></td><td>dynamic chooser</td><td>cascade <code>intent.object &rarr; OBJECT_PRIMARY_TOOLS[obj][0] &rarr; find_urls</code>; retry with entries</td></tr>
+<tr><td><code>needs_action_target</code></td><td><code>get_inputs</code></td><td>free_text dialog with <code>verb + object</code>; <code>skip_retry=True</code>, turn ends via <code>needs_inputs</code> orchestrator</td></tr>
 </tbody>
 </table>
 
@@ -1025,7 +928,7 @@ the builtin tool <code>request_location_from_user</code>: an atomic dialog
 that asks the user for the location over the channel and resumes the plan
 on receipt. The pattern mirrors &sect;2-ter (atomic undo): a tool that
 halts and resumes the turn without intermediate steps polluting the history.
-The "atomic dialog tool" pattern family is codified in the ADR registry.
+The "atomic dialog tool" pattern family follows this same approach.
 </p>
 
 <h2 id="cap11_2_3">11.2.3 Hybrid geo provider</h2>

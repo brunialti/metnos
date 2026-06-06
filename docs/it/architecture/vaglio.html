@@ -326,7 +326,7 @@ decisione del giudice paga una chiamata al tier middle. Implementazione in
 
 <ul>
  <li><strong>Tier middle</strong>. Il giudice usa il tier <em>middle</em>
- dell'architettura LLM a 3 tier (vedi <a href="agent_runtime.html#cap4">agent_runtime cap.&nbsp;4</a>):
+ dell'architettura LLM a 4 tier (fast, middle, wise, frontier &mdash; vedi <a href="agent_runtime.html#cap4">agent_runtime cap.&nbsp;4</a>):
  non il tier veloce (troppo grezzo per ragionamento etico), non il tier
  saggio (sproporzionato per la frequenza con cui il vaglio gira).</li>
  <li><strong>Contesto separato dal proponente</strong>. Il giudice gira
@@ -499,8 +499,8 @@ A questi si aggiunge l'integrazione nel cluster <code>agent_runtime</code>, che 
 
 <table>
 <tr><th>Limite</th><th>Spiegazione</th><th>Quando si toglie</th></tr>
-<tr><td>Il vaglio non legge il <a href="mnestoma.html">mnestoma</a>.</td><td>Decisione di separazione di concerns: il vaglio valuta solo l'intento dichiarato + executor + args, non guarda lo storico. Significa che non puo' vedere &laquo;questa stessa azione e' stata negata 5 minuti fa&raquo; o &laquo;l'utente di solito non opera in questo modo&raquo;.</td><td>Evoluzione: il giudice LLM ricevera' contesto dal mnestoma (rilevanza simile, esiti precedenti) per pesare meglio.</td></tr>
-<tr><td>L'<a href="approval_ux.html">approval_ux</a> (carta + bottoni nel <a href="channel.html">channel</a>) e' renderizzabile, il dispatcher dei callback no.</td><td>La carta che l'utente vede nei canali (Telegram, Slack, ecc.) si genera gia' via <code>runtime/channels/approval.py</code>. Ma se l'utente preme &laquo;Concedo per stavolta&raquo;, il callback ancora non rientra nel piano vivo.</td><td>Evoluzione: dispatcher di callback con re-injection nel turno corrente.</td></tr>
+<tr><td>Il vaglio non legge il <a href="mnestoma.html">mnestoma</a>.</td><td>Separazione di concerns: il vaglio valuta solo l'intento dichiarato + executor + args, non guarda lo storico. Non pu&ograve; vedere &laquo;questa stessa azione e' stata negata 5 minuti fa&raquo; o &laquo;l'utente di solito non opera in questo modo&raquo;.</td><td>Evoluzione: il giudice LLM ricevera' contesto dal mnestoma (rilevanza simile, esiti precedenti) per pesare meglio.</td></tr>
+<tr><td>Il dispatcher dei callback dell'<a href="approval_ux.html">approval_ux</a> non rinietta nel turno vivo.</td><td>La carta che l'utente vede nei canali (Telegram, Slack, ecc.) si genera via <code>runtime/channels/approval.py</code>. Se l'utente preme &laquo;Concedo per stavolta&raquo;, il callback non rientra nel piano vivo.</td><td>Evoluzione: dispatcher di callback con re-injection nel turno corrente.</td></tr>
 <tr><td>Il giudice rule-based e' molto benevolente.</td><td>Soglia di default <code>0.30</code> e score base <code>0.7</code>: anche con piu' penalita' moderate, il punteggio resta sopra. Conscio: il vero filtro e' la guardia, il giudice marca solo gli outlier nel log.</td><td>Con il giudice LLM: la soglia avra' significato piu' forte e la distribuzione degli score sara' piu' larga.</td></tr>
 <tr><td>Niente <em>spiegazione strutturata</em> del rifiuto all'utente.</td><td>Quando il vaglio nega, il pianificatore mostra la <code>reason</code> testuale ma non costruisce una carta &laquo;perche' ho detto no e cosa puoi fare&raquo;. La UX di rifiuto e' minima.</td><td>Evoluzione: integrazione con approval_ux per rifiuti dialogici.</td></tr>
 <tr><td>Niente <em>vaglio interattivo</em>.</td><td>Il vaglio e' una funzione pura: input args, output Verdict. Non puo' chiedere &laquo;sei sicuro?&raquo; o richiedere conferma.</td><td>Evoluzione: integrazione con il dialog manager per richieste di autorizzazione (vedi <a href="approval_ux.html">approval_ux</a>).</td></tr>

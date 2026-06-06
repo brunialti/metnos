@@ -3,7 +3,7 @@
 <head>
  <meta charset="UTF-8">
  <meta name="viewport" content="width=device-width, initial-scale=1.0">
- <title>Metnos &mdash; multilang (under approval)</title>
+ <title>Metnos &mdash; multilang (tested)</title>
  <meta name="description" content="Microprogettazione del multilinguismo di Metnos: tre layer (prompt LLM, manifest description, messaggi user-facing), source-of-truth latest-wins, workflow add-language, METNOS_LANG di processo.">
  <meta name="keywords" content="multilang, multilingue, i18n, prompts, manifest, latest-wins, add-language, METNOS_LANG, metnos, Metnos">
  <meta name="author" content="Roberto Brunialti">
@@ -65,12 +65,11 @@ li { margin-bottom: 4px; }.lead { font-size: 12pt; color: var(--navy); border-le
  </style>
 </head>
 <body>
-<div style="margin: 18px 0; border-left: 5px solid #f59e0b; background: #fef3c7; color: #92400e; padding: 14px 20px; border-radius: 0 8px 8px 0; font-size: 11pt; font-family: 'Segoe UI', Calibri, -apple-system, sans-serif; line-height: 1.55;">
-<span style="display: inline-block; background: #b45309; color: #fff; padding: 2px 10px; border-radius: 12px; font-size: 9.5pt; letter-spacing: 1px; font-weight: 700; margin-right: 6px;">UNDER APPROVAL</span>
-<strong>Microprogettazione &mdash;.</strong> Documento canonico del
-sottosistema multilingua di Metnos. Allinea con ADR
-
-(prompt-as-data + auto-allineamento bilingue) e con i tre layer gi&agrave; vivi nel codice:
+<div style="margin: 18px 0; border-left: 5px solid #16a34a; background: #dcfce7; color: #14532d; padding: 14px 20px; border-radius: 0 8px 8px 0; font-size: 11pt; font-family: 'Segoe UI', Calibri, -apple-system, sans-serif; line-height: 1.55;">
+<span style="display: inline-block; background: #14532d; color: #fff; padding: 2px 10px; border-radius: 12px; font-size: 9.5pt; letter-spacing: 1px; font-weight: 700; margin-right: 6px;">TESTED</span>
+<strong>Microprogettazione &mdash; allineata al codice.</strong> Documento canonico del
+sottosistema multilingua di Metnos. Copre il pattern
+prompt-as-data + auto-allineamento bilingue e i tre layer vivi nel codice:
 <code>runtime/prompts/&lt;lang&gt;/&lt;role&gt;.j2</code> (MiniJinja, 26 ruoli),
 <code>runtime/i18n.sqlite</code> (118 chiavi) e i manifest TOML degli executor con tabella
 <code>[description].&lt;lang&gt;</code> + file companion <code>manifest.lang_state.json</code>.
@@ -93,8 +92,8 @@ sottosistema multilingua di Metnos. Allinea con ADR
  <h1>Metnos</h1>
  <div class="subtitle"><code>multilang</code> &mdash; tre layer, source-of-truth latest-wins, add-language</div>
  <div class="meta">
- Microprogettazione &mdash; <br>
- Allineata con (prompt-as-data) e con i moduli<br>
+ Microprogettazione &mdash; allineata al codice.<br>
+ Copre il pattern prompt-as-data e i moduli<br>
  <code>runtime/prompt_loader.py</code>, <code>runtime/i18n.py</code>,
  <code>runtime/i18n_translator.py</code>, <code>runtime/admin/prompts_cli.py</code>.<br>
  <br>
@@ -123,7 +122,7 @@ sottosistema multilingua di Metnos. Allinea con ADR
 Questo documento definisce <em>come Metnos parla pi&ugrave; lingue</em>: dove vivono
 le stringhe, chi pu&ograve; modificarle, come si propaga un cambio da una
 lingua all'altra, come si aggiunge una nuova lingua. Italiano e inglese
-sono entrambi presenti dal primo giorno; da il sistema deve
+sono entrambi presenti; il sistema deve
 poter accogliere una terza lingua (francese, spagnolo, tedesco) senza
 toccare il codice.
 </p>
@@ -539,11 +538,11 @@ non modifica i systemd unit n&eacute; il manifest, solo
 <h2>Riferimenti</h2>
 
 <ul>
-<li>ADR &mdash; pattern <code>indices_image</code>: stesso schema di oggetto-strumento + qualifier dominio si applica a <code>indices_text</code> per ricerca semantica multilingua (futuro).</li>
-<li>ADR &mdash; <code>get_inputs</code>: i dialoghi richiedono prompt LLM in lingua del processo per il <em>final_message_hint</em>.</li>
-<li>ADR &mdash; Strato 2 credentials via <code>get_inputs</code> + on_complete: stesso prompt loader, stesse lingue.</li>
-<li>ADR &mdash; prompt-as-data, motivazione e schema completo del layer 1.</li>
-<li>ADR &mdash; build asincrona indici: i progress message escono dal layer 3 (i18n.sqlite), naturalmente localizzati.</li>
+<li>Pattern <code>indices_image</code>: stesso schema di oggetto-strumento + qualifier dominio si applica a <code>indices_text</code> per ricerca semantica multilingua (futuro).</li>
+<li><code>get_inputs</code>: i dialoghi richiedono prompt LLM in lingua del processo per il <em>final_message_hint</em>.</li>
+<li>Strato 2 credentials via <code>get_inputs</code> + on_complete: stesso prompt loader, stesse lingue.</li>
+<li>Prompt-as-data: motivazione e schema completo del layer 1.</li>
+<li>Build asincrona indici: i progress message escono dal layer 3 (i18n.sqlite), naturalmente localizzati.</li>
 <li>Codice: <code>runtime/prompt_loader.py</code>, <code>runtime/i18n.py</code>, <code>runtime/i18n_translator.py</code>, <code>runtime/admin/prompts_cli.py</code>, <code>runtime/admin/i18n_cli.py</code>.</li>
 </ul>
 

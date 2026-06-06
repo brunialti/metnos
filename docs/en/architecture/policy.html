@@ -72,7 +72,7 @@ table.policy-table td:first-child { text-align: left; font-weight: 600; }
 
 <strong>&#10003; Microdesign &mdash; aligned with the code.</strong>
 Cluster <code>policy</code> 10/10 green. Additions on: two new capabilities, <code>auth.password_storage</code> for <code>login_session</code> and <code>crawl.recursive</code> for <code>find_urls(mode='research'/'archive')</code>, with three-tier policy (default / trusted / owned) governed by <code>~/.config/metnos/owned_domains.json</code> and <code>~/.config/metnos/trusted_origins.json</code>. Reference: <code>runtime/policy.py</code>.
-<div class="seq">Status sequence: <em>under approval</em> &rarr; <em>approved</em> &rarr; <strong>tested</strong> &rarr; <em>implemented</em>. Replaces the obsolete written before implementation.</div>
+<div class="seq">Status sequence: <em>under approval</em> &rarr; <em>approved</em> &rarr; <strong>tested</strong> &rarr; <em>implemented</em>.</div>
 </div>
 
 <nav aria-label="Language" style="position:fixed;top:16px;right:20px;z-index:9999;font-family:'Segoe UI',Calibri,sans-serif;font-size:10pt;letter-spacing:2px;background:#FAFBFC;border:1px solid #d0d7de;border-radius:14px;padding:4px 10px;box-shadow:0 1px 4px rgba(0,0,0,0.04);">
@@ -316,7 +316,7 @@ All four functions open and close the connection per call: no in-memory state. T
 <h2>4.3 When grants are written</h2>
 
 <p>
-In the <code>policy</code> module is <em>read-only</em> from the planner: the planner reads the table and the grants but never creates them. Creation happens in the approval dispatcher (ch. 5 phase 5, see <a href="../it/architecture/approval_ux.html">approval_ux</a>): when a pending request resolves as <em>approved</em> with scope <em>this and similar</em>, the dispatcher calls <code>record_grant</code> and from that moment the concession is persistent.
+The <code>policy</code> module is <em>read-only</em> from the planner: the planner reads the table and the grants but never creates them. Creation happens in the approval dispatcher (see <a href="approval_ux.html">approval_ux</a>): when a pending request resolves as <em>approved</em> with scope <em>this and similar</em>, the dispatcher calls <code>record_grant</code> and from that moment the concession is persistent.
 </p>
 
 <h1 id="cap5">5. Combined outcome (<code>effective_outcome</code>)</h1>
@@ -367,7 +367,7 @@ Table for (Full, mail:send) &rarr; <code>approval_required</code> (the "always" 
 <h1 id="cap6">6. Runtime integration</h1>
 
 <p>
-In <code>runtime/policy.py</code> is a separate module, complete and tested, but not yet stitched into the planner. Integration into <code>agent_runtime</code> is the last line of phase 5 and will arrive in the next iteration. The planned shape:
+In <code>runtime/policy.py</code> is a separate module, complete and tested. Integration into the planner is in progress. The planned shape:
 </p>
 
 <pre>def execute_step(step, ctx):

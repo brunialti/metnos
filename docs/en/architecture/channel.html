@@ -68,10 +68,9 @@ li { margin-bottom: 4px; }.lead { font-size: 12pt; color: var(--navy); border-le
 <div class="status-banner">
 
 <strong>&#10003; Microdesign &mdash; aligned with the code.</strong>
-The <code>channels</code> component was implemented and tested at module level (<code>channels</code> cluster 19/19 green) on, then extended on with multi-user support: <code>/start &lt;token&gt;</code> guest pairing command, <code>send_to(chat_id, OutboundMessage)</code> and multi-user fallback for pairings missing in <code>pairings.db</code>.
+The <code>channels</code> component is implemented and tested at module level. Supports multi-user: <code>/start &lt;token&gt;</code> guest pairing command, <code>send_to(chat_id, OutboundMessage)</code> and multi-user fallback for pairings missing in <code>pairings.db</code>.
 Read alongside <a href="http_api.html" style="color:#14532d;text-decoration:underline;"><code>http_api</code></a>: <strong>Telegram remains the primary dialogue channel</strong>; HTTP (port 8770) is the alternative channel for the host dashboard, curl/script automations and the remote Rust client.
 Implementation reference: <code>/opt/metnos/runtime/channels/</code>.
-<div class="seq">Status sequence of the microdesign: <em>under approval</em> &rarr; <em>approved</em> &rarr; <strong>tested</strong> &rarr; <em>implemented</em>. The of this doc preceded the code; it is replaced by this after the implementation of Channel Protocol, TelegramChannel, ChannelDaemon and the integration with the <a href="pairing.html"><code>pairing</code></a> module.</div>
 </div>
 
 <nav aria-label="Language" style="position:fixed;top:16px;right:20px;z-index:9999;font-family:'Segoe UI',Calibri,sans-serif;font-size:10pt;letter-spacing:2px;background:#FAFBFC;border:1px solid #d0d7de;border-radius:14px;padding:4px 10px;box-shadow:0 1px 4px rgba(0,0,0,0.04);">
@@ -152,7 +151,7 @@ in the runtime; the channel is a bidirectional pipe.
 The choice to treat the channel as an adapter (and not as a distinct module
 for each integration) is what makes it possible to start with two channels
 (CLI + Telegram) and add more without touching the core. See ch.&nbsp;6 of
-the <a href="../Metnos_Architecture_Intro_v1.html#cap6">Architecture</a>: the
+the Architecture: the
 channel sits in layer 1 (Gateway), together with authentication and routing.
 </p>
 
@@ -224,8 +223,8 @@ to <code>api.telegram.org</code>. If <code>buttons</code>, it builds an
 <li><code>poll(timeout_s=25)</code> &rarr; long-poll <code>getUpdates</code>
 with internal offset; returns only the <code>message</code> and
 <code>edited_message</code> entries with a <code>text</code> field. The
-<code>callback_query</code> events (clicked buttons) will be handled in 
-with a separate dispatcher (see ch.&nbsp;6 and 9).</li>
+<code>callback_query</code> events (clicked buttons) are handled by the
+dedicated dispatcher (see ch.&nbsp;6 and 9).</li>
 </ul>
 
 <h1 id="cap4">4. Long-poll and offset persistence</h1>
@@ -307,8 +306,7 @@ The component that produces the approval cards is in
 <code>runtime/channels/approval.py</code>:
 <code>render_approval_card(ApprovalRequest)</code> returns an
 <code>OutboundMessage</code> with the &laquo;3-line card&raquo; of the dialog
-manager (see <a href="approval_ux.html">approval_ux</a>, to be promoted
-to once the dispatcher arrives). Three forms modulated by recurrence:
+manager (see <a href="approval_ux.html">approval_ux</a>). Three forms modulated by recurrence:
 </p>
 
 <ul>
@@ -321,12 +319,10 @@ button-friendly form.</li>
 </ul>
 
 <p>
-The card can already be rendered; the <em>dispatching</em> of callbacks
+The <em>dispatching</em> of callbacks
 (clicking "Approve" resolves the <code>token</code> into a pending request and
-applies the decision) is deferred to because it requires a registry of
-pending requests with TTL, which is the natural next iteration now that the
-real <a href="vaglio.html">vaglio</a> (27/4) can start raising concrete
-approval requests.
+applies the decision) is handled by the daemon via
+<code>approval_registry.resolve</code> (see <a href="approval_ux.html">approval_ux</a>).
 </p>
 
 <h1 id="cap7">7. Relationship with <code>pairing</code></h1>
@@ -412,7 +408,7 @@ is deliberate:
 Multi-user: the <code>/start &lt;token&gt;</code> command accepted by
 the Telegram daemon completes the guest pairing issued from the
 <code>/admin/users</code> panel of the HTTP API. The
-<code>send_messages</code> v0.4.0 supports <code>to_user="lucia"</code>
+<code>send_messages</code> supports <code>to_user="lucia"</code>
 and <code>via_channel="auto"</code>: it resolves through
 <code>users.resolve_recipients</code>, with cross-user vaglio applied
 for non-host actors.
@@ -426,10 +422,10 @@ at a time. For CLI + Telegram in parallel two instances are needed (two
 systemd units). Adequate for now; a richer multi-channel abstraction will
 arrive when three or more channels are active.</li>
 
-<li><strong>No callback dispatcher</strong>: the inline buttons are rendered
-(ch.&nbsp;6) but clicking them does nothing yet. Implementation in,
-after the registry of pending approval requests (tied to the real
-<a href="vaglio.html">vaglio</a> 27/4).</li>
+<li><strong>Callback dispatcher active</strong>: the inline buttons are rendered
+(ch.&nbsp;6) and the daemon dispatcher resolves clicks via
+<code>approval_registry.resolve</code> (see
+<a href="approval_ux.html">approval_ux</a>).</li>
 
 <li><strong>No file/voice/photo</strong>: text only. <code>poll</code>
 explicitly filters out messages that have no <code>text</code>. Photos will
@@ -446,7 +442,7 @@ public IP or a proxy &mdash; and Metnos chooses to have neither.</li>
 needed, a token bucket at <code>send</code> level would suffice.</li>
 
 <li><strong>No per-sender rate-limit</strong>: a paired sender can flood the
-daemon. In with a more active real vaglio this becomes relevant; for
+daemon. With an active vaglio this becomes relevant; for
 now the pairing cardinality is low (one or a few family members).</li>
 </ul>
 
