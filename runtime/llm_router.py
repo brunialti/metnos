@@ -16,8 +16,8 @@ Regole canoniche di alias:
 
 Config TOML in workspace/.config/llm_tiers.toml. Se manca, default
 baked-in: tutti i tier locali (fast/middle/wise) puntano allo stesso
-llama-server :8080 (Gemma 4 26B + drafter E2B speculative), differenze
-solo nei parametri per-call. Frontier = Anthropic Opus 4.7 opt-in.
+llama-server :8080 (Qwen3.6-35B-A3B + MTP self-speculative interna),
+differenze solo nei parametri per-call. Frontier = Anthropic Opus 4.7 opt-in.
 La verita' canonica e' in `DEFAULT_TIERS` (sotto) — vedi ADR 0146.
 
 API:
@@ -66,8 +66,9 @@ CONFIG_PATH = _default_config_path()
 
 # Default baked-in — single source of truth per ADR 0146 (18/5/2026).
 # I tre tier locali (fast/middle/wise) puntano allo stesso processo
-# llama-server :8080 (Gemma 4 26B main + Gemma 4 E2B drafter speculative
-# decoding caricato via `-md`). La differenza fra tier e' solo nei
+# llama-server :8080 (Qwen3.6-35B-A3B main + MTP self-speculative interna,
+# `--spec-type draft-mtp`: il drafter e' la testa MTP del modello stesso,
+# non un secondo modello via `-md`). La differenza fra tier e' solo nei
 # parametri per-call (think, num_predict) — non nel modello servito.
 # Qualsiasi modifica a questo dict aggiorna la realta' del progetto:
 # tutti gli altri doc (CLAUDE.md §11, ADR 0146, docs/LLM_TIERS.md)
@@ -75,19 +76,19 @@ CONFIG_PATH = _default_config_path()
 DEFAULT_TIERS = {
     "fast": {
         "provider": "llamacpp",
-        "model": "gemma-4-26B-A4B-it-UD-Q4_K_M.gguf",
+        "model": "Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
         "endpoint": "http://127.0.0.1:8080",
         "think": False,
         "num_predict": 400,
     },
     "middle": {
         "provider": "llamacpp",
-        "model": "gemma-4-26B-A4B-it-UD-Q4_K_M.gguf",
+        "model": "Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
         "endpoint": "http://127.0.0.1:8080",
     },
     "wise": {
         "provider": "llamacpp",
-        "model": "gemma-4-26B-A4B-it-UD-Q4_K_M.gguf",
+        "model": "Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
         "endpoint": "http://127.0.0.1:8080",
     },
     # frontier: opt-in online, "il migliore solo se serve". Caller deve
