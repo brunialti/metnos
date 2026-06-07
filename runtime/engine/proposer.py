@@ -50,12 +50,21 @@ class Proposer(Protocol):
 
 _FRAMEWORK_RE = re.compile(r"\{[\s\S]*\}")
 
-# Budget di prompt PER-TOOL: quanto della description (SCOPO+PATTERN, fino a
-# OUT:) viene mostrato all'LLM nel pool. Il pool puo' avere 10-20 tool; mostrare
-# la description completa di ognuno gonfia il prompt e distrae il modello medio.
-# 260 char ≈ SCOPO+PATTERN front-loaded (§2.5). E' un'euristica di tuning, non un
-# limite fisico. Single-source: `manifest_lint` lo importa per allineare i check.
-TOOL_DESC_BUDGET = 260
+# Budget di prompt PER-TOOL + logica di troncamento: SoT in `manifest_rules`
+# (il "DNA"), così synt/lint/proposer condividono gli stessi numeri e la stessa
+# regola di taglio. Description verbose distraggono il modello medio (§2.5:
+# description = sola testa). `manifest_lint` e synt importano dalla stessa SoT.
+try:
+    from manifest_rules import RENDER_BUDGET as TOOL_DESC_BUDGET, render_head as _render_head
+except Exception:  # pragma: no cover — CLI senza runtime sul path
+    TOOL_DESC_BUDGET = 260
+
+    def _render_head(desc):
+        desc = (desc or "").strip().replace("\n", " ")
+        if "PATTERN:" in desc:
+            c = desc.find("OUT:")
+            return (desc[:c] if c > 0 else desc)[:TOOL_DESC_BUDGET].strip()
+        return desc.split(".")[0][:180].strip()
 
 
 def _render_tool_pool(pool: list[str], catalog: Optional[list]) -> str:
@@ -74,18 +83,10 @@ def _render_tool_pool(pool: list[str], catalog: Optional[list]) -> str:
         if e is None:
             lines.append(f"- {name}")
             continue
-        desc = substitute_date_tokens(
-            (getattr(e, "description", "") or "").strip().replace("\n", " "))
-        # Manifest a capitoli (convenzione §2.5: "SCOPO: … PATTERN: … NON: …
-        # OUT: …"): esponi SCOPO+PATTERN (+NON se entra) cosi' il Proposer vede
-        # la FORMA di chiamata, non solo lo scopo (bug args 2/6/2026: l'LLM
-        # vedeva solo "Scrive uno o piu' file" → inventava write_files(files=…)).
-        # Manifest legacy (senza capitoli): prima frase [:120] (back-compat).
-        if "PATTERN:" in desc:
-            _cut = desc.find("OUT:")
-            desc_short = (desc[:_cut] if _cut > 0 else desc)[:TOOL_DESC_BUDGET].strip()
-        else:
-            desc_short = desc.split(".")[0][:120] if desc else ""
+        # Troncamento via SoT manifest_rules.render_head (DNA): testa §2.5 fino a
+        # OUT: (cap RENDER_BUDGET) per i capitoli; prima frase ROBUSTA (cap
+        # RENDER_LEGACY_MAX, non spezza a ".html") per i legacy in attesa di bonifica.
+        desc_short = _render_head(substitute_date_tokens(getattr(e, "description", "") or ""))
         schema = getattr(e, "args_schema", None) or {}
         required = schema.get("required") or []
         roo = schema.get("requires_one_of") or []

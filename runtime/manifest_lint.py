@@ -52,10 +52,14 @@ except Exception:  # pragma: no cover - fallback se vocab non importabile
 # description fino a "OUT:", troncata a questo numero di caratteri. Tutto cio'
 # che sta oltre e' INVISIBILE all'LLM. SINGLE-SOURCE: importato dal proposer
 # (fallback 260 se l'import e' indisponibile, es. CLI senza engine).
+# SoT delle regole/dimensioni manifest: `manifest_rules` (il "DNA"). Stesso
+# modulo importato da proposer (render) e synt (generazione) → numeri allineati,
+# zero drift. Fallback ai default §2.5 se non importabile (CLI senza runtime).
 try:
-    from engine.proposer import TOOL_DESC_BUDGET as PROPOSER_DESC_BUDGET  # noqa: E402
+    from manifest_rules import (RENDER_BUDGET as PROPOSER_DESC_BUDGET,
+                                HEAD_MAX, DESC_MAX, ARG_DESC_MAX)
 except Exception:  # pragma: no cover
-    PROPOSER_DESC_BUDGET = 260
+    PROPOSER_DESC_BUDGET, HEAD_MAX, DESC_MAX, ARG_DESC_MAX = 260, 240, 280, 160
 
 # Arg "universali" di piping/runtime ammessi nel PATTERN anche se non sono
 # nelle properties dichiarate (il runtime li gestisce: §4.1).
@@ -179,6 +183,27 @@ def lint_manifest(manifest: dict, *, catalog_names=None,
                            f"il capitolo NON: (char {pos_non}) e' oltre {PROPOSER_DESC_BUDGET} → "
                            f"troncato per l'LLM. OK solo se la disambiguazione e' gia' nello SCOPO."))
 
+    # C_LENGTH — regole FISICHE §2.5: description = SOLO testa, niente coda.
+    head = desc[:out_cut]
+    if len(head) > HEAD_MAX:
+        out.append(Finding("length", "warn",
+                           f"testa (inizio->OUT:) {len(head)} char > {HEAD_MAX}: accorcia "
+                           f"SCOPO/PATTERN/NON (la macchina legge solo la testa)."))
+    if len(desc) > DESC_MAX:
+        out.append(Finding("length", "warn",
+                           f"description {len(desc)} char > {DESC_MAX}: contiene CODA non-macchina → "
+                           f"spostala in codice(.py)/[args].description/ADR (§2.5: nessuna coda)."))
+    for an, decl in props.items():
+        if not isinstance(decl, dict):
+            continue
+        ad = decl.get("description")
+        if isinstance(ad, dict):
+            ad = ad.get("it") or ad.get("en") or ""
+        if isinstance(ad, str) and len(ad) > ARG_DESC_MAX:
+            out.append(Finding("length", "warn",
+                               f"[args.{an}].description {len(ad)} char > {ARG_DESC_MAX}: "
+                               f"1 frase + tipo + esempio + default."))
+
     # C_PATTERN_ARGS — il PATTERN usa solo arg esistenti nello schema (+ universali).
     if "PATTERN:" in desc and props:
         allowed = set(props.keys()) | _UNIVERSAL_ARGS
@@ -272,6 +297,10 @@ def _load_all_affinities() -> dict:
 
 def main(argv=None):
     argv = argv if argv is not None else sys.argv[1:]
+    # --strict: gate per NUOVI/TOCCATI — promuove ogni warn a error (CI / on-touch).
+    # Senza, i warn restano advisory (legacy non bloccati, §2.5 no bonifica di massa).
+    strict = "--strict" in argv
+    argv = [a for a in argv if a != "--strict"]
     base = _RUNTIME.parent / "executors"
     affinities = _load_all_affinities()
     names = set(affinities.keys())
@@ -282,8 +311,11 @@ def main(argv=None):
     total_err = total_warn = 0
     for t in targets:
         findings = lint_file(t, catalog_names=names, sibling_affinities=affinities)
-        errs = [f for f in findings if f.severity == "error"]
-        warns = [f for f in findings if f.severity == "warn"]
+        if strict:
+            errs, warns = findings, []
+        else:
+            errs = [f for f in findings if f.severity == "error"]
+            warns = [f for f in findings if f.severity == "warn"]
         total_err += len(errs)
         total_warn += len(warns)
         if findings:

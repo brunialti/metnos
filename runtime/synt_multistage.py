@@ -172,6 +172,19 @@ def validate_stage4(out: dict) -> Optional[str]:
         return "description troppo corta o non stringa (>= 80 char attesi)"
     if "\n" in out["description"]:
         return "description non deve contenere newline (e' una stringa TOML)"
+    # Regole FISICHE §2.5 (SoT manifest_rules): description = SOLO testa, no coda.
+    try:
+        from manifest_rules import HEAD_MAX, DESC_MAX
+    except Exception:
+        HEAD_MAX, DESC_MAX = 240, 280
+    desc = out["description"]
+    if len(desc) > DESC_MAX:
+        return (f"description {len(desc)} char > {DESC_MAX}: deve essere SOLO la testa "
+                f"§2.5 (SCOPO/PATTERN/NON/OUT). Niente coda implementativa.")
+    _cut = desc.find("OUT:")
+    head = desc[:_cut] if _cut > 0 else desc
+    if len(head) > HEAD_MAX:
+        return f"testa (->OUT:) {len(head)} char > {HEAD_MAX}: accorcia SCOPO/PATTERN/NON."
     if not isinstance(out.get("affinity"), list) or len(out["affinity"]) < 4:
         return "affinity deve essere lista di almeno 4 keyword"
     return None
@@ -329,6 +342,10 @@ def run_stage3(user_request: str, stage1: dict, stage2: dict, llm_call) -> Stage
 
 def run_stage4(user_request: str, stage1: dict, stage2: dict, stage3: dict, llm_call) -> StageResult:
     """Stage 4 = DESCRIPTION + AFFINITY. Creativo (prosa)."""
+    try:
+        from manifest_rules import HEAD_MAX as _hm, DESC_MAX as _dm
+    except Exception:
+        _hm, _dm = 240, 280
     user_prompt = prompt_loader.get(
         "synt_description",
         DEFAULT_LANG,
@@ -339,6 +356,7 @@ def run_stage4(user_request: str, stage1: dict, stage2: dict, stage3: dict, llm_
         reverse_pattern=str(stage2.get("reverse_pattern")),
         num_tests=len(stage3.get("tests", [])),
         user_request=user_request,
+        head_max=_hm, desc_max=_dm,
     )
     res = llm_call("", user_prompt, max_tokens=2200)
     text = res.get("text", "")

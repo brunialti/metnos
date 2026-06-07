@@ -33,11 +33,13 @@ TOML MANIFEST STYLE RULES (CLAUDE.md §6 + §7.12):
    "Example: top=5". No redundant bullets. IT/EN parallel, not
    identical-translated.
 
-description CONSTRAINTS — CHAPTER FORMAT (UNIVERSAL RULE §2.5):
+description CONSTRAINTS — HEAD ONLY §2.5 (UNIVERSAL RULE):
 - Single string, NO newline (TOML manifest). NO Python jargon.
 - EXACTLY 4 chapters in this order, terse and pattern-oriented:
-  SCOPO: <1 sentence: what it does>. PATTERN: <literal call: name(arg="...", arg=N)>. NON: <anti-pattern + disambiguation vs similar tools>. OUT: <pipeable output shape>.
-- SCOPO+PATTERN front-loaded (the proposer reads them). The §2.2 verb boundary goes in NON: (e.g. "NON use for directories -> delete_dirs").
+  SCOPO: <1 sentence: what it does>. PATTERN: <literal call: name(arg="...", arg=N)>. NON: <anti-pattern + disambiguation vs sibling tools>. OUT: <pipeable output shape>.
+- HEAD ONLY: the description is ONLY these 4 chapters. FORBIDDEN the implementation tail (strip-tags, caps, backend, User-Agent, headers...): it lives in the code, NOT here. The machine reads only the head.
+- HARD LIMITS: head (start->OUT:) <= {{ head_max }} char; whole description <= {{ desc_max }} char. Beyond = you're writing tail, cut it.
+- SCOPO+PATTERN front-loaded (the proposer reads them). The §2.2 verb boundary goes in NON: (e.g. "NON directories -> delete_dirs").
 
 affinity RULES:
 - 6-10 keywords italiano + english, lowercase.

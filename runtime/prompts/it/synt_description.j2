@@ -35,11 +35,13 @@ REGOLE STILE MANIFEST TOML (CLAUDE.md §6 + §7.12):
    "Esempio: top=5". Niente bullet ridondanti. IT/EN paralleli, non
    identici-tradotti.
 
-VINCOLI description — FORMATO A CAPITOLI (REGOLA UNIVERSALE §2.5):
+VINCOLI description — SOLO TESTA §2.5 (REGOLA UNIVERSALE):
 - Stringa unica, NIENTE newline (manifest TOML). NO gergo Python.
 - ESATTAMENTE 4 capitoli in quest'ordine, stringati e pattern-oriented:
-  SCOPO: <1 frase: cosa fa>. PATTERN: <chiamata literal: name(arg="...", arg=N)>. NON: <anti-pattern + disambiguazione vs tool simili>. OUT: <shape output pipeable>.
-- SCOPO+PATTERN front-loaded (li legge il proposer). Il boundary verbo §2.2 va in NON: (es. "NON usare per directory -> delete_dirs").
+  SCOPO: <1 frase: cosa fa>. PATTERN: <chiamata literal: name(arg="...", arg=N)>. NON: <anti-pattern + disambiguazione vs tool fratelli>. OUT: <shape output pipeable>.
+- SOLO TESTA: la description e' SOLO questi 4 capitoli. VIETATA la coda implementativa (strip-tag, cap, backend, User-Agent, header...): vive nel codice, NON qui. La macchina legge solo la testa.
+- LIMITI hard: testa (inizio->OUT:) <= {{ head_max }} char; description intera <= {{ desc_max }} char. Oltre = stai scrivendo coda, taglia.
+- SCOPO+PATTERN front-loaded (li legge il proposer). Il boundary verbo §2.2 va in NON: (es. "NON directory -> delete_dirs").
 
 REGOLE affinity:
 - 6-10 keyword italiano + inglese, lowercase.
