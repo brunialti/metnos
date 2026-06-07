@@ -53,19 +53,18 @@ CONTESTO:
 BODY SKILL.md (sezione rilevante):
 {skill_body_snippet}
 
-REGOLE OBBLIGATORIE (CLAUDE.md §6 prompt prescrittivo):
-- Description in 2-5 frasi corte (max 25 parole/frase, §2.5)
-- Pattern fisso: "DEVI: ... NON DEVI: ... USO CORRETTO: ... ERRORE: ..."
-- IT senza anglicismi (§7.8): "trigger" -> "innesco", "goal" -> "obiettivo"
-- Niente nomi propri di terzi (§7.5)
-- Specifica vettoriale §2.1 e cap superiore esplicito §2.7 quando entries
-- Niente jargon Python interno
+REGOLE OBBLIGATORIE (CLAUDE.md §2.5 — description SOLO TESTA):
+- ESATTAMENTE 4 capitoli stringati, in quest'ordine: SCOPO: ... PATTERN: ... NON: ... OUT: ...
+  SCOPO=1 frase (cosa fa). PATTERN=chiamata literal {name}(arg="..."). NON=anti-pattern + tool fratello (boundary §2.2). OUT=shape output pipeable (entries/results).
+- SOLO TESTA: VIETATA la coda implementativa (vive nel codice, NON qui). LIMITI hard: testa(inizio->OUT:) <= {head_max} char; description intera <= {desc_max} char.
+- Stringa unica, NIENTE newline. IT senza anglicismi (§7.8). Niente nomi propri (§7.5). Niente jargon Python.
+- Vettoriale §2.1 + cap superiore §2.7 nel SCOPO quando entries.
 - Affinity: 8-15 termini user-facing IT+EN combinati (sinonimi e colloquiali)
 
 OUTPUT RIGOROSAMENTE JSON (niente prosa attorno):
 {{
-  "description_it": "Legge ... DEVI ... NON DEVI ... USO CORRETTO: {name}(...). ERRORE: ...",
-  "description_en": "Reads ... MUST ... MUST NOT ... CORRECT USE: {name}(...). ERROR: ...",
+  "description_it": "SCOPO: ... PATTERN: {name}(...). NON: ... -> tool_fratello. OUT: entries[...]",
+  "description_en": "SCOPO: ... PATTERN: {name}(...). NON: ... -> sibling_tool. OUT: entries[...]",
   "affinity": ["term1", "term2", ...]
 }}
 """
@@ -87,6 +86,11 @@ def build_prompt(plan, parsed_skill, skill_body_snippet: str = "") -> str:
         )
     body_snippet = skill_body_snippet[:2000] if skill_body_snippet else "(no snippet)"
 
+    try:
+        from manifest_rules import HEAD_MAX as _hm, DESC_MAX as _dm
+    except Exception:
+        _hm, _dm = 240, 280
+
     # 1. Prova prompt_loader (produzione, se disponibile).
     rendered = _try_render_prompt_loader(
         name=plan.name, verb=plan.verb, obj=plan.obj,
@@ -96,6 +100,7 @@ def build_prompt(plan, parsed_skill, skill_body_snippet: str = "") -> str:
         output_kind=plan.output_kind,
         provenance_summary=provenance_summary,
         skill_body_snippet=body_snippet,
+        head_max=_hm, desc_max=_dm,
     )
     if rendered is not None:
         return rendered
@@ -111,6 +116,7 @@ def build_prompt(plan, parsed_skill, skill_body_snippet: str = "") -> str:
         output_kind=plan.output_kind,
         provenance_summary=provenance_summary,
         skill_body_snippet=body_snippet,
+        head_max=_hm, desc_max=_dm,
     )
 
 
