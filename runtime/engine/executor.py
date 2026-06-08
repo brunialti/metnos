@@ -806,7 +806,13 @@ def _synthesize_final_from_steps(query: str, steps: list, llm_fast) -> str:
             entries = res.get("entries")
             if isinstance(entries, list) and entries:
                 ebits = []
-                for e in entries[:5]:
+                # Campione ampio (non 5): per i read-LISTA (mail/eventi/file) il
+                # finalizer DEVE vedere abbastanza entries da coprire lo SPAN
+                # reale, altrimenti misrappresenta (bug 8/6: 41 mail last-7d →
+                # "solo 7-8 giu" perche' vedeva solo le 5 piu' recenti). Per-entry
+                # resta compatto (campi capati) → budget contenuto. Il prefisso
+                # entries[N] porta comunque il TOTALE.
+                for e in entries[:30]:
                     if not isinstance(e, dict):
                         ebits.append(str(e)[:200])
                         continue
@@ -824,9 +830,9 @@ def _synthesize_final_from_steps(query: str, steps: list, llm_fast) -> str:
                             break
                     if not picked_long:
                         # 2b) scalari salienti (identita'/valori)
-                        for k in ("name", "subject", "title", "description",
-                                  "value", "summary", "email", "role", "path",
-                                  "date", "status"):
+                        for k in ("name", "subject", "date", "title",
+                                  "description", "value", "summary", "email",
+                                  "role", "path", "status"):
                             if e.get(k):
                                 fields.append(f"{k}={str(e[k])[:120]}")
                             if len(fields) >= 4:
@@ -870,14 +876,19 @@ def _synthesize_final_from_steps(query: str, steps: list, llm_fast) -> str:
         "niente JSON, niente placeholder. I risultati contengono dati gia' "
         "recuperati e autorizzati per l'utente proprietario che li richiede: se "
         "l'informazione richiesta e' presente nei risultati, RIPORTALA "
-        "fedelmente. NON rifiutare e NON dire di non avervi accesso."
+        "fedelmente. NON rifiutare e NON dire di non avervi accesso. "
+        "Se i risultati sono una LISTA, il prefisso entries[N] indica il TOTALE "
+        "N: dichiaralo e basa ogni intervallo (date comprese) SOLO sugli "
+        "elementi realmente elencati; se ne mostri un campione, dillo (es. "
+        "\"41 email questa settimana; le piu' recenti:\"). NON restringere "
+        "l'intervallo reale a quello dei pochi elementi citati."
     )
     user_msg = (
         f"Richiesta: {query}\n\nRisultati strumenti:\n" + "\n".join(obs_lines)
         + "\n\nRisposta:"
     )
     try:
-        out = llm_fast(sys_msg, user_msg, max_tokens=160, think=False)
+        out = llm_fast(sys_msg, user_msg, max_tokens=360, think=False)
         return (out or "").strip()
     except Exception as ex:
         log.warning("Executor: synthesize_final fallback failed: %r", ex)
