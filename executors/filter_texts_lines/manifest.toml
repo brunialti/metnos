@@ -15,8 +15,8 @@ revertible  = false
 lifecycle   = "active"
 
 [description]
-it = "Filtra un contenuto testuale alla granularita' delle righe, tenendo solo quelle che soddisfano un predicato (regex Python e/o substring letterale). Pure compute, no I/O esterna. Input: `content` come stringa o lista di stringhe (passato tipicamente come {{stepN.content}} dopo read_files o read_files_ocr). Output: lista di righe matchate, opzionalmente con numero di riga. Esempio: filtra tutte le righe contenenti 'ERROR' dal log di sistema, oppure righe con regex '^\\d{4}-\\d{2}-\\d{2}' per tenere date ISO."
-en = "Filter textual content at the line granularity, keeping only those that satisfy a predicate (Python regex and/or literal substring). Pure compute, no external I/O. Input: `content` as a string or list of strings (typically passed as {{stepN.content}} after read_files or read_files_ocr). Output: list of matched lines, optionally with line number. Example: filter all lines containing 'ERROR' from the system log, or lines with regex '^\\d{4}-\\d{2}-\\d{2}' to keep ISO dates."
+it = "SCOPO: filtra righe di testo per pattern. PATTERN: filter_texts_lines(content=\"...\"). NON: leggere file (-> read_files); cercare in directory (-> find). OUT: entries=[{line_number, text}]."
+en = "SCOPO: filter text lines by pattern. PATTERN: filter_texts_lines(content=\"...\"). NON: read files (-> read_files); search directories (-> find). OUT: entries=[{line_number, text}]."
 
 [code]
 files  = ["filter_texts_lines.py"]

@@ -17,8 +17,8 @@ reverse_pattern  = "delete_files_by_id"
 lifecycle        = "active"
 
 [description]
-it = "Crea un nuovo Google Doc (documento online). Dispatcher canonical: instrada al backend `client` (default `google_workspace`). USO CORRETTO: create_files_doc(title='Note riunione', body='## Agenda\\n- punto 1\\n'). NON CONFONDERE CON: `write_files_doc` (appende a doc esistente), `create_files_spreadsheet` (foglio elettronico), `write_files` (file locale). §2.3 reverse_pattern='delete_files_by_id' (Drive trash, reversibile). §2.6 trasformativo: ritorna `results: list[{document_id, title, web_view_url}]`. Se OAuth manca, decision='needs_inputs'."
-en = "Creates a new Google Doc (online document). Canonical dispatcher: routes to backend `client` (default `google_workspace`). CORRECT USE: create_files_doc(title='Meeting notes', body='## Agenda\\n- point 1\\n'). DO NOT CONFUSE WITH: `write_files_doc` (appends to existing doc), `create_files_spreadsheet` (spreadsheet), `write_files` (local file). §2.3 reverse_pattern='delete_files_by_id' (Drive trash, reversible). §2.6 transformative: returns `results: list[{document_id, title, web_view_url}]`. If OAuth missing, decision='needs_inputs'."
+it = "SCOPO: crea un nuovo Google Doc. PATTERN: create_files_doc(title='Titolo', body='Testo'). NON: scrivere in doc esistente (-> write_files_doc); creare fogli (-> create_files_spreadsheet). OUT: results=[{document_id, title, web_view_url}]."
+en = "SCOPO: creates a new Google Doc. PATTERN: create_files_doc(title='Title', body='Text'). NON: writing to existing doc (-> write_files_doc); creating sheets (-> create_files_spreadsheet). OUT: results=[{document_id, title, web_view_url}]."
 
 [code]
 files  = ["create_files_doc.py"]

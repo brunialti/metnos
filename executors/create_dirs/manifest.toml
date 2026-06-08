@@ -15,8 +15,8 @@ revertible      = true
 reverse_pattern = "delete_created_paths"
 
 [description]
-it = "Crea una o piu' directory ai path indicati. Accetta sempre una lista (anche di un solo path, o vuota). Di default crea anche le cartelle intermedie mancanti (come 'mkdir -p') e non fallisce se la dir esiste gia'. Best-effort: prosegue su tutti i path anche se uno fallisce; il report finale elenca riusciti e falliti. Ogni results entry indica `created: true|false` (false se la dir esisteva gia')."
-en = "Create one or more directories at the indicated paths. Always accept a list (even if it contains only one path, or is empty). By default, also create missing intermediate folders (like 'mkdir -p') and do not fail if the directory already exists. Best-effort: proceed with all paths even if one fails; the final report lists successes and failures. Each results entry indicates `created: true|false` (false if the directory already existed)."
+it = "SCOPO: crea directory (batch, anche vuote). PATTERN: create_dirs(paths=[\"/tmp/d\"]). NON: cancellare (-> delete_dirs); cercare (-> find_dirs); elencare (-> list_dirs). OUT: results=[{created}], best-effort."
+en = "SCOPO: create directories (batch, even empty). PATTERN: create_dirs(paths=[\"/tmp/d\"]). NON: delete (-> delete_dirs); search (-> find_dirs); list (-> list_dirs). OUT: results=[{created}], best-effort."
 
 [code]
 files  = ["create_dirs.py"]

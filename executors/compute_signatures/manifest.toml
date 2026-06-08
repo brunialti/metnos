@@ -8,8 +8,8 @@ revertible       = true
 reverse_pattern  = []
 
 [description]
-it = "Operazioni di calcolo / trasformazione sulle signature. Un solo executor, parametro `op` che seleziona la modalita':\n\n- op='command': canonicalizza un argv in una signature stabile 'binary:subcmd:target_kind'. Argomento richiesto: argv (lista). Output: {signature, binary, subcommand_or_flag, target_kind, requires_sudo}. Algoritmo deterministico, no LLM.\n\n- op='reversibility': classifica un comando per reversibilita'. Argomento richiesto: signature. Output: {class:'reversible'|'irreversible'|'unknown', undo_hint, reason}. Tag informativo per la carta di approvazione.\n\n- op='seed_apply': applica idempotente il seed file v*.toml al DB. Argomento opzionale: seed_path. Output: {applied, skipped, seed_version, upgraded}."
-en = "Calculation / transformation operations on signatures. A single executor, parameter `op` selects the mode:  - op='command': canonicalizes an argv into a stable signature 'binary:subcmd:target_kind'. Required argument: argv (list). Output: {signature, binary, subcommand_or_flag, target_kind, requires_sudo}. Deterministic algorithm, no LLM.  - op='reversibility': classifies a command for reversibility. Required argument: signature. Output: {class:'reversible'|'irreversible'|'unknown', undo_hint, reason}. Informative tag for the approval card.  - op='seed_apply': idempotently applies the seed file v*.toml to the DB. Optional argument: seed_path. Output: {applied, skipped, seed_version, upgraded}."
+it = "SCOPO: calcola e trasforma signature. PATTERN: compute_signatures(op='command', argv=[...]). NON: gestire whitelist/blacklist (-> get_signatures); modificare curatela (-> set_signatures). OUT: entries=[{signature, binary, subcommand_or_flag, target_kind, requires_sudo}]."
+en = "SCOPO: compute and transform signatures. PATTERN: compute_signatures(op='command', argv=[...]). NON: manage whitelist/blacklist (-> get_signatures); modify curation (-> set_signatures). OUT: entries=[{signature, binary, subcommand_or_flag, target_kind, requires_sudo}]."
 
 [code]
 files  = ["compute_signatures.py"]

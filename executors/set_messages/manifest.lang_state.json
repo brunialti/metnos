@@ -1,14 +1,14 @@
 {
   "description": {
     "it": {
-      "version_hash": "sha256:1a5f74b30458561b7180b1cec72ae96ac8cf9a59eac5f81e202e00dcd5df6aed",
+      "version_hash": "sha256:b5131067b5bc0ed1d8cae366bae925bf9e7ff11f3d3ac00abf7cc26b7fe08eda",
       "source_lang": null,
       "source_hash": null
     },
     "en": {
-      "version_hash": "sha256:69b6042c60a2932f0da99aba325c5acfcd11a5c50f03d6c6a1b09e1c3d784671",
-      "source_lang": null,
-      "source_hash": null
+      "version_hash": "sha256:452488e6a30c6c1c7a19334b730142195c3b6ccd8b62f9a7da4e588f9d480224",
+      "source_lang": "it",
+      "source_hash": "sha256:b5131067b5bc0ed1d8cae366bae925bf9e7ff11f3d3ac00abf7cc26b7fe08eda"
     }
   },
   "args.message_ids.description": {

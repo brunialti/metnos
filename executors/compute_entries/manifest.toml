@@ -11,32 +11,8 @@ revertible      = false
 lifecycle       = "active"
 
 [description]
-it = """Riduce una lista di entries a uno SCALARE applicando op su una key.
-
-Op: max/min/avg/sum (numeric, ignora entry senza key o non numeriche); count (n entries, con key conta solo non-null); count_distinct (valori distinti).
-
-vs sort_entries: sort → LISTA ordinata. compute → SCALARE.
-
-OK:
-- compute_entries(key="total_bytes", op="max") → bytes max di una dir.
-- compute_entries(key="file_count", op="sum") → totale file aggregato.
-- compute_entries(op="count") → numero entries (no key richiesto).
-- compute_entries(key="from", op="count_distinct") → distinct sender.
-
-Output: {value, op, key, count_input, ignored_non_numeric}. return_entry=true aggiunge 'entry' (dict vincitore di max/min)."""
-en = """Reduces an entries list to a SCALAR applying op on a key.
-
-Op: max/min/avg/sum (numeric, ignores entries without key or non-numeric); count (n entries, with key counts non-null only); count_distinct (distinct values).
-
-vs sort_entries: sort → ordered LIST. compute → SCALAR.
-
-OK:
-- compute_entries(key="total_bytes", op="max") → max bytes of a dir.
-- compute_entries(key="file_count", op="sum") → aggregated total files.
-- compute_entries(op="count") → entries count (no key required).
-- compute_entries(key="from", op="count_distinct") → distinct senders.
-
-Output: {value, op, key, count_input, ignored_non_numeric}. return_entry=true adds 'entry' (winning dict for max/min)."""
+it = "SCOPO: calcola un valore aggregato (max/min/avg/sum/count) su entries. PATTERN: compute_entries(key=\"val\", op=\"max\"). NON: ordinare la lista (-> sort_entries); filtrare per criteri (-> filter_entries). OUT: {value, op, key, count_input, ignored_non_numeric, entry?}."
+en = "SCOPO: compute an aggregated value (max/min/avg/sum/count) on entries. PATTERN: compute_entries(key=\"val\", op=\"max\"). NON: sort the list (-> sort_entries); filter by criteria (-> filter_entries). OUT: {value, op, key, count_input, ignored_non_numeric, entry?}."
 
 [code]
 files  = ["compute_entries.py"]

@@ -17,8 +17,8 @@ revertible = false
 lifecycle  = "active"
 
 [description]
-it = "Aggiunge/rimuove labels su uno o piu' messaggi (Gmail). Upsert idempotente di stato (verbo `set` §2.2). USO CORRETTO: 'metti l\\'etichetta Importante su queste mail' -> set_messages(message_ids=..., add=['IMPORTANT']). Senza message_id: ritorna la lista di tutte le labels dell\\'account (entries: [{id, name, type}]). NON CONFONDERE CON `move_messages` (sposta tra cartelle, cambia INBOX/TRASH/SPAM): set_messages aggiunge user-labels SENZA muovere la mail. Backend: solo client='google_workspace' (IMAP flags non implementato in MVP)."
-en = "Add/remove labels on one or more messages (Gmail). Idempotent state upsert (verb `set` §2.2). CORRECT USE: 'add Important label to these mails' -> set_messages(message_ids=..., add=['IMPORTANT']). Without message_id: returns list of all account labels (entries: [{id, name, type}]). DO NOT CONFUSE WITH `move_messages` (moves across folders, changes INBOX/TRASH/SPAM): set_messages adds user-labels WITHOUT moving the mail. Backend: only client='google_workspace' (IMAP flags not implemented in MVP)."
+it = "SCOPO: aggiungi o rimuovi etichette su messaggi Gmail. PATTERN: set_messages(message_ids=[\"id\"], add=[\"IMPORTANT\"]). NON: spostare cartelle (-> move_messages). OUT: entries=[{id, name, type}]."
+en = "SCOPO: add or remove labels on Gmail messages. PATTERN: set_messages(message_ids=[\"id\"], add=[\"IMPORTANT\"]). NON: move folders (-> move_messages). OUT: entries=[{id, name, type}]."
 
 [code]
 files  = ["set_messages.py"]
