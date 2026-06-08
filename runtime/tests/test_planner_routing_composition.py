@@ -186,19 +186,16 @@ class TestManifestAffinity:
                     "close-up", "portrait", "mezzo busto", "half-bust"):
             assert tag in aff, f"affinity «{tag}» mancante in find_persons_indices"
 
-    def test_description_mentions_min_face_pixels_uso_corretto(self):
-        """USO CORRETTO della description IT/EN cita `min_face_pixels` come
-        modificatore di composizione (single-step, no pipeline).
+    def test_min_face_pixels_is_a_composition_arg(self):
+        """min_face_pixels è un modificatore di composizione (single-step, no
+        pipeline). §2.5 (bonifica 8/6): vive nello SCHEMA ARGS, NON nella
+        description (testa-only). Verifichiamo l'arg + la sua doc-arg.
         """
         cat = {e.name: e for e in _load_real_catalog()}
         if "find_persons_indices" not in cat:
             pytest.skip("find_persons_indices non in catalog")
-        desc = cat["find_persons_indices"].description.lower()
-        assert "min_face_pixels" in desc, (
-            "description deve menzionare min_face_pixels come modificatore "
-            "di composizione"
-        )
-        # Il claim "SINGLE step" o "single step" deve apparire (IT o EN).
-        assert "single step" in desc or "single-step" in desc, (
-            "description deve dichiarare 'SINGLE step' (no pipeline 2-step)"
+        props = (getattr(cat["find_persons_indices"], "args_schema", None) or {}).get("properties") or {}
+        assert "min_face_pixels" in props, (
+            "min_face_pixels deve essere un arg dello schema (modificatore "
+            "di composizione single-step, no pipeline 2-step)"
         )

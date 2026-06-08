@@ -26,8 +26,10 @@ def test_executor_in_catalog():
     )
     ex = catalog.executors["get_inputs"]
     assert ex.signed_by, f"get_inputs not signed: signed_by={ex.signed_by!r}"
-    # Description e' LLM-medium-readable
-    assert "dialogo strutturato" in ex.description.lower()
+    # Description e' LLM-medium-readable (§2.5 testa-only: SCOPO "input
+    # strutturati (dialogo/form)" — non più la prosa "dialogo strutturato").
+    _d = ex.description.lower()
+    assert "dialog" in _d and "input" in _d
     # Affinity coerente
     assert any(a in ("dialogo", "input", "form") for a in ex.affinity)
 
