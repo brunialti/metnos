@@ -231,8 +231,8 @@ stub README, but a full reference site built and maintained alongside the code:
 - **Diagram-heavy** — inline SVG flowcharts for every non-trivial mechanism.
 
 It represents a large, ongoing effort and is the best way to understand *why*
-Metnos is built the way it is. The internal Architecture Decision Records (ADRs)
-that back every non-obvious choice are summarized there too.
+Metnos is built the way it is — every non-obvious design choice is explained
+there with its rationale.
 
 👉 **Start at [metnos.com](https://metnos.com).**
 

@@ -499,10 +499,10 @@ ONLY the slice it needs &mdash; no cumulative blob.
 <thead><tr><th style="width:18%">Stage</th><th style="width:14%">Type</th><th style="width:18%">LLM Tier</th><th>Output</th></tr></thead>
 <tbody>
 <tr><td><strong>1. Naming + classification</strong></td><td>procedural</td><td>middle (Gemma 4 26B think=true)</td><td>name <code>{action}_{object}[_qualifier]</code> from the closed vocabulary (23 actions, 22 objects) + revertible/critical/target_kind. If no combination fits: explicit rejection with reason.</td></tr>
-<tr><td><strong>2. Signature</strong></td><td>procedural</td><td>middle</td><td>args_schema (JSON Schema), capabilities (closed set), reverse_pattern from the catalogue (see <a href="undo.html">undo</a>).</td></tr>
+<tr><td><strong>2. Signature</strong></td><td>procedural</td><td>middle</td><td>args_schema (JSON Schema), capabilities (closed set), reverse_pattern from the deterministic catalogue (<code>runtime/reverse_patterns.py</code>).</td></tr>
 <tr><td><strong>3. Birth tests</strong></td><td>procedural</td><td>middle</td><td>4-6 tests in fixed format (setup/input/expect/teardown), at minimum: happy path, empty list, invalid args, domain edge.</td></tr>
-<tr><td><strong>4. Description + affinity</strong></td><td>creative</td><td>middle</td><td>LLM-readable description (2-5 sentences, single string) + 6-10 affinity keywords for the composer.</td></tr>
-<tr><td><strong>5. Code</strong></td><td>creative + procedural</td><td>wise (Gemma 4 26B think=true)</td><td><code>&lt;name&gt;.py</code> Python file with <code>def invoke</code>, runtime conventions (<a href="messages.html">messages</a>, <a href="platform_policy.html">platform_policy</a>, helpers).</td></tr>
+<tr><td><strong>4. Description + affinity</strong></td><td>creative</td><td>middle</td><td>LLM-readable description structured in four chapters (<code>SCOPO: / PATTERN: / NON: / OUT:</code>). The proposer shows the planner only the head (up to <code>OUT:</code>, excluded). + 6-10 affinity keywords for the composer.</td></tr>
+<tr><td><strong>5. Code</strong></td><td>creative + procedural</td><td>wise (Gemma 4 26B think=true)</td><td><code>&lt;name&gt;.py</code> Python file with <code>def invoke</code>, runtime conventions (<code>runtime/messages.py</code>, <code>runtime/platform_policy.py</code>, helpers).</td></tr>
 </tbody>
 </table>
 
@@ -510,8 +510,7 @@ ONLY the slice it needs &mdash; no cumulative blob.
 The closed vocabulary appears ONLY in the stage 1 prompt; subsequent
 stages receive the already-decided name and work within their own
 boundaries. The manifest description is not written by the developer
-but by the dedicated stage 4 LLM: the prose is born where it should be
-born, by who can produce it.
+but by the dedicated stage 4 LLM, in a four-chapter format: <code>SCOPO:</code> (what it does), <code>PATTERN:</code> (canonical call form), <code>NON:</code> (anti-patterns and disambiguation), <code>OUT:</code> (output shape). The proposer truncates the description to the head (up to <code>OUT:</code>) to save context budget.
 </p>
 
 <p>

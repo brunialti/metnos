@@ -503,18 +503,18 @@ cumulativo.
 <thead><tr><th style="width:18%">Stadio</th><th style="width:14%">Tipo</th><th style="width:18%">Tier LLM</th><th>Output</th></tr></thead>
 <tbody>
 <tr><td><strong>1. Naming + classification</strong></td><td>procedurale</td><td>middle (Gemma 4 26B think=true)</td><td>nome <code>{azione}_{oggetto}[_qualifier]</code> dal vocabolario chiuso (23 azioni, 22 oggetti) + revertible/critical/target_kind. Se nessuna combinazione calza: rejection esplicita con motivo.</td></tr>
-<tr><td><strong>2. Signature</strong></td><td>procedurale</td><td>middle</td><td>args_schema (JSON Schema), capabilities (set chiuso), reverse_pattern dal catalogo (vedi <a href="undo.html">undo</a>).</td></tr>
+<tr><td><strong>2. Signature</strong></td><td>procedurale</td><td>middle</td><td>args_schema (JSON Schema), capabilities (set chiuso), reverse_pattern dal catalogo deterministico (<code>runtime/reverse_patterns.py</code>).</td></tr>
 <tr><td><strong>3. Birth tests</strong></td><td>procedurale</td><td>middle</td><td>4-6 test in formato fisso (setup/input/expect/teardown), almeno: caso felice, lista vuota, args invalidi, edge dominio.</td></tr>
-<tr><td><strong>4. Description + affinity</strong></td><td>creativo</td><td>middle</td><td>description LLM-readable (2-5 frasi, una stringa) + 6-10 keyword di affinity per il composer.</td></tr>
-<tr><td><strong>5. Codice</strong></td><td>creativo + procedurale</td><td>wise (Gemma 4 26B think=true)</td><td><code>&lt;name&gt;.py</code> Python con <code>def invoke</code>, conformita' alle convenzioni del runtime (<a href="messages.html">messages</a>, <a href="platform_policy.html">platform_policy</a>, helpers).</td></tr>
+<tr><td><strong>4. Description + affinity</strong></td><td>creativo</td><td>middle</td><td>description LLM-readable strutturata in quattro capitoli (<code>SCOPO: / PATTERN: / NON: / OUT:</code>). Il proposer mostra al planner solo la testa (fino a <code>OUT:</code> escluso). + 6-10 keyword di affinity per il composer.</td></tr>
+<tr><td><strong>5. Codice</strong></td><td>creativo + procedurale</td><td>wise (Gemma 4 26B think=true)</td><td><code>&lt;name&gt;.py</code> Python con <code>def invoke</code>, conformit&agrave; alle convenzioni del runtime (<code>runtime/messages.py</code>, <code>runtime/platform_policy.py</code>, helpers).</td></tr>
 </tbody>
 </table>
 
 <p>
 Il vocabolario chiuso compare SOLO nel prompt di stage 1; gli stadi
-successivi ricevono il name gia' deciso e lavorano nei loro confini. La
+successivi ricevono il name gi&agrave; deciso e lavorano nei loro confini. La
 descrizione del manifest non la scrive il developer ma l'LLM dello stage
-4 dedicato: la prosa nasce dove deve nascere, da chi sa farla.
+4 dedicato, nel formato a quattro capitoli: <code>SCOPO:</code> (cosa fa), <code>PATTERN:</code> (forma di chiamata canonica), <code>NON:</code> (anti-pattern e disambiguazione), <code>OUT:</code> (forma output). Il proposer tronca la description alla testa (fino a <code>OUT:</code>) per risparmiare budget di contesto.
 </p>
 
 <p>

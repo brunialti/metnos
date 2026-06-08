@@ -160,7 +160,7 @@
     <xhtml:link rel="alternate" hreflang="it" href="https://metnos.com/it/Metnos_Letteratura_Adattamenti_v1"/>
   </url>
 
-  <!-- Architettura: indici e triade v1.1 (executor, mnest, mnestoma/mnestome, synt, telos) -->
+  <!-- Architettura: indici e triade (executor, mnest, mnestoma/mnestome, synt, telos) -->
 
   <url>
     <loc>https://metnos.com/en/architecture/</loc>
@@ -281,7 +281,25 @@
     <xhtml:link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/telos"/>
   </url>
 
-  <!-- Microdesign tested al POC v1.1 (26/4/2026), tradotti EN il 27/4 sera -->
+  <!-- lifecycle: stato-macchina unificato dei cambiamenti -->
+  <url>
+    <loc>https://metnos.com/en/architecture/lifecycle</loc>
+    <lastmod>2026-06-08</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/lifecycle"/>
+    <xhtml:link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/lifecycle"/>
+  </url>
+  <url>
+    <loc>https://metnos.com/it/architecture/lifecycle</loc>
+    <lastmod>2026-06-08</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/lifecycle"/>
+    <xhtml:link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/lifecycle"/>
+  </url>
+
+  <!-- Microdesign: agent_runtime, scratchpad, grammar -->
   <url>
     <loc>https://metnos.com/en/architecture/agent_runtime</loc>
     <lastmod>2026-05-21</lastmod>
@@ -332,7 +350,7 @@
     <xhtml:link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/grammar"/>
   </url>
 
-  <!-- multilang: pipeline traduzione manifest + prompts (ADR 0092) -->
+  <!-- multilang: pipeline traduzione manifest + prompts -->
   <url>
     <loc>https://metnos.com/en/architecture/multilang</loc>
     <lastmod>2026-05-06</lastmod>
@@ -350,7 +368,7 @@
     <xhtml:link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/multilang"/>
   </url>
 
-  <!-- skill_importer: agentskills.io → executor (ADR 0123) -->
+  <!-- skill_importer: agentskills.io → executor -->
   <url>
     <loc>https://metnos.com/en/architecture/skill_importer</loc>
     <lastmod>2026-05-15</lastmod>
@@ -368,7 +386,7 @@
     <xhtml:link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/skill_importer"/>
   </url>
 
-  <!-- skills & backends: due assi ortogonali (ADR 0170) -->
+  <!-- skills & backends: due assi ortogonali -->
   <url>
     <loc>https://metnos.com/en/architecture/skills_backends</loc>
     <lastmod>2026-06-05</lastmod>
@@ -386,7 +404,7 @@
     <xhtml:link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/skills_backends"/>
   </url>
 
-  <!-- Microdesign tested al 27/4/2026: vaglio, channel, pairing (bilingui), observability (IT-only) -->
+  <!-- vaglio, channel, pairing, observability -->
   <url>
     <loc>https://metnos.com/en/architecture/vaglio</loc>
     <lastmod>2026-05-01</lastmod>
@@ -464,7 +482,7 @@
     <xhtml:link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/observability"/>
   </url>
 
-  <!-- sandbox v1.1 TESTED, bilingue IT+EN dal 27/4 -->
+  <!-- sandbox -->
   <url>
     <loc>https://metnos.com/en/architecture/sandbox</loc>
     <lastmod>2026-05-01</lastmod>
@@ -482,7 +500,7 @@
     <xhtml:link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/sandbox"/>
   </url>
 
-<!-- policy.html v1.1 TESTED + approval_ux.html v1.1 TESTED + observability EN, 27/4 notte -->
+<!-- policy, approval_ux, observability -->
   <url>
     <loc>https://metnos.com/en/architecture/policy</loc>
     <lastmod>2026-05-01</lastmod>
@@ -545,7 +563,7 @@
     <xhtml:link rel="alternate" hreflang="it" href="https://metnos.com/it/code"/>
   </url>
 
-  <!-- Praxis Engine (pentade Mētis/Noûs/Praxis/Pronoia/Aporia, ADR 0161) -->
+  <!-- Praxis Engine (pentade Mētis/Noûs/Praxis/Pronoia/Aporia) -->
 
   <url>
     <loc>https://metnos.com/en/architecture/praxis_engine.html</loc>

@@ -181,7 +181,7 @@ _VERB_SIBLING_BOOST = 7
 def detect_canonical_verb(qtokens):
     """Ritorna il primo verbo canonico (move/delete/read/...) trovato fra i
     token della query, o None. Importante per boost del prefilter."""
-    for tok in qtokens:
+    for tok in sorted(qtokens):
         v = _VERB_TO_CANONICAL.get(tok)
         if v:
             return v
@@ -220,7 +220,7 @@ def detect_canonical_verbs_all(qtokens) -> list[str]:
     →"invia". Cattura clitici pronominali standard IT.
     """
     seen = []
-    for tok in qtokens:
+    for tok in sorted(qtokens):
         v = _VERB_TO_CANONICAL.get(tok)
         if not v:
             # Try clitic stripping (mettili → metti, inviamelo → invia)
@@ -512,7 +512,7 @@ def rank(query, catalog, k=10, min_score=1):
                               query_canonical_object=canonical_object,
                               query_raw=query), e)
               for e in catalog]
-    scored.sort(key=lambda p: p[0], reverse=True)
+    scored.sort(key=lambda p: (-p[0], getattr(p[1], "name", "")))
     above = [e for s, e in scored if s >= min_score]
     if above:
         return above[:k]
@@ -822,7 +822,7 @@ def rank_with_intent(query, catalog, intent, *, k=3):
                 log.warning("rule_boost in rank_with_intent for %s: %s",
                              e.name, _e)
         primary.append((s, e))
-    primary.sort(key=lambda p: -p[0])
+    primary.sort(key=lambda p: (-p[0], getattr(p[1], "name", "")))
 
     # Se nessun executor matcha il verbo dell'intent (es. query compound dove
     # l'estrattore ha pickato un verbo intermedio come "group" senza alcun
@@ -936,7 +936,7 @@ def rank_with_intent(query, catalog, intent, *, k=3):
     if obj and not any(obj in e.name.split("_") for _, e in primary):
         return None
 
-    primary.sort(key=lambda p: -p[0])
+    primary.sort(key=lambda p: (-p[0], getattr(p[1], "name", "")))
     # Layer 1 (5/5/2026): force-include dei primary tools dell'object oltre
     # il cap top-K. La tupla `_OBJECT_PRIMARY_TOOLS[obj]` dichiara TUTTI gli
     # executor canonici per il dominio (es. urls → find_urls, get_urls,
@@ -1127,7 +1127,7 @@ def _rank_adaptive_legacy(query, catalog, k_min=5, k_max=8, *, llm_call=None,
                               query_canonical_object=canonical_object,
                               query_raw=query), e)
               for e in catalog]
-    scored.sort(key=lambda p: p[0], reverse=True)
+    scored.sort(key=lambda p: (-p[0], getattr(p[1], "name", "")))
     scores = [s for s, _ in scored]
     top_score = scores[0] if scores else 0
     semantic_reason = ""
@@ -1148,7 +1148,7 @@ def _rank_adaptive_legacy(query, catalog, k_min=5, k_max=8, *, llm_call=None,
                     _a = _sem_alpha()
                     scored = [(s + _a * _semmap.get(e.name, 0.0), e)
                               for s, e in scored]
-                    scored.sort(key=lambda p: p[0], reverse=True)
+                    scored.sort(key=lambda p: (-p[0], getattr(p[1], "name", "")))
                     scores = [s for s, _ in scored]
                     top_score = scores[0] if scores else 0
                     semantic_reason = "semantic_fallback"
