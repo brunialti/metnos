@@ -16,7 +16,7 @@ en = "SCOPO: enroll person into named registry. PATTERN: set_persons(name='Carol
 
 [code]
 files  = ["set_persons.py"]
-digest = "sha256:6bcf5021db07eee1183eb9ba787be305c5b76331539ad105ce1fdaae143e9f94"
+digest = "sha256:287bcd4e79ba1a8996ee313750c35360d9e9e497de0de8191b43fbf58886d010"
 
 [args]
 type     = "object"

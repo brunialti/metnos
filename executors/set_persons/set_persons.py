@@ -84,6 +84,40 @@ def _detect_faces_for_path(path: Path):
     return faces, None
 
 
+def _auto_pick_face_by_identity(name: str, faces: list, threshold: float = 0.45):
+    """Se `name` è GIÀ enrollato, ritorna l'indice del volto in `faces` che
+    matcha la sua identità (cosine ArcFace >= threshold), altrimenti None.
+
+    §7.9/§2.8: per il RE-enroll di una persona nota, scegliere il volto giusto
+    è deterministico (confronto col suo embedding in registro) — non serve il
+    face-picker dialog, che scadeva in silenzio (bug live 8/6 "enrollment fermo
+    senza feedback"). Persona NUOVA (nessun riferimento) → None → dialog come
+    prima. Soglia 0.45: stessa persona ≳0.45, diversa ≲0.3."""
+    if not name or not faces:
+        return None
+    try:
+        import numpy as np
+        from persons_registry import resolve_face_embeddings_for_name
+        refs = list(resolve_face_embeddings_for_name(name) or [])
+        if not refs:
+            return None
+        ref = np.mean([np.asarray(r, dtype=np.float32) for r in refs], axis=0)
+        ref = ref / (np.linalg.norm(ref) + 1e-9)
+        best_i, best_s = None, -1.0
+        for i, f in enumerate(faces):
+            emb = f.get("embedding")
+            if emb is None:
+                continue
+            v = np.asarray(emb, dtype=np.float32)
+            v = v / (np.linalg.norm(v) + 1e-9)
+            s = float(np.dot(v, ref))
+            if s > best_s:
+                best_i, best_s = i, s
+        return best_i if best_s >= threshold else None
+    except Exception:
+        return None
+
+
 def invoke(args):
     name = args.get("name") or ""
     paths = args.get("paths") or []
@@ -197,6 +231,18 @@ def invoke(args):
                 f = faces[fi]
                 results.append({
                     "path": ps, "sha256": sha, "face_idx": fi,
+                    "bbox": _bbox_to_tuple(f["bbox"]),
+                    "embedding": f["embedding"],
+                })
+                continue
+            # Auto-pick per identità nota (§7.9/§2.8): se la persona è GIÀ in
+            # registro, scegli il volto che la matcha invece di aprire il
+            # face-picker dialog (che scade muto). Persona nuova → None → dialog.
+            auto_fi = _auto_pick_face_by_identity(name, faces)
+            if auto_fi is not None:
+                f = faces[auto_fi]
+                results.append({
+                    "path": ps, "sha256": sha, "face_idx": auto_fi,
                     "bbox": _bbox_to_tuple(f["bbox"]),
                     "embedding": f["embedding"],
                 })
