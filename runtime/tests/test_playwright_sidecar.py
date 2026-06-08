@@ -270,18 +270,33 @@ class TestReadUrlsHtmlIntegration(unittest.TestCase):
         if hasattr(self, "_orig"):
             read_urls_html._playwright_client = self._orig
 
-    def test_js_render_false_skips_sidecar(self):
-        """Default js_render=false: il sidecar NON viene contattato."""
-        rmod = self._patch_client(up=True, render_resp={"ok": True})
+    def test_js_render_false_auto_escalates_on_spa(self):
+        """§7.9 auto-escalation: js_render NON richiesto ma pagina SPA + sidecar
+        UP → l'executor escala da solo (il path engine-v2 plan-then-execute non
+        ha un retry LLM per onorare la regola planner js_rendered_retry)."""
+        rmod = self._patch_client(up=True, render_resp={
+            "ok": True,
+            "body_text": "Contenuto reale dopo render JS",
+            "body_html": "<html><body>ok</body></html>",
+            "title": "Reso",
+            "render_ms": 900,
+        })
+        out = rmod.invoke({"urls": [self.url("/spa")]})  # js_render NON settato
+        self.assertEqual(out["ok_count"], 1)
+        e = out["entries"][0]
+        self.assertIn("Contenuto reale dopo render JS", e["body_text"])
+        self.assertTrue(e.get("js_rendered_via_sidecar"))
+        self.assertTrue(out.get("js_render_auto"))
+
+    def test_js_render_false_spa_degrades_when_sidecar_down(self):
+        """SPA + sidecar GIÙ + js_render non richiesto → degrada con grazia:
+        l'entry resta flaggata error_class=js_rendered, nessun render, no crash."""
+        rmod = self._patch_client(up=False, render_resp={})
         out = rmod.invoke({"urls": [self.url("/spa")]})
-        # entries[0] dovrebbe avere error_class=js_rendered ma NON
-        # body_html_rendered (sidecar non chiamato).
         self.assertEqual(out["ok_count"], 1)
         e = out["entries"][0]
         self.assertEqual(e.get("error_class"), "js_rendered")
         self.assertNotIn("body_html_rendered", e)
-        # Niente telemetria js_render quando non opt-in.
-        self.assertNotIn("js_render_count", out)
 
     def test_js_render_true_with_sidecar_up_succeeds(self):
         """js_render=true + sidecar UP: entry viene aggiornata col rendering."""

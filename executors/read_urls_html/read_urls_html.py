@@ -116,6 +116,10 @@ _CONTENT_PREFERENCE = ("article", "main", "body")
 # scheletro caricato via JS. SPA tipiche stanno sotto 0.02.
 _JS_RENDER_TEXT_RATIO_THRESHOLD = 0.05
 _JS_RENDER_MIN_HTML_BYTES = 5000  # pagine corte (errore 404, redirect) escluse
+# Sotto questa soglia di testo estratto, su HTML sostanziale (>= MIN), la
+# pagina e' CONCLUSIVAMENTE non leggibile (SPA non idratata, anti-bot,
+# paywall): vale come segnale js_rendered da solo, senza la soglia >=2.
+_JS_RENDER_EMPTY_TEXT_BYTES = 64
 
 # Keyword (lowercase) che indicano un PDF rilevante per data extraction.
 _PDF_RELEVANT_KEYWORDS = (
@@ -493,6 +497,18 @@ def _fetch_one(url: str, opener, timeout_s: float, max_bytes: int,
         if p.script_count >= 5 and ratio < 0.10:
             js_signals.append(f"{p.script_count} script + low text ratio")
     js_rendered = len(js_signals) >= 2
+    # §2.8 caso degenere conclusivo: HTML sostanziale ma testo ~nullo =
+    # estrazione fallita con CERTEZZA, non "poco testo" ambiguo. Un solo
+    # segnale basta. Senza questo, una pagina a ratio 0.000 (1 segnale) tornava
+    # ok con body vuoto (silent failure) e il planner non attivava il retry
+    # js_render -> il sidecar Playwright (gia' presente, ADR 0125) restava
+    # inutilizzato e a valle si fabbricavano messaggi vuoti.
+    if (html_bytes >= _JS_RENDER_MIN_HTML_BYTES
+            and text_bytes < _JS_RENDER_EMPTY_TEXT_BYTES):
+        js_rendered = True
+        if not any(s.startswith("body vuoto") for s in js_signals):
+            js_signals.append(
+                f"body vuoto ({text_bytes}b su {html_bytes}b HTML)")
 
     # c2.2: ordina linked_documents per relevance_score desc, tieni top-10
     linked_docs = sorted(p.linked_documents,
@@ -681,16 +697,28 @@ def _invoke_default(args: dict) -> dict:
                             f"Contenuto estratto da iframe same-host: {ifu}"
                         )
 
-    # Stage 3 (ADR 0125): JS-rendering fallback opt-in via sidecar Playwright.
-    # Solo se js_render=True E il sidecar e' UP (probe 1s). Bersaglia:
+    # Stage 3 (ADR 0125): JS-rendering via sidecar Playwright. Bersaglia:
     #   - entries con `error_class="js_rendered"` (SPA detected post-fetch);
     #   - failed con `error_class="js_rendered"` (urllib non riusciva a
     #     scaricare HTML utile e abbiamo classificato come SPA).
     # Il sidecar e' single-instance §7.4: rendering sequenziale.
+    #
+    # §7.9 AUTO-ESCALATION deterministica: se il fetch httpx ha prodotto pagine
+    # SPA e il chiamante NON ha gia' chiesto js_render, escala da solo quando il
+    # sidecar e' UP. Necessario perche' il path attivo (engine-v2 plan-then-
+    # execute) emette l'intera pipeline in una sola call e NON ha un punto di
+    # retry LLM per onorare la regola planner js_rendered_retry: il fix deve
+    # vivere nell'executor che rileva la SPA, non nel planner. Degrada con
+    # grazia se il sidecar e' giu' (entries restano flaggate error_class).
+    _has_spa = (any(e.get("error_class") == "js_rendered"
+                    for _, e in entries_indexed)
+                or any(f.get("error_class") == "js_rendered" for f in failed))
+    auto_escalate = (not js_render) and _has_spa
+    do_render = js_render or auto_escalate
     js_render_count = 0
     js_render_attempted = 0
     js_render_sidecar_up = False
-    if js_render and _playwright_client is not None:
+    if do_render and _playwright_client is not None:
         js_render_sidecar_up = _playwright_client.is_up()
         if js_render_sidecar_up:
             # Bersagli da entries (modifica in-place via pos).
@@ -795,12 +823,14 @@ def _invoke_default(args: dict) -> dict:
     }
     if entries and failed:
         result["partial"] = True
-    # Telemetria JS-render (ADR 0125): esposta solo quando l'utente ha
-    # chiesto js_render=true. Cosi' i turn senza opt-in restano puliti.
-    if js_render:
+    # Telemetria JS-render (ADR 0125): esposta quando il rendering e' stato
+    # ingaggiato (opt-in esplicito O auto-escalation §7.9). Turn senza SPA
+    # restano puliti.
+    if do_render:
         result["js_render_count"] = js_render_count
         result["js_render_attempted"] = js_render_attempted
         result["js_render_sidecar_available"] = js_render_sidecar_up
+        result["js_render_auto"] = auto_escalate
     return result
 
 
