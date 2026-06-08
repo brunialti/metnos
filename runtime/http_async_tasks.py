@@ -39,6 +39,9 @@ _PROGRESS_DIR = _C.PATH_USER_STATE / "build_progress"
 _HEALTHCHECK_INTERVAL_S = float(os.environ.get("METNOS_BUILD_HEALTHCHECK_INTERVAL_S", "30"))
 _DISPATCHER_INTERVAL_S = float(os.environ.get("METNOS_BUILD_DISPATCHER_INTERVAL_S", "10"))
 _SWEEPER_INTERVAL_S = float(os.environ.get("METNOS_BUILD_SWEEPER_INTERVAL_S", str(24 * 3600)))
+# Dialog get_inputs scaduti: cadenza 60s (bug pre-esistente: `dialog_pending`
+# sweep "funzione scritta, mai chiamata in produzione" → i file restavano).
+_DIALOG_SWEEP_INTERVAL_S = float(os.environ.get("METNOS_DIALOG_SWEEP_INTERVAL_S", "60"))
 _STALE_THRESHOLD_S = float(os.environ.get("METNOS_BUILD_STALE_S", "300"))
 _TMP_MAX_AGE_S = float(os.environ.get("METNOS_BUILD_TMP_MAX_AGE_S", str(7 * 86400)))
 _ARCHIVE_MAX_AGE_S = float(os.environ.get("METNOS_BUILD_ARCHIVE_MAX_AGE_S", str(30 * 86400)))
@@ -296,6 +299,29 @@ def run_sweeper_once() -> dict:
     }
 
 
+# --- Task 4: dialog get_inputs sweeper --------------------------------------
+
+async def dialog_sweeper_task(app) -> None:
+    """Rimuove i dialoghi `get_inputs` scaduti (TTL) ogni 60s. Senza questo i
+    file restavano su disco (bug pre-esistente: sweep mai schedulato). I
+    descrittori degli ABBANDONATI attivi sono loggati: aggancio futuro alla
+    notifica utente (§2.8 «scaduto senza feedback»)."""
+    log.info("dialog_sweeper started (interval=%.0fs)", _DIALOG_SWEEP_INTERVAL_S)
+    while True:
+        try:
+            await asyncio.sleep(_DIALOG_SWEEP_INTERVAL_S)
+            import dialog_pending
+            abandoned = dialog_pending.sweep_expired()
+            if abandoned:
+                log.info("dialog_sweeper: %d dialoghi scaduti rimossi (abbandonati: %s)",
+                         len(abandoned), [a.get("title") for a in abandoned][:5])
+        except asyncio.CancelledError:
+            log.info("dialog_sweeper cancelled")
+            return
+        except Exception:
+            log.exception("dialog_sweeper tick error")
+
+
 # --- registrazione lifecycle ------------------------------------------------
 
 def register_async_tasks(app) -> None:
@@ -310,10 +336,13 @@ def register_async_tasks(app) -> None:
         app["build_sweeper_task"] = asyncio.create_task(
             tmpcache_sweeper_task(app)
         )
+        app["dialog_sweeper_task"] = asyncio.create_task(
+            dialog_sweeper_task(app)
+        )
 
     async def _stop_tasks(app):
         for key in ("build_healthcheck_task", "build_dispatcher_task",
-                     "build_sweeper_task"):
+                     "build_sweeper_task", "dialog_sweeper_task"):
             t = app.get(key)
             if t is not None:
                 t.cancel()
