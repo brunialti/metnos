@@ -176,10 +176,14 @@ class SimpleProposer:
             "METNOS_PROPOSER_FAST_CONFIDENCE", "0.70"))
         use_fast = intent.confidence >= threshold
 
-        # §7.3 GBNF grammar opt-in (bench 28/5 → 100% parse rate, +1s vs
-        # baseline). Quando attivo: think=False forzato (ADR 0133: grammar+
-        # think collide). Setup via env METNOS_PROPOSER_GRAMMAR=1.
-        use_grammar = os.environ.get("METNOS_PROPOSER_GRAMMAR", "0") == "1"
+        # §7.3 GBNF grammar — DEFAULT ON (8/6/2026, decisione Roberto: routing
+        # DETERMINISTICO §7.9). Forza think=False (ADR 0133: grammar+think
+        # collidono): il reasoning think=True è non-deterministico vicino ai
+        # confini (flip read_urls/find_dirs), e il seed da solo non basta a
+        # stabilizzarlo (resta la varianza MTP sul reasoning lungo). grammar
+        # (think=False) + seed fisso (llm_provider) → routing riproducibile.
+        # Bench 28/5: think=True NON aumenta ok%. Disattiva: METNOS_PROPOSER_GRAMMAR=0.
+        use_grammar = os.environ.get("METNOS_PROPOSER_GRAMMAR", "1") == "1"
         if use_grammar:
             use_fast = True  # force think=False
 
@@ -209,7 +213,7 @@ class SimpleProposer:
                 _is_compound = len(set(_vf_dv(_vf_tok(query)))) >= 2
             except Exception:
                 _is_compound = False
-        if (os.environ.get("METNOS_PROPOSER_VERB_FILTER", "0") == "1"
+        if (os.environ.get("METNOS_PROPOSER_VERB_FILTER", "1") == "1"
                 and intent.verb and not _is_compound):
             try:
                 from tool_grammar import filter_pool_by_intent_verb

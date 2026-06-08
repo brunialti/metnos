@@ -316,7 +316,8 @@ class LlamaCppProvider:
         self.id_slot = id_slot
 
     def chat(self, system, user, *, max_tokens=512, temperature=0, think=None,
-             reasoning_budget=1024, grammar: str | None = None):
+             reasoning_budget=1024, grammar: str | None = None,
+             seed: int | None = None):
         """think semantics (allineato a suprastructure/openai_compat):
             False  → enable_thinking=False, niente reasoning budget. Risposta
                      immediata. Ideale per stage procedurali (lookup, schema).
@@ -341,6 +342,15 @@ class LlamaCppProvider:
             "temperature": temperature,
             "max_tokens": max_tokens,
         }
+        # seed fisso DI DEFAULT → determinismo del routing/synth (§7.9, decisione
+        # Roberto 8/6: "privilegia SEMPRE il determinismo"). A temperature=0 il
+        # server resta NON-deterministico per via di MTP/speculative decoding
+        # (draft sampling) col seed random: pinnarlo rende il routing riproducibile
+        # (diagnosi 8/6: read_urls_html flaky 7/8 → 8/8 con seed fisso). Override:
+        # arg `seed`, o env METNOS_LLM_SEED (=-1 per random/diversità esplicita).
+        _seed = seed if seed is not None else int(os.environ.get("METNOS_LLM_SEED", "42"))
+        if _seed >= 0:
+            payload["seed"] = _seed
         if think is False:
             payload["chat_template_kwargs"] = {"enable_thinking": False}
         elif think is True:
