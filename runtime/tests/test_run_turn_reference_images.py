@@ -32,6 +32,14 @@ class RunTurnReferenceImagesTests(unittest.TestCase):
         self._orig_home = os.environ.get("HOME")
         os.environ["HOME"] = str(td)
         os.environ["METNOS_HISTORY_DIR"] = str(td / "history")
+        # Catalog reale caricato QUI (verify=False: l'isolamento HOME sposta
+        # KEYS_DIR=~/.config/metnos/keys e farebbe fallire la verify firma).
+        # Va iniettato in run_turn via mock: questo test verifica l'iniezione
+        # dello step virtuale @uploaded, NON il catalog-load — che sotto i mock
+        # provider + HOME isolato ricostruisce a 0 (flake order-dependent 8/6
+        # quando un test synth/admission ha invalidato la catalog-cache).
+        import loader
+        self._catalog = loader.load_catalog(verify=False)
         # Forza fast PLANNER stub via env (non chiamiamo provider)
 
     def tearDown(self):
@@ -182,7 +190,10 @@ class RunTurnReferenceImagesTests(unittest.TestCase):
              mock.patch.object(agent_runtime, "rank_adaptive",
                                 return_value=([], {"chosen_k": 0,
                                                     "confidence": 0.0,
-                                                    "reason": "test"})):
+                                                    "reason": "test"})), \
+             mock.patch.object(agent_runtime, "load_catalog",
+                                return_value=self._catalog), \
+             mock.patch("loader.load_catalog", return_value=self._catalog):
             # Crea 2 file dummy
             tmp = Path(self._tmpdir.name)
             ref1 = tmp / "ref1.jpg"; ref1.write_bytes(b"\xff\xd8\xff\xe0")
