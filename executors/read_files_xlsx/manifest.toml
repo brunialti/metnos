@@ -10,8 +10,8 @@ revertible  = false
 lifecycle   = "active"
 
 [description]
-it = "Legge file Excel (.xlsx) e ritorna le righe come lista di dict (chiave=header) o lista di liste se has_header=false. Vettoriale. Backend: openpyxl in read-only mode (efficiente per file grandi). Default: prima sheet del workbook; usa `sheet` per nome o indice. Per leggere CSV usa read_files_csv. Per analisi statistica passa rows[*][colonna] a describe_numbers; per filtrare righe usa filter_entries dopo."
-en = "Reads Excel files (.xlsx) and returns the rows as a list of dicts (key=header) or a list of lists if has_header=false. Vectorized. Backend: openpyxl in read-only mode (efficient for large files). Default: first sheet of the workbook; use `sheet` for name or index. To read CSV use read_files_csv. For statistical analysis pass rows[*][column] to describe_numbers; to filter rows use filter_entries afterwards."
+it = "SCOPO: legge file Excel (.xlsx) locali (vettoriale §2.1). PATTERN: read_files_xlsx(paths=[\"f.xlsx\"], sheet=\"Dati 2026\"). NON: file .xls o CSV (-> read_files_csv). OUT: entries=[...]."
+en = "SCOPO: reads local Excel files (.xlsx) (vectorial §2.1). PATTERN: read_files_xlsx(paths=[\"f.xlsx\"], sheet=\"Dati 2026\"). NON: .xls or CSV files (-> read_files_csv). OUT: entries=[...]."
 
 [code]
 files  = ["read_files_xlsx.py"]

@@ -16,8 +16,8 @@ revertible  = false
 lifecycle   = "active"
 
 [description]
-it = "Legge gli appuntamenti del calendario. Dispatcher canonical: backend AUTO-RILEVATO dal runtime (OMETTI `client`). USO CORRETTO: read_events(time_window='today'|'tomorrow'|'next-7d'|range ISO). NON DEVI usarla per LEGGERE mail (usa read_messages) ne' per CREARE eventi (usa create_events). NON CONFONDERE CON: `list_tasks` (task ricorrenti / timer / promemoria Metnos, NON eventi calendar), `read_tasks` (dettaglio task ricorrente), `read_tasks_history` (storico esecuzioni task). Vettoriale §2.1: ritorna `entries: list` con {kind:'calendar_event', id, start, end, summary, location, ...}. Backend auto-rilevato (OMETTI `client`): google_workspace se OAuth presente, altrimenti local ICS — entrambi implementati. OK: read_events(time_window='tomorrow'). ERRORE: passare `client` non richiesto dall'utente."
-en = "Reads calendar appointments. Canonical dispatcher: backend AUTO-DETECTED by the runtime (OMIT `client`). CORRECT USE: read_events(time_window='today'|'tomorrow'|'next-7d'|ISO range). MUST NOT be used to READ mail (use read_messages) nor to CREATE events (use create_events). DO NOT CONFUSE WITH: `list_tasks` (recurring tasks / timers / reminders in Metnos, NOT calendar events), `read_tasks` (detail of one recurring task), `read_tasks_history` (execution history of tasks). Vectorial §2.1: returns `entries: list` with {kind:'calendar_event', id, start, end, summary, location, ...}. Backend auto-detected (OMIT `client`): google_workspace if OAuth present, else local ICS — both implemented. OK: read_events(time_window='tomorrow'). ERROR: passing `client` not requested by the user."
+it = "SCOPO: legge eventi calendario. PATTERN: read_events(time_window='today', top_k=10). NON: leggere mail o creare eventi (-> read_messages, create_events). OUT: entries=[{kind:'calendar_event', id, start, end, summary, location}]."
+en = "SCOPO: reads calendar events. PATTERN: read_events(time_window='today', top_k=10). NON: read mail or create events (-> read_messages, create_events). OUT: entries=[{kind:'calendar_event', id, start, end, summary, location}]."
 
 [code]
 files  = ["read_events.py"]

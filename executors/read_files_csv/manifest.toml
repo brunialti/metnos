@@ -11,8 +11,8 @@ revertible  = false
 lifecycle   = "active"
 
 [description]
-it = "Legge file CSV e ritorna le righe come lista di dict (chiave=header) o lista di liste se has_header=false. Vettoriale: una sola call accetta una lista di paths. Autodetect del delimitatore (',', ';', tab, '|') se non specificato. Per analisi statistica successive, passa rows[*][colonna_numerica] a describe_numbers. Per filtrare righe usa filter_entries dopo. Backend: stdlib csv, niente dipendenze."
-en = "Reads a CSV file and returns the rows as a list of dicts (key=header) or a list of lists if has_header=false. Vectorized: a single call accepts a list of paths. Autodetect of the delimiter (',', ';', tab, '|') if not specified. For subsequent statistical analysis, pass rows[*][numeric_column] to describe_numbers. To filter rows, use filter_entries afterwards. Backend: stdlib csv, no dependencies."
+it = "SCOPO: legge file CSV locali (vettoriale §2.1). PATTERN: read_files_csv(paths=[\"a.csv\"]). NON: usare per Excel (-> read_files_xlsx) o immagini (-> read_files_ocr). OUT: entries=[...]"
+en = "SCOPO: reads local CSV files (vectorial §2.1). PATTERN: read_files_csv(paths=[\"a.csv\"]). NON: use for Excel (-> read_files_xlsx) or images (-> read_files_ocr). OUT: entries=[...]"
 
 [code]
 files  = ["read_files_csv.py"]

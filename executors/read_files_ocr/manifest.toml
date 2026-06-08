@@ -11,8 +11,8 @@ revertible  = false
 lifecycle   = "active"
 
 [description]
-it = "Estrae testo da file immagine (jpg/png/tiff/heic/...) o PDF scansionati via OCR. Vettoriale: una sola call processa una lista di paths e ritorna una lista di entries con `content` testuale. Backend: Tesseract self-hostato (apt: tesseract-ocr + tesseract-ocr-ita per italiano). Per PDF: pdftoppm (poppler-utils) converte ogni pagina in PNG @200dpi, poi tesseract; le pagine vengono concatenate con marker '--- page N ---'. Lang default 'ita+eng' (multilingua); usa 'ita' o 'eng' per restringere. Per leggere file di testo nativi (txt, md, py, ecc.) usa `read_files`; per PDF testuali (non scansionati) si potra' aggiungere un `read_files_pdf` con estrazione testo nativa, piu' veloce e accurata."
-en = "Extracts text from image files (jpg/png/tiff/heic/...) or scanned PDFs via OCR. Vectorized: a single call processes a list of paths and returns a list of entries with `content` text. Backend: self-hosted Tesseract (apt: tesseract-ocr + tesseract-ocr-ita for Italian). For PDFs: pdftoppm (poppler-utils) converts each page into a PNG @200dpi, then tesseract; pages are concatenated with the marker '--- page N ---'. Default language 'ita+eng' (multilingual); use 'ita' or 'eng' to restrict. To read native text files (txt, md, py, etc.) use `read_files`; for textual PDFs (not scanned), a `read_files_pdf` with native text extraction can be added, which is faster and more accurate."
+it = "SCOPO: estrae testo da immagini o PDF scansionati (vettoriale §2.1). PATTERN: read_files_ocr(paths=[\"img.jpg\"], lang=\"ita+eng\"). NON: leggere file nativi (-> read_files) o convertire formati (-> change_files_format). OUT: entries=[{content}]."
+en = "SCOPO: extracts text from images or scanned PDFs (vectorial §2.1). PATTERN: read_files_ocr(paths=[\"img.jpg\"], lang=\"ita+eng\"). NON: reading native files (-> read_files) or converting formats (-> change_files_format). OUT: entries=[{content}]."
 
 [code]
 files  = ["read_files_ocr.py"]

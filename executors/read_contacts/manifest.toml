@@ -14,24 +14,8 @@ affinity    = [
 ]
 
 [description]
-it = """Legge UN contatto puntuale dalla rubrica esterna per `contact_id` (slug del name) o alias `email`/`phone` esatto.
-
-USO: dopo find_contacts che ha trovato N match, chiamare con `contact_id=<slug>` per leggere i dettagli completi. Oppure passare direttamente `email=...` o `phone=...` per match esatto.
-
-NON CONFONDERE CON: `read_persons` (utenti sistema). Vedi find_contacts per la distinzione.
-
-OK: read_contacts(contact_id="luca-bianchi") -> entries=[{name:"Luca Bianchi", emails:["luca@..."], phones:["+39..."]}].
-
-Output entries=[contact] (0 o 1). Almeno uno fra contact_id/email/phone richiesto."""
-en = """Read ONE contact from external address book by `contact_id` (slug of name) or exact alias `email`/`phone`.
-
-USE: after find_contacts found N matches, call with `contact_id=<slug>` to read full details. Or pass `email=...` or `phone=...` directly for exact match.
-
-DO NOT CONFUSE WITH: `read_persons` (system users). See find_contacts for the distinction.
-
-OK: read_contacts(contact_id="luca-bianchi") -> entries=[{name:"Luca Bianchi", emails:["luca@..."], phones:["+39..."]}].
-
-Output entries=[contact] (0 or 1). At least one of contact_id/email/phone required."""
+it = "SCOPO: legge un contatto dalla rubrica esterna. PATTERN: read_contacts(contact_id=\"luca-bianchi\"). NON: confondere con read_persons (utenti sistema). OUT: entries=[{name,emails,phones}]."
+en = "SCOPO: read one contact from external address book. PATTERN: read_contacts(contact_id=\"luca-bianchi\"). NON: confuse with read_persons (system users). OUT: entries=[{name,emails,phones}]."
 
 [code]
 files  = ["read_contacts.py"]

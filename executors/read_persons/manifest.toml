@@ -12,28 +12,8 @@ affinity    = ["io", "me", "chi sono", "mio profilo", "il mio account",
                 "paired user", "ruolo", "autonomy"]
 
 [description]
-it = """Aggregator profilo identitario di persone Metnos. JOIN persons.sqlite (biometric) + users.db (account paired host/guest, ADR 0083). USA per «chi sono io», «mio profilo», «dimmi tutto su X», «lista guest».
-
-§2.2 distinguo da `get_persons`: get_persons ritorna SCHEDA registro (slug, name, n_examples) — single-store. read_persons ritorna PROFILO completo (role, autonomy, biometric, channels) — multi-store JOIN.
-
-Args: `name="X"` lookup persona specifica (slugify resolution). `role="host"|"guest"` filtra paired. `name="${RUNTIME:actor}"` placeholder magic per actor corrente. `include_examples=false` spegne JOIN biometric. `include_channels=false` spegne JOIN user_channels.
-
-USO CORRETTO: «chi sono io» → read_persons(name="${RUNTIME:actor}"); «dimmi tutto su Lucia» → read_persons(name="Lucia"); «lista guest» → read_persons(role="guest").
-
-NON CONFONDERE CON: `get_persons` (scheda registro, no JOIN); `find_persons_indices` (face match corpus).
-
-Output: entries=[{slug, name, role?, autonomy_level?, n_examples, examples?, channels?, is_self?}]. is_self=true marcato per actor corrente."""
-en = """Identity profile aggregator for Metnos persons. JOIN persons.sqlite (biometric) + users.db (paired account host/guest, ADR 0083). USE for «who am I», «my profile», «tell me about X», «list guests».
-
-§2.2 distinct from `get_persons`: get_persons returns registry CARD (slug, name, n_examples) — single-store. read_persons returns full PROFILE (role, autonomy, biometric, channels) — multi-store JOIN.
-
-Args: `name="X"` lookup specific person (slugify resolution). `role="host"|"guest"` filter paired. `name="${RUNTIME:actor}"` placeholder magic for current actor. `include_examples=false` skips biometric JOIN. `include_channels=false` skips user_channels JOIN.
-
-CORRECT USE: «who am I» → read_persons(name="${RUNTIME:actor}"); «tell me about Lucia» → read_persons(name="Lucia"); «list guests» → read_persons(role="guest").
-
-DO NOT CONFUSE WITH: `get_persons` (registry card, no JOIN); `find_persons_indices` (face match in corpus).
-
-Output: entries=[{slug, name, role?, autonomy_level?, n_examples, examples?, channels?, is_self?}]. is_self=true marks current actor."""
+it = "SCOPO: profilo identitario completo. PATTERN: read_persons(name=\"X\", role=\"guest\"). NON: confondere con get_persons (scheda) o find_persons_indices (face match). OUT: entries=[{slug, name, role, autonomy_level, n_examples, examples, channels, is_self}]."
+en = "SCOPO: full identity profile. PATTERN: read_persons(name=\"X\", role=\"guest\"). NON: confuse with get_persons (card) or find_persons_indices (face match). OUT: entries=[{slug, name, role, autonomy_level, n_examples, examples, channels, is_self}]."
 
 [code]
 files  = ["read_persons.py"]

@@ -16,8 +16,8 @@ revertible  = false
 lifecycle   = "active"
 
 [description]
-it = "Legge il contenuto testuale di un Google Doc. Dispatcher canonical: instrada al backend `client` (default `google_workspace`). USO CORRETTO: read_files_doc(document_id='1abc...'). NON CONFONDERE CON: `read_files` (file di testo locale), `read_files_pdf`/`read_urls_pdf` (PDF). Qui il documento sta su Google Drive, identificato da `document_id` (NON un path). §2.6: ritorna `entries: [{document_id, title, body_text, content_length}]` + campi flat (`body_text`, `title`). Body = flow di testo paragrafi (estratto da textRun di Google Docs API). Se OAuth manca, decision='needs_inputs'."
-en = "Reads the text content of a Google Doc. Canonical dispatcher: routes to backend `client` (default `google_workspace`). CORRECT USE: read_files_doc(document_id='1abc...'). DO NOT CONFUSE WITH: `read_files` (local text file), `read_files_pdf`/`read_urls_pdf` (PDF). Here the document lives on Google Drive, identified by `document_id` (NOT a path). §2.6: returns `entries: [{document_id, title, body_text, content_length}]` plus flat fields (`body_text`, `title`). Body = paragraph text flow (extracted from Google Docs API textRun). If OAuth missing, decision='needs_inputs'."
+it = "SCOPO: legge testo da Google Doc. PATTERN: read_files_doc(document_id='1abc'). NON: confondere con read_files (locale) o write_files_doc (crea). OUT: entries=[{document_id,title,body_text,content_length}]."
+en = "SCOPO: reads text from Google Doc. PATTERN: read_files_doc(document_id='1abc'). NON: confuse with read_files (local) or write_files_doc (creates). OUT: entries=[{document_id,title,body_text,content_length}]."
 
 [code]
 files  = ["read_files_doc.py"]
