@@ -82,6 +82,11 @@ class TestLoaderRejectsLegacy(unittest.TestCase):
         d = self.tmp / name
         d.mkdir(parents=True, exist_ok=True)
         (d / "manifest.toml").write_text(body, encoding="utf-8")
+        # Stub code: il loader scarta su code_path illeggibile / senza __main__
+        # PRIMA di validare la description → senza, la reason non la citerebbe.
+        (d / "x.py").write_text(
+            "def invoke(args):\n    return {}\n"
+            'if __name__ == "__main__":\n    pass\n', encoding="utf-8")
         return d
 
     def test_legacy_flat_description_rejected(self):

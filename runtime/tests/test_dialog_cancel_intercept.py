@@ -45,7 +45,9 @@ class DialogCancelInterceptTests(unittest.TestCase):
             "title": "Test",
             "dialog": [{"var": "x", "prompt": "Q",
                          "schema": {"kind": "text"}}],
-            "started_at": "2026-05-24T20:00:00Z",
+            # started_at fresco: il soft-TTL (DEFAULT_TTL_S=60s, 29/5/2026)
+            # scarterebbe un timestamp hardcoded vecchio prima dell'intercept.
+            "started_at": self.DP._utc_now_iso(),
             "completed": False,
             "cancelled": False,
         })

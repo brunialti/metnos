@@ -10,6 +10,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+import persons_registry  # noqa: E402  # per monkeypatch.setattr del modulo
 from persons_registry import (  # noqa: E402
     EMBEDDING_DIM,
     PersonsRegistry,
@@ -41,8 +42,12 @@ def _orthogonal_emb(base: np.ndarray, seed: int) -> np.ndarray:
 
 
 @pytest.fixture
-def reg(tmp_path):
+def reg(tmp_path, monkeypatch):
     db = tmp_path / "persons.sqlite"
+    # Isola anche lo storage immagini (§7.3 _persist_example_image): costante
+    # import-time da config, altrimenti scrive in ~/.local/share reale.
+    monkeypatch.setattr(persons_registry, "PERSISTENT_EXAMPLES_DIR",
+                        tmp_path / "persons_examples")
     r = PersonsRegistry(db_path=db)
     yield r
     r.close()
@@ -100,7 +105,8 @@ def test_enroll_creates_person_row(reg):
     assert p is not None
     assert p["n_examples"] == 1
     assert len(p["examples"]) == 1
-    assert p["examples"][0]["image_path"] == "/p/a.jpg"
+    # §7.3: enroll persiste l'immagine in PERSISTENT_EXAMPLES_DIR/<slug>/<sha256><ext>
+    assert p["examples"][0]["image_path"].endswith("aa" * 32 + ".jpg")
     assert p["examples"][0]["face_box"] == [10, 10, 100, 100]
 
 
@@ -142,7 +148,8 @@ def test_enroll_mode_replace_wipes(reg):
     )
     assert out["n_examples"] == 1
     assert reg.get("anna")["n_examples"] == 1
-    assert reg.get("anna")["examples"][0]["image_path"] == "/p/new.jpg"
+    # replace ha tenuto solo il nuovo esempio (sha "f"*64), persistito §7.3
+    assert reg.get("anna")["examples"][0]["image_path"].endswith("f" * 64 + ".jpg")
 
 
 def test_enroll_idempotent_on_dup(reg):
@@ -243,7 +250,9 @@ def test_get_returns_examples(reg):
                embedding=_rand_emb(2), sha256="2" * 64)
     p = reg.get("Z")
     assert p["n_examples"] == 2
-    assert {e["image_path"] for e in p["examples"]} == {"/p/1.jpg", "/p/2.jpg"}
+    # path persistiti §7.3: basename = <sha256>.jpg
+    assert {Path(e["image_path"]).name for e in p["examples"]} == {
+        "1" * 64 + ".jpg", "2" * 64 + ".jpg"}
     assert p["examples"][0]["face_box"] == [0, 0, 10, 10]
 
 

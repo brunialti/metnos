@@ -31,7 +31,9 @@ def test_vocab_includes_inputs_object():
     # 15/5/2026 (ADR 0113), `issues`+`pulls` provider github 2/6/2026
     # (ADR 0141). Vedi ADR 0137/0141.
     assert "issues" in OBJECTS and "pulls" in OBJECTS
-    assert len(OBJECTS) == 21
+    # `calendars` aggiunto (provider google_workspace: create/delete_calendars)
+    assert "calendars" in OBJECTS
+    assert len(OBJECTS) == 22
 
 
 def test_get_inputs_in_canonical_naming():

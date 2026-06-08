@@ -19,6 +19,7 @@ sys.path.insert(0, str(_RUNTIME.parent / "executors" / "set_persons"))
 
 import persons_registry  # noqa: E402
 import set_persons as sp  # noqa: E402
+from messages import get as _msg  # noqa: E402  # §11 i18n: assert language-independent
 
 
 # --- helpers --------------------------------------------------------------
@@ -60,9 +61,14 @@ def fake_engine():
 
 @pytest.fixture
 def isolated_db(tmp_path, monkeypatch):
-    """Patch DEFAULT_DB_PATH per usare un DB isolato in tmp_path."""
+    """Patch DEFAULT_DB_PATH + PERSISTENT_EXAMPLES_DIR: DB e storage immagini
+    isolati in tmp_path. Entrambi sono costanti import-time da config.PATH_USER_DATA
+    (non override-abili via env), quindi monkeypatch del modulo. Senza la seconda,
+    `_persist_example_image` (§7.3) scriveva nello storage reale ~/.local/share."""
     db = tmp_path / "persons.sqlite"
     monkeypatch.setattr(persons_registry, "DEFAULT_DB_PATH", db)
+    monkeypatch.setattr(persons_registry, "PERSISTENT_EXAMPLES_DIR",
+                        tmp_path / "persons_examples")
     yield db
 
 
@@ -77,13 +83,13 @@ def _photo(tmp_path, name="a.jpg") -> Path:
 def test_set_persons_empty_name(isolated_db):
     out = sp.invoke({"name": "", "paths": ["/tmp/x.jpg"]})
     assert out["ok"] is False
-    assert "non-empty" in out["error"].lower()
+    assert out["error"] == _msg("ERR_ARG_NOT_NONEMPTY_STRING", arg="name")
 
 
 def test_set_persons_empty_paths(isolated_db):
     out = sp.invoke({"name": "Matteo", "paths": []})
     assert out["ok"] is False
-    assert "non-empty list" in out["error"]
+    assert out["error"] == _msg("ERR_ARG_NOT_LIST", arg="paths")
 
 
 def test_set_persons_bad_mode(isolated_db):
@@ -95,7 +101,7 @@ def test_set_persons_bad_mode(isolated_db):
 def test_set_persons_unslugifiable_name(isolated_db):
     out = sp.invoke({"name": "@@@", "paths": ["/tmp/x.jpg"]})
     assert out["ok"] is False
-    assert "slugifiable" in out["error"]
+    assert "slug" in out["error"].lower()
 
 
 # --- happy path -----------------------------------------------------------
@@ -229,7 +235,10 @@ def test_set_persons_mode_replace_wipes(tmp_path, isolated_db, fake_engine):
         entry = reg.get("matteo")
         assert entry is not None
         assert entry["n_examples"] == 1
-        assert entry["examples"][0]["image_path"] == str(p2)
+        # replace ha tenuto p2 (non p1): l'esempio persistito (§7.3 copia in
+        # PERSISTENT_EXAMPLES_DIR) ha il contenuto di p2. Confronto per bytes:
+        # robusto allo schema di naming <sha256>.<ext>.
+        assert Path(entry["examples"][0]["image_path"]).read_bytes() == p2.read_bytes()
     finally:
         reg.close()
 
@@ -239,7 +248,8 @@ def test_set_persons_path_not_found(isolated_db, fake_engine):
     assert out["ok"] is True
     assert out["n_examples_after"] == 0
     assert len(out["errors"]) == 1
-    assert "not found" in out["errors"][0]["error"]
+    assert out["errors"][0]["error"] == _msg(
+        "ERR_PATH_NOT_FOUND", path="/tmp/nonexistent_xyz_42.jpg")
 
 
 def test_set_persons_warn_examples_limit(tmp_path, isolated_db, fake_engine):

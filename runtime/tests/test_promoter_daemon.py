@@ -743,12 +743,14 @@ class TestCallbackRegistered(_BasePromoterTest):
         install_default_jobs(d)
         install_default_jobs(d)
         entries = d.storage.list_all()
-        matches_promoter = [e for e in entries if e.name == "promoter"]
-        matches_digest = [e for e in entries if e.name == "promoter_digest"]
-        self.assertEqual(len(matches_promoter), 1)
-        self.assertEqual(len(matches_digest), 1)
-        self.assertEqual(matches_promoter[0].trigger, "daily@04:45")
-        self.assertEqual(matches_digest[0].trigger, "daily@07:00")
+        # promoter/promoter_digest consolidati in `nightly_maintenance` (ADR 0167
+        # ext 4/6): non più job standalone.
+        self.assertEqual([e for e in entries if e.name == "promoter"], [])
+        self.assertEqual([e for e in entries if e.name == "promoter_digest"], [])
+        # idempotenza: doppio seed → nightly_maintenance UNICO.
+        nm = [e for e in entries if e.name == "nightly_maintenance"]
+        self.assertEqual(len(nm), 1)
+        self.assertEqual(nm[0].trigger, "daily@03:00")
 
 
 if __name__ == "__main__":

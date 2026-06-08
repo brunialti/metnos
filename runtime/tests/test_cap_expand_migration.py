@@ -128,9 +128,11 @@ def test_orchestrate_cap_expand_malformed_proposal_no_op(isolated_dialog_dir):
     assert log.final_message == initial_msg
 
 
-def test_full_write_replaces_string_with_dialog(isolated_dialog_dir, tmp_path,
-                                                  monkeypatch):
-    """write() completo: niente più stringa 'rispondi sì' nel final_message."""
+def test_truncation_is_passive_notice_no_dialog(isolated_dialog_dir, tmp_path,
+                                                monkeypatch):
+    """Troncamento = notifica PASSIVA §2.7 (feedback no-forced-response): niente
+    stringa 'rispondi sì', niente dialog/expandable_cap 'Allargo?' bloccante a
+    fine turno — solo l'avviso di quanti elementi sono stati considerati."""
     import agent_runtime
     monkeypatch.setattr(agent_runtime, "TURN_LOG_DIR", tmp_path / "turns")
 
@@ -138,9 +140,12 @@ def test_full_write_replaces_string_with_dialog(isolated_dialog_dir, tmp_path,
     log.ts_end = log.ts_start + 0.1
     log.write()
 
-    # Vecchia stringa NON deve apparire (migrazione 6/5/2026).
+    # Vecchie UX interattive NON devono apparire (migrazione 6/5 + §2.7).
     assert "Per avere tutti i" not in log.final_message
     assert "rispondi **sì**" not in log.final_message
-    # Nuova carta UX get_inputs (dialogue) presente.
-    assert log.expandable_caps[0]["kind"] == "get_inputs_response"
-    assert "Step 1/1" in log.final_message or "Allargo" in log.final_message
+    # Nessun dialog bloccante: expandable_caps vuoto per il troncamento.
+    assert log.expandable_caps == []
+    # Notifica passiva presente: quanti elementi considerati (§2.7).
+    assert "10" in log.final_message
+    assert ("Troppi" in log.final_message or "primi" in log.final_message
+            or "passaggio" in log.final_message)

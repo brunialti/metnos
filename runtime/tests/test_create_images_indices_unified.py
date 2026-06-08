@@ -17,6 +17,7 @@ _RUNTIME = Path(__file__).resolve().parent.parent
 _EXEC = _RUNTIME.parent / "executors" / "create_images_indices"
 sys.path.insert(0, str(_RUNTIME))
 sys.path.insert(0, str(_EXEC))
+from messages import get as _msg  # noqa: E402  # §11 i18n: assert language-independent
 
 
 def _pillow_present() -> bool:
@@ -82,7 +83,8 @@ class TestCreateUnifiedValidation(unittest.TestCase):
         import create_images_indices as cii
         out = cii.invoke({"base_path": "/tmp/metnos_does_not_exist_xyz_unified_test"})
         self.assertFalse(out["ok"])
-        self.assertIn("not found", out["error"])
+        self.assertEqual(out["error"], _msg(
+            "ERR_PATH_NOT_FOUND", path="/tmp/metnos_does_not_exist_xyz_unified_test"))
 
     def test_idx_arg_ignored_no_crash(self):
         import create_images_indices as cii

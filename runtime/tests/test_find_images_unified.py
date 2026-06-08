@@ -43,6 +43,7 @@ _RUNTIME = Path(__file__).resolve().parent.parent
 _EXEC = _RUNTIME.parent / "executors" / "find_images_indices"
 sys.path.insert(0, str(_RUNTIME))
 sys.path.insert(0, str(_EXEC))
+from messages import get as _msg  # noqa: E402  # §11 i18n: assert language-independent
 
 
 def _build_unified_index(
@@ -155,7 +156,8 @@ class TestFindImagesValidation(unittest.TestCase):
             "query_text": "mare",
         })
         self.assertFalse(out["ok"])
-        self.assertIn("not found", out["error"])
+        self.assertEqual(out["error"], _msg(
+            "ERR_PATH_NOT_FOUND", path="/tmp/metnos_does_not_exist_xyz_unified_find"))
 
 
 class TestFindImagesUnified(unittest.TestCase):
@@ -178,11 +180,21 @@ class TestFindImagesUnified(unittest.TestCase):
             os.environ["METNOS_INDEX_ROOT"] = self._old
         shutil.rmtree(self.tmp, ignore_errors=True)
 
-    def test_index_missing(self):
+    def test_index_missing_triggers_lazy_build(self):
         import find_images_indices as fii
-        out = fii.invoke({"base_path": str(self.corpus), "query_text": "mare"})
-        self.assertFalse(out["ok"])
-        self.assertEqual(out["error_class"], "index_missing")
+        # §7.3 lazy index: base_path esplicito con corpus ma SENZA indice →
+        # lazy build async (status=indexing_started), NON hard-error.
+        # Mock dello spawn: evita di lanciare un subprocess reale build_runner.
+        sentinel = {"ok": True, "status": "indexing_started", "entries": [],
+                    "job_id": "test_job", "est_minutes": 1,
+                    "base_path": str(self.corpus)}
+        with mock.patch.object(fii, "_spawn_index_build",
+                               return_value=sentinel) as sp:
+            out = fii.invoke({"base_path": str(self.corpus), "query_text": "mare"})
+        sp.assert_called_once()
+        self.assertTrue(out["ok"])
+        self.assertEqual(out["status"], "indexing_started")
+        self.assertIn("job_id", out)
 
     def test_schema_too_old(self):
         import find_images_indices as fii
@@ -481,7 +493,7 @@ class TestFindImagesResolve(unittest.TestCase):
         import find_images_indices as fii
         out = fii.invoke({"query_text": "mare"})
         self.assertFalse(out["ok"])
-        self.assertIn("no indexed dirs", out["error"])
+        self.assertEqual(out["error_class"], "no_workspace")
 
     def test_symbolic_match(self):
         import find_images_indices as fii

@@ -56,6 +56,15 @@ def _build_test_manifest(d: Path, *, name: str, description_table: dict[str, str
     sub = d / name
     sub.mkdir(parents=True, exist_ok=True)
     (sub / "manifest.toml").write_text("\n".join(lines) + "\n", encoding="utf-8")
+    # Il loader (loader.py §7.3 24/5/2026) richiede il file code E la presenza
+    # di `if __name__ == "__main__":` (dispatch subprocess), anche con verify=False.
+    # Senza, l'executor viene scartato e cat.get(name) ritorna None. Stub minimo.
+    (sub / "x.py").write_text(
+        "import json, sys\n"
+        "def invoke(args):\n    return {'ok': True}\n"
+        'if __name__ == "__main__":\n'
+        "    json.dump(invoke(json.load(sys.stdin)), sys.stdout)\n",
+        encoding="utf-8")
     return sub
 
 

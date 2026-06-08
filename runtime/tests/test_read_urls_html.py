@@ -13,6 +13,7 @@ from pathlib import Path
 _RUNTIME = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_RUNTIME))
 sys.path.insert(0, str(_RUNTIME.parent / "executors" / "read_urls_html"))
+from messages import get as _msg  # noqa: E402  # §11 i18n: assert language-independent
 
 
 _pages: dict = {}
@@ -124,7 +125,8 @@ class TestReadUrlsHtml(unittest.TestCase):
         out = read_urls_html.invoke({"urls": [self.url("/binary")]})
         self.assertEqual(out["ok_count"], 0)
         self.assertEqual(out["fail_count"], 1)
-        self.assertIn("non-html", out["failed"][0]["error"])
+        self.assertEqual(out["failed"][0]["error"],
+                         _msg("ERR_NON_HTML_CONTENT", ctype="application/octet-stream"))
 
     def test_multi_url_batch(self):
         """3 URL → 3 entries, ognuna distinta."""

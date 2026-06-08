@@ -49,7 +49,11 @@ def _send_with_mocks(messages, *, mx_results=None, a_results=None):
     a_results = a_results or {}
 
     def fake_mx(domain, **_kw):
-        return mx_results.get(domain, (False, False))
+        # _query_mx ritorna 3-tupla (has_mx, is_null, mx_ok) dal 4/6/2026
+        # (mx_ok=query DNS riuscita, fail-open). Pad le 2-tuple dei test a
+        # mx_ok=True (caso query riuscita) senza toccare ogni singolo test.
+        v = mx_results.get(domain, (False, False, True))
+        return v if len(v) == 3 else (v[0], v[1], True)
 
     def fake_a(domain, **_kw):
         return a_results.get(domain, False)
@@ -139,7 +143,7 @@ class MXValidationTests(unittest.TestCase):
 
         def counting_mx(domain, **_kw):
             calls.append(domain)
-            return (True, False)
+            return (True, False, True)
 
         fake_smtp = _FakeSMTP()
         with mock.patch("mail_client.open_smtp", return_value=fake_smtp), \

@@ -67,12 +67,13 @@ class TestNormalizePathsUrls(unittest.TestCase):
         self.assertEqual(normalize_paths_urls("foo"), "foo")
         self.assertEqual(normalize_paths_urls([]), [])
 
-    def test_non_list_paths_passthrough(self):
+    def test_non_list_paths_wrapped(self):
         from executor_helpers import normalize_paths_urls
         args = {"paths": "single.jpg"}
         out = normalize_paths_urls(args)
-        # paths non-list non viene normalizzato (executor lo gestira').
-        self.assertEqual(out, args)
+        # §2.4 forgiving: una stringa singola in `paths` viene wrappata in lista
+        # 1-elemento (+ urls:[]). L'executor accetta plurale anche con 1 elemento.
+        self.assertEqual(out, {"paths": ["single.jpg"], "urls": []})
 
     def test_other_schemas_not_treated_as_paths(self):
         from executor_helpers import normalize_paths_urls

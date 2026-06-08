@@ -85,7 +85,8 @@ def test_health_services_includes_metnos_units():
     names = {s["name"] for s in services}
     assert "metnos-http" in names
     assert "metnos-telegram-daemon" in names
-    assert "metnos-scheduler" in names
+    # scheduler co-hosted (non unit systemd a sé): get_processes espone "scheduler"
+    assert "scheduler" in names
     # Status valore atteso (active/inactive/failed/unknown/...)
     for s in services:
         assert isinstance(s["status"], str)

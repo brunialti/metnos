@@ -29,6 +29,8 @@ def _emb(seed: int) -> np.ndarray:
 def isolated_db(tmp_path, monkeypatch):
     db = tmp_path / "persons.sqlite"
     monkeypatch.setattr(persons_registry, "DEFAULT_DB_PATH", db)
+    monkeypatch.setattr(persons_registry, "PERSISTENT_EXAMPLES_DIR",
+                        tmp_path / "persons_examples")
     yield db
 
 
@@ -68,14 +70,13 @@ def test_delete_persons_two_silvia_emits_choice_with_preview(isolated_db):
     assert "silvia_rossi" in by_value
 
     o1 = by_value["silvia_buffa"]
-    assert o1["preview_image_path"] == \
-        "/photos/silvia_buffa_001.jpg#bbox=100,200,150,150"
+    # §7.3: preview = <PERSISTENT_EXAMPLES_DIR>/<slug>/<sha256>.jpg#bbox=...
+    assert o1["preview_image_path"].endswith("1" * 64 + ".jpg#bbox=100,200,150,150")
     assert "Silvia Buffa" in o1["label"]
     assert "1 esempi" in o1["label"] or "(1 " in o1["label"]
 
     o2 = by_value["silvia_rossi"]
-    assert o2["preview_image_path"] == \
-        "/photos/silvia_rossi_001.jpg#bbox=50,80,200,200"
+    assert o2["preview_image_path"].endswith("2" * 64 + ".jpg#bbox=50,80,200,200")
 
 
 def test_delete_persons_ambiguous_callback_value_is_slug(isolated_db):

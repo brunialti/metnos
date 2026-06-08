@@ -158,7 +158,8 @@ class TestLoginSession(unittest.TestCase):
         })
         out = login_session.invoke({"domain": domain})
         self.assertFalse(out["ok"], out)
-        self.assertIn("login", out["error"].lower())
+        # i18n IT: "operazione fallita: 401: unauthorized" — assert sul codice 401
+        self.assertIn("401", out["error"])
 
     def test_cached_cookie_reuse(self):
         import login_session
