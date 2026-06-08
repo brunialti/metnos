@@ -5,7 +5,7 @@ Storage layer only (PR1). PR2 will glue this to `runtime/face_embedding.py`
 and add the `*_persons_indices` executors.
 
 Design fissato (Roberto):
-- Slug case-insensitive per evitare sdoppiamenti ("Matteo"/"matteo"/"MATTEO").
+- Slug case-insensitive per evitare sdoppiamenti ("Carol"/"carol"/"CAROL").
 - Display name preservato dal primo enroll (case successivi non sovrascrivono).
 - Enrollment incrementale (mode="add") oppure totale (mode="replace").
 - Match: top-k cosine fra TUTTI gli example della persona (no centroid).
@@ -534,11 +534,11 @@ class PersonsRegistry:
             "WHERE person_slug=? ORDER BY id",
             (slug,),
         ).fetchall()
-        # Fallback (15/5/2026): se slug exact non matcha (es. name="iacopo"
-        # vs slug="iacopo_brunialti"), usa `resolve_name` per token-anywhere.
+        # Fallback (15/5/2026): se slug exact non matcha (es. name="alice"
+        # vs slug="alice_brunialti"), usa `resolve_name` per token-anywhere.
         # Se multipli match, unisce embeddings di TUTTI (acceptable: face
         # recognition con stesso first-name dovrebbe essere disambiguato
-        # con altri campi). Bug live (turn iacopo_mare): name=iacopo →
+        # con altri campi). Bug live (turn alice_mare): name=alice →
         # 0 embeddings → fallback query_text → 29k unfiltered.
         if not rows:
             slugs = self.resolve_name(name)

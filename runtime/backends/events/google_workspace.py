@@ -219,7 +219,7 @@ def create(args: dict) -> dict:
     if args.get("description"):
         argv.extend(["--description", str(args["description"])])
     # Filtra attendees: solo email valide (contengono `@`). Bug live
-    # 15/5/2026: LLM emette `attendees=["silvia"]` → Google API 400
+    # 15/5/2026: LLM emette `attendees=["bob"]` → Google API 400
     # "Invalid attendee email". Soluzione: pass-through delle email,
     # scarta i non-email (rimangono visibili nel summary dell'evento).
     attendees = args.get("attendees")

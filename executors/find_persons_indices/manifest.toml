@@ -7,7 +7,7 @@ name        = "find_persons_indices"
 version     = "0.2.0"
 author      = "Roberto Brunialti"
 affinity    = ["cerca persona", "trova", "foto di", "find person",
-                "search person", "photos of", "matteo", "silvia",
+                "search person", "photos of", "carol", "bob",
                 "volti", "faces", "primo piano", "ritratto", "portrait",
                 "ravvicinata", "close-up", "mezzo busto", "half-bust"]
 
@@ -15,14 +15,14 @@ affinity    = ["cerca persona", "trova", "foto di", "find person",
 it = """Cerca foto di persona registrata. Alias compositivo di find_images_indices.
 
 Args:
-- `name='matteo'`: lookup nel PersonsRegistry.
+- `name='carol'`: lookup nel PersonsRegistry.
 - `reference_images=[paths]`: ArcFace detect+match.
 - `min_face_pixels=40000`: ritaglia ai primi piani (single step composizione).
 - Tutti gli altri args di find_images_indices restano accettati.
 
 Pattern:
-- «foto di Silvia» → name='silvia'.
-- «primo piano di Matteo» → name='matteo', min_face_pixels=40000.
+- «foto di Bob» → name='bob'.
+- «primo piano di Carol» → name='carol', min_face_pixels=40000.
 - «foto come questa» + foto allegate → reference_images=[paths].
 
 Anti-pattern: `set_persons` (enroll), `get_persons` (lookup).
@@ -31,14 +31,14 @@ Output: identico a find_images_indices (entries, score, match_type, ...)."""
 en = """Search photos of registered person. Compositional alias of find_images_indices.
 
 Args:
-- `name='matteo'`: PersonsRegistry lookup.
+- `name='carol'`: PersonsRegistry lookup.
 - `reference_images=[paths]`: ArcFace detect+match.
 - `min_face_pixels=40000`: filter close-ups (single-step composition).
 - All other find_images_indices args accepted.
 
 Patterns:
-- «photos of Silvia» → name='silvia'.
-- «close-up of Matteo» → name='matteo', min_face_pixels=40000.
+- «photos of Bob» → name='bob'.
+- «close-up of Carol» → name='carol', min_face_pixels=40000.
 - «photos like these» + attached photos → reference_images=[paths].
 
 Anti-patterns: `set_persons` (enroll), `get_persons` (lookup).
@@ -47,7 +47,7 @@ Output: identical to find_images_indices (entries, score, match_type, ...)."""
 
 [code]
 files  = ["find_persons_indices.py"]
-digest = "sha256:80564565c3cbceb2b9eca270587f59d15be6f4217c07012280d80112d7e7f4d4"
+digest = "sha256:fcc1d4b5e02416e3e9f5d7ace8a46f088d6f3403385173441e1f023c37078653"
 
 [args]
 type     = "object"

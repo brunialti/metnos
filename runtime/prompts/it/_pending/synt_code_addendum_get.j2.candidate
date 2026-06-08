@@ -1,0 +1,65 @@
+{# ---
+role: synt_code_addendum_get
+tier: wise
+lang: en
+style: few_shot
+version: 1
+owner: roberto
+updated: 2026-05-11
+sha_prev: 0bf1e02b
+--- #}
+VERB `get` REGOLE (in aggiunta a quelle generiche):
+
+DEFINIZIONE: `get` = ARRICHISCE le voci esistenti aggiungendo campi.
+Solo lettura (nessuna mutazione della sorgente). Output `entries` (NON
+`results`) — preserva i campi originali, aggiunge solo quelli nuovi.
+
+PSEUDOCODICE UNIVERSALE:
+
+  def invoke(args):
+      entries_in = args.get("entries", [])
+      fields = args.get("fields", [...])
+      out = []
+      for i, e in enumerate(entries_in):
+          enriched = dict(e)                        # PRESERVA tutti i campi
+          try:
+              for f in fields:
+                  enriched[f] = compute_field(e, f)
+          except Exception as ex:
+              enriched["enrichment_error"] = str(ex)[:200]
+          out.append(enriched)                      # SEMPRE in entries (non fallite)
+
+INVARIANTI:
+MUST: output `entries` (NON `results`). La coerenza cross-executor è critica per
+  il downstream from_step (vedi `feedback_executor_io_naming_consistency`).
+MUST: PRESERVA tutti i campi originali (`enriched = dict(e)`). Aggiungi solo
+  i nuovi campi richiesti.
+MUST: `fields` è un elenco esplicito; il default ragionevole è documentato nel manifest.
+MUST: una voce non arricchibile rimane in `entries` con marcatore
+  `enrichment_error`, NON in `failed`.
+MUST: per gli arricchimenti con I/O (geo/OCR), timeout per voce (es. 5s) +
+  cache locale tramite `location_store` o sqlite.
+MUST NOT: rinominare il bag in `results` (rompe il downstream from_step).
+MUST NOT: filtrare/rimuovere i campi originali.
+MUST NOT: scrivere `def reverse(...)`.
+
+DOMINIO metadata file (get_files):
+- entry: `{path, name, ...}`; aggiunge `mime`, `size`, `mtime_epoch`,
+  `image_dimensions` (PIL), `gps` (EXIF), `place`, `kind`.
+DOMINIO date (get_files con fields=['dates.semantic']):
+- entry: `{path, ...}`; aggiunge `date_epoch` (EXIF DateTimeOriginal o mtime).
+DOMINIO geo (get_places):
+- entry: `{lat, lon, ...}`; aggiunge `place`, `country`, `city` tramite
+  `nominatim_client.reverse_geocode(lat, lon)`.
+DOMINIO time (get_now): caso degenere → singola entry `{epoch, iso, tz}`.
+DOMINIO location (get_location): legge `location_store.get_location()`.
+DOMINIO HTTP (get_urls):
+- entry: `{url, headers?}`; output entry con `status, headers, content,
+  truncated, elapsed_ms`.
+- usa `urllib.request.urlopen(Request(url, headers=...), timeout=...)`;
+  cap byte (default 5MB) → `truncated:True` sul corpo tronco.
+- best-effort per voce: timeout/errore di un URL non blocca il batch.
+- SOLO GET/HEAD. Per POST/PUT usa verbo `send`.
+- MUST NOT: `import requests` o `import httpx`.
+
+────────────────────────────────────────────

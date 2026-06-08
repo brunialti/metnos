@@ -11,8 +11,8 @@ affinity    = ["enrolla", "registra", "memorizza", "ricorda persona", "questa è
                 "this is", "person", "volto", "viso", "face"]
 
 [description]
-it = "Enrolla una persona nel registro nominale per ricerche per nome con `find_persons_indices(name=...)`. DEVI usarla quando l'utente dice 'questa è X' o 'enrolla X' + foto di riferimento. Modalita': `add` (default) accumula esempi, `replace` sostituisce tutti gli esempi precedenti. Se in una foto vengono rilevati piu' di 1 volto, l'executor ritorna `decision='needs_inputs'` per chiedere quale viso usare. NON DEVI usarla per cercare foto di una persona (uso `find_persons_indices`); NON DEVI usarla per identificare automaticamente persone in foto (l'enroll richiede sempre il nome dato dall'utente). USO CORRETTO: `set_persons(name='Matteo', paths=['~/foto/m1.jpg','~/foto/m2.jpg'])`. ERRORE: `set_persons(name='Matteo')` senza paths. Output: `{ok, results:[{path, slug, name, face_box, added}], errors:[{path, error}], n_examples_after, warn?, final_message_hint?}`."
-en = "Enrolls a person into the named registry for name-based searches via `find_persons_indices(name=...)`. MUST be used when the user says 'this is X' or 'enroll X' + reference photos. Modes: `add` (default) accumulates examples, `replace` replaces all previous examples. If more than 1 face is detected in a photo, the executor returns `decision='needs_inputs'` to ask which face to use. MUST NOT be used to search photos of a person (use `find_persons_indices`); MUST NOT be used to automatically identify persons in photos (enroll always requires the name given by the user). CORRECT USE: `set_persons(name='Matteo', paths=['~/photos/m1.jpg','~/photos/m2.jpg'])`. ERROR: `set_persons(name='Matteo')` without paths. Output: `{ok, results:[{path, slug, name, face_box, added}], errors:[{path, error}], n_examples_after, warn?, final_message_hint?}`."
+it = "Enrolla una persona nel registro nominale per ricerche per nome con `find_persons_indices(name=...)`. DEVI usarla quando l'utente dice 'questa è X' o 'enrolla X' + foto di riferimento. Modalita': `add` (default) accumula esempi, `replace` sostituisce tutti gli esempi precedenti. Se in una foto vengono rilevati piu' di 1 volto, l'executor ritorna `decision='needs_inputs'` per chiedere quale viso usare. NON DEVI usarla per cercare foto di una persona (uso `find_persons_indices`); NON DEVI usarla per identificare automaticamente persone in foto (l'enroll richiede sempre il nome dato dall'utente). USO CORRETTO: `set_persons(name='Carol', paths=['~/foto/m1.jpg','~/foto/m2.jpg'])`. ERRORE: `set_persons(name='Carol')` senza paths. Output: `{ok, results:[{path, slug, name, face_box, added}], errors:[{path, error}], n_examples_after, warn?, final_message_hint?}`."
+en = "Enrolls a person into the named registry for name-based searches via `find_persons_indices(name=...)`. MUST be used when the user says 'this is X' or 'enroll X' + reference photos. Modes: `add` (default) accumulates examples, `replace` replaces all previous examples. If more than 1 face is detected in a photo, the executor returns `decision='needs_inputs'` to ask which face to use. MUST NOT be used to search photos of a person (use `find_persons_indices`); MUST NOT be used to automatically identify persons in photos (enroll always requires the name given by the user). CORRECT USE: `set_persons(name='Carol', paths=['~/photos/m1.jpg','~/photos/m2.jpg'])`. ERROR: `set_persons(name='Carol')` without paths. Output: `{ok, results:[{path, slug, name, face_box, added}], errors:[{path, error}], n_examples_after, warn?, final_message_hint?}`."
 
 [code]
 files  = ["set_persons.py"]
@@ -26,8 +26,8 @@ required = ["name", "paths"]
 type        = "string"
 
 [args.properties.name.description]
-it = "Nome visualizzato della persona (es. 'Matteo', 'Silvia Buffa'). Lo slug interno e' derivato (lowercase, ASCII, separatori normalizzati). Il display name e' preservato dal primo enroll."
-en = "Display name of the person (e.g. 'Matteo', 'Silvia Buffa'). The internal slug is derived (lowercase, ASCII, normalized separators). The display name is preserved from the first enroll."
+it = "Nome visualizzato della persona (es. 'Carol', 'Bob Buffa'). Lo slug interno e' derivato (lowercase, ASCII, separatori normalizzati). Il display name e' preservato dal primo enroll."
+en = "Display name of the person (e.g. 'Carol', 'Bob Buffa'). The internal slug is derived (lowercase, ASCII, normalized separators). The display name is preserved from the first enroll."
 
 [args.properties.paths]
 type        = "array"
@@ -87,10 +87,10 @@ expect = { ok = false, error_contains = "non vuota" }
 
 [[tests]]
 name   = "validates_empty_paths"
-input  = { name = "Matteo", paths = [] }
+input  = { name = "Carol", paths = [] }
 expect = { ok = false, error_contains = "deve essere una lista" }
 
 [[tests]]
 name   = "validates_bad_mode"
-input  = { name = "Matteo", paths = ["/tmp/x.jpg"], mode = "wipe" }
+input  = { name = "Carol", paths = ["/tmp/x.jpg"], mode = "wipe" }
 expect = { ok = false, error_contains = "mode" }

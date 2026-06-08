@@ -72,13 +72,13 @@ def _rank_top(query: str, k: int = 5):
 
 class TestPrimoPianoRouting:
     def test_primo_piano_di_X_picks_find_persons_indices(self):
-        """«primo piano di matteo» → find_persons_indices top-1 per affinity.
+        """«primo piano di carol» → find_persons_indices top-1 per affinity.
 
         La nuova affinity «primo piano», «primo piano di», «ritratto»,
         «ravvicinata» deve garantire che find_persons_indices vinca su
         find_images_indices anche se entrambi matchano «foto»/«cerca».
         """
-        top = _rank_top("primo piano di matteo", k=5)
+        top = _rank_top("primo piano di carol", k=5)
         assert top, "rank ritorna lista vuota"
         assert top[0] == "find_persons_indices", (
             f"Atteso find_persons_indices top-1, ottenuto {top[0]} (top5={top})"
@@ -86,13 +86,13 @@ class TestPrimoPianoRouting:
 
     def test_primo_piano_score_beats_find_images_indices(self):
         """Confronto numerico: score(find_persons) > score(find_images) per
-        «primo piano di matteo». Garantisce che il boost di affinity sia
+        «primo piano di carol». Garantisce che il boost di affinity sia
         sufficiente anche se find_images_indices ha "foto"/"cerca" generici.
         """
         cat = {e.name: e for e in _load_real_catalog()}
         if "find_persons_indices" not in cat or "find_images_indices" not in cat:
             pytest.skip("executor non in catalog (env minimale)")
-        q = "primo piano di matteo"
+        q = "primo piano di carol"
         s_persons = _score_for(q, cat["find_persons_indices"])
         s_images = _score_for(q, cat["find_images_indices"])
         assert s_persons > s_images, (
@@ -101,8 +101,8 @@ class TestPrimoPianoRouting:
         )
 
     def test_close_up_english_picks_find_persons_indices(self):
-        """Variante inglese: «close-up of matteo» → find_persons_indices top-1."""
-        top = _rank_top("close-up of matteo", k=5)
+        """Variante inglese: «close-up of carol» → find_persons_indices top-1."""
+        top = _rank_top("close-up of carol", k=5)
         assert top
         assert top[0] == "find_persons_indices", (
             f"Atteso find_persons_indices top-1 (close-up EN), ottenuto top5={top}"
@@ -113,24 +113,24 @@ class TestPrimoPianoRouting:
 
 class TestRitrattoRouting:
     def test_ritratto_di_X_routes_to_find_persons_indices(self):
-        """«ritratto di Matteo» → find_persons_indices top-1."""
-        top = _rank_top("ritratto di Matteo", k=5)
+        """«ritratto di Carol» → find_persons_indices top-1."""
+        top = _rank_top("ritratto di Carol", k=5)
         assert top
         assert top[0] == "find_persons_indices", (
             f"Atteso find_persons_indices top-1 (ritratto), ottenuto top5={top}"
         )
 
     def test_portrait_english_routes_to_find_persons_indices(self):
-        """«portrait of Matteo» → find_persons_indices top-1."""
-        top = _rank_top("portrait of Matteo", k=5)
+        """«portrait of Carol» → find_persons_indices top-1."""
+        top = _rank_top("portrait of Carol", k=5)
         assert top
         assert top[0] == "find_persons_indices", (
             f"Atteso find_persons_indices top-1 (portrait EN), ottenuto top5={top}"
         )
 
     def test_mezzo_busto_routes_to_find_persons_indices(self):
-        """«mezzo busto di Matteo» → find_persons_indices top-1."""
-        top = _rank_top("mezzo busto di Matteo", k=5)
+        """«mezzo busto di Carol» → find_persons_indices top-1."""
+        top = _rank_top("mezzo busto di Carol", k=5)
         assert top
         assert top[0] == "find_persons_indices", (
             f"Atteso find_persons_indices top-1 (mezzo busto), ottenuto top5={top}"
@@ -141,27 +141,27 @@ class TestRitrattoRouting:
 
 class TestPipelineSceneRegression:
     def test_X_al_mare_keeps_find_images_indices_in_pool(self):
-        """«matteo al mare» (scene) → find_images_indices DEVE restare nel
+        """«carol al mare» (scene) → find_images_indices DEVE restare nel
         top-K (regola W: pipeline 2-step persons→scene). Non deve essere
         scartato dalle nuove affinity W.bis.
         """
-        top = _rank_top("matteo al mare", k=8)
+        top = _rank_top("carol al mare", k=8)
         assert "find_images_indices" in top, (
-            f"find_images_indices DEVE restare in top-K per «matteo al mare» "
+            f"find_images_indices DEVE restare in top-K per «carol al mare» "
             f"(pipeline scene). Top8={top}"
         )
 
     def test_X_al_mare_does_not_explode_find_persons_score(self):
-        """«matteo al mare» NON deve far esplodere find_persons_indices score:
+        """«carol al mare» NON deve far esplodere find_persons_indices score:
         l'affinity «primo piano»/«ritratto» NON matcha «mare», quindi il
         boost W.bis NON si attiva. find_persons_indices resta candidato (per
-        il nome «matteo» in affinity), ma find_images_indices DEVE restare
+        il nome «carol» in affinity), ma find_images_indices DEVE restare
         comparabile (tipico: entrambi nel top-K).
         """
         cat = {e.name: e for e in _load_real_catalog()}
         if "find_persons_indices" not in cat or "find_images_indices" not in cat:
             pytest.skip("executor non in catalog (env minimale)")
-        q = "matteo al mare"
+        q = "carol al mare"
         s_persons = _score_for(q, cat["find_persons_indices"])
         s_images = _score_for(q, cat["find_images_indices"])
         # Entrambi positivi: il prefilter deve mantenere coppia di candidati

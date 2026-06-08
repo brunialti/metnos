@@ -1090,7 +1090,7 @@ def _meaningful_filename_tokens(stem: str) -> list[str]:
     """Token significativi dal filename SENZA estensione.
 
     Ritorna [] per pattern auto-generati dai device. Per filename
-    user-named (es. 'fototessera matteo', 'compleanno_silvia',
+    user-named (es. 'fototessera carol', 'compleanno_bob',
     'manate doza') ritorna i token alfa di lunghezza >=2.
     """
     if not stem:

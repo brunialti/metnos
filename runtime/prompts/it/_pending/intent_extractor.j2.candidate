@@ -94,7 +94,7 @@ Esempi:
 "list paired guests" → {"verb": "read", "object": "persons"}
 "who is registered" → {"verb": "get", "object": "persons"}
 "list persons" → {"verb": "get", "object": "persons"}
-"how many photos of Matteo" → {"verb": "get", "object": "persons"}
+"how many photos of Carol" → {"verb": "get", "object": "persons"}
 PRINCIPIO SEMANTICO (universale, si applica a TUTTI gli oggetti, non solo events):
 - Il verbo CREATES/SETS/WRITES/DELETES un'entità (azione distruttiva/mutante)
   → mappa a un verbo operativo (create/set/write/delete/move/send/share).

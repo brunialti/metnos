@@ -60,8 +60,8 @@ en = "Output format spec: {format: 'markdown'|'json'|'code', sections?: [str], s
 type        = "object"
 
 [args.properties.local_context.description]
-it = "Context locale (DNA Metnos): {files: [path], entries: [dict], inline: {key:value}}. Caricato come testo nel prompt PRIMA di chiamare il frontier. files: path leggibili sotto /opt/metnos o /home/roberto, troncati per max_bytes. entries: serializzate JSON. inline: dict free-form. Tutto il context locale e' visibile al frontier nel modo A (single-call) e nel modo B (prima del tool loop)."
-en = "Local context (Metnos DNA): {files: [path], entries: [dict], inline: {key:value}}. Loaded as text in the prompt BEFORE calling the frontier. files: paths readable under /opt/metnos or /home/roberto, truncated by max_bytes. entries: JSON-serialized. inline: free-form dict. All local context is visible to the frontier in mode A (single-call) and mode B (before the tool loop)."
+it = "Context locale (DNA Metnos): {files: [path], entries: [dict], inline: {key:value}}. Caricato come testo nel prompt PRIMA di chiamare il frontier. files: path leggibili sotto /opt/metnos o /home/user, troncati per max_bytes. entries: serializzate JSON. inline: dict free-form. Tutto il context locale e' visibile al frontier nel modo A (single-call) e nel modo B (prima del tool loop)."
+en = "Local context (Metnos DNA): {files: [path], entries: [dict], inline: {key:value}}. Loaded as text in the prompt BEFORE calling the frontier. files: paths readable under /opt/metnos or /home/user, truncated by max_bytes. entries: JSON-serialized. inline: free-form dict. All local context is visible to the frontier in mode A (single-call) and mode B (before the tool loop)."
 
 [args.properties.remote_context]
 type        = "array"

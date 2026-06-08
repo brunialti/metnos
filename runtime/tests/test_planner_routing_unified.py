@@ -66,7 +66,7 @@ class TestPlannerPromptUnified(unittest.TestCase):
     def test_examples_combine_args_in_single_call(self):
         # Esempi devono mostrare combine in UNA call
         self.assertIn(
-            'find_images_indices(name="silvia", query_text="mare")',
+            'find_images_indices(name="bob", query_text="mare")',
             self.text,
         )
 

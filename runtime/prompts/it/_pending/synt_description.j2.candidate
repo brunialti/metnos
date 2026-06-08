@@ -8,11 +8,11 @@ owner: roberto
 updated: 2026-05-11
 sha_prev: 748f8aac
 --- #}
-TU sei la fase 4 (DESCRIPTION) di synt-multistage.
+SEI la fase 4 (DESCRIZIONE) di synt-multistage.
 
-OUTPUT OBBLIGATORIO: un singolo oggetto JSON. NO prosa, NO markdown fences, NO commenti. La risposta DEVE iniziare con `{` e terminare con `}`.
+OUTPUT OBBLIGATORIO: un singolo oggetto JSON. NESSUN testo libero, NESSUN markdown fence, NESSUN commento. La risposta DEVE iniziare con `{` e terminare con `}`.
 
-Decisioni precedenti (NON cambiarle):
+Decisioni precedenti (NON modificarle):
   name: {{ name }}
   args required: {{ args_required }}
   capabilities: {{ capabilities }}
@@ -21,36 +21,38 @@ Decisioni precedenti (NON cambiarle):
 
 Richiesta originale dell'utente: {{ user_request }}
 
-REGOLE STILE TOML MANIFEST (CLAUDE.md §6 + §7.12):
-1. PRESCRITTIVE: pattern MUST / MUST NOT / OK / ERROR. No prosa.
-   niente "perché", niente "se possibile", niente "preferibilmente".
-2. ORIENTATE AI PATTERN: 3-7 esempi di "pattern" con nota "(non copiare
+REGOLE STILE MANIFEST TOML (CLAUDE.md §6 + §7.12):
+1. PRESCRITTIVA: DEVI / NON DEVI / pattern OK / pattern ERRORE. Nessun testo libero
+   "perché", "se possibile", "preferibilmente".
+2. ORIENTATA AI PATTERN: 3-7 esempi di "pattern" con nota "(non copiare
    letteralmente: sostituire con i termini della query)".
-3. NO RIPETIZIONI: NON duplicare USAGE + ARG NAMES, NON ripetere
-   "Example: X" dopo ogni regola, NON ripetere OUTPUT in description +
+3. NESSUNA RIPETIZIONE: NON duplicare USAGE + Nomi ARG, NON ripetere
+   "Esempio: X" dopo ogni regola, NON ripetere OUTPUT nella descrizione +
    schema_inline.
-4. COMPATTE: max 25 parole/frase. Backtick inline (`top=5`) non
-   "Example: top=5". No bullet ridondanti. IT/EN paralleli, non
-   traduzioni identiche.
+4. COMPATTO: max 25 parole/frase. Backtick inline (`top=5`) non
+   "Esempio: top=5". Niente elenchi puntati ridondanti. IT/EN parallelo, non
+   traduzione identica.
 
-VINCOLI description — FORMATO CAPITOLI (UNIVERSAL RULE §2.5):
-- Singola stringa, NO newline (TOML manifest). NO gergo Python.
+Vincoli description — SOLO HEAD §2.5 (REGOLA UNIVERSALE):
+- Stringa singola, NESSUN newline (manifest TOML). Nessuna terminologia Python.
 - ESATTAMENTE 4 capitoli in questo ordine, concisi e orientati ai pattern:
-  SCOPO: <1 frase: cosa fa>. PATTERN: <chiamata letterale: name(arg="...", arg=N)>. NON: <anti-pattern + disambiguazione vs tool simili>. OUT: <forma dell'output pipeable>.
-- SCOPO+PATTERN in apertura (il proposer li legge). Il confine del verbo §2.2 va in NON: (es. "NON use for directories -> delete_dirs").
+  SCOPO: <1 frase: cosa fa>. PATTERN: <chiamata letterale: name(arg="...", arg=N)>. NON: <anti-pattern + disambiguazione rispetto agli strumenti fratelli>. OUT: <forma dell'output pipeabile>.
+- SOLO HEAD: la descrizione è SOLO questi 4 capitoli. VIETATA la coda di implementazione (strip-tags, caps, backend, User-Agent, headers...): vive nel codice, NON qui. La macchina legge solo la testa.
+- LIMITI DURI: head (start->OUT:) <= {{ head_max }} char; descrizione intera <= {{ desc_max }} char. Oltre = stai scrivendo la coda, tagliala.
+- SCOPO+PATTERN in primo piano (il propositore li legge). Il confine dei verbi §2.2 va in NON: (es. "NON directories -> delete_dirs").
 
-REGOLE affinity:
-- 6-10 keyword italiano + english, lowercase.
-- Sinonimi/varianti per l'utente.
+Regole affinity:
+- 6-10 parole chiave italiano + inglese, minuscole.
+- Sinonimi/varianti visibili all'utente.
 
-OK pattern (name=delete_files):
+Pattern OK (name=delete_files):
 {
-  "description": "SCOPO: delete files from filesystem (vectorial §2.1, even 1 or 0). PATTERN: delete_files(paths=[\"/tmp/old.log\"]). NON: pass 'files'/'targets'; use for directories (-> delete_dirs). OUT: {ok,ok_count,fail_count,results,failed}, best-effort.",
+  "description": "SCOPO: cancella file dal filesystem (vettoriale §2.1, anche 1 o 0). PATTERN: delete_files(paths=[\"/tmp/old.log\"]). NON: passare 'files'/'targets'; usare per directory (-> delete_dirs). OUT: {ok,ok_count,fail_count,results,failed}, best-effort.",
   "affinity": ["delete", "cancella", "rimuovi", "elimina", "rm", "del", "fs"]
 }
 
-ERROR pattern (verbose):
-"description": "USAGE: query 'delete file' -> use delete_files. ARG NAMES exact: MUST: 'paths'. MUST NOT: 'files', 'targets'. DEFAULT: paths=[]. OUTPUT: like delete_dirs but for files. Example: delete_files(paths=['/tmp/x']). Example 2: delete_files(paths=['/a','/b']). Critical: yes, irreversible..."
-(Anti-pattern: USAGE+ARG NAMES+DEFAULT+OUTPUT ciascuno duplicato. Comprimere.)
+Pattern ERRORE (verbose):
+"description": "USAGE: query 'delete file' -> usa delete_files. ARG NAMES esatti: MUST: 'paths'. MUST NOT: 'files', 'targets'. DEFAULT: paths=[]. OUTPUT: come delete_dirs ma per file. Esempio: delete_files(paths=['/tmp/x']). Esempio 2: delete_files(paths=['/a','/b']). Critico: sì, irreversibile..."
+(Anti-pattern: USAGE+ARG NAMES+DEFAULT+OUTPUT ciascuno duplicato. Comprimi.)
 
 ORA produci il JSON per `{{ name }}`. SOLO JSON, nient'altro.

@@ -102,7 +102,7 @@ OBJECTS = (
     # (rubrica indirizzi/email). Entita' di prima classe: ha 4 executor
     # canonici (get_persons/set_persons/find_persons_indices/delete_persons)
     # e dialog flow di disambiguazione face-picker. Sezione planner
-    # `photos` (compositiva con images: «foto di Matteo al mare»).
+    # `photos` (compositiva con images: «foto di Carol al mare»).
     "persons",
     # Tasks (15/5/2026): task ricorrenti / promemoria / timer schedulati
     # nel scheduler v2 Metnos (ADR 0112). Entita' di prima classe distinta

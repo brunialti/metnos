@@ -53,7 +53,7 @@ Output: `{ok, schema_version=4, ok_count, fail_count, base_path, n_entries_total
 
 [code]
 files  = ["create_images_indices.py"]
-digest = "sha256:2800ff59558c3d6f15d476a2cb04b6b32943f0dac32bf7bc93e3d98cc4d67ffd"
+digest = "sha256:7976c558b2e4a22cf631b382f79902537795d21d98639b2987ef1c1be6ce93af"
 
 [args]
 type     = "object"

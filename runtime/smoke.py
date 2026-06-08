@@ -130,7 +130,7 @@ BATTERY = [
      "expected_arg_keys": {"include_health"},
      "min_pass_rate": 0.9},
     # Anti-regressione persons-by-name (ADR 0113).
-    {"q": "trova foto di Matteo",
+    {"q": "trova foto di Carol",
      "tool_re": r"^find_persons_indices$",
      "kind": "answer",
      "expected_first_tool": "find_persons_indices",

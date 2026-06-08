@@ -6,7 +6,7 @@ disgiunto) a thin alias che inietta `name=`/`reference_images=` e invoca
 direttamente `find_images_indices` (executor unificato).
 
 Tre modalita' di chiamata (riusiamo l'engine unificato):
-  (a) `name="silvia"` → `find_images_indices(name=...)`.
+  (a) `name="bob"` → `find_images_indices(name=...)`.
   (b) `reference_images=[...]` → `find_images_indices(reference_images=...)`.
 
 Backward compat per il PLANNER: questo executor mantiene il nome canonico

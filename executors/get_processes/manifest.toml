@@ -188,7 +188,7 @@ expect_full = """
     "memory": {"available": true, "total_mb": 124410, "used_mb": 45650, "pct": 36.7, "swap_total_mb": 8192, "swap_used_mb": 0, "swap_pct": 0.0},
     "thermal": {"available": true, "cpu_c": 49, "gpu_c": 46, "nvme_c": 37},
     "disk": [{"mount": "/", "device": "/dev/nvme0n1p2", "fstype": "ext4", "total_gb": 850.0, "used_gb": 223.5, "free_gb": 626.5, "pct": 26.3}],
-    "network": [{"iface": "enp197s0", "ipv4": ["192.168.1.33"], "ipv6": ["fda2:5dd7:982f:c2fa::1"], "up": true}],
+    "network": [{"iface": "eth0", "ipv4": ["192.0.2.10"], "ipv6": ["2001:db8::1"], "up": true}],
     "services": [{"name": "metnos-http", "status": "active"}],
     "collected_at": 1778077408
   }

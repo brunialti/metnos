@@ -13,12 +13,12 @@
   },
   "args.paths.description": {
     "it": {
-      "version_hash": "sha256:379d7afff30707f6551e908b5a9138431ed6cf74bde9ccceabbbb01c20eaf8de",
+      "version_hash": "sha256:75d21b061263fe52ac74235ee1dd88f1061d46ea4411ed99b48ce054b9f26650",
       "source_lang": null,
       "source_hash": null
     },
     "en": {
-      "version_hash": "sha256:7f5e4b5409fbd7fd923aa8b84b185e3c66cc9002faec2e500dcfabab2362179f",
+      "version_hash": "sha256:c62c83298a0161613c5944250d63c30ea69aac536bf32b9165598f3a23dbabce",
       "source_lang": null,
       "source_hash": null
     }

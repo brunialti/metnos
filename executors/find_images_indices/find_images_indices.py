@@ -542,7 +542,7 @@ def _query_expansion_llm_enabled() -> bool:
 # EXIF taken_at puo' mancare (foto vecchie, scansioni, screenshot,
 # whatsapp export). mtime filesystem e' spesso inaffidabile (copy/move
 # resetta). Pattern utente comune: foto organizzate in cartelle datate
-# `Immagini/2024/2024 12 14 compl. Matteo/IMG_xxx.jpg`. Parse data dal
+# `Immagini/2024/2024 12 14 compl. Carol/IMG_xxx.jpg`. Parse data dal
 # path per fallback affidabile prima di degenerare su mtime.
 
 # Full date con separatori (es. "2024-12-14", "2024 12 14", "2024_12_14")
@@ -568,7 +568,7 @@ def _extract_date_from_path(path: str):
       "IMG-20251224-WA0107.jpg" → 2025-12-24 (compact YYYYMMDD)
       "IMG_20241214_140034.jpg" → 2024-12-14 (compact con underscore)
       "foto_2018-04-15.jpg" → 2018-04-15
-      "fototessera matteo.jpg" → None (no date in filename)
+      "fototessera carol.jpg" → None (no date in filename)
     """
     if not path:
         return None
@@ -751,15 +751,15 @@ def _filter_unified(
     query_text = (args.get("query_text") or "").strip() or None
     name = (args.get("name") or "").strip() or None
     # Multi-persona AND (15/5/2026): `names` array, ogni nome deve essere
-    # presente in OGNI foto matchata. Es. ["iacopo","matteo"] → foto con
-    # AMBEDUE. Bug live: PLANNER passava `name="Iacopo, Matteo"` come
+    # presente in OGNI foto matchata. Es. ["alice","carol"] → foto con
+    # AMBEDUE. Bug live: PLANNER passava `name="Alice, Carol"` come
     # stringa unica → lookup fallisce → BM25 fallback ammette qualunque
     # foto con un solo nome. names plurale risolve §2.1.
     names_list = args.get("names")
     if isinstance(names_list, list) and names_list:
         names_clean = [str(n).strip() for n in names_list if str(n).strip()]
     elif isinstance(name, str) and "," in name:
-        # Tolleranza wildcard §2.4: LLM ha emesso "Iacopo, Matteo" → split
+        # Tolleranza wildcard §2.4: LLM ha emesso "Alice, Carol" → split
         names_clean = [n.strip() for n in name.split(",") if n.strip()]
         name = None  # promosso a names plurale
     else:
@@ -786,14 +786,14 @@ def _filter_unified(
     similarity_threshold = float(args.get("similarity_threshold", 0.0))
     # text_score_min: soglia sul contributo testuale isolato (cosine BGE-M3
     # + BM25 boost). Default 0.25 quando `query_text` e' presente: la query
-    # diventa un FILTRO AND (es. "Matteo al mare" richiede match face E
+    # diventa un FILTRO AND (es. "Carol al mare" richiede match face E
     # match contenuto), non solo un boost di ranking. Default 0.0 quando
-    # query_text assente. Bug live 15/5/2026: foto di Matteo a Parigi
-    # entravano in "Matteo al mare" perche' face_score alto dominava
+    # query_text assente. Bug live 15/5/2026: foto di Carol a Parigi
+    # entravano in "Carol al mare" perche' face_score alto dominava
     # text_score basso, e la sola soglia su _score totale (default 0) non
     # filtrava. Override esplicito accettato via arg.
     # Default text_score_min tarato sulla distribuzione BGE-M3:
-    # cosine reale per query "mare" su 923 entries di Matteo:
+    # cosine reale per query "mare" su 923 entries di Carol:
     #   >=0.25: 52% (troppo permissivo, include "ambiente domestico")
     #   >=0.30: 27%
     #   >=0.40: 11% (foto effettivamente al mare/spiaggia)
@@ -1652,7 +1652,7 @@ def _invoke_multi_dirs(dirs: list[Path], args: dict, msg: str | None) -> dict:
     # Truncated check: confronto contro n_above (totale above threshold
     # PRE-truncation a top_k in _filter_unified), non contro len(all_entries)
     # che e' gia' top-k troncato per dir e quindi degenere a top_k.
-    # Bug live 15/5/2026: query "Matteo al mare" ritornava 100 entries di 117
+    # Bug live 15/5/2026: query "Carol al mare" ritornava 100 entries di 117
     # totali senza truncated=True → final_answer "100 foto" inaccurato.
     if int(n_above) > top_k:
         out["truncated"] = True

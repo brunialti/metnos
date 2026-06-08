@@ -21,7 +21,7 @@ FOTO/EXIF/SCATTO/GPS/LUOGO-DI-SCATTO/CAMERA
       corretto sui filtri combinati). Combinare argomenti = pipeline naturale,
       niente più `paths_filter` / 2 step.
     DEVI: passare SOLO gli argomenti pertinenti alla query.
-        - `name="silvia"` → identita' (persona registrata via set_persons).
+        - `name="bob"` → identita' (persona registrata via set_persons).
         - `query_text="mare"` → contenuto (la VLM ha descritto cosa si vede).
         - `min_face_pixels=40000` → primo piano (≈200x200 px).
         - `min_face_count=2` → ritratti di gruppo. `max_face_count=1` → singoli.
@@ -32,17 +32,17 @@ FOTO/EXIF/SCATTO/GPS/LUOGO-DI-SCATTO/CAMERA
     NON DEVI: passare `idx=` (deprecato post-ADR0117). NON DEVI: passare
         `paths_filter` come ponte fra due chiamate (un solo executor; gli
         args si combinano).
-    OK: «Silvia al mare» → find_images_indices(name="silvia", query_text="mare").
-    OK: «Matteo primo piano» → find_images_indices(name="matteo", min_face_pixels=40000).
+    OK: «Bob al mare» → find_images_indices(name="bob", query_text="mare").
+    OK: «Carol primo piano» → find_images_indices(name="carol", min_face_pixels=40000).
     OK: «foto del compleanno {{ current_year }}» → find_images_indices(query_text="compleanno", time_window="{{ current_year }}").
-    ERRORE: «Silvia al mare» → find_persons_indices(name="silvia") → find_images_indices(idx="scene", query_text="mare", paths_filter=from_step:1). E' UN ERRORE: il pattern a 2 step e' superseded da ADR 0117.
+    ERRORE: «Bob al mare» → find_persons_indices(name="bob") → find_images_indices(idx="scene", query_text="mare", paths_filter=from_step:1). E' UN ERRORE: il pattern a 2 step e' superseded da ADR 0117.
 
   (W.alias) PERSONS THIN ALIAS
     DEVI: `find_persons_indices(name=...)` resta accettato come alias di
         `find_images_indices(name=...)`. Stesso engine, stesso risultato.
     NON DEVI: usare entrambi nello stesso turno (duplicato).
-    OK: «foto di Iacopo» → find_persons_indices(name="iacopo") OPPURE
-        find_images_indices(name="iacopo"). Equivalenti.
+    OK: «foto di Alice» → find_persons_indices(name="alice") OPPURE
+        find_images_indices(name="alice"). Equivalenti.
     ERRORE: pipeline find_persons_indices → find_images_indices: E' UN ERRORE
         (duplicato; un solo step basta).
 
@@ -54,8 +54,8 @@ FOTO/EXIF/SCATTO/GPS/LUOGO-DI-SCATTO/CAMERA
         nel filesystem ma in `~/.local/share/metnos/persons.sqlite`.
     DEVI: «cancella tutte le persone enrolled / svuota il registro» →
         `delete_persons(all=true)` in UNO step.
-    DEVI: «cancella Matteo, Anna e Luca» (lista esplicita) →
-        `delete_persons(names=["Matteo","Anna","Luca"])` in UNO step.
+    DEVI: «cancella Carol, Anna e Luca» (lista esplicita) →
+        `delete_persons(names=["Carol","Anna","Luca"])` in UNO step.
     DEVI: «mostra le persone enrolled / quali sono» → `get_persons()` senza arg.
     NON DEVI: passare `from_step` a `delete_persons` se l'utente ha gia' dato
         un nome esplicito. `from_step` su `delete_persons` va usato SOLO dopo

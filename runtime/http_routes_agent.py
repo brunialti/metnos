@@ -540,7 +540,7 @@ def _consume_http_get_inputs_response(
     if idx >= len(dialog) or state.get("completed") or state.get("cancelled"):
         # Dialog finito (completato dal form HTTP submit, o cancellato):
         # cap_pending e' rimasto stale. Pulisci e tratta la nuova query
-        # come turno fresco (10/5/2026 fix: prima il messaggio Silvia
+        # come turno fresco (10/5/2026 fix: prima il messaggio Bob
         # con 13 foto veniva DROPPATO dopo Roberto enrollment).
         _cap_pending_clear(sender_id)
         return query, None, None

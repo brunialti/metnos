@@ -15,7 +15,9 @@ from __future__ import annotations
 
 import importlib
 import os
+import shutil
 import sys
+import tempfile
 import threading
 import time
 import unittest
@@ -28,11 +30,11 @@ sys.path.insert(0, str(_RUNTIME))
 class ActiveSessionsBase(unittest.TestCase):
 
     def setUp(self):
-        # Isola DB per ogni test. conftest._isolate_home_for_legacy_image_tests
-        # gia' redirige HOME a tmp_path; aggiungiamo METNOS_USERS_DB esplicito
-        # per evitare ambiguita' nel risolutore.
-        tmp = Path(os.environ.get("HOME", "/tmp")) / f"users_{id(self)}.db"
-        os.environ["METNOS_USERS_DB"] = str(tmp)
+        # Isola DB per ogni test in una dir temporanea dedicata, auto-pulita in
+        # tearDown. NON usare HOME: senza conftest attivo (unittest diretto)
+        # finirebbe nella home reale lasciando file orfani `users_*.db`.
+        self._tmpdir = tempfile.mkdtemp(prefix="metnos_test_users_")
+        os.environ["METNOS_USERS_DB"] = str(Path(self._tmpdir) / "users.db")
         # Reload moduli che leggono env all'import.
         import users
         import active_sessions
@@ -50,6 +52,8 @@ class ActiveSessionsBase(unittest.TestCase):
         _PENDING_TAKEOVERS.clear()
         from active_sessions import _SUBSCRIBERS
         _SUBSCRIBERS.clear()
+        # Rimuovi la dir temporanea del DB di test (no leak in HOME).
+        shutil.rmtree(getattr(self, "_tmpdir", ""), ignore_errors=True)
 
 
 class TestMigration(ActiveSessionsBase):
