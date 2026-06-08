@@ -76,6 +76,24 @@ def _first_sentence(s: str) -> str:
     return (s[:m.start() + 1] if m else s)[:140].strip()
 
 
+def _builtin_tool_names() -> set:
+    """Nomi dei tool BUILTIN runtime (non manifest in executors/): vanno noti al
+    validator dead-ref, altrimenti un NON: che cita list_tasks/undo_last_turn ecc.
+    (tool REALI) viene falsamente bocciato. Fonte: BUILTIN_INPROC_SPECS dei moduli
+    registrati + universal helpers §11 (doctrina stabile)."""
+    names = {"classify_entries", "extract_entries", "describe_entries",
+             "undo_last_turn", "get_inputs"}
+    for mod_name in ("recurring_tasks", "skill_admin"):
+        try:
+            mod = __import__(mod_name)
+            for entry in getattr(mod, "BUILTIN_INPROC_SPECS", None) or []:
+                if entry.get("name"):
+                    names.add(entry["name"])
+        except Exception:
+            pass
+    return names
+
+
 def load_catalog() -> dict:
     cat = {}
     for mt in sorted(_EXEC.glob("*/manifest.toml")):
@@ -291,7 +309,7 @@ def _parse_json(text: str) -> dict | None:
 
 def normalize_one(name: str, cat: dict, llm, *, max_retry=5) -> dict:
     meta = cat[name]
-    names = set(cat.keys())
+    names = set(cat.keys()) | _builtin_tool_names()
     sib_block = _siblings_block(name, meta["object"], cat)
     # nomi dei tool validi che il NON: puo' citare (grounding anti-allucinazione)
     valid_refs = sorted({n for n, m in cat.items()
