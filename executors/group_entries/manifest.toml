@@ -9,8 +9,8 @@ author      = "Roberto Brunialti"
 affinity    = ["group", "raggruppa", "merge", "unisci", "concatena", "dedup", "deduplicate", "join", "combine", "entries"]
 
 [description]
-it = "Unisce N liste di entries (provenienti da step diversi del piano ReAct) in una lista unica deduplicata. Tipico dopo split read_html/read_pdf in una pipeline web: find_urls -> filter_entries(html) + filter_entries(pdf) -> read_urls_html + read_urls_pdf -> group_entries -> describe_entries. Args: entries_lists (lista di liste di dict) o entries (lista piatta, treated come N=1). dedup_key (default 'url') indica il campo per deduplicazione: entries con stessa chiave vengono fuse mantenendo la prima occorrenza. dedup_key=None -> niente dedup. Output: entries (lista unica), total_in (input pre-dedup), dedupes (numero di entry scartate)."
-en = "Joins N lists of entries (coming from different steps of the ReAct plan) into a single deduplicated list. Typical after a read_html/read_pdf split in a web pipeline: find_urls -> filter_entries(html) + filter_entries(pdf) -> read_urls_html + read_urls_pdf -> group_entries -> describe_entries. Args: entries_lists (list of lists of dicts) or entries (flat list, treated as N=1). dedup_key (default 'url') indicates the field for deduplication: entries with the same key are merged, keeping the first occurrence. dedup_key=None -> no dedup. Output: entries (single list), total_in (input pre-dedup), dedupes (number of entries discarded)."
+it = "SCOPO: unisce e deduplica entries da più liste. PATTERN: group_entries(entries_lists=[...], dedup_key='url'). NON: calcolare statistiche (-> compute_entries); filtrare (-> filter_entries). OUT: entries=[...], total_in, dedupes."
+en = "SCOPO: merges and deduplicates entries from multiple lists. PATTERN: group_entries(entries_lists=[...], dedup_key='url'). NON: compute stats (-> compute_entries); filter (-> filter_entries). OUT: entries=[...], total_in, dedupes."
 
 [code]
 files  = ["group_entries.py"]

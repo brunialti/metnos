@@ -11,8 +11,8 @@ revertible  = false
 lifecycle   = "active"
 
 [description]
-it = "Calcola statistiche descrittive su una lista di numeri (int o float). Pattern fields[]: l'utente seleziona quali metriche calcolare. Default fields=['n','mean','median','stdev','min','max']; usa 'all' per tutto. Field disponibili: n (count valori validi), mean, median, stdev, variance, min, max, range, sum, p25/p50/p75/p90/p95/p99 (percentili), n_missing (None/NaN/inf/non-numerici scartati). Pure compute: niente I/O, niente dipendenze (solo statistics+math da stdlib). Robusto a None, NaN, infinity (scartati come missing). Su lista vuota: ok=true, tutto a None tranne n=0."
-en = "Calculate descriptive statistics on a list of numbers (int or float). Pattern fields[]: the user selects which metrics to calculate. Default fields=['n','mean','median','stdev','min','max']; use 'all' for everything. Available fields: n (count of valid values), mean, median, stdev, variance, min, max, range, sum, p25/p50/p75/p90/p95/p99 (percentiles), n_missing (None/NaN/inf/non-numeric discarded). Pure compute: no I/O, no dependencies (only statistics+math from stdlib). Robust to None, NaN, infinity (discarded as missing). On empty list: ok=true, everything is None except n=0."
+it = "SCOPO: calcola statistiche descrittive su numeri. PATTERN: describe_numbers(values=[1,2], fields=['mean']). NON: calcolare su testo o immagini. OUT: entries=[{n,mean,median,stdev,min,max}] con campi reali."
+en = "SCOPO: calculates descriptive statistics on numbers. PATTERN: describe_numbers(values=[1,2], fields=['mean']). NON: calculate on text or images. OUT: entries=[{n,mean,median,stdev,min,max}] with real fields."
 
 [code]
 files  = ["describe_numbers.py"]

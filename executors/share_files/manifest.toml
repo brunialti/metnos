@@ -19,8 +19,8 @@ revertible = false
 lifecycle  = "active"
 
 [description]
-it = "Concede accesso (ACL grant) a uno o piu' file remoti senza spostarli ne' duplicarli (ADR 0128). USO CORRETTO: 'condividi questo file con anna@example.com in sola lettura' -> share_files(file_id='abc', email='anna@example.com', role='reader'). NON CONFONDERE CON `send_messages` (invia una COPIA via mail), `set_messages` (cambia label/metadata) o `write_files` (sovrascrive contenuto). Type: 'user'/'group' richiede email; 'domain' richiede domain; 'anyone' link pubblico. Role: 'reader' (default), 'commenter', 'writer'. Backend: solo client='google_workspace' (filesystem locale non ha ACL standard)."
-en = "Grant access (ACL grant) to one or more remote files without moving or duplicating them (ADR 0128). CORRECT USE: 'share this file with anna@example.com read-only' -> share_files(file_id='abc', email='anna@example.com', role='reader'). DO NOT CONFUSE WITH `send_messages` (sends a COPY via mail), `set_messages` (changes label/metadata) or `write_files` (overwrites content). Type: 'user'/'group' requires email; 'domain' requires domain; 'anyone' public link. Role: 'reader' (default), 'commenter', 'writer'. Backend: only client='google_workspace' (local filesystem has no standard ACL)."
+it = "SCOPO: concede permessi di accesso a file Drive senza duplicarli. PATTERN: share_files(file_id='abc', email='anna@example.com', role='reader'). NON: inviare copie (send_messages) o sovrascrivere (write_files). OUT: results=[...]."
+en = "SCOPO: grants access permissions to Drive files without duplicating them. PATTERN: share_files(file_id='abc', email='anna@example.com', role='reader'). NON: sending copies (send_messages) or overwriting (write_files). OUT: results=[...]."
 
 [code]
 files  = ["share_files.py"]

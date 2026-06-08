@@ -18,8 +18,8 @@ revertible  = true
 lifecycle   = "active"
 
 [description]
-it = "Appende testo alla fine di un Google Doc esistente. Append e' semantica `write` con tag implicito (§2.2: no verbo separato). USO CORRETTO: write_files_doc(document_id='1abc...', text='Nuovo paragrafo\\n'). NON CONFONDERE CON: `create_files_doc` (crea NUOVO doc, qui appende a uno esistente), `write_files` (file locale). Il backend calcola l'indice end-of-body e inserisce con batchUpdate. Newline trailing garantito. §2.6 trasformativo: ritorna `results: list[{document_id, characters_appended}]`. Reversibile via undo_last_turn: elimina il range appeso (inserted_at + characters_appended). Se OAuth manca, decision='needs_inputs'."
-en = "Appends text to the end of an existing Google Doc. Append is `write` semantics with implicit tag (§2.2: no separate verb). CORRECT USE: write_files_doc(document_id='1abc...', text='New paragraph\\n'). DO NOT CONFUSE WITH: `create_files_doc` (creates NEW doc, here it appends to an existing one), `write_files` (local file). The backend computes the end-of-body index and inserts via batchUpdate. Trailing newline guaranteed. §2.6 transformative: returns `results: list[{document_id, characters_appended}]`. Reversible via undo_last_turn: deletes the appended range (inserted_at + characters_appended). If OAuth missing, decision='needs_inputs'."
+it = "SCOPO: appendi testo a un Google Doc esistente (.doc). PATTERN: write_files_doc(document_id='1abc...', text='...'). NON: creare nuovo doc (-> create_files_doc); file locale (-> write_files). OUT: results=[{document_id, characters_appended}]."
+en = "SCOPO: append text to an existing Google Doc (.doc). PATTERN: write_files_doc(document_id='1abc...', text='...'). NON: create new doc (-> create_files_doc); local file (-> write_files). OUT: results=[{document_id, characters_appended}]."
 
 [code]
 files  = ["write_files_doc.py"]

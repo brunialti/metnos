@@ -25,8 +25,8 @@ name = "metnos:read"
 name = "metnos:write"
 
 [description]
-it = "Converte file fra formati diversi (JPG<->PNG/WEBP/GIF, MP4<->WEBM, video->mp3, audio re-encode). Vettoriale: accetta una lista di paths. Dispatch deterministico per coppia (src_ext, to_format) via `ffmpeg`. DEVI passare `to_format` come estensione lowercase senza punto (es. 'jpg', 'webm', 'mp3'). Default dst_dir = stessa cartella del sorgente. `overwrite=false` di default: salta se la destinazione esiste. NON DEVI usare questo executor per estrarre testo da PDF/HTML (usa `read_files_pdf`/`read_files_html`: leggere contenuto e' `read`, non `change`). NON DEVI usare per decomprimere zip/tar/gz (usa `extract_files_zip`/`extract_files_gz`)."
-en = "Converts files between formats (JPG<->PNG/WEBP/GIF, MP4<->WEBM, video->mp3, audio re-encode). Vectorized: accepts a list of paths. Deterministic dispatch per (src_ext, to_format) pair via `ffmpeg`. You MUST pass `to_format` as lowercase extension without dot (e.g. 'jpg', 'webm', 'mp3'). Default dst_dir = same folder as source. `overwrite=false` by default: skip if destination exists. You MUST NOT use this executor to extract text from PDF/HTML (use `read_files_pdf`/`read_files_html`: reading content is `read`, not `change`). You MUST NOT use it to decompress zip/tar/gz (use `extract_files_zip`/`extract_files_gz`)."
+it = "SCOPO: converte file tra formati (JPG/PNG/WEBP/GIF, MP4/WEBM, audio). PATTERN: change_files_format(paths=[...], to_format='jpg'). NON: estrarre testo (-> read_files); decomprimere archivi (-> compress_files). OUT: results=[...]."
+en = "SCOPO: converts files between formats (JPG/PNG/WEBP/GIF, MP4/WEBM, audio). PATTERN: change_files_format(paths=[...], to_format='jpg'). NON: extract text (-> read_files); decompress archives (-> compress_files). OUT: results=[...]."
 
 [code]
 files  = ["change_files_format.py"]
