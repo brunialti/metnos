@@ -16,8 +16,8 @@ revertible = true
 reverse_pattern = "restore_blob_backup"
 
 [description]
-it = "Rimuove uno o piu' file (NON directory: usa `delete_dirs`). Accetta sempre una lista (anche di un solo path, o vuota). Reversibile: ogni file rimosso ha un backup blob in _history (restore via runtime). Safety: rifiuta directory (errore esplicito), system files, path fuori scope. Best-effort: ogni path indipendente. USO CORRETTO: `cancella i file .tmp` → `delete_files(paths=...)`. NON CONFONDERE CON `delete_dirs` (rimuove cartelle vuote/ricorsivo) o `move_files` (sposta senza eliminare)."
-en = "Removes one or more files (NOT directories: use `delete_dirs`). Always accepts a list (even with a single path, or empty). Reversible: each removed file has a blob backup in _history (restore via runtime). Safety: rejects directories (explicit error), system files, paths outside scope. Best-effort: each path independent. CORRECT USE: `delete the .tmp files` → `delete_files(paths=...)`. DO NOT CONFUSE WITH `delete_dirs` (removes empty/recursive dirs) or `move_files` (relocates without erasing)."
+it = "SCOPO: cancella file (non directory). PATTERN: delete_files(paths=[\"/tmp/a.tmp\"]). NON: eliminare cartelle (-> delete_dirs) o spostare file (-> move_files). OUT: results=[...], best-effort."
+en = "SCOPO: delete files (not directories). PATTERN: delete_files(paths=[\"/tmp/a.tmp\"]). NON: removing directories (-> delete_dirs) or moving files (-> move_files). OUT: results=[...], best-effort."
 
 [code]
 files  = ["delete_files.py"]

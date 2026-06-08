@@ -14,8 +14,8 @@ affinity    = [
             ]
 
 [description]
-it = "Rimuove una o piu' directory in scope di scrittura. Accetta sempre una lista (anche di un solo path, o vuota). Default: rimuove SOLO directory vuote (sicuro). Per rimozione ricorsiva di un albero non vuoto serve `force=true` esplicito (l'utente lo chiede). Best-effort: ogni dir e' indipendente, una failure non blocca le altre. Operazione critical irreversibile (le sotto-cartelle e i file rimossi NON sono restorabili senza backup esterno)."
-en = "Removes one or more directories within writing scope. Always accepts a list (even with a single path, or empty). Default: removes ONLY empty directories (safe). For recursive removal of a non-empty tree, an explicit `force=true` is required (the user asks for it). Best-effort: each dir is independent, one failure does not block the others. Irreversible critical operation (removed sub-folders and files ARE NOT restorable without an external backup)."
+it = "SCOPO: cancella directory (vuote o forzate). PATTERN: delete_dirs(paths=[\"/tmp\"], force=false). NON: creare (-> create_dirs); elencare (-> list_dirs); cercare (-> find_dirs). OUT: results=[...], best-effort."
+en = "SCOPO: delete directories (empty or forced). PATTERN: delete_dirs(paths=[\"/tmp\"], force=false). NON: create (-> create_dirs); list (-> list_dirs); find (-> find_dirs). OUT: results=[...], best-effort."
 
 [code]
 files  = ["delete_dirs.py"]

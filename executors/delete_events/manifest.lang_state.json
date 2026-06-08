@@ -1,14 +1,14 @@
 {
   "description": {
     "it": {
-      "version_hash": "sha256:56aaa0cf49092fd8d41f585db3f28f59e72594163d9d55bf2449e88dad275efa",
+      "version_hash": "sha256:b97c3a3c85b6327f5759dec05fe03cb2a1758d384e1a9511b0ba516d31466f15",
       "source_lang": null,
       "source_hash": null
     },
     "en": {
-      "version_hash": "sha256:b5de518d6270d4bcb9515f6d4987273a8070b3ef7dad44ff2704e6027e4cf797",
+      "version_hash": "sha256:72835c43709580d2f9015b708719654e18d755c81c754c360c5e6aa5db233a2c",
       "source_lang": "it",
-      "source_hash": "sha256:48a9f0d0575c16dcb132b6f02f09c734f343c5295d1375029f924406395e4fd2"
+      "source_hash": "sha256:b97c3a3c85b6327f5759dec05fe03cb2a1758d384e1a9511b0ba516d31466f15"
     }
   },
   "args.event_id.description": {

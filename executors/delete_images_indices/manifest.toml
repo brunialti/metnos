@@ -11,8 +11,8 @@ affinity    = ["cancella", "delete", "rimuovi", "remove", "indice", "index", "re
 revertible  = false
 
 [description]
-it = "Cancella l'indice persistente delle immagini in `base_path` per il tipo specificato. `idx='scene'|'persons'|'gps'|'all'` (default 'all'). Operazione NON reversibile (no blob backup di default): usa `dry_run=true` per vedere cosa cancellerebbe senza toccare niente. NON CONFONDERE CON: `delete_files` (cancella le foto reali sul disco); questo cancella SOLO il derivato persistente in `~/.local/share/metnos/index/image/`. USO CORRETTO: free-up storage o rebuild forzato (alternativa a force=true di create_images_indices). Output: `{ok, deleted: [paths], freed_bytes, dry_run}`."
-en = "Delete the persistent image index in `base_path` for the specified type. `idx='scene'|'persons'|'gps'|'all'` (default 'all'). Operation is NOT reversible (no blob backup by default): use `dry_run=true` to see what would be deleted without touching anything. DO NOT CONFUSE WITH: `delete_files` (deletes actual photos on disk); this ONLY deletes the persistent derivative in `~/.local/share/metnos/index/image/`. CORRECT USE: free-up storage or forced rebuild (alternative to force=true in create_images_indices). Output: `{ok, deleted: [paths], freed_bytes, dry_run}`."
+it = "SCOPO: cancella l'indice persistente delle immagini. PATTERN: delete_images_indices(base_path=\"...\", idx=\"all\"). NON: cancellare foto reali (-> delete_files); ricostruire (-> create_images_indices). OUT: {ok, deleted:[paths], freed_bytes, dry_run}."
+en = "SCOPO: delete the persistent image index. PATTERN: delete_images_indices(base_path=\"...\", idx=\"all\"). NON: delete actual photos (-> delete_files); rebuild (-> create_images_indices). OUT: {ok, deleted:[paths], freed_bytes, dry_run}."
 
 [code]
 files  = ["delete_images_indices.py"]
