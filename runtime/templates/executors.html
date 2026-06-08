@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}Metnos admin · executors{% endblock %}
+{% block body %}
+<h1>Catalog ({{ rows|length }})</h1>
+<p><a class="btn" href="/admin/executors/stats">stats &amp; grafici</a></p>
+<table>
+  <thead>
+    <tr><th>name</th><th>version</th><th>lifecycle</th><th>source</th>
+        <th>caps</th><th>revertible</th></tr>
+  </thead>
+  <tbody>
+  {% for r in rows %}
+    <tr>
+      <td><code>{{ r.name }}</code></td>
+      <td>{{ r.version }}</td>
+      <td>
+        {% if r.lifecycle == "active" %}<span class="chip ok">{{ r.lifecycle }}</span>
+        {% elif r.lifecycle == "deprecated" %}<span class="chip warn">{{ r.lifecycle }}</span>
+        {% elif r.lifecycle == "archived" %}<span class="chip bad">{{ r.lifecycle }}</span>
+        {% else %}<span class="chip">{{ r.lifecycle }}</span>{% endif %}
+      </td>
+      <td><span class="chip">{{ r.source }}</span></td>
+      <td class="muted">{{ r.capabilities|length }}</td>
+      <td>{{ "sì" if r.revertible else "no" }}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

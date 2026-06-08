@@ -1,0 +1,112 @@
+{% extends "base.html" %}
+{% block title %}Metnos admin · user {{ user.name }}{% endblock %}
+{% block body %}
+<p><a href="/admin/users">&larr; tutti gli utenti</a></p>
+<h1>{{ user.name }}
+  {% if user.role == "host" %}<span class="chip ok">host</span>
+  {% else %}<span class="chip">guest</span>{% endif %}
+</h1>
+
+<div class="section">
+  <h2>Anagrafica</h2>
+  <dl class="kv">
+    <dt>id</dt><dd><code>{{ user.id }}</code></dd>
+    <dt>created_at</dt><dd>{{ user.created_at }}</dd>
+  </dl>
+  <form method="post" action="/admin/users/{{ user.id }}/update" class="user-form">
+    <label for="f_display">display_name</label>
+    <input id="f_display" type="text" name="display_name"
+           value="{{ user.display_name or '' }}" placeholder="Roberto">
+
+    <label for="f_email">email</label>
+    <input id="f_email" type="email" name="email"
+           value="{{ user.email or '' }}" placeholder="nome@dominio.it">
+
+    <label for="f_aut">autonomy_level</label>
+    <select id="f_aut" name="autonomy_level">
+      <option value="read_only"{% if user.autonomy_level == "read_only" %} selected{% endif %}>read_only</option>
+      <option value="restricted"{% if user.autonomy_level == "restricted" %} selected{% endif %}>restricted</option>
+      <option value="full"{% if user.autonomy_level == "full" %} selected{% endif %}>full</option>
+    </select>
+
+    <label for="f_notes" class="top">notes</label>
+    <textarea id="f_notes" name="notes" rows="2">{{ user.notes or '' }}</textarea>
+
+    <span></span>
+    <button class="btn" type="submit">salva</button>
+  </form>
+</div>
+
+<style>
+  /* User detail — anagrafica e form di update allineati a griglia. */
+  .kv{display:grid;grid-template-columns:140px 1fr;gap:.3rem .8rem;
+       align-items:baseline;margin:.5rem 0 1rem;}
+  .kv dt{color:#555;font-weight:600;}
+  .kv dd{margin:0;}
+  .user-form{display:grid;grid-template-columns:140px 1fr;gap:.6rem .8rem;
+              align-items:center;max-width:560px;margin-top:.5rem;}
+  .user-form label{color:#333;font-weight:500;}
+  .user-form label.top{align-self:start;padding-top:.4rem;}
+  .user-form input,.user-form select,.user-form textarea{
+    width:100%;padding:.35rem .5rem;font:inherit;
+    border:1px solid #c8cdd6;border-radius:.3rem;background:#fff;}
+  .user-form input:focus,.user-form select:focus,.user-form textarea:focus{
+    outline:none;border-color:#3a4d6c;box-shadow:0 0 0 2px rgba(58,77,108,.18);}
+  .user-form textarea{resize:vertical;min-height:2.6em;}
+  .user-form button{justify-self:start;}
+</style>
+
+<div class="section">
+  <h2>Canali</h2>
+  <table>
+    <thead><tr><th>channel</th><th>recipient_id</th><th>state</th><th>actions</th></tr></thead>
+    <tbody>
+    {% for c in user.channels %}
+      <tr>
+        <td><span class="chip">{{ c.channel }}</span></td>
+        <td><code>{{ c.recipient_id or "-" }}</code></td>
+        <td>
+          {% if c.verified %}<span class="chip ok">verified</span>
+          {% else %}<span class="chip warn">pending</span>{% endif %}
+        </td>
+        <td>
+          <form method="post" action="/admin/users/{{ user.id }}/channels/{{ c.channel }}/remove" style="display:inline">
+            <button class="btn" type="submit"
+                    onclick="return confirm('Scollegare {{ c.channel }} da {{ user.name }}?');">
+              scollega
+            </button>
+          </form>
+        </td>
+      </tr>
+    {% else %}
+      <tr><td colspan="4" class="muted">nessun canale</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  <h3 style="margin-top:1rem">Pair nuovo canale</h3>
+  <form method="post" action="" class="row">
+    <label>channel
+      <select id="ch-select" name="channel">
+        <option value="telegram" selected>telegram</option>
+        <option value="mail">mail</option>
+        <option value="http">http</option>
+      </select>
+    </label>
+    <button class="btn" type="button" onclick="
+      var ch=document.getElementById('ch-select').value;
+      this.form.action='/admin/users/{{ user.id }}/channels/'+ch+'/pair';
+      this.form.submit();
+    ">emetti token</button>
+  </form>
+</div>
+
+<div class="section">
+  <h2>Operazioni</h2>
+  <form method="post" action="/admin/users/{{ user.id }}/delete" style="display:inline">
+    <button class="btn" type="submit"
+            onclick="return confirm('Eliminare {{ user.name }}? L\\'operazione è irreversibile.');">
+      elimina utente
+    </button>
+  </form>
+</div>
+{% endblock %}

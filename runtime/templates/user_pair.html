@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}Metnos admin · pair {{ user.name }}{% endblock %}
+{% block body %}
+<p><a href="/admin/users/{{ user.id }}">&larr; torna a {{ user.name }}</a></p>
+<h1>Pairing {{ channel }} per {{ user.name }}</h1>
+
+<div class="section">
+  <h2>Token emesso</h2>
+  <p><b>Token (valido 1 ora, monouso):</b></p>
+  <p><code style="font-size:1.05em; word-break:break-all;">{{ token }}</code></p>
+  <p>{{ instructions }}</p>
+
+  {% if channel == "http" and pair_url %}
+  <h3>Istruzioni per {{ user.name }}</h3>
+  <ol>
+    <li>Copia questo URL e aprilo sul device target (cellulare, notebook, ...):
+      <pre><code style="word-break:break-all">{{ pair_url }}</code></pre>
+    </li>
+    <li>Il device viene reindirizzato a Metnos con un cookie persistente (90 giorni).</li>
+    <li>Da quel momento il device puo' usare la chat senza re-login.</li>
+  </ol>
+  <p class="muted">
+    Trasferisci il URL via canale fidato (Telegram a te stesso, AirDrop,
+    copia-incolla diretto). Chi NON ha il URL non puo' loggarsi.
+  </p>
+  {% elif channel == "telegram" %}
+  <h3>Istruzioni per {{ user.name }}</h3>
+  <ol>
+    <li>Aprire una chat col bot Telegram di Metnos.</li>
+    <li>Inviare:
+      <pre><code>/start {{ token }}</code></pre>
+    </li>
+    <li>Il bot risponde con un messaggio di conferma.</li>
+  </ol>
+  {% endif %}
+
+  <p class="muted">
+    Se il token scade prima dell'uso, torna sul dettaglio utente e
+    rigenerane uno nuovo. Il token e' monouso: una volta consumato
+    non e' piu' valido.
+  </p>
+</div>
+{% endblock %}

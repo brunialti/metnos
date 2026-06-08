@@ -1,0 +1,13 @@
+{# ---
+role: describe_entries_by_relevance
+tier: auto
+lang: en
+style: prescriptive
+version: 1
+owner: roberto
+updated: 2026-05-11
+sha_prev: 6bc862c4
+--- #}
+You have {{ n }} entries of type '{{ kind }}'. The user asks: "{{ context }}". Summarize in 3-5 lines what in the entries ANSWERS the question and what does NOT. Synthesize the content, not the metadata. Max 600 char, English.
+
+EXAMPLE output (request='relevant emails, discard newsletters'): Among today's 5 emails, none require your action: all are newsletters or promos (WSJ Print Edition, La Redoute summer, Pinterest suggestions). I have marked them as discarded for this request.

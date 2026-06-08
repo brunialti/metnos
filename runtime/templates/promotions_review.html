@@ -1,0 +1,154 @@
+{% extends "base.html" %}
+{% block title %}Metnos admin · promotions review{% endblock %}
+{% block body %}
+<h1>Review promozioni synth</h1>
+<p class="muted">{{ description }}</p>
+
+{% if flash %}
+  <div class="section" style="background:#e8f5e8;border-color:#9c9">
+    {{ flash }}
+  </div>
+{% endif %}
+
+{% set groups = groups or {} %}
+{% set total_decisions = (groups.get("promoted_grace", {}).get("count", 0)
+                         + groups.get("review_needed", {}).get("count", 0)
+                         + groups.get("archived", {}).get("count", 0)) %}
+
+{% if total_decisions == 0 %}
+  <div class="section">
+    <p class="muted">Nessuna decisione in attesa.</p>
+    <p><a class="btn" href="/admin/promotions">Torna alla lista promozioni</a></p>
+  </div>
+{% else %}
+
+<form method="post" action="/admin/promotions/review"
+      autocomplete="off" style="display:flex;flex-direction:column;gap:1rem;">
+  <input type="hidden" name="dialog_id" value="{{ dialog_id }}">
+
+  {# Sezione "Promossi in grazia" (state=promoted_grace) #}
+  {% set grace_steps = dialog | selectattr("_meta.state", "equalto", "promoted_grace") | list %}
+  <details open class="promotion-section">
+    <summary>
+      <strong>Promossi in grazia</strong>
+      <span class="muted">
+        ({{ groups.get("promoted_grace", {}).get("count", 0) }}
+        {% if groups.get("promoted_grace", {}).get("more", 0) > 0 %}
+          + {{ groups["promoted_grace"]["more"] }} altri non mostrati
+        {% endif %})
+      </span>
+    </summary>
+    {% for step in grace_steps %}
+      <div class="card">
+        <p>{{ step.prompt|safe }}</p>
+        {% if step._meta.practical_example %}
+          <details>
+            <summary class="muted">esempio pratico</summary>
+            <div class="example-body">{{ step._meta.practical_example }}</div>
+          </details>
+        {% endif %}
+        <div class="radio-row">
+          {% for choice in step.schema.choices %}
+            <label>
+              <input type="radio" name="{{ step.var }}"
+                     value="{{ choice|e }}"
+                     {% if choice == step.default %}checked{% endif %}>
+              {{ choice|e }}
+            </label>
+          {% endfor %}
+        </div>
+      </div>
+    {% endfor %}
+  </details>
+
+  {# Sezione "Da decidere" (state=review_needed) #}
+  {% set review_steps = dialog | selectattr("_meta.state", "equalto", "review_needed") | list %}
+  <details open class="promotion-section">
+    <summary>
+      <strong>Da decidere</strong>
+      <span class="muted">
+        ({{ groups.get("review_needed", {}).get("count", 0) }}
+        {% if groups.get("review_needed", {}).get("more", 0) > 0 %}
+          + {{ groups["review_needed"]["more"] }} altri non mostrati
+        {% endif %})
+      </span>
+    </summary>
+    {% for step in review_steps %}
+      <div class="card">
+        <p>{{ step.prompt|safe }}</p>
+        {% if step._meta.practical_example %}
+          <details>
+            <summary class="muted">esempio pratico</summary>
+            <div class="example-body">{{ step._meta.practical_example }}</div>
+          </details>
+        {% endif %}
+        <div class="radio-row">
+          {% for choice in step.schema.choices %}
+            <label>
+              <input type="radio" name="{{ step.var }}"
+                     value="{{ choice|e }}"
+                     {% if choice == step.default %}checked{% endif %}>
+              {{ choice|e }}
+            </label>
+          {% endfor %}
+        </div>
+      </div>
+    {% endfor %}
+  </details>
+
+  {# Sezione "Bocciati recenti" (state=archived 7d) #}
+  {% set archived_steps = dialog | selectattr("_meta.state", "equalto", "archived") | list %}
+  <details open class="promotion-section">
+    <summary>
+      <strong>Bocciati recenti</strong>
+      <span class="muted">
+        ({{ groups.get("archived", {}).get("count", 0) }}
+        {% if groups.get("archived", {}).get("more", 0) > 0 %}
+          + {{ groups["archived"]["more"] }} altri non mostrati
+        {% endif %})
+      </span>
+    </summary>
+    {% for step in archived_steps %}
+      <div class="card">
+        <p>{{ step.prompt|safe }}</p>
+        {% if step._meta.practical_example %}
+          <details>
+            <summary class="muted">esempio pratico</summary>
+            <div class="example-body">{{ step._meta.practical_example }}</div>
+          </details>
+        {% endif %}
+        <div class="radio-row">
+          {% for choice in step.schema.choices %}
+            <label>
+              <input type="radio" name="{{ step.var }}"
+                     value="{{ choice|e }}"
+                     {% if choice == step.default %}checked{% endif %}>
+              {{ choice|e }}
+            </label>
+          {% endfor %}
+        </div>
+      </div>
+    {% endfor %}
+  </details>
+
+  <div style="display:flex;gap:.5rem;margin-top:.5rem;">
+    <button type="submit" class="btn">Applica decisioni</button>
+    <a class="btn" href="/admin/promotions"
+       onclick="return confirm('Annullare la review?');">Annulla</a>
+  </div>
+</form>
+{% endif %}
+
+<style>
+  .promotion-section{border:1px solid #ccc;border-radius:.3rem;padding:.6rem;}
+  .promotion-section summary{cursor:pointer;padding:.2rem 0;}
+  .promotion-section .card{margin:.4rem 0;padding:.6rem;
+                              background:#f8f8f8;border-radius:.2rem;}
+  .promotion-section .card .example-body{font-size:.85em;
+                              white-space:pre-wrap;margin-top:.4rem;
+                              padding:.4rem;background:#fff;
+                              border:1px solid #ddd;border-radius:.2rem;}
+  .promotion-section .radio-row{margin-top:.4rem;display:flex;
+                              gap:1rem;flex-wrap:wrap;}
+</style>
+{% endblock %}

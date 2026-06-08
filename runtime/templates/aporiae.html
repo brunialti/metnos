@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+{% block title %}Metnos admin · Aporiae registry{% endblock %}
+{% block body %}
+<h1>Aporiae (ἀπορία) — vicoli ciechi onesti</h1>
+<p class="muted">
+  Quando neanche Pronoia (Πρόνοια) puo' salvare, Aporia riconosce il limite,
+  classifica la lacuna e suggerisce azione concreta per evolvere il sistema.<br>
+  Path evolutivo: <b>utente risolve la lacuna → Praxis impara la nuova capability</b>.
+</p>
+
+{% if legacy_notice %}
+<div style="background:#fff3cd;border:1px solid #ffe69c;border-radius:6px;padding:.8rem 1rem;margin:.8rem 0">
+  <b>{{ legacy_notice }}</b> — il flusso decisionale vivo è Engine v2;
+  questo pannello legacy non riceve più dati.
+</div>
+{% endif %}
+
+<h2>Stats per root cause</h2>
+<table class="compact">
+  <thead><tr><th>root_cause</th><th>n distinct</th><th>n occurrences</th></tr></thead>
+  <tbody>
+  {% for cause, c in (stats.by_root_cause or {}).items() %}
+    <tr>
+      <td><code>{{ cause }}</code></td>
+      <td>{{ c.count }}</td>
+      <td>{{ c.occurrences }}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+<p class="muted">Resolved: {{ stats.n_resolved or 0 }}</p>
+
+<h2>Lacune aperte ({{ lacune|length }})</h2>
+{% if lacune %}
+<table>
+  <thead>
+    <tr>
+      <th>id</th><th>root_cause</th><th>query sample</th>
+      <th>suggested action</th><th>occ.</th><th>last</th><th></th>
+    </tr>
+  </thead>
+  <tbody>
+  {% for l in lacune %}
+    <tr>
+      <td>{{ l.id }}</td>
+      <td>
+        {% if l.root_cause == "user_action_required" %}<span class="chip warn">user</span>
+        {% elif l.root_cause == "missing_executor" %}<span class="chip">executor</span>
+        {% elif l.root_cause == "missing_skill" %}<span class="chip">skill</span>
+        {% elif l.root_cause == "missing_data" %}<span class="chip">data</span>
+        {% else %}<span class="chip muted">{{ l.root_cause }}</span>{% endif %}
+      </td>
+      <td class="muted">{{ l.query_sample[:60] }}</td>
+      <td><small>{{ l.suggested_action[:120] }}</small></td>
+      <td>{{ l.n_occurrences }}</td>
+      <td class="muted">{{ l.ts_last[:16] }}</td>
+      <td>
+        <button class="btn" onclick="resolveLacuna({{ l.id }})">risolto</button>
+      </td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+<script>
+function resolveLacuna(id){
+  fetch('/admin/aporiae/' + id + '/resolve', {method: 'POST'})
+    .then(r => r.json()).then(d => {
+      if(d.ok) location.reload();
+      else alert('error: ' + JSON.stringify(d));
+    });
+}
+</script>
+{% else %}
+<p class="muted">Nessuna lacuna aperta. Sistema in flusso normale.</p>
+{% endif %}
+
+<p class="muted" style="margin-top:1.5rem">
+  Per ogni lacuna chiusa dall'utente (es. condivisa location, costruito index, abilitata skill),
+  Praxis ricomincia il path normale e la query torna a essere risolta da Mētis+Noûs.
+  Dopo 2 esecuzioni successful, auto-promote in Praxis cache.
+</p>
+{% endblock %}

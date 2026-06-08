@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+{% block title %}Metnos admin · promotions{% endblock %}
+{% block body %}
+<div class="section" style="background:#fef8e8;border:1px solid #d4a800;padding:.8rem;margin-bottom:1rem">
+  <strong>{{ msg('UI_CHANGE_DEPRECATION_TITLE') }}</strong>
+  &nbsp;{{ msg('UI_CHANGE_DEPRECATION_BODY') }}
+  &nbsp;<a href="/admin/changes?state=observed" class="btn ok">{{ msg('UI_CHANGE_DEPRECATION_LINK') }}</a>
+</div>
+
+<h1>Promozioni synth</h1>
+
+<form method="get" class="row" style="margin-bottom:.8rem">
+  <label>state:
+    <select name="state" onchange="this.form.submit()">
+      <option value=""{% if state == "" %} selected{% endif %}>tutti</option>
+      <option value="promoted_grace"{% if state == "promoted_grace" %} selected{% endif %}>grace</option>
+      <option value="promoted_finalized"{% if state == "promoted_finalized" %} selected{% endif %}>finalized</option>
+      <option value="review_needed"{% if state == "review_needed" %} selected{% endif %}>review_needed</option>
+      <option value="rolled_back"{% if state == "rolled_back" %} selected{% endif %}>rolled_back</option>
+      <option value="archived"{% if state == "archived" %} selected{% endif %}>archived</option>
+    </select>
+  </label>
+  <label style="margin-left:1rem">days:
+    <input type="number" name="days" value="{{ days }}" min="1" max="365" style="width:5rem" onchange="this.form.submit()">
+  </label>
+  <span class="muted" style="margin-left:1rem">{{ rows|length }} risultati</span>
+</form>
+
+{% if flash %}
+  <div class="section" style="background:#e8f5e8;border-color:#9c9">
+    {{ flash }}
+  </div>
+{% endif %}
+
+<table class="promotions">
+  <thead>
+    <tr><th>id</th><th>name</th><th>state</th><th>promoted_at</th>
+        <th>grace_until</th><th>esempio</th><th>actions</th></tr>
+  </thead>
+  <tbody>
+  {% for r in rows %}
+    <tr>
+      <td><code style="font-size:.85em">{{ r.proposal_id }}</code></td>
+      <td><code>{{ r.name }}</code></td>
+      <td>
+        {% if r.state == "promoted_grace" %}<span class="chip warn">{{ r.state }}</span>
+        {% elif r.state == "promoted_finalized" %}<span class="chip ok">{{ r.state }}</span>
+        {% elif r.state == "review_needed" %}<span class="chip">{{ r.state }}</span>
+        {% elif r.state == "rolled_back" %}<span class="chip bad">{{ r.state }}</span>
+        {% elif r.state == "archived" %}<span class="chip bad">{{ r.state }}</span>
+        {% else %}<span class="chip">{{ r.state }}</span>{% endif %}
+      </td>
+      <td class="muted">{{ r.promoted_at or "-" }}</td>
+      <td class="muted">{{ r.grace_until or "-" }}</td>
+      <td class="example">
+        {% if r.example_html %}{{ r.example_html|safe }}{% else %}<em class="muted">(nessun esempio)</em>{% endif %}
+      </td>
+      <td>
+        {% if r.state in ("promoted_grace", "promoted_finalized") %}
+          <form method="post"
+                action="/admin/promotions/{{ r.proposal_id|urlencode }}/rollback"
+                onsubmit="return confirm('Rollback {{ r.proposal_id }}?');"
+                style="display:inline">
+            <button type="submit" class="btn">rollback</button>
+          </form>
+        {% endif %}
+        {% if r.state == "review_needed" %}
+          <span class="muted">in attesa di review</span>
+        {% endif %}
+        {% if r.state == "rolled_back" %}
+          <span class="muted">{{ r.rolled_back_at or "" }}</span>
+        {% endif %}
+      </td>
+    </tr>
+  {% else %}
+    <tr><td colspan="7" class="muted">nessuna promozione</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+
+<style>
+  .promotions td.example{max-width:480px;font-size:.9em}
+  .promotions td.example p{margin:.2em 0}
+  .promotions td.example code{background:#f4f4f4;padding:.05em .25em}
+</style>
+{% endblock %}

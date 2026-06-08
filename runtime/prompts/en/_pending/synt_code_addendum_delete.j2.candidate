@@ -1,0 +1,76 @@
+{# ---
+role: synt_code_addendum_delete
+tier: wise
+lang: it
+style: few_shot
+version: 1
+owner: roberto
+updated: 2026-05-11
+sha_prev: 0d868c37
+--- #}
+VERB RULES `delete` (in addition to generic):
+
+DEFINITION: `delete` = remove(src). IRREVERSIBLE unless snapshot
+pre-removal + reverse_pattern=`restore_blob_backup`.
+
+UNIVERSAL PSEUDOCODE:
+
+  def invoke(args):
+      entries, results, failed = args.get("entries", []), [], []
+      for i, e in enumerate(entries):
+          try:
+              if not allowed_to_delete(e): raise PermissionError(...)  # protected
+              blob_ref = snapshot(e) if revertible else None
+              remove_src(e)                          # ONLY after snapshot
+              results.append({**identity(e), "blob_sha256": blob_ref})
+          except Exception as ex:
+              failed.append({"index": i, "error": str(ex)})
+
+INVARIANTS:
+MUST: if manifest revertible=True, snapshot of content BEFORE
+  unlink/EXPUNGE (literal bytes for files, raw RFC822 for mail). Convention:
+
+      import os, hashlib
+      _HISTORY = os.path.expanduser(os.environ.get(
+          "METNOS_HISTORY_DIR", "~/.local/share/metnos/_history"))
+      _TURN_DIR = os.path.join(_HISTORY, os.environ.get("METNOS_TURN_ID", "default"), "blob")
+      os.makedirs(_TURN_DIR, exist_ok=True)
+      blob_sha = hashlib.sha256(raw_bytes).hexdigest()
+      blob_path = os.path.join(_TURN_DIR, blob_sha + ".bin")
+      with open(blob_path, "wb") as fh: fh.write(raw_bytes)
+
+  Snapshot failed → entry fails, source is NOT touched.
+MUST: include `blob_path` (absolute path to blob) and `blob_sha256` in results
+  if revertible=True. Without them, restore_blob_backup cannot restore.
+MUST: refuse protected paths via `platform_policy.is_protected_path` and system files
+  via `is_system_file` UNLESS `allow_system=True`.
+MUST: for non-empty directories, request explicit `recursive=True`.
+MUST NOT: delete if snapshot is not confirmed (with revertible=True).
+MUST NOT: `os.rmdir` on non-empty dirs without recursive=True.
+MUST NOT: write `def reverse(...)` (runtime applies restore_blob_backup).
+
+FILESYSTEM DOMAIN (delete_files, delete_dirs):
+- src: e["path"]
+- snapshot: for files = `Path(p).read_bytes()`; for dirs = tarfile.tar.gz of the tree
+- remove: `os.unlink(path)` (file) or `shutil.rmtree(path)` (dir + recursive)
+- results: `{"path": str, "blob_path": str|null, "blob_sha256": str|null}`
+  blob_path = absolute path to the blob file on disk (see INVARIANTS convention).
+
+IMAP DOMAIN (delete_messages):
+- src: e["account"] + e["folder"] + e["uid"]; group by (account, folder).
+- IMAP WARNINGS:
+  * `M.select(_q(folder))` BEFORE every UID-cmd (AUTH state does not accept
+    UID/COPY/STORE/SEARCH/FETCH).
+  * `M.uid(...)` returns `(typ, data)` with `data` = LIST of bytes; use `data[0]`.
+  * `_q(name)` quotes names with spaces/non-ASCII — DEFINE this helper
+    at the top of the file (imaplib does NOT quote automatically):
+
+        def _q(name):
+            if " " in name or any(ord(c) > 127 for c in name):
+                return f'"{name}"'
+            return name
+
+- snapshot: `M.uid("FETCH", uid, "(BODY[])")` for the raw RFC822.
+- remove: `M.uid("STORE", uid, "+FLAGS", "(\\Deleted)")` then `M.expunge()`.
+- results: `{"account":..., "folder":..., "message_id":..., "blob_path":..., "blob_sha256":...}`.
+  blob_path = absolute path to the blob file (see INVARIANTS convention).

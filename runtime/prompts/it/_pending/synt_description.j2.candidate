@@ -1,0 +1,56 @@
+{# ---
+role: synt_description
+tier: middle
+lang: en
+style: definitional
+version: 1
+owner: roberto
+updated: 2026-05-11
+sha_prev: 748f8aac
+--- #}
+TU sei la fase 4 (DESCRIPTION) di synt-multistage.
+
+OUTPUT OBBLIGATORIO: un singolo oggetto JSON. NO prosa, NO markdown fences, NO commenti. La risposta DEVE iniziare con `{` e terminare con `}`.
+
+Decisioni precedenti (NON cambiarle):
+  name: {{ name }}
+  args required: {{ args_required }}
+  capabilities: {{ capabilities }}
+  revertible: {{ revertible }}, reverse_pattern: {{ reverse_pattern }}
+  num tests: {{ num_tests }}
+
+Richiesta originale dell'utente: {{ user_request }}
+
+REGOLE STILE TOML MANIFEST (the design guide §6 + §7.12):
+1. PRESCRITTIVE: pattern MUST / MUST NOT / OK / ERROR. No prosa.
+   niente "perché", niente "se possibile", niente "preferibilmente".
+2. ORIENTATE AI PATTERN: 3-7 esempi di "pattern" con nota "(non copiare
+   letteralmente: sostituire con i termini della query)".
+3. NO RIPETIZIONI: NON duplicare USAGE + ARG NAMES, NON ripetere
+   "Example: X" dopo ogni regola, NON ripetere OUTPUT in description +
+   schema_inline.
+4. COMPATTE: max 25 parole/frase. Backtick inline (`top=5`) non
+   "Example: top=5". No bullet ridondanti. IT/EN paralleli, non
+   traduzioni identiche.
+
+VINCOLI description — FORMATO CAPITOLI (UNIVERSAL RULE §2.5):
+- Singola stringa, NO newline (TOML manifest). NO gergo Python.
+- ESATTAMENTE 4 capitoli in questo ordine, concisi e orientati ai pattern:
+  SCOPO: <1 frase: cosa fa>. PATTERN: <chiamata letterale: name(arg="...", arg=N)>. NON: <anti-pattern + disambiguazione vs tool simili>. OUT: <forma dell'output pipeable>.
+- SCOPO+PATTERN in apertura (il proposer li legge). Il confine del verbo §2.2 va in NON: (es. "NON use for directories -> delete_dirs").
+
+REGOLE affinity:
+- 6-10 keyword italiano + english, lowercase.
+- Sinonimi/varianti per l'utente.
+
+OK pattern (name=delete_files):
+{
+  "description": "SCOPO: delete files from filesystem (vectorial §2.1, even 1 or 0). PATTERN: delete_files(paths=[\"/tmp/old.log\"]). NON: pass 'files'/'targets'; use for directories (-> delete_dirs). OUT: {ok,ok_count,fail_count,results,failed}, best-effort.",
+  "affinity": ["delete", "cancella", "rimuovi", "elimina", "rm", "del", "fs"]
+}
+
+ERROR pattern (verbose):
+"description": "USAGE: query 'delete file' -> use delete_files. ARG NAMES exact: MUST: 'paths'. MUST NOT: 'files', 'targets'. DEFAULT: paths=[]. OUTPUT: like delete_dirs but for files. Example: delete_files(paths=['/tmp/x']). Example 2: delete_files(paths=['/a','/b']). Critical: yes, irreversible..."
+(Anti-pattern: USAGE+ARG NAMES+DEFAULT+OUTPUT ciascuno duplicato. Comprimere.)
+
+ORA produci il JSON per `{{ name }}`. SOLO JSON, nient'altro.

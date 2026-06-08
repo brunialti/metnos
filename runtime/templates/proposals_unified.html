@@ -1,0 +1,253 @@
+{% extends "base.html" %}
+{% block title %}{{ msg('UI_PROP_UNIFIED_TITLE') }}{% endblock %}
+{% block body %}
+<div class="section" style="background:#fef8e8;border:1px solid #d4a800;padding:.8rem;margin-bottom:1rem">
+  <strong>{{ msg('UI_CHANGE_DEPRECATION_TITLE') }}</strong>
+  &nbsp;{{ msg('UI_CHANGE_DEPRECATION_BODY') }}
+  &nbsp;<a href="/admin/changes" class="btn ok">{{ msg('UI_CHANGE_DEPRECATION_LINK') }}</a>
+</div>
+
+<h1>{{ msg('UI_PROP_UNIFIED_TITLE') }}</h1>
+
+<div class="row" style="gap:1.5rem;margin-bottom:.8rem">
+  {% for src, c in source_counts|dictsort %}
+    <div class="muted">
+      <strong>{{ src }}</strong>:
+      {{ c.total }} {{ msg('UI_PROP_TELOS_STATS_TOTAL') }} ·
+      {{ c.pending }} {{ msg('UI_PROP_TELOS_STATS_PENDING') }} ·
+      {{ c.accepted }} {{ msg('UI_PROP_TELOS_STATS_ACCEPTED') }} ·
+      {{ c.rejected }} {{ msg('UI_PROP_TELOS_STATS_REJECTED') }} ·
+      {{ c.staged }} {{ msg('UI_PROP_TELOS_STATS_STAGED') }}
+    </div>
+  {% endfor %}
+</div>
+
+<nav class="tp-tiers">
+  <a class="tp-tier{% if tier == 'top' %} current{% endif %}"
+     href="?tier=top{% if source %}&source={{ source }}{% endif %}">
+    {{ msg('UI_PROP_TELOS_TIER_TOP') }} <span class="badge">{{ tier_counts.top }}</span>
+  </a>
+  <a class="tp-tier{% if tier == 'interesting' %} current{% endif %}"
+     href="?tier=interesting{% if source %}&source={{ source }}{% endif %}">
+    {{ msg('UI_PROP_TELOS_TIER_INTERESTING') }} <span class="badge">{{ tier_counts.interesting }}</span>
+  </a>
+  <a class="tp-tier{% if tier == 'weak' %} current{% endif %}"
+     href="?tier=weak{% if source %}&source={{ source }}{% endif %}">
+    {{ msg('UI_PROP_TELOS_TIER_WEAK') }} <span class="badge">{{ tier_counts.weak }}</span>
+  </a>
+</nav>
+
+<form method="get" class="row tp-filters">
+  <input type="hidden" name="tier" value="{{ tier }}">
+  <label>{{ msg('UI_PROP_UNIFIED_FILTER_SOURCE') }}:
+    <select name="source" onchange="this.form.submit()">
+      <option value=""{% if source == "" %} selected{% endif %}>{{ msg('UI_PROP_TELOS_FILTER_ALL') }}</option>
+      {# Family aggregati prima (telos, introvertiva). #}
+      {% for fam, c in source_counts|dictsort %}
+        <option value="{{ fam }}"{% if source == fam %} selected{% endif %}>— {{ fam }} ({{ c.total }})</option>
+      {% endfor %}
+      {# Sub-source granulari (lens / kind). #}
+      {% for src, n in granular_sources.items() %}
+        <option value="{{ src }}"{% if source == src %} selected{% endif %}>{{ src }} ({{ n }})</option>
+      {% endfor %}
+    </select>
+  </label>
+  <label>
+    <input type="checkbox" name="only_pending" value="1"
+           {% if only_pending %}checked{% endif %}
+           onchange="this.form.submit()">
+    {{ msg('UI_PROP_TELOS_FILTER_ONLY_PENDING') }}
+  </label>
+  <label>
+    <input type="checkbox" name="group_clusters" value="1"
+           {% if group_clusters %}checked{% endif %}
+           onchange="this.form.submit()">
+    {{ msg('UI_PROP_TELOS_FILTER_GROUP') }}
+  </label>
+  <span class="muted">
+    {% set total_all = source_counts.telos.total + source_counts.introvertiva.total %}
+    {{ rows|length }} mostrate · {{ total_all }} totali
+    {% if rows|length < total_all %}
+      <span style="color:#888">(filtra per esplorare oltre)</span>
+    {% endif %}
+  </span>
+</form>
+
+<table class="tp">
+  <thead>
+    <tr>
+      <th>{{ msg('UI_PROP_UNIFIED_COL_SOURCE') }}</th>
+      <th>{{ msg('UI_PROP_TELOS_COL_EA') }}</th>
+      <th>{{ msg('UI_PROP_TELOS_COL_ORIGIN') }}</th>
+      <th>{{ msg('UI_PROP_TELOS_COL_PROPOSAL') }}</th>
+      <th>{{ msg('UI_PROP_TELOS_COL_EXAMPLE') }}</th>
+      <th>{{ msg('UI_PROP_TELOS_COL_IMPACT') }}</th>
+      <th>{{ msg('UI_PROP_TELOS_COL_ACTIONS') }}</th>
+    </tr>
+  </thead>
+  <tbody>
+  {% for r in rows %}
+    <tr>
+      <td><span class="chip {% if r.source == 'telos' %}ok{% else %}warn{% endif %}">{{ r.source }}</span></td>
+      <td class="tp-ea">
+        <strong>{{ "%.3f"|format(r.ranking_score) }}</strong>
+        {% if r.ranking_score >= 0.50 %}<span class="chip ok">{{ msg('UI_PROP_TELOS_BADGE_TOP') }}</span>
+        {% elif r.ranking_score >= 0.45 %}<span class="chip warn">{{ msg('UI_PROP_TELOS_BADGE_HIGH') }}</span>
+        {% endif %}
+        {% if r.paternalism_flag %}<span class="chip bad">{{ msg('UI_PROP_TELOS_BADGE_PATERNALISM') }}</span>{% endif %}
+      </td>
+      <td>
+        <div><span class="chip">{{ r.origin_module }}</span></div>
+        {% if r.telos_id %}<div class="muted" style="margin-top:.2rem">{{ r.telos_id }}</div>{% endif %}
+        {% if r.operator %}<div class="muted">op: {{ r.operator }}</div>{% endif %}
+        {% if r.n_observed %}<div class="muted">{{ msg('UI_PROP_TELOS_N_OBSERVED', n=r.n_observed) }}</div>{% endif %}
+        {% if r.convergence_count and r.convergence_count > 1 %}
+          <div style="margin-top:.3rem">
+            <span class="chip ok">{{ msg('UI_PROP_TELOS_CONVERGENCE', n=r.convergence_count) }}</span>
+            <div class="muted" style="font-size:.85em">{{ r.convergence_lenses|join(", ") }}</div>
+          </div>
+        {% endif %}
+      </td>
+      <td>
+        <div><strong>{{ r.executor_target }}</strong>
+          {% if r.name_status == 'new_valid' %}<span class="chip ok" title="{{ r.name_status_reason or '' }}">{{ msg('UI_PROP_TELOS_NAME_NEW_VALID') }}</span>
+          {% elif r.name_status == 'new_invalid' %}<span class="chip bad" title="{{ r.name_status_reason or '' }}">{{ msg('UI_PROP_TELOS_NAME_NEW_INVALID') }}</span>
+          {% elif r.name_status == 'existing_parametric' %}<span class="chip warn" title="{{ r.name_status_reason or '' }}">{{ msg('UI_PROP_TELOS_NAME_PARAMETRIC') }}</span>
+          {% elif r.name_status == 'existing_pipeline' %}<span class="chip" title="{{ r.name_status_reason or '' }}">{{ msg('UI_PROP_TELOS_NAME_PIPELINE') }}</span>
+          {% elif r.name_status == 'existing_redundant' %}<span class="chip bad" title="{{ r.name_status_reason or '' }}">{{ msg('UI_PROP_TELOS_NAME_REDUNDANT') }}</span>
+          {% endif %}
+        </div>
+        <div style="margin-top:.3rem">{{ r.proposed_action }}</div>
+        {% if r.hallucinated_tool_mentions %}
+          <div style="margin-top:.3rem">
+            <span class="chip bad">{{ msg('UI_PROP_TELOS_HALL_TOOLS') }}: {{ r.hallucinated_tool_mentions|join(", ") }}</span>
+          </div>
+        {% endif %}
+        {% if r.alignment_per_telos %}
+          <details style="margin-top:.4rem">
+            <summary class="muted">{{ msg('UI_PROP_TELOS_RATIONALE') }}</summary>
+            <div style="margin-top:.3rem">{{ r.rationale }}</div>
+            <table class="tp-fits">
+              <thead><tr><th>{{ msg('UI_PROP_TELOS_FIT_TELOS') }}</th><th>{{ msg('UI_PROP_TELOS_FIT_FIT') }}</th><th>{{ msg('UI_PROP_TELOS_FIT_WHY') }}</th></tr></thead>
+              <tbody>
+              {% for f in r.alignment_per_telos %}
+                <tr>
+                  <td>{{ f.telos_id }}</td>
+                  <td>{{ "%.2f"|format(f.fit) }}</td>
+                  <td class="muted">{{ f.why }}</td>
+                </tr>
+              {% endfor %}
+              </tbody>
+            </table>
+          </details>
+        {% elif r.rationale %}
+          <details style="margin-top:.4rem">
+            <summary class="muted">{{ msg('UI_PROP_TELOS_RATIONALE') }}</summary>
+            <div style="margin-top:.3rem">{{ r.rationale }}</div>
+          </details>
+        {% endif %}
+      </td>
+      <td class="tp-example">
+        {% if r.pipeline_observed %}
+          <span class="chip ok">{{ msg('UI_PROP_TELOS_BADGE_PIPELINE_OBSERVED') }}</span>
+        {% elif r.current_path %}
+          <span class="chip warn">{{ msg('UI_PROP_TELOS_BADGE_PARTIAL_MATCH') }}</span>
+        {% elif r.source == 'telos' %}
+          <span class="chip muted">{{ msg('UI_PROP_TELOS_BADGE_SPECULATIVE') }}</span>
+        {% endif %}
+        {% if r.example_query %}
+          <div class="tp-query muted" style="margin-top:.3rem">
+            <em>«{{ r.example_query[:140] }}{% if r.example_query|length > 140 %}…{% endif %}»</em>
+          </div>
+        {% endif %}
+        {% if r.current_path %}
+          <div class="tp-path" style="margin-top:.4rem">
+            <div class="muted">{{ msg('UI_PROP_TELOS_PATH_CURRENT') }}:</div>
+            <code>{{ r.current_path|join(" → ") }}</code>
+          </div>
+          <div class="tp-path" style="margin-top:.2rem">
+            <div class="muted">{{ msg('UI_PROP_TELOS_PATH_NEW') }}:</div>
+            <code>{{ r.new_path_estimated|join(" → ") }}</code>
+          </div>
+        {% endif %}
+      </td>
+      <td class="tp-impact">
+        {% if r.latency_saved_ms_est is not none and r.latency_saved_ms_est > 0 %}
+          <div><strong>{{ msg('UI_PROP_TELOS_LATENCY_SAVED', s=(r.latency_saved_ms_est / 1000)|round(1)) }}</strong></div>
+          <div class="muted">
+            {{ msg('UI_PROP_TELOS_STEPS_LABEL', a=r.current_path|length, b=r.new_path_estimated|length) }}
+          </div>
+        {% elif r.source == 'telos' %}
+          <div class="muted">{{ msg('UI_PROP_TELOS_LATENCY_NA') }}</div>
+        {% endif %}
+      </td>
+      <td class="tp-actions">
+        {% if r.decision %}
+          {% set act = r.decision.action %}
+          {% if act == "accept" %}<span class="chip ok">{{ msg('UI_PROP_TELOS_DECISION_ACCEPTED') }}</span>
+          {% elif act == "reject" %}<span class="chip bad">{{ msg('UI_PROP_TELOS_DECISION_REJECTED') }}</span>
+          {% elif act == "stage" %}<span class="chip">{{ msg('UI_PROP_TELOS_DECISION_STAGED') }}</span>
+          {% endif %}
+        {% else %}
+          <span class="chip muted">{{ msg('UI_PROP_TELOS_DECISION_PENDING') }}</span>
+        {% endif %}
+        <div style="margin-top:.4rem;display:flex;flex-direction:column;gap:.2rem">
+          {% set redundant_warn = (r.name_status == 'existing_redundant') %}
+          <button class="btn ok"
+                  hx-post="/admin/proposals/unified/{{ r.source }}/{{ r.prop_id|urlencode }}/accept"
+                  {% if redundant_warn %}hx-confirm="{{ msg('UI_PROP_TELOS_CONFIRM_REDUNDANT') }}"{% endif %}
+                  hx-target="closest tr" hx-swap="outerHTML">{{ msg('UI_PROP_TELOS_BTN_ACCEPT') }}</button>
+          {% if r.source == 'telos' and r.convergence_count and r.convergence_count > 1 %}
+            <button class="btn ok" style="background:#dfd;border-color:#7a7"
+                    hx-post="/admin/proposals/telos/{{ r.prop_id|urlencode }}/cluster/accept"
+                    hx-confirm="{{ msg('UI_PROP_TELOS_CONFIRM_CLUSTER', n=r.convergence_count) }}"
+                    hx-target="closest tr" hx-swap="outerHTML">
+              {{ msg('UI_PROP_TELOS_BTN_ACCEPT_CLUSTER', n=r.convergence_count) }}
+            </button>
+          {% endif %}
+          <button class="btn bad"
+                  hx-post="/admin/proposals/unified/{{ r.source }}/{{ r.prop_id|urlencode }}/reject"
+                  hx-target="closest tr" hx-swap="outerHTML">{{ msg('UI_PROP_TELOS_BTN_REJECT') }}</button>
+          {% if r.source == 'telos' and r.convergence_count and r.convergence_count > 1 %}
+            <button class="btn bad" style="background:#fdd;border-color:#a77"
+                    hx-post="/admin/proposals/telos/{{ r.prop_id|urlencode }}/cluster/reject"
+                    hx-confirm="{{ msg('UI_PROP_TELOS_CONFIRM_CLUSTER', n=r.convergence_count) }}"
+                    hx-target="closest tr" hx-swap="outerHTML">
+              {{ msg('UI_PROP_TELOS_BTN_REJECT_CLUSTER', n=r.convergence_count) }}
+            </button>
+          {% endif %}
+          <button class="btn"
+                  hx-post="/admin/proposals/unified/{{ r.source }}/{{ r.prop_id|urlencode }}/stage"
+                  hx-target="closest tr" hx-swap="outerHTML">{{ msg('UI_PROP_TELOS_BTN_STAGE') }}</button>
+        </div>
+      </td>
+    </tr>
+  {% else %}
+    <tr><td colspan="7" class="muted">{{ msg('UI_PROP_TELOS_NO_RESULTS') }}</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+
+<style>
+  nav.tp-tiers{display:flex;gap:.5rem;margin:1rem 0 .6rem;border-bottom:1px solid #e0e0e0}
+  nav.tp-tiers .tp-tier{padding:.4rem .8rem;text-decoration:none;color:#456;border-bottom:2px solid transparent;font-weight:500}
+  nav.tp-tiers .tp-tier:hover{background:#f5f5f5}
+  nav.tp-tiers .tp-tier.current{border-bottom-color:var(--accent);color:var(--accent)}
+  nav.tp-tiers .badge{display:inline-block;background:#eee;border-radius:1em;padding:0 .5em;font-size:.85em;color:#666;margin-left:.3em}
+  nav.tp-tiers .tp-tier.current .badge{background:var(--accent);color:#fff}
+  table.tp td{vertical-align:top;font-size:.92em}
+  table.tp td.tp-ea{white-space:nowrap;width:6em}
+  table.tp td.tp-example{max-width:340px}
+  table.tp td.tp-impact{width:9em;white-space:nowrap}
+  table.tp td.tp-actions{width:7em}
+  table.tp code{font-size:.85em;display:block;word-break:break-all;padding:.2em .4em;background:#f7f7f7;border-radius:.2em}
+  table.tp .tp-fits{margin-top:.4rem;font-size:.85em}
+  table.tp .tp-fits th{background:#f7f7f7;font-weight:500}
+  table.tp .tp-query{font-size:.9em;border-left:3px solid #ccd;padding-left:.5em}
+  form.tp-filters{margin:0 0 1rem;padding:.6rem 1rem;background:#fff;border:1px solid #eee;border-radius:.4rem;flex-wrap:wrap;align-items:center}
+  form.tp-filters label{display:inline-flex;gap:.3rem;align-items:center;margin-right:.6rem;font-size:.9em}
+  .chip.muted{background:#eee;color:#777}
+  .btn.ok{background:#efe;border-color:#9c9}
+  .btn.bad{background:#fee;border-color:#c99}
+</style>
+{% endblock %}

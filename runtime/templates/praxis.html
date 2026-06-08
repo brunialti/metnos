@@ -1,0 +1,207 @@
+{% extends "base.html" %}
+{% block title %}Metnos admin · Praxis cognitive memory{% endblock %}
+{% block body %}
+<h1>Praxis Engine — cognitive memory</h1>
+<p class="muted">
+  Mētis (Μῆτις) propone · Noûs (νοῦς) esegue · Praxis (πρᾶξις) ricorda · Pronoia (Πρόνοια) salva dallo stallo.<br>
+  ADR <a href="#">0161</a>. Storage <code>~/.local/share/metnos/praxis.sqlite</code>.
+</p>
+
+{% if legacy_notice %}
+<div style="background:#fff3cd;border:1px solid #ffe69c;border-radius:6px;padding:.8rem 1rem;margin:.8rem 0">
+  <b>{{ legacy_notice }}</b> — il flusso decisionale vivo è Engine v2;
+  questo pannello legacy non riceve più dati.
+</div>
+{% endif %}
+
+<h2>Pronoia config</h2>
+<div style="background:#f8f9fa;padding:.8rem 1rem;border:1px solid #ddd;border-radius:6px;margin:.8rem 0">
+  <p>Pronoia tier (interviene quando Praxis fail):
+    <code id="pronoia_tier_current">{{ pronoia_tier or "wise" }}</code>
+  </p>
+  <form id="pronoia_form" onsubmit="return setPronoiaTier(event)">
+    <select name="tier" id="tier_select">
+      <option value="wise">wise (Gemma 26B locale, gratis, ~15s)</option>
+      <option value="frontier">frontier (Claude Sonnet/Opus, ~$0.01-0.05/turn, ~10s)</option>
+    </select>
+    <button type="submit" class="btn">Aggiorna</button>
+  </form>
+  <p class="muted" style="font-size:.85em">
+    wise = default. frontier = scalabile per casi complessi (costo).
+  </p>
+</div>
+<script>
+function setPronoiaTier(ev){
+  ev.preventDefault();
+  const tier = document.getElementById('tier_select').value;
+  fetch('/admin/praxis/config', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({pronoia_tier: tier})
+  }).then(r => r.json()).then(d => {
+    document.getElementById('pronoia_tier_current').textContent = d.pronoia_tier;
+    alert('Pronoia tier aggiornato a: ' + d.pronoia_tier +
+           (d.persisted ? ' (persistente)' : ' (runtime only — restart resetta)'));
+  });
+  return false;
+}
+</script>
+
+<h2>Stats</h2>
+<div class="kpi-grid">
+  <div class="kpi">
+    <div class="kpi-label">Skills attive</div>
+    <div class="kpi-value">{{ stats.skills_by_status.get("active", 0) }}</div>
+  </div>
+  <div class="kpi">
+    <div class="kpi-label">Shadow / pending</div>
+    <div class="kpi-value">{{ (stats.skills_by_status.get("shadow", 0)) + (stats.skills_by_status.get("pending", 0)) }}</div>
+  </div>
+  <div class="kpi">
+    <div class="kpi-label">Demoted</div>
+    <div class="kpi-value">{{ stats.skills_by_status.get("demoted", 0) }}</div>
+  </div>
+  <div class="kpi">
+    <div class="kpi-label">Observations totali</div>
+    <div class="kpi-value">{{ stats.observations_total }}</div>
+  </div>
+  <div class="kpi">
+    <div class="kpi-label">Anti-skills attivi</div>
+    <div class="kpi-value">{{ stats.anti_skills_active }}</div>
+  </div>
+</div>
+
+<h2>Skills ACTIVE ({{ skills_active|length }})</h2>
+{% if skills_active %}
+<table>
+  <thead>
+    <tr><th>id</th><th>intent_sig</th><th>uses</th><th>ok</th><th>fail</th>
+        <th>align</th><th>source</th><th>version</th><th>last used</th></tr>
+  </thead>
+  <tbody>
+  {% for s in skills_active %}
+    <tr>
+      <td><code>{{ s.id }}</code></td>
+      <td class="muted">{{ s.intent_sig }}</td>
+      <td>{{ s.uses }}</td>
+      <td><span class="chip ok">{{ s.ok_count }}</span></td>
+      <td>{% if s.fail_count > 0 %}<span class="chip bad">{{ s.fail_count }}</span>{% else %}-{% endif %}</td>
+      <td>{{ "%.2f"|format(s.alignment_score) }}</td>
+      <td><span class="chip">{{ s.source }}</span></td>
+      <td>{{ s.version }}</td>
+      <td class="muted">{{ s.ts_last_used or "-" }}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p class="muted">Nessuna skill promossa ancora. Auto-promote scatta a 2 osservazioni + 100% ok.</p>
+{% endif %}
+
+{% if skills_shadow %}
+<h2>Shadow ({{ skills_shadow|length }})</h2>
+<table>
+  <thead><tr><th>id</th><th>intent_sig</th><th>uses</th><th>ok</th></tr></thead>
+  <tbody>
+  {% for s in skills_shadow %}
+    <tr><td><code>{{ s.id }}</code></td>
+        <td class="muted">{{ s.intent_sig }}</td>
+        <td>{{ s.uses }}</td>
+        <td>{{ s.ok_count }}</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+
+<h2>Observations recenti ({{ observations|length }})</h2>
+{% if observations %}
+<table>
+  <thead>
+    <tr><th>id</th><th>intent_sig</th><th>tool chain</th><th>verdict</th>
+        <th>ms</th><th>ts</th><th>promoted</th></tr>
+  </thead>
+  <tbody>
+  {% for o in observations %}
+    <tr>
+      <td>{{ o.id }}</td>
+      <td class="muted">{{ o.intent_sig[:60] }}</td>
+      <td><code>{{ o.tools|join(" → ") }}</code></td>
+      <td>
+        {% if o.verdict == "ok" %}<span class="chip ok">✓</span>
+        {% elif o.verdict == "fail" %}<span class="chip bad">✗</span>
+        {% elif o.verdict == "repeat" %}<span class="chip warn">↻</span>
+        {% else %}<span class="chip">-</span>{% endif %}
+      </td>
+      <td>{{ o.latency_ms or "-" }}</td>
+      <td class="muted">{{ o.ts }}</td>
+      <td>{% if o.promoted_to %}<code>{{ o.promoted_to }}</code>{% else %}-{% endif %}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p class="muted">Nessuna observation. Ogni turno con cascata Praxis ne genera una.</p>
+{% endif %}
+
+{% if anti_skills %}
+<h2>Anti-skills attivi ({{ anti_skills|length }})</h2>
+<table>
+  <thead>
+    <tr><th>intent_hash</th><th>framework_hash</th><th>fails</th>
+        <th>reason</th><th>scade</th></tr>
+  </thead>
+  <tbody>
+  {% for a in anti_skills %}
+    <tr>
+      <td class="muted"><code>{{ a.intent_hash }}</code></td>
+      <td class="muted"><code>{{ a.framework_hash }}</code></td>
+      <td><span class="chip bad">{{ a.fail_count }}</span></td>
+      <td class="muted">{{ a.reason }}</td>
+      <td class="muted">{{ a.ttl_expires_at }}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+
+{% if filler_cache %}
+<h2>Filler cache ({{ filler_cache|length }})</h2>
+<table>
+  <thead>
+    <tr><th>intent_hash</th><th>filler_name</th><th>value</th>
+        <th>uses</th><th>ts_last</th></tr>
+  </thead>
+  <tbody>
+  {% for f in filler_cache %}
+    <tr>
+      <td class="muted"><code>{{ f.intent_hash }}</code></td>
+      <td><code>{{ f.filler_name }}</code></td>
+      <td>{{ f.value }}</td>
+      <td>{{ f.uses }}</td>
+      <td class="muted">{{ f.ts_last }}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+
+{% if stats.skills_by_status %}
+<h2>Distribuzione skills per status</h2>
+<table class="compact">
+  <thead><tr><th>status</th><th>count</th></tr></thead>
+  <tbody>
+  {% for st, n in stats.skills_by_status.items() %}
+    <tr><td>{{ st }}</td><td>{{ n }}</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+
+<style>
+.kpi-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));
+          gap:.8rem;margin:1rem 0}
+.kpi{padding:.8rem 1rem;background:#fff;border:1px solid #ddd;border-radius:6px}
+.kpi-label{font-size:.85em;color:#666;margin-bottom:.3rem}
+.kpi-value{font-size:1.6em;font-weight:600;color:#1a3a6c}
+</style>
+{% endblock %}

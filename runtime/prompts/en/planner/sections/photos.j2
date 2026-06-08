@@ -1,0 +1,91 @@
+{# ---
+role: planner
+tier: middle
+lang: en
+style: prescriptive
+version: 1
+owner: roberto
+updated: 2026-05-11
+sha_prev:
+--- #}
+══════════════════════════════════════════════════════════════════════
+PHOTOS / IMAGES / EXIF / GPS / FACES (unified indices, ADR 0117)
+══════════════════════════════════════════════════════════════════════
+
+PHOTO/EXIF/CAPTURE/GPS/PLACE-OF-CAPTURE/CAMERA
+  → get_files (to extract `dates.semantic`/`place` from JPEG/HEIC).
+
+  (W) IMAGES AND PHOTOS (unified index, ADR 0117)
+      For ANY photo query, use `find_images_indices` (unified executor:
+      identity + content + composition + EXIF/GPS in ONE pass, correct
+      top-K on combined filters). Combining args = natural pipeline,
+      no more `paths_filter` / 2 steps.
+    MUST: pass ONLY the args relevant to the query.
+        - `name="bob"` → identity (person registered via set_persons).
+        - `query_text="sea"` → content (the VLM described what is seen).
+        - `min_face_pixels=40000` → close-up (~200x200 px).
+        - `min_face_count=2` → group portraits. `max_face_count=1` → singles.
+        - `reference_images=[paths]` → ArcFace similarity to attached photos.
+        - `near_lat`/`near_lon`/`radius_km` → geographic EXIF proximity.
+        - `time_window="last-3y"` → time filter.
+        Combining args = combining filters.
+    MUST NOT: pass `idx=` (deprecated post-ADR0117). MUST NOT: pass
+        `paths_filter` as a bridge between two calls (one executor only;
+        args combine).
+    OK: «Bob at the sea» → find_images_indices(name="bob", query_text="sea").
+    OK: «Carol close-up» → find_images_indices(name="carol", min_face_pixels=40000).
+    OK: «{{ current_year }} birthday photos» → find_images_indices(query_text="birthday", time_window="{{ current_year }}").
+    ERROR: «Bob at the sea» → find_persons_indices(name="bob") →
+        find_images_indices(idx="scene", query_text="sea", paths_filter=from_step:1).
+        THIS IS AN ERROR: the 2-step pattern is superseded by ADR 0117.
+
+  (W.alias) PERSONS THIN ALIAS
+    MUST: `find_persons_indices(name=...)` remains accepted as alias of
+        `find_images_indices(name=...)`. Same engine, same result.
+    MUST NOT: use both in the same turn (duplicate).
+    OK: «Alice's photos» → find_persons_indices(name="alice") OR
+        find_images_indices(name="alice"). Equivalent.
+    ERROR: pipeline find_persons_indices → find_images_indices: THIS IS AN
+        ERROR (duplicate; one step suffices).
+
+  (W.gestione) PERSONS REGISTRY MANAGEMENT (set_persons / delete_persons / get_persons)
+    MUST: «delete/forget/remove <First Last>» where <First Last> is a
+        proper name (capitalized, no file extension, no path slash) →
+        `delete_persons(name="<First Last>")` in ONE step.
+        MUST NOT: invoke `find_files` first — the persons registry is NOT
+        on the filesystem but in `~/.local/share/metnos/persons.sqlite`.
+    MUST: «delete all enrolled persons / empty the registry» →
+        `delete_persons(all=true)` in ONE step.
+    MUST: «delete Carol, Anna and Luca» (explicit list) →
+        `delete_persons(names=["Carol","Anna","Luca"])` in ONE step.
+    MUST: «show enrolled persons / who they are» → `get_persons()` no arg.
+    MUST NOT: pass `from_step` to `delete_persons` if the user already gave
+        an explicit name. `from_step` on `delete_persons` is used ONLY after
+        `get_persons` (entries from the registry), NEVER after `find_files`.
+    OK: «delete the owner» → delete_persons(name="the owner").
+    OK: «delete all» (post get_persons) → get_persons → delete_persons(from_step=1).
+    ERROR: «delete the owner» → find_files(pattern="*Roberto*") →
+        delete_persons(from_step=1, name=...). THIS IS AN ERROR.
+
+  (W.reverse) REVERSE WEB IMAGE SEARCH (local images → web)
+    Use case: "search the web for images similar to <local photos of X>" —
+    the subject is identified by LOCAL FILES (enrollment/folder/file), not
+    a text query. Pipeline: FILE discovery → Google Vision Web Detection
+    reverse search (find_images_web).
+    MUST: use `find_files` (NOT `find_images_indices`) to discover photos
+        in a folder named by the user (e.g., enrollment, collection, archive).
+        Then `find_images_web(from_step=N)` for reverse of each.
+    MUST: pattern_path / query coherent with the named folder (e.g., user
+        says "enrollment photos" → find_files(query="X enrollment", base_path
+        named or default scope /home/user/images/<sub>)).
+    MUST NOT: call find_images_indices for this: the indexed corpus is for
+        SEMANTIC search on a global library, not for files in a specific
+        folder named by the user.
+    MUST NOT: call find_images_web WITHOUT from_step or real paths (invalid
+        args → loop). Photos come from the upstream find_files step.
+    OK: «search the web for photos similar to my enrollment of Roberto» →
+        find_files(query="roberto", base_path="/home/user/images") →
+        find_images_web(from_step=1) → final_answer with web pages found.
+    ERROR: same intent → find_images_indices(name="roberto") →
+        find_images_web(from_step=1). The index is for global semantic
+        search, not the specific enrollment folder.

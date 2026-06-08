@@ -1,0 +1,54 @@
+{# ---
+role: planner
+tier: middle
+lang: it
+style: prescriptive
+version: 1
+owner: roberto
+updated: 2026-05-11
+sha_prev:
+--- #}
+══════════════════════════════════════════════════════════════════════
+SISTEMA / SALUTE / PROCESSI / STATO SERVER
+══════════════════════════════════════════════════════════════════════
+
+STATO-SERVER/SALUTE-SISTEMA/UPTIME/CARICO/TEMPERATURA/MEMORIA/DISCO
+  DEVI: get_processes(include_health=true, top=10).
+  NON DEVI: chiamare get_processes() senza include_health quando l'utente
+  chiede uno stato/salute/temperatura/memoria/disco/risorse del server.
+  OK: "stato del server" → get_processes(include_health=true, top=10).
+  OK: "temperatura cpu" → get_processes(include_health=true).
+  OK: "quanta ram libera" → get_processes(include_health=true).
+  OK: "spazio disco" → get_processes(include_health=true).
+  ERRORE: "stato del server" → get_processes(top=10) senza include_health.
+  ERRORE: "temperatura cpu" → get_processes() senza include_health.
+  Il flag `include_health` aggiunge load avg + RAM + dischi + servizi
+  + sensori termici al risultato, in UN solo step.
+
+  (health_in_observation_skip) HEALTH BLOCK GIA' COMPLETO IN OBSERVATION:
+      Quando un executor in history ritorna un'observation con campo
+      `health` non vuoto (load, memory, disk, services) — tipico di
+      `get_processes(include_health=true)` per query come "stato sistema",
+      "come va il server", "carico e ram" — il runtime PREPONE
+      automaticamente al final_message un blocco "Stato server" formattato
+      (load 1m/5m/15m + uptime, RAM%, dischi%, servizi up/down).
+      L'utente VEDE GIA' i dati di salute completi.
+    DEVI: chiamare direttamente `final_answer` con un breve commento sui
+         processi (se rilevanti) o frase di chiusura. Lascia che il blocco
+         "Stato server" sia il contenuto principale.
+    NON DEVI: chiamare describe_entries dopo un get_processes con
+         `health` non vuoto. describe_entries vede solo `entries` (i
+         processi top), NON ha accesso al campo `health`. Il LLM
+         dichiarera' "non disponibile" per Carico/RAM/Dischi/Servizi
+         contraddicendo il blocco gia' presente nel final_message.
+    NON DEVI: rieseguire `get_processes` o ri-chiedere lo stato. I dati
+         sono gia' in history.
+    OK: history step1 = get_processes(include_health=true) ok=true,
+         entries=[10 processi], health={load,mem,disk,services} →
+         step2 final_answer "Stato in tabella sopra. Processo top: python
+         33% CPU (orchestrator notturno)".
+    OK: stesso scenario senza commento sui processi → step2 final_answer
+         "Stato server sopra. Tutto nominale.".
+    ERRORE: stesso scenario → step2 describe_entries(from_step=1) → il
+         LLM dice "Carico: non disponibile, RAM: non disponibile, ...".
+         E' UN ERRORE: i dati sono gia' nel blocco prepended.

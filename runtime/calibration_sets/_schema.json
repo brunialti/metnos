@@ -1,0 +1,64 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://metnos.com/calibration_sets/v1.json",
+  "title": "Metnos planner_split calibration set",
+  "description": "Per-language thresholds for the PLANNER split decision (ADR 0151). 3-level lookup: user file > this library file > scheduler v2 task. Until calibration generation runs, all sets in this library use conservative defaults.",
+  "type": "object",
+  "required": ["version", "lang", "threshold_default"],
+  "properties": {
+    "version": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+$",
+      "description": "Schema version. Bump on backward-incompatible field changes."
+    },
+    "lang": {
+      "type": "string",
+      "minLength": 2,
+      "maxLength": 5,
+      "description": "ISO 639-1 language code (it, en, es, fr, de, ...). Must match the DEFAULT_LANG of the deploy."
+    },
+    "generated_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Timestamp when the calibration was computed."
+    },
+    "metnos_commit": {
+      "type": "string",
+      "description": "Git commit hash of the repo at calibration time. Used for staleness check."
+    },
+    "model": {
+      "type": "string",
+      "description": "LLM model that ran the calibration. Default tier MIDDLE Gemma 4 26B."
+    },
+    "corpus_size": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Number of queries in the corpus that produced this calibration."
+    },
+    "corpus_hash": {
+      "type": "string",
+      "description": "sha256 of the corpus, for traceability and re-run detection."
+    },
+    "threshold_default": {
+      "type": "number",
+      "minimum": 0.0,
+      "maximum": 1.0,
+      "description": "Default selector confidence threshold for fallback monolithic. Conservative when no per-verb override available."
+    },
+    "threshold_by_verb": {
+      "type": "object",
+      "additionalProperties": {"type": "number", "minimum": 0.0, "maximum": 1.0},
+      "description": "Override threshold per canonical verb (delete, send, write, move, share, set, create — typically higher for safety-critical mutating verbs)."
+    },
+    "rank_distance_min": {
+      "type": "number",
+      "minimum": 0.0,
+      "description": "Minimum prefilter rank-1 minus rank-2 score distance to consider the pool top-1 'confident'. Below this distance, split should fallback to monolithic."
+    },
+    "notes": {
+      "type": "string",
+      "description": "Free-form note (e.g., 'placeholder, real calibration pending')."
+    }
+  },
+  "additionalProperties": false
+}

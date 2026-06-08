@@ -1,0 +1,86 @@
+{
+  "description": {
+    "it": {
+      "version_hash": "sha256:e7e432049a93d689633320ef0ca33fff8e9d58c6ff6811a6e5097b396c22abf8",
+      "source_lang": null,
+      "source_hash": null
+    },
+    "en": {
+      "version_hash": "sha256:16ef466b58a685140e6bf5f2d827699981033c61c3513c750446491c0d49bde9",
+      "source_lang": null,
+      "source_hash": null
+    }
+  },
+  "args.message_ids.description": {
+    "it": {
+      "version_hash": "sha256:baf55392dc051b59d71476c6cf934bab8eab2456328736cdae9cce8e31262df6",
+      "source_lang": null,
+      "source_hash": null
+    },
+    "en": {
+      "version_hash": "sha256:881890f1e1dfebbf4e105ead067fce2d974c9258c029201289e40fc2c4928547",
+      "source_lang": null,
+      "source_hash": null
+    }
+  },
+  "args.message_id.description": {
+    "it": {
+      "version_hash": "sha256:71efcb801114fd71bbca39881714833334e0b8b5d20afa38aea2b67b142a85da",
+      "source_lang": null,
+      "source_hash": null
+    },
+    "en": {
+      "version_hash": "sha256:f04947005281dce19e72b56205166e4dab9841a43bb4ca022dab8058ae842243",
+      "source_lang": null,
+      "source_hash": null
+    }
+  },
+  "args.body.description": {
+    "it": {
+      "version_hash": "sha256:3269f4a45fe225e0914d12dcc52408abe3fec4e41789558b5a0ae8785400db12",
+      "source_lang": null,
+      "source_hash": null
+    },
+    "en": {
+      "version_hash": "sha256:d83bcc2221b915882432a14dc973f81e9fa729e7dc765db5c1503010b64272d7",
+      "source_lang": null,
+      "source_hash": null
+    }
+  },
+  "args.from_header.description": {
+    "it": {
+      "version_hash": "sha256:92c34c9f51aecc30c556784dca3d04aa5755fa8aabf76ff8658102569f9bb8c3",
+      "source_lang": null,
+      "source_hash": null
+    },
+    "en": {
+      "version_hash": "sha256:6ee006d98a2823fb1dff694a8933631a59593f31b71654b88aaf73df65577ad6",
+      "source_lang": null,
+      "source_hash": null
+    }
+  },
+  "args.via_channel.description": {
+    "it": {
+      "version_hash": "sha256:2c215b87bb2d709eb0d95ae4f00a673f202db20a547ef3c9f268977574a123f8",
+      "source_lang": null,
+      "source_hash": null
+    },
+    "en": {
+      "version_hash": "sha256:7ce20d2b0da9a468f5f04fa57d9f3d266e4a6b92fd1664b36ac632b4e68edc64",
+      "source_lang": null,
+      "source_hash": null
+    }
+  },
+  "args.client.description": {
+    "it": {
+      "version_hash": "sha256:974481997324f2360c228cbf3fb06731565c8f14252687819f8e411cb5c1fb15",
+      "source_lang": null,
+      "source_hash": null
+    },
+    "en": {
+      "version_hash": "sha256:1e2892ade9a76a9a704f90f4dc5cec4874842114903bc0601d8f646362b15ccc",
+      "source_lang": null,
+      "source_hash": null
+    }
+  }
+}

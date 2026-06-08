@@ -1,0 +1,100 @@
+{
+  "_comment": "Canonicalisation rules for runtime/safety/canonicalize.py. Lists here are NOT safety policy — they are syntactic rules used to canonicalise an argv into a Signature. Safety policy (whitelist/blacklist/graylist/forbidden) lives in the SQLite DB, populated from safety_seeds/v*.toml. To add a new binary or flag rule, edit this file (no code change required).",
+  "version": 1,
+
+  "sudo_wrappers": ["sudo", "doas", "pkexec"],
+
+  "sudo_own_flags_value": [
+    "-u", "--user", "-g", "--group", "-h", "--host",
+    "-p", "--prompt", "-C", "--close-from"
+  ],
+
+  "sudo_own_flags_boolean": [
+    "-S", "-E", "-H", "-i", "-s", "-n", "-A", "-K", "-k", "-l", "-v",
+    "--stdin", "--preserve-env", "--set-home",
+    "--login", "--shell", "--non-interactive",
+    "--askpass", "--remove-timestamp", "--reset-timestamp",
+    "--list", "--validate"
+  ],
+
+  "benign_flags": [
+    "-h", "--help", "-v", "--verbose", "-q", "--quiet",
+    "--no-pager", "--color", "--no-color",
+    "-V", "--version",
+    "-n", "--dry-run",
+    "--json", "--yaml"
+  ],
+
+  "subcommand_style_binaries": [
+    "systemctl", "timedatectl", "loginctl", "hostnamectl",
+    "apt", "apt-get", "yum", "dnf", "pacman", "snap", "flatpak",
+    "git", "docker", "podman", "kubectl", "helm",
+    "pip", "pip3", "npm", "yarn", "cargo", "go",
+    "ip"
+  ],
+
+  "no_subcommand_binaries": [
+    "cat", "less", "more", "head", "tail", "wc", "od", "xxd",
+    "sha256sum", "md5sum", "sha1sum", "sha512sum",
+    "cmp", "diff", "tree", "file", "stat", "readlink", "realpath",
+    "basename", "dirname", "type", "which", "whereis", "locate",
+    "echo", "printf", "true", "false", "yes", "sleep",
+    "grep", "egrep", "fgrep", "rg", "sort", "uniq", "cut", "tr",
+    "awk", "sed", "tee",
+    "ping", "ping6", "traceroute", "tracepath", "mtr",
+    "dig", "host", "nslookup", "whois",
+    "uname", "hostname", "uptime", "id", "whoami", "groups",
+    "who", "w", "last", "lastlog",
+    "lscpu", "lsmem", "lsblk", "lspci", "lsusb", "lsmod", "lsof",
+    "free", "df", "du", "vmstat", "iostat", "mpstat",
+    "dmesg", "env", "printenv",
+    "ps", "pgrep", "pidof", "pstree", "top", "htop",
+    "ss", "netstat", "arp",
+    "date", "cal", "ncal",
+    "pwd",
+    "dd",
+    "mkfs", "mkfs.ext4", "mkfs.ext3", "mkfs.ext2",
+    "mkfs.xfs", "mkfs.btrfs", "mkfs.fat", "mkfs.vfat",
+    "mkfs.exfat", "mkfs.ntfs",
+    "wipefs", "shred",
+    "curl", "wget"
+  ],
+
+  "flag_aggregating_binaries": [
+    "rm", "cp", "mv", "ln", "chmod", "chown", "mkdir", "rmdir",
+    "tar", "gzip", "bzip2", "xz", "zip", "unzip", "gunzip",
+    "shred", "wipefs", "dd",
+    "journalctl"
+  ],
+
+  "binary_target_hints": [
+    {"binary": "systemctl", "subcommand": "status",     "target_kind": "unit"},
+    {"binary": "systemctl", "subcommand": "restart",    "target_kind": "unit"},
+    {"binary": "systemctl", "subcommand": "reload",     "target_kind": "unit"},
+    {"binary": "systemctl", "subcommand": "start",      "target_kind": "unit"},
+    {"binary": "systemctl", "subcommand": "stop",       "target_kind": "unit"},
+    {"binary": "systemctl", "subcommand": "enable",     "target_kind": "unit"},
+    {"binary": "systemctl", "subcommand": "disable",    "target_kind": "unit"},
+    {"binary": "systemctl", "subcommand": "is-active",  "target_kind": "unit"},
+    {"binary": "systemctl", "subcommand": "is-enabled", "target_kind": "unit"},
+    {"binary": "systemctl", "subcommand": "is-failed",  "target_kind": "unit"},
+    {"binary": "systemctl", "subcommand": "show",       "target_kind": "unit"},
+    {"binary": "systemctl", "subcommand": "cat",        "target_kind": "unit"},
+    {"binary": "journalctl", "subcommand": "u",         "target_kind": "unit"},
+    {"binary": "journalctl", "subcommand": "uno",       "target_kind": "unit"},
+    {"binary": "journalctl", "subcommand": "nou",       "target_kind": "unit"},
+    {"binary": "journalctl", "subcommand": "noru",      "target_kind": "unit"},
+    {"binary": "apt",     "subcommand": "install",      "target_kind": "pkg"},
+    {"binary": "apt",     "subcommand": "remove",       "target_kind": "pkg"},
+    {"binary": "apt",     "subcommand": "purge",        "target_kind": "pkg"},
+    {"binary": "apt",     "subcommand": "show",         "target_kind": "pkg"},
+    {"binary": "apt-get", "subcommand": "install",      "target_kind": "pkg"},
+    {"binary": "apt-get", "subcommand": "remove",       "target_kind": "pkg"},
+    {"binary": "apt-get", "subcommand": "purge",        "target_kind": "pkg"},
+    {"binary": "dpkg",    "subcommand": "L",            "target_kind": "pkg"},
+    {"binary": "dpkg",    "subcommand": "S",            "target_kind": "pkg"},
+    {"binary": "dpkg",    "subcommand": "l",            "target_kind": "pkg"},
+    {"binary": "ip",      "subcommand": "link",         "target_kind": "network_iface"},
+    {"binary": "ip",      "subcommand": "addr",         "target_kind": "network_iface"}
+  ]
+}

@@ -1,0 +1,54 @@
+#!/bin/bash
+# metnos-installer — wrapper interattivo intelligente.
+#
+# Orchestrazione completa: chiede all'utente cosa ha (sistema) e cosa vuole
+# (uso), poi esegue 00-04 con scelte ottimali per il profilo.
+#
+# Setup standard SEMPRE caldamente raccomandato:
+#   - llama.cpp (build standard) + Gemma 4 26B come fast/middle/wise
+#   - llama.cpp Vulkan-MTP + Qwen 3.5 9B come tiny
+#   - SearXNG self-hosted per ricerca web
+#   - Suprastructure come hub LLM
+#
+# Setup ridotto / custom: domande progressive per skippare componenti.
+
+set -euo pipefail
+
+# Domande tipiche (TODO: implementare prompt interattivi):
+# 1. Sistema operativo + GPU disponibile (auto-detect, conferma utente)
+# 2. RAM disponibile (auto-detect, conferma)
+# 3. Uso previsto:
+#    - "Solo lettura/test" → minimo: Gemma E2B 2B come unico tier
+#    - "Personale daily driver" → standard: Gemma 26B + Qwen 9B
+#    - "Sviluppo/sperimentazione" → standard + frontier (Anthropic opt-in)
+# 4. Vuoi search web? (SearXNG locale, ~200MB Docker)
+# 5. Vuoi ricerca immagini? (Google Vision API, OAuth setup)
+# 6. Quale lingua principale? (it/en, per scelta prompt)
+#
+# Output: chiama 00→01→02 (N volte)→03→04 con flag derivati.
+
+cat <<'EOF'
+=== Metnos installer interattivo ===
+
+[SCAFFOLD]: scheletro post-bench. Implementazione TODO.
+
+Comportamento atteso:
+  1. Auto-detect sistema (OS, GPU, RAM)
+  2. Conferma con utente
+  3. Mostra opzioni:
+     [a] Standard (RACCOMANDATO): Gemma 26B + Qwen 9B + tutti i moduli
+     [b] Minimal: Gemma E2B solo (per macchine deboli)
+     [c] Custom: domande passo passo
+  4. Esegue script 00→04 con flag derivati
+  5. Setup finale: chiede pairing Telegram + admin password
+  6. Test smoke: query "che ora è?" via http://localhost:8770/agent/turn
+  7. Stampa URL chat HTTP + token admin
+
+Tempo stimato standard install:
+  - Download modelli: ~20 min (50GB)
+  - Build llama.cpp: ~10 min
+  - Setup supra + Metnos: ~3 min
+  - Wire + test: ~2 min
+  - Totale: ~35 min su .33-like (Strix Halo, 16C, 96GB)
+EOF
+exit 0

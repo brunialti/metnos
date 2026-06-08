@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}Metnos admin · turns{% endblock %}
+{% block body %}
+<h1>Turni ({{ rows|length }})</h1>
+<table>
+  <thead>
+    <tr><th>turn_id</th><th>ts</th><th>channel</th><th>actor</th>
+        <th>steps</th><th>final</th><th>elapsed</th><th>query</th></tr>
+  </thead>
+  <tbody>
+  {% for r in rows %}
+    <tr>
+      <td class="muted"><code>{{ r.turn_id[:10] }}</code></td>
+      <td class="muted">{{ r.ts_start_iso }}</td>
+      <td><span class="chip">{{ r.channel or "-" }}</span></td>
+      <td>{{ r.actor or "-" }}</td>
+      <td>{{ r.n_steps }}</td>
+      <td>
+        {% if r.final_kind == "answer" %}<span class="chip ok">{{ r.final_kind }}</span>
+        {% elif r.final_kind == "error" %}<span class="chip bad">{{ r.final_kind }}</span>
+        {% else %}<span class="chip warn">{{ r.final_kind }}</span>{% endif %}
+      </td>
+      <td>{{ r.elapsed_s }}s</td>
+      <td>{{ r.user_query[:80] }}</td>
+    </tr>
+  {% else %}
+    <tr><td colspan="8" class="muted">nessun turno</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

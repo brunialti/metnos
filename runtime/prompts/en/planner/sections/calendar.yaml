@@ -1,0 +1,83 @@
+# Frontmatter equivalente a `{# --- ... --- #}` Jinja (the design guide §6.1).
+role: planner
+tier: middle
+lang: en
+style: prescriptive
+version: 1
+owner: roberto
+updated: 2026-05-12
+sha_prev: ""
+
+section:
+  name: calendar
+  header: "CALENDAR / EVENTS / AGENDA (Google Calendar)"
+  preamble: |
+    APPOINTMENTS/AGENDA/EVENTS/CALENDAR/MEETINGS (Google Calendar)
+    -> read_events (read), create_events (create), delete_events (delete).
+
+rules:
+  - name: events_core
+    when: "any request about appointments / calendar events"
+    must: "use read_events/create_events/delete_events. They are in the catalog (imported from skill google-workspace)"
+    must_not: "call request_new_executor on «appointments», «calendar», «agenda», «events», «meetings»: the executor already exists"
+    ok: "«tomorrow's appointments» -> get_now -> read_events(time_window=\"tomorrow\") -> final_answer"
+    error: "«tomorrow's appointments» -> request_new_executor (THIS IS AN ERROR: read_events is already in catalog)"
+
+  - name: propose_intent
+    when: "SUGGESTION verbs («propose/suggest/recommend», IT «proponi/suggerisci/raccomanda» and enclitics) or formulations «what are N free slots», «how about», «give me 3 options»"
+    must: "get_now -> find_events_empty(time_windows=[...], size=..., time_of_day=..., max_results=N) -> final_answer textual with N alternatives (start/end of each free gap)"
+    must_not: |
+      call read_events repeatedly to derive gaps manually (find_events_empty computes them deterministically, ADR 0127). DO NOT call create_events / delete_events / any other calendar-write tools: the query asks to PROPOSE, not to book
+    ok: "«propose 3 morning times next week for a 1h appointment» -> get_now -> find_events_empty(time_windows=[\"next-week\"], size=\"1hour\", time_of_day=\"morning\", max_results=3) -> final_answer textual «3 free mornings: monday 09-10, wednesday 09-10, friday 10-11»"
+    error: "«propose 3 times...» -> create_events(summary=\"Proposed 1\", start=2026-05-18T08:00, end=2026-05-24T12:00) (THIS IS AN ERROR: created a week-long event instead of SUGGESTING 3 alternatives)"
+    disambiguation: "«book/schedule» = set destructive (see check_availability). «propose/suggest/recommend» = read-only suggestion"
+
+  - name: propose_and_fire
+    when: "the user combines «propose/suggest N alternatives» WITH a mutating continuation («and book», «and schedule», «poi prenotami», «and then create the event»)"
+    must: |
+      execute the propose-and-fire pipeline (ADR 0127): Step 1 get_now -> today ISO. Step 2 find_events_empty(time_windows=[...], size=..., time_of_day=...) -> entries {start,end,duration_min} of the gaps. Step 3 get_inputs(from_step=2, dialog=[{var:'choice', prompt:'Pick one', schema:{kind:'choice', display_template:'{when_human}', value_field:'start'}}]) -> user pick = values.choice. Step 4 create_events(summary=..., start=<step3.values.choice>, end=...) -> final_answer with link. Use find_events_empty for EMPTY SLOTS (NOT read_events: returns existing events, not gaps); size unit-aware "1hour"/"60min"/"30 min"; time_windows is a list (default ["next-week"])
+    must_not: "call create_events BEFORE step 3: user has not picked yet, arbitrary booking"
+    ok: "«propose 3 morning slots next week and book the one I pick» -> get_now -> find_events_empty(time_windows=[\"next-week\"], size=\"1hour\", time_of_day=\"morning\", max_results=3) -> get_inputs(from_step=2, ...) -> create_events(start=<step3.values.choice>, ...) -> final_answer"
+    error: "«propose and book» -> direct create_events (THIS IS AN ERROR: choice not made by the user)"
+    disambiguation: "without a mutating continuation the query is propose-only (see propose_intent: textual final_answer, no find_events_empty, no get_inputs, no create_events)"
+
+  - name: propose_and_notify
+    when: "the user combines «propose/suggest N alternatives» WITH a NOTIFICATION continuation («and email me», «and notify me», «and send me an email», «with the choice via email/telegram», IT «e mandami email», «e inviami email», «e notificami», «e avvisami»)"
+    must: |
+      MULTI-PIPELINE intent: first propose, then (optionally) create, then NOTIFY. Variant (a) NOTIFY only: get_now -> find_events_empty(...) -> get_inputs(from_step=2, kind='choice', display_template='{when_human}', value_field='start') -> send_messages(messages=[{to:'<user>', subject:'Chosen slot', body:'You picked: <step3.values.choice>'}]) -> final_answer. Variant (b) NOTIFY + create_events: steps 1-3 as (a), Step 4 create_events(...), Step 5 send_messages(...). MUST pass via_channel="mail" EXPLICIT when the user says «email/mail» as channel (default auto routes Telegram first). Same for «telegram» -> via_channel="telegram". The choice (step 3) must be passed to BOTH create_events and send_messages
+    must_not: |
+      emit send_messages BEFORE get_inputs (user has not picked yet). DO NOT call find_messages_google_workspace or read_messages: the query does NOT search mail, it SENDS mail. «email» here is the NOTIFICATION CHANNEL, not the data searched for
+    ok: "«propose 3 morning times next week and email me my choice» -> get_now -> find_events_empty(time_windows=[\"next-week\"], size=\"1hour\", time_of_day=\"morning\", max_results=3) -> get_inputs(from_step=2, kind='choice', display_template='{when_human}', value_field='start') -> send_messages(messages=[{to_user:\"roberto\", via_channel:\"mail\", subject:\"Your choice\", body:\"You picked: <step3.values.choice>\"}]) -> final_answer"
+    error: "«propose and email me» -> find_messages_google_workspace (THIS IS AN ERROR: the query sends mail, not searches mail). OR «propose and email me» -> direct send_messages at step 1 (THIS IS AN ERROR: send before choice -> empty/placeholder body)"
+    disambiguation: "«email» in «email me with the choice» is the NOTIFICATION CHANNEL, not the searched object. Mail-search verbs («search/read/find mail») still go to find_messages_*/read_messages"
+
+  - name: check_availability
+    when: "«book/schedule/create X IF there is a slot/if the window is free/check availability and then book»"
+    must: |
+      execute EXACTLY in this order, ONE step at a time. TWO acceptable variants:
+      Variant (a) broad window + size: get_now -> find_events_empty(time_windows=["next-wed"], size="1hour", time_of_day="morning") -> create_events(start=<step2.entries[0].start>, end=<step2.entries[0].end>, summary=...) -> final_answer. find_events_empty filters "after 09:00" via time_of_day="morning"; use from_step on entries to avoid reinventing ISO.
+      Variant (b) exact slot: get_now -> COMPUTE start/end ISO 8601 + offset (e.g. "2026-05-13T09:00:00+02:00") -> read_events(start, end) -> if entries EMPTY create_events(...) -> final_answer, if entries NON-empty final_answer «slot occupied».
+      create_events goes ONLY AFTER availability check, NEVER before.
+    must_not: "call filter_entries at the FIRST step (NO from_step at first step §4.2: step 1 observation does not exist yet). DO NOT call read_events as availability check on 'book appointment morning/day' queries: read_events returns events PRESENT, not FREE slots; for 'if there is a slot' on a daily window the canonical primitive is find_events_empty. DO NOT call create_events before the availability check"
+    ok: "«book appointment Wednesday morning after 9 for 1h if there is a slot» -> get_now -> find_events_empty(time_windows=[\"next-wed\"], size=\"1hour\", time_of_day=\"morning\") -> create_events(start=<step2.entries[0].start>, end=<step2.entries[0].end>) -> final_answer. OR «book appointment Wednesday 9-10 if there is a slot» -> get_now -> read_events(...) -> create_events(...) -> final_answer"
+    error: "«book appointment Wednesday morning» -> filter_entries(from_step=1, where_field=\"start\") (THIS IS AN ERROR: from_step=1 at non-existent first step §4.2; filter_entries operates on in-memory lists, not the calendar). OR «if there is a slot» -> create_events (wrong Step 3) -> read_events sees the just-created event"
+
+  - name: events_overlap_intersect
+    when: "question about temporal OVERLAP between two categories of events («is there an HLT event that overlaps with an MNM one», «overlap between X and Y», «events from client A that fall together with events from client B»)"
+    must: |
+      Pipeline §7.3 in 4 steps:
+      1. get_now + read_events(time_window=...) → all events in the window
+      2. filter_entries(from_step=1, where_field='summary', where_starts_with='<prefix A>') → list A
+      3. filter_entries(from_step=1, where_field='summary', where_starts_with='<prefix B>') → list B
+      4. filter_lists(op='overlap', from_step=<step A>, with_step=<step B>) → events from A that overlap temporally with events from B (auto-detect start/end)
+      5. final_answer with overlap list or «no overlap»
+    must_not: "compute the overlap by manually reading N read_events steps: doesn't scale, fragile, produces hallucination. DO NOT use 5+ filter_entries calls — the AND between two lists is filter_lists(op='overlap'). DO NOT use find_events_empty for overlap (find_events_empty looks for FREE slots, not overlaps)"
+    ok: "«HLT overlapping MNM in the next 3 months» -> get_now -> read_events(time_window='next-3m') -> filter_entries(from_step=2, where_starts_with='HLT') -> filter_entries(from_step=2, where_starts_with='MNM') -> filter_lists(op='overlap', from_step=3, with_step=4) -> final_answer"
+    error: "«overlap HLT MNM» -> filter_entries x5 with identical args (THIS IS AN ERROR: without filter_lists the PLANNER cannot compute the AND between two lists, ends up in a loop)"
+
+  - name: date_relative_resolution
+    when: "query contains ANY relative date: today, yesterday, tomorrow, day-after-tomorrow, monday..sunday, «next week», «next month», «within N days», «N days ago», «tonight», «this morning», «this evening»"
+    must: "invoke get_now as the FIRST step and read the ISO date from the result. Then read_events/create_events with start/end ISO 8601 + offset (e.g. \"2026-05-13T09:00:00+02:00\"). time_window canonical (\"today\", \"tomorrow\", \"last-Nd\", \"next-Nd\", ISO range \"YYYY-MM-DD/YYYY-MM-DD\"): English «tomorrow/today/yesterday» mapped by runtime/time_window_parser.py"
+    must_not: "infer/compute/invent the absolute date. Your knowledge of dates is months stale. Only get_now has the system's truth. time_window=\"May 10-12\" is a free-form unparsed format"
+    ok: "«book appointment Wednesday 9-10» -> step 1 get_now() -> step 2 read the ISO date from the result -> step 3 read_events/create_events with ISO 8601+offset. OR «tomorrow's events» -> read_events(time_window=\"tomorrow\"). OR «meetings next week» -> read_events(time_window=\"next-week\")"
+    error: "pass to create_events \"2026-04-29T09:00:00Z\" when today is 2026-05-12 (THIS IS AN ERROR: invented date, Wednesday in the past). OR time_window=\"May 10-12\" (free-form unparsed format)"

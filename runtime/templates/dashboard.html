@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% block title %}Metnos admin · home{% endblock %}
+{% block body %}
+<h1>Metnos admin</h1>
+<p class="muted">version {{ version }} · uptime {{ uptime_s|round(0) }}s</p>
+
+<div class="section">
+  <h2>Turni recenti</h2>
+  <p>{{ turn_summary.total }} turni nelle ultime 24h ·
+     {{ turn_summary.errors }} errori ·
+     latenza mediana {{ turn_summary.median_ms|round(0) }} ms</p>
+  <a class="btn" href="/admin/turns">vedi tutti</a>
+</div>
+
+<div class="section">
+  <h2>Proposte introvertiva</h2>
+  <p>{{ proposals_summary.pending }} pending ·
+     {{ proposals_summary.dormant }} dormant ·
+     {{ proposals_summary.applied }} applied</p>
+  <a class="btn" href="/admin/proposals">vedi tutte</a>
+</div>
+
+<div class="section">
+  <h2>Proposte telos engine</h2>
+  <p>{{ telos_proposals_summary.total }} totali ·
+     {{ telos_proposals_summary.pending }} pending ·
+     {{ telos_proposals_summary.accepted }} accepted ·
+     {{ telos_proposals_summary.rejected }} rejected ·
+     {{ telos_proposals_summary.staged }} staged</p>
+  <a class="btn" href="/admin/proposals/telos">triage proposte</a>
+</div>
+
+<div class="section">
+  <h2>Catalog</h2>
+  <p>{{ executors_summary.total }} executors ·
+     {{ executors_summary.handcrafted }} handcrafted ·
+     {{ executors_summary.synth }} synth ·
+     {{ executors_summary.deprecated }} deprecated</p>
+  <a class="btn" href="/admin/executors">vedi tutti</a> ·
+  <a class="btn" href="/admin/executors/stats">stats &amp; grafici</a>
+</div>
+
+<div class="section">
+  <h2>Scheduler</h2>
+  <p>{{ runs_summary.total_today }} run oggi ·
+     {{ runs_summary.failures_today }} failure ·
+     {{ runs_summary.tasks }} task registrati</p>
+  <a class="btn" href="/admin/runs">history</a> ·
+  <a class="btn" href="/admin/timers">gestione timer</a>
+</div>
+
+<div class="section">
+  <h2>Safety</h2>
+  <p>{{ safety_summary.whitelist }} whitelist ·
+     {{ safety_summary.blacklist }} blacklist ·
+     {{ safety_summary.graylist }} graylist ·
+     {{ safety_summary.forbidden }} forbidden</p>
+  <a class="btn" href="/admin/safety">tabella</a>
+</div>
+
+<div class="section">
+  <h2>Utenti</h2>
+  <p>{{ users_summary.hosts }} host ·
+     {{ users_summary.guests }} guest</p>
+  {% if users_summary.recent %}
+    <p class="muted">ultimi pairati:
+      {% for u in users_summary.recent %}
+        <span class="chip">{{ u.name }} ({{ u.role }}, {{ u.channels|join(",") }})</span>
+      {% endfor %}
+    </p>
+  {% endif %}
+  <a class="btn" href="/admin/users">gestione utenti</a>
+</div>
+{% endblock %}

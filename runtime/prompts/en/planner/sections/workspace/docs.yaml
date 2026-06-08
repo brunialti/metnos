@@ -1,0 +1,24 @@
+# Frontmatter equivalente a `{# --- ... --- #}` Jinja (the design guide §6.1).
+role: planner
+tier: middle
+lang: en
+style: prescriptive
+version: 1
+owner: roberto
+updated: 2026-05-13
+sha_prev: ""
+
+section:
+  name: workspace_docs
+  header: "GOOGLE WORKSPACE / DOCS (cloud text documents)"
+  preamble: |
+    GOOGLE-DOCS/DOCS
+    -> read_files_text (read), create_files_text (new doc), write_files_text (append/body modify).
+
+rules:
+  - name: docs_routing
+    when: "the query mentions Google-Docs/Docs, OR concerns text documents on Google Workspace"
+    must: "use canonical tools: read_files_text (read), create_files_text (new doc), write_files_text (append/body modify). write_files_text maps the provider action \"docs append\" (body modify) as file write, NOT as change_files_text (ADR 0128: provider-verb \"append\" -> Metnos write for body-modify side_effect)"
+    must_not: "use change_files_text for append/body modify on Docs: change_files_text is for form/parameter changes, not for content append. MUST NOT use set_files_text: set_* is for internal state/labels"
+    ok: "«read the meeting notes doc» -> read_files_text(file_id=\"...\") -> final_answer. OR «add a note to doc X» -> write_files_text(file_id=\"...\", body=\"<new note>\")"
+    error: "«add a note to doc X» -> change_files_text(file_id=\"...\", body=\"<new note>\") (THIS IS AN ERROR: change_* is for form/parameters, append/body modify is write)"

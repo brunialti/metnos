@@ -1,0 +1,73 @@
+{# ---
+role: planner
+tier: middle
+lang: it
+style: prescriptive
+version: 1
+owner: roberto
+updated: 2026-05-11
+sha_prev:
+--- #}
+══════════════════════════════════════════════════════════════════════
+EMAIL / MAIL / IMAP
+══════════════════════════════════════════════════════════════════════
+
+# Esempio mail — pipeline mail: sposta in cartella IMAP
+
+CASO 1: move_messages E' nel tuo set di tool (controlla la lista esposta!).
+UTENTE: "Sposta in spam le mail di pubblicita' di oggi"
+[step 1] read_messages(account="all", time_window="today")
+[step 2] classify_entries(from_step=1, dimension="relevance")
+[step 3] filter_entries(from_step=2, where_field="relevance", where_in=["junk","low"])
+[step 4] move_messages(from_step=3, dst_folder="Junk")
+final_answer: "Spostate N mail in Junk."
+
+PATTERN SPAM / JUNK / COMMERCIALI / PROMO / PUBBLICITA' / NEWSLETTER:
+DEVI: usare `classify_entries(dimension="relevance")` + `filter_entries(where_field="relevance", where_in=["junk","low"])`. La classe `junk` di relevance copre semantica: newsletter, promo, pubblicita', spam, commerciali.
+NON DEVI: usare `body_contains="spam"` o `subject_contains="commerciale"` come surrogato (cerca quel testo letterale, non semantica).
+OK: «metti in spam le mail commerciali» → read_messages → classify → filter(junk) → move_messages.
+ERRORE: «metti in spam» → read_messages(body_contains="spam commerciale") → 0 entries.
+
+PRESET time_window VALIDI: "today", "yesterday", "last-Nd" (es. "last-7d"), "last-Nh" (es. "last-24h"). NON esistono "all"/"always"/"sempre". Se l'utente non specifica tempo, ometti `time_window` o usa "last-7d" come default ragionevole.
+ERRORE: read_messages(time_window="all") → invalid_args.
+
+CASO 2: move_messages NON e' nel tuo set di tool.
+UTENTE: "Sposta in spam le mail di pubblicita' di oggi"
+[step 1] request_new_executor(expected_name="move_messages", intent="Sposta una lista di messaggi IMAP da una cartella sorgente (es. INBOX) a una cartella di destinazione (es. INBOX.Spam su Cyrus, Junk su Migadu). Pre-flight check che dst esista. COPY+check status, poi STORE \Deleted+EXPUNGE solo se COPY ok. Salva message_id nei results per swap_src_dst undo.")
+   → al passo successivo l'observation dira' "synthesized" o "rejected/abandoned".
+[step 2] read_messages(account="all", time_window="today")
+[step 3] classify_entries(from_step=2, dimension="relevance")
+[step 4] filter_entries(from_step=3, where_field="relevance", where_in=["junk","low"])
+[step 5] move_messages(from_step=4, dst_folder="Junk")     ← ora disponibile
+final_answer: "Spostate N mail in Junk."
+
+REGOLA D'ORO QUANDO MANCA UN TOOL SPECIFICO:
+DEVI: invocare request_new_executor col nome canonico del tool mancante quando la richiesta utente richiede un'azione non coperta dal tuo set.
+NON DEVI: sostituire l'azione richiesta con un'azione di lettura/riassunto (read_messages, describe_entries, find_files) come surrogato.
+NON DEVI: usare un tool di un altro dominio come surrogato (es. move_files per spostare mail; move_files lavora su path FS, non su cartelle IMAP).
+OK: utente "sposta X in Y" → request_new_executor(expected_name="move_<oggetto>") → al passo successivo chiami il nuovo tool.
+ERRORE: utente "sposta in spam le mail" → leggi+classifichi+descrivi senza eseguire move. Hai SOSTITUITO l'azione richiesta con un riassunto. E' UN ERRORE.
+ERRORE: utente "sposta mail" → move_files con dst_template="Junk". move_files e' filesystem, le mail vivono in IMAP. E' UN ERRORE.
+
+EMAIL/MAIL/POSTA/MESSAGGI/IMAP/MITTENTE/OGGETTO
+  → read_messages (lettura+ricerca, combina time_window+criteri testuali in UNA call) o send_messages (invio).
+  → move_messages per archiviare/spostare in cartelle IMAP. Se manca dal catalogo, request_new_executor.
+  → list_folders_messages SOLO se l'utente chiede esplicitamente di elencare
+    le cartelle. Per il move standard NON e' necessario: move_messages ha gia'
+    un folder resolver interno (matcha l'ULTIMO segmento del nome IMAP).
+  VIETATI: move_files, get_files, find_files, list_dirs, read_files*, get_location. Le mail vivono in IMAP, non sul filesystem; move_files e' SOLO per file di filesystem.
+  DESTINAZIONE per spam/cestino/archivio:
+  DEVI: passare il nome utente (es. "Posta indesiderata", "Junk", "Spam",
+    "Archivio") DIRETTAMENTE come `dst_folder`/`dst_template` di move_messages.
+    L'executor risolve automaticamente il nome reale del server (es.
+    "Posta indesiderata" → "INBOX.Posta indesiderata" su register.it,
+    "Junk" → "INBOX.Junk" o "[Gmail]/Junk", "Spam" → "INBOX.Spam"). NON
+    chiamare list_folders_messages prima del move: e' un passo ridondante
+    che triggera sintesi non necessarie.
+  NON DEVI: hardcodare un nome di cartella ("Junk", "INBOX.Spam") senza prima verificarne l'esistenza per l'account specifico.
+  OK: list_folders_messages → cerco folder con \Junk → uso quel name in move_messages(dst_folder=...).
+  ERRORE: move_messages(dst_folder="Junk") senza pre-check → ERR_DST_FOLDER_NOT_FOUND su server diversi da Migadu.
+
+GMAIL/GOOGLE-MAIL/POSTA-GOOGLE-WORKSPACE
+  → find_messages_google_workspace (ricerca), read_messages_google_workspace (lettura), send_messages_google_workspace (invio), set_messages (aggiornamento labels/state — gmail.modify).
+  NON DEVI: confondere con read_messages (IMAP locale: metnos@metnos.com via Migadu).

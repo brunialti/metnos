@@ -1,0 +1,221 @@
+role: synt_code_addendum_move
+tier: wise
+lang: it
+style: few_shot
+version: 1
+owner: roberto
+updated: 2026-05-13
+sha_prev: ""
+
+# Stage 5 addendum verbo `move` (the design guide §6.1: style few_shot).
+# YAML envelope: il body resta prosa narrativa (pseudocodice + invarianti +
+# esempi di codice). Il rendering yaml_raw/json_raw produce un wrapper
+# strutturato senza spezzare gli esempi few_shot.
+section:
+  name: synt_code_addendum_move
+  header: "Stage 5 addendum verbo `move`"
+
+body: |
+  REGOLE VERBO `move` (oltre al generic):
+  
+  DEFINIZIONE: `move` = copy(src→dst) + remove(src). Distruttivo: la sorgente
+  sparisce dopo l'esecuzione. Reversibile via `swap_src_dst` se i `results`
+  hanno l'identita' completa di src e dst.
+  
+  PSEUDOCODICE UNIVERSALE (astratto, valido per qualunque oggetto/dominio —
+  sostituisci le funzioni `dst_exists`, `create_dst`, `copy_one`, `verify_copy`,
+  `remove_src` con le primitive concrete del dominio scelto):
+  
+    def invoke(args):
+        entries = args.get("entries", [])
+        dst = args.get("dst_folder") or args.get("dst_template")
+        results, failed = [], []
+  
+        # 1. Pre-flight destinazione (UNA volta per call o per gruppo).
+        if not dst_exists(dst):
+            if args.get("create_if_missing", default_per_dominio):
+                try: create_dst(dst)
+                except Exception as ex:
+                    return {"ok": False, "ok_count": 0, "fail_count": len(entries),
+                            "results": [], "failed": [{"index": i, "error": str(ex)}
+                                                      for i in range(len(entries))]}
+            else:
+                return {"ok": False, ..., "failed": [{"error": "dst not found"} ...]}
+  
+        # 2. Loop best-effort sulle entries.
+        for i, e in enumerate(entries):
+            try:
+                # 3. COPY src→dst (nessun side-effect distruttivo finora).
+                ctx = copy_one(e, dst)             # ritorna info per verify+remove
+                # 4. CHECK in destinazione (verify che la copia sia ARRIVATA).
+                if not verify_copy(e, dst, ctx):
+                    failed.append({"index": i, "error": "verify failed: src intatta"})
+                    continue
+                # 5. SOLO ORA rimuovi la sorgente.
+                remove_src(e, ctx)
+                # 6. Registra il pair per il reverse (swap_src_dst).
+                results.append({"src": ..., "dst": ..., **identity_stable_id(e, ctx)})
+            except Exception as ex:
+                failed.append({"index": i, "error": str(ex)})
+  
+        return {"ok": len(failed)==0, "ok_count": len(results),
+                "fail_count": len(failed), "results": results, "failed": failed}
+  
+  INVARIANTI (per QUALSIASI dominio):
+  DEVI: VERIFICARE l'esistenza della destinazione PRIMA di toccare la sorgente.
+    Se il flag `create_if_missing` (o l'equivalente di dominio: `parents=True`)
+    lo consente, CREARLA. Senza destinazione raggiungibile l'intera call
+    fallisce SENZA aver toccato la sorgente.
+  DEVI: COPY-CHECK-DELETE in QUESTO ordine. Verifica esplicita che la copia
+    sia in dst PRIMA di rimuovere la sorgente. Una copy silently-failed
+    seguita da delete distrugge il dato.
+  DEVI: identita' (account/folder/path/...) da ogni entry, mai da
+    `args.get("X", "<default>")`. Una call puo' contenere oggetti di sorgenti
+    diverse → eventualmente raggruppa per (sorgente comune) e ripeti il
+    pre-flight per gruppo.
+  DEVI: `results.append({src, dst, [identity_stable_id]})` per ogni entry
+    riuscita. Il runtime applica `swap_src_dst` da questi campi per l'undo.
+  NON DEVI: `def reverse(...)`. Il runtime gestisce il reverse_pattern.
+  NON DEVI: rimuovere la sorgente prima del CHECK in destinazione.
+  NON DEVI: trattare un delete come move (`unlink(src)` senza copy = ERRORE).
+  
+  DOMINIO FILESYSTEM (object in {files, dirs}):
+  - src=`e["path"]`, dst=`args["dst_template"]` con placeholder
+    {path}/{name}/{stem}/{ext}/{parent}/{date_year}/{date_yymmdd}/{place}.
+  - pre-flight: `Path(dst).exists()` + `args.get("overwrite", False)` gate;
+    `parents=True` (default) → `parent.mkdir(parents=True, exist_ok=True)`;
+    registra in `dirs_created` solo le dir effettivamente create da QUESTA call.
+  - copy: `shutil.move(src, dst)` poi verifica `Path(dst).exists()`.
+  - safety: rifiuta `is_protected_path()` / `is_system_file()` UNLESS
+    `allow_dirs=True` / `allow_system=True` esplicito.
+  - results: `{"src": str, "dst": str}`.
+  
+  DOMINIO IMAP (object == messages):
+  - src=`e["account"] + e["folder"] + e["uid"]`, dst=`args["dst_folder"]`.
+  - AVVERTENZA CRITICA #1 (stato): i comandi UID (COPY/STORE/SEARCH/FETCH) operano
+    IMPLICITAMENTE sulla folder ATTUALMENTE SELEZIONATA. Tu DEVI esplicitare
+    un `M.select(folder)` PRIMA di OGNI cambio di contesto. Dopo
+    `M.uid("COPY", uid, dst)` la folder selezionata e' ancora la sorgente:
+    se SUBITO DOPO fai `M.uid("SEARCH", ...)` per verificare la copia, stai
+    cercando nella SORGENTE (= falso positivo se Message-ID esiste anche li').
+    Per verificare in DESTINAZIONE devi prima `M.select(dst)`. Saltare il
+    SELECT e' la causa #1 di "verifica passa ma mail non c'e'".
+  - AVVERTENZA CRITICA #2 (forma return): `M.uid(...)` (e M.list, M.search)
+    ritorna `(typ, data)` dove `data` e' una LISTA di bytes (o `[None]`),
+    anche per risposte a singola riga. NON e' una stringa di bytes diretta.
+    Per leggere il primo elemento usa `data[0]` (gestendo `None`/`b""`).
+    Esempio: `data[0].split()[-1].decode()` e' OK; `data.split()` e' UN ERRORE
+    ("'list' object has no attribute 'split'"). Stessa attenzione per
+    `data[0].strip()` vs `data.strip()`.
+  - DEVI: QUOTARE i nomi di folder che contengono SPAZI o caratteri non-ASCII
+    prima di passarli a `M.select`/`M.uid("COPY",...)`/`M.create`. Imaplib NON
+    quota automaticamente: il server vede "Posta indesiderata" senza quote come
+    due token separati e troncate al primo spazio (= bug "INBOX.Posta" fantasma
+    invece di "INBOX.Posta indesiderata"). Helper minimo:
+        def _q(name): return f'"{name}"' if (' ' in name or any(ord(c)>127 for c in name)) else name
+    Usa `_q(folder)` ovunque. Per i nomi gia' validi (senza spazi/non-ASCII)
+    resta inalterato.
+  - NON DEVI: STORE+EXPUNGE senza CHECK in destinazione (pattern ha gia'
+    cancellato 16 mail di knowcastle/INBOX).
+  - NON DEVI: `M.uid("MOVE", ...)` (RFC 6851 non universale).
+  
+  HELPERS richiesti (pseudocodice CONCRETO — implementa in Python equivalente,
+  NON sostituire la logica con una tua interpretazione):
+  
+    def _q(name):
+        # Quota i nomi folder con spazi o caratteri non-ASCII per IMAP.
+        if " " in name or any(ord(c) > 127 for c in name):
+            return f'"{name}"'
+        return name
+  
+    def _resolve_dst_folder(M, name, *, create_if_missing=True):
+        # Discovery via M.list (NON via M.select, che su Cyrus accetta nomi
+        # non quotati troncati al primo spazio = folder fantasma).
+        # Priorita': nome esatto > ultimo segmento > CREATE (se autorizzato).
+        typ, data = M.list()
+        if typ != "OK" or not data:
+            return None
+        target = name.lower().strip(' "')
+        best_delim = "."  # default per fallback create (cyrus: "."; gmail: "/")
+        name_full, name_last = [], []
+        for raw in data:
+            if not raw: continue
+            line = raw.decode("utf-8", errors="replace") if isinstance(raw, bytes) else raw
+            # IMAP LIST emette nomi QUOTATI (con spazi/non-ASCII) o UNQUOTED:
+            #   QUOTED:   '(\HasNoChildren) "." "INBOX.Posta indesiderata"'
+            #             split('"') → ['(...)', '.', ' ', 'INBOX.Posta indesiderata', '']
+            #   UNQUOTED: '(\HasNoChildren \Junk) "/" Spam'
+            #             split('"') → ['(...)', '/', ' Spam']
+            parts = line.split('"')
+            if len(parts) >= 5:
+                delim, full = parts[1], parts[3]
+            elif len(parts) == 3:
+                delim, full = parts[1], parts[2].strip()
+            else:
+                continue
+            best_delim = delim or best_delim
+            if full.lower() == target:
+                name_full.append(full)
+            last_segment = full.split(delim)[-1] if delim else full
+            if last_segment.lower() == target:
+                name_last.append(full)
+        pool = name_full or name_last
+        if len(pool) == 1:
+            return pool[0]
+        if pool:
+            return None  # ambiguous → caller fa fallire
+        if not create_if_missing:
+            return None
+        # Folder non esiste: prova a crearla (rispetta la convenzione di
+        # nesting del provider: cyrus mette tutto sotto INBOX.<name>; gmail
+        # accetta nomi top-level). Convenzione: se il delimiter e' "." e
+        # il name non e' gia' prefissato con INBOX, usa INBOX.<name>;
+        # altrimenti usa il name as-is.
+        if best_delim == "." and not name.lower().startswith("inbox" + best_delim):
+            new_name = "INBOX" + best_delim + name
+        else:
+            new_name = name
+        typ, _ = M.create(_q(new_name))
+        if typ == "OK":
+            # Subscribe per renderla visibile in webmail (best-effort)
+            try: M.subscribe(_q(new_name))
+            except Exception as _e:
+                log.warning("IMAP subscribe best-effort failed: %s", _e)
+            return new_name
+        return None
+  
+  SEQUENZA MOVE IMAP (regole, NON codice — derivane l'implementazione):
+  - Raggruppa entries per (account, src_folder); apri UNA connessione IMAP per
+    gruppo via `mail_client.open_imap(account)`.
+  - Per ogni gruppo, risolvi `dst_folder` con `_resolve_dst_folder(M, name)`
+    UNA SOLA volta. Se None → tutte le entries del gruppo falliscono con
+    messaggio chiaro che indica i candidati o che la folder non esiste.
+  - Per ogni entry del gruppo, in QUESTO ORDINE preciso:
+      1. `M.select(_q(src_folder))` — porta lo stato a SELECTED-on-src.
+      2. `M.uid("COPY", uid, _q(dst_resolved))` — verifica `typ=="OK"`.
+      3. `M.select(_q(dst_resolved))` — sposta lo stato sulla DST. OBBLIGATORIO
+         prima della SEARCH, altrimenti il check avviene su src e restituisce
+         falsi positivi quando il Message-ID e' presente in entrambe.
+      4. `typ, data = M.uid("SEARCH", None, "HEADER", "Message-ID", e["message_id"])`
+         — verifica `typ=="OK"` e `data[0]` non vuoto. ESTRAI il NUOVO UID con
+         `new_uid = data[0].split()[-1]` (decode se bytes). Questo `new_uid` va
+         in `results.dst.uid` — NON usare placeholder come "unknown_new", il
+         reverse pattern e gli audit hanno bisogno del valore reale.
+      5. `M.select(_q(src_folder))` — torna a src per il delete.
+      6. `M.uid("STORE", uid, "+FLAGS", "(\\Deleted)")` poi `M.expunge()`.
+    Se uno qualsiasi dei passi 2 o 4 fallisce → l'entry fallisce e la
+    sorgente NON viene toccata oltre.
+  - Best-effort: try/except per entry, una entry fallita non blocca il batch.
+  - `finally: M.logout()` per ogni gruppo.
+  
+  results IMAP: `{"src": {"account","folder","uid"}, "dst": {"account","folder","uid"}, "message_id": e["message_id"]}` — `message_id` top-level e' chiave stabile per il reverse.
+  
+  OUTPUT:
+  {
+      "ok": fail_count == 0,
+      "ok_count": len(results),
+      "fail_count": len(failed),
+      "results": [...],          # schema per dominio sopra
+      "dirs_created": [...],     # solo FS, profondita' decrescente
+      "failed": [{"index", "src", "dst", "error"}]
+  }

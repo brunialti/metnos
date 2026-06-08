@@ -1,0 +1,68 @@
+# Frontmatter equivalente a `{# --- ... --- #}` Jinja (the design guide §6.1).
+role: planner
+tier: middle
+lang: it
+style: prescriptive
+version: 2
+owner: roberto
+updated: 2026-05-15
+sha_prev: ""
+
+section:
+  name: scheduled_tasks
+  header: "TASK RICORRENTI / TIMER / PROMEMORIA Metnos (NON eventi calendar, NON processi sistema)"
+  preamble: |
+    TASK RICORRENTI / TIMER / PROMEMORIA / SCHEDULAZIONE (object §2.2: `tasks`)
+    -> list_tasks (lista), delete_tasks (cancella), read_tasks (dettaglio),
+       create_tasks (crea), set_tasks (abilita/disabilita o fire immediato),
+       read_tasks_history (storico esecuzioni).
+    Sono i task automatici di Metnos: cron-like (daily@HH:MM, every_Ns/m/h), persistiti in scheduler_v2.sqlite.
+    Distinti da: eventi calendar (read_events), processi sistema (get_processes), undo (undo_last_turn).
+
+rules:
+  - name: list_tasks
+    when: "richieste di vedere i task ricorrenti / timer / promemoria («che task ho schedulato», «lista timer», «quali task ricorrenti», «mostrami i promemoria», «lista task schedulati», «cosa Metnos fa automaticamente»)"
+    must: "usa list_tasks. Ritorna `tasks: [{id, name, schedule_human, last_fire_human, ...}]` + `summary` user-facing con ID espliciti per cancellazione successiva"
+    must_not: "chiamare get_processes (processi sistema correnti, NON task Metnos) NE' read_events (eventi calendar, NON task ricorrenti)"
+    ok: "«lista task ricorrenti» -> list_tasks() -> final_answer con `summary` dell'observation"
+    error: "«lista task ricorrenti» -> get_processes() (E' UN ERRORE: get_processes mostra PID/CPU dei processi OS, niente a che fare con i task ricorrenti Metnos)"
+
+  - name: cancel_task
+    when: "richieste di cancellare / fermare / rimuovere un task ricorrente / timer / promemoria («cancella timer ping», «ferma il task X», «rimuovi il promemoria delle mail», «stoppa il task ricorrente», «cancella il task riassunto_mail»)"
+    must: "usa delete_tasks(id=<numero>) se l'utente cita un ID, oppure delete_tasks(name=<slug>) se cita il nome. Se l'utente e' vago («cancella il task delle mail»), chiama prima list_tasks per mostrare gli ID e chiedi precisazione"
+    must_not: "chiamare delete_events (cancella EVENTI CALENDAR, non task ricorrenti) NE' kill (processi OS)"
+    ok: "«cancella timer 17» -> delete_tasks(id=17) -> final_answer. OPPURE «cancella task riassunto_mail» -> delete_tasks(name=\"riassunto_mail\") -> final_answer"
+    error: "«cancella task ricorrente riassunto_mail» -> delete_events(...) (E' UN ERRORE: delete_events cancella eventi del calendario, non task ricorrenti Metnos. Il nome non e' un event_id)"
+
+  - name: show_task_detail
+    when: "richieste di vedere dettaglio di UN task ricorrente («mostra dettaglio task X», «info sul task Y», «quando gira il task X»)"
+    must: "usa read_tasks(name=<slug>). Ritorna schedule, ultima esecuzione, esito, record utente."
+    must_not: "confondere con read_tasks_history (storico esecuzioni)"
+    ok: "«mostra dettaglio task ping» -> read_tasks(name=\"ping\") -> final_answer"
+
+  - name: show_task_history
+    when: "richieste di vedere storico/cronologia/ultime esecuzioni di un task ricorrente («storico esecuzioni task X», «cronologia del task ricorrente», «log fire del timer», «storico ultimi N giorni»)"
+    must: "usa read_tasks_history(name=<slug>?, time_window=<canonical>?, limit=<N>?) DIRETTAMENTE in UNO step. Quando l'utente cita una finestra temporale («ultimi 7 giorni», «oggi», «ieri», «da gennaio»), DEVI passare `time_window` canonical (es. 'last-7d', 'today', 'yesterday', '2024-01-01/2024-12-31', '2024'). Dopo il primo ok EMETTI final_answer col riassunto: NIENTE seconda call con limit/time_window diverso (l'observation gia' contiene la history filtrata)"
+    must_not: "chiamare list_tasks PRIMA di read_tasks_history (read_tasks_history senza name enumera gia' tutto). NIENTE call ripetute di read_tasks_history per espandere il limit (la prima call ritorna gia' fino a 200 fire). NIENTE get_processes/read_events"
+    ok: "«storico ultimi 7 giorni» -> read_tasks_history(time_window=\"last-7d\") -> final_answer. OPPURE «storico esecuzioni del task ping» -> read_tasks_history(name=\"ping\") -> final_answer"
+    error: "«storico ultimi 7 giorni» -> read_tasks_history(limit=100) -> read_tasks_history(limit=1000) (E' UN ERRORE: due call su stesso tool con limit espanso — il PLANNER deve usare time_window dichiarativo, non riprovare con limit piu' grande). OPPURE -> list_tasks() prima (ridondante). OPPURE -> get_processes() (sbagliato dominio)"
+
+  - name: schedule_task
+    when: "richieste di SCHEDULARE / CREARE un task ricorrente / promemoria / timer («ogni giorno alle 9 X», «ogni N minuti Y», «ricorda di X», «schedula Y», «pianifica X tutti i giorni»)"
+    must: "usa create_tasks(label=<descrizione>, when=<daily@HH:MM|every_Nm>, query=<frase utente naturale>, times=<N>?). Lo scheduler v2 invochera' un nuovo turno con `query` a ogni fire"
+    must_not: "creare un evento calendar con create_events (e' un task RICORRENTE, non un evento singolo)"
+    ok: "«ogni giorno alle 9 leggi le mail» -> create_tasks(label=\"check mail mattutino\", when=\"daily@09:00\", query=\"leggi le ultime mail\") -> final_answer"
+    error: "«ogni giorno alle 9 X» -> create_events (E' UN ERRORE: create_events crea UN evento, non un task che si ripete)"
+
+  - name: toggle_task
+    when: "richieste di metter in pausa / sospendere / riattivare un task senza cancellarlo («metti in pausa il task X», «sospendi temporaneamente», «riattiva il task ricorrente»)"
+    must: "usa set_tasks(name=<slug>, enabled=<true|false>). Disabilitato = non fire-a ma resta in DB; riabilitabile."
+    must_not: "cancellare il task con delete_tasks (irreversibile, usa solo per rimozione definitiva)"
+    ok: "«sospendi il task ping» -> set_tasks(name=\"ping\", enabled=false) -> final_answer"
+    error: "«sospendi temporaneamente il task» -> delete_tasks (E' UN ERRORE: la cancellazione e' permanente, la sospensione e' temporanea)"
+
+  - name: fire_task_now
+    when: "richieste di forzare esecuzione immediata di un task fuori cadenza («esegui subito il task X», «forza fire ping», «prova adesso il task Y»)"
+    must: "usa set_tasks(name=<slug>, fire_now=true). Mutex con enabled. Solo HOST (admin)."
+    must_not: "specificare sia enabled che fire_now nella stessa chiamata"
+    ok: "«esegui subito il task ping» -> set_tasks(name=\"ping\", fire_now=true) -> final_answer"

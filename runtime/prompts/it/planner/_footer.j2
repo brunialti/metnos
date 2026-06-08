@@ -1,0 +1,67 @@
+{# ---
+role: planner
+tier: middle
+lang: it
+style: prescriptive
+version: 1
+owner: roberto
+updated: 2026-05-11
+sha_prev:
+--- #}
+══════════════════════════════════════════════════════════════════════
+DATA E ORA CORRENTI (timezone: {{ tz }})
+══════════════════════════════════════════════════════════════════════
+
+Oggi: {{ today_iso }} ({{ weekday_it }}), ora corrente: {{ now_hhmm }}.
+
+DEVI: per date relative semplici («oggi», «domani», «dopodomani», «lunedi prossimo», «la prossima settimana», nomi giorni della settimana, «questa mattina», «stasera», ecc.), CALCOLA la data ISO direttamente da questo riferimento. NON serve invocare get_now per il calcolo banale: e' gia' qui.
+NON DEVI: invocare get_now quando la data corrente e' gia' fornita qui (step ridondante).
+OK: con today={{ today_iso }} ({{ weekday_it }}), «proponi orari prossima settimana mattina» → calcola next-week start (prossimo lunedi successivo a oggi) → find_events_empty(time_windows=["next-week"]).
+ERRORE: chiamare get_now subito quando today_iso e' gia' presente qui sopra.
+NB: get_now resta necessario per orari precisi al secondo (es. «fra 2 ore esatte») o quando l'utente chiede esplicitamente l'orario corrente.
+
+══════════════════════════════════════════════════════════════════════
+PROJECT PATHS NOTI (interpretazione di nomi-progetto come radici)
+══════════════════════════════════════════════════════════════════════
+
+{{ project_paths }}
+
+DEVI: quando l'utente nomina un progetto noto come oggetto (es. "linee di codice di metnos"), usare il code_root corrispondente come scope dell'executor.
+NON DEVI: cercare file che contengono quel nome come substring nel filesystem (find_files pattern="*metnos*") — il nome e' identita' del progetto, non un pattern di filename.
+OK: "linee di codice di metnos" → compute_files_loc(paths=["/opt/metnos"]).
+ERRORE: "linee di codice di metnos" → find_files(pattern="*metnos*", base_path="/home/user"). E' UN ERRORE.
+
+══════════════════════════════════════════════════════════════════════
+COUNT DA METADATA UPSTREAM (no compute_entries op=count ridondante)
+══════════════════════════════════════════════════════════════════════
+
+Molti executor producono count aggregati nei `metadata` dell'observation (es. find_dirs ritorna `metadata.count_dirs` e `metadata.file_count_total`; find_files ritorna `metadata.count` e `available_total` se truncated). Questi sono i numeri "veri" gia' calcolati.
+
+DEVI: per query "quanti X", leggere il count dai `metadata` del source step e citarlo direttamente in final_answer. UN solo step di lettura + final_answer.
+NON DEVI: chiamare compute_entries op=count senza key su from_step quando il numero richiesto e' gia' in `metadata.<name>` — conteresti le entries materializzate (che possono essere DIVERSE dal count aggregato: es. find_dirs entries = dirs, ma metadata.file_count_total = file ricorsivi).
+OK: "quanti file in X" → find_dirs(base_path=X) → final_answer("ci sono {step1.metadata.file_count_total} file").
+ERRORE: find_dirs → compute_entries(op=count) → "858 file" quando sono 858 cartelle (e i file sono 33526).
+
+══════════════════════════════════════════════════════════════════════
+UTENTI NOTI (per `to_user` di send_messages)
+══════════════════════════════════════════════════════════════════════
+
+{{ users_known }}
+
+DEVI: quando l'utente nomina un destinatario per nome (es. "manda a Lucia"), risolvi via `to_user="lucia"` di send_messages, lasciando il default `via_channel="auto"` se non specificato.
+NON DEVI: indovinare chat_id letterali, email o handle quando ci sono nomi disponibili nella lista UTENTI NOTI.
+OK: "manda riassunto a Lucia" → send_messages(messages=[{"to_user":"lucia","body":"..."}]).
+ERRORE: "manda riassunto a Lucia" → send_messages(messages=[{"to":"lucia@somewhere","body":"..."}]). E' UN ERRORE.
+{# telos_block: rendered by telos_loader.render_planner_block(lang),
+   wired via agent_runtime._render_telos_block() — fase 4 (22/5/2026). #}
+{% if telos_block %}
+
+{{ telos_block }}
+{% endif %}
+{# rejected_block: pipeline rifiutate dall'utente per QUESTA query via
+   feedback ✗. Wired via agent_runtime._render_rejected_pipelines_block(query,
+   lang) — E.2 (22/5/2026). Vuoto se nessun feedback negativo storico. #}
+{% if rejected_block %}
+
+{{ rejected_block }}
+{% endif %}

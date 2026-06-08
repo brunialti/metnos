@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<title>{% block title %}Metnos admin{% endblock %}</title>
+<script src="https://unpkg.com/htmx.org@1.9.10"></script>
+<script src="https://cdn.jsdelivr.net/npm/uplot@1.6.30/dist/uPlot.iife.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/uplot@1.6.30/dist/uPlot.min.css">
+<style>
+:root{--bg:#fafafa;--fg:#222;--muted:#777;--border:#e0e0e0;--accent:#3a4d6c;}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{font:14px system-ui,-apple-system,sans-serif;color:var(--fg);background:var(--bg);}
+header.topbar{display:flex;align-items:center;gap:1rem;padding:.6rem 1rem;
+              background:var(--accent);color:#fff;font-weight:600}
+header.topbar .grow{flex:1}
+header.topbar a{color:#bcd;text-decoration:none;font-weight:400;font-size:.9em}
+header.topbar a:hover{color:#fff}
+header.topbar form{display:inline;padding:0;margin:0;background:none;border:none}
+header.topbar form button{background:transparent;color:#bcd;padding:0;
+                            font-weight:400;border:none;cursor:pointer;font:inherit}
+header.topbar form button:hover{color:#fff}
+nav.subnav{display:flex;gap:.2rem;flex-wrap:wrap;padding:.4rem 1rem;
+            background:#eef2f8;border-bottom:1px solid var(--border)}
+nav.subnav a{padding:.25rem .6rem;border-radius:.3rem;text-decoration:none;
+              color:#456;font-weight:500;font-size:.9em}
+nav.subnav a:hover{background:#fff}
+nav.subnav a.current{background:var(--accent);color:#fff}
+/* Layout full-width come chat.html: si espande con la viewport. Su display
+   larghi le tabelle/sezioni usano tutta la larghezza disponibile. */
+main{padding:1rem;width:100%;margin:0}
+table{width:100%;border-collapse:collapse}
+th,td{border-bottom:1px solid #ddd;padding:.4rem;text-align:left;vertical-align:top}
+.chip{display:inline-block;padding:.1rem .4rem;border-radius:.3rem;background:#eef;font-size:.85em}
+.chip.bad{background:#fee}
+.chip.ok{background:#efe}
+.chip.warn{background:#fed}
+.row{display:flex;gap:.5rem;align-items:baseline}
+.muted{color:#888}
+.btn{display:inline-block;padding:.2rem .6rem;border:1px solid #aaa;border-radius:.3rem;background:#f8f8f8;font-size:.9em;cursor:pointer;text-decoration:none;color:#333}
+.btn:hover{background:#eef}
+.section{margin:1.5rem 0;padding:1rem;border:1px solid #eee;border-radius:.4rem;background:#fff}
+.section h2{margin-top:0;font-size:1.1em}
+code{background:#f4f4f4;padding:.1em .3em;border-radius:.2em}
+</style>
+</head>
+<body>
+<header class="topbar">
+  <span>Metnos</span>
+  <span class="role">admin</span>
+  <span class="grow"></span>
+  <a href="/" title="torna alla chat">chat</a>
+  <form method="post" action="/admin/logout">
+    <button type="submit">logout</button>
+  </form>
+</header>
+<nav class="subnav">
+  <a href="/admin">home</a>
+  <a href="/admin/proposals">proposals</a>
+  <a href="/admin/promotions">promotions</a>
+  <a href="/admin/executors">executors</a>
+  <a href="/admin/runs">runs</a>
+  <a href="/admin/safety">safety</a>
+  <a href="/admin/turns">turns</a>
+  <a href="/admin/users">users</a>
+</nav>
+<main>{% block body %}{% endblock %}</main>
+<script>
+// Evidenzia il link della nav che corrisponde alla pagina corrente.
+// Senza dover injectare request.path lato server in ogni context Jinja.
+(() => {
+  const path = window.location.pathname;
+  document.querySelectorAll("nav.subnav a").forEach(a => {
+    const href = a.getAttribute("href");
+    const match = (href === "/admin" && path === "/admin")
+                || (href !== "/admin" && path.startsWith(href));
+    if (match) a.classList.add("current");
+  });
+})();
+</script>
+</body></html>

@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% block title %}Metnos admin · proposals{% endblock %}
+{% block body %}
+<h1>Proposte introvertiva</h1>
+
+<form method="get" class="row" style="margin-bottom:.8rem">
+  <label>kind:
+    <select name="kind" onchange="this.form.submit()">
+      <option value=""{% if kind == "" %} selected{% endif %}>tutte</option>
+      <option value="dedupe"{% if kind == "dedupe" %} selected{% endif %}>dedupe</option>
+      <option value="generalize"{% if kind == "generalize" %} selected{% endif %}>generalize</option>
+      <option value="specialize"{% if kind == "specialize" %} selected{% endif %}>specialize</option>
+    </select>
+  </label>
+  <span class="muted">{{ rows|length }} risultati</span>
+</form>
+
+<table class="proposals">
+  <thead>
+    <tr><th>kind</th><th>state</th><th>descrizione</th><th>uses</th>
+        <th>seen</th><th>last seen</th><th>actions</th></tr>
+  </thead>
+  <tbody>
+  {% for r in rows %}
+    <tr>
+      <td><span class="chip">{{ r.kind }}</span></td>
+      <td>
+        {% if r.state == "pending" %}<span class="chip warn">{{ r.state }}</span>
+        {% elif r.state == "applied" %}<span class="chip ok">{{ r.state }}</span>
+        {% elif r.state == "dormant" %}<span class="chip">{{ r.state }}</span>
+        {% else %}<span class="chip bad">{{ r.state }}</span>{% endif %}
+      </td>
+      <td>
+        <div>{{ r.description }}</div>
+        <details><summary class="muted">signature</summary>
+          <code style="font-size:.85em">{{ r.sig_key }}</code></details>
+      </td>
+      <td>{{ r.last_uses }}</td>
+      <td>{{ r.n_seen }}</td>
+      <td class="muted">{{ r.last_seen }}</td>
+      <td>
+        <button class="btn"
+                hx-post="/admin/proposals/introvertiva/{{ r.sig_key|urlencode }}/approve"
+                hx-confirm="Approve {{ r.sig_key }}?"
+                hx-target="closest tr" hx-swap="outerHTML">approve</button>
+        <button class="btn"
+                hx-post="/admin/proposals/introvertiva/{{ r.sig_key|urlencode }}/reject"
+                hx-confirm="Reject {{ r.sig_key }}?"
+                hx-target="closest tr" hx-swap="outerHTML">reject</button>
+        <button class="btn"
+                hx-post="/admin/proposals/introvertiva/{{ r.sig_key|urlencode }}/defer"
+                hx-target="closest tr" hx-swap="outerHTML">defer</button>
+      </td>
+    </tr>
+  {% else %}
+    <tr><td colspan="7" class="muted">nessuna proposta</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+
+<style>
+  .proposals td details{margin-top:.2rem;}
+  .proposals td details summary{cursor:pointer;font-size:.85em;}
+  .proposals td:nth-child(3){max-width:480px;}
+</style>
+{% endblock %}

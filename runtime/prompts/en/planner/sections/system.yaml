@@ -1,0 +1,39 @@
+# Frontmatter equivalente a `{# --- ... --- #}` Jinja (the design guide §6.1).
+role: planner
+tier: middle
+lang: en
+style: prescriptive
+version: 1
+owner: roberto
+updated: 2026-05-13
+sha_prev: ""
+
+section:
+  name: system
+  header: "SYSTEM / HEALTH / PROCESSES / SERVER STATUS"
+  preamble: |
+    SERVER-STATUS/SYSTEM-HEALTH/UPTIME/LOAD/SERVER-STATE
+    -> get_processes (include_health=true for the full health block: load avg + RAM + disks + services).
+
+rules:
+  - name: system_status_with_health
+    when: "the user asks for a general server/system status («server status», «how is it going», «system health», «uptime», «load and ram»)"
+    must: "get_processes(include_health=true, top=10). The include_health flag adds load avg + RAM + disks + Metnos services to the result, in ONE single step"
+    must_not: "call get_processes() without include_health when the user asks for a general server/system status: you would miss load/RAM/disks/services"
+    ok: "«server status» -> get_processes(include_health=true, top=10)"
+    error: "«server status» -> get_processes(top=10) without include_health (THIS IS AN ERROR: missing health block)"
+
+  - name: install_on_demand_binary_missing
+    when: "executor observation contains `error_class=\"binary_missing\"` + `suggested_install` (install-on-demand pattern §7.3, 17/5/2026). Example: change_files_format returns binary_missing for heif-convert with suggested_install=\"sudo apt install -y libheif-examples\""
+    must: |
+      You MUST emit as NEXT step `admin(intent="install package X required by Y", command_proposed=<exact value of suggested_install>)`. The runtime auto-handles the rest: admin asks HMAC consent, user approves the card, sudoer installs, and the original executor is re-run automatically (NO need for you to emit the executor a second time — it happens at the post-admin-success hook in the runtime).
+    must_not: "ignore suggested_install and emit final_answer with \"not possible\". MUST NOT modify the command_proposed (e.g. add other packages). MUST NOT re-emit the original executor after admin: the runtime auto-resume does it."
+    ok: "step1 change_files_format(paths=[photo.heic], to_format=jpg) -> binary_missing libheif-examples -> step2 admin(intent=\"install libheif-examples for HEIC conversion\", command_proposed=\"sudo apt install -y libheif-examples\") -> approval card -> user approves -> auto-resume change_files_format -> ✅"
+    error: "step1 binary_missing -> step2 final_answer(\"cannot convert\") (THIS IS AN ERROR: ignores the auto-install flow). OR step1 binary_missing -> step2 admin install -> step3 re-emit change_files_format (THIS IS AN ERROR: the runtime already does it, duplicate)"
+
+  - name: health_in_observation_skip
+    when: "HEALTH BLOCK already complete in observation: an executor in history returns an observation with non-empty `health` field (load, memory, disk, services) — typical of get_processes(include_health=true) for queries like «system status», «how is the server doing», «load and ram». The runtime AUTOMATICALLY PREPENDS to the final_message a formatted «Server status» block (load 1m/5m/15m + uptime, RAM%, disks%, services up/down). The user ALREADY SEES the full health data"
+    must: "call final_answer directly with a brief comment on processes (if relevant) or a closing sentence. Let the «Server status» block be the main content"
+    must_not: "call describe_entries after a get_processes with non-empty `health`: describe_entries only sees entries (the top processes), NOT the health field. The LLM will declare «not available» for Load/RAM/Disks/Services contradicting the already-present block. MUST NOT re-run get_processes or re-ask the status: data is already in history"
+    ok: "history step1 = get_processes(include_health=true) ok=true, entries=[10 processes], health={load,mem,disk,services} -> step2 final_answer \"Status in table above. Top process: python 33% CPU (nightly orchestrator)\". OR same scenario without comment -> step2 final_answer \"Server status above. All nominal.\""
+    error: "same scenario -> step2 describe_entries(from_step=1) -> the LLM says «Load: not available, RAM: not available, ...» (THIS IS AN ERROR: data is already in the prepended block)"

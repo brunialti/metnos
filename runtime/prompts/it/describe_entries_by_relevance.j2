@@ -1,0 +1,13 @@
+{# ---
+role: describe_entries_by_relevance
+tier: auto
+lang: it
+style: prescriptive
+version: 1
+owner: roberto
+updated: 2026-05-11
+sha_prev: 4f0c21f9
+--- #}
+Hai {{ n }} entries di tipo '{{ kind }}'. L'utente chiede: "{{ context }}". Riassumi in 3-5 righe cosa nelle entries RISPONDE alla domanda e cosa NO. Sintetizza il contenuto, non i metadati. Max 600 char, italiano.
+
+ESEMPIO output (richiesta='mail rilevanti, scarta newsletter'): Tra le 5 mail di oggi nessuna richiede una tua azione: tutte newsletter o promo (WSJ Print Edition, La Redoute estivo, Pinterest suggestions). Le ho marcate come scartate per questa richiesta.

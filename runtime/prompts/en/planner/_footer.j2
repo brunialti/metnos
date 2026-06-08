@@ -1,0 +1,67 @@
+{# ---
+role: planner
+tier: middle
+lang: en
+style: prescriptive
+version: 1
+owner: roberto
+updated: 2026-05-11
+sha_prev:
+--- #}
+══════════════════════════════════════════════════════════════════════
+CURRENT DATE AND TIME (timezone: {{ tz }})
+══════════════════════════════════════════════════════════════════════
+
+Today: {{ today_iso }} ({{ weekday_en }}), current time: {{ now_hhmm }}.
+
+MUST: for simple relative dates («today», «tomorrow», «day after tomorrow», «next monday», «next week», weekday names, «this morning», «tonight», etc.), COMPUTE the ISO date directly from this reference. NO need to invoke get_now for trivial computation: it's already here.
+MUST NOT: invoke get_now when the current date is already provided here (redundant step).
+OK: with today={{ today_iso }} ({{ weekday_en }}), «propose next week morning times» → compute next-week start (next Monday after today) → find_events_empty(time_windows=["next-week"]).
+ERROR: calling get_now immediately when today_iso is already present above.
+NB: get_now is still needed for second-precise timestamps (e.g., «in exactly 2 hours») or when the user explicitly asks for the current time.
+
+══════════════════════════════════════════════════════════════════════
+KNOWN PROJECT PATHS (interpretation of project names as roots)
+══════════════════════════════════════════════════════════════════════
+
+{{ project_paths }}
+
+MUST: when the user names a known project as an object (e.g., "metnos code lines"), use the corresponding code_root as the executor scope.
+MUST NOT: search for files containing that name as a substring in the filesystem (find_files pattern="*metnos*") — the name is the project identity, not a filename pattern.
+OK: "metnos code lines" → compute_files_loc(paths=["/opt/metnos"]).
+ERROR: "metnos code lines" → find_files(pattern="*metnos*", base_path="/home/user"). THIS IS AN ERROR.
+
+══════════════════════════════════════════════════════════════════════
+COUNT FROM UPSTREAM METADATA (no redundant compute_entries op=count)
+══════════════════════════════════════════════════════════════════════
+
+Many executors produce aggregated counts in their observation `metadata` (e.g. find_dirs returns `metadata.count_dirs` and `metadata.file_count_total`; find_files returns `metadata.count` and `available_total` when truncated). These are the "true" pre-computed numbers.
+
+MUST: for "how many X" queries, read the count from the source step `metadata` and cite it directly in final_answer. ONE read step + final_answer.
+MUST NOT: call compute_entries op=count without key on from_step when the requested number is already in `metadata.<name>` — you would count the materialized entries (which can DIFFER from the aggregated count: e.g. find_dirs entries = dirs, but metadata.file_count_total = recursive files).
+OK: "how many files in X" → find_dirs(base_path=X) → final_answer("there are {step1.metadata.file_count_total} files").
+ERROR: find_dirs → compute_entries(op=count) → "858 files" when those are 858 folders (and files are 33526).
+
+══════════════════════════════════════════════════════════════════════
+KNOWN USERS (for `to_user` of send_messages)
+══════════════════════════════════════════════════════════════════════
+
+{{ users_known }}
+
+MUST: when the user names a recipient by name (e.g., "send to Lucia"), resolve via `to_user="lucia"` of send_messages, leaving the default `via_channel="auto"` if not specified.
+MUST NOT: guess literal chat_id, email, or handles when names are available in the KNOWN USERS list.
+OK: "send summary to Lucia" → send_messages(messages=[{"to_user":"lucia","body":"..."}]).
+ERROR: "send summary to Lucia" → send_messages(messages=[{"to":"lucia@somewhere","body":"..."}]). THIS IS AN ERROR.
+{# telos_block: rendered by telos_loader.render_planner_block(lang),
+   wired via agent_runtime._render_telos_block() — phase 4 (22/5/2026). #}
+{% if telos_block %}
+
+{{ telos_block }}
+{% endif %}
+{# rejected_block: pipelines rejected by user for THIS query via ✗ feedback.
+   Wired via agent_runtime._render_rejected_pipelines_block(query, lang)
+   — E.2 (22/5/2026). Empty if no negative feedback history. #}
+{% if rejected_block %}
+
+{{ rejected_block }}
+{% endif %}

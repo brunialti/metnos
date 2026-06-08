@@ -1,0 +1,297 @@
+{
+ "acc": 1.0,
+ "ok": 22,
+ "n": 22,
+ "rows": [
+  {
+   "q": "Controlla se è uscita la versione 8 di AMD ROCm su https://r",
+   "exp": "read_urls_html",
+   "got": [
+    "read_urls_html"
+   ],
+   "pass": true,
+   "flaky": false,
+   "intent": {
+    "verb": "read",
+    "object": "urls"
+   }
+  },
+  {
+   "q": "leggi questa pagina https://example.com/blog/post.html e ria",
+   "exp": "read_urls_html",
+   "got": [
+    "read_urls_html"
+   ],
+   "pass": true,
+   "flaky": false,
+   "intent": {
+    "verb": "read",
+    "object": "urls"
+   }
+  },
+  {
+   "q": "estrai il testo dal documento https://site.org/report-2026.p",
+   "exp": "read_urls_pdf",
+   "got": [
+    "read_urls_pdf"
+   ],
+   "pass": true,
+   "flaky": false,
+   "intent": {
+    "verb": "extract",
+    "object": "texts"
+   }
+  },
+  {
+   "q": "scarica e leggi il PDF https://www.comune.it/circolare.pdf",
+   "exp": "read_urls_pdf",
+   "got": [
+    "read_urls_pdf"
+   ],
+   "pass": true,
+   "flaky": false,
+   "intent": {
+    "verb": "get",
+    "object": "urls"
+   }
+  },
+  {
+   "q": "cerca sul web le ultime notizie su AMD ROCm",
+   "exp": "find_urls",
+   "got": [
+    "find_urls"
+   ],
+   "pass": true,
+   "flaky": false,
+   "intent": {
+    "verb": "find",
+    "object": "urls"
+   }
+  },
+  {
+   "q": "cerca online cos'è AMD ROCm e dammi 3 fonti",
+   "exp": "find_urls",
+   "got": [
+    "find_urls"
+   ],
+   "pass": true,
+   "flaky": false,
+   "intent": {
+    "verb": "find",
+    "object": "urls"
+   }
+  },
+  {
+   "q": "è installato ffmpeg sul sistema?",
+   "exp": "find_packages",
+   "got": [
+    "find_packages"
+   ],
+   "pass": true,
+   "flaky": false,
+   "intent": {
+    "verb": "find",
+    "object": "packages"
+   }
+  },
+  {
+   "q": "controlla se il comando git è presente",
+   "exp": "find_packages",
+   "got": [
+    "find_packages"
+   ],
+   "pass": true,
+   "flaky": false,
+   "intent": {
+    "verb": "find",
+    "object": "processes"
+   }
+  },
+  {
+   "q": "cerca i file .pdf nella cartella Documenti",
+   "exp": "find_files",
+   "got": [
+    "find_files"
+   ],
+   "pass": true,
+   "flaky": false,
+   "intent": {
+    "verb": "find",
+    "object": "files"
+   }
+  },
+  {
+   "q": "elenca le sottocartelle di /home/user",
+   "exp": "find_dirs",
+   "got": [
+    "find_dirs"
+   ],
+   "pass": true,
+   "flaky": false,
+   "intent": {
+    "verb": "list",
+    "object": "dirs"
+   }
+  },
+  {
+   "q": "mostra tutto il contenuto della cartella Downloads",
+   "exp": "list_dirs",
+   "got": [
+    "list_dirs"
+   ],
+   "pass": true,
+   "flaky": false,
+   "intent": {
+    "verb": "list",
+    "object": "files"
+   }
+  },
+  {
+   "q": "sposta vecchio.txt nella cartella archivio",
+   "exp": "move_files",
+   "got": [
+    "move_files"
+   ],
+   "pass": true,
+   "flaky": false,
+   "intent": {
+    "verb": "move",
+    "object": "files"
+   }
+  },
+  {
+   "q": "sposta in Posta indesiderata le mail di spam",
+   "exp": [
+    "move_messages",
+    "find_messages",
+    "read_messages"
+   ],
+   "got": [
+    "read_messages"
+   ],
+   "pass": true,
+   "flaky": false,
+   "intent": {
+    "verb": "move",
+    "object": "messages"
+   }
+  },
+  {
+   "q": "cancella il file /tmp/scratch.log",
+   "exp": "delete_files",
+   "got": [
+    "delete_files"
+   ],
+   "pass": true,
+   "flaky": false,
+   "intent": {
+    "verb": "delete",
+    "object": "files"
+   }
+  },
+  {
+   "q": "rimuovi la cartella /tmp/buildcache",
+   "exp": "delete_dirs",
+   "got": [
+    "delete_dirs"
+   ],
+   "pass": true,
+   "flaky": false,
+   "intent": {
+    "verb": "delete",
+    "object": "dirs"
+   }
+  },
+  {
+   "q": "leggi le mail non lette di oggi",
+   "exp": "read_messages",
+   "got": [
+    "read_messages"
+   ],
+   "pass": true,
+   "flaky": false,
+   "intent": {
+    "verb": "read",
+    "object": "messages"
+   }
+  },
+  {
+   "q": "invia una mail a Mario con oggetto Promemoria",
+   "exp": "send_messages",
+   "got": [
+    "send_messages"
+   ],
+   "pass": true,
+   "flaky": false,
+   "intent": {
+    "verb": "send",
+    "object": "messages"
+   }
+  },
+  {
+   "q": "che ore sono adesso?",
+   "exp": "get_now",
+   "got": [
+    "get_now"
+   ],
+   "pass": true,
+   "flaky": false,
+   "intent": {
+    "verb": "get",
+    "object": "numbers"
+   }
+  },
+  {
+   "q": "quali processi stanno consumando più CPU?",
+   "exp": "get_processes",
+   "got": [
+    "get_processes"
+   ],
+   "pass": true,
+   "flaky": false,
+   "intent": {
+    "verb": "find",
+    "object": "processes"
+   }
+  },
+  {
+   "q": "che impegni ho domani in calendario?",
+   "exp": "read_events",
+   "got": [
+    "read_events"
+   ],
+   "pass": true,
+   "flaky": false,
+   "intent": {
+    "verb": "read",
+    "object": "events"
+   }
+  },
+  {
+   "q": "trova le fasce libere nel mio calendario questa settimana",
+   "exp": "find_events_empty",
+   "got": [
+    "find_events_empty"
+   ],
+   "pass": true,
+   "flaky": false,
+   "intent": {
+    "verb": "find",
+    "object": "events"
+   }
+  },
+  {
+   "q": "cerca foto di una persona col viso in primo piano",
+   "exp": "find_images_indices",
+   "got": [
+    "find_images_indices"
+   ],
+   "pass": true,
+   "flaky": false,
+   "intent": {
+    "verb": "find",
+    "object": "images"
+   }
+  }
+ ]
+}

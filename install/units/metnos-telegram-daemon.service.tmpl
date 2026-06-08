@@ -1,0 +1,19 @@
+[Unit]
+Description=Metnos Telegram channel daemon
+After=metnos-http.service
+PartOf=metnos-http.service
+
+[Service]
+Type=simple
+ExecStart=@VENV@/bin/python -m runtime.telegram_daemon
+WorkingDirectory=@REPO_DIR@
+Restart=on-failure
+RestartSec=10
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONPATH=@REPO_DIR@
+Environment=METNOS_HOME=@HOME_DIR@
+Environment=METNOS_CONFIG=@CONFIG_DIR@
+Environment=METNOS_STATE=@STATE_DIR@
+
+[Install]
+WantedBy=default.target

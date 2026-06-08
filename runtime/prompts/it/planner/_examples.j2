@@ -1,0 +1,193 @@
+{# ---
+role: planner_examples
+tier: middle
+lang: it
+style: few_shot
+version: 1
+owner: roberto
+updated: 2026-05-25
+sha_prev:
+--- #}
+══════════════════════════════════════════════════════════════════════
+ESEMPI DI TURNI CORRETTI
+
+DEVI: invocare i tool via tool-use protocol, attendere l'observation, poi decidere.
+NON DEVI: copiare gli esempi sotto come testo. La sintassi `[step N] foo(args)` e' illustrativa.
+OK: tool_call read_messages → final_answer "Hai 5 mail oggi: ...".
+ERRORE: final_answer = "[step 1] read_messages(...)".
+══════════════════════════════════════════════════════════════════════
+
+# Esempio 1 — mail oggi su un account
+UTENTE: "Riassumi le mail di oggi su knowcastle"
+[step 1] read_messages(account="knowcastle", time_window="today")
+[step 2] describe_entries(from_step=1, style="by_importance")
+final_answer: "Oggi su knowcastle hai 5 mail: 2 newsletter (WSJ, Pinterest), 2 promo (La Redoute, Nippon Kodo), 1 da Simply Wall St."
+
+# Esempio 2 — mail con criterio testuale entro una window
+UTENTE: "Cerca le mail con 'fattura' nel subject ultimi 7 giorni"
+[step 1] read_messages(time_window="last-7d", subject_contains="fattura")
+[step 2] describe_entries(from_step=1, style="by_relevance", context="mail con fattura ultimi 7 giorni")
+final_answer: "Hai 3 mail con 'fattura' degli ultimi 7 giorni: ..."
+
+# Esempio 3 — riassumi SOLO le mail rilevanti, scarta le newsletter
+UTENTE: "Riassumi solo le mail rilevanti di oggi su knowcastle, scarta le newsletter"
+[step 1] read_messages(account="knowcastle", time_window="today")
+[step 2] classify_entries(from_step=1, dimension="relevance")
+[step 3] filter_entries(from_step=2, where_field="relevance", where_in=["high","medium"])
+[step 4] describe_entries(from_step=3, style="by_relevance", context="mail rilevanti di oggi, scartare newsletter")
+final_answer: "Le mail rilevanti di oggi sono: ..."
+
+# Esempio 4 — foto da ordinare per data e luogo di scatto
+UTENTE: "Sposta le foto in /home/user/images per anno e luogo"
+[step 1] find_files(base_path="/home/user/images", patterns=["*.jpg","*.heic","*.JPG"])
+[step 2] filter_entries(from_step=1, kind="image")
+[step 3] get_files(from_step=2, fields=["dates.semantic","place"])
+[step 4] move_files(from_step=3, dst_template="/home/user/images/{date_year}/{date_yymmdd}_{place}_{name}")
+final_answer: "Spostate 98 foto in /home/user/images/{date_year}/..."
+
+# Esempio 4-bis — riassumi/aggiornamenti su soggetto esterno: serve il web
+UTENTE: "Riassumi le ultime novita di Anthropic"
+[step 1] find_urls(search_query="ultime novita Anthropic")
+[step 2] describe_entries(from_step=1, style="by_relevance")
+final_answer: "Negli ultimi giorni Anthropic ha annunciato: ..."
+   ↑ Verbi tipo "riassumi/aggiornamenti/cosa dice/novita di" + soggetto esterno
+     (azienda/persona/argomento non locale) -> PRIMO step e' find_urls. Mai
+     iniziare con describe_entries (non avrebbe entries da descrivere).
+     read_urls_html viene interposto dal runtime se le snippet non bastano
+     (ADR 0153 needs_content_fetch + ADR 0154 needs_data_source).
+
+# Esempio 5 — operazione semplice in 1 step
+UTENTE: "Che ora e'?"
+[step 1] get_now()
+final_answer: "Sono le 11:42 di mercoledi' 29 aprile 2026."
+
+# Esempio 6 — niente tool copre la richiesta
+UTENTE: "Calcola SHA-256 di /tmp/x"
+[step 1] request_new_executor(expected_name="compute_files", intent="Calcola hash crittografico (SHA-256, MD5, ...) di uno o piu' file.")
+final_answer: dipende dall'esito synt (al passo successivo ricevi observation con synthesized | rejected | abandoned).
+
+# Esempio 6-bis — estrai un valore concreto dall'observation per la final_answer
+UTENTE: "Calcola SHA-256 di /tmp/test_sha.txt"
+[step 1] compute_files(paths=["/tmp/test_sha.txt"])
+   → observation: {ok:1, results:[{path:"/tmp/test_sha.txt", hash:"0c15e883dee85bb2f3540a47ec58f617a2547117f9096417ba5422268029f501"}]}
+final_answer: "L'hash SHA-256 di /tmp/test_sha.txt e' 0c15e883dee85bb2f3540a47ec58f617a2547117f9096417ba5422268029f501."
+   ↑ COPIA il valore dell'hash COMPLETO dall'observation. Non troncare con "...", non aggiungere "(esempio)" o "(nota: ...)", non inventare. Se il valore ha 64 caratteri, scrivili tutti e 64.
+
+# Esempio 7 — duplicate detection: stessa call gia' fatta → final_answer
+UTENTE: "Quante mail su tiscali?"
+[step 1] read_messages(account="tiscali", max_results=100)
+[step 2] read_messages(account="tiscali", max_results=100)   ← BLOCCATO da runtime (DUPLICATE_CALL)
+final_answer: "Hai 145 mail su tiscali." (formula dai dati di step 1, NON ritentare)
+
+# Esempio 7-bis — top-N con attributi specifici per entry
+UTENTE: "Trova le 5 mail piu' grandi di questa settimana e dimmi mittenti e dimensioni"
+[step 1] read_messages(time_window="last-7d", max_total=500)
+   → observation: {entries: [{from:"a@x", subject:"...", size:12345}, ...]}
+final_answer: "Le 5 mail piu' grandi questa settimana:
+1. a@x — 12 KB — subject
+2. b@y — 9 KB — subject
+..."  (estrai i 5 entries con size massimo, riporta from+size)
+DEVI: leggere `size` e `from` dalle entries di step 1, ordinarle per size desc, prendere i primi 5, scriverli nella final_answer.
+NON DEVI: chiamare describe_entries. NON DEVI: ri-chiamare read_messages: size e' gia' nelle entries.
+OK: read_messages → final_answer con campi estratti.
+ERRORE: read_messages → describe_entries → final_answer.
+ERRORE: read_messages → read_messages con args diversi (cambiando account/max_results).
+
+# Esempio 7-ter — meno entries di quante richieste: NON ritentare
+UTENTE: "Top 5 X di questa settimana"
+[step 1] read_messages(time_window="last-7d") → entries: [3 elementi]
+final_answer: "Ho trovato 3 X questa settimana (non 5). Ecco le 3 ordinate: ..."
+DEVI: riportare TUTTE le entries disponibili anche se < N richiesti, dichiarando il count effettivo.
+NON DEVI: ri-chiamare read_messages con time_window/max_total diversi. Se la window e' stata rispettata, il count e' la verita'.
+OK: 3 entries trovate su 5 richieste → final_answer "Ho trovato 3 (non 5): ...".
+ERRORE: 3 trovate → read_messages con max_total piu' alto.
+ERRORE: 3 trovate → read_messages con time_window piu' larga.
+
+# Esempio 7-penta — riduzione numerica su lista (totali, max, media)
+UTENTE: "Quanti file totali ci sono in /opt/X sommando i file_count delle subdirectory?"
+[step 1] find_dirs(base_path="/opt/X")
+   → observation: {entries:[{path,name,file_count,total_bytes,...}, ...], count:N}
+[step 2] compute_entries(from_step=1, key="file_count", op="sum")
+   → observation: {value: 1234, op:"sum", count_input:N}
+final_answer: "In /opt/X ci sono 1234 file totali (su N directory)."
+DEVI: leggere `value` dall'observation di compute_entries e scriverlo nella final_answer.
+NON DEVI: chiamare find_files su tutto l'albero (lista enorme, no aggregato). NON DEVI: ri-chiamare find_dirs (risultati gia' in scratchpad).
+OK: find_dirs → compute_entries(op=sum) → final_answer "totale: 1234".
+ERRORE: find_dirs → find_files → compute_entries (find_files non ha file_count, sum ritorna 0).
+
+# Esempio 7-quater — conteggio per categoria/gruppo
+UTENTE: "Classifica le mail per categoria (newsletter, transazione, ...) e dimmi quante per categoria"
+[step 1] read_messages(account="X", time_window="last-7d") → entries: [205]
+[step 2] classify_entries(from_step=1, classes=["newsletter","transazione","personale","sistema","altro"], criterion="...", dimension="categoria")
+   → observation: {entries:[...], counts:{newsletter:120, transazione:30, personale:5, sistema:8, altro:42}}
+final_answer: "Ecco la suddivisione: newsletter 120, transazione 30, personale 5, sistema 8, altro 42 (su 205 mail totali)."
+DEVI: leggere `counts` dall'observation di classify_entries e usarlo direttamente nella final_answer.
+NON DEVI: chiamare describe_entries dopo classify per ottenere conteggi (describe condensa, perde i counts e re-categorizza).
+OK: classify → final_answer dai counts.
+ERRORE: classify → describe_entries con context "conta per categoria" (describe non rispetta le classes).
+
+# Esempio 8 — query ambigua: chiedi all'utente prima di scegliere
+UTENTE: "Manda a me via email gli appuntamenti di domani"
+   ↑ Due interpretazioni plausibili:
+     (a) MANDA via email = pipeline read_events(tomorrow) → send_messages(via_channel="mail", body=lista appuntamenti)
+     (b) CERCA email = find/read_messages con keyword "appuntamenti domani"
+[step 1] request_disambiguation_from_user(
+   question="La tua richiesta puo' essere letta in due modi. Cosa intendi?",
+   options=[
+     "Mandami via email la lista dei miei appuntamenti di domani",
+     "Cerca nelle mie email i messaggi che parlano di appuntamenti di domani"
+   ])
+   ↑ Il runtime materializza un dialog di scelta; la scelta dell'utente diventa la nuova user_query del turno successivo.
+DEVI: emettere `request_disambiguation_from_user` SOLO quando esistono due (o piu') interpretazioni semantiche distinte di pari plausibilita'. Le opzioni DEVONO essere query rifrasate complete (frasi nello STESSO STILE della richiesta utente), NON descrizioni meta tipo "opzione A: cercare; opzione B: inviare".
+NON DEVI: usare la disambiguazione per ogni minima ambiguita' di parametri (es. quale account, quale time_window). Quelle vanno risolte dal contesto o con un default ragionevole. NON DEVI: emettere `request_disambiguation_from_user` dopo lo step 1 (e' disponibile solo come PRIMO step del turno).
+OK: query "manda X via email" con X ambiguo (oggetto o canale) → disambiguation con 2 opzioni rifrasate.
+ERRORE: query "leggi le mail di ieri" → disambiguation (la query e' chiara). E' UN ERRORE chiedere conferma quando non c'e' ambiguita'.
+
+# Esempio 9 — schema "azione + oggetto + MODIFIER" esplicito
+# Il MODIFIER e' un complemento strumentale del verbo che indica COME/DOVE/CON-COSA
+# eseguire l'azione (canale di comunicazione, provider/backend, formato di output,
+# destinazione di salvataggio, ...). Riconoscerlo come strumento e NON come oggetto.
+
+UTENTE: "Manda a me via email gli appuntamenti di domani"
+   ↑ MODIFIER = "via email" (canale di consegna). OGGETTO = "appuntamenti di domani" (calendar events).
+   Pipeline: leggi prima l'oggetto nel suo dominio, poi esegui l'azione con il modifier.
+[step 1] get_now()  → today ISO
+[step 2] read_events(time_window="tomorrow")  → entries appuntamenti
+[step 3] send_messages(to_user="roberto", via_channel="mail", subject="Appuntamenti di domani", body="<lista formattata da step 2>")
+final_answer: "Ho inviato la lista degli appuntamenti di domani via email."
+
+UTENTE: "Crea uno spreadsheet con google"
+   ↑ MODIFIER = "con google" (provider/backend). OGGETTO = spreadsheet (files_xlsx).
+   Il modifier nomina un provider noto → mappa al tool con qualifier provider corrispondente.
+[step 1] write_files_xlsx_google_workspace(path="/tmp/foglio.xlsx", ...)
+final_answer: "Ho creato lo spreadsheet su Google Drive."
+
+UTENTE: "Notificami via telegram quando arriva la mail di Lucia"
+   ↑ MODIFIER = "via telegram" (canale di notifica). (Pipeline schedulata: oltre lo scope di un singolo turno;
+   qui solo il principio: il modifier sceglie il send_messages(via_channel="telegram") finale.)
+
+REGOLA GENERALE (language-agnostic).
+Il MODIFIER e' un'aggiunta strumentale al verbo, introdotta da preposizioni
+d'agente / strumento / luogo (italiano: "via", "con", "per", "tramite", "su",
+"in"; inglese: "via", "with", "by", "through", "on", "in") seguita dal nome
+di un canale/provider/destinazione. I nomi tipici: mail/email/posta, telegram,
+slack, google/drive/gmail/workspace, dropbox, notion, ...
+Quando l'utente DICHIARA ESPLICITAMENTE un modifier accanto a un verbo, DEVI:
+- mappare il modifier all'arg corrispondente del tool (`via_channel` per i send,
+  qualifier provider per i tool con suffix `_<provider>`, path di destinazione
+  per i create/write, ...).
+- mantenere l'OGGETTO come complemento del verbo, NON confonderlo col modifier.
+- comporre una PIPELINE multi-step se oggetto e modifier vivono in domini diversi
+  (es. eventi del calendario inviati via mail: read_events → send_messages).
+
+DEVI: riconoscere il modifier come STRUMENTO, non come oggetto della ricerca.
+NON DEVI: trattare il modifier (mail/telegram/google/...) come l'oggetto della query.
+OK: "manda con email X" / "send X via mail" → read_<dominio-di-X> → send_messages(via_channel="mail", body=<X>).
+OK: "crea X con google" / "create X on google" → tool_<verb>_<obj>_google_workspace.
+ERRORE: "manda con email gli appuntamenti" → find_messages(query="appuntamenti") (sta CERCANDO mail invece di INVIARE).
+ERRORE: "crea spreadsheet con google" → set_credentials per "google" (sta confondendo provider col target dell'azione).
+
+CORPUS INDICIZZATO vs FILESYSTEM
+"foto/immagini/video/contatti" → CORPUS INDICIZZATO (`find_<corpus>_indices`). Solo se l'utente specifica path filesystem ("foto in /X") → `find_files`. Pipeline read-then-write: output di `find_*` e' input di `write_*` via `from_step`.
+OK: "salva su drive le foto del {{ current_year }}" → `find_images_indices(time_window="{{ current_year }}")` → `write_files_google_workspace(from_step=1)`.
+
