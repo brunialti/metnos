@@ -701,6 +701,58 @@ def _split_temporal_from_query(query_text: str) -> tuple[str, str | None]:
     return residual, tw
 
 
+def _split_person_from_query(query_text: str) -> tuple[str, str | None]:
+    """Estrae un nome di persona ENROLLATA da `query_text` e lo separa come
+    filtro-IDENTITÀ (volto), lasciando il resto come scena. Ritorna
+    (query_residua, name|None).
+
+    Razionale §7.9/§2.4 (gemello di `_split_temporal_from_query`): «silvia al
+    mare» = volto di Silvia (in registro) ∩ scena «al mare». Senza split,
+    «silvia» finisce nell'embedding semantico e NON attiva il filtro-volto → la
+    ricerca trova il mare ma non LEI (bug live 8/6). Match SOLO contro il set
+    CHIUSO dei nomi in PersonsRegistry (niente falsi positivi su parole comuni)
+    e SOLO se UN unico person matcha in modo non ambiguo (token→slug univoco)."""
+    if not query_text:
+        return query_text, None
+    try:
+        from persons_registry import PersonsRegistry
+        persons = PersonsRegistry().list_all()
+    except Exception:
+        return query_text, None
+    if not persons:
+        return query_text, None
+    # Indice token→slug: token dello slug (silvia_buffa→{silvia,buffa}) + token
+    # del display name. Scarta i token ambigui (condivisi da 2+ persone).
+    tok2slug: dict[str, set] = {}
+    slug2name: dict[str, str] = {}
+    for p in persons:
+        slug = (p.get("slug") or "").strip()
+        if not slug:
+            continue
+        nm = (p.get("name") or slug).strip()
+        slug2name[slug] = nm
+        toks = set(re.split(r"[_\s]+", slug.lower())) | set(re.split(r"\s+", nm.lower()))
+        for t in toks:
+            t = t.strip()
+            if len(t) < 2:
+                continue
+            tok2slug.setdefault(t, set()).add(slug)
+    matched_slug: str | None = None
+    keep: list[str] = []
+    for tok in query_text.split():
+        core = tok.strip(".,;:!?()[]'\"«»").lower()
+        slugs = tok2slug.get(core)
+        if slugs and len(slugs) == 1:
+            s = next(iter(slugs))
+            if matched_slug is None or matched_slug == s:
+                matched_slug = s
+                continue  # token = nome-persona → fuori dalla scena
+        keep.append(tok)
+    if matched_slug is None:
+        return query_text, None
+    return " ".join(keep).strip(), slug2name.get(matched_slug)
+
+
 def _extract_face_embeddings_from_reference(ref_paths: list[str]):
     try:
         from face_embedding import get_face_engine
@@ -1455,6 +1507,24 @@ def invoke(args):
                 args["match_all"] = True
             log.info("find_images_indices: temporal split → time_window=%r, "
                      "query_text=%r", _tw, args.get("query_text"))
+
+    # §7.9 FUSIONE IDENTITÀ: un nome di persona ENROLLATA dentro query_text è
+    # un filtro-VOLTO, non scena. Estrailo in `name` (se non già esplicito) così
+    # la ricerca INTRECCIA volto∩scena ("silvia al mare" → Silvia ∩ mare) invece
+    # di cercare "silvia" come testo (bug live 8/6: trovava il mare, non lei).
+    # Dopo lo split temporale → "silvia al mare 2016" = volto∩scena∩tempo.
+    if args.get("query_text") and not args.get("name") and not args.get("names"):
+        _resid, _person = _split_person_from_query(str(args["query_text"]))
+        if _person is not None:
+            args = dict(args)
+            args["name"] = _person
+            if _resid:
+                args["query_text"] = _resid
+            else:
+                args.pop("query_text", None)  # solo persona → tutte le sue foto
+                args["match_all"] = True
+            log.info("find_images_indices: person split → name=%r, query_text=%r",
+                     _person, args.get("query_text"))
 
     top_k = int(args.get("top_k", _TOP_K_DEFAULT))
     if top_k < 1:
