@@ -20,6 +20,7 @@ Tool da normalizzare:
   argomenti (nome: tipo — uso): {{ args_block }}
   shape OUT atteso (§2.6, verbo {{ verb }}): {{ out_shape_hint }}
   tool fratelli sullo stesso oggetto (per il capitolo NON:): {{ siblings_block }}
+  termini user-facing distintivi (affinity, l'utente li userebbe): {{ affinity_terms }}
 {% if verb_ortho %}  BOUNDARY §2.2 verbi-produttori (per disambiguare get/read/find/list/filter): {{ verb_ortho }}
 {% endif %}{% if fmt_qualifier %}  >>> QUALIFIER DI FORMATO '{{ fmt_qualifier }}': il router sceglie PER FORMATO. Lo SCOPO DEVE nominare il TRIGGER concreto (file/URL con estensione/tipo '{{ fmt_qualifier }}', es. "file .{{ fmt_qualifier }}" o "URL che termina in .{{ fmt_qualifier }}"). Se '{{ fmt_qualifier }}' e' il formato GENERALE del web (html), dichiaralo default ("qualsiasi pagina web/URL non-PDF"). Cosi' un .html NON viene scambiato per PDF.
 {% endif %}
@@ -44,7 +45,9 @@ REGOLE — description = SOLO TESTA §2.5 (REGOLA UNIVERSALE):
   Excel", "messaggio mail", "evento calendario"), NON ridurlo al formato tecnico
   ("HTML", "xlsx") MA nemmeno INVENTARNE uno assente dalla sorgente (se la
   sorgente dice "richiesta HTTP/risorsa", NON scrivere "pagina web"). Verbo+
-  sostantivo sono cio' che disambigua dai fratelli.
+  sostantivo sono cio' che disambigua dai fratelli. Se un TERMINE DISTINTIVO
+  dell'affinity (es. "sottocartelle", "non lette") e' la parola con cui l'utente
+  chiamerebbe IL TOOL, USALO nello SCOPO: e' cio' che fa scegliere il router.
 - FORMATO (vedi direttiva >>> sopra se presente): ogni tool con qualifier di
   formato nomina nello SCOPO il trigger concreto (.pdf/.csv/.xlsx...); il formato
   web generale (html) si dichiara default. Cosi' il router sceglie per estensione.

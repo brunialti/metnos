@@ -307,6 +307,7 @@ def normalize_one(name: str, cat: dict, llm, *, max_retry=5) -> dict:
             siblings_block=sib_block,
             verb_ortho=_verb_ortho(meta["verb"]),
             fmt_qualifier=_format_qualifier(name),
+            affinity_terms=", ".join(meta["affinity"][:14]),
             source_it=meta["it"], source_en=meta["en"],
             head_max=HEAD_MAX, desc_max=DESC_MAX,
         )

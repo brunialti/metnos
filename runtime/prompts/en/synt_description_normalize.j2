@@ -20,6 +20,7 @@ Tool to normalize:
   arguments (name: type — use): {{ args_block }}
   expected OUT shape (§2.6, verb {{ verb }}): {{ out_shape_hint }}
   sibling tools on the same object (for the NON: chapter): {{ siblings_block }}
+  distinctive user-facing terms (affinity, what the user would say): {{ affinity_terms }}
 {% if verb_ortho %}  §2.2 producer-verb BOUNDARY (to disambiguate get/read/find/list/filter): {{ verb_ortho }}
 {% endif %}{% if fmt_qualifier %}  >>> FORMAT QUALIFIER '{{ fmt_qualifier }}': the router picks BY FORMAT. The SCOPO MUST name the concrete TRIGGER (file/URL with extension/type '{{ fmt_qualifier }}', e.g. "file .{{ fmt_qualifier }}" or "URL ending in .{{ fmt_qualifier }}"). If '{{ fmt_qualifier }}' is the GENERAL web format (html), declare it the default ("any web page/URL except PDF"). So a .html is NOT mistaken for a PDF.
 {% endif %}
