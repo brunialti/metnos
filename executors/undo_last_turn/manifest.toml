@@ -9,8 +9,8 @@ author      = "Roberto Brunialti"
 affinity    = ["undo", "annulla", "ripristina", "revert", "rollback", "torna", "indietro", "ribalta"]
 
 [description]
-it = "Annulla TUTTE le operazioni revertibili dell'ultimo turno utente che ne contiene almeno una. Esempio: se l'ultimo turno e' stato 'sposta foto in cartelle per anno', undo_last_turn riporta i file ai path originali. In ordine inverso di esecuzione: la piu' recente per prima. Best-effort: operazioni irreversibili (mail inviate, op senza reverse) vengono saltate e segnalate; le altre vengono comunque annullate. Idempotente: una seconda chiamata consecutiva non fa nulla. Args vuoti."
-en = "Cancel ALL reversible operations of the last user turn that contains at least one. Example: if the last turn was 'move photos into folders by year', undo_last_turn returns the files to their original paths. In reverse order of execution: the most recent first. Best-effort: irreversible operations (sent emails, operations without reverse) are skipped and reported; the others are still canceled. Idempotent: a second consecutive call does nothing. Empty args."
+it = "SCOPO: annulla le operazioni reversibili dell'ultimo turno utente. PATTERN: undo_last_turn(). NON: operazioni irreversibili (saltate); chiamate consecutive (idempotente). OUT: entries=[...]."
+en = "SCOPO: cancel all reversible operations of the last user turn. PATTERN: undo_last_turn(). NON: irreversible operations (skipped); consecutive calls (idempotent). OUT: entries=[...]."
 
 [code]
 files  = ["undo_last_turn.py"]

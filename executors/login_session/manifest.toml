@@ -10,8 +10,8 @@ author      = "Roberto Brunialti"
 affinity    = ["login", "auth", "autenticazione", "session", "cookie", "credenziali", "password", "form", "web", "site", "spaggiari", "scuola", "banca"]
 
 [description]
-it = "Esegue il login al form web di un dominio gia' registrato (credentials.store(domain, payload)) e salva il cookie session in '~/.config/metnos/cookies/<domain>.txt' (formato Mozilla, mode 0600). Se un cookie session valido (non scaduto, name in `session_cookie_names`) e' gia' cached e force=false, ritorna immediato con cached:true. Altrimenti: GET login_url per estrarre csrf token (cerca <input> il cui name matcha 'csrf|csrf_token|_token|authenticity_token'), POST con form_data + csrf, verifica successo via (a) presenza session cookie nel jar, (b) status 302/303, (c) assenza di campo password nella response page. Le credenziali sono caricate via `runtime.credentials` (cifrate AES-128/Fernet con chiave derivata HKDF-SHA256 dalla admin.key locale; lo schema payload e' {login_url, method, form_data:{username, password,...}, session_cookie_names}). Esempio uso: login_session(domain='web.spaggiari.eu') -> {ok:true, cached:false, session_cookies:['JSESSIONID'], cookie_file:'~/.config/metnos/cookies/web.spaggiari.eu.txt'}; subito dopo find_urls/read_urls_html possono passare auth_cookies_file=cookie_file. Capability: 'auth.password_storage' e' separata da 'network.write' per audit. Salvataggio prima volta delle credenziali fuori dal flusso planner (script/cli a parte)."
-en = "Performs the login to the web form of an already registered domain (credentials.store(domain, payload)) and saves the session cookie in '~/.config/metnos/cookies/<domain>.txt' (Mozilla format, mode 0600). If a valid session cookie (not expired, name in `session_cookie_names`) is already cached and force=false, return immediately with cached:true. Otherwise: GET login_url to extract csrf token (search for <input> whose name matches 'csrf|csrf_token|_token|authenticity_token'), POST with form_data + csrf, verify success via (a) presence of session cookie in the jar, (b) status 302/303, (c) absence of password field in the response page. Credentials are loaded via `runtime.credentials` (AES-128/Fernet encrypted with a key derived via HKDF-SHA256 from the local admin.key; the payload schema is {login_url, method, form_data:{username, password,...}, session_cookie_names}). Usage example: login_session(domain='web.spaggiari.eu') -> {ok:true, cached:false, session_cookies:['JSESSIONID'], cookie_file:'~/.config/metnos/cookies/web.spaggiari.eu.txt'}; immediately after, find_urls/read_urls_html can pass auth_cookies_file=cookie_file. Capability: 'auth.password_storage' is separate from 'network.write' for audit purposes. First-time saving of credentials occurs outside the planner flow (script/cli aside)."
+it = "SCOPO: esegue il login web salvando il cookie session. PATTERN: login_session(domain='portale.example.it'). NON: bypassare l'autenticazione formale. OUT: {ok, cached, session_cookies, cookie_file}."
+en = "SCOPO: performs web login saving the session cookie. PATTERN: login_session(domain='portale.example.it'). NON: bypassing formal authentication. OUT: {ok, cached, session_cookies, cookie_file}."
 
 [code]
 files  = ["login_session.py"]
@@ -25,8 +25,8 @@ required = ["domain"]
 type        = "string"
 
 [args.properties.domain.description]
-it = "Nome di dominio del sito (es. 'web.spaggiari.eu', 'mybank.example.com'). Deve corrispondere a una credenziale gia' salvata via `credentials.store(domain, payload)`."
-en = "Site domain name (e.g., 'web.spaggiari.eu', 'mybank.example.com'). It MUST match a credential already saved via `credentials.store(domain, payload)`."
+it = "Nome di dominio del sito (es. 'portale.example.it', 'mybank.example.com'). Deve corrispondere a una credenziale gia' salvata via `credentials.store(domain, payload)`."
+en = "Site domain name (e.g., 'portale.example.it', 'mybank.example.com'). It MUST match a credential already saved via `credentials.store(domain, payload)`."
 
 [args.properties.force]
 type        = "boolean"
