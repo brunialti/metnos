@@ -13,22 +13,8 @@ affinity    = [
             ]
 
 [description]
-it = """Lista TUTTI i contenuti diretti di una directory (file + sub-dir + symlink + sistema come Thumbs.db/.DS_Store). NON filtra.
-
-Output entries=[{name, type=file|dir|symlink, kind=image|video|audio|text|document|archive|binary|dir|symlink, mime, size, mtime}].
-
-DEVI: per categorie ("foto"/"video"/"documenti") pipeline list_dirs→filter_entries(kind=...)→operazione.
-NON DEVI: saltare filter_entries prima di move/delete — toccherebbe dir e sistema.
-
-Alternativa: find_files(patterns=["*.jpg",...]) filtra alla sorgente."""
-en = """List ALL direct contents of a directory (files + sub-dirs + symlinks + system files like Thumbs.db/.DS_Store). DOES NOT filter.
-
-Output entries=[{name, type=file|dir|symlink, kind=image|video|audio|text|document|archive|binary|dir|symlink, mime, size, mtime}].
-
-DO: for categories ("photos"/"videos"/"documents") pipeline list_dirs→filter_entries(kind=...)→operation.
-DO NOT: skip filter_entries before move/delete — it would touch dirs and system files.
-
-Alternative: find_files(patterns=["*.jpg",...]) filters at source."""
+it = "SCOPO: elenca directory e file. PATTERN: list_dirs(path=\"/tmp\", recursive=false). NON: creare (create_dirs), cancellare (delete_dirs), cercare pattern (find_dirs). OUT: entries=[{name,type,kind,mime,size,mtime}]."
+en = "SCOPO: list directories and files. PATTERN: list_dirs(path=\"/tmp\", recursive=false). NON: create (create_dirs), delete (delete_dirs), search patterns (find_dirs). OUT: entries=[{name,type,kind,mime,size,mtime}]."
 
 [code]
 files  = ["list_dirs.py"]

@@ -10,8 +10,8 @@ author      = "Roberto Brunialti"
 affinity    = ["web", "http", "url", "scarica", "leggi", "pagina", "api", "rest", "download"]
 
 [description]
-it = "Esegue una richiesta HTTP/HTTPS (GET o HEAD) verso uno o piu' URL e restituisce il corpo della risposta. Supporta timeout."
-en = "Executes an HTTP/HTTPS request (GET or HEAD) towards one or more URLs and returns the response body. Supports timeouts."
+it = "SCOPO: ottiene dati da URL HTTP/HTTPS. PATTERN: get_urls(url=\"http://...\"). NON: cercare URL (-> find_urls); leggere HTML (-> read_urls_html). OUT: entries=[...]."
+en = "SCOPO: gets data from HTTP/HTTPS URLs. PATTERN: get_urls(url=\"http://...\"). NON: find URLs (-> find_urls); read HTML (-> read_urls_html). OUT: entries=[...]."
 
 [code]
 files  = ["get_urls.py"]

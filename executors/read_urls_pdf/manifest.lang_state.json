@@ -1,14 +1,14 @@
 {
   "description": {
     "it": {
-      "version_hash": "sha256:cb6ecd61c4cc7d5974ad8cddc0e20b396b1ed31064203e2af774d9a86b0109db",
+      "version_hash": "sha256:071bb3cc69d0c607d7b6aa1713639eed56133f88543eb45792d31d663e09cd45",
       "source_lang": null,
       "source_hash": null
     },
     "en": {
+      "version_hash": "sha256:f54b6ee9930b34c53596f5a760cd4680e7c669737b99bd2efdaa72f780a0063e",
       "source_lang": "it",
-      "source_hash": "sha256:c3eb1e620d76645f11f5167e99d52b75f6bd9a7bb3dde0ba7f75dcca36f0ca38",
-      "version_hash": "sha256:711f0222c4da5686c500c1af4687044021994d35765341dc254b9b720a366f05"
+      "source_hash": "sha256:071bb3cc69d0c607d7b6aa1713639eed56133f88543eb45792d31d663e09cd45"
     }
   },
   "args.ocr_fallback.description": {
