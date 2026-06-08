@@ -11,8 +11,8 @@ affinity    = [
             ]
 
 [description]
-it = "Restituisce l'ora corrente come ISO 8601, in UTC o in un fuso orario IANA specificato."
-en = "Returns the current time as ISO 8601, in UTC or in a specified IANA time zone."
+it = "SCOPO: ottiene l'ora corrente. PATTERN: get_now(timezone=\"UTC\"). NON: cercare pattern (-> find) o elencare container (-> list). OUT: entries=[{iso_time}]."
+en = "SCOPO: gets the current time. PATTERN: get_now(timezone=\"UTC\"). NON: search patterns (-> find) or list containers (-> list). OUT: entries=[{iso_time}]."
 
 [code]
 files  = ["get_now.py"]

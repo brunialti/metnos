@@ -12,8 +12,8 @@ revertible  = false
 lifecycle   = "active"
 
 [description]
-it = "Restituisce l'ultima posizione condivisa dall'utente via canale (Telegram 📎 Posizione, oggi). Output: {lat, lon, ts, accuracy, channel} + age_seconds. Se l'utente non ha ancora condiviso una posizione, ritorna ok=false con un messaggio che invita a usare il bottone 📎 su Telegram. Storage append-only in ~/.local/share/metnos/locations.jsonl, popolato dal channel daemon. Singolare per design: una sola posizione corrente per actor."
-en = "Returns the last position shared by the user via channel (Telegram 📎 Location, today). Output: {lat, lon, ts, accuracy, channel} + age_seconds. If the user has not yet shared a location, return ok=false with a message inviting them to use the 📎 button on Telegram. Append-only storage in ~/.local/share/metnos/locations.jsonl, populated by the channel daemon. Singular by design: only one current position per actor."
+it = "SCOPO: ottiene la posizione GPS corrente dell'utente. PATTERN: get_location(actor=\"host\"). NON: cercare per pattern (-> find); elencare container (-> list). OUT: entries=[{lat, lon, ts, accuracy, channel, age_seconds}]."
+en = "SCOPO: gets the user's current GPS location. PATTERN: get_location(actor=\"host\"). NON: search by pattern (-> find); list containers (-> list). OUT: entries=[{lat, lon, ts, accuracy, channel, age_seconds}]."
 
 [code]
 files  = ["get_location.py"]

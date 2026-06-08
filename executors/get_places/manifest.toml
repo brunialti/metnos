@@ -11,8 +11,8 @@ revertible  = false
 lifecycle   = "active"
 
 [description]
-it = "Reverse geocoding: dato una lista di coordinate o entries con campo `gps`, arricchisce ogni elemento con `place: str` (slug del luogo, es. 'roma', 'boulder'; 'unknown' se gps mancante o servizio satura). PASSAGGIO DELLA LISTA DI ENTRIES: usa `from_step=N` dove N e' lo step precedente (es. get_files al passo 1 ha estratto gps → from_step=1). Il runtime recupera automaticamente le entries dallo scratchpad. Per coordinate raw (no entries dict): usa `coords=[{lat,lon},...]`. Le due modalita' sono mutuamente esclusive. Backend: Nominatim pubblico (rate-limit ~1/s) con cache locale; override via env METNOS_NOMINATIM_URL per self-hostato. La logica di reverse-geocode e' anche usata internamente da get_files quando 'place' e' fra i fields richiesti."
-en = "Reverse geocoding: given a list of coordinates or entries with field `gps`, enrich each element with `place: str` (place slug, e.g., 'roma', 'boulder'; 'unknown' if gps is missing or service is saturated). PASSING THE LIST OF ENTRIES: use `from_step=N` where N is the previous step (e.g., get_files at step 1 extracted gps → from_step=1). The runtime automatically retrieves the entries from the scratchpad. For raw coordinates (no entries dict): use `coords=[{lat,lon},...]`. The two modes are mutually exclusive. Backend: Public Nominatim (rate-limit ~1/s) with local cache; override via env METNOS_NOMINATIM_URL for self-hosted. The reverse-geocode logic is also used internally by get_files when 'place' is among the requested fields."
+it = "SCOPO: ottiene il nome del luogo da coordinate GPS. PATTERN: get_places(coords=[{lat,lon}]) o from_step=N. NON: cerca per testo (-> find_places). OUT: entries=[{place}]."
+en = "SCOPO: gets place name from GPS coordinates. PATTERN: get_places(coords=[{lat,lon}]) or from_step=N. NON: text search (-> find_places). OUT: entries=[{place}]."
 
 [code]
 files  = ["get_places.py"]
