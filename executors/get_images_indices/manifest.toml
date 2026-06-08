@@ -10,8 +10,8 @@ author      = "Roberto Brunialti"
 affinity    = ["status", "introspection", "indice", "index", "stato", "snapshot", "info", "foto", "image"]
 
 [description]
-it = "Status degli indici immagini per `base_path`. Per ogni `idx` (scene/persons/gps) ritorna: se esiste, n_entries, last_refresh_at, size_mb, model, dim. NON costruisce indici (introspection-only, snapshot di stato dell'indice). Esempio: usa per dashboard admin o per decidere se rifare un indice (mtime piu' vecchio di X giorni). Output: `entries=[{idx, exists, n_entries, last_refresh_at, size_mb, ...}]`."
-en = "Status of image indices for `base_path`. For each `idx` (scene/persons/gps) return: if it exists, n_entries, last_refresh_at, size_mb, model, dim. MUST NOT build indices (introspection-only, snapshot of index state). Example: use for admin dashboard or to decide whether to rebuild an index (mtime older than X days). Output: `entries=[{idx, exists, n_entries, last_refresh_at, size_mb, ...}]`."
+it = "SCOPO: ottiene lo stato degli indici immagini per `base_path`. PATTERN: get_images_indices(base_path=\"/img\", idx=\"all\"). NON: costruire indici (-> create_images_indices); cercare foto (-> find_images_indices). OUT: entries=[{idx, exists, n_entries, last_refresh_at, size_mb, model, dim}]."
+en = "SCOPO: gets image index status for `base_path`. PATTERN: get_images_indices(base_path=\"/img\", idx=\"all\"). NON: build indices (-> create_images_indices); search photos (-> find_images_indices). OUT: entries=[{idx, exists, n_entries, last_refresh_at, size_mb, model, dim}]."
 
 [code]
 files  = ["get_images_indices.py"]
