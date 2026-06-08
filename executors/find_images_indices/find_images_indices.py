@@ -1292,28 +1292,24 @@ def _check_args(args: dict) -> str | None:
 # §7.3 Lazy indexing helpers --------------------------------------------------
 
 def _default_workspace_dir() -> Path:
-    """Default workspace foto: `~/.local/share/metnos/Immagini`.
-    Memoria utente: «se dico Immagini cerca sul workspace .local/.../metnos»."""
-    import config as _C
-    return _C.PATH_USER_DATA / "Immagini"
+    """Default workspace foto: `<USER_DATA>/Immagini`.
+    Memoria utente: «se dico Immagini cerca sul workspace .local/.../metnos».
+    §7.11: usa `_user_data_root()` (legge METNOS_USER_DATA a RUNTIME) e non
+    `config.PATH_USER_DATA` (cablato all'import → ignorava l'override env e
+    faceva trapelare il workspace reale nei test)."""
+    return _user_data_root() / "Immagini"
 
 
 def _discover_existing_photo_dirs() -> list[Path]:
-    """Trova directory candidate per indicizzazione: workspace default,
-    eventuali altri symlink in user data, NAS mount comuni."""
+    """Trova directory candidate per indicizzazione: il workspace foto default
+    (`PATH_USER_DATA/Immagini`, tipicamente un symlink configurabile verso il
+    mount reale). §7.11: niente path assoluti hardcoded (era cablato
+    `/tmp/nas_public/media/Immagini`, un mount volatile) — il symlink `Immagini`
+    copre gia' qualunque destinazione, rename/mount-resiliente."""
     cands: list[Path] = []
     ws = _default_workspace_dir()
     if ws.exists() and ws.is_dir():
         cands.append(ws)
-    # NAS mount common pattern
-    nas = Path("/tmp/nas_public/media/Immagini")
-    if nas.exists() and nas.is_dir() and nas not in cands:
-        # Only if NOT already covered via symlink
-        try:
-            if ws.resolve() != nas:
-                cands.append(nas)
-        except OSError:
-            cands.append(nas)
     return cands
 
 
