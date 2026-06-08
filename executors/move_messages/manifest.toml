@@ -19,8 +19,8 @@ revertible = true
 reverse_pattern = "swap_src_dst"
 
 [description]
-it = "Sposta uno o piu' messaggi fra cartelle (IMAP folder o Gmail label). Vettoriale: accetta lista message_ids/uids. USO CORRETTO: 'cestina queste mail' -> move_messages(message_ids=..., dst_folder='Trash'). Cancellazione = move a Trash/Junk. Mapping IT+EN deterministico: 'Cestino'/'Trash'/'cancella' -> TRASH; 'Posta indesiderata'/'Junk'/'Spam' -> SPAM; 'Archivio'/'Archive' -> rimuove INBOX. Backend: client='metnos' usa IMAP4_SSL (COPY+STORE+EXPUNGE); client='google_workspace' usa Gmail labels (add+remove). NON CONFONDERE CON `set_messages` (cambia labels SENZA spostare la mail di cartella) o `delete_messages` (NON ESISTE: cancellare = spostare in Trash)."
-en = "Move one or more messages between folders (IMAP folder or Gmail label). Vector: accepts message_ids/uids list. CORRECT USE: 'trash these mails' -> move_messages(message_ids=..., dst_folder='Trash'). Deletion = move to Trash/Junk. Deterministic IT+EN mapping: 'Cestino'/'Trash'/'delete' -> TRASH; 'Posta indesiderata'/'Junk'/'Spam' -> SPAM; 'Archivio'/'Archive' -> remove INBOX. Backends: client='metnos' uses IMAP4_SSL (COPY+STORE+EXPUNGE); client='google_workspace' uses Gmail labels (add+remove). DO NOT CONFUSE WITH `set_messages` (changes labels WITHOUT moving the mail across folders) or `delete_messages` (DOES NOT EXIST: deletion = move to Trash)."
+it = "SCOPO: sposta messaggi tra cartelle o etichette (vettoriale). PATTERN: move_messages(message_ids=[\"18b3c4...\"], dst_folder=\"Trash\"). NON: cambiare solo etichette (-> set_messages); cancellare senza spostare (non esiste). OUT: results=[...]."
+en = "SCOPO: move messages between folders or labels (vectorial). PATTERN: move_messages(message_ids=[\"18b3c4...\"], dst_folder=\"Trash\"). NON: change labels only (-> set_messages); delete without moving (does not exist). OUT: results=[...]."
 
 [code]
 files  = ["move_messages.py"]

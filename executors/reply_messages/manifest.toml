@@ -18,8 +18,8 @@ revertible = false
 lifecycle  = "active"
 
 [description]
-it = "Risponde in-thread a uno o piu' messaggi (Gmail). Distinto da `send_messages` perche': richiede message_id originale, headers In-Reply-To/References autocomposti, Subject auto-prefissato 'Re: '. USO CORRETTO: 'rispondi a queste mail con \\\"ok ricevuto\\\"' -> reply_messages(message_ids=..., body='ok ricevuto'). NON CONFONDERE CON `send_messages` (nuovo thread, richiede to/recipient_id) o `set_messages` (cambia labels). Backend: solo client='google_workspace' (SMTP/IMAP reply manuale non implementato MVP)."
-en = "Reply in-thread to one or more messages (Gmail). Distinct from `send_messages` because: requires original message_id, In-Reply-To/References headers auto-composed, Subject auto-prefixed 'Re: '. CORRECT USE: 'reply to these mails with \\\"ok received\\\"' -> reply_messages(message_ids=..., body='ok received'). DO NOT CONFUSE WITH `send_messages` (new thread, requires to/recipient_id) or `set_messages` (changes labels). Backend: only client='google_workspace' (SMTP/IMAP manual reply not implemented MVP)."
+it = "SCOPO: rispondi in-thread a messaggi Gmail. PATTERN: reply_messages(message_ids=[\"id1\"], body=\"testo\"). NON: inviare nuovo thread (-> send_messages); modificare labels (-> set_messages). OUT: entries=[...]."
+en = "SCOPO: reply in-thread to Gmail messages. PATTERN: reply_messages(message_ids=[\"id1\"], body=\"text\"). NON: send new thread (-> send_messages); modify labels (-> set_messages). OUT: entries=[...]."
 
 [code]
 files  = ["reply_messages.py"]
