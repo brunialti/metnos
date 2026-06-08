@@ -10,8 +10,8 @@ revertible  = false
 lifecycle   = "active"
 
 [description]
-it = "Verifica se un comando o un pacchetto specifico e installato sul sistema operativo. Restituisce il percorso completo dell'eseguibile se trovato, altrimenti comunica che non e presente. Esempio: package_name='ffmpeg'."
-en = "Check if a specific command or package is installed on the operating system. Returns the full path of the executable if found, otherwise communicates that it is not present. Example: package_name='ffmpeg'."
+it = "SCOPO: cerca se un pacchetto o comando è installato sul sistema. PATTERN: find_packages(package_name='ffmpeg'). NON: leggere file (-> read_files); ottenere dati per ID noti (-> get). OUT: entries=[{path}], restituisce percorso se trovato."
+en = "SCOPO: finds if a package or command is installed on the system. PATTERN: find_packages(package_name='ffmpeg'). NON: reading files (-> read_files); getting data for known IDs (-> get). OUT: entries=[{path}], returns path if found."
 
 [code]
 files  = ["find_packages.py"]

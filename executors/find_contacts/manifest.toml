@@ -15,24 +15,8 @@ affinity    = [
 ]
 
 [description]
-it = """Cerca contatti nella rubrica esterna (Google People API di default) per nome/email/telefono. Read-only.
-
-USO: chiamare quando l'utente vuole "numero di Luca", "email di Mario", "trova contatti con cognome Rossi". Match substring case-insensitive su name + emails + phones.
-
-NON CONFONDERE CON: `find_persons` (registro UTENTI del SISTEMA Metnos: Roberto, ospiti via pairing, familiari nominati in chat). `contacts` = rubrica di TERZI (di chi parli); `persons` = chi parla a Metnos.
-
-OK: find_contacts(query="Luca") -> entries=[{name:"Luca Bianchi", emails:["luca@..."], phones:["+39..."]}].
-
-Output entries=[{id, name, emails, phones}]. Cap default 50 (max teorico 1000). Truncation: truncated_what='contact'."""
-en = """Search contacts in external address book (Google People API by default) by name/email/phone. Read-only.
-
-USE: call when the user wants "Luca's number", "Mario's email", "find contacts with surname Rossi". Substring case-insensitive match on name + emails + phones.
-
-DO NOT CONFUSE WITH: `find_persons` (registry of Metnos SYSTEM USERS: Roberto, paired guests, family named in chat). `contacts` = address book of THIRD PARTIES (who you talk about); `persons` = who talks to Metnos.
-
-OK: find_contacts(query="Luca") -> entries=[{name:"Luca Bianchi", emails:["luca@..."], phones:["+39..."]}].
-
-Output entries=[{id, name, emails, phones}]. Cap default 50 (theoretical max 1000). Truncation: truncated_what='contact'."""
+it = "SCOPO: cerca contatti nella rubrica esterna per nome/email/telefono. PATTERN: find_contacts(query=\"Luca\"). NON: leggere un singolo contatto (-> read_contacts). OUT: entries=[{id, name, emails, phones}]."
+en = "SCOPO: search contacts in external address book by name/email/phone. PATTERN: find_contacts(query=\"Luca\"). NON: read a single contact (-> read_contacts). OUT: entries=[{id, name, emails, phones}]."
 
 [code]
 files  = ["find_contacts.py"]

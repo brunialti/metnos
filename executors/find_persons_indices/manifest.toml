@@ -12,38 +12,8 @@ affinity    = ["cerca persona", "trova", "foto di", "find person",
                 "ravvicinata", "close-up", "mezzo busto", "half-bust"]
 
 [description]
-it = """Cerca foto di persona registrata. Alias compositivo di find_images_indices.
-
-Args:
-- `name='carol'`: lookup nel PersonsRegistry.
-- `reference_images=[paths]`: ArcFace detect+match.
-- `min_face_pixels=40000`: ritaglia ai primi piani (single step composizione).
-- Tutti gli altri args di find_images_indices restano accettati.
-
-Pattern:
-- «foto di Bob» → name='bob'.
-- «primo piano di Carol» → name='carol', min_face_pixels=40000.
-- «foto come questa» + foto allegate → reference_images=[paths].
-
-Anti-pattern: `set_persons` (enroll), `get_persons` (lookup).
-
-Output: identico a find_images_indices (entries, score, match_type, ...)."""
-en = """Search photos of registered person. Compositional alias of find_images_indices.
-
-Args:
-- `name='carol'`: PersonsRegistry lookup.
-- `reference_images=[paths]`: ArcFace detect+match.
-- `min_face_pixels=40000`: filter close-ups (single-step composition).
-- All other find_images_indices args accepted.
-
-Patterns:
-- «photos of Bob» → name='bob'.
-- «close-up of Carol» → name='carol', min_face_pixels=40000.
-- «photos like these» + attached photos → reference_images=[paths].
-
-Anti-patterns: `set_persons` (enroll), `get_persons` (lookup).
-
-Output: identical to find_images_indices (entries, score, match_type, ...)."""
+it = "SCOPO: cerca foto di persona registrata. PATTERN: find_persons_indices(name=\"bob\", reference_images=[\"/img.jpg\"]). NON: enroll (-> set_persons); lookup diretto (-> get_persons). OUT: entries=[{score, match_type}]."
+en = "SCOPO: search photos of registered person. PATTERN: find_persons_indices(name=\"bob\", reference_images=[\"/img.jpg\"]). NON: enroll (-> set_persons); direct lookup (-> get_persons). OUT: entries=[{score, match_type}]."
 
 [code]
 files  = ["find_persons_indices.py"]

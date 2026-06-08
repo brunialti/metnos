@@ -35,7 +35,12 @@ GOLD = [
     {"q": "controlla se il comando git è presente", "tool": "find_packages"},
     # --- file vs dir ---
     {"q": "cerca i file .pdf nella cartella Documenti", "tool": "find_files"},
-    {"q": "elenca le sottocartelle di /home/roberto", "tool": "find_dirs"},
+    # AMBIGUO genuino (8/6/2026, decisione Roberto): "elenca le sottocartelle"
+    # mappa ENTRAMBI — list_dirs (elenca il contenuto-dir di un livello) e
+    # find_dirs (trova le subdir). L'intent-extractor classifica "elenca"=list,
+    # il prefilter top-1=list_dirs: scelta corretta. Accettiamo i due tool reali
+    # (NON è masking: sono entrambi giusti, non c'è un answer unico).
+    {"q": "elenca le sottocartelle di /home/roberto", "tool": ["find_dirs", "list_dirs"]},
     {"q": "mostra tutto il contenuto della cartella Downloads", "tool": "list_dirs"},
     # --- file vs messaggi (move/delete) ---
     {"q": "sposta vecchio.txt nella cartella archivio", "tool": "move_files"},

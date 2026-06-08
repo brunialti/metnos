@@ -18,16 +18,8 @@ affinity    = [
 timeout_s = 60
 
 [description]
-it = """Reverse image search via Google Cloud Vision Web Detection. Riceve immagini gia' note (locali in `paths`, pubbliche in `urls`, o ereditate via `from_step`) e ritorna pagine web contenenti, simili, etichette concettuali.
-
-NON CONFONDERE CON: `find_images` (FS locale) ne' `find_images_indices` (corpus locale CLIP/ArcFace). Questo cerca SUL WEB.
-
-Output: entries=[{source, best_guess_label, matching_pages, similar_images, web_entities}]. Quota: free tier 1000 unit/mese."""
-en = """Reverse image search via Google Cloud Vision Web Detection. Takes known images (local in `paths`, public in `urls`, or inherited via `from_step`) and returns containing web pages, similar images, conceptual labels.
-
-DO NOT CONFUSE WITH: `find_images` (local FS) nor `find_images_indices` (local CLIP/ArcFace corpus). This searches THE WEB.
-
-Output: entries=[{source, best_guess_label, matching_pages, similar_images, web_entities}]. Quota: free tier 1000 units/month."""
+it = "SCOPO: trova immagini simili sul web. PATTERN: find_images_web(paths=[\"/img.jpg\"]). NON: cercare in indici locali (-> find_images_indices). OUT: entries=[{source, best_guess_label, matching_pages, similar_images, web_entities}]."
+en = "SCOPO: find similar images on the web. PATTERN: find_images_web(paths=[\"/img.jpg\"]). NON: search local indices (-> find_images_indices). OUT: entries=[{source, best_guess_label, matching_pages, similar_images, web_entities}]."
 
 [code]
 files  = ["find_images_web.py"]

@@ -16,34 +16,8 @@ revertible      = false
 lifecycle       = "active"
 
 [description]
-it = """Walk ricorsivo dell'albero. Ritorna SOLO directory con metadati aggregati per ognuna: file_count (diretti, NON ricorsivo), total_bytes, size_min, size_max, mtime, name.
-
-USO: directory piu' popolose/grandi, panoramica sottoalbero. Per file singoli: find_files. Per contenuto di UNA dir: list_dirs.
-
-METADATA AGGREGATI (gia' calcolati, niente compute_entries dopo):
-- count_dirs: numero di directory.
-- file_count_total: totale file ricorsivo sotto base_path.
-
-DEVI: per "quanti file in X" leggere metadata.file_count_total; per "quante cartelle in X" leggere metadata.count_dirs. UN SOLO step find_dirs basta.
-NON DEVI: chiamare compute_entries op=count su entries di find_dirs — conterebbe le cartelle credendo siano file.
-OK: find_dirs(base_path=X) → final_answer("{metadata.file_count_total} file in {metadata.count_dirs} cartelle").
-ERRORE: find_dirs → compute_entries(op=count) → "858 file": sono 858 cartelle, non file.
-
-Truncation: truncated_what='directory' + used + cap_field='max_results'."""
-en = """Recursive tree walk. Returns ONLY directories with aggregated metadata per dir: file_count (direct, NOT recursive), total_bytes, size_min, size_max, mtime, name.
-
-USE: most populated/largest dirs, subtree overview. For single files: find_files. For contents of ONE dir: list_dirs.
-
-AGGREGATED METADATA (precomputed, no compute_entries needed):
-- count_dirs: number of directories.
-- file_count_total: total recursive file count under base_path.
-
-DO: for "how many files in X" read metadata.file_count_total; for "how many folders in X" read metadata.count_dirs. ONE find_dirs step is enough.
-DO NOT: call compute_entries op=count on find_dirs entries — it would count folders thinking they are files.
-OK: find_dirs(base_path=X) → final_answer("{metadata.file_count_total} files in {metadata.count_dirs} folders").
-ERROR: find_dirs → compute_entries(op=count) → "858 files": those are 858 folders, not files.
-
-Truncation: truncated_what='directory' + used + cap_field='max_results'."""
+it = "SCOPO: trova directory con metadati aggregati. PATTERN: find_dirs(base_path=\"/x\", recursive=true). NON: elencare file (-> find_files); contenuti dir (-> list_dirs). OUT: entries=[{name,file_count,total_bytes,size_min,size_max,mtime,count_dirs,file_count_total}]."
+en = "SCOPO: find directories with aggregated metadata. PATTERN: find_dirs(base_path=\"/x\", recursive=true). NON: list files (-> find_files); dir contents (-> list_dirs). OUT: entries=[{name,file_count,total_bytes,size_min,size_max,mtime,count_dirs,file_count_total}]."
 
 [code]
 files  = ["find_dirs.py"]

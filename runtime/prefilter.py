@@ -755,6 +755,17 @@ def _query_has_marker(qlow, markers):
     return any(m in qlow for m in markers)
 
 
+# Token-verbo generici dell'affinity: presenti in quasi ogni tool della stessa
+# famiglia → NON discriminano nel boost affinity-match (rank_with_intent).
+_GENERIC_AFFINITY_VERBS = frozenset({
+    "find", "cerca", "search", "ricerca", "trova", "cercare", "get", "ottieni",
+    "ottenere", "read", "leggi", "leggere", "list", "elenca", "lista", "delete",
+    "cancella", "rimuovi", "elimina", "move", "sposta", "write", "scrivi",
+    "salva", "create", "crea", "set", "imposta", "send", "invia", "filter",
+    "filtra", "sort", "ordina", "group", "raggruppa", "compute", "calcola",
+})
+
+
 def rank_with_intent(query, catalog, intent, *, k=3):
     # Skip dormant: come rank_adaptive, vedi _filter_dormant.
     catalog = _filter_dormant(catalog)
@@ -815,6 +826,19 @@ def rank_with_intent(query, catalog, intent, *, k=3):
             if qtokens and any(q in qtokens for q in qualifiers):
                 s += 2  # forte bonus se il qualifier matcha la query
             # else: nessun bonus — il generico (parts=[verb,obj]) puo' battere
+        # Affinity-match boost (8/6/2026, decisione Roberto): le keyword affinity
+        # sono dato CURATO e DETERMINISTICO. I token-query che matchano l'affinity
+        # DISTINTIVA del tool (esclusi i verbi generici, e split degli hyphen tipo
+        # "primo-piano") rompono i PAREGGI verso il tool giusto fra fratelli con
+        # stesso object (es. "viso/primo piano" → find_images_indices vs
+        # find_images_web, entrambi object=images). Universale §7.3, deterministico
+        # §7.9. Cap +3 per non scavalcare il match verbo+object (16).
+        if qtokens:
+            aff_tokens = set()
+            for a in (getattr(e, "affinity", None) or []):
+                aff_tokens.update(a.lower().replace("-", " ").split())
+            aff_tokens -= _GENERIC_AFFINITY_VERBS
+            s += min(len(qtokens & aff_tokens), 3)
         if _rule_fn is not None:
             try:
                 s += _rule_fn(query, qtokens, verb, e)
