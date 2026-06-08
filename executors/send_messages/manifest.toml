@@ -13,8 +13,8 @@ lifecycle   = "active"
 timeout_s   = 90
 
 [description]
-it = "SCOPO: invia messaggi mail o Telegram (vettoriale). PATTERN: send_messages(to_user='lucia', via_channel='email', messages=[{to:'a@b',subject:'t'}]). NON: leggere (read_messages); rispondere in-thread (reply_messages). OUT: ok/results."
-en = "SCOPO: send mail or Telegram messages (vectorial). PATTERN: send_messages(to_user='lucia', via_channel='email', messages=[{to:'a@b',subject:'t'}]). NON: read (read_messages); reply in-thread (reply_messages). OUT: ok/results."
+it = "SCOPO: invia messaggi mail o Telegram (vettoriale). PATTERN: send_messages(to_user='lucia' o '${RUNTIME:actor}' per «inviami/mandami/mostrami», via_channel='telegram' o 'email', messages=[{body='t'}]). NON: omettere to_user (per «inviami» usa to_user='${RUNTIME:actor}'); leggere (read_messages); rispondere in-thread (reply_messages). OUT: ok/results."
+en = "SCOPO: send mail or Telegram messages (vectorial). PATTERN: send_messages(to_user='lucia' or '${RUNTIME:actor}' for «send me/show me», via_channel='telegram' or 'email', messages=[{body='t'}]). NON: omit to_user (for «send me» use to_user='${RUNTIME:actor}'); read (read_messages); reply in-thread (reply_messages). OUT: ok/results."
 
 [code]
 files  = ["send_messages.py"]

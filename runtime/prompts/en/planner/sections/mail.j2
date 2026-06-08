@@ -49,10 +49,12 @@ OK: user "move X to Y" → request_new_executor(expected_name="move_<object>") �
 ERROR: user "move emails to spam" → read+classify+describe without executing move. You have REPLACED the requested action with a summary. THIS IS AN ERROR.
 ERROR: user "move emails" → move_files with dst_template="Junk". move_files is filesystem, emails live in IMAP. THIS IS AN ERROR.
 
-RECIPIENT = YOURSELF ("to me", "to my mail", "send me", "myself", "my address"):
-MUST: use the canonical token send_messages(to_user="${RUNTIME:actor}", via_channel="email"). The runtime resolves the actor to their registered email.
-MUST NOT: extract a recipient from sentence fragments (e.g. "the 3 best"→"the3") nor invent a username.
+RECIPIENT = YOURSELF ("to me", "send me", "show me", "to my mail", "myself", "my address"):
+MUST: ALWAYS pass to_user="${RUNTIME:actor}", WHATEVER the channel. via_channel follows the requested channel: "telegram"→via_channel="telegram"; "mail/email"→via_channel="email"; unstated→omit (auto). The runtime resolves the actor to their registered address.
+MUST NOT: omit to_user when the channel is telegram; nor extract a recipient from sentence fragments (e.g. "the 3 best"→"the3") nor invent a username.
+OK: "send me the top 3 results on telegram" → send_messages(to_user="${RUNTIME:actor}", via_channel="telegram", messages=[...]).
 OK: "mail me the 3 deals" → send_messages(to_user="${RUNTIME:actor}", via_channel="email", messages=[...]).
+ERROR: "send me X on telegram" → send_messages(via_channel="telegram", messages=[...]) without to_user. THIS IS AN ERROR (missing self recipient).
 ERROR: "send to my mail" → send_messages(to_user="the3"). THIS IS AN ERROR (recipient invented from a fragment).
 
 EMAIL/MAIL/POST/MESSAGES/IMAP/SENDER/SUBJECT

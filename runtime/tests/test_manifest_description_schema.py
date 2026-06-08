@@ -233,5 +233,36 @@ class TestRealCatalogCapabilitiesSchema(unittest.TestCase):
         )
 
 
+class TestSendMessagesSelfSendGuidance(unittest.TestCase):
+    """Regressione 8/6/2026: «inviami/mandami X su telegram» falliva con
+    «Manca to, to_user» — il proposer Mētis (produzione) non emetteva il
+    destinatario self. Fix §2.5/§7.3: la description di send_messages dichiara
+    il token self-send `${RUNTIME:actor}`, che DEVE sopravvivere al troncamento
+    del pool (cap RENDER_BUDGET) per restare visibile a OGNI proposer."""
+
+    def _desc(self):
+        import tomllib
+        manifest = (Path(__file__).resolve().parents[2]
+                    / "executors" / "send_messages" / "manifest.toml")
+        return tomllib.loads(manifest.read_text(encoding="utf-8"))["description"]
+
+    def test_manifest_description_declares_self_send_token(self):
+        desc = self._desc()
+        for lang in ("it", "en"):
+            self.assertIn("${RUNTIME:actor}", desc.get(lang, ""),
+                          msg=f"send_messages.description[{lang}] manca self-send token")
+
+    def test_self_send_token_survives_pool_truncation(self):
+        # La testa renderizzata nel pool (cap RENDER_BUDGET, fino a OUT:) DEVE
+        # ancora contenere il token: se finisce oltre il cap il proposer non lo
+        # vede e ricompare il bug 8/6 (send senza destinatario).
+        from manifest_rules import render_head
+        desc = self._desc()
+        for lang in ("it", "en"):
+            head = render_head(desc[lang])
+            self.assertIn("${RUNTIME:actor}", head,
+                          msg=f"self-send token troncato dal pool [{lang}]: {head!r}")
+
+
 if __name__ == "__main__":
     unittest.main()

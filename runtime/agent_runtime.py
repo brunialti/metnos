@@ -6301,17 +6301,35 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
         from vocab import object_is_core_only as _object_is_core_only
         _intent_for_route = (route_info or {}).get("intent") or {}
         _conf = (route_info or {}).get("confidence")
-        _obj = _intent_for_route.get("object")
-        if not isinstance(_conf, (int, float)) or _conf < 0.6:
+        # Compound (decomposer §4/ADR 0114): le sezioni vanno scelte sull'UNIONE
+        # degli object di TUTTE le clausole, non solo l'object primario. Una
+        # query "find urls ... send messages" tocca due domini: potare sul solo
+        # primario (urls) fa sparire la sezione 'mail' allo step di send, e con
+        # essa la regola self-send (§7.3 generale, non per-query).
+        _objs = []
+        if _intent_for_route.get("object"):
+            _objs.append(_intent_for_route["object"])
+        for _a in (_intent_for_route.get("actions") or []):
+            if isinstance(_a, dict) and _a.get("object"):
+                _objs.append(_a["object"])
+        _objs = list(dict.fromkeys(_objs))  # dedup, preserva ordine
+        if not isinstance(_conf, (int, float)) or _conf < 0.6 or not _objs:
             _sections_resolved = None  # all (degrade graceful)
         else:
-            _candidate_secs = _sections_for_object(_obj)
-            if _candidate_secs:
-                _sections_resolved = list(_candidate_secs)  # targeted
-            elif _object_is_core_only(_obj):
-                _sections_resolved = []  # core-only (no sezioni dominio)
-            else:
-                _sections_resolved = None  # object unknown → all
+            _secs: list[str] = []
+            _any_unknown = False
+            for _o in _objs:
+                _cs = _sections_for_object(_o)
+                if _cs:
+                    for _s in _cs:
+                        if _s not in _secs:
+                            _secs.append(_s)
+                elif _object_is_core_only(_o):
+                    continue  # core-only: nessuna sezione dominio
+                else:
+                    _any_unknown = True  # object ignoto → all (safe degrade)
+                    break
+            _sections_resolved = None if _any_unknown else _secs
         # Re-render solo se la lista differisce dall'all-sections iniziale.
         if _sections_resolved is not None:
             _planner_targeted = prompt_loader.compose(
