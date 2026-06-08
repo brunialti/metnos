@@ -49,6 +49,12 @@ OK: utente "sposta X in Y" → request_new_executor(expected_name="move_<oggetto
 ERRORE: utente "sposta in spam le mail" → leggi+classifichi+descrivi senza eseguire move. Hai SOSTITUITO l'azione richiesta con un riassunto. E' UN ERRORE.
 ERRORE: utente "sposta mail" → move_files con dst_template="Junk". move_files e' filesystem, le mail vivono in IMAP. E' UN ERRORE.
 
+DESTINATARIO = TE STESSO ("a me", "sulla mia mail", "mandami", "a me stesso", "ai miei"):
+DEVI: usare il token canonico send_messages(to_user="${RUNTIME:actor}", via_channel="email"). Il runtime risolve l'attore alla sua email registrata.
+NON DEVI: estrarre un destinatario da frammenti della frase (es. "le 3 migliori"→"lec3") ne' inventare un nome utente.
+OK: «mandami via mail le 3 offerte» → send_messages(to_user="${RUNTIME:actor}", via_channel="email", messages=[...]).
+ERRORE: «invia sulla mia mail» → send_messages(to_user="lec3"). E' UN ERRORE (to_user inventato da un frammento).
+
 EMAIL/MAIL/POSTA/MESSAGGI/IMAP/MITTENTE/OGGETTO
   → read_messages (lettura+ricerca, combina time_window+criteri testuali in UNA call) o send_messages (invio).
   → move_messages per archiviare/spostare in cartelle IMAP. Se manca dal catalogo, request_new_executor.

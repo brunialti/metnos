@@ -147,6 +147,17 @@ def _run_api(
     env.setdefault("METNOS_SKILL_HOME", str(home))
     if extra_env:
         env.update(extra_env)
+    # github: se il token non e' nell'env (service senza METNOS_GITHUB_TOKEN),
+    # risolvilo via SoT (cred-store / gh CLI) e iniettalo. Lo script generato
+    # github_api.py lo legge da env: nessun edit allo script. Sistemico §7.3.
+    if skill_name == "github" and not env.get("METNOS_GITHUB_TOKEN", "").strip():
+        try:
+            import skill_credentials as _sc
+            _tok = _sc.resolve_github_token()
+            if _tok:
+                env["METNOS_GITHUB_TOKEN"] = _tok
+        except Exception:
+            pass
 
     # Normalizza i flag booleani store_true (§7.3 generale, vedi sopra). Robusto:
     # un errore di normalizzazione non deve mai impedire il run.

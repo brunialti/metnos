@@ -259,7 +259,17 @@ def invoke(args):
                                      "msg": msg_n, "index": i,
                                      "recipient_user": None})
                     continue
-                user = users.get_user(s)
+                # Self-send: destinatario = l'attore stesso ("mia mail" → il
+                # PLANNER emette il token canonico ${RUNTIME:actor}; a runtime
+                # puo' arrivare gia' sostituito con l'actor id, es. 'host').
+                # Risolvi attore→utente per NOME o per RUOLO (host e' un ruolo,
+                # non un nome → get_user('host') fallisce, list_users(role=...)
+                # lo trova). Generale §7.3: nessun match su pronomi/stringhe.
+                if s in (actor, "${RUNTIME:actor}"):
+                    user = (users.get_user(actor)
+                            or (users.list_users(role=actor) or [None])[0])
+                else:
+                    user = users.get_user(s)
                 if not user:
                     failed_pre.append({"index": i, "target": tgt,
                                        "error": "user_not_found"})

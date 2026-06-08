@@ -48,19 +48,20 @@ def _check_google_workspace() -> tuple[bool, str]:
     return True, ""
 
 
-def _check_github_pat() -> tuple[bool, str]:
-    """GitHub PAT present:
-    1) env METNOS_GITHUB_TOKEN (priorita') — copre runtime ad-hoc / test
-    2) credentials store domain=github (ADR 0131)
+def resolve_github_token():
+    """Token github — SoT unica (env > cred-store > gh CLI). None se nessuno.
 
-    Validazione HTTP attiva (revoke/scope) lazy: troppo costosa al boot.
-    Restituiamo ok=True se uno dei due e' presente; l'executor scopre
-    l'auth_required al primo invoke se il PAT e' invalido (e ritorna
-    `decision="needs_inputs"` al PLANNER).
+    Ordine:
+    1) env METNOS_GITHUB_TOKEN (override ad-hoc/test)
+    2) credentials store domain=github (ADR 0131)
+    3) `gh auth token` — riusa l'auth gh CLI gia' presente sulla macchina.
+       SISTEMICO+DEFINITIVO: nessun token duplicato/hardcoded nel service env,
+       sopravvive a rotazione PAT e a re-import della skill.
     """
     import os
-    if os.environ.get("METNOS_GITHUB_TOKEN", "").strip():
-        return True, ""
+    env_tok = os.environ.get("METNOS_GITHUB_TOKEN", "").strip()
+    if env_tok:
+        return env_tok
     try:
         import sys as _sys
         from pathlib import Path as _Path
@@ -68,12 +69,34 @@ def _check_github_pat() -> tuple[bool, str]:
         if str(runtime_dir) not in _sys.path:
             _sys.path.insert(0, str(runtime_dir))
         import credentials as _cred  # type: ignore
-        if _cred._file_for("github").exists():
-            return True, ""
+        payload = _cred.load("github")
+        if isinstance(payload, dict):
+            tok = (payload.get("token") or payload.get("pat")
+                   or payload.get("password") or payload.get("value"))
+            if isinstance(tok, str) and tok.strip():
+                return tok.strip()
     except Exception as e:
         _LOG.warning("github credentials probe failed: %r", e)
-    return False, ("PAT mancante — esegui `metnos-cli credentials add github` "
-                   "o esporta METNOS_GITHUB_TOKEN")
+    try:
+        import subprocess as _sp, shutil as _sh
+        gh = _sh.which("gh") or "/usr/bin/gh"
+        out = _sp.run([gh, "auth", "token"], capture_output=True,
+                      text=True, timeout=8)
+        tok = (out.stdout or "").strip()
+        if out.returncode == 0 and tok:
+            return tok
+    except Exception as e:
+        _LOG.warning("gh auth token fallback failed: %r", e)
+    return None
+
+
+def _check_github_pat() -> tuple[bool, str]:
+    """GitHub disponibile se `resolve_github_token()` trova un token (env /
+    cred-store / gh CLI). Validazione HTTP (revoke/scope) lazy al primo invoke."""
+    if resolve_github_token():
+        return True, ""
+    return False, ("PAT mancante — esegui `metnos-cli credentials add github`, "
+                   "esporta METNOS_GITHUB_TOKEN, o autentica `gh auth login`")
 
 
 # Skill → (ok, reason). Estensibile da plugin.

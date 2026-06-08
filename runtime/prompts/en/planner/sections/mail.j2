@@ -49,6 +49,12 @@ OK: user "move X to Y" → request_new_executor(expected_name="move_<object>") �
 ERROR: user "move emails to spam" → read+classify+describe without executing move. You have REPLACED the requested action with a summary. THIS IS AN ERROR.
 ERROR: user "move emails" → move_files with dst_template="Junk". move_files is filesystem, emails live in IMAP. THIS IS AN ERROR.
 
+RECIPIENT = YOURSELF ("to me", "to my mail", "send me", "myself", "my address"):
+MUST: use the canonical token send_messages(to_user="${RUNTIME:actor}", via_channel="email"). The runtime resolves the actor to their registered email.
+MUST NOT: extract a recipient from sentence fragments (e.g. "the 3 best"→"the3") nor invent a username.
+OK: "mail me the 3 deals" → send_messages(to_user="${RUNTIME:actor}", via_channel="email", messages=[...]).
+ERROR: "send to my mail" → send_messages(to_user="the3"). THIS IS AN ERROR (recipient invented from a fragment).
+
 EMAIL/MAIL/POST/MESSAGES/IMAP/SENDER/SUBJECT
   → read_messages (read+search, combines time_window+text criteria in ONE call) or send_messages (sending).
   → move_messages to archive/move to IMAP folders. If missing from catalog, request_new_executor.
