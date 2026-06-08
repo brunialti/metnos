@@ -2667,7 +2667,7 @@ def _expand_nested_from_step(args: dict, history: list) -> tuple[dict, list]:
     i path dello step 2 come filtro, ma `resolve_from_step` standard
     riconosce solo top-level `from_step: int`. Senza questa espansione,
     il valore literal "from_step:2" finisce nella lista paths_filter →
-    intersezione vuota → 0 entries (bug live silvia al mare 8/5).
+    intersezione vuota → 0 entries (bug live bob al mare 8/5).
 
     Sostituisce ogni stringa `"from_step:N"` o `"from_step=N"` dentro
     valori lista degli args con la lista dei path estratti dallo step N.
@@ -3462,11 +3462,17 @@ class TurnLog:
             failed = res.get("failed")
             if not (isinstance(failed, list) and failed):
                 continue
-            # Skip i risultati MUTATING (§2.6: hanno `results`): i loro fallimenti
-            # sono gestiti da _enforce_mutating_honesty → evita doppio-avviso.
-            # Qui solo PRODUCER read/find/get (entries) con failed[] per-item
-            # (es. read_messages account SSL-fail). NB: niente `ok_count` come
-            # marker — read_messages lo espone, romperebbe questo ramo.
+            # Solo PRODUCER (read/find/get/list) con failed[] per-item (es.
+            # read_messages account SSL-fail). I fallimenti dei verbi MUTATING
+            # (send/write/move/delete) hanno semantica diversa ("non inviato",
+            # non "non controllato") e sono resi onesti dal blocco humanize
+            # error_class (§2.8) — qui li si skippa per non oscurarlo con un
+            # avviso da-producer fuorviante (bug no_verified_channel 8/6).
+            _verb = (s.chosen_tool or "").split("_")[0]
+            if _verb not in ("read", "find", "get", "list"):
+                continue
+            # Skip i risultati MUTATING (§2.6: hanno `results`): gestiti da
+            # _enforce_mutating_honesty → evita doppio-avviso.
             if "results" in res:
                 continue
             labels = []
@@ -9156,7 +9162,7 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
         # ─── Deterministic seed-step injection per pipeline propose+notify ────
         # ADR 0129 extended (14/5/2026 sera): dopo `find_events_empty` ok con
         # entries in pipeline propose+notify, il PLANNER medium (Gemma 4 26B)
-        # va in thinking loop su query con dettagli aggiuntivi («con Silvia»,
+        # va in thinking loop su query con dettagli aggiuntivi («con Bob»,
         # «di una ora la mattina», ecc.) — esaurisce max_tokens senza emettere
         # `get_inputs`. Bug live turn cc8d3980 (166s, step 2 vuoto).
         # Fix: emetto deterministicamente lo step `get_inputs(choice)` come

@@ -60,7 +60,12 @@ def test_subprocess_validates_args(isolated_dialog_dir):
     assert res.returncode == 0
     out = json.loads(res.stdout)
     assert out["ok"] is False
-    assert "dialog" in out["error"]
+    # Assert STRUTTURALE language-independent: la fixture isola HOME (per
+    # dialog_pending) e questo svuota il DB i18n del subprocess → il testo
+    # sarebbe `<missing:ERR_DIALOG_INVALID>`. In produzione (single-user, HOME
+    # coerente) il DB i18n è seedato; qui asseriamo l'error_class strutturale.
+    assert out["error_class"] == "invalid_args"
+    assert out["error"]  # non vuoto (§2.8)
 
 
 # ── invoke_executor inietta METNOS_ACTOR / METNOS_CHANNEL (12/5/2026) ──

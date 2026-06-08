@@ -616,6 +616,11 @@ def write(args: dict) -> dict:
             out["error"] = first_fail.get("error")
             if first_fail.get("detail"):
                 out["detail"] = first_fail["detail"]
+            # §2.10: su ERR_AMBIGUOUS_PATH lifta anche `candidates` a top-level
+            # (parità con gli altri executor): il runtime costruisce il dialog
+            # di disambiguazione dal top-level, non da results[0].
+            if first_fail.get("candidates") is not None:
+                out["candidates"] = first_fail["candidates"]
     # §2.7 truncation visibility.
     if truncated:
         out.update({"truncated": True, "truncated_what": "files",

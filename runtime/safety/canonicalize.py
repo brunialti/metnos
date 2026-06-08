@@ -101,6 +101,10 @@ _URL_RE = re.compile(r"^(https?|ftp|sftp)://", re.IGNORECASE)
 _NETIFACE_RE = re.compile(
     r"^(lo|eth\d+|en[ospx]\w+|wl[opx]\w+|wlan\d+|wlp\w+|tun\d+|tap\d+|br\d+|docker\d+|virbr\d+)$"
 )
+# Home di QUALUNQUE utente: /home/<user>[/...]. Un comando distruttivo sull'home
+# di un utente non-runtime NON deve scivolare a 'literal' e bypassare il gate
+# graylist (sicurezza). Generalizza il check sul solo home runtime.
+_USER_HOME_RE = re.compile(r"^/home/[^/]+(/.*)?$")
 
 
 @dataclass(frozen=True)
@@ -182,6 +186,10 @@ def classify_target(token: str, *, home: str | None = None) -> str:
     # Resolve relative paths against cwd? We don't, to stay deterministic on
     # the caller side. Just look at the prefix.
     if token.startswith(home_dir + "/") or token == home_dir or token.startswith("~"):
+        return "fs:user"
+    # Home di un ALTRO utente (o /home stesso): classifica fs:user, non literal,
+    # cosi' il gate graylist scatta anche fuori dall'home dell'utente runtime.
+    if token == "/home" or _USER_HOME_RE.match(token):
         return "fs:user"
     if token.startswith("/tmp/") or token == "/tmp" or token.startswith("/var/tmp"):
         return "fs:tmp"
