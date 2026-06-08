@@ -111,16 +111,40 @@ _CAUSE_KEYS = {
 }
 
 
+def _first_step_error(failed_run: Optional[RunResult]) -> str:
+    """Errore CONCRETO del primo step fallito (§2.8). Il template generico
+    per `error_class` ("Pipeline malformata") MASCHERA l'errore reale e
+    azionabile che l'executor sa dare (es. "Nessuna directory foto trovata.
+    Crea X o passa base_path" — bug live 8/6: l'utente vedeva "malformata" e
+    pensava a una regressione, mentre il NAS era smontato). Ritorna "" se
+    nessuno step ha un messaggio d'errore utile. Già localizzato dall'executor
+    via i18n (§11) → nessuna stringa hardcoded qui."""
+    if not failed_run or not getattr(failed_run, "steps", None):
+        return ""
+    for s in failed_run.steps:
+        r = getattr(s, "result", None)
+        if not isinstance(r, dict) or r.get("ok") is not False:
+            continue
+        err = r.get("error") or r.get("message")
+        if isinstance(err, str) and err.strip():
+            return err.strip()
+    return ""
+
+
 class SimpleTerminator:
-    """Default: template fisso per classe errore + record lacuna."""
+    """Default: errore concreto dello step fallito (§2.8), altrimenti template
+    fisso per classe errore + record lacuna."""
 
     def explain(self, *, query: str, intent: Intent,
                 failed_run: Optional[RunResult],
                 error_class: str = "") -> TerminatorResponse:
         from messages import get as _msg
         ck, ak = _CAUSE_KEYS.get(error_class, _CAUSE_KEYS["out_of_scope"])
-        cause = _msg(ck)
         action = _msg(ak)
+        # §2.8: se uno step ha fallito con un errore concreto/azionabile, mostra
+        # QUELLO come causa invece del generico per-classe (che lo mascherava).
+        step_err = _first_step_error(failed_run)
+        cause = step_err if step_err else _msg(ck)
         text = _msg("MSG_TERM_WRAPPER", cause=cause, action=action)
         lid = _record_lacuna(query, intent, error_class, cause, action)
         return TerminatorResponse(
