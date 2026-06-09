@@ -324,7 +324,7 @@ expected_alignment = (&alpha; &middot; top + &gamma; &middot; rest) &middot; urg
 </ul>
 
 <p>
-The current formula (<code>2 &middot; top + 0.5 &middot; rest</code>) guarantees that a perfect specialist on a heavy telos beats a mediocre generalist. The teleological Judge (LLM Gemma 4 26B local) discriminates per-telos with a bimodal distribution; the <code>&alpha;</code> boost expands the dynamic range of the dominant term and <code>&gamma;</code> credits multi-telos proposals.
+The current formula (<code>2 &middot; top + 0.5 &middot; rest</code>) guarantees that a perfect specialist on a heavy telos beats a mediocre generalist. The teleological Judge (LLM Qwen 3.6 35B-A3B local) discriminates per-telos with a bimodal distribution; the <code>&alpha;</code> boost expands the dynamic range of the dominant term and <code>&gamma;</code> credits multi-telos proposals.
 </p>
 
 <h2>How <code>fit</code><sub>i</sub> values are estimated</h2>
@@ -828,7 +828,7 @@ draw from 2022&ndash;2023 references. The <code>compression</code> lens
 to convergence failure: even with the strictest prompt, Gemma&nbsp;26B
 could not reliably produce vocab-compliant super-verbs (violating the
 &sect;2.2 <code>entries</code> exception). Rationale in.
-Convergence bench v7&minus;v8 with Gemma&nbsp;4&nbsp;26B + GBNF: 10/10
+Convergence bench with Qwen&nbsp;3.6&nbsp;35B&#8209;A3B + GBNF: 10/10
 accepted lenses converge on first attempt, 0 paternalism, 0 invalid
 naming, 0 qualifier-object mismatch.</p>
 

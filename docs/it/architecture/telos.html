@@ -331,7 +331,7 @@ expected_alignment = (&alpha; &middot; top + &gamma; &middot; rest) &middot; urg
 </ul>
 
 <p>
-La formula corrente (<code>2 &middot; top + 0.5 &middot; rest</code>) garantisce che uno specialista perfetto su un telos pesante batta un tuttofare medio. Il Giudice teleologico (LLM Gemma 4 26B locale) discrimina per-telos con distribuzione bimodale; il <code>&alpha;</code> boost espande la dinamica del termine dominante e <code>&gamma;</code> valorizza le proposte multi-telos.
+La formula corrente (<code>2 &middot; top + 0.5 &middot; rest</code>) garantisce che uno specialista perfetto su un telos pesante batta un tuttofare medio. Il Giudice teleologico (LLM Qwen 3.6 35B-A3B locale) discrimina per-telos con distribuzione bimodale; il <code>&alpha;</code> boost espande la dinamica del termine dominante e <code>&gamma;</code> valorizza le proposte multi-telos.
 </p>
 
 <h2>Come si stimano i <code>fit</code><sub>i</sub></h2>
@@ -843,8 +843,8 @@ Le 2 nuove dell'iterazione corrente (<code>counterfactual</code>,
 <code>constitutional</code>) sono ispirate a referenze 2022&ndash;2023.
 La lens <code>compression</code> (Schmidhuber 2010) e' stata implementata
 ma scartata dopo bench v8 per fallimento convergenza: anche col prompt
-restretto Gemma 26B non riusciva a proporre super-verbi vocab-compliant
-(violava l'eccezione &sect;2.2 su <code>entries</code>). Razionale in. Bench convergenza v7&minus;v8 con Gemma 4 26B + GBNF: 10/10
+restretto il modello locale non riusciva a proporre super-verbi vocab-compliant
+(violava l'eccezione &sect;2.2 su <code>entries</code>). Bench convergenza con Qwen 3.6 35B-A3B + GBNF: 10/10
 lenti accettate convergono al primo tentativo, 0 paternalismo, 0 invalid
 naming, 0 qualifier-object mismatch.</p>
 

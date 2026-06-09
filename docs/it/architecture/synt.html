@@ -393,7 +393,7 @@ estetica: &egrave; risparmio reale.
 <div class="callout note">
 <strong>Soglia di qualit&agrave; del tier wise.</strong> Lo stadio <em>codice</em>
 (stadio 5 della pipeline multistage di &sect;<a href="#cap4">4.2.3</a>) richiede
-un LLM al livello di <strong>Gemma 4 26B o superiore</strong>. Modelli pi&ugrave;
+un LLM al livello di <strong>Qwen 3.6 35B-A3B o superiore</strong>. Modelli pi&ugrave;
 pi&ugrave; piccoli producono codice fragile e hanno alta probabilit&agrave;
 di violare la convenzione. Gli stadi procedurali (1-4: naming, signature, test,
 description) usano il tier <em>middle</em>, sufficiente per lookup nel vocabolario
@@ -406,7 +406,7 @@ OpenAI, ecc.). Errore esplicito al boot, mai degradazione silenziosa al fast.
 <h3>4.2.1 Misure reali sul POC </h3>
 
 <p>
-Primo executor sintetizzato end-to-end via tier wise = Gemma 4 26B locale (Q4_K_M
+Sintesi end-to-end via tier wise = Qwen 3.6 35B-A3B locale (Q4_K_M
 su llama-server). Caso: <code>format_json</code> (formatta una stringa JSON con
 indentazione leggibile).
 </p>
@@ -469,7 +469,7 @@ text = "\\n\\nVincoli: codice fedele alla spec. Regex semplice. Niente lookbehin
 
 [[hint]]
 provider = "llamacpp"
-model_pattern = "gemma-4-*"
+model_pattern = "qwen*"
 use_case = "code_gen"
 text = "\\n\\nVincoli: raw string r'...' con UN backslash. Niente triple-quote docstring."
 
@@ -502,11 +502,11 @@ cumulativo.
 <table>
 <thead><tr><th style="width:18%">Stadio</th><th style="width:14%">Tipo</th><th style="width:18%">Tier LLM</th><th>Output</th></tr></thead>
 <tbody>
-<tr><td><strong>1. Naming + classification</strong></td><td>procedurale</td><td>middle (Gemma 4 26B think=true)</td><td>nome <code>{azione}_{oggetto}[_qualifier]</code> dal vocabolario chiuso (23 azioni, 22 oggetti) + revertible/critical/target_kind. Se nessuna combinazione calza: rejection esplicita con motivo.</td></tr>
+<tr><td><strong>1. Naming + classification</strong></td><td>procedurale</td><td>middle (Qwen 3.6 35B-A3B think=true)</td><td>nome <code>{azione}_{oggetto}[_qualifier]</code> dal vocabolario chiuso (23 azioni, 22 oggetti) + revertible/critical/target_kind. Se nessuna combinazione calza: rejection esplicita con motivo.</td></tr>
 <tr><td><strong>2. Signature</strong></td><td>procedurale</td><td>middle</td><td>args_schema (JSON Schema), capabilities (set chiuso), reverse_pattern dal catalogo deterministico (<code>runtime/reverse_patterns.py</code>).</td></tr>
 <tr><td><strong>3. Birth tests</strong></td><td>procedurale</td><td>middle</td><td>4-6 test in formato fisso (setup/input/expect/teardown), almeno: caso felice, lista vuota, args invalidi, edge dominio.</td></tr>
 <tr><td><strong>4. Description + affinity</strong></td><td>creativo</td><td>middle</td><td>description LLM-readable strutturata in quattro capitoli (<code>SCOPO: / PATTERN: / NON: / OUT:</code>). Il proposer mostra al planner solo la testa (fino a <code>OUT:</code> escluso). + 6-10 keyword di affinity per il composer.</td></tr>
-<tr><td><strong>5. Codice</strong></td><td>creativo + procedurale</td><td>wise (Gemma 4 26B think=true)</td><td><code>&lt;name&gt;.py</code> Python con <code>def invoke</code>, conformit&agrave; alle convenzioni del runtime (<code>runtime/messages.py</code>, <code>runtime/platform_policy.py</code>, helpers).</td></tr>
+<tr><td><strong>5. Codice</strong></td><td>creativo + procedurale</td><td>wise (Qwen 3.6 35B-A3B think=true)</td><td><code>&lt;name&gt;.py</code> Python con <code>def invoke</code>, conformit&agrave; alle convenzioni del runtime (<code>runtime/messages.py</code>, <code>runtime/platform_policy.py</code>, helpers).</td></tr>
 </tbody>
 </table>
 
@@ -531,7 +531,7 @@ quei pattern ricorrono in casi reali
 <div class="callout note">
 <strong>Tempo di sintesi.</strong> Una sintesi end-to-end via multistage
 costa fra <strong>140 e 160 secondi</strong> wall-clock con il provider
-locale Gemma 4 26B (zero costo di rete). Ripartizione media osservata:
+locale Qwen 3.6 35B-A3B (zero costo di rete). Ripartizione media osservata:
 stadio 1 ~13&thinsp;s, stadio 2 ~25&thinsp;s, stadio 3 ~35&thinsp;s,
 stadio 4 ~25&thinsp;s, stadio 5 ~45&thinsp;s. I 5 stadi si fanno in
 serie perche' ognuno dipende dallo skeleton arricchito dal precedente;

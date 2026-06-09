@@ -152,7 +152,7 @@ just memory.
 <h1 id="cap2">2. Why a fast-path is necessary</h1>
 
 <p>
-The Metnos planner is a local Gemma 4 26B: it thinks well but takes
+The Metnos planner is a local Qwen 3.6 35B-A3B: it thinks well but takes
 about twelve seconds to decide the first step of a turn. For many
 requests this wait is disproportionate. &ldquo;What time is it?&rdquo;
 does not need an LLM: it needs <code>get_now</code>. Even

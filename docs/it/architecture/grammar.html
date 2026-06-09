@@ -5,7 +5,7 @@
  <meta name="viewport" content="width=device-width, initial-scale=1.0">
  <title>Metnos &mdash; grammar (for dummies)</title>
  <meta name="description" content="Come Metnos forza l'LLM a chiamare un solo tool in modo corretto: constrained generation via GBNF, discriminated union name+args, schema recursive, pool filter. Spiegato semplice.">
- <meta name="keywords" content="grammar, GBNF, llama.cpp, constrained generation, tool_call, PLANNER, Gemma, anti-thinking-loop, metnos, Metnos">
+ <meta name="keywords" content="grammar, GBNF, llama.cpp, constrained generation, tool_call, PLANNER, Qwen, anti-thinking-loop, metnos, Metnos">
  <meta name="author" content="Roberto Brunialti">
  <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large">
  <link rel="canonical" href="https://metnos.com/it/architecture/grammar.html">
@@ -96,7 +96,7 @@ li { margin-bottom: 4px; }.lead { font-size: 12pt; color: var(--navy); border-le
 <h1 id="cap1">1. Il problema: l&rsquo;LLM &ldquo;ci pensa su&rdquo; e si perde</h1>
 
 <p class="lead">Il <em>PLANNER</em> di Metnos sceglie quale executor invocare a ogni
-step. E&rsquo; un LLM locale (Gemma 4 26B). Quando la query e&rsquo; complessa &mdash; tipo
+step. E&rsquo; un LLM locale (Qwen 3.6 35B-A3B). Quando la query e&rsquo; complessa &mdash; tipo
 &laquo;proponi 3 orari per un appuntamento con Silvia di una ora la mattina settimana
 prossima, dopo la scelta mandami una email con la scelta&raquo; &mdash; l&rsquo;LLM <strong>a volte</strong>
 entra in un loop di ragionamento e finisce per emettere prosa al posto di un
@@ -114,7 +114,7 @@ entra in un loop di ragionamento e finisce per emettere prosa al posto di un
 <text x="275" y="119" text-anchor="middle" fill="#44403C" font-size="9.5">dal pool filtrato</text>
 <rect x="390" y="70" width="160" height="56" rx="8" fill="#1A477A" stroke="#0f2d4a"/>
 <text x="470" y="94" text-anchor="middle" fill="#fff" font-weight="700">decode vincolato</text>
-<text x="470" y="112" text-anchor="middle" fill="#fff" font-size="9.5">llama.cpp + Gemma</text>
+<text x="470" y="112" text-anchor="middle" fill="#fff" font-size="9.5">llama.cpp + Qwen</text>
 <rect x="590" y="70" width="150" height="56" rx="8" fill="#DCFCE7" stroke="#3F6212"/>
 <text x="665" y="94" text-anchor="middle" fill="#14532D" font-weight="700">tool_call valido</text>
 <text x="665" y="112" text-anchor="middle" fill="#1F2937" font-size="9.5">name + args coerenti</text>
@@ -149,7 +149,7 @@ Inaccettabile per un assistente personale.</p>
 
 <h1 id="cap2">2. L&rsquo;idea: la grammatica come binario</h1>
 
-<p>llama.cpp (il motore che esegue Gemma) supporta una feature chiamata
+<p>llama.cpp (il motore che esegue Qwen) supporta una feature chiamata
 <strong>GBNF</strong> (Grammar Backus-Naur Form). E&rsquo; un linguaggio per scrivere
 grammatiche formali, tipo:</p>
 
@@ -311,7 +311,7 @@ referenziate. Test: <code>test_primitives_only_referenced_emitted</code>.
 <strong>3. <code>grammar</code> + <code>tools</code> insieme &mdash; HTTP 400.</strong>
 llama-server rifiuta payload che hanno entrambi i campi. Workaround: in
 grammar-mode bypassiamo <code>tools</code> e generiamo direttamente il JSON
-<code>{"name":..., "arguments":...}</code>. Il chat-template di Gemma che
+<code>{"name":..., "arguments":...}</code>. Il chat-template di Qwen che
 emette <code>&lt;|tool_call&gt;</code> markers viene anch&rsquo;esso bypassato.
 </div>
 
@@ -431,7 +431,7 @@ schema strettamente, ma niente garanzia formale.</td>
 <td>Soft (model-trained)</td>
 <td>JSON Schema</td>
 <td>Robustezza superiore al baseline locale, ma stesse riserve di
-non-localita&rsquo; e costo. Sonnet 4.6 ~$0.30/turn vs Gemma locale ~$0.001.</td>
+non-localita&rsquo; e costo. Sonnet 4.6 ~$0.30/turn vs Qwen locale ~$0.001.</td>
 </tr>
 <tr>
 <td><strong>LangChain / LlamaIndex</strong></td>
@@ -517,7 +517,7 @@ grammar invece di delegarla a un modello fine-tuned. Vantaggi:</p>
 <thead><tr><th>Trigger</th><th>Direzione</th></tr></thead>
 <tbody>
 <tr><td>llama.cpp introduce xgrammar nativo</td><td>Switch a xgrammar (stessa semantica, performance migliori)</td></tr>
-<tr><td>Multi-modello cross-provider (us. switch Gemma &harr; Sonnet)</td><td>Aggiungere adapter Outlines per provider non-llama.cpp</td></tr>
+<tr><td>Multi-modello cross-provider (us. switch Qwen &harr; Sonnet)</td><td>Aggiungere adapter Outlines per provider non-llama.cpp</td></tr>
 <tr><td>Query corpus convergenza scende sotto 95%</td><td>Investigare se &egrave; il modello o il filter; eventuale fine-tune locale</td></tr>
 <tr><td>Bug llama-server irrisolvibili</td><td>Fork generator a 2 dialetti (GBNF + JSON Schema FSM)</td></tr>
 </tbody>

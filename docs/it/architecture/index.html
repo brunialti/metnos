@@ -286,7 +286,7 @@ mezz&rsquo;ora di confusione fra trenta righe.
  <dd>Il <em>motore</em> che orchestra il tutto: riceve la richiesta
  dell&rsquo;utente, la spezza in passi, sceglie gli executor, li lancia in
  sandbox, raccoglie le osservazioni, decide il passo dopo. Implementa il
- loop ReAct con tool-use nativo (LLM locale Gemma 4 26B) e si appoggia agli
+ loop ReAct con tool-use nativo (LLM locale Qwen 3.6 35B-A3B) e si appoggia agli
  altri componenti per le decisioni difficili (Vaglio per la sicurezza,
  Synt per le capacit&agrave; mancanti, Telos per i fini).</dd>
 </dl>
@@ -651,7 +651,7 @@ Il vocabolario chiuso conta <strong>23 azioni</strong>
 (<code>read, write, move, delete, create, find, list, filter, sort,
 group, classify, get, set, send, describe, render, extract, compress,
 compute, compare, change, order, share</code>) e <strong>22 oggetti</strong>
-(<code>files, dirs, packages, messages, events, contacts, places,
+(<code>files, dirs, packages, messages, events, calendars, contacts, places,
 processes, urls, numbers, images, signatures, texts, proposals, inputs,
 credentials, entries, persons, tasks, issues, pulls</code>). I qualifier sono divisi in
 quattro famiglie: formato (codifica del dato), modalit&agrave; (come
@@ -678,7 +678,7 @@ sei passi: <code>read_events</code> &rarr; due <code>filter_entries</code>
 </p>
 
 <p>
-Il pool di executor conta <strong>75 unit&agrave;</strong> fra scritti a
+Il pool di executor conta <strong>74 unit&agrave;</strong> fra scritti a
 mano e sintetizzati, pi&ugrave; gli executor importati da
 skill esterne (Google Workspace, ecc.). Verbi-produttori ortogonali a 5
 (<code>find</code> per pattern, <code>get</code> per id/stato,

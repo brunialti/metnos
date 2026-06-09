@@ -163,7 +163,7 @@ half an hour of confusion thirty lines down.
  <dd>The <em>engine</em> that orchestrates everything: it receives the
  user request, breaks it into steps, picks executors, runs them in a
  sandbox, gathers observations, decides the next step. It implements the
- ReAct loop with native tool-use (local Gemma 4 26B LLM) and leans on the
+ ReAct loop with native tool-use (local Qwen 3.6 35B-A3B LLM) and leans on the
  other components for the hard calls (Vaglio for safety, Synt for missing
  capabilities, Telos for ends).</dd>
 </dl>
@@ -504,7 +504,7 @@ The closed vocabulary stands at <strong>23 actions</strong>
 (<code>read, write, move, delete, create, find, list, filter, sort,
 group, classify, get, set, send, describe, render, extract, compress,
 compute, compare, change, order, share</code>) and <strong>22 objects</strong>
-(<code>files, dirs, packages, messages, events, contacts, places,
+(<code>files, dirs, packages, messages, events, calendars, contacts, places,
 processes, urls, numbers, images, signatures, texts, proposals, inputs,
 credentials, entries, persons, tasks, issues, pulls</code>). Qualifiers come in four
 families: format/encoding, modality, safety policy, and provider (for
@@ -527,7 +527,7 @@ filter_lists(op=overlap) &rarr; final_answer</code>.
 </p>
 
 <p>
-The executor pool stands at <strong>75 units</strong> across
+The executor pool stands at <strong>74 units</strong> across
 hand-crafted and synthesised, plus executors imported from external
 skills (Google Workspace, etc.). Five orthogonal producer verbs
 (<code>find</code> for patterns, <code>get</code> for ids/state,
