@@ -1151,11 +1151,14 @@ def _filter_unified(
 
     # Text filter (15/5/2026 §7.3).
     # §7.3 UNIVERSALE: l'identita' (volto risolto) e' un FILTRO DURO di
-    # appartenenza; se applicata, il query_text e' SOLO ranking e NON deve
-    # escludere le foto della persona. Bug 9/6: "cerca foto ospite" → il gate
-    # di rilevanza azzerava le foto dell'ospite (scena "cerca foto" non matcha);
-    # "ospite montagna" → la scena dominava/escludeva. Gate solo se NO identita'.
-    if query_text and text_score_min > 0.0 and not identity_filtered:
+    # appartenenza. La scena (query_text residuo dopo lo split persona) RESTRINGE
+    # DENTRO le foto della persona SOLO se e' una scena reale; se e' rumore
+    # ("cerca foto") il gate svuoterebbe → fallback al set-identita' intero
+    # (scena = solo ranking). Cosi': "ospite montagna" = volto∩montagna
+    # (ristretto); "cerca foto ospite" = tutte le sue foto. Bug live 9/6: 2860
+    # foto di Silvia NON ristrette da "in montagna" perche' il gate era saltato
+    # del tutto sotto identita'.
+    if query_text and text_score_min > 0.0:
         # Taglio di rilevanza ADATTIVO (core: runtime/relevance_cut.py, §7.3).
         # Gli embedding densi collassano le similarita' coseno in una banda
         # stretta ad alta media (μ~0.6 misurato su questo corpus): una soglia
@@ -1173,8 +1176,15 @@ def _filter_unified(
         cos_all = [text_components.get(i, (0.0, 0.0))[0]
                    for i in range(len(entries))]
         rel_thr = adaptive_relevance_threshold(cos_all, floor=text_score_min)
-        entries, text_scores = _apply_relevance_gate(
+        _g_entries, _g_scores = _apply_relevance_gate(
             entries, text_components, text_scores, rel_thr)
+        if not identity_filtered:
+            entries, text_scores = _g_entries, _g_scores
+        elif _g_entries:
+            # Identita' presente + scena reale (il gate tiene >=1): restringi a
+            # volto∩scena. Se _g_entries fosse vuoto (residuo = rumore), tieni il
+            # set-identita' intero (sotto, nessuna riassegnazione).
+            entries, text_scores = _g_entries, _g_scores
 
     # Composito
     scored = []
