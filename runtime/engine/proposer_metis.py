@@ -198,9 +198,8 @@ class MetisProposer:
                             "(hash=%s) without LLM call", h[:8])
                         return cached
 
-        tools_inline = _render_tool_pool(pool, catalog)
         candidates = self._generate_candidates(
-            query=query, intent=intent, pool=pool, tools_inline=tools_inline,
+            query=query, intent=intent, pool=pool,
             excluded_hashes=excluded_hashes, llm_call=llm_call, lang=lang,
             catalog=catalog, exclude_tools=tuple(_excl))
 
@@ -233,7 +232,7 @@ class MetisProposer:
             pass
         return ranked[0] if ranked else candidates[0]
 
-    def _generate_candidates(self, *, query, intent, pool, tools_inline,
+    def _generate_candidates(self, *, query, intent, pool,
                               excluded_hashes, llm_call, lang, catalog,
                               exclude_tools=()):
         """Genera N candidati. Fix #1: gestisce grammar+metis path.
@@ -259,7 +258,11 @@ class MetisProposer:
                 excluded_hashes=excluded_hashes, llm_call=llm_call,
                 lang=lang, catalog=catalog, n=n_cands,
                 exclude_tools=exclude_tools)
-        # Default: 1 call, array output.
+        # Default: 1 call, array output. Il render del pool serve SOLO a
+        # questo path (perf 10/6/2026): sul path grammar SimpleProposer
+        # renderizza il SUO pool effettivo (post verb-filter) — renderlo in
+        # propose() prima del branch era lavoro morto in produzione.
+        tools_inline = _render_tool_pool(pool, catalog)
         try:
             system = self._load_prompt(
                 "engine_proposer_metis", lang,
