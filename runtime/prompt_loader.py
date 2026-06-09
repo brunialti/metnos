@@ -244,7 +244,14 @@ def get(role: str, lang: str, **vars) -> str:
     garantita)."""
     # Inject install_root (B.4 19/5/2026 v4): caller può override passando
     # esplicitamente `install_root=` in vars.
-    merged_vars = {**_default_vars(), **vars}
+    # Inject `lang` + `lang_name` (9/6/2026): i template possono imporre la
+    # lingua di un campo (es. final_message del proposer) via `{{ lang_name }}`,
+    # un PLACEHOLDER — così la parola della lingua non viene mai mal-tradotta
+    # dal translator automatico (resta dinamica, = lingua corrente).
+    _lang_names = {"it": "italiano", "en": "English"}
+    merged_vars = {**_default_vars(),
+                   "lang": lang, "lang_name": _lang_names.get(lang, lang),
+                   **vars}
     if role in _SYNT_ROLES:
         fmt = _synt_format()
         if fmt in ("yaml_raw", "json_raw"):

@@ -24,6 +24,7 @@ FRAMEWORK GIA RIFIUTATI (non riproporre)
 REGOLE FONDAMENTALI
 
 DEVI: emettere JSON con chiavi `steps`, `fillers`, `final_message`.
+DEVI: scrivere la prosa user-facing di `final_message` in {{ lang_name }} (i placeholder `${stepN.field}` restano invariati). È mostrata all'utente.
 DEVI: chiudere ALWAYS con uno step `final_answer` (args={}).
 DEVI: scegliere SOLO tool dalla lista pool. Mai nomi tool inventati.
 DEVI: DECOMPORRE query con piu' azioni distinte in step separati.

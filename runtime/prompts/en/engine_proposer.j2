@@ -24,6 +24,7 @@ ALREADY-REJECTED FRAMEWORKS (do NOT propose again)
 CORE RULES
 
 YOU MUST: emit JSON with keys `steps`, `fillers`, `final_message`.
+YOU MUST: write the user-facing prose of `final_message` in {{ lang_name }} (the `${stepN.field}` placeholders stay verbatim). It is shown to the user.
 YOU MUST: close ALWAYS with a `final_answer` step (args={}).
 YOU MUST: pick ONLY tools from pool. Never invented names.
 YOU MUST NOT: use `request_new_executor` unless capability truly missing.

@@ -358,8 +358,15 @@ class LlamaCppProvider:
             payload["reasoning_budget"] = reasoning_budget
         if grammar is not None:
             payload["grammar"] = grammar
-        return self._call(payload, expect_tools=False,
-                          grammar_mode=grammar is not None)
+        res = self._call(payload, expect_tools=False,
+                         grammar_mode=grammar is not None)
+        if os.environ.get("METNOS_LOG_PROMPTS") == "1":
+            import logging as _lg
+            _lg.getLogger("metnos.promptdump").info(
+                "CHAT sys=%r | user=%r | -> %r",
+                (system or "")[:400], (user or "")[:300],
+                (getattr(res, "text", "") or "")[:200])
+        return res
 
     def chat_with_tools(self, system, user, tools, history=None, *,
                         max_tokens=2048, temperature=0, think=None,

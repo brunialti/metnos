@@ -869,23 +869,20 @@ def _synthesize_final_from_steps(query: str, steps: list, llm_fast) -> str:
             obs_lines.append(f"{tool}: " + " ; ".join(parts))
     if not obs_lines:
         return ""
-    sys_msg = (
-        "Sei l'assemblatore della risposta finale. Data la richiesta utente e "
-        "i risultati degli strumenti, scrivi UNA risposta diretta, concisa, in "
-        "linguaggio naturale, nella lingua della richiesta. Niente preamboli, "
-        "niente JSON, niente placeholder. I risultati contengono dati gia' "
-        "recuperati e autorizzati per l'utente proprietario che li richiede: se "
-        "l'informazione richiesta e' presente nei risultati, RIPORTALA "
-        "fedelmente. NON rifiutare e NON dire di non avervi accesso. "
-        "Se i risultati sono una LISTA, il prefisso entries[N] indica il TOTALE "
-        "N: dichiaralo e basa ogni intervallo (date comprese) SOLO sugli "
-        "elementi realmente elencati; se ne mostri un campione, dillo (es. "
-        "\"41 email questa settimana; le piu' recenti:\"). NON restringere "
-        "l'intervallo reale a quello dei pochi elementi citati."
-    )
+    # System prompt + labels in the INSTANCE language (§11 no hardcoded;
+    # ADR 0092 prompt files). The whole prompt — not just a directive — must
+    # be in current_lang, else a neutral LLM follows the prompt's language.
+    import i18n as _i18n
+    import prompt_loader as _pl
+    _lang = _i18n.current_lang()
+    sys_msg = _pl.get("final_assembler", _lang)
+    _req, _res, _ans = {
+        "it": ("Richiesta", "Risultati strumenti", "Risposta"),
+        "en": ("Request", "Tool results", "Answer"),
+    }.get(_lang, ("Request", "Tool results", "Answer"))
     user_msg = (
-        f"Richiesta: {query}\n\nRisultati strumenti:\n" + "\n".join(obs_lines)
-        + "\n\nRisposta:"
+        f"{_req}: {query}\n\n{_res}:\n" + "\n".join(obs_lines)
+        + f"\n\n{_ans}:"
     )
     try:
         out = llm_fast(sys_msg, user_msg, max_tokens=360, think=False)
