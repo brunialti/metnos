@@ -74,7 +74,7 @@ Compared to drop-in agent frameworks (e.g. OpenClaw, Hermes and the broader
 
 | | Typical agent framework | Metnos |
 |---|---|---|
-| **Tools** | Hand-written or imported packages, executed as-is | Synthesized at runtime from a closed vocabulary, **signed**, aged, smoke-tested |
+| **Tools** | Hand-written, imported, *or* LLM-written at runtime (free-form skills/code) — then run as-is, with the assistant's privileges | Synthesized at runtime *too* — but from a **closed, audited vocabulary**: signed, aged, smoke-tested, and gated before it can ever run |
 | **Adding a capability** | Drop in code → it runs with the assistant's privileges | Code must pass a 7-layer admission gate before it can ever run |
 | **Safety model** | Trust the author of the package | *Don't* trust the package — the package must pass the checks |
 | **LLM** | Often cloud-first | Local-first; frontier is opt-in fallback |
