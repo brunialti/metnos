@@ -174,7 +174,7 @@ def _compute_intent_sig(intent: Intent) -> tuple[str, str]:
 # Arg che portano il TESTO di ricerca dell'utente (NL query-specifica): se uno
 # di questi ha un valore LITERAL (non un placeholder ${...}), il framework e'
 # legato a QUELLA query e NON generalizza al cluster/intent. Cacharlo avvelena la
-# fast-path: «cerca foto silvia» riuserebbe il piano congelato di «cerca foto
+# fast-path: «cerca foto <persona>» riuserebbe il piano congelato di «cerca foto
 # montagna». Lista CHIUSA (§2.2), allineata agli arg content-bearing degli
 # executor find_* (immagini/persone/url/messaggi testuali).
 _CONTENT_ARG_KEYS = frozenset({

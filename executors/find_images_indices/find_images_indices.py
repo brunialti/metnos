@@ -1156,7 +1156,7 @@ def _filter_unified(
     # ("cerca foto") il gate svuoterebbe → fallback al set-identita' intero
     # (scena = solo ranking). Cosi': "ospite montagna" = volto∩montagna
     # (ristretto); "cerca foto ospite" = tutte le sue foto. Bug live 9/6: 2860
-    # foto di Silvia NON ristrette da "in montagna" perche' il gate era saltato
+    # foto dell'ospite NON ristrette da "in montagna" perche' il gate era saltato
     # del tutto sotto identita'.
     if query_text and text_score_min > 0.0:
         # Taglio di rilevanza ADATTIVO (core: runtime/relevance_cut.py, §7.3).
