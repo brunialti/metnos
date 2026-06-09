@@ -169,18 +169,6 @@ _BUILTIN_JOBS: list[dict[str, Any]] = [
         ),
     },
     {
-        "name": "github_watcher",
-        "trigger": "every_30m",
-        "callback_key": "github_watcher",
-        "description": (
-            "Fase D GitHub provider: scansiona ogni 30 min i repo "
-            "monitorati (~/.config/metnos/github_watched_repos.json), "
-            "rileva nuovi issue/PR/commenti, applica dedup semantic "
-            "BGE-M3 e o auto-risponde (4-AND safety) o apre dialog "
-            "Stage 2 al host. Default config vuota = no-op."
-        ),
-    },
-    {
         "name": "multi_tool_maintenance",
         "trigger": "daily@04:30",
         "callback_key": "multi_tool_maintenance",
@@ -725,15 +713,9 @@ def install_default_callbacks(scheduler) -> None:
         replace=True,
     )
 
-    # GitHub watcher Fase D: every_30m scan dei repo monitorati con
-    # dedup semantic BGE-M3. Firma nativa v2 (cb(payload)).
-    from jobs.github_watcher import task_github_watcher
-    cb.register(
-        "github_watcher",
-        task_github_watcher,
-        "Watcher GitHub repo monitorati con dedup semantic (Fase D)",
-        replace=True,
-    )
+    # GitHub maintenance Fase D: RITIRATO (flusso core → executor componibili
+    # write/read/find_issues + comandi run_user_query schedulati, vedi
+    # internal/reports/github_maintenance_flow.html).
 
     # Telos engine nightly introspection (ADR 0156, 21/5/2026 v8).
     # Esegue le 10 lenti laterali su tutti i telos dichiarati, produce

@@ -23,7 +23,7 @@ Proprieta':
 
 NON include i ricorrenti a cadenza propria (dialog_pending_sweep 1m, change_applier
 10m, i18n 6h) ne' i GPU-heavy a 72h (telos_introspect, intent_retrain) ne' i task
-UTENTE (github_watcher e i `user_*`): restano entry separate.
+UTENTE (i `user_*`): restano entry separate. (github_watcher RITIRATO → executor.)
 """
 from __future__ import annotations
 

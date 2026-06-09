@@ -2023,10 +2023,10 @@ async def admin_timers(request: web.Request) -> web.Response:
     # Classifica per appartenenza a _BUILTIN_JOBS (autoritativo): la colonna
     # `origin` nel DB puo' essere errata (es. multi_tool_maintenance, builtin,
     # marcato 'user' da una vecchia migrate).
-    # Builtin CONCETTUALMENTE utente: i monitor github nascono da una richiesta
-    # utente (come le altre query), NON sono housekeeping interno → vanno fra i
-    # task utente. I `user_*` e i non-builtin sono gia' utente per esclusione.
-    _user_facing_builtin = {"github_watcher"}
+    # (github_watcher RITIRATO → executor write/read/find_issues + comandi:
+    # nessun builtin concettualmente-utente al momento. I `user_*` e i
+    # non-builtin sono gia' utente per esclusione.)
+    _user_facing_builtin: set = set()
     _sys_names = {j.get("name") for j in _BJ} - _user_facing_builtin
     sys_rows, user_rows = [], []
     for e in entries:
