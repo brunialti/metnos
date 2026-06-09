@@ -9,12 +9,12 @@ revertible  = false
 lifecycle   = "active"
 
 [description]
-it = "SCOPO: salva/aggiorna nel db LOCALE i record di trattamento delle issue (stato, bozza, classificazione) — non posta su GitHub. PATTERN: write_issues(entries=[{repo='owner/name', number=12, status='prepared', draft_reply='...', classification='question'}]); o from_step=N. NON: postare commenti (-> send_messages_github); rileggere (-> read_issues); cercare simili (-> find_issues). OUT: results=[{repo, number, status, id}]."
-en = "SCOPO: save/update issue treatment records in the LOCAL db (status, draft, classification) — does NOT post to GitHub. PATTERN: write_issues(entries=[{repo='owner/name', number=12, status='prepared', draft_reply='...', classification='question'}]); or from_step=N. NON: post comments (-> send_messages_github); re-read (-> read_issues); search similar (-> find_issues). OUT: results=[{repo, number, status, id}]."
+it = "SCOPO: salva/aggiorna nel db LOCALE i record di trattamento delle issue (stato, bozza, classificazione) — non posta su GitHub. PATTERN: 1 issue -> write_issues(entries=[{repo='owner/name', number=12, status='prepared', draft_reply='...'}]); N issue da uno step -> write_issues(from_step=N, status='posted'). 'approva' = status='approved' (la bozza diventa risposta accettata). NON: postare commenti (-> send_messages_github); rileggere (-> read_issues); cercare simili (-> find_issues). OUT: results=[{repo, number, status, id}]."
+en = "SCOPO: save/update issue treatment records in the LOCAL db (status, draft, classification) — does NOT post to GitHub. PATTERN: 1 issue -> write_issues(entries=[{repo='owner/name', number=12, status='prepared', draft_reply='...'}]); N issues from a step -> write_issues(from_step=N, status='posted'). 'approve' = status='approved' (the draft becomes the accepted reply). NON: post comments (-> send_messages_github); re-read (-> read_issues); search similar (-> find_issues). OUT: results=[{repo, number, status, id}]."
 
 [code]
 files  = ["write_issues.py"]
-digest = "sha256:803f55e270a6fd543c8fc6e652d6c495a5457cdf64174398ad94d8d286b1c9b6"
+digest = "sha256:0bdd498b24a510cf2b6d03305ad8ca87bdde2e479ce57c03058828aed7880140"
 
 [args]
 type     = "object"
@@ -24,5 +24,44 @@ required = []
 type = "array"
 
 [args.properties.entries.description]
-it = "Lista di record issue da salvare/aggiornare (vettoriale §2.1, anche 1). Ogni dict: `repo` (obbligatorio, 'owner/name'), `number` (obbligatorio, int), e opzionali `title`, `question_text`, `classification`, `status` (new|prepared|approved|posted), `draft_reply`, `accepted_reply`. Upsert PARZIALE: aggiorna solo i campi presenti, preserva il resto. Accetta `from_step=N` (il runtime espande in entries). Lista vuota = nessuna operazione."
-en = "List of issue records to save/update (vectorial §2.1, also 1). Each dict: `repo` (required, 'owner/name'), `number` (required, int), and optional `title`, `question_text`, `classification`, `status` (new|prepared|approved|posted), `draft_reply`, `accepted_reply`. PARTIAL upsert: updates only present fields, preserves the rest. Accepts `from_step=N` (runtime expands into entries). Empty list = no operation."
+it = "Lista di record issue da salvare/aggiornare (vettoriale §2.1, anche 1). Ogni dict: `repo` ('owner/name'), `number` (int; alias `issue_number` accettato), e opzionali `title`, `question_text`, `classification`, `status` (new|prepared|approved|posted), `draft_reply`, `accepted_reply`. Upsert PARZIALE: aggiorna solo i campi presenti, preserva il resto. Accetta `from_step=N` (il runtime espande in entries). Lista vuota = nessuna operazione."
+en = "List of issue records to save/update (vectorial §2.1, also 1). Each dict: `repo` ('owner/name'), `number` (int; alias `issue_number` accepted), and optional `title`, `question_text`, `classification`, `status` (new|prepared|approved|posted), `draft_reply`, `accepted_reply`. PARTIAL upsert: updates only present fields, preserves the rest. Accepts `from_step=N` (runtime expands into entries). Empty list = no operation."
+
+[args.properties.repo]
+type = "string"
+[args.properties.repo.description]
+it = "Default top-level: repo 'owner/name' applicato alle entry che non lo dichiarano. Es. con from_step=N."
+en = "Top-level default: 'owner/name' repo applied to entries that do not declare it. E.g. with from_step=N."
+
+[args.properties.status]
+type = "string"
+[args.properties.status.description]
+it = "Default top-level: status applicato alle entry che non lo dichiarano (new|prepared|approved|posted). Es. write_issues(from_step=2, status='posted'). 'approved' senza accepted_reply promuove la bozza a risposta accettata."
+en = "Top-level default: status applied to entries that do not declare it (new|prepared|approved|posted). E.g. write_issues(from_step=2, status='posted'). 'approved' without accepted_reply promotes the draft to accepted reply."
+
+[args.properties.classification]
+type = "string"
+[args.properties.classification.description]
+it = "Default top-level: classificazione (es. 'bug', 'question', 'support') applicata alle entry che non la dichiarano."
+en = "Top-level default: classification (e.g. 'bug', 'question', 'support') applied to entries that do not declare it."
+
+# ── Tests di nascita (offline: nessun accesso allo store) ────────────────
+[[tests]]
+name   = "entries_not_a_list_fails"
+input  = { entries = "not-a-list" }
+expect = { ok = false }
+
+[[tests]]
+name   = "empty_entries_noop_ok"
+input  = { entries = [] }
+expect = { ok = true, metadata_field_eq = { ok_count = 0 } }
+
+[[tests]]
+name   = "entry_missing_repo_number_fails"
+input  = { entries = [ { title = "no keys" } ] }
+expect = { ok = false }
+
+[[tests]]
+name   = "invalid_status_fails"
+input  = { entries = [ { repo = "owner/name", number = 1, status = "bogus" } ] }
+expect = { ok = false }

@@ -248,6 +248,54 @@ The intended support model is itself part of the showcase, and frankly experimen
 assistant can't help you run the assistant, that's a bug worth seeing. Expect rough
 edges; that's the point.
 
+### How it works: repo maintenance as scheduled commands (issue #45)
+
+There is **no maintenance daemon**. The whole flow is two natural-language
+commands that the planner turns into executor chains — the same machinery as any
+user request. Treatment state lives in a local store with an idempotent status
+machine: `new → prepared → approved → posted`.
+
+| Phase | Executors |
+|---|---|
+| 1. Detect new issues | `find_issues_github(repo, since, state="open")` |
+| 2. Semantic dedup vs. already-answered | `find_issues` (local store, embedding search) |
+| 3. Classify + diagnose + draft reply | `classify_entries` + `consult_frontier` (frontier tier, read-only tools) |
+| 4. Persist draft | `write_issues(status="prepared")` |
+| 5. Notify the admin, wait | scheduled-task push / `send_messages` (Telegram or mail) |
+| 6. Read approved, not yet posted | `read_issues(status="approved")` |
+| 7. Post the reply comment | `send_messages_github(target="issue:N")` |
+| 8. Remember + close out | `write_issues(status="posted")` + `set_issues_github` |
+
+**The two commands** (plain queries — give them to your instance in its
+operating language; English shown):
+
+- *Prepare* (recurring, e.g. every 30 min): "find the new open issues of
+  brunialti/metnos on GitHub and skip those already in the local db; for each
+  remaining one search the local db for similar already-resolved issues,
+  classify it and analyze it with the frontier tier, save the draft reply in
+  the db with status 'prepared', and notify me."
+- *Post* (after approval): "read from the local db the issues of
+  brunialti/metnos with status 'approved' that are not posted yet, publish the
+  accepted reply as a comment on each GitHub issue, then save them in the db
+  with status 'posted'."
+
+**Approval is a plain command too** — nothing reaches GitHub without it:
+"approve the draft reply for issue 12 of brunialti/metnos" sets
+`status='approved'` (the draft is promoted to the accepted reply); pass an
+edited text to override the draft; do nothing and the record simply never
+crosses to phase 6.
+
+**To schedule them**, ask the instance: *"create a recurring task every 30
+minutes: \<the prepare command\>"* — the builtin `create_tasks` registers a
+`run_user_query` entry in the scheduler, which replays the query as a regular
+agent turn at every fire and pushes the outcome to your channel. Phrase it
+with an explicit scheduling marker ("recurring task", "schedule") so it
+registers instead of running once. No code, no config file; `list_tasks` /
+`delete_tasks` manage it. Honest-failure rules apply end to end: if the
+frontier tier is down or over budget the issue stays `new` and is flagged for
+manual treatment — never an invented reply, never a silent skip;
+double-posting is prevented by the status machine, not by hope.
+
 ## Documentation
 
 Metnos ships with **extensive, first-class architecture documentation** — not a

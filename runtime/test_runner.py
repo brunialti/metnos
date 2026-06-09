@@ -44,11 +44,24 @@ def run_shell(cmd):
 
 def run_executor(executor_path, args):
     payload = json.dumps(args)
+    # Stesso contratto env di agent_runtime.invoke_executor: gli executor
+    # importano moduli runtime per nome (skill_wrapper, messages, ...) e
+    # leggono METNOS_RUNTIME per il bootstrap sys.path. Senza questo i test
+    # di nascita falliscono con ModuleNotFoundError pur con executor sani.
+    runtime_path = str(Path(__file__).resolve().parent)
+    env = os.environ.copy()
+    existing_pp = env.get("PYTHONPATH", "")
+    env["PYTHONPATH"] = (
+        runtime_path if not existing_pp
+        else f"{runtime_path}{os.pathsep}{existing_pp}"
+    )
+    env.setdefault("METNOS_RUNTIME", runtime_path)
     result = subprocess.run(
         ["python3", str(executor_path)],
         input=payload,
         capture_output=True,
         text=True,
+        env=env,
     )
     try:
         parsed = json.loads(result.stdout)

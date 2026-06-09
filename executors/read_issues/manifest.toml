@@ -43,3 +43,20 @@ default = 200
 [args.properties.limit.description]
 it = "Massimo numero di record restituiti. Default 200."
 en = "Max number of records returned. Default 200."
+
+# ── Tests di nascita ──────────────────────────────────────────────────────
+[[tests]]
+name   = "invalid_limit_fails"
+input  = { limit = 0 }
+expect = { ok = false }
+
+[[tests]]
+name   = "non_numeric_limit_fails"
+input  = { limit = "abc" }
+expect = { ok = false }
+
+# Repo riservato mai scritto: lettura deterministica (0 record).
+[[tests]]
+name   = "unknown_repo_empty"
+input  = { repo = "__selftest__/none" }
+expect = { ok = true, metadata_field_eq = { ok_count = 0 } }

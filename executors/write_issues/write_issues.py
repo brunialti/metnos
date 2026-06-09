@@ -11,7 +11,17 @@ disponibile, altrimenti il record si salva comunque (degrade onesto §2.8).
 Contratto:
     args: entries: list[{repo, number, title?, question_text?, classification?,
                          status?, draft_reply?, accepted_reply?}]
+          + default top-level opzionali `repo`/`status`/`classification`
+            applicati alle entry che non li dichiarano (pattern
+            send_messages.to_user) — abilita `write_issues(from_step=N,
+            status='posted')` su entries pipate da read_issues.
+          `issue_number` accettato come alias di `number` (coerenza §2.10
+          con l'output di read_issues).
     returns: {ok, ok_count, results:[{repo, number, status, id}], errors:[...]}
+
+Macchina a stati (delegata allo store): status='approved' senza
+accepted_reply promuove la bozza (draft_reply -> accepted_reply);
+status='posted' fissa posted_at la prima volta (idempotente).
 """
 from __future__ import annotations
 
@@ -49,13 +59,21 @@ def invoke(args):
     if not isinstance(entries, list):
         return {"ok": False, "error": _msg("ERR_ARG_NOT_LIST", arg="entries")}
 
+    # Default top-level: applicati alle entry che non li dichiarano (pattern
+    # send_messages.to_user). Abilita `write_issues(from_step=N, status=...)`.
+    top_repo = (args.get("repo") or "").strip() or None
+    top_status = args.get("status")
+    top_class = args.get("classification")
+
     results, errors = [], []
     for i, e in enumerate(entries):
         if not isinstance(e, dict):
             errors.append({"index": i, "error": _msg("ERR_ARG_NOT_DICT", arg="entry")})
             continue
-        repo = (e.get("repo") or "").strip()
-        number = e.get("number")
+        repo = (e.get("repo") or top_repo or "").strip()
+        # `issue_number` = alias di `number` (§2.10: read_issues OUT usa
+        # issue_number; le entries pipate devono rientrare senza rinomina).
+        number = e.get("number", e.get("issue_number"))
         if not repo or number is None:
             errors.append({"index": i,
                            "error": _msg("ERR_ARG_MISSING_ONE_OF", options="repo, number")})
@@ -66,21 +84,23 @@ def invoke(args):
             errors.append({"index": i,
                            "error": _msg("ERR_ARG_INVALID", arg="number", reason=str(number))})
             continue
-        status = e.get("status")
+        status = e.get("status", top_status)
         if status is not None and status not in _STATUSES:
             errors.append({"index": i,
                            "error": _msg("ERR_ARG_INVALID", arg="status", reason=str(status))})
             continue
         # Embedding best-effort dal testo dell'issue (question_text o title).
-        emb = _embed(e.get("question_text") or e.get("title") or "")
+        question_text = e.get("question_text")
+        emb = _embed(question_text or e.get("title") or "")
         try:
             rid = _store.upsert_treatment(
                 repo, number,
                 title=e.get("title"),
-                classification=e.get("classification"),
+                classification=e.get("classification", top_class),
                 status=status,
                 draft_reply=e.get("draft_reply"),
                 accepted_reply=e.get("accepted_reply"),
+                question_text=question_text,
                 embedding=emb,
             )
             results.append({"repo": repo, "number": number,

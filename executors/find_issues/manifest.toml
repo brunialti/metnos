@@ -45,3 +45,14 @@ default = 0.0
 [args.properties.min_similarity.description]
 it = "Soglia minima di similarity coseno (0..1) per includere un match. Default 0.0 (tutti). Es. 0.85 per soli match forti."
 en = "Min cosine similarity threshold (0..1) to include a match. Default 0.0 (all). E.g. 0.85 for strong matches only."
+
+# ── Tests di nascita (offline: nessun embedder/store richiesto) ──────────
+[[tests]]
+name   = "missing_repo_fails"
+input  = { query_text = "errore install" }
+expect = { ok = false, error_contains = "repo" }
+
+[[tests]]
+name   = "missing_query_text_fails"
+input  = { repo = "owner/name" }
+expect = { ok = false, error_contains = "query_text" }

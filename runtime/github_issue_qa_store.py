@@ -86,13 +86,22 @@ def upsert_treatment(
     status: str | None = None,
     draft_reply: str | None = None,
     accepted_reply: str | None = None,
+    question_text: str | None = None,
     embedding: "np.ndarray | None" = None,
     posted_at: int | None = None,
     auto_replied: bool | None = None,
 ) -> int:
     """Upsert PARZIALE di un record di trattamento: crea (repo, issue_number)
     se assente, poi aggiorna SOLO i campi forniti (non-None), preservando il
-    resto. Ritorna row id. Usato dall'executor `write_issues`."""
+    resto. Ritorna row id. Usato dall'executor `write_issues`.
+
+    Semantica della macchina a stati (github_maintenance_flow):
+    - status='approved' SENZA accepted_reply esplicito → la bozza esistente
+      viene promossa: accepted_reply = COALESCE(accepted_reply, draft_reply).
+      («approva» = la bozza diventa la risposta accettata.)
+    - status='posted' SENZA posted_at esplicito → posted_at = now, solo se
+      non gia' valorizzato (idempotente: il primo post fissa il timestamp).
+    """
     init_db()
     con = _connect()
     try:
@@ -105,16 +114,24 @@ def upsert_treatment(
         vals: list[Any] = []
         for col, v in (("title", title), ("classification", classification),
                        ("status", status), ("draft_reply", draft_reply),
-                       ("accepted_reply", accepted_reply)):
+                       ("accepted_reply", accepted_reply),
+                       ("question_text", question_text)):
             if v is not None:
                 sets.append(f"{col}=?")
                 vals.append(v)
+        if status == "approved" and accepted_reply is None:
+            # Promozione bozza→accettata (vedi docstring). L'accepted_reply
+            # esplicita (ramo sopra) vince per costruzione.
+            sets.append("accepted_reply=COALESCE(accepted_reply, draft_reply)")
         if embedding is not None:
             sets.append("question_embedding=?")
             vals.append(_embedding_to_blob(embedding))
         if posted_at is not None:
             sets.append("posted_at=?")
             vals.append(int(posted_at))
+        elif status == "posted":
+            sets.append("posted_at=COALESCE(posted_at, ?)")
+            vals.append(int(time.time()))
         if auto_replied is not None:
             sets.append("auto_replied=?")
             vals.append(1 if auto_replied else 0)
