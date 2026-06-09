@@ -71,8 +71,9 @@ CONFIG_PATH = _default_config_path()
 # non un secondo modello via `-md`). La differenza fra tier e' solo nei
 # parametri per-call (think, num_predict) — non nel modello servito.
 # Qualsiasi modifica a questo dict aggiorna la realta' del progetto:
-# tutti gli altri doc (CLAUDE.md §11, ADR 0146, docs/LLM_TIERS.md)
-# rinviano qui, non duplicano i valori. Supersedes ADR 0044.
+# tutti gli altri doc (CLAUDE.md §11, ADR 0146) rinviano QUI, non
+# duplicano i valori: questo dict e' la SoT del mapping tier→modello.
+# Supersedes ADR 0044.
 DEFAULT_TIERS = {
     "fast": {
         "provider": "llamacpp",

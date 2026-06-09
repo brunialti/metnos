@@ -159,12 +159,12 @@ _CATALOG: dict[str, dict[str, str]] = {
               "  [yellow]The default tier configuration has been tested end-to-end.[/yellow]\n"
               "  [yellow]Alternative models work — but their effects are not predicted.[/yellow]\n"
               "  [dim]Use the defaults first. Swap one tier at a time afterwards via[/dim]\n"
-              "  [dim]~/.config/metnos/llm_tiers.toml. Tier→model table: docs/architecture/llm_tiers.[/dim]",
+              "  [dim]~/.config/metnos/llm_tiers.toml. Canonical defaults: runtime/llm_router.py::DEFAULT_TIERS.[/dim]",
         "it": "  [bold yellow]Nota sulla messa a punto[/bold yellow]\n"
               "  [yellow]La configurazione dei tier predefinita e' stata testata end-to-end.[/yellow]\n"
               "  [yellow]Modelli alternativi funzionano — ma i loro effetti non sono prevedibili.[/yellow]\n"
               "  [dim]Usa prima i valori predefiniti. Poi sostituisci un tier alla volta tramite[/dim]\n"
-              "  [dim]~/.config/metnos/llm_tiers.toml. Tabella tier→modello: docs/architecture/llm_tiers.[/dim]",
+              "  [dim]~/.config/metnos/llm_tiers.toml. Default canonici: runtime/llm_router.py::DEFAULT_TIERS.[/dim]",
     },
     "p2_tiers_exists": {
         "en": "{path} already exists — leaving in place. Edit by hand to change tiers.",
@@ -180,9 +180,9 @@ _CATALOG: dict[str, dict[str, str]] = {
     },
     "p2_local_tiers_desc": {
         "en": "  [dim]One llama-server serves all three; they differ only in per-call[/dim]\n"
-              "  [dim]parameters (think, num_predict). See the tier→model table in the docs.[/dim]",
+              "  [dim]parameters (think, num_predict). Concrete model per tier: runtime/llm_router.py::DEFAULT_TIERS.[/dim]",
         "it": "  [dim]Un solo llama-server serve tutti e tre; differiscono solo nei[/dim]\n"
-              "  [dim]parametri per-chiamata (think, num_predict). Vedi la tabella tier→modello nei doc.[/dim]",
+              "  [dim]parametri per-chiamata (think, num_predict). Modello concreto per tier: runtime/llm_router.py::DEFAULT_TIERS.[/dim]",
     },
     "p2_endpoint_alive": {
         "en": "an LLM endpoint already answers at {endpoint} — wiring the local tiers to it",

@@ -4,8 +4,7 @@
 The LLM policy is **tier-based**, not model-based. Metnos routes every
 call to one of four tiers — ``fast`` / ``middle`` / ``wise`` /
 ``frontier`` — and the concrete model behind each tier is a deployment
-choice, recorded in one place (``runtime/llm_router.py::DEFAULT_TIERS``
-and the tier→model table in ``docs/*/architecture/llm_tiers``).
+choice, recorded in one place: ``runtime/llm_router.py::DEFAULT_TIERS``.
 
 - ``BGE-M3 embedder`` — mandatory, no degraded mode. Downloaded to the
   exact path the runtime reads (``<install_root>/models/embedding-bge``).
@@ -100,7 +99,7 @@ def _print_tuning_warning() -> None:
         "  [yellow]The default tier configuration has been tested end-to-end.[/yellow]\n"
         "  [yellow]Alternative models work — but their effects are not predicted.[/yellow]\n"
         "  [dim]Use the defaults first. Swap one tier at a time afterwards via[/dim]\n"
-        "  [dim]~/.config/metnos/llm_tiers.toml. Tier→model table: docs/architecture/llm_tiers.[/dim]"
+        "  [dim]~/.config/metnos/llm_tiers.toml. Canonical defaults: runtime/llm_router.py::DEFAULT_TIERS.[/dim]"
     )
 
 
@@ -181,7 +180,7 @@ def _configure_llm_tiers(args: Any) -> dict[str, Any]:
     ui.console().print()
     ui.console().print("  [bold]Local tiers[/bold] · fast / middle / wise")
     ui.console().print("  [dim]One llama-server serves all three; they differ only in per-call[/dim]")
-    ui.console().print("  [dim]parameters (think, num_predict). See the tier→model table in the docs.[/dim]")
+    ui.console().print("  [dim]parameters (think, num_predict). Concrete model per tier: runtime/llm_router.py::DEFAULT_TIERS.[/dim]")
 
     # 1. Already-running endpoint → wire to it, no download.
     if _endpoint_alive(endpoint):
