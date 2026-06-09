@@ -802,6 +802,9 @@ def _filter_unified(
     (default None: query expansion disattivata)."""
     query_text = (args.get("query_text") or "").strip() or None
     name = (args.get("name") or "").strip() or None
+    # §7.3: True dopo un filtro-VOLTO (name/names/reference). In tal caso il
+    # query_text e' SOLO ranking, mai esclusione delle foto della persona.
+    identity_filtered = False
     # Multi-persona AND (15/5/2026): `names` array, ogni nome deve essere
     # presente in OGNI foto matchata. Es. ["alice","carol"] → foto con
     # AMBEDUE. Bug live: PLANNER passava `name="Alice, Carol"` come
@@ -982,6 +985,7 @@ def _filter_unified(
                 e["_face_score"] = sum(best_scores) / len(best_scores)
                 kept.append(e)
         entries = kept
+        identity_filtered = True
         target_face_embs: list = []  # gia' applicato sopra
         name_unenrolled = False
         # Skip il blocco single-name che segue
@@ -1054,6 +1058,7 @@ def _filter_unified(
                 e["_matched_face_idx"] = best_face_idx
                 kept.append(e)
         entries = kept
+        identity_filtered = True
 
     # Composition
     if min_face_pixels is not None:
@@ -1145,7 +1150,12 @@ def _filter_unified(
             text_components[i] = (cos_score, bm25)
 
     # Text filter (15/5/2026 §7.3).
-    if query_text and text_score_min > 0.0:
+    # §7.3 UNIVERSALE: l'identita' (volto risolto) e' un FILTRO DURO di
+    # appartenenza; se applicata, il query_text e' SOLO ranking e NON deve
+    # escludere le foto della persona. Bug 9/6: "cerca foto silvia" → il gate
+    # di rilevanza azzerava le foto di Silvia (scena "cerca foto" non matcha);
+    # "silvia montagna" → la scena dominava/escludeva. Gate solo se NO identita'.
+    if query_text and text_score_min > 0.0 and not identity_filtered:
         # Taglio di rilevanza ADATTIVO (core: runtime/relevance_cut.py, §7.3).
         # Gli embedding densi collassano le similarita' coseno in una banda
         # stretta ad alta media (μ~0.6 misurato su questo corpus): una soglia
@@ -1192,7 +1202,7 @@ def _filter_unified(
 
     # Low-confidence: solo se text-only e tutti sotto floor
     if (
-        query_text and not target_face_embs
+        query_text and not identity_filtered
         and not (near_lat is not None and near_lon is not None) and scored
     ):
         max_text_score = max(text_scores.values(), default=0.0)
