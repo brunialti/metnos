@@ -49,6 +49,21 @@ def isolate_dialog_dir(tmp_path, monkeypatch):
         dialog_pending, "DIALOG_DIR",
         fake_home / ".local" / "share" / "metnos" / "get_inputs",
     )
+    # Ermeticita' backend (fix 10/6/2026): la pipeline sotto test usa il
+    # backend LOCALE (local_ics mockato). Il default client di
+    # find_events_empty dipende da `google_workspace._has_creds()` che
+    # risolve via `config.PATH_USER_DATA` — CACHATO al primo import di
+    # config con la HOME REALE: il monkeypatch di HOME qui sopra non
+    # basta se un altro test ha gia' importato config (ordine-dipendente:
+    # sul host con token OAuth vero il default diventava google_workspace
+    # e il test falliva con ModuleNotFoundError googleapiclient).
+    # `METNOS_SKILL_HOME` e' l'override hook previsto da
+    # skill_wrapper._skill_home: puntarlo a una dir vuota = niente creds
+    # → default deterministico 'local', qualunque sia l'ordine dei test.
+    monkeypatch.setenv(
+        "METNOS_SKILL_HOME",
+        str(fake_home / "skills" / "google-workspace"),
+    )
 
 
 @pytest.fixture
