@@ -171,7 +171,7 @@ review and sign it). See the architecture docs for the full design.
 
 The code is the easy part. The real barrier is **hardware**: Metnos wants a machine
 that can run a capable LLM locally. The reference instance uses a 96 GB
-unified-memory box running a ~26B model via `llama-server`.
+unified-memory box running a ~35B model (Qwen 3.6 35B-A3B) via `llama-server`.
 
 There are two install paths, and they are **not** equal:
 
