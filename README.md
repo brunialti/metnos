@@ -78,7 +78,9 @@ Compared to drop-in agent frameworks (e.g. OpenClaw, Hermes and the broader
 | **Adding a capability** | Drop in code → it runs with the assistant's privileges | Code must pass a 7-layer admission gate before it can ever run |
 | **Safety model** | Trust the author of the package | *Don't* trust the package — the package must pass the checks |
 | **LLM** | Often cloud-first | Local-first; frontier is opt-in fallback |
+| **Routing** | The model picks a tool each turn — non-reproducible | **Deterministic by construction** — seed-pinned local inference, ties broken by *curated affinity*; the same request yields the same plan, every run |
 | **Output** | Free-form per tool | Uniform list-in / list-out, pipeable between steps |
+| **Undo** | Rare or best-effort | First-class — a closed catalog of reverse patterns, COPY-then-DELETE moves, honest `ok_count`: if it says it undid three, it undid three |
 | **Language** | English-only; strings hard-coded | i18n by construction — every user-facing string and prompt is *per-language data*, so a new language is a **drop-in** translation pack, no code change. IT + EN validated today; more by drop-in (not yet tested) |
 | **Setup** | Manual wiring | **Self-configuring** — the installer profiles your hardware to pick a fitting model/backend; each skill stays dormant until its service or credential appears, then activates on its own |
 
@@ -97,6 +99,21 @@ Metnos chooses **security by construction** instead:
 - per-skill **sandbox profiles** and provenance tracking.
 
 The slogan is: *don't trust the package — the package has to earn its place.*
+
+### Determinism is a feature, not an accident
+
+Most agents treat the LLM as an oracle you re-roll every turn: ask twice, get two
+different tool calls. Metnos makes the opposite bet. A **local** planner constrained
+to a **closed vocabulary** can be made *reproducible* — routing is seed-pinned, and
+when two sibling tools tie, a curated affinity signal (not a coin flip) breaks it. The
+same request takes the same path, so the system is **auditable, testable, and
+regression-guarded** the way ordinary software is — not the way a prompt is.
+
+It compounds: a request shape that's been solved once is replayed through a **learned
+fast path with no LLM call at all** — lower latency, zero token cost, identical
+result. Frontier-model agents trade determinism away for flexibility; here it's the
+foundation, and flexibility is what you reach for (the frontier fallback) only when
+the local planner genuinely needs it.
 
 > **Roadmap — robust external import.** The goal is not to ignore the public skill
 > ecosystem (agentskills.io and friends) but to **map** it into this verified,
