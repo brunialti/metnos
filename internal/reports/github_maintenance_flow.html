@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Metnos &mdash; Flusso di maintenance issue GitHub (executor + comandi)</title>
+<style>
+:root{
+ --navy:#1A477A; --navy-light:#2B6CB0; --sage:#548235; --bronze:#A0522D;
+ --plum:#6B21A8; --amber:#B45309; --bg:#FAFBFC; --text:#1a1a1a;
+ --border:#d0d7de; --code-bg:#f6f8fa; --note-bg:#dbeafe; --note-border:#3b82f6;
+ --tip-bg:#dcfce7; --tip-border:#16a34a; --warn-bg:#fef3c7; --warn-border:#d97706;
+ --frontier-bg:#f3e8ff; --frontier-border:#7e22ce;
+}
+*{box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+ line-height:1.6;color:var(--text);background:var(--bg);margin:0;padding:0}
+.wrap{max-width:980px;margin:0 auto;padding:2.2rem 1.4rem 5rem}
+h1{color:var(--navy);font-size:1.95rem;line-height:1.2;margin:.2em 0 .1em}
+.sub{color:#475569;font-size:1.05rem;margin:.2em 0 1.6em}
+h2{color:var(--navy);border-bottom:2px solid var(--border);padding-bottom:.25em;margin-top:2.4em;font-size:1.4rem}
+h3{color:var(--bronze);margin-top:1.6em;font-size:1.12rem}
+code{background:var(--code-bg);border:1px solid var(--border);border-radius:5px;padding:.08em .35em;font-size:.9em;
+ font-family:"SF Mono",Menlo,Consolas,monospace}
+.tag{display:inline-block;font-size:.72rem;font-weight:600;padding:.1em .5em;border-radius:999px;vertical-align:middle}
+.tag-reuse{background:var(--tip-bg);color:#166534;border:1px solid var(--tip-border)}
+.tag-new{background:var(--note-bg);color:#1e40af;border:1px solid var(--note-border)}
+.tag-builtin{background:#e2e8f0;color:#334155;border:1px solid #94a3b8}
+.lead{background:#fff;border:1px solid var(--border);border-left:4px solid var(--navy);border-radius:8px;padding:1rem 1.2rem;margin:1.4em 0}
+.pillars{display:grid;grid-template-columns:repeat(auto-fit,minmax(195px,1fr));gap:.9rem;margin:1.4em 0}
+.pillar{background:#fff;border:1px solid var(--border);border-top:3px solid var(--sage);border-radius:8px;padding:.9rem 1rem}
+.pillar b{color:var(--navy);display:block;margin-bottom:.2em}
+.pillar span{font-size:.92rem;color:#475569}
+table{border-collapse:collapse;width:100%;margin:1.2em 0;font-size:.92rem;background:#fff}
+th{background:var(--navy);color:#fff;text-align:left;padding:.55em .7em;font-weight:600}
+td{border:1px solid var(--border);padding:.5em .7em;vertical-align:top}
+tr:nth-child(even) td{background:#f0f4f8}
+.note,.tip,.warn,.frontier-box{border-radius:8px;padding:.85rem 1.1rem;margin:1.2em 0;font-size:.95rem}
+.note{background:var(--note-bg);border-left:4px solid var(--note-border)}
+.tip{background:var(--tip-bg);border-left:4px solid var(--tip-border)}
+.warn{background:var(--warn-bg);border-left:4px solid var(--warn-border)}
+.frontier-box{background:var(--frontier-bg);border-left:4px solid var(--frontier-border)}
+.frontier-box b{color:var(--plum)}
+svg{max-width:100%;height:auto;display:block;margin:1.4em auto;background:#fff;border:1px solid var(--border);border-radius:10px}
+.legend{font-size:.85rem;color:#475569;text-align:center;margin-top:-.6em;margin-bottom:1.6em}
+.mono{font-family:"SF Mono",Menlo,Consolas,monospace;font-size:.86rem}
+.cmd{background:#0f172a;color:#e2e8f0;border-radius:8px;padding:.9rem 1.1rem;overflow-x:auto;font-size:.85rem;
+ font-family:"SF Mono",Menlo,Consolas,monospace;line-height:1.5;margin:1em 0}
+.cmd .k{color:#7dd3fc}.cmd .s{color:#86efac}.cmd .c{color:#64748b}
+.foot{margin-top:3em;padding-top:1em;border-top:1px solid var(--border);color:#64748b;font-size:.85rem}
+.status-pill{font-size:.74rem;font-weight:600;padding:.12em .55em;border-radius:5px;font-family:monospace}
+.s-new{background:#e0e7ff;color:#3730a3}.s-prep{background:#fef9c3;color:#854d0e}
+.s-appr{background:#dcfce7;color:#166534}.s-post{background:#dbeafe;color:#1e40af}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<h1>Manutenzione issue di un repo GitHub</h1>
+<p class="sub">Un flusso <b>componibile</b> di executor governato da <b>comandi schedulati</b> &mdash; non un programma di sistema. Con fase di <b>analisi e risoluzione frontier</b> e <b>approvazione dell'admin</b> a ogni passo decisionale.</p>
+
+<div class="lead">
+<b>Principio architetturale.</b> La gestione di un repo non &egrave; una funzione <i>core</i> cablata
+(es. l'attuale <code>jobs/github_watcher.py</code>): &egrave; una <b>query schedulata</b> che compone gli
+executor attraverso il planner. I dati di trattamento vivono in uno <b>store</b> (layer-dati), il
+<b>flusso</b> vive nei <b>comandi</b>. Sostituibile, ispezionabile, modificabile come qualunque comando &mdash;
+senza toccare il sistema.
+</div>
+
+<h2>Le quattro qualit&agrave;</h2>
+<div class="pillars">
+ <div class="pillar"><b>Robusto</b><span>Idempotente per <code>status</code>: nessun doppio post. Gate di sicurezza, dedup semantico, fallback se il frontier &egrave; gi&ugrave;.</span></div>
+ <div class="pillar"><b>Semplice</b><span>Solo executor + 2 comandi schedulati. Zero orchestratore di sistema, zero logica di flusso nel core.</span></div>
+ <div class="pillar"><b>Potente</b><span>Tier <b>frontier</b> (Opus/GPT&#8209;5) per analisi profonda e proposta di risoluzione; memoria semantica per il riuso.</span></div>
+ <div class="pillar"><b>Completo</b><span>Anello chiuso: rilevamento &rarr; analisi &rarr; approvazione &rarr; azione &rarr; memoria. Nulla resta a met&agrave;.</span></div>
+</div>
+
+<h2>Il flusso a colpo d'occhio</h2>
+<svg viewBox="0 0 880 560" role="img" aria-label="Diagramma del flusso di manutenzione issue">
+ <defs>
+  <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+   <path d="M0,0 L8,3 L0,6 Z" fill="#1A477A"/></marker>
+  <marker id="arrowB" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+   <path d="M0,0 L8,3 L0,6 Z" fill="#7e22ce"/></marker>
+ </defs>
+ <!-- lanes -->
+ <text x="150" y="26" text-anchor="middle" font-size="13" font-weight="700" fill="#548235">COMANDO A &mdash; ogni 30 min</text>
+ <text x="710" y="26" text-anchor="middle" font-size="13" font-weight="700" fill="#1A477A">COMANDO B &mdash; su approvazione</text>
+ <line x1="430" y1="40" x2="430" y2="540" stroke="#d0d7de" stroke-dasharray="5,5"/>
+
+ <!-- Command A nodes -->
+ <rect x="40" y="44" width="220" height="52" rx="8" fill="#eef6ec" stroke="#548235"/>
+ <text x="150" y="66" text-anchor="middle" font-size="12.5" font-weight="600" fill="#1a1a1a">1 &middot; Rileva nuove issue</text>
+ <text x="150" y="84" text-anchor="middle" font-size="11" fill="#475569" font-family="monospace">find_issues_github(since)</text>
+
+ <rect x="40" y="120" width="220" height="52" rx="8" fill="#eef6ff" stroke="#2B6CB0"/>
+ <text x="150" y="142" text-anchor="middle" font-size="12.5" font-weight="600">2 &middot; Dedup memoria</text>
+ <text x="150" y="160" text-anchor="middle" font-size="11" fill="#475569" font-family="monospace">find_issues (semantico)</text>
+
+ <rect x="40" y="196" width="220" height="64" rx="8" fill="#f3e8ff" stroke="#7e22ce" stroke-width="2"/>
+ <text x="150" y="218" text-anchor="middle" font-size="12.5" font-weight="700" fill="#6B21A8">3 &middot; ANALISI + RISOLUZIONE</text>
+ <text x="150" y="235" text-anchor="middle" font-size="11" fill="#6B21A8" font-weight="600">tier FRONTIER (Opus/GPT&#8209;5)</text>
+ <text x="150" y="251" text-anchor="middle" font-size="10.5" fill="#475569" font-family="monospace">classify + diagnosi + bozza</text>
+
+ <rect x="40" y="284" width="220" height="52" rx="8" fill="#eef6ff" stroke="#2B6CB0"/>
+ <text x="150" y="306" text-anchor="middle" font-size="12.5" font-weight="600">4 &middot; Persisti trattamento</text>
+ <text x="150" y="324" text-anchor="middle" font-size="11" fill="#475569" font-family="monospace">write_issues(prepared)</text>
+
+ <!-- Admin gate -->
+ <polygon points="150,360 270,408 150,456 30,408" fill="#fef3c7" stroke="#d97706" stroke-width="2"/>
+ <text x="150" y="404" text-anchor="middle" font-size="12.5" font-weight="700" fill="#92400e">5 &middot; APPROVAZIONE</text>
+ <text x="150" y="421" text-anchor="middle" font-size="11" fill="#92400e">ADMIN</text>
+
+ <!-- arrows A -->
+ <line x1="150" y1="96" x2="150" y2="118" stroke="#1A477A" marker-end="url(#arrow)"/>
+ <line x1="150" y1="172" x2="150" y2="194" stroke="#1A477A" marker-end="url(#arrow)"/>
+ <line x1="150" y1="260" x2="150" y2="282" stroke="#7e22ce" marker-end="url(#arrowB)"/>
+ <line x1="150" y1="336" x2="150" y2="358" stroke="#1A477A" marker-end="url(#arrow)"/>
+
+ <!-- notify admin -->
+ <path d="M270,408 H360 a8,8 0 0 1 8,8 V470 H560" fill="none" stroke="#d97706" stroke-width="1.6" marker-end="url(#arrow)"/>
+ <text x="415" y="462" text-anchor="middle" font-size="10.5" fill="#92400e" font-family="monospace">send_messages &rarr; host (Telegram/mail)</text>
+
+ <!-- Command B nodes -->
+ <rect x="560" y="120" width="220" height="52" rx="8" fill="#eef6ff" stroke="#2B6CB0"/>
+ <text x="670" y="142" text-anchor="middle" font-size="12.5" font-weight="600">6 &middot; Leggi approvate</text>
+ <text x="670" y="160" text-anchor="middle" font-size="11" fill="#475569" font-family="monospace">read_issues(approved)</text>
+
+ <rect x="560" y="196" width="220" height="52" rx="8" fill="#eef6ec" stroke="#548235"/>
+ <text x="670" y="218" text-anchor="middle" font-size="12.5" font-weight="600">7 &middot; Posta la risposta</text>
+ <text x="670" y="236" text-anchor="middle" font-size="11" fill="#475569" font-family="monospace">send_messages_github</text>
+
+ <rect x="560" y="272" width="220" height="52" rx="8" fill="#eef6ff" stroke="#2B6CB0"/>
+ <text x="670" y="294" text-anchor="middle" font-size="12.5" font-weight="600">8 &middot; Memorizza + chiudi</text>
+ <text x="670" y="312" text-anchor="middle" font-size="11" fill="#475569" font-family="monospace">write_issues(posted)</text>
+
+ <!-- approval to B -->
+ <path d="M270,408 H470 a8,8 0 0 0 8,-8 V154 a8,8 0 0 1 8,-8 H558" fill="none" stroke="#16a34a" stroke-width="1.8" marker-end="url(#arrow)"/>
+ <text x="528" y="118" text-anchor="middle" font-size="10.5" fill="#166534">approvato</text>
+
+ <!-- arrows B -->
+ <line x1="670" y1="172" x2="670" y2="194" stroke="#1A477A" marker-end="url(#arrow)"/>
+ <line x1="670" y1="248" x2="670" y2="270" stroke="#1A477A" marker-end="url(#arrow)"/>
+
+ <!-- memory loop back -->
+ <path d="M560,298 H470 a8,8 0 0 1 -8,-8 V150" fill="none" stroke="#7e22ce" stroke-width="1.4" stroke-dasharray="4,3"/>
+ <text x="455" y="338" font-size="10" fill="#6B21A8" font-style="italic">aggiorna memoria dedup</text>
+</svg>
+<p class="legend"><span class="status-pill s-new">new</span> &rarr; <span class="status-pill s-prep">prepared</span> &rarr; <span class="status-pill s-appr">approved</span> &rarr; <span class="status-pill s-post">posted</span> &mdash; lo <code>status</code> nel db rende ogni passo idempotente.</p>
+
+<h2>Le fasi in dettaglio</h2>
+<table>
+<tr><th>#</th><th>Fase</th><th>Executor</th><th>In &rarr; Out</th><th>Gate</th></tr>
+<tr><td>1</td><td>Rileva nuove issue dal repo</td><td><span class="tag tag-reuse">riuso</span> <code>find_issues_github</code></td><td><code>repo, since, state=open</code> &rarr; entries issue</td><td>&mdash;</td></tr>
+<tr><td>2</td><td>Dedup: cerca issue simili gi&agrave; risolte</td><td><span class="tag tag-new">nuovo</span> <code>find_issues</code></td><td>testo issue &rarr; match semantici + risposte note</td><td>auto se match &ge; soglia</td></tr>
+<tr><td>3</td><td><b>Analisi &amp; risoluzione</b></td><td><span class="tag tag-builtin">builtin</span> <code>classify_entries</code> + <b>frontier</b></td><td>issue + contesto &rarr; diagnosi + bozza risposta</td><td>&mdash;</td></tr>
+<tr><td>4</td><td>Persisti il trattamento</td><td><span class="tag tag-new">nuovo</span> <code>write_issues</code></td><td>record <span class="status-pill s-prep">prepared</span> con bozza</td><td>&mdash;</td></tr>
+<tr><td>5</td><td>Comunica e attende l'admin</td><td><span class="tag tag-builtin">builtin</span> <code>send_messages</code> + dialog</td><td>presenta a host; raccoglie ok/modifica/rifiuto</td><td><b>ADMIN</b></td></tr>
+<tr><td>6</td><td>Leggi le approvate non postate</td><td><span class="tag tag-new">nuovo</span> <code>read_issues</code></td><td><code>status=approved</code> &rarr; entries</td><td>&mdash;</td></tr>
+<tr><td>7</td><td>Posta la risposta sull'issue</td><td><span class="tag tag-reuse">riuso</span> <code>send_messages_github</code></td><td><code>target="issue:N", body</code> &rarr; commento postato</td><td>&mdash;</td></tr>
+<tr><td>8</td><td>Memorizza per il riuso + chiudi</td><td><span class="tag tag-new">nuovo</span> <code>write_issues</code> + <span class="tag tag-reuse">riuso</span> <code>set_issues_github</code></td><td>record <span class="status-pill s-post">posted</span>; eventuale close/label</td><td>&mdash;</td></tr>
+</table>
+
+<h2>Fase 3 &mdash; Analisi e risoluzione con il frontier</h2>
+<div class="frontier-box">
+<b>Il cuore potente.</b> Per le issue non gi&agrave; coperte dalla memoria (fase 2), il flusso invoca il
+tier <b>frontier</b> (Opus&nbsp;4.x / GPT&#8209;5) &mdash; non il tier locale &mdash; con il contesto necessario:
+testo dell'issue e commenti (<code>read_issues_github</code>), eventuali issue correlate e riferimenti.
+Il frontier produce: (a) una <b>classificazione</b> (bug / domanda / supporto / feature), (b) una
+<b>diagnosi</b> del problema, (c) una <b>bozza di risposta</b> azionabile, (d) opzionali <b>azioni proposte</b>
+(label, chiusura, link a doc/commit). Tutto resta una <i>proposta</i>: nessuna azione parte senza la fase 5.
+</div>
+<div class="warn"><b>Fallback robusto.</b> Se il frontier &egrave; irraggiungibile o fuori budget, la issue
+resta <span class="status-pill s-new">new</span> e viene segnalata all'admin come &laquo;da trattare a mano&raquo;:
+mai una risposta inventata, mai un fallimento silenzioso (&sect;2.8).</div>
+
+<h2>Approvazione dell'admin &mdash; mai senza</h2>
+<div class="note">
+Ogni risposta che esce verso GitHub passa dalla <b>fase 5</b>. L'admin riceve sul proprio canale
+(Telegram o mail) la terna <b>issue + diagnosi + bozza</b> e decide: <b>approva</b> (la bozza diventa
+<code>accepted_reply</code>, <span class="status-pill s-appr">approved</span>), <b>modifica</b> (corregge il testo,
+poi approva), oppure <b>rifiuta</b> (il record resta fermo, niente post). Solo le issue <span class="status-pill s-appr">approved</span>
+attraversano il Comando&nbsp;B. Il dedup ad alta confidenza (fase 2) pu&ograve; auto-rispondere
+<i>solo</i> sotto un gate di sicurezza esplicito e configurabile &mdash; e comunque notifica l'admin a posteriori.
+</div>
+
+<h2>I mattoni</h2>
+<h3>Riuso (gi&agrave; esistenti)</h3>
+<table>
+<tr><th>Executor</th><th>Ruolo nel flusso</th></tr>
+<tr><td><code>find_issues_github</code></td><td>Elenca le issue del repo; <code>since</code> seleziona le nuove.</td></tr>
+<tr><td><code>read_issues_github</code></td><td>Legge una issue (corpo + commenti) per dare contesto al frontier.</td></tr>
+<tr><td><code>send_messages_github</code></td><td>Posta il commento di risposta sull'issue (<code>target="issue:N"</code>).</td></tr>
+<tr><td><code>set_issues_github</code></td><td>Applica label / chiude l'issue dopo la risposta.</td></tr>
+<tr><td><code>classify_entries</code>, <code>send_messages</code></td><td>Builtin: classificazione e notifica all'admin.</td></tr>
+</table>
+<h3>Nuovi (locali, provider-default, sopra lo store <code>issue_qa</code>)</h3>
+<table>
+<tr><th>Executor</th><th>Contratto</th></tr>
+<tr><td><code>write_issues</code></td><td>Upsert vettoriale (&sect;2.1) dei record di trattamento: <code>{repo, number, title, classification, status, draft_reply?, accepted_reply?}</code>. <code>status &isin; {new, prepared, approved, posted}</code>.</td></tr>
+<tr><td><code>read_issues</code></td><td>Rilegge i record per <code>status</code> / <code>numbers</code> / <code>repo</code>. Pipeline-friendly: out <code>entries</code>.</td></tr>
+<tr><td><code>find_issues</code></td><td>Ricerca <b>semantica</b> nel db (dedup): data un'issue, trova quelle simili gi&agrave; risolte e la loro risposta.</td></tr>
+</table>
+
+<h2>I due comandi schedulati</h2>
+<p>Nessun codice di flusso: due voci <code>run_user_query</code> nello scheduler, ognuna una query in linguaggio naturale.</p>
+<div class="cmd"><span class="c"># Comando A &mdash; ogni 30 min: prepara</span><br>
+<span class="k">tasks.create</span>(schedule=<span class="s">"every 30m"</span>, query=<br>
+&nbsp;&nbsp;<span class="s">"leggi le nuove issue aperte di brunialti/metnos, per ognuna cerca nel</span><br>
+&nbsp;&nbsp;<span class="s">&nbsp;db le issue simili gi&agrave; risolte, classificala e analizzala col frontier,</span><br>
+&nbsp;&nbsp;<span class="s">&nbsp;poi salva nel db la bozza di risposta come 'prepared' e avvisami"</span>)</div>
+<div class="cmd"><span class="c"># Comando B &mdash; su approvazione (o giornaliero): posta</span><br>
+<span class="k">tasks.create</span>(schedule=<span class="s">"on-approval"</span>, query=<br>
+&nbsp;&nbsp;<span class="s">"leggi dal db le issue approvate non ancora postate e pubblica la</span><br>
+&nbsp;&nbsp;<span class="s">&nbsp;risposta sul relativo issue, poi segnale come 'posted'"</span>)</div>
+
+<h2>Robustezza</h2>
+<table>
+<tr><th>Rischio</th><th>Difesa</th></tr>
+<tr><td>Doppio post della stessa risposta</td><td><code>status</code> idempotente: il Comando&nbsp;B prende solo <span class="status-pill s-appr">approved</span> e li porta a <span class="status-pill s-post">posted</span>.</td></tr>
+<tr><td>Risposta inventata / a bassa qualit&agrave;</td><td>Approvazione admin obbligatoria (fase 5); dedup semantico per riuso di risposte gi&agrave; validate.</td></tr>
+<tr><td>Frontier gi&ugrave; / fuori budget</td><td>Issue resta <span class="status-pill s-new">new</span>, segnalata &laquo;a mano&raquo;. Nessun fallimento silenzioso.</td></tr>
+<tr><td>Stessa issue rivista a ogni giro</td><td><code>since</code> + presenza nel db: gi&agrave; trattate non rientrano.</td></tr>
+<tr><td>Notifica admin non recapitata</td><td>L'host &egrave; risolto al destinatario reale con canale verificato (Telegram/mail).</td></tr>
+</table>
+
+<h2>Cosa si ritira dal core</h2>
+<div class="tip">
+Con questo flusso diventano <b>obsoleti</b> &mdash; da rimuovere &mdash;: <code>runtime/jobs/github_watcher.py</code>
+(il programma-orchestratore), <code>github_dedup.py</code> e <code>github_analyze_callback.py</code> (la loro
+logica diventa, rispettivamente, il gate di classificazione del Comando&nbsp;A e la fase 3 frontier).
+Resta solo <code>github_issue_qa_store.py</code> come <b>layer-dati</b> dietro <code>write/read/find_issues</code>.
+</div>
+
+<div class="foot">
+Metnos &mdash; proposta di design (interno). Stato: <b>da approvare</b>. Riferimenti: &sect;2.1 (executor vettoriali),
+&sect;7.9 (deterministico &gt; LLM), &sect;2.8 (niente fallimento silenzioso), ADR&nbsp;0141 (dominio github),
+scheduler v2 (<code>run_user_query</code>). Nessuna riga di codice di flusso nel sistema.
+</div>
+
+</div>
+</body>
+</html>
