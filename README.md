@@ -170,15 +170,25 @@ review and sign it). See the architecture docs for the full design.
 ## Requirements (the honest version)
 
 The code is the easy part. The real barrier is **hardware**: Metnos wants a machine
-that can run a capable LLM locally. The reference instance uses a 96 GB
-unified-memory box running a ~35B model (Qwen 3.6 35B-A3B) via `llama-server`.
+that can run a capable LLM locally. The reference instance is a 96 GB unified-memory
+box serving a ~35B mixture-of-experts model (Qwen 3.6 35B-A3B) via `llama-server` —
+but that exact model is **not** a requirement.
+
+**Tiers are abstract roles**, not pinned models. `fast` / `middle` / `wise` /
+`frontier` are bindings you point at whatever provider you have; only `frontier` is a
+cloud opt-in. A weaker local model means weaker planning, not a broken install — and
+**no GPU/NPU is required by default**: a CPU endpoint, a model you already serve, or a
+frontier fallback are all first-class paths.
 
 There are two install paths, and they are **not** equal:
 
-1. **Managed (from scratch) — recommended.** Let the installer set up the whole
-   stack in a known-good configuration: LLM serving, models, the supporting
-   services (web search, geocoding, image VLM), and the wiring between them.
-   Deterministic, reproducible, supportable.
+1. **Managed (from scratch) — recommended.** The installer doesn't just boot a
+   server — it **replicates a complete, working environment** from a clean checkout:
+   LLM serving, models, the supporting services (web search, geocoding, image VLM),
+   the i18n data, signed executors, and the wiring between them. It profiles your
+   hardware to pick a fitting model/backend, and finishes by exercising a **real
+   turn** against the fresh instance, not just a health ping. Deterministic,
+   reproducible, supportable.
 2. **Custom (declare your existing LLM/services) — strongly discouraged.** If you
    already run an LLM, you *can* declare its endpoint, model and tier mapping for
    wiring. The installer will let you — and warn you loudly: this multiplies the
@@ -197,11 +207,14 @@ bash install/bootstrap.sh --check   # pre-flight only — writes nothing
 bash install/bootstrap.sh           # interactive, six-phase setup
 ```
 
-The installer (English-only) is idempotent and safe to re-run. It walks you
-through system checks, AI-backend setup, encrypted credentials, optional systemd
-units, and **skill selection** — and it never pretends a missing prerequisite is
-fine: it tells you what stays *dormant* and why. Full details, options, and the
-phase breakdown are in [`install/README.md`](install/README.md). Then:
+The installer's own UI is English, but during setup you choose **Metnos's operating
+language** (IT and EN validated; other languages are drop-in but untested) — it is
+propagated to the runtime, so the assistant thinks and answers in that language. The
+installer is idempotent and safe to re-run. It walks you through system checks,
+AI-backend setup, encrypted credentials, optional systemd units, and **skill
+selection** — and it never pretends a missing prerequisite is fine: it tells you what
+stays *dormant* and why. Full details, options, and the phase breakdown are in
+[`install/README.md`](install/README.md). Then:
 
 ```bash
 python3 runtime/metnos_http_server.py --host 0.0.0.0 --port 8770
@@ -241,6 +254,12 @@ there with its rationale.
 Metnos is **pre-1.0**: APIs, signatures, and defaults change without backward-compat
 shims when a better design appears. That's deliberate for now. Issues, questions,
 and patches are all welcome — and so is patience.
+
+This repository is a **deterministic export-subset of a daily-driven instance**, not
+a separate fork: the live system is the single source of truth, and what you see here
+is its run-essential slice (no internal benchmarks, test harnesses, or design notes —
+those live at [metnos.com](https://metnos.com)). So the public tree can trail the
+running instance between publishes; that's expected, not neglect.
 
 ## License
 

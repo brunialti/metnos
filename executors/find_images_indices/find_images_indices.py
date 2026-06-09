@@ -706,10 +706,10 @@ def _split_person_from_query(query_text: str) -> tuple[str, str | None]:
     filtro-IDENTITÀ (volto), lasciando il resto come scena. Ritorna
     (query_residua, name|None).
 
-    Razionale §7.9/§2.4 (gemello di `_split_temporal_from_query`): «silvia al
-    mare» = volto di Silvia (in registro) ∩ scena «al mare». Senza split,
-    «silvia» finisce nell'embedding semantico e NON attiva il filtro-volto → la
-    ricerca trova il mare ma non LEI (bug live 8/6). Match SOLO contro il set
+    Razionale §7.9/§2.4 (gemello di `_split_temporal_from_query`): «ospite al
+    mare» = volto dell'ospite (in registro) ∩ scena «al mare». Senza split,
+    «ospite» finisce nell'embedding semantico e NON attiva il filtro-volto → la
+    ricerca trova il mare ma non la persona (bug live 8/6). Match SOLO contro il set
     CHIUSO dei nomi in PersonsRegistry (niente falsi positivi su parole comuni)
     e SOLO se UN unico person matcha in modo non ambiguo (token→slug univoco)."""
     if not query_text:
@@ -721,7 +721,7 @@ def _split_person_from_query(query_text: str) -> tuple[str, str | None]:
         return query_text, None
     if not persons:
         return query_text, None
-    # Indice token→slug: token dello slug (silvia_buffa→{silvia,buffa}) + token
+    # Indice token→slug: token dello slug (nome_cognome→{nome,cognome}) + token
     # del display name. Scarta i token ambigui (condivisi da 2+ persone).
     tok2slug: dict[str, set] = {}
     slug2name: dict[str, str] = {}
@@ -1152,9 +1152,9 @@ def _filter_unified(
     # Text filter (15/5/2026 §7.3).
     # §7.3 UNIVERSALE: l'identita' (volto risolto) e' un FILTRO DURO di
     # appartenenza; se applicata, il query_text e' SOLO ranking e NON deve
-    # escludere le foto della persona. Bug 9/6: "cerca foto silvia" → il gate
-    # di rilevanza azzerava le foto di Silvia (scena "cerca foto" non matcha);
-    # "silvia montagna" → la scena dominava/escludeva. Gate solo se NO identita'.
+    # escludere le foto della persona. Bug 9/6: "cerca foto ospite" → il gate
+    # di rilevanza azzerava le foto dell'ospite (scena "cerca foto" non matcha);
+    # "ospite montagna" → la scena dominava/escludeva. Gate solo se NO identita'.
     if query_text and text_score_min > 0.0 and not identity_filtered:
         # Taglio di rilevanza ADATTIVO (core: runtime/relevance_cut.py, §7.3).
         # Gli embedding densi collassano le similarita' coseno in una banda
@@ -1516,9 +1516,9 @@ def invoke(args):
 
     # §7.9 FUSIONE IDENTITÀ: un nome di persona ENROLLATA dentro query_text è
     # un filtro-VOLTO, non scena. Estrailo in `name` (se non già esplicito) così
-    # la ricerca INTRECCIA volto∩scena ("silvia al mare" → Silvia ∩ mare) invece
-    # di cercare "silvia" come testo (bug live 8/6: trovava il mare, non lei).
-    # Dopo lo split temporale → "silvia al mare 2016" = volto∩scena∩tempo.
+    # la ricerca INTRECCIA volto∩scena ("ospite al mare" → ospite ∩ mare) invece
+    # di cercare "ospite" come testo (bug live 8/6: trovava il mare, non la persona).
+    # Dopo lo split temporale → "ospite al mare 2016" = volto∩scena∩tempo.
     if args.get("query_text") and not args.get("name") and not args.get("names"):
         _resid, _person = _split_person_from_query(str(args["query_text"]))
         if _person is not None:
