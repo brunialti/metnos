@@ -10,7 +10,7 @@
     <meta name="robots" content="index, follow">
 
     <meta property="og:type" content="article">
-    <meta property="og:url" content="https://metnos.com/en/Metnos_QuickTour_v1.html">
+    <meta property="og:url" content="https://metnos.com/en/Metnos_QuickTour_v1">
     <meta property="og:title" content="Metnos — Quick Tour &amp; Survival Kit">
     <meta property="og:description" content="A self-hosted AI assistant that lives on a Linux server at home, talks via Telegram and terminal, and asks before acting. Built phase by phase since April 2026.">
     <meta property="og:locale" content="en_US">
@@ -21,9 +21,9 @@
     <meta name="twitter:description" content="Metnos in 20 minutes: scenes, the approval card, how new tools are born on the fly, where the project actually stands.">
 
 
-    <link rel="canonical" href="https://metnos.com/en/Metnos_QuickTour_v1.html">
-    <link rel="alternate" hreflang="it" href="https://metnos.com/it/Metnos_QuickTour_v1.html">
-    <link rel="alternate" hreflang="en" href="https://metnos.com/en/Metnos_QuickTour_v1.html">
+    <link rel="canonical" href="https://metnos.com/en/Metnos_QuickTour_v1">
+    <link rel="alternate" hreflang="it" href="https://metnos.com/it/Metnos_QuickTour_v1">
+    <link rel="alternate" hreflang="en" href="https://metnos.com/en/Metnos_QuickTour_v1">
     <style>
 :root {
     --navy: #1A477A; --navy-light: #2B6CB0; --sage: #548235;
@@ -316,8 +316,8 @@ recurs, the system proposes a new tool that would close that gap. Memory
 of the world and memory of itself, kept apart. See
 <a href="architecture/mnestome.html">mnestome</a>.</li>
 
-<li><strong>It is provider-agnostic.</strong> Local LLM (Qwen 3 8B, Gemma 4
-26B), cloud LLM (Claude Sonnet, GPT-5), or a mix &mdash; the runtime exposes
+<li><strong>It is provider-agnostic.</strong> Local LLM (Qwen 3.6 35B-A3B),
+cloud LLM (Claude Sonnet, GPT-5), or a mix &mdash; the runtime exposes
 three tiers (fast / middle / wise) and each component picks one. Swapping a
 provider is a config line, not a code change.</li>
 </ul>
@@ -442,16 +442,19 @@ and paying beyond what is needed when using paid services.
 <div class="callout tip">
 <strong>The three &laquo;at home&raquo; tiers</strong>:
 <ul style="margin-top:6px;">
-  <li><strong>fast</strong> &mdash; small model (e.g. Qwen3 8B) for
-  rapid decisions: intent extraction, lookups, simple schemas. Answer
-  in a few seconds, low consumption.</li>
-  <li><strong>middle</strong> &mdash; medium model (Gemma 4 26B locally)
+  <li><strong>fast</strong> &mdash; the same local model (Qwen 3.6 35B-A3B)
+  with a reduced reasoning budget, for rapid decisions: intent extraction,
+  lookups, simple schemas. Answer in a few seconds, low consumption.</li>
+  <li><strong>middle</strong> &mdash; the same model (Qwen 3.6 35B-A3B locally)
   for most work: planning, vetting, entry description, short summaries.</li>
-  <li><strong>wise</strong> &mdash; high-quality local model (Gemma 4
-  26B in full mode, with extended reasoning budget) for tasks that
+  <li><strong>wise</strong> &mdash; still Qwen 3.6 35B-A3B locally,
+  in full mode with an extended reasoning budget, for tasks that
   warrant it: new code generation, long narrative synthesis, dependency
   chain reasoning.</li>
 </ul>
+<p style="margin:6px 0 0;">At home the three tiers share a single
+llama-server (Qwen 3.6 35B-A3B with a speculative drafter): not three
+different models, but the same model called with different per-tier params.</p>
 <strong>Plus one optional</strong>: the <em>frontier</em> model (Claude,
 GPT, &hellip;) as declared fallback, when local is not enough. Never the
 primary choice; an option to activate when really needed.
@@ -607,7 +610,7 @@ The diagram below shows how the <em>composer</em> &mdash; the LLM planner
   <text x="32" y="50" class="lblsm">"Sort photos by year and place&hellip;"</text>
 
   <rect x="280" y="14" width="200" height="46" rx="6" fill="#FDF3DC" stroke="#EFD4A0"/>
-  <text x="292" y="32" class="lbl"><tspan font-weight="600">Composer</tspan> (Gemma 4 26B)</text>
+  <text x="292" y="32" class="lbl"><tspan font-weight="600">Composer</tspan> (Qwen 3.6 35B-A3B)</text>
   <text x="292" y="50" class="lblsm">plans 4 steps, no code</text>
 
   <line x1="240" y1="37" x2="278" y2="37" class="arrow" marker-end="url(#arr-en)"/>
@@ -903,7 +906,7 @@ summary on top of it. The composer puts them in line and that is all.</p>
   <text x="32" y="50" class="lblsm6">"Fetch this page and summarise&hellip;"</text>
 
   <rect x="280" y="14" width="200" height="46" rx="6" fill="#FDF3DC" stroke="#EFD4A0"/>
-  <text x="292" y="32" class="lbl6"><tspan font-weight="600">Composer</tspan> (Gemma 4 26B)</text>
+  <text x="292" y="32" class="lbl6"><tspan font-weight="600">Composer</tspan> (Qwen 3.6 35B-A3B)</text>
   <text x="292" y="50" class="lblsm6">plans 2 steps, no code</text>
 
   <line x1="240" y1="37" x2="278" y2="37" class="arrow6" marker-end="url(#arr6)"/>
@@ -995,7 +998,7 @@ engineering.</p>
 <li><strong>Naming + classification</strong> (~10-15 s): name selected as
 <code>{action}_{object}[_qualifier]</code> from the closed vocabulary, plus
 revertible/critical/target_kind classifications. <em>Middle</em> tier
-(Gemma 4 26B think=true).</li>
+(Qwen 3.6 35B-A3B think=true).</li>
 <li><strong>Signature</strong> (~20-25 s): args_schema, capabilities,
 reverse_pattern from the catalogue. Middle tier.</li>
 <li><strong>Birth tests</strong> (~25-30 s): 4-6 tests in fixed format
@@ -1004,7 +1007,7 @@ with setup/input/expect/teardown. Middle tier.</li>
 prose plus keyword affinity. Middle tier.</li>
 <li><strong>Code</strong> (~40-45 s): Python file with
 <code>def invoke()</code>, safety net, runtime conventions.
-<em>Wise</em> tier (Gemma 4 26B think=true). Zero cost, local.</li>
+<em>Wise</em> tier (Qwen 3.6 35B-A3B think=true). Zero cost, local.</li>
 </ol>
 
 <p>Right after, sandbox profile is derived from the imports, birth tests
@@ -1014,7 +1017,7 @@ calls it on the original JSON and returns the formatted output.</p>
 
 <div class="scene-meta">
 <span class="chip"><strong>cascade stage:</strong> compose &rarr; <strong>generate (multistage 5)</strong></span>
-<span class="chip"><strong>wise tier:</strong> Gemma 4 26B (local)</span>
+<span class="chip"><strong>wise tier:</strong> Qwen 3.6 35B-A3B (local)</span>
 <span class="chip"><strong>cost:</strong> &euro;0 (local)</span>
 <span class="chip"><strong>tests written:</strong> 4-6 green</span>
 <span class="chip"><strong>second call:</strong> &lt;100 ms</span>
@@ -1060,7 +1063,7 @@ from the standard library.</p>
   <text x="32" y="50" class="lblsm8">"How many .py, group by size&hellip;"</text>
 
   <rect x="280" y="14" width="200" height="46" rx="6" fill="#FDF3DC" stroke="#EFD4A0"/>
-  <text x="292" y="32" class="lbl8"><tspan font-weight="600">Composer</tspan> (Gemma 4 26B)</text>
+  <text x="292" y="32" class="lbl8"><tspan font-weight="600">Composer</tspan> (Qwen 3.6 35B-A3B)</text>
   <text x="292" y="50" class="lblsm8">plans 5 steps, no code</text>
 
   <line x1="240" y1="37" x2="278" y2="37" class="arrow8" marker-end="url(#arr8)"/>
@@ -1123,7 +1126,7 @@ The most populated group is the <strong>medium (5&ndash;30KB)</strong> one with 
 <span class="chip"><strong>capability:</strong> fs:read</span>
 <span class="chip"><strong>autonomy:</strong> Full &rarr; no writes, no confirmation</span>
 <span class="chip"><strong>executors (5):</strong> find_files &rarr; filter_entries &times;3 &rarr; final answer LLM</span>
-<span class="chip"><strong>latency:</strong> ~85 s (5 planning steps, each ~15 s of Gemma)</span>
+<span class="chip"><strong>latency:</strong> ~85 s (5 planning steps, each ~15 s of Qwen)</span>
 <span class="chip"><strong>reversible:</strong> not applicable (read only)</span>
 </div>
 
@@ -1263,7 +1266,7 @@ in A1:E1. Want me to populate it?&raquo;</em></p>
 <p>Metnos queries the mailbox via Migadu's encrypted IMAP, groups by
 sender, downloads the PDF attachments, runs <code>pdftotext</code> on
 native ones and <code>read_files_ocr</code> on scans, asks the local
-Gemma to extract vendor/amount/due date, and appends one row per bill.
+Qwen to extract vendor/amount/due date, and appends one row per bill.
 Reply: <em>&laquo;3 bills extracted: ENEL April &euro;213.47, AMA waste
 tax December &euro;281.67, Plenitude May &euro;165.25. Added to the
 sheet.&raquo;</em></p>
@@ -1332,7 +1335,7 @@ with new mail and send you the audit.&raquo;</em></p>
 </details>
 
 <p>
-Measured time (24/5/2026, Strix Halo 96GB unified, local Gemma 4 26B):
+Measured time (24/5/2026, Strix Halo 96GB unified, local Qwen 3.6 35B-A3B):
 step 1 = 1.2&nbsp;s, step 2 = 1.1&nbsp;s, step 5 (3 rows) = 0.6&nbsp;s.
 The planner takes 8-15&nbsp;s thinking per turn (executor selection +
 args composition), and the final Doc synthesis another ~25&nbsp;s of
@@ -1346,7 +1349,7 @@ between two and three minutes of natural conversation.
 <li><strong>Conversation, not API</strong>: Roberto doesn't know the
 endpoint name <code>spreadsheets.values.append</code> nor the Gmail
 query syntax. He says what he wants; Metnos composes the executors.</li>
-<li><strong>Real privacy</strong>: the planner (Gemma 4 26B) runs on
+<li><strong>Real privacy</strong>: the planner (Qwen 3.6 35B-A3B) runs on
 the home server; emails go through Migadu over encrypted IMAP; the
 only data leaving the network are Google API calls to YOUR spreadsheets,
 authenticated with your refresh token (not a shared service account,
@@ -1375,7 +1378,7 @@ layer). <code>pdftotext</code> returned 4 characters (form feed) →
 fallback to <code>read_files_ocr</code> (Tesseract + poppler @200dpi),
 which extracted 5827&nbsp;chars of clean text, including <em>"IMPORTO
 DA PAGARE PER Ta.Ri. EURO: 281,67 / data di scadenza:
-20.12.2022"</em>. LLM Gemma 4 26B then filled all fields (vendor=AMA,
+20.12.2022"</em>. LLM Qwen 3.6 35B-A3B then filled all fields (vendor=AMA,
 amount_eur=281.67, due_date=2022-12-20, category=waste). OCR cost: ~30
 s per page @200dpi on the home server CPU; for older annual bills with
 1-3 pages, always sub-minute.</li>
@@ -1405,7 +1408,7 @@ disabled).</li>
 <code>e2e/scenarios/test_budget_pipeline_real.py</code>: sends 2 PDF
 attachments to <code>roberto@example.com</code> via Migadu
 SMTP, downloads via IMAP, runs <code>pdftotext</code>, calls local
-Gemma 4 26B to extract structure, writes to the sheet. Data in the
+Qwen 3.6 35B-A3B to extract structure, writes to the sheet. Data in the
 sheet are real values read from PDFs (amount &euro;213.47, vendor
 "ENEL"). The AMA bill was processed via OCR Tesseract fallback (same pipeline,
 executor <code>read_files_ocr</code> triggered when <code>pdftotext</code>
@@ -1589,7 +1592,7 @@ finished?</p>
     <div class="who">Metnos</div>
     <div class="bubble">
       Yes. 8.2 GB of 8.2 GB, checksum verified. The file is
-      <code>gemma-4-26b-q4_k_m.gguf</code>, finished at 03:14 last night.
+      <code>Qwen 3.6 35B-A3Bb-q4_k_m.gguf</code>, finished at 03:14 last night.
       Move it to <code>/opt/models/</code>?
     </div>
   </div>
@@ -1609,7 +1612,7 @@ finished?</p>
   <div class="msg bot">
     <div class="who">Metnos</div>
     <div class="bubble">
-      Done. <code>mv ~/downloads/gemma-4-26b-q4_k_m.gguf /opt/models/</code>
+      Done. <code>mv ~/downloads/Qwen 3.6 35B-A3Bb-q4_k_m.gguf /opt/models/</code>
       executed, permissions <code>644</code>. Audit line
       <code>2026-04-27T14:08:31Z #1247</code>.
     </div>
@@ -1850,9 +1853,10 @@ proto-mnest, checked by four declarative tests the system itself wrote
 and ran in the sandbox, Ed25519-signed after a human approval card. Seed
 pool today: 27 hand-written executors covering filesystem, shell, network,
 LLM, mail, channel, parse, time and packaging primitives. The runtime
-exposes a three-tier LLM router (<em>fast</em>: qwen3:8b local;
-<em>middle</em>: gemma-4-26b local; <em>wise</em>: gemma-4-26b local
-<em>or</em> Claude Sonnet 4.6 / GPT-5 online); a hard <em>quality floor</em>
+exposes a three-tier local LLM router (<em>fast</em> / <em>middle</em> /
+<em>wise</em>) served by the same local Qwen 3.6 35B-A3B, distinguished only
+by per-call params; the <em>wise</em> tier can fall back to Claude
+Sonnet 4.6 / GPT-5 online; a hard <em>quality floor</em>
 on the wise tier prevents silent downgrades to fast for code generation.
 A provider-specific prompt repertoire smooths over the idiosyncrasies
 each model family shows in the first generations.
@@ -1950,7 +1954,7 @@ cover, with all the guarantees up front. See
 <div class="card yes">
 <h3>&check; What it does today, or in active build</h3>
 <ul>
-    <li>Multi-step turns from terminal and Telegram (ReAct planner with native tool-use, ~800 ms/step on local Qwen 3 8B)</li>
+    <li>Multi-step turns from terminal and Telegram (ReAct planner with native tool-use, ~800 ms/step on local Qwen 3.6 35B-A3B)</li>
     <li>Read and summarise mail, draft replies; outbound mail behind an approval card</li>
     <li>Search files in the workspace, fetch web pages, extract data from text</li>
     <li>Run <code>shell_exec</code> inside a bubblewrap sandbox with a per-executor profile</li>
@@ -2136,7 +2140,7 @@ The sandbox profile is part of the signed manifest.</dd>
 <dd>The runtime layer through which Metnos accesses language models,
 exposing three tiers (<em>fast</em>, <em>middle</em>, <em>wise</em>).
 Each component picks a tier; alias automatically downgrades only when
-quality is not at stake. The wise tier has a quality floor (Gemma 4 26B
+quality is not at stake. The wise tier has a quality floor (Qwen 3.6 35B-A3B
 or above): for code generation, a smaller model triggers an explicit boot
 error.</dd>
 </dl>

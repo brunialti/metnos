@@ -10,7 +10,7 @@
     <meta name="robots" content="index, follow">
 
     <meta property="og:type" content="article">
-    <meta property="og:url" content="https://metnos.com/it/Metnos_QuickTour_v1.html">
+    <meta property="og:url" content="https://metnos.com/it/Metnos_QuickTour_v1">
     <meta property="og:title" content="Metnos — Quick Tour &amp; Survival Kit">
     <meta property="og:description" content="Un assistente AI self-hosted che vive su un server Linux di casa, parla via Telegram e da terminale, e chiede prima di agire. Costruito fase dopo fase da aprile 2026.">
     <meta property="og:locale" content="it_IT">
@@ -21,9 +21,9 @@
     <meta name="twitter:description" content="Metnos in venti minuti: scene, richiesta di conferma, come nascono nuovi strumenti al volo, dove sta davvero il progetto.">
 
 
-    <link rel="canonical" href="https://metnos.com/it/Metnos_QuickTour_v1.html">
-    <link rel="alternate" hreflang="it" href="https://metnos.com/it/Metnos_QuickTour_v1.html">
-    <link rel="alternate" hreflang="en" href="https://metnos.com/en/Metnos_QuickTour_v1.html">
+    <link rel="canonical" href="https://metnos.com/it/Metnos_QuickTour_v1">
+    <link rel="alternate" hreflang="it" href="https://metnos.com/it/Metnos_QuickTour_v1">
+    <link rel="alternate" hreflang="en" href="https://metnos.com/en/Metnos_QuickTour_v1">
     <style>
 :root {
     --navy: #1A477A; --navy-light: #2B6CB0; --sage: #548235;
@@ -316,7 +316,7 @@ pattern si ripete, il sistema propone un nuovo strumento per chiudere il vuoto.
 Memoria del mondo e memoria di s&eacute;, tenute separate. Vedi
 <a href="architecture/mnestoma.html">mnestoma</a>.</li>
 
-<li><strong>&Egrave; provider-agnostic.</strong> LLM locale (Qwen 3 8B, Gemma 4 26B),
+<li><strong>&Egrave; provider-agnostic.</strong> LLM locale (Qwen 3.6 35B-A3B),
 LLM in cloud (Claude Sonnet, GPT-5), o un misto &mdash; il runtime espone tre
 livelli (<em>fast</em> / <em>middle</em> / <em>wise</em>) e ogni componente
 ne sceglie uno. Cambiare provider &egrave; una riga di configurazione, non un
@@ -446,17 +446,20 @@ oltre il necessario quando si usano servizi a pagamento.
 <div class="callout tip">
 <strong>I tre livelli &laquo;in casa&raquo;</strong>:
 <ul style="margin-top:6px;">
-  <li><strong>fast</strong> &mdash; modello piccolo (es. Qwen3 8B) per
-  decisioni rapide: estrazione di intenzione, lookup, schemi semplici.
-  Risposta in pochi secondi, basso consumo.</li>
-  <li><strong>middle</strong> &mdash; modello medio (Gemma 4 26B locale)
+  <li><strong>fast</strong> &mdash; lo stesso modello locale (Qwen 3.6 35B-A3B)
+  con budget di ragionamento ridotto, per decisioni rapide: estrazione di
+  intenzione, lookup, schemi semplici. Risposta in pochi secondi, basso consumo.</li>
+  <li><strong>middle</strong> &mdash; lo stesso modello (Qwen 3.6 35B-A3B locale)
   per la maggior parte del lavoro: pianificazione, vaglio, descrizione
   delle entry, sintesi corte.</li>
-  <li><strong>wise</strong> &mdash; modello locale di alta qualit&agrave;
-  (Gemma 4 26B in modalit&agrave; piena, con budget di ragionamento esteso) per
+  <li><strong>wise</strong> &mdash; ancora Qwen 3.6 35B-A3B locale,
+  in modalit&agrave; piena con budget di ragionamento esteso, per
   i compiti che lo richiedono: generazione di codice nuovo, sintesi
   narrative lunghe, ragionamento su catene di dipendenze.</li>
 </ul>
+<p style="margin:6px 0 0;">In casa i tre livelli condividono un unico
+llama-server (Qwen 3.6 35B-A3B con drafter speculativo): non sono tre modelli
+diversi, ma lo stesso modello chiamato con parametri diversi per livello.</p>
 <strong>Pi&ugrave; uno opzionale</strong>: il modello di <em>frontiera</em>
 (Claude, GPT, &hellip;) come ripiego dichiarato, quando il locale non
 basta. Non &egrave; mai la scelta primaria; &egrave; un'opzione che si attiva quando
@@ -624,7 +627,7 @@ passi.</p>
 
   <!-- Composer -->
   <rect x="280" y="14" width="200" height="46" rx="6" fill="#FDF3DC" stroke="#EFD4A0"/>
-  <text x="292" y="32" class="lbl"><tspan font-weight="600">Composer</tspan> (Gemma 4 26B)</text>
+  <text x="292" y="32" class="lbl"><tspan font-weight="600">Composer</tspan> (Qwen 3.6 35B-A3B)</text>
   <text x="292" y="50" class="lblsm">pianifica 4 step, niente codice</text>
 
   <line x1="240" y1="37" x2="278" y2="37" class="arrow" marker-end="url(#arr)"/>
@@ -926,7 +929,7 @@ basta.</p>
   <text x="32" y="50" class="lblsm6">"Scarica questa pagina e riassumi&hellip;"</text>
 
   <rect x="280" y="14" width="200" height="46" rx="6" fill="#FDF3DC" stroke="#EFD4A0"/>
-  <text x="292" y="32" class="lbl6"><tspan font-weight="600">Composer</tspan> (Gemma 4 26B)</text>
+  <text x="292" y="32" class="lbl6"><tspan font-weight="600">Composer</tspan> (Qwen 3.6 35B-A3B)</text>
   <text x="292" y="50" class="lblsm6">pianifica 2 step, niente codice</text>
 
   <line x1="240" y1="37" x2="278" y2="37" class="arrow6" marker-end="url(#arr6)"/>
@@ -1018,7 +1021,7 @@ engineering ad hoc.</p>
 <li><strong>Naming + classificazione</strong> (~10-15 s): scelta del nome
 <code>{azione}_{oggetto}[_qualificatore]</code> dal vocabolario chiuso, +
 classificazioni revertible/critical/target_kind. Tier <em>middle</em>
-(Gemma 4 26B think=true).</li>
+(Qwen 3.6 35B-A3B think=true).</li>
 <li><strong>Signature</strong> (~20-25 s): args_schema, capabilities,
 reverse_pattern dal catalogo. Tier middle.</li>
 <li><strong>Birth tests</strong> (~25-30 s): 4-6 test in formato fisso
@@ -1027,7 +1030,7 @@ con setup/input/expect/teardown. Tier middle.</li>
 + keyword affinity. Tier middle.</li>
 <li><strong>Codice</strong> (~40-45 s): file Python con
 <code>def invoke()</code>, safety net, conformita' alle convenzioni del
-runtime. Tier <em>wise</em> (Gemma 4 26B think=true). Costo zero, locale.</li>
+runtime. Tier <em>wise</em> (Qwen 3.6 35B-A3B think=true). Costo zero, locale.</li>
 </ol>
 
 <p>Subito dopo, profilo sandbox derivato dagli import, esecuzione dei
@@ -1037,7 +1040,7 @@ JSON originale e restituisce l'output formattato.</p>
 
 <div class="scene-meta">
 <span class="chip"><strong>stadio cascata:</strong> compose &rarr; <strong>generate (multistage 5)</strong></span>
-<span class="chip"><strong>livello wise:</strong> Gemma 4 26B (locale)</span>
+<span class="chip"><strong>livello wise:</strong> Qwen 3.6 35B-A3B (locale)</span>
 <span class="chip"><strong>costo:</strong> &euro;0 (locale)</span>
 <span class="chip"><strong>test scritti:</strong> 4-6 verdi</span>
 <span class="chip"><strong>seconda chiamata:</strong> &lt;100 ms</span>
@@ -1084,7 +1087,7 @@ componendo cinque passi della libreria standard.</p>
   <text x="32" y="50" class="lblsm8">"Quanti .py, raggruppa per dimensione&hellip;"</text>
 
   <rect x="280" y="14" width="200" height="46" rx="6" fill="#FDF3DC" stroke="#EFD4A0"/>
-  <text x="292" y="32" class="lbl8"><tspan font-weight="600">Composer</tspan> (Gemma 4 26B)</text>
+  <text x="292" y="32" class="lbl8"><tspan font-weight="600">Composer</tspan> (Qwen 3.6 35B-A3B)</text>
   <text x="292" y="50" class="lblsm8">pianifica 5 step, niente codice</text>
 
   <line x1="240" y1="37" x2="278" y2="37" class="arrow8" marker-end="url(#arr8)"/>
@@ -1148,7 +1151,7 @@ Il gruppo pi&ugrave; affollato &egrave; quello dei file <strong>medi (5&ndash;30
 <span class="chip"><strong>capability:</strong> fs:read</span>
 <span class="chip"><strong>autonomia:</strong> Full &rarr; nessuna scrittura, nessuna conferma</span>
 <span class="chip"><strong>executor (5):</strong> find_files &rarr; filter_entries &times;3 &rarr; final answer LLM</span>
-<span class="chip"><strong>latenza:</strong> ~85 s (5 passi di pianificazione, ognuno ~15 s di Gemma)</span>
+<span class="chip"><strong>latenza:</strong> ~85 s (5 passi di pianificazione, ognuno ~15 s di Qwen)</span>
 <span class="chip"><strong>reversibile:</strong> non applicabile (sola lettura)</span>
 </div>
 
@@ -1291,7 +1294,7 @@ intestazioni in A1:E1. Vuoi popolarlo?&raquo;</em></p>
 <div class="dialog">&laquo;S&igrave;, popolalo con tutte le mail Migadu degli ultimi 30 giorni che contengono 'fattura' o 'invoice'.&raquo;</div>
 <p>Metnos interroga la mailbox via IMAP cifrato di Migadu, raggruppa
 per mittente, scarica gli allegati PDF, esegue <code>pdftotext</code> sui
-nativi e <code>read_files_ocr</code> sulle scansioni, chiede a Gemma
+nativi e <code>read_files_ocr</code> sulle scansioni, chiede a Qwen
 locale di estrarre vendor/importo/scadenza, e accoda una riga per
 bolletta. Risposta: <em>&laquo;3 bollette estratte: ENEL aprile
 &euro;213,47, AMA Ta.Ri. dicembre &euro;281,67, Plenitude maggio
@@ -1361,7 +1364,7 @@ foglio con le mail nuove e ti mando l'audit.&raquo;</em></p>
 </details>
 
 <p>
-Tempo misurato (24/5/2026, hardware Strix Halo 96GB unified, Gemma 4 26B
+Tempo misurato (24/5/2026, hardware Strix Halo 96GB unified, Qwen 3.6 35B-A3B
 locale): step 1 = 1.2&nbsp;s, step 2 = 1.1&nbsp;s, step 5 (3 righe) =
 0.6&nbsp;s. Il pianificatore impiega 8-15&nbsp;s di pensiero per turno
 (scelta executor + composizione args), e la sintesi finale del Doc altri
@@ -1375,7 +1378,7 @@ condiviso&raquo;: tra i due e tre minuti di conversazione naturale.
 <li><strong>Conversazione, non API</strong>: Roberto non sa come si chiama
 l'endpoint <code>spreadsheets.values.append</code> n&eacute; la query
 sintassi di Gmail. Dice cosa vuole; Metnos compone gli executor.</li>
-<li><strong>Privacy reale</strong>: il pianificatore (Gemma 4 26B) gira
+<li><strong>Privacy reale</strong>: il pianificatore (Qwen 3.6 35B-A3B) gira
 sul server di casa; le mail passano da Migadu su IMAP cifrato; gli unici
 dati che escono in rete sono le chiamate Google API ai TUOI fogli,
 autenticate col tuo refresh token (non con uno service account
@@ -1404,7 +1407,7 @@ nessuno strato testo). <code>pdftotext</code> ha ritornato 4 caratteri
 (form feed) → fallback a <code>read_files_ocr</code> (Tesseract +
 poppler @200dpi), che ha estratto 5827&nbsp;char di testo pulito,
 incluso <em>"IMPORTO DA PAGARE PER Ta.Ri. EURO: 281,67 / data di
-scadenza: 20.12.2022"</em>. LLM Gemma 4 26B ha poi popolato tutti i
+scadenza: 20.12.2022"</em>. LLM Qwen 3.6 35B-A3B ha poi popolato tutti i
 campi (vendor=AMA, amount_eur=281.67, due_date=2022-12-20,
 category=waste). Costo OCR: ~30&nbsp;s per pagina @200dpi sulla CPU
 del server di casa; per scansioni anziane di bollette annuali con 1-3
@@ -1434,7 +1437,7 @@ cap.&nbsp;6, oggi disabilitata).</li>
 <p><strong>Test E2E reale eseguito 24/5/2026, 13:50</strong> — sotto
 <code>e2e/scenarios/test_budget_pipeline_real.py</code>: invia 2 PDF
 allegati a <code>roberto@example.com</code> via SMTP Migadu,
-li scarica via IMAP, esegue <code>pdftotext</code>, chiama Gemma 4 26B
+li scarica via IMAP, esegue <code>pdftotext</code>, chiama Qwen 3.6 35B-A3B
 locale per estrarre struttura, scrive nello sheet. Dati nello sheet
 sono valori reali letti dai PDF (importo &euro;213.47, vendor "ENEL").
 La bolletta AMA &egrave; stata processata via fallback OCR Tesseract
@@ -1620,7 +1623,7 @@ finito?</p>
     <div class="who">Metnos</div>
     <div class="bubble">
       S&iacute;. 8.2 GB di 8.2 GB, checksum verificato. Il file &egrave;
-      <code>gemma-4-26b-q4_k_m.gguf</code>, finito alle 03:14 di stanotte.
+      <code>Qwen 3.6 35B-A3Bb-q4_k_m.gguf</code>, finito alle 03:14 di stanotte.
       Lo sposto in <code>/opt/models/</code>?
     </div>
   </div>
@@ -1640,7 +1643,7 @@ finito?</p>
   <div class="msg bot">
     <div class="who">Metnos</div>
     <div class="bubble">
-      Fatto. <code>mv ~/downloads/gemma-4-26b-q4_k_m.gguf /opt/models/</code>
+      Fatto. <code>mv ~/downloads/Qwen 3.6 35B-A3Bb-q4_k_m.gguf /opt/models/</code>
       eseguito, permessi <code>644</code>. Riga di audit
       <code>2026-04-27T14:08:31Z #1247</code>.
     </div>
@@ -1902,9 +1905,10 @@ controllato da quattro test dichiarativi che il sistema stesso ha scritto
 ed eseguito in sandbox, firmato Ed25519 dopo una richiesta di conferma umana.
 Pool seed odierno: 27 executor scritti a mano che coprono filesystem,
 shell, rete, LLM, mail, canale, parsing, tempo e gestione pacchetti. Il
-runtime espone un router LLM a tre livelli (<em>fast</em>: qwen3:8b
-locale; <em>middle</em>: gemma-4-26b locale; <em>wise</em>: gemma-4-26b
-locale <em>oppure</em> Claude Sonnet 4.6 / GPT-5 online); un
+runtime espone un router LLM a tre livelli locali (<em>fast</em> /
+<em>middle</em> / <em>wise</em>) serviti dallo stesso Qwen 3.6 35B-A3B locale,
+distinti solo dai parametri per-chiamata; il livello <em>wise</em> pu&ograve;
+ripiegare su Claude Sonnet 4.6 / GPT-5 online; un
 soglia minima di qualit&agrave; rigido sul livello wise impedisce regressioni
 silenziose verso fast per la generazione di codice. Un repertorio di
 prompt provider-specifici smorza le idiosincrasie che ogni famiglia di
@@ -2005,7 +2009,7 @@ cap. 4</a> e <a href="architecture/executor.html#cap12">executor cap. 12</a>.
 <div class="card yes">
 <h3>&check; Cosa fa oggi, o &egrave; in costruzione attiva</h3>
 <ul>
-    <li>Turni multi-passo da terminale e Telegram (planner ReAct con tool-use nativo, ~800 ms/passo su Qwen 3 8B locale)</li>
+    <li>Turni multi-passo da terminale e Telegram (planner ReAct con tool-use nativo, ~800 ms/passo su Qwen 3.6 35B-A3B locale)</li>
     <li>Legge e riassume mail, scrive bozze; le mail in uscita passano dietro a una richiesta di conferma</li>
     <li>Cerca file nel workspace, scarica pagine web, estrae dati da testo</li>
     <li>Esegue <code>shell_exec</code> dentro una sandbox bubblewrap con un profilo per executor</li>
@@ -2196,7 +2200,7 @@ quote CPU/RAM, timeout. Il profilo sandbox fa parte del manifest firmato.</dd>
 linguistici, esposto in tre livelli (<em>fast</em>, <em>middle</em>,
 <em>wise</em>). Ogni componente sceglie un livello; un alias degrada
 automaticamente solo quando la qualit&agrave; non &egrave; in gioco. Il livello wise
-ha un soglia minima di qualit&agrave; (Gemma 4 26B o superiore): per la generazione
+ha un soglia minima di qualit&agrave; (Qwen 3.6 35B-A3B o superiore): per la generazione
 di codice, un modello pi&ugrave; piccolo fa scattare un errore esplicito al
 boot.</dd>
 </dl>

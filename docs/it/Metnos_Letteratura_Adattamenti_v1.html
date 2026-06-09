@@ -333,9 +333,9 @@ con il setting domestico.</p>
 
 <p><strong>Stato al 27/4 sera.</strong> La cascata reattiva di synt è viva: <em>compose</em>
 (catena ReAct multi-step di executor esistenti) + <em>generate</em> (sintesi a
-codice di un executor nuovo via wise tier locale, soglia minima Gemma 4 26B).
-Primo executor sintetizzato e firmato — <code>format_json</code>, prodotto da Gemma
-4 26B locale — sopravvive a un riavvio del runtime. Il <em>synt-on-the-fly</em> è
+codice di un executor nuovo via wise tier locale, soglia minima Qwen 3.6 35B-A3B).
+Primo executor sintetizzato e firmato — <code>format_json</code>, prodotto da Qwen
+3.6 35B-A3B locale — sopravvive a un riavvio del runtime. Il <em>synt-on-the-fly</em> è
 integrato nel runtime (l'agente decide se ciclare o generare). La sandbox di
 sintesi (Voyager-style) usa esecuzione su test-case + verifica firma Ed25519
 prima di persistere. La cascata introvertiva è parziale: <em>merge</em> e

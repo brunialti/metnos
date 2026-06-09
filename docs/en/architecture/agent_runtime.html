@@ -8,12 +8,12 @@
  <meta name="keywords" content="agent_runtime, planner, ReAct, multistep, tool-use, scratchpad, data piping, mode router, vaglio, microdesign, metnos, Metnos">
  <meta name="author" content="Roberto Brunialti">
  <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large">
- <link rel="canonical" href="https://metnos.com/en/architecture/agent_runtime.html">
- <link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/agent_runtime.html">
- <link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/agent_runtime.html">
- <link rel="alternate" hreflang="x-default" href="https://metnos.com/en/architecture/agent_runtime.html">
+ <link rel="canonical" href="https://metnos.com/en/architecture/agent_runtime">
+ <link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/agent_runtime">
+ <link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/agent_runtime">
+ <link rel="alternate" hreflang="x-default" href="https://metnos.com/en/architecture/agent_runtime">
  <meta property="og:type" content="article">
- <meta property="og:url" content="https://metnos.com/en/architecture/agent_runtime.html">
+ <meta property="og:url" content="https://metnos.com/en/architecture/agent_runtime">
  <meta property="og:title" content="Metnos &mdash; agent_runtime: the turn-by-turn runtime">
  <meta property="og:description" content="Metnos's runtime. How it receives a request, extracts the intent, routes to the engine, executes and replies.">
  <meta property="og:locale" content="en_US">
@@ -842,7 +842,7 @@ auto-installed on first HTTP daemon boot via
 <tr><td><code>lifecycle_summary</code></td><td><code>daily@06:30</code></td><td>READ-ONLY aggregator of the 4 agers: produces a daily summary of the mnestome lifecycle.</td></tr>
 <tr><td><code>skill_sandbox_watchdog</code></td><td><code>daily@06:35</code></td><td>Checks the trigger threshold for per-skill sandbox (&ge; 5 third-party skills OR &ge; 1 paired guest); notifies admin via Telegram.</td></tr>
 <tr><td><code>promoter_digest</code></td><td><code>daily@07:00</code></td><td>Telegram digest of proposals in <em>promoted_grace</em> not yet user-approved.</td></tr>
-<tr><td><code>github_watcher</code></td><td><code>every_30m</code></td><td>GitHub provider: scans every 30 min the monitored repos (<code>~/.config/metnos/github_watched_repos.json</code>), detects issue/PR/comments, applies BGE-M3 semantic dedup and either auto-replies (4-AND safety) or opens a Stage 2 dialog.</td></tr>
+<tr><td><em>GitHub maintenance</em></td><td><code>run_user_query</code></td><td>GitHub maintenance now runs via the canonical executors (<code>find/read/write_issues</code>) driven by scheduled user commands; the always-on watcher was retired.</td></tr>
 </tbody>
 </table>
 

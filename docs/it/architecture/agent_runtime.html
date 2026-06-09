@@ -8,12 +8,12 @@
  <meta name="keywords" content="agent_runtime, pianificatore, ReAct, multistep, tool-use, scratchpad, data piping, mode router, vaglio, microprogettazione, metnos">
  <meta name="author" content="Roberto Brunialti">
  <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large">
- <link rel="canonical" href="https://metnos.com/it/architecture/agent_runtime.html">
- <link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/agent_runtime.html">
- <link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/agent_runtime.html">
- <link rel="alternate" hreflang="x-default" href="https://metnos.com/it/architecture/agent_runtime.html">
+ <link rel="canonical" href="https://metnos.com/it/architecture/agent_runtime">
+ <link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/agent_runtime">
+ <link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/agent_runtime">
+ <link rel="alternate" hreflang="x-default" href="https://metnos.com/it/architecture/agent_runtime">
  <meta property="og:type" content="article">
- <meta property="og:url" content="https://metnos.com/it/architecture/agent_runtime.html">
+ <meta property="og:url" content="https://metnos.com/it/architecture/agent_runtime">
  <meta property="og:title" content="Metnos &mdash; agent_runtime: il runtime turno per turno">
  <meta property="og:description" content="Il runtime di Metnos. Come riceve una richiesta, estrae l'intento, instrada al motore, esegue e risponde.">
  <meta property="og:locale" content="it_IT">
@@ -842,7 +842,7 @@ auto-installati al primo boot del daemon HTTP via
 <tr><td><code>lifecycle_summary</code></td><td><code>daily@06:30</code></td><td>Aggregatore READ-ONLY dei 4 ager: produce un sunto giornaliero del lifecycle del mnestoma.</td></tr>
 <tr><td><code>skill_sandbox_watchdog</code></td><td><code>daily@06:35</code></td><td>Controlla soglia trigger per sandbox per-skill (&ge; 5 skill third-party OR &ge; 1 guest paired); notifica admin via Telegram.</td></tr>
 <tr><td><code>promoter_digest</code></td><td><code>daily@07:00</code></td><td>Digest Telegram delle proposte in <em>promoted_grace</em> non ancora approvate dall'utente.</td></tr>
-<tr><td><code>github_watcher</code></td><td><code>every_30m</code></td><td>GitHub provider: scansiona ogni 30 min i repo monitorati (<code>~/.config/metnos/github_watched_repos.json</code>), rileva issue/PR/commenti, applica dedup semantic BGE-M3 e auto-risponde (4-AND safety) o apre dialog Stage 2.</td></tr>
+<tr><td><em>manutenzione GitHub</em></td><td><code>run_user_query</code></td><td>La manutenzione GitHub gira tramite gli executor canonici (<code>find/read/write_issues</code>) guidati da comandi utente schedulati; il watcher sempre-attivo &egrave; stato ritirato.</td></tr>
 </tbody>
 </table>
 

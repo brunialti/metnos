@@ -8,12 +8,12 @@
     <meta name="keywords" content="Metnos, Metnos, architecture, executor, mnest, mnestome, trace, ager, telos, vaglio, four layers, provider-agnostic, six principles, network medicine, proactive, self-hosted, topology, freedom safety robustness, personal AI assistant">
     <meta name="author" content="Roberto Brunialti">
     <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large">
-    <link rel="canonical" href="https://metnos.com/en/Metnos_Architecture_Intro_v1.html">
-    <link rel="alternate" hreflang="en" href="https://metnos.com/en/Metnos_Architecture_Intro_v1.html">
-    <link rel="alternate" hreflang="it" href="https://metnos.com/it/Metnos_Architettura_Intro_v1.html">
-    <link rel="alternate" hreflang="x-default" href="https://metnos.com/en/Metnos_Architecture_Intro_v1.html">
+    <link rel="canonical" href="https://metnos.com/en/Metnos_Architecture_Intro_v1">
+    <link rel="alternate" hreflang="en" href="https://metnos.com/en/Metnos_Architecture_Intro_v1">
+    <link rel="alternate" hreflang="it" href="https://metnos.com/it/Metnos_Architettura_Intro_v1">
+    <link rel="alternate" hreflang="x-default" href="https://metnos.com/en/Metnos_Architecture_Intro_v1">
     <meta property="og:type" content="article">
-    <meta property="og:url" content="https://metnos.com/en/Metnos_Architecture_Intro_v1.html">
+    <meta property="og:url" content="https://metnos.com/en/Metnos_Architecture_Intro_v1">
     <meta property="og:title" content="Metnos — Architecture: Introduction v1.1">
     <meta property="og:description" content="A didactic Level 1 document: four layers, executor and mnestome, emergent traces, telos and vaglio, six principles. After the two Galilean dialogues.">
     <meta property="og:locale" content="en_US">
@@ -872,7 +872,7 @@ For illustration, the development setup of the POC (<em>proof of concept</em>, t
 <tr><td><strong>iGPU</strong></td><td>AMD Radeon 8060S (gfx1151), unified memory access</td></tr>
 <tr><td><strong>Memory</strong></td><td>128&nbsp;GB unified (CPU+GPU); ~96&nbsp;GB available as VRAM to the LLM</td></tr>
 <tr><td><strong>OS</strong></td><td>Ubuntu 24.04 LTS, kernel 7.0.x</td></tr>
-<tr><td><strong>LLM stack</strong></td><td>llama.cpp with ROCm backend (for Gemma 4 26B as wise tier); Ollama (for Qwen 3:8b as fast tier)</td></tr>
+<tr><td><strong>LLM stack</strong></td><td>llama.cpp with ROCm backend: a single Qwen 3.6 35B-A3B server (with a speculative drafter) serves all three local tiers (fast/middle/wise), distinguished only by per-call params</td></tr>
 <tr><td><strong>Indicative cost</strong></td><td>~&euro;2,000 in late 2025 (Strix Halo mini-PC); expected to drop below &euro;1,500 by end of 2026</td></tr>
 </tbody>
 </table>
@@ -880,7 +880,7 @@ For illustration, the development setup of the POC (<em>proof of concept</em>, t
 <p>
 The machine is a <em>home-grade workstation</em>, not a datacenter server.
 The decisive feature is the <em>unified memory</em> of the Strix Halo
-platform: a 16-30&nbsp;GB model (Gemma 4 26B at Q4 quantisation) loads into
+platform: a 16-30&nbsp;GB model (Qwen 3.6 35B-A3B at Q4 quantisation) loads into
 the iGPU without the bandwidth jump of a discrete-GPU system. This enables
 latencies in the order of tens of seconds even with wise-class models.
 </p>
@@ -906,7 +906,7 @@ temperature 0:
 </tr>
 <tr>
   <td><strong>local wise</strong></td>
-  <td><code>gemma-4-26b</code> Q4_K_M (llama.cpp, ROCm, ~16&nbsp;GB VRAM)</td>
+  <td><code>Qwen 3.6 35B-A3Bb</code> Q4_K_M (llama.cpp, ROCm, ~16&nbsp;GB VRAM)</td>
   <td>~30&ndash;90&nbsp;s</td>
   <td>~1500&ndash;4500</td>
   <td>0</td>
@@ -948,9 +948,9 @@ generations: the base prompt and the executors stay unchanged.
 Cross-reading:
 </p>
 <ul>
-<li>on Strix Halo + 96&nbsp;GB unified VRAM, <strong>Gemma 4 26B as a local wise</strong> is a live option: ~30&nbsp;s per generation, zero cost, data stays at home. For a user generating 5-10 new executors per month, that is a few minutes of total latency in a month.</li>
+<li>on Strix Halo + 96&nbsp;GB unified VRAM, <strong>Qwen 3.6 35B-A3B as a local wise</strong> is a live option: ~30&nbsp;s per generation, zero cost, data stays at home. For a user generating 5-10 new executors per month, that is a few minutes of total latency in a month.</li>
 <li>on more modest hardware (typical laptop, 16&nbsp;GB RAM, no iGPU of that calibre) the local wise is unreachable and <strong>must be delegated online</strong>: Claude Sonnet at ~&euro;0.02 per generation &times; 5-10/month = a few euros per month.</li>
-<li>the <em>fast tier</em> (Qwen 3:8b or equivalent) runs fine on any modern PC: 5&nbsp;GB VRAM is enough. It is always local, always at home, always the default for the runtime's non-critical calls.</li>
+<li>the <em>fast tier</em> is the same local model called with a reduced reasoning budget: no second model to load. It is always local, always at home, always the default for the runtime's non-critical calls.</li>
 </ul>
 
 <div class="callout note">
@@ -1726,7 +1726,7 @@ calls, independent of the underlying provider:
 <tr>
   <td><strong>fast</strong></td>
   <td>ReAct planner, scratchpad summaries, light classifications &mdash; <em>all non-critical calls</em>.</td>
-  <td>always local, always available, ~1&nbsp;s latency. E.g. <code>qwen3:8b</code> via Ollama.</td>
+  <td>always local, always available, ~1&nbsp;s latency. Same local server (Qwen 3.6 35B-A3B) with a reduced reasoning budget.</td>
 </tr>
 <tr>
   <td><strong>middle</strong></td>
@@ -1736,7 +1736,7 @@ calls, independent of the underlying provider:
 <tr>
   <td><strong>wise</strong></td>
   <td>synt.generate (creating new executors), delicate judgements, decisions with long-term implications.</td>
-  <td>maximum reasoning capacity. E.g. local Gemma 4 26B, or Claude Sonnet 4.6 / GPT-5 online.</td>
+  <td>maximum reasoning capacity. E.g. local Qwen 3.6 35B-A3B, or Claude Sonnet 4.6 / GPT-5 online.</td>
 </tr>
 </tbody>
 </table>
@@ -1744,7 +1744,7 @@ calls, independent of the underlying provider:
 <div class="callout note">
 <strong>Wise quality floor &mdash; no degradation.</strong> The wise tier
 has a minimum quality threshold: either a local model at the level of
-Gemma 4 26B or above is configured, or it is delegated to a known online
+Qwen 3.6 35B-A3B or above is configured, or it is delegated to a known online
 provider (Anthropic, OpenAI, Google, Mistral). Never silently degrade to
 fast: synt.generate would produce poor code that pollutes the pool.
 Explicit boot error, never an invisible downgrade.
