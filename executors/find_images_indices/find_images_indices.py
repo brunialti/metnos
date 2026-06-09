@@ -655,6 +655,23 @@ def _parse_time_window(window: str) -> tuple[float, float] | None:
             ny, nm = (y, mo + 1) if mo < 12 else (y + 1, 1)
             end = datetime(ny, nm, 1).timestamp() - 1
             return float(start), float(end)
+    # before-/after-YYYY[-MM]: il planner emette questo per "prima del 2000" /
+    # "anteriori al 2000" / "dopo il 2010". before = tutto PRIMA dell'inizio
+    # dell'anno/mese indicato; after = tutto DOPO la sua fine. (§2.4 confine NL.)
+    m = re.match(r"^(before|after)-(\d{4})(?:-(\d{2}))?$", s)
+    if m:
+        direction = m.group(1)
+        y = int(m.group(2))
+        mo = int(m.group(3)) if m.group(3) else None
+        if mo is None or 1 <= mo <= 12:
+            if direction == "before":
+                return 0.0, float(datetime(y, mo or 1, 1).timestamp())
+            if mo is None:
+                start = datetime(y + 1, 1, 1).timestamp()
+            else:
+                ny, nm = (y, mo + 1) if mo < 12 else (y + 1, 1)
+                start = datetime(ny, nm, 1).timestamp()
+            return float(start), float(now)
     return None
 
 
@@ -896,6 +913,18 @@ def _filter_unified(
     # Time window
     if time_window != "all":
         win = _parse_time_window(time_window)
+        if win is None:
+            # §2.8 NO SILENT FAILURE: il filtro temporale e' stato richiesto ma il
+            # formato non e' riconosciuto. Ignorarlo restituirebbe foto NON
+            # filtrate mentre l'assembler annuncia "prima del 2000" (esito falso).
+            # Errore onesto con i formati validi.
+            return {
+                "entries": [], "n_above_threshold": 0,
+                "error_class": "bad_time_window", "error_code": "ERR_ARG_INVALID",
+                "_msg": (f"time_window={time_window!r} non riconosciuto. Formati: "
+                         "today, yesterday, last-7d, YYYY, YYYY-MM, "
+                         "before-YYYY[-MM], after-YYYY[-MM]."),
+            }
         if win is not None:
             start, end = win
             kept: list[dict] = []
@@ -907,15 +936,15 @@ def _filter_unified(
                         ts = datetime.fromisoformat(t_iso).timestamp()
                     except Exception:
                         ts = None
-                # Fallback 1: parse path (cartelle datate user pattern)
+                # Fallback: data dal path (cartelle/nomi datati). NIENTE mtime:
+                # e' la data di MODIFICA del file (spesso una copia recente) e
+                # MENTE sulle foto vecchie — una scansione del 1995 copiata nel
+                # 2024 sembrerebbe "dopo il 2010" (§2.8 falso esito). Senza data
+                # EXIF/path la foto e' NON DATABILE → fuori dalla finestra.
                 if ts is None:
                     ts = _extract_date_from_path(e.get("path", ""))
-                # Fallback 2: mtime filesystem (meno affidabile)
                 if ts is None:
-                    try:
-                        ts = float(e.get("mtime", 0.0))
-                    except (TypeError, ValueError):
-                        ts = 0.0
+                    continue
                 if start <= ts <= end:
                     kept.append(e)
             entries = kept
