@@ -74,6 +74,10 @@ CONFIG_PATH = _default_config_path()
 # tutti gli altri doc (CLAUDE.md §11, ADR 0146) rinviano QUI, non
 # duplicano i valori: questo dict e' la SoT del mapping tier→modello.
 # Supersedes ADR 0044.
+#
+# ⏱️ MAPPING TIER→MODELLO FISICO — snapshot al 2026-06-09 (l'UNICO punto del
+# codice con nomi modello concreti; altrove si parla solo di tier virtuali
+# fast/middle/wise/frontier). Aggiornare qui + la data quando cambia il modello.
 DEFAULT_TIERS = {
     "fast": {
         "provider": "llamacpp",
@@ -101,17 +105,8 @@ DEFAULT_TIERS = {
     },
 }
 
-# Whitelist per il quality floor del wise. Modelli locali noti come "level Gemma 4"
-# o provider online accettati.
-WISE_QUALITY_WHITELIST_LOCAL = {
-    # llamacpp models (substring match)
-    "gemma-4-26",       # Gemma 4 26B
-    "gemma3:27",        # Gemma 3 27B
-    "qwen3:32",         # Qwen 3 32B
-    "qwen3:72",
-    "llama4",           # Llama 4 anything
-}
-WISE_QUALITY_WHITELIST_ONLINE_PROVIDERS = {"anthropic", "openai", "google", "mistral"}
+# (Le ex-whitelist di NOMI modello per il quality-floor del wise sono state
+# rimosse: i tier sono astratti, non si gata sull'identità del modello.)
 
 
 class TierConfigError(Exception):
@@ -285,14 +280,14 @@ class LLMRouter:
         if "wise" not in tiers:
             raise TierConfigError(
                 "tier 'wise' non configurato. wise non degrada a fast: "
-                "configura un wise locale (es. gemma-4-26B su llama-server) "
+                "configura un wise locale (un llama-server) "
                 "oppure un provider online (anthropic, openai)."
             )
         # Regola: wise quality floor
         if not _wise_passes_quality_floor(tiers["wise"]):
             raise TierConfigError(
-                f"tier 'wise' sotto la soglia di qualita': spec={tiers['wise']}. "
-                "Vedi memoria 'Wise tier — soglia minima Gemma 4 26B'."
+                f"tier 'wise' senza provider configurato: spec={tiers['wise']}. "
+                "I tier sono astratti: basta dichiarare un `provider`."
             )
         # Regola: middle assente -> alias UP a wise (stesso modello concreto)
         if "middle" not in tiers:

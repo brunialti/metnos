@@ -57,9 +57,11 @@ from typing import Callable, Optional
 
 _LOG = logging.getLogger(__name__)
 
-# Default LLM endpoint = stesso Gemma locale del telos engine MVP fase 1
-# (telos_introspect.py costanti). Mantiene "costo zero in background".
-_LOCAL_GEMMA_MODEL = "gemma-4-26B-A4B-it-UD-Q4_K_M.gguf"
+# Default LLM = tier locale (stesso del telos engine MVP fase 1,
+# telos_introspect.py). Mantiene "costo zero in background".
+# "local" = placeholder: il server serve il GGUF caricato (mapping
+# tier→modello fisico solo in llm_router.DEFAULT_TIERS).
+_LOCAL_GEMMA_MODEL = "local"
 _LOCAL_GEMMA_ENDPOINT = "http://127.0.0.1:8080"
 
 

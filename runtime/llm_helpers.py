@@ -14,10 +14,10 @@ compatto) o gia' una stringa formattata.
 `prompt` e' il system prompt: il mestiere semantico del chiamante (es.
 "sintetizza per importanza", "traduci in inglese", "estrai entita'").
 
-`tier` punta al LLM router runtime. Tier disponibili: 'fast', 'middle',
-'wise'. Default 'middle' per task di sintesi/classificazione/scrittura
-breve. Per ora hardcoded llamacpp Gemma 4 26B per tutti e tre i tier
-finche' il LLMRouter ufficiale non e' agganciato.
+`tier` è VIRTUALE: 'fast' / 'middle' / 'wise'. Default 'middle' per
+sintesi/classificazione/scrittura breve. Il modello FISICO dietro ogni
+tier (datato) vive solo in `llm_router.py::DEFAULT_TIERS`; qui si parla
+solo di tier.
 
 Capability implicita: `llm:call` (l'executor che usa questo helper
 deve dichiararla nel manifest, quando il loader le fara' rispettare).
@@ -32,11 +32,12 @@ from llm_provider import LlamaCppProvider
 
 LLAMA_ENDPOINT = "http://127.0.0.1:8080"
 TIER_MODELS = {
-    # Hardcoded oggi; quando arriva LLMRouter (memoria
-    # `metnos_design_3tier_llm`) ogni tier punta a provider diversi.
-    "fast": "gemma-4-26B",
-    "middle": "gemma-4-26B",
-    "wise": "gemma-4-26B",
+    # Tier VIRTUALI → placeholder "local": llama-server serve il GGUF
+    # caricato e ignora il campo model. Il mapping tier→modello FISICO
+    # (datato) sta solo in llm_router.py::DEFAULT_TIERS.
+    "fast": "local",
+    "middle": "local",
+    "wise": "local",
 }
 
 
