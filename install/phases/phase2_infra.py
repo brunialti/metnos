@@ -105,12 +105,18 @@ def _print_tuning_warning() -> None:
 
 
 def _endpoint_alive(endpoint: str, *, timeout: float = 2.0) -> bool:
-    """True if an OpenAI-compatible llama-server already answers there."""
+    """True only if a REAL OpenAI-compatible LLM server answers there.
+
+    Requires a 200 on a known LLM path (``/health`` or ``/v1/models``). A
+    non-LLM service occupying the port (e.g. a 404 from an unrelated web
+    app) must NOT be mistaken for a model server — otherwise the installer
+    wires the tiers to it instead of provisioning a real model.
+    """
     import httpx  # in venv
-    for path in ("/health", "/v1/models"):
+    for path in ("/v1/models", "/health"):
         try:
             r = httpx.get(endpoint.rstrip("/") + path, timeout=timeout)
-            if r.status_code < 500:
+            if r.status_code == 200:
                 return True
         except httpx.RequestError:
             continue
