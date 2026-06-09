@@ -28,6 +28,8 @@ import urllib.error
 import urllib.request
 from dataclasses import dataclass, field
 
+import llm_telemetry as _telemetry  # universal pass-through observability hook
+
 
 @dataclass
 class ChatResult:
@@ -101,7 +103,10 @@ class OllamaProvider:
             ],
             "options": {"num_predict": max_tokens, "temperature": temperature},
         }
-        return self._call_chat(payload, expect_tools=False)
+        res = self._call_chat(payload, expect_tools=False)
+        _telemetry.record(provider="ollama", model=self.model,
+                          system=system, user=user, result=res, kind="chat")
+        return res
 
     def chat_with_tools(self, system, user, tools, history=None, *,
                         max_tokens=512, temperature=0, think=None):
@@ -122,7 +127,10 @@ class OllamaProvider:
             "tools": tools,
             "options": {"num_predict": max_tokens, "temperature": temperature},
         }
-        return self._call_chat(payload, expect_tools=True)
+        res = self._call_chat(payload, expect_tools=True)
+        _telemetry.record(provider="ollama", model=self.model,
+                          system=system, user=user, result=res, kind="tools")
+        return res
 
     def _call_chat(self, payload, expect_tools):
         # ADR 0121: sanitize surrogates pre-serialization (vedi LlamaCppProvider).
@@ -358,15 +366,8 @@ class LlamaCppProvider:
             payload["reasoning_budget"] = reasoning_budget
         if grammar is not None:
             payload["grammar"] = grammar
-        res = self._call(payload, expect_tools=False,
-                         grammar_mode=grammar is not None)
-        if os.environ.get("METNOS_LOG_PROMPTS") == "1":
-            import logging as _lg
-            _lg.getLogger("metnos.promptdump").info(
-                "CHAT sys=%r | user=%r | -> %r",
-                (system or "")[:400], (user or "")[:300],
-                (getattr(res, "text", "") or "")[:200])
-        return res
+        return self._call(payload, expect_tools=False,
+                          grammar_mode=grammar is not None)
 
     def chat_with_tools(self, system, user, tools, history=None, *,
                         max_tokens=2048, temperature=0, think=None,
@@ -531,17 +532,28 @@ class LlamaCppProvider:
                         arguments=args,
                         call_id=tc.get("id", ""),
                     ))
-            return ToolUseResult(
+            res = ToolUseResult(
                 text=text, tool_calls=tcs,
                 in_tokens=in_toks, out_tokens=out_toks,
                 model=self.model, provider="llamacpp",
                 latency_ms=latency, thinking=thinking,
             )
-        return ChatResult(
-            text=text, in_tokens=in_toks, out_tokens=out_toks,
-            model=self.model, provider="llamacpp",
-            latency_ms=latency, thinking=thinking,
-        )
+        else:
+            res = ChatResult(
+                text=text, in_tokens=in_toks, out_tokens=out_toks,
+                model=self.model, provider="llamacpp",
+                latency_ms=latency, thinking=thinking,
+            )
+        # Universal observability hook (pass-through: never mutates res).
+        _msgs = payload.get("messages") or []
+        _sys = next((m.get("content", "") for m in _msgs
+                     if m.get("role") == "system"), "")
+        _usr = next((m.get("content", "") for m in reversed(_msgs)
+                     if m.get("role") == "user"), "")
+        _telemetry.record(provider="llamacpp", model=self.model,
+                          system=_sys, user=_usr, result=res,
+                          kind="tools" if expect_tools else "chat")
+        return res
 
 
 # --- AnthropicProvider (Messages API) -------------------------------------
@@ -675,10 +687,13 @@ class AnthropicProvider:
         data, latency = self._post(payload)
         text = self._extract_text(data)
         in_toks, out_toks = self._extract_usage(data)
-        return ChatResult(
+        res = ChatResult(
             text=text, in_tokens=in_toks, out_tokens=out_toks,
             model=self.model, provider="anthropic", latency_ms=latency,
         )
+        _telemetry.record(provider="anthropic", model=self.model,
+                          system=system, user=user, result=res, kind="chat")
+        return res
 
     def chat_with_tools(self, system, user, tools, history=None, *,
                         max_tokens=2048, temperature=0, think=None):
@@ -701,11 +716,14 @@ class AnthropicProvider:
         text = self._extract_text(data)
         tcs = self._extract_tool_calls(data)
         in_toks, out_toks = self._extract_usage(data)
-        return ToolUseResult(
+        res = ToolUseResult(
             text=text, tool_calls=tcs,
             in_tokens=in_toks, out_tokens=out_toks,
             model=self.model, provider="anthropic", latency_ms=latency,
         )
+        _telemetry.record(provider="anthropic", model=self.model,
+                          system=system, user=user, result=res, kind="tools")
+        return res
 
     @staticmethod
     def _convert_history(history):
@@ -902,7 +920,10 @@ class OpenAIProvider:
         }
         if self._temp_supported():
             payload["temperature"] = temperature
-        return self._call(payload, expect_tools=False)
+        res = self._call(payload, expect_tools=False)
+        _telemetry.record(provider="openai", model=self.model,
+                          system=system, user=user, result=res, kind="chat")
+        return res
 
     def chat_with_tools(self, system, user, tools, history=None, *,
                         max_tokens=2048, temperature=0, think=None):
