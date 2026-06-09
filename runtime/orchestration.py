@@ -129,8 +129,13 @@ def invoke_get_inputs_internal(*,
     #   testo non puo' rendere immagini, sarebbe inutilizzabile)
     # - se n_steps >= 2 → form (allineato con get_inputs.py:_decide_fmt
     #   8/5/2026, soglia abbassata 3→2)
-    # - altrimenti dialogue (1 step yes_no o text inline tipico di
-    #   cap-expand)
+    # Su Telegram (10/6/2026, parita' con get_inputs.py:_decide_fmt):
+    # - tutti gli step yes_no/choice/choice_with_preview → telegram_inline
+    #   (inline keyboard: un bottone per alternativa; vale per TUTTI i
+    #   flussi di autorizzazione orchestrati — strato3/frontier, cap-expand,
+    #   approva/edita/rifiuta — non solo per i dialog aperti dal PLANNER).
+    # - altrimenti dialogue (sequenza testuale, degrado onesto §2.8 per
+    #   kind non rappresentabili a bottoni: text/credentials/number/...).
     has_preview_step = any(
         (s.get("schema") or {}).get("kind") == "choice_with_preview"
         for s in dialog
@@ -138,6 +143,10 @@ def invoke_get_inputs_internal(*,
     if fmt == "auto":
         if channel == "http" and (has_preview_step or n_steps >= 2):
             resolved_fmt = "form"
+        elif channel == "telegram":
+            from channels.inline_ui import all_inline_compatible
+            resolved_fmt = ("telegram_inline"
+                            if all_inline_compatible(dialog) else "dialogue")
         else:
             resolved_fmt = "dialogue"
     elif fmt == "voice":

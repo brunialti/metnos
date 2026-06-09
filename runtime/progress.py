@@ -180,7 +180,7 @@ class TelegramProgress(Progress):
             return
         self._edit(self._render(stage))
 
-    def finish(self, message: str) -> None:
+    def finish(self, message: str, *, buttons: list | None = None) -> None:
         """Sostituisce il messaggio progress col final answer.
 
         Convenzione di formato: il final_answer del runtime e' Markdown
@@ -194,10 +194,26 @@ class TelegramProgress(Progress):
            messaggi via channel.send (che ha il proprio fallback HTML→plain).
         Niente `except: pass` silenzioso: ogni errore conduce a un fallback
         attivo cosi' la risposta arriva all'utente (CLAUDE.md 2.8).
+
+        `buttons` (10/6/2026): inline keyboard opzionale (list di rows
+        [{text, data}]) allegata come reply_markup all'edit. Serve ai
+        dialog get_inputs fmt='telegram_inline' e alle approvazioni
+        admin: il percorso normale dei turni planner consegna il final
+        QUI (edit del progress message), non via channel.send.
         """
         self._stop_event.set()
         if self._action_thread:
             self._action_thread.join(timeout=2.0)
+
+        reply_markup = None
+        if buttons:
+            import json as _json
+            reply_markup = _json.dumps({
+                "inline_keyboard": [[{"text": b.get("text", "?"),
+                                       "callback_data": b.get("data", "")}
+                                      for b in row]
+                                     for row in buttons]
+            })
 
         # Format Markdown → HTML chunks (stesso pipeline di channel.send).
         from channels.telegram_format import format_for_telegram
@@ -207,24 +223,30 @@ class TelegramProgress(Progress):
 
         edited_ok = False
         if self.message_id is not None:
-            res = self.channel._call("editMessageText", {
+            params = {
                 "chat_id": self.chat_id,
                 "message_id": self.message_id,
                 "text": first,
                 "parse_mode": "HTML",
                 "disable_web_page_preview": "true",
-            })
+            }
+            if reply_markup:
+                params["reply_markup"] = reply_markup
+            res = self.channel._call("editMessageText", params)
             edited_ok = bool(res.get("ok"))
             if not edited_ok:
                 # Fallback: HTML rifiutato, tenta plain text (no parse_mode).
                 import re as _re
                 plain = _re.sub(r"<[^>]+>", "", first)[:4096]
-                res = self.channel._call("editMessageText", {
+                params_plain = {
                     "chat_id": self.chat_id,
                     "message_id": self.message_id,
                     "text": plain,
                     "disable_web_page_preview": "true",
-                })
+                }
+                if reply_markup:
+                    params_plain["reply_markup"] = reply_markup
+                res = self.channel._call("editMessageText", params_plain)
                 edited_ok = bool(res.get("ok"))
 
         if not edited_ok:
@@ -232,7 +254,7 @@ class TelegramProgress(Progress):
             from channels import OutboundMessage
             self.channel.send(
                 recipient=self.chat_id,
-                message=OutboundMessage(text=message or ""),
+                message=OutboundMessage(text=message or "", buttons=buttons),
             )
             return
 

@@ -309,24 +309,12 @@ def _decide_fmt(fmt_arg: str, n_steps: int, channel: str | None,
     return "dialogue"
 
 
-# multi_choice escluso da MVP inline keyboard: richiede toggle ✓ con
-# editMessageReplyMarkup ad ogni click + button "Conferma" finale, scope
-# 2× rispetto a yes_no/choice. Se qualcuno lo chiede via use case reale
-# si rilascia dopo. yes_no e choice coprono >90% dei casi (cap-expand,
-# admin approval, scelta dst_folder).
-_INLINE_COMPATIBLE_KINDS = frozenset({"yes_no", "choice", "choice_with_preview"})
-
-
-def _all_inline_compatible(dialog: list) -> bool:
-    """True se tutti gli step del dialog hanno `schema.kind` che si rende
-    naturalmente come InlineKeyboardButton di Telegram. Caso misto (es.
-    yes_no + text) → False: il text richiede sequenza dialogue, quindi
-    tanto vale fare tutto in dialogue per coerenza UX."""
-    for s in dialog:
-        kind = (s.get("schema") or {}).get("kind")
-        if kind not in _INLINE_COMPATIBLE_KINDS:
-            return False
-    return True
+# Compatibilita' inline keyboard: fonte unica `channels.inline_ui`
+# (condivisa con l'orchestratore runtime e il daemon Telegram). Kind
+# ammessi: yes_no, choice, choice_with_preview; multi_choice escluso
+# (toggle ✓ via editMessageReplyMarkup = scope 2×, si rilascia su use
+# case reale); cap alternative per step = INLINE_MAX_CHOICES.
+from channels.inline_ui import all_inline_compatible as _all_inline_compatible  # noqa: E402
 
 
 def _build_final_message_hint(state: dict, fmt: str) -> str:

@@ -292,13 +292,51 @@ def _run_user_query_callback(record: dict) -> str:
             f"[task: {record['label'] or record['name']}]\n"
             if record.get("label") else ""
         )
+        # Proposta interattiva lasciata dal turno schedulato (dialog
+        # get_inputs di autorizzazione — es. approva/edita/rifiuta bozza
+        # del flusso manutenzione — oppure admin_approval): senza daemon
+        # in mezzo, il push deve (1) salvare il cap_pending per il chat_id
+        # cosi' una RISPOSTA TESTUALE al messaggio risolve il dialogo allo
+        # stesso modo del percorso interattivo, e (2) allegare la inline
+        # keyboard (i callback `dlg:`/`cap:` sono self-contained: il
+        # daemon li risolve dallo stato persistito). Niente keyboard per
+        # fmt dialogue/form = degrado onesto §2.8 (lista numerata, testo).
+        caps = list(getattr(log, "expandable_caps", None) or [])
+        buttons = None
+        if caps and isinstance(caps[0], dict):
+            try:
+                from channels.daemon import _cap_pending_save
+                _cap_pending_save(record["chat_id"], record["query"],
+                                  caps[0], getattr(log, "turn_id", ""))
+            except Exception as e:
+                log_msg.append(
+                    f"cap_pending save failed: {type(e).__name__}: {e}")
+            try:
+                from channels.inline_ui import (
+                    keyboard_for_proposal, sender_state_candidates,
+                )
+                candidates = sender_state_candidates(
+                    "telegram", record["chat_id"],
+                    actor=record.get("actor"),
+                    sender_for_state=caps[0].get("sender_for_state"),
+                )
+                # preview_step ignorato: l'album thumb richiede il daemon;
+                # la keyboard coi label resta utilizzabile (degrado onesto).
+                buttons, _preview = keyboard_for_proposal(
+                    caps[0], sender_candidates=candidates,
+                    turn_id=getattr(log, "turn_id", None),
+                )
+            except Exception as e:
+                log_msg.append(
+                    f"inline keyboard build failed: {type(e).__name__}: {e}")
         for attempt in (1, 2):
             try:
                 from channels.telegram import TelegramChannel
                 from channels import OutboundMessage
                 ch = TelegramChannel()
                 resp = ch.send(record["chat_id"],
-                                OutboundMessage(text=prefix + msg))
+                                OutboundMessage(text=prefix + msg,
+                                                 buttons=buttons))
                 if isinstance(resp, dict) and not resp.get("ok", True):
                     raise RuntimeError(resp.get("error") or "send returned ok:false")
                 log_msg.append(f"pushed telegram chat={record['chat_id']} attempt={attempt}")

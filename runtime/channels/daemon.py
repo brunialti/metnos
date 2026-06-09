@@ -454,18 +454,35 @@ class ChannelDaemon:
             return None, False, None
 
         dialog_id = proposal.get("dialog_id") or ""
-        sender_for_state = proposal.get("sender_for_state") or sender_id
         text_norm = (msg_text or "").strip().lower()
 
+        # Lookup multi-candidato (stesse chiavi di _handle_dialog_callback):
+        # lo stato puo' essere salvato per actor logico (`telegram:host`,
+        # orchestratore/executor via METNOS_ACTOR), per chat_id, o con la
+        # chiave esplicita `sender_for_state` della proposta. Cosi' la
+        # risposta TESTUALE risolve anche i dialoghi aperti da query
+        # SCHEDULATE (cap_pending salvato per chat_id da recurring_tasks).
+        from .inline_ui import sender_state_candidates, load_pending_state
+        channel_name = getattr(self.channel, "name", "") or ""
+        candidates = sender_state_candidates(
+            channel_name, sender_id, actor=actor,
+            sender_for_state=proposal.get("sender_for_state"),
+        )
+        state, hit_key = load_pending_state(dialog_id, candidates)
+
         if text_norm in ("annulla", "cancel", "abort", "stop"):
-            _dp.cancel_pending(sender_for_state, dialog_id)
-            return ("Dialogo annullato. I valori non sono stati salvati.",
+            if state is not None:
+                _dp.cancel_pending(state.get("sender_id") or hit_key,
+                                    dialog_id)
+                return ("Dialogo annullato. I valori non sono stati salvati.",
+                        False, None)
+            return ("(Dialogo scaduto o sconosciuto. Riformula la richiesta.)",
                     False, None)
 
-        state = _dp.load_pending(sender_for_state, dialog_id)
         if state is None:
             return ("(Dialogo scaduto o sconosciuto. Riformula la richiesta.)",
                     False, None)
+        sender_for_state = state.get("sender_id") or hit_key
         dialog = state.get("dialog") or []
         idx = int(state.get("step_index") or 0)
         if idx >= len(dialog):
@@ -654,44 +671,16 @@ class ChannelDaemon:
 
     def _build_dialog_keyboard(self, dialog_id: str, step_idx: int,
                                  step: dict) -> list[list[dict]]:
-        """Costruisce la inline keyboard per uno step yes_no/choice.
+        """Inline keyboard per uno step yes_no/choice/choice_with_preview.
 
-        Formato `buttons` = list di rows, ogni row list di dict
-        {text, data}. callback_data = `dlg:<dialog_id>:<step_idx>:<value>`
-        + caso speciale `dlg:<dialog_id>:cancel`. Telegram limita
-        callback_data a 64 byte: per choice con label lunghi usiamo
-        l'indice della choice come value (`dlg:<id>:<step>:c<idx>`),
-        risolto al click via lookup nello state.
+        Delega a `channels.inline_ui.build_dialog_keyboard` (fonte unica,
+        condivisa con recurring_tasks per i dialoghi da query schedulate).
+        Formato e callback_data invariati: `dlg:<dialog_id>:<step_idx>:<value>`
+        + `dlg:<dialog_id>:cancel`; per choice il value e' l'indice `c<idx>`
+        (callback_data max 64 byte), risolto al click via stato persistito.
         """
-        from messages import get as _msg
-        kind = (step.get("schema") or {}).get("kind")
-        rows: list[list[dict]] = []
-        prefix = f"dlg:{dialog_id}:{step_idx}"
-        if kind == "yes_no":
-            rows.append([
-                {"text": _msg("MSG_BTN_YES"), "data": f"{prefix}:yes"},
-                {"text": _msg("MSG_BTN_NO"),  "data": f"{prefix}:no"},
-            ])
-        elif kind == "choice":
-            choices = (step.get("schema") or {}).get("choices") or []
-            for i, label in enumerate(choices):
-                rows.append([
-                    {"text": str(label), "data": f"{prefix}:c{i}"},
-                ])
-        elif kind == "choice_with_preview":
-            # PR5: i thumb sono inviati separatamente come media group.
-            # La keyboard mostra solo i label per il tap. callback_data
-            # `c<idx>` (compatibile con choice) per consistenza decode.
-            options = (step.get("schema") or {}).get("options") or []
-            for i, opt in enumerate(options):
-                rows.append([
-                    {"text": str(opt.get("label", opt.get("value", f"#{i+1}"))),
-                     "data": f"{prefix}:c{i}"},
-                ])
-        rows.append([
-            {"text": _msg("MSG_BTN_CANCEL"), "data": f"dlg:{dialog_id}:cancel"},
-        ])
-        return rows
+        from .inline_ui import build_dialog_keyboard
+        return build_dialog_keyboard(dialog_id, step_idx, step)
 
     # PR5: limite Telegram per sendMediaGroup album = 10 media.
     # Sopra il limite degradiamo a kind="choice" plain (senza preview)
@@ -787,21 +776,28 @@ class ChannelDaemon:
             return {"ok": False, "reason": "bad_callback_data"}
         dialog_id = parts[1]
 
-        # sender_for_state e' la stessa chiave usata in
-        # _consume_get_inputs_response. Per coerenza, riusiamo la
-        # convention `<channel>:<chat_id>` quando il proposal non
-        # esplicita altro (sender_id e' gia' chat_id su Telegram).
-        sender_for_state = f"{self.channel.name}:{msg.sender_id}"
-        # Fallback senza prefisso (alcune proposal lo usano cosi').
-        state = (_dp.load_pending(sender_for_state, dialog_id)
-                 or _dp.load_pending(msg.sender_id, dialog_id))
+        # Lo stato puo' essere salvato con chiavi diverse a seconda
+        # dell'origine: `<channel>:<actor>` (orchestratore runtime +
+        # executor get_inputs via METNOS_ACTOR, es. "telegram:host"),
+        # `<channel>:<chat_id>` o `<chat_id>` (legacy/test). Proviamo i
+        # candidati in ordine (stessa convenzione di http_routes_agent).
+        try:
+            from actor_resolver import resolve_actor as _ra_dlg
+            _actor_dlg = _ra_dlg(self.channel.name, msg.sender_id)
+        except Exception:
+            _actor_dlg = None
+        from .inline_ui import sender_state_candidates, load_pending_state
+        candidates = sender_state_candidates(
+            self.channel.name, msg.sender_id, actor=_actor_dlg)
+        state, hit_key = load_pending_state(dialog_id, candidates)
         if state is None:
             self._send_text(msg.sender_id,
                              _msg("MSG_DIALOG_EXPIRED"),
                              reply_to=msg.message_id)
             return {"ok": False, "reason": "dialog_expired"}
-        # Risolvi sender_for_state effettivo dal load (per consume coerente).
-        sender_eff = state.get("sender_id") or sender_for_state
+        # Risolvi sender_for_state effettivo dal load (per consume coerente):
+        # priorita' al campo persistito, poi alla chiave che ha risolto.
+        sender_eff = state.get("sender_id") or hit_key
         if parts[2] == "cancel":
             _dp.cancel_pending(sender_eff, dialog_id)
             _cap_pending_clear(msg.sender_id)
@@ -832,7 +828,12 @@ class ChannelDaemon:
                     return {"ok": False, "reason": "bad_choice_idx"}
                 if ci < 0 or ci >= len(choices):
                     return {"ok": False, "reason": "choice_out_of_range"}
-                value = choices[ci]
+                picked = choices[ci]
+                # Choices derivate da entries (ADR 0127) sono dict
+                # {label, value}: salva il `value`, coerente col parser
+                # testuale `parse_step_value` (stessa semantica tap/typed).
+                value = (picked.get("value")
+                         if isinstance(picked, dict) else picked)
             else:
                 return {"ok": False, "reason": "bad_choice_format"}
         elif kind == "choice_with_preview":
@@ -910,6 +911,61 @@ class ChannelDaemon:
         )
         return {"ok": True, "callback": "dlg_advance",
                 "step_idx": next_idx}
+
+    def _handle_cap_callback(self, msg: InboundMessage, data: str) -> dict:
+        """Bottoni Approva/Rifiuta delle proposte cap-pending di
+        autorizzazione (`admin_approval`, `approval_required`). Formato
+        `cap:<turn_id>:yes|no`.
+
+        Il turn_id lega il bottone alla proposta correntemente pendente
+        per il sender: tap su un messaggio VECCHIO (proposta sostituita,
+        scaduta o gia' consumata) → refusal onesto (§2.8), mai esecuzione
+        su stato sbagliato. Stessa semantica del percorso testuale sì/no
+        (_classify_yes_no): il testo resta valido in parallelo.
+        Determinismo §7.9: parsing strict, niente LLM.
+        """
+        from messages import get as _msg
+        from .inline_ui import ensure_i18n_keys
+        ensure_i18n_keys()
+        parts = data.split(":", 2)
+        if len(parts) != 3 or parts[2] not in ("yes", "no"):
+            return {"ok": False, "reason": "bad_callback_data", "data": data}
+        _, cb_turn_id, action = parts
+        pending = _cap_pending_load(msg.sender_id)
+        if not pending or str(pending.get("turn_id") or "") != cb_turn_id:
+            self._send_text(msg.sender_id,
+                            _msg("MSG_CAP_PROPOSAL_EXPIRED"),
+                            reply_to=msg.message_id)
+            return {"ok": False, "reason": "cap_pending_expired"}
+        p = pending.get("proposal") or {}
+        kind = p.get("kind")
+        if kind not in ("admin_approval", "approval_required"):
+            # get_inputs_response usa `dlg:`; altro kind qui = stato
+            # incoerente → non consumare, refusal onesto.
+            self._send_text(msg.sender_id,
+                            _msg("MSG_CAP_PROPOSAL_EXPIRED"),
+                            reply_to=msg.message_id)
+            return {"ok": False, "reason": f"unsupported_kind:{kind}"}
+        # Clear PRIMA del consume (idempotenza anti doppio-tap, stesso
+        # ordine del percorso testuale in handle_message).
+        _cap_pending_clear(msg.sender_id)
+        if action == "no":
+            self._send_text(msg.sender_id,
+                            _msg("MSG_CAP_PROPOSAL_DECLINED"),
+                            reply_to=msg.message_id)
+            return {"ok": True, "callback": "cap_no", "kind": kind}
+        try:
+            from actor_resolver import resolve_actor as _ra_cap
+            actor_for = _ra_cap(self.channel.name, msg.sender_id)
+        except Exception:
+            actor_for = "host"
+        if kind == "admin_approval":
+            answer = self._consume_admin_approval(p, actor=actor_for)
+        else:
+            answer = self._consume_approval_required(p, actor=actor_for)
+        if answer:
+            self._send_text(msg.sender_id, answer, reply_to=msg.message_id)
+        return {"ok": True, "callback": "cap_yes", "kind": kind}
 
     def _handle_promoter_callback(self, msg: InboundMessage,
                                     data: str) -> dict:
@@ -1058,11 +1114,14 @@ class ChannelDaemon:
     def _handle_callback(self, msg: InboundMessage) -> dict:
         """Risolve un callback_query 'approve:<token>' / 'reject:<token>' /
         'loc_cancel' / 'dlg:...' (dialog inline keyboard, ADR 0090) /
-        'promoter:<id>:ok|rollback' (digest promoter daemon) /
-        'sched:<azione>:<entry>' (circuit-breaker scheduler)."""
+        'cap:<turn_id>:yes|no' (approvazioni cap-pending admin_approval /
+        approval_required) / 'promoter:<id>:ok|rollback' (digest promoter
+        daemon) / 'sched:<azione>:<entry>' (circuit-breaker scheduler)."""
         data = (msg.text or "").strip()
         if data.startswith("dlg:"):
             return self._handle_dialog_callback(msg, data)
+        if data.startswith("cap:"):
+            return self._handle_cap_callback(msg, data)
         if data.startswith("promoter:"):
             return self._handle_promoter_callback(msg, data)
         if data.startswith("sched:"):
@@ -1559,61 +1618,56 @@ class ChannelDaemon:
         # deve SEMPRE ricevere qualcosa o vedere un log ERROR esplicito,
         # mai trovare il bot che si ammutolisce a meta' turno.
         progress_msg_id = getattr(progress, "message_id", None)
+        # Inline keyboard se il turno lascia una proposta interattiva
+        # (Telegram): dialog get_inputs fmt='telegram_inline' (un bottone
+        # per alternativa, callback `dlg:`) oppure approvazione
+        # admin_approval/approval_required (Approva/Rifiuta, callback
+        # `cap:<turn_id>:yes|no`). Calcolata PRIMA della consegna perche'
+        # vale per ENTRAMBI i percorsi: progress.finish (edit del progress
+        # message — percorso normale dei turni planner) e channel.send.
+        # Per fmt dialogue/form la keyboard resta None (degrado onesto
+        # §2.8: lista numerata + risposta testuale).
+        first_step_buttons = None
+        if (self.channel.name == "telegram"
+                and turn is not None
+                and getattr(turn, "expandable_caps", None)):
+            try:
+                from .inline_ui import (
+                    keyboard_for_proposal, sender_state_candidates,
+                )
+                p0 = turn.expandable_caps[0] or {}
+                candidates = sender_state_candidates(
+                    self.channel.name, msg.sender_id,
+                    actor=actor_for_pending,
+                    sender_for_state=p0.get("sender_for_state"),
+                )
+                first_step_buttons, preview_step = keyboard_for_proposal(
+                    p0, sender_candidates=candidates,
+                    turn_id=getattr(turn, "turn_id", None),
+                )
+                # PR5: choice_with_preview → manda album thumb prima del
+                # messaggio con keyboard. Best-effort: se >10 opzioni o
+                # thumb fail, degrada a keyboard sola con label.
+                if preview_step is not None:
+                    try:
+                        self._send_choice_preview_album(
+                            chat_id=msg.sender_id,
+                            step=preview_step,
+                            reply_to=msg.message_id,
+                        )
+                    except Exception as ex:
+                        log.warning("preview album send failed: %s", ex)
+            except Exception as ex:
+                log.warning("inline keyboard build failed: %s", ex)
         send_result: dict = {"ok": False, "error": "no send attempted"}
         if isinstance(progress, TelegramProgress) and progress_msg_id is not None:
             try:
-                progress.finish(answer)
+                progress.finish(answer, buttons=first_step_buttons)
                 send_result = {"ok": True, "via": "progress.finish"}
             except Exception as ex:
                 log.warning("progress.finish failed, falling back to channel.send: %s", ex)
         if not send_result.get("ok"):
             try:
-                # Inline keyboard se il turno apre un dialog get_inputs
-                # con fmt='telegram_inline' (yes_no/choice). Costruiamo
-                # la keyboard del primo step (idx=0) leggendo lo state
-                # da dialog_pending. Per altri fmt la keyboard resta None.
-                first_step_buttons = None
-                if (self.channel.name == "telegram"
-                        and turn is not None
-                        and getattr(turn, "expandable_caps", None)):
-                    p0 = turn.expandable_caps[0] or {}
-                    if (p0.get("kind") == "get_inputs_response"
-                            and p0.get("fmt") == "telegram_inline"):
-                        try:
-                            # runtime/ già su sys.path (channels VIVE in runtime/).
-                            import dialog_pending as _dp2
-                            sender_for_state = (
-                                p0.get("sender_for_state")
-                                or f"{self.channel.name}:{msg.sender_id}"
-                            )
-                            st0 = (_dp2.load_pending(sender_for_state,
-                                                       p0.get("dialog_id") or "")
-                                    or _dp2.load_pending(msg.sender_id,
-                                                            p0.get("dialog_id") or ""))
-                            if st0 and st0.get("dialog"):
-                                first_step = st0["dialog"][0]
-                                first_kind = (first_step.get("schema")
-                                              or {}).get("kind")
-                                # PR5: choice_with_preview → manda album
-                                # thumb prima della keyboard. Best-effort:
-                                # se >10 opzioni o thumb fail, degrada a
-                                # keyboard sola con label.
-                                if first_kind == "choice_with_preview":
-                                    try:
-                                        self._send_choice_preview_album(
-                                            chat_id=msg.sender_id,
-                                            step=first_step,
-                                            reply_to=msg.message_id,
-                                        )
-                                    except Exception as ex:
-                                        log.warning(
-                                            "preview album send failed: %s", ex)
-                                first_step_buttons = self._build_dialog_keyboard(
-                                    p0.get("dialog_id") or "",
-                                    0, first_step,
-                                )
-                        except Exception as ex:
-                            log.warning("inline keyboard build failed: %s", ex)
                 send_result = self.channel.send(
                     recipient=msg.sender_id,
                     message=OutboundMessage(
