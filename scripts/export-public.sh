@@ -33,6 +33,7 @@ esac
 EXCLUDE='^(
 e2e/|
 internal/|
+bench/|
 workspace/|
 _history/|
 \.claude/|
@@ -123,6 +124,14 @@ while IFS= read -r -d '' f; do
     -e 's/[Ii]acopo[_ ][Bb]runialti/guest_user/g' \
     -e 's/[Rr]oberto [Bb]runialti/the owner/g' \
     -e 's/CLAUDE\.md/the design guide/g' \
+    -e 's/\bmetnos_roberto\b/metnos_secondary/g' \
+    -e 's/\bmykleos\b/account_personal/g' \
+    -e 's/\bknowcastle\b/account_work/g' \
+    -e 's/\btiscali\b/account_isp/g' \
+    -e 's/\bimap\.register\.it\b/imap.example.com/g' \
+    -e 's/\bauthsmtp\.securemail\.pro\b/smtp.example.com/g' \
+    -e 's/\bregister\.it\b/example.com/g' \
+    -e 's/\bsecuremail\.pro\b/example.com/g' \
     "$f" 2>/dev/null || true
 done < <(find "$DEST" -type f -print0)
 
@@ -146,6 +155,14 @@ def scrub(s):
     s = re.sub(r'[Ii]acopo[_ ][Bb]runialti', 'guest_user', s)
     s = re.sub(r'[Rr]oberto [Bb]runialti', 'the owner', s)
     s = s.replace('CLAUDE.md', 'the design guide')
+    s = re.sub(r'\bmetnos_roberto\b', 'metnos_secondary', s)
+    s = re.sub(r'\bmykleos\b', 'account_personal', s)
+    s = re.sub(r'\bknowcastle\b', 'account_work', s)
+    s = re.sub(r'\btiscali\b', 'account_isp', s)
+    s = re.sub(r'\bimap\.register\.it\b', 'imap.example.com', s)
+    s = re.sub(r'\bauthsmtp\.securemail\.pro\b', 'smtp.example.com', s)
+    s = re.sub(r'\bregister\.it\b', 'example.com', s)
+    s = re.sub(r'\bsecuremail\.pro\b', 'example.com', s)
     return s
 db = sqlite3.connect(sys.argv[1])
 cur = db.cursor()
@@ -178,14 +195,20 @@ PII_EMAIL='roberto\.brunialti@|mykleos@|@knowcastle\.com|@migadu\.com'
 # 'author = "Roberto Brunialti"' (attribuzione del proprietario nel suo repo).
 PII_PERSON='/home/roberto|\b[Ii]acopo\b|\b[Ss]ilvia\b|\b[Mm]atteo\b'
 PII_NET='192\.168\.[0-9]+\.[0-9]+|fd[0-9a-f]{2}:|\bnas\.local\b|\benp197s0\b'
+# Topologia account di posta reale (nomi-account + host personali): rivela
+# datore/ISP/provider del proprietario. Lo scrub sopra li sostituisce; questo
+# gate aborta se qualcosa sopravvive (es. un manifest firmato non sterilizzato).
+PII_MAIL='\bmetnos_roberto\b|\bmykleos\b|\bknowcastle\b|\btiscali\b|register\.it|securemail\.pro'
 fail=0
 hits_email=$(grep -rlE "$PII_EMAIL" "$DEST" 2>/dev/null || true)
 hits_person=$(grep -rlE "$PII_PERSON" "$DEST" 2>/dev/null || true)
 hits_net=$(grep -rlE "$PII_NET" "$DEST" 2>/dev/null || true)
+hits_mail=$(grep -rlE "$PII_MAIL" "$DEST" 2>/dev/null || true)
 if [ -n "$hits_email" ];  then echo "!! PII email nel subset:";  echo "$hits_email";  fail=1; fi
 if [ -n "$hits_person" ]; then echo "!! PII persona/path nel subset:"; echo "$hits_person"; fail=1; fi
 if [ -n "$hits_net" ];    then echo "!! rete/host interni nel subset:"; echo "$hits_net"; fail=1; fi
-[ "$fail" = 0 ] && echo "audit subset     : OK (0 email, 0 nomi/path personali, 0 IP/host interni)"
+if [ -n "$hits_mail" ];   then echo "!! account/host posta reali nel subset:"; echo "$hits_mail"; fail=1; fi
+[ "$fail" = 0 ] && echo "audit subset     : OK (0 email, 0 nomi/path, 0 IP/host, 0 account posta)"
 
 if [ "$CHECK_ONLY" = 1 ]; then
   rm -rf "$DEST"

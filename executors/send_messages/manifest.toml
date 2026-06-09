@@ -99,12 +99,12 @@ type        = "string"
 default     = "metnos_system"
 
 [args.properties.account.description]
-it = "Account SMTP da usare. Valid: 'metnos_system' (metnos@metnos.com, default), 'metnos_roberto', 'mykleos'."
-en = "SMTP Account to use. Valid: 'metnos_system' (metnos@metnos.com, default), 'metnos_roberto', 'mykleos'."
+it = "Account SMTP da usare. Valid: 'metnos_system' (metnos@metnos.com, default) e gli altri account SMTP configurati dall'utente."
+en = "SMTP Account to use. Valid: 'metnos_system' (metnos@metnos.com, default) and the other SMTP accounts the user configured."
 
 [[capabilities]]
 name = "mail:send"
-hint = ["smtp.example.com", "authsmtp.securemail.pro"]
+hint = ["smtp.example.com"]
 
 [[capabilities]]
 name = "messaging:send"
@@ -112,7 +112,7 @@ hint = ["api.telegram.org"]
 
 [[capabilities]]
 name = "fs:read"
-hint = ["~/.config/metnos/mail.env", "~/.config/mykleos/mail.env"]
+hint = ["~/.config/metnos/mail.env", "~/.config/metnos/mail/<account>.env"]
 
 [[tests]]
 name   = "messages_non_lista"

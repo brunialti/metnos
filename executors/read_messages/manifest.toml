@@ -24,16 +24,16 @@ type     = "object"
 default     = "metnos_system"
 
 [args.properties.account.description]
-it = "Account IMAP da leggere. PUO' ESSERE: (1) una stringa col nome dell'account (es. 'tiscali'); (2) la stringa speciale 'all' per leggere TUTTI gli account configurati e aggregare in una lista unica (loop interno, niente piu' chiamate separate); (3) una lista di nomi (es. ['tiscali','knowcastle']). Per 'tutte le mie mail' usa 'all'. Predefiniti: 'metnos_system' (default), 'metnos_roberto', 'mykleos', 'tiscali', 'knowcastle'. Account aggiuntivi: file ~/.config/metnos/mail/<nome>.env con HOST_IMAP/PORT_IMAP/USER/PASS/VERIFY_TLS — il nome del file e' il valore di account."
-en = "IMAP Account to read. IT CAN BE: (1) a string with the account name (e.g., 'tiscali'); (2) the special string 'all' to read ALL configured accounts and aggregate them into a single list (internal loop, no more separate calls); (3) a list of names (e.g., ['tiscali','knowcastle']). For 'all my emails' use 'all'. Defaults: 'metnos_system' (default), 'metnos_roberto', 'mykleos', 'tiscali', 'knowcastle'. Additional accounts: file ~/.config/metnos/mail/<name>.env with HOST_IMAP/PORT_IMAP/USER/PASS/VERIFY_TLS — the filename is the account value."
+it = "Account IMAP da leggere. PUO' ESSERE: (1) una stringa col nome dell'account (es. 'work'); (2) la stringa speciale 'all' per leggere TUTTI gli account configurati e aggregare in una lista unica (loop interno, niente piu' chiamate separate); (3) una lista di nomi (es. ['work','personal']). Per 'tutte le mie mail' usa 'all'. Predefinito: 'metnos_system' (default); gli altri sono gli account configurati dall'utente. Account aggiuntivi: file ~/.config/metnos/mail/<nome>.env con HOST_IMAP/PORT_IMAP/USER/PASS/VERIFY_TLS — il nome del file e' il valore di account."
+en = "IMAP Account to read. IT CAN BE: (1) a string with the account name (e.g., 'work'); (2) the special string 'all' to read ALL configured accounts and aggregate them into a single list (internal loop, no more separate calls); (3) a list of names (e.g., ['work','personal']). For 'all my emails' use 'all'. Default: 'metnos_system'; the others are the accounts the user configured. Additional accounts: file ~/.config/metnos/mail/<name>.env with HOST_IMAP/PORT_IMAP/USER/PASS/VERIFY_TLS — the filename is the account value."
 
 [args.properties.folder]
 type        = "string"
 default     = "INBOX"
 
 [args.properties.folder.description]
-it = "Cartella IMAP da leggere. Default 'INBOX'. Esempi Migadu: 'INBOX', 'Sent', 'Drafts', 'Trash', 'Junk'. Esempi register.it (Cyrus): 'INBOX', 'INBOX.Sent', 'INBOX.Spam'."
-en = "IMAP folder to read. Default 'INBOX'. Migadu examples: 'INBOX', 'Sent', 'Drafts', 'Trash', 'Junk'. register.it (Cyrus) examples: 'INBOX', 'INBOX.Sent', 'INBOX.Spam'."
+it = "Cartella IMAP da leggere. Default 'INBOX'. Esempi (stile Dovecot/Maildir): 'INBOX', 'Sent', 'Drafts', 'Trash', 'Junk'. Esempi (stile Cyrus): 'INBOX', 'INBOX.Sent', 'INBOX.Spam'."
+en = "IMAP folder to read. Default 'INBOX'. Examples (Dovecot/Maildir style): 'INBOX', 'Sent', 'Drafts', 'Trash', 'Junk'. Examples (Cyrus style): 'INBOX', 'INBOX.Sent', 'INBOX.Spam'."
 
 [args.properties.max_results]
 type        = "integer"
@@ -156,16 +156,16 @@ schema_inline = """
 
 [[capabilities]]
 name = "mail:read"
-hint = ["imap.example.com", "imap.register.it"]
+hint = ["imap.example.com"]
 
 [[capabilities]]
 name = "fs:read"
-hint = ["~/.config/metnos/mail.env", "~/.config/mykleos/mail.env"]
+hint = ["~/.config/metnos/mail.env", "~/.config/metnos/mail/<account>.env"]
 
 [[tests]]
 name   = "account_invalido"
 input  = { account = "ghost" }
-expect = { ok = false, error_contains = "knowcastle, metnos_roberto, metnos_system, mykleos, tiscali" }
+expect = { ok = false, error_contains = "metnos_system" }
 
 [[tests]]
 name   = "max_results_invalido"
