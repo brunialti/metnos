@@ -91,8 +91,11 @@ def test_is_complex_polymorphic_returns_true():
 
 def test_generate_empty_tools():
     g = generate_tool_grammar([])
-    assert "root ::= " in g
-    assert "json_object" in g
+    # B9: pool vuoto → grammar permissiva su jsonObject. La primitiva DEVE
+    # essere DEFINITA, non solo referenziata: il refuso `json_object` rendeva
+    # `root` una regola indefinita → GBNF invalida → free-gen silenziosa.
+    assert "root ::= jsonObject" in g
+    assert "jsonObject ::=" in g
 
 
 def test_generate_single_tool_get_now():

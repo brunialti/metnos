@@ -20,6 +20,15 @@ from pathlib import Path
 _ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(_ROOT / "runtime"))
 
+# Env di PRODUZIONE (drop-in proposer-hardening.conf, CLAUDE.md §11): il guard
+# DEVE riflettere prod per costruzione, non per invocazione fortunata.
+# setdefault: un env esplicito dell'utente (es. A/B di un flag) vince.
+os.environ.setdefault("METNOS_ENGINE", "metis")
+os.environ.setdefault("METNOS_PROPOSER_GRAMMAR", "1")
+os.environ.setdefault("METNOS_PROPOSER_VERB_FILTER", "1")
+os.environ.setdefault("METNOS_PREFILTER_RULES", "1")
+os.environ.setdefault("METNOS_ENGINE_POOL_SIZE", "12")
+
 # Gold CURATO: famiglie confondibili dove nascono i misroute. Label = first_tool
 # CORRETTO (verificato a mano), non "scelta storica di produzione".
 GOLD = [
@@ -77,25 +86,38 @@ def build_calls():
 
 
 def route(query, cat, fast, wise):
-    """Pipeline completa → first_tool (o None)."""
-    import prefilter, dataclasses
+    """Pipeline completa → first_tool (o None).
+
+    Fix B3 (9/6/2026): la costruzione-pool NON e' piu' re-implementata qui
+    (vecchia copia: k=10 fisso, niente actions/compound, niente
+    universal-helpers, niente companions) — si chiama
+    `engine.routing_pool.build_routing_pool`, la STESSA funzione di
+    produzione usata da `engine/dispatch.py::run_turn`. Cosi' il bench
+    esercita il pool reale e becca le regressioni su quei layer.
+    """
+    import dataclasses
     from engine.types import Intent
     from engine.proposer import get_proposer
+    from engine.routing_pool import build_routing_pool
     from intent_extractor import extract_intent
     ir = extract_intent(query, fast) or {}
-    verb, obj = (ir.get("verb") or ""), (ir.get("object") or "")
-    intent = Intent(verb=verb, object=obj, lang="it")
-    pool = None
-    if verb or obj:
-        pool = prefilter.rank_with_intent(query, cat, {"verb": verb, "object": obj}, k=10)
-    if not pool:  # fallback come produzione: intent assente/vuoto
-        pool = prefilter.rank(query, cat, k=10)
-    pool = [p if isinstance(p, str) else getattr(p, "name", str(p)) for p in (pool or [])]
+    # Intent costruito COME in produzione (agent_runtime._try_engine_v2):
+    # lowercase + keywords + actions (la decomposizione compound pilota
+    # l'unione pool per-clausola dentro build_routing_pool).
+    intent = Intent(
+        verb=(ir.get("verb") or "").lower(),
+        object=(ir.get("object") or "").lower(),
+        keywords=list(ir.get("keywords") or []),
+        confidence=float(ir.get("confidence") or 1.0),
+        lang="it",
+        actions=list(ir.get("actions") or []),
+    )
+    pool = build_routing_pool(query, intent, cat)
     fw = get_proposer().propose(query=query, intent=intent, pool=pool, excluded_hashes=set(),
                                 llm_call=wise, lang="it", catalog=cat)
     d = dataclasses.asdict(fw) if fw and dataclasses.is_dataclass(fw) else (fw or {})
     steps = d.get("steps") or []
-    return (steps[0].get("tool") if steps else None), {"verb": verb, "object": obj}
+    return (steps[0].get("tool") if steps else None), {"verb": intent.verb, "object": intent.object}
 
 
 def main():

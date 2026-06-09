@@ -48,7 +48,8 @@ class Proposer(Protocol):
 
 # ── SimpleProposer (default) ──────────────────────────────────────────────
 
-_FRAMEWORK_RE = re.compile(r"\{[\s\S]*\}")
+_THINK_CLOSED_RE = re.compile(r"<think>[\s\S]*?</think>", re.IGNORECASE)
+_THINK_OPEN_RE = re.compile(r"<think>", re.IGNORECASE)
 
 # Budget di prompt PER-TOOL + logica di troncamento: SoT in `manifest_rules`
 # (il "DNA"), così synt/lint/proposer condividono gli stessi numeri e la stessa
@@ -124,20 +125,81 @@ def _render_tool_pool(pool: list[str], catalog: Optional[list]) -> str:
     return "\n".join(lines)
 
 
+def _strip_think(raw: str) -> str:
+    """Rimuove i blocchi `<think>...</think>` CHIUSI dall'output LLM. Un
+    `<think>` residuo e' per costruzione APERTO (B5: il troncamento a
+    max_tokens lo lascia senza chiusura, oppure il modello omette il tag di
+    chiusura): si rimuove il solo tag, cosi' il testo che segue resta
+    visibile a `_iter_balanced_json_objects` — che ignora la prosa — e un
+    framework emesso DOPO il think non chiuso viene comunque recuperato.
+    Prima il think aperto restava intero nel raw e il parser pescava nel
+    reasoning (o falliva sul JSON sporco)."""
+    if not raw:
+        return ""
+    raw = _THINK_CLOSED_RE.sub("", raw)
+    return _THINK_OPEN_RE.sub("", raw)
+
+
+def _iter_balanced_json_objects(raw: str):
+    """Generatore: yield ogni sottostringa `{...}` BILANCIATA di primo
+    livello, rispettando le stringhe JSON e gli escape (una graffa dentro
+    una stringa quotata NON altera la profondita'). Sostituisce le regex
+    cieche alla profondita' (B4: il greedy `\\{[\\s\\S]*\\}` inglobava
+    prosa/oggetti multipli; la regex a 1 livello di nesting perdeva i
+    framework annidati steps→step→args). La prosa fra un oggetto e l'altro
+    viene ignorata; un oggetto lasciato a meta' dal troncamento non viene
+    mai emesso (profondita' mai richiusa)."""
+    depth = 0
+    start = -1
+    in_string = False
+    escaped = False
+    for i, ch in enumerate(raw):
+        if in_string:
+            # Dentro una stringa JSON: contano solo escape e chiusura.
+            if escaped:
+                escaped = False
+            elif ch == "\\":
+                escaped = True
+            elif ch == '"':
+                in_string = False
+            continue
+        if ch == '"':
+            # Le virgolette aprono una stringa JSON solo DENTRO un oggetto;
+            # a profondita' 0 sono prosa (es. citazioni nel testo attorno).
+            if depth > 0:
+                in_string = True
+        elif ch == "{":
+            if depth == 0:
+                start = i
+            depth += 1
+        elif ch == "}" and depth > 0:
+            depth -= 1
+            if depth == 0:
+                yield raw[start:i + 1]
+                start = -1
+
+
 def _parse_framework_json(raw: str) -> Optional[dict]:
-    """Estrai primo blocco JSON {...} da raw output LLM. Tollerante a
-    prefissi/suffissi (es. <think>...</think>, prosa attorno)."""
+    """Estrae il framework JSON dall'output LLM. Tollerante a prefissi e
+    suffissi (`<think>` chiusi o aperti, prosa attorno). Itera gli oggetti
+    `{...}` bilanciati e ritorna il PRIMO che parsa a dict CON chiave
+    "steps"; altrimenti il primo dict; altrimenti None."""
     if not raw:
         return None
-    # Strip think blocks
-    raw = re.sub(r"<think>[\s\S]*?</think>", "", raw, flags=re.IGNORECASE)
-    m = _FRAMEWORK_RE.search(raw)
-    if not m:
-        return None
-    try:
-        return json.loads(m.group(0))
-    except json.JSONDecodeError:
-        return None
+    raw = _strip_think(raw)
+    first_dict: Optional[dict] = None
+    for block in _iter_balanced_json_objects(raw):
+        try:
+            parsed = json.loads(block)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(parsed, dict):
+            continue
+        if "steps" in parsed:
+            return parsed
+        if first_dict is None:
+            first_dict = parsed
+    return first_dict
 
 
 class SimpleProposer:
@@ -238,6 +300,17 @@ class SimpleProposer:
             _excl = set(exclude_tools)
             effective_pool = [n for n in effective_pool if n not in _excl]
 
+        # B10 — pool effettivo VUOTO (verb-filter/exclude_tools hanno tolto
+        # tutto, o pool vuoto dal caller): la grammar GBNF degraderebbe a
+        # `tool ::= string` (allucinazione libera) e il prompt non offrirebbe
+        # alcuna scelta valida → None onesto (§2.8) invece di proporre alla
+        # cieca.
+        if not effective_pool:
+            log.info("SimpleProposer: pool effettivo vuoto dopo "
+                     "verb-filter/exclude_tools — nessun tool proponibile, "
+                     "return None")
+            return None
+
         # Render tool schemas inline (Mētis needs arg names + required)
         tools_inline = _render_tool_pool(effective_pool, catalog)
         try:
@@ -274,6 +347,13 @@ class SimpleProposer:
             raw = llm_call(system, user, **llm_kwargs)
         except TypeError:
             # llm_call non supporta grammar/think kwargs → fallback
+            if "grammar" in llm_kwargs:
+                # B7 — §2.8 no silent failure: il drop della GBNF toglie il
+                # vincolo sui nomi tool → generazione NON vincolata
+                # (allucinazione possibile). Va segnalato, non taciuto.
+                log.warning(
+                    "SimpleProposer: llm_call non supporta 'grammar' — "
+                    "GBNF droppata, generazione non vincolata (§2.8)")
             llm_kwargs.pop("grammar", None)
             try:
                 raw = llm_call(system, user, **llm_kwargs)

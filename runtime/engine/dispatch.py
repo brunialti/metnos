@@ -13,13 +13,13 @@ Entry point single: dispatch.run_turn(query, intent, catalog, invoke_executor_cb
 from __future__ import annotations
 
 import logging
-import os
 import time
 from dataclasses import dataclass
 from typing import Optional, Callable
 
 from .types import Intent, Framework, RunResult
 from .executor import Executor, compute_framework_hash
+from .routing_pool import build_routing_pool
 from . import fastpath as _fp
 from . import autopath as _ap
 from . import (
@@ -41,13 +41,6 @@ class DispatchResult:
     run: Optional[RunResult] = None
     framework: Optional[Framework] = None
     error_class: str = ""
-
-
-# Producer → consumer naturale da iniettare sempre nel pool (§7.3 companion).
-# Un producer il cui output non è azionabile senza il consumer.
-_POOL_COMPANIONS = {
-    "find_urls": ["read_urls_html", "read_urls_pdf"],
-}
 
 
 def _is_get_inputs_misroute(framework: Framework) -> bool:
@@ -118,145 +111,12 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
     # il catalog (~80 tool, prompt 400+ righe) a Mētis, prefiltriamo per
     # intent semantic match. Top-K (default 12) coprono >90% intent canonici
     # con prompt 5-10× più piccolo → -30-40% latency Mētis.
-    pool_size = int(os.environ.get("METNOS_ENGINE_POOL_SIZE", "12"))
-    if intent.is_complete():
-        try:
-            from prefilter import rank_with_intent, rank as _rank_bow
-            intent_dict = {"verb": intent.verb, "object": intent.object,
-                            "keywords": intent.keywords}
-            # Compound multi-verbo (§7.3): se la query ha >=2 verbi canonici,
-            # il pool MONO-verbo di rank_with_intent escluderebbe i tool degli
-            # altri sotto-intenti (es. find+write+send → "trova le issue,
-            # salvale, mandami il riassunto"). Uniamo il ranking per OGNI verbo
-            # canonico presente nella query cosi' il Proposer vede l'intera
-            # pipeline. Bug 2/6/2026: senza unione il pool era solo find_* →
-            # niente write_files/send_messages → "salva"/"manda" impossibili.
-            filtered = None
-            # Compound routing (4/6): PREFERISCI la decomposizione per-clausola
-            # dell'intent LLM (`intent.actions` = [{verb,object}, ...]). Ogni
-            # clausola rankizza il pool con il SUO object reale → i producer di
-            # OGNI sotto-azione entrano nel pool. Prima il ramo rankizzava ogni
-            # verbo con un UNICO `intent.object` (quello di UNA sola clausola, di
-            # solito il bersaglio finale): "trova i processi ... scrivi un report"
-            # → object=files per tutti → get_processes mai nel pool → Proposer
-            # collassa su get_inputs (bug q20/q21 4/6). La decomposizione è
-            # multilingue per costruzione (LLM) e NON usa dizionari di sinonimi.
-            _pairs = []
-            _acts = getattr(intent, "actions", None) or []
-            if len(_acts) >= 2:
-                _pairs = [((a.get("verb") or intent.verb),
-                           (a.get("object") or intent.object)) for a in _acts]
-            if not _pairs:
-                # Fallback deterministico (LLM non ha decomposto): verbi canonici
-                # rilevati nella query, con l'object PRIMARIO condiviso (storico).
-                try:
-                    from prefilter import (tokenize as _pf_tok,
-                                            detect_canonical_verbs_all as _pf_dv)
-                    _qverbs = list(dict.fromkeys(_pf_dv(_pf_tok(query))))
-                except Exception:
-                    _qverbs = []
-                if len(_qverbs) >= 2:
-                    _pairs = [(_v, intent.object) for _v in _qverbs]
-            if _pairs:
-                # Object-completezza per-clausola (4/6): l'LLM assegna verbi
-                # ASTRATTI ("list"/"change") che spesso NON hanno un tool esatto
-                # (no list_pulls, no change_issues) → rank_with_intent(verb,obj)
-                # filtra per prefisso-verbo e PERDE il producer reale dell'object
-                # (find_pulls_github, set_issues_github). Garantisci che TUTTI i
-                # tool del catalog con QUELL'object (derivato dal NOME canonico,
-                # 2° token in vocab.OBJECTS) siano candidati nel pool: il
-                # Proposer (che vede le description) sceglie il verbo giusto.
-                # Universale, deterministico §7.9, ZERO dizionari di sinonimi —
-                # scala a nuove lingue (l'object è canonico, non NL). Fix q14
-                # (pulls→find_pulls_github) + q15 (close→set_issues_github).
-                try:
-                    from vocab import OBJECTS as _VOBJ_SET
-                    _VOBJ = set(_VOBJ_SET)
-                except Exception:
-                    _VOBJ = set()
-
-                def _tool_object(_nm):
-                    for _tok in (_nm or "").split("_")[1:]:
-                        if _tok in _VOBJ:
-                            return _tok
-                    return ""
-
-                _seen = {}
-                _clause_objs = set()
-                for _v, _o in _pairs:
-                    if _o:
-                        _clause_objs.add(_o)
-                    _sub = rank_with_intent(
-                        query, catalog,
-                        {"verb": _v, "object": _o,
-                         "keywords": intent.keywords},
-                        k=pool_size) or []
-                    for _e in _sub:
-                        _seen[getattr(_e, "name", None)] = _e
-                # Famiglia-object completa per ogni object delle clausole.
-                for _e in catalog:
-                    _nm = getattr(_e, "name", None)
-                    if _nm and _nm not in _seen and _tool_object(_nm) in _clause_objs:
-                        _seen[_nm] = _e
-                if _seen:
-                    filtered = list(_seen.values())
-            if filtered is None:
-                filtered = rank_with_intent(query, catalog, intent_dict,
-                                            k=pool_size)
-            # rank_with_intent ritorna None PER DESIGN quando il verbo intent
-            # non matcha alcun executor (es. object=entries meta-oggetto, o
-            # verbo intermedio di una query compound): non e' un errore, e' il
-            # contratto di fallback bag-of-words (vedi prefilter.py §776). Senza
-            # questo ramo il `len(pool_for_propose)` sotto crashava con
-            # `len(None)` → except → full pool (80 tool) → grammar Mētis gigante
-            # → wise LLM lentissimo (regressione web-search: "fondi ark" ~8min).
-            if not filtered:
-                filtered = _rank_bow(query, catalog, k=pool_size, min_score=0)
-            # Garantisci che fastpath / autopath catalog completo resti
-            # disponibile a executor (callback usa il NOME, non il pool).
-            # Pool ridotto è SOLO per il prompt Proposer.
-            pool_for_propose = filtered or catalog
-            # §7.3: universal helpers (describe_entries/classify_entries/...)
-            # sono referenziati dai PATTERN STRUTTURALI del prompt Proposer
-            # (es. READ/LIST = producer + describe_entries + final_answer) ma
-            # il prefilter per-verbo non li include. Senza il loro schema nel
-            # pool, il Proposer inventa valori (es. style fuori enum §8.3).
-            # Append idempotente dei helper presenti nel catalog.
-            try:
-                from tool_grammar import _UNIVERSAL_HELPERS
-                present = {getattr(e, "name", None) for e in pool_for_propose}
-                for ex_obj in catalog:
-                    nm = getattr(ex_obj, "name", None)
-                    if nm in _UNIVERSAL_HELPERS and nm not in present:
-                        pool_for_propose = pool_for_propose + [ex_obj]
-                        present.add(nm)
-                # §7.3 COMPANION injection (universale): un producer il cui
-                # output è inutile senza un CONSUMER naturale porta sempre il
-                # consumer nel pool, anche se il verbo del consumer non è nella
-                # query. find_urls produce URL → senza read_urls_html/pdf la
-                # catena web→contenuto è monca (il proposer non può chiuderla,
-                # bug ROCm 3/6). Mappa estendibile a ogni coppia simile.
-                for _prod, _comps in _POOL_COMPANIONS.items():
-                    if _prod in present:
-                        for _c in _comps:
-                            if _c in present:
-                                continue
-                            _co = next((e for e in catalog
-                                        if getattr(e, "name", None) == _c), None)
-                            if _co is not None:
-                                pool_for_propose = pool_for_propose + [_co]
-                                present.add(_c)
-            except Exception:
-                pass
-            log.debug("dispatch: pool reduced %d → %d via prefilter (+helpers)",
-                       len(catalog), len(pool_for_propose))
-        except Exception as ex:
-            log.warning("dispatch: prefilter failed (%r), full pool", ex)
-            pool_for_propose = catalog
-    else:
-        pool_for_propose = catalog
-    pool_names = [getattr(e, "name", None) for e in pool_for_propose
-                   if getattr(e, "name", None)]
+    # La costruzione e' ESTRATTA in routing_pool.build_routing_pool (fix B3,
+    # 9/6/2026): funzione PURA condivisa col guard anti-regressione
+    # bench/routing_subset_bench.py, cosi' il bench esercita ESATTAMENTE il
+    # pool di produzione (k da env, compound per-clausola, universal-helpers,
+    # companions) e non una copia semplificata che diverge in silenzio.
+    pool_names = build_routing_pool(query, intent, catalog)
 
     executor = Executor(
         invoke_executor=invoke_executor_cb,
@@ -340,14 +200,20 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
     # UNA volta escludendo get_inputs dal pool, forzando la scomposizione in
     # executor reali. L'uso legittimo (get_inputs SEGUITA da azione, o
     # orchestrata via needs_inputs decision) non passa di qui. Model-indep.
+    # NB 9/6/2026 (causa-radice): get_inputs NON e' piu' iniettato
+    # universalmente nel pool (rimosso da tool_grammar._UNIVERSAL_HELPERS) —
+    # entra solo se l'intent lo giustifica (object=inputs/affinity) o col
+    # full-catalog su intent incompleto. Il guard resta come DIFESA RESIDUA
+    # per quei pool: nel caso comune non scatta piu' (zero re-propose).
     if _is_get_inputs_misroute(framework):
         if verbose:
             log.info("[guard] get_inputs misroute (unico step) → "
                      "re-propose senza get_inputs")
         _failed_hash = compute_framework_hash(framework)
-        # exclude_tools sopravvive alla re-iniezione degli universal helpers
-        # (get_inputs è in _UNIVERSAL_HELPERS): rimuoverlo dal pool non basta,
-        # il proposer lo riaggiunge. Lo escludiamo a valle (prompt + grammar).
+        # exclude_tools agisce a VALLE della costruzione del pool (prompt +
+        # grammar GBNF), qualunque sia la fonte che ha portato get_inputs nel
+        # pool (object=inputs, affinity, full-catalog): rimuoverlo solo dal
+        # pool del caller non basterebbe.
         _framework_gi = proposer.propose(
             query=query, intent=intent, pool=pool_names,
             excluded_hashes=excluded | {_failed_hash},
@@ -407,8 +273,11 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
             _ap.record_observation(
                 turn_id=turn_id, intent=intent, framework=framework,
                 query=query, latency_ms=run.elapsed_ms)
-        except Exception:
-            pass
+        except Exception as ex:
+            # Feedback best-effort: il fallimento non blocca il turno ma NON è
+            # silenzioso (§2.8) — traccia per diagnosticare regressioni di
+            # record_observation senza alterare il flusso.
+            log.debug("record_observation fallita (best-effort): %r", ex)
 
     # On error → Recovery
     if run.final_kind == "error":

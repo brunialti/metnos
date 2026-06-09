@@ -530,9 +530,9 @@ def generate_tool_grammar(tools: Sequence[Any], *,
     """
     if not tools:
         # Empty pool: grammar permissive (qualsiasi JSON object)
-        used = {"json_object"}
+        used = {"jsonObject"}
         prims = _emit_primitives(used)
-        return "\n".join(prims + ["root ::= json_object"])
+        return "\n".join(prims + ["root ::= jsonObject"])
 
     tool_names: list[str] = []
     schema_lines: list[str] = []
@@ -550,9 +550,9 @@ def generate_tool_grammar(tools: Sequence[Any], *,
         used_primitives.update(used)
 
     if not tool_names:
-        used = {"json_object"}
+        used = {"jsonObject"}
         prims = _emit_primitives(used)
-        return "\n".join(prims + ["root ::= json_object"])
+        return "\n".join(prims + ["root ::= jsonObject"])
 
     # Root usa sempre `ws`, `sep`, `colon` per struttura. Marcate qui.
     used_primitives.update({"ws", "sep", "colon"})
@@ -811,9 +811,24 @@ def _has_word(query_lc: str, words: tuple[str, ...]) -> bool:
 
 # §7.3 verb-aware filtering: universal helpers che vanno SEMPRE inclusi
 # anche quando filtriamo per verbo (servono a quasi tutti i framework).
+# La lista e' consumata anche da engine/routing_pool.build_routing_pool,
+# che la APPENDE al pool del Proposer per ogni query.
+#
+# `get_inputs` NON e' qui (rimosso 9/6/2026, causa-radice misroute): e' il
+# tool di dialog UI (ADR 0090, §2.2 get_inputs={values} UI), non un
+# pipeline-helper. Iniettato UNIVERSALMENTE nel pool+grammar, l'LLM wise
+# collassava su get_inputs-only ("chiede" invece di "fare": bench
+# routing_subset 2/22 rossi, guard _is_get_inputs_misroute in dispatch
+# costretto a un re-propose = seconda chiamata wise). I flussi legittimi
+# NON passano dal Proposer: needs_inputs decision dell'executor →
+# orchestrate_needs_inputs; request_disambiguation_from_user → runtime
+# invoca get_inputs(kind=choice) deterministico. Quando l'utente CHIEDE un
+# dialog (intent object=inputs / affinity "chiedi/form/wizard"), il
+# prefilter lo porta nel pool via _OBJECT_PRIMARY_TOOLS["inputs"]: resta
+# proponibile SOLO quando l'intent lo giustifica. NON ri-aggiungerlo.
 _UNIVERSAL_HELPERS = frozenset({
     "describe_entries", "filter_entries", "sort_entries",
-    "classify_entries", "extract_entries", "compute_entries", "get_inputs",
+    "classify_entries", "extract_entries", "compute_entries",
     "undo_last_turn",
 })
 

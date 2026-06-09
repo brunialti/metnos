@@ -28,6 +28,7 @@
 - **PLANNER split GBNF** (ADR 0151): `runtime/planner_split.py::chat_with_tools_split` 2-call. Opt-in `METNOS_PLANNER_SPLIT=1`. 1.72× speedup.
 - **Pattern intent-implicit** (ADR 0129): `vocab.detect_implicit_actions(query)` deterministico. Wire `intent_extractor → agent_runtime → orchestration._orchestrate_implicit_actions`.
 - **Compound query decomposition** (4/6): intent LLM → `actions=[{verb,object}]` per CLAUSOLA (`intent_extractor.j2` it+en); `dispatch` rank pool per-PAIR (object reale per clausola); `proposer` salta verb-filter se `len(actions)>=2`. No dizionari sinonimi; `detect_canonical_verbs_all` = fallback lessicale.
+- **Hedge anti producer-bias** (9/6): `proposer_metis._n_candidates` N=2 se intent.verb side-effecting (`_is_action_verb`, SoT `vocab.ACTIONS−SAFE_VERBS` — sostituisce gating-confidence morto B2); `_generate_grammar_multi` spende il budget SOLO come hedge pool-verbo se cand1 non azione-first E query con target literal (`_has_explicit_target` §4.2); telos-rank verb-match +0.2 decide + malus −0.3 step consecutivi duplicati. Prompt: `engine_proposer.j2` (it+en) pattern C azione-first su target nominato + regola FILLER-non-config-lookup.
 - **Shape FSM normalization**: `TurnLog.write()` normalizza ultimo step a `final_answer` se vuoto. Lint regex `^E*F?$`.
 - **Inproc tool catalog injection**: `loader._inject_inproc_tool_specs` + `BUILTIN_INPROC_SPECS` espone tool moduli runtime al catalog admin.
 - **Adaptive re-rank intra-turno** (ADR 0072): `runtime/adaptive_rerank.py` add-only, cap `2×k_max`.

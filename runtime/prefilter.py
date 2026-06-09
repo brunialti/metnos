@@ -211,8 +211,11 @@ def _strip_italian_clitic(tok: str) -> str | None:
 
 def detect_canonical_verbs_all(qtokens) -> list[str]:
     """Ritorna TUTTI i verbi canonici distinti trovati fra i token, in ordine
-    di apparizione. Usato per detection multi-step (es. «fissa appuntamento e
-    mandami email» -> ['set', 'send']). Lista vuota se nessun verbo.
+    ALFABETICO dei token (deterministico §7.9 — `qtokens` e' un set prodotto
+    da `tokenize`, quindi l'ordine di apparizione nella frase NON e'
+    ricostruibile qui). Usato per detection multi-step (es. «fissa
+    appuntamento e mandami email» -> ['create', 'send']). Lista vuota se
+    nessun verbo.
     Generale: deriva dai sinonimi vocab IT+EN gia' presenti in
     `_VERB_TO_CANONICAL`, non hardcoded a un caso d'uso specifico.
 
@@ -1176,8 +1179,11 @@ def _rank_adaptive_legacy(query, catalog, k_min=5, k_max=8, *, llm_call=None,
                     scores = [s for s, _ in scored]
                     top_score = scores[0] if scores else 0
                     semantic_reason = "semantic_fallback"
-    except Exception:
-        pass  # fallback silente: il hard match ranking resta valido
+    except Exception as _e:
+        # §2.8: fallback silente ma TRACCIATO — il ranking hard match resta
+        # valido (flusso invariato); debug per non inquinare i log quando il
+        # modulo semantico non e' installato.
+        log.debug("prefilter: semantic fallback (BGE-M3) fallito: %r", _e)
     rel_cutoff = max(1, top_score // 2)
     relevant = [(s, e) for s, e in scored if s >= rel_cutoff]
     if len(relevant) < k_min:

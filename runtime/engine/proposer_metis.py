@@ -15,7 +15,7 @@ Trade-off vs simple:
 Selezione via METNOS_ENGINE=metis. Tuning via:
   METNOS_METIS_N_CANDIDATES=3
   METNOS_METIS_CACHE_MAX=200
-  METNOS_PROPOSER_GRAMMAR=1 → single-shot grammar (perde multi-candidate)
+  METNOS_PROPOSER_GRAMMAR=1 (default) → single-shot grammar (perde multi-candidate)
 
 NOTA 28/5/2026: file ricostruito da `.pyc` cache + 7 fix issue trovate
 durante rebuild. Vedi git log per detail dei fix.
@@ -30,21 +30,66 @@ from collections import OrderedDict
 from typing import Optional, Callable
 
 from .types import Intent, Framework
-from .proposer import SimpleProposer, _parse_framework_json, _render_tool_pool
+from .proposer import (SimpleProposer, _iter_balanced_json_objects,
+                       _render_tool_pool, _strip_think)
 
 log = logging.getLogger(__name__)
 
 
+def _is_action_verb(verb: str) -> bool:
+    """True se `verb` e' un verbo d'AZIONE side-effecting (§7.9, SoT vocab):
+    canonico (ACTIONS) ma NON safe-by-construction (SAFE_VERBS = produttori
+    find/get/read/list/filter + trasformatori in-memory). La query chiede un
+    EFFETTO (move/delete/send/create/write/...) → rischio producer-bias: il
+    proposer tende a preferire il produttore anche quando il tool d'azione
+    e' nel pool. Segnale REALE che sostituisce il gating-confidence morto
+    (B2: intent_extractor non emette mai `confidence` → resta il default 1.0
+    di types.Intent → il gate `conf >= thr` era sempre vero → Metis girava
+    sempre col floor N=1, niente hedge ne' re-rank)."""
+    if not verb:
+        return False
+    try:
+        from vocab import ACTIONS, SAFE_VERBS
+    except Exception:
+        return False
+    v = verb.lower().strip()
+    return v in ACTIONS and v not in SAFE_VERBS
+
+
+# Proxy deterministico §4.2 (caso degenere N=1 con literal): filename con
+# estensione («relazione.pdf», «config.json») oppure URL esplicito. NB: un
+# path-directory nudo («/tmp/cache») o un plurale («i pdf», «gli eventi di
+# ieri») indicano un INSIEME da individuare → niente match.
+_EXPLICIT_TARGET_RE = re.compile(
+    r"https?://\S+|\b[\w][\w-]*\.[A-Za-z][A-Za-z0-9]{1,4}\b")
+
+
+def _has_explicit_target(query: str) -> bool:
+    """True se la query NOMINA un target puntuale afferrabile inline (§4.2).
+
+    Solo allora l'hedge azione-first ha senso: il tool d'azione puo' ricevere
+    il literal direttamente (paths/entries inline) senza producer davanti.
+    Su un INSIEME da selezionare (pattern, finestra temporale) il piano
+    producer→azione resta quello giusto e l'hedge NON va generato — cosi'
+    i multi-step legittimi find→move/read→delete non regrediscono."""
+    return bool(_EXPLICIT_TARGET_RE.search(query or ""))
+
+
 def _n_candidates(intent=None) -> int:
-    """N candidati ADATTIVO per confidenza (deterministico, no ML — §7.9).
+    """N candidati ADATTIVO (deterministico, no ML — §7.9).
 
     Il proposer metis genera N piani-candidato (N chiamate LLM grammar-constrained
     sulla GPU SINGOLA → costo dominante del turno) e ne sceglie uno via telos-rank
     euristico. Su query ad ALTA confidenza e NON-compound la prima proposta è
-    affidabile → N=1 (niente spreco, ~3-5x più veloce). Su BASSA confidenza o
-    COMPOUND (>=2 azioni) si mantiene l'hedge champion+challenger → N=ceiling.
-    Gating sul segnale `intent.confidence` GIÀ esistente (stessa soglia di
-    `use_fast`). Nessun ranker ML ([[no_training_amplify_reality]]). Env: ceiling
+    affidabile → N=1 (niente spreco, ~3-5x più veloce). Budget hedge N=ceiling su:
+      - COMPOUND (>=2 azioni): champion+challenger full-pool (invariato);
+      - verbo d'AZIONE side-effecting (anti producer-bias, 9/6/2026): il
+        gating-confidence era MORTO (B2, vedi _is_action_verb) → il segnale
+        reale e' il verbo stesso. La spesa EFFETTIVA del budget la decide
+        _generate_grammar_multi (early-stop se il primo candidato e' gia'
+        azione-first → nessuna latenza extra nel caso sano);
+      - BASSA confidenza (gate legacy, torna utile se l'extractor la emettera').
+    Nessun ranker ML ([[no_training_amplify_reality]]). Env: ceiling
     `METNOS_METIS_N_CANDIDATES` (default 2), floor `_FAST` (default 1)."""
     try:
         ceil = max(1, int(os.environ.get("METNOS_METIS_N_CANDIDATES", "2")))
@@ -62,6 +107,8 @@ def _n_candidates(intent=None) -> int:
         compound = len(getattr(intent, "actions", None) or []) >= 2
     except Exception:
         return ceil
+    if _is_action_verb(getattr(intent, "verb", "") or ""):
+        return ceil
     return fast if (conf >= thr and not compound) else ceil
 
 
@@ -72,10 +119,6 @@ def _cache_max() -> int:
         return max(1, int(os.environ.get("METNOS_METIS_CACHE_MAX", "200")))
     except ValueError:
         return 200
-
-
-# Costante backward-compat (legacy callers / tests). Preferire `_n_candidates()`.
-N_CANDIDATES = _n_candidates()
 
 
 class MetisProposer:
@@ -143,7 +186,11 @@ class MetisProposer:
                     try:
                         from .executor import compute_framework_hash
                         h = compute_framework_hash(cached)
-                    except Exception:
+                    except Exception as ex:
+                        # §2.8: traccia l'hash fallito (il candidato cached
+                        # viene saltato; flusso invariato).
+                        log.debug("MetisProposer: compute_framework_hash "
+                                  "fallito su candidato cached: %r", ex)
                         h = ""
                     if h and h not in excluded_hashes:
                         log.info(
@@ -173,6 +220,15 @@ class MetisProposer:
                 h = compute_framework_hash(fw)
                 if h not in excluded_hashes:
                     return fw
+            if excluded_hashes:
+                # Tutti i candidati sono in excluded_hashes: rispetta il
+                # contratto del Protocol (proposer.py: «rispetta excluded_hashes»)
+                # e NON riconsegnare un framework gia' bocciato → return None.
+                # Il caller (guard/validator/recovery in dispatch) ritenta o
+                # termina onesto (§2.8). Prima si ritornava ranked[0] escluso:
+                # il validator (dispatch.py) accettava framework2==framework
+                # senza ri-validarlo (B1, esame 9/6/2026).
+                return None
         except Exception:
             pass
         return ranked[0] if ranked else candidates[0]
@@ -191,7 +247,11 @@ class MetisProposer:
         Senza fix #1: grammar+metis attivi nello stesso service = grammar
         ignorata dal metis path → parse rate degrada vs claim hardening.
         """
-        use_grammar = os.environ.get("METNOS_PROPOSER_GRAMMAR", "0") == "1"
+        # B6 — default "1", allineato a proposer.py e alla produzione (drop-in
+        # proposer-hardening.conf): prima era "0" e con env non settata il
+        # path metis ignorava la grammar che il path simple applicava
+        # (determinismo §7.9 e parse rate degradati in silenzio).
+        use_grammar = os.environ.get("METNOS_PROPOSER_GRAMMAR", "1") == "1"
         n_cands = _n_candidates(intent)
         if use_grammar:
             return self._generate_grammar_multi(
@@ -210,7 +270,11 @@ class MetisProposer:
                 excluded=", ".join(excluded_hashes) or "(nessuno)",
                 n_candidates=n_cands,
             )
-        except Exception:
+        except Exception as ex:
+            # §2.8: prompt-load fallito = zero candidati dal path array
+            # (il caller degrada a SimpleProposer); traccia la causa.
+            log.warning("MetisProposer: load prompt 'engine_proposer_metis' "
+                        "fallito (lang=%s): %r", lang, ex)
             return []
         if not system:
             return []
@@ -226,14 +290,47 @@ class MetisProposer:
                                   exclude_tools=()):
         """Fix #1: N single-shot via SimpleProposer (riusa grammar+verb-filter
         path). Ogni call esclude i framework_hash già generati per forzare
-        diversità. Costo: N× LLM call vs 1× del default path."""
+        diversità. Costo: N× LLM call vs 1× del default path.
+
+        Hedge anti producer-bias (9/6/2026, §7.9): per intent MONO-azione con
+        verbo side-effecting il budget extra (N>=2 da _n_candidates) si spende
+        SOLO come HEDGE-DIVERGENZA: una call col pool ristretto ai tool del
+        verbo d'azione, generata SOLO se (a) il primo candidato NON inizia
+        gia' col tool d'azione E (b) la query nomina un target puntuale
+        (_has_explicit_target, §4.2). Cosi' il candidato azione-first ESISTE
+        per costruzione e il telos-rank (bonus verb-match) puo' preferirlo —
+        con seed fisso una seconda call full-pool sarebbe un quasi-duplicato
+        (stesso prompt ±hash escluso → stesso output). NON e' il verb-filter
+        morbido B8: la generazione #1 resta full-pool e l'hedge e' un
+        candidato AGGIUNTIVO che il rank confronta, non una restrizione
+        dell'unica proposta. COMPOUND: comportamento invariato (N call
+        full-pool: il piano deve coprire tutte le clausole)."""
         out: list[Framework] = []
         seen_hashes: set[str] = set(excluded_hashes or set())
+        verb = (getattr(intent, "verb", "") or "").lower().strip()
+        is_compound = len(getattr(intent, "actions", None) or []) >= 2
+        # Pool hedge = SOLI tool del verbo d'azione (la GBNF aggiunge sempre
+        # `final_answer`). None = hedge non applicabile.
+        hedge_pool = None
+        if (not is_compound and _is_action_verb(verb)
+                and _has_explicit_target(query)):
+            hedge_pool = [t for t in pool
+                          if isinstance(t, str)
+                          and t.split("_", 1)[0] == verb] or None
         for i in range(n):
+            cur_pool = pool
+            if i > 0 and not is_compound:
+                # Budget extra mono-azione: si spende SOLO come hedge.
+                if hedge_pool is None:
+                    break
+                if any(fw.steps and (fw.steps[0].tool or "").split("_", 1)[0]
+                       == verb for fw in out):
+                    break  # gia' azione-first: hedge superfluo (latenza)
+                cur_pool = hedge_pool
             try:
                 fw = self._simple.propose(
                     query=query, intent=intent,
-                    pool=pool,  # propaga pool reale (SimpleProposer rendera' inline)
+                    pool=cur_pool,  # propaga pool reale (SimpleProposer rendera' inline)
                     excluded_hashes=seen_hashes,
                     llm_call=llm_call, lang=lang, catalog=catalog,
                     exclude_tools=exclude_tools)
@@ -278,69 +375,33 @@ class MetisProposer:
 
 def _parse_candidates(raw: str) -> list[Framework]:
     """Estrae N framework JSON dall'output Mētis. Tollera:
-      - JSON array `[{...}, {...}]`
-      - Multiple JSON objects separati da newline
-      - `<think>` blocks (strip)
-    """
+      - JSON array `[{...}, {...}]` (le parentesi quadre sono prosa per
+        l'iteratore bilanciato: gli oggetti-graffa interni vengono comunque
+        yieldati uno a uno)
+      - Multiple JSON objects separati da prosa/newline
+      - `<think>` chiusi o lasciati aperti dal troncamento (B5)
+
+    B4: le vecchie regex (array greedy + oggetti a max 1 livello di nesting)
+    perdevano i framework annidati steps→step→args → candidati persi. Ora
+    estrazione a oggetti `{...}` BILANCIATI (`_iter_balanced_json_objects`),
+    tenendo solo i dict con "steps" non vuoto."""
     if not raw:
         return []
-    raw = re.sub(r"<think>[\s\S]*?</think>", "", raw, flags=re.IGNORECASE)
     out: list[Framework] = []
-
-    # Path 1: JSON array completo
-    arr_match = re.search(r"\[\s*\{[\s\S]*\}\s*\]", raw)
-    if arr_match:
+    for block in _iter_balanced_json_objects(_strip_think(raw)):
         try:
-            arr = json.loads(arr_match.group(0))
-            if isinstance(arr, list):
-                for item in arr:
-                    if isinstance(item, dict):
-                        out.append(Framework.from_dict(item))
-                if out:
-                    return out
-        except json.JSONDecodeError:
-            pass
-
-    # Path 2: multiple JSON objects separati.
-    blocks = re.findall(r"\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}", raw)
-    for b in blocks:
-        try:
-            parsed = json.loads(b)
-            if isinstance(parsed, dict) and parsed.get("steps"):
-                out.append(Framework.from_dict(parsed))
+            parsed = json.loads(block)
         except json.JSONDecodeError:
             continue
+        if isinstance(parsed, dict) and parsed.get("steps"):
+            out.append(Framework.from_dict(parsed))
     return out
-
-
-def _heuristic_score(fw: Framework, intent: Intent) -> float:
-    """Score deterministic structural per framework. Più alto = preferito.
-
-    Penalità: troppi step, tool ripetuto consecutivo, request_new_executor.
-    Bonus: producer corretto per verbo intent.
-
-    Esposto per backward-compat. Preferire `_heuristic_telos_score`.
-    """
-    if not fw.steps:
-        return 0.0
-    score = 1.0
-    n_real = sum(1 for s in fw.steps if s.tool != "final_answer")
-    score -= max(0, n_real - 3) * 0.15
-    tools = [s.tool for s in fw.steps if s.tool != "final_answer"]
-    for i in range(1, len(tools)):
-        if tools[i] == tools[i - 1]:
-            score -= 0.3
-    if any(s.tool == "request_new_executor" for s in fw.steps):
-        score -= 0.5
-    if intent.verb and tools and intent.verb in tools[0]:
-        score += 0.2
-    return max(0.0, score)
 
 
 def _heuristic_telos_score(sig: dict, *, intent: Optional[Intent] = None) -> float:
     """Telos-aware score basato su signature framework. Fix #7: include
-    anche bonus structural (verb-match) per consistenza con _heuristic_score
-    nel fallback path.
+    anche bonus structural (verb-match), ereditato dal vecchio
+    `_heuristic_score` (rimosso 9/6/2026: mai chiamato, dead code).
 
     Telos pesi (ADR 0157):
       t.tempo 0.25 (preferire pipeline brevi)
@@ -367,10 +428,19 @@ def _heuristic_telos_score(sig: dict, *, intent: Optional[Intent] = None) -> flo
     tools = sig.get("tools", [])
     if tools and "final_answer" in tools:
         score += 0.15
-    # Fix #7: include verb-match bonus (era solo in _heuristic_score)
+    # Malus pipeline rotta (§7.9, enforcement deterministico della regola
+    # prompt «NON DEVI ripetere lo stesso tool consecutivo»): un candidato
+    # con step consecutivi identici (es. doppio get_files di fila, visto sul
+    # compound issue→spreadsheet 9/6/2026) e' SEMPRE peggiore dell'alternativa
+    # pulita → il rank lo declassa invece di premiarne la brevita' apparente.
+    if any(a == b for a, b in zip(tools, tools[1:])):
+        score -= 0.3
+    # Fix #7: verb-match bonus (ereditato dal vecchio _heuristic_score).
+    # B12: match sul PRIMO SEGMENTO del nome tool (= verbo canonico §2.2),
+    # NON substring — "get" non deve matchare "widgets"/"forget_*".
     verb = sig.get("verb") or (intent.verb if intent else None)
     if verb and tools:
         real_tools = [t for t in tools if t != "final_answer"]
-        if real_tools and verb in real_tools[0]:
+        if real_tools and real_tools[0].split("_", 1)[0] == verb:
             score += 0.2
     return score

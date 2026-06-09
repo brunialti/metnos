@@ -23,7 +23,7 @@ en = """SCOPO: search photos in unified index (ADR 0117 v4) combining identity +
 
 [code]
 files  = ["find_images_indices.py"]
-digest = "sha256:57101f82b773a633fe2c0d9a1397636e04056dbc6bf064c9ae204d02e6093b1e"
+digest = "sha256:575570a0de4b8433ce2560e5c9f5c92775dee19ffbb2d6b45c5277f0196e0496"
 
 [args]
 type     = "object"

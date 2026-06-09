@@ -16,7 +16,8 @@ Args principali:
   composizione su faces[] e bbox.
 - `paths_filter`: lista path → restringe lo scan.
 - `top_k`: cap risultati (default 100, max 200).
-- `time_window`: filtro per mtime/EXIF taken_at_iso.
+- `time_window`: filtro su data di scatto (EXIF taken_at_iso) o data dal
+  path; NON mtime (data di modifica del file, mente sull'età foto §2.8).
 - `near_lat/near_lon/radius_km`: filtro GPS via exif_gps.
 
 Output (`entries`):

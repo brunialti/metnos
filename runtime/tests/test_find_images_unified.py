@@ -395,13 +395,16 @@ class TestFindImagesUnified(unittest.TestCase):
         entry_2024 = {
             "path": str(self.corpus / "y24.jpg"), "name": "y24.jpg",
             "mtime": m_2024, "size": 100, "image_w": 10, "image_h": 10,
-            "taken_at_iso": None, "exif_gps": None,
+            # time_window data le foto da taken_at_iso (EXIF)/path, NON da mtime
+            # (data di modifica, mente sull'età foto §2.8). Datiamo via taken_at_iso.
+            "taken_at_iso": "2024-06-15T12:00:00", "exif_gps": None,
             "description": "x", "keywords": [], "location_hint": "",
             "activity_hint": "", "faces": [], "embedding_text_idx": 0,
         }
         entry_2023 = dict(entry_2024)
         entry_2023["path"] = str(self.corpus / "y23.jpg")
         entry_2023["mtime"] = m_2023
+        entry_2023["taken_at_iso"] = "2023-06-15T12:00:00"
         entry_2023["embedding_text_idx"] = 1
         with (idx_dir / "entries.jsonl").open("w") as fh:
             fh.write(json.dumps(entry_2024) + "\n")
