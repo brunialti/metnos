@@ -34,30 +34,31 @@ def _systemd_user_dir() -> Path:
 
 
 def _repo_dir() -> Path:
-    return Path(os.environ.get("METNOS_REPO_DIR", Path.cwd()))
+    return Path(os.environ.get("METNOS_INSTALL_ROOT", Path.cwd()))
 
 
-def _substitute(template: str, port: int) -> str:
+def _substitute(template: str, port: int, lang: str) -> str:
     """Replace @VAR@ placeholders in unit template content."""
     repl = {
         "@VENV@":       os.environ.get("METNOS_VENV", str(Path.home() / ".local" / "share" / "metnos" / ".venv")),
-        "@HOME_DIR@":   os.environ.get("METNOS_HOME", str(Path.home() / ".local" / "share" / "metnos")),
-        "@CONFIG_DIR@": os.environ.get("METNOS_CONFIG", str(Path.home() / ".config" / "metnos")),
-        "@STATE_DIR@":  os.environ.get("METNOS_STATE", str(Path.home() / ".local" / "state" / "metnos")),
+        "@DATA_DIR@":   os.environ.get("METNOS_USER_DATA", str(Path.home() / ".local" / "share" / "metnos")),
+        "@CONFIG_DIR@": os.environ.get("METNOS_USER_CONFIG", str(Path.home() / ".config" / "metnos")),
+        "@STATE_DIR@":  os.environ.get("METNOS_USER_STATE", str(Path.home() / ".local" / "state" / "metnos")),
         "@REPO_DIR@":   str(_repo_dir()),
         "@PORT@":       str(port),
+        "@LANG@":       lang,
     }
     for k, v in repl.items():
         template = template.replace(k, v)
     return template
 
 
-def _install_unit(template_path: Path, dest_name: str, port: int) -> bool:
+def _install_unit(template_path: Path, dest_name: str, port: int, lang: str) -> bool:
     """Render one template into the user systemd dir."""
     if not template_path.exists():
         ui.warn(f"missing template: {template_path}")
         return False
-    rendered = _substitute(template_path.read_text(), port)
+    rendered = _substitute(template_path.read_text(), port, lang)
     dest = _systemd_user_dir() / dest_name
     dest.write_text(rendered)
     ui.ok(f"wrote {dest}")
@@ -79,7 +80,7 @@ def _runtime_module_importable(module: str) -> bool:
     activating → failed loop.
     """
     venv_py = Path(os.environ.get("METNOS_VENV", "")) / "bin" / "python"
-    repo = os.environ.get("METNOS_REPO_DIR", "")
+    repo = os.environ.get("METNOS_INSTALL_ROOT", "")
     if not venv_py.exists() or not repo:
         return False
     env = os.environ.copy()
@@ -122,12 +123,16 @@ def run(args: Any) -> dict[str, Any]:
     if not shutil.which("systemctl"):
         ui.fail("systemctl not found — this installer requires systemd (Linux user session).")
 
-    # Look up port / Telegram choice from phase 4
+    # Look up port / language / Telegram choice from phase 4
     phase4 = state.load(4)
     port = (phase4.notes.get("http_port") if phase4 else None) or 8770
     telegram_enabled = bool(phase4 and phase4.notes.get("telegram"))
+    # Metnos runtime language (METNOS_LANG) — the locale the user chose during
+    # install. The installer UI itself is English; this configures Metnos.
+    lang = (phase4.notes.get("locale") if phase4 else None) or "it"
 
     notes["http_port"] = port
+    notes["lang"] = lang
     notes["telegram_unit_installed"] = telegram_enabled
 
     # Locate templates
@@ -137,7 +142,7 @@ def run(args: Any) -> dict[str, Any]:
 
     # 1. Install metnos-http.service
     ui.step(f"Installing metnos-http.service (port {port})")
-    _install_unit(tmpl_dir / "metnos-http.service.tmpl", "metnos-http.service", port)
+    _install_unit(tmpl_dir / "metnos-http.service.tmpl", "metnos-http.service", port, lang)
 
     # 2. Optionally install telegram daemon (only if importable)
     telegram_module_ok = False
@@ -145,7 +150,7 @@ def run(args: Any) -> dict[str, Any]:
         if _runtime_module_importable("runtime.telegram_daemon"):
             ui.step("Installing metnos-telegram-daemon.service")
             _install_unit(tmpl_dir / "metnos-telegram-daemon.service.tmpl",
-                          "metnos-telegram-daemon.service", port)
+                          "metnos-telegram-daemon.service", port, lang)
             telegram_module_ok = True
         else:
             ui.warn("runtime.telegram_daemon not importable — skipping Telegram unit. "

@@ -26,7 +26,7 @@ Lang esplicito al call site (5/5/2026): ogni caller dichiara la lingua;
 default fornito da `config.DEFAULT_LANG`. Niente env globale singleton:
 ogni Environment è indicizzato per `lang` in `_envs[lang]` (cache lazy).
 
-Determinismo (the design guide §7.9): zero LLM nel loader. Niente DB, niente
+Determinismo (CLAUDE.md §7.9): zero LLM nel loader. Niente DB, niente
 network. Filesystem-as-source-of-truth, cache MiniJinja built-in per Env.
 
 Pattern latest-wins per l'allineamento multilingua dei .j2 (estensione
@@ -62,7 +62,7 @@ _BASE = Path(__file__).parent / "prompts"
 # Cache per-lang: ogni lingua ha la sua Environment isolata (no pollution).
 _envs: dict[str, minijinja.Environment] = {}
 
-# Frontmatter fields (the design guide §6.1) da rimuovere dai render raw passthrough:
+# Frontmatter fields (CLAUDE.md §6.1) da rimuovere dai render raw passthrough:
 # sono metadati di styling/ownership, non parte del contenuto utile al PLANNER.
 _SECTION_FRONTMATTER_KEYS = frozenset({
     "role", "tier", "lang", "style", "version", "owner", "updated", "sha_prev",
@@ -244,7 +244,14 @@ def get(role: str, lang: str, **vars) -> str:
     garantita)."""
     # Inject install_root (B.4 19/5/2026 v4): caller può override passando
     # esplicitamente `install_root=` in vars.
-    merged_vars = {**_default_vars(), **vars}
+    # Inject `lang` + `lang_name` (9/6/2026): i template possono imporre la
+    # lingua di un campo (es. final_message del proposer) via `{{ lang_name }}`,
+    # un PLACEHOLDER — così la parola della lingua non viene mai mal-tradotta
+    # dal translator automatico (resta dinamica, = lingua corrente).
+    _lang_names = {"it": "italiano", "en": "English"}
+    merged_vars = {**_default_vars(),
+                   "lang": lang, "lang_name": _lang_names.get(lang, lang),
+                   **vars}
     if role in _SYNT_ROLES:
         fmt = _synt_format()
         if fmt in ("yaml_raw", "json_raw"):
@@ -353,7 +360,7 @@ def _render_yaml_section_prose(yaml_path: Path, data: dict | None = None) -> str
     preamble = (section.get("preamble") or "").rstrip()
 
     # Lingua per i marker compositor (DEVI/NON DEVI/OK/ERRORE vs MUST/etc.).
-    # I marker §6 sono prescritti IT per the design guide §6: anche i prompt EN
+    # I marker §6 sono prescritti IT per CLAUDE.md §6: anche i prompt EN
     # nel codebase mantengono il pattern IT (vedi planner/_core.j2). Lasciamo
     # il marker IT come canonical: linter prompts_lint.py lo cerca.
     lines: list[str] = []

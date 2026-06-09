@@ -12,11 +12,26 @@ Restart=on-failure
 RestartSec=10
 Environment=PYTHONUNBUFFERED=1
 Environment=PYTHONPATH=@REPO_DIR@
-Environment=METNOS_HOME=@HOME_DIR@
-Environment=METNOS_CONFIG=@CONFIG_DIR@
-Environment=METNOS_STATE=@STATE_DIR@
+Environment=METNOS_INSTALL_ROOT=@REPO_DIR@
+Environment=METNOS_USER_DATA=@DATA_DIR@
+Environment=METNOS_USER_CONFIG=@CONFIG_DIR@
+Environment=METNOS_USER_STATE=@STATE_DIR@
+# Metnos runtime language chosen during install (the installer UI is English;
+# this is the language Metnos talks to the user in). Default it; en also tested.
+Environment=METNOS_LANG=@LANG@
 Environment=METNOS_HTTP_HOST=127.0.0.1
 Environment=METNOS_HTTP_PORT=@PORT@
+# Engine — the production-tested routing config (ADR 0161/0164 + §11
+# routing determinism). Without these a fresh install falls back to the
+# bare "simple" engine and uncovered queries return errors. Keep in sync
+# with the reference instance.
+Environment=METNOS_ENGINE=metis
+Environment=METNOS_PROPOSER_GRAMMAR=1
+Environment=METNOS_PROPOSER_VERB_FILTER=1
+Environment=METNOS_PROPOSER_FAST_CONFIDENCE=0.70
+Environment=METNOS_PREFILTER_RULES=1
+Environment=METNOS_INTENT_CLASSIFIER=1
+Environment=METNOS_REASONING_BUDGET=4096
 
 [Install]
 WantedBy=default.target

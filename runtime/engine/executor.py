@@ -806,7 +806,13 @@ def _synthesize_final_from_steps(query: str, steps: list, llm_fast) -> str:
             entries = res.get("entries")
             if isinstance(entries, list) and entries:
                 ebits = []
-                for e in entries[:5]:
+                # Campione ampio (non 5): per i read-LISTA (mail/eventi/file) il
+                # finalizer DEVE vedere abbastanza entries da coprire lo SPAN
+                # reale, altrimenti misrappresenta (bug 8/6: 41 mail last-7d →
+                # "solo 7-8 giu" perche' vedeva solo le 5 piu' recenti). Per-entry
+                # resta compatto (campi capati) → budget contenuto. Il prefisso
+                # entries[N] porta comunque il TOTALE.
+                for e in entries[:30]:
                     if not isinstance(e, dict):
                         ebits.append(str(e)[:200])
                         continue
@@ -824,9 +830,9 @@ def _synthesize_final_from_steps(query: str, steps: list, llm_fast) -> str:
                             break
                     if not picked_long:
                         # 2b) scalari salienti (identita'/valori)
-                        for k in ("name", "subject", "title", "description",
-                                  "value", "summary", "email", "role", "path",
-                                  "date", "status"):
+                        for k in ("name", "subject", "date", "title",
+                                  "description", "value", "summary", "email",
+                                  "role", "path", "status"):
                             if e.get(k):
                                 fields.append(f"{k}={str(e[k])[:120]}")
                             if len(fields) >= 4:
@@ -863,21 +869,23 @@ def _synthesize_final_from_steps(query: str, steps: list, llm_fast) -> str:
             obs_lines.append(f"{tool}: " + " ; ".join(parts))
     if not obs_lines:
         return ""
-    sys_msg = (
-        "Sei l'assemblatore della risposta finale. Data la richiesta utente e "
-        "i risultati degli strumenti, scrivi UNA risposta diretta, concisa, in "
-        "linguaggio naturale, nella lingua della richiesta. Niente preamboli, "
-        "niente JSON, niente placeholder. I risultati contengono dati gia' "
-        "recuperati e autorizzati per l'utente proprietario che li richiede: se "
-        "l'informazione richiesta e' presente nei risultati, RIPORTALA "
-        "fedelmente. NON rifiutare e NON dire di non avervi accesso."
-    )
+    # System prompt + labels in the INSTANCE language (§11 no hardcoded;
+    # ADR 0092 prompt files). The whole prompt — not just a directive — must
+    # be in current_lang, else a neutral LLM follows the prompt's language.
+    import i18n as _i18n
+    import prompt_loader as _pl
+    _lang = _i18n.current_lang()
+    sys_msg = _pl.get("final_assembler", _lang)
+    _req, _res, _ans = {
+        "it": ("Richiesta", "Risultati strumenti", "Risposta"),
+        "en": ("Request", "Tool results", "Answer"),
+    }.get(_lang, ("Request", "Tool results", "Answer"))
     user_msg = (
-        f"Richiesta: {query}\n\nRisultati strumenti:\n" + "\n".join(obs_lines)
-        + "\n\nRisposta:"
+        f"{_req}: {query}\n\n{_res}:\n" + "\n".join(obs_lines)
+        + f"\n\n{_ans}:"
     )
     try:
-        out = llm_fast(sys_msg, user_msg, max_tokens=160, think=False)
+        out = llm_fast(sys_msg, user_msg, max_tokens=360, think=False)
         return (out or "").strip()
     except Exception as ex:
         log.warning("Executor: synthesize_final fallback failed: %r", ex)

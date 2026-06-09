@@ -35,10 +35,14 @@ class Asset:
             return False
         if self.sha256:
             return _sha256_file(self.dest) == self.sha256.lower()
-        # No checksum to verify against → trust an existing same-size file
-        if self.size and self.dest.stat().st_size == self.size:
-            return True
-        return False
+        # No checksum to verify against → trust an existing same-size file…
+        if self.size:
+            return self.dest.stat().st_size == self.size
+        # …or, with neither sha256 nor size pinned (pre-release placeholders),
+        # trust any existing non-empty file so re-runs stay idempotent and a
+        # pre-seeded model is not re-downloaded. Integrity is the release
+        # pipeline's job (it pins sha256); here we only avoid wasted bandwidth.
+        return self.dest.stat().st_size > 0
 
 
 def _sha256_file(p: Path, chunk: int = 1024 * 1024) -> str:

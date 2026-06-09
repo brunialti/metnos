@@ -28,6 +28,8 @@ import urllib.error
 import urllib.request
 from dataclasses import dataclass, field
 
+import llm_telemetry as _telemetry  # universal pass-through observability hook
+
 
 @dataclass
 class ChatResult:
@@ -101,7 +103,10 @@ class OllamaProvider:
             ],
             "options": {"num_predict": max_tokens, "temperature": temperature},
         }
-        return self._call_chat(payload, expect_tools=False)
+        res = self._call_chat(payload, expect_tools=False)
+        _telemetry.record(provider="ollama", model=self.model,
+                          system=system, user=user, result=res, kind="chat")
+        return res
 
     def chat_with_tools(self, system, user, tools, history=None, *,
                         max_tokens=512, temperature=0, think=None):
@@ -122,7 +127,10 @@ class OllamaProvider:
             "tools": tools,
             "options": {"num_predict": max_tokens, "temperature": temperature},
         }
-        return self._call_chat(payload, expect_tools=True)
+        res = self._call_chat(payload, expect_tools=True)
+        _telemetry.record(provider="ollama", model=self.model,
+                          system=system, user=user, result=res, kind="tools")
+        return res
 
     def _call_chat(self, payload, expect_tools):
         # ADR 0121: sanitize surrogates pre-serialization (vedi LlamaCppProvider).
@@ -316,7 +324,8 @@ class LlamaCppProvider:
         self.id_slot = id_slot
 
     def chat(self, system, user, *, max_tokens=512, temperature=0, think=None,
-             reasoning_budget=1024, grammar: str | None = None):
+             reasoning_budget=1024, grammar: str | None = None,
+             seed: int | None = None):
         """think semantics (allineato a suprastructure/openai_compat):
             False  → enable_thinking=False, niente reasoning budget. Risposta
                      immediata. Ideale per stage procedurali (lookup, schema).
@@ -341,6 +350,15 @@ class LlamaCppProvider:
             "temperature": temperature,
             "max_tokens": max_tokens,
         }
+        # seed fisso DI DEFAULT → determinismo del routing/synth (§7.9, decisione
+        # Roberto 8/6: "privilegia SEMPRE il determinismo"). A temperature=0 il
+        # server resta NON-deterministico per via di MTP/speculative decoding
+        # (draft sampling) col seed random: pinnarlo rende il routing riproducibile
+        # (diagnosi 8/6: read_urls_html flaky 7/8 → 8/8 con seed fisso). Override:
+        # arg `seed`, o env METNOS_LLM_SEED (=-1 per random/diversità esplicita).
+        _seed = seed if seed is not None else int(os.environ.get("METNOS_LLM_SEED", "42"))
+        if _seed >= 0:
+            payload["seed"] = _seed
         if think is False:
             payload["chat_template_kwargs"] = {"enable_thinking": False}
         elif think is True:
@@ -514,17 +532,28 @@ class LlamaCppProvider:
                         arguments=args,
                         call_id=tc.get("id", ""),
                     ))
-            return ToolUseResult(
+            res = ToolUseResult(
                 text=text, tool_calls=tcs,
                 in_tokens=in_toks, out_tokens=out_toks,
                 model=self.model, provider="llamacpp",
                 latency_ms=latency, thinking=thinking,
             )
-        return ChatResult(
-            text=text, in_tokens=in_toks, out_tokens=out_toks,
-            model=self.model, provider="llamacpp",
-            latency_ms=latency, thinking=thinking,
-        )
+        else:
+            res = ChatResult(
+                text=text, in_tokens=in_toks, out_tokens=out_toks,
+                model=self.model, provider="llamacpp",
+                latency_ms=latency, thinking=thinking,
+            )
+        # Universal observability hook (pass-through: never mutates res).
+        _msgs = payload.get("messages") or []
+        _sys = next((m.get("content", "") for m in _msgs
+                     if m.get("role") == "system"), "")
+        _usr = next((m.get("content", "") for m in reversed(_msgs)
+                     if m.get("role") == "user"), "")
+        _telemetry.record(provider="llamacpp", model=self.model,
+                          system=_sys, user=_usr, result=res,
+                          kind="tools" if expect_tools else "chat")
+        return res
 
 
 # --- AnthropicProvider (Messages API) -------------------------------------
@@ -658,10 +687,13 @@ class AnthropicProvider:
         data, latency = self._post(payload)
         text = self._extract_text(data)
         in_toks, out_toks = self._extract_usage(data)
-        return ChatResult(
+        res = ChatResult(
             text=text, in_tokens=in_toks, out_tokens=out_toks,
             model=self.model, provider="anthropic", latency_ms=latency,
         )
+        _telemetry.record(provider="anthropic", model=self.model,
+                          system=system, user=user, result=res, kind="chat")
+        return res
 
     def chat_with_tools(self, system, user, tools, history=None, *,
                         max_tokens=2048, temperature=0, think=None):
@@ -684,11 +716,14 @@ class AnthropicProvider:
         text = self._extract_text(data)
         tcs = self._extract_tool_calls(data)
         in_toks, out_toks = self._extract_usage(data)
-        return ToolUseResult(
+        res = ToolUseResult(
             text=text, tool_calls=tcs,
             in_tokens=in_toks, out_tokens=out_toks,
             model=self.model, provider="anthropic", latency_ms=latency,
         )
+        _telemetry.record(provider="anthropic", model=self.model,
+                          system=system, user=user, result=res, kind="tools")
+        return res
 
     @staticmethod
     def _convert_history(history):
@@ -885,7 +920,10 @@ class OpenAIProvider:
         }
         if self._temp_supported():
             payload["temperature"] = temperature
-        return self._call(payload, expect_tools=False)
+        res = self._call(payload, expect_tools=False)
+        _telemetry.record(provider="openai", model=self.model,
+                          system=system, user=user, result=res, kind="chat")
+        return res
 
     def chat_with_tools(self, system, user, tools, history=None, *,
                         max_tokens=2048, temperature=0, think=None):
@@ -1047,19 +1085,24 @@ def make_provider_from_spec(spec):
     """
     # ADR 0146: default provider = llamacpp (era ollama pre-18/5/2026).
     p = spec.get("provider", "llamacpp")
+    # `endpoint` and `base_url` are aliases — tiers are abstract bindings and a
+    # user config may use either name for the local server URL.
+    endpoint = spec.get("endpoint") or spec.get("base_url")
     if p == "ollama":
         # Post-ADR 0148: niente fallback silenzioso a qwen3:8b. Caller
         # deve specificare model. OllamaProvider stesso ora raise se model
         # mancante.
         return OllamaProvider(
             model=spec.get("model"),
-            endpoint=spec.get("endpoint", "http://localhost:11434"),
+            endpoint=endpoint or "http://localhost:11434",
             think=spec.get("think", False),
         )
     elif p == "llamacpp":
+        # model is optional: a llama-server serves whatever GGUF it loaded, so
+        # an unset/placeholder name is fine (no specific model required).
         return LlamaCppProvider(
-            model=spec.get("model", "gemma-4-26B-A4B-it-UD-Q4_K_M.gguf"),
-            endpoint=spec.get("endpoint", "http://127.0.0.1:8080"),
+            model=spec.get("model") or "local",
+            endpoint=endpoint or "http://127.0.0.1:8080",
         )
     elif p == "anthropic":
         return AnthropicProvider(

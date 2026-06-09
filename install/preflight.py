@@ -43,8 +43,8 @@ def check_python() -> CheckResult:
 
 
 def check_disk(min_free_gb: int = 8) -> CheckResult:
-    """Check free space on the partition holding $METNOS_HOME."""
-    home = Path(os.environ.get("METNOS_HOME") or (Path.home() / ".local" / "share" / "metnos"))
+    """Check free space on the partition holding $METNOS_USER_DATA."""
+    home = Path(os.environ.get("METNOS_USER_DATA") or (Path.home() / ".local" / "share" / "metnos"))
     home.mkdir(parents=True, exist_ok=True)
     free_bytes = shutil.disk_usage(home).free
     free_gb = free_bytes // (1024 ** 3)
@@ -100,8 +100,10 @@ def check_vram(min_free_gb: int = 4) -> CheckResult:
     Strix Halo and similar unified-memory APUs the value reported here
     is approximate.
 
-    Always non-fatal — Metnos works without a local GPU (frontier API
-    only). The warning is informational.
+    Purely INFORMATIONAL — a GPU is OPTIONAL (tiers are abstract; the LLM
+    can run on CPU or via the frontier API). This check never fails and
+    never warns: missing/low VRAM is a supported configuration, not a
+    deficiency. ``min_free_gb`` only tunes the advisory wording.
     """
     # 1. NVIDIA
     if shutil.which("nvidia-smi"):
@@ -123,11 +125,12 @@ def check_vram(min_free_gb: int = 4) -> CheckResult:
                 if free_mbs:
                     free_gb = max(free_mbs) // 1024
                     label = ", ".join(names) or "NVIDIA GPU"
-                    ok = free_gb >= min_free_gb
+                    hint = "" if free_gb >= min_free_gb else (
+                        f" — below ~{min_free_gb} GB, a local GPU LLM may not fit "
+                        "(CPU or frontier API will be used instead)")
                     return CheckResult(
-                        "VRAM",
-                        ok,
-                        f"{free_gb} GB free on {label} (need ≥ {min_free_gb} for local LLM)",
+                        "VRAM", True,
+                        f"{free_gb} GB free on {label}{hint}",
                         fatal=False,
                     )
         except (subprocess.SubprocessError, OSError):
@@ -146,10 +149,12 @@ def check_vram(min_free_gb: int = 4) -> CheckResult:
                     nums = [int(x) for x in ln.replace(",", " ").split() if x.isdigit()]
                     if nums:
                         free_gb = max(nums) // (1024 ** 3)
-                        ok = free_gb >= min_free_gb
+                        hint = "" if free_gb >= min_free_gb else (
+                            f" — below ~{min_free_gb} GB, a local GPU LLM may not fit "
+                            "(CPU or frontier API will be used instead)")
                         return CheckResult(
-                            "VRAM", ok,
-                            f"{free_gb} GB free on AMD GPU (need ≥ {min_free_gb} for local LLM)",
+                            "VRAM", True,
+                            f"{free_gb} GB free on AMD GPU{hint}",
                             fatal=False,
                         )
         except (subprocess.SubprocessError, OSError):
@@ -168,8 +173,8 @@ def check_vram(min_free_gb: int = 4) -> CheckResult:
             )
 
     return CheckResult(
-        "VRAM", False,
-        "no GPU detected — local LLM disabled, planner will use frontier API only",
+        "VRAM", True,
+        "no GPU detected — Metnos will use CPU or the frontier API (a local GPU is optional)",
         fatal=False,
     )
 

@@ -2,7 +2,7 @@
 """llm_router.py — tier resolver fast/middle/wise/frontier per Metnos v1.1.
 
 Architettura: 4 tier (fast / middle / wise / frontier).
-fast/middle/wise: locali di default, "self-hosted first" (the design guide §10.3).
+fast/middle/wise: locali di default, "self-hosted first" (CLAUDE.md §10.3).
 frontier: opt-in online per casi che richiedono massima qualita'
 (es. Opus 4.7 per code-gen complesso, traduzioni di livello superiore,
 synth wise di nuovo executor critico). Aggiunto 5/5/2026 sera.
@@ -71,7 +71,7 @@ CONFIG_PATH = _default_config_path()
 # non un secondo modello via `-md`). La differenza fra tier e' solo nei
 # parametri per-call (think, num_predict) — non nel modello servito.
 # Qualsiasi modifica a questo dict aggiorna la realta' del progetto:
-# tutti gli altri doc (the design guide §11, ADR 0146, docs/LLM_TIERS.md)
+# tutti gli altri doc (CLAUDE.md §11, ADR 0146, docs/LLM_TIERS.md)
 # rinviano qui, non duplicano i valori. Supersedes ADR 0044.
 DEFAULT_TIERS = {
     "fast": {
@@ -153,25 +153,28 @@ def _normalize_tiers_dict(cfg: dict) -> dict:
                 out[k] = dict(v)
     for name in _TOP_LEVEL_TIER_NAMES:
         section = cfg.get(name)
-        if isinstance(section, dict) and "provider" in section and "model" in section:
-            out[name] = dict(section)
+        # A tier is an ABSTRACT role binding: it is configured as soon as a
+        # `provider` is named. `model` is optional (a local llama-server serves
+        # whatever it has loaded); `endpoint`/`base_url` are aliases. We do not
+        # require a concrete model or any accelerator to recognise a tier.
+        if isinstance(section, dict) and "provider" in section:
+            spec = dict(section)
+            if "endpoint" not in spec and "base_url" in spec:
+                spec["endpoint"] = spec["base_url"]
+            out[name] = spec
     return out
 
 
 def _wise_passes_quality_floor(spec: dict) -> bool:
-    """True se la spec di wise rispetta la soglia di qualita' del cap. wise."""
-    p = spec.get("provider", "")
-    m = (spec.get("model") or "").lower()
-    if p == "stub":
-        # stub e' sempre permesso (test only)
-        return True
-    if p in WISE_QUALITY_WHITELIST_ONLINE_PROVIDERS:
-        return True
-    if p in {"llamacpp", "ollama"}:
-        for needle in WISE_QUALITY_WHITELIST_LOCAL:
-            if needle in m:
-                return True
-    return False
+    """Whether the wise tier is acceptably configured.
+
+    Tiers are an ABSTRACT role binding: any named provider satisfies the
+    wise role. We deliberately do NOT gate on model identity or require an
+    accelerator — the operator chooses the concrete model, and a weaker
+    local model means weaker planning, not a configuration error. The old
+    model-name whitelist coupled the abstraction to specific GGUFs and went
+    stale; abstraction first (user directive, tiers pure-abstract)."""
+    return bool(spec.get("provider"))
 
 
 # Preambolo per il caso γ: middle aliasato a wise (stesso modello fisico).

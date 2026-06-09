@@ -23,9 +23,15 @@
 set -euo pipefail
 
 # ─────── Config ───────────────────────────────────────────────────
-METNOS_HOME="${METNOS_HOME:-$HOME/.local/share/metnos}"
-METNOS_STATE="${METNOS_STATE:-$HOME/.local/state/metnos}"
-METNOS_VENV="$METNOS_HOME/.venv"
+# Canonical env contract — matches runtime/config.py (ADR 0148):
+#   METNOS_INSTALL_ROOT  source/code tree (PATH_ROOT)
+#   METNOS_USER_DATA     ~/.local/share/metnos   (models, dbs, turns)
+#   METNOS_USER_STATE    ~/.local/state/metnos   (sentinels, pairings)
+#   METNOS_USER_CONFIG   ~/.config/metnos        (secrets, tier config)
+METNOS_USER_DATA="${METNOS_USER_DATA:-$HOME/.local/share/metnos}"
+METNOS_USER_STATE="${METNOS_USER_STATE:-$HOME/.local/state/metnos}"
+METNOS_USER_CONFIG="${METNOS_USER_CONFIG:-$HOME/.config/metnos}"
+METNOS_VENV="$METNOS_USER_DATA/.venv"
 METNOS_REPO_URL="${METNOS_REPO_URL:-https://github.com/brunialti/metnos.git}"
 PYTHON_MIN_MAJOR=3
 PYTHON_MIN_MINOR=12
@@ -119,7 +125,7 @@ if [ -f "$REPO_DIR/requirements.txt" ]; then
   # Retry: alcune reti corrompono i transfer TLS grandi a tratti (bad record
   # mac). Riprova l'intero install fino a 4 volte prima di arrendersi.
   # Log su file (niente pipe) così l'exit status è quello di pip, non di tail.
-  _piplog="${METNOS_STATE:-/tmp}/install/pip.log"
+  _piplog="${METNOS_USER_STATE:-/tmp}/install/pip.log"
   mkdir -p "$(dirname "$_piplog")" 2>/dev/null || _piplog="/tmp/metnos-pip.log"
   _deps_ok=0
   for _a in 1 2 3 4; do
@@ -137,9 +143,13 @@ else
 fi
 
 # ─────── 5. Hand off to Python installer ──────────────────────────
-mkdir -p "$METNOS_STATE/install"
-export METNOS_HOME METNOS_STATE METNOS_VENV
-export METNOS_REPO_DIR="$REPO_DIR"
+mkdir -p "$METNOS_USER_STATE/install"
+export METNOS_USER_DATA METNOS_USER_STATE METNOS_USER_CONFIG METNOS_VENV
+# Canonical: the runtime reads METNOS_INSTALL_ROOT for PATH_ROOT.
+export METNOS_INSTALL_ROOT="$REPO_DIR"
 
 banner "Handing off to Python installer"
+# Run from REPO_DIR so `python -m install` resolves the installer package
+# from THIS source tree, never from the caller's current directory.
+cd "$REPO_DIR"
 exec "$VENV_PY" -m install "$@"

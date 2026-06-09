@@ -40,14 +40,14 @@ def _onboard_token(admin_key_hex: str) -> str:
 
 
 def _read_admin_key() -> str | None:
-    p = Path(os.environ.get("METNOS_CONFIG", Path.home() / ".config" / "metnos")) / "admin.key"
+    p = Path(os.environ.get("METNOS_USER_CONFIG", Path.home() / ".config" / "metnos")) / "admin.key"
     if not p.exists():
         return None
     return p.read_text().strip()
 
 
 def _write_summary(rows: list[dict]) -> Path:
-    home = Path(os.environ.get("METNOS_HOME", Path.home() / ".local" / "share" / "metnos"))
+    home = Path(os.environ.get("METNOS_USER_DATA", Path.home() / ".local" / "share" / "metnos"))
     home.mkdir(parents=True, exist_ok=True)
     p = home / "install_summary.md"
 
@@ -151,15 +151,32 @@ def run(args: Any) -> dict[str, Any]:
     notes: dict[str, Any] = {}
     ui.banner("Phase 6 — First boot", "Admin onboarding + summary + next steps")
 
-    # Pull port + telegram state from phase 4/5
+    # Pull port + telegram + service state from phase 4/5
     phase4 = state.load(4)
     phase5 = state.load(5)
     port = (phase5.notes.get("http_port") if phase5 else None) or (phase4.notes.get("http_port") if phase4 else 8770)
     telegram_on = bool(phase4 and phase4.notes.get("telegram"))
+    http_enabled = bool(phase5 and phase5.notes.get("http_enabled"))
+    http_healthy = bool(phase5 and phase5.notes.get("http_healthy"))
 
-    # 1. Onboarding URL
+    # 0. If the HTTP service never started, the onboarding URL would be a
+    #    dead link. Be honest (§2.8): tell the user how to recover instead.
+    if not http_enabled:
+        ui.warn("The HTTP service is not running (phase 5 could not start it). "
+                "The onboarding URL below would not resolve yet.")
+        ui.console().print("  [bold]To recover:[/bold]")
+        ui.console().print("    1) Inspect: [cyan]systemctl --user status metnos-http[/cyan]")
+        ui.console().print("    2) Logs:    [cyan]journalctl --user -u metnos-http -e[/cyan]")
+        ui.console().print("    3) Re-run:  [cyan]python -m install --force-phase 5[/cyan]")
+        ui.console().print()
+        notes["http_enabled"] = False
+    elif not http_healthy:
+        ui.warn("metnos-http started but did not pass the health probe yet — it may "
+                "still be warming up. Check `systemctl --user status metnos-http`.")
+
+    # 1. Onboarding URL (only meaningful once the service is up)
     admin_key = _read_admin_key()
-    if admin_key:
+    if admin_key and http_enabled:
         token = _onboard_token(admin_key)
         url = f"http://127.0.0.1:{port}/admin/onboard?t={token}"
         ui.console().print()
@@ -167,8 +184,12 @@ def run(args: Any) -> dict[str, Any]:
         ui.console().print(f"  [link={url}]{url}[/link]")
         ui.console().print()
         notes["onboard_url_emitted"] = True
-    else:
+    elif not admin_key:
         ui.warn("admin.key not found — was phase 4 completed?")
+        notes["onboard_url_emitted"] = False
+    else:
+        # admin.key present but the service is down — URL deferred, not emitted.
+        ui.info("Onboarding URL deferred until the service is up (see recovery steps above).")
         notes["onboard_url_emitted"] = False
 
     # 2. How to connect — Web UI (needs the admin key on first connect)
@@ -204,9 +225,16 @@ def run(args: Any) -> dict[str, Any]:
     ui.ok(f"summary at {summary_path}")
     notes["summary_path"] = str(summary_path)
 
-    # 4. Final note
+    # 4. Final note — honest about whether the service is actually up.
     ui.console().print()
-    ui.console().print("  [bold]All done.[/bold] Metnos is installed and running.")
+    if http_enabled and http_healthy:
+        ui.console().print("  [bold]All done.[/bold] Metnos is installed and running.")
+    elif http_enabled:
+        ui.console().print("  [bold]Installed.[/bold] The service started but has not passed its "
+                           "health check yet — give it a moment, then re-check.")
+    else:
+        ui.console().print("  [bold yellow]Installed, but the service is not running yet.[/bold yellow] "
+                           "Follow the recovery steps above before connecting.")
     ui.console().print("  [dim]Run `cat ~/.local/share/metnos/install_summary.md` anytime.[/dim]")
 
     return notes

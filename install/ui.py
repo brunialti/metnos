@@ -21,36 +21,37 @@ from contextlib import contextmanager
 from typing import Iterable
 
 from rich.console import Console
-from rich.panel import Panel
 from rich.progress import (
     BarColumn,
     DownloadColumn,
     Progress,
     SpinnerColumn,
-    TaskID,
     TextColumn,
     TimeRemainingColumn,
     TransferSpeedColumn,
 )
 from rich.prompt import Confirm, Prompt
-from rich.table import Table
-from rich.text import Text
+from rich.rule import Rule
 
 _console: Console = Console()
 
+# A single restrained accent runs through the whole installer: linear,
+# elegant, no heavy filled bars or boxes. Status is carried by thin rules
+# and aligned glyph lines, not panels.
+_ACCENT = "#3B82C4"
+
 
 def banner(title: str, subtitle: str = "") -> None:
-    """Phase heading. Always preceded by a blank line."""
+    """Phase heading: a thin accent rule with the title, dim subtitle."""
     _console.print()
-    text = Text(f" {title} ", style="bold white on #1A477A")
-    _console.print(text, justify="left")
+    _console.print(Rule(f"[bold {_ACCENT}]{title}[/]", style=_ACCENT, align="left"))
     if subtitle:
         _console.print(f"  [dim]{subtitle}[/dim]")
     _console.print()
 
 
 def step(msg: str) -> None:
-    _console.print(f"  [blue]•[/blue] {msg}")
+    _console.print(f"  [{_ACCENT}]›[/] {msg}")
 
 
 def ok(msg: str) -> None:
@@ -125,17 +126,18 @@ def choice(question: str, options: Iterable[str], *, default: str | None = None)
 
 
 def summary_panel(rows: list[dict]) -> None:
-    """Render the phase status table (used at end of install / on resume)."""
-    table = Table(show_header=True, header_style="bold", border_style="dim")
-    table.add_column("Phase", justify="right", width=5)
-    table.add_column("Name", min_width=24)
-    table.add_column("Status", width=10)
-    table.add_column("Notes", overflow="fold")
+    """Phase status, rendered linearly (no box): one aligned line per phase."""
+    _console.print()
+    _console.print(Rule("[dim]install state[/dim]", style="dim", align="left"))
     for r in rows:
-        status = "[green]done[/green]" if r["done"] else "[yellow]pending[/yellow]"
-        notes_compact = ", ".join(f"{k}={v}" for k, v in (r.get("notes") or {}).items())
-        table.add_row(str(r["phase"]), r.get("name") or "—", status, notes_compact or "—")
-    _console.print(Panel(table, title="[bold]Install state[/bold]", border_style="dim"))
+        glyph = "[green]✓[/green]" if r["done"] else "[dim]·[/dim]"
+        name = (r.get("name") or "—")
+        notes = ", ".join(f"{k}={v}" for k, v in (r.get("notes") or {}).items())
+        line = f"  {glyph} [bold]{r['phase']}[/bold]  {name:<22}"
+        if notes:
+            line += f" [dim]{notes}[/dim]"
+        _console.print(line)
+    _console.print()
 
 
 def console() -> Console:

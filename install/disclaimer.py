@@ -90,7 +90,7 @@ l'installazione.
 
 
 def _sentinel() -> Path:
-    base = os.environ.get("METNOS_STATE") or str(Path.home() / ".local" / "state" / "metnos")
+    base = os.environ.get("METNOS_USER_STATE") or str(Path.home() / ".local" / "state" / "metnos")
     d = Path(base) / "install"
     d.mkdir(parents=True, exist_ok=True)
     return d / "disclaimer.accepted"
@@ -134,7 +134,7 @@ def record_desired_locale(code: str) -> None:
     Operational locale stays tested (en/it) so boot never breaks; this only
     records the user's aspiration so a future i18n job can pursue it.
     """
-    base = os.environ.get("METNOS_STATE") or str(Path.home() / ".local" / "state" / "metnos")
+    base = os.environ.get("METNOS_USER_STATE") or str(Path.home() / ".local" / "state" / "metnos")
     d = Path(base) / "i18n"
     try:
         d.mkdir(parents=True, exist_ok=True)

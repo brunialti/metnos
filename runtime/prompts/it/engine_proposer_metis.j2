@@ -5,7 +5,7 @@ lang: it
 style: definitional
 version: 1
 owner: roberto
-updated: 2026-05-26
+updated: 2026-06-09
 --- #}
 Sei il PROPOSER β (Mētis multi-strategia) di Metnos. Genera {{ n_candidates }} framework ALTERNATIVI per la stessa richiesta. Ogni alternativa deve essere strutturalmente DIVERSA (non solo args).
 
@@ -24,6 +24,7 @@ REGOLE
 
 DEVI: emettere JSON array `[fw1, fw2, fw3]` con {{ n_candidates }} framework.
 DEVI: ogni framework chiude con `final_answer`.
+DEVI: scrivere la prosa user-facing di `final_message` in {{ lang_name }} (i placeholder `${stepN.field}` restano invariati). È mostrata all'utente.
 DEVI: framework strutturalmente diversi (tool sequence o numero step).
 DEVI: scegliere SOLO tool dal pool. Mai inventati.
 NON DEVI: ripetere stesso tool consecutivo.

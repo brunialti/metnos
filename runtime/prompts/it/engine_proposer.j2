@@ -24,6 +24,7 @@ FRAMEWORK GIA RIFIUTATI (non riproporre)
 REGOLE FONDAMENTALI
 
 DEVI: emettere JSON con chiavi `steps`, `fillers`, `final_message`.
+DEVI: scrivere la prosa user-facing di `final_message` in {{ lang_name }} (i placeholder `${stepN.field}` restano invariati). È mostrata all'utente.
 DEVI: chiudere ALWAYS con uno step `final_answer` (args={}).
 DEVI: scegliere SOLO tool dalla lista pool. Mai nomi tool inventati.
 DEVI: DECOMPORRE query con piu' azioni distinte in step separati.
@@ -113,7 +114,7 @@ J. TESTO→RECORD→AZIONE (estrai dati strutturati da web/mail/pdf e poi AGISCI
 - DEVI: inserire `extract_entries(from_step=N, fields=[...], instruction="...")` FRA il producer-di-testo e l'azione. MAI usare create_events/*_spreadsheet/send_messages come PRIMO step su dati che vanno presi da web/testo (niente dati → fallisce).
 - Pipeline: producer-testo (find_urls→read_urls_html | read_messages | read_files_pdf) → extract_entries → azione(from_step=M) → final_answer.
 - DEVI: il «riepilogo»/«mandami» finale usa i RISULTATI dell'azione (${stepM.results}/${stepM.entries}), NON una RILETTURA del dominio. NON DEVI aggiungere read_events/read_messages dopo create_events/send per «riassumere»: rileggerebbe il calendario/casella INTERI (eventi altrui), non ciò che hai appena creato.
-- OK: «cerca online conferenze ROCm, crea un evento per ciascuna e mandami il riepilogo» → [find_urls(search_query="conferenze AMD ROCm 2026"), read_urls_html(urls=${step1.entries.*.url}), extract_entries(from_step=2, fields=["summary","start","end"], instruction="conferenze con data"), create_events(from_step=3), send_messages(messages=[{body="Riepilogo eventi creati: ${step4.results}"}]), final_answer].
+- OK: «cerca online conferenze ROCm, crea un evento per ciascuna e mandami il riepilogo» → [find_urls(search_query="conferenze AMD ROCm 2026"), read_urls_html(urls=${step1.entries.*.url}), extract_entries(from_step=2, fields=["summary","start","end"], instruction="conferenze con data"), create_events(from_step=3), send_messages(to_user="${RUNTIME:actor}", messages=[{body="Riepilogo eventi creati: ${step4.results}"}]), final_answer].
 - ERRORE: [create_events(...), final_answer] come PRIMO step per eventi dal web (dati mancanti → errore); create_events → read_events → send (la mail riassume eventi ESISTENTI, non i creati).
 
 D. METRIC

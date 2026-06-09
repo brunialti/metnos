@@ -39,7 +39,7 @@ class PhaseRecord:
 
 def _state_dir() -> Path:
     """Return ``$METNOS_STATE/install/``, creating it if missing."""
-    base = os.environ.get("METNOS_STATE") or str(Path.home() / ".local" / "state" / "metnos")
+    base = os.environ.get("METNOS_USER_STATE") or str(Path.home() / ".local" / "state" / "metnos")
     d = Path(base) / "install"
     d.mkdir(parents=True, exist_ok=True)
     return d
