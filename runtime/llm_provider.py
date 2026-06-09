@@ -314,7 +314,7 @@ class LlamaCppProvider:
     mode = "local"
     name = "llamacpp"
 
-    def __init__(self, model="gemma-4-26B-A4B-it-UD-Q4_K_M.gguf",
+    def __init__(self, model="local",
                  endpoint="http://127.0.0.1:8080", id_slot: int | None = None):
         self.model = model
         self.endpoint = endpoint.rstrip("/")
