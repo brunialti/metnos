@@ -355,14 +355,24 @@ def _safe_extract(arc: Path, dest: Path) -> bool:
         else:
             import tarfile
             with tarfile.open(arc) as t:
-                for m in t.getmembers():
-                    tgt = (dest / m.name).resolve()
-                    if (m.issym() or m.islnk()
-                            or (not str(tgt).startswith(str(dest) + os.sep) and tgt != dest)):
-                        print(f"    ✗ membro tar ostile: {m.name}"); return False
+                # Python 3.12+ "data" filter vets path traversal, absolute
+                # paths, devices and ESCAPING links — while ALLOWING safe
+                # internal symlinks. Real release tarballs (llama.cpp ships
+                # e.g. libmtmd.so → libmtmd.so.0) rely on those, so we must
+                # NOT blanket-reject every symlink.
                 try:
-                    t.extractall(dest, filter="data")  # py>=3.12
+                    t.extractall(dest, filter="data")
                 except TypeError:
+                    # py<3.11: no data filter — vet manually, allowing a link
+                    # only if its target resolves inside dest.
+                    for m in t.getmembers():
+                        tgt = (dest / m.name).resolve()
+                        if not str(tgt).startswith(str(dest) + os.sep) and tgt != dest:
+                            print(f"    ✗ membro tar ostile: {m.name}"); return False
+                        if m.issym() or m.islnk():
+                            lt = ((dest / m.name).parent / m.linkname).resolve()
+                            if not str(lt).startswith(str(dest) + os.sep):
+                                print(f"    ✗ link tar ostile: {m.name}"); return False
                     t.extractall(dest)
         return True
     except Exception as e:  # noqa: BLE001

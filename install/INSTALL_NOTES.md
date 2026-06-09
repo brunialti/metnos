@@ -72,6 +72,16 @@ production-tested engine env:
   with a locally-generated key, else the loader rejects all handcrafted
   executors and the catalog is empty.
 
+## What the base install MUST include vs what is lazy
+- **Mandatory in the base install** (everything except the JS sidecar): the
+  BGE-M3 embedder AND the local LLM (real model + llama.cpp via `llm_manager`,
+  unless wired to an existing endpoint). These are downloaded for real — a base
+  install is not "done" without a working embedder and a working LLM tier.
+- **Lazy** — the **Playwright JS-render sidecar** only: install it on first use
+  of the web-search capability, NOT during the base install. Do not wire
+  `install/playwright_sidecar.py` into the 6 phases.
+- **Optional** (user choice, off by default): VLM / Photon / SearXNG scaffolds.
+
 ## Hard rules
 - i18n: the **installer UI is English-only** (decision, 9/6). The IT/EN choice
   during install selects **Metnos's runtime language**, NOT the installer's.
