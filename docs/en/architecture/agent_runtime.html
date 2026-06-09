@@ -701,7 +701,7 @@ The planner has three safety mechanisms against loops and ill-posed actions. The
 <tr><th>Mechanism</th><th>What it does</th><th>Default</th></tr>
 <tr><td><code>cap_steps</code></td><td>Maximum number of steps per turn.</td><td>30</td></tr>
 <tr><td><code>cap_same_executor</code></td><td>Limit of calls of the same executor in the turn.</td><td>10 (2 for vectorial executors)</td></tr>
-<tr><td><strong>guard duplicate read</strong></td><td>If the LLM re-invokes <code>read_files</code>/<code>get_urls</code> with the same path/url as a previous step, the runtime does not re-execute: it returns an observation that says "you already have this data at step X, formulate the final_answer".</td><td>active</td></tr>
+<tr><td><strong>guard duplicate read</strong></td><td>If the LLM re-invokes <code>read_files</code>/<code>write_files</code>/<code>get_urls</code> with the same path/url as a previous step, the runtime does not re-execute: it returns an observation that says "you already have this data at step X, formulate the final_answer".</td><td>active</td></tr>
 </table>
 
 <p>

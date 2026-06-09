@@ -701,7 +701,7 @@ Il pianificatore ha tre meccanismi di safety contro loop e azioni mal poste. Son
 <tr><th>Meccanismo</th><th>Cosa fa</th><th>Default</th></tr>
 <tr><td><code>cap_steps</code></td><td>Limite massimo di passi per turno.</td><td>30</td></tr>
 <tr><td><code>cap_same_executor</code></td><td>Limite di chiamate dello stesso executor nel turno.</td><td>10 (2 per gli executor vettoriali)</td></tr>
-<tr><td><strong>guard duplicate read</strong></td><td>Se l'LLM richiama <code>read_files</code>/<code>get_urls</code> con lo stesso path/url di un passo precedente, il runtime non ri-esegue: restituisce un'observation che dice "hai gi&agrave; questo dato al passo X, formula la final_answer".</td><td>attivo</td></tr>
+<tr><td><strong>guard duplicate read</strong></td><td>Se l'LLM richiama <code>read_files</code>/<code>write_files</code>/<code>get_urls</code> con lo stesso path/url di un passo precedente, il runtime non ri-esegue: restituisce un'observation che dice "hai gi&agrave; questo dato al passo X, formula la final_answer".</td><td>attivo</td></tr>
 </table>
 
 <p>
@@ -726,7 +726,7 @@ Per ogni turno il pianificatore scrive una riga JSONL in <code>~/.local/share/me
  <li><code>candidates</code> &mdash; nomi degli executor passati al LLM dopo pre-filter.</li>
  <li><code>steps</code> &mdash; lista di step con: numero, llm in/out tokens, latenza, tool chiamato, args raw e risolti, esito di validation/sandbox/vaglio, result.</li>
  <li><code>final_message</code> &mdash; testo finale all'utente.</li>
- <li><code>final_kind</code> &mdash; uno di <code>answer | error | cap_steps | cap_same_executor</code>.</li>
+ <li><code>final_kind</code> &mdash; uno di <code>answer | ask | awaiting | needs_inputs | cap_steps | cap_same_executor | loop_break | error</code>.</li>
 </ul>
 
 <p>
