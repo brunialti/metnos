@@ -35,10 +35,14 @@ class Asset:
             return False
         if self.sha256:
             return _sha256_file(self.dest) == self.sha256.lower()
-        # No checksum to verify against → trust an existing same-size file
-        if self.size and self.dest.stat().st_size == self.size:
-            return True
-        return False
+        # No checksum to verify against → trust an existing same-size file…
+        if self.size:
+            return self.dest.stat().st_size == self.size
+        # …or, with neither sha256 nor size pinned (pre-release placeholders),
+        # trust any existing non-empty file so re-runs stay idempotent and a
+        # pre-seeded model is not re-downloaded. Integrity is the release
+        # pipeline's job (it pins sha256); here we only avoid wasted bandwidth.
+        return self.dest.stat().st_size > 0
 
 
 def _sha256_file(p: Path, chunk: int = 1024 * 1024) -> str:
@@ -52,13 +56,32 @@ def _sha256_file(p: Path, chunk: int = 1024 * 1024) -> str:
     return h.hexdigest()
 
 
+def _require_https(url: str, label: str) -> bool:
+    """Fail-closed: only https:// is acceptable for downloaded artifacts.
+
+    A plaintext http:// URL (or one that resolves to http after redirect)
+    leaves the artifact open to MITM tampering — and we run/sign these
+    artifacts. Reject before any byte is fetched.
+    """
+    if not url.lower().startswith("https://"):
+        ui.warn(f"{label}: insecure URL rejected (must be https://): {url[:80]}")
+        return False
+    return True
+
+
 def fetch(asset: Asset, *, timeout: float = 60.0) -> bool:
     """Download ``asset`` to disk with a progress bar.
 
     Returns True on success, False on failure (caller decides whether
     failure is fatal). On checksum mismatch, the partial file is
-    deleted.
+    deleted. Rejects non-https URLs and warns loudly when no checksum
+    is available to verify against.
     """
+    if not _require_https(asset.url, asset.name):
+        return False
+    if not asset.sha256:
+        ui.warn(f"{asset.name}: NO sha256 to verify — integrity NOT guaranteed")
+
     if asset.already_present():
         ui.ok(f"{asset.name}: already present at {asset.dest}")
         return True
@@ -75,6 +98,10 @@ def fetch(asset: Asset, *, timeout: float = 60.0) -> bool:
 
     try:
         with httpx.stream("GET", asset.url, headers=headers, timeout=timeout, follow_redirects=True) as r:
+            if str(r.url).lower().startswith("http://"):
+                # A redirect downgraded https→http: refuse the body.
+                ui.warn(f"{asset.name}: redirect downgraded to insecure http — aborting")
+                return False
             if r.status_code not in (200, 206):
                 ui.warn(f"{asset.name}: HTTP {r.status_code}")
                 return False

@@ -270,8 +270,26 @@ def _http_json(url: str) -> dict:
         return _json.load(r)
 
 
-def _download(url: str, dest: Path, *, attempts: int = 5) -> bool:
-    """Scarica url→dest con retry (la rete .33 corrompe transfer grandi a tratti)."""
+def _sha256_file(p: Path) -> str:
+    import hashlib
+    h = hashlib.sha256()
+    with open(p, "rb") as f:
+        for chunk in iter(lambda: f.read(1024 * 256), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def _download(url: str, dest: Path, *, attempts: int = 5,
+              expected_sha256: str | None = None) -> bool:
+    """Scarica url→dest con retry + VERIFICA INTEGRITÀ (C1, fail-closed).
+
+    Solo HTTPS. Se `expected_sha256` è dato e NON combacia → scarta il file e
+    fallisce (mai eseguire/estrarre un artefatto non verificato). Se l'hash
+    atteso è None lo scarica ma AVVISA che l'integrità non è verificata.
+    """
+    if not url.lower().startswith("https://"):
+        print(f"    RIFIUTO download non-HTTPS: {url[:60]}")
+        return False
     dest.parent.mkdir(parents=True, exist_ok=True)
     last = ""
     for i in range(1, attempts + 1):
@@ -279,14 +297,77 @@ def _download(url: str, dest: Path, *, attempts: int = 5) -> bool:
             req = _ur.Request(url, headers={"User-Agent": "metnos-llm-manager"})
             with _ur.urlopen(req, timeout=120) as r, open(dest, "wb") as f:
                 shutil.copyfileobj(r, f, length=1024 * 256)
-            return True
         except (_ue.URLError, OSError, Exception) as e:  # noqa: BLE001
             last = str(e)
             print(f"    download tentativo {i}/{attempts} fallito: {last[:80]}")
             if dest.exists():
                 dest.unlink()
+            continue
+        # Verifica integrità DOPO il download, PRIMA di usarlo.
+        if expected_sha256:
+            got = _sha256_file(dest)
+            if got.lower() != expected_sha256.lower():
+                print(f"    ✗ SHA256 MISMATCH: atteso {expected_sha256[:16]}…, "
+                      f"ottenuto {got[:16]}… → scarto (possibile manomissione)")
+                dest.unlink(missing_ok=True)
+                last = "sha256 mismatch"
+                continue
+            print(f"    ✓ SHA256 verificato ({got[:16]}…)")
+        else:
+            print("    ! integrità NON verificata (nessun SHA256 atteso): "
+                  "pin l'hash prima del rilascio pubblico.")
+        return True
     print(f"    download FALLITO dopo {attempts}: {last[:120]}")
     return False
+
+
+def _hf_expected_sha256(hf_repo: str, hf_file: str) -> str | None:
+    """Recupera lo SHA256 pubblicato da HuggingFace per il file (LFS pointer).
+
+    Permette di verificare il download contro l'hash della SORGENTE (cattura
+    corruzione + un MITM banale). None se non disponibile."""
+    try:
+        meta = _http_json(
+            f"https://huggingface.co/api/models/{hf_repo}"
+            f"?expand[]=siblings&expand[]=lfs")
+        for s in (meta.get("siblings") or []):
+            if s.get("rfilename") == hf_file:
+                lfs = s.get("lfs") or {}
+                return lfs.get("sha256") or lfs.get("oid")
+    except Exception:  # noqa: BLE001
+        return None
+    return None
+
+
+def _safe_extract(arc: Path, dest: Path) -> bool:
+    """Estrae zip/tar RIFIUTANDO membri pericolosi (path traversal, assoluti,
+    symlink) — H4. Ritorna False se un membro è ostile."""
+    dest = dest.resolve()
+    try:
+        if arc.name.endswith(".zip"):
+            import zipfile
+            with zipfile.ZipFile(arc) as z:
+                for n in z.namelist():
+                    tgt = (dest / n).resolve()
+                    if not str(tgt).startswith(str(dest) + os.sep) and tgt != dest:
+                        print(f"    ✗ membro zip ostile: {n}"); return False
+                z.extractall(dest)
+        else:
+            import tarfile
+            with tarfile.open(arc) as t:
+                for m in t.getmembers():
+                    tgt = (dest / m.name).resolve()
+                    if (m.issym() or m.islnk()
+                            or (not str(tgt).startswith(str(dest) + os.sep) and tgt != dest)):
+                        print(f"    ✗ membro tar ostile: {m.name}"); return False
+                try:
+                    t.extractall(dest, filter="data")  # py>=3.12
+                except TypeError:
+                    t.extractall(dest)
+        return True
+    except Exception as e:  # noqa: BLE001
+        print(f"    estrazione fallita: {e}")
+        return False
 
 
 def _pick_llama_asset(assets: list, backend: str) -> dict | None:
@@ -330,8 +411,16 @@ def acquire_llama(backend: str, dest: Path) -> Path | None:
     if existing:
         print(f"    llama-server già presente: {existing}")
         return existing
+    # Pin del tag release (riproducibilità + verificabilità). Override env;
+    # default a un tag pinnato, fallback a latest con avviso.
+    tag = os.environ.get("METNOS_LLAMA_TAG", "").strip()
+    api = (f"https://api.github.com/repos/ggml-org/llama.cpp/releases/tags/{tag}"
+           if tag else
+           "https://api.github.com/repos/ggml-org/llama.cpp/releases/latest")
+    if not tag:
+        print("    ! release NON pinnata (latest): pin METNOS_LLAMA_TAG per riproducibilità.")
     try:
-        rel = _http_json("https://api.github.com/repos/ggml-org/llama.cpp/releases/latest")
+        rel = _http_json(api)
     except Exception as e:  # noqa: BLE001
         print(f"    release API fallita: {e}")
         return None
@@ -343,20 +432,15 @@ def acquire_llama(backend: str, dest: Path) -> Path | None:
     print(f"    asset: {asset['name']} ({asset.get('size',0)//(1024*1024)} MB)")
     dest.mkdir(parents=True, exist_ok=True)
     arc = dest / asset["name"]
-    if not _download(asset["browser_download_url"], arc):
+    # GitHub espone un digest sha256 sull'asset nelle API recenti (campo
+    # `digest`: "sha256:..."). Se presente, verifica fail-closed.
+    exp = None
+    dg = asset.get("digest") or ""
+    if isinstance(dg, str) and dg.startswith("sha256:"):
+        exp = dg.split(":", 1)[1]
+    if not _download(asset["browser_download_url"], arc, expected_sha256=exp):
         return None
-    # estrazione
-    try:
-        if arc.name.endswith(".zip"):
-            import zipfile
-            with zipfile.ZipFile(arc) as z:
-                z.extractall(dest)
-        else:
-            import tarfile
-            with tarfile.open(arc) as t:
-                t.extractall(dest)
-    except Exception as e:  # noqa: BLE001
-        print(f"    estrazione fallita: {e}")
+    if not _safe_extract(arc, dest):       # H4: estrazione anti path-traversal
         return None
     binp = _find_llama_server(dest)
     if binp:
@@ -365,13 +449,20 @@ def acquire_llama(backend: str, dest: Path) -> Path | None:
 
 
 def download_model(hf_repo: str, hf_file: str, dest: Path) -> bool:
-    """Scarica un GGUF da HuggingFace (resolve URL). Idempotente."""
+    """Scarica un GGUF da HuggingFace con VERIFICA SHA256 (dall'API HF). Idempotente."""
+    exp = _hf_expected_sha256(hf_repo, hf_file)
     if dest.exists() and dest.stat().st_size > 1024 * 1024:
-        print(f"    modello già presente: {dest}")
-        return True
+        # Verifica-on-reuse per hash, non per dimensione (L5): un file corrotto
+        # della stessa dimensione NON deve essere accettato.
+        if exp and _sha256_file(dest).lower() != exp.lower():
+            print(f"    modello esistente con hash errato → ri-scarico")
+            dest.unlink(missing_ok=True)
+        else:
+            print(f"    modello già presente{' (sha verificato)' if exp else ''}: {dest}")
+            return True
     url = f"https://huggingface.co/{hf_repo}/resolve/main/{hf_file}?download=true"
     print(f"    scarico {hf_repo}/{hf_file} …")
-    return _download(url, dest, attempts=6)
+    return _download(url, dest, attempts=6, expected_sha256=exp)
 
 
 def _write_systemd_unit(llama_bin: Path, model_file: Path, endpoint: str,

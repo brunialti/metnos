@@ -1057,19 +1057,24 @@ def make_provider_from_spec(spec):
     """
     # ADR 0146: default provider = llamacpp (era ollama pre-18/5/2026).
     p = spec.get("provider", "llamacpp")
+    # `endpoint` and `base_url` are aliases — tiers are abstract bindings and a
+    # user config may use either name for the local server URL.
+    endpoint = spec.get("endpoint") or spec.get("base_url")
     if p == "ollama":
         # Post-ADR 0148: niente fallback silenzioso a qwen3:8b. Caller
         # deve specificare model. OllamaProvider stesso ora raise se model
         # mancante.
         return OllamaProvider(
             model=spec.get("model"),
-            endpoint=spec.get("endpoint", "http://localhost:11434"),
+            endpoint=endpoint or "http://localhost:11434",
             think=spec.get("think", False),
         )
     elif p == "llamacpp":
+        # model is optional: a llama-server serves whatever GGUF it loaded, so
+        # an unset/placeholder name is fine (no specific model required).
         return LlamaCppProvider(
-            model=spec.get("model", "gemma-4-26B-A4B-it-UD-Q4_K_M.gguf"),
-            endpoint=spec.get("endpoint", "http://127.0.0.1:8080"),
+            model=spec.get("model") or "local",
+            endpoint=endpoint or "http://127.0.0.1:8080",
         )
     elif p == "anthropic":
         return AnthropicProvider(

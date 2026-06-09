@@ -42,7 +42,7 @@ _SQLITE_FILES = (
 
 
 def _data_dir() -> Path:
-    return Path(os.environ.get("METNOS_HOME", Path.home() / ".local" / "share" / "metnos"))
+    return Path(os.environ.get("METNOS_USER_DATA", Path.home() / ".local" / "share" / "metnos"))
 
 
 def _init_sqlite(path: Path, schema: str | None) -> bool:
@@ -63,38 +63,54 @@ def _init_sqlite(path: Path, schema: str | None) -> bool:
 
 
 def _init_i18n(data: Path) -> bool:
-    """Bundle/import the i18n.sqlite. Placeholder for now."""
+    """Seed ``i18n.sqlite`` from the bundled catalog.
+
+    The runtime (``runtime/i18n.py``) reads the ``i18n`` table (key, lang,
+    text, needs_translation, source_lang, …) and resolves MSG_*/ERR_*/WARN_*
+    by key+lang. A fresh install MUST seed the full catalog or user-facing
+    strings render as ``<missing:MSG_*>``. We copy the bundled seed
+    (``install/data/i18n_seed.sqlite``). If it is absent, create an empty
+    ``i18n`` table with the correct schema and WARN (the background i18n
+    translator can fill it later, but coverage is incomplete until then).
+    """
+    import shutil
     p = data / "i18n.sqlite"
     if p.exists():
         ui.info("i18n.sqlite: exists, leaving in place")
         return False
+    repo = os.environ.get("METNOS_INSTALL_ROOT", "")
+    seed = Path(repo) / "install" / "data" / "i18n_seed.sqlite" if repo else None
+    if seed and seed.exists():
+        shutil.copyfile(seed, p)
+        p.chmod(0o600)
+        try:
+            n = sqlite3.connect(str(p)).execute(
+                "SELECT count(DISTINCT key) FROM i18n").fetchone()[0]
+        except sqlite3.Error:
+            n = "?"
+        ui.ok(f"i18n.sqlite seeded from bundled catalog ({n} keys, en+it)")
+        return True
+    # Fallback: correct schema, empty — never the wrong `messages` table.
     with sqlite3.connect(str(p)) as conn:
-        conn.executescript("""
-            CREATE TABLE IF NOT EXISTS messages (
-                key  TEXT NOT NULL,
-                lang TEXT NOT NULL,
-                text TEXT NOT NULL,
-                PRIMARY KEY (key, lang)
-            );
-            INSERT OR IGNORE INTO messages (key, lang, text) VALUES
-              ('MSG_WELCOME_HOST',   'en', 'Hello — Metnos is ready.'),
-              ('MSG_WELCOME_HOST',   'it', 'Ciao — Metnos è pronto.'),
-              ('MSG_TURN_ACCEPTED',  'en', 'Working on it.'),
-              ('MSG_TURN_ACCEPTED',  'it', 'Ci sto lavorando.'),
-              ('MSG_UNDO_DONE',      'en', 'Undone.'),
-              ('MSG_UNDO_DONE',      'it', 'Annullato.');
-        """)
+        conn.executescript(
+            "CREATE TABLE IF NOT EXISTS i18n ("
+            "  key TEXT NOT NULL, lang TEXT NOT NULL, text TEXT,"
+            "  needs_translation INTEGER NOT NULL DEFAULT 0, source_lang TEXT,"
+            "  updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')),"
+            "  PRIMARY KEY (key, lang));")
         conn.commit()
     p.chmod(0o600)
-    ui.ok(f"i18n.sqlite initialised with bootstrap keys (en+it)")
+    ui.warn("i18n seed catalog not bundled — created an empty i18n table. "
+            "User-facing strings may show <missing:KEY> until the translator "
+            "runs. Release pipeline should ship install/data/i18n_seed.sqlite.")
     return True
 
 
 def _verify_source() -> dict[str, Any]:
-    """Check $METNOS_REPO_DIR has the expected layout."""
-    repo = os.environ.get("METNOS_REPO_DIR")
+    """Check $METNOS_INSTALL_ROOT has the expected layout."""
+    repo = os.environ.get("METNOS_INSTALL_ROOT")
     if not repo:
-        ui.warn("METNOS_REPO_DIR not set — did bootstrap.sh complete?")
+        ui.warn("METNOS_INSTALL_ROOT not set — did bootstrap.sh complete?")
         return {"source_ok": False}
     root = Path(repo)
     missing = [d for d in _EXPECTED_SOURCE_DIRS if not (root / d).exists()]
@@ -113,10 +129,10 @@ def _sign_executors() -> dict[str, Any]:
     passo il loader rifiuta tutti gli executor handcrafted e il catalogo resta
     ai soli builtin (server vuoto). Idempotente.
     """
-    repo = os.environ.get("METNOS_REPO_DIR")
+    repo = os.environ.get("METNOS_INSTALL_ROOT")
     venv = os.environ.get("METNOS_VENV")
     if not repo or not venv:
-        ui.warn("METNOS_REPO_DIR/METNOS_VENV non settati — salto la firma executor")
+        ui.warn("METNOS_INSTALL_ROOT/METNOS_VENV non settati — salto la firma executor")
         return {"signed": False}
     py = str(Path(venv) / "bin" / "python")
     sign_py = str(Path(repo) / "runtime" / "sign.py")

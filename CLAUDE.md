@@ -233,6 +233,9 @@ Tipi: `user`, `feedback`, `project`, `reference`. Indice in `~/.claude/projects/
 
 > **Indice completo estratto** → `decisions/anti-regression-index.md` (~100 meccanismi, una riga ciascuno con call-site + ADR). Aggiornare LÌ, non qui, quando si aggiunge/rimuove un meccanismo. Regola d'oro invariata: una riga per meccanismo, call-site essenziale; dettagli/env/bench/date → ADR.
 
+### 10.7 Installer: leggere INSTALL_NOTES prima di toccarlo
+OBBLIGO: prima di modificare QUALSIASI file sotto `install/`, leggere `install/INSTALL_NOTES.md` (contratto env install↔runtime, tier pure-abstract, seed dati = i18n/embedder/executor, regole onestà/i18n/UI). L'installer deve **replicare un ambiente di esercizio completo e funzionante** da un checkout git, non solo far bootare il server: validare ogni modifica con l'harness isolato (utente dedicato + clone + porta alt) e un turno reale (`kind=answer`), mai con "è partito". Aggiornare INSTALL_NOTES quando cambia un contratto.
+
 ## 11. Decisioni di runtime
 
 - **LLM tier**: 4 tier (fast/middle/wise/frontier). **SoT canonica**: `runtime/llm_router.py::DEFAULT_TIERS` + ADR 0146 (consolidamento 18/5/2026). I tre tier locali (fast/middle/wise) puntano tutti allo stesso `llama-server :8080` (Gemma 4 26B + drafter E2B speculative); la differenza fra tier sono i parametri per-call (`think`, `num_predict`). frontier = Anthropic Opus 4.7 opt-in. Niente piu' `qwen3:8b` (ADR 0044 superseded da 0106+0146).

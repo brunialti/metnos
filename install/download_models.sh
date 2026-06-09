@@ -60,11 +60,14 @@ FACE_DIR="${MODELS_DIR}/face"
 log() { printf '[download_models] %s\n' "$*"; }
 err() { printf '[download_models] ERROR: %s\n' "$*" >&2; }
 
+# Esegue argv DIRETTAMENTE (niente `eval`: i path derivano da env
+# METNOS_MODELS_DIR controllabile dall'utente → eval = injection). I caller
+# passano gli argomenti separati, non una stringa shell.
 run_or_print() {
     if [[ $DRY_RUN -eq 1 ]]; then
         printf '  [dry-run] %s\n' "$*"
     else
-        eval "$@"
+        "$@"
     fi
 }
 
@@ -72,7 +75,7 @@ ensure_dir() {
     local d="$1"
     if [[ ! -d "$d" ]]; then
         log "mkdir -p $d"
-        run_or_print "mkdir -p '$d'"
+        run_or_print mkdir -p "$d"
     fi
 }
 
@@ -92,7 +95,7 @@ fetch() {
                 return 0
             else
                 log "sha256 mismatch su $dest, ridownload"
-                run_or_print "rm -f '$dest'"
+                run_or_print rm -f "$dest"
             fi
         else
             log "skip $dest (gia' presente, sha256 TBD)"
@@ -105,9 +108,19 @@ fetch() {
         fi
     fi
 
+    # Solo https, e nessun downgrade su redirect (--proto-redir '=https'):
+    # questi blob vengono eseguiti/firmati, un MITM su http sarebbe RCE.
+    case "$url" in
+        https://*) : ;;
+        *) err "URL non-https rifiutato (integrità non garantibile): $url"; return 1 ;;
+    esac
+    if [[ -z "$expected_sha" || "$expected_sha" == "<TBD-on-download>" || "$expected_sha" == "<TBD-on-extract>" ]]; then
+        log "  ! nessun sha256 atteso per $dest — integrità NON verificata (TOFU)"
+    fi
     log "GET $url → $dest"
-    run_or_print "curl -L --fail --progress-bar --output '$dest.partial' '$url'"
-    run_or_print "mv '$dest.partial' '$dest'"
+    run_or_print curl -fL --proto '=https' --proto-redir '=https' \
+        --progress-bar --output "$dest.partial" "$url"
+    run_or_print mv "$dest.partial" "$dest"
 
     if [[ $DRY_RUN -eq 0 ]]; then
         local actual
@@ -155,7 +168,9 @@ download_face() {
 
     if [[ ! -f "$FACE_DIR/det_10g.onnx" || ! -f "$FACE_DIR/w600k_r50.onnx" ]]; then
         log "unzip $zip_dest → $FACE_DIR (selettivo: det_10g, w600k_r50)"
-        run_or_print "unzip -o '$zip_dest' 'det_10g.onnx' 'w600k_r50.onnx' -d '$FACE_DIR'"
+        # Estrazione selettiva per NOME esatto (basename) in -d FACE_DIR:
+        # niente path-traversal possibile (entry arbitrarie ignorate).
+        run_or_print unzip -o -j "$zip_dest" det_10g.onnx w600k_r50.onnx -d "$FACE_DIR"
     else
         log "skip unzip (det_10g.onnx + w600k_r50.onnx gia' presenti)"
     fi

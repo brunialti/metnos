@@ -1,0 +1,19 @@
+[Unit]
+Description=Metnos Playwright JS-render sidecar (local, no external provider)
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=@VENV@/bin/python -m playwright_sidecar.server --host 127.0.0.1 --port 8771
+WorkingDirectory=@REPO_DIR@/runtime
+Restart=on-failure
+RestartSec=10
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONPATH=@REPO_DIR@:@REPO_DIR@/runtime
+Environment=METNOS_INSTALL_ROOT=@REPO_DIR@
+# Chromium headless e' scaricato in locale; il rendering NON passa da
+# nessun servizio esterno (privacy: la pagina e' caricata da questa macchina).
+Environment=PLAYWRIGHT_BROWSERS_PATH=@HOME_DIR@/.cache/ms-playwright
+
+[Install]
+WantedBy=default.target

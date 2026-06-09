@@ -22,7 +22,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from .. import preflight, ui
+from .. import i18n, preflight, ui
 
 
 # Runtime deps — kept tight to minimise install time. The skill bundles
@@ -52,9 +52,9 @@ def _venv_pip() -> str:
 
 def _runtime_dirs() -> list[Path]:
     """Standard directories created during bootstrap (empty)."""
-    home = Path(os.environ.get("METNOS_HOME", Path.home() / ".local" / "share" / "metnos"))
-    cfg = Path(os.environ.get("METNOS_CONFIG", Path.home() / ".config" / "metnos"))
-    state = Path(os.environ.get("METNOS_STATE", Path.home() / ".local" / "state" / "metnos"))
+    home = Path(os.environ.get("METNOS_USER_DATA", Path.home() / ".local" / "share" / "metnos"))
+    cfg = Path(os.environ.get("METNOS_USER_CONFIG", Path.home() / ".config" / "metnos"))
+    state = Path(os.environ.get("METNOS_USER_STATE", Path.home() / ".local" / "state" / "metnos"))
     return [
         home,
         home / "credentials",
@@ -74,12 +74,12 @@ def _install_deps() -> tuple[int, int]:
     """Install the runtime deps. Returns (installed, already_present)."""
     pip = _venv_pip()
     if not Path(pip).exists():
-        ui.fail(f"pip not found at {pip} — was bootstrap.sh run?")
+        ui.fail(i18n.t("p1_pip_not_found", pip=pip))
 
     installed = 0
     skipped = 0
     with ui.progress() as p:
-        task = p.add_task("Installing Python dependencies", total=len(_RUNTIME_DEPS))
+        task = p.add_task(i18n.t("p1_progress_deps"), total=len(_RUNTIME_DEPS))
         for dep in _RUNTIME_DEPS:
             # `pip install` is the simplest path; pip's resolver handles
             # already-satisfied as a quick no-op. We capture output so
@@ -90,14 +90,15 @@ def _install_deps() -> tuple[int, int]:
                     capture_output=True, text=True, timeout=180,
                 )
                 if r.returncode != 0:
-                    ui.warn(f"failed to install {dep}: {r.stderr.strip().splitlines()[-1] if r.stderr else 'unknown'}")
+                    reason = r.stderr.strip().splitlines()[-1] if r.stderr else 'unknown'
+                    ui.warn(i18n.t("p1_dep_install_failed", dep=dep, reason=reason))
                 else:
                     if "already satisfied" in (r.stdout + r.stderr).lower():
                         skipped += 1
                     else:
                         installed += 1
             except subprocess.TimeoutExpired:
-                ui.warn(f"timeout installing {dep}, skipping")
+                ui.warn(i18n.t("p1_dep_timeout", dep=dep))
             p.update(task, advance=1)
     return installed, skipped
 

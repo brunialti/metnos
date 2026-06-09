@@ -43,8 +43,8 @@ def check_python() -> CheckResult:
 
 
 def check_disk(min_free_gb: int = 8) -> CheckResult:
-    """Check free space on the partition holding $METNOS_HOME."""
-    home = Path(os.environ.get("METNOS_HOME") or (Path.home() / ".local" / "share" / "metnos"))
+    """Check free space on the partition holding $METNOS_USER_DATA."""
+    home = Path(os.environ.get("METNOS_USER_DATA") or (Path.home() / ".local" / "share" / "metnos"))
     home.mkdir(parents=True, exist_ok=True)
     free_bytes = shutil.disk_usage(home).free
     free_gb = free_bytes // (1024 ** 3)

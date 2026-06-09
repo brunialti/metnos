@@ -29,7 +29,7 @@ from .. import ui
 
 
 def _config_dir() -> Path:
-    d = Path(os.environ.get("METNOS_CONFIG", Path.home() / ".config" / "metnos"))
+    d = Path(os.environ.get("METNOS_USER_CONFIG", Path.home() / ".config" / "metnos"))
     d.mkdir(parents=True, exist_ok=True)
     return d
 
@@ -84,16 +84,41 @@ def _ask_admin(args: Any) -> dict[str, Any]:
     return {"admin_username": name}
 
 
-def _ask_http_port(args: Any) -> int:
-    if args.yes:
-        return 8770
-    default = "8770"
-    raw = ui.ask("HTTP port for the Metnos dashboard", default=default)
+def _port_in_use(port: int) -> bool:
+    import socket
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.settimeout(0.5)
+        return s.connect_ex(("127.0.0.1", port)) == 0
+
+
+def _valid_port(raw: str) -> int | None:
     try:
-        return int(raw)
-    except ValueError:
-        ui.warn(f"not an integer '{raw}', using {default}")
-        return int(default)
+        p = int(raw)
+    except (ValueError, TypeError):
+        return None
+    return p if 1024 <= p <= 65535 else None
+
+
+def _ask_http_port(args: Any) -> int:
+    """HTTP dashboard port. Honours $METNOS_HTTP_PORT, validates range + in-use."""
+    default = os.environ.get("METNOS_HTTP_PORT", "8770")
+    if _valid_port(default) is None:
+        default = "8770"
+    if args.yes:
+        port = int(default)
+        if _port_in_use(port):
+            ui.warn(f"port {port} is already in use — set METNOS_HTTP_PORT to a free port.")
+        return port
+    while True:
+        raw = ui.ask("HTTP port for the Metnos dashboard (1024-65535)", default=default)
+        port = _valid_port(raw)
+        if port is None:
+            ui.warn(f"'{raw}' is not a valid port (1024-65535) — try again.")
+            continue
+        if _port_in_use(port):
+            if not ui.confirm(f"port {port} looks already in use — use it anyway?", default=False):
+                continue
+        return port
 
 
 def _ask_telegram(args: Any) -> bool:

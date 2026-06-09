@@ -26,7 +26,7 @@ import sys
 import time
 from dataclasses import dataclass
 
-from . import disclaimer, state, ui
+from . import disclaimer, i18n, state, ui
 
 # Phase registry: (number, module-name, human-name)
 _PHASES = [
@@ -82,11 +82,8 @@ def _parse() -> Args:
 
 
 def _welcome() -> None:
-    ui.banner("Metnos installer", "Self-hosted AI agent · AGPL-3.0 · metnos.com")
-    ui.console().print(
-        "  [dim]This installer will set up Metnos in [bold]six phases[/bold]. "
-        "Each phase is idempotent: you can interrupt and resume at any time.[/dim]\n"
-    )
+    ui.banner(i18n.t("main_welcome_title"), i18n.t("main_welcome_subtitle"))
+    ui.console().print(i18n.t("main_welcome_intro"))
     rows = state.summary()
     ui.summary_panel(rows)
 
@@ -102,54 +99,51 @@ def _gate_language_and_disclaimer(args: Args) -> str:
     """
     existing = disclaimer.read_locale()
     if existing and disclaimer.already_accepted():
-        ui.info(f"Disclaimer previously accepted (lang={existing}). Re-show with --force-phase 0.")
+        ui.info(i18n.t("main_disclaimer_already", existing=existing))
         return existing
 
     if args.yes:
-        ui.fail(
-            "The POC disclaimer must be accepted interactively at least once. "
-            "Re-run without --yes, accept, then re-add --yes for subsequent runs."
-        )
+        ui.fail(i18n.t("main_disclaimer_needs_interactive"))
 
     lang = disclaimer.ask_language()
     if not disclaimer.show_and_confirm(lang):
-        ui.fail("Disclaimer not accepted — aborting installation.", exit_code=3)
-    ui.ok(f"Disclaimer accepted; locale = {lang}")
+        ui.fail(i18n.t("main_disclaimer_not_accepted"), exit_code=3)
+    ui.ok(i18n.t("main_disclaimer_accepted", lang=lang))
     return lang
 
 
 def _confirm_proceed(args: Args) -> bool:
     if args.yes:
         return True
-    return ui.confirm("Proceed with the next pending phase?", default=True)
+    return ui.confirm(i18n.t("main_confirm_proceed"), default=True)
 
 
 def _run_phase(num: int, mod_name: str, human_name: str, args: Args) -> bool:
     if state.is_done(num) and args.force_phase != num:
-        ui.info(f"Phase {num} ({human_name}) already done — skipping")
+        ui.info(i18n.t("main_phase_already_done", num=num, human_name=human_name))
         return True
     if args.force_phase == num:
         state.clear(num)
-        ui.info(f"--force-phase {num}: sentinel cleared, re-running")
+        ui.info(i18n.t("main_phase_force", num=num))
 
     rec = state.start(num, human_name)
     try:
         mod = importlib.import_module(f"install.phases.{mod_name}")
     except ImportError as e:
-        ui.warn(f"Phase {num} module not implemented yet ({mod_name}): {e}")
+        ui.warn(i18n.t("main_phase_not_implemented", num=num, mod_name=mod_name, err=e))
         return False  # Not fatal — we may be on an early dev cut
 
     try:
         notes = mod.run(args) or {}
     except KeyboardInterrupt:
-        ui.warn(f"\nPhase {num} interrupted by user. State preserved; re-run to resume.")
+        ui.warn(i18n.t("main_phase_interrupted", num=num))
         return False
     except Exception as e:
-        ui.fail(f"Phase {num} failed: {type(e).__name__}: {e}")
+        ui.fail(i18n.t("main_phase_failed", num=num, etype=type(e).__name__, err=e))
         return False
 
     state.commit(rec, notes)
-    ui.ok(f"Phase {num} ({human_name}) complete")
+    ui.ok(i18n.t("main_phase_complete", num=num, human_name=human_name))
     return True
 
 
@@ -163,13 +157,13 @@ def main() -> int:
         # Clear sentinel to force re-show
         from pathlib import Path
         import os as _os
-        Path(_os.environ.get("METNOS_STATE", str(Path.home() / ".local" / "state" / "metnos"))
+        Path(_os.environ.get("METNOS_USER_STATE", str(Path.home() / ".local" / "state" / "metnos"))
              ).joinpath("install", "disclaimer.accepted").unlink(missing_ok=True)
     locale = _gate_language_and_disclaimer(args)
     os.environ["METNOS_LOCALE"] = locale
 
     if not _confirm_proceed(args):
-        ui.info("Aborted.")
+        ui.info(i18n.t("main_aborted"))
         return 0
 
     phases_to_run = _PHASES

@@ -90,7 +90,7 @@ l'installazione.
 
 
 def _sentinel() -> Path:
-    base = os.environ.get("METNOS_STATE") or str(Path.home() / ".local" / "state" / "metnos")
+    base = os.environ.get("METNOS_USER_STATE") or str(Path.home() / ".local" / "state" / "metnos")
     d = Path(base) / "install"
     d.mkdir(parents=True, exist_ok=True)
     return d / "disclaimer.accepted"
@@ -100,11 +100,82 @@ def already_accepted() -> bool:
     return _sentinel().exists()
 
 
-def ask_language() -> str:
-    """Quick language prompt — restricted to en/it for now."""
+_TESTED_LOCALES = ("en", "it")
+
+
+def _localization_notice(code: str) -> None:
+    """Honest, bilingual notice for a NON-tested target language.
+
+    Auto-localization (translating every prompt, message and tool
+    description) is EXPERIMENTAL and may not work. We never let it block
+    boot: the system runs in English now and attempts ``code`` in the
+    background. §2.8 — no overpromising.
+    """
     ui.console().print()
-    ui.console().print("  Language / Lingua  ([cyan]en[/cyan], [cyan]it[/cyan])")
-    return ui.choice("Choose / Scegli", ["en", "it"], default="en")
+    ui.console().print(
+        f"  [yellow]⚠ Automatic localization to '[bold]{code}[/bold]' is an "
+        f"EXPERIMENTAL, UNTESTED feature — it may not work.[/yellow]")
+    ui.console().print(
+        "    • Metnos will try to translate its prompts, messages and tool\n"
+        "      descriptions in the background. On local hardware this can\n"
+        "      take [bold]~24 hours[/bold], and it may fail or be incomplete.\n"
+        "    • Meanwhile (and if it fails) the interface stays in [bold]English[/bold].\n"
+        "    • For a first install we [bold]recommend 'en' or 'it'[/bold] — both tested.")
+    ui.console().print(
+        f"  [dim]IT — La localizzazione automatica in '{code}' è SPERIMENTALE e non\n"
+        "  testata: può non funzionare, gira in background (~24h) e nel frattempo\n"
+        "  (o se fallisce) l'interfaccia resta in inglese. Per il primo install\n"
+        "  consigliamo 'en' o 'it' (testate).[/dim]")
+
+
+def record_desired_locale(code: str) -> None:
+    """Persist a non-tested target locale for the background localization job.
+
+    Operational locale stays tested (en/it) so boot never breaks; this only
+    records the user's aspiration so a future i18n job can pursue it.
+    """
+    base = os.environ.get("METNOS_USER_STATE") or str(Path.home() / ".local" / "state" / "metnos")
+    d = Path(base) / "i18n"
+    try:
+        d.mkdir(parents=True, exist_ok=True)
+        (d / "desired_locale.json").write_text(
+            json.dumps({"target": code, "requested_at": int(time.time()),
+                        "status": "experimental-pending"}, indent=2))
+    except OSError:
+        pass
+
+
+def ask_language() -> str:
+    """Language prompt. Returns the OPERATIONAL locale (always tested: en/it).
+
+    en (default) / it are tested. 'other' lets the user name any ISO 639-1
+    code (e.g. fr): we record it as an experimental target and run in English
+    meanwhile — picking an untranslated locale must never brick boot.
+    """
+    ui.console().print()
+    ui.console().print(
+        "  Language / Lingua: [cyan]en[/cyan] (default), [cyan]it[/cyan], "
+        "or [cyan]other[/cyan] (e.g. fr — experimental)")
+    pick = ui.choice("Choose / Scegli", ["en", "it", "other"], default="en")
+    if pick in _TESTED_LOCALES:
+        return pick
+
+    # other → free-form ISO code, experimental
+    code = ui.ask("ISO 639-1 code (e.g. fr, de, es)").strip().lower()
+    if not (len(code) == 2 and code.isalpha()) or code in _TESTED_LOCALES:
+        # invalid or actually a tested one → coerce sensibly
+        if code in _TESTED_LOCALES:
+            return code
+        ui.warn("Not a valid 2-letter code — falling back to 'en'.")
+        return "en"
+    _localization_notice(code)
+    if not ui.confirm(f"Proceed with experimental '{code}'? (English meanwhile)",
+                      default=False):
+        ui.info("Keeping 'en' (recommended).")
+        return "en"
+    record_desired_locale(code)
+    ui.ok(f"Target '{code}' recorded (experimental). Running in English for now.")
+    return "en"
 
 
 def show_and_confirm(lang: str) -> bool:
