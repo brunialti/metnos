@@ -1,0 +1,28 @@
+# Manifest dell'executor `write_issues` — Metnos v1.1
+manifest_format = "1.0"
+
+name        = "write_issues"
+version     = "0.1.0"
+author      = "Roberto Brunialti"
+affinity    = ["issue", "issues", "trattamento", "bozza", "draft", "stato", "status", "salva issue", "registra issue", "db issue", "prepared", "approved", "maintenance"]
+revertible  = false
+lifecycle   = "active"
+
+[description]
+it = "SCOPO: salva/aggiorna nel db LOCALE i record di trattamento delle issue (stato, bozza, classificazione) — non posta su GitHub. PATTERN: write_issues(entries=[{repo='owner/name', number=12, status='prepared', draft_reply='...', classification='question'}]); o from_step=N. NON: postare commenti (-> send_messages_github); rileggere (-> read_issues); cercare simili (-> find_issues). OUT: results=[{repo, number, status, id}]."
+en = "SCOPO: save/update issue treatment records in the LOCAL db (status, draft, classification) — does NOT post to GitHub. PATTERN: write_issues(entries=[{repo='owner/name', number=12, status='prepared', draft_reply='...', classification='question'}]); or from_step=N. NON: post comments (-> send_messages_github); re-read (-> read_issues); search similar (-> find_issues). OUT: results=[{repo, number, status, id}]."
+
+[code]
+files  = ["write_issues.py"]
+digest = "sha256:803f55e270a6fd543c8fc6e652d6c495a5457cdf64174398ad94d8d286b1c9b6"
+
+[args]
+type     = "object"
+required = []
+
+[args.properties.entries]
+type = "array"
+
+[args.properties.entries.description]
+it = "Lista di record issue da salvare/aggiornare (vettoriale §2.1, anche 1). Ogni dict: `repo` (obbligatorio, 'owner/name'), `number` (obbligatorio, int), e opzionali `title`, `question_text`, `classification`, `status` (new|prepared|approved|posted), `draft_reply`, `accepted_reply`. Upsert PARZIALE: aggiorna solo i campi presenti, preserva il resto. Accetta `from_step=N` (il runtime espande in entries). Lista vuota = nessuna operazione."
+en = "List of issue records to save/update (vectorial §2.1, also 1). Each dict: `repo` (required, 'owner/name'), `number` (required, int), and optional `title`, `question_text`, `classification`, `status` (new|prepared|approved|posted), `draft_reply`, `accepted_reply`. PARTIAL upsert: updates only present fields, preserves the rest. Accepts `from_step=N` (runtime expands into entries). Empty list = no operation."

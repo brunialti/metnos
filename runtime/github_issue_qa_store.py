@@ -41,10 +41,17 @@ CREATE TABLE IF NOT EXISTS issue_qa (
     related_refs TEXT,
     user_satisfied INTEGER,
     cost_usd REAL,
+    status TEXT DEFAULT 'new',
+    draft_reply TEXT,
+    title TEXT,
     UNIQUE(repo, issue_number)
 );
 CREATE INDEX IF NOT EXISTS idx_qa_repo ON issue_qa(repo);
 """
+
+# Colonne aggiunte dopo lo schema iniziale (maintenance flow via executor):
+# migrazione idempotente per i db esistenti (ALTER ADD COLUMN se mancano).
+_MIGRATE_COLS = (("status", "TEXT DEFAULT 'new'"), ("draft_reply", "TEXT"), ("title", "TEXT"))
 
 
 def _connect() -> sqlite3.Connection:
@@ -55,11 +62,107 @@ def _connect() -> sqlite3.Connection:
 
 
 def init_db() -> None:
-    """Idempotent CREATE TABLE + INDEX."""
+    """Idempotent CREATE TABLE + INDEX + migrazione colonne maintenance."""
     con = _connect()
     try:
         con.executescript(_SCHEMA)
+        existing = {r[1] for r in con.execute("PRAGMA table_info(issue_qa)")}
+        for col, decl in _MIGRATE_COLS:
+            if col not in existing:
+                con.execute(f"ALTER TABLE issue_qa ADD COLUMN {col} {decl}")
+        # Indice su status DOPO la migrazione (la colonna ora esiste).
+        con.execute("CREATE INDEX IF NOT EXISTS idx_qa_status ON issue_qa(repo, status)")
         con.commit()
+    finally:
+        con.close()
+
+
+def upsert_treatment(
+    repo: str,
+    issue_number: int,
+    *,
+    title: str | None = None,
+    classification: str | None = None,
+    status: str | None = None,
+    draft_reply: str | None = None,
+    accepted_reply: str | None = None,
+    embedding: "np.ndarray | None" = None,
+    posted_at: int | None = None,
+    auto_replied: bool | None = None,
+) -> int:
+    """Upsert PARZIALE di un record di trattamento: crea (repo, issue_number)
+    se assente, poi aggiorna SOLO i campi forniti (non-None), preservando il
+    resto. Ritorna row id. Usato dall'executor `write_issues`."""
+    init_db()
+    con = _connect()
+    try:
+        con.execute(
+            "INSERT OR IGNORE INTO issue_qa (repo, issue_number, status) "
+            "VALUES (?,?,COALESCE(?, 'new'))",
+            (repo, int(issue_number), status),
+        )
+        sets: list[str] = []
+        vals: list[Any] = []
+        for col, v in (("title", title), ("classification", classification),
+                       ("status", status), ("draft_reply", draft_reply),
+                       ("accepted_reply", accepted_reply)):
+            if v is not None:
+                sets.append(f"{col}=?")
+                vals.append(v)
+        if embedding is not None:
+            sets.append("question_embedding=?")
+            vals.append(_embedding_to_blob(embedding))
+        if posted_at is not None:
+            sets.append("posted_at=?")
+            vals.append(int(posted_at))
+        if auto_replied is not None:
+            sets.append("auto_replied=?")
+            vals.append(1 if auto_replied else 0)
+        if sets:
+            vals.extend([repo, int(issue_number)])
+            con.execute(
+                f"UPDATE issue_qa SET {', '.join(sets)} "
+                "WHERE repo=? AND issue_number=?", vals,
+            )
+        con.commit()
+        row = con.execute(
+            "SELECT id FROM issue_qa WHERE repo=? AND issue_number=?",
+            (repo, int(issue_number)),
+        ).fetchone()
+        return int(row["id"]) if row else -1
+    finally:
+        con.close()
+
+
+def list_records(
+    repo: str | None = None,
+    status: "str | list[str] | None" = None,
+    numbers: "list[int] | None" = None,
+    limit: int = 200,
+) -> list[dict[str, Any]]:
+    """Record di trattamento filtrati per repo/status/numbers. Ritorna
+    list[dict] SENZA il blob embedding (pipeable). Usato da `read_issues`."""
+    init_db()
+    con = _connect()
+    try:
+        q = ("SELECT repo, issue_number, title, classification, status, "
+             "draft_reply, accepted_reply, posted_at, auto_replied "
+             "FROM issue_qa WHERE 1=1")
+        vals: list[Any] = []
+        if repo:
+            q += " AND repo=?"
+            vals.append(repo)
+        if status:
+            sl = status if isinstance(status, (list, tuple)) else [status]
+            q += f" AND status IN ({','.join('?' * len(sl))})"
+            vals.extend(sl)
+        if numbers:
+            nl = numbers if isinstance(numbers, (list, tuple)) else [numbers]
+            q += f" AND issue_number IN ({','.join('?' * len(nl))})"
+            vals.extend(int(n) for n in nl)
+        q += " ORDER BY issue_number DESC LIMIT ?"
+        vals.append(int(limit))
+        return [dict(r) for r in con.execute(q, vals).fetchall()]
     finally:
         con.close()
 

@@ -1,0 +1,47 @@
+# Manifest dell'executor `find_issues` — Metnos v1.1
+manifest_format = "1.0"
+
+name        = "find_issues"
+version     = "0.1.0"
+author      = "Roberto Brunialti"
+affinity    = ["issue", "issues", "simili", "dedup", "gia risolte", "memoria issue", "risposta nota", "similar", "knowledge base issue", "db issue", "maintenance"]
+revertible  = true
+lifecycle   = "active"
+
+[description]
+it = "SCOPO: cerca nel db LOCALE le issue SIMILI gia' risolte a un testo dato (dedup semantico BGE-M3), con la loro risposta accettata. PATTERN: find_issues(repo='owner/name', query_text='descrizione issue'). NON: elencare issue remote (-> find_issues_github); leggere record per stato (-> read_issues); salvare (-> write_issues). OUT: entries=[{ref, similarity, accepted_reply, classification}] ordinate per similarity desc."
+en = "SCOPO: search the LOCAL db for issues SIMILAR to a given text already resolved (semantic dedup BGE-M3), with their accepted reply. PATTERN: find_issues(repo='owner/name', query_text='issue description'). NON: list remote issues (-> find_issues_github); read records by status (-> read_issues); save (-> write_issues). OUT: entries=[{ref, similarity, accepted_reply, classification}] sorted by similarity desc."
+
+[code]
+files  = ["find_issues.py"]
+digest = "sha256:430a034235760308e1a4f94363aa43c6a53b12f67039a042a2f1e35d069eb522"
+
+[args]
+type     = "object"
+required = ["repo", "query_text"]
+
+[args.properties.repo]
+type = "string"
+[args.properties.repo.description]
+it = "Repo 'owner/name' su cui cercare le issue simili. Obbligatorio."
+en = "Repo 'owner/name' to search similar issues in. Required."
+
+[args.properties.query_text]
+type = "string"
+[args.properties.query_text.description]
+it = "Testo dell'issue da confrontare (titolo o titolo+corpo). Obbligatorio."
+en = "Issue text to compare (title or title+body). Required."
+
+[args.properties.top_n]
+type    = "integer"
+default = 5
+[args.properties.top_n.description]
+it = "Numero massimo di issue simili da restituire. Default 5."
+en = "Max number of similar issues to return. Default 5."
+
+[args.properties.min_similarity]
+type    = "number"
+default = 0.0
+[args.properties.min_similarity.description]
+it = "Soglia minima di similarity coseno (0..1) per includere un match. Default 0.0 (tutti). Es. 0.85 per soli match forti."
+en = "Min cosine similarity threshold (0..1) to include a match. Default 0.0 (all). E.g. 0.85 for strong matches only."
