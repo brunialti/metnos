@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Metnos &mdash; Where is the beef (code)?</title>
-    <meta name="description" content="A note from the author of Metnos about the code: why the code is not here yet, why documentation comes first, where Metnos stands today, and an invitation to read a dialogue first.">
+    <meta name="description" content="The Metnos code is public: the run-essential subset of the live instance, with an installer. But the documents come first, and are worth more. A note from the author, and an invitation to read a dialogue first.">
     <meta name="keywords" content="Metnos, code, public repository, dialogues, microdesign, AI coder, documentation, Roberto Brunialti">
     <meta name="author" content="Roberto Brunialti">
     <meta name="robots" content="index, follow">
@@ -15,13 +15,13 @@
     <meta property="og:type" content="article">
     <meta property="og:url" content="https://metnos.com/en/code.html">
     <meta property="og:title" content="Metnos &mdash; Where is the beef (code)?">
-    <meta property="og:description" content="Why the code is not here yet, why documentation comes first, where Metnos stands today, and an invitation to read a dialogue first.">
+    <meta property="og:description" content="The code is public: the run-essential subset of the live instance, with an installer. Documentation still comes first; enter through the dialogue on ends and limits.">
     <meta property="og:locale" content="en_US">
     <meta property="og:locale:alternate" content="it_IT">
     <meta property="og:site_name" content="Metnos">
     <meta name="twitter:card" content="summary">
     <meta name="twitter:title" content="Metnos &mdash; Where is the beef (code)?">
-    <meta name="twitter:description" content="A note from the author: the code exists and works, but it is not ready for a public repository yet. Documentation first, dialogues even sooner.">
+    <meta name="twitter:description" content="The code is online (github.com/brunialti/metnos): run-essential subset + installer. Documentation comes first, dialogues even sooner.">
     <style>
 :root {
     --navy: #1A477A; --navy-light: #2B6CB0; --sage: #548235;
@@ -71,27 +71,33 @@ footer a { color: inherit; text-decoration: none; }
   <div class="subtitle">a note from the author</div>
 </div>
 
+<div class="callout" style="border-left-color: var(--navy); background: #f0f6ff; color: #0f2f57;">
+<strong>The code is online.</strong> &rarr; <a href="https://github.com/brunialti/metnos" style="color: var(--navy-light); border:none;">github.com/brunialti/metnos</a> &mdash; the run-essential subset of the live instance, with installer and architecture. AGPL-3.0.
+</div>
+
 <div class="callout">
 If you've made it this far, you're interested in the code. I would have done the same. But this time the code is the least precious part of the project.
 </div>
 
 <h2>Where is the beef (code)?</h2>
 
-<p>A fair question after all this philosophy. The code is not (yet) here, and that is by design. Every document on this site is <em>upstream</em> of the code: the rule is that a component is not implemented before its HTML exists and has been approved. When the definition is ripe enough that building it becomes an exercise in fidelity rather than translation, the code follows &mdash; and looks like the documents, not the other way around.</p>
+<p>A fair question after all this philosophy. The code comes <em>after</em> the documents, and that is by design. Every document on this site is <em>upstream</em> of the code: the rule is that a component is not implemented before its HTML exists and has been approved. When the definition is ripe enough that building it becomes an exercise in fidelity rather than translation, the code follows &mdash; and looks like the documents, not the other way around.</p>
 
 <p>There is also a stronger reason to linger here. The <a href="architecture/">microdesign</a> pages and the <a href="Metnos_Architecture_Intro_v1.html">architecture</a> encode decisions; the <a href="Metnos_Dialogue_v1.html">dialogues</a> show how those decisions were earned. Read the design first and you receive conclusions without the objections, components without the rejected alternatives, names without the struggle to name them. Read a dialogue first and you arrive at the same decisions with the doubts still attached &mdash; which is what later lets you judge whether a surprise in the system is a bug or a consequence to accept.</p>
 
 <p>If you are about to dive into the architecture or the microdesign, read at least one dialogue first. The rest of the documentation will speak a richer language.</p>
 
-<h2>Where things stand today</h2>
+<h2>And now, the code</h2>
 
-<p>Metnos is implemented. It works, but it has not yet been tested integrally in the natural setting it was born for: a daily life. The infrastructure is bespoke, with many layers of abstraction. I still need to write a thin wrapper that lets anyone use their own resources, local or online &mdash; not trivial. There is no installer and, despite the code being surprisingly compact, preparing the environment is not.</p>
+<p>Metnos is implemented, and I drive it every day. <strong>The code is now public</strong> &mdash; not a dump, but the <em>run-essential</em> subset of the live instance, with an installer that doesn't merely boot a server: it <em>replicates a complete working environment</em> from a clean checkout. A single source, the living one; the repository is its curated, deterministic reflection.</p>
 
-<p>From the documentary corpus it is already possible to re-implement Metnos. Probably better than I could, in the company of an AI coder &mdash; which during this project has felt multiplied by the techniques adopted, some of them the fruit of surprising discoveries. For each line of code there are roughly four to five lines of documentation, plus an unpublished layer that holds all the micro-decisions made along the way. Documentation here is not an afterthought: it is part of the project itself.</p>
+<p>Everything you read above still holds. The documents come first, and are worth more than the code: for each line there are four to five lines of documentation, plus an unpublished layer of micro-decisions. But now, if you like, you can also watch those decisions become matter &mdash; and see that the code looks like the documents, not the other way around.</p>
 
-<p><em class="author">I am alone, or rather: there is always the Other who amplifies my capabilities.</em> Yet even so, I cannot finalise the environment and at the same time keep a public repository welcoming enough. :-)</p>
+<p>What you'll find, in short: an assistant that <strong>synthesizes its own tools</strong> from a closed, signed vocabulary instead of importing them and trusting; a planner that is <strong>local and deterministic</strong> &mdash; same request, same plan; executors <strong>vectorized by construction</strong>, list-in / list-out; and a stubborn honesty: no silent failures, and an undo that really undoes. It runs on your hardware; the frontier model is an optional fallback, not the engine.</p>
 
-<p>A little more patience, then.</p>
+<p>From the documentary corpus it was already possible to re-implement Metnos &mdash; probably better than I could, in the company of an AI coder, which during this project has felt multiplied by the techniques adopted, some the fruit of surprising discoveries. Now you also have the original to measure against.</p>
+
+<p><em class="author">I am alone, or rather: there is always the Other who amplifies my capabilities.</em> It is a showcase, not a polished product &mdash; built for one person, on one machine, and opened so others can read it, run it, build on it. Bring a little patience; and, if you feel like it, an issue.</p>
 
 <footer>
 Metnos &middot; <a href="./">metnos.com</a> &middot; contact: <a href="mailto:metnos@metnos.com">metnos@metnos.com</a>

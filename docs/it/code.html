@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Metnos &mdash; Where is the beef (code)?</title>
-    <meta name="description" content="Una nota dell'autore di Metnos sul codice: perche' il codice non c'e' ancora, perche' la documentazione viene prima, stato di Metnos oggi, l'invito a leggere prima un dialogo.">
+    <meta name="description" content="Il codice di Metnos e' pubblico: il sottoinsieme run-essential dell'istanza in esercizio, con installer. Ma i documenti vengono prima, e valgono di piu'. Una nota dell'autore, e l'invito a leggere prima un dialogo.">
     <meta name="keywords" content="Metnos, codice, repository pubblico, dialoghi, microprogettazione, AI coder, documentazione, Roberto Brunialti">
     <meta name="author" content="Roberto Brunialti">
     <meta name="robots" content="index, follow">
@@ -15,12 +15,12 @@
     <meta property="og:type" content="article">
     <meta property="og:url" content="https://metnos.com/it/code.html">
     <meta property="og:title" content="Metnos &mdash; Where is the beef (code)?">
-    <meta property="og:description" content="Perche' il codice non c'e' ancora, perche' la documentazione viene prima, stato di Metnos oggi, e l'invito a leggere prima un dialogo.">
+    <meta property="og:description" content="Il codice e' pubblico: subset run-essential dell'istanza in esercizio, con installer. La documentazione viene comunque prima; entra dal dialogo sui fini e i limiti.">
     <meta property="og:locale" content="it_IT">
     <meta property="og:site_name" content="Metnos">
     <meta name="twitter:card" content="summary">
     <meta name="twitter:title" content="Metnos &mdash; Where is the beef (code)?">
-    <meta name="twitter:description" content="Una nota dell'autore: il codice c'e', funziona, ma non e' ancora pronto per un repository pubblico. Documentazione prima, dialoghi prima ancora.">
+    <meta name="twitter:description" content="Il codice e' online (github.com/brunialti/metnos): subset run-essential + installer. La documentazione viene prima, i dialoghi prima ancora.">
     <style>
 :root {
     --navy: #1A477A; --navy-light: #2B6CB0; --sage: #548235;
@@ -70,27 +70,33 @@ footer a { color: inherit; text-decoration: none; }
   <div class="subtitle">una nota dell'autore</div>
 </div>
 
+<div class="callout" style="border-left-color: var(--navy); background: #f0f6ff; color: #0f2f57;">
+<strong>Il codice &egrave; online.</strong> &rarr; <a href="https://github.com/brunialti/metnos" style="color: var(--navy-light); border:none;">github.com/brunialti/metnos</a> &mdash; sottoinsieme run-essential dell'istanza in esercizio, con installer e architettura. AGPL-3.0.
+</div>
+
 <div class="callout">
 Se sei arrivato fin qui, sei interessato al codice. Anche io avrei fatto cos&igrave;. Ma questa volta il codice &egrave; la parte meno preziosa del progetto.
 </div>
 
 <h2>Where is the beef (code)?</h2>
 
-<p>Domanda giusta, dopo tutta questa filosofia. Il codice non &egrave; (ancora) qui, ed &egrave; per scelta. Ogni documento di questo sito sta <em>a monte</em> del codice: la regola interna &egrave; che un componente non si implementa prima che il suo HTML esista e sia approvato. Quando la definizione &egrave; abbastanza matura da rendere la costruzione un esercizio di fedelt&agrave; pi&ugrave; che di traduzione, il codice segue &mdash; e somiglia ai documenti, non viceversa.</p>
+<p>Domanda giusta, dopo tutta questa filosofia. Il codice viene <em>dopo</em> i documenti, ed &egrave; per scelta. Ogni documento di questo sito sta <em>a monte</em> del codice: la regola interna &egrave; che un componente non si implementa prima che il suo HTML esista e sia approvato. Quando la definizione &egrave; abbastanza matura da rendere la costruzione un esercizio di fedelt&agrave; pi&ugrave; che di traduzione, il codice segue &mdash; e somiglia ai documenti, non viceversa.</p>
 
 <p>C'&egrave; anche un motivo pi&ugrave; forte per fermarsi qui. Le pagine di <a href="architecture/">microprogettazione</a> e l'<a href="Metnos_Architettura_Intro_v1.html">architettura</a> codificano decisioni; i <a href="Metnos_Dialogo_v1.html">dialoghi</a> mostrano come quelle decisioni sono state guadagnate. Se leggi prima il design, ricevi le conclusioni senza le obiezioni, i componenti senza le alternative scartate, i nomi senza la fatica di trovarli. Se leggi prima un dialogo, arrivi alle stesse decisioni con i dubbi ancora attaccati &mdash; che &egrave; quello che, pi&ugrave; avanti, ti permetter&agrave; di distinguere se una sorpresa del sistema &egrave; un bug o una conseguenza da accettare.</p>
 
 <p>Se stai per tuffarti nell'architettura o nella microprogettazione, leggi prima almeno un dialogo. Il resto della documentazione ti parler&agrave; una lingua pi&ugrave; ricca.</p>
 
-<h2>Quanto manca, davvero</h2>
+<h2>E adesso, il codice</h2>
 
-<p>Metnos &egrave; implementato. Funziona, ma non &egrave; ancora stato testato integralmente nella situazione naturale per cui &egrave; nato: la giornata quotidiana. L'infrastruttura &egrave; su misura, con molti livelli di astrazione. Mi resta un wrapper leggero da scrivere &mdash; quello che permetter&agrave; a chiunque di usare le proprie risorse, locali o online &mdash; e non &egrave; banale. Non c'&egrave; ancora un installer e, nonostante il codice sia sorprendentemente compatto, preparare l'ambiente non lo &egrave;.</p>
+<p>Metnos &egrave; implementato, e lo uso ogni giorno. <strong>Ora il codice &egrave; pubblico</strong> &mdash; non un dump, ma il sottoinsieme <em>run-essential</em> dell'istanza in esercizio, con un installer che non si limita a far partire un server: <em>replica un ambiente di lavoro completo</em> da un checkout pulito. Una sola sorgente, quella viva; il repository ne &egrave; il riflesso curato, deterministico.</p>
 
-<p>A partire dal corpus documentale &egrave; gi&agrave; possibile reimplementare Metnos. Probabilmente meglio di me, in compagnia di un AI coder &mdash; che durante questo progetto mi &egrave; sembrato moltiplicato dalle tecniche adottate, alcune delle quali frutto di scoperte sorprendenti. Per ogni riga di codice ci sono circa quattro o cinque righe di documentazione, pi&ugrave; un livello non pubblicato che raccoglie tutte le microdecisioni prese in itinere. La documentazione non &egrave; qualcosa di posticcio: &egrave; parte integrante del progetto.</p>
+<p>Resta vero tutto ci&ograve; che hai letto sopra. I documenti vengono prima, e valgono pi&ugrave; del codice: per ogni riga ce ne sono quattro o cinque di documentazione, pi&ugrave; un livello non pubblicato di microdecisioni. Ma adesso, se vuoi, puoi anche vedere come quelle decisioni si sono fatte materia &mdash; e constatare che il codice somiglia ai documenti, non viceversa.</p>
 
-<p><em class="author">Sono solo, o meglio: c'&egrave; sempre l'Altro che amplifica le mie capacit&agrave;.</em> Ma anche cos&igrave; non riesco a finalizzare l'ambiente e contemporaneamente a tenere insieme un repository pubblico sufficientemente accogliente. :-)</p>
+<p>Cosa ci troverai, in breve: un assistente che <strong>sintetizza i propri strumenti</strong> da un vocabolario chiuso e firmato, invece di importarli e fidarsi; un planner <strong>locale e deterministico</strong> &mdash; stessa richiesta, stesso piano; executor <strong>vettoriali per costruzione</strong>, lista-dentro / lista-fuori; e un'ostinata onest&agrave;: niente fallimenti silenziosi, e un undo che &egrave; davvero un undo. Gira sul tuo hardware; il modello di frontiera &egrave; un ripiego facoltativo, non il motore.</p>
 
-<p>Ancora un po' di pazienza, quindi.</p>
+<p>A partire dal corpus documentale era gi&agrave; possibile reimplementare Metnos &mdash; probabilmente meglio di me, in compagnia di un AI coder, che durante questo progetto mi &egrave; sembrato moltiplicato dalle tecniche adottate, alcune frutto di scoperte sorprendenti. Adesso hai anche l'originale a cui confrontarti.</p>
+
+<p><em class="author">Sono solo, o meglio: c'&egrave; sempre l'Altro che amplifica le mie capacit&agrave;.</em> &Egrave; una vetrina, non un prodotto levigato &mdash; costruita per una persona, su una macchina, e aperta perch&eacute; altri possano leggerla, eseguirla, costruirci sopra. Porta un po' di pazienza; e, se ti va, un'issue.</p>
 
 <footer>
 Metnos &middot; <a href="./">metnos.com</a> &middot; contatti: <a href="mailto:metnos@metnos.com">metnos@metnos.com</a>
