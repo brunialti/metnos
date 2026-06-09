@@ -5,7 +5,7 @@
 manifest_format = "1.0"
 
 name        = "delete_events"
-version     = "0.4.0"
+version     = "0.5.0"
 author      = "Roberto Brunialti"
 affinity    = [
     "cancella", "elimina", "delete", "remove", "rimuovi", "appuntamento", "agenda", "evento",
@@ -18,12 +18,12 @@ revertible  = true
 lifecycle   = "active"
 
 [description]
-it = "SCOPO: cancella eventi dal calendario. PATTERN: delete_events(event_ids=[\"ev1\"]). NON: leggere eventi (-> read_events); creare eventi (-> create_events). OUT: results=[...]."
-en = "SCOPO: delete calendar events. PATTERN: delete_events(event_ids=[\"ev1\"]). NON: reading events (-> read_events); creating events (-> create_events). OUT: results=[...]."
+it = "SCOPO: cancella eventi dal calendario, per id espliciti o per finestra temporale. PATTERN: delete_events(event_ids=[\"ev1\"]) oppure delete_events(time_window=\"yesterday\") per cancellare in UN passo gli eventi della finestra. NON: read_events prima quando basta time_window; combinare time_window con event_ids/entries (mutuamente esclusivi); leggere eventi (-> read_events); creare eventi (-> create_events). OUT: results=[{id, ...}], n_deleted."
+en = "SCOPO: delete calendar events, by explicit ids or by time window. PATTERN: delete_events(event_ids=[\"ev1\"]) or delete_events(time_window=\"yesterday\") to delete the window's events in ONE step. NON: read_events first when time_window is enough; combining time_window with event_ids/entries (mutually exclusive); reading events (-> read_events); creating events (-> create_events). OUT: results=[{id, ...}], n_deleted."
 
 [code]
 files  = ["delete_events.py"]
-digest = "sha256:eda548beef4374f9f1c6272ec5ffbec3da63ea719fee214ddb565bb77f49e283"
+digest = "sha256:b03fb5c3309c3d5f6abaca29aa6ffeae568f270ab58ba4af9374e4583a073895"
 
 [args]
 type     = "object"
@@ -52,6 +52,21 @@ items   = { type = "object" }
 it = "Lista di entries da from_step di un produttore (es. read_events): il campo `id` di ognuno alimenta event_ids. Pipeline read -> delete tipica."
 en = "List of entries from from_step of a producer (e.g. read_events): the `id` field of each feeds event_ids. Typical read -> delete pipeline."
 
+[args.properties.time_window]
+type    = "string"
+
+[args.properties.time_window.description]
+it = "Finestra temporale: risolve internamente gli eventi nella finestra e li cancella in un passo. Esempi: time_window=\"yesterday\", time_window=\"last-7d\", time_window=\"2026-06-01\". MUTUAMENTE ESCLUSIVO con event_ids/event_id/entries."
+en = "Time window: internally resolves the events in the window and deletes them in one step. Examples: time_window=\"yesterday\", time_window=\"last-7d\", time_window=\"2026-06-01\". MUTUALLY EXCLUSIVE with event_ids/event_id/entries."
+
+[args.properties.max_total]
+type    = "integer"
+default = 0
+
+[args.properties.max_total.description]
+it = "Cap superiore esplicito sugli eventi cancellati via time_window. Default 0 = nessun limite."
+en = "Explicit upper cap on events deleted via time_window. Default 0 = no limit."
+
 [args.properties.calendar_id]
 type    = "string"
 default = "primary"
@@ -75,11 +90,16 @@ en = "Calendar backend. YOU MUST OMIT IT: the runtime auto-detects (google_works
 schema_inline = """
 {
   ok: bool,
-  results: Array<dict>,
+  results: Array<dict>,        # ogni record: {ok, id, uid, ...} per undo §2.3
   n_deleted: int,
   used: int,
+  n_matched?: int,             # eventi trovati nella time_window (se usata)
+  time_window?: str,           # echo della finestra usata
+  not_found?: Array<str>,
   partial?: bool,
   failures?: Array<{id, error, error_class}>,
+  truncated?: bool,            # §2.7 con truncated_what/available_total/
+                               # cap_field="max_total"/cap_value
   error?: str,
   error_class?: str
 }
@@ -98,3 +118,13 @@ expect = { ok = true }
 name   = "invalid_client_rejected"
 input  = { event_id = "x", client = "gdrive" }
 expect = { ok = false, error_contains = "gdrive" }
+
+[[tests]]
+name   = "window_and_ids_mutually_exclusive"
+input  = { event_id = "x", time_window = "yesterday", client = "local" }
+expect = { ok = false, error_contains = "time_window" }
+
+[[tests]]
+name   = "invalid_time_window_rejected"
+input  = { time_window = "not-a-window", client = "local" }
+expect = { ok = false, error_contains = "not-a-window" }
