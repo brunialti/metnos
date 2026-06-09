@@ -56,6 +56,13 @@ _TOP_K_DEFAULT = 100
 _TOP_K_MAX = 200
 _LOW_CONF_FLOOR = 0.12
 _FACE_MATCH_FLOOR = 0.4
+# Sigma del taglio-rilevanza scena DENTRO un set-identità (foto di UNA persona).
+# Più basso del 3σ globale: nel sotto-corpus di una persona la scena è un CLUSTER,
+# non un outlier raro → il 3σ sovra-restringe (bug live 9/6: «<persona> montagna»
+# 2860→11). 2σ = coda superiore ~0.6%; sul corpus a embedding densi collassati
+# (μ~0.61, σ~0.04) corrisponde al ginocchio di precisione misurato (~0.69 cos:
+# sopra = montagna genuina; sotto = "vista/terrazza" borderline). §2.4 tarabile.
+_IDENTITY_SCENE_SIGMA = 2.0
 
 
 def _index_image_root() -> Path:
@@ -1175,7 +1182,14 @@ def _filter_unified(
         from relevance_cut import adaptive_relevance_threshold
         cos_all = [text_components.get(i, (0.0, 0.0))[0]
                    for i in range(len(entries))]
-        rel_thr = adaptive_relevance_threshold(cos_all, floor=text_score_min)
+        # Sotto identità il candidato è il sotto-corpus di UNA persona: la scena è
+        # un cluster, non un outlier → soglia più inclusiva (2σ) per non scartare
+        # le foto-scena genuine. Senza identità resta il 3σ globale (default).
+        if identity_filtered:
+            rel_thr = adaptive_relevance_threshold(
+                cos_all, sigma=_IDENTITY_SCENE_SIGMA, floor=text_score_min)
+        else:
+            rel_thr = adaptive_relevance_threshold(cos_all, floor=text_score_min)
         _g_entries, _g_scores = _apply_relevance_gate(
             entries, text_components, text_scores, rel_thr)
         if not identity_filtered:
