@@ -3,7 +3,7 @@ name = "metnos-client"
 version = "0.1.0"
 edition = "2021"
 description = "Metnos remote executor client (Rust)"
-license = "Proprietary"
+license = "AGPL-3.0-only"
 
 [dependencies]
 anyhow = "1.0"

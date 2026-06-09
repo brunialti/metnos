@@ -171,6 +171,40 @@ def _compute_intent_sig(intent: Intent) -> tuple[str, str]:
 
 # ── Lookup ────────────────────────────────────────────────────────────────
 
+# Arg che portano il TESTO di ricerca dell'utente (NL query-specifica): se uno
+# di questi ha un valore LITERAL (non un placeholder ${...}), il framework e'
+# legato a QUELLA query e NON generalizza al cluster/intent. Cacharlo avvelena la
+# fast-path: «cerca foto silvia» riuserebbe il piano congelato di «cerca foto
+# montagna». Lista CHIUSA (§2.2), allineata agli arg content-bearing degli
+# executor find_* (immagini/persone/url/messaggi testuali).
+_CONTENT_ARG_KEYS = frozenset({
+    "query_text", "name", "names", "content", "query", "search", "search_text",
+    "text_query", "body_contains", "subject_contains", "from_contains",
+})
+
+
+def _is_query_specific(framework_json: str) -> bool:
+    """True se il framework incorpora un arg content-bearing LITERAL (non
+    placeholder ${...}) → legato alla singola query, non promuovibile/riusabile.
+    Deterministico (§7.9): nessun LLM, solo ispezione args."""
+    try:
+        d = json.loads(framework_json)
+    except Exception:
+        return False
+    for step in (d.get("steps") or []):
+        if not isinstance(step, dict):
+            continue
+        args = step.get("args") or {}
+        if not isinstance(args, dict):
+            continue
+        for k in _CONTENT_ARG_KEYS:
+            v = args.get(k)
+            for item in (v if isinstance(v, list) else [v]):
+                if isinstance(item, str) and item.strip() and "${" not in item:
+                    return True
+    return False
+
+
 def lookup(query: str, intent: Intent) -> Optional[AutopathHit]:
     """Tenta match skill cached. Cluster semantic-first poi intent_hash fallback.
 
@@ -201,7 +235,7 @@ def lookup(query: str, intent: Intent) -> Optional[AutopathHit]:
                     "SELECT id, framework_json, uses, composite_score "
                     "FROM skills WHERE cluster_id = ? AND status = 'active' "
                     "AND champion = 1 LIMIT 1", (best_cid,)).fetchone()
-                if row:
+                if row and not _is_query_specific(row[1]):
                     fw = Framework.from_dict(json.loads(row[1]))
                     return AutopathHit(skill_id=row[0], framework=fw,
                                         cluster_id=best_cid, uses=row[2],
@@ -211,7 +245,7 @@ def lookup(query: str, intent: Intent) -> Optional[AutopathHit]:
             "SELECT id, framework_json, cluster_id, uses, composite_score "
             "FROM skills WHERE intent_hash = ? AND status = 'active' "
             "AND champion = 1 LIMIT 1", (ihash,)).fetchone()
-        if row:
+        if row and not _is_query_specific(row[1]):
             fw = Framework.from_dict(json.loads(row[1]))
             return AutopathHit(skill_id=row[0], framework=fw,
                                 cluster_id=row[2] or "", uses=row[3],
@@ -321,9 +355,14 @@ def record_feedback(turn_id: str, verdict: str) -> dict:
                 "WHERE intent_hash = ? AND framework_hash = ? "
                 "AND verdict = 'ok'", (ihash, fhash)).fetchone()[0]
             if n_ok >= MIN_OBS_PROMOTE:
-                skill_id = _promote_skill(c, ihash, sig, fhash, fjson, cid, ts)
-                if skill_id:
-                    out["promoted_skill_id"] = skill_id
+                if _is_query_specific(fjson):
+                    # Framework legato alla query (arg content-bearing literal):
+                    # non generalizza, non diventa champion (anti-poisoning).
+                    out["promotion_skipped"] = "query_specific_literal_args"
+                else:
+                    skill_id = _promote_skill(c, ihash, sig, fhash, fjson, cid, ts)
+                    if skill_id:
+                        out["promoted_skill_id"] = skill_id
         elif verdict == "fail":
             # Anti-skill se 3+ fail
             n_fail = c.execute(
