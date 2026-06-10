@@ -271,14 +271,12 @@ class SimpleProposer:
     """
 
     def __init__(self, *, prompt_loader: Optional[Callable] = None):
-        """prompt_loader: callable (role, lang, **vars) -> str. Default usa
-        runtime.prompt_loader.get."""
-        if prompt_loader is None:
-            try:
-                from prompt_loader import get as _get
-                prompt_loader = _get
-            except Exception:
-                prompt_loader = lambda role, lang, **kw: ""
+        """prompt_loader: callable (role, lang, **vars) -> str. None (default,
+        produzione) usa `prompt_loader.get_split` (layout static_first,
+        ottimizzazione A prompt-cache): testa statica → SYSTEM, coda
+        per-query (intent/pool/excluded/query) → USER. Un loader INIETTATO
+        (test) mantiene il contratto legacy: system=render completo,
+        user=query."""
         self._load_prompt = prompt_loader
 
     def propose(self, *, query: str, intent: Intent,
@@ -374,22 +372,36 @@ class SimpleProposer:
 
         # Render tool schemas inline (Mētis needs arg names + required)
         tools_inline = _render_tool_pool(effective_pool, catalog)
+        prompt_vars = dict(
+            verb=intent.verb, obj=intent.object,
+            keywords=", ".join(intent.keywords),
+            tools=tools_inline,
+            # B15: forma leggibile dei piani esclusi + istruzione di
+            # diversificazione (non hash sha opachi che il modello ignora).
+            excluded=_render_excluded_signal(excluded_hashes, lang),
+            user_query=query,
+        )
         try:
-            system = self._load_prompt(
-                "engine_proposer", lang,
-                verb=intent.verb, obj=intent.object,
-                keywords=", ".join(intent.keywords),
-                tools=tools_inline,
-                # B15: forma leggibile dei piani esclusi + istruzione di
-                # diversificazione (non hash sha opachi che il modello ignora).
-                excluded=_render_excluded_signal(excluded_hashes, lang),
-            )
+            if self._load_prompt is None:
+                # Ottimizzazione A prompt-cache (10/6/2026): testa statica del
+                # template → SYSTEM (byte-identica fra le query → llama-server
+                # la riusa dal checkpoint n_before_user); coda per-query
+                # (intent/pool/excluded/query) → USER. Misura: prompt_n
+                # 5521→1277, latenza call 8.15s→2.26s. Vedi
+                # prompt_loader.get_split + guard prompts_lint L6.
+                from prompt_loader import get_split
+                system, user = get_split("engine_proposer", lang, **prompt_vars)
+                if not user:
+                    user = query  # template senza marker: layout legacy
+            else:
+                # Loader iniettato (test): contratto legacy 1-stringa.
+                system = self._load_prompt("engine_proposer", lang, **prompt_vars)
+                user = query
         except Exception as ex:
             log.warning("SimpleProposer prompt load failed: %r", ex)
             return None
         if not system:
             return None
-        user = query
         # Costruisci kwargs LLM con opzionale grammar
         llm_kwargs: dict = {
             "max_tokens": 1024 if use_fast else 2048,

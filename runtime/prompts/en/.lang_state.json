@@ -25,9 +25,9 @@
     "version_hash": "sha256:63dab73c38ee9a7732d9c777e6093f9815f62bd2605290b93cfdba9d638aef8c"
   },
   "engine_proposer": {
-    "source_hash": "sha256:cbfc3df668f75897f538f571523875fcd3e7407bc74cb02bf2c096b56b3e9160",
+    "source_hash": "sha256:64ebb87c71421f27f88fbf3c74440a4c33bb36e7f3b07a7a5c95561b3db08da1",
     "source_lang": "it",
-    "version_hash": "sha256:949b692c586619e061d9149268cdd8837f9c0cc8b308f759599442d992a82802"
+    "version_hash": "sha256:f636979750e9a26b387169f239ecdba40b5fca6f6d6ebe4aff42bb6742762555"
   },
   "engine_proposer_metis": {
     "source_hash": null,

@@ -18,6 +18,7 @@ from prompts_lint import (  # noqa: E402
     _check_l3_loc,
     _check_l4_trailing_newline,
     _check_l5_lang_symmetry,
+    _check_l6_static_first,
     _parse_frontmatter,
     format_issue,
     scan,
@@ -265,6 +266,153 @@ def test_l5_symmetry_pending_skipped(tmp_path):
     (tmp_path / "en" / "_pending" / "draft.j2").write_text("draft\n")
     issues = _check_l5_lang_symmetry(tmp_path)
     assert issues == []
+
+
+# ---------------------------------------------------------------------------
+# L6: layout static-first (ottimizzazione A prompt-cache, 10/6/2026)
+# ---------------------------------------------------------------------------
+
+def _static_first_fm(role: str = "engine_proposer", lang: str = "it",
+                      layout: str | None = "static_first") -> str:
+    layout_line = f"layout: {layout}\n" if layout else ""
+    return (
+        "{# ---\n"
+        f"role: {role}\n"
+        "tier: wise\n"
+        f"lang: {lang}\n"
+        "style: definitional\n"
+        f"{layout_line}"
+        "version: 1\n"
+        "owner: roberto\n"
+        "updated: 2026-06-10\n"
+        "sha_prev: abc12345\n"
+        "--- #}\n"
+    )
+
+
+_L6_MARKER = "{# STATIC-END — confine cache del prefisso. #}\n"
+
+
+def test_l6_valid_static_first_passes(tmp_path):
+    content = (_static_first_fm()
+               + "REGOLE in {{ lang_name }}.\n"
+               + _L6_MARKER
+               + "POOL\n{{ tools }}\n- verbo: {{ verb }}\n"
+               + "RICHIESTA UTENTE\n{{ user_query }}\n")
+    p = tmp_path / "engine_proposer.j2"
+    p.write_text(content)
+    assert _check_l6_static_first(p, content) == []
+
+
+def test_l6_var_before_marker_fails(tmp_path):
+    content = (_static_first_fm()
+               + "REGOLE.\nPOOL: {{ tools }}\n"
+               + _L6_MARKER
+               + "- verbo: {{ verb }}\n{{ user_query }}\n")
+    p = tmp_path / "engine_proposer.j2"
+    p.write_text(content)
+    issues = _check_l6_static_first(p, content)
+    assert any(i.code == "L6_VAR_BEFORE_MARKER" and i.level == "error"
+               and "tools" in i.message for i in issues)
+    # Line number puntato sulla riga dell'interpolazione (1-based nel file).
+    assert issues[0].line == 13
+
+
+def test_l6_stmt_before_marker_fails(tmp_path):
+    content = (_static_first_fm()
+               + "{% if compound %}REGOLE EXTRA{% endif %}\n"
+               + _L6_MARKER
+               + "{{ tools }}\n{{ user_query }}\n")
+    p = tmp_path / "engine_proposer.j2"
+    p.write_text(content)
+    issues = _check_l6_static_first(p, content)
+    assert any(i.code == "L6_STMT_BEFORE_MARKER" for i in issues)
+
+
+def test_l6_marker_missing_fails(tmp_path):
+    content = _static_first_fm() + "REGOLE.\n{{ tools }}\n"
+    p = tmp_path / "engine_proposer.j2"
+    p.write_text(content)
+    issues = _check_l6_static_first(p, content)
+    assert [i.code for i in issues] == ["L6_MARKER_MISSING"]
+
+
+def test_l6_anchor_requires_declaration_every_lang(tmp_path):
+    # engine_proposer SENZA layout: static_first → errore in OGNI lingua
+    # (senza layout quella lingua degrada in silenzio al path lento).
+    content = _static_first_fm(layout=None) + "REGOLE.\n{{ tools }}\n"
+    p = tmp_path / "engine_proposer.j2"
+    p.write_text(content)
+    issues = _check_l6_static_first(p, content)
+    assert [i.code for i in issues] == ["L6_LAYOUT_DECL_MISSING"]
+    content_en = (_static_first_fm(lang="en", layout=None)
+                  + "RULES.\n{{ tools }}\n")
+    issues_en = _check_l6_static_first(p, content_en)
+    assert [i.code for i in issues_en] == ["L6_LAYOUT_DECL_MISSING"]
+
+
+def test_l6_undeclared_non_anchor_skipped(tmp_path):
+    # Un prompt qualunque senza layout: static_first non e' soggetto a L6.
+    content = _static_first_fm(role="planner", layout=None) + "{{ tools }}\n"
+    p = tmp_path / "planner.j2"
+    p.write_text(content)
+    assert _check_l6_static_first(p, content) == []
+
+
+def test_l6_vars_in_comment_and_const_whitelist_ok(tmp_path):
+    # {{ verb }} citato in un COMMENTO prima del marker non renderizza →
+    # nessun errore; {{ lang_name }}/{{ current_year }} sono costanti di
+    # render → ammesse nel prefisso statico.
+    content = (_static_first_fm()
+               + "{# esempio nel commento: {{ verb }} non conta #}\n"
+               + "Scrivi in {{ lang_name }} (anno {{ current_year }}).\n"
+               + _L6_MARKER
+               + "{{ tools }}\n{{ user_query }}\n")
+    p = tmp_path / "engine_proposer.j2"
+    p.write_text(content)
+    assert _check_l6_static_first(p, content) == []
+
+
+def test_l6_query_var_missing_in_tail_fails(tmp_path):
+    # Anchor con coda SENZA {{ user_query }} → errore (la coda e' il
+    # messaggio user: senza query il modello pianifica alla cieca). Una
+    # citazione di user_query in un COMMENTO della coda non basta.
+    content = (_static_first_fm()
+               + "REGOLE.\n"
+               + _L6_MARKER
+               + "{{ tools }}\n{# manca {{ user_query }} reale #}\n")
+    p = tmp_path / "engine_proposer.j2"
+    p.write_text(content)
+    issues = _check_l6_static_first(p, content)
+    assert [i.code for i in issues] == ["L6_QUERY_VAR_MISSING"]
+    # Role non-anchor con layout dichiarato: la coda libera e' ammessa.
+    content_free = (_static_first_fm(role="web_rerank")
+                    + "REGOLE.\n" + _L6_MARKER + "{{ tools }}\n")
+    issues_free = _check_l6_static_first(p, content_free)
+    assert issues_free == []
+
+
+def test_l6_real_canonical_proposer_passes():
+    # I template REALI del repo devono rispettare il contratto (anti-drift),
+    # in entrambe le lingue.
+    base = Path(__file__).resolve().parent.parent / "prompts"
+    for lang in ("it", "en"):
+        real = base / lang / "engine_proposer.j2"
+        content = real.read_text(encoding="utf-8")
+        assert _check_l6_static_first(real, content) == [], lang
+
+
+def test_l6_scan_wires_check(tmp_path):
+    # scan() applica L6: var prima del marker rilevata via driver completo.
+    content = (_static_first_fm()
+               + "{{ tools }}\n"
+               + _L6_MARKER
+               + "{{ verb }}\n{{ user_query }}\n")
+    p = tmp_path / "it" / "engine_proposer.j2"
+    p.parent.mkdir(parents=True)
+    p.write_text(content)
+    issues = scan(tmp_path, langs=["it"])
+    assert any(i.code == "L6_VAR_BEFORE_MARKER" for i in issues)
 
 
 # ---------------------------------------------------------------------------

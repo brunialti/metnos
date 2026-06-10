@@ -112,27 +112,30 @@ class TestExecutorPlaceholders(unittest.TestCase):
         seen = {}
 
         def _cap_llm(system, user, **kw):
-            seen["system"] = system
+            # Layout static_first (ottimizzazione A): il pool per-query vive
+            # nel messaggio USER; il system e' la testa statica. Le asserzioni
+            # guardano il prompt COMPLETO (system+user).
+            seen["prompt"] = system + "\n" + user
             return '{"steps":[{"tool":"send_messages","args":{}}]}'
 
-        def _pool_block(system):
+        def _pool_block(prompt):
             # isola la sezione "POOL TOOL DISPONIBILI" (il template menziona
             # get_inputs anche nelle REGOLE: l'esclusione tocca solo il pool).
-            lo = system.find("POOL TOOL")
-            hi = system.find("FRAMEWORK GIA")
-            return system[lo:hi] if lo >= 0 and hi > lo else system
+            lo = prompt.find("POOL TOOL")
+            hi = prompt.find("FRAMEWORK GIA")
+            return prompt[lo:hi] if lo >= 0 and hi > lo else prompt
 
         p = SimpleProposer()
         # senza esclusione: get_inputs nel pool
         p.propose(query="q", intent=Intent(verb="send", object="messages"),
                   pool=[e.name for e in cat], excluded_hashes=set(),
                   llm_call=_cap_llm, catalog=cat)
-        self.assertIn("get_inputs", _pool_block(seen["system"]))
+        self.assertIn("get_inputs", _pool_block(seen["prompt"]))
         # con esclusione: get_inputs FUORI dal pool (→ fuori dalla grammar GBNF)
         p.propose(query="q", intent=Intent(verb="send", object="messages"),
                   pool=[e.name for e in cat], excluded_hashes=set(),
                   llm_call=_cap_llm, catalog=cat, exclude_tools=("get_inputs",))
-        self.assertNotIn("get_inputs", _pool_block(seen["system"]))
+        self.assertNotIn("get_inputs", _pool_block(seen["prompt"]))
 
     def test_proposer_excluded_signal_intelligible(self):
         # B15: il segnale di diversificazione nel prompt e' la FORMA dei
@@ -167,15 +170,16 @@ class TestExecutorPlaceholders(unittest.TestCase):
         seen = {}
 
         def _cap_llm(system, user, **kw):
-            seen["system"] = system
+            # static_first: la sezione excluded per-query vive nello user.
+            seen["prompt"] = system + "\n" + user
             return '{"steps":[{"tool":"send_messages","args":{}}]}'
 
         SimpleProposer().propose(
             query="q", intent=Intent(verb="read", object="urls"),
             pool=[e.name for e in cat], excluded_hashes={h},
             llm_call=_cap_llm, catalog=cat)
-        self.assertIn("read_urls_html(urls) → final_answer", seen["system"])
-        self.assertNotIn(h, seen["system"])
+        self.assertIn("read_urls_html(urls) → final_answer", seen["prompt"])
+        self.assertNotIn(h, seen["prompt"])
 
     def test_metis_compound_challenger_diversified(self):
         # B15: sul COMPOUND il challenger (call #2) e' diverso PER
@@ -201,7 +205,9 @@ class TestExecutorPlaceholders(unittest.TestCase):
         ]
 
         def _llm(system, user, **kw):
-            systems.append(system)
+            # static_first: pool/excluded per-query nello user → cattura il
+            # prompt completo (system+user) per le asserzioni sotto.
+            systems.append(system + "\n" + user)
             return outs[min(len(systems), len(outs)) - 1]
 
         intent = Intent(verb="find", object="issues", actions=[

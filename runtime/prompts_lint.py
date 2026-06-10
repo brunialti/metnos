@@ -1,7 +1,7 @@
 """prompts_lint.py — linter deterministico per `runtime/prompts/<lang>/*.j2`
 e `runtime/prompts/<lang>/.../*.yaml` (asse B PoC, 12/5/2026).
 
-Fase C4 (11/5/2026). Cinque check (CLAUDE.md §7.9, niente LLM):
+Fase C4 (11/5/2026). Sei check (CLAUDE.md §7.9, niente LLM):
 
   L1 frontmatter required        — primo non-blank line `{# ---` + 8 campi
                                     (role/tier/lang/style/version/owner/
@@ -17,6 +17,22 @@ Fase C4 (11/5/2026). Cinque check (CLAUDE.md §7.9, niente LLM):
                                     sibling in <lang>/ e viceversa (solo
                                     presenza file, non contenuto: drift
                                     gestito dal daemon i18n).
+  L6 static-first layout         — ottimizzazione A prompt-cache (10/6/2026):
+                                    i template che dichiarano frontmatter
+                                    `layout: static_first` DEVONO avere il
+                                    marker `{# STATIC-END ... #}` e NESSUNA
+                                    interpolazione variabile/statement Jinja
+                                    PRIMA del marker (prefisso del render
+                                    byte-identico fra le query → checkpoint
+                                    condiviso sul llama-server, vedi
+                                    prompt_loader.get_split). Il prompt
+                                    canonico `engine_proposer` DEVE
+                                    dichiarare il layout in OGNI lingua
+                                    (anchor: il guard non si elude
+                                    rimuovendo il campo) e referenziare
+                                    `{{ user_query }}` DOPO il marker (la
+                                    coda diventa il messaggio user: senza
+                                    query il modello pianifica alla cieca).
 
 Asse B (12/5/2026): le sezioni planner possono essere `.yaml` strutturate.
 Per i `.yaml` si verifica:
@@ -206,6 +222,138 @@ def _check_l4_trailing_newline(path: Path, content: str) -> list[LintIssue]:
             message="il file non termina con `\\n`",
         )]
     return []
+
+
+# L6 static-first layout (ottimizzazione A prompt-cache, 10/6/2026) --------
+#
+# Razionale: il prompt del proposer è ~5.5k token riprocessati a OGNI query
+# se il contenuto per-query (intent/pool/excluded) sta nel SYSTEM. Col layout
+# invariante-prima/variabile-dopo + split al marker (`prompt_loader.get_split`:
+# testa→system, coda→user) il llama-server riusa il prefisso statico dal
+# checkpoint `n_before_user` e ogni query paga solo la coda (misura 10/6:
+# prompt_n 5521→1277, latenza 8.15s→2.26s). Il guard rende il layout un
+# INVARIANTE (§10.6 anti-regressione): synt/translator/edit futuri non
+# possono reintrodurre interpolazioni nella parte statica senza rompere
+# il lint.
+#
+# Contratto (deterministico, §7.9):
+#   (a) ANCHOR — `prompts/<lang>/<role>.j2` con role in
+#       `_STATIC_FIRST_ANCHOR_ROLES` DEVE dichiarare `layout: static_first`
+#       nel frontmatter in OGNI lingua (L6_LAYOUT_DECL_MISSING): senza
+#       layout la lingua degrada in silenzio al path lento.
+#   (b) MARKER — un template che dichiara `layout: static_first` DEVE
+#       contenere il marker-commento `{# STATIC-END ... #}`
+#       (L6_MARKER_MISSING).
+#   (c) PREFISSO PURO — PRIMA del marker: nessuna interpolazione `{{ var }}`
+#       con var fuori da `_L6_CONST_RENDER_VARS` (L6_VAR_BEFORE_MARKER) e
+#       nessuno statement `{% ... %}` (L6_STMT_BEFORE_MARKER). I commenti
+#       Jinja `{# ... #}` sono esclusi dalla scansione (non renderizzano).
+#   (d) QUERY NELLA CODA — per i role ANCHOR, `{{ user_query }}` DEVE
+#       comparire DOPO il marker (L6_QUERY_VAR_MISSING): con lo split la
+#       coda È il messaggio user — senza la query il modello pianifica
+#       alla cieca (regressione silenziosa di accuratezza).
+#
+# `_L6_CONST_RENDER_VARS`: variabili costanti a parità di processo/lingua
+# (o di giornata: current_*) iniettate da `prompt_loader._default_vars` —
+# non rompono l'identità byte del prefisso FRA query diverse.
+
+_LAYOUT_STATIC_FIRST = "static_first"
+_STATIC_FIRST_ANCHOR_ROLES = frozenset({"engine_proposer"})
+_STATIC_END_MARKER_RE = re.compile(r"\{#-?\s*STATIC-END\b")
+_L6_CONST_RENDER_VARS = frozenset({
+    "lang", "lang_name", "current_year", "current_date", "install_root",
+})
+_JINJA_COMMENT_RE = re.compile(r"\{#.*?#\}", re.DOTALL)
+_JINJA_VAR_RE = re.compile(r"\{\{\s*([a-zA-Z_][a-zA-Z0-9_]*)")
+_JINJA_STMT_RE = re.compile(r"\{%")
+_USER_QUERY_VAR_RE = re.compile(r"\{\{\s*user_query\s*\}\}")
+
+
+def _check_l6_static_first(path: Path, content: str) -> list[LintIssue]:
+    """L6: layout static-first (contratto nel blocco commento sopra)."""
+    issues: list[LintIssue] = []
+    fields, _ = _parse_frontmatter(content)
+    fields = fields or {}
+    declared = fields.get("layout", "") == _LAYOUT_STATIC_FIRST
+    role = fields.get("role", "")
+    anchor = role in _STATIC_FIRST_ANCHOR_ROLES
+
+    # (a) anchor: il role canonico non puo' opt-out (in nessuna lingua).
+    if anchor and not declared:
+        issues.append(LintIssue(
+            file=str(path), line=0, level="error",
+            code="L6_LAYOUT_DECL_MISSING",
+            message=(f"role {role!r} DEVE dichiarare `layout: "
+                     f"{_LAYOUT_STATIC_FIRST}` nel frontmatter "
+                     "(ottimizzazione A prompt-cache: prefisso statico "
+                     "condiviso, prompt_loader.get_split)"),
+        ))
+        return issues
+    if not declared:
+        return issues
+
+    # (b) marker obbligatorio.
+    m = _STATIC_END_MARKER_RE.search(content)
+    if m is None:
+        issues.append(LintIssue(
+            file=str(path), line=0, level="error",
+            code="L6_MARKER_MISSING",
+            message=("`layout: static_first` dichiarato ma marker "
+                     "`{# STATIC-END ... #}` assente: il confine "
+                     "statico→variabile deve essere esplicito"),
+        ))
+        return issues
+
+    # (c) prefisso puro: scandisci SOLO la parte prima del marker, escludendo
+    # gli span commento (il marker stesso e' un commento: le {{ var }} citate
+    # al suo interno non renderizzano).
+    head = content[:m.start()]
+    comment_spans = [c.span() for c in _JINJA_COMMENT_RE.finditer(head)]
+
+    def _in_comment(pos: int) -> bool:
+        return any(a <= pos < b for a, b in comment_spans)
+
+    for vm in _JINJA_VAR_RE.finditer(head):
+        if _in_comment(vm.start()):
+            continue
+        var = vm.group(1)
+        if var in _L6_CONST_RENDER_VARS:
+            continue
+        line = head[:vm.start()].count("\n") + 1
+        issues.append(LintIssue(
+            file=str(path), line=line, level="error",
+            code="L6_VAR_BEFORE_MARKER",
+            message=(f"interpolazione variabile {{{{ {var} }}}} PRIMA del "
+                     "marker STATIC-END: rompe il prefisso byte-identico "
+                     "fra query (sposta il contenuto per-query DOPO il "
+                     "marker)"),
+        ))
+    for sm in _JINJA_STMT_RE.finditer(head):
+        if _in_comment(sm.start()):
+            continue
+        line = head[:sm.start()].count("\n") + 1
+        issues.append(LintIssue(
+            file=str(path), line=line, level="error",
+            code="L6_STMT_BEFORE_MARKER",
+            message=("statement Jinja `{% ... %}` PRIMA del marker "
+                     "STATIC-END: il blocco statico deve essere testo puro "
+                     "(output condizionale = prefisso non byte-identico)"),
+        ))
+
+    # (d) query nella coda (solo anchor): la coda diventa il messaggio user.
+    if anchor:
+        tail = content[m.start():]
+        tail_clean = _JINJA_COMMENT_RE.sub("", tail)
+        if not _USER_QUERY_VAR_RE.search(tail_clean):
+            issues.append(LintIssue(
+                file=str(path), line=0, level="error",
+                code="L6_QUERY_VAR_MISSING",
+                message=("`{{ user_query }}` assente DOPO il marker "
+                         "STATIC-END: con lo split la coda e' il messaggio "
+                         "user — senza query il modello pianifica alla "
+                         "cieca"),
+            ))
+    return issues
 
 
 # YAML section checks (asse B, 12/5/2026) ---------------------------------
@@ -408,6 +556,7 @@ def scan(root: Path, *, langs: list[str] | None = None) -> list[LintIssue]:
             issues.extend(_check_l2_hedge_blacklist(p, content))
             issues.extend(_check_l3_loc(p, content))
             issues.extend(_check_l4_trailing_newline(p, content))
+            issues.extend(_check_l6_static_first(p, content))
         # YAML sections (asse B, 12/5/2026).
         for p in sorted(lang_root.rglob("*.yaml")):
             if "_pending" in p.parts:

@@ -59,6 +59,54 @@ class TestPromptLoaderBasic(unittest.TestCase):
         with self.assertRaises(Exception):
             prompt_loader.get("nonexistent_role_xyz", "it")
 
+
+class TestGetSplit(unittest.TestCase):
+    """get_split (layout static_first, ottimizzazione A prompt-cache):
+    testa statica byte-identica fra query, coda con il contenuto per-query."""
+
+    _VARS = dict(verb="read", obj="urls", keywords="a, b",
+                 tools="- read_urls_html — X", excluded="(nessuno)",
+                 user_query="leggi https://x.y e riassumi")
+
+    def test_split_real_proposer_both_langs(self):
+        import prompt_loader
+        for lang in ("it", "en"):
+            head, tail = prompt_loader.get_split(
+                "engine_proposer", lang, **self._VARS)
+            # Testa: regole statiche, NESSUN contenuto per-query.
+            self.assertGreater(len(head), 1000, lang)
+            for needle in ("read_urls_html — X", "leggi https://x.y"):
+                self.assertNotIn(needle, head, lang)
+            # Coda: tutto il contenuto per-query, query inclusa.
+            self.assertIn("read_urls_html — X", tail, lang)
+            self.assertIn("leggi https://x.y e riassumi", tail, lang)
+            self.assertIn("(nessuno)", tail, lang)
+            # Il marker e' un commento: non renderizza in nessuna parte.
+            self.assertNotIn("STATIC-END", head + tail, lang)
+
+    def test_split_head_byte_identical_across_queries(self):
+        import prompt_loader
+        h1, _ = prompt_loader.get_split("engine_proposer", "it", **self._VARS)
+        vars2 = dict(self._VARS, verb="find", tools="- find_files",
+                     user_query="trova i pdf")
+        h2, _ = prompt_loader.get_split("engine_proposer", "it", **vars2)
+        self.assertEqual(h1, h2)
+
+    def test_split_template_without_marker_degrades_to_get(self):
+        import prompt_loader
+        # intent_extractor non dichiara static_first: render completo + "".
+        head, tail = prompt_loader.get_split("intent_extractor", "it",
+                                              query="che ore sono")
+        self.assertEqual(tail, "")
+        self.assertEqual(head,
+                         prompt_loader.get("intent_extractor", "it",
+                                            query="che ore sono"))
+
+    def test_split_missing_template_raises(self):
+        import prompt_loader
+        with self.assertRaises(RuntimeError):
+            prompt_loader.get_split("nonexistent_role_xyz", "it")
+
     def test_planner_preserves_escape_sequences(self):
         """Il template deve preservare `{{stepN.field}}` (escapato via {% raw %})."""
         import prompt_loader

@@ -53,6 +53,7 @@ graceful per intent.confidence bassa o object unknown). Cache lru_cache.
 import functools
 import json
 import os
+import re
 from pathlib import Path
 
 import minijinja
@@ -260,6 +261,52 @@ def get(role: str, lang: str, **vars) -> str:
                 return _render_synt_yaml(yaml_path, lang, fmt, **merged_vars)
             # YAML missing: fall through to j2 (no silent failure on bench drop-in)
     return _env_for(lang).render_template(f"{role}.j2", **merged_vars)
+
+
+# Layout static-first (ottimizzazione A prompt-cache, 10/6/2026) -----------
+#
+# Il marker-commento `{# STATIC-END ... #}` separa nel sorgente .j2 la parte
+# INVARIANTE per-query (testa: istruzioni/regole/schema) dalla parte
+# VARIABILE (coda: intent/pool/excluded/query). `get_split` renderizza le due
+# parti separatamente: il caller manda la testa come messaggio SYSTEM
+# (byte-identico fra le query) e la coda come messaggio USER. llama-server
+# crea da sé un checkpoint al confine system→user (`n_before_user`,
+# llama.cpp server-context) e ogni query riprocessa SOLO la coda
+# (misura 10/6: prompt_n 5521→1277, latenza proposer 8.15s→2.26s).
+# Il prefisso resiste anche al furto dello slot (host prompt-cache 8 GiB
+# salva/ripristina stato+checkpoint) → niente priming né id_slot pinning.
+# Guard deterministico: `prompts_lint._check_l6_static_first` (nessuna
+# interpolazione non-costante prima del marker).
+_STATIC_END_RE = re.compile(r"\{#-?\s*STATIC-END\b.*?#\}\n?", re.DOTALL)
+
+
+def get_split(role: str, lang: str, **vars) -> tuple[str, str]:
+    """Render di `prompts/<lang>/<role>.j2` in DUE parti al marker
+    `{# STATIC-END ... #}` (layout static_first).
+
+    Ritorna `(testa_statica, coda_variabile)`:
+      - testa: invariante per-query (il guard L6 vieta `{{ var }}`
+        non-costanti prima del marker) → messaggio SYSTEM.
+      - coda: contenuto per-query → messaggio USER.
+
+    Template SENZA marker → `(render_completo, "")`: il caller degrada al
+    layout legacy (system=tutto, user=query). Stesse vars iniettate di
+    `get()` (install_root, lang, lang_name, current_*)."""
+    path = _BASE / lang / f"{role}.j2"
+    if not path.is_file():
+        raise RuntimeError(f"prompt_loader.get_split: {path} non esiste")
+    source = path.read_text(encoding="utf-8")
+    m = _STATIC_END_RE.search(source)
+    if m is None:
+        return get(role, lang, **vars), ""
+    _lang_names = {"it": "italiano", "en": "English"}
+    merged_vars = {**_default_vars(),
+                   "lang": lang, "lang_name": _lang_names.get(lang, lang),
+                   **vars}
+    env = _env_for(lang)
+    head = env.render_str(source[:m.start()], **merged_vars)
+    tail = env.render_str(source[m.end():], **merged_vars)
+    return head.rstrip("\n") + "\n", tail.strip() + "\n"
 
 
 def list_planner_sections(lang: str) -> tuple[str, ...]:
