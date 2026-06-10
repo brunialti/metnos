@@ -9,8 +9,8 @@ revertible  = true
 lifecycle   = "active"
 
 [description]
-it = "SCOPO: cerca nel db LOCALE le issue SIMILI gia' risolte a un testo dato (dedup semantico BGE-M3), con la loro risposta accettata. PATTERN: find_issues(repo='owner/name', query_text='descrizione issue'). NON: elencare issue remote (-> find_issues_github); leggere record per stato (-> read_issues); salvare (-> write_issues). OUT: entries=[{ref, similarity, accepted_reply, classification}] ordinate per similarity desc."
-en = "SCOPO: search the LOCAL db for issues SIMILAR to a given text already resolved (semantic dedup BGE-M3), with their accepted reply. PATTERN: find_issues(repo='owner/name', query_text='issue description'). NON: list remote issues (-> find_issues_github); read records by status (-> read_issues); save (-> write_issues). OUT: entries=[{ref, similarity, accepted_reply, classification}] sorted by similarity desc."
+it = "SCOPO: cerca nel db LOCALE issue SIMILI gia' risolte (dedup semantico), con risposta accettata. PATTERN: find_issues(repo='owner/name', query_text='descrizione issue'). NON: issue remote -> find_issues_github; per stato -> read_issues. OUT: entries=[{ref, similarity, accepted_reply, classification}] per similarity desc."
+en = "SCOPO: search the LOCAL db for SIMILAR already-resolved issues (semantic dedup). PATTERN: find_issues(repo='owner/name', query_text='issue description'). NON: remote issues -> find_issues_github; by status -> read_issues. OUT: entries=[{ref, similarity, accepted_reply, classification}] by similarity desc."
 
 [code]
 files  = ["find_issues.py"]

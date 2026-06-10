@@ -10,8 +10,8 @@ revertible       = true
 reverse_pattern  = ["delete_created_paths"]
 
 [description]
-it = "SCOPO: imposta, autorizza o rimuove signatures dalla curatela utente. PATTERN: set_signatures(kind=\"blacklist\", signature=\"bin:cmd:kind\", reason=\"motivo\", severity=\"dangerous\"). NON: calcolare signatures (-> compute_signatures); lookup statico (-> get_signatures). OUT: entries=[{kind,signature,severity,reason}]."
-en = "SCOPO: set, authorize or remove signatures from user curation. PATTERN: set_signatures(kind=\"blacklist\", signature=\"bin:cmd:kind\", reason=\"reason\", severity=\"dangerous\"). NON: compute signatures (-> compute_signatures); static lookup (-> get_signatures). OUT: entries=[{kind,signature,severity,reason}]."
+it = "SCOPO: imposta, autorizza o rimuove signatures dalla curatela utente. PATTERN: set_signatures(kind=\"blacklist\", signature=\"bin:cmd:kind\", reason=\"motivo\"). NON: calcolare -> compute_signatures; lookup statico -> get_signatures. OUT: entries=[{kind,signature,severity,reason}]."
+en = "SCOPO: set, authorize or remove signatures from user curation. PATTERN: set_signatures(kind=\"blacklist\", signature=\"bin:cmd:kind\", reason=\"reason\"). NON: compute -> compute_signatures; static lookup -> get_signatures. OUT: entries=[{kind,signature,severity,reason}]."
 
 [code]
 files  = ["set_signatures.py"]

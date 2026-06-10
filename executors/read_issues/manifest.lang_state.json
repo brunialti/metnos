@@ -1,14 +1,14 @@
 {
   "description": {
     "it": {
-      "version_hash": "sha256:5c5f9988ce8b4286fc50c9f122d89d213503cb8e570844ad4dffbe08af1b9505",
+      "version_hash": "sha256:4ef4d0c707eb7ee07373eeb87a0d89327777be694e42172218e00f4c5453bd40",
       "source_lang": null,
       "source_hash": null
     },
     "en": {
-      "version_hash": "sha256:402aefe9909abbf14a31cd60bfbf94699a8ac10eb92650517de4b7d1355f3145",
-      "source_lang": null,
-      "source_hash": null
+      "version_hash": "sha256:188b478d02ac9434a0472bd24a90a1bebe44f6de70aa67172d7e00f338e0c94c",
+      "source_lang": "it",
+      "source_hash": "sha256:4ef4d0c707eb7ee07373eeb87a0d89327777be694e42172218e00f4c5453bd40"
     }
   },
   "args.repo.description": {

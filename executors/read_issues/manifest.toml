@@ -9,8 +9,8 @@ revertible  = true
 lifecycle   = "active"
 
 [description]
-it = "SCOPO: legge dal db LOCALE i record di trattamento delle issue, filtrati per stato/numero — non da GitHub. PATTERN: read_issues(repo='owner/name', status='approved'). NON: leggere l'issue da GitHub (-> read_issues_github); elencare issue remote (-> find_issues_github); scrivere (-> write_issues). OUT: entries=[{repo, issue_number, title, classification, status, draft_reply, accepted_reply, posted_at}]."
-en = "SCOPO: read issue treatment records from the LOCAL db, filtered by status/number — not from GitHub. PATTERN: read_issues(repo='owner/name', status='approved'). NON: read the issue from GitHub (-> read_issues_github); list remote issues (-> find_issues_github); write (-> write_issues). OUT: entries=[{repo, issue_number, title, classification, status, draft_reply, accepted_reply, posted_at}]."
+it = "SCOPO: legge dal db LOCALE i record di trattamento delle issue (per stato/numero), non da GitHub. PATTERN: read_issues(repo='owner/name', status='approved'). NON: da GitHub -> read_issues_github; scrivere -> write_issues. OUT: entries=[{repo, issue_number, title, classification, status, draft_reply, accepted_reply, posted_at}]."
+en = "SCOPO: read issue treatment records from the LOCAL db (by status/number), not from GitHub. PATTERN: read_issues(repo='owner/name', status='approved'). NON: from GitHub -> read_issues_github; write -> write_issues. OUT: entries=[{repo, issue_number, title, classification, status, draft_reply, accepted_reply, posted_at}]."
 
 [code]
 files  = ["read_issues.py"]

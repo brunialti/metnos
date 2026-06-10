@@ -16,8 +16,8 @@ reverse_pattern  = "delete_calendars_by_id"
 lifecycle        = "active"
 
 [description]
-it = "SCOPO: crea un NUOVO calendario-contenitore Google (non un evento). PATTERN: create_calendars(summary=\"metnos\"). NON: NON per creare un evento/appuntamento -> create_events; NON per elencare i calendari -> list_calendars; NON per cancellarli -> delete_calendars. OUT: results=[{ok, calendar_id, summary}]."
-en = "SCOPO: create a NEW Google calendar container (not an event). PATTERN: create_calendars(summary=\"metnos\"). NON: NOT to create an event/appointment -> create_events; NOT to list calendars -> list_calendars; NOT to delete them -> delete_calendars. OUT: results=[{ok, calendar_id, summary}]."
+it = "SCOPO: crea un NUOVO calendario-contenitore Google (non un evento). PATTERN: create_calendars(summary=\"metnos\"). NON: evento/appuntamento -> create_events; elencare -> list_calendars; cancellare -> delete_calendars. OUT: results=[{ok, calendar_id, summary}]."
+en = "SCOPO: create a NEW Google calendar container (not an event). PATTERN: create_calendars(summary=\"metnos\"). NON: event/appointment -> create_events; list -> list_calendars; delete -> delete_calendars. OUT: results=[{ok, calendar_id, summary}]."
 
 [code]
 files  = ["create_calendars.py"]
