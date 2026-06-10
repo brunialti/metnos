@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Metnos — Architettura: Introduzione v2</title>
+    <title>Metnos — Architettura: introduzione v2</title>
     <meta name="description" content="L'architettura reale di Metnos: executor vettoriali sintetizzati al volo da un vocabolario chiuso, motore Mētis con planner LLM locale, routing deterministico (seed fisso, affinity, GBNF), quattro tier LLM, pipeline immagini in-process, canali Telegram e web. Con l'anatomia completa di un turno multitool.">
     <meta name="keywords" content="Metnos, architettura, executor, vocabolario chiuso, synt, sintesi executor, vaglio, sandbox, GBNF, grammar, routing deterministico, tier LLM, ReAct, planner locale, Mētis, mnestoma, fast-path, SigLIP, ArcFace, EXIF, Telegram, self-hosted, assistente AI personale">
     <meta name="author" content="Roberto Brunialti">
@@ -357,7 +357,7 @@ calendario, web e GitHub: <em>solo</em> ci&ograve; che attivi, una skill alla vo
 
 <rect x="288" y="350" width="272" height="62" rx="8" fill="#E9EFDB" stroke="#548235"/>
 <text x="424" y="370" text-anchor="middle" fill="#3F6212" font-size="11" font-weight="700">Executor vettoriali (cap. 6)</text>
-<text x="424" y="388" text-anchor="middle" fill="#1F2937" font-size="9.5">79 firmati nel repo + sintetizzati al volo</text>
+<text x="424" y="388" text-anchor="middle" fill="#1F2937" font-size="9.5">~80 firmati nel repo + sintetizzati al volo</text>
 <text x="424" y="404" text-anchor="middle" fill="#475569" font-size="9" font-style="italic">lista dentro &rarr; lista fuori</text>
 
 <line x1="424" y1="178" x2="424" y2="186" stroke="#1A477A" stroke-width="2" marker-end="url(#f1-arr)"/>
@@ -408,7 +408,7 @@ calendario, web e GitHub: <em>solo</em> ci&ograve; che attivi, una skill alla vo
 <thead><tr><th style="width:26%">Voce</th><th>Stato reale</th></tr></thead>
 <tbody>
 <tr><td><strong>Forma</strong></td><td>Processo Python &ge; 3.11, microarchitettura a executor; runtime ReAct con pianificazione one-shot (motore M&emacr;tis, cap. 5).</td></tr>
-<tr><td><strong>Strumenti</strong></td><td>79 executor firmati nel repo, pi&ugrave; quelli <em>sintetizzati al volo</em> dall'istanza (cap. 7) e quelli importati dietro gate (cap. 7). Tutti vettoriali: lista dentro, lista fuori.</td></tr>
+<tr><td><strong>Strumenti</strong></td><td>Circa 80 executor firmati nel repo, pi&ugrave; quelli <em>sintetizzati al volo</em> dall'istanza (cap. 7) e quelli importati dietro gate (cap. 7). Tutti vettoriali: lista dentro, lista fuori.</td></tr>
 <tr><td><strong>Cervello</strong></td><td>LLM locale servito da <code>llama-server</code>; quattro tier astratti <code>fast / middle / wise / frontier</code> (cap. 8). Frontier = cloud opt-in.</td></tr>
 <tr><td><strong>Canali</strong></td><td>Telegram (long-poll in uscita, niente porte aperte) + web su porta 8770 (chat e dashboard admin), cap. 11.</td></tr>
 <tr><td><strong>Sensi</strong></td><td>Pipeline immagini in-process: semantica + volti + EXIF in un indice unificato (cap. 10).</td></tr>
@@ -709,7 +709,7 @@ schedulato &mdash; li attraversa tutti, nell'ordine.
 <!-- band 5: executors -->
 <rect x="60" y="372" width="760" height="64" rx="10" fill="#E9EFDB" stroke="#548235" stroke-width="1.6"/>
 <text x="84" y="398" fill="#3F6212" font-size="12" font-weight="700">5 &middot; Executor</text>
-<text x="84" y="418" fill="#1F2937" font-size="10">79 firmati nel repo + sintetizzati al volo + importati dietro gate &mdash; tutti vettoriali, tutti col loro manifest</text>
+<text x="84" y="418" fill="#1F2937" font-size="10">~80 firmati nel repo + sintetizzati al volo + importati dietro gate &mdash; tutti vettoriali, tutti col loro manifest</text>
 <text x="780" y="398" text-anchor="end" fill="#64748B" font-size="9" font-family="Consolas,monospace">executors/ &middot; ~/.local/&hellip;/executors/</text>
 
 <!-- band 6: backends -->
