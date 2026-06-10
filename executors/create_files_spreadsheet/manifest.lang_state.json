@@ -1,14 +1,14 @@
 {
   "description": {
     "it": {
-      "version_hash": "sha256:8a93f657fb67cff0ad3098cb48db65ce5676c78580905358192aed9f887b061a",
+      "version_hash": "sha256:357343135cff221ccda1670601ad971b6e95f8fc502a8822c0d9f30b3837ab0c",
       "source_lang": null,
       "source_hash": null
     },
     "en": {
-      "version_hash": "sha256:25cb2484825284f141dbe156ac71e4270af5ad03f943d019e8ecd64b9d81827a",
-      "source_lang": null,
-      "source_hash": null
+      "version_hash": "sha256:897a19c13704a585e4df3a09c20deb53808dd913d0632e0008c3448b28922810",
+      "source_lang": "it",
+      "source_hash": "sha256:357343135cff221ccda1670601ad971b6e95f8fc502a8822c0d9f30b3837ab0c"
     }
   },
   "args.title.description": {

@@ -18,8 +18,8 @@ revertible  = true
 lifecycle   = "active"
 
 [description]
-it = "SCOPO: cancella eventi dal calendario, per id espliciti o per finestra temporale. PATTERN: delete_events(event_ids=[\"ev1\"]) oppure delete_events(time_window=\"yesterday\") per cancellare in UN passo gli eventi della finestra. NON: read_events prima quando basta time_window; combinare time_window con event_ids/entries (mutuamente esclusivi); leggere eventi (-> read_events); creare eventi (-> create_events). OUT: results=[{id, ...}], n_deleted."
-en = "SCOPO: delete calendar events, by explicit ids or by time window. PATTERN: delete_events(event_ids=[\"ev1\"]) or delete_events(time_window=\"yesterday\") to delete the window's events in ONE step. NON: read_events first when time_window is enough; combining time_window with event_ids/entries (mutually exclusive); reading events (-> read_events); creating events (-> create_events). OUT: results=[{id, ...}], n_deleted."
+it = "SCOPO: cancella eventi dal calendario, per id o finestra temporale. PATTERN: delete_events(event_ids=[\"ev1\"]) o delete_events(time_window=\"yesterday\") in UN passo. NON: read_events prima quando basta time_window; creare -> create_events. OUT: results=[{id, ...}], n_deleted."
+en = "SCOPO: delete calendar events, by ids or time window. PATTERN: delete_events(event_ids=[\"ev1\"]) or delete_events(time_window=\"yesterday\") in ONE step. NON: read_events first when time_window is enough; create -> create_events. OUT: results=[{id, ...}], n_deleted."
 
 [code]
 files  = ["delete_events.py"]

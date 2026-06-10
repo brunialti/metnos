@@ -16,8 +16,8 @@ revertible = true
 reverse_pattern = "delete_created_paths"
 
 [description]
-it = "SCOPO: comprime una lista di file in UN archivio (zip/tar/gz). PATTERN: find_files al passo N -> compress_files(from_step=N, dest=\"/dir/out.zip\"); oppure literal compress_files(paths=[\"/a.txt\",\"/b.txt\"], dest=\"/out.zip\"). Il formato si deduce dall'estensione di dest (.zip/.tar/.tar.gz/.gz) o si forza con format. NON: comprimere directory (solo file); NON decomprimere/estrarre (usa extract_files); NON un archivio per record (questo crea UN solo archivio con tutti i file). OUT: results=[{path,created,file_count,archive_bytes,format}] + ok_count = file inseriti."
-en = "SCOPO: compress a list of files into ONE archive (zip/tar/gz). PATTERN: find_files at step N -> compress_files(from_step=N, dest=\"/dir/out.zip\"); or literal compress_files(paths=[\"/a.txt\",\"/b.txt\"], dest=\"/out.zip\"). Format is inferred from dest extension (.zip/.tar/.tar.gz/.gz) or forced via format. NON: compress directories (files only); NON decompress/extract (use extract_files); NON one archive per record (this makes ONE archive with all files). OUT: results=[{path,created,file_count,archive_bytes,format}] + ok_count = files added."
+it = "SCOPO: comprime una lista di file in UN archivio (zip/tar/gz; formato dall'estensione di dest). PATTERN: compress_files(from_step=N, dest=\"/dir/out.zip\") o paths=[\"/a.txt\"]. NON: directory (solo file); decomprimere -> extract_files. OUT: results=[{path,created,file_count,archive_bytes,format}] + ok_count."
+en = "SCOPO: compress a list of files into ONE archive (zip/tar/gz; format from dest extension). PATTERN: compress_files(from_step=N, dest=\"/dir/out.zip\"); literal -> paths=[\"/a.txt\"]. NON: directories (files only); decompress -> extract_files. OUT: results=[{path,created,file_count,archive_bytes,format}] + ok_count."
 
 [code]
 files  = ["compress_files.py"]

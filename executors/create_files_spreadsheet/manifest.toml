@@ -18,8 +18,8 @@ reverse_pattern  = "delete_created_paths"
 lifecycle        = "active"
 
 [description]
-it = "SCOPO: crea e POPOLA un NUOVO foglio di calcolo locale .xlsx da `values` o da `from_step`+`columns` (dati di uno step); «mettere/salvare dati in uno spreadsheet» da zero, allegabile a email. PATTERN: create_files_spreadsheet(title=\"foto montagna\", values=[[\"path\",\"descrizione\"]]). NON: foglio GIA' ESISTENTE -> write_files_spreadsheet; Google -> client=\"google_workspace\"; MAI placeholder ${stepN...} in values. OUT: results: list[{spreadsheet_id, path, title, rows}]; spreadsheet_id E' il PATH, allegabile a send_messages."
-en = "SCOPO: creates and POPULATES a NEW local .xlsx spreadsheet from `values` or from `from_step`+`columns` (data of a step); «put/save data into a spreadsheet» from scratch, attachable to email. PATTERN: create_files_spreadsheet(title=\"mountain photos\", values=[[\"path\",\"description\"]]). NON: ALREADY EXISTING sheet -> write_files_spreadsheet; Google -> client=\"google_workspace\"; NEVER ${stepN...} placeholders in values. OUT: results: list[{spreadsheet_id, path, title, rows}]; spreadsheet_id IS the PATH, attachable to send_messages."
+it = "SCOPO: crea e POPOLA un NUOVO foglio .xlsx locale («salva dati in spreadsheet»). PATTERN: create_files_spreadsheet(title=\"foto\", values=[[\"a\",\"b\"]]). NON: foglio ESISTENTE -> write_files_spreadsheet; Google -> client=\"google_workspace\". OUT: results: list[{spreadsheet_id, path, title, rows}]; spreadsheet_id E' il PATH, allegabile a send_messages."
+en = "SCOPO: creates and POPULATES a NEW local .xlsx sheet («save data to spreadsheet»). PATTERN: create_files_spreadsheet(title=\"photos\", values=[[\"a\",\"b\"]]). NON: EXISTING sheet -> write_files_spreadsheet; Google -> client=\"google_workspace\". OUT: results: list[{spreadsheet_id, path, title, rows}]; spreadsheet_id IS the PATH, attachable to send_messages."
 
 [code]
 files  = ["create_files_spreadsheet.py"]

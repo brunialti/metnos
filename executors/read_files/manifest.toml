@@ -15,8 +15,8 @@ affinity    = ["read", "leggi", "lettura", "apri", "file", "documento", "testo",
 # qui dichiarato. Mismatch → executor rifiutato.
 
 [description]
-it = "SCOPO: legge il contenuto di file dal filesystem locale (vettoriale §2.1). PATTERN: tutti i file di una CARTELLA -> read_files(path=\"/opt/metnos/issues\", pattern=\"*.json\", parse=\"json\") (1 call, campi JSON interrogabili); record da uno step -> read_files(from_step=N, parse=\"json\"); 1 file -> read_files(path=\"/dir/f.txt\"). ARGS: path=cartella legge i file dentro (pattern, no find_files); parse=json fonde i campi nell'entry; tail_bytes/max_bytes. NON: max_bytes e tail_bytes insieme. OUT: vettoriale entries=[...]; 1 file scalare {content,metadata}."
-en = "SCOPO: read file content from the local filesystem (vectorial §2.1). PATTERN: all files in a FOLDER -> read_files(path=\"/opt/metnos/issues\", pattern=\"*.json\", parse=\"json\") (1 call, queryable JSON fields); records from a step -> read_files(from_step=N, parse=\"json\"); 1 file -> read_files(path=\"/dir/f.txt\"). ARGS: path=folder reads files within (pattern, no find_files); parse=json merges fields into the entry; tail_bytes/max_bytes. NON: max_bytes and tail_bytes together. OUT: vectorial entries=[...]; single file scalar {content,metadata}."
+it = "SCOPO: legge il contenuto di file locali (vettoriale §2.1). PATTERN: read_files(path=\"/dir\", pattern=\"*.json\", parse=\"json\") legge i file di una CARTELLA (no find_files); da step -> from_step=N. NON: max_bytes e tail_bytes insieme. OUT: vettoriale entries=[...]; 1 file scalare {content,metadata}."
+en = "SCOPO: read local file content (vectorial §2.1). PATTERN: read_files(path=\"/dir\", pattern=\"*.json\", parse=\"json\") reads a FOLDER's files (no find_files); from a step -> from_step=N. NON: max_bytes and tail_bytes together. OUT: vectorial entries=[...]; single file scalar {content,metadata}."
 
 [code]
 files  = ["read_files.py"]
