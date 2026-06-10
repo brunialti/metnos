@@ -125,6 +125,67 @@ def _render_tool_pool(pool: list[str], catalog: Optional[list]) -> str:
     return "\n".join(lines)
 
 
+def _render_excluded_signal(excluded_hashes: set[str], lang: str = "it") -> str:
+    """Segnale di DIVERSIFICAZIONE per la sezione «FRAMEWORK GIA RIFIUTATI»
+    del prompt (var `excluded` dei template engine_proposer*.j2, invariati).
+
+    B15: l'hash sha e' un token opaco che il modello IGNORA → il challenger
+    (metis grammar-multi) e i retry (guard/validator/recovery) uscivano
+    identici al piano escluso. Si rende invece la FORMA dei piani esclusi
+    (sequenza tool + arg keys, via executor.framework_shape_for_hash) +
+    istruzione esplicita §6. Deterministico §7.9: sorted, dedup stabile,
+    nessun LLM; hash non risolvibili (es. anti_skills di processi passati)
+    → conteggio onesto, mai sha grezzi nel prompt.
+    """
+    if not excluded_hashes:
+        return "(nessuno)" if lang == "it" else "(none)"
+    try:
+        from .executor import framework_shape_for_hash
+    except Exception:  # pragma: no cover — import circolare/CLI degradata
+        framework_shape_for_hash = lambda h: None
+    shapes: list[str] = []
+    unresolved = 0
+    for h in sorted(excluded_hashes):
+        s = framework_shape_for_hash(h)
+        if s:
+            if s not in shapes:  # dedup: hash diversi, stessa forma → 1 riga
+                shapes.append(s)
+        else:
+            unresolved += 1
+    lines = [f"- {s}" for s in shapes]
+    # Primi tool dei piani esclusi (ordine stabile): il vincolo CONCRETO
+    # («NON ripartire da X») smuove il modello medio piu' del generico
+    # «cambia qualcosa»; «oppure sequenza/argomenti diversi» lascia aperta
+    # la via legittima del recovery wrong_args (stesso tool, args diversi).
+    firsts: list[str] = []
+    for s in shapes:
+        ft = s.split(" → ", 1)[0].split("(", 1)[0]
+        if ft and ft != "final_answer" and ft not in firsts:
+            firsts.append(ft)
+    quoted = ", ".join(f"«{f}»" for f in firsts)
+    if lang == "it":
+        if unresolved:
+            lines.append(f"- {unresolved} altri piani gia' rifiutati "
+                         "(forma non nota)")
+        lines.append("DEVI: proporre un piano DIVERSO da quelli sopra"
+                     + (f" — primo tool diverso (NON {quoted}), oppure "
+                        "sequenza/argomenti diversi." if quoted else "."))
+        lines.append("NON DEVI: riemettere un piano elencato sopra.")
+        if shapes:
+            lines.append(f"ERRORE: ripetere identico «{shapes[0]}».")
+    else:
+        if unresolved:
+            lines.append(f"- {unresolved} more plans already rejected "
+                         "(shape unknown)")
+        lines.append("YOU MUST: propose a plan DIFFERENT from those above"
+                     + (f" — different first tool (NOT {quoted}), or a "
+                        "different sequence/arguments." if quoted else "."))
+        lines.append("YOU MUST NOT: re-emit a plan listed above.")
+        if shapes:
+            lines.append(f"ERROR: repeating «{shapes[0]}» verbatim.")
+    return "\n".join(lines)
+
+
 def _strip_think(raw: str) -> str:
     """Rimuove i blocchi `<think>...</think>` CHIUSI dall'output LLM. Un
     `<think>` residuo e' per costruzione APERTO (B5: il troncamento a
@@ -319,7 +380,9 @@ class SimpleProposer:
                 verb=intent.verb, obj=intent.object,
                 keywords=", ".join(intent.keywords),
                 tools=tools_inline,
-                excluded=", ".join(excluded_hashes) or "(nessuno)",
+                # B15: forma leggibile dei piani esclusi + istruzione di
+                # diversificazione (non hash sha opachi che il modello ignora).
+                excluded=_render_excluded_signal(excluded_hashes, lang),
             )
         except Exception as ex:
             log.warning("SimpleProposer prompt load failed: %r", ex)

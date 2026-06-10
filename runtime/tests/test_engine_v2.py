@@ -134,6 +134,176 @@ class TestExecutorPlaceholders(unittest.TestCase):
                   llm_call=_cap_llm, catalog=cat, exclude_tools=("get_inputs",))
         self.assertNotIn("get_inputs", _pool_block(seen["system"]))
 
+    def test_proposer_excluded_signal_intelligible(self):
+        # B15: il segnale di diversificazione nel prompt e' la FORMA dei
+        # piani esclusi (tool + arg keys) + istruzione DEVI/NON DEVI — MAI
+        # l'hash sha opaco (il modello lo ignorava → challenger identico).
+        from engine.executor import compute_framework_hash
+        from engine.proposer import SimpleProposer, _render_excluded_signal
+        fw = Framework(steps=[
+            StepSpec(tool="read_urls_html", args={"urls": ["x"]}),
+            StepSpec(tool="final_answer", args={}),
+        ], final_message="ok")
+        h = compute_framework_hash(fw)  # popola il registry hash→forma
+        # render diretto: forma + istruzione, niente sha
+        sig = _render_excluded_signal({h}, "it")
+        self.assertIn("read_urls_html(urls) → final_answer", sig)
+        self.assertIn("DEVI", sig)
+        self.assertNotIn(h, sig)
+        # hash NON risolvibile (processo passato) → conteggio onesto
+        sig_un = _render_excluded_signal({"feedfacefeedface"}, "it")
+        self.assertIn("1 altri piani", sig_un)
+        self.assertNotIn("feedface", sig_un)
+        # vuoto → placeholder invariato per-lingua
+        self.assertEqual(_render_excluded_signal(set(), "it"), "(nessuno)")
+        self.assertEqual(_render_excluded_signal(set(), "en"), "(none)")
+        # end-to-end: la sezione excluded del prompt reale usa la forma
+        E = type("E", (), {})
+        cat = []
+        for nm in ("read_urls_html", "send_messages"):
+            e = E(); e.name = nm; e.description = f"SCOPO: {nm}. OUT: x"
+            e.args_schema = {"properties": {}, "required": []}
+            cat.append(e)
+        seen = {}
+
+        def _cap_llm(system, user, **kw):
+            seen["system"] = system
+            return '{"steps":[{"tool":"send_messages","args":{}}]}'
+
+        SimpleProposer().propose(
+            query="q", intent=Intent(verb="read", object="urls"),
+            pool=[e.name for e in cat], excluded_hashes={h},
+            llm_call=_cap_llm, catalog=cat)
+        self.assertIn("read_urls_html(urls) → final_answer", seen["system"])
+        self.assertNotIn(h, seen["system"])
+
+    def test_metis_compound_challenger_diversified(self):
+        # B15: sul COMPOUND il challenger (call #2) e' diverso PER
+        # COSTRUZIONE: il primo tool del campione esce dal pool della 2a
+        # call (prompt + GBNF) e la sezione excluded mostra la FORMA del
+        # campione, non l'hash.
+        from engine.proposer_metis import MetisProposer
+        E = type("E", (), {})
+        cat = []
+        for nm in ("find_issues_github", "read_issues_github",
+                   "write_files_spreadsheet"):
+            e = E(); e.name = nm; e.description = f"SCOPO: {nm}. OUT: x"
+            e.args_schema = {"properties": {}, "required": []}
+            cat.append(e)
+        systems = []
+        outs = [
+            '{"steps":[{"tool":"find_issues_github","args":{"repo":"r"}},'
+            '{"tool":"write_files_spreadsheet","args":{"from_step":1}},'
+            '{"tool":"final_answer","args":{}}],"final_message":"a"}',
+            '{"steps":[{"tool":"read_issues_github","args":{"repo":"r"}},'
+            '{"tool":"write_files_spreadsheet","args":{"from_step":1}},'
+            '{"tool":"final_answer","args":{}}],"final_message":"b"}',
+        ]
+
+        def _llm(system, user, **kw):
+            systems.append(system)
+            return outs[min(len(systems), len(outs)) - 1]
+
+        intent = Intent(verb="find", object="issues", actions=[
+            {"verb": "find", "object": "issues"},
+            {"verb": "write", "object": "files"}])
+        fw = MetisProposer().propose(
+            query="trova le issue e mettile in un foglio", intent=intent,
+            pool=[e.name for e in cat], excluded_hashes=set(),
+            llm_call=_llm, catalog=cat)
+        self.assertIsNotNone(fw)
+        self.assertEqual(len(systems), 2)  # N=2: campione + challenger
+
+        def _pool_block(system):
+            lo = system.find("POOL TOOL")
+            hi = system.find("FRAMEWORK GIA")
+            return system[lo:hi] if lo >= 0 and hi > lo else system
+
+        # call #1: pool pieno, nessun escluso
+        self.assertIn("find_issues_github", _pool_block(systems[0]))
+        self.assertIn("(nessuno)", systems[0])
+        # call #2 (challenger): primo tool del campione FUORI dal pool,
+        # forma del campione nella sezione excluded
+        self.assertNotIn("find_issues_github", _pool_block(systems[1]))
+        self.assertIn("read_issues_github", _pool_block(systems[1]))
+        self.assertIn("find_issues_github(repo)", systems[1])
+        self.assertIn("DEVI", systems[1].split("FRAMEWORK GIA")[1][:600])
+
+    def test_telos_rank_compound_stub_malus(self):
+        # B15 difesa hedge: su intent compound (2 clausole) un piano MONCO
+        # (1 solo step-executor) NON deve battere il campione completo
+        # grazie al bonus-brevita'.
+        from engine.proposer_metis import _heuristic_telos_score
+        intent = Intent(verb="find", object="files", actions=[
+            {"verb": "find", "object": "files"},
+            {"verb": "delete", "object": "files"}])
+        full = {"n_steps": 4, "verb": "find", "object": "files",
+                "tools": ["find_files", "filter_entries", "delete_files",
+                          "final_answer"]}
+        stub = {"n_steps": 2, "verb": "find", "object": "files",
+                "tools": ["find_pulls_github", "final_answer"]}
+        self.assertGreater(_heuristic_telos_score(full, intent=intent),
+                           _heuristic_telos_score(stub, intent=intent))
+        # mono-azione: il malus NON scatta (piano 1-step legittimo §4.2)
+        mono = Intent(verb="get", object="numbers", actions=[
+            {"verb": "get", "object": "numbers"}])
+        one = {"n_steps": 2, "verb": "get", "object": "numbers",
+               "tools": ["get_now", "final_answer"]}
+        self.assertGreater(_heuristic_telos_score(one, intent=mono), 1.0)
+
+    def test_telos_rank_dup_malus_args_aware(self):
+        # Il malus dup colpisce SOLO step consecutivi IDENTICI (tool+args);
+        # stesso tool con args DIVERSI (no projection) = verboso ma legittimo.
+        from engine.proposer_metis import _heuristic_telos_score
+        base = {"n_steps": 3, "verb": "read", "object": "urls"}
+        legit = dict(base, tools=["read_urls_html", "read_urls_html",
+                                  "final_answer"],
+                     steps_sig=[("read_urls_html", '{"urls": ["a"]}'),
+                                ("read_urls_html", '{"urls": ["b"]}'),
+                                ("final_answer", "{}")])
+        broken = dict(base, tools=["read_urls_html", "read_urls_html",
+                                   "final_answer"],
+                      steps_sig=[("read_urls_html", '{"urls": ["a"]}'),
+                                 ("read_urls_html", '{"urls": ["a"]}'),
+                                 ("final_answer", "{}")])
+        self.assertGreater(_heuristic_telos_score(legit, intent=None),
+                           _heuristic_telos_score(broken, intent=None))
+
+    def test_telos_rank_excluded_hedge_handicap(self):
+        # B15: il challenger hard-escluso non vince per sola brevita'
+        # (campione 5-step sano > challenger 3-step marcato), ma vince
+        # quando il campione ha step duplicati IDENTICI (pipeline rotta).
+        from engine.proposer_metis import MetisProposer
+        intent = Intent(verb="find", object="urls", actions=[
+            {"verb": "find", "object": "urls"},
+            {"verb": "read", "object": "urls"}])
+        mk = lambda tools_args: Framework(
+            steps=[StepSpec(tool=t, args=a) for t, a in tools_args],
+            final_message="x")
+        champ = mk([("find_urls", {"q": "r"}),
+                    ("read_urls_html", {"urls": ["a"]}),
+                    ("read_urls_html", {"urls": ["b"]}),
+                    ("read_urls_html", {"urls": ["c"]}),
+                    ("final_answer", {})])
+        chall = mk([("find_images_web", {"q": "r"}),
+                    ("read_urls_html", {"from_step": 1}),
+                    ("final_answer", {})])
+        chall._metis_excluded_hedge = True
+        mp = MetisProposer()
+        ranked = mp._rank_by_telos([champ, chall], intent=intent, lang="it")
+        self.assertIs(ranked[0], champ)  # brevita' non basta al challenger
+        champ_broken = mk([("get_files", {"paths": ["x"]}),
+                           ("get_files", {"paths": ["x"]}),
+                           ("write_files_spreadsheet", {"from_step": 2}),
+                           ("final_answer", {})])
+        chall2 = mk([("read_files", {"paths": ["x"]}),
+                     ("write_files_spreadsheet", {"from_step": 1}),
+                     ("final_answer", {})])
+        chall2._metis_excluded_hedge = True
+        ranked2 = mp._rank_by_telos([champ_broken, chall2],
+                                    intent=intent, lang="it")
+        self.assertIs(ranked2[0], chall2)  # dup identico → challenger vince
+
     def test_get_inputs_misroute_detect(self):
         from engine.dispatch import _is_get_inputs_misroute
         from engine.types import Framework, StepSpec

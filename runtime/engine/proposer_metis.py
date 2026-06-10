@@ -31,7 +31,8 @@ from typing import Optional, Callable
 
 from .types import Intent, Framework
 from .proposer import (SimpleProposer, _iter_balanced_json_objects,
-                       _render_tool_pool, _strip_think)
+                       _render_excluded_signal, _render_tool_pool,
+                       _strip_think)
 
 log = logging.getLogger(__name__)
 
@@ -110,6 +111,14 @@ def _n_candidates(intent=None) -> int:
     if _is_action_verb(getattr(intent, "verb", "") or ""):
         return ceil
     return fast if (conf >= thr and not compound) else ceil
+
+
+# Handicap del challenger compound generato con esclusione HARD del primo
+# tool del campione (B15, vedi _rank_by_telos). Calibrazione: < malus dup
+# identici (0.3: un campione con step duplicati DEVE perdere contro il
+# challenger pulito) e >= gap-brevita' tipico 3-vs-5 step (0.25: a parita'
+# vince il campione per stabilita' del sort).
+_EXCLUDED_HEDGE_HANDICAP = 0.25
 
 
 def _cache_max() -> int:
@@ -270,7 +279,9 @@ class MetisProposer:
                 obj=intent.object,
                 keywords=", ".join(intent.keywords),
                 tools=tools_inline,
-                excluded=", ".join(excluded_hashes) or "(nessuno)",
+                # B15: forma leggibile dei piani esclusi + istruzione di
+                # diversificazione (non hash sha opachi che il modello ignora).
+                excluded=_render_excluded_signal(excluded_hashes, lang),
                 n_candidates=n_cands,
             )
         except Exception as ex:
@@ -322,6 +333,8 @@ class MetisProposer:
                           and t.split("_", 1)[0] == verb] or None
         for i in range(n):
             cur_pool = pool
+            cur_excl = exclude_tools
+            hard_excluded = False
             if i > 0 and not is_compound:
                 # Budget extra mono-azione: si spende SOLO come hedge.
                 if hedge_pool is None:
@@ -330,13 +343,30 @@ class MetisProposer:
                        == verb for fw in out):
                     break  # gia' azione-first: hedge superfluo (latenza)
                 cur_pool = hedge_pool
+            elif i > 0:
+                # B15 — challenger COMPOUND: diversita' STRUTTURALE per
+                # COSTRUZIONE (§7.9), non per speranza. Il primo tool dei
+                # candidati gia' generati esce dal pool del challenger
+                # (prompt + grammar GBNF): con seed fisso e think=False il
+                # solo segnale testuale non basta (misura 10/6: 3/3 stessa
+                # sequenza) e una seconda call full-pool e' un quasi-
+                # duplicato → spreco. Cosi' l'alternativa parte da un tool
+                # fratello (es. read_* vs find_*) e il telos-rank confronta
+                # due strade REALI; se il challenger e' peggiore il campione
+                # vince comunque (sort stabile, pari merito → primo).
+                _firsts = {(fw.steps[0].tool or "") for fw in out
+                           if fw.steps and fw.steps[0].tool
+                           and fw.steps[0].tool != "final_answer"}
+                if _firsts:
+                    cur_excl = tuple(set(exclude_tools) | _firsts)
+                    hard_excluded = True
             try:
                 fw = self._simple.propose(
                     query=query, intent=intent,
                     pool=cur_pool,  # propaga pool reale (SimpleProposer rendera' inline)
                     excluded_hashes=seen_hashes,
                     llm_call=llm_call, lang=lang, catalog=catalog,
-                    exclude_tools=exclude_tools)
+                    exclude_tools=cur_excl)
             except Exception as ex:
                 log.warning(
                     "MetisProposer grammar-multi call %d/%d failed: %r",
@@ -344,6 +374,11 @@ class MetisProposer:
                 continue
             if not fw:
                 break  # nessun framework piu' generabile
+            if hard_excluded:
+                # Marca il challenger generato con pool AMPUTATO: il rank gli
+                # applica _EXCLUDED_HEDGE_HANDICAP (non compete alla pari
+                # sulla brevita' — vedi _rank_by_telos).
+                fw._metis_excluded_hedge = True
             out.append(fw)
             try:
                 from .executor import compute_framework_hash
@@ -355,12 +390,24 @@ class MetisProposer:
     def _rank_by_telos(self, candidates, *, intent, lang):
         """Rank deterministico telos-aware. Fix #4: no dead alignment_engine
         import branch. Fix #7: sempre _heuristic_telos_score, no fallback
-        a structural-only."""
+        a structural-only.
+
+        Handicap challenger hard-escluso (B15): un candidato generato col
+        primo tool del campione FUORI dal pool non e' i.i.d. col campione
+        (scelta full-pool, piu' informata) — senza handicap il solo bonus-
+        brevita' (max 0.25 fra 3 e 5 step) bastava a farlo vincere anche
+        quando semanticamente storto. Con 0.25: a parita' il campione vince
+        (pareggio → sort stabile → primo); il challenger passa SOLO per
+        difetti strutturali del campione (dup identici -0.3, monco -0.4) o
+        vantaggio strutturale maggiore. L'hedge MONO-azione (azione-first,
+        9/6) NON e' marcato: deve vincere col verb-match +0.2 a parita'."""
         scored = []
         for fw in candidates:
             try:
                 sig = self._framework_signature(fw, intent)
                 score = _heuristic_telos_score(sig, intent=intent)
+                if getattr(fw, "_metis_excluded_hedge", False):
+                    score -= _EXCLUDED_HEDGE_HANDICAP
             except Exception:
                 score = 0.0
             scored.append((score, fw))
@@ -371,6 +418,14 @@ class MetisProposer:
         return {
             "n_steps": len(fw.steps),
             "tools": [s.tool for s in fw.steps],
+            # (tool, args) per il malus dup: distingue la ripetizione ROTTA
+            # (step identico) dal multi-step verboso (stesso tool, args
+            # diversi) — vedi _heuristic_telos_score.
+            "steps_sig": [
+                (s.tool, json.dumps(s.args or {}, sort_keys=True,
+                                    ensure_ascii=False, default=str))
+                for s in fw.steps
+            ],
             "verb": intent.verb,
             "object": intent.object,
         }
@@ -433,11 +488,30 @@ def _heuristic_telos_score(sig: dict, *, intent: Optional[Intent] = None) -> flo
         score += 0.15
     # Malus pipeline rotta (§7.9, enforcement deterministico della regola
     # prompt «NON DEVI ripetere lo stesso tool consecutivo»): un candidato
-    # con step consecutivi identici (es. doppio get_files di fila, visto sul
-    # compound issue→spreadsheet 9/6/2026) e' SEMPRE peggiore dell'alternativa
-    # pulita → il rank lo declassa invece di premiarne la brevita' apparente.
-    if any(a == b for a, b in zip(tools, tools[1:])):
+    # con step consecutivi IDENTICI — stesso tool E stessi args (es. doppio
+    # get_files di fila, compound issue→spreadsheet 9/6/2026) — e' SEMPRE
+    # peggiore dell'alternativa pulita → declassato. Lo stesso tool con args
+    # DIVERSI (read_urls_html per url-1, url-2, ... quando il modello non
+    # usa la projection `*`) e' VERBOSO ma legittimo: il malus tool-only lo
+    # declassava (falso positivo 10/6, «cerca online cos'e' ROCm») e
+    # promuoveva un challenger semanticamente storto.
+    seq = sig.get("steps_sig") or tools
+    if any(a == b for a, b in zip(seq, seq[1:])):
         score -= 0.3
+    # Malus compound-MONCO (B15, difesa dell'hedge §7.9): query con >=2
+    # clausole {verb,object} ma piano con MENO step-executor delle clausole
+    # → quasi certamente non copre la richiesta (challenger degenerato o
+    # collasso). Senza questo, il bonus-brevita' premiava un challenger
+    # 2-step assurdo (es. find_pulls_github→final per «trova i .log e
+    # cancellali») sopra il campione completo a 4 step. -0.4 > gap massimo
+    # brevita'+verb (0.35): un piano completo vince SEMPRE su un monco; fra
+    # due piani entrambi sotto-clausola (es. 1 tool copre 2 clausole §4.2)
+    # il malus e' pari e l'ordine relativo resta invariato.
+    acts = len(getattr(intent, "actions", None) or []) if intent else 0
+    if acts >= 2:
+        n_exec = sum(1 for t in tools if t != "final_answer")
+        if n_exec < acts:
+            score -= 0.4
     # Fix #7: verb-match bonus (ereditato dal vecchio _heuristic_score).
     # B12: match sul PRIMO SEGMENTO del nome tool (= verbo canonico §2.2),
     # NON substring — "get" non deve matchare "widgets"/"forget_*".

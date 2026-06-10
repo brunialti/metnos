@@ -718,6 +718,37 @@ def _render_final_message(template: str, history: list[StepRun]) -> str:
 
 # ── Framework hash (per excluded_hashes in recovery) ──────────────────────
 
+# Registry hash→forma leggibile del piano (B15): l'hash sha nel prompt del
+# Proposer e' un token OPACO che il modello ignora → challenger/retry usciva
+# identico al piano escluso. Popolato a ogni compute_framework_hash (tutti i
+# path che escludono un hash lo hanno calcolato qui in-process: guard/
+# validator in dispatch, recovery, metis grammar-multi); gli hash di processi
+# passati (anti_skills DB) restano non risolti e il render del Proposer
+# degrada a conteggio onesto. Bounded LRU; deterministico §7.9 (derivato dal
+# framework, nessun LLM).
+from collections import OrderedDict as _OrderedDict
+
+_HASH_SHAPES: "_OrderedDict[str, str]" = _OrderedDict()
+_HASH_SHAPES_MAX = 512
+
+
+def framework_shape_for_hash(h: str) -> Optional[str]:
+    """Forma leggibile «tool(arg_keys) → tool2(...)» del framework con hash
+    `h`, se hashato in questo processo; None altrimenti."""
+    return _HASH_SHAPES.get(h)
+
+
+def _framework_shape(fw: Framework) -> str:
+    """Rende la STESSA informazione coperta dall'hash (tool sequence + args
+    keys) in forma leggibile dal modello medio: shape diversa ⇔ piano
+    materialmente diverso per l'esclusione."""
+    parts = []
+    for s in fw.steps:
+        keys = ",".join(sorted((s.args or {}).keys()))
+        parts.append(f"{s.tool}({keys})" if keys else s.tool)
+    return " → ".join(parts)
+
+
 def compute_framework_hash(fw: Framework) -> str:
     """Hash della SHAPE: tool sequence + args keys + template. NON include
     valori filler (dst_folder=Junk vs Spam sono stessa shape)."""
@@ -729,7 +760,12 @@ def compute_framework_hash(fw: Framework) -> str:
         "final_message": fw.final_message,
     }
     blob = json.dumps(minimal, sort_keys=True, ensure_ascii=False)
-    return hashlib.sha256(blob.encode("utf-8")).hexdigest()[:16]
+    h = hashlib.sha256(blob.encode("utf-8")).hexdigest()[:16]
+    _HASH_SHAPES[h] = _framework_shape(fw)
+    _HASH_SHAPES.move_to_end(h)
+    while len(_HASH_SHAPES) > _HASH_SHAPES_MAX:
+        _HASH_SHAPES.popitem(last=False)
+    return h
 
 
 # ── Main execution ────────────────────────────────────────────────────────
