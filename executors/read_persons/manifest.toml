@@ -7,9 +7,9 @@ name        = "read_persons"
 version     = "0.1.0"
 author      = "Roberto Brunialti"
 affinity    = ["io", "me", "chi sono", "mio profilo", "il mio account",
-                "dimmi tutto su", "profilo di", "host", "guest",
-                "who am i", "my profile", "my account", "tell me about",
-                "paired user", "ruolo", "autonomy"]
+                "quali account", "dimmi tutto su", "profilo di", "host", "guest",
+                "who am i", "my profile", "my account", "which accounts",
+                "tell me about", "paired user", "ruolo", "autonomy"]
 
 [description]
 it = "SCOPO: profilo identitario completo. PATTERN: read_persons(name=\"X\", role=\"guest\"). NON: confondere con get_persons (scheda) o find_persons_indices (face match). OUT: entries=[{slug, name, role, autonomy_level, n_examples, examples, channels, is_self}]."

@@ -13,8 +13,8 @@ affinity    = ["credenziali", "chiavi", "token", "segreti", "configurate",
                 "configured services", "api keys", "logins"]
 
 [description]
-it = "SCOPO: trova credenziali configurate nello storage. PATTERN: find_credentials(query=\"google\", top_k=10). NON: leggere valori segreti (-> set_credentials); creare/modificare credenziali (-> set_credentials). OUT: {ok, entries:[{binding, fingerprint, scopes, age_days, status, fields_present}], n_entries, truncated, available_total}."
-en = "SCOPO: finds configured credentials in storage. PATTERN: find_credentials(query=\"google\", top_k=10). NON: reading secret values (-> set_credentials); creating/modifying credentials (-> set_credentials). OUT: {ok, entries:[{binding, fingerprint, scopes, age_days, status, fields_present}], n_entries, truncated, available_total}."
+it = "SCOPO: elenca account e servizi configurati (mail, api, cloud): credenziali metadata-only. PATTERN: find_credentials(query=\"google\", top_k=10). NON: leggere le mail (-> read_messages); valori segreti (-> set_credentials). OUT: {ok, entries:[{binding, fingerprint, scopes, age_days, status, fields_present}], n_entries, truncated, available_total}."
+en = "SCOPO: lists configured accounts and services (mail, api, cloud): metadata-only credentials. PATTERN: find_credentials(query=\"google\", top_k=10). NON: reading account mail (-> read_messages); secret values (-> set_credentials). OUT: {ok, entries:[{binding, fingerprint, scopes, age_days, status, fields_present}], n_entries, truncated, available_total}."
 
 [code]
 files  = ["find_credentials.py"]

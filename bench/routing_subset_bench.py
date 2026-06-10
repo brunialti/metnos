@@ -76,6 +76,17 @@ GOLD = [
     {"q": "trova le fasce libere nel mio calendario questa settimana", "tool": "find_events_empty"},
     # --- immagini ---
     {"q": "cerca foto di una persona col viso in primo piano", "tool": "find_images_indices"},
+    # --- account/credenziali vs mail (misroute live 10/6/2026): "account mail"
+    # → intent object=messages ("mail" domina su "account") → pool gated per
+    # object escludeva sia find_credentials sia read_persons = RECALL miss →
+    # read_messages leggeva 426 email. Fix: affinity_phrase_recall (tag
+    # "quali account", curato in entrambi i manifest). DUE tool corretti
+    # by-design (non masking): find_credentials elenca account/servizi con
+    # credenziali (ADR 0123); read_persons(name=actor) è il bersaglio della
+    # sez. I del prompt proposer shippato («quali account mail hai» →
+    # profilo con mail_accounts). Il misroute che conta è read_messages.
+    {"q": "quali account mail hai?", "tool": ["find_credentials", "read_persons"]},
+    {"q": "quali account email ho configurato?", "tool": ["find_credentials", "read_persons"]},
 ]
 
 

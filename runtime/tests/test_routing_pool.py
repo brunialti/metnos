@@ -187,3 +187,39 @@ def test_dispatch_e_bench_condividono_la_pool_build():
     assert "build_routing_pool" in bench_src
     assert "rank_with_intent" not in bench_src, \
         "bench re-implementa il pool inline (regressione B3)"
+
+
+# ── Cross-object affinity phrase recall (misroute live 10/6/2026) ──────
+
+def test_affinity_phrase_recall_account_mail(catalog):
+    """«quali account mail hai?» — intent object=messages ("mail" domina su
+    "account") escludeva find_credentials/read_persons a monte = RECALL miss
+    (read_messages leggeva 426 email). Il tag affinity multi-parola "quali
+    account" interamente coperto dalla query li forza nel pool ANCHE con
+    verb/object dell'intent diversi."""
+    pool = _build("quali account mail hai?", _intent("get", "messages"),
+                  catalog)
+    assert "find_credentials" in pool
+    assert "read_persons" in pool
+
+
+def test_affinity_phrase_recall_scoped(catalog):
+    """SCOPED: il recall scatta SOLO su phrase-match pieno di tag multi-parola
+    distintivi. Tag singola-parola coincidenti ("archivio"+"cartella" di
+    move_messages) NON sporcano le query move_files; query senza phrase-match
+    non recuperano nulla fuori dal gating object."""
+    from prefilter import affinity_phrase_recall
+    assert affinity_phrase_recall(
+        "sposta vecchio.txt nella cartella archivio", catalog) == []
+    assert affinity_phrase_recall(
+        "leggi le mail non lette di oggi", catalog) == []
+
+
+def test_affinity_phrase_recall_excludes_present(catalog):
+    """exclude_names: i tool gia' nel pool non vengono duplicati."""
+    from prefilter import affinity_phrase_recall
+    rec = affinity_phrase_recall("quali account mail hai?", catalog,
+                                 exclude_names={"find_credentials"})
+    names = [getattr(e, "name", None) for e in rec]
+    assert "find_credentials" not in names
+    assert "read_persons" in names

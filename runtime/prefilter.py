@@ -766,7 +766,49 @@ _GENERIC_AFFINITY_VERBS = frozenset({
     "cancella", "rimuovi", "elimina", "move", "sposta", "write", "scrivi",
     "salva", "create", "crea", "set", "imposta", "send", "invia", "filter",
     "filtra", "sort", "ordina", "group", "raggruppa", "compute", "calcola",
+    # send-synonyms IT (10/6/2026): generici quanto "invia" — senza di loro
+    # il tag "manda mail" diventava phrase-match distintivo (over-recall di
+    # send_messages_github nelle query move-mail, vedi affinity_phrase_recall).
+    "manda", "mandare", "spedisci", "spedire",
 })
+
+
+def affinity_phrase_recall(query, catalog, *, exclude_names=frozenset(), cap=3):
+    """Cross-object recall affinity-based (misroute live 10/6/2026: "quali
+    account mail hai?" → read_messages legge 426 email). Causa: l'intent
+    extractor classifica l'OBJECT sbagliato ("mail" domina su "account" →
+    object=messages) e il pool gated per object esclude A MONTE il tool
+    giusto (find_credentials, object=credentials) = RECALL miss. L'affinity
+    boost di rank_with_intent non basta: riordina DENTRO il pool, non lo
+    allarga.
+
+    Criterio SCOPED (deterministico §7.9, zero dizionari per-frase): un tag
+    affinity MULTI-parola (dato curato del manifest) i cui token distintivi
+    (>=2 dopo aver tolto stopword e verbi generici) sono TUTTI nella query
+    e' un segnale forte e intenzionale ("quali account") → il tool entra nel
+    pool anche se verb/object dell'intent differiscono. Match parziale o su
+    tag singola-parola NON recupera: "archivio"+"cartella" (tag separati di
+    move_messages) non deve sporcare le query move_files. Cap deterministico
+    (ordinamento -n_token, name) per l'igiene del pool.
+
+    Ritorna lista executor (mai i gia' presenti in `exclude_names`)."""
+    qtokens = tokenize(query) if query else set()
+    if not qtokens:
+        return []
+    hits = []
+    for e in _filter_dormant(catalog):
+        name = getattr(e, "name", None)
+        if not name or name in exclude_names:
+            continue
+        best = 0
+        for tag in (getattr(e, "affinity", None) or []):
+            dt = tokenize(tag) - _STOPWORDS - _GENERIC_AFFINITY_VERBS
+            if len(dt) >= 2 and dt <= qtokens:
+                best = max(best, len(dt))
+        if best:
+            hits.append((best, name, e))
+    hits.sort(key=lambda h: (-h[0], h[1]))
+    return [e for _, _, e in hits[:cap]]
 
 
 def rank_with_intent(query, catalog, intent, *, k=3):

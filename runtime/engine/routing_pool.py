@@ -144,6 +144,26 @@ def build_routing_pool(query: str, intent, catalog: list, *,
             # → wise LLM lentissimo (regressione web-search: "fondi ark" ~8min).
             if not filtered:
                 filtered = _rank_bow(query, catalog, k=pool_size, min_score=0)
+            # Cross-object recall affinity-based (10/6/2026, misroute live
+            # "quali account mail hai?" → read_messages): l'intent puo'
+            # classificare l'OBJECT sbagliato e il pool gated per object
+            # esclude a monte il tool giusto (find_credentials). Un tag
+            # affinity multi-parola interamente coperto dalla query (>=2
+            # token distintivi, es. "quali account") forza il tool nel pool
+            # ANCHE se verb/object differiscono. SCOPED (solo phrase-match
+            # pieno, cap 3) per non gonfiare il pool. Deterministico §7.9,
+            # zero dizionari per-frase: il dato e' l'affinity curata del
+            # manifest. Vive QUI (choke-point del pool) cosi' copre il path
+            # intent-driven, il fallback BoW e l'unione compound.
+            try:
+                from prefilter import affinity_phrase_recall
+                _present = {getattr(e, "name", None) for e in filtered}
+                for _x in affinity_phrase_recall(query, catalog,
+                                                 exclude_names=_present):
+                    filtered = filtered + [_x]
+            except Exception as ex:  # §2.8: traccia, pool resta valido
+                log.warning("routing_pool: affinity_phrase_recall fallita: %r",
+                            ex)
             # Garantisci che fastpath / autopath catalog completo resti
             # disponibile a executor (callback usa il NOME, non il pool).
             # Pool ridotto è SOLO per il prompt Proposer.
