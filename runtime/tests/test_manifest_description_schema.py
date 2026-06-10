@@ -264,6 +264,59 @@ class TestSendMessagesSelfSendGuidance(unittest.TestCase):
                           msg=f"self-send token troncato dal pool [{lang}]: {head!r}")
 
 
+class TestHeadBudgetEnforced(unittest.TestCase):
+    """Check DETERMINISTICO (11/6/2026, mandato Roberto): la testa §2.5
+    (inizio -> 'OUT:' escluso) di OGNI manifest, per OGNI lingua del
+    `[description]`, DEVE stare nel budget HEAD_MAX. Regressione foto
+    `9400d90`: la testa di find_images_indices era 956>240 -> il render del
+    pool troncava la disambiguazione -> misroute. La scansione 10/6 ne ha
+    trovate altre 32 (stessa classe di difetto latente): prima era solo un
+    WARN (`manifest_normalize.length_warn`), qui diventa ENFORCED.
+    SoT della logica: `manifest_rules.HEAD_MAX` + `manifest_normalize.length_warn`
+    (stessa estrazione testa del linter/render)."""
+
+    ROOTS = (
+        Path(__file__).resolve().parents[2] / "executors",
+        Path.home() / ".local/share/metnos/executors",
+    )
+
+    def test_every_manifest_head_within_budget(self):
+        import tomllib
+        from manifest_normalize import length_warn
+        from manifest_rules import HEAD_MAX
+        bad = []
+        seen = 0
+        for root in self.ROOTS:
+            if not root.exists():
+                continue
+            for mp in sorted(root.rglob("manifest.toml")):
+                try:
+                    parsed = tomllib.loads(mp.read_text(encoding="utf-8"))
+                except tomllib.TOMLDecodeError:
+                    continue  # malformato: lo scarta gia' il loader
+                desc = parsed.get("description")
+                if not isinstance(desc, dict):
+                    continue  # legacy flat: rejected dal loader (test sopra)
+                for lang in sorted(desc):
+                    text = desc[lang]
+                    if not isinstance(text, str):
+                        continue
+                    seen += 1
+                    warn = length_warn(text)
+                    if warn and "testa" in warn:
+                        head_part = warn.split(",")[0].strip()  # "testa N>MAX"
+                        bad.append(f"{mp.parent.name} [{lang}]: {head_part} "
+                                   f"({mp})")
+        self.assertGreater(seen, 0, msg="scansione vuota: nessun manifest letto")
+        self.assertFalse(
+            bad,
+            msg=(f"{len(bad)} teste §2.5 oltre HEAD_MAX={HEAD_MAX} — il render "
+                 f"del pool TRONCA la disambiguazione (misroute, cfr. 9400d90). "
+                 f"Accorcia la testa (SCOPO+PATTERN concisi + NON: essenziale; "
+                 f"dettagli args -> [args].description):\n  " + "\n  ".join(bad)),
+        )
+
+
 class TestPhotoSiblingsDisambiguation(unittest.TestCase):
     """Regressione 10/6/2026 (split static-first): col pool adiacente alla
     query, le description dominano il framing. La testa di find_images_indices
