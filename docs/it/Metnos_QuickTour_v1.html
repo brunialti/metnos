@@ -23,376 +23,526 @@
     <link rel="canonical" href="https://metnos.com/it/Metnos_QuickTour_v1">
     <link rel="alternate" hreflang="it" href="https://metnos.com/it/Metnos_QuickTour_v1">
     <link rel="alternate" hreflang="en" href="https://metnos.com/en/Metnos_QuickTour_v1">
-    <style>
-/* ====================================================================
-   Metnos QuickTour v1.2 — «quaderno di laboratorio editoriale».
-   Carta calda + inchiostro + rame; serif editoriale + mono tecnico;
-   meandro greco come firma (mētis + noûs). Self-contained: nessun
-   webfont, nessuna CDN, nessun JS.
-   ==================================================================== */
+<style>
+/* Skin: identica alla landing (docs/it/index.html) — un solo foglio di stile,
+   nessuna decorazione per-capitolo. I componenti lunghi del QuickTour
+   (tabelle, catene di executor, scene, glossario) sono declinati nello
+   stesso linguaggio visivo della landing. */
 :root {
-    --paper:      #f5f0e4;
-    --paper-deep: #ece4d2;
-    --card:       #fdfaf2;
-    --ink:        #23262c;
-    --ink-soft:   #6e6655;
-    --copper:     #a8501e;
-    --copper-deep:#7e3a13;
-    --laurel:     #3f6f47;
-    --laurel-bg:  #e9efe2;
-    --slate:      #31495a;
-    --line:       #d9cdb4;
-    --line-soft:  #e6dcc6;
-    --code-bg:    #efe8d5;
-    --warn-bg:    #f5e9c9;
-    --warn-bd:    #ba8b25;
-    --danger:     #973a3a;
-    --danger-bg:  #f2dfd9;
-    --serif: 'Iowan Old Style','Palatino Linotype',Palatino,'Book Antiqua','URW Palladio L',P052,Georgia,serif;
-    --mono: ui-monospace,'Cascadia Code','JetBrains Mono','Fira Code',Menlo,Consolas,'Liberation Mono',monospace;
+  --paper: #FCFAF6;
+  --paper-warm: #F5F0E5;
+  --border-warm: #E0D5C0;
+  --ink: #2a2a2a;
+  --ink-dim: #5a5a5a;
+  --muted: #8a8378;
+  --navy: #1A477A;
+  --bronze: #A0522D;
+  --plum: #6B21A8;
+  --sage: #548235;
 }
 * { box-sizing: border-box; }
 html { scroll-behavior: smooth; }
 body {
-    font-family: var(--serif);
-    font-size: 12.5pt; line-height: 1.72; color: var(--ink);
-    background:
-        radial-gradient(1100px 500px at 85% -120px, rgba(168,80,30,.07), transparent 60%),
-        var(--paper);
-    max-width: 960px; margin: 0 auto; padding: 0 34px 60px;
+  font-family: Georgia, Cambria, 'Times New Roman', serif;
+  color: var(--ink);
+  background: var(--paper);
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 90px 32px 60px;
+  line-height: 1.78;
+  font-size: 12.5pt;
+  font-weight: 400;
 }
-::selection { background: rgba(168,80,30,.22); }
+p { margin: 16px 0; text-align: justify; hyphens: auto; }
+a { color: var(--bronze); text-decoration: none; border-bottom: 1px solid rgba(160,82,45,0.3); transition: border-color .15s; }
+a:hover { border-bottom-color: var(--bronze); }
+em { color: var(--ink); }
+code { font-family: Consolas, 'Courier New', monospace; font-size: 10.5pt; background: transparent; }
+ul, ol { margin: 16px 0; padding-left: 26px; }
+li { margin-bottom: 8px; }
 
-a { color: var(--copper-deep); text-decoration: none; border-bottom: 1px solid rgba(168,80,30,.35); }
-a:hover { color: var(--copper); border-bottom-color: var(--copper); }
-
-/* --- meandro greco: la firma grafica della pagina --- */
-.meander {
-    height: 12px; border: 0; margin: 8px 0;
-    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='16' height='12' viewBox='0 0 16 12'><path fill='none' stroke='%23a8501e' stroke-width='1.4' d='M1 11 V1 H15 V7 H7 V4 H11'/></svg>");
-    background-repeat: repeat-x; background-position: left center;
-    opacity: .75;
-}
-.meander.dim { opacity: .35; }
-
-/* --- tipografia --- */
-.kicker {
-    font-family: var(--mono); font-size: 8.5pt; letter-spacing: .26em;
-    text-transform: uppercase; color: var(--copper); font-weight: 600;
-}
-h1 {
-    font-size: 25pt; line-height: 1.18; font-weight: 700;
-    margin: 10px 0 14px; color: var(--ink); letter-spacing: -.012em;
-}
-h2 { font-size: 15.5pt; margin: 34px 0 10px; color: var(--slate); letter-spacing: -.008em; }
-h3 { font-size: 13pt; margin: 24px 0 8px; color: var(--ink); }
-p { margin: 11px 0; }
-.lead { font-size: 14pt; line-height: 1.6; color: var(--slate); }
-strong { color: var(--ink); }
-em { color: inherit; }
-ul, ol { margin: 10px 0; padding-left: 26px; }
-li { margin-bottom: 5px; }
-hr:not(.meander) { border: none; border-top: 1px solid var(--line); margin: 36px 0; }
-
-code {
-    font-family: var(--mono); font-size: 10pt;
-    background: var(--code-bg); border: 1px solid var(--line-soft);
-    padding: 1px 5px; border-radius: 3px; white-space: nowrap;
-}
-svg text { letter-spacing: 0; }
-
-/* --- capitoli: numero ghost + meandro --- */
-section.cap { margin-top: 64px; }
-.cap-head { position: relative; padding-top: 8px; margin-bottom: 18px; }
-.cap-head .n {
-    position: absolute; top: -16px; right: -6px;
-    font-family: var(--mono); font-size: 52pt; font-weight: 700;
-    color: rgba(168,80,30,.13); line-height: 1; user-select: none;
-}
-.cap-head h1 { margin-bottom: 6px; }
-.cap-head .meander { width: 180px; margin: 12px 0 0; }
-
-/* --- arredo pagina (coerente col resto del sito) --- */
+/* Language switcher — sempre in alto a destra */
 .lang-switch {
-    position: fixed; top: 14px; right: 18px; z-index: 9999;
-    font-family: var(--mono); font-size: 9pt; letter-spacing: .18em;
-    background: var(--card); border: 1px solid var(--line); border-radius: 14px;
-    padding: 4px 11px; box-shadow: 0 1px 4px rgba(35,38,44,.07);
+  position: fixed; top: 18px; right: 24px;
+  z-index: 100;
+  font-family: 'Segoe UI', Calibri, sans-serif;
+  font-size: 10pt; letter-spacing: 2px;
+  background: var(--paper); border: 1px solid var(--border-warm);
+  border-radius: 14px; padding: 4px 10px;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.04);
 }
-.lang-switch a { border: none; }
-.crumbs {
-    position: sticky; top: 0; z-index: 10;
-    margin: 0 -34px 8px; padding: 9px 34px;
-    background: rgba(245,240,228,.92); backdrop-filter: blur(3px);
-    border-bottom: 1px solid var(--line);
-    font-family: var(--mono); font-size: 8.5pt; letter-spacing: .04em;
-    display: flex; justify-content: space-between; color: var(--ink-soft);
-}
-.crumbs a { border: none; font-weight: 600; }
+.lang-switch a { color: var(--muted); border: none; padding: 0 4px; }
+.lang-switch a:hover { color: var(--bronze); }
+.lang-switch a.active { color: var(--ink); font-weight: 700; }
+.lang-switch .sep { color: var(--border-warm); }
 
-/* --- copertina --- */
-.hero { padding: 64px 0 8px; }
-.hero h1.title {
-    font-size: 54pt; margin: 6px 0 2px; letter-spacing: -.02em;
-    animation: rise .7s ease-out both;
+/* Ritorno all'indice */
+.back {
+  font-family: 'Segoe UI', Calibri, sans-serif;
+  font-size: 9.5pt; letter-spacing: 2px; text-transform: uppercase;
+  margin-bottom: 30px;
 }
-.hero .etym {
-    font-family: var(--mono); font-size: 9.5pt; color: var(--ink-soft);
-    letter-spacing: .06em; margin: 2px 0 18px;
-    animation: rise .7s .08s ease-out both;
-}
-.hero .tagline {
-    font-size: 15.5pt; line-height: 1.55; color: var(--ink); max-width: 40em;
-    animation: rise .7s .16s ease-out both;
-}
-.hero .tagline strong { color: var(--copper-deep); }
-@keyframes rise { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+.back a { color: var(--muted); border: none; }
+.back a:hover { color: var(--bronze); }
 
-.factband {
-    display: flex; flex-wrap: wrap; gap: 0 34px; margin: 26px 0 6px;
-    border-top: 1px solid var(--line); border-bottom: 1px solid var(--line);
-    padding: 12px 2px;
+/* Hero */
+.hero { text-align: left; margin: 40px 0 70px; }
+.hero .eyebrow {
+  font-family: 'Segoe UI', Calibri, sans-serif;
+  font-size: 10pt;
+  letter-spacing: 3px;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 14px;
 }
-.factband .f { padding: 4px 0; }
-.factband .v { font-family: var(--mono); font-size: 14pt; font-weight: 700; color: var(--copper-deep); display: block; line-height: 1.2; }
-.factband .k { font-family: var(--mono); font-size: 7.5pt; letter-spacing: .14em; text-transform: uppercase; color: var(--ink-soft); }
+.hero h1 {
+  font-family: Georgia, serif;
+  font-size: 52pt;
+  font-weight: 400;
+  color: var(--ink);
+  margin: 0;
+  line-height: 1.05;
+  letter-spacing: -0.5px;
+}
+.hero .subtitle {
+  font-family: Georgia, serif;
+  font-style: italic;
+  font-size: 16pt;
+  color: var(--ink-dim);
+  margin-top: 22px;
+  max-width: 640px;
+  line-height: 1.4;
+}
+.hero .subtitle strong { color: var(--ink); }
+.hero .kleos {
+  font-family: Georgia, serif;
+  font-size: 13pt;
+  color: var(--bronze);
+  margin-top: 18px;
+  letter-spacing: 0.5px;
+}
 
-.status-strip {
-    font-family: var(--mono); font-size: 8.5pt; letter-spacing: .03em;
-    color: var(--ink-soft); margin: 10px 0 0; line-height: 2;
+/* Striscia dei fatti (numeri reali) */
+.facts {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 0;
+  border-top: 1px solid var(--border-warm);
+  border-bottom: 1px solid var(--border-warm);
+  margin: 40px 0 18px;
 }
-.status-strip b { color: var(--ink); font-weight: 600; }
-.status-strip .dot { color: var(--copper); padding: 0 6px; }
+.facts .f {
+  padding: 18px 10px;
+  text-align: center;
+  border-right: 1px solid var(--border-warm);
+}
+.facts .f:last-child { border-right: none; }
+.facts .v {
+  display: block;
+  font-family: Georgia, serif;
+  font-size: 15pt;
+  color: var(--ink);
+  line-height: 1.3;
+}
+.facts .k {
+  font-family: 'Segoe UI', Calibri, sans-serif;
+  font-size: 8.5pt;
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  color: var(--muted);
+}
 
-/* --- indice --- */
-.toc { margin: 40px 0 8px; }
-.toc ol {
-    list-style: none; padding: 0; margin: 12px 0 0;
-    display: grid; grid-template-columns: 1fr 1fr; gap: 2px 36px;
+/* Righe meta (stato, calce delle scene) */
+.meta {
+  font-family: 'Segoe UI', Calibri, sans-serif;
+  font-size: 9.5pt;
+  color: var(--muted);
+  letter-spacing: 0.5px;
+  line-height: 2;
+  margin: 12px 0;
+  text-align: left;
 }
-.toc li { border-bottom: 1px dotted var(--line); padding: 6px 0; margin: 0; }
-.toc a { border: none; display: flex; gap: 12px; align-items: baseline; color: var(--ink); }
-.toc a:hover { color: var(--copper-deep); }
-.toc .tn { font-family: var(--mono); font-size: 9pt; color: var(--copper); min-width: 1.6em; }
+.meta b { color: var(--ink-dim); font-weight: 600; }
 
-/* --- scene: i fascicoli --- */
-.scene {
-    background: var(--card); border: 1px solid var(--line);
-    border-left: 3px solid var(--copper);
-    padding: 18px 24px 16px; margin: 26px 0;
-    box-shadow: 0 1px 3px rgba(35,38,44,.05);
-    page-break-inside: avoid;
+/* Sezioni (capitoli) */
+section { margin: 56px 0; }
+section h2 {
+  font-family: Georgia, serif;
+  font-size: 14pt;
+  font-weight: 400;
+  font-style: italic;
+  color: var(--ink-dim);
+  margin-top: 40px;
+  margin-bottom: 14px;
+  border: none;
+  letter-spacing: 0.2px;
 }
-.scene-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
-.scene-tag { font-family: var(--mono); font-size: 8.5pt; letter-spacing: .22em; text-transform: uppercase; color: var(--copper); font-weight: 700; padding-top: 6px; }
-.stamp {
-    font-family: var(--mono); font-size: 7.5pt; letter-spacing: .14em;
-    text-transform: uppercase; font-weight: 700; color: var(--laurel);
-    border: 2px solid var(--laurel); border-radius: 4px; padding: 3px 9px;
-    transform: rotate(-3deg); box-shadow: inset 0 0 0 2px var(--card), inset 0 0 0 3px var(--laurel);
-    white-space: nowrap; flex: 0 0 auto;
+section h2::before {
+  content: "§ ";
+  color: var(--bronze);
+  font-style: normal;
 }
-.stamp.prod { color: var(--copper-deep); border-color: var(--copper-deep); box-shadow: inset 0 0 0 2px var(--card), inset 0 0 0 3px var(--copper-deep); }
-.scene h3 { font-size: 14.5pt; margin: 6px 0 4px; }
-.scene .q {
-    font-size: 13.5pt; font-style: italic; line-height: 1.5; color: var(--ink);
-    margin: 12px 0; padding: 2px 0 2px 16px; border-left: 3px solid var(--line);
+h3 {
+  font-family: Georgia, serif;
+  font-size: 12.5pt;
+  font-weight: 700;
+  color: var(--ink);
+  margin: 30px 0 10px;
 }
-.scene .q::before { content: "» "; color: var(--copper); font-style: normal; font-weight: 700; }
+p.lead { font-style: italic; color: var(--ink-dim); }
+p.lead strong { color: var(--ink); }
+.small { font-size: 11pt; color: var(--ink-dim); }
 
-/* pipeline di executor: la striscia mono */
+/* Indice e schede di lettura */
+.group-title {
+  font-family: 'Segoe UI', Calibri, sans-serif;
+  font-size: 9.5pt;
+  letter-spacing: 3px;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 14px;
+}
+.toc { margin: 60px 0 30px; }
+.toc ol { list-style: none; padding: 0; margin: 12px 0 0; }
+.toc ol li { border-bottom: 1px dotted var(--border-warm); padding: 9px 0; margin: 0; }
+.toc ol li:last-child { border-bottom: none; }
+.toc ol a { border: none; color: var(--ink); }
+.toc ol a:hover { color: var(--bronze); }
+.toc .tn {
+  font-family: 'Segoe UI', Calibri, sans-serif;
+  font-size: 9pt;
+  letter-spacing: 1px;
+  color: var(--muted);
+  margin-right: 12px;
+}
+.toc-item {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 16px;
+  padding: 12px 0;
+  border-bottom: 1px dotted var(--border-warm);
+  align-items: baseline;
+}
+.toc-item:last-child { border-bottom: none; }
+.toc-item .t {
+  font-family: Georgia, serif;
+  font-size: 12.5pt;
+  color: var(--ink);
+  border: none;
+}
+.toc-item .t:hover { color: var(--bronze); border-bottom: 1px solid var(--bronze); }
+.toc-item .d {
+  display: block;
+  font-family: Georgia, serif;
+  font-style: italic;
+  font-size: 11pt;
+  color: var(--ink-dim);
+  margin-top: 4px;
+}
+.toc-item .time {
+  font-family: 'Segoe UI', Calibri, sans-serif;
+  font-size: 9pt;
+  color: var(--muted);
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+/* Scene: flusso tipografico, separate da filetti puntinati */
+.scene { margin: 40px 0; }
+.scene + .scene { border-top: 1px dotted var(--border-warm); padding-top: 32px; }
+.scene .group-title { margin-bottom: 4px; }
+.scene h3 { margin: 4px 0 10px; font-size: 13.5pt; }
+
+/* Richiesta dell'utente */
+.q {
+  font-style: italic;
+  color: var(--ink);
+  margin: 14px 0;
+  padding: 2px 0 2px 18px;
+  border-left: 2px solid var(--border-warm);
+}
+
+/* Catena di executor */
 .pipe {
-    font-family: var(--mono); font-size: 9pt; line-height: 2.3;
-    background: var(--paper-deep); border: 1px solid var(--line);
-    border-radius: 6px; padding: 9px 13px; margin: 12px 0;
-    overflow-x: auto; white-space: nowrap; color: var(--ink-soft);
+  font-family: Consolas, 'Courier New', monospace;
+  font-size: 9.5pt;
+  line-height: 1.9;
+  color: var(--ink-dim);
+  background: var(--paper-warm);
+  border: 1px solid var(--border-warm);
+  border-radius: 4px;
+  padding: 10px 16px;
+  margin: 14px 0;
+  overflow-x: auto;
 }
-.pipe .x {
-    background: var(--card); border: 1px solid var(--line);
-    border-radius: 4px; padding: 2px 8px; color: var(--ink); font-weight: 600;
-}
-.pipe .x.llm { border-style: dashed; border-color: var(--slate); color: var(--slate); }
-.pipe .x.fin { background: var(--laurel-bg); border-color: var(--laurel); color: var(--laurel); }
-.pipe .a { color: var(--copper); padding: 0 4px; font-weight: 700; }
-.pipe .note { color: var(--ink-soft); font-size: 8pt; }
+.pipe .a { color: var(--bronze); padding: 0 2px; }
+.pipe .note { color: var(--muted); }
 
-/* risposta dell'assistente */
+/* Risposta dell'assistente */
 .reply {
-    background: var(--paper-deep); border: 1px solid var(--line); border-radius: 8px;
-    padding: 11px 16px; margin: 12px 0; font-size: 11pt; line-height: 1.65;
+  background: var(--paper-warm);
+  border: 1px solid var(--border-warm);
+  border-radius: 6px;
+  padding: 12px 18px;
+  margin: 14px 0;
+  font-size: 11.5pt;
 }
 .reply::before {
-    content: "METNOS"; display: block;
-    font-family: var(--mono); font-size: 7pt; letter-spacing: .22em;
-    color: var(--laurel); font-weight: 700; margin-bottom: 4px;
+  content: "METNOS";
+  display: block;
+  font-family: 'Segoe UI', Calibri, sans-serif;
+  font-size: 8.5pt;
+  letter-spacing: 3px;
+  color: var(--muted);
+  margin-bottom: 4px;
 }
 
-/* meta-riga del fascicolo */
-.meta {
-    display: flex; flex-wrap: wrap; gap: 5px 16px; margin: 12px 0 2px;
-    font-family: var(--mono); font-size: 8pt; color: var(--ink-soft);
-    border-top: 1px dotted var(--line); padding-top: 9px;
-}
-.meta b { color: var(--slate); font-weight: 600; }
-
-/* nota onesta */
+/* Nota onesta */
 .truth {
-    border: 1px dashed var(--copper); border-radius: 6px;
-    background: rgba(168,80,30,.05);
-    padding: 9px 14px; margin: 12px 0; font-size: 10.5pt; line-height: 1.6;
+  border-left: 4px solid var(--bronze);
+  background: var(--paper-warm);
+  padding: 12px 18px;
+  margin: 16px 0;
+  border-radius: 0 6px 6px 0;
+  font-size: 11pt;
+  color: var(--ink-dim);
 }
 .truth::before {
-    content: "ONESTÀ"; display: block;
-    font-family: var(--mono); font-size: 7pt; letter-spacing: .24em;
-    color: var(--copper-deep); font-weight: 700; margin-bottom: 3px;
+  content: "ONESTÀ";
+  display: block;
+  font-family: 'Segoe UI', Calibri, sans-serif;
+  font-size: 8.5pt;
+  letter-spacing: 3px;
+  color: var(--bronze);
+  margin-bottom: 3px;
 }
 
-/* callout generici */
+/* Callout — la stessa nota blu della landing */
 .callout {
-    border-left: 3px solid var(--slate); background: var(--card);
-    border-top: 1px solid var(--line-soft); border-right: 1px solid var(--line-soft); border-bottom: 1px solid var(--line-soft);
-    padding: 10px 16px; margin: 16px 0; font-size: 11pt; page-break-inside: avoid;
+  border-left: 4px solid var(--navy);
+  background: #f0f6ff;
+  color: #0f2f57;
+  padding: 16px 22px;
+  margin: 28px 0;
+  border-radius: 0 8px 8px 0;
+  font-size: 11.5pt;
 }
-.callout.warn { border-left-color: var(--warn-bd); background: var(--warn-bg); }
-.callout.danger { border-left-color: var(--danger); background: var(--danger-bg); }
 
-/* carta di conferma (mockup) */
+/* Carta di conferma (mockup) */
 .approval-card {
-    background: #faf3df; border: 1.5px solid var(--warn-bd);
-    border-radius: 10px; padding: 12px 16px; margin: 14px 0;
-    font-size: 10.5pt; max-width: 540px;
-    box-shadow: 0 1px 3px rgba(35,38,44,.06);
-    page-break-inside: avoid;
+  background: var(--paper-warm);
+  border: 1px solid var(--border-warm);
+  border-radius: 6px;
+  padding: 14px 18px;
+  margin: 16px 0;
+  max-width: 540px;
+  font-size: 11pt;
 }
-.approval-card .line1 { font-weight: 700; color: #7c5a14; margin-bottom: 4px; }
-.approval-card .line2 { font-family: var(--mono); font-size: 9pt; color: var(--ink); margin: 4px 0; }
-.approval-card .line3 { font-family: var(--mono); font-size: 8.5pt; color: var(--ink-soft); margin-bottom: 10px; }
-.approval-card .btns { display: flex; gap: 8px; }
+.approval-card .line1 { font-weight: 700; color: var(--ink); margin-bottom: 4px; }
+.approval-card .line2, .approval-card .line3 {
+  font-family: Consolas, 'Courier New', monospace;
+  font-size: 9.5pt;
+  color: var(--ink-dim);
+  margin: 3px 0;
+}
+.approval-card .line3 { color: var(--muted); margin-bottom: 12px; }
+.approval-card .btns { display: flex; gap: 10px; }
 .approval-card .btn {
-    padding: 5px 14px; border-radius: 12px; font-size: 9.5pt; font-weight: 600;
-    border: none; font-family: var(--serif);
+  padding: 6px 18px;
+  border-radius: 14px;
+  font-size: 9.5pt;
+  font-family: 'Segoe UI', Calibri, sans-serif;
+  letter-spacing: 0.5px;
+  border: 1px solid var(--border-warm);
+  background: var(--paper);
 }
-.approval-card .btn.ok { background: var(--laurel); color: #fff; }
-.approval-card .btn.no { background: var(--card); color: var(--danger); border: 1px solid var(--line); }
+.approval-card .btn.ok { background: var(--sage); border-color: var(--sage); color: #fff; }
+.approval-card .btn.no { color: var(--bronze); }
 
-/* tabelle editoriali */
-table { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 10.5pt; }
+/* Tabelle */
+table { width: 100%; border-collapse: collapse; margin: 24px 0; font-size: 11.5pt; }
 th {
-    font-family: var(--mono); font-size: 8pt; letter-spacing: .14em; text-transform: uppercase;
-    text-align: left; color: var(--ink-soft); font-weight: 600;
-    padding: 6px 10px 6px 0; border-bottom: 2px solid var(--copper);
+  font-family: 'Segoe UI', Calibri, sans-serif;
+  font-size: 9pt;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: var(--muted);
+  font-weight: 400;
+  text-align: left;
+  padding: 8px 14px 8px 0;
+  border-bottom: 1px solid var(--border-warm);
 }
-td { padding: 8px 10px 8px 0; border-bottom: 1px solid var(--line-soft); vertical-align: top; }
-tr:last-child td { border-bottom: 1px solid var(--line); }
+td { padding: 10px 14px 10px 0; border-bottom: 1px dotted var(--border-warm); vertical-align: top; }
+tr:last-child td { border-bottom: 1px solid var(--border-warm); }
 
-/* fa / non fa */
-.can-cant { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin: 22px 0; }
-.can-cant .card { border-radius: 8px; padding: 16px 20px; border: 1px solid var(--line); }
-.can-cant .yes { background: var(--laurel-bg); border-color: #b9c9ad; }
-.can-cant .no  { background: var(--danger-bg); border-color: #d9b8ac; }
-.can-cant h3 { margin-top: 0; font-size: 12pt; }
-.can-cant .yes h3 { color: var(--laurel); }
-.can-cant .no h3 { color: var(--danger); }
-.can-cant ul { margin: 8px 0 0; padding-left: 20px; }
-.can-cant li { font-size: 10.5pt; margin-bottom: 5px; }
-
-/* terminale (per gli snippet) */
-pre.term {
-    background: var(--ink); color: #e8e2d4; border-radius: 8px;
-    padding: 14px 18px; font-family: var(--mono); font-size: 9.5pt;
-    line-height: 1.8; overflow-x: auto; margin: 14px 0;
+/* Passi di una pipeline (al posto del diagramma) */
+.steps { list-style: none; padding: 0; margin: 18px 0; counter-reset: step; }
+.steps li {
+  border-bottom: 1px dotted var(--border-warm);
+  padding: 10px 0;
+  margin: 0;
+  counter-increment: step;
 }
-pre.term .p { color: #8fb98f; }
-pre.term .c { color: #8d8674; }
+.steps li:last-child { border-bottom: none; }
+.steps li::before {
+  content: counter(step);
+  font-family: 'Segoe UI', Calibri, sans-serif;
+  font-size: 9pt;
+  color: var(--bronze);
+  margin-right: 12px;
+}
+.steps code { font-size: 10pt; }
+.steps .res {
+  display: block;
+  font-family: 'Segoe UI', Calibri, sans-serif;
+  font-size: 9.5pt;
+  color: var(--muted);
+  letter-spacing: 0.3px;
+  margin-top: 3px;
+  padding-left: 22px;
+}
 
-/* figure */
-figure { margin: 24px 0; page-break-inside: avoid; text-align: center; }
+/* Figura (un solo diagramma) e note di figura */
+figure { margin: 28px 0; text-align: center; }
 figure svg { max-width: 100%; height: auto; }
-figcaption {
-    font-family: var(--mono); font-size: 8.5pt; color: var(--ink-soft);
-    margin-top: 8px; letter-spacing: .02em; text-align: left;
+figcaption, .fig-note {
+  font-family: 'Segoe UI', Calibri, sans-serif;
+  font-size: 9.5pt;
+  color: var(--muted);
+  letter-spacing: 0.5px;
+  line-height: 1.7;
+  margin: 10px 0 0;
+  text-align: left;
 }
-figcaption b { color: var(--copper-deep); }
+figcaption b, .fig-note b { color: var(--ink-dim); font-weight: 600; }
 
-/* dialoghi a bolle */
-.chat { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 14px 16px; margin: 16px 0; }
-.msg { display: flex; gap: 10px; margin: 8px 0; align-items: flex-start; }
-.msg .who { flex: 0 0 86px; font-family: var(--mono); font-size: 8pt; letter-spacing: .08em; text-transform: uppercase; padding-top: 7px; color: var(--ink-soft); }
-.msg .bubble { flex: 1; padding: 7px 12px; border-radius: 8px; font-size: 10.5pt; border: 1px solid var(--line-soft); }
-.msg.user .bubble { background: var(--paper-deep); }
-.msg.bot .bubble { background: var(--laurel-bg); border-color: #c4d2b8; }
-.msg.sys .bubble { background: #f4ecd9; font-family: var(--mono); font-size: 8.5pt; color: var(--ink-soft); }
+/* Diagramma di flusso (Fig. 1) — palette della landing */
+.flow .b  { fill: #ffffff; stroke: var(--border-warm); stroke-width: 1.2; }
+.flow .bx { fill: var(--paper-warm); stroke: var(--border-warm); stroke-width: 1.2; }
+.flow .bg { fill: #ffffff; stroke: var(--sage); stroke-width: 1.2; }
+.flow .bs { fill: none; stroke: var(--bronze); stroke-width: 1.2; stroke-dasharray: 5 3; }
+.flow .bc { fill: var(--paper-warm); stroke: var(--bronze); stroke-width: 1.2; }
+.flow .t  { font-family: Georgia, serif; font-size: 11px; fill: var(--ink); }
+.flow .tb { font-family: Georgia, serif; font-size: 11.5px; font-weight: 700; fill: var(--ink); }
+.flow .m  { font-family: Consolas, 'Courier New', monospace; font-size: 9px; fill: var(--ink-dim); }
+.flow .mc { font-family: Consolas, 'Courier New', monospace; font-size: 9px; font-weight: 700; fill: var(--bronze); }
+.flow .ln { stroke: var(--muted); stroke-width: 1.2; fill: none; }
+.flow .lc { stroke: var(--bronze); stroke-width: 1.2; fill: none; stroke-dasharray: 4 3; }
+.flow text.sage { fill: var(--sage); }
+.flow text.bronze { fill: var(--bronze); }
 
-/* glossario */
-dl.gloss { font-size: 10.5pt; margin: 14px 0; }
-dl.gloss dt { margin-top: 10px; font-weight: 700; color: var(--slate); }
-dl.gloss dd { margin-left: 16px; color: var(--ink); }
-
-/* schede "continua a leggere" */
-.next { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 14px; margin: 20px 0 26px; }
-.next a {
-    display: block; padding: 14px 17px; border: 1px solid var(--line);
-    background: var(--card); color: inherit; text-decoration: none;
-    transition: transform .12s ease, box-shadow .12s ease;
+/* Terminale */
+pre {
+  font-family: Consolas, 'Courier New', monospace;
+  font-size: 10pt;
+  line-height: 1.8;
+  background: var(--paper-warm);
+  border: 1px solid var(--border-warm);
+  border-radius: 6px;
+  padding: 14px 18px;
+  margin: 18px 0;
+  overflow-x: auto;
 }
-.next a:hover { transform: translateY(-2px); box-shadow: 0 4px 10px rgba(35,38,44,.08); border-bottom-color: var(--line); }
-.next .nk { font-family: var(--mono); font-size: 7.5pt; letter-spacing: .18em; text-transform: uppercase; color: var(--copper); }
-.next .nt { font-size: 12pt; font-weight: 700; color: var(--slate); margin: 6px 0 4px; }
-.next .nd { font-size: 10pt; color: var(--ink-soft); line-height: 1.5; }
+pre .p { color: var(--bronze); }
+pre .c { color: var(--muted); }
 
-footer.colophon {
-    margin-top: 50px; text-align: center;
-    font-family: var(--mono); font-size: 8.5pt; color: var(--ink-soft); line-height: 2;
+/* Fa / non fa */
+.can-cant { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin: 26px 0; }
+.can-cant .card {
+  background: var(--paper-warm);
+  border: 1px solid var(--border-warm);
+  border-radius: 6px;
+  padding: 18px 22px;
+}
+.can-cant h3 { margin: 0 0 6px; font-size: 12.5pt; }
+.can-cant .yes h3 { color: var(--sage); }
+.can-cant .no h3 { color: var(--bronze); }
+.can-cant ul { margin: 8px 0 0; padding-left: 20px; }
+.can-cant li { font-size: 11pt; margin-bottom: 6px; }
+
+/* Glossario */
+dl.gloss { margin: 18px 0; }
+dl.gloss dt { margin-top: 14px; font-weight: 700; color: var(--ink); }
+dl.gloss dd { margin: 2px 0 0 18px; color: var(--ink-dim); }
+
+/* Bottone d'invito — come la landing */
+a.enter {
+  display: inline-block;
+  border: 1px solid var(--bronze);
+  background: transparent;
+  color: var(--bronze);
+  padding: 11px 30px;
+  font-family: 'Segoe UI', Calibri, sans-serif;
+  font-size: 11pt;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  transition: background .15s, color .15s;
+}
+a.enter:hover { background: var(--bronze); color: var(--paper); }
+
+/* Footer */
+footer {
+  margin-top: 80px;
+  padding-top: 26px;
+  border-top: 1px solid var(--border-warm);
+  font-family: 'Segoe UI', Calibri, sans-serif;
+  font-size: 9.5pt;
+  color: var(--muted);
+  text-align: center;
+  letter-spacing: 0.5px;
+  line-height: 1.8;
+}
+footer a { color: inherit; border: none; }
+footer em { color: inherit; }
+
+/* Responsive */
+@media (max-width: 620px) {
+  body { padding: 50px 22px 40px; font-size: 12pt; }
+  .hero h1 { font-size: 38pt; }
+  .hero .subtitle { font-size: 14pt; }
+  .facts { grid-template-columns: 1fr; }
+  .facts .f { border-right: none; border-bottom: 1px dotted var(--border-warm); }
+  .facts .f:last-child { border-bottom: none; }
+  .can-cant { grid-template-columns: 1fr; }
+  .lang-switch { top: 10px; right: 10px; font-size: 9pt; padding: 3px 8px; }
 }
 
-@media (max-width: 720px) {
-    body { padding: 0 18px 40px; }
-    .crumbs { margin: 0 -18px 8px; padding: 9px 18px; }
-    .toc ol { grid-template-columns: 1fr; }
-    .can-cant { grid-template-columns: 1fr; }
-    .hero h1.title { font-size: 38pt; }
-    .cap-head .n { font-size: 36pt; }
-}
 @media print {
-    body { max-width: none; padding: 0; font-size: 11pt; background: #fff; }
-    .lang-switch, .crumbs { display: none; }
-    .hero { padding-top: 20px; }
-    .hero h1.title { font-size: 34pt; }
-    section.cap { margin-top: 36px; }
-    .scene, .approval-card, figure, .can-cant .card { break-inside: avoid; }
-    pre.term { background: #f2efe6; color: #23262c; border: 1px solid #ccc; }
+  body { max-width: none; padding: 0; font-size: 11pt; background: white; }
+  .hero h1 { font-size: 32pt; }
+  a { color: var(--ink); border: none; }
+  .lang-switch, .back { display: none; }
+  .scene, .approval-card, figure, .can-cant .card, table { break-inside: avoid; }
+  .reply, .truth, .approval-card, pre, .pipe, .can-cant .card { background: white; }
+  .callout { background: white; }
 }
-    </style>
+</style>
 </head>
 <body>
 
-<!-- lang-switch -->
 <nav class="lang-switch" aria-label="Language">
-<a href="/it/" hreflang="it" lang="it" style="color:var(--ink);font-weight:700;">IT</a>
-<span style="color:var(--line);"> · </span>
-<a href="/en/" hreflang="en" lang="en" style="color:var(--ink-soft);">EN</a>
+  <a href="/it/" class="active" hreflang="it" lang="it">IT</a>
+  <span class="sep">·</span>
+  <a href="/en/" hreflang="en" lang="en">EN</a>
 </nav>
 
-<div class="crumbs">
-  <a href="index.html">← Indice documentazione</a>
-  <span>docs › <b style="color:var(--ink);">quick tour &amp; survival kit</b></span>
-</div>
+<nav class="back"><a href="index.html">&larr; Indice documentazione</a></nav>
 
 <!-- ================= COPERTINA ================= -->
-<header class="hero">
-  <div class="kicker">Quick tour &amp; survival kit · giugno 2026</div>
-  <h1 class="title">Metnos</h1>
-  <div class="etym">mētis (μῆτις) «intelligenza astuta» &nbsp;+&nbsp; noûs (νοῦς) «mente»</div>
-  <hr class="meander" style="width:220px;">
-  <p class="tagline">
+<div class="hero">
+  <div class="eyebrow">Quick tour &amp; survival kit · giugno 2026</div>
+  <h1>Metnos</h1>
+  <div class="subtitle">
     Un assistente personale che vive su <strong>un server Linux a casa vostra</strong>.
     Pianifica con un LLM locale, <strong>si costruisce da solo gli strumenti che gli
     mancano</strong> dentro un vocabolario chiuso e verificabile, <strong>chiede il permesso</strong>
     prima di ogni azione che tocca il mondo — e quando dice di aver fatto una cosa,
     l'ha fatta davvero.
-  </p>
+  </div>
+  <div class="kleos">mētis (μῆτις) «intelligenza astuta» + noûs (νοῦς) «mente»</div>
 
-  <div class="factband">
+  <div class="facts">
     <div class="f"><span class="v">77</span><span class="k">executor firmati</span></div>
     <div class="f"><span class="v">23 × 22</span><span class="k">verbi × oggetti, vocabolario chiuso</span></div>
     <div class="f"><span class="v">2 660</span><span class="k">test automatici</span></div>
@@ -400,40 +550,35 @@ footer.colophon {
     <div class="f"><span class="v">0</span><span class="k">cloud richiesto per pensare</span></div>
   </div>
 
-  <p class="status-strip">
-    <b>stato:</b> pre-1.0, in uso quotidiano sull'istanza di riferimento<span class="dot">·</span>
-    <b>installer:</b> incluso nel repo<span class="dot">·</span>
-    <b>licenza:</b> AGPL-3.0<span class="dot">·</span>
+  <div class="meta">
+    <b>stato:</b> pre-1.0, in uso quotidiano sull'istanza di riferimento ·
+    <b>installer:</b> incluso nel repo ·
+    <b>licenza:</b> AGPL-3.0 ·
     <b>codice:</b> <a href="https://github.com/brunialti/metnos">github.com/brunialti/metnos</a>
-  </p>
-</header>
+  </div>
+</div>
 
 <!-- ================= INDICE ================= -->
 <nav class="toc" aria-label="Indice">
-<div class="kicker">In questa pagina</div>
+<div class="group-title">In questa pagina</div>
 <ol>
-    <li><a href="#cap1"><span class="tn">01</span> Cos'è Metnos, in trenta secondi</a></li>
-    <li><a href="#cap2"><span class="tn">02</span> Perché è diverso</a></li>
-    <li><a href="#cap3"><span class="tn">03</span> Otto scene reali</a></li>
-    <li><a href="#cap4"><span class="tn">04</span> Dove vive e come gli si parla</a></li>
-    <li><a href="#cap5"><span class="tn">05</span> Cosa succede quando dice «posso?»</a></li>
-    <li><a href="#cap6"><span class="tn">06</span> La sua memoria</a></li>
-    <li><a href="#cap7"><span class="tn">07</span> Come cresce: synt, skill, backend</a></li>
-    <li><a href="#cap8"><span class="tn">08</span> Persone e dispositivi</a></li>
-    <li><a href="#cap9"><span class="tn">09</span> Cosa fa, cosa non farà</a></li>
-    <li><a href="#cap10"><span class="tn">10</span> Dove sta davvero il progetto</a></li>
-    <li><a href="#cap11"><span class="tn">11</span> Glossario minimo &amp; letture</a></li>
+    <li><a href="#cap1"><span class="tn">01</span>Cos'è Metnos, in trenta secondi</a></li>
+    <li><a href="#cap2"><span class="tn">02</span>Perché è diverso</a></li>
+    <li><a href="#cap3"><span class="tn">03</span>Otto scene reali</a></li>
+    <li><a href="#cap4"><span class="tn">04</span>Dove vive e come gli si parla</a></li>
+    <li><a href="#cap5"><span class="tn">05</span>Cosa succede quando dice «posso?»</a></li>
+    <li><a href="#cap6"><span class="tn">06</span>La sua memoria</a></li>
+    <li><a href="#cap7"><span class="tn">07</span>Come cresce: synt, skill, backend</a></li>
+    <li><a href="#cap8"><span class="tn">08</span>Persone e dispositivi</a></li>
+    <li><a href="#cap9"><span class="tn">09</span>Cosa fa, cosa non farà</a></li>
+    <li><a href="#cap10"><span class="tn">10</span>Dove sta davvero il progetto</a></li>
+    <li><a href="#cap11"><span class="tn">11</span>Glossario minimo &amp; letture</a></li>
 </ol>
 </nav>
 
 <!-- ================= CAP 1 ================= -->
 <section class="cap" id="cap1">
-<div class="cap-head">
-  <span class="n">01</span>
-  <div class="kicker">Capitolo 1</div>
-  <h1>Cos'è Metnos, in trenta secondi</h1>
-  <hr class="meander">
-</div>
+<h2>1 · Cos'è Metnos, in trenta secondi</h2>
 
 <p class="lead">
 Gli si parla dal <strong>browser</strong> o da <strong>Telegram</strong>, in linguaggio naturale.
@@ -445,27 +590,15 @@ Non c'è un cloud di Metnos, non c'è un «registrati»: i dati e la logica rest
 <p>Quello che succede a ogni richiesta, in un disegno:</p>
 
 <figure>
-<svg viewBox="0 0 760 560" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Il giro di un turno: intent, fast path Praxis, routing deterministico, planner ReAct, vaglio, executor in sandbox, sintetizzatore">
+<svg class="flow" viewBox="0 0 760 560" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Il giro di un turno: intent, fast path Praxis, routing deterministico, planner ReAct, vaglio, executor in sandbox, sintetizzatore">
   <defs>
     <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
-      <path d="M0,0 L10,5 L0,10 Z" fill="#6e6655"/>
+      <path d="M0,0 L10,5 L0,10 Z" fill="#8a8378"/>
     </marker>
     <marker id="arc" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
-      <path d="M0,0 L10,5 L0,10 Z" fill="#a8501e"/>
+      <path d="M0,0 L10,5 L0,10 Z" fill="#A0522D"/>
     </marker>
   </defs>
-  <style>
-    .b   { fill: #fdfaf2; stroke: #31495a; stroke-width: 1.4; }
-    .bx  { fill: #f5f0e4; stroke: #6e6655; stroke-width: 1.2; }
-    .bg  { fill: #e9efe2; stroke: #3f6f47; stroke-width: 1.4; }
-    .bs  { fill: none; stroke: #a8501e; stroke-width: 1.4; stroke-dasharray: 5 3; }
-    .t   { font-family: 'Iowan Old Style','Palatino Linotype',Georgia,serif; font-size: 11px; fill: #23262c; }
-    .tb  { font-family: 'Iowan Old Style','Palatino Linotype',Georgia,serif; font-size: 11.5px; font-weight: 700; fill: #23262c; }
-    .m   { font-family: ui-monospace,Consolas,monospace; font-size: 9px; fill: #6e6655; }
-    .mc  { font-family: ui-monospace,Consolas,monospace; font-size: 9px; fill: #a8501e; font-weight: 700; }
-    .ln  { stroke: #6e6655; stroke-width: 1.3; fill: none; }
-    .lc  { stroke: #a8501e; stroke-width: 1.3; fill: none; stroke-dasharray: 4 3; }
-  </style>
 
   <!-- riga 1: tu → intent → praxis -->
   <rect x="16" y="22" width="130" height="52" rx="5" class="bx"/>
@@ -488,7 +621,7 @@ Non c'è un cloud di Metnos, non c'è un «registrati»: i dati e la logica rest
   <line x1="580" y1="48" x2="620" y2="48" class="ln" marker-end="url(#ar)"/>
   <text x="584" y="38" class="m">sì</text>
   <rect x="622" y="22" width="122" height="52" rx="5" class="bg"/>
-  <text x="636" y="44" class="tb" fill="#3f6f47">Risposta</text>
+  <text x="636" y="44" class="tb sage">Risposta</text>
   <text x="636" y="60" class="m">0 chiamate LLM</text>
 
   <!-- praxis no → routing -->
@@ -511,7 +644,7 @@ Non c'è un cloud di Metnos, non c'è un «registrati»: i dati e la logica rest
   <line x1="330" y1="229" x2="240" y2="229" class="lc" marker-end="url(#arc)"/>
   <text x="252" y="220" class="mc">manca uno strumento?</text>
   <rect x="40" y="198" width="198" height="100" rx="5" class="bs"/>
-  <text x="54" y="221" class="tb" fill="#a8501e">Synt</text>
+  <text x="54" y="221" class="tb bronze">Synt</text>
   <text x="54" y="238" class="m">5 stadi: nome → firma args →</text>
   <text x="54" y="252" class="m">test → descrizione → codice</text>
   <text x="54" y="270" class="m">poi: test di nascita, conferma</text>
@@ -528,10 +661,10 @@ Non c'è un cloud di Metnos, non c'è un «registrati»: i dati e la logica rest
 
   <!-- carta -->
   <line x1="660" y1="322" x2="700" y2="322" class="ln" marker-end="url(#ar)"/>
-  <rect x="702" y="296" width="46" height="52" rx="4" fill="#faf3df" stroke="#ba8b25" stroke-width="1.4"/>
-  <text x="725" y="316" class="m" text-anchor="middle" fill="#7c5a14">carta</text>
-  <text x="725" y="329" class="m" text-anchor="middle" fill="#7c5a14">2 tasti</text>
-  <text x="725" y="342" class="m" text-anchor="middle" fill="#7c5a14">✓ / ✗</text>
+  <rect x="702" y="296" width="46" height="52" rx="4" class="bc"/>
+  <text x="725" y="316" class="m bronze" text-anchor="middle">carta</text>
+  <text x="725" y="329" class="m bronze" text-anchor="middle">2 tasti</text>
+  <text x="725" y="342" class="m bronze" text-anchor="middle">✓ / ✗</text>
 
   <line x1="495" y1="350" x2="495" y2="382" class="ln" marker-end="url(#ar)"/>
   <text x="503" y="370" class="m">consenso ottenuto (o non necessario)</text>
@@ -549,14 +682,11 @@ Non c'è un cloud di Metnos, non c'è un «registrati»: i dati e la logica rest
   <!-- risposta finale -->
   <path d="M660 412 L712 412 L712 478" class="ln" marker-end="url(#ar)"/>
   <rect x="330" y="480" width="412" height="54" rx="5" class="bg"/>
-  <text x="344" y="502" class="tb" fill="#3f6f47">Risposta + riga di audit</text>
+  <text x="344" y="502" class="tb sage">Risposta + riga di audit</text>
   <text x="344" y="519" class="m">conteggi reali, troncamenti dichiarati, undo disponibile dove promesso</text>
   <path d="M495 440 L495 478" class="ln" marker-end="url(#ar)"/>
 
-  <!-- praxis learns -->
-  <path d="M744 100 C 760 240, 700 60, 690 76" class="lc" opacity="0"/>
   <text x="40" y="520" class="m">le catene riuscite alimentano Praxis: la prossima volta, stessa richiesta = replay diretto</text>
-  <path d="M36 500 L36 480 L330 480" class="lc" opacity="0"/>
 </svg>
 <figcaption><b>Fig. 1</b> — Il giro di un turno. Due proprietà non comuni: il routing è <b>deterministico</b> (stessa richiesta → stesso piano, a ogni esecuzione) e le forme già risolte rientrano da <b>Praxis</b> senza scomodare alcun LLM.</figcaption>
 </figure>
@@ -583,12 +713,7 @@ annullabile lo è per costruzione (catalogo chiuso di pattern di reverse).</li>
 
 <!-- ================= CAP 2 ================= -->
 <section class="cap" id="cap2">
-<div class="cap-head">
-  <span class="n">02</span>
-  <div class="kicker">Capitolo 2</div>
-  <h1>Perché è diverso</h1>
-  <hr class="meander">
-</div>
+<h2>2 · Perché è diverso</h2>
 
 <p class="lead">
 Di agenti self-hosted ce ne sono già — quelli da terminale (OpenClaw e simili) e
@@ -621,7 +746,7 @@ frontiera</strong>, e va messo nelle condizioni di non sbagliare.
 </tbody>
 </table>
 
-<h2>Perché Metnos non ha adottato il formato «skill» standard</h2>
+<h3>Perché Metnos non ha adottato il formato «skill» standard</h3>
 <p>
 I formati di skill in voga sono comodi e pericolosi in pari misura: importate un
 pacchetto e l'assistente <em>ne esegue il codice coi propri privilegi</em>. Per un
@@ -637,7 +762,7 @@ posto</em>. L'ecosistema pubblico delle skill non viene ignorato: viene
 eseguito crudo.
 </p>
 
-<h2>Il determinismo è una scelta, non un caso</h2>
+<h3>Il determinismo è una scelta, non un caso</h3>
 <p>
 La maggior parte degli agenti tratta l'LLM come un oracolo da rilanciare a ogni turno.
 Metnos fa la scommessa opposta: un planner <em>locale</em> su vocabolario <em>chiuso</em>
@@ -650,7 +775,7 @@ più bassa, costo zero, esito identico. La flessibilità (il modello di frontier
 disponibile, ma è la riserva, non il motore.
 </p>
 
-<h2>Cosa fa meglio un agente da terminale</h2>
+<h3>Cosa fa meglio un agente da terminale</h3>
 <p>
 Onestà dovuta: come compagno di chi scrive codice — dentro un repository, in tempo
 reale — un agente da terminale maturo resta superiore, con un ecosistema di estensioni
@@ -662,29 +787,21 @@ benissimo.
 
 <!-- ================= CAP 3 ================= -->
 <section class="cap" id="cap3">
-<div class="cap-head">
-  <span class="n">03</span>
-  <div class="kicker">Capitolo 3</div>
-  <h1>Otto scene reali</h1>
-  <hr class="meander">
-</div>
+<h2>3 · Otto scene reali</h2>
 
 <p class="lead">
 Il modo più rapido per capire è guardare. Ogni scena qui sotto è una richiesta vera
-fatta all'istanza di riferimento; il timbro indica quando è stata verificata dal vivo.
-Dove c'è un limite, è scritto accanto al merito.
+fatta all'istanza di riferimento; l'intestazione indica quando è stata verificata dal
+vivo. Dove c'è un limite, è scritto accanto al merito.
 </p>
 
 <!-- SCENA 1 -->
 <div class="scene">
-<div class="scene-top">
-  <span class="scene-tag">Scena 1 · leggere</span>
-  <span class="stamp">Verificata · 24/05/2026</span>
-</div>
+<div class="group-title">Scena 1 · leggere — verificata 24/05/2026</div>
 <h3>«Riassumi le mail di oggi»</h3>
 <p class="q">Dammi il riassunto delle mail importanti di oggi.</p>
 <div class="pipe">
-  <span class="x">find_messages</span><span class="a">→</span><span class="x llm">describe_entries</span><span class="a">→</span><span class="x fin">risposta</span>
+  find_messages <span class="a">→</span> describe_entries <span class="a">→</span> risposta
 </div>
 <div class="reply">
 3 mail oggi: l'avvocato chiede il documento entro venerdì; la banca conferma il
@@ -692,18 +809,15 @@ bonifico di ieri; la sorella sul pranzo di domenica. Vuoi che provi a rispondere
 a una di queste?
 </div>
 <div class="meta">
-  <span><b>capability</b> mail:read</span>
-  <span><b>conferme</b> nessuna — i verbi di sola lettura saltano il giudizio</span>
-  <span><b>latenza</b> ~3 s</span>
+  <b>capability</b> mail:read ·
+  <b>conferme</b> nessuna — i verbi di sola lettura saltano il giudizio ·
+  <b>latenza</b> ~3 s
 </div>
 </div>
 
 <!-- SCENA 2 -->
 <div class="scene">
-<div class="scene-top">
-  <span class="scene-tag">Scena 2 · agire con consenso</span>
-  <span class="stamp">Verificata · 24/05/2026</span>
-</div>
+<div class="group-title">Scena 2 · agire con consenso — verificata 24/05/2026</div>
 <h3>«Rispondi tu all'avvocato»</h3>
 <p class="q">Ok, rispondi tu all'avvocato: digli che invio il documento entro giovedì.</p>
 <p>Una mail in uscita verso un destinatario esterno non parte mai in silenzio,
@@ -724,11 +838,11 @@ bolla con due bottoni:</p>
 e che <em>chi decide sia lo stesso mittente accoppiato che ha chiesto</em>. Poi:
 <em>«Spedita alle 11:34. Riga di audit #1247.»</em></p>
 <div class="meta">
-  <span><b>capability</b> mail:send (irreversibile)</span>
-  <span><b>token</b> monouso, TTL 600 s</span>
-  <span><b>identità</b> chi approva == chi ha chiesto</span>
+  <b>capability</b> mail:send (irreversibile) ·
+  <b>token</b> monouso, TTL 600 s ·
+  <b>identità</b> chi approva == chi ha chiesto
 </div>
-<p style="font-size:10.5pt; color:var(--ink-soft);">Le tre righe della carta non sono
+<p class="small">Le tre righe della carta non sono
 un vezzo: sono <em>cosa</em>, <em>su che cosa</em>, <em>quanto è rifacibile</em> — il
 minimo per decidere a colpo d'occhio. Alla terza occorrenza identica la carta scende a
 due righe, poi a una. Vedi <a href="architecture/approval_ux.html">approval_ux</a>.</p>
@@ -736,10 +850,7 @@ due righe, poi a una. Vedi <a href="architecture/approval_ux.html">approval_ux</
 
 <!-- SCENA 3 -->
 <div class="scene">
-<div class="scene-top">
-  <span class="scene-tag">Scena 3 · comporre + annullare</span>
-  <span class="stamp">Verificata · 28/04/2026</span>
-</div>
+<div class="group-title">Scena 3 · comporre + annullare — verificata 28/04/2026</div>
 <h3>«Ordina queste foto per anno e luogo» — e poi «annulla»</h3>
 <p class="q">Ordina tutti i file immagine in ~/images creando sottocartelle per anno,
 premettendo al nome data e luogo di scatto. Se il luogo non c'è, metti «unknown».</p>
@@ -747,43 +858,17 @@ premettendo al nome data e luogo di scatto. Se il luogo non c'è, metti «unknow
 libreria, collegando l'uscita di ognuno all'ingresso del successivo. I dati non
 transitano dal modello: passano per riferimento (<code>from_step</code>).</p>
 
-<figure>
-<svg viewBox="0 0 720 300" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Pipeline a quattro passi: find_files, filter_entries, get_files, move_files">
-  <style>
-    .s3b { fill: #fdfaf2; stroke: #31495a; stroke-width: 1.3; }
-    .s3n { fill: #31495a; }
-    .s3t { font-family: ui-monospace,Consolas,monospace; font-size: 10.5px; font-weight: 700; fill: #23262c; }
-    .s3a { font-family: ui-monospace,Consolas,monospace; font-size: 9px; fill: #6e6655; }
-    .s3r { font-family: ui-monospace,Consolas,monospace; font-size: 9px; fill: #3f6f47; }
-    .s3ln { stroke: #6e6655; stroke-width: 1.2; }
-  </style>
-  <defs>
-    <marker id="ar3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
-      <path d="M0,0 L10,5 L0,10 Z" fill="#6e6655"/>
-    </marker>
-  </defs>
-  <rect x="14" y="14" width="692" height="58" rx="5" class="s3b"/>
-  <circle cx="38" cy="43" r="12" class="s3n"/><text x="38" y="47" text-anchor="middle" fill="#fdfaf2" class="s3t">1</text>
-  <text x="62" y="36" class="s3t">find_files(base_path="~/images", patterns=["*.jpg","*.png","*.heic"], recursive=true)</text>
-  <text x="62" y="53" class="s3r">→ 98 entries (con size e mtime già inclusi)</text>
-  <line x1="360" y1="72" x2="360" y2="84" class="s3ln" marker-end="url(#ar3)"/>
-  <rect x="14" y="86" width="692" height="58" rx="5" class="s3b"/>
-  <circle cx="38" cy="115" r="12" class="s3n"/><text x="38" y="119" text-anchor="middle" fill="#fdfaf2" class="s3t">2</text>
-  <text x="62" y="108" class="s3t">filter_entries(from_step=1, kind="image")</text>
-  <text x="62" y="125" class="s3r">→ 98 entries · filtro in memoria, conferma il tipo dichiarato dal MIME</text>
-  <line x1="360" y1="144" x2="360" y2="156" class="s3ln" marker-end="url(#ar3)"/>
-  <rect x="14" y="158" width="692" height="58" rx="5" class="s3b"/>
-  <circle cx="38" cy="187" r="12" class="s3n"/><text x="38" y="191" text-anchor="middle" fill="#fdfaf2" class="s3t">3</text>
-  <text x="62" y="180" class="s3t">get_files(from_step=2, fields=["dates","place"])</text>
-  <text x="62" y="197" class="s3r">→ 98 entries arricchite: EXIF → data; GPS → luogo via reverse-geocode (cache locale); senza GPS → "unknown"</text>
-  <line x1="360" y1="216" x2="360" y2="228" class="s3ln" marker-end="url(#ar3)"/>
-  <rect x="14" y="230" width="692" height="58" rx="5" class="s3b"/>
-  <circle cx="38" cy="259" r="12" class="s3n"/><text x="38" y="263" text-anchor="middle" fill="#fdfaf2" class="s3t">4</text>
-  <text x="62" y="252" class="s3t">move_files(from_step=3, dst_template="~/images/{anno}/{data}_{luogo}_{nome}")</text>
-  <text x="62" y="269" class="s3r">→ 98 spostati, 0 errori · ogni coppia sorgente→destinazione registrata nel registro di undo</text>
-</svg>
-<figcaption><b>Fig. 2</b> — Quattro executor che non si conoscono fra loro, scelti e collegati dal planner. Run reale del 28/04/2026, 98 foto.</figcaption>
-</figure>
+<ol class="steps">
+<li><code>find_files(base_path="~/images", patterns=["*.jpg","*.png","*.heic"], recursive=true)</code>
+<span class="res">→ 98 entries (con size e mtime già inclusi)</span></li>
+<li><code>filter_entries(from_step=1, kind="image")</code>
+<span class="res">→ 98 entries · filtro in memoria, conferma il tipo dichiarato dal MIME</span></li>
+<li><code>get_files(from_step=2, fields=["dates","place"])</code>
+<span class="res">→ 98 entries arricchite: EXIF → data; GPS → luogo via reverse-geocode (cache locale); senza GPS → "unknown"</span></li>
+<li><code>move_files(from_step=3, dst_template="~/images/{anno}/{data}_{luogo}_{nome}")</code>
+<span class="res">→ 98 spostati, 0 errori · ogni coppia sorgente→destinazione registrata nel registro di undo</span></li>
+</ol>
+<p class="fig-note">Quattro executor che non si conoscono fra loro, scelti e collegati dal planner. Run reale del 28/04/2026, 98 foto.</p>
 
 <p>Il giorno dopo, cambio di idea:</p>
 <p class="q">Annulla l'ultima operazione.</p>
@@ -791,9 +876,9 @@ transitano dal modello: passano per riferimento (<code>from_step</code>).</p>
 Ho annullato l'ultima operazione: ho riportato 98 file ai loro percorsi originali.
 </div>
 <div class="meta">
-  <span><b>undo</b> reverse multistage: prima i file, poi le cartelle create — solo se rimaste vuote</span>
-  <span><b>latenza undo</b> ~3 s su 98 file</span>
-  <span><b>idempotente</b> un secondo «annulla» non fa nulla</span>
+  <b>undo</b> reverse multistage: prima i file, poi le cartelle create — solo se rimaste vuote ·
+  <b>latenza undo</b> ~3 s su 98 file ·
+  <b>idempotente</b> un secondo «annulla» non fa nulla
 </div>
 <div class="truth">
 Non tutto è annullabile, e Metnos non finge il contrario: una mail spedita non si
@@ -804,10 +889,7 @@ COPY-poi-DELETE: mai una cancellazione senza copia confermata.
 
 <!-- SCENA 4 -->
 <div class="scene">
-<div class="scene-top">
-  <span class="scene-tag">Scena 4 · multi-utente + login + ricorrenza</span>
-  <span class="stamp">Verificata · 24/05/2026</span>
-</div>
+<div class="group-title">Scena 4 · multi-utente + login + ricorrenza — verificata 24/05/2026</div>
 <h3>«Ogni mattina, il registro scolastico — alla figlia, non a me»</h3>
 <p>Il portale della scuola richiede login. Il riassunto deve arrivare sul Telegram
 della figlia, accoppiata come ospite. Tre messaggi di preparazione, poi va da solo.</p>
@@ -821,7 +903,7 @@ login di test.</p>
 circolari), leggi anche i PDF allegati, e manda il riassunto delle 5 più rilevanti
 alla figlia su Telegram.</p>
 <div class="pipe">
-  <span class="note">scheduler 07:00 ·</span> <span class="x">login_session</span><span class="a">→</span><span class="x">find_urls</span><span class="a">→</span><span class="x">filter_entries</span><span class="a">→</span><span class="x">read_urls_html</span> + <span class="x">read_urls_pdf</span><span class="a">→</span><span class="x">group_entries</span><span class="a">→</span><span class="x llm">describe_entries</span><span class="a">→</span><span class="x fin">send_messages(to_user="figlia")</span>
+  <span class="note">scheduler 07:00 ·</span> login_session <span class="a">→</span> find_urls <span class="a">→</span> filter_entries <span class="a">→</span> read_urls_html + read_urls_pdf <span class="a">→</span> group_entries <span class="a">→</span> describe_entries <span class="a">→</span> send_messages(to_user="figlia")
 </div>
 <div class="reply">
 <strong>Scuola — report 04/05/2026</strong><br>
@@ -832,10 +914,10 @@ alla figlia su Telegram.</p>
 5. Pubblicato il voto di latino
 </div>
 <div class="meta">
-  <span><b>credenziali</b> cifrate in locale, mai nel codice né nei log</span>
-  <span><b>cookie</b> riusato ~14 giorni; alla scadenza re-login automatico</span>
-  <span><b>LLM</b> 1 sola chiamata per run (il riassunto) — l'HTML si estrae in modo deterministico</span>
-  <span><b>latenza</b> ~25–40 s/run</span>
+  <b>credenziali</b> cifrate in locale, mai nel codice né nei log ·
+  <b>cookie</b> riusato ~14 giorni; alla scadenza re-login automatico ·
+  <b>LLM</b> 1 sola chiamata per run (il riassunto) — l'HTML si estrae in modo deterministico ·
+  <b>latenza</b> ~25–40 s/run
 </div>
 <div class="truth">
 Se anche il re-login fallisce (password cambiata sul portale), il task si mette in
@@ -845,10 +927,7 @@ pausa e l'host riceve un avviso — non un silenzio, non un report inventato.
 
 <!-- SCENA 5 -->
 <div class="scene">
-<div class="scene-top">
-  <span class="scene-tag">Scena 5 · cinque frasi, tre provider</span>
-  <span class="stamp">Verificata · 24/05/2026</span>
-</div>
+<div class="group-title">Scena 5 · cinque frasi, tre provider — verificata 24/05/2026</div>
 <h3>Un budget mensile che si aggiorna da solo</h3>
 <p>Domenica mattina, cinque frasi in fila — foglio su Drive, bollette dalle mail,
 riepilogo in un Doc, condivisione, ricorrenza:</p>
@@ -857,7 +936,7 @@ Categoria, Importo, Note, Pagato. — Popolalo con le mail degli ultimi 30 giorn
 contengono «fattura». — Fammi un riassunto per categoria in un Google Doc. —
 Condividi tutto con il familiare. — Aggiornami ogni mattina alle 8.</p>
 <div class="pipe">
-  <span class="x">create_files_spreadsheet</span><span class="a">→</span><span class="x">write_files_spreadsheet</span><span class="a">→</span><span class="x">find_messages</span><span class="a">→</span><span class="x llm">classify_entries</span><span class="a">→</span><span class="x">read_files_ocr</span> <span class="note">(solo per le scansioni)</span><span class="a">→</span><span class="x">compute_entries</span><span class="a">→</span><span class="x">create_files_doc</span> + <span class="x">write_files_doc</span><span class="a">→</span><span class="x">find_contacts</span><span class="a">→</span><span class="x">share_files</span> <span class="note">(con carta)</span><span class="a">→</span><span class="x fin">create_tasks(daily@08:00)</span>
+  create_files_spreadsheet <span class="a">→</span> write_files_spreadsheet <span class="a">→</span> find_messages <span class="a">→</span> classify_entries <span class="a">→</span> read_files_ocr <span class="note">(solo per le scansioni)</span> <span class="a">→</span> compute_entries <span class="a">→</span> create_files_doc + write_files_doc <span class="a">→</span> find_contacts <span class="a">→</span> share_files <span class="note">(con carta)</span> <span class="a">→</span> create_tasks(daily@08:00)
 </div>
 <div class="reply">
 3 bollette estratte: energia €213,47 · rifiuti €281,67 · telefono €165,25 —
@@ -865,10 +944,10 @@ totale €660,39. Foglio e Doc creati; condivisi in sola lettura. Domani alle 8:
 ricostruisco il foglio con le mail nuove.
 </div>
 <div class="meta">
-  <span><b>provider</b> Google Workspace (OAuth vostro) + IMAP cifrato + scheduler locale</span>
-  <span><b>privacy</b> il planner gira in casa; in rete escono solo le chiamate API ai VOSTRI documenti</span>
-  <span><b>conferme</b> solo la condivisione (capability in uscita)</span>
-  <span><b>tempo totale</b> 2–3 minuti di conversazione</span>
+  <b>provider</b> Google Workspace (OAuth vostro) + IMAP cifrato + scheduler locale ·
+  <b>privacy</b> il planner gira in casa; in rete escono solo le chiamate API ai VOSTRI documenti ·
+  <b>conferme</b> solo la condivisione (capability in uscita) ·
+  <b>tempo totale</b> 2–3 minuti di conversazione
 </div>
 <div class="truth">
 Dal test E2E con bollette vere: una scansione senza strato testo è passata da OCR
@@ -882,17 +961,14 @@ un campo può mancare, e va detto.
 
 <!-- SCENA 6 -->
 <div class="scene">
-<div class="scene-top">
-  <span class="scene-tag">Scena 6 · synt al volo</span>
-  <span class="stamp">Verificata · 28/04/2026</span>
-</div>
+<div class="group-title">Scena 6 · synt al volo — verificata 28/04/2026</div>
 <h3>«Comprimi questo file» — e lo strumento non esiste ancora</h3>
 <p class="q">Comprimi /tmp/cfg.json in gzip.</p>
 <p>Il planner ispeziona il catalogo: nessun executor adatto, e nessuna catena di
 esistenti chiude il vuoto. Parte la sintesi — cinque stadi piccoli invece di un
 prompt mostro, ogni stadio vede solo la fetta di contesto che gli serve:</p>
 <div class="pipe">
-  <span class="x llm">1 nome</span><span class="a">→</span><span class="x llm">2 firma args</span><span class="a">→</span><span class="x llm">3 test di nascita</span><span class="a">→</span><span class="x llm">4 descrizione</span><span class="a">→</span><span class="x llm">5 codice</span><span class="a">→</span><span class="note">test in sandbox · conferma umana · firma Ed25519</span><span class="a">→</span><span class="x fin">compress_files_gz</span>
+  1 nome <span class="a">→</span> 2 firma args <span class="a">→</span> 3 test di nascita <span class="a">→</span> 4 descrizione <span class="a">→</span> 5 codice <span class="a">→</span> <span class="note">test in sandbox · conferma umana · firma Ed25519</span> <span class="a">→</span> compress_files_gz
 </div>
 <div class="reply">
 Sto costruendo un componente nuovo per estendere le mie capacità. La prima volta
@@ -900,37 +976,34 @@ richiede due o tre minuti; ogni riuso è immediato. […] Fatto:
 <code>cfg.json.gz</code> creato.
 </div>
 <div class="meta">
-  <span><b>tempo di sintesi</b> 148 s, tutto su LLM locale — costo €0</span>
-  <span><b>nome</b> conforme al vocabolario chiuso: verbo_oggetto_qualificatore</span>
-  <span><b>riuso</b> dalla volta dopo, &lt;100 ms: è una normale chiamata di funzione</span>
+  <b>tempo di sintesi</b> 148 s, tutto su LLM locale — costo €0 ·
+  <b>nome</b> conforme al vocabolario chiuso: verbo_oggetto_qualificatore ·
+  <b>riuso</b> dalla volta dopo, &lt;100 ms: è una normale chiamata di funzione
 </div>
-<p style="font-size:10.5pt; color:var(--ink-soft);">È così che il catalogo è arrivato
+<p class="small">È così che il catalogo è arrivato
 a 77 executor: una capacità alla volta, motivata da una richiesta vera, mai in
 anticipo. Il meccanismo completo è nel capitolo 7.</p>
 </div>
 
 <!-- SCENA 7 -->
 <div class="scene">
-<div class="scene-top">
-  <span class="scene-tag">Scena 7 · foto: capire, non solo elencare</span>
-  <span class="stamp prod">In produzione · 06/2026</span>
-</div>
+<div class="group-title">Scena 7 · foto: capire, non solo elencare — in produzione 06/2026</div>
 <h3>«Trova le foto in montagna» — semantica visiva, in casa</h3>
 <p>Decine di migliaia di foto su un disco di rete. La prima volta Metnos propone di
 indicizzarle: l'indicizzazione gira in background e avvisa su Telegram a lavoro
 finito. Da quel momento:</p>
 <p class="q">Trova le foto in montagna.</p>
 <div class="pipe">
-  <span class="x">find_images_indices(query="montagna")</span><span class="a">→</span><span class="x fin">20 anteprime + galleria web (100)</span>
+  find_images_indices(query="montagna") <span class="a">→</span> 20 anteprime + galleria web (100)
 </div>
 <p class="q">Le foto della figlia al mare?</p>
 <div class="pipe">
-  <span class="x">find_persons_indices</span> <span class="note">(volti: dopo un'etichettatura una-tantum «chi è chi»)</span><span class="a">→</span><span class="x fin">galleria</span>
+  find_persons_indices <span class="note">(volti: dopo un'etichettatura una-tantum «chi è chi»)</span> <span class="a">→</span> galleria
 </div>
 <div class="meta">
-  <span><b>modelli</b> embedding di scena + riconoscimento volti + EXIF — tutto in-process, sul vostro server</span>
-  <span><b>privacy</b> nessuna foto lascia casa; l'indice è un file SQLite ispezionabile</span>
-  <span><b>interfaccia</b> anteprime in chat, galleria completa nel browser</span>
+  <b>modelli</b> embedding di scena + riconoscimento volti + EXIF — tutto in-process, sul vostro server ·
+  <b>privacy</b> nessuna foto lascia casa; l'indice è un file SQLite ispezionabile ·
+  <b>interfaccia</b> anteprime in chat, galleria completa nel browser
 </div>
 <div class="truth">
 Limite noto, a giugno 2026: «la figlia <em>in montagna</em>» — volto e scena nella
@@ -941,10 +1014,7 @@ funzionano. È il cantiere aperto in cima alla lista.
 
 <!-- SCENA 8 -->
 <div class="scene">
-<div class="scene-top">
-  <span class="scene-tag">Scena 8 · il repo si mantiene con due frasi</span>
-  <span class="stamp prod">In produzione · 06/2026</span>
-</div>
+<div class="group-title">Scena 8 · il repo si mantiene con due frasi — in produzione 06/2026</div>
 <h3>Manutenzione GitHub senza demone: due comandi schedulati</h3>
 <p>Il supporto del progetto stesso è gestito così — niente servizio dedicato, niente
 codice ad hoc: due richieste in linguaggio naturale, registrate come task ricorrenti,
@@ -955,12 +1025,12 @@ col tier frontier, salva la bozza di risposta con stato «prepared», e avvisami
 <p class="q">Dopo la mia approvazione: leggi dal db le issue «approved» non ancora
 pubblicate, pubblica la risposta come commento su GitHub, segnale «posted».</p>
 <div class="pipe">
-  <span class="x">find_issues_github</span><span class="a">→</span><span class="x">find_issues</span> <span class="note">(dedup nel db locale)</span><span class="a">→</span><span class="x llm">classify_entries</span> + <span class="x llm">consult_frontier</span><span class="a">→</span><span class="x">write_issues("prepared")</span><span class="a">→</span><span class="note">approvazione umana</span><span class="a">→</span><span class="x">send_messages_github</span><span class="a">→</span><span class="x fin">write_issues("posted")</span>
+  find_issues_github <span class="a">→</span> find_issues <span class="note">(dedup nel db locale)</span> <span class="a">→</span> classify_entries + consult_frontier <span class="a">→</span> write_issues("prepared") <span class="a">→</span> <span class="note">approvazione umana</span> <span class="a">→</span> send_messages_github <span class="a">→</span> write_issues("posted")
 </div>
 <div class="meta">
-  <span><b>macchina a stati</b> new → prepared → approved → posted: il doppio invio lo impedisce lo stato, non la speranza</span>
-  <span><b>consenso</b> niente raggiunge GitHub senza un «approva» esplicito</span>
-  <span><b>scheduling</b> una frase: «crea un task ricorrente ogni 30 minuti: …»</span>
+  <b>macchina a stati</b> new → prepared → approved → posted: il doppio invio lo impedisce lo stato, non la speranza ·
+  <b>consenso</b> niente raggiunge GitHub senza un «approva» esplicito ·
+  <b>scheduling</b> una frase: «crea un task ricorrente ogni 30 minuti: …»
 </div>
 <div class="truth">
 È un esperimento dichiarato di dogfooding: un'istanza di Metnos che aiuta a mantenere
@@ -972,12 +1042,7 @@ per trattamento manuale — mai una risposta inventata, mai uno skip silenzioso.
 
 <!-- ================= CAP 4 ================= -->
 <section class="cap" id="cap4">
-<div class="cap-head">
-  <span class="n">04</span>
-  <div class="kicker">Capitolo 4</div>
-  <h1>Dove vive e come gli si parla</h1>
-  <hr class="meander">
-</div>
+<h2>4 · Dove vive e come gli si parla</h2>
 
 <p class="lead">
 Metnos gira su una macchina Linux vostra. L'istanza di riferimento è un piccolo
@@ -988,63 +1053,16 @@ frontiera sono percorsi di prima classe. Telefoni e laptop sono <em>clienti</em>
 la mente, la memoria e l'audit vivono su una macchina sola.
 </p>
 
-<h2>Due superfici, una mente</h2>
+<h3>Due superfici, una mente</h3>
 <p><strong>Il browser</strong>: una chat servita dal server stesso (porta 8770), con
 le anteprime delle foto, la galleria, e i cruscotti di amministrazione (proposte del
 synt, executor, run, turni). <strong>Telegram</strong>: lo stesso cervello in tasca,
 con le carte di conferma come bottoni in linea. Per chi automatizza, l'API HTTP
 (<code>/agent/turn</code>, anche in streaming) è la stessa porta che usa la chat.</p>
+<p>La chat web mostra anche i badge di feedback ✓/✗ per ogni risposta: il gradimento
+alimenta la cura del catalogo.</p>
 
-<figure>
-<svg viewBox="0 0 760 330" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Le due superfici: chat nel browser e Telegram, stesso server">
-  <style>
-    .w-f { font-family: 'Iowan Old Style','Palatino Linotype',Georgia,serif; font-size: 11px; fill: #23262c; }
-    .w-m { font-family: ui-monospace,Consolas,monospace; font-size: 8.5px; fill: #6e6655; }
-    .w-mb { font-family: ui-monospace,Consolas,monospace; font-size: 9px; font-weight: 700; fill: #31495a; }
-  </style>
-  <!-- browser -->
-  <rect x="14" y="16" width="420" height="296" rx="8" fill="#fdfaf2" stroke="#31495a" stroke-width="1.4"/>
-  <rect x="14" y="16" width="420" height="30" rx="8" fill="#ece4d2"/>
-  <circle cx="34" cy="31" r="4.5" fill="#c9b89a"/><circle cx="50" cy="31" r="4.5" fill="#c9b89a"/><circle cx="66" cy="31" r="4.5" fill="#c9b89a"/>
-  <rect x="86" y="22" width="260" height="18" rx="9" fill="#fdfaf2" stroke="#d9cdb4"/>
-  <text x="98" y="35" class="w-m">http://server-di-casa:8770/</text>
-  <rect x="160" y="62" width="252" height="30" rx="10" fill="#ece4d2" stroke="#d9cdb4"/>
-  <text x="174" y="81" class="w-f">Trova le foto in montagna</text>
-  <rect x="36" y="106" width="300" height="120" rx="10" fill="#e9efe2" stroke="#c4d2b8"/>
-  <text x="50" y="126" class="w-f">28 foto trovate. Le prime:</text>
-  <rect x="50" y="138" width="62" height="46" rx="3" fill="#d9cdb4"/><rect x="120" y="138" width="62" height="46" rx="3" fill="#cdbf9f"/><rect x="190" y="138" width="62" height="46" rx="3" fill="#d9cdb4"/><rect x="260" y="138" width="62" height="46" rx="3" fill="#cdbf9f"/>
-  <text x="50" y="204" class="w-m" style="text-decoration:underline;">apri la galleria completa (100) →</text>
-  <text x="50" y="246" class="w-m">feedback: </text>
-  <rect x="106" y="234" width="22" height="16" rx="8" fill="#3f6f47"/><text x="117" y="246" text-anchor="middle" font-size="9" fill="#fff" font-family="monospace">✓</text>
-  <rect x="134" y="234" width="22" height="16" rx="8" fill="#973a3a"/><text x="145" y="246" text-anchor="middle" font-size="9" fill="#fff" font-family="monospace">✗</text>
-  <text x="36" y="290" class="w-mb">chat nel browser · porta 8770 · anche admin e galleria</text>
-
-  <!-- telefono -->
-  <rect x="500" y="16" width="180" height="296" rx="20" fill="#23262c"/>
-  <rect x="508" y="34" width="164" height="260" rx="6" fill="#f5f0e4"/>
-  <rect x="508" y="34" width="164" height="28" fill="#31495a"/>
-  <text x="520" y="52" font-size="10" fill="#fdfaf2" font-family="monospace">Metnos (casa)</text>
-  <rect x="556" y="72" width="108" height="24" rx="9" fill="#ece4d2" stroke="#d9cdb4"/>
-  <text x="564" y="88" class="w-m" fill="#23262c">Riassunto mail di oggi</text>
-  <rect x="516" y="104" width="120" height="58" rx="9" fill="#e9efe2" stroke="#c4d2b8"/>
-  <text x="524" y="120" class="w-m" fill="#23262c">3 mail oggi:</text>
-  <text x="524" y="133" class="w-m" fill="#23262c">avvocato · banca ·</text>
-  <text x="524" y="146" class="w-m" fill="#23262c">pranzo di domenica</text>
-  <rect x="516" y="172" width="148" height="74" rx="9" fill="#faf3df" stroke="#ba8b25"/>
-  <text x="524" y="188" class="w-m" fill="#7c5a14" font-weight="bold">Posso inviare una mail?</text>
-  <text x="524" y="201" class="w-m" fill="#7c5a14">oggetto: «consegna…»</text>
-  <rect x="524" y="210" width="56" height="18" rx="9" fill="#3f6f47"/><text x="552" y="223" text-anchor="middle" font-size="8.5" fill="#fff" font-family="monospace">Approva</text>
-  <rect x="588" y="210" width="52" height="18" rx="9" fill="#fdfaf2" stroke="#d9cdb4"/><text x="614" y="223" text-anchor="middle" font-size="8.5" fill="#973a3a" font-family="monospace">Rifiuta</text>
-  <text x="500" y="328" class="w-mb">Telegram · carte di conferma in linea</text>
-
-  <!-- ponte -->
-  <path d="M438 170 L496 170" stroke="#a8501e" stroke-width="1.3" stroke-dasharray="4 3"/>
-  <text x="440" y="160" class="w-m" fill="#a8501e">stesso server, stessa memoria</text>
-</svg>
-<figcaption><b>Fig. 3</b> — Le due superfici. La chat web mostra anche i badge di feedback ✓/✗ per ogni risposta: il gradimento alimenta la cura del catalogo.</figcaption>
-</figure>
-
-<h2>Chi siete, per il bot: il pairing</h2>
+<h3>Chi siete, per il bot: il pairing</h3>
 <p>Telegram è una superficie pubblica: chiunque conosca il nome del bot può
 scrivergli. Metnos lega ogni coppia <em>(canale, mittente)</em> a un livello di
 autonomia con un codice firmato monouso: <code>/pair PAIR.&lt;codice&gt;</code>
@@ -1054,7 +1072,7 @@ amministrazione. Niente account centrale, niente password: una rubrica
 per-canale-per-mittente che solo l'host modifica.
 Vedi <a href="architecture/pairing.html">pairing</a>.</p>
 
-<h2>La lingua è un dato, non una costante</h2>
+<h3>La lingua è un dato, non una costante</h3>
 <p>Ogni messaggio visibile, ogni descrizione di strumento e ogni prompt LLM vive come
 <em>dato per-lingua</em>: italiano e inglese sono validati, una lingua nuova si
 aggiunge per traduzione dei pacchetti, senza toccare codice
@@ -1065,12 +1083,7 @@ non testato. Vedi <a href="architecture/multilang.html">multilang</a>.</p>
 
 <!-- ================= CAP 5 ================= -->
 <section class="cap" id="cap5">
-<div class="cap-head">
-  <span class="n">05</span>
-  <div class="kicker">Capitolo 5</div>
-  <h1>Cosa succede quando dice «posso?»</h1>
-  <hr class="meander">
-</div>
+<h2>5 · Cosa succede quando dice «posso?»</h2>
 
 <p class="lead">
 È il pezzo di esperienza più importante del progetto. Ogni azione che cambia lo stato
@@ -1102,7 +1115,7 @@ executor mutante (scambia sorgente/destinazione, cancella i creati, ripristina i
 backup del blob, cancella per id). Conteggi onesti: se dice che ha annullato tre cose,
 erano tre.</p>
 
-<div class="callout danger">
+<div class="callout">
 <strong>Ciò che nessuna autonomia sblocca.</strong> La guardia binaria non è
 configurabile da file: percorsi vietati e pattern catastrofici si cambiano solo
 cambiando il codice. E la generazione è monocanale per principio
@@ -1113,62 +1126,23 @@ mai modifiche a se stesso, al vaglio o al runtime — e ogni proposta passa dal 
 
 <!-- ================= CAP 6 ================= -->
 <section class="cap" id="cap6">
-<div class="cap-head">
-  <span class="n">06</span>
-  <div class="kicker">Capitolo 6</div>
-  <h1>La sua memoria: cosa ricorda e cosa no</h1>
-  <hr class="meander">
-</div>
+<h2>6 · La sua memoria: cosa ricorda e cosa no</h2>
 
 <p class="lead">
 Quattro depositi distinti, con durate e regole di scrittura diverse — tabelle SQLite
 e file di testo che potete aprire, non un vettore opaco da qualche parte.
 </p>
 
-<figure>
-<svg viewBox="0 0 760 240" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="I quattro depositi di memoria">
-  <style>
-    .mm-t { font-family: ui-monospace,Consolas,monospace; font-size: 9px; font-weight: 700; letter-spacing: .12em; fill: #6e6655; }
-    .mm-h { font-family: 'Iowan Old Style','Palatino Linotype',Georgia,serif; font-size: 13px; font-weight: 700; fill: #23262c; }
-    .mm-d { font-family: 'Iowan Old Style','Palatino Linotype',Georgia,serif; font-size: 10.5px; fill: #23262c; }
-    .mm-s { font-family: ui-monospace,Consolas,monospace; font-size: 8.5px; fill: #6e6655; }
-  </style>
-  <rect x="14"  y="22" width="172" height="170" rx="6" fill="#fdfaf2" stroke="#d9cdb4" stroke-width="1.4"/>
-  <text x="28" y="44" class="mm-t">TURNO</text>
-  <text x="28" y="66" class="mm-h">Scratchpad</text>
-  <text x="28" y="88" class="mm-d">Le osservazioni dei</text>
-  <text x="28" y="104" class="mm-d">passi intermedi.</text>
-  <text x="28" y="172" class="mm-s">si svuota a fine turno</text>
-
-  <rect x="200" y="22" width="172" height="170" rx="6" fill="#fdfaf2" stroke="#31495a" stroke-width="1.4"/>
-  <text x="214" y="44" class="mm-t">GIORNI</text>
-  <text x="214" y="66" class="mm-h">Storico turni</text>
-  <text x="214" y="88" class="mm-d">«Cosa ti ho chiesto</text>
-  <text x="214" y="104" class="mm-d">martedì scorso?»</text>
-  <text x="214" y="158" class="mm-s">un file per turno,</text>
-  <text x="214" y="172" class="mm-s">alimenta i cruscotti</text>
-
-  <rect x="386" y="22" width="172" height="170" rx="6" fill="#e9efe2" stroke="#3f6f47" stroke-width="1.4"/>
-  <text x="400" y="44" class="mm-t" fill="#3f6f47">PER SEMPRE</text>
-  <text x="400" y="66" class="mm-h">Memorie su di voi</text>
-  <text x="400" y="88" class="mm-d">«Il compleanno della</text>
-  <text x="400" y="104" class="mm-d">mamma è il 23/4.»</text>
-  <text x="400" y="158" class="mm-s">mai scritte di nascosto:</text>
-  <text x="400" y="172" class="mm-s">propone, voi approvate</text>
-
-  <rect x="572" y="22" width="172" height="170" rx="6" fill="#fdfaf2" stroke="#a8501e" stroke-width="1.4" stroke-dasharray="6 3"/>
-  <text x="586" y="44" class="mm-t" fill="#a8501e">SU DI SÉ</text>
-  <text x="586" y="66" class="mm-h">Mnestoma</text>
-  <text x="586" y="88" class="mm-d">Quali strumenti hanno</text>
-  <text x="586" y="104" class="mm-d">collaborato, con che esito;</text>
-  <text x="586" y="120" class="mm-d">e i tentativi rimasti a metà.</text>
-  <text x="586" y="158" class="mm-s">il substrato che il synt</text>
-  <text x="586" y="172" class="mm-s">legge per proporre</text>
-
-  <text x="14" y="222" class="mm-s">memoria del mondo (a sinistra) e memoria di sé (a destra), tenute separate per disegno</text>
-</svg>
-<figcaption><b>Fig. 4</b> — I quattro depositi. Il quarto è il più insolito: il <b>mnestoma</b> registra anche i vuoti — le richieste che nessuno strumento ha saputo chiudere — perché sono il motore della crescita.</figcaption>
-</figure>
+<table>
+<thead><tr><th style="width:22%">Deposito</th><th style="width:16%">Orizzonte</th><th>Cosa contiene</th><th style="width:30%">Regola</th></tr></thead>
+<tbody>
+<tr><td><strong>Scratchpad</strong></td><td>il turno</td><td>Le osservazioni dei passi intermedi.</td><td>si svuota a fine turno</td></tr>
+<tr><td><strong>Storico turni</strong></td><td>giorni</td><td>«Cosa ti ho chiesto martedì scorso?»</td><td>un file per turno, alimenta i cruscotti</td></tr>
+<tr><td><strong>Memorie su di voi</strong></td><td>per sempre</td><td>«Il compleanno della mamma è il 23/4.»</td><td>mai scritte di nascosto: propone, voi approvate</td></tr>
+<tr><td><strong>Mnestoma</strong></td><td>su di sé</td><td>Quali strumenti hanno collaborato, con che esito; e i tentativi rimasti a metà.</td><td>il substrato che il synt legge per proporre</td></tr>
+</tbody>
+</table>
+<p class="fig-note">Memoria del mondo (le prime tre righe) e memoria di sé (il mnestoma), tenute separate per disegno. Il quarto deposito è il più insolito: il <b>mnestoma</b> registra anche i vuoti — le richieste che nessuno strumento ha saputo chiudere — perché sono il motore della crescita.</p>
 
 <p>Il dettaglio che conta: Metnos non promuove mai un fatto a memoria permanente da
 solo. Propone («ho notato che parli spesso del nuovo dentista: lo salvo come contatto
@@ -1181,12 +1155,7 @@ riconoscere la stessa forma la prossima volta. Vedi
 
 <!-- ================= CAP 7 ================= -->
 <section class="cap" id="cap7">
-<div class="cap-head">
-  <span class="n">07</span>
-  <div class="kicker">Capitolo 7</div>
-  <h1>Come cresce: synt, skill, backend</h1>
-  <hr class="meander">
-</div>
+<h2>7 · Come cresce: synt, skill, backend</h2>
 
 <p class="lead">
 Un executor è un piccolo file Python che fa una cosa sola, con un manifest che ne
@@ -1195,53 +1164,22 @@ stabile: non impara, non cambia. L'intelligenza di crescita sta altrove — nel
 <strong>sintetizzatore</strong>.
 </p>
 
-<h2>La sintesi in cinque stadi</h2>
+<h3>La sintesi in cinque stadi</h3>
 
-<figure>
-<svg viewBox="0 0 760 200" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="I cinque stadi della sintesi e il cancello di ammissione">
-  <defs>
-    <marker id="ar7" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
-      <path d="M0,0 L10,5 L0,10 Z" fill="#6e6655"/>
-    </marker>
-  </defs>
-  <style>
-    .s7b { fill: #fdfaf2; stroke: #31495a; stroke-width: 1.3; }
-    .s7h { font-family: ui-monospace,Consolas,monospace; font-size: 9.5px; font-weight: 700; fill: #23262c; }
-    .s7m { font-family: ui-monospace,Consolas,monospace; font-size: 8px; fill: #6e6655; }
-    .s7g { font-family: ui-monospace,Consolas,monospace; font-size: 8.5px; fill: #3f6f47; }
-  </style>
-  <rect x="14" y="20" width="128" height="64" rx="5" class="s7b"/>
-  <text x="26" y="42" class="s7h">1 · NOME</text>
-  <text x="26" y="58" class="s7m">dal vocabolario chiuso</text>
-  <text x="26" y="71" class="s7m">tier middle</text>
-  <line x1="142" y1="52" x2="160" y2="52" stroke="#6e6655" stroke-width="1.2" marker-end="url(#ar7)"/>
-  <rect x="162" y="20" width="128" height="64" rx="5" class="s7b"/>
-  <text x="174" y="42" class="s7h">2 · FIRMA</text>
-  <text x="174" y="58" class="s7m">schema args, capability,</text>
-  <text x="174" y="71" class="s7m">pattern di reverse</text>
-  <line x1="290" y1="52" x2="308" y2="52" stroke="#6e6655" stroke-width="1.2" marker-end="url(#ar7)"/>
-  <rect x="310" y="20" width="128" height="64" rx="5" class="s7b"/>
-  <text x="322" y="42" class="s7h">3 · TEST</text>
-  <text x="322" y="58" class="s7m">4–6 prove di nascita:</text>
-  <text x="322" y="71" class="s7m">felice, vuoto, invalido</text>
-  <line x1="438" y1="52" x2="456" y2="52" stroke="#6e6655" stroke-width="1.2" marker-end="url(#ar7)"/>
-  <rect x="458" y="20" width="128" height="64" rx="5" class="s7b"/>
-  <text x="470" y="42" class="s7h">4 · DESCRIZIONE</text>
-  <text x="470" y="58" class="s7m">il «prompt dello strumento»</text>
-  <text x="470" y="71" class="s7m">+ parole di affinità</text>
-  <line x1="586" y1="52" x2="604" y2="52" stroke="#6e6655" stroke-width="1.2" marker-end="url(#ar7)"/>
-  <rect x="606" y="20" width="140" height="64" rx="5" class="s7b" stroke="#a8501e"/>
-  <text x="618" y="42" class="s7h" fill="#a8501e">5 · CODICE</text>
-  <text x="618" y="58" class="s7m">tier wise, locale</text>
-  <text x="618" y="71" class="s7m">def invoke(args) → liste</text>
-
-  <path d="M676 84 L676 116 L80 116 L80 132" stroke="#6e6655" stroke-width="1.2" fill="none" marker-end="url(#ar7)"/>
-  <rect x="14" y="134" width="732" height="48" rx="5" fill="#e9efe2" stroke="#3f6f47" stroke-width="1.3"/>
-  <text x="28" y="154" class="s7g" font-weight="700">CANCELLO DI AMMISSIONE (7 strati)</text>
-  <text x="28" y="170" class="s7g">firma → sovrapposizione di affinità → invecchiamento → sandbox → test di fumo → verifica LLM descrizione-vs-codice → audit append-only · poi conferma umana e firma Ed25519</text>
-</svg>
-<figcaption><b>Fig. 5</b> — Cinque prompt piccoli e focalizzati invece di uno monolitico: in convergenza ha prodotto 4 executor corretti su 4, contro il 32% del prompt unico. Solo lo stadio 1 vede il vocabolario chiuso; solo il 5 scrive codice.</figcaption>
-</figure>
+<table>
+<thead><tr><th style="width:24%">Stadio</th><th>Cosa produce</th></tr></thead>
+<tbody>
+<tr><td><strong>1 · Nome</strong></td><td>dal vocabolario chiuso — tier middle</td></tr>
+<tr><td><strong>2 · Firma</strong></td><td>schema args, capability, pattern di reverse</td></tr>
+<tr><td><strong>3 · Test</strong></td><td>4–6 prove di nascita: felice, vuoto, invalido</td></tr>
+<tr><td><strong>4 · Descrizione</strong></td><td>il «prompt dello strumento» + parole di affinità</td></tr>
+<tr><td><strong>5 · Codice</strong></td><td>tier wise, locale — <code>def invoke(args)</code> → liste</td></tr>
+</tbody>
+</table>
+<p>All'uscita, il <strong>cancello di ammissione</strong> (7 strati): firma →
+sovrapposizione di affinità → invecchiamento → sandbox → test di fumo → verifica LLM
+descrizione-vs-codice → audit append-only · poi conferma umana e firma Ed25519.</p>
+<p class="fig-note">Cinque prompt piccoli e focalizzati invece di uno monolitico: in convergenza ha prodotto 4 executor corretti su 4, contro il 32% del prompt unico. Solo lo stadio 1 vede il vocabolario chiuso; solo il 5 scrive codice.</p>
 
 <p>La sintesi reattiva (capita in mezzo a un turno, scena 6) è il primo gradino di una
 <strong>cascata per costo crescente</strong>: prima <em>componi</em> gli esistenti, poi
@@ -1253,7 +1191,7 @@ cataloghi diversi — ognuno plasmato dall'uso reale. Vedi
 <a href="architecture/synt.html">synt</a> e
 <a href="architecture/lifecycle.html">lifecycle</a>.</p>
 
-<h2>Skill e backend: due assi che non si confondono</h2>
+<h3>Skill e backend: due assi che non si confondono</h3>
 <p>Tutto ciò che lega Metnos a un servizio esterno è una <strong>skill</strong>:
 un gruppo di capacità <em>dormiente finché non configurata</em>, attivabile e
 disattivabile a piacere (<code>system</code> · <code>photos</code> · <code>mail</code> ·
@@ -1270,7 +1208,7 @@ instrada. Aggiungere un secondo provider (es. GitLab accanto a GitHub) è
 provider, niente bias di scelta nel modello locale. Vedi
 <a href="architecture/skills_backends.html">skills_backends</a>.</p>
 
-<div class="callout warn">
+<div class="callout">
 <strong><code>system</code> è la skill che rende Metnos un assistente del computer,
 non solo un chatbot</strong>: shell, sudo, pacchetti, mount di rete. Ogni azione
 privilegiata richiede un giudizio del vaglio, e la skill si può spegnere del tutto —
@@ -1280,12 +1218,7 @@ Metnos resta fuori dal sistema finché non la riaccendete voi.
 
 <!-- ================= CAP 8 ================= -->
 <section class="cap" id="cap8">
-<div class="cap-head">
-  <span class="n">08</span>
-  <div class="kicker">Capitolo 8</div>
-  <h1>Persone e dispositivi: host, ospiti, e la strada verso gli executor remoti</h1>
-  <hr class="meander">
-</div>
+<h2>8 · Persone e dispositivi: host, ospiti, e la strada verso gli executor remoti</h2>
 
 <p class="lead">
 Metnos non è multi-tenant in senso SaaS: è una casa sola. Dentro quella casa c'è un
@@ -1306,7 +1239,7 @@ e zero o più <strong>ospiti</strong>, ognuno col suo livello.
 di audit restano separate per accoppiamento. Ogni canale ha la sua porta, la sua
 chiave, la sua storia.</p>
 
-<h2>Executor remoti: dove può arrivare il codice</h2>
+<h3>Executor remoti: dove può arrivare il codice</h3>
 <p>Un solo server, ma non un solo filesystem: tante cose su cui vorreste agire (i file
 del laptop, un'applicazione aperta, uno schermo) vivono altrove. La direzione tracciata
 è tenere gateway, policy e memoria sul server e lasciar girare <em>alcuni executor</em>
@@ -1323,12 +1256,7 @@ futuro, non per gonfiare il presente.
 
 <!-- ================= CAP 9 ================= -->
 <section class="cap" id="cap9">
-<div class="cap-head">
-  <span class="n">09</span>
-  <div class="kicker">Capitolo 9</div>
-  <h1>Cosa fa, cosa non farà</h1>
-  <hr class="meander">
-</div>
+<h2>9 · Cosa fa, cosa non farà</h2>
 
 <div class="can-cant">
 <div class="card yes">
@@ -1366,7 +1294,7 @@ futuro, non per gonfiare il presente.
 </div>
 </div>
 
-<p style="font-family:var(--mono); font-size:9pt; color:var(--ink-soft);">
+<p class="small">
 Regola trasversale: <b>nessun fallimento silenzioso</b>. Cap raggiunto → lo dice
 (quanti usati, quanti disponibili) e chiede se allargare. Esito parziale → contato
 come parziale. Mai un «fatto» che non corrisponde alla realtà.
@@ -1375,12 +1303,7 @@ come parziale. Mai un «fatto» che non corrisponde alla realtà.
 
 <!-- ================= CAP 10 ================= -->
 <section class="cap" id="cap10">
-<div class="cap-head">
-  <span class="n">10</span>
-  <div class="kicker">Capitolo 10</div>
-  <h1>Dove sta davvero il progetto</h1>
-  <hr class="meander">
-</div>
+<h2>10 · Dove sta davvero il progetto</h2>
 
 <p class="lead">
 Vetrina funzionante, non prodotto rifinito. Metnos è il sistema con cui l'autore vive
@@ -1398,13 +1321,13 @@ homelab e architetture di agenti possa leggerlo, farlo girare, costruirci sopra.
 </tbody>
 </table>
 
-<h2>Provarlo</h2>
+<h3>Provarlo</h3>
 <p>Il requisito vero è l'hardware: una macchina che regga un LLM locale capace.
 I livelli sono ruoli astratti — un endpoint su CPU o un modello già in servizio vanno
 bene; un modello più debole significa pianificazione più debole, non un'installazione
 rotta. Nessuna GPU è richiesta per principio.</p>
 
-<pre class="term"><span class="p">$</span> git clone https://github.com/brunialti/metnos.git &amp;&amp; cd metnos
+<pre><span class="p">$</span> git clone https://github.com/brunialti/metnos.git &amp;&amp; cd metnos
 <span class="p">$</span> bash install/bootstrap.sh --check   <span class="c"># solo verifica: non scrive nulla</span>
 <span class="p">$</span> bash install/bootstrap.sh           <span class="c"># interattivo, sei fasi, idempotente</span></pre>
 
@@ -1413,7 +1336,7 @@ un'istanza di Metnos (scena 8) — bozze preparate dal sistema, pubblicate solo 
 approvazione umana. Se l'assistente non sa aiutarvi a far girare l'assistente, quello
 è un bug che vogliamo vedere.</p>
 
-<h2>La descrizione da mezzo euro</h2>
+<h3>La descrizione da mezzo euro</h3>
 <p>Se portate via una cosa sola: Metnos è un assistente personale self-hosted con tre
 impegni peculiari — <strong>chiede prima di agire</strong> (un valutatore ispezionabile,
 non una sensazione), <strong>si costruisce gli strumenti dentro regole verificabili</strong>
@@ -1424,12 +1347,7 @@ Se questa combinazione vi incuriosisce, siete il pubblico giusto.</p>
 
 <!-- ================= CAP 11 ================= -->
 <section class="cap" id="cap11">
-<div class="cap-head">
-  <span class="n">11</span>
-  <div class="kicker">Capitolo 11</div>
-  <h1>Glossario minimo &amp; letture successive</h1>
-  <hr class="meander">
-</div>
+<h2>11 · Glossario minimo &amp; letture successive</h2>
 
 <dl class="gloss">
 <dt>Executor</dt>
@@ -1462,43 +1380,47 @@ Sostituisce il login: niente account, una rubrica che solo l'host tocca.</dd>
 la ricorrenza; può concedere territori revocabili.</dd>
 </dl>
 
-<p style="margin: 18px 0;">
-<a href="Metnos_Glossario_v1.html" style="display:inline-block; padding:9px 20px; background:var(--slate); color:#fdfaf2; border:none; border-radius:4px; font-family:var(--mono); font-size:9.5pt; letter-spacing:.06em;">→ Il Glossario completo</a>
-<span style="margin-left:12px; color:var(--ink-soft); font-size:10pt;">~35 voci, alfabetico, con le fonti canoniche.</span>
-</p>
+<p style="margin: 28px 0 6px;"><a class="enter" href="Metnos_Glossario_v1.html">Il Glossario completo</a></p>
+<p class="meta">~35 voci, alfabetico, con le fonti canoniche.</p>
 
-<h2>Continua a leggere</h2>
-<div class="next">
-  <a href="Metnos_Architettura_Intro_v1.html">
-    <span class="nk">Fondamenti · 20 min</span>
-    <div class="nt">Architettura — Introduzione</div>
-    <div class="nd">Il sistema d'insieme: topologia, strati, il flusso di una richiesta, i principi.</div>
-  </a>
-  <a href="architecture/">
-    <span class="nk">Microprogettazione · 21 documenti</span>
-    <div class="nt">Indice della microprogettazione</div>
-    <div class="nd">Una pagina per sottosistema, IT+EN, ricche di diagrammi: planner, synt, vaglio, sandbox, skill, fast path, e il resto.</div>
-  </a>
-  <a href="Metnos_Dialogo_v1.html">
-    <span class="nk">Riflessione · 25 min</span>
-    <div class="nt">Dialogo sui fini e i limiti</div>
-    <div class="nd">La fondazione filosofica di telos e vaglio, in quattro serate.</div>
-  </a>
-  <a href="code.html">
-    <span class="nk">Nota · 5 min</span>
-    <div class="nt">Una nota sul codice</div>
-    <div class="nd">Lo stato del codice raccontato dall'autore, senza trucco.</div>
-  </a>
+<h3>Continua a leggere</h3>
+<div class="toc">
+  <div class="toc-item">
+    <div>
+      <a class="t" href="Metnos_Architettura_Intro_v1.html">Architettura — Introduzione</a>
+      <span class="d">Il sistema d'insieme: topologia, strati, il flusso di una richiesta, i principi.</span>
+    </div>
+    <span class="time">Fondamenti · 20 min</span>
+  </div>
+  <div class="toc-item">
+    <div>
+      <a class="t" href="architecture/">Indice della microprogettazione</a>
+      <span class="d">Una pagina per sottosistema, IT+EN, ricche di diagrammi: planner, synt, vaglio, sandbox, skill, fast path, e il resto.</span>
+    </div>
+    <span class="time">21 documenti</span>
+  </div>
+  <div class="toc-item">
+    <div>
+      <a class="t" href="Metnos_Dialogo_v1.html">Dialogo sui fini e i limiti</a>
+      <span class="d">La fondazione filosofica di telos e vaglio, in quattro serate.</span>
+    </div>
+    <span class="time">Riflessione · 25 min</span>
+  </div>
+  <div class="toc-item">
+    <div>
+      <a class="t" href="code.html">Una nota sul codice</a>
+      <span class="d">Lo stato del codice raccontato dall'autore, senza trucco.</span>
+    </div>
+    <span class="time">Nota · 5 min</span>
+  </div>
 </div>
 </section>
 
-<hr class="meander dim">
-
-<footer class="colophon">
+<footer>
 Metnos — <em>Quick tour &amp; survival kit</em> · v1.2 · giugno 2026<br>
 mētis + noûs · pensato per essere letto in venti minuti ·
-l'<a href="Metnos_Architettura_Intro_v1.html">Architettura</a> è il seguito naturale ·
-<a href="https://github.com/brunialti/metnos">github.com/brunialti/metnos</a>
+l'<a href="Metnos_Architettura_Intro_v1.html">Architettura</a> è il seguito naturale<br>
+<a href="https://github.com/brunialti/metnos">github.com/brunialti/metnos</a> · <code>metnos.com</code> · <a href="mailto:metnos@metnos.com">metnos@metnos.com</a>
 </footer>
 
 </body>
