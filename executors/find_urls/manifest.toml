@@ -7,9 +7,14 @@ name        = "find_urls"
 version     = "0.1.0"
 timeout_s   = 900
 author      = "Roberto Brunialti"
+# Affinity bilingue IT+EN (§9.3): "informazioni/notizie/novità/information"
+# sono il campo semantico dell'info-seeking generico ("cerca informazioni su
+# <tema>") che appartiene alla ricerca WEB — rompono il pareggio fra fratelli
+# find_* nel boost affinity-match del prefilter (deterministico §7.9; fix
+# misroute live 9/6/2026: "cerca informazioni su X" → find_issues/find_places).
 affinity    = [
     "find", "trova", "cerca", "scopri", "explore", "crawl", "url", "web", "sito", "news",
-                "feed", "rss", "topic"
+                "feed", "rss", "topic", "informazioni", "information", "notizie", "novità"
             ]
 
 [description]

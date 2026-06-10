@@ -836,10 +836,14 @@ def rank_with_intent(query, catalog, intent, *, k=3):
         # stesso object (es. "viso/primo piano" → find_images_indices vs
         # find_images_web, entrambi object=images). Universale §7.3, deterministico
         # §7.9. Cap +3 per non scavalcare il match verbo+object (16).
+        # Normalizzatore UNICO (9/6/2026): i token affinity passano da `tokenize`
+        # — lo STESSO dei qtokens — altrimenti i termini accentati del manifest
+        # ("novità" → qtoken "novit") non matchano MAI per costruzione (misroute
+        # live "cerca novità su <tema>": find_urls fuori pool, vinceva find_issues).
         if qtokens:
             aff_tokens = set()
             for a in (getattr(e, "affinity", None) or []):
-                aff_tokens.update(a.lower().replace("-", " ").split())
+                aff_tokens.update(tokenize(a))
             aff_tokens -= _GENERIC_AFFINITY_VERBS
             s += min(len(qtokens & aff_tokens), 3)
         if _rule_fn is not None:

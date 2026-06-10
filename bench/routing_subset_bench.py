@@ -39,6 +39,13 @@ GOLD = [
     {"q": "scarica e leggi il PDF https://www.comune.it/circolare.pdf", "tool": "read_urls_pdf"},
     {"q": "cerca sul web le ultime notizie su AMD ROCm", "tool": "find_urls"},
     {"q": "cerca online cos'è AMD ROCm e dammi 3 fonti", "tool": "find_urls"},
+    # Info-seeking generico SENZA marker web espliciti (misroute live 9/6/2026:
+    # il pareggio find_* tagliava find_urls dal pool → vincevano find_issues/
+    # find_places/find_files). "informazioni/novità su <tema>" senza repo/path
+    # = ricerca WEB; il tema volutamente nome-proprio-like (l'intent può
+    # classificare object=persons: il pool deve reggere comunque).
+    {"q": "cerca informazioni su claude fable", "tool": "find_urls"},
+    {"q": "cerca novità su claude fable e riassumile", "tool": "find_urls"},
     # --- locale vs web: pacchetto installato ---
     {"q": "è installato ffmpeg sul sistema?", "tool": "find_packages"},
     {"q": "controlla se il comando git è presente", "tool": "find_packages"},
