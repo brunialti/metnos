@@ -264,5 +264,57 @@ class TestSendMessagesSelfSendGuidance(unittest.TestCase):
                           msg=f"self-send token troncato dal pool [{lang}]: {head!r}")
 
 
+class TestPhotoSiblingsDisambiguation(unittest.TestCase):
+    """Regressione 10/6/2026 (split static-first): col pool adiacente alla
+    query, le description dominano il framing. La testa di find_images_indices
+    debordava il budget → il criterio composizione (min_face_pixels, viso in
+    primo piano) e il NON: erano TRONCATI, e get_files non dichiarava il
+    boundary verso il fratello-foto → «cerca foto ... viso in primo piano»
+    instradava a get_files. Fix §2.5: testa nel budget + boundary reciproco
+    nel capitolo NON: (ombra strutturale C_BUDGET di manifest_lint)."""
+
+    def _desc(self, executor: str):
+        import tomllib
+        manifest = (Path(__file__).resolve().parents[2]
+                    / "executors" / executor / "manifest.toml")
+        return tomllib.loads(manifest.read_text(encoding="utf-8"))["description"]
+
+    def test_find_images_indices_head_keeps_face_criterion(self):
+        # Il criterio composizione-volto e il boundary verso get_files DEVONO
+        # sopravvivere al render del pool (cap RENDER_BUDGET, fino a OUT:).
+        from manifest_rules import render_head
+        desc = self._desc("find_images_indices")
+        for lang in ("it", "en"):
+            head = render_head(desc[lang])
+            self.assertIn("min_face_pixels", head,
+                          msg=f"criterio volto troncato dal pool [{lang}]: {head!r}")
+            self.assertIn("get_files", head,
+                          msg=f"boundary -> get_files troncato [{lang}]: {head!r}")
+
+    def test_get_files_head_redirects_subject_search(self):
+        # get_files (EXIF di path noti) DEVE dichiarare il redirect verso
+        # find_images_indices per la ricerca foto per soggetto, visibile
+        # nella testa renderizzata.
+        from manifest_rules import render_head
+        desc = self._desc("get_files")
+        for lang in ("it", "en"):
+            head = render_head(desc[lang])
+            self.assertIn("find_images_indices", head,
+                          msg=f"boundary -> find_images_indices assente [{lang}]: {head!r}")
+
+    def test_render_head_never_splits_last_word(self):
+        # SoT del troncamento: un token mutilato (es. `min_face_pixel` da
+        # `min_face_pixels=40000`) sembra un arg valido e inganna l'LLM (§7.3).
+        from manifest_rules import render_head, RENDER_BUDGET
+        long_desc = ("SCOPO: x. PATTERN: tool(" + "a" * 40 + "); "
+                     + "alfa beta " * 30 + "min_face_pixels=40000. NON: y. OUT: z.")
+        head = render_head(long_desc)
+        self.assertLessEqual(len(head), RENDER_BUDGET)
+        # L'ultimo token del render DEVE essere un token intero della sorgente.
+        last = head.split()[-1]
+        self.assertIn(last, long_desc.split(),
+                      msg=f"ultimo token mutilato dal taglio: {last!r}")
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -53,12 +53,26 @@ def _first_sentence(desc: str) -> str:
     return desc[: m.start()] if m else desc
 
 
+def _cap_at_word(text: str, cap: int) -> str:
+    """Tronca `text` a `cap` char SENZA spezzare l'ultima parola. Un token
+    mutilato (es. `min_face_pixel` da `min_face_pixels=40000`) sembra un arg
+    valido e inganna l'LLM (§7.3): meglio una parola in meno che una falsa.
+    Se il taglio cade gia' su un confine, nessuna rimozione."""
+    if len(text) <= cap:
+        return text.strip()
+    head = text[:cap]
+    if not text[cap].isspace() and not head[-1].isspace():
+        head = head[: head.rfind(" ") + 1] if " " in head else head
+    return head.strip()
+
+
 def render_head(desc: str) -> str:
     """Testa renderizzata per il proposer (SoT del troncamento, usata anche dal
     linter per coerenza). Manifest a capitoli: fino a 'OUT:' cap RENDER_BUDGET.
-    Legacy: prima frase robusta cap RENDER_LEGACY_MAX."""
+    Legacy: prima frase robusta cap RENDER_LEGACY_MAX. Taglio sempre a confine
+    di parola (`_cap_at_word`)."""
     desc = (desc or "").strip().replace("\n", " ")
     if "PATTERN:" in desc:
         cut = desc.find("OUT:")
-        return (desc[:cut] if cut > 0 else desc)[:RENDER_BUDGET].strip()
-    return _first_sentence(desc)[:RENDER_LEGACY_MAX].strip()
+        return _cap_at_word(desc[:cut] if cut > 0 else desc, RENDER_BUDGET)
+    return _cap_at_word(_first_sentence(desc), RENDER_LEGACY_MAX)
