@@ -16,8 +16,8 @@ revertible  = false
 lifecycle   = "active"
 
 [description]
-it = "SCOPO: legge tutte le righe da un foglio di calcolo LOCALE (.xlsx/.csv). PATTERN: read_files_spreadsheet(spreadsheet_id=\"/path/foglio.xlsx\"). NON: per leggere un foglio Google online passa client=\"google_workspace\" (id Drive + range A1); equivalenti format-espliciti locali: read_files_xlsx, read_files_csv; testo semplice -> read_files. OUT: entries: list[list] (matrice righe x celle) + values stessa shape."
-en = "SCOPO: reads all rows from a LOCAL spreadsheet (.xlsx/.csv). PATTERN: read_files_spreadsheet(spreadsheet_id=\"/path/sheet.xlsx\"). NON: to read an online Google sheet pass client=\"google_workspace\" (Drive id + A1 range); format-explicit local equivalents: read_files_xlsx, read_files_csv; plain text -> read_files. OUT: entries: list[list] (rows x cells matrix) + values same shape."
+it = "SCOPO: legge tutte le righe da un foglio LOCALE (.xlsx/.csv). PATTERN: read_files_spreadsheet(spreadsheet_id=\"/path/foglio.xlsx\"). NON: foglio Google online -> client=\"google_workspace\"; testo semplice -> read_files. OUT: entries: list[list] (matrice righe x celle) + values stessa shape."
+en = "SCOPO: reads all rows from a LOCAL spreadsheet (.xlsx/.csv). PATTERN: read_files_spreadsheet(spreadsheet_id=\"/path/sheet.xlsx\"). NON: online Google sheet -> client=\"google_workspace\"; plain text -> read_files. OUT: entries: list[list] (rows x cells matrix) + values same shape."
 
 [code]
 files  = ["read_files_spreadsheet.py"]
