@@ -49,11 +49,9 @@ class _FastpathDbCase(unittest.TestCase):
         self.tmp = tempfile.mkdtemp()
         self._orig = eng_fastpath._db_path
         eng_fastpath._db_path = lambda: Path(self.tmp) / "fastpaths.sqlite"
-        eng_fastpath._DB_INIT_DONE = False
 
     def tearDown(self):
         eng_fastpath._db_path = self._orig
-        eng_fastpath._DB_INIT_DONE = False
 
 
 # ── 1. Auto-produzione ─────────────────────────────────────────────────────
@@ -94,6 +92,39 @@ class TestAutoRecord(_FastpathDbCase):
         hit = eng_fastpath.lookup(q)
         self.assertIsNotNone(hit)
         self.assertEqual(hit.framework.steps[0].tool, "list_files")
+
+    def test_refresh_returns_real_fp_id(self):
+        # Sull'upsert-UPDATE lastrowid NON è la riga aggiornata: il refresh
+        # deve ritornare lo STESSO fp_id del primo record (telemetria §2.8).
+        q = "conta i file in tmp"
+        id1 = eng_fastpath.record_success(q, _fw("find_files"))
+        id2 = eng_fastpath.record_success(q, _fw("list_files"))
+        self.assertGreater(id1, 0)
+        self.assertEqual(id1, id2)
+
+    def test_refresh_heals_null_embedding(self):
+        # Primo record con BGE-M3 giù (embed=None) → embedding NULL; il
+        # refresh con embedder vivo RIPARA; un refresh successivo con
+        # embedder di nuovo giù NON cancella l'embedding valido.
+        q = "conta i file della cartella tmp"
+
+        def _emb_count():
+            c = eng_fastpath._conn()
+            n = c.execute("SELECT COUNT(*) FROM fastpaths "
+                          "WHERE embedding IS NOT NULL").fetchone()[0]
+            c.close()
+            return n
+
+        with mock.patch("engine.cluster.embed", new=lambda q: None):
+            eng_fastpath.record_success(q, _fw("find_files"))
+            self.assertEqual(_emb_count(), 0)
+        with mock.patch("engine.cluster.embed",
+                        new=lambda q: _pack([1.0, 0.0])):
+            eng_fastpath.record_success(q, _fw("find_files"))
+            self.assertEqual(_emb_count(), 1)  # riparato
+        with mock.patch("engine.cluster.embed", new=lambda q: None):
+            eng_fastpath.record_success(q, _fw("find_files"))
+            self.assertEqual(_emb_count(), 1)  # conservato
 
     def test_query_specific_flag_persisted(self):
         fw = _fw("find_images",

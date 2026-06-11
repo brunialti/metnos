@@ -36,8 +36,6 @@ from .executor import is_query_specific
 
 log = logging.getLogger(__name__)
 
-_DB_INIT_DONE = False
-
 # Step-tool il cui replay fuori dal turno d'origine è semanticamente
 # scorretto: undo_last_turn si riferisce al TURNO PRECEDENTE (replay =
 # annullare un turno arbitrario), get_inputs apre un dialog interattivo
@@ -69,35 +67,34 @@ def _conn() -> sqlite3.Connection:
     p = _db_path()
     p.parent.mkdir(parents=True, exist_ok=True)
     c = sqlite3.connect(str(p))
-    if True:
-        c.executescript("""
-        CREATE TABLE IF NOT EXISTS fastpaths (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            canonical_text TEXT NOT NULL,
-            canonical_hash TEXT NOT NULL UNIQUE,
-            embedding BLOB,
-            framework_json TEXT NOT NULL,
-            origin TEXT NOT NULL DEFAULT 'auto',
-            intent_verb TEXT NOT NULL DEFAULT '',
-            intent_object TEXT NOT NULL DEFAULT '',
-            query_specific INTEGER NOT NULL DEFAULT 0,
-            created_at TEXT NOT NULL DEFAULT '',
-            n_uses INTEGER NOT NULL DEFAULT 0,
-            last_used TEXT
-        );
-        CREATE INDEX IF NOT EXISTS fp_hash ON fastpaths(canonical_hash);
-        CREATE INDEX IF NOT EXISTS fp_uses ON fastpaths(n_uses DESC);
-        CREATE TABLE IF NOT EXISTS promotions (
-            executor_name TEXT NOT NULL,
-            fp_id INTEGER NOT NULL,
-            canonical_hash TEXT NOT NULL DEFAULT '',
-            tier INTEGER NOT NULL DEFAULT 1,
-            created_at TEXT NOT NULL DEFAULT '',
-            PRIMARY KEY (executor_name, fp_id)
-        );
-        """)
-        c.commit()
-        _migrate_schema(c)
+    c.executescript("""
+    CREATE TABLE IF NOT EXISTS fastpaths (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        canonical_text TEXT NOT NULL,
+        canonical_hash TEXT NOT NULL UNIQUE,
+        embedding BLOB,
+        framework_json TEXT NOT NULL,
+        origin TEXT NOT NULL DEFAULT 'auto',
+        intent_verb TEXT NOT NULL DEFAULT '',
+        intent_object TEXT NOT NULL DEFAULT '',
+        query_specific INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL DEFAULT '',
+        n_uses INTEGER NOT NULL DEFAULT 0,
+        last_used TEXT
+    );
+    CREATE INDEX IF NOT EXISTS fp_hash ON fastpaths(canonical_hash);
+    CREATE INDEX IF NOT EXISTS fp_uses ON fastpaths(n_uses DESC);
+    CREATE TABLE IF NOT EXISTS promotions (
+        executor_name TEXT NOT NULL,
+        fp_id INTEGER NOT NULL,
+        canonical_hash TEXT NOT NULL DEFAULT '',
+        tier INTEGER NOT NULL DEFAULT 1,
+        created_at TEXT NOT NULL DEFAULT '',
+        PRIMARY KEY (executor_name, fp_id)
+    );
+    """)
+    c.commit()
+    _migrate_schema(c)
     return c
 
 
@@ -239,21 +236,27 @@ def record_success(query: str, framework: Framework, *,
     iobj = (getattr(intent, "object", "") or "").lower().strip()
     try:
         c = _conn()
-        cur = c.execute(
+        # Refresh: oltre al piano, COALESCE ripara un embedding NULL (BGE-M3
+        # giù al primo record) senza mai cancellarne uno valido (eb=None ora).
+        c.execute(
             "INSERT INTO fastpaths(canonical_text, canonical_hash, embedding, "
             "framework_json, origin, intent_verb, intent_object, "
             "query_specific, created_at) "
             "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) "
             "ON CONFLICT(canonical_hash) DO UPDATE SET "
             "framework_json = excluded.framework_json, "
+            "embedding = COALESCE(excluded.embedding, embedding), "
             "query_specific = excluded.query_specific, "
             "intent_verb = excluded.intent_verb, "
             "intent_object = excluded.intent_object",
             (canonical, h, eb, fjson, origin, iverb, iobj, qspec, _now_iso()))
         c.commit()
-        fp_id = cur.lastrowid or 0
+        # fp_id dal SELECT, non da lastrowid: sull'upsert-UPDATE (refresh)
+        # lastrowid NON è la riga aggiornata → telemetria falsa (§2.8).
+        row = c.execute("SELECT id FROM fastpaths WHERE canonical_hash = ?",
+                        (h,)).fetchone()
         c.close()
-        return fp_id
+        return int(row[0]) if row else 0
     except Exception as ex:
         log.warning("fastpath.record_success failed: %r", ex)
         return 0
