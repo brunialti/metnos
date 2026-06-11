@@ -6075,12 +6075,15 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
         # Override METNOS_PLANNER_LEGACY=1 per re-abilitare temporaneamente.
         if os.environ.get("METNOS_PLANNER_LEGACY", "0") == "0":
             log.final_kind = "error"
-            log.final_message = (
-                "Praxis non ha coperto questa query (LEGACY=0). "
-                "Verifica intent extraction + framework propose."
-            )
+            # §11 messages: user-facing via i18n DB, mai diagnostica interna
+            # (bug 11/6/2026: "no" fuori contesto mostrava "Praxis non ha
+            # coperto questa query (LEGACY=0)..." all'utente). La diagnostica
+            # resta nel log verbose sotto.
+            log.final_message = msg("ERR_QUERY_NOT_UNDERSTOOD")
             if verbose:
-                print(f"[praxis] LEGACY=0 + no cascade match → error return")
+                print("[praxis] LEGACY=0 + no cascade match → error return "
+                      "(Praxis non ha coperto la query: verifica intent "
+                      "extraction + framework propose)")
             log.ts_end = time.time(); log.write(); return log
 
     # ╔════════════════════════════════════════════════════════════════════╗
