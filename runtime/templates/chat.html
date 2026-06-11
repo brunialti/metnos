@@ -500,7 +500,19 @@ async function sendFeedback(turnId, action, container){
   }
 }
 
+// Lo scroll container e' il BODY (#log e' flex senza overflow). Autoscroll
+// SOLO se l'utente e' gia' vicino al fondo: se sta rileggendo messaggi piu'
+// su, un nuovo evento NON deve strapparlo via. I messaggi utente ('me') e i
+// load iniziali forzano sempre lo scroll. RAF garantisce layout calcolato.
+function nearBottom(){
+  return (window.innerHeight + window.scrollY) >= (document.body.scrollHeight - 160);
+}
+function scrollToEnd(){
+  requestAnimationFrame(() => window.scrollTo({ top: document.body.scrollHeight, behavior: 'auto' }));
+}
+
 function add(cls, text, meta, persist, attachments, galleryInfo, htmlMode){
+  const stick = (cls === 'me') || nearBottom();
   const d = document.createElement('div');
   d.className = 'msg ' + cls;
   // ADR 0109: htmlMode=true significa che `text` e' gia' HTML safe
@@ -651,8 +663,8 @@ function add(cls, text, meta, persist, attachments, galleryInfo, htmlMode){
           fb.className = 'msg-fb';
           fb.dataset.turnId = meta.turn_id;
           fb.innerHTML =
-            '<button class="msg-fb-btn ok" title="{{ msg("MSG_CHAT_FB_OK_HINT")|e }}">✓</button>'
-          + '<button class="msg-fb-btn err" title="{{ msg("MSG_CHAT_FB_ERR_HINT")|e }}">✗</button>';
+            '<button class="msg-fb-btn ok" title="{{ msg("MSG_CHAT_FB_OK_HINT")|e }}" aria-label="{{ msg("MSG_CHAT_FB_OK_HINT")|e }}">✓</button>'
+          + '<button class="msg-fb-btn err" title="{{ msg("MSG_CHAT_FB_ERR_HINT")|e }}" aria-label="{{ msg("MSG_CHAT_FB_ERR_HINT")|e }}">✗</button>';
           fb.querySelector('.ok').addEventListener('click',
             () => sendFeedback(meta.turn_id, 'ok', fb));
           fb.querySelector('.err').addEventListener('click',
@@ -672,12 +684,7 @@ function add(cls, text, meta, persist, attachments, galleryInfo, htmlMode){
   if(attachments && attachments.length){
     addGallery(attachments, galleryInfo);
   }
-  log.scrollTop = log.scrollHeight;
-  // Il body e' il vero scroll container (#log e' flex senza overflow): senza
-  // questo, dopo append il viewport non scorre e il messaggio appena inserito
-  // resta sotto la fold (specie su submit user). RAF garantisce che il layout
-  // sia stato calcolato prima dello scroll.
-  requestAnimationFrame(() => window.scrollTo({ top: document.body.scrollHeight, behavior: 'auto' }));
+  if(stick) scrollToEnd();
   if(persist !== false && (cls === 'me' || cls === 'bot' || cls === 'err')){
     pushHistory({ cls, text, meta: meta || '', ts: Date.now(),
                   attachments: attachments || null,
@@ -692,16 +699,20 @@ function addGallery(attachments, galleryInfo){
   g.className = 'msg bot gallery';
   const grid = document.createElement('div');
   grid.className = 'gallery-grid';
+  // items[] alimenta la navigazione del lightbox (frecce ←/→ fra le
+  // preview inline dello stesso messaggio).
+  const items = [];
   for(const a of attachments){
     if(!a || !a.thumb_url) continue;
+    const idx = items.length;
+    items.push({ full: a.full_url || a.thumb_url,
+                 cap: a.caption || a.basename || '' });
     const img = document.createElement('img');
     img.src = a.thumb_url;
     img.alt = a.basename || '';
     img.title = a.caption || a.basename || '';
     img.loading = 'lazy';
-    img.dataset.full = a.full_url || a.thumb_url;
-    img.dataset.cap = a.caption || a.basename || '';
-    img.addEventListener('click', () => openLightbox(img.dataset.full, img.dataset.cap));
+    img.addEventListener('click', () => openLightbox(items, idx));
     grid.appendChild(img);
   }
   g.appendChild(grid);
@@ -725,27 +736,48 @@ function addGallery(attachments, galleryInfo){
 const lightbox = document.getElementById('lightbox');
 const lbImg = lightbox.querySelector('img');
 const lbCap = lightbox.querySelector('.lbcap');
-function openLightbox(url, cap){
-  lbImg.src = url;
-  lbCap.textContent = cap || '';
+// Stato di navigazione: lista delle immagini del gruppo aperto + indice.
+let lbItems = null;
+let lbIdx = -1;
+function lbRender(){
+  const it = lbItems[lbIdx];
+  lbImg.src = it.full;
+  lbImg.alt = it.cap || '';
+  lbCap.textContent = (it.cap ? it.cap + '  ·  ' : '')
+                    + (lbIdx + 1) + ' / ' + lbItems.length;
+}
+function openLightbox(items, idx){
+  lbItems = items;
+  lbIdx = idx;
+  lbRender();
   lightbox.classList.add('show');
+}
+function lbStep(delta){
+  if(!lbItems || lbItems.length < 2) return;
+  lbIdx = (lbIdx + delta + lbItems.length) % lbItems.length;
+  lbRender();
 }
 function closeLightbox(){
   lightbox.classList.remove('show');
   lbImg.src = '';
+  lbItems = null; lbIdx = -1;
 }
 lightbox.addEventListener('click', closeLightbox);
 document.addEventListener('keydown', (e) => {
-  if(e.key === 'Escape' && lightbox.classList.contains('show')) closeLightbox();
+  if(!lightbox.classList.contains('show')) return;
+  if(e.key === 'Escape') closeLightbox();
+  else if(e.key === 'ArrowRight'){ e.preventDefault(); lbStep(1); }
+  else if(e.key === 'ArrowLeft'){ e.preventDefault(); lbStep(-1); }
 });
 
 function renderLivePath(path, predicted){
   // Sostituisce il placeholder thinking con un breadcrumb dei tool fin
   // qui invocati + step previsti (best-effort, possono cambiare).
   // Stati badge:
-  //   - completati (tutti tranne l'ultimo di `path`): solido grigio chiaro
-  //   - corrente (ultimo di `path`): bordo dorato + pulse
+  //   - completati (tutti tranne l'ultimo di `path`): solido carta-calda
+  //   - corrente (ultimo di `path`): bordo bronzo + pulse
   //   - previsti (`predicted`, opzionale): tratteggiato + opacita' ridotta
+  const stick = nearBottom();
   const d = document.createElement('div');
   d.className = 'msg thinking';
   const row = document.createElement('div');
@@ -768,16 +800,12 @@ function renderLivePath(path, predicted){
   });
   d.appendChild(row);
   log.appendChild(d);
-  log.scrollTop = log.scrollHeight;
-  // Il body e' il vero scroll container (#log e' flex senza overflow): senza
-  // questo, dopo append il viewport non scorre e il messaggio appena inserito
-  // resta sotto la fold (specie su submit user). RAF garantisce che il layout
-  // sia stato calcolato prima dello scroll.
-  requestAnimationFrame(() => window.scrollTo({ top: document.body.scrollHeight, behavior: 'auto' }));
+  if(stick) scrollToEnd();
   return d;
 }
 
 function addTool(tool, args){
+  const stick = nearBottom();
   const d = document.createElement('div');
   d.className = 'msg tool';
   const sum = document.createElement('details');
@@ -789,12 +817,7 @@ function addTool(tool, args){
   sum.appendChild(pre);
   d.appendChild(sum);
   log.appendChild(d);
-  log.scrollTop = log.scrollHeight;
-  // Il body e' il vero scroll container (#log e' flex senza overflow): senza
-  // questo, dopo append il viewport non scorre e il messaggio appena inserito
-  // resta sotto la fold (specie su submit user). RAF garantisce che il layout
-  // sia stato calcolato prima dello scroll.
-  requestAnimationFrame(() => window.scrollTo({ top: document.body.scrollHeight, behavior: 'auto' }));
+  if(stick) scrollToEnd();
   return d;
 }
 
@@ -807,19 +830,12 @@ function restoreHistory(){
         it.attachments || null, it.gallery || null,
         it.htmlMode === true);
   }
-  // Separator visivo per distinguere i vecchi dai nuovi
+  // Separator visivo fra la sessione precedente (sopra) e i nuovi messaggi
   const sep = document.createElement('div');
-  sep.style.cssText = 'text-align:center;color:var(--muted);font-size:.75em;padding:.4rem 0';
+  sep.className = 'log-sep';
   sep.textContent = '— sessione precedente —';
-  // inserisce PRIMA dei messaggi caricati come label (fix: append a fine = sotto)
   log.appendChild(sep);
-  // poi mantieniamo lo scroll in fondo
-  log.scrollTop = log.scrollHeight;
-  // Il body e' il vero scroll container (#log e' flex senza overflow): senza
-  // questo, dopo append il viewport non scorre e il messaggio appena inserito
-  // resta sotto la fold (specie su submit user). RAF garantisce che il layout
-  // sia stato calcolato prima dello scroll.
-  requestAnimationFrame(() => window.scrollTo({ top: document.body.scrollHeight, behavior: 'auto' }));
+  scrollToEnd();
 }
 restoreHistory();
 
@@ -841,7 +857,7 @@ async function fetchServerHistory(){
     const turns = (data.turns || []).slice().reverse(); // server desc → render asc
     if(!turns.length) return;
     const sep = document.createElement('div');
-    sep.style.cssText = 'text-align:center;color:var(--muted);font-size:.75em;padding:.4rem 0';
+    sep.className = 'log-sep';
     sep.textContent = '— ricaricato dal server —';
     log.appendChild(sep);
     for(const t of turns){
@@ -865,12 +881,7 @@ async function fetchServerHistory(){
             !!t.final_message_html);
       }
     }
-    log.scrollTop = log.scrollHeight;
-  // Il body e' il vero scroll container (#log e' flex senza overflow): senza
-  // questo, dopo append il viewport non scorre e il messaggio appena inserito
-  // resta sotto la fold (specie su submit user). RAF garantisce che il layout
-  // sia stato calcolato prima dello scroll.
-  requestAnimationFrame(() => window.scrollTo({ top: document.body.scrollHeight, behavior: 'auto' }));
+    scrollToEnd();
     // Avvia polling per gli in_flight turns
     if(turns.some(t => t.in_flight)) pollInFlight();
   } catch(e){
@@ -1415,7 +1426,7 @@ form.addEventListener('submit', async (e) => {
   refreshThumbBar();
 
   const tStart = Date.now();
-  let pending = add('thinking', '… penso');
+  let pending = add('thinking', {{ msg("MSG_PHASE_THINKING")|tojson }});
   // Cache stato breadcrumb del turno corrente.
   let lastLivePath = null;
   let lastPredicted = null;
@@ -1439,8 +1450,10 @@ form.addEventListener('submit', async (e) => {
                           start: {{ msg("MSG_PHASE_PLANNING")|tojson }},
                           progress: {{ msg("MSG_PHASE_PLANNING")|tojson }},
                           update: {{ msg("MSG_PHASE_PLANNING")|tojson }}};
+        // Niente '…' testuale: l'attivita' la mostra il punto bronzo
+        // animato (CSS .msg.thinking::before).
         const msg = data.message || data.label || phaseMsg[kind] || {{ msg("MSG_PHASE_PLANNING")|tojson }};
-        if(msg) pending.textContent = '… ' + msg;
+        if(msg) pending.textContent = msg;
       }
     } else if(kind === 'tool_call'){
       if(pending){ pending.remove(); pending = null; }
