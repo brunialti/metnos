@@ -675,6 +675,22 @@ def _render_final_message(template: str, history: list[StepRun]) -> str:
                     return str(len(v))
             lst = _find_list_of_dicts(result)
             return str(len(lst)) if lst else "0"
+        if path == "@shown":
+            # Elementi MOSTRATI (≠ @count che privilegia available_total =
+            # totale pre-cap): cascata used → len(lista) → ok_count. Usato
+            # dagli header dei modi ranked (output_policy G: «i K mostrati»).
+            v = result.get("used")
+            if v is not None:
+                return str(v)
+            for k in ("entries", "results", "items"):
+                v = result.get(k)
+                if isinstance(v, list):
+                    return str(len(v))
+            v = result.get("ok_count")
+            if v is not None:
+                return str(v)
+            lst = _find_list_of_dicts(result)
+            return str(len(lst)) if lst else "0"
         # Universal §7.9 fallback: prova path diretto, poi entries[*].field
         v = _resolve_stepref_with_fallback(result, path)
         # Se path richiesto è "summary" e None, auto-render entries list (§7.9)

@@ -50,10 +50,18 @@ def is_validator_enabled() -> bool:
     return os.environ.get("METNOS_VALIDATOR", "1") == "1"
 
 
+def is_output_policy_enabled() -> bool:
+    # Output-policy deterministica (matrice intent×data_kind → modo,
+    # output_policy.normalize_terminal). Default OFF: si abilita con
+    # METNOS_OUTPUT_POLICY=1 dopo validazione live.
+    return os.environ.get("METNOS_OUTPUT_POLICY", "0") == "1"
+
+
 # Public API (caricata lazy per ogni layer)
 __all__ = [
     "get_engine_name",
     "is_fastpath_enabled",
     "is_autopath_enabled",
     "is_validator_enabled",
+    "is_output_policy_enabled",
 ]

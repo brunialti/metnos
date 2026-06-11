@@ -24,6 +24,7 @@ from . import fastpath as _fp
 from . import autopath as _ap
 from . import (
     is_fastpath_enabled, is_autopath_enabled, is_validator_enabled,
+    is_output_policy_enabled,
 )
 
 log = logging.getLogger(__name__)
@@ -260,6 +261,22 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
                 llm_call=llm_call_wise, lang=lang, catalog=catalog)
             if framework2 is not None:
                 framework = framework2
+
+    # Output-policy deterministica (matrice intent×data_kind → modo, §7.9):
+    # il runtime — non il proposer — sceglie il TERMINALE di presentazione
+    # (gallery/scalar drop describe + final deterministico; web READ→T insert
+    # read_urls_html). Gated METNOS_OUTPUT_POLICY=1, default OFF. SoT:
+    # internal/reports/output_presentation_matrix_2026-05-31.md.
+    if is_output_policy_enabled():
+        try:
+            from output_policy import normalize_terminal
+            framework, _op_info = normalize_terminal(framework, intent, query)
+            if _op_info.get("action") not in ("", "noop"):
+                log.info("[output_policy] mode=%s action=%s producer-kind=%s",
+                         _op_info.get("mode"), _op_info.get("action"),
+                         _op_info.get("data_kind"))
+        except Exception as ex:
+            log.warning("output_policy normalize_terminal noop: %r", ex)
 
     # Execute
     run = executor.run(framework, query=query,
