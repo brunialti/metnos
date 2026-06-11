@@ -239,43 +239,52 @@ def load_all(
         turns = _load_turns()
         for rec in out:
             enrich(rec, turns)
-        # --- Convergence cluster (C.2, 22/5/2026) -------------------------
-        # Due livelli di signature:
-        #   - `signature` (strict): hash(target | sorted(others) | parametric)
-        #     → proposte identiche su pipeline + intent.
-        #   - `signature_relaxed`: hash(target | parametric) → proposte sullo
-        #     STESSO target/intent base anche se la pipeline parsata differisce
-        #     (es. 7 proposte "deadline-to-calendar" che citano tool diversi
-        #     ma propongono la stessa capability su create_events).
-        # `convergence_count` usa signature_relaxed (segnale "n lenti
-        # concordano sull'intent"); `dedup_cluster` usa signature strict
-        # (collassa duplicate esatte). Entrambi disponibili al consumer.
-        from collections import defaultdict as _dd
-        cluster_strict: dict[str, list[dict]] = _dd(list)
-        cluster_relaxed: dict[str, list[dict]] = _dd(list)
-        for rec in out:
-            target = rec.get("executor_target", "") or ""
-            mentions = rec.get("pipeline_tools_mentioned", []) or []
-            others = sorted(t for t in mentions if t != target)
-            parametric = 1 if rec.get("is_parametric_extension") else 0
-            strict_key = f"{target}|{','.join(others)}|{parametric}"
-            relaxed_key = f"{target}|{parametric}"
-            sig_strict = hashlib.sha256(strict_key.encode("utf-8")).hexdigest()[:16]
-            sig_relaxed = hashlib.sha256(relaxed_key.encode("utf-8")).hexdigest()[:16]
-            rec["signature"] = sig_strict
-            rec["signature_relaxed"] = sig_relaxed
-            cluster_strict[sig_strict].append(rec)
-            cluster_relaxed[sig_relaxed].append(rec)
-        for sig, members in cluster_strict.items():
-            ids = [m["prop_id"] for m in members]
-            for m in members:
-                m["dedup_cluster"] = ids
-        for sig, members in cluster_relaxed.items():
-            lenses = sorted({m.get("lens", "?") for m in members})
-            for m in members:
-                m["convergence_count"] = len(members)
-                m["convergence_lenses"] = lenses
+        annotate_clusters(out)
     return out
+
+
+def annotate_clusters(rows: list[dict]) -> None:
+    """Signature + convergence cluster sul set dato (C.2, 22/5/2026).
+
+    Due livelli di signature:
+      - `signature` (strict): hash(target | sorted(others) | parametric)
+        → proposte identiche su pipeline + intent.
+      - `signature_relaxed`: hash(target | parametric) → proposte sullo
+        STESSO target/intent base anche se la pipeline parsata differisce
+        (es. 7 proposte "deadline-to-calendar" che citano tool diversi
+        ma propongono la stessa capability su create_events).
+    `convergence_count` usa signature_relaxed (segnale "n lenti
+    concordano sull'intent"); `dedup_cluster` usa signature strict
+    (collassa duplicate esatte). Entrambi disponibili al consumer.
+
+    Richiede `pipeline_tools_mentioned` + `is_parametric_extension` gia'
+    annotati (annotate_naming o enrich). Mutates in place.
+    """
+    from collections import defaultdict as _dd
+    cluster_strict: dict[str, list[dict]] = _dd(list)
+    cluster_relaxed: dict[str, list[dict]] = _dd(list)
+    for rec in rows:
+        target = rec.get("executor_target", "") or ""
+        mentions = rec.get("pipeline_tools_mentioned", []) or []
+        others = sorted(t for t in mentions if t != target)
+        parametric = 1 if rec.get("is_parametric_extension") else 0
+        strict_key = f"{target}|{','.join(others)}|{parametric}"
+        relaxed_key = f"{target}|{parametric}"
+        sig_strict = hashlib.sha256(strict_key.encode("utf-8")).hexdigest()[:16]
+        sig_relaxed = hashlib.sha256(relaxed_key.encode("utf-8")).hexdigest()[:16]
+        rec["signature"] = sig_strict
+        rec["signature_relaxed"] = sig_relaxed
+        cluster_strict[sig_strict].append(rec)
+        cluster_relaxed[sig_relaxed].append(rec)
+    for sig, members in cluster_strict.items():
+        ids = [m["prop_id"] for m in members]
+        for m in members:
+            m["dedup_cluster"] = ids
+    for sig, members in cluster_relaxed.items():
+        lenses = sorted({m.get("lens", "?") for m in members})
+        for m in members:
+            m["convergence_count"] = len(members)
+            m["convergence_lenses"] = lenses
 
 
 def decisions_index() -> dict[str, dict]:
@@ -780,6 +789,50 @@ def _parse_n_observed(rationale: str) -> Optional[int]:
     return int(m.group(1)) if m else None
 
 
+def annotate_naming(prop: dict) -> dict:
+    """Annotazioni deterministiche in-memory: tool menzionati, validazione
+    naming, parametric, name_status, hallucinated. Mutates+returns `prop`.
+
+    Sottoinsieme economico di enrich() — NIENTE matching sul turn log
+    (~0.03ms/riga vs ~11ms/riga): usabile sull'INTERA collezione per
+    badge/gate della dashboard.
+    """
+    target = prop.get("executor_target") or ""
+    rationale = prop.get("rationale") or ""
+    proposed = prop.get("proposed_action") or ""
+    # I tool menzionati nella proposta = pipeline da sostituire con `target`.
+    mentions = _extract_tool_mentions(proposed, rationale)
+    prop["pipeline_tools_mentioned"] = mentions
+
+    # --- Naming + dedup validation (C.2, 22/5/2026) ------------------------
+    catalog_names = _live_catalog_names()
+    target_in_catalog = bool(target) and target in catalog_names
+
+    grammar_ok, grammar_reason = _validate_executor_naming(target) if target else (True, None)
+    prop["name_grammar_valid"] = grammar_ok
+
+    is_parametric = _detect_parametric_extension(
+        target, target_in_catalog, proposed, mentions,
+    )
+    prop["is_parametric_extension"] = is_parametric
+
+    status, reason = _classify_name_status(
+        target=target,
+        catalog_names=catalog_names,
+        grammar_ok=grammar_ok,
+        grammar_reason=grammar_reason,
+        is_parametric=is_parametric,
+        pipeline_mentions=mentions,
+    )
+    prop["name_status"] = status
+    prop["name_status_reason"] = reason
+
+    prop["hallucinated_tool_mentions"] = _classify_hallucinated_mentions(
+        mentions, catalog_names,
+    )
+    return prop
+
+
 def enrich(prop: dict, turns: Optional[list[dict]] = None) -> dict:
     """Arricchisce una proposta con campi UI. Mutates+returns `prop`.
 
@@ -788,16 +841,15 @@ def enrich(prop: dict, turns: Optional[list[dict]] = None) -> dict:
     """
     if turns is None:
         turns = _load_turns()
+    annotate_naming(prop)
     target = prop.get("executor_target") or ""
     rationale = prop.get("rationale") or ""
     proposed = prop.get("proposed_action") or ""
 
     prop["n_observed"] = _parse_n_observed(rationale)
-    # I tool menzionati nella proposta = pipeline da sostituire con `target`.
-    mentions = _extract_tool_mentions(proposed, rationale)
+    mentions = prop["pipeline_tools_mentioned"]
     # Target deve essere nel set per il matching ma puo' essere implicito.
     related_tools = [t for t in mentions if t != target]
-    prop["pipeline_tools_mentioned"] = mentions
 
     if target or related_tools:
         turn, pipeline_observed = _find_example_turn(
@@ -837,33 +889,6 @@ def enrich(prop: dict, turns: Optional[list[dict]] = None) -> dict:
         prop["current_latency_ms"] = None
         prop["new_path_estimated"] = [target] if target else []
         prop["latency_saved_ms_est"] = None
-
-    # --- Naming + dedup validation (C.2, 22/5/2026) ------------------------
-    catalog_names = _live_catalog_names()
-    target_in_catalog = bool(target) and target in catalog_names
-
-    grammar_ok, grammar_reason = _validate_executor_naming(target) if target else (True, None)
-    prop["name_grammar_valid"] = grammar_ok
-
-    is_parametric = _detect_parametric_extension(
-        target, target_in_catalog, proposed, mentions,
-    )
-    prop["is_parametric_extension"] = is_parametric
-
-    status, reason = _classify_name_status(
-        target=target,
-        catalog_names=catalog_names,
-        grammar_ok=grammar_ok,
-        grammar_reason=grammar_reason,
-        is_parametric=is_parametric,
-        pipeline_mentions=mentions,
-    )
-    prop["name_status"] = status
-    prop["name_status_reason"] = reason
-
-    prop["hallucinated_tool_mentions"] = _classify_hallucinated_mentions(
-        mentions, catalog_names,
-    )
     return prop
 
 

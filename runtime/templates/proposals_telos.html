@@ -14,23 +14,48 @@ staging.</p>
   {{ stats.staged }} {{ msg('UI_PROP_TELOS_STATS_STAGED') }}
 </p>
 
+{# Query-string condivisa dai link di navigazione: preserva i filtri
+   correnti cosi' i badge dei tab corrispondono a cio' che si vede al click.
+   qbase = filtri senza strict; qkeep = qbase + strict (solo se esplicito). #}
+{% set qbase %}{% if lens %}&lens={{ lens }}{% endif %}{% if telos_id %}&telos_id={{ telos_id }}{% endif %}{% if only_pending %}&only_pending=1{% endif %}{% if not group_clusters %}&group_clusters=0{% endif %}{% endset %}
+{% set qkeep %}{{ qbase }}{% if strict_explicit %}&strict={{ '1' if strict else '0' }}{% endif %}{% endset %}
+
 <nav class="tp-tiers">
   <a class="tp-tier{% if tier == 'top' %} current{% endif %}"
-     href="?tier=top{% if lens %}&lens={{ lens }}{% endif %}{% if telos_id %}&telos_id={{ telos_id }}{% endif %}">
+     href="?tier=top{{ qkeep }}">
     {{ msg('UI_PROP_TELOS_TIER_TOP') }} <span class="badge">{{ tier_counts.top }}</span>
   </a>
   <a class="tp-tier{% if tier == 'interesting' %} current{% endif %}"
-     href="?tier=interesting{% if lens %}&lens={{ lens }}{% endif %}{% if telos_id %}&telos_id={{ telos_id }}{% endif %}">
+     href="?tier=interesting{{ qkeep }}">
     {{ msg('UI_PROP_TELOS_TIER_INTERESTING') }} <span class="badge">{{ tier_counts.interesting }}</span>
   </a>
   <a class="tp-tier{% if tier == 'weak' %} current{% endif %}"
-     href="?tier=weak{% if lens %}&lens={{ lens }}{% endif %}{% if telos_id %}&telos_id={{ telos_id }}{% endif %}">
+     href="?tier=weak{{ qkeep }}">
     {{ msg('UI_PROP_TELOS_TIER_WEAK') }} <span class="badge">{{ tier_counts.weak }}</span>
   </a>
 </nav>
 
+{% if strict_auto_relaxed %}
+<div class="callout warn">
+  Il filtro <b>strict</b> (allineamento ≥ {{ strict_gate.min_alignment }} ·
+  convergenza ≥ {{ strict_gate.min_convergence }}{% if strict_gate.name_only %} ·
+  solo nomi nuovi validi{% endif %}) non lascia passare nessuna delle
+  {{ total_all }} proposte: vista completa mostrata.
+  <a href="?tier={{ tier }}{{ qbase }}&strict=1">Riattiva strict</a>
+</div>
+{% elif strict %}
+<p class="muted">Filtro strict attivo: allineamento ≥ {{ strict_gate.min_alignment }} ·
+  convergenza ≥ {{ strict_gate.min_convergence }}{% if strict_gate.name_only %} ·
+  solo nomi nuovi validi{% endif %} —
+  <a href="?tier={{ tier }}{{ qbase }}&strict=0">mostra tutte</a></p>
+{% else %}
+<p class="muted">Filtro strict disattivato —
+  <a href="?tier={{ tier }}{{ qbase }}&strict=1">riattiva</a></p>
+{% endif %}
+
 <form method="get" class="row tp-filters">
   <input type="hidden" name="tier" value="{{ tier }}">
+  {% if strict_explicit %}<input type="hidden" name="strict" value="{{ '1' if strict else '0' }}">{% endif %}
   <label>{{ msg('UI_PROP_TELOS_FILTER_LENS') }}:
     <select name="lens" onchange="this.form.submit()">
       <option value=""{% if lens == "" %} selected{% endif %}>{{ msg('UI_PROP_TELOS_FILTER_ALL') }} ({{ facets.by_lens|length }})</option>
@@ -54,6 +79,9 @@ staging.</p>
     {{ msg('UI_PROP_TELOS_FILTER_ONLY_PENDING') }}
   </label>
   <label>
+    {# hidden+checkbox stesso name: deselezionata invia comunque "0"
+       (il default server e' "1", senza hidden non si poteva spegnere). #}
+    <input type="hidden" name="group_clusters" value="0">
     <input type="checkbox" name="group_clusters" value="1"
            {% if group_clusters %}checked{% endif %}
            onchange="this.form.submit()">

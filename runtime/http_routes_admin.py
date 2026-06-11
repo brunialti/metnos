@@ -637,8 +637,7 @@ async def admin_change_action(request: web.Request) -> web.Response:
 # riemergono nel tempo con score piu' alto via convergence. Override via
 # query param `min_alignment` (e `strict=0` per disabilitare i filtri
 # convergence+name_status). Soglie da runtime_settings (telos.dashboard_*).
-_TELOS_DASH_DEFAULT_MIN = 0.30  # mantenuto come fallback se settings non disponibili
-_TELOS_DASH_MAX_ROWS = 60       # mantenuto come hard cap superiore
+_TELOS_DASH_MAX_ROWS = 60       # hard cap superiore (vista non-strict)
 
 
 def _telos_lens_facets(rows: list[dict]) -> dict:
@@ -656,13 +655,21 @@ async def admin_telos_proposals(request: web.Request) -> web.Response:
     """GET /admin/proposals/telos
 
     Query params:
-      tier: 'top' (≥0.45), 'interesting' (0.30-0.45, default), 'weak' (<0.30)
+      tier: 'top' (≥0.45), 'interesting' (0.30-0.45), 'weak' (<0.30).
+            Default: il tier migliore POPOLATO sotto i filtri correnti.
       min_alignment: float override del tier (advanced)
       lens, telos_id: filtri sorgente
       only_pending: bool, nasconde accept/reject (stage resta)
       group_clusters: bool=true, collassa proposte con stesso signature_relaxed
+      strict: bool=true, gate convergence+name_status+min_alignment
+
+    Coerenza badge↔righe: righe della tabella e conteggi dei tab derivano
+    dalla STESSA pipeline di filtri (`_gate`+`_band`) sullo stesso set,
+    quindi badge == righe mostrabili per costruzione. Se il gate strict di
+    default svuota TUTTI i tier, degrada a vista completa con avviso
+    (notify §2.11: mai pagina vuota senza spiegazione); `?strict=1`
+    esplicito viene invece rispettato anche se vuoto.
     """
-    tier = request.query.get("tier", "interesting").strip().lower()
     # Tier bands (sincronizzati con telos_proposals_store.TIER_*)
     tier_bands = {
         "top":         (telos_proposals_store.TIER_TOP_MIN, 1.0),
@@ -670,15 +677,14 @@ async def admin_telos_proposals(request: web.Request) -> web.Response:
                         telos_proposals_store.TIER_TOP_MIN),
         "weak":        (0.0, telos_proposals_store.TIER_INTERESTING_MIN),
     }
-    if tier not in tier_bands:
-        tier = "interesting"
-    band_min, band_max = tier_bands[tier]
+    tier_param = request.query.get("tier", "").strip().lower()
+    tier = tier_param if tier_param in tier_bands else ""
     # Override esplicito via min_alignment (advanced)
+    band_override: float | None = None
     try:
         min_align_override = request.query.get("min_alignment", "").strip()
         if min_align_override:
-            band_min = float(min_align_override)
-            band_max = 1.0
+            band_override = float(min_align_override)
             tier = "custom"
     except ValueError:
         pass
@@ -686,8 +692,13 @@ async def admin_telos_proposals(request: web.Request) -> web.Response:
     lens = request.query.get("lens", "").strip() or None
     telos_id = request.query.get("telos_id", "").strip() or None
     only_pending = request.query.get("only_pending", "0") in ("1", "true", "on")
-    group_clusters = request.query.get("group_clusters", "1") in ("1", "true", "on")
-    strict = request.query.get("strict", "1") in ("1", "true", "on")
+    # group_clusters: pattern hidden-input("0")+checkbox("1") nel form →
+    # prendi l'ULTIMO valore (checkbox vince se spuntata).
+    group_clusters = request.query.getall(
+        "group_clusters", ["1"])[-1] in ("1", "true", "on")
+    strict_param = request.query.get("strict", "").strip()
+    strict_explicit = strict_param != ""
+    strict = (strict_param or "1") in ("1", "true", "on")
 
     # Strict filter defaults da runtime_settings (C.8 fase 2 24/5/2026).
     try:
@@ -700,68 +711,103 @@ async def admin_telos_proposals(request: web.Request) -> web.Response:
         strict_min_align, strict_min_conv = 0.55, 2
         strict_max_rows, strict_name_only = 10, True
 
-    # In strict mode, alza band_min al max(band_min, strict_min_align) se
-    # non c'e' override esplicito (tier custom). Cap rows = strict_max_rows.
-    if strict and tier != "custom" and band_min < strict_min_align:
-        band_min = strict_min_align
-    effective_max_rows = strict_max_rows if strict else _TELOS_DASH_MAX_ROWS
-
-    # Carica TUTTO sopra band_min e applica band_max + filtri post-load
-    rows_all = telos_proposals_store.load_all(
-        min_alignment=band_min,
-        lens=lens,
-        telos_id=telos_id,
-        max_rows=_TELOS_DASH_MAX_ROWS * 10,
-        include_decided=not only_pending,
-        enrich_rows=True,
+    # Caricamento UNICO della collezione + annotazioni leggere in-memory
+    # (name_status/convergence senza il matching costoso sul turn log).
+    # L'enrich pieno avviene solo sulle righe effettivamente mostrate.
+    all_rows = telos_proposals_store.load_all(
+        min_alignment=0.0, max_rows=10000, include_decided=True,
     )
-    rows = [r for r in rows_all if r.get("expected_alignment", 0) < band_max]
-    # Strict post-filters: convergence + name_status (proposte gia' validate).
-    if strict:
-        rows = [r for r in rows
-                if int(r.get("convergence_count", 1) or 1) >= strict_min_conv]
-        if strict_name_only:
-            rows = [r for r in rows
-                    if r.get("name_status") == "new_valid"]
-    # Group by signature_relaxed: 1 riga leader per cluster, varianti collassate.
-    if group_clusters:
-        seen_sigs = set()
-        grouped = []
-        for r in rows:
-            sig = r.get("signature_relaxed")
-            if not sig or sig in seen_sigs:
-                continue
-            seen_sigs.add(sig)
-            grouped.append(r)
-        rows = grouped
+    for r in all_rows:
+        telos_proposals_store.annotate_naming(r)
+    telos_proposals_store.annotate_clusters(all_rows)
+    facets = _telos_lens_facets(all_rows)
+
+    def _gate(rows: list[dict], *, strict_on: bool) -> list[dict]:
+        """Filtri condivisi righe↔badge (tutto tranne la banda tier)."""
+        out = rows
+        if lens:
+            out = [r for r in out if r.get("lens") == lens]
+        if telos_id:
+            out = [r for r in out if (r.get("telos_id") or "?") == telos_id]
+        if only_pending:
+            out = [r for r in out
+                   if (r.get("decision") or {}).get("action")
+                   not in ("accept", "reject")]
+        if strict_on:
+            out = [r for r in out
+                   if int(r.get("convergence_count", 1) or 1) >= strict_min_conv]
+            if strict_name_only:
+                out = [r for r in out if r.get("name_status") == "new_valid"]
+        return out
+
+    def _band(rows: list[dict], lo: float, hi: float, *,
+              raise_floor: bool) -> list[dict]:
+        """Banda tier (+floor strict) e dedup cluster, come per le righe."""
+        if raise_floor:
+            lo = max(lo, strict_min_align)
+        out = [r for r in rows if lo <= r.get("expected_alignment", 0.0) < hi]
+        if group_clusters:
+            seen_sigs: set = set()
+            grouped = []
+            for r in out:
+                sig = r.get("signature_relaxed")
+                if not sig or sig in seen_sigs:
+                    continue
+                seen_sigs.add(sig)
+                grouped.append(r)
+            out = grouped
+        return out
+
+    def _tier_counts(rows: list[dict], strict_on: bool) -> dict[str, int]:
+        return {t: len(_band(rows, *tier_bands[t], raise_floor=strict_on))
+                for t in tier_bands}
+
+    gated = _gate(all_rows, strict_on=strict)
+    tier_counts = _tier_counts(gated, strict)
+    # Gate strict DI DEFAULT che svuota tutti i tier → degrada con avviso.
+    strict_auto_relaxed = False
+    if strict and not strict_explicit and not any(tier_counts.values()):
+        strict = False
+        strict_auto_relaxed = True
+        gated = _gate(all_rows, strict_on=False)
+        tier_counts = _tier_counts(gated, False)
+    # Tier di default = il migliore popolato sotto i filtri correnti.
+    if not tier:
+        tier = next((t for t in ("top", "interesting", "weak")
+                     if tier_counts[t]), "top")
+
+    if tier == "custom":
+        band_min, band_max = float(band_override or 0.0), 1.0
+        rows = _band(gated, band_min, band_max, raise_floor=False)
+    else:
+        band_min, band_max = tier_bands[tier]
+        rows = _band(gated, band_min, band_max, raise_floor=strict)
+        if strict:
+            band_min = max(band_min, strict_min_align)
+    effective_max_rows = strict_max_rows if strict else _TELOS_DASH_MAX_ROWS
     rows = rows[:effective_max_rows]
+    # Enrich pieno (turn log: example_query, path, latenze) solo sul mostrato.
+    if rows:
+        turns = telos_proposals_store._load_turns()
+        for r in rows:
+            telos_proposals_store.enrich(r, turns)
 
     stats = telos_proposals_store.stats()
-    # Tier counts su INTERA collezione (per UI tab badge).
-    all_rows = telos_proposals_store.load_all(
-        min_alignment=0.0, max_rows=10000, enrich_rows=False,
-    )
-    facets = _telos_lens_facets(all_rows)
-    tier_counts = {"top": 0, "interesting": 0, "weak": 0}
-    for r in all_rows:
-        ea = r.get("expected_alignment", 0.0)
-        if ea >= telos_proposals_store.TIER_TOP_MIN:
-            tier_counts["top"] += 1
-        elif ea >= telos_proposals_store.TIER_INTERESTING_MIN:
-            tier_counts["interesting"] += 1
-        else:
-            tier_counts["weak"] += 1
-
+    strict_gate = {"min_alignment": strict_min_align,
+                   "min_convergence": strict_min_conv,
+                   "name_only": strict_name_only}
+    filters = {
+        "tier": tier, "min_alignment": band_min,
+        "lens": lens or "", "telos_id": telos_id or "",
+        "only_pending": only_pending, "group_clusters": group_clusters,
+        "strict": strict, "strict_auto_relaxed": strict_auto_relaxed,
+    }
     return negotiate_collection(
         request,
         json_payload={
             "rows": rows, "stats": stats, "facets": facets,
             "tier_counts": tier_counts,
-            "filters": {
-                "tier": tier, "min_alignment": band_min,
-                "lens": lens or "", "telos_id": telos_id or "",
-                "only_pending": only_pending, "group_clusters": group_clusters,
-            },
+            "filters": filters,
         },
         template="proposals_telos.html",
         template_ctx={
@@ -770,6 +816,9 @@ async def admin_telos_proposals(request: web.Request) -> web.Response:
             "min_alignment": band_min, "lens": lens or "",
             "telos_id": telos_id or "", "only_pending": only_pending,
             "group_clusters": group_clusters,
+            "strict": strict, "strict_explicit": strict_explicit,
+            "strict_auto_relaxed": strict_auto_relaxed,
+            "strict_gate": strict_gate, "total_all": len(all_rows),
         },
     )
 
