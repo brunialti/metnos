@@ -41,21 +41,25 @@ EXCLUDE_TOOLS = {
 }
 
 # --- PII / third-party scrub (deterministic) -------------------------------
-# Manual blocklist of personal / third-party proper names seen in the organic
-# set (§7.5). Replace with neutral generics so the public snapshot carries no
-# real names while preserving the routing shape of the query.
-NAME_SUBS = [
-    (re.compile(r"\bics\s+margherita\s+hack(\s+di\s+\w+)?", re.I), "una scuola"),
-    (re.compile(r"\bmargherita\s+hack\b", re.I), "una scuola"),
-    # third-party people seen in web-search queries
-    (re.compile(r"Benjam[íi]n\s+Est[ée]vez\s+de\s+Cominges,?\s*"
-                r"Gino\s+Gumirato,?\s*(e\s+)?Alessandro\s+Ela\s+Oyana", re.I),
-     "alcune persone"),
-    # personal first names (own + family + contacts) — case-insensitive:
-    # queries carry them lowercased too ("cerca foto di matteo").
-    (re.compile(r"\b(Roberto\s+Brunialti|Roberto|Brunialti|Matteo|Iacopo|"
-                r"Mario|Silv\w+|Giorgi\w*)\b", re.I), "una persona"),
-]
+# Blocklist di nomi propri personali/terzi (§7.5). I nomi REALI vivono in un
+# file LOCALE gitignorato (~/.config/metnos/prefilter_scrub_names.json; override
+# env METNOS_SCRUB_NAMES_FILE) — MAI committato: il codice pubblico non porta
+# alcun nome reale. Checkout pubblico senza file = NAME_SUBS vuoto (il pubblico
+# non costruisce il corpus, quindi ininfluente). Formato: lista di
+# [pattern_regex, sostituzione].
+def _load_name_subs():
+    import json as _json, os as _os
+    path = _os.environ.get(
+        "METNOS_SCRUB_NAMES_FILE",
+        _os.path.expanduser("~/.config/metnos/prefilter_scrub_names.json"))
+    try:
+        with open(path, encoding="utf-8") as _f:
+            return [(re.compile(p, re.I), r) for p, r in _json.load(_f)]
+    except (OSError, ValueError):
+        return []
+
+
+NAME_SUBS = _load_name_subs()
 EMAIL_RE = re.compile(r"[\w.+-]+@[\w-]+\.[\w.-]+")
 HOMEPATH_RE = re.compile(r"/home/[^/\s]+")
 
