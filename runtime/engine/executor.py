@@ -785,14 +785,23 @@ def compute_framework_hash(fw: Framework) -> str:
 
 
 # ── Query-specificity (condiviso L0 fastpath + L1 autopath) ───────────────
-# Arg che portano il TESTO di ricerca dell'utente (NL query-specifica): se uno
-# di questi ha un valore LITERAL (non un placeholder ${...}), il framework e'
-# legato a QUELLA query e NON generalizza al cluster/intent. Lista CHIUSA
-# (§2.2), allineata agli arg content-bearing degli executor find_*
-# (immagini/persone/url/messaggi testuali).
+# Arg che LEGANO il piano alla singola query: se uno di questi ha un valore
+# LITERAL (non un placeholder ${...}), il framework e' legato a QUELLA query
+# e NON generalizza al cluster/intent. Lista CHIUSA (§2.2), due famiglie:
+#   - content-bearing: il TESTO di ricerca dell'utente (find_* su
+#     immagini/persone/url/messaggi testuali);
+#   - finestra temporale RELATIVA (time_window/time_windows, §2.1
+#     "today|last-Nd"): misura BGE-M3 12/6/2026 — il pivot temporale
+#     («mail di oggi» vs «di ieri», cosine 0.9722) supera la soglia 0b
+#     (0.92) PIU' delle parafrasi legittime (0.946-0.964): nessuna soglia
+#     li separa, quindi un piano che pinna la finestra e' servibile SOLO
+#     via hash 0a (replay esatto: la finestra relativa si ri-risolve
+#     correttamente). I literal temporali ASSOLUTI (ISO) sono invece
+#     non-cacheabili del tutto (fastpath._has_absolute_temporal_literal).
 CONTENT_ARG_KEYS = frozenset({
     "query_text", "name", "names", "content", "query", "search", "search_text",
     "text_query", "body_contains", "subject_contains", "from_contains",
+    "time_window", "time_windows",
 })
 
 

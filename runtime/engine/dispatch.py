@@ -45,22 +45,36 @@ class DispatchResult:
 
 
 def _maybe_record_fastpath(query: str, intent: Intent,
-                            framework: Framework, run: RunResult) -> None:
-    """Auto-produzione L0 (11/6/2026): un turno completato con SUCCESSO dal
-    piano PIENO (engine o recovery — mai da hit L0/L1, già cache) diventa
-    fastpath: alla ripetizione della stessa query il piano parte in
-    millisecondi senza LLM. Le condizioni di cacheabilità (≥1 step-executor,
-    no tool context-dependent, pertinenza 0a/0b) vivono in
-    fastpath.record_success. Best-effort: il fallimento non blocca il turno
-    ma non è silenzioso (§2.8: log)."""
+                            framework: Framework, run: RunResult,
+                            origin: str = "auto") -> None:
+    """Auto-produzione L0 (11/6/2026; classe estesa 12/6/2026): un turno
+    completato con SUCCESSO da un piano la cui query esatta NON è ancora in
+    cache 0a diventa fastpath: alla ripetizione della stessa query il piano
+    parte in millisecondi senza LLM né scan. Sorgenti (origin):
+      - 'auto'     — piano PIENO (engine, anche dopo recovery riuscita);
+      - 'autopath' — hit L1: il piano di cluster vale anche per la query
+        esatta. Bug live 11/6/2026: «controlla tutte le mie mailbox ultime
+        24 ore» non registrava MAI perché la famiglia read|messages aveva
+        già una skill L1 → ogni ripetizione ripagava embed+scan L1 invece
+        del lookup hash 0a;
+      - 'cosine'   — hit 0b: il piano servito appartiene a un'ALTRA query
+        canonica; registrarlo sotto l'hash di QUESTA promuove la prossima
+        ripetizione identica a 0a (niente scan O(N)).
+    MAI da hit 0a: la riga esiste già (lookup._touch ne traccia l'uso).
+    Le condizioni di cacheabilità (≥1 step-executor, no tool
+    context-dependent, no literal temporale assoluto, pertinenza 0a/0b)
+    vivono in fastpath.record_success. Best-effort: il fallimento non blocca
+    il turno ma non è silenzioso (§2.8: log)."""
     if not is_fastpath_enabled():
         return
     if run is None or run.final_kind != "answer" or run.aborted_reason:
         return
     try:
-        fp_id = _fp.record_success(query, framework, intent=intent)
+        fp_id = _fp.record_success(query, framework, intent=intent,
+                                   origin=origin)
         if fp_id:
-            log.info("[L0 fastpath] auto-record fp_id=%d", fp_id)
+            log.info("[L0 fastpath] auto-record fp_id=%d (origin=%s)",
+                     fp_id, origin)
     except Exception as ex:
         # WARNING, non debug (§2.8): a livello debug questo ramo era
         # invisibile in prod (INFO) e ha nascosto per giorni la causa-radice
@@ -177,6 +191,13 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
                                 runtime_ctx=runtime_ctx,
                                 remediate_args_cb=remediate_args_cb,
                                 progress=progress)
+            # Promozione 0b→0a (classe 12/6/2026): il piano è arrivato via
+            # cosine da un'ALTRA query canonica → registra l'hash di QUESTA
+            # (vedi _maybe_record_fastpath). L'hit 0a NON registra: la riga
+            # esiste già.
+            if fp_hit.match_kind == "cosine":
+                _maybe_record_fastpath(query, intent, fp_hit.framework, run,
+                                       origin="cosine")
             return DispatchResult(
                 final_text=run.final_text, final_kind=run.final_kind,
                 match_source="fastpath", framework_hash=run.framework_hash,
@@ -199,6 +220,13 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
                     turn_id=turn_id, intent=intent,
                     framework=ap_hit.framework, query=query,
                     latency_ms=run.elapsed_ms)
+            # Copertura L0 (bug live 11/6/2026, classe 12/6/2026): un hit L1
+            # è un TURNO-SUCCESSO la cui query esatta non è in cache 0a —
+            # senza record la stessa query ripaga PER SEMPRE embed+scan L1
+            # e il fastpath non si auto-produce mai per le query la cui
+            # famiglia ha già una skill (vedi _maybe_record_fastpath).
+            _maybe_record_fastpath(query, intent, ap_hit.framework, run,
+                                   origin="autopath")
             return DispatchResult(
                 final_text=run.final_text, final_kind=run.final_kind,
                 match_source="autopath", framework_hash=run.framework_hash,

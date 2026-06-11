@@ -175,6 +175,22 @@ def apply_feedback(turn_id: str, action: str, by: str = "user") -> dict:
                                "reason": f"ager_error: {ex}"}
                     effects.append({"type": "feedback_demote", **out})
 
+    # ── Fastpath L0 valve (12/6/2026, §2.8) ───────────────────────────
+    # Un ✗ cancella la riga L0 della query del turno (qualunque layer
+    # l'abbia servito: il record L0 nasce dallo stesso piano appena
+    # eseguito). Senza valvola un fastpath sbagliato e colpito rinfresca
+    # last_used (l'aging non lo vede) e L0, vincendo in cascata, impedisce
+    # al piano pieno di ri-succedere → immortale fino al delete admin.
+    # LWW simmetrico con autopath: si ri-crea al prossimo turno-successo.
+    if action == "error":
+        try:
+            from engine.fastpath import delete_by_query as _fp_delete
+            _n_fp = _fp_delete(turn.get("user_query") or "")
+            if _n_fp:
+                effects.append({"type": "fastpath_deleted", "rows": _n_fp})
+        except Exception as ex:
+            log.warning("turn_feedback: fastpath delete hook failed: %r", ex)
+
     # ── Autopath feedback hook (engine v2) ────────────────────────────
     # Dispatcha verdict a engine.autopath.record_feedback (flusso vivo).
     # Bonifica 2026-05-28: rimosso il ramo legacy V2=0 (praxis.sqlite vuoto,

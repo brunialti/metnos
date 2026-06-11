@@ -418,6 +418,230 @@ class TestDispatchLoop(_FastpathDbCase):
             self.assertEqual(eng_fastpath.list_all(), [])
 
 
+# ── 1quinquies. Copertura: record anche da hit L1/0b (bug live 11/6/2026) ──
+
+class TestRecordFromCacheHits(_FastpathDbCase):
+    """Bug live 11/6/2026: «controlla tutte le mie mailbox ultime 24 ore»
+    veniva servita dalla skill L1 read_messages e NON registrava MAI il
+    fastpath (il ramo autopath di dispatch ritornava senza record) → la
+    query esatta ripagava per sempre embed+scan L1 invece dell'hash 0a.
+    Classe: OGNI turno-successo la cui query esatta non è in cache 0a
+    registra (engine, recovery, hit L1, hit 0b); SOLO l'hit 0a non registra
+    (la riga esiste già)."""
+
+    def _catalog(self, *names):
+        return [SimpleNamespace(
+            name=n, args_schema={"type": "object", "properties": {}})
+            for n in names]
+
+    def test_l1_autopath_hit_records_then_l0_takes_over(self):
+        from engine.autopath import AutopathHit
+        fw = _fw("read_messages", "describe_entries",
+                 args_map={"read_messages": {"account": "all",
+                                             "folder": "INBOX",
+                                             "max_results": 20}})
+        intent = Intent(verb="read", object="messages")
+        catalog = self._catalog("read_messages", "describe_entries")
+        hit = AutopathHit(skill_id="read_messages__v1.0.0", framework=fw,
+                          cluster_id="cl_x", uses=1)
+        lookups = []
+
+        def _ap_lookup(query, intent):
+            lookups.append(query)
+            return hit
+
+        env = {"METNOS_ENGINE": "simple", "METNOS_FASTPATH": "1",
+               "METNOS_AUTOPATH": "1"}
+        q = "controlla tutte le mie mailbox ultime 24 ore"
+        with mock.patch.dict(os.environ, env), \
+             mock.patch.object(eng_dispatch._ap, "lookup", new=_ap_lookup), \
+             mock.patch.object(eng_dispatch._ap, "record_observation",
+                               return_value="fh"), \
+             mock.patch("engine.cluster.embed", new=lambda q: None):
+            r1 = eng_dispatch.run_turn(
+                query=q, intent=intent, catalog=catalog,
+                invoke_executor_cb=lambda n, a: {"ok": True, "entries": []},
+                turn_id="t1")
+            self.assertEqual(r1.match_source, "autopath")
+            self.assertEqual(r1.final_kind, "answer")
+            rows = eng_fastpath.list_all()
+            self.assertEqual(len(rows), 1)
+            self.assertEqual(rows[0]["origin"], "autopath")
+            self.assertEqual(rows[0]["intent_verb"], "read")
+            # Ripetizione identica: ora vince L0 0a, L1 NON interpellato.
+            r2 = eng_dispatch.run_turn(
+                query=q, intent=intent, catalog=catalog,
+                invoke_executor_cb=lambda n, a: {"ok": True, "entries": []},
+                turn_id="t2")
+            self.assertEqual(r2.match_source, "fastpath")
+            self.assertEqual(len(lookups), 1)  # solo il primo turno
+
+    def test_l1_hit_failed_run_does_not_record(self):
+        from engine.autopath import AutopathHit
+        fw = _fw("read_messages")
+        intent = Intent(verb="read", object="messages")
+        catalog = self._catalog("read_messages")
+        hit = AutopathHit(skill_id="s", framework=fw, cluster_id="c", uses=1)
+        env = {"METNOS_ENGINE": "simple", "METNOS_FASTPATH": "1",
+               "METNOS_AUTOPATH": "1"}
+        with mock.patch.dict(os.environ, env), \
+             mock.patch.object(eng_dispatch._ap, "lookup",
+                               new=lambda q, i: hit), \
+             mock.patch.object(eng_dispatch._ap, "record_observation",
+                               return_value="fh"), \
+             mock.patch("engine.cluster.embed", new=lambda q: None):
+            r = eng_dispatch.run_turn(
+                query="controlla le mailbox", intent=intent, catalog=catalog,
+                invoke_executor_cb=lambda n, a: {"ok": False, "error": "ko"},
+                turn_id="t1")
+            self.assertEqual(r.final_kind, "error")
+            self.assertEqual(eng_fastpath.list_all(), [])
+
+    def test_0b_cosine_hit_promotes_to_own_hash(self):
+        va = _pack([1.0, 0.0])
+        vb = _pack([0.95, 0.312249899])  # cosine(va, vb) = 0.95 ≥ 0.92
+        qa = "conta i file della cartella tmp"
+        qb = "contami i file dentro tmp"
+        table = {qa: va, qb: vb}
+        fw = _fw("find_files", args_map={"find_files": {"base_path": "/tmp"}})
+        fake = _FakeProposer(fw)
+        catalog = self._catalog("find_files")
+        env = {"METNOS_ENGINE": "simple", "METNOS_FASTPATH": "1"}
+        with mock.patch.dict(os.environ, env), \
+             mock.patch("engine.proposer.get_proposer", return_value=fake), \
+             mock.patch("engine.cluster.embed",
+                        new=lambda q: table.get(q)):
+            eng_fastpath.record_success(qa, fw)
+            r1 = eng_dispatch.run_turn(
+                query=qb, intent=Intent(), catalog=catalog,
+                invoke_executor_cb=lambda n, a: {"ok": True, "entries": []},
+                turn_id="t1")
+            self.assertEqual(r1.match_source, "fastpath")  # via 0b
+            self.assertEqual(fake.calls, 0)  # proposer mai chiamato
+            rows = eng_fastpath.list_all()
+            self.assertEqual(len(rows), 2)  # promozione: riga propria per qb
+            self.assertIn("cosine", {r["origin"] for r in rows})
+            # Ripetizione di qb: ora hash 0a diretto (niente scan).
+            hit = eng_fastpath.lookup(qb)
+            self.assertIsNotNone(hit)
+            self.assertEqual(hit.match_kind, "hash")
+
+    def test_0a_hash_hit_does_not_rerecord(self):
+        fw = _fw("get_now")
+        fake = _FakeProposer(fw)
+        catalog = self._catalog("get_now")
+        env = {"METNOS_ENGINE": "simple", "METNOS_FASTPATH": "1"}
+        q = "che ore sono adesso"
+        with mock.patch.dict(os.environ, env), \
+             mock.patch("engine.proposer.get_proposer", return_value=fake), \
+             mock.patch("engine.cluster.embed", new=lambda q: None), \
+             mock.patch.object(eng_dispatch._fp, "record_success",
+                               wraps=eng_fastpath.record_success) as rec:
+            eng_dispatch.run_turn(
+                query=q, intent=Intent(), catalog=catalog,
+                invoke_executor_cb=lambda n, a: {"ok": True, "iso": "x"},
+                turn_id="t1")
+            self.assertEqual(rec.call_count, 1)  # record dal piano pieno
+            eng_dispatch.run_turn(
+                query=q, intent=Intent(), catalog=catalog,
+                invoke_executor_cb=lambda n, a: {"ok": True, "iso": "x"},
+                turn_id="t2")
+            self.assertEqual(rec.call_count, 1)  # hit 0a: NESSUN re-record
+
+
+# ── 1sexies. Cacheabilità temporale (misura BGE-M3 12/6/2026) ──────────────
+
+class TestTemporalCacheability(_FastpathDbCase):
+    """Pivot temporale «oggi»→«ieri» (cosine 0.9722) supera la soglia 0b
+    (0.92) più delle parafrasi legittime (0.946-0.964): nessuna soglia li
+    separa. Guard strutturali: finestra RELATIVA pinnata → query-specific
+    (0a-only); data ISO ASSOLUTA → non cacheabile (replay stantio)."""
+
+    def test_time_window_literal_is_query_specific(self):
+        from engine.executor import is_query_specific
+        import json as _json
+        fj = _json.dumps(_fw("read_messages", args_map={
+            "read_messages": {"time_window": "today"}}).to_dict())
+        self.assertTrue(is_query_specific(fj))
+
+    def test_time_window_plan_not_served_by_cosine(self):
+        va = _pack([1.0, 0.0])
+        vb = _pack([0.98, 0.198997487])  # cosine ≈ 0.98 (pivot oggi/ieri)
+        qa = "riassumi le mail di oggi"
+        qb = "riassumi le mail di ieri"
+        table = {qa: va, qb: vb}
+        fw = _fw("read_messages", "describe_entries", args_map={
+            "read_messages": {"time_window": "today"}})
+        with mock.patch("engine.cluster.embed", new=lambda q: table.get(q)):
+            eng_fastpath.record_success(qa, fw)
+            self.assertIsNone(eng_fastpath.lookup(qb))  # 0b BLOCCATO
+            hit = eng_fastpath.lookup(qa)               # 0a esatto OK
+            self.assertIsNotNone(hit)
+            self.assertEqual(hit.match_kind, "hash")
+
+    def test_absolute_iso_literal_not_recorded(self):
+        fw = _fw("read_messages", args_map={
+            "read_messages": {"since_iso": "2026-06-11"}})
+        self.assertEqual(
+            eng_fastpath.record_success("mail da ieri", fw), 0)
+        # anche annidato in una lista
+        fw2 = _fw("read_files", args_map={
+            "read_files": {"paths": ["/backup/2026-06-11/x.txt"]}})
+        self.assertEqual(
+            eng_fastpath.record_success("leggi il backup", fw2), 0)
+        self.assertEqual(eng_fastpath.list_all(), [])
+
+    def test_placeholder_dates_still_recordable(self):
+        # Un placeholder ${stepN.date} NON è un literal congelato.
+        fw = _fw("create_events", args_map={
+            "create_events": {"start": "${step1.entries.0.start}"}})
+        self.assertGreater(
+            eng_fastpath.record_success("crea evento dal testo", fw), 0)
+
+
+# ── 1septies. Valvola feedback ✗ → delete L0 (12/6/2026) ───────────────────
+
+class TestFeedbackValve(_FastpathDbCase):
+    def test_delete_by_query_normalizes(self):
+        eng_fastpath.record_success("controlla le mailbox", _fw("read_messages"))
+        self.assertEqual(len(eng_fastpath.list_all()), 1)
+        # Variante con stopword/punteggiatura: stessa canonical_hash
+        self.assertEqual(
+            eng_fastpath.delete_by_query("controlla le mailbox!"), 1)
+        self.assertEqual(eng_fastpath.list_all(), [])
+
+    def test_error_feedback_deletes_l0_row(self):
+        import turn_feedback as tf
+        q = "controlla tutte le mie mailbox ultime 24 ore"
+        eng_fastpath.record_success(q, _fw("read_messages"))
+        self.assertEqual(len(eng_fastpath.list_all()), 1)
+        fake_turn = {"turn_id": "tx", "user_query": q, "steps": [],
+                     "final_kind": "answer"}
+        with mock.patch.object(tf, "_load_turn", return_value=fake_turn), \
+             mock.patch.object(tf, "FEEDBACK_PATH",
+                               Path(self.tmp) / "fb.jsonl"), \
+             mock.patch("engine.autopath.record_feedback",
+                        return_value={"ok": False}):
+            rec = tf.apply_feedback("tx", "error", by="test")
+        self.assertEqual(eng_fastpath.list_all(), [])
+        self.assertTrue(any(e.get("type") == "fastpath_deleted"
+                            for e in rec["effects"]))
+
+    def test_ok_feedback_keeps_l0_row(self):
+        import turn_feedback as tf
+        q = "controlla le mailbox"
+        eng_fastpath.record_success(q, _fw("read_messages"))
+        fake_turn = {"turn_id": "ty", "user_query": q, "steps": [],
+                     "final_kind": "answer"}
+        with mock.patch.object(tf, "_load_turn", return_value=fake_turn), \
+             mock.patch.object(tf, "FEEDBACK_PATH",
+                               Path(self.tmp) / "fb.jsonl"), \
+             mock.patch("engine.autopath.record_feedback",
+                        return_value={"ok": False}):
+            tf.apply_feedback("ty", "ok", by="test")
+        self.assertEqual(len(eng_fastpath.list_all()), 1)
+
+
 # ── 3. Aging (prune deterministico) ────────────────────────────────────────
 
 _NOW = 1_780_000_000.0  # epoch fisso: prune(now_ts=_NOW) → §7.9 deterministico

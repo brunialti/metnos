@@ -1,11 +1,16 @@
 """engine/fastpath.py — Layer 0: cache query→piano AUTO-PRODOTTA.
 
 Bypass completo dell'engine quando la query matcha un fastpath. I fastpath
-si producono IN AUTOMATICO a ogni turno completato con successo dal piano
-pieno (L3 engine/recovery, mai da hit L0/L1): le catene sono executor GIÀ
-vagliati e testati, nessuna approvazione esplicita (decisione 11/6/2026; il
-bottone «approva fast-path» citato in passato non è mai esistito). Valvole:
-delete da admin (/admin/praxis) + aging deterministico (prune).
+si producono IN AUTOMATICO a ogni turno completato con successo la cui
+query esatta non è ancora in cache 0a: piano pieno (L3 engine/recovery),
+hit L1 autopath (il piano di cluster vale anche per la query esatta) e hit
+0b cosine (promozione a 0a); MAI da hit 0a, già registrato (classe estesa
+12/6/2026 — bug live: le query con skill L1 di famiglia non registravano
+mai). Le catene sono executor GIÀ vagliati e testati, nessuna approvazione
+esplicita (decisione 11/6/2026; il bottone «approva fast-path» citato in
+passato non è mai esistito). Valvole: delete da admin (/admin/praxis) +
+aging deterministico (prune) + feedback ✗ utente (turn_feedback →
+delete_by_query, LWW: si ri-crea al prossimo turno-successo).
 
 Match in 2 sotto-layer:
   0a — hash lookup deterministic (<5ms, no LLM, no embed)
@@ -24,6 +29,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import sqlite3
 import time
 from dataclasses import dataclass
@@ -42,6 +48,32 @@ log = logging.getLogger(__name__)
 # (flusso non riproducibile). Set CHIUSO (§2.2): estendere solo per la
 # stessa classe di motivi (semantica dipendente dal contesto del turno).
 NON_CACHEABLE_TOOLS = frozenset({"undo_last_turn", "get_inputs"})
+
+# Literal temporale ASSOLUTO negli args del piano (ISO date/datetime, es.
+# since_iso="2026-06-11", start="2026-06-15T10:00"): il replay in un giorno
+# diverso eseguirebbe la finestra/data CONGELATA al momento del record →
+# risposta stantia SILENZIOSA (§2.8) — e l'hit 0a rinfresca last_used, quindi
+# l'aging non lo poterebbe mai. Piano NON cacheabile (record_success → 0).
+# I valori RELATIVI (time_window="today"/"last-24h") restano cacheabili: il
+# replay li ri-risolve correttamente; il loro rischio è cross-query (0b/L1)
+# ed è coperto da CONTENT_ARG_KEYS (vedi executor.is_query_specific).
+_ABS_TEMPORAL_RE = re.compile(r"\b\d{4}-\d{2}-\d{2}\b")
+
+
+def _has_absolute_temporal_literal(framework: Framework) -> bool:
+    """True se un arg LITERAL (non placeholder ${...}) di uno step contiene
+    una data ISO assoluta. Scansione ricorsiva di str/list/dict (§7.9,
+    nessun LLM). Il final_message non è scandito: i template usano
+    ${stepN.x} e si risolvono a runtime."""
+    def _scan(v) -> bool:
+        if isinstance(v, str):
+            return "${" not in v and bool(_ABS_TEMPORAL_RE.search(v))
+        if isinstance(v, list):
+            return any(_scan(x) for x in v)
+        if isinstance(v, dict):
+            return any(_scan(x) for x in v.values())
+        return False
+    return any(_scan(s.args) for s in framework.steps if s.args)
 
 
 def _now_iso() -> str:
@@ -213,8 +245,10 @@ def record_success(query: str, framework: Framework, *,
     (self-healing: il piano cached segue l'ultimo successo).
 
     Non cacheabile (ritorna 0): framework senza step-executor reali (prosa
-    statica → replay darebbe risposta in scatola) o con step il cui replay è
-    context-dependent (NON_CACHEABLE_TOOLS: undo_last_turn, get_inputs).
+    statica → replay darebbe risposta in scatola), con step il cui replay è
+    context-dependent (NON_CACHEABLE_TOOLS: undo_last_turn, get_inputs), o
+    con literal temporale ASSOLUTO negli args (data ISO congelata → replay
+    stantio silenzioso, vedi _has_absolute_temporal_literal).
 
     `intent` (engine.types.Intent, opzionale): verb/object salvati per la
     morte-su-executor-equivalente (vedi prune). Returns fp_id, 0 su skip/errore.
@@ -226,6 +260,10 @@ def record_success(query: str, framework: Framework, *,
     if not exec_steps:
         return 0
     if NON_CACHEABLE_TOOLS.intersection(exec_steps):
+        return 0
+    if _has_absolute_temporal_literal(framework):
+        log.info("fastpath: skip record (literal temporale assoluto nel "
+                 "piano: il replay sarebbe stantio)")
         return 0
     canonical = _cluster.normalize_query(query)
     h = _cluster.normalize_hash(query)
@@ -308,6 +346,33 @@ def delete(fp_id: int) -> bool:
         return cur.rowcount > 0
     except Exception:
         return False
+
+
+def delete_by_query(query: str) -> int:
+    """Valvola feedback ✗ (12/6/2026, chiamata da turn_feedback): cancella
+    la riga il cui canonical_hash corrisponde alla query del turno bocciato.
+
+    Necessaria perché un fastpath SBAGLIATO che continua a essere colpito
+    rinfresca last_used (l'aging non lo vede) e impedisce alla query di
+    ri-raggiungere il piano pieno (L0 vince in cascata) → senza valvola
+    sarebbe immortale fino al delete admin. LWW simmetrico con autopath:
+    si ri-crea da solo al prossimo turno-successo. Deterministico §7.9.
+    Ritorna le righe rimosse (0 = nessun fastpath per quella query)."""
+    if not query or not query.strip():
+        return 0
+    try:
+        c = _conn()
+        cur = c.execute("DELETE FROM fastpaths WHERE canonical_hash = ?",
+                        (_cluster.normalize_hash(query),))
+        c.commit()
+        c.close()
+        if cur.rowcount:
+            log.info("fastpath: delete_by_query (feedback ✗) — %d riga/e",
+                     cur.rowcount)
+        return max(0, cur.rowcount)
+    except Exception as ex:
+        log.warning("fastpath.delete_by_query failed: %r", ex)
+        return 0
 
 
 # ── Provenienza promozioni (fastpath → executor, mandato 11/6) ─────────────
