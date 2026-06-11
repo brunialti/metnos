@@ -176,6 +176,14 @@ def task_state_reaper() -> dict:
         return autopath.prune()
     _run("autopath", _autopath)
 
+    def _fastpath():
+        # Aging L0 (11/6/2026): mai-riusato oltre grazia, stale, cap LRU.
+        # Costo-zero: un fastpath potato per errore si ricrea da solo alla
+        # prossima ripetizione riuscita (auto-produzione in dispatch).
+        from engine import fastpath
+        return fastpath.prune()
+    _run("fastpath", _fastpath)
+
     def _turn_logs():
         tdir = _C.PATH_USER_DATA / "turns"
         if not tdir.exists():

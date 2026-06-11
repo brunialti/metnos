@@ -276,7 +276,8 @@ def list_all(limit: int = 100) -> list[dict]:
 
 
 def delete(fp_id: int) -> bool:
-    """Cancella fastpath. Usato da admin UI."""
+    """Cancella fastpath. Usato da admin UI (valvola: un fastpath sbagliato
+    si rimuove a mano; non si ricrea finché il piano pieno non ri-succede)."""
     try:
         c = _conn()
         cur = c.execute("DELETE FROM fastpaths WHERE id = ?", (fp_id,))
@@ -285,3 +286,67 @@ def delete(fp_id: int) -> bool:
         return cur.rowcount > 0
     except Exception:
         return False
+
+
+# ── Aging (state_reaper notturno) ──────────────────────────────────────────
+
+def prune(*, stale_days: int | None = None, grace_days: int | None = None,
+          max_rows: int | None = None, now_ts: float | None = None) -> dict:
+    """Aging deterministico (§7.9) dello store fastpath. Chiamato dal
+    `task_state_reaper` notturno (stesso aggancio di autopath.prune).
+
+    Tre regole, in quest'ordine:
+      1. mai-riusato: last_used IS NULL e created_at oltre la grazia
+         (default 14gg, env METNOS_FASTPATH_GRACE_DAYS) — la query non si è
+         mai ripetuta, la cache non ha valore.
+      2. stale: last_used oltre la soglia (default 30gg, env
+         METNOS_FASTPATH_STALE_DAYS) — la ricorrenza è cessata.
+      3. cap LRU: oltre max_rows (default 500, env METNOS_FASTPATH_MAX)
+         pota le least-recently-active — bound sia sul disco sia sulla
+         latenza del lookup 0b (scan O(N) degli embedding).
+
+    Economia: un fastpath potato per errore SI RICREA DA SOLO alla prossima
+    ripetizione riuscita (auto-produzione) → la potatura costa zero e i
+    default possono essere aggressivi. Simmetria soglie: executor aging
+    30/14 (executor_aging.py). Idempotente. Ritorna report conteggi.
+    """
+    import os
+    if stale_days is None:
+        stale_days = int(os.environ.get("METNOS_FASTPATH_STALE_DAYS", "30"))
+    if grace_days is None:
+        grace_days = int(os.environ.get("METNOS_FASTPATH_GRACE_DAYS", "14"))
+    if max_rows is None:
+        max_rows = int(os.environ.get("METNOS_FASTPATH_MAX", "500"))
+    now = now_ts if now_ts is not None else time.time()
+
+    def _cutoff(days: int) -> str:
+        return time.strftime("%Y-%m-%dT%H:%M:%SZ",
+                             time.gmtime(now - days * 86400))
+
+    report = {"never_reused_removed": 0, "stale_removed": 0,
+              "cap_removed": 0, "kept": 0}
+    try:
+        c = _conn()
+        report["never_reused_removed"] = c.execute(
+            "DELETE FROM fastpaths WHERE last_used IS NULL "
+            "AND created_at < ?", (_cutoff(grace_days),)).rowcount
+        report["stale_removed"] = c.execute(
+            "DELETE FROM fastpaths WHERE last_used IS NOT NULL "
+            "AND last_used < ?", (_cutoff(stale_days),)).rowcount
+        report["cap_removed"] = c.execute(
+            "DELETE FROM fastpaths WHERE id NOT IN ("
+            "SELECT id FROM fastpaths "
+            "ORDER BY COALESCE(last_used, created_at) DESC LIMIT ?)",
+            (int(max_rows),)).rowcount
+        c.commit()
+        report["kept"] = c.execute(
+            "SELECT COUNT(*) FROM fastpaths").fetchone()[0]
+        try:
+            c.execute("VACUUM")
+        except sqlite3.Error:
+            pass
+        c.close()
+    except Exception as ex:
+        log.warning("fastpath.prune failed: %r", ex)
+        report["error"] = repr(ex)
+    return report

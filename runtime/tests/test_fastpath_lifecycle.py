@@ -228,5 +228,76 @@ class TestDispatchLoop(_FastpathDbCase):
             self.assertEqual(eng_fastpath.list_all(), [])
 
 
+# ── 3. Aging (prune deterministico) ────────────────────────────────────────
+
+_NOW = 1_780_000_000.0  # epoch fisso: prune(now_ts=_NOW) → §7.9 deterministico
+
+
+def _iso_days_ago(days: float) -> str:
+    return time.strftime("%Y-%m-%dT%H:%M:%SZ",
+                         time.gmtime(_NOW - days * 86400))
+
+
+class TestAging(_FastpathDbCase):
+    def _seed(self, query: str, *, created_days_ago: float,
+              used_days_ago: float | None = None) -> int:
+        fp_id = eng_fastpath.record_success(query, _fw("get_now"))
+        self.assertGreater(fp_id, 0)
+        c = eng_fastpath._conn()
+        c.execute("UPDATE fastpaths SET created_at = ?, last_used = ? "
+                  "WHERE id = ?",
+                  (_iso_days_ago(created_days_ago),
+                   _iso_days_ago(used_days_ago)
+                   if used_days_ago is not None else None,
+                   fp_id))
+        c.commit()
+        c.close()
+        return fp_id
+
+    def _ids(self) -> set:
+        return {r["id"] for r in eng_fastpath.list_all()}
+
+    def test_never_reused_pruned_after_grace(self):
+        old = self._seed("query mai ripetuta", created_days_ago=20)
+        fresh = self._seed("query recente", created_days_ago=3)
+        rep = eng_fastpath.prune(stale_days=30, grace_days=14,
+                                 max_rows=500, now_ts=_NOW)
+        self.assertEqual(rep["never_reused_removed"], 1)
+        self.assertEqual(self._ids(), {fresh})
+        self.assertNotIn(old, self._ids())
+
+    def test_stale_pruned_recent_kept(self):
+        stale = self._seed("ricorrenza cessata", created_days_ago=90,
+                           used_days_ago=45)
+        live = self._seed("ricorrenza viva", created_days_ago=90,
+                          used_days_ago=2)
+        rep = eng_fastpath.prune(stale_days=30, grace_days=14,
+                                 max_rows=500, now_ts=_NOW)
+        self.assertEqual(rep["stale_removed"], 1)
+        self.assertEqual(self._ids(), {live})
+        self.assertNotIn(stale, self._ids())
+
+    def test_cap_lru(self):
+        ids = [self._seed(f"query numero {i}", created_days_ago=1,
+                          used_days_ago=0.05 * (i + 1))
+               for i in range(5)]
+        rep = eng_fastpath.prune(stale_days=30, grace_days=14,
+                                 max_rows=3, now_ts=_NOW)
+        self.assertEqual(rep["cap_removed"], 2)
+        # Restano le 3 più recentemente attive (used_days_ago più piccolo)
+        self.assertEqual(self._ids(), set(ids[:3]))
+
+    def test_prune_idempotent(self):
+        self._seed("query viva", created_days_ago=2, used_days_ago=1)
+        rep1 = eng_fastpath.prune(stale_days=30, grace_days=14,
+                                  max_rows=500, now_ts=_NOW)
+        rep2 = eng_fastpath.prune(stale_days=30, grace_days=14,
+                                  max_rows=500, now_ts=_NOW)
+        self.assertEqual(rep1["kept"], 1)
+        self.assertEqual(rep2["kept"], 1)
+        self.assertEqual(rep2["never_reused_removed"], 0)
+        self.assertEqual(rep2["stale_removed"], 0)
+
+
 if __name__ == "__main__":
     unittest.main()
