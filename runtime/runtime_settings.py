@@ -13,17 +13,18 @@ Override hierarchy (in ordine di priorita' decrescente):
 
 Schema TOML:
 
-    [fast_path]
-    # ADR 0149: fast-path introvertivo single-tool
-    canonical_query_enabled = true        # METNOS_CANONICAL_QUERY
-    canonical_query_min_uses = 3          # METNOS_CQ_MIN_USES
-    canonical_query_threshold = 0.95      # METNOS_CQ_THRESHOLD
-    canonical_query_args_llm = false      # METNOS_CQ_ARGS_LLM
+    [telos]
+    # vedi _DEFAULTS sotto
+    [feedback]
+    error_demote_threshold = 3            # METNOS_FEEDBACK_DEMOTE_THRESHOLD
 
 Determinismo §7.9: niente LLM nella lettura. tomllib stdlib (Python 3.11+),
 cache process-life, reload on file mtime change.
-NB (11/6/2026): la sezione [multi_tool_fast_path] (ADR 0150) e' stata
-ritirata — chiavi eventualmente presenti nel runtime.toml vengono ignorate.
+NB (11/6/2026): ritirate le sezioni [fast_path] (ADR 0149, matcher L1) e
+[multi_tool_fast_path] (ADR 0150) — chiavi eventualmente presenti nel
+runtime.toml vengono ignorate. L'env METNOS_CANONICAL_QUERY resta letto
+DIRETTAMENTE da agent_runtime per il by-product `canonical_query` del
+PLANNER (emissione prompt, default ON).
 """
 from __future__ import annotations
 
@@ -49,11 +50,6 @@ _TOML_PATH = _C.PATH_USER_CONFIG / "runtime.toml"
 # ── Default values (override fallback hierarchy) ─────────────────────────────
 
 _DEFAULTS: dict[str, Any] = {
-    # Fast-path single-tool (ADR 0149)
-    "fast_path.canonical_query_enabled": True,
-    "fast_path.canonical_query_min_uses": 3,
-    "fast_path.canonical_query_threshold": 0.95,
-    "fast_path.canonical_query_args_llm": False,
     # Telos pipeline accept→synt_request (C.8 fase 2, 24/5/2026).
     # Filtri restrittivi a 3 livelli (utente puo' gestire poche proposte
     # alla volta; le filtrate riemergono nel tempo con score piu' alto).
@@ -73,10 +69,6 @@ _DEFAULTS: dict[str, Any] = {
 
 # Mapping chiave config TOML → variabile d'ambiente.
 _ENV_MAP: dict[str, str] = {
-    "fast_path.canonical_query_enabled": "METNOS_CANONICAL_QUERY",
-    "fast_path.canonical_query_min_uses": "METNOS_CQ_MIN_USES",
-    "fast_path.canonical_query_threshold": "METNOS_CQ_THRESHOLD",
-    "fast_path.canonical_query_args_llm": "METNOS_CQ_ARGS_LLM",
     "telos.dashboard_min_alignment": "METNOS_TELOS_DASHBOARD_MIN_ALIGNMENT",
     "telos.dashboard_min_convergence": "METNOS_TELOS_DASHBOARD_MIN_CONVERGENCE",
     "telos.dashboard_max_rows": "METNOS_TELOS_DASHBOARD_MAX_ROWS",
@@ -210,22 +202,6 @@ def get_float(key: str, default: float | None = None) -> float:
 
 # ── Typed accessors per i flag canonici (riducono boilerplate al caller) ───
 
-def canonical_query_enabled() -> bool:
-    return get_bool("fast_path.canonical_query_enabled")
-
-
-def canonical_query_min_uses() -> int:
-    return get_int("fast_path.canonical_query_min_uses")
-
-
-def canonical_query_threshold() -> float:
-    return get_float("fast_path.canonical_query_threshold")
-
-
-def canonical_query_args_llm() -> bool:
-    return get_bool("fast_path.canonical_query_args_llm")
-
-
 def feedback_error_demote_threshold() -> int:
     return get_int("feedback.error_demote_threshold")
 
@@ -236,15 +212,6 @@ _DEFAULT_TOML_BODY = """\
 # Metnos runtime configuration
 # Generato automaticamente al primo boot. Modifica con cura.
 # Override via variabile d'ambiente METNOS_* ha priorita' superiore.
-
-[fast_path]
-# Fast-path introvertivo single-tool (ADR 0149). Default ON: il sistema
-# riconosce query ripetute e salta il PLANNER LLM (~12 s) usando un match
-# BGE-M3 cosine sul canonical_query_log.
-canonical_query_enabled = true
-canonical_query_min_uses = 3
-canonical_query_threshold = 0.95
-canonical_query_args_llm = false   # opt-in LLM fallback per args missing
 
 [feedback]
 # E12 (24/5/2026): demote di executor synth dopo N feedback ✗ consecutive

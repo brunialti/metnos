@@ -5295,32 +5295,12 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
     if not _ref_images_for_prompt and not resume_with_scratchpad:
         _fp_hit = try_fast_path(user_query_for_run, lang=DEFAULT_LANG,
                                   default_timezone=DEFAULT_TIMEZONE)
-        # ADR 0149 step 2c (18/5/2026): Layer L1 BGE matcher su
-        # canonical_query_log. Attivo via runtime_settings (env override
-        # via METNOS_CANONICAL_QUERY, persistent in ~/.config/metnos/
-        # runtime.toml [fast_path] canonical_query_enabled). Default ON
-        # post Fase 12 19/5/2026 v5. Threshold conservativa; miss → fallback.
-        if _fp_hit is None:
-            try:
-                from runtime_settings import canonical_query_enabled as _cq_check
-                _cq_on = _cq_check()
-            except Exception:
-                _cq_on = False
-        else:
-            _cq_on = False
-        if _fp_hit is None and _cq_on:
-            try:
-                from canonical_matcher import try_canonical_match
-                _fp_hit = try_canonical_match(user_query_for_run)
-                if _fp_hit is not None and verbose:
-                    print(f"[canonical_matcher] BGE hit "
-                          f"pattern={_fp_hit['pattern']!r} "
-                          f"cosine={_fp_hit.get('cosine', 0):.3f} "
-                          f"executor={_fp_hit['executor']}")
-            except Exception as _ex:
-                import logging as _logging
-                _logging.getLogger(__name__).warning(
-                    "canonical_matcher fallito: %s", _ex)
+        # NB (11/6/2026): ritirato il Layer L1 BGE matcher su
+        # canonical_query_log (ADR 0149 step 2c) — ridondante con la cache
+        # query→piano di Engine v2 (engine/fastpath L0), che inoltre veniva
+        # affamata dall'L1 (le query intercettate qui non alimentavano mai
+        # il record del nuovo L0). Il by-product `canonical_query` resta
+        # (telemetria → change_intents).
         if _fp_hit is not None and _fp_hit.get("direct_answer"):
             # Fast path a RISPOSTA DIRETTA (nessun executor): es. domanda di
             # identità "chi sei" → l'assistente si presenta come Metnos, senza

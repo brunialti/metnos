@@ -2,7 +2,12 @@
 id: 0149
 title: Query normalization as planner by-product + BGE matcher fast-path
 date: 2026-05-18
-status: proposed
+status: partially retired (11/6/2026 — il matcher L1 BGE su
+  canonical_query_log e' stato ritirato perche' ridondante con la cache
+  query→piano di Engine v2, engine/fastpath L0 ADR 0164 ext, che il L1
+  oltretutto affamava girando prima nel turno; RESTA il by-product
+  canonical_query del PLANNER + recording in mnestoma, consumato dalla
+  proiezione change_intents ADR 0158)
 area: runtime | planner | fast-path | mnestoma
 related:
   - 0094  # fast_path deterministic short-circuit

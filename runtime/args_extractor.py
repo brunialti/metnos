@@ -1,36 +1,27 @@
-"""args_extractor — V1.5 hybrid args extraction per canonical_matcher.
+"""args_extractor — estrazione deterministica di args tipati dalla query.
 
-Sblocca il fast-path introvertivo (ADR 0149) per executor con args
-required: oggi `canonical_matcher.try_match` ritorna `args={}` e il
-fallback cade al PLANNER. Con extraction args robusta, il fast-path
-serve direttamente con args dedotti dalla query.
+`regex_extract` (deterministico, §7.9): estrae token tipati comuni dalla
+query con regex chiusa (PATH, URL, INT, EMAIL, FILE_EXT_GLOB,
+DATE/TIME_WINDOW). V1.5 19/5 v5: home → ~, uppercase ext "PDF" → *.pdf,
+keywords IT/EN oggi/today/ieri/etc.
 
-Architettura hybrid (Roberto 19/5/2026 v4 + v5):
-  1. **regex_extract** (deterministico, §7.9): estrae token tipati
-     comuni dalla query con regex chiusa (PATH, URL, INT, EMAIL,
-     FILE_EXT_GLOB, DATE/TIME_WINDOW). V1.5 19/5 v5: home → ~,
-     uppercase ext "PDF" → *.pdf, keywords IT/EN oggi/today/ieri/etc.
-  2. **learned_from_log** (memoization): se la canonical_query_log
-     ha `args_observed` per la stessa entry, riusa quei valori (zero LLM).
-  3. **llm_fallback** (opt-in `METNOS_CQ_ARGS_LLM=1`): chiamata LLM fast
-     tier (~500 ms) con prompt vincolato a schema required missing.
-     Solo per args required che 1+2 non hanno coperto.
+Caller vivo: agent_runtime (strip degli args query-derived prima della
+registrazione in canonical_query_log — single source of truth per gli
+args ri-derivabili).
 
-Determinismo §7.9: regex deterministica, niente LLM in critical path
-del primo passaggio. LLM solo se 1+2 falliscono E flag opt-in attivo.
+NB (11/6/2026): rimossi `extract_args`/`_llm_extract_args` (hybrid V1.5
+con memoization + LLM fallback, ADR 0149): il loro unico caller era il
+matcher L1 `canonical_matcher`, ritirato perche' ridondante con la cache
+query→piano di Engine v2 (engine/fastpath L0).
 
 Esposto:
-    extract_args(query, executor_name, schema, observed_args=None,
-                 llm_fallback=False) -> dict
+    regex_extract(query, schema) -> dict
 """
 from __future__ import annotations
 
-import json
 import logging
-import os
 import re
 from datetime import datetime, timedelta, timezone
-from pathlib import Path
 from typing import Optional
 
 _LOG = logging.getLogger(__name__)
@@ -302,141 +293,3 @@ def regex_extract(query: str, schema: dict | None) -> dict:
             if w:
                 out[arg_name] = w
     return out
-
-
-def _required_missing(schema: dict | None, args: dict) -> list[str]:
-    """Ritorna lista dei campi required dello schema che NON sono in args."""
-    if not isinstance(schema, dict):
-        return []
-    required = schema.get("required") or []
-    if not isinstance(required, list):
-        return []
-    return [r for r in required if r not in args]
-
-
-def _llm_extract_args(
-    query: str,
-    executor_name: str,
-    schema: dict,
-    missing: list[str],
-) -> dict:
-    """LLM fallback: chiede al tier fast di estrarre i required missing
-    dato schema + query.
-
-    Opt-in via `METNOS_CQ_ARGS_LLM=1`. Cache disk-based per evitare di
-    chiamare l'LLM piu' volte per la stessa (query, tool, missing). Cache
-    key: sha256(query + tool + missing_csv).
-
-    Returns:
-      dict con solo le chiavi `missing` che il modello ha estratto.
-      Vuoto se LLM errore o parsing fallisce.
-    """
-    if not missing:
-        return {}
-    import hashlib
-    cache_dir = Path(os.environ.get(
-        "METNOS_CQ_ARGS_LLM_CACHE",
-        Path.home() / ".cache" / "metnos" / "args_extractor_llm",
-    ))
-    cache_dir.mkdir(parents=True, exist_ok=True)
-    key_src = f"{query}|{executor_name}|{','.join(sorted(missing))}"
-    cache_key = hashlib.sha256(key_src.encode("utf-8")).hexdigest()[:32]
-    cache_file = cache_dir / f"{cache_key}.json"
-    if cache_file.is_file():
-        try:
-            cached = json.loads(cache_file.read_text(encoding="utf-8"))
-            if isinstance(cached, dict):
-                return cached
-        except Exception:
-            pass
-    # Prompt vincolato: schema JSON per i missing fields, query in chiaro,
-    # output atteso JSON strict.
-    props = schema.get("properties") or {}
-    sub_schema = {k: props.get(k, {}) for k in missing if k in props}
-    system_prompt = (
-        "Estrai SOLO i valori dei campi richiesti dalla query utente. "
-        "Output JSON oggetto con esattamente le chiavi richieste. "
-        "Se un campo non e' deducibile dalla query, omettilo. "
-        "Nessun commento, nessun markdown, solo JSON valido."
-    )
-    user_prompt = (
-        f"Executor: {executor_name}\n"
-        f"Schema campi richiesti:\n{json.dumps(sub_schema, ensure_ascii=False)}\n\n"
-        f"Query utente:\n{query}\n\n"
-        f"JSON:"
-    )
-    try:
-        from llm_router import LLMRouter
-        router = LLMRouter()
-        provider = router.provider("fast")
-        res = provider.chat(
-            system_prompt, user_prompt,
-            max_tokens=200, temperature=0, think=False,
-        )
-        text = (res.text or "").strip()
-        # Strip code fences se presenti.
-        if text.startswith("```"):
-            text = text.strip("`").lstrip("json").strip()
-        parsed = json.loads(text)
-        if not isinstance(parsed, dict):
-            return {}
-        # Filtra solo chiavi valide.
-        out = {k: v for k, v in parsed.items() if k in missing}
-        try:
-            cache_file.write_text(
-                json.dumps(out, ensure_ascii=False),
-                encoding="utf-8",
-            )
-        except Exception:
-            pass
-        return out
-    except Exception as ex:
-        _LOG.debug("args_extractor LLM fallback failed: %r", ex)
-        return {}
-
-
-def extract_args(
-    query: str,
-    executor_name: str,
-    schema: dict | None,
-    *,
-    observed_args: dict | None = None,
-    llm_fallback: bool = False,
-) -> dict:
-    """Args extraction hybrid V1.5 (ADR 0149 + 0150 19/5/2026 v5).
-
-    Ordine (deterministic):
-      1. `observed_args` (memoization da canonical_query_log): se presente
-         e non vuoto, viene preferito (already-learned at first planner call).
-      2. `regex_extract`: pattern deterministici PATH/URL/INT/EMAIL/GLOB/DATE/
-         TIME_WINDOW. V1.5: home → ~, "file PDF" → *.pdf, oggi/today, etc.
-      3. `llm_fallback`: opt-in `METNOS_CQ_ARGS_LLM=1` o param `llm_fallback`.
-         Chiama tier fast LLM con prompt vincolato a schema required missing.
-         Cache disk-based per evitare re-call. Solo args required non coperti
-         da 1+2.
-
-    Determinismo §7.9: 1+2 zero-LLM. LLM solo se esplicitamente attivato.
-    """
-    args: dict = {}
-    if isinstance(observed_args, dict) and observed_args:
-        args.update(observed_args)
-    extracted = regex_extract(query, schema)
-    if extracted:
-        for k, v in extracted.items():
-            args.setdefault(k, v)
-    # LLM fallback opt-in: env flag O toml (Fase 12 v5) O param esplicito.
-    if not llm_fallback:
-        try:
-            from runtime_settings import canonical_query_args_llm
-            llm_fallback = canonical_query_args_llm()
-        except Exception:
-            llm_fallback = (
-                os.environ.get("METNOS_CQ_ARGS_LLM", "0") == "1"
-            )
-    if llm_fallback and isinstance(schema, dict):
-        missing = _required_missing(schema, args)
-        if missing:
-            llm_args = _llm_extract_args(query, executor_name, schema, missing)
-            for k, v in llm_args.items():
-                args.setdefault(k, v)
-    return args

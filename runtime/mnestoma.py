@@ -113,10 +113,12 @@ SELECT id, src_executor, src_version, dst_executor, dst_version,
 FROM mnests
 WHERE state IN ('active', 'proto');
 
--- ADR 0149: canonical_query log per fast-path single-tool promotion.
+-- ADR 0149: canonical_query log (by-product di normalizzazione del PLANNER).
 -- Per ogni turno planner che emette canonical_query non vuota, una entry
--- qui (UPSERT su (canonical, tool, args_shape)). Diventa il dataset per
--- la promozione L1 in fast_path.py (cosine match + uses >= K_path).
+-- qui (UPSERT su (canonical, tool, args_shape)). Telemetria proiettata in
+-- change_intents (adapter `canonical`, kind cache_pattern). NB 11/6/2026:
+-- il matcher L1 che la consumava per il replay e' stato ritirato
+-- (ridondante con engine/fastpath L0).
 CREATE TABLE IF NOT EXISTS canonical_query_log (
   id              INTEGER PRIMARY KEY AUTOINCREMENT,
   canonical_query TEXT    NOT NULL,
@@ -508,8 +510,12 @@ class Mnestoma:
         il retry di un turno bocciato non deve riusare pattern appena
         rifiutati).
 
-        Usa BGE embedder via canonical_matcher se disponibile. Se BGE non
-        installato → fallback a EXACT match case-insensitive trimmed.
+        Usa BGEEmbeddingService se disponibile. Se BGE non installato →
+        fallback a EXACT match case-insensitive trimmed.
+        Fix 11/6/2026 (latente): l'import `canonical_matcher._get_embedder`
+        non e' mai esistito a livello modulo e `embed_documents` non e' un
+        metodo del servizio → il ramo BGE cadeva SEMPRE nel fallback exact.
+        Ora import diretto + `embed_texts` (L2-normalized → dot = cosine).
 
         Ritorna n. entries cancellate.
         """
@@ -523,24 +529,22 @@ class Mnestoma:
         ids_to_delete: list[int] = []
         try:
             import numpy as np
-            from canonical_matcher import _get_embedder  # type: ignore
-            emb = _get_embedder()
+            from bge_embedding import BGEEmbeddingService
+            emb = BGEEmbeddingService()
         except Exception:
             emb = None
             np = None
         if emb is not None and np is not None:
             try:
-                qv = emb.embed_query(query)
-                qv = np.asarray(qv, dtype=np.float32)
+                qv = np.asarray(emb.embed_query(query), dtype=np.float32)
                 texts = [r["canonical_query"] or "" for r in rows]
-                if texts:
-                    ev = emb.embed_documents(texts)
-                    if not isinstance(ev, np.ndarray):
-                        ev = np.asarray(ev, dtype=np.float32)
-                    scores = ev @ qv
-                    for r, sc in zip(rows, scores):
-                        if float(sc) >= cosine_threshold:
-                            ids_to_delete.append(int(r["id"]))
+                ev = emb.embed_texts(texts)
+                if not isinstance(ev, np.ndarray):
+                    ev = np.asarray(ev, dtype=np.float32)
+                scores = ev @ qv
+                for r, sc in zip(rows, scores):
+                    if float(sc) >= cosine_threshold:
+                        ids_to_delete.append(int(r["id"]))
             except Exception:
                 emb = None
         if emb is None:
