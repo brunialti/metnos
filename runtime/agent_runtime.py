@@ -5351,6 +5351,55 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
                     print(f"[fast_path] match ma executor fallito ({_fp_obs.get('error')!r}), "
                           f"fallback PLANNER")
 
+        # ── L2.6 Scheduling deterministico (§7.9, bug live 10/6/2026) ───
+        # «every 30 min: <corpo>» / «ogni giorno alle 8 <corpo>» = richiesta
+        # di SCHEDULING: il corpo va eseguito al FIRE del task, non adesso.
+        # Engine v2 non ha supporto scheduling (dispatch/fastpath/
+        # routing_pool: zero logica *_tasks — il proposer pianifica il CORPO
+        # e lo esegue subito → «Pipeline malformata o argomenti
+        # insufficienti»); il PLANNER legacy che chiamava create_tasks e'
+        # disattivato di default (METNOS_PLANNER_LEGACY=0, ADR 0163). La
+        # grammatica dello scheduler e' CHIUSA (daily@HH:MM | every_Nm) →
+        # parse NL deterministico e limitato. Parse PULITO → registra via
+        # handle_create_tasks (stesso handler del tool create_tasks);
+        # ambiguo/interrogativo → fallthrough al flusso normale.
+        _rec_parsed = None
+        if not resume_with_scratchpad and not _ref_images_for_prompt:
+            try:
+                from recurring_tasks import parse_recurrence_query as _parse_rec
+                _rec_parsed = _parse_rec(user_query_for_run)
+            except Exception as _ex_rec:
+                _LOG.warning("parse_recurrence_query failed: %s", _ex_rec)
+                _rec_parsed = None
+        if _rec_parsed:
+            _rt_obs = _invoke_builtin_handler(
+                "create_tasks", dict(_rec_parsed),
+                actor=actor, channel=channel, turn_id=turn_id)
+            if verbose:
+                print(f"[scheduling] recurrence parse when={_rec_parsed['when']!r} "
+                      f"query={_rec_parsed['query']!r} → create_tasks "
+                      f"ok={_rt_obs.get('ok')}")
+            if _rt_obs.get("ok"):
+                _rt_step = StepLog(step_num=1)
+                _rt_step.chosen_tool = "create_tasks"
+                _rt_step.raw_args = dict(_rec_parsed)
+                _rt_step.resolved_args = dict(_rec_parsed)
+                _rt_step.result = _rt_obs
+                log.steps.append(_rt_step)
+                log.final_kind = "answer"
+                log.final_message = (_rt_obs.get("message")
+                                      or f"Task registrato: {_rec_parsed['label']}")
+                log.ts_end = time.time(); log.write(); return log
+            # Registrazione fallita (quota, validazione): errore ONESTO
+            # (§2.8). NON fallthrough: engine v2 eseguirebbe il CORPO del
+            # task subito, che e' proprio il bug che questa route evita.
+            _LOG.warning("scheduling route: create_tasks failed: %s",
+                          _rt_obs.get("error"))
+            log.final_kind = "error"
+            log.final_message = (_rt_obs.get("error")
+                                  or msg("ERR_QUERY_NOT_UNDERSTOOD"))
+            log.ts_end = time.time(); log.write(); return log
+
         # ── L3 Engine v2 (ADR 0164) ────────────────────────────────────
         # Dispatcher 4-layer: fastpath → autopath → validator → engine.
         # Sostituisce Praxis legacy. Feature flag METNOS_ENGINE_V2=1
@@ -5368,7 +5417,17 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
             )
             _q_tokens = _pf_tokenize(user_query_for_run)
             _q_verbs = _pf_detect_verbs(_q_tokens)
-            if len(set(_q_verbs)) >= 2:
+            # Guard scheduling (§7.9, bug live 10/6/2026): una query con
+            # marker scheduling («every 30 min: read the issues…», «ogni
+            # giorno alle 8 controlla…») NON va decomposta: il corpo del
+            # task si esegue al FIRE, non adesso. Il decomposer non conosce
+            # create_tasks → produceva pipeline del corpo con args mancanti
+            # («Pipeline malformata o argomenti insufficienti»). Defer a
+            # Engine v2 (intent create/tasks via bypass ricorrenza) o al
+            # PLANNER legacy (CREATE_TASKS_TOOL nel pool).
+            from tool_grammar import query_has_tasks_marker as _qhtm
+            _q_is_scheduling = _qhtm(user_query_for_run)
+            if len(set(_q_verbs)) >= 2 and not _q_is_scheduling:
                 # Try deterministic decomposer
                 try:
                     from compound_decomposer import decompose_query
@@ -6382,9 +6441,12 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
         # «cerca mail bookings» → PLANNER scelse read_tasks_history). Lista
         # marker in `tool_grammar._TASKS_MARKERS`; helper `_has_word` per
         # word-boundary deterministic match §7.9.
-        from tool_grammar import _TASKS_MARKERS, _has_word
-        _user_query_lc = (user_query or "").lower()
-        _query_has_tasks_marker = _has_word(_user_query_lc, _TASKS_MARKERS)
+        # Predicato CONDIVISO con il pool grammar (tool_grammar): include
+        # anche le frasi di scheduling «every 30 min» / «ogni 30 minuti»
+        # (_RE_SCHEDULE_PHRASE), non solo le parole _TASKS_MARKERS — prima
+        # "every 30 min" non iniettava create_tasks (bug live 10/6/2026).
+        from tool_grammar import query_has_tasks_marker as _qhtm_inject
+        _query_has_tasks_marker = _qhtm_inject(user_query or "")
         synth_tools = [
             SYNTH_REQUEST_TOOL, CLASSIFY_ENTRIES_TOOL, LOCATION_REQUEST_TOOL,
         ]

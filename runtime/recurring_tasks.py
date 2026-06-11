@@ -141,6 +141,112 @@ def _parse_when(when: str) -> str:
     return when
 
 
+# ── Parse deterministico di query NL con ricorrenza (§7.9) ────────────────
+# «Every 30 min: <corpo>» / «ogni giorno alle 8 <corpo>» → {when, query,
+# label}. La grammatica TARGET dello scheduler e' CHIUSA (daily@HH:MM |
+# every_Nm): il mapping NL→schedule per le frasi di ricorrenza comuni e'
+# deterministico e limitato. Parse ambiguo (es. «ogni giorno» senza orario,
+# «ogni settimana» non rappresentabile, domanda interrogativa) → None: il
+# chiamante fa fallthrough al flusso normale. Fix bug live 10/6/2026:
+# «Every 30 min: read the new open issues…» finiva nel decomposer/engine
+# che eseguivano il CORPO subito → «Pipeline malformata».
+
+# Domande analitiche che CITANO una ricorrenza senza chiedere scheduling
+# («quante mail ricevo ogni giorno?») → mai auto-registrare.
+_RE_INTERROGATIVE = re.compile(
+    r"^\s*(?:quant[ieoa]|qual[ie]?|chi|che|cosa|come|perch[eé]|quando|dove|"
+    r"how|what|which|who|why|when|where|do|does|did|is|are|can|could)\b",
+    re.IGNORECASE,
+)
+
+# Clausola di ricorrenza: ogni/every [N] unita' [alle/at HH[:MM]].
+_RE_RECURRENCE_CLAUSE = re.compile(
+    r"\b(?:ogni|every)\s+(?:(\d+)\s*)?"
+    r"(mezz'?\s?ora|half\s+(?:an\s+)?hour|"
+    r"minut[oi]|minutes?|mins?\b|or[ae]\b|hours?\b|hrs?\b|"
+    r"giorn[oi]|days?\b|d[ìi]\b)"
+    r"(?:\s+(?:alle?|at)\s+(\d{1,2})(?:[:.](\d{2}))?)?",
+    re.IGNORECASE,
+)
+# «daily [alle/at HH[:MM]]» / «hourly» standalone.
+_RE_DAILY_CLAUSE = re.compile(
+    r"\bdaily\b(?:\s+(?:alle?|at)\s+(\d{1,2})(?:[:.](\d{2}))?)?",
+    re.IGNORECASE,
+)
+_RE_HOURLY_CLAUSE = re.compile(r"\bhourly\b", re.IGNORECASE)
+
+
+def _strip_clause(query: str, span: tuple[int, int]) -> str:
+    """Rimuove la clausola di schedule dalla query e pulisce i connettori
+    residui ai bordi (':', ',', 'e', 'and', 'poi', 'then')."""
+    body = (query[: span[0]] + " " + query[span[1]:]).strip()
+    body = re.sub(r"^(?:[:;,\-]\s*|(?:e|ed|and|poi|then)\s+)+", "", body,
+                  flags=re.IGNORECASE)
+    body = re.sub(r"(?:\s+(?:e|ed|and|poi|then)|[:;,\-])+\s*$", "", body,
+                  flags=re.IGNORECASE)
+    return re.sub(r"\s{2,}", " ", body).strip()
+
+
+def parse_recurrence_query(query: str) -> dict | None:
+    """Parse deterministico di una query utente con ricorrenza esplicita.
+
+    Ritorna {"when": <daily@HH:MM|every_Nm>, "query": <corpo>, "label":
+    <etichetta derivata>} se il parse e' PULITO (cadenza rappresentabile +
+    corpo non vuoto). Altrimenti None (fallthrough al flusso normale —
+    mai indovinare §2.8).
+    """
+    if not query or not isinstance(query, str):
+        return None
+    if query.rstrip().endswith("?") or _RE_INTERROGATIVE.match(query):
+        return None
+    when: str | None = None
+    span: tuple[int, int] | None = None
+    m = _RE_RECURRENCE_CLAUSE.search(query)
+    if m:
+        n = int(m.group(1)) if m.group(1) else 1
+        unit = m.group(2).lower()
+        hh, mm = m.group(3), m.group(4)
+        if n <= 0:
+            return None
+        if unit.startswith("mezz") or unit.startswith("half"):
+            when = "every_30m"
+        elif unit.startswith(("minut", "min")):
+            when = f"every_{n}m"
+        elif unit.startswith(("or", "hour", "hr")):
+            when = f"every_{n * 60}m"
+        elif unit.startswith(("giorn", "day", "dì", "di")):
+            # daily richiede l'orario: senza, il parse NON e' pulito.
+            if hh is None or int(hh) > 23 or (mm and int(mm) > 59):
+                return None
+            when = f"daily@{int(hh):02d}:{int(mm) if mm else 0:02d}"
+        else:
+            return None
+        span = m.span()
+    else:
+        m = _RE_DAILY_CLAUSE.search(query)
+        if m:
+            hh, mm = m.group(1), m.group(2)
+            if hh is None or int(hh) > 23 or (mm and int(mm) > 59):
+                return None
+            when = f"daily@{int(hh):02d}:{int(mm) if mm else 0:02d}"
+            span = m.span()
+        else:
+            m = _RE_HOURLY_CLAUSE.search(query)
+            if m:
+                when = "every_60m"
+                span = m.span()
+    if not when or span is None:
+        return None
+    if not _SCHEDULE_RE.match(when):
+        return None
+    body = _strip_clause(query, span)
+    # Corpo vuoto o senza sostanza ("ogni 30 minuti" e basta) → ambiguo.
+    if len(re.sub(r"[^a-zA-Zàèéìòù]", "", body)) < 3:
+        return None
+    label = body if len(body) <= 60 else body[:60].rsplit(" ", 1)[0]
+    return {"when": when, "query": body, "label": label}
+
+
 def register_user_task(
     *,
     label: str,

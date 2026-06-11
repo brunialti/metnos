@@ -752,6 +752,38 @@ _RE_SCHEDULE_PHRASE = re.compile(
     r"|\b(?:fra|tra)\s+(?:\d+|un[ao']?|mezz)",
     re.IGNORECASE,
 )
+# Sottoinsieme STRETTO di _RE_SCHEDULE_PHRASE: solo RICORRENZA esplicita
+# (ogni/every + unita' temporale), senza il ramo "fra/tra + numero" che
+# matcherebbe frasi comuni ("differenza tra 2 file"). Usato dal bypass
+# deterministico dell'intent extractor (§7.9): ricorrenza ⇒ create/tasks.
+_RE_RECURRENCE_PHRASE = re.compile(
+    r"\b(?:ogni|every)\s+(?:\d+\s*)?"
+    r"(?:second|minut|min\b|or[ae]\b|giorn|d[ìi]\b|settiman|mes[ei]\b|ann|"
+    r"day|hour|week|month|year)",
+    re.IGNORECASE,
+)
+_RECURRENCE_WORDS: tuple[str, ...] = ("daily", "weekly", "hourly")
+
+
+def query_has_tasks_marker(query: str) -> bool:
+    """True se la query contiene un marker scheduling: parola _TASKS_MARKERS
+    oppure frase ogni/every/fra + unita' (_RE_SCHEDULE_PHRASE). Predicato
+    UNICO condiviso fra pool grammar e iniezione tool del PLANNER (prima
+    agent_runtime usava solo _TASKS_MARKERS → "every 30 min" non iniettava
+    create_tasks, bug live 10/6/2026)."""
+    q = (query or "").lower()
+    return _has_word(q, _TASKS_MARKERS) or bool(_RE_SCHEDULE_PHRASE.search(q))
+
+
+def query_is_recurrence(query: str) -> bool:
+    """True se la query chiede una RICORRENZA esplicita ("every 30 min",
+    "ogni giorno alle 8", "daily"). Segnale deterministico §7.9 che la query
+    e' una richiesta di SCHEDULING (create_tasks): il corpo va eseguito al
+    fire del task, non subito."""
+    q = (query or "").lower()
+    return bool(_RE_RECURRENCE_PHRASE.search(q)) or _has_word(q, _RECURRENCE_WORDS)
+
+
 _TASKS_NAMES: tuple[str, ...] = (
     "create_tasks", "list_tasks", "delete_tasks",
     "read_tasks", "set_tasks", "read_tasks_history",
@@ -937,9 +969,9 @@ def filter_pool_for_grammar(tools: Sequence[Any], user_query: str,
     if not _has_word(query_markers, _UNDO_MARKERS):
         excluded.append("undo_last_turn")
     # Tasks builtin: escludi se query non ha marker scheduling (anti-bait
-    # del PLANNER LLM su query mail/file ambigue).
-    if not (_has_word(query_markers, _TASKS_MARKERS)
-            or _RE_SCHEDULE_PHRASE.search(query_markers)):
+    # del PLANNER LLM su query mail/file ambigue). Predicato condiviso con
+    # l'iniezione tool del PLANNER (agent_runtime).
+    if not query_has_tasks_marker(query_markers):
         excluded.extend(_TASKS_NAMES)
     # Skill-admin builtin: escludi se la query non nomina skill/capacità.
     if not _has_word(query_markers, _SKILLS_MARKERS):
