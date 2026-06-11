@@ -288,14 +288,36 @@ def delete(fp_id: int) -> bool:
         return False
 
 
-# ── Aging (state_reaper notturno) ──────────────────────────────────────────
+# ── Aging + morte (state_reaper notturno) ──────────────────────────────────
 
-def prune(*, stale_days: int | None = None, grace_days: int | None = None,
+def framework_tools(framework_json: str) -> list[str]:
+    """Tool-step reali del framework serializzato (escluso final_answer)."""
+    try:
+        d = json.loads(framework_json)
+    except Exception:
+        return []
+    out = []
+    for s in (d.get("steps") or []):
+        if isinstance(s, dict):
+            t = s.get("tool") or ""
+            if t and t != "final_answer":
+                out.append(t)
+    return out
+
+
+def _in_family(name: str, stem: str) -> bool:
+    """True se `name` appartiene alla famiglia §2.2 di `stem`
+    (verb_object esatto o con qualifier/descriptor: stem oppure stem_*)."""
+    return name == stem or name.startswith(stem + "_")
+
+
+def prune(*, catalog_names: Optional[set] = None,
+          stale_days: int | None = None, grace_days: int | None = None,
           max_rows: int | None = None, now_ts: float | None = None) -> dict:
-    """Aging deterministico (§7.9) dello store fastpath. Chiamato dal
-    `task_state_reaper` notturno (stesso aggancio di autopath.prune).
+    """Aging + morte deterministici (§7.9) dello store fastpath. Chiamato
+    dal `task_state_reaper` notturno (stesso aggancio di autopath.prune).
 
-    Tre regole, in quest'ordine:
+    AGING, tre regole in quest'ordine:
       1. mai-riusato: last_used IS NULL e created_at oltre la grazia
          (default 14gg, env METNOS_FASTPATH_GRACE_DAYS) — la query non si è
          mai ripetuta, la cache non ha valore.
@@ -304,6 +326,19 @@ def prune(*, stale_days: int | None = None, grace_days: int | None = None,
       3. cap LRU: oltre max_rows (default 500, env METNOS_FASTPATH_MAX)
          pota le least-recently-active — bound sia sul disco sia sulla
          latenza del lookup 0b (scan O(N) degli embedding).
+
+    MORTE (solo con `catalog_names`, che DEVE essere il set COMPLETO dei
+    tool invocabili: executor caricati + builtin in-process; None o set
+    incompleto → il chiamante passi None: meglio nessuna morte che falsi
+    kill §2.8):
+      C1. tool del piano non più nel catalog (ritirato/rinominato/archiviato)
+          → il replay fallirebbe wrong_tool.
+      C2. executor EQUIVALENTE: esiste `{intent_verb}_{intent_object}[_*]`
+          nel catalog ma NESSUN tool del piano è di quella famiglia → un
+          executor implementa ora DIRETTAMENTE l'intent del fastpath (§2.2:
+          synt nomina verb_object[_qualifier] dall'intent); il fastpath,
+          vincendo in cascata, lo oscurerebbe per sempre → muore, il
+          prossimo turno ripianifica via L3 col nuovo executor.
 
     Economia: un fastpath potato per errore SI RICREA DA SOLO alla prossima
     ripetizione riuscita (auto-produzione) → la potatura costa zero e i
@@ -324,7 +359,8 @@ def prune(*, stale_days: int | None = None, grace_days: int | None = None,
                              time.gmtime(now - days * 86400))
 
     report = {"never_reused_removed": 0, "stale_removed": 0,
-              "cap_removed": 0, "kept": 0}
+              "cap_removed": 0, "dead_missing_tool": 0,
+              "dead_superseded": 0, "kept": 0}
     try:
         c = _conn()
         report["never_reused_removed"] = c.execute(
@@ -338,6 +374,33 @@ def prune(*, stale_days: int | None = None, grace_days: int | None = None,
             "SELECT id FROM fastpaths "
             "ORDER BY COALESCE(last_used, created_at) DESC LIMIT ?)",
             (int(max_rows),)).rowcount
+        # Morte C1/C2 (solo con un catalog completo)
+        if catalog_names:
+            dead: list[tuple[int, str]] = []
+            rows = c.execute(
+                "SELECT id, framework_json, intent_verb, intent_object "
+                "FROM fastpaths").fetchall()
+            for fp_id, fjson, iverb, iobj in rows:
+                tools = framework_tools(fjson)
+                missing = [t for t in tools if t not in catalog_names]
+                if missing:
+                    dead.append((fp_id, "missing_tool"))
+                    log.info("fastpath: morte fp_id=%d (tool mancante %s)",
+                             fp_id, missing[0])
+                    continue
+                if iverb and iobj:
+                    stem = f"{iverb}_{iobj}"
+                    if (not any(_in_family(t, stem) for t in tools)
+                            and any(_in_family(n, stem)
+                                    for n in catalog_names)):
+                        dead.append((fp_id, "superseded"))
+                        log.info("fastpath: morte fp_id=%d (executor "
+                                 "equivalente famiglia %s_*)", fp_id, stem)
+            for fp_id, why in dead:
+                c.execute("DELETE FROM fastpaths WHERE id = ?", (fp_id,))
+                key = ("dead_missing_tool" if why == "missing_tool"
+                       else "dead_superseded")
+                report[key] += 1
         c.commit()
         report["kept"] = c.execute(
             "SELECT COUNT(*) FROM fastpaths").fetchone()[0]

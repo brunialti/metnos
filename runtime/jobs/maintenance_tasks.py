@@ -178,10 +178,30 @@ def task_state_reaper() -> dict:
 
     def _fastpath():
         # Aging L0 (11/6/2026): mai-riusato oltre grazia, stale, cap LRU.
-        # Costo-zero: un fastpath potato per errore si ricrea da solo alla
-        # prossima ripetizione riuscita (auto-produzione in dispatch).
+        # + MORTE: tool mancante dal catalog (C1) o executor che implementa
+        # direttamente l'intent del fastpath (C2). Costo-zero: un fastpath
+        # potato per errore si ricrea da solo alla prossima ripetizione
+        # riuscita (auto-produzione in dispatch).
         from engine import fastpath
-        return fastpath.prune()
+
+        # Contratto prune: catalog_names = set COMPLETO dei tool invocabili
+        # (executor caricati + builtin in-process di agent_runtime). Se non
+        # ricostruibile per intero → None: solo aging, nessuna morte
+        # stanotte (meglio di falsi kill, §2.8).
+        names = None
+        try:
+            import sys as _sys
+            from loader import load_catalog
+            names = set(load_catalog().all_names())
+            _ar = _sys.modules.get("agent_runtime")
+            if _ar is None:
+                import agent_runtime as _ar
+            names |= set(getattr(_ar, "_BUILTIN_TOOL_HANDLERS", {}) or {})
+        except Exception as ex:
+            log.warning("state_reaper[fastpath]: catalog incompleto (%r) → "
+                        "solo aging, niente morte", ex)
+            names = None
+        return fastpath.prune(catalog_names=names)
     _run("fastpath", _fastpath)
 
     def _turn_logs():

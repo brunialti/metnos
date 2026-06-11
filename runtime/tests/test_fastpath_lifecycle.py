@@ -299,5 +299,92 @@ class TestAging(_FastpathDbCase):
         self.assertEqual(rep2["stale_removed"], 0)
 
 
+# ── 4. Morte (executor mancante C1 / equivalente C2) ───────────────────────
+
+class TestDeath(_FastpathDbCase):
+    _AGING = dict(stale_days=30, grace_days=14, max_rows=500, now_ts=_NOW)
+
+    def test_c1_missing_tool_pruned(self):
+        eng_fastpath.record_success("comando con tool ritirato",
+                                    _fw("ghost_tool"))
+        rep = eng_fastpath.prune(catalog_names={"get_now", "find_files"},
+                                 **self._AGING)
+        self.assertEqual(rep["dead_missing_tool"], 1)
+        self.assertEqual(eng_fastpath.list_all(), [])
+
+    def test_c2_equivalent_executor_kills(self):
+        # Piano N-step per intent (compress, images); poi synt crea
+        # compress_images → il fastpath muore (l'executor lo rimpiazza,
+        # altrimenti L0 lo oscurerebbe per sempre).
+        intent = Intent(verb="compress", object="images")
+        eng_fastpath.record_success(
+            "comprimi le foto di marzo",
+            _fw("find_images", "compress_files_zip"), intent=intent)
+        rep = eng_fastpath.prune(
+            catalog_names={"find_images", "compress_files_zip",
+                           "compress_images"}, **self._AGING)
+        self.assertEqual(rep["dead_superseded"], 1)
+        self.assertEqual(eng_fastpath.list_all(), [])
+
+    def test_c2_plan_already_in_family_immune(self):
+        # Il piano USA già la famiglia verb_object (find_messages): la
+        # variante provider (find_messages_google_workspace) NON è un
+        # rimpiazzo → nessuna morte.
+        intent = Intent(verb="find", object="messages")
+        eng_fastpath.record_success(
+            "cerca le mail di ieri", _fw("find_messages"), intent=intent)
+        rep = eng_fastpath.prune(
+            catalog_names={"find_messages", "find_messages_google_workspace"},
+            **self._AGING)
+        self.assertEqual(rep["dead_superseded"], 0)
+        self.assertEqual(len(eng_fastpath.list_all()), 1)
+
+    def test_c2_without_equivalent_kept(self):
+        intent = Intent(verb="compress", object="images")
+        eng_fastpath.record_success(
+            "comprimi le foto di marzo",
+            _fw("find_images", "compress_files_zip"), intent=intent)
+        rep = eng_fastpath.prune(
+            catalog_names={"find_images", "compress_files_zip"},
+            **self._AGING)
+        self.assertEqual(rep["dead_superseded"], 0)
+        self.assertEqual(len(eng_fastpath.list_all()), 1)
+
+    def test_no_catalog_no_death(self):
+        # catalog_names=None (set completo non ricostruibile): solo aging,
+        # MAI morte — meglio nessun kill che falsi kill (§2.8).
+        eng_fastpath.record_success("comando con tool ritirato",
+                                    _fw("ghost_tool"))
+        rep = eng_fastpath.prune(catalog_names=None, **self._AGING)
+        self.assertEqual(rep["dead_missing_tool"], 0)
+        self.assertEqual(len(eng_fastpath.list_all()), 1)
+
+    def test_c1_hit_time_guard_self_heals(self):
+        # Fastpath stantio che riferisce un tool ritirato: a hit-time viene
+        # POTATO (mai eseguito → niente wrong_tool) e il turno cade su L3,
+        # che ripianifica col catalog corrente; il successo RI-CREA il
+        # fastpath col piano nuovo (self-healing).
+        q = "che ore sono adesso"
+        eng_fastpath.record_success(q, _fw("ghost_tool"))
+        fake = _FakeProposer(_fw("get_now"))
+        catalog = [SimpleNamespace(
+            name="get_now",
+            args_schema={"type": "object", "properties": {}})]
+        env = {"METNOS_ENGINE": "simple", "METNOS_FASTPATH": "1"}
+        with mock.patch.dict(os.environ, env), \
+             mock.patch("engine.proposer.get_proposer", return_value=fake), \
+             mock.patch("engine.cluster.embed", new=lambda q: None):
+            r = eng_dispatch.run_turn(
+                query=q, intent=Intent(), catalog=catalog,
+                invoke_executor_cb=lambda n, a: {"ok": True, "iso": "x"},
+                turn_id="t1")
+        self.assertEqual(r.match_source, "engine")  # fall-through, no replay
+        self.assertEqual(fake.calls, 1)
+        rows = eng_fastpath.list_all()
+        self.assertEqual(len(rows), 1)  # ri-creato dal successo
+        hit = eng_fastpath.lookup(q)
+        self.assertEqual(hit.framework.steps[0].tool, "get_now")
+
+
 if __name__ == "__main__":
     unittest.main()

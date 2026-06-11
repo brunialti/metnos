@@ -151,6 +151,21 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
     if is_fastpath_enabled():
         fp_hit = _fp.lookup(query)
         if fp_hit is not None:
+            # Morte C1 a hit-time (§2.8): un piano che riferisce un executor
+            # non più nel catalog (ritirato/rinominato/archiviato) NON va
+            # eseguito (fallirebbe wrong_tool) né tenuto: delete +
+            # fall-through a L1/L3, che ripianificano col catalog corrente;
+            # il successo ri-crea il fastpath col piano nuovo (self-healing).
+            _cat_names = {getattr(e, "name", None) for e in catalog}
+            _missing = [s.tool for s in fp_hit.framework.steps
+                        if s.tool and s.tool != "final_answer"
+                        and s.tool not in _cat_names]
+            if _cat_names and _missing:
+                log.info("[L0 fastpath] fp_id=%d riferisce executor mancanti "
+                         "%s → morte + fall-through", fp_hit.fp_id, _missing)
+                _fp.delete(fp_hit.fp_id)
+                fp_hit = None
+        if fp_hit is not None:
             if verbose:
                 log.info("[L0 fastpath] hit (%s, sim=%.2f): %s",
                           fp_hit.match_kind, fp_hit.similarity,
