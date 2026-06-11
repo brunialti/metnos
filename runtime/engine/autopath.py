@@ -3,8 +3,10 @@
 Caching framework dopo N feedback ✓ utente nello stesso cluster semantico.
 
 Differenza vs Fastpath (Layer 0):
-  - Fastpath: utente clicca "approva" esplicitamente
-  - Autopath: sistema promuove dopo 2+ ✓ stesso framework_hash + cluster
+  - Fastpath: cache della STESSA query (hash/cosine) auto-prodotta a ogni
+    turno-successo del piano pieno; ammette piani query-specific (solo 0a).
+  - Autopath: generalizzazione a cluster/intent col consenso del feedback ✓
+    (2+ stesso framework_hash + cluster); rifiuta piani query-specific.
 
 Storage: ~/.local/share/metnos/autopath.sqlite (rename da praxis.sqlite).
 
@@ -31,7 +33,7 @@ from typing import Optional
 
 from .types import Intent, Framework
 from . import cluster as _cluster
-from .executor import compute_framework_hash
+from .executor import compute_framework_hash, is_query_specific as _is_query_specific
 
 log = logging.getLogger(__name__)
 
@@ -170,39 +172,8 @@ def _compute_intent_sig(intent: Intent) -> tuple[str, str]:
 
 
 # ── Lookup ────────────────────────────────────────────────────────────────
-
-# Arg che portano il TESTO di ricerca dell'utente (NL query-specifica): se uno
-# di questi ha un valore LITERAL (non un placeholder ${...}), il framework e'
-# legato a QUELLA query e NON generalizza al cluster/intent. Cacharlo avvelena la
-# fast-path: «cerca foto <persona>» riuserebbe il piano congelato di «cerca foto
-# montagna». Lista CHIUSA (§2.2), allineata agli arg content-bearing degli
-# executor find_* (immagini/persone/url/messaggi testuali).
-_CONTENT_ARG_KEYS = frozenset({
-    "query_text", "name", "names", "content", "query", "search", "search_text",
-    "text_query", "body_contains", "subject_contains", "from_contains",
-})
-
-
-def _is_query_specific(framework_json: str) -> bool:
-    """True se il framework incorpora un arg content-bearing LITERAL (non
-    placeholder ${...}) → legato alla singola query, non promuovibile/riusabile.
-    Deterministico (§7.9): nessun LLM, solo ispezione args."""
-    try:
-        d = json.loads(framework_json)
-    except Exception:
-        return False
-    for step in (d.get("steps") or []):
-        if not isinstance(step, dict):
-            continue
-        args = step.get("args") or {}
-        if not isinstance(args, dict):
-            continue
-        for k in _CONTENT_ARG_KEYS:
-            v = args.get(k)
-            for item in (v if isinstance(v, list) else [v]):
-                if isinstance(item, str) and item.strip() and "${" not in item:
-                    return True
-    return False
+# Predicato query-specificity condiviso con L0 fastpath: vive in
+# engine/executor.py (is_query_specific + CONTENT_ARG_KEYS).
 
 
 def lookup(query: str, intent: Intent) -> Optional[AutopathHit]:
@@ -527,26 +498,8 @@ def active_anti_skills(limit: int = 20) -> list[dict]:
         c.close()
 
 
-# ── Demote (chiamato da fastpath.approve quando conflict) ─────────────────
-
-def demote_skill_for_query(query: str, intent: Intent,
-                            fastpath_framework_hash: str) -> int:
-    """Quando user approva fastpath con framework_hash diverso da skill
-    esistente per stesso cluster → demote skill. LWW utente-prevale."""
-    _, ihash = _compute_intent_sig(intent)
-    try:
-        c = _conn()
-        cur = c.execute(
-            "UPDATE skills SET status = 'demoted' "
-            "WHERE intent_hash = ? AND framework_hash != ? "
-            "AND status = 'active'",
-            (ihash, fastpath_framework_hash))
-        c.commit()
-        n = cur.rowcount
-        c.close()
-        if n:
-            log.info("autopath: demoted %d skill(s) superseded by fastpath", n)
-        return n
-    except Exception as ex:
-        log.warning("autopath.demote_skill_for_query: %r", ex)
-        return 0
+# NB: `demote_skill_for_query` (LWW utente-prevale su approvazione manuale
+# fastpath) RIMOSSA 11/6/2026: serviva il bottone «approva fast-path» mai
+# implementato; con l'auto-produzione L0 (nessun consenso esplicito) il demote
+# L1 non ha base — L0 vince comunque in cascata sulla query esatta, la skill
+# L1 resta utile per le sorelle del cluster.

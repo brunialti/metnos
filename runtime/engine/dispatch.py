@@ -44,6 +44,27 @@ class DispatchResult:
     error_class: str = ""
 
 
+def _maybe_record_fastpath(query: str, intent: Intent,
+                            framework: Framework, run: RunResult) -> None:
+    """Auto-produzione L0 (11/6/2026): un turno completato con SUCCESSO dal
+    piano PIENO (engine o recovery — mai da hit L0/L1, già cache) diventa
+    fastpath: alla ripetizione della stessa query il piano parte in
+    millisecondi senza LLM. Le condizioni di cacheabilità (≥1 step-executor,
+    no tool context-dependent, pertinenza 0a/0b) vivono in
+    fastpath.record_success. Best-effort: il fallimento non blocca il turno
+    ma non è silenzioso (§2.8: log)."""
+    if not is_fastpath_enabled():
+        return
+    if run is None or run.final_kind != "answer" or run.aborted_reason:
+        return
+    try:
+        fp_id = _fp.record_success(query, framework, intent=intent)
+        if fp_id:
+            log.debug("[L0 fastpath] auto-record fp_id=%d", fp_id)
+    except Exception as ex:
+        log.debug("fastpath.record_success fallita (best-effort): %r", ex)
+
+
 def _is_get_inputs_misroute(framework: Framework) -> bool:
     """True se l'UNICO step-executor del framework (escluso final_answer) è
     get_inputs → non-decomposizione (il planner chiede invece di agire). Vedi
@@ -312,6 +333,9 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
                                      remediate_args_cb=remediate_args_cb,
                                 progress=progress)
                 if run2.final_kind == "answer":
+                    # Il piano RECUPERATO ha funzionato: cacharlo evita di
+                    # ripetere fallimento+recovery alla prossima ripetizione.
+                    _maybe_record_fastpath(query, intent, framework_alt, run2)
                     return DispatchResult(
                         final_text=run2.final_text, final_kind="answer",
                         match_source="recovery",
@@ -330,6 +354,7 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
             elapsed_ms=int((time.time() - t_start) * 1000),
             run=run, framework=framework, error_class=err_class)
 
+    _maybe_record_fastpath(query, intent, framework, run)
     return DispatchResult(
         final_text=run.final_text, final_kind=run.final_kind,
         match_source="engine", framework_hash=run.framework_hash,

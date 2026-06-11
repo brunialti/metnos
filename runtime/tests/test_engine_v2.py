@@ -434,12 +434,12 @@ class TestFastpathRoundTrip(unittest.TestCase):
         eng_fastpath._db_path = self._orig
         eng_fastpath._DB_INIT_DONE = False
 
-    def test_approve_and_lookup_hash(self):
+    def test_record_and_lookup_hash(self):
         fw = Framework(steps=[
             StepSpec(tool="get_now", args={}),
             StepSpec(tool="final_answer", args={}),
         ], final_message="${step1.iso}")
-        fp_id = eng_fastpath.approve("che ora è", fw, approved_by="host")
+        fp_id = eng_fastpath.record_success("che ora è", fw)
         self.assertGreater(fp_id, 0)
         # Same query → hit
         hit = eng_fastpath.lookup("che ora è")
@@ -451,7 +451,7 @@ class TestFastpathRoundTrip(unittest.TestCase):
 
     def test_lookup_miss_on_unrelated(self):
         fw = Framework(steps=[StepSpec(tool="get_now", args={})])
-        eng_fastpath.approve("che ora è", fw)
+        eng_fastpath.record_success("che ora è", fw)
         hit = eng_fastpath.lookup("trova foto Matteo")
         self.assertIsNone(hit)
 

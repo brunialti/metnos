@@ -1,17 +1,22 @@
-"""engine/fastpath.py — Layer 0: path utente-approvati.
+"""engine/fastpath.py — Layer 0: cache query→piano AUTO-PRODOTTA.
 
-Bypass completo dell'engine quando la query matcha un fastpath approvato
-esplicitamente dall'utente.
+Bypass completo dell'engine quando la query matcha un fastpath. I fastpath
+si producono IN AUTOMATICO a ogni turno completato con successo dal piano
+pieno (L3 engine/recovery, mai da hit L0/L1): le catene sono executor GIÀ
+vagliati e testati, nessuna approvazione esplicita (decisione 11/6/2026; il
+bottone «approva fast-path» citato in passato non è mai esistito). Valvole:
+delete da admin (/admin/praxis) + aging deterministico (prune).
 
 Match in 2 sotto-layer:
   0a — hash lookup deterministic (<5ms, no LLM, no embed)
-  0b — semantic cosine via BGE-M3 (<150ms, embed query nuova)
+  0b — semantic cosine via BGE-M3 (<150ms, embed query nuova); serve SOLO
+       framework non query-specific: un piano con literal content-bearing
+       («name=Silvia») replicherebbe gli arg di UN'ALTRA query simile
+       («foto di Marco», sim>soglia) → pertinenza, non sicurezza.
 
-User approva tramite bottone client "🌟 approva fast-path" su risposta OK:
-salva (canonical_text, canonical_hash, embedding, framework).
-
-Conflitto con autopath: fast-path vince sempre. Hook in approve_one() demote
-skill_cache.skill con framework diverso per stesso cluster.
+Confine vs autopath (L1): L0 = ripetizione della STESSA query, ammette piani
+query-specific (via 0a); L1 = generalizzazione a cluster/intent col consenso
+del feedback ✓. Il fast-path vince sempre (primo in cascata).
 
 §7.9 deterministic. LLM mai chiamato in lookup. Embed BGE-M3 in 0b.
 """
@@ -27,10 +32,22 @@ from typing import Optional
 
 from .types import Framework
 from . import cluster as _cluster
+from .executor import is_query_specific
 
 log = logging.getLogger(__name__)
 
 _DB_INIT_DONE = False
+
+# Step-tool il cui replay fuori dal turno d'origine è semanticamente
+# scorretto: undo_last_turn si riferisce al TURNO PRECEDENTE (replay =
+# annullare un turno arbitrario), get_inputs apre un dialog interattivo
+# (flusso non riproducibile). Set CHIUSO (§2.2): estendere solo per la
+# stessa classe di motivi (semantica dipendente dal contesto del turno).
+NON_CACHEABLE_TOOLS = frozenset({"undo_last_turn", "get_inputs"})
+
+
+def _now_iso() -> str:
+    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
 
 
 @dataclass
@@ -60,8 +77,11 @@ def _conn() -> sqlite3.Connection:
             canonical_hash TEXT NOT NULL UNIQUE,
             embedding BLOB,
             framework_json TEXT NOT NULL,
-            approved_by TEXT,
-            approved_at TEXT NOT NULL,
+            origin TEXT NOT NULL DEFAULT 'auto',
+            intent_verb TEXT NOT NULL DEFAULT '',
+            intent_object TEXT NOT NULL DEFAULT '',
+            query_specific INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL DEFAULT '',
             n_uses INTEGER NOT NULL DEFAULT 0,
             last_used TEXT
         );
@@ -69,7 +89,36 @@ def _conn() -> sqlite3.Connection:
         CREATE INDEX IF NOT EXISTS fp_uses ON fastpaths(n_uses DESC);
         """)
         c.commit()
+        _migrate_schema(c)
     return c
+
+
+def _migrate_schema(c: sqlite3.Connection) -> None:
+    """ALTER idempotente per DB con lo schema pre-auto-produzione (v1,
+    colonne approved_by/approved_at, mai popolato in produzione — il bottone
+    di approvazione non è mai esistito). Aggiunge le colonne v2 mancanti e
+    backfilla created_at da approved_at. Non distruttivo (§2.9 spirito):
+    le colonne v1 restano, ignorate."""
+    try:
+        cols = {r[1] for r in c.execute("PRAGMA table_info(fastpaths)")}
+        added = False
+        for col, decl in (
+            ("origin", "TEXT NOT NULL DEFAULT 'auto'"),
+            ("intent_verb", "TEXT NOT NULL DEFAULT ''"),
+            ("intent_object", "TEXT NOT NULL DEFAULT ''"),
+            ("query_specific", "INTEGER NOT NULL DEFAULT 0"),
+            ("created_at", "TEXT NOT NULL DEFAULT ''"),
+        ):
+            if col not in cols:
+                c.execute(f"ALTER TABLE fastpaths ADD COLUMN {col} {decl}")
+                added = True
+        if added and "approved_at" in cols:
+            c.execute("UPDATE fastpaths SET created_at = approved_at "
+                      "WHERE created_at = '' AND approved_at IS NOT NULL")
+        if added:
+            c.commit()
+    except sqlite3.Error as ex:
+        log.warning("fastpath: migrate schema fallita: %r", ex)
 
 
 def lookup(query: str) -> Optional[FastpathHit]:
@@ -99,7 +148,9 @@ def lookup(query: str) -> Optional[FastpathHit]:
     except Exception as ex:
         log.warning("fastpath: 0a lookup failed: %r", ex)
         return None
-    # Layer 0b: semantic cosine
+    # Layer 0b: semantic cosine. SOLO framework non query-specific (guard di
+    # PERTINENZA §2.4/§7.9: i piani con literal content-bearing valgono per
+    # quella query esatta → servibili solo via hash 0a).
     eb = _cluster.embed(query)
     if not eb:
         return None  # BGE-M3 unavailable, miss
@@ -107,7 +158,8 @@ def lookup(query: str) -> Optional[FastpathHit]:
         c = _conn()
         rows = c.execute(
             "SELECT id, canonical_text, framework_json, embedding "
-            "FROM fastpaths WHERE embedding IS NOT NULL").fetchall()
+            "FROM fastpaths WHERE embedding IS NOT NULL "
+            "AND query_specific = 0").fetchall()
         c.close()
     except Exception as ex:
         log.warning("fastpath: 0b query failed: %r", ex)
@@ -134,35 +186,57 @@ def lookup(query: str) -> Optional[FastpathHit]:
     return None
 
 
-def approve(query: str, framework: Framework, *, approved_by: str = "") -> int:
-    """Approva nuovo fastpath. Idempotente sull'hash canonical.
+def record_success(query: str, framework: Framework, *,
+                   intent=None, origin: str = "auto") -> int:
+    """Auto-produce un fastpath da un turno completato con SUCCESSO dal piano
+    pieno (chiamato da dispatch.run_turn sui percorsi engine/recovery).
 
-    Returns fp_id. Hook: demote autopath.skill con framework_hash diverso
-    per cluster simile (delegato a chi chiama).
+    Nessuna approvazione esplicita: gli step sono executor già vagliati e
+    testati; le valvole sono delete admin + aging (prune). Idempotente
+    sull'hash canonico: la ripetizione RINFRESCA framework e metadati
+    (self-healing: il piano cached segue l'ultimo successo).
+
+    Non cacheabile (ritorna 0): framework senza step-executor reali (prosa
+    statica → replay darebbe risposta in scatola) o con step il cui replay è
+    context-dependent (NON_CACHEABLE_TOOLS: undo_last_turn, get_inputs).
+
+    `intent` (engine.types.Intent, opzionale): verb/object salvati per la
+    morte-su-executor-equivalente (vedi prune). Returns fp_id, 0 su skip/errore.
     """
-    if not query or not framework:
+    if not query or not query.strip() or not framework:
+        return 0
+    exec_steps = [s.tool for s in framework.steps
+                  if s.tool and s.tool != "final_answer"]
+    if not exec_steps:
+        return 0
+    if NON_CACHEABLE_TOOLS.intersection(exec_steps):
         return 0
     canonical = _cluster.normalize_query(query)
     h = _cluster.normalize_hash(query)
-    eb = _cluster.embed(query)  # può essere None se BGE-M3 mancante
+    eb = _cluster.embed(query)  # può essere None se BGE-M3 mancante → solo 0a
     fjson = json.dumps(framework.to_dict(), ensure_ascii=False)
-    ts = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    qspec = 1 if is_query_specific(fjson) else 0
+    iverb = (getattr(intent, "verb", "") or "").lower().strip()
+    iobj = (getattr(intent, "object", "") or "").lower().strip()
     try:
         c = _conn()
         cur = c.execute(
             "INSERT INTO fastpaths(canonical_text, canonical_hash, embedding, "
-            "framework_json, approved_by, approved_at) "
-            "VALUES (?, ?, ?, ?, ?, ?) "
+            "framework_json, origin, intent_verb, intent_object, "
+            "query_specific, created_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) "
             "ON CONFLICT(canonical_hash) DO UPDATE SET "
             "framework_json = excluded.framework_json, "
-            "approved_at = excluded.approved_at",
-            (canonical, h, eb, fjson, approved_by, ts))
+            "query_specific = excluded.query_specific, "
+            "intent_verb = excluded.intent_verb, "
+            "intent_object = excluded.intent_object",
+            (canonical, h, eb, fjson, origin, iverb, iobj, qspec, _now_iso()))
         c.commit()
         fp_id = cur.lastrowid or 0
         c.close()
         return fp_id
     except Exception as ex:
-        log.warning("fastpath.approve failed: %r", ex)
+        log.warning("fastpath.record_success failed: %r", ex)
         return 0
 
 
@@ -181,17 +255,20 @@ def _touch(fp_id: int) -> None:
 
 
 def list_all(limit: int = 100) -> list[dict]:
-    """Lista fastpaths per admin UI."""
+    """Lista fastpaths per admin UI (telemetria: usi + ultimo uso)."""
     try:
         c = _conn()
         rows = c.execute(
-            "SELECT id, canonical_text, approved_by, approved_at, "
-            "n_uses, last_used FROM fastpaths "
-            "ORDER BY n_uses DESC LIMIT ?", (limit,)).fetchall()
+            "SELECT id, canonical_text, origin, intent_verb, intent_object, "
+            "query_specific, created_at, n_uses, last_used FROM fastpaths "
+            "ORDER BY n_uses DESC, created_at DESC LIMIT ?",
+            (limit,)).fetchall()
         c.close()
         return [
-            {"id": r[0], "canonical_text": r[1], "approved_by": r[2],
-             "approved_at": r[3], "n_uses": r[4], "last_used": r[5]}
+            {"id": r[0], "canonical_text": r[1], "origin": r[2],
+             "intent_verb": r[3], "intent_object": r[4],
+             "query_specific": bool(r[5]), "created_at": r[6],
+             "n_uses": r[7], "last_used": r[8]}
             for r in rows
         ]
     except Exception:

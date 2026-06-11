@@ -47,16 +47,16 @@ vince sempre la scorciatoia.</p>
 <div class="table-wrap">
 <table>
   <thead>
-    <tr><th>id</th><th>query canonica</th><th>approvata da</th>
-        <th>approvata il</th><th>usi</th><th>ultimo uso</th></tr>
+    <tr><th>id</th><th>query canonica</th><th>origine</th>
+        <th>creata il</th><th>usi</th><th>ultimo uso</th></tr>
   </thead>
   <tbody>
   {% for f in fastpaths %}
     <tr>
       <td>{{ f.id }}</td>
       <td><code>{{ f.canonical_text }}</code></td>
-      <td class="muted">{{ f.approved_by or "-" }}</td>
-      <td class="muted">{{ f.approved_at }}</td>
+      <td class="muted">{{ f.origin or "-" }}</td>
+      <td class="muted">{{ f.created_at }}</td>
       <td>{{ f.n_uses }}</td>
       <td class="muted">{{ f.last_used or "-" }}</td>
     </tr>

@@ -784,6 +784,47 @@ def compute_framework_hash(fw: Framework) -> str:
     return h
 
 
+# ── Query-specificity (condiviso L0 fastpath + L1 autopath) ───────────────
+# Arg che portano il TESTO di ricerca dell'utente (NL query-specifica): se uno
+# di questi ha un valore LITERAL (non un placeholder ${...}), il framework e'
+# legato a QUELLA query e NON generalizza al cluster/intent. Lista CHIUSA
+# (§2.2), allineata agli arg content-bearing degli executor find_*
+# (immagini/persone/url/messaggi testuali).
+CONTENT_ARG_KEYS = frozenset({
+    "query_text", "name", "names", "content", "query", "search", "search_text",
+    "text_query", "body_contains", "subject_contains", "from_contains",
+})
+
+
+def is_query_specific(framework_json: str) -> bool:
+    """True se il framework incorpora un arg content-bearing LITERAL (non
+    placeholder ${...}) → legato alla singola query.
+
+    Conseguenze per i due layer con stato:
+      - L1 autopath: non promuovibile a skill di cluster (avvelenerebbe le
+        query sorelle col piano congelato di UNA query).
+      - L0 fastpath: servibile SOLO via hash 0a (query identica → args giusti
+        per costruzione), MAI via cosine 0b (query simile ma semanticamente
+        diversa riuserebbe i literal sbagliati: «foto di X» vs «foto di Y»).
+    Deterministico (§7.9): nessun LLM, solo ispezione args."""
+    try:
+        d = json.loads(framework_json)
+    except Exception:
+        return False
+    for step in (d.get("steps") or []):
+        if not isinstance(step, dict):
+            continue
+        args = step.get("args") or {}
+        if not isinstance(args, dict):
+            continue
+        for k in CONTENT_ARG_KEYS:
+            v = args.get(k)
+            for item in (v if isinstance(v, list) else [v]):
+                if isinstance(item, str) and item.strip() and "${" not in item:
+                    return True
+    return False
+
+
 # ── Main execution ────────────────────────────────────────────────────────
 
 _PLACEHOLDER_RE = re.compile(r"\$\{[^}]+\}|\{\{[^}]+\}\}")
