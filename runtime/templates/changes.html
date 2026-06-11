@@ -2,7 +2,7 @@
 {% block title %}{{ msg('UI_CHANGE_TITLE') }}{% endblock %}
 {% block body %}
 <h1>{{ msg('UI_CHANGE_TITLE') }}</h1>
-<p class="muted">{{ msg('UI_CHANGE_SUBTITLE') }}</p>
+<p class="page-sub">{{ msg('UI_CHANGE_SUBTITLE') }}</p>
 
 <nav class="tp-tiers">
   {% for st in tabs %}
@@ -58,6 +58,7 @@
   </span>
 </form>
 
+<div class="table-wrap">
 <table class="tp">
   <thead>
     <tr>
@@ -189,10 +190,17 @@
   {% endfor %}
   </tbody>
 </table>
+</div>
 
 {% if rows|length == 0 %}
-  <div class="muted" style="padding:2rem;text-align:center">
-    {{ msg('UI_CHANGE_EMPTY') }}
-  </div>
+  <div class="empty">{{ msg('UI_CHANGE_EMPTY') }}</div>
 {% endif %}
+
+<style>
+  /* Specifiche di colonna; componenti condivisi nel design system. */
+  table.tp td{vertical-align:top;font-size:.92em}
+  table.tp td.tp-ea{white-space:nowrap;width:6em}
+  table.tp td.tp-actions{width:9em}
+  table.tp .tp-fits{margin-top:.4rem;font-size:.85em}
+</style>
 {% endblock %}

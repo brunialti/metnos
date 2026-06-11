@@ -1,16 +1,25 @@
 {% extends "base.html" %}
-{% block title %}Metnos admin · promotions{% endblock %}
+{% block title %}Promozioni · Console Metnos{% endblock %}
 {% block body %}
-<div class="section" style="background:#fef8e8;border:1px solid #d4a800;padding:.8rem;margin-bottom:1rem">
+<div class="callout warn">
   <strong>{{ msg('UI_CHANGE_DEPRECATION_TITLE') }}</strong>
   &nbsp;{{ msg('UI_CHANGE_DEPRECATION_BODY') }}
   &nbsp;<a href="/admin/changes?state=observed" class="btn ok">{{ msg('UI_CHANGE_DEPRECATION_LINK') }}</a>
 </div>
 
-<h1>Promozioni synth</h1>
+<h1>Promozioni</h1>
+<p class="page-sub">Executor sintetizzati nel periodo di grazia prima della
+finalizzazione — il passo intermedio del ciclo di vita della sintesi. Ogni
+riga nasce da una proposta accettata; al termine della grazia l'executor
+entra stabilmente nel catalogo (o viene ritirato col rollback).</p>
+<div class="flow" aria-hidden="true">
+  <span>Proposta</span><span class="arr">→</span>
+  <span class="cur">Promozione</span><span class="arr">→</span>
+  <span>Catalogo</span>
+</div>
 
-<form method="get" class="row" style="margin-bottom:.8rem">
-  <label>state:
+<form method="get" class="tp-filters">
+  <label>stato
     <select name="state" onchange="this.form.submit()">
       <option value=""{% if state == "" %} selected{% endif %}>tutti</option>
       <option value="promoted_grace"{% if state == "promoted_grace" %} selected{% endif %}>grace</option>
@@ -20,22 +29,21 @@
       <option value="archived"{% if state == "archived" %} selected{% endif %}>archived</option>
     </select>
   </label>
-  <label style="margin-left:1rem">days:
+  <label>giorni
     <input type="number" name="days" value="{{ days }}" min="1" max="365" style="width:5rem" onchange="this.form.submit()">
   </label>
-  <span class="muted" style="margin-left:1rem">{{ rows|length }} risultati</span>
+  <span class="muted">{{ rows|length }} risultati</span>
 </form>
 
 {% if flash %}
-  <div class="section" style="background:#e8f5e8;border-color:#9c9">
-    {{ flash }}
-  </div>
+  <div class="callout ok">{{ flash }}</div>
 {% endif %}
 
+<div class="table-wrap">
 <table class="promotions">
   <thead>
-    <tr><th>id</th><th>name</th><th>state</th><th>promoted_at</th>
-        <th>grace_until</th><th>esempio</th><th>actions</th></tr>
+    <tr><th>proposta d'origine</th><th>executor</th><th>stato</th><th>promosso il</th>
+        <th>grazia fino al</th><th>esempio</th><th>azioni</th></tr>
   </thead>
   <tbody>
   {% for r in rows %}
@@ -61,7 +69,7 @@
                 action="/admin/promotions/{{ r.proposal_id|urlencode }}/rollback"
                 onsubmit="return confirm('Rollback {{ r.proposal_id }}?');"
                 style="display:inline">
-            <button type="submit" class="btn">rollback</button>
+            <button type="submit" class="btn bad">rollback</button>
           </form>
         {% endif %}
         {% if r.state == "review_needed" %}
@@ -77,10 +85,18 @@
   {% endfor %}
   </tbody>
 </table>
+</div>
 
 <style>
-  .promotions td.example{max-width:480px;font-size:.9em}
+  .flow{display:flex;align-items:center;gap:.45rem;margin:0 0 var(--sp-4);
+        font-family:var(--font-mono);font-size:var(--fs-0)}
+  .flow span{padding:.1rem .6rem;border-radius:var(--r-pill);
+        background:var(--surface-2);border:1px solid var(--border);
+        color:var(--muted)}
+  .flow .arr{background:none;border:none;padding:0;color:var(--border-strong)}
+  .flow .cur{background:var(--accent-soft);border-color:var(--accent-line);
+        color:var(--accent);font-weight:600}
+  .promotions td.example{max-width:480px;font-size:.92em}
   .promotions td.example p{margin:.2em 0}
-  .promotions td.example code{background:#f4f4f4;padding:.05em .25em}
 </style>
 {% endblock %}

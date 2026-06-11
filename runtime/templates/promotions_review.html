@@ -1,13 +1,11 @@
 {% extends "base.html" %}
-{% block title %}Metnos admin · promotions review{% endblock %}
+{% block title %}Review promozioni · Console Metnos{% endblock %}
 {% block body %}
-<h1>Review promozioni synth</h1>
-<p class="muted">{{ description }}</p>
+<h1>Review promozioni</h1>
+<p class="page-sub">{{ description }}</p>
 
 {% if flash %}
-  <div class="section" style="background:#e8f5e8;border-color:#9c9">
-    {{ flash }}
-  </div>
+  <div class="callout ok">{{ flash }}</div>
 {% endif %}
 
 {% set groups = groups or {} %}
@@ -132,7 +130,7 @@
   </details>
 
   <div style="display:flex;gap:.5rem;margin-top:.5rem;">
-    <button type="submit" class="btn">Applica decisioni</button>
+    <button type="submit" class="btn primary">Applica decisioni</button>
     <a class="btn" href="/admin/promotions"
        onclick="return confirm('Annullare la review?');">Annulla</a>
   </div>
@@ -140,14 +138,19 @@
 {% endif %}
 
 <style>
-  .promotion-section{border:1px solid #ccc;border-radius:.3rem;padding:.6rem;}
+  .promotion-section{border:1px solid var(--border);border-radius:var(--r-2);
+                              padding:.7rem .9rem;background:var(--surface);
+                              box-shadow:var(--shadow-1);}
   .promotion-section summary{cursor:pointer;padding:.2rem 0;}
-  .promotion-section .card{margin:.4rem 0;padding:.6rem;
-                              background:#f8f8f8;border-radius:.2rem;}
+  .promotion-section .card{margin:.5rem 0;padding:.65rem .8rem;
+                              background:var(--surface-2);
+                              border:1px solid var(--border);
+                              border-radius:var(--r-1);}
   .promotion-section .card .example-body{font-size:.85em;
                               white-space:pre-wrap;margin-top:.4rem;
-                              padding:.4rem;background:#fff;
-                              border:1px solid #ddd;border-radius:.2rem;}
+                              padding:.5rem;background:var(--surface);
+                              border:1px solid var(--border);
+                              border-radius:var(--r-1);}
   .promotion-section .radio-row{margin-top:.4rem;display:flex;
                               gap:1rem;flex-wrap:wrap;}
 </style>

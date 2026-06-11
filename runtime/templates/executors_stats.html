@@ -1,17 +1,24 @@
 {% extends "base.html" %}
-{% block title %}Metnos admin · executor stats{% endblock %}
+{% block title %}Statistiche executor · Console Metnos{% endblock %}
+{% block head %}
+<script src="https://cdn.jsdelivr.net/npm/uplot@1.6.30/dist/uPlot.iife.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/uplot@1.6.30/dist/uPlot.min.css">
+{% endblock %}
 {% block body %}
 <h1>Statistiche executor</h1>
-<p class="muted"><a href="/admin/executors">← lista executor</a> · <a href="/admin/executors/stats" hx-headers='{"Accept":"application/json"}'>JSON</a></p>
+<p class="page-sub">Distribuzione del catalogo per origine e ciclo di vita,
+più gli eventi giornalieri degli ultimi 30 giorni.</p>
+<p class="muted"><a href="/admin/executors">← catalogo executor</a> ·
+   <a href="/admin/executors/stats" hx-headers='{"Accept":"application/json"}'>JSON</a></p>
 
 <div class="section">
-  <h2>Counts per source × lifecycle</h2>
+  <h2>Conteggi per origine × ciclo di vita</h2>
   {% if not bar_rows %}
     <p class="muted">nessun dato</p>
   {% else %}
     <table style="max-width:680px">
       <thead>
-        <tr><th>source</th><th>lifecycle</th><th style="text-align:right">count</th><th>distribuzione</th></tr>
+        <tr><th>origine</th><th>ciclo di vita</th><th style="text-align:right">n</th><th>distribuzione</th></tr>
       </thead>
       <tbody>
         {% for r in bar_rows %}
@@ -37,19 +44,20 @@
 
 <div class="section">
   <h2>Eventi giornalieri (ultimi 30 g)</h2>
-  <p class="muted">una linea per coppia (source, event_kind). Hover per dettaglio.</p>
+  <p class="muted">una linea per coppia (origine, tipo evento). Hover per dettaglio.</p>
   <div id="chart_daily" style="width:100%;height:280px"></div>
   {% if not daily %}<p class="muted">nessun evento</p>{% endif %}
 </div>
 
 <style>
-.bar-track{background:#f0f0f0;height:14px;border-radius:.2rem;overflow:hidden}
-.bar-fill{height:100%}
-.bar-fill.active{background:#7cb86c}
-.bar-fill.deprecated{background:#d8a648}
-.bar-fill.archived{background:#c66060}
-.uplot-tooltip{position:absolute;pointer-events:none;background:#222;color:#fff;
-  padding:.3rem .5rem;border-radius:.2rem;font-size:.75em;white-space:pre;display:none;z-index:99}
+.bar-track{background:var(--surface-3);height:14px;border-radius:4px;overflow:hidden}
+.bar-fill{height:100%;border-radius:4px;
+          transition:width var(--t-2) var(--ease)}
+.bar-fill.active{background:var(--accent)}
+.bar-fill.deprecated{background:var(--warn-fg)}
+.bar-fill.archived{background:var(--err-fg)}
+.uplot-tooltip{position:absolute;pointer-events:none;background:var(--ink);color:var(--surface);
+  padding:.3rem .5rem;border-radius:4px;font-size:.75em;white-space:pre;display:none;z-index:99}
 </style>
 
 <script>
@@ -74,8 +82,8 @@
     if(i >= 0) seriesData[k][i] += r.n;
   }
 
-  // Palette deterministica (cycle se >7 serie)
-  const palette = ['#3a4d6c','#7cb86c','#d8a648','#c66060','#7e6cb8','#48a8d8','#888'];
+  // Palette armonizzata coi token (cycle se >7 serie)
+  const palette = ['#0c7261','#2b5e93','#8a5a00','#b3261e','#6b5ca8','#3a8ab8','#65736c'];
   const seriesDefs = [{}];  // x axis spec
   const dataArr = [xs];
   let idx = 0;
@@ -96,8 +104,8 @@
     height: 280,
     series: seriesDefs,
     axes: [
-      { stroke: '#888' },
-      { stroke: '#888', size: 40 },
+      { stroke: '#65736c', grid: { stroke: '#e2e7e5' } },
+      { stroke: '#65736c', size: 40, grid: { stroke: '#e2e7e5' } },
     ],
     legend: { show: true },
     cursor: { drag: { x: true, y: false } },

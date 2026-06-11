@@ -1,21 +1,22 @@
 {% extends "base.html" %}
-{% block title %}Metnos admin · Praxis cognitive memory{% endblock %}
+{% block title %}Praxis · Console Metnos{% endblock %}
 {% block body %}
-<h1>Praxis Engine — cognitive memory</h1>
-<p class="muted">
-  Mētis (Μῆτις) propone · Noûs (νοῦς) esegue · Praxis (πρᾶξις) ricorda · Pronoia (Πρόνοια) salva dallo stallo.<br>
-  ADR <a href="#">0161</a>. Storage <code>~/.local/share/metnos/praxis.sqlite</code>.
-</p>
+<h1>Praxis — memoria cognitiva</h1>
+<p class="page-sub">La memoria operativa del sistema: skill apprese dai turni
+riusciti, osservazioni, anti-skill e cache dei filler.
+Mētis (Μῆτις) propone · Noûs (νοῦς) esegue · Praxis (πρᾶξις) ricorda ·
+Pronoia (Πρόνοια) salva dallo stallo.</p>
+<p class="muted">ADR 0161 · storage <code>~/.local/share/metnos/praxis.sqlite</code></p>
 
 {% if legacy_notice %}
-<div style="background:#fff3cd;border:1px solid #ffe69c;border-radius:6px;padding:.8rem 1rem;margin:.8rem 0">
+<div class="callout warn">
   <b>{{ legacy_notice }}</b> — il flusso decisionale vivo è Engine v2;
   questo pannello legacy non riceve più dati.
 </div>
 {% endif %}
 
-<h2>Pronoia config</h2>
-<div style="background:#f8f9fa;padding:.8rem 1rem;border:1px solid #ddd;border-radius:6px;margin:.8rem 0">
+<div class="section">
+  <h2>Pronoia</h2>
   <p>Pronoia tier (interviene quando Praxis fail):
     <code id="pronoia_tier_current">{{ pronoia_tier or "wise" }}</code>
   </p>
@@ -73,6 +74,7 @@ function setPronoiaTier(ev){
 
 <h2>Skills ACTIVE ({{ skills_active|length }})</h2>
 {% if skills_active %}
+<div class="table-wrap">
 <table>
   <thead>
     <tr><th>id</th><th>intent_sig</th><th>uses</th><th>ok</th><th>fail</th>
@@ -94,12 +96,14 @@ function setPronoiaTier(ev){
   {% endfor %}
   </tbody>
 </table>
+</div>
 {% else %}
 <p class="muted">Nessuna skill promossa ancora. Auto-promote scatta a 2 osservazioni + 100% ok.</p>
 {% endif %}
 
 {% if skills_shadow %}
 <h2>Shadow ({{ skills_shadow|length }})</h2>
+<div class="table-wrap">
 <table>
   <thead><tr><th>id</th><th>intent_sig</th><th>uses</th><th>ok</th></tr></thead>
   <tbody>
@@ -111,10 +115,12 @@ function setPronoiaTier(ev){
   {% endfor %}
   </tbody>
 </table>
+</div>
 {% endif %}
 
 <h2>Observations recenti ({{ observations|length }})</h2>
 {% if observations %}
+<div class="table-wrap">
 <table>
   <thead>
     <tr><th>id</th><th>intent_sig</th><th>tool chain</th><th>verdict</th>
@@ -139,12 +145,14 @@ function setPronoiaTier(ev){
   {% endfor %}
   </tbody>
 </table>
+</div>
 {% else %}
 <p class="muted">Nessuna observation. Ogni turno con cascata Praxis ne genera una.</p>
 {% endif %}
 
 {% if anti_skills %}
 <h2>Anti-skills attivi ({{ anti_skills|length }})</h2>
+<div class="table-wrap">
 <table>
   <thead>
     <tr><th>intent_hash</th><th>framework_hash</th><th>fails</th>
@@ -162,10 +170,12 @@ function setPronoiaTier(ev){
   {% endfor %}
   </tbody>
 </table>
+</div>
 {% endif %}
 
 {% if filler_cache %}
 <h2>Filler cache ({{ filler_cache|length }})</h2>
+<div class="table-wrap">
 <table>
   <thead>
     <tr><th>intent_hash</th><th>filler_name</th><th>value</th>
@@ -183,10 +193,12 @@ function setPronoiaTier(ev){
   {% endfor %}
   </tbody>
 </table>
+</div>
 {% endif %}
 
 {% if stats.skills_by_status %}
 <h2>Distribuzione skills per status</h2>
+<div class="table-wrap">
 <table class="compact">
   <thead><tr><th>status</th><th>count</th></tr></thead>
   <tbody>
@@ -195,13 +207,7 @@ function setPronoiaTier(ev){
   {% endfor %}
   </tbody>
 </table>
+</div>
 {% endif %}
 
-<style>
-.kpi-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));
-          gap:.8rem;margin:1rem 0}
-.kpi{padding:.8rem 1rem;background:#fff;border:1px solid #ddd;border-radius:6px}
-.kpi-label{font-size:.85em;color:#666;margin-bottom:.3rem}
-.kpi-value{font-size:1.6em;font-weight:600;color:#1a3a6c}
-</style>
 {% endblock %}

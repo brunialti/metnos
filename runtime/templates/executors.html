@@ -1,12 +1,15 @@
 {% extends "base.html" %}
-{% block title %}Metnos admin · executors{% endblock %}
+{% block title %}Catalogo executor · Console Metnos{% endblock %}
 {% block body %}
-<h1>Catalog ({{ rows|length }})</h1>
-<p><a class="btn" href="/admin/executors/stats">stats &amp; grafici</a></p>
+<h1>Catalogo executor ({{ rows|length }})</h1>
+<p class="page-sub">Tutti gli executor installati — handcrafted, sintetizzati
+e importati — con versione, stato di ciclo di vita e reversibilità.</p>
+<p><a class="btn" href="/admin/executors/stats">statistiche &amp; grafici</a></p>
+<div class="table-wrap">
 <table>
   <thead>
-    <tr><th>name</th><th>version</th><th>lifecycle</th><th>source</th>
-        <th>caps</th><th>revertible</th></tr>
+    <tr><th>nome</th><th>versione</th><th>ciclo di vita</th><th>origine</th>
+        <th>capability</th><th>reversibile</th></tr>
   </thead>
   <tbody>
   {% for r in rows %}
@@ -26,4 +29,5 @@
   {% endfor %}
   </tbody>
 </table>
+</div>
 {% endblock %}

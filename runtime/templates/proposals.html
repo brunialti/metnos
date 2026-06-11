@@ -1,10 +1,13 @@
 {% extends "base.html" %}
-{% block title %}Metnos admin · proposals{% endblock %}
+{% block title %}Proposte introspettive · Console Metnos{% endblock %}
 {% block body %}
-<h1>Proposte introvertiva</h1>
+<h1>Proposte introspettive</h1>
+<p class="page-sub">Suggerimenti di consolidamento del catalogo (dedupe,
+generalize, specialize) emersi dall'introspezione sull'uso reale degli
+executor. Da qui: approva, rifiuta o rinvia.</p>
 
-<form method="get" class="row" style="margin-bottom:.8rem">
-  <label>kind:
+<form method="get" class="tp-filters">
+  <label>tipo
     <select name="kind" onchange="this.form.submit()">
       <option value=""{% if kind == "" %} selected{% endif %}>tutte</option>
       <option value="dedupe"{% if kind == "dedupe" %} selected{% endif %}>dedupe</option>
@@ -15,10 +18,11 @@
   <span class="muted">{{ rows|length }} risultati</span>
 </form>
 
+<div class="table-wrap">
 <table class="proposals">
   <thead>
-    <tr><th>kind</th><th>state</th><th>descrizione</th><th>uses</th>
-        <th>seen</th><th>last seen</th><th>actions</th></tr>
+    <tr><th>tipo</th><th>stato</th><th>descrizione</th><th>usi</th>
+        <th>viste</th><th>ultima vista</th><th>azioni</th></tr>
   </thead>
   <tbody>
   {% for r in rows %}
@@ -38,18 +42,18 @@
       <td>{{ r.last_uses }}</td>
       <td>{{ r.n_seen }}</td>
       <td class="muted">{{ r.last_seen }}</td>
-      <td>
-        <button class="btn"
+      <td class="actions-cell">
+        <button class="btn ok"
                 hx-post="/admin/proposals/introvertiva/{{ r.sig_key|urlencode }}/approve"
-                hx-confirm="Approve {{ r.sig_key }}?"
-                hx-target="closest tr" hx-swap="outerHTML">approve</button>
-        <button class="btn"
+                hx-confirm="Approvare {{ r.sig_key }}?"
+                hx-target="closest tr" hx-swap="outerHTML">approva</button>
+        <button class="btn bad"
                 hx-post="/admin/proposals/introvertiva/{{ r.sig_key|urlencode }}/reject"
-                hx-confirm="Reject {{ r.sig_key }}?"
-                hx-target="closest tr" hx-swap="outerHTML">reject</button>
+                hx-confirm="Rifiutare {{ r.sig_key }}?"
+                hx-target="closest tr" hx-swap="outerHTML">rifiuta</button>
         <button class="btn"
                 hx-post="/admin/proposals/introvertiva/{{ r.sig_key|urlencode }}/defer"
-                hx-target="closest tr" hx-swap="outerHTML">defer</button>
+                hx-target="closest tr" hx-swap="outerHTML">rinvia</button>
       </td>
     </tr>
   {% else %}
@@ -57,10 +61,12 @@
   {% endfor %}
   </tbody>
 </table>
+</div>
 
 <style>
-  .proposals td details{margin-top:.2rem;}
-  .proposals td details summary{cursor:pointer;font-size:.85em;}
-  .proposals td:nth-child(3){max-width:480px;}
+  .proposals td details{margin-top:.2rem}
+  .proposals td:nth-child(3){max-width:480px}
+  .proposals .actions-cell{white-space:nowrap}
+  .proposals .actions-cell .btn{margin:0 .15rem .2rem 0}
 </style>
 {% endblock %}

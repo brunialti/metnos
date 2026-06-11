@@ -1,23 +1,23 @@
 {% extends "base.html" %}
-{% block title %}Metnos admin · Aporiae registry{% endblock %}
+{% block title %}Aporie · Console Metnos{% endblock %}
 {% block body %}
-<h1>Aporiae (ἀπορία) — vicoli ciechi onesti</h1>
-<p class="muted">
-  Quando neanche Pronoia (Πρόνοια) puo' salvare, Aporia riconosce il limite,
-  classifica la lacuna e suggerisce azione concreta per evolvere il sistema.<br>
-  Path evolutivo: <b>utente risolve la lacuna → Praxis impara la nuova capability</b>.
-</p>
+<h1>Aporie (ἀπορία) — vicoli ciechi onesti</h1>
+<p class="page-sub">Quando neanche Pronoia (Πρόνοια) può salvare, Aporia
+riconosce il limite, classifica la lacuna e suggerisce l'azione concreta per
+evolvere il sistema. Path evolutivo: <b>l'utente risolve la lacuna → Praxis
+impara la nuova capability</b>.</p>
 
 {% if legacy_notice %}
-<div style="background:#fff3cd;border:1px solid #ffe69c;border-radius:6px;padding:.8rem 1rem;margin:.8rem 0">
+<div class="callout warn">
   <b>{{ legacy_notice }}</b> — il flusso decisionale vivo è Engine v2;
   questo pannello legacy non riceve più dati.
 </div>
 {% endif %}
 
 <h2>Stats per root cause</h2>
+<div class="table-wrap" style="max-width:560px">
 <table class="compact">
-  <thead><tr><th>root_cause</th><th>n distinct</th><th>n occurrences</th></tr></thead>
+  <thead><tr><th>root cause</th><th>n distinte</th><th>n occorrenze</th></tr></thead>
   <tbody>
   {% for cause, c in (stats.by_root_cause or {}).items() %}
     <tr>
@@ -28,15 +28,17 @@
   {% endfor %}
   </tbody>
 </table>
-<p class="muted">Resolved: {{ stats.n_resolved or 0 }}</p>
+</div>
+<p class="muted">Risolte: {{ stats.n_resolved or 0 }}</p>
 
 <h2>Lacune aperte ({{ lacune|length }})</h2>
 {% if lacune %}
+<div class="table-wrap">
 <table>
   <thead>
     <tr>
-      <th>id</th><th>root_cause</th><th>query sample</th>
-      <th>suggested action</th><th>occ.</th><th>last</th><th></th>
+      <th>id</th><th>root cause</th><th>query di esempio</th>
+      <th>azione suggerita</th><th>occ.</th><th>ultima</th><th></th>
     </tr>
   </thead>
   <tbody>
@@ -55,12 +57,13 @@
       <td>{{ l.n_occurrences }}</td>
       <td class="muted">{{ l.ts_last[:16] }}</td>
       <td>
-        <button class="btn" onclick="resolveLacuna({{ l.id }})">risolto</button>
+        <button class="btn ok" onclick="resolveLacuna({{ l.id }})">risolto</button>
       </td>
     </tr>
   {% endfor %}
   </tbody>
 </table>
+</div>
 <script>
 function resolveLacuna(id){
   fetch('/admin/aporiae/' + id + '/resolve', {method: 'POST'})
