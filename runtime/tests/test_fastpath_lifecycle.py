@@ -103,6 +103,142 @@ class TestAutoRecord(_FastpathDbCase):
         self.assertTrue(rows[0]["query_specific"])
 
 
+# ── 1ter. Migrazione schema v1 (era-approvazione) ──────────────────────────
+
+# DDL v1 ESATTO del DB live di produzione (~/.local/share/metnos/
+# fastpaths.sqlite, creato dall'era-approvazione): approved_at TEXT NOT NULL
+# che record_success non valorizza → IntegrityError → 0 righe (bug 11/6/2026).
+_V1_DDL = """
+CREATE TABLE fastpaths (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    canonical_text TEXT NOT NULL,
+    canonical_hash TEXT NOT NULL UNIQUE,
+    embedding BLOB,
+    framework_json TEXT NOT NULL,
+    approved_by TEXT,
+    approved_at TEXT NOT NULL,
+    n_uses INTEGER NOT NULL DEFAULT 0,
+    last_used TEXT
+);
+CREATE INDEX fp_hash ON fastpaths(canonical_hash);
+CREATE INDEX fp_uses ON fastpaths(n_uses DESC);
+"""
+
+# Colonne v2 appese da una _migrate_schema PRE-fix (ADD-only): è lo stato
+# REALE del DB live al momento del bug — vestigia NOT NULL ancora presenti.
+_V1_PARTIAL_ALTERS = (
+    "ALTER TABLE fastpaths ADD COLUMN origin TEXT NOT NULL DEFAULT 'auto'",
+    "ALTER TABLE fastpaths ADD COLUMN intent_verb TEXT NOT NULL DEFAULT ''",
+    "ALTER TABLE fastpaths ADD COLUMN intent_object TEXT NOT NULL DEFAULT ''",
+    "ALTER TABLE fastpaths ADD COLUMN query_specific INTEGER NOT NULL DEFAULT 0",
+    "ALTER TABLE fastpaths ADD COLUMN created_at TEXT NOT NULL DEFAULT ''",
+)
+
+
+class TestSchemaV1Migration(_FastpathDbCase):
+    """Il DB di prod ha lo schema v1 (approved_at NOT NULL): la migrazione
+    deve renderlo canonico (DROP vestigia), preservare le righe, ed essere
+    idempotente — e record/lookup devono funzionare SU QUEL DB."""
+
+    def _create_v1_db(self, *, partial_v2: bool = False,
+                      seed_row: bool = False):
+        import sqlite3 as _sq
+        p = eng_fastpath._db_path()
+        p.parent.mkdir(parents=True, exist_ok=True)
+        c = _sq.connect(str(p))
+        c.executescript(_V1_DDL)
+        if partial_v2:
+            for stmt in _V1_PARTIAL_ALTERS:
+                c.execute(stmt)
+        if seed_row:
+            c.execute(
+                "INSERT INTO fastpaths(canonical_text, canonical_hash, "
+                "framework_json, approved_by, approved_at) "
+                "VALUES (?, ?, ?, ?, ?)",
+                ("vecchia query", "deadbeef00000000",
+                 '{"steps": [{"tool": "get_now", "args": {}}], '
+                 '"fillers": {}, "final_message": "x"}',
+                 "roberto", "2026-05-20T10:00:00Z"))
+        c.commit()
+        c.close()
+
+    def _cols(self) -> set:
+        c = eng_fastpath._conn()
+        cols = {r[1] for r in c.execute("PRAGMA table_info(fastpaths)")}
+        c.close()
+        return cols
+
+    def test_record_succeeds_on_pure_v1_schema(self):
+        self._create_v1_db()
+        fp_id = eng_fastpath.record_success(
+            "controlla posta ultime 24 ore",
+            _fw("read_messages", "describe_entries"),
+            intent=Intent(verb="read", object="messages"))
+        self.assertGreater(fp_id, 0)
+        hit = eng_fastpath.lookup("controlla posta ultime 24 ore")
+        self.assertIsNotNone(hit)
+        self.assertEqual(hit.match_kind, "hash")
+        self.assertEqual(hit.framework.steps[0].tool, "read_messages")
+
+    def test_record_succeeds_on_live_partial_v2_schema(self):
+        # Lo stato ESATTO del DB live al bug: v1 + colonne v2 già appese,
+        # approved_at NOT NULL ancora presente.
+        self._create_v1_db(partial_v2=True)
+        fp_id = eng_fastpath.record_success(
+            "controlla posta ultime 24 ore",
+            _fw("read_messages", "describe_entries"),
+            intent=Intent(verb="read", object="messages"))
+        self.assertGreater(fp_id, 0)
+        self.assertIsNotNone(
+            eng_fastpath.lookup("controlla posta ultime 24 ore"))
+
+    def test_migration_drops_vestigia_preserves_rows(self):
+        self._create_v1_db(seed_row=True)
+        eng_fastpath._conn().close()  # innesca la migrazione
+        cols = self._cols()
+        self.assertNotIn("approved_at", cols)
+        self.assertNotIn("approved_by", cols)
+        rows = eng_fastpath.list_all()
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["canonical_text"], "vecchia query")
+        # created_at backfillata dall'approved_at v1 (età reale preservata)
+        self.assertEqual(rows[0]["created_at"], "2026-05-20T10:00:00Z")
+
+    def test_migration_idempotent(self):
+        self._create_v1_db(seed_row=True)
+        for _ in range(3):
+            eng_fastpath._conn().close()
+        cols = self._cols()
+        self.assertNotIn("approved_at", cols)
+        self.assertEqual(len(eng_fastpath.list_all()), 1)
+
+    def test_dispatch_records_and_hits_on_v1_schema(self):
+        # End-to-end sullo scenario di prod: schema VECCHIO, turno-successo
+        # → REGISTRA; query ripetuta → COLPISCE (match_source=fastpath).
+        self._create_v1_db(partial_v2=True)
+        fw = _fw("get_now")
+        fake = _FakeProposer(fw)
+        catalog = [SimpleNamespace(
+            name="get_now",
+            args_schema={"type": "object", "properties": {}})]
+        env = {"METNOS_ENGINE": "simple", "METNOS_FASTPATH": "1"}
+        with mock.patch.dict(os.environ, env), \
+             mock.patch("engine.proposer.get_proposer", return_value=fake), \
+             mock.patch("engine.cluster.embed", new=lambda q: None):
+            r1 = eng_dispatch.run_turn(
+                query="che ore sono adesso", intent=Intent(), catalog=catalog,
+                invoke_executor_cb=lambda n, a: {"ok": True, "iso": "x"},
+                turn_id="t1")
+            self.assertEqual(r1.match_source, "engine")
+            self.assertEqual(len(eng_fastpath.list_all()), 1)  # REGISTRATO
+            r2 = eng_dispatch.run_turn(
+                query="che ore sono adesso", intent=Intent(), catalog=catalog,
+                invoke_executor_cb=lambda n, a: {"ok": True, "iso": "x"},
+                turn_id="t2")
+            self.assertEqual(r2.match_source, "fastpath")  # COLPITO
+            self.assertEqual(fake.calls, 1)  # proposer mai richiamato
+
+
 # ── 2. Pertinenza 0a/0b ────────────────────────────────────────────────────
 
 class TestPertinence(_FastpathDbCase):

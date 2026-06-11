@@ -102,14 +102,20 @@ def _conn() -> sqlite3.Connection:
 
 
 def _migrate_schema(c: sqlite3.Connection) -> None:
-    """ALTER idempotente per DB con lo schema pre-auto-produzione (v1,
-    colonne approved_by/approved_at, mai popolato in produzione — il bottone
-    di approvazione non è mai esistito). Aggiunge le colonne v2 mancanti e
-    backfilla created_at da approved_at. Non distruttivo (§2.9 spirito):
-    le colonne v1 restano, ignorate."""
+    """Migrazione idempotente per DB con lo schema v1 (era-approvazione:
+    colonne approved_by/approved_at, mai popolate in produzione — il bottone
+    di approvazione non è mai esistito). Due passi, entrambi no-op a regime:
+      1. ADD delle colonne v2 mancanti, + backfill created_at da approved_at
+         (l'età reale del fastpath sopravvive alla migrazione).
+      2. DROP delle vestigia approved_at/approved_by (§7.1 no-legacy).
+         CAUSA-RADICE 0-righe in prod (11/6/2026): approved_at era
+         TEXT NOT NULL e record_success non la valorizza → IntegrityError
+         su OGNI insert; il passo 1 da solo non bastava.
+    Non distruttiva: preserva righe e colonne canoniche (ALTER, mai rebuild).
+    Richiede SQLite ≥ 3.35 per DROP COLUMN (prod: 3.45)."""
     try:
         cols = {r[1] for r in c.execute("PRAGMA table_info(fastpaths)")}
-        added = False
+        changed = False
         for col, decl in (
             ("origin", "TEXT NOT NULL DEFAULT 'auto'"),
             ("intent_verb", "TEXT NOT NULL DEFAULT ''"),
@@ -119,11 +125,16 @@ def _migrate_schema(c: sqlite3.Connection) -> None:
         ):
             if col not in cols:
                 c.execute(f"ALTER TABLE fastpaths ADD COLUMN {col} {decl}")
-                added = True
-        if added and "approved_at" in cols:
+                changed = True
+        if "approved_at" in cols:
             c.execute("UPDATE fastpaths SET created_at = approved_at "
                       "WHERE created_at = '' AND approved_at IS NOT NULL")
-        if added:
+            c.execute("ALTER TABLE fastpaths DROP COLUMN approved_at")
+            changed = True
+        if "approved_by" in cols:
+            c.execute("ALTER TABLE fastpaths DROP COLUMN approved_by")
+            changed = True
+        if changed:
             c.commit()
     except sqlite3.Error as ex:
         log.warning("fastpath: migrate schema fallita: %r", ex)
