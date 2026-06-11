@@ -73,7 +73,7 @@ entra stabilmente nel catalogo (o viene ritirato col rollback).</p>
           </form>
         {% endif %}
         {% if r.state == "review_needed" %}
-          <span class="muted">in attesa di review</span>
+          <a class="btn" href="/admin/promotions/review">&rarr; review</a>
         {% endif %}
         {% if r.state == "rolled_back" %}
           <span class="muted">{{ r.rolled_back_at or "" }}</span>
