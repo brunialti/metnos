@@ -576,5 +576,198 @@ class TestDeath(_FastpathDbCase):
         self.assertEqual(hit.framework.steps[0].tool, "get_now")
 
 
+# ── 5. Morte C2 check-prefilter + eredità-punti (mandato #5-followup) ───────
+
+def _ex(name, affinity=()):
+    """Oggetto executor minimo per il prefilter (name + affinity)."""
+    return SimpleNamespace(name=name, affinity=list(affinity))
+
+
+class TestDeathPrefilter(_FastpathDbCase):
+    """C2 check-prefilter: il name-based ha falsi-negativi su equivalenti
+    con NOME DIVERSO (es. sibling verb create per intent write). Il prefilter
+    (deterministico, no LLM) sulla query canonica decide: top-1 che
+    implementa l'intent + fastpath multi-step fuori famiglia → morte."""
+
+    _AGING = dict(stale_days=30, grace_days=14, max_rows=500, now_ts=_NOW)
+    _Q = "salva la lista della spesa in un foglio di calcolo"
+
+    def _seed_multistep(self) -> int:
+        # Piano multi-step per intent (write, files): NESSUN tool della
+        # famiglia write_files → il name-based non vede l'equivalente
+        # create_files_spreadsheet (sibling verb, nome FUORI famiglia).
+        intent = Intent(verb="write", object="files")
+        fp_id = eng_fastpath.record_success(
+            self._Q, _fw("get_urls", "write_texts"), intent=intent)
+        self.assertGreater(fp_id, 0)
+        return fp_id
+
+    def _catalog_with_equiv(self):
+        return [_ex("get_urls"), _ex("write_texts"),
+                _ex("create_files_spreadsheet",
+                    affinity=["foglio", "calcolo", "spreadsheet", "excel"])]
+
+    def test_different_name_equivalent_kills(self):
+        self._seed_multistep()
+        cat = self._catalog_with_equiv()
+        rep = eng_fastpath.prune(
+            catalog_names={e.name for e in cat}, catalog=cat, **self._AGING)
+        # Il name-based NON l'ha colto (stem write_files assente)…
+        self.assertEqual(rep["dead_superseded"], 0)
+        # …il check-prefilter sì: routing → create_files_spreadsheet.
+        self.assertEqual(rep["dead_superseded_prefilter"], 1)
+        self.assertEqual(eng_fastpath.list_all(), [])
+
+    def test_without_direct_executor_survives(self):
+        self._seed_multistep()
+        cat = [_ex("get_urls"), _ex("write_texts")]  # niente equivalente
+        rep = eng_fastpath.prune(
+            catalog_names={e.name for e in cat}, catalog=cat, **self._AGING)
+        self.assertEqual(rep["dead_superseded_prefilter"], 0)
+        self.assertEqual(len(eng_fastpath.list_all()), 1)
+
+    def test_single_step_immune(self):
+        # Fastpath a UN solo step: il check-prefilter vale solo per i piani
+        # multi-step (un singolo executor che ne rimpiazza una CATENA).
+        intent = Intent(verb="write", object="files")
+        eng_fastpath.record_success(self._Q, _fw("write_texts"),
+                                    intent=intent)
+        cat = self._catalog_with_equiv()
+        rep = eng_fastpath.prune(
+            catalog_names={e.name for e in cat}, catalog=cat, **self._AGING)
+        self.assertEqual(rep["dead_superseded_prefilter"], 0)
+        self.assertEqual(len(eng_fastpath.list_all()), 1)
+
+    def test_top_in_plan_family_survives_unit(self):
+        # Unit su _prefilter_supersedes: se il top-1 del routing appartiene
+        # alla famiglia di un tool del piano (variante provider/qualifier),
+        # il piano lo usa già → nessun oscuramento, nessuna morte.
+        cat = self._catalog_with_equiv()
+        self.assertEqual(
+            eng_fastpath._prefilter_supersedes(
+                self._Q, "write", "files",
+                ["get_urls", "create_files_spreadsheet"], cat),
+            "")
+
+    def test_injected_top_does_not_kill_unit(self):
+        # Unit: top-1 da injection del prefilter (precursor/primary, verbo
+        # NON dell'intent né sibling) non "implementa l'intent" → ''.
+        # Catalogo senza alcun write_*/create_*: rank torna None o injected.
+        cat = [_ex("get_urls"), _ex("find_files")]
+        self.assertEqual(
+            eng_fastpath._prefilter_supersedes(
+                self._Q, "write", "files",
+                ["get_urls", "write_texts"], cat),
+            "")
+
+    def test_no_catalog_objects_skips_check(self):
+        # catalog objects non disponibili (None) → check saltato: meglio
+        # nessuna morte che falsi kill (§2.8).
+        self.assertEqual(
+            eng_fastpath._prefilter_supersedes(
+                self._Q, "write", "files", ["get_urls", "write_texts"],
+                None),
+            "")
+
+
+class _InheritanceCase(_FastpathDbCase):
+    """DB fastpath + DB executor_stats entrambi isolati per-test."""
+
+    def setUp(self):
+        super().setUp()
+        import executor_aging
+        self._ea = executor_aging
+        self._ea_patch = mock.patch.object(
+            executor_aging, "DB_PATH", Path(self.tmp) / "executor_stats.db")
+        self._ea_patch.start()
+
+    def tearDown(self):
+        self._ea_patch.stop()
+        super().tearDown()
+
+    def _set_uses(self, fp_id: int, n: int) -> None:
+        c = eng_fastpath._conn()
+        c.execute("UPDATE fastpaths SET n_uses = ? WHERE id = ?", (n, fp_id))
+        c.commit()
+        c.close()
+
+    def _calls(self, name: str) -> int:
+        st = self._ea.lookup(name)
+        return st.total_calls if st else 0
+
+
+class TestInheritance(_InheritanceCase):
+    """EREDITÀ-PUNTI: la morte per superamento (name-based / provenienza /
+    check-prefilter) trasferisce gli n_uses del fastpath all'erede nel
+    deposito executor_stats (executor_aging) — quello che aging/promozione
+    leggono."""
+
+    _AGING = dict(stale_days=30, grace_days=14, max_rows=500, now_ts=_NOW)
+
+    def test_name_based_death_inherits_uses(self):
+        intent = Intent(verb="compress", object="images")
+        fp_id = eng_fastpath.record_success(
+            "comprimi le foto di marzo",
+            _fw("find_images", "compress_files_zip"), intent=intent)
+        self._set_uses(fp_id, 5)
+        rep = eng_fastpath.prune(
+            catalog_names={"find_images", "compress_files_zip",
+                           "compress_images"}, **self._AGING)
+        self.assertEqual(rep["dead_superseded"], 1)
+        self.assertEqual(rep["inherited_uses"], 5)
+        self.assertEqual(self._calls("compress_images"), 5)
+
+    def test_prefilter_death_inherits_uses(self):
+        intent = Intent(verb="write", object="files")
+        fp_id = eng_fastpath.record_success(
+            "salva la lista della spesa in un foglio di calcolo",
+            _fw("get_urls", "write_texts"), intent=intent)
+        self._set_uses(fp_id, 3)
+        cat = [_ex("get_urls"), _ex("write_texts"),
+               _ex("create_files_spreadsheet",
+                   affinity=["foglio", "calcolo", "spreadsheet"])]
+        rep = eng_fastpath.prune(
+            catalog_names={e.name for e in cat}, catalog=cat, **self._AGING)
+        self.assertEqual(rep["dead_superseded_prefilter"], 1)
+        self.assertEqual(rep["inherited_uses"], 3)
+        self.assertEqual(self._calls("create_files_spreadsheet"), 3)
+
+    def test_provenance_death_inherits_uses(self):
+        intent = Intent(verb="compress", object="images")
+        fp_id = eng_fastpath.record_success(
+            "comprimi le foto di marzo",
+            _fw("find_images", "compress_files_zip"), intent=intent)
+        self._set_uses(fp_id, 7)
+        eng_fastpath.record_promotion(
+            "compress_images_indices", [(fp_id, "")])
+        rep = eng_fastpath.prune(
+            catalog_names={"find_images", "compress_files_zip",
+                           "compress_images_indices"}, **self._AGING)
+        self.assertEqual(rep["dead_promoted"], 1)
+        self.assertEqual(rep["inherited_uses"], 7)
+        self.assertEqual(self._calls("compress_images_indices"), 7)
+
+    def test_missing_tool_death_no_heir(self):
+        fp_id = eng_fastpath.record_success(
+            "comando con tool ritirato", _fw("ghost_tool"))
+        self._set_uses(fp_id, 9)
+        rep = eng_fastpath.prune(catalog_names={"get_now"}, **self._AGING)
+        self.assertEqual(rep["dead_missing_tool"], 1)
+        self.assertEqual(rep["inherited_uses"], 0)  # nessun erede
+        self.assertEqual(self._ea.all_stats(), [])  # deposito intatto
+
+    def test_zero_uses_inherits_nothing(self):
+        intent = Intent(verb="compress", object="images")
+        eng_fastpath.record_success(
+            "comprimi le foto di marzo",
+            _fw("find_images", "compress_files_zip"), intent=intent)
+        rep = eng_fastpath.prune(
+            catalog_names={"find_images", "compress_files_zip",
+                           "compress_images"}, **self._AGING)
+        self.assertEqual(rep["dead_superseded"], 1)
+        self.assertEqual(rep["inherited_uses"], 0)
+        self.assertEqual(self._ea.all_stats(), [])  # mai-usato → zero punti
+
+
 if __name__ == "__main__":
     unittest.main()

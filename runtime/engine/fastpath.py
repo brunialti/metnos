@@ -390,7 +390,111 @@ def _in_family(name: str, stem: str) -> bool:
     return name == stem or name.startswith(stem + "_")
 
 
+def _family_heir(stem: str, catalog_names: set) -> str:
+    """Erede deterministico per la morte C2 name-based: il membro della
+    famiglia `stem` presente nel catalog — lo stem esatto se c'è, altrimenti
+    il primo qualified in ordine alfabetico (§7.9)."""
+    if stem in catalog_names:
+        return stem
+    fam = sorted(n for n in catalog_names if n.startswith(stem + "_"))
+    return fam[0] if fam else ""
+
+
+def _catalog_objects(catalog, catalog_names: set):
+    """Oggetti executor (con .name/.affinity) per il check-prefilter.
+
+    Se il caller non li passa (contratto storico di prune: solo
+    catalog_names), best-effort dal loader; in entrambi i casi INTERSECATI
+    con catalog_names — il set dichiarato invocabile resta l'unico contratto
+    di morte (§2.8: un catalog objects più largo non deve uccidere di più).
+    None su errore → check-prefilter saltato stanotte (mai falsi kill).
+    """
+    if catalog is not None:
+        return [e for e in catalog if getattr(e, "name", "") in catalog_names]
+    try:
+        from loader import load_catalog
+        return [e for e in load_catalog() if e.name in catalog_names]
+    except Exception as ex:
+        log.warning("fastpath: catalog objects per check-prefilter "
+                    "non disponibili: %r", ex)
+        return None
+
+
+def _prefilter_supersedes(canonical_text: str, iverb: str, iobj: str,
+                          tools: list, catalog_objs) -> str:
+    """CHECK-PREFILTER deterministico alla morte C2 (mandato #5-followup).
+
+    Esegue il prefilter di routing (prefilter.rank_with_intent — §7.9
+    deterministico, NESSUN LLM) sulla query canonica del fastpath: se ORA
+    mette in cima un SINGOLO executor che implementa l'intent verb_object
+    (verbo esatto o sibling _VERB_ALSO_CANONICAL, object nei name-parts)
+    mentre il piano del fastpath è multi-step e NON usa quella famiglia →
+    il fastpath è SUPERATO. Chiude i falsi-negativi del match name-based:
+    un equivalente con NOME DIVERSO (es. create_files_spreadsheet per
+    intent write_files) non matcha lo stem ma vince il routing.
+    SOLO decisione di routing: niente confronto di output (unsafe).
+
+    Ritorna il nome dell'executor che supera, '' se il fastpath resta.
+    """
+    if not (iverb and iobj) or len(tools) < 2 or not catalog_objs:
+        return ""
+    try:
+        import prefilter as _pf
+        ranked = _pf.rank_with_intent(
+            canonical_text, catalog_objs,
+            {"verb": iverb, "object": iobj}, k=3)
+    except Exception as ex:
+        log.warning("fastpath: check-prefilter fallito: %r", ex)
+        return ""
+    if not ranked:
+        return ""
+    top = getattr(ranked[0], "name", "") or ""
+    parts = top.split("_")
+    siblings = getattr(_pf, "_VERB_ALSO_CANONICAL", {}).get(iverb, ())
+    if not parts or (parts[0] != iverb and parts[0] not in siblings):
+        return ""  # top-1 da injection (precursor/admin/get_now): non
+        #            implementa l'intent → nessuna morte
+    if iobj not in parts:
+        return ""
+    if any(_in_family(top, t) or _in_family(t, top) for t in tools):
+        return ""  # il piano usa già quella famiglia → nessun oscuramento
+    return top
+
+
+def _inherit_uses(executor_name: str, n_uses: int) -> int:
+    """EREDITÀ-PUNTI (mandato #5-followup): quando un fastpath muore perché
+    SUPERATO (provenienza / name-based / check-prefilter), i suoi usi —
+    domanda PROVATA dall'utente — passano all'executor che lo supera.
+
+    Deposito: `executor_stats` (runtime/executor_aging.py, total_calls +
+    last_used_at) — ESATTAMENTE la telemetria che l'aging legge
+    (apply_executor_ager: demote/archive su inattività) e su cui il
+    lifecycle/promozione ragiona. Senza il trasferimento l'erede partirebbe
+    da zero e rischierebbe il demote immotivato proprio mentre serve la
+    domanda che il fastpath ha dimostrato.
+
+    FLAG implementativo: executor_aging espone solo touch() (incremento
+    singolo, nessuna bulk-API) e questo mandato non può modificarlo →
+    loop di touch (n piccolo, job notturno). Se diventa caldo: aggiungere
+    una bulk-API a executor_aging.
+
+    Ritorna gli usi trasferiti (0 su input vuoto o errore, best-effort).
+    """
+    if not executor_name or n_uses <= 0:
+        return 0
+    try:
+        import executor_aging as _ea
+        for _ in range(int(n_uses)):
+            _ea.touch(executor_name)
+        return int(n_uses)
+    except Exception as ex:
+        log.warning("fastpath: eredità usi → %s fallita: %r",
+                    executor_name, ex)
+        return 0
+
+
 def prune(*, catalog_names: Optional[set] = None,
+          catalog: Optional[list] = None,
           stale_days: int | None = None, grace_days: int | None = None,
           max_rows: int | None = None, now_ts: float | None = None) -> dict:
     """Aging + morte deterministici (§7.9) dello store fastpath. Chiamato
@@ -424,6 +528,20 @@ def prune(*, catalog_names: Optional[set] = None,
           verb_object[_qualifier] dall'intent); il fastpath, vincendo in
           cascata, lo oscurerebbe per sempre → muore, il prossimo turno
           ripianifica via L3 col nuovo executor.
+      C2-prefilter (mandato #5-followup): per i fastpath MULTI-step con
+          intent che il name-based NON uccide, il prefilter di routing
+          (deterministico, no LLM) sulla query canonica dice se ORA un
+          singolo executor implementa l'intent (anche con NOME DIVERSO,
+          es. sibling verb) → superato → muore. Vedi
+          _prefilter_supersedes. `catalog` (oggetti executor, opzionale):
+          se assente, best-effort dal loader ∩ catalog_names
+          (_catalog_objects); non disponibile → check saltato, mai falsi
+          kill.
+
+    EREDITÀ-PUNTI: ogni morte per superamento (promoted / superseded /
+    superseded_prefilter) trasferisce gli n_uses del fastpath all'executor
+    erede via _inherit_uses (deposito: executor_stats di executor_aging) —
+    la domanda provata non va persa per aging/promozione dell'erede.
 
     Economia: un fastpath potato per errore SI RICREA DA SOLO alla prossima
     ripetizione riuscita (auto-produzione) → la potatura costa zero e i
@@ -445,7 +563,9 @@ def prune(*, catalog_names: Optional[set] = None,
 
     report = {"never_reused_removed": 0, "stale_removed": 0,
               "cap_removed": 0, "dead_missing_tool": 0,
-              "dead_promoted": 0, "dead_superseded": 0, "kept": 0}
+              "dead_promoted": 0, "dead_superseded": 0,
+              "dead_superseded_prefilter": 0, "inherited_uses": 0,
+              "kept": 0}
     try:
         c = _conn()
         report["never_reused_removed"] = c.execute(
@@ -470,15 +590,28 @@ def prune(*, catalog_names: Optional[set] = None,
                 promo_by_id[pfp_id] = ename
                 if phash:
                     promo_by_hash[phash] = ename
-            dead: list[tuple[int, str]] = []
+            # Catalog objects per il check-prefilter: build LAZY (una volta,
+            # solo se almeno un fastpath arriva a quel check — il fallback
+            # dal loader non è gratis).
+            _objs_cache: dict = {}
+
+            def _objs():
+                if "v" not in _objs_cache:
+                    _objs_cache["v"] = _catalog_objects(catalog,
+                                                        catalog_names)
+                return _objs_cache["v"]
+
+            # dead = (fp_id, why, heir, n_uses): heir/n_uses alimentano
+            # l'EREDITÀ-PUNTI (heir='' = nessun erede, es. missing_tool).
+            dead: list[tuple[int, str, str, int]] = []
             rows = c.execute(
-                "SELECT id, canonical_hash, framework_json, "
-                "intent_verb, intent_object FROM fastpaths").fetchall()
-            for fp_id, chash, fjson, iverb, iobj in rows:
+                "SELECT id, canonical_text, canonical_hash, framework_json, "
+                "intent_verb, intent_object, n_uses FROM fastpaths").fetchall()
+            for fp_id, ctext, chash, fjson, iverb, iobj, n_uses in rows:
                 tools = framework_tools(fjson)
                 missing = [t for t in tools if t not in catalog_names]
                 if missing:
-                    dead.append((fp_id, "missing_tool"))
+                    dead.append((fp_id, "missing_tool", "", 0))
                     log.info("fastpath: morte fp_id=%d (tool mancante %s)",
                              fp_id, missing[0])
                     continue
@@ -486,24 +619,44 @@ def prune(*, catalog_names: Optional[set] = None,
                 promoted = promo_by_id.get(fp_id) or promo_by_hash.get(chash)
                 if (promoted and promoted in catalog_names
                         and promoted not in tools):
-                    dead.append((fp_id, "promoted"))
+                    dead.append((fp_id, "promoted", promoted, n_uses))
                     log.info("fastpath: morte fp_id=%d (promosso a "
                              "executor %s, provenienza)", fp_id, promoted)
                     continue
                 if iverb and iobj:
                     stem = f"{iverb}_{iobj}"
-                    if (not any(_in_family(t, stem) for t in tools)
-                            and any(_in_family(n, stem)
-                                    for n in catalog_names)):
-                        dead.append((fp_id, "superseded"))
-                        log.info("fastpath: morte fp_id=%d (executor "
-                                 "equivalente famiglia %s_*)", fp_id, stem)
-            for fp_id, why in dead:
+                    if not any(_in_family(t, stem) for t in tools):
+                        if any(_in_family(n, stem) for n in catalog_names):
+                            heir = _family_heir(stem, catalog_names)
+                            dead.append((fp_id, "superseded", heir, n_uses))
+                            log.info("fastpath: morte fp_id=%d (executor "
+                                     "equivalente famiglia %s_*)",
+                                     fp_id, stem)
+                            continue
+                        # C2-prefilter: equivalente con NOME DIVERSO che il
+                        # name-based non coglie — decide il routing.
+                        top = _prefilter_supersedes(ctext, iverb, iobj,
+                                                    tools, _objs())
+                        if top:
+                            dead.append((fp_id, "superseded_prefilter",
+                                         top, n_uses))
+                            log.info("fastpath: morte fp_id=%d (check-"
+                                     "prefilter: %s in cima al routing "
+                                     "per '%s')", fp_id, top, ctext)
+            for fp_id, why, heir, n_uses in dead:
                 c.execute("DELETE FROM fastpaths WHERE id = ?", (fp_id,))
                 key = {"missing_tool": "dead_missing_tool",
-                       "promoted": "dead_promoted"}.get(
+                       "promoted": "dead_promoted",
+                       "superseded_prefilter":
+                           "dead_superseded_prefilter"}.get(
                            why, "dead_superseded")
                 report[key] += 1
+                if heir:
+                    inherited = _inherit_uses(heir, n_uses)
+                    if inherited:
+                        report["inherited_uses"] += inherited
+                        log.info("fastpath: eredità %d usi fp_id=%d → %s",
+                                 inherited, fp_id, heir)
         c.commit()
         report["kept"] = c.execute(
             "SELECT COUNT(*) FROM fastpaths").fetchone()[0]
