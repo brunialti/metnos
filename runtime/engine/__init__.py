@@ -2,7 +2,7 @@
 
 Architettura a 4 layer (vedi engine/ARCHITECTURE.md):
 
-  Layer 0 — fastpath        (utente approva, hash + cosine BGE-M3)
+  Layer 0 — fastpath        (auto-prodotto su turno-successo, hash + cosine BGE-M3)
   Layer 1 — autopath        (auto-promote da feedback ✓)
   Layer 2 — validator       (typecheck framework, opt-in)
   Layer 3 — engine          (proposer + recovery + terminator pluggable)
