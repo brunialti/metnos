@@ -141,6 +141,22 @@ header form button:hover{color:var(--accent)}
 .msg .msg-fb-retry:hover{opacity:1;color:var(--accent);background:var(--accent-soft)}
 .msg .msg-fb-retry:active{background:var(--surface-3)}
 
+/* ---------- copia testo messaggio (bolle utente): discreto come i badge
+   feedback (visibile a riposo via opacity, niente hover-only per touch).
+   Riga azioni sotto il testo, allineata a destra. ---------- */
+.msg .msg-actions{display:flex;justify-content:flex-end;margin-top:.25rem}
+.msg .msg-copy-btn{border:none;background:transparent;cursor:pointer;
+                    color:var(--muted);font-family:var(--font-mono);
+                    font-size:var(--fs-0);line-height:1;
+                    min-width:24px;min-height:22px;padding:.1rem .3rem;
+                    border-radius:var(--r-1);opacity:.55;
+                    transition:opacity var(--t-1) var(--ease),
+                               color var(--t-1) var(--ease),
+                               background var(--t-1) var(--ease)}
+.msg .msg-copy-btn:hover,.msg .msg-copy-btn:focus-visible{opacity:1;
+                    color:var(--ink-2);background:var(--surface-2)}
+.msg .msg-copy-btn.done{color:var(--ok-fg);opacity:1;cursor:default}
+
 /* ---------- breadcrumb pipeline (badge executor) ---------- */
 .msg .path-badges{display:flex;flex-wrap:wrap;gap:.25rem;align-items:center;
                    font-size:var(--fs-0);color:var(--muted);margin-top:.35rem}
@@ -511,6 +527,49 @@ function scrollToEnd(){
   requestAnimationFrame(() => window.scrollTo({ top: document.body.scrollHeight, behavior: 'auto' }));
 }
 
+// Copia negli appunti con fallback: la chat gira spesso su HTTP LAN
+// (192.168.x.x:8770) dove navigator.clipboard NON esiste (secure context
+// only) → textarea fuori schermo + execCommand('copy').
+function copyMsgText(t){
+  if(navigator.clipboard && window.isSecureContext){
+    return navigator.clipboard.writeText(t);
+  }
+  return new Promise((resolve, reject) => {
+    const ta = document.createElement('textarea');
+    ta.value = t;
+    ta.setAttribute('readonly', '');
+    ta.style.cssText = 'position:fixed;left:-9999px;top:0';
+    document.body.appendChild(ta);
+    ta.select();
+    try {
+      if(document.execCommand('copy')){ resolve(); }
+      else { reject(new Error('execCommand copy failed')); }
+    } catch(e){ reject(e); }
+    finally { ta.remove(); }
+  });
+}
+
+// Bottone copia (bolle utente): icona discreta, conferma transitoria.
+function makeCopyBtn(getText){
+  const cb = document.createElement('button');
+  cb.type = 'button';
+  cb.className = 'msg-copy-btn';
+  cb.title = '{{ msg("MSG_CHAT_COPY_HINT")|e }}';
+  cb.setAttribute('aria-label', cb.title);
+  cb.textContent = '⧉';
+  cb.addEventListener('click', () => {
+    copyMsgText(getText()).then(() => {
+      cb.classList.add('done');
+      cb.textContent = '{{ msg("MSG_CHAT_COPY_DONE")|e }}';
+      setTimeout(() => {
+        cb.classList.remove('done');
+        cb.textContent = '⧉';
+      }, 1200);
+    }).catch(() => {});
+  });
+  return cb;
+}
+
 function add(cls, text, meta, persist, attachments, galleryInfo, htmlMode){
   const stick = (cls === 'me') || nearBottom();
   const d = document.createElement('div');
@@ -679,6 +738,15 @@ function add(cls, text, meta, persist, attachments, galleryInfo, htmlMode){
         d.appendChild(m);
       }
     }
+  }
+  // Copia testo (bolle utente): la query originale e' `text` letterale
+  // (le 'me' non vanno mai in htmlMode). Riga azioni in coda alla bolla,
+  // dopo meta — nessuna interferenza con feedback/lightbox/autoscroll.
+  if(cls === 'me'){
+    const act = document.createElement('div');
+    act.className = 'msg-actions';
+    act.appendChild(makeCopyBtn(() => (text == null ? '' : String(text))));
+    d.appendChild(act);
   }
   log.appendChild(d);
   if(attachments && attachments.length){
