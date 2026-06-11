@@ -25,7 +25,6 @@
 - **Pipeline shape FSM** (ADR 0154): `runtime/pipeline_shape.py` invariante `E+ (F|A)?` + hook in `agent_runtime`.
 - **Planner choice > runtime override** (ADR 0155): runtime non sovrascrive il planner (eccetto auto_remediation / vaglio / fast-path). Vietato interceptor pattern-match.
 - **Fast path deterministico** (ADR 0094): `runtime/fast_path.py` short-circuit pre-PLANNER. Tabella chiusa `_FAST_PATTERNS`. ZERO LLM.
-- **Multi-tool fast-path L2** (ADR 0150): `runtime/multi_tool_paths.py` sqlite TTL. Bridge L2→L3 `jobs/multi_tool_promote.py`. Executor>fast-path bidirezionale: `try_match`+`record_path` ricevono `available_tool_names`.
 - **args_extractor V1.5** (ADR 0149+0150): `runtime/args_extractor.py` regex + memoization `args_observed` + LLM fallback opt-in.
 - **PLANNER split GBNF** (ADR 0151): `runtime/planner_split.py::chat_with_tools_split` 2-call. Opt-in `METNOS_PLANNER_SPLIT=1`. 1.72× speedup.
 - **Pattern intent-implicit** (ADR 0129): `vocab.detect_implicit_actions(query)` deterministico. Wire `intent_extractor → agent_runtime → orchestration._orchestrate_implicit_actions`.

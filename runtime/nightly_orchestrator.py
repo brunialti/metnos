@@ -42,7 +42,6 @@ NIGHTLY_SEQUENCE: tuple[str, ...] = (
     "state_reaper",              # dopo aging (reaper unico stato persistente)
     "telos_synth_consume",
     "proposals_eta_aggregate",
-    "multi_tool_maintenance",
     "introvertiva_propose",
     "promoter",
     "promoter_digest",           # dopo promoter

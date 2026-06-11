@@ -1,7 +1,9 @@
 """turn_feedback OK/Errore (E.1, 22/5/2026).
 
-Test apply_feedback con turn log fittizio: rinforza fast-path HIT,
-demote fast-path su error, promote candidate→active dopo cumulative OK.
+Test apply_feedback con turn log fittizio: persistenza record, campi audit
+(canonical, fast_path_hit), rejected pipelines LWW, counter consecutivi.
+(11/6/2026: rimossi i test di rinforzo/demote multi_tool_paths — ADR 0150
+ritirato insieme ai rami corrispondenti di apply_feedback.)
 
 Run: python3 -m pytest runtime/tests/test_turn_feedback.py -v
 """
@@ -12,7 +14,6 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
-from unittest import mock
 
 _RUNTIME = Path(__file__).resolve().parent.parent
 if str(_RUNTIME) not in sys.path:
@@ -76,53 +77,33 @@ class ApplyFeedbackTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.TF.apply_feedback("abc", "maybe")
 
-    def test_ok_without_canonical_is_noop(self):
+    def test_ok_without_canonical_records(self):
         turn = _fake_turn(canonical="")  # no canonical_query
         self._write_turn(turn)
         rec = self.TF.apply_feedback("abc123", "ok")
         self.assertEqual(rec["action"], "ok")
-        self.assertEqual(rec["effects"][0]["type"], "noop")
+        self.assertIsNone(rec["canonical"])
 
-    def test_error_with_fast_path_demote(self):
-        turn = _fake_turn(canonical="test query", fast_path_hit=True)
-        self._write_turn(turn)
-        with mock.patch.object(self.TF, "_demote_path",
-                                return_value={"action": "demoted", "rows_deleted": 1}):
-            rec = self.TF.apply_feedback("abc123", "error")
-        self.assertEqual(rec["fast_path_hit"], True)
-        self.assertEqual(rec["effects"][0]["type"], "demote_path")
-        self.assertEqual(rec["effects"][0]["action"], "demoted")
-
-    def test_ok_with_fast_path_reinforces(self):
-        turn = _fake_turn(canonical="test query", fast_path_hit=True)
-        self._write_turn(turn)
-        with mock.patch.object(self.TF, "_reinforce_path",
-                                return_value={"action": "reinforced",
-                                              "uses_before": 1, "uses_after": 2}):
-            rec = self.TF.apply_feedback("abc123", "ok")
-        self.assertEqual(rec["effects"][0]["type"], "reinforce_path")
-
-    def test_ok_without_fast_path_is_neutral(self):
-        """OK su path LLM-generato (no fast-path HIT) = neutro per design.
-        Path nuovi sono incerti; non rinforziamo finché il sistema non
-        li osserva stabilmente."""
+    def test_ok_audit_fields(self):
+        """OK = neutro (nessun effetto cache); il record conserva i campi
+        audit canonical + fast_path_hit (consumati da change_intents)."""
         turn = _fake_turn(canonical="test query", fast_path_hit=False)
         self._write_turn(turn)
         rec = self.TF.apply_feedback("abc123", "ok")
         self.assertEqual(rec["fast_path_hit"], False)
-        self.assertEqual(rec["effects"][0]["type"], "noop")
-        self.assertEqual(rec["effects"][0]["reason"], "ok_neutral_llm_path")
+        self.assertEqual(rec["canonical"], "test query")
+        self.assertEqual(rec["effects"], [])
 
-    def test_error_without_fast_path_is_neutral(self):
-        """Error su path LLM-generato = neutro. Niente da cancellare nella
-        cache, e non penalizziamo la canonical (next turn ripassa da LLM
-        comunque)."""
-        turn = _fake_turn(canonical="test query", fast_path_hit=False)
+    def test_error_audit_fields(self):
+        """Error sotto soglia E12 = nessun effetto; record con audit fields
+        + rejected_pipeline per il LWW del PLANNER."""
+        turn = _fake_turn(canonical="test query", fast_path_hit=True)
         self._write_turn(turn)
         rec = self.TF.apply_feedback("abc123", "error")
-        self.assertEqual(rec["fast_path_hit"], False)
-        self.assertEqual(rec["effects"][0]["type"], "noop")
-        self.assertEqual(rec["effects"][0]["reason"], "error_neutral_llm_path")
+        self.assertEqual(rec["fast_path_hit"], True)
+        self.assertEqual(rec["effects"], [])
+        self.assertEqual(rec["rejected_pipeline"],
+                          ["find_files", "compute_entries"])
 
     def test_turn_not_found_returns_warning(self):
         rec = self.TF.apply_feedback("missing_turn", "ok")
@@ -131,9 +112,7 @@ class ApplyFeedbackTests(unittest.TestCase):
     def test_feedback_persisted(self):
         turn = _fake_turn(canonical="test")
         self._write_turn(turn)
-        with mock.patch.object(self.TF, "_reinforce_path",
-                                return_value={"action": "noop"}):
-            self.TF.apply_feedback("abc123", "ok")
+        self.TF.apply_feedback("abc123", "ok")
         self.assertTrue(self.fb_path.exists())
         line = self.fb_path.read_text().strip()
         rec = json.loads(line)
@@ -176,9 +155,7 @@ class RejectedPipelinesTests(unittest.TestCase):
                           "steps": steps}) + "\n",
             encoding="utf-8",
         )
-        with mock.patch.object(self.TF, "_demote_path",
-                                return_value={"action": "demoted"}):
-            self.TF.apply_feedback(turn_id, "error")
+        self.TF.apply_feedback(turn_id, "error")
 
     def test_no_feedback_returns_empty(self):
         out = self.TF.rejected_pipelines_for_query("nessuna query")

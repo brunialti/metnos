@@ -504,8 +504,9 @@ class Mnestoma:
         cosine_threshold: float = 0.7,
     ) -> int:
         """Cancella entries `canonical_query_log` la cui canonical_query ha
-        BGE similarity >= threshold con `query`. Companion del cleanup L2
-        in multi_tool_paths (E.2 retry, 22/5/2026).
+        BGE similarity >= threshold con `query` (E.2 retry, 22/5/2026:
+        il retry di un turno bocciato non deve riusare pattern appena
+        rifiutati).
 
         Usa BGE embedder via canonical_matcher se disponibile. Se BGE non
         installato → fallback a EXACT match case-insensitive trimmed.

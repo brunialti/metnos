@@ -9,8 +9,7 @@ questo modulo trasforma il book-keeping in azione concreta:
 - `existing_parametric` (target esiste, modulo args): marker
   `change_pending/<sig>.json` per estensione signature.
 - `existing_pipeline` (target esiste, combinato con altri): marker
-  `pipeline_pending/<sig>.json` come "proposta utente convalidata"
-  (futuro: candidate per multi_tool_paths promote ad active).
+  `pipeline_pending/<sig>.json` come "proposta utente convalidata".
 - `existing_redundant` (target esiste, ricreazione): NESSUNA azione.
   L'UI ha gia' chiesto conferma esplicita (hx-confirm); accept comunque
   registrato come bookmark, ma niente synt request.

@@ -39,7 +39,7 @@ ERRORE: "dire/impedire/correggere all'utente".
 DEVI: §2.1 (single-op vettoriale) | §2.9 (no default impliciti) | §2.10 (no accoppiamento domini) | §2.4 (plurale N=1 OK).
 NON DEVI: fondere executor | inferire args dal contesto | accoppiare domini | rimuovere supporto N=1.
 
-METNOS FA GIA': from_step piping | undo_last_turn | fast_path | multi_tool memo | output_format markdown | needs_inputs.
+METNOS FA GIA': from_step piping | undo_last_turn | fast_path | cache query→piano (engine fastpath L0) | output_format markdown | needs_inputs.
 NON re-inventare."""
 
 # Schema naming + governance: SOLO per lenti naming-aware.

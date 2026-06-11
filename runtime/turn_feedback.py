@@ -2,15 +2,17 @@
 """turn_feedback.py — Feedback OK/Errore utente su risposte Metnos.
 
 Loop di rinforzo esplicito (22/5/2026). L'utente preme:
-- `ok`: rinforza il path usato. Se il turno e' partito da `multi_tool_paths`
-  fast-path HIT, incrementa `uses` della entry corrispondente (segnale piu'
-  forte = piu' alto rank).
-- `error`: il path usato e' sbagliato. Se fast-path HIT, demote o cancella
-  la entry; comunque marca il turno come negativo in
-  `~/.local/share/metnos/turn_feedback.jsonl` (audit + base per future
-  riformulazioni / retraining).
+- `ok`: rinforza il path usato (verdict propagato a engine.autopath).
+- `error`: il path usato e' sbagliato: marca il turno come negativo in
+  `~/.local/share/metnos/turn_feedback.jsonl` (audit + rejected pipelines
+  per il PLANNER), propaga il verdict a engine.autopath e — dopo N ✗
+  consecutive sullo stesso tool — demote l'executor synth (E12).
 
 Non premere = nessun segnale (default neutro).
+
+NB (11/6/2026): rimossi rinforzo/demote della cache `multi_tool_paths`
+(ADR 0150 ritirato — il meccanismo vivo e' engine/fastpath L0 + autopath,
+che riceve il verdict via l'hook in coda a `apply_feedback`).
 
 API pubblica:
     apply_feedback(turn_id, action, by="user") -> dict
@@ -66,7 +68,8 @@ def _load_turn(turn_id: str) -> Optional[dict]:
 
 
 def _canonical_from_turn(turn: dict) -> Optional[str]:
-    """Estrae la canonical_query dal primo step (usata da multi_tool_paths)."""
+    """Estrae la canonical_query dal primo step (campo audit del record,
+    consumato dall'adapter change_intents `user_feedback`)."""
     steps = turn.get("steps") or []
     for s in steps:
         if isinstance(s, dict):
@@ -77,10 +80,10 @@ def _canonical_from_turn(turn: dict) -> Optional[str]:
 
 
 def _was_fast_path_hit(turn: dict) -> bool:
-    """True se il turno e' stato risolto via multi_tool_paths fast-path
+    """True se il turno e' stato risolto da un replay fast-path/cache
     (nessun llm_in_tokens > 0 sugli step iniziali eccetto final_answer).
     Euristica: se tutti gli step pre-final hanno llm_latency_ms=0 e
-    llm_in_tokens=0, e' stato playback puro.
+    llm_in_tokens=0, e' stato playback puro. Campo audit del record.
     """
     steps = turn.get("steps") or []
     if not steps:
@@ -95,92 +98,9 @@ def _was_fast_path_hit(turn: dict) -> bool:
     )
 
 
-# Soglia uses per promozione automatica candidate→active dopo feedback OK.
-# Pattern: 3 feedback positivi indipendenti = signal robusto.
-_PROMOTE_USES_THRESHOLD = 3
-
-
-def _reinforce_path(canonical: str) -> dict:
-    """Incrementa `uses` della entry multi_tool_paths con questa canonical.
-
-    Se multiple entries con stessa canonical (path_shape diverso), incrementa
-    quella con piu' uses (la dominante). Se cumulative uses raggiunge
-    _PROMOTE_USES_THRESHOLD e state=candidate → promuove a active (signal
-    utente forte e ripetuto bypassa l'aging passivo).
-    """
-    if not canonical:
-        return {"action": "noop", "reason": "no_canonical"}
-    try:
-        from multi_tool_paths import MultiToolPathsDB
-        store = MultiToolPathsDB()
-    except Exception as ex:
-        log.warning("turn_feedback: cannot open multi_tool_paths: %r", ex)
-        return {"action": "noop", "reason": "store_unavailable"}
-    try:
-        with store._lock, store.conn:
-            row = store.conn.execute(
-                """SELECT id, uses, state FROM multi_tool_paths
-                   WHERE canonical_query = ?
-                   ORDER BY uses DESC LIMIT 1""",
-                (canonical,),
-            ).fetchone()
-            if not row:
-                return {"action": "noop", "reason": "canonical_not_in_cache"}
-            row_id, uses, state = row
-            new_uses = uses + 1
-            promoted = False
-            new_state = state
-            if state == "candidate" and new_uses >= _PROMOTE_USES_THRESHOLD:
-                new_state = "active"
-                promoted = True
-            store.conn.execute(
-                """UPDATE multi_tool_paths
-                   SET uses = ?, state = ? WHERE id = ?""",
-                (new_uses, new_state, row_id),
-            )
-            out = {"action": "reinforced", "row_id": row_id,
-                   "uses_before": uses, "uses_after": new_uses}
-            if promoted:
-                out["promoted"] = f"{state}→{new_state}"
-            return out
-    except Exception as ex:
-        log.warning("turn_feedback: reinforce failed: %r", ex)
-        return {"action": "noop", "reason": f"db_error: {ex}"}
-
-
-def _demote_path(canonical: str) -> dict:
-    """Cancella le entry multi_tool_paths con questa canonical_query.
-
-    Approccio aggressivo: il signal "error" dell'utente e' forte; meglio
-    cancellare il path sbagliato che lasciarlo a 'demoted' (potrebbe
-    riemergere). L'utente potra' sempre re-imparare la pipeline corretta
-    al prossimo turno passando dal planner LLM.
-    """
-    if not canonical:
-        return {"action": "noop", "reason": "no_canonical"}
-    try:
-        from multi_tool_paths import MultiToolPathsDB
-        store = MultiToolPathsDB()
-    except Exception as ex:
-        log.warning("turn_feedback: cannot open multi_tool_paths: %r", ex)
-        return {"action": "noop", "reason": "store_unavailable"}
-    try:
-        with store._lock, store.conn:
-            cur = store.conn.execute(
-                "DELETE FROM multi_tool_paths WHERE canonical_query = ?",
-                (canonical,),
-            )
-            n = cur.rowcount
-            return {"action": "demoted",
-                    "rows_deleted": n, "canonical": canonical}
-    except Exception as ex:
-        log.warning("turn_feedback: demote failed: %r", ex)
-        return {"action": "noop", "reason": f"db_error: {ex}"}
-
-
 def apply_feedback(turn_id: str, action: str, by: str = "user") -> dict:
     """Applica il feedback. Persistente in FEEDBACK_PATH e propaga gli
-    effetti (rinforzo/demote di multi_tool_paths se applicabile).
+    effetti (E12 demote executor, verdict a engine.autopath).
 
     Ritorna dict con: turn_id, action, by, ts, effects (lista).
     """
@@ -200,32 +120,6 @@ def apply_feedback(turn_id: str, action: str, by: str = "user") -> dict:
     canonical = _canonical_from_turn(turn)
     fast_path_hit = _was_fast_path_hit(turn)
     effects: list[dict] = []
-
-    # Regola design (22/5/2026): il feedback agisce sulla CACHE fast-path,
-    # non sui path LLM-generati. Razionale: un path appena generato dal
-    # LLM e' incerto; promuoverlo/penalizzarlo al primo feedback umano
-    # cementa pattern dubbi. Restano neutri (registrati in audit) — il
-    # sistema dovra' osservare ripetizioni multiple prima di stabilizzare.
-    if action == "ok":
-        if canonical and fast_path_hit:
-            # Rinforzo cache: uses+=1, promote candidate→active se ≥3.
-            effects.append({"type": "reinforce_path",
-                            **_reinforce_path(canonical)})
-        else:
-            effects.append({"type": "noop",
-                            "reason": "ok_neutral_llm_path" if canonical
-                                      else "ok_no_canonical"})
-    elif action == "error":
-        if canonical and fast_path_hit:
-            # Demote: cancella la entry cache che ha prodotto la risposta
-            # sbagliata. Il prossimo turno con query simile passera' dal
-            # planner LLM (eventualmente con prompt updated nel frattempo).
-            effects.append({"type": "demote_path",
-                            **_demote_path(canonical)})
-        else:
-            effects.append({"type": "noop",
-                            "reason": "error_neutral_llm_path" if canonical
-                                      else "error_no_canonical"})
 
     record = {
         "turn_id": turn_id, "action": action, "by": by,

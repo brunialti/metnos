@@ -1,7 +1,6 @@
 """E2E introvertive cycles — verifica daemon batch:
 
   - introvertiva_propose: scan mnest → proposals_state popolato
-  - multi_tool_maintenance: candidate uses>=K_synth → proto-mnest
   - change_intent_materialize (ADR 0158): proietta proposals → unified
   - change_observer: APPLIED → OBSERVED/FINALIZED/ROLLED_BACK
 
@@ -63,12 +62,6 @@ async def test_change_intent_materialize_classification(driver, introvertive_ser
     # Re-run idempotente
     r2 = await driver.run_job("change_intent_materialize")
     assert r2["result"]["n_unique_intents"] == unique, "non-idempotente"
-
-
-async def test_multi_tool_maintenance_runs(driver, introvertive_server):
-    """multi_tool_maintenance: housekeeping fast-path L2."""
-    r = await driver.run_job("multi_tool_maintenance")
-    assert r.get("ok"), f"job failed: {r}"
 
 
 async def test_proposals_eta_aggregate_runs(driver, introvertive_server):

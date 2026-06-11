@@ -2507,12 +2507,10 @@ a.btn:hover{{background:#eef}}
 async def turn_retry_handler(request: web.Request) -> web.Response:
     """POST /agent/turns/{turn_id}/retry — rilancia la query del turno.
 
-    Pre-step di pulizia (richiesta utente 22/5/2026): cancella TUTTE le
-    entries multi_tool_paths con la stessa `tools_sequence` del turno
-    rifiutato, indipendentemente da canonical_query. Motivo: il fast-path
-    matcha via BGE cosine similarity, quindi una entry per "controllare
-    temperatura cpu gpu" hitterebbe "quanto consuma gpu" (cosine 0.821)
-    se i tools sono gli stessi. Demote per canonical exact non basta.
+    Pre-step di pulizia (richiesta utente 22/5/2026): cancella le entries
+    `canonical_query_log` con BGE similarity alta vs la query del turno
+    rifiutato, cosi' il retry non riusa pattern appena bocciati.
+    (11/6/2026: rimosso il cleanup L2 multi_tool_paths — ADR 0150 ritirato.)
 
     Risposta JSON: {"query": <str>, "submit_url": "/agent/turn/submit",
                     "deleted_cache_entries": <int>}.
@@ -2530,28 +2528,18 @@ async def turn_retry_handler(request: web.Request) -> web.Response:
     if not query:
         return _error(400, "no_query", "turn has no user_query to retry")
 
-    # Cancellazione cache via cosine match: TUTTE le entries (L1
-    # canonical_query_log + L2 multi_tool_paths) il cui canonical_query ha
-    # BGE similarity >= 0.7 con la user_query del turno rifiutato. Coincide
-    # con le entries che fast-path HITTEREBBE al prossimo tentativo →
-    # garantisce che il retry passi dal planner.
-    deleted_l1 = 0
-    deleted_l2 = 0
-    try:
-        from multi_tool_paths import MultiToolPathsDB
-        store = MultiToolPathsDB()
-        deleted_l2 = store.delete_entries_matching_query(query, cosine_threshold=0.7)
-    except Exception as ex:
-        log.warning("retry %s: L2 cache cleanup failed: %r", turn_id, ex)
+    # Cancellazione cache via cosine match: entries canonical_query_log il
+    # cui canonical_query ha BGE similarity >= 0.7 con la user_query del
+    # turno rifiutato → il retry non riusa pattern appena bocciati.
+    deleted = 0
     try:
         from mnestoma import Mnestoma
         mn = Mnestoma()
-        deleted_l1 = mn.delete_canonical_query_log_matching(query, cosine_threshold=0.7)
+        deleted = mn.delete_canonical_query_log_matching(query, cosine_threshold=0.7)
     except Exception as ex:
-        log.warning("retry %s: L1 cache cleanup failed: %r", turn_id, ex)
-    deleted = deleted_l1 + deleted_l2
-    log.info("retry %s: deleted L1=%d L2=%d cache entries vs query %r",
-             turn_id, deleted_l1, deleted_l2, query[:60])
+        log.warning("retry %s: cache cleanup failed: %r", turn_id, ex)
+    log.info("retry %s: deleted %d canonical cache entries vs query %r",
+             turn_id, deleted, query[:60])
 
     return web.json_response({
         "ok": True, "query": query,
@@ -2565,8 +2553,8 @@ async def turn_feedback_handler(request: web.Request) -> web.Response:
     """POST /agent/turns/{turn_id}/feedback — user feedback OK|error.
 
     Body JSON: {"action": "ok"|"error"}.
-    OK rinforza il path usato (uses+=1 in multi_tool_paths se HIT).
-    Error demote/cancella il path se HIT, marca turn negativo in audit log.
+    OK/Error propagano il verdict a engine.autopath; error marca il turno
+    negativo in audit log (rejected pipelines LWW + E12 demote executor).
 
     Risposta HTML (htmx HX-Request) o JSON.
     """

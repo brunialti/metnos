@@ -181,17 +181,6 @@ _BUILTIN_JOBS: list[dict[str, Any]] = [
         ),
     },
     {
-        "name": "multi_tool_maintenance",
-        "trigger": "daily@04:30",
-        "callback_key": "multi_tool_maintenance",
-        "description": (
-            "Housekeeping fast-path L2 multi-tool (ADR 0150): expire "
-            "stale entries (TTL N giorni di attivita' effettiva, default "
-            "30) + promote pipelines mature (uses>=K_synth, default 50) "
-            "a proto-mnest in mnestoma per synth_request. Idempotente."
-        ),
-    },
-    {
         "name": "change_intent_materialize",
         "trigger": "daily@01:00",
         "callback_key": "change_intent_materialize",
@@ -262,10 +251,10 @@ _BUILTIN_JOBS: list[dict[str, Any]] = [
 
 
 # --- Nightly consolidation (2026-06-04, ADR 0167 ext) --------------------
-# I 14 task housekeeping notturni erano entry separate (01:00–07:00) che
+# I task housekeeping notturni erano entry separate (01:00–07:00) che
 # affollavano la dashboard. Consolidati in UNA entry `nightly_maintenance`
 # (daily@03:00): il callback li esegue in sequenza ordinata via
-# nightly_orchestrator (GPU-safe sequenziale, error-isolation §2.8). I 14
+# nightly_orchestrator (GPU-safe sequenziale, error-isolation §2.8). I loro
 # callback restano REGISTRATI in install_default_callbacks (invocabili per
 # chiave) — l'orchestratore li sequenzia, non li reimplementa.
 # Single-source di elenco+ordine: nightly_orchestrator.NIGHTLY_SEQUENCE (§7.3).
@@ -285,9 +274,10 @@ _BUILTIN_JOBS = [
         "callback_key": "nightly_maintenance",
         "description": (
             "Orchestratore manutenzione notturna: esegue in sequenza ordinata "
-            "i 14 task housekeeping (ex-entry separate 01:00–07:00) via "
-            "nightly_orchestrator. GPU-safe (sequenziale), error-isolation §2.8. "
-            "I singoli callback restano invocabili per chiave."
+            "i task housekeeping NIGHTLY_SEQUENCE (ex-entry separate "
+            "01:00–07:00) via nightly_orchestrator. GPU-safe (sequenziale), "
+            "error-isolation §2.8. I singoli callback restano invocabili "
+            "per chiave."
         ),
     }
 ]
@@ -693,28 +683,12 @@ def install_default_callbacks(scheduler) -> None:
         replace=True,
     )
 
-    # Multi-tool fast-path promotion L2 → L3 (ADR 0150 19/5/2026 v4):
-    # daily@04:30 scan multi_tool_paths uses>=K_synth (default 50) e crea
-    # proto-mnest in mnestoma. Firma nativa v2.
-    # Multi-tool fast-path housekeeping unificato (ADR 0150 v6).
-    # Un singolo job daily che fa cleanup + promote in sequenza sullo stesso
-    # sqlite. Order: expire stale PRIMA, poi promote — cosi' non promuoviamo
-    # entries che stiamo per buttare.
-    def _task_multi_tool_maintenance(payload=None):
-        from multi_tool_paths import expire_stale_paths
-        from jobs.multi_tool_promote import task_multi_tool_promote
-        expired = expire_stale_paths()
-        promoted = task_multi_tool_promote(payload or {})
-        return {"ok": True, "expired": expired,
-                "promoted": promoted.get("promoted", 0),
-                "skipped": promoted.get("skipped", 0),
-                "errors": promoted.get("errors", [])}
-    cb.register(
-        "multi_tool_maintenance",
-        _task_multi_tool_maintenance,
-        "Housekeeping unificato L2: expire stale + promote a proto-mnest (ADR 0150)",
-        replace=True,
-    )
+    # Bonifica 2026-06-11: rimossi default schedule + callback
+    # multi_tool_maintenance (ADR 0150 ritirato — playback L2 disabilitato e
+    # promozione duplicata dal nuovo engine/fastpath_promote). Il job era
+    # consolidato nel nightly orchestrator (mai installato come task DB
+    # standalone post-consolidamento); run_nightly degrada graceful su
+    # callback assenti ("missing").
 
     # Bonifica 2026-05-28: rimosse le registrazioni callback
     # praxis_template_refresh / praxis_cluster_merge. Erano zero-arg (TypeError
@@ -773,16 +747,17 @@ def install_default_callbacks(scheduler) -> None:
     )
 
     # Nightly maintenance orchestrator (2026-06-04): UNA entry daily@03:00 che
-    # esegue in sequenza i 14 task housekeeping via nightly_orchestrator. I loro
-    # callback sono gia' registrati sopra (invocabili per chiave). is_async=True
-    # auto-rilevato da register() → il daemon fa `await fn(payload)`.
+    # esegue in sequenza i task housekeeping NIGHTLY_SEQUENCE via
+    # nightly_orchestrator. I loro callback sono gia' registrati sopra
+    # (invocabili per chiave). is_async=True auto-rilevato da register() →
+    # il daemon fa `await fn(payload)`.
     async def _task_nightly_maintenance(payload=None):
         import nightly_orchestrator
         return await nightly_orchestrator.run_nightly(cb, payload)
     cb.register(
         "nightly_maintenance",
         _task_nightly_maintenance,
-        "Orchestratore housekeeping notturno: 14 task in sequenza (daily@03:00)",
+        "Orchestratore housekeeping notturno: NIGHTLY_SEQUENCE (daily@03:00)",
         replace=True,
     )
 
@@ -820,14 +795,21 @@ def install_default_jobs(scheduler) -> int:
     tz_name = getattr(scheduler, "tz_name", "Europe/Rome")
 
     # Consolidation cleanup (2026-06-04, ADR 0167 ext): rimuove le entry
-    # standalone obsolete dei 14 task housekeeping ora orchestrati da
+    # standalone obsolete dei task housekeeping ora orchestrati da
     # `nightly_maintenance`. Senza, dopo il seed girerebbero SIA loro SIA
     # l'orchestratore (doppia esecuzione). Idempotente (dopo il primo boot
     # non resta nulla). Guard origin=="system" + callback_key: i task UTENTE
-    # usano callback_key "run_user_query", mai uno dei 14 → mai toccati.
+    # usano callback_key "run_user_query", mai una chiave consolidata →
+    # mai toccati.
+    # Chiavi RITIRATE (bonifica 2026-06-11): callback rimossi dal codice.
+    # Eventuali entry DB residue (install pre-ritiro) vanno eliminate, o
+    # firerebbero un callback inesistente (§2.8 no silent failure).
+    _retired_keys = frozenset({"multi_tool_maintenance"})
     removed = 0
     for ent in storage.list_all():
-        if ent.origin == "system" and ent.callback_key in _NIGHTLY_CONSOLIDATED:
+        if ent.origin == "system" and (
+                ent.callback_key in _NIGHTLY_CONSOLIDATED
+                or ent.callback_key in _retired_keys):
             if storage.delete(ent.name):
                 removed += 1
 

@@ -2,7 +2,9 @@
 id: 0150
 title: Multi-tool fast-path — path memoization as middle tier before synthesis
 date: 2026-05-18
-status: implemented (19/5/2026 v4)
+status: retired (11/6/2026 — playback mai abilitato in prod, recording+promote
+  rimossi; il ruolo è coperto da engine/fastpath L0, ADR 0164 ext, che fa
+  cache query→piano multi-step con aging/morte/promozione proprie)
 area: runtime | fast-path | mnestoma | synthesis
 related:
   - 0066  # synth_request: synthesis of new executors from recurring patterns

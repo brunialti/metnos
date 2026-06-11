@@ -1,7 +1,8 @@
 """Test dell'orchestratore manutenzione notturna (2026-06-04, ADR 0167 ext).
 
-Verifica: (a) i 14 task housekeeping sono consolidati sotto `nightly_maintenance`
-e tolti dalle schedule entry standalone; (b) `run_nightly` invoca i callback
+Verifica: (a) i task housekeeping NIGHTLY_SEQUENCE sono consolidati sotto
+`nightly_maintenance` e tolti dalle schedule entry standalone; (b)
+`run_nightly` invoca i callback
 registrati in ORDINE; (c) error-isolation §2.8 (un fallimento non aborta gli
 altri); (d) callback `missing` gestito; (e) callback sync e async entrambi
 invocati (sync via executor, non bloccante).
@@ -23,13 +24,15 @@ from scheduler_v2.models import ScheduleEntry
 
 def test_consolidation_invariant():
     names = {j["name"] for j in _BUILTIN_JOBS}
-    # I 14 della sequenza NON sono piu' entry standalone...
+    # I task della sequenza NON sono piu' entry standalone...
     assert _NIGHTLY_CONSOLIDATED.isdisjoint(names)
     # ...e la singola entry orchestratrice c'e'.
     assert "nightly_maintenance" in names
     # elenco+ordine = single source nella sequenza.
     assert frozenset(NIGHTLY_SEQUENCE) == _NIGHTLY_CONSOLIDATED
-    assert len(NIGHTLY_SEQUENCE) == 14
+    # Pin del conteggio contro edit accidentali (13 dal ritiro di
+    # multi_tool_maintenance, 11/6/2026 — ADR 0150).
+    assert len(NIGHTLY_SEQUENCE) == 13
 
 
 def test_run_nightly_order_and_isolation():
@@ -81,16 +84,25 @@ def test_run_nightly_order_and_isolation():
 
 
 def test_install_jobs_cleans_consolidated_keeps_user(db_path):
-    """install_default_jobs rimuove le 14 entry standalone obsolete e seed
-    `nightly_maintenance`, ma preserva i task UTENTE (callback_key diverso)."""
+    """install_default_jobs rimuove le entry standalone obsolete (consolidate
+    + chiavi RITIRATE) e seed `nightly_maintenance`, ma preserva i task
+    UTENTE (callback_key diverso)."""
     d = SchedulerDaemon(db_path)
     # Simula un DB pre-consolidamento: una vecchia entry standalone di sistema
-    # per ognuno dei 14 + un task utente che NON deve essere toccato.
+    # per ogni task della sequenza + un task utente che NON deve essere toccato.
     for key in NIGHTLY_SEQUENCE:
         d.storage.upsert(ScheduleEntry(
             name=key, trigger="daily@03:00", next_fire_at=0.0, recurring=True,
             callback_key=key, origin="system", description="legacy standalone",
         ))
+    # Entry residua di un callback RITIRATO (bonifica 11/6/2026): senza
+    # cleanup firerebbe un callback non registrato (§2.8).
+    d.storage.upsert(ScheduleEntry(
+        name="multi_tool_maintenance", trigger="daily@04:30",
+        next_fire_at=0.0, recurring=True,
+        callback_key="multi_tool_maintenance", origin="system",
+        description="legacy ritirato",
+    ))
     d.storage.upsert(ScheduleEntry(
         name="user_reminder", trigger="daily@09:00", next_fire_at=0.0,
         recurring=True, callback_key="run_user_query", origin="user",
@@ -100,8 +112,10 @@ def test_install_jobs_cleans_consolidated_keeps_user(db_path):
     install_default_jobs(d)
 
     names = {e.name for e in d.storage.list_all()}
-    # I 14 standalone obsoleti sono spariti...
+    # Gli standalone obsoleti sono spariti...
     assert _NIGHTLY_CONSOLIDATED.isdisjoint(names)
+    # ...incluse le entry di callback ritirati...
+    assert "multi_tool_maintenance" not in names
     # ...l'orchestratore c'e'...
     assert "nightly_maintenance" in names
     # ...e il task utente e' intatto.

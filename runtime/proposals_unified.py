@@ -30,7 +30,7 @@ from pathlib import Path
 from typing import Optional
 
 
-# Sorgenti supportate (oggi 2; aggiungere synt_proposals/multi_tool come MVP+1)
+# Sorgenti supportate (oggi 2; aggiungere synt_proposals come MVP+1)
 SUPPORTED_SOURCES = ("telos", "introvertiva")
 
 
