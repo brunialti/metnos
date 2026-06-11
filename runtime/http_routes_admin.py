@@ -972,80 +972,62 @@ def _executors_rows(catalog) -> list[dict]:
     return out
 
 
-# --- /admin/praxis (ADR 0161) ------------------------------------------------
+# --- /admin/praxis — motore cognitivo Engine v2 -------------------------------
+
+def _decode_observation_tools(observations: list[dict]) -> None:
+    """Aggiunge `tools` (catena dal framework_json) per il display."""
+    import json as _json
+    for o in observations:
+        try:
+            fw = _json.loads(o.get("framework_json") or "{}")
+            o["tools"] = [s.get("tool") for s in fw.get("steps") or []]
+        except Exception:
+            o["tools"] = []
+
 
 async def admin_praxis(request: web.Request) -> web.Response:
-    """GET /admin/praxis — dashboard cognitive memory layer.
+    """GET /admin/praxis — dashboard del motore cognitivo (Engine v2).
 
-    Mostra: stats globali, skill catalog (active/shadow/pending/demoted/archived),
-    observations recenti, anti_skills attivi, filler_cache stats.
+    Espone gli strati CON STATO del motore a 4 strati
+    (docs/it/architecture/praxis_engine.html):
+      L0 fastpath — scorciatoie approvate dall'utente (fastpaths.sqlite)
+      L1 autopath — skill apprese dal feedback ✓ (autopath.sqlite)
+    L2 validator e L3 proposer/recovery sono stateless (niente storage).
     """
-    import sqlite3 as _sqlite3
-    legacy_notice = ""
+    # L0 — fastpath (scorciatoie approvate)
     try:
-        from praxis import get_store
-        store = get_store()
-        stats = store.stats()
-        skills_active = store.list_skills(status="active", limit=50)
-        skills_shadow = store.list_skills(status="shadow", limit=20)
-        skills_demoted = store.list_skills(status="demoted", limit=20)
-        cur = store.conn.execute(
-            "SELECT id, intent_sig, framework_json, framework_hash, verdict, "
-            "verdict_ts, latency_ms, ts, promoted_to FROM observations "
-            "ORDER BY id DESC LIMIT 30")
-        obs_cols = ["id", "intent_sig", "framework_json", "framework_hash",
-                     "verdict", "verdict_ts", "latency_ms", "ts", "promoted_to"]
-        observations = [dict(zip(obs_cols, r)) for r in cur]
-        # Decode framework_json per pretty display
-        for o in observations:
-            try:
-                import json as _json
-                fw = _json.loads(o["framework_json"])
-                o["tools"] = [s.get("tool") for s in fw.get("steps") or []]
-            except Exception:
-                o["tools"] = []
-        cur = store.conn.execute(
-            "SELECT intent_hash, framework_hash, fail_count, ttl_expires_at, "
-            "reason, ts_last_fail FROM anti_skills "
-            "WHERE ttl_expires_at > datetime('now') "
-            "ORDER BY ts_last_fail DESC LIMIT 20")
-        anti_cols = ["intent_hash", "framework_hash", "fail_count",
-                      "ttl_expires_at", "reason", "ts_last_fail"]
-        anti_skills = [dict(zip(anti_cols, r)) for r in cur]
-        cur = store.conn.execute(
-            "SELECT intent_hash, filler_name, value, uses, ts_last "
-            "FROM filler_cache ORDER BY uses DESC LIMIT 30")
-        fc_cols = ["intent_hash", "filler_name", "value", "uses", "ts_last"]
-        filler_cache = [dict(zip(fc_cols, r)) for r in cur]
-    except (ImportError, ModuleNotFoundError, _sqlite3.OperationalError) as ex:
-        # Bonifica 2026-05-28: store legacy Praxis dismesso con Engine v2.
-        # Vista vuota + avviso, NIENTE 500. Stats con shape well-formed
-        # (zeri) cosi' il template Jinja2 non solleva UndefinedError.
-        log.info("admin_praxis: store legacy dismesso (Engine v2): %r", ex)
-        legacy_notice = "store legacy dismesso (Engine v2)"
-        stats = {"skills_by_status": {}, "observations_total": 0,
-                  "anti_skills_active": 0}
-        skills_active = skills_shadow = skills_demoted = []
-        observations = anti_skills = filler_cache = []
+        from engine import fastpath as _fastpath
+        fastpaths = _fastpath.list_all(limit=100)
     except Exception as ex:
-        log.warning("admin_praxis failed: %r", ex)
-        stats = {"error": str(ex)}
-        skills_active = skills_shadow = skills_demoted = []
-        observations = anti_skills = filler_cache = []
-    # Pronoia config display
+        log.warning("admin_praxis: fastpath read failed: %r", ex)
+        fastpaths = []
+    # L1 — autopath (skill apprese, osservazioni, anti-skill)
+    try:
+        from engine import autopath as _autopath
+        stats = _autopath.stats()
+        skills_active = _autopath.list_skills(status="active", limit=50)
+        skills_demoted = _autopath.list_skills(status="demoted", limit=20)
+        observations = _autopath.recent_observations(limit=30)
+        _decode_observation_tools(observations)
+        anti_skills = _autopath.active_anti_skills(limit=20)
+    except Exception as ex:
+        log.warning("admin_praxis: autopath read failed: %r", ex)
+        stats = {"skills_by_status": {}, "observations_total": 0,
+                  "anti_skills_active": 0, "error": str(ex)}
+        skills_active = skills_demoted = []
+        observations = anti_skills = []
+    # Pronoia config display (tier di escalation del recovery)
     import os as _os
     pronoia_tier = _os.environ.get("METNOS_PRONOIA_TIER", "wise")
 
     payload = {
         "stats": stats,
+        "fastpaths": fastpaths,
         "skills_active": skills_active,
-        "skills_shadow": skills_shadow,
         "skills_demoted": skills_demoted,
         "observations": observations,
         "anti_skills": anti_skills,
-        "filler_cache": filler_cache,
         "pronoia_tier": pronoia_tier,
-        "legacy_notice": legacy_notice,
     }
     return negotiate_collection(
         request,

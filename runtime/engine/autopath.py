@@ -453,6 +453,80 @@ def excluded_framework_hashes(intent: Intent) -> set[str]:
         return set()
 
 
+# ── Introspezione read-only (admin UI /admin/praxis) ──────────────────────
+# Sola lettura: NESSUNA logica di promote/lookup/demote. Colonne esplicite
+# (niente SELECT * → embedding BLOB resta fuori dal payload UI).
+
+_SKILL_COLS = ("id", "intent_sig", "intent_hash", "cluster_id", "status",
+               "uses", "ok_count", "fail_count", "composite_score",
+               "champion", "ts_created", "ts_last_used")
+
+_OBS_COLS = ("id", "turn_id", "intent_hash", "intent_sig", "framework_json",
+             "framework_hash", "cluster_id", "verdict", "verdict_ts",
+             "latency_ms", "ts", "promoted_to")
+
+_ANTI_COLS = ("intent_hash", "framework_hash", "fail_count",
+              "ttl_expires_at", "reason", "ts_last_fail")
+
+
+def stats() -> dict:
+    """Aggregati per la dashboard admin."""
+    now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    c = _conn()
+    try:
+        by_status = dict(c.execute(
+            "SELECT status, COUNT(*) FROM skills GROUP BY status").fetchall())
+        obs_total = c.execute(
+            "SELECT COUNT(*) FROM observations").fetchone()[0]
+        anti_active = c.execute(
+            "SELECT COUNT(*) FROM anti_skills WHERE ttl_expires_at > ?",
+            (now,)).fetchone()[0]
+        return {"skills_by_status": by_status,
+                "observations_total": obs_total,
+                "anti_skills_active": anti_active}
+    finally:
+        c.close()
+
+
+def list_skills(status: str = "active", limit: int = 50) -> list[dict]:
+    """Skill per status, le piu' usate prima."""
+    c = _conn()
+    try:
+        rows = c.execute(
+            f"SELECT {', '.join(_SKILL_COLS)} FROM skills "
+            "WHERE status = ? ORDER BY uses DESC, ts_last_used DESC LIMIT ?",
+            (status, int(limit))).fetchall()
+        return [dict(zip(_SKILL_COLS, r)) for r in rows]
+    finally:
+        c.close()
+
+
+def recent_observations(limit: int = 30) -> list[dict]:
+    """Ultime osservazioni, senza embedding."""
+    c = _conn()
+    try:
+        rows = c.execute(
+            f"SELECT {', '.join(_OBS_COLS)} FROM observations "
+            "ORDER BY id DESC LIMIT ?", (int(limit),)).fetchall()
+        return [dict(zip(_OBS_COLS, r)) for r in rows]
+    finally:
+        c.close()
+
+
+def active_anti_skills(limit: int = 20) -> list[dict]:
+    """Anti-skill con TTL non scaduto, fail piu' recenti prima."""
+    now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    c = _conn()
+    try:
+        rows = c.execute(
+            f"SELECT {', '.join(_ANTI_COLS)} FROM anti_skills "
+            "WHERE ttl_expires_at > ? ORDER BY ts_last_fail DESC LIMIT ?",
+            (now, int(limit))).fetchall()
+        return [dict(zip(_ANTI_COLS, r)) for r in rows]
+    finally:
+        c.close()
+
+
 # ── Demote (chiamato da fastpath.approve quando conflict) ─────────────────
 
 def demote_skill_for_query(query: str, intent: Intent,
