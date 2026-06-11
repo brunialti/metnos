@@ -60,9 +60,12 @@ def _maybe_record_fastpath(query: str, intent: Intent,
     try:
         fp_id = _fp.record_success(query, framework, intent=intent)
         if fp_id:
-            log.debug("[L0 fastpath] auto-record fp_id=%d", fp_id)
+            log.info("[L0 fastpath] auto-record fp_id=%d", fp_id)
     except Exception as ex:
-        log.debug("fastpath.record_success fallita (best-effort): %r", ex)
+        # WARNING, non debug (§2.8): a livello debug questo ramo era
+        # invisibile in prod (INFO) e ha nascosto per giorni la causa-radice
+        # delle 0 righe (IntegrityError approved_at, fix 11/6/2026).
+        log.warning("fastpath.record_success fallita (best-effort): %r", ex)
 
 
 def _is_get_inputs_misroute(framework: Framework) -> bool:

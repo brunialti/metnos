@@ -335,6 +335,29 @@ class TestDispatchLoop(_FastpathDbCase):
             self.assertEqual(rows[0]["n_uses"], 1)
             self.assertTrue(rows[0]["last_used"])
 
+    def test_record_failure_logged_at_warning(self):
+        # §2.8: il record è best-effort ma il suo fallimento NON è silenzioso
+        # — a debug era invisibile in prod (INFO) e ha nascosto la
+        # causa-radice 0-righe (IntegrityError approved_at).
+        fw = _fw("get_now")
+        fake = _FakeProposer(fw)
+        catalog = [SimpleNamespace(
+            name="get_now",
+            args_schema={"type": "object", "properties": {}})]
+        env = {"METNOS_ENGINE": "simple", "METNOS_FASTPATH": "1"}
+        with mock.patch.dict(os.environ, env), \
+             mock.patch("engine.proposer.get_proposer", return_value=fake), \
+             mock.patch.object(eng_dispatch._fp, "record_success",
+                               side_effect=RuntimeError("boom")), \
+             self.assertLogs("engine.dispatch", level="WARNING") as cm:
+            r = eng_dispatch.run_turn(
+                query="che ore sono adesso", intent=Intent(), catalog=catalog,
+                invoke_executor_cb=lambda n, a: {"ok": True, "iso": "x"},
+                turn_id="t1")
+        self.assertEqual(r.final_kind, "answer")  # il turno NON si blocca
+        self.assertTrue(any("record_success fallita" in m
+                            for m in cm.output))
+
     def test_failed_turn_does_not_autocreate(self):
         fw = _fw("get_now")
         fake = _FakeProposer(fw)
