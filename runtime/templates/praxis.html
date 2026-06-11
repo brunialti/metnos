@@ -4,7 +4,7 @@
 <h1>Praxis — motore cognitivo</h1>
 <p class="page-sub">Gli strati con stato del motore cognitivo (Engine v2),
 provati in cascata su ogni query:
-<b>L0 fastpath</b> scorciatoie approvate dall'utente ·
+<b>L0 fastpath</b> scorciatoie auto-prodotte dai turni riusciti ·
 <b>L1 autopath</b> skill apprese dal feedback ✓ ·
 L2 validator (controllo del piano) e L3 proposer/recovery (modello, 1 chiamata)
 sono senza stato e non compaiono qui.</p>
@@ -13,7 +13,7 @@ sono senza stato e non compaiono qui.</p>
 
 <h2>Stato</h2>
 <div class="kpi-grid">
-  <div class="kpi" title="scorciatoie approvate dall'utente (L0, prime 100 per uso)">
+  <div class="kpi" title="scorciatoie auto-prodotte dai turni riusciti (L0, prime 100 per uso)">
     <div class="kpi-label">Scorciatoie L0</div>
     <div class="kpi-value">{{ fastpaths|length }}</div>
   </div>
@@ -38,24 +38,29 @@ sono senza stato e non compaiono qui.</p>
 <div class="callout warn">Lettura autopath fallita: <code>{{ stats.error }}</code></div>
 {% endif %}
 
-<h2>L0 — Scorciatoie approvate ({{ fastpaths|length }})</h2>
+<h2>L0 — Scorciatoie auto-prodotte ({{ fastpaths|length }})</h2>
 <p class="muted">Query che bypassano l'intero motore: match per hash o coseno
-semantico, risposta in millisecondi senza modello. Si creano col bottone
-«approva fast-path» su una risposta corretta; in conflitto con una skill L1
-vince sempre la scorciatoia.</p>
+semantico, risposta in millisecondi senza modello. Si creano DA SOLE a ogni
+turno completato con successo dal piano pieno (catene di executor già
+vagliati: nessuna approvazione). Le query-specifiche (colonna «solo hash»)
+rispondono solo alla query identica, mai per somiglianza. Invecchiano da
+sole (mai-riusate 14gg, stantie 30gg, tetto 500) e muoiono se un executor
+le rimpiazza; il bottone «elimina» è la valvola manuale.</p>
 {% if fastpaths %}
 <div class="table-wrap">
 <table>
   <thead>
-    <tr><th>id</th><th>query canonica</th><th>origine</th>
-        <th>creata il</th><th>usi</th><th>ultimo uso</th><th></th></tr>
+    <tr><th>id</th><th>query canonica</th><th>intent</th><th>origine</th>
+        <th>solo hash</th><th>creata il</th><th>usi</th><th>ultimo uso</th><th></th></tr>
   </thead>
   <tbody>
   {% for f in fastpaths %}
     <tr>
       <td>{{ f.id }}</td>
       <td><code>{{ f.canonical_text }}</code></td>
+      <td class="muted">{% if f.intent_verb %}<code>{{ f.intent_verb }}_{{ f.intent_object }}</code>{% else %}-{% endif %}</td>
       <td class="muted">{{ f.origin or "-" }}</td>
+      <td>{% if f.query_specific %}<span class="chip warn" title="piano legato alla query (arg literal): match solo per query identica, mai per coseno">0a</span>{% else %}-{% endif %}</td>
       <td class="muted">{{ f.created_at }}</td>
       <td>{{ f.n_uses }}</td>
       <td class="muted">{{ f.last_used or "-" }}</td>
@@ -67,7 +72,8 @@ vince sempre la scorciatoia.</p>
 </table>
 </div>
 {% else %}
-<p class="muted">Nessuna scorciatoia approvata ancora.</p>
+<p class="muted">Nessuna scorciatoia ancora: si auto-producono al primo
+turno completato con successo dal piano pieno.</p>
 {% endif %}
 
 <h2>L1 — Skill apprese attive ({{ skills_active|length }})</h2>

@@ -990,11 +990,12 @@ async def admin_praxis(request: web.Request) -> web.Response:
 
     Espone gli strati CON STATO del motore a 4 strati
     (docs/it/architecture/praxis_engine.html):
-      L0 fastpath — scorciatoie approvate dall'utente (fastpaths.sqlite)
+      L0 fastpath — scorciatoie AUTO-prodotte dai turni riusciti
+                    (fastpaths.sqlite; valvola: delete per riga)
       L1 autopath — skill apprese dal feedback ✓ (autopath.sqlite)
     L2 validator e L3 proposer/recovery sono stateless (niente storage).
     """
-    # L0 — fastpath (scorciatoie approvate)
+    # L0 — fastpath (scorciatoie auto-prodotte)
     try:
         from engine import fastpath as _fastpath
         fastpaths = _fastpath.list_all(limit=100)
