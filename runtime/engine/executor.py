@@ -1147,6 +1147,16 @@ class Executor:
                 args = resolve_calendar(step.tool, args, query)
             except Exception as _cre:
                 log.debug("calendar_resolver noop: %r", _cre)
+            # Account mail UNIFORME (gemello backend_resolver, bug live
+            # 10/6/2026): «tutta la posta / all my email» senza account
+            # nominato → account="all" su read_messages (il backend itera su
+            # TUTTI gli account configurati e aggrega). Il quantificatore
+            # vive nella QUERY, non negli arg del planner (§7.9).
+            try:
+                from mail_account_resolver import resolve_mail_account
+                args = resolve_mail_account(step.tool, args, query)
+            except Exception as _mre:
+                log.debug("mail_account_resolver noop: %r", _mre)
             # Universal §7.9: convert list[dict] entries to 2D matrix
             # quando arg name è "values" (write_files_spreadsheet pattern).
             if isinstance(args.get("values"), list) and args["values"]:
