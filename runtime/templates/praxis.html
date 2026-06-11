@@ -48,7 +48,7 @@ vince sempre la scorciatoia.</p>
 <table>
   <thead>
     <tr><th>id</th><th>query canonica</th><th>origine</th>
-        <th>creata il</th><th>usi</th><th>ultimo uso</th></tr>
+        <th>creata il</th><th>usi</th><th>ultimo uso</th><th></th></tr>
   </thead>
   <tbody>
   {% for f in fastpaths %}
@@ -59,6 +59,8 @@ vince sempre la scorciatoia.</p>
       <td class="muted">{{ f.created_at }}</td>
       <td>{{ f.n_uses }}</td>
       <td class="muted">{{ f.last_used or "-" }}</td>
+      <td><button type="button" class="btn" onclick="deleteFastpath({{ f.id }})"
+                  title="valvola: rimuove la scorciatoia; si ricrea solo se il piano pieno ri-succede sulla stessa query">elimina</button></td>
     </tr>
   {% endfor %}
   </tbody>
@@ -208,6 +210,16 @@ ripetuti (TTL 30 giorni; un ✓ le rimuove subito).</p>
   </p>
 </div>
 <script>
+function deleteFastpath(id){
+  if (!confirm('Eliminare la scorciatoia L0 #' + id + '?')) { return; }
+  fetch('/admin/praxis/fastpaths/' + id + '/delete', {method: 'POST'})
+    .then(function(r){ return r.json(); })
+    .then(function(d){
+      if (d.ok) { location.reload(); }
+      else { alert('Errore: ' + (d.message || d.error || 'sconosciuto')); }
+    })
+    .catch(function(e){ alert('Errore di rete: ' + e); });
+}
 function setPronoiaTier(ev){
   ev.preventDefault();
   const tier = document.getElementById('tier_select').value;

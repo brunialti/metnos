@@ -1072,12 +1072,12 @@ async def admin_aporiae_resolve(request: web.Request) -> web.Response:
     """POST /admin/aporiae/{id}/resolve — marca lacuna come risolta."""
     role = request.get("role", "anonymous")
     if role != "admin":
-        return _error(request, 403, "forbidden", "admin role required")
+        return _error(403, "forbidden", "admin role required")
     lid_str = request.match_info.get("id", "")
     try:
         lid = int(lid_str)
     except ValueError:
-        return _error(request, 400, "bad_id", f"id must be int, got {lid_str!r}")
+        return _error(400, "bad_id", f"id must be int, got {lid_str!r}")
     import sqlite3 as _sqlite3
     try:
         import aporia
@@ -1086,10 +1086,32 @@ async def admin_aporiae_resolve(request: web.Request) -> web.Response:
     except (ImportError, ModuleNotFoundError, _sqlite3.OperationalError) as ex:
         # Bonifica 2026-05-28: store legacy Aporia dismesso con Engine v2.
         log.info("admin_aporiae_resolve: store legacy dismesso: %r", ex)
-        return _error(request, 410, "legacy_dismissed",
+        return _error(410, "legacy_dismissed",
                        "store legacy dismesso (Engine v2)")
     except Exception as ex:
-        return _error(request, 500, "internal", str(ex))
+        return _error(500, "internal", str(ex))
+
+
+async def admin_praxis_fastpath_delete(request: web.Request) -> web.Response:
+    """POST /admin/praxis/fastpaths/{id}/delete — valvola admin sui fastpath
+    L0 AUTO-prodotti: una scorciatoia sbagliata si rimuove a mano (si ricrea
+    solo se il piano pieno ri-succede sulla stessa query)."""
+    role = request.get("role", "anonymous")
+    if role != "admin":
+        return _error(403, "forbidden", "admin role required")
+    fid_str = request.match_info.get("id", "")
+    try:
+        fid = int(fid_str)
+    except ValueError:
+        return _error(400, "bad_id", f"id must be int, got {fid_str!r}")
+    try:
+        from engine import fastpath as _fastpath
+        if not _fastpath.delete(fid):
+            return _error(404, "not_found", f"fastpath {fid} inesistente")
+        log.info("admin: fastpath %d eliminato (valvola manuale)", fid)
+        return web.json_response({"ok": True, "id": fid, "deleted": True})
+    except Exception as ex:
+        return _error(500, "internal", str(ex))
 
 
 async def admin_praxis_config(request: web.Request) -> web.Response:
@@ -1100,14 +1122,14 @@ async def admin_praxis_config(request: web.Request) -> web.Response:
     """
     role = request.get("role", "anonymous")
     if role != "admin":
-        return _error(request, 403, "forbidden", "admin role required")
+        return _error(403, "forbidden", "admin role required")
     try:
         body = await request.json()
     except Exception:
-        return _error(request, 400, "bad_json", "invalid JSON")
+        return _error(400, "bad_json", "invalid JSON")
     tier = (body.get("pronoia_tier") or "").strip().lower()
     if tier not in ("wise", "frontier"):
-        return _error(request, 400, "bad_value",
+        return _error(400, "bad_value",
                        f"pronoia_tier must be wise|frontier, got {tier!r}")
     # Update env in current process
     import os
@@ -2192,6 +2214,7 @@ ROUTES = (
     ("POST", r"/admin/promotions/{id}/rollback",  admin_promotion_rollback),
     ("GET",  "/admin/praxis",                     admin_praxis),
     ("POST", "/admin/praxis/config",              admin_praxis_config),
+    ("POST", r"/admin/praxis/fastpaths/{id}/delete", admin_praxis_fastpath_delete),
     ("GET",  "/admin/aporiae",                    admin_aporiae),
     ("POST", r"/admin/aporiae/{id}/resolve",      admin_aporiae_resolve),
     ("GET",  "/admin/executors",                  admin_executors),

@@ -287,6 +287,51 @@ class HttpServerTests(AioHTTPTestCase):
         self.assertIn("Nome:", body)
         self.assertIn("Ok?", body)
 
+    # ── /admin/praxis/fastpaths/{id}/delete (valvola L0) ───────────
+
+    async def test_admin_praxis_fastpath_delete(self):
+        """POST delete su fastpath esistente -> 200 + riga rimossa;
+        secondo delete -> 404 (già rimosso)."""
+        import tempfile as _tf
+        from unittest import mock as _mock
+        from engine import fastpath as eng_fastpath
+        from engine.types import Framework, StepSpec
+        tmp = _tf.mkdtemp()
+        orig = eng_fastpath._db_path
+        eng_fastpath._db_path = lambda: Path(tmp) / "fastpaths.sqlite"
+        try:
+            fw = Framework(steps=[StepSpec(tool="get_now", args={}),
+                                  StepSpec(tool="final_answer", args={})],
+                           final_message="x")
+            with _mock.patch("engine.cluster.embed", new=lambda q: None):
+                fp_id = eng_fastpath.record_success("che ora è", fw)
+            self.assertGreater(fp_id, 0)
+            r = await self.client.post(
+                f"/admin/praxis/fastpaths/{fp_id}/delete",
+                headers=self.admin_hdr())
+            self.assertEqual(r.status, 200)
+            body = await r.json()
+            self.assertTrue(body["ok"])
+            self.assertEqual(eng_fastpath.list_all(), [])
+            r2 = await self.client.post(
+                f"/admin/praxis/fastpaths/{fp_id}/delete",
+                headers=self.admin_hdr())
+            self.assertEqual(r2.status, 404)
+        finally:
+            eng_fastpath._db_path = orig
+
+    async def test_admin_praxis_fastpath_delete_unauthorized(self):
+        """POST delete senza admin key -> 403."""
+        r = await self.client.post("/admin/praxis/fastpaths/1/delete")
+        self.assertEqual(r.status, 403)
+
+    async def test_admin_praxis_fastpath_delete_bad_id(self):
+        """POST delete con id non-int -> 400."""
+        r = await self.client.post(
+            "/admin/praxis/fastpaths/abc/delete",
+            headers=self.admin_hdr())
+        self.assertEqual(r.status, 400)
+
 
 if __name__ == "__main__":
     unittest.main()
