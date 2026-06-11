@@ -502,6 +502,114 @@ class TestTier1Proposal(_PromoteCase):
         self.assertEqual(rep["provenance_rows"], 0)
 
 
+class TestApproveHook(_PromoteCase):
+    """L'approve umano di una proposta fastpath_promote scrive il marker
+    synt_pending (stesso canale accept→synth delle proposte introspettive,
+    consumato da telos_synth_consumer → handle_synth_request)."""
+
+    def setUp(self):
+        super().setUp()
+        import proposal_actions as pa
+        self._pa = pa
+        self._dir_patch = mock.patch.object(
+            pa, "SYNT_PENDING_DIR", Path(self.tmp) / "synt_pending")
+        self._dir_patch.start()
+
+    def tearDown(self):
+        self._dir_patch.stop()
+        super().tearDown()
+
+    def _markers(self):
+        d = Path(self.tmp) / "synt_pending"
+        return sorted(d.glob("*.json")) if d.is_dir() else []
+
+    def test_approve_free_writes_consumable_marker(self):
+        self._seed_cluster(3, "comprimi le foto",
+                           ("find_images", "compress_files_zip"),
+                           Intent(verb="compress", object="images"),
+                           uses_each=7, age_days=45)
+        sig = promote.sig_key_for(
+            "compress_images", ["find_images", "compress_files_zip"])
+        out = promote.on_proposal_approved(ps._canonical(sig))
+        self.assertEqual(out["kind"], "synt_pending")
+        self.assertTrue(out["created"])
+        markers = self._markers()
+        self.assertEqual(len(markers), 1)
+        import json as _json
+        payload = _json.loads(markers[0].read_text())
+        # Contratto del consumer: sig + expected_name + intent non vuoti.
+        self.assertEqual(payload["expected_name"], "compress_images")
+        self.assertTrue(payload["sig"])
+        self.assertIn("find_images → compress_files_zip",
+                      payload["intent"])
+        # I sample sono il testo CANONICO del fastpath (normalize_query).
+        self.assertIn("comprimi foto", payload["intent"])
+        self.assertEqual(payload["kind"], "synt_request")
+
+    def test_approve_idempotent_per_signature(self):
+        sig = promote.sig_key_for(
+            "compress_images", ["find_images", "compress_files_zip"])
+        out1 = promote.on_proposal_approved(ps._canonical(sig))
+        out2 = promote.on_proposal_approved(ps._canonical(sig))
+        self.assertTrue(out1["created"])
+        self.assertFalse(out2["created"])
+        self.assertEqual(len(self._markers()), 1)
+
+    def test_approve_composition_noop(self):
+        sig = promote.sig_key_for(
+            "find_images", ["find_persons", "find_images"])
+        out = promote.on_proposal_approved(ps._canonical(sig))
+        self.assertEqual(out["kind"], "noop")
+        self.assertEqual(out["reason"], "composition_requires_human_naming")
+        self.assertEqual(self._markers(), [])
+
+    def test_approve_garbage_sig_noop(self):
+        self.assertEqual(
+            promote.on_proposal_approved("non-json")["kind"], "noop")
+        self.assertEqual(
+            promote.on_proposal_approved(
+                ps._canonical(["generalize", ["a", "b"]]))["kind"], "noop")
+        self.assertEqual(self._markers(), [])
+
+    def test_unified_hub_accept_triggers_hook(self):
+        # Percorso REALE dell'admin: emissione notturna → accept nell'hub
+        # unificato → mark_action + marker synt_pending.
+        self._seed_cluster(3, "comprimi le foto",
+                           ("find_images", "compress_files_zip"),
+                           Intent(verb="compress", object="images"),
+                           uses_each=7, age_days=45)
+        self._run()
+        import proposals_unified as pu
+        sig = promote.sig_key_for(
+            "compress_images", ["find_images", "compress_files_zip"])
+        prop_id = pu._intr_prop_id(ps._canonical(sig))
+        rec = pu.apply_decision_unified(prop_id, "introvertiva", "accept",
+                                        by="test")
+        self.assertEqual(rec["native_state"], "applied")
+        self.assertEqual(rec["operative_effect"]["kind"], "synt_pending")
+        self.assertEqual(len(self._markers()), 1)
+
+    def test_unified_target_extraction(self):
+        import proposals_unified as pu
+        sig = promote.sig_key_for(
+            "compress_images", ["find_images", "compress_files_zip"])
+        self.assertEqual(
+            pu._intr_target_from_sigkey(ps._canonical(sig)),
+            "compress_images")
+
+    def test_describe_proposal_renders_name_and_chain(self):
+        from http_routes_admin import _describe_proposal
+        sig = promote.sig_key_for(
+            "compress_images", ["find_images", "compress_files_zip"])
+        with mock.patch("messages.get",
+                        side_effect=lambda code, **kw: f"{code}|{kw}"):
+            desc = _describe_proposal("fastpath_promote",
+                                      ps._canonical(sig))
+        self.assertIn("MSG_PROP_FASTPATH_PROMOTE", desc)
+        self.assertIn("compress_images", desc)
+        self.assertIn("find_images → compress_files_zip", desc)
+
+
 class _FakeSynth:
     """Stub del canale synt: registra le chiamate, risponde a copione."""
 

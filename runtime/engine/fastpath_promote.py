@@ -264,8 +264,12 @@ def intent_text(candidate: dict) -> str:
     """Testo intent per la cascata synt (stage 1 NAMING legge le richieste
     utente reali; la catena dà il contesto del piano da coprire). Input
     LLM-facing interno, non user-facing."""
-    samples = " · ".join(f"«{s}»" for s in candidate.get("samples", [])[:3])
     chain = " → ".join(candidate.get("chain", []))
+    samples = " · ".join(f"«{s}»" for s in candidate.get("samples", [])[:3])
+    if not samples:
+        return (f"Un executor che copre in un solo passo il pattern "
+                f"ricorrente di piano: {chain}. Input e output coerenti "
+                f"con la catena coperta.")
     return (f"Un executor che copre in un solo passo queste richieste "
             f"ricorrenti: {samples}. Oggi richiedono la catena {chain}. "
             f"Input e output coerenti con la catena coperta.")
@@ -343,6 +347,89 @@ def run_nightly(*, catalog_names: Optional[set] = None,
 
     report["tier2"] = _maybe_autopromote(det["candidates"], catalog_names)
     return report
+
+
+# ── Approve tier 1 → marker synt (stesso canale accept→synth telos) ─────────
+
+
+def _cluster_samples(expected_name: str, chain: list[str]) -> list[str]:
+    """Ri-estrae fino a 3 query rappresentative del cluster dal vivo store
+    (per l'intent text del marker all'approve). Store potato nel frattempo
+    → lista vuota: intent_text degrada alla sola catena."""
+    parts = expected_name.split("_", 1)
+    if len(parts) != 2:
+        return []
+    verb, obj = parts
+    out: list[str] = []
+    try:
+        c = _fp._conn()
+        rows = c.execute(
+            "SELECT canonical_text, framework_json FROM fastpaths "
+            "WHERE intent_verb = ? AND intent_object = ? "
+            "ORDER BY n_uses DESC", (verb, obj)).fetchall()
+        c.close()
+        for ctext, fjson in rows:
+            if _fp.framework_tools(fjson) == list(chain):
+                out.append(ctext)
+                if len(out) >= 3:
+                    break
+    except Exception:
+        return []
+    return out
+
+
+def on_proposal_approved(sig_key) -> dict:
+    """Effetto operativo dell'approve umano su una proposta
+    kind='fastpath_promote' (chiamato dalle route admin DOPO mark_action).
+
+    Riusa il canale accept→synth esistente (proposal_actions): scrive il
+    marker `synt_pending/<sig>.json` che telos_synth_consumer (notturno)
+    consegna a handle_synth_request → pipeline synt completa. Idempotente
+    per signature. Composizione (la catena usa già la famiglia §2.2 del
+    nome) → nessun marker: il nome finale richiede un qualifier scelto
+    dall'umano (handle_synth_request con lo stem corto-circuiterebbe
+    'already_in_catalog').
+
+    Returns dict {kind, ...} per visibilità nella risposta HTTP (§2.8).
+    """
+    try:
+        parsed = sig_key if isinstance(sig_key, list) else json.loads(sig_key)
+    except (TypeError, ValueError):
+        return {"kind": "noop", "reason": "sig_key_unparseable"}
+    if (not isinstance(parsed, list) or len(parsed) < 3
+            or parsed[0] != KIND or not isinstance(parsed[2], list)):
+        return {"kind": "noop", "reason": "not_a_fastpath_promote_sig"}
+    expected_name = str(parsed[1])
+    chain = [str(t) for t in parsed[2]]
+    if any(_in_family(t, expected_name) for t in chain):
+        return {"kind": "noop",
+                "reason": "composition_requires_human_naming",
+                "expected_name": expected_name}
+    candidate = {"expected_name": expected_name, "chain": chain,
+                 "samples": _cluster_samples(expected_name, chain)}
+    import hashlib
+    import proposal_actions as pa
+    # Stessa canonicalizzazione di proposals_state._canonical → l'hash
+    # coincide con il prop_id introvertiva dell'hub (`intr:<sha16>`).
+    canonical = json.dumps(parsed, sort_keys=True, default=str)
+    sig = hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:16]
+    created = pa._write_marker(pa.SYNT_PENDING_DIR, sig, {
+        "sig": sig,
+        "prop_id": f"intr:{sig}",
+        "source": f"introvertiva:{KIND}",
+        "kind": "synt_request",
+        "expected_name": expected_name,
+        "intent": intent_text(candidate),
+        "proposed_action": intent_text(candidate),
+        "rationale": "promozione cluster fastpath L0 (approve umano)",
+        "ts": time.time(),
+        "by": "admin",
+    })
+    log.info("fastpath_promote: approve %s → marker synt_pending "
+             "(created=%s)", expected_name, created)
+    return {"kind": "synt_pending", "sig": sig, "created": created,
+            "expected_name": expected_name,
+            "marker_path": str(pa.SYNT_PENDING_DIR / f"{sig}.json")}
 
 
 # ── Tier 2: auto-promozione (flag OFF default, floor alto, cap 1/notte) ─────

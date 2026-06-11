@@ -201,8 +201,9 @@ def _describe_proposal(kind: str, sig_key: str) -> str:
     Determinismo §7.9: parsing JSON-tagged sig_key + template i18n.
     Niente LLM. Lingua corrente da `messages.get` (config.DEFAULT_LANG,
     env METNOS_LANG). Fallback su template `MSG_PROP_UNKNOWN` se la shape
-    non matcha le 5 forme note (dedupe+legacy_orphan, dedupe generico,
-    generalize lista N, generalize lista vuota, specialize).
+    non matcha le 6 forme note (dedupe+legacy_orphan, dedupe generico,
+    generalize lista N, generalize lista vuota, fastpath_promote,
+    specialize).
     """
     from messages import get as _msg
     try:
@@ -224,6 +225,12 @@ def _describe_proposal(kind: str, sig_key: str) -> str:
             return _msg("MSG_PROP_GENERALIZE_NOISE")
         return _msg("MSG_PROP_GENERALIZE_SEQ",
                     seq=" → ".join(str(s) for s in seq))
+    if head == "fastpath_promote" and len(parsed) >= 3:
+        chain = parsed[2]
+        chain_disp = (" → ".join(str(t) for t in chain)
+                      if isinstance(chain, list) and chain else "?")
+        return _msg("MSG_PROP_FASTPATH_PROMOTE",
+                    name=parsed[1], chain=chain_disp)
     if head == "specialize" and len(parsed) >= 4:
         exec_name, arg, val_json = parsed[1], parsed[2], parsed[3]
         # val_json e' una stringa JSON-encoded del valore originale (es.
@@ -295,6 +302,17 @@ async def admin_proposal_action(request: web.Request) -> web.Response:
     if row is None:
         return _error(404, "not_found", f"proposal {sig_key} not found")
 
+    # Promozione fastpath (mandato 11/6): l'approve scrive il marker
+    # synt_pending → telos_synth_consumer notturno → pipeline synt completa.
+    operative_effect = None
+    if action == "approve" and row.kind == "fastpath_promote":
+        try:
+            from engine.fastpath_promote import on_proposal_approved
+            operative_effect = on_proposal_approved(row.sig_key)
+        except Exception as e:
+            log.warning("fastpath_promote approve hook failed: %r", e)
+            operative_effect = {"kind": "error", "error": str(e)}
+
     if "text/html" in request.headers.get("Accept", ""):
         # Risposta htmx: una riga aggiornata da swappare al posto di quella corrente.
         html = (
@@ -302,8 +320,11 @@ async def admin_proposal_action(request: web.Request) -> web.Response:
             f"sig <code>{sig_key}</code>: {action} done · state={row.state}</td></tr>"
         )
         return web.Response(text=html, content_type="text/html")
-    return web.json_response({"ok": True, "sig_key": sig_key, "action": action,
-                              "state": row.state})
+    payload = {"ok": True, "sig_key": sig_key, "action": action,
+               "state": row.state}
+    if operative_effect is not None:
+        payload["operative_effect"] = operative_effect
+    return web.json_response(payload)
 
 
 # --- /admin/proposals (unified hub C.6, 22/5/2026) ---------------------------

@@ -58,6 +58,7 @@ def _intr_target_from_sigkey(sig_key: str) -> str:
     - ["dedupe", "<reason>", "<a>", "<b>"] → "<a>"
     - ["generalize", ["t1", "t2", "t3"]] → primo della seq
     - ["specialize", "<exec>", "<arg>", "<val>"] → "<exec>"
+    - ["fastpath_promote", "<expected_name>", ["t1", "t2"]] → "<expected_name>"
     """
     try:
         parsed = json.loads(sig_key)
@@ -74,6 +75,8 @@ def _intr_target_from_sigkey(sig_key: str) -> str:
             return str(seq[0])
         return ""
     if head == "specialize" and len(parsed) >= 2:
+        return str(parsed[1])
+    if head == "fastpath_promote" and len(parsed) >= 2:
         return str(parsed[1])
     return ""
 
@@ -380,7 +383,7 @@ def apply_decision_unified(prop_id: str, source: str, action: str,
         row = proposals_state.mark_action(sig_key, native_action)
         if row is None:
             raise RuntimeError(f"mark_action returned None for {sig_key}")
-        return {
+        rec = {
             "source": "introvertiva",
             "prop_id": prop_id,
             "action": action,
@@ -388,6 +391,15 @@ def apply_decision_unified(prop_id: str, source: str, action: str,
             "by": by,
             "native_state": row.state,
         }
+        # Promozione fastpath (mandato 11/6): l'accept scrive il marker
+        # synt_pending → telos_synth_consumer → pipeline synt completa.
+        if action == "accept" and row.kind == "fastpath_promote":
+            try:
+                from engine.fastpath_promote import on_proposal_approved
+                rec["operative_effect"] = on_proposal_approved(row.sig_key)
+            except Exception as ex:
+                rec["operative_effect"] = {"kind": "error", "error": str(ex)}
+        return rec
     raise ValueError(f"unknown source: {source}")
 
 
