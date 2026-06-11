@@ -144,11 +144,12 @@ class HttpServerTests(AioHTTPTestCase):
         self.assertIn("<table>", body)
 
     async def test_dashboard_root(self):
-        """GET /admin -> HTML dashboard."""
+        """GET /admin -> HTML della Panoramica (home console)."""
         r = await self.client.get("/admin", headers=self.admin_hdr())
         self.assertEqual(r.status, 200)
         body = await r.text()
-        self.assertIn("Metnos admin", body)
+        # Nome canonico della home (nav + H1 + <title>): "Panoramica".
+        self.assertIn("Panoramica", body)
         self.assertIn("Turni recenti", body)
 
     async def test_admin_proposal_action_404(self):
