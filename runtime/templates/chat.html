@@ -46,9 +46,12 @@ header form button{background:transparent;border:none;color:var(--muted);
              transition:color var(--t-1) var(--ease)}
 header form button:hover{color:var(--accent)}
 
-/* ---------- log (colonna di lettura, scroller = body) ---------- */
+/* ---------- log (scroller = body) ----------
+   Il log riempie la finestra come il main della console admin: niente cap
+   esterno centrato. La leggibilita' sta sulla MISURA delle bolle
+   (.msg max-width sotto), non su un cassetto stretto. */
 #log{flex:1;padding:1.1rem 1rem 1.4rem;display:flex;flex-direction:column;
-     gap:.7rem;width:100%;max-width:880px;margin:0 auto}
+     gap:.7rem;width:100%}
 /* Stato vuoto (prima query / dopo "pulisci"): invito discreto.
    Sparisce appena compare il primo messaggio (#log:empty). */
 #log:empty::before{content:"";display:block;width:12px;height:12px;
@@ -63,7 +66,10 @@ header form button:hover{color:var(--accent)}
          font-family:var(--font-mono);letter-spacing:.04em;padding:.4rem 0}
 
 /* ---------- bolle ---------- */
-.msg{padding:.62rem .9rem;border-radius:var(--r-3);max-width:92%;
+/* max-width: misura di lettura comoda anche a finestra larga (bolla bot a
+   sinistra, me a destra); su finestre strette vince il 92%. */
+.msg{padding:.62rem .9rem;border-radius:var(--r-3);
+     max-width:min(92%, 960px);
      border:1px solid var(--border);line-height:1.5;
      word-wrap:break-word;white-space:pre-wrap}
 /* HTML mode (final_message del bot via to_safe_html_full): struttura
