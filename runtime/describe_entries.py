@@ -7,8 +7,10 @@ seleziona un prompt template in base allo style, lascia tutto il
 trasporto all'helper.
 
 Style preset:
-- 'by_importance' — segnale vs rumore, raggruppa per affinita', offri
-  azione. Default per liste eterogenee (mail, file, eventi).
+- 'by_importance' — segnale vs rumore, raggruppa per affinita'. Chiude
+  con un'affermazione, MAI con una domanda all'utente (no-forced-response:
+  non esiste dialogo pendente che accolga la risposta). Default per
+  liste eterogenee (mail, file, eventi).
 - 'by_relevance'  — risposta a una richiesta utente (`context`
   obbligatorio): cosa risponde alla domanda, cosa no.
 - 'compact'       — una riga per entry (fallback enumerativo).
