@@ -17,8 +17,10 @@ import time
 from dataclasses import dataclass
 from typing import Optional, Callable
 
-from .types import Intent, Framework, RunResult
-from .executor import Executor, compute_framework_hash
+from .types import Intent, Framework, RunResult, StepSpec
+from .executor import (
+    Executor, compute_framework_hash, resolve_query_canonical_args,
+)
 from .routing_pool import build_routing_pool
 from . import fastpath as _fp
 from . import autopath as _ap
@@ -44,9 +46,44 @@ class DispatchResult:
     error_class: str = ""
 
 
+def _canonical_framework_for_record(query: str, framework: Framework,
+                                    catalog: Optional[list]) -> Framework:
+    """Applica ai piani DA REGISTRARE la stessa ri-risoluzione degli slot
+    query-specific che Executor.run applica a ESECUZIONE
+    (resolve_query_canonical_args: account mail, time_window). Lo store L0
+    deve riflettere cio' che esegue (§2.8): senza, un piano ereditato dal
+    champion L1 veniva cachato con gli arg della query d'ORIGINE (bug live
+    11/6/2026, riga «controlla tutte le mie mailbox ultime 24 ore» con
+    account='metnos_system' e zero finestra) — esecuzione corretta a
+    runtime, store disonesto, query_specific=0 errato (il piano con
+    finestra relativa e' 0a-only per costruzione, vedi CONTENT_ARG_KEYS).
+    Ritorna il framework originale se nessun arg cambia."""
+    schema_map = {getattr(e, "name", None): getattr(e, "args_schema", None)
+                  for e in (catalog or [])}
+    changed = False
+    new_steps = []
+    for s in framework.steps:
+        if s.tool and s.tool != "final_answer" and isinstance(s.args, dict):
+            new_args = resolve_query_canonical_args(
+                s.tool, dict(s.args), query,
+                args_schema=schema_map.get(s.tool))
+            if new_args != s.args:
+                changed = True
+            new_steps.append(StepSpec(
+                tool=s.tool, args=new_args,
+                if_prev_entries_nonempty=s.if_prev_entries_nonempty))
+        else:
+            new_steps.append(s)
+    if not changed:
+        return framework
+    return Framework(steps=new_steps, fillers=framework.fillers,
+                     final_message=framework.final_message)
+
+
 def _maybe_record_fastpath(query: str, intent: Intent,
                             framework: Framework, run: RunResult,
-                            origin: str = "auto") -> None:
+                            origin: str = "auto",
+                            catalog: Optional[list] = None) -> None:
     """Auto-produzione L0 (11/6/2026; classe estesa 12/6/2026): un turno
     completato con SUCCESSO da un piano la cui query esatta NON è ancora in
     cache 0a diventa fastpath: alla ripetizione della stessa query il piano
@@ -70,6 +107,7 @@ def _maybe_record_fastpath(query: str, intent: Intent,
     if run is None or run.final_kind != "answer" or run.aborted_reason:
         return
     try:
+        framework = _canonical_framework_for_record(query, framework, catalog)
         fp_id = _fp.record_success(query, framework, intent=intent,
                                    origin=origin)
         if fp_id:
@@ -197,7 +235,7 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
             # esiste già.
             if fp_hit.match_kind == "cosine":
                 _maybe_record_fastpath(query, intent, fp_hit.framework, run,
-                                       origin="cosine")
+                                       origin="cosine", catalog=catalog)
             return DispatchResult(
                 final_text=run.final_text, final_kind=run.final_kind,
                 match_source="fastpath", framework_hash=run.framework_hash,
@@ -226,7 +264,7 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
             # e il fastpath non si auto-produce mai per le query la cui
             # famiglia ha già una skill (vedi _maybe_record_fastpath).
             _maybe_record_fastpath(query, intent, ap_hit.framework, run,
-                                   origin="autopath")
+                                   origin="autopath", catalog=catalog)
             return DispatchResult(
                 final_text=run.final_text, final_kind=run.final_kind,
                 match_source="autopath", framework_hash=run.framework_hash,
@@ -381,7 +419,8 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
                 if run2.final_kind == "answer":
                     # Il piano RECUPERATO ha funzionato: cacharlo evita di
                     # ripetere fallimento+recovery alla prossima ripetizione.
-                    _maybe_record_fastpath(query, intent, framework_alt, run2)
+                    _maybe_record_fastpath(query, intent, framework_alt, run2,
+                                           catalog=catalog)
                     return DispatchResult(
                         final_text=run2.final_text, final_kind="answer",
                         match_source="recovery",
@@ -400,7 +439,7 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
             elapsed_ms=int((time.time() - t_start) * 1000),
             run=run, framework=framework, error_class=err_class)
 
-    _maybe_record_fastpath(query, intent, framework, run)
+    _maybe_record_fastpath(query, intent, framework, run, catalog=catalog)
     return DispatchResult(
         final_text=run.final_text, final_kind=run.final_kind,
         match_source="engine", framework_hash=run.framework_hash,

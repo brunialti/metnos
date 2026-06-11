@@ -805,6 +805,38 @@ CONTENT_ARG_KEYS = frozenset({
 })
 
 
+def resolve_query_canonical_args(tool: str, args: dict, query: str,
+                                 args_schema: Optional[dict] = None) -> dict:
+    """Catena dei resolver QUERY-DETERMINISTICI (§7.9): ri-risoluzione degli
+    slot query-specific dalla query ATTUALE.
+
+    Un piano servito da un layer la cui query d'origine ≠ query attuale
+    (L1 champion, L0 0b) e' un template di STRUTTURA: gli arg che dipendono
+    dalla query (account mail, time_window) NON si ereditano verbatim, si
+    ri-riempiono (bug live 11/6/2026: «controlla tutte le mie mailbox ultime
+    24 ore» serviva il champion di «mail di metnos» → account singolo, zero
+    finestra). Su L0 0a (query identica) la ri-risoluzione e' no-op.
+
+    Qui SOLO i resolver puri (query, config istanza) → riapplicabili sia a
+    ESECUZIONE (Executor.run, ogni layer) sia a RECORD (dispatch.
+    _maybe_record_fastpath: lo store L0 riflette cio' che esegue, §2.8).
+    NON qui: backend/self_recipient/calendar resolver — dipendono da runtime
+    ctx (actor) o da stato creds, restano execution-only in Executor.run.
+    Ogni resolver e' best-effort: il fallimento non blocca (noop loggato).
+    """
+    try:
+        from mail_account_resolver import resolve_mail_account
+        args = resolve_mail_account(tool, args, query)
+    except Exception as _mre:
+        log.debug("mail_account_resolver noop: %r", _mre)
+    try:
+        from time_window_resolver import resolve_time_window
+        args = resolve_time_window(tool, args, query, args_schema=args_schema)
+    except Exception as _twe:
+        log.debug("time_window_resolver noop: %r", _twe)
+    return args
+
+
 def is_query_specific(framework_json: str) -> bool:
     """True se il framework incorpora un arg content-bearing LITERAL (non
     placeholder ${...}) → legato alla singola query.
@@ -1156,16 +1188,14 @@ class Executor:
                 args = resolve_calendar(step.tool, args, query)
             except Exception as _cre:
                 log.debug("calendar_resolver noop: %r", _cre)
-            # Account mail UNIFORME (gemello backend_resolver, bug live
-            # 10/6/2026): «tutta la posta / all my email» senza account
-            # nominato → account="all" su read_messages (il backend itera su
-            # TUTTI gli account configurati e aggrega). Il quantificatore
-            # vive nella QUERY, non negli arg del planner (§7.9).
-            try:
-                from mail_account_resolver import resolve_mail_account
-                args = resolve_mail_account(step.tool, args, query)
-            except Exception as _mre:
-                log.debug("mail_account_resolver noop: %r", _mre)
+            # Slot query-specific UNIFORMI (§7.9): account mail («tutta la
+            # posta»→"all", account nominato→quello; bug live 10-11/6/2026)
+            # + time_window («ultime 24 ore»→"last-24h"). Il segnale vive
+            # nella QUERY, non negli arg ereditati dal piano (champion L1 /
+            # piano cachato): vedi resolve_query_canonical_args.
+            args = resolve_query_canonical_args(
+                step.tool, args, query,
+                args_schema=self._schema_map.get(step.tool))
             # Universal §7.9: convert list[dict] entries to 2D matrix
             # quando arg name è "values" (write_files_spreadsheet pattern).
             if isinstance(args.get("values"), list) and args["values"]:

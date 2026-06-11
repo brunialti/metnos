@@ -17,12 +17,21 @@ NON nomina un account configurato, il runtime canonicalizza
 NL→determinismo), single-point (engine/executor.py accanto agli altri
 resolver).
 
-Sicurezza (§2.8, non rompere l'account nominato):
+Account NOMINATO (estensione 12/6/2026, faglia arg-leakage L1): un piano
+SERVITO da un layer di cache (L1 champion / L0 0b) porta l'account literal
+della SUA query d'origine («mail di metnos» → account='metnos_system');
+servito a «controlla la mail di knowcastle» leakerebbe l'account sbagliato.
+Quando la query nomina UN solo account configurato (word-match esatto),
+il resolver lo IMPONE: l'account e' uno slot query-specific che si
+ri-riempie dalla query ATTUALE, non si eredita.
+
+Sicurezza (§2.8):
 - solo `read_messages` (lettura, idempotente — mai allargare azioni mutating);
 - solo canale email (via_channel assente o email/mail);
-- account gia' multi ("all" o lista) → noop;
-- la query nomina un account configurato (word-match esatto su
-  `list_known_accounts()`) → l'utente ha scelto, nessun override.
+- account gia' multi (lista esplicita) → noop;
+- query che nomina 2+ account → noop (scelta ambigua: decide il planner);
+- query senza quantificatore ne' account nominato → noop (il default
+  resta dell'executor/piano).
 """
 from __future__ import annotations
 
@@ -42,40 +51,50 @@ _ALL_MAIL_QUERY = re.compile(
 _EMAIL_VIA = ("", "email", "mail")
 
 
-def _query_names_account(query_lower: str, known: list[str]) -> bool:
-    """True se la query cita per nome (word-match esatto) un account
-    configurato: l'utente ha scelto, il resolver non deve sovrascrivere."""
+def _named_accounts(query_lower: str, known: list[str]) -> list[str]:
+    """Account configurati citati per nome (word-match esatto) nella query,
+    nell'ordine deterministico di `list_known_accounts()`."""
+    out = []
     for name in known:
         if not name:
             continue
         if re.search(rf"\b{re.escape(name.lower())}\b", query_lower):
-            return True
-    return False
+            out.append(name)
+    return out
 
 
 def resolve_mail_account(tool: str, args: dict, query: str) -> dict:
-    """Canonicalizza `account="all"` su read_messages quando la query chiede
-    TUTTA la posta senza nominare un account. Ritorna args (copia se
-    modificati). Mai eccezioni: su dubbio, noop."""
+    """Ri-risolve `account` su read_messages dalla query ATTUALE (§7.9):
+    account nominato → quello; quantificatore «tutta/all» → "all"; altrimenti
+    noop. Ritorna args (copia se modificati). Mai eccezioni: su dubbio, noop."""
     if tool != "read_messages" or not isinstance(args, dict) or not query:
         return args
     via = str(args.get("via_channel") or "").strip().lower()
     if via not in _EMAIL_VIA:
         return args
-    if not _ALL_MAIL_QUERY.search(query):
-        return args
     acct = args.get("account")
     if isinstance(acct, list):
         return args  # gia' multi-account esplicito
-    if isinstance(acct, str) and acct.strip().lower() == "all":
-        return args  # gia' canonico
     try:
         from mail_client import list_known_accounts
         known = list_known_accounts()
     except Exception:
         known = []
-    if _query_names_account(query.lower(), known):
+    named = _named_accounts(query.lower(), known)
+    if len(named) == 1:
+        # L'utente ha scelto: l'account nominato VINCE su qualsiasi valore
+        # ereditato dal piano (champion L1 / piano cachato di un'altra query).
+        if isinstance(acct, str) and acct.strip() == named[0]:
+            return args
+        out = dict(args)
+        out["account"] = named[0]
+        return out
+    if named:
+        return args  # 2+ account nominati: scelta ambigua, decide il planner
+    if not _ALL_MAIL_QUERY.search(query):
         return args
+    if isinstance(acct, str) and acct.strip().lower() == "all":
+        return args  # gia' canonico
     out = dict(args)
     out["account"] = "all"
     return out

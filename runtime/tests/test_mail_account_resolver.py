@@ -61,6 +61,44 @@ def test_tutti_gli_account_it():
     assert out["account"] == "all"
 
 
+# ── account NOMINATO: ri-risoluzione dalla query attuale (12/6/2026) ───────
+# Faglia arg-leakage: un piano servito da L1 champion / L0 0b porta l'account
+# della SUA query d'origine; l'account nominato nella query ATTUALE vince.
+
+def test_account_nominato_sovrascrive_il_leak_del_champion():
+    # Champion nato da «mail di metnos» (account='metnos_system') servito a
+    # una query che nomina knowcastle: lo slot si ri-riempie.
+    out = resolve_mail_account(
+        "read_messages", {"account": "metnos_system"},
+        "controlla la mail di knowcastle")
+    assert out["account"] == "knowcastle"
+
+
+def test_account_nominato_vince_anche_sul_quantificatore():
+    # «tutte le mail di knowcastle»: il nome scopa il quantificatore (l'utente
+    # ha scelto il perimetro: quell'account).
+    out = resolve_mail_account(
+        "read_messages", {"account": "metnos_system"},
+        "leggi tutte le mail di knowcastle")
+    assert out["account"] == "knowcastle"
+
+
+def test_due_account_nominati_ambiguo_noop():
+    args = {"account": "metnos_system"}
+    out = resolve_mail_account(
+        "read_messages", args, "confronta knowcastle e mykleos")
+    assert out["account"] == "metnos_system"  # decide il planner
+
+
+def test_nome_non_configurato_non_scatta():
+    # «metnos» NON e' un nome account completo (metnos_system lo e'):
+    # nessun override; il valore del piano resta.
+    out = resolve_mail_account(
+        "read_messages", {"account": "metnos_system"},
+        "controlla le mail di metnos")
+    assert out["account"] == "metnos_system"
+
+
 # ── noop: account nominato / già multi / query senza quantificatore ───────
 
 def test_account_nominato_non_viene_toccato():
