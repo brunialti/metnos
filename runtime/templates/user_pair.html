@@ -1,8 +1,10 @@
 {% extends "base.html" %}
-{% block title %}Metnos admin · pair {{ user.name }}{% endblock %}
+{% block title %}Pairing {{ user.name }} · Console Metnos{% endblock %}
 {% block body %}
 <p><a href="/admin/users/{{ user.id }}">&larr; torna a {{ user.name }}</a></p>
 <h1>Pairing {{ channel }} per {{ user.name }}</h1>
+<p class="page-sub">Token monouso per collegare un nuovo canale all'utente.
+Trasferiscilo solo via canale fidato.</p>
 
 <div class="section">
   <h2>Token emesso</h2>

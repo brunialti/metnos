@@ -1,65 +1,68 @@
 <!doctype html>
-<html lang="it">
+<html lang="it" data-theme="dark">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Gallery — Metnos</title>
+{% include "_design_system.html" %}
 <style>
-/* Tema scuro (visione foto) con accenti caldi della skin paper&bronze:
-   stessa famiglia visiva della chat e della landing. */
-:root{
-  --bg:#161311; --fg:#eee; --muted:#8a8378; --accent:#C98A5A;
-  --border:#2a241e; --card:#1d1814; --bronze:#A0522D;
-}
-*{box-sizing:border-box}
-html,body{margin:0;padding:0;background:var(--bg);color:var(--fg);
-          font:14px 'Segoe UI',Calibri,system-ui,-apple-system,sans-serif}
-header{padding:.7rem 1rem;background:#0e0c0a;border-bottom:1px solid var(--border);
+/* Gallery foto: superficie scura per la visione delle immagini, derivata
+   dagli stessi token del design system (data-theme="dark"). */
+body{font-size:var(--fs-2)}
+header{padding:.7rem 1rem;background:var(--surface);
+       border-bottom:1px solid var(--border);
        display:flex;align-items:baseline;gap:1rem;flex-wrap:wrap}
-header h1{margin:0;font-size:1.05rem;font-weight:400;
-          font-family:Georgia,Cambria,'Times New Roman',serif}
-header h1::before{content:"\2766  ";color:var(--accent);font-size:.85em}
-header .count{color:var(--muted);font-size:.9em}
-header .query{color:#d8cfc2;font-style:italic;font-family:Georgia,serif}
+header h1{margin:0;font-size:var(--fs-3);font-weight:650;letter-spacing:-.01em;
+          display:inline-flex;align-items:center;gap:.5rem}
+header h1::before{content:"";width:10px;height:10px;border-radius:3px;
+          background:var(--accent);flex:none;align-self:center}
+header .count{color:var(--muted);font-family:var(--font-mono);
+          font-size:var(--fs-1);font-variant-numeric:tabular-nums}
+header .query{color:var(--ink-2);font-style:italic}
 header .home{margin-left:auto}
-header a{color:var(--accent);text-decoration:none}
-header a:hover{color:#e8b585}
+
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));
       gap:6px;padding:6px}
-.thumb{position:relative;background:var(--card);border-radius:.25rem;
+.thumb{position:relative;background:var(--surface);border-radius:6px;
        overflow:hidden;aspect-ratio:1/1}
 .thumb a{display:block;width:100%;height:100%}
 .thumb img{width:100%;height:100%;object-fit:cover;display:block;
-           transition:opacity .15s}
+           transition:opacity var(--t-1) var(--ease)}
 .thumb:hover img{opacity:.85;outline:2px solid var(--accent);outline-offset:-2px}
 .thumb .score{position:absolute;top:4px;left:4px;font-size:.75em;
               background:rgba(0,0,0,.65);color:#fff;padding:2px 5px;
-              border-radius:.25rem;font-family:monospace;letter-spacing:.02em}
+              border-radius:4px;font-family:var(--font-mono);
+              letter-spacing:.02em;font-variant-numeric:tabular-nums}
 .thumb .basename{position:absolute;bottom:0;left:0;right:0;
                  background:linear-gradient(transparent,rgba(0,0,0,.78));
                  color:#ddd;padding:14px 6px 4px;font-size:.7em;
-                 font-family:monospace;text-overflow:ellipsis;
+                 font-family:var(--font-mono);text-overflow:ellipsis;
                  overflow:hidden;white-space:nowrap}
 .thumb .caption{position:absolute;top:0;left:0;right:0;bottom:0;
-                background:rgba(0,0,0,.88);color:#eee;padding:8px;
+                background:rgba(0,0,0,.88);color:var(--ink);padding:8px;
                 font-size:.78em;line-height:1.3;overflow:auto;
-                opacity:0;transition:opacity .2s;
+                opacity:0;transition:opacity var(--t-2) var(--ease);
                 display:flex;flex-direction:column;gap:4px}
 .thumb:hover .caption{opacity:1}
-.thumb .caption .name{font-family:monospace;font-size:.85em;color:var(--accent);
-                       word-break:break-all;border-bottom:1px solid #3d3128;
+.thumb .caption .name{font-family:var(--font-mono);font-size:.85em;
+                       color:var(--accent);word-break:break-all;
+                       border-bottom:1px solid var(--border);
                        padding-bottom:4px;margin-bottom:2px}
 .thumb .caption .desc{color:#ddd}
-.thumb .caption .meta{color:var(--muted);font-size:.85em;margin-top:auto}
+.thumb .caption .meta{color:var(--muted);font-size:.85em;margin-top:auto;
+                       font-variant-numeric:tabular-nums}
+
 footer{padding:1rem;display:flex;justify-content:center;align-items:center;
        gap:1.5rem;border-top:1px solid var(--border);color:var(--muted);
-       font-size:.9em;flex-wrap:wrap}
+       font-size:.9em;flex-wrap:wrap;font-variant-numeric:tabular-nums}
 footer a{color:var(--accent);text-decoration:none;padding:.3rem .8rem;
-         border:1px solid #4a3a2c;border-radius:.3rem;
-         transition:background .15s,border-color .15s}
-footer a:hover{color:#e8b585;border-color:var(--accent);background:#241c15}
-footer .disabled{color:#4a443c;border-color:#2a241e;pointer-events:none}
-.empty{padding:2rem;text-align:center;color:var(--muted)}
+         border:1px solid var(--border-strong);border-radius:var(--r-1);
+         transition:background var(--t-1) var(--ease),
+                    border-color var(--t-1) var(--ease)}
+footer a:hover{color:var(--accent-hover);border-color:var(--accent);
+         background:var(--accent-soft);text-decoration:none}
+footer .disabled{color:var(--border-strong);border:1px solid var(--border);
+         padding:.3rem .8rem;border-radius:var(--r-1);pointer-events:none}
 </style>
 </head>
 <body>

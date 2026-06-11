@@ -1,11 +1,14 @@
 {% extends "base.html" %}
-{% block title %}Metnos admin · turns{% endblock %}
+{% block title %}Turni · Console Metnos{% endblock %}
 {% block body %}
 <h1>Turni ({{ rows|length }})</h1>
+<p class="page-sub">Ogni richiesta utente è un turno: canale, attore, passi
+eseguiti dal planner, esito finale e tempo totale.</p>
+<div class="table-wrap">
 <table>
   <thead>
-    <tr><th>turn_id</th><th>ts</th><th>channel</th><th>actor</th>
-        <th>steps</th><th>final</th><th>elapsed</th><th>query</th></tr>
+    <tr><th>turno</th><th>inizio</th><th>canale</th><th>attore</th>
+        <th>passi</th><th>esito</th><th>durata</th><th>query</th></tr>
   </thead>
   <tbody>
   {% for r in rows %}
@@ -28,4 +31,5 @@
   {% endfor %}
   </tbody>
 </table>
+</div>
 {% endblock %}

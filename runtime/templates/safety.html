@@ -1,11 +1,15 @@
 {% extends "base.html" %}
-{% block title %}Metnos admin · safety signatures{% endblock %}
+{% block title %}Safety · Console Metnos{% endblock %}
 {% block body %}
-<h1>Safety signatures ({{ rows|length }})</h1>
+<h1>Safety — firme ({{ rows|length }})</h1>
+<p class="page-sub">Le firme che governano cosa gli executor possono fare:
+whitelist, blacklist, graylist e forbidden, con origine e conteggio d'uso
+(ADR 0071).</p>
+<div class="table-wrap">
 <table>
   <thead>
-    <tr><th>signature</th><th>kind</th><th>severity</th>
-        <th>source</th><th>uses</th><th>created</th></tr>
+    <tr><th>firma</th><th>tipo</th><th>severità</th>
+        <th>origine</th><th>usi</th><th>creata</th></tr>
   </thead>
   <tbody>
   {% for r in rows %}
@@ -27,4 +31,5 @@
   {% endfor %}
   </tbody>
 </table>
+</div>
 {% endblock %}
