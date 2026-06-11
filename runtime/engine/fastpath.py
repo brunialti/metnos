@@ -87,6 +87,14 @@ def _conn() -> sqlite3.Connection:
         );
         CREATE INDEX IF NOT EXISTS fp_hash ON fastpaths(canonical_hash);
         CREATE INDEX IF NOT EXISTS fp_uses ON fastpaths(n_uses DESC);
+        CREATE TABLE IF NOT EXISTS promotions (
+            executor_name TEXT NOT NULL,
+            fp_id INTEGER NOT NULL,
+            canonical_hash TEXT NOT NULL DEFAULT '',
+            tier INTEGER NOT NULL DEFAULT 1,
+            created_at TEXT NOT NULL DEFAULT '',
+            PRIMARY KEY (executor_name, fp_id)
+        );
         """)
         c.commit()
         _migrate_schema(c)
@@ -288,6 +296,63 @@ def delete(fp_id: int) -> bool:
         return False
 
 
+# ── Provenienza promozioni (fastpath → executor, mandato 11/6) ─────────────
+
+def record_promotion(executor_name: str, members: list[tuple[int, str]],
+                     *, tier: int = 1) -> int:
+    """Registra la provenienza di una promozione: l'executor `executor_name`
+    (proposto tier 1 o auto-sintetizzato tier 2) nasce dai fastpath `members`
+    = [(fp_id, canonical_hash), ...].
+
+    Doppia chiave per robustezza: fp_id (esatto oggi) + canonical_hash
+    (sopravvive alla ri-creazione del fastpath dopo un prune: stessa query
+    → stesso hash → provenienza ancora valida). Idempotente per
+    (executor_name, fp_id); il refresh notturno aggiunge i membri nuovi
+    del cluster. La morte si attiva SOLO quando `executor_name` compare nel
+    catalog (vedi prune): registrare alla proposta è innocuo.
+
+    Returns: righe scritte/aggiornate (0 su input vuoto o errore).
+    """
+    if not executor_name or not members:
+        return 0
+    n = 0
+    try:
+        c = _conn()
+        for fp_id, chash in members:
+            if not fp_id:
+                continue
+            c.execute(
+                "INSERT INTO promotions(executor_name, fp_id, canonical_hash,"
+                " tier, created_at) VALUES (?, ?, ?, ?, ?) "
+                "ON CONFLICT(executor_name, fp_id) DO UPDATE SET "
+                "canonical_hash = excluded.canonical_hash, "
+                "tier = excluded.tier",
+                (executor_name, int(fp_id), chash or "", int(tier),
+                 _now_iso()))
+            n += 1
+        c.commit()
+        c.close()
+    except Exception as ex:
+        log.warning("fastpath.record_promotion failed: %r", ex)
+        return 0
+    return n
+
+
+def list_promotions() -> list[dict]:
+    """Provenienza registrata (telemetria/test)."""
+    try:
+        c = _conn()
+        rows = c.execute(
+            "SELECT executor_name, fp_id, canonical_hash, tier, created_at "
+            "FROM promotions ORDER BY executor_name, fp_id").fetchall()
+        c.close()
+        return [{"executor_name": r[0], "fp_id": r[1],
+                 "canonical_hash": r[2], "tier": r[3], "created_at": r[4]}
+                for r in rows]
+    except Exception:
+        return []
+
+
 # ── Aging + morte (state_reaper notturno) ──────────────────────────────────
 
 def framework_tools(framework_json: str) -> list[str]:
@@ -333,12 +398,18 @@ def prune(*, catalog_names: Optional[set] = None,
     kill §2.8):
       C1. tool del piano non più nel catalog (ritirato/rinominato/archiviato)
           → il replay fallirebbe wrong_tool.
-      C2. executor EQUIVALENTE: esiste `{intent_verb}_{intent_object}[_*]`
-          nel catalog ma NESSUN tool del piano è di quella famiglia → un
-          executor implementa ora DIRETTAMENTE l'intent del fastpath (§2.2:
-          synt nomina verb_object[_qualifier] dall'intent); il fastpath,
-          vincendo in cascata, lo oscurerebbe per sempre → muore, il
-          prossimo turno ripianifica via L3 col nuovo executor.
+      C2-provenienza (mandato 11/6): il fastpath compare nella tabella
+          `promotions` (per fp_id O canonical_hash) e l'executor promosso è
+          ORA nel catalog ma NON nel piano → morte ESATTA per provenienza
+          (chiude il falso-negativo del match name-based: il legame
+          fastpath→executor è registrato, non inferito dal nome).
+      C2. executor EQUIVALENTE (name-based): esiste
+          `{intent_verb}_{intent_object}[_*]` nel catalog ma NESSUN tool del
+          piano è di quella famiglia → un executor implementa ora
+          DIRETTAMENTE l'intent del fastpath (§2.2: synt nomina
+          verb_object[_qualifier] dall'intent); il fastpath, vincendo in
+          cascata, lo oscurerebbe per sempre → muore, il prossimo turno
+          ripianifica via L3 col nuovo executor.
 
     Economia: un fastpath potato per errore SI RICREA DA SOLO alla prossima
     ripetizione riuscita (auto-produzione) → la potatura costa zero e i
@@ -360,7 +431,7 @@ def prune(*, catalog_names: Optional[set] = None,
 
     report = {"never_reused_removed": 0, "stale_removed": 0,
               "cap_removed": 0, "dead_missing_tool": 0,
-              "dead_superseded": 0, "kept": 0}
+              "dead_promoted": 0, "dead_superseded": 0, "kept": 0}
     try:
         c = _conn()
         report["never_reused_removed"] = c.execute(
@@ -376,17 +447,34 @@ def prune(*, catalog_names: Optional[set] = None,
             (int(max_rows),)).rowcount
         # Morte C1/C2 (solo con un catalog completo)
         if catalog_names:
+            # Provenienza promozioni: fp_id/hash → executor promosso.
+            promo_by_id: dict[int, str] = {}
+            promo_by_hash: dict[str, str] = {}
+            for ename, pfp_id, phash in c.execute(
+                    "SELECT executor_name, fp_id, canonical_hash "
+                    "FROM promotions").fetchall():
+                promo_by_id[pfp_id] = ename
+                if phash:
+                    promo_by_hash[phash] = ename
             dead: list[tuple[int, str]] = []
             rows = c.execute(
-                "SELECT id, framework_json, intent_verb, intent_object "
-                "FROM fastpaths").fetchall()
-            for fp_id, fjson, iverb, iobj in rows:
+                "SELECT id, canonical_hash, framework_json, "
+                "intent_verb, intent_object FROM fastpaths").fetchall()
+            for fp_id, chash, fjson, iverb, iobj in rows:
                 tools = framework_tools(fjson)
                 missing = [t for t in tools if t not in catalog_names]
                 if missing:
                     dead.append((fp_id, "missing_tool"))
                     log.info("fastpath: morte fp_id=%d (tool mancante %s)",
                              fp_id, missing[0])
+                    continue
+                # C2-provenienza: esatta, vince sul match name-based.
+                promoted = promo_by_id.get(fp_id) or promo_by_hash.get(chash)
+                if (promoted and promoted in catalog_names
+                        and promoted not in tools):
+                    dead.append((fp_id, "promoted"))
+                    log.info("fastpath: morte fp_id=%d (promosso a "
+                             "executor %s, provenienza)", fp_id, promoted)
                     continue
                 if iverb and iobj:
                     stem = f"{iverb}_{iobj}"
@@ -398,8 +486,9 @@ def prune(*, catalog_names: Optional[set] = None,
                                  "equivalente famiglia %s_*)", fp_id, stem)
             for fp_id, why in dead:
                 c.execute("DELETE FROM fastpaths WHERE id = ?", (fp_id,))
-                key = ("dead_missing_tool" if why == "missing_tool"
-                       else "dead_superseded")
+                key = {"missing_tool": "dead_missing_tool",
+                       "promoted": "dead_promoted"}.get(
+                           why, "dead_superseded")
                 report[key] += 1
         c.commit()
         report["kept"] = c.execute(
