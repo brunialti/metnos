@@ -13,14 +13,14 @@
   },
   "args.account.description": {
     "it": {
-      "version_hash": "sha256:a469ea5375477fdccda050c7710b2fb77d5345b3f4750d5ea8d885079577439e",
+      "version_hash": "sha256:6d7f7f07864a8efb5e096df6d10757b9bec86564cd3831cd730dd11e08b9c8a9",
       "source_lang": null,
       "source_hash": null
     },
     "en": {
       "source_lang": "it",
       "source_hash": "sha256:a469ea5375477fdccda050c7710b2fb77d5345b3f4750d5ea8d885079577439e",
-      "version_hash": "sha256:cbd8628a8b2b90df99f93dab0f45a0caae1558f71c19b9ea59fc80513f924546"
+      "version_hash": "sha256:1d637bd012195d88ea51436182b3a19b78efb95e60e814fc7143d69336e0fd54"
     }
   },
   "args.attachments.description": {

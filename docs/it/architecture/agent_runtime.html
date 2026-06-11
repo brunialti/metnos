@@ -462,7 +462,7 @@ Con un catalogo di 30+ executor, passare tutti come "tools" all'LLM esplode il p
 
 <h2>Come ranka</h2>
 <p>
-In il ranking &egrave; <em>bag-of-words</em>: tokenizza la query utente, tokenizza l'<code>affinity</code> dichiarato in ogni manifest, somma i match (i match sull'affinity contano doppio rispetto a quelli sulla descrizione). Estrarre i token significa: minuscolo, parole alfanumeriche, niente accenti.
+Il ranking &egrave; <em>bag-of-words</em>: tokenizza la query utente, tokenizza l'<code>affinity</code> dichiarato in ogni manifest, somma i match (i match sull'affinity pesano 4&times; quelli sulla descrizione, con cap a 3 per la descrizione). Estrarre i token significa: minuscolo, parole alfanumeriche, niente accenti.
 </p>
 
 <div class="example">
@@ -479,16 +479,17 @@ K (numero di executor da passare al LLM) non &egrave; fisso: dipende dalla <em>c
 </p>
 <ul>
  <li>Confidenza alta (top-1 nettamente sopra) &rarr; K piccolo (default <code>k_min=5</code>). Inutile passare candidati a score zero.</li>
- <li>Confidenza bassa (score ravvicinati o tutti zero) &rarr; K grande (default <code>k_max=40</code>). Lascia che sia l'LLM a decidere.</li>
+ <li>Confidenza bassa (score ravvicinati o tutti zero) &rarr; K grande. Lascia che sia l'LLM a decidere.</li>
  <li>K viene comunque limitato al numero di executor con score &ge; 1 (no riempimento).</li>
 </ul>
 
 <p>
-Misurato: pre-filter sub-millisecondo fino a 300+ executor; il LLM locale sceglie correttamente anche con K grandi; la latenza cresce linearmente con K oltre 40. Sweet spot pratico: K=20-40.
+In produzione il pool ha dimensione fissa configurabile via <code>METNOS_ENGINE_POOL_SIZE</code> (default 12). Il pre-filter sub-millisecondo fino a 300+ executor.
 </p>
 
+<h2>Cross-object recall</h2>
 <p>
-La forma con embedding semantico (modello MiniLM locale, ~100 MB) &egrave; rimandata: il bag-of-words si &egrave; dimostrato sufficiente per i casi reali del POC.
+Un secondo meccanismo, <code>affinity_phrase_recall</code>, inietta nel pool tool il cui tag affinity multi-parola (&ge; 2 token distintivi, escluse stopword e verbi generici) corrisponde interamente alla query, anche se verbo o oggetto dell'intent differiscono. Questo sblocca il recall cross-object: ad esempio &laquo;quali account mail hai&raquo; attiva <code>find_credentials</code> e <code>read_persons</code> anche se l'intent punta a <code>object=messages</code>. Il meccanismo &egrave; deterministico e limitato a 3 tool aggiuntivi per query.
 </p>
 
 <h1 id="cap6">6. Tool-use nativo (no JSON parsing)</h1>

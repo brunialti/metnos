@@ -30,9 +30,14 @@
     "version_hash": "sha256:f636979750e9a26b387169f239ecdba40b5fca6f6d6ebe4aff42bb6742762555"
   },
   "engine_proposer_metis": {
-    "source_hash": null,
-    "source_lang": null,
-    "version_hash": "sha256:b0ce56f6fd80cd82175b8d22fe984b4c4e3ea4627fb9ef0fc5d93f16db0ddc13"
+    "source_hash": "sha256:8456beadf2b327f99bc783489188f6db8eb1201ca6cae5ac8a2dfb1b17f3d7d0",
+    "source_lang": "it",
+    "version_hash": "sha256:e680b6ac318a4c8ae1c75e9a5cf9d1cf45ba4d47b86d7b032c6fc59e6c7f0cde"
+  },
+  "final_assembler": {
+    "source_hash": "sha256:86f57856ab222506a26419760b948e295cb2b353fa8f17d7489e23191fbc7bec",
+    "source_lang": "it",
+    "version_hash": "sha256:856aa52aa960be74dc5ad38c15d8b54648b67bec9aa0c617d947ca4e7db4e644"
   },
   "intent_extractor": {
     "source_hash": "sha256:323322a2c380467b568dfdba29ed5bb6b25494a440afdfea206ea05a03ac4f18",

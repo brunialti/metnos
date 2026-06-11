@@ -133,26 +133,26 @@
   },
   "args.folder.description": {
     "it": {
-      "version_hash": "sha256:4830dc042e395962e9bc8591871077aaa066329c79823138899ad9d5000c6963",
+      "version_hash": "sha256:644685bcf666b5dd4488fc0aa80a3d661f336770d58681782a83de56e148ac23",
       "source_lang": null,
       "source_hash": null
     },
     "en": {
       "source_lang": "it",
       "source_hash": "sha256:4830dc042e395962e9bc8591871077aaa066329c79823138899ad9d5000c6963",
-      "version_hash": "sha256:eddc7503c438bb78232106cdb637e24cc057f0584b2c9a9627cdccb975d727de"
+      "version_hash": "sha256:adcfe92ed884d2196c2cd526a515c2c06169d7dfcccc69dc2098e0caad41a2f2"
     }
   },
   "args.account.description": {
     "it": {
-      "version_hash": "sha256:427ed2b2878b03965c6116d9cf4007ec037a1e239f8e6ba9038e080d27e642ed",
+      "version_hash": "sha256:462c4cc7f13da0f3188030795dc3ef32c527de13a396f4d1dc4ea741d84571f4",
       "source_lang": null,
       "source_hash": null
     },
     "en": {
       "source_lang": "it",
       "source_hash": "sha256:427ed2b2878b03965c6116d9cf4007ec037a1e239f8e6ba9038e080d27e642ed",
-      "version_hash": "sha256:dc90b1d00e047aa6cc66b6b94bf6fa9b67bf883d264af2f03a74fba7adba4a39"
+      "version_hash": "sha256:a4e5c1b60bf396a47281b76093cf7f39db144eaa47cb8645f85c9f2ab6e92803"
     }
   },
   "args.via_channel.description": {

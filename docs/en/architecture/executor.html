@@ -111,7 +111,7 @@ See also <a href="agent_runtime.html" style="color: #14532d; text-decoration: un
 <h2>Contents</h2>
 <ol>
  <li><a href="#cap1">What an executor is (in thirty seconds)</a></li>
- <li><a href="#cap2">Anatomy: five things in the folder</a></li>
+ <li><a href="#cap2">Anatomy: four files in the folder</a></li>
  <li><a href="#cap3">The manifest: the calling card</a></li>
  <li><a href="#cap4">The fence: what it can and cannot do</a></li>
  <li><a href="#cap5">An executor's life</a></li>
@@ -180,15 +180,15 @@ asks for something, the planner picks the right tool and uses it.
 </div>
 
 <!-- ============================================================== -->
-<h1 id="cap2">2. Anatomy: five things in the folder</h1>
+<h1 id="cap2">2. Anatomy: four files in the folder</h1>
 
 <p>
-An executor is a folder on disk. Inside there are at most five files,
+An executor is a folder on disk. Inside there are at most four files,
 each with its own job. Nothing more.
 </p>
 
 <figure>
-<svg viewBox="0 0 720 320" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="An executor's folder with its five files">
+<svg viewBox="0 0 720 320" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="An executor's folder with its four files">
  <path d="M 30 30 L 90 30 L 110 50 L 250 50 L 250 80 L 30 80 Z" fill="#A0522D" stroke="#7B3F1F" stroke-width="1.5"/>
  <text x="60" y="70" font-family="Segoe UI, sans-serif" font-size="13" fill="white" font-weight="600">get_processes/</text>
  <g font-family="Segoe UI, sans-serif" font-size="12" fill="#1a1a1a">
@@ -205,7 +205,7 @@ each with its own job. Nothing more.
  <text x="80" y="259" font-weight="700" fill="#64748B">manifest.lang_state.json</text>
  <text x="80" y="275" font-size="10" fill="#555">translation state (multilingual): only when descriptions exist in more than one language</text>
  </g>
- <text x="660" y="40" text-anchor="end" font-family="Segoe UI, sans-serif" font-size="10" fill="#64748B" font-style="italic">five files, nothing more</text>
+ <text x="660" y="40" text-anchor="end" font-family="Segoe UI, sans-serif" font-size="10" fill="#64748B" font-style="italic">four files, nothing more</text>
 </svg>
 <figcaption>An executor's folder: three required files (manifest, signature, code), one optional for translations, all flat inside the folder.</figcaption>
 </figure>

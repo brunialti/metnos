@@ -32,7 +32,12 @@
   "engine_proposer_metis": {
     "source_hash": "sha256:b0ce56f6fd80cd82175b8d22fe984b4c4e3ea4627fb9ef0fc5d93f16db0ddc13",
     "source_lang": "en",
-    "version_hash": "sha256:833661a8b4b6bbea3b484069f625af7454fbbfa7a356fc3578616bec19d46617"
+    "version_hash": "sha256:8456beadf2b327f99bc783489188f6db8eb1201ca6cae5ac8a2dfb1b17f3d7d0"
+  },
+  "final_assembler": {
+    "source_hash": null,
+    "source_lang": null,
+    "version_hash": "sha256:86f57856ab222506a26419760b948e295cb2b353fa8f17d7489e23191fbc7bec"
   },
   "intent_extractor": {
     "source_hash": "sha256:0e6a356a92dbbf77e3f1b33b1ca3b866aff25f83c4b4ba1d63ae392d8a7a5681",

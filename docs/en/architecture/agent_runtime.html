@@ -462,7 +462,7 @@ With a catalog of 30+ executors, passing them all as "tools" to the LLM blows up
 
 <h2>How it ranks</h2>
 <p>
-In the ranking is <em>bag-of-words</em>: it tokenises the user query, tokenises the <code>affinity</code> declared in each manifest, sums the matches (matches on the affinity count double those on the description). Extracting the tokens means: lowercase, alphanumeric words, no accents.
+The ranking is <em>bag-of-words</em>: it tokenises the user query, tokenises the <code>affinity</code> declared in each manifest, sums the matches (affinity matches score 4&times; those on the description, capped at 3 for description). Extracting the tokens means: lowercase, alphanumeric words, no accents.
 </p>
 
 <div class="example">
@@ -479,16 +479,17 @@ K (number of executors to pass to the LLM) is not fixed: it depends on the <em>c
 </p>
 <ul>
  <li>High confidence (top-1 well above) &rarr; small K (default <code>k_min=5</code>). No point in passing zero-score candidates.</li>
- <li>Low confidence (close scores or all zero) &rarr; large K (default <code>k_max=40</code>). Let the LLM decide.</li>
+ <li>Low confidence (close scores or all zero) &rarr; large K. Let the LLM decide.</li>
  <li>K is in any case capped at the number of executors with score &ge; 1 (no padding).</li>
 </ul>
 
 <p>
-Measured: pre-filter sub-millisecond up to 300+ executors; the local LLM chooses correctly even with large K; latency grows linearly with K above 40. Practical sweet spot: K=20-40.
+In production the pool has a fixed configurable size via <code>METNOS_ENGINE_POOL_SIZE</code> (default 12). The pre-filter runs sub-millisecond up to 300+ executors.
 </p>
 
+<h2>Cross-object recall</h2>
 <p>
-The form with semantic embedding (local MiniLM model, ~100 MB) is deferred: the bag-of-words proved sufficient for the real cases of the POC.
+A second mechanism, <code>affinity_phrase_recall</code>, injects into the pool any tool whose multi-word affinity tag (&ge; 2 distinctive tokens, excluding stopwords and generic verbs) fully matches the query, even when the intent's verb or object differ. This unlocks cross-object recall: for instance, &laquo;which mail accounts do you have&raquo; activates <code>find_credentials</code> and <code>read_persons</code> even though the intent points to <code>object=messages</code>. The mechanism is deterministic and capped at 3 additional tools per query.
 </p>
 
 <h1 id="cap6">6. Native tool-use (no JSON parsing)</h1>
