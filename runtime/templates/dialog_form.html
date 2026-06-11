@@ -53,7 +53,7 @@
               <img src="/agent/dialog/{{ dialog_id }}/context/{{ loop.index0 }}"
                    alt="foto"
                    style="max-height:240px;max-width:100%;object-fit:contain;
-                          border:1px solid #ccc;border-radius:4px;
+                          border:1px solid var(--border-warm);border-radius:4px;
                           background:#222;display:block;"
                    loading="lazy">
             </span>
@@ -64,8 +64,9 @@
             {% for opt in step.schema.options %}
               <label class="preview-option"
                      style="display:flex;align-items:center;gap:.6rem;
-                            padding:.4rem;border:1px solid #ccc;
-                            border-radius:4px;cursor:pointer;">
+                            padding:.4rem;border:1px solid var(--border-warm);
+                            border-radius:4px;cursor:pointer;
+                            transition:border-color .15s,background .15s;">
                 <input type="radio" name="{{ step.var }}"
                        value="{{ opt.value|e }}"
                        {% if not step.optional %}required{% endif %}
@@ -170,8 +171,9 @@
           if(!err){
             err = document.createElement('div');
             err.id = '_metnos_err';
-            err.style.cssText = 'color:#a00;padding:.4rem;border:1px solid #fbb;'
-                              + 'background:#fee;border-radius:.3rem;margin-top:.5rem;';
+            err.style.cssText = 'color:var(--err-red);padding:.4rem;'
+                              + 'border:1px solid #E4C0B8;'
+                              + 'background:#FBF1EF;border-radius:.3rem;margin-top:.5rem;';
             form.parentNode.insertBefore(err, form.nextSibling);
           }
           err.textContent = '⚠ Errore submit: ' + (t.substring(0, 200) || r.status);

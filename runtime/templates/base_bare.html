@@ -2,22 +2,67 @@
 <html lang="it">
 <head>
 <meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
 <title>{% block title %}Metnos{% endblock %}</title>
 <style>
-:root{--bg:#fafafa;--fg:#222;--muted:#777;--border:#e0e0e0;--accent:#3a4d6c;}
+/* Skin "paper & bronze" (stessa famiglia di chat.html e della landing).
+   Questo base e' usato dai form dialog (get_inputs, ADR 0090) renderizzati
+   dentro un iframe nella bolla chat: background transparent, il wrap del
+   parent fornisce la carta. */
+:root{
+  --paper:#FCFAF6; --paper-warm:#F5F0E5; --border-warm:#E0D5C0;
+  --ink:#2a2a2a; --ink-dim:#5a5a5a; --muted:#8a8378;
+  --bronze:#A0522D; --bronze-dark:#7A3E20; --err-red:#A93226;
+  --bg:var(--paper); --fg:var(--ink); --border:var(--border-warm);
+  --accent:var(--bronze);
+}
 *{box-sizing:border-box}
 html,body{margin:0}
-body{font:14px system-ui,-apple-system,sans-serif;color:var(--fg);background:transparent;padding:.4rem .6rem}
+body{font:15px/1.5 'Segoe UI',Calibri,system-ui,-apple-system,sans-serif;
+     color:var(--ink);background:transparent;padding:.6rem .8rem}
 main{padding:0;margin:0}
+:focus-visible{outline:2px solid var(--bronze);outline-offset:2px}
 table{width:100%;border-collapse:collapse}
-th,td{border-bottom:1px solid #ddd;padding:.4rem;text-align:left;vertical-align:top}
-.chip{display:inline-block;padding:.1rem .4rem;border-radius:.3rem;background:#eef;font-size:.85em}
-.muted{color:#888}
-.btn{display:inline-block;padding:.25rem .8rem;border:1px solid #aaa;border-radius:.3rem;background:#f8f8f8;font-size:.95em;cursor:pointer;text-decoration:none;color:#333}
-.btn:hover{background:#eef}
+th,td{border-bottom:1px solid var(--border-warm);padding:.4rem;
+      text-align:left;vertical-align:top}
+.chip{display:inline-block;padding:.1rem .4rem;border-radius:.3rem;
+      background:var(--paper-warm);font-size:.85em}
+.muted{color:var(--muted)}
+/* Campi form: carta bianca, bordo caldo, focus bronzo. */
+input:not([type=radio]):not([type=checkbox]),select,textarea{
+  font:inherit;color:var(--ink);background:#fff;
+  padding:.5rem .65rem;border:1px solid var(--border-warm);
+  border-radius:5px;max-width:480px}
+input:focus,select:focus,textarea:focus{
+  outline:none;border-color:var(--bronze);
+  box-shadow:0 0 0 3px rgba(160,82,45,.12)}
+input[type=radio],input[type=checkbox]{accent-color:var(--bronze)}
+label{line-height:1.5}
+/* Bottoni: submit (button.btn) solido bronzo, link/annulla (a.btn)
+   outline discreto — gerarchia chiara nel form dialog. */
+.btn{display:inline-block;padding:.45rem 1.1rem;border-radius:5px;
+     font-size:.92em;cursor:pointer;text-decoration:none;
+     transition:background .15s,color .15s}
+button.btn{background:var(--bronze);color:var(--paper);
+           border:1px solid var(--bronze)}
+button.btn:hover{background:var(--bronze-dark)}
+a.btn{background:transparent;color:var(--ink-dim);
+      border:1px solid var(--border-warm)}
+a.btn:hover{background:var(--paper-warm);color:var(--ink)}
 .section{margin:0;padding:0;border:none;border-radius:0;background:transparent}
-.section h2{margin:0 0 .4rem 0;font-size:1.05em;color:var(--accent)}
-code{background:#f4f4f4;padding:.1em .3em;border-radius:.2em}
+.section h2{margin:0 0 .45rem 0;font-size:1.15em;font-weight:400;
+            font-family:Georgia,Cambria,'Times New Roman',serif;
+            color:var(--ink)}
+.section h2::before{content:"§ ";color:var(--bronze)}
+code{background:var(--paper-warm);padding:.1em .3em;border-radius:.2em;
+     font-family:Consolas,'SF Mono',Menlo,monospace}
+/* Opzioni con preview (choice_with_preview): card cliccabile, hover e
+   selezione evidenziati in bronzo. Gli stili inline del template fissano
+   il layout; qui solo lo stato. */
+.preview-option:hover{border-color:var(--bronze) !important;
+                      background:var(--paper-warm)}
+.preview-option:has(input:checked){border-color:var(--bronze) !important;
+                      box-shadow:0 0 0 2px rgba(160,82,45,.18)}
 </style>
 </head>
 <body>

@@ -5,21 +5,25 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Gallery — Metnos</title>
 <style>
+/* Tema scuro (visione foto) con accenti caldi della skin paper&bronze:
+   stessa famiglia visiva della chat e della landing. */
 :root{
-  --bg:#111; --fg:#eee; --muted:#888; --accent:#3a4d6c;
-  --border:#222; --card:#1a1a1a;
+  --bg:#161311; --fg:#eee; --muted:#8a8378; --accent:#C98A5A;
+  --border:#2a241e; --card:#1d1814; --bronze:#A0522D;
 }
 *{box-sizing:border-box}
 html,body{margin:0;padding:0;background:var(--bg);color:var(--fg);
-          font:14px system-ui,-apple-system,sans-serif}
-header{padding:.7rem 1rem;background:#000;border-bottom:1px solid var(--border);
-       display:flex;align-items:center;gap:1rem;flex-wrap:wrap}
-header h1{margin:0;font-size:1rem;font-weight:600}
+          font:14px 'Segoe UI',Calibri,system-ui,-apple-system,sans-serif}
+header{padding:.7rem 1rem;background:#0e0c0a;border-bottom:1px solid var(--border);
+       display:flex;align-items:baseline;gap:1rem;flex-wrap:wrap}
+header h1{margin:0;font-size:1.05rem;font-weight:400;
+          font-family:Georgia,Cambria,'Times New Roman',serif}
+header h1::before{content:"\2766  ";color:var(--accent);font-size:.85em}
 header .count{color:var(--muted);font-size:.9em}
-header .query{color:#cdd;font-style:italic}
+header .query{color:#d8cfc2;font-style:italic;font-family:Georgia,serif}
 header .home{margin-left:auto}
-header a{color:#9ad;text-decoration:none}
-header a:hover{color:#cdf}
+header a{color:var(--accent);text-decoration:none}
+header a:hover{color:#e8b585}
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));
       gap:6px;padding:6px}
 .thumb{position:relative;background:var(--card);border-radius:.25rem;
@@ -27,7 +31,7 @@ header a:hover{color:#cdf}
 .thumb a{display:block;width:100%;height:100%}
 .thumb img{width:100%;height:100%;object-fit:cover;display:block;
            transition:opacity .15s}
-.thumb:hover img{opacity:.85}
+.thumb:hover img{opacity:.85;outline:2px solid var(--accent);outline-offset:-2px}
 .thumb .score{position:absolute;top:4px;left:4px;font-size:.75em;
               background:rgba(0,0,0,.65);color:#fff;padding:2px 5px;
               border-radius:.25rem;font-family:monospace;letter-spacing:.02em}
@@ -42,18 +46,19 @@ header a:hover{color:#cdf}
                 opacity:0;transition:opacity .2s;
                 display:flex;flex-direction:column;gap:4px}
 .thumb:hover .caption{opacity:1}
-.thumb .caption .name{font-family:monospace;font-size:.85em;color:#9ad;
-                       word-break:break-all;border-bottom:1px solid #345;
+.thumb .caption .name{font-family:monospace;font-size:.85em;color:var(--accent);
+                       word-break:break-all;border-bottom:1px solid #3d3128;
                        padding-bottom:4px;margin-bottom:2px}
 .thumb .caption .desc{color:#ddd}
-.thumb .caption .meta{color:#888;font-size:.85em;margin-top:auto}
+.thumb .caption .meta{color:var(--muted);font-size:.85em;margin-top:auto}
 footer{padding:1rem;display:flex;justify-content:center;align-items:center;
        gap:1.5rem;border-top:1px solid var(--border);color:var(--muted);
        font-size:.9em;flex-wrap:wrap}
-footer a{color:#9ad;text-decoration:none;padding:.3rem .8rem;
-         border:1px solid #345;border-radius:.3rem}
-footer a:hover{color:#cdf;border-color:#567;background:#1a2433}
-footer .disabled{color:#444;border-color:#222;pointer-events:none}
+footer a{color:var(--accent);text-decoration:none;padding:.3rem .8rem;
+         border:1px solid #4a3a2c;border-radius:.3rem;
+         transition:background .15s,border-color .15s}
+footer a:hover{color:#e8b585;border-color:var(--accent);background:#241c15}
+footer .disabled{color:#4a443c;border-color:#2a241e;pointer-events:none}
 .empty{padding:2rem;text-align:center;color:var(--muted)}
 </style>
 </head>
