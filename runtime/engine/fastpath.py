@@ -11,8 +11,8 @@ Match in 2 sotto-layer:
   0a — hash lookup deterministic (<5ms, no LLM, no embed)
   0b — semantic cosine via BGE-M3 (<150ms, embed query nuova); serve SOLO
        framework non query-specific: un piano con literal content-bearing
-       («name=Silvia») replicherebbe gli arg di UN'ALTRA query simile
-       («foto di Marco», sim>soglia) → pertinenza, non sicurezza.
+       («name=Tizio») replicherebbe gli arg di UN'ALTRA query simile
+       («foto di Caio», sim>soglia) → pertinenza, non sicurezza.
 
 Confine vs autopath (L1): L0 = ripetizione della STESSA query, ammette piani
 query-specific (via 0a); L1 = generalizzazione a cluster/intent col consenso
