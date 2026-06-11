@@ -33,5 +33,5 @@ Direzioni (non esaustive, scegline UNA ben fatta per notte):
 - UNA cosa alla volta, ben fatta e **VALIDATA** (gate suite + bench + sonda). NON degradare nulla.
 - **NO gaming**: mai indebolire gold/baseline/sonde per far passare.
 - §7.9 deterministico > LLM · §7.2 semplicità · §7.3 no hardcoding (soluzione generale).
-- ⚠️ I cambi **ARCHITETTURALI** ai processi di generazione restano su **BRANCH per revisione umana**
-  (NON auto-merge in prod): il gate valida "non rotto", non "creativo/potente" — quello lo vaglia Roberto.
+- ✅ GATE VERDE → **auto-merge in produzione** (decisione Roberto, 11/6) + restart. Il gate
+  (suite + bench + sonda) è l'UNICO filtro: mai indebolirlo (anti-gaming §8). Gate rosso → branch per revisione.

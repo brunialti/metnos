@@ -108,14 +108,12 @@ PROCEDURA:
       → tutti i casi OK, "no regression" (oggi 26/26).
    d. se esiste /tmp/proposer_trap_probe.py: python3 /tmp/proposer_trap_probe.py → ACCURACY
       non inferiore all'ultimo valore noto (oggi 18/18).
-4. ESITO (REVISIONE UMANA — decisione 11/6: NIENTE auto-merge. I cambi ai processi di
-   analisi/generazione sono architetturali; il gate valida "non rotto", non "buono/potente"
-   — quello lo vaglia Roberto):
-   - GATE VERDE → committa sul branch ${BRANCH} (messaggio chiaro + corpo di cosa/perché).
-     NON fare merge su main, NON riavviare il servizio. Lascia il branch per la revisione.
-   - GATE ROSSO → committa comunque sul branch quello che hai (o lascialo), e spiega nel
-     report perché il gate è fallito. MAI toccare main.
-   In ENTRAMBI i casi: Roberto rivede il branch ${BRANCH} la mattina e fa LUI il merge dei buoni.
+4. ESITO (AUTO-MERGE — decisione Roberto 11/6: se il GATE è VERDE, vai in produzione da solo):
+   - GATE VERDE → committa sul branch ${BRANCH} (messaggio chiaro + corpo di cosa/perché),
+     poi metti in PRODUZIONE: git checkout main && git merge --no-ff ${BRANCH}
+     -m "nightly(${DIM}): <sintesi>" ; poi riavvia: sudo -n systemctl restart metnos-http.service.
+   - GATE ROSSO → NON mergere, NON riavviare. Lascia il branch ${BRANCH} per revisione umana;
+     spiega nel report perché il gate è fallito. (Il gate suite+bench+sonda È il filtro: mai indebolirlo.)
 5. Scrivi SEMPRE un report: internal/reports/fable-audit-${DATE}-${DIM}.md — cosa hai
    analizzato, il miglioramento (o perché niente), file toccati, ESITO COMPLETO del gate
    (numeri reali), e cosa hai segnalato ma non toccato.
