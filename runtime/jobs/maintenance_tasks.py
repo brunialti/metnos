@@ -1,4 +1,4 @@
-"""maintenance_tasks.py — 7 task notturni builtin dello scheduler v2.
+"""maintenance_tasks.py — task notturni builtin dello scheduler v2.
 
 RICOSTRUITO 2026-05-28. Queste 7 funzioni vivevano in `_v1_tasks.pyc`
 (bytecode «frozen» da un `runtime/scheduler.py` mai versionato), caricato via
@@ -87,6 +87,42 @@ def task_nightly_aging() -> dict:
         "executor_ager": task_apply_executor_ager(),
         "mnest_ager": task_apply_ager(),
     }
+
+
+# --- Catalog completo per i job fastpath (reaper + promotion) -----------------
+
+def _full_catalog_names():
+    """Set COMPLETO dei tool invocabili (executor caricati + builtin
+    in-process di agent_runtime) — contratto condiviso di fastpath.prune
+    (morte C1/C2) e fastpath_promote.run_nightly (dedupe vs catalog).
+    Non ricostruibile per intero → None: i consumer degradano a
+    solo-aging/nessuna-emissione (meglio di falsi kill/duplicati, §2.8).
+    """
+    import sys as _sys
+    try:
+        from loader import load_catalog
+        names = set(load_catalog().all_names())
+        _ar = _sys.modules.get("agent_runtime")
+        if _ar is None:
+            import agent_runtime as _ar
+        names |= set(getattr(_ar, "_BUILTIN_TOOL_HANDLERS", {}) or {})
+        return names
+    except Exception as ex:
+        log.warning("catalog completo non ricostruibile (%r)", ex)
+        return None
+
+
+# --- Promozione fastpath L0 → executor synt (mandato 11/6/2026) ----------------
+
+def task_fastpath_promotion() -> dict:
+    """Detection notturna dei cluster di fastpath ricorrenti candidati a
+    executor di prima classe (engine/fastpath_promote). Tier 1: proposta
+    human-gated nel backlog introvertiva. Tier 2: auto-synt dietro flag
+    METNOS_FASTPATH_AUTOPROMOTE (OFF default), cap 1/notte. Gating
+    conservativo cluster-based; catalog incompleto → nessuna emissione.
+    """
+    from engine import fastpath_promote
+    return fastpath_promote.run_nightly(catalog_names=_full_catalog_names())
 
 
 # --- Reaper unificato dello stato persistente (29/5/2026) ---------------------
@@ -178,30 +214,14 @@ def task_state_reaper() -> dict:
 
     def _fastpath():
         # Aging L0 (11/6/2026): mai-riusato oltre grazia, stale, cap LRU.
-        # + MORTE: tool mancante dal catalog (C1) o executor che implementa
-        # direttamente l'intent del fastpath (C2). Costo-zero: un fastpath
-        # potato per errore si ricrea da solo alla prossima ripetizione
-        # riuscita (auto-produzione in dispatch).
+        # + MORTE: tool mancante dal catalog (C1), provenienza promozione
+        # (C2 esatta) o executor che implementa direttamente l'intent del
+        # fastpath (C2 name-based). Costo-zero: un fastpath potato per
+        # errore si ricrea da solo alla prossima ripetizione riuscita
+        # (auto-produzione in dispatch). catalog_names incompleto → None →
+        # solo aging, nessuna morte stanotte (contratto _full_catalog_names).
         from engine import fastpath
-
-        # Contratto prune: catalog_names = set COMPLETO dei tool invocabili
-        # (executor caricati + builtin in-process di agent_runtime). Se non
-        # ricostruibile per intero → None: solo aging, nessuna morte
-        # stanotte (meglio di falsi kill, §2.8).
-        names = None
-        try:
-            import sys as _sys
-            from loader import load_catalog
-            names = set(load_catalog().all_names())
-            _ar = _sys.modules.get("agent_runtime")
-            if _ar is None:
-                import agent_runtime as _ar
-            names |= set(getattr(_ar, "_BUILTIN_TOOL_HANDLERS", {}) or {})
-        except Exception as ex:
-            log.warning("state_reaper[fastpath]: catalog incompleto (%r) → "
-                        "solo aging, niente morte", ex)
-            names = None
-        return fastpath.prune(catalog_names=names)
+        return fastpath.prune(catalog_names=_full_catalog_names())
     _run("fastpath", _fastpath)
 
     def _turn_logs():

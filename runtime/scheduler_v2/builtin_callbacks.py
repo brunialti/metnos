@@ -106,6 +106,18 @@ _BUILTIN_JOBS: list[dict[str, Any]] = [
         ),
     },
     {
+        "name": "fastpath_promotion",
+        "trigger": "daily@03:50",
+        "callback_key": "fastpath_promotion",
+        "description": (
+            "Detection cluster di fastpath L0 ricorrenti → candidati executor "
+            "di prima classe (mandato 11/6). Tier 1: proposta human-gated nel "
+            "backlog introvertiva. Tier 2: auto-synt SOLO con flag "
+            "METNOS_FASTPATH_AUTOPROMOTE (OFF default), cap 1/notte. Gira "
+            "DOPO state_reaper (03:40): detection sullo store già potato."
+        ),
+    },
+    {
         "name": "telos_synth_consume",
         "trigger": "daily@03:32",
         "callback_key": "telos_synth_consume",
@@ -537,6 +549,7 @@ def install_default_callbacks(scheduler) -> None:
         task_proposals_cleanup,
         task_lifecycle_summary,
         task_state_reaper,
+        task_fastpath_promotion,
     )
 
     cb = scheduler.callbacks
@@ -604,6 +617,12 @@ def install_default_callbacks(scheduler) -> None:
         "state_reaper",
         _wrap_zero_arg(task_state_reaper),
         "Reaper unico stato persistente (undo/_history/http_cache/turns/...)",
+        replace=True,
+    )
+    cb.register(
+        "fastpath_promotion",
+        _wrap_zero_arg(task_fastpath_promotion),
+        "Promozione fastpath L0 → executor synt (tier 1 proposta; tier 2 flag)",
         replace=True,
     )
 
