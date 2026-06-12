@@ -46,6 +46,15 @@ reads. Mismatches here silently break the runtime (wrong paths, empty catalog).
   fall back to the frontier API. Never fail for lack of a GPU.
 - Concrete model identities belong in ONE dated tier→model table in the docs,
   not scattered through code/prompts. Keep tier-level language everywhere.
+- **llama-completion (deterministic describe)**: the managed provisioning
+  extracts the WHOLE llama.cpp release archive, so `llama-completion` lands
+  next to `llama-server` (same release = version-aligned by construction).
+  `llm_manager.acquire_llama` chmods it; phase5 exposes its path to the unit
+  as `METNOS_LLAMACPP_COMPLETION_BIN` (`@COMPLETION_ENV@` placeholder), which
+  `runtime/llm_helpers.py::_completion_bin` reads first. If absent (wired to
+  an existing endpoint — no provisioning — or an old release without the
+  binary), the install does NOT fail: phase5 writes an honest comment and the
+  runtime falls back to HTTP generation with `meta.deterministic=false` (§2.8).
 
 ## Engine / routing config (replicate production, ADR 0161/0164, §11)
 A bare install defaults to `METNOS_ENGINE=simple`, which leaves many queries

@@ -24,7 +24,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-from .. import state, ui
+from .. import llm_manager, state, ui
 
 
 def _systemd_user_dir() -> Path:
@@ -37,6 +37,24 @@ def _repo_dir() -> Path:
     return Path(os.environ.get("METNOS_INSTALL_ROOT", Path.cwd()))
 
 
+def _completion_env_line() -> str:
+    """Env line for the byte-deterministic describe path.
+
+    The managed install extracts ``llama-completion`` from the same
+    llama.cpp release archive as ``llama-server`` (version-aligned by
+    construction). If found, expose it to the runtime via
+    ``METNOS_LLAMACPP_COMPLETION_BIN``; otherwise (wired to an existing
+    endpoint, or an old release without the binary) leave an honest
+    comment — the runtime falls back to HTTP generation and reports
+    ``meta.deterministic=false`` (§2.8).
+    """
+    comp = llm_manager.find_completion_bin()
+    if comp:
+        return f"Environment=METNOS_LLAMACPP_COMPLETION_BIN={comp}"
+    return ("# no managed llama-completion found — describe_entries falls "
+            "back to HTTP generation (meta.deterministic=false)")
+
+
 def _substitute(template: str, port: int, lang: str) -> str:
     """Replace @VAR@ placeholders in unit template content."""
     repl = {
@@ -47,6 +65,7 @@ def _substitute(template: str, port: int, lang: str) -> str:
         "@REPO_DIR@":   str(_repo_dir()),
         "@PORT@":       str(port),
         "@LANG@":       lang,
+        "@COMPLETION_ENV@": _completion_env_line(),
     }
     for k, v in repl.items():
         template = template.replace(k, v)

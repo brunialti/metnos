@@ -401,13 +401,44 @@ def _pick_llama_asset(assets: list, backend: str) -> dict | None:
     return (plain or cand or [None])[0]
 
 
+def _find_llama_bin(root: Path, name: str) -> Path | None:
+    """Trova un binario llama.cpp per nome sotto root (albero estratto)."""
+    for p in root.rglob(name):
+        if p.is_file():
+            return p
+    return None
+
+
 def _find_llama_server(root: Path) -> Path | None:
-    for p in root.rglob("llama-server"):
-        if p.is_file():
-            return p
-    for p in root.rglob("server"):           # release piu' vecchie
-        if p.is_file():
-            return p
+    # "server" = nome nelle release piu' vecchie.
+    return _find_llama_bin(root, "llama-server") or _find_llama_bin(root, "server")
+
+
+def find_completion_bin() -> Path | None:
+    """Path di `llama-completion` del managed install (se presente).
+
+    Estratto dallo STESSO archivio release di llama-server → versione
+    allineata per costruzione. Usato da phase5 per esporre
+    ``METNOS_LLAMACPP_COMPLETION_BIN`` nell'unit metnos-http (il runtime
+    lo usa per il describe byte-deterministico, vedi
+    ``runtime/llm_helpers.py::_completion_bin``)."""
+    return _find_llama_bin(_llama_dir(), "llama-completion")
+
+
+def _ensure_completion_bin(root: Path) -> Path | None:
+    """Rende eseguibile `llama-completion` estratto accanto a llama-server.
+
+    NON fatale (§2.8 onesto): se la release non lo contiene (release
+    vecchie), avvisa e degrada — il runtime ricade sul fallback HTTP
+    non riproducibile (meta.deterministic=false)."""
+    comp = _find_llama_bin(root, "llama-completion")
+    if comp:
+        comp.chmod(0o755)
+        print(f"    llama-completion: {comp}")
+        return comp
+    print("    ! llama-completion assente dall'archivio (release vecchia?): "
+          "il describe deterministico usera' il fallback HTTP "
+          "(meta.deterministic=false).")
     return None
 
 
@@ -420,6 +451,7 @@ def acquire_llama(backend: str, dest: Path) -> Path | None:
     existing = _find_llama_server(dest)
     if existing:
         print(f"    llama-server già presente: {existing}")
+        _ensure_completion_bin(dest)   # idempotente: chmod su re-run
         return existing
     # Pin del tag release (riproducibilità + verificabilità). Override env;
     # default a un tag pinnato, fallback a latest con avviso.
@@ -455,6 +487,9 @@ def acquire_llama(backend: str, dest: Path) -> Path | None:
     binp = _find_llama_server(dest)
     if binp:
         binp.chmod(0o755)
+        # Stesso archivio → llama-completion (describe deterministico)
+        # allineato di versione col server per costruzione.
+        _ensure_completion_bin(dest)
     return binp
 
 
@@ -580,6 +615,8 @@ def provision(plan: Plan, *, dry_run: bool = True, assume_yes: bool = False) -> 
     print("\n[1/5] llama.cpp")
     binp = acquire_llama(plan.backend, llama)
     out["llama_server"] = str(binp) if binp else None
+    comp = find_completion_bin()
+    out["llama_completion"] = str(comp) if comp else None
     if not binp:
         print("  ✗ llama-server non acquisito (fallback build da sorgente, "
               "fuori scope). Mi fermo prima del modello.")

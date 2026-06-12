@@ -26,6 +26,12 @@ Environment=METNOS_HTTP_PORT=@PORT@
 # bare "simple" engine and uncovered queries return errors. Keep in sync
 # with the reference instance.
 Environment=METNOS_ENGINE=metis
+# Byte-deterministic describe_entries: one-shot llama-completion from the SAME
+# llama.cpp release as the managed llama-server (version-aligned by build).
+# When absent (wired to an existing endpoint, or an old release without the
+# binary) the runtime honestly falls back to HTTP generation and reports
+# meta.deterministic=false — never a fake guarantee.
+@COMPLETION_ENV@
 Environment=METNOS_PROPOSER_GRAMMAR=1
 Environment=METNOS_PROPOSER_VERB_FILTER=1
 Environment=METNOS_PROPOSER_FAST_CONFIDENCE=0.70
