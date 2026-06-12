@@ -3144,6 +3144,113 @@ def _detect_unbacked_promise(final_message: str | None, steps: list) -> bool:
     return True
 
 
+# --- Anti-falso-successo su pipeline vuota (§2.8, 12/6/2026) ----------------
+#
+# Caso live: query schedulata maintenance github su 0 issue aperte — la
+# pipeline find->read->filter->classify->write gira su 0 entries, write
+# ok_count=0, MA il final_message narra «analizzato, salvato bozze pronte,
+# notificato» (falso successo). Predicato deterministico §7.9: conta gli
+# effetti REALI del turno dai result degli step; usato sia per la notice
+# nel final (TurnLog.write) sia per la soppressione del push schedulato
+# (recurring_tasks._scheduled_push_is_noop).
+
+# Counter di successo mutating (stessa lista di TurnLog._MUTATE_SUCCESS_KEYS;
+# duplicata qui perche' la funzione e' module-level e precede la classe).
+_MUTATE_COUNT_KEYS = (
+    "n_deleted", "n_moved", "n_sent", "n_created", "n_written",
+    "n_set", "n_shared", "n_changed", "n_ordered", "ok_count",
+)
+
+
+def pipeline_effect_counts(steps) -> dict | None:
+    """Conteggio deterministico §7.9 degli effetti REALI di un turno.
+
+    Ritorna None se NESSUNO step espone output contabile (turno non
+    giudicabile: niente entries/results/ok_count), altrimenti:
+      {countable, items, mutations, mutating_attempted, failures}
+    - items     = elementi prodotti dagli step producer (len(entries)).
+    - mutations = elementi REALMENTE processati dagli step mutating
+                  (ok_count/n_*/len(results), §2.8).
+    - failures  = step con ok=False (un run con errori non e' "vuoto").
+    """
+    countable = items = mutations = failures = 0
+    mutating_attempted = False
+    for s in steps or []:
+        tool = getattr(s, "chosen_tool", None) or (
+            s.get("chosen_tool") if isinstance(s, dict) else None)
+        if not tool or tool == "final_answer" or tool.startswith("@"):
+            continue
+        res = getattr(s, "result", None)
+        if res is None and isinstance(s, dict):
+            res = s.get("result")
+        if isinstance(res, str):
+            try:
+                res = json.loads(res)
+            except Exception:
+                continue
+        if not isinstance(res, dict) or res.get("_duplicate") is True:
+            continue
+        if res.get("ok") is False:
+            failures += 1
+            continue
+        if any(tool.startswith(p) for p in _MUTATING_TOOL_PREFIXES):
+            mutating_attempted = True
+            n = None
+            for k in _MUTATE_COUNT_KEYS:
+                if isinstance(res.get(k), int):
+                    n = res[k]
+                    break
+            if n is None and isinstance(res.get("results"), list):
+                n = len(res["results"])
+            if n is None:
+                continue
+            countable += 1
+            mutations += max(0, n)
+        elif isinstance(res.get("entries"), list):
+            countable += 1
+            items += len(res["entries"])
+        elif isinstance(res.get("results"), list):
+            countable += 1
+            items += len(res["results"])
+        elif isinstance(res.get("ok_count"), int):
+            countable += 1
+            items += max(0, res["ok_count"])
+    if countable == 0 and failures == 0:
+        return None
+    return {"countable": countable, "items": items, "mutations": mutations,
+            "mutating_attempted": mutating_attempted, "failures": failures}
+
+
+# Claim di esito POSITIVO nel final (IT+EN). Negazioni escluse via
+# lookbehind («non ho trovato» non matcha). Pattern conservativo: meglio
+# un falso-negativo (nessuna notice) che marcare un final onesto.
+_FALSE_SUCCESS_RE = re.compile(
+    r"(?<!non )(?<!not )\b(?:"
+    r"ho\s+(?:analizzat|trovat|salvat|inviat|creat|classificat|preparat|"
+    r"scritt|spostat|cancellat|aggiornat|notificat|registrat)\w*"
+    r"|(?:bozz\w+|rispost\w+|notific\w+)\s+(?:salvat|pront|inviat|creat)\w*"
+    r"|(?:e'|è|sono)\s+stat[oaie]\s+(?:salvat|inviat|creat|notificat|"
+    r"preparat|analizzat|classificat)\w*"
+    r"|i\s+have\s+(?:analyz|found|saved|sent|creat|classifi|prepar|notifi)\w*"
+    r"|(?:drafts?|replies|notifications?)\s+(?:saved|sent|ready|created)"
+    r")",
+    re.IGNORECASE,
+)
+
+
+def _detect_false_success(final_message: str | None, counts: dict | None) -> bool:
+    """True se il final CLAIMA un esito positivo ma la pipeline e' VUOTA
+    (0 items, 0 mutations, 0 failures su step contabili). §7.9 regex+conteggi.
+    """
+    if not final_message or not isinstance(counts, dict):
+        return False
+    if counts.get("failures") or counts.get("countable", 0) == 0:
+        return False
+    if counts.get("items", 0) > 0 or counts.get("mutations", 0) > 0:
+        return False
+    return bool(_FALSE_SUCCESS_RE.search(final_message))
+
+
 def invoke_executor(executor, args, timeout_s=30, *, autonomy="supervised",
                     turn_id=None, actor=None, channel=None):
     """Invoca un executor, opzionalmente in sandbox bubblewrap.
@@ -3324,6 +3431,15 @@ class TurnLog:
     # serve da telemetria per metriche future (frequenza allucinazioni
     # PLANNER per turno).
     unbacked_promise_detected: bool = False
+
+    # Conteggio deterministico degli effetti reali del turno (§2.8,
+    # 12/6/2026): popolato in write() via `pipeline_effect_counts(steps)`.
+    # None = nessuno step contabile. Consumato da (1) anti-falso-successo
+    # nel final e (2) recurring_tasks per sopprimere il push schedulato
+    # sui run a vuoto (0 items, 0 mutazioni).
+    effect_counts: dict | None = None
+    # True se la notice anti-falso-successo e' stata applicata (telemetria).
+    false_success_detected: bool = False
 
     # Identita' utente + canale del turno (6/5/2026): necessari a write()
     # per orchestrare get_inputs sul cap-expand (ADR 0091 generalizzato).
@@ -4141,6 +4257,10 @@ class TurnLog:
         ):
             if not self.steps[-1].chosen_tool:
                 self.steps[-1].chosen_tool = "final_answer"
+        # Effetti reali del turno (§2.8, 12/6/2026): calcolati per OGNI
+        # final_kind cosi' i consumer (notice falso-successo qui sotto,
+        # gate push schedulato in recurring_tasks) leggono lo stesso dato.
+        self.effect_counts = pipeline_effect_counts(self.steps)
         # Anti thinking-leak (ADR 0102, 7/5/2026): rimuovi righe di
         # reasoning interno emesse erroneamente dal PLANNER nel canale
         # text. Applicato PRIMA di qualsiasi prepend (truncation/health/
@@ -4271,6 +4391,28 @@ class TurnLog:
                 if _ff_notice not in (self.final_message or ""):
                     self.final_message = (
                         _ff_notice + "\n\n"
+                        + (self.final_message or "")
+                    ).strip()
+            # Anti-falso-successo §2.8 (12/6/2026): il final NARRA un esito
+            # positivo («analizzato, salvato bozze pronte, notificato») ma
+            # TUTTI gli step contabili hanno prodotto/processato 0 elementi
+            # (caso live: maintenance github schedulata su 0 issue aperte,
+            # store a 0 righe). Notice additiva deterministica §7.9, simmetrica
+            # a _detect_false_not_found; preserva il messaggio LLM per audit.
+            if _detect_false_success(self.final_message, self.effect_counts):
+                self.false_success_detected = True
+                from i18n import register_key_if_missing as _rk
+                _rk("MSG_FALSE_SUCCESS_NOTICE",
+                    "⚠ Nota: in questo turno nessun elemento è stato trovato "
+                    "o processato (0 risultati in tutti gli step): nessuna "
+                    "azione è stata realmente eseguita.",
+                    "⚠ Note: this turn found and processed no items (0 "
+                    "results in every step): no action was actually "
+                    "performed.")
+                _fs_notice = msg("MSG_FALSE_SUCCESS_NOTICE")
+                if _fs_notice not in (self.final_message or ""):
+                    self.final_message = (
+                        _fs_notice + "\n\n"
                         + (self.final_message or "")
                     ).strip()
         # Propaga attachments dall ultimo step che ne ha prodotti (use

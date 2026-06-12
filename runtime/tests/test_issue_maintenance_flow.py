@@ -197,6 +197,68 @@ def test_write_issues_invalid_status_rejected(tmp_store, fake_embedder):
     assert tmp_store.list_records(repo=REPO, numbers=[50]) == []
 
 
+# ── write_issues: dedup / notify-once §2.8 (12/6/2026) ────────────────────
+
+def test_write_issues_skip_known_same_status(tmp_store, fake_embedder):
+    """Ri-registrazione allo stesso status = no-op: ok_count=0,
+    skipped_known=1, bozza ORIGINALE preservata (niente churn LLM).
+    E' il caso del run schedulato ogni 30m sulla stessa issue aperta."""
+    w = _load_executor("write_issues")
+    first = w.invoke({"entries": [
+        {"repo": REPO, "number": 80, "status": "prepared",
+         "draft_reply": "bozza originale"}]})
+    assert first["ok_count"] == 1 and first["created_count"] == 1
+    assert first["results"][0]["created"] is True
+    # Re-run identico (bozza diversa: il classify LLM non e' deterministico)
+    rerun = w.invoke({"entries": [
+        {"repo": REPO, "number": 80, "status": "prepared",
+         "draft_reply": "bozza DIVERSA del re-run"}]})
+    assert rerun["ok"] is True
+    assert rerun["ok_count"] == 0 and rerun["created_count"] == 0
+    assert rerun["skipped_known"] == 1
+    assert rerun["skipped"][0]["reason"] == "already_treated"
+    rec = tmp_store.list_records(repo=REPO, numbers=[80])[0]
+    assert rec["draft_reply"] == "bozza originale"
+
+
+def test_write_issues_status_advance_not_skipped(tmp_store, fake_embedder):
+    """prepared → approved AVANZA la macchina a stati → scritto."""
+    w = _load_executor("write_issues")
+    w.invoke({"entries": [{"repo": REPO, "number": 81, "status": "prepared",
+                           "draft_reply": "bozza"}]})
+    out = w.invoke({"entries": [{"repo": REPO, "number": 81,
+                                 "status": "approved"}]})
+    assert out["ok_count"] == 1 and out["skipped_known"] == 0
+    assert out["results"][0]["created"] is False  # update, non create
+    rec = tmp_store.list_records(repo=REPO, numbers=[81])[0]
+    assert rec["status"] == "approved"
+    assert rec["accepted_reply"] == "bozza"  # promozione bozza→accettata
+
+
+def test_write_issues_overwrite_forces_rewrite(tmp_store, fake_embedder):
+    """overwrite=true forza la ri-scrittura allo stesso status."""
+    w = _load_executor("write_issues")
+    w.invoke({"entries": [{"repo": REPO, "number": 82, "status": "prepared",
+                           "draft_reply": "v1"}]})
+    out = w.invoke({"entries": [{"repo": REPO, "number": 82,
+                                 "status": "prepared", "draft_reply": "v2"}],
+                    "overwrite": True})
+    assert out["ok_count"] == 1 and out["skipped_known"] == 0
+    rec = tmp_store.list_records(repo=REPO, numbers=[82])[0]
+    assert rec["draft_reply"] == "v2"
+
+
+def test_write_issues_double_posted_skipped(tmp_store, fake_embedder):
+    """Doppio 'posted' = skip → posted_at del primo post intoccato."""
+    w = _load_executor("write_issues")
+    w.invoke({"entries": [{"repo": REPO, "number": 83, "status": "posted"}]})
+    first_ts = tmp_store.list_records(repo=REPO, numbers=[83])[0]["posted_at"]
+    out = w.invoke({"entries": [{"repo": REPO, "number": 83,
+                                 "status": "posted"}]})
+    assert out["skipped_known"] == 1 and out["ok_count"] == 0
+    assert tmp_store.list_records(repo=REPO, numbers=[83])[0]["posted_at"] == first_ts
+
+
 # ── Executor: read_issues ─────────────────────────────────────────────────
 
 def test_read_issues_by_status(tmp_store):

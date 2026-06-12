@@ -368,6 +368,34 @@ def _increment_fired_and_check_done(name: str) -> tuple[int, bool]:
         conn.close()
 
 
+def _scheduled_push_is_noop(log) -> bool:
+    """True se il run schedulato NON ha prodotto nulla → push soppresso §2.8.
+
+    Regole (deterministiche §7.9, su `log.effect_counts` calcolato da
+    TurnLog.write via pipeline_effect_counts):
+    - dialog/cap pendenti → MAI sopprimere (serve risposta utente);
+    - final_kind != answer → MAI sopprimere (errori restano visibili);
+    - step con ok=False → MAI sopprimere (fallimenti §2.8 vanno riportati);
+    - turno con step MUTATING tentati → sopprimi se 0 mutazioni effettive
+      (es. maintenance issue: trovate N issue ma 0 nuove registrate);
+    - turno solo-lettura → sopprimi se 0 items prodotti (0 mail, 0 issue).
+    Caso live 12/6: maintenance github ogni 30m su 0 issue aperte spingeva
+    «analizzato, salvato bozze pronte, notificato» — falso successo.
+    """
+    if getattr(log, "expandable_caps", None):
+        return False
+    if getattr(log, "final_kind", "") != "answer":
+        return False
+    counts = getattr(log, "effect_counts", None)
+    if not isinstance(counts, dict):
+        return False
+    if counts.get("failures"):
+        return False
+    if counts.get("mutating_attempted"):
+        return counts.get("mutations", 0) == 0
+    return counts.get("countable", 0) > 0 and counts.get("items", 0) == 0
+
+
 def _run_user_query_callback(record: dict) -> str:
     """Callback canonica `run_user_query`: rilancia run_turn + pusha canale.
 
@@ -378,6 +406,8 @@ def _run_user_query_callback(record: dict) -> str:
     - Try/except attorno a run_turn (no propagazione exception).
     - Push canale con 1 retry su transient.
     - Output diagnostico salvato in scheduler.runs.output.
+    - Run a vuoto (0 effetti reali) → NESSUN push, solo log (§2.8:
+      niente notifiche di falso successo; vedi _scheduled_push_is_noop).
     """
     log_msg = []
     try:
@@ -393,6 +423,16 @@ def _run_user_query_callback(record: dict) -> str:
         log_msg.append(f"[{record['name']}] run_turn ok kind={getattr(log,'final_kind',None)} steps={len(log.steps or [])}")
     except Exception as e:
         return f"[{record['name']}] run_turn crashed: {type(e).__name__}: {e}"
+    # §2.8 notifica onesta (12/6/2026): run schedulato a vuoto → niente push.
+    # Diagnostica in runs.output (consultabile da /admin/runs), zero rumore
+    # verso l'utente. Idempotente col loop dello scheduler: N run a vuoto =
+    # N log silenziosi, 0 notifiche.
+    if _scheduled_push_is_noop(log):
+        _c = getattr(log, "effect_counts", None) or {}
+        log_msg.append(
+            f"empty run (items={_c.get('items', 0)} "
+            f"mutations={_c.get('mutations', 0)}) → push suppressed (§2.8)")
+        return " | ".join(log_msg)
     if record["channel"] == "telegram" and record.get("chat_id"):
         prefix = (
             f"[task: {record['label'] or record['name']}]\n"
