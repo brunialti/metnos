@@ -108,27 +108,49 @@ def _intr_decision_from_state(state: str, last_action: Optional[str],
 
 
 def _load_telos(only_pending: bool, max_rows: int,
-                 enrich: bool = True) -> list[dict]:
+                 enrich: bool = True,
+                 group_clusters: bool = False) -> list[dict]:
     """Carica proposte telos via telos_proposals_store.
 
     `source` granulare = "telos:<lens>" (es. "telos:scamper") per filtri UI.
     `source_family` = "telos" per raggruppamento aggregato.
     `enrich=False` salta il turn log lookup (utile per tier_counts dove
     serve solo ranking_score, non l'esempio applicabile).
+
+    `group_clusters=True` (mandato 12/6/2026): il cluster e' l'unita' di
+    decisione. Carica l'INTERA collezione senza enrich (size cluster VERE,
+    non troncate dal cap), ricompone in head via `recompose_clusters`,
+    poi arricchisce SOLO gli head (≤ ~25 righe, costo turn-log minimo).
+    `ranking_score` degli head = `cluster_score` (EA max + bonus
+    convergenza fra lenti distinte), non l'EA della singola istanza.
     """
     import telos_proposals_store as S
-    rows = S.load_all(
-        min_alignment=0.0,
-        max_rows=max_rows,
-        include_decided=not only_pending,
-        enrich_rows=enrich,
-    )
+    if group_clusters:
+        rows = S.load_all(
+            min_alignment=0.0,
+            max_rows=100000,
+            include_decided=not only_pending,
+            enrich_rows=False,
+        )
+        rows = S.recompose_clusters(rows)
+        if enrich and rows:
+            turns = S._load_turns()
+            for r in rows:
+                S.enrich(r, turns)
+    else:
+        rows = S.load_all(
+            min_alignment=0.0,
+            max_rows=max_rows,
+            include_decided=not only_pending,
+            enrich_rows=enrich,
+        )
     for r in rows:
         lens = r.get("lens", "") or "?"
         r["source"] = f"telos:{lens}"
         r["source_family"] = "telos"
         r["source_id"] = r.get("prop_id", "")
-        r["ranking_score"] = r.get("expected_alignment", 0.0)
+        r["ranking_score"] = r.get("cluster_score",
+                                   r.get("expected_alignment", 0.0))
         r["origin_module"] = lens
     return rows
 
@@ -253,7 +275,8 @@ def load_unified(
     - `tier`: 'top' / 'interesting' / 'weak' / None (no filter)
     - `source_filter`: 'telos' / 'introvertiva' / None (tutte)
     - `only_pending`: nasconde proposte gia' accept/reject (stage resta)
-    - `group_clusters`: collassa duplicate per signature_relaxed (solo telos)
+    - `group_clusters`: telos → 1 head per cluster relaxed (recompose_clusters),
+      ranking_score = cluster_score (EA max + bonus convergenza lenti)
 
     Ordering: ranking_score desc cross-source. Tier bands sincronizzati con
     `telos_proposals_store.TIER_*`.
@@ -280,9 +303,11 @@ def load_unified(
         loader = loaders.get(src)
         if loader is None:
             continue
-        # _load_telos accetta `enrich`; _load_introvertiva no (sempre raw).
+        # _load_telos accetta `enrich`+`group_clusters`; _load_introvertiva
+        # no (sempre raw, signature 1:1 = gia' cluster-level).
         if src == "telos":
-            all_rows.extend(loader(only_pending, max_rows_per_source, enrich))
+            all_rows.extend(loader(only_pending, max_rows_per_source,
+                                   enrich, group_clusters))
         else:
             all_rows.extend(loader(only_pending, max_rows_per_source))
 
@@ -305,24 +330,13 @@ def load_unified(
     elif tier == "weak":
         all_rows = [r for r in all_rows if r["ranking_score"] < S.TIER_INTERESTING_MIN]
 
-    # Sort cross-source per ranking_score desc
-    all_rows.sort(key=lambda r: -r.get("ranking_score", 0.0))
-
-    # Cluster grouping: SOLO telos rows (introvertiva ha signature 1:1)
-    if group_clusters:
-        seen_sigs = set()
-        grouped = []
-        for r in all_rows:
-            if r.get("source") != "telos":
-                grouped.append(r)
-                continue
-            sig = r.get("signature_relaxed")
-            if sig and sig in seen_sigs:
-                continue
-            if sig:
-                seen_sigs.add(sig)
-            grouped.append(r)
-        all_rows = grouped
+    # Sort cross-source: azionabili prima, poi ranking_score desc.
+    # (Il vecchio dedup post-sort era ROTTO: confrontava r["source"] con
+    # "telos" ma il valore e' "telos:<lens>" → nessuna riga veniva mai
+    # raggruppata. Ora il clustering avviene in _load_telos via
+    # recompose_clusters, fix 12/6/2026.)
+    all_rows.sort(key=lambda r: (not r.get("actionable", True),
+                                 -r.get("ranking_score", 0.0)))
 
     return all_rows[:max_rows]
 
@@ -338,6 +352,11 @@ def apply_decision_unified(prop_id: str, source: str, action: str,
     """
     if action not in ("accept", "reject", "stage"):
         raise ValueError(f"action must be accept|reject|stage, got {action!r}")
+    # Normalizza source granulare → family: i bottoni della dashboard postano
+    # `r.source` che e' "telos:<lens>" / "introvertiva:<kind>". Fix 12/6/2026:
+    # senza normalizzazione OGNI decisione dal hub unificato falliva con 400
+    # "unknown source" — una delle cause dell'accettazione ~0.
+    source = source.split(":", 1)[0]
     if source == "telos":
         import telos_proposals_store as S
         # Lookup per popolare extra (anti-resurrezione C.5).
@@ -437,20 +456,11 @@ def granular_source_counts() -> dict:
     counts: Counter = Counter()
     try:
         import telos_proposals_store as S
-        import json as _json
-        path = S._resolve_proposals_path()
-        if path:
-            with path.open(encoding="utf-8") as fh:
-                for line in fh:
-                    line = line.strip()
-                    if not line:
-                        continue
-                    try:
-                        rec = _json.loads(line)
-                    except _json.JSONDecodeError:
-                        continue
-                    lens = rec.get("lens", "?") or "?"
-                    counts[f"telos:{lens}"] += 1
+        # Unione candidati dedup ts (stessa vista di load_all, fix 12/6/2026:
+        # le proposte post-snapshot backfill devono contare anche qui).
+        for rec in S._iter_merged_rows():
+            lens = rec.get("lens", "?") or "?"
+            counts[f"telos:{lens}"] += 1
     except Exception:
         pass
     try:

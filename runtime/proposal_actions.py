@@ -45,16 +45,18 @@ TELOS_FILTERED_LOG = _DATA_DIR / "telos_filtered.jsonl"
 
 
 def _audit_filtered(proposal: dict, decision_record: dict,
-                    expected_alignment: float, hard_gate: float) -> None:
+                    gate_score: float, hard_gate: float) -> None:
     """Append-only audit log per proposte accept-ate ma filtrate dal hard
     gate. Usato per visibilita' admin (quante proposte vengono scartate
-    dal gate, quali, perche')."""
+    dal gate, quali, perche'). `gate_score` = score cluster-aware valutato
+    dal gate (EA + bonus convergenza), non la sola EA dell'istanza."""
     rec = {
         "ts": decision_record.get("ts", time.time()),
         "prop_id": proposal.get("prop_id", ""),
         "by": decision_record.get("by", "admin"),
         "executor_target": proposal.get("executor_target", ""),
-        "expected_alignment": expected_alignment,
+        "expected_alignment": float(proposal.get("expected_alignment") or 0.0),
+        "gate_score": gate_score,
         "hard_gate": hard_gate,
         "name_status": proposal.get("name_status", "unknown"),
         "lens": proposal.get("lens", ""),
@@ -108,17 +110,31 @@ def on_accept(proposal: dict, decision_record: dict) -> dict:
     # una proposta vista in dashboard con filtri allargati, il gate qui
     # blocca la propagazione operativa se sotto soglia. Self-correcting:
     # proposte meritevoli riemergono con score piu' alto nel tempo.
+    # Cluster-aware (12/6/2026): la convergenza di lenti DISTINTE sullo
+    # stesso intent e' evidenza indipendente — il gate valuta
+    # cluster_score(EA, n_lenti), stessa formula della dashboard
+    # (telos_proposals_store.cluster_score, bonus cap +0.20). Una proposta
+    # con EA 0.42 ma 4 lenti convergenti NON viene piu' filtrata in silenzio.
     try:
         from runtime_settings import get as _setting
         hard_gate = float(_setting("telos.accept_hard_gate"))
     except Exception:
         hard_gate = 0.45
-    expected_alignment = float(proposal.get("expected_alignment") or 0.0)
-    if expected_alignment < hard_gate:
-        _audit_filtered(proposal, decision_record, expected_alignment, hard_gate)
+    expected_alignment = float(
+        proposal.get("ea_max") or proposal.get("expected_alignment") or 0.0)
+    n_lenses = len(proposal.get("cluster_lenses")
+                   or proposal.get("convergence_lenses") or []) or 1
+    try:
+        from telos_proposals_store import cluster_score as _cluster_score
+        gate_score = _cluster_score(expected_alignment, n_lenses)
+    except Exception:
+        gate_score = expected_alignment
+    if gate_score < hard_gate:
+        _audit_filtered(proposal, decision_record, gate_score, hard_gate)
         return {"kind": "noop",
                 "reason": f"below_hard_gate={hard_gate}",
-                "expected_alignment": expected_alignment}
+                "expected_alignment": expected_alignment,
+                "gate_score": gate_score}
 
     name_status = proposal.get("name_status", "unknown")
     target = proposal.get("executor_target", "") or ""

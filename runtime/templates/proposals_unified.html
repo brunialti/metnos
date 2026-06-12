@@ -92,7 +92,7 @@ telos engine e introspezione, ordinate per punteggio. Le viste dedicate
   <tbody>
   {% for r in rows %}
     <tr>
-      <td><span class="chip {% if r.source == 'telos' %}ok{% else %}warn{% endif %}">{{ r.source }}</span></td>
+      <td><span class="chip {% if r.source_family == 'telos' %}ok{% else %}warn{% endif %}">{{ r.source }}</span></td>
       <td class="tp-ea">
         <strong>{{ "%.3f"|format(r.ranking_score) }}</strong>
         {% if r.ranking_score >= 0.50 %}<span class="chip ok">{{ msg('UI_PROP_TELOS_BADGE_TOP') }}</span>
@@ -201,7 +201,7 @@ telos engine e introspezione, ordinate per punteggio. Le viste dedicate
                   hx-post="/admin/proposals/unified/{{ r.source }}/{{ r.prop_id|urlencode }}/accept"
                   {% if redundant_warn %}hx-confirm="{{ msg('UI_PROP_TELOS_CONFIRM_REDUNDANT') }}"{% endif %}
                   hx-target="closest tr" hx-swap="outerHTML">{{ msg('UI_PROP_TELOS_BTN_ACCEPT') }}</button>
-          {% if r.source == 'telos' and r.convergence_count and r.convergence_count > 1 %}
+          {% if r.source_family == 'telos' and r.convergence_count and r.convergence_count > 1 %}
             <button class="btn ok"
                     hx-post="/admin/proposals/telos/{{ r.prop_id|urlencode }}/cluster/accept"
                     hx-confirm="{{ msg('UI_PROP_TELOS_CONFIRM_CLUSTER', n=r.convergence_count) }}"
@@ -212,7 +212,7 @@ telos engine e introspezione, ordinate per punteggio. Le viste dedicate
           <button class="btn bad"
                   hx-post="/admin/proposals/unified/{{ r.source }}/{{ r.prop_id|urlencode }}/reject"
                   hx-target="closest tr" hx-swap="outerHTML">{{ msg('UI_PROP_TELOS_BTN_REJECT') }}</button>
-          {% if r.source == 'telos' and r.convergence_count and r.convergence_count > 1 %}
+          {% if r.source_family == 'telos' and r.convergence_count and r.convergence_count > 1 %}
             <button class="btn bad"
                     hx-post="/admin/proposals/telos/{{ r.prop_id|urlencode }}/cluster/reject"
                     hx-confirm="{{ msg('UI_PROP_TELOS_CONFIRM_CLUSTER', n=r.convergence_count) }}"

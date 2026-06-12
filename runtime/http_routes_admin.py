@@ -865,10 +865,13 @@ def _render_telos_row_html(row: dict) -> str:
 async def admin_telos_proposal_cluster_action(request: web.Request) -> web.Response:
     """POST /admin/proposals/telos/{prop_id}/cluster/{action}
 
-    Applica `action` a TUTTI i membri del `dedup_cluster` (cluster relaxed:
-    proposte con stesso target+parametric da lenti diverse). C.8: 1 accept
-    invece di N decisioni separate per le varianti dello stesso intent.
-    Es. 28 proposte create_events deadline-to-calendar → 1 cluster accept.
+    Applica `action` a TUTTI i membri del cluster RELAXED (stesso
+    target+parametric, anche da lenti diverse — la stessa granularita'
+    dell'anti-resurrezione C.5 e degli head di `recompose_clusters`).
+    C.8: 1 accept invece di N decisioni separate per le varianti dello
+    stesso intent. L'effetto operativo (proposal_actions) scatta UNA volta
+    sola, sul prop_id richiesto (head); il marker e' comunque idempotente
+    per signature.
     """
     prop_id = urllib.parse.unquote(request.match_info["prop_id"])
     action = request.match_info["action"]
@@ -876,20 +879,24 @@ async def admin_telos_proposal_cluster_action(request: web.Request) -> web.Respo
         return _error(400, "invalid_action",
                       f"action must be accept|reject|stage, got {action}")
 
-    # Lookup completo per recuperare dedup_cluster
+    # Lookup completo per recuperare i membri del cluster relaxed.
     cluster_ids: list[str] = []
     extra_base: dict = {}
     try:
         rows = telos_proposals_store.load_all(
-            min_alignment=0.0, max_rows=10000, enrich_rows=True,
+            min_alignment=0.0, max_rows=100000, enrich_rows=True,
         )
+        sig = None
         for r in rows:
             if r.get("prop_id") == prop_id:
-                cluster_ids = list(r.get("dedup_cluster") or [prop_id])
+                sig = r.get("signature_relaxed") or ""
                 extra_base["executor_target"] = r.get("executor_target") or ""
-                extra_base["signature_relaxed"] = r.get("signature_relaxed") or ""
+                extra_base["signature_relaxed"] = sig
                 extra_base["lens"] = r.get("lens") or ""
                 break
+        if sig:
+            cluster_ids = [r.get("prop_id") for r in rows
+                           if r.get("signature_relaxed") == sig]
     except Exception as ex:
         log.warning("cluster action lookup failed: %r", ex)
         cluster_ids = [prop_id]
@@ -901,7 +908,9 @@ async def admin_telos_proposal_cluster_action(request: web.Request) -> web.Respo
     for cid in cluster_ids:
         try:
             rec = telos_proposals_store.apply_decision(
-                cid, action, by="admin", **extra_base,
+                cid, action, by="admin",
+                run_on_accept=(cid == prop_id),
+                **extra_base,
             )
             applied.append(rec)
         except Exception as ex:

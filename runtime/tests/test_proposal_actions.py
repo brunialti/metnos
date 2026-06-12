@@ -172,6 +172,36 @@ class HardGateTests(unittest.TestCase):
         r = self.PA.on_accept(p, _decision())
         self.assertEqual(r["kind"], "synt_pending")
 
+    def test_convergence_lifts_gate_score(self):
+        """Cluster-aware (12/6/2026): EA 0.40 da sola e' sotto gate, ma con
+        3 lenti distinte convergenti gate_score = 0.40+0.10 = 0.50 ≥ 0.45."""
+        p = FakeProposal.new(expected_alignment=0.40)
+        p["convergence_lenses"] = ["scamper", "oulipo", "inverse_rl"]
+        r = self.PA.on_accept(p, _decision())
+        self.assertEqual(r["kind"], "synt_pending")
+
+    def test_convergence_bonus_capped_still_blocked(self):
+        """Bonus cap +0.20: EA 0.20 resta sotto gate anche con 10 lenti."""
+        p = FakeProposal.new(expected_alignment=0.20)
+        p["convergence_lenses"] = [f"lens{i}" for i in range(10)]
+        r = self.PA.on_accept(p, _decision())
+        self.assertEqual(r["kind"], "noop")
+        self.assertIn("below_hard_gate", r["reason"])
+        self.assertAlmostEqual(r["gate_score"], 0.40)
+        # Audit registra EA istanza E gate_score separati (§2.8 onesta').
+        rec = json.loads(self.PA.TELOS_FILTERED_LOG.read_text().strip())
+        self.assertAlmostEqual(rec["expected_alignment"], 0.20)
+        self.assertAlmostEqual(rec["gate_score"], 0.40)
+
+    def test_cluster_head_uses_ea_max(self):
+        """Head di cluster: il gate usa ea_max + cluster_lenses.
+        0.42 + 0.05 (2 lenti) = 0.47 ≥ 0.45 → procede."""
+        p = FakeProposal.new(expected_alignment=0.30)
+        p["ea_max"] = 0.42
+        p["cluster_lenses"] = ["scamper", "oulipo"]
+        r = self.PA.on_accept(p, _decision())
+        self.assertEqual(r["kind"], "synt_pending")
+
 
 if __name__ == "__main__":
     unittest.main()
