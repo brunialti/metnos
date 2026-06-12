@@ -53,7 +53,10 @@ BRANCH="nightly/fable-${DATE}-${DIM}"
 
 echo "==== $(date -Is) fable-audit START dim=$DIM model=$MODEL branch=$BRANCH ====" >> "$LOG"
 
-# Branch di lavoro pulito da main.
+# Branch di lavoro SEMPRE da main (force): mai dal branch corrente, altrimenti
+# l'auto-merge su main trascinerebbe lavoro di sessione non revisionato.
+# Il tree e' gia' garantito pulito dalla guardia sopra, quindi il checkout e' safe.
+git checkout main >> "$LOG" 2>&1 || { echo "$(date -Is) [fable-audit] checkout main fallito" >> "$LOG"; exit 1; }
 git checkout -B "$BRANCH" >> "$LOG" 2>&1 || { echo "$(date -Is) [fable-audit] branch fallito" >> "$LOG"; exit 1; }
 
 # Prompt dell'agente. Heredoc NON quotato: espande $DIM/$BRANCH/$DATE; i $ letterali
