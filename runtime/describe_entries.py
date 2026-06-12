@@ -34,15 +34,40 @@ from messages import get as _msg
 # e caricati via `prompt_loader.get(role, lang, **vars)`.
 STYLES = ("by_importance", "by_relevance", "compact")
 
-# Patch 3 (8/5/2026): cap entries inviate al LLM per il prompt di
-# riassunto. Sopra 20 il bundle JSON sgonfia il context senza migliorare
-# qualita': il LLM tende a generalizzare/perdersi su >20 entries
-# eterogenee. Le entries oltre il cap NON vengono dimenticate (`item_count`
-# riporta il totale + `truncated*` field per pattern §2.7); solo non
-# vanno nel prompt LLM. Diagnosi 8/5: turn live con find_images_indices
-# scene-rumore -> describe_entries(from_step=2) con 100 entries -> JSON
-# turno = 98 KB.
-_DESCRIBE_CAP = 20
+# Cap DINAMICO verso il prompt LLM (12/6/2026, sostituisce il fisso
+# _DESCRIBE_CAP=20). Il vincolo reale e' la DIMENSIONE serializzata del
+# bundle — context bloat + il modello generalizza/si perde su bundle
+# grossi — NON il numero di entries. Un cap a conteggio fisso tagliava
+# per un solo elemento di troppo (es. 21 mail corte -> "1 fuori"),
+# rischiando di perdere roba importante per nulla: 21 mail ~7 KB stanno
+# larghe, il problema vero era il turn 98 KB con 100 entries scene-rumore
+# (find_images_indices, diagnosi 8/5). Soluzione di classe (§7.3): pack
+# greedy fino a un budget di caratteri (proxy dei token), con un tetto di
+# sicurezza sul conteggio per evitare flood di entries minuscole. Sotto
+# budget: nessun troncamento. Le entries oltre il cap NON sono dimenticate
+# (`item_count` = totale + `truncated*` field §2.7). Override via env.
+_DESCRIBE_MAX_CHARS = int(os.environ.get("METNOS_DESCRIBE_MAX_CHARS", "24000"))
+_DESCRIBE_HARD_MAX = int(os.environ.get("METNOS_DESCRIBE_HARD_MAX", "200"))
+
+
+def _pack_entries(entries: list) -> tuple[list, bool]:
+    """Greedy: include entries in ordine finche' la dimensione serializzata
+    sta nel budget caratteri e non si supera il tetto di sicurezza sul
+    conteggio. Almeno 1 entry passa sempre (anche se da sola sfora). Ritorna
+    (visible, truncated)."""
+    visible: list = []
+    total_chars = 0
+    for e in entries:
+        try:
+            sz = len(json.dumps(e, ensure_ascii=False))
+        except Exception:
+            sz = len(str(e))
+        if visible and (total_chars + sz > _DESCRIBE_MAX_CHARS
+                        or len(visible) >= _DESCRIBE_HARD_MAX):
+            break
+        visible.append(e)
+        total_chars += sz
+    return visible, len(visible) < len(entries)
 
 # Direttive di formattazione applicate in append al prompt principale.
 # Cosi' il chiamante puo' chiedere lo stesso riassunto in markdown
@@ -216,11 +241,13 @@ DESCRIBE_ENTRIES_TOOL = {
         "name": "describe_entries",
         "description": (
             "Riassume lista di entries via LLM interno. Args: from_step=N, "
-            "style in {by_importance|by_relevance|compact}. Cap interno "
-            "20 entries verso il prompt LLM: oltre il cap il summary cita "
-            "il troncamento e l'output include `truncated=True`, "
-            "`cap_field='describe_cap'`, `cap_value=20`, `used=20`, "
-            "`available_total=<total>`.\n"
+            "style in {by_importance|by_relevance|compact}. Cap dinamico a "
+            "dimensione del bundle (non a conteggio): le entries vengono "
+            "inviate al prompt finche' stanno nel budget caratteri; sotto "
+            "budget passano tutte. Se si supera, il summary cita il "
+            "troncamento e l'output include `truncated=True`, "
+            "`cap_field='describe_cap'`, `cap_value=<n inviate>`, "
+            "`used=<n inviate>`, `available_total=<total>`.\n"
             "DEVI: chiamare describe_entries SOLO se l'utente chiede "
             "riassunto di una lista nel suo insieme.\n"
             "NON DEVI: chiamare describe_entries se l'utente cita campi "
@@ -354,8 +381,8 @@ def handle_describe_entries(args, *, verbose: bool = False) -> dict:
     # informazione contestuale che viene PRE-pendata al prompt LLM con
     # istruzione esplicita di non re-discutere salute.
     health_context = (args or {}).get("health_context") or h.get("health_context")
-    if tier == "auto":
-        tier = _auto_tier(entries)
+    # tier 'auto' risolto DOPO il pack (dimensiona sul bundle realmente
+    # inviato `visible_entries`, non sul totale pre-cap).
 
     if style not in STYLES and not prompt_override:
         return {"ok": False, "error": f"unknown style {style!r}; valid: {list(STYLES)}"}
@@ -418,14 +445,14 @@ def handle_describe_entries(args, *, verbose: bool = False) -> dict:
                 ),
             }
 
-    # Patch 3 (8/5/2026, §2.7): cap entries verso LLM. Sopra _DESCRIBE_CAP
-    # mandiamo solo le prime N al prompt e dichiariamo truncated nel
-    # return value. NON cambia behaviour quando entries <= _DESCRIBE_CAP
-    # (back-compat trasparente).
+    # Cap dinamico a budget di caratteri (§2.7, §7.3): mandiamo al prompt
+    # solo le prime N entries che stanno nel budget e dichiariamo truncated
+    # nel return value. Sotto budget: tutte le entries, nessun troncamento.
     total_entries = len(entries)
-    truncated_describe = total_entries > _DESCRIBE_CAP
-    visible_entries = entries[:_DESCRIBE_CAP] if truncated_describe else entries
-    hidden_count = total_entries - len(visible_entries) if truncated_describe else 0
+    visible_entries, truncated_describe = _pack_entries(entries)
+    hidden_count = total_entries - len(visible_entries)
+    if tier == "auto":
+        tier = _auto_tier(visible_entries)
 
     kind = _detect_kind(visible_entries, data_kind)
     base_prompt = (prompt_override
@@ -482,7 +509,7 @@ def handle_describe_entries(args, *, verbose: bool = False) -> dict:
             note = _msg("MSG_DESCRIBE_TRUNCATED",
                         visible=len(visible_entries),
                         hidden=hidden_count,
-                        cap=_DESCRIBE_CAP)
+                        cap=len(visible_entries))
         except Exception:
             note = ""
         if text and note:
@@ -506,7 +533,7 @@ def handle_describe_entries(args, *, verbose: bool = False) -> dict:
             "used": len(visible_entries),
             "available_total": total_entries,
             "cap_field": "describe_cap",
-            "cap_value": _DESCRIBE_CAP,
+            "cap_value": len(visible_entries),
         })
     return out
 
