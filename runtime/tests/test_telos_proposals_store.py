@@ -272,6 +272,144 @@ class EnrichTests(FixtureBase):
         self.assertIsNone(self.S._parse_n_observed("nessun numero qui"))
 
 
+class MergeCandidatesTests(FixtureBase):
+    """Fix 12/6/2026: load_all unisce TUTTI i file candidati (dedup ts).
+
+    Prima leggeva solo il primo esistente: 536 proposte generate dopo lo
+    snapshot di backfill erano invisibili a dashboard e decisioni.
+    """
+
+    def setUp(self):
+        super().setUp()
+        # Secondo candidato (raw, priorita' inferiore) accanto al recomposed.
+        self.raw_path = self.tmpdir / "telos_proposals.jsonl"
+        self.S._PROPOSALS_CANDIDATES = (self.props_path, self.raw_path)
+
+    def _write_raw(self, props):
+        self.raw_path.write_text(
+            "\n".join(json.dumps(p) for p in props) + "\n", encoding="utf-8")
+
+    def test_union_includes_rows_only_in_raw(self):
+        self._write_proposals([_sample_proposal(ts=1.0, ea=0.5)])
+        self._write_raw([
+            _sample_proposal(ts=1.0, ea=0.1),   # dup ts: recomposed vince
+            _sample_proposal(ts=2.0, ea=0.4),   # solo nel raw → visibile
+        ])
+        rows = self.S.load_all()
+        self.assertEqual(len(rows), 2)
+        by_id = {r["prop_id"]: r for r in rows}
+        # Priorita': l'EA ricomposta (0.5) vince sull'EA inline raw (0.1).
+        self.assertEqual(by_id["1.000000"]["expected_alignment"], 0.5)
+        self.assertEqual(by_id["2.000000"]["expected_alignment"], 0.4)
+
+    def test_proposals_count_merged(self):
+        self._write_proposals([_sample_proposal(ts=1.0)])
+        self._write_raw([_sample_proposal(ts=1.0), _sample_proposal(ts=2.0)])
+        self.assertEqual(self.S.proposals_count(), 2)
+
+    def test_only_raw_present_still_served(self):
+        self._write_raw([_sample_proposal(ts=3.0, ea=0.3)])
+        rows = self.S.load_all()
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["prop_id"], "3.000000")
+
+
+class ClusterScoreTests(unittest.TestCase):
+    """cluster_score: EA max + bonus per lente DISTINTA oltre la prima."""
+
+    def setUp(self):
+        import telos_proposals_store as S
+        self.S = S
+
+    def test_single_lens_no_bonus(self):
+        self.assertAlmostEqual(self.S.cluster_score(0.40, 1), 0.40)
+
+    def test_bonus_per_distinct_lens(self):
+        self.assertAlmostEqual(self.S.cluster_score(0.40, 3), 0.50)
+
+    def test_bonus_capped(self):
+        # 10 lenti → bonus cap +0.20, non +0.45.
+        self.assertAlmostEqual(self.S.cluster_score(0.40, 10), 0.60)
+
+    def test_clamped_to_one(self):
+        self.assertAlmostEqual(self.S.cluster_score(0.95, 5), 1.0)
+
+
+class RecomposeClustersTests(FixtureBase):
+    """recompose_clusters: il cluster relaxed e' l'unita' di decisione."""
+
+    def setUp(self):
+        super().setUp()
+        # Catalog finto pre-seeded (no loader pesante, deterministico).
+        import time as _t
+        self._orig_cache = dict(self.S._CATALOG_CACHE)
+        self.S._CATALOG_CACHE["names"] = frozenset(
+            {"create_events", "get_files", "find_files"})
+        self.S._CATALOG_CACHE["mtime"] = _t.time() + 3600
+
+    def tearDown(self):
+        self.S._CATALOG_CACHE.update(self._orig_cache)
+        super().tearDown()
+
+    def _rows(self):
+        rows = self._rows_no_id()
+        for r in rows:
+            r["prop_id"] = f"{r['ts']:.6f}"
+        return rows
+
+    def _rows_no_id(self):
+        return [
+            # Cluster A: create_events, 3 istanze da 2 lenti distinte.
+            # L'istanza oulipo ha EA max → head.
+            _sample_proposal(ts=1.0, lens="scamper", target="create_events",
+                             ea=0.40, action="combina get_files e create_events"),
+            _sample_proposal(ts=2.0, lens="scamper", target="create_events",
+                             ea=0.42, action="pipeline get_files poi create_events"),
+            _sample_proposal(ts=3.0, lens="oulipo", target="create_events",
+                             ea=0.50, action="pipeline get_files verso create_events"),
+            # Cluster B: find_files redundant (no pipeline, no parametrico),
+            # 1 lente, EA alta ma NON azionabile.
+            _sample_proposal(ts=4.0, lens="scamper", target="find_files",
+                             ea=0.60, action="riproponi questo strumento",
+                             rationale="nessun tool citato"),
+        ]
+
+    def test_one_head_per_cluster(self):
+        rows = self.S.load_all()
+        self.assertEqual(len(rows), 0)  # fixture vuota → no crash
+        heads = self.S.recompose_clusters([])
+        self.assertEqual(heads, [])
+        heads = self.S.recompose_clusters(self._rows())
+        self.assertEqual(len(heads), 2)
+
+    def test_head_fields_and_score(self):
+        heads = self.S.recompose_clusters(self._rows())
+        a = next(h for h in heads if h["executor_target"] == "create_events")
+        self.assertTrue(a["is_cluster_head"])
+        self.assertEqual(a["cluster_size"], 3)
+        self.assertEqual(a["cluster_lenses"], ["oulipo", "scamper"])
+        self.assertAlmostEqual(a["ea_max"], 0.50)
+        # 2 lenti distinte → bonus +0.05.
+        self.assertAlmostEqual(a["cluster_score"], 0.55)
+        # Head = istanza con EA max (oulipo, ts=3.0).
+        self.assertEqual(a["ts"], 3.0)
+
+    def test_actionable_first_ordering(self):
+        heads = self.S.recompose_clusters(self._rows())
+        # create_events (pipeline, azionabile) prima di find_files
+        # (redundant, non azionabile) ANCHE se EA di find_files e' maggiore.
+        self.assertEqual(heads[0]["executor_target"], "create_events")
+        self.assertTrue(heads[0]["actionable"])
+        self.assertFalse(heads[1]["actionable"])
+
+    def test_annotates_if_needed(self):
+        # Righe senza annotazioni → recompose le calcola internamente.
+        rows = self._rows()
+        self.assertNotIn("signature_relaxed", rows[0])
+        heads = self.S.recompose_clusters(rows)
+        self.assertTrue(all("cluster_score" in h for h in heads))
+
+
 class StatsTests(FixtureBase):
 
     def test_stats_counts_decisions(self):

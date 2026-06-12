@@ -16,15 +16,18 @@ notturne; cluster batch backfill via scrittura sequenziale).
 API pubblica:
     load_all(*, min_alignment=0.0, lens=None, telos_id=None,
              max_rows=500) -> list[dict]
+    recompose_clusters(rows) -> list[dict]   # 1 head per cluster relaxed
+    cluster_score(ea_max, n_lenses) -> float
     apply_decision(prop_id, action, by="admin") -> dict
     decisions_index() -> dict[str, dict]
     proposals_count() -> int
 
 Sorgenti file (path canonical, dataclass-free per leggerezza):
-- INPUT: `~/.local/share/metnos/telos_proposals.rescored.recomposed.jsonl`
-  (output di `alignment_engine --recompose`). Se manca, fallback al
-  file `.rescored.jsonl` (pre-v1.3) o all'originale `telos_proposals.jsonl`
-  (proposte con `expected_alignment=0`).
+- INPUT: UNIONE dei candidati (dedup per ts, priorita' al primo):
+  `telos_proposals.rescored.recomposed.jsonl` (EA ricomposta v1.3) >
+  `.rescored.jsonl` (pre-v1.3) > `telos_proposals.jsonl` (EA inline di
+  generazione). L'unione garantisce che le proposte generate DOPO uno
+  snapshot di backfill restino visibili (fix 12/6/2026).
 - OUTPUT: `~/.local/share/metnos/telos_decisions.jsonl`
   Schema: {"prop_id": "<ts>", "action": "accept|reject|stage", "ts": float, "by": str}
 """
@@ -164,13 +167,41 @@ def _resolve_proposals_path() -> Optional[Path]:
     return None
 
 
+def _iter_merged_rows():
+    """Itera i record JSON da TUTTI i file candidati, dedup per `ts`.
+
+    Priorita' = ordine `_PROPOSALS_CANDIDATES` (recomposed > rescored >
+    raw): il primo file che contiene un ts vince (EA ricomposta v1.3 ha
+    precedenza sull'EA inline di generazione).
+
+    Fix 12/6/2026 (loop proposta→accettazione): prima veniva letto SOLO il
+    primo file esistente. Le proposte generate DOPO lo snapshot di backfill
+    (536 righe del 23-25/5, EA inline) erano INVISIBILI a dashboard e
+    decisioni — il loop non poteva chiudersi su di esse.
+    """
+    seen: set = set()
+    for cand in _PROPOSALS_CANDIDATES:
+        if not cand.is_file():
+            continue
+        with cand.open(encoding="utf-8") as fh:
+            for line in fh:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    rec = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                ts = rec.get("ts")
+                if not isinstance(ts, (int, float)) or ts in seen:
+                    continue
+                seen.add(ts)
+                yield rec
+
+
 def proposals_count() -> int:
-    """Conteggio totale proposte nel file piu' aggiornato (no decision filter)."""
-    p = _resolve_proposals_path()
-    if p is None:
-        return 0
-    with p.open(encoding="utf-8") as fh:
-        return sum(1 for line in fh if line.strip())
+    """Conteggio totale proposte (unione candidati, dedup ts)."""
+    return sum(1 for _ in _iter_merged_rows())
 
 
 def _format_prop_id(ts: float) -> str:
@@ -197,42 +228,29 @@ def load_all(
     `include_decided=False` filtra le proposte gia' accept/reject (mostra
     solo pending + stage).
     """
-    p = _resolve_proposals_path()
-    if p is None:
-        return []
     decisions = decisions_index()
     out: list[dict] = []
-    with p.open(encoding="utf-8") as fh:
-        for line in fh:
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                rec = json.loads(line)
-            except json.JSONDecodeError:
-                continue
-            ts = rec.get("ts")
-            if not isinstance(ts, (int, float)):
-                continue
-            ea = rec.get("expected_alignment", 0.0)
-            try:
-                ea = float(ea)
-            except (TypeError, ValueError):
-                ea = 0.0
-            if ea < min_alignment:
-                continue
-            if lens and rec.get("lens") != lens:
-                continue
-            if telos_id and rec.get("telos_id") != telos_id:
-                continue
-            prop_id = _format_prop_id(float(ts))
-            dec = decisions.get(prop_id)
-            if not include_decided and dec and dec.get("action") in ("accept", "reject"):
-                continue
-            rec["prop_id"] = prop_id
-            rec["decision"] = dec
-            rec["expected_alignment"] = ea
-            out.append(rec)
+    for rec in _iter_merged_rows():
+        ts = rec.get("ts")
+        ea = rec.get("expected_alignment", 0.0)
+        try:
+            ea = float(ea)
+        except (TypeError, ValueError):
+            ea = 0.0
+        if ea < min_alignment:
+            continue
+        if lens and rec.get("lens") != lens:
+            continue
+        if telos_id and rec.get("telos_id") != telos_id:
+            continue
+        prop_id = _format_prop_id(float(ts))
+        dec = decisions.get(prop_id)
+        if not include_decided and dec and dec.get("action") in ("accept", "reject"):
+            continue
+        rec["prop_id"] = prop_id
+        rec["decision"] = dec
+        rec["expected_alignment"] = ea
+        out.append(rec)
     out.sort(key=lambda r: -r.get("expected_alignment", 0.0))
     out = out[:max_rows]
     if enrich_rows and out:
@@ -287,6 +305,85 @@ def annotate_clusters(rows: list[dict]) -> None:
             m["convergence_lenses"] = lenses
 
 
+# --- Cluster recomposition (mandato 12/6/2026) -------------------------------
+#
+# Il cluster (signature_relaxed = target|parametric) e' l'UNITA' di analisi e
+# decisione: 1017 istanze LLM reali collassano in ~22 intent distinti. Il
+# triage per-istanza non scala e seppellisce il segnale (convergenza fra
+# lenti INDIPENDENTI) sotto la ripetizione intra-lente. §7.9 deterministico.
+
+# name_status il cui accept produce un'azione operativa (proposal_actions):
+# synt_pending / change_pending / pipeline_pending. `existing_redundant` e
+# `new_invalid` sono noop per costruzione → non-azionabili.
+ACTIONABLE_NAME_STATUS = frozenset(
+    {"new_valid", "existing_parametric", "existing_pipeline"})
+
+_CONVERGENCE_BONUS_PER_LENS = 0.05
+_CONVERGENCE_BONUS_CAP = 0.20
+
+
+def cluster_score(ea_max: float, n_lenses: int) -> float:
+    """Score cluster-aware: EA del miglior membro + bonus convergenza.
+
+    Ogni LENTE DISTINTA oltre la prima che converge sullo stesso intent e'
+    evidenza indipendente: +0.05, cap +0.20 (5+ lenti). Le ripetizioni
+    INTRA-lente non contano nulla (anti-rumore: 118 varianti scamper sullo
+    stesso target non valgono piu' di una). Clamp a 1.0.
+    """
+    bonus = min(_CONVERGENCE_BONUS_CAP,
+                _CONVERGENCE_BONUS_PER_LENS * max(0, int(n_lenses) - 1))
+    return min(1.0, float(ea_max) + bonus)
+
+
+def recompose_clusters(rows: list[dict]) -> list[dict]:
+    """N istanze → 1 head per cluster relaxed. Deterministico, no LLM.
+
+    Head = miglior membro del cluster: prima gli azionabili
+    (name_status ∈ ACTIONABLE_NAME_STATUS), poi expected_alignment max,
+    tie-break ts min (stabile). Sul head vengono aggiunti i campi cluster:
+
+    - `is_cluster_head`: True
+    - `cluster_size`: numero istanze del cluster (intero set passato)
+    - `cluster_lenses`: lenti distinte convergenti (sorted)
+    - `ea_max`: EA massima fra i membri
+    - `cluster_score`: cluster_score(ea_max, n_lenses)
+    - `actionable`: il name_status del head produce azione su accept
+
+    Se le righe non sono ancora annotate (annotate_naming/annotate_clusters)
+    le annota qui. Ordinamento output: actionable desc, cluster_score desc.
+    Muta i dict head in place (le righe sono gia' copie per-request).
+    """
+    if not rows:
+        return []
+    if any("signature_relaxed" not in r for r in rows):
+        for r in rows:
+            if "pipeline_tools_mentioned" not in r:
+                annotate_naming(r)
+        annotate_clusters(rows)
+    groups: dict[str, list[dict]] = defaultdict(list)
+    for r in rows:
+        groups[r.get("signature_relaxed") or r.get("prop_id", "?")].append(r)
+    heads: list[dict] = []
+    for members in groups.values():
+        def _head_key(m: dict):
+            return (m.get("name_status") not in ACTIONABLE_NAME_STATUS,
+                    -float(m.get("expected_alignment") or 0.0),
+                    float(m.get("ts") or 0.0))
+        head = sorted(members, key=_head_key)[0]
+        lenses = sorted({m.get("lens", "?") or "?" for m in members})
+        ea_max = max(float(m.get("expected_alignment") or 0.0)
+                     for m in members)
+        head["is_cluster_head"] = True
+        head["cluster_size"] = len(members)
+        head["cluster_lenses"] = lenses
+        head["ea_max"] = ea_max
+        head["cluster_score"] = cluster_score(ea_max, len(lenses))
+        head["actionable"] = head.get("name_status") in ACTIONABLE_NAME_STATUS
+        heads.append(head)
+    heads.sort(key=lambda h: (not h["actionable"], -h["cluster_score"]))
+    return heads
+
+
 def decisions_index() -> dict[str, dict]:
     """Ultima decisione per prop_id (LWW: last-write-wins).
 
@@ -319,6 +416,7 @@ def apply_decision(
     executor_target: Optional[str] = None,
     signature_relaxed: Optional[str] = None,
     lens: Optional[str] = None,
+    run_on_accept: bool = True,
 ) -> dict:
     """Appende una decisione al file. Ritorna il record persistito.
 
@@ -326,6 +424,11 @@ def apply_decision(
     writer (telos_introspect) per anti-resurrezione: una nuova proposta con
     stessa signature_relaxed di una rejected DEVE essere skippata (C.5).
     Persistere nel decision record evita lookup all'origine.
+
+    `run_on_accept=False` salta l'effetto operativo (proposal_actions):
+    usato dalle azioni cluster che applicano la decisione a N membri ma
+    vogliono UN solo trigger operativo (sul head; il marker e' comunque
+    idempotente per signature, questo e' solo per evitare N lookup full).
 
     Raises ValueError per action invalida. Non valida prop_id contro il
     set delle proposte (le decisioni sono append-only, l'orphan check
@@ -351,7 +454,7 @@ def apply_decision(
     # C.8: per action=accept invoca on_accept che crea marker operativi
     # (synt_pending / change_pending / pipeline_pending). Idempotente per
     # signature (cluster-level: 28 varianti → 1 marker).
-    if action == "accept":
+    if action == "accept" and run_on_accept:
         try:
             from proposal_actions import on_accept as _on_accept
             # Recupera la proposta enriched per leggere name_status,
