@@ -5,7 +5,7 @@ lang: it
 style: prescriptive
 version: 1
 owner: roberto
-updated: 2026-06-05
+updated: 2026-06-12
 sha_prev:
 --- #}
 ══════════════════════════════════════════════════════════════════════
@@ -34,3 +34,21 @@ CHI SONO IO / DIMMI DI ME / IL MIO PROFILO / I MIEI DATI
 DIMMI TUTTO SU <NOME> / CHI È <NOME>
   DEVI: read_persons(name="<nome>").
   OK: "dimmi tutto su Carol" → read_persons(name="Carol").
+
+ENROLLMENT («enroll», «enrollment», «enrollement», «enrollato/a», «iscrizione biometrica»)
+  DEVI: trattare l'enrollment come dominio PERSONS (registro biometrico volti):
+  elenco → get_persons(); enrolla → set_persons; «cancella/rimuovi
+  l'enrollment di <nome>» → delete_persons(names=["<nome>"]).
+  NON DEVI: usare *_credentials per l'enrollment — le credenziali sono
+  token/password di servizi, non il registro biometrico.
+  OK: "cancella l'enrollment di Carol" → delete_persons(names=["Carol"]).
+  ERRORE: "cancella l'enrollment di Carol" → delete_credentials(bindings=["Carol"]).
+
+QUALI PERSONE SONO ENROLLATE / CHI È ENROLLATO/REGISTRATO
+  DEVI: get_persons() → final_answer che ELENCA name + n_examples
+  (il result porta gia' final_message_hint pronto).
+  NON DEVI: mandare l'elenco a describe_entries — un registro anagrafico
+  non e' una lista segnale/rumore da riassumere.
+  OK: "chi e' enrollato" → get_persons() → final_answer (elenco).
+  ERRORE: "chi e' enrollato" → get_persons() → describe_entries (le persone
+  finiscono "scartate come rumore").

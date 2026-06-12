@@ -5,7 +5,7 @@ lang: en
 style: prescriptive
 version: 1
 owner: roberto
-updated: 2026-06-05
+updated: 2026-06-12
 sha_prev:
 --- #}
 ══════════════════════════════════════════════════════════════════════
@@ -33,3 +33,21 @@ WHO AM I / TELL ME ABOUT ME / MY PROFILE / MY DATA
 TELL ME ALL ABOUT <NAME> / WHO IS <NAME>
   MUST: read_persons(name="<name>").
   OK: "tell me all about Carol" → read_persons(name="Carol").
+
+ENROLLMENT ("enroll", "enrollment", "enrollement", "enrolled", "biometric registration")
+  MUST: treat enrollment as the PERSONS domain (biometric face registry):
+  list → get_persons(); enroll → set_persons; "delete/remove X's
+  enrollment" → delete_persons(names=["X"]).
+  MUST NOT: use *_credentials for enrollment — credentials are service
+  tokens/passwords, not the biometric registry.
+  OK: "delete Carol's enrollment" → delete_persons(names=["Carol"]).
+  ERROR: "delete Carol's enrollment" → delete_credentials(bindings=["Carol"]).
+
+WHICH PERSONS ARE ENROLLED / WHO IS ENROLLED/REGISTERED
+  MUST: get_persons() → final_answer that LISTS name + n_examples
+  (the result already carries a ready final_message_hint).
+  MUST NOT: send the list to describe_entries — a registry listing is not
+  a signal/noise list to summarize.
+  OK: "who is enrolled" → get_persons() → final_answer (listing).
+  ERROR: "who is enrolled" → get_persons() → describe_entries (persons end
+  up "discarded as noise").

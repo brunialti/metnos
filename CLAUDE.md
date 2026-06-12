@@ -111,6 +111,7 @@ Se `undo_last_turn` ritorna `ok:true` con `undone_count >= 1`, step successivo D
 - **EMAIL/MAIL/IMAP** → `read_messages`/`send_messages`/`move_messages`/`find_messages`. Mai `move_files` su mail. Cancellazione = `move_messages(dst_folder="Trash")` (in Metnos `delete_messages` non esiste; vedi `mail.yaml::delete_mail_is_move_to_trash`).
 - **FOTO/EXIF/GPS** → `get_files` (post-rename ADR §2.2, era `get_files_metadata`).
 - **IDENTITÀ/PROFILO/IO** → `read_persons(name="${RUNTIME:actor}")` per "chi sono io"; `read_persons(name=X)` per "dimmi tutto su X"; `read_persons(role="guest")` per lista paired. Distinto da `get_persons` (scheda registro biometrico). Vedi ADR 0163.
+- **ENROLLMENT/ENROLLATO** («enroll/enrollment/enrollement/iscrizione biometrica») → dominio `*_persons`: elenco enrollati = `get_persons()` (final = `final_message_hint`, NIENTE describe); «cancella l'enrollment di X» = `delete_persons(names=["X"])`. MAI `*_credentials` (token/password servizi).
 - **POSIZIONE/DOVE-SONO** → `get_location`.
 - **TEMPO/DATA-CORRENTE** → `get_now`.
 - **DESTINAZIONE spam/cestino/archivio** → nome utente come `dst_folder` ("Posta indesiderata", "Junk"); l'executor risolve via `M.list`. Non hardcodare `INBOX.Junk`.

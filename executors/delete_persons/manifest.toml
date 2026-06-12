@@ -6,7 +6,8 @@ manifest_format = "1.0"
 name        = "delete_persons"
 version     = "0.1.0"
 author      = "Roberto Brunialti"
-affinity    = ["dimentica", "rimuovi persona", "cancella persona", "elimina",
+affinity    = ["dimentica", "rimuovi persona", "cancella persona",
+                "cancella enrollment", "enrollment", "enrollement",
                 "cancella tutte le persone", "purge persone",
                 "remove person", "forget", "delete person", "unenroll",
                 "wipe persons", "delete all persons"]
@@ -17,8 +18,8 @@ affinity    = ["dimentica", "rimuovi persona", "cancella persona", "elimina",
 revertible  = true
 
 [description]
-it = "SCOPO: cancella persone dal registro (purge totale o per nome/slug). PATTERN: delete_persons(names=[\"A\"]). NON: cancellare foto dal filesystem (-> delete_files); rimuovere singoli esempi (-> delete_persons). OUT: {ok, results:[{slug, name, removed_examples}], n_removed, removed_examples_total, unknown_names?, ambiguous?, decision?, needs_inputs?, final_message_hint?}."
-en = "SCOPO: delete persons from registry (full purge or by name/slug). PATTERN: delete_persons(names=[\"A\"]). NON: delete photos from filesystem (-> delete_files); remove single examples (-> delete_persons). OUT: {ok, results:[{slug, name, removed_examples}], n_removed, removed_examples_total, unknown_names?, ambiguous?, decision?, needs_inputs?, final_message_hint?}."
+it = "SCOPO: cancella persone/enrollment dal registro biometrico (purge o per nome/slug). PATTERN: delete_persons(names=[\"A\"]). NON: credenziali/token (-> delete_credentials); foto dal filesystem (-> delete_files). OUT: {ok, results:[{slug, name, removed_examples}], n_removed, removed_examples_total, unknown_names?, ambiguous?, decision?, needs_inputs?, final_message_hint?}."
+en = "SCOPO: deletes persons/enrollment from the biometric registry (purge or by name/slug). PATTERN: delete_persons(names=[\"A\"]). NON: credentials/tokens (-> delete_credentials); photos on filesystem (-> delete_files). OUT: {ok, results:[{slug, name, removed_examples}], n_removed, removed_examples_total, unknown_names?, ambiguous?, decision?, needs_inputs?, final_message_hint?}."
 
 [code]
 files  = ["delete_persons.py"]
