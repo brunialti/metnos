@@ -40,6 +40,12 @@ reads. Mismatches here silently break the runtime (wrong paths, empty catalog).
 - `runtime/llm_router.py` accepts a tier as configured when it just has a
   `provider`; `endpoint`/`base_url` are aliases; the wise "quality floor" does
   NOT gate on model name (the old gemma/qwen whitelist was stale + coupled).
+- **Endpoint SoT** (fix 12/6/2026): every `call_llm` consumer (HTTP provider,
+  deterministic describe `/props` + `/apply-template`) resolves the llama-server
+  endpoint via `runtime/llm_router.py::tier_endpoint(tier)` — which re-reads
+  `llm_tiers.toml` (`METNOS_LLM_TIERS_CONFIG` honoured) at call time. `:8080`
+  (`LOCAL_DEFAULT_ENDPOINT`) is only the last-resort default when nothing is
+  configured. No other hardcoded llama-server URL is allowed in runtime code.
 - Default LLM flow (no hardware assumed): if a local endpoint already answers
   (`_endpoint_alive`) → wire to it (no download); else interactive managed
   provisioning via `llm_manager` (CPU path is first-class, `ngl=0`); else

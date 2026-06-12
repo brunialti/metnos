@@ -36,8 +36,8 @@ from pathlib import Path
 from typing import Any
 
 from llm_provider import LlamaCppProvider
+from llm_router import tier_endpoint as _tier_endpoint
 
-LLAMA_ENDPOINT = "http://127.0.0.1:8080"
 TIER_MODELS = {
     # Tier VIRTUALI → placeholder "local": llama-server serve il GGUF
     # caricato e ignora il campo model. Il mapping tier→modello FISICO
@@ -92,17 +92,17 @@ def _completion_bin() -> str | None:
     return str(cand) if cand.is_file() else None
 
 
-def _server_model_path() -> str | None:
+def _server_model_path(endpoint: str) -> str | None:
     """GGUF servito dal llama-server (GET /props). SoT del modello: la
     generazione deterministica usa LO STESSO modello dei tier §11."""
     try:
-        with urllib.request.urlopen(f"{LLAMA_ENDPOINT}/props", timeout=10) as r:
+        with urllib.request.urlopen(f"{endpoint}/props", timeout=10) as r:
             return json.loads(r.read().decode("utf-8")).get("model_path") or None
     except Exception:
         return None
 
 
-def _render_chat_prompt(system: str, user: str) -> str | None:
+def _render_chat_prompt(endpoint: str, system: str, user: str) -> str | None:
     """Prompt renderizzato dal chat template del server (POST
     /apply-template, enable_thinking=false): identico al path HTTP,
     nessun template hardcodato lato Metnos (§7.3)."""
@@ -115,7 +115,7 @@ def _render_chat_prompt(system: str, user: str) -> str | None:
     }
     try:
         req = urllib.request.Request(
-            f"{LLAMA_ENDPOINT}/apply-template",
+            f"{endpoint}/apply-template",
             data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
             headers={"Content-Type": "application/json"}, method="POST",
         )
@@ -126,17 +126,20 @@ def _render_chat_prompt(system: str, user: str) -> str | None:
 
 
 def _call_llm_proc(system: str, user: str, *, max_tokens: int,
-                   seed: int) -> str | None:
+                   seed: int, endpoint: str | None = None) -> str | None:
     """Generazione byte-deterministica via processo llama-completion
     monouso. Ritorna il testo, o None se il path non e' disponibile
-    (il chiamante ricade sul provider HTTP)."""
+    (il chiamante ricade sul provider HTTP). `endpoint` = llama-server
+    dei tier (default: risolto da llm_router.tier_endpoint, NON
+    hardcoded)."""
     binary = _completion_bin()
     if not binary:
         return None
-    model = _server_model_path()
+    endpoint = endpoint or _tier_endpoint("middle")
+    model = _server_model_path(endpoint)
     if not model:
         return None
-    rendered = _render_chat_prompt(system, user)
+    rendered = _render_chat_prompt(endpoint, system, user)
     if not rendered:
         return None
     # ctx: stima token ~ chars/3 + output + margine; clamp [4096, 32768].
@@ -204,13 +207,18 @@ def call_llm(
     if tier not in TIER_MODELS:
         raise ValueError(f"unknown tier {tier!r}; valid: {list(TIER_MODELS)}")
     model = TIER_MODELS[tier]
+    # Endpoint dei tier: SoT llm_router.tier_endpoint (llm_tiers.toml;
+    # LOCAL_DEFAULT_ENDPOINT solo come ultimo default). Un solo punto di
+    # verita' per TUTTI i consumer: provider HTTP + path deterministico.
+    endpoint = _tier_endpoint(tier)
     user_payload = _serialize_query(query, max_chars=max_query_chars)
     if deterministic and not think and temperature == 0.0:
         _seed = int(os.environ.get("METNOS_LLM_SEED", "42"))
         if _seed >= 0:
             t0 = time.time()
             text = _call_llm_proc(prompt, user_payload,
-                                  max_tokens=max_tokens, seed=_seed)
+                                  max_tokens=max_tokens, seed=_seed,
+                                  endpoint=endpoint)
             if text is not None:
                 return text, {
                     "tier": tier,
@@ -226,7 +234,7 @@ def call_llm(
     # batch). Override via env var METNOS_LLM_SLOT_ID. None disabilita.
     _slot_env = os.environ.get("METNOS_LLM_SLOT_ID", "1").strip()
     _slot = int(_slot_env) if _slot_env.isdigit() else None
-    provider = LlamaCppProvider(model=model, endpoint=LLAMA_ENDPOINT, id_slot=_slot)
+    provider = LlamaCppProvider(model=model, endpoint=endpoint, id_slot=_slot)
     t0 = time.time()
     r = provider.chat(prompt, user_payload, max_tokens=max_tokens,
                       temperature=temperature, think=think)

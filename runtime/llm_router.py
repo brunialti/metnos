@@ -78,23 +78,29 @@ CONFIG_PATH = _default_config_path()
 # ⏱️ MAPPING TIER→MODELLO FISICO — snapshot al 2026-06-09 (l'UNICO punto del
 # codice con nomi modello concreti; altrove si parla solo di tier virtuali
 # fast/middle/wise/frontier). Aggiornare qui + la data quando cambia il modello.
+
+# Ultimo default per i tier locali quando NULLA e' configurato (tier
+# pure-abstract: l'endpoint REALE vive in llm_tiers.toml, vedi
+# `tier_endpoint`). Niente altri ":8080" hardcoded nel runtime.
+LOCAL_DEFAULT_ENDPOINT = "http://127.0.0.1:8080"
+
 DEFAULT_TIERS = {
     "fast": {
         "provider": "llamacpp",
         "model": "Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
-        "endpoint": "http://127.0.0.1:8080",
+        "endpoint": LOCAL_DEFAULT_ENDPOINT,
         "think": False,
         "num_predict": 400,
     },
     "middle": {
         "provider": "llamacpp",
         "model": "Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
-        "endpoint": "http://127.0.0.1:8080",
+        "endpoint": LOCAL_DEFAULT_ENDPOINT,
     },
     "wise": {
         "provider": "llamacpp",
         "model": "Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
-        "endpoint": "http://127.0.0.1:8080",
+        "endpoint": LOCAL_DEFAULT_ENDPOINT,
     },
     # frontier: opt-in online, "il migliore solo se serve". Caller deve
     # chiamare esplicitamente tier="frontier" + gestire fallback se la API
@@ -159,6 +165,28 @@ def _normalize_tiers_dict(cfg: dict) -> dict:
                 spec["endpoint"] = spec["base_url"]
             out[name] = spec
     return out
+
+
+def tier_endpoint(tier: str = "middle") -> str:
+    """Endpoint HTTP del tier VIRTUALE — SoT unica per i consumer fuori
+    dal router (llm_helpers.call_llm, path deterministico /props +
+    /apply-template). Risoluzione: llm_tiers.toml (env
+    METNOS_LLM_TIERS_CONFIG > ~/.config/metnos > legacy workspace,
+    ri-letta a ogni chiamata) -> DEFAULT_TIERS; `LOCAL_DEFAULT_ENDPOINT`
+    solo come ultimo default se nulla e' configurato (tier pure-abstract,
+    §7.11). `endpoint`/`base_url` sono alias come nel router."""
+    try:
+        tiers = _normalize_tiers_dict(_load_config_file(_default_config_path()))
+    except Exception:
+        tiers = {}
+    if not tiers:
+        tiers = DEFAULT_TIERS
+    # Alias come LLMRouter.__init__: middle assente -> wise; poi fast.
+    spec = tiers.get(tier) or tiers.get("wise") or tiers.get("fast") or {}
+    ep = spec.get("endpoint") or spec.get("base_url") or ""
+    if not ep:
+        ep = DEFAULT_TIERS.get(tier, {}).get("endpoint") or LOCAL_DEFAULT_ENDPOINT
+    return str(ep).rstrip("/")
 
 
 def _wise_passes_quality_floor(spec: dict) -> bool:
