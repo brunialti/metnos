@@ -50,30 +50,70 @@ _LOCAL_GEMMA_MODEL = "gemma-4-26B-A4B-it-UD-Q4_K_M.gguf"
 _LOCAL_GEMMA_ENDPOINT = "http://127.0.0.1:8080"
 
 
-def _persist(record: dict) -> None:
-    """Append-only telemetria. Best-effort.
+def _stored_target_lens_pairs() -> set:
+    """Coppie (executor_target, lens) gia' nello store raw.
+
+    Scan O(N) per run di lens (file ~1k righe, ms): accettabile per un
+    batch notturno. Include i record appena scritti nello stesso run
+    (append-only → il file E' lo stato corrente)."""
+    pairs: set = set()
+    try:
+        with TELEMETRY_PATH.open(encoding="utf-8") as fh:
+            for line in fh:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    rec = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                tgt = rec.get("executor_target") or ""
+                if tgt:
+                    pairs.add((tgt, rec.get("lens") or ""))
+    except FileNotFoundError:
+        pass
+    except OSError as ex:
+        _LOG.warning("telos_introspect: stored pairs scan failed: %r", ex)
+    return pairs
+
+
+def _persist(record: dict) -> bool:
+    """Append-only telemetria. Best-effort. Ritorna True se persistito.
 
     Anti-resurrezione (C.5, 22/5/2026): se il `executor_target` della proposta
     e' nei `rejected_targets()` (LWW), skippa silenziosamente. Coerente con
     la regola utente: "se cancello una proposta non deve riapparire la sera
     dopo". Implementazione conservativa "per target" (collassa anche varianti
     parametriche): per ora preferiamo over-filter a under-filter.
+
+    Dedup generativo (mandato 12/6/2026, qualita'>quantita'): se la coppia
+    (executor_target, lens) e' GIA' nello store, skip. La ripetizione
+    intra-lente sullo stesso target non aggiunge evidenza (la convergenza
+    si misura su lenti DISTINTE, vedi telos_proposals_store.cluster_score);
+    sui dati reali la regola avrebbe ridotto 1017 → 75 righe (−93%).
+    Una lente NUOVA sullo stesso target persiste comunque (evidenza vera).
     """
+    target = record.get("executor_target") or ""
     try:
         from telos_proposals_store import rejected_targets
         rej_targets = rejected_targets()
-        target = record.get("executor_target") or ""
         if target and target in rej_targets:
             _LOG.info("telos_introspect: skip persist (rejected target): %s", target)
-            return
+            return False
     except Exception as ex:
         _LOG.warning("telos_introspect: rejected_targets check failed: %r", ex)
+    if target and (target, record.get("lens") or "") in _stored_target_lens_pairs():
+        _LOG.info("telos_introspect: skip persist (dup target+lens): %s/%s",
+                  target, record.get("lens"))
+        return False
     try:
         TELEMETRY_PATH.parent.mkdir(parents=True, exist_ok=True)
         with TELEMETRY_PATH.open("a", encoding="utf-8") as fh:
             fh.write(json.dumps(record, ensure_ascii=False) + "\n")
+        return True
     except Exception as ex:
         _LOG.warning("telos_introspect telemetry write failed: %r", ex)
+        return False
 
 
 def _build_mnestoma_summary(
@@ -360,7 +400,10 @@ def run_for_telos(
             if per_telos_audit:
                 rec["alignment_per_telos"] = per_telos_audit
             if persist:
-                _persist(rec)
+                # §2.8: il chiamante vede quante proposte sono state
+                # REALMENTE persistite (dedup/anti-resurrezione possono
+                # skippare). False quando persist e' disattivato a monte.
+                rec["persisted"] = _persist(rec)
             results.append(rec)
     return results
 
@@ -374,7 +417,8 @@ def run_all_telos(
 ) -> dict:
     """Esegue il loop per TUTTI i telos correnti. Ritorna summary."""
     from telos_loader import current
-    out = {"telos_count": 0, "proposals_total": 0, "by_telos": {}}
+    out = {"telos_count": 0, "proposals_total": 0,
+           "persisted_total": 0, "by_telos": {}}
     for t in current():
         out["telos_count"] += 1
         props = run_for_telos(
@@ -383,6 +427,7 @@ def run_all_telos(
         )
         out["by_telos"][t.id] = len(props)
         out["proposals_total"] += len(props)
+        out["persisted_total"] += sum(1 for p in props if p.get("persisted"))
     return out
 
 
