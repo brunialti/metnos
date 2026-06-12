@@ -4,8 +4,8 @@
  <meta charset="UTF-8">
  <meta name="viewport" content="width=device-width, initial-scale=1.0">
  <title>Metnos &mdash; fast-path introvertivo</title>
- <meta name="description" content="Il fast-path introvertivo di Metnos: come l'assistente riconosce le richieste gia' viste e risponde senza ripassare dal pianificatore. Tre livelli (L0 modelli letterali, L1 single-tool, L2 sequenze), TTL per giorni di attivita', promozione a executor sintetico.">
- <meta name="keywords" content="fast-path, canonical_matcher, multi_tool_paths, memoization, BGE-M3, sintesi, mnestoma, metnos">
+ <meta name="description" content="Il fast-path introvertivo di Metnos: come l'assistente riconosce le richieste gia' viste e risponde senza ripassare dal pianificatore. Due livelli (L0 cache auto-prodotta, L1 skill promosse da feedback), invecchiamento deterministico, promozione a executor sintetico.">
+ <meta name="keywords" content="fast-path, fastpath, autopath, memoization, BGE-M3, sintesi, metnos">
  <meta name="author" content="Roberto Brunialti">
  <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large">
  <link rel="canonical" href="https://metnos.com/it/architecture/fast_path">
@@ -15,7 +15,7 @@
  <meta property="og:type" content="article">
  <meta property="og:url" content="https://metnos.com/it/architecture/fast_path">
  <meta property="og:title" content="Metnos &mdash; fast-path introvertivo">
- <meta property="og:description" content="Tre livelli di memoizzazione fra l'utente e il pianificatore: come Metnos impara a rispondere subito alle richieste che ha gia' visto.">
+ <meta property="og:description" content="Due livelli di memoizzazione fra l'utente e il pianificatore: come Metnos impara a rispondere subito alle richieste che ha gia' visto.">
  <meta property="og:locale" content="it_IT">
  <meta property="og:locale:alternate" content="en_US">
  <meta property="og:site_name" content="Metnos">
@@ -24,12 +24,12 @@
  "@context": "https://schema.org",
  "@type": "TechArticle",
  "headline": "Metnos — fast-path introvertivo",
- "description": "Tre livelli di memoizzazione (modelli letterali, single-tool BGE, sequenze multi-tool con TTL per giorni di attivita') che evitano il pianificatore LLM quando la richiesta e' gia' nota.",
+ "description": "Due livelli di memoizzazione (L0 cache auto-prodotta con hash e cosine, L1 skill promosse da feedback utente) che evitano il pianificatore LLM quando la richiesta e' gia' nota.",
  "url": "https://metnos.com/it/architecture/fast_path.html",
  "inLanguage": "it",
  "isPartOf": {"@type": "WebSite", "name": "Metnos", "url": "https://metnos.com/"},
  "author": {"@type": "Person", "name": "Roberto Brunialti"},
- "about": "Metnos component: fast-path introvertivo (canonical_matcher + multi_tool_paths)"
+ "about": "Metnos component: fast-path introvertivo (fastpath + autopath)"
 }
  </script>
  <style>:root {
@@ -88,7 +88,7 @@ li { margin-bottom: 4px; }.lead { font-size: 12pt; color: var(--navy); border-le
  <br>
  Pubblico: chi vuole capire perch&eacute; Metnos a volte risponde in mezzo secondo<br>
  e a volte ci mette dieci.<br>
- Lettura: 12 minuti.
+ Lettura: 10 minuti.
  </div>
 </div>
 
@@ -97,17 +97,13 @@ li { margin-bottom: 4px; }.lead { font-size: 12pt; color: var(--navy); border-le
 <ol>
  <li><a href="#cap1">L'idea in due righe</a></li>
  <li><a href="#cap2">Perch&eacute; serve un fast-path</a></li>
- <li><a href="#cap3">I tre livelli, dal piu' semplice al piu' ricco</a></li>
- <li><a href="#cap4">L0 &mdash; modelli letterali (<code>fast_path.py</code>)</a></li>
- <li><a href="#cap5">L1 &mdash; un solo executor (<code>canonical_matcher</code>)</a></li>
- <li><a href="#cap6">L2 &mdash; sequenze multi-step (<code>multi_tool_paths</code>)</a></li>
- <li><a href="#cap7">Una scadenza che misura l'uso, non il tempo</a></li>
- <li><a href="#cap8">Fast-path composti: due si tengono per mano</a></li>
- <li><a href="#cap9">Concatenare il fast-path al pianificatore</a></li>
- <li><a href="#cap10">L'estrattore di argomenti</a></li>
- <li><a href="#cap11">Configurazione persistente</a></li>
- <li><a href="#cap12">Promozione a executor sintetico</a></li>
- <li><a href="#cap13">Domande aperte</a></li>
+ <li><a href="#cap3">I due livelli</a></li>
+ <li><a href="#cap4">L0 &mdash; cache auto-prodotta (<code>fastpath.py</code>)</a></li>
+ <li><a href="#cap5">L1 &mdash; skill promosse da feedback (<code>autopath.py</code>)</a></li>
+ <li><a href="#cap6">Invecchiamento, morte e eredit&agrave;</a></li>
+ <li><a href="#cap7">L'estrattore di argomenti</a></li>
+ <li><a href="#cap8">Configurazione</a></li>
+ <li><a href="#cap9">Promozione a executor sintetico</a></li>
 </ol>
 </div>
 
@@ -115,37 +111,33 @@ li { margin-bottom: 4px; }.lead { font-size: 12pt; color: var(--navy); border-le
 
 <p class="lead">
 Quando una richiesta arriva a Metnos, prima di scomodare il pianificatore
-LLM si cerca di riconoscerla. Se l'abbiamo gia' vista e abbiamo gia'
+LLM si cerca di riconoscerla. Se l'abbiamo gi&agrave; vista e abbiamo gi&agrave;
 deciso bene come rispondere, la rieseguiamo cos&igrave; com'&egrave; e
 torniamo all'utente in mezzo secondo invece che in dieci. Niente
 modelli linguistici nel percorso critico, solo memoria.
 </p>
 
  <figure>
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 150" width="100%" preserveAspectRatio="xMidYMid meet" style="font-family:'Segoe UI',Calibri,sans-serif;font-size:11px;">
-<defs><marker id="m-d" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#1A477A"/></marker></defs>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 740 150" width="100%" preserveAspectRatio="xMidYMid meet" style="font-family:'Segoe UI',Calibri,sans-serif;font-size:11px;">
+<defs><marker id="m-fp" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#1A477A"/></marker></defs>
 <rect x="10" y="70" width="158" height="56" rx="8" fill="#D9E4F0" stroke="#1A477A"/>
 <text x="89" y="94" text-anchor="middle" fill="#1A477A" font-weight="700">richiesta</text>
 <text x="89" y="112" text-anchor="middle" fill="#475569" font-size="9.5">query utente</text>
 <rect x="186" y="70" width="158" height="56" rx="8" fill="#DCFCE7" stroke="#3F6212"/>
-<text x="265" y="94" text-anchor="middle" fill="#1A477A" font-weight="700">L0 letterali</text>
-<text x="265" y="112" text-anchor="middle" fill="#475569" font-size="9.5">modelli esatti</text>
+<text x="265" y="94" text-anchor="middle" fill="#1A477A" font-weight="700">L0 fastpath</text>
+<text x="265" y="112" text-anchor="middle" fill="#475569" font-size="9.5">hash + cosine</text>
 <rect x="362" y="70" width="158" height="56" rx="8" fill="#DCFCE7" stroke="#3F6212"/>
-<text x="441" y="94" text-anchor="middle" fill="#1A477A" font-weight="700">L1 single-tool</text>
-<text x="441" y="112" text-anchor="middle" fill="#475569" font-size="9.5">match BGE-M3</text>
-<rect x="538" y="70" width="158" height="56" rx="8" fill="#DCFCE7" stroke="#3F6212"/>
-<text x="617" y="94" text-anchor="middle" fill="#1A477A" font-weight="700">L2 multi-step</text>
-<text x="617" y="112" text-anchor="middle" fill="#475569" font-size="9.5">sequenze memoizzate</text>
-<rect x="714" y="70" width="158" height="56" rx="8" fill="#1A477A" stroke="#0f2d4a"/>
-<text x="793" y="94" text-anchor="middle" fill="#1A477A" font-weight="700">L3 motore</text>
-<text x="793" y="112" text-anchor="middle" fill="#475569" font-size="9.5">Engine v2</text>
+<text x="441" y="94" text-anchor="middle" fill="#1A477A" font-weight="700">L1 autopath</text>
+<text x="441" y="112" text-anchor="middle" fill="#475569" font-size="9.5">feedback &#10003; cluster</text>
+<rect x="538" y="70" width="158" height="56" rx="8" fill="#1A477A" stroke="#0f2d4a"/>
+<text x="617" y="94" text-anchor="middle" fill="#fff" font-weight="700">motore</text>
+<text x="617" y="112" text-anchor="middle" fill="#bbb" font-size="9.5">Engine v2</text>
 <line x1="168" y1="98" x2="184" y2="98" stroke="#1A477A" stroke-width="2" marker-end="url(#m-fp)"/>
 <line x1="344" y1="98" x2="360" y2="98" stroke="#1A477A" stroke-width="2" marker-end="url(#m-fp)"/>
 <line x1="520" y1="98" x2="536" y2="98" stroke="#1A477A" stroke-width="2" marker-end="url(#m-fp)"/>
-<line x1="696" y1="98" x2="712" y2="98" stroke="#1A477A" stroke-width="2" marker-end="url(#m-fp)"/>
 
 </svg>
-<figcaption>Figura 1 &mdash; I livelli di memoizzazione prima del motore: L0 letterali, L1 single-tool, L2 sequenze multi-step; se nessuno scatta, la richiesta passa al motore (Engine v2).</figcaption>
+<figcaption>Figura 1 &mdash; I livelli di memoizzazione prima del motore: L0 fastpath (hash + cosine), L1 autopath (feedback utente); se nessuno scatta, la richiesta passa al motore (Engine v2).</figcaption>
 </figure>
 
 
@@ -165,323 +157,293 @@ sequenza: <code>get_urls</code> e poi <code>describe_entries</code>.
 <p>
 Da qui la domanda: come riconosciamo che una richiesta &egrave; gi&agrave;
 nota? E come ci accorgiamo che <em>quasi</em> nota &egrave; abbastanza?
-La risposta &egrave; il fast-path introvertivo, organizzato in tre
-livelli &mdash; ciascuno coglie un grado diverso di somiglianza, e
+La risposta &egrave; il fast-path introvertivo, organizzato in due
+livelli &mdash; ciascuno coglie un grado diverso di certezza, e
 tutti convergono allo stesso esito: l'assistente esegue la sequenza
 giusta senza pensarci due volte.
 </p>
 
-<h1 id="cap3">3. I tre livelli, dal piu' semplice al piu' ricco</h1>
+<h1 id="cap3">3. I due livelli</h1>
 
 <table>
 <thead><tr><th>Livello</th><th>Cosa riconosce</th><th>Come</th><th>Costo per ogni hit</th></tr></thead>
 <tbody>
-<tr><td><strong>L0</strong></td><td>Frasi letterali notissime (&laquo;che ora &egrave;&raquo;, &laquo;dove sono&raquo;)</td><td>Tabella chiusa di modelli normalizzati</td><td>microsecondi</td></tr>
-<tr><td><strong>L1</strong></td><td>Una richiesta semanticamente equivalente a una gi&agrave; vista, con UN solo executor</td><td>BGE-M3 cosine sul log delle <em>canonical query</em></td><td>~30 ms</td></tr>
-<tr><td><strong>L2</strong></td><td>Una pipeline multi-step gi&agrave; eseguita prima, con la stessa intenzione</td><td>BGE-M3 cosine sul log delle <em>sequenze</em> + risoluzione di segnaposto</td><td>~30 ms + N invocazioni</td></tr>
+<tr><td><strong>L0</strong></td><td>Una richiesta gi&agrave; risolta con successo, identica o semanticamente molto vicina</td><td>Hash esatto (0a) + cosine BGE-M3 (0b)</td><td>&lt; 5 ms (hash) / &lt; 150 ms (cosine)</td></tr>
+<tr><td><strong>L1</strong></td><td>Un intent appartenente a un cluster confermato dall'utente tramite feedback positivo</td><td>Intent hash + cluster_id lookup</td><td>~30 ms</td></tr>
 </tbody>
 </table>
 
 <p>
 Il flusso &egrave; rigorosamente sequenziale: prima si tenta L0, se non
-matcha si tenta L1, e solo se anche L1 manca si tenta L2. Se tutti e
-tre mancano, si arriva al pianificatore LLM (L3) come sempre.
+matcha si tenta L1. Se entrambi mancano, si arriva al pianificatore
+LLM (Engine v2) come sempre.
 </p>
 
 <div class="callout note">
 <strong>Nota.</strong> Il pianificatore non sparisce: il fast-path
 &egrave; un percorso aggiuntivo, non sostitutivo. Quando la
-richiesta &egrave; nuova, ambigua, o sopra la soglia di una qualunque
+richiesta &egrave; nuova, ambigua, o sotto la soglia di una qualunque
 delle ricerche, il pianificatore prende le redini come se il
 fast-path non ci fosse.
 </div>
 
-<h1 id="cap4">4. L0 &mdash; modelli letterali</h1>
+<h1 id="cap4">4. L0 &mdash; cache auto-prodotta (<code>fastpath.py</code>)</h1>
 
 <p>
-Il livello pi&ugrave; basso vive in <code>runtime/fast_path.py</code>
-e contiene una manciata di pattern testuali codificati a mano. Sono
-le richieste che ricorrono a tutti, dette in mille modi
-intercambiabili: l'ora, la data, la propria posizione, l'annulla. Per
-ognuna abbiamo elencato le varianti italiane e inglesi che ci aspettiamo
-realisticamente (&laquo;che ora &egrave;&raquo;, &laquo;che ore sono&raquo;,
-&laquo;dimmi l'ora&raquo;, &laquo;what time is it&raquo;, &laquo;current
-time&raquo;...) e l'executor canonico da chiamare.
+Il primo livello vive in <code>runtime/engine/fastpath.py</code> e gestisce
+un database SQLite (<code>fastpaths.sqlite</code>) di piani gi&agrave; eseguiti.
+Le entry si producono <strong>in automatico</strong>: ogni volta che un turno
+si completa con successo (piano pieno dal motore, hit L1, o promozione da
+cosine 0b), Metnos registra la query canonica, il suo hash, l'embedding
+BGE-M3, il piano completo (framework) e l'intent (verbo + oggetto).
+Non serve nessuna approvazione: le catene sono fatte di executor gi&agrave;
+vagliati e testati.
+</p>
+
+<h2>Due sotto-livelli di match</h2>
+
+<p>
+La ricerca avviene in due fasi:
+</p>
+
+<ul>
+<li><strong>0a &mdash; hash lookup.</strong> La query normalizzata viene
+trasformata in un hash deterministico e cercata per corrispondenza esatta.
+Costo sotto i 5 ms. Niente modello linguistico, niente embedding.
+Il match hash &egrave; l'unica via per le query <em>query-specific</em>,
+cio&egrave; piani con argomenti letterali legati alla richiesta originale
+(es. un nome proprio come parametro di ricerca): replicarli su una query
+simile ma diversa restituirebbe dati stantii.</li>
+
+<li><strong>0b &mdash; cosine semantico.</strong> Se il match hash fallisce,
+la query viene trasformata nel suo vettore BGE-M3 e confrontata per coseno
+con tutte le entry la cui soglia supera il valore configurato. Questo
+copre le varianti lessicali della stessa richiesta (&laquo;che ora &egrave;&raquo;
+vs &laquo;dimmi l'ora&raquo;). Il match cosine serve solo piani
+<em>non</em> query-specific, per evitare di applicare argomenti di una
+query a un'altra semanticamente vicina ma distinta.</li>
+</ul>
+
+<div class="callout tip">
+<strong>Auto-produzione e auto-guarigione.</strong> Se un fastpath viene
+eliminato (per invecchiamento, morte, o feedback negativo dell'utente),
+si ricrea da solo alla prossima ripetizione riuscita. Questa propriet&agrave;
+rende la potatura a basso costo: i default possono essere aggressivi
+senza rischio di perdite permanenti.
+</div>
+
+<h2>Valvole di sicurezza</h2>
+
+<ul>
+<li><strong>Feedback negativo:</strong> un feedback &laquo;&#10007;&raquo; dell'utente
+elimina il fastpath per quella query (last-writer-wins: si ricrea al prossimo
+turno completato con successo).</li>
+<li><strong>Admin:</strong> i fastpath si eliminano dalla console
+<code>/admin/praxis</code>.</li>
+<li><strong>Tool non cacheabili:</strong> <code>undo_last_turn</code> e
+<code>get_inputs</code> non generano fastpath, perch&eacute; la loro semantica
+dipende dal contesto del turno.</li>
+<li><strong>Date assolute:</strong> un piano con date ISO letterali (es.
+<code>since_iso=&quot;2026-06-11&quot;</code>) non viene registrato, perch&eacute;
+il replay in un giorno diverso eseguirebbe una finestra temporale congelata.
+Le date relative (<code>time_window=&quot;today&quot;</code>) restano cacheabili,
+perch&eacute; il replay le ri-risolve correttamente.</li>
+</ul>
+
+
+<h1 id="cap5">5. L1 &mdash; skill promosse da feedback (<code>autopath.py</code>)</h1>
+
+<p>
+Il secondo livello vive in <code>runtime/engine/autopath.py</code> e opera
+su una logica diversa: non ripete la <em>stessa</em> query, ma generalizza
+a un <em>cluster di intent</em> confermato dal feedback positivo dell'utente.
 </p>
 
 <p>
-Quando arriva una richiesta, la normalizziamo (minuscolo, apostrofi
-diritti, punteggiatura via) e cerchiamo una corrispondenza esatta nel
-dizionario. Se c'&egrave;, l'executor parte subito; la risposta esce
-formattata da un piccolo template italiano/inglese. Zero modello
-linguistico, zero rete, zero attesa percepita.
+Quando l'utente d&agrave; un feedback &laquo;&#10003;&raquo;, Metnos registra
+il framework del turno, il suo hash e il cluster semantico (intent hash +
+cluster ID). Dopo un numero minimo di conferme (configurabile, default 1)
+sullo stesso framework hash e cluster, il piano diventa una <em>skill</em>
+riusabile: la prossima volta che arriva un intent nello stesso cluster,
+il piano viene rieseguito senza passare dal pianificatore.
 </p>
 
+<h2>Anti-skill e champion/challenger</h2>
+
+<ul>
+<li><strong>Anti-skill:</strong> se l'utente d&agrave; feedback negativo
+(3 o pi&ugrave; fallimenti), Metnos registra una <em>anti-skill</em> che
+blocca quel piano per quel cluster per 30 giorni. &Egrave; una simmetria
+last-writer-wins: un feedback positivo rimuove l'anti-skill corrispondente.</li>
+<li><strong>Champion/challenger:</strong> quando pi&ugrave; framework competono
+per lo stesso cluster, Metnos calcola un punteggio composito che favorisce
+il piano con pi&ugrave; conferme e meno fallimenti.</li>
+</ul>
+
+<div class="callout note">
+<strong>Confine L0 vs L1.</strong> L0 &egrave; la ripetizione della
+<em>stessa</em> query (ammette piani query-specific, via hash esatto).
+L1 &egrave; la generalizzazione a un cluster/intent col consenso esplicito
+dell'utente. Il fast-path L0 vince sempre (primo in cascata): anche se
+L1 ha una skill per quell'intent, un fastpath esatto salta l'intera
+catena.
+</div>
+
+
+<h1 id="cap6">6. Invecchiamento, morte e eredit&agrave;</h1>
+
 <p>
-&Egrave; una tabella chiusa: la si estende solo aggiungendo modelli
-nuovi, mai con espressioni regolari complicate. La regola d'oro: se
-nel dubbio non sai se va, non aggiungerlo. Conservativo per costruzione.
+I fastpath L0 invecchiano e muoiono in modo deterministico, senza alcun
+intervento LLM. Il job notturno <code>task_state_reaper</code> applica tre
+regole di invecchiamento e quattro condizioni di morte.
 </p>
 
-<h1 id="cap5">5. L1 &mdash; un solo executor (<code>canonical_matcher</code>)</h1>
+<h2>Invecchiamento (aging)</h2>
+
+<table>
+<thead><tr><th>Regola</th><th>Criterio</th><th>Default</th><th>Env</th></tr></thead>
+<tbody>
+<tr><td>Mai riusato</td><td>Creato da oltre N giorni ma mai servito una seconda volta</td><td>14 giorni</td><td><code>METNOS_FASTPATH_GRACE_DAYS</code></td></tr>
+<tr><td>Stantio</td><td>Ultimo uso oltre N giorni fa</td><td>30 giorni</td><td><code>METNOS_FASTPATH_STALE_DAYS</code></td></tr>
+<tr><td>Cap LRU</td><td>Totale entry superiore al tetto; le meno recenti vengono potate</td><td>500</td><td><code>METNOS_FASTPATH_MAX</code></td></tr>
+</tbody>
+</table>
+
+<h2>Morte (solo con catalogo completo)</h2>
+
+<table>
+<thead><tr><th>Codice</th><th>Causa</th><th>Eredit&agrave;</th></tr></thead>
+<tbody>
+<tr><td><strong>C1</strong></td><td>Un tool nel piano non esiste pi&ugrave; nel catalogo (ritirato, rinominato, archiviato). Il replay fallirebbe.</td><td>No</td></tr>
+<tr><td><strong>C2 provenienza</strong></td><td>Il fastpath &egrave; stato promosso a executor sintetico (vedi &sect;9) e quell'executor &egrave; ora nel catalogo.</td><td>S&igrave;</td></tr>
+<tr><td><strong>C2 nome</strong></td><td>Esiste un executor con nome <code>{verbo}_{oggetto}</code> corrispondente all'intent, ma nessun tool del piano appartiene a quella famiglia. Il fastpath oscurerebbe l'executor.</td><td>S&igrave;</td></tr>
+<tr><td><strong>C2 prefilter</strong></td><td>Per i piani multi-step: il prefilter di routing deterministico sulla query canonica indica che un singolo executor copre l'intent (anche con nome diverso).</td><td>S&igrave;</td></tr>
+</tbody>
+</table>
+
+<h2>Eredit&agrave; dei punti</h2>
 
 <p>
-Il secondo livello si occupa delle richieste con UN solo executor di
-prima scelta: &laquo;trova le foto del battesimo&raquo;,
-&laquo;mostrami gli appuntamenti di oggi&raquo;, &laquo;leggi questa
-pagina&raquo;. Sono casi in cui non possiamo enumerare a mano tutte
-le varianti possibili, perch&eacute; nel mezzo l'utente cambia
-argomenti, ordine, lessico. Il pianificatore in pratica chiamerebbe
-sempre lo stesso executor: vogliamo arrivare alla stessa conclusione
-senza il giro lungo.
-</p>
-
-<p>
-Per riuscirci, ogni volta che il pianificatore decide il primo passo
-di un turno, Metnos registra nella tabella <code>canonical_query_log</code>
-del mnestoma una riga con tre cose: la richiesta in forma lemma
-(versione canonica, minuscola, condensata), l'executor scelto, e i
-valori degli argomenti che ha effettivamente usato. Da quel momento
-quella riga &egrave; un candidato.
-</p>
-
-<p>
-Quando una nuova richiesta arriva, la trasformiamo nel suo vettore
-semantico con BGE-M3 (lo stesso modello multilingua che usiamo per
-le affinit&agrave;) e calcoliamo il coseno contro tutti i candidati
-con almeno tre osservazioni. Se il candidato pi&ugrave; vicino supera
-la soglia 0,95 di coseno, lo accettiamo: la richiesta nuova viene
-servita con l'executor della riga matchata, e gli argomenti vengono
-estratti dall'estrattore deterministico (vedi <a href="#cap10">&sect;10</a>)
-oppure riusati dai valori memorizzati al primo passaggio.
+Quando un fastpath muore per superamento (C2), i suoi conteggi d'uso
+(<code>n_uses</code>) vengono trasferiti all'executor erede tramite il
+sistema di aging degli executor. La domanda accumulata non va persa.
 </p>
 
 <div class="callout tip">
-<strong>Tre osservazioni minime, non una.</strong> Perch&eacute; una
-sola osservazione potrebbe essere rumore: l'utente ha scritto una
-frase strana, ha cliccato per errore, ha chiesto qualcosa che non
-torner&agrave; pi&ugrave;. Tre passaggi consolidano il pattern. La
-soglia &egrave; configurabile in <code>~/.config/metnos/runtime.toml</code>.
+<strong>Economia dell'auto-produzione.</strong> Un fastpath potato per errore
+si ricrea da solo alla prossima ripetizione riuscita. La potatura costa zero
+e i default possono essere aggressivi.
 </div>
 
-<h1 id="cap6">6. L2 &mdash; sequenze multi-step (<code>multi_tool_paths</code>)</h1>
 
-<p>
-Alcune richieste richiedono pi&ugrave; di un executor in sequenza,
-con il risultato del primo che alimenta il secondo. &laquo;Scaricami
-quella pagina e dimmi cosa dice&raquo; &egrave; due step:
-<code>get_urls</code> seguito da <code>describe_entries</code>. Anche
-qui il pattern si ripete: per pipeline frequenti il pianificatore
-finisce sempre per emettere la stessa sequenza, ma con dodici secondi
-di latenza ciascuna volta.
-</p>
-
-<p>
-Il terzo livello memorizza le sequenze. Al termine di ogni turno
-andato a buon fine con due o pi&ugrave; step, Metnos registra in
-<code>multi_tool_paths.sqlite</code> la coppia (canonical query,
-sequenza di executor + segnaposto degli argomenti). Dopo tre passaggi
-identici, la pipeline diventa candidata. Da quel momento, una richiesta
-nuova abbastanza simile (coseno &ge; 0,88) viene riconosciuta e
-rieseguita per intero: nessun pianificatore, nessuna interruzione.
-</p>
-
-<p>
-La soglia 0,88 &egrave; pi&ugrave; permissiva di 0,95 perch&eacute;
-le pipeline multi-step hanno pi&ugrave; varianti lessicali della stessa
-intenzione (&laquo;scarica e descrivi&raquo;,
-&laquo;leggi e riassumi&raquo;, &laquo;fammi un sunto&raquo; sono la
-stessa cosa dal punto di vista dell'esecuzione). La protezione contro
-falsi positivi non &egrave; la soglia, ma la risoluzione dei segnaposto:
-se la nuova richiesta non porta i dati richiesti (per esempio non c'&egrave;
-un URL nel testo ma la pipeline ne richiede uno), il match fallisce e
-si torna al pianificatore. Niente danni.
-</p>
-
-<div class="callout note">
-<strong>L2 parte disattivato.</strong> La levetta &egrave; spenta di
-default (<code>enabled = false</code>): il sistema accumula osservazioni
-dall'uso normale e si attiva quando le righe sono sufficienti per essere
-utili.
-</div>
-
-<h1 id="cap7">7. Una scadenza che misura l'uso, non il tempo</h1>
-
-<p>
-Cosa succede a una memoizzazione che non viene usata per mesi? Se Roberto
-parte due mesi in vacanza, le sue pipeline non vanno cancellate: gli
-serviranno di nuovo al rientro. Per questo le righe di
-<code>multi_tool_paths</code> non scadono a calendario, ma in
-<em>giorni di attivit&agrave; effettiva</em>.
-</p>
-
-<p>
-La tabella <code>system_active_days</code> registra una riga per ogni
-giorno in cui Metnos ha visto almeno un turno. A ciascuna riga
-&egrave; associato un <code>day_rank</code>, un contatore monotono
-crescente: il primo giorno utile &egrave; 1, il secondo 2, e cos&igrave;
-via, saltando i giorni vuoti. Ogni memoizzazione conserva il
-<code>day_rank</code> dell'ultima volta che &egrave; servita. Quando
-il differenziale fra il giorno corrente e quel valore supera N (30
-per default), la riga viene rimossa.
-</p>
-
-<p>
-La conseguenza interessante: due mesi di assenza non contano. Il
-contatore avanza solo nei giorni di uso. Una scadenza misurata in
-&laquo;giorni di vita reale dell'assistente&raquo;, non in
-&laquo;giorni del calendario gregoriano&raquo;.
-</p>
-
-<h1 id="cap8">8. Fast-path composti: due si tengono per mano</h1>
-
-<p>
-C'&egrave; un effetto a cascata interessante. Quando un turno
-contiene step gi&agrave; serviti dal fast-path (perch&eacute; alcuni
-sotto-pezzi della richiesta sono noti), Metnos <em>non</em> li scarta
-dalla registrazione di L2. La sequenza completa &mdash; inclusi i
-passi gestiti da L0 o L1 &mdash; viene memorizzata per quella che
-&egrave;: una pipeline che ha funzionato. Dopo tre passaggi, anche
-quella combinazione diventa un fast-path multi-step.
-</p>
-
-<p>
-Significa che il sistema impara a comporre: due fast-path adiacenti
-diventano un fast-path pi&ugrave; lungo, ricorsivamente. La decisione
-storica &egrave; gi&agrave; approvata per ciascun passo, comporne
-pi&ugrave; insieme non aggiunge rischio, solo determinismo.
-</p>
-
-<h1 id="cap9">9. Concatenare il fast-path al pianificatore</h1>
-
-<p>
-Una variante opzionale (oggi disattivata di default) permette al
-fast-path L2 di passare il testimone al pianificatore <em>dopo</em>
-avere eseguito la sua sequenza. &Egrave; il caso in cui la richiesta
-ha pi&ugrave; verbi: &laquo;scaricami questa pagina e poi mandami il
-sunto per email&raquo;. Il prefisso &laquo;scarica e descrivi&raquo;
-&egrave; un L2 conosciuto; ma &laquo;mandami per email&raquo;
-&egrave; intenzione residua.
-</p>
-
-<p>
-Se la levetta <code>chain_to_planner</code> &egrave; accesa e il
-rilevatore di continuazione (multi-verbo, congiunzioni) trova
-ulteriori azioni nella richiesta, Metnos esegue il prefisso col
-fast-path, lo iscrive nella memoria di lavoro del turno, e cede al
-pianificatore per gli step rimanenti. Il pianificatore vede una
-storia gi&agrave; popolata e decide solo cosa manca, partendo dallo
-step successivo.
-</p>
-
-<h1 id="cap10">10. L'estrattore di argomenti</h1>
+<h1 id="cap7">7. L'estrattore di argomenti</h1>
 
 <p>
 Riconoscere la richiesta &egrave; met&agrave; del lavoro. L'altra
 met&agrave; &egrave; ricostruire i valori concreti degli argomenti:
-quali path, quali URL, quale data, quale soglia. Per questo Metnos
-ha un piccolo estrattore deterministico (<code>args_extractor.py</code>)
-che lavora a regole, in tre passi:
-</p>
-
-<ol>
-<li><strong>Memoria.</strong> Se la riga matchata nel
-<code>canonical_query_log</code> ha valori osservati al primo
-passaggio (colonna <code>args_observed</code>), li riusiamo
-tali e quali.</li>
-<li><strong>Regole.</strong> Altrimenti applichiamo espressioni
-regolari chiuse per i tipi noti: URL (<code>https://...</code>),
-path (<code>~/...</code> o <code>/...</code>, con la scorciatoia
-&laquo;home&raquo; che diventa <code>~/</code>), email, numeri,
-estensioni di file (&laquo;file PDF&raquo; diventa <code>*.pdf</code>),
-date (oggi/ieri/domani/dopodomani in italiano e inglese, mappate a
-formato ISO), finestre temporali (&laquo;questa settimana&raquo;,
-&laquo;ultime 24 ore&raquo;, &laquo;last 7 days&raquo;).</li>
-<li><strong>LLM, solo se serve.</strong> Se restano argomenti
-obbligatori non coperti, e la levetta
-<code>canonical_query_args_llm</code> &egrave; accesa, si chiama il
-Qwen fast tier con uno schema vincolato e un prompt minimo. Il
-risultato viene messo in cache su disco per non ripetere la chiamata.
-Spento di default: l'esperienza dice che le regole bastano per il 90%
-delle richieste reali.</li>
-</ol>
-
-<h1 id="cap11">11. Configurazione persistente</h1>
-
-<p>
-Tutti i parametri del fast-path vivono in un file TOML
-in <code>~/.config/metnos/runtime.toml</code>, generato al primo
-avvio dal setup. Una variabile d'ambiente <code>METNOS_*</code> ha
-sempre la precedenza, per il debug e i bench; il file TOML stabilisce
-il valore persistente fra un riavvio e l'altro, il default codificato
-nel modulo &egrave; l'ultima rete di sicurezza.
-</p>
-
-<pre>
-[fast_path]
-canonical_query_enabled = true
-canonical_query_min_uses = 3
-canonical_query_threshold = 0.95
-canonical_query_args_llm = false
-
-[multi_tool_fast_path]
-enabled = false
-chain_to_planner = false
-threshold = 0.88
-min_uses = 3
-ttl_active_days = 30
-k_synth = 50
-</pre>
-
-<h1 id="cap12">12. Promozione a executor sintetico</h1>
-
-<p>
-C'&egrave; un ultimo passaggio che chiude il cerchio. Quando una
-pipeline L2 viene usata abbastanza spesso da meritare un trattamento
-diverso (50 utilizzi, soglia configurabile), un job notturno
-(<code>multi_tool_promote</code>) la promuove a candidato per la
-sintesi vera e propria. Crea un proto-mnest nel mnestoma, con la
-firma desiderata (sequenza di executor, segnaposto, query canonica),
-e da quel momento il motore di sintesi pu&ograve; produrre UN nuovo
-executor unificato che racchiude tutta la pipeline. La promozione
-&egrave; idempotente: una riga gi&agrave; promossa viene ignorata
-nelle esecuzioni successive.
-</p>
-
-<p>
-Il bridge fa due tier conviventi: L2 cattura il volume basso (sequenze
-viste 3-50 volte, replay deterministico tramite N invocazioni di
-executor), mentre L3 prende il sopravvento quando il pattern &egrave;
-stabilmente ricorrente e vale l'investimento di sintetizzare un
-executor monolitico che fa tutto in un colpo. Non si escludono: si
-completano.
-</p>
-
-<h1 id="cap13">13. Domande aperte</h1>
-
-<p>
-Alcuni punti sono volutamente lasciati al futuro, perch&eacute;
-diventano interessanti solo con un po' di volume.
+quali path, quali URL, quale data, quale soglia. Metnos ha un
+estrattore deterministico (<code>args_extractor.py</code>) che
+lavora a regole:
 </p>
 
 <ul>
-<li><strong>Analisi introspettiva.</strong> Le memoizzazioni L2
-sono materiale prezioso per <code>introvertiva</code>: potremmo
-generare proposte automatiche di promozione, identificare cluster
-di pipeline simili, suggerire executor unificati. Per ora il modulo
-introvertiva non legge le memoizzazioni; lo far&agrave; in una fase
-successiva.</li>
-<li><strong>Modalit&agrave; ombra dopo la promozione.</strong> Per
-ora una memoizzazione promossa serve subito a tutti gli utenti. Si
-potrebbe attivare prima in &laquo;shadow&raquo; per K turni, dove
-si confronta la scelta del pianificatore col playback memoizzato, e
-si attiva solo se le due concordano oltre il 95%.</li>
-<li><strong>Verifica del passaggio dati fra step.</strong> Il
-playback assume che il consumer accetti l'output del producer come
-descritto. C'&egrave; gi&agrave; un sistema di consumer-precursor
-nel loader, lo legheremo formalmente al playback in una versione
-successiva.</li>
+<li><strong>Regole chiuse.</strong> Espressioni regolari per i tipi
+noti: URL (<code>https://...</code>), path (<code>~/...</code> o
+<code>/...</code>, con la scorciatoia &laquo;home&raquo; che diventa
+<code>~/</code>), email, numeri, estensioni di file (&laquo;file
+PDF&raquo; diventa <code>*.pdf</code>), date
+(oggi/ieri/domani/dopodomani in italiano e inglese, mappate a formato
+ISO), finestre temporali (&laquo;questa settimana&raquo;, &laquo;ultime
+24 ore&raquo;, &laquo;last 7 days&raquo;).</li>
+<li><strong>Ri-risoluzione slot query-specific.</strong> Al momento
+dell'esecuzione (e della registrazione), gli argomenti dipendenti dalla
+query (come l'account mail e la finestra temporale) vengono ri-risolti
+sulla query corrente, non ereditati dal piano cachato.</li>
 </ul>
+
+
+<h1 id="cap8">8. Configurazione</h1>
+
+<p>
+I parametri del fast-path sono controllati da variabili d'ambiente
+<code>METNOS_*</code>. Un file TOML
+(<code>~/.config/metnos/runtime.toml</code>) stabilisce valori
+persistenti; il default codificato nel modulo &egrave; l'ultima rete
+di sicurezza.
+</p>
+
+<h2>Layer 0 (fastpath)</h2>
+<table>
+<thead><tr><th>Variabile</th><th>Default</th><th>Significato</th></tr></thead>
+<tbody>
+<tr><td><code>METNOS_FASTPATH_STALE_DAYS</code></td><td>30</td><td>Giorni calendario dopo cui una entry non usata viene potata</td></tr>
+<tr><td><code>METNOS_FASTPATH_GRACE_DAYS</code></td><td>14</td><td>Giorni di grazia per entry mai riusate</td></tr>
+<tr><td><code>METNOS_FASTPATH_MAX</code></td><td>500</td><td>Tetto massimo righe (LRU)</td></tr>
+</tbody>
+</table>
+
+<h2>Layer 1 (autopath)</h2>
+<table>
+<thead><tr><th>Variabile</th><th>Default</th><th>Significato</th></tr></thead>
+<tbody>
+<tr><td><code>METNOS_AUTOPATH_MIN_OBS</code></td><td>1</td><td>Osservazioni positive minime per promuovere una skill</td></tr>
+<tr><td><code>METNOS_AUTOPATH_TTL_ANTI</code></td><td>2592000 (30 gg)</td><td>Durata di un'anti-skill in secondi</td></tr>
+<tr><td><code>METNOS_AUTOPATH_TTL_REPEAT</code></td><td>3600 (1 h)</td><td>Finestra soft per feedback ripetuti</td></tr>
+</tbody>
+</table>
+
+<h2>Promozione a executor</h2>
+<table>
+<thead><tr><th>Variabile</th><th>Default</th><th>Significato</th></tr></thead>
+<tbody>
+<tr><td><code>METNOS_FP_PROMOTE_MIN_CLUSTER</code></td><td>3</td><td>Fastpath distinti minimo nel cluster</td></tr>
+<tr><td><code>METNOS_FP_PROMOTE_MIN_USES</code></td><td>15</td><td>Uso cumulato minimo</td></tr>
+<tr><td><code>METNOS_FP_PROMOTE_MIN_AGE_DAYS</code></td><td>30</td><td>Et&agrave; minima del cluster</td></tr>
+<tr><td><code>METNOS_FP_PROMOTE_MAX_PER_NIGHT</code></td><td>3</td><td>Massimo emissioni nuove per notte</td></tr>
+<tr><td><code>METNOS_FASTPATH_AUTOPROMOTE</code></td><td>off</td><td>Abilita auto-promozione Tier 2 (senza approvazione)</td></tr>
+</tbody>
+</table>
+
+
+<h1 id="cap9">9. Promozione a executor sintetico</h1>
+
+<p>
+Quando un gruppo di fastpath L0 ricorrenti condivide la stessa struttura
+di piano (framework hash) e lo stesso intent, un job notturno
+(<code>task_fastpath_promotion</code>) li valuta come candidati per
+diventare un executor sintetico completo. La promozione &egrave;
+<strong>cluster-based</strong>, mai per singola istanza: servono almeno
+3 fastpath distinti, 15 utilizzi cumulati e 30 giorni di et&agrave;.
+Solo i pattern multi-step vengono promossi: quelli a step singolo hanno
+gi&agrave; il loro executor, e il valore del fastpath l&igrave; &egrave;
+saltare l'LLM, non il piano.
+</p>
+
+<h2>Due tier di promozione</h2>
+
+<ul>
+<li><strong>Tier 1 (default, attivo).</strong> Il candidato viene emesso
+come proposta human-gated nel backlog introvertiva: visibile in
+<code>/admin/proposals</code> e nell'hub unificato. L'approvazione scrive
+un marker <code>synt_pending/</code> che avvia la pipeline di sintesi
+completa (5 stadi + test + firma + installazione).</li>
+<li><strong>Tier 2 (flag, spento).</strong> Sopra una soglia molto
+pi&ugrave; alta, il sistema sintetizza l'executor automaticamente senza
+approvazione umana. La sicurezza &egrave; garantita dal fatto che la
+pipeline synt completa include vaglio, test e firma, come per ogni
+executor sintetizzato. Hard cap: 1 tentativo per notte.</li>
+</ul>
+
+<h2>Provenienza</h2>
+
+<p>
+Ogni candidato emesso registra gli ID e gli hash canonici dei fastpath
+d'origine in una tabella <code>promotions</code>. Quando l'executor entra
+nel catalogo, la morte C2 per provenienza &egrave; esatta: il legame
+fra il fastpath originale e il suo erede &egrave; registrato, non
+inferito dal nome.
+</p>
+
 
 <p style="margin-top:40px;color:#64748b;font-size:10pt;">
 &copy; 2026 Roberto Brunialti &middot;

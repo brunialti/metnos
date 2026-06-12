@@ -578,7 +578,7 @@ write_files(path="/tmp/out.txt", content="<JSON from httpbin>")</pre>
 </div>
 
 <div class="callout warning">
-<strong>The syntax holds ONLY in the args.</strong> In the text of the final_answer write the actual values (e.g. "I wrote 173 bytes"); NEVER <code>{{step1.bytes_written}}</code>. The planner's prompt explicitly instructs the LLM about this limit. A violation of this rule was one of the bugs caught by the POC.
+<strong>The syntax holds ONLY in the args.</strong> In the text of the final_answer write the actual values (e.g. "I wrote 173 bytes"); NEVER <code>{{step1.bytes_written}}</code>. The planner's prompt explicitly instructs the LLM about this limit. A violation of this rule causes the silent failure of the placeholder in the final text.
 </div>
 
 <p>
@@ -637,7 +637,7 @@ Full details in the dedicated doc: <a href="scratchpad.html"><code>scratchpad.ht
 The vaglio is the constitutional evaluator: before a <code>tool_call</code>
 becomes action, it decides whether it is lawful. In multistep it runs between
 one step and the next; in single-shot it runs post-hoc on the entire plan.
-Since 27/4 the vaglio is <em>real</em> (no longer a stub) and works in two
+The vaglio is <em>active</em> and works in two
 distinct phases as per ch.&nbsp;11 of the Architecture.
 </p>
 
@@ -695,7 +695,7 @@ the keys of <code>args</code> (not the values), for privacy.
 <h1 id="cap10">10. Safety caps and runtime guards</h1>
 
 <p>
-The planner has three safety mechanisms against loops and ill-posed actions. They appeared in the POC as a response to real LLM behaviour, not as abstract concern.
+The planner has three safety mechanisms against loops and ill-posed actions, based on real observed LLM behaviour.
 </p>
 
 <table>
@@ -843,7 +843,7 @@ auto-installed on first HTTP daemon boot via
 <tr><td><code>lifecycle_summary</code></td><td><code>daily@06:30</code></td><td>READ-ONLY aggregator of the 4 agers: produces a daily summary of the mnestome lifecycle.</td></tr>
 <tr><td><code>skill_sandbox_watchdog</code></td><td><code>daily@06:35</code></td><td>Checks the trigger threshold for per-skill sandbox (&ge; 5 third-party skills OR &ge; 1 paired guest); notifies admin via Telegram.</td></tr>
 <tr><td><code>promoter_digest</code></td><td><code>daily@07:00</code></td><td>Telegram digest of proposals in <em>promoted_grace</em> not yet user-approved.</td></tr>
-<tr><td><em>GitHub maintenance</em></td><td><code>run_user_query</code></td><td>GitHub maintenance now runs via the canonical executors (<code>find/read/write_issues</code>) driven by scheduled user commands; the always-on watcher was retired.</td></tr>
+<tr><td><em>GitHub maintenance</em></td><td><code>run_user_query</code></td><td>GitHub maintenance now runs via the canonical executors (<code>find/read/write_issues</code>) driven by scheduled user commands; there is no always-on watcher.</td></tr>
 </tbody>
 </table>
 
@@ -1007,7 +1007,7 @@ migration of 19 legacy paths and 9 residual constants to <code>config.C</code>.
 <h1 id="cap12">12. When things go wrong</h1>
 
 <p>
-The POC verified five typical failure modes. They became permanent test cases of the test framework.
+Five typical failure modes, all covered by permanent test cases in the test framework.
 </p>
 
 <table>
@@ -1035,7 +1035,7 @@ The principle: <em>do not let the system fall; always return a structured respon
 <tr><td>Parallel-tool-call within a turn</td><td>When a real case shows significant latency win. <strong>Binding constraint</strong>.</td></tr>
 <tr><td>Async approval (deferred execution with durable per_target grants)</td><td>When channel + scheduler require asynchronous interaction.</td></tr>
 <tr><td>Mnestome history-driven in the pre-filter (boost from history)</td><td>When the operational mnestome exists.</td></tr>
-<tr><td>Embedding (local MiniLM) in the pre-filter</td><td>When bag-of-words shows practical limits (not surfaced in the POC).</td></tr>
+<tr><td>Embedding (local MiniLM) in the pre-filter</td><td>When bag-of-words shows practical limits (not yet observed in production).</td></tr>
 <tr><td>Automatic replay of orphan turns from a crash</td><td>When executors are guaranteed idempotent.</td></tr>
 <tr><td>Automatic JSONL rotation</td><td>When the volume becomes relevant.</td></tr>
 </table>

@@ -266,7 +266,7 @@ In ogni caso, il pianificatore scrive un record JSONL completo del turno (vedi c
 </p>
 
 <div class="example">
-<div class="ex-label">Esempio reale dal POC</div>
+<div class="ex-label">Esempio reale</div>
 <p>Query: <em>&laquo;scarica https://httpbin.org/uuid e dimmi solo l'UUID&raquo;</em>.</p>
 <p>Step 1 &mdash; LLM propone <code>get_urls(urls=["https://httpbin.org/uuid"])</code>. Esecuzione: ritorna JSON <code>{"uuid":"7c089d54-..."}</code>.</p>
 <p>Step 2 &mdash; LLM legge la storia, capisce che ha quel che serve, produce final_answer: <code>"7c089d54-..."</code>.</p>
@@ -578,7 +578,7 @@ write_files(path="/tmp/out.txt", content="<JSON di httpbin>")</pre>
 </div>
 
 <div class="callout warning">
-<strong>La sintassi vale SOLO negli args.</strong> Nel testo della final_answer scrivere i valori reali (es. "Ho scritto 173 byte"); MAI <code>{{step1.bytes_written}}</code>. Il prompt del pianificatore istruisce esplicitamente l'LLM su questo limite. Una violazione di questa regola &egrave; stato uno dei bug catturati dal POC.
+<strong>La sintassi vale SOLO negli args.</strong> Nel testo della final_answer scrivere i valori reali (es. "Ho scritto 173 byte"); MAI <code>{{step1.bytes_written}}</code>. Il prompt del pianificatore istruisce esplicitamente l'LLM su questo limite. Una violazione di questa regola causa il fallimento silenzioso del placeholder nel testo finale.
 </div>
 
 <p>
@@ -636,8 +636,8 @@ Dettagli completi nel doc dedicato: <a href="scratchpad.html"><code>scratchpad.h
 <p>
 Il vaglio &egrave; il valutatore costituzionale: prima che un <code>tool_call</code>
 diventi azione, decide se &egrave; lecita. In multistep gira fra uno step e
-l'altro; in single-shot gira post-hoc sull'intero piano. Dal 27/4 il vaglio e'
-<em>reale</em> (non piu' stub) e funziona in due fasi distinte come da cap.&nbsp;11
+l'altro; in single-shot gira post-hoc sull'intero piano. Il vaglio e'
+<em>attivo</em> e funziona in due fasi distinte come da cap.&nbsp;11
 dell'Architettura.
 </p>
 
@@ -695,7 +695,7 @@ solo le chiavi di <code>args</code> (non i valori), per privacy.
 <h1 id="cap10">10. Cap di sicurezza e guard runtime</h1>
 
 <p>
-Il pianificatore ha tre meccanismi di safety contro loop e azioni mal poste. Sono apparsi nel POC come risposta a comportamenti reali del LLM, non come timore astratto.
+Il pianificatore ha tre meccanismi di safety contro loop e azioni mal poste, basati su comportamenti reali osservati del LLM.
 </p>
 
 <table>
@@ -843,7 +843,7 @@ auto-installati al primo boot del daemon HTTP via
 <tr><td><code>lifecycle_summary</code></td><td><code>daily@06:30</code></td><td>Aggregatore READ-ONLY dei 4 ager: produce un sunto giornaliero del lifecycle del mnestoma.</td></tr>
 <tr><td><code>skill_sandbox_watchdog</code></td><td><code>daily@06:35</code></td><td>Controlla soglia trigger per sandbox per-skill (&ge; 5 skill third-party OR &ge; 1 guest paired); notifica admin via Telegram.</td></tr>
 <tr><td><code>promoter_digest</code></td><td><code>daily@07:00</code></td><td>Digest Telegram delle proposte in <em>promoted_grace</em> non ancora approvate dall'utente.</td></tr>
-<tr><td><em>manutenzione GitHub</em></td><td><code>run_user_query</code></td><td>La manutenzione GitHub gira tramite gli executor canonici (<code>find/read/write_issues</code>) guidati da comandi utente schedulati; il watcher sempre-attivo &egrave; stato ritirato.</td></tr>
+<tr><td><em>manutenzione GitHub</em></td><td><code>run_user_query</code></td><td>La manutenzione GitHub gira tramite gli executor canonici (<code>find/read/write_issues</code>) guidati da comandi utente schedulati; non c'&egrave; un watcher sempre-attivo.</td></tr>
 </tbody>
 </table>
 
@@ -1008,7 +1008,7 @@ dei 19 path legacy e 9 costanti residue verso <code>config.C</code>.
 <h1 id="cap12">12. Quando le cose vanno male</h1>
 
 <p>
-Il POC ha verificato cinque modi tipici di rottura. Sono diventati test cases permanenti del framework di test.
+Cinque modi tipici di rottura, tutti coperti da test permanenti nel framework di test.
 </p>
 
 <table>
@@ -1036,7 +1036,7 @@ Il principio: <em>non far cadere il sistema; restituire sempre una risposta stru
 <tr><td>Parallel-tool-call intra-turno</td><td>Quando un caso reale dimostra latency win significativo. <strong>Vincolo binding</strong>.</td></tr>
 <tr><td>Async approval (esecuzione differita con grant per_target durevoli)</td><td>Quando channel + scheduler richiedono interazione asincrona.</td></tr>
 <tr><td>Mnestoma history-driven nel pre-filter (boost dalla storia)</td><td>Quando il mnestoma operativo esiste.</td></tr>
-<tr><td>Embedding (MiniLM locale) nel pre-filter</td><td>Quando il bag-of-words mostra limiti pratici (non emersi nel POC).</td></tr>
+<tr><td>Embedding (MiniLM locale) nel pre-filter</td><td>Quando il bag-of-words mostra limiti pratici (non ancora osservati in produzione).</td></tr>
 <tr><td>Replay automatico turni orfani da crash</td><td>Quando gli executor saranno garantiti idempotenti.</td></tr>
 <tr><td>Rotazione automatica JSONL</td><td>Quando il volume diventa rilevante.</td></tr>
 </table>
