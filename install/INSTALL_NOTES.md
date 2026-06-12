@@ -62,6 +62,12 @@ reads. Mismatches here silently break the runtime (wrong paths, empty catalog).
   provisioning, never to wire-to-existing-endpoint.
 - Concrete model identities belong in ONE dated tier→model table in the docs,
   not scattered through code/prompts. Keep tier-level language everywhere.
+- **ROCm asset guard** (fix 12/6/2026): `rocminfo` alone does NOT prove a
+  usable ROCm runtime — without `librocblas.so` the HIP build silently falls
+  back to CPU. `_pick_llama_asset` probes `_rocm_runtime_complete()` (ldconfig
+  + `/opt/rocm*/lib` glob) and prefers the **Vulkan** asset when incomplete
+  (production runs Vulkan on the same AMD GPUs). cpu/cuda/vulkan paths
+  untouched.
 - **llama-completion (deterministic describe)**: the managed provisioning
   extracts the WHOLE llama.cpp release archive, so `llama-completion` lands
   next to `llama-server` (same release = version-aligned by construction).

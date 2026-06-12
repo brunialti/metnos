@@ -380,8 +380,33 @@ def _safe_extract(arc: Path, dest: Path) -> bool:
         return False
 
 
+def _rocm_runtime_complete() -> bool:
+    """True se il runtime ROCm ha le librerie che il build HIP di llama.cpp
+    carica DAVVERO (rocBLAS). `rocminfo` da solo non basta: senza
+    librocblas.so il binario hip ricade su CPU in silenzio (flag E2E
+    12/6/2026) — e la produzione usa Vulkan proprio per questo."""
+    import ctypes.util
+    import glob as _glob
+    if ctypes.util.find_library("rocblas"):
+        return True
+    for pat in ("/opt/rocm*/lib/librocblas.so*",
+                "/usr/lib/*/librocblas.so*",
+                "/usr/lib64/librocblas.so*"):
+        if _glob.glob(pat):
+            return True
+    return False
+
+
 def _pick_llama_asset(assets: list, backend: str) -> dict | None:
-    """Sceglie l'asset prebuilt giusto da una release ggml-org/llama.cpp."""
+    """Sceglie l'asset prebuilt giusto da una release ggml-org/llama.cpp.
+
+    Guard anti fallback-CPU-silenzioso: backend `rocm` con runtime ROCm
+    incompleto (rocminfo presente ma librocblas assente) → si preferisce
+    l'asset Vulkan, che accelera davvero sulle stesse GPU AMD."""
+    if backend == "rocm" and not _rocm_runtime_complete():
+        print("    ! runtime ROCm incompleto (rocminfo c'e', librocblas no): "
+              "il build HIP ricadrebbe su CPU in silenzio → uso l'asset Vulkan.")
+        backend = "vulkan"
     cand = [a for a in assets
             if _re.search(r"(ubuntu|linux)", a["name"], _re.I)
             and _re.search(r"(x64|x86_64|amd64)", a["name"], _re.I)
