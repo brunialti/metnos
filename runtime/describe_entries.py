@@ -46,7 +46,10 @@ STYLES = ("by_importance", "by_relevance", "compact")
 # sicurezza sul conteggio per evitare flood di entries minuscole. Sotto
 # budget: nessun troncamento. Le entries oltre il cap NON sono dimenticate
 # (`item_count` = totale + `truncated*` field §2.7). Override via env.
-_DESCRIBE_MAX_CHARS = int(os.environ.get("METNOS_DESCRIBE_MAX_CHARS", "24000"))
+# Budget alzato 24K->48K (12/6/2026, Roberto): ~60 mail reali (~571-800 B/cad)
+# stanno nel budget prima di troncarne una — il describe deterministico regge
+# ~12-16K token, ben sotto il ctx 131072. Tunabile via env.
+_DESCRIBE_MAX_CHARS = int(os.environ.get("METNOS_DESCRIBE_MAX_CHARS", "48000"))
 _DESCRIBE_HARD_MAX = int(os.environ.get("METNOS_DESCRIBE_HARD_MAX", "200"))
 
 # Testo DETERMINISTICO per costruzione (12/6/2026): stessa lista di entries

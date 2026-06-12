@@ -85,9 +85,11 @@ class TestDescribeEntriesCap(unittest.TestCase):
 
     def test_byte_budget_truncates(self):
         import describe_entries as de
-        # 10 entries da ~3 KB = ~30 KB > budget 24 KB default.
-        out = de.handle_describe_entries({
-            "entries": self._big_entries(10), "style": "by_importance"})
+        # Budget fissato a 24 KB nel test (indipendente dal default di prod):
+        # 10 entries da ~3 KB = ~30 KB > 24 KB → tronca.
+        with mock.patch.object(de, "_DESCRIBE_MAX_CHARS", 24000):
+            out = de.handle_describe_entries({
+                "entries": self._big_entries(10), "style": "by_importance"})
         self.assertTrue(out["ok"], out)
         self.assertEqual(out["item_count"], 10)
         self.assertTrue(out["truncated"])
@@ -115,8 +117,9 @@ class TestDescribeEntriesCap(unittest.TestCase):
 
     def test_truncation_is_prefix_deterministic(self):
         import describe_entries as de
-        out = de.handle_describe_entries({
-            "entries": self._big_entries(10), "style": "by_importance"})
+        with mock.patch.object(de, "_DESCRIBE_MAX_CHARS", 24000):
+            out = de.handle_describe_entries({
+                "entries": self._big_entries(10), "style": "by_importance"})
         used = out["used"]
         sent = self._captured_entries[0]
         # Le entries inviate sono ESATTAMENTE entries[:used], in ordine.
