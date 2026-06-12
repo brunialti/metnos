@@ -29,7 +29,8 @@ class TestDescribeEntriesCap(unittest.TestCase):
         # fissato senza chiamate di rete.
         self._captured_entries = []
 
-        def _fake_call_llm(entries, prompt, *, tier="middle", max_tokens=600):
+        def _fake_call_llm(entries, prompt, *, tier="middle", max_tokens=600,
+                           **kwargs):
             self._captured_entries.append(entries)
             return ("Riassunto sintetico.",
                     {"in_tokens": 0, "out_tokens": 0, "latency_ms": 1})

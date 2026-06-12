@@ -70,7 +70,7 @@ class TestLevel2DescribeEntriesHealthContext(unittest.TestCase):
         import describe_entries as de
         captured = {}
 
-        def fake_call_llm(entries, prompt, tier, max_tokens):
+        def fake_call_llm(entries, prompt, tier, max_tokens, **kwargs):
             captured["prompt"] = prompt
             return ("ok summary", {"in_tokens": 1, "out_tokens": 1, "latency_ms": 1})
 
@@ -101,7 +101,7 @@ class TestLevel2DescribeEntriesHealthContext(unittest.TestCase):
         import describe_entries as de
         captured = {}
 
-        def fake_call_llm(entries, prompt, tier, max_tokens):
+        def fake_call_llm(entries, prompt, tier, max_tokens, **kwargs):
             captured["prompt"] = prompt
             return ("ok", {"in_tokens": 1, "out_tokens": 1, "latency_ms": 1})
 
@@ -118,7 +118,7 @@ class TestLevel2DescribeEntriesHealthContext(unittest.TestCase):
         import describe_entries as de
         captured = {}
 
-        def fake_call_llm(entries, prompt, tier, max_tokens):
+        def fake_call_llm(entries, prompt, tier, max_tokens, **kwargs):
             captured["prompt"] = prompt
             return ("ok", {"in_tokens": 1, "out_tokens": 1, "latency_ms": 1})
 

@@ -49,6 +49,18 @@ STYLES = ("by_importance", "by_relevance", "compact")
 _DESCRIBE_MAX_CHARS = int(os.environ.get("METNOS_DESCRIBE_MAX_CHARS", "24000"))
 _DESCRIBE_HARD_MAX = int(os.environ.get("METNOS_DESCRIBE_HARD_MAX", "200"))
 
+# Testo DETERMINISTICO per costruzione (12/6/2026): stessa lista di entries
+# -> testo IDENTICO byte-a-byte su run ripetuti. Il path HTTP del llama-server
+# condiviso NON e' riproducibile (stato di processo, vedi llm_helpers blocco
+# DETERMINISTICA); describe passa deterministic=True a call_llm, che genera
+# via processo llama-completion monouso (stesso GGUF, stesso template,
+# temp=0, seed §11). NIENTE cache/template del contenuto: la sintesi resta
+# LLM piena sui dati correnti. Fallback HTTP onesto se il path manca
+# (meta.deterministic=False). Opt-out: METNOS_DESCRIBE_DETERMINISTIC=0.
+_DESCRIBE_DETERMINISTIC = (
+    os.environ.get("METNOS_DESCRIBE_DETERMINISTIC", "1").strip() != "0"
+)
+
 
 def _pack_entries(entries: list) -> tuple[list, bool]:
     """Greedy: include entries in ordine finche' la dimensione serializzata
@@ -489,7 +501,14 @@ def handle_describe_entries(args, *, verbose: bool = False) -> dict:
         prompt = prompt + "\n\n" + fmt_directive
 
     try:
-        text, meta = call_llm(visible_entries, prompt, tier=tier, max_tokens=max_tokens)
+        # max_query_chars: il budget di pack (_DESCRIBE_MAX_CHARS) deve
+        # passare INTERO a call_llm — il default 12000 di _serialize_query
+        # troncherebbe in silenzio il bundle a meta' JSON, smentendo i
+        # conteggi visible/hidden dichiarati (§2.7/§2.8).
+        text, meta = call_llm(visible_entries, prompt, tier=tier,
+                              max_tokens=max_tokens,
+                              deterministic=_DESCRIBE_DETERMINISTIC,
+                              max_query_chars=_DESCRIBE_MAX_CHARS + 2048)
     except Exception as e:
         return {"ok": False, "error_code": "ERR_EXT_SVC_UNAVAILABLE",
                 "error": f"LLM call failed: {type(e).__name__}: {e}"}

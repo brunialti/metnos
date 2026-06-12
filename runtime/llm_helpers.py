@@ -25,7 +25,14 @@ deve dichiararla nel manifest, quando il loader le fara' rispettare).
 from __future__ import annotations
 
 import json
+import os
+import re
+import shutil
+import subprocess
+import tempfile
 import time
+import urllib.request
+from pathlib import Path
 from typing import Any
 
 from llm_provider import LlamaCppProvider
@@ -50,6 +57,121 @@ def _serialize_query(q: Any, max_chars: int = 12000) -> str:
     return txt[:max_chars] + "\n... [truncated]"
 
 
+# --- Generazione DETERMINISTICA per costruzione (12/6/2026) ------------------
+# Diagnosi (vedi memory describe-determinism): il llama-server CONDIVISO non
+# e' riproducibile a parita' di richiesta nemmeno con seed fisso §11, temp=0,
+# slot pinnato, cache_prompt=false e KV erase dello slot: uno stato interno
+# del PROCESSO (avanza a ogni richiesta servita, si azzera solo al riavvio,
+# identico cross-backend Vulkan/CPU) sposta i logits di ~0.1 e i near-tie
+# greedy flippano — su ~100-400 token liberi il testo cambia quasi sempre.
+# Un processo FRESCO e' invece byte-deterministico (llama-completion, 3/3
+# hash identici a parita' di prompt). Strada quindi: per le chiamate che
+# DEVONO essere riproducibili (describe_entries) si spawna un processo
+# llama-completion monouso con: lo stesso GGUF del server (GET /props),
+# lo stesso prompt renderizzato dal server (POST /apply-template con
+# enable_thinking=false), temp=0 e seed §11. NIENTE template/cache del
+# CONTENUTO: la generazione resta LLM piena sui dati correnti. Fallback
+# onesto: se binario/server/render mancano, si torna al path HTTP e il
+# meta riporta deterministic=false (§2.8, nessuna finta garanzia).
+
+_PROC_TIMEOUT_S = int(os.environ.get("METNOS_LLM_PROC_TIMEOUT_S", "240"))
+_END_OF_TEXT_RE = re.compile(r"\s*\[end of text\]\s*$")
+
+
+def _completion_bin() -> str | None:
+    """Risolve il binario llama-completion: env esplicito > PATH > layout
+    convenzionale build llama.cpp sotto $HOME (§7.11: niente path assoluti
+    di install-root nel codice; questo e' un tool host, home-relative)."""
+    p = os.environ.get("METNOS_LLAMACPP_COMPLETION_BIN", "").strip()
+    if p:
+        return p if Path(p).is_file() else None
+    w = shutil.which("llama-completion")
+    if w:
+        return w
+    cand = Path.home() / "llama.cpp" / "build" / "bin" / "llama-completion"
+    return str(cand) if cand.is_file() else None
+
+
+def _server_model_path() -> str | None:
+    """GGUF servito dal llama-server (GET /props). SoT del modello: la
+    generazione deterministica usa LO STESSO modello dei tier §11."""
+    try:
+        with urllib.request.urlopen(f"{LLAMA_ENDPOINT}/props", timeout=10) as r:
+            return json.loads(r.read().decode("utf-8")).get("model_path") or None
+    except Exception:
+        return None
+
+
+def _render_chat_prompt(system: str, user: str) -> str | None:
+    """Prompt renderizzato dal chat template del server (POST
+    /apply-template, enable_thinking=false): identico al path HTTP,
+    nessun template hardcodato lato Metnos (§7.3)."""
+    payload = {
+        "messages": [
+            {"role": "system", "content": system},
+            {"role": "user", "content": user},
+        ],
+        "chat_template_kwargs": {"enable_thinking": False},
+    }
+    try:
+        req = urllib.request.Request(
+            f"{LLAMA_ENDPOINT}/apply-template",
+            data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+            headers={"Content-Type": "application/json"}, method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=15) as r:
+            return json.loads(r.read().decode("utf-8")).get("prompt") or None
+    except Exception:
+        return None
+
+
+def _call_llm_proc(system: str, user: str, *, max_tokens: int,
+                   seed: int) -> str | None:
+    """Generazione byte-deterministica via processo llama-completion
+    monouso. Ritorna il testo, o None se il path non e' disponibile
+    (il chiamante ricade sul provider HTTP)."""
+    binary = _completion_bin()
+    if not binary:
+        return None
+    model = _server_model_path()
+    if not model:
+        return None
+    rendered = _render_chat_prompt(system, user)
+    if not rendered:
+        return None
+    # ctx: stima token ~ chars/3 + output + margine; clamp [4096, 32768].
+    ctx = min(32768, max(4096, len(rendered) // 3 + max_tokens + 512))
+    env = dict(os.environ)
+    env.setdefault("AMD_VULKAN_ICD", "RADV")
+    tmp_path = None
+    try:
+        with tempfile.NamedTemporaryFile("w", suffix=".prompt", delete=False,
+                                         encoding="utf-8") as tf:
+            tf.write(rendered)
+            tmp_path = tf.name
+        cmd = [
+            binary, "-m", model, "-ngl", "999", "-fa", "on",
+            "--temp", "0", "-s", str(seed), "-c", str(ctx),
+            "-b", "4096", "-ub", "256",
+            "-no-cnv", "-f", tmp_path, "-n", str(max_tokens),
+            "--no-display-prompt", "--simple-io",
+        ]
+        proc = subprocess.run(cmd, capture_output=True, text=True,
+                              timeout=_PROC_TIMEOUT_S, env=env)
+        if proc.returncode != 0:
+            return None
+        text = _END_OF_TEXT_RE.sub("", proc.stdout or "").strip()
+        return text or None
+    except Exception:
+        return None
+    finally:
+        if tmp_path:
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+
+
 def call_llm(
     query: Any,
     prompt: str,
@@ -58,8 +180,22 @@ def call_llm(
     max_tokens: int = 600,
     temperature: float = 0.0,
     think: bool = False,
+    deterministic: bool = False,
+    max_query_chars: int = 12000,
 ) -> tuple[str, dict]:
     """Chiama il LLM del tier indicato. Ritorna (text, meta).
+
+    `deterministic=True`: generazione byte-riproducibile via processo
+    llama-completion monouso (vedi blocco DETERMINISTICA sopra). Richiede
+    temp=0, think=False e seed §11 >= 0; in ogni altro caso, o se il path
+    non e' disponibile, ricade sul provider HTTP e `meta["deterministic"]`
+    riporta False (onesta' §2.8). Costo: ~+2-5s/chiamata (load processo,
+    niente MTP).
+
+    `max_query_chars`: budget di serializzazione del payload (default
+    12000). I chiamanti con budget proprio piu' alto (describe_entries,
+    §2.7) DEVONO passarlo, altrimenti il bundle viene troncato qui in
+    silenzio a meta' JSON.
 
     Solleva eccezione se il provider non e' raggiungibile o l'LLM
     risponde vuoto. L'executor chiamante deve gestirla e tradurla in
@@ -68,13 +204,29 @@ def call_llm(
     if tier not in TIER_MODELS:
         raise ValueError(f"unknown tier {tier!r}; valid: {list(TIER_MODELS)}")
     model = TIER_MODELS[tier]
+    user_payload = _serialize_query(query, max_chars=max_query_chars)
+    if deterministic and not think and temperature == 0.0:
+        _seed = int(os.environ.get("METNOS_LLM_SEED", "42"))
+        if _seed >= 0:
+            t0 = time.time()
+            text = _call_llm_proc(prompt, user_payload,
+                                  max_tokens=max_tokens, seed=_seed)
+            if text is not None:
+                return text, {
+                    "tier": tier,
+                    "model": model,
+                    "in_tokens": 0,
+                    "out_tokens": 0,
+                    "latency_ms": int((time.time() - t0) * 1000),
+                    "deterministic": True,
+                }
+        # Path deterministico non disponibile: fallback HTTP sotto,
+        # dichiarato nel meta.
     # ADR 0120: slot affinity. Default Metnos = id_slot=1 (image enrichment
     # batch). Override via env var METNOS_LLM_SLOT_ID. None disabilita.
-    import os as _os
-    _slot_env = _os.environ.get("METNOS_LLM_SLOT_ID", "1").strip()
+    _slot_env = os.environ.get("METNOS_LLM_SLOT_ID", "1").strip()
     _slot = int(_slot_env) if _slot_env.isdigit() else None
     provider = LlamaCppProvider(model=model, endpoint=LLAMA_ENDPOINT, id_slot=_slot)
-    user_payload = _serialize_query(query)
     t0 = time.time()
     r = provider.chat(prompt, user_payload, max_tokens=max_tokens,
                       temperature=temperature, think=think)
@@ -87,4 +239,6 @@ def call_llm(
         "out_tokens": r.out_tokens,
         "latency_ms": latency_ms,
     }
+    if deterministic:
+        meta["deterministic"] = False
     return text, meta
