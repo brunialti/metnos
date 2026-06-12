@@ -4801,6 +4801,13 @@ def _invoke_builtin_handler(tool_name: str, args: dict, *,
     handler = _BUILTIN_TOOL_HANDLERS.get(tool_name)
     if handler is None:
         return {"ok": False, "error": f"unknown builtin: {tool_name}"}
+    # Guard anti-costo run schedulati (12/6/2026): issue già trattate in
+    # `issue_qa` NON ri-entrano negli step LLM-costosi (classify/describe/
+    # extract → fino a frontier). Deterministico §7.9, fail-open §2.8,
+    # no-op sui turni interattivi. Vedi runtime/treated_issues_guard.py.
+    from treated_issues_guard import (
+        filter_treated_issue_entries, annotate_skipped_known)
+    args, _treated_info = filter_treated_issue_entries(tool_name, args)
     import inspect as _inspect
     try:
         sig = _inspect.signature(handler)
@@ -4816,7 +4823,7 @@ def _invoke_builtin_handler(tool_name: str, args: dict, *,
         kwargs["turn_id"] = turn_id or ""
     # Se signature ha **_ catch-all, possiamo passare safe.
     try:
-        return handler(args, **kwargs)
+        return annotate_skipped_known(handler(args, **kwargs), _treated_info)
     except TypeError as te:
         # Fallback: prova senza kwargs (handler legacy che vuole solo args)
         if "actor" in str(te) or "channel" in str(te):
@@ -8018,7 +8025,14 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
             # url+title+snippet. _append_search_results_if_any aggiunge i link
             # come fonti DOPO l'abstract, ristretti agli URL effettivamente
             # processati da read_urls_html (body_text >= 100 char).
+            # Guard anti-costo run schedulati (12/6/2026): issue già
+            # trattate in issue_qa escluse PRIMA del costo LLM/frontier.
+            from treated_issues_guard import (
+                filter_treated_issue_entries as _ti_filter,
+                annotate_skipped_known as _ti_annotate)
+            args, _ti_info = _ti_filter(chosen_name, args)
             obs = handle_describe_entries(args, verbose=verbose)
+            _ti_annotate(obs, _ti_info)
             # ADR 0153 (20/5/2026 v6): auto-remediation generalizzata.
             # Se l'observation ha error_class noto al registry
             # `auto_remediation.REMEDIATIONS`, il runtime invoca il
@@ -8054,7 +8068,14 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
         # Arricchisce ogni entry con un campo `<dimension>` etichettato; non
         # partiziona — la partizione si fa con filter_entries downstream.
         if chosen_name == "classify_entries":
+            # Guard anti-costo run schedulati (12/6/2026): vedi
+            # runtime/treated_issues_guard.py (deterministico §7.9).
+            from treated_issues_guard import (
+                filter_treated_issue_entries as _ti_filter,
+                annotate_skipped_known as _ti_annotate)
+            args, _ti_info = _ti_filter(chosen_name, args)
             obs = handle_classify_entries(args, verbose=verbose)
+            _ti_annotate(obs, _ti_info)
             step.result = obs
             # Offload a scratchpad per non leakare le entries arricchite.
             obs_for_history = obs

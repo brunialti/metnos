@@ -412,11 +412,18 @@ def _run_user_query_callback(record: dict) -> str:
     log_msg = []
     try:
         from agent_runtime import run_turn
-        log = run_turn(
-            record["query"],
-            actor=record["actor"],
-            channel=record["channel"],
-        )
+        # Scope turno SCHEDULATO (12/6/2026): attiva il guard deterministico
+        # `treated_issues_guard` — i work-item già trattati (issue in
+        # `issue_qa`) non ri-entrano negli step LLM-costosi (classify/
+        # describe/extract → frontier). Solo run ricorrenti: i turni
+        # interattivi restano intoccati. Reset garantito dal context manager.
+        from treated_issues_guard import scheduled_turn_scope
+        with scheduled_turn_scope():
+            log = run_turn(
+                record["query"],
+                actor=record["actor"],
+                channel=record["channel"],
+            )
         msg = (log.final_message or "").strip()
         if not msg:
             return f"[{record['name']}] run_turn ok ma empty final_message (kind={getattr(log,'final_kind',None)})"
