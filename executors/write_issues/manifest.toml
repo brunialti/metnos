@@ -9,12 +9,12 @@ revertible  = false
 lifecycle   = "active"
 
 [description]
-it = "SCOPO: salva nel db LOCALE lo stato delle issue (bozza, classificazione); NON posta su GitHub. PATTERN: write_issues(entries=[{repo=\"o/r\", number=12, status=\"prepared\"}]). NON: postare -> send_messages_github; leggere -> read_issues. OUT: results=[{repo, number, status, id}]."
-en = "SCOPO: save issue treatment state in the LOCAL db (draft, classification); does NOT post to GitHub. PATTERN: write_issues(entries=[{repo=\"o/r\", number=12, status=\"prepared\"}]). NON: post -> send_messages_github; read -> read_issues. OUT: results=[{repo, number, status, id}]."
+it = "SCOPO: salva nel db LOCALE lo stato delle issue; gia' registrata senza avanzamento di stato = saltata. PATTERN: write_issues(entries=[{repo=\"o/r\",number=12,status=\"prepared\"}]). NON: postare -> send_messages_github. OUT: results=[{repo,number,status,id,created}], skipped_known=N."
+en = "SCOPO: save issue treatment state in the LOCAL db; already registered with no status advance = skipped. PATTERN: write_issues(entries=[{repo=\"o/r\",number=12,status=\"prepared\"}]). NON: post -> send_messages_github. OUT: results=[{repo,number,status,id,created}], skipped_known=N."
 
 [code]
 files  = ["write_issues.py"]
-digest = "sha256:0bdd498b24a510cf2b6d03305ad8ca87bdde2e479ce57c03058828aed7880140"
+digest = "sha256:d9f3805537c4dd9c0ed3894e8d563c49cebefe6f1d0db0650780e9d6d6252e70"
 
 [args]
 type     = "object"
@@ -44,6 +44,12 @@ type = "string"
 [args.properties.classification.description]
 it = "Default top-level: classificazione (es. 'bug', 'question', 'support') applicata alle entry che non la dichiarano."
 en = "Top-level default: classification (e.g. 'bug', 'question', 'support') applied to entries that do not declare it."
+
+[args.properties.overwrite]
+type = "boolean"
+[args.properties.overwrite.description]
+it = "Default false: una issue gia' registrata si scrive solo se lo status AVANZA (new<prepared<approved<posted). Con true forza la ri-scrittura."
+en = "Default false: an already-registered issue is written only if status ADVANCES (new<prepared<approved<posted). With true forces the rewrite."
 
 # ── Tests di nascita (offline: nessun accesso allo store) ────────────────
 [[tests]]

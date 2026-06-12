@@ -17,11 +17,23 @@ Contratto:
             status='posted')` su entries pipate da read_issues.
           `issue_number` accettato come alias di `number` (coerenza §2.10
           con l'output di read_issues).
-    returns: {ok, ok_count, results:[{repo, number, status, id}], errors:[...]}
+          + `overwrite` (bool, default false): forza la ri-scrittura di un
+            record gia' presente anche senza avanzamento di stato.
+    returns: {ok, ok_count, created_count, skipped_known,
+              results:[{repo, number, status, id, created}],
+              skipped:[{repo, number, status, reason}], errors:[...]}
 
 Macchina a stati (delegata allo store): status='approved' senza
 accepted_reply promuove la bozza (draft_reply -> accepted_reply);
 status='posted' fissa posted_at la prima volta (idempotente).
+
+Notify-once / dedup §2.8 (12/6/2026): un'issue GIA' registrata nello store
+(chiave repo+issue_number) viene SCRITTA solo se la entry AVANZA la macchina
+a stati (new < prepared < approved < posted) o se `overwrite=true`. Una
+ri-registrazione allo stesso stato (es. run schedulato ogni 30m sulla stessa
+issue ancora aperta) e' un no-op contato in `skipped_known` — ok_count conta
+SOLO gli elementi realmente scritti, cosi' il runtime/scheduler vede «0
+nuovi» e non ri-notifica (idempotenza intrinseca, indipendente dal prompt).
 """
 from __future__ import annotations
 
@@ -38,6 +50,10 @@ from messages import get as _msg  # noqa: E402
 import github_issue_qa_store as _store  # noqa: E402
 
 _STATUSES = {"new", "prepared", "approved", "posted"}
+
+# Rank della macchina a stati: una scrittura su record esistente procede
+# SOLO se avanza lo stato (vedi docstring «Notify-once / dedup §2.8»).
+_STATUS_RANK = {"new": 0, "prepared": 1, "approved": 2, "posted": 3}
 
 
 def _embed(text: str):
@@ -64,8 +80,9 @@ def invoke(args):
     top_repo = (args.get("repo") or "").strip() or None
     top_status = args.get("status")
     top_class = args.get("classification")
+    top_overwrite = bool(args.get("overwrite") or False)
 
-    results, errors = [], []
+    results, errors, skipped = [], [], []
     for i, e in enumerate(entries):
         if not isinstance(e, dict):
             errors.append({"index": i, "error": _msg("ERR_ARG_NOT_DICT", arg="entry")})
@@ -89,6 +106,25 @@ def invoke(args):
             errors.append({"index": i,
                            "error": _msg("ERR_ARG_INVALID", arg="status", reason=str(status))})
             continue
+        # Dedup / notify-once §2.8: record gia' nello store + nessun
+        # avanzamento di stato richiesto → no-op (skipped_known). Lo
+        # scheduler che ri-vede la stessa issue aperta ogni 30m ottiene
+        # ok_count=0 e non ri-notifica. `overwrite=true` forza.
+        overwrite = bool(e.get("overwrite", top_overwrite))
+        existing = None
+        try:
+            recs = _store.list_records(repo=repo, numbers=[number], limit=1)
+            existing = recs[0] if recs else None
+        except Exception:
+            existing = None
+        if existing is not None and not overwrite:
+            req_rank = _STATUS_RANK.get(status or "new", 0)
+            cur_rank = _STATUS_RANK.get(existing.get("status") or "new", 0)
+            if req_rank <= cur_rank:
+                skipped.append({"repo": repo, "number": number,
+                                "status": existing.get("status") or "new",
+                                "reason": "already_treated"})
+                continue
         # Embedding best-effort dal testo dell'issue (question_text o title).
         question_text = e.get("question_text")
         emb = _embed(question_text or e.get("title") or "")
@@ -104,7 +140,8 @@ def invoke(args):
                 embedding=emb,
             )
             results.append({"repo": repo, "number": number,
-                            "status": status or "new", "id": rid})
+                            "status": status or "new", "id": rid,
+                            "created": existing is None})
         except Exception as ex:
             errors.append({"index": i, "repo": repo, "number": number,
                            "error": _msg("ERR_ARG_INVALID", arg="entry", reason=type(ex).__name__)})
@@ -112,8 +149,11 @@ def invoke(args):
     return {
         "ok": len(errors) == 0,
         "ok_count": len(results),
+        "created_count": sum(1 for r in results if r.get("created")),
+        "skipped_known": len(skipped),
         "fail_count": len(errors),
         "results": results,
+        "skipped": skipped,
         "errors": errors,
     }
 
