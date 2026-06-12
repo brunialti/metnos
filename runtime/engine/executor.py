@@ -1244,16 +1244,41 @@ class Executor:
             # Universal §7.3: describe_entries dopo step con attachments
             # immagini è ridondante (thumbnail parlano da soli). Skip per
             # risparmiare 20-30s LLM call e ridurre rischio timeout client.
+            # Universal §7.3 (12/6/2026, bug live T1/T2 «chi è enrollato»): un
+            # producer che emette `final_message_hint` ha GIÀ la presentazione
+            # canonica del proprio output (es. get_persons enumera il registro
+            # name+n_examples). Passare quell'enumerazione al describe default
+            # (by_importance = segnale-vs-rumore pensato per mail) è
+            # distruttivo: le entità anagrafiche venivano «scartate come
+            # rumore». Skip deterministico §7.9: il hint diventa `summary`,
+            # così il template finale `${stepN.summary}` si risolve col testo
+            # del producer — vale anche per i piani cachati (fastpath/autopath).
+            # NON si applica se il describe porta direttive ESPLICITE
+            # (style/context/group_by): lì la sintesi LLM è richiesta.
             if step.tool == "describe_entries" and result.steps:
                 prev = result.steps[-1].result if isinstance(result.steps[-1].result, dict) else {}
+                skip_reason = ""
+                skip_result = {"ok": True}
                 if isinstance(prev.get("attachments"), list) and prev["attachments"]:
+                    skip_reason = "attachments_present"
                     log.info("Executor: skip describe_entries (prev step has %d attachments)",
                               len(prev["attachments"]))
+                else:
+                    _hint = prev.get("final_message_hint")
+                    _explicit = any(args.get(k) for k in
+                                    ("style", "context", "group_by"))
+                    if isinstance(_hint, str) and _hint.strip() and not _explicit:
+                        skip_reason = "final_message_hint_present"
+                        skip_result["summary"] = _hint.strip()
+                        log.info("Executor: skip describe_entries (prev step "
+                                 "self-presents via final_message_hint)")
+                if skip_reason:
+                    skip_result["skipped"] = skip_reason
                     lat_ms = 0
                     step_idx = len(result.steps) + 1
                     result.steps.append(StepRun(
                         step_idx=step_idx, tool=step.tool, args=args,
-                        result={"ok": True, "skipped": "attachments_present"},
+                        result=skip_result,
                         ok=True, latency_ms=lat_ms,
                     ))
                     continue

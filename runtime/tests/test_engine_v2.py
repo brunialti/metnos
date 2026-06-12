@@ -358,6 +358,62 @@ class TestExecutorPlaceholders(unittest.TestCase):
             StepSpec(tool="final_answer", args={})])
         self.assertEqual(_dropped_required_verbs(fw_single, "crea un evento domani"), set())
 
+    def _run_enrollment_plan(self, describe_args):
+        """get_persons → describe_entries(describe_args) → final_answer con
+        invoke fittizio: get_persons ritorna entries + final_message_hint
+        (presentazione canonica), describe_entries (se invocato) un summary
+        LLM-mock. Ritorna (run, describe_invocato)."""
+        from engine.executor import Executor
+        from engine.types import Framework, StepSpec
+        hint = ("Persone enrolled (2):\n- Alice (4 esempi)\n"
+                "- Bob (2 esempi)")
+        called = {"describe": False}
+
+        def _fake_invoke(name, a):
+            if name == "get_persons":
+                return {"ok": True,
+                        "entries": [{"name": "Alice", "n_examples": 4},
+                                     {"name": "Bob", "n_examples": 2}],
+                        "n_entries": 2,
+                        "final_message_hint": hint}
+            if name == "describe_entries":
+                called["describe"] = True
+                return {"ok": True, "summary": "riassunto LLM"}
+            return {"ok": True}
+
+        eng = Executor(invoke_executor=_fake_invoke)
+        fw = Framework(
+            steps=[StepSpec(tool="get_persons", args={}),
+                   StepSpec(tool="describe_entries", args=dict(describe_args)),
+                   StepSpec(tool="final_answer", args={})],
+            final_message="${step2.summary}")
+        run = eng.run(fw, query="chi e' enrollato")
+        return run, called["describe"], hint
+
+    def test_describe_skip_on_final_message_hint(self):
+        # Bug live 12/6/2026 T1/T2: l'enumerazione del registro persone
+        # finiva nel describe by_importance → «4 scartate come rumore».
+        # Producer con final_message_hint → describe default SKIPPATO,
+        # il hint diventa summary e il template ${step2.summary} si risolve.
+        run, describe_called, hint = self._run_enrollment_plan(
+            {"from_step": 1})
+        self.assertFalse(describe_called,
+                         "describe_entries invocato nonostante il hint")
+        self.assertEqual(run.steps[1].result.get("skipped"),
+                         "final_message_hint_present")
+        self.assertEqual(run.final_text, hint)
+        self.assertEqual(run.final_kind, "answer")
+
+    def test_describe_runs_with_explicit_directives(self):
+        # Direttive esplicite (style/context/group_by) = sintesi LLM
+        # richiesta dalla query → NIENTE skip.
+        run, describe_called, _ = self._run_enrollment_plan(
+            {"from_step": 1, "style": "by_relevance",
+             "context": "riassumi il registro"})
+        self.assertTrue(describe_called,
+                        "describe_entries con style esplicito skippato")
+        self.assertEqual(run.final_text, "riassunto LLM")
+
     def test_keep_required_unresolved_errors(self):
         # Placeholder su arg REQUIRED → NON droppato (resta unresolved error,
         # executor non invocato).
