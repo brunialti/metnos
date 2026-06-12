@@ -9,8 +9,10 @@
 # sonda) e SOLO se tutto è verde lo mette in produzione (merge su main + restart).
 # Modello: Fable fino al 22/6/2026 (gratis), poi Opus 4.8. Silenzioso: tutto su log.
 #
-#   Crontab (ora locale Europe/Rome):
-#     0 5 * * * /opt/metnos/scripts/nightly_fable_audit.sh
+#   Crontab (ora locale Europe/Rome). Invocato via 'bash' cosi' un eventuale
+#   bit +x perso non lo uccide in silenzio (bug 11-12/6/2026: lo script aveva
+#   perso +x dopo un edit -> cron falliva muto, una settimana di notti a vuoto):
+#     0 5 * * * bash /opt/metnos/scripts/nightly_fable_audit.sh
 set -uo pipefail
 
 REPO="${METNOS_INSTALL_ROOT:-/opt/metnos}"
