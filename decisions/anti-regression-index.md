@@ -96,6 +96,7 @@
 - **i18n pipeline strutturale** (ADR 0152): subset chiavi nel synt stage 5; daemon `_materialize_auto_synth_stubs` con `auto_translated` flag.
 - **Thinking-leak scrubber** (ADR 0102): `_scrub_thinking_leak` in `agent_runtime.py` ramo `final_kind=="answer"`.
 - **Describe_entries max_tokens adattivo**: scala con N entries (override esplicito via arg).
+- **Describe testo DETERMINISTICO (12/6/2026)**: `llm_helpers._call_llm_proc` — processo `llama-completion` monouso (stesso GGUF via `/props`, template via `/apply-template` enable_thinking=false, temp=0 seed §11); il llama-server condiviso NON e' riproducibile (stato di processo, logits ±0.1, cross-backend). Opt-in `call_llm(deterministic=True)` da `describe_entries` (gate `METNOS_DESCRIBE_DETERMINISTIC`, default ON); fallback HTTP onesto `meta.deterministic=false`. Guard `tests/test_describe_determinism.py`. Companion fix: `max_query_chars` pass-through (bundle 24K non piu' troncato a 12K a meta' JSON).
 
 **Telos / introspettiva**
 - **Alignment Engine v1.3** (ADR 0157): `runtime/alignment_engine.py`. Formula `expected = (α·top + γ·rest)·urgency·confidence - bother_cost`. CLI `--backfill`/`--recompose`.
