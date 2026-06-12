@@ -858,6 +858,13 @@ def is_query_specific(framework_json: str) -> bool:
         args = step.get("args") or {}
         if not isinstance(args, dict):
             continue
+        # Step iniettato dalla clausola «ordina/raggruppa per X»
+        # (ordering_clause.apply_to_framework): la chiave di presentazione
+        # deriva dalla query → il piano vale solo per quella query esatta
+        # (0a-only); una query SIMILE senza clausola non deve ereditare
+        # l'ordinamento via cosine 0b.
+        if args.get("_ordering_clause"):
+            return True
         for k in CONTENT_ARG_KEYS:
             v = args.get(k)
             for item in (v if isinstance(v, list) else [v]):

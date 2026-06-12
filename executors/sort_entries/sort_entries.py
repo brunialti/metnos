@@ -47,6 +47,23 @@ def invoke(args):
         if not isinstance(top, int) or top < 0:
             return {"ok": False, "error": _msg("ERR_ARG_NOT_INT", arg="top")}
 
+    # §2.4 robustezza al confine NL→determinismo: `by` arriva spesso come
+    # TERMINE UTENTE («mailbox», «mittente», «dimensione») e non come campo
+    # reale delle entries («account», «from», «size»). Se `by` non esiste in
+    # NESSUNA entry, risoluzione deterministica condivisa
+    # (runtime/ordering_clause.resolve_field: esatto > famiglie sinonimi
+    # chiuse > substring). Fallisce → comportamento invariato (tutte le
+    # entry "missing" in coda, §2.8 onesto via sorted_by nel risultato).
+    requested_by = by
+    if entries and not any(isinstance(e, dict) and by in e for e in entries):
+        try:
+            from ordering_clause import resolve_field as _rf
+            _resolved = _rf(by, entries)
+        except Exception:
+            _resolved = None
+        if _resolved:
+            by = _resolved
+
     # Chiave di ordinamento. Le entry senza il campo / con valore non
     # comparabile finiscono SEMPRE IN CODA, a prescindere da desc (CLAUDE.md
     # §2.4). Per ottenerlo NON usiamo reverse= sull'intera lista (invertirebbe
@@ -86,6 +103,10 @@ def invoke(args):
         "sorted_by": by,
         "desc": desc,
     }
+    if by != requested_by:
+        # Trasparenza §2.8: la chiave utente è stata risolta su un campo
+        # reale diverso (es. «mailbox» → account).
+        out["requested_by"] = requested_by
     if truncated:
         # 2.7 truncation visibility: dichiarare il taglio come fatto oggettivo.
         # `truncated_intentional` segnala al runtime che il cap e' user-richiesto

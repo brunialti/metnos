@@ -16,7 +16,7 @@ en = "SCOPO: sort entries by key (vectorial). PATTERN: sort_entries(entries=[...
 
 [code]
 files  = ["sort_entries.py"]
-digest = "sha256:0b31649d83e76f4e4a625b7e4306b69859f62cda77c22e6e3937eb4a6fb0c2df"
+digest = "sha256:9246163ef4b07254d3279772699f0e96b4266f03af4dab9c07d345e0fbea0723"
 
 [args]
 type     = "object"
@@ -33,8 +33,8 @@ en = "List of homogeneous dicts to sort. Typically passed via from_step=N (the r
 type        = "string"
 
 [args.properties.by.description]
-it = "Nome del campo per cui ordinare. Es. 'size', 'mtime', 'file_count', 'total_bytes', 'date'. Funziona su qualsiasi campo numerico o stringa presente nelle entries."
-en = "Name of the field by which to sort. E.g. 'size', 'mtime', 'file_count', 'total_bytes', 'date'. Works on any numeric field or string present in the entries."
+it = "Nome del campo per cui ordinare. Es. 'size', 'mtime', 'file_count', 'total_bytes', 'date'. Funziona su qualsiasi campo numerico o stringa presente nelle entries. Un termine utente ('mailbox', 'mittente') viene risolto sul campo reale ('account', 'from')."
+en = "Name of the field by which to sort. E.g. 'size', 'mtime', 'file_count', 'total_bytes', 'date'. Works on any numeric field or string present in the entries. A user term ('mailbox', 'sender') is resolved to the real field ('account', 'from')."
 
 [args.properties.desc]
 type        = "boolean"

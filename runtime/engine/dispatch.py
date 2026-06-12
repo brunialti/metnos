@@ -120,6 +120,33 @@ def _maybe_record_fastpath(query: str, intent: Intent,
         log.warning("fastpath.record_success fallita (best-effort): %r", ex)
 
 
+def _apply_ordering_clause(framework: Framework, query: str,
+                           catalog: Optional[list]) -> Framework:
+    """Normalizzazione deterministica «ordina/raggruppa per X» (§7.9,
+    bug live 12/6/2026 T38/T39): qualunque layer abbia prodotto il piano
+    (fastpath/autopath/engine/recovery), la clausola di ordinamento della
+    query CORRENTE viene tradotta in uno step `sort_entries(by=X)` +
+    `group_by=X` sul describe terminale — l'output riflette la chiave
+    richiesta invece del raggruppamento intrinseco per tema. Applicata nel
+    funnel di dispatch (non nel proposer): un piano cachato/ereditato resta
+    un template di STRUTTURA, la clausola si ri-deriva dalla query a ogni
+    esecuzione (stessa filosofia di resolve_query_canonical_args).
+    Idempotente, no-op senza clausola. Best-effort: mai blocca il turno."""
+    try:
+        from ordering_clause import apply_to_framework
+        names = {getattr(e, "name", None) for e in (catalog or [])}
+        names.discard(None)
+        normalized = apply_to_framework(framework, query,
+                                        catalog_names=names or None)
+        if normalized is not framework:
+            log.info("[ordering_clause] piano normalizzato: %s",
+                     [s.tool for s in normalized.steps])
+        return normalized
+    except Exception as ex:
+        log.warning("ordering_clause noop (best-effort): %r", ex)
+        return framework
+
+
 def _is_get_inputs_misroute(framework: Framework) -> bool:
     """True se l'UNICO step-executor del framework (escluso final_answer) è
     get_inputs → non-decomposizione (il planner chiede invece di agire). Vedi
@@ -225,6 +252,12 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
                 log.info("[L0 fastpath] hit (%s, sim=%.2f): %s",
                           fp_hit.match_kind, fp_hit.similarity,
                           fp_hit.canonical_text)
+            # Clausola «ordina/raggruppa per X» della query CORRENTE: il
+            # piano cachato è un template — la clausola si ri-applica a
+            # ogni esecuzione (T39 12/6/2026: il piano memoizzato ignorava
+            # «ordinate per mailbox»; self-healing senza invalidare la riga).
+            fp_hit.framework = _apply_ordering_clause(
+                fp_hit.framework, query, catalog)
             run = executor.run(fp_hit.framework, query=query,
                                 runtime_ctx=runtime_ctx,
                                 remediate_args_cb=remediate_args_cb,
@@ -248,6 +281,12 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
         if ap_hit is not None:
             if verbose:
                 log.info("[L1 autopath] hit skill=%s uses=%d", ap_hit.skill_id, ap_hit.uses)
+            # Clausola di ordinamento della query corrente (vedi sopra):
+            # la skill di cluster è un template, la clausola NON vi è
+            # incorporata (causa-radice T39: l'hit L1 della famiglia
+            # read|messages ignorava «ordinate per mailbox»).
+            ap_hit.framework = _apply_ordering_clause(
+                ap_hit.framework, query, catalog)
             run = executor.run(ap_hit.framework, query=query,
                                 runtime_ctx=runtime_ctx,
                                 remediate_args_cb=remediate_args_cb,
@@ -383,6 +422,10 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
         except Exception as ex:
             log.warning("output_policy normalize_terminal noop: %r", ex)
 
+    # Clausola «ordina/raggruppa per X» (§7.9): garantita a valle del
+    # proposer — l'LLM non è tenuto a tradurla, la traduzione è codice.
+    framework = _apply_ordering_clause(framework, query, catalog)
+
     # Execute
     run = executor.run(framework, query=query,
                         runtime_ctx=runtime_ctx,
@@ -412,6 +455,8 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
                 pool=pool_names, proposer=proposer,
                 llm_call=llm_call_wise, lang=lang, catalog=catalog)
             if framework_alt is not None:
+                framework_alt = _apply_ordering_clause(
+                    framework_alt, query, catalog)
                 run2 = executor.run(framework_alt, query=query,
                                      runtime_ctx=runtime_ctx,
                                      remediate_args_cb=remediate_args_cb,

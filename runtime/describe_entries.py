@@ -224,6 +224,89 @@ def _maybe_append_link_section(text: str, entries: list,
     return text.rstrip() + "\n\n" + block
 
 
+# Direttiva di raggruppamento ESPLICITO (12/6/2026, clausola «ordina/
+# raggruppa per X» — vedi runtime/ordering_clause.py): quando il chiamante
+# passa `group_by`, la chiave richiesta dall'utente VINCE sul raggruppamento
+# intrinseco per affinità/tema dei prompt by_importance/by_relevance.
+# Deterministica §7.9: la STRUTTURA (campo risolto, sezioni, ordine, conteggi)
+# è calcolata in codice e prescritta al LLM; al modello resta solo la sintesi
+# del contenuto di ciascuna sezione. Soglia sezioni: pochi valori distinti →
+# sezioni esplicite; molti (chiave quasi-unica, es. data) → presentazione
+# nell'ordine dato citando la chiave.
+_GROUP_SECTIONS_MAX = 12
+
+
+def _build_group_directive(key_text: str, entries: list) -> str:
+    """Direttiva prompt deterministica per `group_by`. Risolve la chiave
+    utente nel campo reale (ordering_clause.resolve_field); se nessun campo
+    plausibile (chiave concettuale, es. 'tema') prescrive il raggruppamento
+    per quel concetto. IT/EN come _LINK_SECTION_TITLE (direttiva LLM-facing,
+    non user-facing: fuori dal vincolo i18n DB §11)."""
+    lang = (DEFAULT_LANG or "it").split("-")[0].lower()
+    try:
+        from ordering_clause import resolve_field
+        fld = resolve_field(key_text, entries)
+    except Exception:
+        fld = None
+    if fld is None:
+        if lang == "it":
+            return (
+                f"RAGGRUPPAMENTO RICHIESTO DALL'UTENTE — vince su ogni "
+                f"altra istruzione di raggruppamento (affinita'/tema).\n"
+                f"DEVI: organizzare il riassunto in sezioni per "
+                f"'{key_text}'.\n"
+                f"NON DEVI: raggruppare per un criterio diverso da "
+                f"'{key_text}'.")
+        return (
+            f"USER-REQUESTED GROUPING — overrides any other grouping "
+            f"instruction (affinity/topic).\n"
+            f"YOU MUST: organize the summary into sections by "
+            f"'{key_text}'.\nYOU MUST NOT: group by any other criterion.")
+    ordered_values: list[str] = []
+    counts: dict[str, int] = {}
+    for e in entries:
+        if not isinstance(e, dict):
+            continue
+        v = e.get(fld)
+        v = "?" if v in (None, "") else str(v)
+        if v not in counts:
+            ordered_values.append(v)
+        counts[v] = counts.get(v, 0) + 1
+    n_vals = len(ordered_values)
+    if 2 <= n_vals <= _GROUP_SECTIONS_MAX and n_vals < len(entries):
+        sections = ", ".join(f"'{v}' ({counts[v]})" for v in ordered_values)
+        if lang == "it":
+            return (
+                f"RAGGRUPPAMENTO RICHIESTO DALL'UTENTE — vince su ogni "
+                f"altra istruzione di raggruppamento (affinita'/tema).\n"
+                f"DEVI: organizzare il riassunto in {n_vals} sezioni, una "
+                f"per ciascun valore del campo '{fld}', in quest'ordine: "
+                f"{sections}. Ogni sezione inizia con il valore in "
+                f"grassetto.\n"
+                f"NON DEVI: raggruppare per tema ne' mescolare nella stessa "
+                f"sezione entries con valori diversi di '{fld}'.")
+        return (
+            f"USER-REQUESTED GROUPING — overrides any other grouping "
+            f"instruction (affinity/topic).\n"
+            f"YOU MUST: organize the summary into {n_vals} sections, one "
+            f"per value of field '{fld}', in this order: {sections}. "
+            f"Start each section with the value in bold.\n"
+            f"YOU MUST NOT: group by topic or mix entries with different "
+            f"'{fld}' values in the same section.")
+    if lang == "it":
+        return (
+            f"ORDINAMENTO RICHIESTO DALL'UTENTE — vince su ogni altra "
+            f"istruzione di raggruppamento.\n"
+            f"DEVI: presentare le entries nell'ordine dato (sono gia' "
+            f"ordinate per '{fld}'), citando il valore di '{fld}'.\n"
+            f"NON DEVI: riordinarle ne' raggrupparle per tema.")
+    return (
+        f"USER-REQUESTED ORDERING — overrides any other grouping "
+        f"instruction.\nYOU MUST: present the entries in the given order "
+        f"(already sorted by '{fld}'), citing the '{fld}' value.\n"
+        f"YOU MUST NOT: reorder them or group by topic.")
+
+
 def _detect_kind(entries: list, hint: str | None) -> str:
     """Determina il `kind` semantico delle entries: hint esplicito >
     campo `kind` uniforme nelle entries > euristica > 'generic'."""
@@ -296,6 +379,15 @@ DESCRIBE_ENTRIES_TOOL = {
                     "type": "string",
                     "description": "Per style='by_relevance': la richiesta originale "
                                    "dell'utente, da usare come metro di pertinenza.",
+                },
+                "group_by": {
+                    "type": "string",
+                    "description": "Chiave di raggruppamento RICHIESTA "
+                                   "dall'utente (es. 'mailbox', 'mittente', "
+                                   "'size'): l'output viene organizzato in "
+                                   "sezioni/ordine per quella chiave e VINCE "
+                                   "sul raggruppamento intrinseco per tema. "
+                                   "Risolta sul campo reale delle entries.",
                 },
                 "data_kind": {
                     "type": "string",
@@ -383,6 +475,7 @@ def handle_describe_entries(args, *, verbose: bool = False) -> dict:
         else:
             max_tokens = 400
     prompt_override = (args or {}).get("prompt_override") or h.get("prompt_override")
+    group_by = (args or {}).get("group_by") or h.get("group_by") or ""
     fmt = (args or {}).get("format") or h.get("format") or "markdown"
     tier = (args or {}).get("tier") or h.get("tier") or "auto"
     # ADR 0111 (7/5/2026): Level 2 — describe_entries deve sapere se la
@@ -499,6 +592,13 @@ def handle_describe_entries(args, *, verbose: bool = False) -> dict:
         prompt = health_directive + "\n\n" + prompt
     if fmt_directive:
         prompt = prompt + "\n\n" + fmt_directive
+    # Raggruppamento ESPLICITO richiesto dall'utente: appeso per ULTIMO,
+    # vince sul raggruppamento intrinseco del prompt preset (affinità/tema).
+    if group_by and visible_entries:
+        group_directive = _build_group_directive(str(group_by),
+                                                 visible_entries)
+        if group_directive:
+            prompt = prompt + "\n\n" + group_directive
 
     try:
         # max_query_chars: il budget di pack (_DESCRIBE_MAX_CHARS) deve
@@ -545,6 +645,8 @@ def handle_describe_entries(args, *, verbose: bool = False) -> dict:
         "format": fmt,
         **meta,
     }
+    if group_by:
+        out["group_by"] = str(group_by)
     if truncated_describe:
         out.update({
             "truncated": True,
