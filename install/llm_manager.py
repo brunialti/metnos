@@ -530,6 +530,74 @@ WantedBy=default.target
     unit_path.write_text(unit, encoding="utf-8")
 
 
+def _user_unit_dir() -> Path:
+    """Directory delle systemd USER unit (stessa di phase5: no sudo)."""
+    return Path.home() / ".config" / "systemd" / "user"
+
+
+def _endpoint_health(endpoint: str, *, timeout_s: float = 3.0) -> bool:
+    """200 su <endpoint>/health (urllib, nessuna dipendenza extra)."""
+    try:
+        with _ur.urlopen(f"{endpoint.rstrip('/')}/health",
+                         timeout=timeout_s) as r:
+            return r.status == 200
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def install_user_unit(unit_src: Path, *, endpoint: str,
+                      wait_s: int = 180) -> dict:
+    """Installa+abilita+avvia metnos-llm.service come USER unit (no sudo,
+    coerente con phase5). Flag E2E 12/6/2026: prima l'unit veniva solo
+    SCRITTA e il 1° turno falliva finche' l'utente non avviava il server
+    a mano. Esiti onesti §2.8: ogni campo riflette cio' che e' successo.
+    Se l'endpoint risponde GIA', non avvia un secondo server (il bind
+    fallirebbe): l'unit resta installata per i prossimi boot.
+    Ritorna {installed, enabled, started, healthy, reason}."""
+    out = {"installed": False, "enabled": False, "started": False,
+           "healthy": False, "reason": ""}
+    if not shutil.which("systemctl"):
+        out["reason"] = ("systemctl assente (no systemd): avvia il server a "
+                         f"mano (ExecStart in {unit_src})")
+        return out
+    dest = _user_unit_dir() / unit_src.name
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(unit_src, dest)
+    out["installed"] = True
+    if _endpoint_health(endpoint):
+        out["healthy"] = True
+        out["reason"] = (f"endpoint gia' attivo su {endpoint}: non avvio un "
+                         "secondo server (unit installata per i prossimi boot)")
+        return out
+    try:
+        subprocess.run(["systemctl", "--user", "daemon-reload"],
+                       capture_output=True, text=True, timeout=30)
+        r = subprocess.run(
+            ["systemctl", "--user", "enable", "--now", dest.name],
+            capture_output=True, text=True, timeout=60)
+    except (subprocess.SubprocessError, OSError) as e:
+        out["reason"] = f"systemctl --user fallito: {e}"
+        return out
+    if r.returncode != 0:
+        out["reason"] = ("enable --now fallito: "
+                         + (r.stderr or "").strip()[:200])
+        return out
+    out["enabled"] = True
+    out["started"] = True
+    # Attesa onesta del caricamento modello (GGUF da GB: puo' volerci tempo).
+    import time as _t
+    deadline = _t.time() + max(0, wait_s)
+    while _t.time() < deadline:
+        if _endpoint_health(endpoint):
+            out["healthy"] = True
+            return out
+        _t.sleep(3)
+    out["reason"] = (f"servizio avviato ma {endpoint}/health non risponde "
+                     f"entro {wait_s}s (modello in caricamento? "
+                     "`systemctl --user status metnos-llm`)")
+    return out
+
+
 def health_check(llama_bin: Path, model_file: Path, *, port: int, ngl: int,
                  timeout_s: int = 60) -> bool:
     """Avvia llama-server (breve) e fa il ping di /health. Stoppa subito.
@@ -594,7 +662,8 @@ def provision(plan: Plan, *, dry_run: bool = True, assume_yes: bool = False) -> 
     emit(f"Scrivere {tiers} (tier fast/middle/wise → llamacpp {model_file.name} "
          f"@ {plan.endpoint})")
     # 4) servizio
-    emit(f"Avviare llama-server (systemd unit metnos-llm) su {plan.endpoint}")
+    emit(f"Installare+abilitare+avviare llama-server (systemd USER unit "
+         f"metnos-llm, no sudo) su {plan.endpoint}")
     # 5) verifica
     emit(f"Health-ping {plan.endpoint}/health + completion di prova")
 
@@ -639,22 +708,39 @@ def provision(plan: Plan, *, dry_run: bool = True, assume_yes: bool = False) -> 
     out["tiers_written"] = str(tiers)
     print(f"  ✓ {tiers}")
 
-    # 4) systemd unit (GPU offload pieno per il servizio reale)
-    print("[4/5] systemd unit")
+    # 4) systemd USER unit: installata+abilitata+AVVIATA (managed install =
+    #    server in esercizio al 1° turno, non solo file scritto).
+    print("[4/5] servizio (systemd user unit)")
     ngl = 0 if plan.backend == "cpu" else 999
     unit = llama.parent / "metnos-llm.service"
     _write_systemd_unit(binp, model_file, plan.endpoint, ngl, unit)
     out["systemd_unit"] = str(unit)
-    print(f"  ✓ {unit}  (abilita: sudo cp {unit} /etc/systemd/system/ && "
-          "sudo systemctl enable --now metnos-llm)")
+    wait_s = int(os.environ.get("METNOS_LLM_START_TIMEOUT_S", "180"))
+    svc = install_user_unit(unit, endpoint=plan.endpoint, wait_s=wait_s)
+    out["service"] = svc
+    if svc["healthy"]:
+        print(f"  ✓ llama-server in salute su {plan.endpoint}"
+              + (f" ({svc['reason']})" if svc["reason"] else ""))
+    else:
+        print(f"  ! servizio NON in salute: {svc['reason']}")
+        print("    riprova: systemctl --user enable --now metnos-llm")
 
-    # 5) health-check (CPU, porta di prova → non contende la GPU di produzione)
-    print("[5/5] health-check (CPU, porta 8084)")
-    healthy = health_check(binp, model_file, port=8084, ngl=0, timeout_s=90)
-    out["health"] = healthy
-    print("  ✓ llama-server risponde a /health" if healthy
-          else "  ! health-check non superato in tempo (modello grande su CPU? "
-               "il servizio reale usa la GPU).")
+    # 5) verifica
+    print("[5/5] verifica")
+    if svc["healthy"]:
+        out["health"] = True
+        print("  ✓ /health risponde sull'endpoint dei tier")
+    else:
+        # Fallback: il MECCANISMO viene comunque verificato con un processo
+        # breve su porta di prova CPU (non contende la GPU); esito onesto,
+        # distinto dallo stato del servizio (out["service"]).
+        print("  health-check di meccanismo (CPU, porta 8084)")
+        healthy = health_check(binp, model_file, port=8084, ngl=0,
+                               timeout_s=90)
+        out["health"] = healthy
+        print("  ✓ llama-server risponde a /health (porta di prova)" if healthy
+              else "  ! health-check non superato in tempo (modello grande su "
+                   "CPU? il servizio reale usa la GPU).")
     out["ok"] = bool(binp) and model_file.exists()
     return out
 

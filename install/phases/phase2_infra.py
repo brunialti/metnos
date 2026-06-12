@@ -219,9 +219,18 @@ def _configure_llm_tiers(args: Any) -> dict[str, Any]:
 
     res = llm_manager.provision(plan, dry_run=False, assume_yes=True)
     if res.get("ok"):
-        ui.ok("local LLM provisioned and verified")
+        svc = res.get("service") or {}
+        if svc.get("healthy"):
+            ui.ok("local LLM provisioned — service installed, running and healthy")
+        else:
+            # Honest outcome (§2.8): artifacts are in place but the server is
+            # NOT serving yet — say so instead of claiming "verified".
+            ui.warn("local LLM provisioned but the service is not healthy yet: "
+                    f"{svc.get('reason') or 'unknown'} — "
+                    "retry: `systemctl --user enable --now metnos-llm`.")
         return {"llm_local": "provisioned", "llm_endpoint": endpoint,
-                "llm_model": plan.model_label}
+                "llm_model": plan.model_label,
+                "llm_service_healthy": bool(svc.get("healthy"))}
     ui.warn("local provisioning did not complete — falling back to frontier for now. "
             "Re-run: `python install/llm_manager.py provision --yes`.")
     _write_tiers_toml(local_endpoint=None, local_model=None, frontier=True)

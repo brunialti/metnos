@@ -50,6 +50,16 @@ reads. Mismatches here silently break the runtime (wrong paths, empty catalog).
   (`_endpoint_alive`) → wire to it (no download); else interactive managed
   provisioning via `llm_manager` (CPU path is first-class, `ngl=0`); else
   fall back to the frontier API. Never fail for lack of a GPU.
+- **Managed provisioning STARTS the server** (fix 12/6/2026): `provision()`
+  no longer just writes `metnos-llm.service` — `llm_manager.install_user_unit`
+  copies it to `~/.config/systemd/user/`, `daemon-reload`s, `enable --now`s it
+  (USER unit, no sudo, same approach as phase5) and waits for `/health`
+  (`METNOS_LLM_START_TIMEOUT_S`, default 180s — GGUF load can take minutes).
+  Honest outcomes (§2.8) in `out["service"]` = `{installed, enabled, started,
+  healthy, reason}`: endpoint already serving → unit installed but NOT started
+  (no double bind); no systemd / enable failure / health timeout → reason says
+  so, phase2 warns instead of claiming "verified". Only applies to managed
+  provisioning, never to wire-to-existing-endpoint.
 - Concrete model identities belong in ONE dated tier→model table in the docs,
   not scattered through code/prompts. Keep tier-level language everywhere.
 - **llama-completion (deterministic describe)**: the managed provisioning
