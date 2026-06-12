@@ -18,7 +18,7 @@ en = "SCOPO: reads PDF documents from URLs and extracts text and metadata. PATTE
 
 [code]
 files  = ["read_urls_pdf.py"]
-digest = "sha256:1e550e00c22d979ada285fa04cd67d136528e9d9b2977a24aa27c10959a07fd1"
+digest = "sha256:3b306f757fb94d397c91e287117729baff7abfde211b2f7ec35d1a5f2d828a30"
 
 [args]
 type     = "object"

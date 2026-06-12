@@ -7,7 +7,10 @@ e `lang` opzionale.
 
 Algoritmo deterministico (no LLM):
     1. HTTP GET con User-Agent dichiarato, follow redirect ×3.
-    2. Verifica `Content-Type: text/html` — skip altrimenti.
+    2. Dispatch su `Content-Type`: text/html → parse HTML sotto;
+       application/pdf → PDF-handoff (estrazione testo via
+       runtime/pdf_extract, condivisa con read_urls_pdf, 12/6/2026);
+       altrimenti skip (error_class=non_html).
     3. Strip `<script>`, `<style>`, `<nav>`, `<header>`, `<footer>`,
        `<aside>`, `<form>`.
     4. Preferenza container: `<article>` > `<main>` > `<body>`
@@ -47,6 +50,10 @@ sys.path.insert(0, os.environ.get("METNOS_RUNTIME") or next(
     if (p / "runtime" / "config.py").is_file()))
 from messages import get as _msg  # noqa: E402
 from host_throttle import HostThrottle  # noqa: E402
+# Estrazione PDF condivisa con read_urls_pdf (§7.3) per il PDF-handoff:
+# find_urls ritorna liste miste HTML+PDF e il planner non puo' conoscere
+# il Content-Type a priori — il dispatch per tipo vive QUI (12/6/2026).
+from pdf_extract import extract_pdf_text  # noqa: E402
 # HTTP cache disk-based (ADR 0105).
 from http_cache import HttpCache, DEFAULT_TTL_S  # noqa: E402
 # Host health tracker per auto-degrade T2→T1 su 429/503 (ADR 0108).
@@ -91,6 +98,10 @@ def _extract_meta_refresh(html_text: str) -> str | None:
     return target or None
 _DEFAULT_MAX_BYTES = 2_000_000
 _BODY_TRIM_CHARS = 50_000
+# Cap byte per il PDF-handoff: i PDF sono piu' grandi delle pagine HTML,
+# il max_bytes utente (default 2 MB) li troncherebbe corrompendo il parse.
+# Allineato al default di read_urls_pdf.
+_PDF_HANDOFF_MAX_BYTES = 20_000_000
 
 # Parallelismo (ADR 0100). I/O-net bound: scala bene con thread.
 # Cap globale = min(32, cpu*4) bilancia FD ulimit + memoria parsing.
@@ -313,6 +324,44 @@ def _classify_http_error(code: int) -> str:
     return "unknown"
 
 
+def _pdf_entry(pdf_body: bytes, final_url: str) -> tuple[dict | None, dict | None]:
+    """Costruisce l'entry per un URL che serve PDF (handoff 12/6/2026).
+
+    Senza handoff i PDF in liste miste da find_urls finivano in failed[]
+    (error_class=non_html) e scattava MSG_PARTIAL_ITEM_FAILURE («risultato
+    incompleto») su documenti in realta' leggibili. Estrazione condivisa
+    con read_urls_pdf via runtime/pdf_extract (§7.3: oggetto unitario).
+    Shape entry allineata alle entry HTML (§2.10) + marker `content_kind`.
+    """
+    try:
+        info = extract_pdf_text(pdf_body, trim_chars=_BODY_TRIM_CHARS)
+    except ImportError as e:
+        return None, {"error": str(e), "error_class": "unknown"}
+    except Exception as e:
+        return None, {
+            "error": f"pdf parse error: {type(e).__name__}: {e}",
+            "error_class": "unknown",
+        }
+    entry = {
+        "url": final_url,
+        "title": info["title"],
+        "body_text": info["body_text"],
+        "meta": ({"author": info["author"]} if info.get("author") else {}),
+        "lang": None,
+        "fetched_at": time.time(),
+        "iframe_urls": [],
+        "linked_documents": [],
+        "js_rendered": False,
+        "js_signals": [],
+        "notice": None,
+        "content_kind": "pdf",
+        "n_pages": info["n_pages"],
+        "n_pages_read": info["n_pages_read"],
+        "used_lib": info["used_lib"],
+    }
+    return entry, None
+
+
 def _classify_url_error(reason) -> str:
     """Mappa urllib URLError.reason → error_class (timeout vs network)."""
     if isinstance(reason, TimeoutError):
@@ -348,6 +397,8 @@ def _fetch_one(url: str, opener, timeout_s: float, max_bytes: int,
     text: str | None = None
     ctype = ""
     cache_hit = False
+    is_pdf = False
+    pdf_body: bytes | None = None
     # Meta-refresh hop tracking (8/5/2026): se la response root e' un piccolo
     # `<meta http-equiv="refresh">`, segui il redirect (urllib non lo fa).
     # Inseriamo il follow DOPO il fetch (sotto), questa variabile traccia hop.
@@ -376,12 +427,21 @@ def _fetch_one(url: str, opener, timeout_s: float, max_bytes: int,
                 })
                 with opener.open(req, timeout=timeout_s) as resp:
                     ctype = resp.headers.get("Content-Type", "")
-                    if "text/html" not in ctype.lower():
+                    ctype_l = ctype.lower()
+                    # PDF-handoff (12/6/2026, vedi _pdf_entry): riconosci dal
+                    # Content-Type, o da path .pdf con ctype generico
+                    # (alcuni server servono PDF come octet-stream).
+                    url_path = urllib.parse.urlparse(url).path.lower()
+                    is_pdf = ("pdf" in ctype_l
+                              or ("text/html" not in ctype_l
+                                  and url_path.endswith(".pdf")))
+                    if not is_pdf and "text/html" not in ctype_l:
                         return None, {
                             "error": _msg("ERR_NON_HTML_CONTENT", ctype=ctype),
                             "error_class": "non_html",
                         }
-                    body = resp.read(max_bytes)
+                    body = resp.read(_PDF_HANDOFF_MAX_BYTES if is_pdf
+                                     else max_bytes)
                     # Decompressione body se Content-Encoding (server-side
                     # cache come Varnish gzip-pa anche senza Accept-Encoding).
                     enc = (resp.headers.get("Content-Encoding") or "").lower()
@@ -401,10 +461,15 @@ def _fetch_one(url: str, opener, timeout_s: float, max_bytes: int,
                             body = zlib.decompress(body)
                         except Exception:
                             pass
-                try:
-                    text = body.decode("utf-8", errors="replace")
-                except (UnicodeDecodeError, LookupError):
-                    text = body.decode("latin-1", errors="replace")
+                if is_pdf:
+                    # Bytes binari: niente decode/cache (ADR 0105 cachea
+                    # solo text/html). Parse dopo il release dello slot.
+                    pdf_body = body
+                else:
+                    try:
+                        text = body.decode("utf-8", errors="replace")
+                    except (UnicodeDecodeError, LookupError):
+                        text = body.decode("latin-1", errors="replace")
                 # ADR 0108: registra successo per host_health (resetta backoff).
                 if record_response is not None:
                     try:
@@ -412,7 +477,7 @@ def _fetch_one(url: str, opener, timeout_s: float, max_bytes: int,
                     except Exception:
                         pass
                 # ADR 0105: scrivi cache solo su success + text/html.
-                if cache is not None and cache.enabled():
+                if not is_pdf and cache is not None and cache.enabled():
                     try:
                         cache.put(final_url, ctype, body, resp_headers)
                     except Exception:
@@ -450,6 +515,11 @@ def _fetch_one(url: str, opener, timeout_s: float, max_bytes: int,
             # che segue e' lavoro locale CPU-bound, non deve trattenere lo slot.
             if throttle is not None:
                 throttle.release(host)
+
+    # PDF-handoff (12/6/2026): parsing CPU-locale DOPO il release dello
+    # slot per-host (come il parsing HTML sotto).
+    if is_pdf:
+        return _pdf_entry(pdf_body or b"", final_url)
 
     # Meta-refresh follow (8/5/2026, simmetrico al fix di find_urls).
     # Se la pagina e' una landing-redirect (`<meta http-equiv="refresh">`),

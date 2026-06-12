@@ -14,12 +14,12 @@ affinity    = [
             ]
 
 [description]
-it = "SCOPO: legge pagine web HTML e ne estrae il testo principale. PATTERN: read_urls_html(urls=[\"https://example.com\"]). NON: file PDF (-> read_urls_pdf); ricerca URL (-> find_urls). OUT: entries=[{url,title,body_text,meta,lang,fetched_at}]."
-en = "SCOPO: reads HTML web pages and extracts main text content. PATTERN: read_urls_html(urls=[\"https://example.com\"]). NON: PDF files (-> read_urls_pdf); URL discovery (-> find_urls). OUT: entries=[{url,title,body_text,meta,lang,fetched_at}]."
+it = "SCOPO: legge pagine web e ne estrae il testo; URL PDF estratti come testo automaticamente. PATTERN: read_urls_html(urls=[\"https://example.com\"]). NON: solo PDF noti (-> read_urls_pdf); ricerca URL (-> find_urls). OUT: entries=[{url,title,body_text,meta,lang,fetched_at}]."
+en = "SCOPO: reads web pages and extracts main text; PDF URLs extracted as text automatically. PATTERN: read_urls_html(urls=[\"https://example.com\"]). NON: PDF-only lists (-> read_urls_pdf); URL discovery (-> find_urls). OUT: entries=[{url,title,body_text,meta,lang,fetched_at}]."
 
 [code]
 files  = ["read_urls_html.py"]
-digest = "sha256:ecf6d17024bbfa3bcbae3e2a906807bae66cf60937b03310d03cad998a6bda00"
+digest = "sha256:dffbf7a1f89692ff2bb288dde64aab6270dba5aa85a8905e57f7f1ce1465778c"
 
 [args]
 type     = "object"

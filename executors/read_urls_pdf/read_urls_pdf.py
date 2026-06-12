@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """read_urls_pdf — fetch + estrazione testo da URL che servono PDF.
 
-Scarica una lista di URL, salva su file temp, parsea con `pypdf`
-(o `pdfminer.six` come fallback) e ritorna entries con `body_text`,
-`title`, `author`, `n_pages`. Skippa Content-Type non-PDF e file > max_bytes.
+Scarica una lista di URL e ne estrae il testo via `runtime/pdf_extract`
+(pypdf, fallback pdfminer.six — helper CONDIVISO con il PDF-handoff di
+read_urls_html, §7.3). Ritorna entries con `body_text`, `title`,
+`author`, `n_pages`. Skippa Content-Type non-PDF e file > max_bytes.
 
 OCR fallback: hook ma non implementato (richiede Tesseract via pdftoppm
 + tesseract; piu' costoso). `ocr_fallback=true` produrra' una nota di
@@ -21,7 +22,6 @@ import json
 import multiprocessing
 import os
 import sys
-import tempfile
 import time
 import urllib.error
 import urllib.parse
@@ -35,6 +35,12 @@ sys.path.insert(0, os.environ.get("METNOS_RUNTIME") or next(
     if (p / "runtime" / "config.py").is_file()))
 from messages import get as _msg  # noqa: E402
 from host_throttle import HostThrottle  # noqa: E402
+# Estrazione PDF condivisa (§7.3) — re-export _has_* per i test esistenti.
+from pdf_extract import (  # noqa: E402
+    extract_pdf_text as _extract_pdf_text,
+    has_pypdf as _has_pypdf,
+    has_pdfminer as _has_pdfminer,
+)
 
 
 USER_AGENT = "metnos-crawler/1.1 (+contact@metnos.com)"
@@ -60,67 +66,6 @@ def _build_opener(cookies_file: str | None):
         jar.load(str(cp), ignore_discard=True, ignore_expires=True)
         handlers.append(urllib.request.HTTPCookieProcessor(jar))
     return urllib.request.build_opener(*handlers)
-
-
-def _has_pypdf() -> bool:
-    try:
-        import pypdf  # noqa: F401
-        return True
-    except ImportError:
-        return False
-
-
-def _has_pdfminer() -> bool:
-    try:
-        import pdfminer.high_level  # noqa: F401
-        return True
-    except ImportError:
-        return False
-
-
-def _parse_pdf(path: Path, max_pages: int) -> dict:
-    """Ritorna {title, author, body_text, n_pages, used_lib}.
-
-    Sceglie pypdf > pdfminer; se nessuna disponibile, raise ImportError.
-    """
-    if _has_pypdf():
-        import pypdf
-        reader = pypdf.PdfReader(str(path))
-        meta = reader.metadata or {}
-        n_pages_total = len(reader.pages)
-        n_to_read = min(n_pages_total, max_pages)
-        text_parts: list[str] = []
-        for i in range(n_to_read):
-            try:
-                t = reader.pages[i].extract_text() or ""
-            except Exception:
-                t = ""
-            if t:
-                text_parts.append(t.strip())
-        return {
-            "title": str(meta.get("/Title", "") or "").strip(),
-            "author": str(meta.get("/Author", "") or "").strip(),
-            "body_text": "\n\n".join(text_parts)[:_BODY_TRIM_CHARS],
-            "n_pages": n_pages_total,
-            "n_pages_read": n_to_read,
-            "used_lib": "pypdf",
-        }
-    if _has_pdfminer():
-        from pdfminer.high_level import extract_text
-        text = extract_text(str(path), maxpages=max_pages)
-        # pdfminer non offre meta facilmente; lasciamo title/author vuoti
-        return {
-            "title": "",
-            "author": "",
-            "body_text": (text or "").strip()[:_BODY_TRIM_CHARS],
-            "n_pages": -1,  # unknown senza fetch separato
-            "n_pages_read": -1,
-            "used_lib": "pdfminer",
-        }
-    raise ImportError(
-        "no PDF parsing library installed: install 'pypdf' "
-        "(`pip install pypdf`) or 'pdfminer.six'"
-    )
 
 
 def _fetch_one(url: str, opener, timeout_s: float, max_bytes: int,
@@ -156,43 +101,35 @@ def _fetch_one(url: str, opener, timeout_s: float, max_bytes: int,
         if throttle is not None:
             throttle.release(host)
 
-    # Salva temp e parse
-    with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tf:
-        tf.write(body)
-        tmp_path = Path(tf.name)
+    # Parse in-memory (helper condiviso runtime/pdf_extract, §7.3).
     try:
-        try:
-            info = _parse_pdf(tmp_path, max_pages)
-        except ImportError as e:
-            return None, str(e)
-        except Exception as e:
-            return None, f"pdf parse error: {type(e).__name__}: {e}"
-        # OCR fallback hook: se body_text vuoto e flag attivo, segnaliamo
-        # che l'OCR sarebbe necessario ma non e' implementato qui.
-        if not info["body_text"].strip() and ocr_fallback:
-            info["needs_ocr"] = True
-            info["ocr_note"] = (
-                "PDF parser ha estratto 0 char di testo: probabile PDF "
-                "scansionato. OCR non implementato in read_urls_pdf; "
-                "considera read_files_ocr dopo download manuale."
-            )
-        return {
-            "url": final_url,
-            "title": info["title"],
-            "author": info["author"],
-            "body_text": info["body_text"],
-            "n_pages": info["n_pages"],
-            "n_pages_read": info["n_pages_read"],
-            "used_lib": info["used_lib"],
-            "fetched_at": time.time(),
-            **({"needs_ocr": True, "ocr_note": info["ocr_note"]}
-               if info.get("needs_ocr") else {}),
-        }, None
-    finally:
-        try:
-            tmp_path.unlink()
-        except OSError:
-            pass
+        info = _extract_pdf_text(body, max_pages=max_pages,
+                                 trim_chars=_BODY_TRIM_CHARS)
+    except ImportError as e:
+        return None, str(e)
+    except Exception as e:
+        return None, f"pdf parse error: {type(e).__name__}: {e}"
+    # OCR fallback hook: se body_text vuoto e flag attivo, segnaliamo
+    # che l'OCR sarebbe necessario ma non e' implementato qui.
+    if not info["body_text"].strip() and ocr_fallback:
+        info["needs_ocr"] = True
+        info["ocr_note"] = (
+            "PDF parser ha estratto 0 char di testo: probabile PDF "
+            "scansionato. OCR non implementato in read_urls_pdf; "
+            "considera read_files_ocr dopo download manuale."
+        )
+    return {
+        "url": final_url,
+        "title": info["title"],
+        "author": info["author"],
+        "body_text": info["body_text"],
+        "n_pages": info["n_pages"],
+        "n_pages_read": info["n_pages_read"],
+        "used_lib": info["used_lib"],
+        "fetched_at": time.time(),
+        **({"needs_ocr": True, "ocr_note": info["ocr_note"]}
+           if info.get("needs_ocr") else {}),
+    }, None
 
 
 def _invoke_default(args: dict) -> dict:

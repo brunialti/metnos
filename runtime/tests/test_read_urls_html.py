@@ -265,6 +265,49 @@ class TestReadUrlsHtml(unittest.TestCase):
         out = read_urls_html.invoke({"urls": [self.url("/oops")]})
         self.assertEqual(out["failed"][0]["error_class"], "server_error")
 
+    def test_pdf_url_extracted_not_failed(self):
+        """PDF-handoff (12/6/2026): URL application/pdf in read_urls_html
+        NON finisce in failed[] (era error_class=non_html → notice
+        «risultato incompleto»), ma torna entry con body_text estratto
+        via runtime/pdf_extract (condiviso con read_urls_pdf)."""
+        import read_urls_html
+        from pdf_extract import has_pdf_parser
+        if not has_pdf_parser():
+            self.skipTest("nessun parser PDF disponibile (pypdf/pdfminer.six)")
+        from test_read_urls_pdf import _MINIMAL_PDF
+        _set_pages({"/doc.pdf": (200, "application/pdf", _MINIMAL_PDF)})
+        out = read_urls_html.invoke({"urls": [self.url("/doc.pdf")]})
+        self.assertTrue(out["ok"], out)
+        self.assertEqual(out["ok_count"], 1, out)
+        self.assertEqual(out["fail_count"], 0, out)
+        e = out["entries"][0]
+        self.assertIn("Hello", e["body_text"], e)
+        self.assertEqual(e["content_kind"], "pdf")
+        self.assertNotIn("error_class", e)
+
+    def test_mixed_html_and_pdf_batch(self):
+        """Lista mista HTML+PDF (output tipico di find_urls) → tutte
+        entries, failed vuoto: nessun MSG_PARTIAL_ITEM_FAILURE a valle."""
+        import read_urls_html
+        from pdf_extract import has_pdf_parser
+        if not has_pdf_parser():
+            self.skipTest("nessun parser PDF disponibile (pypdf/pdfminer.six)")
+        from test_read_urls_pdf import _MINIMAL_PDF
+        _set_pages({
+            "/page": (200, "text/html",
+                      "<html><title>T</title><body><article>html content"
+                      "</article></body></html>"),
+            "/report.pdf": (200, "application/pdf", _MINIMAL_PDF),
+        })
+        out = read_urls_html.invoke({
+            "urls": [self.url("/page"), self.url("/report.pdf")]})
+        self.assertEqual(out["ok_count"], 2, out)
+        self.assertEqual(out["fail_count"], 0, out)
+        self.assertEqual(out["failed"], [])
+        kinds = [e.get("content_kind") for e in out["entries"]]
+        self.assertIn("pdf", kinds)
+        self.assertNotIn("partial", out)
+
     def test_failed_non_html_has_error_class_non_html(self):
         """Content-Type non text/html → error_class == 'non_html'."""
         import read_urls_html
