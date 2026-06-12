@@ -105,6 +105,10 @@
 - **TELOS planner injection**: `telos_loader.render_planner_block(lang)` + slot in `prompts/{it,en}/planner/_footer.j2`. Hot-reload mtime cache.
 - **Dashboard `/admin/proposals/telos`** (ADR 0157): triage proposte. Store `runtime/telos_proposals_store.py`. Decisioni JSONL append-only LWW. Cutoff `min_alignment=0.30`.
 - **Telos engine 10 lenti laterali** (ADR 0156 v8): `runtime/telos_lenses/` modulare. Framework `_base.run_lens` + SHARED_PREAMBLE/NAMING_SCHEMA/OUTPUT_FORMAT §6. Env per-lens.
+- **Store telos = unione candidati** (12/6/2026): `telos_proposals_store._iter_merged_rows` legge TUTTI i file candidati (recomposed > rescored > raw) dedup per ts — MAI tornare al solo-primo-file (536 proposte post-snapshot erano invisibili al loop).
+- **Cluster = unità di decisione telos** (mandato 12/6/2026): `telos_proposals_store.recompose_clusters` (1 head per signature_relaxed, head=azionabile+EA max) + `cluster_score(ea_max, n_lenti)` bonus SOLO per lenti DISTINTE (+0.05, cap +0.20); hub `/admin/proposals` con `group_clusters` serve head (`proposals_unified._load_telos`); gate `proposal_actions.on_accept` cluster-aware (stessa formula); azione cluster `/cluster/{action}` su membri RELAXED, effetto operativo 1 solo (`apply_decision(run_on_accept=False)` sui non-head).
+- **Dedup generativo telos (target, lens)** (12/6/2026): `telos_introspect._persist` skip se coppia già nello store (ripetizione intra-lente ≠ evidenza; sui dati reali 1017→75, −93%); ritorna bool, `run_all_telos` riporta `persisted_total` (§2.8).
+- **Decisioni hub unified: source granulare normalizzato** (12/6/2026): `proposals_unified.apply_decision_unified` accetta `"telos:<lens>"`/`"introvertiva:<kind>"` → family (prima: 400 unknown source su OGNI bottone del hub).
 
 **Scheduler / lifecycle / unified changes**
 - **Scheduler v2 asyncio co-host** (ADR 0112): `runtime/scheduler_v2/` single Task. Trigger grammar `daily@HH:MM`/`every_N{s,m,h}`/`at:<ISO>`/`cron:<5-field>`. Callbacks via `builtin_callbacks.install_default_callbacks`.
