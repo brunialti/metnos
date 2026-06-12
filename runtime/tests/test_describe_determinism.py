@@ -132,6 +132,39 @@ class TestCallLlmProcWiring(unittest.TestCase):
         run.assert_not_called()
 
 
+class TestPromptShaAudit(unittest.TestCase):
+    """Auditabilita' determinismo (E2E 12/6/2026, anomalia 1/7): il meta
+    del path proc espone `prompt_sha` = sha256 del prompt RENDERIZZATO."""
+
+    def test_call_llm_meta_carries_prompt_sha_of_rendered(self):
+        import hashlib
+        rendered = "<rendered>" * 50
+        completed = mock.Mock(returncode=0, stdout="testo", stderr="")
+        with mock.patch.object(llm_helpers, "_completion_bin",
+                               return_value="/usr/bin/llama-completion"), \
+             mock.patch.object(llm_helpers, "_server_model_path",
+                               return_value="/models/m.gguf"), \
+             mock.patch.object(llm_helpers, "_render_chat_prompt",
+                               return_value=rendered), \
+             mock.patch.object(llm_helpers.subprocess, "run",
+                               return_value=completed):
+            _, meta = llm_helpers.call_llm("q", "P", deterministic=True)
+        self.assertIs(meta["deterministic"], True)
+        self.assertEqual(
+            meta["prompt_sha"],
+            hashlib.sha256(rendered.encode("utf-8")).hexdigest())
+
+    def test_http_fallback_has_no_prompt_sha(self):
+        """Niente render → niente sha: il campo non viene inventato (§2.8)."""
+        fake_resp = mock.Mock(text="http", in_tokens=1, out_tokens=1)
+        with mock.patch.object(llm_helpers, "_call_llm_proc",
+                               return_value=None), \
+             mock.patch.object(llm_helpers.LlamaCppProvider, "chat",
+                               return_value=fake_resp):
+            _, meta = llm_helpers.call_llm("q", "P", deterministic=True)
+        self.assertNotIn("prompt_sha", meta)
+
+
 class TestSerializeBudgetPassThrough(unittest.TestCase):
     """max_query_chars: il bundle describe (fino a 24K char §2.7) deve
     passare INTERO; il default 12000 resta per gli altri consumer."""

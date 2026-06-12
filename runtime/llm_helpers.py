@@ -24,6 +24,7 @@ deve dichiararla nel manifest, quando il loader le fara' rispettare).
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
@@ -126,12 +127,16 @@ def _render_chat_prompt(endpoint: str, system: str, user: str) -> str | None:
 
 
 def _call_llm_proc(system: str, user: str, *, max_tokens: int,
-                   seed: int, endpoint: str | None = None) -> str | None:
+                   seed: int, endpoint: str | None = None,
+                   meta_out: dict | None = None) -> str | None:
     """Generazione byte-deterministica via processo llama-completion
     monouso. Ritorna il testo, o None se il path non e' disponibile
     (il chiamante ricade sul provider HTTP). `endpoint` = llama-server
     dei tier (default: risolto da llm_router.tier_endpoint, NON
-    hardcoded)."""
+    hardcoded). `meta_out` (opzionale): vi deposita `prompt_sha` =
+    sha256 del prompt RENDERIZZATO — auditabilita' del determinismo:
+    a parita' di prompt_sha+seed l'output DEVE essere identico; se
+    varia, l'anomalia e' a valle del prompt (E2E 12/6/2026, caso 1/7)."""
     binary = _completion_bin()
     if not binary:
         return None
@@ -142,6 +147,9 @@ def _call_llm_proc(system: str, user: str, *, max_tokens: int,
     rendered = _render_chat_prompt(endpoint, system, user)
     if not rendered:
         return None
+    if meta_out is not None:
+        meta_out["prompt_sha"] = hashlib.sha256(
+            rendered.encode("utf-8")).hexdigest()
     # ctx: stima token ~ chars/3 + output + margine; clamp [4096, 32768].
     ctx = min(32768, max(4096, len(rendered) // 3 + max_tokens + 512))
     env = dict(os.environ)
@@ -216,9 +224,10 @@ def call_llm(
         _seed = int(os.environ.get("METNOS_LLM_SEED", "42"))
         if _seed >= 0:
             t0 = time.time()
+            _proc_meta: dict = {}
             text = _call_llm_proc(prompt, user_payload,
                                   max_tokens=max_tokens, seed=_seed,
-                                  endpoint=endpoint)
+                                  endpoint=endpoint, meta_out=_proc_meta)
             if text is not None:
                 return text, {
                     "tier": tier,
@@ -227,6 +236,7 @@ def call_llm(
                     "out_tokens": 0,
                     "latency_ms": int((time.time() - t0) * 1000),
                     "deterministic": True,
+                    **_proc_meta,  # prompt_sha (audit determinismo)
                 }
         # Path deterministico non disponibile: fallback HTTP sotto,
         # dichiarato nel meta.
