@@ -42,23 +42,9 @@ for an admin key on first connect — it's auto-created at
 `~/.config/metnos/admin.key`, and the installer prints a one-shot link that claims
 it for your browser.
 
-```mermaid
-flowchart TD
-    U([You]) -->|Telegram / HTTP| I[Intent extractor]
-    I --> PX{Praxis<br/>cache · match}
-    PX -->|known pattern · cost 0| A([Answer])
-    PX -->|novel| P[Planner · local LLM<br/>constrained to a closed vocabulary]
-    P --> V{Vaglio<br/>consent for risky ops}
-    V --> E[Executors<br/>vectorized · signed]
-    E --> B[(Backends<br/>provider chosen by config)]
-    B --> O[Observation]
-    O --> P
-    O -. learns .-> PX
-    P --> A
-    P -. on demand .-> S[Synthesize executor]
-    S -->|7-layer admission gate| E
-    P -. opt-in .-> F[Frontier LLM]
-```
+<p align="center">
+  <img src="https://metnos.com/assets/architecture-flow.png" alt="Metnos request flow: a user request goes through intent extraction (verb + object), then L0 fastpath (self-learned shortcut), L1 autopath (learned skill), L2 validator (plan check), and L3 engine (propose · execute · recover · admit the limit) before answering; fastpath/autopath hits short-circuit straight to the answer." width="760">
+</p>
 
 A few principles it takes seriously:
 
