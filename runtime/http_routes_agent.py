@@ -21,7 +21,7 @@ from aiohttp import web
 import devices
 import config as _C  # §7.11
 from html_sanitizer import to_safe_html_full
-from http_render import render_template
+from http_render import _error, render_template
 from http_auth import ADMIN_KEY_PATH
 from logging_setup import get_logger
 
@@ -46,10 +46,6 @@ except Exception:  # pragma: no cover — fallback difensivo
 #       ricevuto" e capire che il server e' ancora vivo.
 # Esposto come modulo-level constant per i test (override via monkeypatch).
 SSE_KEEPALIVE_INTERVAL_S = 8.0
-
-
-def _error(status: int, code: str, message: str) -> web.Response:
-    return web.json_response({"error": code, "message": message}, status=status)
 
 
 def _safe_final_html(md: str | None) -> str:

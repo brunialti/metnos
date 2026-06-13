@@ -53,6 +53,11 @@ def etag_for(payload: bytes) -> str:
     return hashlib.sha256(payload).hexdigest()[:16]
 
 
+def _error(status: int, code: str, message: str) -> web.Response:
+    """Risposta JSON d'errore uniforme (condivisa da http_routes_agent/admin)."""
+    return web.json_response({"error": code, "message": message}, status=status)
+
+
 def serve_with_etag(
     request: web.Request,
     payload_bytes: bytes,

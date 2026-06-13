@@ -25,14 +25,10 @@ from http_auth import (
     ADMIN_COOKIE_TTL_S,
     issue_admin_cookie,
 )
-from http_render import negotiate_collection, render_template, serve_with_etag
+from http_render import _error, negotiate_collection, render_template, serve_with_etag
 from logging_setup import get_logger
 
 log = get_logger(__name__)
-
-
-def _error(status: int, code: str, message: str) -> web.Response:
-    return web.json_response({"error": code, "message": message}, status=status)
 
 
 # --- /admin (root) -----------------------------------------------------------

@@ -2089,6 +2089,11 @@ def _tokenize_for_dup(value):
     return frozenset(t for t in tokens if t)
 
 
+# Campi-arg "semantici" (testo libero) per dedup/Jaccard cross-call: una sola
+# definizione condivisa da _normalize_args_for_dup + _args_jaccard (erano 2 copie).
+_SEMANTIC_FIELDS = frozenset({"topic", "query", "pattern", "q", "search", "text"})
+
+
 def _normalize_args_for_dup(args):
     """Normalizza dict args per confronto duplicate-near-identical.
 
@@ -2102,7 +2107,6 @@ def _normalize_args_for_dup(args):
     """
     if not isinstance(args, dict):
         return {}
-    _SEMANTIC_FIELDS = {"topic", "query", "pattern", "q", "search", "text"}
     out = {}
     for k in sorted(args.keys()):
         v = args[k]
@@ -2145,7 +2149,6 @@ def _args_jaccard(a_norm, b_norm) -> float:
     Se nessuno dei due ha campi semantici (topic/query/pattern/...),
     fall-back: ritorna 1.0 sse i dict normalizzati sono uguali, 0.0 altrimenti.
     """
-    _SEMANTIC_FIELDS = {"topic", "query", "pattern", "q", "search", "text"}
     a_tokens = set()
     b_tokens = set()
     for k in _SEMANTIC_FIELDS:
