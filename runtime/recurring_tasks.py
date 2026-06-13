@@ -386,14 +386,8 @@ def _scheduled_push_is_noop(log) -> bool:
         return False
     if getattr(log, "final_kind", "") != "answer":
         return False
-    counts = getattr(log, "effect_counts", None)
-    if not isinstance(counts, dict):
-        return False
-    if counts.get("failures"):
-        return False
-    if counts.get("mutating_attempted"):
-        return counts.get("mutations", 0) == 0
-    return counts.get("countable", 0) > 0 and counts.get("items", 0) == 0
+    from pipeline_effects import counts_indicate_noop
+    return counts_indicate_noop(getattr(log, "effect_counts", None))
 
 
 def _run_user_query_callback(record: dict) -> str:

@@ -145,3 +145,25 @@ def ineffective_mutations(steps) -> list[str]:
         if n is not None and n <= 0:
             bad.append(tool)
     return bad
+
+
+def counts_indicate_noop(counts) -> bool:
+    """True se i conteggi-effetti indicano una pipeline «a vuoto» (0 effetto
+    REALE). Predicato condiviso (§7.9, SoT) fra:
+      - recurring_tasks._scheduled_push_is_noop (push schedulato);
+      - treated_issues_guard.suppress_scheduled_notify (notifica in-piano).
+
+    Regole:
+    - counts None → NON a vuoto (non giudicabile: nessuno step contabile,
+      es. pure-send senza upstream → la notifica È il deliverable).
+    - failures>0 → NON a vuoto (errori vanno riportati §2.8).
+    - mutanti tentati → a vuoto se 0 mutazioni reali.
+    - solo-lettura → a vuoto se ci sono step contabili ma 0 items prodotti.
+    """
+    if not isinstance(counts, dict):
+        return False
+    if counts.get("failures"):
+        return False
+    if counts.get("mutating_attempted"):
+        return counts.get("mutations", 0) == 0
+    return counts.get("countable", 0) > 0 and counts.get("items", 0) == 0

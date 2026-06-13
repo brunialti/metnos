@@ -1329,6 +1329,29 @@ class Executor:
                 ))
                 continue
 
+            # Notifica in-piano nei run schedulati a vuoto (§2.8, 13/6/2026):
+            # un send/notify finale («ti ho fatto X») NON deve partire se la
+            # pipeline a monte non ha prodotto nulla (bug live: maintenance
+            # github → send_messages su 0 issue aperte = falso successo). La
+            # soppressione del push SCHEDULER non copre il send IN-PIANO.
+            # Generale §7.3, deterministico §7.9, no-op sui turni interattivi.
+            try:
+                from treated_issues_guard import suppress_scheduled_notify
+                if suppress_scheduled_notify(step.tool, result.steps):
+                    log.info("[scheduled-notify-guard] skip %s: pipeline a "
+                             "vuoto, notifica soppressa (run schedulato, §2.8)",
+                             step.tool)
+                    result.steps.append(StepRun(
+                        step_idx=i + 1, tool=step.tool, args=args,
+                        result={"ok": True, "ok_count": 0,
+                                "skipped": "scheduled_noop_notify",
+                                "note": "notifica soppressa: run schedulato a "
+                                        "vuoto (0 nuovi work-item)"},
+                        ok=True, latency_ms=0))
+                    continue
+            except Exception as _sng:
+                log.debug("scheduled-notify-guard noop: %r", _sng)
+
             # Invoke
             # Osservabilità (#4): logga tool + args risolti (escluso il payload
             # `entries`, voluminoso) appena prima dell'invoke. Senza, un turn

@@ -71,6 +71,42 @@ def is_scheduled_turn() -> bool:
     return bool(_SCHEDULED_TURN.get())
 
 
+# Prefissi dei tool di NOTIFICA/INVIO outbound verso l'utente. Una notifica
+# in-piano (es. send_messages finale «ti ho fatto X») in un turno schedulato
+# è il «notifica» della query: va emessa SOLO se c'è qualcosa di nuovo.
+SCHEDULED_NOTIFY_PREFIXES = ("send_",)
+
+
+def suppress_scheduled_notify(tool, prior_steps) -> bool:
+    """True se, in un turno SCHEDULATO, lo step di notifica/invio `tool` va
+    SOPPRESSO perché la pipeline a monte è «a vuoto» (0 effetto reale).
+
+    Realizza il requisito «notifica SOLO se c'è qualcosa di nuovo» (Roberto,
+    §2.8): un run schedulato che non ha prodotto nulla non deve spammare un
+    falso successo (bug live 13/6: «leggi i nuovi issue… → send_messages(ti ho
+    analizzato/salvato bozze)» partiva anche su 0 issue aperte — la
+    soppressione del push SCHEDULER non copre il send IN-PIANO).
+
+    Confine (deterministico §7.9, generale §7.3):
+    - solo in turno schedulato (`is_scheduled_turn`); turni interattivi MAI;
+    - solo tool outbound (`SCHEDULED_NOTIFY_PREFIXES`);
+    - solo se gli step A MONTE indicano no-op (`counts_indicate_noop`):
+      pure-send senza upstream contabile → counts None → NON soppresso (è il
+      deliverable, es. promemoria/heartbeat); fallimenti a monte → NON
+      soppresso (vanno riportati).
+    `prior_steps` = step già eseguiti nel turno (escluso il send corrente),
+    shape-agnostic (StepRun engine v2 o StepLog ReAct)."""
+    if not is_scheduled_turn():
+        return False
+    if not tool or not any(tool.startswith(p) for p in SCHEDULED_NOTIFY_PREFIXES):
+        return False
+    try:
+        from pipeline_effects import pipeline_effect_counts, counts_indicate_noop
+        return counts_indicate_noop(pipeline_effect_counts(prior_steps))
+    except Exception:
+        return False  # fail-open §2.8: nel dubbio NON sopprimere
+
+
 def _issue_identity(e) -> "tuple[str, int] | None":
     """(repo, issue_number) se la entry è un record-issue identificabile,
     altrimenti None. Copre le due forme reali in pipeline:
