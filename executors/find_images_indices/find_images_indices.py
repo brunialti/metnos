@@ -43,6 +43,7 @@ import re
 import sys
 import time
 from datetime import datetime, timedelta
+from functools import lru_cache
 from pathlib import Path
 
 _RUNTIME = Path(__file__).resolve().parent.parent.parent / "runtime"
@@ -64,6 +65,42 @@ _FACE_MATCH_FLOOR = 0.4
 # (μ~0.61, σ~0.04) corrisponde al ginocchio di precisione misurato (~0.69 cos:
 # sopra = montagna genuina; sotto = "vista/terrazza" borderline). §2.4 tarabile.
 _IDENTITY_SCENE_SIGMA = 2.0
+
+# Operatori SEMANTICI multi-persona (NON stopword): «alice E/insieme bob» =
+# AND (foto con ENTRAMBI i volti); «alice O bob» = OR (unione). AND è il
+# default. «insieme/con/together/with» NON sono rumore: confermano l'AND (Roberto
+# 13/6: «insieme equivale ad AND»). Set CHIUSO minimo, riconosciuto a monte e
+# tolto dalla scena (è un operatore, non un descrittore). i18n-estendibile.
+_OR_MARKERS = frozenset({"o", "oppure", "or", "oder", "ou"})
+_AND_MARKERS = frozenset({"insieme", "assieme", "con", "together", "with", "e",
+                          "ed", "and", "et", "und"})
+
+
+@lru_cache(maxsize=16)
+def _scene_stopwords(lang: str) -> frozenset:
+    """Stopword di SCENA per `lang` (ISO 639-1) dalla libreria `stopwordsiso`
+    (i18n: ~58 lingue keyed by code, allineato a METNOS_LANG/`i18n.current_lang`).
+    Cache per lingua. Best-effort §2.8: se libreria/lingua mancano → set vuoto
+    (residuo non ripulito, il pipeline regge). Le parole di CONTENUTO (mare,
+    montagna) NON sono stopword → sopravvivono. Sostituisce la lista hardcoded:
+    lista curata e mantenuta a monte, non nel codice (Roberto 13/6)."""
+    try:
+        import stopwordsiso as _sw
+        code = (lang or "").split("-")[0].lower() or "it"
+        if _sw.has_lang(code):
+            return frozenset(_sw.stopwords(code))
+    except Exception as ex:
+        log.debug("find_images_indices: stopwordsiso non disponibile (%r)", ex)
+    return frozenset()
+
+
+def _current_lang() -> str:
+    """Lingua dell'istanza (i18n) per la selezione stopword. Fallback 'it'."""
+    try:
+        from i18n import current_lang
+        return (current_lang() or "it")
+    except Exception:
+        return "it"
 
 
 def _resolve_cap(args) -> tuple[int, bool]:
@@ -747,28 +784,34 @@ def _split_temporal_from_query(query_text: str) -> tuple[str, str | None]:
     return residual, tw
 
 
-def _split_person_from_query(query_text: str) -> tuple[str, str | None]:
-    """Estrae un nome di persona ENROLLATA da `query_text` e lo separa come
-    filtro-IDENTITÀ (volto), lasciando il resto come scena. Ritorna
-    (query_residua, name|None).
+def _split_persons_from_query(query_text: str,
+                              lang: str = "it") -> tuple[str, list[str], str]:
+    """Estrae le persone ENROLLATE + l'operatore semantico da `query_text`.
+    Ritorna (query_residua_scena, [name, ...], op) con op ∈ {'and','or'}.
 
     Razionale §7.9/§2.4 (gemello di `_split_temporal_from_query`): «ospite al
-    mare» = volto dell'ospite (in registro) ∩ scena «al mare». Senza split,
-    «ospite» finisce nell'embedding semantico e NON attiva il filtro-volto → la
-    ricerca trova il mare ma non la persona (bug live 8/6). Match SOLO contro il set
-    CHIUSO dei nomi in PersonsRegistry (niente falsi positivi su parole comuni)
-    e SOLO se UN unico person matcha in modo non ambiguo (token→slug univoco)."""
+    mare» = volto ospite ∩ scena «al mare»; «alice e bob insieme» =
+    names=['Alice','Bob'], op=AND (foto con ENTRAMBI i volti); «alice o bob» =
+    op=OR (unione). Default AND.
+
+    - Match nomi SOLO contro il set CHIUSO di PersonsRegistry (no falsi positivi
+      su parole comuni); un token conta se mappa a UN unico slug. Più token-
+      persona = più persone (NON ambiguo: l'ambiguità è UN token→2 slug).
+    - Operatore (Roberto 13/6 «insieme equivale ad AND»): «insieme/con/together/
+      with»=AND-conferma, «o/oppure/or»=OR. Riconosciuti a monte e TOLTI dalla
+      scena (sono operatori, non descrittori).
+    - Residuo-scena ripulito dalle stopword della LINGUA (`stopwordsiso`, i18n):
+      query di sole persone → identità pura (residuo vuoto); le parole di
+      CONTENUTO (mare, montagna) sopravvivono."""
     if not query_text:
-        return query_text, None
+        return query_text, [], "and"
     try:
         from persons_registry import PersonsRegistry
         persons = PersonsRegistry().list_all()
     except Exception:
-        return query_text, None
+        return query_text, [], "and"
     if not persons:
-        return query_text, None
-    # Indice token→slug: token dello slug (nome_cognome→{nome,cognome}) + token
-    # del display name. Scarta i token ambigui (condivisi da 2+ persone).
+        return query_text, [], "and"
     tok2slug: dict[str, set] = {}
     slug2name: dict[str, str] = {}
     for p in persons:
@@ -783,20 +826,29 @@ def _split_person_from_query(query_text: str) -> tuple[str, str | None]:
             if len(t) < 2:
                 continue
             tok2slug.setdefault(t, set()).add(slug)
-    matched_slug: str | None = None
+    matched: list[str] = []
     keep: list[str] = []
+    op = "and"
     for tok in query_text.split():
         core = tok.strip(".,;:!?()[]'\"«»").lower()
         slugs = tok2slug.get(core)
         if slugs and len(slugs) == 1:
             s = next(iter(slugs))
-            if matched_slug is None or matched_slug == s:
-                matched_slug = s
-                continue  # token = nome-persona → fuori dalla scena
+            if s not in matched:
+                matched.append(s)
+            continue  # nome-persona → fuori dalla scena
+        if core in _OR_MARKERS:
+            op = "or"
+            continue  # operatore → fuori dalla scena
+        if core in _AND_MARKERS:
+            continue  # operatore AND-conferma → fuori dalla scena
         keep.append(tok)
-    if matched_slug is None:
-        return query_text, None
-    return " ".join(keep).strip(), slug2name.get(matched_slug)
+    if not matched:
+        return query_text, [], "and"
+    stop = _scene_stopwords(lang)
+    residual = [t for t in keep
+                if t.strip(".,;:!?()[]'\"«»").lower() not in stop]
+    return " ".join(residual).strip(), [slug2name.get(s, s) for s in matched], op
 
 
 def _extract_face_embeddings_from_reference(ref_paths: list[str]):
@@ -865,6 +917,8 @@ def _filter_unified(
         name = None  # promosso a names plurale
     else:
         names_clean = []
+    # Operatore multi-persona: 'and' (default, foto con TUTTI) | 'or' (unione).
+    names_op = "or" if str(args.get("names_op", "and")).lower() == "or" else "and"
     reference_images = args.get("reference_images") or []
     min_face_pixels = args.get("min_face_pixels")
     min_face_count = args.get("min_face_count")
@@ -981,16 +1035,20 @@ def _filter_unified(
                     kept.append(e)
         entries = kept
 
-    # Identity filter — multi-name AND (`names` plurale §2.1)
+    # Identity filter — multi-name AND/OR (`names` plurale §2.1, op da `names_op`)
+    multi_unenrolled: list[str] = []
     if names_clean:
         try:
             from persons_registry import resolve_face_embeddings_for_name
         except Exception:
             resolve_face_embeddings_for_name = None
-        # Per ogni nome, resolve target embeddings. Se UN nome non e'
-        # enrollato, ritorniamo errore esplicito (no fallback BM25 perche'
-        # ammettrebbe falsi positivi su AND multi-persona).
+        # Resolve target embeddings per nome. Un nome NON enrollato non puo'
+        # essere matchato per volto: invece di fallire l'INTERA query (vecchio
+        # comportamento), filtriamo sui nomi ENROLLATI e segnaliamo i mancanti
+        # (§2.8 — Roberto «se uno solo e' enrolled»). AND/OR si applicano ai soli
+        # enrollati; il non-enrollato e' dichiarato, non silenziosamente perso.
         targets_per_name: list[list] = []
+        enrolled_names: list[str] = []
         for n in names_clean:
             embs = []
             if resolve_face_embeddings_for_name is not None:
@@ -998,23 +1056,25 @@ def _filter_unified(
                     embs = list(resolve_face_embeddings_for_name(n) or [])
                 except Exception:
                     embs = []
-            if not embs:
-                return {
-                    "entries": [], "n_above_threshold": 0,
-                    "error_class": "person_not_enrolled",
-                    "error": (
-                        f"names: '{n}' non enrollato. Per AND multi-persona "
-                        f"tutti i nomi devono essere enrollati via set_persons."
-                    ),
-                    "applied_paths_filter": applied_paths_filter,
-                }
-            targets_per_name.append(embs)
-        # Filter entries: ogni entry deve avere una face match per OGNI name
+            if embs:
+                targets_per_name.append(embs)
+                enrolled_names.append(n)
+            else:
+                multi_unenrolled.append(n)
+        if not targets_per_name:
+            return {
+                "entries": [], "n_above_threshold": 0,
+                "error_class": "person_not_enrolled",
+                "error": (f"nessun nome enrollato fra {names_clean}: impossibile "
+                          f"filtrare per volto (registra via set_persons)."),
+                "applied_paths_filter": applied_paths_filter,
+            }
+        # Filter entries: best match per OGNI nome enrollato; AND → tutti
+        # matchano, OR → almeno uno.
         kept = []
         for e in entries:
             faces = e.get("faces", [])
-            all_match = True
-            best_scores: list[float] = []
+            per_name_best: list[float] = []
             for target_embs in targets_per_name:
                 best = 0.0
                 for face in faces:
@@ -1032,13 +1092,17 @@ def _filter_unified(
                         s = _cosine(fv, tv)
                         if s > best:
                             best = s
-                if best < _FACE_MATCH_FLOOR:
-                    all_match = False
-                    break
-                best_scores.append(best)
-            if all_match:
-                # face_score = media dei best per ogni nome
-                e["_face_score"] = sum(best_scores) / len(best_scores)
+                per_name_best.append(best)
+            n_matched = sum(1 for b in per_name_best if b >= _FACE_MATCH_FLOOR)
+            if names_op == "or":
+                keep_it = n_matched >= 1
+                score = max(per_name_best) if per_name_best else 0.0
+            else:  # and
+                keep_it = n_matched == len(targets_per_name)
+                score = (sum(per_name_best) / len(per_name_best)
+                         if per_name_best else 0.0)
+            if keep_it:
+                e["_face_score"] = score
                 kept.append(e)
         entries = kept
         identity_filtered = True
@@ -1046,10 +1110,14 @@ def _filter_unified(
         name_unenrolled = False
         # Skip il blocco single-name che segue
         if not entries:
+            _rel = "tutti i" if names_op == "and" else "alcuno dei"
+            _note = (f" (non enrollati, ignorati: {multi_unenrolled})"
+                     if multi_unenrolled else "")
             return {
                 "entries": [], "n_above_threshold": 0,
                 "applied_paths_filter": applied_paths_filter,
-                "_msg": f"nessuna foto contiene tutti i nomi: {names_clean}",
+                "names_unenrolled": multi_unenrolled,
+                "_msg": f"nessuna foto contiene {_rel} nomi: {enrolled_names}{_note}",
             }
         name = None  # consumed
 
@@ -1350,6 +1418,14 @@ def _filter_unified(
             f"persona '{name}' NON registrata in PersonsRegistry; "
             f"fallback a ricerca testuale via path_tokens/description."
         )
+    # §2.8: nomi multi-persona NON enrollati → dichiarati (filtro ridotto agli
+    # enrollati, non silenziosamente perso). Roberto «se uno solo e' enrolled».
+    if multi_unenrolled:
+        out_dict["names_unenrolled"] = multi_unenrolled
+        out_dict["_msg"] = (
+            f"nomi non enrollati (non filtrabili per volto): {multi_unenrolled}; "
+            f"risultati filtrati sui soli enrollati."
+        )
     return out_dict
 
 
@@ -1598,17 +1674,23 @@ def invoke(args):
     # di cercare "ospite" come testo (bug live 8/6: trovava il mare, non la persona).
     # Dopo lo split temporale → "ospite al mare 2016" = volto∩scena∩tempo.
     if args.get("query_text") and not args.get("name") and not args.get("names"):
-        _resid, _person = _split_person_from_query(str(args["query_text"]))
-        if _person is not None:
+        _lang = str(args.get("_lang") or "").strip() or _current_lang()
+        _resid, _persons, _op = _split_persons_from_query(
+            str(args["query_text"]), _lang)
+        if _persons:
             args = dict(args)
-            args["name"] = _person
+            if len(_persons) == 1:
+                args["name"] = _persons[0]
+            else:
+                args["names"] = _persons  # multi-persona
+                args["names_op"] = _op    # 'and' (default) | 'or'
             if _resid:
                 args["query_text"] = _resid
             else:
-                args.pop("query_text", None)  # solo persona → tutte le sue foto
+                args.pop("query_text", None)  # solo persone → tutte le loro foto
                 args["match_all"] = True
-            log.info("find_images_indices: person split → name=%r, query_text=%r",
-                     _person, args.get("query_text"))
+            log.info("find_images_indices: persons split → names=%r op=%s query_text=%r",
+                     _persons, _op, args.get("query_text"))
 
     top_k, explicit_cap = _resolve_cap(args)
     # Validazione top_k ESPLICITO (schema minimum=1): _resolve_cap normalizza i
@@ -1695,6 +1777,15 @@ def invoke(args):
         out["entries"] = []
     if res.get("applied_paths_filter") is not None:
         out["applied_paths_filter"] = res["applied_paths_filter"]
+    # §2.8: propaga le note di onestà (nomi non enrollati non filtrabili per
+    # volto, fallback testuale) dal core al risultato — altrimenti perse nel
+    # rebuild del wrapper.
+    if res.get("names_unenrolled"):
+        out["names_unenrolled"] = res["names_unenrolled"]
+    if res.get("name_unenrolled"):
+        out["name_unenrolled"] = True
+    if res.get("_msg"):
+        out["_msg"] = res["_msg"]
     n_returned = len(out["entries"])
     if n_returned >= top_k and res.get("n_above_threshold", 0) > top_k:
         out["truncated"] = True
@@ -1751,6 +1842,7 @@ def _invoke_multi_dirs(dirs: list[Path], args: dict, msg: str | None) -> dict:
     n_with_size = 0
     error_classes: set[str] = set()
     schema_too_old_dirs: list[str] = []
+    merged_unenrolled: list[str] = []
     for d in dirs:
         idx_dir = _index_dir(d)
         if not (idx_dir / "meta.json").exists():
@@ -1765,6 +1857,8 @@ def _invoke_multi_dirs(dirs: list[Path], args: dict, msg: str | None) -> dict:
             continue
         res = _filter_unified(entries, emb_text, emb_face, meta, args,
                                 idx_dir=idx_dir)
+        if res.get("names_unenrolled"):
+            merged_unenrolled = res["names_unenrolled"]  # dir-independent
         if res.get("error_class"):
             error_classes.add(res["error_class"])
             continue
@@ -1798,6 +1892,10 @@ def _invoke_multi_dirs(dirs: list[Path], args: dict, msg: str | None) -> dict:
             "n_with_size": n_with_size,
         },
     }
+    if merged_unenrolled:
+        out["names_unenrolled"] = merged_unenrolled
+        out["_msg"] = (f"nomi non enrollati (non filtrabili per volto): "
+                       f"{merged_unenrolled}; risultati sui soli enrollati.")
     if not truncated_entries and error_classes:
         out["ok"] = False
         out["error_classes"] = sorted(error_classes)
