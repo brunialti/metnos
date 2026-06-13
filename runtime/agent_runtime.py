@@ -5106,6 +5106,100 @@ def _orchestrate_strato3_escalation(
     )
 
 
+def _strato3_routing_changed(user_query: str, *, lang: str) -> bool:
+    """True se il routing CORRENTE per `user_query` NON riprodurrebbe piu'
+    alcuna pipeline gia' rifiutata dall'utente → i ✗ storici sono STANTII.
+
+    Deadlock strato-3 (bug 13/6/2026): i ✗ consecutivi che alimentano
+    l'escalation possono riferirsi a pipeline che il routing NON genera piu'
+    (fix di intent/vocab/prefilter, nuovo executor, undeprecate, fastpath
+    bonificato). In quel caso bloccare e' un cane che si morde la coda — non
+    riesce perche' bloccato, bloccato perche' (storicamente) non riusciva. Se
+    la forma che il sistema proporrebbe ORA e' cambiata, diamo una chance
+    all'engine invece del dialog.
+
+    Decisione ESATTA, non un proxy: ricostruiamo la pipeline che il sistema
+    proporrebbe ORA con le STESSE funzioni di produzione — `build_routing_pool`
+    + `get_proposer().propose()` (Mētis, grammar, verb_filter) — SENZA
+    eseguirla (propose() non ha effetti). Se la firma della pipeline proposta
+    non e' fra quelle rifiutate, il routing e' cambiato → niente escalation.
+    Determinismo §7.9: seed pinnato + affinity boost (§11) rendono il routing
+    riproducibile; il propose e' memoizzato (LRU per query+intent+lang) → il
+    turno reale che segue riusa il risultato senza una seconda chiamata wise.
+    Path raro (solo consec>=3).
+
+    Fail-safe (§2.8): su qualunque incertezza (intent incompleto, propose None,
+    errore) ritorna False → PRESERVA l'escalation (comportamento storico).
+    """
+    try:
+        from turn_feedback import rejected_pipelines_for_query
+        rejected = rejected_pipelines_for_query(user_query)
+        if not rejected:
+            # Nessuna pipeline rifiutata da riprodurre → niente deadlock.
+            return True
+        rejected_sigs = {tuple(p) for p in rejected if p}
+
+        from intent_extractor import extract_intent
+        from engine.types import Intent
+        from engine.routing_pool import build_routing_pool
+        from engine.proposer import get_proposer
+
+        def _fast(sys_msg, user_msg, *, max_tokens=80, think=False, **kw):
+            from llm_router import LLMRouter
+            ck = {"max_tokens": max_tokens, "think": think}
+            if kw.get("grammar") is not None:
+                ck["grammar"] = kw["grammar"]
+            res = LLMRouter().provider("fast").chat(sys_msg, user_msg, **ck)
+            return (getattr(res, "text", res) or "").strip()
+
+        def _wise(sys_msg, user_msg, *, max_tokens=2048, think=True, **kw):
+            from llm_router import LLMRouter
+            ck = {"max_tokens": max_tokens, "think": think}
+            if kw.get("grammar") is not None:
+                ck["grammar"] = kw["grammar"]
+            if kw.get("reasoning_budget") is not None:
+                ck["reasoning_budget"] = kw["reasoning_budget"]
+            res = LLMRouter().provider(kw.get("tier_override") or "wise").chat(
+                sys_msg, user_msg, **ck)
+            return (getattr(res, "text", res) or "").strip()
+
+        ir = extract_intent(user_query, _fast) or {}
+        intent = Intent(
+            verb=(ir.get("verb") or "").lower(),
+            object=(ir.get("object") or "").lower(),
+            keywords=list(ir.get("keywords") or []),
+            confidence=float(ir.get("confidence") or 1.0),
+            lang=lang,
+            actions=list(ir.get("actions") or []),
+        )
+        if not intent.is_complete():
+            return False  # intent incerto → preserva escalation
+        # Catalog + pool COME in produzione (composer visibility + builtin
+        # in-proc): l'esatta superficie che il proposer vede in dispatch.
+        catalog = _engine_v2_catalog_with_builtins(
+            filter_for_visibility(load_catalog(), VISIBILITY_COMPOSER))
+        pool = build_routing_pool(user_query, intent, catalog)
+        if not pool:
+            return False
+        framework = get_proposer().propose(
+            query=user_query, intent=intent, pool=pool,
+            excluded_hashes=set(), llm_call=_wise, lang=lang, catalog=catalog)
+        if framework is None:
+            return False  # non determinabile → preserva escalation
+        import dataclasses
+        d = dataclasses.asdict(framework) if dataclasses.is_dataclass(framework) else {}
+        proposed_sig = tuple(
+            s.get("tool") for s in (d.get("steps") or [])
+            if s.get("tool") and s.get("tool") != "final_answer")
+        if not proposed_sig:
+            return False
+        # Routing cambiato sse la pipeline proposta ORA non e' fra le rifiutate.
+        return proposed_sig not in rejected_sigs
+    except Exception as ex:
+        log.warning("strato3 routing-change check fallito: %r", ex)
+        return False
+
+
 # --- Loop pianificatore (multistep con tool-use nativo) -------------------
 
 def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, think=None, progress=None,
@@ -5191,7 +5285,14 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
     # e qualsiasi anti_skill filter, esegue il turno come fresh.
     if bypass_rejected_pipelines:
         _consec = 0
-    if _consec >= 3 and channel != "":
+    # Anti-deadlock (bug 13/6/2026): NON escalare se il routing corrente
+    # produrrebbe una pipeline NUOVA (mai rifiutata) — i ✗ storici sono
+    # stantii (es. dopo un fix di intent/vocab/fastpath). Vedi
+    # `_strato3_routing_changed` (deterministico §7.9). Fail-safe: in dubbio
+    # ritorna False → escalation preservata.
+    if (_consec >= 3 and channel != ""
+            and not _strato3_routing_changed(user_query_for_run,
+                                             lang=DEFAULT_LANG)):
         try:
             _ask_result = _orchestrate_strato3_escalation(
                 user_query=user_query_for_run,

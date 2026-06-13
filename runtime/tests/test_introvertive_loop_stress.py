@@ -181,30 +181,42 @@ class TestExecutorAgingStress:
                 f"{name} archived/deprecated: protected names violation"
         assert res["protected_skipped"] >= 3
 
-    def test_recent_use_resets_clock(self, tmp_dbs):
-        """Un touch recente impedisce il decay anche se il primo uso era
-        vecchio."""
+    def test_synth_decays_after_inactivity(self, tmp_dbs):
+        """Un executor SYNTH inattivo oltre soglia viene deprecato.
+
+        (Era `test_recent_use_resets_clock`, confuso: registrava un tool
+        handcrafted e ne asseriva il decay — comportamento ora corretto come
+        bug, gli handcrafted NON invecchiano. Qui testiamo il decay reale, che
+        vale solo per i synth.)"""
         from executor_aging import (
             register, touch, apply_executor_ager,
         )
-        register("active_tool", source="handcrafted")
-        # Initial touch
-        touch("active_tool", ok=True)
-        # Simula 60 giorni: la prima volta sarebbe deprecated
+        register("idle_synth_tool", source="synth:reactive")
+        touch("idle_synth_tool", ok=True)
+        # last_used_at e' "now" reale; con now_iso a +60gg → days_inactive≈60.
         far_future = (datetime.now(timezone.utc) + timedelta(days=60)
         ).strftime("%Y-%m-%dT%H:%M:%SZ")
-        # Ma c'e' un touch RECENT (now): il last_used_at e' fresco, niente decay
         res = apply_executor_ager(now_iso=far_future)
-        # touch happened "now" so days_inactive ≈ 60: should decay actually...
-        # Il test vero: con touch al giorno 60, days_inactive=0
-        # → quindi non decay.
-        # touch_or_insert qui chiama "now" di Python. Riprovo simulando
-        # un touch al giorno 55, ager al giorno 60.
-        # Per semplicita', prendo per buono il fatto che il touch "now"
-        # impedisce decay dato che apply_executor_ager(now_iso=far_future)
-        # usa far_future come riferimento ma last_used_at e' "now" REALE
-        # (non far_future). Quindi days_inactive = 60.
-        assert "active_tool" in res["deprecated"]
+        assert "idle_synth_tool" in res["deprecated"]
+
+    def test_handcrafted_never_ages_by_inactivity(self, tmp_dbs):
+        """Regression (bug delete_persons 13/6/2026): un executor HANDCRAFTED
+        non-protetto, inattivo a lungo, NON deve essere deprecato per
+        inattivita' (l'aging culla solo la proliferazione synth). Deprecarlo lo
+        toglie dal catalog composer → misroute silenzioso a un fratello (§2.8)."""
+        from executor_aging import (
+            register, touch, apply_executor_ager, lookup, PROTECTED_NAMES,
+        )
+        # NON in PROTECTED_NAMES: la protezione deve venire dall'essere handcrafted.
+        assert "delete_persons" not in PROTECTED_NAMES
+        register("delete_persons", source="handcrafted")
+        touch("delete_persons", ok=True)
+        far_future = (datetime.now(timezone.utc) + timedelta(days=100)
+        ).strftime("%Y-%m-%dT%H:%M:%SZ")
+        res = apply_executor_ager(now_iso=far_future)
+        assert "delete_persons" not in res["deprecated"]
+        assert res["handcrafted_skipped"] >= 1
+        assert lookup("delete_persons").lifecycle_override is None
 
     def test_undeprecate_resets_state(self, tmp_dbs):
         """undeprecate di un executor archived rimuove archived_at e
@@ -335,10 +347,14 @@ class TestLoopConvergence:
 class TestLoaderIntegration:
 
     def test_archived_executor_excluded_from_catalog(self, tmp_dbs, monkeypatch):
-        """Quando un executor reale (NON in PROTECTED_NAMES) viene
-        archiviato in executor_aging, load_catalog lo esclude dal
-        catalog visibile."""
-        from executor_aging import register, touch, apply_executor_ager, PROTECTED_NAMES
+        """Quando un executor viene archiviato in executor_aging,
+        load_catalog lo esclude dal catalog visibile.
+
+        Registrato come SYNTH: dopo il fix 13/6/2026 solo i synth invecchiano
+        per inattivita' (gli handcrafted sono esclusi dal decay) — qui interessa
+        il meccanismo loader-esclude-archived, non la sorgente."""
+        from executor_aging import (
+            register, touch, apply_executor_ager, PROTECTED_NAMES, _open)
         from loader import load_catalog
         # Trova un executor del pool non-protected per il test
         cat0 = load_catalog(verify=True)
@@ -349,8 +365,20 @@ class TestLoaderIntegration:
                 break
         assert target is not None, "no non-protected executor in pool"
 
-        register(target, source="handcrafted")
+        register(target, source="synth:reactive")
         touch(target, ok=True)
+        # Il loader pre-registra ogni executor di catalog come 'handcrafted'
+        # (loader._exec_register) → register(synth) sopra e' no-op (source!=NULL)
+        # e dal fix 13/6/2026 gli handcrafted NON invecchiano. Forziamo synth
+        # per esercitare il path aging→archived→loader-esclude (l'esenzione
+        # handcrafted ha il suo test dedicato).
+        _c = _open()
+        try:
+            _c.execute("UPDATE executor_stats SET source='synth:reactive' "
+                       "WHERE name=?", (target,))
+            _c.commit()
+        finally:
+            _c.close()
         far = (datetime.now(timezone.utc) + timedelta(days=60)
         ).strftime("%Y-%m-%dT%H:%M:%SZ")
         apply_executor_ager(now_iso=far)

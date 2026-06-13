@@ -293,8 +293,14 @@ def apply_executor_ager(
       catalog_names:  se passato, applica solo a questi nomi (ignora il resto).
 
     Returns:
-      summary {deprecated:[name,...], archived:[name,...], protected_skip:int,
-               already_deprecated:int, already_archived:int, total_seen:int}.
+      summary {deprecated:[name,...], archived:[name,...], protected_skipped:int,
+               handcrafted_skipped:int, already_deprecated:int,
+               already_archived:int, total_seen:int}.
+
+    NB (13/6/2026): solo gli executor SYNTH invecchiano per inattivita'. Gli
+    handcrafted (source non-synth) sono esclusi dal decay (vedi docstring
+    modulo + simmetria con apply_feedback_ager): sono capacita' core curate a
+    mano, un raro uso non e' obsolescenza, e ritirarli causa misroute silenzioso.
     """
     deprecate_days = deprecate_days if deprecate_days is not None else DEPRECATED_DAYS
     archive_days   = archive_days   if archive_days   is not None else ARCHIVED_DAYS
@@ -303,6 +309,7 @@ def apply_executor_ager(
     deprecated_now: list[str] = []
     archived_now: list[str] = []
     protected_skipped = 0
+    handcrafted_skipped = 0
     already_dep = 0
     already_arc = 0
     total_seen = 0
@@ -322,6 +329,21 @@ def apply_executor_ager(
             # comunque, ma per safety).
             if row.name in PROTECTED_NAMES:
                 protected_skipped += 1
+                continue
+
+            # Mai deprecare per INATTIVITA' un executor handcrafted (bug
+            # 13/6/2026): l'aging serve a culling della proliferazione SYNTH
+            # (§3), non a ritirare capacita' core curate a mano. Un raro uso
+            # (es. `delete_persons`: si cancella un enrollment ogni mesi) NON
+            # e' obsolescenza. Deprecato per inattivita', l'handcrafted sparisce
+            # dal catalog composer (filter_for_visibility) → il pool di routing
+            # perde l'unico provider della capacita' → misroute silenzioso a un
+            # fratello sbagliato (delete_persons→delete_credentials, falso
+            # successo §2.8). Simmetrico con `apply_feedback_ager` (handcrafted
+            # MAI demoted da efficacy) e col docstring del modulo ("Esclusi dal
+            # decay: tutti gli handcrafted"). Solo synth invecchiano.
+            if not _is_synth(row.name, row.source):
+                handcrafted_skipped += 1
                 continue
 
             # Caso 1: gia' archived → niente
@@ -367,6 +389,7 @@ def apply_executor_ager(
             "deprecated": deprecated_now,
             "archived": archived_now,
             "protected_skipped": protected_skipped,
+            "handcrafted_skipped": handcrafted_skipped,
             "already_deprecated": already_dep,
             "already_archived": already_arc,
             "total_seen": total_seen,

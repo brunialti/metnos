@@ -87,6 +87,17 @@ GOLD = [
     # profilo con mail_accounts). Il misroute che conta è read_messages.
     {"q": "quali account mail hai?", "tool": ["find_credentials", "read_persons"]},
     {"q": "quali account email ho configurato?", "tool": ["find_credentials", "read_persons"]},
+    # --- enrollment biometrico vs credenziali (bug 13/6/2026): «cancella
+    # l'enrollment di X» = registro PERSONE (delete_persons), MAI token/
+    # password servizi (delete_credentials). Il misroute reale nasceva da
+    # delete_persons deprecato per inattivita' → fuori dal catalog composer →
+    # il proposer ripiegava su delete_credentials (falso successo §2.8).
+    # Questo gold gira sul catalog composer (vedi main) → se delete_persons
+    # sparisce di nuovo dal pool, il guard diventa rosso. Enumerazione
+    # enrollati = get_persons (vincolo §5). Vedi project_bug_delete_persons*.
+    {"q": "cancella l'enrollement di roberto brunialti", "tool": "delete_persons"},
+    {"q": "dimentica la persona silvia", "tool": "delete_persons"},
+    {"q": "chi è enrollato nel sistema?", "tool": "get_persons"},
 ]
 
 
@@ -145,8 +156,14 @@ def main():
     ap.add_argument("--save", help="salva i risultati come baseline JSON")
     args = ap.parse_args()
 
-    from loader import load_catalog
-    cat = load_catalog(verify=True)
+    # Catalog COME in produzione: filtrato per visibility composer (solo
+    # lifecycle='active'). Bug 13/6/2026: il bench usava load_catalog RAW
+    # (include i deprecated) → un executor routable deprecato per inattivita'
+    # (es. delete_persons, tolto dal pool reale di run_turn via
+    # filter_for_visibility) restava visibile QUI → il guard verde mentre
+    # produzione regrediva. §11: il guard DEVE riflettere prod per costruzione.
+    from loader import load_catalog, filter_for_visibility, VISIBILITY_COMPOSER
+    cat = filter_for_visibility(load_catalog(verify=True), VISIBILITY_COMPOSER)
     fast, wise = build_calls()
 
     rows, ok = [], 0
