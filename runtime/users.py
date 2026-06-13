@@ -70,8 +70,7 @@ CREATE INDEX IF NOT EXISTS idx_channels_recipient ON user_channels(channel, reci
 
 # --- helpers ----------------------------------------------------------------
 
-def _now_iso() -> str:
-    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+from timefmt import now_iso_z as _now_iso
 
 
 def _resolve_db_path() -> Path:

@@ -38,9 +38,7 @@ from logging_setup import get_logger
 log = get_logger(__name__)
 
 
-def _now_iso() -> str:
-    import datetime as _dt
-    return _dt.datetime.now(_dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+from timefmt import now_iso_z as _now_iso
 
 
 def sync_users_email_to_user_channels() -> dict:

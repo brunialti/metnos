@@ -57,12 +57,10 @@ def _audit_dir() -> Path:
     return Path(env) if env else _DEFAULT_AUDIT_DIR
 
 
-def _now_iso() -> str:
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+from timefmt import now_iso_z as _now_iso
 
 
-def _today_iso_date() -> str:
-    return datetime.now(timezone.utc).strftime("%Y-%m-%d")
+from timefmt import today_iso as _today_iso_date
 
 
 SCHEMA = """

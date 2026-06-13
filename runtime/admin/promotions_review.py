@@ -130,8 +130,7 @@ def _audit_dir() -> Path:
     return _C.PATH_USER_DATA / "synth_audit"
 
 
-def _now_iso() -> str:
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+from timefmt import now_iso_z as _now_iso
 
 
 def build_review_dialog(

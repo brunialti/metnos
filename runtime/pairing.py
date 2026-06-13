@@ -96,8 +96,7 @@ def _b64u_decode(s: str) -> bytes:
     return base64.urlsafe_b64decode(s + pad)
 
 
-def _now_iso() -> str:
-    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+from timefmt import now_iso_z as _now_iso
 
 
 def _open_db(db_path: Path | None = None) -> sqlite3.Connection:

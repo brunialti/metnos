@@ -34,10 +34,6 @@ _MIN_SLEEP_S = 0.001  # floor to avoid busy-spin if a timer is in the past
 _CIRCUIT_BREAK_AFTER = int(os.environ.get("METNOS_SCHED_CIRCUIT_BREAK_AFTER") or 3)
 
 
-def _utc_iso(epoch: float | None = None) -> str:
-    if epoch is None:
-        return datetime.now(timezone.utc).isoformat(timespec="seconds")
-    return datetime.fromtimestamp(epoch, tz=timezone.utc).isoformat(timespec="seconds")
 
 
 def _weekday_token(epoch: float, tz_name: str) -> str:

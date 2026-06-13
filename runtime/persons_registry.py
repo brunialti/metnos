@@ -26,7 +26,6 @@ import re
 import sqlite3
 import threading
 import unicodedata
-from datetime import datetime, timezone
 from pathlib import Path
 
 import numpy as np
@@ -91,8 +90,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS person_examples_dedupe_idx
 """
 
 
-def _utc_now_iso() -> str:
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+from timefmt import now_iso_z as _utc_now_iso  # nome storico: output Z-form
 
 
 def slugify(name: str) -> str:

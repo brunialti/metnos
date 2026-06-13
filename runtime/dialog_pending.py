@@ -53,7 +53,7 @@ import json
 import os
 import re
 import time
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
 
 from logging_setup import get_logger
@@ -99,9 +99,7 @@ def _dialog_path(sender_id: str, dialog_id: str) -> Path:
     return _sender_dir(sender_id) / f"{dialog_id}.json"
 
 
-def _utc_now_iso() -> str:
-    """ISO-8601 UTC, senza microsecondi: comodo per debug e diff."""
-    return datetime.now(tz=timezone.utc).replace(microsecond=0).isoformat()
+from timefmt import now_iso_offset as _utc_now_iso
 
 
 def _started_ts(payload: dict) -> float:

@@ -217,9 +217,7 @@ class Grant:
     revoked_at: str | None = None
 
 
-def _now_iso() -> str:
-    import time
-    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+from timefmt import now_iso_z as _now_iso
 
 
 def _open_db(db_path: Path | None = None) -> sqlite3.Connection:

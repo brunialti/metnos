@@ -31,7 +31,6 @@ from __future__ import annotations
 import json
 import os
 import shutil
-from datetime import datetime, timezone
 from pathlib import Path
 
 import sys as _sys
@@ -103,8 +102,7 @@ def _dry_run() -> bool:
     )
 
 
-def _now_iso() -> str:
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+from timefmt import now_iso_z as _now_iso
 
 
 def _load_proposal_json(p: Path) -> dict | None:

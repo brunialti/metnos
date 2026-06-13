@@ -19,7 +19,6 @@ events audit + skip (niente crash globale).
 from __future__ import annotations
 
 import os
-from datetime import datetime, timezone
 
 from .promoter_state import audit_append, mark_notified, pending_notification
 
@@ -34,8 +33,7 @@ TELEGRAM_MESSAGE_MAX = 4000  # margin vs limite 4096 di Telegram
 AGGREGATED_THRESHOLD = 3
 
 
-def _now_iso() -> str:
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+from timefmt import now_iso_z as _now_iso
 
 
 def _notify_enabled() -> bool:

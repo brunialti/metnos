@@ -175,8 +175,7 @@ def _id() -> str:
     return "mn_" + secrets.token_hex(12)
 
 
-def _now_iso() -> str:
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+from timefmt import now_iso_z as _now_iso
 
 
 def _parse_iso(ts: str) -> datetime:

@@ -77,8 +77,7 @@ class ApprovalError(Exception):
 
 # --- helpers ---------------------------------------------------------------
 
-def _now_iso() -> str:
-    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+from timefmt import now_iso_z as _now_iso
 
 
 def _epoch_to_iso(epoch: float) -> str:

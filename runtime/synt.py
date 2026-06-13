@@ -247,8 +247,7 @@ class GeneratedProposal:
 # Eccezioni usate internamente; nel POC vengono trasformate in stato (cap. 9)
 # --- Helpers ---------------------------------------------------------------
 
-def _now_iso() -> str:
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+from timefmt import now_iso_z as _now_iso
 
 
 def make_request(

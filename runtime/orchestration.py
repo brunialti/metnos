@@ -47,7 +47,6 @@ from __future__ import annotations
 import json
 import sys
 import uuid
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -73,8 +72,7 @@ def _safe_sender(actor: str, channel: Optional[str]) -> str:
     return actor
 
 
-def _utc_now_iso() -> str:
-    return datetime.now(tz=timezone.utc).replace(microsecond=0).isoformat()
+from timefmt import now_iso_offset as _utc_now_iso
 
 
 # ── invoke_get_inputs_internal ────────────────────────────────────────

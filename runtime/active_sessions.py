@@ -62,8 +62,7 @@ CREATE INDEX IF NOT EXISTS idx_active_sessions_token
 """
 
 
-def _now_iso() -> str:
-    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+from timefmt import now_iso_z as _now_iso
 
 
 def _open_db() -> sqlite3.Connection:

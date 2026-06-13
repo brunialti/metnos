@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import sqlite3
 import threading
-from datetime import datetime, timezone
 from pathlib import Path
 
 from .models import Run, ScheduleEntry
@@ -72,8 +71,7 @@ CREATE INDEX IF NOT EXISTS runs_running_idx ON runs(status) WHERE status='runnin
 """
 
 
-def _utc_iso() -> str:
-    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+from timefmt import now_iso_offset as _utc_iso
 
 
 class SchedulerStorage:

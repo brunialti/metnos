@@ -15,7 +15,6 @@ from __future__ import annotations
 
 import os
 import shutil
-from datetime import datetime, timezone
 from pathlib import Path
 
 from .promoter_promote import _blob_dir, _handcrafted_dir, _synth_exec_dir
@@ -26,8 +25,7 @@ from .promoter_state import (
 )
 
 
-def _now_iso() -> str:
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+from timefmt import now_iso_z as _now_iso
 
 
 def rollback_promotion(proposal_id: str) -> dict:

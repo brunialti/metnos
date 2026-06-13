@@ -76,8 +76,7 @@ def _has_absolute_temporal_literal(framework: Framework) -> bool:
     return any(_scan(s.args) for s in framework.steps if s.args)
 
 
-def _now_iso() -> str:
-    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+from timefmt import now_iso_z as _now_iso
 
 
 @dataclass

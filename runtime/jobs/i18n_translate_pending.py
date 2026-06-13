@@ -25,7 +25,6 @@ import os
 import re
 import sqlite3
 import time
-from datetime import datetime, timezone
 from pathlib import Path
 
 log = logging.getLogger("metnos.jobs.i18n_translate_pending")
@@ -70,13 +69,10 @@ def _tier() -> str:
     return os.environ.get("METNOS_I18N_QUALITY", "wise").lower()
 
 
-def _now_iso() -> str:
-    """ISO8601 UTC con suffisso `Z` (timespec=seconds)."""
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+from timefmt import now_iso_z as _now_iso
 
 
-def _today_iso_date() -> str:
-    return datetime.now(timezone.utc).strftime("%Y-%m-%d")
+from timefmt import today_iso as _today_iso_date
 
 
 def _sha256_short(text: str) -> str:
