@@ -193,108 +193,6 @@ async def admin_home(request: web.Request) -> web.Response:
     return web.Response(body=body, content_type="text/html")
 
 
-# --- /admin/proposals --------------------------------------------------------
-
-def _describe_proposal(kind: str, sig_key: str) -> str:
-    """Spiegazione user-readable di una proposta introvertiva.
-
-    Determinismo §7.9: parsing JSON-tagged sig_key + template i18n.
-    Niente LLM. Lingua corrente da `messages.get` (config.DEFAULT_LANG,
-    env METNOS_LANG). Fallback su template `MSG_PROP_UNKNOWN` se la shape
-    non matcha le 6 forme note (dedupe+legacy_orphan, dedupe generico,
-    generalize lista N, generalize lista vuota, fastpath_promote,
-    specialize).
-    """
-    from messages import get as _msg
-    try:
-        parsed = json.loads(sig_key)
-    except (TypeError, ValueError):
-        return _msg("MSG_PROP_UNKNOWN", raw=sig_key[:80])
-    if not isinstance(parsed, list) or not parsed:
-        return _msg("MSG_PROP_UNKNOWN", raw=sig_key[:80])
-    head = parsed[0]
-    if head == "dedupe" and len(parsed) >= 4:
-        reason = parsed[1] or "duplicate"
-        a, b = parsed[2], parsed[3]
-        if reason == "legacy_orphan":
-            return _msg("MSG_PROP_DEDUPE_LEGACY", a=a, b=b)
-        return _msg("MSG_PROP_DEDUPE_GENERIC", a=a, b=b, reason=reason)
-    if head == "generalize" and len(parsed) >= 2:
-        seq = parsed[1]
-        if not isinstance(seq, list) or not seq:
-            return _msg("MSG_PROP_GENERALIZE_NOISE")
-        return _msg("MSG_PROP_GENERALIZE_SEQ",
-                    seq=" → ".join(str(s) for s in seq))
-    if head == "fastpath_promote" and len(parsed) >= 3:
-        chain = parsed[2]
-        chain_disp = (" → ".join(str(t) for t in chain)
-                      if isinstance(chain, list) and chain else "?")
-        return _msg("MSG_PROP_FASTPATH_PROMOTE",
-                    name=parsed[1], chain=chain_disp)
-    if head == "specialize" and len(parsed) >= 4:
-        exec_name, arg, val_json = parsed[1], parsed[2], parsed[3]
-        # val_json e' una stringa JSON-encoded del valore originale (es.
-        # '"<install_root>"' o '["dates.semantic"]'). Decodifica per leggibilita',
-        # fallback al raw se invalida.
-        try:
-            val = json.loads(val_json)
-            val_disp = (val if isinstance(val, str)
-                        else json.dumps(val, ensure_ascii=False))
-        except (TypeError, ValueError):
-            val_disp = str(val_json)
-        return _msg("MSG_PROP_SPECIALIZE", exec=exec_name, arg=arg, val=val_disp)
-    return _msg("MSG_PROP_UNKNOWN", raw=sig_key[:80])
-
-
-def _list_proposals(kind_filter: str | None) -> list[dict]:
-    db = proposals_state.DB_PATH
-    if not db.exists():
-        return []
-    conn = sqlite3.connect(str(db))
-    conn.row_factory = sqlite3.Row
-    try:
-        if kind_filter:
-            rows = conn.execute(
-                "SELECT * FROM proposals_state WHERE kind = ? "
-                "ORDER BY last_seen DESC LIMIT 200",
-                (kind_filter,),
-            ).fetchall()
-        else:
-            rows = conn.execute(
-                "SELECT * FROM proposals_state "
-                "ORDER BY last_seen DESC LIMIT 200"
-            ).fetchall()
-    finally:
-        conn.close()
-    out = []
-    for r in rows:
-        d = dict(r)
-        d["description"] = _describe_proposal(d.get("kind", ""), d.get("sig_key", ""))
-        out.append(d)
-    return out
-
-
-# --- /admin/proposals (unified hub C.6, 22/5/2026) ---------------------------
-
-_UNIFIED_DASH_MAX_ROWS = 30  # selettivita': il primo giro non deve mostrarne centinaia
-
-
-def _render_unified_row_html(prop_id: str, source: str, action: str,
-                              rec: dict) -> str:
-    """Riga aggiornata post-decisione unified. htmx swap."""
-    badge = {
-        "accept": '<span class="chip ok">accepted</span>',
-        "reject": '<span class="chip bad">rejected</span>',
-        "stage":  '<span class="chip">staged</span>',
-    }.get(action, '<span class="chip muted">pending</span>')
-    return (
-        f'<tr><td colspan="7" class="muted">'
-        f'[{source}] {prop_id[:24]}: {badge} '
-        f'(by {rec.get("by", "?")} at {time.strftime("%H:%M:%S", time.localtime(rec.get("ts", 0)))})'
-        f'</td></tr>'
-    )
-
-
 # --- /admin/changes (ADR 0158, unified change-intent lifecycle) ----------------
 
 # Default cap della UI. Sopra 50 il triage manuale non scala (CLAUDE.md §F.2).
@@ -491,45 +389,6 @@ async def admin_change_action(request: web.Request) -> web.Response:
         "ok": True, "id": id_, "action": action, "state": updated.state,
         "message": _msg("MSG_CHANGE_DECISION_OK", action=action),
     })
-
-
-# --- /admin/proposals/telos --------------------------------------------------
-
-# Soglia di default per la dashboard triage. Default strict (C.8 fase 2,
-# 24/5/2026): utente puo' gestire poche proposte alla volta; le filtrate
-# riemergono nel tempo con score piu' alto via convergence. Override via
-# query param `min_alignment` (e `strict=0` per disabilitare i filtri
-# convergence+name_status). Soglie da runtime_settings (telos.dashboard_*).
-_TELOS_DASH_MAX_ROWS = 60       # hard cap superiore (vista non-strict)
-
-
-def _telos_lens_facets(rows: list[dict]) -> dict:
-    """Conteggi per lens e telos_id, usati nei filtri della UI."""
-    lens_c: dict[str, int] = {}
-    telos_c: dict[str, int] = {}
-    for r in rows:
-        lens_c[r.get("lens", "?")] = lens_c.get(r.get("lens", "?"), 0) + 1
-        tid = r.get("telos_id") or "?"
-        telos_c[tid] = telos_c.get(tid, 0) + 1
-    return {"by_lens": lens_c, "by_telos": telos_c}
-
-
-def _render_telos_row_html(row: dict) -> str:
-    """Riga aggiornata post-azione (per swap htmx). Mostra solo summary
-    visto che il dettaglio era nella vista precedente."""
-    decision = row.get("decision") or {}
-    action = decision.get("action", "")
-    badge = {
-        "accept": '<span class="chip ok">accepted</span>',
-        "reject": '<span class="chip bad">rejected</span>',
-        "stage":  '<span class="chip">staged</span>',
-    }.get(action, '<span class="chip muted">pending</span>')
-    return (
-        f'<tr><td colspan="6" class="muted">'
-        f'prop {row.get("prop_id", "?")[:14]}: {badge} '
-        f'(by {decision.get("by", "?")} at {time.strftime("%H:%M:%S", time.localtime(decision.get("ts", 0)))})'
-        f'</td></tr>'
-    )
 
 
 # --- /admin/executors --------------------------------------------------------
@@ -1284,15 +1143,6 @@ async def admin_synth_proposal_evaluate(request: web.Request) -> web.Response:
         )
         return web.Response(text=body, content_type="text/html")
     return web.json_response(payload)
-
-
-# --- /admin/promotions (ADR ?) -----------------------------------------------
-
-
-_ALLOWED_PROMOTION_STATES: tuple[str, ...] = (
-    "promoted_grace", "promoted_finalized", "review_needed",
-    "rolled_back", "archived",
-)
 
 
 async def admin_timers(request: web.Request) -> web.Response:
