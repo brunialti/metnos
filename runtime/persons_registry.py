@@ -357,6 +357,38 @@ class PersonsRegistry:
                 raise
         return {"slug": slug, "deleted": True, "removed_examples": removed}
 
+    def examples_dir(self, name: str) -> Path:
+        """Dir delle crop persistite di una persona: `PERSISTENT_EXAMPLES_DIR/<slug>`.
+        slugify e' idempotente → accetta indifferentemente il nome o lo slug."""
+        return PERSISTENT_EXAMPLES_DIR / slugify(name)
+
+    def purge_example_files(self, name: str) -> int:
+        """Rimuove da disco le crop persistite della persona (leave-no-trace).
+
+        `delete()` toglie le RIGHE (CASCADE su person_examples) ma NON i file
+        immagine copiati in `PERSISTENT_EXAMPLES_DIR/<slug>/<sha256>.<ext>` da
+        `_persist_example_image` → restavano orfani su disco (residuo biometrico
+        dopo un un-enroll). Qui li rimuoviamo e togliamo la dir se vuota.
+
+        Best-effort §2.8: ritorna il numero di FILE rimossi. DA CHIAMARE DOPO il
+        backup-blob (i file servono a `reverse()` per un undo completo)."""
+        d = self.examples_dir(name)
+        if not d.is_dir():
+            return 0
+        n = 0
+        for f in list(d.iterdir()):
+            try:
+                if f.is_file():
+                    f.unlink()
+                    n += 1
+            except OSError:
+                pass
+        try:
+            d.rmdir()  # solo se vuota
+        except OSError:
+            pass
+        return n
+
     # -- backup / restore (undo §2.3) -------------------------------------
 
     def export_person(self, name: str) -> dict | None:

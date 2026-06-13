@@ -303,3 +303,42 @@ def test_delete_persons_dialog_options_listed(isolated_db):
     options = out["needs_inputs"]["dialog"][0]["schema"]["options"]
     slugs = sorted(o["value"] for o in options)
     assert slugs == ["silvia_buffa", "silvia_rossi"]
+
+
+def test_delete_with_backup_purges_crops_and_reverse_restores(tmp_path, monkeypatch):
+    """Leave-no-trace + undo completo: `_delete_with_backup` copia le crop nel
+    blob, cancella riga E file crop dal disco; `reverse()` ripristina riga,
+    embedding e crop. Chiama le funzioni dirette (niente dialog di invoke)."""
+    monkeypatch.setattr(persons_registry, "DEFAULT_DB_PATH",
+                        tmp_path / "persons.sqlite")
+    crops_root = tmp_path / "persons_examples"
+    monkeypatch.setattr(persons_registry, "PERSISTENT_EXAMPLES_DIR", crops_root)
+    monkeypatch.setenv("METNOS_HISTORY_DIR", str(tmp_path / "_hist"))
+    monkeypatch.setenv("METNOS_TURN_ID", "t_crop")
+    monkeypatch.delenv("METNOS_USER_DATA", raising=False)  # → DEFAULT_DB_PATH
+
+    src = tmp_path / "src.jpg"
+    src.write_bytes(b"\xff\xd8\xff\xe0JFIF dummy face crop")
+    reg = persons_registry.PersonsRegistry()
+    reg.enroll(name="Carol Test", image_path=str(src), face_box=(0, 0, 10, 10),
+               embedding=_emb(7), sha256="a" * 64)
+    slug = persons_registry.slugify("Carol Test")
+    crop_dir = crops_root / slug
+    assert list(crop_dir.glob("*")), "crop persistita pre-delete"
+
+    row = dp._delete_with_backup(reg, slug, "Carol Test")
+    reg.close()
+    assert row["removed_example_files"] >= 1
+    assert row.get("backup_path")
+    assert not crop_dir.exists(), "leave-no-trace: crop rimosse dal disco"
+    blob_crops = Path(row["backup_path"]).parent / f"{slug}_crops"
+    assert list(blob_crops.glob("*")), "crop nel blob per l'undo"
+
+    rev = dp.reverse({}, {"results": [row]})
+    assert rev["ok"] and rev["ok_count"] == 1
+    assert list(crop_dir.glob("*")), "l'undo ripristina le crop sul disco"
+    reg2 = persons_registry.PersonsRegistry()
+    try:
+        assert reg2.get("Carol Test") is not None, "persona ripristinata"
+    finally:
+        reg2.close()

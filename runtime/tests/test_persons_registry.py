@@ -471,3 +471,22 @@ def test_lookup_embeddings_roundtrip(reg):
     out = reg.lookup_embeddings("rt")
     assert len(out) == 1
     np.testing.assert_allclose(out[0], emb, rtol=0, atol=0)
+
+
+# --- leave-no-trace: purge crop files su delete (bug 13/6) ----------------
+
+def test_examples_dir_and_purge_example_files(reg, tmp_path):
+    """`purge_example_files` rimuove le crop persistite (orfane dopo delete) e
+    la dir; idempotente. `examples_dir` punta a PERSISTENT_EXAMPLES_DIR/<slug>."""
+    src = tmp_path / "src.jpg"
+    src.write_bytes(b"\xff\xd8\xff\xe0JFIF crop bytes")
+    reg.enroll(name="Carol Verde", image_path=str(src),
+               face_box=(0, 0, 10, 10), embedding=_rand_emb(11),
+               sha256="c" * 64)
+    d = reg.examples_dir("Carol Verde")
+    assert d == (persons_registry.PERSISTENT_EXAMPLES_DIR / "carol_verde")
+    assert d.is_dir() and list(d.iterdir()), "crop persistita pre-purge"
+    n = reg.purge_example_files("carol_verde")  # accetta anche lo slug
+    assert n >= 1
+    assert not d.exists(), "dir crop rimossa (leave-no-trace)"
+    assert reg.purge_example_files("Carol Verde") == 0  # idempotente

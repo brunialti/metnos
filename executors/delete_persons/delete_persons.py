@@ -47,10 +47,29 @@ def _backup_dir() -> Path:
     return Path(history) / turn_id / "persons_backup"
 
 
+def _copy_crop_dir(src_dir, dst_dir) -> int:
+    """Copia i file crop fra due dir (store persistente ↔ blob). Best-effort
+    §2.8: ritorna il numero di file copiati."""
+    import shutil
+    if not src_dir.is_dir():
+        return 0
+    n = 0
+    try:
+        dst_dir.mkdir(parents=True, exist_ok=True)
+        for f in list(src_dir.iterdir()):
+            if f.is_file():
+                shutil.copy2(f, dst_dir / f.name)
+                n += 1
+    except OSError:
+        pass
+    return n
+
+
 def _delete_with_backup(reg, slug: str, display: str) -> dict:
-    """Esporta la persona (riga+esempi+biometria) come blob PRIMA di
-    cancellarla, poi cancella. Il blob path va nel result → `reverse()` lo
-    rilegge per ripristinare (undo §2.3). Backup best-effort: se fallisce, la
+    """Esporta la persona (riga+esempi+biometria + crop persistite) come blob
+    PRIMA di cancellarla, poi cancella riga E file crop (leave-no-trace). Il
+    blob path va nel result → `reverse()` lo rilegge per ripristinare riga,
+    embedding e crop (undo §2.3 completo). Backup best-effort: se fallisce, la
     cancellazione procede ma il result non porta backup_path (undo onesto §2.8).
     """
     backup_path = None
@@ -62,11 +81,18 @@ def _delete_with_backup(reg, slug: str, display: str) -> dict:
             bp = bdir / f"{slug}.json"
             bp.write_text(json.dumps(dump, ensure_ascii=False), encoding="utf-8")
             backup_path = str(bp)
+            # Crop persistite NEL blob PRIMA della purge → undo completo.
+            _copy_crop_dir(reg.examples_dir(slug), bdir / f"{slug}_crops")
     except OSError:
         backup_path = None
     out = reg.delete(slug)
+    # Leave-no-trace (§2.8): `delete()` toglie le righe ma lasciava le crop
+    # orfane su disco (residuo biometrico dopo un un-enroll). Rimuovile DOPO
+    # il backup blob (servono a reverse()).
+    removed_files = reg.purge_example_files(slug)
     row = {"slug": slug, "name": display,
-           "removed_examples": out["removed_examples"]}
+           "removed_examples": out["removed_examples"],
+           "removed_example_files": removed_files}
     if backup_path:
         row["backup_path"] = backup_path
     return row
@@ -94,6 +120,10 @@ def reverse(plan, results):
                 dump = json.loads(Path(bp).read_text(encoding="utf-8"))
                 rr = reg.restore_person(dump)
                 if rr.get("restored"):
+                    # Ripristina anche le crop dal blob → undo completo (le righe
+                    # restored hanno image_path verso PERSISTENT_EXAMPLES_DIR).
+                    _copy_crop_dir(Path(bp).parent / f"{rr['slug']}_crops",
+                                   reg.examples_dir(rr["slug"]))
                     out.append({"slug": rr["slug"],
                                 "restored_examples": rr.get("restored_examples", 0)})
                 else:
