@@ -598,7 +598,7 @@ class TestApproveHook(_PromoteCase):
             "compress_images")
 
     def test_describe_proposal_renders_name_and_chain(self):
-        from http_routes_admin import _describe_proposal
+        from proposals_unified import _describe_proposal
         sig = promote.sig_key_for(
             "compress_images", ["find_images", "compress_files_zip"])
         with mock.patch("messages.get",

@@ -26,7 +26,6 @@ import json
 import sqlite3
 import time
 from datetime import datetime
-from pathlib import Path
 from typing import Optional
 
 
@@ -155,6 +154,57 @@ def _load_telos(only_pending: bool, max_rows: int,
     return rows
 
 
+def _describe_proposal(kind: str, sig_key: str) -> str:
+    """Spiegazione user-readable di una proposta introvertiva.
+
+    Determinismo §7.9: parsing JSON-tagged sig_key + template i18n.
+    Niente LLM. Lingua corrente da `messages.get` (config.DEFAULT_LANG,
+    env METNOS_LANG). Fallback su template `MSG_PROP_UNKNOWN` se la shape
+    non matcha le 6 forme note (dedupe+legacy_orphan, dedupe generico,
+    generalize lista N, generalize lista vuota, fastpath_promote,
+    specialize).
+    """
+    from messages import get as _msg
+    try:
+        parsed = json.loads(sig_key)
+    except (TypeError, ValueError):
+        return _msg("MSG_PROP_UNKNOWN", raw=sig_key[:80])
+    if not isinstance(parsed, list) or not parsed:
+        return _msg("MSG_PROP_UNKNOWN", raw=sig_key[:80])
+    head = parsed[0]
+    if head == "dedupe" and len(parsed) >= 4:
+        reason = parsed[1] or "duplicate"
+        a, b = parsed[2], parsed[3]
+        if reason == "legacy_orphan":
+            return _msg("MSG_PROP_DEDUPE_LEGACY", a=a, b=b)
+        return _msg("MSG_PROP_DEDUPE_GENERIC", a=a, b=b, reason=reason)
+    if head == "generalize" and len(parsed) >= 2:
+        seq = parsed[1]
+        if not isinstance(seq, list) or not seq:
+            return _msg("MSG_PROP_GENERALIZE_NOISE")
+        return _msg("MSG_PROP_GENERALIZE_SEQ",
+                    seq=" → ".join(str(s) for s in seq))
+    if head == "fastpath_promote" and len(parsed) >= 3:
+        chain = parsed[2]
+        chain_disp = (" → ".join(str(t) for t in chain)
+                      if isinstance(chain, list) and chain else "?")
+        return _msg("MSG_PROP_FASTPATH_PROMOTE",
+                    name=parsed[1], chain=chain_disp)
+    if head == "specialize" and len(parsed) >= 4:
+        exec_name, arg, val_json = parsed[1], parsed[2], parsed[3]
+        # val_json e' una stringa JSON-encoded del valore originale (es.
+        # '"<install_root>"' o '["dates.semantic"]'). Decodifica per leggibilita',
+        # fallback al raw se invalida.
+        try:
+            val = json.loads(val_json)
+            val_disp = (val if isinstance(val, str)
+                        else json.dumps(val, ensure_ascii=False))
+        except (TypeError, ValueError):
+            val_disp = str(val_json)
+        return _msg("MSG_PROP_SPECIALIZE", exec=exec_name, arg=arg, val=val_disp)
+    return _msg("MSG_PROP_UNKNOWN", raw=sig_key[:80])
+
+
 def _load_introvertiva(only_pending: bool, max_rows: int) -> list[dict]:
     """Carica proposte introvertiva da proposals_state.db, adapter inline."""
     try:
@@ -179,12 +229,6 @@ def _load_introvertiva(only_pending: bool, max_rows: int) -> list[dict]:
 
     # Adapter inline: introvertiva row → unified dict
     out: list[dict] = []
-    try:
-        from http_routes_admin import _describe_proposal  # esiste gia'
-    except ImportError:
-        def _describe_proposal(kind, sig_key):  # fallback
-            return f"{kind}: {sig_key[:60]}"
-
     for r in raw:
         d = dict(r)
         sig_key = d.get("sig_key", "")
