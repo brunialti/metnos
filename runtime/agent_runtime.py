@@ -3075,8 +3075,10 @@ _FALSE_NOT_FOUND_RE = re.compile(
     r"not found|does not exist|n[oa]t (?:been )?found)",
     re.IGNORECASE,
 )
-_MUTATING_TOOL_PREFIXES = ("delete_", "move_", "change_", "send_", "create_",
-                            "set_", "write_", "share_", "render_")
+# SoT in pipeline_effects.py (condiviso con engine/dispatch, 12/6/2026).
+from pipeline_effects import (  # noqa: E402
+    MUTATING_TOOL_PREFIXES as _MUTATING_TOOL_PREFIXES,
+)
 
 
 def _detect_false_not_found(final_message: str | None, steps: list) -> dict | None:
@@ -3153,72 +3155,10 @@ def _detect_unbacked_promise(final_message: str | None, steps: list) -> bool:
 # effetti REALI del turno dai result degli step; usato sia per la notice
 # nel final (TurnLog.write) sia per la soppressione del push schedulato
 # (recurring_tasks._scheduled_push_is_noop).
-
-# Counter di successo mutating (stessa lista di TurnLog._MUTATE_SUCCESS_KEYS;
-# duplicata qui perche' la funzione e' module-level e precede la classe).
-_MUTATE_COUNT_KEYS = (
-    "n_deleted", "n_moved", "n_sent", "n_created", "n_written",
-    "n_set", "n_shared", "n_changed", "n_ordered", "ok_count",
-)
-
-
-def pipeline_effect_counts(steps) -> dict | None:
-    """Conteggio deterministico §7.9 degli effetti REALI di un turno.
-
-    Ritorna None se NESSUNO step espone output contabile (turno non
-    giudicabile: niente entries/results/ok_count), altrimenti:
-      {countable, items, mutations, mutating_attempted, failures}
-    - items     = elementi prodotti dagli step producer (len(entries)).
-    - mutations = elementi REALMENTE processati dagli step mutating
-                  (ok_count/n_*/len(results), §2.8).
-    - failures  = step con ok=False (un run con errori non e' "vuoto").
-    """
-    countable = items = mutations = failures = 0
-    mutating_attempted = False
-    for s in steps or []:
-        tool = getattr(s, "chosen_tool", None) or (
-            s.get("chosen_tool") if isinstance(s, dict) else None)
-        if not tool or tool == "final_answer" or tool.startswith("@"):
-            continue
-        res = getattr(s, "result", None)
-        if res is None and isinstance(s, dict):
-            res = s.get("result")
-        if isinstance(res, str):
-            try:
-                res = json.loads(res)
-            except Exception:
-                continue
-        if not isinstance(res, dict) or res.get("_duplicate") is True:
-            continue
-        if res.get("ok") is False:
-            failures += 1
-            continue
-        if any(tool.startswith(p) for p in _MUTATING_TOOL_PREFIXES):
-            mutating_attempted = True
-            n = None
-            for k in _MUTATE_COUNT_KEYS:
-                if isinstance(res.get(k), int):
-                    n = res[k]
-                    break
-            if n is None and isinstance(res.get("results"), list):
-                n = len(res["results"])
-            if n is None:
-                continue
-            countable += 1
-            mutations += max(0, n)
-        elif isinstance(res.get("entries"), list):
-            countable += 1
-            items += len(res["entries"])
-        elif isinstance(res.get("results"), list):
-            countable += 1
-            items += len(res["results"])
-        elif isinstance(res.get("ok_count"), int):
-            countable += 1
-            items += max(0, res["ok_count"])
-    if countable == 0 and failures == 0:
-        return None
-    return {"countable": countable, "items": items, "mutations": mutations,
-            "mutating_attempted": mutating_attempted, "failures": failures}
+# Implementazione condivisa in `pipeline_effects.py` (12/6/2026): la stessa
+# contabilità alimenta il criterio di EFFICACIA del fastpath L0
+# (engine/dispatch._maybe_record_fastpath → ineffective_mutations).
+from pipeline_effects import pipeline_effect_counts  # noqa: E402
 
 
 # Claim di esito POSITIVO nel final (IT+EN). Negazioni escluse via
@@ -3481,10 +3421,8 @@ class TurnLog:
     }
 
     # Counter di successo per verbo mutating (§2.6). Primo presente vince.
-    _MUTATE_SUCCESS_KEYS = (
-        "n_deleted", "n_moved", "n_sent", "n_created", "n_written",
-        "n_set", "n_shared", "n_changed", "n_ordered", "ok_count",
-    )
+    # SoT in pipeline_effects.MUTATE_COUNT_KEYS (condiviso, 12/6/2026).
+    from pipeline_effects import MUTATE_COUNT_KEYS as _MUTATE_SUCCESS_KEYS
 
     def _enforce_mutating_honesty(self):
         """§2.8 (mai negoziabile): un final che CLAIMA un esito mutating deve

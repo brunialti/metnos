@@ -101,10 +101,34 @@ def _maybe_record_fastpath(query: str, intent: Intent,
     Le condizioni di cacheabilità (≥1 step-executor, no tool
     context-dependent, no literal temporale assoluto, pertinenza 0a/0b)
     vivono in fastpath.record_success. Best-effort: il fallimento non blocca
-    il turno ma non è silenzioso (§2.8: log)."""
+    il turno ma non è silenzioso (§2.8: log).
+
+    Criterio di EFFICACIA (12/6/2026, bug live 1dcc8307): `final_kind=answer`
+    NON basta — un piano il cui step MUTANTE (delete/move/send/...) ha avuto
+    0 effetto reale (n_*=0 / ok=False; es. delete_credentials «not found»)
+    è un piano «ok ma a vuoto»: cacharlo lo auto-perpetua e ri-serve il
+    misroute in millisecondi bypassando il proposer. Confine deterministico
+    §7.9 in pipeline_effects.ineffective_mutations: SOLO i mutanti eseguiti
+    a 0-effetto bloccano; un producer (find/read/list) a 0 risultati è un
+    esito VALIDO cacheabile; un mutante saltato dalla guard condizionale o
+    senza output contabile non è giudicabile e non blocca. Costo del falso
+    positivo (mutante legittimamente a vuoto, es. «sposta lo spam» con 0
+    spam): il piano si cacherà alla prima esecuzione CON effetto — un
+    re-planning in più, mai un misroute perpetuato."""
     if not is_fastpath_enabled():
         return
     if run is None or run.final_kind != "answer" or run.aborted_reason:
+        return
+    try:
+        from pipeline_effects import ineffective_mutations
+        ineff = ineffective_mutations(run.steps)
+    except Exception as ex:  # best-effort ma non silenzioso (§2.8)
+        log.warning("fastpath efficacy-check fallito (registro comunque): %r", ex)
+        ineff = []
+    if ineff:
+        log.info("[L0 fastpath] skip record: step mutante a 0 effetto reale "
+                 "%s — piano 'ok a vuoto' non cacheabile (criterio efficacia)",
+                 ineff)
         return
     try:
         framework = _canonical_framework_for_record(query, framework, catalog)
