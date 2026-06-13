@@ -66,6 +66,27 @@ _FACE_MATCH_FLOOR = 0.4
 _IDENTITY_SCENE_SIGMA = 2.0
 
 
+def _resolve_cap(args) -> tuple[int, bool]:
+    """Ritorna (top_k_effettivo, explicit_cap).
+
+    `max_results` (§2.1, Roberto 13/6) = conteggio ESPLICITO dell'utente
+    («cerca 100 foto» → 100): PREVALE sul ranking (bypassa il taglio di
+    rilevanza nel core) e fissa il cap senza il guard <50. `top_k` = budget
+    INTERNO con guard anti-mistake del PLANNER (un top_k piccolo NON richiesto
+    era un errore del LLM, 15/5). Unica fonte di verità per core + wrapper."""
+    _mr = args.get("max_results")
+    explicit = (isinstance(_mr, (int, float)) and not isinstance(_mr, bool)
+                and int(_mr) > 0)
+    tk = int(args.get("top_k", _TOP_K_DEFAULT))
+    if explicit:
+        tk = min(int(_mr), _TOP_K_MAX)
+    elif tk < 50:
+        tk = _TOP_K_DEFAULT
+    if tk > _TOP_K_MAX:
+        tk = _TOP_K_MAX
+    return tk, explicit
+
+
 def _index_image_root() -> Path:
     v = os.environ.get("METNOS_INDEX_ROOT")
     if v:
@@ -849,16 +870,14 @@ def _filter_unified(
     min_face_count = args.get("min_face_count")
     max_face_count = args.get("max_face_count")
     paths_filter = args.get("paths_filter")
-    # Guard top_k LLM-mistake (15/5/2026 Roberto): il PLANNER tendeva a
-    # passare top_k=10 senza che l'utente lo chiedesse, generando truncation
-    # confusa "10 di 50". Se top_k < 50, ripristina il default 100. L'utente
-    # se vuole top-N specifico, deve chiederlo chiaramente (allora il LLM
-    # passera' top_k=N valido). Pattern §7.3: budget minimum.
-    top_k = int(args.get("top_k", _TOP_K_DEFAULT))
-    if top_k < 50:
-        top_k = _TOP_K_DEFAULT
-    if top_k > _TOP_K_MAX:
-        top_k = _TOP_K_MAX
+    # max_results (§2.1, Roberto 13/6): conteggio ESPLICITO richiesto dall'utente
+    # ("cerca 100 foto" → max_results=100). Quando presente PREVALE sul ranking:
+    # bypassa il taglio di rilevanza adattivo (sotto) → ritorna le top-N per
+    # punteggio, anche match più deboli (resta solo il pavimento anti-rumore
+    # text_score_min). Distinto dal budget interno top_k, che mantiene il guard
+    # <50 anti-mistake del PLANNER (15/5): un top_k piccolo NON richiesto era un
+    # errore del LLM; max_results invece è intenzione esplicita dell'utente.
+    top_k, explicit_cap = _resolve_cap(args)
     near_lat = args.get("near_lat")
     near_lon = args.get("near_lon")
     radius_km = float(args.get("radius_km", 5.0))
@@ -1215,7 +1234,12 @@ def _filter_unified(
         # Sotto identità il candidato è il sotto-corpus di UNA persona: la scena è
         # un cluster, non un outlier → soglia più inclusiva (2σ) per non scartare
         # le foto-scena genuine. Senza identità resta il 3σ globale (default).
-        if identity_filtered:
+        if explicit_cap:
+            # Conteggio esplicito utente (Roberto 13/6): il NUMERO prevale sul
+            # ranking → niente taglio sigma, solo il pavimento anti-rumore
+            # (text_score_min). I top-N per punteggio vengono presi più sotto.
+            rel_thr = text_score_min
+        elif identity_filtered:
             rel_thr = adaptive_relevance_threshold(
                 cos_all, sigma=_IDENTITY_SCENE_SIGMA, floor=text_score_min)
         else:
@@ -1586,9 +1610,18 @@ def invoke(args):
             log.info("find_images_indices: person split → name=%r, query_text=%r",
                      _person, args.get("query_text"))
 
-    top_k = int(args.get("top_k", _TOP_K_DEFAULT))
-    if top_k < 1:
-        return {"ok": False, "error": _msg("ERR_ARG_NOT_POSITIVE_INT", arg="top_k")}
+    top_k, explicit_cap = _resolve_cap(args)
+    # Validazione top_k ESPLICITO (schema minimum=1): _resolve_cap normalizza i
+    # piccoli-ma-validi (1-49 → default 100, guard anti-mistake), ma 0/negativi/
+    # non-numerici restano malformati → reject sul valore GREZZO.
+    _raw_tk = args.get("top_k")
+    if _raw_tk is not None:
+        try:
+            _tk_ok = int(_raw_tk) >= 1
+        except (ValueError, TypeError):
+            _tk_ok = False
+        if not _tk_ok:
+            return {"ok": False, "error": _msg("ERR_ARG_NOT_POSITIVE_INT", arg="top_k")}
 
     single_dir, multi_dirs, msg = _resolve_base_path(args.get("base_path"))
     if single_dir is None and multi_dirs is None:
@@ -1668,8 +1701,10 @@ def invoke(args):
         out["truncated_what"] = "entries"
         out["used"] = n_returned
         out["available_total"] = int(res["n_above_threshold"])
-        out["cap_field"] = "top_k"
+        out["cap_field"] = "max_results" if explicit_cap else "top_k"
         out["cap_value"] = int(top_k)
+        if explicit_cap:
+            out["truncated_intentional"] = True  # §2.11: l'utente ha chiesto N
     # Attachments per la chat HTTP/Telegram (photo_endpoint + gallery).
     # ADR 0119-bis: find_images_indices popola attachments con kind=image
     # cosi' agent_runtime li propaga e la chat renderizza thumb/full.
@@ -1744,7 +1779,7 @@ def _invoke_multi_dirs(dirs: list[Path], args: dict, msg: str | None) -> dict:
             n_with_size += int(_md.get("n_with_size", 0) or 0)
 
     all_entries.sort(key=lambda e: e.get("score", 0.0), reverse=True)
-    top_k = int(args.get("top_k", _TOP_K_DEFAULT))
+    top_k, explicit_cap = _resolve_cap(args)
     if top_k > _TOP_K_MAX:
         top_k = _TOP_K_MAX
     truncated_entries = all_entries[:top_k]
@@ -1789,8 +1824,10 @@ def _invoke_multi_dirs(dirs: list[Path], args: dict, msg: str | None) -> dict:
         out["truncated_what"] = "entries"
         out["used"] = len(truncated_entries)
         out["available_total"] = int(n_above)
-        out["cap_field"] = "top_k"
+        out["cap_field"] = "max_results" if explicit_cap else "top_k"
         out["cap_value"] = int(top_k)
+        if explicit_cap:
+            out["truncated_intentional"] = True  # §2.11: l'utente ha chiesto N
     out["attachments"] = _build_attachments_from_entries(out["entries"])
     return out
 

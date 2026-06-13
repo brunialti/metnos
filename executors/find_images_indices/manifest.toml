@@ -23,7 +23,7 @@ en = """SCOPO: search indexed photos by content, person or face. PATTERN: find_i
 
 [code]
 files  = ["find_images_indices.py"]
-digest = "sha256:575570a0de4b8433ce2560e5c9f5c92775dee19ffbb2d6b45c5277f0196e0496"
+digest = "sha256:78754d89cb7c8b3c34b5182e66fb1d9331d83f8d02b5e86554d502922e855375"
 
 [args]
 type     = "object"
@@ -145,8 +145,16 @@ minimum     = 1
 default     = 100
 
 [args.properties.top_k.description]
-it = "Limite risultati. Default 100, max interno 200. Pattern §2.7 emette `truncated`/`truncated_what='entries'`/`used`/`available_total`/`cap_field='top_k'`."
-en = "Result limit. Default 100, internal max 200. Pattern §2.7 emits `truncated`/`truncated_what='entries'`/`used`/`available_total`/`cap_field='top_k'`."
+it = "Budget INTERNO risultati (default 100, max 200). NON impostare di tua iniziativa. Per un conteggio richiesto dall'utente usa `max_results` (che prevale sul ranking)."
+en = "INTERNAL result budget (default 100, max 200). Do NOT set on your own. For a user-requested count use `max_results` (which prevails over ranking)."
+
+[args.properties.max_results]
+type        = "integer"
+minimum     = 1
+
+[args.properties.max_results.description]
+it = "Conteggio ESPLICITO richiesto dall'utente. PATTERN: \"cerca 100 foto di X\" -> max_results=100. Quando impostato PREVALE sul taglio di rilevanza: ritorna i top-N per punteggio (anche match piu' deboli, oltre la soglia statistica). NON: impostarlo se l'utente non da' un numero esplicito (-> ometti, il taglio adattivo decide). Emette `truncated_intentional`/`cap_field='max_results'`."
+en = "EXPLICIT count requested by the user. PATTERN: \"find 100 photos of X\" -> max_results=100. When set it PREVAILS over the relevance cut: returns the top-N by score (even weaker matches, beyond the statistical threshold). NON: do not set it unless the user gives an explicit number (-> omit, the adaptive cut decides). Emits `truncated_intentional`/`cap_field='max_results'`."
 
 [args.properties.paths_filter]
 type        = "array"
