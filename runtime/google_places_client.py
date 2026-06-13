@@ -15,7 +15,6 @@ import math
 import os
 import urllib.error
 import urllib.request
-from pathlib import Path
 
 API_BASE = "https://places.googleapis.com/v1/places:searchNearby"
 TIMEOUT = 8.0

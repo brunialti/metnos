@@ -149,25 +149,8 @@ def start_async_build(base_path: Path | str, idx: str, *,
     if _is_unit_failed(unit):
         _systemctl_user("reset-failed", unit, timeout=3.0)
 
-    # Spawn via systemctl --user start --transient
-    cmd = [
-        "systemctl", "--user",
-        "start",
-        f"--unit={unit}",
-        "--",
-        _VENV_PYTHON,
-        "-m", "build_runner",
-        "--base-path", str(base_path),
-        "--idx", idx,
-        "--actor", actor or "host",
-        "--channel", channel or "",
-        "--chat-id", chat_id or "",
-        "--batch-size", str(int(batch_size)),
-        "--resume", "true",
-    ]
-    # Per systemctl 254+ il flag corretto e' --unit=NAME (no spazio).
-    # Aggiungiamo PYTHONPATH come property cosi' build_runner trova i
-    # moduli runtime + executor.
+    # PYTHONPATH come property cosi' build_runner trova i moduli runtime
+    # + executor.
     _rt_dir = Path(__file__).resolve().parent
     _install_root = _rt_dir.parent
     pythonpath = (
@@ -175,27 +158,6 @@ def start_async_build(base_path: Path | str, idx: str, *,
         f"{_install_root / 'executors' / 'create_images_indices'}:"
         "/usr/lib/python3/dist-packages:/opt/suprastructure/src"
     )
-    cmd_with_env = [
-        "systemctl", "--user",
-        "start",
-        f"--unit={unit}",
-        f"--property=Environment=PYTHONPATH={pythonpath}",
-        "--property=Environment=PYTHONUNBUFFERED=1",
-        f"--property=Environment=HOME={os.environ.get('HOME', '/home/roberto')}",
-        "--property=Type=simple",
-        "--property=KillMode=mixed",
-        "--property=TimeoutStopSec=30",
-        "--",
-        _VENV_PYTHON,
-        "-m", "build_runner",
-        "--base-path", str(base_path),
-        "--idx", idx,
-        "--actor", actor or "host",
-        "--channel", channel or "",
-        "--chat-id", chat_id or "",
-        "--batch-size", str(int(batch_size)),
-        "--resume", "true",
-    ]
     # systemctl start non supporta --property: serve systemd-run.
     # Usiamo systemd-run --user per properties + --unit (transient).
     cmd_run = [

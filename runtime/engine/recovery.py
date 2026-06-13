@@ -12,7 +12,6 @@ import logging
 from typing import Optional, Callable, Protocol
 
 from .types import Intent, Framework, RunResult, ERROR_CLASSES, RECOVERABLE
-from .executor import compute_framework_hash
 
 log = logging.getLogger(__name__)
 

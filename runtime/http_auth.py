@@ -19,7 +19,6 @@ import hmac
 import ipaddress
 import secrets
 import time
-from pathlib import Path
 
 from aiohttp import web
 

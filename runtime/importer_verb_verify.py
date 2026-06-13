@@ -31,7 +31,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-import config as _C  # §7.11
 
 
 VOCAB_MAP_PATH = Path(__file__).resolve().parent / "skill_vocab_map.json"

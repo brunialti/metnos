@@ -29,7 +29,6 @@ from .recovery import classify_error, is_recoverable
 log = logging.getLogger(__name__)
 
 # Produttori di URL: i loro entries hanno `url` ma NON `body_text`.
-_URL_PRODUCERS = ("find_urls", "get_urls", "find_images_web")
 # Consumer di contenuto che possono segnalare needs_content_fetch.
 _CONTENT_CONSUMERS = (
     "describe_entries", "classify_entries", "filter_entries",

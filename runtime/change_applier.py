@@ -21,12 +21,9 @@ Audit JSONL ~/.local/share/metnos/audit/change_applier.jsonl
 """
 from __future__ import annotations
 
-import hashlib
 import json
-import shutil
 import sqlite3
 import time
-from pathlib import Path
 from typing import Callable
 
 import config as C
@@ -39,7 +36,6 @@ from change_intents import (
     KIND_REJECT_PATTERN,
     STATE_ACCEPTED,
     ChangeIntent,
-    get_intent,
     list_intents,
     mark_applied,
     mark_failed,

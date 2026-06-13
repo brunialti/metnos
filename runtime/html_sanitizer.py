@@ -535,7 +535,6 @@ def to_safe_html_full(md: str) -> str:
 
     # Restore placeholders
     def _restore(m: "re.Match") -> str:
-        kind = m.group(1)
         idx = int(m.group(2))
         if 0 <= idx < len(placeholders):
             return placeholders[idx]

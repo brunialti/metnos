@@ -15,7 +15,6 @@ Costo: O(N) per filtering + O(K) per rank. Nessun LLM aggiuntivo.
 """
 from __future__ import annotations
 
-import os
 from typing import Callable
 
 

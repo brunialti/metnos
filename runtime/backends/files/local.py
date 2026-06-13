@@ -47,13 +47,9 @@ import config as _C  # noqa: E402 §7.11
 # path_alias modulo riusabile (D.1, D.3). Re-export degli alias come moduli
 # locali per back-compat con test esistenti che mockano backends.files.local.
 from path_alias import (  # noqa: E402
-    candidate_roots as _candidate_roots,
-    count_files_recursive as _count_files_recursive,
     resolve_path_with_alias as _resolve_path_with_alias,
-    list_alias_candidates as _list_alias_candidates,
     check_mutating_path_ambiguity as _check_mutating_path_ambiguity,
     home_dir_suggestions as _home_dir_suggestions,
-    USER_DIR_ALIASES as _USER_DIR_ALIASES,
 )
 
 # Alias bilingue IT↔EN per i path utente standard (XDG user-dirs). Quando

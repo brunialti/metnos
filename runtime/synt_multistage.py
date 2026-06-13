@@ -119,7 +119,7 @@ def validate_stage1(out: dict) -> Optional[str]:
     m = NAME_RE.match(name)
     if not m:
         return f"name {name!r} non rispetta schema action_object[_qualifier] minuscolo"
-    action, obj, qualifier = m.group(1), m.group(2), m.group(3)
+    action, obj = m.group(1), m.group(2)
     if action not in VOCAB_ACTIONS:
         return f"action {action!r} non in vocabolario chiuso ({len(VOCAB_ACTIONS)} ammesse)"
     if obj not in VOCAB_OBJECTS:

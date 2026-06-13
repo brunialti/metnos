@@ -22,10 +22,6 @@ log = logging.getLogger(__name__)
 
 # Soglie cosine canoniche (env tunable)
 COSINE_HIGH = float(os.environ.get("METNOS_CLUSTER_COSINE_HIGH", "0.90"))
-COSINE_LOW = float(os.environ.get("METNOS_CLUSTER_COSINE_LOW", "0.75"))
-K_NEIGHBORS = int(os.environ.get("METNOS_CLUSTER_K", "10"))
-
-
 def embed(query: str) -> Optional[bytes]:
     """Ritorna embedding BGE-M3 di query come bytes (float32 packed).
 

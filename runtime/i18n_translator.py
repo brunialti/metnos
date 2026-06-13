@@ -1274,7 +1274,6 @@ def align_prompts(*, target_langs: list[str] | None = None,
                 })
             continue
 
-        edit_src_text = present[edit_src][0]
         edit_src_hash = present[edit_src][2]
 
         # Step 3: per ogni target_lang != edit_src, decidi se ritradurre.

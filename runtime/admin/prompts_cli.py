@@ -44,7 +44,6 @@ docs/it/architecture/multilang.html cap. 7.
 """
 import argparse
 import difflib
-import os
 import subprocess
 import sys
 from pathlib import Path

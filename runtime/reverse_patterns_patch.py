@@ -209,7 +209,6 @@ def _dispatch_call(call):
     `skills/` new + `_imports/` legacy back-compat). Ritorna
     `(ok_count, fail_count)` dell'invocazione concreta."""
     import importlib.util
-    from pathlib import Path
     name = call["executor"]
     args = call["args"]
     # §7.11: la install-root reale via config.PATH_EXECUTORS. Prima il bug

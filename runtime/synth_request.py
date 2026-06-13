@@ -15,7 +15,6 @@ from __future__ import annotations
 import json
 import os
 import time
-from pathlib import Path
 
 from synt_multistage import run_full as multistage_run_full
 from loader import SYNTHESIZED_EXECUTORS_DIR
@@ -110,7 +109,6 @@ def _install_synthesized(run, intent, user_query):
 
     s1 = (run.stages[0].output or {}) if len(run.stages) >= 1 else {}
     s2 = (run.stages[1].output or {}) if len(run.stages) >= 2 else {}
-    s3 = (run.stages[2].output or {}) if len(run.stages) >= 3 else {}
     s4 = (run.stages[3].output or {}) if len(run.stages) >= 4 else {}
 
     out_dir = SYNTHESIZED_EXECUTORS_DIR / run.name

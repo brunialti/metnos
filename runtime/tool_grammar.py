@@ -39,7 +39,6 @@ API:
 """
 from __future__ import annotations
 
-import json
 import os
 import re
 from typing import Any, Sequence
@@ -51,8 +50,6 @@ from typing import Any, Sequence
 COMPLEXITY_THRESHOLD = 5
 
 # Set di tipi atomici JSON Schema gestiti come grammar-typed.
-_ATOMIC_TYPES = ("string", "integer", "number", "boolean", "null")
-
 
 # --------------------------------------------------------------------------
 # JSON Schema → complexity score
@@ -211,19 +208,6 @@ def _sanitize_rule_name(name: str) -> str:
         return "tool"
     return parts[0].lower() + "".join(p.capitalize() for p in parts[1:])
 
-
-def _emit_string_value(schema: dict) -> str:
-    """Emette regola per un valore di tipo string. Supporta `enum`."""
-    enum_vals = schema.get("enum")
-    if isinstance(enum_vals, list) and enum_vals:
-        # Tutti gli enum di tipo string vincolati.
-        alts = []
-        for v in enum_vals:
-            if isinstance(v, str):
-                alts.append(f"\"\\\"{v}\\\"\"")
-        if alts:
-            return " | ".join(alts)
-    return "json_str"
 
 
 def _emit_string_literal_alt(values: list) -> str:

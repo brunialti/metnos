@@ -629,15 +629,6 @@ def _format_value(v) -> str:
     return str(v)
 
 
-_TEMPLATE_FALLBACK_BY_OUTPUT = {
-    "scalar_metric": "${stepN.@count}",
-    "free_text": "${stepN.summary}",
-    "file_entry[]": "${stepN.@count} file",
-    "message_entry[]": "${stepN.@count} messaggi",
-    "event_entry[]": "${stepN.@count} eventi",
-    "person_entry[]": "${stepN.@count} persone",
-}
-
 
 def _render_final_message(template: str, history: list[StepRun]) -> str:
     """Risolve ${stepN.path}. Magic:

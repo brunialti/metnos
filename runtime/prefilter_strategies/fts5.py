@@ -16,7 +16,6 @@ query con termini rari (sparse-friendly).
 from __future__ import annotations
 
 import hashlib
-import os
 import sqlite3
 from pathlib import Path
 from typing import Callable

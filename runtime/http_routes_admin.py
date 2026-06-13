@@ -17,7 +17,6 @@ from aiohttp import web
 
 import executor_aging
 import proposals_state
-import proposals_unified
 import telos_proposals_store
 import users
 import config as _C  # §7.11

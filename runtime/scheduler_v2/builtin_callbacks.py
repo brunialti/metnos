@@ -363,7 +363,6 @@ def task_temp_threshold_alert(payload: dict | None = None) -> dict:
     """
     import json
     import time as _time
-    from pathlib import Path as _P
 
     payload = payload or {}
     threshold_c = float(payload.get("threshold_c") or 80)

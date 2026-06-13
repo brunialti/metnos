@@ -13,7 +13,6 @@ Complementare a verb_first ma piu' fine: discrimina anche su qualifier.
 """
 from __future__ import annotations
 
-import re
 from typing import Callable
 
 

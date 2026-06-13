@@ -68,10 +68,6 @@ DEFAULT_LOCK_PATH = Path(
 DEFAULT_PROPOSALS_DIR = Path(
     os.environ.get("SYNT_PROPOSALS_DIR", str(_DEFAULT_WORKSPACE / ".synt" / "proposals"))
 )
-DEFAULT_REJECTED_DIR = Path(
-    os.environ.get("SYNT_REJECTED_DIR", str(_DEFAULT_WORKSPACE / ".synt" / "rejected"))
-)
-
 # Stdlib whitelist conservativa per validazione import (cap. 4 scaffolding):
 # se la generate produce import fuori da questo set, il proposal va in
 # birth_failed con motivazione "non-stdlib import requires explicit profile".
@@ -249,12 +245,6 @@ class GeneratedProposal:
 
 
 # Eccezioni usate internamente; nel POC vengono trasformate in stato (cap. 9)
-class StrategyExhaustedError(Exception): ...
-class BudgetExceededError(Exception): ...
-class PolicyVetoError(Exception): ...
-class ConstitutionViolationError(Exception): ...
-
-
 # --- Helpers ---------------------------------------------------------------
 
 def _now_iso() -> str:

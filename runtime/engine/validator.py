@@ -21,7 +21,7 @@ import logging
 from dataclasses import dataclass, field
 from typing import Optional
 
-from .types import Framework, StepSpec
+from .types import Framework
 
 log = logging.getLogger(__name__)
 
@@ -65,7 +65,6 @@ class Validator:
 
     def check(self, framework: Framework) -> ValidationResult:
         errors: list[ValidationError] = []
-        n_steps = len(framework.steps)
         for i, step in enumerate(framework.steps, start=1):
             # Tool exist? (final_answer è virtual, ammesso)
             if step.tool == "final_answer":

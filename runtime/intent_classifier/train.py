@@ -37,7 +37,7 @@ from typing import Optional
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from runtime.intent_classifier.anchors import (
-    ANCHORS_IT, ANCHORS_EN, OBJECTS, for_lang as anchors_for_lang,
+    OBJECTS, for_lang as anchors_for_lang,
 )
 
 

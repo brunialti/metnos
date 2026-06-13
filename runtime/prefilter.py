@@ -1107,7 +1107,6 @@ def _log_telemetry(strategy_name: str, query: str, result, *,
         import json
         import hashlib
         import time
-        from pathlib import Path
         candidates, route_info = result if isinstance(result, tuple) else (result, {})
         top3 = []
         for e in (candidates or [])[:3]:

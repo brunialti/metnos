@@ -200,8 +200,6 @@ def _build_batched(*, base_path: Path, idx: str, paths: list[Path],
     import numpy as np
 
     builder = cii._BUILDERS[idx]
-    image_exts = {".jpg", ".jpeg", ".png", ".heic", ".heif", ".webp",
-                   ".tiff", ".tif", ".gif", ".bmp"}
     n_total = len(paths)
     started_at = time.time()
 

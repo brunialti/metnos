@@ -38,8 +38,7 @@ import json
 import sqlite3
 import time
 import uuid
-from dataclasses import asdict, dataclass, field
-from pathlib import Path
+from dataclasses import asdict, dataclass
 from typing import Any, Iterable
 
 import config as C

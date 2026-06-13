@@ -15,13 +15,11 @@ from __future__ import annotations
 
 import json
 from collections import defaultdict
-from pathlib import Path
 from typing import Iterable
 
 import config as C
 from change_intents import (
     KIND_REJECT_PATTERN,
-    STATE_PROPOSED,
     ChangeIntent,
 )
 

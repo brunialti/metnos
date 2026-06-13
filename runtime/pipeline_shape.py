@@ -42,7 +42,7 @@ Source-presence detection nei raw_args:
 """
 from __future__ import annotations
 
-from vocab import ACTIONS, PRODUCER_VERBS
+from vocab import ACTIONS
 
 # Output-role: verbi che producono PRESENTAZIONE (terminale).
 FORMATTER_OUT_VERBS = frozenset({"describe", "render"})

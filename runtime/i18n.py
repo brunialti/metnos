@@ -20,7 +20,6 @@ from __future__ import annotations
 
 import os
 import sqlite3
-from pathlib import Path
 from typing import Iterable
 
 import config as _C  # §7.11 — rispetta METNOS_USER_DATA

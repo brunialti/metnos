@@ -41,7 +41,7 @@ except ImportError:
 sys.path.insert(0, str(Path(__file__).parent))
 import config as _C  # §7.11
 from llm_provider import (  # noqa: E402
-    ChatResult, ToolUseResult, ProviderError, make_provider_from_spec,
+    ChatResult, ToolUseResult, make_provider_from_spec,
 )
 
 

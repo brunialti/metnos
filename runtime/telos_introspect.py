@@ -31,8 +31,6 @@ import json
 import logging
 import os
 import time
-from dataclasses import asdict
-from pathlib import Path
 from typing import Callable, Optional
 
 _LOG = logging.getLogger(__name__)
@@ -459,7 +457,7 @@ if __name__ == "__main__":
         llm = None
     lenses = [s.strip() for s in args.lenses.split(",") if s.strip()]
     operators = tuple(s.strip() for s in args.operators.split(",") if s.strip())
-    from telos_loader import by_id, current
+    from telos_loader import by_id
     if args.telos:
         t = by_id(args.telos)
         if not t:

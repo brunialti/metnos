@@ -16,7 +16,6 @@ import fcntl
 import json
 import os
 import time
-from pathlib import Path
 
 import config as _C  # §7.11
 

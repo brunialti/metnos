@@ -1245,27 +1245,6 @@ def deprecated_index(catalog: "Catalog") -> list[dict]:
     ]
 
 
-def expired_deprecated(catalog: "Catalog", now: float | None = None) -> list[str]:
-    """Nomi dei deprecated il cui TTL e' scaduto (candidati a archived).
-
-    Da chiamare al boot del runtime e periodicamente. Il caller decide se
-    promuoverli automaticamente a archived (modificando il manifest) o
-    notificare l'amministratore prima.
-    """
-    import time as _time
-    if now is None:
-        now = _time.time()
-    expired = []
-    for ex in catalog.executors.values():
-        if ex.lifecycle != "deprecated":
-            continue
-        if ex.deprecated_at is None:
-            continue
-        ttl_seconds = ex.deprecation_ttl_hours * 3600
-        if (now - ex.deprecated_at) >= ttl_seconds:
-            expired.append(ex.name)
-    return expired
-
 
 def main():
     """CLI: dump del catalogo per ispezione."""

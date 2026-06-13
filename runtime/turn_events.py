@@ -227,7 +227,6 @@ class TurnEventLog:
         return turn_id in self._turns
 
     def stats(self) -> dict:
-        now = time.time()
         active = sum(1 for s in self._turns.values() if not s.closed)
         return {
             "total_turns": len(self._turns),

@@ -451,7 +451,6 @@ def _explain_command_dangers(argv: list[str], severity: str | None) -> str:
         return "Comando vuoto."
     binary = argv[0].split("/")[-1]
     flags = [t for t in argv[1:] if t.startswith("-")]
-    targets = [t for t in argv[1:] if not t.startswith("-")]
 
     danger_by_binary = {
         "rm": "Cancella file/directory in modo IRREVERSIBILE.",

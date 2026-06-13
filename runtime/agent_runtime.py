@@ -94,7 +94,6 @@ from recurring_tasks import (
     handle_set_tasks, handle_read_tasks_history,
 )
 from skill_admin import (
-    LIST_SKILLS_TOOL, SET_SKILLS_TOOL,
     handle_list_skills, handle_set_skills,
 )
 from test_runner import check_hints
@@ -1774,11 +1773,6 @@ def _calendar_write_tools() -> frozenset:
     return result
 
 
-def _invalidate_calendar_write_tools_cache():
-    """Per test: forza re-derivation da catalog al prossimo call."""
-    if hasattr(_calendar_write_tools, "_cached"):
-        del _calendar_write_tools._cached
-
 
 def _query_requires_availability_check(query: str) -> bool:
     """True se la query richiede availability check pre-set_events.
@@ -2332,8 +2326,6 @@ def _compose_final_message_from_obs(lp_tool, lp_obs):
 # sempre un retry del LLM che non aggiunge lavoro utile (segno di confusione su
 # §2.1, non di esplorazione legittima).
 _VECTORIAL_CAP_SAME = 2  # cap_same per executor vettoriali (vs DEFAULT_CAP_SAME_EXECUTOR=10)
-_VECTORIAL_ARG_TYPE_ARRAY = "array"  # JSON Schema type marker per args plurali
-
 
 @functools.lru_cache(maxsize=512)
 def _executor_has_plural_args(executor_name: str, schema_signature: str) -> bool:
@@ -5684,7 +5676,7 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
         if _decomposed_steps:
             try:
                 from engine.executor import Executor as _EngineExec
-                from engine.types import Framework, StepSpec, FillerSpec
+                from engine.types import Framework, StepSpec
                 framework = Framework(
                     steps=[StepSpec(tool=s["tool"], args=s.get("args") or {})
                             for s in _decomposed_steps] + [StepSpec(tool="final_answer")],

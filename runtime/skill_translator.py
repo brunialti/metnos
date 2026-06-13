@@ -761,45 +761,9 @@ def translate_subcommand(parsed_skill, sub_command, *,
     )
 
 
-# ADR 0148 rename-resilient
-import config as _C  # noqa: E402
-_HANDCRAFTED_DIR = _C.PATH_EXECUTORS
-_SYNTH_DIR = _C.PATH_USER_DATA / "executors"
-
-
 def _normalize_binding(skill_name: str) -> str:
     """Skill name -> binding identifier snake_case. `google-workspace` -> `google_workspace`."""
     return skill_name.lower().replace("-", "_").replace(".", "_")
-
-
-def _scan_executor_names(base: Path) -> set:
-    """Scan delle subdir con `manifest.toml`. Niente IO se la dir non esiste."""
-    if not base.is_dir():
-        return set()
-    out: set = set()
-    for child in base.iterdir():
-        if not child.is_dir() or child.name.startswith("_"):
-            continue
-        if (child / "manifest.toml").is_file():
-            out.add(child.name)
-    return out
-
-
-def _load_existing_names(executors_dir: Path | None = None) -> set:
-    """Nomi degli executor gia' presenti in catalogo (handcrafted + synth).
-    Usato per disambiguare imported con suffix `_<binding>` (§2.2 famiglia
-    mezzo astratto: il binding qualifica il dominio remoto). Esclude
-    `skills/` (ADR 0160) e legacy `_imports/` (ADR 0123) dal scan synth: gli
-    imported di una run precedente non devono bloccare il re-import."""
-    if executors_dir is not None:
-        return _scan_executor_names(executors_dir)
-    return _scan_executor_names(_HANDCRAFTED_DIR) | _scan_executor_names(_SYNTH_DIR)
-
-
-def _load_handcrafted_names(executors_dir: Path | None = None) -> set:
-    """Backwards compat: era il nome originale. Adesso ritorna l'unione
-    handcrafted + synth (vedi `_load_existing_names`)."""
-    return _load_existing_names(executors_dir)
 
 
 def translate_skill(parsed_skill, *,

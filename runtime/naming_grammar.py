@@ -232,27 +232,6 @@ def validate_name(name: str,
 
 # Mapping intent libero → verbo canonical §2.2 (deterministico).
 # Espandibile; tipici fuori-vocab che le proposte introspettive emettono.
-_VERB_HINTS = {
-    "audit": "find",            # "audit dirs" → "find_dirs_empty"
-    "check": "find",            # "check format" → "find_files_*"
-    "verify": "compute",        # "verify integrity" → "compute_signatures"
-    "monitor": "compute",       # "monitor density" → "compute_*_loc"
-    "track": "list",            # "track changes" → "list_*"
-    "notify": "send",           # "notify user" → "send_messages"
-    "report": "describe",       # "report stats" → "describe_entries"
-    "validate": "compute",      # "validate hashes" → "compute_signatures"
-    "diff": "compare",          # "diff lists" → "compare_entries"
-    "summarize": "describe",    # "summarize" → "describe_entries"
-}
-
-
-def suggest_canonical_verb(intent_verb: str) -> Optional[str]:
-    """Dato un verbo intent non-vocab, suggerisce il verbo canonical
-    piu' vicino. None se il verbo e' gia' canonical o non mappato."""
-    iv = intent_verb.lower().strip()
-    if iv in ACTIONS:
-        return iv  # gia' canonical
-    return _VERB_HINTS.get(iv)
 
 
 # ── GBNF generator ──────────────────────────────────────────────────────

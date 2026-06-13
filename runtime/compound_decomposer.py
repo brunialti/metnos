@@ -61,7 +61,7 @@ def detect_chunk_action(chunk: str) -> Optional[tuple[str, str]]:
             detect_canonical_verbs_all,
             _OBJECT_HINTS,
         )
-        from vocab import canonical_object as _canon_obj, OBJECTS
+        from vocab import canonical_object as _canon_obj
     except ImportError:
         return None
 

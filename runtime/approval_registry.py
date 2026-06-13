@@ -262,7 +262,7 @@ def _cli(argv: list[str] | None = None) -> int:
     p_list = sub.add_parser("list", help="Lista pending requests")
     p_list.add_argument("--all", action="store_true", help="Include anche risolte/scadute")
     p_list.add_argument("--limit", type=int, default=20)
-    p_cleanup = sub.add_parser("cleanup", help="Marca expired le pending oltre TTL")
+    sub.add_parser("cleanup", help="Marca expired le pending oltre TTL")
     args = ap.parse_args(argv)
 
     if args.cmd == "list":

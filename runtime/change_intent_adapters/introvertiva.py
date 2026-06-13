@@ -25,7 +25,6 @@ from typing import Iterable
 
 import proposals_state as ps
 from change_intents import (
-    KIND_CACHE_PATTERN,
     KIND_DEDUPE_EXECUTORS,
     KIND_EXTEND_EXECUTOR,
     STATE_FINALIZED,

@@ -70,9 +70,9 @@ async def run_nightly(callbacks, payload: dict | None = None) -> dict:
             # pesante (image refresh GPU) NON deve bloccare l'event loop per la
             # finestra notturna. Sequenziale per costruzione (un await per volta).
             if getattr(info, "is_async", False):
-                res = await info.fn(None)
+                await info.fn(None)
             else:
-                res = await loop.run_in_executor(None, info.fn, None)
+                await loop.run_in_executor(None, info.fn, None)
             ran[key] = "ok"
             log.info("nightly_maintenance: %s ok", key)
         except Exception as e:  # §2.8 error-isolation: un fallimento non aborta
