@@ -101,21 +101,13 @@ class HttpServerTests(AioHTTPTestCase):
         r = await self.client.get("/admin/proposals")
         self.assertEqual(r.status, 403)
 
-    async def test_admin_proposals_with_admin_key(self):
-        """GET /admin/proposals con admin key + Accept JSON -> 200 con rows."""
-        r = await self.client.get(
-            "/admin/proposals",
-            headers=self.admin_hdr(**{"Accept": "application/json"}),
-        )
-        self.assertEqual(r.status, 200)
-        body = await r.json()
-        self.assertIn("rows", body)
-        self.assertIsInstance(body["rows"], list)
+    # NB (13/6/2026): /admin/proposals rimossa (superata da /admin/changes,
+    # ADR 0158). Il test ETag usa ora una collezione admin viva (/admin/executors).
 
     async def test_etag_304(self):
         """Stesso GET due volte con If-None-Match -> secondo è 304."""
         r1 = await self.client.get(
-            "/admin/proposals",
+            "/admin/executors",
             headers=self.admin_hdr(**{"Accept": "application/json"}),
         )
         self.assertEqual(r1.status, 200)
@@ -123,7 +115,7 @@ class HttpServerTests(AioHTTPTestCase):
         self.assertTrue(etag, "ETag header missing")
 
         r2 = await self.client.get(
-            "/admin/proposals",
+            "/admin/executors",
             headers=self.admin_hdr(**{
                 "Accept": "application/json",
                 "If-None-Match": f'"{etag}"',
