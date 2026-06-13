@@ -29,6 +29,9 @@ ANCHORS_IT: dict[str, str] = {
     "tasks": "task promemoria timer scheduler ricordami ricorrenza",
     "inputs": "input form dialog valore richiesta utente",
     "credentials": "password credenziali account oauth login chiave",
+    "calendars": "calendario condiviso lista-calendari creare-calendario gestione-calendari google-calendar",
+    "issues": "issue ticket github segnalazione problema bug-tracker richiesta",
+    "pulls": "pull-request pr github merge revisione-codice branch contributo",
     "entries": "voce elemento lista record entry oggetto interno",
 }
 
@@ -51,6 +54,9 @@ ANCHORS_EN: dict[str, str] = {
     "tasks": "task reminder timer scheduler recurring",
     "inputs": "input form dialog value prompt user",
     "credentials": "password credentials account oauth login key",
+    "calendars": "calendar shared list-calendars create-calendar manage-calendars google-calendar",
+    "issues": "issue ticket github bug report tracker request",
+    "pulls": "pull request pr github merge code-review branch contribution",
     "entries": "entry item list record internal object",
 }
 
@@ -62,5 +68,21 @@ def for_lang(lang: str) -> dict[str, str]:
     return ANCHORS_IT
 
 
-# Canonical OBJECTS list (matches runtime/vocab.py OBJECTS order)
+# OBJECTS = vocabolario CHIUSO §2.2: ogni object canonico ha un anchor IT+EN.
+# Guard anti-drift (§7.3, sorgente unica = vocab.OBJECTS): un object nuovo in
+# vocab senza anchor qui fa FALLIRE l'import — non degrada silenzioso (era il
+# bug: anchors fermo a 19, vocab a 22 → issues/pulls/calendars non classificabili
+# nel ramo di soccorso intent_extractor, misroute sull'object piu' vicino).
 OBJECTS: list[str] = list(ANCHORS_IT.keys())
+try:
+    from vocab import OBJECTS as _VOCAB_OBJECTS  # leaf, runtime/ su sys.path
+except ImportError:  # contesto standalone senza runtime/ su path (export/tooling)
+    _VOCAB_OBJECTS = None
+if _VOCAB_OBJECTS is not None:
+    _it, _en, _voc = set(ANCHORS_IT), set(ANCHORS_EN), set(_VOCAB_OBJECTS)
+    if _it != _voc or _en != _voc:
+        raise RuntimeError(
+            "intent_classifier anchors drift vs vocab.OBJECTS: "
+            f"missing_it={sorted(_voc - _it)} missing_en={sorted(_voc - _en)} "
+            f"extra_it={sorted(_it - _voc)} extra_en={sorted(_en - _voc)}"
+        )
