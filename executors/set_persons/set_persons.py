@@ -349,11 +349,21 @@ def invoke(args):
             "errors": errors,
             "n_examples_after": n_examples_after,
         }
+        # Hint user-facing SEMPRE sul successo (§5: enrollment → final_message_hint,
+        # MAI describe). Bug 13/6: senza hint il runtime ripiegava sul dump dei
+        # path delle foto @uploaded invece di confermare l'enrollment.
+        n_added = sum(1 for e in enrolled if e.get("added"))
+        parts: list[str] = []
+        if enrolled:
+            parts.append(_msg("MSG_PERSONS_ENROLLED", name=name,
+                              n_added=n_added, n_total=n_examples_after))
+        if errors:
+            parts.append(_msg("MSG_PERSONS_ENROLL_SKIPPED", n_errors=len(errors)))
         if n_examples_after >= WARN_EXAMPLES_PER_PERSON:
             out_dict["warn"] = "examples_>=50"
-            out_dict["final_message_hint"] = _msg(
-                "MSG_PERSONS_EXAMPLES_LIMIT", name=name,
-            )
+            parts.append(_msg("MSG_PERSONS_EXAMPLES_LIMIT", name=name))
+        if parts:
+            out_dict["final_message_hint"] = " ".join(parts)
         return out_dict
     finally:
         reg.close()
