@@ -96,6 +96,12 @@ Esempi:
 "chi e' registrato" → {"verb": "get", "object": "persons"}
 "elenca persone" → {"verb": "get", "object": "persons"}
 "quante foto di Carol" → {"verb": "get", "object": "persons"}
+"chi e' enrollato" → {"verb": "get", "object": "persons"}
+"cancella l'enrollment di Carol" → {"verb": "delete", "object": "persons"}
+"elimina l'iscrizione biometrica di Marco" → {"verb": "delete", "object": "persons"}
+"rimuovi Lucia dal registro volti" → {"verb": "delete", "object": "persons"}
+"enrolla Lucia / aggiungila al registro volti" → {"verb": "set", "object": "persons"}
+MAPPING: enrollment / iscrizione / registrazione biometrica / registro volti = dominio "persons" (NON entries/signatures); enrollare = set, cancellare l'enrollment = delete.
 PRINCIPIO SEMANTICO (universale, applica a TUTTI gli object, non solo events):
 - Verbo CREA/IMPOSTA/SCRIVE/CANCELLA un'entita' (azione destructive/mutating)
   → mappa al verb operativo (create/set/write/delete/move/send/share).

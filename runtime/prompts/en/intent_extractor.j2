@@ -95,6 +95,12 @@ Examples:
 "who is registered" → {"verb": "get", "object": "persons"}
 "list persons" → {"verb": "get", "object": "persons"}
 "how many photos of Carol" → {"verb": "get", "object": "persons"}
+"who is enrolled" → {"verb": "get", "object": "persons"}
+"delete Carol's enrollment" → {"verb": "delete", "object": "persons"}
+"remove Marco's biometric enrollment" → {"verb": "delete", "object": "persons"}
+"remove Lucia from the face registry" → {"verb": "delete", "object": "persons"}
+"enroll Lucia / add her to the face registry" → {"verb": "set", "object": "persons"}
+MAPPING: enrollment / registration / biometric registry / face registry = "persons" domain (NOT entries/signatures); to enroll = set, to delete an enrollment = delete.
 SEMANTIC PRINCIPLE (universal, applies to ALL objects, not just events):
 - Verb CREATES/SETS/WRITES/DELETES an entity (destructive/mutating action)
   → maps to operative verb (create/set/write/delete/move/send/share).
