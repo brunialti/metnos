@@ -129,3 +129,38 @@ def test_remember_skips_placeholder(tmp_path, monkeypatch):
     _fresh_db(tmp_path, monkeypatch)
     R.remember_scope_args("find_issues_github", {"repo": "owner/name"}, actor="t")
     assert D.get_default("t", "github", "repo") is None  # placeholder non ricordato
+
+
+# ---- F2: scope_form_request (form ibrido read/write) -------------------
+
+def test_form_read_missing_asks():
+    # READ (find) con repo required ancora mancante → form
+    fr = R.scope_form_request("find_issues_github", {}, _SCHEMA, query="elenca")
+    assert fr is not None and fr["decision"] == "needs_inputs"
+    vars_ = [s["var"] for s in fr["needs_inputs"]["dialog"]]
+    assert vars_ == ["repo"]
+    assert fr["needs_inputs"]["on_complete"]["type"] == "resume_executor_with_values"
+
+
+def test_form_read_resolved_no_ask():
+    # READ con repo già risolto → niente form (silenzioso)
+    fr = R.scope_form_request("find_issues_github", {"repo": "a/b"}, _SCHEMA,
+                              query="x")
+    assert fr is None
+
+
+def test_form_write_always_confirms_prefilled():
+    # WRITE (delete) con repo risolto → form di CONFERMA pre-compilato (§2.8)
+    sch = {"required": ["repo", "number"],
+           "properties": {"repo": {"type": "string"}}}
+    fr = R.scope_form_request("delete_issues_github", {"repo": "a/b", "number": 5},
+                              sch, query="chiudi la issue 5")
+    assert fr is not None
+    d = fr["needs_inputs"]["dialog"][0]
+    assert d["var"] == "repo" and d["default"] == "a/b"  # pre-compilato
+
+
+def test_form_non_scope_no_ask():
+    sch = {"required": ["title"], "properties": {"title": {"type": "string"}}}
+    fr = R.scope_form_request("write_issues_github", {"title": "x"}, sch, query="x")
+    assert fr is None

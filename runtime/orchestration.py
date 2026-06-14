@@ -585,6 +585,17 @@ def _process_resume_executor_with_values(on_complete: dict, values: dict,
         log.exception("orchestration: resume_executor_with_values fallito")
         return (f"Rilancio fallito: {type(ex).__name__}: {ex}")
 
+    # Cattura scope-arg dal form: il valore confermato/inserito diventa default
+    # per il giro dopo (§7.9). Resume bypassa Executor.run → cattura esplicita qui.
+    if isinstance(res, dict) and res.get("ok"):
+        try:
+            from args_resolver import remember_scope_args
+            remember_scope_args(
+                executor, args_base,
+                actor=args_base.get("_actor") or actor or "host")
+        except Exception:
+            pass
+
     if isinstance(res, dict):
         msg = res.get("final_message_hint") or res.get("summary")
         if msg:

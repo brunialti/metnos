@@ -1374,16 +1374,30 @@ class Executor:
                         predicted_remaining=[])
                 except Exception as _pe:
                     log.debug("progress.tool_call noop: %r", _pe)
-            t0 = time.time()
+            # F2 scope-arg: se serve un form (read required-mancante / write
+            # conferma-target), emetti needs_inputs invece di invocare. Il bridge
+            # engine lo propaga → dialog get_inputs → resume_executor_with_values.
+            _form_obs = None
             try:
-                r = self.invoke(step.tool, args)
-            except Exception as ex:
-                log.warning("Executor: %s raised %r", step.tool, ex)
-                r = {"ok": False, "error": str(ex), "error_class": "exception"}
+                from args_resolver import scope_form_request
+                _form_obs = scope_form_request(
+                    step.tool, args, self._schema_map.get(step.tool), query)
+            except Exception as _fe:
+                log.debug("scope_form_request noop: %r", _fe)
+            t0 = time.time()
+            if _form_obs is not None:
+                r = _form_obs
+            else:
+                try:
+                    r = self.invoke(step.tool, args)
+                except Exception as ex:
+                    log.warning("Executor: %s raised %r", step.tool, ex)
+                    r = {"ok": False, "error": str(ex),
+                         "error_class": "exception"}
             lat_ms = int((time.time() - t0) * 1000)
 
-            # Recovery args remediate (1× per step)
-            if not r.get("ok") and remediate_args_cb is not None:
+            # Recovery args remediate (1× per step) — mai per needs_inputs
+            if _form_obs is None and not r.get("ok") and remediate_args_cb is not None:
                 try:
                     fixed = remediate_args_cb(tool=step.tool, args=args,
                                                 result=r, query=query)
