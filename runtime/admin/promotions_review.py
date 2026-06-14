@@ -414,11 +414,8 @@ def _mark_review_to_pending(proposal_id: str) -> bool:
     Il task `promoter` rivedra' la proposta al prossimo fire (in stato
     'pending', se il JSON e' ancora in synt_proposals dir).
     """
-    from pathlib import Path as _Path
-    db_env = os.environ.get("METNOS_PROMOTER_DB")
-    db = _Path(db_env) if db_env else (
-        _C.PATH_USER_DATA / "promoter.sqlite"
-    )
+    from jobs.promoter_state import _db_path  # sorgente unica del path DB
+    db = _db_path()
     if not db.exists():
         return False
     conn = sqlite3.connect(str(db), timeout=30.0)

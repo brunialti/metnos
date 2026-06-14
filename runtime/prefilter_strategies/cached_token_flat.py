@@ -22,11 +22,7 @@ _CACHE: OrderedDict[str, tuple[list[str], dict]] = OrderedDict()
 _CACHE_SIG: list[str] = [""]  # box for mutable
 
 
-def _catalog_sig(catalog_list) -> str:
-    h = hashlib.sha256()
-    for e in sorted(catalog_list, key=lambda x: getattr(x, "name", "")):
-        h.update((getattr(e, "name", "") or "").encode())
-    return h.hexdigest()[:16]
+from ._catalog_sig import catalog_signature as _catalog_sig
 
 
 class CachedTokenFlatStrategy:

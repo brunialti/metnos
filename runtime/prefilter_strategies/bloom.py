@@ -50,11 +50,7 @@ def _build_bloom(tool) -> int:
     return filter_int
 
 
-def _catalog_signature(catalog_list) -> str:
-    h = hashlib.sha256()
-    for e in sorted(catalog_list, key=lambda x: getattr(x, "name", "")):
-        h.update((getattr(e, "name", "") or "").encode())
-    return h.hexdigest()[:16]
+from ._catalog_sig import catalog_signature as _catalog_signature
 
 
 def _get_filters(catalog_list) -> dict:

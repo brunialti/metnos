@@ -103,8 +103,8 @@ def _parse_iso_ts(s: str) -> float:
         return 0.0
 
 
-def _in_family(name: str, stem: str) -> bool:
-    return name == stem or name.startswith(stem + "_")
+# famiglia §2.2 (verb_object[_qualifier]) — definizione unica in fastpath
+_in_family = _fp._in_family
 
 
 def sig_key_for(expected_name: str, chain: list[str]) -> list:
