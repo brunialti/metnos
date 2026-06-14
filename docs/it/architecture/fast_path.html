@@ -4,7 +4,7 @@
  <meta charset="UTF-8">
  <meta name="viewport" content="width=device-width, initial-scale=1.0">
  <title>Metnos &mdash; fast-path introvertivo</title>
- <meta name="description" content="Il fast-path introvertivo di Metnos: come l'assistente riconosce le richieste gia' viste e risponde senza ripassare dal pianificatore. Due livelli (L0 cache auto-prodotta, L1 skill promosse da feedback), invecchiamento deterministico, promozione a executor sintetico.">
+ <meta name="description" content="Il fast-path introvertivo di Metnos: come l'assistente riconosce le richieste gia' viste e risponde senza ripassare dal pianificatore. Due livelli (L0 cache auto-prodotta, L1 autopath promosse da feedback), invecchiamento deterministico, promozione a executor sintetico.">
  <meta name="keywords" content="fast-path, fastpath, autopath, memoization, BGE-M3, sintesi, metnos">
  <meta name="author" content="Roberto Brunialti">
  <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large">
@@ -24,7 +24,7 @@
  "@context": "https://schema.org",
  "@type": "TechArticle",
  "headline": "Metnos — fast-path introvertivo",
- "description": "Due livelli di memoizzazione (L0 cache auto-prodotta con hash e cosine, L1 skill promosse da feedback utente) che evitano il pianificatore LLM quando la richiesta e' gia' nota.",
+ "description": "Due livelli di memoizzazione (L0 cache auto-prodotta con hash e cosine, L1 autopath promosse da feedback utente) che evitano il pianificatore LLM quando la richiesta e' gia' nota.",
  "url": "https://metnos.com/it/architecture/fast_path.html",
  "inLanguage": "it",
  "isPartOf": {"@type": "WebSite", "name": "Metnos", "url": "https://metnos.com/"},
@@ -99,7 +99,7 @@ li { margin-bottom: 4px; }.lead { font-size: 12pt; color: var(--navy); border-le
  <li><a href="#cap2">Perch&eacute; serve un fast-path</a></li>
  <li><a href="#cap3">I due livelli</a></li>
  <li><a href="#cap4">L0 &mdash; cache auto-prodotta (<code>fastpath.py</code>)</a></li>
- <li><a href="#cap5">L1 &mdash; skill promosse da feedback (<code>autopath.py</code>)</a></li>
+ <li><a href="#cap5">L1 &mdash; autopath promosse da feedback (<code>autopath.py</code>)</a></li>
  <li><a href="#cap6">Invecchiamento, morte e eredit&agrave;</a></li>
  <li><a href="#cap7">L'estrattore di argomenti</a></li>
  <li><a href="#cap8">Configurazione</a></li>
@@ -251,7 +251,7 @@ perch&eacute; il replay le ri-risolve correttamente.</li>
 </ul>
 
 
-<h1 id="cap5">5. L1 &mdash; skill promosse da feedback (<code>autopath.py</code>)</h1>
+<h1 id="cap5">5. L1 &mdash; autopath promosse da feedback (<code>autopath.py</code>)</h1>
 
 <p>
 Il secondo livello vive in <code>runtime/engine/autopath.py</code> e opera
@@ -263,18 +263,18 @@ a un <em>cluster di intent</em> confermato dal feedback positivo dell'utente.
 Quando l'utente d&agrave; un feedback &laquo;&#10003;&raquo;, Metnos registra
 il framework del turno, il suo hash e il cluster semantico (intent hash +
 cluster ID). Dopo un numero minimo di conferme (configurabile, default 1)
-sullo stesso framework hash e cluster, il piano diventa una <em>skill</em>
+sullo stesso framework hash e cluster, il piano diventa una <em>autopath</em>
 riusabile: la prossima volta che arriva un intent nello stesso cluster,
 il piano viene rieseguito senza passare dal pianificatore.
 </p>
 
-<h2>Anti-skill e champion/challenger</h2>
+<h2>Anti-autopath e champion/challenger</h2>
 
 <ul>
-<li><strong>Anti-skill:</strong> se l'utente d&agrave; feedback negativo
-(3 o pi&ugrave; fallimenti), Metnos registra una <em>anti-skill</em> che
+<li><strong>Anti-autopath:</strong> se l'utente d&agrave; feedback negativo
+(3 o pi&ugrave; fallimenti), Metnos registra una <em>anti-autopath</em> che
 blocca quel piano per quel cluster per 30 giorni. &Egrave; una simmetria
-last-writer-wins: un feedback positivo rimuove l'anti-skill corrispondente.</li>
+last-writer-wins: un feedback positivo rimuove l'anti-autopath corrispondente.</li>
 <li><strong>Champion/challenger:</strong> quando pi&ugrave; framework competono
 per lo stesso cluster, Metnos calcola un punteggio composito che favorisce
 il piano con pi&ugrave; conferme e meno fallimenti.</li>
@@ -285,7 +285,7 @@ il piano con pi&ugrave; conferme e meno fallimenti.</li>
 <em>stessa</em> query (ammette piani query-specific, via hash esatto).
 L1 &egrave; la generalizzazione a un cluster/intent col consenso esplicito
 dell'utente. Il fast-path L0 vince sempre (primo in cascata): anche se
-L1 ha una skill per quell'intent, un fastpath esatto salta l'intera
+L1 ha una autopath per quell'intent, un fastpath esatto salta l'intera
 catena.
 </div>
 
@@ -386,8 +386,8 @@ di sicurezza.
 <table>
 <thead><tr><th>Variabile</th><th>Default</th><th>Significato</th></tr></thead>
 <tbody>
-<tr><td><code>METNOS_AUTOPATH_MIN_OBS</code></td><td>1</td><td>Osservazioni positive minime per promuovere una skill</td></tr>
-<tr><td><code>METNOS_AUTOPATH_TTL_ANTI</code></td><td>2592000 (30 gg)</td><td>Durata di un'anti-skill in secondi</td></tr>
+<tr><td><code>METNOS_AUTOPATH_MIN_OBS</code></td><td>1</td><td>Osservazioni positive minime per promuovere una autopath</td></tr>
+<tr><td><code>METNOS_AUTOPATH_TTL_ANTI</code></td><td>2592000 (30 gg)</td><td>Durata di un'anti-autopath in secondi</td></tr>
 <tr><td><code>METNOS_AUTOPATH_TTL_REPEAT</code></td><td>3600 (1 h)</td><td>Finestra soft per feedback ripetuti</td></tr>
 </tbody>
 </table>
