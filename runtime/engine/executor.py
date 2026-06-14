@@ -1194,6 +1194,17 @@ class Executor:
             args = resolve_query_canonical_args(
                 step.tool, args, query,
                 args_schema=self._schema_map.get(step.tool))
+            # Scope-arg UNIFORME (§7.9, gemello dei resolver sopra): l'«oggetto»
+            # di una CRUD (repo/calendar/account…) mancante o a placeholder →
+            # inline-dalla-query → ricordato (actor+dominio) → config. Cattura
+            # del valore dopo l'invoke OK. Vedi args_resolver.
+            try:
+                from args_resolver import resolve_scope_args
+                args = resolve_scope_args(
+                    step.tool, args, self._schema_map.get(step.tool),
+                    actor=args.get("_actor") or "host", query=query)
+            except Exception as _are:
+                log.debug("args_resolver noop: %r", _are)
             # Universal §7.9: convert list[dict] entries to 2D matrix
             # quando arg name è "values" (write_files_spreadsheet pattern).
             if isinstance(args.get("values"), list) and args["values"]:
@@ -1385,6 +1396,16 @@ class Executor:
                         args = fixed
                 except Exception as ex:
                     log.warning("remediate_args_cb raised %r", ex)
+
+            # Cattura scope-arg: ultimo valore usato → default per il giro dopo
+            # (§7.9, no LLM). Vedi args_resolver.remember_scope_args.
+            if isinstance(r, dict) and r.get("ok"):
+                try:
+                    from args_resolver import remember_scope_args
+                    remember_scope_args(step.tool, args,
+                                        actor=args.get("_actor") or "host")
+                except Exception as _rse:
+                    log.debug("remember_scope_args noop: %r", _rse)
 
             sr = StepRun(step_idx=i + 1, tool=step.tool, args=args,
                           result=r, ok=bool(r.get("ok")), latency_ms=lat_ms)

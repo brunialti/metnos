@@ -8529,6 +8529,17 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
                 log.ts_end = time.time(); log.write(); return log
             continue
 
+        # Risoluzione scope-arg mancanti/placeholder PRIMA della validazione
+        # (universale §7.9): arg-esplicito-valido → inline-dalla-query →
+        # ricordato → config. La cattura del valore usato è dopo l'invoke OK.
+        try:
+            from args_resolver import resolve_scope_args
+            args = resolve_scope_args(
+                chosen_name, args, executor.args_schema,
+                actor=args.get("_actor") or actor or "host",
+                query=user_query_for_run)
+        except Exception:
+            pass
         # Validazione, sandbox, vaglio
         validation = validate_args(args, executor.args_schema)
         step.validation_failures = validation
@@ -8600,6 +8611,16 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
                         except Exception as ex:
                             if verbose:
                                 print(f"[undo] append_done failed: {ex}")
+                    # Cattura scope-arg: ultimo valore usato → default per il
+                    # giro dopo (anche se inline o esplicito). §7.9, no LLM.
+                    if isinstance(obs, dict) and obs.get("ok"):
+                        try:
+                            from args_resolver import remember_scope_args
+                            remember_scope_args(
+                                chosen_name, args,
+                                actor=args.get("_actor") or actor or "host")
+                        except Exception:
+                            pass
 
         step.result = obs
         log.steps.append(step)

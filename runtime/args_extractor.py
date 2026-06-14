@@ -226,6 +226,26 @@ def _extract_time_window(query: str) -> Optional[str]:
     return None
 
 
+# Slug 'owner/name' (es. repo GitHub) inline nella query. Lookaround esclude
+# path (/a/b) e URL (host/owner/name): un solo '/', non preceduto/seguito da \w o /.
+_REPO_SLUG_RE = re.compile(
+    r"(?<![\w/])([A-Za-z0-9][\w.-]*/[A-Za-z0-9][\w.-]*)(?![\w/])")
+_PLACEHOLDER_OWNERS = {"owner", "org", "organization", "user", "username",
+                       "example", "your-org", "your-username", "you"}
+
+
+def _extract_repo_slug(query: str) -> Optional[str]:
+    """Primo 'owner/name' plausibile nella query (no path/URL/placeholder)."""
+    for m in _REPO_SLUG_RE.finditer(query or ""):
+        s = m.group(1)
+        if s.count("/") != 1:
+            continue
+        if s.split("/", 1)[0].strip().lower() in _PLACEHOLDER_OWNERS:
+            continue
+        return s
+    return None
+
+
 def regex_extract(query: str, schema: dict | None) -> dict:
     """Args extraction deterministica via regex. Ritorna dict (anche vuoto
     se nulla estratto). Solo i tipi standard (path/url/int/email/glob/date).
@@ -279,6 +299,10 @@ def regex_extract(query: str, schema: dict | None) -> dict:
         elif lname in ("to", "recipient_id", "recipients", "email",
                        "to_user", "to_users"):
             _emit(_extract_emails(query))
+        elif lname in ("repo", "repository"):
+            r = _extract_repo_slug(query)
+            if r:
+                out[arg_name] = r
         elif lname in ("max_results", "max_total", "top", "limit", "n", "count"):
             ints = _extract_ints(query)
             if ints:
