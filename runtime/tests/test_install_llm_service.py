@@ -154,7 +154,7 @@ class TestProvisionStartsService(unittest.TestCase):
         binp.parent.mkdir(parents=True, exist_ok=True)
         binp.write_bytes(b"#!bin\n")
 
-        def fake_download(repo, f, dest):
+        def fake_download(repo, f, dest, revision="main"):
             dest.parent.mkdir(parents=True, exist_ok=True)
             dest.write_bytes(b"GGUF")
             return True

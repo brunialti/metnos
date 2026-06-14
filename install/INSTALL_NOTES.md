@@ -129,8 +129,20 @@ production-tested engine env:
 - Honest phase outcomes (§2.8): never print "running / onboarding URL" if the
   service did not actually start (phase6 reads `http_enabled`/`http_healthy`).
 - No silent half-install: a mandatory step that fails ABORTS (BGE-M3).
-- Idempotent re-runs: with no sha256 pinned, trust an existing non-empty file
-  (don't re-download); pin sha256 in the release pipeline.
+- Idempotent re-runs: trust an existing file VERIFIED by sha256 (HF API), not by
+  size; a same-size corrupt file is re-downloaded.
+- **Pinning (reproducibility — affects describe determinism §11; fix 14/6)**:
+  - **llama.cpp**: `llm_manager._LLAMA_TAG_DEFAULT` pins the prebuilt release
+    (E2E-validated tag). Override `METNOS_LLAMA_TAG=<bNNNN>`; explicit opt-out
+    `METNOS_LLAMA_TAG=latest` (mobile build, honest warning §2.8). No more silent
+    `releases/latest`.
+  - **GGUF**: each `CATALOG` entry carries `hf_revision` (HF commit-sha = immutable
+    file). The canonical `qwen3-32b` is pinned; the others stay `"main"` (mobile
+    ref → honest "NOT pinned" warning at download). `download_model(..., revision=)`
+    builds `resolve/<rev>/…` and `_hf_expected_sha256(..., revision=)` verifies the
+    sha OF THAT revision. To pin another model: set its `hf_revision` to a commit-sha
+    (one-line edit). The test path resets `hf_revision="main"` (different repo, no
+    inherited pin).
 - Port: `METNOS_HTTP_PORT` overrides; validate range + in-use.
 
 ## Isolated test harness (protect production!)

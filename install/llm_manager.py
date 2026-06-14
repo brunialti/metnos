@@ -37,25 +37,39 @@ from pathlib import Path
 # far girare il modello Q4_K_M con un minimo di contesto. `wise_capable` = supera
 # il quality-floor del tier `wise` (vedi llm_router.WISE_QUALITY_WHITELIST_LOCAL).
 # ⚠️ hf_repo/hf_file da VERIFICARE prima del go-public (non testabili offline).
+# `hf_revision` PIN la riproducibilità (INSTALL_NOTES "pin sha256 in the release
+# pipeline"): un commit-sha HF = file IMMUTABILE; `"main"` = ref MOBILE (avviso
+# onesto a download, build non riproducibile). Solo il canonico è pinnato qui;
+# gli altri restano `main` finché non validati (pin = edit di una riga).
 # ---------------------------------------------------------------------------
 CATALOG = [
     {"key": "qwen3-32b", "label": "Qwen3 32B", "params_b": 32, "q4_gb": 20,
      "min_budget_gb": 26, "wise_capable": True,
      "hf_repo": "Qwen/Qwen3-32B-GGUF", "hf_file": "Qwen3-32B-Q4_K_M.gguf",
+     "hf_revision": "938a7432affaec9157f883a87164e2646ae17555",
      "tier_token": "qwen3:32"},
     {"key": "qwen3-14b", "label": "Qwen3 14B", "params_b": 14, "q4_gb": 9,
      "min_budget_gb": 13, "wise_capable": False,
      "hf_repo": "Qwen/Qwen3-14B-GGUF", "hf_file": "Qwen3-14B-Q4_K_M.gguf",
+     "hf_revision": "main",
      "tier_token": "qwen3:14"},
     {"key": "qwen3-8b", "label": "Qwen3 8B", "params_b": 8, "q4_gb": 5,
      "min_budget_gb": 8, "wise_capable": False,
      "hf_repo": "Qwen/Qwen3-8B-GGUF", "hf_file": "Qwen3-8B-Q4_K_M.gguf",
+     "hf_revision": "main",
      "tier_token": "qwen3:8"},
     {"key": "qwen3-4b", "label": "Qwen3 4B", "params_b": 4, "q4_gb": 3,
      "min_budget_gb": 5, "wise_capable": False,
      "hf_repo": "Qwen/Qwen3-4B-GGUF", "hf_file": "Qwen3-4B-Q4_K_M.gguf",
+     "hf_revision": "main",
      "tier_token": "qwen3:4"},
 ]
+
+# Release prebuilt llama.cpp pinnata (riproducibilità + describe deterministico
+# §11: la build cambia i logits). Default = tag validato end-to-end dall'harness
+# mnostest (12/6/2026). Override `METNOS_LLAMA_TAG=<bNNNN>`; opt-out esplicito
+# `METNOS_LLAMA_TAG=latest` (build NON riproducibile, avviso onesto §2.8).
+_LLAMA_TAG_DEFAULT = "b9608"
 
 DEFAULT_ENDPOINT = "http://127.0.0.1:8080"
 # Frazione della RAM unificata/sistema utilizzabile per il modello (lascia
@@ -70,6 +84,7 @@ class Plan:
     model_label: str | None
     hf_repo: str | None = None
     hf_file: str | None = None
+    hf_revision: str = "main"         # commit-sha HF (pin) o "main" (mobile)
     endpoint: str = DEFAULT_ENDPOINT
     budget_gb: int = 0
     wise_ok: bool = False
@@ -185,6 +200,7 @@ def recommend(hw: dict) -> Plan:
     plan.model_label = chosen["label"]
     plan.hf_repo = chosen["hf_repo"]
     plan.hf_file = chosen["hf_file"]
+    plan.hf_revision = chosen.get("hf_revision", "main")
     plan.wise_ok = chosen["wise_capable"]
     token = chosen["tier_token"]
     # tutti i tier locali sullo stesso modello (come l'esercizio); endpoint unico
@@ -321,19 +337,38 @@ def _download(url: str, dest: Path, *, attempts: int = 5,
     return False
 
 
-def _hf_expected_sha256(hf_repo: str, hf_file: str) -> str | None:
-    """Recupera lo SHA256 pubblicato da HuggingFace per il file (LFS pointer).
+def _http_post_json(url: str, payload: dict):
+    """POST JSON → risposta JSON (lista o dict). Usato per l'API HF `paths-info`
+    (per-file, revision-scoped). Solo HTTPS."""
+    if not url.lower().startswith("https://"):
+        raise ValueError("solo HTTPS")
+    body = _json.dumps(payload).encode()
+    hdr = {"User-Agent": "metnos-llm-manager",
+           "Content-Type": "application/json"}
+    req = _ur.Request(url, data=body, headers=hdr, method="POST")
+    with _ur.urlopen(req, timeout=30) as r:
+        return _json.load(r)
 
-    Permette di verificare il download contro l'hash della SORGENTE (cattura
-    corruzione + un MITM banale). None se non disponibile."""
+
+def _hf_expected_sha256(hf_repo: str, hf_file: str,
+                        revision: str = "main") -> str | None:
+    """Recupera lo SHA256 (LFS oid) del file alla `revision` data via l'API HF
+    `paths-info` (POST, per-file, vale per qualsiasi ref: commit-sha pinnato o
+    `main`). Verifica il download contro l'hash della SORGENTE (corruzione +
+    MITM banale). Con `revision` = commit-sha l'hash è quello del file
+    IMMUTABILE. None se non disponibile.
+
+    NB: la forma GET `/api/models/{repo}/revision/{rev}?expand[]=lfs` NON
+    popola l'lfs (ritorna `error`) → `paths-info` è l'unica forma corretta."""
+    rev = revision if revision not in (None, "") else "main"
     try:
-        meta = _http_json(
-            f"https://huggingface.co/api/models/{hf_repo}"
-            f"?expand[]=siblings&expand[]=lfs")
-        for s in (meta.get("siblings") or []):
-            if s.get("rfilename") == hf_file:
-                lfs = s.get("lfs") or {}
-                return lfs.get("sha256") or lfs.get("oid")
+        info = _http_post_json(
+            f"https://huggingface.co/api/models/{hf_repo}/paths-info/{rev}",
+            {"paths": [hf_file]})
+        for it in (info or []):
+            if it.get("path") == hf_file:
+                lfs = it.get("lfs") or {}
+                return lfs.get("oid") or lfs.get("sha256")
     except Exception:  # noqa: BLE001
         return None
     return None
@@ -478,14 +513,18 @@ def acquire_llama(backend: str, dest: Path) -> Path | None:
         print(f"    llama-server già presente: {existing}")
         _ensure_completion_bin(dest)   # idempotente: chmod su re-run
         return existing
-    # Pin del tag release (riproducibilità + verificabilità). Override env;
-    # default a un tag pinnato, fallback a latest con avviso.
-    tag = os.environ.get("METNOS_LLAMA_TAG", "").strip()
-    api = (f"https://api.github.com/repos/ggml-org/llama.cpp/releases/tags/{tag}"
-           if tag else
-           "https://api.github.com/repos/ggml-org/llama.cpp/releases/latest")
-    if not tag:
-        print("    ! release NON pinnata (latest): pin METNOS_LLAMA_TAG per riproducibilità.")
+    # Pin del tag release (riproducibilità + verificabilità). Default = tag
+    # validato (_LLAMA_TAG_DEFAULT); override `METNOS_LLAMA_TAG=<bNNNN>`;
+    # opt-out esplicito `=latest` (build mobile, avviso onesto §2.8).
+    tag = os.environ.get("METNOS_LLAMA_TAG", "").strip() or _LLAMA_TAG_DEFAULT
+    if tag.lower() == "latest":
+        api = "https://api.github.com/repos/ggml-org/llama.cpp/releases/latest"
+        print("    ! release NON pinnata (latest, opt-out esplicito): "
+              "build non riproducibile.")
+    else:
+        api = f"https://api.github.com/repos/ggml-org/llama.cpp/releases/tags/{tag}"
+        _src = "env" if os.environ.get("METNOS_LLAMA_TAG", "").strip() else "default"
+        print(f"    release pinnata: {tag} ({_src})")
     try:
         rel = _http_json(api)
     except Exception as e:  # noqa: BLE001
@@ -518,9 +557,14 @@ def acquire_llama(backend: str, dest: Path) -> Path | None:
     return binp
 
 
-def download_model(hf_repo: str, hf_file: str, dest: Path) -> bool:
-    """Scarica un GGUF da HuggingFace con VERIFICA SHA256 (dall'API HF). Idempotente."""
-    exp = _hf_expected_sha256(hf_repo, hf_file)
+def download_model(hf_repo: str, hf_file: str, dest: Path,
+                   revision: str = "main") -> bool:
+    """Scarica un GGUF da HuggingFace con VERIFICA SHA256 (dall'API HF). Idempotente.
+
+    `revision` = commit-sha HF (file IMMUTABILE, build riproducibile) o `"main"`
+    (ref MOBILE → avviso onesto §2.8: una ri-pubblicazione upstream cambia il
+    file e l'hash atteso slitta con esso)."""
+    exp = _hf_expected_sha256(hf_repo, hf_file, revision=revision)
     if dest.exists() and dest.stat().st_size > 1024 * 1024:
         # Verifica-on-reuse per hash, non per dimensione (L5): un file corrotto
         # della stessa dimensione NON deve essere accettato.
@@ -530,8 +574,12 @@ def download_model(hf_repo: str, hf_file: str, dest: Path) -> bool:
         else:
             print(f"    modello già presente{' (sha verificato)' if exp else ''}: {dest}")
             return True
-    url = f"https://huggingface.co/{hf_repo}/resolve/main/{hf_file}?download=true"
-    print(f"    scarico {hf_repo}/{hf_file} …")
+    if revision in (None, "", "main"):
+        print("    ! GGUF NON pinnato (revision=main): ref mobile, build non "
+              "riproducibile (pin hf_revision al commit-sha).")
+    _rev = revision if revision not in (None, "") else "main"
+    url = f"https://huggingface.co/{hf_repo}/resolve/{_rev}/{hf_file}?download=true"
+    print(f"    scarico {hf_repo}/{hf_file} @ {_rev[:12]} …")
     return _download(url, dest, attempts=6, expected_sha256=exp)
 
 
@@ -678,10 +726,13 @@ def provision(plan: Plan, *, dry_run: bool = True, assume_yes: bool = False) -> 
     print("")
 
     # 1) llama.cpp (prebuilt preferito; build come fallback)
+    _ltag = os.environ.get("METNOS_LLAMA_TAG", "").strip() or _LLAMA_TAG_DEFAULT
     emit(f"Procurare llama-server per backend '{plan.backend}' in {llama} "
-         f"(prebuilt da github ggml-org/llama.cpp release; fallback: build con cmake)")
+         f"(prebuilt ggml-org/llama.cpp release {_ltag}; fallback: build con cmake)")
     # 2) modello GGUF
-    emit(f"Scaricare {plan.hf_repo}/{plan.hf_file} (~{_q4_gb(plan)} GB) "
+    _pin = ("pin " + plan.hf_revision[:12]
+            if plan.hf_revision not in (None, "", "main") else "main MOBILE")
+    emit(f"Scaricare {plan.hf_repo}/{plan.hf_file} (~{_q4_gb(plan)} GB, {_pin}) "
          f"in {model_file}  [huggingface]")
     # 3) tiers config
     emit(f"Scrivere {tiers} (tier fast/middle/wise → llamacpp {model_file.name} "
@@ -720,7 +771,8 @@ def provision(plan: Plan, *, dry_run: bool = True, assume_yes: bool = False) -> 
 
     # 2) modello GGUF
     print("[2/5] modello")
-    if not download_model(plan.hf_repo, plan.hf_file, model_file):
+    if not download_model(plan.hf_repo, plan.hf_file, model_file,
+                          revision=plan.hf_revision):
         print("  ✗ download modello fallito.")
         out["ok"] = False
         return out
@@ -826,6 +878,7 @@ def main() -> int:
             plan.model_label = "Qwen2.5 0.5B (TEST)"
             plan.hf_repo = "Qwen/Qwen2.5-0.5B-Instruct-GGUF"
             plan.hf_file = "qwen2.5-0.5b-instruct-q4_k_m.gguf"
+            plan.hf_revision = "main"   # repo diverso dal canonico: niente pin ereditato
             plan.backend = "cpu"
             plan.feasible = True
             plan.warnings.append("MODALITÀ TEST: modello tiny su CPU.")
