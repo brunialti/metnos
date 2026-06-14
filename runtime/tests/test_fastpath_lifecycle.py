@@ -442,7 +442,7 @@ class TestRecordFromCacheHits(_FastpathDbCase):
                                              "max_results": 20}})
         intent = Intent(verb="read", object="messages")
         catalog = self._catalog("read_messages", "describe_entries")
-        hit = AutopathHit(skill_id="read_messages__v1.0.0", framework=fw,
+        hit = AutopathHit(autopath_id="read_messages__v1.0.0", framework=fw,
                           cluster_id="cl_x", uses=1)
         lookups = []
 
@@ -481,7 +481,7 @@ class TestRecordFromCacheHits(_FastpathDbCase):
         fw = _fw("read_messages")
         intent = Intent(verb="read", object="messages")
         catalog = self._catalog("read_messages")
-        hit = AutopathHit(skill_id="s", framework=fw, cluster_id="c", uses=1)
+        hit = AutopathHit(autopath_id="s", framework=fw, cluster_id="c", uses=1)
         env = {"METNOS_ENGINE": "simple", "METNOS_FASTPATH": "1",
                "METNOS_AUTOPATH": "1"}
         with mock.patch.dict(os.environ, env), \

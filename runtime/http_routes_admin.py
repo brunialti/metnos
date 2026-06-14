@@ -428,7 +428,7 @@ async def admin_praxis(request: web.Request) -> web.Response:
     (docs/it/architecture/praxis_engine.html):
       L0 fastpath — scorciatoie AUTO-prodotte dai turni riusciti
                     (fastpaths.sqlite; valvola: delete per riga)
-      L1 autopath — skill apprese dal feedback ✓ (autopath.sqlite)
+      L1 autopath — autopath apprese dal feedback ✓ (autopath.sqlite)
     L2 validator e L3 proposer/recovery sono stateless (niente storage).
     """
     # L0 — fastpath (scorciatoie auto-prodotte)
@@ -438,21 +438,21 @@ async def admin_praxis(request: web.Request) -> web.Response:
     except Exception as ex:
         log.warning("admin_praxis: fastpath read failed: %r", ex)
         fastpaths = []
-    # L1 — autopath (skill apprese, osservazioni, anti-skill)
+    # L1 — autopath (autopath apprese, osservazioni, anti-autopath)
     try:
         from engine import autopath as _autopath
         stats = _autopath.stats()
-        skills_active = _autopath.list_skills(status="active", limit=50)
-        skills_demoted = _autopath.list_skills(status="demoted", limit=20)
+        autopaths_active = _autopath.list_autopaths(status="active", limit=50)
+        autopaths_demoted = _autopath.list_autopaths(status="demoted", limit=20)
         observations = _autopath.recent_observations(limit=30)
         _decode_observation_tools(observations)
-        anti_skills = _autopath.active_anti_skills(limit=20)
+        anti_autopaths = _autopath.active_anti_autopaths(limit=20)
     except Exception as ex:
         log.warning("admin_praxis: autopath read failed: %r", ex)
-        stats = {"skills_by_status": {}, "observations_total": 0,
-                  "anti_skills_active": 0, "error": str(ex)}
-        skills_active = skills_demoted = []
-        observations = anti_skills = []
+        stats = {"autopaths_by_status": {}, "observations_total": 0,
+                  "anti_autopaths_active": 0, "error": str(ex)}
+        autopaths_active = autopaths_demoted = []
+        observations = anti_autopaths = []
     # Pronoia config display (tier di escalation del recovery)
     import os as _os
     pronoia_tier = _os.environ.get("METNOS_PRONOIA_TIER", "wise")
@@ -460,10 +460,10 @@ async def admin_praxis(request: web.Request) -> web.Response:
     payload = {
         "stats": stats,
         "fastpaths": fastpaths,
-        "skills_active": skills_active,
-        "skills_demoted": skills_demoted,
+        "autopaths_active": autopaths_active,
+        "autopaths_demoted": autopaths_demoted,
         "observations": observations,
-        "anti_skills": anti_skills,
+        "anti_autopaths": anti_autopaths,
         "pronoia_tier": pronoia_tier,
     }
     return negotiate_collection(

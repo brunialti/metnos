@@ -1,4 +1,4 @@
-"""engine/autopath.py — Layer 1: skill auto-promosse da feedback ✓.
+"""engine/autopath.py — Layer 1: autopath auto-promosse da feedback ✓.
 
 Caching framework dopo N feedback ✓ utente nello stesso cluster semantico.
 
@@ -13,9 +13,9 @@ Storage: ~/.local/share/metnos/autopath.sqlite (rename da praxis.sqlite).
 Sostituisce la logica Praxis cache mantenendo:
   - intent_hash + cluster_id (BGE-M3) lookup
   - auto-promote dopo 2 ok (configurable)
-  - demote/anti-skill su 3+ fail (TTL 30gg)
+  - demote/anti-autopath su 3+ fail (TTL 30gg)
   - champion/challenger composite score
-  - LWW simmetrico (✓ rimuove anti-skill matching)
+  - LWW simmetrico (✓ rimuove anti-autopath matching)
 
 §7.3: nessuna logica domain-specific. Solo storage + match.
 """
@@ -42,14 +42,14 @@ _DB_INIT_DONE = False
 MIN_OBS_PROMOTE = int(os.environ.get("METNOS_AUTOPATH_MIN_OBS", "1"))
 # v2: 1 obs sufficient se cluster cosine ≥ COSINE_HIGH (semantic equivalence).
 # Cache hit prima → -50% latency su ricorrenze.
-TTL_ANTISKILL_SECS = int(os.environ.get("METNOS_AUTOPATH_TTL_ANTI", "2592000"))  # 30gg
-TTL_ANTISKILL_REPEAT_SECS = int(
+TTL_ANTIAUTOPATH_SECS = int(os.environ.get("METNOS_AUTOPATH_TTL_ANTI", "2592000"))  # 30gg
+TTL_ANTIAUTOPATH_REPEAT_SECS = int(
     os.environ.get("METNOS_AUTOPATH_TTL_REPEAT", "3600"))  # 1h soft (verdict repeat)
 
 
 @dataclass
 class AutopathHit:
-    skill_id: str
+    autopath_id: str
     framework: Framework
     cluster_id: str
     uses: int
@@ -67,9 +67,19 @@ def _conn() -> sqlite3.Connection:
     p = _db_path()
     p.parent.mkdir(parents=True, exist_ok=True)
     c = sqlite3.connect(str(p))
+    # Migrazione rename skills→autopaths (14/6): preserva i piani L1 GIA' appresi
+    # (ALTER TABLE RENAME, idempotente). §7.1 rename pulito ma niente data-loss.
+    _tabs = {r[0] for r in c.execute(
+        "SELECT name FROM sqlite_master WHERE type='table'")}
+    if "skills" in _tabs and "autopaths" not in _tabs:
+        c.execute("ALTER TABLE skills RENAME TO autopaths")
+        c.execute("DROP INDEX IF EXISTS sk_cluster")
+        c.execute("DROP INDEX IF EXISTS sk_intent")
+    if "anti_skills" in _tabs and "anti_autopaths" not in _tabs:
+        c.execute("ALTER TABLE anti_skills RENAME TO anti_autopaths")
     if True:
         c.executescript("""
-        CREATE TABLE IF NOT EXISTS skills (
+        CREATE TABLE IF NOT EXISTS autopaths (
             id TEXT PRIMARY KEY,
             intent_sig TEXT NOT NULL,
             intent_hash TEXT NOT NULL,
@@ -87,8 +97,8 @@ def _conn() -> sqlite3.Connection:
             ts_created TEXT NOT NULL,
             ts_last_used TEXT
         );
-        CREATE INDEX IF NOT EXISTS sk_cluster ON skills(cluster_id, status);
-        CREATE INDEX IF NOT EXISTS sk_intent ON skills(intent_hash, status);
+        CREATE INDEX IF NOT EXISTS ap_cluster ON autopaths(cluster_id, status);
+        CREATE INDEX IF NOT EXISTS ap_intent ON autopaths(intent_hash, status);
 
         CREATE TABLE IF NOT EXISTS observations (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -108,7 +118,7 @@ def _conn() -> sqlite3.Connection:
         CREATE INDEX IF NOT EXISTS obs_intent ON observations(intent_hash);
         CREATE INDEX IF NOT EXISTS obs_cluster ON observations(cluster_id);
 
-        CREATE TABLE IF NOT EXISTS anti_skills (
+        CREATE TABLE IF NOT EXISTS anti_autopaths (
             intent_hash TEXT NOT NULL,
             framework_hash TEXT NOT NULL,
             fail_count INTEGER NOT NULL DEFAULT 1,
@@ -125,7 +135,7 @@ def _conn() -> sqlite3.Connection:
 def prune(*, keep_observations: int | None = None) -> dict:
     """Reaper dello storage autopath (chiamato dal state_reaper builtin).
 
-    - anti_skills: rimuove le righe con TTL scaduto (`ttl_expires_at < now`),
+    - anti_autopaths: rimuove le righe con TTL scaduto (`ttl_expires_at < now`),
       che prima venivano cancellate SOLO via feedback ✓ matching (LWW) →
       accumulo silenzioso.
     - observations: tiene solo le piu' recenti N (la lookup legge una finestra
@@ -140,7 +150,7 @@ def prune(*, keep_observations: int | None = None) -> dict:
     c = _conn()
     try:
         anti = c.execute(
-            "DELETE FROM anti_skills WHERE ttl_expires_at < ?", (now_iso,)
+            "DELETE FROM anti_autopaths WHERE ttl_expires_at < ?", (now_iso,)
         ).rowcount
         obs = c.execute(
             "DELETE FROM observations WHERE rowid NOT IN "
@@ -152,7 +162,7 @@ def prune(*, keep_observations: int | None = None) -> dict:
             c.execute("VACUUM")
         except sqlite3.Error:
             pass
-        return {"anti_skills_removed": max(0, anti),
+        return {"anti_autopaths_removed": max(0, anti),
                 "observations_removed": max(0, obs),
                 "kept_observations": int(keep_observations)}
     finally:
@@ -177,7 +187,7 @@ def _compute_intent_sig(intent: Intent) -> tuple[str, str]:
 
 
 def lookup(query: str, intent: Intent) -> Optional[AutopathHit]:
-    """Tenta match skill cached. Cluster semantic-first poi intent_hash fallback.
+    """Tenta match autopath cached. Cluster semantic-first poi intent_hash fallback.
 
     Ritorna AutopathHit o None.
     """
@@ -204,21 +214,21 @@ def lookup(query: str, intent: Intent) -> Optional[AutopathHit]:
             if best_sim >= _cluster.COSINE_HIGH and best_cid:
                 row = c.execute(
                     "SELECT id, framework_json, uses, composite_score "
-                    "FROM skills WHERE cluster_id = ? AND status = 'active' "
+                    "FROM autopaths WHERE cluster_id = ? AND status = 'active' "
                     "AND champion = 1 LIMIT 1", (best_cid,)).fetchone()
                 if row and not _is_query_specific(row[1]):
                     fw = Framework.from_dict(json.loads(row[1]))
-                    return AutopathHit(skill_id=row[0], framework=fw,
+                    return AutopathHit(autopath_id=row[0], framework=fw,
                                         cluster_id=best_cid, uses=row[2],
                                         composite_score=row[3] or 0.5)
         # 2. Intent hash fallback (exact)
         row = c.execute(
             "SELECT id, framework_json, cluster_id, uses, composite_score "
-            "FROM skills WHERE intent_hash = ? AND status = 'active' "
+            "FROM autopaths WHERE intent_hash = ? AND status = 'active' "
             "AND champion = 1 LIMIT 1", (ihash,)).fetchone()
         if row and not _is_query_specific(row[1]):
             fw = Framework.from_dict(json.loads(row[1]))
-            return AutopathHit(skill_id=row[0], framework=fw,
+            return AutopathHit(autopath_id=row[0], framework=fw,
                                 cluster_id=row[2] or "", uses=row[3],
                                 composite_score=row[4] or 0.5)
     finally:
@@ -287,10 +297,10 @@ def record_feedback(turn_id: str, verdict: str) -> dict:
     """Hook chiamato da turn_feedback dopo click utente.
 
     verdict ∈ {ok, fail, repeat}. Side effects:
-      ok     → maybe promote (≥MIN_OBS_PROMOTE stesso framework_hash → skill)
-               + LWW remove anti_skill matching
-      fail   → fail_count++ + maybe anti_skill (≥3 fail)
-      repeat → soft anti_skill TTL 1h (caller re-propose via recovery)
+      ok     → maybe promote (≥MIN_OBS_PROMOTE stesso framework_hash → autopath)
+               + LWW remove anti_autopath matching
+      fail   → fail_count++ + maybe anti_autopath (≥3 fail)
+      repeat → soft anti_autopath TTL 1h (caller re-propose via recovery)
     """
     if verdict not in ("ok", "fail", "repeat"):
         return {"ok": False, "reason": "bad_verdict"}
@@ -310,14 +320,14 @@ def record_feedback(turn_id: str, verdict: str) -> dict:
         out: dict = {"ok": True, "verdict": verdict,
                       "intent_hash": ihash, "framework_hash": fhash}
         if verdict == "ok":
-            # LWW remove anti-skill
+            # LWW remove anti-autopath
             rm = c.execute(
-                "DELETE FROM anti_skills WHERE intent_hash = ? "
+                "DELETE FROM anti_autopaths WHERE intent_hash = ? "
                 "AND framework_hash = ?", (ihash, fhash)).rowcount
             if rm:
-                out["anti_skill_removed"] = rm
+                out["anti_autopath_removed"] = rm
                 c.execute(
-                    "UPDATE skills SET status = 'active' "
+                    "UPDATE autopaths SET status = 'active' "
                     "WHERE intent_hash = ? AND framework_hash = ? "
                     "AND status = 'demoted'", (ihash, fhash))
             # Promote check: N obs same hash with verdict ok?
@@ -331,11 +341,11 @@ def record_feedback(turn_id: str, verdict: str) -> dict:
                     # non generalizza, non diventa champion (anti-poisoning).
                     out["promotion_skipped"] = "query_specific_literal_args"
                 else:
-                    skill_id = _promote_skill(c, ihash, sig, fhash, fjson, cid, ts)
-                    if skill_id:
-                        out["promoted_skill_id"] = skill_id
+                    autopath_id = _promote_autopath(c, ihash, sig, fhash, fjson, cid, ts)
+                    if autopath_id:
+                        out["promoted_autopath_id"] = autopath_id
         elif verdict == "fail":
-            # Anti-skill se 3+ fail
+            # Anti-autopath se 3+ fail
             n_fail = c.execute(
                 "SELECT COUNT(*) FROM observations "
                 "WHERE intent_hash = ? AND framework_hash = ? "
@@ -343,40 +353,40 @@ def record_feedback(turn_id: str, verdict: str) -> dict:
             if n_fail >= 3:
                 ttl = time.strftime(
                     "%Y-%m-%dT%H:%M:%SZ",
-                    time.gmtime(time.time() + TTL_ANTISKILL_SECS))
+                    time.gmtime(time.time() + TTL_ANTIAUTOPATH_SECS))
                 c.execute(
-                    "INSERT INTO anti_skills(intent_hash, framework_hash, "
+                    "INSERT INTO anti_autopaths(intent_hash, framework_hash, "
                     "fail_count, ttl_expires_at, reason, ts_last_fail) "
                     "VALUES (?, ?, ?, ?, ?, ?) "
                     "ON CONFLICT DO UPDATE SET "
-                    "fail_count = anti_skills.fail_count + 1, "
+                    "fail_count = anti_autopaths.fail_count + 1, "
                     "ttl_expires_at = excluded.ttl_expires_at, "
                     "ts_last_fail = excluded.ts_last_fail",
                     (ihash, fhash, n_fail, ttl, f"feedback_fail:{n_fail}", ts))
-                # Demote skill
+                # Demote autopath
                 c.execute(
-                    "UPDATE skills SET status = 'demoted' "
+                    "UPDATE autopaths SET status = 'demoted' "
                     "WHERE intent_hash = ? AND framework_hash = ?",
                     (ihash, fhash))
-                out["anti_skill_added"] = True
+                out["anti_autopath_added"] = True
         elif verdict == "repeat":
-            # Soft anti-skill TTL breve (1h): il framework è stato ri-proposto
+            # Soft anti-autopath TTL breve (1h): il framework è stato ri-proposto
             # ma l'utente ha chiesto un retry → escludilo temporaneamente cosi'
             # il caller (recovery) ri-propone una shape diversa. Riusa lo stesso
-            # path di insert anti_skill del ramo `fail`, con TTL corto.
+            # path di insert anti_autopath del ramo `fail`, con TTL corto.
             ttl = time.strftime(
                 "%Y-%m-%dT%H:%M:%SZ",
-                time.gmtime(time.time() + TTL_ANTISKILL_REPEAT_SECS))
+                time.gmtime(time.time() + TTL_ANTIAUTOPATH_REPEAT_SECS))
             c.execute(
-                "INSERT INTO anti_skills(intent_hash, framework_hash, "
+                "INSERT INTO anti_autopaths(intent_hash, framework_hash, "
                 "fail_count, ttl_expires_at, reason, ts_last_fail) "
                 "VALUES (?, ?, ?, ?, ?, ?) "
                 "ON CONFLICT DO UPDATE SET "
-                "fail_count = anti_skills.fail_count + 1, "
+                "fail_count = anti_autopaths.fail_count + 1, "
                 "ttl_expires_at = excluded.ttl_expires_at, "
                 "ts_last_fail = excluded.ts_last_fail",
                 (ihash, fhash, 1, ttl, "feedback_repeat", ts))
-            out["anti_skill_repeat"] = True
+            out["anti_autopath_repeat"] = True
         c.commit()
         c.close()
         return out
@@ -385,37 +395,37 @@ def record_feedback(turn_id: str, verdict: str) -> dict:
         return {"ok": False, "reason": str(ex)}
 
 
-def _promote_skill(c, ihash: str, sig: str, fhash: str, fjson: str,
+def _promote_autopath(c, ihash: str, sig: str, fhash: str, fjson: str,
                     cid: Optional[str], ts: str) -> Optional[str]:
-    """Crea skill ACTIVE se non già presente. Ritorna skill_id."""
-    base = sig.replace("|", "_")[:40] or "skill"
-    skill_id = f"{base}_v1.0.0"
+    """Crea autopath ACTIVE se non già presente. Ritorna autopath_id."""
+    base = sig.replace("|", "_")[:40] or "autopath"
+    autopath_id = f"{base}_v1.0.0"
     existing = c.execute(
-        "SELECT id FROM skills WHERE intent_hash = ? AND framework_hash = ?",
+        "SELECT id FROM autopaths WHERE intent_hash = ? AND framework_hash = ?",
         (ihash, fhash)).fetchone()
     if existing:
-        c.execute("UPDATE skills SET uses = uses + 1, ok_count = ok_count + 1, "
+        c.execute("UPDATE autopaths SET uses = uses + 1, ok_count = ok_count + 1, "
                   "ts_last_used = ? WHERE id = ?", (ts, existing[0]))
         return existing[0]
     c.execute(
-        "INSERT OR IGNORE INTO skills(id, intent_sig, intent_hash, cluster_id, "
+        "INSERT OR IGNORE INTO autopaths(id, intent_sig, intent_hash, cluster_id, "
         "framework_json, framework_hash, status, uses, ok_count, "
         "ts_created, ts_last_used) "
         "VALUES (?, ?, ?, ?, ?, ?, 'active', 1, 1, ?, ?)",
-        (skill_id, sig, ihash, cid, fjson, fhash, ts, ts))
-    return skill_id
+        (autopath_id, sig, ihash, cid, fjson, fhash, ts, ts))
+    return autopath_id
 
 
-# ── Anti-skill check (per Proposer exclusion) ─────────────────────────────
+# ── Anti-autopath check (per Proposer exclusion) ─────────────────────────────
 
 def excluded_framework_hashes(intent: Intent) -> set[str]:
-    """Anti-skills attivi (TTL non scaduto) per intent."""
+    """Anti-autopaths attivi (TTL non scaduto) per intent."""
     _, ihash = _compute_intent_sig(intent)
     ts = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
     try:
         c = _conn()
         rows = c.execute(
-            "SELECT framework_hash FROM anti_skills "
+            "SELECT framework_hash FROM anti_autopaths "
             "WHERE intent_hash = ? AND ttl_expires_at > ?",
             (ihash, ts)).fetchall()
         c.close()
@@ -428,7 +438,7 @@ def excluded_framework_hashes(intent: Intent) -> set[str]:
 # Sola lettura: NESSUNA logica di promote/lookup/demote. Colonne esplicite
 # (niente SELECT * → embedding BLOB resta fuori dal payload UI).
 
-_SKILL_COLS = ("id", "intent_sig", "intent_hash", "cluster_id", "status",
+_AUTOPATH_COLS = ("id", "intent_sig", "intent_hash", "cluster_id", "status",
                "uses", "ok_count", "fail_count", "composite_score",
                "champion", "ts_created", "ts_last_used")
 
@@ -446,28 +456,28 @@ def stats() -> dict:
     c = _conn()
     try:
         by_status = dict(c.execute(
-            "SELECT status, COUNT(*) FROM skills GROUP BY status").fetchall())
+            "SELECT status, COUNT(*) FROM autopaths GROUP BY status").fetchall())
         obs_total = c.execute(
             "SELECT COUNT(*) FROM observations").fetchone()[0]
         anti_active = c.execute(
-            "SELECT COUNT(*) FROM anti_skills WHERE ttl_expires_at > ?",
+            "SELECT COUNT(*) FROM anti_autopaths WHERE ttl_expires_at > ?",
             (now,)).fetchone()[0]
-        return {"skills_by_status": by_status,
+        return {"autopaths_by_status": by_status,
                 "observations_total": obs_total,
-                "anti_skills_active": anti_active}
+                "anti_autopaths_active": anti_active}
     finally:
         c.close()
 
 
-def list_skills(status: str = "active", limit: int = 50) -> list[dict]:
-    """Skill per status, le piu' usate prima."""
+def list_autopaths(status: str = "active", limit: int = 50) -> list[dict]:
+    """Autopath per status, le piu' usate prima."""
     c = _conn()
     try:
         rows = c.execute(
-            f"SELECT {', '.join(_SKILL_COLS)} FROM skills "
+            f"SELECT {', '.join(_AUTOPATH_COLS)} FROM autopaths "
             "WHERE status = ? ORDER BY uses DESC, ts_last_used DESC LIMIT ?",
             (status, int(limit))).fetchall()
-        return [dict(zip(_SKILL_COLS, r)) for r in rows]
+        return [dict(zip(_AUTOPATH_COLS, r)) for r in rows]
     finally:
         c.close()
 
@@ -484,13 +494,13 @@ def recent_observations(limit: int = 30) -> list[dict]:
         c.close()
 
 
-def active_anti_skills(limit: int = 20) -> list[dict]:
-    """Anti-skill con TTL non scaduto, fail piu' recenti prima."""
+def active_anti_autopaths(limit: int = 20) -> list[dict]:
+    """Anti-autopath con TTL non scaduto, fail piu' recenti prima."""
     now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
     c = _conn()
     try:
         rows = c.execute(
-            f"SELECT {', '.join(_ANTI_COLS)} FROM anti_skills "
+            f"SELECT {', '.join(_ANTI_COLS)} FROM anti_autopaths "
             "WHERE ttl_expires_at > ? ORDER BY ts_last_fail DESC LIMIT ?",
             (now, int(limit))).fetchall()
         return [dict(zip(_ANTI_COLS, r)) for r in rows]
@@ -498,8 +508,8 @@ def active_anti_skills(limit: int = 20) -> list[dict]:
         c.close()
 
 
-# NB: `demote_skill_for_query` (LWW utente-prevale su approvazione manuale
+# NB: `demote_autopath_for_query` (LWW utente-prevale su approvazione manuale
 # fastpath) RIMOSSA 11/6/2026: serviva il bottone «approva fast-path» mai
 # implementato; con l'auto-produzione L0 (nessun consenso esplicito) il demote
-# L1 non ha base — L0 vince comunque in cascata sulla query esatta, la skill
+# L1 non ha base — L0 vince comunque in cascata sulla query esatta, la autopath
 # L1 resta utile per le sorelle del cluster.

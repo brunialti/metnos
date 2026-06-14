@@ -5,7 +5,7 @@
 <p class="page-sub">Gli strati con stato del motore cognitivo (Engine v2),
 provati in cascata su ogni query:
 <b>L0 fastpath</b> scorciatoie auto-prodotte dai turni riusciti ·
-<b>L1 autopath</b> skill apprese dal feedback ✓ ·
+<b>L1 autopath</b> autopath apprese dal feedback ✓ ·
 L2 validator (controllo del piano) e L3 proposer/recovery (modello, 1 chiamata)
 sono senza stato e non compaiono qui.</p>
 <p class="muted">storage <code>fastpaths.sqlite</code> + <code>autopath.sqlite</code>
@@ -17,21 +17,21 @@ sono senza stato e non compaiono qui.</p>
     <div class="kpi-label">Scorciatoie L0</div>
     <div class="kpi-value">{{ fastpaths|length }}</div>
   </div>
-  <div class="kpi" title="skill promosse dal feedback ✓ e attive (L1)">
-    <div class="kpi-label">Skill attive L1</div>
-    <div class="kpi-value">{{ stats.skills_by_status.get("active", 0) }}</div>
+  <div class="kpi" title="autopath promosse dal feedback ✓ e attive (L1)">
+    <div class="kpi-label">Autopath attive L1</div>
+    <div class="kpi-value">{{ stats.autopaths_by_status.get("active", 0) }}</div>
   </div>
-  <div class="kpi" title="skill retrocesse dopo fail ripetuti o superate da una scorciatoia">
+  <div class="kpi" title="autopath retrocesse dopo fail ripetuti o superate da una scorciatoia">
     <div class="kpi-label">Demoted</div>
-    <div class="kpi-value">{{ stats.skills_by_status.get("demoted", 0) }}</div>
+    <div class="kpi-value">{{ stats.autopaths_by_status.get("demoted", 0) }}</div>
   </div>
   <div class="kpi" title="turni registrati per future promozioni">
     <div class="kpi-label">Observations totali</div>
     <div class="kpi-value">{{ stats.observations_total }}</div>
   </div>
   <div class="kpi" title="combinazioni intent+framework escluse temporaneamente dopo feedback ✗">
-    <div class="kpi-label">Anti-skill attivi</div>
-    <div class="kpi-value">{{ stats.anti_skills_active }}</div>
+    <div class="kpi-label">Anti-autopath attivi</div>
+    <div class="kpi-value">{{ stats.anti_autopaths_active }}</div>
   </div>
 </div>
 {% if stats.error %}
@@ -76,11 +76,11 @@ le rimpiazza; il bottone «elimina» è la valvola manuale.</p>
 turno completato con successo dal piano pieno.</p>
 {% endif %}
 
-<h2>L1 — Skill apprese attive ({{ skills_active|length }})</h2>
+<h2>L1 — Autopath apprese attive ({{ autopaths_active|length }})</h2>
 <p class="muted">Framework promossi automaticamente dopo feedback ✓ nello
 stesso cluster semantico; riusati senza chiamare il modello. Fail ripetuti
-li retrocedono (anti-skill con TTL).</p>
-{% if skills_active %}
+li retrocedono (anti-autopath con TTL).</p>
+{% if autopaths_active %}
 <div class="table-wrap">
 <table>
   <thead>
@@ -88,7 +88,7 @@ li retrocedono (anti-skill con TTL).</p>
         <th>fail</th><th>score</th><th>ultimo uso</th></tr>
   </thead>
   <tbody>
-  {% for s in skills_active %}
+  {% for s in autopaths_active %}
     <tr>
       <td><code>{{ s.id }}</code></td>
       <td class="muted">{{ s.intent_sig[:60] }}</td>
@@ -104,17 +104,17 @@ li retrocedono (anti-skill con TTL).</p>
 </table>
 </div>
 {% else %}
-<p class="muted">Nessuna skill promossa ancora. La promozione scatta col
+<p class="muted">Nessuna autopath promossa ancora. La promozione scatta col
 feedback ✓ su un framework ricorrente.</p>
 {% endif %}
 
-{% if skills_demoted %}
-<h2>Skill retrocesse ({{ skills_demoted|length }})</h2>
+{% if autopaths_demoted %}
+<h2>Autopath retrocesse ({{ autopaths_demoted|length }})</h2>
 <div class="table-wrap">
 <table>
   <thead><tr><th>id</th><th>intent</th><th>usi</th><th>ok</th><th>fail</th></tr></thead>
   <tbody>
-  {% for s in skills_demoted %}
+  {% for s in autopaths_demoted %}
     <tr><td><code>{{ s.id }}</code></td>
         <td class="muted">{{ s.intent_sig[:60] }}</td>
         <td>{{ s.uses }}</td>
@@ -160,8 +160,8 @@ sono la materia prima delle promozioni L1.</p>
 <p class="muted">Nessuna observation. Ogni turno che passa dal motore ne genera una.</p>
 {% endif %}
 
-{% if anti_skills %}
-<h2>Anti-skill attivi ({{ anti_skills|length }})</h2>
+{% if anti_autopaths %}
+<h2>Anti-autopath attivi ({{ anti_autopaths|length }})</h2>
 <p class="muted">Combinazioni intent+framework escluse dopo feedback ✗
 ripetuti (TTL 30 giorni; un ✓ le rimuove subito).</p>
 <div class="table-wrap">
@@ -171,7 +171,7 @@ ripetuti (TTL 30 giorni; un ✓ le rimuove subito).</p>
         <th>motivo</th><th>scade</th></tr>
   </thead>
   <tbody>
-  {% for a in anti_skills %}
+  {% for a in anti_autopaths %}
     <tr>
       <td class="muted"><code>{{ a.intent_hash }}</code></td>
       <td class="muted"><code>{{ a.framework_hash }}</code></td>
@@ -185,13 +185,13 @@ ripetuti (TTL 30 giorni; un ✓ le rimuove subito).</p>
 </div>
 {% endif %}
 
-{% if stats.skills_by_status %}
-<h2>Distribuzione skill per status</h2>
+{% if stats.autopaths_by_status %}
+<h2>Distribuzione autopath per status</h2>
 <div class="table-wrap">
 <table class="compact">
   <thead><tr><th>status</th><th>count</th></tr></thead>
   <tbody>
-  {% for st, n in stats.skills_by_status.items() %}
+  {% for st, n in stats.autopaths_by_status.items() %}
     <tr><td>{{ st }}</td><td>{{ n }}</td></tr>
   {% endfor %}
   </tbody>

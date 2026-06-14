@@ -538,9 +538,9 @@ class TestAutopathSchema(unittest.TestCase):
             res = eng_autopath.record_feedback(tid, "ok")
             self.assertTrue(res["ok"])
         # Second feedback → promote (need ≥2 observations same fw_hash)
-        # Verify skill exists
+        # Verify autopath exists
         c = eng_autopath._conn()
-        rows = c.execute("SELECT id, status FROM skills").fetchall()
+        rows = c.execute("SELECT id, status FROM autopaths").fetchall()
         c.close()
         self.assertGreaterEqual(len(rows), 1)
 

@@ -304,7 +304,7 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
         ap_hit = _ap.lookup(query, intent)
         if ap_hit is not None:
             if verbose:
-                log.info("[L1 autopath] hit skill=%s uses=%d", ap_hit.skill_id, ap_hit.uses)
+                log.info("[L1 autopath] hit autopath=%s uses=%d", ap_hit.autopath_id, ap_hit.uses)
             # Clausola di ordinamento della query corrente (vedi sopra):
             # la skill di cluster è un template, la clausola NON vi è
             # incorporata (causa-radice T39: l'hit L1 della famiglia
