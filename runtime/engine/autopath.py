@@ -45,6 +45,14 @@ MIN_OBS_PROMOTE = int(os.environ.get("METNOS_AUTOPATH_MIN_OBS", "1"))
 TTL_ANTIAUTOPATH_SECS = int(os.environ.get("METNOS_AUTOPATH_TTL_ANTI", "2592000"))  # 30gg
 TTL_ANTIAUTOPATH_REPEAT_SECS = int(
     os.environ.get("METNOS_AUTOPATH_TTL_REPEAT", "3600"))  # 1h soft (verdict repeat)
+# Cosine-floor del fallback intent_hash (path 2 di lookup, 14/6). L'intent_hash
+# (verb|object) NON basta: due query stesso intent ma slot diversi («mail di X»
+# vs «tutte le mailbox 24h») non devono ereditare lo stesso champion. Sotto
+# FLOOR la query e' troppo lontana dal cluster dell'autopath → astieniti (full
+# engine decide). Calibrato 14/6 su dati reali: within-cluster p05=0.870 (≈0
+# regressione), same-intent cross-cluster p50=0.795 (rigetta i misroute). FLOOR
+# < COSINE_HIGH (0.90, path 1) per costruzione.
+COSINE_FLOOR_INTENT = float(os.environ.get("METNOS_AUTOPATH_FLOOR", "0.82"))
 
 
 @dataclass
@@ -186,6 +194,21 @@ def _compute_intent_sig(intent: Intent) -> tuple[str, str]:
 # engine/executor.py (is_query_specific + CONTENT_ARG_KEYS).
 
 
+def _max_cosine_to_cluster(c, eb: bytes, cluster_id: str, limit: int = 50) -> float:
+    """Max cosine fra `eb` e le osservazioni recenti del cluster (per il
+    cosine-floor del path 2). 0.0 se il cluster non ha osservazioni con embed."""
+    best = 0.0
+    for (oeb,) in c.execute(
+        "SELECT embedding FROM observations WHERE cluster_id = ? "
+        "AND embedding IS NOT NULL ORDER BY ts DESC LIMIT ?",
+        (cluster_id, int(limit))):
+        if oeb:
+            s = _cluster.cosine(eb, oeb)
+            if s > best:
+                best = s
+    return best
+
+
 def lookup(query: str, intent: Intent) -> Optional[AutopathHit]:
     """Tenta match autopath cached. Cluster semantic-first poi intent_hash fallback.
 
@@ -221,15 +244,25 @@ def lookup(query: str, intent: Intent) -> Optional[AutopathHit]:
                     return AutopathHit(autopath_id=row[0], framework=fw,
                                         cluster_id=best_cid, uses=row[2],
                                         composite_score=row[3] or 0.5)
-        # 2. Intent hash fallback (exact)
+        # 2. Intent hash fallback (exact) + COSINE-FLOOR di pertinenza (14/6).
+        # L'intent_hash (verb|object) coincide anche fra query con SLOT diversi:
+        # esige che la query sia cosine ≥ FLOOR al cluster dell'autopath servito,
+        # altrimenti astieniti (None → engine pieno). Difesa-in-profondita' a
+        # monte: anche se il piano fosse servito, b8e10be ri-risolverebbe gli
+        # slot — qui evitiamo proprio di servire un champion semanticamente
+        # distante. Floor saltato se manca l'embedding o il cluster (no segnale).
         row = c.execute(
             "SELECT id, framework_json, cluster_id, uses, composite_score "
             "FROM autopaths WHERE intent_hash = ? AND status = 'active' "
             "AND champion = 1 LIMIT 1", (ihash,)).fetchone()
         if row and not _is_query_specific(row[1]):
+            ap_cluster = row[2]
+            if eb and ap_cluster:
+                if _max_cosine_to_cluster(c, eb, ap_cluster) < COSINE_FLOOR_INTENT:
+                    return None
             fw = Framework.from_dict(json.loads(row[1]))
             return AutopathHit(autopath_id=row[0], framework=fw,
-                                cluster_id=row[2] or "", uses=row[3],
+                                cluster_id=ap_cluster or "", uses=row[3],
                                 composite_score=row[4] or 0.5)
     finally:
         c.close()
