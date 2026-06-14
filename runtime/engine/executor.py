@@ -1024,6 +1024,38 @@ def _synthesize_final_from_steps(query: str, steps: list, llm_fast) -> str:
         return ""
 
 
+def _turn_is_zero_entries(steps) -> bool:
+    """True se il turno è genuinamente a 0 risultati: lo step più recente con
+    semantica di lista (`item_count` di describe_entries, o una chiave-payload
+    `entries`/`results`/`lines`/`matches`) è VUOTO. False se non esiste alcuno
+    step-lista (scalare puro, es. get_now → degenere per ALTRO motivo, la synth
+    LLM resta corretta) o se l'ultima lista è non-vuota. Deterministico,
+    model-independent — scandisce a ritroso e si ferma al primo segnale.
+    """
+    for s in reversed(steps or []):
+        if getattr(s, "tool", "") == "final_answer":
+            continue
+        r = getattr(s, "result", None)
+        if not isinstance(r, dict):
+            continue
+        ic = r.get("item_count")
+        if isinstance(ic, int):
+            return ic == 0
+        for k in ("entries", "results", "lines", "matches"):
+            v = r.get(k)
+            if isinstance(v, list):
+                return not v
+    return False
+
+
+def _deterministic_zero_result(steps) -> str:
+    """§7.9 (deterministico>LLM) + §2.8 (onesto): messaggio finale per i turni
+    a 0 entries, da provare PRIMA della synth LLM — evita una call `fast`
+    spesa solo per dire «niente trovato». "" se il turno NON è a 0 entries
+    (lascia la synth ai degeneri-ma-non-vuoti). Byte-riproducibile (i18n)."""
+    return _msg("MSG_NO_RESULTS") if _turn_is_zero_entries(steps) else ""
+
+
 class Executor:
     """Esegue Framework deterministicamente. SHARED fra tutti gli engine."""
 
@@ -1105,10 +1137,17 @@ class Executor:
                 # §2.8: render degenere (placeholder reso vuoto, es. get_now
                 # "Sono le .") → sintetizza dalle observation via LLM fast.
                 if _render_is_degenerate(framework.final_message, rendered):
-                    synth = _synthesize_final_from_steps(
-                        query, result.steps, self.llm_fast)
-                    if synth:
-                        rendered = synth
+                    # §7.9/§2.8: turno a 0 entries → messaggio onesto
+                    # deterministico (no call LLM per dire «niente trovato»);
+                    # la synth resta per i degeneri NON-vuoti (es. get_now).
+                    zero = _deterministic_zero_result(result.steps)
+                    if zero:
+                        rendered = zero
+                    else:
+                        synth = _synthesize_final_from_steps(
+                            query, result.steps, self.llm_fast)
+                        if synth:
+                            rendered = synth
                 result.final_text = rendered
                 result.final_kind = "answer"
                 break
@@ -1461,8 +1500,12 @@ class Executor:
             if (not result.final_text.strip()
                     or _render_is_degenerate(framework.final_message,
                                               result.final_text)):
-                synth = _synthesize_final_from_steps(
-                    query, result.steps, self.llm_fast)
-                if synth:
-                    result.final_text = synth
+                zero = _deterministic_zero_result(result.steps)
+                if zero:
+                    result.final_text = zero
+                else:
+                    synth = _synthesize_final_from_steps(
+                        query, result.steps, self.llm_fast)
+                    if synth:
+                        result.final_text = synth
         return result
