@@ -160,11 +160,6 @@ DECISIONS_PATH = _DATA_DIR / "telos_decisions.jsonl"
 _VALID_ACTIONS = frozenset({"accept", "reject", "stage"})
 
 
-def _resolve_proposals_path() -> Optional[Path]:
-    for cand in _PROPOSALS_CANDIDATES:
-        if cand.is_file():
-            return cand
-    return None
 
 
 def _iter_merged_rows():
@@ -675,21 +670,6 @@ def _classify_name_status(
     )
 
 
-def _compute_dedup_clusters(
-    props_iter,
-) -> dict[str, list[str]]:
-    """Calcola signature → list di prop_id su tutto l'insieme.
-
-    `props_iter`: iterabile di UnifiedProposal gia' enriched (con
-    `pipeline_tools_mentioned` + `is_parametric_extension` popolati).
-
-    Ritorna dict signature → [prop_id1, prop_id2, ...].
-    """
-    out: dict[str, list[str]] = defaultdict(list)
-    for p in props_iter:
-        sig = p.signature()
-        out[sig].append(p.prop_id)
-    return dict(out)
 
 
 def _classify_hallucinated_mentions(

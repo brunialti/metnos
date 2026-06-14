@@ -253,6 +253,3 @@ def mark_action(sig_key, action: str) -> StateRow | None:
         conn.close()
 
 
-def visible_states() -> tuple[str, ...]:
-    """Stati che `get_proposals` mostra di default (pending è la sola)."""
-    return ("pending",)

@@ -584,10 +584,6 @@ class PersonsRegistry:
     # -- match -------------------------------------------------------------
 
     @staticmethod
-    def cosine(a: np.ndarray, b: np.ndarray) -> float:
-        return float(np.dot(a, b))
-
-    @staticmethod
     def _ensure_normalized(v: np.ndarray) -> np.ndarray:
         norm = float(np.linalg.norm(v))
         if norm <= 0.0:

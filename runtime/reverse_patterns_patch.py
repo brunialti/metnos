@@ -67,32 +67,6 @@ def _registry_for(object_plural):
     return _OBJECT_REGISTRY.get(object_plural)
 
 
-def _validate_undo_blob(results, id_field, scope_field):
-    """Valida che `results.results[]` abbia almeno un record con `id_field`.
-
-    Ritorna `(rows, error)`:
-      - `rows`: lista di dict validi (ognuno con `id_field` non vuoto).
-      - `error`: str se mancano dati critici (es. lista vuota o nessun id).
-    """
-    if not isinstance(results, dict):
-        return [], "results must be a dict"
-    rows = results.get("results")
-    if not isinstance(rows, list):
-        return [], "results.results must be a list"
-    if not rows:
-        return [], "empty results list, nothing to undo"
-
-    valid = []
-    for r in rows:
-        if not isinstance(r, dict):
-            continue
-        rid = r.get(id_field)
-        if not rid:
-            continue
-        valid.append(r)
-    if not valid:
-        return [], f"no rows contained {id_field!r}"
-    return valid, None
 
 
 def _group_by_scope(rows, scope_field):

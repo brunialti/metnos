@@ -16,8 +16,6 @@ che riceve il verdict via l'hook in coda a `apply_feedback`).
 
 API pubblica:
     apply_feedback(turn_id, action, by="user") -> dict
-    feedback_history(limit=100) -> list[dict]
-    feedback_for_turn(turn_id) -> dict | None
 
 Determinismo §7.9. Storage append-only JSONL.
 """
@@ -217,23 +215,6 @@ def _append_feedback(record: dict) -> None:
         fh.write(json.dumps(record, ensure_ascii=False) + "\n")
 
 
-def feedback_for_turn(turn_id: str) -> Optional[dict]:
-    """Ultimo feedback per il turn_id (LWW). None se nessuno."""
-    if not FEEDBACK_PATH.is_file():
-        return None
-    last = None
-    with FEEDBACK_PATH.open(encoding="utf-8") as fh:
-        for line in fh:
-            line = line.strip()
-            if not line or turn_id not in line:
-                continue
-            try:
-                rec = json.loads(line)
-            except json.JSONDecodeError:
-                continue
-            if rec.get("turn_id") == turn_id:
-                last = rec
-    return last
 
 
 def count_consecutive_errors_for_query(user_query: str,
@@ -388,18 +369,3 @@ def reset_rejected_for_query(user_query: str) -> int:
     return count
 
 
-def feedback_history(limit: int = 100) -> list[dict]:
-    """Ultimi `limit` feedback in ordine cronologico inverso (newest first)."""
-    if not FEEDBACK_PATH.is_file():
-        return []
-    out: list[dict] = []
-    with FEEDBACK_PATH.open(encoding="utf-8") as fh:
-        for line in fh:
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                out.append(json.loads(line))
-            except json.JSONDecodeError:
-                continue
-    return list(reversed(out))[:limit]

@@ -20,7 +20,6 @@ from __future__ import annotations
 
 import os
 import sqlite3
-from typing import Iterable
 
 import config as _C  # §7.11 — rispetta METNOS_USER_DATA
 DB_PATH = _C.DB_I18N
@@ -328,16 +327,3 @@ def stats() -> dict:
     return out
 
 
-def bulk_load(items: Iterable[tuple[str, str, str]]) -> int:
-    """Bulk INSERT OR REPLACE. items: iterable di (key, lang, text). Ritorna count."""
-    conn = _open()
-    n = 0
-    for key, lang, text in items:
-        conn.execute(
-            "INSERT OR REPLACE INTO i18n(key, lang, text, needs_translation, updated_at) "
-            "VALUES (?, ?, ?, 0, strftime('%Y-%m-%dT%H:%M:%SZ','now'))",
-            (key, lang, text),
-        )
-        n += 1
-    conn.commit()
-    return n
