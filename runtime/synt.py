@@ -345,10 +345,10 @@ class SyntAudit:
         return self.dir / f"{datetime.now(timezone.utc).strftime('%Y-%m-%d')}.jsonl"
 
     def log(self, entry: dict) -> None:
+        from audit_jsonl import append_jsonl
         if "ts" not in entry:
             entry["ts"] = _now_iso()
-        with open(self._path_for_today(), "a", encoding="utf-8") as f:
-            f.write(json.dumps(entry, ensure_ascii=False, default=str) + "\n")
+        append_jsonl(self._path_for_today(), entry)
 
     def read_all(self, since_iso: str | None = None) -> list[dict]:
         out = []

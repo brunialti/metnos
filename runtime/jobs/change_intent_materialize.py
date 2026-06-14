@@ -14,7 +14,6 @@ Audit JSONL append-only in ~/.local/share/metnos/audit/change_intent_materialize
 """
 from __future__ import annotations
 
-import json
 import time
 from collections import Counter
 from typing import Any
@@ -78,12 +77,11 @@ def task_change_intent_materialize(payload: dict | None = None) -> dict:
 
 def _audit(record: dict) -> None:
     """Append-only JSONL audit."""
+    from audit_jsonl import append_jsonl
     audit_path = C.PATH_USER_DATA / "audit" / "change_intent_materialize.jsonl"
-    audit_path.parent.mkdir(parents=True, exist_ok=True)
     record = {"ts": time.time(), **record}
     try:
-        with audit_path.open("a") as fp:
-            fp.write(json.dumps(record, ensure_ascii=False) + "\n")
+        append_jsonl(audit_path, record)
     except OSError:
         pass
 

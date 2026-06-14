@@ -210,6 +210,7 @@ def _single_verify(prompt: str, model: str, llm_call: Callable) -> tuple[dict, s
 def _write_audit(name_hint: str, prompt: str, response: str | None,
                  verdict: dict, models: list[str]) -> None:
     """Append-only audit. Best-effort: errori OS non interrompono la verify."""
+    from audit_jsonl import append_jsonl
     try:
         path = _audit_path(name_hint)
         line = {
@@ -220,7 +221,6 @@ def _write_audit(name_hint: str, prompt: str, response: str | None,
             "response_len": len(response or ""),
             "verdict": verdict,
         }
-        with path.open("a", encoding="utf-8") as fh:
-            fh.write(json.dumps(line, ensure_ascii=False) + "\n")
+        append_jsonl(path, line)
     except OSError:
         pass

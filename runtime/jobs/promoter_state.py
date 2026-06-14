@@ -498,15 +498,9 @@ def mark_acked(proposal_id: str) -> None:
 
 def audit_append(event: dict) -> Path:
     """JSONL append-only su `<audit_dir>/promoter_<YYYY-MM-DD>.jsonl`."""
-    d = _audit_dir()
-    d.mkdir(parents=True, exist_ok=True)
-    audit_path = d / f"promoter_{_today_iso_date()}.jsonl"
-    with open(audit_path, "a", encoding="utf-8") as f:
-        f.write(json.dumps(event, ensure_ascii=False, sort_keys=True,
-                            default=str) + "\n")
-        f.flush()
-        os.fsync(f.fileno())
-    return audit_path
+    from audit_jsonl import append_jsonl
+    audit_path = _audit_dir() / f"promoter_{_today_iso_date()}.jsonl"
+    return append_jsonl(audit_path, event)
 
 
 __all__ = [

@@ -24,7 +24,6 @@ API esposta:
 """
 from __future__ import annotations
 
-import json
 import os
 import sqlite3
 import sys as _sys
@@ -203,20 +202,10 @@ def _audit_append_session(events: list[dict], *, session_id: str) -> Path:
     File: `<audit_dir>/promoter_review_<YYYY-MM-DD>_<session_id>.jsonl`.
     Una sola scrittura batch (apri+fsync una volta sola).
     """
-    d = _audit_dir()
-    d.mkdir(parents=True, exist_ok=True)
+    from audit_jsonl import append_jsonl
     date_iso = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    audit_path = d / f"promoter_review_{date_iso}_{session_id}.jsonl"
-    with open(audit_path, "a", encoding="utf-8") as f:
-        for ev in events:
-            f.write(json.dumps(ev, ensure_ascii=False, sort_keys=True,
-                                default=str) + "\n")
-        f.flush()
-        try:
-            os.fsync(f.fileno())
-        except OSError:
-            pass
-    return audit_path
+    audit_path = _audit_dir() / f"promoter_review_{date_iso}_{session_id}.jsonl"
+    return append_jsonl(audit_path, events)
 
 
 def _label_to_value(label: str, options: tuple[tuple[str, str], ...]) -> str:

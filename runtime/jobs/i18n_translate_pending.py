@@ -360,17 +360,9 @@ def _audit_append(events: list[dict]) -> Path:
     Crea la dir se manca, scrive una riga JSON compatta per event,
     flush+fsync per durabilita'. Ritorna il path del file.
     """
-    audit_dir = _audit_dir()
-    audit_dir.mkdir(parents=True, exist_ok=True)
-    audit_path = audit_dir / f"{_today_iso_date()}.jsonl"
-    # `'a'` mode + fsync su POSIX e' atomico per linee <PIPE_BUF (~4KB);
-    # le righe di audit sono brevi (<1KB) quindi safe-by-construction.
-    with open(audit_path, "a", encoding="utf-8") as f:
-        for ev in events:
-            f.write(json.dumps(ev, ensure_ascii=False, sort_keys=True) + "\n")
-        f.flush()
-        os.fsync(f.fileno())
-    return audit_path
+    from audit_jsonl import append_jsonl
+    audit_path = _audit_dir() / f"{_today_iso_date()}.jsonl"
+    return append_jsonl(audit_path, events)
 
 
 def _update_translated(conn: sqlite3.Connection, key: str, target_lang: str,
