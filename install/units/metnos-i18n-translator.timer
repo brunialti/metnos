@@ -1,0 +1,14 @@
+# /etc/systemd/system/metnos-i18n-translator.timer
+# Lancia il translator ogni 5 minuti. Skipped se non c'e' nulla pending
+# (translate-pending exit OK in <1s).
+
+[Unit]
+Description=Metnos i18n translator timer (5min)
+
+[Timer]
+OnBootSec=30s
+OnUnitActiveSec=5min
+AccuracySec=30s
+
+[Install]
+WantedBy=timers.target

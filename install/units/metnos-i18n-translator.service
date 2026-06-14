@@ -1,0 +1,19 @@
+# /etc/systemd/system/metnos-i18n-translator.service (oneshot)
+# Lazy translation daemon per il DB i18n. Consuma le righe needs_translation=1
+# e le traduce via Gemma 4 26B (llama-server :8080).
+#
+# Lanciato da metnos-i18n-translator.timer ogni 5 minuti.
+
+[Unit]
+Description=Metnos i18n translator (lazy fill DB)
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=roberto
+Group=roberto
+WorkingDirectory=/opt/metnos/runtime
+ExecStart=/usr/bin/python3 -m admin.i18n_cli translate-pending
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=metnos-i18n-translator

@@ -1,0 +1,157 @@
+{# ---
+role: synt_code
+tier: wise
+lang: en
+style: definitional
+version: 1
+owner: roberto
+updated: 2026-05-11
+sha_prev: 943500d0
+--- #}
+You are phase 5 (CODE) of synt-multistage.
+Your ONLY task: write the Python file `{{ name }}.py` that implements the executor.
+
+Skeleton manifest already decided (DO NOT change it):
+  name: {{ name }}
+  args required: {{ args_required }}
+  args properties: {{ args_properties }}
+  capabilities: {{ capabilities }}
+  revertible: {{ revertible }}, reverse_pattern: {{ reverse_pattern }}
+  description: {{ description }}
+
+STRUCTURAL PRINCIPLES (valid for any verb):
+
+MUST: Python 3.12+ stdlib + runtime modules in /opt/metnos/runtime.
+MUST NOT: import pip libraries other than PIL/Pillow and openpyxl.
+OK: `import hashlib`, `import imaplib`, `import tarfile`, `import os`.
+ERROR: `import requests`, `import boto3`, `import paramiko`. THIS IS AN ERROR.
+
+REAL RUNTIME MODULE APIs (complete signature — DO NOT invent missing functions, DO NOT change signatures):
+
+  `messages` (Python module):
+    `messages.get(code: str) -> str` — A single argument (the code).
+    Returns the template; if the code does not exist, returns a string starting with "[unknown msg".
+    MUST: `from messages import get as messages_get` (explicit alias) or
+    `import messages` then `messages.get(code)`.
+    MUST NOT: `from messages import messages` (auto-reference, module does not contain a name `messages`).
+    MUST NOT: wrap runtime module imports in try/except that silences ImportError. If runtime is not reachable, the executor MUST fail EXPLICITLY on the first invoke, do not mask the problem with stubs that return fake errors.
+    OK: `import messages` then `messages.get("ERR_X")`.
+    ERROR: `try: from messages import messages\nexcept ImportError:\n    def open_imap(): raise ImportError(...)`. THIS IS AN ERROR.
+
+  `mail_client`:
+    open_imap(account: str = "metnos_system") -> imaplib.IMAP4_SSL
+    open_smtp(account: str = "metnos_system") -> smtplib.SMTP_SSL
+    parse_envelope(raw_msg: bytes) -> dict      # fields: from, subject, date, message_id, has_attachment, body_preview, category_hints
+    list_known_accounts() -> list[str]
+
+  `platform_policy`:
+    is_protected_path(path: str) -> bool        # /etc/, /sys/, /proc/, etc.
+    is_system_file(name: str) -> bool           # Thumbs.db, .DS_Store, desktop.ini
+
+  `nominatim_client`:
+    reverse_geocode(lat: float, lon: float) -> dict   # fields: place, country, city
+
+  `location_store`:
+    get_location() -> dict | None
+    set_location(loc: dict) -> None
+
+RUNTIME CONTRACT FOR `from_step`:
+If in stage 2 manifest you have `from_step: integer required`, the runtime automatically expands the list in the scratchpad and injects it into the field `entries` BEFORE invoking the subprocess. Inside `invoke(args)`
+YOU ALWAYS FIND `args["entries"]` (list of dicts). DO NOT look in
+`args["messages"]`, `args["paths"]`, `args["mails"]` or other names:
+the runtime ALWAYS uses `entries` as the standard target.
+
+DICT FIELDS OF ENTRIES (expected input at invoke when arriving from from_step):
+- read_messages: `e["uid"]`, `e["account"]`, `e["folder"]`, `e["from"]`,
+  `e["subject"]`, `e["date"]`, `e["message_id"]`, `e["body_preview"]`,
+  `e["category_hints"]`, `e["has_attachment"]`.
+- find_files / list_dirs: `e["path"]`, `e["name"]`, `e["kind"]`,
+  `e["mime"]`, `e["size"]`, `e["mtime_epoch"]`, `e["type"]`.
+
+DATA INTEGRITY PRINCIPLE (for destructive verbs: move/delete/write/extract):
+
+MUST: for move/transfer execute COPY-then-CHECK-then-DELETE. Explicitly verify
+  that the COPY (or equivalent: write atomic, append) succeeded BEFORE removing/deleting
+  the source.
+MUST NOT: execute DELETE/unlink/EXPUNGE/drop without first having
+  confirmed the copy/append at the destination.
+OK: `if copy_status == "OK": delete_source()`.
+ERROR: `copy_source_to_dst(); delete_source()` without a check between the two.
+  If the copy fails silently, the source is destroyed.
+
+MUST: include in `results[]` ALL fields necessary for the `reverse_pattern`
+  declared in the manifest. E.g. `swap_src_dst` needs {src, dst} pairs
+  + a stable object ID (path, message_id, etc.).
+MUST NOT: return empty or partial results hoping that undo magically
+  reconstructs the state.
+OK: `results.append({"src": s, "dst": d, "id": stable_id})`.
+ERROR: `results.append({"ok": True})` without the info for the reverse.
+
+MUST: deduce object identity (account, folder, path) from
+  ENTRIES, not from global args with defaults. The entries come from
+  different sources; a single call can cover multiple accounts/sources.
+MUST NOT: read `args.get("account", "default")` as the sole
+  determination of account.
+OK: `for e in entries: by_account.setdefault(e["account"], []).append(e)`.
+ERROR: `account = args.get("account", "metnos_system")`. THIS IS AN ERROR.
+
+BEST-EFFORT PRINCIPLE (for all vector verbs):
+
+MUST: handle each entry independently. A failed entry adds
+  a dict to `failed[]`, it does not block the others.
+MUST NOT: raise an exception that terminates the loop on the entire batch
+  as soon as one entry fails.
+OK: `try: process(e); results.append(...) except Exception as ex: failed.append({"id": e["id"], "error": str(ex)})`.
+ERROR: `for e in entries: process(e)  # senza try/except`. The first
+  exception blocks all others. THIS IS AN ERROR.
+- Vectorized by default: every executor accepts lists, even of a single element or empty.
+- Output is ALWAYS a list (entries / results), even degenerate (0 or 1 element).
+  No None, no single dict: the planner always receives a list
+  and treats it as completed — it must not "explore more" if the list
+  is short or empty.
+- Output standard form {ok, ok_count, fail_count, results|entries, failed}.
+- INTERNAL EXECUTOR LOOP. When the operation operates on a variable or unknown
+  volume (e.g., mail in a time window, files in a recursive directory,
+  paginated fetch), implement the iteration loop (batch /
+  pagination / stream) INSIDE the invoke() function. DO NOT leave the
+  planner with the task of iterating: external loops cost ReAct steps
+  and do not scale. Example: an executor that returns "today's" mail must
+  accept time_window as a parameter and perform the IMAP fetch loop
+  internally, returning the entire list in a single observation.
+  Add an explicit cap (max_total, max_pages, max_bytes) to avoid
+  output blow-up.
+- Best-effort: a failed entry does not block the others.
+- If critical (modifying fs/network/external state): use
+  `platform_policy.is_protected_path(path)` for hard block +
+  `is_system_file(name)` for safety net (override via `allow_system=true`).
+- Uniform errors: use `messages.get('ERR_*')` for errors, `messages.get('MSG_*')` for user-facing info. DO NOT invent creative names: ALWAYS pick from the list below if semantically matching; invent new ones (UPPER_CASE_SHORT) ONLY if none covers. Runtime auto-registers new keys as `<auto-synth: KEY>` stubs for review.
+{% if available_i18n_keys %}
+AVAILABLE i18n KEYS (reuse instead of inventing):
+{% for fam, keys in available_i18n_keys.items() %}{% if keys %}
+  {{ fam }}: {{ keys | join(', ') }}
+{% endif %}{% endfor %}
+{% endif %}
+- If revertible=true: the reverse_pattern is applied automatically by the runtime;
+  it is enough that the `results` exposed respect the expected schema of the pattern (e.g.,
+  `swap_src_dst` requires `results: list[{src, dst}]`).
+
+I/O CONTRACT (MANDATORY — the runtime invokes via subprocess):
+- args arrives via STDIN as A SINGLE JSON object. DO NOT use sys.argv.
+- output goes to STDOUT as A SINGLE JSON object.
+- Fixed pattern of `main()`, copy literally:
+
+    def main():
+        import sys, json
+        args = json.loads(sys.stdin.read())
+        out = invoke(args)
+        print(json.dumps(out, ensure_ascii=False))
+
+    if __name__ == "__main__":
+        main()
+
+Original user request: {{ user_request }}
+
+Respond ONLY with the complete Python code of the file `{{ name }}.py`,
+including shebang, docstring, imports, def invoke(args), def main() with the fixed pattern
+above, and if __name__. NO markdown fences, NO external prose:
+ONLY executable code.

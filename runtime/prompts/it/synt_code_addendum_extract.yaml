@@ -1,0 +1,78 @@
+role: synt_code_addendum_extract
+tier: wise
+lang: it
+style: few_shot
+version: 1
+owner: roberto
+updated: 2026-05-13
+sha_prev: ""
+
+# Stage 5 addendum verbo `extract` (the design guide §6.1: style few_shot).
+# YAML envelope: il body resta prosa narrativa (pseudocodice + invarianti +
+# esempi di codice). Il rendering yaml_raw/json_raw produce un wrapper
+# strutturato senza spezzare gli esempi few_shot.
+section:
+  name: synt_code_addendum_extract
+  header: "Stage 5 addendum verbo `extract`"
+
+body: |
+  REGOLE VERBO `extract` (oltre al generic):
+  
+  DEFINIZIONE: `extract` = decompone una sorgente (archivio/doc/blob) in un
+  VETTORE di entries piu' piccole. Output SEMPRE lista (anche degenere 0/1).
+  
+  PSEUDOCODICE UNIVERSALE:
+  
+    def invoke(args):
+        entries_in = args.get("entries", [])
+        extract_root = args.get("extract_root")
+        max_entries = args.get("max_entries", 1000)
+        max_bytes = args.get("max_bytes_total", 100 * 1024 * 1024)
+        out_entries, failed = [], []
+        total_entries, total_bytes = 0, 0
+        truncated = False
+        for i, src in enumerate(entries_in):
+            try:
+                with open_archive(src) as ar:                  # dispatch per format
+                    for member in iter_members(ar):
+                        if not _safe_path(member, extract_root):
+                            continue                            # tar/zip slip skip
+                        if total_entries >= max_entries or total_bytes + member.size > max_bytes:
+                            truncated = True; break
+                        out = extract_one(ar, member, extract_root)
+                        out_entries.append(out)
+                        total_entries += 1; total_bytes += member.size
+            except Exception as ex:
+                failed.append({"index": i, "error": str(ex)})
+  
+    def _safe_path(member, extract_root):
+        target = (Path(extract_root) / member.name).resolve()
+        try:
+            target.relative_to(Path(extract_root).resolve())
+            return True
+        except ValueError:
+            return False
+  
+  INVARIANTI:
+  DEVI: PATH TRAVERSAL CHECK per OGNI entry dell'archivio. Verifica che
+    `Path(target).resolve()` sia dentro `Path(extract_root).resolve()` via
+    `Path.is_relative_to()` o try/except `relative_to()`.
+  DEVI: cap `max_entries` (default 1000) e `max_bytes_total` (100MB) con
+    `truncated:True` + `truncated_what` + `used` + `available_total`.
+  DEVI: dispatch per format basato su `e["mime"]` o estensione.
+  DEVI: best-effort fra archivi/entries: una zip corrotta non blocca il pdf.
+  DEVI: output `entries: list[dict]` SEMPRE (degenere ammesso).
+  DEVI: streaming/iterativo per archivi grandi (no `extractall()` whole-loaded).
+  NON DEVI: `tarfile.extractall()` / `zipfile.extractall()` SENZA per-entry
+    check. ERRORE: tar bomb / zip slip → scrittura arbitraria fuori dal target.
+  
+  DOMINIO archivi:
+  - zip: `zipfile.ZipFile`, `.infolist()`, `.extract(member, path=extract_root)`
+  - tar/tar.gz/tar.bz2/tar.xz: `tarfile.open(mode="r:*")`, `.getmembers()`
+  - gz singolo: `gzip.open(path, "rb")`
+  DOMINIO documenti:
+  - html: `html.parser` o regex per estrarre testo/link
+  - pdf: SOLO se manifest dichiara dipendenza (pypdf/pdfminer NON in stdlib)
+  - text strutturato: regex su righe (filter_texts_lines)
+  DOMINIO mail:
+  - raw RFC822: `email.message_from_bytes()` → iter walk per parts/attachments

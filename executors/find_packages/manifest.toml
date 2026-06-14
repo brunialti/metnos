@@ -1,0 +1,33 @@
+# Manifest synthesized — Metnos synt multistage 2026-04-30
+
+manifest_format = "1.0"
+
+name        = "find_packages"
+version     = "0.1.0"
+author      = "synt-multistage <synt@metnos.com>"
+affinity    = ["find", "cerca", "package", "pacchetto", "comando", "command", "installato", "installed", "percorso", "path"]
+revertible  = false
+lifecycle   = "active"
+
+[description]
+it = "SCOPO: cerca se un pacchetto o comando è installato sul sistema. PATTERN: find_packages(package_name='ffmpeg'). NON: leggere file (-> read_files); ottenere dati per ID noti (-> get). OUT: entries=[{path}], restituisce percorso se trovato."
+en = "SCOPO: finds if a package or command is installed on the system. PATTERN: find_packages(package_name='ffmpeg'). NON: reading files (-> read_files); getting data for known IDs (-> get). OUT: entries=[{path}], returns path if found."
+
+[code]
+files  = ["find_packages.py"]
+digest = "sha256:9bfa7fb13ac0759b66d12efd2b5690b4d9a58b00cf3d00eaa881c0e34cc10f59"
+
+[args]
+type     = "object"
+required = ["package_name"]
+
+[args.properties.package_name]
+type = "string"
+
+[args.properties.package_name.description]
+it = "Nome del pacchetto o comando da verificare sul sistema operativo (es. 'ffmpeg', 'git')."
+en = "Name of the package or command to check on the operating system (e.g., 'ffmpeg', 'git')."
+
+[[capabilities]]
+name = "code:exec"
+hint = ["*"]

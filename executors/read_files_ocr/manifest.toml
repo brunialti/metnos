@@ -1,0 +1,76 @@
+# Manifest dell'executor `read_files_ocr` — Metnos v1.1
+# Naming compositivo: verbo_oggetto_plurale_qualificatore. Vettoriale per costruzione.
+
+manifest_format = "1.0"
+
+name        = "read_files_ocr"
+version     = "0.1.0"
+author      = "Roberto Brunialti"
+affinity    = ["read", "leggi", "ocr", "scansione", "image", "immagine", "pdf", "tesseract", "estrai", "testo"]
+revertible  = false
+lifecycle   = "active"
+
+[description]
+it = "SCOPO: estrae testo da immagini o PDF scansionati (vettoriale §2.1). PATTERN: read_files_ocr(paths=[\"img.jpg\"], lang=\"ita+eng\"). NON: leggere file nativi (-> read_files) o convertire formati (-> change_files_format). OUT: entries=[{content}]."
+en = "SCOPO: extracts text from images or scanned PDFs (vectorial §2.1). PATTERN: read_files_ocr(paths=[\"img.jpg\"], lang=\"ita+eng\"). NON: reading native files (-> read_files) or converting formats (-> change_files_format). OUT: entries=[{content}]."
+
+[code]
+files  = ["read_files_ocr.py"]
+digest = "sha256:a08eb1b801848ccfeaf73723aa596079d3a85afe1a3a07a7780496f0271407ae"
+
+[args]
+type     = "object"
+required = ["paths"]
+
+[args.properties.paths]
+type        = "array"
+items       = { type = "string" }
+
+[args.properties.paths.description]
+it = "Lista di path di file da elaborare. Estensioni supportate: jpg/jpeg/png/tiff/tif/bmp/gif/webp/heic/pdf. Path assoluti o ~ espandibile."
+en = "List of file paths to process. Supported extensions: jpg/jpeg/png/tiff/tif/bmp/gif/webp/heic/pdf. Absolute paths or expandable ~."
+
+[args.properties.lang]
+type        = "string"
+default     = "ita+eng"
+
+[args.properties.lang.description]
+it = "Lingua/lingue Tesseract. Default 'ita+eng' (multilingua). Singola: 'ita' o 'eng'. Verifica lingue installate con `tesseract --list-langs`."
+en = "Tesseract language/languages. Default 'ita+eng' (multilingual). Single: 'ita' or 'eng'. Verify installed languages with `tesseract --list-langs`."
+
+[[capabilities]]
+name = "fs:read"
+hint = ["~/**", "/tmp/**"]
+
+[[capabilities]]
+name = "code:exec"
+hint = ["tesseract", "pdftoppm"]
+
+[[tests]]
+name   = "lista_vuota_ok"
+input  = { paths = [] }
+expect = { ok = true, ok_count_eq = 0 }
+
+[[tests]]
+name   = "args_invalidi_paths_non_lista"
+input  = { paths = "/tmp/foo.png" }
+expect = { ok = false, error_contains = "deve essere una lista" }
+
+[[tests]]
+name   = "path_inesistente_fallisce_solo_quella"
+input  = { paths = ["/tmp/metnos_does_not_exist.png"] }
+expect = { ok = false, fail_count_eq = 1, error_contains = "does not exist" }
+
+[[tests]]
+name   = "estensione_non_supportata"
+setup  = "echo x > /tmp/metnos_test_ocr.csv"
+input  = { paths = ["/tmp/metnos_test_ocr.csv"] }
+expect = { ok = false, error_contains = "unsupported extension" }
+teardown = "rm -f /tmp/metnos_test_ocr.csv"
+
+[[tests]]
+name     = "ocr_immagine_reale"
+setup    = "convert -size 400x80 xc:white -font DejaVu-Sans -pointsize 24 -fill black -draw 'text 20,50 \"Metnos OCR test 123\"' /tmp/metnos_test_ocr.png 2>/dev/null || python3 -c \"from PIL import Image, ImageDraw, ImageFont; img=Image.new('RGB',(400,80),'white'); d=ImageDraw.Draw(img); d.text((20,30),'Metnos OCR test 123', fill='black'); img.save('/tmp/metnos_test_ocr.png')\""
+input    = { paths = ["/tmp/metnos_test_ocr.png"], lang = "eng" }
+expect   = { ok = true, ok_count_eq = 1 }
+teardown = "rm -f /tmp/metnos_test_ocr.png"

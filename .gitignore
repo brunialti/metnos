@@ -1,0 +1,12 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+dist/
+build/
+google_token.json
+google_client_secret.json
+*.json.age
+*.env
+*.key
+*.pem
+.DS_Store

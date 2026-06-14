@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{% block title %}Console Metnos{% endblock %}</title>
+<script src="https://unpkg.com/htmx.org@1.9.10"></script>
+{% block head %}{% endblock %}
+{% include "_design_system.html" %}
+<style>
+/* ---------- SHELL CONSOLE: sidebar + contenuto --------------------------- */
+.shell{display:flex;min-height:100vh}
+main{flex:1;min-width:0;padding:var(--sp-5) var(--sp-6) var(--sp-7)}
+.skip-link{position:absolute;left:-9999px;top:0;background:var(--accent);
+  color:#fff;padding:.5rem 1rem;border-radius:0 0 var(--r-1) 0;z-index:300}
+.skip-link:focus{left:0}
+
+/* sidebar */
+.sidebar{width:236px;flex:none;background:var(--surface);
+  border-right:1px solid var(--border);
+  position:sticky;top:0;height:100vh;overflow-y:auto;
+  display:flex;flex-direction:column;z-index:200}
+.brand-row{display:flex;align-items:center;gap:.55rem;
+  padding:var(--sp-4) var(--sp-4) var(--sp-3)}
+.brand-mark{width:10px;height:10px;border-radius:3px;background:var(--accent);flex:none}
+.brand-row .brand{font-weight:650;font-size:var(--fs-3);color:var(--ink);
+  letter-spacing:-.01em;text-decoration:none}
+.brand-row .brand:hover{color:var(--accent);text-decoration:none}
+.brand-tag{font-family:var(--font-mono);font-size:var(--fs-0);color:var(--muted);
+  border:1px solid var(--border);border-radius:var(--r-pill);
+  padding:0 .5em;line-height:1.7}
+
+.nav{flex:1;padding:0 var(--sp-2) var(--sp-3)}
+.nav-h{font-size:var(--fs-0);font-weight:600;letter-spacing:.08em;
+  text-transform:uppercase;color:var(--muted);
+  padding:var(--sp-4) var(--sp-2) var(--sp-1)}
+.nav a{display:flex;align-items:center;gap:.5rem;min-height:30px;
+  padding:.3rem var(--sp-2);margin:1px 0;border-radius:var(--r-1);
+  color:var(--ink-2);font-weight:500;text-decoration:none;
+  transition:background var(--t-1) var(--ease),color var(--t-1) var(--ease)}
+.nav a:hover{background:var(--surface-2);color:var(--ink);text-decoration:none}
+.nav a.current{background:var(--accent-soft);color:var(--accent);font-weight:600}
+.nav a.current::before{content:"";width:3px;height:14px;border-radius:2px;
+  background:var(--accent);margin-left:-2px}
+.nav a.sub{padding-left:calc(var(--sp-2) + 14px);font-size:var(--fs-1);
+  font-weight:400;min-height:26px}
+.nav-div{border-top:1px solid var(--border);margin:var(--sp-3) var(--sp-2)}
+
+.sidebar-foot{border-top:1px solid var(--border);
+  padding:var(--sp-3) var(--sp-4);display:flex;align-items:center;gap:.6rem}
+.sidebar-foot a{color:var(--ink-2);font-weight:500}
+.sidebar-foot a:hover{color:var(--accent);text-decoration:none}
+.sidebar-foot .grow{flex:1}
+.sidebar-foot form{display:inline;margin:0;padding:0}
+.sidebar-foot button{background:transparent;border:1px solid var(--border-strong);
+  border-radius:var(--r-1);color:var(--muted);font:inherit;cursor:pointer;
+  padding:.15rem .6rem;min-height:26px;
+  transition:color var(--t-1) var(--ease),border-color var(--t-1) var(--ease)}
+.sidebar-foot button:hover{color:var(--err-fg);border-color:var(--err-line)}
+
+/* barra mobile + off-canvas */
+.mobilebar{display:none;position:sticky;top:0;z-index:210;
+  align-items:center;gap:.7rem;padding:.45rem var(--sp-3);
+  background:var(--surface);border-bottom:1px solid var(--border)}
+.mobilebar .brand-mark{width:9px;height:9px}
+.mobilebar .brand{font-weight:650;color:var(--ink)}
+#navToggle{display:inline-flex;flex-direction:column;justify-content:center;gap:4px;
+  width:40px;height:36px;padding:0 9px;background:transparent;
+  border:1px solid var(--border-strong);border-radius:var(--r-1);cursor:pointer}
+#navToggle span{display:block;height:2px;border-radius:1px;background:var(--ink-2);
+  transition:transform var(--t-2) var(--ease),opacity var(--t-2) var(--ease)}
+body.nav-open #navToggle span:nth-child(1){transform:translateY(6px) rotate(45deg)}
+body.nav-open #navToggle span:nth-child(2){opacity:0}
+body.nav-open #navToggle span:nth-child(3){transform:translateY(-6px) rotate(-45deg)}
+.backdrop{position:fixed;inset:0;background:rgba(13,24,21,.4);z-index:190}
+
+@media (max-width:920px){
+  .mobilebar{display:flex}
+  .shell{display:block}
+  main{padding:var(--sp-4) var(--sp-3) var(--sp-6)}
+  .sidebar{position:fixed;top:0;left:0;bottom:0;height:100dvh;
+    transform:translateX(-105%);transition:transform var(--t-2) var(--ease);
+    box-shadow:none}
+  body.nav-open .sidebar{transform:translateX(0);box-shadow:var(--shadow-3)}
+}
+</style>
+</head>
+<body>
+<a class="skip-link" href="#main">Salta al contenuto</a>
+
+<header class="mobilebar">
+  <button id="navToggle" type="button" aria-expanded="false" aria-controls="sidebar"
+          aria-label="Apri o chiudi il menu">
+    <span></span><span></span><span></span>
+  </button>
+  <span class="brand-mark" aria-hidden="true"></span>
+  <span class="brand">Metnos</span>
+</header>
+
+<div class="shell">
+  <aside class="sidebar" id="sidebar">
+    <div class="brand-row">
+      <span class="brand-mark" aria-hidden="true"></span>
+      <a class="brand" href="/admin">Metnos</a>
+      <span class="brand-tag">console</span>
+    </div>
+    <nav class="nav" aria-label="Navigazione console">
+      <a href="/admin">Panoramica</a>
+
+      <div class="nav-h" id="nav-h-att">Attività</div>
+      <a href="/admin/turns">Turni</a>
+      <a href="/admin/runs">Scheduler</a>
+      <a href="/admin/timers">Timer</a>
+      <a href="/admin/builds">Build indici</a>
+
+      <div class="nav-h" id="nav-h-ciclo">Ciclo di vita</div>
+      <a href="/admin/changes">Modifiche</a>
+      <a href="/admin/executors">Executor</a>
+      <a href="/admin/executors/stats">Statistiche</a>
+
+      <div class="nav-h" id="nav-h-mem">Memoria</div>
+      <a href="/admin/praxis">Praxis</a>
+
+      <div class="nav-h" id="nav-h-sys">Sistema</div>
+      <a href="/admin/safety">Safety</a>
+      <a href="/admin/users">Utenti</a>
+    </nav>
+    <div class="sidebar-foot">
+      <a href="/" title="torna alla chat">← Chat</a>
+      <span class="grow"></span>
+      <form method="post" action="/admin/logout">
+        <button type="submit">Esci</button>
+      </form>
+    </div>
+  </aside>
+
+  <div class="backdrop" id="navBackdrop" hidden></div>
+
+  <main id="main">{% block body %}{% endblock %}</main>
+</div>
+
+<script>
+// Evidenzia la voce nav della pagina corrente: vince il prefisso PIU' LUNGO
+// che matcha (cosi' /admin/executors/stats accende "Statistiche", non
+// "Executor"; /admin/users/42 accende "Utenti").
+(() => {
+  const path = (location.pathname.replace(/\/+$/, "") || "/admin");
+  let best = null, bestLen = -1;
+  document.querySelectorAll(".nav a[href]").forEach((a) => {
+    const href = a.getAttribute("href");
+    const match = (path === href) || path.startsWith(href + "/");
+    if (match && href.length > bestLen) { best = a; bestLen = href.length; }
+  });
+  if (best) { best.classList.add("current"); best.setAttribute("aria-current", "page"); }
+})();
+
+// Menu mobile: hamburger -> off-canvas con backdrop; Escape chiude.
+(() => {
+  const toggle = document.getElementById("navToggle");
+  const backdrop = document.getElementById("navBackdrop");
+  if (!toggle || !backdrop) return;
+  const setNav = (open) => {
+    document.body.classList.toggle("nav-open", open);
+    toggle.setAttribute("aria-expanded", String(open));
+    backdrop.hidden = !open;
+  };
+  toggle.addEventListener("click",
+    () => setNav(!document.body.classList.contains("nav-open")));
+  backdrop.addEventListener("click", () => setNav(false));
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") setNav(false);
+  });
+})();
+</script>
+</body></html>

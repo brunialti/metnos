@@ -1,0 +1,71 @@
+role: synt_code_addendum_get
+tier: wise
+lang: it
+style: few_shot
+version: 1
+owner: roberto
+updated: 2026-05-13
+sha_prev: ""
+
+# Stage 5 addendum verbo `get` (the design guide §6.1: style few_shot).
+# YAML envelope: il body resta prosa narrativa (pseudocodice + invarianti +
+# esempi di codice). Il rendering yaml_raw/json_raw produce un wrapper
+# strutturato senza spezzare gli esempi few_shot.
+section:
+  name: synt_code_addendum_get
+  header: "Stage 5 addendum verbo `get`"
+
+body: |
+  REGOLE VERBO `get` (oltre al generic):
+  
+  DEFINIZIONE: `get` = ARRICCHISCE entries esistenti aggiungendo campi.
+  Read-only (nessuna mutazione della sorgente). Output `entries` (NON
+  `results`) — preserva i campi originali, aggiunge solo i nuovi.
+  
+  PSEUDOCODICE UNIVERSALE:
+  
+    def invoke(args):
+        entries_in = args.get("entries", [])
+        fields = args.get("fields", [...])
+        out = []
+        for i, e in enumerate(entries_in):
+            enriched = dict(e)                        # PRESERVA tutti i campi
+            try:
+                for f in fields:
+                    enriched[f] = compute_field(e, f)
+            except Exception as ex:
+                enriched["enrichment_error"] = str(ex)[:200]
+            out.append(enriched)                      # SEMPRE in entries (non failed)
+  
+  INVARIANTI:
+  DEVI: output `entries` (NON `results`). Coerenza cross-executor critica per
+    from_step downstream (vedi `feedback_executor_io_naming_consistency`).
+  DEVI: PRESERVA tutti i campi originali (`enriched = dict(e)`). Aggiungi solo
+    i nuovi campi richiesti.
+  DEVI: `fields` lista esplicita; default ragionevole documentato nel manifest.
+  DEVI: una entry non arricchibile resta in `entries` con marker
+    `enrichment_error`, NON va in `failed`.
+  DEVI: per arricchimenti con I/O (geo/OCR), cap timeout per-entry (es. 5s) +
+    cache locale via `location_store` o sqlite.
+  NON DEVI: rinominare il bag a `results` (rompe from_step downstream).
+  NON DEVI: filtrare/rimuovere campi originali.
+  NON DEVI: scrivere `def reverse(...)`.
+  
+  DOMINIO file metadata (get_files):
+  - entry: `{path, name, ...}`; aggiunge `mime`, `size`, `mtime_epoch`,
+    `image_dimensions` (PIL), `gps` (EXIF), `place`, `kind`.
+  DOMINIO date (get_file_dates):
+  - entry: `{path, ...}`; aggiunge `date_epoch` (EXIF DateTimeOriginal o mtime).
+  DOMINIO geo (get_places):
+  - entry: `{lat, lon, ...}`; aggiunge `place`, `country`, `city` via
+    `nominatim_client.reverse_geocode(lat, lon)`.
+  DOMINIO time (get_now): caso degenere → singola entry `{epoch, iso, tz}`.
+  DOMINIO location (get_location): legge `location_store.get_location()`.
+  DOMINIO HTTP (get_urls):
+  - entry: `{url, headers?}`; output entry con `status, headers, content,
+    truncated, elapsed_ms`.
+  - usare `urllib.request.urlopen(Request(url, headers=...), timeout=...)`;
+    cap byte (default 5MB) → `truncated:True` su body troncato.
+  - best-effort per-entry: timeout/error di una URL non blocca il batch.
+  - SOLO GET/HEAD. Per POST/PUT usa il verbo `send`.
+  - NON DEVI: `import requests` o `import httpx`.

@@ -1,0 +1,73 @@
+# Manifest dell'executor `write_issues` — Metnos v1.1
+manifest_format = "1.0"
+
+name        = "write_issues"
+version     = "0.1.0"
+author      = "Roberto Brunialti"
+affinity    = ["issue", "issues", "trattamento", "bozza", "draft", "stato", "status", "salva issue", "registra issue", "db issue", "prepared", "approved", "maintenance"]
+revertible  = false
+lifecycle   = "active"
+
+[description]
+it = "SCOPO: salva nel db LOCALE lo stato delle issue; gia' registrata senza avanzamento di stato = saltata. PATTERN: write_issues(entries=[{repo=\"o/r\",number=12,status=\"prepared\"}]). NON: postare -> send_messages_github. OUT: results=[{repo,number,status,id,created}], skipped_known=N."
+en = "SCOPO: save issue treatment state in the LOCAL db; already registered with no status advance = skipped. PATTERN: write_issues(entries=[{repo=\"o/r\",number=12,status=\"prepared\"}]). NON: post -> send_messages_github. OUT: results=[{repo,number,status,id,created}], skipped_known=N."
+
+[code]
+files  = ["write_issues.py"]
+digest = "sha256:d9f3805537c4dd9c0ed3894e8d563c49cebefe6f1d0db0650780e9d6d6252e70"
+
+[args]
+type     = "object"
+required = []
+
+[args.properties.entries]
+type = "array"
+
+[args.properties.entries.description]
+it = "Lista di record issue da salvare/aggiornare (vettoriale §2.1, anche 1). Ogni dict: `repo` ('owner/name'), `number` (int; alias `issue_number` accettato), e opzionali `title`, `question_text`, `classification`, `status` (new|prepared|approved|posted), `draft_reply`, `accepted_reply`. Upsert PARZIALE: aggiorna solo i campi presenti, preserva il resto. Accetta `from_step=N` (il runtime espande in entries). Lista vuota = nessuna operazione."
+en = "List of issue records to save/update (vectorial §2.1, also 1). Each dict: `repo` ('owner/name'), `number` (int; alias `issue_number` accepted), and optional `title`, `question_text`, `classification`, `status` (new|prepared|approved|posted), `draft_reply`, `accepted_reply`. PARTIAL upsert: updates only present fields, preserves the rest. Accepts `from_step=N` (runtime expands into entries). Empty list = no operation."
+
+[args.properties.repo]
+type = "string"
+[args.properties.repo.description]
+it = "Default top-level: repo 'owner/name' applicato alle entry che non lo dichiarano. Es. con from_step=N."
+en = "Top-level default: 'owner/name' repo applied to entries that do not declare it. E.g. with from_step=N."
+
+[args.properties.status]
+type = "string"
+[args.properties.status.description]
+it = "Default top-level: status applicato alle entry che non lo dichiarano (new|prepared|approved|posted). Es. write_issues(from_step=2, status='posted'). 'approved' senza accepted_reply promuove la bozza a risposta accettata."
+en = "Top-level default: status applied to entries that do not declare it (new|prepared|approved|posted). E.g. write_issues(from_step=2, status='posted'). 'approved' without accepted_reply promotes the draft to accepted reply."
+
+[args.properties.classification]
+type = "string"
+[args.properties.classification.description]
+it = "Default top-level: classificazione (es. 'bug', 'question', 'support') applicata alle entry che non la dichiarano."
+en = "Top-level default: classification (e.g. 'bug', 'question', 'support') applied to entries that do not declare it."
+
+[args.properties.overwrite]
+type = "boolean"
+[args.properties.overwrite.description]
+it = "Default false: una issue gia' registrata si scrive solo se lo status AVANZA (new<prepared<approved<posted). Con true forza la ri-scrittura."
+en = "Default false: an already-registered issue is written only if status ADVANCES (new<prepared<approved<posted). With true forces the rewrite."
+
+# ── Tests di nascita (offline: nessun accesso allo store) ────────────────
+[[tests]]
+name   = "entries_not_a_list_fails"
+input  = { entries = "not-a-list" }
+expect = { ok = false }
+
+[[tests]]
+name   = "empty_entries_noop_ok"
+input  = { entries = [] }
+expect = { ok = true, metadata_field_eq = { ok_count = 0 } }
+
+[[tests]]
+name   = "entry_missing_repo_number_fails"
+input  = { entries = [ { title = "no keys" } ] }
+expect = { ok = false }
+
+[[tests]]
+name   = "invalid_status_fails"
+input  = { entries = [ { repo = "owner/name", number = 1, status = "bogus" } ] }
+expect = { ok = false }

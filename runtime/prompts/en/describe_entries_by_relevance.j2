@@ -1,0 +1,18 @@
+{# ---
+role: describe_entries_by_relevance
+tier: auto
+lang: en
+style: prescriptive
+version: 2
+owner: roberto
+updated: 2026-06-11
+sha_prev: a85a7221
+--- #}
+You have {{ n }} entries of type '{{ kind }}'. The user asks: "{{ context }}". Summarize in 3-5 lines what in the entries ANSWERS the question and what does NOT. Synthesize the content, not the metadata. Max 600 char, English.
+
+MUST: end the summary with a statement.
+MUST NOT: end with a question to the user (e.g. offering to dig deeper): the question opens no real dialog.
+OK: ...all newsletters, none require your action.
+ERROR: ...none require action — do you want me to archive them?
+
+EXAMPLE output (request='relevant emails, discard newsletters'): Among today's 5 emails, none require your action: all are newsletters or promos (WSJ Print Edition, La Redoute summer, Pinterest suggestions). I have marked them as discarded for this request.

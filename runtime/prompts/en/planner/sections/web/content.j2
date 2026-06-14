@@ -1,0 +1,71 @@
+{# ---
+role: planner
+tier: middle
+lang: en
+style: prescriptive
+version: 1
+owner: roberto
+updated: 2026-05-12
+sha_prev:
+--- #}
+══════════════════════════════════════════════════════════════════════
+WEB / CONTENT MANAGEMENT (post-read, history, results list)
+══════════════════════════════════════════════════════════════════════
+
+  (url_already_read) URL ALREADY READ IN HISTORY (seed_step or previous step):
+      When in history there is a step `read_urls_html` (or `read_urls_pdf`,
+      `get_urls_text`) with `ok=true` AND `entries[0].text`/`body`
+      non-empty (>=200 characters), YOU ALREADY HAVE the page content.
+    MUST: call `describe_entries(from_step=N, style="by_relevance",
+         context=<user original question>)` as NEXT step. The step after
+         will be `final_answer` formulated from the `summary` of
+         describe_entries.
+    MUST NOT: emit `final_answer` directly skipping describe_entries — the
+         model struggles to synthesize body_text >2000 char without the
+         help of describe_entries, and tends to include its own reasoning
+         as final text (thinking-leak).
+    MUST NOT: re-do `read_urls_html`, `read_urls_pdf`, `get_urls`,
+         `get_urls_text`, `find_urls` on the SAME URL already read.
+         It is noise: the content is in the scratchpad.
+    OK: history step1 = read_urls_html(urls=["https://x.it/about"]) ok=true,
+         entries[0].text 4000 char. User asks "what's it about?". Step 2 →
+         describe_entries(from_step=1, style="by_relevance",
+         context="tell me what the page is about") → final_answer.
+    ERROR: same scenario → step2 find_urls(seed_urls=["https://x.it"])
+         (URL already read, refetch is wasted). THIS IS AN ERROR.
+    ERROR: same scenario → step2 get_urls_text(urls=["https://x.it/about"])
+         (URL already read in step1 with read_urls_html). THIS IS AN ERROR.
+
+  (search_results_list) WEB RESULTS — runtime auto-appends clickable list:
+      When a `find_urls` step returns `entries` with at least one URL,
+      the runtime AUTOMATICALLY appends to the final_message the
+      clickable list (title+url+snippet+score+discovered documents) via
+      `output_format.format_search_results`. You don't have to format it.
+      Two patterns accepted depending on user intent:
+
+    MUST (a) — User searches INFORMATION (data, values, content, facts):
+        find_urls -> read_urls_html(urls=[top-1 or top-3 by score]) ->
+        describe_entries(from_step=N_read_urls, style="by_relevance",
+        context=<original query>) -> final_answer.
+        The LLM synthesis is built on the HTML CONTENT read, not the URL
+        list. The answer may come from the body of an HTML page (not just
+        from an attached PDF): "on site X the {{ current_year }} staffing table shows
+        1234 positions". If the top-K read_urls_html fail (`error_class`),
+        final_answer honest per url_failed_soft_fail.
+
+    MUST (b) — User wants the LIST of sites / links on X:
+        find_urls -> short final_answer "Here are the most relevant sites
+        for <X>". No describe_entries. The runtime appends the list.
+
+    MUST NOT: invoke `describe_entries(by_relevance)` directly on the
+        observation of `find_urls` (it discards the URLs, produces polite
+        text without useful content). If you need content, read first
+        with `read_urls_html` then describe that.
+    OK (a): «data file X» -> find_urls(search_query=...) ->
+        read_urls_html(urls=[from_step:1, top-1]) ->
+        describe_entries(from_step=2, by_relevance) -> final_answer
+        with content synthesis + URL list appended by runtime.
+    OK (b): «sites about X» -> find_urls(...) ->
+        final_answer "Here are N relevant sites".
+    ERROR: find_urls -> describe_entries(by_relevance) -> final_answer
+        narrative without links and without read content. THIS IS AN ERROR.

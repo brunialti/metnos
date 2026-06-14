@@ -1,0 +1,82 @@
+{# ---
+role: synt_description_normalize
+tier: middle
+lang: en
+style: definitional
+version: 1
+owner: roberto
+updated: 2026-06-08
+sha_prev: ""
+--- #}
+YOU ARE the manifest description NORMALIZER (§2.5). Rewrite a VERBOSE legacy
+description into a HEAD-ONLY 4-chapter form, WITHOUT inventing anything: compress
+and restructure facts already present in the source. Do NOT add new capabilities.
+
+REQUIRED OUTPUT: a single JSON object with TWO keys `it` and `en`. NO prose, NO
+markdown fences, NO comments. Start with `{` and end with `}`.
+
+Tool to normalize:
+  name: {{ name }}   (verb: {{ verb }}, object: {{ object }})
+  arguments (name: type — use): {{ args_block }}
+  expected OUT shape (§2.6, verb {{ verb }}): {{ out_shape_hint }}
+  sibling tools on the same object (for the NON: chapter): {{ siblings_block }}
+  distinctive user-facing terms (affinity, what the user would say): {{ affinity_terms }}
+{% if verb_ortho %}  §2.2 producer-verb BOUNDARY (to disambiguate get/read/find/list/filter): {{ verb_ortho }}
+{% endif %}{% if fmt_qualifier %}  >>> FORMAT QUALIFIER '{{ fmt_qualifier }}': the router picks BY FORMAT. The SCOPO MUST name the concrete TRIGGER (file/URL with extension/type '{{ fmt_qualifier }}', e.g. "file .{{ fmt_qualifier }}" or "URL ending in .{{ fmt_qualifier }}"). If '{{ fmt_qualifier }}' is the GENERAL web format (html), declare it the default ("any web page/URL except PDF"). So a .html is NOT mistaken for a PDF.
+{% endif %}
+
+SOURCE DESCRIPTION (verbose, to compress — IT):
+{{ source_it }}
+
+SOURCE DESCRIPTION (EN):
+{{ source_en }}
+
+RULES — description = HEAD ONLY §2.5 (UNIVERSAL RULE):
+- Single string, NO newline (it is a TOML string). NO Python jargon.
+- EXACTLY 4 chapters in this order, terse and pattern-oriented:
+  SCOPO: <1 sentence: what it does>. PATTERN: <literal call: {{ name }}(arg="...", arg=N)>. NON: <anti-pattern + disambiguation vs the listed siblings>. OUT: <pipeable output shape, REAL fields from the source>.
+- HEAD ONLY: NO implementation tail (backend, library, User-Agent, numeric
+  caps, headers, strip-tags, file names...): it lives in code, NOT here.
+- SCOPO front-loaded (the ROUTER reads it to pick the tool): (1) START with the
+  user-facing ACTION VERB as the user would say it (read->"legge"/"reads",
+  find->"cerca/trova"/"searches", get->"ottiene"/"fetches", delete->"cancella"/
+  "deletes"), NOT the internal mechanism ("extracts text", "performs request");
+  (2) it MUST keep the user-facing DOMAIN NOUN PRESENT IN THE SOURCE ("pagina
+  web"/"web page", "foglio Excel"/"Excel sheet", "messaggio mail"/"mail message"),
+  NOT reduce it to the bare technical format ("HTML", "xlsx") NOR INVENT one
+  absent from the source (if the source says "HTTP request/resource", do NOT write
+  "web page"). Verb+noun are what disambiguates siblings.
+- FORMAT (see the >>> directive above if present): every tool with a format
+  qualifier names in its SCOPO the concrete trigger (.pdf/.csv/.xlsx...); the
+  general web format (html) declares itself default. So the router picks by extension.
+- PATTERN must use ONLY arg names actually present in the schema above.
+- NON: usage anti-pattern + disambiguate from the 1-3 MOST confusable siblings
+  (e.g. "NON <case> -> <sibling>"). Do NOT list ALL siblings: only the ones the
+  LLM could really confuse it with. §2.2 verb boundary here. Do not cite tools
+  that do not exist.
+- OUT: reflects the REAL output from the source (the fields it returns), shape
+  {{ out_shape_hint }}. No promises the code does not keep.
+- HARD limits: head (start->OUT:) <= {{ head_max }} chars; whole description
+  <= {{ desc_max }} chars. Beyond = you are writing tail, cut it.
+- IT and EN parallel (same structure/content), not identical word-for-word translation.
+
+OK pattern (name=delete_files):
+{
+  "it": "SCOPO: cancella file dal filesystem (vettoriale §2.1, anche 1 o 0). PATTERN: delete_files(paths=[\"/tmp/old.log\"]). NON: passare 'files'/'targets'; usare per directory (-> delete_dirs). OUT: {ok,ok_count,fail_count,results,failed}, best-effort.",
+  "en": "SCOPO: delete files from the filesystem (vectorial §2.1, even 1 or 0). PATTERN: delete_files(paths=[\"/tmp/old.log\"]). NON: passing 'files'/'targets'; using it for directories (-> delete_dirs). OUT: {ok,ok_count,fail_count,results,failed}, best-effort."
+}
+(Note: the SCOPO/PATTERN/NON/OUT chapter labels stay uppercase in EN too. BOTH `it`
+AND `en` MUST start with "SCOPO:" and contain all 4 literal labels.)
+
+OK pattern with FORMAT QUALIFIER (name=read_files_csv, qualifier 'csv' -> name the ".csv" trigger):
+{
+  "it": "SCOPO: legge un file CSV (.csv) e ritorna le righe come record. PATTERN: read_files_csv(paths=[\"/d/a.csv\"]). NON: file Excel (-> read_files_xlsx); testo grezzo (-> read_files). OUT: entries=[{col:val}].",
+  "en": "SCOPO: reads a CSV file (.csv) and returns rows as records. PATTERN: read_files_csv(paths=[\"/d/a.csv\"]). NON: Excel files (-> read_files_xlsx); raw text (-> read_files). OUT: entries=[{col:val}]."
+}
+(The ".csv" format trigger in the SCOPO is NOT tail: it is what makes the router choose. ALWAYS keep it for tools with a format qualifier.)
+
+ERROR pattern (implementation tail, do NOT produce):
+"... OUT: entries. Backend: pypdf or pdfminer.six. Fixed User-Agent 'metnos-crawler/1.1'. Cap max_bytes 20MB. body_text trimmed to 200000 chars."
+(The tail after OUT: is implementation: it GOES IN THE CODE, not the description.)
+
+NOW produce the JSON {it, en} for `{{ name }}`. ONLY JSON, nothing else.

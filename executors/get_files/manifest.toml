@@ -1,0 +1,86 @@
+# Manifest dell'executor `get_files` — Metnos v1.1
+# Naming compositivo: verbo_oggetto_plurale_qualificatore. Vettoriale per costruzione.
+# Copre anche le date semantiche EXIF/birth (fields=['dates.semantic']).
+
+manifest_format = "1.0"
+
+name        = "get_files"
+version     = "0.4.0"
+author      = "Roberto Brunialti"
+affinity    = ["exif", "foto", "photo", "image", "gps", "geotag", "luogo", "place", "camera", "image_dimensions"]
+
+[description]
+it = "SCOPO: ottiene dati EXIF (gps, luogo, camera, data) da immagini NOTE. PATTERN: get_files(paths=[\"/tmp/img.jpg\"], fields=['gps']). NON: cercare foto per soggetto (-> find_images_indices); per pattern (-> find_files). OUT: entries=[{dates.semantic,gps,place,image_dimensions}]."
+en = "SCOPO: gets EXIF data (gps, place, camera, date) from KNOWN image paths. PATTERN: get_files(paths=[\"/tmp/img.jpg\"], fields=['gps']). NON: searching photos by subject (-> find_images_indices); by pattern (-> find_files). OUT: entries=[{dates.semantic,gps,place,image_dimensions}]."
+
+[code]
+files  = ["get_files.py"]
+digest = "sha256:995323975e1192b785871611b06b88612601478b5b441c3d75b4244e5d03b583"
+
+[args]
+type     = "object"
+required = []
+
+[args.properties.from_step]
+type        = "integer"
+minimum     = 1
+
+[args.properties.from_step.description]
+it = "Numero dello step precedente (in questo turno) che ha prodotto la lista di file da arricchire. Es. al passo 1 find_files trova le foto, al passo 2 get_files riceve from_step=1. ALTERNATIVA: usa `paths` se l'utente cita path letterali nella query e nessuno step precedente ha prodotto la lista (caso atomico)."
+en = "Number of the previous step (in this turn) that produced the list of files to enrich. E.g., at step 1 find_files finds the photos, at step 2 get_files receives from_step=1. ALTERNATIVE: use `paths` if the user cites literal paths in the query and no previous step produced the list (atomic case)."
+
+[args.properties.paths]
+type        = "array"
+items       = { type = "string" }
+
+[args.properties.paths.description]
+it = "Lista di path letterali (es. ['/tmp/foo.jpg', '/home/x/y.png']). Usa questa forma per il caso atomico (utente cita 1+ path nella query e nessuno step ha gia' prodotto la lista). Non combinare con `from_step`."
+en = "List of literal paths (e.g., ['/tmp/foo.jpg', '/home/x/y.png']). Use this form for the atomic case (user mentions 1+ paths in the query and no step has already produced the list). Do not combine with `from_step`."
+
+[args.properties.fields]
+type        = "array"
+items       = { type = "string" }
+
+[args.properties.fields.description]
+it = "Lista di metadata da estrarre. Valori validi: 'size' (dimensione file in byte → `size_bytes`, vale per QUALSIASI file), 'dates.semantic', 'dates.created', 'dates.modified', 'gps', 'place', 'device', 'image_dimensions' (ultimi 5 = EXIF, solo foto). In alternativa la stringa 'all'. Default: ['dates.semantic']. Esempio dimensione: ['size']; foto con luogo: ['dates.semantic', 'place']."
+en = "List of metadata to extract. Valid values: 'size' (file size in bytes → `size_bytes`, works for ANY file), 'dates.semantic', 'dates.created', 'dates.modified', 'gps', 'place', 'device', 'image_dimensions' (last 5 = EXIF, photos only). Alternatively the string 'all'. Default: ['dates.semantic']. Example size: ['size']; photo with location: ['dates.semantic', 'place']."
+
+[[capabilities]]
+name = "fs:read"
+hint = ["~/**", "/tmp/**"]
+
+[[capabilities]]
+name = "net:read"
+hint = ["nominatim.openstreetmap.org"]
+
+[[tests]]
+name     = "dates_semantic_default"
+setup    = "mkdir -p /tmp/metnos_test_meta && echo x > /tmp/metnos_test_meta/a.txt && touch -d '2024-06-15 12:00:00' /tmp/metnos_test_meta/a.txt"
+input    = { entries = [{path = "/tmp/metnos_test_meta/a.txt"}] }
+expect   = { ok = true, ok_count_eq = 1 }
+teardown = "rm -rf /tmp/metnos_test_meta"
+
+[[tests]]
+name   = "lista_vuota_ok"
+input  = { entries = [] }
+expect = { ok = true, ok_count_eq = 0 }
+
+[[tests]]
+name   = "fields_invalido_fallisce"
+input  = { entries = [], fields = ["pippo"] }
+expect = { ok = false, error_contains = "deve essere uno fra" }
+
+[[tests]]
+name     = "path_inesistente_fallisce_solo_quella"
+input    = { entries = [{path = "/tmp/metnos_does_not_exist_xyz/foo.txt"}] }
+expect   = { ok = false, fail_count_eq = 1, error_contains = "non trovato" }
+
+[[tests]]
+name   = "args_invalidi_entries_non_lista"
+input  = { entries = "/tmp/foo" }
+expect = { ok = false, error_contains = "obbligatorio" }
+
+[[tests]]
+name   = "fields_all_keyword"
+input  = { entries = [], fields = "all" }
+expect = { ok = true, ok_count_eq = 0 }

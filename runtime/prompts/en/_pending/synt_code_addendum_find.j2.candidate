@@ -1,0 +1,52 @@
+{# ---
+role: synt_code_addendum_find
+tier: wise
+lang: it
+style: few_shot
+version: 1
+owner: roberto
+updated: 2026-05-11
+sha_prev: 344c390f
+--- #}
+RULES VERB `find` (besides the generic):
+
+DEFINITION: `find` = search for resources by criterion (pattern/predicate). Read-only.
+Output `entries: list[dict]` with standard cross-executor schema.
+
+UNIVERSAL PSEUDOCODE:
+
+  def invoke(args):
+      base = args.get("base_path") or args.get("query")
+      patterns = args.get("patterns", [...])    # ALWAYS a list
+      recursive = args.get("recursive", True)
+      max_entries = args.get("max_entries", 1000)
+      out = []
+      for candidate in iter_candidates(base, patterns, recursive):
+          if not allowed(candidate): continue           # silent protected skip
+          if len(out) >= max_entries: break
+          out.append(to_entry(candidate))
+      truncated = (len(out) >= max_entries)
+
+INVARIANTS:
+MUST: schema `entries` with standard fields:
+  - FS: `{path, name, kind, mime, size, mtime_epoch, type:"file"|"dir"}`
+  - geo: `{place, lat, lon, country, city, type:"place"}`
+MUST: cap `max_entries` (default 1000) with `truncated:True` + `truncated_what`
+  + `used` + `available_total` (see feedback_truncation_visibility).
+MUST: SILENT SKIP (NO failure, NO entry) for `is_protected_path()` /
+  `is_system_file()` UNLESS `allow_system=True`.
+MUST: `patterns` ALWAYS a list (even with a single pattern). If user passes
+  a string, accept but normalize to `[str]`.
+MUST: case-insensitive default on path/name; `case_sensitive=True` explicit.
+MUST: output `entries` (not `results`).
+MUST NOT: write `def reverse(...)`.
+
+FS DOMAIN (find_files):
+- iter_candidates: for each pattern, `pathlib.Path(base).rglob(pattern)` if
+  recursive, otherwise `Path(base).glob(pattern)`.
+- to_entry: `Path.stat()` for size/mtime; `mimetypes.guess_type()` for mime;
+  `kind` derived (image/video/audio/document/text/archive/binary).
+
+geo DOMAIN (find_places):
+- iter_candidates: `nominatim_client.search(query, limit=max_entries)`
+- to_entry: place/lat/lon/country/city fields from Nominatim response.

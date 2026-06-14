@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{% block title %}Metnos{% endblock %}</title>
+{% include "_design_system.html" %}
+<style>
+/* Base "bare" per i form dialog (get_inputs, ADR 0090) renderizzati dentro
+   un iframe nella bolla chat: background transparent, la bolla del parent
+   fornisce la superficie. Token e primitive dal design system condiviso. */
+body{font-size:var(--fs-3);background:transparent;padding:.6rem .8rem}
+main{padding:0;margin:0}
+/* dentro la bolla: sezione flat, niente card-in-card */
+.section{margin:0;padding:0;border:none;border-radius:0;
+         background:transparent;box-shadow:none}
+.section h2{margin:0 0 .45rem 0}
+/* campi: larghezza di lettura cap a 480px dentro la bolla */
+input:not([type=radio]):not([type=checkbox]),select,textarea{max-width:480px}
+/* bottoni dialog: padding piu' generoso del default console */
+.btn{padding:.45rem 1.1rem}
+/* Opzioni con preview (choice_with_preview): card cliccabile, hover e
+   selezione evidenziati con l'accento. Gli stili inline del template
+   fissano il layout; qui solo lo stato. */
+.preview-option{transition:border-color var(--t-1) var(--ease),
+                background var(--t-1) var(--ease),
+                box-shadow var(--t-1) var(--ease)}
+.preview-option:hover{border-color:var(--accent) !important;
+                      background:var(--accent-soft)}
+.preview-option:has(input:checked){border-color:var(--accent) !important;
+                      box-shadow:0 0 0 2px var(--accent-soft)}
+</style>
+</head>
+<body>
+<main>{% block body %}{% endblock %}</main>
+</body></html>

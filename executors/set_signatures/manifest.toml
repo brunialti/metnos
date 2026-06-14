@@ -1,0 +1,53 @@
+manifest_format = "1.0"
+name        = "set_signatures"
+version     = "0.1.0"
+author      = "Roberto Brunialti"
+affinity    = ["imposta", "autorizza", "vieta", "permetti", "rimuovi",
+                "curatela", "gestione signatures", "configura permessi",
+                "approva comando", "blocca comando"]
+
+revertible       = true
+reverse_pattern  = ["delete_created_paths"]
+
+[description]
+it = "SCOPO: imposta, autorizza o rimuove signatures dalla curatela utente. PATTERN: set_signatures(kind=\"blacklist\", signature=\"bin:cmd:kind\", reason=\"motivo\"). NON: calcolare -> compute_signatures; lookup statico -> get_signatures. OUT: entries=[{kind,signature,severity,reason}]."
+en = "SCOPO: set, authorize or remove signatures from user curation. PATTERN: set_signatures(kind=\"blacklist\", signature=\"bin:cmd:kind\", reason=\"reason\"). NON: compute -> compute_signatures; static lookup -> get_signatures. OUT: entries=[{kind,signature,severity,reason}]."
+
+[code]
+files  = ["set_signatures.py"]
+digest = "sha256:d1911c34a85c256e817c0ab6e2fcaaa91c38bd02d2933c3f25b0343545e6d1ba"
+
+[args]
+type     = "object"
+required = ["kind", "signature"]
+
+[args.properties.kind]
+type        = "string"
+enum        = ["blacklist", "whitelist", "unknown"]
+
+[args.properties.kind.description]
+it = "Stato target. 'blacklist'/'whitelist' = aggiungi/sposta. 'unknown' = rimuovi dal DB."
+en = "Target state. 'blacklist'/'whitelist' = add/move. 'unknown' = remove from DB."
+
+[args.properties.signature]
+type        = "string"
+
+[args.properties.signature.description]
+it = "Signature canonicalizzata (binary:subcmd:target_kind). Wildcard ammessi nei campi 2 e 3."
+en = "Canonicalized signature (binary:subcmd:target_kind). Wildcards allowed in fields 2 and 3."
+
+[args.properties.reason]
+type        = "string"
+
+[args.properties.reason.description]
+it = "Motivazione della scelta. Richiesta per kind='blacklist'/'whitelist'. Visibile in audit."
+en = "Reason for choice. Request for kind='blacklist'/'whitelist'. Visible in audit."
+
+[args.properties.severity]
+type        = "string"
+enum        = ["forbidden", "irreversible", "dangerous", "reversible"]
+default     = "dangerous"
+
+[args.properties.severity.description]
+it = "Per kind='blacklist': severity. 'forbidden' = Legge 1 non derogabile (raro). Default 'dangerous'. Ignorato per altri kind."
+en = "For kind='blacklist': severity. 'forbidden' = Non-derogable Law 1 (rare). Default 'dangerous'. Ignored for other kinds."

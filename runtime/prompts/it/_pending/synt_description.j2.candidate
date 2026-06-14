@@ -1,0 +1,58 @@
+{# ---
+role: synt_description
+tier: middle
+lang: en
+style: definitional
+version: 1
+owner: roberto
+updated: 2026-05-11
+sha_prev: 748f8aac
+--- #}
+SEI la fase 4 (DESCRIZIONE) di synt-multistage.
+
+OUTPUT OBBLIGATORIO: un singolo oggetto JSON. NESSUN testo libero, NESSUN markdown fence, NESSUN commento. La risposta DEVE iniziare con `{` e terminare con `}`.
+
+Decisioni precedenti (NON modificarle):
+  name: {{ name }}
+  args required: {{ args_required }}
+  capabilities: {{ capabilities }}
+  revertible: {{ revertible }}, reverse_pattern: {{ reverse_pattern }}
+  num tests: {{ num_tests }}
+
+Richiesta originale dell'utente: {{ user_request }}
+
+REGOLE STILE MANIFEST TOML (the design guide §6 + §7.12):
+1. PRESCRITTIVA: DEVI / NON DEVI / pattern OK / pattern ERRORE. Nessun testo libero
+   "perché", "se possibile", "preferibilmente".
+2. ORIENTATA AI PATTERN: 3-7 esempi di "pattern" con nota "(non copiare
+   letteralmente: sostituire con i termini della query)".
+3. NESSUNA RIPETIZIONE: NON duplicare USAGE + Nomi ARG, NON ripetere
+   "Esempio: X" dopo ogni regola, NON ripetere OUTPUT nella descrizione +
+   schema_inline.
+4. COMPATTO: max 25 parole/frase. Backtick inline (`top=5`) non
+   "Esempio: top=5". Niente elenchi puntati ridondanti. IT/EN parallelo, non
+   traduzione identica.
+
+Vincoli description — SOLO HEAD §2.5 (REGOLA UNIVERSALE):
+- Stringa singola, NESSUN newline (manifest TOML). Nessuna terminologia Python.
+- ESATTAMENTE 4 capitoli in questo ordine, concisi e orientati ai pattern:
+  SCOPO: <1 frase: cosa fa>. PATTERN: <chiamata letterale: name(arg="...", arg=N)>. NON: <anti-pattern + disambiguazione rispetto agli strumenti fratelli>. OUT: <forma dell'output pipeabile>.
+- SOLO HEAD: la descrizione è SOLO questi 4 capitoli. VIETATA la coda di implementazione (strip-tags, caps, backend, User-Agent, headers...): vive nel codice, NON qui. La macchina legge solo la testa.
+- LIMITI DURI: head (start->OUT:) <= {{ head_max }} char; descrizione intera <= {{ desc_max }} char. Oltre = stai scrivendo la coda, tagliala.
+- SCOPO+PATTERN in primo piano (il propositore li legge). Il confine dei verbi §2.2 va in NON: (es. "NON directories -> delete_dirs").
+
+Regole affinity:
+- 6-10 parole chiave italiano + inglese, minuscole.
+- Sinonimi/varianti visibili all'utente.
+
+Pattern OK (name=delete_files):
+{
+  "description": "SCOPO: cancella file dal filesystem (vettoriale §2.1, anche 1 o 0). PATTERN: delete_files(paths=[\"/tmp/old.log\"]). NON: passare 'files'/'targets'; usare per directory (-> delete_dirs). OUT: {ok,ok_count,fail_count,results,failed}, best-effort.",
+  "affinity": ["delete", "cancella", "rimuovi", "elimina", "rm", "del", "fs"]
+}
+
+Pattern ERRORE (verbose):
+"description": "USAGE: query 'delete file' -> usa delete_files. ARG NAMES esatti: MUST: 'paths'. MUST NOT: 'files', 'targets'. DEFAULT: paths=[]. OUTPUT: come delete_dirs ma per file. Esempio: delete_files(paths=['/tmp/x']). Esempio 2: delete_files(paths=['/a','/b']). Critico: sì, irreversibile..."
+(Anti-pattern: USAGE+ARG NAMES+DEFAULT+OUTPUT ciascuno duplicato. Comprimi.)
+
+ORA produci il JSON per `{{ name }}`. SOLO JSON, nient'altro.

@@ -1,0 +1,245 @@
+{% extends "base.html" %}
+{% block title %}Praxis · Console Metnos{% endblock %}
+{% block body %}
+<h1>Praxis — motore cognitivo</h1>
+<p class="page-sub">Gli strati con stato del motore cognitivo (Engine v2),
+provati in cascata su ogni query:
+<b>L0 fastpath</b> scorciatoie auto-prodotte dai turni riusciti ·
+<b>L1 autopath</b> skill apprese dal feedback ✓ ·
+L2 validator (controllo del piano) e L3 proposer/recovery (modello, 1 chiamata)
+sono senza stato e non compaiono qui.</p>
+<p class="muted">storage <code>fastpaths.sqlite</code> + <code>autopath.sqlite</code>
+· architettura: <code>docs/it/architecture/praxis_engine.html</code></p>
+
+<h2>Stato</h2>
+<div class="kpi-grid">
+  <div class="kpi" title="scorciatoie auto-prodotte dai turni riusciti (L0, prime 100 per uso)">
+    <div class="kpi-label">Scorciatoie L0</div>
+    <div class="kpi-value">{{ fastpaths|length }}</div>
+  </div>
+  <div class="kpi" title="skill promosse dal feedback ✓ e attive (L1)">
+    <div class="kpi-label">Skill attive L1</div>
+    <div class="kpi-value">{{ stats.skills_by_status.get("active", 0) }}</div>
+  </div>
+  <div class="kpi" title="skill retrocesse dopo fail ripetuti o superate da una scorciatoia">
+    <div class="kpi-label">Demoted</div>
+    <div class="kpi-value">{{ stats.skills_by_status.get("demoted", 0) }}</div>
+  </div>
+  <div class="kpi" title="turni registrati per future promozioni">
+    <div class="kpi-label">Observations totali</div>
+    <div class="kpi-value">{{ stats.observations_total }}</div>
+  </div>
+  <div class="kpi" title="combinazioni intent+framework escluse temporaneamente dopo feedback ✗">
+    <div class="kpi-label">Anti-skill attivi</div>
+    <div class="kpi-value">{{ stats.anti_skills_active }}</div>
+  </div>
+</div>
+{% if stats.error %}
+<div class="callout warn">Lettura autopath fallita: <code>{{ stats.error }}</code></div>
+{% endif %}
+
+<h2>L0 — Scorciatoie auto-prodotte ({{ fastpaths|length }})</h2>
+<p class="muted">Query che bypassano l'intero motore: match per hash o coseno
+semantico, risposta in millisecondi senza modello. Si creano DA SOLE a ogni
+turno completato con successo dal piano pieno (catene di executor già
+vagliati: nessuna approvazione). Le query-specifiche (colonna «solo hash»)
+rispondono solo alla query identica, mai per somiglianza. Invecchiano da
+sole (mai-riusate 14gg, stantie 30gg, tetto 500) e muoiono se un executor
+le rimpiazza; il bottone «elimina» è la valvola manuale.</p>
+{% if fastpaths %}
+<div class="table-wrap">
+<table>
+  <thead>
+    <tr><th>id</th><th>query canonica</th><th>intent</th><th>origine</th>
+        <th>solo hash</th><th>creata il</th><th>usi</th><th>ultimo uso</th><th></th></tr>
+  </thead>
+  <tbody>
+  {% for f in fastpaths %}
+    <tr>
+      <td>{{ f.id }}</td>
+      <td><code>{{ f.canonical_text }}</code></td>
+      <td class="muted">{% if f.intent_verb %}<code>{{ f.intent_verb }}_{{ f.intent_object }}</code>{% else %}-{% endif %}</td>
+      <td class="muted">{{ f.origin or "-" }}</td>
+      <td>{% if f.query_specific %}<span class="chip warn" title="piano legato alla query (arg literal): match solo per query identica, mai per coseno">0a</span>{% else %}-{% endif %}</td>
+      <td class="muted">{{ f.created_at }}</td>
+      <td>{{ f.n_uses }}</td>
+      <td class="muted">{{ f.last_used or "-" }}</td>
+      <td><button type="button" class="btn" onclick="deleteFastpath({{ f.id }})"
+                  title="valvola: rimuove la scorciatoia; si ricrea solo se il piano pieno ri-succede sulla stessa query">elimina</button></td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% else %}
+<p class="muted">Nessuna scorciatoia ancora: si auto-producono al primo
+turno completato con successo dal piano pieno.</p>
+{% endif %}
+
+<h2>L1 — Skill apprese attive ({{ skills_active|length }})</h2>
+<p class="muted">Framework promossi automaticamente dopo feedback ✓ nello
+stesso cluster semantico; riusati senza chiamare il modello. Fail ripetuti
+li retrocedono (anti-skill con TTL).</p>
+{% if skills_active %}
+<div class="table-wrap">
+<table>
+  <thead>
+    <tr><th>id</th><th>intent</th><th>cluster</th><th>usi</th><th>ok</th>
+        <th>fail</th><th>score</th><th>ultimo uso</th></tr>
+  </thead>
+  <tbody>
+  {% for s in skills_active %}
+    <tr>
+      <td><code>{{ s.id }}</code></td>
+      <td class="muted">{{ s.intent_sig[:60] }}</td>
+      <td class="muted"><code>{{ (s.cluster_id or "-")[:10] }}</code></td>
+      <td>{{ s.uses }}</td>
+      <td><span class="chip ok">{{ s.ok_count }}</span></td>
+      <td>{% if s.fail_count > 0 %}<span class="chip bad">{{ s.fail_count }}</span>{% else %}-{% endif %}</td>
+      <td>{{ "%.2f"|format(s.composite_score or 0.5) }}</td>
+      <td class="muted">{{ s.ts_last_used or "-" }}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% else %}
+<p class="muted">Nessuna skill promossa ancora. La promozione scatta col
+feedback ✓ su un framework ricorrente.</p>
+{% endif %}
+
+{% if skills_demoted %}
+<h2>Skill retrocesse ({{ skills_demoted|length }})</h2>
+<div class="table-wrap">
+<table>
+  <thead><tr><th>id</th><th>intent</th><th>usi</th><th>ok</th><th>fail</th></tr></thead>
+  <tbody>
+  {% for s in skills_demoted %}
+    <tr><td><code>{{ s.id }}</code></td>
+        <td class="muted">{{ s.intent_sig[:60] }}</td>
+        <td>{{ s.uses }}</td>
+        <td>{{ s.ok_count }}</td>
+        <td><span class="chip bad">{{ s.fail_count }}</span></td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endif %}
+
+<h2>Observations recenti ({{ observations|length }})</h2>
+<p class="muted">Ogni turno del motore registra intent + framework eseguito:
+sono la materia prima delle promozioni L1.</p>
+{% if observations %}
+<div class="table-wrap">
+<table>
+  <thead>
+    <tr><th>id</th><th>intent</th><th>catena tool</th><th>verdetto</th>
+        <th>ms</th><th>ts</th><th>promossa</th></tr>
+  </thead>
+  <tbody>
+  {% for o in observations %}
+    <tr>
+      <td>{{ o.id }}</td>
+      <td class="muted">{{ o.intent_sig[:60] }}</td>
+      <td><code>{{ o.tools|join(" → ") }}</code></td>
+      <td>
+        {% if o.verdict == "ok" %}<span class="chip ok">✓</span>
+        {% elif o.verdict == "fail" %}<span class="chip bad">✗</span>
+        {% elif o.verdict == "repeat" %}<span class="chip warn">↻</span>
+        {% else %}<span class="chip">-</span>{% endif %}
+      </td>
+      <td>{{ o.latency_ms or "-" }}</td>
+      <td class="muted">{{ o.ts }}</td>
+      <td>{% if o.promoted_to %}<code>{{ o.promoted_to }}</code>{% else %}-{% endif %}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% else %}
+<p class="muted">Nessuna observation. Ogni turno che passa dal motore ne genera una.</p>
+{% endif %}
+
+{% if anti_skills %}
+<h2>Anti-skill attivi ({{ anti_skills|length }})</h2>
+<p class="muted">Combinazioni intent+framework escluse dopo feedback ✗
+ripetuti (TTL 30 giorni; un ✓ le rimuove subito).</p>
+<div class="table-wrap">
+<table>
+  <thead>
+    <tr><th>intent_hash</th><th>framework_hash</th><th>fail</th>
+        <th>motivo</th><th>scade</th></tr>
+  </thead>
+  <tbody>
+  {% for a in anti_skills %}
+    <tr>
+      <td class="muted"><code>{{ a.intent_hash }}</code></td>
+      <td class="muted"><code>{{ a.framework_hash }}</code></td>
+      <td><span class="chip bad">{{ a.fail_count }}</span></td>
+      <td class="muted">{{ a.reason }}</td>
+      <td class="muted">{{ a.ttl_expires_at }}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endif %}
+
+{% if stats.skills_by_status %}
+<h2>Distribuzione skill per status</h2>
+<div class="table-wrap">
+<table class="compact">
+  <thead><tr><th>status</th><th>count</th></tr></thead>
+  <tbody>
+  {% for st, n in stats.skills_by_status.items() %}
+    <tr><td>{{ st }}</td><td>{{ n }}</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endif %}
+
+<div class="section">
+  <h2>Recovery (L3) — Pronoia tier</h2>
+  <p>Tier LLM dell'escalation quando il piano fallisce:
+    <code id="pronoia_tier_current">{{ pronoia_tier or "wise" }}</code>
+  </p>
+  <form id="pronoia_form" onsubmit="return setPronoiaTier(event)">
+    <select name="tier" id="tier_select">
+      <option value="wise"{% if pronoia_tier != "frontier" %} selected{% endif %}>wise (tier locale, gratis)</option>
+      <option value="frontier"{% if pronoia_tier == "frontier" %} selected{% endif %}>frontier (tier cloud opt-in, a pagamento)</option>
+    </select>
+    <button type="submit" class="btn">Aggiorna</button>
+  </form>
+  <p class="muted" style="font-size:.85em">
+    wise = default. frontier = escalation per casi complessi (costo).
+  </p>
+</div>
+<script>
+function deleteFastpath(id){
+  if (!confirm('Eliminare la scorciatoia L0 #' + id + '?')) { return; }
+  fetch('/admin/praxis/fastpaths/' + id + '/delete', {method: 'POST'})
+    .then(function(r){ return r.json(); })
+    .then(function(d){
+      if (d.ok) { location.reload(); }
+      else { alert('Errore: ' + (d.message || d.error || 'sconosciuto')); }
+    })
+    .catch(function(e){ alert('Errore di rete: ' + e); });
+}
+function setPronoiaTier(ev){
+  ev.preventDefault();
+  const tier = document.getElementById('tier_select').value;
+  fetch('/admin/praxis/config', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({pronoia_tier: tier})
+  }).then(r => r.json()).then(d => {
+    document.getElementById('pronoia_tier_current').textContent = d.pronoia_tier;
+    alert('Pronoia tier aggiornato a: ' + d.pronoia_tier +
+           (d.persisted ? ' (persistente)' : ' (runtime only — restart resetta)'));
+  });
+  return false;
+}
+</script>
+
+{% endblock %}

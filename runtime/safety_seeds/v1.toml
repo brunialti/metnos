@@ -1,0 +1,1471 @@
+# Metnos safety signatures — seed v1
+# ===================================
+#
+# Initial whitelist + blacklist for the `admin → sudoer` chain (ADR 0070,
+# 0071). Bootstrap is idempotent: the loader applies this file only if the
+# DB seed_version is < 1, and it never overwrites entries with source='user'.
+#
+# Signature format: `binary:subcommand_or_flag:target_kind`.
+#   target_kind ∈ {*, fs:user, fs:system, fs:tmp, fs:root, unit, pkg,
+#                  block_device, network_iface, process_pid, url, literal}.
+#
+# Severity ∈ {forbidden, irreversible, dangerous, reversible}.
+#   forbidden     — Law 1 territory, never derogable, even by user vote.
+#   irreversible  — destructive, irreversible at OS level (rm, dd, mkfs).
+#   dangerous     — reversible but with broad blast radius (iptables, init).
+#   reversible    — side effect bounded, undo possible (restart, install).
+#
+# Kind ∈ {whitelist, blacklist, graylist, forbidden}.
+#   whitelist  — silent execution authorised.
+#   blacklist  — silent rejection.
+#   graylist   — first execution asks user; subsequent silent within TTL.
+#   forbidden  — Law 1 enforcement; user cannot derogate.
+#
+# Maintenance: bump `version` when adding/changing entries; the bootstrap
+# will apply only the new/changed entries to existing DBs.
+
+version = 3
+
+
+# ─────────────────────────────────────────────────────────────────────
+#  WHITELIST — read-only / informational commands (no side effects)
+# ─────────────────────────────────────────────────────────────────────
+
+# ── Filesystem listing & metadata ────────────────────────────────────
+
+[[signatures]]
+sig = "ls:*:fs:user"
+kind = "whitelist"
+severity = "reversible"
+reason = "list user-space files, no side effect"
+
+[[signatures]]
+sig = "ls:*:fs:system"
+kind = "whitelist"
+severity = "reversible"
+reason = "list system files (read-only)"
+
+[[signatures]]
+sig = "ls:*:*"
+kind = "whitelist"
+severity = "reversible"
+reason = "list any path (read-only)"
+
+[[signatures]]
+sig = "stat:*:*"
+kind = "whitelist"
+severity = "reversible"
+reason = "file metadata"
+
+[[signatures]]
+sig = "file:*:*"
+kind = "whitelist"
+severity = "reversible"
+reason = "detect file type by content"
+
+[[signatures]]
+sig = "wc:*:*"
+kind = "whitelist"
+severity = "reversible"
+reason = "count lines/words/bytes"
+
+[[signatures]]
+sig = "head:*:*"
+kind = "whitelist"
+severity = "reversible"
+reason = "read leading lines"
+
+[[signatures]]
+sig = "tail:*:*"
+kind = "whitelist"
+severity = "reversible"
+reason = "read trailing lines"
+
+[[signatures]]
+sig = "cat:*:fs:user"
+kind = "whitelist"
+severity = "reversible"
+reason = "read user file content"
+
+[[signatures]]
+sig = "cat:*:fs:tmp"
+kind = "whitelist"
+severity = "reversible"
+reason = "read tmp file content"
+
+[[signatures]]
+sig = "od:*:*"
+kind = "whitelist"
+severity = "reversible"
+reason = "octal dump"
+
+[[signatures]]
+sig = "xxd:*:*"
+kind = "whitelist"
+severity = "reversible"
+reason = "hex dump"
+
+[[signatures]]
+sig = "sha256sum:*:*"
+kind = "whitelist"
+severity = "reversible"
+reason = "hash file content"
+
+[[signatures]]
+sig = "md5sum:*:*"
+kind = "whitelist"
+severity = "reversible"
+reason = "hash file content (legacy)"
+
+[[signatures]]
+sig = "cmp:*:*"
+kind = "whitelist"
+severity = "reversible"
+reason = "byte-compare two files"
+
+[[signatures]]
+sig = "diff:*:*"
+kind = "whitelist"
+severity = "reversible"
+reason = "line-compare files"
+
+[[signatures]]
+sig = "readlink:*:*"
+kind = "whitelist"
+severity = "reversible"
+reason = "follow symlink"
+
+[[signatures]]
+sig = "realpath:*:*"
+kind = "whitelist"
+severity = "reversible"
+reason = "resolve canonical path"
+
+[[signatures]]
+sig = "basename:*:*"
+kind = "whitelist"
+severity = "reversible"
+
+[[signatures]]
+sig = "dirname:*:*"
+kind = "whitelist"
+severity = "reversible"
+
+[[signatures]]
+sig = "tree:*:*"
+kind = "whitelist"
+severity = "reversible"
+reason = "directory tree visualisation"
+
+[[signatures]]
+sig = "pwd:*:*"
+kind = "whitelist"
+severity = "reversible"
+
+
+# ── System info ──────────────────────────────────────────────────────
+
+[[signatures]]
+sig = "uname:*:*"
+kind = "whitelist"
+severity = "reversible"
+reason = "kernel info"
+
+[[signatures]]
+sig = "hostname:*:*"
+kind = "whitelist"
+severity = "reversible"
+reason = "show hostname (no -b/-d/-F set forms here)"
+
+[[signatures]]
+sig = "uptime:*:*"
+kind = "whitelist"
+severity = "reversible"
+
+[[signatures]]
+sig = "id:*:*"
+kind = "whitelist"
+severity = "reversible"
+
+[[signatures]]
+sig = "whoami:*:*"
+kind = "whitelist"
+severity = "reversible"
+
+[[signatures]]
+sig = "groups:*:*"
+kind = "whitelist"
+severity = "reversible"
+
+[[signatures]]
+sig = "who:*:*"
+kind = "whitelist"
+severity = "reversible"
+
+[[signatures]]
+sig = "w:*:*"
+kind = "whitelist"
+severity = "reversible"
+
+[[signatures]]
+sig = "last:*:*"
+kind = "whitelist"
+severity = "reversible"
+reason = "login history"
+
+[[signatures]]
+sig = "lastlog:*:*"
+kind = "whitelist"
+severity = "reversible"
+
+[[signatures]]
+sig = "lscpu:*:*"
+kind = "whitelist"
+severity = "reversible"
+
+[[signatures]]
+sig = "lsmem:*:*"
+kind = "whitelist"
+severity = "reversible"
+
+[[signatures]]
+sig = "lsblk:*:*"
+kind = "whitelist"
+severity = "reversible"
+reason = "list block devices (read-only)"
+
+[[signatures]]
+sig = "lspci:*:*"
+kind = "whitelist"
+severity = "reversible"
+
+[[signatures]]
+sig = "lsusb:*:*"
+kind = "whitelist"
+severity = "reversible"
+
+[[signatures]]
+sig = "lsmod:*:*"
+kind = "whitelist"
+severity = "reversible"
+reason = "loaded kernel modules"
+
+[[signatures]]
+sig = "lsof:*:*"
+kind = "whitelist"
+severity = "reversible"
+reason = "list open files (read-only diagnostic)"
+
+[[signatures]]
+sig = "free:*:*"
+kind = "whitelist"
+severity = "reversible"
+reason = "memory usage"
+
+[[signatures]]
+sig = "df:*:*"
+kind = "whitelist"
+severity = "reversible"
+reason = "disk free"
+
+[[signatures]]
+sig = "du:*:*"
+kind = "whitelist"
+severity = "reversible"
+reason = "disk usage of paths"
+
+[[signatures]]
+sig = "vmstat:*:*"
+kind = "whitelist"
+severity = "reversible"
+
+[[signatures]]
+sig = "iostat:*:*"
+kind = "whitelist"
+severity = "reversible"
+
+[[signatures]]
+sig = "mpstat:*:*"
+kind = "whitelist"
+severity = "reversible"
+
+[[signatures]]
+sig = "dmesg:*:*"
+kind = "whitelist"
+severity = "reversible"
+reason = "kernel ring buffer (read-only when no -c)"
+
+[[signatures]]
+sig = "env:*:*"
+kind = "whitelist"
+severity = "reversible"
+reason = "list environment variables"
+
+[[signatures]]
+sig = "printenv:*:*"
+kind = "whitelist"
+severity = "reversible"
+
+
+# ── Process info ─────────────────────────────────────────────────────
+
+[[signatures]]
+sig = "ps:*:*"
+kind = "whitelist"
+severity = "reversible"
+
+[[signatures]]
+sig = "pgrep:*:*"
+kind = "whitelist"
+severity = "reversible"
+
+[[signatures]]
+sig = "pidof:*:*"
+kind = "whitelist"
+severity = "reversible"
+
+[[signatures]]
+sig = "top:*:*"
+kind = "whitelist"
+severity = "reversible"
+reason = "process list (interactive but read-only)"
+
+[[signatures]]
+sig = "htop:*:*"
+kind = "whitelist"
+severity = "reversible"
+
+[[signatures]]
+sig = "pstree:*:*"
+kind = "whitelist"
+severity = "reversible"
+
+
+# ── Network info ─────────────────────────────────────────────────────
+
+[[signatures]]
+sig = "ip:addr:*"
+kind = "whitelist"
+severity = "reversible"
+reason = "show interface addresses"
+
+[[signatures]]
+sig = "ip:link:*"
+kind = "whitelist"
+severity = "reversible"
+
+[[signatures]]
+sig = "ip:route:*"
+kind = "whitelist"
+severity = "reversible"
+
+[[signatures]]
+sig = "ss:*:*"
+kind = "whitelist"
+severity = "reversible"
+reason = "socket statistics"
+
+[[signatures]]
+sig = "netstat:*:*"
+kind = "whitelist"
+severity = "reversible"
+
+[[signatures]]
+sig = "ping:*:*"
+kind = "whitelist"
+severity = "reversible"
+
+[[signatures]]
+sig = "ping6:*:*"
+kind = "whitelist"
+severity = "reversible"
+
+[[signatures]]
+sig = "traceroute:*:*"
+kind = "whitelist"
+severity = "reversible"
+
+[[signatures]]
+sig = "tracepath:*:*"
+kind = "whitelist"
+severity = "reversible"
+
+[[signatures]]
+sig = "mtr:*:*"
+kind = "whitelist"
+severity = "reversible"
+
+[[signatures]]
+sig = "dig:*:*"
+kind = "whitelist"
+severity = "reversible"
+
+[[signatures]]
+sig = "host:*:*"
+kind = "whitelist"
+severity = "reversible"
+
+[[signatures]]
+sig = "nslookup:*:*"
+kind = "whitelist"
+severity = "reversible"
+
+[[signatures]]
+sig = "whois:*:*"
+kind = "whitelist"
+severity = "reversible"
+
+[[signatures]]
+sig = "arp:*:*"
+kind = "whitelist"
+severity = "reversible"
+
+[[signatures]]
+sig = "nmcli:*:*"
+kind = "graylist"
+severity = "reversible"
+reason = "NetworkManager CLI; some subcommands modify state, ask first"
+
+[[signatures]]
+sig = "iw:*:*"
+kind = "graylist"
+severity = "reversible"
+reason = "wireless info; some subcommands change state"
+
+
+# ── SystemD read-only ────────────────────────────────────────────────
+
+[[signatures]]
+sig = "systemctl:status:*"
+kind = "whitelist"
+severity = "reversible"
+
+[[signatures]]
+sig = "systemctl:list-units:*"
+kind = "whitelist"
+severity = "reversible"
+
+[[signatures]]
+sig = "systemctl:list-unit-files:*"
+kind = "whitelist"
+severity = "reversible"
+
+[[signatures]]
+sig = "systemctl:list-sockets:*"
+kind = "whitelist"
+severity = "reversible"
+
+[[signatures]]
+sig = "systemctl:list-timers:*"
+kind = "whitelist"
+severity = "reversible"
+
+[[signatures]]
+sig = "systemctl:is-active:*"
+kind = "whitelist"
+severity = "reversible"
+
+[[signatures]]
+sig = "systemctl:is-enabled:*"
+kind = "whitelist"
+severity = "reversible"
+
+[[signatures]]
+sig = "systemctl:is-failed:*"
+kind = "whitelist"
+severity = "reversible"
+
+[[signatures]]
+sig = "systemctl:show:*"
+kind = "whitelist"
+severity = "reversible"
+
+[[signatures]]
+sig = "systemctl:cat:*"
+kind = "whitelist"
+severity = "reversible"
+
+[[signatures]]
+sig = "journalctl:*:*"
+kind = "whitelist"
+severity = "reversible"
+reason = "journal queries (no --vacuum subcommands at this granularity)"
+
+[[signatures]]
+sig = "timedatectl:status:*"
+kind = "whitelist"
+severity = "reversible"
+
+[[signatures]]
+sig = "timedatectl:list-timezones:*"
+kind = "whitelist"
+severity = "reversible"
+
+[[signatures]]
+sig = "loginctl:list-sessions:*"
+kind = "whitelist"
+severity = "reversible"
+
+[[signatures]]
+sig = "loginctl:show-session:*"
+kind = "whitelist"
+severity = "reversible"
+
+
+# ── SystemD state-changing (graylist by default) ─────────────────────
+
+[[signatures]]
+sig = "systemctl:restart:*"
+kind = "graylist"
+severity = "reversible"
+reason = "restart unit; ask first time, then silent within TTL"
+
+[[signatures]]
+sig = "systemctl:reload:*"
+kind = "graylist"
+severity = "reversible"
+
+[[signatures]]
+sig = "systemctl:start:*"
+kind = "graylist"
+severity = "reversible"
+
+[[signatures]]
+sig = "systemctl:stop:*"
+kind = "graylist"
+severity = "reversible"
+
+[[signatures]]
+sig = "systemctl:enable:*"
+kind = "graylist"
+severity = "reversible"
+
+[[signatures]]
+sig = "systemctl:disable:*"
+kind = "graylist"
+severity = "reversible"
+
+[[signatures]]
+sig = "systemctl:daemon-reload:*"
+kind = "graylist"
+severity = "reversible"
+
+[[signatures]]
+sig = "timedatectl:set-timezone:*"
+kind = "graylist"
+severity = "reversible"
+reason = "change system timezone; ask first time"
+
+[[signatures]]
+sig = "timedatectl:set-ntp:*"
+kind = "graylist"
+severity = "reversible"
+
+
+# ── Package management (read-only) ───────────────────────────────────
+
+[[signatures]]
+sig = "apt:list:*"
+kind = "whitelist"
+severity = "reversible"
+
+[[signatures]]
+sig = "apt:show:*"
+kind = "whitelist"
+severity = "reversible"
+
+[[signatures]]
+sig = "apt:search:*"
+kind = "whitelist"
+severity = "reversible"
+
+[[signatures]]
+sig = "apt-cache:*:*"
+kind = "whitelist"
+severity = "reversible"
+
+[[signatures]]
+sig = "dpkg:l:*"
+kind = "whitelist"
+severity = "reversible"
+reason = "dpkg -l: list installed (the canonicalised form is `l`)"
+
+[[signatures]]
+sig = "dpkg:L:*"
+kind = "whitelist"
+severity = "reversible"
+reason = "dpkg -L: list files of package"
+
+[[signatures]]
+sig = "dpkg:S:*"
+kind = "whitelist"
+severity = "reversible"
+reason = "dpkg -S: search file ↔ package"
+
+[[signatures]]
+sig = "dpkg-query:*:*"
+kind = "whitelist"
+severity = "reversible"
+
+
+# ── Package management (state-changing, graylist) ────────────────────
+
+[[signatures]]
+sig = "apt:install:*"
+kind = "graylist"
+severity = "reversible"
+reason = "install package; ask first time"
+
+[[signatures]]
+sig = "apt:remove:*"
+kind = "graylist"
+severity = "reversible"
+
+[[signatures]]
+sig = "apt:purge:*"
+kind = "graylist"
+severity = "reversible"
+
+[[signatures]]
+sig = "apt:update:*"
+kind = "graylist"
+severity = "reversible"
+
+[[signatures]]
+sig = "apt:upgrade:*"
+kind = "graylist"
+severity = "reversible"
+
+[[signatures]]
+sig = "apt-get:install:*"
+kind = "graylist"
+severity = "reversible"
+
+[[signatures]]
+sig = "apt-get:remove:*"
+kind = "graylist"
+severity = "reversible"
+
+[[signatures]]
+sig = "apt-get:update:*"
+kind = "graylist"
+severity = "reversible"
+
+[[signatures]]
+sig = "apt-get:upgrade:*"
+kind = "graylist"
+severity = "reversible"
+
+
+# ── Git read-only ────────────────────────────────────────────────────
+
+[[signatures]]
+sig = "git:status:*"
+kind = "whitelist"
+severity = "reversible"
+
+[[signatures]]
+sig = "git:log:*"
+kind = "whitelist"
+severity = "reversible"
+
+[[signatures]]
+sig = "git:diff:*"
+kind = "whitelist"
+severity = "reversible"
+
+[[signatures]]
+sig = "git:show:*"
+kind = "whitelist"
+severity = "reversible"
+
+[[signatures]]
+sig = "git:branch:*"
+kind = "whitelist"
+severity = "reversible"
+
+[[signatures]]
+sig = "git:remote:*"
+kind = "whitelist"
+severity = "reversible"
+
+[[signatures]]
+sig = "git:tag:*"
+kind = "whitelist"
+severity = "reversible"
+
+[[signatures]]
+sig = "git:blame:*"
+kind = "whitelist"
+severity = "reversible"
+
+[[signatures]]
+sig = "git:ls-files:*"
+kind = "whitelist"
+severity = "reversible"
+
+
+# ── Git state-changing (graylist) ────────────────────────────────────
+
+[[signatures]]
+sig = "git:checkout:*"
+kind = "graylist"
+severity = "reversible"
+
+[[signatures]]
+sig = "git:pull:*"
+kind = "graylist"
+severity = "reversible"
+
+[[signatures]]
+sig = "git:fetch:*"
+kind = "graylist"
+severity = "reversible"
+
+[[signatures]]
+sig = "git:commit:*"
+kind = "graylist"
+severity = "reversible"
+
+
+# ── Time/date ────────────────────────────────────────────────────────
+
+[[signatures]]
+sig = "date:*:*"
+kind = "whitelist"
+severity = "reversible"
+
+[[signatures]]
+sig = "cal:*:*"
+kind = "whitelist"
+severity = "reversible"
+
+[[signatures]]
+sig = "ncal:*:*"
+kind = "whitelist"
+severity = "reversible"
+
+
+# ── Compress (read-only inspection) ──────────────────────────────────
+
+[[signatures]]
+sig = "gunzip:l:*"
+kind = "whitelist"
+severity = "reversible"
+reason = "gunzip -l: list contents"
+
+[[signatures]]
+sig = "zcat:*:*"
+kind = "whitelist"
+severity = "reversible"
+
+[[signatures]]
+sig = "bzcat:*:*"
+kind = "whitelist"
+severity = "reversible"
+
+[[signatures]]
+sig = "xzcat:*:*"
+kind = "whitelist"
+severity = "reversible"
+
+[[signatures]]
+sig = "tar:t:*"
+kind = "whitelist"
+severity = "reversible"
+reason = "tar -t: list contents"
+
+[[signatures]]
+sig = "unzip:l:*"
+kind = "whitelist"
+severity = "reversible"
+reason = "unzip -l: list contents"
+
+
+# ── Find / locate (read-only) ────────────────────────────────────────
+
+[[signatures]]
+sig = "find:*:fs:user"
+kind = "whitelist"
+severity = "reversible"
+reason = "find within user space (no -delete: caught at canonicalisation)"
+
+[[signatures]]
+sig = "find:*:fs:tmp"
+kind = "whitelist"
+severity = "reversible"
+
+[[signatures]]
+sig = "locate:*:*"
+kind = "whitelist"
+severity = "reversible"
+
+[[signatures]]
+sig = "which:*:*"
+kind = "whitelist"
+severity = "reversible"
+
+[[signatures]]
+sig = "whereis:*:*"
+kind = "whitelist"
+severity = "reversible"
+
+[[signatures]]
+sig = "type:*:*"
+kind = "whitelist"
+severity = "reversible"
+
+
+# ── Text processing (read-only) ──────────────────────────────────────
+
+[[signatures]]
+sig = "grep:*:*"
+kind = "whitelist"
+severity = "reversible"
+
+[[signatures]]
+sig = "egrep:*:*"
+kind = "whitelist"
+severity = "reversible"
+
+[[signatures]]
+sig = "fgrep:*:*"
+kind = "whitelist"
+severity = "reversible"
+
+[[signatures]]
+sig = "rg:*:*"
+kind = "whitelist"
+severity = "reversible"
+reason = "ripgrep"
+
+[[signatures]]
+sig = "sort:*:*"
+kind = "whitelist"
+severity = "reversible"
+
+[[signatures]]
+sig = "uniq:*:*"
+kind = "whitelist"
+severity = "reversible"
+
+[[signatures]]
+sig = "cut:*:*"
+kind = "whitelist"
+severity = "reversible"
+
+[[signatures]]
+sig = "tr:*:*"
+kind = "whitelist"
+severity = "reversible"
+
+[[signatures]]
+sig = "awk:*:*"
+kind = "graylist"
+severity = "reversible"
+reason = "awk can write files; ask first"
+
+[[signatures]]
+sig = "sed:*:*"
+kind = "graylist"
+severity = "reversible"
+reason = "sed -i modifies; ask first"
+
+[[signatures]]
+sig = "tee:*:*"
+kind = "graylist"
+severity = "reversible"
+reason = "tee writes; ask first"
+
+
+# ── HTTP read-only ───────────────────────────────────────────────────
+
+[[signatures]]
+sig = "curl:I:url"
+kind = "whitelist"
+severity = "reversible"
+reason = "curl -I: HEAD only"
+
+
+# ─────────────────────────────────────────────────────────────────────
+#  BLACKLIST — known dangerous commands
+# ─────────────────────────────────────────────────────────────────────
+
+# ── Filesystem destruction ───────────────────────────────────────────
+
+[[signatures]]
+sig = "rm:fr:fs:root"
+kind = "blacklist"
+severity = "forbidden"
+reason = "Law 1: rm -rf / would erase the system"
+
+[[signatures]]
+sig = "rm:fr:fs:system"
+kind = "blacklist"
+severity = "forbidden"
+reason = "Law 1: rm -rf on /etc /var /usr is irrecoverable"
+
+[[signatures]]
+sig = "rm:fr:*"
+kind = "graylist"
+severity = "irreversible"
+reason = "rm -rf on unknown target: ask first"
+
+[[signatures]]
+sig = "rm:rf:fs:root"
+kind = "blacklist"
+severity = "forbidden"
+reason = "alias of rm:fr:fs:root for canonicalised form ordering"
+
+[[signatures]]
+sig = "rm:rf:fs:system"
+kind = "blacklist"
+severity = "forbidden"
+
+[[signatures]]
+sig = "rm:f:fs:root"
+kind = "blacklist"
+severity = "forbidden"
+
+[[signatures]]
+sig = "find:*:fs:root"
+kind = "blacklist"
+severity = "forbidden"
+reason = "find at root with delete/exec is too broad"
+
+[[signatures]]
+sig = "find:*:fs:system"
+kind = "graylist"
+severity = "irreversible"
+reason = "find on system paths: ask if -delete or -exec rm involved"
+
+
+# ── Block-device level destruction ───────────────────────────────────
+
+[[signatures]]
+sig = "mkfs:*:*"
+kind = "blacklist"
+severity = "forbidden"
+reason = "Law 1: format wipes a filesystem"
+
+[[signatures]]
+sig = "mkfs.ext4:*:*"
+kind = "blacklist"
+severity = "forbidden"
+
+[[signatures]]
+sig = "mkfs.ext3:*:*"
+kind = "blacklist"
+severity = "forbidden"
+
+[[signatures]]
+sig = "mkfs.xfs:*:*"
+kind = "blacklist"
+severity = "forbidden"
+
+[[signatures]]
+sig = "mkfs.btrfs:*:*"
+kind = "blacklist"
+severity = "forbidden"
+
+[[signatures]]
+sig = "mkfs.fat:*:*"
+kind = "blacklist"
+severity = "forbidden"
+
+[[signatures]]
+sig = "mkfs.vfat:*:*"
+kind = "blacklist"
+severity = "forbidden"
+
+[[signatures]]
+sig = "dd:*:block_device"
+kind = "blacklist"
+severity = "forbidden"
+reason = "Law 1: dd to a block device wipes it"
+
+[[signatures]]
+sig = "wipefs:*:block_device"
+kind = "blacklist"
+severity = "forbidden"
+
+[[signatures]]
+sig = "shred:*:block_device"
+kind = "blacklist"
+severity = "forbidden"
+
+[[signatures]]
+sig = "shred:*:fs:system"
+kind = "blacklist"
+severity = "forbidden"
+
+[[signatures]]
+sig = "fdisk:*:block_device"
+kind = "blacklist"
+severity = "dangerous"
+reason = "interactive fdisk can repartition; require explicit allow"
+
+[[signatures]]
+sig = "parted:*:block_device"
+kind = "blacklist"
+severity = "dangerous"
+
+[[signatures]]
+sig = "sgdisk:*:block_device"
+kind = "blacklist"
+severity = "dangerous"
+
+
+# ── Permissions root-wide ────────────────────────────────────────────
+
+[[signatures]]
+sig = "chmod:R:fs:root"
+kind = "blacklist"
+severity = "forbidden"
+reason = "chmod -R on / is unrecoverable"
+
+[[signatures]]
+sig = "chmod:R:fs:system"
+kind = "blacklist"
+severity = "forbidden"
+
+[[signatures]]
+sig = "chown:R:fs:root"
+kind = "blacklist"
+severity = "forbidden"
+
+[[signatures]]
+sig = "chown:R:fs:system"
+kind = "blacklist"
+severity = "forbidden"
+
+[[signatures]]
+sig = "chattr:i:fs:system"
+kind = "graylist"
+severity = "dangerous"
+reason = "immutable bit on system files: ask first"
+
+
+# ── Power / boot ─────────────────────────────────────────────────────
+
+[[signatures]]
+sig = "halt:*:*"
+kind = "blacklist"
+severity = "dangerous"
+reason = "halts the host without warning the user via the chain"
+
+[[signatures]]
+sig = "poweroff:*:*"
+kind = "blacklist"
+severity = "dangerous"
+
+[[signatures]]
+sig = "reboot:*:*"
+kind = "blacklist"
+severity = "dangerous"
+reason = "reboot disrupts user session; require explicit derogation"
+
+[[signatures]]
+sig = "init:0:*"
+kind = "blacklist"
+severity = "dangerous"
+
+[[signatures]]
+sig = "init:6:*"
+kind = "blacklist"
+severity = "dangerous"
+
+[[signatures]]
+sig = "shutdown:*:*"
+kind = "blacklist"
+severity = "dangerous"
+
+
+# ── Network self-lockout ─────────────────────────────────────────────
+
+[[signatures]]
+sig = "iptables:F:*"
+kind = "blacklist"
+severity = "dangerous"
+reason = "flushing iptables can lock out remote access"
+
+[[signatures]]
+sig = "iptables:P:*"
+kind = "blacklist"
+severity = "dangerous"
+reason = "iptables -P INPUT DROP can lock out remote access"
+
+[[signatures]]
+sig = "ufw:disable:*"
+kind = "graylist"
+severity = "dangerous"
+
+[[signatures]]
+sig = "ufw:reset:*"
+kind = "blacklist"
+severity = "dangerous"
+
+
+# ── Misc dangerous ───────────────────────────────────────────────────
+
+[[signatures]]
+sig = "mv:*:fs:root"
+kind = "blacklist"
+severity = "forbidden"
+reason = "moving / would destroy the system"
+
+[[signatures]]
+sig = "mv:*:fs:system"
+kind = "graylist"
+severity = "dangerous"
+reason = "moving system paths: ask first"
+
+[[signatures]]
+sig = "umount:*:fs:root"
+kind = "blacklist"
+severity = "forbidden"
+reason = "unmounting root would freeze the system"
+
+
+# ── Remote share mount (CIFS/SMB/NFS) — ADR 0087, 4/5/2026 ──────────
+#
+# Pattern: l'utente chiede da chat «monta lo share \\host\Public\Images»;
+# il pianificatore traduce in `mount -t cifs //host/Public/Images <dst>
+# -o credentials=$TEMPCREDS,uid=1000`. Il pre-step in `cifs_helper` crea
+# un file 0600 a vita brevissima con username/password/domain cifrati
+# (riusa `runtime/credentials.py`, ADR 0082) e lo distrugge dopo l'exec.
+#
+# Una tantum: la prima volta vaglio, poi promotion a whitelist via uses≥5
+# (regola standard di mnestoma curation, ADR 0070).
+
+[[signatures]]
+sig = "mount:cifs:fs-mount-cifs"
+kind = "graylist"
+severity = "reversible"
+reason = "mount CIFS/SMB share. Una tantum, dopo conferma promote a whitelist personale via standing concession (ADR 0071)."
+
+[[signatures]]
+sig = "mount:smb3:fs-mount-cifs"
+kind = "graylist"
+severity = "reversible"
+reason = "mount SMB3 share (alias di cifs su kernel >=5.x)"
+
+[[signatures]]
+sig = "mount:smbfs:fs-mount-cifs"
+kind = "graylist"
+severity = "reversible"
+reason = "mount SMBFS share (alias storico)"
+
+[[signatures]]
+sig = "mount:nfs:fs-mount-nfs"
+kind = "graylist"
+severity = "reversible"
+reason = "mount NFS share. Una tantum, poi promotion analoga a CIFS."
+
+[[signatures]]
+sig = "mount:nfs4:fs-mount-nfs"
+kind = "graylist"
+severity = "reversible"
+reason = "mount NFSv4 share"
+
+[[signatures]]
+sig = "umount:*:fs-mount-cifs"
+kind = "graylist"
+severity = "reversible"
+reason = "smonta share CIFS precedentemente montato. Reverse pattern di mount.cifs."
+
+[[signatures]]
+sig = "umount:*:fs-mount-nfs"
+kind = "graylist"
+severity = "reversible"
+reason = "smonta share NFS precedentemente montato. Reverse pattern di mount.nfs."
+
+[[signatures]]
+sig = "umount:*:fs:user"
+kind = "graylist"
+severity = "reversible"
+reason = "smonta un mountpoint nell'area utente (es. ~/nas-images, /mnt/foo via bind utente)"
+
+[[signatures]]
+sig = "sysctl:w:*"
+kind = "graylist"
+severity = "dangerous"
+reason = "kernel parameter writes need approval"
+
+[[signatures]]
+sig = "modprobe:r:*"
+kind = "graylist"
+severity = "dangerous"
+reason = "module removal can break the running system"
+
+[[signatures]]
+sig = "passwd:*:*"
+kind = "blacklist"
+severity = "dangerous"
+reason = "password change must go through interactive UX, not the chain"
+
+
+# ─────────────────────────────────────────────────────────────────────
+#  v3 (22/5/2026): long-tail sysinfo come fallback per get_processes
+#  Read-only, no side effect, comandi che get_processes non copre.
+# ─────────────────────────────────────────────────────────────────────
+
+# ── Hardware monitoring (oltre lsblk/lscpu/lsusb/lspci gia' presenti) ─
+
+[[signatures]]
+sig = "sensors:*:*"
+kind = "whitelist"
+severity = "reversible"
+reason = "lm-sensors: temperature, voltaggi, ventole. Read-only hardware monitoring."
+
+[[signatures]]
+sig = "nvidia-smi:*:*"
+kind = "whitelist"
+severity = "reversible"
+reason = "NVIDIA GPU info (utilizzo, memoria, processi, temp). Senza --gpu-reset/-r e' read-only."
+
+[[signatures]]
+sig = "rocm-smi:*:*"
+kind = "whitelist"
+severity = "reversible"
+reason = "AMD GPU info (Strix Halo). Default mode e' read-only; -d/--device per filtri ok."
+
+[[signatures]]
+sig = "nproc:*:*"
+kind = "whitelist"
+severity = "reversible"
+reason = "numero CPU disponibili. Read-only."
+
+[[signatures]]
+sig = "dmidecode:*:*"
+kind = "whitelist"
+severity = "reversible"
+reason = "info hardware da SMBIOS (mobo, BIOS, RAM slot). Read-only."
+
+[[signatures]]
+sig = "lshw:*:*"
+kind = "whitelist"
+severity = "reversible"
+reason = "elenco hardware unificato (PCI/USB/SCSI/CPU/RAM). Read-only."
+
+# ── Filesystem extended (oltre lsblk/df/du/ls gia' presenti) ─────────
+
+[[signatures]]
+sig = "findmnt:*:*"
+kind = "whitelist"
+severity = "reversible"
+reason = "elenco mountpoint con dettagli (FS, opzioni, source). Read-only."
+
+[[signatures]]
+sig = "swapon:*:*"
+kind = "whitelist"
+severity = "reversible"
+reason = "default mode e' --show (read). --activate/--all richiedono root + scrittura; quelle vanno via graylist."
+
+[[signatures]]
+sig = "losetup:*:*"
+kind = "whitelist"
+severity = "reversible"
+reason = "default mode = list loop devices (read-only). Setup/detach sono graylist."
+
+[[signatures]]
+sig = "blkid:*:*"
+kind = "whitelist"
+severity = "reversible"
+reason = "elenco UUID/LABEL/TYPE dei block device. Read-only."
+
+# ── Process / per-process stats ──────────────────────────────────────
+
+[[signatures]]
+sig = "pidstat:*:*"
+kind = "whitelist"
+severity = "reversible"
+reason = "statistiche per-process da /proc. Read-only (parte di sysstat)."
+
+[[signatures]]
+sig = "sar:*:*"
+kind = "whitelist"
+severity = "reversible"
+reason = "system activity reporter, legge log gia' raccolti. Read-only."
+
+# ── Network monitoring (oltre ss/ip:addr|link|route/arp/netstat) ─────
+
+[[signatures]]
+sig = "ip:neigh:*"
+kind = "whitelist"
+severity = "reversible"
+reason = "ARP/NDP neighbour table via ip (replacement di arp -a). Read-only."
+
+[[signatures]]
+sig = "ip:rule:*"
+kind = "whitelist"
+severity = "reversible"
+reason = "policy routing rules (read mode di default). Replace/add/delete sono graylist."
+
+[[signatures]]
+sig = "nstat:*:*"
+kind = "whitelist"
+severity = "reversible"
+reason = "kernel network statistics (/proc/net/netstat). Read-only."
+
+[[signatures]]
+sig = "iptables:L:*"
+kind = "whitelist"
+severity = "reversible"
+reason = "list iptables rules (-L). Read-only."
+
+[[signatures]]
+sig = "iptables:S:*"
+kind = "whitelist"
+severity = "reversible"
+reason = "list iptables rules in save format (-S). Read-only."
+
+[[signatures]]
+sig = "ip6tables:L:*"
+kind = "whitelist"
+severity = "reversible"
+reason = "list ip6tables rules. Read-only."
+
+[[signatures]]
+sig = "nft:list:*"
+kind = "whitelist"
+severity = "reversible"
+reason = "nftables list ruleset/tables/chains. Subcommand list e' read-only."
+
+# ── NUMA / scheduling ────────────────────────────────────────────────
+
+[[signatures]]
+sig = "numastat:*:*"
+kind = "whitelist"
+severity = "reversible"
+reason = "NUMA memory allocation stats. Read-only."
+
+[[signatures]]
+sig = "numactl:--show:*"
+kind = "whitelist"
+severity = "reversible"
+reason = "NUMA policy corrente. --show e' read-only (vs --bind che esegue)."
+
+# ── DNS / NSS ────────────────────────────────────────────────────────
+
+[[signatures]]
+sig = "getent:*:*"
+kind = "whitelist"
+severity = "reversible"
+reason = "NSS database lookup (hosts/passwd/group/services/...). Read-only."
+
+[[signatures]]
+sig = "resolvectl:status:*"
+kind = "whitelist"
+severity = "reversible"
+reason = "systemd-resolved status (DNS server, suffissi, cache stats). Read-only."
+
+[[signatures]]
+sig = "resolvectl:query:*"
+kind = "whitelist"
+severity = "reversible"
+reason = "DNS query via systemd-resolved. Read-only."
+
+# ── System config / kernel parameters (read mode) ────────────────────
+
+[[signatures]]
+sig = "getconf:*:*"
+kind = "whitelist"
+severity = "reversible"
+reason = "POSIX system configuration values. Read-only."
+
+[[signatures]]
+sig = "sysctl:a:*"
+kind = "whitelist"
+severity = "reversible"
+reason = "sysctl -a / -n (read-only). Le scritture (-w) sono gia' graylist."
+
+[[signatures]]
+sig = "sysctl:n:*"
+kind = "whitelist"
+severity = "reversible"
+reason = "sysctl -n (single value read). Read-only."
+
+# ── Logs / journals extended ─────────────────────────────────────────
+
+[[signatures]]
+sig = "dmesg:H:*"
+kind = "whitelist"
+severity = "reversible"
+reason = "dmesg --human (read-only). Gia' dmesg:*:* lo copre ma esplicito per clarity."
+
+# ── Users / sessions ─────────────────────────────────────────────────
+
+[[signatures]]
+sig = "users:*:*"
+kind = "whitelist"
+severity = "reversible"
+reason = "elenco utenti loggati (compact). Read-only."
+
+[[signatures]]
+sig = "finger:*:*"
+kind = "whitelist"
+severity = "reversible"
+reason = "info utente (gecos, ultimo login, ecc.). Read-only."
+
+# ── Date / locale / encoding ─────────────────────────────────────────
+
+[[signatures]]
+sig = "locale:*:*"
+kind = "whitelist"
+severity = "reversible"
+reason = "elenco locale correnti / configurazione i18n. Read-only."
+
+# ── Network discovery (NO scan, solo read locale) ────────────────────
+
+[[signatures]]
+sig = "iw:dev:*"
+kind = "whitelist"
+severity = "reversible"
+reason = "iw dev (info WiFi dev locale). Read-only."
+
+[[signatures]]
+sig = "iwconfig:*:*"
+kind = "whitelist"
+severity = "reversible"
+reason = "WiFi interface info (legacy, read-only)."
+
+# ── Storage / FS metadata ────────────────────────────────────────────
+
+[[signatures]]
+sig = "tune2fs:l:*"
+kind = "whitelist"
+severity = "reversible"
+reason = "tune2fs -l (list filesystem features). Read-only."
+
+[[signatures]]
+sig = "btrfs:filesystem:*"
+kind = "whitelist"
+severity = "reversible"
+reason = "btrfs filesystem show/df/usage. Read-only (vs btrfs balance/scrub start che sono operazioni)."
+
+# ── ZFS (se installato, read-only) ───────────────────────────────────
+
+[[signatures]]
+sig = "zpool:status:*"
+kind = "whitelist"
+severity = "reversible"
+reason = "ZFS pool status. Read-only."
+
+[[signatures]]
+sig = "zpool:list:*"
+kind = "whitelist"
+severity = "reversible"
+reason = "ZFS pool list. Read-only."
+
+[[signatures]]
+sig = "zfs:list:*"
+kind = "whitelist"
+severity = "reversible"
+reason = "ZFS dataset list. Read-only."
+
+[[signatures]]
+sig = "zfs:get:*"
+kind = "whitelist"
+severity = "reversible"
+reason = "ZFS property get. Read-only."

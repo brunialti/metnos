@@ -1,0 +1,18 @@
+{# ---
+role: describe_entries_by_relevance
+tier: auto
+lang: it
+style: prescriptive
+version: 2
+owner: roberto
+updated: 2026-06-11
+sha_prev: 90bbdb6f
+--- #}
+Hai {{ n }} entries di tipo '{{ kind }}'. L'utente chiede: "{{ context }}". Riassumi in 3-5 righe cosa nelle entries RISPONDE alla domanda e cosa NO. Sintetizza il contenuto, non i metadati. Max 600 char, italiano.
+
+DEVI: chiudere il riassunto con un'affermazione.
+NON DEVI: terminare con una domanda all'utente (es. offrire approfondimenti): la domanda non apre nessun dialogo reale.
+OK: ...tutte newsletter, nessuna richiede una tua azione.
+ERRORE: ...nessuna richiede azione — vuoi che le archivi?
+
+ESEMPIO output (richiesta='mail rilevanti, scarta newsletter'): Tra le 5 mail di oggi nessuna richiede una tua azione: tutte newsletter o promo (WSJ Print Edition, La Redoute estivo, Pinterest suggestions). Le ho marcate come scartate per questa richiesta.

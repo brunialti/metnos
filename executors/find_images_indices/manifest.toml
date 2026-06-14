@@ -1,0 +1,203 @@
+# Manifest dell'executor `find_images_indices` — Metnos (ADR 0117 v4 unified).
+# Rinominato semanticamente: indice unificato (un solo asse, no piu' idx=).
+# `find_persons_indices` resta come thin alias (vedi suo manifest).
+
+manifest_format = "1.0"
+
+name        = "find_images_indices"
+version     = "0.2.0"
+author      = "Roberto Brunialti"
+affinity    = ["cerca", "find", "search", "ricerca-foto", "ricerca-volti",
+                "ricerca-semantica", "foto", "image", "volti", "faces",
+                "persons", "geotag", "near", "vicino", "primo-piano",
+                "ritratto", "simili", "similar", "uguale", "alike",
+                "stesso-soggetto", "same-subject", "come-questa",
+                "like-this"]
+
+# Query pure (indice gia' presente) ~1 s.
+timeout_s = 14400
+
+[description]
+it = """SCOPO: cerca foto indicizzate per contenuto, persona o volto. PATTERN: find_images_indices(query_text="mare"); name="bob"; min_face_pixels=40000 (viso in primo piano). NON: EXIF di path noti (-> get_files). OUT: entries=[{path,score}] + metadata{total_count,total_size_gb}."""
+en = """SCOPO: search indexed photos by content, person or face. PATTERN: find_images_indices(query_text="sea"); name="bob"; min_face_pixels=40000 (face close-up). NON: EXIF of known paths (-> get_files). OUT: entries=[{path,score}] + metadata{total_count,total_size_gb}."""
+
+[code]
+files  = ["find_images_indices.py"]
+digest = "sha256:8ae354ea0ef0faf96f37e95ac0acb8487fd23ffb94aae6974b55485277ce8a15"
+
+[args]
+type     = "object"
+required = []
+# Almeno UN criterio di ricerca (§7.3, convenzione requires_one_of): senza, lo
+# step e' incompleto → l'executor da' "missing search criterion" e il
+# compound-decomposer DEFERISCE al planner (gate _step_schema_coherent). Allinea
+# la validazione interna find_images_indices.py:1217-1230 allo schema.
+requires_one_of = [["query_text", "name", "names", "reference_images", "near_lat", "paths_filter", "min_face_pixels", "min_face_count", "max_face_count"]]
+
+[args.properties.base_path]
+type        = "string"
+
+[args.properties.base_path.description]
+it = "Directory radice della collezione. OPZIONALE: (a) PATH ASSOLUTO/relativo = uso diretto; (b) STRINGA SIMBOLICA = match in ~/.local/share/metnos/; (c) OMESSO = discovery + multi-dir merge."
+en = "Root directory of the collection. OPTIONAL: (a) ABSOLUTE/relative PATH = direct use; (b) SYMBOLIC STRING = match in ~/.local/share/metnos/; (c) OMITTED = discovery + multi-dir merge."
+
+[args.properties.match_all]
+type        = "boolean"
+
+[args.properties.match_all.description]
+it = "Se true, enumera TUTTE le foto indicizzate del corpus, senza criterio di ricerca. USO CORRETTO: \"quante foto in totale\" (final \"${stepN.@count} foto\"); \"quanti GB occupano le foto\" (final \"${stepN.metadata.total_size_gb} GB\"). Conteggio in metadata.total_count, spazio in metadata.total_size_gb / total_size_bytes. NON combinare con query_text/name/gps: match_all vince e azzera gli altri criteri. Default false."
+en = "If true, enumerate ALL indexed photos in the corpus, with no search criterion. CORRECT USE: \"how many photos in total\" (final \"${stepN.@count} photos\"); \"how many GB do photos take\" (final \"${stepN.metadata.total_size_gb} GB\"). Count in metadata.total_count, size in metadata.total_size_gb / total_size_bytes. Do NOT combine with query_text/name/gps: match_all wins and clears the other criteria. Default false."
+
+[args.properties.query_text]
+type        = "string"
+
+[args.properties.query_text.description]
+it = "Query testuale per ricerca semantica del CONTENUTO. La VLM ha descritto ogni foto al build time (description + keywords); il match e' cosine su embedding_text + BM25 su description+keywords. Es. 'compleanno', 'mare al tramonto', 'bambini che corrono'."
+en = "Textual query for semantic CONTENT search. The VLM has described each photo at build time (description + keywords); match is cosine on embedding_text + BM25 on description+keywords. E.g. 'birthday', 'sea at sunset', 'kids running'."
+
+[args.properties.name]
+type        = "string"
+
+[args.properties.name.description]
+it = "Nome della persona registrata via `set_persons` (es. 'bob', 'carol'). Filtro IDENTITA': cosine ArcFace. UN solo nome. Per AND multi-persona usa `names` plurale (es. names=['alice','carol'] → foto con ENTRAMBI). Combinabile con tutti gli altri args."
+en = "Name of the person registered via `set_persons` (e.g., 'bob', 'carol'). IDENTITY filter: ArcFace cosine. ONE name only. For AND multi-person use `names` plural (e.g. names=['alice','carol'] → photos with BOTH). Combinable with all other args."
+
+[args.properties.names]
+type        = "array"
+items       = { type = "string" }
+
+[args.properties.names.description]
+it = "Lista di nomi enrollati con semantica AND: ogni foto deve contenere TUTTI i nomi (face match per ognuno). Es. names=['alice','carol'] tiene solo foto con ENTRAMBI. Plurale §2.1. MATCH ESATTO sui slug enrollati: wildcard NON supportati. Tolleranza §2.4: `name=\"alice, carol\"` con virgola viene auto-promosso a names plurale."
+en = "List of enrolled names with AND semantics: each photo must contain ALL the names (face match for each). E.g. names=['alice','carol'] keeps only photos with BOTH. Plural §2.1. EXACT MATCH on enrolled slugs: wildcards NOT supported. Tolerance §2.4: `name=\"alice, carol\"` with comma auto-promoted to names plural."
+
+[args.properties.text_score_min]
+type        = "number"
+
+[args.properties.text_score_min.description]
+it = "Soglia minima sul contributo testuale (cosine BGE-M3 + BM25) quando query_text presente. Default 0.40. Alza per ricerche stretto-keyword (es. 0.55), abbassa per ricerche semantiche larghe."
+en = "Minimum threshold on textual contribution (BGE-M3 cosine + BM25) when query_text present. Default 0.40. Raise for keyword-strict searches (e.g. 0.55), lower for broad semantic searches."
+
+[args.properties.reference_images]
+type        = "array"
+items       = { type = "string" }
+
+[args.properties.reference_images.description]
+it = "Lista di path foto di riferimento. Estrae le facce dalle reference (RetinaFace) e match cosine ArcFace contro l'indice. Alternativa a `name` quando la persona NON e' registrata."
+en = "List of reference photo paths. Extracts faces from references (RetinaFace) and matches ArcFace cosine against the index. Alternative to `name` when the person is NOT registered."
+
+[args.properties.min_face_pixels]
+type        = "integer"
+minimum     = 0
+
+[args.properties.min_face_pixels.description]
+it = "Filtro composizione: area minima (w*h px) di ALMENO un volto rilevato. Default no filtro. Esempi: 10000 (mezzo busto), 40000 (primo piano ≈200x200), 80000 (primo piano stretto). Se azzera i candidati, error_class='no_faces_above_size_threshold'."
+en = "Composition filter: minimum area (w*h px) of AT LEAST one detected face. Default no filter. Examples: 10000 (half-bust), 40000 (close-up ~200x200), 80000 (tight close-up). If empties candidates, error_class='no_faces_above_size_threshold'."
+
+[args.properties.min_face_count]
+type        = "integer"
+minimum     = 0
+
+[args.properties.min_face_count.description]
+it = "Numero minimo di facce nella stessa foto. USO: `min_face_count=2` per ritratti di gruppo."
+en = "Minimum number of faces in the same photo. USE: `min_face_count=2` for group portraits."
+
+[args.properties.max_face_count]
+type        = "integer"
+minimum     = 0
+
+[args.properties.max_face_count.description]
+it = "Numero massimo di facce nella stessa foto. USO: `max_face_count=1` per ritratti singoli."
+en = "Maximum number of faces in the same photo. USE: `max_face_count=1` for single portraits."
+
+[args.properties.near_lat]
+type        = "number"
+
+[args.properties.near_lat.description]
+it = "Latitudine target (decimal degrees). Combinabile con `near_lon` + `radius_km`."
+en = "Target latitude (decimal degrees). Combinable with `near_lon` + `radius_km`."
+
+[args.properties.near_lon]
+type        = "number"
+
+[args.properties.near_lon.description]
+it = "Longitudine target (decimal degrees)."
+en = "Target longitude (decimal degrees)."
+
+[args.properties.radius_km]
+type        = "number"
+default     = 5.0
+
+[args.properties.radius_km.description]
+it = "Raggio in km per filtro GPS. Default 5."
+en = "Radius in km for GPS filter. Default 5."
+
+[args.properties.time_window]
+type        = "string"
+default     = "all"
+
+[args.properties.time_window.description]
+it = "Filtro temporale (preferenza EXIF taken_at_iso, fallback mtime). Pattern: 'all' (default), 'today'/'yesterday', 'last-Nd/Nw/Nm/Ny', 'YYYY' (anno), 'YYYY-MM' (mese). Pattern invalidi → no-op."
+en = "Time filter (preference EXIF taken_at_iso, fallback mtime). Patterns: 'all' (default), 'today'/'yesterday', 'last-Nd/Nw/Nm/Ny', 'YYYY' (year), 'YYYY-MM' (month). Invalid patterns → no-op."
+
+[args.properties.top_k]
+type        = "integer"
+minimum     = 1
+default     = 100
+
+[args.properties.top_k.description]
+it = "Budget INTERNO risultati (default 100, max 200). NON impostare di tua iniziativa. Per un conteggio richiesto dall'utente usa `max_results` (che prevale sul ranking)."
+en = "INTERNAL result budget (default 100, max 200). Do NOT set on your own. For a user-requested count use `max_results` (which prevails over ranking)."
+
+[args.properties.max_results]
+type        = "integer"
+minimum     = 1
+
+[args.properties.max_results.description]
+it = "Conteggio ESPLICITO richiesto dall'utente. PATTERN: \"cerca 100 foto di X\" -> max_results=100. Quando impostato PREVALE sul taglio di rilevanza: ritorna i top-N per punteggio (anche match piu' deboli, oltre la soglia statistica). NON: impostarlo se l'utente non da' un numero esplicito (-> ometti, il taglio adattivo decide). Emette `truncated_intentional`/`cap_field='max_results'`."
+en = "EXPLICIT count requested by the user. PATTERN: \"find 100 photos of X\" -> max_results=100. When set it PREVAILS over the relevance cut: returns the top-N by score (even weaker matches, beyond the statistical threshold). NON: do not set it unless the user gives an explicit number (-> omit, the adaptive cut decides). Emits `truncated_intentional`/`cap_field='max_results'`."
+
+[args.properties.paths_filter]
+type        = "array"
+items       = { type = "string" }
+
+[args.properties.paths_filter.description]
+it = "Lista path assoluti. Restringe lo scan al sottoinsieme PRIMA dei filtri/ranking. NON usare come ponte fra 2 call (post-ADR0117 gli args si combinano)."
+en = "List of absolute paths. Restricts scan to subset BEFORE filters/ranking. Do NOT use as bridge between 2 calls (post-ADR0117 args combine)."
+
+[args.properties.similarity_threshold]
+type        = "number"
+default     = 0.0
+
+[args.properties.similarity_threshold.description]
+it = "Soglia minima score composito. Default 0 (tieni tutto, ordina)."
+en = "Minimum composite score threshold. Default 0 (keep all, sort)."
+
+[args.properties.idx]
+type        = "string"
+
+[args.properties.idx.description]
+it = "DEPRECATED post-ADR0117. Ignorato con warn log. NON USARE."
+en = "DEPRECATED post-ADR0117. Ignored with warn log. DO NOT USE."
+
+[[capabilities]]
+name = "fs:read"
+hint = ["~/**", "/mnt/**", "/tmp/**"]
+
+[[capabilities]]
+name = "index.read"
+hint = ["~/.local/share/metnos/index/image/**"]
+
+[[tests]]
+name   = "criterio_mancante_fallisce"
+input  = { base_path = "/tmp/metnos_test_unified" }
+expect = { ok = false, error_contains = "criterion" }
+
+[[tests]]
+name   = "base_path_inesistente_fallisce"
+input  = { base_path = "/tmp/metnos_does_not_exist_xyz_unified", query_text = "mare" }
+expect = { ok = false, error_contains = "non trovato" }
+
+[[tests]]
+name   = "idx_arg_ignored_no_crash"
+input  = { base_path = "/tmp/metnos_does_not_exist_xyz_unified", idx = "scene", query_text = "mare" }
+expect = { ok = false }

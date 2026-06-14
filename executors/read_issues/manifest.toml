@@ -1,0 +1,62 @@
+# Manifest dell'executor `read_issues` — Metnos v1.1
+manifest_format = "1.0"
+
+name        = "read_issues"
+version     = "0.1.0"
+author      = "Roberto Brunialti"
+affinity    = ["issue", "issues", "trattamento", "stato", "status", "db issue", "leggi issue locali", "issue da postare", "approvate", "prepared", "approved", "maintenance"]
+revertible  = true
+lifecycle   = "active"
+
+[description]
+it = "SCOPO: legge dal db LOCALE i record di trattamento delle issue (per stato/numero), non da GitHub. PATTERN: read_issues(repo='owner/name', status='approved'). NON: da GitHub -> read_issues_github; scrivere -> write_issues. OUT: entries=[{repo, issue_number, title, classification, status, draft_reply, accepted_reply, posted_at}]."
+en = "SCOPO: read issue treatment records from the LOCAL db (by status/number), not from GitHub. PATTERN: read_issues(repo='owner/name', status='approved'). NON: from GitHub -> read_issues_github; write -> write_issues. OUT: entries=[{repo, issue_number, title, classification, status, draft_reply, accepted_reply, posted_at}]."
+
+[code]
+files  = ["read_issues.py"]
+digest = "sha256:772f6d6c0ca5ed8387c47f302bb4c327c29e768866fdcccfe77f0f8fd7c0afc8"
+
+[args]
+type     = "object"
+required = []
+
+[args.properties.repo]
+type = "string"
+[args.properties.repo.description]
+it = "Repo 'owner/name' per restringere i record. Opzionale: se omesso, tutti i repo."
+en = "Repo 'owner/name' to restrict records. Optional: if omitted, all repos."
+
+[args.properties.status]
+[args.properties.status.description]
+it = "Filtro stato: stringa o lista fra new|prepared|approved|posted. Es. 'approved' per le issue pronte da postare. Opzionale."
+en = "Status filter: string or list among new|prepared|approved|posted. E.g. 'approved' for issues ready to post. Optional."
+
+[args.properties.numbers]
+type = "array"
+[args.properties.numbers.description]
+it = "Lista di numeri issue da leggere (int). Opzionale: MATCH ESATTO, niente wildcard."
+en = "List of issue numbers to read (int). Optional: EXACT MATCH, no wildcards."
+
+[args.properties.limit]
+type    = "integer"
+default = 200
+[args.properties.limit.description]
+it = "Massimo numero di record restituiti. Default 200."
+en = "Max number of records returned. Default 200."
+
+# ── Tests di nascita ──────────────────────────────────────────────────────
+[[tests]]
+name   = "invalid_limit_fails"
+input  = { limit = 0 }
+expect = { ok = false }
+
+[[tests]]
+name   = "non_numeric_limit_fails"
+input  = { limit = "abc" }
+expect = { ok = false }
+
+# Repo riservato mai scritto: lettura deterministica (0 record).
+[[tests]]
+name   = "unknown_repo_empty"
+input  = { repo = "__selftest__/none" }
+expect = { ok = true, metadata_field_eq = { ok_count = 0 } }

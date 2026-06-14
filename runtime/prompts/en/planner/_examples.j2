@@ -1,0 +1,193 @@
+{# ---
+role: planner_examples
+tier: middle
+lang: en
+style: few_shot
+version: 1
+owner: roberto
+updated: 2026-05-25
+sha_prev:
+--- #}
+EXAMPLES OF CORRECT TURNS
+
+MUST: invoke tools via tool-use protocol, wait for the observation, then decide.
+MUST NOT: copy the examples below as text. The syntax `[step N] foo(args)` is illustrative.
+OK: tool_call read_messages → final_answer "You have 5 emails today: ...".
+ERROR: final_answer = "[step 1] read_messages(...)".
+══════════════════════════════════════════════════════════════════════
+
+# Example 1 — emails today on an account
+USER: "Summarize today's emails on account_work"
+[step 1] read_messages(account="account_work", time_window="today")
+[step 2] describe_entries(from_step=1, style="by_importance")
+final_answer: "Today on account_work you have 5 emails: 2 newsletters (WSJ, Pinterest), 2 promos (La Redoute, Nippon Kodo), 1 from Simply Wall St."
+
+# Example 2 — emails with text criteria within a window
+USER: "Search for emails with 'invoice' in the subject from the last 7 days"
+[step 1] read_messages(time_window="last-7d", subject_contains="invoice")
+[step 2] describe_entries(from_step=1, style="by_relevance", context="emails with invoice last 7 days")
+final_answer: "You have 3 emails with 'invoice' from the last 7 days: ..."
+
+# Example 3 — summarize ONLY relevant emails, discard newsletters
+USER: "Summarize only today's relevant emails on account_work, discard newsletters"
+[step 1] read_messages(account="account_work", time_window="today")
+[step 2] classify_entries(from_step=1, dimension="relevance")
+[step 3] filter_entries(from_step=2, where_field="relevance", where_in=["high","medium"])
+[step 4] describe_entries(from_step=3, style="by_relevance", context="relevant emails today, discard newsletters")
+final_answer: "Today's relevant emails are: ..."
+
+# Example 4 — photos to organize by date and place of capture
+USER: "Move photos in /home/user/images by year and location"
+[step 1] find_files(base_path="/home/user/images", patterns=["*.jpg","*.heic","*.JPG"])
+[step 2] filter_entries(from_step=1, kind="image")
+[step 3] get_files(from_step=2, fields=["dates.semantic","place"])
+[step 4] move_files(from_step=3, dst_template="/home/user/images/{date_year}/{date_yymmdd}_{place}_{name}")
+final_answer: "Moved 98 photos to /home/user/images/{date_year}/..."
+
+# Example 4-bis — summarize/updates on external subject: web needed
+USER: "Summarize the latest news from Anthropic"
+[step 1] find_urls(search_query="latest Anthropic news")
+[step 2] describe_entries(from_step=1, style="by_relevance")
+final_answer: "Over the last few days Anthropic has announced: ..."
+   ↑ Verbs like "summarize/updates/what does/news from" + external subject
+     (company/person/topic not local) -> FIRST step is find_urls. Never start
+     with describe_entries (it would have no entries to describe). The runtime
+     interposes read_urls_html if snippets are not enough (ADR 0153
+     needs_content_fetch + ADR 0154 needs_data_source).
+
+# Example 5 — simple operation in 1 step
+USER: "What time is it?"
+[step 1] get_now()
+final_answer: "It is 11:42 on Wednesday, April 29, 2026."
+
+# Example 6 — no tool covers the request
+USER: "Calculate SHA-256 of /tmp/x"
+[step 1] request_new_executor(expected_name="compute_files", intent="Calculate cryptographic hash (SHA-256, MD5, ...) of one or more files.")
+final_answer: depends on the synt outcome (in the next step you receive observation with synthesized | rejected | abandoned).
+
+# Example 6-bis — extract a concrete value from the observation for the final_answer
+USER: "Calculate SHA-256 of /tmp/test_sha.txt"
+[step 1] compute_files(paths=["/tmp/test_sha.txt"])
+   → observation: {ok:1, results:[{path:"/tmp/test_sha.txt", hash:"0c15e883dee85bb2f3540a47ec58f617a2547117f9096417ba5422268029f501"}]}
+final_answer: "The SHA-256 hash of /tmp/test_sha.txt is 0c15e883dee85bb2f3540a47ec58f617a2547117f9096417ba5422268029f501."
+   ↑ COPY the COMPLETE hash value from the observation. Do not truncate with "...", do not add "(example)" or "(note: ...)", do not invent. If the value has 64 characters, write all 64.
+
+# Example 7 — duplicate detection: same call already made → final_answer
+USER: "How many emails on account_isp?"
+[step 1] read_messages(account="account_isp", max_results=100)
+[step 2] read_messages(account="account_isp", max_results=100)   ← BLOCKED by runtime (DUPLICATE_CALL)
+final_answer: "You have 145 emails on account_isp." (formulated from step 1 data, DO NOT retry)
+
+# Example 7-bis — top-N with specific attributes per entry
+USER: "Find the 5 largest emails from this week and tell me the senders and sizes"
+[step 1] read_messages(time_window="last-7d", max_total=500)
+   → observation: {entries: [{from:"a@x", subject:"...", size:12345}, ...]}
+final_answer: "The 5 largest emails this week:
+1. a@x — 12 KB — subject
+2. b@y — 9 KB — subject
+..."  (extract the 5 entries with maximum size, report from+size)
+MUST: read `size` and `from` from the step 1 entries, sort them by size desc, take the first 5, write them in the final_answer.
+MUST NOT: call describe_entries. MUST NOT: re-call read_messages: size is already in the entries.
+OK: read_messages → final_answer with extracted fields.
+ERROR: read_messages → describe_entries → final_answer.
+ERROR: read_messages → read_messages with different args (changing account/max_results).
+
+# Example 7-ter — fewer entries than requested: DO NOT retry
+USER: "Top 5 X of this week"
+[step 1] read_messages(time_window="last-7d") → entries: [3 elements]
+final_answer: "I found 3 X this week (not 5). Here are the 3 sorted: ..."
+MUST: report ALL available entries even if < requested N, stating the actual count.
+MUST NOT: re-call read_messages with different time_window/max_total. If the window was respected, the count is the truth.
+OK: 3 entries found out of 5 requested → final_answer "I found 3 (not 5): ...".
+ERROR: 3 found → read_messages with higher max_total.
+ERROR: 3 found → read_messages with wider time_window.
+
+# Example 7-penta — numerical reduction on a list (totals, max, average)
+USER: "How many total files are in /opt/X by summing the file_count of the subdirectories?"
+[step 1] find_dirs(base_path="/opt/X")
+   → observation: {entries:[{path,name,file_count,total_bytes,...}, ...], count:N}
+[step 2] compute_entries(from_step=1, key="file_count", op="sum")
+   → observation: {value: 1234, op:"sum", count_input:N}
+final_answer: "In /opt/X there are 1234 total files (across N directories)."
+MUST: read `value` from the compute_entries observation and write it in the final_answer.
+MUST NOT: call find_files on the whole tree (huge list, no aggregate). MUST NOT: re-call find_dirs (results already in scratchpad).
+OK: find_dirs → compute_entries(op=sum) → final_answer "total: 1234".
+ERROR: find_dirs → find_files → compute_entries (find_files does not have file_count, sum returns 0).
+
+# Example 7-quater — count by category/group
+USER: "Classify emails by category (newsletter, transaction, ...) and tell me how many per category"
+[step 1] read_messages(account="X", time_window="last-7d") → entries: [205]
+[step 2] classify_entries(from_step=1, classes=["newsletter","transaction","personal","system","other"], criterion="...", dimension="category")
+   → observation: {entries:[...], counts:{newsletter:120, transaction:30, personal:5, system:8, other:42}}
+final_answer: "Here is the breakdown: newsletter 120, transaction 30, personal 5, system 8, other 42 (out of 205 total emails)."
+MUST: read `counts` from the classify_entries observation and use it directly in the final_answer.
+MUST NOT: call describe_entries after classify to get counts (describe condenses, loses counts, and re-categorizes).
+OK: classify → final_answer from counts.
+ERROR: classify → describe_entries with context "count per category" (describe does not respect classes).
+
+# Example 8 — ambiguous query: ask the user before choosing
+USER: "Email me the appointments for tomorrow"
+   ↑ Two plausible readings:
+     (a) SEND via email = pipeline read_events(tomorrow) → send_messages(via_channel="mail", body=appointments list)
+     (b) SEARCH email = find/read_messages with keyword "appointments tomorrow"
+[step 1] request_disambiguation_from_user(
+   question="Your request can be read two ways. Which do you mean?",
+   options=[
+     "Send me by email the list of my appointments for tomorrow",
+     "Search in my email for messages talking about appointments for tomorrow"
+   ])
+   ↑ Runtime materializes a choice dialog; the user's choice becomes the new user_query for the next turn.
+MUST: emit `request_disambiguation_from_user` ONLY when two (or more) distinct semantic interpretations are equally plausible. Options MUST be rephrased complete queries (sentences in the SAME STYLE as the user's request), NOT meta descriptions like "option A: search; option B: send".
+MUST NOT: use disambiguation for trivial parameter ambiguity (e.g. which account, which time_window). Those go through context or sensible defaults. MUST NOT: emit `request_disambiguation_from_user` after step 1 (it is available only as the FIRST step of a turn).
+OK: query "send X by email" with X ambiguous (object or channel) → disambiguation with 2 rephrased options.
+ERROR: query "read yesterday's mail" → disambiguation (the query is clear). THIS IS AN ERROR to ask for confirmation when no ambiguity exists.
+
+# Example 9 — "verb + object + MODIFIER" schema
+# The MODIFIER is an instrumental complement of the verb indicating HOW/WHERE/
+# WITH-WHAT to perform the action (communication channel, provider/backend,
+# output format, save destination, ...). Recognize it as instrument, NOT as the object.
+
+USER: "Email me tomorrow's appointments"
+   ↑ MODIFIER = "email" (delivery channel). OBJECT = "tomorrow's appointments" (calendar events).
+   Pipeline: read the object in its domain first, then execute the action with the modifier.
+[step 1] get_now()  → today ISO
+[step 2] read_events(time_window="tomorrow")  → entries
+[step 3] send_messages(to_user="roberto", via_channel="mail", subject="Tomorrow's appointments", body="<formatted list from step 2>")
+final_answer: "I sent tomorrow's appointment list by email."
+
+USER: "Create a spreadsheet on google"
+   ↑ MODIFIER = "on google" (provider/backend). OBJECT = spreadsheet (files_xlsx).
+   The modifier names a known provider → map to the tool with that provider qualifier.
+[step 1] write_files_xlsx_google_workspace(path="/tmp/sheet.xlsx", ...)
+final_answer: "I created the spreadsheet on Google Drive."
+
+USER: "Notify me via telegram when Lucia's email arrives"
+   ↑ MODIFIER = "via telegram" (notify channel). (Scheduled pipeline beyond single-turn scope;
+   here only the principle: the modifier picks send_messages(via_channel="telegram") as the final.)
+
+GENERAL RULE (language-agnostic).
+The MODIFIER is an instrumental adjunct to the verb, introduced by agent /
+instrument / location prepositions (english: "via", "with", "by", "through",
+"on", "in"; italian: "via", "con", "per", "tramite", "su", "in") followed by
+the name of a channel/provider/destination. Typical names: mail/email,
+telegram, slack, google/drive/gmail/workspace, dropbox, notion, ...
+When the user EXPLICITLY DECLARES a modifier alongside a verb, you MUST:
+- map the modifier to the tool's matching arg (`via_channel` for send tools,
+  provider qualifier for tools with `_<provider>` suffix, destination path
+  for create/write, ...).
+- keep the OBJECT as the verb's complement, do NOT conflate it with the modifier.
+- compose a MULTI-STEP pipeline when object and modifier live in different
+  domains (e.g. calendar events sent via mail: read_events → send_messages).
+
+MUST: recognize the modifier as INSTRUMENT, not as the search target.
+MUST NOT: treat the modifier (mail/telegram/google/...) as the query's object.
+OK: "send X via mail" / "manda con email X" → read_<X-domain> → send_messages(via_channel="mail", body=<X>).
+OK: "create X on google" / "crea X con google" → tool_<verb>_<obj>_google_workspace.
+ERROR: "email the appointments" → find_messages(query="appointments") (this is SEARCHING mail instead of SENDING).
+ERROR: "create spreadsheet on google" → set_credentials for "google" (mistaking provider for the action's target).
+
+INDEXED CORPUS vs FILESYSTEM
+"photos/images/videos/contacts" → INDEXED CORPUS (`find_<corpus>_indices`). Only if the user specifies a filesystem path ("photos in /X") → `find_files`. Read-then-write pipeline: output of `find_*` is input of `write_*` via `from_step`.
+OK: "save {{ current_year }} photos to drive" → `find_images_indices(time_window="{{ current_year }}")` → `write_files_google_workspace(from_step=1)`.
+
+══════════════════════════════════════════════════════════════════════

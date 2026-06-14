@@ -1,0 +1,172 @@
+#!/usr/bin/env python3
+"""metnos-cli — utilita' CLI di Metnos (Strato 3 ADR 0089).
+
+Sotto-comandi attivi (4/5/2026):
+  credentials add <domain>            interattivo: chiede user+pwd e salva cifrato
+  credentials list                    elenca i domini noti
+  credentials remove <domain>         rimuove un dominio
+  credentials fingerprint <domain>    sha256[:16] della pwd (mai pwd in chiaro)
+
+Esempio Strato 3 (fallback per chi non vuole digitare creds in chat):
+  ssh roberto@192.0.2.10
+  metnos-cli credentials add cifs_192.0.2.20 --binding cifs --host 192.0.2.20
+    > username: roberto
+    > password: ***   (input nascosto)
+"""
+from __future__ import annotations
+
+import argparse
+import getpass
+import json
+import os
+import sys
+from pathlib import Path
+
+# Includi runtime/ nel path: questo script vive in scripts/ e accede a
+# `credentials.py` per fare store/list/remove. Niente dipendenze esterne.
+# Bootstrap universale (rename/depth-agnostic, ADR 0148):
+# env METNOS_RUNTIME > fallback walk-up via marker config.py.
+_RUNTIME = os.environ.get("METNOS_RUNTIME") or next(
+    (str(p / "runtime") for p in Path(__file__).resolve().parents
+     if (p / "runtime" / "config.py").is_file()), "")
+if _RUNTIME and Path(_RUNTIME).is_dir():
+    sys.path.insert(0, _RUNTIME)
+
+
+def _print_err(msg: str, *, code: int = 1) -> int:
+    print(f"errore: {msg}", file=sys.stderr)
+    return code
+
+
+def cmd_creds_add(args) -> int:
+    """`metnos-cli credentials add <domain>` — interattivo. Mai pwd in argv."""
+    try:
+        import credentials  # type: ignore
+    except ImportError as ex:
+        return _print_err(f"modulo runtime/credentials.py non importabile: {ex}")
+    domain = args.domain
+    print(f"Salvataggio credenziali per dominio: {domain}")
+    if args.binding:
+        print(f"  binding: {args.binding}")
+    if args.host:
+        print(f"  host:    {args.host}")
+    try:
+        user = input("username: ").strip()
+    except EOFError:
+        return _print_err("input interrotto.")
+    if not user:
+        return _print_err("username vuoto.")
+    pwd = getpass.getpass("password (input nascosto): ")
+    if not pwd:
+        return _print_err("password vuota.")
+    pwd2 = getpass.getpass("password (conferma):       ")
+    if pwd != pwd2:
+        return _print_err("le password non coincidono.")
+    payload = {
+        "username": user,
+        "password": pwd,
+    }
+    if args.binding:
+        payload["binding"] = args.binding
+    if args.host:
+        payload["host"] = args.host
+    if args.share:
+        payload["share"] = args.share
+    if args.workgroup:
+        payload["workgroup"] = args.workgroup
+    try:
+        path = credentials.store(domain, payload)
+    except (ValueError, OSError, FileNotFoundError) as ex:
+        return _print_err(f"salvataggio fallito: {ex}")
+    print(f"credenziali salvate cifrate in {path}")
+    return 0
+
+
+def cmd_creds_list(args) -> int:
+    """`metnos-cli credentials list` — elenca domini, niente decifratura."""
+    try:
+        import credentials  # type: ignore
+    except ImportError as ex:
+        return _print_err(f"modulo runtime/credentials.py non importabile: {ex}")
+    domains = credentials.list_domains()
+    if not domains:
+        print("(nessun dominio salvato)")
+        return 0
+    if args.json:
+        print(json.dumps({"domains": domains}, ensure_ascii=False))
+    else:
+        for d in domains:
+            print(d)
+    return 0
+
+
+def cmd_creds_remove(args) -> int:
+    """`metnos-cli credentials remove <domain>` — rimuove se esiste."""
+    try:
+        import credentials  # type: ignore
+    except ImportError as ex:
+        return _print_err(f"modulo runtime/credentials.py non importabile: {ex}")
+    if credentials.remove(args.domain):
+        print(f"rimosso: {args.domain}")
+        return 0
+    print(f"non presente: {args.domain}", file=sys.stderr)
+    return 2
+
+
+def cmd_creds_fingerprint(args) -> int:
+    """`metnos-cli credentials fingerprint <domain>` — sha256[:16] della pwd.
+    Mai password in chiaro, solo hash troncato per audit.
+    """
+    try:
+        import credentials  # type: ignore
+    except ImportError as ex:
+        return _print_err(f"modulo runtime/credentials.py non importabile: {ex}")
+    fp = credentials.fingerprint(args.domain)
+    if fp is None:
+        return _print_err(f"dominio non trovato o pwd assente: {args.domain}",
+                           code=2)
+    print(fp)
+    return 0
+
+
+def main(argv: list[str] | None = None) -> int:
+    ap = argparse.ArgumentParser(
+        prog="metnos-cli",
+        description="CLI utility per Metnos (gestione credenziali, debug).",
+    )
+    sub = ap.add_subparsers(dest="cmd", required=True)
+
+    # credentials <sub>
+    creds = sub.add_parser("credentials",
+                            help="gestione credenziali cifrate (ADR 0082)")
+    creds_sub = creds.add_subparsers(dest="creds_cmd", required=True)
+
+    add_p = creds_sub.add_parser("add", help="salva credenziali (interattivo)")
+    add_p.add_argument("domain", help="es. cifs_192.0.2.20, web_example.com")
+    add_p.add_argument("--binding", help="cifs, web, ssh, api, ...",
+                       default=None)
+    add_p.add_argument("--host", help="host/IP del servizio", default=None)
+    add_p.add_argument("--share", help="(CIFS) share path", default=None)
+    add_p.add_argument("--workgroup", help="(CIFS) workgroup", default=None)
+    add_p.set_defaults(func=cmd_creds_add)
+
+    list_p = creds_sub.add_parser("list", help="elenca domini salvati")
+    list_p.add_argument("--json", action="store_true",
+                        help="output JSON invece di una riga per dominio")
+    list_p.set_defaults(func=cmd_creds_list)
+
+    rm_p = creds_sub.add_parser("remove", help="rimuove un dominio")
+    rm_p.add_argument("domain")
+    rm_p.set_defaults(func=cmd_creds_remove)
+
+    fp_p = creds_sub.add_parser("fingerprint",
+                                 help="sha256[:16] della pwd salvata")
+    fp_p.add_argument("domain")
+    fp_p.set_defaults(func=cmd_creds_fingerprint)
+
+    args = ap.parse_args(argv)
+    return args.func(args)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

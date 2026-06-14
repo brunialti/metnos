@@ -1,0 +1,168 @@
+{# ---
+role: planner
+tier: middle
+lang: en
+style: prescriptive
+version: 3
+owner: roberto
+updated: 2026-05-12
+sha_prev:
+--- #}
+══════════════════════════════════════════════════════════════════════
+CALENDAR / EVENTS / AGENDA (Google Calendar)
+══════════════════════════════════════════════════════════════════════
+
+APPOINTMENTS/AGENDA/EVENTS/CALENDAR/MEETINGS (Google Calendar)
+  → read_events (read), create_events (create), delete_events (delete).
+  MUST: for any request about appointments / calendar events,
+  use read_events/create_events/delete_events. They are in the catalog (imported
+  from skill google-workspace).
+  MUST NOT: call request_new_executor on «appointments», «calendar»,
+  «agenda», «events», «meetings»: the executor already exists.
+  OK: «tomorrow's appointments» → get_now → read_events(time_window="tomorrow") → final_answer.
+  ERROR: «tomorrow's appointments» → request_new_executor (THIS IS AN ERROR: read_events is already in catalog).
+
+(propose_intent) PROPOSAL / SUGGESTION OF TIMES — TEXTUAL ANSWER, NEVER create_events:
+  When the query contains a SUGGESTION verb («propose/suggest/recommend»,
+  IT «proponi/suggerisci/raccomanda» and enclitics), or formulations like
+  «what are N free slots», «how about», «give me 3 options», the user is
+  NOT asking to CREATE an event but to RECEIVE textual proposals of
+  alternatives.
+  MUST: get_now → find_events_empty(time_windows=[...], size=...,
+  time_of_day=..., max_results=N) → final_answer textual with N
+  alternatives from the returned entries (start/end of each free gap).
+  MUST NOT: call read_events repeatedly to derive gaps manually.
+  find_events_empty computes gaps deterministically (ADR 0127).
+  MUST NOT: call create_events / delete_events / any other
+  calendar-write tools. The query asks to PROPOSE, not to book.
+  OK: «propose 3 morning times next week for a 1h appointment»
+      → get_now → find_events_empty(time_windows=["next-week"],
+       size="1hour", time_of_day="morning", max_results=3) → final_answer
+      textual «3 free mornings: monday 09-10, wednesday 09-10, friday 10-11».
+  ERROR: «propose 3 times...» → create_events(summary="Proposed 1",
+      start=2026-05-18T08:00, end=2026-05-24T12:00) (THIS IS AN ERROR:
+      created a week-long event instead of SUGGESTING 3 alternatives).
+  NB DISAMBIGUATION: «book/schedule» = set destructive (see
+  check_availability). «propose/suggest/recommend» = read-only suggestion.
+
+(propose_and_fire) PROPOSAL + BOOKING THE CHOICE — 4-STEP PIPELINE:
+  When the user combines «propose/suggest N alternatives» WITH a
+  mutating continuation («and book», «and schedule», «poi prenotami»,
+  «and then create the event», etc.), MUST execute EXACTLY the
+  propose-and-fire pipeline (ADR 0127):
+    Step 1: get_now → extract today ISO.
+    Step 2: find_events_empty(time_windows=[...], size=..., time_of_day=...)
+             → entries with `{start, end, duration_min}` of the gaps.
+    Step 3: get_inputs(from_step=2, title=..., dialog=[{var:'choice',
+             prompt:'Pick one', schema:{kind:'choice', display_template: '{when_human}', value_field:'start'}}]) → entries of step 2
+             are derived into choices; user pick = `values.choice`.
+    Step 4: create_events(summary=..., start=<step3.values.choice>, end=...)
+             → final_answer with link. Use the runtime placeholder syntax
+             (double curly braces or dynamic resolution §4.1) to pass the
+             user's choice as the event's start.
+  MUST: use find_events_empty for EMPTY/FREE SLOTS (NOT read_events:
+  read_events returns existing events, not the gaps). `size` accepts
+  unit-aware strings like "1hour"/"60min"/"30 min"; `time_windows` is a
+  list (even N=1, default ["next-week"]).
+  MUST NOT: call create_events BEFORE step 3 (user has not picked yet). IT
+  IS AN ERROR «propose and book» → direct create_events: it violates the
+  semantics of an explicit user choice.
+  OK: «propose 3 morning slots next week and book the one I pick»
+      → get_now → find_events_empty(time_windows=["next-week"], size="1hour",
+       time_of_day="morning", max_results=3) → get_inputs(from_step=2, ...)
+       → create_events(start=<step3.values.choice>, ...) → final_answer.
+  ERROR: «propose and book» → direct create_events (IT IS AN ERROR: choice not
+       made by the user, arbitrary booking).
+  NB DISAMBIGUATION: without a mutating continuation the query is propose-
+  only (see (propose_intent) above: textual final_answer, no find_events_empty,
+  no get_inputs, no create_events).
+
+(propose_and_notify) PROPOSAL + EMAIL/NOTIFICATION OF THE CHOICE — 5/6-STEP PIPELINE:
+  When the user combines «propose/suggest N alternatives» WITH a
+  NOTIFICATION continuation («and email me», «and notify me», «and send
+  me an email», «with the choice via email/telegram», IT equivalents
+  «e mandami email», «e inviami email», «e notificami», «e avvisami»),
+  the intent is MULTI-PIPELINE: first propose, then (optionally) create,
+  then NOTIFY the user with the choice.
+  The pipeline depends on create-or-not:
+    Variant (a) — NOTIFY only (no create_events explicitly required):
+      Step 1: get_now → today ISO.
+      Step 2: find_events_empty(time_windows=[...], size=..., time_of_day=...).
+      Step 3: get_inputs(from_step=2, kind='choice', display_template='{when_human}', value_field='start') → user pick.
+      Step 4: send_messages(messages=[{to:'<user>', subject:'Chosen slot',
+              body:'You picked: <step3.values.choice>'}]) → final_answer.
+    Variant (b) — NOTIFY + create_events (both required):
+      Steps 1-3 as variant (a).
+      Step 4: create_events(summary=..., start=<step3.values.choice>, end=...).
+      Step 5: send_messages(messages=[{to:'<user>', subject:'Appointment
+              confirmation', body:'Event created for <step3.values.choice>.
+              Link: <step4.results[0].htmlLink>'}]) → final_answer.
+  MUST: detect the notify continuation as a SEPARATE step after create
+  (variant b) or right after get_inputs (variant a). The user's choice
+  (step 3) must be passed to BOTH create_events and send_messages
+  (double use of the placeholder).
+  MUST: when the user says «email/mail» as NOTIFICATION CHANNEL, PASS
+  `via_channel="mail"` EXPLICIT in send_messages. The default
+  `via_channel="auto"` routes Telegram first (order telegram > mail >
+  http) and would send a Telegram message instead of an email. Same
+  applies for «telegram» → `via_channel="telegram"`.
+  MUST NOT: emit send_messages BEFORE get_inputs (user has not chosen
+  yet). MUST NOT: call find_messages_google_workspace or read_messages:
+  the query is NOT a search for existing mail, it is a REQUEST TO SEND
+  an email. The noun «email» here is the NOTIFICATION CHANNEL, not the
+  data searched for.
+  OK: «propose 3 morning times next week and email me my choice» →
+      get_now → find_events_empty(time_windows=["next-week"],
+      size="1hour", time_of_day="morning", max_results=3) →
+      get_inputs(from_step=2, kind='choice', display_template='{when_human}',
+      value_field='start') → send_messages(messages=[{to_user:"roberto",
+      via_channel:"mail", subject:"Your choice",
+      body:"You picked: <step3.values.choice>"}]) → final_answer.
+  OK: «propose 2 wednesday slots, create the event and email confirmation»
+      → get_now → find_events_empty(...) → get_inputs(...) →
+      create_events(...) → send_messages(messages=[{to_user:...,
+      via_channel:"mail", subject:..., body:"Link: <step4.results[0].htmlLink>"}])
+      → final_answer.
+  ERROR: «propose and email me» → find_messages_google_workspace
+      (THIS IS AN ERROR: the query does not search mail, it sends mail).
+  ERROR: «propose and email me» → direct send_messages at step 1
+      (THIS IS AN ERROR: send before choice → empty/placeholder body).
+  NB DISAMBIGUATION: «email» in «email me with the choice» is the
+  NOTIFICATION CHANNEL, not the searched object. Mail-search verbs
+  («search/read/find mail») still go to find_messages_*/read_messages.
+
+(check_availability) BOOKING WITH FREE-SLOT CONDITION — NUMBERED MANDATORY WORKFLOW:
+  When the user asks «book/schedule/create X IF there is a slot/if the window
+  is free/check availability and then book», EXECUTE EXACTLY in this order,
+  ONE step at a time:
+    Step 1: get_now → extract today ISO.
+    Step 2: COMPUTE start and end ISO 8601 + offset (e.g. "2026-05-13T09:00:00+02:00").
+    Step 3: read_events(start, end).
+    Step 4a: if entries is EMPTY → create_events(summary, start, end) → final_answer with link.
+    Step 4b: if entries is NON-empty → final_answer «slot occupied, events present: ...».
+  MUST: respect the order. create_events goes ONLY at Step 4a, NEVER before.
+  MUST NOT: call create_events at Step 3 or earlier. It would create the event
+  AND then confuse the subsequent read_events that would see its own event.
+  OK: «book appointment Wednesday 9-10 if there is a slot» → get_now → read_events(...) → create_events(...) → final_answer.
+  ERROR: «if there is a slot» → create_events (wrong Step 3) → read_events sees the just-created event → confusion.
+
+(date_relative_resolution) RELATIVE DATES MUST BE RESOLVED BY get_now:
+  MUST: invoke get_now as the FIRST step when the query contains ANY
+  relative date: today, yesterday, tomorrow, day-after-tomorrow,
+  monday/tuesday/.../sunday, «next week», «next month», «within N days»,
+  «N days ago», «tonight», «this morning», «this evening», etc.
+  MUST NOT: infer/compute/invent the absolute date. Your knowledge of
+  dates is months stale. Only get_now has the system's truth.
+  OK: «book appointment Wednesday 9-10» → step 1 get_now() → step 2
+      read the ISO date from the result → step 3 read_events/create_events
+      with start/end ISO 8601 + offset (e.g. "2026-05-13T09:00:00+02:00").
+  ERROR: pass to create_events "2026-04-29T09:00:00Z" when today is 2026-05-11
+      (THIS IS AN ERROR: invented date, Wednesday in the past).
+
+# Time window — canonical interpretation for read_events
+# MUST: time_window canonical ("today", "tomorrow", "last-Nd", "next-Nd", ISO
+# range "YYYY-MM-DD/YYYY-MM-DD"). English "tomorrow"/"today"/"yesterday"
+# are mapped automatically by runtime/time_window_parser.py.
+# OK: «tomorrow's events» → read_events(time_window="tomorrow").
+# OK: «meetings next week» → read_events(time_window="next-week").
+# ERROR: time_window="May 10-12" — free-form unparsed format.

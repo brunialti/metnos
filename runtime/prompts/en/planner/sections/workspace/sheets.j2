@@ -1,0 +1,18 @@
+{# ---
+role: planner
+tier: middle
+lang: en
+style: prescriptive
+version: 1
+owner: roberto
+updated: 2026-05-12
+sha_prev:
+--- #}
+══════════════════════════════════════════════════════════════════════
+GOOGLE WORKSPACE / SHEETS (cloud spreadsheets)
+══════════════════════════════════════════════════════════════════════
+
+SPREADSHEETS/SHEETS/GOOGLE-SHEETS
+  → read_files_xlsx_google_workspace (read), create_files_xlsx (new sheet),
+    set_files_xlsx (update cells: idempotent state upsert).
+  MUST NOT: confuse with read_files_xlsx (handcrafted, local xlsx files).

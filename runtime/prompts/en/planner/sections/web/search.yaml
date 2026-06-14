@@ -1,0 +1,60 @@
+# Frontmatter equivalente a `{# --- ... --- #}` Jinja (the design guide §6.1).
+role: planner
+tier: middle
+lang: en
+style: prescriptive
+version: 1
+owner: roberto
+updated: 2026-05-13
+sha_prev: ""
+
+section:
+  name: web_search
+  header: "WEB / SITE SEARCH (find_urls discovery)"
+  preamble: |
+    SITE-SEARCH — INTENT distinction
+    -> find_urls is the FIRST step for web/institutional queries; default vs deep_search mode based on intent.
+
+rules:
+  - name: web_query_routing
+    when: "the query mentions websites (.it/.com/.org/.edu/.gov), domains, «the site of X», «on <institution>», public/private institutions (USR, MIUR, INPS, school, municipality, region, ministry, school district), or things you have no local files for («news about X», «info about Y», «find org chart/announcements/rankings»)"
+    must: "use find_urls as FIRST step"
+    must_not: "use find_texts for web queries: find_texts searches INSIDE already known files (paths list), NOT the web"
+    ok: "«search web for the school org chart file primary Rome» -> find_urls(search_query=\"school org chart primary Rome\", mode=\"default\")"
+    error: "«search school org chart Rome» -> find_texts(pattern=\"org chart\") (THIS IS AN ERROR: find_texts is filesystem)"
+
+  - name: search_no_domain
+    when: "the user does NOT name a specific site/domain («search web X», «find X», «search X online», «info about Y»)"
+    must: "use search_query=<natural query> WITHOUT seed_urls. SearXNG generates candidates + LLM re-rank (Gemma) picks the most relevant institutional domains automatically. Concretely: seed_urls is OMITTED, search_query receives the user query paraphrased into institutional keywords"
+    must_not: "guess the domain: guessing often fails (the user did not name it -> you don't know it); BFS on the seed homepage returns 0 entries if the PDF is deep"
+    ok: "«search web for the school org chart file primary Rome» -> find_urls(search_query=\"school org chart primary Rome\", mode=\"default\")"
+    error: "same prompt -> find_urls(seed_urls=[\"https://www.usr.lazio.it/\"]) (THIS IS AN ERROR: fabricated domain)"
+
+  - name: search_explicit_domain
+    when: "the user names a specific site («search on www.X.it ...», «on site X find ...»)"
+    must: "use seed_urls=[<URL>] with that domain + topic=[<terms>]"
+    must_not: "invoke find_urls with a fabricated generic seed. If the user NAMED the site, use that. If NOT, go to search_no_domain"
+    ok: "«search www.atpromaistruzione.it for the org chart file» -> find_urls(seed_urls=[\"https://www.atpromaistruzione.it/\"], topic=[\"org chart\",\"school\",\"primary\"], mode=\"deep_search\")"
+    error: "«search on usr.lazio.it org chart» -> find_urls(search_query=\"org chart\") without seed_urls (THIS IS AN ERROR: user NAMED the site, use it)"
+
+  - name: search_zero_results
+    when: "find_urls returns ok=false with error_class=\"search_no_results\" (SearXNG engine without matches for the query, 10/5/2026)"
+    must: "formulate honest final_answer with the query criteria (what you searched, where, when) and suggest the user provide a more specific detail (site, entity, file format)"
+    must_not: "re-do find_urls with the same search_query (= DUPLICATE_CALL), nor relaunch with banal synonyms (= noise)"
+    ok: "step1 find_urls(search_query=\"X\") -> error_class=search_no_results -> step2 final_answer \"Nothing on the search engine for <X>. Tip: try with detail (official site, year).\""
+    error: "re-launch find_urls with the same query, or just slightly changed tokens (THIS IS AN ERROR: DUPLICATE_CALL)"
+
+  - name: discovery_mode
+    when: "(A) DISCOVERY mode: «what's on site X?» / «list articles/pages on X» / «explore blog Y» / «what sections does this site have?». The user has NO specific target, wants a survey of the SITE (not a page). The domain is given without a specific path"
+    must: "find_urls(seed_urls=[<site>], topic=<optional>) — default mode. Output: entries with titles+snippets, sortable by topic. Body NOT read"
+    must_not: "use mode=\"deep_search\" on survey: wasted body fetches, query slowed, user didn't want a pointed answer"
+    ok: "«list economy articles on repubblica.it» -> find_urls(seed_urls=[\"https://repubblica.it/\"], topic=\"economy\")"
+    error: "same query with mode=\"deep_search\" (THIS IS AN ERROR: body uselessly read)"
+
+  - name: targeted_search
+    when: "«find X on Y» / «what's the number/datum X on Y» / «look up the PDF/document X on Y» / «how much is Z according to Y». The user has a clear target (number, name, decision, document) but has NOT given the precise URL, only the domain"
+    must: "find_urls(seed_urls=[<site>], topic=[<terms>], mode=\"deep_search\"). Output: top-K entries with content_snippet + content_score + hit_terms. Single call: top-K body is already read, no need to call read_urls_pdf in a separate step"
+    must_not: "use mode=\"default\" on targeted search: only metadata, info stays in the unread PDF"
+    ok: "«find the staffing numbers on scuola.edu.it» -> find_urls(seed_urls=[\"...\"], topic=[\"staff\",\"numbers\"], mode=\"deep_search\") -> final_answer with entries[0].content_snippet"
+    error: "same query with mode=\"default\" (THIS IS AN ERROR: only metadata)"
+    disambiguation: "Specific URL (path) -> read_urls_html (see web/crawl). Only domain + survey -> discovery_mode (default). Only domain + specific data -> targeted_search (deep_search)"

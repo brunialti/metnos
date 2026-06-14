@@ -1,0 +1,56 @@
+{# ---
+role: synt_code_addendum_describe
+tier: wise
+lang: it
+style: few_shot
+version: 1
+owner: roberto
+updated: 2026-05-11
+sha_prev: 09c8302b
+--- #}
+RULES FOR VERB `describe` (in addition to the generic):
+
+DEFINITION: `describe` = pure compute → structured insight. NO external I/O. Deterministic (same input → same output). revertible=False.
+
+UNIVERSAL PSEUDOCODE:
+
+  def invoke(args):
+      entries = args.get("entries", [])
+      style = args.get("style", "default")
+      sample_size = args.get("sample_size", None)
+      data = sample(entries, sample_size, seed=42) if sample_size else entries
+      sampled = sample_size is not None and len(data) < len(entries)
+      try:
+          insights = compute_insights(data, style)            # pure
+          # Sanitize NaN/Inf before json.dumps
+          insights = sanitize_for_json(insights)
+          return {"ok": True, "ok_count": len(insights),
+                  "fail_count": 0, "results": insights,
+                  "sampled": sampled, "sample_n": len(data) if sampled else None,
+                  "failed": []}
+      except Exception as ex:
+          return {"ok": False, "ok_count": 0, "fail_count": 1,
+                  "results": [], "failed": [{"error": str(ex)}]}
+
+INVARIANTS:
+MUST: PURE COMPUTE — NO read disk / network / shell / external db.
+  The input arrives whole in `args["entries"]`.
+MUST: manifest `revertible: False`, no reverse_pattern.
+MUST: DETERMINISTIC. Same input → same output. Sampling only with explicit seed
+  (default 42 or seed from args).
+MUST: NaN/Inf handled: convert them to `null` BEFORE `json.dumps`
+  (`json.dumps(float("nan"))` produces invalid "NaN" in JSON).
+MUST: for large datasets (>100k), `sample_size` with `sampled:True` +
+  `sample_n` in the output.
+MUST NOT: `time.time()` / `datetime.now()` / `random.random()` without seed.
+MUST NOT: read files/network/db.
+MUST NOT: write `def reverse(...)`.
+
+NUMBERS DOMAIN (describe_numbers):
+- entry: `{"value": float}` or list of numbers
+- insights: `{count, mean, median, stddev, min, max, p25, p75, p99}`
+GENERIC ENTRIES DOMAIN (describe_entries):
+- aggregate by `style`: by_relevance, by_kind, by_account, by_date, etc.
+- insights: `[{group: ..., count: ..., samples: [...]}]`
+TEXT DOMAIN:
+- insights: `{n_chars, n_words, n_lines, top_terms, lang_guess}`.
