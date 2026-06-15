@@ -281,7 +281,7 @@ def test_find_issues_dedup_with_threshold(tmp_store, fake_embedder):
         embedding=_unit(len(q) % store.EMBEDDING_DIM))
     tmp_store.upsert_treatment(REPO, 71, status="posted",
                                accepted_reply="other", embedding=_unit(3))
-    f = _load_executor("find_issues")
+    f = _load_executor("find_issues_db")
     out = f.invoke({"repo": REPO, "query_text": q, "min_similarity": 0.85})
     assert out["ok"] is True and out["embedder_available"] is True
     assert out["ok_count"] == 1
@@ -294,7 +294,7 @@ def test_find_issues_honest_degrade_without_embedder(tmp_store, monkeypatch):
     mod = types.ModuleType("jobs.github_dedup")
     mod.embed_query = lambda text: None
     monkeypatch.setitem(sys.modules, "jobs.github_dedup", mod)
-    f = _load_executor("find_issues")
+    f = _load_executor("find_issues_db")
     out = f.invoke({"repo": REPO, "query_text": "anything"})
     assert out["ok"] is True
     assert out["embedder_available"] is False

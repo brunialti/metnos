@@ -1,20 +1,23 @@
-# Manifest dell'executor `find_issues` — Metnos v1.1
+# Manifest dell'executor `find_issues_db` — Metnos v1.1
+# Rinominato da `find_issues` (15/6/2026, ADR 0172): rompe la collisione di nome
+# con `find_issues_github`. Questo tool è SOLO la memoria-dedup LOCALE (db), non
+# il fetch remoto. Il `_db` distingue deterministicamente le due operazioni.
 manifest_format = "1.0"
 
-name        = "find_issues"
+name        = "find_issues_db"
 version     = "0.1.0"
 author      = "Roberto Brunialti"
-affinity    = ["issue", "issues", "simili", "dedup", "gia risolte", "memoria issue", "risposta nota", "similar", "knowledge base issue", "db issue", "maintenance"]
+affinity    = ["issue simili", "dedup issue", "gia risolte", "memoria issue", "risposta nota", "db locale issue", "knowledge base issue", "similar resolved issue"]
 revertible  = true
 lifecycle   = "active"
 
 [description]
-it = "SCOPO: cerca nel db LOCALE issue SIMILI gia' risolte (dedup semantico), con risposta accettata. PATTERN: find_issues(repo='owner/name', query_text='descrizione issue'). NON: issue remote -> find_issues_github; per stato -> read_issues. OUT: entries=[{ref, similarity, accepted_reply, classification}] per similarity desc."
-en = "SCOPO: search the LOCAL db for SIMILAR already-resolved issues (semantic dedup). PATTERN: find_issues(repo='owner/name', query_text='issue description'). NON: remote issues -> find_issues_github; by status -> read_issues. OUT: entries=[{ref, similarity, accepted_reply, classification}] by similarity desc."
+it = "SCOPO: cerca nel db LOCALE issue SIMILI gia' risolte (dedup semantico), con risposta accettata. PATTERN: find_issues_db(repo='owner/name', query_text='descrizione issue'). NON: leggere/scaricare issue dal repo GitHub -> find_issues_github; per stato/elenco dal db -> read_issues. Questo NON tocca GitHub, guarda SOLO la memoria locale. OUT: entries=[{ref, similarity, accepted_reply, classification}] per similarity desc."
+en = "SCOPO: search the LOCAL db for SIMILAR already-resolved issues (semantic dedup). PATTERN: find_issues_db(repo='owner/name', query_text='issue description'). NON: fetch/read issues from the GitHub repo -> find_issues_github; by status from db -> read_issues. This does NOT touch GitHub, only local memory. OUT: entries=[{ref, similarity, accepted_reply, classification}] by similarity desc."
 
 [code]
-files  = ["find_issues.py"]
-digest = "sha256:430a034235760308e1a4f94363aa43c6a53b12f67039a042a2f1e35d069eb522"
+files  = ["find_issues_db.py"]
+digest = "sha256:f8f988cf4ee5bccff3c20557351ce20580fbae6d0f4bb1bd2383f6aca224c9c3"
 
 [args]
 type     = "object"

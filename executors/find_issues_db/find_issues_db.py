@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""find_issues — dedup semantico: trova issue simili gia' risolte nel db locale.
+"""find_issues_db — dedup semantico: trova issue simili gia' risolte nel db locale.
 
 Mattone del flusso di maintenance repo (executor, non core): data la descrizione
 di una issue, embedda con BGE-M3 (1024d) e cerca nello store `github_issue_qa`
