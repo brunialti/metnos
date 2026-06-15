@@ -13,6 +13,7 @@ Entry point single: dispatch.run_turn(query, intent, catalog, invoke_executor_cb
 from __future__ import annotations
 
 import logging
+import re
 import time
 from dataclasses import dataclass
 from typing import Optional, Callable
@@ -80,6 +81,53 @@ def _canonical_framework_for_record(query: str, framework: Framework,
                      final_message=framework.final_message)
 
 
+def _should_cache_plan(framework, query) -> bool:
+    """Igiene cache L0/L1 (Roberto 15/6): NON registrare un piano che bakeizza un
+    VALORE NUMERICO preso dalla query (id/conteggio). Un valore baked rende L0
+    non-discriminante (ri-servirebbe su query con valore diverso) e darebbe a L1
+    valori baked. Bug live: delete_tasks(id=42) su «cancella task 40». Tali query
+    ri-pianificano (L3) ogni volta. La GARANZIA hard è comunque a serve-time
+    (`_mutating_args_grounded`); questa è prevenzione a monte. §7.9 universale.
+    (Generalizzazione+re-bind dei valori in L1 = TODO Fable, fix completo.)"""
+    qnums = set(re.findall(r"\d+", query or ""))
+    if qnums:
+        for s in (getattr(framework, "steps", []) or []):
+            for k, v in (getattr(s, "args", {}) or {}).items():
+                if k in ("from_step", "from_steps"):
+                    continue
+                if set(re.findall(r"\d+", str(v))) & qnums:
+                    return False
+    return True
+
+
+def _mutating_args_grounded(framework, query) -> bool:
+    """INVARIANTE serve-time L0/L1 (GARANZIA, Roberto 15/6). Un piano servito da
+    cache (L0) o generalizzato (L1) che contiene uno step MUTANTE è eseguibile
+    SOLO se ogni valore DISCRIMINANTE dei suoi arg (numero/id, slug owner/name)
+    compare nella query CORRENTE. Se anche uno solo manca → quel valore viene da
+    un'ALTRA query → RIFIUTA (re-plan). Invariante hard, indipendente dal
+    record-side: nessuna azione distruttiva parte MAI da cache con un target che
+    la query corrente non nomina (bug delete_tasks id=42 su «cancella task 40»).
+    §7.9. I read non sono toccati (zero impatto su latenza)."""
+    try:
+        from pipeline_effects import MUTATING_TOOL_PREFIXES
+    except Exception:
+        MUTATING_TOOL_PREFIXES = ("delete_", "move_", "send_", "write_",
+                                  "set_", "create_", "change_", "share_")
+    qn = (query or "").lower()
+    for s in (getattr(framework, "steps", []) or []):
+        tool = getattr(s, "tool", "") or ""
+        if not any(tool.startswith(p) for p in MUTATING_TOOL_PREFIXES):
+            continue
+        for k, v in (getattr(s, "args", {}) or {}).items():
+            if k in ("from_step", "from_steps"):
+                continue
+            for tok in re.findall(r"\d+|[a-z0-9._-]+/[a-z0-9._-]+", str(v).lower()):
+                if tok not in qn:
+                    return False
+    return True
+
+
 def _maybe_record_fastpath(query: str, intent: Intent,
                             framework: Framework, run: RunResult,
                             origin: str = "auto",
@@ -118,6 +166,11 @@ def _maybe_record_fastpath(query: str, intent: Intent,
     if not is_fastpath_enabled():
         return
     if run is None or run.final_kind != "answer" or run.aborted_reason:
+        return
+    # Cacheabilità L0 (Roberto 15/6): solo pipeline multi-step che NON bakeizzano
+    # un valore numerico della query (vedi _should_cache_plan). Esclude il bug
+    # delete_tasks(id=42) ri-servito su «cancella task 40».
+    if not _should_cache_plan(framework, query):
         return
     try:
         from pipeline_effects import ineffective_mutations
@@ -271,6 +324,12 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
                          "%s → morte + fall-through", fp_hit.fp_id, _missing)
                 _fp.delete(fp_hit.fp_id)
                 fp_hit = None
+        # GARANZIA (Roberto 15/6): mai eseguire un piano L0 con step mutante i
+        # cui valori-arg discriminanti non sono nella query corrente (re-plan).
+        if fp_hit is not None and not _mutating_args_grounded(fp_hit.framework, query):
+            log.info("[L0 fastpath] REJECT mis-serve: step mutante con valore "
+                     "non presente nella query → fall-through/re-plan")
+            fp_hit = None
         if fp_hit is not None:
             if verbose:
                 log.info("[L0 fastpath] hit (%s, sim=%.2f): %s",
@@ -302,6 +361,13 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
     # ── Layer 1: Autopath ────────────────────────────────────────────────
     if is_autopath_enabled() and intent.is_complete():
         ap_hit = _ap.lookup(query, intent)
+        # GARANZIA (Roberto 15/6): stessa invariante di L0 — un piano L1 con step
+        # mutante i cui valori-arg non sono nella query corrente NON va eseguito
+        # (un autopath con valore baked servirebbe il target sbagliato).
+        if ap_hit is not None and not _mutating_args_grounded(ap_hit.framework, query):
+            log.info("[L1 autopath] REJECT mis-serve: step mutante con valore "
+                     "non presente nella query → fall-through a L3 (re-plan)")
+            ap_hit = None
         if ap_hit is not None:
             if verbose:
                 log.info("[L1 autopath] hit autopath=%s uses=%d", ap_hit.autopath_id, ap_hit.uses)
@@ -315,8 +381,11 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
                                 runtime_ctx=runtime_ctx,
                                 remediate_args_cb=remediate_args_cb,
                                 progress=progress)
-            # Record observation per future feedback hooks
-            if turn_id and intent.is_complete():
+            # Record observation per future feedback hooks. Skip se il piano non
+            # è cacheabile (single-executor / valore numerico baked dalla query):
+            # L1 non deve avere valori baked (Roberto 15/6).
+            if (turn_id and intent.is_complete()
+                    and _should_cache_plan(ap_hit.framework, query)):
                 _ap.record_observation(
                     turn_id=turn_id, intent=intent,
                     framework=ap_hit.framework, query=query,
@@ -456,8 +525,10 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
                         remediate_args_cb=remediate_args_cb,
                         progress=progress)
 
-    # Record observation always (per future feedback)
-    if turn_id and intent.is_complete():
+    # Record observation (per future feedback). Skip se non cacheabile
+    # (single-executor / valore numerico baked): L1 non deve avere valori baked.
+    if (turn_id and intent.is_complete()
+            and _should_cache_plan(framework, query)):
         try:
             _ap.record_observation(
                 turn_id=turn_id, intent=intent, framework=framework,
