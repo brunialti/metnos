@@ -980,14 +980,21 @@ def handle_list_tasks(args: dict, *, actor: str, **_) -> dict:
             name=t.get("name", "?"),
             sched=t.get("schedule_human") or t.get("schedule", "?"),
             last=last,
+            query=(t.get("query") or "").strip(),
         ))
     detail_md = "\n".join(lines)
+    # final_message_hint (15/6/2026): l'elenco task è un'ENUMERAZIONE fedele
+    # (id + cadenza + query completa), NON un riassunto tematico. Emettere il
+    # hint fa sì che il runtime lo usi come risposta finale e SALTI
+    # describe_entries (che altrimenti riassume e perde id/query). Stesso
+    # pattern di get_persons per gli enrollati (§5, NIENTE describe).
     return {
         "ok": True,
         "count": len(enriched),
         "tasks": enriched,
         "summary": detail_md,
         "detail_md": detail_md,
+        "final_message_hint": detail_md,
     }
 
 

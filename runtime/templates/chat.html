@@ -312,6 +312,7 @@ body.readonly #q{cursor:not-allowed}
   <span class="brand">Metnos</span>
   <span class="role">{{ role }}</span>
   <span class="grow"></span>
+  <a href="#" id="copyChatBtn" title="copia l'intera conversazione negli appunti">copia chat</a>
   <a href="#" id="clearBtn" title="pulisci chat locale">pulisci</a>
   {% if role == "admin" %}
   <a href="/admin">panoramica</a>
@@ -570,6 +571,38 @@ function makeCopyBtn(getText){
   return cb;
 }
 
+// Copia l'INTERA conversazione (header "copia chat"). Raccoglie il testo pulito
+// (data-copytext) di ogni bolla con etichetta-ruolo; salta le effimere
+// (thinking) e le gallery. Riusa copyMsgText (fallback non-secure-context).
+function buildChatTranscript(){
+  const parts = [];
+  document.querySelectorAll('#log .msg').forEach((d) => {
+    if(d.classList.contains('thinking') || d.classList.contains('gallery')) return;
+    const t = (d.dataset.copytext || '').trim();
+    if(!t) return;
+    let role = 'Metnos';
+    if(d.classList.contains('me')) role = 'Tu';
+    else if(d.classList.contains('err')) role = 'Errore';
+    else if(d.classList.contains('tool') || d.classList.contains('tool-info')) role = 'Tool';
+    parts.push(role + ': ' + t);
+  });
+  return parts.join('\n\n');
+}
+(function wireCopyChat(){
+  const btn = document.getElementById('copyChatBtn');
+  if(!btn) return;
+  btn.addEventListener('click', (e) => {
+    e.preventDefault();
+    const txt = buildChatTranscript();
+    if(!txt) return;
+    const orig = btn.textContent;
+    copyMsgText(txt).then(() => {
+      btn.textContent = '{{ msg("MSG_CHAT_COPY_DONE")|e }}';
+      setTimeout(() => { btn.textContent = orig; }, 1200);
+    }).catch(() => {});
+  });
+})();
+
 function add(cls, text, meta, persist, attachments, galleryInfo, htmlMode){
   const stick = (cls === 'me') || nearBottom();
   const d = document.createElement('div');
@@ -677,6 +710,9 @@ function add(cls, text, meta, persist, attachments, galleryInfo, htmlMode){
       window.addEventListener('message', onMsg);
     }
   }
+  // Snapshot del testo PULITO (prima di meta/azioni/feedback) per la
+  // copia-chat globale dell'header. htmlMode bot → textContent = plain text.
+  d.dataset.copytext = (d.textContent || '').trim();
   // meta puo' essere:
   //  - stringa: una riga sola
   //  - oggetto {path: [{tool, ok}], text: "turn xxx · NNs"}: prima riga

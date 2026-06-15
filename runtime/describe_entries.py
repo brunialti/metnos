@@ -492,8 +492,17 @@ def handle_describe_entries(args, *, verbose: bool = False) -> dict:
     # tier 'auto' risolto DOPO il pack (dimensiona sul bundle realmente
     # inviato `visible_entries`, non sul totale pre-cap).
 
+    # §2.4 robustezza NL→determinismo: l'LLM confonde gli enum e a volte mette
+    # un valore di `format` (es. 'bullet_list') nello `style`. NON far crashare
+    # il turno (regressione live: «quali sono i task» → list_tasks OK ma describe
+    # rigettava 'bullet_list' e l'errore diventava la risposta). Degrade
+    # deterministico: (1) se è un format valido messo nel posto sbagliato,
+    # spostalo in `fmt`; (2) ricadi sempre sullo style di default. Mai hard-fail.
+    _FORMATS = ("markdown", "html", "plain", "bullet_list", "json")
     if style not in STYLES and not prompt_override:
-        return {"ok": False, "error": f"unknown style {style!r}; valid: {list(STYLES)}"}
+        if style in _FORMATS:
+            fmt = style           # era un format messo nel posto sbagliato
+        style = "by_importance"   # default robusto, mai crash
 
     if not entries:
         return {"ok": True, "summary": "", "item_count": 0, "style": style,

@@ -1306,8 +1306,17 @@ class Executor:
                               len(prev["attachments"]))
                 else:
                     _hint = prev.get("final_message_hint")
-                    _explicit = any(args.get(k) for k in
-                                    ("style", "context", "group_by"))
+                    # «esplicito» = direttiva di VERA intenzione utente che
+                    # giustifica una sintesi LLM sopra un producer che già si
+                    # auto-presenta (final_message_hint). `style` NON conta: è un
+                    # preset che l'LLM sceglie da sé (e spesso sbaglia — 'compact'
+                    # o l'invalido 'bullet_list'), non una richiesta dell'utente;
+                    # lasciarlo bloccare lo skip fa riassumere un'enumerazione
+                    # fedele (lista task con id+query) perdendone i dettagli, in
+                    # modo dipendente dal phrasing. Solo `context`/`group_by`
+                    # (l'utente ha chiesto un focus o un raggruppamento) valgono.
+                    # §7.9 deterministico, robusto al rumore-enum dell'LLM.
+                    _explicit = bool(args.get("context")) or bool(args.get("group_by"))
                     if isinstance(_hint, str) and _hint.strip() and not _explicit:
                         skip_reason = "final_message_hint_present"
                         skip_result["summary"] = _hint.strip()
