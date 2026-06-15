@@ -36,7 +36,7 @@ en = "SCOPO: consult an expert oracle for deep analysis. PATTERN: consult_fronti
 
 [code]
 files  = ["consult_frontier.py"]
-digest = "sha256:df8214717cf119914b8fab843e34edc733cb737bca6d86a1fdb09db2ab6a2cf8"
+digest = "sha256:8c0549e678d356222f2a1244031fb2a19584416ac3de9cbdee6db529b76fc516"
 
 [args]
 type     = "object"

@@ -539,18 +539,11 @@ def _resolve_tools_allowed(args: dict) -> list[str]:
 
 # USD per 1M tokens (input, output). Fonte: pagine pubbliche pricing dei
 # provider, aggiornata al 17/5/2026. Approssimato (mancanze -> 0.0).
-_PRICING: dict[tuple[str, str], tuple[float, float]] = {
-    ("anthropic", "claude-opus-4-7"):    (15.0, 75.0),
-    ("anthropic", "claude-sonnet-4-6"):  (3.0,  15.0),
-    ("anthropic", "claude-haiku-4-5"):   (0.8,  4.0),
-    ("openai",    "gpt-5"):              (10.0, 40.0),
-}
-
-
 def _estimate_cost(provider: str, model: str,
                     in_tokens: int, out_tokens: int) -> float:
-    in_p, out_p = _PRICING.get((provider, model), (0.0, 0.0))
-    return round(in_tokens * in_p / 1e6 + out_tokens * out_p / 1e6, 6)
+    # Tariffe: fonte UNICA `runtime/llm_pricing.py` (§7.2, consolidamento 15/6).
+    from llm_pricing import cost_usd
+    return cost_usd(provider, model, in_tokens, out_tokens)
 
 
 # ---- Tier resolution & LLM call -------------------------------------------

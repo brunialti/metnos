@@ -30,6 +30,15 @@ from dataclasses import dataclass, field
 
 import llm_telemetry as _telemetry  # universal pass-through observability hook
 
+# Attiva il metering costi LLM (audit uso frontier → decisione Headroom, 15/6).
+# Guardato + best-effort §2.8: se il file manca (snapshot pubblico) o l'install
+# fallisce, no-op silenzioso — non rompe mai l'import del provider.
+try:
+    import llm_cost_sink as _cost_sink
+    _cost_sink.install()
+except Exception:  # noqa: BLE001
+    pass
+
 
 @dataclass
 class ChatResult:
