@@ -160,15 +160,23 @@ configured), and **imported** (third-party, sandboxed behind the 7-layer gate).
 Only core + first-party ship in this repo; imported skills are something *you*
 install, and the "don't trust the package" thesis above is exactly about them.
 
-**Adding a second provider (e.g. GitLab next to GitHub).** Drop-in frameworks add
-a *parallel* skill per provider and let a frontier model disambiguate by reading
-descriptions. A local planner can't do that reliably — it develops a provider
-bias. So Metnos keeps **one provider-agnostic executor** (`find_issues`) and adds
-a **backend** per provider; the resolver routes by configuration. Adding a
-provider is *+1 backend file + 1 skill, zero new executors* — and the planner
-never sees the choice. Promoting an already provider-baked tool into this shape is
-an extraordinary, human-gated refactor (a one-time frontier pass generates it; you
-review and sign it). See the architecture docs for the full design.
+**Adding a second provider.** Drop-in frameworks add a *parallel* skill per
+provider and let a frontier model disambiguate by reading descriptions. A local
+planner can't do that reliably — it develops a provider bias. So Metnos keeps
+**one provider-agnostic executor** and adds a **backend** per provider; the
+resolver routes by configuration. This is live today for calendar/contacts:
+`create_events` is a single executor over backends `local` (ICS) and
+`google_workspace`, and `runtime/backend_resolver.py` injects the choice from
+configuration — the planner never sees it. Adding a provider is *+1 backend file
++ 1 skill, zero new executors*.
+
+GitHub is **not yet in this shape**: issues/pulls ship as a provider-baked skill
+(`find_issues_github`, …) that the planner does see. Promoting a baked-in tool
+into the resolver shape is an extraordinary, human-gated refactor (a one-time
+frontier pass generates it; you review and sign it), triggered only when a second
+provider actually appears. The design — including the name-collision wrinkle
+(`find_issues` is already the local issue-dedup tool) — is in ADR 0172. See the
+architecture docs for the full picture.
 
 ## Requirements (the honest version)
 
