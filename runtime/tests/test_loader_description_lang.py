@@ -203,5 +203,29 @@ class TestRealCatalogResolution(unittest.TestCase):
         self.assertGreater(len(bp_desc), 10)
 
 
+class TestResolveLangTextEnFallback(unittest.TestCase):
+    """§K (15/6/2026): per una descrizione non tradotta nella lingua target il
+    ripiego è EN ESPLICITO (non la prima lingua in ordine alfabetico)."""
+
+    def test_missing_target_falls_back_to_en(self):
+        from loader import _resolve_lang_text
+        v = {"it": "IT", "en": "EN", "de": "DE"}
+        # 'fr' assente: deve dare EN, non 'DE' (primo alfabetico)
+        self.assertEqual(
+            _resolve_lang_text(v, where="t.description", current_lang="fr"), "EN")
+
+    def test_target_present_wins(self):
+        from loader import _resolve_lang_text
+        v = {"it": "IT", "en": "EN"}
+        self.assertEqual(
+            _resolve_lang_text(v, where="t.description", current_lang="it"), "IT")
+
+    def test_no_en_falls_back_alphabetical(self):
+        from loader import _resolve_lang_text
+        v = {"it": "IT", "de": "DE"}  # niente EN
+        self.assertEqual(
+            _resolve_lang_text(v, where="t.description", current_lang="fr"), "DE")
+
+
 if __name__ == "__main__":
     unittest.main()

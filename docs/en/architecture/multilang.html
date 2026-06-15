@@ -232,9 +232,12 @@ skeleton, only localised text.
 The loader <code>runtime/prompt_loader.py</code> is called by every runtime
 component as <code>prompt_loader.get(role, lang, **vars)</code>. Language
 resolved as <code>os.environ["METNOS_LANG"]</code>, fallback
-<code>config.DEFAULT_LANG</code> (currently <code>"it"</code>). If the requested
-language is missing, the loader falls back to the source language (typically
-<code>it</code>) and logs a <code>prompt.lang_fallback</code> event.
+<code>config.DEFAULT_LANG</code> (currently <code>"it"</code>). Per-file
+resolution chain (&sect;K, ADR 0173):
+<strong>live &rarr; <code>_pending</code> candidate (used in-vivo) &rarr; EN</strong>.
+If the requested language lacks a file, the loader uses the daemon's candidate if
+present, otherwise falls back to <strong>EN</strong> (the meantime default) &mdash;
+never a crash. No manual promotion required.
 </p>
 
 <h2>Layer 2 &mdash; executor manifest descriptions</h2>
@@ -284,7 +287,8 @@ en = ["find", "search", "files", "lookup", "&hellip;"]</pre>
 <p>
 At run time the planner reads the description in the current language
 (<code>METNOS_LANG</code>) via <code>loader.describe(name, lang)</code>; if
-the language is missing, fallback to IT with logged event.
+the language is missing, explicit fallback to <strong>EN</strong> (&sect;K,
+ADR 0173), otherwise the first available language.
 </p>
 
 <h2>Layer 3 &mdash; user-facing messages in i18n.sqlite</h2>
@@ -401,18 +405,20 @@ Per attivare la lingua: METNOS_LANG=fr nei systemd unit + restart</pre>
 
 <p>
 The language stays <em>inactive</em> until <code>METNOS_LANG=fr</code> is
-set in the runtime systemd units and the daemon is restarted. This
-prevents half-translated fragments from showing up in production while
-human review is still in progress.
+set in the runtime systemd units and the daemon is restarted. Until a string is
+translated, the runtime falls back to <strong>EN</strong> (the meantime default),
+never to broken fragments.
 </p>
 
-<div class="callout warning">
-<strong>Mandatory human review.</strong> The nightly daemon writes
-<em>candidates</em> in <code>_pending/</code>, it does not promote.
-<code>metnos-prompts review &lt;role&gt; --lang=fr</code> shows the diff;
-<code>metnos-prompts mark-synced &lt;role&gt; --lang=fr</code> promotes the
-candidate to runtime, but <strong>only if validation passes</strong>
-(placeholder match, MiniJinja syntax, length ratio within [0.6, 2.0]).
+<div class="callout note">
+<strong>No approval gate (&sect;K, ADR 0173).</strong> The nightly daemon writes
+<em>candidates</em> in <code>_pending/</code> and the loader uses them
+<strong>in-vivo</strong>: nobody reviews hundreds of strings by hand. Review is
+<em>opt-in</em> &mdash; <code>metnos-prompts review &lt;role&gt; --lang=fr</code>
+shows the diff, <code>metnos-prompts mark-synced &lt;role&gt; --lang=fr</code>
+<em>canonicalizes</em> the candidate to <code>&lt;role&gt;.j2</code> (re-enabling
+the prescriptive linter &sect;6.1) &mdash; but it is not a prerequisite for the
+translation to take effect.
 </div>
 
 <h1 id="cap5">5. <code>METNOS_LANG</code> vs dynamic source-of-truth</h1>

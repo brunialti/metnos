@@ -41,8 +41,8 @@ def _resolve_lang_text(value, *, where: str, current_lang: str) -> str:
     Pattern latest-wins simmetrico (CLAUDE.md §7.3): nessuna lingua canonica.
     Selezione:
       1. Se `value` e' dict → restituisce `value[current_lang]` se presente.
-      2. Altrimenti restituisce la prima lingua disponibile in ordine
-         alfabetico (deterministic).
+      2. Ripiego §K: EN esplicito se presente; altrimenti prima lingua
+         disponibile in ordine alfabetico (deterministic).
       3. Se `value` e' stringa flat → ValueError (legacy schema vietato,
          CLAUDE.md §7.1: niente backward-compat).
       4. Se `value` e' dict vuoto → stringa vuota (placeholder valido in
@@ -61,7 +61,14 @@ def _resolve_lang_text(value, *, where: str, current_lang: str) -> str:
             return ""
         if current_lang in value and isinstance(value[current_lang], str):
             return value[current_lang]
-        # Fallback: prima lingua disponibile in ordine alfabetico.
+        # Ripiego nel frattempo (§K, 15/6/2026): EN esplicito prima di tutto —
+        # finché la descrizione non è tradotta nella lingua target, il planner
+        # legge l'INGLESE (allineato a prompt_loader._FALLBACK_LANG / i18n.
+        # FALLBACK_CHAIN), non una lingua qualsiasi in ordine alfabetico.
+        en = value.get("en")
+        if isinstance(en, str):
+            return en
+        # Ultima risorsa: prima lingua disponibile in ordine alfabetico.
         for lang in sorted(value.keys()):
             v = value[lang]
             if isinstance(v, str):

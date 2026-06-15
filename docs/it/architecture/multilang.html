@@ -232,9 +232,11 @@ intelaiatura di sezioni, solo testo localizzato.
 Il loader <code>runtime/prompt_loader.py</code> &egrave; chiamato da ogni componente
 runtime con <code>prompt_loader.get(role, lang, **vars)</code>. Lingua risolta
 come <code>os.environ["METNOS_LANG"]</code>, fallback <code>config.DEFAULT_LANG</code>
-(oggi <code>"it"</code>). Se manca il file della lingua chiesta, il loader fa
-fallback alla lingua sorgente (di norma <code>it</code>) e logga un evento
-<code>prompt.lang_fallback</code>.
+(oggi <code>"it"</code>). Catena di risoluzione per file (&sect;K, ADR 0173):
+<strong>live &rarr; candidato <code>_pending</code> (usato in-vivo) &rarr; EN</strong>.
+Se manca il file della lingua chiesta, il loader usa il candidato del daemon se
+presente, altrimenti ricade su <strong>EN</strong> (default nel frattempo) &mdash;
+mai crash. Nessuna promozione manuale necessaria.
 </p>
 
 <h2>Layer 2 &mdash; manifest description executor</h2>
@@ -284,7 +286,8 @@ en = ["find", "search", "files", "lookup", "&hellip;"]</pre>
 <p>
 A run time il pianificatore legge la description nella lingua corrente
 (<code>METNOS_LANG</code>) via <code>loader.describe(name, lang)</code>; se la
-lingua manca, fallback IT con log evento.
+lingua manca, ripiego a <strong>EN</strong> esplicito (&sect;K, ADR 0173),
+altrimenti prima lingua disponibile.
 </p>
 
 <h2>Layer 3 &mdash; messaggi user-facing in i18n.sqlite</h2>
@@ -403,17 +406,20 @@ Per attivare la lingua: METNOS_LANG=fr nei systemd unit + restart</pre>
 <p>
 La lingua resta <em>inattiva</em> finch&eacute; non si setta
 <code>METNOS_LANG=fr</code> nei systemd unit del runtime e si riavvia il
-daemon. Questo evita che frammenti tradotti a met&agrave; appaiano in
-produzione mentre il review umano e' ancora in corso.
+daemon. Finch&eacute; una stringa non &egrave; tradotta, il runtime ricade su
+<strong>EN</strong> (default nel frattempo), mai su frammenti rotti.
 </p>
 
-<div class="callout warning">
-<strong>Review umana obbligatoria.</strong> Il daemon notturno scrive
-<em>candidati</em> in <code>_pending/</code>, non promuove.
-<code>metnos-prompts review &lt;role&gt; --lang=fr</code> mostra il diff;
-<code>metnos-prompts mark-synced &lt;role&gt; --lang=fr</code> promuove il
-candidato a runtime, ma <strong>solo se la validation passa</strong>
-(placeholder match, sintassi MiniJinja, len ratio entro [0.6, 2.0]).
+<div class="callout note">
+<strong>Niente gate di approvazione (&sect;K, ADR 0173).</strong> Il daemon
+notturno scrive <em>candidati</em> in <code>_pending/</code> e il loader li usa
+<strong>in-vivo</strong>: nessuno revisiona a mano centinaia di stringhe. La
+revisione resta <em>opt-in</em> &mdash;
+<code>metnos-prompts review &lt;role&gt; --lang=fr</code> mostra il diff,
+<code>metnos-prompts mark-synced &lt;role&gt; --lang=fr</code> <em>canonicalizza</em>
+il candidato a <code>&lt;role&gt;.j2</code> (riattivando il linter prescrittivo
+&sect;6.1) &mdash; ma non &egrave; un prerequisito perch&eacute; la traduzione
+abbia effetto.
 </div>
 
 <h1 id="cap5">5. <code>METNOS_LANG</code> di processo vs source-of-truth dinamico</h1>

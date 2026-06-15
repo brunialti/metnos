@@ -251,13 +251,29 @@ class TestRootResolution(unittest.TestCase):
         sections = list((pl._BASE / "it" / "planner" / "sections").glob("*.j2"))
         self.assertGreater(len(sections), 0)
 
-    def test_unknown_lang_raises_runtime_error(self):
+    def test_unknown_lang_falls_back_to_en(self):
+        """§K (15/6/2026): una lingua senza i suoi `.j2` NON fa crashare il
+        planner — ricade su EN nel frattempo (default meantime = EN). Prima
+        sollevava RuntimeError; ora deve restituire il render EN."""
         import prompt_loader as pl
-        with self.assertRaises(RuntimeError) as ctx:
-            pl.get("planner", "xx_nonexistent_xx",
-                   vocab_actions="x", vocab_objects="x", vocab_qualifiers="x",
-                   project_paths="x", users_known="x")
-        self.assertIn("xx_nonexistent_xx", str(ctx.exception))
+        pl._envs.pop("xx_nonexistent_xx", None)
+        out = pl.get("intent_extractor", "xx_nonexistent_xx")
+        en = pl.get("intent_extractor", "en")
+        self.assertEqual(out, en)
+
+    def test_raises_only_if_even_en_missing(self):
+        """Il RuntimeError resta SOLO per il misconfig reale: né la lingua né il
+        ripiego EN esistono."""
+        import prompt_loader as pl
+        saved = pl._BASE
+        try:
+            pl._BASE = Path(tempfile.mkdtemp())  # vuota: nessun it/en
+            pl._envs.pop("zz", None)
+            with self.assertRaises(RuntimeError):
+                pl._env_for("zz")
+        finally:
+            pl._BASE = saved
+            pl._envs.pop("zz", None)
 
 
 class TestMultiLangIsolation(unittest.TestCase):
@@ -308,6 +324,34 @@ class TestMultiLangIsolation(unittest.TestCase):
         finally:
             pl._BASE = old_base
             pl._envs = old_envs
+
+
+class TestKFallbackAndAutoPromote(unittest.TestCase):
+    """§K (15/6/2026): catena live→candidato→EN. L'approvazione manuale non è
+    più un gate (i candidati `_pending` sono usati in-vivo); le stringhe non
+    ancora tradotte ricadono su EN nel frattempo."""
+
+    def test_candidate_used_without_manual_promote(self):
+        import prompt_loader as pl
+        xx = pl._BASE / "xx_k"
+        (xx / "_pending").mkdir(parents=True, exist_ok=True)
+        (xx / "_pending" / "intent_extractor.j2.candidate").write_text(
+            "CAND_{{ lang }}", encoding="utf-8")
+        pl._envs.pop("xx_k", None)
+        try:
+            out = pl.get("intent_extractor", "xx_k")
+            self.assertEqual(out.strip(), "CAND_xx_k")
+        finally:
+            shutil.rmtree(xx, ignore_errors=True)
+            pl._envs.pop("xx_k", None)
+
+    def test_live_wins_over_candidate(self):
+        """Per IT/EN il live esiste sempre → vince sul candidato (i `_pending`
+        di IT/EN restano ignorati): comportamento invariato."""
+        import prompt_loader as pl
+        live = pl.get("intent_extractor", "it")
+        self.assertNotIn("CAND_", live)
+        self.assertGreater(len(live), 100)
 
 
 if __name__ == "__main__":

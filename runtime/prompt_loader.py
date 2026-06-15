@@ -55,6 +55,7 @@ import json
 import os
 import re
 from pathlib import Path
+from typing import Optional
 
 import minijinja
 import yaml
@@ -113,34 +114,116 @@ _SYNT_ROLES = frozenset({
 })
 
 
+# Lingua di ripiego (§K, 15/6/2026): finché una stringa non è ancora tradotta
+# nella lingua target, il sistema risponde in INGLESE (allineato a
+# `i18n.FALLBACK_CHAIN`). Mai crash, mai IT silenzioso su lingua non-IT.
+_FALLBACK_LANG = "en"
+
+# Nome della lingua iniettato come `{{ lang_name }}` (placeholder dinamico: il
+# modello scrive il final_message in QUESTA lingua). Allineato a
+# `i18n_translator._LANG_NAMES` per le lingue oltre it/en (§K): senza la voce,
+# una lingua nuova mostrerebbe il CODICE ("fr") invece del nome.
+_LANG_NAMES = {"it": "italiano", "en": "English", "fr": "français",
+               "de": "Deutsch", "es": "español"}
+
+
+def _resolve_prompt_source(root: Path, en_root: Path, name: str) -> Optional[str]:
+    """Risolve il testo di un template `name` (es. "intent_extractor.j2" o
+    "planner/_core.j2") con catena DETERMINISTICA §7.9/§K:
+
+      1. live  `<lang>/<name>`                       — file approvato/canonico
+      2. cand. `<lang>/_pending/<name>.candidate`    — output del daemon, usato
+         SUBITO (l'approvazione manuale è opt-in, non un gate; §K 15/6)
+      3. EN    `en/<name>`                            — ripiego nel frattempo
+      4. EN c. `en/_pending/<name>.candidate`
+
+    Ogni candidato sostituisce-in-vivo il live mancante: una lingua nuova (fr)
+    è subito operativa appena il daemon ha scritto i candidati, e finché non li
+    ha scritti ricade su EN — invece di far crashare il planner. Per IT/EN i
+    live esistono sempre → vince il passo 1 → comportamento invariato (i
+    candidati `_pending` di IT/EN restano ignorati). No `..` escape."""
+    for base, nm in ((root, name),
+                     (root, f"_pending/{name}.candidate"),
+                     (en_root, name),
+                     (en_root, f"_pending/{name}.candidate")):
+        if not base.is_dir():
+            continue
+        p = (base / nm).resolve()
+        try:
+            p.relative_to(base.resolve())
+        except ValueError:
+            continue  # tentativo di uscire dalla dir base
+        if p.is_file():
+            return p.read_text(encoding="utf-8")
+    return None
+
+
 def _env_for(lang: str) -> minijinja.Environment:
     """Ritorna (creando lazy + cachando) la `minijinja.Environment` per `lang`.
-    Solleva RuntimeError se `runtime/prompts/<lang>/` non esiste."""
+    Il loader applica la catena live→candidato→EN (`_resolve_prompt_source`):
+    una lingua senza i suoi `.j2` non fa crashare il planner, ricade su EN.
+    Solleva RuntimeError solo se NEMMENO `prompts/<lang>/` né `prompts/en/`
+    esistono (misconfig reale)."""
     env = _envs.get(lang)
     if env is not None:
         return env
     root = _BASE / lang
-    if not root.is_dir():
+    en_root = _BASE / _FALLBACK_LANG
+    if not root.is_dir() and not en_root.is_dir():
         raise RuntimeError(
-            f"prompt_loader: prompts root {root} non esiste. "
+            f"prompt_loader: né {root} né il ripiego {en_root} esistono. "
             f"Verifica lang ({lang!r}) e la struttura runtime/prompts/."
         )
 
     def _loader(name: str):
-        # Supporta nomi con slash (es. "planner/_core.j2"): risolti relativi a
-        # `root`, senza permettere uscita dalla dir lingua (no `..`).
-        p = (root / name).resolve()
-        try:
-            p.relative_to(root.resolve())
-        except ValueError:
-            return None  # tentativo di uscire dalla dir lingua
-        if not p.is_file():
-            return None
-        return p.read_text(encoding="utf-8")
+        # Supporta nomi con slash (es. "planner/_core.j2"). Catena §K.
+        return _resolve_prompt_source(root, en_root, name)
 
     env = minijinja.Environment(loader=_loader, keep_trailing_newline=True)
     _envs[lang] = env
     return env
+
+
+def _lang_has(name: str, lang: str) -> bool:
+    """True se la LINGUA `lang` (non il ripiego) possiede `name` come file live
+    o candidato `_pending`. Usato per decidere la lingua EFFETTIVA del planner
+    (§K): se manca, l'intero planner ricade su EN nel frattempo, invece di
+    mescolare _core in una lingua e sezioni nell'altra."""
+    return ((_BASE / lang / name).is_file()
+            or (_BASE / lang / "_pending" / f"{name}.candidate").is_file())
+
+
+def _effective_planner_lang(lang: str) -> str:
+    """Lingua con cui rendere il planner 3-strati: `lang` se ne possiede il
+    `_core` (live o candidato), altrimenti EN (ripiego §K). Normalizzata PRIMA
+    di enumerare le sezioni, così sezioni e _core vengono dalla stessa lingua."""
+    return lang if _lang_has("planner/_core.j2", lang) else _FALLBACK_LANG
+
+
+def _section_yaml_path(lang: str, sec: str) -> Optional[Path]:
+    """Decide come rendere la sezione `sec`: ritorna il path di un `.yaml`
+    (asse B → `_render_yaml_section`) oppure None (asse A → il caller rende il
+    `.j2` via env, che risolve live→candidato→EN da sé).
+
+    Priorità (§K): la LINGUA vince sul ripiego, lo YAML vince sul J2 a parità di
+    lingua —
+      1. yaml della lingua → quel path
+      2. j2 della lingua (live o candidato) → None (resta nella lingua via env)
+      3. yaml di EN → quel path (ripiego nel frattempo)
+      4. altrimenti → None (il `.j2` di EN via env, o errore se nemmeno quello)
+
+    Senza il passo 2 lo YAML di EN scavalcherebbe il J2 PROPRIO della lingua; senza
+    il passo 3 una lingua parziale tenterebbe un `.j2` inesistente per le sezioni
+    YAML-only di EN."""
+    lang_yaml = _BASE / lang / "planner" / "sections" / f"{sec}.yaml"
+    if lang_yaml.is_file():
+        return lang_yaml
+    if _lang_has(f"planner/sections/{sec}.j2", lang):
+        return None  # la lingua ha il .j2 (live/candidato): l'env lo risolve
+    en_yaml = _BASE / _FALLBACK_LANG / "planner" / "sections" / f"{sec}.yaml"
+    if en_yaml.is_file():
+        return en_yaml
+    return None
 
 
 def _interp_placeholders(obj, vars: dict):
@@ -249,7 +332,7 @@ def get(role: str, lang: str, **vars) -> str:
     # lingua di un campo (es. final_message del proposer) via `{{ lang_name }}`,
     # un PLACEHOLDER — così la parola della lingua non viene mai mal-tradotta
     # dal translator automatico (resta dinamica, = lingua corrente).
-    _lang_names = {"it": "italiano", "en": "English"}
+    _lang_names = _LANG_NAMES
     merged_vars = {**_default_vars(),
                    "lang": lang, "lang_name": _lang_names.get(lang, lang),
                    **vars}
@@ -292,14 +375,18 @@ def get_split(role: str, lang: str, **vars) -> tuple[str, str]:
     Template SENZA marker → `(render_completo, "")`: il caller degrada al
     layout legacy (system=tutto, user=query). Stesse vars iniettate di
     `get()` (install_root, lang, lang_name, current_*)."""
-    path = _BASE / lang / f"{role}.j2"
-    if not path.is_file():
-        raise RuntimeError(f"prompt_loader.get_split: {path} non esiste")
-    source = path.read_text(encoding="utf-8")
+    # Catena §K live→candidato→EN (come il loader): lingua senza il file ricade
+    # su EN nel frattempo, niente crash.
+    source = _resolve_prompt_source(_BASE / lang, _BASE / _FALLBACK_LANG,
+                                    f"{role}.j2")
+    if source is None:
+        raise RuntimeError(
+            f"prompt_loader.get_split: {role}.j2 assente in {lang!r} e nel "
+            f"ripiego {_FALLBACK_LANG!r}")
     m = _STATIC_END_RE.search(source)
     if m is None:
         return get(role, lang, **vars), ""
-    _lang_names = {"it": "italiano", "en": "English"}
+    _lang_names = _LANG_NAMES
     merged_vars = {**_default_vars(),
                    "lang": lang, "lang_name": _lang_names.get(lang, lang),
                    **vars}
@@ -327,14 +414,22 @@ def list_planner_sections(lang: str) -> tuple[str, ...]:
 
     Ritorna `()` se la dir non esiste (lingua senza split planner).
     """
-    sec_dir = _BASE / lang / "planner" / "sections"
-    if not sec_dir.is_dir():
-        return ()
     names: set[str] = set()
-    for pattern in ("*.j2", "*.yaml"):
-        for p in sec_dir.rglob(pattern):
-            rel = p.relative_to(sec_dir).with_suffix("")
-            names.add(rel.as_posix())
+    sec_dir = _BASE / lang / "planner" / "sections"
+    if sec_dir.is_dir():
+        for pattern in ("*.j2", "*.yaml"):
+            for p in sec_dir.rglob(pattern):
+                rel = p.relative_to(sec_dir).with_suffix("")
+                names.add(rel.as_posix())
+    # Candidati §K: una sezione esistente solo come `_pending/.../<n>.j2.candidate`
+    # è già operativa (auto-promote) → enumerala, così compose la include.
+    cand_dir = _BASE / lang / "_pending" / "planner" / "sections"
+    if cand_dir.is_dir():
+        for p in cand_dir.rglob("*.j2.candidate"):
+            name = p.relative_to(cand_dir).as_posix()
+            if name.endswith(".j2.candidate"):
+                name = name[: -len(".j2.candidate")]
+            names.add(name)
     return tuple(sorted(names))
 
 
@@ -482,15 +577,15 @@ def _compose_planner_cached(lang: str, sections: tuple[str, ...],
     parts: list[str] = []
     # Layer 1 — _core
     parts.append(env.render_template("planner/_core.j2", **var_dict))
-    # Layer 2 — sezioni richieste (deterministico, ordinato alfabeticamente)
-    sec_dir = _BASE / lang / "planner" / "sections"
+    # Layer 2 — sezioni richieste (deterministico, ordinato alfabeticamente).
+    # yaml/j2 dispatch con ripiego EN (§K): la sezione può venire da EN.
     for sec in sections:
-        yaml_path = sec_dir / f"{sec}.yaml"
-        if yaml_path.is_file():
+        yaml_path = _section_yaml_path(lang, sec)
+        if yaml_path is not None:
             # Render YAML strutturato (asse B PoC) — formato selezionabile.
             parts.append(_render_yaml_section(yaml_path, fmt=section_format))
         else:
-            # Fallback Jinja2 prosa (asse A / pre-B).
+            # Fallback Jinja2 prosa (asse A / pre-B). L'env risolve live→cand→EN.
             parts.append(env.render_template(f"planner/sections/{sec}.j2",
                                                 **var_dict))
     # Layer 3 — _footer
@@ -543,11 +638,18 @@ def compose(role: str, lang: str, *, sections=None, **vars) -> str:
 
     Logging debug 1 riga: livello DEBUG, prefix `prompt_loader.compose`.
 
-    Solleva RuntimeError se la struttura split planner non esiste per la
-    lingua richiesta (caller deve fixare i prompt prima del boot).
+    §K (15/6/2026): se la lingua richiesta non ha il planner split (né live né
+    candidato), l'INTERO planner ricade su EN nel frattempo (lingua effettiva,
+    `_effective_planner_lang`) — niente crash. Solleva RuntimeError solo se
+    nemmeno EN ha la struttura (misconfig reale).
     """
     if role != "planner":
         return get(role, lang, **vars)
+
+    # Lingua EFFETTIVA (§K): se la lingua non ha il planner split (live o
+    # candidato), ricade su EN per l'intero planner — sezioni + _core dalla
+    # stessa lingua, niente mix. IT/EN hanno i file → invariato.
+    lang = _effective_planner_lang(lang)
 
     # Sezioni OPT-IN: NON incluse nel default "all-sections", solo via
     # selezione mirata. Riservato a sezioni a costo elevato il cui
@@ -562,19 +664,27 @@ def compose(role: str, lang: str, *, sections=None, **vars) -> str:
     #                    Usato quando l'object e' coperto dal core (files,
     #                    dirs, numbers, texts, ...).
     #   sections=[...] → solo quelle sezioni (intersezione con avail).
+    # Set di sezioni CANONICO (§K): unione delle sezioni della lingua effettiva
+    # con quelle EN. Così una lingua parzialmente tradotta ha SEMPRE la stessa
+    # struttura di EN (capability piena) — ogni sezione si rende nella lingua se
+    # c'è (live/candidato), altrimenti ricade su EN via il loader. Per IT/EN la
+    # simmetria è garantita (pre-commit-symmetry) → unione == proprio set.
+    _avail_set = set(list_planner_sections(lang))
+    if lang != _FALLBACK_LANG:
+        _avail_set |= set(list_planner_sections(_FALLBACK_LANG))
     if sections is None:
-        effective = tuple(s for s in list_planner_sections(lang)
-                          if s not in _OPT_IN_SECTIONS)
+        effective = tuple(sorted(s for s in _avail_set
+                                 if s not in _OPT_IN_SECTIONS))
     else:
-        avail = set(list_planner_sections(lang))
-        effective = tuple(sorted(set(sections) & avail))
+        effective = tuple(sorted(set(sections) & _avail_set))
 
-    # Verifica che la struttura split esista (un solo controllo, cheap):
-    core_path = _BASE / lang / "planner" / "_core.j2"
-    if not core_path.is_file():
+    # Verifica che la struttura split esista (un solo controllo, cheap): live,
+    # candidato o ripiego EN (catena §K). `lang` è già la lingua effettiva.
+    if _resolve_prompt_source(_BASE / lang, _BASE / _FALLBACK_LANG,
+                              "planner/_core.j2") is None:
         raise RuntimeError(
-            f"prompt_loader.compose: prompts/{lang}/planner/_core.j2 "
-            f"non esiste. Struttura split planner mancante per lang={lang!r}."
+            f"prompt_loader.compose: planner/_core.j2 assente in {lang!r} e "
+            f"nel ripiego {_FALLBACK_LANG!r}. Struttura split planner mancante."
         )
 
     # Snapshot del formato sezione al tempo della call: entra nella cache key
@@ -603,10 +713,9 @@ def compose(role: str, lang: str, *, sections=None, **vars) -> str:
         env = _env_for(lang)
         parts: list[str] = []
         parts.append(env.render_template("planner/_core.j2", **vars))
-        sec_dir = _BASE / lang / "planner" / "sections"
         for sec in effective:
-            yaml_path = sec_dir / f"{sec}.yaml"
-            if yaml_path.is_file():
+            yaml_path = _section_yaml_path(lang, sec)   # ripiego EN §K
+            if yaml_path is not None:
                 parts.append(_render_yaml_section(yaml_path, fmt=sec_fmt))
             else:
                 parts.append(env.render_template(

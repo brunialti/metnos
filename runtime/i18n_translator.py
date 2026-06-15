@@ -265,8 +265,13 @@ def run_loop(boot_interval: float = INTERVAL_BOOT_S,
 #      MUST/MUST NOT/OK/ERROR; "E' UN ERRORE"→"THIS IS AN ERROR"
 #   5. validation: sintassi MiniJinja, set placeholder identico, len ratio
 #      0.7-1.4× (drift detector)
-#   6. salva candidato in `prompts/<lang>/_pending/<role>.j2.candidate`
-#      (mai diretto in `prompts/<lang>/<role>.j2` — review umana obbligatoria)
+#   6. salva candidato in `prompts/<lang>/_pending/<role>.j2.candidate`.
+#      §K (15/6/2026): il candidato è USATO IN-VIVO dal loader (catena
+#      live→candidato→EN in `prompt_loader._resolve_prompt_source`) senza
+#      attendere una promozione manuale — l'approvazione NON è più un gate
+#      bloccante (nessuno revisiona centinaia di stringhe; ADR 0173). La
+#      promozione a `prompts/<lang>/<role>.j2` resta possibile (opt-in,
+#      canonicalizza + abilita il linter prescrittivo §6.1).
 # ===========================================================================
 import re as _re
 import uuid as _uuid
