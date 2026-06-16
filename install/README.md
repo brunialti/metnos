@@ -68,7 +68,7 @@ hiding it.
 ## Skills — modular capabilities
 
 Phase 6 lets you choose which **first-party skills** start enabled:
-`photos` · `mail` · `web` · `geo` · `calendar` · `github` · `sqldatabase` · `frontier`. The
+`system` · `photos` · `mail` · `web` · `geo` · `calendar` · `github` · `google-workspace` · `sqldatabase` · `frontier`. The
 **core** (local files, processes, time, scheduler, in-memory helpers) is always
 on and needs nothing external.
 
