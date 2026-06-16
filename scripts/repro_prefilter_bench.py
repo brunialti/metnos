@@ -121,7 +121,6 @@ def build_hard_distractors(real_execs: list, n: int) -> list:
         if name in seen:
             continue
         seen.add(name)
-        verb_words = []
         vm = vocab.ACTION_MAPPING.get(v, {})
         verb_words = list(vm.get("it", []))[:3] + list(vm.get("en", []))[:3]
         ow = obj_words.get(o, [o])

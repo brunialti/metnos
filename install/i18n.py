@@ -3,7 +3,6 @@
 standard: every user-facing string resolves here in the chosen locale
 (METNOS_LOCALE, set at the disclaimer gate; default 'en')."""
 from __future__ import annotations
-import os
 
 def locale() -> str:
     # The installer UI is ENGLISH-ONLY for now (decision, 9/6): the IT/EN choice

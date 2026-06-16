@@ -18,8 +18,8 @@ impl State {
         }
         let bytes = std::fs::read(path)
             .with_context(|| format!("read state from {}", path.display()))?;
-        Ok(serde_json::from_slice(&bytes)
-            .with_context(|| format!("parse state {}", path.display()))?)
+        serde_json::from_slice(&bytes)
+            .with_context(|| format!("parse state {}", path.display()))
     }
 
     pub fn save(&self, path: &Path) -> Result<()> {

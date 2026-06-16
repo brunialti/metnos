@@ -129,9 +129,8 @@ def _rewrite_imports(src: str, runtime_mods: set[str]) -> str:
 
         # 1. Drop sys.path.insert lines (runtime + supra src)
         if _SYSPATH_RUNTIME.match(line) or _SYSPATH_SUPRA.match(line):
-            # Replace with a comment so the diff is greppable, but
-            # eventually we want it gone entirely. For now keep the
-            # comment for review; manual deletion at v1.0 hardening.
+            # Drop the sys.path.insert line entirely (package imports
+            # make it dead).
             continue
 
         # 2. Rewrite `from X[.sub] import ...`
@@ -155,7 +154,7 @@ def _rewrite_imports(src: str, runtime_mods: set[str]) -> str:
                     and "." not in mod
                     and not mod.startswith("runtime.")
                     and not mod.startswith("suprastructure.")):
-                line = f"{indent}from runtime import {mod}{alias.replace(' as ', ' as ')}"
+                line = f"{indent}from runtime import {mod}{alias}"
             out_lines.append(line)
             continue
 

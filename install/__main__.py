@@ -156,8 +156,7 @@ def main() -> int:
     if args.force_phase == 0:
         # Clear sentinel to force re-show
         from pathlib import Path
-        import os as _os
-        Path(_os.environ.get("METNOS_USER_STATE", str(Path.home() / ".local" / "state" / "metnos"))
+        Path(os.environ.get("METNOS_USER_STATE", str(Path.home() / ".local" / "state" / "metnos"))
              ).joinpath("install", "disclaimer.accepted").unlink(missing_ok=True)
     locale = _gate_language_and_disclaimer(args)
     os.environ["METNOS_LOCALE"] = locale
