@@ -569,5 +569,43 @@ class TestTerminator(unittest.TestCase):
         self.assertTrue(resp.lacuna_id)
 
 
+class TestMutatingInputEmptyAutoSkip(unittest.TestCase):
+    """Auto-skip strutturale (§2.8/§7.3) di un mutante che consuma input VUOTO:
+    niente artefatto vuoto (turn 36a40c35/e591854e — spreadsheet da 0 fatture).
+    Lo standalone create (nessun input-lista) NON viene saltato."""
+
+    def _hist(self, *results):
+        return [StepRun(step_idx=i + 1, tool="t%d" % i, args={}, result=r,
+                        ok=True, latency_ms=1) for i, r in enumerate(results)]
+
+    def test_create_from_empty_upstream_is_skipped(self):
+        step = StepSpec(tool="create_files_spreadsheet", args={"from_step": 1})
+        hist = self._hist({"ok": True, "entries": []})
+        self.assertTrue(eng_executor._mutating_input_is_empty(step, hist))
+        self.assertFalse(eng_executor._step_condition_passes(step, hist))
+
+    def test_create_from_nonempty_upstream_runs(self):
+        step = StepSpec(tool="create_files_spreadsheet", args={"from_step": 1})
+        hist = self._hist({"ok": True, "entries": [{"x": 1}]})
+        self.assertFalse(eng_executor._mutating_input_is_empty(step, hist))
+        self.assertTrue(eng_executor._step_condition_passes(step, hist))
+
+    def test_inline_empty_entries_is_skipped(self):
+        step = StepSpec(tool="create_files_spreadsheet", args={"entries": []})
+        self.assertTrue(eng_executor._mutating_input_is_empty(step, []))
+
+    def test_standalone_create_not_skipped(self):
+        """create senza input-lista (crea cartella X) NON e' un noop su vuoto."""
+        step = StepSpec(tool="create_dirs", args={"paths": ["/tmp/x"]})
+        self.assertFalse(eng_executor._mutating_input_is_empty(step, []))
+        self.assertTrue(eng_executor._step_condition_passes(step, []))
+
+    def test_producer_on_empty_not_skipped(self):
+        """un producer (find/read) a 0 input NON e' soggetto all'auto-skip."""
+        step = StepSpec(tool="read_files", args={"from_step": 1})
+        hist = self._hist({"ok": True, "entries": []})
+        self.assertFalse(eng_executor._mutating_input_is_empty(step, hist))
+
+
 if __name__ == "__main__":
     unittest.main()

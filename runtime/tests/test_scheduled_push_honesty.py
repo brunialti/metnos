@@ -150,9 +150,14 @@ class TestDetectFalseSuccess:
 
 
 class TestTurnLogFalseSuccessNotice:
-    def test_write_prepends_notice_on_empty_pipeline(self, tmp_path):
+    def test_write_replaces_false_success_with_honest_notice(self, tmp_path):
+        """Regression turn 36a40c35/e591854e: il false-success SOSTITUISCE
+        il narrato LLM ottimista, non lo antepone — l'utente non deve mai
+        leggere «nessuna azione eseguita» seguito da «ho creato il foglio con
+        i dati» nello stesso messaggio."""
         from agent_runtime import TurnLog, StepLog
         import agent_runtime as _ar
+        from messages import get as _msg
         _orig = _ar.TURN_LOG_DIR
         _ar.TURN_LOG_DIR = tmp_path
         try:
@@ -173,8 +178,11 @@ class TestTurnLogFalseSuccessNotice:
             assert log.false_success_detected is True
             assert log.effect_counts["items"] == 0
             assert log.effect_counts["mutations"] == 0
-            # Notice additiva in testa (messaggio LLM preservato per audit)
-            assert log.final_message.startswith("⚠")
+            # SOSTITUZIONE: il final e' SOLO la notice onesta, il claim falso
+            # ("analizzato"/"salvato") e' sparito dal messaggio user-facing.
+            assert log.final_message == _msg("MSG_FALSE_SUCCESS_NOTICE")
+            assert "analizzato" not in log.final_message
+            assert "salvato" not in log.final_message
         finally:
             _ar.TURN_LOG_DIR = _orig
 

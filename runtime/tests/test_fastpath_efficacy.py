@@ -129,6 +129,23 @@ class TestEfficacyGate(_FastpathDbCase):
             "svuota lo spam", Intent(verb="move", object="messages"), fw, run)
         self.assertEqual(len(eng_fastpath.list_all()), 1)
 
+    def test_unguarded_mutant_skipped_on_empty_not_recorded(self):
+        """Regression turn e591854e/71117eef: «cerca fatture ... su spreadsheet»
+        misroutato su files → read_files a 0 → create_files_spreadsheet
+        NON-guardato auto-skippato (assente da run.steps) → 0 effetto reale.
+        Il piano (misroute/non-guardato a vuoto) NON va cachato, altrimenti
+        l'errore itera (il path fallito intercetta le richieste nuove)."""
+        fw = _fw("read_files", "extract_entries", "create_files_spreadsheet")
+        # create assente da run.steps: l'auto-skip su input vuoto l'ha saltato.
+        run = _run([
+            ("read_files", {"ok": True, "entries": []}),
+            ("extract_entries", {"ok": True, "entries": []}),
+        ])
+        eng_dispatch._maybe_record_fastpath(
+            "cerca fatture e metti data e importo su spreadsheet",
+            Intent(verb="create", object="files"), fw, run)
+        self.assertEqual(eng_fastpath.list_all(), [])
+
     def test_mixed_plan_one_mutant_a_vuoto_blocks(self):
         """Per-step, non aggregato: un mutante a vuoto blocca anche se un
         altro mutante ha avuto effetto."""

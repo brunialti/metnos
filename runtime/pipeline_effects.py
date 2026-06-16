@@ -64,6 +64,17 @@ def _mutation_count(res: dict) -> int | None:
     return None
 
 
+def _step_args(s) -> dict:
+    """Args risolti dello step (resolved_args/args/raw_args)."""
+    for attr in ("resolved_args", "args", "raw_args"):
+        v = getattr(s, attr, None)
+        if isinstance(v, dict):
+            return v
+        if isinstance(s, dict) and isinstance(s.get(attr), dict):
+            return s[attr]
+    return {}
+
+
 def pipeline_effect_counts(steps) -> dict | None:
     """Conteggio deterministico §7.9 degli effetti REALI di un turno.
 
@@ -89,6 +100,16 @@ def pipeline_effect_counts(steps) -> dict | None:
             continue
         if any(tool.startswith(p) for p in MUTATING_TOOL_PREFIXES):
             mutating_attempted = True
+            # §2.8: mutating su `entries` VUOTE (pipeline-dati a 0 input) =
+            # artefatto/azione VUOTA, 0 effetto reale (es. spreadsheet da 0
+            # fatture, send a 0 destinatari). Contabile ma NON una mutazione →
+            # il guard anti-falso-successo scatta. NB: i create "standalone"
+            # (crea cartella X, senza arg entries) NON entrano qui → niente
+            # falso-positivo. Turn 36a40c35/3fd7add6.
+            _a = _step_args(s)
+            if isinstance(_a.get("entries"), list) and len(_a["entries"]) == 0:
+                countable += 1
+                continue
             n = _mutation_count(res)
             if n is None:
                 continue
@@ -139,6 +160,14 @@ def ineffective_mutations(steps) -> list[str]:
         if res is None or res.get("_duplicate") is True:
             continue
         if res.get("ok") is False:
+            bad.append(tool)
+            continue
+        # §2.8/efficacia L0: mutante che CONSUMA entries=[] = «a vuoto»
+        # (artefatto vuoto su input vuoto), anche se n_created>0 → il piano
+        # NON va cachato. Turn e591854e/71117eef: spreadsheet da 0 fatture
+        # cachato come fastpath e ri-servito, iterando l'errore.
+        _a = _step_args(s)
+        if isinstance(_a.get("entries"), list) and len(_a["entries"]) == 0:
             bad.append(tool)
             continue
         n = _mutation_count(res)

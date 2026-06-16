@@ -183,6 +183,36 @@ def _maybe_record_fastpath(query: str, intent: Intent,
                  "%s — piano 'ok a vuoto' non cacheabile (criterio efficacia)",
                  ineff)
         return
+    # Efficacia estesa (16/6, turn e591854e/71117eef): un piano che DICHIARA
+    # un mutante NON-guardato (senza if_prev_entries_nonempty) ma il turno ha
+    # 0 effetto reale (0 items E 0 mutations — il mutante e' stato auto-skippato
+    # su input vuoto da _mutating_input_is_empty, quindi assente da run.steps e
+    # invisibile a ineffective_mutations) NON va cachato: cacharlo auto-perpetua
+    # il misroute «no-location→files→0→skip→cache→ri-serve». §7.9.
+    #   Confine (vs test_skipped_conditional_mutant_not_blocked): un mutante
+    # con if_prev_entries_nonempty=True e' GUARDATO — il piano anticipa la
+    # vuotezza come esito NORMALE («svuota lo spam» con 0 spam = piano corretto,
+    # vuoto oggi) → cacheabile. Solo il mutante NON-guardato a 0-effetto e'
+    # sintomo di piano malformato/misroutato → bloccato. Prima dell'auto-skip
+    # questo mutante eseguiva con entries=[] e ineffective_mutations lo coglieva
+    # (riga entries==[]); l'auto-skip ha spostato qui quel confine.
+    try:
+        from pipeline_effects import (pipeline_effect_counts,
+                                       MUTATING_TOOL_PREFIXES)
+        _c = pipeline_effect_counts(run.steps)
+        _declared_unguarded_mutant = any(
+            any((getattr(s, "tool", "") or "").startswith(p)
+                for p in MUTATING_TOOL_PREFIXES)
+            and not getattr(s, "if_prev_entries_nonempty", False)
+            for s in (framework.steps or []))
+        if (_c and _c.get("items", 0) == 0 and _c.get("mutations", 0) == 0
+                and _declared_unguarded_mutant):
+            log.info("[L0 fastpath] skip record: mutante non-guardato dichiarato "
+                     "ma 0 effetto reale (0 items/0 mutations) — piano inefficace "
+                     "non cacheabile")
+            return
+    except Exception as ex:
+        log.warning("fastpath noop-check fallito (registro comunque): %r", ex)
     try:
         framework = _canonical_framework_for_record(query, framework, catalog)
         fp_id = _fp.record_success(query, framework, intent=intent,

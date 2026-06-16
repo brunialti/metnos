@@ -598,16 +598,58 @@ def _resolve_one_filler(name: str, spec, llm_call: Optional[Callable],
 
 # ── Step condition (skip-guard) ───────────────────────────────────────────
 
+def _mutating_input_is_empty(step: StepSpec, history: list[StepRun]) -> bool:
+    """True se `step` e' un MUTANTE che CONSUMA una lista d'input (from_step /
+    entries / template / entries-consumer) e tale lista e' VUOTA.
+
+    Guard strutturale §7.3/§2.8 (no ad-hoc): un'azione/artefatto su 0 input
+    (es. create_files_spreadsheet da 0 fatture, send a 0 destinatari) non va
+    eseguita — niente file vuoto, niente falso successo, e il piano risulta
+    INEFFICACE (non cachato da L0). I create STANDALONE (crea cartella X, senza
+    input-lista) NON ricadono qui → nessun falso-positivo. Turn 36a40c35/
+    3fd7add6/e591854e/71117eef."""
+    from pipeline_effects import MUTATING_TOOL_PREFIXES
+    tool = step.tool or ""
+    if not any(tool.startswith(p) for p in MUTATING_TOOL_PREFIXES):
+        return False
+    args = step.args or {}
+    fs = args.get("from_step")
+    consumes = (fs is not None or "entries" in args
+                or tool in _ENTRIES_CONSUMERS or tool in _TEMPLATE_CONSUMERS
+                or any(k in args for k in _TEMPLATE_ARGS))
+    if not consumes:
+        return False  # mutante standalone (nessun input-lista) → mai skippare
+    if fs is not None:
+        try:
+            idx = int(fs) - 1
+        except (TypeError, ValueError):
+            return False
+        if 0 <= idx < len(history):
+            res = history[idx].result if isinstance(history[idx].result, dict) else {}
+            return not _step_list_payload(res)
+        return False
+    if isinstance(args.get("entries"), list):
+        return len(args["entries"]) == 0
+    if history:  # auto-wire: ultimo producer
+        res = history[-1].result if isinstance(history[-1].result, dict) else {}
+        return not _step_list_payload(res)
+    return False
+
+
 def _step_condition_passes(step: StepSpec, history: list[StepRun]) -> bool:
-    """Se step.if_prev_entries_nonempty=True e ultimo step ha entries vuote
-    → skip (return False)."""
-    if not step.if_prev_entries_nonempty:
-        return True
-    if not history:
-        return True
-    last = history[-1]
-    entries = last.result.get("entries") if isinstance(last.result, dict) else None
-    return bool(entries)
+    """Skip-guard di uno step. Due regole:
+    1. opt-in: step.if_prev_entries_nonempty=True + ultimo step entries vuote.
+    2. AUTO (strutturale): mutante che consuma una lista d'input VUOTA."""
+    if step.if_prev_entries_nonempty:
+        if not history:
+            return True
+        last = history[-1]
+        entries = last.result.get("entries") if isinstance(last.result, dict) else None
+        if not entries:
+            return False
+    if _mutating_input_is_empty(step, history):
+        return False
+    return True
 
 
 # ── Final message renderer ────────────────────────────────────────────────

@@ -4347,11 +4347,12 @@ class TurnLog:
                     "results in every step): no action was actually "
                     "performed.")
                 _fs_notice = msg("MSG_FALSE_SUCCESS_NOTICE")
-                if _fs_notice not in (self.final_message or ""):
-                    self.final_message = (
-                        _fs_notice + "\n\n"
-                        + (self.final_message or "")
-                    ).strip()
+                # SOSTITUISCE (non antepone) il narrato LLM falso: l'utente
+                # deve vedere SOLO la verità (0 risultati), non «ho creato il
+                # foglio con i dati» DOPO «nessuna azione eseguita» (messaggio
+                # contraddittorio, turn 36a40c35/e591854e). Il testo LLM resta
+                # nel log dello step per audit.
+                self.final_message = _fs_notice
         # Propaga attachments dall ultimo step che ne ha prodotti (use
         # case realistico: un solo find_images_indices per turno).
         for s_step in reversed(self.steps):
@@ -5338,7 +5339,6 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
     # all-sections — il routing si concretizza ai prossimi step.
     # Lang esplicito al call site (5/5/2026): default da config.DEFAULT_LANG.
     try:
-        from vocab import sections_for_object as _sections_for_object
         # `route_info` non e' ancora disponibile a questo punto (precede
         # l'intent extractor del turno principale). Per il primo prompt
         # PLANNER passiamo sections=None (= all sections) come degrade
@@ -7029,8 +7029,7 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
                 _ps_state_fn(log.steps), chosen_name, raw_args,
             )
             if _ps_err in ("needs_data_source", "needs_action_target"):
-                _ps_intent = (intent or {}).get("object") if isinstance(
-                    intent, dict) else None
+                _ps_intent = _intent_object_from_route(route_info)
                 _synth_obs = {
                     "ok": False, "error_class": _ps_err,
                     "intent_object": _ps_intent,
@@ -7263,7 +7262,7 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
                     allow_final_answer=(step_num >= 2),
                     allow_disambiguation=(step_num == 1),
                 )
-            except Exception as _ex:
+            except Exception:
                 _ok, _err = True, ""  # fail-open: non bloccare se validator buggy
             if not _ok:
                 step.error = f"grammar_post_validate: {_err}"
@@ -7344,7 +7343,6 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
             consecutive_blocked += 1
             if consecutive_blocked >= LOOP_BREAK_THRESHOLD:
                 log.final_kind = "loop_break"
-                _last_err = (step.result.get("error") if isinstance(step.result, dict) else None) or step.error or "n/a"
                 _hint = _loop_break_hint(_intent_object_from_route(route_info))
                 log.final_message = msg("MSG_LOOP_BREAK", n=consecutive_blocked, hint=_hint)
                 log.ts_end = time.time(); log.write(); return log
@@ -7363,7 +7361,6 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
             consecutive_blocked += 1
             if consecutive_blocked >= LOOP_BREAK_THRESHOLD:
                 log.final_kind = "loop_break"
-                _last_err = (step.result.get("error") if isinstance(step.result, dict) else None) or step.error or "n/a"
                 _hint = _loop_break_hint(_intent_object_from_route(route_info))
                 log.final_message = msg("MSG_LOOP_BREAK", n=consecutive_blocked, hint=_hint)
                 log.ts_end = time.time(); log.write(); return log
@@ -7693,7 +7690,6 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
             consecutive_blocked += 1
             if consecutive_blocked >= LOOP_BREAK_THRESHOLD:
                 log.final_kind = "loop_break"
-                _last_err = (step.result.get("error") if isinstance(step.result, dict) else None) or step.error or "n/a"
                 _hint = _loop_break_hint(_intent_object_from_route(route_info))
                 log.final_message = msg("MSG_LOOP_BREAK", n=consecutive_blocked, hint=_hint)
                 log.ts_end = time.time(); log.write(); return log
@@ -7890,7 +7886,6 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
             consecutive_blocked += 1
             if consecutive_blocked >= LOOP_BREAK_THRESHOLD:
                 log.final_kind = "loop_break"
-                _last_err = (step.result.get("error") if isinstance(step.result, dict) else None) or step.error or "n/a"
                 _hint = _loop_break_hint(_intent_object_from_route(route_info))
                 log.final_message = msg("MSG_LOOP_BREAK", n=consecutive_blocked, hint=_hint)
                 log.ts_end = time.time(); log.write(); return log
@@ -8955,7 +8950,6 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
             consecutive_blocked += 1
             if consecutive_blocked >= LOOP_BREAK_THRESHOLD:
                 log.final_kind = "loop_break"
-                _last_err = (step.result.get("error") if isinstance(step.result, dict) else None) or step.error or "n/a"
                 _hint = _loop_break_hint(_intent_object_from_route(route_info))
                 log.final_message = msg("MSG_LOOP_BREAK", n=consecutive_blocked, hint=_hint)
                 log.ts_end = time.time(); log.write(); return log
