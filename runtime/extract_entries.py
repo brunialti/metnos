@@ -175,6 +175,49 @@ def _extract_max_tokens(max_per_text: int) -> int:
     return max(1200, min(8192, 512 + int(max_per_text) * 120))
 
 
+# ── Drill-down: segui i link se i campi richiesti non sono nel testo ─────────
+_URL_RE = re.compile(r'https?://[^\s"\'<>)]+')
+_DRILL_TEXT_CHARS = 16000   # budget testo pagina drillata (oltre _MAX_TEXT_CHARS)
+
+
+def _entry_links(entry) -> list:
+    """URL http(s) candidati per il drill: campo `links` dell'entry (es. da
+    read_messages) o, in fallback, URL trovati nel testo. Generale §7.3."""
+    if isinstance(entry, dict):
+        ls = entry.get("links")
+        if isinstance(ls, list):
+            return [u for u in ls
+                    if isinstance(u, str) and u.startswith(("http://", "https://"))]
+    return _URL_RE.findall(_pick_text(entry))[:5]
+
+
+def _empty_fields(records, fields) -> int:
+    """Quanti valori-campo richiesti sono vuoti (0 record = massimo incompleto)."""
+    if not records:
+        return len(fields)
+    return sum(1 for r in records for f in fields
+               if not str(r.get(f, "")).strip())
+
+
+def _drill_fetch(urls, max_links) -> str:
+    """Scarica fino a `max_links` URL e ritorna il testo concatenato, riusando
+    read_urls_html (fetch + html2text + fallback js_render/sidecar per le SPA).
+    Solleva se la capacita' web-fetch non e' installata (→ drill degrada)."""
+    import sys
+    import config as _C
+    p = str(_C.PATH_EXECUTORS / "read_urls_html")
+    if p not in sys.path:
+        sys.path.insert(0, p)
+    import read_urls_html as _rh
+    res = _rh.invoke({"urls": list(urls)[:max_links], "js_render": True})
+    parts = []
+    for e in (res.get("entries") or []):
+        t = e.get("body_text") or ""
+        if t.strip():
+            parts.append(t)
+    return "\n\n".join(parts)
+
+
 def handle_extract_entries(args, *, verbose: bool = False) -> dict:
     a = args or {}
     entries = a.get("entries")
@@ -205,31 +248,62 @@ def handle_extract_entries(args, *, verbose: bool = False) -> dict:
     truncated_inputs = len(entries) > _MAX_INPUTS
     prompt = _build_prompt(fields, instruction, max_per_text)
 
+    # drill_down: default ON (sempre attivo se la capacita' web-fetch e'
+    # installata; degrada onesto se assente). Roberto 16/6.
+    drill_down = a.get("drill_down", True)
+    drill_max_links = int(a.get("drill_max_links") or 3)
+
     mt = _extract_max_tokens(max_per_text)
     out: list = []
     in_tok = out_tok = lat = 0
     failed = 0
     out_truncated = 0  # sorgenti il cui output ha (probabilmente) toccato il cap
+    drilled_sources = 0
+    drill_unavailable = False
+
+    def _llm_extract(src_text):
+        nonlocal in_tok, out_tok, lat, out_truncated
+        raw, meta = call_llm(src_text, prompt, tier=tier, max_tokens=mt,
+                             think=False)
+        in_tok += int(meta.get("in_tokens") or 0)
+        _ot = int(meta.get("out_tokens") or 0)
+        out_tok += _ot
+        lat += int(meta.get("latency_ms") or 0)
+        if _ot >= mt - 16:
+            out_truncated += 1
+        return [{f: rec.get(f, "") for f in fields}
+                for rec in _parse_records(raw, fields)[:max_per_text]]
+
     for entry in sources:
+        nonlocal_drill = drill_down and bool(_entry_links(entry))
         text = _pick_text(entry)[:_MAX_TEXT_CHARS]
-        if not text.strip():
+        if not text.strip() and not nonlocal_drill:
             continue
         try:
-            raw, meta = call_llm(text, prompt, tier=tier,
-                                 max_tokens=mt, think=False)
-            in_tok += int(meta.get("in_tokens") or 0)
-            _ot = int(meta.get("out_tokens") or 0)
-            out_tok += _ot
-            lat += int(meta.get("latency_ms") or 0)
-            if _ot >= mt - 16:  # euristica: output tagliato dal token-cap
-                out_truncated += 1
+            records = _llm_extract(text) if text.strip() else []
         except Exception as ex:
             failed += 1
             log.warning("extract_entries: LLM call failed: %r", ex)
             continue
-        for rec in _parse_records(raw, fields)[:max_per_text]:
-            # normalizza: tieni solo i fields richiesti, riempi i mancanti.
-            norm = {f: rec.get(f, "") for f in fields}
+        # Drill-down §7.3: campi richiesti vuoti + link disponibili → segui i
+        # link, ri-estrai sul testo+pagina, tieni il risultato piu' completo.
+        if nonlocal_drill and _empty_fields(records, fields) > 0:
+            try:
+                drilled = _drill_fetch(_entry_links(entry), drill_max_links)
+            except Exception:
+                drill_unavailable = True  # capacita' web-fetch non installata
+                drilled = ""
+            if drilled.strip():
+                try:
+                    records2 = _llm_extract(
+                        (text + "\n\n" + drilled)[:_DRILL_TEXT_CHARS])
+                except Exception:
+                    records2 = []
+                if records2 and (_empty_fields(records2, fields)
+                                 < _empty_fields(records, fields)):
+                    records = records2
+                    drilled_sources += 1
+        for norm in records:
             out.append(norm)
             if max_total and len(out) >= max_total:
                 break
@@ -247,6 +321,12 @@ def handle_extract_entries(args, *, verbose: bool = False) -> dict:
     }
     if failed:
         res["failed_sources"] = failed
+    if drilled_sources:
+        res["drilled_sources"] = drilled_sources  # campi riempiti seguendo link
+    if drill_unavailable:
+        # §2.8 onesto: campi mancanti + link presenti, ma la capacita' web-fetch
+        # non e' installata → non ho potuto drillare.
+        res["drill_unavailable"] = True
     if out_truncated:
         # §2.7 visibility: l'output LLM ha toccato il token-cap su ≥1 sorgente →
         # qualche record oltre il cap puo' mancare (il parser tollerante ha

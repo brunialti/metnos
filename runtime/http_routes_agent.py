@@ -676,8 +676,13 @@ def _enrich_attachments(log_obj, admin_key: str, *, cap: int = CHAT_INLINE_ATT_C
 
 
 def _gallery_url_for(log_obj) -> tuple[str | None, int]:
-    """Ritorna (gallery_url, n_total). gallery_url None se 0 attachments."""
-    n_total = len(getattr(log_obj, "attachments", []) or [])
+    """Ritorna (gallery_url, n_total). La gallery e' IMAGE-only: i file
+    deliverable (kind='file', xlsx/doc/zip) NON contano e non generano un
+    link gallery (bug 7d2f734f: "gallery 1 foto" vuota su turno con solo
+    uno spreadsheet)."""
+    atts = getattr(log_obj, "attachments", []) or []
+    n_total = sum(1 for a in atts
+                  if isinstance(a, dict) and a.get("kind") != "file")
     if n_total <= 0:
         return None, 0
     return f"/agent/gallery/{log_obj.turn_id}", n_total

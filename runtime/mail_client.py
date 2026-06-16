@@ -354,5 +354,40 @@ def parse_envelope(raw_msg: bytes) -> dict:
         "message_id": msg_id,
         "has_attachment": has_attach,
         "body_preview": body_preview,
+        "links": _extract_links(msg),
         "category_hints": _category_hints(msg),
     }
+
+
+# Estensioni di asset statici (non-contenuto): escluse dai `links` per non
+# far drillare font/css/js/immagini. Filtro GENERALE per tipo file, non per
+# dominio (§7.3). Il drill (extract_entries) seguira' i link rimasti.
+_ASSET_EXT_RE = re.compile(
+    r"\.(?:css|js|png|jpe?g|gif|svg|webp|ico|woff2?|ttf|eot|mp4|mp3|pdf)"
+    r"(?:[?#]|$)", re.IGNORECASE)
+
+
+def _extract_links(msg, *, cap: int = 20) -> list:
+    """Tutti gli URL http(s) di contenuto nel corpo HTML della mail, in ordine,
+    deduplicati, esclusi gli asset statici. Generale per qualsiasi mittente:
+    abilita il drill-down (extract_entries segue questi link se i campi
+    richiesti non sono nel testo)."""
+    urls: list = []
+    for part in msg.walk():
+        if part.get_content_type() != "text/html":
+            continue
+        payload = part.get_payload(decode=True) or b""
+        try:
+            html = payload.decode(part.get_content_charset() or "utf-8",
+                                  errors="replace")
+        except Exception:
+            html = payload.decode("utf-8", errors="replace")
+        for m in re.finditer(r'href=["\']?(https?://[^"\'>\s]+)', html, re.I):
+            u = m.group(1).rstrip(').,;"\'')
+            if _ASSET_EXT_RE.search(u):
+                continue
+            if u not in urls:
+                urls.append(u)
+                if len(urls) >= cap:
+                    return urls
+    return urls

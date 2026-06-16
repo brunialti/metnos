@@ -208,6 +208,12 @@ class TestReadUrlsHtml(unittest.TestCase):
     def test_js_rendered_detected(self):
         """SPA scheletro: text/html ratio basso + root div + script numerosi."""
         import read_urls_html
+        # Isola la DETECTION dal sidecar reale: se Playwright e' installato e il
+        # sidecar e' UP, l'auto-escalate (js_render implicito) renderizza la SPA
+        # e js_rendered torna False. Qui testiamo la sola detection. §8.2.
+        _saved = read_urls_html._playwright_client
+        read_urls_html._playwright_client = None
+        self.addCleanup(setattr, read_urls_html, "_playwright_client", _saved)
         # HTML con pochi caratteri di body ma molti script + root div
         body = (
             b"<html><head>"

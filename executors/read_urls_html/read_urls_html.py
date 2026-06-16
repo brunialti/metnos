@@ -372,6 +372,33 @@ def _classify_url_error(reason) -> str:
     return "network"
 
 
+# Script inline (no src) che CONTENGONO DATI (molte coppie "chiave":valore),
+# non codice di framework. Generale: filtro per densita' JSON, non per dominio.
+_INLINE_SCRIPT_RE = re.compile(r'<script(?![^>]*\bsrc=)[^>]*>(.*?)</script>',
+                               re.IGNORECASE | re.DOTALL)
+
+
+def _json_islands_text(html_text: str, cap: int = 16000) -> str:
+    """Testo dei dati JSON embedded nell'HTML (SPA hydration / script json /
+    __DATA__). Estratto SENZA browser: rende l'importo/indirizzo di una SPA
+    leggibili a valle. Soglia densita' (`":` molte volte) per scartare il
+    codice JS dei framework. Cap totale per non gonfiare il prompt."""
+    out: list = []
+    total = 0
+    for m in _INLINE_SCRIPT_RE.finditer(html_text or ""):
+        s = (m.group(1) or "").strip()
+        if s.count('":') < 3:          # non e' un payload-dati → salta (JS code)
+            continue
+        take = s[:max(0, cap - total)]
+        if not take:
+            break
+        out.append(take)
+        total += len(take)
+        if total >= cap:
+            break
+    return ("\n[dati-embedded]\n" + "\n".join(out)) if out else ""
+
+
 def _fetch_one(url: str, opener, timeout_s: float, max_bytes: int,
                throttle: "HostThrottle | None" = None,
                cache: "HttpCache | None" = None,
@@ -619,7 +646,11 @@ def _fetch_one(url: str, opener, timeout_s: float, max_bytes: int,
     entry = {
         "url": final_url,
         "title": title,
-        "body_text": body_text,
+        # JSON-island appesa SOLO all'output (dopo la detection js_rendered e il
+        # fallback iframe, che usano il testo VISIBILE): molte SPA spediscono i
+        # DATI come JSON embedded nell'HTML → leggibili a valle (extract_entries)
+        # senza renderizzare JS. Generale §7.3. Bug 5303699e (bollette SPA).
+        "body_text": body_text + _json_islands_text(text),
         "meta": p.meta,
         "lang": p.lang,
         "fetched_at": time.time(),

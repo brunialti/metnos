@@ -595,9 +595,28 @@ def _read_one_account(account, folder, max_results, unseen_only, since, before,
         search_args = []
         for c in criteria:
             search_args.extend(c.split())
+
+        # Robustezza NL→determinismo §2.4: `from_contains` e' dominio APERTO.
+        # Il planner a volte include una parola-tema ("bollette eniplenitude")
+        # che NON e' nel mittente ("noreply@eniplenitude.com") → IMAP FROM su
+        # tutta la frase = 0 risultati (fallimento silenzioso). Tolleranza:
+        # multi-token → OR (match se UNO qualsiasi dei token e' nel From).
+        # Solo FROM (subject/body restano frasi). Turn 1671283e.
+        def _or_search(key, val):
+            toks = [t for t in str(val).split() if len(t) >= 2]
+            if len(toks) <= 1:
+                return [key, f'"{val}"']
+            grp = [key, f'"{toks[-1]}"']
+            for t in reversed(toks[:-1]):
+                grp = ["OR", key, f'"{t}"'] + grp
+            return grp
+
         for key, val in textual_args:
-            search_args.append(key)
-            search_args.append(f'"{val}"')
+            if key == "FROM":
+                search_args.extend(_or_search(key, val))
+            else:
+                search_args.append(key)
+                search_args.append(f'"{val}"')
         status, data = conn.uid("SEARCH", *search_args)
         if status != "OK":
             failed.append({"account": account,

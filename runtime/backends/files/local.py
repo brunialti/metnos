@@ -1616,8 +1616,19 @@ def _entries_to_values(entries, columns) -> list:
     if not cols:
         return []
     out = [list(cols)]
+    n = len(cols)
     for e in rows_in:
-        out.append([_entry_cell(e, c) for c in cols])
+        cells = [_entry_cell(e, c) for c in cols]
+        # §2.4 robustezza NL→determinismo: se la risoluzione per-chiave/sinonimo
+        # lascia colonne vuote (il planner ha nominato `fields` e `columns` in
+        # lingue/nomi diversi, es. date↔data, address↔indirizzo) ma l'entry ha
+        # lo STESSO numero di campi → mapping POSIZIONALE (liste parallele nello
+        # stesso ordine). Recupera i dati invece di celle vuote. Turn 1671283e.
+        if sum(1 for c in cells if c not in ("", None)) < n:
+            vals = [v for k, v in e.items() if not str(k).startswith("_")]
+            if len(vals) == n:
+                cells = vals
+        out.append(cells)
     return out
 
 
