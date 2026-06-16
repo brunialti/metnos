@@ -34,6 +34,22 @@ def _new_channel():
     return TelegramChannel(state_path=False)
 
 
+def _attachment_paths(args: dict) -> list:
+    """Normalizza `args['attachments']` → [(path, basename)]. Accetta stringhe
+    (path) o dict {path|file, basename}. §2.4 tolleranza al confine NL."""
+    import os
+    raw = args.get("attachments_top") or args.get("attachments") or []
+    out = []
+    for a in (raw if isinstance(raw, list) else [raw]):
+        if isinstance(a, str) and a.strip():
+            out.append((a, os.path.basename(a)))
+        elif isinstance(a, dict):
+            p = a.get("path") or a.get("file") or ""
+            if isinstance(p, str) and p.strip():
+                out.append((p, a.get("basename") or os.path.basename(p)))
+    return out
+
+
 def send(args: dict) -> dict:
     """Invia 1+ messaggi via Telegram Bot API.
 
@@ -60,6 +76,7 @@ def send(args: dict) -> dict:
 
     if os.environ.get("METNOS_TELEGRAM_MOCK", "0") == "1":
         results: list[dict] = []
+        _mock_atts = [n for _, n in _attachment_paths(args)]
         for i, m in enumerate(messages):
             if not isinstance(m, dict):
                 continue
@@ -75,6 +92,8 @@ def send(args: dict) -> dict:
                 "ok": True,
                 "_mock": True,
             }
+            if _mock_atts:
+                rec["attachments_sent"] = list(_mock_atts)
             for k in ("recipient_user_id", "recipient_name", "target"):
                 if k in m:
                     rec[k] = m[k]
@@ -95,6 +114,7 @@ def send(args: dict) -> dict:
                 "detail": f"telegram channel init failed: {e}"}
 
     results, failed = [], []
+    _atts = _attachment_paths(args)  # file deliverable → sendDocument (turn 6772053c)
     for i, m in enumerate(messages):
         if not isinstance(m, dict):
             failed.append({"index": i, "error_code": "ERR_ARG_INVALID",
@@ -134,6 +154,21 @@ def send(args: dict) -> dict:
         for k in ("recipient_user_id", "recipient_name", "target"):
             if k in m:
                 rec[k] = m[k]
+        # Allegati come DOCUMENTI Telegram (turn 6772053c: «crea file ma non lo
+        # invia come allegato»). Telegram non raggiunge la LAN → upload binario
+        # via sendDocument. Onesto §2.8: un allegato fallito entra in `failed`
+        # (ok complessivo False) → l'utente non riceve un «inviato» bugiardo.
+        for apath, aname in _atts:
+            dres = ch.send_document(chat_id=str(rid), path=apath, basename=aname)
+            if dres.get("ok"):
+                rec.setdefault("attachments_sent", []).append(aname)
+            else:
+                rec.setdefault("attachments_failed", []).append(
+                    {"name": aname, "error": dres.get("error")})
+                failed.append({"index": i, "recipient_id": str(rid),
+                               "error_code": "ERR_OP_FAILED",
+                               "error": _msg("ERR_OP_FAILED",
+                                             reason=f"sendDocument {aname}: {dres.get('error')}")})
         results.append(rec)
     return {
         "ok": len(failed) == 0,

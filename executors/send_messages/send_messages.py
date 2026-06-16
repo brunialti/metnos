@@ -358,8 +358,11 @@ def invoke(args):
         backend_args = {"messages": msgs}
         if key[0] == "email":
             backend_args["account"] = account
-            if top_level_attachments is not None:
-                backend_args["attachments_top"] = top_level_attachments
+        # Allegati top-level → ai backend che li consegnano (email + telegram).
+        # Turn 6772053c: erano inoltrati SOLO a email → su telegram il file
+        # creato non partiva mai come documento. §2.8 (l'utente lo chiedeva).
+        if top_level_attachments is not None and key[0] in ("email", "telegram"):
+            backend_args["attachments_top"] = top_level_attachments
         # Attribute lookup a call-time: i test possono patchare `backend.send`.
         res = backend.send(backend_args)
         if not res.get("ok") and res.get("error") and not res.get("results") and not res.get("failed"):
