@@ -46,11 +46,28 @@ vagliati: nessuna approvazione). Le query-specifiche (colonna «solo hash»)
 rispondono solo alla query identica, mai per somiglianza. Invecchiano da
 sole (mai-riusate 14gg, stantie 30gg, tetto 500) e muoiono se un executor
 le rimpiazza; il bottone «elimina» è la valvola manuale.</p>
+<p class="muted"><b>Legenda «origine»</b> — tutte le righe qui sono fastpath (L0);
+l'origine dice <i>come</i> ciascuna è nata, non a quale livello appartiene:</p>
+<table class="compact">
+  <thead><tr><th>origine</th><th>significato</th></tr></thead>
+  <tbody>
+    <tr><td><code>auto</code></td>
+        <td>da un piano PIENO dell'engine (L3) andato a buon fine → auto-cachato in L0</td></tr>
+    <tr><td><code>autopath</code></td>
+        <td>da un hit L1 (autopath di cluster): la stessa query esatta promossa a
+            riga L0 → la volta dopo è hash-0a e salta lo scan L1
+            (NB: ≠ il livello L1 e ≠ la skill <code>sqldatabase</code>/autopath)</td></tr>
+    <tr><td><code>cosine</code></td>
+        <td>da un hit 0b: piano di un'ALTRA query canonica, registrato sotto
+            l'hash di questa</td></tr>
+  </tbody>
+</table>
 {% if fastpaths %}
 <div class="table-wrap">
 <table>
   <thead>
-    <tr><th>id</th><th>query canonica</th><th>intent</th><th>origine</th>
+    <tr><th>id</th><th>query canonica</th><th>intent</th>
+        <th title="come è nata la riga L0: auto=piano engine pieno · autopath=hit L1 promosso · cosine=hit 0b (vedi legenda sopra)">origine</th>
         <th>solo hash</th><th>creata il</th><th>usi</th><th>ultimo uso</th><th></th></tr>
   </thead>
   <tbody>
