@@ -414,7 +414,7 @@ def run_stage5(user_request: str, stage1: dict, stage2: dict, stage3: dict, stag
     # admin. Determinismo §7.9 (regex + DB lookup, niente LLM aggiuntivo).
     try:
         _register_synth_keys(code)
-    except Exception as _ex:
+    except Exception:
         # Non blocca la synth se il registratore fallisce (DB lock, etc.).
         # Logged solo in stage6 verify se necessario.
         pass

@@ -144,7 +144,7 @@ def _install_synthesized(run, intent, user_query):
         '',
         f'name        = "{run.name}"',
         'version     = "0.1.0"',
-        f'author      = "synt-multistage <synt@metnos.com>"',
+        'author      = "synt-multistage <synt@metnos.com>"',
         f'affinity    = {_json.dumps(affinity, ensure_ascii=False)}',
         f'revertible  = {"true" if revertible else "false"}',
     ]

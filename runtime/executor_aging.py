@@ -23,10 +23,12 @@ from __future__ import annotations
 import os
 import sqlite3
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
 
 import config as _C  # §7.11 — rispetta METNOS_USER_STATE
+from timefmt import now_iso_z
+
 DB_PATH = Path(
     os.environ.get(
         "METNOS_EXECUTOR_STATS_DB",
@@ -304,7 +306,7 @@ def apply_executor_ager(
     """
     deprecate_days = deprecate_days if deprecate_days is not None else DEPRECATED_DAYS
     archive_days   = archive_days   if archive_days   is not None else ARCHIVED_DAYS
-    now_iso = now_iso or datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    now_iso = now_iso or now_iso_z()
 
     deprecated_now: list[str] = []
     archived_now: list[str] = []
@@ -604,7 +606,7 @@ def apply_efficacy_ager(
         min_invocations = EFFICACY_MIN_INVOCATIONS
     if re_eval_invocations is None:
         re_eval_invocations = EFFICACY_RE_EVAL_INVOCATIONS
-    now_iso = now_iso or datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    now_iso = now_iso or now_iso_z()
 
     stats = collect_invocation_stats(turns_dir)
     deprecated_now: list[dict] = []
@@ -744,7 +746,7 @@ def apply_feedback_ager(
     if not tool_name:
         return {"action": "skip_unknown", "name": tool_name,
                 "reason": "empty_name"}
-    now_iso = now_iso or datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    now_iso = now_iso or now_iso_z()
 
     if tool_name in PROTECTED_NAMES:
         return {"action": "skip_protected", "name": tool_name}

@@ -43,11 +43,6 @@ def _index_image_root() -> Path:
     return _C.PATH_USER_DATA / "index" / "image"
 
 
-# Backward-compat alias usato da chiamate `if base == _INDEX_BASE`
-def _get_index_base() -> Path:
-    return _index_image_root()
-
-
 def _list_index_dirs() -> list[Path]:
     """Iter su `<index_image_root>/<sha>/<idx>/`."""
     out: list[Path] = []

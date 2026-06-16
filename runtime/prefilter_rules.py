@@ -477,7 +477,6 @@ def compute_rare_penalty(query_tokens: set, executor) -> int:
 
     Pre-condition: init_rare_tokens(catalog) chiamato.
     """
-    global _RARE_TOKENS_CACHE
     if _RARE_TOKENS_CACHE is None:
         return 0
     from prefilter import tokenize, _STOPWORDS

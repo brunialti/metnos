@@ -306,7 +306,7 @@ def _render_change_row_html(ci_row) -> str:
         "finalized":   f'<span class="chip ok">{_msg("UI_CHANGE_BADGE_FINALIZED")}</span>',
         "rolled_back": f'<span class="chip bad">{_msg("UI_CHANGE_BADGE_ROLLED_BACK")}</span>',
         "failed":      f'<span class="chip bad">{_msg("UI_CHANGE_BADGE_FAILED")}</span>',
-        "proposed":    f'<span class="chip muted">proposed</span>',
+        "proposed":    '<span class="chip muted">proposed</span>',
     }.get(ci_row.state, f'<span class="chip muted">{ci_row.state}</span>')
     return (
         f'<tr id="ci-{ci_row.id}">'

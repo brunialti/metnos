@@ -216,7 +216,7 @@ def validate_head(name: str, s: str, props: dict, catalog_names: set) -> list[st
     """Errori HARD che impediscono l'accettazione (retry con feedback)."""
     errs = []
     if not isinstance(s, str) or len(s) < 60:
-        return [f"description troppo corta o non stringa (>=60 char)"]
+        return ["description troppo corta o non stringa (>=60 char)"]
     if "\n" in s:
         errs.append("contiene newline (deve essere stringa TOML monolinea)")
     pos = [(c, s.find(c)) for c in _CHAPTERS]

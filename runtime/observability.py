@@ -413,7 +413,7 @@ def render_dashboard(out_path: Path | str = DEFAULT_OUT) -> Path:
     }
 
     body = "\n".join([
-        f'<h1>Metnos &mdash; dashboard</h1>',
+        '<h1>Metnos &mdash; dashboard</h1>',
         f'<div class="subtitle">Generata {data["generated_at"]} &middot; '
         f'rigenera con <code>python3 -m observability render</code></div>',
         _render_tests(data["tests"]),

@@ -141,21 +141,6 @@ def slim_args_schema(schema: dict) -> dict:
     return out
 
 
-def slim_tool(tool: dict) -> dict:
-    """Applica slim a un tool dict completo (formato Ollama/OpenAI)."""
-    if not isinstance(tool, dict):
-        return tool
-    fn = tool.get("function") or {}
-    if not fn:
-        return tool
-    new_fn = dict(fn)
-    new_fn["description"] = slim_description(fn.get("description", ""))
-    new_fn["parameters"] = slim_args_schema(fn.get("parameters") or {})
-    out = dict(tool)
-    out["function"] = new_fn
-    return out
-
-
 def is_slim_enabled() -> bool:
     """Default ON. Disable via METNOS_TOOL_SCHEMA_FULL=1."""
     return os.environ.get("METNOS_TOOL_SCHEMA_FULL", "0") != "1"
