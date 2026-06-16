@@ -68,7 +68,7 @@ hiding it.
 ## Skills — modular capabilities
 
 Phase 6 lets you choose which **first-party skills** start enabled:
-`photos` · `mail` · `web` · `geo` · `calendar` · `github` · `frontier`. The
+`photos` · `mail` · `web` · `geo` · `calendar` · `github` · `sqldatabase` · `frontier`. The
 **core** (local files, processes, time, scheduler, in-memory helpers) is always
 on and needs nothing external.
 
@@ -79,6 +79,7 @@ prerequisite (an IMAP account, a SearXNG instance, a GitHub token, …) stays
 You can change skills any time *after* install, from the CLI or right in chat:
 
 ```bash
+cd /opt/metnos   # run from your Metnos install directory
 python3 runtime/cli/skills_cli.py list           # status + prerequisites
 python3 runtime/cli/skills_cli.py disable github
 ```

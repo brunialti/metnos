@@ -43,6 +43,12 @@ FIRST_PARTY_SKILLS: list[dict] = [
     {"name": "calendar", "match": r"(_events\b|_calendars\b)",
      "requires": "a calendar backend (Google Workspace / CalDAV / local)",
      "desc": "Calendario: eventi e calendari.", "auto_enable": True},
+    {"name": "sqldatabase", "match": r"^(find|write|delete)_entries$",
+     "requires": "a registered store (declare one via store.register; "
+                 "SQLite or in-memory backend)",
+     "desc": "Store generico multi-backend: leggi/scrivi/elimina record in "
+             "archivi nominati. Dormiente finché un store non è registrato.",
+     "auto_enable": True},
     {"name": "frontier", "match": r"consult_frontier",
      "requires": "a frontier LLM API key (Anthropic/OpenAI), opt-in",
      "desc": "Escalation a un LLM frontier cloud quando il locale non basta.",

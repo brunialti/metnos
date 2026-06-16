@@ -127,6 +127,7 @@ executors (so the planner never sees "Google" — it's a backend, chosen by conf
 Manage them from the CLI **or** just by asking in chat:
 
 ```bash
+cd /opt/metnos   # run from your Metnos install directory
 python3 runtime/cli/skills_cli.py list          # see status + prerequisites
 python3 runtime/cli/skills_cli.py disable github
 ```
