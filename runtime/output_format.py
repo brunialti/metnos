@@ -23,6 +23,8 @@ import html as _html
 import re as _re
 from typing import Iterable, Sequence
 
+import detection_lexicon as _dl  # lessici NL traducibili (gemello i18n input)
+
 
 # HTML→testo deterministico (§7.9, ADR 0095: NIENTE LLM). Impedisce che HTML
 # grezzo (es. "<!DOCTYPE html><html>..." da un fetch interrotto) trapeli in un
@@ -196,30 +198,13 @@ def format_offer(title: str, body: str) -> str:
     return format_separator() + format_section(title, body)
 
 
-_COOKIE_BANNER_MARKERS = (
-    "questo sito utilizza cookie",
-    "this site uses cookies",
-    "we use cookies",
-    "uso dei cookie",
-    "accetta i cookie",
-    "accept cookies",
-    "cookie tecnici",
-    "cookie policy",
-    "proseguendo nella navigazione",
-    "by continuing to browse",
-    "informativa sulla privacy",
-    "privacy policy",
-)
-
-
 def _is_cookie_banner(snippet: str) -> bool:
-    """Heuristic: true se lo snippet e' un banner cookie/privacy
-    (markers comuni IT+EN). Usato per droppare snippet inutili da
-    `format_search_results`."""
+    """Heuristic: true se lo snippet e' un banner cookie/privacy.
+    Marker (concept `web.cookie_banner`) traducibili via detection_lexicon.
+    Usato per droppare snippet inutili da `format_search_results`."""
     if not snippet:
         return False
-    s = snippet.lower()
-    return any(m in s for m in _COOKIE_BANNER_MARKERS)
+    return _dl.match("web.cookie_banner", snippet)
 
 
 def _sanitize_title_for_md_link(text: str) -> str:

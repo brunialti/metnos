@@ -97,42 +97,34 @@ class TestStripUnmarkedProvider:
 
     def test_strips_suffix_when_query_has_no_marker(self):
         from skills_cli import _strip_unmarked_provider
-        from tool_grammar import _PROVIDER_SUFFIX_MARKERS
         out = _strip_unmarked_provider(
             "send_messages_google_workspace",
             "scrivi a Roberto",
-            _PROVIDER_SUFFIX_MARKERS,
         )
         assert out == "send_messages"
 
     def test_keeps_suffix_when_query_has_marker(self):
         from skills_cli import _strip_unmarked_provider
-        from tool_grammar import _PROVIDER_SUFFIX_MARKERS
         # Marker "gmail" presente nella query.
         out = _strip_unmarked_provider(
             "send_messages_google_workspace",
             "manda via gmail a Roberto",
-            _PROVIDER_SUFFIX_MARKERS,
         )
         assert out == "send_messages_google_workspace"
 
     def test_passthrough_canonical_tool(self):
         """Tool senza suffix provider -> identita'."""
         from skills_cli import _strip_unmarked_provider
-        from tool_grammar import _PROVIDER_SUFFIX_MARKERS
         out = _strip_unmarked_provider(
             "send_messages", "scrivi a Roberto",
-            _PROVIDER_SUFFIX_MARKERS,
         )
         assert out == "send_messages"
 
     def test_workspace_marker_word_keeps_suffix(self):
         from skills_cli import _strip_unmarked_provider
-        from tool_grammar import _PROVIDER_SUFFIX_MARKERS
         out = _strip_unmarked_provider(
             "find_files_google_workspace",
             "cerca documenti nel mio google drive",
-            _PROVIDER_SUFFIX_MARKERS,
         )
         assert out == "find_files_google_workspace"
 

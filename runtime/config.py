@@ -118,6 +118,8 @@ DB_MNESTOMA        = PATH_WORKSPACE / ".mnestoma" / "mnest.sqlite"
 DB_SCHEDULER       = PATH_WORKSPACE / ".scheduler" / "state.sqlite"
 # i18n testi multilingua
 DB_I18N            = PATH_USER_DATA / "i18n.sqlite"
+# Lessici di detection NL multilingua (gemello di i18n, lato INPUT)
+DB_DETECTION       = PATH_USER_DATA / "detection.sqlite"
 # Scratchpad (handle observation grandi, ADR 0050)
 DB_SCRATCHPAD      = PATH_USER_DATA / "scratchpad.db"
 # Pairings (multi-device, ADR 0035)

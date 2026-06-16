@@ -76,10 +76,11 @@ def is_scope_arg(arg_name: str) -> bool:
 
 def _provider_qualifiers() -> set:
     """Set dei qualifier PROVIDER (skill/backend, es. github/google_workspace).
-    SoT = chiavi di tool_grammar._PROVIDER_SUFFIX_MARKERS (no hardcoding)."""
+    SoT = chiavi del concept `provider.markers` in detection_lexicon (no
+    hardcoding; union it/en delle suffix dichiarate)."""
     try:
-        from tool_grammar import _PROVIDER_SUFFIX_MARKERS
-        return {k.lstrip("_") for k in _PROVIDER_SUFFIX_MARKERS}
+        import detection_lexicon as _dl
+        return {k.lstrip("_") for k in _dl.mapping("provider.markers")}
     except Exception:
         return set()
 

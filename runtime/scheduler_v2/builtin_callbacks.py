@@ -149,6 +149,18 @@ _BUILTIN_JOBS: list[dict[str, Any]] = [
         ),
     },
     {
+        "name": "detection_translate_pending",
+        "trigger": "every_6h",
+        "callback_key": "detection_translate_pending",
+        "description": (
+            "Gemello lato INPUT di i18n_translate_pending: traduce i lessici "
+            "di detection NL pending (detection.sqlite) nella lingua "
+            "d'istanza via LLM tier wise. Evita il fallimento silenzioso al "
+            "cambio lingua. I regex morfologici sono saltati (authoring "
+            "manuale). Audit JSONL append-only."
+        ),
+    },
+    {
         "name": "promoter",
         "trigger": "daily@04:45",
         "callback_key": "promoter",
@@ -622,6 +634,15 @@ def install_default_callbacks(scheduler) -> None:
         "i18n_translate_pending",
         task_i18n_translate_pending,
         "Traduce 20 righe pending del DB i18n (every_6h, tier wise default)",
+        replace=True,
+    )
+
+    # detection_translate_pending: gemello lato input (detection.sqlite).
+    from jobs.detection_translate_pending import task_detection_translate_pending
+    cb.register(
+        "detection_translate_pending",
+        task_detection_translate_pending,
+        "Traduce i lessici di detection NL pending (every_6h, tier wise)",
         replace=True,
     )
 

@@ -647,6 +647,18 @@ def _enrich_attachments(log_obj, admin_key: str, *, cap: int = CHAT_INLINE_ATT_C
                 "open_url": web_url,  # link a sorgente reale per click esterno
             })
             continue
+        # Attachment file non-immagine (xlsx/doc/zip/pdf): download signed,
+        # niente thumbnail. La chat lo rende come chip di download.
+        if att.get("kind") == "file":
+            out.append({
+                "kind": "file",
+                "basename": att.get("basename"),
+                "caption": att.get("caption"),
+                "mime": att.get("mime"),
+                "download_url": photo_endpoint.make_url(
+                    log_obj.turn_id, idx, "file", admin_key),
+            })
+            continue
         # Attachment local-sourced (path): URL signed via photo_endpoint.
         out.append({
             "kind": att.get("kind", "image"),
@@ -1594,6 +1606,23 @@ async def photo_serve(request: web.Request) -> web.Response:
     src_path = photo_endpoint.resolve_path(turn_id, idx)
     if not src_path:
         return _error(404, "not_found", "photo not found in recent turns")
+    # size="file": consegna RAW del deliverable (xlsx/doc/zip/pdf) come
+    # download, niente thumbnail. Content-Disposition: attachment. Bug 5303699e.
+    if size == "file":
+        import mimetypes
+        from pathlib import Path as _P
+        fp = _P(src_path)
+        if not fp.is_file():
+            return _error(404, "not_found", "file not found")
+        try:
+            body = fp.read_bytes()
+        except OSError as e:
+            return _error(500, "read_error", f"file read failed: {e}")
+        ctype = mimetypes.guess_type(src_path)[0] or "application/octet-stream"
+        safe_name = fp.name.replace('"', "")
+        return web.Response(body=body, content_type=ctype, headers={
+            "Content-Disposition": f'attachment; filename="{safe_name}"',
+            "Cache-Control": "private, max-age=86400"})
     thumb = photo_endpoint.get_or_make_thumb(src_path, size)
     if not thumb:
         return _error(415, "not_an_image", "source path is not a readable image")

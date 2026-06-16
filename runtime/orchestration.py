@@ -53,6 +53,7 @@ from typing import Optional
 sys.path.insert(0, str(Path(__file__).parent))
 
 import dialog_pending
+import detection_lexicon as _dl
 from logging_setup import get_logger
 from messages import get as _msg
 
@@ -116,9 +117,9 @@ def invoke_get_inputs_internal(*,
        sender_for_state: sender_id}]}
     """
     if not isinstance(title, str) or not title.strip():
-        return {"ok": False, "error": "title mancante per orchestrazione"}
+        return {"ok": False, "error": _msg("MSG_ORCH_TITLE_MISSING")}
     if not isinstance(dialog, list) or not dialog:
-        return {"ok": False, "error": "dialog vuoto o non lista"}
+        return {"ok": False, "error": _msg("MSG_ORCH_DIALOG_EMPTY")}
 
     n_steps = len(dialog)
     # Risolvi fmt='auto' lato runtime. Su HTTP:
@@ -196,7 +197,7 @@ def invoke_get_inputs_internal(*,
     try:
         dialog_pending.save_pending(sender_id, dialog_id, state)
     except (OSError, ValueError, TypeError) as ex:
-        return {"ok": False, "error": f"save_pending fallito: {ex}"}
+        return {"ok": False, "error": _msg("MSG_ORCH_SAVE_PENDING_FAILED", detail=str(ex))}
 
     final_message_hint = _build_final_message_hint(state, resolved_fmt)
     return {
@@ -237,7 +238,7 @@ def _build_final_message_hint(state: dict, fmt: str) -> str:
         if isinstance(s, str) and s.startswith("MSG_"):
             return _msg(s)
         return s
-    title = _resolve_msg(state.get("title") or "Domanda")
+    title = _resolve_msg(state.get("title") or _msg("MSG_ORCH_DEFAULT_QUESTION_TITLE"))
     dialog = state.get("dialog") or []
     n = len(dialog)
     dialog_id = state.get("dialog_id") or ""
@@ -253,7 +254,7 @@ def _build_final_message_hint(state: dict, fmt: str) -> str:
             lines.append(descr)
         lines.append("")
         lines.append(f"INLINE_FORM:{url}")
-        lines.append(f"({n} campi da compilare; rispondi `annulla` per abortire.)")
+        lines.append(_msg("MSG_ORCH_FORM_FIELDS_HINT", n=n))
         return "\n".join(lines)
     # dialogue (default)
     first = dialog[0]
@@ -262,10 +263,10 @@ def _build_final_message_hint(state: dict, fmt: str) -> str:
     if descr:
         lines.append(descr)
     lines.append("")
-    lines.append(f"Step 1/{n} — {prompt}")
+    lines.append(_msg("MSG_ORCH_STEP_PROMPT", n=n, prompt=prompt))
     schema = first.get("schema") or {}
     if schema.get("kind") == "credentials":
-        lines.append("(la risposta sara' mascherata in registro)")
+        lines.append(_msg("MSG_ORCH_MASKED_HINT"))
     elif schema.get("kind") == "choice":
         choices = schema.get("choices") or []
         if choices:
@@ -273,7 +274,7 @@ def _build_final_message_hint(state: dict, fmt: str) -> str:
             for i, ch in enumerate(choices, 1):
                 lines.append(f"  {i}. {ch}")
     lines.append("")
-    lines.append("Rispondi nel prossimo messaggio. `annulla` per abortire.")
+    lines.append(_msg("MSG_ORCH_REPLY_NEXT_HINT"))
     return "\n".join(lines)
 
 
@@ -311,14 +312,13 @@ def process_completion_callback(sender_id: str, dialog_id: str,
     """
     state = dialog_pending.load_pending(sender_id, dialog_id)
     if state is None:
-        return f"(Dialogo {dialog_id} non trovato. Riformula la richiesta.)"
+        return _msg("MSG_ORCH_DIALOG_NOT_FOUND", dialog_id=dialog_id)
     if not state.get("completed"):
-        return ("(Dialogo non ancora completo. Compila tutti i campi prima "
-                "di procedere.)")
+        return _msg("MSG_ORCH_DIALOG_INCOMPLETE")
     on_complete = state.get("on_complete")
     if not isinstance(on_complete, dict):
         # Niente callback dichiarato: solo conferma generica.
-        return ("Dialogo completato. I valori sono stati registrati.")
+        return _msg("MSG_ORCH_DIALOG_DONE")
 
     callback_type = on_complete.get("type")
     values = state.get("values_collected") or {}
@@ -364,8 +364,7 @@ def process_completion_callback(sender_id: str, dialog_id: str,
     # executor write/read/find_issues + comandi schedulati).
 
     log.warning("on_complete type sconosciuto: %s", callback_type)
-    return (f"Dialogo completato, ma il tipo callback "
-            f"'{callback_type}' non e' implementato.")
+    return _msg("MSG_ORCH_CALLBACK_UNKNOWN", callback_type=callback_type)
 
 
 def _process_save_credentials_and_resume(on_complete: dict, values: dict,
@@ -390,12 +389,10 @@ def _process_save_credentials_and_resume(on_complete: dict, values: dict,
     password = values.get("password") or values.get("pwd")
 
     if not username or not password:
-        return ("(Dialogo completato ma username/password mancanti: "
-                "non posso salvare le credenziali. Riformula la richiesta.)")
+        return _msg("MSG_ORCH_CREDS_MISSING_USERPASS")
 
     if not domain:
-        return ("(Dialogo completato ma il dominio target e' vuoto: "
-                "non posso salvare le credenziali. Riformula la richiesta.)")
+        return _msg("MSG_ORCH_CREDS_MISSING_DOMAIN")
 
     # 1) save_credentials
     try:
@@ -410,13 +407,12 @@ def _process_save_credentials_and_resume(on_complete: dict, values: dict,
                   "(user=%s)", domain, username)
     except (ImportError, OSError, RuntimeError) as ex:
         log.exception("orchestration: credentials.store fallito")
-        return f"(Salvataggio credenziali fallito: {type(ex).__name__}: {ex})"
+        return _msg("MSG_ORCH_CREDS_SAVE_FAILED", detail=f"{type(ex).__name__}: {ex}")
 
     # 2) resume_call
     if not resume_call:
         # Nessun resume previsto: solo conferma del save.
-        return (f"Credenziali per {domain} salvate. Riformula la richiesta "
-                f"originale per procedere.")
+        return _msg("MSG_ORCH_CREDS_SAVED", domain=domain)
 
     try:
         from loader import invoke_verb_unique
@@ -428,8 +424,7 @@ def _process_save_credentials_and_resume(on_complete: dict, values: dict,
         )
     except (PermissionError, KeyError, RuntimeError, TypeError) as ex:
         log.exception("orchestration: resume_call fallito")
-        return (f"Credenziali salvate ma rilancio di '{resume_call}' "
-                f"fallito: {type(ex).__name__}: {ex}")
+        return _msg("MSG_ORCH_CREDS_SAVED_RESUME_FAILED", resume_call=resume_call, detail=f"{type(ex).__name__}: {ex}")
 
     if isinstance(res, dict):
         return (res.get("summary")
@@ -476,14 +471,14 @@ def _process_expand_cap_and_resume(on_complete: dict, values: dict,
     label = on_complete.get("preview_label") or "risultati"
 
     if not executor:
-        return "(Cap-expand mal formato: nessun executor specificato.)"
+        return _msg("MSG_ORCH_CAPEXPAND_MALFORMED")
 
     try:
         from loader import load_catalog
         cat = load_catalog(verify=True, include_synth=True)
         ex = cat.executors.get(executor)
         if ex is None:
-            return f"(Executor {executor} non in catalog: rilancio annullato.)"
+            return _msg("MSG_ORCH_EXECUTOR_NOT_IN_CATALOG", executor=executor)
         import agent_runtime
         res = agent_runtime.invoke_executor(
             ex, args, timeout_s=getattr(ex, "timeout_s", 30),
@@ -491,10 +486,10 @@ def _process_expand_cap_and_resume(on_complete: dict, values: dict,
         )
     except (PermissionError, KeyError, RuntimeError, TypeError) as ex:
         log.exception("orchestration: expand_cap invoke fallito")
-        return (f"Rilancio fallito: {type(ex).__name__}: {ex}")
+        return _msg("MSG_ORCH_RELAUNCH_FAILED", detail=f"{type(ex).__name__}: {ex}")
 
     if not isinstance(res, dict) or not res.get("ok"):
-        err = (res or {}).get("error", "errore sconosciuto") if isinstance(res, dict) else "no result"
+        err = (res or {}).get("error", _msg("MSG_ORCH_UNKNOWN_ERROR")) if isinstance(res, dict) else _msg("MSG_ORCH_NO_RESULT")
         return _msg("MSG_CAP_EXPAND_FAILED",
                     field=cap_field, value=cap_suggested, err=err)
 
@@ -561,7 +556,7 @@ def _process_resume_executor_with_values(on_complete: dict, values: dict,
     merge_into = on_complete.get("merge_into")
 
     if not executor:
-        return "(resume_executor_with_values: executor mancante.)"
+        return _msg("MSG_ORCH_RESUME_EXEC_MISSING")
 
     if merge_into:
         nested = dict(args_base.get(merge_into) or {})
@@ -575,7 +570,7 @@ def _process_resume_executor_with_values(on_complete: dict, values: dict,
         cat = load_catalog(verify=True, include_synth=True)
         ex = cat.executors.get(executor)
         if ex is None:
-            return f"(Executor {executor} non in catalog: rilancio annullato.)"
+            return _msg("MSG_ORCH_EXECUTOR_NOT_IN_CATALOG", executor=executor)
         import agent_runtime
         res = agent_runtime.invoke_executor(
             ex, args_base, timeout_s=getattr(ex, "timeout_s", 30),
@@ -583,7 +578,7 @@ def _process_resume_executor_with_values(on_complete: dict, values: dict,
         )
     except (PermissionError, KeyError, RuntimeError, TypeError) as ex:
         log.exception("orchestration: resume_executor_with_values fallito")
-        return (f"Rilancio fallito: {type(ex).__name__}: {ex}")
+        return _msg("MSG_ORCH_RELAUNCH_FAILED", detail=f"{type(ex).__name__}: {ex}")
 
     # Cattura scope-arg dal form: il valore confermato/inserito diventa default
     # per il giro dopo (§7.9). Resume bypassa Executor.run → cattura esplicita qui.
@@ -654,12 +649,9 @@ def _process_strato3_choice_dispatch(
                 break
 
     if action_key == "abandon":
-        return ("Ok, mi fermo qui." if lang != "en"
-                else "Ok, stopping here.")
+        return _msg("MSG_ORCH_STOPPING")
     if action_key == "reformulate":
-        return ("Riformula la richiesta nel prossimo messaggio."
-                if lang != "en"
-                else "Reformulate your request in the next message.")
+        return _msg("MSG_ORCH_REFORMULATE_NEXT")
     if action_key == "retry":
         # Ritenta query originale bypassando anti_skill demote del
         # turn_feedback. Universal §7.9: se il motore o lo stato sono
@@ -688,7 +680,7 @@ def _process_strato3_choice_dispatch(
             return final
         except (RuntimeError, TypeError, ImportError) as ex:
             log.exception("strato3 retry failed")
-            return f"Ritenta fallita: {type(ex).__name__}: {ex}"
+            return _msg("MSG_ORCH_RETRY_FAILED", detail=f"{type(ex).__name__}: {ex}")
     if action_key == "synth":
         new_query = (
             f"request_new_executor per: {original_query}"
@@ -702,8 +694,7 @@ def _process_strato3_choice_dispatch(
             else f"consult_frontier on: {original_query}"
         )
     else:
-        return ("Scelta non riconosciuta." if lang != "en"
-                else "Unrecognized choice.")
+        return _msg("MSG_ORCH_CHOICE_UNKNOWN")
     try:
         import agent_runtime
         new_log = agent_runtime.run_turn(
@@ -715,7 +706,7 @@ def _process_strato3_choice_dispatch(
         )
     except (RuntimeError, TypeError, ImportError) as ex:
         log.exception("strato3 dispatch failed")
-        return f"Continuation fallita: {type(ex).__name__}: {ex}"
+        return _msg("MSG_ORCH_CONTINUATION_FAILED", detail=f"{type(ex).__name__}: {ex}")
     return getattr(new_log, "final_message", "") or ""
 
 
@@ -743,8 +734,7 @@ def _process_restart_turn_with_chosen_query(
     """
     chosen = (values or {}).get("chosen_query") or ""
     if not isinstance(chosen, str) or not chosen.strip():
-        return ("(Disambiguazione: scelta vuota, niente da rilanciare. "
-                "Riformula la richiesta.)")
+        return (_msg("MSG_ORCH_DISAMB_EMPTY_CHOICE"))
     conversation_id = on_complete.get("conversation_id") or ""
     try:
         import agent_runtime
@@ -761,9 +751,9 @@ def _process_restart_turn_with_chosen_query(
         )
     except (RuntimeError, TypeError, ImportError) as ex:
         log.exception("orchestration: restart_turn_with_chosen_query fallito")
-        return f"Continuation fallita: {type(ex).__name__}: {ex}"
+        return _msg("MSG_ORCH_CONTINUATION_FAILED", detail=f"{type(ex).__name__}: {ex}")
     if new_log is None:
-        return "(continuation: turno vuoto, nessuna final_message.)"
+        return _msg("MSG_ORCH_CONTINUATION_EMPTY")
     return getattr(new_log, "final_message", "") or ""
 
 
@@ -812,8 +802,7 @@ def _process_resume_planner_with_dialog_values(
     conversation_id = on_complete.get("conversation_id") or ""
 
     if not original_query:
-        return ("(resume_planner_with_dialog_values: original_query "
-                "mancante in on_complete, continuation impossibile.)")
+        return _msg("MSG_ORCH_RESUME_PLANNER_NO_QUERY")
 
     # Costruisci uno step "get_inputs" completed e PROIETTALO nello scratchpad.
     # Caso normale: lo snapshot del turno originale gia' contiene lo step
@@ -871,30 +860,21 @@ def _process_resume_planner_with_dialog_values(
         )
     except (RuntimeError, TypeError, ImportError) as ex:
         log.exception("orchestration: resume_planner_with_dialog_values fallito")
-        return (f"Continuation fallita: {type(ex).__name__}: {ex}")
+        return _msg("MSG_ORCH_CONTINUATION_FAILED", detail=f"{type(ex).__name__}: {ex}")
 
     if new_log is None:
-        return "(continuation: turno vuoto, nessuna final_message.)"
+        return _msg("MSG_ORCH_CONTINUATION_EMPTY")
     msg_out = getattr(new_log, "final_message", "") or ""
     if not msg_out:
-        return "(continuation completata.)"
+        return _msg("MSG_ORCH_CONTINUATION_DONE")
     return msg_out
 
 
 # --- Notify-hint canonical (ADR 0129) ---------------------------------
 # IT + EN, usato per detectare la richiesta di notifica esplicita post-
 # dialog. Da estendere quando si supportano nuove lingue (cfr. ADR 0092).
-_NOTIFY_HINTS = (
-    "mandami", "manda", "inviami", "invia", "notificami",
-    "scrivimi", "avvisami", "informami", "rispondimi",
-    "send me", "email me", "notify me", "let me know",
-)
-
-# Hint linguistici per disambiguare il canale di notifica preferito.
-_CHANNEL_HINTS = {
-    "email":    ("email", "e-mail", "mail", "posta"),
-    "telegram": ("telegram", "telegrami", "chat", "messaggio telegram"),
-}
+# Lessici NL migrati a detection_lexicon (concept `notify.request` substring +
+# `notify.channel` mapping); vedi detection_lexicon_seed. ADR 0129.
 
 
 def _resolve_actor_to_user(actor: str) -> dict | None:
@@ -972,7 +952,7 @@ def _args_create_events(ctx: dict) -> dict | None:
     end = e.get("end")
     if not start or not end:
         return None
-    return {"summary": "Appuntamento", "start": start, "end": end}
+    return {"summary": _msg("MSG_ORCH_LABEL_APPOINTMENT"), "start": start, "end": end}
 
 
 # Tabella canonica (verb, object) -> tool_name + args_builder.
@@ -981,7 +961,7 @@ _ACTION_TEMPLATES: dict[tuple[str, str], dict] = {
     ("create", "events"): {
         "tool":  "create_events",
         "args":  _args_create_events,
-        "label": "Appuntamento",
+        "label": _msg("MSG_ORCH_LABEL_APPOINTMENT"),
     },
     # Posto per pattern futuri:
     # ("set",    "messages"): {...},   # propose-label + apply
@@ -1035,12 +1015,12 @@ def _orchestrate_implicit_actions(
         cat = load_catalog(verify=True, include_synth=True)
     except Exception as ex:
         log.exception("orchestrate_implicit_actions: catalog load fallito")
-        return f"Catalog load fallito: {type(ex).__name__}: {ex}"
+        return _msg("MSG_ORCH_CATALOG_LOAD_FAILED", detail=f"{type(ex).__name__}: {ex}")
 
     def _run(name: str, args: dict) -> dict:
         ex = cat.executors.get(name)
         if ex is None:
-            return {"ok": False, "error": f"executor {name} non in catalog"}
+            return {"ok": False, "error": _msg("MSG_ORCH_EXECUTOR_UNKNOWN", name=name)}
         try:
             return _ar.invoke_executor(
                 ex, args, timeout_s=getattr(ex, "timeout_s", 30),
@@ -1061,10 +1041,10 @@ def _orchestrate_implicit_actions(
             )
         except Exception as ex:
             log.exception("orchestrate_implicit_actions: needs_inputs dispatch")
-            return f"OAuth setup fallito: {type(ex).__name__}: {ex}"
+            return _msg("MSG_ORCH_OAUTH_SETUP_FAILED", detail=f"{type(ex).__name__}: {ex}")
         return (gi or {}).get("final_message_hint") or (
             (r.get("needs_inputs") or {}).get("title")
-            or "Servono credenziali per completare l'azione."
+            or _msg("MSG_ORCH_CREDS_NEEDED")
         )
 
     out_lines: list[str] = []
@@ -1087,15 +1067,14 @@ def _orchestrate_implicit_actions(
         # Backend richiede credenziali / input → dialog OAuth flow.
         if isinstance(r, dict) and r.get("decision") == "needs_inputs":
             msg_oauth = _handle_needs_inputs(r)
-            return msg_oauth or "Servono credenziali per completare l'azione."
+            return msg_oauth or _msg("MSG_ORCH_CREDS_NEEDED")
         if not (r or {}).get("ok"):
-            return (f"{tpl['tool']} fallito: "
-                    f"{(r or {}).get('error','errore sconosciuto')}")
+            return _msg("MSG_ORCH_TOOL_FAILED", tool=tpl['tool'], error=(r or {}).get('error', _msg("MSG_ORCH_UNKNOWN_ERROR")))
         rec = {"tool": tpl["tool"], "args": args, "result": r,
                "label": tpl.get("label") or tpl["tool"]}
         actions_executed.append(rec)
         out_lines.append(
-            f"{rec['label']} creato per {chosen_label or chosen_value}."
+            _msg("MSG_ORCH_RECORD_CREATED", label=rec['label'], target=(chosen_label or chosen_value))
         )
 
     if not actions_executed:
@@ -1103,21 +1082,21 @@ def _orchestrate_implicit_actions(
 
     # Notify finale (send_messages) se la query lo richiede esplicitamente.
     q_low = (original_query or "").lower()
-    has_notify = any(h in q_low for h in _NOTIFY_HINTS)
+    has_notify = _dl.match("notify.request", q_low)
     if has_notify:
         # Canale preferito da hint linguistici; default email per «email» o
         # in assenza di hint specifici.
         via = "email"
-        for ch, hints in _CHANNEL_HINTS.items():
+        for ch, hints in _dl.mapping("notify.channel").items():
             if any(h in q_low for h in hints):
                 via = ch
                 break
 
         # Subject + body generati dal riepilogo delle azioni eseguite
         subject_label = actions_executed[0]["label"]
-        subject = f"Conferma {subject_label.lower()} {chosen_label or chosen_value}"
+        subject = _msg("MSG_ORCH_CONFIRM_SUBJECT", subject=subject_label.lower(), target=(chosen_label or chosen_value))
         body_lines = [
-            f"Riepilogo delle azioni eseguite per: «{original_query.strip()}»",
+            _msg("MSG_ORCH_ACTIONS_SUMMARY", query=original_query.strip()),
             "",
         ]
         for rec in actions_executed:
@@ -1144,17 +1123,17 @@ def _orchestrate_implicit_actions(
         if isinstance(sm, dict) and sm.get("decision") == "needs_inputs":
             msg_oauth = _handle_needs_inputs(sm)
             out_lines.append(
-                msg_oauth or "Servono credenziali per inviare la notifica."
+                msg_oauth or _msg("MSG_ORCH_CREDS_NEEDED_NOTIFY")
             )
         elif (sm or {}).get("ok"):
-            channel_label = "Email" if via == "email" else via.capitalize()
-            out_lines.append(f"{channel_label} di conferma inviata.")
+            channel_label = _msg("MSG_ORCH_CHANNEL_EMAIL") if via == "email" else via.capitalize()
+            out_lines.append(_msg("MSG_ORCH_CONFIRM_SENT", channel_label=channel_label))
         else:
-            err = (sm or {}).get("error") or "errore sconosciuto"
+            err = (sm or {}).get("error") or _msg("MSG_ORCH_UNKNOWN_ERROR")
             failed = (sm or {}).get("failed") or []
             if failed and isinstance(failed[0], dict):
                 err = failed[0].get("error") or err
-            out_lines.append(f"Notifica NON inviata: {err}")
+            out_lines.append(_msg("MSG_ORCH_NOTIFY_FAILED", detail=err))
 
     return "\n".join(out_lines)
 
@@ -1370,16 +1349,15 @@ def _process_start_oauth_redirect_flow(on_complete: dict, values: dict, *,
     client_secret_install_path = on_complete.get("client_secret_install_path")
 
     if not client_secret_path:
-        return "(client_secret_path mancante: form OAuth non puo' partire.)"
+        return _msg("MSG_ORCH_OAUTH_NO_SECRET_PATH")
     if not executor:
-        return "(executor mancante in on_complete: OAuth non riavviabile.)"
+        return _msg("MSG_ORCH_OAUTH_NO_EXECUTOR")
     if not binding:
-        return "(binding mancante in on_complete: token non salvabile.)"
+        return _msg("MSG_ORCH_OAUTH_NO_BINDING")
 
     scopes = _resolve_scopes_from_options(scopes_options, services)
     if not scopes:
-        return ("(Nessuno scope risolto per la scelta utente: il caller "
-                "deve fornire scopes_options non vuoto e services valido.)")
+        return _msg("MSG_ORCH_OAUTH_NO_SCOPE")
 
     redirect_uri = _resolve_oauth_redirect_uri(host_override=host_override)
 
@@ -1394,9 +1372,9 @@ def _process_start_oauth_redirect_flow(on_complete: dict, values: dict, *,
             client_secret_install_path=client_secret_install_path,
         )
     except FileNotFoundError as ex:
-        return f"(File client_secret non trovato: {ex})"
+        return _msg("MSG_ORCH_OAUTH_SECRET_NOT_FOUND", detail=str(ex))
     except (ImportError, OSError, RuntimeError, ValueError) as ex:
-        return f"(Avvio OAuth fallito: {type(ex).__name__}: {ex})"
+        return _msg("MSG_ORCH_OAUTH_START_FAILED", detail=f"{type(ex).__name__}: {ex}")
 
     state_token = oauth_pending.put({
         "flow_state": flow_state,
@@ -1418,13 +1396,7 @@ def _process_start_oauth_redirect_flow(on_complete: dict, values: dict, *,
     # — il consent screen di Google si apre subito. La parte testuale dopo
     # il newline e' fallback per canali che non possono fare redirect
     # (es. Telegram: l'utente apre il link manualmente).
-    msg = (
-        f"Apri questo link per autorizzare Metnos:\n\n"
-        f"{auth_url_with_state}\n\n"
-        f"Dopo l'autorizzazione il browser ti riporta qui e il setup si "
-        f"completa in automatico. Subito dopo Metnos rilancia la "
-        f"richiesta originale."
-    )
+    msg = _msg("MSG_ORCH_OAUTH_LINK_PROMPT", url=auth_url_with_state)
     return f"__REDIRECT__:{auth_url_with_state}\n{msg}"
 
 
@@ -1509,15 +1481,15 @@ def orchestrate_needs_inputs(obs: dict, *,
     ritorna `{ok: False, error: ...}`.
     """
     if not isinstance(obs, dict):
-        return {"ok": False, "error": "observation non e' dict"}
+        return {"ok": False, "error": _msg("MSG_ORCH_OBS_NOT_DICT")}
     if obs.get("decision") != "needs_inputs":
         return {"ok": False,
-                "error": f"decision non e' needs_inputs: {obs.get('decision')!r}"}
+                "error": _msg("MSG_ORCH_DECISION_NOT_NEEDS_INPUTS", decision=repr(obs.get('decision')))}
     payload = obs.get("needs_inputs") or {}
     if not isinstance(payload, dict):
-        return {"ok": False, "error": "needs_inputs payload non e' dict"}
+        return {"ok": False, "error": _msg("MSG_ORCH_PAYLOAD_NOT_DICT")}
 
-    title = payload.get("title") or "Servono alcuni dati"
+    title = payload.get("title") or _msg("MSG_ORCH_DEFAULT_INPUTS_TITLE")
     description = payload.get("description")
     dialog = payload.get("dialog") or []
     fmt = payload.get("fmt") or "auto"

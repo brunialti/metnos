@@ -35,7 +35,7 @@ TURNS_DIR = _C.PATH_USER_DATA / "turns"
 THUMB_CACHE_DIR = _C.PATH_USER_DATA / "thumbcache"
 TOKEN_TTL_S = 86400  # 24h
 
-VALID_SIZES = ("thumb", "full")
+VALID_SIZES = ("thumb", "full", "file")  # "file" = download raw (no thumbnail)
 SIZE_DIMS = {"thumb": (256, 256), "full": (1600, 1600)}
 
 TURNS_HISTORY_DAYS = 7  # quanto indietro scansionare i JSONL
@@ -153,9 +153,17 @@ def resolve_path(turn_id: str, idx: int) -> str | None:
                         continue
                     if rec.get("turn_id") != turn_id:
                         continue
-                    # Scorre gli step dal più recente: l'ultimo producer di
-                    # attachments/entries vince (use case realistico: un
-                    # solo step find_images_indices per turno).
+                    # Authoritative: gli attachments top-level del turno sono
+                    # esattamente quelli assemblati live (immagini + file
+                    # deliverable). Risolve l'idx 1:1 con cio' che e' stato
+                    # consegnato (bug 5303699e: file non risolvibili via step).
+                    atts = rec.get("attachments")
+                    if isinstance(atts, list) and 0 <= idx < len(atts):
+                        item = atts[idx]
+                        if isinstance(item, dict) and isinstance(item.get("path"), str):
+                            return item["path"]
+                    # Fallback (turni pre-attachments-top-level): scorre gli
+                    # step dal più recente, l'ultimo producer vince.
                     for step in reversed(rec.get("steps") or []):
                         path = _path_from_step_result(step.get("result") or {}, idx)
                         if path:

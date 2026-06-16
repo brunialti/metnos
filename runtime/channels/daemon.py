@@ -38,6 +38,7 @@ from progress import NullProgress, TelegramProgress  # noqa: E402
 from . import Channel, InboundMessage, OutboundMessage  # noqa: E402
 from .telegram import TelegramChannel  # noqa: E402
 import config as _C  # noqa: E402  §7.11
+import detection_lexicon as _dl  # noqa: E402  lessici NL traducibili
 
 log = logging.getLogger("metnos.daemon")
 
@@ -59,9 +60,8 @@ MEDIA_GROUP_TTL_S = 1.5  # finestra di accumulo per gruppi multi-foto
 # Quando l'utente risponde "sì" il daemon rilancia con cap nuovo; "no" pulisce.
 CAP_PENDING_DIR = _C.PATH_USER_STATE / "cap_pending"
 CAP_PENDING_TTL_S = 600  # 10 min: oltre, la proposta scade.
-_YES_PATTERN = re.compile(r"\b(s[iì]|yes|y|ok|okay|alza|aumenta|rilancia|più)\b",
-                          re.IGNORECASE)
-_NO_PATTERN  = re.compile(r"\b(no|n|annulla|lascia|niente|stop)\b", re.IGNORECASE)
+# Pattern conferma sì/no migrati a detection_lexicon (concept regex
+# `confirm.yes` / `confirm.no`); vedi detection_lexicon_seed.
 
 
 def _cap_pending_path(sender_id: str) -> Path:
@@ -166,9 +166,9 @@ def _classify_yes_no(text: str) -> str:
     richieste anche se contengono 'sì'/'no'."""
     if not text or len(text) > 30:
         return "other"
-    if _YES_PATTERN.search(text):
+    if _dl.search("confirm.yes", text):
         return "yes"
-    if _NO_PATTERN.search(text):
+    if _dl.search("confirm.no", text):
         return "no"
     return "other"
 
@@ -1578,6 +1578,24 @@ class ChannelDaemon:
         # sendMediaGroup coi thumb (Telegram max 10 per album → split in
         # chunks). Best-effort: se uno fallisce, log e si continua.
         atts = list(getattr(turn, "attachments", []) or []) if turn is not None else []
+        # Split immagini (album sendMediaGroup) vs file deliverable
+        # (sendDocument: xlsx/doc/zip/pdf). Bug 5303699e. Best-effort.
+        if atts and self.channel.name == "telegram":
+            file_atts = [a for a in atts if isinstance(a, dict) and a.get("kind") == "file"]
+            for fa in file_atts:
+                p = fa.get("path")
+                if not p:
+                    continue
+                try:
+                    dr = self.channel.send_document(
+                        chat_id=msg.sender_id, path=p,
+                        basename=fa.get("basename"),
+                        caption=fa.get("caption") or fa.get("basename"))
+                    if not dr.get("ok"):
+                        log.warning("send_document failed: %s", dr.get("error"))
+                except Exception as ex:
+                    log.warning("send_document raised: %s", ex)
+            atts = [a for a in atts if not (isinstance(a, dict) and a.get("kind") == "file")]
         if atts and self.channel.name == "telegram":
             CHUNK = 10
             n_total = len(atts)

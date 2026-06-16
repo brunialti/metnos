@@ -37,17 +37,15 @@ from logging_setup import get_logger
 log = get_logger(__name__)
 
 import prompt_loader
+import detection_lexicon as _dl
 from config import DEFAULT_LANG
 
 # Prompt persistito in `runtime/prompts/<lang>/intent_extractor.j2` (ADR 0092 Phase 2).
 # Renderizzato lazy a ogni `extract_intent` call (cache MiniJinja built-in).
 
 
-_UNDO_PATTERNS = (
-    "annulla", "annullare", "annullo",
-    "undo", "revert", "rollback", "ripristina",
-    "torna indietro", "indietreggia", "anull",
-)
+# Bypass UNDO migrato a detection_lexicon (concept substring
+# `undo.intent_bypass`); vedi detection_lexicon_seed.
 
 
 def extract_intent(query: str, llm_call) -> Optional[dict]:
@@ -60,8 +58,7 @@ def extract_intent(query: str, llm_call) -> Optional[dict]:
     """
     if not query or not query.strip():
         return None
-    q_lower = query.lower()
-    if any(p in q_lower for p in _UNDO_PATTERNS):
+    if _dl.match("undo.intent_bypass", query):
         return None  # signal "no canonical verb" → caller usa fallback
     prompt = prompt_loader.get(
         "intent_extractor",

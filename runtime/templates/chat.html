@@ -786,7 +786,10 @@ function add(cls, text, meta, persist, attachments, galleryInfo, htmlMode){
   }
   log.appendChild(d);
   if(attachments && attachments.length){
-    addGallery(attachments, galleryInfo);
+    const imgs = attachments.filter(a => a && a.thumb_url);
+    const files = attachments.filter(a => a && a.download_url);
+    if(imgs.length) addGallery(imgs, galleryInfo);
+    if(files.length) addFileChips(files);
   }
   if(stick) scrollToEnd();
   if(persist !== false && (cls === 'me' || cls === 'bot' || cls === 'err')){
@@ -796,6 +799,21 @@ function add(cls, text, meta, persist, attachments, galleryInfo, htmlMode){
                   htmlMode: htmlMode === true });
   }
   return d;
+}
+
+function addFileChips(files){
+  // Deliverable non-immagine (xlsx/doc/zip/pdf): chip di download.
+  const d = document.createElement('div');
+  d.className = 'msg bot';
+  for(const f of files){
+    const a = document.createElement('a');
+    a.href = f.download_url;
+    a.className = 'gallery-link';
+    a.setAttribute('download', f.basename || '');
+    a.textContent = '⬇️ ' + (f.basename || 'scarica file');
+    d.appendChild(a);
+  }
+  log.appendChild(d);
 }
 
 function addGallery(attachments, galleryInfo){

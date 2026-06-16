@@ -285,6 +285,45 @@ class TelegramChannel:
                     "message_ids": [m.get("message_id") for m in resp.get("result", [])]}
         return {"ok": False, "error": resp.get("description", "unknown")}
 
+    def send_document(self, *, chat_id: str, path: str,
+                      basename: str | None = None,
+                      caption: str | None = None) -> dict:
+        """sendDocument — consegna un file deliverable (xlsx/doc/zip/pdf) come
+        documento Telegram (upload binario; Telegram non raggiunge la LAN).
+        Bug 5303699e: i create/write_files non arrivavano su chat."""
+        if not chat_id:
+            return {"ok": False, "error": "chat_id mancante"}
+        try:
+            with open(path, "rb") as fh:
+                data = fh.read()
+        except OSError as e:
+            return {"ok": False, "error": f"read failed: {e}"}
+        name = basename or os.path.basename(path) or "file"
+        boundary = "----metnos" + os.urandom(8).hex()
+        fields = [("chat_id", str(chat_id))]
+        if caption:
+            fields.append(("caption", caption[:1024]))
+        body = self._build_multipart(boundary, fields, [("document", name, data)])
+        url = API_BASE.format(token=self.token, method="sendDocument")
+        req = urllib.request.Request(
+            url, data=body, method="POST",
+            headers={"Content-Type": f"multipart/form-data; boundary={boundary}"})
+        try:
+            with urllib.request.urlopen(req, timeout=60) as r:
+                resp = json.loads(r.read().decode("utf-8"))
+        except urllib.error.HTTPError as e:
+            try:
+                err_body = json.loads(e.read().decode("utf-8"))
+            except Exception:
+                err_body = {"description": str(e)}
+            return {"ok": False, "error": err_body.get("description", "HTTPError"),
+                    "status_code": e.code}
+        except Exception as e:
+            return {"ok": False, "error": f"{type(e).__name__}: {e}"}
+        if resp.get("ok"):
+            return {"ok": True, "message_id": resp.get("result", {}).get("message_id")}
+        return {"ok": False, "error": resp.get("description", "unknown")}
+
     def send_dialog_preview_album(self, *, chat_id: str,
                                     attachments: list,
                                     reply_to: str | None = None) -> dict:

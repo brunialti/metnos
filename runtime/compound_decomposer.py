@@ -17,17 +17,24 @@ Bypassa Mētis LLM quando decomposizione deterministica successo.
 """
 from __future__ import annotations
 
+import functools
 import re
 from typing import Optional
 
-# Connettori sequenziali universal (IT + EN + simboli):
-# - virgola, punto-virgola: separatori sintattici universal
-# - "e", "and", "poi", "then": connettori temporali standard
-# - "&" / "&&": symbol-only
-_CONNECTOR_PATTERN = re.compile(
-    r"\s*(?:,|;|\&\&?|\b(?:e|and|poi|then|after|finally|infine)\b)\s*",
-    re.IGNORECASE,
-)
+import detection_lexicon as _dl  # lessici NL traducibili (gemello i18n input)
+
+# Connettori sequenziali: i SIMBOLI (,;&&) sono lingua-invarianti e restano
+# qui; le PAROLE connettore (e/and/poi/then/...) vivono nel concept
+# traducibile `compound.connector_word` (detection_lexicon). Il pattern di
+# split e' ricostruito deterministicamente dalle forme della lingua corrente.
+
+
+@functools.lru_cache(maxsize=8)
+def _connector_pattern(_lang: str) -> "re.Pattern":
+    words = _dl.forms("compound.connector_word")
+    alt = "|".join(words) if words else "e|and"
+    return re.compile(
+        r"\s*(?:,|;|\&\&?|\b(?:" + alt + r")\b)\s*", re.IGNORECASE)
 
 # Verb categories from §2.2 vocab (canonical):
 # - Producer (read_family): find/read/get/list — produce entries
@@ -45,7 +52,7 @@ def split_query_chunks(query: str) -> list[str]:
     non vuoti puliti."""
     if not query or not query.strip():
         return []
-    parts = _CONNECTOR_PATTERN.split(query)
+    parts = _connector_pattern(_dl.current_lang()).split(query)
     return [p.strip() for p in parts if p.strip()]
 
 

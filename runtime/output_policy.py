@@ -18,6 +18,8 @@ from __future__ import annotations
 
 import re
 
+import detection_lexicon as _dl  # lessici NL traducibili (gemello i18n input)
+
 # ── Modi canonici ───────────────────────────────────────────────────────────
 S, G, T, TG, L, W, M, R, F, D = (
     "scalar", "gallery", "text_summary", "text_gallery", "list",
@@ -29,13 +31,8 @@ COUNT, VISUALIZE, READ, ENUMERATE, TRANSFORM, MUTATE, PACKAGE = (
     "count", "visualize", "read", "enumerate", "transform", "mutate", "package",
 )
 
-# Marker deterministici (IT+EN). COUNT ha priorità su VISUALIZE su verbo.
-_COUNT_MARKERS = re.compile(
-    r"\b(quant[io]|quante|numero di|conta|count|how many|how much)\b", re.I)
-_VISUALIZE_MARKERS = re.compile(
-    r"\b(mostra|mostrami|fammi vedere|vedi|visualizz\w*|guarda|"
-    r"show|show me|display|view|let me see)\b", re.I)
-
+# Marker COUNT/VISUALIZE migrati a detection_lexicon (concept regex
+# `output.count_request` / `output.visualize_request`); vedi seed.
 _READ_VERBS = frozenset({"read", "describe"})
 _ENUM_VERBS = frozenset({"find", "list", "get"})
 _TRANSFORM_VERBS = frozenset({"filter", "sort", "group", "classify", "compare"})
@@ -48,9 +45,9 @@ def intent_class(intent_verb: str, query: str = "") -> str:
     """Classe di intent deterministica. COUNT/VISUALIZE marker > verbo."""
     q = query or ""
     v = (intent_verb or "").lower().strip()
-    if _COUNT_MARKERS.search(q) or v == "compute":
+    if _dl.match("output.count_request", q) or v == "compute":
         return COUNT
-    if _VISUALIZE_MARKERS.search(q) or v == "render":
+    if _dl.match("output.visualize_request", q) or v == "render":
         return VISUALIZE
     if v in _READ_VERBS:
         return READ

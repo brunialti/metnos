@@ -45,7 +45,48 @@ from synt import Synt, make_request as synt_make_request
 from synth_request import SYNTH_REQUEST_TOOL, handle_synth_request
 import location_request as _location_request
 import prompt_loader  # ADR 0092: prompt LLM in runtime/prompts/<lang>/
+import detection_lexicon as _detlex  # lessici NL traducibili (gemello i18n)
 from config import DEFAULT_LANG, DEFAULT_TIMEZONE
+
+# Executor che PRODUCONO un file deliverable (consegna su ogni canale §7.3).
+_FILE_PRODUCER_PREFIXES = ("create_", "write_", "render_", "compress_")
+
+
+def _derive_file_attachments(tool, res: dict) -> list:
+    """Sintetizza `attachments` dai path di file scritti da uno step
+    file-producer, quando l'executor non li dichiara. Generale (tutta la
+    famiglia create_/write_/render_/compress_); kind dedotto dal mime
+    (image/* -> gallery, altro -> download chip/documento). §2.6/§7.3."""
+    import mimetypes
+    from pathlib import Path as _P
+    if not isinstance(tool, str) or not tool.startswith(_FILE_PRODUCER_PREFIXES):
+        return []
+    paths = []
+    for k in ("path", "output_path", "dst"):
+        v = res.get(k)
+        if isinstance(v, str):
+            paths.append(v)
+    for k in ("paths", "files"):
+        v = res.get(k)
+        if isinstance(v, list):
+            paths += [x for x in v if isinstance(x, str)]
+    for r in (res.get("results") or []):
+        if isinstance(r, dict) and isinstance(r.get("path"), str):
+            paths.append(r["path"])
+    out, seen = [], set()
+    for p in paths:
+        if p in seen:
+            continue
+        seen.add(p)
+        try:
+            if not _P(p).is_file():
+                continue
+        except OSError:
+            continue
+        mime = mimetypes.guess_type(p)[0] or "application/octet-stream"
+        out.append({"kind": "image" if mime.startswith("image/") else "file",
+                    "path": p, "basename": _P(p).name, "mime": mime})
+    return out
 from fast_path import try_fast_path, try_seed_step
 
 LOCATION_REQUEST_TOOL = {
@@ -1331,18 +1372,8 @@ def render_tools_for_provider(executors):
 # risponde in-lang). Frasi distintive che non compaiono mai come valore
 # legittimo di un argomento (titolo, path, id, query). Usate da validate_args
 # per intercettare i rifiuti che il PLANNER trapela DENTRO un arg.
-_LLM_REFUSAL_MARKERS = (
-    "come modello linguistico", "come un modello linguistico",
-    "in qualità di assistente", "in qualita di assistente",
-    "in qualità di modello", "in qualita di modello",
-    "non ho accesso diretto", "non ho accesso ai tuoi",
-    "non posso eseguire questa", "non posso completare questa",
-    "non sono in grado di", "mi dispiace, non posso", "mi dispiace ma non posso",
-    "non posso fornire", "non posso accedere",
-    "as a language model", "as an ai", "as an a.i", "as an artificial intelligence",
-    "i do not have access", "i don't have access", "i'm unable to", "i am unable to",
-    "i cannot fulfill", "i cannot assist", "i can't assist", "i'm sorry, i can",
-)
+# _LLM_REFUSAL_MARKERS migrato a detection_lexicon (concept substring
+# `llm.refusal_marker`); vedi detection_lexicon_seed.
 
 
 def validate_args(args, schema):
@@ -1445,7 +1476,7 @@ def validate_args(args, schema):
         if not isinstance(v, str):
             return False
         lo = v.lower()
-        return any(m in lo for m in _LLM_REFUSAL_MARKERS)
+        return _detlex.match("llm.refusal_marker", lo)
     for name, value in (args or {}).items():
         if _is_refusal(value) or (
             isinstance(value, list) and any(_is_refusal(x) for x in value)
@@ -1473,10 +1504,8 @@ _ACTION_VERBS_PRED = {
 # ("stato sistema", "uptime"). Usate da Level 3 ADR 0111 e dal safety
 # net in TurnLog.write() per decidere se il `final_message` LLM va
 # preservato (azione richiesta) o sostituito dal blocco deterministico.
-_HEALTH_IMPERATIVE_KEYWORDS = (
-    "kill", "uccidi", "ferma", "termina", "stop ", "spegni",
-    "manda", "invia", "scrivi", "esegui", "lancia", "riavvia", "restart",
-)
+# _HEALTH_IMPERATIVE_KEYWORDS migrato a detection_lexicon (concept substring
+# `health.imperative`); vedi detection_lexicon_seed.
 
 
 # Executor transformative single-shot: dopo ok:True con _undo registrato,
@@ -1525,13 +1554,8 @@ def _is_auto_final_transformative(tool_name: str) -> bool:
 # universali (no verbi enumerati): `_query_has_continuation` rileva multi-step
 # anche via classe semantica (>=2 verbi canonici distinti — derivato da
 # prefilter._VERB_TO_CANONICAL vocab IT+EN). §7.3 NON hardcoded enumerazione.
-_MULTISTEP_CONJUNCTIONS_RE = re.compile(
-    r"\b(e\s+poi|e\s+dopo|e\s+inoltre|e\s+anche|"
-    r"inoltre|poi|dopodiche'|dopodiche|"
-    r"and\s+then|and\s+also|and\s+after|"
-    r"moreover|then|afterwards|additionally)\b",
-    re.IGNORECASE,
-)
+# _MULTISTEP_CONJUNCTIONS_RE migrato a detection_lexicon (concept regex
+# `query.multistep`); vedi detection_lexicon_seed.
 
 
 def _query_has_continuation(query: str) -> bool:
@@ -1554,7 +1578,7 @@ def _query_has_continuation(query: str) -> bool:
     """
     if not query or not isinstance(query, str):
         return False
-    if _MULTISTEP_CONJUNCTIONS_RE.search(query):
+    if _detlex.search("query.multistep", query):
         return True
     # Multi-verb detection via vocab classes. Tokenize semplice + lookup
     # _VERB_TO_CANONICAL (gia' usato da prefilter, IT+EN sinonimi per le 22
@@ -1916,20 +1940,8 @@ def _has_prior_read_events_ok(steps) -> bool:
 # Euristica deterministica §7.9 per detectare MID-pipeline get_inputs: il
 # PLANNER ha emesso get_inputs ma la query contiene una continuation
 # (notify/create/move/...) che richiede un altro step dopo il pick.
-_RESUME_AFTER_DIALOG_HINTS_IT = (
-    "mandami", "manda", "inviami", "invia", "notificami",
-    "scrivimi", "avvisami", "informami",
-    "e poi crea", "e poi prenota", "e poi fissa", "e poi sposta",
-    "e poi cancella", "e poi invia", "e poi manda",
-    "e crea", "e prenota", "e fissa", "e sposta", "e cancella",
-    "e invia", "e manda",
-)
-_RESUME_AFTER_DIALOG_HINTS_EN = (
-    "send me", "notify me", "tell me", "email me", "let me know",
-    "and create", "and book", "and schedule", "and move",
-    "and delete", "and send", "and notify",
-    "then create", "then book", "then schedule", "then send",
-)
+# _RESUME_AFTER_DIALOG_HINTS_IT/EN migrato a detection_lexicon (concept
+# substring `dialog.resume_hint`); vedi detection_lexicon_seed.
 
 
 def _should_resume_planner_after_dialog(query: str, route_info,
@@ -1962,13 +1974,8 @@ def _should_resume_planner_after_dialog(query: str, route_info,
                 or route_info.get("multi_pipeline_notify_only")):
             return True
     # Source 2: hint linguistici espliciti.
-    q_low = query.lower()
-    for hint in _RESUME_AFTER_DIALOG_HINTS_IT:
-        if hint in q_low:
-            return True
-    for hint in _RESUME_AFTER_DIALOG_HINTS_EN:
-        if hint in q_low:
-            return True
+    if _detlex.match("dialog.resume_hint", query):
+        return True
     return False
 
 
@@ -3310,11 +3317,8 @@ class StepLog:
 # Detection deterministico §7.9 (no LLM): marker quantificatori interrogativi
 # universali IT+EN. Usato da TurnLog._collect_truncation_notices e
 # _expandable_caps per sopprimere rumore quando l'utente vuole solo un numero.
-_COUNT_QUANTIFIER_MARKERS = (
-    "quanti ", "quante ",       # IT interrogativo numerico
-    "how many ", " count ",     # EN
-    " conta ", "numero di ",    # IT imperativo / nominale
-)
+# _COUNT_QUANTIFIER_MARKERS migrato a detection_lexicon (concept substring
+# `count.quantifier`, spazi significativi); vedi detection_lexicon_seed.
 
 
 def _is_count_intent(intent_verb: str, user_query: str) -> bool:
@@ -3323,7 +3327,7 @@ def _is_count_intent(intent_verb: str, user_query: str) -> bool:
     if (intent_verb or "").lower() == "compute":
         return True
     q = f" {(user_query or '').lower()} "
-    return any(m in q for m in _COUNT_QUANTIFIER_MARKERS)
+    return _detlex.match("count.quantifier", q)
 
 
 @dataclass
@@ -4102,7 +4106,7 @@ class TurnLog:
         # Funziona indipendentemente da `is_multistep`/`chosen_mode`,
         # quindi copre anche i path single-step / fast-path / scratchpad.
         _q = (self.user_query or "").lower()
-        if not any(k in _q for k in _HEALTH_IMPERATIVE_KEYWORDS):
+        if not _detlex.match("health.imperative", _q):
             self.final_message = ""
         self.final_message = (block + "\n\n" + (self.final_message or "")).strip()
 
@@ -4356,6 +4360,19 @@ class TurnLog:
             if isinstance(atts, list) and atts:
                 self.attachments = atts
                 break
+        # Fallback §7.3: nessun executor ha dichiarato attachments ma uno step
+        # file-producer (spreadsheet/doc/zip/...) ha scritto un file su disco →
+        # sintetizza gli attachments cosi' il deliverable arriva all'utente su
+        # OGNI canale (HTTP download + Telegram documento). Bug live 5303699e.
+        if not self.attachments:
+            for s_step in reversed(self.steps):
+                res = s_step.result if isinstance(s_step.result, dict) else {}
+                if not res.get("ok"):
+                    continue
+                derived = _derive_file_attachments(s_step.chosen_tool, res)
+                if derived:
+                    self.attachments = derived
+                    break
 
         # Universal §7.3: se reference_images allegate via drag&drop,
         # PREPEND le foto input agli attachments cosi' la chat mostra
@@ -8709,7 +8726,7 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
                 and obs.get("health")
                 and is_multistep):
             _q_low = (user_query_for_run or "").lower()
-            _has_imperative = any(k in _q_low for k in _HEALTH_IMPERATIVE_KEYWORDS)
+            _has_imperative = _detlex.match("health.imperative", _q_low)
             _is_action_intent = _intent_verb in _ACTION_VERBS_PRED
             if not _has_imperative and not _is_action_intent:
                 # history_for_llm append per la step record completa.

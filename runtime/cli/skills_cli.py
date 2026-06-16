@@ -343,7 +343,6 @@ def _add_smoke_cases_for(report, parsed) -> int:
         sys.path.insert(0, str(canonical))
     try:
         import smoke_imports  # type: ignore
-        from tool_grammar import _PROVIDER_SUFFIX_MARKERS  # type: ignore
     except ImportError:
         return 0
     # Perf (24/5/2026): batch flush invece di atomic write per case.
@@ -364,7 +363,7 @@ def _add_smoke_cases_for(report, parsed) -> int:
             # `find_messages` plan -> `read_messages` builtin atteso).
             # Fallback: v.plan_name dopo strip provider qualifier (ADR 0136).
             expected = case.get("expected_first_tool") or _strip_unmarked_provider(
-                v.plan_name, query, _PROVIDER_SUFFIX_MARKERS,
+                v.plan_name, query,
             )
             arg_keys = case.get("expected_arg_keys") or []
             # Provenance per audit nel BATTERY_IMPORTS case.
@@ -384,12 +383,18 @@ def _add_smoke_cases_for(report, parsed) -> int:
 
 
 def _strip_unmarked_provider(tool_name: str, query: str,
-                              markers_map: dict) -> str:
+                              markers_map: dict | None = None) -> str:
     """Se `tool_name` ha un suffix provider noto e la `query` NON contiene
     nessuno dei marker del provider, ritorna il nome canonico (senza
     suffix). Allinea il smoke expected con il filtro pool grammar
     `tool_grammar.filter_pool_for_grammar` (ADR 0136).
+
+    `markers_map` default = concept `provider.markers` di detection_lexicon
+    (suffix -> forme), traducibile; passabile esplicito per test.
     """
+    if markers_map is None:
+        import detection_lexicon as _dl
+        markers_map = _dl.mapping("provider.markers")
     q_lc = (query or "").lower()
     for suffix, markers in markers_map.items():
         if not tool_name.endswith(suffix):

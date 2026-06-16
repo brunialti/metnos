@@ -43,6 +43,8 @@ import os
 import re
 from typing import Any, Sequence
 
+import detection_lexicon as _dl  # lessici NL traducibili (gemello i18n input)
+
 # Soglia di complessita' oltre la quale gli args cadono su JSON generico.
 # Bilanciato da test empirici 14/5/2026 su catalogo Metnos: separa tool
 # semplici (get_now/find_files/create_events) da complessi (send_messages
@@ -691,72 +693,22 @@ def validate_tool_call(tool_call: dict, tools: Sequence[Any], *,
 
 # Marker per ogni provider suffix (estensibile). Lookup table = single
 # source of truth, niente if/elif per-provider sparsi nel codice.
-_PROVIDER_SUFFIX_MARKERS: dict[str, tuple[str, ...]] = {
-    "_google_workspace": (
-        "google", "drive", "gmail", "gdrive",
-        "workspace", "calendar google", "g suite",
-    ),
-    "_github": (
-        "github", "pr", "issue", "issues",
-        "repo", "repository", "commit", "branch",
-        "workflow", "gist", "fork", "merge",
-    ),
-}
+# Marker provider migrati a detection_lexicon (concept mapping word
+# `provider.markers`, suffix -> forme); vedi detection_lexicon_seed.
 
-_UNDO_MARKERS: tuple[str, ...] = (
-    "annulla", "annullare", "annullo", "annullala",
-    "undo", "ripristina", "ripristino", "ripristinare",
-    "torna indietro", "torna su", "rollback",
-    "disfa", "disfare", "annulla l'ultimo",
-)
-
-# Markers semantici per `*_tasks` (scheduler v2). Se la query NON contiene
-# nessun marker, escludi `create/list/delete/read/set_tasks` +
-# `read_tasks_history` dal pool grammar. Senza, il PLANNER LLM li seleziona
-# erroneamente su query mail/file/etc (es. "cerca mail bookings" → PLANNER
-# scelse read_tasks_history per ambiguità nome).
-_TASKS_MARKERS: tuple[str, ...] = (
-    "task", "tasks", "schedule", "scheduled", "schedula", "schedulare",
-    "ricorrente", "ricorrenti", "promemoria", "reminder", "timer",
-    "ricordami", "ricordati", "ricorda", "remind",
-    "daily", "weekly", "hourly",
-    "storico", "history", "esecuzione", "esecuzioni",
-    "cancella task", "elenca task", "lista task",
-)
-
-# "ogni"/"fra"/"every" da soli sono parole COMUNI (es. "leggi ogni messaggio",
-# "differenza fra A e B") e baiterebbero i `*_tasks` nel pool. Ma sono marker
-# di scheduling QUANDO adiacenti a un'unita' temporale ("ogni giorno", "ogni 30
-# minuti", "fra 2 ore"). Regex deterministico (§7.9), complementare a
-# _TASKS_MARKERS, preserva la rilevazione dei monitor schedulati.
-_RE_SCHEDULE_PHRASE = re.compile(
-    r"\b(?:ogni|every)\s+(?:\d+\s*)?"
-    r"(?:second|minut|min\b|or[ae]\b|giorn|d[ìi]\b|settiman|mes[ei]\b|ann|"
-    r"day|hour|week|month|year)"
-    r"|\b(?:fra|tra)\s+(?:\d+|un[ao']?|mezz)",
-    re.IGNORECASE,
-)
-# Sottoinsieme STRETTO di _RE_SCHEDULE_PHRASE: solo RICORRENZA esplicita
-# (ogni/every + unita' temporale), senza il ramo "fra/tra + numero" che
-# matcherebbe frasi comuni ("differenza tra 2 file"). Usato dal bypass
-# deterministico dell'intent extractor (§7.9): ricorrenza ⇒ create/tasks.
-_RE_RECURRENCE_PHRASE = re.compile(
-    r"\b(?:ogni|every)\s+(?:\d+\s*)?"
-    r"(?:second|minut|min\b|or[ae]\b|giorn|d[ìi]\b|settiman|mes[ei]\b|ann|"
-    r"day|hour|week|month|year)",
-    re.IGNORECASE,
-)
-_RECURRENCE_WORDS: tuple[str, ...] = ("daily", "weekly", "hourly")
+# Lessici NL migrati a `detection_lexicon` (concept traducibili, fallback
+# chain current→en→it, daemon di traduzione): vedi `detection_lexicon_seed`.
+#   undo.grammar_marker · tasks.marker · tasks.schedule_phrase ·
+#   tasks.recurrence_phrase · tasks.recurrence_word · skills.marker
 
 
 def query_has_tasks_marker(query: str) -> bool:
-    """True se la query contiene un marker scheduling: parola _TASKS_MARKERS
-    oppure frase ogni/every/fra + unita' (_RE_SCHEDULE_PHRASE). Predicato
+    """True se la query contiene un marker scheduling: parola (tasks.marker)
+    oppure frase ogni/every/fra + unita' (tasks.schedule_phrase). Predicato
     UNICO condiviso fra pool grammar e iniezione tool del PLANNER (prima
-    agent_runtime usava solo _TASKS_MARKERS → "every 30 min" non iniettava
+    agent_runtime usava solo le parole → "every 30 min" non iniettava
     create_tasks, bug live 10/6/2026)."""
-    q = (query or "").lower()
-    return _has_word(q, _TASKS_MARKERS) or bool(_RE_SCHEDULE_PHRASE.search(q))
+    return _dl.match("tasks.marker", query) or _dl.match("tasks.schedule_phrase", query)
 
 
 def query_is_recurrence(query: str) -> bool:
@@ -764,8 +716,7 @@ def query_is_recurrence(query: str) -> bool:
     "ogni giorno alle 8", "daily"). Segnale deterministico §7.9 che la query
     e' una richiesta di SCHEDULING (create_tasks): il corpo va eseguito al
     fire del task, non subito."""
-    q = (query or "").lower()
-    return bool(_RE_RECURRENCE_PHRASE.search(q)) or _has_word(q, _RECURRENCE_WORDS)
+    return _dl.match("tasks.recurrence_phrase", query) or _dl.match("tasks.recurrence_word", query)
 
 
 _TASKS_NAMES: tuple[str, ...] = (
@@ -775,11 +726,8 @@ _TASKS_NAMES: tuple[str, ...] = (
 
 # Skill-admin builtin (asse 2): `list_skills`/`set_skills` baiterebbero query
 # generiche di lista/attivazione ("elenca i file", "attiva il monitor"). Nel
-# pool grammar SOLO se la query nomina esplicitamente le SKILL/capacità.
-_SKILLS_MARKERS: tuple[str, ...] = (
-    "skill", "skills", "capacità", "capacita", "capability", "capabilities",
-    "modulo", "moduli", "module", "modules",
-)
+# pool grammar SOLO se la query nomina esplicitamente le SKILL/capacità
+# (concept `skills.marker` in detection_lexicon).
 _SKILLS_NAMES: tuple[str, ...] = ("list_skills", "set_skills")
 
 
@@ -950,7 +898,7 @@ def filter_pool_for_grammar(tools: Sequence[Any], user_query: str,
         excluded.append("request_new_executor")
     if not _has_word(query_markers, proximity_markers):
         excluded.append("request_location_from_user")
-    if not _has_word(query_markers, _UNDO_MARKERS):
+    if not _dl.match("undo.grammar_marker", query_markers):
         excluded.append("undo_last_turn")
     # Tasks builtin: escludi se query non ha marker scheduling (anti-bait
     # del PLANNER LLM su query mail/file ambigue). Predicato condiviso con
@@ -958,12 +906,12 @@ def filter_pool_for_grammar(tools: Sequence[Any], user_query: str,
     if not query_has_tasks_marker(query_markers):
         excluded.extend(_TASKS_NAMES)
     # Skill-admin builtin: escludi se la query non nomina skill/capacità.
-    if not _has_word(query_markers, _SKILLS_MARKERS):
+    if not _dl.match("skills.marker", query_markers):
         excluded.extend(_SKILLS_NAMES)
     # Indice nomi presenti nel pool (per il check "esiste canonical?")
     _names_in_pool = {_extract_name(t) for t in tools}
-    for suffix, markers in _PROVIDER_SUFFIX_MARKERS.items():
-        if not _has_word(query_markers, markers):
+    for suffix, markers in _dl.mapping("provider.markers").items():
+        if not _dl.match_any(markers, query_markers, "word"):
             # Marker provider ASSENTE → escludi tool con suffix.
             # In produzione l'esclusione e' INCONDIZIONATA: un tool con
             # provider-suffix non deve mai entrare nel pool grammar senza il
