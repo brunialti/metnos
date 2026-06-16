@@ -154,6 +154,15 @@ diverge when one capability has several backends (calendar = local ICS / Google 
 CalDAV) or none (photos = local models). The external dependency is declared
 **once, at the backend**; the skill merely aggregates it.
 
+A built-in illustration is the generic **store** skill (`find_entries` ·
+`write_entries` · `delete_entries`): it reads and upserts records in a *named*
+store whose backend — SQLite for persistence or in-memory for ephemeral data,
+with PostgreSQL pluggable next behind the same `SqlDatabaseBackend` base — is
+fixed **once in a registry**, never named in the query. The executors stay the
+same; the backend swaps underneath. The skill is dormant (out of the routing
+pool) until a store is registered, so the closed vocabulary gains a reusable
+storage layer without polluting routing.
+
 Skills come in three tiers: **core** (always on, no external dependency),
 **first-party** (shipped with Metnos, same audited standard, dormant until
 configured), and **imported** (third-party, sandboxed behind the 7-layer gate).

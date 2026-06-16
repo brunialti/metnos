@@ -210,5 +210,22 @@ def build_routing_pool(query: str, intent, catalog: list, *,
             pool_for_propose = catalog
     else:
         pool_for_propose = catalog
-    return [getattr(e, "name", None) for e in pool_for_propose
-            if getattr(e, "name", None)]
+    names = [getattr(e, "name", None) for e in pool_for_propose
+             if getattr(e, "name", None)]
+    return _gate_store_skill(names)
+
+
+# Famiglia skill «store generico» (store_entries): dormiente finché il registro
+# è vuoto (nessuno store dichiarato). §7.9, gemella di «provider dormant se no
+# creds»: zero bersagli → fuori dal pool → niente inquinamento del routing.
+_STORE_SKILL_TOOLS = ("find_entries", "write_entries", "delete_entries")
+
+
+def _gate_store_skill(names: list[str]) -> list[str]:
+    try:
+        import store as _store
+        if _store.registered():          # ≥1 store registrato → attivi
+            return names
+    except Exception as ex:              # §2.8: traccia, non bloccare
+        log.debug("routing_pool: store-skill gate fallito (%r)", ex)
+    return [n for n in names if n not in _STORE_SKILL_TOOLS]

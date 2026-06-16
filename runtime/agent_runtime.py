@@ -126,6 +126,9 @@ LOCATION_REQUEST_TOOL = {
 from describe_entries import DESCRIBE_ENTRIES_TOOL, handle_describe_entries
 from classify_entries import CLASSIFY_ENTRIES_TOOL, handle_classify_entries
 from extract_entries import EXTRACT_ENTRIES_TOOL, handle_extract_entries
+from store_entries import (
+    FIND_ENTRIES_TOOL, WRITE_ENTRIES_TOOL, DELETE_ENTRIES_TOOL,
+    handle_find_entries, handle_write_entries, handle_delete_entries)
 from recurring_tasks import (
     CREATE_TASKS_TOOL, LIST_TASKS_TOOL,
     DELETE_TASKS_TOOL, READ_TASKS_TOOL,
@@ -4690,6 +4693,9 @@ _BUILTIN_TOOL_HANDLERS: dict = {
     "set_tasks": handle_set_tasks,
     "list_skills": handle_list_skills,
     "set_skills": handle_set_skills,
+    "find_entries": handle_find_entries,
+    "write_entries": handle_write_entries,
+    "delete_entries": handle_delete_entries,
 }
 
 # Tool-spec OpenAI-style per i builtin in-process che NON sono iniettati nel
@@ -4702,6 +4708,9 @@ _BUILTIN_TOOL_SPECS: dict = {
     "describe_entries": DESCRIBE_ENTRIES_TOOL,
     "classify_entries": CLASSIFY_ENTRIES_TOOL,
     "extract_entries": EXTRACT_ENTRIES_TOOL,
+    "find_entries": FIND_ENTRIES_TOOL,
+    "write_entries": WRITE_ENTRIES_TOOL,
+    "delete_entries": DELETE_ENTRIES_TOOL,
 }
 
 
