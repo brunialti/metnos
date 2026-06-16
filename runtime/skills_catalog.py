@@ -64,6 +64,17 @@ FIRST_PARTY_SKILLS: list[dict] = [
      "auto_enable": True},
 ]
 
+# Bundle-dir skill scritte DA NOI (first-party per AUTORIALITÀ) anche se
+# installate via importer in user-data o vendorizzate (provenienza ≠ tier).
+# Roberto 16/6: «sono tutte skill che abbiamo fatto noi». L'autorialità non è
+# derivabile dalla posizione (github vive in user-data ma è nostro;
+# skill-mock-e2e sta sotto executors/_imports ma è un mock di test) → lista
+# curata, come FIRST_PARTY_SKILLS. Usata SOLO per l'etichetta tier (skills_cli
+# / skill_admin), non per il gating.
+FIRST_PARTY_BUNDLES: frozenset = frozenset({
+    "github", "google-workspace", "it_locale",
+})
+
 _CORE = {
     "name": "core",
     "tier": "core",  # ADR 0170: core | first_party | imported

@@ -145,6 +145,13 @@ def list_skills(lang: str | None = None) -> list[SkillInfo]:
             if ex.is_dir() and (ex / "manifest.toml").is_file()
         )
         is_builtin = str(_C.PATH_EXECUTORS) in str(skill_dir.resolve())
+        try:
+            from skills_catalog import FIRST_PARTY_BUNDLES as _FPB
+        except Exception:
+            _FPB = frozenset()
+        # First-party per AUTORIALITÀ (lista curata), indipendente dalla
+        # provenienza: github (user-data ma nostro), google-workspace/it_locale
+        # (vendorizzati). Solo etichetta tier, non gating. Roberto 16/6.
         info = SkillInfo(
             name=skill_dir.name,
             path=skill_dir,
@@ -155,6 +162,7 @@ def list_skills(lang: str | None = None) -> list[SkillInfo]:
             n_executors=n_exec,
             is_imported=not is_builtin,
             is_builtin_repo=is_builtin,
+            is_first_party=skill_dir.name in _FPB,
         )
         if lang is not None and info.lang not in ("any", lang.lower()):
             continue
