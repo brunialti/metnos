@@ -23,7 +23,6 @@ from __future__ import annotations
 
 import sqlite3
 import threading
-from pathlib import Path
 from typing import Optional
 
 import config as _C  # §7.11

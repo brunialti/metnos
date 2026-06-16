@@ -19,7 +19,7 @@ en = "SCOPO: reads web pages and extracts main text; PDF URLs extracted as text 
 
 [code]
 files  = ["read_urls_html.py"]
-digest = "sha256:80a69a1972ac66296c47de5fe5b9823377c6a8b92f9242b1fd6ce456d45e95d7"
+digest = "sha256:4ccf963e0a05f9859278d6f35abe7a27249302263595153f83d421332ca860ad"
 
 [args]
 type     = "object"
