@@ -152,17 +152,21 @@ def list_skills(lang: str | None = None) -> list[SkillInfo]:
         # First-party per AUTORIALITÀ (lista curata), indipendente dalla
         # provenienza: github (user-data ma nostro), google-workspace/it_locale
         # (vendorizzati). Solo etichetta tier, non gating. Roberto 16/6.
+        _is_fp = skill_dir.name in _FPB
         info = SkillInfo(
             name=skill_dir.name,
             path=skill_dir,
             lang=sk_lang,
-            trust=sk_trust,
+            # Le nostre skill sono metnos-official anche se importate/vendorizzate
+            # (Roberto 16/6). `trust` non alimenta gating (is_metnos_official non
+            # ha chiamanti); coerenza display fra tier e fiducia.
+            trust=("metnos-official" if _is_fp else sk_trust),
             auto_enable=sk_auto_enable,
             enabled=enabled,
             n_executors=n_exec,
             is_imported=not is_builtin,
             is_builtin_repo=is_builtin,
-            is_first_party=skill_dir.name in _FPB,
+            is_first_party=_is_fp,
         )
         if lang is not None and info.lang not in ("any", lang.lower()):
             continue
