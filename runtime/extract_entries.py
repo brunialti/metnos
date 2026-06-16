@@ -28,10 +28,16 @@ from logging_setup import get_logger
 
 log = get_logger(__name__)
 
-# Campi il cui valore va normalizzato a datetime ISO 8601 (euristica nome).
-_DATE_FIELD_RE = re.compile(
-    r"(^|_)(start|end|date|datetime|when|inizio|fine|data|ora|scadenza|due|"
-    r"deadline|begin|finish)($|_)", re.IGNORECASE)
+# Normalizzazione campi temporali (euristica nome), SPLIT per granularità:
+# - DATETIME: punto nel tempo → ISO 8601 con orario+tz (eventi: create_events).
+# - DATE-ONLY: una data → "YYYY-MM-DD" SENZA orario (fatture/scadenze: «data,
+#   non anche tempo» — Roberto 16/6). T00:00 spurio su una pura data è rumore.
+_DATETIME_FIELD_RE = re.compile(
+    r"(^|_)(start|end|datetime|when|inizio|fine|ora|begin|finish)($|_)",
+    re.IGNORECASE)
+_DATE_ONLY_FIELD_RE = re.compile(
+    r"(^|_)(date|data|scadenza|due|deadline|emiss|issue|invoice)($|_)",
+    re.IGNORECASE)
 
 # Candidati campo-testo nelle entries d'ingresso, in ordine di preferenza.
 _TEXT_FIELDS = ("body_text", "text", "content", "body", "description",
@@ -58,7 +64,9 @@ def _pick_text(entry) -> str:
 
 
 def _build_prompt(fields, instruction, max_per_text) -> str:
-    has_date = any(_DATE_FIELD_RE.search(f) for f in fields)
+    date_time = [f for f in fields if _DATETIME_FIELD_RE.search(f)]
+    date_only = [f for f in fields
+                 if _DATE_ONLY_FIELD_RE.search(f) and f not in date_time]
     lines = [
         "Sei un estrattore di dati strutturati. Dato un TESTO, estrai i record "
         "richiesti e restituisci SOLO un array JSON, niente prosa, niente "
@@ -71,11 +79,17 @@ def _build_prompt(fields, instruction, max_per_text) -> str:
     ]
     if instruction:
         lines.append(f"COSA estrarre: {instruction}")
-    if has_date:
+    if date_time:
         lines.append(
-            "I campi di data/ora DEVI normalizzarli in ISO 8601 con timezone "
-            "(es. \"2026-03-15T09:00:00+01:00\"); se manca l'orario usa T00:00; "
-            "se manca la timezone usa +01:00 (Europe/Rome).")
+            "I campi DATA/ORA (" + ", ".join(date_time) + ") DEVI normalizzarli "
+            "in ISO 8601 con orario e timezone (es. "
+            "\"2026-03-15T09:00:00+01:00\"); se manca l'orario usa T00:00; se "
+            "manca la timezone usa +01:00 (Europe/Rome).")
+    if date_only:
+        lines.append(
+            "I campi DATA (" + ", ".join(date_only) + ") DEVI normalizzarli in "
+            "SOLA data ISO \"YYYY-MM-DD\" (es. \"2026-03-15\"), SENZA orario e "
+            "SENZA timezone.")
     lines.append("Output: SOLO l'array JSON. Esempio: "
                  "[{\"" + (fields[0] if fields else "campo") + "\": \"...\"}]")
     return "\n".join(lines)

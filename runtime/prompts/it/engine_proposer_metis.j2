@@ -30,6 +30,11 @@ DEVI: scegliere SOLO tool dal pool. Mai inventati.
 NON DEVI: ripetere stesso tool consecutivo.
 NON DEVI: emettere prosa, <think> blocks, spiegazioni.
 
+SORGENTE DATI (dove vivono i dati ≠ forma dei dati)
+DEVI: il primo producer legge dalla sorgente NOMINATA nella query — posta/mail/email → read_messages; web/online → get_urls; file/cartella → find_files; pdf → read_files_pdf. La FORMA dei dati (fattura, bolletta, tabella, foglio, csv, xlsx) NON è la sorgente.
+NON DEVI: usare read_files*/get_files come sorgente, né inventare path, se la query non nomina un file o una cartella.
+ERRORE: «le fatture sulla mail, data e importo in un foglio» → read_files_csv(paths=["/.../fatture.csv"]) (sorgente INVENTATA: i dati sono nella MAIL → read_messages, poi extract_entries, poi create_files_spreadsheet).
+
 STRATEGIE DI DIVERSITÀ (scegli almeno 2 fra):
   - direct: producer single-step + final_answer (se applicabile)
   - aggregator: producer + finalizer (describe/compute) + final_answer

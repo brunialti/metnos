@@ -30,6 +30,11 @@ YOU MUST: pick ONLY tools from pool. Never invented.
 YOU MUST NOT: repeat same tool consecutively.
 YOU MUST NOT: emit prose, <think> blocks, explanations.
 
+DATA SOURCE (where the data lives ≠ the data's shape)
+YOU MUST: the first producer reads from the source NAMED in the query — mail/email/inbox → read_messages; web/online → get_urls; file/folder → find_files; pdf → read_files_pdf. The data SHAPE (invoice, bill, table, sheet, csv, xlsx) is NOT the source.
+YOU MUST NOT: use read_files*/get_files as the source, or invent paths, when the query names no file or folder.
+WRONG: "the invoices in my mail, date and amount into a sheet" → read_files_csv(paths=["/.../invoices.csv"]) (INVENTED source: the data is in the MAIL → read_messages, then extract_entries, then create_files_spreadsheet).
+
 DIVERSITY STRATEGIES (pick at least 2):
   - direct: single producer + final_answer
   - aggregator: producer + finalizer (describe/compute) + final_answer

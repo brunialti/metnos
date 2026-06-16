@@ -835,6 +835,13 @@ CONTENT_ARG_KEYS = frozenset({
     "query_text", "name", "names", "content", "query", "search", "search_text",
     "text_query", "body_contains", "subject_contains", "from_contains",
     "time_window", "time_windows",
+    # File-target LOCATOR literali (16/6, turn 9805fb61): un piano che legge/
+    # opera su FILE SPECIFICI bakeizzati (es. read_files_csv(paths=[
+    # "/home/anthropic/fatture.csv"]), spesso path ALLUCINATO dal proposer) e'
+    # legato a UNA query → non promuovibile a L1 ne' servibile via cosine 0b.
+    # Un piano generale userebbe from_step/${...}. NB: `base_path` (radice di
+    # RICERCA, riusabile in un cluster «file in /tmp») resta NON query-specific.
+    "paths", "path",
 })
 
 

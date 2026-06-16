@@ -13,9 +13,32 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from extract_entries import _parse_records, _extract_max_tokens, _salvage_objects
+from extract_entries import (_parse_records, _extract_max_tokens,
+                             _salvage_objects, _build_prompt)
 
 F = ["summary", "start", "end"]
+
+
+class TestDateGranularity(unittest.TestCase):
+    """Regression (Roberto 16/6): un campo DATA va come data (YYYY-MM-DD),
+    NON datetime con T00:00 spurio; un campo DATA/ORA resta ISO con orario."""
+
+    def test_date_only_field_no_time(self):
+        p = _build_prompt(["data", "importo"], "", 20)
+        self.assertIn("YYYY-MM-DD", p)
+        self.assertIn("SENZA orario", p)
+        # nessuna istruzione di datetime con orario per un campo pura-data
+        self.assertNotIn("T09:00:00", p)
+
+    def test_datetime_field_keeps_time(self):
+        p = _build_prompt(["summary", "start", "end"], "", 20)
+        self.assertIn("ISO 8601 con orario", p)
+        self.assertIn("T00:00", p)
+
+    def test_mixed_date_and_datetime(self):
+        p = _build_prompt(["start", "scadenza"], "", 20)
+        self.assertIn("ISO 8601 con orario", p)   # start → datetime
+        self.assertIn("YYYY-MM-DD", p)            # scadenza → date-only
 
 
 class TestParseRecords(unittest.TestCase):

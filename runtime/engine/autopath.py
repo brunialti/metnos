@@ -189,6 +189,12 @@ def _compute_intent_sig(intent: Intent) -> tuple[str, str]:
     return sig, h
 
 
+def _sig_object(sig: str) -> str:
+    """Object (categoria) da un intent_sig 'verb|object|keywords'. '' se assente."""
+    parts = (sig or "").split("|")
+    return parts[1].strip().lower() if len(parts) > 1 else ""
+
+
 # ── Lookup ────────────────────────────────────────────────────────────────
 # Predicato query-specificity condiviso con L0 fastpath: vive in
 # engine/executor.py (is_query_specific + CONTENT_ARG_KEYS).
@@ -217,6 +223,7 @@ def lookup(query: str, intent: Intent) -> Optional[AutopathHit]:
     if not intent.is_complete():
         return None
     _, ihash = _compute_intent_sig(intent)
+    _qobj = (intent.object or "").lower().strip()
     eb = _cluster.embed(query)
     c = _conn()
     try:
@@ -236,10 +243,19 @@ def lookup(query: str, intent: Intent) -> Optional[AutopathHit]:
                     best_cid = cid
             if best_sim >= _cluster.COSINE_HIGH and best_cid:
                 row = c.execute(
-                    "SELECT id, framework_json, uses, composite_score "
+                    "SELECT id, framework_json, uses, composite_score, intent_sig "
                     "FROM autopaths WHERE cluster_id = ? AND status = 'active' "
                     "AND champion = 1 LIMIT 1", (best_cid,)).fetchone()
-                if row and not _is_query_specific(row[1]):
+                # CONFINE OGGETTO (16/6, turn 9805fb61/af045d18/1175b2f8): il
+                # match cluster e' puramente cosine sul TESTO → una query
+                # «fatture sulla mail» (object=messages) cade vicino al cluster
+                # di un autopath object=files e ne erediterebbe il piano
+                # (read_files_csv con path inventato) → misroute cross-oggetto
+                # che BYPASSA il proposer (llm_out_tokens=0). L'object dell'intent
+                # e' un confine di CATEGORIA: un piano `files` NON serve una query
+                # `messages`. §7.9 deterministico (path 2 gia' vincola via ihash).
+                if (row and not _is_query_specific(row[1])
+                        and _sig_object(row[4]) == _qobj):
                     fw = Framework.from_dict(json.loads(row[1]))
                     return AutopathHit(autopath_id=row[0], framework=fw,
                                         cluster_id=best_cid, uses=row[2],

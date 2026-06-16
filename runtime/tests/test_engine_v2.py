@@ -544,6 +544,42 @@ class TestAutopathSchema(unittest.TestCase):
         c.close()
         self.assertGreaterEqual(len(rows), 1)
 
+    def test_lookup_object_boundary_no_cross_object_serve(self):
+        """Regression turn 9805fb61/af045d18/1175b2f8: il match cluster (path 1,
+        cosine sul TESTO) NON deve servire un autopath di object DIVERSO. Un
+        piano `find|files` non serve una query `find|messages` cosine-vicina."""
+        from unittest import mock
+        import json as _json
+        files_intent = Intent(verb="find", object="files", keywords=[])
+        sig, ihash = eng_autopath._compute_intent_sig(files_intent)
+        fw = _json.dumps({"steps": [
+            {"tool": "find_files", "args": {"base_path": "/tmp"}},
+            {"tool": "final_answer", "args": {}}], "final_message": "ok"})
+        c = eng_autopath._conn()
+        c.execute(
+            "INSERT INTO observations(turn_id,intent_hash,intent_sig,"
+            "framework_json,framework_hash,cluster_id,embedding,latency_ms,ts) "
+            "VALUES (?,?,?,?,?,?,?,?,?)",
+            ("t1", ihash, sig, fw, "fh1", "cl_x", b"\x00" * 8, 1, "2026-01-01T00:00:00Z"))
+        c.execute(
+            "INSERT INTO autopaths(id,intent_sig,intent_hash,cluster_id,"
+            "framework_json,framework_hash,status,champion,ts_created) "
+            "VALUES (?,?,?,?,?,?,?,?,?)",
+            ("ap_files", sig, ihash, "cl_x", fw, "fh1", "active", 1, "2026-01-01T00:00:00Z"))
+        c.commit()
+        c.close()
+        with mock.patch("engine.cluster.embed", return_value=b"\x00" * 8), \
+             mock.patch("engine.cluster.cosine", return_value=1.0):
+            # object DIVERSO (messages): cosine alta ma confine di categoria →
+            # NON deve servire il piano files (prima del fix: misroute).
+            miss = eng_autopath.lookup(
+                "cerca le fatture sulla mail",
+                Intent(verb="find", object="messages", keywords=[]))
+            self.assertIsNone(miss)
+            # stesso object (files): controllo positivo → DEVE servire.
+            hit = eng_autopath.lookup("conta i file in tmp", files_intent)
+            self.assertIsNotNone(hit)
+
 
 class TestTerminator(unittest.TestCase):
     def setUp(self):
@@ -605,6 +641,36 @@ class TestMutatingInputEmptyAutoSkip(unittest.TestCase):
         step = StepSpec(tool="read_files", args={"from_step": 1})
         hist = self._hist({"ok": True, "entries": []})
         self.assertFalse(eng_executor._mutating_input_is_empty(step, hist))
+
+
+class TestQuerySpecificPaths(unittest.TestCase):
+    """Regression turn 9805fb61: un path FILE concreto bakeizzato (spesso
+    allucinato) rende il piano query-specific → non promuovibile a L1 ne'
+    servibile via cosine 0b. `base_path` (radice di ricerca) resta generale."""
+
+    def _fwjson(self, tool, args):
+        import json
+        return json.dumps({"steps": [
+            {"tool": tool, "args": args},
+            {"tool": "final_answer", "args": {}}]})
+
+    def test_literal_paths_is_query_specific(self):
+        fj = self._fwjson("read_files_csv", {"paths": ["/home/anthropic/fatture.csv"]})
+        self.assertTrue(eng_executor.is_query_specific(fj))
+
+    def test_literal_path_is_query_specific(self):
+        fj = self._fwjson("read_files", {"path": "/tmp/x.txt"})
+        self.assertTrue(eng_executor.is_query_specific(fj))
+
+    def test_base_path_not_query_specific(self):
+        """radice di ricerca riusabile in un cluster → NON query-specific."""
+        fj = self._fwjson("find_files", {"base_path": "/tmp"})
+        self.assertFalse(eng_executor.is_query_specific(fj))
+
+    def test_paths_from_step_not_query_specific(self):
+        """paths da from_step (pipeline) NON e' un literal → generale."""
+        fj = self._fwjson("delete_files", {"from_step": 1})
+        self.assertFalse(eng_executor.is_query_specific(fj))
 
 
 if __name__ == "__main__":
