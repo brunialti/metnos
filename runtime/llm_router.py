@@ -224,8 +224,6 @@ PROMPTS_USER_PATH = _C.PATH_USER_CONFIG / "prompts.toml"
 _PROMPTS_FALLBACK = [
     {"provider": "anthropic", "model_pattern": "claude-*", "use_case": "code_gen",
      "text": "\n\nVincoli: codice fedele alla spec. Regex semplice. Niente lookbehind/lookahead."},
-    {"provider": "llamacpp",  "model_pattern": "gemma-*",  "use_case": "code_gen",
-     "text": "\n\nVincoli: raw string r'...' con UN backslash. Niente triple-quote docstring."},
     {"provider": "ollama",    "model_pattern": "qwen*",    "use_case": "code_gen",
      "text": "\n\nVincoli: compila python_code per intero (def invoke + def main). Mai vuoto."},
 ]
@@ -351,7 +349,7 @@ class LLMRouter:
         `make_provider_from_spec`. Vuota se il tier non e' configurato.
 
         Usata da `consult_frontier` per ritentare con fallback se primary
-        fallisce (es. Opus 4.7 → GPT-5 → fail). Niente fallback chain per
+        fallisce (es. Opus 4.7 → un frontier secondario → fail). Niente fallback chain per
         fast/middle/wise di default (catena = primary only); se servisse
         in futuro, basta aggiungere `[[wise.fallback]]` in llm_tiers.toml.
         """

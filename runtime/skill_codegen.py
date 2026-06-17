@@ -372,7 +372,7 @@ def _iso_validations(plan) -> list:
 
 
 # Mapping skill domain -> phrasing user-facing (IT+EN). Help LLM PLANNER
-# (Gemma 4 26B) a collegare la query naturale ("appuntamenti") al tool
+# (il modello locale) a collegare la query naturale ("appuntamenti") al tool
 # canonico. Senza questa specializzazione, la description "events via skill
 # `calendar list`" e' troppo astratta e il PLANNER preferisce
 # request_new_executor.

@@ -61,8 +61,8 @@ _LOG = logging.getLogger(__name__)
 # telos_introspect.py). Mantiene "costo zero in background".
 # "local" = placeholder: il server serve il GGUF caricato (mapping
 # tier→modello fisico solo in llm_router.DEFAULT_TIERS).
-_LOCAL_GEMMA_MODEL = "local"
-_LOCAL_GEMMA_ENDPOINT = "http://127.0.0.1:8080"
+_LOCAL_MODEL = "local"
+_LOCAL_ENDPOINT = "http://127.0.0.1:8080"
 
 
 @dataclass(frozen=True)
@@ -238,8 +238,8 @@ def _parse_fits(raw: str, telos_list: list) -> list[FitEstimate]:
 
 
 def _default_llm_invoke(prompt: str) -> str:
-    """Gemma 4 26B locale via `LlamaCppProvider` (stesso pattern di
-    `telos_introspect._llm_invoke_local_gemma`). Bypassa LLMRouter
+    """modello locale (Qwen) via `LlamaCppProvider` (stesso pattern di
+    `telos_introspect._llm_invoke_local`). Bypassa LLMRouter
     perche' tier=middle puo' essere instradato a Sonnet frontier.
 
     think=False di default (formato JSON-only, no reasoning) — il
@@ -249,8 +249,8 @@ def _default_llm_invoke(prompt: str) -> str:
     think = os.environ.get("METNOS_ALIGNMENT_THINK", "0") == "1"
     from llm_provider import LlamaCppProvider
     prov = LlamaCppProvider(
-        model=_LOCAL_GEMMA_MODEL,
-        endpoint=_LOCAL_GEMMA_ENDPOINT,
+        model=_LOCAL_MODEL,
+        endpoint=_LOCAL_ENDPOINT,
     )
     r = prov.chat(
         "", prompt,

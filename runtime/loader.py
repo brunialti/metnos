@@ -437,7 +437,7 @@ class Executor:
     provenance: dict = field(default_factory=dict)
     # Planning complexity hint (19/5/2026): suggerisce al planner se questa
     # call beneficia di reasoning LLM (think=True) o se la decisione e' ovvia
-    # e think=False e' sufficiente (5-10x speedup su Gemma 4 26B - bench
+    # e think=False e' sufficiente (5-10x speedup sul modello locale - bench
     # 19/5). Valori:
     #   - "low":    decisione ovvia (es. read_files con path esplicito) → think=False
     #   - "medium": default; il planner usa think=True con budget ridotto
@@ -445,7 +445,7 @@ class Executor:
     # Letto dal manifest `[planning] complexity = "low|medium|high"`. Se non
     # dichiarato, fallback automatico in `agent_runtime` basato sul verbo del
     # nome (producer verbs get/read/find/list → low, mutating → medium).
-    # NOTA: validato su Gemma 4 26B. Per modelli diversi vedi
+    # NOTA: validato sul modello locale. Per modelli diversi vedi
     # [[metnos_todo_high_think_per_model]].
     complexity: str = ""
 

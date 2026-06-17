@@ -615,7 +615,7 @@ def admit_skill_import(parsed_skill, plans, *,
                 verdict.reasons.append(f"L5_smoke_exec: {s_reason}")
 
         # L6 semantic verifier — default ON per imported (ADR 0159):
-        # confronta description (manifest) ↔ code body via Gemma 4 26B.
+        # confronta description (manifest) ↔ code body via il modello locale.
         # Reject su `aligned=false`. Bypass via flag esplicito `--skip-l6`
         # (escape hatch dev/CI). Disable globale via env
         # `METNOS_SYNT_STAGE6_DISABLED=1` (test veloce). L'override

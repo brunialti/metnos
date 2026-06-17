@@ -12,7 +12,7 @@ ritorna boilerplate dal codegen + affinity dell'OBJECT.
 
 Integrazione produzione (in <install_root>):
 - Usa `prompt_loader.get("synt_stage4_description_imported", "it", ...)` o EN.
-- Tier wise (Gemma 4 26B), una shot, max 500 tokens output.
+- Tier wise (il modello locale), una shot, max 500 tokens output.
 - Output parsato come JSON `{description_it, description_en, affinity}`.
 - Time budget per call: 5s (R1, 24/5/2026). Fallback boilerplate al timeout.
 
@@ -156,7 +156,7 @@ _WISE_SYSTEM_DEFAULT = (
 
 def _call_llm(prompt: str, *, timeout_s: int = DEFAULT_TIMEOUT_S,
               max_tokens: int = 600) -> Optional[str]:
-    """Chiamata reale al tier wise (Gemma 4 26B locale via LlamaCppProvider
+    """Chiamata reale al tier wise (il modello locale locale via LlamaCppProvider
     su http://127.0.0.1:8080).
 
     Strategie in ordine:

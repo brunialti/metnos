@@ -39,13 +39,13 @@ import config as _C  # §7.11
 
 TELEMETRY_PATH = _C.PATH_USER_DATA / "telos_proposals.jsonl"
 
-# LLM default per le lenti: Gemma 4 26B locale via llama-server :8080.
+# LLM default per le lenti: modello locale (Qwen) via llama-server :8080.
 # Bypass LLMRouter (che secondo `~/.config/metnos/llm_tiers.toml` instrada
 # middle a Sonnet frontier). Il telos engine deve girare a costo zero,
 # in background, su modello locale — questo e' un vincolo del progetto
 # (vedi docs/it/architecture/telos.html §3 "Vive in BACKGROUND").
-_LOCAL_GEMMA_MODEL = "gemma-4-26B-A4B-it-UD-Q4_K_M.gguf"
-_LOCAL_GEMMA_ENDPOINT = "http://127.0.0.1:8080"
+_LOCAL_MODEL = "local"
+_LOCAL_ENDPOINT = "http://127.0.0.1:8080"
 
 
 def _stored_target_lens_pairs() -> set:
@@ -216,8 +216,8 @@ def _build_executors_sample(catalog, max_n: int = 8) -> list[dict]:
     return out
 
 
-def _llm_invoke_local_gemma(prompt: str, *, grammar: str | None = None) -> str:
-    """Adapter LLM Gemma locale via LlamaCppProvider diretto a :8080.
+def _llm_invoke_local(prompt: str, *, grammar: str | None = None) -> str:
+    """Adapter LLM locale via LlamaCppProvider diretto a :8080.
 
     BYPASSA LLMRouter perche' `~/.config/metnos/llm_tiers.toml` puo'
     instradare tier=middle a un provider frontier (Sonnet/Opus): per il
@@ -236,8 +236,8 @@ def _llm_invoke_local_gemma(prompt: str, *, grammar: str | None = None) -> str:
     try:
         from llm_provider import LlamaCppProvider
         prov = LlamaCppProvider(
-            model=_LOCAL_GEMMA_MODEL,
-            endpoint=_LOCAL_GEMMA_ENDPOINT,
+            model=_LOCAL_MODEL,
+            endpoint=_LOCAL_ENDPOINT,
         )
         r = prov.chat(
             "", prompt,
@@ -248,7 +248,7 @@ def _llm_invoke_local_gemma(prompt: str, *, grammar: str | None = None) -> str:
         )
         return r.text if hasattr(r, "text") else str(r)
     except Exception as ex:
-        _LOG.error("telos_introspect: Gemma local LLM call failed: %r", ex)
+        _LOG.error("telos_introspect: local LLM call failed: %r", ex)
         raise
 
 
@@ -281,7 +281,7 @@ def run_for_telos(
         except Exception as ex:
             _LOG.error("telos_introspect: catalog load failed: %r", ex)
             return []
-    llm = llm_invoke or _llm_invoke_local_gemma
+    llm = llm_invoke or _llm_invoke_local
     from telos_lenses import LENSES, LENSES_NO_GRAMMAR, is_lens_enabled, run_lens, LensCtx
 
     if lenses is None:

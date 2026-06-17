@@ -18,7 +18,7 @@ API:
 Decisioni post-probe (26/4/2026 ciclo finale POC):
     - tool-use nativo come default (vedi memoria metnos_poc_native_tool_use_finding)
     - think parametrizzato per modelli che lo supportano (Qwen 3, Llama 3.1)
-    - LlamaCppProvider striiba i marker <|channel>thought ... <channel|> di Gemma 4
+    - LlamaCppProvider striiba i marker <|channel>thought ... <channel|> di il modello locale
 """
 import json
 import os
@@ -190,23 +190,23 @@ class OllamaProvider:
 
 # --- LlamaCppProvider (llama-server OpenAI-compatible) -------------------
 
-# Gemma 4 emette pensiero in markers che il template di llama-server non
+# il modello locale emette pensiero in markers che il template di llama-server non
 # parsa: vanno strippati dal content lato client.
-_GEMMA_THOUGHT_RE = re.compile(r'<\|channel>.*?<channel\|>', flags=re.DOTALL)
+_LOCAL_THOUGHT_RE = re.compile(r'<\|channel>.*?<channel\|>', flags=re.DOTALL)
 
 
-_GEMMA_TC_RE = re.compile(
+_LOCAL_TC_RE = re.compile(
     r"<\|tool_call>call:([a-zA-Z_][a-zA-Z0-9_]*)\((.*?)\)<tool_call\|>",
     re.DOTALL,
 )
 
 
 def _parse_tool_call_tolerant(text: str) -> dict | None:
-    """Parser ADR 0133 grammar-mode: accetta JSON puro o formato Gemma 4
+    """Parser ADR 0133 grammar-mode: accetta JSON puro o formato il modello locale
     tool_call (`<|tool_call>call:NAME(k=v,...)<tool_call|>`). Ritorna
     `{"name", "arguments"}` o None se nessun match.
 
-    Gemma 4 args syntax (k=v separati da virgola, valori Python-like):
+    il modello locale args syntax (k=v separati da virgola, valori Python-like):
         find_events_empty(size="1hour", time_windows=["next-week"], max_results=3)
     Parsing: ast.literal_eval per ogni value (sicuro: no eval Python).
     """
@@ -258,8 +258,8 @@ def _parse_tool_call_tolerant(text: str) -> dict | None:
                 except json.JSONDecodeError:
                     pass
             return {"name": name, "arguments": args_obj}
-    # (b) Gemma 4 tool_call template
-    m = _GEMMA_TC_RE.search(t)
+    # (b) tool_call grammar-mode template
+    m = _LOCAL_TC_RE.search(t)
     if m:
         name = m.group(1)
         args_str = m.group(2).strip()
@@ -311,13 +311,13 @@ def _parse_tool_call_tolerant(text: str) -> dict | None:
 def _strip_thought(s):
     if not s:
         return s
-    return _GEMMA_THOUGHT_RE.sub('', s).strip()
+    return _LOCAL_THOUGHT_RE.sub('', s).strip()
 
 
 class LlamaCppProvider:
     """OpenAI-compatible client per llama.cpp llama-server.
 
-    Pensato per modelli locali grandi tipo Gemma 4 26B, ma funziona con
+    Pensato per modelli locali grandi tipo il modello locale (Qwen), ma funziona con
     qualunque modello servito via /v1/chat/completions.
     """
     mode = "local"
@@ -340,7 +340,7 @@ class LlamaCppProvider:
                      immediata. Ideale per stage procedurali (lookup, schema).
             True   → enable_thinking=True + reasoning_budget=<reasoning_budget>
                      (default 1024). Ragionamento prima dell'output.
-            None   → default del server (per Gemma 4: thinking ON con budget
+            None   → default del server (per il modello locale: thinking ON con budget
                      1024). Sconsigliato: passa sempre think esplicito.
 
         `reasoning_budget` consente di limitare il budget di think (es. 512
@@ -385,7 +385,7 @@ class LlamaCppProvider:
 
         1. **Native tool_call protocol** (default, `grammar=None`):
            passa `tools` + `tool_choice="auto"`. llama-server applica
-           chat_template Gemma per il tool_call. Soft-constrained → il
+           chat_template grammar-mode per il tool_call. Soft-constrained → il
            LLM puo' generare prosa/loop (bug live, vedi ADR 0133).
 
         2. **Grammar-constrained** (`grammar=<GBNF>`, ADR 0133):
@@ -401,7 +401,7 @@ class LlamaCppProvider:
         if grammar is not None:
             # Grammar-constrained mode: niente tools, niente thinking,
             # niente role=tool/tool_calls in history (triggerano il
-            # tool_call template Gemma che emette `<|tool_call>...|>`).
+            # tool_call template grammar-mode che emette `<|tool_call>...|>`).
             # Conversione history → messaggi role assistant/user testuali.
             flat_msgs = [{"role": "system", "content": system}]
             for m in (history or []):
@@ -495,7 +495,7 @@ class LlamaCppProvider:
         raw_content = msg.get("content") or ""
         reasoning_content = msg.get("reasoning_content") or ""
         thinking = ""
-        m = _GEMMA_THOUGHT_RE.search(raw_content)
+        m = _LOCAL_THOUGHT_RE.search(raw_content)
         if m:
             thinking = m.group(0)
         elif reasoning_content:
@@ -514,8 +514,8 @@ class LlamaCppProvider:
                 # ADR 0133: parse content tool_call (no native tool_calls
                 # quando grammar e' attiva). Due formati possibili:
                 #   (a) JSON puro: {"name":"<tool>","arguments":{...}}
-                #   (b) Gemma 4 tool_call: <|tool_call>call:<tool>(k=v,...)<tool_call|>
-                # Parser tollerante: prova prima JSON, fallback regex Gemma.
+                #   (b) tool_call grammar-mode: <|tool_call>call:<tool>(k=v,...)<tool_call|>
+                # Parser tollerante: prova prima JSON, fallback regex grammar-mode.
                 parsed = _parse_tool_call_tolerant(text)
                 if parsed is not None:
                     tcs.append(ToolCall(
@@ -1066,7 +1066,7 @@ def make_provider_from_config(mode, runtime_config):
     """Deprecated post-ADR 0146: use make_provider_from_spec via LLMRouter."""
     if mode == "local":
         cfg = runtime_config.get("local", {})
-        # Default flipped to llamacpp+Gemma per ADR 0146. Pass `provider="ollama"`
+        # Default flipped to llamacpp+modello locale per ADR 0146. Pass `provider="ollama"`
         # in cfg to opt back into Ollama (requires `model=` explicit).
         if cfg.get("provider") == "ollama":
             return OllamaProvider(
@@ -1075,7 +1075,7 @@ def make_provider_from_config(mode, runtime_config):
                 think=cfg.get("think", False),
             )
         return LlamaCppProvider(
-            model=cfg.get("model", "gemma-4-26B-A4B-it-UD-Q4_K_M.gguf"),
+            model=cfg.get("model", "local"),
             endpoint=cfg.get("endpoint", "http://127.0.0.1:8080"),
         )
     elif mode == "online":
@@ -1088,7 +1088,7 @@ def make_provider_from_spec(spec):
     """Costruisce un provider da una spec dict {provider, model, ...}.
 
     Usato dal tier resolver per istanziare un provider concreto. Esempi:
-        {"provider": "llamacpp",  "model": "gemma-4-26B...", "endpoint": "http://127.0.0.1:8080"}
+        {"provider": "llamacpp",  "model": "local", "endpoint": "http://127.0.0.1:8080"}
         {"provider": "anthropic", "model": "claude-sonnet-4-6"}
         {"provider": "ollama",    "model": "<modello-esplicito>"}  (deprecated)
     """
