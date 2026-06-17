@@ -72,7 +72,7 @@ def main():
         "tiers": [],
     }
     for label, fname, provider in [
-        ("gemma-4-26B", "results_tier_gemma.jsonl", "llamacpp"),
+        ("local", "results_tier_gemma.jsonl", "llamacpp"),
         ("qwen3:8b", "results_tier_qwen3_8b.jsonl", "ollama"),
         ("qwen2.5:7b-instruct", "results_tier_qwen25_7b.jsonl", "ollama"),
         ("claude-sonnet-4-5", "results_tier_claude.jsonl", "anthropic"),

@@ -353,7 +353,7 @@ def task_temp_threshold_alert(payload: dict | None = None) -> dict:
     Legge le temperature hardware via `host_health.collect_thermal()` (CPU
     GPU NVMe) e invia notifica al canale dichiarato se ALMENO una supera
     `threshold_c`. Sotto soglia: noop silenzioso. Risolve il bug live
-    24/5/2026 (PLANNER LLM Gemma 4 26B inviava alarm anche con
+    24/5/2026 (PLANNER LLM modello locale inviava alarm anche con
     temperature < threshold per pattern condizionale ambiguo).
 
     Payload schema:

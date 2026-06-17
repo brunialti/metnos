@@ -24,8 +24,8 @@ Stages:
 
 Tre tier (memoria metnos_design_3tier_llm + design_3tier_llm):
   fast   = qwen3:8b   (Ollama)   — per stage 1 quando il task e' lookup.
-  middle = gemma-4-26B (LlamaCpp) — per stage 2-4 strutturati.
-  wise   = gemma-4-26B con think=true OR Claude come ULTIMA istanza — stage 5.
+  middle = modello locale (LlamaCpp) — per stage 2-4 strutturati.
+  wise   = modello locale con think=true OR Claude come ULTIMA istanza — stage 5.
 LLM online = ultima istanza solo se locale fallisce.
 
 Ogni stage scrive checkpoint. Se uno stage fallisce, abbandono con motivo.
@@ -246,7 +246,7 @@ def _parse_json_strict(text: str) -> Optional[dict]:
 def run_stage1(user_request: str, llm_call) -> StageResult:
     """llm_call: callable(system, user, max_tokens) -> {text, in_tokens, out_tokens, latency_ms}.
 
-    Note max_tokens: Gemma 4 26B con --reasoning-budget=1024 consuma ~1024 token
+    Note max_tokens: il modello locale con --reasoning-budget=1024 consuma ~1024 token
     in thinking interno PRIMA di emettere il JSON; quindi max_tokens deve essere
     >> 1024 per non troncare l'output. Stage procedurali: 1800 tipico.
     """
@@ -557,7 +557,7 @@ def run_full(user_request: str, llm_call_middle, llm_call_wise, *, progress=None
             description = (s4.output.get("description") or "") if s4 and s4.output else ""
             code_body = run.code_text or ""
             if description and code_body:
-                # Re-uso llm_call_wise: same tier (Gemma 4 26B locale).
+                # Re-uso llm_call_wise: same tier (modello locale).
                 def _v_llm(prompt, model):
                     res = llm_call_wise(prompt, "", max_tokens=300, think=False)
                     return res or {}

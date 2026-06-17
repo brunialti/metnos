@@ -57,7 +57,7 @@ OK pattern: `compute_files_loc_per-language` | `find_dirs_empty` | `change_files
 ERRORE pattern: `set_tasks_invoice-lifecycle` (no qualifier) | `create_events_promotion_nightly` (3°+4° nuovi insieme) | `_nightly` (timing).
 
 ESTENSIONE VOCAB §2.2: nuovo token? NON inventarlo nel nome. Scrivi nel rationale
-"RICHIEDE estensione vocab §2.2: <criterio>". 3 CRITERI: necessario (no synonym in classe) + generale (semantica riusabile, no domain-specific) + comprensibile (Gemma 26B senza glossa)."""
+"RICHIEDE estensione vocab §2.2: <criterio>". 3 CRITERI: necessario (no synonym in classe) + generale (semantica riusabile, no domain-specific) + comprensibile (il modello locale senza glossa)."""
 
 # Per lenti concept-only.
 SHARED_NAMING_NULL = "NAMING: `new_op_name` = SEMPRE null (questa lens propone un concetto, non un executor variant)."
@@ -163,7 +163,7 @@ def run_lens(
       operators: tuple di label. Per lens senza operatori espliciti, ("",).
       build_prompt: callable che riceve ctx + operator label e ritorna prompt.
       ctx: contesto LensCtx.
-      llm_invoke: adapter LLM (e.g. _llm_invoke_local_gemma).
+      llm_invoke: adapter LLM (e.g. _llm_invoke_local).
       grammar: GBNF opzionale per constrained generation.
       paternalism_filter: scarta proposte che giudicano l'utente.
     """

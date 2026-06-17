@@ -630,7 +630,7 @@ assert tc.arguments.get("timezone") == "Asia/Tokyo"
 """),
     ("llm_provider", "make_provider_from_config_local", "happy", """
 from llm_provider import make_provider_from_config, LlamaCppProvider
-p = make_provider_from_config("local", {"local": {"model": "gemma-26b"}})
+p = make_provider_from_config("local", {"local": {"model": "local"}})
 assert isinstance(p, LlamaCppProvider)
 # Modello: post-ADR 0146 il LlamaCppProvider usa l'endpoint :8080 con
 # il modello caricato server-side; il config 'model' è ignorato per il provider
@@ -1856,11 +1856,11 @@ d = r.describe()
 assert d["wise"]["provider"] == "anthropic"
 assert d["wise"]["aliased"] is False
 """),
-    ("llm_router", "wise_gemma_locale_passa_floor", "happy", """
+    ("llm_router", "wise_locale_passa_floor", "happy", """
 from llm_router import LLMRouter
 r = LLMRouter(tiers_override={
     "fast": {"provider":"stub"},
-    "wise": {"provider":"llamacpp","model":"gemma-4-26B-A4B-it-UD-Q4_K_M.gguf"},
+    "wise": {"provider":"llamacpp","model":"local"},
 })
 d = r.describe()
 assert d["wise"]["provider"] == "llamacpp"

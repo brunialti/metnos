@@ -75,7 +75,7 @@ def _fake_call_llm_factory(translations: dict[str, str]):
         # Cerca per source_text esatto nel dict (i test seedano hello/world).
         translation = translations.get(source_text, f"translated[{source_text}]")
         raw = json.dumps({"translation": translation}, ensure_ascii=False)
-        return raw, {"model": "gemma-4-26B-test", "tier": tier,
+        return raw, {"model": "local-test", "tier": tier,
                      "in_tokens": 10, "out_tokens": 5, "latency_ms": 1}
     return _fake
 

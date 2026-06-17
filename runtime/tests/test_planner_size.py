@@ -39,7 +39,7 @@ class TestPlannerSizeTargeted(unittest.TestCase):
         Soglia 65_000 char (~16K token): il _core.j2 e' cresciuto a ~30K
         per coprire telos engine (ADR 0156/0157), pipeline_shape (ADR 0154),
         fast-path (ADR 0150), executor > fast-path invariante, ecc. Ben
-        dentro il context window 1M di Gemma 4. Il targeted resta <
+        dentro il context window del modello locale. Il targeted resta <
         all-sections (verifica esplicita in test_planner_targeted_less_than_all).
         """
         import prompt_loader

@@ -140,7 +140,7 @@ def _build_router(tier_override: str | None = None):
                      "model": "claude-sonnet-4-5-20250929"},
         }
         return LLMRouter(tiers_override=tiers)
-    # Default: configurazione di Roberto (Gemma 4 26B su llamacpp)
+    # Default: configurazione di Roberto (modello locale su llamacpp)
     return LLMRouter()
 
 
@@ -261,7 +261,7 @@ def run_query_via_planner(query_record: dict) -> dict:
         record["llm_in_tokens"]  = sum(s.llm_in_tokens or 0 for s in log.steps)
         record["llm_out_tokens"] = sum(s.llm_out_tokens or 0 for s in log.steps)
         record["wise_provider"] = "planner"
-        record["wise_model"] = "qwen3:8b/gemma-4-26B"  # default planner stack
+        record["wise_model"] = "local"  # default planner stack
         if kind == "answer" and steps_used:
             record["outcome"] = "proto_mnest"
         elif kind == "answer" and not steps_used:

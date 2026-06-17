@@ -60,7 +60,7 @@ LENSES = {name: _load_lens(name) for name in _LENS_NAMES}
 # la grammar e si affida ai soli vincoli prompt + paternalism filter.
 #
 # NB: `compression` propone super-verbi che DEVONO restare vocab-compliant
-# (verb_object canonical); resta sotto grammar. Se Gemma 26B non riesce a
+# (verb_object canonical); resta sotto grammar. Se il modello locale non riesce a
 # trovare un canonical valido, ritorna [] (preferito a invenzione).
 LENSES_NO_GRAMMAR = frozenset({"inverse_rl"})
 

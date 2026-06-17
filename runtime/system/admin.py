@@ -57,7 +57,7 @@ VERB = "admin"
 # ── Manifest virtuale per il PLANNER (ADR 0088) ───────────────────────
 # Equivalente in-code del manifest TOML degli executor handcrafted: il
 # loader lo importa per costruire l'`Executor` dataclass visibile al
-# PLANNER. Description ~1500 char, leggibile da LLM medium (Gemma 4 26B
+# PLANNER. Description ~1500 char, leggibile da LLM medium (modello locale
 # planner): pattern DEVI/NON DEVI/OK/ERRORE come da CLAUDE.md §6.
 MANIFEST_VIRTUAL = {
     "name": "admin",
@@ -277,7 +277,7 @@ Respond with ONE JSON object, exactly one of these shapes:
 def _default_llm_call(prompt: str) -> str:
     """Bridge to the runtime LLM router. Falls back to ok-but-empty in dev.
 
-    The default tier is `middle` (Gemma 4 26B think=false) per ADR 0026:
+    The default tier is `middle` (local model think=false) per ADR 0026:
     intent translation is a procedural task, not a critical safety call.
     """
     try:

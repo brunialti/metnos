@@ -74,7 +74,7 @@ def test_empty_text_returns_none():
 
 
 def test_non_json_prose_returns_none():
-    """Prosa senza JSON e senza pattern Gemma → None."""
+    """Prosa senza JSON e senza pattern del modello locale → None."""
     assert _parse_tool_call_tolerant("Ho cercato i task ma non ho trovato nulla.") is None
 
 
@@ -83,7 +83,7 @@ def test_invalid_name_format_returns_none():
     assert _parse_tool_call_tolerant('{"not_name": "list_tasks"}') is None
 
 
-def test_gemma_template_still_works():
+def test_tool_call_template_still_works():
     out = _parse_tool_call_tolerant(
         '<|tool_call>call:get_now()<tool_call|>'
     )
@@ -92,7 +92,7 @@ def test_gemma_template_still_works():
     assert out["arguments"] == {}
 
 
-def test_gemma_template_with_args():
+def test_tool_call_template_with_args():
     out = _parse_tool_call_tolerant(
         '<|tool_call>call:read_events(time_window="tomorrow")<tool_call|>'
     )

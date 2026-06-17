@@ -436,8 +436,8 @@ def _apply_cap_pending(sender_id: str, query: str,
             return query, pending, (res or {}).get("summary", json.dumps(res)[:500])
         # approval_required (find_images_indices build): direct invocation
         # dell'executor con args_suggested. Il rewrite verbale "(forza X=Y
-        # su Z)" non regge sul PLANNER medium (Gemma 4 26B): test live
-        # 5/5/2026 ha mostrato che Gemma ha interpretato il rewrite come
+        # su Z)" non regge sul PLANNER medium (modello locale): test live
+        # 5/5/2026 ha mostrato che il modello locale ha interpretato il rewrite come
         # saluto e ha emesso "Ciao!" invece di rilanciare il tool.
         # 6/5/2026 (ADR 0091 generalizzato): il vecchio kind="cap_expand"
         # e' stato sostituito a monte da get_inputs_response (vedi

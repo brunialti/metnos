@@ -1,5 +1,5 @@
 """tool_schema_slim — riduzione deterministica della description e dello
-schema args dei tool esposti al PLANNER LLM (Gemma 4 26B).
+schema args dei tool esposti al PLANNER LLM (modello locale).
 
 Razionale (sessione 19/5/2026 sera, continuum 19/5 §H0):
   Il giant prompt del PLANNER (15-25k tok input) e' dominato dalle

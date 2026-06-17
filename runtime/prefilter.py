@@ -1150,11 +1150,11 @@ def _rank_adaptive_legacy(query, catalog, k_min=5, k_max=8, *, llm_call=None,
 
     Vantaggio dell'intent extractor: robusto a variazioni di linguaggio
     ("archivia", "svuota cestino", "metti in spam") che il lexicon manuale
-    non copre. Latenza tipica ~350ms con gemma 4 26B middle tier.
+    non copre. Latenza tipica ~350ms con il modello locale middle tier.
 
     Filtro relativo (28/4 sera): tieni solo score >= max(1, top_score / 2).
-    Evita di passare al planner tool con affinity bassa che fanno rumore (Gemma
-    sotto-pesa le description e si attacca a nomi calamita). Cap superiore a
+    Evita di passare al planner tool con affinity bassa che fanno rumore (il
+    modello locale sotto-pesa le description e si attacca a nomi calamita). Cap superiore a
     k_max comunque.
     """
     # Skip dormant (skill_credentials check, ADR 15/5/2026): il PLANNER

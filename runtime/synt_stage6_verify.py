@@ -3,7 +3,7 @@
 
 Bug live 8/5: synth `find_texts` aveva `description` "motori di ricerca
 online" ma il `code` faceva tutt'altro. Stage 6 confronta description vs
-code via LLM (tier wise = Gemma 4 26B locale) e rifiuta i misalignments.
+code via LLM (tier wise = modello locale) e rifiuta i misalignments.
 
 Determinismo §7.9: solo JSON parsing strict, retry 1x su malformed,
 fallback `aligned=False` (fail-safe — meglio rifiutare un buon synth che

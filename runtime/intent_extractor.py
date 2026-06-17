@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """intent_extractor.py — estrae verbo+oggetto canonici da una richiesta utente.
 
-Approccio: una chiamata LLM (gemma 4 26B fast/middle tier, think=False, ~500ms)
+Approccio: una chiamata LLM (modello locale fast/middle tier, think=False, ~500ms)
 con prompt minimo che chiede al modello di mappare la richiesta sul vocabolario
 chiuso di Metnos (20 verbi × 11 oggetti).
 
@@ -11,10 +11,10 @@ Pipeline:
 
 Vantaggi rispetto al lexicon match:
 - Robusto a variazioni di linguaggio (IT/EN, conjugazioni, sinonimi, idiomi).
-- Cross-language (gemma e' multilingue).
+- Cross-language (il modello locale e' multilingue).
 - Non richiede manutenzione di un dizionario manuale.
 
-Latenza: ~500-800ms con gemma 4 26B think=False, num_predict=80.
+Latenza: ~500-800ms con il modello locale think=False, num_predict=80.
 
 Failure mode:
 - LLM down → ritorna None, caller deve fall-back al lexicon.

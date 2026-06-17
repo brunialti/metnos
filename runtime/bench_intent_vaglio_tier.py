@@ -3,7 +3,7 @@
 
 Misura precision dell'intent_extractor e concordanza del giudice LLM su
 corpus storico (turn logs) con tier='fast' (qwen3:8b) vs tier='middle'
-(gemma 4 26B). Promote a 'fast' SOLO se le soglie sono superate:
+(modello locale). Promote a 'fast' SOLO se le soglie sono superate:
 
     - intent_extractor: >= 90% del baseline middle (verb+object match)
     - vaglio LLM judge: >= 95% concordanza approve/deny

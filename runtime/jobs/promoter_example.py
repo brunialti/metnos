@@ -20,7 +20,7 @@ Output `render_practical_example()` ha 3 sezioni:
 
     <!-- llm_commentary -->
     ## Commento
-    <paragrafo Gemma 4 26B tier middle, 3-5 frasi>
+    <paragrafo modello locale tier middle, 3-5 frasi>
 
 Sorgenti dati:
 - `sig_key` del proposal (lista JSON-parseable, ADR 0077).
@@ -54,7 +54,7 @@ import config as _C  # §7.11
 _PLANNER_CORE_SIZE_BYTES = 6 * 1024
 _TOKENS_PER_BYTE = 0.25  # ~4 char/token
 
-# Timeout LLM per il commento. Cap conservativo (Gemma 4 26B su Strix Halo
+# Timeout LLM per il commento. Cap conservativo (il modello locale su Strix Halo
 # di solito risponde 0.5-1.5s; 5s e' un margine ampio per spikes).
 _LLM_COMMENTARY_TIMEOUT_S = 5.0
 # Token cap per il paragrafo: 3-5 frasi * ~25 parole * ~1.4 token/parola
@@ -595,7 +595,7 @@ def render_practical_example(
 
     Sezione 1 — analisi deterministica §7.9.
     Sezione 2 — stima risparmio %, deterministica §7.9.
-    Sezione 3 — UN paragrafo LLM (Gemma 4 26B tier middle) con
+    Sezione 3 — UN paragrafo LLM (modello locale tier middle) con
         fallback "(commento non disponibile)" se LLM down/timeout.
 
     `skip_llm=True`: salta la sezione 3 (usato dai test che non vogliono

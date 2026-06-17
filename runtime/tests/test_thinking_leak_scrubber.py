@@ -1,6 +1,6 @@
 """Test scrubber anti thinking-leak (ADR 0102, 7/5/2026).
 
-Convergenza: il PLANNER (Gemma 4 26B think=true) a volte emette il
+Convergenza: il PLANNER (modello locale think=true) a volte emette il
 proprio reasoning interno nel canale `text` invece che nel canale
 `thinking` separato. Lo scrubber rimuove le righe di reasoning leak
 preservando il contenuto legittimo.

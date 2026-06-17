@@ -1,6 +1,6 @@
 """manifest_lint.py — linter STRUTTURALE dei manifest executor (dev-tooling).
 
-Il manifest e' la "scheda istruzioni" che l'LLM-medio (Gemma) legge per scegliere
+Il manifest e' la "scheda istruzioni" che l'LLM-medio (modello locale) legge per scegliere
 e chiamare un tool (§2.5). Questo linter e' un correttore automatico di quelle
 schede: deterministico (§7.9, zero LLM), beccca gli errori di FORMA che fanno
 sbagliare l'LLM prima che la scheda vada in uso.
@@ -22,7 +22,7 @@ semantica — le "ombre strutturali" dei bug. Esempi (tutti emersi 2/6):
   l'LLM copia un arg inventato                il PATTERN usa un arg non nello schema
                                               → C_PATTERN_ARGS
 
-Cio' che resta IRRIDUCIBILMENTE semantico (es. il bias di Gemma "metti"->write) NON
+Cio' che resta IRRIDUCIBILMENTE semantico (es. il bias del modello locale "metti"->write) NON
 ha ombra strutturale affidabile: il linter NON lo decide — si astiene e lo lascia
 al verifier LLM L6 (ADR 0114), che e' il livello giusto per la semantica. Linter
 deterministico (forma) + L6 LLM (significato) sono complementari.

@@ -6,8 +6,8 @@ Confronto 1:1 con `results_iter_1.jsonl` (single-prompt baseline). Riprende
 le query con expected in {'new_executor','rejected'} (skip 'proto_mnest' che
 testano il composer, non il synt).
 
-LLM: SOLO Gemma 4 26B locale via LlamaCppProvider su 127.0.0.1:8080.
-  middle: think=False (default Gemma; nessun budget di reasoning attivato a livello prompt)
+LLM: SOLO modello locale via LlamaCppProvider su 127.0.0.1:8080.
+  middle: think=False (default del modello locale; nessun budget di reasoning attivato a livello prompt)
   wise:   stesso provider/model — il llama-server e' avviato con
           --reasoning-budget=1024, quindi le call di stage 5 useranno il
           reasoning interno comunque (multistage budgeta gia' max_tokens=5000).
@@ -59,15 +59,15 @@ RESULTS_JSONL = Path(__file__).resolve().parents[2] / "decisions/synt_stress/res
 SUMMARY_JSON = Path(__file__).resolve().parents[2] / "decisions/synt_stress/results_multistage_35.summary.json"
 
 LLAMA_ENDPOINT = "http://127.0.0.1:8080"
-LLAMA_MODEL = "gemma-4-26B-A4B-it-UD-Q4_K_M.gguf"
+LLAMA_MODEL = "local"
 
 
 def make_llm_call(provider, *, think: bool):
     """Adatta `LlamaCppProvider.chat(...)` alla signature attesa da synt_multistage:
         llm_call(system, user, max_tokens) -> dict(text,in_tokens,out_tokens,latency_ms).
 
-    `think` qui non e' propagato a Gemma via param: il comportamento
-    reasoning di Gemma 4 si controlla dal lancio del server. Il flag
+    `think` qui non e' propagato al modello locale via param: il comportamento
+    reasoning del modello locale si controlla dal lancio del server. Il flag
     rimane in firma per coerenza con il contratto del modulo (middle vs
     wise) e per logging.
     """

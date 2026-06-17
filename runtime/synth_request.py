@@ -333,8 +333,8 @@ def handle_synth_request(args, *, user_query, progress=None, verbose=False, curr
     """Gestisce la chiamata a request_new_executor.
 
     Lancia synt_multistage.run_full sincronamente (~150 s wall). Usa LLMRouter
-    per i tier: stage 1-4 con `middle` (procedurale, gemma 4 26B), stage 5 con
-    `wise` (creativo+procedurale, gemma 4 26B con think=true). Il provider
+    per i tier: stage 1-4 con `middle` (procedurale, modello locale), stage 5 con
+    `wise` (creativo+procedurale, modello locale con think=true). Il provider
     del pianificatore (fast tier) NON e' adatto per la sintesi: qwen3:8b
     fatica con i 5 stage, specialmente stage 5 CODE.
     Salva la proposal in PROPOSALS_DIR e ritorna una observation strutturata

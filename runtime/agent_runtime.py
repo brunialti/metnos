@@ -18,7 +18,7 @@ Decisioni di design applicate (sessione 26/4/2026):
 Aggiornato dopo ciclo finale POC (26/4):
     - tool-use NATIVO via *Provider.chat_with_tools (no prompt-based JSON parsing)
     - data piping con sintassi {{stepN.field}} (opzione A confermata nel ciclo 12)
-    - default planner = llamacpp + Gemma 4 26B su :8080 (ADR 0146, supersedes
+    - default planner = llamacpp + modello locale su :8080 (ADR 0146, supersedes
       il default storico qwen3:8b di ADR 0044)
 """
 import functools
@@ -170,7 +170,7 @@ _USER_RE = re.compile(
 
 # --- Think budget modulation per planner step (19/5/2026) ------------------
 # Pattern A+B (manifest [planning] complexity + verb-of-name fallback).
-# Bench Gemma 4 26B 19/5/2026 + euristica Roberto:
+# Bench del modello locale 19/5/2026 + euristica Roberto:
 #  - Exec deterministico: think=False, budget=0.
 #  - Binary contestuale: think=True, budget=64-128.
 #  - Tool calling pool ≤5: think=True, budget=256.
@@ -289,7 +289,7 @@ def _scrub_credentials(text: str) -> tuple[str, int]:
     return cleaned, n_matches
 
 
-# Anti thinking-leak (ADR 0102, 7/5/2026). Gemma 4 26B think=true a volte
+# Anti thinking-leak (ADR 0102, 7/5/2026). Il modello locale con think=true a volte
 # emette il proprio reasoning interno nel canale `text` invece che nel
 # canale `thinking` separato — il final_message dell'utente si riempie di
 # righe tipo "Wait, I'll check...", "Actually, I should...", "Let me think".
@@ -307,7 +307,7 @@ _THINKING_LEAK_RE = re.compile(
     re.IGNORECASE,
 )
 
-# Pattern italiani — meta-permission e self-talk di Gemma 4 26B think=true.
+# Pattern italiani — meta-permission e self-talk del modello locale con think=true.
 # Caso live federvolley (7/5/2026): "(posso provare a cercarli se mi dai il
 # via libera)" e "ti suggerisco queste alternative" come list intro.
 # Politica chirurgica (CLAUDE.md §2.8 / §7.9): rimuoviamo SOLO righe in
@@ -533,7 +533,7 @@ def _compose_honest_from_last_error(log) -> str:
 def _scrub_thinking_leak(text):
     """Rimuove pattern di reasoning leak da response PLANNER.
 
-    Gemma 4 26B think=true a volte emette thinking nel canale text invece
+    Il modello locale con think=true a volte emette thinking nel canale text invece
     che nel canale thinking separato. Pattern rimossi:
 
     - EN: righe (standalone) che iniziano con marker di reasoning interno
@@ -1279,7 +1279,7 @@ def _render_now_vars() -> dict:
 def planner_facing_schema(schema):
     """Trasforma lo `args_schema` di un executor nello schema esposto al
     pianificatore LLM. Fix strutturale (30/4/2026) per il disallineamento
-    prompt↔schema sotto schema-guided decoding (Ollama/Gemma).
+    prompt↔schema sotto schema-guided decoding (Ollama/modello locale).
 
     Regola unica: se l'executor consuma una lista prodotta da uno step
     upstream (rilevato dalla presenza di `entries` in `properties` o in
@@ -1371,8 +1371,8 @@ def render_tools_for_provider(executors):
 
 # --- Validazione args (subset JSON Schema v1.1) ----------------------------
 
-# Marker auto-referenziali di RIFIUTO/meta-commento del modello (IT+EN, Gemma
-# risponde in-lang). Frasi distintive che non compaiono mai come valore
+# Marker auto-referenziali di RIFIUTO/meta-commento del modello (IT+EN, il
+# modello locale risponde in-lang). Frasi distintive che non compaiono mai come valore
 # legittimo di un argomento (titolo, path, id, query). Usate da validate_args
 # per intercettare i rifiuti che il PLANNER trapela DENTRO un arg.
 # _LLM_REFUSAL_MARKERS migrato a detection_lexicon (concept substring
@@ -5876,14 +5876,14 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
     # interna a rank_adaptive; prefilter_ms = totale - quota LLM.
     _intent_ms_acc = 0  # accumulatore quota LLM dentro _intent_llm
     if k is None:
-        # Intent extractor LLM-based (gemma 4 26B middle tier) come primary
+        # Intent extractor LLM-based (modello locale middle tier) come primary
         # signal del prefilter (Roberto 29/4/2026). Fallback al bag-of-words
         # se l'LLM e' down o non riesce a parsare.
         def _intent_llm(system, user, max_tokens=80, think=False):
             nonlocal _intent_ms_acc
             from llm_router import LLMRouter
             _r = LLMRouter()
-            _p = _r.provider("middle")  # gemma 4 26B
+            _p = _r.provider("middle")  # modello locale
             _t0 = time.perf_counter()
             _res = _p.chat(system, user, max_tokens=max_tokens,
                            temperature=0, think=think)
@@ -6167,10 +6167,10 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
         if verbose:
             print(f"[implicit_actions] injection failed: {_e}")
 
-    # Provider selection (27/4 sera): default = Gemma 4 26B (llamacpp) come "middle" tier
+    # Provider selection (27/4 sera): default = modello locale (llamacpp) come "middle" tier
     # locale per pianificare task multi-step. Override esplicito via env METNOS_PLANNER_*.
     # think (28/4 sera): default True sul planner.
-    # Il bug Gemma "tool_call magnetico get_files anche con reasoning
+    # Il bug del modello locale "tool_call magnetico get_files anche con reasoning
     # corretto" si manifestava solo con tools_for_step gonfio (15-22 tool):
     # il pattern matching del modello sotto-pesava le description e si attaccava
     # a nomi calamita. Con prefilter k_max=8 + cap effettivo a 9 (incl. synth),
@@ -6186,7 +6186,7 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
     if model:
         provider = OllamaProvider(model=model, think=think)
     else:
-        # ADR 0146: default planner = llamacpp + Gemma 4 26B su :8080.
+        # ADR 0146: default planner = llamacpp + modello locale su :8080.
         # METNOS_PLANNER_PROVIDER=ollama resta supportato per back-compat,
         # ma richiede ora METNOS_PLANNER_MODEL esplicito (no fallback silenzioso
         # a qwen3:8b che era latente-broken post-ADR 0146 con ollama disabilitato).
@@ -6198,7 +6198,7 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
                     "METNOS_PLANNER_PROVIDER=ollama richiede METNOS_PLANNER_MODEL "
                     "esplicito (no default post-ADR 0146). Imposta es. "
                     "METNOS_PLANNER_MODEL=qwen3:8b oppure rimuovi "
-                    "METNOS_PLANNER_PROVIDER per usare il default llamacpp+Gemma."
+                    "METNOS_PLANNER_PROVIDER per usare il default llamacpp+modello locale."
                 )
             provider = OllamaProvider(
                 model=ollama_model,
@@ -6207,7 +6207,7 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
             )
         elif planner_provider == "anthropic":
             # Tier frontier (Claude) per il PLANNER. Opt-in via env, usato
-            # per bench comparativi vs LLM medium locale (Gemma 4 26B).
+            # per bench comparativi vs LLM medium locale (modello locale).
             # Costa ~$0.015/turno (Sonnet) o ~$0.075/turno (Opus). Default
             # haiku se non specificato (cheap+veloce).
             from llm_provider import AnthropicProvider
@@ -6217,7 +6217,7 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
         else:
             provider = make_provider_from_spec({
                 "provider": "llamacpp",
-                "model": os.environ.get("METNOS_PLANNER_MODEL", "gemma-4-26B-A4B-it-UD-Q4_K_M.gguf"),
+                "model": os.environ.get("METNOS_PLANNER_MODEL", "local"),
                 "endpoint": os.environ.get("METNOS_PLANNER_ENDPOINT", "http://127.0.0.1:8080"),
             })
     tracker = CostTracker()
@@ -6435,7 +6435,7 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
         # Install-on-demand auto-inject (§7.3, 17/5/2026): se l'ULTIMO step
         # ha ritornato `binary_missing` E nessuno step admin ha gia' processato
         # quel `suggested_install`, sintetizza step admin AUTO senza chiamare
-        # PLANNER. Pattern §7.9 deterministico. Razionale: il LLM Gemma 26B
+        # PLANNER. Pattern §7.9 deterministico. Razionale: il modello locale
         # ignora sistematicamente la rule planner `install_on_demand_binary_missing`
         # (final_answer e' il path di minor resistenza per il LLM), quindi
         # runtime forza con tool_call sintetico. Una volta che admin emette
@@ -6741,7 +6741,7 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
         # provider che lo supportano (LlamaCpp); altri provider ignorano
         # il kwarg via filter.
         #
-        # Per-call think BUDGET modulation (19/5/2026, post bench Gemma 4 26B).
+        # Per-call think BUDGET modulation (19/5/2026, post bench del modello locale).
         # Euristica Roberto: pattern matching (tool calling) ha bisogno di
         # thinking ma non troppo. Skip completo causa loop_break (planner
         # sceglie tool sbagliato). Solo modulazione del budget basata su:
@@ -6753,7 +6753,7 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
         _chat_kwargs: dict = dict(max_tokens=4096, temperature=0, think=think)
         if getattr(provider, "name", "") == "llamacpp":
             # Override env-driven:
-            # METNOS_REASONING_BUDGET="dyn" (legacy, default safe per Gemma 4 26B)
+            # METNOS_REASONING_BUDGET="dyn" (legacy, default safe per il modello locale)
             # | "ctx" (context-aware 19/5/2026 — opt-in per bench, pattern A+B
             #         su manifest [planning] complexity + verb-of-name fallback;
             #         bench iniziali mostrano regressione su query multi-step,
@@ -6998,11 +6998,11 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
             log.ts_end = time.time(); log.write(); return log
 
         # Caso 2: tool_call (D7 sequenziale = uno solo per turno).
-        # Bug Gemma 4 26B: a volte emette 2+ tool_calls paralleli — il primo e'
+        # Bug del modello locale: a volte emette 2+ tool_calls paralleli — il primo e'
         # un "placeholder magnetico" con args vuoti (es. get_files
         # entries=[]), il secondo/ultimo e' quello corretto coi reali args
         # derivati dalla query. Selettore: scegli il tool_call con args NON
-        # vuoti; se piu' di uno qualifica, prendi l'ultimo (Gemma tende a
+        # vuoti; se piu' di uno qualifica, prendi l'ultimo (il modello locale tende a
         # mettere l'intent "vero" in coda). Se nessuno ha args, prendi il
         # primo (fallback degenere).
         def _has_real_args(tcx):
@@ -7575,7 +7575,7 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
                 # invece di walk-back-skip-describe verso il producer raw.
                 # Razionale: producer non ha `summary`/`final_message_hint` LLM,
                 # describer si'. Output "Esito gia' nei risultati precedenti"
-                # vs prosa Gemma: la seconda e' user-facing utile.
+                # vs prosa del modello locale: la seconda e' user-facing utile.
                 if chosen_name == "describe_entries":
                     lp_tool = "describe_entries"
                     lp_obs = last_obs_for_dup
@@ -8975,7 +8975,7 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
 
         # ─── Deterministic seed-step injection per pipeline propose+notify ────
         # ADR 0129 extended (14/5/2026 sera): dopo `find_events_empty` ok con
-        # entries in pipeline propose+notify, il PLANNER medium (Gemma 4 26B)
+        # entries in pipeline propose+notify, il PLANNER medium (modello locale)
         # va in thinking loop su query con dettagli aggiuntivi («con Bob»,
         # «di una ora la mattina», ecc.) — esaurisce max_tokens senza emettere
         # `get_inputs`. Bug live turn cc8d3980 (166s, step 2 vuoto).

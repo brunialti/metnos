@@ -38,8 +38,8 @@ add-language        Bootstrap di una nuova lingua: crea `prompts/<code>/`,
                     placeholder, e stampa istruzioni per attivazione e
                     triggering manuale del translator notturno. Idempotente.
 
-Quality flag (translate / translate-all): default `wise` = Gemma 4 26B
-locale (gratuito); `frontier` = Anthropic Opus 4.7 (~$0.015/call). Doc:
+Quality flag (translate / translate-all): default `wise` = modello locale
+(gratuito); `frontier` = Anthropic Opus 4.7 (~$0.015/call). Doc:
 docs/it/architecture/multilang.html cap. 7.
 """
 import argparse
@@ -182,7 +182,7 @@ def _file_mtime(p: Path) -> float:
 def _resolve_tier_from_quality(args) -> str:
     """Resolve quality flag → LLM tier. `frontier` -> tier 'frontier'
     (Anthropic Opus 4.7, ~$0.015/call); `wise` (default) -> tier 'wise'
-    (Gemma 4 26B locale o equivalente). Compat: --tier override esplicito.
+    (modello locale o equivalente). Compat: --tier override esplicito.
     """
     if getattr(args, "tier", None):
         return args.tier
@@ -645,7 +645,7 @@ def _audit_decide(per_prompt: list[dict], *,
       - per ogni prompt con score_wise e score_frontier validi:
           individual_above = score_wise >= individual_pct * score_frontier
       - se (count_above / total_valid) >= threshold_pct → tier 'wise'
-        (Gemma sufficiente per la maggioranza)
+        (modello locale sufficiente per la maggioranza)
       - altrimenti → tier 'frontier'.
     """
     valid = [p for p in per_prompt if p.get("ok")
@@ -768,7 +768,7 @@ def cmd_audit_quality(args) -> int:
                               threshold_pct=threshold_pct)
 
     print()
-    print(f"                         wise (Gemma)    frontier (Opus 4.7)")
+    print(f"                         wise (locale)   frontier (Opus 4.7)")
     print(f"mean score:              {decision['mean_wise']:<15} "
           f"{decision['mean_frontier']:<15}")
     print(f"Δ mean:                  {decision['delta']:+.4f} "
@@ -791,7 +791,7 @@ def cmd_audit_quality(args) -> int:
           f"{threshold_pct * 100:.0f}%)")
     print()
     print(f"RACCOMANDAZIONE: tier='{decision['recommended_tier']}'"
-          + (" (Gemma 4 26B locale, $0/call)"
+          + (" (modello locale, $0/call)"
              if decision['recommended_tier'] == "wise"
              else " (Anthropic Opus 4.7, ~$0.015/call)"))
     if decision["lagging_prompts"]:
@@ -1063,7 +1063,7 @@ def main() -> int:
     p_tr.add_argument("role", help="Nome ruolo (es. 'planner')")
     p_tr.add_argument("--to", default="en", help="Lingua target (default: en)")
     p_tr.add_argument("--quality", choices=["wise", "frontier"], default="wise",
-                       help="wise=Gemma 4 26B locale (default, gratis); "
+                       help="wise=modello locale (default, gratis); "
                             "frontier=Anthropic Opus 4.7 (~$0.015/call)")
     p_tr.add_argument("--tier", default=None,
                        help="(advanced) Override tier LLM diretto. Sovrascrive --quality.")

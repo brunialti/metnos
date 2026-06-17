@@ -2,7 +2,7 @@
 
 Il Proposer produce un Framework JSON dalla query+intent+pool tool. È
 l'unico componente del Layer 3 che dipende dal LLM (a parte filler resolve
-nell'Executor). Implementazione default: 1-shot Gemma wise tier con GBNF
+nell'Executor). Implementazione default: 1-shot modello locale wise tier con GBNF
 strict.
 
 Implementazioni alternative (file separati):
@@ -264,7 +264,7 @@ def _parse_framework_json(raw: str) -> Optional[dict]:
 
 
 class SimpleProposer:
-    """Default: 1-shot Gemma wise + parse tollerante.
+    """Default: 1-shot modello locale wise + parse tollerante.
 
     Niente multi-strategia, niente telos ranking, niente preventive.
     Mētis-like minimal. Fallisce honest se LLM non genera framework JSON.

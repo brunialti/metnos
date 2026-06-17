@@ -3,7 +3,7 @@
 
 Design 1/5/2026 sera (vedi `metnos_design_i18n_final.md` punto 15):
 - Sweep DB i18n per entries con needs_translation=1
-- Batch LLM call (Gemma 4 26B middle tier locale, ~5-10s per batch 50 entries)
+- Batch LLM call (modello locale middle tier, ~5-10s per batch 50 entries)
 - UPDATE entries con text + needs_translation=0
 - Self-healing: retry su fallimento
 - Throttle: 30s al boot → 5min steady state
@@ -114,7 +114,7 @@ def _is_llm_targeted_key(key: str) -> bool:
 
 
 def _llm_call(prompt: str, max_tokens: int = 4000, tier: str = "middle") -> str | None:
-    """LLM call via LLMRouter. Tier: middle (Gemma 4 26B locale) per testi
+    """LLM call via LLMRouter. Tier: middle (modello locale) per testi
     user-facing brevi; wise (stesso o frontier) per prompt LLM-targeted
     grandi che richiedono massima fedelta' semantica."""
     try:
@@ -259,7 +259,7 @@ def run_loop(boot_interval: float = INTERVAL_BOOT_S,
 # Flusso:
 #   1. translate_prompt_file(role) legge `prompts/it/<role>.j2`
 #   2. pre-pass: maschera placeholder Jinja2 + code-fences con sentinel UUID
-#   3. UNA call LLM tier='wise' (frontier locale: Gemma 4 26B, oppure online
+#   3. UNA call LLM tier='wise' (frontier locale: modello locale, oppure online
 #      via config tiers — Sonnet/GPT-5)
 #   4. post-pass: restore sentinel; canonical map DEVI/NON DEVI/OK/ERRORE→
 #      MUST/MUST NOT/OK/ERROR; "E' UN ERRORE"→"THIS IS AN ERROR"
@@ -464,12 +464,12 @@ def _llm_call_for_prompt(prompt: str, max_tokens: int = 32000,
                           tier: str = "wise") -> str | None:
     """LLM call dedicato per traduzione prompt lunghi.
 
-    Tier `wise` = frontier locale (Gemma 4 26B) o online (Anthropic/OpenAI/
+    Tier `wise` = frontier locale (modello locale) o online (Anthropic/OpenAI/
     Google/Mistral) come configurato in `~/.config/metnos/llm_tiers.toml`.
 
     `frontier` non e' un tier separato in Metnos: il quality floor del
     `wise` (vedi llm_router.WISE_QUALITY_WHITELIST_*) impone di per se'
-    Gemma-4 o superiore.
+    il modello locale o superiore.
     """
     try:
         from llm_router import LLMRouter

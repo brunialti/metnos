@@ -36,7 +36,7 @@ def make_test_code(query: str, expected_state: str, expected_name: str | None = 
         "from synt_multistage import run_full",
         "from llm_provider import LlamaCppProvider",
         "",
-        "prov = LlamaCppProvider(model='gemma-4-26B-A4B-it-UD-Q4_K_M.gguf', endpoint='http://127.0.0.1:8080')",
+        "prov = LlamaCppProvider(model='local', endpoint='http://127.0.0.1:8080')",
         "",
         "def _make(think):",
         "    def _c(system, user, max_tokens=2048):",

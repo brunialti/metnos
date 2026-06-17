@@ -579,7 +579,7 @@ class Synt:
         )
 
         try:
-            # max_tokens generoso: Gemma 4 spende ~1024 in reasoning + il resto
+            # max_tokens generoso: il modello locale spende ~1024 in reasoning + il resto
             # in tool-call (skeleton ~60-100 righe + schema). Tot ~6000 e' sicuro.
             res = self.router.chat_with_tools(
                 prompt_loader.get("synt_generate", DEFAULT_LANG), user_prompt,

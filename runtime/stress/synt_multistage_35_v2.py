@@ -6,10 +6,10 @@ strutturali del 28/4 (prompt prescrittivi stage 1-4, max_tokens 4000 stage
 Differenze rispetto a v1:
   - Output va su results_multistage_35_v2.jsonl/.summary.json (file NUOVI).
   - think=True su TUTTI gli stage 1-5 (esplicito), per tenere il
-    chain-of-thought di Gemma sui task di scelta nel vocab chiuso.
+    chain-of-thought del modello locale sui task di scelta nel vocab chiuso.
   - Codice di run_full immutato (i fix sono in `runtime/synt_multistage.py`).
 
-LLM: SOLO Gemma 4 26B locale via LlamaCppProvider su 127.0.0.1:8080.
+LLM: SOLO modello locale via LlamaCppProvider su 127.0.0.1:8080.
 
 Idempotenza: re-run riprende da dove si era fermato (skip query gia' nel jsonl).
 """
@@ -51,7 +51,7 @@ RESULTS_JSONL = Path(__file__).resolve().parents[2] / "decisions/synt_stress/res
 SUMMARY_JSON = Path(__file__).resolve().parents[2] / "decisions/synt_stress/results_multistage_35_v2.summary.json"
 
 LLAMA_ENDPOINT = "http://127.0.0.1:8080"
-LLAMA_MODEL = "gemma-4-26B-A4B-it-UD-Q4_K_M.gguf"
+LLAMA_MODEL = "local"
 
 
 def make_llm_call(provider, *, think: bool):

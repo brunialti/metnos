@@ -18,7 +18,7 @@ API:
 Decisioni post-probe (26/4/2026 ciclo finale POC):
     - tool-use nativo come default (vedi memoria metnos_poc_native_tool_use_finding)
     - think parametrizzato per modelli che lo supportano (Qwen 3, Llama 3.1)
-    - LlamaCppProvider striiba i marker <|channel>thought ... <channel|> di il modello locale
+    - LlamaCppProvider striiba i marker <|channel>thought ... <channel|> del modello locale
 """
 import json
 import os
@@ -202,11 +202,11 @@ _LOCAL_TC_RE = re.compile(
 
 
 def _parse_tool_call_tolerant(text: str) -> dict | None:
-    """Parser ADR 0133 grammar-mode: accetta JSON puro o formato il modello locale
-    tool_call (`<|tool_call>call:NAME(k=v,...)<tool_call|>`). Ritorna
+    """Parser ADR 0133 grammar-mode: accetta JSON puro o il formato tool_call
+    del modello locale (`<|tool_call>call:NAME(k=v,...)<tool_call|>`). Ritorna
     `{"name", "arguments"}` o None se nessun match.
 
-    il modello locale args syntax (k=v separati da virgola, valori Python-like):
+    Sintassi args del modello locale (k=v separati da virgola, valori Python-like):
         find_events_empty(size="1hour", time_windows=["next-week"], max_results=3)
     Parsing: ast.literal_eval per ogni value (sicuro: no eval Python).
     """
@@ -317,7 +317,7 @@ def _strip_thought(s):
 class LlamaCppProvider:
     """OpenAI-compatible client per llama.cpp llama-server.
 
-    Pensato per modelli locali grandi tipo il modello locale (Qwen), ma funziona con
+    Pensato per modelli locali grandi (es. Qwen 3.6 35B-A3B), ma funziona con
     qualunque modello servito via /v1/chat/completions.
     """
     mode = "local"

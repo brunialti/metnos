@@ -106,7 +106,7 @@ _EX = {_EX_DIR!r}
         _env["PYTHONPATH"] = (
             f"{RUNTIME_DIR}{os.pathsep}{_env.get('PYTHONPATH', '')}".rstrip(os.pathsep)
         )
-        # Cluster e2e via run_turn (LLM gemma-26b) può prendere fino a 60-90s
+        # Cluster e2e via run_turn (LLM locale) può prendere fino a 60-90s
         # per query complessa con multi-step planner. Bump timeout cluster/system
         # a 240s (vs 120 default) per evitare false-positive su LLM slow path.
         _timeout = 240 if case.level in ("cluster", "system") else 120

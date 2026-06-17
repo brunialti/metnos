@@ -206,7 +206,7 @@ def _judge_score_llm(intent: str, executor_name: str, args: dict, context: dict 
         import prompt_loader
         from config import DEFAULT_LANG
         router = LLMRouter()
-        # think=False per evitare che Gemma sprechi i 1024 token di reasoning
+        # think=False per evitare che il modello locale sprechi i 1024 token di reasoning
         # in bullet-list invece di emettere il JSON. Il giudice e' un task
         # procedurale (label + reason breve), niente thinking necessario.
         res = router.chat(prompt_loader.get("vaglio", DEFAULT_LANG), user,
