@@ -9216,7 +9216,7 @@ def format_simple_answer(executor_name, result):
     content = result.get("content", "")
     meta = result.get("metadata", {})
     if executor_name == "get_now":
-        return f"Sono le {content} ({meta.get('timezone','UTC')})."
+        return f"Sono le {meta.get('time') or content} ({meta.get('timezone','UTC')})."
     if executor_name == "read_files":
         preview = (content or "")[:300]
         return f"{meta.get('path','?')}:\n{preview}{'…' if len(content) > 300 else ''}"

@@ -40,6 +40,8 @@ def invoke(args):
             "timezone": tz_name,
             "iso8601": now.isoformat(),
             "epoch": now.timestamp(),
+            "time": now.strftime("%H:%M"),
+            "date": now.strftime("%Y-%m-%d"),
         },
     }
 
