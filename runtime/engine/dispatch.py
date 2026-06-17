@@ -254,6 +254,69 @@ def _apply_ordering_clause(framework: Framework, query: str,
         return framework
 
 
+def _align_framework_objects(framework: Framework, intent,
+                             catalog: Optional[list]) -> Framework:
+    """§7.9 deterministico: ri-allinea il tool di uno step quando il proposer
+    ha scelto un FRATELLO con l'OGGETTO SBAGLIATO che l'intent NON ha chiesto.
+
+    Bug live 17/6/2026: clausola intent {find,issues} ma Metis compone
+    `find_pulls_github` (object=pulls) benche' il prefilter ranki
+    `find_issues_github` #1 (prefilter giusto, LLM sbaglia il fratello). Causa
+    radice del misroute compound github (issue->pull). Generale (qualunque
+    verbo/oggetto): scatta SOLO se l'oggetto scelto e' ASSENTE fra gli oggetti
+    che l'intent ha decomposto per quel verbo E un oggetto-intent per quel
+    verbo mappa a un tool reale del catalog (stesso qualifier/provider) ->
+    swap. Basso falso-positivo: richiede che l'intent dissenta ESPLICITAMENTE.
+    No-op senza intent.actions o se l'oggetto gia' combacia. Best-effort."""
+    try:
+        actions = getattr(intent, "actions", None) or []
+        steps = getattr(framework, "steps", None) or []
+        if not actions or not steps:
+            return framework
+        by_verb: dict = {}
+        for a in actions:
+            v = a.get("verb") if isinstance(a, dict) else None
+            o = a.get("object") if isinstance(a, dict) else None
+            if v and o:
+                by_verb.setdefault(v, [])
+                if o not in by_verb[v]:
+                    by_verb[v].append(o)
+        if not by_verb:
+            return framework
+        names = {getattr(e, "name", None) if not isinstance(e, dict)
+                 else e.get("name") for e in (catalog or [])}
+        names.discard(None)
+        import naming_grammar as _ng
+        changed = False
+        for st in steps:
+            tool = getattr(st, "tool", None)
+            nc = _ng.parse_name(tool) if tool else None
+            if not nc:
+                continue
+            intent_objs = by_verb.get(nc.verb)
+            if not intent_objs or nc.obj in intent_objs:
+                continue  # verbo non decomposto, o oggetto gia' corretto
+            for o2 in intent_objs:
+                cand = "_".join([nc.verb, o2]
+                                + ([nc.qualifier] if nc.qualifier else []))
+                if cand in names and cand != tool:
+                    st.tool = cand
+                    changed = True
+                    break
+                cand2 = f"{nc.verb}_{o2}"
+                if cand2 in names and cand2 != tool:
+                    st.tool = cand2
+                    changed = True
+                    break
+        if changed:
+            log.info("[align_objects] tool ri-allineati all'intent: %s",
+                     [s.tool for s in steps])
+        return framework
+    except Exception as ex:
+        log.warning("align_objects noop (best-effort): %r", ex)
+        return framework
+
+
 def _is_get_inputs_misroute(framework: Framework) -> bool:
     """True se l'UNICO step-executor del framework (escluso final_answer) è
     get_inputs → non-decomposizione (il planner chiede invece di agire). Vedi
@@ -512,6 +575,12 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
         # Accetta la ri-proposta solo se copre PIÙ verbi (meno droppati).
         if _fw2 is not None and len(_dropped_required_verbs(_fw2, query, intent)) < len(_dropped):
             framework = _fw2
+
+    # Guard misroute oggetto-fratello (§7.9, deterministico): il proposer ha
+    # scelto un fratello stesso-verbo con object NON richiesto dall'intent
+    # (es. find_pulls_github per clausola {find,issues}). Ri-allinea il tool
+    # all'oggetto dell'intent quando esiste il tool esatto nel catalog.
+    framework = _align_framework_objects(framework, intent, catalog)
 
     # Layer 2: Validator (opt-in)
     if is_validator_enabled():
