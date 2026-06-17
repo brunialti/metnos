@@ -13,8 +13,8 @@ affinity    = [
 ]
 
 [description]
-it = "SCOPO: chiede consenso umano con bottoni (Approva/Disapprova) e, alla scelta, fa eseguire l'executor indicato. PATTERN: get_approval(prompt=\"...\", on_approve={tool=\"write_issues\", args={...}}). NON: raccogliere valori liberi -> get_inputs; eseguire un'azione senza consenso -> chiama l'executor direttamente. OUT: {ok, decision='input_required', dialog_id, expandable_caps, final_message_hint}."
-en = "SCOPO: asks human consent with buttons (Approve/Reject) and, on the choice, runs the given executor. PATTERN: get_approval(prompt=\"...\", on_approve={tool=\"write_issues\", args={...}}). NON: collecting free values -> get_inputs; running an action without consent -> call the executor directly. OUT: {ok, decision='input_required', dialog_id, expandable_caps, final_message_hint}."
+it = "SCOPO: consenso umano (Approva/Disapprova), poi esegue l'executor. PATTERN: get_approval(prompt=\"...\", on_approve={tool=\"write_entries\", args={...}}). NON: valori liberi -> get_inputs; azione senza consenso -> esegui executor. OUT: {ok, decision='input_required', dialog_id, final_message_hint}."
+en = "SCOPO: human consent (Approve/Reject), then runs the executor. PATTERN: get_approval(prompt=\"...\", on_approve={tool=\"write_entries\", args={...}}). NON: free values -> get_inputs; action without consent -> call the executor. OUT: {ok, decision='input_required', dialog_id, final_message_hint}."
 
 [code]
 files  = ["get_approval.py"]
@@ -35,12 +35,12 @@ en = "Consent question shown to the user. 1 sentence, max 200 chars. E.g. \"Do y
 type = "object"
 
 [args.properties.on_approve.description]
-it = "Executor da eseguire se l'utente APPROVA. Dict {tool: nome executor, args: dict argomenti}. Es. {tool=\"write_issues\", args={entries=[{repo=\"o/r\", number=47, status=\"approved\"}]}}."
-en = "Executor to run if the user APPROVES. Dict {tool: executor name, args: args dict}. E.g. {tool=\"write_issues\", args={entries=[{repo=\"o/r\", number=47, status=\"approved\"}]}}."
+it = "Executor da eseguire se l'utente APPROVA. Dict {tool: nome executor, args: dict argomenti}. Es. {tool=\"write_entries\", args={store=\"github_issue_qa\", entries=[{repo=\"o/r\", issue_number=47, status=\"approved\"}]}}."
+en = "Executor to run if the user APPROVES. Dict {tool: executor name, args: args dict}. E.g. {tool=\"write_entries\", args={store=\"github_issue_qa\", entries=[{repo=\"o/r\", issue_number=47, status=\"approved\"}]}}."
 
 [args.properties.on_approve.properties.tool]
 type        = "string"
-description = "Nome dell'executor da eseguire all'approvazione (es. write_issues)."
+description = "Nome dell'executor da eseguire all'approvazione (es. write_entries)."
 
 [args.properties.on_approve.properties.args]
 type        = "object"
@@ -90,7 +90,7 @@ hint = []
 
 [[tests]]
 name   = "manca_prompt_fallisce"
-input  = { on_approve = { tool = "write_issues", args = {} } }
+input  = { on_approve = { tool = "write_entries", args = {} } }
 expect = { ok = false, error_contains = "prompt" }
 
 [[tests]]
@@ -105,5 +105,5 @@ expect = { ok = false, error_contains = "tool" }
 
 [[tests]]
 name   = "happy_path_approval"
-input  = { prompt = "Approvi la risposta alla issue #47?", on_approve = { tool = "write_issues", args = { entries = [{ repo = "o/r", number = 47, status = "approved" }] } } }
+input  = { prompt = "Approvi la risposta alla issue #47?", on_approve = { tool = "write_entries", args = { store = "github_issue_qa", entries = [{ repo = "o/r", issue_number = 47, status = "approved" }] } } }
 expect = { ok = true, metadata_field_eq = { decision = "input_required", step_total = 1 } }
