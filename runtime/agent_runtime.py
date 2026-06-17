@@ -129,6 +129,7 @@ from extract_entries import EXTRACT_ENTRIES_TOOL, handle_extract_entries
 from store_entries import (
     FIND_ENTRIES_TOOL, WRITE_ENTRIES_TOOL, DELETE_ENTRIES_TOOL,
     handle_find_entries, handle_write_entries, handle_delete_entries)
+from compare_entries import COMPARE_ENTRIES_TOOL, handle_compare_entries
 from recurring_tasks import (
     CREATE_TASKS_TOOL, LIST_TASKS_TOOL,
     DELETE_TASKS_TOOL, READ_TASKS_TOOL,
@@ -4696,6 +4697,7 @@ _BUILTIN_TOOL_HANDLERS: dict = {
     "find_entries": handle_find_entries,
     "write_entries": handle_write_entries,
     "delete_entries": handle_delete_entries,
+    "compare_entries": handle_compare_entries,
 }
 
 # Tool-spec OpenAI-style per i builtin in-process che NON sono iniettati nel

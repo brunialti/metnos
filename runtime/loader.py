@@ -307,6 +307,7 @@ _INPROC_TOOL_MODULE_PATHS: tuple[str, ...] = (
     "recurring_tasks",  # *_tasks builtin scheduler v2
     "skill_admin",      # list_skills / set_skills (admin skill da chat, asse 2)
     "store_entries",    # find/write/delete_entries — skill store generico (16/6)
+    "compare_entries",  # compare_entries — distanza semantica universale (17/6)
 )
 
 
