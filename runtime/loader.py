@@ -646,6 +646,13 @@ def load_catalog(executors_dir=DEFAULT_EXECUTORS_DIR, verify=True, *, include_sy
             _inject_inproc_tool_specs(catalog)
         except Exception as e:
             log.warning("[loader] inproc-tool injection failed: %s", e)
+        # Registra gli store di PRODUZIONE (attiva i CRUD universali *_entries
+        # su di essi via il gate di dormienza). Idempotente, best-effort.
+        try:
+            from store_bootstrap import register_builtin_stores
+            register_builtin_stores()
+        except Exception as e:
+            log.warning("[loader] builtin-store registration failed: %s", e)
 
     # Apply lifecycle override from executor_aging stats + register newly
     # discovered executors with their source. Best-effort: if the module
