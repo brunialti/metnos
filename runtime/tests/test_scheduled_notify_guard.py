@@ -28,15 +28,15 @@ def _step(tool, result):
     return {"tool": tool, "result": result}
 
 
-# La pipeline github a vuoto: find 0 issue + write 0.
+# La pipeline github a vuoto: find 0 issue (skill) + write 0 nello store.
 EMPTY_GITHUB = [
-    _step("find_issues", {"ok": True, "ok_count": 0}),
-    _step("write_issues", {"ok": True, "ok_count": 0, "results": []}),
+    _step("find_issues_github", {"ok": True, "entries": []}),
+    _step("write_entries", {"ok": True, "n_written": 0, "results": []}),
 ]
 # Pipeline con lavoro reale: 3 issue trovate.
 NONEMPTY = [
-    _step("find_issues", {"ok": True, "ok_count": 3,
-                          "entries": [{"n": 1}, {"n": 2}, {"n": 3}]}),
+    _step("find_issues_github", {"ok": True,
+                                 "entries": [{"n": 1}, {"n": 2}, {"n": 3}]}),
 ]
 
 

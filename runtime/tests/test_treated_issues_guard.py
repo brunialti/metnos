@@ -3,8 +3,8 @@
 Bug live (Roberto): nel flusso di manutenzione github (`run_user_query`
 schedulato) un'issue GIÀ trattata (presente in `issue_qa`) e ancora aperta
 ri-entrava ogni ora in classify_entries + step frontier (Anthropic, a
-pagamento) PRIMA che il dedup notify-once di write_issues la scartasse a
-valle. Il guard `runtime/treated_issues_guard.py` filtra A MONTE, al
+pagamento) PRIMA che il dedup a valle la scartasse. Il guard
+`runtime/treated_issues_guard.py` filtra A MONTE, al
 confine d'invocazione dei builtin LLM-augmented, SOLO nei turni schedulati.
 
 Proprietà verificate (deterministiche §7.9, niente LLM/rete reale):
@@ -22,7 +22,6 @@ Proprietà verificate (deterministiche §7.9, niente LLM/rete reale):
 """
 from __future__ import annotations
 
-import importlib.util
 import json
 import sys
 import types
@@ -31,21 +30,12 @@ from pathlib import Path
 import pytest
 
 _RUNTIME = Path(__file__).resolve().parent.parent
-_ROOT = _RUNTIME.parent
 sys.path.insert(0, str(_RUNTIME))
 
 import github_issue_qa_store as store  # noqa: E402
 import treated_issues_guard as guard  # noqa: E402
 
 REPO = "owner/name"
-
-
-def _load_executor(name: str):
-    path = _ROOT / "executors" / name / f"{name}.py"
-    spec = importlib.util.spec_from_file_location(f"_test_tig_{name}", path)
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
-    return mod
 
 
 @pytest.fixture()
@@ -71,7 +61,7 @@ def _gh_entry(n: int, repo: str = REPO) -> dict:
 
 
 def _store_entry(n: int, repo: str = REPO) -> dict:
-    """Shape di read_issues (store locale)."""
+    """Shape di un record letto dallo store locale via find_entries."""
     return {"repo": repo, "issue_number": n, "title": f"issue {n}",
             "status": "prepared"}
 
@@ -114,7 +104,7 @@ class TestFilterSemantics:
         assert info is None and len(out["entries"]) == 1
 
     def test_local_store_shape_dropped(self, tmp_store):
-        """Entries di read_issues (repo+issue_number) — stesso guard."""
+        """Entries dello store locale (repo+issue_number) — stesso guard."""
         tmp_store.upsert_treatment(REPO, 4, status="posted")
         args = {"entries": [_store_entry(4)]}
         with guard.scheduled_turn_scope():
@@ -224,12 +214,10 @@ class TestEndToEndCost:
         assert len(obs1["entries"]) == 1
         assert obs1["entries"][0]["relevance"] == "high"
         assert llm_counter.total == 1  # classify pagato UNA volta
-        # persisti il trattamento (come fa write_issues nel run reale)
-        w = _load_executor("write_issues")
-        wres = w.invoke({"entries": [
-            {"repo": REPO, "number": 101, "status": "prepared",
-             "draft_reply": "bozza"}]})
-        assert wres["ok_count"] == 1
+        # persisti il trattamento (come fa write_entries nel run reale: il
+        # flusso universale scrive lo stato nello store github_issue_qa).
+        tmp_store.upsert_treatment(REPO, 101, status="prepared",
+                                   draft_reply="bozza")
 
         # ── RUN 2: stessa issue ancora aperta → 0 chiamate LLM ────────
         with guard.scheduled_turn_scope():

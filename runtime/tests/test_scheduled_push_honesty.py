@@ -2,26 +2,30 @@
 
 Caso reale: query schedulata every_30m «leggi i nuovi issue aperti di
 owner/repo... salva bozza e notificami» con 0 issue aperte su GitHub.
-La pipeline find→read→filter→classify→write girava su 0 entries
-(write ok_count=0, store 0 righe) MA il final_message narrava «analizzato,
+La pipeline find→filter→classify→write girava su 0 entries
+(write n_written=0, store 0 righe) MA il final_message narrava «analizzato,
 trovato simili, salvato bozze pronte, notificato» — falso successo §2.8 —
 e il push schedulato lo consegnava ad ogni run (~20/giorno, trigger 30m).
+
+Flusso UNIVERSALE (ADR 0172, 17/6): fetch = `find_issues_github` (skill);
+memoria QA locale = `find_entries`/`write_entries` sullo store registrato
+`github_issue_qa`; dedup = `compare_entries`/`filter_entries` a MONTE del
+write. Le issue già trattate non rientrano nel write → run a vuoto.
 
 Tre proprietà DI SISTEMA (indipendenti dalla formulazione del prompt §7.3):
 1. `pipeline_effect_counts` + `_detect_false_success` (agent_runtime):
    il final che CLAIMA successo su pipeline vuota riceve notice correttiva.
 2. `_scheduled_push_is_noop` (recurring_tasks): run schedulato a vuoto
    (0 items / 0 mutazioni effettive, nessun errore, nessun dialog) → 0 push.
-3. write_issues skip-known (test_issue_maintenance_flow): issue già in
-   `issue_qa` (repo+issue_number) senza avanzamento stato = no-op →
-   idempotenza col loop scheduler, notifica UNA volta sola.
+3. dedup a monte: una issue già in `github_issue_qa` viene filtrata prima
+   del write → write_entries su 0 record → idempotenza col loop scheduler,
+   notifica UNA volta sola.
 
 Determinismo §7.9: niente LLM, niente rete; run_turn e TelegramChannel
 sono monkeypatched (nessuna notifica reale).
 """
 from __future__ import annotations
 
-import importlib.util
 import sys
 import time
 import types
@@ -31,38 +35,53 @@ from types import SimpleNamespace
 import pytest
 
 _RUNTIME = Path(__file__).resolve().parent.parent
-_ROOT = _RUNTIME.parent
 sys.path.insert(0, str(_RUNTIME))
 
+import store as _store  # noqa: E402
+import store_entries as se  # noqa: E402
 import github_issue_qa_store as store  # noqa: E402
+from store_bootstrap import _ISSUE_QA  # noqa: E402
 
 REPO = "owner/name"
 
 
-def _load_executor(name: str):
-    path = _ROOT / "executors" / name / f"{name}.py"
-    spec = importlib.util.spec_from_file_location(f"_test_sched_{name}", path)
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
-    return mod
-
-
 @pytest.fixture()
 def tmp_store(tmp_path, monkeypatch):
-    monkeypatch.setattr(store, "DB_PATH", tmp_path / "issue_qa.sqlite")
-    return store
+    """Store QA su db temporaneo. Il flusso universale scrive via
+    `write_entries` (registro generico), il guard/asserzioni leggono via
+    `github_issue_qa_store.list_records`: STESSO file sqlite.
+
+    init_db() PRIMA della registrazione generica: crea lo schema storico
+    completo (incl. `auto_replied`) — il backend generico è additivo e non
+    rimuoverebbe colonne che list_records seleziona."""
+    db = tmp_path / "issue_qa.sqlite"
+    monkeypatch.setattr(store, "DB_PATH", db)
+    store.init_db()
+    _store.register(_ISSUE_QA, name="github_issue_qa", path=db)
+    yield store
+    _store.unregister("github_issue_qa")
 
 
 @pytest.fixture()
 def fake_embedder(monkeypatch):
+    """Neutralizza l'embedder BGE-M3 (il flusso universale usa compare_entries,
+    non più jobs.github_dedup): nessuna rete nei test."""
     mod = types.ModuleType("jobs.github_dedup")
-    mod.embed_query = lambda text: None  # degrade onesto: record senza blob
+    mod.embed_query = lambda text: None
     monkeypatch.setitem(sys.modules, "jobs.github_dedup", mod)
     return mod
 
 
 def _step(tool: str, result: dict):
     return SimpleNamespace(chosen_tool=tool, result=result)
+
+
+def _write(entries):
+    """Scrive nello store github_issue_qa via il CRUD universale (forma del
+    flusso reale). Ritorna il result di write_entries (n_written, results)."""
+    return se.handle_write_entries(
+        {"store": "github_issue_qa", "entries": entries,
+         "key": ["repo", "issue_number"]})
 
 
 # ── pipeline_effect_counts ────────────────────────────────────────────────
@@ -80,12 +99,12 @@ class TestPipelineEffectCounts:
         assert pipeline_effect_counts(steps) is None
 
     def test_empty_pipeline_counted(self):
-        """Caso live: find 0 entries → write ok_count=0 → pipeline vuota."""
+        """Caso live: find 0 entries → write 0 → pipeline vuota."""
         from agent_runtime import pipeline_effect_counts
         steps = [
             _step("find_issues_github", {"ok": True, "entries": []}),
             _step("filter_entries", {"ok": True, "entries": []}),
-            _step("write_issues", {"ok": True, "ok_count": 0, "results": []}),
+            _step("write_entries", {"ok": True, "n_written": 0, "results": []}),
         ]
         c = pipeline_effect_counts(steps)
         assert c is not None
@@ -100,8 +119,8 @@ class TestPipelineEffectCounts:
 
     def test_mutations_counted(self):
         from agent_runtime import pipeline_effect_counts
-        steps = [_step("write_issues",
-                       {"ok": True, "ok_count": 2, "results": [{}, {}]})]
+        steps = [_step("write_entries",
+                       {"ok": True, "n_written": 2, "results": [{}, {}]})]
         c = pipeline_effect_counts(steps)
         assert c["mutations"] == 2
 
@@ -168,8 +187,8 @@ class TestTurnLogFalseSuccessNotice:
             s1.chosen_tool = "find_issues_github"
             s1.result = {"ok": True, "entries": []}
             s2 = StepLog(step_num=2)
-            s2.chosen_tool = "write_issues"
-            s2.result = {"ok": True, "ok_count": 0, "results": []}
+            s2.chosen_tool = "write_entries"
+            s2.result = {"ok": True, "n_written": 0, "results": []}
             log.steps = [s1, s2]
             log.final_kind = "answer"
             log.final_message = ("Ho analizzato le issue aperte, salvato le "
@@ -198,8 +217,8 @@ class TestTurnLogFalseSuccessNotice:
             s1.chosen_tool = "find_issues_github"
             s1.result = {"ok": True, "entries": [{"number": 1}]}
             s2 = StepLog(step_num=2)
-            s2.chosen_tool = "write_issues"
-            s2.result = {"ok": True, "ok_count": 1, "results": [{}]}
+            s2.chosen_tool = "write_entries"
+            s2.result = {"ok": True, "n_written": 1, "results": [{}]}
             log.steps = [s1, s2]
             log.final_kind = "answer"
             log.final_message = "Ho analizzato 1 issue e salvato la bozza."
@@ -227,20 +246,21 @@ class TestScheduledPushNoop:
         from recurring_tasks import _scheduled_push_is_noop
         log = _fake_log([
             _step("find_issues_github", {"ok": True, "entries": []}),
-            _step("write_issues", {"ok": True, "ok_count": 0, "results": []}),
+            _step("write_entries", {"ok": True, "n_written": 0, "results": []}),
         ])
         assert _scheduled_push_is_noop(log) is True
 
     def test_rerun_known_issue_suppressed(self):
-        """Issue ANCORA aperta ma già in issue_qa: find la rivede (1 entry)
-        ma write_issues la skippa (0 mutazioni) → niente ri-notifica."""
+        """Issue ANCORA aperta ma già in github_issue_qa: find la rivede
+        (1 entry) ma il dedup a monte (filter vs store) la rimuove → write
+        su 0 record → niente ri-notifica."""
         from recurring_tasks import _scheduled_push_is_noop
         log = _fake_log([
             _step("find_issues_github",
                   {"ok": True, "entries": [{"number": 45}]}),
-            _step("write_issues",
-                  {"ok": True, "ok_count": 0, "skipped_known": 1,
-                   "results": []}),
+            _step("filter_entries", {"ok": True, "entries": []}),
+            _step("write_entries",
+                  {"ok": True, "n_written": 0, "results": []}),
         ])
         assert _scheduled_push_is_noop(log) is True
 
@@ -249,8 +269,8 @@ class TestScheduledPushNoop:
         log = _fake_log([
             _step("find_issues_github",
                   {"ok": True, "entries": [{"number": 46}]}),
-            _step("write_issues",
-                  {"ok": True, "ok_count": 1, "results": [{}]}),
+            _step("write_entries",
+                  {"ok": True, "n_written": 1, "results": [{}]}),
         ])
         assert _scheduled_push_is_noop(log) is False
 
@@ -278,8 +298,8 @@ class TestScheduledPushNoop:
     def test_pending_dialog_never_suppressed(self):
         from recurring_tasks import _scheduled_push_is_noop
         log = _fake_log(
-            [_step("write_issues", {"ok": True, "ok_count": 0,
-                                    "results": []})],
+            [_step("write_entries", {"ok": True, "n_written": 0,
+                                     "results": []})],
             caps=[{"kind": "get_inputs_response"}])
         assert _scheduled_push_is_noop(log) is False
 
@@ -330,12 +350,13 @@ def _run_scheduled(monkeypatch, steps, final_message):
 class TestEndToEndSimulated:
     def test_phase1_zero_open_issues_zero_push_zero_rows(
             self, tmp_store, fake_embedder, monkeypatch):
-        """Run a vuoto: 0 issue aperte → 0 notifiche, 0 righe in issue_qa."""
-        w = _load_executor("write_issues")
-        wres = w.invoke({"entries": [], "repo": REPO, "status": "prepared"})
+        """Run a vuoto: 0 issue aperte → write_entries su 0 record → 0
+        notifiche, 0 righe in github_issue_qa."""
+        wres = _write([])
+        assert wres["ok"] is True and wres["n_written"] == 0
         steps = [
             _step("find_issues_github", {"ok": True, "entries": []}),
-            _step("write_issues", wres),
+            _step("write_entries", wres),
         ]
         out, n_push = _run_scheduled(
             monkeypatch, steps,
@@ -346,16 +367,16 @@ class TestEndToEndSimulated:
 
     def test_phase2_one_new_issue_one_push_one_row(
             self, tmp_store, fake_embedder, monkeypatch):
-        """Issue nuova → 1 notifica (catturata) + 1 riga in issue_qa."""
-        w = _load_executor("write_issues")
-        entry = {"repo": REPO, "number": 101, "title": "install fails",
+        """Issue nuova → write_entries scrive 1 record → 1 notifica
+        (catturata) + 1 riga letta da list_records (stesso db)."""
+        entry = {"repo": REPO, "issue_number": 101, "title": "install fails",
                  "status": "prepared", "draft_reply": "try --check"}
-        wres = w.invoke({"entries": [entry]})
-        assert wres["ok_count"] == 1 and wres["created_count"] == 1
+        wres = _write([entry])
+        assert wres["n_written"] == 1
         steps = [
             _step("find_issues_github",
                   {"ok": True, "entries": [{"number": 101}]}),
-            _step("write_issues", wres),
+            _step("write_entries", wres),
         ]
         out, n_push = _run_scheduled(
             monkeypatch, steps, "Ho preparato 1 bozza per la issue #101.")
@@ -365,20 +386,24 @@ class TestEndToEndSimulated:
 
     def test_phase3_rerun_same_issue_dedup_zero_push(
             self, tmp_store, fake_embedder, monkeypatch):
-        """Ri-esecuzione sulla STESSA issue ancora aperta → write skippa
-        (dedup repo+issue_number) → 0 notifiche, riga invariata."""
-        w = _load_executor("write_issues")
-        entry = {"repo": REPO, "number": 101, "title": "install fails",
+        """Ri-esecuzione sulla STESSA issue ancora aperta → il dedup a monte
+        (filter/compare vs store) la rimuove → write_entries su 0 record →
+        0 notifiche, riga invariata (niente churn)."""
+        entry = {"repo": REPO, "issue_number": 101, "title": "install fails",
                  "status": "prepared", "draft_reply": "first draft"}
-        assert w.invoke({"entries": [entry]})["ok_count"] == 1
-        # re-run: il find remoto rivede la issue (e' ancora open su GitHub)
-        rerun = w.invoke({"entries": [dict(entry,
-                                           draft_reply="other draft")]})
-        assert rerun["ok_count"] == 0 and rerun["skipped_known"] == 1
+        assert _write([entry])["n_written"] == 1
+        # re-run: il find remoto rivede la issue (ancora open), il dedup la
+        # filtra → write a vuoto.
+        rerun = _write([])
+        assert rerun["n_written"] == 0
         steps = [
             _step("find_issues_github",
                   {"ok": True, "entries": [{"number": 101}]}),
-            _step("write_issues", rerun),
+            _step("find_entries",
+                  {"ok": True, "entries": [{"repo": REPO,
+                                            "issue_number": 101}]}),
+            _step("filter_entries", {"ok": True, "entries": []}),
+            _step("write_entries", rerun),
         ]
         out, n_push = _run_scheduled(
             monkeypatch, steps, "Ho salvato le bozze per le issue trovate.")
