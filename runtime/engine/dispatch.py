@@ -254,6 +254,67 @@ def _apply_ordering_clause(framework: Framework, query: str,
         return framework
 
 
+def _enforce_missing_clauses(framework: Framework, intent, query: str,
+                             catalog: Optional[list]) -> Framework:
+    """§7.9 fallback DETERMINISTICO (Roberto 17/6): se dopo skeleton-hint +
+    re-propose una clausola RICHIESTA di `intent.actions` resta SCOPERTA, APPENDI
+    lo step mancante (tool object-aligned dal catalog + `from_step` all'ultimo
+    step-dati + args derivabili dalla query: `store` da «store <X>»). Inserito
+    PRIMA di final_answer, in ordine intent.actions. È l'ENFORCEMENT (ultima
+    risorsa) dopo che il proposer NON-VINCOLANTE non ha coperto la clausola:
+    garantisce la STRUTTURA; gli args semantici fini (es. status) restano
+    dell'LLM/entries. Conservativo: appende SOLO se deriva un tool reale; mai
+    inventa tool. No-op senza clausole scoperte. Best-effort."""
+    try:
+        still = _dropped_required_verbs(framework, query, intent)
+        if not still:
+            return framework
+        steps = list(getattr(framework, "steps", None) or [])
+        if not steps:
+            return framework
+        names = {getattr(e, "name", None) if not isinstance(e, dict)
+                 else e.get("name") for e in (catalog or [])}
+        names.discard(None)
+        from compound_decomposer import derive_tool_name
+        import re as _re
+        from .types import StepSpec
+        # from_step = ultimo step-executor (1-based) prima del final_answer
+        exec_n = sum(1 for s in steps if (s.tool or "") != "final_answer")
+        m_store = _re.search(r"\bstore\s+([A-Za-z0-9_]+)", query or "")
+        store = m_store.group(1) if m_store else None
+        new_steps: list = []
+        for a in (getattr(intent, "actions", None) or []):
+            v = a.get("verb") if isinstance(a, dict) else None
+            o = a.get("object") if isinstance(a, dict) else None
+            if not v or v not in still:
+                continue
+            tool = derive_tool_name(v, o, names)
+            if not tool:
+                continue
+            args: dict = {}
+            if exec_n >= 1:
+                args["from_step"] = exec_n
+            if o == "entries" and store:
+                args["store"] = store
+            new_steps.append(StepSpec(tool=tool, args=args))
+            still.discard(v)
+            exec_n += 1  # i nuovi step si concatenano
+        if not new_steps:
+            return framework
+        # inserisci prima di final_answer (se presente), altrimenti in coda
+        out = [s for s in steps if (s.tool or "") != "final_answer"]
+        out.extend(new_steps)
+        finals = [s for s in steps if (s.tool or "") == "final_answer"]
+        out.extend(finals or [])
+        framework.steps = out
+        log.info("[enforce_clauses] appended %d step(s) per clausole scoperte: %s",
+                 len(new_steps), [s.tool for s in new_steps])
+        return framework
+    except Exception as ex:
+        log.warning("enforce_missing_clauses noop (best-effort): %r", ex)
+        return framework
+
+
 def _align_framework_objects(framework: Framework, intent,
                              catalog: Optional[list]) -> Framework:
     """§7.9 deterministico: ri-allinea il tool di uno step quando il proposer
@@ -568,10 +629,22 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
             log.info("[guard] decomposizione incompleta: verbi mancanti %s "
                      "→ re-propose", sorted(_dropped))
         _fh = compute_framework_hash(framework)
-        _fw2 = proposer.propose(
-            query=query, intent=intent, pool=pool_names,
-            excluded_hashes=excluded | {_fh},
-            llm_call=llm_call_wise, lang=lang, catalog=catalog)
+        # (1) Re-propose RINFORZATO: la skeleton diventa vincolante per le
+        # clausole droppate (`intent._repropose_cover`) — l'LLM le include con
+        # gli args giusti (legge la query). Attr transitorio, ripulito dopo.
+        _cover = [a for a in (getattr(intent, "actions", None) or [])
+                  if isinstance(a, dict) and a.get("verb") in _dropped]
+        try:
+            setattr(intent, "_repropose_cover", _cover)
+            _fw2 = proposer.propose(
+                query=query, intent=intent, pool=pool_names,
+                excluded_hashes=excluded | {_fh},
+                llm_call=llm_call_wise, lang=lang, catalog=catalog)
+        finally:
+            try:
+                delattr(intent, "_repropose_cover")
+            except Exception:
+                pass
         # Accetta la ri-proposta solo se copre PIÙ verbi (meno droppati).
         if _fw2 is not None and len(_dropped_required_verbs(_fw2, query, intent)) < len(_dropped):
             framework = _fw2
@@ -581,6 +654,11 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
     # (es. find_pulls_github per clausola {find,issues}). Ri-allinea il tool
     # all'oggetto dell'intent quando esiste il tool esatto nel catalog.
     framework = _align_framework_objects(framework, intent, catalog)
+
+    # (2) Enforcement DETERMINISTICO: se una clausola RICHIESTA resta scoperta
+    # dopo (1)+align, appende lo step mancante (object-aligned + from_step +
+    # store). Ultima risorsa dopo il proposer non-vincolante.
+    framework = _enforce_missing_clauses(framework, intent, query, catalog)
 
     # Layer 2: Validator (opt-in)
     if is_validator_enabled():

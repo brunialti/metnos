@@ -203,17 +203,33 @@ def _render_skeleton(intent, lang: str = "it") -> str:
     steps = "; ".join(
         f"{i}) {(a.get('verb') or '?')} {(a.get('object') or '?')}"
         for i, a in enumerate(seq, 1))
+    # Emphasis di RE-PROPOSE (§strengthen, Roberto 17/6): se dispatch ha
+    # rilevato clausole DROPPATE e ri-propone, `intent._repropose_cover` elenca
+    # i {verb,object} omessi → la skeleton diventa VINCOLANTE per QUELLE
+    # clausole (l'LLM, che legge la query, compone lo step con gli args giusti).
+    cover = getattr(intent, "_repropose_cover", None) or []
+    cover_seq = "; ".join(
+        f"{(a.get('verb') or '?')} {(a.get('object') or '?')}"
+        for a in cover if isinstance(a, dict))
     # Leading "\n" così il template puo' interpolare `{{ keywords }}{{ skeleton }}`
     # INLINE: skeleton vuoto (query mono-azione) → prompt BYTE-IDENTICO al
     # pre-skeleton (zero perturbazione del wise LLM sulle query mono, vedi
     # routing bench). Presente → riga propria sotto keywords.
     if lang == "en":
-        return ("\nSUGGESTED STRUCTURE (intent decomposition, NON-BINDING — adapt "
+        base = ("\nSUGGESTED STRUCTURE (intent decomposition, NON-BINDING — adapt "
                 "or discard if it doesn't fit; you pick the tools/provider/args, "
                 "cover every clause): " + steps)
-    return ("\nSTRUTTURA SUGGERITA (decomposizione dell'intent, NON VINCOLANTE — "
+        if cover_seq:
+            base += (f"\nYOU MUST include a step for EACH clause above — you "
+                     f"OMITTED: {cover_seq}. Add it with proper args.")
+        return base
+    base = ("\nSTRUTTURA SUGGERITA (decomposizione dell'intent, NON VINCOLANTE — "
             "adatta o scarta se non calza; scegli tu tool/provider/args, copri "
             "ogni clausola): " + steps)
+    if cover_seq:
+        base += (f"\nDEVI includere uno step per OGNI clausola sopra — hai "
+                 f"OMESSO: {cover_seq}. Aggiungilo con gli args corretti.")
+    return base
 
 
 def _strip_think(raw: str) -> str:

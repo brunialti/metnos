@@ -92,3 +92,56 @@ def test_noop_when_target_tool_absent_from_catalog():
     intent = NS(actions=[{"verb": "find", "object": "contacts"}])
     _align_framework_objects(fw, intent, _CATALOG)
     assert _tools(fw) == ["find_pulls_github"]
+
+
+# ── _enforce_missing_clauses (fallback deterministico, §7.9) ───────────────
+
+from engine.dispatch import _enforce_missing_clauses  # noqa: E402
+
+
+def _fwa(*tools):
+    return NS(steps=[NS(tool=t, args={}) for t in tools])
+
+
+def test_enforce_appends_dropped_write_clause_with_store_and_from_step():
+    """detect: proposer ha composto find→find→filter ma DROPPATO write_entries
+    (clausola {write,entries}). Enforcement appende write_entries(store da
+    «store X», from_step=ultimo step) prima di final_answer."""
+    fw = _fwa("find_issues_github", "find_entries", "filter_entries",
+              "final_answer")
+    intent = NS(actions=[{"verb": "find", "object": "issues"},
+                         {"verb": "write", "object": "entries"}])
+    _enforce_missing_clauses(
+        fw, intent, "salvala nello store github_issue_qa con status 'new'",
+        _CATALOG)
+    assert [s.tool for s in fw.steps] == [
+        "find_issues_github", "find_entries", "filter_entries",
+        "write_entries", "final_answer"]
+    we = next(s for s in fw.steps if s.tool == "write_entries")
+    assert we.args.get("store") == "github_issue_qa"
+    assert we.args.get("from_step") == 3  # ultimo step-executor prima dell'append
+
+
+def test_enforce_noop_when_all_clauses_covered():
+    fw = _fwa("find_issues_github", "write_entries", "final_answer")
+    intent = NS(actions=[{"verb": "find", "object": "issues"},
+                         {"verb": "write", "object": "entries"}])
+    _enforce_missing_clauses(fw, intent, "store github_issue_qa", _CATALOG)
+    assert [s.tool for s in fw.steps] == [
+        "find_issues_github", "write_entries", "final_answer"]
+
+
+def test_enforce_noop_without_actions():
+    fw = _fwa("find_files", "final_answer")
+    _enforce_missing_clauses(fw, NS(actions=None), "trova i file", _CATALOG)
+    assert [s.tool for s in fw.steps] == ["find_files", "final_answer"]
+
+
+def test_enforce_no_invented_tool_when_object_absent():
+    """Clausola scoperta ma nessun tool object-aligned nel catalog → niente
+    append (mai inventare un tool)."""
+    fw = _fwa("find_issues_github", "final_answer")
+    intent = NS(actions=[{"verb": "find", "object": "issues"},
+                         {"verb": "compress", "object": "contacts"}])
+    _enforce_missing_clauses(fw, intent, "q", _CATALOG)
+    assert [s.tool for s in fw.steps] == ["find_issues_github", "final_answer"]
