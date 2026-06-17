@@ -656,9 +656,17 @@ def load_catalog(executors_dir=DEFAULT_EXECUTORS_DIR, verify=True, *, include_sy
         # Register each executor with its source for the history timeline.
         # Synthesized = scanned in SYNTHESIZED_EXECUTORS_DIR (i>0 in scan
         # loop above); we re-derive the source from the manifest path.
+        _skills_root = str(SYNTHESIZED_EXECUTORS_DIR / "skills")
         for ex in catalog.executors.values():
             try:
-                if str(SYNTHESIZED_EXECUTORS_DIR) in str(ex.manifest_path):
+                _mp = str(ex.manifest_path)
+                if _skills_root in _mp:
+                    # Bundle skill IMPORTATO (github, google-workspace, …): vive
+                    # sotto executors/skills/<skill>/ — NON e' un synth REATTIVO.
+                    # source='skill' = esente da aging come handcrafted: le skill
+                    # NON invecchiano (§reference aging-inactivity-trap; ADR 0170).
+                    src = "skill"
+                elif str(SYNTHESIZED_EXECUTORS_DIR) in _mp:
                     src = "synth:reactive"  # default; introvertive_specialize
                                             # writes its own register call
                 else:

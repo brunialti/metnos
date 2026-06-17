@@ -160,7 +160,10 @@ def register(name: str, source: str = "handcrafted",
     """Registra la *creazione* di un executor. Chiamata da:
     - bootstrap loader (per handcrafted seed: source='handcrafted')
     - Synt.react/specialize/generalize (per synth: source='synth:<kind>')
-    Idempotente: se name esiste, aggiorna source se ancora NULL.
+    Idempotente: se name esiste, aggiorna source se ancora NULL. Inoltre
+    SELF-HEAL: una skill importata mis-taggata 'synth:*' (perche' vive sotto
+    SYNTHESIZED_EXECUTORS_DIR) viene corretta a 'skill' — autoritativo ed
+    esente da aging (§reference aging-inactivity-trap; ADR 0170).
     """
     if not name:
         return
@@ -175,11 +178,18 @@ def register(name: str, source: str = "handcrafted",
                 (name, source),
             )
             _log_event(conn, name, "created", source, detail)
-        elif existing["source"] is None and source:
+        elif source and (
+            existing["source"] is None
+            or (source == "skill"
+                and str(existing["source"]).startswith("synth"))
+        ):
             conn.execute(
                 "UPDATE executor_stats SET source=? WHERE name=?",
                 (source, name),
             )
+            if source == "skill" and existing["source"]:
+                _log_event(conn, name, "source_corrected", source,
+                           {"from": existing["source"]})
         conn.commit()
     finally:
         conn.close()
