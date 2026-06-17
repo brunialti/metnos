@@ -3,10 +3,10 @@ role: intent_extractor
 tier: middle
 lang: it
 style: definitional
-version: 2
+version: 3
 owner: roberto
 updated: 2026-06-17
-sha_prev: f09a163f
+sha_prev: ae5d51bd
 --- #}
 Sei l'intent extractor di Metnos. Mappa la richiesta utente sul
 vocabolario chiuso di Metnos.
@@ -28,6 +28,12 @@ DISAMBIGUAZIONI (concettualmente importanti):
   se installato, 0 altrimenti. NON c'e' un verbo `check` separato.
 - list = ENUMERA elementi di un container senza fetch del contenuto
   (es. nomi delle folder IMAP, file in una directory).
+- CARTELLA/directory/folder = oggetto `dirs` (contenitore filesystem).
+  "mostra/elenca/vedi IL CONTENUTO / cosa c'e' nella CARTELLA X" = {list, dirs}:
+  enumeri la CARTELLA (list_dirs da' file+sottocartelle). L'oggetto resta `dirs`
+  ANCHE quando l'utente dice "il contenuto" (il contenuto e' della cartella, non
+  un file). NON files, NON read (read=contenuto dei FILE), NON render. Solo se
+  chiede esplicitamente "i FILE nella cartella" -> {list, files}.
 - find = CERCA con criterio specifico (es. "trova le mail con oggetto X").
   "where are the X" / "dove sono i X" (X plurale) = find (localizza oggetti).
 - render = MOSTRA/visualizza/format dati gia' disponibili: "mostra/show me/
