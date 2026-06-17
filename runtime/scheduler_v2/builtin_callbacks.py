@@ -30,7 +30,6 @@ import os
 # `every_Nh` con N multiplo di 24 resta ancorato all'orario del primo fire.
 # Default 72h = ogni 3 giorni (era daily: telos 10 lenti LLM + retrain Qwen-Emb).
 _TELOS_INTROSPECT_INTERVAL_H = int(os.environ.get("METNOS_TELOS_INTROSPECT_INTERVAL_H", "72"))
-_INTENT_RETRAIN_INTERVAL_H = int(os.environ.get("METNOS_INTENT_RETRAIN_INTERVAL_H", "72"))
 
 
 _BUILTIN_JOBS: list[dict[str, Any]] = [
@@ -245,18 +244,6 @@ _BUILTIN_JOBS: list[dict[str, Any]] = [
             "constitutional) su tutti i telos dichiarati. Opt-in via "
             "env METNOS_TELOS_NIGHTLY=1 (default OFF). Output: "
             "~/.local/share/metnos/telos_proposals.jsonl (ADR 0156)."
-        ),
-    },
-    {
-        "name": "intent_classifier_retrain",
-        "trigger": f"every_{_INTENT_RETRAIN_INTERVAL_H}h",
-        "callback_key": "intent_classifier_retrain",
-        "description": (
-            "Re-train Qwen3-Embedding-0.6B fine-tuned per intent "
-            "classification query→canonical_object. Estrae nuove pair "
-            "da turn log ultimi 7gg, train 5 epoch, eval gate min 70% "
-            "+ delta>=0 vs current. LWW promotion v<N+1>. Skip se "
-            "<20 nuove pair (METNOS_INTENT_RETRAIN_MIN_NEW)."
         ),
     },
 ]
@@ -750,19 +737,6 @@ def install_default_callbacks(scheduler) -> None:
         "telos_introspect_nightly",
         _task_telos_introspect_nightly,
         "Telos engine: 10 lenti laterali su tutti i telos (ADR 0156)",
-        replace=True,
-    )
-
-    # Intent classifier retrain weekly (27/5/2026): Qwen3-Embedding-0.6B FT
-    # daily@04:15 estrae nuove pair da turn log ultimi 7gg, re-train 5ep,
-    # LWW promotion v<N+1>/ se eval > current.
-    def _task_intent_classifier_retrain(payload=None):
-        from jobs.intent_retrain import callback as _cb
-        return _cb(payload)
-    cb.register(
-        "intent_classifier_retrain",
-        _task_intent_classifier_retrain,
-        "Re-train Qwen3-Emb FT intent classifier (daily@04:15)",
         replace=True,
     )
 

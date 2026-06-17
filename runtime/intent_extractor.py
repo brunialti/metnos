@@ -124,21 +124,10 @@ def extract_intent(query: str, llm_call) -> Optional[dict]:
         verb = None
     if obj not in VOCAB_OBJECTS:
         obj = None
-    # Universal §7.3: se LLM non produce object valido o produce "entries"
-    # generico, prova Qwen3-Emb FT classifier (intent_classifier package).
-    # Opt-in via env METNOS_INTENT_CLASSIFIER=1 (default OFF in prod).
-    import os as _os
-    if _os.environ.get("METNOS_INTENT_CLASSIFIER", "0") == "1":
-        if not obj or obj == "entries":
-            try:
-                from runtime.intent_classifier import classify_query_object, is_available
-                if is_available():
-                    qwen_obj = classify_query_object(query, lang=DEFAULT_LANG)
-                    if qwen_obj and qwen_obj in VOCAB_OBJECTS:
-                        obj = qwen_obj
-                        log.info("intent_classifier override: object=%s", obj)
-            except Exception as e:
-                log.warning("intent_classifier fail: %s", e)
+    # L'estrattore LLM grammar-based (objects_inline + GBNF) e' l'UNICO
+    # classificatore d'object (17/6/2026): rimosso l'override Qwen3-Emb FT
+    # (intent_classifier package) — anchors per-lingua hardcoded = anti-pattern
+    # i18n, e il solo LLM copre il gold 25/25. Vedi rimozione anchors.py.
     if not verb and not obj:
         return None
     out = {"verb": verb, "object": obj}
