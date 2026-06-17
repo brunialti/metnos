@@ -3,10 +3,10 @@ role: intent_extractor
 tier: middle
 lang: en
 style: definitional
-version: 1
+version: 2
 owner: roberto
-updated: 2026-05-11
-sha_prev: c606dfac
+updated: 2026-06-17
+sha_prev: d6ba6528
 --- #}
 You are the Metnos intent extractor. Map the user request to the
 Metnos closed vocabulary.
@@ -45,6 +45,13 @@ DISAMBIGUATIONS (conceptually important):
   = fetch ("get" is an alias for get, but "endpoint" forces fetch).
 - "where am I" / "what time is it" / "tell me/give me/how much" + local SCALAR
   value = get.
+- internal STORE/ARCHIVE/COLLECTION of data (e.g. "in the store X", "in the
+  archive", "collection", "internal database") = object entries. "search/read
+  in the store" = {find, entries}; "save/write to the store" = {write, entries};
+  "delete from the store" = {delete, entries}. NOT files (not a file on disk).
+- "post/publish a COMMENT" (on an issue, a PR, a thread) = {send, messages}: a
+  comment IS an outbound message. NOT {send, issues} (you don't "send" an issue)
+  and NOT write (write = local persistence, not sending).
 
 Examples:
 "move spam emails to spam" → {"verb": "move", "object": "messages"}

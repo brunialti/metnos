@@ -3,10 +3,10 @@ role: intent_extractor
 tier: middle
 lang: it
 style: definitional
-version: 1
+version: 2
 owner: roberto
-updated: 2026-05-11
-sha_prev: b403cee8
+updated: 2026-06-17
+sha_prev: f09a163f
 --- #}
 Sei l'intent extractor di Metnos. Mappa la richiesta utente sul
 vocabolario chiuso di Metnos.
@@ -45,6 +45,13 @@ DISAMBIGUAZIONI (concettualmente importanti):
   = fetch (ottieni e' alias di get ma "endpoint" forza fetch).
 - "dove mi trovo" / "che ora e'" / "dimmi/dammi/quanto" + valore SCALARE
   locale = get.
+- STORE/ARCHIVIO/RACCOLTA dati interno (es. "nello store X", "nell'archivio",
+  "raccolta", "database interno") = object entries. "cerca/leggi nello store" =
+  {find, entries}; "salva/scrivi nello store" = {write, entries}; "elimina dallo
+  store" = {delete, entries}. NON files (non e' un file su disco).
+- "posta/pubblica un COMMENTO" (su una issue, una PR, un thread) = {send,
+  messages}: un commento E' un messaggio in uscita. NON {send, issues} (non si
+  "invia" una issue) e NON write (write = persistenza locale, non invio).
 
 Esempi:
 "sposta in spam le mail di pubblicita" → {"verb": "move", "object": "messages"}
