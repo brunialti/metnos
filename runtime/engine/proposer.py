@@ -186,6 +186,36 @@ def _render_excluded_signal(excluded_hashes: set[str], lang: str = "it") -> str:
     return "\n".join(lines)
 
 
+def _render_skeleton(intent, lang: str = "it") -> str:
+    """Skeleton SEMANTICO da `intent.actions` come PROPOSTA NON VINCOLANTE
+    (Roberto 17/6). Su query compound (>=2 clausole) l'intent extractor produce
+    la decomposizione AFFIDABILE [{verb,object},...]; il proposer LLM invece e'
+    instabile sulla STRUTTURA (step spuri/mancanti, oggetto-fratello sbagliato).
+    Gli passiamo la sequenza {verb object} come SUGGERIMENTO — semantico (non i
+    nomi-tool esatti: il proposer sceglie tool/provider/args), non vincolante (lo
+    adatta o scarta). Backstop deterministico = `_align_framework_objects`.
+
+    Vuoto se non compound → query mono-azione INVARIATE (zero rischio)."""
+    acts = getattr(intent, "actions", None) or []
+    seq = [a for a in acts if isinstance(a, dict) and (a.get("verb") or a.get("object"))]
+    if len(seq) < 2:
+        return ""
+    steps = "; ".join(
+        f"{i}) {(a.get('verb') or '?')} {(a.get('object') or '?')}"
+        for i, a in enumerate(seq, 1))
+    # Leading "\n" così il template puo' interpolare `{{ keywords }}{{ skeleton }}`
+    # INLINE: skeleton vuoto (query mono-azione) → prompt BYTE-IDENTICO al
+    # pre-skeleton (zero perturbazione del wise LLM sulle query mono, vedi
+    # routing bench). Presente → riga propria sotto keywords.
+    if lang == "en":
+        return ("\nSUGGESTED STRUCTURE (intent decomposition, NON-BINDING — adapt "
+                "or discard if it doesn't fit; you pick the tools/provider/args, "
+                "cover every clause): " + steps)
+    return ("\nSTRUTTURA SUGGERITA (decomposizione dell'intent, NON VINCOLANTE — "
+            "adatta o scarta se non calza; scegli tu tool/provider/args, copri "
+            "ogni clausola): " + steps)
+
+
 def _strip_think(raw: str) -> str:
     """Rimuove i blocchi `<think>...</think>` CHIUSI dall'output LLM. Un
     `<think>` residuo e' per costruzione APERTO (B5: il troncamento a
@@ -379,6 +409,7 @@ class SimpleProposer:
             # B15: forma leggibile dei piani esclusi + istruzione di
             # diversificazione (non hash sha opachi che il modello ignora).
             excluded=_render_excluded_signal(excluded_hashes, lang),
+            skeleton=_render_skeleton(intent, lang),
             user_query=query,
         )
         try:

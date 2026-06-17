@@ -4,10 +4,10 @@ tier: wise
 lang: it
 style: definitional
 layout: static_first
-version: 5
+version: 6
 owner: roberto
-updated: 2026-06-12
-sha_prev: 5a16aa6
+updated: 2026-06-17
+sha_prev: d71ab1dc
 --- #}
 Sei il PROPOSER del Metnos Engine. Data una richiesta utente, produci UN solo framework completo in formato JSON. Mai prosa, mai spiegazioni, mai blocchi <think>.
 
@@ -183,13 +183,13 @@ OUTPUT FORMATO (STRICT JSON, nient'altro)
 {# STATIC-END — confine cache del prefisso (ottimizzazione A, CLAUDE.md §11 + ADR-pending).
 SOPRA: solo testo invariante per-query — il prefisso renderizzato resta byte-identico fra
 le query e llama-server lo riusa dal checkpoint n_before_user (prompt_n ~5500 → ~1300).
-SOTTO: solo contenuto per-query ({{ verb }}/{{ obj }}/{{ keywords }}/{{ tools }}/{{ excluded }}/{{ user_query }}),
+SOTTO: solo contenuto per-query ({{ verb }}/{{ obj }}/{{ keywords }}/{{ skeleton }}/{{ tools }}/{{ excluded }}/{{ user_query }}),
 inviato come messaggio USER via prompt_loader.get_split. NON spostare interpolazioni sopra
 questa riga, NON aggiungere testo statico sotto. Guard: prompts_lint L6. #}
 INTENT ESTRATTO
 - verbo: {{ verb }}
 - oggetto: {{ obj }}
-- keywords: {{ keywords }}
+- keywords: {{ keywords }}{{ skeleton }}
 
 POOL TOOL DISPONIBILI
 {{ tools }}
