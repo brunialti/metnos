@@ -81,6 +81,46 @@ def test_daily_standalone_con_orario():
     assert out["query"] == "controlla la posta"
 
 
+# ── strip inquadramento «crea un task che <azione>» (§7.9 universale) ─────
+# Memorizza SOLO l'azione, mai la richiesta di creazione (anti-ricorsione).
+
+def test_framing_crea_un_task_it():
+    out = parse_recurrence_query(
+        "Crea un task ricorrente che ogni 30 minuti legge le issue aperte "
+        "e mi avvisa")
+    assert out is not None
+    assert out["when"] == "every_30m"
+    # niente verbo di creazione nel corpo memorizzato
+    assert not out["query"].lower().startswith("crea")
+    assert out["query"].startswith("legge le issue aperte")
+
+
+def test_framing_create_a_task_en():
+    out = parse_recurrence_query(
+        "Create a recurring task that every 30 minutes reads the open issues")
+    assert out is not None
+    assert out["when"] == "every_30m"
+    assert out["query"] == "reads the open issues"
+
+
+def test_framing_verbo_diverso_senza_lista():
+    # verbo non-«crea» → universale, nessuna lista hardcoded.
+    out = parse_recurrence_query(
+        "Schedula un job che ogni ora fa il backup del database")
+    assert out is not None
+    assert out["when"] == "every_60m"
+    assert out["query"] == "fa il backup del database"
+
+
+def test_framing_anti_overstrip_task_obliquo():
+    # «task» è complemento obliquo, l'object è «issue» → NON strippare.
+    out = parse_recurrence_query(
+        "ogni 30 minuti leggi le issue del task che mi hai assegnato")
+    assert out is not None
+    assert out["when"] == "every_30m"
+    assert out["query"] == "leggi le issue del task che mi hai assegnato"
+
+
 # ── parse_recurrence_query: casi NEGATIVI (fallthrough, mai indovinare) ───
 
 def test_interrogativa_non_schedula():

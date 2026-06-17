@@ -175,6 +175,34 @@ _RE_DAILY_CLAUSE = re.compile(
 )
 _RE_HOURLY_CLAUSE = re.compile(r"\bhourly\b", re.IGNORECASE)
 
+# ── Inquadramento «crea un task che <AZIONE>» (universale, §7.9) ──────────
+# Una richiesta di creazione-task ha forma GRAMMATICALE fissa:
+#   <verbo> <articolo> [agg]* <sostantivo-schedulazione> [agg]* <relativo> <AZIONE>
+# La query ricorrente da memorizzare e' SOLO l'AZIONE (complemento del relativo):
+# il verbo di creazione e' assorbito da `\w+` (NIENTE lista di verbi ad-hoc).
+# Ancore deterministiche, non di dominio:
+#   - sostantivo-schedulazione = object canonico `tasks` (§2.2 vocab) + sinonimi IT+EN;
+#   - relativo = insieme grammaticale chiuso (che/that/which/to/per).
+# Vincolo anti-overstrip: il sostantivo dev'essere il PRIMO nominale (subito dopo
+# verbo+articolo) → «leggi le issue del task che…» NON matcha (object = issue).
+_RE_TASK_NOUN = r"task|attivit[àa]|lavoro|job|promemoria|reminder|cron|routine"
+_RE_CREATE_FRAMING = re.compile(
+    r"^\s*\w+\s+"                                  # verbo qualsiasi (assorbito)
+    r"(?:un|uno|una|un'|a|an|il|lo|la|the)\s+"      # articolo
+    r"(?:\w+\s+){0,2}?"                             # 0-2 aggettivi opzionali
+    rf"(?:{_RE_TASK_NOUN})\b"                       # sostantivo-schedulazione
+    r"(?:\s+\w+){0,2}?"                             # 0-2 aggettivi opzionali
+    r"\s+(?:che|that|which|to|per)\s+",            # relativo
+    re.IGNORECASE | re.DOTALL,
+)
+
+
+def _strip_create_framing(body: str) -> str:
+    """Toglie l'inquadramento di creazione-task lasciando SOLO l'azione.
+    Universale e deterministico: nessuna lista di verbi, ancora sul sostantivo
+    canonico `tasks` + relativo. No-op se il corpo e' gia' un'azione."""
+    return _RE_CREATE_FRAMING.sub("", body, count=1).strip()
+
 
 def _strip_clause(query: str, span: tuple[int, int]) -> str:
     """Rimuove la clausola di schedule dalla query e pulisce i connettori
@@ -240,6 +268,8 @@ def parse_recurrence_query(query: str) -> dict | None:
     if not _SCHEDULE_RE.match(when):
         return None
     body = _strip_clause(query, span)
+    # «crea un task che <azione>» → memorizza SOLO <azione> (§7.9 universale).
+    body = _strip_create_framing(body)
     # Corpo vuoto o senza sostanza ("ogni 30 minuti" e basta) → ambiguo.
     if len(re.sub(r"[^a-zA-Zàèéìòù]", "", body)) < 3:
         return None
