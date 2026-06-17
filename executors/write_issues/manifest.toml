@@ -14,7 +14,7 @@ en = "SCOPO: save issue treatment state in the LOCAL db; already registered with
 
 [code]
 files  = ["write_issues.py"]
-digest = "sha256:d9f3805537c4dd9c0ed3894e8d563c49cebefe6f1d0db0650780e9d6d6252e70"
+digest = "sha256:9cd91422165cfb0b192273aa8a8f837ad6b0b8935a82b899b7bc31e049023110"
 
 [args]
 type     = "object"
@@ -32,6 +32,12 @@ type = "string"
 [args.properties.repo.description]
 it = "Default top-level: repo 'owner/name' applicato alle entry che non lo dichiarano. Es. con from_step=N."
 en = "Top-level default: 'owner/name' repo applied to entries that do not declare it. E.g. with from_step=N."
+
+[args.properties.number]
+type = "integer"
+[args.properties.number.description]
+it = "Convenienza single-entry: numero issue top-level (alias issue_number) quando NON si passa `entries` → costruisce una sola entry coi default top-level (repo/status). Es. write_issues(repo='o/r', number=47, status='approved')."
+en = "Single-entry convenience: top-level issue number (alias issue_number) when NOT passing `entries` → builds one entry with top-level defaults (repo/status). E.g. write_issues(repo='o/r', number=47, status='approved')."
 
 [args.properties.status]
 type = "string"

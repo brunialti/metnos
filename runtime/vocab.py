@@ -122,6 +122,11 @@ OBJECTS = (
     # di `find_images_indices` che ritorna `images` (il dominio principale)
     # interrogando il mezzo di ricerca `indices` (modalita').
     "inputs",
+    # approval (17/6/2026): gate di consenso umano. Oggetto-strumento di
+    # `get_approval` (builtin cross-skill): chiede Approva/Disapprova e instrada
+    # la scelta a un executor (on_approve/on_reject). Come `inputs` e' UI: niente
+    # mutating verb proprio.
+    "approval",
     # Credentials: storage cifrato di chiavi/token/segreti (Fernet+HKDF,
     # ADR 0082+0089, 10/5/2026). Plurale invariante. I VALORI cleartext
     # NON tornano mai al PLANNER: gli executor `find_credentials` /
@@ -431,6 +436,7 @@ OBJECT_DEFAULT_MUTATING_VERB: dict[str, str | None] = {
     "persons":    "set",       # set_persons (enroll); delete_persons separato
     "tasks":      "create",    # create_tasks (scheduler v2 ricorrenti)
     "inputs":     None,        # get_inputs e' lookup interno, no mutating
+    "approval":   None,        # get_approval: gate UI, nessun mutating proprio
     "credentials": "set",
     "entries":    None,        # entries sono meta-oggetto in-memory
 }
@@ -666,6 +672,7 @@ _OBJECT_TO_SECTIONS: dict[str, tuple[str, ...]] = {
     "tasks": ("scheduled_tasks",),  # scheduler v2 ricorrenti + one-shot
     "persons": ("photos",),       # registro nominale, compositive con images
     "inputs": (),                 # dialog UI, gestito dal runtime, no sezione
+    "approval": (),               # gate UI (get_approval), no sezione planner
     "credentials": ("admin_shell",),
     "entries": (),                # meta-oggetto runtime, no sezione dedicata
 }
@@ -891,6 +898,10 @@ _OBJECT_SYNONYMS_IT: dict[str, str] = {
     "segnalazione": "issues", "segnalazioni": "issues", "ticket": "issues",
     "pr": "pulls", "pull request": "pulls", "pull": "pulls",
     "merge request": "pulls",
+    # approval (gate consenso): solo termini DISTINTIVI; "conferma" resta fuori
+    # (troppo generico) — l'intent LLM lo gestisce dal few-shot.
+    "approvazione": "approval", "approva": "approval", "approvare": "approval",
+    "consenso": "approval", "autorizzazione": "approval", "autorizza": "approval",
 }
 _OBJECT_SYNONYMS_EN: dict[str, str] = {
     "appointment": "events", "appointments": "events",
@@ -915,6 +926,10 @@ _OBJECT_SYNONYMS_EN: dict[str, str] = {
     "issue": "issues", "issues": "issues", "ticket": "issues",
     "pull": "pulls", "pulls": "pulls", "pull request": "pulls",
     "pr": "pulls", "merge request": "pulls",
+    # approval (consent gate): distinctive terms only; "confirm" stays out
+    # (too generic) — the intent LLM handles it from the few-shot.
+    "approval": "approval", "approve": "approval", "consent": "approval",
+    "authorization": "approval", "authorize": "approval",
 }
 
 

@@ -360,6 +360,11 @@ def process_completion_callback(sender_id: str, dialog_id: str,
             on_complete, values, actor=actor, channel=channel,
         )
 
+    if callback_type == "gate_dispatch":
+        return _process_gate_dispatch(
+            on_complete, values, actor=actor, channel=channel,
+        )
+
     # github_analyze / github_send_reply: RITIRATI (flusso watcher legacy →
     # executor write/read/find_issues + comandi schedulati).
 
@@ -529,6 +534,55 @@ def _process_expand_cap_and_resume(on_complete: dict, values: dict,
                                   json.dumps(res, ensure_ascii=False)[:600])
 
     return head + "\n\n" + "\n\n".join(body_blocks)
+
+
+def _process_gate_dispatch(on_complete: dict, values: dict,
+                           *, actor: str = "host",
+                           channel: str | None = None) -> str:
+    """Gate di consenso (executor `get_approval`): esegue il branch scelto.
+
+    `values` = {'<var>': '<scelta>'} (es. {'decision': 'approve'}). Se la
+    scelta == `approve_value` esegue `on_approve`, altrimenti `on_reject` (se
+    dichiarato). Annulla NON arriva qui (dialog cancelled → nessun on_complete).
+    Ogni branch = {tool: <executor>, args: <dict>}. Deterministico §7.9: nessun
+    LLM, solo dispatch dell'executor indicato dall'autore della gate.
+    """
+    approve_value = on_complete.get("approve_value", "approve")
+    decision = next(iter(values.values()), None) if values else None
+    branch = on_complete.get("on_approve") if decision == approve_value \
+        else on_complete.get("on_reject")
+    if not isinstance(branch, dict):
+        # Rifiuto (o scelta non mappata) senza azione dichiarata: onesto, no-op.
+        return _msg("MSG_GATE_NO_ACTION")
+
+    executor = branch.get("tool") or branch.get("executor") or ""
+    args_base = dict(branch.get("args") or {})
+    if not executor:
+        return _msg("MSG_ORCH_RESUME_EXEC_MISSING")
+    try:
+        from loader import load_catalog
+        cat = load_catalog(verify=True, include_synth=True)
+        ex = cat.executors.get(executor)
+        if ex is None:
+            return _msg("MSG_ORCH_EXECUTOR_NOT_IN_CATALOG", executor=executor)
+        import agent_runtime
+        res = agent_runtime.invoke_executor(
+            ex, args_base, timeout_s=getattr(ex, "timeout_s", 30),
+            actor=actor, channel=channel,
+        )
+    except (PermissionError, KeyError, RuntimeError, TypeError) as ex:
+        log.exception("orchestration: gate_dispatch fallito")
+        return _msg("MSG_ORCH_RELAUNCH_FAILED", detail=f"{type(ex).__name__}: {ex}")
+
+    if isinstance(res, dict):
+        msg = res.get("final_message_hint") or res.get("summary")
+        if msg:
+            return msg
+        if res.get("ok") is False:
+            err = res.get("error") or res.get("error_class") or ""
+            return f"✗ {err}" if err else _msg("ERR_GENERIC")
+        return _msg("MSG_ACTION_DONE")
+    return str(res)
 
 
 def _process_resume_executor_with_values(on_complete: dict, values: dict,

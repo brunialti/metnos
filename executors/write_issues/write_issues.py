@@ -82,6 +82,15 @@ def invoke(args):
     top_class = args.get("classification")
     top_overwrite = bool(args.get("overwrite") or False)
 
+    # Convenienza single-entry (§2.1): `number` top-level senza `entries` →
+    # 1 entry sola; i default top-level (repo/status/...) sono applicati nel
+    # loop. Abilita la forma flat `write_issues(repo=, number=, status=)` che
+    # get_approval emette in on_approve.
+    if not entries:
+        _top_num = args.get("number", args.get("issue_number"))
+        if _top_num is not None:
+            entries = [{"number": _top_num}]
+
     results, errors, skipped = [], [], []
     for i, e in enumerate(entries):
         if not isinstance(e, dict):
