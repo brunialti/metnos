@@ -10,6 +10,7 @@
  <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large">
  <link rel="canonical" href="https://metnos.com/it/architecture/observability">
  <link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/observability">
+ <link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/observability">
  <link rel="alternate" hreflang="x-default" href="https://metnos.com/it/architecture/observability">
  <meta property="og:type" content="article">
  <meta property="og:url" content="https://metnos.com/it/architecture/observability">
@@ -64,13 +65,15 @@ li { margin-bottom: 4px; }.lead { font-size: 12pt; color: var(--navy); border-le
 <div class="status-banner">
 
 <strong>Microprogettazione &mdash; allineata al codice.</strong>
-La componente <code>observability</code> e' stata realizzata e testata a livello di modulo (cluster <code>observability</code> 6/6 verde) il, poi estesa il dalla dashboard <code>/admin</code> dell'<a href="http_api.html" style="color:#14532d;text-decoration:underline;"><code>http_api</code></a> (htmx + Jinja2 + uPlot, ): <code>/admin/proposals</code>, <code>/admin/executors</code>, <code>/admin/executors/stats</code>, <code>/admin/runs</code>, <code>/admin/safety</code>, <code>/admin/turns</code>, <code>/admin/users</code>. Telemetria fine StepLog: cinque sotto-componenti (<code>intent_ms</code>, <code>prefilter_ms</code>, <code>vaglio_ms</code>, <code>exec_ms</code>, <code>rerank_ms</code>) leggibili da <code>bench_latency_breakdown.py</code>. Il generatore HTML statico originale resta come fallback offline.
+La componente <code>observability</code> &egrave; realizzata e testata a livello di modulo (cluster <code>observability</code> 6/6 verde), e oggi vive soprattutto nella dashboard <code>/admin</code> dell'<a href="http_api.html" style="color:#14532d;text-decoration:underline;"><code>http_api</code></a> (htmx + Jinja2 + uPlot): <code>/admin/proposals</code>, <code>/admin/executors</code>, <code>/admin/executors/stats</code>, <code>/admin/runs</code>, <code>/admin/safety</code>, <code>/admin/turns</code>, <code>/admin/users</code>. La telemetria di dettaglio dello StepLog raccoglie cinque tempi parziali (<code>intent_ms</code>, <code>prefilter_ms</code>, <code>vaglio_ms</code>, <code>exec_ms</code>, <code>rerank_ms</code>), leggibili con <code>bench_latency_breakdown.py</code>. Il generatore HTML statico originale resta come ripiego per la consultazione offline.
 Riferimento di implementazione: <code>/opt/metnos/runtime/observability.py</code>, <code>/opt/metnos/runtime/http_routes_admin.py</code>.
 <div class="seq">Stato nella sequenza dei microdesign: <em>under approval</em> &rarr; <em>approved</em> &rarr; <strong>tested</strong> &rarr; <em>implemented</em>.</div>
 </div>
 
 <nav aria-label="Language" style="position:fixed;top:16px;right:20px;z-index:9999;font-family:'Segoe UI',Calibri,sans-serif;font-size:10pt;letter-spacing:2px;background:#FAFBFC;border:1px solid #d0d7de;border-radius:14px;padding:4px 10px;box-shadow:0 1px 4px rgba(0,0,0,0.04);">
 <a href="/it/architecture/observability.html" class="active" hreflang="it" lang="it" style="color:#1a1a1a;text-decoration:none;font-weight:700;padding:0 4px;border:none;">IT</a>
+<span style="color:#d0d7de;"> &middot; </span>
+<a href="/en/architecture/observability.html" hreflang="en" lang="en" style="color:#64748B;text-decoration:none;padding:0 4px;border:none;">EN</a>
 </nav>
 
 <div style="background:#fff;border-bottom:1px solid #d0d7de;padding:10px 0;font-size:14px;position:sticky;top:0;z-index:10;margin-bottom:20px;">
@@ -101,7 +104,7 @@ Riferimento di implementazione: <code>/opt/metnos/runtime/observability.py</code
  <li><a href="#cap5">Privacy e HTML-escape</a></li>
  <li><a href="#cap6">Distribuzione e ciclo di vita</a></li>
  <li><a href="#cap7">CLI</a></li>
- <li><a href="#cap8">Limiti e rinvii a +</a></li>
+ <li><a href="#cap8">Limiti e sviluppi futuri</a></li>
 </ol>
 </div>
 
@@ -184,9 +187,9 @@ con browser locale.
 </table>
 
 <p>
-Niente di queste sorgenti e' stato creato per la dashboard: tutte
-preesistevano come <em>fonte di verita'</em> di un componente del
-runtime. La dashboard e' un consumatore in piu', non scrive nulla.
+Nessuna di queste sorgenti &egrave; stata creata per la dashboard: tutte
+preesistevano come <em>fonte di verit&agrave;</em> di un componente del
+runtime. La dashboard &egrave; un consumatore in pi&ugrave;, non scrive nulla.
 </p>
 
 <h1 id="cap3">3. Generazione: <code>render_dashboard</code></h1>
@@ -277,12 +280,12 @@ python3 -m observability render --out path.html # path custom
 </pre>
 
 <p>
-Niente sotto-comandi diversi da <code>render</code> in. Il
-generatore non offre dump o export JSON: chi vuole i dati grezzi va
+Non ci sono sotto-comandi diversi da <code>render</code>. Il
+generatore non offre dump o esportazioni JSON: chi vuole i dati grezzi va
 direttamente alle sorgenti (SQLite + JSONL).
 </p>
 
-<h1 id="cap8">8. Limiti e rinvii a +</h1>
+<h1 id="cap8">8. Limiti e sviluppi futuri</h1>
 
 <ul>
 <li><strong>No live update</strong>: la pagina non si auto-aggiorna. Per
@@ -306,9 +309,9 @@ pagina.</li>
 specifico nei turn log si va su SQLite. La dashboard e'
 &laquo;cosa-c'e-ora&raquo;, non &laquo;cerca-cosa-c-era&raquo;.</li>
 
-<li><strong>Rigenerazione manuale</strong>: in un task dello
-scheduler builtin (<code>render_dashboard</code>, ogni 5 min) la
-manterra' fresca senza intervento.</li>
+<li><strong>Rigenerazione manuale</strong>: un task dello
+scheduler builtin (<code>render_dashboard</code>, ogni 5 minuti) la
+manterr&agrave; fresca senza intervento manuale.</li>
 </ul>
 
 </body>

@@ -665,7 +665,7 @@ quasi totalit&agrave; delle manipolazioni che servono, senza dover
 introdurre verbi nuovi.
 </p>
 
-<h2>7.4 <code>send_messages</code> &mdash; "manda un messaggio a Lucia"</h2>
+<h2>7.4 <code>send_messages</code> &mdash; "manda un messaggio a un familiare"</h2>
 
 <p>
 Spedisce uno o pi&ugrave; messaggi via Telegram (oggi) o via email (in arrivo). Argomento
@@ -673,10 +673,10 @@ principale: una lista di messaggi, ognuno con destinatario e testo.
 </p>
 
 <pre>chiamata: send_messages(messages=[
- {to_user: "lucia", body: "Sono uscito, torno alle 7."}
+ {to_user: "famiglia", body: "Sono uscito, torno alle 7."}
  ])
 risposta: { ok: true, ok_count: 1, fail_count: 0,
- results: [{to_user: "lucia", channel: "telegram", message_id: "abc123"}] }</pre>
+ results: [{to_user: "famiglia", channel: "telegram", message_id: "abc123"}] }</pre>
 
 <p>
 Un attrezzo "trasformativo": modifica il mondo, manda davvero un messaggio. Per questo

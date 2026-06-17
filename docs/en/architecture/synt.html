@@ -199,16 +199,18 @@ The two modes share the same cascade of strategies but differ in <em>timing</em>
 
 <div class="callout note">
 <strong>A third source of proto-mnest, from the fast-path.</strong>
-Since there is a third trigger channel, not substitutive
-but complementary: the nightly job <code>multi_tool_promote</code> reads the pipelines memoised in the
-<a href="fast_path.html">L2 fast-path</a> and, when a sequence exceeds
-50 uses, creates a proto-mnest in the mnestome with the desired
-signature (executor chain + placeholders + canonical query). From
-that moment on, the pipeline becomes a candidate for actual
-synthesis: a new unified executor that wraps the whole sequence,
-typically named <code>&lt;last_verb&gt;_&lt;first_object&gt;</code>.
-The bridge does not duplicate work: L2 captures low volume (3&ndash;50
-uses, deterministic replay), L3 takes over when the pattern is stably
+There is a third trigger channel, not substitutive but complementary: the
+nightly job <code>task_fastpath_promotion</code> watches the pipelines stored
+in the <a href="fast_path.html">fast-path</a> and, when a <em>cluster</em> of
+recurring shortcuts shares the same plan structure and the same intent (by
+default: at least 3 distinct shortcuts, 15 cumulative uses, 30 days of age),
+proposes a proto-mnest with the desired signature (executor chain +
+placeholders + canonical query). From that moment on, the pipeline becomes a
+candidate for actual synthesis: a new unified executor that wraps the whole
+sequence, typically named <code>&lt;last_verb&gt;_&lt;first_object&gt;</code>.
+The two paths do not duplicate work: the fast-path serves already-seen
+pipelines in a few milliseconds (deterministic replay), while synthesis steps
+in only when the pattern is stably
 recurring.
 </div>
 
@@ -388,17 +390,19 @@ aesthetic: it is real saving.
 </p>
 
 <div class="callout note">
-<strong>Wise tier quality floor.</strong> The <em>code</em> stage (stage 5 of
-the multistage pipeline in &sect;<a href="#cap4">4.2.3</a>) requires an LLM at
-the level of <strong>Qwen 3.6 35B-A3B or above</strong>. Smaller models
-(e.g. a small model) produce fragile code with high probability of violating the
-convention. The procedural stages (1-4: naming, signature, tests, description)
-use the <em>middle</em> tier, which is enough for closed-vocabulary lookup and
-fixed formats. The rule is encoded in the <em>tier resolver</em>
-(<code>runtime/llm_router.py</code>) as a <em>quality floor</em>: if the user
-does not have a local wise of that calibre, an external provider (Anthropic,
-OpenAI, etc.) must be configured. Explicit boot error, never a silent downgrade
-to fast.
+<strong>The &laquo;wise&raquo; role and code quality.</strong> The
+<em>code</em> stage (stage 5 of the multistage pipeline in
+&sect;<a href="#cap4">4.2.3</a>) is the most demanding: our reference local
+model is <strong>Qwen 3.6 35B-A3B</strong>; smaller models produce more fragile
+code and break conventions more often. The procedural stages (1-4: naming,
+signature, tests, description) use the <em>middle</em> tier, which is enough for
+closed-vocabulary lookup and fixed formats. The tiers are <em>abstract
+roles</em>: the <em>tier resolver</em> (<code>runtime/llm_router.py</code>) no
+longer pins a specific model &mdash; the operator chooses which model to bind to
+the &laquo;wise&raquo; role, and a weaker model means weaker planning, not a
+configuration error. The one hard requirement is that the role be configured:
+if no provider is bound to &laquo;wise&raquo; (or &laquo;fast&raquo;), the system
+stops at boot rather than silently degrading.
 </div>
 
 <h3>4.2.1 Real measurements on the POC </h3>
@@ -479,10 +483,10 @@ text = "\\n\\nVincoli: compila python_code per intero (def invoke + def main). M
 
 <p>
 The first match on <em>(provider, model_pattern, use_case)</em> wins. When a
-new model arrives (Gemma 5, Claude Opus 4.7, GPT-5, &hellip;) a new entry is
-added based on what is observed in the first syntheses. The base <em>system
-prompt</em> and the executors do not change: the only lever touched is the
-repertoire.
+new model is adopted &mdash; a new local version, or a frontier model such as
+Anthropic Opus &mdash; a new entry is added based on what is observed in the
+first syntheses. The base <em>system prompt</em> and the executors do not
+change: the only lever touched is the repertoire.
 </p>
 
 <h3>4.2.3 Multistage pipeline </h3>
@@ -544,7 +548,7 @@ Introspective strategies do not answer a one-off request: they answer the
 structural need to keep the pool small, coherent and reusable. They run at
 night as part of the ager's <em>homeostasis</em>
 (see <a href="../Metnos_Architecture_Intro_v1.html#cap10">Architecture ch. 10</a>),
-with low CPU and economical LLMs (<em>local-fast</em> tier).
+with low CPU and calls to the <em>fast</em> tier (the most economical one).
 </p>
 
 <h2>5.1 Merge</h2>
@@ -630,7 +634,7 @@ cheaper strategies:
 </p>
 
 <pre><code>R = 0.35 &middot; det_pass_rate # fraction of deterministic tests passing
- + 0.20 &middot; judge_score # LLM-as-judge (local-fast) on constitutional rubric
+ + 0.20 &middot; judge_score # LLM-as-judge (fast tier) on constitutional rubric
  + 0.15 &middot; cost_ratio # clip(1 - actual_cost / estimate, 0, 1)
  &minus; 0.10 &middot; similarity_penalty # cosine-sim of embedding vs existing pool &gt; 0.85
  + 0.10 &middot; coverage_bonus # bonus if it covers uncovered proto-mnests

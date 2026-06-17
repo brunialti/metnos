@@ -69,8 +69,8 @@ li { margin-bottom: 4px; }.lead { font-size: 12pt; color: var(--navy); border-le
 </head>
 <body>
 <div style="margin: 18px 0; border-left: 5px solid #16a34a; background: #dcfce7; color: #14532d; padding: 14px 20px; border-radius: 0 8px 8px 0; font-size: 11pt; font-family: 'Segoe UI', Calibri, -apple-system, sans-serif; line-height: 1.55;">
-<strong>Microprogettazione &mdash; allineata al codice al 1&deg;.</strong>
-Doc canonico testato dopo l'implementazione: <code>TELOS.md</code> popolato in <code>workspace/</code> con i sette telos canonici, telos di non-rinuncia integrato nella cascata di <a href="synt.html" style="color: #14532d; text-decoration: underline;">synt</a> (compose+generate+on-the-fly), allineamento con l'<a href="../Metnos_Architettura_Intro_v1.html" style="color: #14532d; text-decoration: underline;">Architettura </a> e la triade <a href="executor.html" style="color: #14532d; text-decoration: underline;">executor</a>+<a href="mnest.html" style="color: #14532d; text-decoration: underline;">mnest</a>+<a href="mnestoma.html" style="color: #14532d; text-decoration: underline;">mnestoma</a>. Riferimento normativo per l'implementazione. Riferimento normativo per l'implementazione.
+<strong>Microprogettazione &mdash; allineata al codice.</strong>
+Documento canonico, verificato dopo l'implementazione: <code>TELOS.md</code> &egrave; popolato in <code>workspace/</code> con i telos canonici; la clausola di non-rinuncia &egrave; integrata nella cascata di <a href="synt.html" style="color: #14532d; text-decoration: underline;">synt</a> (comporre, generare, sintetizzare al volo); il tutto &egrave; allineato con l'<a href="../Metnos_Architettura_Intro_v1.html" style="color: #14532d; text-decoration: underline;">Architettura</a> e con la triade <a href="executor.html" style="color: #14532d; text-decoration: underline;">executor</a>&nbsp;+&nbsp;<a href="mnest.html" style="color: #14532d; text-decoration: underline;">mnest</a>&nbsp;+&nbsp;<a href="mnestoma.html" style="color: #14532d; text-decoration: underline;">mnestoma</a>. &Egrave; il riferimento normativo per l'implementazione.
 </div>
 
 <nav aria-label="Language" style="position:fixed;top:16px;right:20px;z-index:9999;font-family:'Segoe UI',Calibri,sans-serif;font-size:10pt;letter-spacing:2px;background:#FAFBFC;border:1px solid #d0d7de;border-radius:14px;padding:4px 10px;box-shadow:0 1px 4px rgba(0,0,0,0.04);">
@@ -121,8 +121,8 @@ Doc canonico testato dopo l'implementazione: <code>TELOS.md</code> popolato in <
 <h1 id="cap1">1. Scopo e confini</h1>
 
 <div style="background:#fef3c7;border-left:4px solid #b45309;padding:14px 22px;margin:14px 0;border-radius:0 6px 6px 0;">
-<strong>Stato implementazione v8):</strong> 11 lenti
-implementate e testate (di cui le 10 migliori in produzione, ).
+<strong>Stato dell'implementazione:</strong> 11 lenti
+implementate e testate, di cui le 10 migliori in produzione.
 Framework comune in <code>runtime/telos_lenses/_base.py</code> con
 SHARED_PREAMBLE / SHARED_NAMING_SCHEMA / SHARED_OUTPUT_FORMAT in stile
 &sect;6 prescrittivo (DEVI / NON DEVI / OK / ERRORE). Naming Authority
@@ -139,10 +139,10 @@ Un sistema reattivo ha una funzione di valutazione implicita: &laquo;l'utente
 ha chiesto X &rarr; fai X bene&raquo;. Un sistema proattivo no: &egrave; lui
 che genera l'intenzione. <code>telos</code> &egrave; il componente che
 stabilisce <em>quale intenzione ha senso</em> prima che diventi una proposta
-all'utente, senza chiedergli di valutare tutto. In si arricchisce di un
-nuovo telos &mdash; <em>coltivare gli strumenti</em> &mdash; che non riguarda
-le proposte spontanee ma il <em>rifiuto silenzioso</em> di una richiesta
-diretta: una zona finora non coperta.
+all'utente, senza chiedergli di valutare tutto. A questi si aggiunge un
+telos particolare &mdash; <em>coltivare gli strumenti</em> &mdash; che non
+riguarda le proposte spontanee ma il <em>rifiuto silenzioso</em> di una
+richiesta diretta: una zona finora non coperta.
 </p>
 
 <h2>Cosa &egrave;</h2>
@@ -228,18 +228,18 @@ abitano due assi ortogonali della vita di Metnos.
 
 <p>
 Vive nel workspace come sesto file canonico, gi&agrave; presente come scaffold
-in <code>workspace/TELOS.md</code> dal 27/4. Formato markdown leggibile a
-mano. Loader Python (<code>telos_loader.py</code>, vedi cap.&nbsp;7) wired
-in produzione il (fase 4 chiusa): TELOS.md &egrave; iniettato nel
-prompt di sistema del planner via <code>render_planner_block(lang)</code>,
-con hot-reload mtime-based. Set canonico ridotto a <strong>6 telos</strong>
-dal (, vedi nota in fondo a questo capitolo). Gli altri cinque file canonici del workspace
+in <code>workspace/TELOS.md</code>. Formato markdown leggibile a
+mano. Il loader Python (<code>telos_loader.py</code>, vedi cap.&nbsp;7) &egrave;
+attivo in produzione (fase 4 chiusa): TELOS.md viene iniettato nel
+prompt di sistema del planner tramite <code>render_planner_block(lang)</code>,
+con ricarica a caldo basata sul mtime del file. Il set canonico &egrave; stato
+ridotto a <strong>6 telos</strong> (vedi nota in fondo a questo capitolo). Gli altri cinque file canonici del workspace
 (<code>IDENTITY.md</code>, <code>USER.md</code>, <code>MEMORY.md</code>,
 <code>AGENTS.md</code>, <code>SOUL.md</code>) sono pure presenti come
 scaffold.
 </p>
 
-<pre><code># I miei fini ultimi (,
+<pre><code># I miei fini ultimi
 
 ## t.tempo &mdash; Liberare il mio tempo dalle incombenze ripetitive
 peso: 0.25
@@ -299,7 +299,7 @@ esistenti che aggiungerne.
 
 <h1 id="cap4">4. La funzione di allineamento</h1>
 
-<h2>Formula (,</h2>
+<h2>La formula</h2>
 
 <div class="formula">
 contrib<sub>i</sub> = peso<sub>i</sub> &middot; gate(fit<sub>i</sub>, soglia<sub>i</sub>)<br>
@@ -452,7 +452,7 @@ fermarsi prima.
 L'utente ha una capacit&agrave; finita di valutare proposte. Pi&ugrave; ne
 arrivano in una finestra, meno attenzione d&agrave; a ciascuna. Per questo,
 la funzione di allineamento include <code>bother_cost</code> che cresce con
-la frequenza recente di proposte pubblicate. La novit&agrave; di 
+la frequenza recente di proposte pubblicate. L'elemento distintivo
 &egrave; la separazione fra <em>proposte ad-hoc</em> e <em>invocazioni
 programmate dello scheduler</em> (il builtin descritto in
 <a href="executor.html#scheduler-builtin">executor.html cap. 10</a>).
@@ -580,7 +580,7 @@ manifestazione pi&ugrave; estrema di questo rischio.
 </p>
 
 <div class="decision">
-<strong>Clausola anti-paternalismo (riformulata ).</strong> I telos
+<strong>Clausola anti-paternalismo.</strong> I telos
 valutano <em>ci&ograve; che Metnos sta per fare per l'utente</em>, non
 <em>ci&ograve; che l'utente fa</em>. Eccezione esplicita: il telos di
 non-rinuncia (cap. 5) si applica al comportamento di synt durante
@@ -825,12 +825,12 @@ LLM + parse JSON + paternalism guard + GBNF wiring &egrave; centralizzato
 in <code>_base.run_lens</code>. Toggle individuale per lente:
 <code>METNOS_TELOS_LENS_&lt;NAME&gt;=1</code>.</p>
 
-<p>Stato al v8: 10 lenti in produzione ( final).
+<p>Stato attuale: 10 lenti in produzione.
 Le 2 nuove dell'iterazione corrente (<code>counterfactual</code>,
 <code>constitutional</code>) sono ispirate a referenze 2022&ndash;2023.
 La lens <code>compression</code> (Schmidhuber 2010) e' stata implementata
-ma scartata dopo bench v8 per fallimento convergenza: anche col prompt
-restretto il modello locale non riusciva a proporre super-verbi vocab-compliant
+ma scartata dopo il bench di convergenza: anche con il prompt
+pi&ugrave; restrittivo il modello locale non riusciva a proporre super-verbi conformi al vocabolario
 (violava l'eccezione &sect;2.2 su <code>entries</code>). Bench convergenza con Qwen 3.6 35B-A3B + GBNF: 10/10
 lenti accettate convergono al primo tentativo, 0 paternalismo, 0 invalid
 naming, 0 qualifier-object mismatch.</p>

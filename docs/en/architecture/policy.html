@@ -103,14 +103,14 @@ Cluster <code>policy</code> 10/10 green. Additions on: two new capabilities, <co
 <h2>Contents</h2>
 <ol>
  <li><a href="#cap1">What policy is</a></li>
- <li><a href="#cap2">Capability Registry </a></li>
+ <li><a href="#cap2">Capability Registry</a></li>
  <li><a href="#cap3">Autonomy &times; capability table</a></li>
  <li><a href="#cap4">Persistent per_target grants</a></li>
  <li><a href="#cap5">Combined outcome (<code>effective_outcome</code>)</a></li>
  <li><a href="#cap6">Runtime integration</a></li>
  <li><a href="#cap7">CLI</a></li>
  <li><a href="#cap8">Tests</a></li>
- <li><a href="#cap9">Limits and what is deferred to +</a></li>
+ <li><a href="#cap9">Limits and future work</a></li>
 </ol>
 </div>
 
@@ -145,7 +145,7 @@ Policy is the legality filter of Metnos: layer 2 of the architecture (ch. 6 of t
 
 
 <p>
-Policy lives alongside two other layers that decide different things, and this is the clarity point that lacked:
+Policy lives alongside two other layers that decide different things, and this separation of responsibilities is what keeps everything legible:
 </p>
 
 <ul>
@@ -162,7 +162,7 @@ The three filters are in series: policy runs first (it is the cheapest, a table 
 <strong>No policy decision inside executor code.</strong> An executor knows nothing about the current autonomy level or the active grants. It only declares its capabilities in the manifest. Policy is the module where all rules live, readable in one place, modifiable without touching a single executor.
 </div>
 
-<h1 id="cap2">2. Capability Registry </h1>
+<h1 id="cap2">2. Capability Registry</h1>
 
 <p>
 The registry is the closed dictionary of actions Metnos recognises. Thirteen canonical entries, defined in <code>runtime/policy.py:CAPABILITY_REGISTRY</code> (<code>runtime/policy.py:46-121</code>). Each entry is a <code>CapabilitySpec</code> with four attributes:
@@ -400,7 +400,7 @@ Three references to existing modules:
 </ul>
 
 <p>
-The planner never reads the table or the grants directly: it makes a single call to <code>effective_outcome</code> and branches on the outcome. This keeps <code>policy</code> as the single source of truth for the rules; the day the rules change (: cost tier, rate limit), the planner is not touched.
+The planner never reads the table or the grants directly: it makes a single call to <code>effective_outcome</code> and branches on the outcome. This keeps <code>policy</code> as the single source of truth for the rules; the day the rules change (cost tiers, rate limits), the planner is not touched.
 </p>
 
 <h1 id="cap7">7. CLI</h1>
@@ -446,17 +446,17 @@ Cluster <code>policy</code> in the runtime test framework: 10/10 green. Cases co
 The three [security]-marked cases are the invariants that bind future evolution of the module: any change that breaks them is a dismantling of the security posture, not a refactor.
 </p>
 
-<h1 id="cap9">9. Limits and what is deferred to +</h1>
+<h1 id="cap9">9. Limits and future work</h1>
 
 <table>
-<tr><th> limit</th><th>when it is removed</th></tr>
+<tr><th>limit</th><th>when it is removed</th></tr>
 <tr>
  <td><strong>No rate-limit in code.</strong> The autonomy &times; capability table does not yet distinguish "one call vs ten calls per minute". A granted capability is granted without ceiling; accidental abuse (runaway loops, an executor calling HTTP a hundred times) is not throttled at policy level.</td>
- <td>, with a per_capability token bucket stored in the same DB as the grants. The token bucket requires choosing parameters (capacity, refill rate) for each capability; real-usage telemetry is needed before fixing them.</td>
+ <td>With a per_capability token bucket stored in the same DB as the grants. The token bucket requires choosing parameters (capacity, refill rate) for each capability; real-usage telemetry is needed before fixing them.</td>
 </tr>
 <tr>
- <td><strong>No cost tier.</strong> <code>llm:online</code> requires a generic <code>approval_required</code>, it does not differentiate "Sonnet at $0.02 per call" from "GPT-5 at $0.17". Roberto sees all online calls as equal, even when the cost varies by an order of magnitude.</td>
- <td>, when the LLM judge will measure the cost factor inside vaglio's reward. Policy will then expose explicit thresholds (e.g. "up to $0.05 allowed in Full, above approval_required").</td>
+ <td><strong>No cost tiers.</strong> <code>llm:online</code> requires a generic <code>approval_required</code>: it does not tell a cheap call from a high-end one (an opt-in frontier model can cost an order of magnitude more). Roberto sees all online calls as equal.</td>
+ <td>When the LLM judge will measure the cost factor inside vaglio's reward. Policy will then expose explicit thresholds (e.g. "up to $0.05 allowed in Full, above that approval_required").</td>
 </tr>
 <tr>
  <td><strong>No custom policy per user profile.</strong> The table is compiled in code. A per-user override (e.g. Roberto vs a family member with different levels on the same capabilities) requires a config layer that does not yet exist.</td>

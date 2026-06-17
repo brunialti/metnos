@@ -64,8 +64,8 @@ li { margin-bottom: 4px; }.lead { font-size: 12pt; color: var(--navy); border-le
 
 <div class="status-banner">
 
-<strong>Microprogettazione &mdash; allineata al codice al 1&deg;.</strong>
-Testato a livello modulo e cluster: rendering carta, registry, dispatcher callback. Riferimenti: <code>runtime/channels/approval.py</code>, <code>runtime/approval_registry.py</code>, <code>runtime/channels/daemon.py</code>, <code>runtime/channels/telegram.py</code>.
+<strong>Microprogettazione &mdash; allineata al codice.</strong>
+Testato a livello di modulo e di cluster: rendering della carta, registry, dispatcher dei callback. Riferimenti: <code>runtime/channels/approval.py</code>, <code>runtime/approval_registry.py</code>, <code>runtime/channels/daemon.py</code>, <code>runtime/channels/telegram.py</code>.
 </div>
 
 <nav aria-label="Language" style="position:fixed;top:16px;right:20px;z-index:9999;font-family:'Segoe UI',Calibri,sans-serif;font-size:10pt;letter-spacing:2px;background:#FAFBFC;border:1px solid #d0d7de;border-radius:14px;padding:4px 10px;box-shadow:0 1px 4px rgba(0,0,0,0.04);">
@@ -103,7 +103,7 @@ Testato a livello modulo e cluster: rendering carta, registry, dispatcher callba
  <li><a href="#cap7">Dispatcher callback Telegram</a></li>
  <li><a href="#cap8">Test</a></li>
  <li><a href="#cap9">Esempi end-to-end</a></li>
- <li><a href="#cap10">Limiti e cosa &egrave; rimandato a +</a></li>
+ <li><a href="#cap10">Limiti e sviluppi futuri</a></li>
 </ol>
 </div>
 
@@ -284,7 +284,7 @@ La forma medium e la forma short sono pensate per casi in cui Roberto sa cosa st
 </p>
 
 <div class="callout warning">
-<strong>Chi conta le ricorrenze.</strong> In il <code>recurrence_count</code> arriva dal chiamante (Vaglio o Policy) ed &egrave; un input al renderer. Il renderer non tiene contatori. Quando la pipeline integrata sar&agrave; completa, il pianificatore consulter&agrave; il <a href="mnest.html">mnest</a> (le tracce delle approvazioni passate) per calcolare il valore prima di costruire la <code>ApprovalRequest</code>.
+<strong>Chi conta le ricorrenze.</strong> Oggi il <code>recurrence_count</code> arriva dal chiamante (Vaglio o Policy) ed &egrave; un dato in ingresso al renderer. Il renderer non tiene contatori. Quando la pipeline integrata sar&agrave; completa, il pianificatore consulter&agrave; il <a href="mnest.html">mnest</a> (le tracce delle approvazioni passate) per calcolare il valore prima di costruire la <code>ApprovalRequest</code>.
 </div>
 
 <h1 id="cap5">5. Marker territorio</h1>
@@ -315,7 +315,7 @@ Il marker viene appeso in coda alla classificazione meta. Citazione: <code>runti
 </p>
 
 <div class="callout note">
-<strong>Niente persistenza in.</strong> Il marker dichiara l'<em>intenzione</em> di una concessione, non la implementa. Oggi <code>approval_registry.resolve</code> non scrive un grant in <code>policy.py</code>: la concessione di territorio &egrave; documentata in carta ma non rende ancora silenziose le richieste future. La pipeline completa (vedi cap. 10) le legher&agrave;.
+<strong>Persistenza non ancora collegata.</strong> Il marker dichiara l'<em>intenzione</em> di una concessione, non la implementa. Oggi <code>approval_registry.resolve</code> non scrive un grant in <code>policy.py</code>: la concessione di territorio &egrave; documentata in carta ma non rende ancora silenziose le richieste future. La pipeline completa (vedi cap. 10) le legher&agrave;.
 </div>
 
 <h1 id="cap6">6. Approval registry SQLite</h1>
@@ -586,7 +586,7 @@ rapporto.pdf da drive.google.com -&gt; ~/downloads/ (~2.4 MB)<div class="btns"><
 In tutti i casi i due bottoni hanno <code>callback_data</code> della forma <code>approve:&lt;tok&gt;</code> e <code>reject:&lt;tok&gt;</code>; il token &egrave; lo stesso che il <code>approval_registry</code> ha emesso quando la richiesta &egrave; stata creata. Quando l'utente clicca, il flusso descritto al cap. 7 si avvia: il <code>callback_query</code> arriva al daemon, <code>_handle_callback</code> chiama <code>resolve</code>, l'utente riceve la conferma testuale "Approvato: scarichi rapporto.pdf da drive.google.com -&gt; ~/downloads/ (~2.4 MB)".
 </p>
 
-<h1 id="cap10">10. Limiti e cosa &egrave; rimandato a +</h1>
+<h1 id="cap10">10. Limiti e sviluppi futuri</h1>
 
 <table>
 <tr><th>Limite </th><th>Quando si toglie</th></tr>

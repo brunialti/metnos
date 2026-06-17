@@ -70,8 +70,8 @@ li { margin-bottom: 4px; }.lead { font-size: 12pt; color: var(--navy); border-le
 <strong>Microprogettazione &mdash; allineata al codice.</strong> Documento canonico del
 sottosistema multilingua di Metnos. Copre il pattern
 prompt-as-data + auto-allineamento bilingue e i tre layer vivi nel codice:
-<code>runtime/prompts/&lt;lang&gt;/&lt;role&gt;.j2</code> (MiniJinja, 26 ruoli),
-<code>runtime/i18n.sqlite</code> (118 chiavi) e i manifest TOML degli executor con tabella
+<code>runtime/prompts/&lt;lang&gt;/&lt;role&gt;.j2</code> (MiniJinja, 32 ruoli),
+il database dei messaggi <code>i18n.sqlite</code> e i manifest TOML degli executor con tabella
 <code>[description].&lt;lang&gt;</code> + file companion <code>manifest.lang_state.json</code>.
 </div>
 
@@ -187,19 +187,19 @@ nessuna stringa abita due layer.
 <td><strong>Layer 1 &mdash; prompt LLM</strong></td>
 <td>Il testo che istruisce il pianificatore, il vaglio, il describe, il classify, il synt 5-stage. Template MiniJinja con variabili (<code>{{ tools }}</code>, <code>{{ history }}</code>).</td>
 <td><code>runtime/prompts/&lt;lang&gt;/&lt;role&gt;.j2</code></td>
-<td>26 ruoli &times; N lingue</td>
+<td>32 ruoli &times; N lingue</td>
 </tr>
 <tr>
 <td><strong>Layer 2 &mdash; manifest description</strong></td>
 <td>Description e affinity keywords degli executor. Sono il <em>prompt del tool</em> per il pianificatore (CLAUDE.md &sect;2.5).</td>
 <td>Tabella <code>[description].&lt;lang&gt;</code> dentro al manifest TOML; companion file <code>manifest.lang_state.json</code> per version_hash + source_hash per lingua.</td>
-<td>~52 executor &times; N lingue</td>
+<td>~79 executor &times; N lingue</td>
 </tr>
 <tr>
 <td><strong>Layer 3 &mdash; messaggi user-facing</strong></td>
 <td>ERR_*, WARN_*, MSG_*, LOG_* (errori, warning, conferme, notifiche al canale). Description executor migrate qui in lettura runtime.</td>
 <td>SQLite <code>~/.local/share/metnos/i18n.sqlite</code>; tabella <code>i18n(key, lang, text, needs_translation, source_lang, version_hash)</code>.</td>
-<td>118 chiavi standard + 79 description = 197 entry &times; N lingue</td>
+<td>chiavi standard + description migrate &times; N lingue</td>
 </tr>
 </tbody>
 </table>
@@ -219,7 +219,7 @@ intelaiatura di sezioni, solo testo localizzato.
  planner.j2
  vaglio_judge.j2
  describe_entries.j2
- &hellip; (26 file)
+ &hellip; (32 file)
  en/
  planner.j2 # stessa intelaiatura, testo in EN
  &hellip;

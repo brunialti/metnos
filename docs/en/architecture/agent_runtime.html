@@ -27,7 +27,7 @@
  "@context": "https://schema.org",
  "@type": "TechArticle",
  "headline": "Metnos — agent_runtime: the turn-by-turn runtime",
- "description": "Microdesign of Metnos's planner: native tool-use, multistep ReAct, data piping, scratchpad, 3-tier LLM. Status: tested.",
+ "description": "Microdesign of Metnos's runtime: intent extraction, cognitive engine, native tool-use, data piping, scratchpad, 4 LLM tiers.",
  "url": "https://metnos.com/en/architecture/agent_runtime.html",
  "inLanguage": "en",
  "isPartOf": {"@type": "WebSite", "name": "Metnos", "url": "https://metnos.com/"},
@@ -155,13 +155,15 @@ The key point: <em>useful behaviour emerges from composition</em>, not from hard
 
 <div class="callout tip">
 <strong>Often the planner is not even bothered.</strong> Before
-calling the model, the runtime walks through the
-<a href="fast_path.html">introvertive fast-path</a>: three layers of
-memoization that recognise requests already seen and replay the right
-sequence in a few milliseconds. Only when all three layers miss does
-the Qwen 3.6 35B-A3B planner enter the turn. The structure described below
-applies in full to that case; the fast case is described in its
-dedicated page.
+calling the model, the runtime consults its
+<a href="fast_path.html">two stateful memory levels</a>: the
+<em>fastpath</em> (L0), which recognises an identical request already seen
+and replays its sequence in a few milliseconds, and the <em>autopath</em>
+(L1), which recognises a request of the same kind as earlier ones and reuses
+their generalised plan. Only when both levels miss does the planner &mdash;
+the local Qwen&nbsp;3.6&nbsp;35B-A3B model &mdash; enter the turn. The
+structure described below applies in full to that case; the fast path is
+covered in its dedicated page.
 </div>
 
 <h1 id="cap2">2. The loop of one turn, step by step</h1>
@@ -202,18 +204,21 @@ Now let us see the same path more precisely. A turn always has this structure:
 <div class="callout note">
 <strong>The loop is the last layer, not the first.</strong>
 Before reaching the loop described here, the request goes through the
-<a href="praxis_engine.html">cognitive engine</a> cascade: an approved
-shortcut (<em>fastpath</em>) or an already-learned skill (<em>autopath</em>)
-can answer in a few milliseconds with no model call at all. The step-by-step
-loop described in this section is the deepest layer (the <em>engine</em>): it
-fires only when neither the shortcuts nor the memory recognize the request. In
-that case the engine proposes the whole plan in a single call and the
-execution that follows is the deterministic one described below.
+<a href="praxis_engine.html">cognitive engine</a> cascade. The first two
+layers have <em>memory</em>: the <em>fastpath</em> (L0) replays the sequence of
+an identical request already seen; the <em>autopath</em> (L1) reuses the
+generalised plan of a group of similar requests. Either can answer in a few
+milliseconds, with no model call at all. The step-by-step loop described in
+this section is the deepest layer, the <em>engine</em>, preceded by a stateless
+<em>validator</em> that may correct the plan once before execution: it fires
+only when neither the memory nor the shortcuts recognise the request. In that
+case the engine proposes the whole plan in a single call and the execution that
+follows is the deterministic one described below.
 </div>
 
 <h3>Phase 0 &mdash; preparation</h3>
 <ul>
- <li>The <em>catalog</em> is obtained &mdash; it lives in memory since boot. On the first load (<em>cold</em>) the loader discovers all executors on disk (folders under <code>executors/</code>); for each it verifies that the manifest is signed by the author's key and that the code digest matches. Those failing verification are discarded with a reason. On subsequent boots and every turn (<em>hot</em>), a lightweight signature check (mtime of <code>manifest.toml</code>, <code>.py</code>, <code>.sig</code> files + lifecycle DB) returns the cached catalog in O(1). Any modification (synth-on-the-fly, manual re-sign, ager demote/archive) automatically invalidates the cache on the next turn. See.</li>
+ <li>The <em>catalog</em> is obtained &mdash; it lives in memory since boot. On the first load (<em>cold</em>) the loader discovers all executors on disk (folders under <code>executors/</code>); for each it verifies that the manifest is signed by the author's key and that the code digest matches. Those failing verification are discarded with a reason. On subsequent boots and every turn (<em>hot</em>), a lightweight signature check (mtime of <code>manifest.toml</code>, <code>.py</code>, <code>.sig</code> files + lifecycle DB) returns the cached catalog in O(1). Any modification (synth-on-the-fly, manual re-sign, ageing demote/archive) automatically invalidates the cache on the next turn.</li>
  <li>The <em>mode</em> is chosen (local/online/hybrid &mdash; see ch. 3) and the LLM <em>tier</em> (fast/middle/wise &mdash; see ch. 4).</li>
  <li>A unique <code>turn_id</code> is generated to identify this turn in the logs.</li>
 </ul>
@@ -295,7 +300,11 @@ The principle: <em>the shape of the loop follows from the per-call cost</em>. A 
 </p>
 
 <p>
-In we tested the <code>local</code> mode; <code>online</code> is wired as scaffolding (Anthropic provider stub) but not exercised; <code>hybrid</code> has the <code>ModeRouter</code> in place which in PoC always returns "local". Extensions will require: configuring an online provider + enabling the routing rules in <code>[runtime.hybrid]</code>.
+The default mode is <code>local</code>: everything runs on the local model, at
+zero cost and with maximum privacy. The <code>online</code> and
+<code>hybrid</code> modes route the more complex tasks to a frontier model;
+they require configuring an online provider and the routing rules in
+<code>[runtime.hybrid]</code>.
 </p>
 
 <h1 id="cap4">4. The LLM tiers: <em>fast</em>, <em>middle</em>, <em>wise</em> (local) + <em>frontier</em></h1>
@@ -495,7 +504,7 @@ A second mechanism, <code>affinity_phrase_recall</code>, injects into the pool a
 <h1 id="cap6">6. Native tool-use (no JSON parsing)</h1>
 
 <p>
-Modern LLMs (Anthropic, OpenAI from the start; llama-server for Qwen 2.5/3, Llama 3.1+, Mistral, Gemma) support a <em>native</em> tool-calling protocol. The runtime declares the available tools in the API, each with its JSON Schema taken from the manifest. When the LLM decides to call a tool, it returns a structured field:
+Modern LLMs (Anthropic, OpenAI from the start; llama-server for local models such as Qwen 3, Llama 3.1+, Mistral) support a <em>native</em> tool-calling protocol. The runtime declares the available tools in the API, each with its JSON Schema taken from the manifest. When the LLM decides to call a tool, it returns a structured field:
 </p>
 
 <pre>{
@@ -638,12 +647,12 @@ The vaglio is the constitutional evaluator: before a <code>tool_call</code>
 becomes action, it decides whether it is lawful. In multistep it runs between
 one step and the next; in single-shot it runs post-hoc on the entire plan.
 The vaglio is <em>active</em> and works in two
-distinct phases as per ch.&nbsp;11 of the Architecture.
+distinct phases.
 </p>
 
 <h3>9.1 Guardia (binary)</h3>
 <p>
-Blocks violations of the 4 Laws. In the encoded rules are:
+Blocks violations of the 4 Laws. The encoded rules are:
 </p>
 <ul>
  <li><strong>Forbidden paths</strong>: <code>~/.ssh</code>,
@@ -673,7 +682,7 @@ the action is denied with <code>blocked_by="judge"</code>. Above, it is
 approved.
 </p>
 <p>
-In the giudice is <strong>rule-based</strong>: local heuristics,
+Today the giudice is <strong>rule-based</strong>: local heuristics,
 microseconds, zero cost. Base score 0.7, bonus if the <em>intent</em> mentions
 the executor name (signal of explicit intent), penalty for
 <code>..</code> in path (possible path traversal), penalty for keys in
@@ -731,7 +740,7 @@ For each turn the planner writes a JSONL line to <code>~/.local/share/metnos/tur
 </ul>
 
 <p>
-JSONL append-only, one file per day. No automatic rotation in (with normal use ~3 MB/month, negligible).
+JSONL append-only, one file per day. No automatic rotation (with normal use ~3 MB/month, negligible).
 </p>
 
 <h2>11.1 Writing into the mnestome</h2>
@@ -1091,12 +1100,14 @@ This document describes what the planner does <em>today</em>, validated by tests
 </div>
 
 <p>
-The four layers, top to bottom:
+The layers, top to bottom. The first two have <strong>state</strong> (they
+learn from past turns); the last two are <strong>stateless</strong> (they
+decide on the current turn):
 </p>
 
 <ol>
 <li><strong>L0 &mdash; fast-path</strong>: exact hash match (&lt; 5 ms) plus a BGE-M3 cosine search. Approved from the chat with the &laquo;approve fast-path&raquo; button; wins over autopath.</li>
-<li><strong>L1 &mdash; autopath</strong>: semantic cluster match (BGE-M3) indexed on the intent hash, with champion/challenger scoring and a 30-day TTL on anti-skills.</li>
+<li><strong>L1 &mdash; autopath</strong>: semantic cluster match (BGE-M3) indexed on the intent hash, with champion/challenger scoring and a 30-day TTL on anti-autopaths (plans that have failed, remembered so they are not proposed again).</li>
 <li><strong>L2 &mdash; validator</strong>: a guard that can re-propose once before the engine runs (on by default).</li>
 <li><strong>L3 &mdash; engine</strong>: the full ReAct loop &mdash; proposer, executor, recovery, terminator. The <code>METNOS_ENGINE</code> selector picks <code>simple|metis|frontier</code>.</li>
 </ol>

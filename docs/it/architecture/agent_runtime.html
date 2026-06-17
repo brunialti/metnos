@@ -150,13 +150,16 @@ La cosa importante: <em>il comportamento utile emerge dalla composizione</em>, n
 
 <div class="callout tip">
 <strong>Spesso il pianificatore non viene nemmeno scomodato.</strong>
-Prima di chiamare il modello, il runtime attraversa il
-<a href="fast_path.html">fast-path introvertivo</a>: tre livelli di
-memoizzazione che riconoscono le richieste gi&agrave; viste e
-rieseguono la sequenza giusta in pochi millisecondi. Solo quando
-tutti e tre i livelli mancano, il pianificatore Qwen 3.6 35B-A3B entra
-nel turno. La struttura descritta qui sotto si applica integralmente
-a quel caso; il caso veloce e' descritto nella pagina dedicata.
+Prima di chiamare il modello, il runtime consulta i suoi
+<a href="fast_path.html">due livelli di memoria con stato</a>: il
+<em>fastpath</em> (L0), che riconosce una richiesta identica gi&agrave;
+vista e ne riesegue la sequenza in pochi millisecondi, e l'<em>autopath</em>
+(L1), che riconosce una richiesta dello stesso genere di altre passate e
+ne riusa il piano generalizzato. Solo quando entrambi i livelli non
+trovano corrispondenza il pianificatore &mdash; il modello locale
+Qwen&nbsp;3.6&nbsp;35B-A3B &mdash; entra nel turno. La struttura descritta
+qui sotto si applica per intero a quel caso; la via veloce &egrave;
+trattata nella pagina dedicata.
 </div>
 
 <h1 id="cap2">2. Il loop di un turno, passo per passo</h1>
@@ -197,19 +200,22 @@ Ora vediamo lo stesso percorso in modo pi&ugrave; preciso. Un turno ha sempre qu
 <div class="callout note">
 <strong>Il loop &egrave; l'ultimo strato, non il primo.</strong>
 Prima di arrivare al ciclo descritto qui, la richiesta attraversa la cascata
-del <a href="praxis_engine.html">motore cognitivo</a>: una scorciatoia
-approvata (<em>fastpath</em>) o una skill gi&agrave; appresa (<em>autopath</em>)
-possono rispondere in pochi millisecondi senza alcuna chiamata al modello. Il
-ciclo passo-passo descritto in questa sezione &egrave; lo strato pi&ugrave;
-profondo (l'<em>engine</em>): si attiva solo quando n&eacute; le scorciatoie
-n&eacute; la memoria riconoscono la richiesta. In quel caso il motore propone
-l'intero piano in una sola chiamata e l'esecuzione che segue &egrave; quella
-deterministica descritta qui sotto.
+del <a href="praxis_engine.html">motore cognitivo</a>. I primi due strati hanno
+<em>memoria</em>: il <em>fastpath</em> (L0) ripropone la sequenza di una
+richiesta identica gi&agrave; vista; l'<em>autopath</em> (L1) riusa il piano
+generalizzato di un gruppo di richieste simili. Entrambi possono rispondere in
+pochi millisecondi, senza alcuna chiamata al modello. Il ciclo passo-passo
+descritto in questa sezione &egrave; lo strato pi&ugrave; profondo, l'<em>engine</em>,
+preceduto da un <em>validatore</em> senza stato che pu&ograve; correggere il
+piano una volta prima dell'esecuzione: si attiva solo quando n&eacute; la
+memoria n&eacute; le scorciatoie riconoscono la richiesta. In quel caso il
+motore propone l'intero piano in una sola chiamata e l'esecuzione che segue
+&egrave; quella deterministica descritta qui sotto.
 </div>
 
 <h3>Fase 0 &mdash; preparazione</h3>
 <ul>
- <li>Si ottiene il <em>catalogo</em> di executor &mdash; gi&agrave; in memoria dal boot. Al primo caricamento (<em>cold</em>) il loader scopre tutti gli executor da disco (cartelle in <code>executors/</code>), per ognuno verifica che il manifest sia firmato dalla chiave dell'autore e che il digest del codice corrisponda. Quelli che falliscono la verifica vengono scartati con un motivo. Al boot successivo e ad ogni turno (<em>hot</em>), un check leggero sulla firma di modifica (mtime dei <code>manifest.toml</code>, <code>.py</code>, <code>.sig</code> + DB lifecycle) ritorna il catalogo cached in O(1). Una qualunque modifica (synth-on-the-fly, re-sign manuale, ager demote/archive) invalida la cache automaticamente al turno successivo. Vedi.</li>
+ <li>Si ottiene il <em>catalogo</em> di executor &mdash; gi&agrave; in memoria dal boot. Al primo caricamento (<em>cold</em>) il loader scopre tutti gli executor da disco (cartelle in <code>executors/</code>), per ognuno verifica che il manifest sia firmato dalla chiave dell'autore e che il digest del codice corrisponda. Quelli che falliscono la verifica vengono scartati con un motivo. Al boot successivo e ad ogni turno (<em>hot</em>), un check leggero sulla firma di modifica (mtime dei <code>manifest.toml</code>, <code>.py</code>, <code>.sig</code> + DB lifecycle) ritorna il catalogo cached in O(1). Una qualunque modifica (synth-on-the-fly, re-sign manuale, invecchiamento con demote/archive) invalida la cache automaticamente al turno successivo.</li>
  <li>Si sceglie il <em>mode</em> (local/online/hybrid &mdash; vedi cap. 3) e il <em>tier</em> di LLM (fast/middle/wise &mdash; vedi cap. 4).</li>
  <li>Si genera un <code>turn_id</code> univoco per identificare questo turno nei log.</li>
 </ul>
@@ -495,7 +501,7 @@ Un secondo meccanismo, <code>affinity_phrase_recall</code>, inietta nel pool too
 <h1 id="cap6">6. Tool-use nativo (no JSON parsing)</h1>
 
 <p>
-Gli LLM moderni (Anthropic, OpenAI da sempre; llama-server e altri server compatibili OpenAI per modelli locali tipo Qwen 2.5/3, Llama 3.1+, Mistral, Gemma) supportano un protocollo <em>nativo</em> di tool-calling. Il runtime dichiara i tools disponibili nella API, ognuno con il suo JSON Schema preso dal manifest. Quando l'LLM decide di chiamare un tool, restituisce un campo strutturato:
+Gli LLM moderni (Anthropic, OpenAI da sempre; llama-server e altri server compatibili OpenAI per modelli locali come Qwen 3, Llama 3.1+, Mistral) supportano un protocollo <em>nativo</em> di tool-calling. Il runtime dichiara i tools disponibili nella API, ognuno con il suo JSON Schema preso dal manifest. Quando l'LLM decide di chiamare un tool, restituisce un campo strutturato:
 </p>
 
 <pre>{
@@ -637,13 +643,12 @@ Dettagli completi nel doc dedicato: <a href="scratchpad.html"><code>scratchpad.h
 Il vaglio &egrave; il valutatore costituzionale: prima che un <code>tool_call</code>
 diventi azione, decide se &egrave; lecita. In multistep gira fra uno step e
 l'altro; in single-shot gira post-hoc sull'intero piano. Il vaglio e'
-<em>attivo</em> e funziona in due fasi distinte come da cap.&nbsp;11
-dell'Architettura.
+<em>attivo</em> e funziona in due fasi distinte.
 </p>
 
 <h3>9.1 Guardia (binaria)</h3>
 <p>
-Blocca le violazioni delle 4 Leggi. In le regole codificate sono:
+Blocca le violazioni delle 4 Leggi. Le regole codificate sono:
 </p>
 <ul>
  <li><strong>Forbidden paths</strong>: <code>~/.ssh</code>,
@@ -673,7 +678,7 @@ l'azione e' negata con <code>blocked_by="judge"</code>. Sopra, e'
 approvata.
 </p>
 <p>
-In il giudice e' <strong>rule-based</strong>: heuristiche locali,
+Oggi il giudice e' <strong>basato su regole</strong>: euristiche locali,
 microsecondi, costo zero. Score base 0.7, bonus se l'<em>intent</em> menziona
 il nome dell'executor (segnale di intento esplicito), penalita' per
 <code>..</code> in path (possibile path traversal), penalita' per chiavi
@@ -731,7 +736,7 @@ Per ogni turno il pianificatore scrive una riga JSONL in <code>~/.local/share/me
 </ul>
 
 <p>
-JSONL append-only, un file per giorno. Niente rotazione automatica in (con uso normale ~3 MB/mese, trascurabile).
+JSONL append-only, un file per giorno. Nessuna rotazione automatica (con uso normale ~3 MB/mese, trascurabile).
 </p>
 
 <h2>11.1 Scrittura nel mnestoma</h2>
@@ -929,8 +934,9 @@ PLANNER attiva il tool builtin <code>request_location_from_user</code>: un
 dialog atomico che chiede la posizione all'utente sul canale e riprende il
 piano alla ricezione. Il pattern &egrave; analogo a &sect;2-ter (undo
 atomico): un tool che ferma e riprende il turno senza step intermedi che
-inquinino la storia. -0065 codificano la famiglia di pattern
-&laquo;atomic dialog tool&raquo;.
+inquinino la storia. &Egrave; la stessa famiglia di pattern
+&laquo;dialogo atomico&raquo; dell'undo: un tool che sospende e riprende il
+turno senza lasciare passi intermedi nello scratchpad.
 </p>
 
 <h2 id="cap11_2_3">11.2.3 Geo provider hybrid</h2>
@@ -1092,12 +1098,14 @@ Questo documento descrive cosa il pianificatore fa <em>oggi</em>, validato da te
 </div>
 
 <p>
-I quattro strati, dall'alto:
+Gli strati, dall'alto. I primi due hanno <strong>stato</strong> (imparano dai
+turni passati); gli ultimi due sono <strong>senza stato</strong> (decidono
+sul turno corrente):
 </p>
 
 <ol>
-<li><strong>L0 &mdash; fast-path</strong>: match esatto su hash (&lt; 5 ms) piu' una ricerca per coseno BGE-M3. Approvato dalla chat col bottone &laquo;approva fast-path&raquo;; vince su autopath.</li>
-<li><strong>L1 &mdash; autopath</strong>: match semantico di cluster (BGE-M3) indicizzato sull'hash di intento, con punteggio champion/challenger e TTL di 30 giorni sugli anti-skill.</li>
+<li><strong>L0 &mdash; fast-path</strong>: match esatto su hash (&lt; 5 ms) pi&ugrave; una ricerca per coseno BGE-M3. Approvato dalla chat col bottone &laquo;approva fast-path&raquo;; vince sull'autopath.</li>
+<li><strong>L1 &mdash; autopath</strong>: match semantico di cluster (BGE-M3) indicizzato sull'hash dell'intento, con punteggio champion/challenger e TTL di 30 giorni sugli anti-autopath (i piani che hanno fallito, tenuti a memoria per non riproporli).</li>
 <li><strong>L2 &mdash; validator</strong>: una guardia che puo' ri-proporre una volta prima che giri l'engine (attiva di default).</li>
 <li><strong>L3 &mdash; engine</strong>: il loop ReAct completo &mdash; proposer, executor, recovery, terminator. Il selettore <code>METNOS_ENGINE</code> sceglie <code>simple|metis|frontier</code>.</li>
 </ol>

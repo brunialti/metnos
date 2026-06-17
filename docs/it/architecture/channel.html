@@ -105,7 +105,7 @@ Riferimento di implementazione: <code>/opt/metnos/runtime/channels/</code>.
  <li><a href="#cap7">Rapporto col <code>pairing</code></a></li>
  <li><a href="#cap8">Distribuzione: systemd user unit</a></li>
  <li><a href="#cap9">HTTP come canale alternativo</a></li>
- <li><a href="#cap10">Limiti e rinvii a +</a></li>
+ <li><a href="#cap10">Limiti e sviluppi futuri</a></li>
 </ol>
 </div>
 
@@ -386,12 +386,12 @@ la prima volta). Il <code>README</code> in
 <h1 id="cap9">9. HTTP come canale alternativo</h1>
 
 <p>
-Dal Metnos espone un secondo server HTTP su
-porta 8770 con tre rotte agent-side: <code>POST /agent/turn</code>
-(esecuzione <code>run_turn</code> con SSE o JSON),
+Accanto a Telegram, Metnos espone un secondo server HTTP sulla
+porta 8770. Sul versante agente le rotte principali sono
+<code>POST /agent/turn</code> (esegue <code>run_turn</code>, in SSE o JSON),
 <code>GET /agent/devices/me</code>, <code>GET /agent/health</code> e
-<code>GET /.well-known/metnos.json</code>. Vedi
-<a href="http_api.html"><code>http_api</code></a> per il dettaglio.
+<code>GET /.well-known/metnos.json</code>. Per l'elenco completo vedi
+<a href="http_api.html"><code>http_api</code></a>.
 </p>
 
 <p>
@@ -414,7 +414,7 @@ risolve via <code>users.resolve_recipients</code>, vaglio cross-user
 applicato per non-host.
 </p>
 
-<h1 id="cap10">10. Limiti e rinvii a +</h1>
+<h1 id="cap10">10. Limiti e sviluppi futuri</h1>
 
 <ul>
 <li><strong>Un canale per processo</strong>: il daemon gestisce un solo

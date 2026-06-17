@@ -69,7 +69,7 @@ li { margin-bottom: 4px; }.lead { font-size: 12pt; color: var(--navy); border-le
 <div class="status-banner">
 
 <strong>&#10003; Microdesign &mdash; aligned with the code.</strong>
-The <code>observability</code> component has been built and tested at module level (cluster <code>observability</code> 6/6 green) on, then extended on by the <code>/admin</code> dashboard of <a href="http_api.html" style="color:#14532d;text-decoration:underline;"><code>http_api</code></a> (htmx + Jinja2 + uPlot, ): <code>/admin/proposals</code>, <code>/admin/executors</code>, <code>/admin/executors/stats</code>, <code>/admin/runs</code>, <code>/admin/safety</code>, <code>/admin/turns</code>, <code>/admin/users</code>. Fine-grained StepLog telemetry: five sub-components (<code>intent_ms</code>, <code>prefilter_ms</code>, <code>vaglio_ms</code>, <code>exec_ms</code>, <code>rerank_ms</code>) readable from <code>bench_latency_breakdown.py</code>. The original static HTML generator remains as an offline fallback.
+The <code>observability</code> component is built and tested at module level (cluster <code>observability</code> 6/6 green), and today lives mostly in the <code>/admin</code> dashboard of <a href="http_api.html" style="color:#14532d;text-decoration:underline;"><code>http_api</code></a> (htmx + Jinja2 + uPlot): <code>/admin/proposals</code>, <code>/admin/executors</code>, <code>/admin/executors/stats</code>, <code>/admin/runs</code>, <code>/admin/safety</code>, <code>/admin/turns</code>, <code>/admin/users</code>. The detailed StepLog telemetry collects five partial timings (<code>intent_ms</code>, <code>prefilter_ms</code>, <code>vaglio_ms</code>, <code>exec_ms</code>, <code>rerank_ms</code>), readable with <code>bench_latency_breakdown.py</code>. The original static HTML generator remains as an offline fallback.
 Implementation reference: <code>/opt/metnos/runtime/observability.py</code>, <code>/opt/metnos/runtime/http_routes_admin.py</code>.
 <div class="seq">Status in the microdesign sequence: <em>under approval</em> &rarr; <em>approved</em> &rarr; <strong>tested</strong> &rarr; <em>implemented</em>.</div>
 </div>
@@ -108,7 +108,7 @@ Implementation reference: <code>/opt/metnos/runtime/observability.py</code>, <co
  <li><a href="#cap5">Privacy and HTML-escape</a></li>
  <li><a href="#cap6">Distribution and lifecycle</a></li>
  <li><a href="#cap7">CLI</a></li>
- <li><a href="#cap8">Limits and what is deferred to +</a></li>
+ <li><a href="#cap8">Limits and future work</a></li>
 </ol>
 </div>
 
@@ -284,12 +284,12 @@ python3 -m observability render --out path.html # custom path
 </pre>
 
 <p>
-No subcommands other than <code>render</code> in. The
+There are no subcommands other than <code>render</code>. The
 generator offers no JSON dump or export: those who want the raw data go
 straight to the sources (SQLite + JSONL).
 </p>
 
-<h1 id="cap8">8. Limits and what is deferred to +</h1>
+<h1 id="cap8">8. Limits and future work</h1>
 
 <ul>
 <li><strong>No live update</strong>: the page does not auto-refresh. To
@@ -313,9 +313,9 @@ page.</li>
 in the turn logs one goes to SQLite. The dashboard is
 &laquo;what-is-now&raquo;, not &laquo;search-what-was&raquo;.</li>
 
-<li><strong>Manual regeneration</strong>: in a task of the
-builtin scheduler (<code>render_dashboard</code>, every 5 min) will
-keep it fresh without intervention.</li>
+<li><strong>Manual regeneration</strong>: a task of the
+builtin scheduler (<code>render_dashboard</code>, every 5 minutes) will
+keep it fresh without manual intervention.</li>
 </ul>
 
 </body>

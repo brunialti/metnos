@@ -1,0 +1,804 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+ <meta charset="UTF-8">
+ <meta name="viewport" content="width=device-width, initial-scale=1.0">
+ <title>Metnos &mdash; The cognitive engine: how Metnos plans and executes</title>
+ <meta name="description" content="Metnos's four-layer cognitive engine: self-learned shortcuts, autopaths learned from feedback, a plan check, and propose-execute-recover. One local model, called once, no cloud.">
+ <meta name="keywords" content="cognitive engine, engine, fastpath, autopath, validator, proposer, recovery, planner, metnos, sqlite cache, framework, llm 1-shot">
+ <meta name="author" content="Roberto Brunialti">
+ <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large">
+ <link rel="canonical" href="https://metnos.com/en/architecture/praxis_engine">
+ <link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/praxis_engine">
+ <link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/praxis_engine">
+ <link rel="alternate" hreflang="x-default" href="https://metnos.com/en/architecture/praxis_engine">
+ <meta property="og:type" content="article">
+ <meta property="og:url" content="https://metnos.com/en/architecture/praxis_engine">
+ <meta property="og:title" content="Metnos &mdash; The cognitive engine: how Metnos plans and executes">
+ <meta property="og:description" content="Four layers, one local model: self-learned shortcuts, autopaths learned from feedback, a plan check, and honest propose-execute-recover. No cloud.">
+ <meta property="og:locale" content="en_US">
+ <meta property="og:locale:alternate" content="it_IT">
+ <meta property="og:site_name" content="Metnos">
+ <script type="application/ld+json">
+{
+ "@context": "https://schema.org",
+ "@type": "TechArticle",
+ "headline": "Metnos — The cognitive engine: how Metnos plans and executes",
+ "description": "Architecture of Metnos's cognitive engine: four layers (self-learned shortcuts, learned autopaths, plan check, propose-execute-recover engine) orchestrating a single local model called once.",
+ "url": "https://metnos.com/en/architecture/praxis_engine.html",
+ "inLanguage": "en",
+ "isPartOf": {"@type": "WebSite", "name": "Metnos", "url": "https://metnos.com/"},
+ "author": {"@type": "Person", "name": "Roberto Brunialti"},
+ "about": "Metnos component: four-layer cognitive engine"
+}
+ </script>
+ <style>:root {
+ --navy: #1A477A; --navy-light: #2B6CB0; --sage: #548235;
+ --bronze: #A0522D; --plum: #6B21A8; --olive: #6B7A2E;
+ --bg: #FAFBFC; --text: #1a1a1a;
+ --border: #d0d7de; --code-bg: #f6f8fa;
+ --table-header: #1A477A; --table-alt: #f0f4f8;
+ --note-bg: #dbeafe; --note-border: #3b82f6;
+ --tip-bg: #dcfce7; --tip-border: #16a34a;
+ --warn-bg: #fef3c7; --warn-border: #f59e0b;
+ --danger-bg: #fee2e2; --danger-border: #dc2626;
+ --muted: #64748B;
+ --l0: #B45309; /* amber: self-learned shortcut */
+ --l1: #15803D; /* green: learned autopaths */
+ --l2: #6B7A2E; /* olive: plan check */
+ --l3: #1E40AF; /* blue: propose-execute engine */
+}
+* { box-sizing: border-box; }
+body { font-family: 'Segoe UI', Calibri, -apple-system, sans-serif; font-size: 11pt; line-height: 1.65; color: var(--text); background: var(--bg); max-width: 960px; margin: 0 auto; padding: 40px 30px; }
+h1 { color: var(--navy); font-size: 20pt; border-bottom: 3px solid var(--navy); padding-bottom: 8px; margin-top: 50px; page-break-before: always; }
+h1:first-of-type { page-break-before: avoid; }
+h2 { color: var(--navy-light); font-size: 14pt; margin-top: 30px; border-bottom: 1px solid var(--border); padding-bottom: 4px; }
+h3 { color: var(--navy); font-size: 12pt; margin-top: 20px; }
+h4 { color: var(--bronze); font-size: 11.5pt; margin: 16px 0 6px 0; }
+p { margin: 10px 0; }
+table { width: 100%; border-collapse: collapse; margin: 15px 0; font-size: 10pt; page-break-inside: avoid; }
+th { background: var(--table-header); color: white; padding: 8px 10px; text-align: left; font-weight: 600; }
+td { padding: 7px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+tr:nth-child(even) td { background: var(--table-alt); }
+pre { background: var(--code-bg); border: 1px solid var(--border); border-radius: 4px; padding: 12px 16px; overflow-x: auto; font-size: 9.5pt; line-height: 1.55; page-break-inside: avoid; }
+code { font-family: Consolas, 'Courier New', monospace; }
+p code, li code, td code { background: var(--code-bg); padding: 1px 5px; border-radius: 3px; font-size: 9.5pt; }
+figure { text-align: center; margin: 24px 0; page-break-inside: avoid; }
+figcaption { font-style: italic; color: #555; font-size: 9.5pt; margin-top: 8px; }.callout { border-left: 4px solid; padding: 10px 16px; margin: 15px 0; border-radius: 0 4px 4px 0; font-size: 10pt; page-break-inside: avoid; }.callout.note { background: var(--note-bg); border-color: var(--note-border); }.callout.tip { background: var(--tip-bg); border-color: var(--tip-border); }.callout.warning { background: var(--warn-bg); border-color: var(--warn-border); }.callout.danger { background: var(--danger-bg); border-color: var(--danger-border); }.title-page { text-align: center; padding: 80px 0 40px; page-break-after: always; }.title-page h1 { font-size: 30pt; border: none; margin: 0; page-break-before: avoid; }.title-page.subtitle { font-size: 15pt; color: var(--navy-light); margin: 10px 0 30px; }.title-page.meta { font-size: 11pt; color: #666; }.toc { page-break-after: always; }.toc h2 { border: none; }.toc ol { font-size: 11pt; line-height: 2; }.toc a { color: var(--navy); text-decoration: none; }.toc a:hover { text-decoration: underline; }
+ul, ol { margin: 8px 0; padding-left: 24px; }
+li { margin-bottom: 4px; }.lead { font-size: 12pt; color: var(--navy); border-left: 4px solid var(--sage); padding-left: 14px; margin: 18px 0; }.layer-card { display: grid; grid-template-columns: 200px 1fr; gap: 0; border: 1px solid var(--border); border-radius: 8px; margin: 16px 0; overflow: hidden; page-break-inside: avoid; }.layer-card.side { color: white; padding: 18px 16px; text-align: center; }.layer-card.side h3 { color: white; margin: 0 0 4px 0; font-size: 15pt; }.layer-card.side.lnum { font-size: 22pt; font-weight: 700; opacity: 0.9; }.layer-card.side.label { font-size: 9.5pt; opacity: 0.9; margin-top: 6px; font-style: italic; }.layer-card.body { padding: 14px 18px; font-size: 10.5pt; line-height: 1.6; }.layer-card.body p { margin: 6px 0; }.layer-card.l0.side { background: var(--l0); }.layer-card.l1.side { background: var(--l1); }.layer-card.l2.side { background: var(--l2); }.layer-card.l3.side { background: var(--l3); }.ascii { font-family: Consolas, 'Courier New', monospace; font-size: 9.5pt; background: #fdfdfd; border: 1px solid var(--border); border-radius: 6px; padding: 18px 22px; white-space: pre; overflow-x: auto; line-height: 1.45; color: #1a1a1a; }.benchtable th,.benchtable td { text-align: center; }.benchtable td:first-child,.benchtable th:first-child { text-align: left; }.bench-win { color: var(--sage); font-weight: 700; }.bench-loss { color: #a0522d; }
+@media print { body { max-width: none; padding: 0; font-size: 10pt; } h1 { font-size: 16pt; } h2 { font-size: 12pt; }.title-page { padding: 60px 0 30px; }.title-page h1 { font-size: 24pt; }.layer-card { grid-template-columns: 160px 1fr; } }
+ </style>
+</head>
+<body>
+
+<nav aria-label="Language" style="position:fixed;top:16px;right:20px;z-index:9999;font-family:'Segoe UI',Calibri,sans-serif;font-size:10pt;letter-spacing:2px;background:#FAFBFC;border:1px solid #d0d7de;border-radius:14px;padding:4px 10px;box-shadow:0 1px 4px rgba(0,0,0,0.04);">
+<a href="/it/architecture/praxis_engine.html" hreflang="it" lang="it" style="color:#64748B;text-decoration:none;padding:0 4px;border:none;">IT</a>
+<span style="color:#d0d7de;"> &middot; </span>
+<a href="/en/architecture/praxis_engine.html" class="active" hreflang="en" lang="en" style="color:#1a1a1a;text-decoration:none;font-weight:700;padding:0 4px;border:none;">EN</a>
+</nav>
+
+<div style="background:#fff;border-bottom:1px solid #d0d7de;padding:10px 0;font-size:14px;position:sticky;top:0;z-index:10;margin-bottom:20px;">
+ <div style="max-width:960px;margin:0 auto;padding:0 20px;display:flex;justify-content:space-between;">
+ <a href="../index.html" style="color:#1a477a;text-decoration:none;font-weight:500;">&larr; Documentation index</a>
+ <span style="color:#8e8e93;">Microdesign &rsaquo; <strong style="color:#1a1a1a;">Cognitive engine</strong></span>
+ </div>
+</div>
+
+<div class="title-page">
+ <h1>The cognitive engine</h1>
+ <div class="subtitle">how Metnos plans and executes, without calling the cloud</div>
+ <div class="meta">
+ Microdesign &mdash; architecture of the four-layer engine.<br>
+ <br>
+ Audience: anyone who wants to understand how Metnos thinks,<br>why it answers fast and learns from use.<br>
+ Reading time: 15 minutes.
+ </div>
+</div>
+
+<div class="toc">
+<h2>Contents</h2>
+<ol>
+ <li><a href="#cap1">In one line: one model, called once</a></li>
+ <li><a href="#cap3">The idea: propose everything at once, and remember</a></li>
+ <li><a href="#cap4">The four layers of the engine</a></li>
+ <li><a href="#cap5">The cascade through a turn</a></li>
+ <li><a href="#cap6">The plan: what the engine proposes</a></li>
+ <li><a href="#cap7">Layer 0 &mdash; Fastpath: self-learned shortcuts</a></li>
+ <li><a href="#cap8">Layer 1 &mdash; Autopath: autopaths learned from feedback</a></li>
+ <li><a href="#cap9">Layer 2 &mdash; the plan check</a></li>
+ <li><a href="#cap10">Layer 3 &mdash; Proposer, Executor, Recovery, Terminator</a></li>
+ <li><a href="#cap11">How it learns and speeds up</a></li>
+ <li><a href="#cap12">What changes for the user</a></li>
+ <li><a href="#cap13">Why it beats LLM-in-loop frameworks</a></li>
+ <li><a href="#cap14">Honest numbers</a></li>
+ <li><a href="#cap15">Open questions</a></li>
+</ol>
+</div>
+
+<h1 id="cap1">1. In one line: one model, called once</h1>
+
+<p class="lead">
+When a request arrives, Metnos no longer calls the planner five or six times
+in a row. First it tries the shortcuts it already knows; if those don&rsquo;t
+apply, it asks the local language model to propose the <em>whole</em> plan in
+a single call; then it executes it deterministically, and if something goes
+wrong it attempts a targeted recovery or honestly explains what&rsquo;s
+missing. Four layers, one model, never the cloud.
+</p>
+
+<h1 id="cap3">2. The idea: propose everything at once, and remember</h1>
+
+<p>
+Today&rsquo;s engine starts from two simple insights.
+</p>
+
+<p>
+<strong>First insight: a single proposal.</strong> Instead of querying the
+model at every step, query it <em>once</em> and ask for the whole plan in one
+shot: the complete list of steps, the links between them, and the final
+message. The model sees the whole problem at once, builds internal coherence
+(it knows step&nbsp;4 needs step&nbsp;3&rsquo;s output) and produces a far more
+stable plan. The execution that follows is pure deterministic mechanics: no
+more dice.
+</p>
+
+<p>
+<strong>Second insight: remember what works.</strong> When a plan reaches the
+end successfully, the system keeps it, indexed by the &laquo;meaning&raquo; of
+the request. The next time a request of the same kind arrives, the plan is
+already there: it starts in a few milliseconds, without bothering the model.
+The system becomes its own planner &mdash; <em>it learns to stop asking</em>.
+</p>
+
+<p>
+These two insights turn into four layers, tried in cascade. The distinction
+that matters is between what <em>remembers</em> and what <em>reasons</em>: the
+first two layers (L0 and L1) are <strong>stateful memory</strong> &mdash; a
+store that grows with use and answers without bothering the model when it
+recognizes the request. The other two (L2 and L3) are <strong>stateless</strong>:
+they keep nothing from one turn to the next, but re-check the plan and, when
+needed, build it from scratch. The third is a <em>check</em>, the fourth is the
+<em>engine proper</em> that proposes, executes, recovers and &mdash; if
+there&rsquo;s no way out &mdash; honestly admits the limit.
+</p>
+
+<h1 id="cap4">4. The four layers of the engine</h1>
+
+<p>
+Every turn goes through the layers top to bottom. As soon as one layer
+resolves, the turn ends: the layers below aren&rsquo;t even touched. The first
+two (L0 and L1) are the two <em>stateful</em> layers, the memory that learns:
+they are very fast and don&rsquo;t use the language model. The other two (L2
+and L3) are <em>stateless</em> &mdash; they keep nothing between turns &mdash;
+and only the fourth, only when needed, actually calls the model.
+</p>
+
+<figure style="text-align:center;margin:24px 0;">
+<svg viewBox="0 0 780 540" xmlns="http://www.w3.org/2000/svg" style="max-width:100%;height:auto;border:1px solid var(--border);border-radius:6px;background:white;padding:8px;">
+<style>.tt{font-family:'Segoe UI',sans-serif;text-anchor:middle;dominant-baseline:middle}.io{font-size:11px;font-weight:600;fill:#0f172a}.bt{font-size:12px;font-weight:700;fill:#fff}.bl{font-size:9.5px;fill:#fff;opacity:.92}.sub{font-size:10px;font-weight:600;fill:#1E40AF}.subc{font-size:8.5px;fill:#475569}.lab{font-size:9px;fill:#64748b;font-style:italic}.hit{font-size:9.5px;fill:#15803D;font-weight:600}.a{stroke:#334155;stroke-width:1.7;fill:none;marker-end:url(#ar)}.ah{stroke:#15803D;stroke-width:1.7;fill:none;marker-end:url(#arg)}
+</style>
+<defs>
+<marker id="ar" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3 z" fill="#334155"/></marker>
+<marker id="arg" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3 z" fill="#15803D"/></marker>
+</defs>
+<rect x="240" y="14" width="240" height="30" rx="8" fill="#fff" stroke="#1A477A" stroke-width="1.6"/><text class="tt io" x="360" y="29">User request</text>
+<path class="a" d="M360,44 L360,60"/>
+<rect x="240" y="60" width="240" height="30" rx="8" fill="#fff" stroke="#1A477A" stroke-width="1.6"/><text class="tt io" x="360" y="75">intent_extractor &middot; verb + object</text>
+<path class="a" d="M360,90 L360,106"/>
+<rect x="240" y="106" width="240" height="46" rx="8" fill="#B45309"/><text class="tt bt" x="360" y="123">L0 &middot; Fastpath</text><text class="tt bl" x="360" y="139">self-learned shortcut (hash + cosine)</text>
+<path class="a" d="M360,152 L360,170"/><text class="lab" x="375" y="163">miss</text>
+<rect x="240" y="170" width="240" height="46" rx="8" fill="#15803D"/><text class="tt bt" x="360" y="187">L1 &middot; Autopath</text><text class="tt bl" x="360" y="203">learned autopath (semantic + intent match)</text>
+<path class="a" d="M360,216 L360,234"/><text class="lab" x="375" y="227">miss</text>
+<rect x="240" y="234" width="240" height="40" rx="8" fill="#6B7A2E"/><text class="tt bt" x="360" y="248">L2 &middot; Validator</text><text class="tt bl" x="360" y="263">plan check</text>
+<path class="a" d="M360,274 L360,292"/>
+<rect x="160" y="292" width="440" height="150" rx="8" fill="#1E40AF"/><text class="tt bt" x="360" y="312">L3 &middot; Engine</text>
+<rect x="172" y="330" width="96" height="40" rx="6" fill="#fff"/><text class="tt sub" x="220" y="346">Proposer</text><text class="tt subc" x="220" y="361">1 LLM call</text>
+<rect x="282" y="330" width="96" height="40" rx="6" fill="#fff"/><text class="tt sub" x="330" y="346">Executor</text><text class="tt subc" x="330" y="361">deterministic</text>
+<rect x="392" y="330" width="96" height="40" rx="6" fill="#fff"/><text class="tt sub" x="440" y="346">Recovery</text><text class="tt subc" x="440" y="361">4 error classes</text>
+<rect x="502" y="330" width="86" height="40" rx="6" fill="#fff"/><text class="tt sub" x="545" y="346">Terminator</text><text class="tt subc" x="545" y="361">honest limit</text>
+<path class="a" d="M268,350 L282,350"/><path class="a" d="M378,350 L392,350"/><path class="a" d="M488,350 L502,350"/>
+<text class="tt bl" x="360" y="392">propose &middot; execute &middot; recover &middot; admit the limit</text>
+<text class="tt bl" x="360" y="412">selector: simple | metis | frontier</text>
+<path class="a" d="M360,442 L360,476"/>
+<rect x="240" y="476" width="240" height="40" rx="8" fill="#fff" stroke="#15803D" stroke-width="1.8"/><text class="tt io" x="360" y="496">Answer to the user</text>
+<path class="ah" d="M480,129 L630,129 L630,496 L484,496"/>
+<path class="ah" d="M480,193 L630,193"/>
+<text class="hit" x="548" y="120">hit &rarr; answer</text>
+<path class="ah" d="M600,367 L630,367"/>
+</svg>
+<figcaption>The four-layer cascade: each layer tries to answer; if it doesn&rsquo;t recognize the request it passes to the next. Fastpath and Autopath answer in a few milliseconds without the model; the engine (L3) calls it once.</figcaption>
+</figure>
+
+<div class="layer-card l0">
+ <div class="side">
+ <div class="lnum">L0</div>
+ <h3>Fastpath</h3>
+ <div class="label">self-learned shortcuts &middot; stateful</div>
+ </div>
+ <div class="body">
+ <p><strong>File:</strong> <code>runtime/engine/fastpath.py</code> &middot; store <code>fastpaths.sqlite</code>.</p>
+ <p><strong>What it does:</strong> the first of the two stateful layers. It recognizes the requests already solved successfully by the full plan: the shortcut is auto-produced on every successful turn (valves: removal from the admin console and aging). Recognition is two-stage: first an exact fingerprint compare (<em>hash</em>, under 5&nbsp;ms, zero model), then a meaning compare with BGE-M3 embeddings (<em>cosine</em>, under 150&nbsp;ms). On a match, it runs the saved plan immediately.</p>
+ <p><strong>When it wins:</strong> always, if there&rsquo;s a match. A self-learned shortcut takes precedence over everything else.</p>
+ </div>
+</div>
+
+<div class="layer-card l1">
+ <div class="side">
+ <div class="lnum">L1</div>
+ <h3>Autopath</h3>
+ <div class="label">learned autopaths &middot; stateful</div>
+ </div>
+ <div class="body">
+ <p><strong>File:</strong> <code>runtime/engine/autopath.py</code> &middot; store <code>autopath.sqlite</code>.</p>
+ <p><strong>What it does:</strong> the second stateful layer, the memory that grows on its own. It keeps the plans that worked, indexed by the meaning of the request. It searches first by semantic similarity (clusters of related requests) and then by exact intent match. If it recognizes the request, it runs the already-proven plan without calling the model.</p>
+ <p><strong>When it acts:</strong> after Fastpath, only if the intent is complete (verb + object recognized). It also records every turn so it can learn in the future.</p>
+ </div>
+</div>
+
+<div class="layer-card l2">
+ <div class="side">
+ <div class="lnum">L2</div>
+ <h3>Validator</h3>
+ <div class="label">plan check &middot; stateless</div>
+ </div>
+ <div class="body">
+ <p><strong>File:</strong> <code>runtime/engine/validator.py</code>.</p>
+ <p><strong>What it does:</strong> a deterministic check of a freshly proposed plan, <em>before</em> running it and without the model. It keeps nothing between turns: it is the first of the two stateless layers. It verifies that the cited tools exist, that arguments have valid form, that references between steps point at something real. If it finds errors, it asks the engine to re-propose once. That way a trivial mistake is fixed without even starting execution.</p>
+ <p><strong>When it acts:</strong> between proposal and execution. On by default.</p>
+ </div>
+</div>
+
+<div class="layer-card l3">
+ <div class="side">
+ <div class="lnum">L3</div>
+ <h3>Engine</h3>
+ <div class="label">propose &middot; execute &middot; recover &middot; stateless</div>
+ </div>
+ <div class="body">
+ <p><strong>File:</strong> <code>runtime/engine/{proposer,executor,recovery,terminator}.py</code>.</p>
+ <p><strong>What it does:</strong> the heart of the engine, four stateless components working in sequence. The <strong>Proposer</strong> asks the model for the whole plan in a single call. The <strong>Executor</strong> carries it out step by step, fully deterministically. <strong>Recovery</strong> kicks in if a step fails: it classifies the error and tries an alternative. The <strong>Terminator</strong> is the last honest resort: if there&rsquo;s no way out, it tells the user what&rsquo;s missing.</p>
+ <p><strong>When it acts:</strong> only if neither Fastpath nor Autopath recognized the request.</p>
+ </div>
+</div>
+
+<div class="callout tip">
+<strong>Two layers with memory, two without.</strong>
+The backbone of the engine is this asymmetry: only <strong>L0 (fastpath)</strong>
+and <strong>L1 (autopath)</strong> hold state that persists and grows with use
+&mdash; they are the system&rsquo;s memory. The fastpath recognizes the
+<em>same</em> request already solved; the autopath recognizes a plan
+generalized to a <em>cluster</em> of related requests, promoted by positive
+feedback. The Validator (L2) and the engine (L3), by contrast, are stateless:
+they re-check and rebuild the plan from scratch every time, remembering no past
+turns. Learning is the memory&rsquo;s job; reasoning is the engine&rsquo;s.
+</div>
+
+<div class="callout note">
+<strong>A single entry point.</strong>
+All of this is orchestrated by <code>runtime/engine/dispatch.py</code>, which
+exposes a single turn function and annotates which layer answered
+(<code>fastpath</code>, <code>autopath</code>, <code>engine</code>,
+<code>recovery</code> or <code>terminator</code>). The dispatcher knows nothing
+about application domains: it only orchestrates the layers. Adding a new engine
+or a new recovery strategy doesn&rsquo;t require touching the other layers.
+</div>
+
+<h1 id="cap5">5. The cascade through a turn</h1>
+
+<p>
+Here is the full path, from the user&rsquo;s message to the final answer. Read
+it top to bottom: each level is tried only if the one above hasn&rsquo;t
+already resolved.
+</p>
+
+<pre class="ascii">
+ USER: "find the spam mail and move it to trash"
+ |
+ v
+ +-------------------+
+ | fast_path (pre) | regex on trivial patterns ("what time is it", "where am I")
+ | (zero LLM) | --> match? answer in ~50ms and stop
+ +-------------------+
+ | (no match)
+ v
+ +-------------------+
+ | intent_extractor | fast-tier LLM ~370ms
+ | verb + object + | --> (verb="move", object="messages",
+ | keywords | keywords=["spam","trash"])
+ +-------------------+
+ |
+ v
++--------------------------------------------------------------+
+| ENGINE (engine/dispatch.run_turn) |
+| |
+| +----------------+ |
+| | L0 Fastpath | hash (<5ms) + BGE-M3 cosine (<150ms) |
+| | lookup | --> self-learned shortcut ? execute |
+| +----------------+ |
+| | (miss) |
+| v |
+| +----------------+ |
+| | L1 Autopath | semantic match + intent_hash |
+| | lookup | --> learned autopath ? execute (no LLM) |
+| +----------------+ |
+| | (miss) |
+| v |
+| +----------------+ |
+| | L3 Proposer | wise-tier LLM, 1-shot |
+| | propose | --> plan JSON {steps, fillers, |
+| | (Qwen 35B-A3B) | final_message} |
+| +----------------+ |
+| | |
+| v |
+| +----------------+ |
+| | L2 Validator | typecheck plan; error? --> re-propose |
+| +----------------+ |
+| | |
+| v |
+| +----------------+ |
+| | Executor | for each step: |
+| | (deterministic)| - resolve from_step + FILLER + RUNTIME |
+| +----------------+ - invoke_executor + vaglio + accumulate|
+| | |
+| v |
+| +----------------+ |
+| | render final | template "Found {N} mail, moved" |
+| +----------------+ |
++--------------------------------------------------------------+
+ |
+ v (ok? yes --> Autopath records + answers user)
+ |
+ | (error? yes --> Recovery)
+ v
+ +-------------------+
+ | Recovery | classify error: wrong_tool / wrong_args /
+ | classify + retry | missing_input
+ | | --> re-propose excluding the failed tool
+ | | --> execute again
+ +-------------------+
+ |
+ v (ok? yes --> answer)
+ |
+ | (out_of_scope or recovery failed? --> Terminator)
+ v
+ +-------------------+
+ | Terminator | honest explanation: cause + suggested action
+ | honest dead-end | --> record the gap in terminator_log.sqlite
+ | | --> "Can't resolve: X. To proceed: Y."
+ +-------------------+
+ |
+ v
+ USER: final message (answer or action request)
+</pre>
+
+<div class="callout note">
+<strong>A note on the order.</strong>
+The Validator is layer&nbsp;2 by numbering, but it acts <em>after</em> the
+proposal: its natural place is between the Proposer and the Executor, because
+it checks the plan that was just proposed. The numbering reflects design
+priority, not the exact temporal order.
+</div>
+
+<h1 id="cap6">6. The plan: what the engine proposes</h1>
+
+<p>
+The Proposer doesn&rsquo;t produce free text: it produces a structured object
+we call the <em>framework</em> (the plan). It has three parts:
+</p>
+
+<ul>
+ <li><strong>steps</strong> &mdash; the ordered list of tools to call, with their arguments;</li>
+ <li><strong>fillers</strong> &mdash; small slots to fill on the fly (e.g. &laquo;what is the trash folder for this account?&raquo;);</li>
+ <li><strong>final_message</strong> &mdash; the template for the final message, with placeholders to be filled from the results.</li>
+</ul>
+
+<pre><code>{
+ "steps": [
+ {"tool": "find_messages",
+ "args": {"folder": "INBOX", "query": "is:unread"}},
+ {"tool": "classify_entries",
+ "args": {"from_step": 1, "dimension": "spam"}},
+ {"tool": "filter_entries",
+ "args": {"from_step": 2, "where_field": "spam", "where_value": "spam"}},
+ {"tool": "move_messages",
+ "args": {"from_step": 3, "dst_folder": "${FILLER:trash_folder}"}}
+ ],
+ "fillers": {
+ "trash_folder": {
+ "prompt": "What is the trash folder for this account?",
+ "default": "Trash",
+ "tier": "fast"
+ }
+ },
+ "final_message": "Moved ${step4.ok_count} mail to trash."
+}
+</code></pre>
+
+<p>
+Inside the arguments, four kinds of placeholder appear, which the Executor
+resolves deterministically at the right moment:
+</p>
+
+<table>
+<thead><tr><th style="width:26%">Placeholder</th><th>Meaning</th></tr></thead>
+<tbody>
+<tr><td><code>from_step: N</code></td><td>Take the <code>entries</code> produced by step N (1-based) and pass them to this step.</td></tr>
+<tr><td><code>${stepN.field}</code></td><td>Extract a field from step N&rsquo;s result (supports nested paths and projections). Used mostly in the final message.</td></tr>
+<tr><td><code>${FILLER:name}</code></td><td>A slot filled on the fly by a small <em>fast-tier</em> model call (cached), or by the default value.</td></tr>
+<tr><td><code>${RUNTIME:key}</code></td><td>Turn context value: <code>actor</code> (who is speaking), <code>lang</code>, <code>channel</code>.</td></tr>
+</tbody>
+</table>
+
+<div class="callout note">
+<strong>Why the proposal is reliable.</strong>
+The model call can be constrained by a deterministic grammar (GBNF): the
+decoder rejects, in real time, any token that would violate the schema, so the
+plan can&rsquo;t come out malformed. Also, the model doesn&rsquo;t see every
+tool in the system, only the ones most relevant to the request (about a dozen,
+selected by affinity): the prompt stays short and the proposal faster and more
+precise.
+</div>
+
+<h1 id="cap7">7. Layer 0 &mdash; Fastpath: self-learned shortcuts</h1>
+
+<p>
+The Fastpath is the fast lane. Every turn successfully completed by the
+full plan creates the shortcut on its own &mdash; the chains are executors
+already vetted and tested, no approval step &mdash;: from then on, that
+request (and its near variants) skip everything else and are served
+directly. Shortcuts age out on their own (never reused, stale, total cap),
+die when an executor supersedes them or disappears, and can be removed by
+hand from the admin console.
+</p>
+
+<p>
+Recognition happens in two stages. First an <em>exact</em> compare on the
+phrase fingerprint (deterministic, under 5&nbsp;ms, no model at all). If that
+isn&rsquo;t enough, a <em>meaning</em> compare: the request is turned into a
+vector with BGE-M3 and compared by cosine against the saved shortcuts (under
+150&nbsp;ms). A self-learned shortcut always wins, even over an
+automatically-learned autopath.
+</p>
+
+<h1 id="cap8">8. Layer 1 &mdash; Autopath: autopaths learned from feedback</h1>
+
+<p>
+The Autopath is the memory that grows on its own, with no one writing rules by
+hand. It keeps three tables in its sqlite store:
+</p>
+
+<table>
+<thead><tr><th style="width:22%">Table</th><th>What it holds</th><th>When it&rsquo;s written</th></tr></thead>
+<tbody>
+<tr>
+ <td><code>autopaths</code></td>
+ <td>Plans that worked, indexed by request meaning and grouped by semantic cluster. For each: the plan, usage counters, a composite score, the status (champion/challenger).</td>
+ <td>Promoted automatically when a plan proves itself on the same kind of request.</td>
+</tr>
+<tr>
+ <td><code>anti_autopaths</code></td>
+ <td>Plans that failed repeatedly. For each: the reason and an expiry (about 30 days).</td>
+ <td>When a plan fails repeatedly on the same intent. At expiry, the system tries again.</td>
+</tr>
+<tr>
+ <td><code>observations</code></td>
+ <td>A record of every turn: intent, executed plan, latency, semantic vector. Append-only.</td>
+ <td>Always, at the end of a turn. It&rsquo;s the source of truth for promoting or retiring autopaths.</td>
+</tr>
+</tbody>
+</table>
+
+<p>
+The search proceeds in two stages: first by <em>semantic similarity</em> (the
+request falls into the cluster of related requests already seen and the
+&laquo;champion&raquo; plan of that cluster is served), then, if needed, by
+<em>exact</em> intent match. When several plans compete for the same cluster, a
+champion/challenger scheme applies: the challenger must prove itself better
+before it can take the champion&rsquo;s place.
+</p>
+
+<div class="callout tip">
+<strong>The practical effect.</strong>
+The first time you ask &laquo;find the spam mail and move it to trash&raquo;,
+the model takes a few seconds to generate the plan. The second time, the
+Autopath already has that plan in memory: the pipeline starts in a few
+milliseconds. From then on, that request no longer goes through the language
+model.
+</div>
+
+<h1 id="cap9">9. Layer 2 &mdash; the plan check</h1>
+
+<p>
+Before executing a freshly proposed plan, the Validator runs it through a
+sieve, purely deterministically and without the model:
+</p>
+
+<ul>
+ <li>do the cited tools actually exist in the catalog?</li>
+ <li>do the arguments have the right shape (no placeholders left empty, no required fields missing)?</li>
+ <li>do references between steps (<code>from_step</code>, <code>${stepN.&hellip;}</code>) point at steps that exist?</li>
+</ul>
+
+<p>
+If it finds even one error, it doesn&rsquo;t start execution: it asks the
+Proposer to re-propose once, excluding the wrong plan. That way a typo or a
+crooked argument is fixed at no cost, without wasting a heavier recovery call.
+It&rsquo;s on by default.
+</p>
+
+<h1 id="cap10">10. Layer 3 &mdash; Proposer, Executor, Recovery, Terminator</h1>
+
+<h2>Proposer &mdash; the one-shot proposal</h2>
+
+<p>
+The Proposer is the only component that actually talks to the language model.
+It receives the request and the extracted intent and produces, in a single
+call, the whole plan. No step-by-step reasoning, no iterative tool-calls: a
+single structured object.
+</p>
+
+<p>
+There are selectable variants (the <code>METNOS_ENGINE</code> setting):
+</p>
+
+<ul>
+ <li><strong>simple</strong> &mdash; one proposal, direct. The fastest.</li>
+ <li><strong>metis</strong> (default in production) &mdash; generates two or three alternative plans and picks the best with a deterministic score that prefers short pipelines, coherent with the verb and with few calls. It costs a fraction of a second more, but covers ambiguous cases better. It also keeps a small cache: on a re-proposal, it serves a ready alternative without calling the model again.</li>
+ <li><strong>frontier</strong> &mdash; delegates the proposal to a cloud model (opt-in), as a last resort.</li>
+</ul>
+
+<h2>Executor &mdash; execution without doubts</h2>
+
+<p>
+The Executor is the most rigorous component: zero language model in the main
+loop, only deterministic Python. For each step: it resolves references to
+previous steps (<code>from_step</code>), fills the <code>${FILLER:&hellip;}</code>
+slots (a small <em>fast</em> call with cache) and the context values
+<code>${RUNTIME:&hellip;}</code>, validates the arguments, calls the
+tool&rsquo;s executor, passes the result to the
+<a href="vaglio.html">Vaglio</a> (the safety judge) and accumulates. At the
+end it composes the final message from the template with the
+<code>${stepN.field}</code> fields.
+</p>
+
+<div class="callout tip">
+<strong>A hidden virtue: reproducibility.</strong>
+The same plan run on the same data snapshot always produces the same outcome.
+That means a past turn can be <em>replayed</em>, and tests can make precise
+assertions &mdash; impossible with a stochastic planner.
+</div>
+
+<h2>Recovery &mdash; the targeted retry</h2>
+
+<p>
+If a step fails, Recovery steps in. Its first job is to understand <em>what
+kind</em> of error it is, by reading the structured error class the executor
+returns (no parsing of multilingual text):
+</p>
+
+<table>
+<thead><tr><th>Class</th><th>When</th><th>Strategy</th></tr></thead>
+<tbody>
+<tr>
+ <td style="color:var(--l3);font-weight:600;">wrong_tool</td>
+ <td>The chosen tool wasn&rsquo;t right: it failed or is semantically wrong.</td>
+ <td>Re-propose a different plan, excluding that tool.</td>
+</tr>
+<tr>
+ <td style="color:var(--l3);font-weight:600;">wrong_args</td>
+ <td>The tool was right but the arguments were malformed: an empty pipeline, a step limit hit, a reference pointing nowhere.</td>
+ <td>Re-propose with canonical arguments and explicit references.</td>
+</tr>
+<tr>
+ <td style="color:var(--l3);font-weight:600;">missing_input</td>
+ <td>A prerequisite is missing: an index not built, a non-existent folder, a filter producing zero results.</td>
+ <td>Re-propose an alternative; if the user is needed, hand off to the Terminator.</td>
+</tr>
+<tr>
+ <td style="color:#a0522d;font-weight:600;">out_of_scope</td>
+ <td>A non-recoverable error: it needs a physical action from the user (e.g. sharing their location) or a capability is missing entirely.</td>
+ <td>Recovery does <em>not</em> step in: it hands off immediately to the Terminator.</td>
+</tr>
+</tbody>
+</table>
+
+<p>
+Recovery attempts <em>one</em> alternative only, excluding both the failed plan
+and the tool that caused the problem. No infinite loops: if the alternative
+doesn&rsquo;t succeed, the floor passes to the Terminator.
+</p>
+
+<h2>Terminator &mdash; the honest dead-end</h2>
+
+<p>
+The Terminator is the subtlest piece of the system. It&rsquo;s not an
+&laquo;error handler&raquo;: it&rsquo;s an honest recognition of the limit.
+When its turn comes, it means everything else has tried and failed. The
+Terminator doesn&rsquo;t fake success: it explains the cause to the user and
+suggests a concrete action, and it records the gap in a store
+(<code>terminator_log.sqlite</code>) with a counter of how many times it has
+recurred.
+</p>
+
+<p>
+The cause and action messages aren&rsquo;t hardcoded strings: they go through
+the multilingual dictionary, so the user reads them in their own language. The
+turn always closes with a readable answer, never with silence or a raw error.
+</p>
+
+<div class="callout tip">
+<strong>The gap is <em>evolutionary</em>.</strong>
+When the user resolves the missing piece (shares their location, enables an
+autopath, builds an index), the same request returns to the normal cascade and
+typically becomes a learned autopath after a few confirmations. Every recognized
+dead-end is a chance to grow: the occurrence count is visible in the admin
+panel and helps decide what to fill structurally.
+</div>
+
+<h1 id="cap11">11. How it learns and speeds up</h1>
+
+<p>
+Under every chat answer, the user sees small feedback buttons:
+</p>
+
+<ul>
+ <li><strong>&#10003; green</strong> (&laquo;right answer&raquo;): the plan moves one step closer to being promoted to a learned autopath.</li>
+ <li><strong>&#10007; red</strong> (&laquo;wrong answer&raquo;): the plan moves closer to being put among the anti-autopaths and excluded for a while.</li>
+ <li><strong>&#8634; orange</strong> (&laquo;retry&raquo;): a transient exclusion, just for the next turn.</li>
+</ul>
+
+<p>
+Pressing anything is optional: if a pipeline reaches the end without errors,
+the Autopath counts it as a positive observation anyway. Explicit feedback
+speeds things up and refines them, but the system learns from silence too. The
+more it&rsquo;s used, the more often requests are served from memory instead of
+the model &mdash; and therefore the faster.
+</p>
+
+<h1 id="cap12">12. What changes for the user</h1>
+
+<h2>1. First requests are faster</h2>
+<p>
+Even on the first try, the engine doesn&rsquo;t query the step-by-step planner
+but makes a single proposal. It feels like a system that &laquo;thinks for a
+moment&raquo; instead of &laquo;freezing for a minute&raquo;.
+</p>
+
+<h2>2. Repeated requests are instant</h2>
+<p>
+After a few turns of the same family of requests, the autopath is learned and the
+following turns start from memory. The answer arrives in a fraction of a
+second: that&rsquo;s the difference between &laquo;an assistant&raquo; and
+&laquo;an immediate reaction&raquo;.
+</p>
+
+<h2>3. Failures become informative</h2>
+<p>
+When something can&rsquo;t be done, the Terminator says <em>exactly</em> what
+is needed. No vague &laquo;generic error&raquo; messages, no loops of useless
+retries: a clear sentence, an operational hint, and &mdash; where appropriate
+&mdash; a dialog to resolve the missing piece on the spot.
+</p>
+
+<h1 id="cap13">13. Why it beats LLM-in-loop frameworks</h1>
+
+<p>
+Frameworks for &laquo;LLM agent workflows&raquo; (LangGraph and the like) cover
+part of the same problem: reducing the model&rsquo;s in-loop variance by giving
+structure to tasks. But they have limits this engine doesn&rsquo;t:
+</p>
+
+<table>
+<thead><tr><th style="width:22%">Aspect</th><th>LLM-in-loop frameworks</th><th>Metnos engine</th></tr></thead>
+<tbody>
+<tr>
+ <td>Origin of the workflows</td>
+ <td>hand-written, manual maintenance</td>
+ <td>optional seed, but they <em>grow on their own</em> from feedback &#10003; &#10007; &#8634;</td>
+</tr>
+<tr>
+ <td>Learning</td>
+ <td>no</td>
+ <td>yes: a memory populated from turns that went well</td>
+</tr>
+<tr>
+ <td>Anti-error</td>
+ <td>no</td>
+ <td><code>anti_autopaths</code> table that excludes failed paths</td>
+</tr>
+<tr>
+ <td>Structured recovery</td>
+ <td>generic retries</td>
+ <td>4 orthogonal error classes + targeted re-proposal</td>
+</tr>
+<tr>
+ <td>Honest dead-end</td>
+ <td>infinite retry or crash</td>
+ <td>Terminator: classifies + suggests an action</td>
+</tr>
+<tr>
+ <td>Traceability</td>
+ <td>none, or text logs</td>
+ <td><code>observations</code> record + admin panel</td>
+</tr>
+<tr>
+ <td>Name consistency</td>
+ <td>free names</td>
+ <td>closed vocabulary (verb + object + qualifier) guaranteed</td>
+</tr>
+</tbody>
+</table>
+
+<h2>The analogy that makes it click</h2>
+
+<p>
+Traditional LLM-in-loop frameworks are like <em>artists with a blank
+canvas</em>: every turn they reinvent the composition. Lovely creativity, but
+the risk of grabbing the wrong tool is real and every piece costs.
+</p>
+
+<p>
+The Metnos engine is like a <em>craftsman with a sketchbook</em>: the model
+sketches the plan once (focused, constrained creativity), and from then on the
+craftsman reopens the book at the right page. The model&rsquo;s creativity is
+still there, but it&rsquo;s <em>confined to the moment of invention</em>:
+execution is a faithful reproduction of the sketch. That avoids hallucinations
+during execution, gains speed, and reaches zero cost once the book is already
+rich.
+</p>
+
+<h1 id="cap14">14. Honest numbers</h1>
+
+<p>
+On a sample of real requests (mail, files, web, location, time, multi-turn
+dialogs, scheduling, contacts), comparing the iterative cloud planner with the
+local single-proposal engine:
+</p>
+
+<table class="benchtable">
+<thead><tr><th>Mode</th><th>Coverage</th><th>Average latency</th><th>Model</th><th>Cost</th></tr></thead>
+<tbody>
+<tr>
+ <td>Iterative planner (cloud, step-by-step)</td>
+ <td>equivalent</td>
+ <td>~76 s</td>
+ <td>cloud frontier</td>
+ <td class="bench-loss">paid</td>
+</tr>
+<tr>
+ <td>Local engine (single proposal + memory)</td>
+ <td class="bench-win">equivalent</td>
+ <td class="bench-win">~12 s cold, &lt;1 s from memory</td>
+ <td class="bench-win">local Qwen 3.6 35B-A3B</td>
+ <td class="bench-win">0</td>
+</tr>
+</tbody>
+</table>
+
+<p>
+Several times faster, equivalent coverage, zero cost (the model runs locally on
+unified-memory hardware). And latency drops further as the memory fills up:
+recurring requests start from cache, under a second.
+</p>
+
+<div class="callout warning">
+<strong>Honesty about the limit.</strong>
+Some requests can&rsquo;t be satisfied in any mode: without a shared location
+you can&rsquo;t say where you are, without an enabled autopath you can&rsquo;t
+search that service. In those cases the Terminator collects the failure and
+explains to the user what&rsquo;s needed. <em>No one &laquo;wins&raquo;
+falsely</em>: the failure is classified and the user knows what to do.
+</div>
+
+<h1 id="cap15">15. Open questions</h1>
+
+<ul>
+ <li><strong>Autopath validity over time.</strong> When the executor pool changes (a new one synthesized, an old one removed), the autopaths that used them must be invalidated. Current solution: the plan fingerprint changes with the catalog, so a stale autopath simply isn&rsquo;t found anymore.</li>
+ <li><strong>Per-user or shared autopaths.</strong> If two users on the same host share the same intent (&laquo;give me tomorrow&rsquo;s agenda&raquo;), is a per-user or global autopath better? Current choice: per-user, for privacy. To be revisited if a bottleneck emerges.</li>
+ <li><strong>Seasonal autopaths.</strong> The anti-autopath expiry is empirical. Very rare paths might decay while still useful: a possible fix is an expiry graduated by observed frequency.</li>
+ <li><strong>When to go to the cloud.</strong> If the local proposal fails and recovery doesn&rsquo;t save it, there&rsquo;s the option to consult a frontier model. When to trigger it automatically vs. leave it to the user? The escalation interface already covers the case with a multiple-choice dialog.</li>
+</ul>
+
+</body>
+</html>

@@ -261,27 +261,28 @@ it. They come in a few species, each with its shape and role:
 <g transform="translate(20,220)">
  <circle cx="6" cy="6" r="5" fill="#1A477A"/><text class="lbl" x="18" y="10">mnest (passage between executors)</text>
  <rect x="220" y="0" width="14" height="14" rx="2" fill="#548235"/><text class="lbl" x="240" y="10">executor</text>
- <rect x="320" y="2" width="22" height="10" rx="5" fill="#A0522D"/><text class="lbl" x="350" y="10">fast-path</text>
- <path d="M520,2 Q535,-13 550,2 L550,22 Q535,37 520,22 Z" fill="none" stroke="#6B21A8" stroke-width="1.5" stroke-dasharray="3,2"/><text class="lbl" x="560" y="14">proto-mnest</text>
+ <rect x="320" y="2" width="22" height="10" rx="5" fill="#A0522D"/><text class="lbl" x="350" y="10">fastpath / autopath</text>
+ <path d="M540,2 Q555,-13 570,2 L570,22 Q555,37 540,22 Z" fill="none" stroke="#6B21A8" stroke-width="1.5" stroke-dasharray="3,2"/><text class="lbl" x="580" y="14">proto-mnest</text>
 </g>
 <text class="lbl-sm" x="360" y="260" text-anchor="middle">The particles drift (animation: hover over the illustration).</text>
 </svg>
-<figcaption>Fig. 1 &mdash; The mnestome broth at rest. Four species of particles: mnests (observed passages), executors (graph nodes), fast-paths (introspective shortcuts), and proto-mnests (desires not yet fulfilled).</figcaption>
+<figcaption>Fig. 1 &mdash; The mnestome broth at rest. Four species of particles: mnests (observed passages), executors (graph nodes), preformed paths &mdash; fastpath (L0) and autopath (L1) &mdash; and proto-mnests (desires not yet fulfilled).</figcaption>
 </figure>
 
 <p>
 Each particle has a story: a <strong>mnest</strong> is the memory
 that &ldquo;A served B&rdquo;; an <strong>executor</strong> is a
 small programme that knows how to do one specific thing; a
-<strong>fast-path</strong> is a shortcut the system has learned (the
-canonical request &ldquo;X is solved like this&rdquo;); a
-<strong>proto-mnest</strong> is a mnest half-done: real src, dst
-desired but not yet existing. You can see immediately in the drawing
+<strong>preformed path</strong> is a shortcut the system has learned
+&mdash; the <em>fastpath</em> (L0) for the identical request, the
+<em>autopath</em> (L1) for the generalised form of a group of related
+requests; a <strong>proto-mnest</strong> is a mnest half-done: real
+src, dst desired but not yet existing. You can see immediately in the drawing
 that the proto-mnest has a different shape, a sort of open receptor:
 there is an empty slot waiting to be filled.
 </p>
 
-<h2>From repetition to fastpath</h2>
+<h2>From repetition to fastpath (L0) and autopath (L1)</h2>
 
 <p>
 In the broth, nothing is truly random. Particles attract each other
@@ -292,18 +293,25 @@ turn into <code>get_urls</code> followed by
 <code>describe_entries</code> &mdash; the mnests observed across
 the three turns refer to the same pair of executors. Those mnests
 form a <em>cross-turn cluster</em>: evidence that &ldquo;this
-pipeline works&rdquo;.
+sequence works&rdquo;.
 </p>
 
 <p>
-At this point something interesting happens: the cluster does not
-remain a blurry cloud, it crystallises. It becomes a
-<strong>fastpath</strong>, a preformed path that describes the
-sequence in a compact, directly executable form. From that moment
-on, the PLANNER no longer needs to call the language model to
-re-plan the pipeline from scratch: it reads the fastpath and uses
-it directly. The figure below shows the four phases &mdash;
-observation, cluster, crystallisation, reuse &mdash; in sequence.
+The memoisation that follows comes in two forms, and it is worth
+keeping them apart because the Metnos glossary separates them with
+care. The <strong>fastpath</strong> (level <strong>L0</strong>) is
+the shortcut for the <em>same request</em>: a question already solved,
+recognised by fingerprint or by semantic proximity, is served again
+with the plan already prepared &mdash; concrete arguments included.
+The <strong>autopath</strong> (level <strong>L1</strong>) is the next
+step: when the same request shape returns for many different contents,
+the system abstracts a <em>generalised skeleton</em> from it &mdash;
+the executor sequence without the specific arguments &mdash; that holds
+for the whole family of related questions. In both cases the PLANNER no
+longer calls the language model to re-plan the sequence from scratch:
+it reads the preformed path and runs it. The figure below shows the
+four phases &mdash; observation, cluster, crystallisation, reuse
+&mdash; in sequence.
 </p>
 
 <figure>
@@ -458,7 +466,7 @@ observation, cluster, crystallisation, reuse &mdash; in sequence.
  <text class="lab2-tick" x="440" y="358" text-anchor="middle">phase 3</text>
  <text class="lab2-tick" x="600" y="358" text-anchor="middle">phase 4</text>
 </svg>
-<figcaption>Fig. 2 &mdash; The birth of a fastpath. Three repeated turns produce mnests that converge into a cluster, the cluster crystallises into a preformed path, and the PLANNER uses it directly, skipping the language model.</figcaption>
+<figcaption>Fig. 2 &mdash; The birth of a preformed path. Three repeated turns produce mnests that converge into a cluster; the cluster crystallises into a fastpath (L0) and, when the same shape returns for different contents, into an autopath (L1). From that moment the PLANNER runs it directly, skipping the language model.</figcaption>
 </figure>
 
 <p>
@@ -630,22 +638,25 @@ a possible dst that would close it&rdquo;.
 <figcaption>Fig. 4 &mdash; The synthesis dance. Synt enters the receptor's gap, works on creating a new executor, leaves it in place and exits. The proto-mnest becomes an active mnest: the new capability joins the executor pool.</figcaption>
 </figure>
 
-<h2>Aggregation: fast-paths that compose</h2>
+<h2>Aggregation: from shortcut to generalised plan</h2>
 
 <p>
-Another interesting phenomenon happens in the broth: two fast-paths
-that live adjacent and often appear in the same turn end up
-hooking together to form a longer fast-path.
+Another interesting phenomenon happens in the broth: passages that
+recur often, side by side in the same turn, end up consolidating into
+a longer, more stable path.
 </p>
 
 <p>
-Consider a typical turn: &ldquo;download me this page&rdquo; triggers
-an L1 single-tool fast-path; immediately after, &ldquo;tell me what
-it says&rdquo; triggers another L1 fast-path. The system observes
-the succession, records the sequence, and when it repeats three
-times promotes it to an <em>L2 multi-step fast-path</em>. From that
-moment on the pair &laquo;download + describe&raquo; is a single
-recognised sequence.
+Consider a typical turn: &ldquo;download me this page&rdquo; and then
+&ldquo;tell me what it says&rdquo;. The first time, it is the planner
+that composes the sequence; when the exact same request returns, a
+<strong>fastpath</strong> (L0) serves it ready-made. But if the same
+<em>shape</em> &mdash; download a page, then describe it &mdash;
+reappears for ever-different pages, the system abstracts a skeleton
+without specific arguments and promotes it to an <strong>autopath</strong>
+(L1): a generalised plan that holds for the whole family of related
+requests, not just the literal one. From that moment on &laquo;download
++ describe&raquo; is a single recognised sequence, whatever the page.
 </p>
 
 <figure>
@@ -658,35 +669,34 @@ recognised sequence.
 </style>
 <rect class="bg-fill5" x="0" y="0" width="720" height="280"/>
 <rect class="fp-mono" x="80" y="60" width="40" height="14" rx="7"/>
-<text class="lbl5" x="100" y="92" text-anchor="middle" style="font-size:9px;">L1 &laquo;download&raquo;</text>
+<text class="lbl5" x="100" y="92" text-anchor="middle" style="font-size:9px;">L0 &laquo;download&raquo;</text>
 <rect class="fp-mono2" x="260" y="60" width="40" height="14" rx="7"/>
-<text class="lbl5" x="280" y="92" text-anchor="middle" style="font-size:9px;">L1 &laquo;describe&raquo;</text>
+<text class="lbl5" x="280" y="92" text-anchor="middle" style="font-size:9px;">L0 &laquo;describe&raquo;</text>
 <rect class="fp-poly" x="320" y="150" width="90" height="14" rx="7"/>
-<text class="lbl5" x="365" y="182" text-anchor="middle" style="font-size:9px;font-weight:600;">L2 = download + describe</text>
+<text class="lbl5" x="365" y="182" text-anchor="middle" style="font-size:9px;font-weight:600;">L1 = download + describe</text>
 <rect class="fp-tri" x="520" y="120" width="140" height="60" rx="6"/>
-<text class="lbl5" x="590" y="145" text-anchor="middle" style="fill:#fff;font-weight:600;font-size:11px;">describe_url</text>
+<text class="lbl5" x="590" y="145" text-anchor="middle" style="fill:#fff;font-weight:600;font-size:11px;">describe_urls</text>
 <text class="lbl5" x="590" y="160" text-anchor="middle" style="fill:#fff;font-size:9px;">synthesised executor</text>
-<text class="lbl5" x="590" y="200" text-anchor="middle" style="font-size:9px;color:#64748b;">threshold: 50 repetitions</text>
+<text class="lbl5" x="590" y="200" text-anchor="middle" style="font-size:9px;color:#64748b;">if the shape matures</text>
 <path d="M170,67 Q200,40 240,67" stroke="#64748B" fill="none" stroke-width="1.5" stroke-dasharray="3,2"/>
-<text class="lbl5" x="205" y="35" text-anchor="middle" style="font-size:9px;color:#64748b;">3 repetitions</text>
+<text class="lbl5" x="205" y="35" text-anchor="middle" style="font-size:9px;color:#64748b;">recurs on different contents</text>
 <path d="M365,165 L520,150" stroke="#16a34a" stroke-width="1.5" stroke-dasharray="3,2" fill="none" marker-end="url(#arrow-green3en)"/>
 <defs>
  <marker id="arrow-green3en" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
  <path d="M0,0 L0,6 L7,3 z" fill="#16a34a"/>
  </marker>
 </defs>
-<text class="lbl5" x="445" y="148" text-anchor="middle" style="font-size:9px;color:#16a34a;">L2→L3 promotion</text>
+<text class="lbl5" x="445" y="148" text-anchor="middle" style="font-size:9px;color:#16a34a;">synthesis (via proto-mnest)</text>
 </svg>
-<figcaption>Fig. 5 &mdash; Fast-path aggregation. Two L1 fast-paths combine into an L2 after three passes; after fifty, the sequence is stable enough to be unified into a single executor.</figcaption>
+<figcaption>Fig. 5 &mdash; From shortcut to generalised plan. Two L0 fastpaths of the same shape are abstracted into an L1 autopath (the sequence without arguments); if that shape matures enough, synt unifies it into a single executor (via proto-mnest).</figcaption>
 </figure>
 
 <p>
-The sequence does not stop at two. Three adjacent fast-paths can
-form a longer chain, and so on. The system keeps the whole chain,
-measures how often it repeats, and beyond a threshold (50 uses by
-default) a nightly job called <code>multi_tool_promote</code>
-presents the pipeline to synt as a proto-mnest: &ldquo;here is a
-sequence worth unifying into a single executor&rdquo;.
+The sequence does not stop at two. A generalised shape can chain
+three passages, and so on. The system keeps the chain, measures how
+often it recurs, and when an autopath is mature enough it presents it
+to synt as a proto-mnest: &ldquo;here is a sequence worth unifying into
+a single executor&rdquo;.
 </p>
 
 <h2>From pipeline to synthesis: two paths to the same outcome</h2>
@@ -701,20 +711,20 @@ another, converging at the same point.
 <strong>The direct path</strong>: the introspective functions
 observe the mnestome and identify the receptors that recur &mdash;
 those proto-mnests that present themselves in the same way turn
-after turn, threshold three recurring observations. When
-they find one stable enough, they propose directly an executor that
-would close the gap. There is no need to go through a fast-path:
-the analysis of the single receptor is enough. This is the classic
-case, and historically the first that synt learned to handle.
+after turn. When they find one stable enough, they propose directly an
+executor that would close the gap. There is no need to go through a
+preformed path: the analysis of the single receptor is enough. This is
+the classic case, and historically the first that synt learned to
+handle.
 </p>
 
 <p>
-<strong>The indirect path</strong>: an L2 fast-path pipeline that
-has accumulated enough uses (fifty by default) is promoted by the
-nightly job <code>multi_tool_promote</code> to a proto-mnest. This
-time the proto-mnest is not born from a failed request but from a
-sequence that worked many times: the desired signature describes a
-unified executor that wraps the whole chain of calls.
+<strong>The indirect path</strong>: an autopath (L1) that has worked
+many times across different contents is presented to synt as a
+proto-mnest. This time the proto-mnest is not born from a failed
+request but from a sequence that has proved itself: the desired
+signature describes a unified executor that wraps the whole chain of
+calls.
 </p>
 
 <p>
@@ -730,19 +740,19 @@ pipeline &mdash; enters the executor pool like all the others.
 </p>
 
 <div class="callout tip">
-<strong>The executor always has priority over the fast-path
+<strong>The executor always has priority over the preformed path
 (bidirectional rule).</strong>
 The rule holds in both directions of time.
-<em>From synthesis to fast-path</em>: once synthesis has produced
-the <code>describe_urls</code> executor, the aggregated pipeline
+<em>From synthesis to preformed path</em>: once synthesis has produced
+the <code>describe_urls</code> executor, the autopath
 <code>[get_urls, describe_entries]</code> that originated it is
 immediately <em>demoted</em>: its shape dissolves back into the
 broth, and every new request goes directly through the monolithic
 executor.
-<em>From candidate fast-path to non-creation</em>: symmetrically, if
-the system is about to record a new fast-path and discovers that the
-executor that would do the same thing already exists in the catalog,
-the fast-path is not created: there is nothing to memoise if the
+<em>From candidate path to non-creation</em>: symmetrically, if
+the system is about to record a new fastpath or autopath and discovers
+that the executor that would do the same thing already exists in the
+catalog, the path is not created: there is nothing to memoise if the
 unified capability is already available.
 The runtime applies the rule on the fly in the matcher (auto-demote)
 and in the recording (silent skip); the planner knows it from its
@@ -758,8 +768,8 @@ What emerges, seen from a distance, is a system in dynamic
 equilibrium: closed but alive, where every component takes part in a
 cycle. Particles are born from the observation of the turn, they
 attract by similarity, form clusters, some clusters become
-fast-paths, some fast-paths aggregate into pipelines, mature
-pipelines become proto-mnests that ask for synthesis, synthesis
+fastpaths (L0), some shapes generalise into autopaths (L1), mature
+autopaths become proto-mnests that ask for synthesis, synthesis
 produces new executors, the new executors generate further mnests
 and everything starts over.
 </p>
@@ -860,13 +870,16 @@ CREATE INDEX idx_events_ts ON events(ts);
 <h2>Table <code>canonical_query_log</code></h2>
 
 <p>
-A log of user requests in lemma form, used by the
-<a href="fast_path.html">introvertive fast-path</a> (L1 single-tool,
-). Every time the planner decides the first executor of a
-turn, a row is inserted or reinforced here: canonical query (lowercase
-condensed form), chosen tool, observed argument values. After three
-consolidated passes, the <code>canonical_matcher</code> uses BGE-M3
-cosine to match new requests against this log and skip the planner.
+A log of user requests in lemma form (ADR 0149). Every time the
+planner decides the first executor of a turn and produces a non-empty
+canonical request, a row is inserted or reinforced here: canonical
+query (lowercase condensed form), chosen tool, observed argument
+values. Today this table is <em>telemetry only</em>: the old matcher
+that re-read it to skip the planner has been retired because it is
+redundant with the engine's L0 level. The live request cache is now the
+<strong>fastpath</strong> (L0, same request) and the
+<strong>autopath</strong> (L1, generalised shape); see
+<a href="fast_path.html">fast_path.html</a>.
 </p>
 
 <pre><code>CREATE TABLE canonical_query_log (
@@ -886,15 +899,15 @@ cosine to match new requests against this log and skip the planner.
 </code></pre>
 
 <p>
-The <code>args_observed</code> column (added via
-idempotent migration) stores the concrete argument values observed
-on the first planner pass. When a new request matches the row, the
-argument extractor
-(<a href="fast_path.html#cap10"><code>args_extractor</code></a>)
-reuses them directly, avoiding re-running regex extraction or
-calling an LLM. The analogous multi-step sequences live in a separate
-sqlite (<code>multi_tool_paths.sqlite</code>); see
-<a href="fast_path.html">fast_path.html</a> for the full picture.
+The <code>args_observed</code> column (added via idempotent migration)
+stores the concrete argument values observed on the first planner pass:
+when a related request returns, the argument extractor
+(<code>args_extractor</code>) reuses them directly, avoiding re-running
+extraction or calling an LLM. The generalised plans for request
+clusters &mdash; the autopaths (L1) &mdash; live in a separate SQLite
+store (<code>autopath.sqlite</code>, tables <code>autopaths</code> and
+<code>anti_autopaths</code>); see <a href="fast_path.html">fast_path.html</a>
+for the full picture.
 </p>
 
 <h2>View <code>v_mnestome</code></h2>

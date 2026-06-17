@@ -107,7 +107,7 @@ Riferimento di implementazione: <code>/opt/metnos/runtime/pairing.py</code>, <co
  <li><a href="#cap7">Integrazione col daemon Telegram</a></li>
  <li><a href="#cap8">Sicurezza</a></li>
  <li><a href="#cap9">Test</a></li>
- <li><a href="#cap10">Limiti </a></li>
+ <li><a href="#cap10">Limiti</a></li>
  <li><a href="#cap11">Multi-user: <code>users.db</code> e <code>/start</code></a></li>
  <li><a href="#cap12">Login admin web</a></li>
 </ol>
@@ -157,7 +157,7 @@ Tre livelli di autonomia, una sola dimensione (vedi capitolo 4 dell'Architettura
 
 <ul>
  <li><code>ReadOnly</code> &mdash; il sender pu&ograve; scrivere, Metnos riconosce ma <em>non esegue</em>. Pensato per familiari occasionali o canali sensibili.</li>
- <li><code>Supervised</code> &mdash; il sender ottiene un turno completo, ma le azioni con effetti laterali esterni passano sotto controllo (riservato a +; oggi si comporta come Full ai fini di <code>run_turn</code> ma il livello &egrave; gi&agrave; persistito).</li>
+ <li><code>Supervised</code> &mdash; il sender ottiene un turno completo, ma le azioni con effetti esterni passano sotto controllo (sviluppo futuro: oggi, ai fini di <code>run_turn</code>, si comporta come Full, ma il livello &egrave; gi&agrave; persistito).</li>
  <li><code>Full</code> &mdash; il sender ha autorit&agrave; piena: Metnos esegue il turno e risponde.</li>
 </ul>
 
@@ -260,12 +260,12 @@ CREATE TABLE IF NOT EXISTS consumed_codes (
 
 <table>
 <tr><th>Tabella</th><th>Ruolo</th></tr>
-<tr><td><code>pairings</code></td><td>Una riga per ogni coppia <code>(channel, sender_id)</code> mai pairata. Il vincolo <code>UNIQUE</code> garantisce un solo pairing attivo per coppia; il consumo di un nuovo codice fa upsert e azzera <code>revoked_at</code> <code>last_seen</code> &egrave; opzionale e viene aggiornato dal daemon a ogni messaggio (audit). <code>revoked_at</code> non vuoto significa pairing inattivo.</td></tr>
-<tr><td><code>consumed_codes</code></td><td>Tracciamento single-shot. Ogni codice consumato lascia una riga col suo <code>code_id</code> (i 12 hex del payload). Tentativi di riuso falliscono in <code>BEGIN IMMEDIATE</code> Niente cleanup: la tabella cresce solo del numero di pairing che si fanno nella vita dell'istanza, irrisorio.</td></tr>
+<tr><td><code>pairings</code></td><td>Una riga per ogni coppia <code>(channel, sender_id)</code> mai pairata. Il vincolo <code>UNIQUE</code> garantisce un solo pairing attivo per coppia; il consumo di un nuovo codice fa upsert e azzera <code>revoked_at</code>. Il campo <code>last_seen</code> &egrave; opzionale e viene aggiornato dal daemon a ogni messaggio (per audit). Un <code>revoked_at</code> valorizzato significa pairing inattivo.</td></tr>
+<tr><td><code>consumed_codes</code></td><td>Tracciamento a uso singolo. Ogni codice consumato lascia una riga col suo <code>code_id</code> (i 12 hex del payload). I tentativi di riuso falliscono dentro un <code>BEGIN IMMEDIATE</code>. Nessuna pulizia: la tabella cresce solo del numero di pairing fatti nella vita dell'istanza, una quantit&agrave; irrisoria.</td></tr>
 </table>
 
 <p>
-Il file di default vive in <code>~/.local/state/metnos/pairings.db</code>; la directory viene creata al primo accesso Per i test si imposta <code>METNOS_PAIRINGS_DB</code> a un percorso temporaneo, e si ottiene un database isolato per ogni test case.
+Il file di default vive in <code>~/.local/state/metnos/pairings.db</code>; la directory viene creata al primo accesso. Per i test si imposta <code>METNOS_PAIRINGS_DB</code> a un percorso temporaneo, ottenendo un database isolato per ogni test case.
 </p>
 
 <h1 id="cap5">5. API Python</h1>
@@ -277,7 +277,7 @@ Tutte le funzioni accettano un <code>db_path</code> opzionale come keyword-only,
 <table>
 <tr><th>Funzione</th><th>Firma</th><th>Cosa fa</th></tr>
 <tr><td><code>generate_code</code></td><td><code>(autonomy_level, *, ttl_seconds=300, issued_by="author") -&gt; str</code></td><td>Costruisce il payload, firma con la chiave indicata da <code>issued_by</code>, restituisce la stringa <code>PAIR.&lt;...&gt;.&lt;...&gt;</code>. Solleva <code>ValueError</code> se il livello &egrave; fuori da <code>VALID_LEVELS</code>. </td></tr>
-<tr><td><code>consume_code</code></td><td><code>(code, channel, sender_id, *, db_path=None) -&gt; Pairing</code></td><td>Atomico via <code>BEGIN IMMEDIATE</code> : verifica firma, scadenza, deduplica con <code>consumed_codes</code>, fa upsert in <code>pairings</code>. Restituisce il pairing risultante o solleva <code>PairingError</code> con causa specifica.</td></tr>
+<tr><td><code>consume_code</code></td><td><code>(code, channel, sender_id, *, db_path=None) -&gt; Pairing</code></td><td>Atomico via <code>BEGIN IMMEDIATE</code>: verifica firma e scadenza, deduplica con <code>consumed_codes</code>, fa upsert in <code>pairings</code>. Restituisce il pairing risultante o solleva <code>PairingError</code> con la causa specifica.</td></tr>
 <tr><td><code>get_pairing</code></td><td><code>(channel, sender_id, *, db_path=None) -&gt; Pairing | None</code></td><td>Restituisce il pairing attivo (<code>revoked_at IS NULL</code>) o <code>None</code>. </td></tr>
 <tr><td><code>is_paired</code></td><td><code>(channel, sender_id, *, db_path=None) -&gt; bool</code></td><td>Wrapper booleano di <code>get_pairing</code>. </td></tr>
 <tr><td><code>get_autonomy</code></td><td><code>(channel, sender_id, *, db_path=None) -&gt; str | None</code></td><td>Solo il livello, per chi non vuole tutto il dataclass. </td></tr>
@@ -364,7 +364,7 @@ Cos&iacute; il bootstrap &egrave; sicuro: dopo che esiste un solo pairing sul ca
 <h2>Errori in <code>run_turn</code></h2>
 
 <p>
-Se <code>run_turn</code> solleva, il daemon non muore: cattura l'eccezione, logga lo stack trace, risponde al sender col messaggio "(errore interno: &lt;tipo&gt;: &lt;testo&gt;)" e prosegue il loop col messaggio successivo Il pairing non viene toccato: lo stesso utente al messaggio successivo &egrave; ancora pairato, ancora autorizzato a richiedere altri turni.
+Se <code>run_turn</code> solleva un'eccezione, il daemon non muore: la cattura, registra la traccia dello stack, risponde al sender con "(errore interno: &lt;tipo&gt;: &lt;testo&gt;)" e prosegue il ciclo col messaggio successivo. Il pairing non viene toccato: lo stesso utente, al messaggio dopo, &egrave; ancora pairato e ancora autorizzato a richiedere altri turni.
 </p>
 
 <h1 id="cap8">8. Sicurezza</h1>
@@ -375,9 +375,9 @@ Cinque garanzie, ciascuna esistente per una minaccia concreta:
 
 <table>
 <tr><th>Garanzia</th><th>Da chi protegge</th></tr>
-<tr><td><strong>Firma Ed25519</strong> sul payload  garantisce che il codice provenga davvero dalla chiave <code>author</code> di Roberto.</td><td>Da un attaccante che scriva al daemon mandando codici inventati. Anche se lo scopre un familiare con buone intenzioni, non pu&ograve; auto-elevarsi: per generare un codice servirebbe la chiave privata, che vive solo sul server di Roberto.</td></tr>
-<tr><td><strong>TTL breve</strong> di default (5 minuti, <code>DEFAULT_TTL_S</code>) .</td><td>Da un codice che cade in mani sbagliate dopo l'emissione (mail intercettata, screenshot inviato per errore). Cinque minuti sono sufficienti per un consumo legittimo, troppo pochi per un riuso opportunistico ore o giorni dopo.</td></tr>
-<tr><td><strong>Single-shot</strong> via tabella <code>consumed_codes</code> .</td><td>Da uno stesso codice intercettato e usato da pi&ugrave; sender. Il primo che riesce a inviarlo "vince": gli altri ricevono <code>"codice gia' consumato"</code>.</td></tr>
+<tr><td><strong>Firma Ed25519</strong> sul payload: garantisce che il codice provenga davvero dalla chiave <code>author</code> di Roberto.</td><td>Da un attaccante che scriva al daemon mandando codici inventati. Anche se lo scopre un familiare con buone intenzioni, non pu&ograve; auto-elevarsi: per generare un codice servirebbe la chiave privata, che vive solo sul server di Roberto.</td></tr>
+<tr><td><strong>TTL breve</strong> di default (5 minuti, <code>DEFAULT_TTL_S</code>).</td><td>Da un codice che cade in mani sbagliate dopo l'emissione (mail intercettata, screenshot inviato per errore). Cinque minuti sono sufficienti per un consumo legittimo, troppo pochi per un riuso opportunistico ore o giorni dopo.</td></tr>
+<tr><td><strong>Uso singolo</strong> via tabella <code>consumed_codes</code>.</td><td>Da uno stesso codice intercettato e usato da pi&ugrave; sender. Il primo che riesce a inviarlo "vince": gli altri ricevono <code>"codice gia' consumato"</code>.</td></tr>
 <tr><td><strong>Revoke immediato</strong> e check <code>revoked_at IS NULL</code> in <code>get_pairing</code>.</td><td>Da un dispositivo perso o un familiare con cui i rapporti si sono rotti. La revoca ha effetto al primo messaggio successivo: nessuna sessione persistente da invalidare separatamente.</td></tr>
 <tr><td><strong>Niente broadcast del codice</strong>: Metnos non lo manda mai sul canale stesso del pairing, sta a Roberto trasportarlo out-of-band (iMessage, voce, foglietto di carta).</td><td>Dal canale stesso, se compromesso. Un'eventuale intercettazione del canale Telegram non scopre i codici prodotti.</td></tr>
 </table>
@@ -421,7 +421,7 @@ Modulo <code>channels</code> (daemon): 9/9 con un sotto-cluster di 5 case che es
 Tutti i test girano isolati con un proprio <code>METNOS_PAIRINGS_DB</code> in <code>/tmp</code>, e con una keypair di test creata ad hoc, cos&iacute; non si toccano n&eacute; il registry n&eacute; le chiavi di sviluppo dell'autore.
 </p>
 
-<h1 id="cap10">10. Limiti </h1>
+<h1 id="cap10">10. Limiti</h1>
 
 <p>Cinque limiti dichiarati, alcuni di disegno volontari, altri rimandati a +:</p>
 
@@ -447,11 +447,11 @@ Il pairing &egrave; il primo pezzo del nodo "perimetro" che diventa eseguibile: 
 <h1 id="cap11">11. Multi-user: <code>users.db</code> e <code>/start</code></h1>
 
 <p>
-Dal Metnos affianca a <code>pairings.db</code>
-un secondo registro <code>users.db</code> in
+A fianco di <code>pairings.db</code>, Metnos tiene
+un secondo registro, <code>users.db</code>, in
 <code>~/.local/share/metnos/</code>: due tabelle (<code>users</code> +
 <code>user_channels</code>) che mappano <em>utenti logici</em> (host
-e guest) a uno o pi&ugrave; canali. Distinzione di responsabilit&agrave;:
+e guest) a uno o pi&ugrave; canali. La divisione di responsabilit&agrave;:
 </p>
 
 <ul>

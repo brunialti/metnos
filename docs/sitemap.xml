@@ -143,23 +143,6 @@
     <xhtml:link rel="alternate" hreflang="it" href="https://metnos.com/it/Metnos_Prospettive_Giudizio_v1"/>
   </url>
 
-  <url>
-    <loc>https://metnos.com/en/Metnos_Literature_Adaptations_v1</loc>
-    <lastmod>2026-06-09</lastmod>
-    <changefreq>monthly</changefreq>
-    <priority>0.7</priority>
-    <xhtml:link rel="alternate" hreflang="en" href="https://metnos.com/en/Metnos_Literature_Adaptations_v1"/>
-    <xhtml:link rel="alternate" hreflang="it" href="https://metnos.com/it/Metnos_Letteratura_Adattamenti_v1"/>
-  </url>
-  <url>
-    <loc>https://metnos.com/it/Metnos_Letteratura_Adattamenti_v1</loc>
-    <lastmod>2026-06-09</lastmod>
-    <changefreq>monthly</changefreq>
-    <priority>0.7</priority>
-    <xhtml:link rel="alternate" hreflang="en" href="https://metnos.com/en/Metnos_Literature_Adaptations_v1"/>
-    <xhtml:link rel="alternate" hreflang="it" href="https://metnos.com/it/Metnos_Letteratura_Adattamenti_v1"/>
-  </url>
-
   <!-- Architettura: indici e triade (executor, mnest, mnestoma/mnestome, synt, telos) -->
 
   <url>

@@ -107,7 +107,7 @@ Tested at module and cluster level: card rendering, registry, callback dispatche
  <li><a href="#cap7">Telegram callback dispatcher</a></li>
  <li><a href="#cap8">Tests</a></li>
  <li><a href="#cap9">End-to-end examples</a></li>
- <li><a href="#cap10">Limits and what is deferred to +</a></li>
+ <li><a href="#cap10">Limits and future work</a></li>
 </ol>
 </div>
 
@@ -288,7 +288,7 @@ Medium and short forms are designed for cases where Roberto knows what he is app
 </p>
 
 <div class="callout warning">
-<strong>Who counts the recurrences.</strong> In the <code>recurrence_count</code> arrives from the caller (Vaglio or Policy) and is an input to the renderer. The renderer holds no counters. When the integrated pipeline is complete, the planner will consult the <a href="mnest.html">mnest</a> (the traces of past approvals) to compute the value before constructing the <code>ApprovalRequest</code>.
+<strong>Who counts the recurrences.</strong> Today the <code>recurrence_count</code> arrives from the caller (Vaglio or Policy) and is an input to the renderer. The renderer holds no counters. When the integrated pipeline is complete, the planner will consult the <a href="mnest.html">mnest</a> (the traces of past approvals) to compute the value before constructing the <code>ApprovalRequest</code>.
 </div>
 
 <h1 id="cap5">5. Territory marker</h1>
@@ -319,7 +319,7 @@ It is a dictionary, not a function: the mapping is static and depends on nothing
 </p>
 
 <div class="callout note">
-<strong>No persistence in.</strong> The marker declares the <em>intention</em> of a concession, not its implementation. Today <code>approval_registry.resolve</code> does not write a grant in <code>policy.py</code>: the territory concession is documented on the card but does not yet silence future requests. The full pipeline (see ch. 10) will tie them together.
+<strong>Persistence not wired yet.</strong> The marker declares the <em>intention</em> of a concession, not its implementation. Today <code>approval_registry.resolve</code> does not write a grant in <code>policy.py</code>: the territory concession is documented on the card but does not yet silence future requests. The full pipeline (see ch. 10) will tie them together.
 </div>
 
 <h1 id="cap6">6. SQLite approval registry</h1>
@@ -590,7 +590,7 @@ rapporto.pdf da drive.google.com -&gt; ~/downloads/ (~2.4 MB)<div class="btns"><
 In all cases the two buttons have <code>callback_data</code> of the form <code>approve:&lt;tok&gt;</code> and <code>reject:&lt;tok&gt;</code>; the token is the same one the <code>approval_registry</code> issued when the request was created. When the user clicks, the flow described in ch. 7 starts: the <code>callback_query</code> reaches the daemon, <code>_handle_callback</code> calls <code>resolve</code>, the user receives the textual confirmation "Approvato: scarichi rapporto.pdf da drive.google.com -&gt; ~/downloads/ (~2.4 MB)".
 </p>
 
-<h1 id="cap10">10. Limits and what is deferred to +</h1>
+<h1 id="cap10">10. Limits and future work</h1>
 
 <table>
 <tr><th> limit</th><th>When it is removed</th></tr>

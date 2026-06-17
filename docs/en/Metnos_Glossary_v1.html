@@ -162,6 +162,7 @@ points to the Italian version, marked <span class="it-note">(in Italian)</span>.
   <a href="#L-C">C</a>
   <a href="#L-D">D</a>
   <a href="#L-E">E</a>
+  <a href="#L-F">F</a>
   <a href="#L-G">G</a>
   <a href="#L-H">H</a>
   <a href="#L-I">I</a>
@@ -262,6 +263,19 @@ effectful action), <strong>full</strong> (acts and reports, asks for
 confirmation only on irreversible or costly things). Default: supervised.
 The level is changed explicitly.</p>
 <p class="xref"><strong>Canonical:</strong> <a href="/it/Metnos_Architettura_Intro_v1.html#cap6">Architecture Intro §6</a> <span class="it-note">(in Italian)</span> &middot; <a href="/it/architecture/policy.html#cap2">policy §2</a> <span class="it-note">(in Italian)</span></p>
+</div>
+
+<div class="entry" id="autopath">
+<h3>autopath (L1) <span class="tag concept">component</span></h3>
+<p>The second of the two levels through which Metnos learns to answer without
+calling the model. Where the <a href="#fastpath">fastpath</a> (L0) remembers a
+single question word for word, the <em>autopath</em> remembers the <em>shape</em>
+of a successful plan &mdash; the sequence of steps, stripped of its particulars
+&mdash; and reuses it across a whole family of related requests. It grows from
+repeated successes on that kind of question; it is readable, reversible data, not
+a trained model. Not to be confused with a <a href="#skill">skill</a>, which is a
+set of tools, not a plan.</p>
+<p class="xref"><strong>Canonical:</strong> <a href="Metnos_Architecture_Intro_v1.html#s9">Architecture Intro §9 &mdash; The memory that speeds things up</a></p>
 </div>
 
 <!-- ======================== B ======================== -->
@@ -369,6 +383,21 @@ final outcome. It is not an accessory log: it is the primary source of
 truth. Audit, replay, evaluation, neuron fitness, episodic memory: all
 consume ExecutionTrace. Append-only during, immutable after closure.</p>
 <p class="xref"><strong>Canonical:</strong> <a href="/it/architecture/agent_runtime.html#cap5">agent_runtime §5</a> (schema and lifecycle) <span class="it-note">(in Italian)</span> &middot; <a href="/it/architecture/types.html">types.html</a> <span class="it-note">(in Italian)</span></p>
+</div>
+
+<!-- ======================== F ======================== -->
+<div class="letter-head" id="L-F">F</div>
+
+<div class="entry" id="fastpath">
+<h3>fastpath (L0) <span class="tag concept">component</span></h3>
+<p>The first of the two memory levels with which Metnos avoids thinking the same
+thought twice. It is the fast lane: when an <em>identical</em> question has
+already been solved once, the next time the answer is replayed outright, without
+consulting the model &mdash; same outcome, latency and cost cut to a minimum. It
+keeps the concrete particulars of the request. The level above it is the
+<a href="#autopath">autopath</a> (L1), which generalises the plan to a whole
+family of requests.</p>
+<p class="xref"><strong>Canonical:</strong> <a href="Metnos_Architecture_Intro_v1.html#s9">Architecture Intro §9 &mdash; The memory that speeds things up</a></p>
 </div>
 
 <!-- ======================== G ======================== -->
@@ -703,6 +732,22 @@ educational, medical). Metnos is designed to <em>coexist</em>, not to be
 unique: the exchange happens through an inter-agent channel
 (<a href="/it/Metnos_Prospettive_Estese_v1.html#cap2b">Extended perspectives §2B</a>,
 in Italian).</p>
+</div>
+
+<div class="entry" id="skill">
+<h3>skill <span class="tag concept">concept</span></h3>
+<p>A <em>set</em> of related <a href="#executor">executors</a>, gathered into a
+single capability: the mail skill, for instance, brings together reading,
+sending and moving messages. It is the unit by which a capability is enabled,
+trusted, or kept dormant. Three tiers: <strong>core</strong> (part of Metnos's
+heart), <strong>first-party</strong> (curated by the project) and
+<strong>imported</strong> (brought in from third parties). A skill is an axis
+<em>orthogonal</em> to the backend: the skill decides <em>whether</em> a
+capability is active, the backend decides <em>how</em> it reaches a concrete
+provider &mdash; always chosen by configuration, never by the model. Not to be
+confused with an <a href="#autopath">autopath</a>: that is a learned plan, this
+is a kit of tools.</p>
+<p class="xref"><strong>Canonical:</strong> <a href="Metnos_Architecture_Intro_v1.html#s3">Architecture Intro §3 &mdash; skill &harr; backend</a></p>
 </div>
 
 <div class="entry" id="synapse">

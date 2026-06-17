@@ -103,7 +103,7 @@ Riferimento di implementazione: <code>/opt/metnos/runtime/scratchpad.py</code>.
  <li><a href="#cap5">Come il LLM legge dallo scratchpad: <code>scratchpad_read</code></a></li>
  <li><a href="#cap6">Storage e ciclo di vita</a></li>
  <li><a href="#cap7">Builtin: perch&eacute; scratchpad_read &egrave; speciale</a></li>
- <li><a href="#cap8">Limiti e cosa &egrave; rimandato a +</a></li>
+ <li><a href="#cap8">Limiti e sviluppi futuri</a></li>
 </ol>
 </div>
 
@@ -357,7 +357,7 @@ Il guard "duplicate read" (vedi <a href="agent_runtime.html#cap10">agent_runtime
 <strong>Perch&eacute; un builtin e non un executor a tutti gli effetti?</strong> Perch&eacute; lo scratchpad &egrave; una primitiva del runtime, non una capability che un sintetizzatore (synt) potrebbe inventare o scrivere. Un executor "scratchpad_read" su disco firmato sarebbe inutilmente ricco di cerimonia per qualcosa che il runtime conosce gi&agrave; intimamente. La famiglia dei builtin (di cui scratchpad_read &egrave; il primo) include in futuro probabilmente uno <code>scheduler</code> e simili.
 </div>
 
-<h1 id="cap8">8. Limiti e cosa &egrave; rimandato a +</h1>
+<h1 id="cap8">8. Limiti e sviluppi futuri</h1>
 
 <table>
 <tr><th>Limite </th><th>Quando si toglie</th></tr>

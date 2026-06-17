@@ -97,7 +97,7 @@ li { margin-bottom: 4px; }.lead { font-size: 12pt; color: var(--navy); border-le
 
 <p class="lead">The Metnos PLANNER picks which executor to call at each step.
 It&rsquo;s a local LLM (Qwen 3.6 35B-A3B). When the query is complex &mdash; like &ldquo;propose
-3 morning slots next week for an appointment with Silvia, after I pick one, email
+3 morning slots next week for a one-hour appointment with a family member, after I pick one, email
 me the choice&rdquo; &mdash; the LLM <strong>sometimes</strong> enters a reasoning loop and ends
 up emitting prose instead of a structured <code>tool_call</code>. The system
 doesn&rsquo;t know what to run. Game over.</p>
@@ -327,7 +327,7 @@ mean latency ~41s.</p>
 <ul>
  <li>The <em>thinking-loop</em> is gone. The LLM doesn&rsquo;t waste
  cycles reasoning in a circle.</li>
- <li>The propose+notify pipeline (complex_propose_silvia) always converges.
+ <li>The propose+notify pipeline (the &ldquo;propose-slots-then-notify&rdquo; case) always converges.
  It was the worst case.</li>
  <li>Even ambiguous queries (&ldquo;do something interesting&rdquo;) close with a
  sensible <code>final_answer</code>, instead of picking an escape-hatch
@@ -497,10 +497,10 @@ instead of delegating to a fine-tuned model. Advantages:</p>
 <p>Disadvantages:</p>
 
 <ul>
- <li>Models fine-tuned on tool_call (GPT-5, Sonnet) are <em>more fluent</em>
- on very open queries &mdash; they don&rsquo;t pick a tool incorrectly because
- they&rsquo;re trained to reason semantically on the match. We compensate
- with top-K ranker + contextual pool filter.</li>
+ <li>Large frontier models trained for tool_call (Claude, for instance) are
+ <em>more fluent</em> on very open queries &mdash; they don&rsquo;t pick a tool
+ incorrectly because they&rsquo;re trained to reason semantically on the match.
+ We compensate with a top-K ranker + contextual pool filter.</li>
  <li>Server bugs (see &sect;5) fall on us. Mitigated by regression tests.</li>
 </ul>
 

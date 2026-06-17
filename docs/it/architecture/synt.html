@@ -200,18 +200,20 @@ differenziano nei <em>tempi</em> (sincrono vs asincrono) e nel <em>tono</em>
 
 <div class="callout note">
 <strong>Una terza sorgente di proto-mnest, dal fast-path.</strong>
-D esiste un terzo canale di innesco, non sostitutivo
-ma complementare: il job notturno
-<code>multi_tool_promote</code> legge le pipeline memoizzate
-nel <a href="fast_path.html">fast-path L2</a> e, quando una sequenza
-supera i 50 utilizzi, crea un proto-mnest in mnestoma con la firma
-desiderata (catena di executor + segnaposti + canonical query). Da
-quel momento la pipeline diventa candidata alla sintesi vera e
-propria: un nuovo executor unificato che incorpora tutta la sequenza,
-chiamato di solito <code>&lt;verbo_ultimo&gt;_&lt;oggetto_primo&gt;</code>.
-Il bridge non duplica lavoro: L2 cattura il volume basso (3&ndash;50
-utilizzi, replay deterministico), L3 prende il sopravvento quando il
-pattern &egrave; stabilmente ricorrente.
+Esiste un terzo canale d&rsquo;innesco, non sostitutivo ma complementare: il
+job notturno <code>task_fastpath_promotion</code> osserva le pipeline
+memorizzate nel <a href="fast_path.html">fast-path</a> e, quando un
+<em>cluster</em> di scorciatoie ricorrenti condivide la stessa struttura di
+piano e lo stesso intento (per impostazione predefinita: almeno 3 scorciatoie
+distinte, 15 utilizzi complessivi, 30 giorni di et&agrave;), propone un
+proto-mnest con la firma desiderata (catena di executor + segnaposti + query
+canonica). Da quel momento la pipeline diventa candidata alla sintesi vera e
+propria: un nuovo executor unificato che incorpora l&rsquo;intera sequenza,
+chiamato di solito <code>&lt;verbo_ultimo&gt;_&lt;oggetto_primo&gt;</code>. I
+due percorsi non duplicano il lavoro: il fast-path serve in pochi millisecondi
+le pipeline gi&agrave; viste (replay deterministico), la sintesi entra in gioco
+solo quando il pattern &egrave; stabilmente ricorrente e merita un executor
+proprio.
 </div>
 
 <h1 id="cap3">3. La cascata: visione d'insieme</h1>
@@ -391,16 +393,20 @@ estetica: &egrave; risparmio reale.
 </p>
 
 <div class="callout note">
-<strong>Soglia di qualit&agrave; del tier wise.</strong> Lo stadio <em>codice</em>
-(stadio 5 della pipeline multistage di &sect;<a href="#cap4">4.2.3</a>) richiede
-un LLM al livello di <strong>Qwen 3.6 35B-A3B o superiore</strong>. Modelli pi&ugrave;
-pi&ugrave; piccoli producono codice fragile e hanno alta probabilit&agrave;
-di violare la convenzione. Gli stadi procedurali (1-4: naming, signature, test,
-description) usano il tier <em>middle</em>, sufficiente per lookup nel vocabolario
-chiuso e formati fissi. La regola e' codificata nel <em>tier resolver</em>
-(<code>runtime/llm_router.py</code>) come <em>quality floor</em>: se l'utente non
-ha un wise locale di livello, deve configurare un provider esterno (Anthropic,
-OpenAI, ecc.). Errore esplicito al boot, mai degradazione silenziosa al fast.
+<strong>Il ruolo &laquo;wise&raquo; e la qualit&agrave; del codice.</strong> Lo
+stadio <em>codice</em> (stadio 5 della pipeline multistage di
+&sect;<a href="#cap4">4.2.3</a>) &egrave; il pi&ugrave; esigente: come modello locale
+di riferimento usiamo <strong>Qwen 3.6 35B-A3B</strong>; modelli pi&ugrave; piccoli
+producono codice pi&ugrave; fragile e pi&ugrave; spesso violano le convenzioni. Gli
+stadi procedurali (1-4: naming, signature, test, description) usano il tier
+<em>middle</em>, sufficiente per il lookup nel vocabolario chiuso e per i formati
+fissi. I tier sono <em>ruoli astratti</em>: il <em>tier resolver</em>
+(<code>runtime/llm_router.py</code>) non vincola pi&ugrave; un modello preciso
+&mdash; chi installa sceglie quale modello assegnare al ruolo &laquo;wise&raquo;,
+e un modello pi&ugrave; debole significa pianificazione pi&ugrave; debole, non un
+errore. L&rsquo;unico vincolo rigido &egrave; che il ruolo sia configurato: se
+manca un provider per &laquo;wise&raquo; (o &laquo;fast&raquo;), il sistema si
+ferma all&rsquo;avvio invece di degradare in silenzio.
 </div>
 
 <h3>4.2.1 Misure reali sul POC </h3>
@@ -482,10 +488,11 @@ text = "\\n\\nVincoli: compila python_code per intero (def invoke + def main). M
 
 <p>
 Il primo match per <em>(provider, model_pattern, use_case)</em> vince. Quando
-arriva un nuovo modello (Gemma 5, Claude Opus 4.7, GPT-5, &hellip;) si
-aggiunge una entry sulla base di quello che si osserva nelle prime sintesi.
-Il <em>system prompt</em> di base e gli executor non cambiano: l'unica leva
-che si tocca e' il repertorio.
+si adotta un nuovo modello &mdash; una nuova versione locale, oppure un modello
+frontier come Anthropic Opus &mdash; si aggiunge una voce sulla base di
+quello che si osserva nelle prime sintesi. Il <em>system prompt</em> di base e
+gli executor non cambiano: l&rsquo;unica leva che si tocca &egrave; il
+repertorio.
 </p>
 
 <h3>4.2.3 Pipeline multistage </h3>
@@ -546,7 +553,7 @@ superare: mai usare wise online quando il locale arriva.
 Le strategie introvertive non rispondono a una richiesta puntuale: rispondono al
 bisogno strutturale di tenere piccolo, coerente e riusabile il pool. Girano
 nottetempo come parte dell'<em>omeostasi</em> dell'ager (vedi <a href="../Metnos_Architettura_Intro_v1.html#cap10">Architettura cap. 10</a>),
-con basso uso di CPU e LLM economici (tier <em>local-fast</em>).
+con basso uso di CPU e chiamate al tier <em>fast</em> (il pi&ugrave; economico).
 </p>
 
 <h2>5.1 Fondere</h2>
@@ -632,7 +639,7 @@ strategie pi&ugrave; economiche:
 </p>
 
 <pre><code>R = 0.35 &middot; det_pass_rate # frazione test deterministici verdi
- + 0.20 &middot; judge_score # LLM-as-judge (local-fast) su rubrica costituzionale
+ + 0.20 &middot; judge_score # LLM-as-judge (tier fast) su rubrica costituzionale
  + 0.15 &middot; cost_ratio # clip(1 - cost_effettivo / stima, 0, 1)
  &minus; 0.10 &middot; similarity_penalty # cosine-sim embedding con pool esistente &gt; 0.85
  + 0.10 &middot; coverage_bonus # bonus se copre proto-mnest non coperti

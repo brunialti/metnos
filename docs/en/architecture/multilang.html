@@ -71,8 +71,8 @@ li { margin-bottom: 4px; }.lead { font-size: 12pt; color: var(--navy); border-le
 <strong>Microdesign &mdash; aligned with the code.</strong> Canonical document for the
 multilingual subsystem of Metnos. Covers the
 prompt-as-data + auto-bilingual alignment pattern and the three layers live
-in code: <code>runtime/prompts/&lt;lang&gt;/&lt;role&gt;.j2</code> (MiniJinja, 26 roles),
-<code>runtime/i18n.sqlite</code> (118 keys), and the executor TOML manifests with
+in code: <code>runtime/prompts/&lt;lang&gt;/&lt;role&gt;.j2</code> (MiniJinja, 32 roles),
+the message database <code>i18n.sqlite</code>, and the executor TOML manifests with
 <code>[description].&lt;lang&gt;</code> table + companion file
 <code>manifest.lang_state.json</code>.
 </div>
@@ -187,19 +187,19 @@ inhabits two layers.
 <td><strong>Layer 1 &mdash; LLM prompts</strong></td>
 <td>The text that instructs the planner, vaglio, describe, classify, the synt 5-stage pipeline. MiniJinja templates with variables (<code>{{ tools }}</code>, <code>{{ history }}</code>).</td>
 <td><code>runtime/prompts/&lt;lang&gt;/&lt;role&gt;.j2</code></td>
-<td>26 roles &times; N langs</td>
+<td>32 roles &times; N langs</td>
 </tr>
 <tr>
 <td><strong>Layer 2 &mdash; manifest description</strong></td>
 <td>Executor descriptions and affinity keywords. They are the <em>tool prompt</em> for the planner (CLAUDE.md &sect;2.5).</td>
 <td><code>[description].&lt;lang&gt;</code> table inside the TOML manifest; companion file <code>manifest.lang_state.json</code> for version_hash + source_hash per language.</td>
-<td>~52 executors &times; N langs</td>
+<td>~79 executors &times; N langs</td>
 </tr>
 <tr>
 <td><strong>Layer 3 &mdash; user-facing messages</strong></td>
 <td>ERR_*, WARN_*, MSG_*, LOG_* (errors, warnings, confirmations, channel notifications). Executor descriptions migrate here at runtime read.</td>
 <td>SQLite <code>~/.local/share/metnos/i18n.sqlite</code>; table <code>i18n(key, lang, text, needs_translation, source_lang, version_hash)</code>.</td>
-<td>118 standard keys + 79 descriptions = 197 entries &times; N langs</td>
+<td>standard keys + migrated descriptions &times; N langs</td>
 </tr>
 </tbody>
 </table>
@@ -219,7 +219,7 @@ skeleton, only localised text.
  planner.j2
  vaglio_judge.j2
  describe_entries.j2
- &hellip; (26 files)
+ &hellip; (32 files)
  en/
  planner.j2 # same skeleton, EN text
  &hellip;

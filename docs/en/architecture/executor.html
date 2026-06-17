@@ -597,7 +597,7 @@ count). The three primitives together cover almost every list
 manipulation without inventing new verbs.
 </p>
 
-<h2>7.4 <code>send_messages</code> &mdash; &laquo;send a message to Lucia&raquo;</h2>
+<h2>7.4 <code>send_messages</code> &mdash; &laquo;send a message to a family member&raquo;</h2>
 
 <p>
 Sends one or more messages over Telegram (today) or email (coming soon). Main
@@ -605,10 +605,10 @@ argument: a list of messages, each with recipient and body.
 </p>
 
 <pre>call: send_messages(messages=[
- {to_user: "lucia", body: "Out for a bit, back at seven."}
+ {to_user: "family", body: "Out for a bit, back at seven."}
  ])
 response: { ok: true, ok_count: 1, fail_count: 0,
- results: [{to_user: "lucia", channel: "telegram", message_id: "abc123"}] }</pre>
+ results: [{to_user: "family", channel: "telegram", message_id: "abc123"}] }</pre>
 
 <p>
 A &laquo;transformative&raquo; tool: it changes the world, it really sends a message. For

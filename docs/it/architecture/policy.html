@@ -103,14 +103,14 @@ Cluster <code>policy</code> 10/10 verde. Aggiunte: due capability nuove, <code>a
 <h2>Indice</h2>
 <ol>
  <li><a href="#cap1">Cos'&egrave; policy</a></li>
- <li><a href="#cap2">Capability Registry </a></li>
+ <li><a href="#cap2">Capability Registry</a></li>
  <li><a href="#cap3">Tabella autonomy &times; capability</a></li>
  <li><a href="#cap4">Grants per_target persistenti</a></li>
  <li><a href="#cap5">Esito combinato (<code>effective_outcome</code>)</a></li>
  <li><a href="#cap6">Integrazione runtime</a></li>
  <li><a href="#cap7">CLI</a></li>
  <li><a href="#cap8">Test</a></li>
- <li><a href="#cap9">Limiti e cosa &egrave; rimandato a +</a></li>
+ <li><a href="#cap9">Limiti e sviluppi futuri</a></li>
 </ol>
 </div>
 
@@ -145,7 +145,7 @@ La policy &egrave; il filtro di legalit&agrave; di Metnos: lo strato 2 dell'arch
 
 
 <p>
-La policy convive con altri due strati che decidono cose diverse, e questo &egrave; il punto di chiarezza che il non aveva:
+La policy convive con altri due strati che decidono cose diverse, e questa &egrave; la separazione di responsabilit&agrave; che tiene tutto leggibile:
 </p>
 
 <ul>
@@ -162,7 +162,7 @@ I tre filtri sono in serie: la policy gira per prima (&egrave; quella pi&ugrave;
 <strong>Nessuna decisione politica nel codice degli executor.</strong> Un executor non sa nulla del livello di autonomia corrente n&eacute; dei grants attivi. Si limita a dichiarare le proprie capability nel manifest. La policy &egrave; il modulo dove tutte le regole vivono, leggibili in un punto solo, modificabili senza toccare un solo executor.
 </div>
 
-<h1 id="cap2">2. Capability Registry </h1>
+<h1 id="cap2">2. Capability Registry</h1>
 
 <p>
 Il registro &egrave; il dizionario chiuso delle azioni che Metnos riconosce. Tredici voci canoniche, definite in <code>runtime/policy.py:CAPABILITY_REGISTRY</code> (<code>runtime/policy.py:46-121</code>). Ogni voce &egrave; un <code>CapabilitySpec</code> con quattro attributi:
@@ -400,7 +400,7 @@ Tre rinvii a moduli esistenti:
 </ul>
 
 <p>
-Il pianificatore non legge mai direttamente la tabella o i grants: fa una sola chiamata a <code>effective_outcome</code> e ramifica sull'esito. Questo mantiene <code>policy</code> come unico punto di verit&agrave; sulle regole; il giorno in cui le regole cambieranno (: cost tier, rate limit), il pianificatore non si tocca.
+Il pianificatore non legge mai direttamente la tabella o i grants: fa una sola chiamata a <code>effective_outcome</code> e si dirama sull'esito. Questo mantiene <code>policy</code> come unico punto di verit&agrave; sulle regole; il giorno in cui le regole cambieranno (fasce di costo, limiti di frequenza), il pianificatore non si tocca.
 </p>
 
 <h1 id="cap7">7. CLI</h1>
@@ -446,17 +446,17 @@ Cluster <code>policy</code> nel framework di test del runtime: 10/10 verde alla 
 I tre casi marcati [security] sono gli invarianti che vincolano l'evoluzione futura del modulo: una qualsiasi modifica che li rompa &egrave; uno smantellamento della postura di sicurezza, non un refactor.
 </p>
 
-<h1 id="cap9">9. Limiti e cosa &egrave; rimandato a +</h1>
+<h1 id="cap9">9. Limiti e sviluppi futuri</h1>
 
 <table>
-<tr><th>limite </th><th>quando si toglie</th></tr>
+<tr><th>limite</th><th>quando si toglie</th></tr>
 <tr>
  <td><strong>Niente rate-limit nel codice.</strong> La tabella autonomy &times; capability non distingue ancora "una chiamata vs dieci chiamate al minuto". Una capability concessa &egrave; concessa senza tetto; gli abusi accidentali (loop fuori controllo, executor che chiama HTTP cento volte) non vengono frenati a livello di policy.</td>
- <td>, con un token bucket per_capability salvato nello stesso DB dei grants. Il token bucket richiede di scegliere bene i parametri (capacit&agrave;, rate di ricarica) per ogni capability; serve telemetria d'uso reale prima di fissarli.</td>
+ <td>Con un token bucket per_capability salvato nello stesso DB dei grants. Il token bucket richiede di scegliere bene i parametri (capacit&agrave;, ritmo di ricarica) per ogni capability; serve telemetria d'uso reale prima di fissarli.</td>
 </tr>
 <tr>
- <td><strong>Niente cost tier.</strong> <code>llm:online</code> richiede <code>approval_required</code> generico, non differenzia "Sonnet a $0.02 per chiamata" da "GPT-5 a $0.17". Roberto vede tutte le chiamate online uguali, anche quando il costo varia di un ordine di grandezza.</td>
- <td>, quando il giudice LLM avr&agrave; misurato il fattore costo nel reward del vaglio. La policy potr&agrave; allora esporre soglie esplicite (es. "fino a $0.05 allowed in Full, sopra approval_required").</td>
+ <td><strong>Niente fasce di costo.</strong> <code>llm:online</code> richiede un <code>approval_required</code> generico: non distingue una chiamata economica da una di fascia alta (un modello frontier opt-in pu&ograve; costare un ordine di grandezza in pi&ugrave;). Roberto vede tutte le chiamate online allo stesso modo.</td>
+ <td>Quando il giudice LLM avr&agrave; misurato il fattore costo nella valutazione del vaglio. La policy potr&agrave; allora esporre soglie esplicite (es. "fino a $0.05 allowed in Full, oltre approval_required").</td>
 </tr>
 <tr>
  <td><strong>Niente policy custom per profilo utente.</strong> La tabella &egrave; compilata in codice. Un override per profilo utente (es. Roberto vs un familiare con livelli diversi sulle stesse capability) richiede un layer di config che non esiste ancora.</td>

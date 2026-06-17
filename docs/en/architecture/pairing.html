@@ -262,12 +262,12 @@ CREATE TABLE IF NOT EXISTS consumed_codes (
 
 <table>
 <tr><th>Table</th><th>Role</th></tr>
-<tr><td><code>pairings</code></td><td>One row per <code>(channel, sender_id)</code> pair ever paired. The <code>UNIQUE</code> constraint guarantees a single active pairing per pair; consuming a new code performs an upsert and clears <code>revoked_at</code> <code>last_seen</code> is optional and is updated by the daemon on every message (audit). A non-empty <code>revoked_at</code> means the pairing is inactive.</td></tr>
-<tr><td><code>consumed_codes</code></td><td>Single-shot tracking. Every consumed code leaves a row with its <code>code_id</code> (the 12 hex from the payload). Replay attempts fail inside <code>BEGIN IMMEDIATE</code> No cleanup: the table only grows by the number of pairings done in the lifetime of the instance, negligible.</td></tr>
+<tr><td><code>pairings</code></td><td>One row per <code>(channel, sender_id)</code> pair ever paired. The <code>UNIQUE</code> constraint guarantees a single active pairing per pair; consuming a new code performs an upsert and clears <code>revoked_at</code>. The <code>last_seen</code> field is optional and is updated by the daemon on every message (for audit). A non-empty <code>revoked_at</code> means the pairing is inactive.</td></tr>
+<tr><td><code>consumed_codes</code></td><td>Single-use tracking. Every consumed code leaves a row with its <code>code_id</code> (the 12 hex from the payload). Replay attempts fail inside a <code>BEGIN IMMEDIATE</code>. No cleanup: the table only grows by the number of pairings done in the lifetime of the instance, a negligible amount.</td></tr>
 </table>
 
 <p>
-The default file lives in <code>~/.local/state/metnos/pairings.db</code>; the directory is created on first access For tests we set <code>METNOS_PAIRINGS_DB</code> to a temporary path, getting an isolated database per test case.
+The default file lives in <code>~/.local/state/metnos/pairings.db</code>; the directory is created on first access. For tests we set <code>METNOS_PAIRINGS_DB</code> to a temporary path, getting an isolated database per test case.
 </p>
 
 <h1 id="cap5">5. Python API</h1>
@@ -279,7 +279,7 @@ Every function accepts an optional keyword-only <code>db_path</code>, so the cal
 <table>
 <tr><th>Function</th><th>Signature</th><th>What it does</th></tr>
 <tr><td><code>generate_code</code></td><td><code>(autonomy_level, *, ttl_seconds=300, issued_by="author") -&gt; str</code></td><td>Builds the payload, signs with the key indicated by <code>issued_by</code>, returns the string <code>PAIR.&lt;...&gt;.&lt;...&gt;</code>. Raises <code>ValueError</code> if the level is outside <code>VALID_LEVELS</code>. </td></tr>
-<tr><td><code>consume_code</code></td><td><code>(code, channel, sender_id, *, db_path=None) -&gt; Pairing</code></td><td>Atomic via <code>BEGIN IMMEDIATE</code> : verifies signature, expiry, deduplicates against <code>consumed_codes</code>, upserts into <code>pairings</code>. Returns the resulting pairing or raises <code>PairingError</code> with a specific cause.</td></tr>
+<tr><td><code>consume_code</code></td><td><code>(code, channel, sender_id, *, db_path=None) -&gt; Pairing</code></td><td>Atomic via <code>BEGIN IMMEDIATE</code>: verifies signature and expiry, deduplicates against <code>consumed_codes</code>, upserts into <code>pairings</code>. Returns the resulting pairing or raises <code>PairingError</code> with the specific cause.</td></tr>
 <tr><td><code>get_pairing</code></td><td><code>(channel, sender_id, *, db_path=None) -&gt; Pairing | None</code></td><td>Returns the active pairing (<code>revoked_at IS NULL</code>) or <code>None</code>. </td></tr>
 <tr><td><code>is_paired</code></td><td><code>(channel, sender_id, *, db_path=None) -&gt; bool</code></td><td>Boolean wrapper around <code>get_pairing</code>. </td></tr>
 <tr><td><code>get_autonomy</code></td><td><code>(channel, sender_id, *, db_path=None) -&gt; str | None</code></td><td>Just the level, for callers who do not want the full dataclass. </td></tr>
@@ -366,7 +366,7 @@ This way the bootstrap is safe: once a single pairing exists on the channel, fur
 <h2>Errors in <code>run_turn</code></h2>
 
 <p>
-If <code>run_turn</code> raises, the daemon does not die: it catches the exception, logs the stack trace, replies to the sender with the message "(internal error: &lt;type&gt;: &lt;text&gt;)" and continues the loop with the next message The pairing is not touched: the same user on the next message is still paired, still authorised to request more turns.
+If <code>run_turn</code> raises, the daemon does not die: it catches the exception, logs the stack trace, replies to the sender with the message "(internal error: &lt;type&gt;: &lt;text&gt;)" and continues the loop with the next message. The pairing is not touched: the same user on the next message is still paired, still authorised to request more turns.
 </p>
 
 <h1 id="cap8">8. Security</h1>
@@ -377,9 +377,9 @@ Five guarantees, each existing for a concrete threat:
 
 <table>
 <tr><th>Guarantee</th><th>Protects against</th></tr>
-<tr><td><strong>Ed25519 signature</strong> on the payload  guarantees that the code really originates from Roberto's <code>author</code> key.</td><td>An attacker who writes to the daemon sending made-up codes. Even if a well-intentioned family member discovers the format, they cannot self-elevate: generating a code requires the private key, which lives only on Roberto's server.</td></tr>
-<tr><td><strong>Short TTL</strong> by default (5 minutes, <code>DEFAULT_TTL_S</code>) .</td><td>A code that falls into the wrong hands after issuance (intercepted mail, screenshot sent by mistake). Five minutes is enough for a legitimate consume, too little for an opportunistic reuse hours or days later.</td></tr>
-<tr><td><strong>Single-shot</strong> via the <code>consumed_codes</code> table .</td><td>The same code being intercepted and used by multiple senders. The first one to send it &laquo;wins&raquo;: the others receive <code>"code already consumed"</code>.</td></tr>
+<tr><td><strong>Ed25519 signature</strong> on the payload: guarantees that the code really originates from Roberto's <code>author</code> key.</td><td>An attacker who writes to the daemon sending made-up codes. Even if a well-intentioned family member discovers the format, they cannot self-elevate: generating a code requires the private key, which lives only on Roberto's server.</td></tr>
+<tr><td><strong>Short TTL</strong> by default (5 minutes, <code>DEFAULT_TTL_S</code>).</td><td>A code that falls into the wrong hands after issuance (intercepted mail, screenshot sent by mistake). Five minutes is enough for a legitimate consume, too little for an opportunistic reuse hours or days later.</td></tr>
+<tr><td><strong>Single use</strong> via the <code>consumed_codes</code> table.</td><td>The same code being intercepted and used by multiple senders. The first one to send it &laquo;wins&raquo;: the others receive <code>"code already consumed"</code>.</td></tr>
 <tr><td><strong>Immediate revoke</strong> and <code>revoked_at IS NULL</code> check in <code>get_pairing</code>.</td><td>A lost device or a family member with whom relations have broken down. Revocation takes effect on the very next message: no persistent session has to be invalidated separately.</td></tr>
 <tr><td><strong>No code broadcast</strong>: Metnos never sends the code on the same channel as the pairing; it is up to Roberto to carry it out-of-band (iMessage, voice, slip of paper).</td><td>The channel itself, if compromised. A potential interception of the Telegram channel does not reveal the codes produced.</td></tr>
 </table>
@@ -425,7 +425,7 @@ All tests run in isolation with their own <code>METNOS_PAIRINGS_DB</code> in <co
 
 <h1 id="cap10">10. limits</h1>
 
-<p>Five declared limits, some by deliberate design, others deferred to +:</p>
+<p>Five declared limits, some by deliberate design, others left for future work:</p>
 
 <table>
 <tr><th>Limit</th><th>When it lifts</th></tr>
@@ -449,8 +449,8 @@ Pairing is the first piece of the &laquo;perimeter&raquo; node that becomes exec
 <h1 id="cap11">11. Multi-user: <code>users.db</code> and <code>/start</code></h1>
 
 <p>
-Since Metnos puts a second registry,
-<code>users.db</code>, alongside <code>pairings.db</code> in
+Alongside <code>pairings.db</code>, Metnos keeps a second registry,
+<code>users.db</code>, in
 <code>~/.local/share/metnos/</code>: two tables (<code>users</code> +
 <code>user_channels</code>) that map <em>logical users</em> (host and
 guests) to one or more channels. Responsibility split:

@@ -109,7 +109,7 @@ Implementation reference: <code>/opt/metnos/runtime/channels/</code>.
  <li><a href="#cap7">Relationship with <code>pairing</code></a></li>
  <li><a href="#cap8">Distribution: systemd user unit</a></li>
  <li><a href="#cap9">HTTP as alternative channel</a></li>
- <li><a href="#cap10">Limits and deferrals to +</a></li>
+ <li><a href="#cap10">Limits and future work</a></li>
 </ol>
 </div>
 
@@ -385,12 +385,12 @@ full procedure.
 <h1 id="cap9">9. HTTP as alternative channel</h1>
 
 <p>
-Since Metnos exposes a second HTTP server on
-port 8770 with three agent-side routes: <code>POST /agent/turn</code>
-(<code>run_turn</code> execution with SSE or JSON),
+Alongside Telegram, Metnos exposes a second HTTP server on
+port 8770. On the agent side the main routes are <code>POST /agent/turn</code>
+(runs <code>run_turn</code>, in SSE or JSON),
 <code>GET /agent/devices/me</code>, <code>GET /agent/health</code> and
-<code>GET /.well-known/metnos.json</code>. See
-<a href="http_api.html"><code>http_api</code></a> for the details.
+<code>GET /.well-known/metnos.json</code>. For the full list see
+<a href="http_api.html"><code>http_api</code></a>.
 </p>
 
 <p>
@@ -414,7 +414,7 @@ and <code>via_channel="auto"</code>: it resolves through
 for non-host actors.
 </p>
 
-<h1 id="cap10">10. Limits and deferrals to +</h1>
+<h1 id="cap10">10. Limits and future work</h1>
 
 <ul>
 <li><strong>One channel per process</strong>: the daemon manages one channel

@@ -276,28 +276,29 @@ forma e il suo ruolo:
 <g transform="translate(20,220)">
  <circle cx="6" cy="6" r="5" fill="#1A477A"/><text class="lbl" x="18" y="10">mnest (passaggio fra executor)</text>
  <rect x="220" y="0" width="14" height="14" rx="2" fill="#548235"/><text class="lbl" x="240" y="10">executor</text>
- <rect x="320" y="2" width="22" height="10" rx="5" fill="#A0522D"/><text class="lbl" x="350" y="10">fast-path</text>
- <path d="M520,2 Q535,-13 550,2 L550,22 Q535,37 520,22 Z" fill="none" stroke="#6B21A8" stroke-width="1.5" stroke-dasharray="3,2"/><text class="lbl" x="560" y="14">proto-mnest</text>
+ <rect x="320" y="2" width="22" height="10" rx="5" fill="#A0522D"/><text class="lbl" x="350" y="10">fastpath / autopath</text>
+ <path d="M540,2 Q555,-13 570,2 L570,22 Q555,37 540,22 Z" fill="none" stroke="#6B21A8" stroke-width="1.5" stroke-dasharray="3,2"/><text class="lbl" x="580" y="14">proto-mnest</text>
 </g>
 <text class="lbl-sm" x="360" y="260" text-anchor="middle">Le particelle fluttuano (animazione: passa il cursore sull'illustrazione).</text>
 </svg>
-<figcaption>Fig. 1 &mdash; Il brodo del mnestoma a riposo. Quattro specie di particelle: i mnest (passaggi osservati), gli executor (nodi del grafo), i fast-path (scorciatoie introspettive) e i proto-mnest (desideri non ancora soddisfatti).</figcaption>
+<figcaption>Fig. 1 &mdash; Il brodo del mnestoma a riposo. Quattro specie di particelle: i mnest (passaggi osservati), gli executor (nodi del grafo), i percorsi preformati &mdash; fastpath (L0) e autopath (L1) &mdash; e i proto-mnest (desideri non ancora soddisfatti).</figcaption>
 </figure>
 
 <p>
 Ogni particella ha una storia: un <strong>mnest</strong> &egrave; il
 ricordo che &laquo;A &egrave; servito a B&raquo;, un
 <strong>executor</strong> &egrave; un piccolo programma che sa fare
-una cosa precisa, un <strong>fast-path</strong> &egrave; una
-scorciatoia che il sistema ha appreso (la richiesta canonica &laquo;X
-si risolve cos&igrave;&raquo;), un <strong>proto-mnest</strong>
-&egrave; un mnest a met&agrave;: src reale, dst desiderato ma non
-ancora esistente. Si vede subito nel disegno che il proto-mnest ha
+una cosa precisa, un <strong>percorso preformato</strong> &egrave; una
+scorciatoia che il sistema ha appreso &mdash; il <em>fastpath</em> (L0)
+per la richiesta identica, l'<em>autopath</em> (L1) per la forma
+generalizzata di un gruppo di richieste affini &mdash; un
+<strong>proto-mnest</strong> &egrave; un mnest a met&agrave;: src reale,
+dst desiderato ma non ancora esistente. Si vede subito nel disegno che il proto-mnest ha
 una forma diversa, una specie di recettore aperto: c'&egrave; uno
 slot vuoto che aspetta di essere riempito.
 </p>
 
-<h2>Dalla ripetizione al fastpath</h2>
+<h2>Dalla ripetizione al fastpath (L0) e all'autopath (L1)</h2>
 
 <p>
 Nel brodo, niente &egrave; davvero a caso. Le particelle si
@@ -306,21 +307,28 @@ misurata con il modello multilingua BGE-M3. Quando l'utente fa
 ripetutamente la stessa cosa &mdash; tre richieste &laquo;scarica
 questa pagina&raquo; che diventano sempre <code>get_urls</code>
 seguito da <code>describe_entries</code> &mdash; i mnest osservati
-nei tre turn riferiscono alla stessa coppia di executor. Quei mnest
-formano un <em>cluster cross-turn</em>: un'evidenza che &laquo;questa
-pipeline funziona&raquo;.
+nei tre turni riferiscono alla stessa coppia di executor. Quei mnest
+formano un <em>cluster fra turni</em>: la prova che &laquo;questa
+sequenza funziona&raquo;.
 </p>
 
 <p>
-A questo punto succede qualcosa di interessante: il cluster non
-resta una nuvola sfocata, cristallizza. Diventa un
-<strong>fastpath</strong>, un percorso preformato che descrive la
-sequenza in modo compatto e immediatamente eseguibile. Da quel
-momento il PLANNER non ha pi&ugrave; bisogno di chiamare il modello
-linguistico per ripensare la pipeline da capo: legge il fastpath e
-lo usa direttamente. La figura sotto mostra le quattro fasi
-&mdash; osservazione, cluster, cristallizzazione, riuso &mdash; in
-sequenza.
+La memoizzazione che ne nasce ha due forme, e conviene tenerle
+distinte perch&eacute; il glossario di Metnos le separa con cura.
+Il <strong>fastpath</strong> (livello <strong>L0</strong>) &egrave;
+la scorciatoia della <em>stessa richiesta</em>: una domanda gi&agrave;
+risolta, riconosciuta per impronta o per vicinanza semantica, viene
+riservita con il piano gi&agrave; pronto &mdash; argomenti concreti
+compresi. L'<strong>autopath</strong> (livello <strong>L1</strong>)
+&egrave; il passo successivo: quando una stessa forma di richiesta
+torna per molti contenuti diversi, il sistema ne astrae uno
+<em>scheletro generalizzato</em> &mdash; la sequenza di executor senza
+gli argomenti specifici &mdash; che vale per l'intero gruppo di
+domande affini. In entrambi i casi il PLANNER non chiama pi&ugrave; il
+modello linguistico per ripensare la sequenza da capo: legge il
+percorso preformato e lo esegue. La figura sotto mostra le quattro
+fasi &mdash; osservazione, cluster, cristallizzazione, riuso &mdash;
+in sequenza.
 </p>
 
 <figure>
@@ -475,7 +483,7 @@ sequenza.
  <text class="lab2-tick" x="440" y="358" text-anchor="middle">fase 3</text>
  <text class="lab2-tick" x="600" y="358" text-anchor="middle">fase 4</text>
 </svg>
-<figcaption>Fig. 2 &mdash; La nascita di un fastpath. Tre turn ripetuti producono mnest che convergono in un cluster, il cluster cristallizza in un percorso preformato, e il PLANNER lo usa direttamente saltando il modello linguistico.</figcaption>
+<figcaption>Fig. 2 &mdash; La nascita di un percorso preformato. Tre turni ripetuti producono mnest che convergono in un cluster; il cluster cristallizza in un fastpath (L0) e, quando la stessa forma torna su contenuti diversi, in un autopath (L1). Da quel momento il PLANNER lo esegue direttamente, saltando il modello linguistico.</figcaption>
 </figure>
 
 <p>
@@ -660,23 +668,26 @@ ed ecco un possibile dst che lo chiuderebbe&raquo;.
 <figcaption>Fig. 4 &mdash; La danza della sintesi. Synt entra nella lacuna del recettore, lavora alla creazione di un nuovo executor, lo lascia al suo posto e se ne va. Il proto-mnest diventa un mnest attivo: la capacita' nuova entra nel pool degli executor.</figcaption>
 </figure>
 
-<h2>Aggregazione: fast-path che si compongono</h2>
+<h2>Aggregazione: dalla scorciatoia al piano generalizzato</h2>
 
 <p>
-C'&egrave; un altro fenomeno interessante che accade nel brodo: due
-fast-path che vivono adiacenti, e si presentano spesso nello stesso
-turno, finiscono per agganciarsi a formare un fast-path pi&ugrave;
-lungo.
+C'&egrave; un altro fenomeno interessante che accade nel brodo:
+passaggi che ricorrono spesso vicini, nello stesso turno, finiscono
+per consolidarsi in un percorso pi&ugrave; lungo e stabile.
 </p>
 
 <p>
-Pensiamo a un turno tipo: &laquo;scaricami questa pagina&raquo;
-attiva un fast-path L1 single-tool; subito dopo, &laquo;dimmi
-cosa dice&raquo; attiva un altro fast-path L1. Il sistema osserva
-la successione, registra la sequenza, e quando si ripete tre volte
-la promuove a <em>fast-path L2 multi-step</em>. Da quel momento
-la coppia &laquo;scarica + descrivi&raquo; &egrave; una sola
-sequenza riconosciuta.
+Pensiamo a un turno tipo: &laquo;scaricami questa pagina&raquo; e poi
+&laquo;dimmi cosa dice&raquo;. La prima volta &egrave; il pianificatore
+a comporre la sequenza; quando la stessa richiesta esatta ritorna, un
+<strong>fastpath</strong> (L0) la riserve gi&agrave; pronta. Ma se la
+medesima <em>forma</em> &mdash; scarica una pagina, poi descrivila
+&mdash; si ripresenta su pagine sempre diverse, il sistema astrae uno
+scheletro senza argomenti specifici e lo promuove ad
+<strong>autopath</strong> (L1): un piano generalizzato che vale per
+tutto il gruppo di richieste affini, non solo per quella letterale. Da
+quel momento &laquo;scarica + descrivi&raquo; &egrave; una sola
+sequenza riconosciuta, qualunque sia la pagina.
 </p>
 
 <figure>
@@ -688,41 +699,40 @@ sequenza riconosciuta.
 @keyframes emerge-late{0%,75%{opacity:0;transform:scale(0.5)}85%,95%{opacity:1;transform:scale(1)}100%{opacity:0}}
 </style>
 <rect class="bg-fill5" x="0" y="0" width="720" height="280"/>
-<!-- L1 fast-paths (two separate chips) -->
+<!-- fastpath L0 (two separate chips) -->
 <rect class="fp-mono" x="80" y="60" width="40" height="14" rx="7"/>
-<text class="lbl5" x="100" y="92" text-anchor="middle" style="font-size:9px;">L1 &laquo;scarica&raquo;</text>
+<text class="lbl5" x="100" y="92" text-anchor="middle" style="font-size:9px;">L0 &laquo;scarica&raquo;</text>
 <rect class="fp-mono2" x="260" y="60" width="40" height="14" rx="7"/>
-<text class="lbl5" x="280" y="92" text-anchor="middle" style="font-size:9px;">L1 &laquo;descrivi&raquo;</text>
-<!-- L2 emerge (longer chip) -->
+<text class="lbl5" x="280" y="92" text-anchor="middle" style="font-size:9px;">L0 &laquo;descrivi&raquo;</text>
+<!-- autopath L1 emerge (longer chip) -->
 <rect class="fp-poly" x="320" y="150" width="90" height="14" rx="7"/>
-<text class="lbl5" x="365" y="182" text-anchor="middle" style="font-size:9px;font-weight:600;">L2 = scarica + descrivi</text>
-<!-- L2 + L2 → executor sintetizzato (rectangle) -->
+<text class="lbl5" x="365" y="182" text-anchor="middle" style="font-size:9px;font-weight:600;">L1 = scarica + descrivi</text>
+<!-- autopath L1 → executor sintetizzato (rectangle) -->
 <rect class="fp-tri" x="520" y="120" width="140" height="60" rx="6"/>
-<text class="lbl5" x="590" y="145" text-anchor="middle" style="fill:#fff;font-weight:600;font-size:11px;">describe_url</text>
+<text class="lbl5" x="590" y="145" text-anchor="middle" style="fill:#fff;font-weight:600;font-size:11px;">describe_urls</text>
 <text class="lbl5" x="590" y="160" text-anchor="middle" style="fill:#fff;font-size:9px;">executor sintetizzato</text>
-<text class="lbl5" x="590" y="200" text-anchor="middle" style="font-size:9px;color:#64748b;">soglia: 50 ripetizioni</text>
+<text class="lbl5" x="590" y="200" text-anchor="middle" style="font-size:9px;color:#64748b;">se la forma matura</text>
 <!-- arrows -->
 <path d="M170,67 Q200,40 240,67" stroke="#64748B" fill="none" stroke-width="1.5" stroke-dasharray="3,2"/>
-<text class="lbl5" x="205" y="35" text-anchor="middle" style="font-size:9px;color:#64748b;">3 ripetizioni</text>
+<text class="lbl5" x="205" y="35" text-anchor="middle" style="font-size:9px;color:#64748b;">ricorre su contenuti diversi</text>
 <path d="M365,165 L520,150" stroke="#16a34a" stroke-width="1.5" stroke-dasharray="3,2" fill="none" marker-end="url(#arrow-green3)"/>
 <defs>
  <marker id="arrow-green3" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
  <path d="M0,0 L0,6 L7,3 z" fill="#16a34a"/>
  </marker>
 </defs>
-<text class="lbl5" x="445" y="148" text-anchor="middle" style="font-size:9px;color:#16a34a;">promozione L2&rarr;L3</text>
+<text class="lbl5" x="445" y="148" text-anchor="middle" style="font-size:9px;color:#16a34a;">sintesi (via proto-mnest)</text>
 </svg>
-<figcaption>Fig. 5 &mdash; Aggregazione dei fast-path. Due fast-path L1 si combinano in un L2 dopo tre passaggi; dopo cinquanta, la sequenza &egrave; abbastanza stabile per essere unificata in un executor unico.</figcaption>
+<figcaption>Fig. 5 &mdash; Dalla scorciatoia al piano generalizzato. Due fastpath L0 della stessa forma si astraggono in un autopath L1 (la sequenza senza argomenti); se quella forma matura abbastanza, il synt la unifica in un singolo executor (via proto-mnest).</figcaption>
 </figure>
 
 <p>
-La sequenza non si ferma a due. Tre fast-path adiacenti possono
-formare un trimero, e cos&igrave; via. Il sistema conserva tutta la
-catena, valuta quanto spesso si ripete e, oltre una soglia (50
-utilizzi per default), un job notturno chiamato
-<code>multi_tool_promote</code> presenta la pipeline a synt come
-proto-mnest: &laquo;ecco una sequenza che vale la pena unificare in
-un solo executor&raquo;.
+La sequenza non si ferma a due. Una forma generalizzata pu&ograve;
+incatenare tre passaggi, e cos&igrave; via. Il sistema conserva la
+catena, valuta quanto spesso ricorre e, quando un autopath &egrave;
+abbastanza maturo, lo presenta al synt sotto forma di proto-mnest:
+&laquo;ecco una sequenza che vale la pena unificare in un solo
+executor&raquo;.
 </p>
 
 <h2>Dalla pipeline alla sintesi: due vie verso lo stesso esito</h2>
@@ -736,20 +746,19 @@ che convergono nello stesso punto.
 <p>
 <strong>La via diretta</strong>: le funzioni introspettive osservano
 il mnestoma e individuano i recettori che ricorrono &mdash; quei
-proto-mnest che si presentano nello stesso modo turno dopo turno,
-soglia tre osservazioni ricorrenti. Quando ne trovano uno
-sufficientemente stabile, propongono direttamente un executor che
-chiuderebbe la lacuna. Non serve passare da un fast-path:
-l'analisi del singolo recettore basta. &Egrave; il caso classico, e
-storicamente il primo che synt ha imparato a gestire.
+proto-mnest che si presentano nello stesso modo turno dopo turno.
+Quando ne trovano uno sufficientemente stabile, propongono
+direttamente un executor che chiuderebbe la lacuna. Non serve passare
+da un percorso preformato: l'analisi del singolo recettore basta.
+&Egrave; il caso classico, e storicamente il primo che synt ha
+imparato a gestire.
 </p>
 
 <p>
-<strong>La via indiretta</strong>: una pipeline di fast-path L2 che
-ha accumulato abbastanza utilizzi (cinquanta, per default) viene
-promossa dal job notturno <code>multi_tool_promote</code> a
+<strong>La via indiretta</strong>: un autopath (L1) che ha funzionato
+molte volte su contenuti diversi viene presentato al synt come
 proto-mnest. Questa volta il proto-mnest non nasce da una richiesta
-fallita ma da una sequenza che ha funzionato tante volte: la
+fallita, ma da una sequenza che ha dato buona prova di s&eacute;: la
 signature desiderata descrive un executor unificato che incorpora
 tutta la catena di chiamate.
 </p>
@@ -767,20 +776,21 @@ pipeline &mdash; entra nel pool degli executor come tutti gli altri.
 </p>
 
 <div class="callout tip">
-<strong>L'executor ha sempre la priorit&agrave; sul fast-path
+<strong>L'executor ha sempre la priorit&agrave; sul percorso preformato
 (regola bidirezionale).</strong>
 La regola vale in entrambe le direzioni del tempo.
-<em>Da sintesi a fast-path</em>: una volta che la sintesi ha prodotto
-l'executor <code>describe_urls</code>, la pipeline aggregata
-<code>[get_urls, describe_entries]</code> che l'aveva originata
-viene immediatamente <em>demoted</em>: la sua forma si dissolve nel
+<em>Dalla sintesi al percorso preformato</em>: una volta che la sintesi
+ha prodotto l'executor <code>describe_urls</code>, l'autopath
+<code>[get_urls, describe_entries]</code> che l'aveva originato
+viene immediatamente <em>retrocesso</em>: la sua forma si dissolve nel
 brodo, e ogni nuova richiesta passa direttamente attraverso
 l'executor monolitico.
-<em>Da fast-path candidato a non-creazione</em>: simmetricamente, se
-mentre il sistema sta per registrare un nuovo fast-path scopre che
-l'executor che farebbe la stessa cosa esiste gi&agrave; nel catalog,
-il fast-path non viene creato: non c'&egrave; nulla da memoizzare se
-la capacit&agrave; unificata &egrave; gi&agrave; disponibile.
+<em>Dal percorso candidato alla non-creazione</em>: simmetricamente, se
+mentre il sistema sta per registrare un nuovo fastpath o autopath
+scopre che l'executor che farebbe la stessa cosa esiste gi&agrave; nel
+catalogo, il percorso non viene creato: non c'&egrave; nulla da
+memoizzare se la capacit&agrave; unificata &egrave; gi&agrave;
+disponibile.
 Il runtime applica la regola al volo nel matcher (auto-demote) e nel
 recording (skip silenzioso); il PLANNER la conosce dal suo prompt e
 non emette mai la sequenza doppia se l'executor unificato &egrave;
@@ -795,8 +805,8 @@ Quel che emerge, guardandolo da lontano, &egrave; un sistema in
 equilibrio dinamico: chiuso ma vivo, dove ogni componente partecipa
 a un ciclo. Le particelle nascono dall'osservazione del turno, si
 attraggono per somiglianza, formano cluster, alcuni cluster diventano
-fast-path, alcuni fast-path si aggregano in pipeline, le pipeline
-mature diventano proto-mnest che chiedono sintesi, la sintesi
+fastpath (L0), alcune forme si generalizzano in autopath (L1), gli
+autopath maturi diventano proto-mnest che chiedono sintesi, la sintesi
 produce nuovi executor, i nuovi executor generano altri mnest e
 tutto ricomincia.
 </p>
@@ -896,14 +906,16 @@ CREATE INDEX idx_events_ts ON events(ts);
 <h2>Tabella <code>canonical_query_log</code></h2>
 
 <p>
-Tabella di registrazione delle richieste utente in forma lemma, usata
-dal <a href="fast_path.html">fast-path introvertivo</a> (L1
-single-tool, ). Ogni volta che il pianificatore decide il
-primo executor di un turno, una riga viene inserita o rinforzata qui:
-canonical query (forma minuscola condensata), tool scelto, valori
-osservati degli argomenti. Dopo tre passaggi consolidati, il
-<code>canonical_matcher</code> usa BGE-M3 cosine per matchare nuove
-richieste contro questo log e saltare il pianificatore.
+Registro delle richieste utente in forma lemma (ADR 0149). Ogni volta
+che il pianificatore decide il primo executor di un turno e produce una
+richiesta canonica non vuota, una riga viene inserita o rinforzata qui:
+richiesta canonica (forma minuscola condensata), tool scelto, valori
+osservati degli argomenti. Oggi questa tabella &egrave; <em>solo
+telemetria</em>: il vecchio matcher che la rileggeva per saltare il
+pianificatore &egrave; stato ritirato perch&eacute; ridondante con il
+livello L0 del motore. La cache viva delle richieste &egrave; ora il
+<strong>fastpath</strong> (L0, stessa richiesta) e l'<strong>autopath</strong>
+(L1, forma generalizzata); vedi <a href="fast_path.html">fast_path.html</a>.
 </p>
 
 <pre><code>CREATE TABLE canonical_query_log (
@@ -923,16 +935,16 @@ richieste contro questo log e saltare il pianificatore.
 </code></pre>
 
 <p>
-La colonna <code>args_observed</code> (aggiunta via
-migrazione idempotente) memorizza i valori concreti degli argomenti
-osservati al primo passaggio del pianificatore. Quando una nuova
-richiesta matcha la riga, l'estrattore di argomenti
-(<a href="fast_path.html#cap10"><code>args_extractor</code></a>) li
-riusa direttamente, evitando di rifare l'estrazione regex o di
-chiamare un LLM. La sequenza multi-step analoga vive in un sqlite
-separato (<code>multi_tool_paths.sqlite</code>); vedi
-<a href="fast_path.html">fast_path.html</a> per il dettaglio
-completo.
+La colonna <code>args_observed</code> (aggiunta via migrazione
+idempotente) memorizza i valori concreti degli argomenti osservati al
+primo passaggio del pianificatore: quando una richiesta affine torna,
+l'estrattore di argomenti (<code>args_extractor</code>) li riusa
+direttamente, evitando di rifare l'estrazione o di chiamare un LLM. I
+piani generalizzati per i cluster di richieste &mdash; gli autopath
+(L1) &mdash; vivono in un archivio SQLite separato
+(<code>autopath.sqlite</code>, tabelle <code>autopaths</code> e
+<code>anti_autopaths</code>); vedi <a href="fast_path.html">fast_path.html</a>
+per il dettaglio completo.
 </p>
 
 <h2>Vista <code>v_mnestoma</code></h2>

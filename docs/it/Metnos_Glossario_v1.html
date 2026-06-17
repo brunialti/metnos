@@ -145,6 +145,7 @@ definito nella forma completa.
   <a href="#L-C">C</a>
   <a href="#L-D">D</a>
   <a href="#L-E">E</a>
+  <a href="#L-F">F</a>
   <a href="#L-G">G</a>
   <a href="#L-H">H</a>
   <a href="#L-I">I</a>
@@ -260,6 +261,19 @@ esplicitamente.</p>
 <p class="xref"><strong>Canonico:</strong> <a href="Metnos_Architettura_Intro_v1.html#cap6">Architettura Intro §6</a> &middot; <a href="architecture/policy.html#cap2">policy §2</a></p>
 </div>
 
+<div class="entry" id="autopath">
+<h3>autopath (L1) <span class="tag concept">componente</span></h3>
+<p>Il secondo dei due livelli con cui Metnos impara a rispondere senza scomodare
+il modello. Mentre il <a href="#fastpath">fastpath</a> (L0) ricorda una singola
+domanda parola per parola, l'<em>autopath</em> ricorda lo <em>schema</em> di un
+piano riuscito &mdash; la sequenza di passi, spogliata dei dettagli &mdash; e lo
+riusa per tutta una famiglia di richieste affini. Nasce da successi ripetuti su
+quel tipo di domanda; è dato leggibile e reversibile, non un modello addestrato.
+Da non confondere con la <a href="#skill">skill</a>, che è un insieme di
+strumenti, non un piano.</p>
+<p class="xref"><strong>Canonico:</strong> <a href="Metnos_Architettura_Intro_v1.html#s9">Architettura Intro §9 &mdash; La memoria che accelera</a></p>
+</div>
+
 <!-- ======================== B ======================== -->
 <div class="letter-head" id="L-B">B</div>
 
@@ -365,6 +379,21 @@ timing, esito finale. Non è un log accessorio: è la fonte primaria di
 verità. Audit, replay, eval, fitness dei neuroni, memoria episodic: tutti
 consumano ExecutionTrace. Append-only durante, immutabile dopo la chiusura.</p>
 <p class="xref"><strong>Canonico:</strong> <a href="architecture/agent_runtime.html#cap5">agent_runtime §5</a> (schema e ciclo di vita) &middot; <a href="architecture/types.html">types.html</a></p>
+</div>
+
+<!-- ======================== F ======================== -->
+<div class="letter-head" id="L-F">F</div>
+
+<div class="entry" id="fastpath">
+<h3>fastpath (L0) <span class="tag concept">componente</span></h3>
+<p>Il primo dei due livelli di memoria con cui Metnos evita di pensare due volte
+la stessa cosa. È la corsia veloce: quando una domanda <em>identica</em> è già
+stata risolta una volta, la volta successiva la risposta viene rigiocata di
+slancio, senza interpellare il modello &mdash; stesso esito, latenza e costo
+ridotti al minimo. Conserva i dettagli concreti della richiesta. Il livello
+superiore è l'<a href="#autopath">autopath</a> (L1), che generalizza il piano a
+un'intera famiglia di richieste.</p>
+<p class="xref"><strong>Canonico:</strong> <a href="Metnos_Architettura_Intro_v1.html#s9">Architettura Intro §9 &mdash; La memoria che accelera</a></p>
 </div>
 
 <!-- ======================== G ======================== -->
@@ -694,6 +723,21 @@ attivarsi anche B". Viene rinforzato dall'uso, indebolito dal disuso
 (decadimento à la Ebbinghaus). Il grafo delle sinapsi è un rollup
 derivato dai journal dei singoli neuroni.</p>
 <p class="xref"><strong>Canonico oggi:</strong> <a href="architecture/mnest.html">architecture/mnest.html</a> <em>(v1.1)</em>. <strong>Storico:</strong> <a href="architecture/synapse.html">synapse.html</a> (deprecato)</p>
+</div>
+
+<div class="entry" id="skill">
+<h3>skill <span class="tag concept">concetto</span></h3>
+<p>Un <em>insieme</em> di <a href="#executor">executor</a> affini, raccolti come una
+sola capacità: la skill della posta, per esempio, riunisce leggere, inviare e
+spostare i messaggi. È l'unità con cui una capacità si attiva, si rende fidata o
+si tiene a riposo. Tre fasce: <strong>core</strong> (parte del cuore di Metnos),
+<strong>first-party</strong> (curate dal progetto) e <strong>importate</strong>
+(provenienti da terzi). La skill è un asse <em>ortogonale</em> al backend: la
+skill decide <em>se</em> una capacità è attiva, il backend decide <em>come</em>
+raggiunge un fornitore concreto, scelto sempre dalla configurazione e mai dal
+modello. Da non confondere con l'<a href="#autopath">autopath</a>: quello è un
+piano appreso, questa è una dotazione di strumenti.</p>
+<p class="xref"><strong>Canonico:</strong> <a href="Metnos_Architettura_Intro_v1.html#s3">Architettura Intro §3 &mdash; skill &harr; backend</a></p>
 </div>
 
 <div class="entry" id="synt">

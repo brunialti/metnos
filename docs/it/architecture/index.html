@@ -4,7 +4,7 @@
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
 <title>Microprogettazione — Metnos</title>
-<meta name="description" content="Guida alla microprogettazione di Metnos: cosa sono executor, mnest, mnestoma, agent runtime, http_api; come si parlano fra loro; i ventuno documenti canonici allineati al codice.">
+<meta name="description" content="Guida alla microprogettazione di Metnos: cosa sono executor, mnest, mnestoma, agent runtime, http_api; come si parlano fra loro; i ventidue documenti canonici allineati al codice.">
 <meta name="keywords" content="Metnos, metnos, microprogettazione, architettura, executor, mnest, mnestoma, agent runtime, vaglio, synt, telos, http_api, multi-user, web crawler">
 <meta name="author" content="Roberto Brunialti">
 <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large">
@@ -15,13 +15,13 @@
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://metnos.com/it/architecture/">
 <meta property="og:title" content="Microprogettazione — Metnos">
-<meta property="og:description" content="Guida didattica alla microprogettazione di Metnos: termini, mappa dei componenti, ventuno documenti canonici allineati al codice.">
+<meta property="og:description" content="Guida didattica alla microprogettazione di Metnos: termini, mappa dei componenti, ventidue documenti canonici allineati al codice.">
 <meta property="og:locale" content="it_IT">
 <meta property="og:locale:alternate" content="en_US">
 <meta property="og:site_name" content="Metnos">
 <meta name="twitter:card" content="summary">
 <meta name="twitter:title" content="Microprogettazione — Metnos">
-<meta name="twitter:description" content="Ventuno componenti, una mappa, un glossario propedeutico.">
+<meta name="twitter:description" content="Ventidue componenti, una mappa, un glossario propedeutico.">
 <style>:root {
  --navy: #1A477A;
  --navy-light: #2B6CB0;
@@ -213,7 +213,7 @@ fissando i termini prima di usarli.
  <li><a href="#parole">Le quattro parole da conoscere prima</a></li>
  <li><a href="#mappa">La mappa dei componenti</a></li>
  <li><a href="#flusso">Come scorre una richiesta dell&rsquo;utente</a></li>
- <li><a href="#canonici">I ventuno documenti canonici</a></li>
+ <li><a href="#canonici">I ventidue documenti canonici</a></li>
  <li><a href="#stato">Vocabolario e primitive</a></li>
  <li><a href="#convenzioni">Convenzioni di scrittura</a></li>
  </ol>
@@ -304,7 +304,7 @@ proseguire.
 <h2 id="mappa">3. La mappa dei componenti</h2>
 
 <p>
-Sono <strong>ventuno</strong> componenti documentati. Lo schema sotto
+Sono <strong>ventidue</strong> componenti documentati. Lo schema sotto
 li raggruppa per ruolo: il bordo nero spesso &egrave; il motore centrale,
 le forme verdi i &laquo;servizi&raquo; che il motore consulta, le forme
 azzurre i &laquo;tessuti&raquo; che memorizzano lo stato, le forme color
@@ -358,7 +358,7 @@ Le frecce indicano chi <em>chiama</em> chi.
  <!-- Executor pool sotto il runtime -->
  <rect class="box service" x="320" y="290" width="240" height="50"/>
  <text x="440" y="312" class="lbl">executor (pool)</text>
- <text x="440" y="328" class="lbl-sm">75 fra scritti a mano e sintetizzati</text>
+ <text x="440" y="328" class="lbl-sm">79 fra scritti a mano e sintetizzati</text>
 
  <!-- Scratchpad e mnestoma sotto -->
  <rect class="box memory" x="200" y="380" width="160" height="50"/>
@@ -499,10 +499,10 @@ che le due capacit&agrave; sono andate a braccetto? Se le risposte sono
 la mappa &egrave; vostra.
 </div>
 
-<h2 id="canonici">5. I ventuno documenti canonici</h2>
+<h2 id="canonici">5. I ventidue documenti canonici</h2>
 
 <p>
-Sotto, i ventuno documenti raggruppati per ruolo. Tutti hanno la
+Sotto, i ventidue documenti raggruppati per ruolo. Tutti hanno la
 controparte inglese in
 <a href="../../en/architecture/"><code>/en/architecture/</code></a>.
 </p>
@@ -528,8 +528,8 @@ controparte inglese in
  <td>Constrained generation via GBNF per il <code>tool_call</code> del PLANNER. Discriminated union nome+args, schema recursive, pool filter contestuale, validator post-decode. Risolve thinking-loop, mix-match args, escape-hatch arbitrari. Bench convergenza 50% &rarr; 100%.</td>
 </tr>
 <tr>
- <td><a href="fast_path.html"><code>fast-path introvertivo</code></a></td>
- <td>Tre livelli di memoizzazione prima del pianificatore: L0 modelli letterali (&laquo;che ora &egrave;&raquo;), L1 single-tool tramite <code>canonical_matcher</code> con match BGE-M3 sul <em>canonical query log</em>, L2 sequenze multi-step tramite <code>multi_tool_paths</code> con TTL in giorni di attivit&agrave; effettiva. Ponte L2&rarr;L3 verso la sintesi via proto-mnest. Estrattore di argomenti ibrido regex + memoria + LLM opzionale. Configurazione persistente in <code>~/.config/metnos/runtime.toml</code>.</td>
+ <td><a href="fast_path.html"><code>fastpath e autopath</code></a></td>
+ <td>Due livelli di memoizzazione prima del pianificatore. <strong>L0 &mdash; fastpath</strong>: la scorciatoia della stessa richiesta, riconosciuta per impronta (hash) o per vicinanza semantica (coseno BGE-M3) e riservita con il piano gi&agrave; pronto, argomenti concreti compresi. <strong>L1 &mdash; autopath</strong>: il piano generalizzato di un cluster di richieste affini (lo scheletro senza argomenti), promosso dai riscontri positivi ripetuti e custodito in <code>autopath.sqlite</code> (tabelle <code>autopaths</code>/<code>anti_autopaths</code>). Estrattore di argomenti ibrido (regola + memoria + LLM opzionale).</td>
 </tr>
 <tr>
  <td><a href="lifecycle.html"><code>lifecycle</code></a></td>
@@ -716,7 +716,6 @@ dell&rsquo;<a href="../Metnos_Architettura_Intro_v1.html">Architettura
 <h2>Continua a leggere</h2>
 <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(260px, 1fr)); gap:14px; margin:16px 0 24px;">
  <a href="../Metnos_Architettura_Intro_v1.html" style="display:block; padding:14px 16px; border:1px solid var(--border); border-radius:8px; background:white; color:inherit; text-decoration:none;"><span style="display:inline-block; padding:2px 9px; border-radius:10px; font-size:9pt; background:var(--code-bg); color:var(--muted); font-weight:500;">livello 1 &middot; 20 min</span><div style="color:var(--navy); font-size:11.5pt; font-weight:700; margin:8px 0 6px 0;">Architettura &mdash; Introduzione v1</div><div style="margin:0; color:var(--muted); font-size:10pt; line-height:1.5;">Il &laquo;cosa&raquo;: i quattro strati, l&rsquo;autonomy, il workspace, il flusso di una richiesta.</div></a>
- <a href="../Metnos_Letteratura_Adattamenti_v1.html" style="display:block; padding:14px 16px; border:1px solid var(--border); border-radius:8px; background:white; color:inherit; text-decoration:none;"><span style="display:inline-block; padding:2px 9px; border-radius:10px; font-size:9pt; background:var(--code-bg); color:var(--muted); font-weight:500;">razionale &middot; 15 min</span><div style="color:var(--navy); font-size:11.5pt; font-weight:700; margin:8px 0 6px 0;">Letteratura &amp; Adattamenti</div><div style="margin:0; color:var(--muted); font-size:10pt; line-height:1.5;">Il &laquo;perch&eacute;&raquo;: la letteratura che ha informato le scelte di design.</div></a>
  <a href="../Metnos_QuickTour_v1.html" style="display:block; padding:14px 16px; border:1px solid var(--border); border-radius:8px; background:white; color:inherit; text-decoration:none;"><span style="display:inline-block; padding:2px 9px; border-radius:10px; font-size:9pt; background:var(--code-bg); color:var(--muted); font-weight:500;">QuickTour &middot; 8 min</span><div style="color:var(--navy); font-size:11.5pt; font-weight:700; margin:8px 0 6px 0;">QuickTour</div><div style="margin:0; color:var(--muted); font-size:10pt; line-height:1.5;">Otto scene narrate: come Metnos si comporta in casi reali.</div></a>
  <a href="../index.html" style="display:block; padding:14px 16px; border:1px solid var(--border); border-radius:8px; background:white; color:inherit; text-decoration:none;"><span style="display:inline-block; padding:2px 9px; border-radius:10px; font-size:9pt; background:var(--code-bg); color:var(--muted); font-weight:500;">home</span><div style="color:var(--navy); font-size:11.5pt; font-weight:700; margin:8px 0 6px 0;">&larr; Indice principale</div><div style="margin:0; color:var(--muted); font-size:10pt; line-height:1.5;">Tutti i documenti in un colpo solo.</div></a>
 </div>

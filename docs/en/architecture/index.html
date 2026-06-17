@@ -4,7 +4,7 @@
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
 <title>Microdesign — Metnos</title>
-<meta name="description" content="A guide to Metnos microdesign: what executor, mnest, mnestome, agent runtime and http_api are; how they talk to each other; the twenty-one canonical documents aligned with the code.">
+<meta name="description" content="A guide to Metnos microdesign: what executor, mnest, mnestome, agent runtime and http_api are; how they talk to each other; the twenty-two canonical documents aligned with the code.">
 <meta name="keywords" content="Metnos, metnos, microdesign, architecture, executor, mnest, mnestome, agent runtime, vaglio, synt, telos, http_api, multi-user, web crawler">
 <meta name="author" content="Roberto Brunialti">
 <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large">
@@ -15,13 +15,13 @@
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://metnos.com/en/architecture/">
 <meta property="og:title" content="Microdesign — Metnos">
-<meta property="og:description" content="A teaching-style guide to Metnos microdesign: terms, component map, twenty-one canonical documents aligned with the code.">
+<meta property="og:description" content="A teaching-style guide to Metnos microdesign: terms, component map, twenty-two canonical documents aligned with the code.">
 <meta property="og:locale" content="en_US">
 <meta property="og:locale:alternate" content="it_IT">
 <meta property="og:site_name" content="Metnos">
 <meta name="twitter:card" content="summary">
 <meta name="twitter:title" content="Microdesign — Metnos">
-<meta name="twitter:description" content="Twenty-one components, one map, one propaedeutic glossary.">
+<meta name="twitter:description" content="Twenty-two components, one map, one propaedeutic glossary.">
 <style>:root {
  --navy: #1A477A;
  --navy-light: #2B6CB0;
@@ -93,7 +93,7 @@ fixing each term before we use it.
  <li><a href="#words">The four words to learn first</a></li>
  <li><a href="#map">A map of the components</a></li>
  <li><a href="#flow">How a user request flows through the system</a></li>
- <li><a href="#canonical">The twenty-one canonical documents</a></li>
+ <li><a href="#canonical">The twenty-two canonical documents</a></li>
  <li><a href="#status">Vocabulary and primitives</a></li>
  <li><a href="#conventions">Writing conventions</a></li>
  </ol>
@@ -181,7 +181,7 @@ proceed.
 <h2 id="map">3. A map of the components</h2>
 
 <p>
-There are <strong>twenty-one</strong> documented components. The diagram
+There are <strong>twenty-two</strong> documented components. The diagram
 below groups them by role: thick black border for the central engine,
 green shapes for the &laquo;services&raquo; the engine consults, blue
 shapes for the &laquo;tissues&raquo; that hold state, bronze shapes for
@@ -230,7 +230,7 @@ who <em>calls</em> whom.
 
  <rect class="box service" x="320" y="290" width="240" height="50"/>
  <text x="440" y="312" class="lbl">executor (pool)</text>
- <text x="440" y="328" class="lbl-sm">75 hand-crafted + synthesised</text>
+ <text x="440" y="328" class="lbl-sm">79 hand-crafted + synthesised</text>
 
  <rect class="box memory" x="200" y="380" width="160" height="50"/>
  <text x="280" y="402" class="lbl">scratchpad</text>
@@ -352,10 +352,10 @@ hand? If your answers are <em>channel, agent runtime, agent runtime,
 vaglio, mnestome</em>, the map is yours.
 </div>
 
-<h2 id="canonical">5. The twenty-one canonical documents</h2>
+<h2 id="canonical">5. The twenty-two canonical documents</h2>
 
 <p>
-Below, the twenty-one documents grouped by role. All have an Italian
+Below, the twenty-two documents grouped by role. All have an Italian
 counterpart at
 <a href="../../it/architecture/"><code>/it/architecture/</code></a>.
 </p>
@@ -381,8 +381,8 @@ counterpart at
  <td>Constrained generation via GBNF for the PLANNER <code>tool_call</code>. Discriminated union name+args, recursive schema, contextual pool filter, post-decode validator. Solves thinking-loop, args mix-match, arbitrary escape-hatches. Bench convergence 50% &rarr; 100%.</td>
 </tr>
 <tr>
- <td><a href="fast_path.html"><code>introvertive fast-path</code></a></td>
- <td>Three layers of memoization before the planner: L0 literal patterns (&ldquo;what time is it&rdquo;), L1 single-tool via <code>canonical_matcher</code> with BGE-M3 match on the <em>canonical query log</em>, L2 multi-step sequences via <code>multi_tool_paths</code> with active-day TTL. L2&rarr;L3 bridge to synthesis via proto-mnest. Hybrid argument extractor regex + memory + optional LLM. Persistent config in <code>~/.config/metnos/runtime.toml</code>.</td>
+ <td><a href="fast_path.html"><code>fastpath and autopath</code></a></td>
+ <td>Two layers of memoization before the planner. <strong>L0 &mdash; fastpath</strong>: the shortcut for the same request, recognised by fingerprint (hash) or semantic proximity (BGE-M3 cosine) and served again with the plan already prepared, concrete arguments included. <strong>L1 &mdash; autopath</strong>: the generalised plan for a cluster of related requests (the skeleton without arguments), promoted from repeated positive feedback and kept in <code>autopath.sqlite</code> (tables <code>autopaths</code>/<code>anti_autopaths</code>). Hybrid argument extractor (rule + memory + optional LLM).</td>
 </tr>
 <tr>
  <td><a href="lifecycle.html"><code>lifecycle</code></a></td>
@@ -562,7 +562,6 @@ Every microdesign file follows the same template as
 <h2>Read on</h2>
 <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(260px, 1fr)); gap:14px; margin:16px 0 24px;">
  <a href="../Metnos_Architecture_Intro_v1.html" style="display:block; padding:14px 16px; border:1px solid var(--border); border-radius:8px; background:white; color:inherit; text-decoration:none;"><span style="display:inline-block; padding:2px 9px; border-radius:10px; font-size:9pt; background:var(--code-bg); color:var(--muted); font-weight:500;">level 1 &middot; 20 min</span><div style="color:var(--navy); font-size:11.5pt; font-weight:700; margin:8px 0 6px 0;">Architecture &mdash; Introduction v1</div><div style="margin:0; color:var(--muted); font-size:10pt; line-height:1.5;">The &laquo;what&raquo;: the four layers, autonomy, the workspace, a request walked through.</div></a>
- <a href="../Metnos_Literature_Adaptations_v1.html" style="display:block; padding:14px 16px; border:1px solid var(--border); border-radius:8px; background:white; color:inherit; text-decoration:none;"><span style="display:inline-block; padding:2px 9px; border-radius:10px; font-size:9pt; background:var(--code-bg); color:var(--muted); font-weight:500;">rationale &middot; 15 min</span><div style="color:var(--navy); font-size:11.5pt; font-weight:700; margin:8px 0 6px 0;">Literature &amp; Adaptations</div><div style="margin:0; color:var(--muted); font-size:10pt; line-height:1.5;">The &laquo;why&raquo;: the literature that informed each design choice.</div></a>
  <a href="../Metnos_QuickTour_v1.html" style="display:block; padding:14px 16px; border:1px solid var(--border); border-radius:8px; background:white; color:inherit; text-decoration:none;"><span style="display:inline-block; padding:2px 9px; border-radius:10px; font-size:9pt; background:var(--code-bg); color:var(--muted); font-weight:500;">QuickTour &middot; 8 min</span><div style="color:var(--navy); font-size:11.5pt; font-weight:700; margin:8px 0 6px 0;">QuickTour</div><div style="margin:0; color:var(--muted); font-size:10pt; line-height:1.5;">Eight narrated scenes: how Metnos behaves in real cases.</div></a>
  <a href="../index.html" style="display:block; padding:14px 16px; border:1px solid var(--border); border-radius:8px; background:white; color:inherit; text-decoration:none;"><span style="display:inline-block; padding:2px 9px; border-radius:10px; font-size:9pt; background:var(--code-bg); color:var(--muted); font-weight:500;">home</span><div style="color:var(--navy); font-size:11.5pt; font-weight:700; margin:8px 0 6px 0;">&larr; Documentation index</div><div style="margin:0; color:var(--muted); font-size:10pt; line-height:1.5;">All documents at one glance.</div></a>
 </div>

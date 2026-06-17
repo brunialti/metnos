@@ -97,8 +97,8 @@ li { margin-bottom: 4px; }.lead { font-size: 12pt; color: var(--navy); border-le
 
 <p class="lead">Il <em>PLANNER</em> di Metnos sceglie quale executor invocare a ogni
 step. E&rsquo; un LLM locale (Qwen 3.6 35B-A3B). Quando la query e&rsquo; complessa &mdash; tipo
-&laquo;proponi 3 orari per un appuntamento con Silvia di una ora la mattina settimana
-prossima, dopo la scelta mandami una email con la scelta&raquo; &mdash; l&rsquo;LLM <strong>a volte</strong>
+&laquo;proponi 3 orari per un appuntamento di un&rsquo;ora con un familiare la mattina
+della settimana prossima, dopo la scelta mandami una email con la scelta&raquo; &mdash; l&rsquo;LLM <strong>a volte</strong>
 entra in un loop di ragionamento e finisce per emettere prosa al posto di un
 <code>tool_call</code> strutturato. Il sistema non sa cosa eseguire. Game over.</p>
 
@@ -331,7 +331,7 @@ latenza media ~41s.</p>
 <ul>
  <li>Il <em>thinking-loop</em> e&rsquo; sparito. L&rsquo;LLM non spreca cicli a
  ragionare in cerchio.</li>
- <li>La pipeline propose+notify (complex_propose_silvia) converge sempre.
+ <li>La pipeline propose+notify (il caso «proponi-orari-poi-avvisa») converge sempre.
  Era il caso peggiore.</li>
  <li>Anche le query ambigue (&laquo;fai qualcosa di interessante&raquo;) chiudono in
  un <code>final_answer</code> sensato, invece di scegliere un escape-hatch
@@ -503,10 +503,10 @@ grammar invece di delegarla a un modello fine-tuned. Vantaggi:</p>
 <p>Svantaggi:</p>
 
 <ul>
- <li>Modelli fine-tuned su tool_call (GPT-5, Sonnet) sono <em>piu&rsquo; fluenti</em>
- su query molto aperte &mdash; non scelgono mai un tool a sproposito perche&rsquo;
- sono addestrati a ragionare semanticamente sul match. Compensiamo con
- ranker top-K + pool filter contestuale.</li>
+ <li>I grandi modelli frontier addestrati al tool_call (per esempio Claude)
+ sono <em>piu&rsquo; fluenti</em> su query molto aperte &mdash; non scelgono mai
+ un tool a sproposito, perch&eacute; sono addestrati a ragionare semanticamente
+ sul match. Compensiamo con ranker top-K + pool filter contestuale.</li>
  <li>I bug del server (vedi &sect;5) ci ricadono su. Mitigati da test
  regression.</li>
 </ul>

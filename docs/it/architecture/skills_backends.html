@@ -1,0 +1,483 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+ <meta charset="UTF-8">
+ <meta name="viewport" content="width=device-width, initial-scale=1.0">
+ <title>Metnos &mdash; skill e backend (due assi ortogonali)</title>
+ <meta name="description" content="Perch&eacute; in Metnos skill e backend sono assi ortogonali: il backend dice COME si esegue un verbo_oggetto contro un servizio, la skill dice SE/QUALI capacit&agrave; sono sbloccate. Tre tier (core / first-party / imported), architettura multi-provider, promozione.">
+ <meta name="keywords" content="skill, backend, provider, tier, dormancy, backend resolver, gitlab, github, multi-provider, ortogonalit&agrave;, Metnos">
+ <meta name="author" content="Roberto Brunialti">
+ <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large">
+ <link rel="canonical" href="https://metnos.com/it/architecture/skills_backends">
+ <link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/skills_backends">
+ <link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/skills_backends">
+ <link rel="alternate" hreflang="x-default" href="https://metnos.com/en/architecture/skills_backends">
+ <meta property="og:type" content="article">
+ <meta property="og:url" content="https://metnos.com/it/architecture/skills_backends">
+ <meta property="og:title" content="Metnos &mdash; skill e backend (due assi ortogonali)">
+ <meta property="og:description" content="Il backend dice COME esegui un verbo contro un servizio; la skill dice SE/QUALI capacit&agrave; sono sbloccate. Due assi ortogonali.">
+ <meta property="og:locale" content="it_IT">
+ <meta property="og:locale:alternate" content="en_US">
+ <meta property="og:site_name" content="Metnos">
+ <meta name="twitter:card" content="summary">
+ <meta name="twitter:title" content="Metnos &mdash; skill e backend (due assi ortogonali)">
+ <script type="application/ld+json">
+{
+ "@context": "https://schema.org",
+ "@type": "TechArticle",
+ "headline": "Metnos — skill e backend (due assi ortogonali)",
+ "description": "Perché in Metnos skill e backend sono assi ortogonali: il backend governa COME si esegue un verbo contro un servizio, la skill governa SE/QUALI capacità sono sbloccate.",
+ "url": "https://metnos.com/it/architecture/skills_backends.html",
+ "inLanguage": "it",
+ "isPartOf": {"@type": "WebSite", "name": "Metnos", "url": "https://metnos.com/"},
+ "author": {"@type": "Person", "name": "Roberto Brunialti"},
+ "about": "Metnos component: confine skill vs backend"
+}
+ </script>
+ <style>:root {
+ --navy: #1A477A; --navy-light: #2B6CB0; --sage: #548235;
+ --bronze: #A0522D; --plum: #6B21A8;
+ --bg: #FAFBFC; --text: #1a1a1a;
+ --border: #d0d7de; --code-bg: #f6f8fa;
+ --table-header: #1A477A; --table-alt: #f0f4f8;
+ --note-bg: #dbeafe; --note-border: #3b82f6;
+ --tip-bg: #dcfce7; --tip-border: #16a34a;
+ --warn-bg: #fef3c7; --warn-border: #f59e0b;
+ --danger-bg: #fee2e2; --danger-border: #dc2626;
+ --muted: #64748B;
+}
+* { box-sizing: border-box; }
+body { font-family: 'Segoe UI', Calibri, -apple-system, sans-serif; font-size: 11pt; line-height: 1.65; color: var(--text); background: var(--bg); max-width: 960px; margin: 0 auto; padding: 40px 30px; }
+h1 { color: var(--navy); font-size: 20pt; border-bottom: 3px solid var(--navy); padding-bottom: 8px; margin-top: 50px; }
+h1:first-of-type { margin-top: 20px; }
+h2 { color: var(--navy-light); font-size: 14pt; margin-top: 30px; border-bottom: 1px solid var(--border); padding-bottom: 4px; }
+h3 { color: var(--navy); font-size: 12pt; margin-top: 20px; }
+p { margin: 10px 0; }
+table { width: 100%; border-collapse: collapse; margin: 15px 0; font-size: 10pt; }
+th { background: var(--table-header); color: white; padding: 8px 10px; text-align: left; font-weight: 600; }
+td { padding: 7px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+tr:nth-child(even) td { background: var(--table-alt); }
+pre { background: var(--code-bg); border: 1px solid var(--border); border-radius: 4px; padding: 12px 16px; overflow-x: auto; font-size: 9.5pt; line-height: 1.55; }
+code { font-family: Consolas, 'Courier New', monospace; }
+p code, li code, td code { background: var(--code-bg); padding: 1px 5px; border-radius: 3px; font-size: 9.5pt; }
+figure { text-align: center; margin: 24px 0; }
+figure svg { max-width: 100%; height: auto; border: 1px solid var(--border); border-radius: 6px; background: white; padding: 12px; }
+figcaption { font-style: italic; color: #555; font-size: 9.5pt; margin-top: 8px; }
+.callout { border-left: 4px solid; padding: 10px 16px; margin: 15px 0; border-radius: 0 4px 4px 0; font-size: 10pt; }
+.callout.note { background: var(--note-bg); border-color: var(--note-border); }
+.callout.tip { background: var(--tip-bg); border-color: var(--tip-border); }
+.callout.warning { background: var(--warn-bg); border-color: var(--warn-border); }
+.callout.danger { background: var(--danger-bg); border-color: var(--danger-border); }
+.title-page { text-align: center; padding: 50px 0 20px; }
+.title-page h1 { font-size: 30pt; border: none; margin: 0; }
+.title-page .subtitle { font-size: 15pt; color: var(--navy-light); margin: 10px 0 26px; }
+.title-page .meta { font-size: 11pt; color: #666; }
+.toc h2 { border: none; }
+.toc ol { font-size: 11pt; line-height: 2; }
+.toc a { color: var(--navy); text-decoration: none; }
+.toc a:hover { text-decoration: underline; }
+ul, ol { margin: 8px 0; padding-left: 24px; }
+li { margin-bottom: 4px; }
+.lead { font-size: 12pt; color: var(--navy); border-left: 4px solid var(--sage); padding-left: 14px; margin: 18px 0; }
+ </style>
+</head>
+<body>
+
+<nav aria-label="Language" style="position:fixed;top:16px;right:20px;z-index:9999;font-family:'Segoe UI',Calibri,sans-serif;font-size:10pt;letter-spacing:2px;background:#FAFBFC;border:1px solid #d0d7de;border-radius:14px;padding:4px 10px;box-shadow:0 1px 4px rgba(0,0,0,0.04);">
+<a href="/it/architecture/skills_backends.html" class="active" hreflang="it" lang="it" style="color:#1a1a1a;text-decoration:none;font-weight:700;padding:0 4px;border:none;">IT</a>
+<a href="/en/architecture/skills_backends.html" hreflang="en" lang="en" style="color:#64748B;text-decoration:none;padding:0 4px;border:none;">EN</a>
+</nav>
+
+<div style="background:#fff;border-bottom:1px solid #d0d7de;padding:10px 0;font-size:14px;position:sticky;top:0;z-index:10;margin-bottom:20px;">
+ <div style="max-width:960px;margin:0 auto;padding:0 20px;display:flex;justify-content:space-between;">
+ <a href="../index.html" style="color:#1a477a;text-decoration:none;font-weight:500;">&larr; Indice documentazione</a>
+ <span style="color:#8e8e93;">Architettura &rsaquo; <strong style="color:#1a1a1a;">skill &amp; backend</strong></span>
+ </div>
+</div>
+
+<div class="title-page">
+ <h1>Metnos</h1>
+ <div class="subtitle"><code>skill</code> &harr; <code>backend</code> &mdash; due assi ortogonali</div>
+ <div class="meta">
+ Architettura del confine fra skill e backend<br>
+ Pubblico: chi vuole capire dove finisce un provider e dove comincia una skill.<br>
+ <br>
+ Lettura: 12 minuti.
+ </div>
+</div>
+
+<div class="toc">
+<h2>Indice</h2>
+<ol>
+ <li><a href="#cap1">Due assi ortogonali</a></li>
+ <li><a href="#cap2">I tre tier di skill</a></li>
+ <li><a href="#cap3">Da un provider a molti</a></li>
+ <li><a href="#cap4">Lo spegni-accendi sta sul backend</a></li>
+ <li><a href="#cap5">Promozione: il meccanismo</a></li>
+ <li><a href="#cap6">Come fanno gli altri (Hermes, MCP)</a></li>
+ <li><a href="#cap7">Per andare pi&ugrave; a fondo</a></li>
+ <li><a href="#cap8">E per te, in pratica?</a></li>
+</ol>
+</div>
+
+<h1 id="cap1">1. Due assi ortogonali</h1>
+
+<p class="lead">
+In Metnos &laquo;skill&raquo; e &laquo;backend&raquo; rispondono a due domande
+diverse. Il <strong>backend</strong> dice <em>COME</em> si esegue un
+<code>verbo_oggetto</code> contro un servizio. La <strong>skill</strong> dice
+<em>SE</em> e <em>QUALI</em> capacit&agrave; sono sbloccate, fidate e spedite.
+Confonderli porta a sdoppiare gli executor; tenerli separati &egrave; quel che
+permette di aggiungere un provider senza toccare il pianificatore.
+</p>
+
+<table>
+<tr><th>&nbsp;</th><th>Backend / provider</th><th>Skill</th></tr>
+<tr><td><strong>Risponde a</strong></td><td><em>COME</em> eseguo <code>verbo_oggetto</code> contro un servizio</td><td><em>SE / QUALI</em> capacit&agrave; sono sbloccate, fidate, spedite</td></tr>
+<tr><td><strong>Asse</strong></td><td>oggetto &times; provider</td><td>dipendenza esterna (credenziale / backend / hardware)</td></tr>
+<tr><td><strong>Visibilit&agrave;</strong></td><td>invisibile all'LLM, risolto da configurazione dal resolver dei backend</td><td>visibile all'utente (abilita / disabilita, dormienza, recinto, impacchettamento)</td></tr>
+</table>
+
+<p>
+I due assi si <strong>toccano</strong> solo quando una skill ha un solo
+provider: in quel caso <code>github</code>, <code>geo</code>, <code>mail</code>
+sono di fatto il nome user-facing del backend di quel provider.
+<strong>Divergono</strong> appena la skill ha pi&ugrave; backend (il calendario
+si serve su <em>ICS locale</em>, <em>Google</em> o <em>CalDAV</em>) o non ha
+alcun provider esterno (le foto, il nucleo). La mappa &egrave;
+<strong>molti-a-molti</strong>: un solo provider (Google Workspace) serve pi&ugrave;
+skill &mdash; posta, calendario, drive, fogli, documenti.
+</p>
+
+<div class="callout note">
+<strong>Regola anti-duplicazione.</strong> La dipendenza esterna (credenziale,
+indirizzo di servizio, hardware) si dichiara <strong>una volta sola, al
+backend</strong>. La skill la <strong>aggrega</strong> &mdash; somma dei requisiti
+dei suoi backend &mdash; e non la ridichiara. La dormienza della skill &egrave;
+<strong>derivata</strong> dai suoi backend, non scritta a mano.
+</div>
+
+<figure>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 430" width="100%" preserveAspectRatio="xMidYMid meet" style="font-family:'Segoe UI',Calibri,sans-serif;font-size:11px;">
+ <defs><marker id="sb-arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#1A477A"/></marker>
+ <marker id="sb-arr-plum" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#6B21A8"/></marker></defs>
+
+ <text x="290" y="24" text-anchor="middle" fill="#1A477A" font-weight="700" font-size="12">asse esecuzione &mdash; COME (invisibile all'LLM)</text>
+ <text x="790" y="24" text-anchor="middle" fill="#6B21A8" font-weight="700" font-size="12">asse skill &mdash; SE</text>
+
+ <rect x="120" y="44" width="340" height="50" rx="8" fill="#D9E4F0" stroke="#1A477A"/>
+ <text x="290" y="66" text-anchor="middle" fill="#1A477A" font-weight="700">PLANNER (modello locale)</text>
+ <text x="290" y="84" text-anchor="middle" fill="#475569" font-size="9.5">vede sempre e solo <tspan font-family="Consolas,monospace">find_issues</tspan></text>
+
+ <rect x="120" y="128" width="340" height="50" rx="8" fill="#DCFCE7" stroke="#3F6212"/>
+ <text x="290" y="150" text-anchor="middle" fill="#14532D" font-weight="700">EXECUTOR canonico</text>
+ <text x="290" y="168" text-anchor="middle" fill="#1F2937" font-size="9.5">provider-agnostico (oggetto <tspan font-family="Consolas,monospace">issues</tspan>)</text>
+
+ <rect x="120" y="212" width="340" height="50" rx="8" fill="#FEF3C7" stroke="#B7791F"/>
+ <text x="290" y="234" text-anchor="middle" fill="#7A4F00" font-weight="700">BACKEND RESOLVER</text>
+ <text x="290" y="252" text-anchor="middle" fill="#1F2937" font-size="9.5">sceglie il provider da configurazione</text>
+
+ <rect x="120" y="312" width="160" height="50" rx="8" fill="#fff" stroke="#1A477A"/>
+ <text x="200" y="342" text-anchor="middle" fill="#1A477A" font-weight="700">backend github</text>
+ <rect x="300" y="312" width="160" height="50" rx="8" fill="#fff" stroke="#1A477A"/>
+ <text x="380" y="342" text-anchor="middle" fill="#1A477A" font-weight="700">backend gitlab</text>
+
+ <line x1="290" y1="94" x2="290" y2="126" stroke="#1A477A" stroke-width="2" marker-end="url(#sb-arr)"/>
+ <line x1="290" y1="178" x2="290" y2="210" stroke="#1A477A" stroke-width="2" marker-end="url(#sb-arr)"/>
+ <line x1="240" y1="262" x2="205" y2="310" stroke="#1A477A" stroke-width="2" marker-end="url(#sb-arr)"/>
+ <line x1="340" y1="262" x2="375" y2="310" stroke="#1A477A" stroke-width="2" marker-end="url(#sb-arr)"/>
+
+ <rect x="640" y="128" width="300" height="234" rx="10" fill="#F3E8FF" stroke="#6B21A8" stroke-dasharray="5 4"/>
+ <text x="790" y="156" text-anchor="middle" fill="#6B21A8" font-weight="700">SKILL = attivazione / dormienza</text>
+ <rect x="668" y="184" width="244" height="44" rx="6" fill="#fff" stroke="#6B21A8"/>
+ <text x="790" y="206" text-anchor="middle" fill="#6B21A8" font-weight="700">skill github (PAT)</text>
+ <text x="790" y="220" text-anchor="middle" fill="#475569" font-size="9">accende / spegne il backend github</text>
+ <rect x="668" y="244" width="244" height="44" rx="6" fill="#fff" stroke="#6B21A8"/>
+ <text x="790" y="266" text-anchor="middle" fill="#6B21A8" font-weight="700">skill gitlab (token)</text>
+ <text x="790" y="280" text-anchor="middle" fill="#475569" font-size="9">accende / spegne il backend gitlab</text>
+ <text x="790" y="318" text-anchor="middle" fill="#475569" font-size="9">dormienza indipendente per provider</text>
+ <text x="790" y="336" text-anchor="middle" fill="#475569" font-size="9">non cambia il pool del planner</text>
+
+ <line x1="668" y1="206" x2="462" y2="332" stroke="#6B21A8" stroke-width="1.6" stroke-dasharray="4 3" marker-end="url(#sb-arr-plum)"/>
+ <line x1="668" y1="266" x2="462" y2="340" stroke="#6B21A8" stroke-width="1.6" stroke-dasharray="4 3" marker-end="url(#sb-arr-plum)"/>
+</svg>
+<figcaption>Figura 1 &mdash; I due assi. A sinistra l'esecuzione (planner &rarr; executor canonico &rarr; resolver &rarr; backend): invisibile all'LLM, risolta da configurazione. A destra le skill: accendono e spengono i backend, ma non cambiano il pool del pianificatore, che vede sempre <code>find_issues</code>.</figcaption>
+</figure>
+
+<h1 id="cap2">2. I tre tier di skill</h1>
+
+<p>
+&laquo;Skill&raquo; ha finito per indicare tre cose diverse: una
+classificazione di executor gi&agrave; nel repository, dei pacchetti veri in
+repository, e codice di terzi importato. Il campo <code>tier</code> le unifica
+sotto un modello solo. Vive in <code>skills_catalog.py</code> (funzione
+<code>skill_tier()</code>) e nell'intestazione di <code>SKILL.md</code>.
+</p>
+
+<table>
+<tr><th>Tier</th><th>Cos'&egrave;</th><th>Fiducia</th><th>Dove vive</th><th>Attivazione</th></tr>
+<tr><td><strong>1 &mdash; core</strong></td><td>planner ed engine, file locali, cartelle, processi, tempo, scheduler locale, persone, credenziali, firme, proposte, gli helper dello scratchpad (filtra / ordina / raggruppa / calcola / descrivi / estrai)</td><td>massima</td><td>repository, firmato, multilingua</td><td>sempre attiva</td></tr>
+<tr><td><strong>2 &mdash; first&#95;party</strong></td><td>capacit&agrave; spedite con Metnos allo stesso standard del nucleo, ma <strong>dormienti</strong> finch&eacute; manca la dipendenza: github, foto, posta, web, geo, calendario, archivio dati generico (<code>sqldatabase</code>), frontier, Google Workspace</td><td>massima</td><td>repository (pacchetto versionato + executor firmati)</td><td>automatica, dormiente se non configurata</td></tr>
+<tr><td><strong>3 &mdash; imported</strong></td><td>codice di terzi non auditato n&eacute; vendorizzato (da agentskills.io e simili)</td><td>bassa</td><td>dati utente, con provenienza tracciata</td><td>opt-in, <strong>recinto + rete a 7 strati</strong></td></tr>
+</table>
+
+<div class="callout tip">
+<strong>Cosa si spedisce al pubblico.</strong> Il rilascio porta con s&eacute;
+solo <strong>tier 1 e 2</strong>, dentro il repository firmato. Il
+<strong>tier 3 no</strong>: lo installa l'utente, e proprio a esso si applica la
+tesi-sicurezza del README (&laquo;non fidarti del pacchetto&raquo;). La
+promozione tier&nbsp;3&rarr;tier&nbsp;2 richiede quattro s&igrave; congiunti:
+utile in generale, licenza compatibile, disponibilit&agrave; a mantenerla (undo,
+i18n, ri-firma), e sostegno a una capacit&agrave; gi&agrave; in catalogo.
+</div>
+
+<h1 id="cap3">3. Da un provider a molti</h1>
+
+<p>
+Domani potrebbe arrivare GitLab accanto a GitHub. La domanda &egrave;: come si
+aggiunge un secondo provider per le stesse <em>issue</em>? Due strade.
+</p>
+
+<h3>Opzione (a): sdoppiare l'executor &mdash; SCARTATA</h3>
+<p>
+Generare <code>find_issues_github</code> <em>e</em> <code>find_issues_gitlab</code>
+e lasciare che il pianificatore scelga. Funziona dove al centro c'&egrave; un
+modello frontier che disambigua leggendo la prosa. In Metnos il pianificatore
+&egrave; un <strong>modello locale</strong>, che davanti a due nomi quasi
+identici sviluppa un <strong>pregiudizio sul provider</strong>:
+sceglie sempre lo stesso, o sbaglia. Lo
+sdoppiamento rompe il routing.
+</p>
+
+<h3>Opzione (b): astrarre &mdash; SCELTA</h3>
+<ul>
+ <li><strong>Un executor canonico</strong> agnostico rispetto al provider:
+ <code>find_issues</code>, <code>read_issues</code>, <code>find_pulls</code>.
+ L'oggetto (<code>issues</code>, <code>pulls</code>) &egrave; l'astrazione
+ stabile.</li>
+ <li><strong>Un albero di backend per provider</strong>:
+ <code>runtime/backends/{issues,pulls}/{github,gitlab}.py</code>.</li>
+ <li><strong>Il resolver dei backend</strong> sceglie il provider
+ <strong>dalla configurazione</strong> (mappa repository&rarr;provider, o per
+ account), non dall'intento dell'utente.</li>
+ <li><strong>Una skill per provider</strong>: skill <code>github</code> (PAT) e
+ skill <code>gitlab</code> (token), con dormienza indipendente &mdash; perch&eacute;
+ la credenziale &egrave; il confine dove serve granularit&agrave; (&laquo;abilita
+ gitlab&raquo; senza toccare github).</li>
+ <li>Il <strong>qualifier</strong> <code>_github</code> / <code>_gitlab</code>
+ resta per il <em>pin esplicito</em> dell'utente (&laquo;apri la issue
+ <em>su gitlab</em>&raquo;); il default &egrave; agnostico.</li>
+</ul>
+
+<div class="callout note">
+<strong>Costo di un provider nuovo:</strong> <code>+1 file backend</code>,
+<code>+1 skill</code> (se introduce una credenziale nuova),
+<code>0 nuovi executor</code>. &Egrave; il percorso che calendario e file
+hanno gi&agrave; preso.
+</div>
+
+<div class="callout tip">
+<strong>Un esempio gi&agrave; in casa: la skill <code>sqldatabase</code>.</strong>
+La forma astratta non &egrave; una promessa per il futuro: la skill
+<code>sqldatabase</code> la incarna oggi. Offre tre executor canonici
+&mdash; <code>find_entries</code>, <code>write_entries</code>,
+<code>delete_entries</code> &mdash; che leggono, scrivono ed eliminano record
+in archivi nominati (<code>find_entries(store="spese", &hellip;)</code>),
+senza che la query sappia mai dove i dati vivono davvero. Sotto, due backend
+intercambiabili sulla stessa base comune (<code>SqlDatabaseBackend</code>): uno
+persistente su SQLite, uno effimero in memoria; un domani PostgreSQL si aggiunge
+come sorella, senza toccare gli executor. Quale backend serva un dato archivio
+si decide <strong>in un registro</strong>, alla dichiarazione dello store, mai
+dalla richiesta dell&rsquo;utente. La skill resta <strong>dormiente</strong>
+finch&eacute; nessuno store &egrave; registrato.
+</div>
+
+<figure>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 360" width="100%" preserveAspectRatio="xMidYMid meet" style="font-family:'Segoe UI',Calibri,sans-serif;font-size:11px;">
+ <defs><marker id="mm-arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#1A477A"/></marker>
+ <marker id="mm-arr-bz" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#A0522D"/></marker></defs>
+
+ <text x="210" y="26" text-anchor="middle" fill="#A0522D" font-weight="700" font-size="12">&laquo;cotto&raquo; (debito)</text>
+ <text x="720" y="26" text-anchor="middle" fill="#3F6212" font-weight="700" font-size="12">astratto</text>
+
+ <rect x="40" y="50" width="340" height="44" rx="8" fill="#FEE2E2" stroke="#DC2626"/>
+ <text x="210" y="78" text-anchor="middle" fill="#991B1B" font-weight="700">PLANNER locale &mdash; confuso</text>
+
+ <rect x="40" y="130" width="160" height="48" rx="8" fill="#fff" stroke="#A0522D"/>
+ <text x="120" y="152" text-anchor="middle" fill="#A0522D" font-weight="700" font-size="10">find_issues</text>
+ <text x="120" y="168" text-anchor="middle" fill="#A0522D" font-size="9.5">_github</text>
+ <rect x="220" y="130" width="160" height="48" rx="8" fill="#fff" stroke="#A0522D"/>
+ <text x="300" y="152" text-anchor="middle" fill="#A0522D" font-weight="700" font-size="10">find_issues</text>
+ <text x="300" y="168" text-anchor="middle" fill="#A0522D" font-size="9.5">_gitlab</text>
+
+ <line x1="150" y1="130" x2="178" y2="96" stroke="#A0522D" stroke-width="1.6" stroke-dasharray="4 3" marker-end="url(#mm-arr)"/>
+ <line x1="270" y1="130" x2="242" y2="96" stroke="#A0522D" stroke-width="1.6" stroke-dasharray="4 3" marker-end="url(#mm-arr)"/>
+ <text x="210" y="214" text-anchor="middle" fill="#991B1B" font-size="9.5">due nomi quasi uguali &rarr; pregiudizio sul provider</text>
+
+ <rect x="540" y="50" width="340" height="44" rx="8" fill="#DCFCE7" stroke="#3F6212"/>
+ <text x="710" y="78" text-anchor="middle" fill="#14532D" font-weight="700">PLANNER locale &mdash; vede 1 tool</text>
+
+ <rect x="620" y="118" width="180" height="44" rx="8" fill="#D9E4F0" stroke="#1A477A"/>
+ <text x="710" y="145" text-anchor="middle" fill="#1A477A" font-weight="700" font-size="10">find_issues (canonico)</text>
+
+ <rect x="620" y="188" width="180" height="40" rx="8" fill="#FEF3C7" stroke="#B7791F"/>
+ <text x="710" y="213" text-anchor="middle" fill="#7A4F00" font-weight="700" font-size="10">backend resolver</text>
+
+ <rect x="560" y="256" width="140" height="44" rx="8" fill="#fff" stroke="#1A477A"/>
+ <text x="630" y="283" text-anchor="middle" fill="#1A477A" font-weight="700" font-size="10">backend github</text>
+ <rect x="720" y="256" width="140" height="44" rx="8" fill="#fff" stroke="#1A477A"/>
+ <text x="790" y="283" text-anchor="middle" fill="#1A477A" font-weight="700" font-size="10">backend gitlab</text>
+
+ <line x1="710" y1="94" x2="710" y2="116" stroke="#1A477A" stroke-width="2" marker-end="url(#mm-arr)"/>
+ <line x1="710" y1="162" x2="710" y2="186" stroke="#1A477A" stroke-width="2" marker-end="url(#mm-arr)"/>
+ <line x1="680" y1="228" x2="640" y2="254" stroke="#1A477A" stroke-width="2" marker-end="url(#mm-arr)"/>
+ <line x1="740" y1="228" x2="780" y2="254" stroke="#1A477A" stroke-width="2" marker-end="url(#mm-arr)"/>
+
+ <line x1="385" y1="120" x2="535" y2="120" stroke="#A0522D" stroke-width="3" marker-end="url(#mm-arr-bz)"/>
+ <text x="460" y="108" text-anchor="middle" fill="#A0522D" font-weight="700" font-size="10">promozione</text>
+ <text x="460" y="138" text-anchor="middle" fill="#A0522D" font-size="9">frontier una-tantum</text>
+ <text x="460" y="152" text-anchor="middle" fill="#A0522D" font-size="9">+ vaglio umano</text>
+</svg>
+<figcaption>Figura 2 &mdash; Mono&rarr;multi provider. A sinistra lo stato &laquo;cotto&raquo; (<code>find_issues_github</code> + <code>find_issues_gitlab</code> confondono il planner locale). A destra lo stato astratto: un solo <code>find_issues</code>, il resolver, due backend. La freccia &egrave; la promozione: refactoring con frontier una-tantum, poi vaglio umano. GitHub &egrave; attualmente nello stato &laquo;cotto&raquo;.</figcaption>
+</figure>
+
+<div class="callout warning">
+<strong>Debito noto.</strong> Oggi GitHub &egrave; &laquo;cotto&raquo;: i tredici
+executor <code>*_github</code> portano il provider nel nome. Funziona
+finch&eacute; il provider resta unico; appena ne arriva un secondo va astratto.
+Regola generale: un provider che plausibilmente avr&agrave; fratelli
+(github&rarr;gitlab/gitea, posta IMAP, calendario) va astratto da subito; uno che
+rester&agrave; unico pu&ograve; restare cotto.
+</div>
+
+<h1 id="cap4">4. Lo spegni-accendi sta sul backend</h1>
+
+<p>
+Nel modello a pi&ugrave; provider la skill non accende e spegne l'executor: accende
+e spegne il <strong>backend</strong>. Questo cambia chi vede cosa.
+</p>
+
+<ul>
+ <li><strong>L'executor</strong> <code>find_issues</code> &egrave; disponibile se
+ <strong>almeno uno</strong> dei suoi backend &egrave; abilitato e configurato;
+ diventa dormiente solo se sono spenti <strong>tutti</strong> (un AND su tutti i
+ backend).</li>
+ <li><strong>La skill &egrave; un backend</strong> (il confine &egrave; la
+ credenziale): skill accesa &rarr; quel backend entra nel pool del resolver.</li>
+ <li><strong>Il resolver</strong> sceglie fra i backend accesi e configurati;
+ &egrave; onesto (&sect;2.8) se chiedi un provider la cui skill &egrave; spenta.</li>
+</ul>
+
+<div class="callout note">
+<strong>Effetto desiderato:</strong> accendere o spegnere un provider
+<strong>non cambia il pool di strumenti del pianificatore</strong> &mdash; vede
+sempre <code>find_issues</code> &mdash; cambia solo il routing. Disabilitare uno
+dei due: l'altro continua a servire. Disabilitarli entrambi: l'executor diventa
+dormiente.
+</div>
+
+<p>
+Oggi il gating &egrave; <strong>per pattern sul nome dell'executor</strong>
+(<code>skills_catalog</code>): funziona solo finch&eacute; il provider &egrave;
+unico. Il pezzo nuovo da costruire &egrave; una <strong>mappa
+skill&rarr;backend</strong> pi&ugrave; la regola &laquo;executor dormiente = AND su
+tutti i suoi backend spenti&raquo;. &Egrave; il primo mattone: serve appena
+esiste il primo executor a pi&ugrave; backend.
+</p>
+
+<h1 id="cap5">5. Promozione: il meccanismo</h1>
+
+<p>
+Fondere una skill mono-provider cotta (<code>*_github</code>) in
+<code>find_issues</code> + backend &egrave; un'operazione
+<strong>straordinaria</strong>. &Egrave; ammesso un LLM <strong>frontier
+una-tantum SOLO per il refactoring</strong>; <em>rilevamento</em> e
+<em>applicazione</em> restano deterministici e con vaglio umano &mdash; firmare
+in automatico del codice generato da un frontier romperebbe la fiducia.
+</p>
+
+<table>
+<tr><th>Fase</th><th>Chi</th><th>Cosa</th></tr>
+<tr><td><strong>QUANDO</strong> (trigger)</td><td>deterministico</td><td>all'arrivo del 2&deg; provider &mdash; tipicamente l'<em>import</em> di una skill che mappa su un oggetto gi&agrave; coperto solo da executor provider-suffissati (<code>*_github</code>, riconosciuti dall'autorit&agrave; di naming). Sovrapposizione di oggetto + provider diverso &rarr; &laquo;candidato a promozione&raquo;. Nessun LLM per accorgersene.</td></tr>
+<tr><td><strong>DOVE</strong> (seam)</td><td>infrastruttura riusata</td><td>rilevamento nel layer di ammissione dell'importer; refactoring tramite l'escalation a un modello frontier in modo agentico; atterraggio nella pagina admin delle modifiche come modifica di tipo <code>promote_provider</code>, <strong>niente auto-apply</strong>; applicazione che scrive i file, <strong>ri-firma</strong> (&sect;7.10), registra skill&harr;backend e gating per-backend (&sect;4).</td></tr>
+<tr><td><strong>COME</strong> (pipeline)</td><td>frontier solo in mezzo</td><td>rileva (det.) &rarr; il frontier genera {executor canonico + <code>backends/&lt;obj&gt;/{p1,p2}.py</code> + mappa skill&rarr;backend} &rarr; la modifica viene proposta &rarr; <strong>vaglio umano</strong> &rarr; applica + firma + verifica con i 7 strati di ammissione + smoke.</td></tr>
+</table>
+
+<div class="callout tip">
+<strong>Bordi deterministici, centro creativo.</strong> Il frontier sta solo nel
+mezzo: produce la bozza del refactoring. I bordi &mdash; accorgersi che serve,
+e applicare firmando &mdash; sono codice deterministico e mani umane. Tre pezzi
+nuovi, indipendenti e incrementali: (1) un rilevatore di candidati alla
+promozione; (2) il prompt di promozione per l'escalation al modello frontier; (3) il gating
+per-backend del &sect;4 &mdash; che serve comunque, ed &egrave; il candidato da
+fare per primo.
+</div>
+
+<h1 id="cap6">6. Come fanno gli altri (Hermes, MCP)</h1>
+
+<p>
+Per capire <em>perch&eacute;</em> Metnos separa skill e backend mentre gli altri
+li fondono, conviene guardare chi sta al centro a scegliere il provider.
+</p>
+
+<table>
+<tr><th>&nbsp;</th><th>Hermes / skill drop-in</th><th>Claude-Code + famiglia MCP</th><th>Metnos</th></tr>
+<tr><td><strong>chi sceglie il provider</strong></td><td>frontier (legge SKILL.md, disambigua)</td><td>frontier (legge le descrizioni dei tool)</td><td>modello locale medio (Qwen): ha un <strong>pregiudizio</strong> sul provider</td></tr>
+<tr><td><strong>skill vs backend</strong></td><td><strong>fusi</strong> (skill = cartella di script = provider)</td><td><strong>fusi</strong> (tool / server MCP = provider)</td><td><strong>separati</strong> (backend = esecuzione, skill = attivazione)</td></tr>
+<tr><td><strong>multi-provider</strong></td><td>skill parallele per provider, l'agente sceglie</td><td>tool / server paralleli, il modello sceglie</td><td><strong>un executor canonico + un backend per provider</strong> (resolver)</td></tr>
+<tr><td><strong>credenziale / dormienza</strong></td><td><code>required_credential_files</code> + setup</td><td>implicita (server connesso o no)</td><td><strong>dormienza formalizzata</strong></td></tr>
+<tr><td><strong>fiducia</strong></td><td>esegue il codice della skill coi propri privilegi</td><td>esegue tool / server</td><td><strong>vocabolario chiuso + recinto a 7 strati</strong></td></tr>
+</table>
+
+<div class="callout note">
+<strong>Conseguenza obbligata, non un ritardo.</strong> Hermes e i cloni MCP
+mettono un <strong>frontier al centro</strong>: possono permettersi skill o tool
+paralleli per provider (opzione (a)), perch&eacute; il modello disambigua dalla
+prosa. Metnos gira su <strong>modello locale</strong>, dove (a) genera
+pregiudizio sul provider &rarr; <strong>deve</strong> astrarre (opzione (b)). La
+separazione skill&harr;backend non &egrave; un ritardo dell'architettura:
+&egrave; la conseguenza inevitabile del pianificatore locale e del modello di
+sicurezza per costruzione.
+</div>
+
+<h1 id="cap7">7. Per andare pi&ugrave; a fondo</h1>
+
+<table>
+<tr><th>Per capire&hellip;</th><th>Leggi</th></tr>
+<tr><td>come si importa una skill di terzi e la si trasforma in executor firmati</td><td><a href="skill_importer.html">skill importer</a></td></tr>
+<tr><td>il recinto a strati in cui gli executor importati eseguono</td><td><a href="sandbox.html">sandbox</a></td></tr>
+<tr><td>i controlli prima di ogni azione rischiosa</td><td><a href="vaglio.html">vaglio</a></td></tr>
+<tr><td>cos'&egrave; un executor e com'&egrave; fatto</td><td><a href="executor.html">executor</a></td></tr>
+</table>
+
+<h1 id="cap8">8. E per te, in pratica?</h1>
+
+<div class="callout tip">
+<strong>E per te, in pratica?</strong> Dal tuo punto di vista, tutto questo
+cosa comporta? Non molto. Questa complessit&agrave; vive sotto il cofano. La
+incontrerai soltanto quando userai funzioni che fanno la stessa cosa ma fornite
+da provider diversi &mdash; anzi, solo nel momento in cui aggiungerai il
+<strong>secondo</strong> provider per una stessa capacit&agrave;: a quel punto
+baster&agrave; chiedere di &laquo;fondere&raquo; le due skill e Metnos creer&agrave;
+un nuovo backend. Sinceramente: quante volte ti capiter&agrave;, nell'uso
+quotidiano di uno strumento come Metnos? Quante volte userai contemporaneamente
+GitLab e GitHub?
+</div>
+
+<div class="callout note">
+<strong>Il lato positivo.</strong> Metnos nasce per restare il pi&ugrave;
+possibile <strong>locale</strong>, senza costi aggiuntivi: il cervello che usi
+ogni giorno gira sulla tua macchina. Quella complessit&agrave; di astrazione
+&mdash; fondere due skill in un backend &mdash; &egrave; l'<em>unico</em> momento
+in cui, e <strong>solo se serve</strong>, Metnos ricorre <strong>una tantum</strong>
+a un modello frontier (presumibilmente a pagamento) per generare il codice del
+nuovo backend. Un costo occasionale, esplicito e raro &mdash; non una dipendenza
+continua dal cloud. Per il resto, sei e resti locale.
+</div>
+
+<hr>
+<p style="text-align:center; color:var(--muted); font-size:9.5pt; margin-top:40px;">
+Metnos &mdash; <em>skill &harr; backend</em>, due assi ortogonali
+</p>
+</body>
+</html>

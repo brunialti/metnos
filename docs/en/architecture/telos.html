@@ -123,8 +123,8 @@ Canonical doc tested after implementation: <code>TELOS.md</code> populated in <c
 <h1 id="cap1">1. Scope and boundaries</h1>
 
 <div style="background:#fef3c7;border-left:4px solid #b45309;padding:14px 22px;margin:14px 0;border-radius:0 6px 6px 0;">
-<strong>Implementation status (v8):</strong> 11 lenses
-implemented and tested (10 best in production).
+<strong>Implementation status:</strong> 11 lenses
+implemented and tested, the 10 best in production.
 Common framework in <code>runtime/telos_lenses/_base.py</code> with
 SHARED_PREAMBLE / SHARED_NAMING_SCHEMA / SHARED_OUTPUT_FORMAT.
 Naming Authority (<code>runtime/naming_grammar.py</code>) enforces 5
@@ -140,9 +140,9 @@ A reactive system has an implicit evaluation function: &laquo;the user
 asked for X &rarr; do X well&raquo;. A proactive system does not: it
 generates the intention itself. <code>telos</code> is the component that
 decides <em>which intention makes sense</em> before it becomes a proposal
-to the user, without asking the user to evaluate everything. In it
-gains a new telos &mdash; <em>cultivate the tools</em> &mdash; which does
-not concern spontaneous proposals but the <em>silent retreat</em> from a
+to the user, without asking the user to evaluate everything. To these is
+added a particular telos &mdash; <em>cultivate the tools</em> &mdash; which
+does not concern spontaneous proposals but the <em>silent retreat</em> from a
 direct request: a zone the previous design left uncovered.
 </p>
 
@@ -230,11 +230,11 @@ inhabit two orthogonal axes of Metnos's life.
 <p>
 It lives in the workspace as the sixth canonical file. Markdown format with
 front-matter optional. A few lines, hand-written by the user. The canonical
-set was reduced to <strong>6 telos</strong> on (, see note
+set was reduced to <strong>6 telos</strong> (see the note
 at the end of this chapter).
 </p>
 
-<pre><code># My ultimate ends (,
+<pre><code># My ultimate ends
 
 ## t.tempo &mdash; Free my time from repetitive chores
 weight: 0.25
@@ -293,7 +293,7 @@ ones than add another.
 
 <h1 id="cap4">4. The alignment function</h1>
 
-<h2>Formula (,</h2>
+<h2>The formula</h2>
 
 <div class="formula">
 contrib<sub>i</sub> = weight<sub>i</sub> &middot; gate(fit<sub>i</sub>, threshold<sub>i</sub>)<br>
@@ -446,7 +446,7 @@ asks not to stop before.
 The user has a finite capacity to evaluate proposals. The more arrive in
 a window, the less attention each gets. For this reason, the alignment
 function includes a <code>bother_cost</code> that grows with the recent
-frequency of published proposals. The novelty in is the separation
+frequency of published proposals. The distinctive element is the separation
 between <em>ad-hoc proposals</em> and <em>scheduler-driven invocations</em>
 (the builtin described in <a href="executor.html#scheduler-builtin">executor.html
 ch. 10</a>).
@@ -565,7 +565,7 @@ this risk.
 </p>
 
 <div class="decision">
-<strong>Anti-paternalism clause (reformulated ).</strong> Telos
+<strong>Anti-paternalism clause.</strong> Telos
 evaluate <em>what Metnos is about to do for the user</em>, not <em>what
 the user does</em>. Explicit exception: the non-retreat telos (ch. 5)
 applies to synt's behaviour while serving a request, but <em>only</em>
@@ -809,13 +809,13 @@ in <code>__init__.py</code>. The LLM call loop + JSON parse + paternalism
 guard + GBNF wiring is centralized in <code>_base.run_lens</code>.
 Per-lens toggle: <code>METNOS_TELOS_LENS_&lt;NAME&gt;=1</code>.</p>
 
-<p>Status v8: 10 lenses in production ( final).
+<p>Current status: 10 lenses in production.
 The 2 newer ones (<code>counterfactual</code>, <code>constitutional</code>)
 draw from 2022&ndash;2023 references. The <code>compression</code> lens
 (Schmidhuber 2010) was implemented but dropped after the v8 bench due
 to convergence failure: even with the strictest prompt, the local model
 could not reliably produce vocab-compliant super-verbs (violating the
-&sect;2.2 <code>entries</code> exception). Rationale in.
+&sect;2.2 <code>entries</code> exception).
 Convergence bench with Qwen&nbsp;3.6&nbsp;35B&#8209;A3B + GBNF: 10/10
 accepted lenses converge on first attempt, 0 paternalism, 0 invalid
 naming, 0 qualifier-object mismatch.</p>
