@@ -2,7 +2,7 @@
 id: 0172
 title: Promozione github-issues a backend-resolver — design + risoluzione collisione di nome
 date: 2026-06-15
-status: proposed
+status: accepted
 area: runtime
 related:
   - 0136  # provider qualifier _<provider>
@@ -62,6 +62,45 @@ significati**.
 Progettare la promozione di `issues`/`pulls` alla forma backend-resolver,
 risolvendo prima la collisione di nome. Quattro punti; **nessun codice cambia
 finché il trigger 0170 §8 non scatta** (2° provider reale).
+
+## Aggiornamento 17/6/2026 — direzione UNIVERSAL-EXECUTORS (gate RILASCIATO)
+
+Decisione Roberto (17/6): **gate del «2° provider» RILASCIATO** — il mis-route
+(«le issue di brunialti/metnos» → `read_issues` LOCALE invece di
+`find_issues_github`) è un bug REALE ora, non ipotetico. Causa scoperta: l'aging
+notturno aveva deprecato l'intero bundle skill github → fuori dal pool → ripiego
+sul locale (fix universale: skill esenti da aging, `source='skill'`, commit
+`a6931b1`).
+
+**§1 SUPERSEDED** (niente rinomina dei tool locali): la memoria QA locale NON
+diventa tool issue-specifici rinominati, ma si accede coi **CRUD UNIVERSALI**
+(`find_entries`/`write_entries`/`delete_entries`, skill `sqldatabase`, backend
+sempre sqlite) su uno **store registrato** (`store_bootstrap`, nome
+`github_issue_qa`). La **similarità** (ex `find_issues_db`) diventa l'executor
+universale **`compare_entries`** (distanza semantica `reference`↔candidati,
+cosine BGE-M3, riusabile ovunque: dedup issue, foto↔testo, RAG). → il flusso
+issue è **pura composizione di universali**, zero executor di dominio per il
+local store.
+
+**Ritiro** (sostituiti): `find_issues_db` → `compare_entries`; `read_issues` /
+`write_issues` → `*_entries`. Canonici `find/read/create/set/delete_issues`
+liberati → github via backend_resolver (§2/§4 sotto, invariati).
+
+**Pipeline detect VETTORIALE** (no iterazione per-item, §2.1): `find_issues`
+(github) → `filter_entries`/`compare_entries` (dedup vs store) → `write_entries`
+(new) → `send_messages`. Poi promozione **L1** (riuso, non ri-composizione).
+
+**Stato fasi**:
+- **1.0 FATTO** (commit `af64e98`): `compare_entries` universale (inproc, 9 test
+  + integrazione embedder reale).
+- **1.1 FATTO** (commit `e0109b0`): store `github_issue_qa` registrato
+  (`store_bootstrap`) → `*_entries` attivi sui dati reali (#47 leggibile).
+- **1.2 DA FARE**: `OBJECT_BACKENDS["issues"]` (§2) + esecutori canonici
+  provider-agnostici (§4) + ritiro dei 3 tool locali.
+- **1.3 DA FARE**: pipeline detect vettoriale + promozione L1.
+
+Il resto dell'ADR (§1-§4 sotto) resta come razionale di design; §1 è storicizzato
+dall'aggiornamento qui sopra (rinomina → ritiro+universali).
 
 ### 1. La memoria QA locale NON è un backend di `issues` (perché va rinominata)
 
