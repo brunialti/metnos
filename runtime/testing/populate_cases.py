@@ -1886,10 +1886,24 @@ h = code_gen_hint_for("anthropic", "claude-sonnet-4-6")
 assert "Vincoli" in h
 assert len(h) < 250
 """),
-    ("llm_router", "code_gen_hint_llamacpp_menziona_raw_string", "happy", """
+    ("llm_router", "code_gen_hint_llamacpp_qwen_menziona_python_code_e_raw_string", "happy", """
 from llm_router import code_gen_hint_for
-h = code_gen_hint_for("llamacpp", "gemma-4-26B")
+# Modello locale di prod (DEFAULT_TIERS): Qwen3.6 via llama.cpp. fnmatch e'
+# case-sensitive su POSIX -> il pattern [Qq]wen* deve matchare la 'Q' maiuscola.
+h = code_gen_hint_for("llamacpp", "Qwen3.6-35B-A3B-UD-Q4_K_M.gguf")
+assert h != ""
+# Copre ENTRAMBE le famiglie di failure: python_code vuoto (Qwen) + over-escape (llama.cpp).
+assert "python_code" in h
 assert "raw string" in h or "backslash" in h
+# Placeholder 'local' (installer quando non specifica un modello) -> stesso hint via fallback llamacpp/*.
+hl = code_gen_hint_for("llamacpp", "local")
+assert hl == h
+# Gemma non e' piu' il modello locale: l'entry gemma-specifica e' rimossa. La
+# vecchia stringa cade nel fallback llamacpp/* (stesso hint), NON nel vecchio
+# hint gemma che NON menzionava python_code.
+hg = code_gen_hint_for("llamacpp", "gemma-4-26B")
+assert hg == h
+assert "python_code" in hg
 """),
     ("llm_router", "code_gen_hint_match_per_modello", "happy", """
 from llm_router import code_gen_hint_for

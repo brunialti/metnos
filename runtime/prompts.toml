@@ -23,19 +23,25 @@ model_pattern = "claude-*"
 use_case      = "code_gen"
 text          = "\n\nVincoli: codice fedele alla spec. Regex semplice. Niente lookbehind/lookahead."
 
-# --- Gemma 4 (llama.cpp): over-escape ricorrente di raw string e triple-quote.
+# --- Qwen 3.x via llama.cpp (tier locale fast/middle/wise, DEFAULT_TIERS).
+#     Qwen-family: tende a lasciare python_code vuoto / output troncato.
+#     Backend llama.cpp: over-escape di raw string e triple-quote docstring.
+#     fnmatch e' case-sensitive su POSIX: [Qq]wen* matcha sia 'Qwen3.6-...gguf'
+#     (DEFAULT_TIERS) sia 'qwen...'.
 [[hint]]
 provider      = "llamacpp"
-model_pattern = "gemma-4-*"
+model_pattern = "[Qq]wen*"
 use_case      = "code_gen"
-text          = "\n\nVincoli: raw string r'...' con UN backslash. Niente triple-quote docstring."
+text          = "\n\nVincoli: compila python_code per intero (def invoke + def main), mai vuoto. raw string r'...' con UN backslash. Niente triple-quote docstring."
 
-# --- Famiglia Gemma generica (fallback se non e' Gemma 4 specifico)
+# --- Qualunque modello locale via llama.cpp (fallback: copre il nome
+#     placeholder 'local' e ogni GGUF servito dal llama-server condiviso).
+#     Stesso backend, stessi vincoli di code-gen.
 [[hint]]
 provider      = "llamacpp"
-model_pattern = "gemma-*"
+model_pattern = "*"
 use_case      = "code_gen"
-text          = "\n\nVincoli: raw string r'...' con UN backslash. Codice fedele alla spec."
+text          = "\n\nVincoli: compila python_code per intero (def invoke + def main), mai vuoto. raw string r'...' con UN backslash. Niente triple-quote docstring."
 
 # --- Qwen 3 via Ollama: tendenza a omettere il campo python_code.
 [[hint]]
