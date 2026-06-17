@@ -9,20 +9,24 @@ Determinismo §7.9: nessun LLM, solo lookup tabellare.
 """
 from __future__ import annotations
 
+import sys
+from pathlib import Path
 
 import pytest
 
-from runtime.skill_translator import (
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from skill_translator import (  # noqa: E402
     resolve_name,
     resolve_context,
     resolve_reverse_pattern,
     SkillTranslateError,
 )
-from runtime.importer_verb_verify import (
+from importer_verb_verify import (  # noqa: E402
     classify_mismatch,
     check_plan,
 )
-from runtime.vocab import ACTIONS, DESTRUCTIVE_VERBS, ACTION_MAPPING
+from vocab import ACTIONS, DESTRUCTIVE_VERBS, ACTION_MAPPING  # noqa: E402
 
 
 # ---------------------------------------------------------------------------

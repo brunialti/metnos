@@ -33,7 +33,10 @@ def test_vocab_includes_inputs_object():
     assert "issues" in OBJECTS and "pulls" in OBJECTS
     # `calendars` aggiunto (provider google_workspace: create/delete_calendars)
     assert "calendars" in OBJECTS
-    assert len(OBJECTS) == 22
+    # `approval` aggiunto 17/6/2026 (executor get_approval, gate di consenso
+    # umano cross-skill, commit 0d36ab0) → 23° oggetto canonico.
+    assert "approval" in OBJECTS
+    assert len(OBJECTS) == 23
 
 
 def test_get_inputs_in_canonical_naming():
