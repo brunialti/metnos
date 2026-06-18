@@ -128,12 +128,19 @@ class Store:
     istanza). Schema garantito (ensure) pigramente alla prima operazione."""
 
     def __init__(self, schema: Schema, *, backend: Optional[Backend] = None,
-                 path=None):
+                 path=None, insert_defaults: Optional[dict] = None):
         self.schema = schema
         self._backend = backend
         self._path = path
         self._lock = threading.RLock()
         self._ready = False
+        # Valore INIZIALE deterministico dei campi assenti, dichiarato alla
+        # registrazione (es. github_issue_qa: status='new'). Sorgente di
+        # config (NON dalla query/LLM) → FASE 1 detect persiste sempre in
+        # PENDING senza dipendere dall'arg-filling del proposer. Applicato in
+        # write() solo dove il campo manca/None (non sovrascrive i presenti:
+        # FASE 2/3 che impostano status esplicito non sono toccate).
+        self.insert_defaults = dict(insert_defaults or {})
 
     @property
     def backend(self) -> Backend:
@@ -173,6 +180,11 @@ class Store:
         rows = [dict(r) for r in rows]
         if not rows:
             return 0
+        if self.insert_defaults:
+            for r in rows:
+                for dk, dv in self.insert_defaults.items():
+                    if r.get(dk) is None:
+                        r[dk] = dv
         k = tuple(key) if key is not None else tuple(self.schema.primary_key)
         with self._lock:
             return self.backend.write(self.schema, rows, k)
@@ -207,11 +219,14 @@ _registry_lock = threading.Lock()
 
 
 def register(schema: Schema, *, name: Optional[str] = None,
-             backend: Optional[Backend] = None, path=None) -> Store:
+             backend: Optional[Backend] = None, path=None,
+             insert_defaults: Optional[dict] = None) -> Store:
     """Dichiara uno store: nome (default schema.table) → Store(schema, backend).
-    Idempotente sul nome (ri-registrare sostituisce). Ritorna lo Store."""
+    Idempotente sul nome (ri-registrare sostituisce). Ritorna lo Store.
+    `insert_defaults`: valore iniziale dei campi assenti (vedi Store)."""
     key = name or schema.table
-    st = Store(schema, backend=backend, path=path)
+    st = Store(schema, backend=backend, path=path,
+               insert_defaults=insert_defaults)
     with _registry_lock:
         _registry[key] = st
     return st

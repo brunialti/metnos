@@ -64,6 +64,9 @@ def handle_write_entries(args, *, verbose: bool = False) -> dict:
     if err:
         err["results"] = []
         return err
+    # Valore iniziale dei campi assenti: deterministico da `store.insert_defaults`
+    # (config di registrazione, applicato in Store.write) — NON dall'arg-filling
+    # del proposer. Vedi store_bootstrap (github_issue_qa: status='new').
     key = a.get("key")
     if isinstance(key, str):
         key = [key]

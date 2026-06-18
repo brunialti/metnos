@@ -40,6 +40,13 @@ import prompt_loader
 import detection_lexicon as _dl
 from config import DEFAULT_LANG
 
+# Budget token dell'estrazione intent. 80 bastava per il mono (JSON corto) ma
+# TRONCAVA la decomposizione COMPOUND (array multi-clausola) → JSON malformato
+# → actions=[] → guard skeleton/enforce affamati (bug FASE 3 publish, 18/6).
+# 320 copre ~7 clausole; il mono resta invariato (il modello chiude il JSON
+# molto prima). §7.3 generale, non patch per-query.
+_INTENT_MAX_TOKENS = 320
+
 # Prompt persistito in `runtime/prompts/<lang>/intent_extractor.j2` (ADR 0092 Phase 2).
 # Renderizzato lazy a ogni `extract_intent` call (cache MiniJinja built-in).
 
@@ -67,11 +74,11 @@ def extract_intent(query: str, llm_call) -> Optional[dict]:
         objects_inline=_vocab_objects_inline(),
     )
     try:
-        res = llm_call(prompt, query, max_tokens=80, think=False)
+        res = llm_call(prompt, query, max_tokens=_INTENT_MAX_TOKENS, think=False)
     except TypeError:
         # llm_call non supporta think kwarg; tenta senza
         try:
-            res = llm_call(prompt, query, max_tokens=80)
+            res = llm_call(prompt, query, max_tokens=_INTENT_MAX_TOKENS)
         except Exception:
             return None
     except Exception:
