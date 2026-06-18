@@ -51,13 +51,22 @@ DISAMBIGUATIONS (conceptually important):
   = fetch ("get" is an alias for get, but "endpoint" forces fetch).
 - "where am I" / "what time is it" / "tell me/give me/how much" + local SCALAR
   value = get.
-- internal STORE/ARCHIVE/COLLECTION of data (e.g. "in the store X", "in the
-  archive", "collection", "internal database") = object entries. "search/read
-  in the store" = {find, entries}; "save/write to the store" = {write, entries};
-  "delete from the store" = {delete, entries}. NOT files (not a file on disk).
+- internal NAMED STORE/ARCHIVE/COLLECTION/DB (e.g. "in the store X", "in the
+  archive", "collection", "internal database", "local db", "from the local
+  db") = object entries: records of an internal store/db are `entries` WHATEVER
+  their type ("the issues/expenses saved IN the local db / in the store" =
+  {find, entries}, not the live domain object {find, issues}). ONLY with an
+  EXPLICIT store/db/archive word: WITHOUT it the object stays the DOMAIN one
+  (calendar/appointments→events, mail→messages, photos→images, file→files).
+  "save/write to the store" = {write, entries}; "delete from the store" =
+  {delete, entries}. NOT files (not a file on disk).
 - "post/publish a COMMENT" (on an issue, a PR, a thread) = {send, messages}: a
   comment IS an outbound message. NOT {send, issues} (you don't "send" an issue)
   and NOT write (write = local persistence, not sending).
+- "ask for my approval / approval confirmation / the go-ahead / Approve or
+  Reject BEFORE acting" = {get, approval}: a human-consent gate preceding an
+  action (Approve/Reject). NOT {get, persons} (persons = biometric/face
+  registry) and NOT {get, inputs} (inputs = free-form form values).
 
 Examples:
 "move spam emails to spam" → {"verb": "move", "object": "messages"}

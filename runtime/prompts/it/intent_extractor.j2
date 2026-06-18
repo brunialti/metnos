@@ -51,13 +51,23 @@ DISAMBIGUAZIONI (concettualmente importanti):
   = fetch (ottieni e' alias di get ma "endpoint" forza fetch).
 - "dove mi trovo" / "che ora e'" / "dimmi/dammi/quanto" + valore SCALARE
   locale = get.
-- STORE/ARCHIVIO/RACCOLTA dati interno (es. "nello store X", "nell'archivio",
-  "raccolta", "database interno") = object entries. "cerca/leggi nello store" =
-  {find, entries}; "salva/scrivi nello store" = {write, entries}; "elimina dallo
-  store" = {delete, entries}. NON files (non e' un file su disco).
+- STORE/ARCHIVIO/RACCOLTA/DB interno NOMINATO (es. "nello store X",
+  "nell'archivio", "raccolta", "database interno", "db locale", "dal db
+  locale") = object entries: i record di uno store/db interno sono `entries`
+  QUALUNQUE il loro tipo ("le issue/le spese salvate NEL db locale / nello
+  store" = {find, entries}, non l'oggetto-dominio live {find, issues}). VALE
+  SOLO col contesto store/db/archivio ESPLICITO: SENZA quella parola l'oggetto
+  resta quello di DOMINIO (calendario/impegni→events, mail→messages,
+  foto→images, file→files). "salva/scrivi nello store" = {write, entries};
+  "elimina dallo store" = {delete, entries}. NON files (non e' un file su disco).
 - "posta/pubblica un COMMENTO" (su una issue, una PR, un thread) = {send,
   messages}: un commento E' un messaggio in uscita. NON {send, issues} (non si
   "invia" una issue) e NON write (write = persistenza locale, non invio).
+- "chiedi/richiedi la mia approvazione / conferma di approvazione / il via
+  libera / Approva o Disapprova PRIMA di agire" = {get, approval}: gate di
+  consenso umano che precede un'azione (Approva/Disapprova). NON {get, persons}
+  (persons = registro biometrico/volti) e NON {get, inputs} (inputs = valori
+  liberi da form).
 
 Esempi:
 "sposta in spam le mail di pubblicita" → {"verb": "move", "object": "messages"}
