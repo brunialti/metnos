@@ -425,6 +425,69 @@ def _dropped_required_verbs(framework: Framework, query: str, intent=None) -> se
     return (qverbs & set(COVERAGE_REQUIRED_VERBS)) - fw_verbs
 
 
+def _normalize_store_clauses(intent, query: str, catalog: Optional[list]) -> None:
+    """D2-c (§7.9, 18/6): se la query referenzia uno STORE-SINK interno
+    (detection_lexicon `object.store_sink`), ri-mappa a `entries` le clausole
+    di `intent.actions` che l'LLM ha classificato con un OGGETTO NON-routabile.
+
+    Lo store e' un contenitore `entries`: write/delete/find su uno store sono
+    write_entries/delete_entries/find_entries. Sotto contesa del server
+    condiviso l'LLM puo' flippare la clausola store a {write, issues}
+    (derive_tool_name=None → enforce affamato, vedi `_enforce_missing_clauses`).
+
+    Sicuro per costruzione (tool-existence guard): flippa SOLO se (verb,object)
+    NON risolve un tool reale MA (verb,entries) si'. Cosi' la clausola
+    {find,issues}→find_issues_github (routabile) NON viene mai toccata, e solo
+    le clausole store orfane (write_issues inesistente) diventano write_entries.
+    Muta `intent.actions` in place. No-op senza actions o store-sink. Gira
+    PRIMA della cache: la sig compound-aware vede le actions gia' corrette."""
+    try:
+        actions = getattr(intent, "actions", None) or []
+        if not actions:
+            return
+        import detection_lexicon as _dl
+        if not _dl.match("object.store_sink", query or ""):
+            return
+        names = {getattr(e, "name", None) if not isinstance(e, dict)
+                 else e.get("name") for e in (catalog or [])}
+        names.discard(None)
+        from compound_decomposer import derive_tool_name
+        # Verbi store-capaci: le tre operazioni dello store generico
+        # (find/write/delete_entries). `read`/`get` su store → find_entries.
+        _STORE_VERBS = {"write", "delete", "find", "read", "get"}
+        changed = False
+        for a in actions:
+            if not isinstance(a, dict):
+                continue
+            v = (a.get("verb") or "").lower()
+            o = (a.get("object") or "").lower()
+            if v not in _STORE_VERBS or o == "entries":
+                continue
+            if derive_tool_name(v, o, names) is None and \
+                    derive_tool_name(v, "entries", names):
+                a["object"] = "entries"
+                changed = True
+        if changed:
+            log.info("[store_clauses] ri-mappate a entries: %s",
+                     [(a.get("verb"), a.get("object")) for a in actions])
+    except Exception as ex:
+        log.warning("normalize_store_clauses noop (best-effort): %r", ex)
+
+
+def _apply_deterministic_structure_guards(framework: Framework, intent,
+                                          query: str,
+                                          catalog: Optional[list]) -> Framework:
+    """Guard DETERMINISTICI di struttura (no LLM, idempotenti), condivisi da
+    L0/L1 (hit cache) e L3 (proposer): `_align_framework_objects` ri-allinea i
+    tool-fratelli all'oggetto dell'intent; `_enforce_missing_clauses` appende le
+    clausole RICHIESTE scoperte. No-op su query mono-azione (entrambi
+    richiedono `intent.actions`). NON include il re-propose LLM dei dropped:
+    quello resta L3-only."""
+    framework = _align_framework_objects(framework, intent, catalog)
+    framework = _enforce_missing_clauses(framework, intent, query, catalog)
+    return framework
+
+
 def run_turn(*, query: str, intent: Intent, catalog: list,
               invoke_executor_cb: Callable,
               llm_call_wise: Optional[Callable] = None,
@@ -442,6 +505,11 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
       DispatchResult con final_text/kind + match_source per debug/telemetry.
     """
     t_start = time.time()
+    # D2-c (18/6): normalizza le clausole store dell'intent (store-sink →
+    # entries) PRIMA di pool/cache/proposer, cosi' la sig compound-aware e il
+    # routing vedono le actions gia' corrette. Deterministico, no-op se non
+    # compound o senza store-sink.
+    _normalize_store_clauses(intent, query, catalog)
     # Pool reduction via prefilter (ADR 0164 fix): invece di passare TUTTO
     # il catalog (~80 tool, prompt 400+ righe) a Mētis, prefiltriamo per
     # intent semantic match. Top-K (default 12) coprono >90% intent canonici
@@ -495,6 +563,14 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
             # «ordinate per mailbox»; self-healing senza invalidare la riga).
             fp_hit.framework = _apply_ordering_clause(
                 fp_hit.framework, query, catalog)
+            # D3-B (18/6): i guard deterministici (align/enforce) girano anche
+            # sugli HIT cache — un piano L0 compound stale/read-only (clausola
+            # write droppata) verrebbe altrimenti eseguito BYPASSANDO i correttori
+            # (finora path L3-only). Idempotente + no-op su mono. No LLM (il
+            # re-propose dei dropped resta L3). Self-healing: _maybe_record_fastpath
+            # registra il piano corretto.
+            fp_hit.framework = _apply_deterministic_structure_guards(
+                fp_hit.framework, intent, query, catalog)
             run = executor.run(fp_hit.framework, query=query,
                                 runtime_ctx=runtime_ctx,
                                 remediate_args_cb=remediate_args_cb,
@@ -531,6 +607,10 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
             # read|messages ignorava «ordinate per mailbox»).
             ap_hit.framework = _apply_ordering_clause(
                 ap_hit.framework, query, catalog)
+            # D3-B (18/6): stessa difesa di L0 — i guard deterministici girano
+            # anche sull'hit L1 (autopath generalizzato) prima dell'execute.
+            ap_hit.framework = _apply_deterministic_structure_guards(
+                ap_hit.framework, intent, query, catalog)
             run = executor.run(ap_hit.framework, query=query,
                                 runtime_ctx=runtime_ctx,
                                 remediate_args_cb=remediate_args_cb,
@@ -649,16 +729,12 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
         if _fw2 is not None and len(_dropped_required_verbs(_fw2, query, intent)) < len(_dropped):
             framework = _fw2
 
-    # Guard misroute oggetto-fratello (§7.9, deterministico): il proposer ha
-    # scelto un fratello stesso-verbo con object NON richiesto dall'intent
-    # (es. find_pulls_github per clausola {find,issues}). Ri-allinea il tool
-    # all'oggetto dell'intent quando esiste il tool esatto nel catalog.
-    framework = _align_framework_objects(framework, intent, catalog)
-
-    # (2) Enforcement DETERMINISTICO: se una clausola RICHIESTA resta scoperta
-    # dopo (1)+align, appende lo step mancante (object-aligned + from_step +
-    # store). Ultima risorsa dopo il proposer non-vincolante.
-    framework = _enforce_missing_clauses(framework, intent, query, catalog)
+    # Guard DETERMINISTICI di struttura (§7.9): (1) align — ri-allinea i
+    # tool-fratelli con object NON richiesto (es. find_pulls_github per clausola
+    # {find,issues}); (2) enforce — appende le clausole RICHIESTE scoperte dopo
+    # skeleton+re-propose. Stessa sequenza condivisa dagli hit cache L0/L1 (D3-B).
+    framework = _apply_deterministic_structure_guards(
+        framework, intent, query, catalog)
 
     # Layer 2: Validator (opt-in)
     if is_validator_enabled():

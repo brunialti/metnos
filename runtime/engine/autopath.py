@@ -180,12 +180,26 @@ def prune(*, keep_observations: int | None = None) -> dict:
 # ── Intent signature ──────────────────────────────────────────────────────
 
 def _compute_intent_sig(intent: Intent) -> tuple[str, str]:
-    """Ritorna (intent_sig leggibile, intent_hash 16-char)."""
+    """Ritorna (intent_sig leggibile, intent_hash 16-char).
+
+    Compound-aware (D3-D, 18/6): l'intent_hash include la SEQUENZA completa
+    delle `actions` (verb|object per clausola), non solo il verb|object
+    PRIMARIO. Senza, due compound con la stessa PRIMA clausola ma seconda
+    diversa (es. {find,issues}+{write,entries} vs {find,issues}+{delete,
+    entries}) collidono sotto lo stesso ihash → cross-serve dei piani in
+    cache (path-2 intent_hash, privo di object-boundary). Mono-azione:
+    `actions` vuoto → base = "verb|object" → ihash IDENTICO al precedente
+    (back-compat: zero invalidazione della cache esistente)."""
     v = (intent.verb or "").lower().strip()
     o = (intent.object or "").lower().strip()
     kw = sorted(set(k.lower().strip() for k in intent.keywords if k))
     sig = f"{v}|{o}|{'_'.join(kw)}"
-    h = hashlib.sha256(f"{v}|{o}".encode()).hexdigest()[:16]
+    acts = getattr(intent, "actions", None) or []
+    acts_sig = ";".join(
+        f"{(a.get('verb') or '').lower().strip()}|{(a.get('object') or '').lower().strip()}"
+        for a in acts if isinstance(a, dict))
+    base = f"{v}|{o}|{acts_sig}" if acts_sig else f"{v}|{o}"
+    h = hashlib.sha256(base.encode()).hexdigest()[:16]
     return sig, h
 
 
@@ -268,10 +282,16 @@ def lookup(query: str, intent: Intent) -> Optional[AutopathHit]:
         # slot — qui evitiamo proprio di servire un champion semanticamente
         # distante. Floor saltato se manca l'embedding o il cluster (no segnale).
         row = c.execute(
-            "SELECT id, framework_json, cluster_id, uses, composite_score "
-            "FROM autopaths WHERE intent_hash = ? AND status = 'active' "
+            "SELECT id, framework_json, cluster_id, uses, composite_score, "
+            "intent_sig FROM autopaths WHERE intent_hash = ? AND status = 'active' "
             "AND champion = 1 LIMIT 1", (ihash,)).fetchone()
-        if row and not _is_query_specific(row[1]):
+        # CONFINE OGGETTO anche su path-2 (D3-D, 18/6): gemello del path-1.
+        # L'ihash e' ora compound-aware (encode tutti gli object), ma il confine
+        # esplicito sull'object PRIMARIO e' difesa-in-profondita' contro le
+        # collisioni residue del troncamento sha256-16. No-op se l'object
+        # combacia (caso normale).
+        if (row and not _is_query_specific(row[1])
+                and _sig_object(row[5]) == _qobj):
             ap_cluster = row[2]
             if eb and ap_cluster:
                 if _max_cosine_to_cluster(c, eb, ap_cluster) < COSINE_FLOOR_INTENT:

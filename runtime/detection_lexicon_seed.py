@@ -110,6 +110,21 @@ def register_all() -> None:
     R("confirm.no", "regex",
       it=[r"\b(no|annulla|lascia|niente)\b"], en=[r"\b(n|stop)\b"])
 
+    # ── OBJECT CLASSIFICATION (store sink) ─────────────────────────────
+    # dispatch._normalize_store_clauses (D2-c, 18/6): riferimento a uno
+    # STORE/ARCHIVIO/RACCOLTA interno (object=entries). Forme con
+    # preposizione: lo store-sink, non il sostantivo nudo (evita "vai allo
+    # store"). Sicuro a falsi-positivi: il flip a entries scatta SOLO su una
+    # clausola NON-routabile (tool-existence guard), mai su tool reali.
+    R("object.store_sink", "phrases", match_mode="substring",
+      it=["nello store", "nel store", "dallo store", "dal store", "allo store",
+          "nell'archivio", "nell archivio", "dall'archivio", "nella raccolta",
+          "dalla raccolta", "store interno", "archivio interno",
+          "raccolta dati", "database interno", "datastore"],
+      en=["in the store", "to the store", "into the store", "from the store",
+          "internal store", "data store", "datastore", "internal archive",
+          "internal collection", "data collection"])
+
     # ── CONNETTORI MULTI-STEP ──────────────────────────────────────────
     # compound_decomposer._CONNECTOR_PATTERN: solo le PAROLE (i simboli ,;&&
     # sono lingua-invarianti, restano nel builder del pattern di split).
