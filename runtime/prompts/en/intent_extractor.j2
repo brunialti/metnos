@@ -67,6 +67,11 @@ DISAMBIGUATIONS (conceptually important):
   Reject BEFORE acting" = {get, approval}: a human-consent gate preceding an
   action (Approve/Reject). NOT {get, persons} (persons = biometric/face
   registry) and NOT {get, inputs} (inputs = free-form form values).
+- CLAUSE INDEPENDENCE: in a multi-clause query each clause's object is inferred
+  ONLY from its own text, NEVER by contamination from neighbouring clauses.
+  Clauses with different objects stay distinct — e.g. "the log files" and "the
+  photos from yesterday" are two different objects (files and images), don't
+  merge them into one just because they appear in the same sentence.
 
 Examples:
 "move spam emails to spam" → {"verb": "move", "object": "messages"}

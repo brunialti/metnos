@@ -68,6 +68,11 @@ DISAMBIGUAZIONI (concettualmente importanti):
   consenso umano che precede un'azione (Approva/Disapprova). NON {get, persons}
   (persons = registro biometrico/volti) e NON {get, inputs} (inputs = valori
   liberi da form).
+- INDIPENDENZA fra clausole: in una query multi-clausola l'oggetto di OGNI
+  clausola si deduce SOLO dal suo testo, MAI per contaminazione dalle clausole
+  vicine. Clausole con oggetti diversi restano distinte — es. "i file di log" e
+  "le foto di ieri" sono due oggetti diversi (files e images), non fonderli in
+  uno solo perche' compaiono nella stessa frase.
 
 Esempi:
 "sposta in spam le mail di pubblicita" → {"verb": "move", "object": "messages"}

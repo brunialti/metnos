@@ -549,20 +549,37 @@ def _conform_to_intent_order(framework: Framework, intent, query: str,
             so = (nc.obj if nc else "") or ""
             if sv in _SOFT:
                 continue  # helper trasformativo: SOFT, non matcha action
-            best_j, best_score = None, 0
+            # Match step→action OBJECT-aware (bugfix multi-dominio): per le
+            # action PRODUCER l'OGGETTO deve combaciare (un read_messages NON
+            # puo' rubare lo slot di find_events solo perche' entrambi
+            # produttori) — senza questo, un duplicato del proposer consumava
+            # l'action di un altro dominio e il vero produttore floatava in coda
+            # (ordine sbagliato). Per le action CONSUMER basta il verbo (object
+            # generico: compress_files copre 'comprimi le foto'). Primo match in
+            # ordine intent.
+            best_j = None
             for j, (ai, a) in enumerate(remaining):
-                av = (a.get("verb") or ""); ao = (a.get("object") or "")
-                score = 0
-                if so and so == ao:
-                    score += 2
-                if sv and sv == av:
-                    score += 2
-                elif sv and av and ((sv in _PROD) == (av in _PROD)):
-                    score += 1
-                if score > best_score:
-                    best_score, best_j = score, j
-            if best_j is None or best_score == 0:
-                return framework  # step HARD non mappabile → no riordino (safe)
+                av = (a.get("verb") or "").lower()
+                ao = (a.get("object") or "").lower()
+                if sv in _PROD:
+                    # PRODUCER step → action PRODUCER o TRANSFORM con lo stesso
+                    # OGGETTO: il produttore serve la clausola che usa quell'object
+                    # anche se l'intent l'ha etichettata filter/sort/group (es.
+                    # find_entries copre la clausola (filter,entries) di «trova le
+                    # spese sopra 100»). NON una action mutating (quella ha il suo
+                    # step). Object obbligatorio: find_events non ruba find_images.
+                    ok = bool(so and so == ao and (av in _PROD or av in _SOFT))
+                else:
+                    # MUTATOR step → action con lo stesso VERBO (object generico).
+                    ok = bool(sv and sv == av)
+                if ok:
+                    best_j = j
+                    break
+            if best_j is None:
+                # step HARD non mappabile (es. duplicato dal proposer): NON
+                # abortire — FLOAT (rank del producer HARD precedente). I
+                # duplicati non bloccano il riordino. Safety = forward-dep check.
+                continue
             ai, _a = remaining.pop(best_j)
             hard_rank[id(st)] = ai
         # Pass 2: rank di ogni exec (SOFT eredita il producer HARD precedente).
@@ -602,6 +619,84 @@ def _conform_to_intent_order(framework: Framework, intent, query: str,
         return framework
 
 
+def _enforce_missing_objects(framework: Framework, intent, query: str,
+                             catalog: Optional[list]) -> Framework:
+    """§7.9 v3 (drop multi-dominio): per ogni clausola PRODUCER (find/read/get/
+    list, object) di intent.actions, garantisce un PRODUTTORE di quell'object nel
+    piano. Il guard verb-level (`_enforce_missing_clauses`) NON vede i drop
+    per-object: con N domini che condividono il verbo `find`, un `find_images`
+    droppato resta nascosto (`find` risulta coperto da un altro dominio) →
+    produttore-dominio perso silenziosamente (causa-radice del limite #domini).
+
+    Appende i produttori-object MANCANTI come step INDIPENDENTI (no from_step:
+    sono ricerche distinte, non pipe). `_conform_to_intent_order` li riordina poi
+    nella posizione di intent.actions. intent.actions e' COMPLETO anche a 6-7
+    domini (verificato) → il segnale e' affidabile. No-op su mono-azione."""
+    try:
+        actions = [a for a in (getattr(intent, "actions", None) or [])
+                   if isinstance(a, dict)]
+        if len(actions) < 2:
+            return framework
+        from compound_decomposer import (derive_tool_name, PRODUCER_VERBS,
+                                         TRANSFORM_VERBS)
+        import naming_grammar as _ng
+        names = {getattr(e, "name", None) if not isinstance(e, dict)
+                 else e.get("name") for e in (catalog or [])}
+        names.discard(None)
+        steps = list(getattr(framework, "steps", None) or [])
+        produced = set()
+        for s in steps:
+            nc = _ng.parse_name(s.tool or "")
+            if nc and nc.verb in PRODUCER_VERBS and nc.obj:
+                produced.add(nc.obj)
+        # Oggetti che RICHIEDONO un producer: clausole PRODUCER (col loro verbo) +
+        # TRANSFORM (filter/sort/group/classify su O → §2.2 «TRANSFORMER RICHIEDE
+        # PRODUCER»: produci O prima). Senza, un intent come «trova le spese sopra
+        # 100» → (filter,entries) lascia entries senza produttore → drop. Dedup
+        # per object, ordine intent.
+        need = []
+        seen_need = set()
+        for a in actions:
+            v = (a.get("verb") or "").lower()
+            o = (a.get("object") or "").lower()
+            if not o or o in seen_need:
+                continue
+            if v in PRODUCER_VERBS:
+                need.append((v, o)); seen_need.add(o)
+            elif v in TRANSFORM_VERBS:
+                need.append(("find", o)); seen_need.add(o)
+        new_steps: list = []
+        added = set()
+        for v, o in need:
+            if o in produced or o in added:
+                continue
+            tool = derive_tool_name(v, o, names, query=query)
+            if not tool:   # fallback: qualunque producer dell'object
+                for pv in ("find", "read", "get", "list"):
+                    if pv == v:
+                        continue
+                    tool = derive_tool_name(pv, o, names, query=query)
+                    if tool:
+                        break
+            if not tool:
+                continue
+            new_steps.append(StepSpec(tool=tool, args={}))
+            added.add(o)
+        if not new_steps:
+            return framework
+        out = [s for s in steps if (s.tool or "") != "final_answer"]
+        out.extend(new_steps)
+        finals = [s for s in steps if (s.tool or "") == "final_answer"]
+        out.extend(finals or [])
+        framework.steps = out
+        log.info("[enforce_objects] aggiunti produttori-object mancanti: %s",
+                 [s.tool for s in new_steps])
+        return framework
+    except Exception as ex:
+        log.warning("enforce_missing_objects noop (best-effort): %r", ex)
+        return framework
+
+
 def _apply_deterministic_structure_guards(framework: Framework, intent,
                                           query: str,
                                           catalog: Optional[list]) -> Framework:
@@ -612,13 +707,14 @@ def _apply_deterministic_structure_guards(framework: Framework, intent,
     richiedono `intent.actions`). NON include il re-propose LLM dei dropped:
     quello resta L3-only.
 
-    v3 (GAP-C ordine): dopo align+enforce, `_conform_to_intent_order` riordina
-    gli step su intent.actions (gated is_v3() → v2 byte-invariato). Sta DOPO
-    enforce cosi' riordina anche le clausole appena appese."""
+    v3: dopo align+enforce(verb-level), `_enforce_missing_objects` ripristina i
+    produttori-object droppati (multi-dominio), poi `_conform_to_intent_order`
+    riordina su intent.actions (gated is_v3() → v2 byte-invariato)."""
     framework = _align_framework_objects(framework, intent, catalog)
     framework = _enforce_missing_clauses(framework, intent, query, catalog)
     from . import is_v3
     if is_v3():
+        framework = _enforce_missing_objects(framework, intent, query, catalog)
         framework = _conform_to_intent_order(framework, intent, query, catalog)
     return framework
 

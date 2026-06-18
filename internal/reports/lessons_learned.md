@@ -143,7 +143,23 @@ diagnosi errate, 31/5).
 **D3 — soluzioni generali/deterministiche, mai patch.** §7.3: forma astratta +
 regola sistemica prima di ogni fix. Detection sintomatica solo come safety-net.
 
+**D4 — LLM corretto da solo ma sbagliato in compound = CONTAMINAZIONE, non
+ignoranza** (18/6, ciclo all-green engine v3). L'intent extractor classificava
+«trova le foto» → `images` ISOLATA, ma → `files` in un compound che conteneva
+anche «trova i **file** di log» (anchoring: l'oggetto `files` attivato prima
+sanguina sulla classificazione seguente; per giunta foto/file hanno overlap
+semantico reale — una foto È spesso un file). **Diagnosi (regola):** se un
+classificatore LLM è giusto ISOLATO e sbaglia in SEQUENZA, la causa è l'effetto-
+contesto, NON conoscenza mancante → la cura NON è aggiungere conoscenza (sinonimi).
+**Fix di CLASSE:** principio di INDIPENDENZA delle clausole nel prompt («l'oggetto
+di ogni clausola si deduce solo dal suo testo, mai dalle vicine»). La 1ª versione
+(`foto=images`, lista sinonimi) era il **patch-sintomo** — reintroduceva il
+dizionario vietato §7.9, bocciata da Roberto. Il principio generalizza a qualunque
+coppia che si contamina, scala alle lingue, zero enumerazione. Mantra: *il sintomo
+dice dove guardare; il fix sta sulla causa e la generalizza in una regola di classe.*
+
 ---
 
 _Promozioni suggerite_: A1–A4 → estendere §6.1 CLAUDE.md; B1–B3 → ADR nuovo
-"backend resolver uniforme"; C1–C3 → già wired (note nel session log).
+"backend resolver uniforme"; C1–C3 → già wired (note nel session log); D4 →
+candidata §6.1 (regola di stile prompt: clausole indipendenti).
