@@ -134,7 +134,11 @@ class MetisProposer:
     """Multi-strategy proposer con cache LRU + telos rank."""
 
     def __init__(self, *, prompt_loader: Optional[Callable] = None):
-        self._simple = SimpleProposer(prompt_loader=prompt_loader)
+        # Seam swappable (§7.3): il core di generazione (pool→grammar→LLM) e'
+        # delegato a self._simple. _make_simple lo costruisce → la sottoclasse
+        # v3 (MetisV3Proposer) ritorna SimpleProposerV3 senza riscrivere il
+        # wrapper multi-candidate/rank/cache. v2: ritorna SimpleProposer.
+        self._simple = self._make_simple(prompt_loader)
         if prompt_loader is None:
             try:
                 from prompt_loader import get as _get
@@ -144,6 +148,11 @@ class MetisProposer:
         self._load_prompt = prompt_loader
         # Fix #3: LRU bounded cache (OrderedDict, move_to_end + popitem(last=False))
         self._candidate_cache: OrderedDict = OrderedDict()
+
+    def _make_simple(self, prompt_loader):
+        """Factory del core di generazione (override-point §7.3). v2: il
+        SimpleProposer canonico. La sottoclasse v3 ritorna SimpleProposerV3."""
+        return SimpleProposer(prompt_loader=prompt_loader)
 
     def _cache_key(self, query: str, intent: Intent, lang: str):
         """Cache key tuple. Fix #2: include lang. Fix #6: full sha256."""

@@ -325,6 +325,50 @@ class SimpleProposer:
         user=query."""
         self._load_prompt = prompt_loader
 
+    def _effective_pool(self, *, query: str, intent: Intent,
+                        pool: list[str], catalog: Optional[list],
+                        exclude_tools: Sequence[str]) -> list[str]:
+        """Pool effettivo per prompt+grammar (override-point §7.3, engine v3).
+
+        §7.3 Task #40 — Verb-aware pool filter (env METNOS_PROPOSER_VERB_FILTER=1):
+        restringe il pool ai tool che matchano intent.verb + universal helpers
+        (90% reduction → grammar GBNF piu' stretta). Compound-aware: per query
+        multi-azione (>=2 verbi canonici) il filtro mono-verbo escluderebbe i
+        tool degli altri sotto-intenti (find+write+send) → SKIP sui compound
+        (segnale primario = intent.actions LLM; fallback lessicale). Infine
+        toglie exclude_tools (es. guard get_inputs misroute) da prompt+grammar.
+
+        Puo' ritornare lista VUOTA (il caller fa None onesto §2.8)."""
+        import os
+        effective_pool = pool
+        _is_compound = len(getattr(intent, "actions", None) or []) >= 2
+        if not _is_compound:
+            try:
+                from prefilter import (tokenize as _vf_tok,
+                                        detect_canonical_verbs_all as _vf_dv)
+                _is_compound = len(set(_vf_dv(_vf_tok(query)))) >= 2
+            except Exception:
+                _is_compound = False
+        if (os.environ.get("METNOS_PROPOSER_VERB_FILTER", "1") == "1"
+                and intent.verb and not _is_compound):
+            try:
+                from tool_grammar import filter_pool_by_intent_verb
+                pool_objs = [next((e for e in catalog if e.name == n), None) for n in pool] \
+                            if catalog else []
+                pool_objs = [p for p in pool_objs if p is not None]
+                if pool_objs:
+                    kept, excluded = filter_pool_by_intent_verb(pool_objs, intent.verb)
+                    if kept:
+                        effective_pool = [e.name for e in kept]
+                        log.info("verb-aware filter: pool %d → %d (verb=%s)",
+                                  len(pool), len(effective_pool), intent.verb)
+            except Exception as ex:
+                log.warning("verb filter fallito: %r — fallback full pool", ex)
+        if exclude_tools:
+            _excl = set(exclude_tools)
+            effective_pool = [n for n in effective_pool if n not in _excl]
+        return effective_pool
+
     def propose(self, *, query: str, intent: Intent,
                 pool: list[str], excluded_hashes: set[str],
                 llm_call: Optional[Callable] = None,
@@ -354,56 +398,13 @@ class SimpleProposer:
         if use_grammar:
             use_fast = True  # force think=False
 
-        # §7.3 Task #40 — Verb-aware pool filter (env METNOS_PROPOSER_VERB_FILTER=1)
-        # Restringe pool ai tool che matchano intent.verb + universal helpers.
-        # Pool 79 → 6-19 (90% reduction) → grammar GBNF molto più stretta +
-        # LLM non puo' sbagliare verb family. Bench 446q baseline 47% top-1
-        # prefilter → atteso 75%+ con verb constraint.
-        effective_pool = pool
-        # Compound-aware (§7.3): per query multi-azione (>=2 verbi canonici) il
-        # filtro mono-verbo escluderebbe i tool degli altri sotto-intenti
-        # (find+write+send) — il pool e' gia' multi-verbo da dispatch. Skip il
-        # filtro sui compound, cosi' la pipeline completa resta proponibile
-        # (bug 2/6/2026: "trova le issue, salvale, mandami il riassunto" perdeva
-        # write_files/send_messages col verb-filter).
-        # Compound signal PRIMARIO = decomposizione intent LLM (multilingue, no
-        # dizionari di sinonimi): >=2 clausole {verb,object} → compound. Il
-        # detector lessicale resta SOLO come fallback se l'LLM non ha decomposto
-        # (es. "Prendi le issue ... mettile in un foglio" — "prendi"/"mettile"
-        # non sono nel dizionario lessicale → mono-verbo falso → verb-filter
-        # stripava create_files_spreadsheet, bug q21 4/6).
-        _is_compound = len(getattr(intent, "actions", None) or []) >= 2
-        if not _is_compound:
-            try:
-                from prefilter import (tokenize as _vf_tok,
-                                        detect_canonical_verbs_all as _vf_dv)
-                _is_compound = len(set(_vf_dv(_vf_tok(query)))) >= 2
-            except Exception:
-                _is_compound = False
-        if (os.environ.get("METNOS_PROPOSER_VERB_FILTER", "1") == "1"
-                and intent.verb and not _is_compound):
-            try:
-                from tool_grammar import filter_pool_by_intent_verb
-                pool_objs = [next((e for e in catalog if e.name == n), None) for n in pool] \
-                            if catalog else []
-                pool_objs = [p for p in pool_objs if p is not None]
-                if pool_objs:
-                    kept, excluded = filter_pool_by_intent_verb(pool_objs, intent.verb)
-                    if kept:
-                        effective_pool = [e.name for e in kept]
-                        log.info("verb-aware filter: pool %d → %d (verb=%s)",
-                                  len(pool), len(effective_pool), intent.verb)
-            except Exception as ex:
-                log.warning("verb filter fallito: %r — fallback full pool", ex)
-
-        # Esclusione esplicita (es. guard get_inputs misroute in dispatch):
-        # applicata DOPO la costruzione del pool, così sopravvive alla
-        # re-iniezione degli universal helpers in filter_pool_by_intent_verb.
-        # Toglie i nomi sia dal prompt sia dalla grammar GBNF (entrambi usano
-        # effective_pool). Universale, deterministico §7.9.
-        if exclude_tools:
-            _excl = set(exclude_tools)
-            effective_pool = [n for n in effective_pool if n not in _excl]
+        # Pool effettivo per prompt+grammar: verb-filter (skip compound) +
+        # exclude_tools. Estratto in _effective_pool (override-point §7.3):
+        # engine v3 (SimpleProposerV3) lo specializza col provider-gating ANCHE
+        # sui compound (GAP-B redesign). v2: comportamento invariato.
+        effective_pool = self._effective_pool(
+            query=query, intent=intent, pool=pool,
+            catalog=catalog, exclude_tools=exclude_tools)
 
         # B10 — pool effettivo VUOTO (verb-filter/exclude_tools hanno tolto
         # tutto, o pool vuoto dal caller): la grammar GBNF degraderebbe a
@@ -503,7 +504,19 @@ def get_proposer() -> Proposer:
     """
     from . import get_engine_name
     name = get_engine_name()
-    if name == "metis":
+    if name == "v3":
+        # Engine v3 (redesign compound, swappable con metis — vedi proposer_v3).
+        try:
+            from . import proposer_v3
+            return proposer_v3.MetisV3Proposer()
+        except Exception as ex:
+            log.warning("MetisV3Proposer unavailable (%r), fallback metis", ex)
+        try:
+            from . import proposer_metis
+            return proposer_metis.MetisProposer()
+        except Exception as ex:
+            log.warning("MetisProposer unavailable (%r), fallback simple", ex)
+    elif name == "metis":
         try:
             from . import proposer_metis
             return proposer_metis.MetisProposer()

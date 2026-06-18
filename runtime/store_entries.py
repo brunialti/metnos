@@ -60,6 +60,19 @@ def handle_write_entries(args, *, verbose: bool = False) -> dict:
                 "error": ("manca 'entries' (lista record): passa from_step=N "
                           "del producer da persistere"),
                 "results": []}
+    # set_fields (P3 redesign 18/6): override DETERMINISTICO di campi su OGNI
+    # entry prima dell'upsert — es. FASE 3 "aggiorna lo store a posted":
+    # write_entries(from_step=N, key=["id"], set_fields={"status":"posted"}).
+    # Risolve un §2.8 silent failure: il proposer emetteva set_fields/fields ma
+    # il handler li IGNORAVA → lo stato NON veniva mai aggiornato pur con ok:True
+    # (record ri-scritti con lo status VECCHIO). Alias 'fields' accettato (il
+    # modello usa entrambe le forme). §7.9 deterministico, no LLM.
+    set_fields = a.get("set_fields")
+    if not isinstance(set_fields, dict):
+        set_fields = a.get("fields") if isinstance(a.get("fields"), dict) else None
+    if set_fields:
+        entries = [{**e, **set_fields} if isinstance(e, dict) else e
+                   for e in entries]
     st, err = _resolve(name)
     if err:
         err["results"] = []
@@ -132,10 +145,11 @@ WRITE_ENTRIES_TOOL = {
         "name": "write_entries",
         "description": (
             "SCOPO: salva/aggiorna (UPSERT, crea-se-manca) record in uno STORE "
-            "generico NOMINATO. PATTERN: producer allo step N poi write_entries("
-            "store=\"spese\", from_step=N, key=[\"id\"]). NON: scrivere file -> "
-            "write_files; inviare -> send_messages. Crea lo store e i record se "
-            "mancano. OUT: results, n_written."),
+            "generico NOMINATO; aggiorna campi coi set_fields. PATTERN: producer "
+            "allo step N poi write_entries(store=\"spese\", from_step=N, "
+            "key=[\"id\"], set_fields={\"status\":\"posted\"}). NON: scrivere "
+            "file -> write_files; inviare -> send_messages. Crea lo store e i "
+            "record se mancano. OUT: results, n_written."),
         "parameters": {
             "type": "object",
             "required": ["store", "from_step"],
@@ -149,6 +163,11 @@ WRITE_ENTRIES_TOOL = {
                 "key": {"type": "array", "items": {"type": "string"},
                         "description": "Campi-chiave per l'upsert (conflitto). "
                                        "Es. [\"id\"]. Assente -> insert puro."},
+                "set_fields": {"type": "object",
+                               "description": "Override {campo: valore} applicato "
+                                              "a OGNI record prima dell'upsert "
+                                              "(aggiorna lo stato). Es. "
+                                              "{\"status\":\"posted\"}."},
             },
         },
     },

@@ -108,11 +108,29 @@ def detect_chunk_action(chunk: str) -> Optional[tuple[str, str]]:
     return (verb, detected_obj)
 
 
-def derive_tool_name(verb: str, obj: str, available_tools: set[str]) -> Optional[str]:
+def derive_tool_name(verb: str, obj: str, available_tools: set[str],
+                     *, query: Optional[str] = None) -> Optional[str]:
     """Derive canonical tool name `<verb>_<obj>` o variante presente nel catalog.
     Universal §7.9: cerca nel pool tool registrato, no inventato.
     Preferenza: forma plain canonical (no qualifier) over qualifier variants.
-    """
+
+    Provider-aware (GAP-B redesign, opt-in): se `query` ha un marker provider
+    (`detection_lexicon provider.markers`) e esiste `<verb>_<obj>_<provider>` nel
+    catalog, lo PREFERISCE al canonico generico — cosi' enforce/skeleton di un
+    compound github risolvono `send_messages_github`, non `send_messages`.
+    `query=None` (default) → comportamento v2 INVARIATO (i caller v2 non lo
+    passano; lo passano solo i guard v3-gated)."""
+    # 0. Provider-aware (opt-in): variante `_<provider>` quando il marker e'
+    #    nella query — PRIMA del canonico generico (che la `1.` ritornerebbe).
+    if query:
+        try:
+            from tool_grammar import active_provider_suffixes
+            for _suffix in active_provider_suffixes(query):
+                _cand = f"{verb}_{obj}{_suffix}"
+                if _cand in available_tools:
+                    return _cand
+        except Exception:
+            pass
     # 1. Exact match canonical (preferito)
     canonical = f"{verb}_{obj}"
     if canonical in available_tools:

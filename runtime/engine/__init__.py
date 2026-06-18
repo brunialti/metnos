@@ -27,12 +27,24 @@ log = logging.getLogger(__name__)
 
 
 def get_engine_name() -> str:
-    """Ritorna nome engine attivo: simple | metis | frontier."""
+    """Ritorna nome engine attivo: simple | metis | frontier | v3."""
     name = (os.environ.get("METNOS_ENGINE") or "simple").lower()
-    if name not in ("simple", "metis", "frontier"):
+    if name not in ("simple", "metis", "frontier", "v3"):
         log.warning("METNOS_ENGINE=%r ignoto, fallback simple", name)
         return "simple"
     return name
+
+
+def is_v3() -> bool:
+    """True se l'engine attivo e' la variante v3 (redesign proposer compound:
+    provider-gating + scheletro vincolante + args tipizzati, ADR-pending).
+
+    v3 e' un DROP-IN swappable con metis (v2): METNOS_ENGINE=v3 ↔ =metis e'
+    un rollback istantaneo (la classe v2 resta intatta, §7.1). Consultato dai
+    guard deterministici di dispatch che attivano un comportamento AGGIUNTIVO
+    solo in v3 (es. reorder degli step su intent.actions) — in metis i guard
+    restano byte-identici. Engine v3 = MetisV3Proposer (vedi proposer_v3)."""
+    return get_engine_name() == "v3"
 
 
 def is_fastpath_enabled() -> bool:
@@ -59,6 +71,7 @@ def is_output_policy_enabled() -> bool:
 # Public API (caricata lazy per ogni layer)
 __all__ = [
     "get_engine_name",
+    "is_v3",
     "is_fastpath_enabled",
     "is_autopath_enabled",
     "is_validator_enabled",

@@ -278,6 +278,13 @@ def _enforce_missing_clauses(framework: Framework, intent, query: str,
         from compound_decomposer import derive_tool_name
         import re as _re
         from .types import StepSpec
+        from . import is_v3
+        # GAP-B residue (redesign): in v3 il derive delle clausole SCOPERTE e'
+        # provider-aware → un compound github che enforce-a la clausola send
+        # appende send_messages_github, NON il generico (P1 gatea il pool ma
+        # l'enforce ricostruiva il tool col derive provider-blind). v2: query=None
+        # → comportamento invariato.
+        _q = query if is_v3() else None
         # from_step = ultimo step-executor (1-based) prima del final_answer
         exec_n = sum(1 for s in steps if (s.tool or "") != "final_answer")
         m_store = _re.search(r"\bstore\s+([A-Za-z0-9_]+)", query or "")
@@ -288,7 +295,7 @@ def _enforce_missing_clauses(framework: Framework, intent, query: str,
             o = a.get("object") if isinstance(a, dict) else None
             if not v or v not in still:
                 continue
-            tool = derive_tool_name(v, o, names)
+            tool = derive_tool_name(v, o, names, query=_q)
             if not tool:
                 continue
             args: dict = {}
@@ -474,6 +481,127 @@ def _normalize_store_clauses(intent, query: str, catalog: Optional[list]) -> Non
         log.warning("normalize_store_clauses noop (best-effort): %r", ex)
 
 
+# ${stepN.field} ref (P2 reorder: rimappa N dopo il riordino degli step).
+_STEPREF_RE = re.compile(r"(\$\{step)(\d+)")
+
+
+def _remap_step_refs(obj, idx_map: dict):
+    """Riscrive from_step:int e ${stepN...} secondo idx_map (old→new 1-based).
+    Ricorsivo su dict/list/str; ritorna NUOVE strutture (non muta l'input).
+    Identita' per indici non in idx_map. §7.9 deterministico."""
+    if isinstance(obj, dict):
+        out = {}
+        for k, v in obj.items():
+            if k == "from_step" and isinstance(v, int):
+                out[k] = idx_map.get(v, v)
+            else:
+                out[k] = _remap_step_refs(v, idx_map)
+        return out
+    if isinstance(obj, list):
+        return [_remap_step_refs(x, idx_map) for x in obj]
+    if isinstance(obj, str):
+        return _STEPREF_RE.sub(
+            lambda m: m.group(1) + str(idx_map.get(int(m.group(2)), int(m.group(2)))),
+            obj)
+    return obj
+
+
+def _conform_to_intent_order(framework: Framework, intent, query: str,
+                             catalog: Optional[list]) -> Framework:
+    """§7.9 v3 (GAP-C ordine, redesign): riordina gli step-executor nell'ORDINE
+    di intent.actions (autoritativo, ordinato dall'extractor) e rimappa from_step
+    + ${stepN.field}. Risolve l'ordine sbagliato quando proposer/enforce emette/
+    appende step in sequenza diversa dalla query — es. FASE 3: enforce appende
+    send_messages_github DOPO write_entries → reorder a find→send→write. Gated
+    is_v3() dal caller (v2 invariato).
+
+    Robusto agli helper trasformativi (filter/sort/describe/...): NON partecipano
+    al match con le action (sono SOFT) e seguono il loro producer (rank = quello
+    dello step HARD precedente). Conservativo: NO-OP se uno step HARD (producer/
+    mutating) non matcha alcuna action distinta, o se il riordino creerebbe un
+    from_step in avanti (consumer prima del producer). No-op su mono-azione o
+    piano gia' in ordine. final_answer resta in coda."""
+    try:
+        actions = [a for a in (getattr(intent, "actions", None) or [])
+                   if isinstance(a, dict)]
+        if len(actions) < 2:
+            return framework
+        steps = list(getattr(framework, "steps", None) or [])
+        execs = [s for s in steps if (s.tool or "") != "final_answer"]
+        finals = [s for s in steps if (s.tool or "") == "final_answer"]
+        if len(execs) < 2:
+            return framework
+        import naming_grammar as _ng
+        try:
+            from compound_decomposer import (PRODUCER_VERBS as _PROD,
+                                             TRANSFORM_VERBS as _SOFT)
+        except Exception:
+            _PROD = {"find", "read", "get", "list"}
+            _SOFT = {"filter", "sort", "group", "classify", "describe",
+                     "render", "compute", "compare"}
+        # Pass 1: match HARD step (producer/mutating) → action (greedy best-score:
+        # object 2 + verbo-esatto 2 | verbo-famiglia 1). SOFT (transform) saltati.
+        remaining = list(enumerate(actions))
+        hard_rank: dict = {}
+        for st in execs:
+            nc = _ng.parse_name(st.tool or "")
+            sv = (nc.verb if nc else "") or ""
+            so = (nc.obj if nc else "") or ""
+            if sv in _SOFT:
+                continue  # helper trasformativo: SOFT, non matcha action
+            best_j, best_score = None, 0
+            for j, (ai, a) in enumerate(remaining):
+                av = (a.get("verb") or ""); ao = (a.get("object") or "")
+                score = 0
+                if so and so == ao:
+                    score += 2
+                if sv and sv == av:
+                    score += 2
+                elif sv and av and ((sv in _PROD) == (av in _PROD)):
+                    score += 1
+                if score > best_score:
+                    best_score, best_j = score, j
+            if best_j is None or best_score == 0:
+                return framework  # step HARD non mappabile → no riordino (safe)
+            ai, _a = remaining.pop(best_j)
+            hard_rank[id(st)] = ai
+        # Pass 2: rank di ogni exec (SOFT eredita il producer HARD precedente).
+        ranks: dict = {}
+        last = -0.5
+        for st in execs:
+            if id(st) in hard_rank:
+                last = float(hard_rank[id(st)])
+                ranks[id(st)] = last
+            else:
+                ranks[id(st)] = last + 0.5
+        order_pairs = sorted(enumerate(execs),
+                             key=lambda kv: (ranks[id(kv[1])], kv[0]))
+        sorted_execs = [execs[i] for i, _ in order_pairs]
+        if sorted_execs == execs:
+            return framework  # gia' in ordine
+        new_list = sorted_execs + finals
+        old_pos = {id(s): i + 1 for i, s in enumerate(steps)}
+        new_pos = {id(s): i + 1 for i, s in enumerate(new_list)}
+        idx_map = {old_pos[id(s)]: new_pos[id(s)] for s in steps}
+        # Rimappa su COPIE; valida forward-ref; commit solo se valido.
+        remapped = [(s, _remap_step_refs(s.args, idx_map)) for s in new_list]
+        for i, (s, ra) in enumerate(remapped):
+            fs = ra.get("from_step") if isinstance(ra, dict) else None
+            if isinstance(fs, int) and fs > i + 1:
+                return framework  # consumer prima del producer → abort
+        for s, ra in remapped:
+            s.args = ra
+        framework.final_message = _remap_step_refs(
+            getattr(framework, "final_message", "") or "", idx_map)
+        framework.steps = new_list
+        log.info("[conform_order] step riordinati su intent.actions: %s",
+                 [s.tool for s in new_list])
+        return framework
+    except Exception as ex:
+        log.warning("conform_to_intent_order noop (best-effort): %r", ex)
+        return framework
+
+
 def _apply_deterministic_structure_guards(framework: Framework, intent,
                                           query: str,
                                           catalog: Optional[list]) -> Framework:
@@ -482,9 +610,16 @@ def _apply_deterministic_structure_guards(framework: Framework, intent,
     tool-fratelli all'oggetto dell'intent; `_enforce_missing_clauses` appende le
     clausole RICHIESTE scoperte. No-op su query mono-azione (entrambi
     richiedono `intent.actions`). NON include il re-propose LLM dei dropped:
-    quello resta L3-only."""
+    quello resta L3-only.
+
+    v3 (GAP-C ordine): dopo align+enforce, `_conform_to_intent_order` riordina
+    gli step su intent.actions (gated is_v3() → v2 byte-invariato). Sta DOPO
+    enforce cosi' riordina anche le clausole appena appese."""
     framework = _align_framework_objects(framework, intent, catalog)
     framework = _enforce_missing_clauses(framework, intent, query, catalog)
+    from . import is_v3
+    if is_v3():
+        framework = _conform_to_intent_order(framework, intent, query, catalog)
     return framework
 
 

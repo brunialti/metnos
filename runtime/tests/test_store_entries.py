@@ -48,6 +48,29 @@ class TestStoreEntriesHandlers(unittest.TestCase):
         self.assertEqual(d["n_deleted"], 1)
         self.assertEqual(se.handle_find_entries({"store": "spese"})["entries"], [])
 
+    def test_write_set_fields_override(self):
+        # set_fields applica un override DETERMINISTICO a OGNI entry prima
+        # dell'upsert (FASE 3 "aggiorna a posted"): risolve il §2.8 silent
+        # failure (prima set_fields/fields erano ignorati → stato non aggiornato).
+        se.handle_write_entries(
+            {"store": "spese", "entries": [{"id": "a", "importo": 10},
+                                           {"id": "b", "importo": 20}]})
+        r = se.handle_write_entries(
+            {"store": "spese",
+             "entries": [{"id": "a", "importo": 10}, {"id": "b", "importo": 20}],
+             "key": ["id"], "set_fields": {"importo": 99}})
+        self.assertTrue(r["ok"])
+        f = se.handle_find_entries({"store": "spese", "order": ["id"]})
+        self.assertEqual([e["importo"] for e in f["entries"]], [99, 99])
+
+    def test_write_fields_alias(self):
+        # 'fields' = alias di set_fields (il modello emette entrambe le forme).
+        se.handle_write_entries(
+            {"store": "spese", "entries": [{"id": "a", "importo": 10}],
+             "key": ["id"], "fields": {"importo": 7}})
+        f = se.handle_find_entries({"store": "spese", "where": {"id": "a"}})
+        self.assertEqual(f["entries"][0]["importo"], 7)
+
     def test_unregistered_store_honest_error(self):
         r = se.handle_find_entries({"store": "nope_unreg"})
         self.assertFalse(r["ok"])

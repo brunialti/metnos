@@ -950,6 +950,80 @@ def filter_pool_for_grammar(tools: Sequence[Any], user_query: str,
     return filtered, excluded
 
 
+def provider_gate_names(pool_names, user_query: str, *,
+                        all_names=None) -> tuple[list[str], list[str]]:
+    """Gating PROVIDER sul pool dell'engine v2/v3 (lista NOMI) — sibling
+    names-based del SOLO blocco provider di `filter_pool_for_grammar` (P1
+    redesign 18/6, ADR-pending): quella vive nel planner legacy (METNOS_GRAMMAR,
+    orfana in engine v2) → il provider non era mai gateato sui compound (GAP-B,
+    bug FASE 3: `send_messages` generico invece di `send_messages_github`).
+
+    Per ogni suffix provider (`detection_lexicon provider.markers`, SoT condivisa):
+      - marker ASSENTE nella query → escludi i tool con quel suffix (la variante
+        provider non entra senza il suo marker — context-binding, non scelta LLM);
+      - marker PRESENTE → escludi il canonico non-suffissato SE esiste la sua
+        variante provider nel pool → UN solo provider per clausola, scelta del
+        backend coerente con la query, NON delegata all'LLM.
+
+    Vale su QUALSIASI numero di clausole (anche compound 4+): e' la leva #1 del
+    redesign. Deterministico §7.9, no LLM/IO. I path-filesystem sono strippati
+    prima del match (`issues` in `/opt/metnos/issues` non innesca github).
+
+    Args:
+      pool_names: lista nomi tool del pool (mai mutata).
+      user_query: testo utente grezzo.
+      all_names: universo nomi per il check «esiste il canonico» (marker assente
+        in hide_mode); default = pool stesso.
+
+    Returns: (kept_names, excluded_names_sorted). Safety: se il gate azzera il
+    pool, ritorna l'originale invariato (mai pool vuoto → §2.8)."""
+    names_in_pool = [n for n in (pool_names or []) if isinstance(n, str)]
+    pool_set = set(names_in_pool)
+    universe = set(all_names) if all_names else pool_set
+    query_markers = _strip_fs_paths((user_query or "").lower())
+    hide_mode = bool(os.environ.get("METNOS_HIDE_EXECUTORS"))
+    excluded: set[str] = set()
+    for suffix, markers in _dl.mapping("provider.markers").items():
+        if not _dl.match_any(markers, query_markers, "word"):
+            # Marker ASSENTE → la variante provider non deve comparire.
+            for name in names_in_pool:
+                if not name.endswith(suffix):
+                    continue
+                canonical = name[: -len(suffix)].rstrip("_")
+                # Esclusione incondizionata in prod (hide_mode = solo E2E con
+                # canonical nascosti di proposito: lì si tiene il provider-suffix
+                # come unica opzione semantica se il canonical manca).
+                if canonical in universe or not hide_mode:
+                    excluded.add(name)
+        else:
+            # Marker PRESENTE → forza il backend: cade il canonico se esiste
+            # la variante provider nel pool.
+            for name in names_in_pool:
+                if name.endswith(suffix) or name in excluded:
+                    continue
+                if f"{name}{suffix}" in pool_set:
+                    excluded.add(name)
+    kept = [n for n in names_in_pool if n not in excluded]
+    if not kept:
+        return list(names_in_pool), []
+    return kept, sorted(excluded)
+
+
+def active_provider_suffixes(user_query: str) -> list[str]:
+    """Suffissi provider il cui MARKER e' presente nella query (path-filesystem
+    strippati). SoT condivisa con `provider_gate_names` (stesso
+    `detection_lexicon provider.markers`): il provider-aware `derive_tool_name`
+    lo usa per risolvere la variante `_<provider>` su clausole enforce/skeleton
+    (GAP-B redesign: un compound github enforce-ato deve dare send_messages_github,
+    non il generico). Deterministico §7.9, no LLM/IO."""
+    query_markers = _strip_fs_paths((user_query or "").lower())
+    out: list[str] = []
+    for suffix, markers in _dl.mapping("provider.markers").items():
+        if _dl.match_any(markers, query_markers, "word"):
+            out.append(suffix)
+    return out
+
+
 # --------------------------------------------------------------------------
 # Adapters: Executor object vs dict-like
 # --------------------------------------------------------------------------
