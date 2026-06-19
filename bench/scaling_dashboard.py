@@ -26,18 +26,32 @@ def load():
 
 
 def classify(r):
+    # AUTORITATIVO: l'esito e' quello calcolato dal bench (coerente con la fase
+    # struct/args) — MAI ricalcolato dai campi strutturali (era la causa del
+    # «100% ma non verde»: la dashboard rivalutava in modo diverso dal bench).
+    o = r.get("outcome")
+    if o:
+        return o
+    # Compat dati vecchi (senza 'outcome'): rispetta comunque r['ok'] come
+    # verita' del bench; la sotto-classe e' solo decorativa.
+    if r.get("ok"):
+        return "ok"
     if r.get("flaky"):
         return "flaky"
-    if r["anyo"] < r["gold_hard"]:
+    if r.get("anyo", 0) < r.get("gold_hard", 0):
         return "error"
-    if not r["in_order"]:
-        return "reorder"
-    return "ok"
+    return "reorder"
 
 
 def heat_color(acc, n):
+    # Coerenza numero↔colore: 4/4 (acc=100) e' SEMPRE verde pieno; 0/4 rosso
+    # pieno. Nessun caso «100% ma non verde».
     if n == 0:
         return "#1b2430", "#5a6b7a"        # da-fare
+    if acc >= 100:
+        return "rgb(34,160,75)", "#fff"    # tutto ok → verde pieno
+    if acc <= 0:
+        return "rgb(200,55,55)", "#fff"    # tutto fallito → rosso pieno
     r = int(40 + 200 * (1 - acc / 100))
     g = int(40 + 170 * (acc / 100))
     return f"rgb({r},{g},55)", "#fff"
@@ -92,13 +106,27 @@ def render():
     amax = max([r["a"] for r in rows] + [8])
     dmax = max([r["d"] for r in rows] + [7])
 
-    # heatmap table
+    # heatmap table. Una cella e' "IN CORSO" (grigio, niente esito) SOLO finche'
+    # il grid non l'ha completata. Il segnale robusto: l'ULTIMA cella scritta e'
+    # in corso (il grid procede in ordine a→d); tutte le precedenti sono finite,
+    # qualunque sia il loro n reale (alcune (a,d) generano <per_cell query
+    # distinte: 2/3 e' un ESITO legittimo, non un parziale). Cosi' niente
+    # parziale travestito da regressione, e niente falso "in corso" sulle celle
+    # con poche query.
+    rows_seen = d.get("rows", [])
+    last_cell = (rows_seen[-1]["a"], rows_seen[-1]["d"]) if rows_seen else None
+    running = d.get("done", 0) < d.get("total", 0)
     th = "".join(f"<th>d{x}</th>" for x in range(1, dmax + 1))
     trs = []
     for a in range(2, amax + 1):
         tds = [f"<th>a{a}</th>"]
         for dd in range(1, dmax + 1):
             ok, n = cells.get((a, dd), [0, 0])
+            in_progress = running and last_cell == (a, dd)
+            if in_progress:
+                tds.append(f'<td style="background:#1b2430;color:#7a8aa0">…'
+                           f'<br><span class="n">{ok}/{n}</span></td>')
+                continue
             acc = 100 * ok / n if n else 0
             bg, fg = heat_color(acc, n)
             txt = f"{int(acc)}%" if n else "·"

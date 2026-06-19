@@ -481,6 +481,73 @@ def _normalize_store_clauses(intent, query: str, catalog: Optional[list]) -> Non
         log.warning("normalize_store_clauses noop (best-effort): %r", ex)
 
 
+def _decontaminate_clause_objects(intent, query: str) -> None:
+    """§7.9 v3 (de-contaminazione, 19/6): corregge l'OGGETTO di una clausola di
+    `intent.actions` quando l'LLM l'ha CONTAMINATO da una clausola vicina.
+
+    Causa-radice provata: a 7-8 clausole, una clausola «trova le FOTO» dopo «trova
+    i FILE» viene ancorata a `files` invece di `images` (bias attenzione, NON gap
+    vocab: foto→images funziona isolato; NON risolto da tier wise). Il principio
+    di non-contaminazione nel prompt regge a ≤6 clausole, cede a 8 con un'ancora
+    forte (verbo identico + oggetto-schema-simile).
+
+    Fix deterministico via la FUNZIONE che SOSTITUISCE i sinonimi (no liste
+    cablate, no LLM): `prefilter._OBJECT_HINTS` deriva l'oggetto dal TESTO della
+    clausola. Se dà un oggetto SPECIFICO e UNIVOCO che DIVERGE dall'oggetto
+    assegnato dall'intent, corregge l'intent. CONSERVATIVO (anti-falso-positivo):
+    corregge SOLO quando il testo-clausola contiene un hint NON-ambiguo (un solo
+    oggetto candidato dai _OBJECT_HINTS) — mai su chunk ambigui/None. Muta
+    `intent.actions` in place, PRIMA del pool. No-op su mono-azione.
+
+    Universale: vale per ogni oggetto in _OBJECT_HINTS (foto/immagini→images,
+    mail/posta→messages, ...), non cablato a un caso."""
+    try:
+        actions = [a for a in (getattr(intent, "actions", None) or [])
+                   if isinstance(a, dict)]
+        if len(actions) < 2:
+            return
+        from compound_decomposer import split_query_chunks
+        import prefilter as _pf
+        hints = getattr(_pf, "_OBJECT_HINTS", None)
+        if not hints:
+            return
+        chunks = split_query_chunks(query)
+        if len(chunks) != len(actions):
+            return  # allineamento chunk↔action non garantito → astieniti (safe)
+
+        def _obj_from_text(chunk: str):
+            """Oggetto SPECIFICO e UNIVOCO dal testo (None se 0 o >1 candidati).
+            Univoco = un solo object dei _OBJECT_HINTS ha un hint nel chunk."""
+            cl = (chunk or "").lower()
+            found = set()
+            for obj, hs in hints.items():
+                for h in hs:
+                    # hint multi-parola: substring; singola: confine di parola.
+                    if " " in h:
+                        if h in cl:
+                            found.add(obj); break
+                    else:
+                        import re as _re
+                        if _re.search(r"\b" + _re.escape(h) + r"\b", cl):
+                            found.add(obj); break
+            return next(iter(found)) if len(found) == 1 else None
+
+        changed = False
+        for a, chunk in zip(actions, chunks):
+            o = (a.get("object") or "").lower()
+            text_obj = _obj_from_text(chunk)
+            # corregge SOLO se il testo dà un oggetto univoco DIVERSO da quello
+            # dell'intent (contaminazione). Mai se concordano o se ambiguo/None.
+            if text_obj and o and text_obj != o:
+                a["object"] = text_obj
+                changed = True
+        if changed:
+            log.info("[decontaminate] oggetti-clausola corretti dal testo: %s",
+                     [(a.get("verb"), a.get("object")) for a in actions])
+    except Exception as ex:
+        log.warning("decontaminate_clause_objects noop (best-effort): %r", ex)
+
+
 # ${stepN.field} ref (P2 reorder: rimappa N dopo il riordino degli step).
 _STEPREF_RE = re.compile(r"(\$\{step)(\d+)")
 
@@ -539,8 +606,19 @@ def _conform_to_intent_order(framework: Framework, intent, query: str,
             _PROD = {"find", "read", "get", "list"}
             _SOFT = {"filter", "sort", "group", "classify", "describe",
                      "render", "compute", "compare"}
-        # Pass 1: match HARD step (producer/mutating) → action (greedy best-score:
-        # object 2 + verbo-esatto 2 | verbo-famiglia 1). SOFT (transform) saltati.
+        # Rank = POSIZIONE in intent.actions (ordine autoritativo). Robusto ai
+        # DUPLICATI (bug a8d3, fwd=1): il vecchio Pass-1 «ogni step pesca la prima
+        # action libera» esauriva le action coi duplicati same-object (compute×2,
+        # write×2) → gli step extra floatavano con rank sbagliati → sort fuori
+        # posto. Nuovo design a 2 passate:
+        #  Pass-A: ogni step HARD prende il rank dell'action col MEDESIMO oggetto
+        #          NON ancora consumata, in ordine intent (consumo stabile). Un
+        #          duplicato (oggetto gia' esaurito) NON consuma: resta senza rank.
+        #  Pass-B: gli step senza rank (duplicati, SOFT, extra) EREDITANO il rank
+        #          dello step HARD PRECEDENTE + epsilon crescente → restano
+        #          ADIACENTI al loro gruppo, non floatano. SOFT idem.
+        # match: PRODUCER step ↔ action stesso-oggetto (producer o transform);
+        #        MUTATOR step ↔ action stesso-verbo. (invariato, ma per-oggetto.)
         remaining = list(enumerate(actions))
         hard_rank: dict = {}
         for st in execs:
@@ -548,49 +626,37 @@ def _conform_to_intent_order(framework: Framework, intent, query: str,
             sv = (nc.verb if nc else "") or ""
             so = (nc.obj if nc else "") or ""
             if sv in _SOFT:
-                continue  # helper trasformativo: SOFT, non matcha action
-            # Match step→action OBJECT-aware (bugfix multi-dominio): per le
-            # action PRODUCER l'OGGETTO deve combaciare (un read_messages NON
-            # puo' rubare lo slot di find_events solo perche' entrambi
-            # produttori) — senza questo, un duplicato del proposer consumava
-            # l'action di un altro dominio e il vero produttore floatava in coda
-            # (ordine sbagliato). Per le action CONSUMER basta il verbo (object
-            # generico: compress_files copre 'comprimi le foto'). Primo match in
-            # ordine intent.
+                continue
             best_j = None
             for j, (ai, a) in enumerate(remaining):
                 av = (a.get("verb") or "").lower()
                 ao = (a.get("object") or "").lower()
                 if sv in _PROD:
-                    # PRODUCER step → action PRODUCER o TRANSFORM con lo stesso
-                    # OGGETTO: il produttore serve la clausola che usa quell'object
-                    # anche se l'intent l'ha etichettata filter/sort/group (es.
-                    # find_entries copre la clausola (filter,entries) di «trova le
-                    # spese sopra 100»). NON una action mutating (quella ha il suo
-                    # step). Object obbligatorio: find_events non ruba find_images.
                     ok = bool(so and so == ao and (av in _PROD or av in _SOFT))
                 else:
-                    # MUTATOR step → action con lo stesso VERBO (object generico).
                     ok = bool(sv and sv == av)
                 if ok:
                     best_j = j
                     break
             if best_j is None:
-                # step HARD non mappabile (es. duplicato dal proposer): NON
-                # abortire — FLOAT (rank del producer HARD precedente). I
-                # duplicati non bloccano il riordino. Safety = forward-dep check.
-                continue
+                continue  # duplicato/non-mappabile → erediterà in Pass-B
             ai, _a = remaining.pop(best_j)
             hard_rank[id(st)] = ai
-        # Pass 2: rank di ogni exec (SOFT eredita il producer HARD precedente).
+        # Pass-B: rank finale. Gli step senza match ereditano il rank dell'ULTIMO
+        # step HARD rankato (adiacenza) con epsilon crescente per stabilita'; gli
+        # step in testa prima di ogni HARD ereditano il rank del PRIMO HARD - 1
+        # (restano davanti al loro gruppo, ma il sort poi li mette in ordine).
         ranks: dict = {}
-        last = -0.5
+        last = None
+        eps = 0.0
         for st in execs:
             if id(st) in hard_rank:
                 last = float(hard_rank[id(st)])
+                eps = 0.0
                 ranks[id(st)] = last
             else:
-                ranks[id(st)] = last + 0.5
+                eps += 0.001
+                ranks[id(st)] = (last if last is not None else -1.0) + eps
         order_pairs = sorted(enumerate(execs),
                              key=lambda kv: (ranks[id(kv[1])], kv[0]))
         sorted_execs = [execs[i] for i, _ in order_pairs]
@@ -697,6 +763,111 @@ def _enforce_missing_objects(framework: Framework, intent, query: str,
         return framework
 
 
+def _fill_clause_args(framework: Framework, intent, query: str,
+                      catalog: Optional[list]) -> Framework:
+    """§7.9 v3 (fase ARGS): riempie gli args DEDUCIBILI di ogni step dal testo
+    della SUA clausola (non dalla query intera). Una query multi-clausola ha piu'
+    date/path/destinatari: l'estrazione full-query lega il valore SBAGLIATO allo
+    step (es. time_window di «ieri» applicato allo step di «oggi»). Qui ogni step
+    viene mappato alla sua clausola (split deterministico, ordine) e
+    `args_extractor.regex_extract` estrae SOLO da quel chunk, riempiendo i campi
+    DICHIARATI dallo schema e ANCORA assenti (mai sovrascrive cio' che il
+    proposer ha gia' messo). Deterministico, no LLM. No-op su mono-azione.
+
+    Lo store-name di una clausola entries si deriva dal chunk (sost. dopo
+    «spese/archivio/store …»): generale, non un mapping cablato."""
+    try:
+        from compound_decomposer import (split_query_chunks,
+                                         detect_chunk_action)
+        import args_extractor as _ax
+        import naming_grammar as _ng
+        steps = [s for s in (getattr(framework, "steps", None) or [])
+                 if (s.tool or "") != "final_answer"]
+        if len(steps) < 2:
+            return framework
+        chunks = split_query_chunks(query)
+        if len(chunks) < 2:
+            return framework
+        cat_by_name = {getattr(e, "name", None): e for e in (catalog or [])}
+        # Allinea step↔chunk per OGGETTO (il reorder + gli helper SOFT + le
+        # clausole multi-chunk scompaginano l'ordine → lo zip posizionale legava
+        # il chunk SBAGLIATO). L'oggetto del chunk si deduce, in ordine di
+        # priorita': (1) intent.actions — la decomposizione LLM e' ORDINATA e
+        # allineata ai chunk per costruzione, e mappa i termini naturali
+        # (foto→images, impegni→events) che il detector lessicale non copre;
+        # (2) detect_chunk_action lessicale come fallback. Cosi' ogni step trova
+        # il chunk col suo oggetto, consumato una volta in ordine.
+        actions = [a for a in (getattr(intent, "actions", None) or [])
+                   if isinstance(a, dict)]
+        chunk_obj = []
+        for i, ch in enumerate(chunks):
+            o = None
+            if i < len(actions):
+                o = (actions[i].get("object") or "").lower() or None
+            if not o:
+                try:
+                    act = detect_chunk_action(ch)
+                    o = act[1] if act else None
+                except Exception:
+                    o = None
+            chunk_obj.append((ch, o))
+        used = [False] * len(chunks)
+        # PASS 1 (prioritario): ogni step→chunk per OGGETTO ESATTO. Cosi' il
+        # match semantico non viene rubato dal fallback posizionale di uno step
+        # precedente (bug: un helper o un duplicato consumava il chunk «foto»
+        # prima che find_images lo reclamasse). PASS 2: fallback posizionale solo
+        # sugli step ancora senza chunk, sui chunk ancora liberi.
+        step_chunk: dict = {}
+        for pos, st in enumerate(steps):
+            nc = _ng.parse_name(st.tool or "")
+            so = (nc.obj if nc else None)
+            if not so:
+                continue
+            for i, (ch, co) in enumerate(chunk_obj):
+                if not used[i] and co and co == so:
+                    used[i] = True
+                    step_chunk[pos] = ch
+                    break
+        for pos, st in enumerate(steps):
+            if pos in step_chunk:
+                continue
+            if pos < len(chunks) and not used[pos]:
+                used[pos] = True
+                step_chunk[pos] = chunks[pos]
+
+        for pos, st in enumerate(steps):
+            e = cat_by_name.get(st.tool)
+            schema = getattr(e, "args_schema", None) if e else None
+            if not isinstance(schema, dict):
+                continue
+            chunk = step_chunk.get(pos)
+            if not chunk:
+                continue
+            try:
+                extracted = _ax.regex_extract(chunk, schema)
+            except Exception:
+                extracted = {}
+            props = (schema.get("properties") or {})
+            # store-name per clausole entries (dichiara 'store') dal chunk.
+            if "store" in props and "store" not in (st.args or {}):
+                m = re.search(r"\b(?:nello? store|nell'archivio|fra le|tra le|"
+                              r"dallo? store|nelle?)\s+([a-zàèéìòù0-9_]+)",
+                              chunk.lower())
+                if m and m.group(1) not in ("store", "archivio"):
+                    extracted.setdefault("store", m.group(1))
+            if not extracted:
+                continue
+            cur = dict(st.args or {})
+            for k, v in extracted.items():
+                if k not in cur or cur[k] in (None, "", [], {}):
+                    cur[k] = v
+            st.args = cur
+        return framework
+    except Exception as ex:
+        log.warning("fill_clause_args noop (best-effort): %r", ex)
+        return framework
+
+
 def _apply_deterministic_structure_guards(framework: Framework, intent,
                                           query: str,
                                           catalog: Optional[list]) -> Framework:
@@ -708,14 +879,16 @@ def _apply_deterministic_structure_guards(framework: Framework, intent,
     quello resta L3-only.
 
     v3: dopo align+enforce(verb-level), `_enforce_missing_objects` ripristina i
-    produttori-object droppati (multi-dominio), poi `_conform_to_intent_order`
-    riordina su intent.actions (gated is_v3() → v2 byte-invariato)."""
+    produttori-object droppati (multi-dominio), `_conform_to_intent_order`
+    riordina su intent.actions, infine `_fill_clause_args` riempie gli args
+    deducibili per-clausola (gated is_v3() → v2 byte-invariato)."""
     framework = _align_framework_objects(framework, intent, catalog)
     framework = _enforce_missing_clauses(framework, intent, query, catalog)
     from . import is_v3
     if is_v3():
         framework = _enforce_missing_objects(framework, intent, query, catalog)
         framework = _conform_to_intent_order(framework, intent, query, catalog)
+        framework = _fill_clause_args(framework, intent, query, catalog)
     return framework
 
 
@@ -736,6 +909,12 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
       DispatchResult con final_text/kind + match_source per debug/telemetry.
     """
     t_start = time.time()
+    # De-contaminazione oggetti-clausola (v3, 19/6): a 7-8 clausole l'LLM ancora
+    # una clausola all'oggetto di una vicina (foto→files dopo «file»). Corregge
+    # via _OBJECT_HINTS (funzione canonica) PRIMA di tutto. Gated is_v3().
+    from . import is_v3
+    if is_v3():
+        _decontaminate_clause_objects(intent, query)
     # D2-c (18/6): normalizza le clausole store dell'intent (store-sink →
     # entries) PRIMA di pool/cache/proposer, cosi' la sig compound-aware e il
     # routing vedono le actions gia' corrette. Deterministico, no-op se non

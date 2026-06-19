@@ -316,4 +316,59 @@ def regex_extract(query: str, schema: dict | None) -> dict:
             w = _extract_time_window(query) or _extract_date_keyword(query)
             if w:
                 out[arg_name] = w
+        elif (isinstance(_spec, dict)
+              and (_spec.get("type") == "boolean"
+                   or (isinstance(_spec.get("type"), list)
+                       and "boolean" in _spec.get("type")))):
+            # Flag booleano: si attiva quando la query nomina la condizione che
+            # la DESCRIZIONE stessa dell'arg definisce (data-driven, NO sinonimi
+            # cablati). Universale + multilingue: la description e' una tabella
+            # per-lingua (§2.5). Valore = NON il default (default false → true).
+            if _bool_flag_triggered(query, _spec):
+                out[arg_name] = not bool(_spec.get("default", False))
     return out
+
+
+# Parole troppo generiche per essere distintive di un flag (object/verbi comuni
+# che comparirebbero in molte description). NON un dizionario di sinonimi: e' uno
+# stop-set di rumore, gemello di prefilter._STOPWORDS.
+_FLAG_DESC_NOISE = {
+    "true", "false", "default", "solo", "only", "tutte", "tutti", "all",
+    "ritorna", "return", "returns", "value", "valore", "campo", "field",
+    "email", "emails", "mail", "messaggi", "messages", "file", "files",
+    "the", "les", "una", "uno", "con", "non", "per", "del", "della",
+}
+
+
+def _bool_flag_triggered(query: str, spec: dict) -> bool:
+    """True se la query nomina la condizione descritta dall'arg booleano.
+
+    Deterministico §7.9, multilingue, ZERO sinonimi cablati: estrae le parole
+    DISTINTIVE dalla DESCRIPTION dell'arg (tutte le lingue della tabella), tolto
+    il rumore generico, e verifica se una di esse condivide un PREFISSO >=4 char
+    con una parola della query (morfologia leggera lang-indipendente: «lette»
+    della description ~ «letta» della query). Se l'arg ha gia' un default True,
+    NON si attiva (il flag e' gia' il comportamento base)."""
+    import re as _re
+    desc = spec.get("description")
+    descs: list[str] = []
+    if isinstance(desc, str):
+        descs = [desc]
+    elif isinstance(desc, dict):
+        descs = [v for v in desc.values() if isinstance(v, str)]
+    if not descs:
+        return False
+    qwords = set(_re.findall(r"[a-zàèéìòù]{3,}", (query or "").lower()))
+    if not qwords:
+        return False
+    for text in descs:
+        # Solo la parte PRIMA del «default …»: descrive lo stato attivato, non
+        # il comportamento di default (evita falsi positivi su «default: tutte»).
+        head = _re.split(r"\bdefault\b", text.lower())[0]
+        dwords = [w for w in _re.findall(r"[a-zàèéìòù]{4,}", head)
+                  if w not in _FLAG_DESC_NOISE]
+        for dw in dwords:
+            for qw in qwords:
+                if len(qw) >= 4 and dw[:4] == qw[:4]:
+                    return True
+    return False

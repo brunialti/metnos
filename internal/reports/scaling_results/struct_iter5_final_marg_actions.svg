@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="460" height="240" font-family="-apple-system,Segoe UI,Roboto,sans-serif">
+<text x="20" y="24" font-size="14" font-weight="700" fill="#1A477A">Accuratezza per numero di AZIONI (media sui domini)</text>
+<line x1="56" y1="200.0" x2="440" y2="200.0" stroke="#d0d7de"/>
+<text x="50" y="203.0" font-size="9" fill="#6b7280" text-anchor="end">0</text>
+<line x1="56" y1="160.0" x2="440" y2="160.0" stroke="#d0d7de"/>
+<text x="50" y="163.0" font-size="9" fill="#6b7280" text-anchor="end">25</text>
+<line x1="56" y1="120.0" x2="440" y2="120.0" stroke="#d0d7de"/>
+<text x="50" y="123.0" font-size="9" fill="#6b7280" text-anchor="end">50</text>
+<line x1="56" y1="80.0" x2="440" y2="80.0" stroke="#d0d7de"/>
+<text x="50" y="83.0" font-size="9" fill="#6b7280" text-anchor="end">75</text>
+<line x1="56" y1="40.0" x2="440" y2="40.0" stroke="#d0d7de"/>
+<text x="50" y="43.0" font-size="9" fill="#6b7280" text-anchor="end">100</text>
+<rect x="70" y="40.0" width="32" height="160.0" rx="2" fill="#548235"/>
+<text x="86.0" y="36.0" font-size="10" font-weight="600" fill="#1a1a1a" text-anchor="middle">100%</text>
+<text x="86.0" y="214" font-size="10" fill="#6b7280" text-anchor="middle">2</text>
+<rect x="114" y="40.0" width="32" height="160.0" rx="2" fill="#548235"/>
+<text x="130.0" y="36.0" font-size="10" font-weight="600" fill="#1a1a1a" text-anchor="middle">100%</text>
+<text x="130.0" y="214" font-size="10" fill="#6b7280" text-anchor="middle">3</text>
+<rect x="158" y="40.0" width="32" height="160.0" rx="2" fill="#548235"/>
+<text x="174.0" y="36.0" font-size="10" font-weight="600" fill="#1a1a1a" text-anchor="middle">100%</text>
+<text x="174.0" y="214" font-size="10" fill="#6b7280" text-anchor="middle">4</text>
+<rect x="202" y="40.0" width="32" height="160.0" rx="2" fill="#548235"/>
+<text x="218.0" y="36.0" font-size="10" font-weight="600" fill="#1a1a1a" text-anchor="middle">100%</text>
+<text x="218.0" y="214" font-size="10" fill="#6b7280" text-anchor="middle">5</text>
+<rect x="246" y="40.0" width="32" height="160.0" rx="2" fill="#548235"/>
+<text x="262.0" y="36.0" font-size="10" font-weight="600" fill="#1a1a1a" text-anchor="middle">100%</text>
+<text x="262.0" y="214" font-size="10" fill="#6b7280" text-anchor="middle">6</text>
+<rect x="290" y="53.913043478260875" width="32" height="146.08695652173913" rx="2" fill="#d6a23a"/>
+<text x="306.0" y="49.913043478260875" font-size="10" font-weight="600" fill="#1a1a1a" text-anchor="middle">91%</text>
+<text x="306.0" y="214" font-size="10" fill="#6b7280" text-anchor="middle">7</text>
+<rect x="334" y="54.54545454545456" width="32" height="145.45454545454544" rx="2" fill="#d6a23a"/>
+<text x="350.0" y="50.54545454545456" font-size="10" font-weight="600" fill="#1a1a1a" text-anchor="middle">90%</text>
+<text x="350.0" y="214" font-size="10" fill="#6b7280" text-anchor="middle">8</text>
+<text x="210.0" y="232" font-size="11" font-weight="600" fill="#1a1a1a" text-anchor="middle">numero di AZIONI</text>
+</svg>

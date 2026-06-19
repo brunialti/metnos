@@ -148,6 +148,12 @@ def plan_only(query, cat, fast, wise):
                     lang="it", actions=list(ir.get("actions") or []))
     actions_str = [(a.get("verb"), a.get("object")) for a in (intent.actions or [])]
 
+    # Allineato a run_turn: de-contaminazione oggetti-clausola (v3) PRIMA di
+    # normalize_store/pool. Senza, il bench misurava come se il guard non
+    # esistesse (il guard vive in run_turn, plan_only lo replica a mano).
+    from engine import is_v3
+    if is_v3():
+        D._decontaminate_clause_objects(intent, query)
     D._normalize_store_clauses(intent, query, cat)
     pool = build_routing_pool(query, intent, cat)
     proposer = get_proposer()

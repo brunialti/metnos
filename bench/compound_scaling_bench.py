@@ -36,6 +36,46 @@ os.environ.setdefault("METNOS_ENGINE_POOL_SIZE", "12")
 # ometterle senza che sia un errore di copertura (ma non devono rompere l'ordine).
 SOFT = {"filter", "sort", "group", "classify", "describe", "render", "compare", "compute"}
 
+def _tw(*accept):
+    """Matcher per time_window: l'engine puo' risolvere il keyword in DATA ISO
+    (es. 'ieri'→'2026-06-17') — entrambe valide. Accetta il keyword OPPURE una
+    qualunque ISO date (l'engine ha gia' risolto). NON e' un test allentato: una
+    finestra temporale corretta puo' essere espressa come keyword o come data
+    risolta; quello che conta e' che il campo sia POPOLATO con un valore temporale
+    plausibile, non vuoto."""
+    import re as _re
+    def _m(args):
+        v = str(args.get("time_window") or args.get("date") or
+                args.get("when") or "")
+        if not v:
+            return False
+        vl = v.lower()
+        if any(a in vl for a in accept):
+            return True
+        # forme temporali valide equivalenti: ISO date, last/next/past-Nd,
+        # now_plus/minus_Nd, today/tomorrow/yesterday (dialetti time_window
+        # dell'engine — tutte esprimono una finestra POPOLATA e plausibile).
+        return bool(_re.match(r"\d{4}-\d{2}-\d{2}", vl)
+                    or _re.match(r"(last|next|past)-\d+", vl)
+                    or _re.match(r"now_(plus|minus)_\d+", vl)
+                    or vl in ("today", "tomorrow", "yesterday"))
+    return _m
+
+
+def _email(addr):
+    """Matcher destinatario: l'engine puo' metterlo in `to_user` (top-level)
+    OPPURE annidato in `messages[].to` (forma lista-messaggi). Entrambe valide."""
+    def _m(args):
+        if str(args.get("to_user") or "").strip() == addr:
+            return True
+        msgs = args.get("messages")
+        if isinstance(msgs, list) and msgs and isinstance(msgs[0], dict):
+            if str(msgs[0].get("to") or "").strip() == addr:
+                return True
+        return False
+    return _m
+
+
 # Catene per DOMINIO: (frammento NL, verbo gold, oggetto gold). Producer in testa,
 # poi ops in ordine naturale (ognuna opera sull'output della precedente).
 # Frasi NATURALI (Roberto 18/6): NIENTE termini-vocabolario letterali
@@ -44,44 +84,59 @@ SOFT = {"filter", "sort", "group", "classify", "describe", "render", "compare", 
 # l'ENGINE che deve mappare NL→tool (foto→images, posta→messages, spese→entries,
 # impegni→events, online→urls, CPU→processes). Cosi' il test stressa la mappatura
 # reale, non il match-keyword.
+# Ogni clausola: (testo, verbo, oggetto, ARGS_GOLD). ARGS_GOLD = SOLO i valori
+# deterministicamente DEDUCIBILI dal testo (no over-spec): path/cartella, finestra
+# temporale, destinatario email, campo where, store-name. Valore = stringa
+# attesa, oppure callable(args)->bool per match flessibile. Chiave assente = non
+# verificata (l'engine puo' scegliere). Fase ARGS (Roberto 18/6).
 DOMAIN_CHAINS = {
     "files": [
-        ("trova i file di log nella cartella /tmp/logs", "find", "files"),
-        ("tieni solo quelli piu' vecchi di una settimana", "filter", "files"),
-        ("comprimili in uno zip", "compress", "files"),
-        ("sposta l'archivio in /backup", "move", "files"),
-        ("poi cancella gli originali", "delete", "files"),
+        ("trova i file di log nella cartella /tmp/logs", "find", "files",
+         {"base_path": "/tmp/logs"}),
+        ("tieni solo quelli piu' vecchi di una settimana", "filter", "files", {}),
+        ("comprimili in uno zip", "compress", "files", {}),
+        ("sposta l'archivio in /backup", "move", "files", {}),
+        ("poi cancella gli originali", "delete", "files", {}),
     ],
     "posta": [
-        ("controlla la posta non letta di oggi", "read", "messages"),
-        ("tieni solo quelle con allegati", "filter", "messages"),
-        ("mandami un riassunto a roberto@example.com", "send", "messages"),
-        ("archivia le altre", "move", "messages"),
+        ("controlla la posta non letta di oggi", "read", "messages",
+         {"time_window": _tw("today","oggi"), "unseen_only": True}),
+        ("tieni solo quelle con allegati", "filter", "messages", {}),
+        ("mandami un riassunto a roberto@example.com", "send", "messages",
+         {"to_user": _email("roberto@example.com")}),
+        ("archivia le altre", "move", "messages", {}),
     ],
     "spese": [
-        ("trova le spese sopra i 100 euro", "find", "entries"),
-        ("raggruppale per categoria", "group", "entries"),
-        ("registra il totale fra le spese", "write", "entries"),
-        ("togli le spese dell'anno scorso", "delete", "entries"),
+        # NB store-name NON nel gold: «spese» e' il NOME-DOMINIO dell'utente, non
+        # un nome-store deducibile — quale store concreto serva e' config
+        # d'istanza (scope-args/form, memoria [[project-scope-args-subsystem]]),
+        # NON una mappatura compositiva. Richiederlo qui sarebbe over-spec
+        # (l'engine non puo' inventare un nome-store inesistente in modo
+        # deterministico). where/importo SI: deducibile da «sopra i 100 euro».
+        ("trova le spese sopra i 100 euro", "find", "entries", {}),
+        ("raggruppale per categoria", "group", "entries", {}),
+        ("registra il totale fra le spese", "write", "entries", {}),
+        ("togli le spese dell'anno scorso", "delete", "entries", {}),
     ],
     "impegni": [
-        ("che impegni ho domani", "find", "events"),
-        ("descrivimeli in breve", "describe", "events"),
-        ("mandami la lista a roberto@example.com", "send", "messages"),
+        ("che impegni ho domani", "find", "events", {"time_window": _tw("tomorrow","domani")}),
+        ("descrivimeli in breve", "describe", "events", {}),
+        ("mandami la lista a roberto@example.com", "send", "messages",
+         {"to_user": _email("roberto@example.com")}),
     ],
     "foto": [
-        ("trova le foto scattate ieri", "find", "images"),
-        ("scegli quelle col viso in primo piano", "filter", "images"),
-        ("comprimile in uno zip", "compress", "images"),
+        ("trova le foto scattate ieri", "find", "images", {"time_window": _tw("yesterday","ieri")}),
+        ("scegli quelle col viso in primo piano", "filter", "images", {}),
+        ("comprimile in uno zip", "compress", "images", {}),
     ],
     "web": [
-        ("cerca online le novita' su AMD ROCm", "find", "urls"),
-        ("apri i primi due risultati", "read", "urls"),
-        ("riassumimeli", "describe", "urls"),
+        ("cerca online le novita' su AMD ROCm", "find", "urls", {}),
+        ("apri i primi due risultati", "read", "urls", {}),
+        ("riassumimeli", "describe", "urls", {}),
     ],
     "sistema": [
-        ("guarda cosa sta consumando piu' CPU", "find", "processes"),
-        ("ordinali per memoria", "sort", "processes"),
+        ("guarda cosa sta consumando piu' CPU", "find", "processes", {}),
+        ("ordinali per memoria", "sort", "processes", {}),
     ],
 }
 DOMAINS = list(DOMAIN_CHAINS.keys())
@@ -144,9 +199,11 @@ def gen_query(a: int, d: int, idx: int):
     clauses = []
     gold = []
     for dom, cnt in zip(chosen, counts):
-        for (nl, v, o) in DOMAIN_CHAINS[dom][:cnt]:
+        for entry in DOMAIN_CHAINS[dom][:cnt]:
+            nl, v, o = entry[0], entry[1], entry[2]
+            ag = entry[3] if len(entry) > 3 else {}
             clauses.append(nl)
-            gold.append((v, o, nl))   # nl = chiave per ARGS_GOLD (fase args)
+            gold.append((v, o, nl, ag))   # (verbo, oggetto, testo, args_gold)
     # join naturale: virgole + "e poi" prima dell'ultima
     if len(clauses) >= 2:
         query = ", ".join(clauses[:-1]) + " e poi " + clauses[-1]
@@ -214,6 +271,95 @@ def score(plan_steps, gold):
             "tools": tools}
 
 
+def _arg_ok(expected, args):
+    """Un singolo (key→expected) e' soddisfatto dagli args dello step?
+    expected callable → expected(args). Stringa/valore → match su args[key] o
+    annidato in where/messages. Tolleranza: case-insensitive su stringhe."""
+    k, exp = expected
+    if callable(exp):
+        try:
+            return bool(exp(args))
+        except Exception:
+            return False
+    # cerca la chiave a top-level, in where/{} e nel primo messages/{}
+    cands = []
+    if k in args:
+        cands.append(args[k])
+    w = args.get("where")
+    if isinstance(w, dict) and k in w:
+        cands.append(w[k])
+    msgs = args.get("messages")
+    if isinstance(msgs, list) and msgs and isinstance(msgs[0], dict) and k in msgs[0]:
+        cands.append(msgs[0][k])
+    for v in cands:
+        if isinstance(exp, str) and isinstance(v, str):
+            if exp.lower() in v.lower() or v.lower() in exp.lower():
+                return True
+        elif v == exp:
+            return True
+    return False
+
+
+def score_args(plan_steps, gold):
+    """Per ogni clausola HARD del gold con args_gold non vuoto, trova lo step del
+    piano che la copre (object-aware, primo match in ordine) e verifica che gli
+    args DEDUCIBILI siano presenti. Ritorna copertura args.
+
+    arg_total = somma delle chiavi-gold su tutte le clausole verificate;
+    arg_ok    = chiavi soddisfatte. clause_total/clause_ok = clausole con TUTTE
+    le chiavi soddisfatte (vista per-clausola, piu' severa)."""
+    import naming_grammar as _ng
+    try:
+        from compound_decomposer import PRODUCER_VERBS as _PROD
+    except Exception:
+        _PROD = {"find", "read", "get", "list"}
+    steps = [s for s in plan_steps if s.get("tool") and s.get("tool") != "final_answer"]
+    parsed = [(_ng.parse_name(s["tool"]), s.get("args") or {}) for s in steps]
+    used = [False] * len(parsed)
+    arg_total = arg_ok = clause_total = clause_ok = 0
+    missing = []
+    for g in gold:
+        gv, go = g[0], g[1]
+        ag = g[3] if len(g) > 3 else {}
+        if not ag:
+            continue
+        # trova lo step coprente (stesso object per producer; verbo per mutator)
+        sj = None
+        for j, (nc, args) in enumerate(parsed):
+            if used[j] or not nc:
+                continue
+            sv, so = nc.verb, nc.obj
+            if gv in _PROD or gv in SOFT:
+                ok = (so == go and (sv in _PROD or sv in SOFT))
+            else:
+                ok = (sv == gv and so == go)
+            if ok:
+                sj = j
+                break
+        clause_total += 1
+        if sj is None:
+            arg_total += len(ag)
+            missing.append((g[2][:30], "NO-STEP", list(ag.keys())))
+            continue
+        used[sj] = True
+        _, args = parsed[sj]
+        clause_all = True
+        miss_keys = []
+        for k, exp in ag.items():
+            arg_total += 1
+            if _arg_ok((k, exp), args):
+                arg_ok += 1
+            else:
+                clause_all = False
+                miss_keys.append(k)
+        clause_ok += int(clause_all)
+        if miss_keys:
+            missing.append((g[2][:30], parsed[sj][0].verb + "_" + (parsed[sj][0].obj or ""), miss_keys))
+    return {"arg_total": arg_total, "arg_ok": arg_ok,
+            "clause_total": clause_total, "clause_ok": clause_ok,
+            "missing": missing}
+
+
 # ── Heatmap colorata dinamica (Roberto 18/6) ──────────────────────────────
 _TTY = sys.stdout.isatty()
 
@@ -277,10 +423,12 @@ def draw(lines, prev_h):
     return len(lines)
 
 
-def write_live(path, engine, iteration, rows, done, total):
+def write_live(path, engine, iteration, rows, done, total, phase="struct",
+               per_cell=0):
     """Snapshot incrementale (scrittura atomica) per la dashboard HTTP."""
     import datetime as _dt
     data = {"engine": engine, "iter": iteration, "done": done, "total": total,
+            "phase": phase, "per_cell": per_cell,
             "ts": _dt.datetime.now().strftime("%H:%M:%S"), "rows": rows}
     tmp = path + ".tmp"
     Path(tmp).write_text(json.dumps(data, ensure_ascii=False))
@@ -298,6 +446,8 @@ def main():
                     help="heatmap colorata dinamica (verde=ok, giallo=fuori-ordine, rosso=errore)")
     ap.add_argument("--live-json", help="scrive i risultati incrementali (per cella) qui (dashboard)")
     ap.add_argument("--iter", type=int, default=0, help="etichetta iterazione (per la dashboard)")
+    ap.add_argument("--phase", choices=["struct", "args"], default="struct",
+                    help="struct = copertura/ordine clausole; args = riempimento args deducibili")
     args = ap.parse_args()
 
     import compound_dryrun as CD
@@ -330,7 +480,33 @@ def main():
     dmax = max(d for (_, d, _) in cells)
     results = {(a, d): [None] * len(qs) for (a, d, qs) in cells}
     cell_acc = {}   # (a,d) -> (correct, total)
+    # STORE PERSISTENTE per-cella (Roberto 18/6): i risultati di OGNI cella
+    # sopravvivono fra i run. La dashboard mostra sempre l'ultimo stato VALIDO
+    # cella-per-cella — un run che ricomincia NON azzera le celle gia' fatte
+    # (causa dei falsi cali nei grafici). Una cella si aggiorna SOLO quando il
+    # run corrente l'ha ri-completata. Keyed "a,d" → {rows:[...], outcome_per_q}.
+    cell_store_path = (args.live_json + ".cells.json") if args.live_json else None
+    cell_store = {}
+    if cell_store_path and Path(cell_store_path).exists():
+        try:
+            cell_store = json.loads(Path(cell_store_path).read_text())
+        except Exception:
+            cell_store = {}
+    # Seed rows + results con le celle persistite (stessa fase): la dashboard
+    # parte gia' popolata, niente buchi.
     rows = []
+    for key, ent in cell_store.items():
+        if ent.get("phase") != args.phase:
+            continue
+        for r in ent.get("rows", []):
+            rows.append(r)
+        a0, d0 = (int(x) for x in key.split(","))
+        outs = ent.get("outcomes", [])
+        if (a0, d0) in results:
+            for i, o in enumerate(outs):
+                if i < len(results[(a0, d0)]):
+                    results[(a0, d0)][i] = o
+        cell_acc[(a0, d0)] = (sum(1 for o in outs if o == "ok"), len(outs))
     height = 0
     done_q = 0
     live = args.live
@@ -342,28 +518,63 @@ def main():
         for k, (query, gold) in enumerate(qs):
             plan_sigs = set()
             last_sc = None
+            last_sa = None
             for _ in range(args.runs):
                 fw, intent, actions, pool = CD.plan_only(query, cat, fast, wise)
                 steps = CD._steps(fw)
                 plan_sigs.add(" ".join(s.get("tool") for s in steps))
                 last_sc = score(steps, gold)
+                if args.phase == "args":
+                    last_sa = score_args(steps, gold)
             flaky = len(plan_sigs) > 1
-            o = outcome(last_sc, flaky)
+            if args.phase == "args":
+                # esito ARGS: ok = tutte le clausole-con-args-gold soddisfatte +
+                # struttura non rotta (drop = error a monte). reorder→giallo.
+                struct_o = outcome(last_sc, flaky)
+                if struct_o == "error":
+                    o = "error"            # produttore mancante: args non valutabili
+                elif last_sa["clause_ok"] < last_sa["clause_total"]:
+                    o = "reorder"          # giallo = args incompleti (riuso glifo)
+                else:
+                    o = "ok"
+            else:
+                o = outcome(last_sc, flaky)
             ok = (o == "ok")
             correct += int(ok)
             results[(a, d)][k] = o
             done_q += 1
-            rows.append({"a": a, "d": d, "q": query[:70], "gold_hard": last_sc["hard_total"],
-                          "fwd": last_sc["fwd"], "anyo": last_sc["anyo"],
-                          "in_order": last_sc["in_order"], "flaky": flaky, "ok": ok,
-                          "n_plan": last_sc["n_plan_exec"],
-                          "tools": " ".join(last_sc["tools"])})
+            row = {"a": a, "d": d, "q": query[:70], "gold_hard": last_sc["hard_total"],
+                   "fwd": last_sc["fwd"], "anyo": last_sc["anyo"],
+                   "in_order": last_sc["in_order"], "flaky": flaky, "ok": ok,
+                   "outcome": o, "phase": args.phase,
+                   "n_plan": last_sc["n_plan_exec"], "tools": " ".join(last_sc["tools"])}
+            if last_sa is not None:
+                row.update({"arg_ok": last_sa["arg_ok"], "arg_total": last_sa["arg_total"],
+                            "clause_ok": last_sa["clause_ok"], "clause_total": last_sa["clause_total"],
+                            "arg_missing": last_sa["missing"]})
+            rows.append(row)
             if live and _TTY:
                 height = draw(render_heatmap(results, args.max_actions, dmax,
                               args.per_cell, f"{done_q}/{total_q}  a={a} d={d}"), height)
         cell_acc[(a, d)] = (correct, len(qs))
+        # Persisti la cella APPENA completata nello store durevole (atomico):
+        # da qui in poi sopravvive a run futuri finche' non viene ri-completata.
+        if cell_store_path:
+            cell_rows = [r for r in rows if r["a"] == a and r["d"] == d]
+            cell_store[f"{a},{d}"] = {
+                "phase": args.phase,
+                "outcomes": [results[(a, d)][i] for i in range(len(qs))],
+                "rows": cell_rows[-len(qs):] if cell_rows else [],
+            }
+            try:
+                _tmp = cell_store_path + ".tmp"
+                Path(_tmp).write_text(json.dumps(cell_store, ensure_ascii=False))
+                os.replace(_tmp, cell_store_path)
+            except Exception:
+                pass
         if args.live_json:
-            write_live(args.live_json, engine, args.iter, rows, done_q, total_q)
+            write_live(args.live_json, engine, args.iter, rows, done_q, total_q,
+                       phase=args.phase, per_cell=args.per_cell)
         if live and _TTY:
             pass  # gia' ridisegnato per-query (redraw in place)
         elif live:
