@@ -536,8 +536,8 @@ def _decontaminate_clause_objects(intent, query: str) -> None:
         for a, chunk in zip(actions, chunks):
             o = (a.get("object") or "").lower()
             text_obj = _obj_from_text(chunk)
-            # corregge SOLO se il testo dà un oggetto univoco DIVERSO da quello
-            # dell'intent (contaminazione). Mai se concordano o se ambiguo/None.
+            # corregge SOLO se il testo dà un oggetto univoco DIVERSO (contaminazione).
+            # Mai se concordano o se ambiguo/None.
             if text_obj and o and text_obj != o:
                 a["object"] = text_obj
                 changed = True
@@ -546,6 +546,56 @@ def _decontaminate_clause_objects(intent, query: str) -> None:
                      [(a.get("verb"), a.get("object")) for a in actions])
     except Exception as ex:
         log.warning("decontaminate_clause_objects noop (best-effort): %r", ex)
+
+
+def _fix_unroutable_verbs(intent, query: str, catalog: Optional[list]) -> None:
+    """§7.9 v3 (verbo non-routabile, 19/6): corregge il VERBO di una clausola di
+    intent.actions quando (verbo,oggetto) NON deriva alcun tool reale, MA il
+    detector lessicale canonico sul testo della clausola dà un verbo che SÌ deriva
+    un tool per quell'oggetto.
+
+    Causa-radice (provata): a 7+ clausole l'LLM assegna un verbo valido-in-generale
+    ma INESISTENTE per quell'oggetto (es. «apri i risultati» → (render,urls), ma
+    NON c'è render_urls → la clausola si perde). Il testo «apri» → detector
+    canonico = read → derive(read,urls)=get_urls (reale). Fix tool-existence-safe:
+    flippa SOLO se il verbo attuale NON routa e il verbo-dal-testo SÌ. Usa le
+    FUNZIONI canoniche (detect_canonical_verbs_all + derive_tool_name), zero
+    sinonimi cablati. Muta intent.actions in place, PRIMA del pool. No-op mono."""
+    try:
+        actions = [a for a in (getattr(intent, "actions", None) or [])
+                   if isinstance(a, dict)]
+        if len(actions) < 2:
+            return
+        from compound_decomposer import (split_query_chunks, derive_tool_name,
+                                         PRODUCER_VERBS, MUTATING_VERBS)
+        from prefilter import tokenize, detect_canonical_verbs_all
+        names = {getattr(e, "name", None) if not isinstance(e, dict)
+                 else e.get("name") for e in (catalog or [])}
+        names.discard(None)
+        chunks = split_query_chunks(query)
+        if len(chunks) != len(actions):
+            return
+        changed = False
+        for a, chunk in zip(actions, chunks):
+            v = (a.get("verb") or "").lower()
+            o = (a.get("object") or "").lower()
+            if not v or not o:
+                continue
+            # il verbo attuale routa? se sì, non toccare.
+            if derive_tool_name(v, o, names):
+                continue
+            # quali verbi canonici dà il TESTO della clausola?
+            cand = detect_canonical_verbs_all(tokenize(chunk)) or []
+            for cv in cand:
+                if cv != v and derive_tool_name(cv, o, names):
+                    a["verb"] = cv
+                    changed = True
+                    break
+        if changed:
+            log.info("[fix_verbs] verbi non-routabili corretti dal testo: %s",
+                     [(a.get("verb"), a.get("object")) for a in actions])
+    except Exception as ex:
+        log.warning("fix_unroutable_verbs noop (best-effort): %r", ex)
 
 
 # ${stepN.field} ref (P2 reorder: rimappa N dopo il riordino degli step).
@@ -915,6 +965,7 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
     from . import is_v3
     if is_v3():
         _decontaminate_clause_objects(intent, query)
+        _fix_unroutable_verbs(intent, query, catalog)
     # D2-c (18/6): normalizza le clausole store dell'intent (store-sink →
     # entries) PRIMA di pool/cache/proposer, cosi' la sig compound-aware e il
     # routing vedono le actions gia' corrette. Deterministico, no-op se non

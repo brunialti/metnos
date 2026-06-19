@@ -154,6 +154,7 @@ def plan_only(query, cat, fast, wise):
     from engine import is_v3
     if is_v3():
         D._decontaminate_clause_objects(intent, query)
+        D._fix_unroutable_verbs(intent, query, cat)
     D._normalize_store_clauses(intent, query, cat)
     pool = build_routing_pool(query, intent, cat)
     proposer = get_proposer()
