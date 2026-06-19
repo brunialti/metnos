@@ -42,15 +42,17 @@ a{{color:#58a6ff}}
 <p class="note">Seleziona tutto (clic + Ctrl/Cmd+A) o usa "Copia", poi incolla su Reddit (modalità markdown).
 Raw: <a href="/it.md">/it.md</a> · <a href="/en.md">/en.md</a></p>
 <h2>Immagini da caricare nel post (drag &amp; drop su Reddit)</h2>
-<p class="note">
-IMG 1 (heatmap): <a href="/img/struct_iter5_final.png" download>struct_iter5_final.png</a> ·
-IMG 2 (scomposizione IT): <a href="/img/example_breakdown_it.png" download>example_breakdown_it.png</a> ·
-IMG 2 (breakdown EN): <a href="/img/example_breakdown_en.png" download>example_breakdown_en.png</a> ·
-bonus (azioni vs domini): <a href="/img/struct_iter5_final_marginals.png" download>marginals.png</a>
+<p class="note"><b>🇮🇹 IT:</b>
+IMG 1 heatmap <a href="/img/struct_iter5_final.png" download>struct_iter5_final.png</a> ·
+IMG 2 scomposizione <a href="/img/example_breakdown_it.png" download>example_breakdown_it.png</a>
+<br><b>🇬🇧 EN:</b>
+IMG 1 heatmap <a href="/img/struct_iter5_final_en.png" download>struct_iter5_final_en.png</a> ·
+IMG 2 breakdown <a href="/img/example_breakdown_en.png" download>example_breakdown_en.png</a>
+<br>bonus (actions vs domains, neutro): <a href="/img/struct_iter5_final_marginals.png" download>marginals.png</a>
 </p>
 <div class="row" style="margin-bottom:10px">
-  <img src="/img/struct_iter5_final.png" style="max-width:48%;border:1px solid #30363d;border-radius:8px">
-  <img src="/img/example_breakdown_it.png" style="max-width:48%;border:1px solid #30363d;border-radius:8px">
+  <img src="/img/struct_iter5_final_en.png" style="max-width:48%;border:1px solid #30363d;border-radius:8px">
+  <img src="/img/example_breakdown_en.png" style="max-width:48%;border:1px solid #30363d;border-radius:8px">
 </div>
 <div class="row">
   <div class="col">

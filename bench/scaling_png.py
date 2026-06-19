@@ -57,7 +57,7 @@ def _center(draw, x, y, text, font, fill):
     draw.text((x - (b[2] - b[0]) / 2, y - (b[3] - b[1]) / 2), text, font=font, fill=fill)
 
 
-def render(name, title, subtitle, caption):
+def render(name, title, subtitle, caption, lang="it"):
     d = json.loads((_DIR / f"{name}.json").read_text())
     rows = d["rows"]
     cells = _cells(rows)
@@ -81,15 +81,21 @@ def render(name, title, subtitle, caption):
     dr.text((40, 30), title, font=f_title, fill=NAVY)
     dr.text((40, 72), subtitle, font=f_sub, fill=MUTE)
 
-    # axis titles
-    _center(dr, ox + dmax * cw / 2, oy - 34, "NUMERO DI DOMINI  (aree diverse: file, mail, foto, calendario, …)",
-            f_ax, INK)
+    # axis titles (lingua)
+    L = {
+        "it": ("NUMERO DI DOMINI  (aree diverse: file, mail, foto, calendario, …)",
+               "NUMERO DI AZIONI  (passi nella richiesta)"),
+        "en": ("NUMBER OF DOMAINS  (different areas: files, mail, photos, calendar, …)",
+               "NUMBER OF ACTIONS  (steps in the request)"),
+    }.get(lang, None) or (None, None)
+    ax_dom, ax_act = L
+    _center(dr, ox + dmax * cw / 2, oy - 34, ax_dom, f_ax, INK)
     # vertical (azioni) — draw rotated via temp image
-    vt = Image.new("RGBA", (360, 24), (0, 0, 0, 0))
+    vt = Image.new("RGBA", (420, 24), (0, 0, 0, 0))
     vdr = ImageDraw.Draw(vt)
-    vdr.text((0, 0), "NUMERO DI AZIONI  (passi nella richiesta)", font=f_ax, fill=INK)
+    vdr.text((0, 0), ax_act, font=f_ax, fill=INK)
     vt = vt.rotate(90, expand=True)
-    img.paste(vt, (24, int(oy + (amax - 1) * chh / 2 - 180)), vt)
+    img.paste(vt, (24, int(oy + (amax - 1) * chh / 2 - 210)), vt)
 
     for dd in range(1, dmax + 1):
         _center(dr, ox + (dd - 1) * cw + cw / 2, oy - 12, str(dd), f_lab, MUTE)
@@ -107,12 +113,11 @@ def render(name, title, subtitle, caption):
                 _center(dr, x + cw / 2, y + chh / 2 - 7, f"{int(acc)}%", f_cell, tc)
                 _center(dr, x + cw / 2, y + chh / 2 + 12, f"{ok}/{n}", f_small, tc)
 
-    # legend swatches
+    # legend swatches (lingua)
+    leg = {"it": ["tutto corretto", "parziale", "fallito", "non applicabile"],
+           "en": ["all correct", "partial", "failed", "not applicable"]}.get(lang)
     ly = oy + (amax - 1) * chh + 28
-    for i, (c, lab) in enumerate([(SAGE, "tutto corretto"),
-                                  ((214, 162, 58), "parziale"),
-                                  ((176, 58, 46), "fallito"),
-                                  (GRID0, "non applicabile")]):
+    for i, (c, lab) in enumerate(zip([SAGE, (214,162,58), (176,58,46), GRID0], leg)):
         lx = 40 + i * 175
         dr.rectangle([lx, ly, lx + 22, ly + 22], fill=c, outline=LINE)
         dr.text((lx + 30, ly + 3), lab, font=f_cap, fill=INK)
@@ -122,10 +127,11 @@ def render(name, title, subtitle, caption):
         dr.text((40, cy), line, font=f_cap, fill=MUTE)
         cy += 19
 
-    out = _DIR / f"{name}.png"
+    fname = f"{name}_en.png" if lang == "en" else f"{name}.png"
+    out = _DIR / fname
     img.save(out, "PNG")
     n = len(rows); ok = sum(int(r.get("ok")) for r in rows)
-    print(f"{name}.png  ({W}x{H})  {ok}/{n} = {100*ok/n:.1f}%")
+    print(f"{fname}  ({W}x{H})  {ok}/{n} = {100*ok/n:.1f}%")
     return out
 
 
@@ -190,15 +196,31 @@ SPECS = {
          "Verde = tutti gli argomenti deducibili sono corretti (es. 'foto di ieri' -> data di ieri)."]),
 }
 
+SPECS_EN = {
+    "struct_iter5_final": (
+        "Compound engine — STRUCTURAL robustness",
+        "Does it build the right pipeline? (right tools, right order) — 117 multi-domain requests",
+        ["Each cell = a difficulty (N actions over M different areas), 4 random requests.",
+         "Green = the engine picked all the right tools in the right order. Up to 6 actions x 5 areas: 100%."]),
+    "args_final": (
+        "Compound engine — ARGUMENT robustness",
+        "Does it fill the right parameters? (dates, paths, recipients, filters) — same 117 requests",
+        ["Second phase: given the right structure, each step gets its arguments inferred from the text.",
+         "Green = all inferable arguments are correct (e.g. 'photos from yesterday' -> yesterday's date)."]),
+}
+
 
 def main():
-    names = sys.argv[1:] or list(SPECS)
+    # default: genera IT + EN (suffisso _en sul file) per il post bilingue
+    names = [a for a in sys.argv[1:] if a in SPECS] or list(SPECS)
     for name in names:
         if not (_DIR / f"{name}.json").exists():
             print(f"skip: {name}.json manca"); continue
-        t, s, cap = SPECS.get(name, (f"Scaling — {name}", "", []))
-        render(name, t, s, cap)
+        t, s, cap = SPECS.get(name)
+        render(name, t, s, cap, lang="it")
         render_marginals(name, t + " — effetto di azioni vs domini")
+        te, se, cape = SPECS_EN.get(name)
+        render(f"{name}", te, se, cape, lang="en")  # nota: sovrascrive? no, suffisso sotto
 
 
 if __name__ == "__main__":
