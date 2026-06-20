@@ -25,12 +25,10 @@ class SqliteBackend(SqlDatabaseBackend):
     _TYPE = {TEXT: "TEXT", INT: "INTEGER", REAL: "REAL",
              BLOB: "BLOB", JSON: "TEXT"}
 
-    def __init__(self, path=None, *, default_name: str | None = None,
-                 wal: bool = False):
+    def __init__(self, path=None, *, default_name: str | None = None):
         super().__init__()
         self._path = path
         self._default_name = default_name or "store"
-        self._wal = wal
 
     def _resolve_path(self) -> Path:
         if self._path is not None:
@@ -44,10 +42,19 @@ class SqliteBackend(SqlDatabaseBackend):
     def _connect(self):
         p = self._resolve_path()
         p.parent.mkdir(parents=True, exist_ok=True)
-        cx = sqlite3.connect(str(p), check_same_thread=False)
+        # Concorrenza multi-processo (20/6): lo stesso file sqlite è aperto da
+        # più processi (http server, telegram daemon, sidecar). Con il default
+        # `busy_timeout=0` un writer fallisce ALL'ISTANTE su contesa →
+        # «database is locked» (caso reale: il resume del gate non aggiornava lo
+        # status, ri-postando il commento). Fix: (1) busy_timeout=5s → il writer
+        # ATTENDE il lock invece di fallire; (2) WAL → reader e writer non si
+        # bloccano a vicenda (il sidecar legge mentre il writer scrive);
+        # (3) synchronous=NORMAL = accoppiamento consigliato con WAL.
+        cx = sqlite3.connect(str(p), check_same_thread=False, timeout=5.0)
         cx.row_factory = sqlite3.Row
-        if self._wal:
-            cx.execute("PRAGMA journal_mode=WAL")
+        cx.execute("PRAGMA busy_timeout=5000")
+        cx.execute("PRAGMA journal_mode=WAL")
+        cx.execute("PRAGMA synchronous=NORMAL")
         return cx
 
     def _type_sql(self, abstract_type: str) -> str:

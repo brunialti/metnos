@@ -55,8 +55,13 @@ _MIGRATE_COLS = (("status", "TEXT DEFAULT 'new'"), ("draft_reply", "TEXT"), ("ti
 
 def _connect() -> sqlite3.Connection:
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-    con = sqlite3.connect(str(DB_PATH))
+    # Stesso file dello store generico (sidecar/dedup + CRUD universali): attendi
+    # il lock invece di fallire all'istante (busy_timeout=5s); WAL è proprietà
+    # persistente del file (impostata dal backend) → reader non bloccano il
+    # writer. Vedi backends/datastore/sqldatabase/sqlite.py (20/6).
+    con = sqlite3.connect(str(DB_PATH), timeout=5.0)
     con.row_factory = sqlite3.Row
+    con.execute("PRAGMA busy_timeout=5000")
     return con
 
 

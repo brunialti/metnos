@@ -164,6 +164,41 @@ class TestSqliteBackend(_CrudContract, unittest.TestCase):
         finally:
             s2.close()
 
+    def test_concurrency_pragmas(self):
+        """Bug live 20/6 (github_issue_qa «database is locked»): il backend DEVE
+        aprire in WAL + busy_timeout per reggere accessi multi-processo (http +
+        daemon + sidecar). Senza, un writer fallisce all'istante su contesa."""
+        self.store.write({"id": "a", "n": 1})       # forza _connect
+        cx = self.store.backend._cx()
+        self.assertEqual(cx.execute("PRAGMA journal_mode").fetchone()[0], "wal")
+        self.assertEqual(cx.execute("PRAGMA busy_timeout").fetchone()[0], 5000)
+
+    def test_concurrent_writers_no_lock(self):
+        """Due connessioni distinte (≈ due processi) scrivono in parallelo sullo
+        stesso file: con WAL+busy_timeout NESSUNA solleva «database is locked»."""
+        import threading
+        self.store.write({"id": "seed", "n": 0})    # crea il file/tabella
+        path = Path(self.tmp) / "t.sqlite"
+        errors = []
+
+        def writer(tag):
+            s = Store(SCHEMA, backend=SqliteBackend(path=path))
+            try:
+                for i in range(20):
+                    s.write({"id": f"{tag}-{i}", "n": i})
+            except Exception as e:        # noqa: BLE001 — il test cattura il lock
+                errors.append(repr(e))
+            finally:
+                s.close()
+
+        ts = [threading.Thread(target=writer, args=(t,)) for t in ("A", "B")]
+        for t in ts:
+            t.start()
+        for t in ts:
+            t.join()
+        self.assertEqual(errors, [], f"lock/contesa non gestita: {errors}")
+        self.assertEqual(self.store.count(), 41)    # seed + 20 + 20
+
 
 class TestDefaultBackend(unittest.TestCase):
     def test_default_is_sqlite_at_path(self):
