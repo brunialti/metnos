@@ -34,7 +34,6 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 import uuid
-from cost_tracker import CostTracker
 from llm_provider import OllamaProvider, ProviderError, make_provider_from_spec
 from loader import load_catalog, filter_for_visibility, VISIBILITY_COMPOSER
 from messages import get as msg
@@ -6258,7 +6257,6 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
                 "model": os.environ.get("METNOS_PLANNER_MODEL", "local"),
                 "endpoint": os.environ.get("METNOS_PLANNER_ENDPOINT", "http://127.0.0.1:8080"),
             })
-    tracker = CostTracker()
     is_multistep = (chosen_mode == "local")
     mnestoma = Mnestoma()  # storage di mnest e proto-mnest
 
@@ -7014,7 +7012,6 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
                     "tier fallback frontier failed: %s — degrade al middle result",
                     _ex)
 
-        tracker.record_post_call(provider.name, r.model, r.in_tokens, r.out_tokens)
         step.llm_in_tokens = r.in_tokens; step.llm_out_tokens = r.out_tokens
         step.llm_latency_ms = r.latency_ms
         step.llm_text = r.text or ""

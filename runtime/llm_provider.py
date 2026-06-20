@@ -40,6 +40,17 @@ except Exception:  # noqa: BLE001
     pass
 
 
+def _encode_payload(payload) -> bytes:
+    """Serializza il payload a UTF-8 sanificando i surrogati (ADR 0121).
+    safe_json_dumps quando disponibile, json.dumps come fallback. Helper unico:
+    prima il blocco try/except era duplicato in tutti e 4 i provider (§7.2)."""
+    try:
+        from utf8_safe import safe_json_dumps as _safe_dumps  # type: ignore
+        return _safe_dumps(payload).encode("utf-8")
+    except Exception:
+        return json.dumps(payload).encode("utf-8")
+
+
 @dataclass
 class ChatResult:
     text: str
@@ -143,11 +154,7 @@ class OllamaProvider:
 
     def _call_chat(self, payload, expect_tools):
         # ADR 0121: sanitize surrogates pre-serialization (vedi LlamaCppProvider).
-        try:
-            from utf8_safe import safe_json_dumps as _safe_dumps  # type: ignore
-            body = _safe_dumps(payload).encode("utf-8")
-        except Exception:
-            body = json.dumps(payload).encode("utf-8")
+        body = _encode_payload(payload)
         req = urllib.request.Request(
             f"{self.endpoint}/api/chat",
             data=body, headers={"Content-Type": "application/json"}, method="POST",
@@ -473,11 +480,7 @@ class LlamaCppProvider:
         payload.setdefault("cache_prompt", True)
         # ADR 0121: sanitize surrogates UTF-16 invalidi in UTF-8 (RFC 8259
         # 6.2.1). Provider rifiutano payload con code point U+D800..U+DFFF.
-        try:
-            from utf8_safe import safe_json_dumps as _safe_dumps  # type: ignore
-            body = _safe_dumps(payload).encode("utf-8")
-        except Exception:
-            body = json.dumps(payload).encode("utf-8")
+        body = _encode_payload(payload)
         req = urllib.request.Request(
             f"{self.endpoint}/v1/chat/completions",
             data=body, headers={"Content-Type": "application/json"}, method="POST",
@@ -811,11 +814,7 @@ class AnthropicProvider:
         # ADR 0121: sanitize surrogates pre-serialization. Critico per
         # AnthropicProvider perche' l'API Claude rifiuta esplicitamente
         # JSON con code point U+D800..U+DFFF (RFC 8259).
-        try:
-            from utf8_safe import safe_json_dumps as _safe_dumps  # type: ignore
-            body = _safe_dumps(payload).encode("utf-8")
-        except Exception:
-            body = json.dumps(payload).encode("utf-8")
+        body = _encode_payload(payload)
         req = urllib.request.Request(
             self.API_URL,
             data=body,
@@ -954,11 +953,7 @@ class OpenAIProvider:
 
     def _call(self, payload, expect_tools):
         # ADR 0121: sanitize surrogates pre-serialization (OpenAIProvider).
-        try:
-            from utf8_safe import safe_json_dumps as _safe_dumps  # type: ignore
-            body = _safe_dumps(payload).encode("utf-8")
-        except Exception:
-            body = json.dumps(payload).encode("utf-8")
+        body = _encode_payload(payload)
         req = urllib.request.Request(
             self.API_URL,
             data=body,

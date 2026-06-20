@@ -6,8 +6,9 @@ API: https://vision.googleapis.com/v1/images:annotate (feature
 `source.imageUri` (URL pubblico). Output: pagine web che contengono
 l'immagine, immagini simili, entita' web (etichette), best guess label.
 
-Token: refresh on-demand dal Google OAuth token in
-`~/.hermes/google_token.json` (scope `cloud-vision`).
+Token: refresh on-demand dal token OAuth della skill google-workspace
+(`~/.local/share/metnos/skills/google-workspace/google_token.json`, scope
+`cloud-vision`), come gli altri backend Google. Era `~/.hermes/` (stale).
 
 Quota: free tier 1000 unit/mese (1 unit = 1 feature per image). Oltre:
 $1.50/1000 (WEB_DETECTION). Per uso personale resta in gratuito.
@@ -22,8 +23,14 @@ from pathlib import Path
 
 _VISION_URL = "https://vision.googleapis.com/v1/images:annotate"
 _TOKEN_URL = "https://oauth2.googleapis.com/token"
-_GOOGLE_TOKEN = Path.home() / ".hermes" / "google_token.json"
 _TIMEOUT_S = 30.0
+
+
+def _google_token_path() -> Path:
+    """Token OAuth della skill google-workspace (stessa fonte degli altri
+    backend Google, ADR 0170). Lazy per evitare cicli di import top-level."""
+    from skill_wrapper import _skill_home
+    return _skill_home("google-workspace") / "google_token.json"
 
 
 def _refresh_access_token() -> str:
@@ -31,10 +38,11 @@ def _refresh_access_token() -> str:
 
     Raise ValueError con error_class se token assente o refresh fallisce.
     """
-    if not _GOOGLE_TOKEN.is_file():
-        raise ValueError(f"token Google assente: {_GOOGLE_TOKEN} "
-                         "(esegui `hermes auth` per autenticare)")
-    tok = json.loads(_GOOGLE_TOKEN.read_text(encoding="utf-8"))
+    token_path = _google_token_path()
+    if not token_path.is_file():
+        raise ValueError(f"token Google assente: {token_path} "
+                         "(autentica la skill google-workspace)")
+    tok = json.loads(token_path.read_text(encoding="utf-8"))
     if "cloud-vision" not in " ".join(tok.get("scopes", [])):
         raise ValueError("scope `cloud-vision` mancante nel token Google. "
                          "Re-OAuth con scope cloud-vision richiesto.")
