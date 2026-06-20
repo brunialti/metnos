@@ -218,6 +218,32 @@ class TestExecutorAgingStress:
         assert res["handcrafted_skipped"] >= 1
         assert lookup("delete_persons").lifecycle_override is None
 
+    def test_handcrafted_ondisk_never_ages_despite_wrong_source(
+            self, tmp_dbs, monkeypatch, tmp_path):
+        """Regression (bug 21/6/2026): un handcrafted core con `source`
+        MAL-REGISTRATO nel DB stats ('synth:reactive' invece di 'handcrafted',
+        caso reale delete_files/find_events_empty) NON deve invecchiare: la
+        presenza on-disk in config.PATH_EXECUTORS e' la verita' autorevole, vince
+        sul source. Senza, l'ager lo deprecava → fuori dal catalog composer →
+        misroute al fratello (delete_files→delete_entries).
+
+        Ermetico: una dir executors FINTA con `core_tool/` evita dipendenze
+        dall'ordine dei test (altri test rimappano config.PATH_EXECUTORS)."""
+        import config as _C
+        fake_execs = tmp_path / "execs"
+        (fake_execs / "core_tool").mkdir(parents=True)
+        monkeypatch.setattr(_C, "PATH_EXECUTORS", fake_execs)
+        from executor_aging import register, touch, apply_executor_ager, lookup
+        # source SBAGLIATO ('synth:reactive') ma il tool ESISTE on-disk → handcrafted.
+        register("core_tool", source="synth:reactive")
+        touch("core_tool", ok=True)
+        far_future = (datetime.now(timezone.utc) + timedelta(days=100)
+        ).strftime("%Y-%m-%dT%H:%M:%SZ")
+        res = apply_executor_ager(now_iso=far_future)
+        assert "core_tool" not in res["deprecated"]
+        assert res["handcrafted_skipped"] >= 1
+        assert lookup("core_tool").lifecycle_override is None
+
     def test_undeprecate_resets_state(self, tmp_dbs):
         """undeprecate di un executor archived rimuove archived_at e
         deprecated_at, ripristinando lifecycle attivo."""
@@ -367,24 +393,20 @@ class TestLoaderIntegration:
 
         register(target, source="synth:reactive")
         touch(target, ok=True)
-        # Il loader pre-registra ogni executor di catalog come 'handcrafted'
-        # (loader._exec_register) → register(synth) sopra e' no-op (source!=NULL)
-        # e dal fix 13/6/2026 gli handcrafted NON invecchiano. Forziamo synth
-        # per esercitare il path aging→archived→loader-esclude (l'esenzione
-        # handcrafted ha il suo test dedicato).
+        # Questo test verifica il MECCANISMO loader-esclude-archived, non l'aging
+        # in sé. Dal fix 21/6/2026 un executor ON-DISK (qualunque del catalog
+        # reale) NON puo' essere archiviato da apply_executor_ager (la presenza
+        # nel repo vince sul source) → impostiamo archived_at DIRETTAMENTE nel DB
+        # per esercitare l'esclusione del loader (lifecycle_override='archived').
+        far = (datetime.now(timezone.utc) + timedelta(days=80)
+        ).strftime("%Y-%m-%dT%H:%M:%SZ")
         _c = _open()
         try:
-            _c.execute("UPDATE executor_stats SET source='synth:reactive' "
-                       "WHERE name=?", (target,))
+            _c.execute("UPDATE executor_stats SET deprecated_at=?, archived_at=? "
+                       "WHERE name=?", (far, far, target))
             _c.commit()
         finally:
             _c.close()
-        far = (datetime.now(timezone.utc) + timedelta(days=60)
-        ).strftime("%Y-%m-%dT%H:%M:%SZ")
-        apply_executor_ager(now_iso=far)
-        far2 = (datetime.now(timezone.utc) + timedelta(days=80)
-        ).strftime("%Y-%m-%dT%H:%M:%SZ")
-        apply_executor_ager(now_iso=far2)
 
         # Ora il loader deve escluderlo
         cat1 = load_catalog(verify=True)

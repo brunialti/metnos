@@ -503,7 +503,22 @@ EFFICACY_AUDIT_DIR = _C.PATH_USER_DATA / "synth_audit"
 
 
 def _is_synth(name: str, source: str | None) -> bool:
-    """True se l'executor e' synth (NON handcrafted)."""
+    """True se l'executor e' synth (NON handcrafted).
+
+    Verità AUTOREVOLE: un handcrafted ESISTE come dir sotto config.PATH_EXECUTORS
+    (repo, curato a mano). Il `source` del DB stats può essere MAL-REGISTRATO
+    ('synth:reactive' su un handcrafted core, bug 21/6: delete_files/
+    find_events_empty/delete_events/read_contacts/set_messages) → l'ager lo
+    deprecherebbe per inattività, sparirebbe dal catalog composer → misroute al
+    fratello (delete_files→delete_entries, find_events_empty→read_events). La
+    presenza on-disk nel repo VINCE sul source: un core non invecchia mai. §7.9.
+    """
+    try:
+        import config as _C
+        if (_C.PATH_EXECUTORS / name).is_dir():
+            return False
+    except Exception:  # noqa: BLE001 — best-effort, ricade sul source
+        pass
     if source is None:
         return False
     return source.startswith("synth")
