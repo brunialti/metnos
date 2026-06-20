@@ -115,11 +115,11 @@ def on_accept(proposal: dict, decision_record: dict) -> dict:
     # cluster_score(EA, n_lenti), stessa formula della dashboard
     # (telos_proposals_store.cluster_score, bonus cap +0.20). Una proposta
     # con EA 0.42 ma 4 lenti convergenti NON viene piu' filtrata in silenzio.
-    try:
-        from runtime_settings import get as _setting
-        hard_gate = float(_setting("telos.accept_hard_gate"))
-    except Exception:
-        hard_gate = 0.45
+    # get_float esiste e applica il default da _DEFAULTS (0.45): prima si
+    # importava `get` INESISTENTE → ImportError mascherato dall'except → la
+    # config telos.accept_hard_gate era SEMPRE ignorata (bug 20/6).
+    from runtime_settings import get_float
+    hard_gate = get_float("telos.accept_hard_gate")
     expected_alignment = float(
         proposal.get("ea_max") or proposal.get("expected_alignment") or 0.0)
     n_lenses = len(proposal.get("cluster_lenses")

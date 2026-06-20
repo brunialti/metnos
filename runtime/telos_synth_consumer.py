@@ -127,11 +127,10 @@ def run_once(*, dry_run: bool = False, max_jobs: Optional[int] = None) -> dict:
     """
     # Rate limit daily (settings)
     if max_jobs is None:
-        try:
-            from runtime_settings import get as _setting
-            daily_cap = int(_setting("telos.synth_daily_cap"))
-        except Exception:
-            daily_cap = 3
+        # get_int esiste e applica il default da _DEFAULTS (3): `get` non
+        # esisteva → ImportError mascherato → config sempre ignorata (bug 20/6).
+        from runtime_settings import get_int
+        daily_cap = get_int("telos.synth_daily_cap")
     else:
         daily_cap = max_jobs
 

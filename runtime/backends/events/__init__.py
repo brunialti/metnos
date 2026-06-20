@@ -1,4 +1,4 @@
-"""runtime/backends/calendar — builtin calendar/events backends.
+"""runtime/backends/events — builtin calendar/events backends.
 
 Architettura (decisione 13/5/2026, Q1 canonical+args, sequel di
 `runtime/backends/files/` e `runtime/backends/messages/` del 13/5/2026):

@@ -566,7 +566,6 @@ def _read_one_account(account, folder, max_results, unseen_only, since, before,
         conn = open_imap(account)
     except Exception as e:
         failed.append({"account": account, "error_code": "ERR_EXT_SVC_UNAVAILABLE",
-                       "error_code": "ERR_EXT_SVC_UNAVAILABLE",
                        "error": _msg("ERR_EXT_SVC_UNAVAILABLE"), "detail": f"IMAP connect failed: {e}"})
         return 0
     try:

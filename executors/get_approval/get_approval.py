@@ -44,13 +44,13 @@ def _utc_now_iso() -> str:
 def _validate_branch(branch, name: str) -> str | None:
     """Un branch (`on_approve`/`on_reject`) deve essere {tool: str, args: dict?}."""
     if not isinstance(branch, dict):
-        return f"'{name}' deve essere un dict {{tool, args}}"
+        return _msg("ERR_ARG_NOT_DICT", arg=name)
     tool = branch.get("tool") or branch.get("executor")
     if not isinstance(tool, str) or not tool:
-        return f"'{name}.tool' (nome executor) mancante o non stringa"
+        return _msg("ERR_ARG_NOT_NONEMPTY_STRING", arg=f"{name}.tool")
     args = branch.get("args")
     if args is not None and not isinstance(args, dict):
-        return f"'{name}.args' deve essere un dict"
+        return _msg("ERR_ARG_NOT_DICT", arg=f"{name}.args")
     return None
 
 

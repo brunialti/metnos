@@ -521,7 +521,7 @@ def _check_l5_lang_symmetry(root: Path) -> list[LintIssue]:
 # Driver --------------------------------------------------------------------
 
 def scan(root: Path, *, langs: list[str] | None = None) -> list[LintIssue]:
-    """Esegue tutti i 5 check sui `.j2` in `<root>/<lang>/`.
+    """Esegue tutti i 6 check (L1-L6) sui `.j2` in `<root>/<lang>/`.
 
     `langs=None` → tutte le lingue presenti. `langs=["it"]` → solo IT, etc.
     `langs=["all"]` interpretato come None.

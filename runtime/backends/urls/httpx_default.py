@@ -10,8 +10,8 @@ render opt-in via sidecar Playwright (ADR 0125).
 Questo modulo e' il punto di indirezione canonical: espone i 4 verbi
 sotto i nomi `read_html`/`read_pdf`/`find`/`login` (no underscore, no
 `urls`/`session` suffix) per uniformita' con altri backend Metnos
-(es. `messaging/email_metnos.send/read/find/delete/move`,
-`files/local.find/read/write/...`, `calendar/local_ics.read/create/delete`).
+(es. `messages/email_metnos.send/read/find/delete/move`,
+`files/local.find/read/write/...`, `events/local_ics.read/create/delete`).
 
 Architettura (decisione 13/5/2026):
 - Le funzioni qui non duplicano logica: chiamano il `_invoke_default` di

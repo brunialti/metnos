@@ -377,16 +377,6 @@ def decompose_query(query: str, available_tools: set[str],
                     return (obj, qual)
         return None
 
-    # Helper: build values 2D matrix da entries (universal §7.9).
-    # Headers = chiavi top-level del primo entry (escluse meta/nested).
-    def _build_values_from_entries_ref(prev_step: int) -> list[list]:
-        """Return template references che ExecutorEngine risolverà a matrix."""
-        # Costruiamo template che genera headers+rows dal step.entries.
-        # NOTE: la conversione effettiva entries→matrix avviene a runtime
-        # via _resolve_stepref + post-processing. Per ora ritorniamo un
-        # placeholder structure che il resolver espanderà.
-        return f"${{step{prev_step}.entries}}"  # placeholder, gestito post
-
     steps: list[dict] = []
     last_obj: Optional[str] = None
     # Tracking step indexes "user-intended" (escludendo auto-inject interni

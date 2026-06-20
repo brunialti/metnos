@@ -242,11 +242,10 @@ def _interp_placeholders(obj, vars: dict):
         s = obj
         # Match `{{ key }}` (con spazi opzionali). Pattern conservativo:
         # placeholder come {{var}} o {{ var }} o {{  var  }}.
-        import re as _re
         def _sub(m):
             key = m.group(1).strip()
             return str(vars.get(key, m.group(0)))
-        return _re.sub(r"\{\{\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}", _sub, s)
+        return re.sub(r"\{\{\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}", _sub, s)
     return obj
 
 

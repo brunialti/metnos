@@ -129,7 +129,7 @@ def get(key: str, **kwargs) -> str:
             template = row[0]
             try:
                 return template.format(**kwargs) if kwargs else template
-            except (KeyError, IndexError):
+            except (KeyError, IndexError, ValueError):
                 return template  # template malformato, ritorna grezzo
     return f"<missing:{key}>"
 

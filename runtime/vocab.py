@@ -15,7 +15,7 @@ Convenzione: aggiungere un verbo richiede:
 
 NON serve toccare CLAUDE.md §2.2 ad ogni cambio: la doc dichiara la
 convenzione, non la lista. Ma se la lista cambia, aggiornare il numero
-totale ("17 azioni" oggi).
+totale ("23 azioni" oggi).
 
 Multilingua (it+en oggi, espandibile):
 - Vocabolario CANONICO in inglese (ACTIONS, OBJECTS, QUALIFIERS).
@@ -331,6 +331,10 @@ QUALIFIER_OBJECT_COMPAT = {
     "empty": None,
     "format": None,
     "similar": None,
+    # `web` = origine=web pubblico, dichiarata general/cross-domain in QUALIFIERS
+    # (find_images_web reale, future find_persons_web/find_news_web). Senza
+    # questa riga validate_name R4 RIFIUTAVA find_images_web (bug drift 20/6).
+    "web": None,
 }
 
 
@@ -416,7 +420,7 @@ PRECURSOR_VERBS = ("read", "find", "list", "get")
 # "events") senza verbo create esplicito; il default mutating per `events`
 # e' `create`, quindi l'azione implicita inferita e' `create_events`.
 # Lookup tabellare §7.9 — niente LLM, niente case-patch per dominio.
-# Closed table allineata ai 17 OBJECTS §2.2. None = nessun mutating default
+# Closed table allineata ai 23 OBJECTS §2.2. None = nessun mutating default
 # per quel object (read-only-by-construction).
 OBJECT_DEFAULT_MUTATING_VERB: dict[str, str | None] = {
     "files":      "write",
@@ -1000,7 +1004,7 @@ def detect_implicit_actions(query: str,
       - ask:   0.60 <= confidence < 0.85
       - skip:  confidence < 0.60 (entry non emessa)
 
-    NB: §7.3 niente case-patch per dominio. Tutti i 17 OBJECTS §2.2 passano
+    NB: §7.3 niente case-patch per dominio. Tutti i 23 OBJECTS §2.2 passano
     dallo stesso lookup. Threshold/peso e' parametrico, non hardcoded.
     """
     if not query or not isinstance(query, str):

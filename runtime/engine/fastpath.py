@@ -306,7 +306,7 @@ def _touch(fp_id: int) -> None:
         c.execute(
             "UPDATE fastpaths SET n_uses = n_uses + 1, last_used = ? "
             "WHERE id = ?",
-            (time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), fp_id))
+            (_now_iso(), fp_id))
         c.commit()
         c.close()
     except Exception:

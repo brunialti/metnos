@@ -76,7 +76,7 @@ def _rollback_extend_executor(ci: ChangeIntent) -> dict:
     if not blob.exists():
         return {"executor_name": name, "error": f"rollback_blob missing: {blob}"}
     # Find manifest dir
-    from runtime.change_applier_extend import _resolve_executor_dir
+    from change_applier_extend import _resolve_executor_dir
     mdir = _resolve_executor_dir(name)
     if mdir is None:
         return {"executor_name": name, "error": "manifest dir not found"}

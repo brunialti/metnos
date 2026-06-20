@@ -300,7 +300,7 @@ def _render_change_row_html(ci_row) -> str:
     state_chip = {
         "accepted":    f'<span class="chip ok">{_msg("UI_CHANGE_BADGE_ACCEPTED")}</span>',
         "rejected":    f'<span class="chip bad">{_msg("UI_CHANGE_BADGE_REJECTED")}</span>',
-        "staged":      f'<span class="chip">{_msg("UI_CHANGE_BADGE_FAILED" if False else "UI_CHANGE_TAB_STAGED")}</span>',
+        "staged":      f'<span class="chip">{_msg("UI_CHANGE_TAB_STAGED")}</span>',
         "applied":     f'<span class="chip ok">{_msg("UI_CHANGE_BADGE_APPLIED")}</span>',
         "observed":    f'<span class="chip ok">{_msg("UI_CHANGE_BADGE_OBSERVED")}</span>',
         "finalized":   f'<span class="chip ok">{_msg("UI_CHANGE_BADGE_FINALIZED")}</span>',

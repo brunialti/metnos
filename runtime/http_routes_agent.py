@@ -2191,14 +2191,13 @@ async def turns_recent(request: web.Request) -> web.Response:
     except (ValueError, TypeError):
         since_ts = 0.0
 
-    turns_dir = _C.PATH_USER_DATA / "turns"
+    turns_dir = _C.PATH_TURNS
     out: list[dict] = []
     if not turns_dir.exists():
         return web.json_response({"turns": []})
 
     # Scan ultimi 7 giorni di JSONL (ordine reverse per latest-first).
     files = sorted(turns_dir.glob("*.jsonl"), reverse=True)[:7]
-    request.app.get("admin_key", "")
     for f in files:
         try:
             with f.open() as fh:

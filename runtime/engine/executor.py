@@ -1032,7 +1032,6 @@ def _synthesize_final_from_steps(query: str, steps: list, llm_fast) -> str:
     """
     if llm_fast is None or not steps:
         return ""
-    import json as _json
     obs_lines = []
     for s in steps[-4:]:  # ultime 4 observation bastano
         res = getattr(s, "result", None)
@@ -1096,13 +1095,13 @@ def _synthesize_final_from_steps(query: str, steps: list, llm_fast) -> str:
                                         "address", "email", "name", "title",
                                         "value", "summary", "channel", "path")
                                         if it.get(x)), None)
-                                    items.append(iv or _json.dumps(
+                                    items.append(iv or json.dumps(
                                         it, ensure_ascii=False)[:60])
                                 else:
                                     items.append(str(it)[:60])
                             if items:
                                 fields.append(f"{k}=[{', '.join(items)}]")
-                    ebits.append(" ".join(fields) if fields else _json.dumps(
+                    ebits.append(" ".join(fields) if fields else json.dumps(
                         {k: v for k, v in e.items()
                          if not isinstance(v, (dict, list))},
                         ensure_ascii=False)[:200])
@@ -1110,7 +1109,7 @@ def _synthesize_final_from_steps(query: str, steps: list, llm_fast) -> str:
             if not parts:
                 slim = {k: v for k, v in res.items()
                         if k not in ("ok", "metadata", "attachments", "entries")}
-                parts.append(_json.dumps(slim, ensure_ascii=False)[:400])
+                parts.append(json.dumps(slim, ensure_ascii=False)[:400])
             obs_lines.append(f"{tool}: " + " ; ".join(parts))
     if not obs_lines:
         return ""
@@ -1224,11 +1223,10 @@ class Executor:
                                else None)
                     if isinstance(entries, list) and entries:
                         # Detect "rendered è solo count" pattern
-                        import re as _re_render
                         is_count_only = (
                             not rendered.strip()
-                            or _re_render.fullmatch(r"[\(\s]*\d+\s*(?:elementi|entries|elements|voci)?\s*[\)\s]*",
-                                                     rendered.strip())
+                            or re.fullmatch(r"[\(\s]*\d+\s*(?:elementi|entries|elements|voci)?\s*[\)\s]*",
+                                            rendered.strip())
                         )
                         if is_count_only:
                             lines = []
@@ -1372,8 +1370,7 @@ class Executor:
             if step.tool in {"find_images_indices", "find_persons_indices"}:
                 tk = args.get("top_k")
                 if isinstance(tk, int) and tk < 100:
-                    import re as _re_tk
-                    if not _re_tk.search(r"\b\d+\b", query or ""):
+                    if not re.search(r"\b\d+\b", query or ""):
                         args["top_k"] = 100
 
             # Universal §7.3 (safety net deterministico): il Proposer vede solo
@@ -1384,8 +1381,7 @@ class Executor:
             # esplorare/archiviare un INTERO sito. Causa generalizzata: enum
             # pericoloso scelto senza la semantica dell'arg (§7.9 code>LLM).
             if step.tool == "find_urls" and args.get("mode") in ("research", "archive"):
-                import re as _re_mode
-                _deepcrawl = _re_mode.search(
+                _deepcrawl = re.search(
                     r"(esplor|mappa|archivi|scandagli|ricorsiv|intero sito|"
                     r"tutto il sito|crawl|approfondit|exhaustive|entire site|"
                     r"whole site|recursiv|\bexplore)", (query or "").lower())

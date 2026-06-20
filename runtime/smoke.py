@@ -17,7 +17,7 @@ Output:
 Fa anche invariant checks sul catalog (no naming collision, ogni verbo
 consumer ha ≥1 producer accessibile via prefilter).
 
-Tempo tipico: ~3-5 minuti (8 turni × ~30s).
+Tempo tipico: ~6-8 minuti (12 turni × ~30s).
 
 Uso:
     python3 smoke.py            # battery + invariants

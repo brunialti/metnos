@@ -566,8 +566,7 @@ def _fix_unroutable_verbs(intent, query: str, catalog: Optional[list]) -> None:
                    if isinstance(a, dict)]
         if len(actions) < 2:
             return
-        from compound_decomposer import (split_query_chunks, derive_tool_name,
-                                         PRODUCER_VERBS, MUTATING_VERBS)
+        from compound_decomposer import split_query_chunks, derive_tool_name
         from prefilter import tokenize, detect_canonical_verbs_all
         names = {getattr(e, "name", None) if not isinstance(e, dict)
                  else e.get("name") for e in (catalog or [])}

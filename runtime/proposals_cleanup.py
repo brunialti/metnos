@@ -90,7 +90,6 @@ def archive_aged_synth_proposals(*, max_age_days: int = 30,
             should_archive = True
         elif age_days > max_age_days:
             should_archive = True
-            f"aged-{int(age_days)}d"
 
         if not should_archive:
             kept += 1

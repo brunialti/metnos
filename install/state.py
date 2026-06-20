@@ -85,12 +85,6 @@ def clear(phase: int) -> None:
         p.unlink()
 
 
-def clear_all() -> None:
-    """Wipe all sentinels (cold start)."""
-    for f in _state_dir().glob("phase*.done"):
-        f.unlink()
-
-
 def summary() -> list[dict[str, Any]]:
     """Return list of phase status dicts for the summary banner."""
     out = []

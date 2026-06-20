@@ -9249,20 +9249,27 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
 
 
 def format_simple_answer(executor_name, result):
+    # §11 i18n: ogni ramo user-facing risolto via DB (it+en), niente hardcode.
     if not result.get("ok"):
-        return f"Errore in {executor_name}: {result.get('error', 'sconosciuto')}"
+        return msg("MSG_ANSWER_EXEC_ERROR", executor=executor_name,
+                   error=result.get("error", "?"))
     content = result.get("content", "")
     meta = result.get("metadata", {})
     if executor_name == "get_now":
-        return f"Sono le {meta.get('time') or content} ({meta.get('timezone','UTC')})."
+        return msg("MSG_ANSWER_NOW", time=(meta.get("time") or content),
+                   tz=meta.get("timezone", "UTC"))
     if executor_name == "read_files":
-        preview = (content or "")[:300]
-        return f"{meta.get('path','?')}:\n{preview}{'…' if len(content) > 300 else ''}"
+        preview = (content or "")[:300] + ("…" if len(content) > 300 else "")
+        return msg("MSG_ANSWER_FILE_PREVIEW", path=meta.get("path", "?"),
+                   preview=preview)
     if executor_name == "write_files":
-        return f"Scritti {meta.get('bytes_written',0)} byte in {meta.get('path','?')}."
+        return msg("MSG_ANSWER_BYTES_WRITTEN",
+                   bytes=meta.get("bytes_written", 0), path=meta.get("path", "?"))
     if executor_name == "get_urls":
-        preview = (content or "")[:300]
-        return f"GET {meta.get('url','?')} -> {meta.get('status','?')}, {meta.get('bytes',0)} byte:\n{preview}{'…' if len(content) > 300 else ''}"
+        preview = (content or "")[:300] + ("…" if len(content) > 300 else "")
+        return msg("MSG_ANSWER_HTTP_GET", url=meta.get("url", "?"),
+                   status=meta.get("status", "?"), bytes=meta.get("bytes", 0),
+                   preview=preview)
     return json.dumps(result, ensure_ascii=False)[:300]
 
 

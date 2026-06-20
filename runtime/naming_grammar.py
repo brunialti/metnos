@@ -23,7 +23,7 @@ Convenzione (Naming Authority v2, 21/5/2026):
 
     Livelli:
       1. verb       (CHIUSO §2.2, 23 azioni)
-      2. object     (CHIUSO §2.2, 19 oggetti)
+      2. object     (CHIUSO §2.2, 23 oggetti)
       3. qualifier  (CHIUSO §2.2, 4 famiglie) — OPZIONALE
       4. descriptor (APERTO, kebab-case interno `[a-z0-9-]+`) — RICHIEDE qualifier
 
@@ -167,7 +167,7 @@ def validate_name(name: str,
     if nc.verb not in ACTIONS:
         return ValidationResult(False, f"verb '{nc.verb}' not in vocab §2.2 (23 actions)", nc)
     if nc.obj not in OBJECTS:
-        return ValidationResult(False, f"object '{nc.obj}' not in vocab §2.2 (19 objects)", nc)
+        return ValidationResult(False, f"object '{nc.obj}' not in vocab §2.2 (23 objects)", nc)
     # Regola posizionale: descriptor (4°) richiede qualifier (3°).
     if nc.descriptor and not nc.qualifier:
         return ValidationResult(False,

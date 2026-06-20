@@ -209,10 +209,11 @@ def parse_step_value(raw: str, schema: dict) -> tuple[bool, object, str]:
       - number: int/float secondo il valore.
       - date: ISO YYYY-MM-DD oppure variante DD/MM/YYYY (best-effort).
     """
+    from messages import get as _msg  # §11 i18n: niente stringhe hardcoded
     kind = (schema or {}).get("kind")
     s = (raw or "").strip()
     if not s:
-        return False, None, "Risposta vuota. Riprova."
+        return False, None, _msg("ERR_DIALOG_PARSE_EMPTY")
     if kind in ("text", "credentials", "file_path", "location"):
         return True, s, ""
     if kind == "yes_no":
@@ -221,14 +222,14 @@ def parse_step_value(raw: str, schema: dict) -> tuple[bool, object, str]:
             return True, True, ""
         if low in ("no", "n", "false", "0", "annulla"):
             return True, False, ""
-        return False, None, "Rispondi `sì` o `no`."
+        return False, None, _msg("ERR_DIALOG_PARSE_YESNO")
     if kind == "number":
         try:
             if "." in s or "e" in s.lower():
                 return True, float(s), ""
             return True, int(s), ""
         except ValueError:
-            return False, None, "Inserisci un numero (es. 42 o 3.14)."
+            return False, None, _msg("ERR_DIALOG_PARSE_NUMBER")
     if kind == "date":
         m_iso = re.match(r"^(\d{4})-(\d{2})-(\d{2})$", s)
         if m_iso:
@@ -237,7 +238,7 @@ def parse_step_value(raw: str, schema: dict) -> tuple[bool, object, str]:
         if m_eu:
             d, m, y = m_eu.groups()
             return True, f"{int(y):04d}-{int(m):02d}-{int(d):02d}", ""
-        return False, None, "Inserisci una data (formato 2026-05-04 o 04/05/2026)."
+        return False, None, _msg("ERR_DIALOG_PARSE_DATE")
     if kind == "choice":
         choices = (schema or {}).get("choices") or []
         # Choices possono essere stringhe (esplicite) o dict {label, value}
@@ -263,10 +264,8 @@ def parse_step_value(raw: str, schema: dict) -> tuple[bool, object, str]:
         # Messaggio: usa label se dict, altrimenti str.
         def _label(c):
             return c.get("label", c.get("value", "?")) if isinstance(c, dict) else str(c)
-        return False, None, (
-            "Scegli una fra: " + ", ".join(_label(c) for c in choices) +
-            " (oppure il numero d'ordine)."
-        )
+        return False, None, _msg("ERR_DIALOG_PARSE_CHOICE",
+                                 choices=", ".join(_label(c) for c in choices))
     if kind == "choice_with_preview":
         # Schema PR5: options=[{value,label,preview_image_path}]. In
         # modalita' dialogue (fallback >10 opzioni) l'utente risponde
@@ -284,12 +283,9 @@ def parse_step_value(raw: str, schema: dict) -> tuple[bool, object, str]:
                 return True, options[idx - 1].get("value"), ""
         except ValueError:
             pass
-        return False, None, (
-            "Scegli una fra: "
-            + ", ".join(str(opt.get("label", opt.get("value", "?")))
-                         for opt in options)
-            + " (oppure il numero d'ordine)."
-        )
+        return False, None, _msg("ERR_DIALOG_PARSE_CHOICE",
+            choices=", ".join(str(opt.get("label", opt.get("value", "?")))
+                              for opt in options))
     if kind == "multi_choice":
         choices = (schema or {}).get("choices") or []
         tokens = [t.strip() for t in s.replace("\n", ",").split(",") if t.strip()]
@@ -307,10 +303,8 @@ def parse_step_value(raw: str, schema: dict) -> tuple[bool, object, str]:
                 except ValueError:
                     pass
             if match is None:
-                return False, None, (
-                    f"Token '{tok}' non riconosciuto. Scelte ammesse: "
-                    + ", ".join(str(c) for c in choices)
-                )
+                return False, None, _msg("ERR_DIALOG_PARSE_TOKEN",
+                    token=tok, choices=", ".join(str(c) for c in choices))
             picked.append(match)
         return True, picked, ""
     return False, None, f"kind {kind!r} non supportato dal parser."

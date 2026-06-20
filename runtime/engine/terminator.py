@@ -157,7 +157,8 @@ class SimpleTerminator:
 def get_terminator() -> Terminator:
     from . import get_engine_name
     name = get_engine_name()
-    if name == "metis":
+    # v3 drop-in di metis (nessun terminator_v3): prod v3 usa MetisTerminator.
+    if name in ("metis", "v3"):
         try:
             from . import terminator_metis
             return terminator_metis.MetisTerminator()
