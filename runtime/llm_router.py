@@ -104,10 +104,11 @@ DEFAULT_TIERS = {
     },
     # frontier: opt-in online, "il migliore solo se serve". Caller deve
     # chiamare esplicitamente tier="frontier" + gestire fallback se la API
-    # key non e' configurata. Default Opus 4.7 (top-of-line Claude 4.X).
+    # key non e' configurata. Default Opus 4.8 (top-of-line Claude 4.X; Fable
+    # ritirato — 404 «use Opus 4.8», 21/6/2026; era 4.7).
     "frontier": {
         "provider": "anthropic",
-        "model": "claude-opus-4-7",
+        "model": "claude-opus-4-8",
     },
 }
 

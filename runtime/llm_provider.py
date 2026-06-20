@@ -654,7 +654,9 @@ def _temperature_deprecated(model: str) -> bool:
     """
     if not isinstance(model, str):
         return False
-    deprecated = ("opus-4-7", "claude-opus-4-7")
+    # Opus 4.7 e 4.8 (e varianti es. claude-opus-4-8[1m]) rifiutano `temperature`
+    # con 400 (verificato 21/6/2026). Estendere quando Anthropic amplia.
+    deprecated = ("opus-4-7", "claude-opus-4-7", "opus-4-8", "claude-opus-4-8")
     return any(d in model for d in deprecated)
 
 
