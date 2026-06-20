@@ -198,6 +198,14 @@ def load_pending_state(dialog_id: str,
         st = _dp.load_pending(cand, dialog_id)
         if st is not None:
             return st, cand
+    # Fallback GLOBALE (20/6): il `dialog_id` (uuid) e' unico → se nessun
+    # candidato-sender lo trova (query schedulata salvata sotto un sender logico
+    # che il tap non ricostruisce dal chat_id, e i bridge a TTL sono scaduti),
+    # scandisci tutte le sender-dir. Evita il falso «dialogo scaduto» quando il
+    # dialogo e' ancora valido. Determinismo §7.9.
+    st, sender = _dp.find_by_dialog_id(dialog_id)
+    if st is not None:
+        return st, sender
     return None, None
 
 

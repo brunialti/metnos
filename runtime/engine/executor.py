@@ -244,6 +244,43 @@ def _find_list_of_dicts(result: dict) -> list:
     return []
 
 
+_BRIEF_ID_FIELDS = ("issue_number", "number", "id", "ref")
+_BRIEF_TITLE_FIELDS = ("title", "summary", "subject", "name", "question_text")
+_BRIEF_MAX_ITEMS = 3
+_BRIEF_TITLE_CHARS = 40
+
+
+def _brief_list(items: list, *, max_items: int = _BRIEF_MAX_ITEMS) -> str:
+    """Riassunto BREVE di una lista di record: «#<id> <titolo>» per i primi
+    `max_items`, poi «… (+N)». Generale cross-dominio (issue/mail/evento/…):
+    id e titolo presi dai primi campi noti disponibili. Vuoto se la lista non e'
+    di dict utilizzabili. Determinismo §7.9, no LLM."""
+    if not isinstance(items, list) or not items:
+        return ""
+    parts: list[str] = []
+    for it in items[:max_items]:
+        if not isinstance(it, dict):
+            continue
+        ident = next((str(it[f]) for f in _BRIEF_ID_FIELDS
+                      if it.get(f) not in (None, "")), "")
+        title = next((str(it[f]) for f in _BRIEF_TITLE_FIELDS
+                      if it.get(f) not in (None, "")), "")
+        title = title.strip().replace("\n", " ")
+        if len(title) > _BRIEF_TITLE_CHARS:
+            title = title[:_BRIEF_TITLE_CHARS - 1].rstrip() + "…"
+        label = (f"#{ident} {title}".strip() if ident
+                 else title or f"#{ident}".strip())
+        if label:
+            parts.append(label)
+    if not parts:
+        return ""
+    extra = len(items) - len(parts)
+    out = "; ".join(parts)
+    if extra > 0:
+        out += f"… (+{extra})"
+    return out
+
+
 # ── from_step resolver ────────────────────────────────────────────────────
 
 # Helper universali che consumano una lista `entries` (auto-wire prev step).
@@ -415,7 +452,34 @@ def _resolve_stepref_with_fallback(result: dict, path: str):
 
     Special path "entries" by itself (when consumer is spreadsheet write):
     auto-convert to 2D matrix [headers + rows].
+
+    Magic `@count` (cascata available_total → ok_count → used → len lista):
+    consistente col render del messaggio finale, così un ARG può citare
+    `${stepN.@count}` (es. prompt del consent-gate «N elementi pronti»).
     """
+    if path == "@count":
+        for k in ("available_total", "ok_count", "used"):
+            v = result.get(k)
+            if v is not None:
+                return v
+        for k in ("entries", "results", "items"):
+            v = result.get(k)
+            if isinstance(v, list):
+                return len(v)
+        lst = _find_list_of_dicts(result)
+        return len(lst) if lst else 0
+    if path == "@brief":
+        # Riassunto BREVE per-item della lista prodotta (id + titolo), per i
+        # prompt che devono dire COSA si sta per fare (es. consent-gate: «#53
+        # Come cambio la lingua…»), non solo quanti. Generale cross-dominio:
+        # id = primo fra (issue_number/number/id/ref), titolo = primo fra
+        # (title/summary/subject/name/question_text). Cap a 3 item + «…».
+        for k in ("entries", "results", "items"):
+            v = result.get(k)
+            if isinstance(v, list) and v:
+                return _brief_list(v)
+        lst = _find_list_of_dicts(result)
+        return _brief_list(lst) if lst else ""
     direct = _resolve_dotted_with_synonyms(result, path)
     if direct is not None:
         return direct
@@ -1451,6 +1515,14 @@ class Executor:
             except Exception as _sng:
                 log.debug("scheduled-notify-guard noop: %r", _sng)
 
+            # gate-resume re-run (20/6/2026): se questo turno e' la RIPRESA
+            # dopo approvazione (runtime_ctx._gate_approved), il gate
+            # get_approval e' gia' stato consentito → auto-passa (nessun nuovo
+            # dialog) cosi' la pipeline prosegue verso send/write. §7.9.
+            if (step.tool == "get_approval"
+                    and (runtime_ctx or {}).get("_gate_approved")):
+                args["_pre_approved"] = True
+
             # Invoke
             # Osservabilità (#4): logga tool + args risolti (escluso il payload
             # `entries`, voluminoso) appena prima dell'invoke. Senza, un turn
@@ -1475,12 +1547,18 @@ class Executor:
             # conferma-target), emetti needs_inputs invece di invocare. Il bridge
             # engine lo propaga → dialog get_inputs → resume_executor_with_values.
             _form_obs = None
-            try:
-                from args_resolver import scope_form_request
-                _form_obs = scope_form_request(
-                    step.tool, args, self._schema_map.get(step.tool), query)
-            except Exception as _fe:
-                log.debug("scope_form_request noop: %r", _fe)
+            # gate-resume (20/6): sulla RIPRESA dopo approvazione il consenso
+            # umano e' GIA' stato dato dal gate → niente form di conferma
+            # scope-args (sarebbe un secondo consenso ridondante che blocca il
+            # publish). I default config (repo/store) restano risolti a monte
+            # (backend_resolver/args_resolver). §7.9 deterministico.
+            if not (runtime_ctx or {}).get("_gate_approved"):
+                try:
+                    from args_resolver import scope_form_request
+                    _form_obs = scope_form_request(
+                        step.tool, args, self._schema_map.get(step.tool), query)
+                except Exception as _fe:
+                    log.debug("scope_form_request noop: %r", _fe)
             t0 = time.time()
             if _form_obs is not None:
                 r = _form_obs
@@ -1530,6 +1608,21 @@ class Executor:
             if r.get("decision") == "needs_inputs":
                 result.final_kind = "ask"
                 result.final_text = ""
+                break
+
+            # §7.9 gate-resume (20/6/2026): get_approval (decision=input_required)
+            # mette in PAUSA la pipeline; gli step a valle (send/write) NON
+            # girano finche' l'utente non approva (senza la pausa il post
+            # partirebbe SENZA consenso). Il bridge persiste il contesto di
+            # ripresa nel dialog (on_complete resume_engine_gate); on-approve la
+            # pipeline si riesegue col gate auto-passato (pre-gate read-only per
+            # convenzione → re-query idempotente). Scope-limitato a get_approval
+            # (get_inputs usa lo stesso decision ma e' gestito a monte).
+            if (step.tool == "get_approval"
+                    and r.get("decision") == "input_required"):
+                result.final_kind = "ask"
+                result.final_text = r.get("final_message_hint") or ""
+                result.gate_dialog_id = r.get("dialog_id") or ""
                 break
 
             # Vaglio post-step (opt-in)

@@ -180,14 +180,34 @@ class Store:
         rows = [dict(r) for r in rows]
         if not rows:
             return 0
+        k = tuple(key) if key is not None else tuple(self.schema.primary_key)
         if self.insert_defaults:
+            # `insert_defaults` = valore INIZIALE dei campi assenti → si applica
+            # SOLO ai record NUOVI (clobber-preserve 20/6): un record già
+            # presente conserva il suo stato (es. il detect github che re-ingesta
+            # un'issue già 'answered' NON la riporta a 'new'). Senza chiave ogni
+            # write è un INSERT → default sempre applicati.
             for r in rows:
+                if k and self._exists(r, k):
+                    continue
                 for dk, dv in self.insert_defaults.items():
                     if r.get(dk) is None:
                         r[dk] = dv
-        k = tuple(key) if key is not None else tuple(self.schema.primary_key)
         with self._lock:
             return self.backend.write(self.schema, rows, k)
+
+    def _exists(self, row: dict, key: tuple) -> bool:
+        """True se un record con la stessa chiave è già nello store. Best-effort:
+        chiave non interamente valorizzata → trattato come NUOVO (default
+        applicati). Usato solo per gli insert_defaults (scope: un find per riga,
+        chiave indicizzata)."""
+        try:
+            where = {kc: row.get(kc) for kc in key}
+            if any(v is None for v in where.values()):
+                return False
+            return bool(self.find(where=where, limit=1))
+        except Exception:
+            return False
 
     def update(self, values: dict, where: dict) -> int:
         self._ensure()

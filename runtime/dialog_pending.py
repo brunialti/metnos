@@ -113,24 +113,17 @@ def _started_ts(payload: dict) -> float:
 
 def default_timeout_for(dialog: list | None,
                         on_complete: dict | None = None) -> int:
-    """TTL di default in base alla FORMA del dialogo (§7.3, non per-caller).
+    """TTL di default di un dialogo INTERATTIVO (§7.3, non per-caller).
 
-    Regola: form (>=2 step) o dialoghi di credenziali → `FORM_TTL_S` (l'utente
-    deve digitare/compilare); dialoghi semplici (1 step si/no/scelta) →
-    `DEFAULT_TTL_S` (chiusura rapida ~1 min). Un `timeout_s` esplicito passato
-    dal chiamante resta sovrano (questa funzione e' solo il default).
+    Ogni dialogo qui è interattivo (form/scelta/credenziali): l'utente risponde
+    quando può, anche su canale ASYNC (Telegram) dove non sta fissando lo schermo
+    → `FORM_TTL_S`. Prima i dialoghi single-step sì/no/scelta chiudevano in ~1 min
+    (`DEFAULT_TTL_S`): sbagliato in una conversazione — un gate di consenso visto
+    qualche minuto dopo scadeva (Roberto 20/6). Il TTL serve solo da GC degli
+    abbandonati; un `timeout_s` esplicito del chiamante resta sovrano (es. il
+    consent-gate schedulato lo alza a 1h per il «rispondi con comodo»).
     """
-    steps = dialog or []
-    is_cred = (isinstance(on_complete, dict)
-               and on_complete.get("type") == "save_credentials_and_resume")
-    if not is_cred:
-        for s in steps:
-            if isinstance(s, dict) and (s.get("schema") or {}).get("kind") == "credentials":
-                is_cred = True
-                break
-    if is_cred or len(steps) >= 2:
-        return FORM_TTL_S
-    return DEFAULT_TTL_S
+    return FORM_TTL_S
 
 
 def is_expired(payload: dict, now_ts: float | None = None) -> bool:
@@ -216,6 +209,34 @@ def list_pending(sender_id: str) -> list[dict]:
     return out
 
 
+def find_by_dialog_id(dialog_id: str) -> tuple[dict | None, str | None]:
+    """Cerca un dialogo pendente per `dialog_id` GLOBALMENTE, scandendo tutte le
+    sender-dir. Ritorna (state, sender_id) o (None, None).
+
+    Il `dialog_id` (uuid) e' globalmente unico → la chiave-sender NON serve per
+    identificarlo. Fallback robusto quando il sender al tap differisce da quello
+    di salvataggio (query SCHEDULATE: pending sotto «telegram:roberto», il tap
+    risolve il chat_id a «host») e i bridge a TTL (cap_pending 10 min) sono
+    scaduti mentre il dialogo (timeout_s) e' ancora valido. Salta i
+    completati/cancellati/scaduti. §7.9 deterministico."""
+    if not dialog_id or not DIALOG_DIR.exists():
+        return None, None
+    for sd in DIALOG_DIR.iterdir():
+        if not sd.is_dir():
+            continue
+        p = sd / f"{dialog_id}.json"
+        if not p.exists():
+            continue
+        try:
+            d = json.loads(p.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        if d.get("completed") or d.get("cancelled") or is_expired(d):
+            return None, None
+        return d, (d.get("sender_id") or sd.name)
+    return None, None
+
+
 def consume_pending_step(sender_id: str, dialog_id: str, var: str,
                           value) -> dict:
     """Avanza il dialogo registrando il valore raccolto per la variabile `var`.
@@ -259,6 +280,12 @@ def consume_pending_step(sender_id: str, dialog_id: str, var: str,
     values[var] = value
     state["values_collected"] = values
     state["step_index"] = idx + 1
+    # Persisti il sender_id NELLO stato (20/6): il callback on_complete
+    # (resume_engine_gate / save_credentials_and_resume) legge
+    # `state["sender_id"]` per ricaricare il pending — gli executor get_inputs/
+    # get_approval salvano lo stato SENZA questo campo (il sender e' la cartella,
+    # non un campo). Senza, il resume del gate abortiva «sender_id mancante».
+    state.setdefault("sender_id", sender_id)
     if state["step_index"] >= len(dialog):
         state["completed"] = True
         state["completed_at"] = _utc_now_iso()

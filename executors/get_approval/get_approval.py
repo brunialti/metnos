@@ -55,14 +55,24 @@ def _validate_branch(branch, name: str) -> str | None:
 
 
 def invoke(args: dict) -> dict:
+    # gate-resume re-run (20/6/2026): l'utente ha GIA' approvato in un turno
+    # precedente; questa e' la RIPRESA della pipeline col gate auto-passato
+    # (engine inietta `_pre_approved` quando runtime_ctx._gate_approved). Passa
+    # trasparente — ok senza nuovo dialog — cosi' gli step a valle (send/write)
+    # proseguono. Deterministico §7.9.
+    if args.get("_pre_approved"):
+        return {"ok": True, "decision": "approved", "final_message_hint": ""}
+
     prompt = args.get("prompt")
     if not isinstance(prompt, str) or not prompt.strip():
         return {"ok": False, "error": _msg("ERR_ARG_MISSING", arg="prompt"),
                 "error_class": "invalid_args"}
+    # Prompt troppo lungo → TRONCA invece di fallire (§2.8 degrado onesto): il
+    # prompt puo' inglobare un riassunto data-driven (es. ${stepN.@brief} con
+    # i titoli delle issue) la cui lunghezza non e' nota a monte; un hard-fail
+    # romperebbe l'intero gate. Tronca con ellissi, preservando la domanda.
     if len(prompt) > MAX_PROMPT_LEN:
-        return {"ok": False,
-                "error": f"'prompt' troppo lungo ({len(prompt)}, max {MAX_PROMPT_LEN})",
-                "error_class": "invalid_args"}
+        prompt = prompt[:MAX_PROMPT_LEN - 1].rstrip() + "…"
 
     on_approve = args.get("on_approve")
     err = _validate_branch(on_approve, "on_approve")
@@ -165,6 +175,12 @@ def invoke(args: dict) -> dict:
             "dialog_id": dialog_id,
             "step_total": 1,
             "fmt": fmt,
+            # sender SOTTO CUI e' salvato il pending (es. "telegram:<actor>").
+            # Il tap inline risolve il chat_id a un actor che puo' DIFFERIRE
+            # (<chat_id>→host) → senza questo bridge il lookup multi-candidato
+            # non trova lo stato e risponde «dialogo scaduto». `sender_for_state`
+            # e' il PRIMO candidato in sender_state_candidates → match garantito.
+            "sender_for_state": sender_id,
         }],
         "metadata": {"title": title, "n_steps": 1, "fmt": fmt,
                      "actor": actor, "channel": channel},

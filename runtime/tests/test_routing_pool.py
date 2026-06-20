@@ -156,9 +156,14 @@ def test_k_param_equivale_env(catalog, monkeypatch):
 # ── Intent incompleto → full catalog (contratto produzione) ────────────
 
 def test_incomplete_intent_full_catalog(catalog):
+    # get_approval (20/6/2026) e' un gate runtime-managed (consent-gate
+    # inserito da dispatch + FIX 1 gate-resume), escluso dal pool del proposer
+    # salvo richiesta ESPLICITA (intent con clausola (get, approval)) — vedi
+    # _gate_approval_tool. Con intent vuoto resta filtrato, come _gate_store_skill.
     pool = _build("query senza intent", _intent(), catalog)
     assert pool == [getattr(e, "name", None) for e in catalog
-                    if getattr(e, "name", None)]
+                    if getattr(e, "name", None)
+                    and getattr(e, "name", None) != "get_approval"]
 
 
 # ── Purezza: il catalog NON viene mutato ───────────────────────────────

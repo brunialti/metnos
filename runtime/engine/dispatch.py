@@ -918,6 +918,160 @@ def _fill_clause_args(framework: Framework, intent, query: str,
         return framework
 
 
+# ── Store field-ref resolver (v3, 20/6/2026) ───────────────────────────────
+# Tool che LEGGONO da uno store generico NOMINATO: producono entries con le
+# COLONNE dello store (find/read/get_entries).
+_STORE_READ_TOOLS = frozenset({"find_entries", "read_entries", "get_entries"})
+# Tool che passano le entries oltre senza cambiarne lo SCHEMA-colonne: il campo
+# di provenienza store resta valido a valle (filter/sort/group/...).
+_STORE_PASSTHROUGH_PREFIXES = ("filter_", "sort_", "group_", "classify_",
+                               "compare_", "compute_")
+# Colonna «testo della risposta» per un body/commento per-entry lasciato
+# LETTERALE dal proposer (semantica: il corpo di un commento per-issue È la
+# risposta accettata). Priorità: la risposta ACCETTATA prima della bozza.
+_REPLY_COL_PRIORITY = ("accepted_reply", "reply", "answer", "body", "message",
+                       "comment", "content", "text", "draft_reply")
+_BODY_TEMPLATE_KEYS = frozenset({"body_template", "message_template",
+                                 "comment_template", "text_template"})
+_FIELD_PLACEHOLDER_RE = re.compile(r"\{([a-zA-Z_][a-zA-Z0-9_]*)\}")
+
+
+def _registered_store_schema(store_name):
+    """(columns dict, primary_key tuple) per uno store REGISTRATO, o (None,None).
+    No-op se non registrato (nome sbagliato/assente): il resolver non tocca la
+    pipeline. Universale: legge il registry, nessun nome cablato."""
+    try:
+        import store as _store
+        if not store_name or not _store.is_registered(store_name):
+            return None, None
+        sch = _store.get_store(store_name).schema
+        return dict(sch.columns), tuple(sch.primary_key or ())
+    except Exception:  # noqa: BLE001 — best-effort
+        return None, None
+
+
+def _trace_source_store(steps_1based: dict, start_1based) -> Optional[str]:
+    """Risale la catena from_step da `start` fino a un produttore store-read;
+    ritorna il nome dello store (o None). Attraversa i pass-through che NON
+    cambiano lo schema-colonne (filter/sort/group/...)."""
+    cur = start_1based
+    seen: set = set()
+    while isinstance(cur, int) and cur not in seen and cur in steps_1based:
+        seen.add(cur)
+        st = steps_1based[cur]
+        tool = st.tool or ""
+        if tool in _STORE_READ_TOOLS:
+            return (st.args or {}).get("store")
+        if tool.startswith(_STORE_PASSTHROUGH_PREFIXES):
+            cur = (st.args or {}).get("from_step")
+            continue
+        break
+    return None
+
+
+def _alias_field_to_col(field: str, cols_lower: dict) -> Optional[str]:
+    """Mappa un riferimento di campo alla colonna REALE, o None. Match: esatto
+    (case-insensitive); colonna UNICA che termina in `_<field>` (number→
+    issue_number). Niente match ambiguo/assente (no falsi accoppiamenti)."""
+    f = (field or "").lower()
+    if not f:
+        return None
+    if f in cols_lower:
+        return cols_lower[f]
+    suf = [orig for low, orig in cols_lower.items() if low.endswith("_" + f)]
+    return suf[0] if len(suf) == 1 else None
+
+
+def _reply_column(cols_lower: dict) -> Optional[str]:
+    for name in _REPLY_COL_PRIORITY:
+        if name in cols_lower:
+            return cols_lower[name]
+    for low, orig in cols_lower.items():
+        if "reply" in low or "answer" in low:
+            return orig
+    return None
+
+
+def _resolve_store_field_refs(framework: Framework) -> Framework:
+    """§7.9 v3 (fase ARGS, 20/6): ricuce i riferimenti-campo degli step a VALLE
+    di un produttore store-read contro lo SCHEMA REALE dello store (registry).
+    Il proposer NON vede lo schema dello store → indovina nomi-campo ({number}
+    vs colonna issue_number), lascia corpi LETTERALI (vs {accepted_reply}) e mette
+    ${FILLER:repo} su colonne che le entries GIÀ portano. Deterministico, no LLM,
+    no-op se nessun produttore store-read REGISTRATO a monte. Ripara:
+      - `<arg>_template`: rimappa i placeholder {P} a colonne reali via alias
+        UNIVOCO; un body/commento per-entry LETTERALE → {colonna-risposta}.
+      - scalari il cui NOME è una colonna e il VALORE è ${FILLER:..} (il proposer
+        non sapeva il valore) → rimossi: l'executor vettoriale li riempie
+        per-entry dal campo omonimo dell'entry (es. repo=brunialti/metnos).
+      - `key` di write_entries verso uno store registrato → primary_key dello
+        store (la chiave d'upsert È la PK; una key inventata su colonna NON
+        indicizzata romperebbe ON CONFLICT).
+    Universale: vale per OGNI store registrato, nessun nome cablato."""
+    try:
+        all_steps = list(getattr(framework, "steps", None) or [])
+        steps_1based = {i + 1: s for i, s in enumerate(all_steps)}
+        for st in all_steps:
+            tool = st.tool or ""
+            if tool == "final_answer":
+                continue
+            args = dict(st.args or {})
+            changed = False
+            # (W) write_entries verso store registrato: key = primary_key.
+            if tool == "write_entries":
+                cols_w, pk_w = _registered_store_schema(args.get("store"))
+                if cols_w and pk_w and args.get("key") != list(pk_w):
+                    args["key"] = list(pk_w)
+                    changed = True
+            # Riferimenti-campo verso le ENTRIES consumate (from_step → store).
+            fs = args.get("from_step")
+            cols = None
+            if isinstance(fs, int):
+                cols, _pk = _registered_store_schema(
+                    _trace_source_store(steps_1based, fs))
+            if cols:
+                cols_lower = {c.lower(): c for c in cols}
+                for k in list(args.keys()):
+                    v = args[k]
+                    # (T) *_template: alias dei placeholder + corpo per-entry.
+                    if isinstance(k, str) and k.endswith("_template") \
+                            and isinstance(v, str):
+                        nv = v
+                        for p in _FIELD_PLACEHOLDER_RE.findall(v):
+                            if p.lower() in cols_lower:
+                                continue
+                            col = _alias_field_to_col(p, cols_lower)
+                            if col:
+                                nv = re.sub(r"\{" + re.escape(p) + r"\}",
+                                            "{" + col + "}", nv)
+                        # body/commento per-entry che NON pesca da ALCUNA colonna
+                        # reale (corpo letterale, o placeholder fantasma come
+                        # {body}) → colonna-risposta: un corpo fisso/segnaposto
+                        # verrebbe postato così com'è (LLM incostante sul body).
+                        if k in _BODY_TEMPLATE_KEYS and not any(
+                                p.lower() in cols_lower
+                                for p in _FIELD_PLACEHOLDER_RE.findall(nv)):
+                            rc = _reply_column(cols_lower)
+                            if rc:
+                                nv = "{" + rc + "}"
+                        if nv != v:
+                            args[k] = nv
+                            changed = True
+                        continue
+                    # (S) scalare = colonna con ${FILLER:..} non risolto → drop:
+                    # l'executor lo riempie per-entry dal campo omonimo.
+                    if isinstance(k, str) and k.lower() in cols_lower \
+                            and isinstance(v, str) and "${FILLER:" in v:
+                        del args[k]
+                        changed = True
+            if changed:
+                st.args = args
+        return framework
+    except Exception as ex:  # noqa: BLE001 — best-effort, non blocca il turno
+        log.warning("resolve_store_field_refs noop (best-effort): %r", ex)
+        return framework
+
+
 def _apply_deterministic_structure_guards(framework: Framework, intent,
                                           query: str,
                                           catalog: Optional[list]) -> Framework:
@@ -939,7 +1093,122 @@ def _apply_deterministic_structure_guards(framework: Framework, intent,
         framework = _enforce_missing_objects(framework, intent, query, catalog)
         framework = _conform_to_intent_order(framework, intent, query, catalog)
         framework = _fill_clause_args(framework, intent, query, catalog)
+        # Ricuce i riferimenti-campo (template/key) degli step a valle di un
+        # produttore store-read allo SCHEMA REALE dello store (20/6): chiude il
+        # misfit {number}/body-letterale/${FILLER:repo} che il proposer fa non
+        # vedendo lo schema. Dopo fill: opera sugli args ormai stabili.
+        framework = _resolve_store_field_refs(framework)
     return framework
+
+
+def _insert_consent_gate_if_scheduled(framework, query: str, runtime_ctx):
+    """§7.9 consent-gate (20/6/2026): in un turno SCHEDULATO una pipeline che
+    comunica verso l'ESTERNO (`send_*`) NON parte senza consenso umano →
+    inserisce un `get_approval` PRIMA della prima azione `send_*`, con riassunto
+    (conteggio) dal produttore a monte. La pausa+ripresa la gestisce FIX 1
+    (gate-resume): on-approve la pipeline si riesegue PULITA col gate auto-passato.
+
+    Universale §7.9: il gate e' inserito dal RUNTIME (deterministico), non
+    composto dal proposer — cosi' la pipeline compone pulita (variant A) e
+    l'ordine/from_step restano corretti. Skip se: ripresa post-approvazione
+    (`_gate_approved`), turno NON schedulato, o gate gia' presente. No-op se
+    nessun send_*."""
+    try:
+        if (runtime_ctx or {}).get("_gate_approved"):
+            return framework
+        from treated_issues_guard import is_scheduled_turn
+        if not is_scheduled_turn():
+            return framework
+        steps = list(getattr(framework, "steps", None) or [])
+        if any((s.tool or "") == "get_approval" for s in steps):
+            return framework
+        first_send = next((idx for idx, s in enumerate(steps)
+                           if (s.tool or "").startswith("send_")), None)
+        if first_send is None:
+            return framework
+        # Conteggio: lo step che il SEND consuma (from_step) = gli item che
+        # partiranno DAVVERO (post-filtro), non il produttore grezzo a monte.
+        # Fallback: il produttore find/read/get/list piu' vicino. ${stepN.@count}
+        # risolto a runtime dall'engine (ora anche negli args, vedi executor).
+        count_1based = None
+        fs = steps[first_send].args.get("from_step")
+        if isinstance(fs, int) and 1 <= fs <= first_send:
+            count_1based = fs
+        else:
+            for j in range(first_send - 1, -1, -1):
+                if (steps[j].tool or "").split("_", 1)[0] in (
+                        "find", "read", "get", "list"):
+                    count_1based = j + 1
+                    break
+        from messages import get as _msg_get
+        if count_1based:
+            # Prompt con riassunto BREVE per-item (Roberto 20/6: dire COSA si
+            # approva, non solo quanti) — `@brief` rende «#53 titolo…; #54 …»
+            # dal produttore a monte del send. `@count` resta per il numero.
+            # I due magic si risolvono a runtime (executor); il brief e' capato
+            # (3 item) per stare nel limite prompt di get_approval.
+            prompt = _msg_get("MSG_CONSENT_GATE_OUTBOUND_BRIEF",
+                              n=f"${{step{count_1based}.@count}}",
+                              brief=f"${{step{count_1based}.@brief}}")
+        else:
+            prompt = _msg_get("MSG_CONSENT_GATE_OUTBOUND")
+        from .types import StepSpec
+        # channel+actor dal runtime_ctx → get_approval rende il FORM A PULSANTI
+        # nativo del canale (Telegram inline: Approva/Disapprova/Annulla) invece
+        # del fallback testuale, e salva il dialog pending sotto il sender
+        # CORRETTO («telegram:roberto») così il tap/ripresa lo ritrova. Roberto
+        # 20/6: il gate DEVE usare i pulsanti, non una risposta digitata.
+        rc = runtime_ctx or {}
+        # timeout generoso: un'approvazione SCHEDULATA outbound si tappa con
+        # comodo (Telegram, anche minuti/ore dopo) → 1h (= cap get_approval),
+        # non il default. Roberto 20/6: niente quick-close in conversazione.
+        gate = StepSpec(tool="get_approval", args={
+            "prompt": prompt,
+            "on_approve": {"tool": "final_answer", "args": {}},
+            "timeout_s": 3600,
+            "channel": rc.get("channel") or "",
+            "actor": rc.get("actor") or "",
+        })
+        framework.steps = steps[:first_send] + [gate] + steps[first_send:]
+        log.info("[consent_gate] get_approval inserito prima di send "
+                 "(turno schedulato, outbound)")
+        return framework
+    except Exception as ex:  # noqa: BLE001 — best-effort
+        log.warning("[consent_gate] noop: %r", ex)
+        return framework
+
+
+def _inject_gate_resume_if_paused(run, query: str, runtime_ctx) -> None:
+    """gate-resume (20/6/2026): se un gate get_approval ha messo in PAUSA la
+    pipeline (run.gate_dialog_id), sovrascrive l'on_complete del dialog
+    (gate_dispatch → resume_engine_gate) col contesto di ripresa. On-approve il
+    callback riesegue il turno con `pre_approved_gate` → il gate auto-passa e
+    gli step a valle (send/write) girano. §7.9 deterministico. No-op se nessun
+    gate in pausa. Universale: vale per ogni compound con un gate di consenso."""
+    did = getattr(run, "gate_dialog_id", "") if run else ""
+    if not did:
+        return
+    rc = runtime_ctx or {}
+    actor = rc.get("actor") or "host"
+    channel = rc.get("channel") or ""
+    sender = f"{channel}:{actor}" if channel else actor
+    try:
+        import dialog_pending as _dp
+        st = _dp.load_pending(sender, did)
+        if not st:
+            return
+        oc = st.get("on_complete") or {}
+        st["on_complete"] = {
+            "type": "resume_engine_gate",
+            "original_query": query,
+            "conversation_id": rc.get("conversation_id") or "",
+            "gate_approve_value": oc.get("approve_value", "approve"),
+            "gate_on_reject": oc.get("on_reject"),
+        }
+        _dp.save_pending(sender, did, st)
+        log.info("[gate_resume] dialog %s → resume_engine_gate", did)
+    except Exception as ex:  # noqa: BLE001 — best-effort, non blocca il turno
+        log.warning("[gate_resume] inject failed: %r", ex)
 
 
 def run_turn(*, query: str, intent: Intent, catalog: list,
@@ -966,6 +1235,21 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
     if is_v3():
         _decontaminate_clause_objects(intent, query)
         _fix_unroutable_verbs(intent, query, catalog)
+    # gate-resume (20/6): sulla RIPRESA dopo approvazione (runtime_ctx
+    # _gate_approved) il gate e' gia' consentito → togli la clausola
+    # (get, approval) dall'intent cosi' il proposer compone la pipeline PULITA a
+    # valle (find → send → write, variant A) senza il gate in mezzo, che
+    # confonderebbe ordine/from_step. Universale §7.9: deterministico, no-op se
+    # non e' una ripresa o non c'e' alcun gate nell'intent.
+    if (runtime_ctx or {}).get("_gate_approved"):
+        _acts0 = [a for a in (getattr(intent, "actions", None) or [])
+                  if not (isinstance(a, dict)
+                          and (a.get("verb") or "").lower() == "get"
+                          and (a.get("object") or "").lower() == "approval")]
+        try:
+            intent.actions = _acts0
+        except Exception:  # noqa: BLE001 — intent immutabile: best-effort
+            pass
     # D2-c (18/6): normalizza le clausole store dell'intent (store-sink →
     # entries) PRIMA di pool/cache/proposer, cosi' la sig compound-aware e il
     # routing vedono le actions gia' corrette. Deterministico, no-op se non
@@ -1032,10 +1316,18 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
             # registra il piano corretto.
             fp_hit.framework = _apply_deterministic_structure_guards(
                 fp_hit.framework, intent, query, catalog)
+            # consent-gate (20/6): un piano cachato (gate-less, anche post
+            # approvazione) NON deve postare in un turno SCHEDULATO senza
+            # consenso → reinserisci il gate anche sull'hit L0. Stessa difesa
+            # D3-B (guard deterministici sugli hit cache). No-op se non
+            # schedulato / nessun send_*.
+            fp_hit.framework = _insert_consent_gate_if_scheduled(
+                fp_hit.framework, query, runtime_ctx)
             run = executor.run(fp_hit.framework, query=query,
                                 runtime_ctx=runtime_ctx,
                                 remediate_args_cb=remediate_args_cb,
                                 progress=progress)
+            _inject_gate_resume_if_paused(run, query, runtime_ctx)
             # Promozione 0b→0a (classe 12/6/2026): il piano è arrivato via
             # cosine da un'ALTRA query canonica → registra l'hash di QUESTA
             # (vedi _maybe_record_fastpath). L'hit 0a NON registra: la riga
@@ -1072,10 +1364,16 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
             # anche sull'hit L1 (autopath generalizzato) prima dell'execute.
             ap_hit.framework = _apply_deterministic_structure_guards(
                 ap_hit.framework, intent, query, catalog)
+            # consent-gate (20/6): stessa difesa di L0 — reinserisci il gate
+            # anche sull'hit L1 (autopath generalizzato) per i turni schedulati
+            # outbound. No-op se non schedulato / nessun send_*.
+            ap_hit.framework = _insert_consent_gate_if_scheduled(
+                ap_hit.framework, query, runtime_ctx)
             run = executor.run(ap_hit.framework, query=query,
                                 runtime_ctx=runtime_ctx,
                                 remediate_args_cb=remediate_args_cb,
                                 progress=progress)
+            _inject_gate_resume_if_paused(run, query, runtime_ctx)
             # Record observation per future feedback hooks. Skip se il piano non
             # è cacheabile (single-executor / valore numerico baked dalla query):
             # L1 non deve avere valori baked (Roberto 15/6).
@@ -1232,12 +1530,17 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
     # Clausola «ordina/raggruppa per X» (§7.9): garantita a valle del
     # proposer — l'LLM non è tenuto a tradurla, la traduzione è codice.
     framework = _apply_ordering_clause(framework, query, catalog)
+    # consent-gate (20/6): turno schedulato + pipeline outbound (send_*) →
+    # inserisci get_approval prima del send (FIX 1 mette in pausa, on-approve
+    # riprende pulito). Dopo l'ordinamento, prima dell'esecuzione.
+    framework = _insert_consent_gate_if_scheduled(framework, query, runtime_ctx)
 
     # Execute
     run = executor.run(framework, query=query,
                         runtime_ctx=runtime_ctx,
                         remediate_args_cb=remediate_args_cb,
                         progress=progress)
+    _inject_gate_resume_if_paused(run, query, runtime_ctx)
 
     # Record observation (per future feedback). Skip se non cacheabile
     # (single-executor / valore numerico baked): L1 non deve avere valori baked.

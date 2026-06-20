@@ -452,6 +452,7 @@ class ChannelDaemon:
         except ImportError as ex:
             log.warning("dialog_pending non disponibile: %s", ex)
             return None, False, None
+        from messages import get as _msg  # §11 i18n: niente stringhe hardcoded
 
         dialog_id = proposal.get("dialog_id") or ""
         text_norm = (msg_text or "").strip().lower()
@@ -474,14 +475,11 @@ class ChannelDaemon:
             if state is not None:
                 _dp.cancel_pending(state.get("sender_id") or hit_key,
                                     dialog_id)
-                return ("Dialogo annullato. I valori non sono stati salvati.",
-                        False, None)
-            return ("(Dialogo scaduto o sconosciuto. Riformula la richiesta.)",
-                    False, None)
+                return (_msg("MSG_DIALOG_CANCELLED"), False, None)
+            return (_msg("MSG_DIALOG_EXPIRED"), False, None)
 
         if state is None:
-            return ("(Dialogo scaduto o sconosciuto. Riformula la richiesta.)",
-                    False, None)
+            return (_msg("MSG_DIALOG_EXPIRED"), False, None)
         sender_for_state = state.get("sender_id") or hit_key
         dialog = state.get("dialog") or []
         idx = int(state.get("step_index") or 0)
@@ -507,18 +505,19 @@ class ChannelDaemon:
                 # come query nuova.
                 return None, False, None
             # Ri-prompt dello stesso step
-            return (f"{err}\n\nStep {idx+1}/{len(dialog)} — {cur_step.get('prompt')}",
+            return (_msg("MSG_DIALOG_STEP_REPROMPT", err=err, n=idx+1,
+                         total=len(dialog), prompt=cur_step.get('prompt')),
                     False, None)
         # Avanza lo stato
         cres = _dp.consume_pending_step(sender_for_state, dialog_id, var, value)
         if not cres.get("ok"):
-            return (f"(Errore stato dialogo: {cres.get('error')})",
+            return (_msg("MSG_DIALOG_STEP_ERROR", error=cres.get('error')),
                     False, None)
         if cres.get("completed"):
             new_state = cres["state"]
             # Summary all'utente: mostra le var raccolte. Maschera i valori
             # con kind credentials per non echeggiare password in chat.
-            lines = [f"Dialogo «{state.get('title','?')}» completato."]
+            lines = [_msg("MSG_DIALOG_COMPLETED", title=state.get('title', '?'))]
             for s in dialog:
                 v = s.get("var")
                 k = (s.get("schema") or {}).get("kind")
@@ -786,9 +785,21 @@ class ChannelDaemon:
             _actor_dlg = _ra_dlg(self.channel.name, msg.sender_id)
         except Exception:
             _actor_dlg = None
+        # sender_for_state dal cap_pending salvato (per chat_id) al push: il
+        # dialog puo' essere salvato sotto un sender LOGICO (es. "telegram:
+        # <actor>" da una query SCHEDULATA) che il resolver del tap non ricava
+        # dal chat_id (<chat_id>→host). Il bridge e' nel cap → primo candidato.
+        _sfs_dlg = None
+        try:
+            _cp = _cap_pending_load(msg.sender_id)
+            if isinstance(_cp, dict):
+                _sfs_dlg = (_cp.get("proposal") or {}).get("sender_for_state")
+        except Exception:
+            _sfs_dlg = None
         from .inline_ui import sender_state_candidates, load_pending_state
         candidates = sender_state_candidates(
-            self.channel.name, msg.sender_id, actor=_actor_dlg)
+            self.channel.name, msg.sender_id, actor=_actor_dlg,
+            sender_for_state=_sfs_dlg)
         state, hit_key = load_pending_state(dialog_id, candidates)
         if state is None:
             self._send_text(msg.sender_id,
@@ -857,13 +868,13 @@ class ChannelDaemon:
                                           cur_step.get("var"), value)
         if not cres.get("ok"):
             self._send_text(msg.sender_id,
-                             f"(Errore stato dialogo: {cres.get('error')})",
+                             _msg("MSG_DIALOG_STEP_ERROR", error=cres.get('error')),
                              reply_to=msg.message_id)
             return {"ok": False, "reason": "consume_failed"}
         if cres.get("completed"):
             new_state = cres["state"]
             # Summary (replica di _consume_get_inputs_response).
-            lines = [f"Dialogo «{state.get('title','?')}» completato."]
+            lines = [_msg("MSG_DIALOG_COMPLETED", title=state.get('title', '?'))]
             for s in dialog:
                 v = s.get("var")
                 k = (s.get("schema") or {}).get("kind")

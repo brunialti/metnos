@@ -148,7 +148,16 @@ class SqlDatabaseBackend(Backend):
         if key:
             non_key = [c for c in cols if c not in key]
             if non_key:
-                upd = ", ".join(f"{c}=excluded.{c}" for c in non_key)
+                # Upsert PARZIALE (clobber-preserve, 20/6): un valore in arrivo
+                # NULL (campo assente nella riga del producer) NON sovrascrive il
+                # valore esistente → COALESCE(excluded, esistente). Un re-ingest
+                # che porta solo alcuni campi (es. detect github: number/title,
+                # senza status/reply) conserva status/accepted_reply già fissati.
+                # Parità con MemoryBackend (merge che salta i None). Per AZZERARE
+                # un campo si usa update() (SET esplicito), non l'upsert.
+                upd = ", ".join(
+                    f"{c}=COALESCE(excluded.{c}, {schema.table}.{c})"
+                    for c in non_key)
                 conflict = (f" ON CONFLICT({', '.join(key)}) "
                             f"DO UPDATE SET {upd}")
             else:

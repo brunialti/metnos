@@ -96,8 +96,17 @@ production-tested engine env:
 - **i18n catalog**: the runtime uses table **`i18n`** (cols: key, lang, text,
   needs_translation, source_lang, …) — NOT a `messages` table. `runtime/i18n.py`
   auto-creates the `i18n` table. A fresh install MUST seed the full catalog
-  (prod ≈ 1000 rows) or user-facing strings render as `<missing:MSG_*>`. Ship a
+  (prod ≈ 1100 rows) or user-facing strings render as `<missing:MSG_*>`. Ship a
   bundled seed; do not hand-write a 6-key stub with the wrong schema.
+  - **Regenerating the seed** (`install/data/i18n_seed.sqlite`): it is a snapshot
+    of the running `i18n.sqlite`. When code adds NEW `MSG_*/ERR_*/WARN_*` keys
+    (added at runtime via `i18n.set`), the seed drifts and a fresh install would
+    miss them. Refresh by copying the missing `(key,lang)` rows from the live DB
+    into the seed (preserve its schema), then verify `0 live-only` keys and
+    `PRAGMA integrity_check = ok`. Guard:
+    `runtime/tests/test_seed_i18n_gate_keys.py` (extend its key list when shipping
+    new user-facing keys). The publish gate (`scripts/export-public.sh`)
+    sanitizes the seed for PII at export time.
 - **Executors**: `.sig` files shipped in the repo are signed with the upstream
   author key (not trusted on the user's machine). phase3 runs `sign.py sign-all`
   with a locally-generated key, else the loader rejects all handcrafted

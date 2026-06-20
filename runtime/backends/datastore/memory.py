@@ -71,7 +71,12 @@ class MemoryBackend(Backend):
                         (i for i, r in enumerate(tbl)
                          if all(r.get(k) == row.get(k) for k in key)), None)
                     if idx is not None:
-                        tbl[idx] = {**tbl[idx], **row}     # upsert: merge
+                        # upsert PARZIALE (clobber-preserve, 20/6): un valore in
+                        # arrivo None non sovrascrive l'esistente — parità con
+                        # SqliteBackend COALESCE(excluded, esistente).
+                        tbl[idx] = {**tbl[idx],
+                                    **{kk: vv for kk, vv in row.items()
+                                       if vv is not None}}
                         continue
                 tbl.append(row)
         return len(rows)

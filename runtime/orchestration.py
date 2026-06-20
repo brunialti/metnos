@@ -365,6 +365,11 @@ def process_completion_callback(sender_id: str, dialog_id: str,
             on_complete, values, actor=actor, channel=channel,
         )
 
+    if callback_type == "resume_engine_gate":
+        return _process_resume_engine_gate(
+            on_complete, values, actor=actor, channel=channel,
+        )
+
     # github_analyze / github_send_reply: RITIRATI (flusso watcher legacy →
     # executor write/read/find_issues + comandi schedulati).
 
@@ -583,6 +588,47 @@ def _process_gate_dispatch(on_complete: dict, values: dict,
             return f"✗ {err}" if err else _msg("ERR_GENERIC")
         return _msg("MSG_ACTION_DONE")
     return str(res)
+
+
+def _process_resume_engine_gate(on_complete: dict, values: dict, *,
+                                actor: str = "host",
+                                channel: str | None = None) -> str:
+    """gate-resume engine (20/6/2026): un gate get_approval ha messo in PAUSA
+    una pipeline compound (find → get_approval → send → write). All'APPROVAZIONE
+    riesegue il turno con `pre_approved_gate=True`: il gate auto-passa e gli step
+    a valle (send/write) girano con lo stato corrente dello store (re-query
+    idempotente; i pre-gate sono read-only per convenzione). Al RIFIUTO: stop
+    onesto (§2.8), nessuna azione a valle.
+
+    Universale §7.9: nessun LLM nella decisione; `pre_approved_gate` rende il
+    gate trasparente, la ricomposizione resta deterministica (v3, seed fisso).
+    """
+    approve = on_complete.get("gate_approve_value", "approve")
+    decision = next(iter((values or {}).values()), None) if values else None
+    if decision != approve:
+        # Rifiuto (o scelta non mappata): niente pubblicazione. Onesto, no-op.
+        return _msg("MSG_GATE_NO_ACTION")
+    query = on_complete.get("original_query") or ""
+    conversation_id = on_complete.get("conversation_id") or ""
+    if not query:
+        return _msg("MSG_ORCH_RESUME_PLANNER_NO_QUERY")
+    try:
+        import agent_runtime
+        new_log = agent_runtime.run_turn(
+            query,
+            actor=actor or "host",
+            channel=channel or "",
+            conversation_id=conversation_id,
+            pre_approved_gate=True,
+        )
+    except (RuntimeError, TypeError, ImportError) as ex:
+        log.exception("orchestration: resume_engine_gate fallito")
+        return _msg("MSG_ORCH_CONTINUATION_FAILED",
+                    detail=f"{type(ex).__name__}: {ex}")
+    if new_log is None:
+        return _msg("MSG_ORCH_CONTINUATION_EMPTY")
+    msg_out = getattr(new_log, "final_message", "") or ""
+    return msg_out or _msg("MSG_ORCH_CONTINUATION_DONE")
 
 
 def _process_resume_executor_with_values(on_complete: dict, values: dict,
@@ -854,6 +900,19 @@ def _process_resume_planner_with_dialog_values(
                         or (len(prior_steps) + 1))
     dialog_var = on_complete.get("dialog_var_name") or "values"
     conversation_id = on_complete.get("conversation_id") or ""
+    # Tool che ha emesso la pausa: get_inputs (default) o get_approval
+    # (gate-resume, 20/6/2026). Generalizza il match nello scratchpad sotto.
+    _dialog_tool = on_complete.get("dialog_tool") or "get_inputs"
+
+    # Gate di consenso (get_approval): se il resume e' un GATE, riprendi il
+    # piano SOLO all'approvazione; il rifiuto e' uno stop onesto (§2.8), senza
+    # eseguire le azioni a valle (niente pubblicazione). gate_approve_value
+    # assente = path get_inputs normale (sempre resume, nessun gate).
+    _gate_approve = on_complete.get("gate_approve_value")
+    if _gate_approve is not None:
+        _decision = next(iter((values or {}).values()), None) if values else None
+        if _decision != _gate_approve:
+            return _msg("MSG_GATE_NO_ACTION")
 
     if not original_query:
         return _msg("MSG_ORCH_RESUME_PLANNER_NO_QUERY")
@@ -876,14 +935,14 @@ def _process_resume_planner_with_dialog_values(
     }
     _replaced = False
     for entry in reversed(prior_steps):
-        if isinstance(entry, dict) and entry.get("tool") == "get_inputs":
+        if isinstance(entry, dict) and entry.get("tool") == _dialog_tool:
             entry["observation"] = dialog_obs
             _replaced = True
             break
     if not _replaced:
         prior_steps.append({
             "step": int(dialog_step_num),
-            "tool": "get_inputs",
+            "tool": _dialog_tool,
             "args": {"dialog": "<elided>"},
             "observation": dialog_obs,
         })

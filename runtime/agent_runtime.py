@@ -4920,6 +4920,8 @@ def _try_engine_v2(
     lang: str = "it",
     verbose: bool = False,
     progress=None,
+    pre_approved_gate: bool = False,
+    conversation_id: str = "",
 ) -> "dict | None":
     """Bridge agent_runtime → engine.dispatch.run_turn.
 
@@ -5006,6 +5008,8 @@ def _try_engine_v2(
         "actor": actor or "",
         "lang": lang,
         "channel": channel or "",
+        "_gate_approved": bool(pre_approved_gate),
+        "conversation_id": conversation_id or "",
     }
 
     # Engine v2 passa lo stesso catalog a Proposer e Validator: includi i
@@ -5030,6 +5034,7 @@ def _try_engine_v2(
     # Converti DispatchResult → dict shape legacy (per minimal change caller)
     steps_out = []
     needs_inputs_obs = None
+    gate_obs = None
     if result.run:
         for s in result.run.steps:
             sl = StepLog(step_num=s.step_idx)
@@ -5042,6 +5047,15 @@ def _try_engine_v2(
             # §7.3: propaga needs_inputs all'upstream per dialog handling
             if isinstance(s.result, dict) and s.result.get("decision") == "needs_inputs":
                 needs_inputs_obs = s.result
+            # gate-resume (20/6): il gate get_approval (decision=input_required)
+            # ha GIA' salvato il proprio dialog_pending + expandable_caps (FIX 1);
+            # propaga il suo result cosi' l'upstream surfacea gli expandable_caps
+            # al log → il channel daemon costruisce la inline keyboard
+            # (Approva/Rifiuta/Annulla). Senza, il push e' solo-testo.
+            if (isinstance(s.result, dict)
+                    and s.result.get("decision") == "input_required"
+                    and s.tool == "get_approval"):
+                gate_obs = s.result
     return {
         "steps": steps_out,
         "final_text": result.final_text,
@@ -5054,6 +5068,7 @@ def _try_engine_v2(
         "elapsed_ms": result.elapsed_ms,
         "error_class": result.error_class,
         "needs_inputs_obs": needs_inputs_obs,
+        "gate_obs": gate_obs,
     }
 
 
@@ -5232,6 +5247,7 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
              actor="host", channel="", conversation_id="",
              reference_images=None,
              resume_with_scratchpad=None,
+             pre_approved_gate=False,
              allow_disambig_synth=True,
              bypass_rejected_pipelines=False,
              verbose=False):
@@ -5772,6 +5788,8 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
                     user_query_for_run, catalog,
                     turn_id=turn_id, actor=actor, channel=channel,
                     lang=DEFAULT_LANG, verbose=verbose, progress=progress,
+                    pre_approved_gate=pre_approved_gate,
+                    conversation_id=conversation_id,
                 )
             except Exception as _ex:
                 import logging as _logging
@@ -5815,6 +5833,24 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
                     _logging.getLogger(__name__).warning(
                         "engine v2 needs_inputs handler failed: %s", _ex)
                     # fallthrough: render hint plain
+            # gate-resume (20/6): il gate get_approval ha messo in PAUSA (FIX 1)
+            # e ha GIA' salvato il proprio dialog_pending. Surfacea i suoi
+            # `expandable_caps` al log cosi' il channel daemon costruisce la
+            # inline keyboard (Approva/Rifiuta/Annulla) — senza, il push verso
+            # Telegram e' solo-testo e il tap/risposta non risolve nulla.
+            # Roberto 20/6: i gate DEVONO usare i pulsanti del canale.
+            _gate = _engine_v2_res.get("gate_obs")
+            if _gate and isinstance(_gate, dict):
+                log.final_kind = "ask"
+                log.final_message = (_gate.get("final_message_hint")
+                                     or _engine_v2_res.get("final_text") or "")
+                _gcaps = _gate.get("expandable_caps")
+                if isinstance(_gcaps, list) and _gcaps:
+                    log.expandable_caps = _gcaps
+                log.intent_verb = _engine_v2_res.get("verb", "") or ""
+                log.ts_end = time.time()
+                log.write()
+                return log
             log.final_kind = _engine_v2_res.get("final_kind") or "answer"
             log.final_message = _engine_v2_res.get("final_text") or ""
             # Universal §7.3: se needs_inputs e nessun handler, ma c'e' un

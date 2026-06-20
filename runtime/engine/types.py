@@ -130,6 +130,11 @@ class RunResult:
     ok_count: int = 0
     elapsed_ms: int = 0
     aborted_reason: str = ""
+    # gate-resume (20/6/2026): dialog_id del gate get_approval che ha messo in
+    # PAUSA la pipeline (decision=input_required). Il bridge lo usa per
+    # persistere il contesto di ripresa nel dialog (on_complete
+    # resume_engine_gate); "" se nessun gate in pausa.
+    gate_dialog_id: str = ""
 
 
 # ── Error classification (4 classi strutturali §7.3) ──────────────────────

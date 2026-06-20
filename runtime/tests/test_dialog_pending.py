@@ -63,6 +63,56 @@ def test_load_missing_returns_none(dp):
     assert dp.load_pending("host", "nope") is None
 
 
+def test_consume_persists_sender_id_in_state(dp):
+    """Roberto 20/6: il callback on_complete (resume_engine_gate) legge
+    state['sender_id'] per ricaricare il pending — get_approval/get_inputs NON
+    lo salvano (il sender e' la cartella). consume_pending_step lo persiste cosi'
+    il resume del gate non aborta «sender_id mancante»."""
+    state = _make_state()
+    # nota: lo state NON ha 'sender_id' (come get_approval)
+    assert "sender_id" not in state
+    dp.save_pending("telegram:roberto", "d0001", state)
+    cres = dp.consume_pending_step("telegram:roberto", "d0001", "a", "v1")
+    assert cres["ok"]
+    assert cres["state"]["sender_id"] == "telegram:roberto"
+
+
+def test_find_by_dialog_id_global(dp):
+    """find_by_dialog_id trova il pending GLOBALMENTE per dialog_id (uuid unico),
+    a prescindere dal sender — fallback robusto quando il tap risolve un sender
+    diverso da quello di salvataggio (query schedulate)."""
+    # state CON sender_id esplicito → ritorna quello (caso post-consume)
+    s = _make_state(dialog_id="dXYZ")
+    s["sender_id"] = "telegram:roberto"
+    dp.save_pending("telegram:roberto", "dXYZ", s)
+    st, sender = dp.find_by_dialog_id("dXYZ")
+    assert st is not None
+    assert sender == "telegram:roberto"
+    # il sender ritornato e' utilizzabile per ri-caricare lo stato
+    assert dp.load_pending(sender, "dXYZ") is not None
+    # sconosciuto → (None, None)
+    assert dp.find_by_dialog_id("nope") == (None, None)
+
+
+def test_find_by_dialog_id_skips_completed(dp):
+    s = _make_state(dialog_id="dDONE")
+    s["completed"] = True
+    dp.save_pending("telegram:roberto", "dDONE", s)
+    assert dp.find_by_dialog_id("dDONE") == (None, None)
+
+
+def test_default_timeout_interactive_not_quickclose(dp):
+    """Roberto 20/6: un dialogo single-step sì/no/scelta è INTERATTIVO →
+    `FORM_TTL_S`, niente quick-close ~1 min (un gate di consenso async su
+    Telegram, visto minuti dopo, non deve scadere)."""
+    choice = [{"var": "decision", "schema": {"kind": "choice"}}]
+    assert dp.default_timeout_for(choice) == dp.FORM_TTL_S
+    assert dp.FORM_TTL_S > dp.DEFAULT_TTL_S        # generoso, non il quick-close
+    # un timeout_s esplicito del chiamante resta sovrano (consent-gate = 1h)
+    assert dp.is_expired({"started_at": "2000-01-01T00:00:00+00:00",
+                          "timeout_s": 3600}) is True
+
+
 def test_consume_step_advances_index(dp):
     dp.save_pending("host", "d1", _make_state(dialog_id="d1"))
     res = dp.consume_pending_step("host", "d1", "a", "alpha")

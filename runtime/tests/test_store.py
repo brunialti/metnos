@@ -51,6 +51,35 @@ class _CrudContract:
         self.assertEqual(rows[0]["n"], 9)
         self.assertEqual(rows[0]["body"], "z")
 
+    def test_upsert_preserves_absent_fields(self):
+        """Upsert PARZIALE (clobber-preserve, 20/6): un campo ASSENTE nella riga
+        in arrivo NON azzera il valore esistente; un campo presente lo aggiorna.
+        Causa-radice del clobber del detect github (re-ingest senza status/reply
+        riportava le issue a stato vuoto)."""
+        self.store.write({"id": "a", "n": 1, "body": "keep"})
+        self.store.write({"id": "a", "n": 9})              # body assente
+        r = self.store.get(where={"id": "a"})
+        self.assertEqual(r["n"], 9)                         # presente → aggiornato
+        self.assertEqual(r["body"], "keep")                # assente → preservato
+
+    def test_insert_defaults_only_on_new(self):
+        """`insert_defaults` riempie i campi assenti SOLO sui record NUOVI; un
+        re-ingest di un record esistente NON ripristina il default (es. detect
+        che re-trova un'issue già 'answered' non la riporta a 'new')."""
+        s = Store(Schema("deftest", {"id": TEXT, "body": TEXT, "n": INT},
+                         primary_key=("id",)),
+                  backend=self._backend(), insert_defaults={"body": "DEFAULT"})
+        try:
+            s.write({"id": "a", "n": 1})                   # nuovo → default
+            self.assertEqual(s.get(where={"id": "a"})["body"], "DEFAULT")
+            s.write({"id": "a", "body": "real"})           # valore reale
+            s.write({"id": "a", "n": 2})                   # re-ingest senza body
+            self.assertEqual(s.get(where={"id": "a"})["body"], "real")  # NON resettato
+            s.write({"id": "b", "n": 1})                   # altro nuovo → default
+            self.assertEqual(s.get(where={"id": "b"})["body"], "DEFAULT")
+        finally:
+            s.close()
+
     def test_find_where_eq_and_in(self):
         self.store.write([{"id": x, "n": i}
                           for i, x in enumerate(["a", "b", "c"])])

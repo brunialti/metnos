@@ -212,7 +212,29 @@ def build_routing_pool(query: str, intent, catalog: list, *,
         pool_for_propose = catalog
     names = [getattr(e, "name", None) for e in pool_for_propose
              if getattr(e, "name", None)]
+    names = _gate_approval_tool(names, intent)
     return _gate_store_skill(names)
+
+
+def _gate_approval_tool(names: list[str], intent) -> list[str]:
+    """get_approval e' un GATE gestito dal RUNTIME (consent-gate inserito da
+    dispatch.run_turn + FIX 1 gate-resume), NON un tool che il proposer deve
+    comporre: il wise LLM tende ad aggiungerlo spuriamente sulle query
+    "sensibili" (pubblica/cancella) E a TRONCARE la pipeline (drop send/write).
+    Fuori dal pool del proposer SALVO che l'utente lo chieda ESPLICITAMENTE
+    (intent ha la clausola (get, approval)). §7.9 deterministico."""
+    try:
+        acts = getattr(intent, "actions", None) or []
+        wants_gate = any(
+            isinstance(a, dict)
+            and (a.get("verb") or "").lower() == "get"
+            and (a.get("object") or "").lower() == "approval"
+            for a in acts)
+        if wants_gate:
+            return names
+    except Exception:  # noqa: BLE001 — best-effort, pool resta valido
+        return names
+    return [n for n in names if n != "get_approval"]
 
 
 # Famiglia skill «store generico» (store_entries): dormiente finché il registro
