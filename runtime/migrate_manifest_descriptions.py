@@ -40,7 +40,6 @@ Default DIR = ['<install_root>/executors', '~/.local/share/metnos/executors'].
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
 import os
 import re
@@ -81,7 +80,8 @@ _ARGS_SECTION_RE = re.compile(
 
 
 def _sha256_str(text: str) -> str:
-    return "sha256:" + hashlib.sha256(text.encode("utf-8")).hexdigest()
+    from hashutil import sha256_prefixed
+    return sha256_prefixed(text)
 
 
 def _toml_escape(s: str) -> str:

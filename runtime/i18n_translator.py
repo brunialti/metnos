@@ -661,7 +661,8 @@ import hashlib as _hashlib
 
 def _sha256_text(text: str) -> str:
     """SHA-256 hex prefix-encoded (`sha256:<hex>`). Wrapper deterministico."""
-    return "sha256:" + _hashlib.sha256(text.encode("utf-8")).hexdigest()
+    from hashutil import sha256_prefixed
+    return sha256_prefixed(text)
 
 
 def _translate_short_text(source_text: str, *, source_lang: str,

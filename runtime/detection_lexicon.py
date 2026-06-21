@@ -82,7 +82,8 @@ _coverage_gaps_logged: set[tuple[str, str]] = set()
 
 
 def _sha256(text: str) -> str:
-    return "sha256:" + hashlib.sha256((text or "").encode("utf-8")).hexdigest()
+    from hashutil import sha256_prefixed
+    return sha256_prefixed(text)
 
 
 def current_lang() -> str:

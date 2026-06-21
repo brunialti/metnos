@@ -20,7 +20,6 @@ Usage:
 from __future__ import annotations
 
 import argparse
-import hashlib
 import sqlite3
 import sys
 from pathlib import Path
@@ -31,7 +30,8 @@ DEFAULT_DB = _C.DB_I18N
 
 
 def _sha256_full(text: str) -> str:
-    return "sha256:" + hashlib.sha256((text or "").encode("utf-8")).hexdigest()
+    from hashutil import sha256_prefixed
+    return sha256_prefixed(text)
 
 
 def migrate(db_path: Path, *, check_only: bool = False) -> dict:

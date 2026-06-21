@@ -53,8 +53,8 @@ def _hash_text(text: str) -> str:
 def _sha256_full(text: str) -> str:
     """SHA-256 hex full prefix-encoded (`sha256:<hex>`). Usato per `version_hash`
     e `source_text_hash` del pattern latest-wins (estensione ADR 0092)."""
-    import hashlib
-    return "sha256:" + hashlib.sha256((text or "").encode("utf-8")).hexdigest()
+    from hashutil import sha256_prefixed
+    return sha256_prefixed(text)
 
 _lang_cache: str | None = None
 _conn: sqlite3.Connection | None = None

@@ -196,9 +196,7 @@ def _install_synthesized(run, intent, user_query):
 
     # Crea anche manifest.lang_state.json initial con sola entry per la lingua
     # corrente. Il daemon notturno tradurra' nelle altre lingue.
-    import hashlib as _hashlib
-    def _h(t: str) -> str:
-        return "sha256:" + _hashlib.sha256(t.encode("utf-8")).hexdigest()
+    from hashutil import sha256_prefixed as _h
     lang_state = {
         "description": {
             cur_lang: {
