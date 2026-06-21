@@ -8,6 +8,9 @@ author      = "Roberto Brunialti"
 affinity    = ["read", "leggi", "mail", "email", "inbox", "messages", "messaggi", "posta", "today", "oggi", "ieri", "ultime", "window", "settimana", "find", "trova", "cerca", "search", "from", "subject", "filter"]
 revertible  = false
 lifecycle   = "active"
+# I/O-bound (IMAP, account="all" su più mailbox + cap fino a 500): 30s default
+# troppo basso. 120s > deadline interno 90s del backend (auto-parziale §2.7).
+timeout_s   = 120
 
 [description]
 it = "SCOPO: legge messaggi IMAP combinando filtri temporali e testuali. PATTERN: read_messages(account=\"metnos_system\", folder=\"INBOX\", max_results=500). NON: inviare (-> send_messages) o spostare messaggi (-> move_messages). OUT: entries=[{from,subject,date,message_id,size,body_preview,has_attachment,category_hints}]"

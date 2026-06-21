@@ -23,6 +23,7 @@ import mimetypes
 import os
 import re
 import sys
+import time
 from email.message import EmailMessage
 from pathlib import Path
 
@@ -48,6 +49,12 @@ _DEFAULT_MAX_RESULTS = 500
 _MAX_RESULTS_CAP = 1000
 _DEFAULT_MAX_TOTAL = 1000
 _MAX_TOTAL_CAP = 1000
+# Budget wall-clock interno (§2.7/§2.8): account="all" su molte mailbox con cap
+# alto può eccedere il timeout del subprocess esecutore → il runtime ucciderebbe
+# il processo (TimeoutExpired criptico). Invece ci auto-fermiamo PRIMA, sotto il
+# timeout del manifest (=120s), ritornando il PARZIALE letto + truncated. Così
+# l'operazione COMPLETA sempre (anche se inefficiente, richiesta Roberto 21/6).
+_READ_DEADLINE_S = float(os.environ.get("METNOS_MAIL_READ_DEADLINE_S", "90"))
 _MONTHS_IMAP = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
                 "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
 
@@ -546,8 +553,16 @@ def read(args: dict) -> dict:
 
     entries, failed = [], []
     available_total = 0
+    _t0 = time.time()
+    deadline_hit = False
+    accounts_read = 0
     for account in accounts:
         if len(entries) >= max_total:
+            break
+        # §2.7/§2.8: auto-stop sotto il timeout esecutore → ritorna il parziale
+        # invece di farsi uccidere. Salta gli account non ancora letti.
+        if time.time() - _t0 > _READ_DEADLINE_S:
+            deadline_hit = True
             break
         per_account_cap = max_total - len(entries)
         try:
@@ -559,6 +574,7 @@ def read(args: dict) -> dict:
                 open_imap, parse_envelope,
             )
             available_total += avail or 0
+            accounts_read += 1
         except Exception as e:
             failed.append({"account": account, "error_code": "ERR_OP_FAILED",
                             "error": _msg("ERR_OP_FAILED", reason=f"{type(e).__name__}: {e}")})
@@ -571,6 +587,18 @@ def read(args: dict) -> dict:
         "failed": failed,
         "accounts": accounts,
     }
+    if deadline_hit:
+        # §2.7 truncation visibility: parziale onesto, non silenzioso.
+        skipped = [a for a in accounts[accounts_read:]]
+        out["truncated"] = True
+        out["truncated_what"] = "accounts_unread"
+        out["used"] = len(entries)
+        out["available_total"] = max(available_total, len(entries))
+        out["cap_field"] = "max_results"
+        out["cap_value"] = max_results
+        out["notice"] = _msg("WARN_MAIL_READ_DEADLINE",
+                             read=accounts_read, total=len(accounts),
+                             skipped=", ".join(skipped) or "-")
     if window_label:
         out["window"] = window_label
     if available_total > len(entries):

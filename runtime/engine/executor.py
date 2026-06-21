@@ -1564,9 +1564,18 @@ class Executor:
                 try:
                     r = self.invoke(step.tool, args)
                 except Exception as ex:
-                    log.warning("Executor: %s raised %r", step.tool, ex)
-                    r = {"ok": False, "error": str(ex),
-                         "error_class": "exception"}
+                    if type(ex).__name__ == "TimeoutExpired":
+                        # §11/§2.8: messaggio CHIARO invece del grezzo
+                        # "Command '[...python...]' timed out after Ns".
+                        _to = getattr(ex, "timeout", None)
+                        log.warning("Executor: %s timeout (%ss)", step.tool, _to)
+                        r = {"ok": False, "error_class": "timeout",
+                             "error": _msg("ERR_EXECUTOR_TIMEOUT",
+                                           tool=step.tool, seconds=int(_to or 0))}
+                    else:
+                        log.warning("Executor: %s raised %r", step.tool, ex)
+                        r = {"ok": False, "error": str(ex),
+                             "error_class": "exception"}
             lat_ms = int((time.time() - t0) * 1000)
 
             # Recovery args remediate (1× per step) — mai per needs_inputs
