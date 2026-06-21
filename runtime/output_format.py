@@ -122,7 +122,8 @@ def format_list(title: str | None, items: Iterable[object],
     for it in items_list:
         lines.append(f"  {bullet} {_strip(it)}")
     if cap is not None and cap < total:
-        lines.append(f"  …(altri {total - cap} omessi)")
+        from messages import get as _msg  # §11 i18n: chiave già nel catalogo
+        lines.append(_msg("MSG_OMITTED_OTHERS", n=total - cap))
     return "\n".join(lines)
 
 

@@ -179,7 +179,7 @@ def reverse(plan, results):
         rr = local_ics.restore({"vevents": vevents})
         out = rr.get("results") or []
         restored = int(rr.get("n_restored") or 0)
-    failed = [{"uid": u, "error": "evento esterno (google): non ricreabile da undo"}
+    failed = [{"uid": u, "error": _msg("ERR_UNDO_EXTERNAL_EVENT")}
               for u in not_reversible]
     return {"ok": len(failed) == 0, "ok_count": restored,
             "fail_count": len(failed), "results": out, "failed": failed}

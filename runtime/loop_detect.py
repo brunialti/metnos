@@ -90,4 +90,5 @@ def repeated_failure_hint(steps: Sequence[Any]) -> str:
     if sig is None:
         return ""
     tool, err_class = sig
-    return f"Il pianificatore ha riprovato lo stesso passo `{tool}` con stesso errore `{err_class}` ripetutamente."
+    from messages import get as _msg  # §11 i18n
+    return _msg("MSG_LOOP_REPEATED_STEP", tool=tool, err_class=err_class)

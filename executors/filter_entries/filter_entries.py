@@ -210,9 +210,7 @@ def invoke(args):
     _has_where_str_op = any(x is not None for x in (
         where_starts_with, where_contains, where_glob, where_regex_str))
     if (where_in or where_not_in or _has_where_str_op) and not where_field:
-        return {"ok": False,
-                "error": "where_in/where_not_in/where_value/where_starts_with/"
-                         "where_contains/where_glob/where_regex richiedono where_field"}
+        return {"ok": False, "error": _msg("ERR_FILTER_WHERE_FIELD")}
 
     def keep(e):
         if not isinstance(e, dict):
