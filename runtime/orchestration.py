@@ -350,6 +350,9 @@ def process_completion_callback(sender_id: str, dialog_id: str,
             on_complete, values, actor=actor, channel=channel,
         )
 
+    if callback_type == "rerun_query_disambiguated":
+        return _process_rerun_query_disambiguated(
+            on_complete, values, actor=actor, channel=channel)
     if callback_type == "restart_turn_with_chosen_query":
         return _process_restart_turn_with_chosen_query(
             on_complete, values, actor=actor, channel=channel,
@@ -852,6 +855,37 @@ def _process_restart_turn_with_chosen_query(
     except (RuntimeError, TypeError, ImportError) as ex:
         log.exception("orchestration: restart_turn_with_chosen_query fallito")
         return _msg("MSG_ORCH_CONTINUATION_FAILED", detail=f"{type(ex).__name__}: {ex}")
+    if new_log is None:
+        return _msg("MSG_ORCH_CONTINUATION_EMPTY")
+    return getattr(new_log, "final_message", "") or ""
+
+
+def _process_rerun_query_disambiguated(
+    on_complete: dict, values: dict, *,
+    actor: str = "host", channel: str | None = None,
+) -> str:
+    """Riprende dopo la scelta nel form di DISAMBIGUAZIONE ROUTING (§2.11): la
+    query ORIGINALE viene ri-eseguita con l'OGGETTO fissato (forced_object), cosi'
+    il routing punta deterministicamente all'oggetto scelto, senza ri-chiedere.
+
+    Pattern callback `rerun_query_disambiguated`:
+      payload = {"type": "rerun_query_disambiguated", "query": str,
+                 "conversation_id": str?}
+    `values["object"]` = l'oggetto scelto (value dell'opzione choice)."""
+    query = (on_complete or {}).get("query") or ""
+    chosen_obj = (values or {}).get("object") or ""
+    if not isinstance(query, str) or not query.strip() or not chosen_obj:
+        return _msg("MSG_ORCH_DISAMB_EMPTY_CHOICE")
+    conversation_id = on_complete.get("conversation_id") or ""
+    try:
+        import agent_runtime
+        new_log = agent_runtime.run_turn(
+            query.strip(), actor=actor or "host", channel=channel or "",
+            conversation_id=conversation_id, forced_object=str(chosen_obj))
+    except (RuntimeError, TypeError, ImportError) as ex:
+        log.exception("orchestration: rerun_query_disambiguated fallito")
+        return _msg("MSG_ORCH_CONTINUATION_FAILED",
+                    detail=f"{type(ex).__name__}: {ex}")
     if new_log is None:
         return _msg("MSG_ORCH_CONTINUATION_EMPTY")
     return getattr(new_log, "final_message", "") or ""

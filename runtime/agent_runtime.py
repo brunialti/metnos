@@ -4977,6 +4977,7 @@ def _try_engine_v2(
     progress=None,
     pre_approved_gate: bool = False,
     conversation_id: str = "",
+    forced_object: str = "",
 ) -> "dict | None":
     """Bridge agent_runtime → engine.dispatch.run_turn.
 
@@ -5037,6 +5038,38 @@ def _try_engine_v2(
         lang=lang,
         actions=list(intent_raw.get("actions") or []),
     )
+
+    # §2.11 — DISAMBIGUAZIONE ROUTING deterministica (no LLM). Su query AMBIGUA
+    # sull'oggetto (≥2 oggetti-produttori in gara, intent ne ha scartato uno;
+    # NON un compound) chiedi con un form invece di indovinare. Sulla RIPRESA
+    # (forced_object = scelta utente) pinna l'oggetto del produttore e non
+    # richiedere. No-op per ogni query non-ambigua (gate stretto).
+    try:
+        import route_disambiguation as _rdis
+        if forced_object:
+            for _a in (intent.actions or []):
+                if isinstance(_a, dict) and (_a.get("verb") or "") in (
+                        "read", "find", "get", "list"):
+                    _a["object"] = forced_object
+                    break
+            if (intent.verb or "") in ("read", "find", "get", "list"):
+                try:
+                    intent.object = forced_object
+                except Exception:  # noqa: BLE001 — intent best-effort
+                    pass
+        else:
+            _amb = _rdis.detect_object_ambiguity(query, intent)
+            if _amb:
+                return {
+                    "steps": [], "final_text": "", "final_kind": "needs_inputs",
+                    "framework_hash": "", "verb": intent.verb,
+                    "object": intent.object, "keywords": intent.keywords,
+                    "match_source": "route_disambiguation", "elapsed_ms": 0,
+                    "error_class": None, "gate_obs": None,
+                    "needs_inputs_obs": _rdis.build_disambiguation_form(
+                        query, _amb)}
+    except Exception as _de:  # noqa: BLE001 — disambiguazione best-effort
+        log.debug("route_disambiguation noop: %r", _de)
 
     # Invoke executor callback wrapped — Executor v2 chiama via tool name
     def _invoke(tool_name: str, args: dict) -> dict:
@@ -5305,6 +5338,7 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
              pre_approved_gate=False,
              allow_disambig_synth=True,
              bypass_rejected_pipelines=False,
+             forced_object="",
              verbose=False):
     """
     Se k=None (default v1.1), usa adaptive K fra k_min e k_max.
@@ -5845,6 +5879,7 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
                     lang=DEFAULT_LANG, verbose=verbose, progress=progress,
                     pre_approved_gate=pre_approved_gate,
                     conversation_id=conversation_id,
+                    forced_object=forced_object,
                 )
             except Exception as _ex:
                 import logging as _logging
