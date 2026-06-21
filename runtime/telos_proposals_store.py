@@ -38,7 +38,6 @@ import json
 import re
 import time
 from collections import defaultdict
-from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Optional
 
@@ -62,92 +61,6 @@ import config as _C  # §7.11
 # Tier band per il filtro UI: definito qui per single-source con telos_proposals_store.stats().
 TIER_TOP_MIN = 0.45
 TIER_INTERESTING_MIN = 0.30
-
-
-@dataclass
-class UnifiedProposal:
-    """Proposta da QUALSIASI sorgente, schema invariante (ADR 0157+0158).
-
-    - Metadati di provenance: `source`, `source_id`, `origin_module`, `generated_at`.
-    - Ranking: `ranking_score` ∈ [0,1], `confidence` ∈ [0,1].
-    - Payload comune: `executor_target`, `proposed_action`, `rationale`,
-      `pipeline_tools_mentioned`, `alignment_per_telos` (sorgente-specific
-      per telos, vuoto per introvertiva).
-    - Validation flags (dedup/naming): `name_in_catalog`, `name_grammar_valid`,
-      `name_invalid_reason`, `hallucinated_tool_mentions`,
-      `is_parametric_extension`, `convergence_count`, `convergence_lenses`.
-    - Enrichment turn log: `example_query`, `current_path`, `new_path_estimated`,
-      `latency_saved_ms_est`, `pipeline_observed`.
-    - Stato decisione admin: `decision` dict | None.
-    """
-    # Identificazione cross-sorgente
-    prop_id: str
-    source: str  # "telos" | "introvertiva" | "synt" | "multi_tool"
-    source_id: str
-    origin_module: str = ""  # lens (telos) | kind (introvertiva) | etc.
-    generated_at: float = 0.0
-
-    # Ranking
-    ranking_score: float = 0.0
-    confidence: float = 0.8
-
-    # Payload comune
-    executor_target: str = ""
-    proposed_action: str = ""
-    rationale: str = ""
-    pipeline_tools_mentioned: list = field(default_factory=list)
-
-    # Per-telos breakdown (sorgente-specific telos)
-    alignment_per_telos: list = field(default_factory=list)
-    paternalism_flag: bool = False
-    n_observed: Optional[int] = None
-    telos_id: Optional[str] = None  # telos generante
-    operator: Optional[str] = None  # SCAMPER S/C/A/M/P/E/R
-
-    # Validation flags (popolati da enrich)
-    name_status: str = "unknown"  # vedi _classify_name_status sotto
-    name_status_reason: Optional[str] = None
-    name_grammar_valid: bool = True
-    hallucinated_tool_mentions: list = field(default_factory=list)
-    is_parametric_extension: bool = False
-    convergence_count: int = 1
-    convergence_lenses: list = field(default_factory=list)
-    # Lista di prop_id che condividono la stessa signature (dedup cluster).
-    dedup_cluster: list = field(default_factory=list)
-
-    # Enrichment turn log
-    example_query: Optional[str] = None
-    current_path: list = field(default_factory=list)
-    new_path_estimated: list = field(default_factory=list)
-    current_latency_ms: Optional[int] = None
-    latency_saved_ms_est: Optional[int] = None
-    pipeline_observed: bool = False
-
-    # Stato decisione
-    decision: Optional[dict] = None
-
-    def signature(self) -> str:
-        """Hash stabile per dedup cross-sorgente.
-
-        Basato su (executor_target, pipeline normalizzata, is_parametric).
-        Due proposte con stesso signature → stesso cluster (convergenza)."""
-        pipeline_sig = ",".join(sorted(
-            t for t in self.pipeline_tools_mentioned
-            if t != self.executor_target
-        ))
-        key = f"{self.executor_target}|{pipeline_sig}|{int(self.is_parametric_extension)}"
-        return hashlib.sha256(key.encode("utf-8")).hexdigest()[:16]
-
-    def tier(self) -> str:
-        """Banda UI: 'top' (≥0.45), 'interesting' (0.30-0.45), 'weak' (<0.30)."""
-        if self.ranking_score >= TIER_TOP_MIN:
-            return "top"
-        if self.ranking_score >= TIER_INTERESTING_MIN:
-            return "interesting"
-        return "weak"
-
-    def to_dict(self) -> dict:
-        return asdict(self)
 
 _DATA_DIR = _C.PATH_USER_DATA
 _PROPOSALS_CANDIDATES = (

@@ -224,22 +224,11 @@ def _install_synthesized(run, intent, user_query):
     )
 
     sign_executor(out_dir)
-    # Fase 4 i18n (1/5/2026 sera): synt at-gen-time scrive description e
-    # affinity in DB i18n. Lingua corrente, fetch_key EN canonical.
-    # Sistema single-lang by default (vedi metnos_design_i18n_final.md punto 11).
-    try:
-        import i18n as _i18n
-        cur_lang = _i18n.current_lang()
-        desc = run.description if hasattr(run, "description") else None
-        if desc:
-            _i18n.set(f"{run.name}.description", cur_lang, desc)
-        affinity = run.affinity_keywords if hasattr(run, "affinity_keywords") else None
-        if affinity:
-            import json as _json
-            _i18n.set(f"{run.name}.affinity", cur_lang,
-                       _json.dumps(affinity, ensure_ascii=False))
-    except Exception:
-        pass  # non bloccare l'install se DB non disponibile
+    # (Rimosso 21/6 il blocco i18n at-gen-time: leggeva run.description/
+    # run.affinity_keywords — attributi INESISTENTI su MultistageRun → sempre
+    # no-op, codice morto. Gli executor synth portano description/affinity nel
+    # MANIFEST in lingua utente, non nel DB i18n — vedi memoria
+    # i18n-scope-by-executor-class.)
     return out_dir
 
 
