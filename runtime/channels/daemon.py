@@ -39,6 +39,7 @@ from . import Channel, InboundMessage, OutboundMessage  # noqa: E402
 from .telegram import TelegramChannel  # noqa: E402
 import config as _C  # noqa: E402  §7.11
 import detection_lexicon as _dl  # noqa: E402  lessici NL traducibili
+from messages import get as _msg  # noqa: E402  §11 i18n (fonte unica)
 
 log = logging.getLogger("metnos.daemon")
 
@@ -174,15 +175,23 @@ def _classify_yes_no(text: str) -> str:
 
 PAIR_COMMAND = "/pair "
 START_COMMAND = "/start "  # Multi-user pairing token (ADR 0083, 4/5/2026)
-UNPAIRED_REPLY = (
-    "Non ti riconosco su questo canale. Chiedi a Roberto un codice di pairing, "
-    "poi inviamelo come `/pair <codice>`."
-)
 LEVEL_BLOCKS_RUN = {"ReadOnly"}  # questi non ottengono run_turn (per ora)
-LEVEL_REPLY_BLOCKED = (
-    "Sei pairato come {level}: posso solo leggere, non eseguire ancora azioni "
-    "per te. Chiedi a Roberto di alzare il livello."
-)
+
+
+def _format_dialog_completion(dialog, new_state, title: str) -> str:
+    """Summary di completamento dialogo (§11 i18n, fonte unica #102): header
+    MSG_DIALOG_COMPLETED + righe var→valore con mascheratura credentials."""
+    from messages import get as _msg
+    lines = [_msg("MSG_DIALOG_COMPLETED", title=title)]
+    for s in dialog:
+        v = s.get("var")
+        k = (s.get("schema") or {}).get("kind")
+        val = (new_state.get("values_collected") or {}).get(v)
+        if k == "credentials" or (s.get("schema") or {}).get("secret"):
+            lines.append(f"  {v}: ********")
+        else:
+            lines.append(f"  {v}: {val}")
+    return "\n".join(lines)
 
 
 def _format_turn_result(result) -> str:
@@ -509,18 +518,9 @@ class ChannelDaemon:
                     False, None)
         if cres.get("completed"):
             new_state = cres["state"]
-            # Summary all'utente: mostra le var raccolte. Maschera i valori
-            # con kind credentials per non echeggiare password in chat.
-            lines = [_msg("MSG_DIALOG_COMPLETED", title=state.get('title', '?'))]
-            for s in dialog:
-                v = s.get("var")
-                k = (s.get("schema") or {}).get("kind")
-                val = new_state["values_collected"].get(v)
-                if k == "credentials" or (s.get("schema") or {}).get("secret"):
-                    lines.append(f"  {v}: ********")
-                else:
-                    lines.append(f"  {v}: {val}")
-            summary = "\n".join(lines)
+            # Summary all'utente (fonte unica #102: maschera credentials).
+            summary = _format_dialog_completion(dialog, new_state,
+                                                state.get("title", "?"))
             return None, True, summary
         # Prossimo step
         next_step = dialog[idx + 1]
@@ -528,8 +528,9 @@ class ChannelDaemon:
         next_kind = (next_step.get("schema") or {}).get("kind")
         masked_hint = ""
         if next_kind == "credentials":
-            masked_hint = "\n(la risposta sara' mascherata in registro)"
-        return (f"Step {idx+2}/{len(dialog)} — {next_prompt}{masked_hint}",
+            masked_hint = _msg("MSG_DIALOG_MASKED_HINT")
+        return (_msg("MSG_DIALOG_STEP_PROMPT", n=idx + 2, total=len(dialog),
+                     prompt=next_prompt, hint=masked_hint),
                 False, None)
 
     def _on_get_inputs_completed(self, state: dict, *,
@@ -613,10 +614,11 @@ class ChannelDaemon:
             p = pairing.consume_code(code, self.channel.name, msg.sender_id)
         except pairing.PairingError as e:
             self._send_text(msg.sender_id,
-                            f"Pairing fallito: {e}", reply_to=msg.message_id)
+                            _msg("MSG_PAIR_FAILED", error=e),
+                            reply_to=msg.message_id)
             return {"ok": False, "reason": "pairing_failed", "error": str(e)}
         self._send_text(msg.sender_id,
-                        f"Pairato come {p.autonomy_level}. Benvenuto.",
+                        _msg("MSG_PAIR_OK", level=p.autonomy_level),
                         reply_to=msg.message_id)
         return {"ok": True, "paired": p.autonomy_level}
 
@@ -631,7 +633,7 @@ class ChannelDaemon:
         token = msg.text[len(START_COMMAND):].strip()
         if not token:
             self._send_text(msg.sender_id,
-                            "Manca il token. Uso: /start <token>",
+                            _msg("ERR_START_MISSING_TOKEN"),
                             reply_to=msg.message_id)
             return {"ok": False, "reason": "missing_token"}
         try:
@@ -640,7 +642,7 @@ class ChannelDaemon:
         except ImportError as e:
             log.warning("users module unavailable: %s", e)
             self._send_text(msg.sender_id,
-                            "Servizio utenti non disponibile.",
+                            _msg("ERR_USER_SERVICE_UNAVAILABLE"),
                             reply_to=msg.message_id)
             return {"ok": False, "reason": "users_unavailable"}
         try:
@@ -650,14 +652,14 @@ class ChannelDaemon:
         except ValueError as e:
             log.info("start token rifiutato: %s", e)
             self._send_text(msg.sender_id,
-                            "Token scaduto o invalido.",
+                            _msg("ERR_TOKEN_INVALID"),
                             reply_to=msg.message_id)
             return {"ok": False, "reason": "invalid_token", "error": str(e)}
         name = user.get("name", "?")
         role = user.get("role", "?")
         self._send_text(
             msg.sender_id,
-            f"Sei stato pairato come {name} ({role}). Benvenuto/a in Metnos.",
+            _msg("MSG_START_PAIRED_OK", name=name, role=role),
             reply_to=msg.message_id,
         )
         return {"ok": True, "user_id": user.get("id"), "name": name, "role": role}
@@ -997,7 +999,7 @@ class ChannelDaemon:
                 url = f"{base}/admin/promotions/review"
                 self._send_text(
                     msg.sender_id,
-                    f"Apri il form review: {url}",
+                    _msg("MSG_OPEN_FORM_REVIEW", url=url),
                     reply_to=msg.message_id,
                 )
             except Exception as ex:  # noqa: BLE001
@@ -1016,14 +1018,14 @@ class ChannelDaemon:
             except Exception as ex:  # noqa: BLE001
                 log.warning("promoter ok callback failed: %s", ex)
                 self._send_text(msg.sender_id,
-                                f"Errore conferma promoter: {ex}",
+                                _msg("ERR_PROMOTER_ACK", error=ex),
                                 reply_to=msg.message_id)
                 return {"ok": False, "reason": "ack_failed",
                         "error": str(ex)}
             grace = state.get("grace_until") or "(grace gia' finalizzata)"
             self._send_text(
                 msg.sender_id,
-                f"Confermato. In grace fino a {grace}.",
+                _msg("MSG_PROMOTER_CONFIRMED", grace=grace),
                 reply_to=msg.message_id,
             )
             return {"ok": True, "callback": "promoter_ok",
@@ -1038,22 +1040,22 @@ class ChannelDaemon:
             except Exception as ex:  # noqa: BLE001
                 log.warning("promoter rollback callback failed: %s", ex)
                 self._send_text(msg.sender_id,
-                                f"Errore rollback: {ex}",
+                                _msg("ERR_ROLLBACK", error=ex),
                                 reply_to=msg.message_id)
                 return {"ok": False, "reason": "rollback_crash",
                         "error": str(ex)}
             if result.get("ok"):
                 self._send_text(
                     msg.sender_id,
-                    f"Promozione annullata: executor "
-                    f"`{result.get('name', '?')}` rimosso.",
+                    _msg("MSG_PROMOTION_CANCELLED",
+                         name=result.get("name", "?")),
                     reply_to=msg.message_id,
                 )
             else:
                 self._send_text(
                     msg.sender_id,
-                    f"Rollback non riuscito: "
-                    f"{result.get('error', 'errore sconosciuto')}",
+                    _msg("ERR_ROLLBACK_FAILED",
+                         error=result.get("error") or _msg("MSG_UNKNOWN_ERROR")),
                     reply_to=msg.message_id,
                 )
             return {"ok": bool(result.get("ok")),
@@ -1166,7 +1168,7 @@ class ChannelDaemon:
             )
         except approval_registry.ApprovalError as e:
             self._send_text(msg.sender_id,
-                            f"Approval non risolvibile: {e}",
+                            _msg("ERR_APPROVAL_UNRESOLVED", error=e),
                             reply_to=msg.message_id)
             return {"ok": False, "reason": "approval_failed", "error": str(e)}
         log.info("approval risolto: token=%s decision=%s sender=%s",
@@ -1295,9 +1297,11 @@ class ChannelDaemon:
                     existing = pairing.get_pairing(self.channel.name, msg.sender_id)
                 except Exception as ex:
                     log.warning("on-the-fly pair from users.db failed: %s", ex)
+        from messages import get as _msg  # §11 i18n
         if existing is None:
             log.warning("sender non pairato: %s/%s", self.channel.name, msg.sender_id)
-            self._send_text(msg.sender_id, UNPAIRED_REPLY, reply_to=msg.message_id)
+            self._send_text(msg.sender_id, _msg("MSG_UNPAIRED"),
+                            reply_to=msg.message_id)
             return {"ok": False, "reason": "sender_not_paired", "sender": msg.sender_id}
 
         # Touch last_seen per audit/observability
@@ -1306,7 +1310,7 @@ class ChannelDaemon:
         # Livello ReadOnly: nessuna azione, risposta cortese
         if existing.autonomy_level in LEVEL_BLOCKS_RUN:
             self._send_text(msg.sender_id,
-                            LEVEL_REPLY_BLOCKED.format(level=existing.autonomy_level),
+                            _msg("MSG_LEVEL_BLOCKED", level=existing.autonomy_level),
                             reply_to=msg.message_id)
             return {"ok": False, "reason": "autonomy_too_low",
                     "level": existing.autonomy_level}
@@ -1540,7 +1544,7 @@ class ChannelDaemon:
             # Notice §2.8 se download Telegram fallito: niente silent failure.
             if (msg.extra or {}).get("attached_failed"):
                 self._send_text(msg.sender_id,
-                                 "(non sono riuscito a scaricare la foto allegata)",
+                                 _msg("MSG_PHOTO_DOWNLOAD_FAILED"),
                                  reply_to=msg.message_id)
             # Propaga actor (multi-user 1/5/2026) e channel a run_turn cosi' che
             # tool atomici (get_location, undo_last_turn, request_location_from_user,
@@ -1556,7 +1560,7 @@ class ChannelDaemon:
                                   turn.turn_id)
         except Exception as e:
             log.exception("run_turn fallito")
-            answer = f"(errore interno: {type(e).__name__}: {e})"
+            answer = _msg("ERR_TURN_INTERNAL", detail=f"{type(e).__name__}: {e}")
             turn = None
         # LOCATION REQUEST fase 1 (regola PLANNER §2-quater): se il turno ha
         # emesso request_location_from_user, NON mandiamo answer (e' vuoto);
@@ -1568,7 +1572,7 @@ class ChannelDaemon:
                 if self.channel.name == "telegram":
                     self.channel.prompt_location_share(
                         chat_id=chat_id_for,
-                        goal=pl.get("goal", "rispondere alla tua richiesta"),
+                        goal=pl.get("goal") or _msg("MSG_DEFAULT_GOAL"),
                     )
             except Exception as ex:
                 log.warning("prompt_location_share failed: %s", ex)
