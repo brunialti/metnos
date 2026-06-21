@@ -3196,6 +3196,46 @@ def _detect_false_success(final_message: str | None, counts: dict | None) -> boo
     return bool(_FALSE_SUCCESS_RE.search(final_message))
 
 
+# Claim di MUTAZIONE su un oggetto REALE (file/foglio/documento/evento/mail/...):
+# distinto dal claim di lettura/sintesi. «ho creato il foglio» richiede una
+# mutazione vera; «ho creato un riepilogo/elenco» (testo) NON e' una mutazione e
+# NON deve matchare → object list stretta per evitare falsi positivi.
+_MUTATION_CLAIM_RE = re.compile(
+    r"(?<!non )(?<!not )\b(?:"
+    r"(?:creat|generat|salvat|scritt|prepar)\w*\s+(?:il|lo|la|un|uno|una|"
+    r"the|a|an)?\s*(?:foglio|file|document\w*|spreadsheet|sheet|calendari\w*|"
+    r"event\w*|cartell\w*|folder)"
+    r"|(?:inviat|spedit|mandat|sent)\w*\s+(?:il|la|un|the|a|an)?\s*"
+    r"(?:mail|email|messaggi\w*|message)"
+    r"|(?:spostat|cancellat|eliminat|delet|mov)\w*\s+(?:il|la|i|le|the)?\s*"
+    r"(?:file|mail|email|messaggi\w*|event\w*)"
+    r"|(?:created|saved|wrote|generated|prepared)\s+(?:the|a|an)?\s*"
+    r"(?:file|spreadsheet|sheet|document|calendar|event|folder)"
+    r")", re.IGNORECASE)
+
+
+def _detect_false_mutation(final_message: str | None, counts: dict | None) -> bool:
+    """True se il final CLAIMA una MUTAZIONE su un oggetto reale (creato il
+    foglio/inviato la mail/...) ma `counts.mutations==0` e nessuna mutazione e'
+    stata tentata. Leggere/trovare elementi NON realizza una mutazione → il
+    claim e' falso (§2.8). Indipendente da `items` (a differenza di
+    _detect_false_success, che copre la pipeline TOTALMENTE vuota). §7.9."""
+    if not final_message or not isinstance(counts, dict):
+        return False
+    if counts.get("mutations", 0) > 0 or counts.get("mutating_attempted"):
+        return False
+    # Negazione esplicita dell'azione («non ho creato», «non sono riuscito a
+    # inviare», «couldn't create») → il final e' gia' onesto, non toccarlo.
+    if re.search(r"non\s+(?:ho|sono\s+riuscit\w+\s+a|sono\s+stat\w+\s+in\s+grado"
+                 r"\s+di)\s*\w*\s*(?:creat|inviat|spedit|salvat|generat|scritt|"
+                 r"spostat|cancellat|prepar)"
+                 r"|(?:couldn'?t|could\s+not|was\s+not\s+able\s+to|did\s*n'?t)"
+                 r"\s+\w*\s*(?:creat|sen[dt]|sav|writ|generat|mov|delet|prepar)",
+                 final_message, re.IGNORECASE):
+        return False
+    return bool(_MUTATION_CLAIM_RE.search(final_message))
+
+
 def invoke_executor(executor, args, timeout_s=30, *, autonomy="supervised",
                     turn_id=None, actor=None, channel=None):
     """Invoca un executor, opzionalmente in sandbox bubblewrap.
@@ -4356,6 +4396,22 @@ class TurnLog:
                 # contraddittorio, turn 36a40c35/e591854e). Il testo LLM resta
                 # nel log dello step per audit.
                 self.final_message = _fs_notice
+            # Claim di MUTAZIONE (creato il foglio / inviato la mail / ...) ma
+            # 0 mutazioni reali — anche con items>0 (es. ha LETTO mail ma NON
+            # creato il foglio): il synth mente sull'azione. Sostituisci con la
+            # verità (§2.8, bug live 21/6 fatture Anthropic).
+            elif _detect_false_mutation(self.final_message, self.effect_counts):
+                self.false_success_detected = True
+                from i18n import register_key_if_missing as _rk
+                _rk("MSG_FALSE_MUTATION_NOTICE",
+                    "⚠ L'azione dichiarata (creazione/invio/salvataggio) NON è "
+                    "stata eseguita: 0 modifiche reali in questo turno. La "
+                    "richiesta non ha prodotto dati su cui agire (nessun file "
+                    "creato, nessun messaggio inviato).",
+                    "⚠ The stated action (create/send/save) was NOT performed: "
+                    "0 actual changes this turn. The request produced no data "
+                    "to act on (no file created, no message sent).")
+                self.final_message = msg("MSG_FALSE_MUTATION_NOTICE")
         # Propaga attachments dall ultimo step che ne ha prodotti (use
         # case realistico: un solo find_images_indices per turno).
         for s_step in reversed(self.steps):
