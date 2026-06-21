@@ -55,6 +55,8 @@ _RE_LAST_ND = re.compile(r"^last[-_ ]?(\d+)[-_ ]?d(?:ays?)?$")
 _RE_NEXT_ND = re.compile(r"^next[-_ ]?(\d+)[-_ ]?d(?:ays?)?$")
 _RE_LAST_NH = re.compile(r"^last[-_ ]?(\d+)[-_ ]?h(?:ours?)?$")
 _RE_NEXT_NH = re.compile(r"^next[-_ ]?(\d+)[-_ ]?h(?:ours?)?$")
+_RE_LAST_NW = re.compile(r"^last[-_ ]?(\d+)[-_ ]?w(?:eeks?)?$")
+_RE_NEXT_NW = re.compile(r"^next[-_ ]?(\d+)[-_ ]?w(?:eeks?)?$")
 _RE_LAST_NM = re.compile(r"^last[-_ ]?(\d+)[-_ ]?m(?:in(?:utes?)?)?$")
 _RE_NEXT_NM = re.compile(r"^next[-_ ]?(\d+)[-_ ]?m(?:in(?:utes?)?)?$")
 _RE_LAST_NY = re.compile(r"^last[-_ ]?(\d+)[-_ ]?y(?:ears?)?$")
@@ -168,6 +170,16 @@ def _resolve_canonical(spec, now):
         if n <= 0:
             raise ValueError(f"last/next-Nh requires N>=1, got {spec!r}")
         delta = timedelta(hours=n)
+        if spec.startswith("last"):
+            return _aware(now - delta), _aware(now)
+        return _aware(now), _aware(now + delta)
+    # Weeks (N*7 giorni). «ultime 2 settimane» → "last-2w".
+    m = _RE_LAST_NW.match(spec) or _RE_NEXT_NW.match(spec)
+    if m:
+        n = int(m.group(1))
+        if n <= 0:
+            raise ValueError(f"last/next-Nw requires N>=1, got {spec!r}")
+        delta = timedelta(weeks=n)
         if spec.startswith("last"):
             return _aware(now - delta), _aware(now)
         return _aware(now), _aware(now + delta)

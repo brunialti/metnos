@@ -20,7 +20,7 @@ Distinto da `time_window_parser.py`: quello valida i VALORI canonici
 (lato runtime). Il vocabolario emesso e' il core supportato da TUTTI i
 consumer di `time_window` (email_metnos._resolve_window,
 time_window_parser, find_images_indices._parse_time_window):
-`today | yesterday | last-Nh | last-Nd`.
+`today | yesterday | last-Nh | last-Nd | last-Nw | last-Nm | last-Ny`.
 
 Confini (§2.8, mai inventare una finestra):
 - solo se l'utente ESPRIME la finestra: query senza tempo → nessun
@@ -50,6 +50,14 @@ _SAFE_VERB_HEADS = frozenset({"read", "find", "get", "list"})
 # «giorni/giorno/gg/days/d».
 _HOURS = r"(?:or[ae]\b|h\b|hours?\b|hrs?\b)"
 _DAYS = r"(?:giorn[oi]\b|gg\b|days?\b|d\b)"
+# Settimane/mesi/anni: forma esplicita N+unita' (segnale forte, rolling). Il
+# bare singolare («ultimo mese/anno», «settimana scorsa») resta NOOP perche'
+# ambiguo (calendario vs rolling) → decide il planner. Vocabolario canonico
+# single-char condiviso da TUTTI i consumer (last-Nw/last-Nm/last-Ny;
+# m=mesi~30g, y=anni~365g — vedi time_window_parser/email_metnos/find_images).
+_WEEKS = r"(?:settiman[ae]\b|sett\b|weeks?\b|w\b)"
+_MONTHS = r"(?:mes[ei]\b|months?\b|m\b)"
+_YEARS = r"(?:ann[oi]\b|years?\b|y\b)"
 
 # Determinante IT (ultime/scorse/passate, ogni genere/numero) e EN
 # (last/past). Word-bounded, case-insensitive a livello di scan.
@@ -86,6 +94,27 @@ _add(rf"\b{_DET_IT}\s+(\d{{1,4}})\s*{_DAYS}",
      lambda m: f"last-{_n(m)}d" if _n(m) else None)
 _add(rf"\b{_DET_EN}\s+(\d{{1,4}})\s*{_DAYS}",
      lambda m: f"last-{_n(m)}d" if _n(m) else None)
+# N + settimane/mesi/anni: «ultimi 12 mesi», «last 2 weeks», «ultimi 3 anni».
+# Anche postfix IT: «12 mesi fa/scorsi». Forma esplicita → priority 0.
+_add(rf"\b{_DET_IT}\s+(\d{{1,4}})\s*{_WEEKS}",
+     lambda m: f"last-{_n(m)}w" if _n(m) else None)
+_add(rf"\b{_DET_EN}\s+(\d{{1,4}})\s*{_WEEKS}",
+     lambda m: f"last-{_n(m)}w" if _n(m) else None)
+_add(rf"\b{_DET_IT}\s+(\d{{1,4}})\s*{_MONTHS}",
+     lambda m: f"last-{_n(m)}m" if _n(m) else None)
+_add(rf"\b{_DET_EN}\s+(\d{{1,4}})\s*{_MONTHS}",
+     lambda m: f"last-{_n(m)}m" if _n(m) else None)
+_add(rf"\b{_DET_IT}\s+(\d{{1,4}})\s*{_YEARS}",
+     lambda m: f"last-{_n(m)}y" if _n(m) else None)
+_add(rf"\b{_DET_EN}\s+(\d{{1,4}})\s*{_YEARS}",
+     lambda m: f"last-{_n(m)}y" if _n(m) else None)
+# Postfix «N <unita'> fa/scorsi/passati»: «12 mesi fa», «2 anni scorsi»
+_add(rf"\b(\d{{1,4}})\s*{_WEEKS}\s+(?:fa\b|scors[ae]|passat[ae])",
+     lambda m: f"last-{_n(m)}w" if _n(m) else None)
+_add(rf"\b(\d{{1,4}})\s*{_MONTHS}\s+(?:fa\b|scors[ai]|passat[ai])",
+     lambda m: f"last-{_n(m)}m" if _n(m) else None)
+_add(rf"\b(\d{{1,4}})\s*{_YEARS}\s+(?:fa\b|scors[ai]|passat[ai])",
+     lambda m: f"last-{_n(m)}y" if _n(m) else None)
 # Singolare nudo (N=1): «ultima ora», «ultimo giorno», «last hour», «past day»
 _add(rf"\b{_DET_IT}\s+ora\b", lambda m: "last-1h")
 _add(rf"\b{_DET_EN}\s+hour\b", lambda m: "last-1h")
@@ -106,7 +135,7 @@ _add(r"\bieri\b|\byesterday\b", lambda m: "yesterday", priority=1)
 def parse_query_time_window(query: str) -> str | None:
     """Estrae la finestra temporale RELATIVA espressa nella query NL.
 
-    Ritorna la spec canonica (`today|yesterday|last-Nh|last-Nd`) o None se
+    Ritorna la spec canonica (`today|yesterday|last-Nh|last-Nd|last-Nw|last-Nm|last-Ny`) o None se
     la query non esprime una finestra riconoscibile. Piu' match → vince la
     forma esplicita N+unita' (priority 0), poi il piu' a sinistra.
     Deterministico, mai eccezioni."""
@@ -145,9 +174,21 @@ def resolve_time_window(tool: str, args: dict, query: str,
     spec = parse_query_time_window(query)
     if not spec:
         return args  # la query non esprime una finestra: mai spurio
-    cur = args.get("time_window")
-    if isinstance(cur, str) and cur.strip().lower() == spec:
-        return args  # gia' canonico
     out = dict(args)
-    out["time_window"] = spec
-    return out
+    cur = args.get("time_window")
+    if not (isinstance(cur, str) and cur.strip().lower() == spec):
+        out["time_window"] = spec
+    # §2.4/§7.9 — DE-CONFLAZIONE: il numero della finestra («12» in «12 mesi») non
+    # deve finire anche in un arg di CONTEGGIO. Bug live 21/6: «ultimi 12 mesi» →
+    # l'LLM lega 12 a max_results=12 (legge solo 12 mail). Se la spec porta una N
+    # e un arg-conteggio del manifest vale ESATTAMENTE quella N, era la finestra
+    # mal-legata → rimuovilo (torna al default). General, deterministico, no
+    # hardcoding: vale per ogni tool/arg-conteggio dichiarato nello schema.
+    _mn = re.match(r"^last-(\d+)[hdwmy]$", spec)
+    if _mn:
+        n = int(_mn.group(1))
+        for _ca in ("max_results", "max_total", "top_k", "top", "limit",
+                    "max_results_total", "count"):
+            if _ca in props and out.get(_ca) == n:
+                out.pop(_ca, None)
+    return out if out != args else args
