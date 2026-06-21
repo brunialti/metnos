@@ -42,6 +42,34 @@ _STEPREF_RE = re.compile(r"\$\{step(\d+)\.(@?[a-zA-Z_][a-zA-Z0-9_.*]*)\}")
 _STEPSREF_RE = re.compile(r"\$\{steps\.(\d+)\.(@?[a-zA-Z_][a-zA-Z0-9_.*]*)\}")
 _RUNTIME_RE = re.compile(r"\$\{RUNTIME:([a-zA-Z_][a-zA-Z0-9_]*)\}")
 
+# Campi testuali in cascata per il render bullet-list delle entries (§7.9).
+_BULLET_FIELDS_DATED = ("start", "summary", "subject", "title",
+                        "name", "path", "url", "date")
+_BULLET_FIELDS = ("start", "summary", "subject", "title", "name", "path", "url")
+
+
+def _entries_bullet_lines(entries: list, *, fields: tuple,
+                          more_key: str, max_items: int = 20) -> str:
+    """Render condiviso entries→bullet-list (#0 fonte unica). Primi 2-3 campi
+    testuali per entry (cap 60 char/campo, 80 per scalare), tail i18n `more_key`
+    quando si supera `max_items`. fields/more_key passati dai call-site per
+    preservarne l'esatto comportamento."""
+    lines = []
+    for e in entries[:max_items]:
+        if isinstance(e, dict):
+            bits = []
+            for k in fields:
+                if k in e and e[k]:
+                    bits.append(str(e[k])[:60])
+                if len(bits) >= 3:
+                    break
+            lines.append("- " + " | ".join(bits))
+        else:
+            lines.append(f"- {str(e)[:80]}")
+    more = len(entries) - max_items
+    tail = ("\n" + _msg(more_key, more=more)) if more > 0 else ""
+    return "\n".join(lines) + tail
+
 
 # ── Runtime placeholder resolver ──────────────────────────────────────────
 
@@ -794,23 +822,9 @@ def _render_final_message(template: str, history: list[StepRun]) -> str:
         if v is None and path == "summary":
             entries = result.get("entries", [])
             if isinstance(entries, list) and entries:
-                lines = []
-                for e in entries[:20]:  # cap a 20 elementi per readability
-                    if isinstance(e, dict):
-                        # Pattern universal: prendi i primi 2-3 field testuali
-                        bits = []
-                        for k in ("start", "summary", "subject", "title",
-                                  "name", "path", "url", "date"):
-                            if k in e and e[k]:
-                                bits.append(str(e[k])[:60])
-                            if len(bits) >= 3:
-                                break
-                        lines.append("- " + " | ".join(bits))
-                    else:
-                        lines.append(f"- {str(e)[:80]}")
-                more = len(entries) - 20
-                tail = ("\n" + _msg("MSG_RENDER_MORE_HIDDEN", more=more)) if more > 0 else ""
-                return "\n".join(lines) + tail
+                return _entries_bullet_lines(
+                    entries, fields=_BULLET_FIELDS_DATED,
+                    more_key="MSG_RENDER_MORE_HIDDEN")
         return _format_value(v)
     def _sub_step(m):
         n = int(m.group(1))
@@ -1229,22 +1243,10 @@ class Executor:
                                             rendered.strip())
                         )
                         if is_count_only:
-                            lines = []
-                            for e in entries[:20]:
-                                if isinstance(e, dict):
-                                    bits = []
-                                    for k in ("start", "summary", "subject",
-                                              "title", "name", "path", "url"):
-                                        if k in e and e[k]:
-                                            bits.append(str(e[k])[:60])
-                                        if len(bits) >= 3:
-                                            break
-                                    lines.append("- " + " | ".join(bits))
-                                else:
-                                    lines.append(f"- {str(e)[:80]}")
-                            more = len(entries) - 20
-                            tail = ("\n" + _msg("MSG_RENDER_AND_MORE", more=more)) if more > 0 else ""
-                            rendered = (rendered.strip() + "\n\n" if rendered.strip() else "") + "\n".join(lines) + tail
+                            bullets = _entries_bullet_lines(
+                                entries, fields=_BULLET_FIELDS,
+                                more_key="MSG_RENDER_AND_MORE")
+                            rendered = (rendered.strip() + "\n\n" if rendered.strip() else "") + bullets
                 # §2.8: render degenere (placeholder reso vuoto, es. get_now
                 # "Sono le .") → sintetizza dalle observation via LLM fast.
                 if _render_is_degenerate(framework.final_message, rendered):

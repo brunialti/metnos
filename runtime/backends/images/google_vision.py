@@ -39,13 +39,12 @@ def _refresh_access_token() -> str:
     Raise ValueError con error_class se token assente o refresh fallisce.
     """
     token_path = _google_token_path()
+    from messages import get as _msg  # §11 i18n
     if not token_path.is_file():
-        raise ValueError(f"token Google assente: {token_path} "
-                         "(autentica la skill google-workspace)")
+        raise ValueError(_msg("ERR_GOOGLE_TOKEN_ABSENT", path=token_path))
     tok = json.loads(token_path.read_text(encoding="utf-8"))
     if "cloud-vision" not in " ".join(tok.get("scopes", [])):
-        raise ValueError("scope `cloud-vision` mancante nel token Google. "
-                         "Re-OAuth con scope cloud-vision richiesto.")
+        raise ValueError(_msg("ERR_GOOGLE_SCOPE_MISSING"))
     body = (f"client_id={tok['client_id']}&"
             f"client_secret={tok['client_secret']}&"
             f"refresh_token={tok['refresh_token']}&"
@@ -86,7 +85,8 @@ def _annotate(image_payload: dict, access_token: str,
         resp = json.loads(r.read())
     item = (resp.get("responses") or [{}])[0]
     if "error" in item:
-        raise ValueError(item["error"].get("message", "vision error"))
+        from messages import get as _msg  # §11 i18n
+        raise ValueError(item["error"].get("message") or _msg("ERR_VISION_API"))
     return item
 
 
@@ -221,8 +221,8 @@ def find_images_web(args: dict) -> dict:
         face_boxes = [face_boxes] if face_boxes else []
 
     if not paths and not urls:
-        return {"ok": False, "error": "almeno uno fra `paths` e `urls` "
-                                       "deve essere non-vuoto",
+        from messages import get as _msg  # §11 i18n
+        return {"ok": False, "error": _msg("ERR_VISION_NEED_SOURCE"),
                 "error_class": "invalid_args"}
 
     # Cap MAX_PATHS_PER_CALL §2.7 (25/5/2026): Google Vision Web Detection
@@ -251,8 +251,9 @@ def find_images_web(args: dict) -> dict:
     for idx, path_str in enumerate(paths):
         p = Path(path_str)
         if not p.is_file():
+            from messages import get as _msg  # §11 i18n
             errors.append({"source": path_str,
-                           "error": "file non trovato",
+                           "error": _msg("ERR_FILE_NOT_FOUND"),
                            "error_class": "not_found"})
             continue
         # §7.3 face crop: se face_boxes[idx] disponibile e valido,
