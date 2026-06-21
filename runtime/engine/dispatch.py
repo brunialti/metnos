@@ -376,6 +376,52 @@ def _align_framework_objects(framework: Framework, intent,
                     st.tool = cand2
                     changed = True
                     break
+        # 2a pass — oggetto ESTRANEO a TUTTO l'intent su step PRODUTTORE.
+        # Bug live 21/6 (fatture Anthropic): clausola {find,messages} ma il
+        # proposer-LLM compone `read_urls_html` (verbo `read` non fra i verbi
+        # intent → il pass per-verbo sopra lo manca; object `urls` MAI chiesto
+        # dall'intent). Generale: un produttore (read/find/get/list) con oggetto
+        # assente da ogni oggetto-intent e' un misroute → riallinea al primo
+        # oggetto-produttore dell'intent non gia' coperto. Intent-driven
+        # (richiede dissenso esplicito), §7.9 deterministico, no LLM.
+        try:
+            from compound_decomposer import (PRODUCER_VERBS as _PRODV,
+                                             derive_tool_name as _derive)
+            all_objs = {o for lst in by_verb.values() for o in lst}
+            producer_objs = [a.get("object") for a in actions
+                             if isinstance(a, dict)
+                             and a.get("verb") in _PRODV and a.get("object")]
+            if all_objs and producer_objs:
+                covered = set()
+                for st in steps:
+                    nc2 = _ng.parse_name(getattr(st, "tool", "") or "")
+                    if nc2 and nc2.obj in all_objs:
+                        covered.add(nc2.obj)
+                for st in steps:
+                    tool = getattr(st, "tool", None)
+                    nc = _ng.parse_name(tool) if tool else None
+                    if (not nc or nc.verb not in _PRODV
+                            or nc.obj in all_objs):
+                        continue  # non-produttore o oggetto gia' richiesto
+                    target = next((o for o in producer_objs
+                                   if o not in covered), producer_objs[0])
+                    new_tool = _derive(nc.verb, target, names)
+                    if new_tool and new_tool != tool:
+                        st.tool = new_tool
+                        # Gli args erano per il tool SBAGLIATO (es. read_urls_html
+                        # con `urls=[...]`): inutili/dannosi per il nuovo tool con
+                        # schema diverso. Azzera lasciando solo gli args runtime/
+                        # pipe (`_actor/_lang/...`, `from_step/entries`) → il nuovo
+                        # tool usa i suoi default (read_messages: max_results=500)
+                        # e i passi a valle (extract/filter) selezionano.
+                        old_args = getattr(st, "args", None) or {}
+                        st.args = {k: v for k, v in old_args.items()
+                                   if k.startswith("_")
+                                   or k in ("from_step", "from", "entries")}
+                        covered.add(target)
+                        changed = True
+        except Exception as ex:
+            log.warning("align_objects foreign-obj noop: %r", ex)
         if changed:
             log.info("[align_objects] tool ri-allineati all'intent: %s",
                      [s.tool for s in steps])
