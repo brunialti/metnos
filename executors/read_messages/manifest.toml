@@ -10,8 +10,8 @@ revertible  = false
 lifecycle   = "active"
 
 [description]
-it = "SCOPO: legge messaggi IMAP combinando filtri temporali e testuali. PATTERN: read_messages(account=\"metnos_system\", folder=\"INBOX\", max_results=20). NON: inviare (-> send_messages) o spostare messaggi (-> move_messages). OUT: entries=[{from,subject,date,message_id,size,body_preview,has_attachment,category_hints}]"
-en = "SCOPO: reads IMAP messages combining time and text filters. PATTERN: read_messages(account=\"metnos_system\", folder=\"INBOX\", max_results=20). NON: sending (-> send_messages) or moving messages (-> move_messages). OUT: entries=[{from,subject,date,message_id,size,body_preview,has_attachment,category_hints}]"
+it = "SCOPO: legge messaggi IMAP combinando filtri temporali e testuali. PATTERN: read_messages(account=\"metnos_system\", folder=\"INBOX\", max_results=500). NON: inviare (-> send_messages) o spostare messaggi (-> move_messages). OUT: entries=[{from,subject,date,message_id,size,body_preview,has_attachment,category_hints}]"
+en = "SCOPO: reads IMAP messages combining time and text filters. PATTERN: read_messages(account=\"metnos_system\", folder=\"INBOX\", max_results=500). NON: sending (-> send_messages) or moving messages (-> move_messages). OUT: entries=[{from,subject,date,message_id,size,body_preview,has_attachment,category_hints}]"
 
 [code]
 files  = ["read_messages.py"]
@@ -37,11 +37,11 @@ en = "IMAP folder to read. Default 'INBOX'. Examples (Dovecot/Maildir style): 'I
 
 [args.properties.max_results]
 type        = "integer"
-default     = 20
+default     = 500
 
 [args.properties.max_results.description]
-it = "Numero massimo di email da restituire (le piu' recenti prima). Range 1..200."
-en = "Maximum number of emails to return (most recent first). Range 1..200."
+it = "Numero massimo di email da restituire (le piu' recenti prima). Range 1..1000. Default 500."
+en = "Maximum number of emails to return (most recent first). Range 1..1000. Default 500."
 
 [args.properties.unseen_only]
 type        = "boolean"

@@ -39,6 +39,15 @@ from messages import get as _msg  # noqa: E402
 # --- helpers ---------------------------------------------------------------
 
 _MAX_ATTACH_BYTES_PER_MSG = 25 * 1024 * 1024
+
+# Limiti di lettura — FONTE UNICA del default operativo (§7.2/§2.5). Il runtime
+# NON inietta il default del manifest: read_messages passa gli args grezzi a
+# backend.read, quindi il default vero nasce qui. Il manifest di read_messages li
+# DOCUMENTA e DEVE combaciare (guard: runtime/tests/test_mail_read_caps.py).
+_DEFAULT_MAX_RESULTS = 500
+_MAX_RESULTS_CAP = 1000
+_DEFAULT_MAX_TOTAL = 1000
+_MAX_TOTAL_CAP = 1000
 _MONTHS_IMAP = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
                 "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
 
@@ -411,20 +420,41 @@ def _resolve_window(tw):
         d = now.date() - datetime.timedelta(days=1)
         before = now.date()
         return _imap_date(d), _imap_date(before), "yesterday"
-    if s.startswith("last-") and s.endswith("d"):
-        try:
-            n = int(s[5:-1])
-        except ValueError:
-            return None, None, f"invalid:{s}"
-        d = (now - datetime.timedelta(days=n)).date()
+    # Preset-parola senza N: last-week/month/year.
+    _WORD = {"last-week": 7, "last-month": 30, "last-year": 365,
+             "last-settimana": 7, "last-mese": 30, "last-anno": 365}
+    if s in _WORD:
+        d = (now - datetime.timedelta(days=_WORD[s])).date()
         return _imap_date(d), None, s
-    if s.startswith("last-") and s.endswith("h"):
-        try:
-            n = int(s[5:-1])
-        except ValueError:
-            return None, None, f"invalid:{s}"
-        d = (now - datetime.timedelta(hours=n)).date()
-        return _imap_date(d), None, s
+    # §2.4 robustezza NL→determinismo: "N unita' fa". Tollera i prefissi che
+    # l'LLM inventa (last-/past-/now_minus_/-ago) e separatori liberi. Per IMAP
+    # (granularita' GIORNO) l'unita' 'm'/'min' NON ha senso → 'm' = MESI (l'LLM
+    # scrive "12m" per 12 mesi); mesi~30d, anni~365d (approssimazione adeguata
+    # al filtro SINCE). Differisce di proposito dal time_window_parser generale
+    # (dove 'm'=minuti), perche' qui il dominio e' date-only.
+    import re as _re
+    norm = s.replace("now_minus_", "").replace("now-minus-", "")
+    m = _re.search(r"(\d+)\s*[-_ ]?\s*"
+                   r"(d|day|days|giorn[oi]|h|hour|hours|or[ae]|"
+                   r"w|week|weeks|settiman[ae]|mo|month|months|mes[ei]|m|min|"
+                   r"y|year|years|ann[oi])\b", norm)
+    if m and any(k in s for k in ("last", "past", "minus", "ago")) or (m and s[0:1].isdigit()):
+        n = int(m.group(1)); u = m.group(2)
+        if n >= 1:
+            if u in ("d", "day", "days", "giorno", "giorni"):
+                delta = datetime.timedelta(days=n)
+            elif u in ("h", "hour", "hours", "ora", "ore"):
+                delta = datetime.timedelta(hours=n)
+            elif u in ("w", "week", "weeks", "settimana", "settimane"):
+                delta = datetime.timedelta(weeks=n)
+            elif u in ("mo", "month", "months", "mese", "mesi", "m", "min"):
+                delta = datetime.timedelta(days=30 * n)
+            elif u in ("y", "year", "years", "anno", "anni"):
+                delta = datetime.timedelta(days=365 * n)
+            else:
+                return None, None, f"unknown_preset:{s}"
+            d = (now - delta).date()
+            return _imap_date(d), None, f"last-{n}{u}"
     return None, None, f"unknown_preset:{s}"
 
 
@@ -439,10 +469,10 @@ def read(args: dict) -> dict:
 
     account_arg = args.get("account") or "metnos_system"
     folder = args.get("folder") or "INBOX"
-    max_results = int(args.get("max_results", 20))
+    max_results = int(args.get("max_results", _DEFAULT_MAX_RESULTS))
     unseen_only = bool(args.get("unseen_only", False))
     time_window = args.get("time_window")
-    max_total = int(args.get("max_total", 1000))
+    max_total = int(args.get("max_total", _DEFAULT_MAX_TOTAL))
     page_size = int(args.get("page_size", 50))
     from_contains = args.get("from_contains")
     subject_contains = args.get("subject_contains")
@@ -499,11 +529,11 @@ def read(args: dict) -> dict:
     # (cap superiore = parametro §2.1, non errore; 0-as-placeholder → default).
     # Bug q34 5/6: max_results=1000 faceva ok=False prima della lettura.
     if not isinstance(max_results, int) or max_results <= 0:
-        max_results = 200
-    max_results = min(max_results, 200)
+        max_results = _DEFAULT_MAX_RESULTS
+    max_results = min(max_results, _MAX_RESULTS_CAP)
     if not isinstance(max_total, int) or max_total <= 0:
-        max_total = 1000
-    max_total = min(max_total, 1000)
+        max_total = _DEFAULT_MAX_TOTAL
+    max_total = min(max_total, _MAX_TOTAL_CAP)
 
     since, before, window_label = _resolve_window(time_window)
     if time_window and window_label and window_label.startswith(("invalid:", "unknown_preset:")):
