@@ -43,6 +43,34 @@ def _connector_pattern(_lang: str) -> "re.Pattern":
 PRODUCER_VERBS = {"find", "read", "get", "list"}
 MUTATING_VERBS = {"write", "create", "set", "move", "delete", "send",
                    "share", "compress", "extract", "change", "order"}
+
+# Mapping format/qualifier hint NL → (object, qualifier). Fonte UNICA condivisa
+# da decompose_query (_detect_format_obj) e derive_tool_name (scelta della
+# variante-qualifier query-aware). Universal §7.9, lessico curato (no special-
+# case). NB: «foglio (di calcolo/elettronico)» = lo spreadsheet in IT (mancava
+# → «crea un foglio» derivava create_files_doc invece di _spreadsheet).
+_FORMAT_HINTS = {
+    "foglio di calcolo": ("files", "spreadsheet"),
+    "foglio elettronico": ("files", "spreadsheet"),
+    "foglio": ("files", "spreadsheet"),
+    "fogli": ("files", "spreadsheet"),
+    "spreadsheet": ("files", "spreadsheet"),
+    "excel": ("files", "spreadsheet"),
+    "xlsx": ("files", "xlsx"),
+    "xls": ("files", "xlsx"),
+    "csv": ("files", "csv"),
+    "pdf": ("files", "pdf"),
+    "doc": ("files", "doc"),
+    "document": ("files", "doc"),
+    "documento": ("files", "doc"),
+    "json": ("files", "json"),
+    "xml": ("files", "xml"),
+    "html": ("files", "html"),
+    "markdown": ("files", "md"),
+    "md": ("files", "md"),
+    "txt": ("files", "txt"),
+    "text": ("files", "txt"),
+}
 TRANSFORM_VERBS = {"filter", "sort", "group", "classify", "describe",
                     "render", "compute", "compare"}
 
@@ -151,11 +179,18 @@ def derive_tool_name(verb: str, obj: str, available_tools: set[str],
         generic = f"{verb}_entries"
         if generic in available_tools:
             return generic
-    # 4. Suffix variants (es. write_files_doc per write+files)
+    # 4. Suffix variants (es. write_files_doc per write+files). QUERY-AWARE:
+    # preferisci la variante il cui qualifier e' suggerito dalla query («foglio»
+    # → spreadsheet), non l'alfabetico (che sceglierebbe _doc < _spreadsheet).
     prefix = f"{verb}_{obj}_"
     suffix_variants = sorted(t for t in available_tools if t.startswith(prefix))
     if suffix_variants:
-        return suffix_variants[0]  # alphabetical first
+        if query:
+            ql = query.lower()
+            for hint, (_o, qual) in _FORMAT_HINTS.items():
+                if hint in ql and f"{verb}_{obj}_{qual}" in available_tools:
+                    return f"{verb}_{obj}_{qual}"
+        return suffix_variants[0]  # fallback alfabetico
     return None
 
 
@@ -336,26 +371,9 @@ def decompose_query(query: str, available_tools: set[str],
     if len(chunks) < 2:
         return None
 
-    # Mapping format hints → object/qualifier per "metti in X" pattern.
-    # Universal §7.9: file format → tool suffix.
-    FORMAT_HINTS = {
-        "spreadsheet": ("files", "spreadsheet"),
-        "excel": ("files", "spreadsheet"),
-        "xlsx": ("files", "xlsx"),
-        "xls": ("files", "xlsx"),
-        "csv": ("files", "csv"),
-        "pdf": ("files", "pdf"),
-        "doc": ("files", "doc"),
-        "document": ("files", "doc"),
-        "documento": ("files", "doc"),
-        "json": ("files", "json"),
-        "xml": ("files", "xml"),
-        "html": ("files", "html"),
-        "markdown": ("files", "md"),
-        "md": ("files", "md"),
-        "txt": ("files", "txt"),
-        "text": ("files", "txt"),
-    }
+    # Mapping format hints → object/qualifier (fonte UNICA module-level, include
+    # «foglio»→spreadsheet). Universal §7.9: file format → tool suffix.
+    FORMAT_HINTS = _FORMAT_HINTS
 
     def _detect_format_obj(chunk: str) -> Optional[tuple[str, str]]:
         """Detect (obj, qualifier) da format hint nel chunk.
