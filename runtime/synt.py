@@ -1120,8 +1120,8 @@ class Synt:
                 break
         if parent_manifest_path is None:
             return SynthProposal(
-                request_id=rid, strategy=Strategy("introspective", "specialize"),
-                state="rejected", artefact={}, reward=RewardBreakdown(0, 0, 0, 0, 0),
+                request_id=rid, strategy="specialize",
+                state="rejected", artefact={}, reward=RewardBreakdown(0.0, 0.0, "", 0.0, 0.0, 0.0, 0.0, 0.0),
                 rationale=f"parent manifest non trovato: {parent_name}",
             )
 
@@ -1130,8 +1130,8 @@ class Synt:
                 pm = tomllib.load(f)
         except Exception as e:
             return SynthProposal(
-                request_id=rid, strategy=Strategy("introspective", "specialize"),
-                state="rejected", artefact={}, reward=RewardBreakdown(0, 0, 0, 0, 0),
+                request_id=rid, strategy="specialize",
+                state="rejected", artefact={}, reward=RewardBreakdown(0.0, 0.0, "", 0.0, 0.0, 0.0, 0.0, 0.0),
                 rationale=f"parse error parent manifest: {e}",
             )
 
@@ -1151,9 +1151,9 @@ class Synt:
         target_dir = SYNTHESIZED_EXECUTORS_DIR / target_name
         if target_dir.exists():
             return SynthProposal(
-                request_id=rid, strategy=Strategy("introspective", "specialize"),
+                request_id=rid, strategy="specialize",
                 state="rejected", artefact={"reason": "target_already_exists"},
-                reward=RewardBreakdown(0, 0, 0, 0, 0),
+                reward=RewardBreakdown(0.0, 0.0, "", 0.0, 0.0, 0.0, 0.0, 0.0),
                 rationale=f"target dir already exists: {target_dir}",
             )
         target_dir.mkdir(parents=True, exist_ok=True)
@@ -1185,18 +1185,18 @@ class Synt:
             if sign_proc.returncode != 0:
                 _sh.rmtree(target_dir, ignore_errors=True)
                 return SynthProposal(
-                    request_id=rid, strategy=Strategy("introspective", "specialize"),
+                    request_id=rid, strategy="specialize",
                     state="rejected",
                     artefact={"sign_stderr": sign_proc.stderr[:300]},
-                    reward=RewardBreakdown(0, 0, 0, 0, 0),
+                    reward=RewardBreakdown(0.0, 0.0, "", 0.0, 0.0, 0.0, 0.0, 0.0),
                     rationale=f"sign failed: {sign_proc.stderr[:200]}",
                 )
         except Exception as e:
             _sh.rmtree(target_dir, ignore_errors=True)
             return SynthProposal(
-                request_id=rid, strategy=Strategy("introspective", "specialize"),
+                request_id=rid, strategy="specialize",
                 state="rejected", artefact={},
-                reward=RewardBreakdown(0, 0, 0, 0, 0),
+                reward=RewardBreakdown(0.0, 0.0, "", 0.0, 0.0, 0.0, 0.0, 0.0),
                 rationale=f"sign exception: {e}",
             )
 
@@ -1207,9 +1207,9 @@ class Synt:
             if not ok:
                 _sh.rmtree(target_dir, ignore_errors=True)
                 return SynthProposal(
-                    request_id=rid, strategy=Strategy("introspective", "specialize"),
+                    request_id=rid, strategy="specialize",
                     state="rejected", artefact={"verify_info": str(info)[:300]},
-                    reward=RewardBreakdown(0, 0, 0, 0, 0),
+                    reward=RewardBreakdown(0.0, 0.0, "", 0.0, 0.0, 0.0, 0.0, 0.0),
                     rationale="verify failed after sign",
                 )
         except Exception:
@@ -1233,7 +1233,7 @@ class Synt:
 
         return SynthProposal(
             request_id=rid,
-            strategy=Strategy("introspective", "specialize"),
+            strategy="specialize",
             state="specialized",
             artefact={
                 "target_name": target_name,
