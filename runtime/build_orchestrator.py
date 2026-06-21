@@ -54,8 +54,13 @@ def _is_dry_run() -> bool:
 _PROGRESS_DIR = _C.PATH_USER_STATE / "build_progress"
 _VALID_IDX = ("scene", "persons", "gps")
 
-# Path stabile al venv (CLAUDE.md istruzioni operative)
-_VENV_PYTHON = "/opt/suprastructure/.venv/bin/python"
+# Interprete del subprocess di build (deps torch/embedder). §7.11: overridabile
+# via env, default all'istruzione operativa storica (venv di esercizio).
+_VENV_PYTHON = os.environ.get(
+    "METNOS_BUILD_PYTHON", "/opt/suprastructure/.venv/bin/python")
+# Sorgenti extra sul PYTHONPATH del build (§7.11: overridabile via env).
+_BUILD_EXTRA_PYTHONPATH = os.environ.get(
+    "METNOS_BUILD_PYTHONPATH", "/opt/suprastructure/src")
 
 
 def _digest_of(base_path: Path) -> str:
@@ -156,7 +161,7 @@ def start_async_build(base_path: Path | str, idx: str, *,
     pythonpath = (
         f"{_rt_dir}:"
         f"{_install_root / 'executors' / 'create_images_indices'}:"
-        "/usr/lib/python3/dist-packages:/opt/suprastructure/src"
+        f"/usr/lib/python3/dist-packages:{_BUILD_EXTRA_PYTHONPATH}"
     )
     # systemctl start non supporta --property: serve systemd-run.
     # Usiamo systemd-run --user per properties + --unit (transient).
@@ -166,7 +171,7 @@ def start_async_build(base_path: Path | str, idx: str, *,
         "--collect",  # garbage-collect quando done
         f"--setenv=PYTHONPATH={pythonpath}",
         "--setenv=PYTHONUNBUFFERED=1",
-        f"--setenv=HOME={os.environ.get('HOME', '/home/roberto')}",
+        f"--setenv=HOME={os.environ.get('HOME') or str(Path.home())}",
         "--property=KillMode=mixed",
         "--property=TimeoutStopSec=30",
         "--",
