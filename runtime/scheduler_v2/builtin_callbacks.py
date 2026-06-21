@@ -27,8 +27,9 @@ from .schedule_parser import next_fire_at as compute_next_fire
 import os
 
 # L3.6 (30/5/2026): cadenza dei 2 job notturni GPU-pesanti, settabile via env.
-# `every_Nh` con N multiplo di 24 resta ancorato all'orario del primo fire.
-# Default 72h = ogni 3 giorni (era daily: telos 10 lenti LLM + retrain Qwen-Emb).
+# `every_Nh`: il prossimo fire = fire EFFETTIVO + N (ri-ancorato al fire, non a
+# un'origine fissa — vedi schedule_parser._next_every; piccolo drift se un fire
+# parte in ritardo). Default 72h = ogni 3 giorni (telos 10 lenti LLM + retrain).
 _TELOS_INTROSPECT_INTERVAL_H = int(os.environ.get("METNOS_TELOS_INTROSPECT_INTERVAL_H", "72"))
 
 

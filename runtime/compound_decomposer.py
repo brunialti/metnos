@@ -88,7 +88,10 @@ def detect_chunk_action(chunk: str) -> Optional[tuple[str, str]]:
     for obj, hints in _OBJECT_HINTS.items():
         for h in hints:
             h_tokens = set(h.lower().split())
-            if h_tokens <= tokens or h in chunk.lower():
+            # Token-subset (preciso) per ogni hint; il fallback substring SOLO
+            # per hint multi-parola (≥2 token): su mono-parola "h in chunk" dava
+            # falsi positivi token-interni ("ora" in "lavora", bug 21/6).
+            if h_tokens <= tokens or (len(h_tokens) >= 2 and h in chunk.lower()):
                 detected_obj = obj
                 break
         if detected_obj:

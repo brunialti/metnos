@@ -97,8 +97,12 @@ def autopromote_enabled() -> bool:
 
 
 def _parse_iso_ts(s: str) -> float:
+    # calendar.timegm interpreta la struct come UTC (la stringa è '...Z'):
+    # mktime la interpretava come LOCAL e `- time.timezone` sbagliava di 1h su
+    # host in DST (time.timezone ignora l'ora legale). UTC-safe (bug 21/6).
+    import calendar
     try:
-        return time.mktime(time.strptime(s, "%Y-%m-%dT%H:%M:%SZ")) - time.timezone
+        return float(calendar.timegm(time.strptime(s, "%Y-%m-%dT%H:%M:%SZ")))
     except (ValueError, TypeError, OverflowError):
         return 0.0
 

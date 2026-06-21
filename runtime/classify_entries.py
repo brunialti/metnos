@@ -523,7 +523,13 @@ def handle_classify_entries(args, *, verbose: bool = False) -> dict:
         "entries": result_entries,
         "counts": counts,
         "pre_filtered": len(pre_labels),
-        "llm_classified": len(llm_indices) - (failed_batches * batch_size),
+        # §2.8: conteggio DERIVATO dai risultati reali (entries inviate al LLM
+        # che hanno ottenuto una classe valida) — non `len - failed*batch_size`
+        # che poteva andare NEGATIVO su batch parziali/falliti.
+        "llm_classified": sum(
+            1 for i in llm_indices
+            if isinstance(result_entries[i], dict)
+            and result_entries[i].get(dimension) in counts),
         "unclassified": unclassified,
         "failed_batches": failed_batches,
         "dimension": dimension,

@@ -124,6 +124,11 @@ def validate_stage1(out: dict) -> Optional[str]:
         return f"action {action!r} non in vocabolario chiuso ({len(VOCAB_ACTIONS)} ammesse)"
     if obj not in VOCAB_OBJECTS:
         return f"object {obj!r} non in vocabolario chiuso ({len(VOCAB_OBJECTS)} ammessi)"
+    # Inietta action/object derivati dal name: run_stage2 li legge come
+    # stage1["action"]/["object"] → senza, l'LLM che omette le chiavi causava
+    # KeyError (bug 21/6). setdefault: un valore esplicito dell'LLM vince.
+    out.setdefault("action", action)
+    out.setdefault("object", obj)
     if not isinstance(out.get("revertible"), bool):
         return "revertible deve essere bool"
     if not isinstance(out.get("critical"), bool):

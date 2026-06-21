@@ -288,6 +288,7 @@ def handle_extract_entries(args, *, verbose: bool = False) -> dict:
         return [{f: rec.get(f, "") for f in fields}
                 for rec in _parse_records(raw, fields)[:max_per_text]]
 
+    total_capped = False
     for entry in sources:
         nonlocal_drill = drill_down and bool(_entry_links(entry))
         text = _pick_text(entry)[:_MAX_TEXT_CHARS]
@@ -320,8 +321,9 @@ def handle_extract_entries(args, *, verbose: bool = False) -> dict:
         for norm in records:
             out.append(norm)
             if max_total and len(out) >= max_total:
+                total_capped = True
                 break
-        if max_total and len(out) >= max_total:
+        if total_capped:
             break
 
     res = {
@@ -355,6 +357,15 @@ def handle_extract_entries(args, *, verbose: bool = False) -> dict:
         res["available_input_total"] = len(entries)
         res["cap_field"] = "n_sources"
         res["cap_value"] = _MAX_INPUTS
+    if total_capped:
+        # §2.7/§2.8 (ADR 0062): cap max_total RICHIESTO dall'utente raggiunto →
+        # visibile ma truncated_intentional (il runtime NON propone allargamento).
+        # Il totale reale non è noto (loop interrotto): `used` = record mostrati.
+        res["truncated"] = True
+        res["truncated_intentional"] = True
+        res["truncated_what"] = "entries"
+        res["cap_field"] = "max_total"
+        res["cap_value"] = max_total
     return res
 
 

@@ -307,7 +307,7 @@ def forward_search(query: str, max_results: int = 5, near: dict | None = None,
                 parts.append(str(v))
         address = ", ".join(parts) or props.get("display_name", "")
         entry = {
-            "name": name or address.split(",")[0].strip() if address else None,
+            "name": name or (address.split(",")[0].strip() if address else None),
             "lat": round(lat, 6),
             "lon": round(lon, 6),
             "address": address,

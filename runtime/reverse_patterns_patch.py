@@ -210,7 +210,11 @@ def _dispatch_call(call):
         return 0, len(args.get(next((k for k in args if k.endswith("_ids")), ""), []) or [1])
     if isinstance(obs, dict):
         results = obs.get("results") or []
-        ok = sum(1 for r in results if isinstance(r, dict) and r.get("status") in ("deleted", "ok"))
+        # Riconosci ENTRAMBE le convenzioni per-riga: {"status":"deleted"|"ok"}
+        # e {"ok": True} — alcuni executor forward usano la seconda → l'undo
+        # contava ok=0 pur avendo funzionato (bug 21/6, §2.8 onestà).
+        ok = sum(1 for r in results if isinstance(r, dict)
+                 and (r.get("status") in ("deleted", "ok") or r.get("ok") is True))
         fail = (obs.get("n_deleted") or len(results)) - ok if obs.get("ok") else len(args.get(next((k for k in args if k.endswith("_ids")), ""), []) or [1])
         return ok, max(0, fail)
     return 0, 1
