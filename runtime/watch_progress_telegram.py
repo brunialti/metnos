@@ -66,12 +66,10 @@ def main() -> int:
             elapsed = int(time.time() - start)
             elapsed_h = elapsed // 3600
             elapsed_m = (elapsed % 3600) // 60
-            text = (
-                f"Metnos: {label} completato. "
-                f"{ok}/{n_total} ok / {fail} fail. "
-                f"VLM={model_vlm} text={model_text}. "
-                f"Tempo (dal watcher start): {elapsed_h:02d}:{elapsed_m:02d}."
-            )
+            from messages import get as _msg  # §11 i18n
+            text = _msg("MSG_WATCH_BATCH_DONE", label=label, ok=ok,
+                        n_total=n_total, fail=fail, model_vlm=model_vlm,
+                        model_text=model_text, h=elapsed_h, m=elapsed_m)
             try:
                 ch = TelegramChannel()
                 resp = ch.send(ch.default_chat_id, OutboundMessage(text=text))

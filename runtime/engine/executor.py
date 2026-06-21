@@ -649,8 +649,8 @@ def _resolve_one_filler(name: str, spec, llm_call: Optional[Callable],
         default = (spec or {}).get("default", "")
     if llm_call and prompt:
         try:
-            sys_msg = (f"Rispondi con UN solo valore breve per il filler "
-                        f"`{name}`. {prompt}")
+            from messages import get as _msg  # §11 i18n
+            sys_msg = _msg("MSG_FILLER_LLM_INSTRUCTION", name=name, prompt=prompt)
             ans = llm_call(sys_msg, query, max_tokens=20, think=False)
             ans = (ans or "").strip().split("\n")[0].strip()
             if ans:

@@ -41,6 +41,7 @@ _RUNTIME = os.environ.get("METNOS_RUNTIME") or next(
 if _RUNTIME not in sys.path:
     sys.path.insert(0, _RUNTIME)
 import config as _C  # noqa: E402
+from messages import get as _msg  # noqa: E402  §11 i18n
 
 ROME = ZoneInfo("Europe/Rome")
 _DEFAULT_STORAGE = _C.PATH_USER_DATA / "calendar.ics"
@@ -51,19 +52,10 @@ def _storage_path() -> Path:
     return Path(env) if env else _DEFAULT_STORAGE
 
 
-# ---------------------------------------------------------------------------
-# Messaggio canonico stub (residuo per create/delete)
-# ---------------------------------------------------------------------------
-
-_NOT_IMPL_MSG = (
-    "Calendar locale: scrittura non ancora implementata (backend `local_ics` "
-    "supporta solo read+find_empty). Per create/delete events, installa un "
-    "plugin calendar (es. `cloud-calendar-gcal`) oppure configura le "
-    "credenziali OAuth Google Workspace (skill imported `google-workspace`)."
-)
-
-
-def _err(msg=_NOT_IMPL_MSG, *, with_entries=False, with_results=False, extra=None):
+def _err(msg=None, *, with_entries=False, with_results=False, extra=None):
+    # §11 i18n: default = stub "scrittura non implementata" risolto per lingua.
+    if msg is None:
+        msg = _msg("ERR_CALENDAR_WRITE_NOT_IMPL")
     out = {"ok": False, "error": msg, "error_class": "not_implemented"}
     if with_entries:
         out["entries"] = []
@@ -293,7 +285,7 @@ def read(args: dict) -> dict:
     Calendar vuoto = entries=[] ok=true.
     """
     if not isinstance(args, dict):
-        return _err("args must be an object", with_entries=True,
+        return _err(_msg("ERR_ARGS_NOT_OBJECT"), with_entries=True,
                     extra={"error_class": "invalid_args"})
 
     spec = args.get("time_window") or "next-7d"
@@ -303,18 +295,18 @@ def read(args: dict) -> dict:
     try:
         top_k = int(top_k)
     except (TypeError, ValueError):
-        return _err(f"top_k must be int, got {top_k!r}", with_entries=True,
+        return _err(_msg("ERR_ARG_NOT_INT", arg="top_k"), with_entries=True,
                     extra={"error_class": "invalid_args"})
     if top_k < 0:
-        return _err(f"top_k must be >= 0, got {top_k}", with_entries=True,
-                    extra={"error_class": "invalid_args"})
+        return _err(_msg("ERR_ARG_NOT_NONNEGATIVE_INT", arg="top_k"),
+                    with_entries=True, extra={"error_class": "invalid_args"})
 
     try:
         from time_window_parser import parse_time_window
         start_iso, end_iso = parse_time_window(spec)
     except (ImportError, ValueError) as e:
-        return _err(f"time_window {spec!r}: {e}", with_entries=True,
-                    extra={"error_class": "invalid_args"})
+        return _err(_msg("ERR_TIME_WINDOW_INVALID", label=f"{spec!r}: {e}"),
+                    with_entries=True, extra={"error_class": "invalid_args"})
 
     win_start = datetime.fromisoformat(start_iso)
     win_end = datetime.fromisoformat(end_iso)
@@ -399,14 +391,13 @@ def create(args: dict) -> dict:
     "delete_events_by_id"}` per il reverse handler §2.3.
     """
     if not isinstance(args, dict):
-        return _err("args must be an object", with_results=True,
+        return _err(_msg("ERR_ARGS_NOT_OBJECT"), with_results=True,
                     extra={"error_class": "invalid_args", "n_created": 0})
 
     missing = [k for k in ("summary", "start", "end") if not args.get(k)]
     if missing:
         return _err(
-            f"campi mancanti: {', '.join(missing)}. create_events richiede "
-            f"summary, start e end in ISO 8601 con offset.",
+            _msg("ERR_EVENT_FIELDS_REQUIRED"),
             with_results=True,
             extra={"error_class": "invalid_args", "n_created": 0},
         )
@@ -416,10 +407,11 @@ def create(args: dict) -> dict:
         start_dt = datetime.fromisoformat(str(args["start"]))
         end_dt = datetime.fromisoformat(str(args["end"]))
     except ValueError as ex:
-        return _err(f"start/end non ISO 8601 validi: {ex}", with_results=True,
+        return _err(_msg("ERR_DATETIME_INVALID", reason=str(ex)),
+                    with_results=True,
                     extra={"error_class": "invalid_args", "n_created": 0})
     if end_dt <= start_dt:
-        return _err("end deve essere > start", with_results=True,
+        return _err(_msg("ERR_END_BEFORE_START"), with_results=True,
                     extra={"error_class": "invalid_args", "n_created": 0})
 
     location = str(args.get("location") or "").strip()
@@ -472,7 +464,7 @@ def create(args: dict) -> dict:
     try:
         existing = path.read_text(encoding="utf-8")
     except OSError as ex:
-        return _err(f"calendar.ics non leggibile: {ex}", with_results=True,
+        return _err(_msg("ERR_CALENDAR_READ", reason=str(ex)), with_results=True,
                     extra={"error_class": "storage_error", "n_created": 0})
 
     end_marker = "END:VCALENDAR"
@@ -519,7 +511,7 @@ def delete(args: dict) -> dict:
     presenti = skip silente). Storage del file e' un rewrite atomico.
     """
     if not isinstance(args, dict):
-        return _err("args must be an object", with_results=True,
+        return _err(_msg("ERR_ARGS_NOT_OBJECT"), with_results=True,
                     extra={"error_class": "invalid_args", "n_deleted": 0})
 
     ids: list[str] = []
@@ -537,7 +529,8 @@ def delete(args: dict) -> dict:
                     ids.append(v.strip())
 
     if not ids:
-        return _err("nessun event_id/event_ids/entries fornito",
+        return _err(_msg("ERR_ARG_MISSING_ONE_OF",
+                         options="event_id, event_ids, entries"),
                     with_results=True,
                     extra={"error_class": "invalid_args", "n_deleted": 0})
 
@@ -549,7 +542,7 @@ def delete(args: dict) -> dict:
     try:
         raw = path.read_text(encoding="utf-8")
     except OSError as ex:
-        return _err(f"calendar.ics non leggibile: {ex}", with_results=True,
+        return _err(_msg("ERR_CALENDAR_READ", reason=str(ex)), with_results=True,
                     extra={"error_class": "storage_error", "n_deleted": 0})
 
     deleted: list[dict] = []
@@ -599,7 +592,7 @@ def restore(args: dict) -> dict:
     Rewrite atomico, stesso storage di create/delete.
     """
     if not isinstance(args, dict):
-        return _err("args must be an object", with_results=True,
+        return _err(_msg("ERR_ARGS_NOT_OBJECT"), with_results=True,
                     extra={"error_class": "invalid_args", "n_restored": 0})
     vevents = [v for v in (args.get("vevents") or []) if isinstance(v, str) and v.strip()]
     if not vevents:
@@ -616,7 +609,7 @@ def restore(args: dict) -> dict:
     try:
         existing = path.read_text(encoding="utf-8")
     except OSError as ex:
-        return _err(f"calendar.ics non leggibile: {ex}", with_results=True,
+        return _err(_msg("ERR_CALENDAR_READ", reason=str(ex)), with_results=True,
                     extra={"error_class": "storage_error", "n_restored": 0})
 
     present_uids = {ev["uid"] for ev in _load_events(path) if ev.get("uid")}
@@ -664,7 +657,7 @@ def find_events_empty(args: dict) -> dict:
     Calendar vuoto = tutti gli slot della finestra×tod sono liberi.
     """
     if not isinstance(args, dict):
-        return _err("args must be an object", with_entries=True,
+        return _err(_msg("ERR_ARGS_NOT_OBJECT"), with_entries=True,
                     extra={"error_class": "invalid_args"})
 
     tw_raw = args.get("time_windows")
@@ -675,8 +668,8 @@ def find_events_empty(args: dict) -> dict:
     else:
         time_windows = tw_raw
     if not isinstance(time_windows, list) or not time_windows:
-        return _err("time_windows must be non-empty list", with_entries=True,
-                    extra={"error_class": "invalid_args"})
+        return _err(_msg("ERR_ARG_EMPTY_LIST", arg="time_windows"),
+                    with_entries=True, extra={"error_class": "invalid_args"})
 
     size = args.get("size") or "1hour"
     time_of_day = args.get("time_of_day") or "morning"
@@ -687,10 +680,10 @@ def find_events_empty(args: dict) -> dict:
     try:
         max_results = int(max_results)
     except (TypeError, ValueError):
-        return _err(f"max_results must be int, got {max_results!r}",
+        return _err(_msg("ERR_ARG_NOT_INT", arg="max_results"),
                     with_entries=True, extra={"error_class": "invalid_args"})
     if max_results < 0:
-        return _err(f"max_results must be >= 0, got {max_results}",
+        return _err(_msg("ERR_ARG_NOT_NONNEGATIVE_INT", arg="max_results"),
                     with_entries=True, extra={"error_class": "invalid_args"})
     if max_results == 0:
         max_results = 100
@@ -705,7 +698,7 @@ def find_events_empty(args: dict) -> dict:
     # None/missing accettato (default backend).
     cal_id = args.get("calendar_id")
     if cal_id is not None and (not isinstance(cal_id, str) or not cal_id.strip()):
-        return _err("calendar_id must be a non-empty string",
+        return _err(_msg("ERR_ARG_NOT_NONEMPTY_STRING", arg="calendar_id"),
                     with_entries=True, extra={"error_class": "invalid_args"})
 
     try:
@@ -714,7 +707,8 @@ def find_events_empty(args: dict) -> dict:
         return _err(str(e), with_entries=True,
                     extra={"error_class": "invalid_args"})
     if tod_start >= tod_end:
-        return _err(f"time_of_day range invalid: {time_of_day!r}",
+        return _err(_msg("ERR_ARG_INVALID", arg="time_of_day",
+                         reason=repr(time_of_day)),
                     with_entries=True, extra={"error_class": "invalid_args"})
 
     try:

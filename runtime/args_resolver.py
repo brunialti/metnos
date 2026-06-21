@@ -90,15 +90,25 @@ def resolve_scope_args(executor_name: str, args: dict, schema: dict | None,
     return out
 
 
-_PROMPTS = {
-    "repo": "Quale repository GitHub? (formato owner/name)",
-    "calendar": "Quale calendario?",
-    "account": "Quale account?",
-    "base_path": "In quale cartella?",
-    "board": "Quale board?",
-    "project": "Quale progetto?",
-    "workspace": "Quale workspace?",
+# §11 i18n: arg-scope → chiave messaggio (testo risolto via _msg per current_lang).
+_PROMPT_KEYS = {
+    "repo": "MSG_SCOPE_PROMPT_REPO",
+    "calendar": "MSG_SCOPE_PROMPT_CALENDAR",
+    "account": "MSG_SCOPE_PROMPT_ACCOUNT",
+    "base_path": "MSG_SCOPE_PROMPT_BASE_PATH",
+    "board": "MSG_SCOPE_PROMPT_BOARD",
+    "project": "MSG_SCOPE_PROMPT_PROJECT",
+    "workspace": "MSG_SCOPE_PROMPT_WORKSPACE",
 }
+
+
+def _scope_prompt(arg: str) -> str:
+    """Prompt user-facing per uno scope-arg, risolto i18n (§11)."""
+    from messages import get as _msg
+    key = _PROMPT_KEYS.get(arg)
+    if key:
+        return _msg(key)
+    return _msg("MSG_SCOPE_PROMPT_GENERIC", arg=arg)
 
 
 def _verb_of(tool: str) -> Optional[str]:
@@ -143,14 +153,15 @@ def scope_form_request(executor_name: str, args: dict, schema: dict | None,
             fields.append((arg, ""))
     if not fields:
         return None
-    dialog = [{"var": a, "prompt": _PROMPTS.get(a, f"Quale {a}?"),
+    from messages import get as _msg  # §11 i18n
+    dialog = [{"var": a, "prompt": _scope_prompt(a),
                "schema": {"kind": "text"}, "optional": False, "default": d}
               for a, d in fields]
     return {
         "decision": "needs_inputs",
         "needs_inputs": {
-            "title": "Conferma l'oggetto dell'operazione" if is_write
-                     else "Serve l'oggetto dell'operazione",
+            "title": _msg("MSG_SCOPE_TITLE_WRITE") if is_write
+                     else _msg("MSG_SCOPE_TITLE_READ"),
             "dialog": dialog,
             "fmt": "auto",
             "on_complete": {

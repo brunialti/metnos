@@ -191,28 +191,14 @@ def _dispatch_notification(data: dict) -> bool:
 
     minutes = int(duration_s // 60)
     seconds = int(duration_s % 60)
+    from messages import get as _msg  # §11 i18n
     if ok:
-        body = (
-            f"Indice immagini pronto.\n"
-            f"\n"
-            f"  • directory: {base_path}\n"
-            f"  • tipo:      {idx}\n"
-            f"  • entries:   {n_entries}\n"
-            f"  • durata:    {minutes}m {seconds}s\n"
-            f"  • errori:    {errors}\n"
-            f"\n"
-            f"Riprova ora la query: l'indice e' utilizzabile."
-        )
+        body = _msg("MSG_BUILD_INDEX_OK", base_path=base_path, idx=idx,
+                    n_entries=n_entries, minutes=minutes, seconds=seconds,
+                    errors=errors)
     else:
-        body = (
-            f"Indice immagini fallito.\n"
-            f"\n"
-            f"  • directory: {base_path}\n"
-            f"  • tipo:      {idx}\n"
-            f"  • errori:    {errors}\n"
-            f"\n"
-            f"Controlla i log con `journalctl --user -u metnos-build-* -n 50`."
-        )
+        body = _msg("MSG_BUILD_INDEX_FAIL", base_path=base_path, idx=idx,
+                    errors=errors)
 
     try:
         # Invoca send_messages come executor-puro: import diretto, no PLANNER.
@@ -221,7 +207,7 @@ def _dispatch_notification(data: dict) -> bool:
         import send_messages as _sm  # type: ignore
         msg = {
             "to_user": actor,
-            "subject": "Build indice completata",
+            "subject": _msg("MSG_BUILD_INDEX_SUBJECT"),
             "body": body,
         }
         if channel:

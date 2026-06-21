@@ -29,6 +29,7 @@ _RUNTIME = Path(__file__).resolve().parent.parent.parent
 if str(_RUNTIME) not in sys.path:
     sys.path.insert(0, str(_RUNTIME))
 
+from messages import get as _msg  # noqa: E402  §11 i18n
 from skill_wrapper import (  # noqa: E402
     _skill_home, _needs_inputs_oauth_setup,
     _get_oauth_provider_for_skill,
@@ -49,8 +50,7 @@ _CALENDAR_ID_ALIASES = {
     "default": "primary",
     "me": "primary",
     "self": "primary",
-    "roberto": "primary",  # nome utente Metnos → primary del proprietario
-    "user": "primary",
+    "user": "primary",      # §7.5: alias del proprietario, no nomi propri
     "utente": "primary",
 }
 
@@ -140,7 +140,7 @@ def read(args: dict) -> dict:
     `start`/`end` ISO espliciti. Output: `entries: list[{id, summary,
     start, end, location, description, status, htmlLink}]`."""
     if not isinstance(args, dict):
-        return _err("args must be an object", "invalid_args", with_entries=True)
+        return _err(_msg("ERR_ARGS_NOT_OBJECT"), "invalid_args", with_entries=True)
 
     start_iso = args.get("start")
     end_iso = args.get("end")
@@ -198,7 +198,7 @@ def create(args: dict) -> dict:
     `_undo` reverse_pattern §2.3: `delete_events_by_id`.
     """
     if not isinstance(args, dict):
-        return _err("args must be an object", "invalid_args",
+        return _err(_msg("ERR_ARGS_NOT_OBJECT"), "invalid_args",
                     with_results=True)
 
     summary = args.get("summary")
@@ -206,7 +206,7 @@ def create(args: dict) -> dict:
     if not (isinstance(summary, str) and summary.strip()
             and isinstance(start, str) and start.strip()
             and isinstance(end, str) and end.strip()):
-        return _err("summary/start/end mandatory (start/end ISO con TZ)",
+        return _err(_msg("ERR_EVENT_FIELDS_REQUIRED"),
                     "invalid_args", with_results=True)
 
     calendar_id = _resolve_calendar_id(args.get("calendar_id"))
@@ -287,10 +287,10 @@ def create_calendar(args: dict) -> dict:
     description?, timezone?. Output §2.6: results:[{ok, calendar_id, summary}].
     Reverse §2.3: delete_calendars_by_id."""
     if not isinstance(args, dict):
-        return _err("args must be an object", "invalid_args", with_results=True)
+        return _err(_msg("ERR_ARGS_NOT_OBJECT"), "invalid_args", with_results=True)
     summary = args.get("summary") or args.get("name") or args.get("title")
     if not (isinstance(summary, str) and summary.strip()):
-        return _err("summary (nome calendario) obbligatorio", "invalid_args",
+        return _err(_msg("ERR_ARG_MISSING", arg="summary"), "invalid_args",
                     with_results=True)
     argv = ["calendar", "new-calendar", "--summary", summary]
     if args.get("description"):
@@ -318,7 +318,7 @@ def list_calendars(args: dict) -> dict:
     """Elenca i CALENDARI dell'utente. Output §2.6: entries:[{id, summary,
     primary, access_role}]."""
     if not isinstance(args, dict):
-        return _err("args must be an object", "invalid_args", with_entries=True)
+        return _err(_msg("ERR_ARGS_NOT_OBJECT"), "invalid_args", with_entries=True)
     data, err = _run_calendar(["calendar", "list-calendars"],
                               executor="list_calendars", args_base=dict(args))
     if err is not None:
@@ -334,14 +334,14 @@ def delete_calendar(args: dict) -> dict:
     """Cancella uno o piu' CALENDARI-contenitore. Args: ids (list) o
     calendar_id. Output §2.6: results."""
     if not isinstance(args, dict):
-        return _err("args must be an object", "invalid_args", with_results=True)
+        return _err(_msg("ERR_ARGS_NOT_OBJECT"), "invalid_args", with_results=True)
     ids = args.get("ids") or args.get("calendar_ids") or []
     if not ids and args.get("calendar_id"):
         ids = [args["calendar_id"]]
     ids = [str(i) for i in (ids if isinstance(ids, list) else [ids]) if i]
     if not ids:
-        return _err("ids / calendar_id obbligatorio", "invalid_args",
-                    with_results=True)
+        return _err(_msg("ERR_ARG_MISSING_ONE_OF", options="ids, calendar_id"),
+                    "invalid_args", with_results=True)
     results = []
     for cid in ids:
         data, err = _run_calendar(["calendar", "delete-calendar", cid],
@@ -376,11 +376,11 @@ def update(args: dict) -> dict:
     supportato — l'utente puo' re-update manualmente).
     """
     if not isinstance(args, dict):
-        return _err("args must be an object", "invalid_args",
+        return _err(_msg("ERR_ARGS_NOT_OBJECT"), "invalid_args",
                     with_results=True)
     event_id = args.get("event_id") or args.get("uid")
     if not (isinstance(event_id, str) and event_id.strip()):
-        return _err("event_id mandatory", "invalid_args",
+        return _err(_msg("ERR_ARG_MISSING", arg="event_id"), "invalid_args",
                     with_results=True)
     calendar_id = _resolve_calendar_id(args.get("calendar_id"))
     # Almeno un patch field richiesto
@@ -388,9 +388,10 @@ def update(args: dict) -> dict:
                     args.get("location"), args.get("description"),
                     args.get("attendees"))
     if not any(v is not None for v in patch_fields):
-        return _err("at least one of summary/start/end/location/"
-                    "description/attendees required", "invalid_args",
-                    with_results=True)
+        return _err(_msg("ERR_ARG_MISSING_ONE_OF",
+                         options="summary, start, end, location, "
+                                 "description, attendees"),
+                    "invalid_args", with_results=True)
 
     argv = ["calendar", "update", event_id.strip(), "--calendar", calendar_id]
     if args.get("summary"):
@@ -461,7 +462,7 @@ def update(args: dict) -> dict:
 def delete(args: dict) -> dict:
     """Cancella 1+ eventi per id (vettoriale §2.1)."""
     if not isinstance(args, dict):
-        return _err("args must be an object", "invalid_args",
+        return _err(_msg("ERR_ARGS_NOT_OBJECT"), "invalid_args",
                     with_results=True)
 
     ids: list[str] = []
@@ -478,7 +479,8 @@ def delete(args: dict) -> dict:
                 if isinstance(v, str) and v.strip():
                     ids.append(v.strip())
     if not ids:
-        return _err("nessun event_id/event_ids/entries fornito",
+        return _err(_msg("ERR_ARG_MISSING_ONE_OF",
+                         options="event_id, event_ids, entries"),
                     "invalid_args", with_results=True)
 
     calendar_id = _resolve_calendar_id(args.get("calendar_id"))
@@ -523,7 +525,7 @@ def find_events_empty(args: dict) -> dict:
     di `local_ics` per la logica deterministica di gap.
     """
     if not isinstance(args, dict):
-        return _err("args must be an object", "invalid_args",
+        return _err(_msg("ERR_ARGS_NOT_OBJECT"), "invalid_args",
                     with_entries=True)
 
     tw_raw = args.get("time_windows")
@@ -534,7 +536,7 @@ def find_events_empty(args: dict) -> dict:
     else:
         time_windows = tw_raw
     if not isinstance(time_windows, list) or not time_windows:
-        return _err("time_windows must be non-empty list",
+        return _err(_msg("ERR_ARG_EMPTY_LIST", arg="time_windows"),
                     "invalid_args", with_entries=True)
 
     size = args.get("size") or "1hour"
@@ -545,10 +547,10 @@ def find_events_empty(args: dict) -> dict:
     try:
         max_results = int(max_results)
     except (TypeError, ValueError):
-        return _err(f"max_results must be int, got {max_results!r}",
+        return _err(_msg("ERR_ARG_NOT_INT", arg="max_results"),
                     "invalid_args", with_entries=True)
     if max_results < 0:
-        return _err(f"max_results must be >= 0, got {max_results}",
+        return _err(_msg("ERR_ARG_NOT_NONNEGATIVE_INT", arg="max_results"),
                     "invalid_args", with_entries=True)
     if max_results == 0:
         max_results = 100
@@ -561,7 +563,7 @@ def find_events_empty(args: dict) -> dict:
     cal_id = args.get("calendar_id")
     if cal_id is not None and (not isinstance(cal_id, str)
                                 or not cal_id.strip()):
-        return _err("calendar_id must be a non-empty string",
+        return _err(_msg("ERR_ARG_NOT_NONEMPTY_STRING", arg="calendar_id"),
                     "invalid_args", with_entries=True)
     cal_id_norm = _resolve_calendar_id(cal_id)
 
@@ -570,7 +572,8 @@ def find_events_empty(args: dict) -> dict:
     except ValueError as ex:
         return _err(str(ex), "invalid_args", with_entries=True)
     if tod_start >= tod_end:
-        return _err(f"time_of_day range invalid: {time_of_day!r}",
+        return _err(_msg("ERR_ARG_INVALID", arg="time_of_day",
+                         reason=repr(time_of_day)),
                     "invalid_args", with_entries=True)
 
     try:

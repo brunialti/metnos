@@ -20,17 +20,11 @@ find / login). Tutte ritornano `ok:false, error_class:"not_implemented"`.
 from __future__ import annotations
 
 
-_NOT_IMPL_MSG = (
-    "Playwright JS-render backend non ancora attivato come dispatcher "
-    "client esclusivo. Per JS-render usa `read_urls_html(js_render=true)` "
-    "che routa al sidecar SOLO sulle pagine SPA detectate."
-)
-
-
 def _not_impl_dict() -> dict:
+    from messages import get as _msg  # §11 i18n
     return {
         "ok": False,
-        "error": _NOT_IMPL_MSG,
+        "error": _msg("ERR_PLAYWRIGHT_NOT_IMPL"),
         "error_class": "not_implemented",
         "entries": [],
         "failed": [],

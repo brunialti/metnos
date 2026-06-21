@@ -240,23 +240,14 @@ def check_mutating_path_ambiguity(
     candidates = list_alias_candidates(check_path.name)
     if not candidates:
         return None
+    from messages import get as _msg  # §11 i18n
     return {
         "ok": False,
         "error_code": "ERR_AMBIGUOUS_PATH",
-        "error": (
-            f"Il path '{input_path}' non esiste e potrebbe riferirsi a "
-            f"{len(candidates)} cartelle diverse "
-            f"(alias bilingue IT/EN). Disambigua prima di procedere."
-        ),
+        "error": _msg("ERR_AMBIGUOUS_PATH", path=input_path, n=len(candidates)),
         "candidates": candidates,
         "input_path": input_path,
-        "hint": (
-            "Usa get_inputs(dialog=[{name:'path', type:'choice', "
-            "options:<candidates>}]) per chiedere all'utente quale "
-            "intendeva, poi richiama l'operazione con il path scelto. "
-            "NON scegliere automaticamente: operazioni mutating su path "
-            "sbagliato sono distruttive."
-        ),
+        "hint": _msg("ERR_AMBIGUOUS_PATH_HINT"),
     }
 
 
