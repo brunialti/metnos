@@ -322,6 +322,75 @@ def _enforce_missing_clauses(framework: Framework, intent, query: str,
         return framework
 
 
+def _ensure_extract_clause(framework: Framework, intent, query: str,
+                           catalog: Optional[list]) -> Framework:
+    """§7.9 (bug live 21/6, banco compound-extract-create): la clausola «estrai»
+    e' un TRANSFORM INTERMEDIO (produce record strutturati che il consumer
+    create/write piping-consuma). Il proposer la droppa spesso e
+    `_enforce_missing_clauses` non la recupera (append IN CODA → dopo il create,
+    inutile; e derive(extract,messages) andava a None). Qui la INSERIAMO nella
+    POSIZIONE giusta — subito dopo l'ultimo PRODUTTORE — con rewiring dei
+    `from_step` (i consumer del produttore ora consumano l'extract; i ref a valle
+    slittano +1). Scatta solo se l'intent ha {extract,*} e `extract_entries` e'
+    assente. v3-gated, deterministico, mai eccezioni."""
+    try:
+        from . import is_v3
+        if not is_v3():
+            return framework
+        actions = getattr(intent, "actions", None) or []
+        if not any(isinstance(a, dict) and (a.get("verb") or "") == "extract"
+                   for a in actions):
+            return framework
+        steps = list(getattr(framework, "steps", None) or [])
+        if not steps:
+            return framework
+        if any((s.tool or "") == "extract_entries" for s in steps):
+            return framework  # gia' presente
+        import naming_grammar as _ng
+        from compound_decomposer import PRODUCER_VERBS as _PV
+        from .types import StepSpec
+
+        def _verb(s):
+            nc = _ng.parse_name(getattr(s, "tool", "") or "")
+            return nc.verb if nc else ""
+        # L'extract va PRIMA del primo CONSUMER mutante (create/write/send/...):
+        # cosi' produce i record che il consumer piping-usa. Ignora produttori
+        # SPURI dopo il consumer.
+        _CONSUMERS = {"create", "write", "send", "move", "delete", "share", "set"}
+        ci = next((i for i, s in enumerate(steps) if _verb(s) in _CONSUMERS),
+                  len(steps))
+        pi = -1  # ultimo PRODUTTORE prima del consumer
+        for i in range(ci):
+            if _verb(steps[i]) in _PV:
+                pi = i
+        if pi < 0:  # nessun produttore prima del consumer → ultimo in assoluto
+            for i, s in enumerate(steps):
+                if _verb(s) in _PV:
+                    pi = i
+        if pi < 0:
+            return framework  # nessun produttore → niente da estrarre
+        prod_1b = pi + 1          # indice 1-based del produttore
+        k = prod_1b + 1           # indice 1-based dove vivra' l'extract
+        # Rewiring from_step PRIMA dell'insert: chi consumava il produttore ora
+        # consuma l'extract; i ref a posizioni >= k slittano +1.
+        for s in steps:
+            fs = (getattr(s, "args", None) or {}).get("from_step")
+            if isinstance(fs, int):
+                if fs == prod_1b:
+                    s.args["from_step"] = k
+                elif fs >= k:
+                    s.args["from_step"] = fs + 1
+        steps.insert(pi + 1, StepSpec(tool="extract_entries",
+                                      args={"from_step": prod_1b}))
+        framework.steps = steps
+        log.info("[ensure_extract] extract_entries inserito @1b=%d (dopo "
+                 "produttore @%d)", k, prod_1b)
+        return framework
+    except Exception as ex:
+        log.warning("ensure_extract_clause noop (best-effort): %r", ex)
+        return framework
+
+
 def _align_framework_objects(framework: Framework, intent,
                              catalog: Optional[list]) -> Framework:
     """§7.9 deterministico: ri-allinea il tool di uno step quando il proposer
@@ -475,7 +544,16 @@ def _dropped_required_verbs(framework: Framework, query: str, intent=None) -> se
         head = t.split("_", 1)[0]
         if head in ACTIONS:
             fw_verbs.add(head)
-    return (qverbs & set(COVERAGE_REQUIRED_VERBS)) - fw_verbs
+    dropped = (qverbs & set(COVERAGE_REQUIRED_VERBS)) - fw_verbs
+    # Famiglia PRODUTTORI interscambiabile (find/read/get/list): un produttore
+    # qualunque nel framework copre ogni produttore richiesto (find_messages ==
+    # read_messages, find_files copre «cerca i file», ...). Senza, «cerca...»
+    # con read_X nel piano flaggava 'find' come droppato → enforce appendeva un
+    # produttore SPURIO. §7.9 deterministico (bug live 21/6).
+    _PRODUCERS = {"find", "read", "get", "list"}
+    if (dropped & _PRODUCERS) and (fw_verbs & _PRODUCERS):
+        dropped -= _PRODUCERS
+    return dropped
 
 
 def _normalize_store_clauses(intent, query: str, catalog: Optional[list]) -> None:
@@ -1136,6 +1214,7 @@ def _apply_deterministic_structure_guards(framework: Framework, intent,
     from . import is_v3
     if is_v3():
         framework = _enforce_missing_objects(framework, intent, query, catalog)
+        framework = _ensure_extract_clause(framework, intent, query, catalog)
         framework = _conform_to_intent_order(framework, intent, query, catalog)
         framework = _fill_clause_args(framework, intent, query, catalog)
         # Ricuce i riferimenti-campo (template/key) degli step a valle di un

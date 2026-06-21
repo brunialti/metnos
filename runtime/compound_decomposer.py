@@ -173,9 +173,12 @@ def derive_tool_name(verb: str, obj: str, available_tools: set[str],
             alt = f"{alt_verb}_{obj}"
             if alt in available_tools:
                 return alt
-    # 3. TRANSFORM verb generic fallback: <verb>_entries opera su qualsiasi
-    # entry list (universal §7.9 — describe_entries/classify_entries/...).
-    if verb in TRANSFORM_VERBS:
+    # 3. Generic <verb>_entries universale: TRANSFORM (describe/classify/filter/
+    # sort/compute/...) + EXTRACT (extract e' in MUTATING, ma `extract_entries`
+    # e' il suo universale e derive(extract,messages) deve risolverlo, non None).
+    # NON i produttori (find/read/get/list): un produttore senza variante reale
+    # NON deve diventare find_entries (resterebbe None → no swap spurio).
+    if verb in TRANSFORM_VERBS or verb == "extract":
         generic = f"{verb}_entries"
         if generic in available_tools:
             return generic
