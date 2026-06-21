@@ -24,6 +24,7 @@ from html_sanitizer import to_safe_html_full
 from http_render import _error, render_template
 from http_auth import ADMIN_KEY_PATH
 from logging_setup import get_logger
+from messages import get as _msg  # §11 i18n
 
 log = get_logger(__name__)
 
@@ -308,8 +309,8 @@ def _apply_dialog_cancel(sender_id: str, query: str) -> str | None:
     if cancelled == 0:
         return None
     if cancelled == 1:
-        return "Dialogo annullato."
-    return f"Dialogo annullato ({cancelled} pending)."
+        return _msg("MSG_DIALOG_CANCELLED")
+    return _msg("MSG_DIALOG_CANCELLED_N", n=cancelled)
 
 
 def _apply_dialog_pending(sender_id: str, query: str,
@@ -370,7 +371,7 @@ def _apply_dialog_pending(sender_id: str, query: str,
             import logging
             logging.getLogger(__name__).warning(
                 "dialog on_complete dispatch failed: %s", ex)
-            return f"Dialog dispatch fallito: {ex}"
+            return _msg("ERR_DIALOG_DISPATCH_FAILED", error=ex)
     return None  # dialog ha più step, attendi prossimo input
 
 
@@ -2336,7 +2337,7 @@ async def pair_consume(request: web.Request) -> web.Response:
 
     token = request.match_info["token"]
     if not token or len(token) < 16:
-        return web.Response(text="token non valido", status=400,
+        return web.Response(text=_msg("ERR_PAIRING_TOKEN_INVALID"), status=400,
                             content_type="text/plain")
 
     # device_id stabile per questo specifico device: hash di User-Agent +
@@ -2433,13 +2434,13 @@ async def oauth_callback(request: web.Request) -> web.Response:
         )
     except (ImportError, OSError, RuntimeError, ValueError) as ex:
         return _oauth_result_page(
-            ok=False, title="Scambio token fallito",
+            ok=False, title=_msg("MSG_TOKEN_EXCHANGE_FAILED"),
             body=f"<code>{html_escape(type(ex).__name__)}: {html_escape(str(ex))}</code>",
         )
 
     if not ok:
         return _oauth_result_page(
-            ok=False, title="Scambio token fallito",
+            ok=False, title=_msg("MSG_TOKEN_EXCHANGE_FAILED"),
             body=f"<code>{html_escape(str(err))}</code>",
         )
 
@@ -2452,9 +2453,8 @@ async def oauth_callback(request: web.Request) -> web.Response:
             cat = load_catalog(verify=True, include_synth=True)
             ex = cat.executors.get(executor)
             if ex is None:
-                resume_body = (
-                    f"Token salvato. Executor <code>{html_escape(str(executor))}</code> non "
-                    f"in catalog: rilancio annullato.")
+                resume_body = _msg("MSG_TOKEN_SAVED_NO_CATALOG",
+                                   executor=html_escape(str(executor)))
             else:
                 import agent_runtime as _ar
                 res = _ar.invoke_executor(
@@ -2465,14 +2465,15 @@ async def oauth_callback(request: web.Request) -> web.Response:
                 resume_body = _format_resume_result(res)
         except (PermissionError, KeyError, RuntimeError, TypeError) as ex:
             log.exception("oauth_callback: resume_call fallito")
-            resume_body = (
-                f"Token salvato, ma rilancio di <code>{html_escape(str(executor))}</code> "
-                f"fallito: {html_escape(type(ex).__name__)}: {html_escape(str(ex))}")
+            resume_body = _msg(
+                "ERR_TOKEN_SAVED_RESUME_FAILED",
+                executor=html_escape(str(executor)),
+                detail=f"{html_escape(type(ex).__name__)}: {html_escape(str(ex))}")
     else:
-        resume_body = "Token salvato. Nessun executor da ri-invocare."
+        resume_body = _msg("MSG_TOKEN_SAVED_NO_RESUME")
 
     return _oauth_result_page(
-        ok=True, title="Setup completato",
+        ok=True, title=_msg("MSG_SETUP_COMPLETED"),
         body=resume_body,
     )
 
@@ -2482,14 +2483,14 @@ def _format_resume_result(res) -> str:
     if not isinstance(res, dict):
         return f"<pre>{html_escape(str(res)[:600])}</pre>"
     if not res.get("ok"):
-        err = res.get("error", "errore sconosciuto")
-        return f"Executor ha risposto errore: <code>{html_escape(str(err))}</code>"
+        err = res.get("error") or _msg("MSG_UNKNOWN_ERROR")
+        return _msg("ERR_EXECUTOR_RETURNED_ERROR", error=html_escape(str(err)))
     summary = res.get("summary") or res.get("final_message_hint") or ""
     entries = res.get("entries") or []
     if summary and not entries:
         return f"<p>{summary}</p>"
     if entries:
-        lines = [f"<p>Trovate <strong>{len(entries)}</strong> entries.</p><ul>"]
+        lines = [f"<p>{_msg('MSG_RESUME_ENTRIES_FOUND', n=len(entries))}</p><ul>"]
         for e in entries[:20]:
             if isinstance(e, dict):
                 title = (e.get("summary") or e.get("title")
@@ -2499,10 +2500,10 @@ def _format_resume_result(res) -> str:
             else:
                 lines.append(f"<li>{str(e)[:80]}</li>")
         if len(entries) > 20:
-            lines.append(f"<li>…(altre {len(entries) - 20} omesse)</li>")
+            lines.append(f"<li>{_msg('MSG_RESUME_ENTRIES_OMITTED', n=len(entries) - 20)}</li>")
         lines.append("</ul>")
         return "".join(lines)
-    return "<p>Executor eseguito. Nessun output significativo.</p>"
+    return f"<p>{_msg('MSG_RESUME_NO_OUTPUT')}</p>"
 
 
 def _oauth_result_page(*, ok: bool, title: str, body: str) -> web.Response:

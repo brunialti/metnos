@@ -53,9 +53,10 @@ class DialogCancelInterceptTests(unittest.TestCase):
         })
 
     def test_undo_with_pending_cancels_and_returns_msg(self):
+        from messages import get as _msg  # §11 i18n: msg risolto da DB
         self._create_pending()
         msg = self.fn(self.sender, "annulla")
-        self.assertEqual(msg, "Dialogo annullato.")
+        self.assertEqual(msg, _msg("MSG_DIALOG_CANCELLED"))
         # Verifica cancellato
         self.assertEqual(self.DP.list_pending(self.sender), [])
 
@@ -71,21 +72,23 @@ class DialogCancelInterceptTests(unittest.TestCase):
         self.assertEqual(len(self.DP.list_pending(self.sender)), 1)
 
     def test_undo_variants_all_intercept(self):
+        from messages import get as _msg  # §11 i18n
         # Ogni variante UNDO con pending → cancella
         for query in ("annulla", "undo", "ripristina", "rollback",
                       "annulla l'ultima azione"):
             with self.subTest(query=query):
                 self._create_pending(f"dlg_{abs(hash(query))%10000}")
                 msg = self.fn(self.sender, query)
-                self.assertEqual(msg, "Dialogo annullato.",
+                self.assertEqual(msg, _msg("MSG_DIALOG_CANCELLED"),
                                   f"failed on query={query!r}")
 
     def test_multiple_pending_count_in_message(self):
+        from messages import get as _msg  # §11 i18n
         self._create_pending("dlg_a")
         self._create_pending("dlg_b")
         self._create_pending("dlg_c")
         msg = self.fn(self.sender, "annulla")
-        self.assertEqual(msg, "Dialogo annullato (3 pending).")
+        self.assertEqual(msg, _msg("MSG_DIALOG_CANCELLED_N", n=3))
 
     def test_idempotent_second_call_returns_none(self):
         self._create_pending()
