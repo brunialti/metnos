@@ -39,7 +39,6 @@ sys.path.insert(0, str(_RUNTIME))
 
 import store as _store  # noqa: E402
 import store_entries as se  # noqa: E402
-import github_issue_qa_store as store  # noqa: E402
 from store_bootstrap import _ISSUE_QA  # noqa: E402
 
 REPO = "owner/name"
@@ -47,18 +46,12 @@ REPO = "owner/name"
 
 @pytest.fixture()
 def tmp_store(tmp_path, monkeypatch):
-    """Store QA su db temporaneo. Il flusso universale scrive via
-    `write_entries` (registro generico), il guard/asserzioni leggono via
-    `github_issue_qa_store.list_records`: STESSO file sqlite.
-
-    init_db() PRIMA della registrazione generica: crea lo schema storico
-    completo (incl. `auto_replied`) — il backend generico è additivo e non
-    rimuoverebbe colonne che list_records seleziona."""
+    """Store QA su db temporaneo via lo Store GENERICO (unico schema/owner —
+    unificazione C2 21/6: github_issue_qa_store ritirato). Il flusso scrive via
+    `write_entries`; guard/asserzioni leggono via `Store.find`: STESSO file."""
     db = tmp_path / "issue_qa.sqlite"
-    monkeypatch.setattr(store, "DB_PATH", db)
-    store.init_db()
-    _store.register(_ISSUE_QA, name="github_issue_qa", path=db)
-    yield store
+    st = _store.register(_ISSUE_QA, name="github_issue_qa", path=db)
+    yield st
     _store.unregister("github_issue_qa")
 
 
@@ -363,12 +356,12 @@ class TestEndToEndSimulated:
             "Ho analizzato le issue aperte, salvato le bozze e notificato.")
         assert n_push == 0
         assert "push suppressed" in out
-        assert tmp_store.list_records(repo=REPO) == []
+        assert tmp_store.find(where={"repo": REPO}) == []
 
     def test_phase2_one_new_issue_one_push_one_row(
             self, tmp_store, fake_embedder, monkeypatch):
         """Issue nuova → write_entries scrive 1 record → 1 notifica
-        (catturata) + 1 riga letta da list_records (stesso db)."""
+        (catturata) + 1 riga letta via Store.find (stesso db)."""
         entry = {"repo": REPO, "issue_number": 101, "title": "install fails",
                  "status": "prepared", "draft_reply": "try --check"}
         wres = _write([entry])
@@ -381,7 +374,7 @@ class TestEndToEndSimulated:
         out, n_push = _run_scheduled(
             monkeypatch, steps, "Ho preparato 1 bozza per la issue #101.")
         assert n_push == 1
-        rows = tmp_store.list_records(repo=REPO)
+        rows = tmp_store.find(where={"repo": REPO})
         assert len(rows) == 1 and rows[0]["issue_number"] == 101
 
     def test_phase3_rerun_same_issue_dedup_zero_push(
@@ -409,6 +402,6 @@ class TestEndToEndSimulated:
             monkeypatch, steps, "Ho salvato le bozze per le issue trovate.")
         assert n_push == 0
         assert "push suppressed" in out
-        rows = tmp_store.list_records(repo=REPO)
+        rows = tmp_store.find(where={"repo": REPO})
         assert len(rows) == 1
         assert rows[0]["draft_reply"] == "first draft"  # niente churn

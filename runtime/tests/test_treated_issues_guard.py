@@ -32,16 +32,29 @@ import pytest
 _RUNTIME = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_RUNTIME))
 
-import github_issue_qa_store as store  # noqa: E402
+import store as _store  # noqa: E402
+from store_bootstrap import _ISSUE_QA  # noqa: E402
 import treated_issues_guard as guard  # noqa: E402
 
 REPO = "owner/name"
 
 
 @pytest.fixture()
-def tmp_store(tmp_path, monkeypatch):
-    monkeypatch.setattr(store, "DB_PATH", tmp_path / "issue_qa.sqlite")
-    return store
+def tmp_store(tmp_path):
+    """Store GENERICO su db temp (unificazione C2 21/6: github_issue_qa_store
+    ritirato). Mini-adapter `upsert_treatment` per non riscrivere i call-site:
+    scrive via Store.write (upsert su (repo, issue_number))."""
+    st = _store.register(_ISSUE_QA, name="github_issue_qa",
+                         path=tmp_path / "issue_qa.sqlite")
+
+    class _Adapter:
+        def upsert_treatment(self, repo, issue_number, **fields):
+            rec = {"repo": repo, "issue_number": int(issue_number)}
+            rec.update({k: v for k, v in fields.items() if v is not None})
+            st.write(rec, key=["repo", "issue_number"])
+
+    yield _Adapter()
+    _store.unregister("github_issue_qa")
 
 
 @pytest.fixture()
@@ -131,9 +144,10 @@ class TestFilterSemantics:
 
     def test_fail_open_on_store_error(self, tmp_store, monkeypatch):
         tmp_store.upsert_treatment(REPO, 7, status="prepared")
-        def _boom(**kw):
+        def _boom(*a, **kw):
             raise RuntimeError("db corrotto")
-        monkeypatch.setattr(store, "list_records", _boom)
+        # Store generico erra in lettura → la guard deve fail-open (§2.8).
+        monkeypatch.setattr(_store.get_store("github_issue_qa"), "find", _boom)
         args = {"entries": [_gh_entry(7)]}
         with guard.scheduled_turn_scope():
             out, info = guard.filter_treated_issue_entries("classify_entries", args)

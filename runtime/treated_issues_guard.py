@@ -156,12 +156,21 @@ def filter_treated_issue_entries(tool_name: str, args: dict):
                 by_repo.setdefault(ident[0], set()).add(ident[1])
         if not by_repo:
             return args, None
-        import github_issue_qa_store as store
+        # Store generico (unificazione C2, 21/6): UN solo schema/owner per
+        # github_issue_qa (era doppio: store_bootstrap Schema + github_issue_qa_
+        # store con schema PROPRIO divergente → rischio CREATE TABLE in
+        # conflitto). Lettura via Store.find (where con liste → IN). Store non
+        # registrato → nessun trattato (degrado onesto §2.8).
+        import store as _store
+        try:
+            _st = _store.get_store("github_issue_qa")
+        except KeyError:
+            return args, None
         treated: set[tuple[str, int]] = set()
         for repo, nums in by_repo.items():
-            recs = store.list_records(
-                repo=repo, status=list(_TREATED_STATUSES),
-                numbers=sorted(nums), limit=max(200, len(nums)))
+            recs = _st.find(where={"repo": repo,
+                                   "status": list(_TREATED_STATUSES),
+                                   "issue_number": sorted(nums)})
             for r in recs:
                 treated.add((repo, int(r["issue_number"])))
         if not treated:
