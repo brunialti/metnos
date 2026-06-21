@@ -64,7 +64,7 @@ class TestValidation:
             ],
         })
         assert r["ok"] is False
-        assert "duplicate" in r["error"]
+        assert "duplicat" in r["error"]  # i18n: IT "duplicata" / EN "duplicate"
 
     def test_kind_invalid(self, gi):
         r = gi.invoke({

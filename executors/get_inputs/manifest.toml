@@ -20,7 +20,7 @@ en = "SCOPO: gets structured inputs (dialog/form). PATTERN: get_inputs(title='..
 
 [code]
 files  = ["get_inputs.py"]
-digest = "sha256:f86399b3b33cf058f4ff10c722c3f1547d087fcbcbe37bbc7a24ca483379e974"
+digest = "sha256:6413aae643535931e445674f91ff0160f2061390bd300d75179096d82e0e85b8"
 
 [args]
 type     = "object"

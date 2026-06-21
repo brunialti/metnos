@@ -80,38 +80,36 @@ def _validate_dialog(dialog) -> tuple[bool, str | None]:
     Il PLANNER e' un LLM medium: errori puntuali aiutano a riprovare.
     """
     if not isinstance(dialog, list):
-        return False, "dialog deve essere una lista"
+        return False, _msg("ERR_DLG_NOT_LIST")
     if len(dialog) == 0:
-        return False, "dialog deve contenere almeno uno step"
+        return False, _msg("ERR_DLG_EMPTY")
     if len(dialog) > MAX_STEPS:
-        return False, f"dialog troppo lungo: {len(dialog)} step, max {MAX_STEPS}"
+        return False, _msg("ERR_DLG_TOO_LONG", n=len(dialog), max=MAX_STEPS)
     seen_vars: set[str] = set()
     for i, step in enumerate(dialog):
         if not isinstance(step, dict):
-            return False, f"step {i}: deve essere un dict"
+            return False, _msg("ERR_DLG_STEP_NOT_DICT", i=i)
         var = step.get("var")
         if not isinstance(var, str) or not var:
-            return False, f"step {i}: campo 'var' mancante o non stringa"
+            return False, _msg("ERR_DLG_VAR_MISSING", i=i)
         if not _VAR_NAME_RE.match(var):
-            return False, (f"step {i}: 'var'={var!r} non e' snake_case "
-                            "(usa solo lettere, numeri, underscore; deve "
-                            "iniziare con lettera o '_')")
+            return False, _msg("ERR_DLG_VAR_NOT_SNAKE", i=i, var=repr(var))
         if var in seen_vars:
-            return False, f"step {i}: 'var'={var!r} duplicate (gia' definita)"
+            return False, _msg("ERR_DLG_VAR_DUP", i=i, var=repr(var))
         seen_vars.add(var)
         prompt = step.get("prompt")
         if not isinstance(prompt, str) or not prompt:
-            return False, f"step {i} ({var}): 'prompt' mancante o non stringa"
+            return False, _msg("ERR_DLG_PROMPT_MISSING", i=i, var=var)
         if len(prompt) > MAX_PROMPT_LEN:
-            return False, (f"step {i} ({var}): 'prompt' troppo lungo "
-                            f"({len(prompt)} char, max {MAX_PROMPT_LEN})")
+            return False, _msg("ERR_DLG_PROMPT_TOO_LONG", i=i, var=var,
+                               n=len(prompt), max=MAX_PROMPT_LEN)
         schema = step.get("schema")
         if not isinstance(schema, dict):
-            return False, f"step {i} ({var}): 'schema' mancante o non dict"
+            return False, _msg("ERR_DLG_SCHEMA_MISSING", i=i, var=var)
         kind = schema.get("kind")
         if kind not in VALID_KINDS:
-            return False, (f"step {i} ({var}): 'schema.kind'={kind!r} "
-                            f"non valido. Ammessi: {', '.join(VALID_KINDS)}")
+            return False, _msg("ERR_DLG_KIND_INVALID", i=i, var=var,
+                               kind=repr(kind), allowed=", ".join(VALID_KINDS))
         # choice / multi_choice richiedono `choices` esplicite OPPURE
         # derivazione da entries (ADR 0127 propose-and-fire): se lo step
         # ha `display_template` (o flag `from_entries=true`), `choices`
@@ -123,30 +121,28 @@ def _validate_dialog(dialog) -> tuple[bool, str | None]:
             choices = schema.get("choices")
             choices_explicit = isinstance(choices, list) and len(choices) >= 1
             if not (choices_explicit or has_template or from_entries):
-                return False, (f"step {i} ({var}): kind={kind!r} richiede "
-                                "'choices' (lista esplicita >=2) OPPURE "
-                                "'display_template' (derivazione da entries "
-                                "passate via from_step a livello top di args)")
+                return False, _msg("ERR_DLG_CHOICE_REQUIRES", i=i, var=var,
+                                   kind=repr(kind))
             if choices_explicit and len(choices) < 2 \
                     and not (has_template or from_entries):
-                return False, (f"step {i} ({var}): kind={kind!r} 'choices' "
-                                "esplicite richiedono >=2 elementi")
+                return False, _msg("ERR_DLG_CHOICES_MIN2", i=i, var=var,
+                                   kind=repr(kind))
             if "value_field" in schema and not isinstance(
                     schema.get("value_field"), str):
-                return False, (f"step {i} ({var}): 'value_field' deve essere "
-                                "stringa (nome campo dell'entry)")
+                return False, _msg("ERR_DLG_VALUE_FIELD_STR", i=i, var=var)
             if has_template:
                 tpl = schema["display_template"]
                 if len(tpl) > 400:
-                    return False, (f"step {i} ({var}): 'display_template' "
-                                    f"troppo lungo ({len(tpl)} char, max 400)")
+                    return False, _msg("ERR_DLG_TEMPLATE_TOO_LONG", i=i,
+                                       var=var, n=len(tpl))
         # choice_with_preview (PR5): options con value+label+preview path.
         # Path validato lato callers e re-validato lato server preview
         # endpoint (defense in depth, anti path-traversal).
         if kind == "choice_with_preview":
             err_pv = _validate_options_with_preview(schema.get("options"))
             if err_pv is not None:
-                return False, f"step {i} ({var}): {err_pv}"
+                return False, _msg("ERR_DLG_STEP_PREFIX", i=i, var=var,
+                                   detail=err_pv)
     return True, None
 
 
@@ -251,28 +247,26 @@ def _validate_options_with_preview(options) -> str | None:
     Ritorna None se ok, stringa di errore altrimenti.
     """
     if not isinstance(options, list) or len(options) < 2:
-        return ("kind=choice_with_preview richiede 'options' lista con "
-                ">=2 elementi")
+        return _msg("ERR_PV_NEED_2")
     if len(options) > 50:
-        return f"kind=choice_with_preview: troppe opzioni ({len(options)}, max 50)"
+        return _msg("ERR_PV_TOO_MANY", n=len(options))
     seen_values: set[str] = set()
     for j, opt in enumerate(options):
         if not isinstance(opt, dict):
-            return f"option {j}: deve essere un dict"
+            return _msg("ERR_PV_OPT_NOT_DICT", j=j)
         val = opt.get("value")
         if not isinstance(val, (str, int)):
-            return f"option {j}: 'value' string|int richiesto"
+            return _msg("ERR_PV_VALUE_TYPE", j=j)
         sval = str(val)
         if sval in seen_values:
-            return f"option {j}: 'value'={sval!r} duplicato"
+            return _msg("ERR_PV_VALUE_DUP", j=j, value=repr(sval))
         seen_values.add(sval)
         label = opt.get("label")
         if not isinstance(label, str) or not label:
-            return f"option {j}: 'label' string non vuota richiesta"
+            return _msg("ERR_PV_LABEL", j=j)
         pv = opt.get("preview_image_path")
         if not isinstance(pv, str) or not pv:
-            return (f"option {j}: 'preview_image_path' string non vuota "
-                    "richiesta (path assoluto, opzionale '#bbox=x,y,w,h')")
+            return _msg("ERR_PV_PREVIEW_PATH", j=j)
         # Check shape parseable. Safety/exists check rimandato al server.
         try:
             from pathlib import Path as _P
@@ -281,7 +275,7 @@ def _validate_options_with_preview(options) -> str | None:
             import dialog_preview as _dp
             _dp.parse_preview_path(pv)
         except (ImportError, ValueError) as ex:
-            return f"option {j}: preview_image_path non valido: {ex}"
+            return _msg("ERR_PV_PREVIEW_INVALID", j=j, reason=str(ex))
     return None
 
 
