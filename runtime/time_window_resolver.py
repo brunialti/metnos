@@ -115,11 +115,18 @@ _add(rf"\b(\d{{1,4}})\s*{_MONTHS}\s+(?:fa\b|scors[ai]|passat[ai])",
      lambda m: f"last-{_n(m)}m" if _n(m) else None)
 _add(rf"\b(\d{{1,4}})\s*{_YEARS}\s+(?:fa\b|scors[ai]|passat[ai])",
      lambda m: f"last-{_n(m)}y" if _n(m) else None)
-# Singolare nudo (N=1): «ultima ora», «ultimo giorno», «last hour», «past day»
+# Singolare nudo (N=1): «ultima ora», «ultimo giorno», «last hour», «past day».
+# Anche settimana/mese/anno: «(dell')ultimo anno», «last month» → rolling 1y/1m/1w
+# (per i produttori read/find la lettura rolling e' l'interpretazione naturale;
+# la finestra di CALENDARIO la chiede esplicitamente l'utente con date assolute).
 _add(rf"\b{_DET_IT}\s+ora\b", lambda m: "last-1h")
 _add(rf"\b{_DET_EN}\s+hour\b", lambda m: "last-1h")
 _add(rf"\b{_DET_IT}\s+giorno\b", lambda m: "last-1d")
 _add(rf"\b{_DET_EN}\s+day\b", lambda m: "last-1d")
+_add(rf"\b{_DET_IT}\s+mese\b", lambda m: "last-1m")
+_add(rf"\b{_DET_EN}\s+month\b", lambda m: "last-1m")
+_add(rf"\b{_DET_IT}\s+anno\b", lambda m: "last-1y")
+_add(rf"\b{_DET_EN}\s+year\b", lambda m: "last-1y")
 # Postfix IT: «l'ora scorsa», «il giorno passato», «le 24 ore passate»
 _add(rf"\b(\d{{1,4}})\s*{_HOURS}\s+(?:scors[ae]|passat[ae])\b",
      lambda m: f"last-{_n(m)}h" if _n(m) else None)
