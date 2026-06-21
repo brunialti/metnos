@@ -443,6 +443,12 @@ OBJECT_DEFAULT_MUTATING_VERB: dict[str, str | None] = {
     "approval":   None,        # get_approval: gate UI, nessun mutating proprio
     "credentials": "set",
     "entries":    None,        # entries sono meta-oggetto in-memory
+    # Provider objects (github/calendar): None = mention ≠ mutazione (un "le
+    # issue su github" è read/list, non un set) → niente orphan-injection
+    # spuria. Completano la tabella vs OBJECTS (drift 21/6).
+    "issues":     None,
+    "pulls":      None,
+    "calendars":  None,
 }
 
 
@@ -679,6 +685,9 @@ _OBJECT_TO_SECTIONS: dict[str, tuple[str, ...]] = {
     "approval": (),               # gate UI (get_approval), no sezione planner
     "credentials": ("admin_shell",),
     "entries": (),                # meta-oggetto runtime, no sezione dedicata
+    "issues": (),                 # provider github, no sezione planner dedicata
+    "pulls": (),                  # provider github, no sezione planner dedicata
+    "calendars": (),              # provider google_workspace, core-only
 }
 
 
