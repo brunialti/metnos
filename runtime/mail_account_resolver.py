@@ -38,11 +38,15 @@ from __future__ import annotations
 import re
 
 # «tutta/tutte/tutti + (0-3 parole) + parola-mail» IT, «all + (0-3 parole) +
-# parola-mail» EN. Word-boundary, case-insensitive.
+# parola-mail» EN. Inoltre il POSSESSIVO PLURALE «(le) mie/miei + ... + parola-
+# mail» (IT) e «my + ... + mail» (EN): «le mie email» = TUTTE le mie caselle
+# (≠ «la mia mail» singolare, escluso da mie/miei). Word-boundary, case-insens.
 _ALL_MAIL_QUERY = re.compile(
     r"\btutt[aei]\b(?:\s+\S+){0,3}?\s+"
     r"(?:e-?mail\w*|mail\w*|posta\b|casell\w*|account\w*|messagg\w*)"
-    r"|\ball\b(?:\s+\S+){0,3}?\s+"
+    r"|\bmie[i]?\b(?:\s+\S+){0,3}?\s+"
+    r"(?:e-?mail\w*|mail\w*|posta\b|casell\w*|account\w*|messagg\w*)"
+    r"|\b(?:all|my)\b(?:\s+\S+){0,3}?\s+"
     r"(?:e-?mails?\b|mails?\b|inbox(?:es)?\b|accounts?\b|"
     r"mailbox(?:es)?\b|messages?\b)",
     re.IGNORECASE,
