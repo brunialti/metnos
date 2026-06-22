@@ -579,6 +579,21 @@ def read(args: dict) -> dict:
             failed.append({"account": account, "error_code": "ERR_OP_FAILED",
                             "error": _msg("ERR_OP_FAILED", reason=f"{type(e).__name__}: {e}")})
 
+    # §2.1 «le piu' recenti PRIMA» GLOBALE su multi-account: senza, l'aggregazione
+    # e' per-account (account1 tutto, poi account2...) → le mail recenti di un
+    # account iterato per ultimo finiscono in fondo, oltre i cap a valle (es.
+    # extract_entries _MAX_INPUTS=50) → un ago recente in 426 mail viene perso.
+    # Riordina l'intera lista per data desc (mail non parsabili → in coda).
+    if len(accounts) > 1 and len(entries) > 1:
+        from email.utils import parsedate_to_datetime
+
+        def _entry_ts(e):
+            try:
+                d = parsedate_to_datetime(e.get("date") or "")
+                return d.timestamp() if d else 0.0
+            except Exception:
+                return 0.0
+        entries.sort(key=_entry_ts, reverse=True)
     out = {
         "ok": True,
         "ok_count": len(entries),
