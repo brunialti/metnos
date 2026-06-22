@@ -948,6 +948,11 @@ def resolve_query_canonical_args(tool: str, args: dict, query: str,
     except Exception as _mre:
         log.debug("mail_account_resolver noop: %r", _mre)
     try:
+        from from_contains_resolver import resolve_from_contains
+        args = resolve_from_contains(tool, args, query)
+    except Exception as _fce:
+        log.debug("from_contains_resolver noop: %r", _fce)
+    try:
         from time_window_resolver import resolve_time_window
         args = resolve_time_window(tool, args, query, args_schema=args_schema)
     except Exception as _twe:
