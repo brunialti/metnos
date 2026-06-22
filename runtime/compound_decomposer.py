@@ -421,6 +421,17 @@ def _step_schema_coherent(tool: str, args: dict,
     return True
 
 
+def _tool_consumes_entries(tool_name: str, tool_schemas: Optional[dict]) -> bool:
+    """True se l'executor dichiara `entries`/`from_step` nello schema → consuma e
+    POPOLA da sé i record di un passo precedente (es. create_files_spreadsheet
+    «crea e POPOLA»), quindi NON serve un write-populate iniettato a valle.
+    Schema-driven (§7.9): nessun elenco hardcoded di tool. `tool_schemas` assente
+    → False (comportamento storico: inietta)."""
+    sch = (tool_schemas or {}).get(tool_name)
+    props = (sch.get("properties") if isinstance(sch, dict) else None) or {}
+    return "entries" in props or "from_step" in props
+
+
 def decompose_query(query: str, available_tools: set[str],
                     tool_schemas: Optional[dict] = None) -> Optional[list[dict]]:
     """Decompose query in framework multi-step. Universal §7.9.
@@ -544,14 +555,11 @@ def decompose_query(query: str, available_tools: set[str],
         prev_idx = user_step_idxs[-1] if user_step_idxs else None
         args = build_step_args(verb, obj, chunk, prev_idx,
                                tool_name=tool_name, tool_schemas=tool_schemas)
-        # extract_entries: `fields` e' REQUIRED. Il chunk e' spezzato dai
-        # connettori (anche «e» DENTRO la lista campi) → derivalo dall'INTERA
-        # query (bug live 22/6: «...estrai titolo e orario...» → extract_entries
-        # senza fields → executor «missing 'fields'»). §7.9 deterministico.
-        if tool_name == "extract_entries" and not args.get("fields"):
-            _ef = derive_extract_fields(query)
-            if _ef:
-                args["fields"] = _ef
+        # NB: `extract_entries.fields` (arg REQUIRED) NON viene riempito qui:
+        # il piano del decomposer passa per `dispatch.finalize_decomposed_plan`
+        # → `_ensure_extract_clause`, che è l'UNICO punto che riempie la clausola
+        # extract per ENTRAMBI i path (de-dup, refactor P1 22/6). `derive_extract_
+        # fields` resta in questo modulo come helper consumato dal guard.
         # Confidence gate (§7.9/§2.8): se gli args euristici non sono coerenti
         # con lo schema del tool, il decomposer NON e' confidente → deferisce
         # al PLANNER LLM invece di eseguire una pipeline rotta.
@@ -559,14 +567,21 @@ def decompose_query(query: str, available_tools: set[str],
             return None
         steps.append({"tool": tool_name, "args": args})
         user_step_idxs.append(len(steps))  # 1-indexed of THIS step
-        # Universal §7.9: dopo create_X_qualifier che ritorna un blob vuoto
-        # (sheet/doc/db senza contenuto), se step PRECEDENTE ha prodotto
-        # entries → inject step write_X_qualifier che POPOLA con i dati.
-        # Check tool_name (not verb) perché preferenza create>write può aver
-        # mappato verb=write a tool_name=create_X.
+        # Universal §7.9: dopo create_X_qualifier che ritorna un blob VUOTO
+        # (sheet/doc/db senza contenuto), se step PRECEDENTE ha prodotto entries
+        # → inject step write_X_qualifier che POPOLA con i dati.
+        # MA (refactor 22/6, fix «final_message=1»): se `create_X` CONSUMA già le
+        # entries da solo (dichiara `entries`/`from_step` nello schema — es.
+        # create_files_spreadsheet «crea e POPOLA») il write a valle è RIDONDANTE
+        # e rende un result terso che inquina la sintesi finale. Schema-driven, no
+        # hardcoding §7.3: salta l'injection quando il create popola da sé. Allinea
+        # anche la FORMA al path engine (che usa solo create_files_spreadsheet).
+        # Check tool_name (not verb): preferenza create>write può aver mappato
+        # verb=write a tool_name=create_X.
         if (tool_name and tool_name.startswith("create_") and verb_qualifier
             and prev_idx is not None
-            and verb_qualifier in ("spreadsheet", "doc", "csv", "xlsx", "json")):
+            and verb_qualifier in ("spreadsheet", "doc", "csv", "xlsx", "json")
+            and not _tool_consumes_entries(tool_name, tool_schemas)):
             write_tool = f"write_{obj}_{verb_qualifier}"
             if write_tool in available_tools:
                 create_step_idx = len(steps)  # 1-indexed

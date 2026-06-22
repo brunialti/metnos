@@ -1363,6 +1363,49 @@ def _apply_deterministic_structure_guards(framework: Framework, intent,
     return framework
 
 
+def finalize_decomposed_plan(steps: list, query: str,
+                             catalog: Optional[list]) -> Framework:
+    """Bridge decomposer→engine (refactor P1, 22/6): l'output del DECOMPOSER
+    deterministico (`compound_decomposer.decompose_query`, lista `{tool,args}`)
+    DEVE passare per la STESSA finalizzazione del path proposer
+    (`_apply_deterministic_structure_guards`) invece di essere eseguito diretto
+    scavalcando i guard — era il bypass che lasciava `extract_entries` senza
+    l'arg required `fields` (e duplicava la logica fra i due path).
+
+    L'`Intent.actions` è derivato DETERMINISTICAMENTE dai nomi-tool del piano
+    (`verb_object`): i guard di CORREZIONE (align/enforce/conform) restano no-op
+    (il piano è già coerente con le sue azioni — verificato), mentre quelli di
+    FINALIZZAZIONE (`_ensure_extract_clause` riempie `fields`, `_fill_clause_args`,
+    `_resolve_store_field_refs`) fanno il loro lavoro. È l'UNICO punto in cui la
+    clausola extract viene riempita per ENTRAMBI i path (de-dup: `decompose_query`
+    non chiama più `derive_extract_fields`). §7.9 deterministico, mai eccezioni.
+    Vedi [[project-compound-planning-refactor]] P1. Ritorna il Framework pronto
+    per `Executor.run` (con `final_answer` in coda garantito)."""
+    import naming_grammar as _ng
+    actions: list = []
+    for s in steps or []:
+        tool = s.get("tool") if isinstance(s, dict) else None
+        if not tool or tool == "final_answer":
+            continue
+        nc = _ng.parse_name(tool)
+        if nc and nc.verb:
+            actions.append({"verb": nc.verb, "object": nc.obj or ""})
+    primary = actions[0] if actions else {"verb": "", "object": ""}
+    intent = Intent(verb=primary["verb"], object=primary["object"],
+                    keywords=[], confidence=1.0, lang="it", actions=actions)
+    fw_steps = [StepSpec(tool=s["tool"], args=dict(s.get("args") or {}))
+                for s in (steps or []) if isinstance(s, dict) and s.get("tool")]
+    if not any((st.tool or "") == "final_answer" for st in fw_steps):
+        fw_steps.append(StepSpec(tool="final_answer", args={}))
+    framework = Framework(steps=fw_steps, fillers={}, final_message="")
+    try:
+        framework = _apply_deterministic_structure_guards(
+            framework, intent, query, catalog)
+    except Exception as ex:  # finalizzazione best-effort: mai rompere il turno
+        log.warning("finalize_decomposed_plan guard noop: %r", ex)
+    return framework
+
+
 def _insert_consent_gate_if_scheduled(framework, query: str, runtime_ctx):
     """§7.9 consent-gate (20/6/2026): in un turno SCHEDULATO una pipeline che
     comunica verso l'ESTERNO (`send_*`) NON parte senza consenso umano →

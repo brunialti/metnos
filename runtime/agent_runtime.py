@@ -5822,13 +5822,15 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
         if _decomposed_steps:
             try:
                 from engine.executor import Executor as _EngineExec
-                from engine.types import Framework, StepSpec
-                framework = Framework(
-                    steps=[StepSpec(tool=s["tool"], args=s.get("args") or {})
-                            for s in _decomposed_steps] + [StepSpec(tool="final_answer")],
-                    fillers={},
-                    final_message="",
-                )
+                # Refactor P1 (22/6): il piano del decomposer passa per la STESSA
+                # finalizzazione del path proposer (`finalize_decomposed_plan` →
+                # `_apply_deterministic_structure_guards`) invece di essere
+                # eseguito diretto scavalcando i guard. Chiude il bypass che
+                # lasciava extract_entries senza `fields` e de-duplica la logica
+                # (un solo punto riempie la clausola extract).
+                from engine.dispatch import finalize_decomposed_plan
+                framework = finalize_decomposed_plan(
+                    _decomposed_steps, user_query_for_run, catalog)
                 # invoke_executor: dispatcher condiviso
                 def _exec_invoke(tool_name: str, args: dict) -> dict:
                     if tool_name in _BUILTIN_TOOL_HANDLERS:
