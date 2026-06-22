@@ -70,13 +70,24 @@ def invoke(args):
     return backend.read(args)
 
 
+def _json_safe(o):
+    """Fallback serializzazione (§2.8 mai crashare): un campo non-JSON di una
+    mail malformata (bytes header non-UTF8, datetime, ...) diventa stringa invece
+    di far morire l'executor con `non-JSON output`. Bug live 22/6 su account=all
+    (una mailbox aveva un campo bytes)."""
+    if isinstance(o, (bytes, bytearray)):
+        return o.decode("utf-8", "replace")
+    return str(o)
+
+
 def main():
     try:
         args = json.load(sys.stdin)
     except json.JSONDecodeError as e:
         sys.stdout.write(json.dumps({"ok": False, "error": _msg("ERR_JSON_INVALID")}))
         return
-    sys.stdout.write(json.dumps(invoke(args), ensure_ascii=False))
+    sys.stdout.write(json.dumps(invoke(args), ensure_ascii=False,
+                                default=_json_safe))
 
 
 if __name__ == "__main__":
