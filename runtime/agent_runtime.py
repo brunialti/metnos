@@ -4211,8 +4211,18 @@ class TurnLog:
                     continue
             what = (res.get("truncated_what") or s.chosen_tool
                     or msg("MSG_TRUNCATED_DEFAULT_WHAT"))
-            used = res.get("used") or res.get("ok_count") or res.get("count")
-            available = res.get("available_total")
+            if what == "input_sources":
+                # extract_entries ha capato le SORGENTI in INPUT (non l'output):
+                # i campi corretti sono available_INPUT_total + cap_value (50),
+                # non available_total (= record estratti, es. 2). Senza, il
+                # notice diceva «Hai 2 input_sources, ne considero 2» (nonsenso,
+                # bug live 22/6). Parola generica, niente gergo «input_sources».
+                available = res.get("available_input_total")
+                used = res.get("cap_value") or res.get("used")
+                what = msg("MSG_TRUNCATED_DEFAULT_WHAT")
+            else:
+                used = res.get("used") or res.get("ok_count") or res.get("count")
+                available = res.get("available_total")
             key = (what, used, available)
             if key in seen:
                 continue
