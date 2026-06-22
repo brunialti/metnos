@@ -63,6 +63,20 @@ def invoke(args: dict) -> dict:
     if args.get("_pre_approved"):
         return {"ok": True, "decision": "approved", "final_message_hint": ""}
 
+    # §2.11/§2.8 (gate-vuoto, 22/6): un consenso su un outbound di 0 elementi NON
+    # ha nulla da approvare. `guard_count` (iniettato dal consent-gate runtime,
+    # risolto da ${stepN.@count}) == 0 → passa TRASPARENTE senza dialog: l'utente
+    # non viene disturbato con «approvo 0 elementi?», e il send a valle resta un
+    # no-op onesto. Non-numerico / non risolto → gate normale.
+    gc = args.get("guard_count")
+    if gc is not None:
+        try:
+            if int(gc) == 0:
+                return {"ok": True, "decision": "approved",
+                        "final_message_hint": ""}
+        except (TypeError, ValueError):
+            pass
+
     prompt = args.get("prompt")
     if not isinstance(prompt, str) or not prompt.strip():
         return {"ok": False, "error": _msg("ERR_ARG_MISSING", arg="prompt"),

@@ -18,7 +18,7 @@ en = "SCOPO: human consent (Approve/Reject), then runs the executor. PATTERN: ge
 
 [code]
 files  = ["get_approval.py"]
-digest = "sha256:d1b23e4f9548b043f00a62c950ee7bc8ae2f93d64bc85a800dd26c12f85521a0"
+digest = "sha256:b6b67846071e2de61fd0c4db9a09f219c1f251eb36fbd5643bc73924adb85f95"
 
 [args]
 type     = "object"

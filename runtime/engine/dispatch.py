@@ -1286,13 +1286,20 @@ def _insert_consent_gate_if_scheduled(framework, query: str, runtime_ctx):
         # timeout generoso: un'approvazione SCHEDULATA outbound si tappa con
         # comodo (Telegram, anche minuti/ore dopo) → 1h (= cap get_approval),
         # non il default. Roberto 20/6: niente quick-close in conversazione.
-        gate = StepSpec(tool="get_approval", args={
+        gate_args = {
             "prompt": prompt,
             "on_approve": {"tool": "final_answer", "args": {}},
             "timeout_s": 3600,
             "channel": rc.get("channel") or "",
             "actor": rc.get("actor") or "",
-        })
+        }
+        if count_1based:
+            # §2.11/§2.8: outbound VUOTO = niente da approvare. `guard_count` si
+            # risolve a runtime (${stepN.@count}); se il produttore ha 0 item,
+            # get_approval passa trasparente SENZA dialog (niente «approvo 0
+            # elementi?», bug live 22/6). Il send a valle resta no-op onesto.
+            gate_args["guard_count"] = f"${{step{count_1based}.@count}}"
+        gate = StepSpec(tool="get_approval", args=gate_args)
         framework.steps = steps[:first_send] + [gate] + steps[first_send:]
         log.info("[consent_gate] get_approval inserito prima di send "
                  "(turno schedulato, outbound)")
