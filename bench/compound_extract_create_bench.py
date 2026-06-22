@@ -77,12 +77,27 @@ def _exec_tools(fw) -> list[str]:
             if getattr(s, "tool", None) and getattr(s, "tool", "") != "final_answer"]
 
 
+def _term_equiv(exp: str) -> set:
+    """Terminale scrittore-file: `create_files_X` e `write_files_X` sono entrambi
+    scrittori legittimi — la query puo' dire «crea»/«salva»/«scrivi» (es. «salvali
+    in un csv» → intent (write,files), §2.2). Il banco verifica la FORMA
+    (produttore → extract → scrittore col FORMATO giusto), non create-vs-write.
+    Il formato (spreadsheet/doc/csv/...) resta vincolato."""
+    for pfx in ("create_files_", "write_files_"):
+        if exp.startswith(pfx):
+            fmt = exp[len(pfx):]
+            return {f"create_files_{fmt}", f"write_files_{fmt}"}
+    return {exp}
+
+
 def _matches(expected: list[str], tools: list[str]) -> bool:
-    """expected come sottosequenza ORDINATA di tools (produttore via set)."""
+    """expected come sottosequenza ORDINATA di tools (produttore via set,
+    terminale create/write-equivalente a parita' di formato via `_term_equiv`)."""
     i = 0
     for tok in tools:
         exp = expected[i]
-        ok = (tok in _PROD_BY_OBJ[exp]) if exp.startswith("<prod_") else (tok == exp)
+        ok = (tok in _PROD_BY_OBJ[exp]) if exp.startswith("<prod_") \
+            else (tok in _term_equiv(exp))
         if ok:
             i += 1
             if i == len(expected):

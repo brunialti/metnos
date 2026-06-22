@@ -456,11 +456,21 @@ def _align_framework_objects(framework: Framework, intent,
         try:
             from compound_decomposer import (PRODUCER_VERBS as _PRODV,
                                              derive_tool_name as _derive)
+            from . import is_v3 as _is_v3_fn
             all_objs = {o for lst in by_verb.values() for o in lst}
             producer_objs = [a.get("object") for a in actions
                              if isinstance(a, dict)
                              and a.get("verb") in _PRODV and a.get("object")]
-            if all_objs and producer_objs:
+            if all_objs and producer_objs and _is_v3_fn():
+                # v3 (banco caso 3): un produttore con oggetto preso SOLO da una
+                # clausola CONSUMER (es. read_files per «salvali in un csv») e' un
+                # fantasma del proposer flaky → riallinea o DROP. Vedi helper.
+                if _align_foreign_producers_v3(framework, producer_objs,
+                                               _PRODV, _derive, names, _ng):
+                    changed = True
+                    steps = getattr(framework, "steps", steps)
+            elif all_objs and producer_objs:
+                # v2/metis storico (byte-invariato): realign-only su all_objs.
                 covered = set()
                 for st in steps:
                     nc2 = _ng.parse_name(getattr(st, "tool", "") or "")
@@ -744,6 +754,106 @@ def _remap_step_refs(obj, idx_map: dict):
             lambda m: m.group(1) + str(idx_map.get(int(m.group(2)), int(m.group(2)))),
             obj)
     return obj
+
+
+def _contains_stepref(obj, pos: int) -> bool:
+    """True se `obj` (dict/list/str ricorsivo) contiene un ${stepN} con N==pos."""
+    ref = "${step%d" % pos
+    if isinstance(obj, str):
+        return ref in obj
+    if isinstance(obj, dict):
+        return any(_contains_stepref(v, pos) for v in obj.values())
+    if isinstance(obj, (list, tuple)):
+        return any(_contains_stepref(v, pos) for v in obj)
+    return False
+
+
+def _step_is_consumed(steps, pos: int) -> bool:
+    """True se un ALTRO step consuma l'output dello step in posizione `pos`
+    (1-based): via `from_step`/`from_steps` o un riferimento ${stepN.field}.
+    Serve a non DROPpare un produttore-fantasma che qualcuno consuma (romperebbe
+    la pipe). §7.9 deterministico."""
+    for i, s in enumerate(steps, 1):
+        if i == pos:
+            continue
+        a = getattr(s, "args", None) or {}
+        if not isinstance(a, dict):
+            continue
+        if a.get("from_step") == pos:
+            return True
+        fss = a.get("from_steps")
+        if isinstance(fss, (list, tuple)) and pos in fss:
+            return True
+        if _contains_stepref(a, pos):
+            return True
+    return False
+
+
+def _align_foreign_producers_v3(framework, producer_objs, _PRODV, _derive,
+                                names, _ng) -> bool:
+    """v3 (banco caso 3, 22/6): un PRODUTTORE (read/find/get/list) e' legittimo
+    solo se il suo oggetto e' un oggetto-PRODUTTORE dell'intent. Un produttore con
+    oggetto preso SOLO da una clausola CONSUMER — es. `read_files` per «salvali in
+    un csv» (object=files dalla clausola write) — e' un FANTASMA del proposer
+    flaky. Due esiti deterministici:
+      - se l'oggetto-produttore reale NON e' ancora coperto da un produttore
+        legittimo → RIALLINEA (è il solo produttore col verbo giusto e oggetto
+        sbagliato; bug storico read_urls_html→read_messages);
+      - se TUTTI gli oggetti-produttore sono gia' coperti E lo step e' ORFANO
+        (nessuno lo consuma) → DROP onesto §2.8 + rimappa from_step a valle.
+    §7.9 deterministico, no LLM. Ritorna True se ha modificato il framework.
+
+    NB v2/metis: questa logica NON gira (gating is_v3 nel chiamante) → byte-
+    invariato. Differenza vs v2: v2 usa `all_objs` (skip se l'oggetto compare
+    in QUALSIASI clausola) e non DROPpa mai; v3 usa solo gli oggetti-produttore."""
+    steps = list(getattr(framework, "steps", None) or [])
+    producer_set = set(producer_objs)
+    covered = set()
+    for st in steps:
+        nc2 = _ng.parse_name(getattr(st, "tool", "") or "")
+        if nc2 and nc2.verb in _PRODV and nc2.obj in producer_set:
+            covered.add(nc2.obj)
+    changed = False
+    to_drop = set()
+    for st in steps:
+        tool = getattr(st, "tool", None)
+        nc = _ng.parse_name(tool) if tool else None
+        if not nc or nc.verb not in _PRODV or nc.obj in producer_set:
+            continue  # non-produttore o produttore con oggetto-intent legittimo
+        if nc.obj == "entries":
+            # `entries` e' il META-oggetto pipe in-memory (§2.2): find/read/
+            # get_entries e' una lettura store/memoria LEGITTIMA che precede un
+            # write/compare/filter su entries, anche quando l'intent decompone
+            # solo la clausola-consumer {write,entries} (FASE 3). NON e' un
+            # produttore-fantasma → mai drop/realign.
+            continue
+        uncovered = [o for o in producer_objs if o not in covered]
+        if uncovered:
+            new_tool = _derive(nc.verb, uncovered[0], names)
+            if new_tool and new_tool != tool:
+                st.tool = new_tool
+                old_args = getattr(st, "args", None) or {}
+                st.args = {k: v for k, v in old_args.items()
+                           if k.startswith("_")
+                           or k in ("from_step", "from", "entries")}
+                covered.add(uncovered[0])
+                changed = True
+        else:
+            pos = steps.index(st) + 1
+            if not _step_is_consumed(steps, pos):
+                to_drop.add(id(st))
+                changed = True
+    if to_drop:
+        kept = [s for s in steps if id(s) not in to_drop]
+        old_pos = {id(s): i + 1 for i, s in enumerate(steps)}
+        new_pos = {id(s): i + 1 for i, s in enumerate(kept)}
+        idx_map = {old_pos[id(s)]: new_pos[id(s)] for s in kept}
+        for s in kept:
+            s.args = _remap_step_refs(getattr(s, "args", None) or {}, idx_map)
+        framework.final_message = _remap_step_refs(
+            getattr(framework, "final_message", "") or "", idx_map)
+        framework.steps = kept
+    return changed
 
 
 def _conform_to_intent_order(framework: Framework, intent, query: str,
