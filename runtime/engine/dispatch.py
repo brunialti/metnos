@@ -331,8 +331,12 @@ def _ensure_extract_clause(framework: Framework, intent, query: str,
     inutile; e derive(extract,messages) andava a None). Qui la INSERIAMO nella
     POSIZIONE giusta — subito dopo l'ultimo PRODUTTORE — con rewiring dei
     `from_step` (i consumer del produttore ora consumano l'extract; i ref a valle
-    slittano +1). Scatta solo se l'intent ha {extract,*} e `extract_entries` e'
-    assente. v3-gated, deterministico, mai eccezioni."""
+    slittano +1). Scatta se l'intent ha {extract,*}.
+
+    DUE casi (bug live 22/6 «missing 'fields'»): (1) extract_entries ASSENTE →
+    INSERISCE con `fields` derivati dalla clausola «estrai X e Y»; (2) PRESENTE
+    ma SENZA `fields` (il proposer lo emette spesso incompleto) → RIEMPIE `fields`
+    deterministicamente. `fields` e' un arg REQUIRED. v3-gated, mai eccezioni."""
     try:
         from . import is_v3
         if not is_v3():
@@ -344,11 +348,28 @@ def _ensure_extract_clause(framework: Framework, intent, query: str,
         steps = list(getattr(framework, "steps", None) or [])
         if not steps:
             return framework
-        if any((s.tool or "") == "extract_entries" for s in steps):
-            return framework  # gia' presente
         import naming_grammar as _ng
-        from compound_decomposer import PRODUCER_VERBS as _PV
+        from compound_decomposer import (PRODUCER_VERBS as _PV,
+                                         derive_extract_fields)
         from .types import StepSpec
+        # extract_entries GIA' presente: il proposer a volte lo emette SENZA
+        # l'arg required `fields` (bug live 22/6 → executor «missing 'fields'»).
+        # Riempi `fields` DETERMINISTICAMENTE dalla clausola «estrai X e Y». Non
+        # ne inseriamo un secondo. Se la query e' opaca → lascia com'e' (errore-
+        # guida onesto a valle).
+        existing = next((s for s in steps
+                         if (getattr(s, "tool", "") or "") == "extract_entries"),
+                        None)
+        if existing is not None:
+            ea = getattr(existing, "args", None) or {}
+            if not ea.get("fields"):
+                _ef = derive_extract_fields(query)
+                if _ef:
+                    ea["fields"] = _ef
+                    existing.args = ea
+                    log.info("[ensure_extract] fields riempiti su extract_entries "
+                             "esistente: %s", _ef)
+            return framework
 
         def _verb(s):
             nc = _ng.parse_name(getattr(s, "tool", "") or "")
@@ -380,11 +401,18 @@ def _ensure_extract_clause(framework: Framework, intent, query: str,
                     s.args["from_step"] = k
                 elif fs >= k:
                     s.args["from_step"] = fs + 1
-        steps.insert(pi + 1, StepSpec(tool="extract_entries",
-                                      args={"from_step": prod_1b}))
+        # `fields` e' REQUIRED da extract_entries: derivalo DETERMINISTICAMENTE
+        # dalla clausola «estrai X e Y» (bug live 22/6: senza, l'executor falliva
+        # «missing 'fields'»). Se la query non espone i campi → niente fields:
+        # l'executor dara' l'errore-guida onesto, ma il caso comune e' coperto.
+        ins_args = {"from_step": prod_1b}
+        _fields = derive_extract_fields(query)
+        if _fields:
+            ins_args["fields"] = _fields
+        steps.insert(pi + 1, StepSpec(tool="extract_entries", args=ins_args))
         framework.steps = steps
         log.info("[ensure_extract] extract_entries inserito @1b=%d (dopo "
-                 "produttore @%d)", k, prod_1b)
+                 "produttore @%d) fields=%s", k, prod_1b, _fields or "—")
         return framework
     except Exception as ex:
         log.warning("ensure_extract_clause noop (best-effort): %r", ex)

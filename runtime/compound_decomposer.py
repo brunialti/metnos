@@ -84,6 +84,78 @@ def split_query_chunks(query: str) -> list[str]:
     return [p.strip() for p in parts if p.strip()]
 
 
+# Nomi-campo: articoli/preposizioni-composto da scartare (IT+EN), lessico curato.
+# `di/of/d` sono STOP (scartati) ma NON tagliano («numero d'ordine»→«numero ordine»).
+_FIELD_STOP = {"il", "lo", "la", "i", "gli", "le", "un", "uno", "una", "dei",
+               "degli", "delle", "del", "dello", "della", "di", "da", "d", "l",
+               "a", "ad", "ogni", "the", "an", "of", "each", "every", "its",
+               "their"}
+# Preposizioni che introducono una FRASE-sorgente/scope → TAGLIANO il campo
+# («title from this week's events»→«title»; «dati dalle fatture»→«dati»).
+_FIELD_CUT_PREP = {"from", "in", "into", "da", "dal", "dalla", "dallo", "dai",
+                   "dagli", "dalle", "nel", "nella", "nello", "nei", "negli",
+                   "su", "sul", "sulla", "sui", "sulle", "about", "regarding",
+                   "per", "con", "tra", "fra", "presso"}
+
+
+def _clean_field_name(text: str) -> str:
+    """Normalizza un frammento NL in un nome-campo: taglia alla prima prep-frase,
+    scarta articoli/preposizioni-composto, max 3 parole. Deterministico §7.9."""
+    text = text.replace("'", " ").replace("’", " ").lower()
+    words = re.findall(r"[\w]+", text)
+    kept: list[str] = []
+    for w in words:
+        if w in _FIELD_CUT_PREP and kept:
+            break
+        kept.append(w)
+    kept = [w for w in kept if w not in _FIELD_STOP]
+    return " ".join(kept[:3]).strip()
+
+
+def derive_extract_fields(query: str) -> list[str]:
+    """§7.9 deterministico: estrae i NOMI-CAMPO dalla clausola «estrai X, Y e Z»
+    di una query compound. Serve a riempire `extract_entries.fields` quando il
+    proposer DROPPA la clausola e il guard `_ensure_extract_clause` la re-inserisce
+    (bug live 22/6: «...estrai titolo e orario...» → extract_entries SENZA fields →
+    «missing 'fields'»). Robustezza NL→determinismo §2.4: la clausola e' spezzata
+    dai connettori (anche «e» DENTRO la lista campi) → i chunk SENZA verbo sono
+    continuazioni della clausola-extract. Ritorna [] se non c'e' clausola extract
+    (il caller mantiene il comportamento attuale). Niente LLM."""
+    try:
+        from prefilter import (tokenize as _tok,
+                               detect_canonical_verbs_all as _verbs)
+    except Exception:
+        return []
+    chunks = split_query_chunks(query)
+    if not chunks:
+        return []
+    ann = [(ch, (_verbs(_tok(ch)) or [None])[0]) for ch in chunks]
+    n = len(ann)
+    fields: list[str] = []
+    for i, (ch, v) in enumerate(ann):
+        if v != "extract":
+            continue
+        # primo chunk: scarta la PAROLA-verbo iniziale (es. «estrai»/«extract»).
+        first = _clean_field_name(" ".join(re.findall(r"[\w']+", ch)[1:]))
+        if first:
+            fields.append(first)
+        # continuazioni: chunk seguenti SENZA verbo (resto della lista campi).
+        j = i + 1
+        while j < n and ann[j][1] is None:
+            f2 = _clean_field_name(ann[j][0])
+            if f2:
+                fields.append(f2)
+            j += 1
+        break
+    seen: set = set()
+    out: list[str] = []
+    for f in fields:
+        if f and f not in seen and len(f) <= 40:
+            seen.add(f)
+            out.append(f)
+    return out
+
+
 def detect_chunk_action(chunk: str) -> Optional[tuple[str, str]]:
     """Detect (verb, object) canonical per un chunk di query.
     Ritorna None se nessun verbo canonico o object derivabile.
@@ -472,6 +544,14 @@ def decompose_query(query: str, available_tools: set[str],
         prev_idx = user_step_idxs[-1] if user_step_idxs else None
         args = build_step_args(verb, obj, chunk, prev_idx,
                                tool_name=tool_name, tool_schemas=tool_schemas)
+        # extract_entries: `fields` e' REQUIRED. Il chunk e' spezzato dai
+        # connettori (anche «e» DENTRO la lista campi) → derivalo dall'INTERA
+        # query (bug live 22/6: «...estrai titolo e orario...» → extract_entries
+        # senza fields → executor «missing 'fields'»). §7.9 deterministico.
+        if tool_name == "extract_entries" and not args.get("fields"):
+            _ef = derive_extract_fields(query)
+            if _ef:
+                args["fields"] = _ef
         # Confidence gate (§7.9/§2.8): se gli args euristici non sono coerenti
         # con lo schema del tool, il decomposer NON e' confidente → deferisce
         # al PLANNER LLM invece di eseguire una pipeline rotta.
