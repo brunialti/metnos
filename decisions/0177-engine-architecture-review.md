@@ -20,7 +20,7 @@ run_turn()
  ├─ [2] PLANNING — DUE PATH che si sovrappongono
  │     (a) DECOMPOSER deterministico  compound_decomposer.decompose_query (:5759, ≥2 verbi)
  │     (b) ENGINE LLM                 _try_engine_v2 → engine/dispatch.run_turn (:5884)
- │     (legacy ReAct planner :5977, default OFF, ~3000 LOC morte-ma-presenti)
+ │     (planner ReAct :5998, ~3000 LOC — NON morto: path foto-upload + resume-dialog, S7)
  ├─ [3] PROPOSER          proposer.py / proposer_metis.py / proposer_v3.py
  │     + intent_extractor.py + prefilter.py + routing_pool.py
  ├─ [4] CACHE             L0 fastpath.py (fastpaths.sqlite) · L1 autopath.py (autopath.sqlite)
@@ -35,7 +35,7 @@ run_turn()
 
 | File | LOC | Note |
 |---|---|---|
-| `runtime/agent_runtime.py` | 9396 | contiene run_turn + intake + ~3000 LOC legacy morte |
+| `runtime/agent_runtime.py` | 9396 | contiene run_turn + intake + ~3000 LOC «legacy» (NON morte: foto+resume, S7) |
 | `runtime/engine/dispatch.py` | 1916 | 11 guard (257–1336) + orchestratore + integrazione cache |
 | `runtime/engine/executor.py` | 1674 | Executor.run = ~454 LOC, 9 responsabilità |
 | `runtime/engine/fastpath.py` | 735 | L0 |
@@ -83,8 +83,8 @@ ADR 0174: i guard girano su OGNI hit L0/L1 (dispatch ~1629, ~1677) prima dell'es
 ### S6 — Intake a 12 decider first-match-wins senza contratto d'ordine ⚠
 Mappati ~12 meccanismi di short-circuit (admin, strato-3, fast-path, seed-step, scheduling, resume, decomposer, engine). ⚠ Ordine-dipendenza non documentata; branch sovrapposti (scheduling-parse vs tasks-marker per skippare il decomposer; resume-scratchpad vs seed-step pre-popolano entrambi lo scratchpad); `log.write()` pre-return ripetuto ~8× senza helper; flag `METNOS_*` sparsi senza registry. NB: parte di questi smell sono ipotesi dell'agente, da confermare leggendo il codice prima di agire.
 
-### S7 — Legacy planner ReAct morto-ma-presente ✓
-~3000 LOC in agent_runtime, `METNOS_PLANNER_LEGACY=0` di default (riga 5977). Viola §7.1 (no backward-compat in dev). Peso morto su un file già di 9396 LOC.
+### S7 — Legacy planner ReAct: **NON è morto** (correzione 23/6) ⚠
+~3000 LOC in agent_runtime. **La premessa iniziale «codice morto» era ERRATA** (verificato 23/6, agente M1). Il gate `METNOS_PLANNER_LEGACY=0` (riga 5985, indent 8) è DENTRO il blocco `if not _ref_images_for_prompt and not resume_with_scratchpad:` (5628, indent 4); il corpo «legacy» (5998, indent 4) gira DOPO quel blocco. Quando ci sono **foto allegate** (`reference_images` → l'engine v3 disabilitato via `_bypass_for_uploads`, 5889) o un **resume-dialog** (`resume_with_scratchpad`), il blocco 5628 — gate incluso — è saltato e il controllo cade nel «legacy» (5998), che è quindi il path **VIVO** per: (a) routing foto-upload (iniezione step `@uploaded` 6516-6558 + blocco prompt foto 5582-5595 → `find_images_indices`); (b) resume scratchpad (6383-6429). `engine/` non ha equivalente (zero `@uploaded`/`reference_image`/`resume_with_scratchpad`). Test live `test_run_turn_reference_images` passa attraverso questo codice. → **Non rimuovibile come «codice morto»**; serve prima il porting sull'engine v3 (NB: `_try_engine_v2` è solo il nome della funzione dispatch; l'engine attivo è v3). (§7.1 vale ancora, ma il debito è «migra poi rimuovi», non «cancella».)
 
 ### S8 — Debito lessici §7.3 (hardcoding IT+EN inline) ✓
 Lessici di detezione ancora hardcoded fuori da `detection_lexicon`: `prefilter._VERB_TO_CANONICAL`/`_OBJECT_HINTS`/stopwords/estensioni; `compound_decomposer._FIELD_STOP`/`_FIELD_CUT_PREP`/`_FORMAT_HINTS`; resolver vari. Non traducibili per lingue nuove; regressione §7.3 reintrodotta in `c6269de`. `detection_lexicon` + seed esistono e funzionano: la migrazione è incrementale e a regressione-zero.
@@ -114,7 +114,7 @@ Il target propone una **linea**: la generazione vincolata cattura ciò che è es
 | T4 | **Test di idempotenza dei guard** sugli hit cache (`guard(guard(fw))==guard(fw)` su un corpus di piani reali) PRIMA di qualsiasi refactor cache. | S3 |
 | T5 | **Una sola fonte del messaggio finale**: un Finalizer con strategia esplicita (zero-result → template → synth → describe → policy), de-duplicato, i18n-garantito. | S5 |
 | T6 | **Slimmare Executor.run**: estrarre la catena resolver in un registry ordinato e dichiarato; separare esecuzione da finalizzazione. | S4 |
-| T7 | **Rimuovere il legacy planner** (~3000 LOC) — §7.1. | S7 |
+| T7 | **Migrare upload+resume sull'engine v3, POI rimuovere il legacy** (~3000 LOC). NON è una cancellazione: il legacy è vivo (S7). (NB: `_try_engine_v2` è solo il nome legacy della funzione dispatch; l'engine attivo è v3, non c'è un «v2» separato.) | S7 |
 | T8 | **Migrare i lessici a `detection_lexicon`** a regressione-zero, incrementale. | S8 |
 
 ---
@@ -124,7 +124,7 @@ Il target propone una **linea**: la generazione vincolata cattura ciò che è es
 > Principio: ogni passo è indipendente, gated (suite 2828/0 + routing 29/29 v3), e committabile da solo. Nessun big-bang.
 
 1. **M0 — Sicurezza prima (cheap, alto valore)**: T4 (test idempotenza guard) + esplicitare l'ordine-contratto della pipeline guard (T3 parte test). Chiude il rischio silenzioso S3 senza toccare comportamento.
-2. **M1 — Pulizia morta**: T7 (rimuovi legacy planner) + de-duplica il blocco render-degenere→synth (S5 parziale). Riduce 9396→~6000 LOC agent_runtime, zero rischio comportamentale.
+2. **M1 — RIFRAME (23/6): NON è pulizia morta.** Il «legacy» è VIVO (S7: foto-upload + resume-dialog). M1 reale = **(a)** portare sull'engine **v3** l'iniezione `@uploaded` + il blocco prompt foto, **(b)** la pre-popolazione scratchpad/step-offset del resume, **(c)** togliere `_bypass_for_uploads` lasciando l'engine v3 gestire entrambi, **(d)** e2e foto→`find_images_indices` + resume-dialog via engine v3; SOLO ALLORA il gate `METNOS_PLANNER_LEGACY` diventa incondizionato e il blocco 5998→9247 è eliminabile. (NB: l'engine è v3 — `_try_engine_v2` è solo il nome della funzione; nessuna «v2» da inseguire.) **Non** zero-rischio. (De-dup render-degenere→synth, S5, resta separato e a basso rischio.)
 3. **M2 — Unifica sintesi finale**: T5 (Finalizer unico). Sana «final_message=1» e l'i18n non garantito.
 4. **M3 — Consolida guard**: T3 (fondere i 3 «produttore mancante», resolver-registry).
 5. **M4 — Vincola la generazione**: T2 (grammar-on-args, spike + misura: quanti guard si possono spegnere). Il passo più incerto → prototipo dietro flag, misurato su banco.
