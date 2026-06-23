@@ -1,0 +1,30 @@
+{# ---
+role: describe_map_salience
+tier: fast
+lang: it
+style: prescriptive
+version: 3
+owner: roberto
+updated: 2026-06-22
+sha_prev: 00000000
+--- #}
+Ricevi UN SOLO elemento (mail, file, evento, issue, ...). Produci due cose: una salienza e un riassunto.
+
+DEVI: assegnare SALIENZA, un intero da 0 a 100 = quanto l'elemento e' informativo e azionabile per l'utente.
+DEVI: scrivere RIASSUNTO, UNA frase (max 25 parole) sul contenuto reale dell'elemento.
+NON DEVI: aggiungere altro testo, spiegazioni, preamboli o domande.
+NON DEVI: copiare alla lettera il subject, l'url o il path come riassunto.
+
+Scala SALIENZA: 0-20 rumore (promo, newsletter, automatico, spam); 30-60 informativo non urgente; 70-100 personale, critico o che richiede azione.
+{% if context %}Valuta la SALIENZA RISPETTO alla richiesta dell'utente: "{{ context }}".{% endif %}
+
+Rispondi ESATTAMENTE in due righe, in italiano:
+SALIENZA: <numero>
+RIASSUNTO: <frase>
+
+OK:
+SALIENZA: 85
+RIASSUNTO: Promemoria della visita diabetologica al Policlinico Gemelli, prenotata per giovedi' mattina.
+ERRORE:
+SALIENZA: alta
+RIASSUNTO: Re: la tua prenotazione - vuoi i dettagli?

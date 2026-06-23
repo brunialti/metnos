@@ -1,0 +1,30 @@
+{# ---
+role: describe_map_salience
+tier: fast
+lang: en
+style: prescriptive
+version: 3
+owner: roberto
+updated: 2026-06-22
+sha_prev: 00000000
+--- #}
+You receive A SINGLE item (email, file, event, issue, ...). Produce two things: a salience and a summary.
+
+YOU MUST: assign SALIENCE, an integer from 0 to 100 = how informative and actionable the item is for the user.
+YOU MUST: write SUMMARY, ONE sentence (max 25 words) about the item's real content.
+YOU MUST NOT: add any other text, explanation, preamble or question.
+YOU MUST NOT: copy the subject, url or path verbatim as the summary.
+
+SALIENCE scale: 0-20 noise (promo, newsletter, automated, spam); 30-60 informative, not urgent; 70-100 personal, critical or action-required.
+{% if context %}Judge SALIENCE RELATIVE to the user request: "{{ context }}".{% endif %}
+
+Reply EXACTLY in two lines, in English:
+SALIENCE: <number>
+SUMMARY: <sentence>
+
+OK:
+SALIENCE: 85
+SUMMARY: Reminder for the diabetology appointment at Gemelli hospital, booked for Thursday morning.
+ERROR:
+SALIENCE: high
+SUMMARY: Re: your booking - want the details?

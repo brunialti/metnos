@@ -52,6 +52,29 @@ STYLES = ("by_importance", "by_relevance", "compact")
 _DESCRIBE_MAX_CHARS = int(os.environ.get("METNOS_DESCRIBE_MAX_CHARS", "48000"))
 _DESCRIBE_HARD_MAX = int(os.environ.get("METNOS_DESCRIBE_HARD_MAX", "200"))
 
+# Map-reduce OVER-BUDGET (22/6/2026, Roberto «robusto, universale, efficiente»):
+# quando il bundle sfora il budget, invece di troncare e DIMENTICARE la coda
+# (prima N in ordine d'arrivo = arbitrario), si fa map-reduce GENERALE (§7.3,
+# vale per mail/file/issue/processi):
+#   MAP   — una passata `fast` PER ELEMENTO: resume breve + punteggio di
+#           salienza (0-100). Una entry alla volta non sfora MAI il budget
+#           (elimina il problema alla radice — Roberto), output corto, N volte.
+#   REDUCE— una `middle` sintetizza i digest (piccoli → stanno nel budget),
+#           ordinati per salienza; se i digest stessi sforano (N enorme),
+#           ricorsione GERARCHICA (riassunto-di-riassunti) fino a convergenza.
+# Copre TUTTE le entries (niente droppato §2.8). Scatta SOLO over-budget: il
+# caso comune (sotto budget) resta la singola chiamata di prima, invariato.
+# Determinismo §11: il path map-reduce e' N+1 chiamate HTTP fast/middle
+# (efficiente, no processo monouso ×N) → NON byte-riproducibile, dichiarato
+# onestamente `meta.deterministic=False` (come il fallback HTTP §11).
+_DESCRIBE_MAPREDUCE = os.environ.get("METNOS_DESCRIBE_MAPREDUCE", "1").strip() != "0"
+_MR_MAX_DEPTH = int(os.environ.get("METNOS_DESCRIBE_MR_DEPTH", "3"))
+# Campi-identita' da preservare nei digest (per la sintesi REDUCE + link
+# section ADR 0119). Dominio-agnostici: mail (subject/from), file (path/name),
+# issue/url (url/title), eventi (when/date).
+_DIGEST_ID_FIELDS = ("subject", "from", "sender", "title", "name",
+                     "url", "path", "date", "when", "account")
+
 # Testo DETERMINISTICO per costruzione (12/6/2026): stessa lista di entries
 # -> testo IDENTICO byte-a-byte su run ripetuti. Il path HTTP del llama-server
 # condiviso NON e' riproducibile (stato di processo, vedi llm_helpers blocco
@@ -83,6 +106,108 @@ def _pack_entries(entries: list) -> tuple[list, bool]:
         visible.append(e)
         total_chars += sz
     return visible, len(visible) < len(entries)
+
+
+def _fallback_resume(entry) -> str:
+    """Resume deterministico senza LLM (fallback se la MAP fallisce)."""
+    if isinstance(entry, dict):
+        for k in ("body_text", "content", "body", "text", "snippet",
+                  "subject", "title", "name"):
+            v = entry.get(k)
+            if isinstance(v, str) and v.strip():
+                return v.strip()[:300]
+    return json.dumps(entry, ensure_ascii=False)[:300]
+
+
+# Tetto input per il MAP: per giudicare salienza + 1 frase NON serve la mail
+# intera. Tagliare i campi testuali lunghi a ~1500 char accelera il prompt
+# processing senza intaccare il giudizio (subject/mittente + incipit bastano).
+# NB (22/6): il batch del MAP e' stato PROVATO e SCARTATO — su GPU seriale il
+# tempo e' legato ai token totali, non al numero di chiamate (§7.4): batch =
+# stesso lavoro, +complessita'. Per-mail e' piu' semplice (§7.2) e pari-veloce.
+_MAP_FIELD_CHARS = int(os.environ.get("METNOS_DESCRIBE_MAP_FIELD_CHARS", "1500"))
+_MAP_LONG_FIELDS = ("body_text", "content", "body", "text", "snippet", "html")
+
+
+def _trim_for_map(entry):
+    """Copia shallow dell'entry coi campi testuali lunghi troncati a
+    _MAP_FIELD_CHARS — solo per il MAP, l'entry originale resta intatto."""
+    if not isinstance(entry, dict):
+        return entry
+    out = dict(entry)
+    for k in _MAP_LONG_FIELDS:
+        v = out.get(k)
+        if isinstance(v, str) and len(v) > _MAP_FIELD_CHARS:
+            out[k] = v[:_MAP_FIELD_CHARS]
+    return out
+
+
+def _parse_salience(text: str, entry) -> tuple[int, str]:
+    """Estrae (salienza 0-100, resume) dall'output MAP. Robusto §2.4: se il
+    formato non torna, salienza neutra 50 + resume = testo/fallback."""
+    score = 50
+    m = re.search(r'(?:SALIENZA|SALIENCE)\s*[:=]\s*(\d{1,3})', text, re.I)
+    if m:
+        score = max(0, min(100, int(m.group(1))))
+    m2 = re.search(r'(?:RIASSUNTO|SUMMARY)\s*[:=]\s*(.+)', text, re.I | re.S)
+    resume = (m2.group(1).strip() if m2 else (text or "").strip())
+    if not resume:
+        resume = _fallback_resume(entry)
+    return score, resume[:600]
+
+
+def _map_one(entry, map_prompt: str) -> tuple[int, str]:
+    """MAP di UN elemento: chiamata `fast` HTTP (efficiente, no processo
+    monouso), input troncato, output corto. Ritorna (salienza, resume).
+    Fail-open §2.8."""
+    try:
+        text, _meta = call_llm([_trim_for_map(entry)], map_prompt, tier="fast",
+                               max_tokens=140, deterministic=False,
+                               max_query_chars=_MAP_FIELD_CHARS + 2048)
+    except Exception:
+        return 50, _fallback_resume(entry)
+    return _parse_salience(text, entry)
+
+
+def _describe_map_reduce(entries: list, *, style: str, context: str,
+                         data_kind, fmt: str, group_by, max_tokens: int,
+                         health_context, mr_depth: int) -> dict:
+    """Over-budget describe via map-reduce (§7.3, vedi blocco costanti).
+    MAP per-elemento (resume + salienza), copre TUTTE le entries, ordina per
+    salienza; ricorsione gerarchica se i digest sforano. NON byte-determ."""
+    map_prompt = prompt_loader.get("describe_map_salience", DEFAULT_LANG,
+                                   context=context or "")
+    digests: list = []
+    for e in entries:
+        score, resume = _map_one(e, map_prompt)
+        d = {}
+        if isinstance(e, dict):
+            for k in _DIGEST_ID_FIELDS:
+                if e.get(k) is not None:
+                    d[k] = e[k]
+        d["content"] = resume
+        d["_salience"] = score
+        digests.append(d)
+    digests.sort(key=lambda x: x.get("_salience", 0), reverse=True)
+    # REDUCE: describe normale sui digest (piccoli → singola chiamata; se
+    # sforano ancora, ricorre map-reduce a mr_depth+1 = gerarchico). tier
+    # `middle`, non deterministico (path efficiente).
+    res = handle_describe_entries({
+        "entries": digests, "style": style, "context": context,
+        "data_kind": data_kind, "format": fmt, "group_by": group_by,
+        "tier": "middle", "max_tokens": max_tokens,
+        "health_context": health_context,
+    }, _mr_depth=mr_depth + 1, _deterministic=False)
+    if isinstance(res, dict) and res.get("ok"):
+        # Coperte TUTTE: niente troncamento, item_count = totale reale.
+        res["item_count"] = len(entries)
+        for k in ("truncated", "truncated_what", "used", "available_total",
+                  "cap_field", "cap_value"):
+            res.pop(k, None)
+        res["map_reduce"] = True
+        res["mapped"] = len(entries)
+        res["deterministic"] = False
+    return res
 
 # Direttive di formattazione applicate in append al prompt principale.
 # Cosi' il chiamante puo' chiedere lo stesso riassunto in markdown
@@ -441,7 +566,9 @@ def _extract_header(entries):
     return None, entries
 
 
-def handle_describe_entries(args, *, verbose: bool = False) -> dict:
+def handle_describe_entries(args, *, verbose: bool = False,
+                             _mr_depth: int = 0,
+                             _deterministic: bool | None = None) -> dict:
     entries = (args or {}).get("entries")
     if not isinstance(entries, list):
         return {"ok": False, "error": "missing or invalid 'entries' (must be a list)"}
@@ -542,7 +669,7 @@ def handle_describe_entries(args, *, verbose: bool = False) -> dict:
     _has_textual_content = any(
         _has_content(e) for e in entries if isinstance(e, dict)
     )
-    if not _has_textual_content:
+    if _mr_depth == 0 and not _has_textual_content:
         _urls_for_fetch = [
             e["url"] for e in entries
             if isinstance(e, dict)
@@ -568,6 +695,17 @@ def handle_describe_entries(args, *, verbose: bool = False) -> dict:
     total_entries = len(entries)
     visible_entries, truncated_describe = _pack_entries(entries)
     hidden_count = total_entries - len(visible_entries)
+
+    # Over-budget → map-reduce (§7.3, copre TUTTE le entries invece di
+    # troncare la coda). Scatta solo se abilitato e sotto il tetto di
+    # ricorsione. Sotto budget (truncated_describe=False): path invariato.
+    if (truncated_describe and _DESCRIBE_MAPREDUCE
+            and _mr_depth < _MR_MAX_DEPTH):
+        return _describe_map_reduce(
+            entries, style=style, context=context, data_kind=data_kind,
+            fmt=fmt, group_by=group_by, max_tokens=max_tokens,
+            health_context=health_context, mr_depth=_mr_depth)
+
     if tier == "auto":
         tier = _auto_tier(visible_entries)
 
@@ -617,9 +755,11 @@ def handle_describe_entries(args, *, verbose: bool = False) -> dict:
         # passare INTERO a call_llm — il default 12000 di _serialize_query
         # troncherebbe in silenzio il bundle a meta' JSON, smentendo i
         # conteggi visible/hidden dichiarati (§2.7/§2.8).
+        _det = (_DESCRIBE_DETERMINISTIC if _deterministic is None
+                else _deterministic)
         text, meta = call_llm(visible_entries, prompt, tier=tier,
                               max_tokens=max_tokens,
-                              deterministic=_DESCRIBE_DETERMINISTIC,
+                              deterministic=_det,
                               max_query_chars=_DESCRIBE_MAX_CHARS + 2048)
     except Exception as e:
         return {"ok": False, "error_code": "ERR_EXT_SVC_UNAVAILABLE",
