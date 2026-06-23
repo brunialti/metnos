@@ -3212,6 +3212,26 @@ _MUTATION_CLAIM_RE = re.compile(
     r")", re.IGNORECASE)
 
 
+_DEGENERATE_FINAL_RE = re.compile(
+    r"\A[\(\[\s]*\d+(?:[.,]\d+)?\s*"
+    r"(?:elementi|entries|elements|voci|risultati|results|item|items)?\s*[\)\]\s]*\Z",
+    re.IGNORECASE)
+
+
+def _is_degenerate_final(final_message: str | None) -> bool:
+    """True se il final_message è DEGENERE: vuoto o un nudo conteggio/placeholder
+    («0», «3», «(2 elementi)») che NON è una risposta in linguaggio naturale
+    (§2.8). Sintomo di un template-render andato a vuoto (es. `${stepN.@count}`
+    come intero messaggio, o un piano monco che lascia il conteggio scoperto).
+    Mai mostrabile all'utente come esito. Deterministico §7.9."""
+    if final_message is None:
+        return True
+    s = final_message.strip()
+    if not s:
+        return True
+    return bool(_DEGENERATE_FINAL_RE.match(s))
+
+
 def _detect_false_mutation(final_message: str | None, counts: dict | None) -> bool:
     """True se il final CLAIMA una MUTAZIONE su un oggetto reale (creato il
     foglio/inviato la mail/...) ma `counts.mutations==0` e nessuna mutazione e'
@@ -4420,6 +4440,43 @@ class TurnLog:
                     "0 actual changes this turn. The request produced no data "
                     "to act on (no file created, no message sent).")
                 self.final_message = msg("MSG_FALSE_MUTATION_NOTICE")
+            # Final DEGENERE §2.8 (23/6, banco #1): un final_message nudo-conteggio
+            # («0») o vuoto NON è un esito mostrabile. Sintomo: template-render a
+            # vuoto su un piano monco (decomposer droppa create_files_spreadsheet
+            # → resta scoperto `${stepN.@count}`). Sostituisci con la verità: se
+            # era dichiarata una mutazione mai eseguita → notice falsa-mutazione;
+            # altrimenti il conteggio onesto degli elementi prodotti / no-results.
+            # NB: NON intercettare i turni con step in errore — quelli hanno il
+            # loro fallback onesto (error_class → messaggio user-friendly più
+            # sotto in write()); un final vuoto + step fallito deve menzionare
+            # l'errore, non «nessun risultato» (test_final_message_invariant).
+            elif (_is_degenerate_final(self.final_message)
+                  and not (self.effect_counts or {}).get("failures")):
+                self.false_success_detected = True
+                _ec = self.effect_counts or {}
+                if not _ec.get("mutating_attempted") and _ec.get("items", 0) == 0:
+                    # niente prodotto, niente mutato → no-results onesto
+                    self.final_message = msg("MSG_NO_RESULTS")
+                else:
+                    # qualcosa è stato letto/prodotto ma il messaggio è degenere:
+                    # render onesto del conteggio + nota se un'azione dichiarata
+                    # (mutazione) non è avvenuta. Singolare/plurale corretto.
+                    from i18n import register_key_if_missing as _rk
+                    _n = _ec.get("items", 0)
+                    if _n == 1:
+                        _rk("MSG_DEGENERATE_FINAL_ITEM_ONE",
+                            "Elaborato 1 elemento. Nessun'altra azione è stata "
+                            "completata in questo turno.",
+                            "Processed 1 item. No further action was completed "
+                            "this turn.")
+                        self.final_message = msg("MSG_DEGENERATE_FINAL_ITEM_ONE")
+                    else:
+                        _rk("MSG_DEGENERATE_FINAL_ITEMS",
+                            "Elaborati {n} elementi. Nessun'altra azione è stata "
+                            "completata in questo turno.",
+                            "Processed {n} items. No further action was completed "
+                            "this turn.")
+                        self.final_message = msg("MSG_DEGENERATE_FINAL_ITEMS", n=_n)
         # Propaga attachments dall ultimo step che ne ha prodotti (use
         # case realistico: un solo find_images_indices per turno).
         for s_step in reversed(self.steps):
