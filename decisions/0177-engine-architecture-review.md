@@ -119,6 +119,19 @@ Il target propone una **linea**: la generazione vincolata cattura ciò che è es
 
 ---
 
+## 4.bis Deep-analysis legacy planner + sicurezza (23/6, 3 agenti + verifica diretta)
+
+Analisi a fondo del blocco legacy `run_turn` (5349→9356 = **4008 LOC**, di cui ~3359 legacy) in vista dell'assorbimento (sessione dedicata). Esiti:
+
+**S9 (NUOVO) — il path engine di PRODUZIONE girava SENZA vaglio. ✓ CHIUSO 23/6.**
+`_try_engine_v2` (agent_runtime ~5126) non passava `vaglio_judge` a `dispatch.run_turn` → `Executor.vaglio=None` → il check (executor ~1646) era inerte; il legacy invece chiama `judge()` su ogni step. Impatto verificato: BASSO ma reale — il *giudice* col default non blocca quasi nulla, la *shell-guard* è inapplicabile (0 `shell_exec`, 0 `shell=True` negli executor), MA la **guardia forbidden-path** (`~/.ssh`, `/etc/shadow`, `.aws/credentials`, `/boot`) non era coperta da nessun altro strato (la sandbox bubblewrap è no-op: `bwrap` assente). **Fix** (commit `6c6b43d`): `Executor.vaglio_guard` deterministico eseguito **PRE-invoke** (previene, non blocca-a-valle come il post-step), wirato in `_try_engine_v2` via `vaglio.guard_check`. Solo la guardia, NON il giudice (rischio regressione path-traversal). 4 test.
+
+**Dead-code nel legacy (CONFERMATO in contraddittorio).** `ModeRouter.select()` è un no-op → `is_multistep` sempre True in prod → **11 rami `if not is_multistep:` morti** (8047,8062,8115,8190,8262,8298,8499,8521,8562,8589,9118); fase **seed-step URL** (6431-6504) morta-in-contesto (guardia 6446 sempre False nei 2 path). Unica fonte di `mode≠local` = CLI `--mode`. `ModeRouter` rimosso (commit `77add9d`); gli 11 rami spariranno con l'assorbimento (vivono dentro il blocco da eliminare).
+
+**Mappa assorbimento (M1 vero).** Core minimo reale dei 2 path vivi ≈ **600-800 LOC (~20%)** delle 3359. **Upload: facile** — l'engine ha GIÀ il consumer-match `reference_image`→`reference_images` (executor ~342, test verde); serve solo seedare lo step-0 `@uploaded` + un boost nel pool. **Resume: più invasivo** (l'engine non riparte da scratchpad: `RunResult` nasce vuoto, executor ~1217) MA gran parte del resume reale è già scavalcata dall'orchestratore deterministico (`_orchestrate_implicit_actions`, orchestration ~993) → da MISURARE quanto cade nel loop-legacy-resume (oggi i log non lo strumentano: 0 marker). Estensione minima stimata: `seed_state` param su dispatch/executor/proposer (~90-120 LOC nuove) → elimina ~3300 LOC. Rischi: (1) proposer-awareness del resume; (2) hint foto deterministico vs ranking telos; (3) precedence con il gate-resume esistente.
+
+**Fattorizzazione DRY (23/6).** Vittorie pulite fatte: `default_event_client` (4 copie→SoT `backends.events`), `_sha256_short` i18n (copia→import). **Trappole DRY evitate** (duplicazione VOLUTA, NON unire): i 3 set verbi-mutating (`DESTRUCTIVE_VERBS`/`_MUTATING_VERBS`/`MUTATING_VERBS`, membership diversa per scopo diverso); `i18n._sha256_full` (forma `sha256:<hex>`) ≠ copia locale (hex nudo). Deferito (richiede re-sign batch): A4 metadata-troncamento §2.7 in ~13 executor → `executor_helpers.set_truncation`. Già-fattorizzati (nessuna azione): proposer Metis, guard struttura, `_VERB_TO_CANONICAL`.
+
 ## 5. Piano di migrazione incrementale (ordinato per ROI/rischio)
 
 > Principio: ogni passo è indipendente, gated (suite 2828/0 + routing 29/29 v3), e committabile da solo. Nessun big-bang.
