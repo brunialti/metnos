@@ -1199,11 +1199,15 @@ class Executor:
                  invoke_executor: Callable[[str, dict], dict],
                  llm_call_fast: Optional[Callable] = None,
                  vaglio_judge: Optional[Callable] = None,
+                 vaglio_guard: Optional[Callable] = None,
                  max_steps: int = 12,
                  catalog: Optional[list] = None):
         self.invoke = invoke_executor
         self.llm_fast = llm_call_fast
         self.vaglio = vaglio_judge
+        # Guardia deterministica PRE-invoke (forbidden-path/shell). Distinta dal
+        # giudice post-step `vaglio`: previene l'azione, non la blocca a valle.
+        self.vaglio_guard = vaglio_guard
         self.max_steps = max_steps
         # Map name→args_schema per la proiezione consumer-arg in from_step
         # (es. read_urls_html.urls ← entries[*].url). Senza catalog la
@@ -1567,6 +1571,30 @@ class Executor:
                         step.tool, args, self._schema_map.get(step.tool), query)
                 except Exception as _fe:
                     log.debug("scope_form_request noop: %r", _fe)
+            # Vaglio GUARD pre-invoke (sicurezza, gap confermato 23/6): blocca le
+            # mutazioni su forbidden-path (~/.ssh, /etc/shadow, .aws/credentials,
+            # /boot...) PRIMA di eseguirle. Il legacy chiama judge() prima
+            # dell'invoke; l'engine (path di prod) NON lo faceva → regressione
+            # silenziosa sul nucleo non-negoziabile. Solo la GUARDIA
+            # deterministica (forbidden-path/shell), NON il giudice teleologico.
+            # Pre-invoke = prevenzione vera, non blocco-a-valle.
+            if self.vaglio_guard is not None and _form_obs is None:
+                try:
+                    _ok_g, _why_g = self.vaglio_guard(step.tool, args)
+                except Exception as _ge:
+                    _ok_g, _why_g = True, None  # best-effort: fail-open
+                    log.warning("vaglio_guard raised %r — fail-open", _ge)
+                if not _ok_g:
+                    log.warning("[vaglio guard] BLOCCO pre-invoke %s: %s",
+                                step.tool, _why_g)
+                    result.steps.append(StepRun(
+                        step_idx=i + 1, tool=step.tool, args=args,
+                        result={"ok": False, "error_class": "vaglio_guard",
+                                "error": _why_g or "forbidden"},
+                        ok=False, latency_ms=0))
+                    result.aborted_reason = f"step_{i+1}_vaglio_guard"
+                    result.final_kind = "error"
+                    break
             t0 = time.time()
             if _form_obs is not None:
                 r = _form_obs

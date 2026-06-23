@@ -142,7 +142,7 @@ from skill_admin import (
 )
 from test_runner import check_hints
 from undo import UndoLog
-from vaglio import judge
+from vaglio import judge, guard_check
 import config as _C  # §7.11
 
 TURN_LOG_DIR = _C.PATH_USER_DATA / "turns"
@@ -5128,6 +5128,7 @@ def _try_engine_v2(
             invoke_executor_cb=_invoke,
             llm_call_wise=_llm_call_wise,
             llm_call_fast=_llm_call_fast,
+            vaglio_guard=guard_check,  # guardia forbidden-path PRE-invoke (§sicurezza)
             runtime_ctx=runtime_ctx,
             turn_id=turn_id, lang=lang, verbose=verbose,
             progress=progress)
