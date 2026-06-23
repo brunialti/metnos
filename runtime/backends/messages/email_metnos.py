@@ -893,6 +893,27 @@ def _resolve_dst_folder(conn, dst_folder: str) -> str:
     return dst_folder
 
 
+def _fetch_message_id(conn, uid) -> str | None:
+    """Header `Message-ID` di una mail (ID stabile cross-folder per l'undo:
+    l'UID IMAP cambia al COPY, il Message-ID no). La folder sorgente deve
+    essere gia' selezionata. None se assente/illeggibile (best-effort)."""
+    try:
+        st, data = conn.uid("FETCH", str(uid),
+                            "(BODY.PEEK[HEADER.FIELDS (MESSAGE-ID)])")
+        if st != "OK" or not data:
+            return None
+        for part in data:
+            if isinstance(part, tuple) and len(part) > 1 and part[1]:
+                raw = (part[1].decode("utf-8", "replace")
+                       if isinstance(part[1], (bytes, bytearray)) else str(part[1]))
+                m = re.search(r"(?i)message-id:\s*(<[^>]+>)", raw)
+                if m:
+                    return m.group(1).strip()
+        return None
+    except Exception:
+        return None
+
+
 def move(args: dict) -> dict:
     """Sposta mail fra folder IMAP (COPY-then-STORE \\Deleted + EXPUNGE).
 
@@ -948,6 +969,12 @@ def move(args: dict) -> dict:
                                 "error": "uid %s assente in %s (account %s)"
                                 % (u, src_folder, account)})
                 continue
+            # Message-ID per un UNDO AFFIDABILE: l'UID IMAP cambia al COPY
+            # (server-assigned in dst), quindi swap_src_dst NON puo' cercare per
+            # uid; cerca la mail in dst PER Message-ID (header globally-unique,
+            # sopravvive al COPY — reverse_patterns._swap_src_dst_imap). Lo leggo
+            # ORA, mentre la mail e' ancora in src e la folder e' selezionata.
+            mid = _fetch_message_id(conn, u)
             try:
                 # COPY first (so we never DELETE before confirming, §2.9)
                 st, _ = conn.uid("COPY", u, dst_imap)
@@ -960,9 +987,13 @@ def move(args: dict) -> dict:
                     failed.append({"uid": u, "error_code": "ERR_IMAP_CMD",
                                     "error": _msg("ERR_IMAP_CMD", cmd="STORE-post-COPY", reason=str(st2))})
                     continue
+                # `src`/`dst` + `message_id` = schema atteso da swap_src_dst
+                # (reverse_patterns._swap_src_dst). src_folder/dst_folder tenuti
+                # per i consumer leggibili (final message).
                 results.append({"uid": u, "account": account,
+                                "src": src_folder, "dst": dst_folder,
                                 "src_folder": src_folder, "dst_folder": dst_folder,
-                                "ok": True})
+                                "message_id": mid, "ok": True})
             except Exception as e:
                 failed.append({"uid": u, "error": str(e)})
         try:
