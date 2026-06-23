@@ -16,7 +16,7 @@ en = "SCOPO: delete the persistent image index. PATTERN: delete_images_indices(b
 
 [code]
 files  = ["delete_images_indices.py"]
-digest = "sha256:1a5190d1f45a206b81e4dcb25712e69ec2c051537158c2e5705311f689468b70"
+digest = "sha256:62aea1e21881b0c65fbcf2c8050de7cda05de525501af74e082bb42d6b082d30"
 
 [args]
 type     = "object"

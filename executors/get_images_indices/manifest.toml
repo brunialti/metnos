@@ -15,7 +15,7 @@ en = "SCOPO: gets image index status for `base_path`. PATTERN: get_images_indice
 
 [code]
 files  = ["get_images_indices.py"]
-digest = "sha256:6d2f18bcb46e102ce222e7800c6b6d41429978b17913ef3eca447f83591d3324"
+digest = "sha256:97ea74a03a2420983aed5eba3dcbf80d5387ed2be78a920a28822b3d58202290"
 
 [args]
 type     = "object"
