@@ -64,7 +64,10 @@ def test_resolver_rewrites_spam_filter():
     # entrambi (bug live 0f1fe504).
     out = jmr.resolve_junk_mail("filter_entries", {"type": "spam", "kind": "mail"}, q)
     assert out["where_field"] == "category_hints"
-    assert "list" in out["where_in"] and "bulk" in out["where_in"]
+    # raffinato: list (newsletter/List-Unsubscribe) + esp (marketing), NON
+    # noreply/auto/bulk da soli (catturerebbero ordini/bollette/host).
+    assert "list" in out["where_in"] and "esp" in out["where_in"]
+    assert "noreply" not in out["where_in"] and "auto" not in out["where_in"]
     assert "type" not in out
     assert "kind" not in out
 

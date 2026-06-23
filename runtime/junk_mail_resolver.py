@@ -16,9 +16,15 @@ import logging
 
 log = logging.getLogger(__name__)
 
-# Valori canonici di category_hints — SoT: runtime/mail_client.py::_category_hints
-# (list=newsletter, bulk=mass-sent, auto=auto-generated, noreply, esp=marketing).
-_JUNK_MARKERS = ["list", "bulk", "auto", "noreply", "esp"]
+# Marker category_hints che indicano davvero NEWSLETTER/PROMO (SoT dei valori:
+# runtime/mail_client.py::_category_hints). Raffinato 23/6 sui dati reali di
+# Roberto: `list` (List-Unsubscribe/List-Id = mailing list, ti puoi disiscrivere
+# = newsletter/promo) + `esp` (email service provider di marketing). NON
+# `noreply`/`auto`/`bulk` da soli: troppo larghi, catturano l'automatico-ma-
+# IMPORTANTE (conferme d'ordine, bollette, prenotazioni/host Airbnb, reset
+# password) che e' `['noreply']`-puro. Precisione > recall: meglio mancare
+# qualche promo che spostare una fattura.
+_JUNK_MARKERS = ["list", "esp"]
 
 
 def resolve_junk_mail(tool: str, args: dict, query: str) -> dict:
