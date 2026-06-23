@@ -158,7 +158,21 @@ Il sotto-passo **(a)+(c)+(d)** di M1 limitato alle **foto-allegate** è chiuso e
 
 **Verifiche.** Suite **2863/0**, routing **29/29** (v3, env prod). Unit nuovo `tests/test_engine_seed_uploads.py` (8 casi: wiring, precedenza-su-query_text, placeholder `${step0}`/`${step1}`, idempotenza, regressione no-seed). e2e in-proc determinismo 3/3 + legacy-fallback (UPLOADS=0) 1/1. **e2e HTTP REALE prod**: upload multipart → engine v3 → `find_images_indices(reference_images=[foto])` sull'indice 31k → 4 match reali, «1 foto simili nel tuo album». Turn log confermato (step0 `@uploaded` + step1 ref wired).
 
-**Resta (M1 completo).** **(b) resume-dialog**: l'engine non riparte da scratchpad — ma `seed_state` è il veicolo pronto (basta seedare gli step prior + offset). DA MISURARE PRIMA quanti resume cadono nel loop-legacy (0 marker oggi → strumentare). Rischio noto: proposer-awareness del resume (non ri-emettere step fatti). Solo DOPO (b): gate `METNOS_PLANNER_LEGACY` incondizionato + rimozione blocco legacy (~3300 LOC) + 11 rami `if not is_multistep:` + `_bypass_for_uploads`.
+### 5.ter «SEMINA DI TURNO» — entità unificata + resume migrato (23/6, no «passi indietro»)
+
+Roberto: «nel resume approfitta per integrare e migliorare. non un resume ma una NUOVA ENTITÀ. no passi indietro.» → invece di portare 1:1 il `resume_with_scratchpad` legacy, il `seed_state` di M1-upload è generalizzato a **stato-pregresso di turno a due nature** (`StepRun.kind`):
+- **`input`** — seed CONSUMABILE (foto `@uploaded`): il 1° step reale lo usa via `from_step=1`. (M1-upload, già vivo.)
+- **`done`** — seed GIÀ ESEGUITO in un turno precedente (continuazione dialogo): il proposer NON lo ri-emette, gli step a valle lo referenziano via `from_step`.
+- **`live`** — default, ogni step eseguito ORA (callsite byte-invarianti).
+
+**Tre meccanismi nuovi** (commit `b286493`):
+1. **Proposer-aware** (`engine_proposer.j2` IT+EN + `_render_prior_steps`): sezione «FATTO FINORA» SOTTO il marker `STATIC-END` (fuori dalla prefix-cache → SYSTEM byte-identico verificato `sys1==sys2`, §11 intatta) elenca gli step `done` e istruisce «pianifica solo il resto». `propose(prior_steps=())` ai 4 callsite + grammar-multi.
+2. **Guardia dedup deterministica** (`Executor.run`): se il proposer (LLM) ri-emette un produttore già `done`, lo SALTA. Match per **NOME-TOOL** (non shape-args): il proposer del turno di ripresa rigenera lo stesso producer con chiavi-arg diverse (`time_window`→`time_windows`+`size`) — è la stessa ri-esecuzione. Rete di sicurezza §7.9: evita doppia latenza e ri-esecuzione di side-effect. L'engine non aveva ALCUN dedup di step (verificato).
+3. **Marker-filtering** del seed resume: `get_inputs`/`get_approval`/`@uploaded` NON entrano nel seed `done` (non sono produttori; occupavano un indice rompendo `${stepN}` — bug e2e `${step2.summary}`→get_inputs). `step_idx` rinumerato contiguo.
+
+**Resume migrato** (commit `f738a0f`): `resume_with_scratchpad` (get_inputs mid-pipeline, l'UNICO resume rimasto sul legacy — il gate get_approval già ri-esegue via `pre_approved_gate`→engine) instradato all'ENGINE via `_try_engine_v2(resume_steps=...)` → seed `done`. Branch gated `METNOS_ENGINE_RESUME` (default 1; =0→legacy A/B), fallback su engine-None. **GENERALIZZA oltre `_ACTION_TEMPLATES`** (che copriva solo `create_events`): e2e provati = continuazione `create_events` (prenota slot scelto) E `send_messages` (riassunto mail lette, che il legacy deterministico NON copriva), dedup verificato (il producer fatto non ri-gira). Suite **2876/0**, routing **29/29**, e2e prod-config + determinismo 3/3.
+
+**Resta (M1 completo → eliminazione legacy).** (1) Ritirare `_ACTION_TEMPLATES` + `_orchestrate_implicit_actions` (orchestration.py: half-measure §7.3, solo create_events) ora che l'engine copre il caso generale. (2) Strumentare i resume in prod per confermare 0 cadute nel loop-legacy. (3) Solo allora: gate `METNOS_PLANNER_LEGACY` incondizionato + rimozione blocco legacy (~3300 LOC) + 11 rami `if not is_multistep:` + `_bypass_for_uploads` + il path `resume_with_scratchpad` in run_turn.
 
 ---
 
