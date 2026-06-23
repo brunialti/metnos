@@ -31,9 +31,24 @@ sys.path.insert(0, str(_RUNTIME))
 def _stub_jinja2():
     if "jinja2" in sys.modules:
         return
+    # Preferisci il jinja2 REALE se installato (prod + venv dev lo hanno): lo
+    # stub serve SOLO quando manca davvero. Senza questa import-prima, lo stub
+    # entrava in sys.modules a import-time di questo modulo e SHADOWAVA il
+    # jinja2 reale per tutti i test successivi nel processo (leak ordine-dip.).
+    try:
+        import jinja2  # noqa: F401
+        return
+    except ImportError:
+        pass
     j = type(sys)("jinja2")
     class _Env:
-        def __init__(self, *a, **kw): pass
+        def __init__(self, *a, **kw):
+            # Parità col contratto reale di jinja2.Environment: http_render fa
+            # `_jinja_env.globals["msg"] = ...` a import-time → senza questo
+            # attributo lo stub esplode (AttributeError) appena http_render è
+            # importato. Mappa globals/filters reali (dict mutabili).
+            self.globals = {}
+            self.filters = {}
         def get_template(self, *a, **kw):
             class _T:
                 def render(self, *a, **kw): return ""
