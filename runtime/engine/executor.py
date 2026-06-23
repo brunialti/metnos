@@ -953,6 +953,11 @@ def resolve_query_canonical_args(tool: str, args: dict, query: str,
     except Exception as _fce:
         log.debug("from_contains_resolver noop: %r", _fce)
     try:
+        from junk_mail_resolver import resolve_junk_mail
+        args = resolve_junk_mail(tool, args, query)
+    except Exception as _jme:
+        log.debug("junk_mail_resolver noop: %r", _jme)
+    try:
         from time_window_resolver import resolve_time_window
         args = resolve_time_window(tool, args, query, args_schema=args_schema)
     except Exception as _twe:

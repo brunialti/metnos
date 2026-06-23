@@ -246,32 +246,32 @@ def invoke(args):
             # falliva. Applichiamo fnmatch case-insensitive sul valore stringa.
             v_str = str(v) if v is not None else ""
             v_lower = v_str.lower()
-            if where_in:
-                _matched = False
-                for pat in where_in:
+            # Campo-LISTA (es. category_hints=['list','bulk'], tags, labels):
+            # match per INTERSEZIONE — keep se UN elemento della lista matcha un
+            # pattern. Generale §7.3 (non solo mail). Scalare: comportamento
+            # invariato (match esatto / glob su str(v)).
+            def _matches_any(patterns):
+                if isinstance(v, list):
+                    vl = [str(x).lower() for x in v if x is not None]
+                    for pat in patterns:
+                        p = str(pat).lower()
+                        glob = ("*" in p or "?" in p)
+                        for x in vl:
+                            if fnmatch.fnmatchcase(x, p) if glob else x == p:
+                                return True
+                    return False
+                for pat in patterns:
                     p = str(pat)
                     if "*" in p or "?" in p:
                         if fnmatch.fnmatchcase(v_lower, p.lower()):
-                            _matched = True
-                            break
+                            return True
                     elif v == pat or v_str == p:
-                        _matched = True
-                        break
-                if not _matched:
-                    return False
-            if where_not_in:
-                _matched_neg = False
-                for pat in where_not_in:
-                    p = str(pat)
-                    if "*" in p or "?" in p:
-                        if fnmatch.fnmatchcase(v_lower, p.lower()):
-                            _matched_neg = True
-                            break
-                    elif v == pat or v_str == p:
-                        _matched_neg = True
-                        break
-                if _matched_neg:
-                    return False
+                        return True
+                return False
+            if where_in and not _matches_any(where_in):
+                return False
+            if where_not_in and _matches_any(where_not_in):
+                return False
             # Operatori di stringa su where_field (15/5/2026).
             # Coerce a string lowercase per case-insensitive matching.
             v_str = str(v) if v is not None else ""

@@ -37,6 +37,15 @@ def register_all() -> None:
           "indietreggia", "anull"],
       en=["undo", "revert", "rollback"])
 
+    # ── MAIL: posta indesiderata ───────────────────────────────────────
+    # junk_mail_resolver: «sposta/cancella/filtra le email di spam / la posta
+    # indesiderata» → filtro su category_hints (bulk/newsletter), NON
+    # classify(junk) (= spam evidente, ~0; controprova 23/6, opzione b Roberto).
+    R("mail.junk_terms", "phrases", match_mode="substring",
+      it=["spam", "posta indesiderata", "indesiderata", "spazzatura",
+          "posta spazzatura"],
+      en=["spam", "junk", "junk mail"])
+
     # ── TASKS / SCHEDULING ─────────────────────────────────────────────
     # tool_grammar._TASKS_MARKERS (word-boundary)
     R("tasks.marker", "phrases", match_mode="word",

@@ -14,7 +14,7 @@ en = "SCOPO: filter entries by criteria. PATTERN: filter_entries(from_step=1, ki
 
 [code]
 files  = ["filter_entries.py"]
-digest = "sha256:16de1253a918e304a357263e6debb2f36bdd408cea73b04990f4730de99a5856"
+digest = "sha256:8bac8573fab4277d34fc4bd87bd334bf7d77db06925a098ee0e43d2847fd01ac"
 
 [args]
 type     = "object"
