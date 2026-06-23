@@ -3200,17 +3200,24 @@ def _detect_false_success(final_message: str | None, counts: dict | None) -> boo
 # distinto dal claim di lettura/sintesi. «ho creato il foglio» richiede una
 # mutazione vera; «ho creato un riepilogo/elenco» (testo) NON e' una mutazione e
 # NON deve matchare → object list stretta per evitare falsi positivi.
+# NB (23/6): fra articolo e oggetto sono ammesse 0-2 parole (aggettivi):
+# «creato un NUOVO foglio», «creato il MIO file di calcolo». Il bound {0,2}
+# evita falsi match che scavalcano clausole. Bug live turno eventi: il synth
+# diceva «Ho creato un nuovo foglio» su 0 mutazioni reali e il regex (che
+# pretendeva il sostantivo subito dopo l'articolo) lo mancava -> §2.8 bucato.
+_MUT_GAP = r"(?:\w+\s+){0,2}"  # 0-2 parole opzionali (aggettivi) fra art. e oggetto
 _MUTATION_CLAIM_RE = re.compile(
     r"(?<!non )(?<!not )\b(?:"
-    r"(?:creat|generat|salvat|scritt|prepar)\w*\s+(?:il|lo|la|un|uno|una|"
-    r"the|a|an)?\s*(?:foglio|file|document\w*|spreadsheet|sheet|calendari\w*|"
-    r"event\w*|cartell\w*|folder)"
-    r"|(?:inviat|spedit|mandat|sent)\w*\s+(?:il|la|un|the|a|an)?\s*"
-    r"(?:mail|email|messaggi\w*|message)"
-    r"|(?:spostat|cancellat|eliminat|delet|mov)\w*\s+(?:il|la|i|le|the)?\s*"
-    r"(?:file|mail|email|messaggi\w*|event\w*)"
-    r"|(?:created|saved|wrote|generated|prepared)\s+(?:the|a|an)?\s*"
-    r"(?:file|spreadsheet|sheet|document|calendar|event|folder)"
+    r"(?:creat|generat|salvat|scritt|prepar)\w*\s+(?:(?:il|lo|la|un|uno|una|"
+    r"the|a|an)\s+)?" + _MUT_GAP + r"(?:foglio|file|document\w*|spreadsheet|"
+    r"sheet|calendari\w*|event\w*|cartell\w*|folder|tabell\w*|csv|xlsx)"
+    r"|(?:inviat|spedit|mandat|sent)\w*\s+(?:(?:il|la|un|the|a|an)\s+)?"
+    + _MUT_GAP + r"(?:mail|email|messaggi\w*|message)"
+    r"|(?:spostat|cancellat|eliminat|delet|mov)\w*\s+(?:(?:il|la|i|le|the)\s+)?"
+    + _MUT_GAP + r"(?:file|mail|email|messaggi\w*|event\w*)"
+    r"|(?:created|saved|wrote|generated|prepared)\s+(?:(?:the|a|an)\s+)?"
+    + _MUT_GAP + r"(?:file|spreadsheet|sheet|document|calendar|event|folder|"
+    r"table|csv)"
     r")", re.IGNORECASE)
 
 

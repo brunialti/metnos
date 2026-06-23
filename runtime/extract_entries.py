@@ -288,6 +288,28 @@ def handle_extract_entries(args, *, verbose: bool = False) -> dict:
         return [{f: rec.get(f, "") for f in fields}
                 for rec in _parse_records(raw, fields)[:max_per_text]]
 
+    # §2.2/§7.3/§7.9 — proiezione deterministica su entries GIA' strutturate:
+    # se OGNI sorgente e' un dict che contiene GIA' i `fields` richiesti come
+    # chiavi, «estrarre» = PROIETTARE quei campi (niente LLM). extract-da-testo
+    # su input strutturato e' inutile e FALLISCE: es. read_events -> evento
+    # {summary,start,...}, `_pick_text` vede solo il summary, l'LLM non trova lo
+    # `start` -> 0 record -> create_files_spreadsheet saltato -> §2.8 falsa
+    # mutazione («creato il foglio» senza file). Deterministico > LLM. Scatta
+    # solo se l'input e' UNIFORMEMENTE strutturato coi campi richiesti.
+    def _has_all_fields(e):
+        return isinstance(e, dict) and all(f in e for f in fields)
+    if sources and all(_has_all_fields(e) for e in sources):
+        proj = [{f: e.get(f) for f in fields} for e in sources]
+        if max_total and len(proj) > max_total:
+            proj = proj[:max_total]
+        return {
+            "ok": True, "entries": proj, "used": len(proj),
+            "available_total": len(sources), "n_sources": len(sources),
+            "fields": fields, "source": "structured_projection",
+            "meta": {"deterministic": True, "mode": "structured_projection"},
+            "in_tokens": 0, "out_tokens": 0, "latency_ms": 0,
+        }
+
     total_capped = False
     for entry in sources:
         nonlocal_drill = drill_down and bool(_entry_links(entry))
