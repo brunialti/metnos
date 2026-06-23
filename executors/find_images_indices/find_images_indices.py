@@ -139,24 +139,13 @@ def _user_data_root() -> Path:
 
 
 def _canonical_corpus_path(base_path) -> str:
-    """Canonicalizza il path del corpus per il digest dell'indice.
-
-    Build e lookup DEVONO concordare sulla dir dell'indice. Il builder
-    (create_images_indices) costruisce sotto `Path(...).resolve()`, quindi
-    il digest e' calcolato sul path REALE (symlink risolto). Il reader deve
-    risolvere allo stesso modo: il default workspace
-    `~/.local/share/metnos/Immagini` e' un symlink verso il mount reale
-    (es. NAS); senza resolve() il digest del symlink differisce da quello
-    del path reale → 0 indici trovati → dialog di indicizzazione spurio.
-
-    `resolve()` segue i symlink esistenti ed e' no-op (lessicale) per path
-    inesistenti, quindi un corpus mancante hashifica comunque in modo
-    deterministico. Fallback a expanduser su errore di risoluzione.
-    """
-    try:
-        return str(Path(base_path).expanduser().resolve())
-    except OSError:
-        return os.path.expanduser(str(base_path))
+    """Delega alla SoT condivisa `index_schema.canonical_corpus_path`: chiave
+    LOGICA stabile al mount per il corpus-workspace (symlink Immagini e suo
+    target → stessa chiave, ma indipendente dal punto di mount NAS), resolve
+    per dir reali. Fix 23/6: il vecchio `resolve()` legava la chiave al mount
+    → rimount /tmp->/mnt orfanizzava l'indice → re-index spurio."""
+    from index_schema import canonical_corpus_path as _ccp
+    return _ccp(base_path)
 
 
 def _index_dir(base_path: Path) -> Path:

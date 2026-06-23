@@ -63,7 +63,9 @@ def _resolve_corpus_dir(base_path: Path) -> Path:
     import hashlib
     import os
     import config as _C  # §7.11
-    digest = hashlib.sha256(str(base_path).encode("utf-8")).hexdigest()
+    from index_schema import canonical_corpus_path
+    digest = hashlib.sha256(
+        canonical_corpus_path(base_path).encode("utf-8")).hexdigest()
     v = os.environ.get("METNOS_INDEX_ROOT")
     if v:
         return Path(v) / "image" / digest[:16]

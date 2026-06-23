@@ -21,6 +21,43 @@ from typing import Any, Callable, Literal, Optional
 INDEX_SCHEMA_VERSION = 4
 INDEX_SCHEMA_VERSION_V3 = 2  # alias storico per migration
 
+
+def canonical_corpus_path(base_path, user_data_root=None) -> str:
+    """Path canonico STABILE per il digest dell'indice immagini (§7.11).
+
+    Sorgente UNICA per find/create/get/delete_images_indices + build_runner:
+    build e lookup DEVONO concordare sulla stessa dir-indice. Il symlink-corpus
+    del workspace (`~/.local/share/metnos/Immagini`) e il suo target reale
+    devono mappare sulla STESSA chiave. MA la chiave non deve dipendere dal
+    MOUNT, volatile: il target e' il NAS, che puo' rimontare /tmp->/mnt
+    (bug 23/6: `resolve()` legava la chiave al mount -> a ogni spostamento
+    l'indice diventava orfano -> re-index spurio dell'intero corpus).
+
+    Regola: se `base_path` E' il symlink-corpus del workspace, o vi RISOLVE,
+    la chiave e' il PATH LOGICO del symlink (stabile a ogni rimount).
+    Altrimenti `resolve()` (stabile per dir reali non montate). Soddisfa sia
+    la concordanza symlink<->realpath (fix 30/5) sia la stabilita' al mount
+    (fix 23/6).
+    """
+    import os
+    from pathlib import Path
+    p = Path(base_path).expanduser()
+    if user_data_root is None:
+        _b = os.environ.get("METNOS_USER_DATA")
+        user_data_root = Path(_b) if _b else Path.home() / ".local" / "share" / "metnos"
+    link = Path(user_data_root) / "Immagini"
+    try:
+        if link.is_symlink():
+            lr = link.resolve()
+            if p == link or p == lr or (p.exists() and p.resolve() == lr):
+                return str(link)  # chiave LOGICA stabile al mount
+    except OSError:
+        pass
+    try:
+        return str(p.resolve())
+    except OSError:
+        return str(p)
+
 # Legacy: 3 indici disgiunti. Riferito solo dalla migration v3→v4 e da
 # index_schema_upgrade.py (modulo legacy). NON usare per build nuovi.
 IDX_TYPES = ["scene", "persons", "gps"]

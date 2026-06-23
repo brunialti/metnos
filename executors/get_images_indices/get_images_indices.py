@@ -36,9 +36,12 @@ def _index_image_root() -> Path:
 
 
 def _index_root_for_base(base_path: Path) -> Path:
-    # Identita' corpus = path LOGICAL (no .resolve()), coerente con
-    # find_images_indices._index_dir. Symlink → NAS non cambia indice.
-    digest = hashlib.sha256(str(base_path).encode("utf-8")).hexdigest()
+    # Chiave corpus via SoT condivisa (index_schema.canonical_corpus_path):
+    # logica/stabile al mount per il symlink-corpus, coerente con
+    # find/create/delete_images_indices (fix 23/6).
+    from index_schema import canonical_corpus_path
+    digest = hashlib.sha256(
+        canonical_corpus_path(base_path).encode("utf-8")).hexdigest()
     return _index_image_root() / digest[:16]
 
 

@@ -115,10 +115,8 @@ def _index_dir(base_path: Path) -> Path:
     symlink e path reale devono mappare sullo stesso indice (fix 30/5/2026).
     `invoke()` passa gia' un path resolved, ma canonicalizziamo anche qui per
     robustezza ai caller diretti."""
-    try:
-        canon = str(Path(base_path).expanduser().resolve())
-    except OSError:
-        canon = os.path.expanduser(str(base_path))
+    from index_schema import canonical_corpus_path
+    canon = canonical_corpus_path(base_path)
     digest = hashlib.sha256(canon.encode("utf-8")).hexdigest()
     return _index_image_root() / digest[:16] / "unified"
 
