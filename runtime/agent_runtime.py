@@ -5753,7 +5753,8 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
             # PLANNER legacy (CREATE_TASKS_TOOL nel pool).
             from tool_grammar import query_has_tasks_marker as _qhtm
             _q_is_scheduling = _qhtm(user_query_for_run)
-            if len(set(_q_verbs)) >= 2 and not _q_is_scheduling:
+            _decomposer_on = os.environ.get("METNOS_DECOMPOSER", "1") != "0"
+            if len(set(_q_verbs)) >= 2 and not _q_is_scheduling and _decomposer_on:
                 # Try deterministic decomposer
                 try:
                     from compound_decomposer import decompose_query
