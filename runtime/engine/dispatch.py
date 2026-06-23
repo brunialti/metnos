@@ -1333,6 +1333,60 @@ def _resolve_store_field_refs(framework: Framework) -> Framework:
         return framework
 
 
+def _route_mail_delete_to_trash(framework: Framework,
+                                catalog: Optional[list]) -> Framework:
+    """§5 deterministico (bug live 7c4390f1, 23/6): in Metnos NON esiste
+    `delete_messages` — cancellare mail = `move_messages(dst_folder="Trash")`.
+    Il proposer, vedendo {delete,messages} e nessun `delete_messages`, ripiega
+    su `delete_entries(store="messages")` (store inesistente → fallisce: «store
+    messages non registrato»). Qui riscriviamo quel passo a
+    `move_messages(dst_folder="Trash")`, propagando `from_step` e `account` dal
+    produttore mail. Tool-existence-safe: solo se `move_messages` nel catalogo.
+    §7.9 deterministico, no LLM. Idempotente: un `move_messages` non rimatcha.
+    Gira DOPO `_enforce_missing_clauses` (che ha gia' visto il delete_entries
+    come clausola-delete soddisfatta → non la ri-aggiunge)."""
+    try:
+        names = {getattr(e, "name", None) if not isinstance(e, dict)
+                 else e.get("name") for e in (catalog or [])}
+        if "move_messages" not in names:
+            return framework
+
+        def _is_mail_producer(t):
+            return (isinstance(t, str) and t.endswith("_messages")
+                    and t not in ("move_messages", "send_messages", "set_messages"))
+
+        steps = framework.steps
+        for i, s in enumerate(steps):
+            if (s.tool or "") != "delete_entries":
+                continue
+            store = str(s.args.get("store") or "").lower()
+            fs = s.args.get("from_step")
+            prod_idx = (fs - 1) if (isinstance(fs, int) and 1 <= fs <= len(steps)) else None
+            consumes_mail = prod_idx is not None and _is_mail_producer(steps[prod_idx].tool)
+            if not (store == "messages" or consumes_mail):
+                continue
+            if prod_idx is None:  # wira al produttore mail precedente
+                for j in range(i - 1, -1, -1):
+                    if _is_mail_producer(steps[j].tool):
+                        prod_idx = j
+                        break
+            new_args = {"dst_folder": "Trash"}
+            if prod_idx is not None:
+                new_args["from_step"] = prod_idx + 1
+                acct = steps[prod_idx].args.get("account")
+                if acct:
+                    new_args["account"] = acct
+            s.tool = "move_messages"
+            s.args = new_args
+            s.if_prev_entries_nonempty = True  # mutating: mai su 0 elementi
+            log.info("[mail_delete §5] delete_entries(messages) -> "
+                     "move_messages(dst_folder=Trash)")
+        return framework
+    except Exception as ex:  # noqa: BLE001 — best-effort, non blocca il turno
+        log.warning("route_mail_delete_to_trash noop (best-effort): %r", ex)
+        return framework
+
+
 def _apply_deterministic_structure_guards(framework: Framework, intent,
                                           query: str,
                                           catalog: Optional[list]) -> Framework:
@@ -1360,6 +1414,10 @@ def _apply_deterministic_structure_guards(framework: Framework, intent,
         # misfit {number}/body-letterale/${FILLER:repo} che il proposer fa non
         # vedendo lo schema. Dopo fill: opera sugli args ormai stabili.
         framework = _resolve_store_field_refs(framework)
+    # §5: cancellare mail = move_messages(Trash) — riscrive il fallback
+    # delete_entries(store=messages) del proposer. Dopo enforce (gia' visto
+    # il delete come clausola soddisfatta) e fuori dal gate v3 (vale sempre).
+    framework = _route_mail_delete_to_trash(framework, catalog)
     return framework
 
 
