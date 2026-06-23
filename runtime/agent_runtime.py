@@ -5134,7 +5134,8 @@ def _try_engine_v2(
         seed_state = [_StepRun(
             step_idx=0, tool="@uploaded",
             args={"source": "upload", "n": len(_upload_entries)},
-            result=_upload_obs, ok=True, latency_ms=0)]
+            result=_upload_obs, ok=True, latency_ms=0,
+            kind="input")]  # consumabile (foto), non «fatto»
 
     # Engine v2 passa lo stesso catalog a Proposer e Validator: includi i
     # builtin in-process (describe_entries/classify_entries) altrimenti

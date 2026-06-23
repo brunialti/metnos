@@ -1825,7 +1825,8 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
     framework = proposer.propose(
         query=query, intent=intent, pool=pool_names,
         excluded_hashes=excluded,
-        llm_call=llm_call_wise, lang=lang, catalog=catalog)
+        llm_call=llm_call_wise, lang=lang, catalog=catalog,
+        prior_steps=seed_state or ())
     if framework is None:
         # Proposer failed → terminator
         resp = terminator.explain(query=query, intent=intent,
@@ -1863,7 +1864,7 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
             query=query, intent=intent, pool=pool_names,
             excluded_hashes=excluded | {_failed_hash},
             llm_call=llm_call_wise, lang=lang, catalog=catalog,
-            exclude_tools=("get_inputs",))
+            exclude_tools=("get_inputs",), prior_steps=seed_state or ())
         # Solo se la ri-proposta NON è a sua volta una get_inputs-misroute
         # (difesa: re-propose potrebbe fallire o degenerare).
         if _framework_gi is not None and not _is_get_inputs_misroute(_framework_gi):
@@ -1892,7 +1893,8 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
             _fw2 = proposer.propose(
                 query=query, intent=intent, pool=pool_names,
                 excluded_hashes=excluded | {_fh},
-                llm_call=llm_call_wise, lang=lang, catalog=catalog)
+                llm_call=llm_call_wise, lang=lang, catalog=catalog,
+                prior_steps=seed_state or ())
         finally:
             try:
                 delattr(intent, "_repropose_cover")
@@ -1921,7 +1923,8 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
             framework2 = proposer.propose(
                 query=query, intent=intent, pool=pool_names,
                 excluded_hashes=excluded | {failed_hash},
-                llm_call=llm_call_wise, lang=lang, catalog=catalog)
+                llm_call=llm_call_wise, lang=lang, catalog=catalog,
+                prior_steps=seed_state or ())
             if framework2 is not None:
                 framework = framework2
 

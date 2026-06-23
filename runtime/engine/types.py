@@ -119,6 +119,15 @@ class StepRun:
     result: dict
     ok: bool
     latency_ms: int
+    # «Semina di turno» (ADR 0177 M1): natura dello step quando entra come
+    # SEED (stato-pregresso iniettato prima del piano, vs step eseguito ORA).
+    #   "live" — eseguito in questo turno (default, ogni step reale).
+    #   "input" — seed CONSUMABILE: un input pronto che il primo step reale
+    #             usa via from_step=1 (es. foto @uploaded). NON è "fatto".
+    #   "done" — seed GIÀ ESEGUITO in un turno precedente (continuazione di un
+    #            dialogo/gate): il proposer NON deve ri-emetterlo, gli step a
+    #            valle lo referenziano via from_step. Guardia dedup deterministica.
+    kind: str = "live"
 
 
 @dataclass

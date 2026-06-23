@@ -183,13 +183,13 @@ OUTPUT FORMATO (STRICT JSON, nient'altro)
 {# STATIC-END — confine cache del prefisso (ottimizzazione A, CLAUDE.md §11 + ADR-pending).
 SOPRA: solo testo invariante per-query — il prefisso renderizzato resta byte-identico fra
 le query e llama-server lo riusa dal checkpoint n_before_user (prompt_n ~5500 → ~1300).
-SOTTO: solo contenuto per-query ({{ verb }}/{{ obj }}/{{ keywords }}/{{ skeleton }}/{{ tools }}/{{ excluded }}/{{ user_query }}),
+SOTTO: solo contenuto per-query ({{ verb }}/{{ obj }}/{{ keywords }}/{{ skeleton }}/{{ prior }}/{{ tools }}/{{ excluded }}/{{ user_query }}),
 inviato come messaggio USER via prompt_loader.get_split. NON spostare interpolazioni sopra
 questa riga, NON aggiungere testo statico sotto. Guard: prompts_lint L6. #}
 INTENT ESTRATTO
 - verbo: {{ verb }}
 - oggetto: {{ obj }}
-- keywords: {{ keywords }}{{ skeleton }}
+- keywords: {{ keywords }}{{ skeleton }}{{ prior }}
 
 POOL TOOL DISPONIBILI
 {{ tools }}

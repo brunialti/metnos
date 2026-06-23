@@ -175,5 +175,163 @@ class EngineSeedUploadsTests(unittest.TestCase):
         self.assertNotIn("reference_images", seen.get("get_now", {}))
 
 
+class EngineSeedDoneDedupTests(unittest.TestCase):
+    """Guardia dedup «semina» kind="done" (ADR 0177 M1): continuazione dialogo.
+    Uno step seminato come GIÀ ESEGUITO non va ri-eseguito se il proposer lo
+    ri-emette; gli step a valle lo referenziano via from_step."""
+
+    def _run(self, framework, seed, catalog=None):
+        seen = []
+
+        def invoke(tool, args):
+            seen.append(tool)
+            return {"ok": True, "entries": [{"id": len(seen), "v": tool}]}
+
+        ex = Executor(invoke_executor=invoke, seed_steps=seed,
+                      catalog=catalog or [])
+        run = ex.run(framework, query="continua")
+        return seen, run
+
+    def _done_seed(self, tool="find_events_empty", args=None):
+        """Seed kind='done': uno step prodotto in un turno precedente."""
+        return [StepRun(
+            step_idx=1, tool=tool, args=args or {"time_window": "this-week"},
+            result={"ok": True, "entries": [
+                {"start": "2026-06-24T10:00", "end": "2026-06-24T11:00"},
+                {"start": "2026-06-24T15:00", "end": "2026-06-24T16:00"}]},
+            ok=True, latency_ms=5, kind="done")]
+
+    # 1. Il proposer ri-emette il producer già fatto → SALTATO (no re-run).
+    def test_reemitted_done_step_skipped(self):
+        fw = Framework(steps=[
+            StepSpec(tool="find_events_empty", args={"time_window": "this-week"}),
+            StepSpec(tool="create_events", args={"from_step": 1}),
+            StepSpec(tool="final_answer", args={}),
+        ])
+        seen, run = self._run(fw, self._done_seed())
+        # find_events_empty NON ri-eseguito; create_events sì.
+        self.assertNotIn("find_events_empty", seen)
+        self.assertIn("create_events", seen)
+
+    # 2. create_events(from_step=1) referenzia il seed done (già in result.steps).
+    def test_downstream_step_references_done_seed(self):
+        captured = {}
+
+        def invoke(tool, args):
+            captured[tool] = dict(args)
+            return {"ok": True, "results": [{"id": "evt1"}]}
+
+        ex = Executor(invoke_executor=invoke, seed_steps=self._done_seed(),
+                      catalog=[])
+        fw = Framework(steps=[
+            StepSpec(tool="find_events_empty", args={"time_window": "this-week"}),
+            StepSpec(tool="create_events", args={"from_step": 1}),
+            StepSpec(tool="final_answer", args={}),
+        ])
+        ex.run(fw, query="prenota")
+        # create_events ha ricevuto le entries del seed done via from_step=1.
+        self.assertEqual(len(captured["create_events"].get("entries") or []), 2)
+
+    # 3. kind="done" NON è un input da consumare: il primo step reale non
+    #    riceve from_step automatico (distinzione input vs done).
+    def test_done_seed_is_not_consumable_input(self):
+        captured = {}
+
+        def invoke(tool, args):
+            captured[tool] = dict(args)
+            return {"ok": True, "entries": []}
+
+        # find_images_indices NON è nel done-set → non skippato; ma il seed è
+        # done (non input) → niente from_step=1 auto-iniettato.
+        ex = Executor(invoke_executor=invoke, seed_steps=self._done_seed(),
+                      catalog=[_StubExec("find_images_indices", _FIMI_SCHEMA)])
+        fw = Framework(steps=[
+            StepSpec(tool="find_images_indices", args={"query_text": "x"}),
+            StepSpec(tool="final_answer", args={}),
+        ])
+        ex.run(fw, query="y")
+        self.assertNotIn("from_step", captured.get("find_images_indices", {}))
+        self.assertNotIn("reference_images",
+                         captured.get("find_images_indices", {}))
+
+    # 4. Shape-match ignora from_step/entries/_interni: ri-emissione con
+    #    from_step diverso è comunque riconosciuta come stessa shape.
+    def test_dedup_matches_by_shape_not_pipe_args(self):
+        fw = Framework(steps=[
+            # ri-emesso con un from_step spurio: stessa shape → skip
+            StepSpec(tool="find_events_empty",
+                     args={"time_window": "this-week", "from_step": 9}),
+            StepSpec(tool="final_answer", args={}),
+        ])
+        seen, _ = self._run(fw, self._done_seed())
+        self.assertNotIn("find_events_empty", seen)
+
+    # 5. REGRESSIONE: senza done-seed nessun dedup (tutti gli step girano).
+    def test_no_done_seed_no_dedup(self):
+        fw = Framework(steps=[
+            StepSpec(tool="find_events_empty", args={"time_window": "this-week"}),
+            StepSpec(tool="final_answer", args={}),
+        ])
+        seen, _ = self._run(fw, [])  # nessun seed
+        self.assertIn("find_events_empty", seen)
+
+    # 6. Uno step con tool uguale ma SHAPE diversa (chiavi-dato diverse) NON
+    #    è dedup-ato (è un'altra chiamata).
+    def test_same_tool_different_shape_not_deduped(self):
+        fw = Framework(steps=[
+            # find_events_empty con un arg-dato diverso → shape diversa → gira
+            StepSpec(tool="find_events_empty", args={"time_window": "today",
+                                                      "min_duration": 30}),
+            StepSpec(tool="final_answer", args={}),
+        ])
+        seen, _ = self._run(fw, self._done_seed(
+            args={"time_window": "this-week"}))
+        self.assertIn("find_events_empty", seen)
+
+
+class RenderPriorStepsTests(unittest.TestCase):
+    """_render_prior_steps: blocco «FATTO FINORA» per il proposer (ADR 0177 M1).
+    Solo kind="done"; vuoto (byte-identico) altrimenti; deterministico §7.9."""
+
+    def _done(self, idx, tool, n):
+        return StepRun(step_idx=idx, tool=tool, args={},
+                       result={"ok": True, "entries": [{} for _ in range(n)]},
+                       ok=True, latency_ms=0, kind="done")
+
+    def test_empty_when_no_prior(self):
+        from engine.proposer import _render_prior_steps
+        self.assertEqual(_render_prior_steps([], "it"), "")
+        self.assertEqual(_render_prior_steps(None, "en"), "")
+
+    def test_empty_when_only_input_kind(self):
+        # foto @uploaded (kind="input") NON è «fatto» → niente blocco.
+        from engine.proposer import _render_prior_steps
+        inp = StepRun(step_idx=0, tool="@uploaded", args={},
+                      result={"ok": True, "entries": [{"path": "/a.jpg"}]},
+                      ok=True, latency_ms=0, kind="input")
+        self.assertEqual(_render_prior_steps([inp], "it"), "")
+
+    def test_renders_done_steps_it(self):
+        from engine.proposer import _render_prior_steps
+        out = _render_prior_steps([self._done(1, "find_events_empty", 2)], "it")
+        self.assertIn("FATTO FINORA", out)
+        self.assertIn("find_events_empty", out)
+        self.assertIn("2 risultati", out)
+        self.assertTrue(out.startswith("\n"))  # inline interpolation
+
+    def test_renders_done_steps_en(self):
+        from engine.proposer import _render_prior_steps
+        out = _render_prior_steps([self._done(1, "find_events_empty", 3)], "en")
+        self.assertIn("DONE SO FAR", out)
+        self.assertIn("3 results", out)
+
+    def test_deterministic(self):
+        from engine.proposer import _render_prior_steps
+        seed = [self._done(1, "find_events_empty", 2),
+                self._done(2, "read_messages", 5)]
+        self.assertEqual(_render_prior_steps(seed, "it"),
+                         _render_prior_steps(seed, "it"))
+
+
 if __name__ == "__main__":
     unittest.main()

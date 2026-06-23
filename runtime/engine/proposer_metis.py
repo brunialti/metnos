@@ -27,12 +27,12 @@ import logging
 import os
 import re
 from collections import OrderedDict
-from typing import Optional, Callable
+from typing import Optional, Callable, Sequence
 
 from .types import Intent, Framework
 from .proposer import (SimpleProposer, _iter_balanced_json_objects,
                        _render_excluded_signal, _render_tool_pool,
-                       _strip_think)
+                       _render_prior_steps, _strip_think)
 
 log = logging.getLogger(__name__)
 
@@ -181,7 +181,8 @@ class MetisProposer:
                 llm_call: Optional[Callable] = None,
                 lang: str = "it",
                 catalog: Optional[list] = None,
-                exclude_tools: tuple = ()) -> Optional[Framework]:
+                exclude_tools: tuple = (),
+                prior_steps: Sequence = ()) -> Optional[Framework]:
         if not query or llm_call is None:
             return None
         # exclude_tools (guard get_inputs-misroute in dispatch): rimuovi dal
@@ -219,14 +220,16 @@ class MetisProposer:
         candidates = self._generate_candidates(
             query=query, intent=intent, pool=pool,
             excluded_hashes=excluded_hashes, llm_call=llm_call, lang=lang,
-            catalog=catalog, exclude_tools=tuple(_excl))
+            catalog=catalog, exclude_tools=tuple(_excl),
+            prior_steps=prior_steps)
 
         if not candidates:
             # Fallback a SimpleProposer (preserva produzione anche su LLM fail).
             return self._simple.propose(
                 query=query, intent=intent, pool=pool,
                 excluded_hashes=excluded_hashes, llm_call=llm_call,
-                lang=lang, catalog=catalog, exclude_tools=tuple(_excl))
+                lang=lang, catalog=catalog, exclude_tools=tuple(_excl),
+                prior_steps=prior_steps)
 
         ranked = self._rank_by_telos(candidates, intent=intent, lang=lang)
         self._cache_put(cache_key, ranked)
@@ -252,7 +255,7 @@ class MetisProposer:
 
     def _generate_candidates(self, *, query, intent, pool,
                               excluded_hashes, llm_call, lang, catalog,
-                              exclude_tools=()):
+                              exclude_tools=(), prior_steps=()):
         """Genera N candidati. Fix #1: gestisce grammar+metis path.
 
         Due modi:
@@ -275,7 +278,7 @@ class MetisProposer:
                 query=query, intent=intent, pool=pool,
                 excluded_hashes=excluded_hashes, llm_call=llm_call,
                 lang=lang, catalog=catalog, n=n_cands,
-                exclude_tools=exclude_tools)
+                exclude_tools=exclude_tools, prior_steps=prior_steps)
         # Default: 1 call, array output. Il render del pool serve SOLO a
         # questo path (perf 10/6/2026): sul path grammar SimpleProposer
         # renderizza il SUO pool effettivo (post verb-filter) — renderlo in
@@ -310,7 +313,7 @@ class MetisProposer:
 
     def _generate_grammar_multi(self, *, query, intent, pool,
                                   excluded_hashes, llm_call, lang, catalog, n,
-                                  exclude_tools=()):
+                                  exclude_tools=(), prior_steps=()):
         """Fix #1: N single-shot via SimpleProposer (riusa grammar+verb-filter
         path). Ogni call esclude i framework_hash già generati per forzare
         diversità. Costo: N× LLM call vs 1× del default path.
@@ -375,7 +378,7 @@ class MetisProposer:
                     pool=cur_pool,  # propaga pool reale (SimpleProposer rendera' inline)
                     excluded_hashes=seen_hashes,
                     llm_call=llm_call, lang=lang, catalog=catalog,
-                    exclude_tools=cur_excl)
+                    exclude_tools=cur_excl, prior_steps=prior_steps)
             except Exception as ex:
                 log.warning(
                     "MetisProposer grammar-multi call %d/%d failed: %r",

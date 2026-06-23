@@ -168,13 +168,13 @@ OUTPUT FORMAT (STRICT JSON, nothing else)
 {# STATIC-END — prefix cache boundary (optimization A, CLAUDE.md §11 + ADR-pending).
 ABOVE: per-query-invariant text only — the rendered prefix stays byte-identical across
 queries and llama-server reuses it from the n_before_user checkpoint (prompt_n ~5500 → ~1300).
-BELOW: per-query content only ({{ verb }}/{{ obj }}/{{ keywords }}/{{ skeleton }}/{{ tools }}/{{ excluded }}/{{ user_query }}),
+BELOW: per-query content only ({{ verb }}/{{ obj }}/{{ keywords }}/{{ skeleton }}/{{ prior }}/{{ tools }}/{{ excluded }}/{{ user_query }}),
 sent as the USER message via prompt_loader.get_split. Do NOT move interpolations above
 this line, do NOT add static text below. Guard: prompts_lint L6. #}
 EXTRACTED INTENT
 - verb: {{ verb }}
 - object: {{ obj }}
-- keywords: {{ keywords }}{{ skeleton }}
+- keywords: {{ keywords }}{{ skeleton }}{{ prior }}
 
 AVAILABLE TOOLS
 {{ tools }}

@@ -43,7 +43,8 @@ class Proposer(Protocol):
                 llm_call: Optional[Callable] = None,
                 lang: str = "it",
                 catalog: Optional[list] = None,
-                exclude_tools: Sequence[str] = ()) -> Optional[Framework]: ...
+                exclude_tools: Sequence[str] = (),
+                prior_steps: Sequence = ()) -> Optional[Framework]: ...
 
 
 # ── SimpleProposer (default) ──────────────────────────────────────────────
@@ -232,6 +233,47 @@ def _render_skeleton(intent, lang: str = "it") -> str:
     return base
 
 
+def _render_prior_steps(prior_steps, lang: str = "it") -> str:
+    """«FATTO FINORA» (ADR 0177 M1): blocco per la CONTINUAZIONE di un turno —
+    elenca gli step GIÀ ESEGUITI (seed kind="done": un dialogo si era fermato a
+    chiedere all'utente, ora riprende). Istruisce il proposer a pianificare SOLO
+    il resto e a referenziare i risultati pregressi via `from_step=N`, senza
+    ri-emettere gli step già fatti.
+
+    Solo gli step kind="done" contano (gli `input` — es. foto @uploaded — sono
+    sorgenti che il primo step consuma, non «fatti»). Deterministico §7.9:
+    nessun LLM, forma stabile (ordine d'esecuzione). Vuoto se nessun done →
+    prompt BYTE-IDENTICO al non-continuazione (zero perturbazione, come
+    `_render_skeleton`). Leading "\\n" per l'interpolazione inline."""
+    done = [s for s in (prior_steps or [])
+            if getattr(s, "kind", "live") == "done"]
+    if not done:
+        return ""
+    lines = []
+    for s in done:
+        idx = getattr(s, "step_idx", 0)
+        tool = getattr(s, "tool", "") or "?"
+        r = getattr(s, "result", None)
+        n = None
+        if isinstance(r, dict):
+            for k in ("entries", "results", "items"):
+                v = r.get(k)
+                if isinstance(v, list):
+                    n = len(v)
+                    break
+        outcome = (f"{n} risultati" if (n is not None and lang != "en")
+                   else f"{n} results" if n is not None else "ok")
+        lines.append(f"  {idx}) {tool} → {outcome}")
+    body = "\n".join(lines)
+    if lang == "en":
+        return ("\nDONE SO FAR (prior turn — do NOT re-emit these; reference "
+                "their results via from_step=N; plan ONLY the remaining steps):\n"
+                + body)
+    return ("\nFATTO FINORA (turno precedente — NON ri-emettere questi step; "
+            "referenzia i loro risultati via from_step=N; pianifica SOLO gli "
+            "step rimanenti):\n" + body)
+
+
 def _strip_think(raw: str) -> str:
     """Rimuove i blocchi `<think>...</think>` CHIUSI dall'output LLM. Un
     `<think>` residuo e' per costruzione APERTO (B5: il troncamento a
@@ -374,7 +416,8 @@ class SimpleProposer:
                 llm_call: Optional[Callable] = None,
                 lang: str = "it",
                 catalog: Optional[list] = None,
-                exclude_tools: Sequence[str] = ()) -> Optional[Framework]:
+                exclude_tools: Sequence[str] = (),
+                prior_steps: Sequence = ()) -> Optional[Framework]:
         if not query or llm_call is None:
             return None
         # Tier downgrade per intent high-confidence.
@@ -427,6 +470,9 @@ class SimpleProposer:
             # diversificazione (non hash sha opachi che il modello ignora).
             excluded=_render_excluded_signal(excluded_hashes, lang),
             skeleton=_render_skeleton(intent, lang),
+            # «FATTO FINORA» continuazione (ADR 0177 M1): vuoto se non è una
+            # ripresa (seed kind="done" assente) → prompt byte-identico.
+            prior=_render_prior_steps(prior_steps, lang),
             user_query=query,
         )
         try:
