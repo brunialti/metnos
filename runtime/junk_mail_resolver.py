@@ -37,9 +37,13 @@ def resolve_junk_mail(tool: str, args: dict, query: str) -> dict:
     out = dict(args)
     out["where_field"] = "category_hints"
     out["where_in"] = list(_JUNK_MARKERS)
-    # Rimuovi il filtro-spam inventato dal proposer (type='spam' / where_value
-    # ='spam' — campo inesistente sulle mail -> 0 match, move saltato).
-    for k in ("type", "where_value"):
+    # Rimuovi i filtri-spam inventati dal proposer che NON matchano le mail e
+    # azzererebbero il risultato: `type='spam'`/`where_value='spam'` (campo
+    # inesistente) e soprattutto `kind='mail'` — le entries di read_messages
+    # NON hanno il campo `kind`, quindi `kind='mail'` scarta TUTTO (bug live
+    # 0f1fe504: filtro a 0). Sostituiamo l'intero intento-spam con il predicato
+    # preciso su category_hints.
+    for k in ("type", "where_value", "kind"):
         out.pop(k, None)
     log.info("junk_mail_resolver: filter mail -> category_hints in %s",
              _JUNK_MARKERS)

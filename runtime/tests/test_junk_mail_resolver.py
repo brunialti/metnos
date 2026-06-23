@@ -59,10 +59,14 @@ def test_resolver_rewrites_spam_filter():
     _seed()
     import junk_mail_resolver as jmr
     q = "sposta le email di spam nella cartella Spam"
+    # FORMA PROD REALE: il proposer aggiunge kind='mail' E type='spam'. Le mail
+    # NON hanno il campo `kind` -> kind='mail' scarterebbe TUTTO. Vanno rimossi
+    # entrambi (bug live 0f1fe504).
     out = jmr.resolve_junk_mail("filter_entries", {"type": "spam", "kind": "mail"}, q)
     assert out["where_field"] == "category_hints"
     assert "list" in out["where_in"] and "bulk" in out["where_in"]
     assert "type" not in out
+    assert "kind" not in out
 
 
 def test_resolver_noop_without_junk_intent():
