@@ -6142,6 +6142,27 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
     # ║ Rimozione fisica: sessione dedicata richiesta (rischio alto multi- ║
     # ║ file refactor). Status: ATTIVO come safety net opt-in.             ║
     # ╚════════════════════════════════════════════════════════════════════╝
+    # ── SONDA legacy (ADR 0177 M1, scadenza 2026-06-30) ────────────────────
+    # Ogni ingresso QUI è un turno caduto nel PLANNER legacy: o l'engine ha
+    # ritornato None su upload/resume (fallback), o METNOS_PLANNER_LEGACY=1.
+    # Strumentato per CONFERMARE 0 ingressi su traffico reale prima di rimuovere
+    # le ~3300 LOC. Quando il contatore resta 0 → blocco gated → rimozione
+    # (sonda inclusa). Best-effort, mai bloccante.
+    try:
+        from legacy_planner_probe import record_legacy_entry
+        if _ref_images_for_prompt:
+            _lp_trigger = "upload_fallthrough"
+        elif resume_with_scratchpad:
+            _lp_trigger = "resume_fallthrough"
+        elif os.environ.get("METNOS_PLANNER_LEGACY", "0") == "1":
+            _lp_trigger = "legacy_flag"
+        else:
+            _lp_trigger = "unknown"
+        record_legacy_entry(turn_id=turn_id, trigger=_lp_trigger,
+                            query=user_query_for_run)
+    except Exception as _lpe:  # noqa: BLE001 — osservabilità mai bloccante
+        _LOG.debug("legacy_planner_probe noop: %r", _lpe)
+
     # ModeRouter era un no-op (select() ritornava sempre self.mode); rimosso
     # 23/6. `mode` resta nei param per la CLI/back-compat ma in produzione e'
     # sempre "local" (unica fonte non-local = CLI --mode, vedi __main__).
