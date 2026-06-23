@@ -251,6 +251,29 @@ The table is not arbitrary: it derives from three rules, one per level, that <co
 <strong>Full does not mean carte blanche.</strong> It is the level where friction is given up on the reversible, not on actions that burn the bridge. A sent email cannot be recalled; a shell command that has deleted files cannot be undone. For these two capabilities the approval request stays in any profile in which the system can run.
 </div>
 
+<h2 id="undo">Reversibility in practice: the undo engine</h2>
+
+<p>
+"Reversible" is not a hand-wave here: it is a guarantee the runtime has to make good on, and it is what lets the policy above drop friction on the reversible. Every mutating executor declares a <code>reverse_pattern</code> drawn from a small, closed catalog (<code>runtime/reverse_patterns.py</code>), and the runtime keeps enough state per turn to replay it. A single <code>undo_last_turn</code> walks the last turn's steps in reverse and applies each pattern, reporting an honest <code>undone_count</code> rather than claiming a rollback it did not perform.
+</p>
+
+<p>The catalog is deliberately tiny &mdash; five entries, no per-executor undo code:</p>
+
+<ul>
+<li><code>swap_src_dst</code> &mdash; a move or rename is undone by swapping source and destination (filesystem paths and IMAP folders alike, the latter keyed by stable <code>Message-ID</code>).</li>
+<li><code>delete_created_dirs</code> / <code>delete_created_paths</code> &mdash; a creation is undone by removing what was created, only while it is still empty/untouched.</li>
+<li><code>restore_blob_backup</code> &mdash; before any destructive write the runtime stores a byte copy of the previous version at <code>$METNOS_HISTORY_DIR/&lt;turn&gt;/blob/&lt;sha256&gt;.bin</code>; the undo restores it. This is the "catch the change and keep a copy of the previous version" part, done once and deterministically.</li>
+<li><code>delete_&lt;object&gt;_by_id</code> &mdash; a create on a backend (a calendar event, a contact) is undone by deleting it via the id the create returned.</li>
+</ul>
+
+<p>
+Two rules keep this honest. First, <strong>a move is never an implicit delete</strong>: every move is COPY &rarr; verify the copy &rarr; only then DELETE, so a half-failed move cannot lose data. Second, the reverse pattern is <em>declared</em> in the manifest and chosen from the closed catalog, never hand-written per executor &mdash; so "can this be undone?" is settled at design time, not hoped for at runtime.
+</p>
+
+<p>
+That is why the approval gate is not wrapped around everything that mutates state. It sits only on the narrow set the undo engine genuinely cannot take back &mdash; the sent email, the shell command that already deleted files. Everything the catalog covers runs unattended, because undoing it is a single deterministic step rather than a guess.
+</p>
+
 <h1 id="cap4">4. Persistent per_target grants</h1>
 
 <p>

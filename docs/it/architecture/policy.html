@@ -251,6 +251,29 @@ La tabella non &egrave; arbitraria: nasce da tre regole, una per livello, che <c
 <strong>Full non significa carta bianca.</strong> &Egrave; il livello in cui si rinuncia all'attrito sul reversibile, non sulle azioni che bruciano il ponte. Una mail spedita non si richiama; un comando shell che ha cancellato file non si annulla. Per queste due capability la richiesta di approvazione resta in qualunque profilo il sistema possa girare.
 </div>
 
+<h2 id="undo">La reversibilit&agrave; in pratica: il motore di undo</h2>
+
+<p>
+&laquo;Reversibile&raquo; qui non &egrave; una parola d'ordine: &egrave; una garanzia che il runtime deve mantenere, ed &egrave; ci&ograve; che permette alla policy qui sopra di togliere l'attrito sul reversibile. Ogni executor mutante dichiara un <code>reverse_pattern</code> preso da un catalogo piccolo e chiuso (<code>runtime/reverse_patterns.py</code>), e il runtime conserva per turno lo stato che serve a rigiocarlo. Un solo <code>undo_last_turn</code> ripercorre a ritroso gli step dell'ultimo turno e applica ciascun pattern, riportando un <code>undone_count</code> onesto invece di dichiarare un rollback che non ha eseguito.
+</p>
+
+<p>Il catalogo &egrave; volutamente minuscolo &mdash; cinque voci, nessun codice di undo per-executor:</p>
+
+<ul>
+<li><code>swap_src_dst</code> &mdash; uno spostamento o rinomina si annulla scambiando sorgente e destinazione (path del filesystem e cartelle IMAP allo stesso modo, le seconde agganciate allo stabile <code>Message-ID</code>).</li>
+<li><code>delete_created_dirs</code> / <code>delete_created_paths</code> &mdash; una creazione si annulla rimuovendo ci&ograve; che &egrave; stato creato, solo finch&eacute; &egrave; ancora vuoto/intatto.</li>
+<li><code>restore_blob_backup</code> &mdash; prima di ogni scrittura distruttiva il runtime salva una copia byte della versione precedente in <code>$METNOS_HISTORY_DIR/&lt;turn&gt;/blob/&lt;sha256&gt;.bin</code>; l'undo la ripristina. &Egrave; la parte &laquo;intercetta la modifica e tieni una copia della versione precedente&raquo;, fatta una volta e in modo deterministico.</li>
+<li><code>delete_&lt;object&gt;_by_id</code> &mdash; una create su un backend (un evento di calendario, un contatto) si annulla cancellandola tramite l'id che la create ha restituito.</li>
+</ul>
+
+<p>
+Due regole tengono tutto onesto. Primo, <strong>uno spostamento non &egrave; mai una cancellazione implicita</strong>: ogni move &egrave; COPY &rarr; verifica la copia &rarr; solo allora DELETE, cos&iacute; un move fallito a met&agrave; non pu&ograve; perdere dati. Secondo, il reverse pattern &egrave; <em>dichiarato</em> nel manifest e scelto dal catalogo chiuso, mai scritto a mano per executor &mdash; cos&iacute; &laquo;questo si pu&ograve; annullare?&raquo; si decide a design-time, non si spera a runtime.
+</p>
+
+<p>
+Per questo il gate di approvazione non avvolge tutto ci&ograve; che modifica lo stato. Sta solo sull'insieme ristretto che il motore di undo davvero non pu&ograve; riprendersi &mdash; la mail spedita, il comando shell che ha gi&agrave; cancellato file. Tutto ci&ograve; che il catalogo copre gira non presidiato, perch&eacute; annullarlo &egrave; un singolo passo deterministico e non una scommessa.
+</p>
+
 <h1 id="cap4">4. Grants per_target persistenti</h1>
 
 <p>
