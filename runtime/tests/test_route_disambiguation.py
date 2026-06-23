@@ -8,7 +8,7 @@ import route_disambiguation as rd  # noqa: E402
 
 
 class _I:
-    def __init__(self, acts): self.actions = acts
+    def __init__(self, acts, object=""): self.actions = acts; self.object = object
 
 
 class TestDetect(unittest.TestCase):
@@ -36,6 +36,20 @@ class TestDetect(unittest.TestCase):
         i = _I([{"verb": "find", "object": "messages"}])
         self.assertIsNone(rd.detect_object_ambiguity(
             "cerca le email da Anthropic", i))
+
+    def test_destination_argument_not_ambiguous(self):
+        # «sposta le email ... nella cartella Spam»: «cartella» = destinazione
+        # (dirs, score lessicale debole), non oggetto in gara. L'intent
+        # (move/messages, piu' forte: email+mailbox) ha gia' deciso la clausola
+        # → NON ambiguo. Regola forza-relativa NLU-first, nessun hardcoding di
+        # preposizioni. (bug live turno 2e7916f0, 23/6/2026)
+        # FORMA PROD REALE: query mono-clausola → actions=[] (popolato solo sui
+        # compound), object='messages' risolto. Il gate deve reggere QUI.
+        i = _I([], object="messages")
+        r = rd.detect_object_ambiguity(
+            "sposta le email di spam della mailbox knowcastle "
+            "nella cartella Spam", i)
+        self.assertIsNone(r)
 
     def test_no_hints_never(self):
         self.assertIsNone(rd.detect_object_ambiguity("che ore sono", None))

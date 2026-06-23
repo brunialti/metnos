@@ -237,6 +237,53 @@ def find_by_dialog_id(dialog_id: str) -> tuple[dict | None, str | None]:
     return None, None
 
 
+_INVALID_CHOICE = object()  # sentinella: risposta non risolvibile a una choice
+
+
+def _resolve_choice_reply(value, step):
+    """Risolve la risposta utente a uno step CHOICE → `value` canonico
+    dell'opzione. Accetta: indice 1..N, il `value` esatto, o il `label`
+    (case-insensitive: esatto o substring UNICO). Ritorna `_INVALID_CHOICE`
+    se non risolvibile, il valore INVARIATO se lo step non e' una choice.
+
+    Generale §7.9: vale per ogni dialogo choice, ogni canale (Telegram/HTTP),
+    ogni lingua (match sul label i18n). Risolve il vicolo cieco dialogue su
+    HTTP, dove la risposta arriva come testo libero ("1"/"email") invece che
+    come `value` del form."""
+    schema = (step or {}).get("schema") or {}
+    if schema.get("kind") != "choice":
+        return value
+    choices = schema.get("choices") or []
+    if not choices:
+        return value
+    norm = []  # (value, label)
+    for c in choices:
+        if isinstance(c, dict):
+            v = str(c.get("value", c.get("label", "")))
+            lbl = str(c.get("label", c.get("value", "")))
+        else:
+            v = lbl = str(c)
+        norm.append((v, lbl))
+    s = str(value).strip()
+    if not s:
+        return _INVALID_CHOICE
+    for v, _lbl in norm:           # 1) value esatto
+        if s == v:
+            return v
+    if s.isdigit():               # 2) indice 1..N
+        i = int(s)
+        if 1 <= i <= len(norm):
+            return norm[i - 1][0]
+    sl = s.lower()
+    for v, lbl in norm:           # 3) label esatto (case-insensitive)
+        if sl == lbl.lower():
+            return v
+    subs = [v for v, lbl in norm if sl in lbl.lower()]  # 4) label substring unico
+    if len(subs) == 1:
+        return subs[0]
+    return _INVALID_CHOICE
+
+
 def consume_pending_step(sender_id: str, dialog_id: str, var: str,
                           value) -> dict:
     """Avanza il dialogo registrando il valore raccolto per la variabile `var`.
@@ -276,8 +323,18 @@ def consume_pending_step(sender_id: str, dialog_id: str, var: str,
                 "expected_var": expected.get("var"),
                 "got_var": var,
                 "step_index": idx}
+    # §7.9: se lo step e' una CHOICE, risolvi la risposta (indice "1", value, o
+    # label) al `value` canonico. Senza, il grezzo ("1"/"email") finirebbe nel
+    # callback (es. forced_object disambiguazione) e non corrisponderebbe a
+    # nessuna scelta → rerun rotto. Invalido → non avanza (il dialog resta
+    # pending, niente garbage), il caller puo' ri-chiedere.
+    _resolved = _resolve_choice_reply(value, expected)
+    if _resolved is _INVALID_CHOICE:
+        return {"ok": False, "error": "invalid_choice", "dialog_id": dialog_id,
+                "step_index": idx, "var": var,
+                "choices": (expected.get("schema") or {}).get("choices") or []}
     values = dict(state.get("values_collected") or {})
-    values[var] = value
+    values[var] = _resolved
     state["values_collected"] = values
     state["step_index"] = idx + 1
     # Persisti il sender_id NELLO stato (20/6): il callback on_complete

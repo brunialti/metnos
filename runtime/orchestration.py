@@ -272,7 +272,9 @@ def _build_final_message_hint(state: dict, fmt: str) -> str:
         if choices:
             lines.append("")
             for i, ch in enumerate(choices, 1):
-                lines.append(f"  {i}. {ch}")
+                _lbl = (ch.get("label", ch.get("value", ch))
+                        if isinstance(ch, dict) else ch)
+                lines.append(f"  {i}. {_lbl}")
     lines.append("")
     lines.append(_msg("MSG_ORCH_REPLY_NEXT_HINT"))
     return "\n".join(lines)
