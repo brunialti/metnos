@@ -927,8 +927,27 @@ def move(args: dict) -> dict:
         if status != "OK":
             return {"ok": False, "error_code": "ERR_FOLDER_NOT_FOUND",
                     "error": _msg("ERR_FOLDER_NOT_FOUND", folder=str(src_folder))}
+        # §2.8: valida gli uid contro la cartella sorgente REALE. Un UID COPY di
+        # un uid INESISTENTE nel folder selezionato ritorna OK ma NON copia
+        # nulla (no-op) → il move dichiarerebbe successo senza spostare (bug
+        # live 1f3dcc7e: account=None → mailbox sbagliata → uid assenti → 99/99
+        # falso successo, 0 spostate). Spostiamo SOLO gli uid realmente
+        # presenti; gli altri sono failed onesti, MAI contati come spostati.
+        present = None
+        try:
+            sst, sdata = conn.uid("SEARCH", None, "ALL")
+            if sst == "OK" and sdata and sdata[0] is not None:
+                present = {x.decode() if isinstance(x, (bytes, bytearray)) else str(x)
+                           for x in sdata[0].split()}
+        except Exception:
+            present = None  # SEARCH fallita: non blocco (conservativo)
         for uid in uids:
             u = str(uid)
+            if present is not None and u not in present:
+                failed.append({"uid": u, "error_code": "ERR_MSG_NOT_FOUND",
+                                "error": "uid %s assente in %s (account %s)"
+                                % (u, src_folder, account)})
+                continue
             try:
                 # COPY first (so we never DELETE before confirming, §2.9)
                 st, _ = conn.uid("COPY", u, dst_imap)

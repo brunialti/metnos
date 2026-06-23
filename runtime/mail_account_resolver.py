@@ -71,7 +71,29 @@ def resolve_mail_account(tool: str, args: dict, query: str) -> dict:
     """Ri-risolve `account` su read_messages dalla query ATTUALE (§7.9):
     account nominato → quello; quantificatore «tutta/all» → "all"; altrimenti
     noop. Ritorna args (copia se modificati). Mai eccezioni: su dubbio, noop."""
-    if tool != "read_messages" or not isinstance(args, dict) or not query:
+    if not isinstance(args, dict) or not query:
+        return args
+    # Mail MUTATING (move/delete/set): impone SOLO un account NOMINATO singolo
+    # (mai "all" su un'azione mutating §7.9). Senza, il proposer non mette
+    # `account` e move() default a metnos_system → mailbox SBAGLIATA → gli uid
+    # (di knowcastle) non esistono lì → 0 spostate (bug live 1f3dcc7e). Se
+    # l'account è già esplicito, rispetta. Se la query non nomina un account,
+    # noop (la validazione-uid in move() resta onesta §2.8).
+    if tool in ("move_messages", "delete_messages", "set_messages"):
+        acct_m = args.get("account")
+        if isinstance(acct_m, str) and acct_m.strip():
+            return args
+        try:
+            from mail_client import list_known_accounts
+            named_m = _named_accounts(query.lower(), list_known_accounts())
+        except Exception:
+            return args
+        if len(named_m) == 1:
+            out = dict(args)
+            out["account"] = named_m[0]
+            return out
+        return args
+    if tool != "read_messages":
         return args
     via = str(args.get("via_channel") or "").strip().lower()
     if via not in _EMAIL_VIA:
