@@ -254,16 +254,19 @@ class EngineSeedDoneDedupTests(unittest.TestCase):
         self.assertNotIn("reference_images",
                          captured.get("find_images_indices", {}))
 
-    # 4. Shape-match ignora from_step/entries/_interni: ri-emissione con
-    #    from_step diverso è comunque riconosciuta come stessa shape.
-    def test_dedup_matches_by_shape_not_pipe_args(self):
+    # 4. Dedup per NOME-TOOL: il proposer del turno di ripresa rigenera lo
+    #    stesso produttore con CHIAVI-ARG DIVERSE (time_window→time_windows+size,
+    #    scelta dell'LLM) — è la stessa ri-esecuzione, va saltata comunque.
+    #    (Caso reale e2e 23/6: senza questo, find_events_empty ri-girava.)
+    def test_dedup_matches_by_tool_name_despite_different_args(self):
         fw = Framework(steps=[
-            # ri-emesso con un from_step spurio: stessa shape → skip
+            # ri-emesso con args COMPLETAMENTE diversi: stesso tool → skip
             StepSpec(tool="find_events_empty",
-                     args={"time_window": "this-week", "from_step": 9}),
+                     args={"time_windows": ["next-week"], "size": "1hour"}),
             StepSpec(tool="final_answer", args={}),
         ])
-        seen, _ = self._run(fw, self._done_seed())
+        seen, _ = self._run(fw, self._done_seed(
+            args={"time_window": "this-week"}))
         self.assertNotIn("find_events_empty", seen)
 
     # 5. REGRESSIONE: senza done-seed nessun dedup (tutti gli step girano).
@@ -275,18 +278,70 @@ class EngineSeedDoneDedupTests(unittest.TestCase):
         seen, _ = self._run(fw, [])  # nessun seed
         self.assertIn("find_events_empty", seen)
 
-    # 6. Uno step con tool uguale ma SHAPE diversa (chiavi-dato diverse) NON
-    #    è dedup-ato (è un'altra chiamata).
-    def test_same_tool_different_shape_not_deduped(self):
+    # 6. Un tool DIVERSO dal done-seed NON è dedup-ato (gira normalmente).
+    def test_different_tool_not_deduped(self):
         fw = Framework(steps=[
-            # find_events_empty con un arg-dato diverso → shape diversa → gira
-            StepSpec(tool="find_events_empty", args={"time_window": "today",
-                                                      "min_duration": 30}),
+            StepSpec(tool="create_events", args={"from_step": 1}),
             StepSpec(tool="final_answer", args={}),
         ])
-        seen, _ = self._run(fw, self._done_seed(
-            args={"time_window": "this-week"}))
-        self.assertIn("find_events_empty", seen)
+        seen, _ = self._run(fw, self._done_seed(tool="find_events_empty"))
+        self.assertIn("create_events", seen)
+
+
+class ResumeSeedBuildTests(unittest.TestCase):
+    """Costruzione del seed di RIPRESA dialogo (ADR 0177 M1): i marker di
+    dialogo (get_inputs/get_approval/@uploaded) NON entrano nel seed (non sono
+    produttori, romperebbero l'allineamento from_step); i produttori sì, come
+    kind="done". Test sul comportamento osservabile via Executor (no LLM)."""
+
+    def test_dialog_markers_filtered_producers_kept(self):
+        # Replica la logica di _try_engine_v2 (resume_steps → seed kind=done).
+        from engine.types import StepRun
+        resume_steps = [
+            {"step": 1, "tool": "read_messages", "args": {"folder": "INBOX"},
+             "observation": {"ok": True, "entries": [{"subject": "x"}]}},
+            {"step": 2, "tool": "get_inputs", "args": {"dialog": "<e>"},
+             "observation": {"ok": True, "decision": "completed",
+                             "values": {"c": "1"}}},
+        ]
+        _markers = {"get_inputs", "get_approval", "@uploaded"}
+        producers = [s for s in resume_steps
+                     if (s.get("tool") or "") not in _markers]
+        seed = [StepRun(step_idx=i, tool=s["tool"], args=s["args"],
+                        result=s["observation"], ok=True, latency_ms=0,
+                        kind="done")
+                for i, s in enumerate(producers, start=1)]
+        # Solo read_messages nel seed (get_inputs filtrato).
+        self.assertEqual([s.tool for s in seed], ["read_messages"])
+        # È un done-tool → dedup-ato se ri-emesso.
+        from engine.executor import _seed_done_tools
+        self.assertEqual(_seed_done_tools(seed), {"read_messages"})
+
+    def test_done_producer_deduped_downstream_resolves(self):
+        # Seed: read_messages done. Piano del proposer ri-emette read_messages
+        # (skip) + send_messages(from_step=1) → send riceve le entries del seed.
+        from engine.types import StepRun
+        seed = [StepRun(step_idx=1, tool="read_messages", args={"folder": "INBOX"},
+                        result={"ok": True, "entries": [{"subject": "A"},
+                                                        {"subject": "B"}]},
+                        ok=True, latency_ms=0, kind="done")]
+        captured = {}
+
+        def invoke(tool, args):
+            captured[tool] = dict(args)
+            return {"ok": True, "results": [{"ok": True}]}
+
+        ex = Executor(invoke_executor=invoke, seed_steps=seed, catalog=[])
+        fw = Framework(steps=[
+            StepSpec(tool="read_messages", args={"account": "all"}),  # ri-emesso
+            StepSpec(tool="send_messages", args={"from_step": 1}),
+            StepSpec(tool="final_answer", args={}),
+        ])
+        ex.run(fw, query="manda riassunto")
+        self.assertNotIn("read_messages", captured)  # dedup
+        self.assertIn("send_messages", captured)
+        # send ha ricevuto le 2 mail del seed via from_step=1.
+        self.assertEqual(len(captured["send_messages"].get("entries") or []), 2)
 
 
 class RenderPriorStepsTests(unittest.TestCase):

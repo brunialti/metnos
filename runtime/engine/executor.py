@@ -406,26 +406,24 @@ def _seed_entries(seed_steps) -> list:
     return []
 
 
-def _step_arg_shape(tool: str, args: dict) -> str:
-    """SHAPE di uno step per il dedup «semina» (ADR 0177 M1): tool + chiavi-arg
-    ordinate, ESCLUSI i puntatori di pipe (from_step/entries/_*) che variano fra
-    seed e ri-emissione. Stessa filosofia di compute_framework_hash (shape, non
-    valori): due step con stesso tool e stesse chiavi-dato = lo stesso step."""
-    keys = sorted(k for k in (args or {})
-                  if k not in ("from_step", "entries")
-                  and not k.startswith("_"))
-    return f"{tool}({','.join(keys)})" if keys else tool
+def _seed_done_tools(seed_steps) -> set:
+    """Insieme dei NOMI-TOOL seminati come kind="done" (già eseguiti in un turno
+    precedente: continuazione di un dialogo). Il proposer, anche istruito via
+    «FATTO FINORA», è un LLM e potrebbe ri-emetterli; la guardia dedup in
+    Executor.run li salta. Vuoto se nessun done.
 
-
-def _seed_done_shapes(seed_steps) -> set:
-    """Insieme delle SHAPE degli step seminati come kind="done" (già eseguiti
-    in un turno precedente). Il proposer, non vincolato, potrebbe ri-emetterli;
-    la guardia dedup in Executor.run li salta. Vuoto se nessun done."""
+    Match per NOME-TOOL (non per shape-args): il proposer del turno di ripresa
+    rigenera lo stesso PRODUTTORE con chiavi-arg diverse (es. `time_window`→
+    `time_windows`+`size`, granularità a sua scelta) — è semanticamente la
+    STESSA ri-esecuzione che il seed «done» rende superflua (il risultato è già
+    nel seed, referenziato via from_step). Lo `step_idx` del seed fa sì che gli
+    executor a valle (from_step=N) puntino comunque al risultato corretto."""
     out = set()
     for s in (seed_steps or []):
         if getattr(s, "kind", "live") == "done":
-            out.add(_step_arg_shape(getattr(s, "tool", ""),
-                                    getattr(s, "args", None) or {}))
+            t = getattr(s, "tool", "")
+            if t:
+                out.add(t)
     return out
 
 
@@ -1256,9 +1254,9 @@ class Executor:
         # domani: ripresa-dialog (resume). NON sono in `framework.steps` → non
         # ri-eseguiti, non contano verso `max_steps`. Read-only nel resolver.
         self.seed_steps = list(seed_steps or [])
-        # SHAPE degli step seminati kind="done" (continuazione dialogo): la
-        # guardia dedup salta una loro ri-emissione del proposer (ADR 0177 M1).
-        self._seed_done_shapes = _seed_done_shapes(self.seed_steps)
+        # NOMI-TOOL seminati kind="done" (continuazione dialogo): la guardia
+        # dedup salta una loro ri-emissione del proposer (ADR 0177 M1).
+        self._seed_done_tools = _seed_done_tools(self.seed_steps)
         # Map name→args_schema per la proiezione consumer-arg in from_step
         # (es. read_urls_html.urls ← entries[*].url). Senza catalog la
         # proiezione è no-op (degrade graceful, comportamento pre-fix).
@@ -1303,11 +1301,12 @@ class Executor:
             # «pianificare solo il resto», è un LLM: questa è la rete di
             # sicurezza che rende la continuazione sicura a prescindere
             # (evita doppia latenza e — critico — ri-esecuzione di side-effect).
-            # Match per SHAPE (tool + chiavi-dato), non per valori.
-            if (self._seed_done_shapes
+            # Match per NOME-TOOL: il proposer del turno di ripresa rigenera lo
+            # stesso produttore con chiavi-arg diverse, ma è la stessa
+            # ri-esecuzione che il seed «done» rende superflua.
+            if (self._seed_done_tools
                     and step.tool != "final_answer"
-                    and _step_arg_shape(step.tool, step.args)
-                        in self._seed_done_shapes):
+                    and step.tool in self._seed_done_tools):
                 continue
 
             # Terminator

@@ -4987,6 +4987,7 @@ def _try_engine_v2(
     conversation_id: str = "",
     forced_object: str = "",
     reference_images=None,
+    resume_steps=None,
 ) -> "dict | None":
     """Bridge agent_runtime → engine.dispatch.run_turn.
 
@@ -4997,6 +4998,11 @@ def _try_engine_v2(
     `reference_images` (ADR 0177 M1, assorbe il path PLANNER legacy ADR 0092):
     foto allegate al turno → seed-state `@uploaded` per l'engine, così il primo
     step reale (find_images_indices) le consuma via `from_step=1`.
+
+    `resume_steps` (ADR 0177 M1, continuazione dialogo): lista di step GIÀ
+    eseguiti in un turno precedente ({step,tool,args,observation}) → seed-state
+    kind="done" per l'engine: il proposer (consapevole via «FATTO FINORA»)
+    pianifica SOLO il resto, la guardia dedup salta le ri-emissioni.
     """
     try:
         from engine import dispatch as _dispatch
@@ -5136,6 +5142,35 @@ def _try_engine_v2(
             args={"source": "upload", "n": len(_upload_entries)},
             result=_upload_obs, ok=True, latency_ms=0,
             kind="input")]  # consumabile (foto), non «fatto»
+
+    # Seed-state continuazione dialogo (ADR 0177 M1): gli step PRODUTTORI già
+    # eseguiti nel turno che si era fermato a chiedere all'utente → kind="done".
+    # Il proposer li vede in «FATTO FINORA» e pianifica solo il resto; la guardia
+    # dedup salta le ri-emissioni; gli step a valle li referenziano via from_step.
+    # Mutuamente esclusivo con le foto (un turno è o upload o ripresa).
+    #
+    # I marker di dialogo (get_inputs/get_approval) NON entrano nel seed: non
+    # sono produttori (nessun risultato-lista riusabile), occuperebbero un indice
+    # step rompendo l'allineamento `from_step`/`${stepN}` (bug e2e 23/6:
+    # ${step2.summary} → get_inputs invece del producer). Le scelte raccolte
+    # restano nella query/contesto; il proposer pianifica gli step a valle.
+    # step_idx RINUMERATO contiguo (1..K) così from_step degli step nuovi è
+    # stabile a prescindere dalla numerazione del turno originale.
+    _DIALOG_MARKERS = {"get_inputs", "get_approval", "@uploaded"}
+    _rsteps = [s for s in (resume_steps or [])
+               if isinstance(s, dict)
+               and (s.get("tool") or "") not in _DIALOG_MARKERS]
+    if _rsteps and seed_state is None:
+        from engine.types import StepRun as _StepRun
+        seed_state = []
+        for _i, _s in enumerate(_rsteps, start=1):
+            _obs = _s.get("observation") if isinstance(_s.get("observation"), dict) else {}
+            seed_state.append(_StepRun(
+                step_idx=_i,
+                tool=_s.get("tool") or "",
+                args=_s.get("args") or {},
+                result=_obs, ok=bool(_obs.get("ok", True)),
+                latency_ms=0, kind="done"))
 
     # Engine v2 passa lo stesso catalog a Proposer e Validator: includi i
     # builtin in-process (describe_entries/classify_entries) altrimenti
@@ -5709,6 +5744,40 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
     log.turn_id = turn_id
     sp = Scratchpad.open()
     sp.gc()  # cleanup periodico
+
+    # ── ASSORBIMENTO continuazione-dialogo → ENGINE v3 (ADR 0177 M1) ───────
+    # Un turno di RIPRESA (`resume_with_scratchpad`: un dialogo si era fermato a
+    # chiedere all'utente, ora prosegue) cadeva nel PLANNER legacy. Instradiamo
+    # all'ENGINE con gli step pregressi come seed kind="done": il proposer
+    # (consapevole via «FATTO FINORA») pianifica solo il resto, la guardia dedup
+    # salta le ri-emissioni. Su risultato ritorna; su None (crash) cade nel
+    # legacy come fallback. Gate METNOS_ENGINE_RESUME (default 1; =0 → legacy,
+    # per A/B). Esclude le foto (gestite dal loro branch).
+    if (resume_with_scratchpad and isinstance(resume_with_scratchpad, list)
+            and not _ref_images_for_prompt
+            and os.environ.get("METNOS_ENGINE_RESUME", "1") == "1"
+            and os.environ.get("METNOS_ENGINE_V2", "1") == "1"):
+        _eng_rs_res = None
+        try:
+            _eng_rs_res = _try_engine_v2(
+                user_query_for_run, catalog,
+                turn_id=turn_id, actor=actor, channel=channel,
+                lang=DEFAULT_LANG, verbose=verbose, progress=progress,
+                pre_approved_gate=pre_approved_gate,
+                conversation_id=conversation_id,
+                forced_object=forced_object,
+                resume_steps=resume_with_scratchpad,
+            )
+        except Exception as _ex:
+            import logging as _logging
+            _logging.getLogger(__name__).warning(
+                "engine resume fallito: %s → fallback PLANNER legacy", _ex)
+            _eng_rs_res = None
+        if _eng_rs_res is not None:
+            return _finalize_engine_result(
+                log, _eng_rs_res, actor=actor, channel=channel,
+                conversation_id=conversation_id, turn_id=turn_id)
+        # else: fallthrough → PLANNER legacy resume (sotto)
 
     # ── Fast path deterministico (ADR 0094) ──────────────────────────
     # Pattern catch-all PRIMA del PLANNER LLM per query triviali ad
