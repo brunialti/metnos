@@ -1589,6 +1589,7 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
               vaglio_guard: Optional[Callable] = None,
               remediate_args_cb: Optional[Callable] = None,
               runtime_ctx: Optional[dict] = None,
+              seed_state: Optional[list] = None,
               turn_id: str = "",
               lang: str = "it",
               verbose: bool = False,
@@ -1637,11 +1638,22 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
     # companions) e non una copia semplificata che diverge in silenzio.
     pool_names = build_routing_pool(query, intent, catalog)
 
+    # Seed-state uploads (ADR 0177 M1): con foto allegate (seed `@uploaded`)
+    # garantisci i consumer-immagine nel pool così il proposer può instradarli;
+    # il loro input reale (`reference_images`) è iniettato a valle dal
+    # seed-wiring di Executor.run. Deterministico §7.9, no-op senza seed.
+    if seed_state:
+        _cat_names = {getattr(e, "name", None) for e in catalog}
+        for _img_tool in ("find_images_indices", "find_persons_indices"):
+            if _img_tool in _cat_names and _img_tool not in pool_names:
+                pool_names.append(_img_tool)
+
     executor = Executor(
         invoke_executor=invoke_executor_cb,
         llm_call_fast=llm_call_fast,
         vaglio_judge=vaglio_judge,
         vaglio_guard=vaglio_guard,
+        seed_steps=seed_state,
         catalog=catalog,
     )
 
@@ -1671,7 +1683,11 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
         log.warning("undo short-circuit noop (best-effort): %r", ex)
 
     # ── Layer 0: Fastpath ────────────────────────────────────────────────
-    if is_fastpath_enabled():
+    # Seed-state (ADR 0177 M1): con seed (foto allegate) salta L0/L1 — un turno
+    # con allegati è context-specific, deve ripianificare sul contenuto corrente
+    # (parità col path legacy ADR 0092 che skippava il fast_path). Evita anche
+    # di servire un piano cachato no-upload a un turno upload (e viceversa).
+    if is_fastpath_enabled() and not seed_state:
         fp_hit = _fp.lookup(query)
         if fp_hit is not None:
             # Morte C1 a hit-time (§2.8): un piano che riferisce un executor
@@ -1739,7 +1755,8 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
                 run=run, framework=fp_hit.framework)
 
     # ── Layer 1: Autopath ────────────────────────────────────────────────
-    if is_autopath_enabled() and intent.is_complete():
+    # Seed-state (ADR 0177 M1): salta anche L1 con seed (vedi L0 sopra).
+    if is_autopath_enabled() and intent.is_complete() and not seed_state:
         ap_hit = _ap.lookup(query, intent)
         # GARANZIA (Roberto 15/6): stessa invariante di L0 — un piano L1 con step
         # mutante i cui valori-arg non sono nella query corrente NON va eseguito
@@ -1941,7 +1958,8 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
 
     # Record observation (per future feedback). Skip se non cacheabile
     # (single-executor / valore numerico baked): L1 non deve avere valori baked.
-    if (turn_id and intent.is_complete()
+    # Seed-state (ADR 0177 M1): non cachare i turni con allegati (vedi L0/L1).
+    if (turn_id and intent.is_complete() and not seed_state
             and _should_cache_plan(framework, query)):
         try:
             _ap.record_observation(
@@ -1973,8 +1991,10 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
                 if run2.final_kind == "answer":
                     # Il piano RECUPERATO ha funzionato: cacharlo evita di
                     # ripetere fallimento+recovery alla prossima ripetizione.
-                    _maybe_record_fastpath(query, intent, framework_alt, run2,
-                                           catalog=catalog)
+                    # Seed-state (ADR 0177 M1): turni con allegati non cacheati.
+                    if not seed_state:
+                        _maybe_record_fastpath(query, intent, framework_alt,
+                                               run2, catalog=catalog)
                     return DispatchResult(
                         final_text=run2.final_text, final_kind="answer",
                         match_source="recovery",
@@ -1993,7 +2013,9 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
             elapsed_ms=int((time.time() - t_start) * 1000),
             run=run, framework=framework, error_class=err_class)
 
-    _maybe_record_fastpath(query, intent, framework, run, catalog=catalog)
+    # Seed-state (ADR 0177 M1): turni con allegati (upload) non cacheati.
+    if not seed_state:
+        _maybe_record_fastpath(query, intent, framework, run, catalog=catalog)
     return DispatchResult(
         final_text=run.final_text, final_kind=run.final_kind,
         match_source="engine", framework_hash=run.framework_hash,

@@ -32,6 +32,12 @@ class RunTurnReferenceImagesTests(unittest.TestCase):
         self._orig_home = os.environ.get("HOME")
         os.environ["HOME"] = str(td)
         os.environ["METNOS_HISTORY_DIR"] = str(td / "history")
+        # ADR 0177 M1: di default le foto allegate vanno all'ENGINE. Questo test
+        # valida l'iniezione `@uploaded` del path PLANNER legacy (fallback,
+        # ancora vivo): pin a 0 per restare deterministico+veloce. Il path engine
+        # ha il suo oracolo: tests/test_engine_seed_uploads.py.
+        self._orig_eng_up = os.environ.get("METNOS_ENGINE_UPLOADS")
+        os.environ["METNOS_ENGINE_UPLOADS"] = "0"
         # Catalog reale caricato QUI (verify=False: l'isolamento HOME sposta
         # KEYS_DIR=~/.config/metnos/keys e farebbe fallire la verify firma).
         # Va iniettato in run_turn via mock: questo test verifica l'iniezione
@@ -48,6 +54,10 @@ class RunTurnReferenceImagesTests(unittest.TestCase):
             os.environ["HOME"] = self._orig_home
         else:
             os.environ.pop("HOME", None)
+        if self._orig_eng_up is not None:
+            os.environ["METNOS_ENGINE_UPLOADS"] = self._orig_eng_up
+        else:
+            os.environ.pop("METNOS_ENGINE_UPLOADS", None)
 
     # --- 1. virtual step injection in scratchpad ---------------------------
 

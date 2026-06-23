@@ -389,6 +389,19 @@ def _consumer_match_arg(consumer_schema, prev_entries):
     return candidates[0][1]
 
 
+def _seed_entries(seed_steps) -> list:
+    """Payload-lista del seed-state (ADR 0177 M1): le entries del primo
+    seed-step che ne ha (es. `@uploaded` → le foto allegate). [] se assente.
+    Usata dal seed-wiring per decidere se il primo step reale può consumarlo."""
+    for s in (seed_steps or []):
+        r = getattr(s, "result", None)
+        if isinstance(r, dict):
+            pl = _step_list_payload(r)
+            if pl:
+                return pl
+    return []
+
+
 def _resolve_from_step(args: dict, history: list[StepRun],
                        consumer_schema=None) -> dict:
     """Espande from_step: N → entries da step N (1-based), con proiezione
@@ -1201,6 +1214,7 @@ class Executor:
                  vaglio_judge: Optional[Callable] = None,
                  vaglio_guard: Optional[Callable] = None,
                  max_steps: int = 12,
+                 seed_steps: Optional[list] = None,
                  catalog: Optional[list] = None):
         self.invoke = invoke_executor
         self.llm_fast = llm_call_fast
@@ -1209,6 +1223,12 @@ class Executor:
         # giudice post-step `vaglio`: previene l'azione, non la blocca a valle.
         self.vaglio_guard = vaglio_guard
         self.max_steps = max_steps
+        # Seed-state (ADR 0177 M1): step pre-esistenti iniettati come history a
+        # 0-offset PRIMA del primo step reale, così `from_step=1` li raggiunge.
+        # Oggi: foto allegate (`@uploaded`, ADR 0092 — assorbe il path legacy);
+        # domani: ripresa-dialog (resume). NON sono in `framework.steps` → non
+        # ri-eseguiti, non contano verso `max_steps`. Read-only nel resolver.
+        self.seed_steps = list(seed_steps or [])
         # Map name→args_schema per la proiezione consumer-arg in from_step
         # (es. read_urls_html.urls ← entries[*].url). Senza catalog la
         # proiezione è no-op (degrade graceful, comportamento pre-fix).
@@ -1224,6 +1244,11 @@ class Executor:
             remediate_args_cb: Optional[Callable] = None,
             progress=None) -> RunResult:
         result = RunResult()
+        # Seed-state (ADR 0177 M1): le history pre-esistenti (es. foto allegate
+        # @uploaded) partono a 0-offset così `from_step=1` del primo step reale
+        # le consuma. Copia per-run: il recovery ri-esegue con lo stesso seed.
+        if self.seed_steps:
+            result.steps = list(self.seed_steps)
         result.framework_hash = compute_framework_hash(framework)
         t_start = time.time()
 
@@ -1279,9 +1304,43 @@ class Executor:
                 result.final_kind = "answer"
                 break
 
+            # Seed-state wiring (ADR 0177 M1): il PRIMO step reale che può
+            # CONSUMARE il seed (es. @uploaded foto → find_images_indices via
+            # consumer-match `reference_images`, oppure un entries-consumer) →
+            # from_step=1 deterministico, così il seed viene proiettato nell'arg
+            # consumer giusto. «Primo step reale» = nessun real-step ancora in
+            # `result.steps` (= solo il seed); robusto a skip di branching.
+            # Fire quando il proposer NON ha già dato una sorgente USABILE:
+            #   (a) nessun `from_step`, E
+            #   (b) l'arg-consumer naturale è assente, vuoto, o tiene un
+            #       placeholder NON risolvibile (`${step0...}`/`${stepN...}` verso
+            #       il seed: il proposer, ignaro del seed, indovina l'indice — e
+            #       0-index/`step0` non risolve, 1-index `step1` sì → in ENTRAMBI
+            #       i casi from_step=1 è la forma canonica). Le foto allegate
+            #       VINCONO su un eventuale `query_text` del proposer (parità col
+            #       path legacy ADR 0092: allegato presente = ricerca per-immagine).
+            # Local: il framework NON è mutato (idempotenza sugli hit cache,
+            # §S3/ADR 0174); opera su una COPIA degli args.
+            _step_args = step.args
+            if (self.seed_steps and "from_step" not in _step_args
+                    and len(result.steps) == len(self.seed_steps)):
+                _se = _seed_entries(self.seed_steps)
+                _carg = _consumer_match_arg(
+                    self._schema_map.get(step.tool), _se) if _se else None
+                _is_entries_consumer = step.tool in _ENTRIES_CONSUMERS
+                if _se and (_is_entries_consumer or _carg):
+                    # Valore già presente per l'arg-consumer (o `entries`)?
+                    _tgt = _carg or "entries"
+                    _cur = _step_args.get(_tgt)
+                    _usable = bool(_cur) and not _detect_unresolved_placeholders(_cur)
+                    if not _usable:
+                        # Droppa il placeholder rotto e instrada dal seed.
+                        _step_args = {k: v for k, v in _step_args.items()
+                                      if k != _tgt}
+                        _step_args["from_step"] = 1
             # Resolve in ordine: from_step → stepref → fillers → runtime
             args = _resolve_from_step(
-                step.args, result.steps,
+                _step_args, result.steps,
                 consumer_schema=self._schema_map.get(step.tool))
             # Universal §7.3: gli helper che consumano `entries` (describe/
             # classify/filter/sort/group/compute/compare_entries) sono spesso

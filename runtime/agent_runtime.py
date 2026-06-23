@@ -4986,12 +4986,17 @@ def _try_engine_v2(
     pre_approved_gate: bool = False,
     conversation_id: str = "",
     forced_object: str = "",
+    reference_images=None,
 ) -> "dict | None":
     """Bridge agent_runtime → engine.dispatch.run_turn.
 
     Adatta i parametri legacy al nuovo dispatcher, gestisce intent
     extraction, costruisce runtime_ctx, e converte DispatchResult →
     dict legacy shape per minimal changes a caller.
+
+    `reference_images` (ADR 0177 M1, assorbe il path PLANNER legacy ADR 0092):
+    foto allegate al turno → seed-state `@uploaded` per l'engine, così il primo
+    step reale (find_images_indices) le consuma via `from_step=1`.
     """
     try:
         from engine import dispatch as _dispatch
@@ -5108,6 +5113,29 @@ def _try_engine_v2(
         "conversation_id": conversation_id or "",
     }
 
+    # Seed-state (ADR 0177 M1): foto allegate al turno (ADR 0092) → step 0
+    # virtuale `@uploaded` con entries=[{path, reference_image, source}]. Stessa
+    # forma del path legacy (entries con il campo `reference_image`, singolare di
+    # `reference_images`) così il consumer-match porta i path nell'arg
+    # find_images_indices.reference_images. Sostituisce il blocco legacy.
+    seed_state = None
+    _refs = [p for p in (reference_images or [])
+             if isinstance(p, str) and p.strip()]
+    if _refs:
+        from engine.types import StepRun as _StepRun
+        _upload_entries = [
+            {"path": p, "reference_image": p, "source": "upload"}
+            for p in _refs
+        ]
+        _upload_obs = {
+            "ok": True, "entries": _upload_entries, "_virtual": True,
+            "_kind": "uploaded_reference_images", "n": len(_upload_entries),
+        }
+        seed_state = [_StepRun(
+            step_idx=0, tool="@uploaded",
+            args={"source": "upload", "n": len(_upload_entries)},
+            result=_upload_obs, ok=True, latency_ms=0)]
+
     # Engine v2 passa lo stesso catalog a Proposer e Validator: includi i
     # builtin in-process (describe_entries/classify_entries) altrimenti
     # mancanti → Validator falsa `tool_unknown` (§11, fix wiring B).
@@ -5121,6 +5149,7 @@ def _try_engine_v2(
             llm_call_fast=_llm_call_fast,
             vaglio_guard=guard_check,  # guardia forbidden-path PRE-invoke (§sicurezza)
             runtime_ctx=runtime_ctx,
+            seed_state=seed_state,  # foto allegate @uploaded (ADR 0177 M1)
             turn_id=turn_id, lang=lang, verbose=verbose,
             progress=progress)
     except Exception as ex:
@@ -5167,6 +5196,80 @@ def _try_engine_v2(
         "needs_inputs_obs": needs_inputs_obs,
         "gate_obs": gate_obs,
     }
+
+
+def _finalize_engine_result(log, _engine_v2_res, *, actor, channel,
+                            conversation_id, turn_id):
+    """Mappa il DispatchResult dell'engine (dict legacy-shape da `_try_engine_v2`)
+    sul `TurnLog`: estende `steps`, gestisce needs_inputs/gate dialog, setta
+    final_kind/message/intent_verb. Ritorna SEMPRE il log pronto (write incluso).
+
+    Estratto (ADR 0177 M1) per riuso fra il path principale (run_turn, non-upload)
+    e il branch foto-allegate (engine-uploads). Comportamento byte-invariato."""
+    log.steps.extend(_engine_v2_res.get("steps") or [])
+    # §7.3: se Engine ha ritornato needs_inputs → handle dialog
+    _ni = _engine_v2_res.get("needs_inputs_obs")
+    if _ni:
+        try:
+            from orchestration import orchestrate_needs_inputs
+            _sender_id = f"{channel or 'http'}:{actor or 'host'}"
+            if conversation_id:
+                _sender_id = f"{_sender_id}:{conversation_id}"
+            _dlg = orchestrate_needs_inputs(
+                _ni, sender_id=_sender_id,
+                actor=actor or "host", channel=channel or "http",
+                origin_turn_id=turn_id or log.turn_id or "",
+            )
+            if isinstance(_dlg, dict) and _dlg.get("ok"):
+                _hint = (_dlg.get("final_message_hint")
+                          or _ni.get("final_message_hint") or "")
+                if _hint:
+                    log.final_kind = "ask"
+                    log.final_message = _hint
+                    log.intent_verb = _engine_v2_res.get("verb", "") or ""
+                    # Propaga expandable_caps cosi' HTTP route puo'
+                    # salvare cap_pending per consume next-turn.
+                    _caps = _dlg.get("expandable_caps")
+                    if isinstance(_caps, list) and _caps:
+                        log.expandable_caps = _caps
+                    log.ts_end = time.time()
+                    log.write()
+                    return log
+        except Exception as _ex:
+            import logging as _logging
+            _logging.getLogger(__name__).warning(
+                "engine v2 needs_inputs handler failed: %s", _ex)
+            # fallthrough: render hint plain
+    # gate-resume (20/6): il gate get_approval ha messo in PAUSA (FIX 1)
+    # e ha GIA' salvato il proprio dialog_pending. Surfacea i suoi
+    # `expandable_caps` al log cosi' il channel daemon costruisce la
+    # inline keyboard (Approva/Rifiuta/Annulla) — senza, il push verso
+    # Telegram e' solo-testo e il tap/risposta non risolve nulla.
+    # Roberto 20/6: i gate DEVONO usare i pulsanti del canale.
+    _gate = _engine_v2_res.get("gate_obs")
+    if _gate and isinstance(_gate, dict):
+        log.final_kind = "ask"
+        log.final_message = (_gate.get("final_message_hint")
+                             or _engine_v2_res.get("final_text") or "")
+        _gcaps = _gate.get("expandable_caps")
+        if isinstance(_gcaps, list) and _gcaps:
+            log.expandable_caps = _gcaps
+        log.intent_verb = _engine_v2_res.get("verb", "") or ""
+        log.ts_end = time.time()
+        log.write()
+        return log
+    log.final_kind = _engine_v2_res.get("final_kind") or "answer"
+    log.final_message = _engine_v2_res.get("final_text") or ""
+    # Universal §7.3: se needs_inputs e nessun handler, ma c'e' un
+    # final_message_hint nel result, usa quello (UX onestà).
+    if not log.final_message and _ni and isinstance(_ni, dict):
+        hint = _ni.get("final_message_hint")
+        if isinstance(hint, str) and hint:
+            log.final_message = hint
+    log.intent_verb = _engine_v2_res.get("verb", "") or ""
+    log.ts_end = time.time()
+    log.write()
+    return log
 
 
 # --- Strato 3 escalation UI (task #30) ----------------------------------
@@ -5874,10 +5977,11 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
                 # Fallthrough to next engine
 
         # Universal §7.3: con reference_images allegate via drag&drop/upload
-        # (ADR 0092), bypass Engine v2 e Praxis perché queste cascade non
-        # consumano `_ref_images_for_prompt`. Il PLANNER legacy ha il blocco
-        # FOTO ALLEGATE nel system prompt + virtual step `@uploaded` in
-        # scratchpad → routing corretto a find_images_indices(from_step=1).
+        # (ADR 0092), bypass Engine v2 e Praxis QUI. ASSORBIMENTO (ADR 0177 M1):
+        # le foto allegate sono instradate all'ENGINE in un branch DEDICATO a
+        # valle (vedi `_ref_images_for_prompt` prima del PLANNER legacy); questo
+        # ramo resta il path NON-upload (qui `_ref_images_for_prompt` è vuoto per
+        # la guardia del blocco esterno, quindi `_bypass_for_uploads` è no-op).
         _bypass_for_uploads = bool(_ref_images_for_prompt)
 
         _engine_v2_res = None
@@ -5901,70 +6005,9 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
         # Engine v2 wins when produces answer. Su error sintetizzato come
         # answer (terminator), comunque vince — niente PLANNER legacy.
         if _engine_v2_res is not None:
-            log.steps.extend(_engine_v2_res.get("steps") or [])
-            # §7.3: se Engine v2 ha ritornato needs_inputs → handle dialog
-            _ni = _engine_v2_res.get("needs_inputs_obs")
-            if _ni:
-                try:
-                    from orchestration import orchestrate_needs_inputs
-                    _sender_id = f"{channel or 'http'}:{actor or 'host'}"
-                    if conversation_id:
-                        _sender_id = f"{_sender_id}:{conversation_id}"
-                    _dlg = orchestrate_needs_inputs(
-                        _ni, sender_id=_sender_id,
-                        actor=actor or "host", channel=channel or "http",
-                        origin_turn_id=turn_id or log.turn_id or "",
-                    )
-                    if isinstance(_dlg, dict) and _dlg.get("ok"):
-                        _hint = (_dlg.get("final_message_hint")
-                                  or _ni.get("final_message_hint") or "")
-                        if _hint:
-                            log.final_kind = "ask"
-                            log.final_message = _hint
-                            log.intent_verb = _engine_v2_res.get("verb", "") or ""
-                            # Propaga expandable_caps cosi' HTTP route puo'
-                            # salvare cap_pending per consume next-turn.
-                            _caps = _dlg.get("expandable_caps")
-                            if isinstance(_caps, list) and _caps:
-                                log.expandable_caps = _caps
-                            log.ts_end = time.time()
-                            log.write()
-                            return log
-                except Exception as _ex:
-                    import logging as _logging
-                    _logging.getLogger(__name__).warning(
-                        "engine v2 needs_inputs handler failed: %s", _ex)
-                    # fallthrough: render hint plain
-            # gate-resume (20/6): il gate get_approval ha messo in PAUSA (FIX 1)
-            # e ha GIA' salvato il proprio dialog_pending. Surfacea i suoi
-            # `expandable_caps` al log cosi' il channel daemon costruisce la
-            # inline keyboard (Approva/Rifiuta/Annulla) — senza, il push verso
-            # Telegram e' solo-testo e il tap/risposta non risolve nulla.
-            # Roberto 20/6: i gate DEVONO usare i pulsanti del canale.
-            _gate = _engine_v2_res.get("gate_obs")
-            if _gate and isinstance(_gate, dict):
-                log.final_kind = "ask"
-                log.final_message = (_gate.get("final_message_hint")
-                                     or _engine_v2_res.get("final_text") or "")
-                _gcaps = _gate.get("expandable_caps")
-                if isinstance(_gcaps, list) and _gcaps:
-                    log.expandable_caps = _gcaps
-                log.intent_verb = _engine_v2_res.get("verb", "") or ""
-                log.ts_end = time.time()
-                log.write()
-                return log
-            log.final_kind = _engine_v2_res.get("final_kind") or "answer"
-            log.final_message = _engine_v2_res.get("final_text") or ""
-            # Universal §7.3: se needs_inputs e nessun handler, ma c'e' un
-            # final_message_hint nel result, usa quello (UX onestà).
-            if not log.final_message and _ni and isinstance(_ni, dict):
-                hint = _ni.get("final_message_hint")
-                if isinstance(hint, str) and hint:
-                    log.final_message = hint
-            log.intent_verb = _engine_v2_res.get("verb", "") or ""
-            log.ts_end = time.time()
-            log.write()
-            return log
+            return _finalize_engine_result(
+                log, _engine_v2_res, actor=actor, channel=channel,
+                conversation_id=conversation_id, turn_id=turn_id)
         # NOTA bonifica 2026-05-28: rimosso il ramo Praxis legacy morto+rotto
         # (cascata _legacy via shim). Engine v2 (sopra) ritorna SEMPRE non-None
         # — terminator sintetizza error→answer. Quindi questo punto è raggiunto
@@ -5986,6 +6029,39 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
                       "(Praxis non ha coperto la query: verifica intent "
                       "extraction + framework propose)")
             log.ts_end = time.time(); log.write(); return log
+
+    # ── ASSORBIMENTO foto-allegate → ENGINE v3 (ADR 0177 M1) ───────────────
+    # Foto allegate al turno (ADR 0092): il blocco fast-path/engine sopra è
+    # saltato (guardia `not _ref_images_for_prompt`) e il controllo cadrebbe nel
+    # PLANNER legacy sotto. Instradiamo invece all'ENGINE con un seed-state
+    # `@uploaded` (find_images_indices via from_step=1, stesso consumer-match del
+    # legacy ma senza ReAct). Su risultato ritorna; su None (crash engine) cade
+    # nel PLANNER legacy come fallback. Gate METNOS_ENGINE_UPLOADS (default 1;
+    # =0 → solo legacy, per A/B durante il bake).
+    if (_ref_images_for_prompt
+            and os.environ.get("METNOS_ENGINE_UPLOADS", "1") == "1"
+            and os.environ.get("METNOS_ENGINE_V2", "1") == "1"):
+        _eng_up_res = None
+        try:
+            _eng_up_res = _try_engine_v2(
+                user_query_for_run, catalog,
+                turn_id=turn_id, actor=actor, channel=channel,
+                lang=DEFAULT_LANG, verbose=verbose, progress=progress,
+                pre_approved_gate=pre_approved_gate,
+                conversation_id=conversation_id,
+                forced_object=forced_object,
+                reference_images=_ref_images_for_prompt,
+            )
+        except Exception as _ex:
+            import logging as _logging
+            _logging.getLogger(__name__).warning(
+                "engine uploads fallito: %s → fallback PLANNER legacy", _ex)
+            _eng_up_res = None
+        if _eng_up_res is not None:
+            return _finalize_engine_result(
+                log, _eng_up_res, actor=actor, channel=channel,
+                conversation_id=conversation_id, turn_id=turn_id)
+        # else: fallthrough → PLANNER legacy (sotto)
 
     # ╔════════════════════════════════════════════════════════════════════╗
     # ║ PLANNER step-by-step (LEGACY FALLBACK, ADR 0163 fase #7).          ║

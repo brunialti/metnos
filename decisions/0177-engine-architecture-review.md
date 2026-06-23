@@ -145,6 +145,21 @@ Analisi a fondo del blocco legacy `run_turn` (5349→9356 = **4008 LOC**, di cui
 7. **M6 — Slim executor**: T6 (resolver-registry, separazione esecuzione/finalizzazione).
 8. **M7 — Debito lessici**: T8 (migrazione a detection_lexicon, a lotti per concept).
 
+### 5.bis M1-UPLOAD — FATTO (23/6, engine v3, gate verde)
+
+Il sotto-passo **(a)+(c)+(d)** di M1 limitato alle **foto-allegate** è chiuso e LIVE in prod (engine v3 default). Il **resume-dialog (b)** resta aperto (sotto).
+
+**Meccanismo `seed_state` (generale, riusabile per il resume).** L'engine accetta un parametro `seed_state`: una lista di `StepRun` pre-esistenti iniettati come history a 0-offset PRIMA del primo step reale, così `from_step=1` li raggiunge. Niente di foto-specifico nel motore (§7.3).
+- `engine/executor.py`: `Executor(seed_steps=...)`; `run()` pre-popola `result.steps`; **seed-wiring** — il primo step reale che può CONSUMARE il seed (consumer-match `reference_images`, o entries-consumer) e a cui il proposer non ha dato una sorgente USABILE (no `from_step`; arg-consumer assente/vuoto/placeholder-non-risolvibile `${step0…}`) → `from_step=1` deterministico (droppa il placeholder rotto). Le foto VINCONO su un `query_text` del proposer (parità ADR 0092). Local, framework non mutato (idempotenza hit-cache §S3).
+- `engine/dispatch.py`: `run_turn(seed_state=…)` → boost `find_images_indices`/`find_persons_indices` nel pool + **salta L0/L1 + niente cache** con seed (turno context-specific, parità col legacy che skippava il fast_path).
+- `agent_runtime.py`: `_try_engine_v2(reference_images=…)` costruisce il seed `@uploaded`; **branch dedicato** prima del PLANNER legacy instrada le foto all'engine (gate `METNOS_ENGINE_UPLOADS`, default 1; =0 → bypass→legacy per A/B). Handler engine→TurnLog estratto in `_finalize_engine_result` (riuso main-path + upload-branch, byte-invariato).
+
+**Scoperta chiave (e2e reale).** Il proposer Mētis, ignaro del seed, emette `find_images_indices(reference_images="${step0.entries.*.path}")` — placeholder 0-index che NON risolve (stepref è 1-index `${step1…}`). Il seed-wiring lo riconosce come «sorgente non usabile» e lo ricuce a `from_step=1`. Senza questo, l'arg corretto restava `None` (salvato solo dal fallback `entries` dell'executor — outcome ok ma arg sbagliato).
+
+**Verifiche.** Suite **2863/0**, routing **29/29** (v3, env prod). Unit nuovo `tests/test_engine_seed_uploads.py` (8 casi: wiring, precedenza-su-query_text, placeholder `${step0}`/`${step1}`, idempotenza, regressione no-seed). e2e in-proc determinismo 3/3 + legacy-fallback (UPLOADS=0) 1/1. **e2e HTTP REALE prod**: upload multipart → engine v3 → `find_images_indices(reference_images=[foto])` sull'indice 31k → 4 match reali, «1 foto simili nel tuo album». Turn log confermato (step0 `@uploaded` + step1 ref wired).
+
+**Resta (M1 completo).** **(b) resume-dialog**: l'engine non riparte da scratchpad — ma `seed_state` è il veicolo pronto (basta seedare gli step prior + offset). DA MISURARE PRIMA quanti resume cadono nel loop-legacy (0 marker oggi → strumentare). Rischio noto: proposer-awareness del resume (non ri-emettere step fatti). Solo DOPO (b): gate `METNOS_PLANNER_LEGACY` incondizionato + rimozione blocco legacy (~3300 LOC) + 11 rami `if not is_multistep:` + `_bypass_for_uploads`.
+
 ---
 
 ## 6. Decisioni aperte per Roberto (servono prima di M4+)
