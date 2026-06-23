@@ -480,15 +480,21 @@ def task_sweep_expired_dialogs(payload=None):
     """
     import sys as _sys
     from pathlib import Path as _P
+    import os as _os
     from dialog_pending import sweep_expired
     abandoned = sweep_expired()
     notified = 0
     errors: list[dict] = []
-    if abandoned:
+    # «Se non c'e' niente da fare non scrivermi» (Roberto): l'auto-chiusura di un
+    # dialogo SCADUTO e' rumore NON azionabile — il dialogo si chiude comunque,
+    # ma di default NON si notifica (l'utente rilancia se vuole). Opt-in via env
+    # per chi volesse il promemoria. Lo `sweep_expired()` sopra ha gia' chiuso.
+    _notify = _os.environ.get("METNOS_NOTIFY_DIALOG_AUTOCLOSE", "0") == "1"
+    if abandoned and _notify:
         _sm_dir = _P(__file__).resolve().parents[2] / "executors" / "send_messages"
         if str(_sm_dir) not in _sys.path:
             _sys.path.insert(0, str(_sm_dir))
-    for d in abandoned:
+    for d in (abandoned if _notify else []):
         actor = d.get("actor") or ""
         if not actor:
             continue  # nessun destinatario noto → niente feedback

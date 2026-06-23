@@ -1643,6 +1643,31 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
         catalog=catalog,
     )
 
+    # ── Undo SAFETY-CRITICAL (§4.5, §7.9) ────────────────────────────────
+    # Query che INIZIA con un prefisso UNDO («annulla …», «undo …»,
+    # «ripristina …») → undo_last_turn DETERMINISTICO, bypassa il routing LLM.
+    # Bug live ec922ea1: «annulla ultima azione» → Aporia, perché il bypass
+    # viveva SOLO nel fast_path di agent_runtime (saltato su resume/dialog
+    # pendente) e l'engine — path vivo — non lo aveva. Mai lasciare il proposer
+    # scegliere delete_* su un undo (turn 742b746d: delete_events distruttivo).
+    # Prima di L0/L1: un undo non deve mai pescare un piano cachato.
+    try:
+        from fast_path import _undo_prefix_match, _normalize
+        if (_undo_prefix_match(_normalize(query))
+                and "undo_last_turn" in {getattr(e, "name", None) for e in catalog}):
+            from .types import Framework as _Fw, StepSpec as _St
+            _undo_fw = _Fw(steps=[_St(tool="undo_last_turn", args={}),
+                                  _St(tool="final_answer", args={})])
+            run = executor.run(_undo_fw, query=query, runtime_ctx=runtime_ctx,
+                               remediate_args_cb=remediate_args_cb, progress=progress)
+            return DispatchResult(
+                final_text=run.final_text, final_kind=run.final_kind,
+                match_source="undo", framework_hash=run.framework_hash,
+                elapsed_ms=int((time.time() - t_start) * 1000),
+                run=run, framework=_undo_fw)
+    except Exception as ex:  # noqa: BLE001 — best-effort, non blocca il turno
+        log.warning("undo short-circuit noop (best-effort): %r", ex)
+
     # ── Layer 0: Fastpath ────────────────────────────────────────────────
     if is_fastpath_enabled():
         fp_hit = _fp.lookup(query)
