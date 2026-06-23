@@ -844,6 +844,55 @@ def delete(args: dict) -> dict:
             "results": results, "failed": failed}
 
 
+# Termini user-facing -> special-use IMAP flag (§5: «Spam»/«Posta indesiderata»
+# = la cartella \Junk reale del server, non hardcodare INBOX.Junk).
+_FOLDER_SPECIAL = {
+    "junk": "\\Junk", "spam": "\\Junk", "indesiderata": "\\Junk",
+    "spazzatura": "\\Junk",
+    "trash": "\\Trash", "cestino": "\\Trash", "eliminata": "\\Trash",
+    "sent": "\\Sent", "inviata": "\\Sent", "inviate": "\\Sent",
+    "draft": "\\Drafts", "drafts": "\\Drafts", "bozze": "\\Drafts",
+}
+
+
+def _resolve_dst_folder(conn, dst_folder: str) -> str:
+    """Risolve un nome cartella user-facing ('Spam'/'Trash'/'Junk'/'Posta
+    indesiderata') al nome IMAP REALE del server via LIST (§5, no hardcoding).
+    Match in ordine: special-use flag (\\Junk/\\Trash/...), nome esatto,
+    suffisso-foglia dopo il separatore di gerarchia ('INBOX.Spam' ~ 'Spam').
+    Ritorna dst_folder invariato se nessun match (la COPY tenta quello)."""
+    import re as _re
+    target = (dst_folder or "").strip()
+    if not target:
+        return dst_folder
+    try:
+        st, data = conn.list()
+    except Exception:
+        return dst_folder
+    if st != "OK" or not data:
+        return dst_folder
+    folders = []  # (name, flags)
+    for raw in data:
+        line = raw.decode("utf-8", "replace") if isinstance(raw, (bytes, bytearray)) else str(raw)
+        m = _re.match(r'\((?P<flags>[^)]*)\)\s+(?:"[^"]*"|\S+)\s+(?P<name>"[^"]+"|\S+)\s*$', line)
+        if not m:
+            continue
+        folders.append((m.group("name").strip().strip('"'), m.group("flags")))
+    tl = target.lower()
+    want = next((f for k, f in _FOLDER_SPECIAL.items() if k in tl), None)
+    if want:                                   # 1) special-use flag
+        for name, flags in folders:
+            if want.lower() in flags.lower():
+                return name
+    for name, _f in folders:                   # 2) nome esatto
+        if name.lower() == tl:
+            return name
+    for name, _f in folders:                   # 3) suffisso-foglia
+        if _re.split(r"[./]", name)[-1].lower() == tl:
+            return name
+    return dst_folder
+
+
 def move(args: dict) -> dict:
     """Sposta mail fra folder IMAP (COPY-then-STORE \\Deleted + EXPUNGE).
 
@@ -869,6 +918,11 @@ def move(args: dict) -> dict:
                 "error": _msg("ERR_EXT_SVC_UNAVAILABLE"), "detail": f"IMAP connect failed: {e}"}
     results, failed = [], []
     try:
+        # §5: risolvi il nome user-facing ('Spam') al folder IMAP reale del
+        # server ('INBOX.Spam', \\Junk) via LIST — senza, la COPY a 'Spam'
+        # fallisce con NO (bug live 32b69247).
+        dst_folder = _resolve_dst_folder(conn, dst_folder)
+        dst_imap = ('"%s"' % dst_folder) if " " in dst_folder else dst_folder
         status, _ = conn.select(src_folder)
         if status != "OK":
             return {"ok": False, "error_code": "ERR_FOLDER_NOT_FOUND",
@@ -877,7 +931,7 @@ def move(args: dict) -> dict:
             u = str(uid)
             try:
                 # COPY first (so we never DELETE before confirming, §2.9)
-                st, _ = conn.uid("COPY", u, dst_folder)
+                st, _ = conn.uid("COPY", u, dst_imap)
                 if st != "OK":
                     failed.append({"uid": u, "error_code": "ERR_IMAP_CMD",
                                     "error": _msg("ERR_IMAP_CMD", cmd="COPY", reason=str(st))})
