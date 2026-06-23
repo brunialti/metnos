@@ -54,13 +54,13 @@ def _iso(y, m, d, hh, mm=0):
 @pytest.fixture
 def fee(monkeypatch):
     """Re-import find_events_empty fresh per test isolation. Forza
-    `_default_client → 'local'` (refactor 14/5/2026 google_workspace
+    `default_event_client → 'local'` (refactor 14/5/2026 google_workspace
     backend): senza patch i test girerebbero contro Google Calendar
     reale tramite il default auto-detect."""
     if "find_events_empty" in sys.modules:
         del sys.modules["find_events_empty"]
     mod = importlib.import_module("find_events_empty")
-    monkeypatch.setattr(mod, "_default_client", lambda: "local")
+    monkeypatch.setattr(mod, "default_event_client", lambda: "local")
     return mod
 
 

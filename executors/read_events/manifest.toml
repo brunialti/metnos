@@ -21,7 +21,7 @@ en = "SCOPO: reads calendar events. PATTERN: read_events(time_window='today', to
 
 [code]
 files  = ["read_events.py"]
-digest = "sha256:5cc69e7ac5dd9567f2e50dc8d0c5f2c010e7cc4acfcc32c30b58b608ad1662be"
+digest = "sha256:568fd6eb359841a6aca88046f0d543a704e19ec7ed4f497102b8c7bfa629de80"
 
 [args]
 type     = "object"

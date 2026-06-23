@@ -886,15 +886,6 @@ def apply_credentials_extraction(query: str) -> tuple[str, list[dict]]:
     return redacted, safe_meta
 
 
-# --- Mode router ------------------------------------------------------------
-
-class ModeRouter:
-    def __init__(self, mode="local"):
-        self.mode = mode
-
-    def select(self, query, catalog):
-        return self.mode
-
 
 # --- Prompt + tools rendering ---------------------------------------------
 # PLANNER prompt è in runtime/prompts/<METNOS_LANG>/planner.j2 (ADR 0092).
@@ -6005,7 +5996,10 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
     # ║ Rimozione fisica: sessione dedicata richiesta (rischio alto multi- ║
     # ║ file refactor). Status: ATTIVO come safety net opt-in.             ║
     # ╚════════════════════════════════════════════════════════════════════╝
-    chosen_mode = ModeRouter(mode).select(user_query_for_run, catalog)
+    # ModeRouter era un no-op (select() ritornava sempre self.mode); rimosso
+    # 23/6. `mode` resta nei param per la CLI/back-compat ma in produzione e'
+    # sempre "local" (unica fonte non-local = CLI --mode, vedi __main__).
+    chosen_mode = mode
     log.mode = chosen_mode
 
     # Tutti i fast-path L0/L1/L2 hanno mancato → entro nel PLANNER LLM.

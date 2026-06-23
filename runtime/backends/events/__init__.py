@@ -45,3 +45,15 @@ verbo. Read/find_events_empty (produttori §2.6) ritornano `entries: list`.
 Create/delete (trasformativi §2.6) ritornano `results: list`. Errori
 con `error_class` esplicito (§2.8 no silent failure).
 """
+
+
+def default_event_client() -> str:
+    """Client events di default: `google_workspace` se le creds OAuth sono
+    presenti, altrimenti `local`. Detect deterministico §7.9 (filesystem check).
+    SoT condivisa da read/create/delete/find_events_empty (erano 4 copie
+    identiche di `_default_client`, fattorizzate 23/6)."""
+    try:
+        from backends.events import google_workspace
+        return "google_workspace" if google_workspace._has_creds() else "local"
+    except Exception:
+        return "local"

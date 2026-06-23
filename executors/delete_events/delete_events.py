@@ -55,11 +55,7 @@ _HANDLERS = {
 }
 
 
-def _default_client() -> str:
-    try:
-        return "google_workspace" if google_workspace._has_creds() else "local"
-    except Exception:
-        return "local"
+from backends.events import default_event_client  # SoT (era copia locale)
 
 
 def _fail(error: str, error_class: str = "invalid_args") -> dict:
@@ -145,7 +141,7 @@ def _delete_by_window(backend, client: str, args: dict) -> dict:
 def invoke(args):
     if not isinstance(args, dict):
         return _fail(_msg("ERR_ARGS_NOT_OBJECT"))
-    client = args.get("client") or _default_client()
+    client = args.get("client") or default_event_client()
     backend = _HANDLERS.get(client)
     if backend is None:
         return _fail(_msg("ERR_NOT_APPLICABLE", what=f"client '{client}'"))

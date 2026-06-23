@@ -52,11 +52,7 @@ _HANDLERS = {
 }
 
 
-def _default_client() -> str:
-    try:
-        return "google_workspace" if google_workspace._has_creds() else "local"
-    except Exception:
-        return "local"
+from backends.events import default_event_client  # SoT (era copia locale)
 
 
 def invoke(args):
@@ -64,7 +60,7 @@ def invoke(args):
         return {"ok": False, "error": _msg("ERR_ARGS_NOT_OBJECT"),
                 "error_class": "invalid_args",
                 "entries": [], "used": 0}
-    client = args.get("client") or _default_client()
+    client = args.get("client") or default_event_client()
     backend = _HANDLERS.get(client)
     if backend is None:
         avail = sorted(_HANDLERS.keys())

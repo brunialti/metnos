@@ -75,13 +75,14 @@ from timefmt import now_iso_z as _now_iso
 from timefmt import today_iso as _today_iso_date
 
 
-def _sha256_short(text: str) -> str:
-    """Hash 16-char (allineato a `i18n._hash_text`)."""
-    return hashlib.sha256((text or "").encode("utf-8")).hexdigest()[:16]
+from i18n import _hash_text as _sha256_short  # SoT 16-char (era copia: drift)
 
 
 def _sha256_full(text: str) -> str:
-    """Hash sha256 hex completo (per audit del prompt usato)."""
+    """Hash sha256 hex NUDO (per audit del prompt usato). NB: NON usare
+    `i18n._sha256_full` qui — quello ritorna la forma prefissata `sha256:<hex>`
+    (version_hash latest-wins), mentre `prompt_hash_full` in DB e' hex nudo.
+    Semantiche diverse: tenuto separato di proposito (no DRY su forme divergenti)."""
     return hashlib.sha256((text or "").encode("utf-8")).hexdigest()
 
 

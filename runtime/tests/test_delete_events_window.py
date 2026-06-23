@@ -40,13 +40,13 @@ ROME = ZoneInfo("Europe/Rome")
 def de(monkeypatch, tmp_path):
     """Re-import delete_events fresh + backend local su ICS temporaneo.
 
-    `_default_client` forzato a 'local': senza patch, con OAuth presente i
+    `default_event_client` forzato a 'local': senza patch, con OAuth presente i
     test girerebbero contro Google Calendar reale (vietato: stub only).
     """
     if "delete_events" in sys.modules:
         del sys.modules["delete_events"]
     mod = importlib.import_module("delete_events")
-    monkeypatch.setattr(mod, "_default_client", lambda: "local")
+    monkeypatch.setattr(mod, "default_event_client", lambda: "local")
     ics = tmp_path / "calendar.ics"
     monkeypatch.setenv("METNOS_CALENDAR_ICS", str(ics))
     return mod
