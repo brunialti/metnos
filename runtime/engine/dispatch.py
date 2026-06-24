@@ -122,7 +122,19 @@ def _mutating_args_grounded(framework, query) -> bool:
         for k, v in (getattr(s, "args", {}) or {}).items():
             if k in ("from_step", "from_steps"):
                 continue
-            for tok in re.findall(r"\d+|[a-z0-9._-]+/[a-z0-9._-]+", str(v).lower()):
+            vs = str(v)
+            # I PLACEHOLDER non sono valori baked dalla query: `${stepN.field}`
+            # (pipe da uno step a monte), `${RUNTIME:...}`, `${FILLER:...}` sono
+            # risolti a RUNTIME col dato corrente — non discriminano la query.
+            # Cache-key bug (24/6): create_events(start="${step1.entries.0.start}")
+            # faceva fallire il grounding (token «step1»/«entries»/«0» non in
+            # query) → ogni ripetizione re-pianificava (hit-rate ~1% sui compound
+            # propose+fire). Skip i valori interamente-placeholder. §7.9.
+            if "${" in vs:
+                # Rimuovi i placeholder ${...} prima del check: ciò che resta
+                # (eventuali literal misti) viene comunque verificato.
+                vs = re.sub(r"\$\{[^}]*\}", " ", vs)
+            for tok in re.findall(r"\d+|[a-z0-9._-]+/[a-z0-9._-]+", vs.lower()):
                 if tok not in qn:
                     return False
     return True
