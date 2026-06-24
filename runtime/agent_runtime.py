@@ -5959,149 +5959,17 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
         # Dispatcher 4-layer: fastpath → autopath → validator → engine.
         # Sostituisce Praxis legacy. Feature flag METNOS_ENGINE_V2=1
         # (default ON post-migration).
-        # Universal §7.9 — compound query: prova DECOMPOSER deterministico
-        # PRIMA di Engine v2/Praxis. Se decompose succeed → build Framework
-        # e esegui via ExecutorEngine direttamente (skip LLM Mētis).
-        # Fallback a legacy PLANNER ReAct se decomposer fail ma >=2 verbi.
+        # NB (ADR 0177, 24/6): il DECOMPOSER deterministico è stato ELIMINATO.
+        # Era un pre-stadio che decomponeva i compound (>=2 verbi) in step senza
+        # LLM, come mitigatore del cold-start engine. Il bake `METNOS_DECOMPOSER=0`
+        # (22-24/6) ha provato che l'engine copre il caso generale (incl.
+        # extract→create, §2.8-onesto dopo il fix `a139dcd`); il decomposer
+        # divergeva dall'engine (S1) e ne mascherava i bug. Path di planning
+        # compound ora UNICO = engine (proposer + cache L0/L1). Gli helper
+        # condivisi (PRODUCER_VERBS, derive_tool_name, split_query_chunks,
+        # derive_extract_fields, _send_has_explicit_recipient) restano in
+        # `compound_decomposer.py` — usati dai guard dell'engine.
         _force_legacy_compound = False
-        _decomposed_steps = None
-        try:
-            from prefilter import (
-                tokenize as _pf_tokenize,
-                detect_canonical_verbs_all as _pf_detect_verbs,
-            )
-            _q_tokens = _pf_tokenize(user_query_for_run)
-            _q_verbs = _pf_detect_verbs(_q_tokens)
-            # Guard scheduling (§7.9, bug live 10/6/2026): una query con
-            # marker scheduling («every 30 min: read the issues…», «ogni
-            # giorno alle 8 controlla…») NON va decomposta: il corpo del
-            # task si esegue al FIRE, non adesso. Il decomposer non conosce
-            # create_tasks → produceva pipeline del corpo con args mancanti
-            # («Pipeline malformata o argomenti insufficienti»). Defer a
-            # Engine v2 (intent create/tasks via bypass ricorrenza) o al
-            # PLANNER legacy (CREATE_TASKS_TOOL nel pool).
-            from tool_grammar import query_has_tasks_marker as _qhtm
-            _q_is_scheduling = _qhtm(user_query_for_run)
-            _decomposer_on = os.environ.get("METNOS_DECOMPOSER", "1") != "0"
-            if len(set(_q_verbs)) >= 2 and not _q_is_scheduling and _decomposer_on:
-                # Try deterministic decomposer
-                try:
-                    from compound_decomposer import decompose_query
-                    # Union catalog + builtin in-process handlers (describe_entries,
-                    # classify_entries, create_tasks, ecc.) — universal §7.9.
-                    _avail_tools = ({e.name for e in catalog}
-                                    | set(_BUILTIN_TOOL_HANDLERS.keys())
-                                    | {"final_answer"})
-                    # Schemi per il confidence gate del decomposer (§7.9/§2.8):
-                    # se gli args euristici non sono schema-coerenti, deferisce
-                    # al PLANNER LLM invece di emettere una pipeline rotta.
-                    _tool_schemas = {e.name: getattr(e, "args_schema", None)
-                                     for e in catalog}
-                    _decomposed_steps = decompose_query(
-                        user_query_for_run, _avail_tools, _tool_schemas)
-                except Exception as _ex_dec:
-                    import logging as _logging
-                    _logging.getLogger(__name__).warning(
-                        "decomposer failed: %s", _ex_dec)
-                # Guard coverage produttori (§2.8/§7.3, universale): se il
-                # decomposer deterministico ha SALTATO un verbo PRODUCER
-                # (find/read/get/list) richiesto dalla query, la decomposizione
-                # è INCOMPLETA — parte da un consumer/mutating senza i dati (es.
-                # "cerca online ... crea evento" → solo create_events, find_urls
-                # droppato). Defer all'Engine v2 (proposer: pattern J +
-                # extract_entries + guard). Vale per ogni executor/dominio.
-                if _decomposed_steps:
-                    try:
-                        from vocab import (COVERAGE_REQUIRED_VERBS as _CRV,
-                                            ACTIONS as _ACT)
-                        _step_vrb = {s["tool"].split("_", 1)[0]
-                                     for s in _decomposed_steps
-                                     if s.get("tool") and s["tool"] != "final_answer"
-                                     and s["tool"].split("_", 1)[0] in _ACT}
-                        _missing = (set(_q_verbs) & set(_CRV)) - _step_vrb
-                        if _missing:
-                            import logging as _logging
-                            _logging.getLogger(__name__).info(
-                                "decomposer DROP producer %s → defer Engine v2",
-                                sorted(_missing))
-                            _decomposed_steps = None
-                    except Exception:
-                        pass
-                if _decomposed_steps:
-                    import logging as _logging
-                    _logging.getLogger(__name__).info(
-                        "COMPOUND DECOMPOSED: %d steps %s",
-                        len(_decomposed_steps),
-                        [s["tool"] for s in _decomposed_steps])
-                else:
-                    # Decomposer deterministico non confidente → NON forzare il
-                    # PLANNER legacy (deprecato, ADR 0161/0163): fall-through a
-                    # Engine v2 metis (proposer_metis), che e' il path moderno e
-                    # gestisce il multi-step via LLM. Il legacy ReAct tentava
-                    # request_new_executor (synth) invece di usare gli executor
-                    # esistenti (es. find_issues_github) — bug 2/6/2026.
-                    import logging as _logging
-                    _logging.getLogger(__name__).info(
-                        "COMPOUND query: %d verbs %s → decomposer deferred, "
-                        "use Engine v2 metis", len(set(_q_verbs)),
-                        sorted(set(_q_verbs)))
-        except Exception:
-            pass
-
-        # Se decomposer ha prodotto steps → esegui via ExecutorEngine
-        if _decomposed_steps:
-            try:
-                from engine.executor import Executor as _EngineExec
-                # Refactor P1 (22/6): il piano del decomposer passa per la STESSA
-                # finalizzazione del path proposer (`finalize_decomposed_plan` →
-                # `_apply_deterministic_structure_guards`) invece di essere
-                # eseguito diretto scavalcando i guard. Chiude il bypass che
-                # lasciava extract_entries senza `fields` e de-duplica la logica
-                # (un solo punto riempie la clausola extract).
-                from engine.dispatch import finalize_decomposed_plan
-                framework = finalize_decomposed_plan(
-                    _decomposed_steps, user_query_for_run, catalog)
-                # invoke_executor: dispatcher condiviso
-                def _exec_invoke(tool_name: str, args: dict) -> dict:
-                    if tool_name in _BUILTIN_TOOL_HANDLERS:
-                        return _invoke_builtin_handler(
-                            tool_name, args, actor=actor,
-                            channel=channel, turn_id=turn_id)
-                    _ex = next((e for e in catalog if e.name == tool_name), None)
-                    if _ex is None:
-                        return {"ok": False, "error": f"unknown tool: {tool_name}"}
-                    return invoke_executor(
-                        _ex, args,
-                        timeout_s=(getattr(_ex, "timeout_s", None) or 120),
-                        autonomy="supervised", turn_id=turn_id,
-                        actor=actor, channel=channel,
-                    )
-                _engine = _EngineExec(invoke_executor=_exec_invoke)
-                _runtime_ctx = {"actor": actor or "host",
-                                "lang": DEFAULT_LANG,
-                                "channel": channel or ""}
-                _eng_res = _engine.run(
-                    framework, query=user_query_for_run,
-                    runtime_ctx=_runtime_ctx,
-                )
-                # Convert RunResult to TurnLog
-                for _sr in _eng_res.steps:
-                    log.steps.append(StepLog(
-                        step_num=_sr.step_idx, chosen_tool=_sr.tool,
-                        raw_args=_sr.args, resolved_args=_sr.args,
-                        llm_text="", result=_sr.result,
-                    ))
-                log.final_kind = _eng_res.final_kind or "answer"
-                log.final_message = _eng_res.final_text or ""
-                log.intent_verb = ""
-                log.ts_end = time.time()
-                log.write()
-                return log
-            except Exception as _ex:
-                import logging as _logging
-                _logging.getLogger(__name__).warning(
-                    "decomposed execution failed: %s → fallthrough", _ex)
-                # Fallthrough to next engine
 
         # Universal §7.3: con reference_images allegate via drag&drop/upload
         # (ADR 0092), bypass Engine v2 e Praxis QUI. ASSORBIMENTO (ADR 0177 M1):
