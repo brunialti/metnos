@@ -132,14 +132,14 @@ required_for = ["llm_mid_gemma4_26b speculative decoding"]
 notes       = "Servito inline al mid tier via flag --md di llama-server. Acceptance rate ~0.97 su prompt strutturati Metnos."
 
 [[models.entry]]
-name        = "vlm_qwen2_vl_7b"
+name        = "vlm_qwen3vl_2b"
 purpose     = "Vision-Language Model per unified image enrichment (ADR 0117). Genera description+keywords+location+activity da ogni foto al build time."
 source      = "manual_download"
-local_path  = "/home/user/models/Qwen2-VL-7B-Instruct-Q4_K_M.gguf"
-mmproj_local = "/home/user/models/qwen2-vl-7b-mmproj-fp16.gguf"
-size_mb     = 5500
+local_path  = "/home/user/models/Qwen3VL-2B-Instruct-Q4_K_M.gguf"
+mmproj_local = "/home/user/models/mmproj-Qwen3VL-2B-Instruct-F16.gguf"
+size_mb     = 3000
 required_for = ["create_images_indices unified builder (ADR 0117)", "find_images query content/location"]
-notes       = "Servito da metnos-vlm.service su :8081 (separato da mid tier). mmproj e' il proiettore vision→text necessario per la modalita' multimodale di llama-server. ~1-2s/foto su Strix Halo Vulkan."
+notes       = "Servito su :8081 via scripts/vlm_server.sh (avvio lazy on-demand da create_images_indices, auto-stop 10 min idle: nessuna unit systemd). Modello/endpoint virtualizzati in ~/.config/metnos/vlm_tiers.toml (virt.get_vlm). mmproj = proiettore vision→text per la modalita' multimodale di llama-server. ~1-2s/foto su Strix Halo Vulkan."
 
 [[models.entry]]
 name        = "embedding_text_minilm"
@@ -266,7 +266,7 @@ name            = "metnos-vlm"
 type            = "systemd-user"
 unit_file_local = "/opt/metnos/install/units/metnos-vlm.service"
 unit_file_dest  = "~/.config/systemd/user/metnos-vlm.service"
-description     = "Vision-Language Model — llama-server Qwen2-VL-7B (porta 8081). Usato da unified image enrichment build (ADR 0117)."
+description     = "Vision-Language Model — llama-server Qwen3-VL-2B (porta 8081). Usato da unified image enrichment build (ADR 0117)."
 enabled_at_install = false
 needs_sudo      = false
 needs_linger    = true

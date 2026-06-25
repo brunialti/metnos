@@ -93,6 +93,21 @@ production-tested engine env:
   sentence_transformers_int8.onnx` + `tokenizer.json`. The int8 ONNX emits token
   embeddings (3-D); the runtime mean-pools, so Xenova's quantized export works
   saved under that exact name. Runs on CPU. No degraded mode — abort if missing.
+- **Model virtualization (`runtime/virt/`)** — IMPORTANT for a self-contained
+  install. Every model the runtime uses (text LLM, embedder, VLM) is reached
+  through one small package, `runtime/virt/`, never by importing the concrete
+  class directly. Each kind is chosen by a config file, so changing a model is a
+  TOML edit, not a code change:
+    - `~/.config/metnos/llm_tiers.toml`        — text LLM (tier → endpoint/model)
+    - `~/.config/metnos/embedding_tiers.toml`  — embedder (`text`=BGE-M3, `image`=SigLIP)
+    - `~/.config/metnos/vlm_tiers.toml`         — VLM (model/endpoint on :8081)
+  These files are OPTIONAL: `virt` ships baked-in defaults that match the real
+  setup, so a fresh install works without them. The installer may seed them as
+  editable templates, but must not depend on their presence.
+  Autonomy note: the embedder is **in-process ONNX** (BGE-M3 + SigLIP under
+  `models/`), with **no suprastructure dependency** — Metnos is self-contained for
+  embedding. (The text LLM still needs a llama-server endpoint; geocoding still
+  uses Photon/Nominatim.)
 - **i18n catalog**: the runtime uses table **`i18n`** (cols: key, lang, text,
   needs_translation, source_lang, …) — NOT a `messages` table. `runtime/i18n.py`
   auto-creates the `i18n` table. A fresh install MUST seed the full catalog

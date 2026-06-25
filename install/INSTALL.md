@@ -146,7 +146,7 @@ Trigger: `daily@03:00`. Comportamento:
   precedente nell'indice unificato:
   - Invariata → skip (riusa description/keywords/embedding/faces).
   - Nuova o modificata → pipeline completa EXIF + ArcFace + VLM
-    (Qwen2-VL-7B su `:8081`) + BGE-M3 (~3-4 s/foto su 7900X warm).
+    (Qwen3-VL-2B su `:8081`) + BGE-M3 (~3-4 s/foto su 7900X warm).
   - Cancellata → sparisce al rewrite atomic dell'indice.
 
 **Verifica installazione del task** (post primo boot HTTP):
@@ -157,7 +157,8 @@ curl -s http://127.0.0.1:8770/admin/scheduler --header "X-Admin-Key: $(cat ~/.co
 ```
 
 **Re-enrichment globale post upgrade VLM**: NON automatico. La sostituzione
-del modello VLM (es. Qwen2-VL-7B → 14B) richiede un trigger manuale:
+del modello VLM (cambiando `~/.config/metnos/vlm_tiers.toml`) richiede un
+trigger manuale:
 
 ```bash
 systemd-run --user --unit=metnos-vlm-enrich-rebuild \
