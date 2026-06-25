@@ -421,51 +421,12 @@ def folder_path_context(parent_dir: str, lang: str) -> str:
     return _assemble_path_context(cat, place, label, lang)
 
 
-_LAZY_START_ATTEMPTED = False
-
-
 def _looks_like_connection_refused(err) -> bool:
     """True se l'eccezione URLError ha causa Connection Refused (server giu').
     Distingue da timeout/dns-fail/etc che non beneficerebbero di lazy start."""
     s = str(getattr(err, "reason", err)).lower()
     return ("refused" in s or "errno 111" in s
             or "connection refused" in s)
-
-
-def _try_lazy_start_vlm() -> bool:
-    """Spawna `vlm_server.sh start --auto-stop-idle 600` se non gia tentato
-    nel processo corrente. Wait health max 35s. Ritorna True se ready.
-    Una sola chiamata per processo: se fallisce, fallback hard fail."""
-    global _LAZY_START_ATTEMPTED
-    if _LAZY_START_ATTEMPTED:
-        return False
-    _LAZY_START_ATTEMPTED = True
-    import subprocess
-    # vlm_server.sh vive in <install_root>/scripts/. _RUNTIME = <install_root>/runtime.
-    helper = str(Path(_RUNTIME).parent / "scripts" / "vlm_server.sh")
-    if not os.path.exists(helper):
-        return False
-    try:
-        r = subprocess.run(
-            [helper, "start", "--auto-stop-idle", "600"],
-            timeout=45, capture_output=True, text=True,
-        )
-        if r.returncode != 0:
-            return False
-    except (subprocess.TimeoutExpired, OSError):
-        return False
-    # Doppia verifica health post-spawn
-    import urllib.request as _u, urllib.error as _ue
-    health_url = _VLM_URL.rsplit("/", 2)[0] + "/health"
-    for _ in range(10):
-        try:
-            with _u.urlopen(health_url, timeout=2) as h:
-                if h.status == 200:
-                    return True
-        except (_ue.URLError, _ue.HTTPError, OSError, TimeoutError):
-            pass
-        time.sleep(1)
-    return False
 
 
 def _call_vlm(img_path: Path, *, url: str = _VLM_URL,
@@ -554,14 +515,22 @@ def _call_vlm(img_path: Path, *, url: str = _VLM_URL,
         headers={"Content-Type": "application/json"},
         method="POST",
     )
-    # Lazy auto-start (Roberto, 10/5/2026): se VLM server giu', spawna
-    # via helper script + watchdog auto-stop dopo 10 min idle. Una sola
-    # chiamata ammessa per processo (flag globale evita race).
+    # Lazy auto-start: se il VLM server e' giu', Metnos lo accende. La lifecycle
+    # (start + health, una volta per processo) e' CENTRALIZZATA in
+    # `virt.ensure_vlm_up` — l'owner dell'up del VLM e' Metnos (virt), non un
+    # effetto collaterale di questo executor: ogni consumatore la condivide. Se
+    # `virt` non e' importabile (install rotta) si degrada onesto a False.
+    def _lazy_start_vlm() -> bool:
+        try:
+            from virt import ensure_vlm_up
+        except ImportError:
+            return False
+        return ensure_vlm_up()
     try:
         with urllib.request.urlopen(req, timeout=timeout_s) as resp:
             raw = resp.read().decode("utf-8")
     except urllib.error.URLError as e:
-        if _looks_like_connection_refused(e) and _try_lazy_start_vlm():
+        if _looks_like_connection_refused(e) and _lazy_start_vlm():
             try:
                 with urllib.request.urlopen(req, timeout=timeout_s) as resp:
                     raw = resp.read().decode("utf-8")

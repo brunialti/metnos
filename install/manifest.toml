@@ -261,16 +261,13 @@ needs_sudo      = false
 needs_linger    = true
 notes           = "ADR 0112+ tier locale principale. Throughput ~130 tok/s post-warmup (acc 0.97). Vedi runtime/llm_router.py per il routing fast/middle/wise. Cmd reference: llama-server -m gemma-4-26B-A4B-it-UD-Q4_K_M.gguf -ngl 999 -fa on --jinja --reasoning-budget 1024 --host 0.0.0.0 --port 8080 --cache-prompt -c 65536 --cache-type-k f16 --cache-type-v f16 --parallel 2 --cont-batching -md gemma-4-E2B-it-Q4_K_M.gguf --spec-draft-ngl 999 --spec-draft-n-max 4 --spec-draft-p-min 0.75"
 
-[[services.entry]]
-name            = "metnos-vlm"
-type            = "systemd-user"
-unit_file_local = "/opt/metnos/install/units/metnos-vlm.service"
-unit_file_dest  = "~/.config/systemd/user/metnos-vlm.service"
-description     = "Vision-Language Model — llama-server Qwen3-VL-2B (porta 8081). Usato da unified image enrichment build (ADR 0117)."
-enabled_at_install = false
-needs_sudo      = false
-needs_linger    = true
-notes           = "Servito separato da metnos-llm-mid (porte distinte). Build unified image index lo invoca via HTTP POST /v1/chat/completions con multipart image. Cmd reference: llama-server -m Qwen2-VL-7B-Instruct-Q4_K_M.gguf --mmproj qwen2-vl-7b-mmproj-fp16.gguf -ngl 999 --host 127.0.0.1 --port 8081 -c 8192 --parallel 2 --cont-batching"
+# metnos-vlm.service ELIMINATA (task D VLM-uptime, 25/6/2026): il VLM non e' piu'
+# un service systemd persistente ma LAZY-START on-demand (auto-stop-idle) via
+# `scripts/vlm_server.sh`, con owner CENTRALE `runtime/virt.ensure_vlm_up` — ogni
+# consumatore lo condivide, non e' un effetto collaterale di un executor. Il file
+# unit non e' mai esistito in install/units/ (l'entry restava un WARN+skip).
+# Config opzionale (off by default) in ~/.config/metnos/vlm_tiers.toml. Vedi
+# decisions/0117 + project-virt-model-virtualization.
 
 # ── Directory create al setup ─────────────────────────────────────────
 
@@ -517,7 +514,7 @@ METNOS_HTTP_DISABLE_BUILD_TASKS = { default = "0", purpose = "1 = disabilita bui
 # Prompt language (ADR 0092)
 METNOS_LANG = { default = "it", purpose = "Lingua primaria per prompt e messaggi user-facing. Codici ISO 639-1." }
 # VLM endpoint (ADR 0117)
-METNOS_VLM_URL = { default = "http://127.0.0.1:8081", purpose = "Endpoint llama-server VLM (Qwen2-VL). Build unified image index lo invoca." }
+METNOS_VLM_URL = { default = "http://127.0.0.1:8081", purpose = "Endpoint llama-server VLM (modello config-driven via vlm_tiers.toml). Build unified image index lo invoca; lazy-start via virt.ensure_vlm_up." }
 # LLM mid endpoint (ADR 0112+)
 METNOS_LLM_MID_URL = { default = "http://127.0.0.1:8080", purpose = "Endpoint llama-server mid tier (Gemma 4 26B)." }
 

@@ -19,7 +19,7 @@ from .interfaces import (  # noqa: F401
 )
 
 __all__ = [
-    "get_embedder", "get_llm", "get_vlm",
+    "get_embedder", "get_llm", "get_vlm", "ensure_vlm_up",
     "EmbeddingProvider", "LLMProvider",
     "EmbeddingUnavailableError", "VLMUnavailableError", "VirtError",
 ]
@@ -78,3 +78,63 @@ def get_vlm(role: str = "default") -> dict:
     max_tokens) da `vlm_tiers.toml`. Il calcolo immagine vive nell'executor
     immagini; qui si virtualizza la CONFIG (swap modello/endpoint senza codice)."""
     return tiers.spec("vlm", role, DEFAULT_VLM)
+
+
+# Lifecycle VLM (lazy-start + health), una sola volta per processo. Centralizzata
+# qui — non dentro un executor — cosi' OGNI consumatore del VLM la condivide
+# (Metnos possiede l'up del modello, non un effetto collaterale di un executor).
+_vlm_started: dict = {}
+
+
+def ensure_vlm_up(role: str = "default", *, wait_s: int = 35) -> bool:
+    """Avvia il server VLM via `scripts/vlm_server.sh` se non gia' in piedi e
+    non gia' tentato in questo processo. Ritorna True se l'endpoint risponde
+    /health entro `wait_s`, False altrimenti (il chiamante decide il fallback).
+
+    Idempotente per (processo, role): un solo tentativo di start; le chiamate
+    successive ritornano lo stato dell'health corrente. Endpoint e path-script
+    sono config-driven: base_url da `get_vlm(role)`, override script via env
+    `METNOS_VLM_SERVER_SH`. Deterministico, no LLM."""
+    import os
+    import time
+    import urllib.error as _ue
+    import urllib.request as _u
+    from pathlib import Path
+
+    spec = get_vlm(role)
+    base_url = (spec.get("base_url") or "http://127.0.0.1:8081").rstrip("/")
+    health_url = base_url + "/health"
+
+    def _health_ok(timeout: float = 2.0) -> bool:
+        try:
+            with _u.urlopen(health_url, timeout=timeout) as h:
+                return h.status == 200
+        except (_ue.URLError, _ue.HTTPError, OSError, TimeoutError):
+            return False
+
+    # Gia' su: nessun start necessario.
+    if _health_ok():
+        return True
+    # Gia' tentato in questo processo: non ritentare lo spawn (fallback hard).
+    if _vlm_started.get(role):
+        return _health_ok()
+    _vlm_started[role] = True
+
+    helper = os.environ.get("METNOS_VLM_SERVER_SH") or str(
+        Path(__file__).resolve().parents[1].parent / "scripts" / "vlm_server.sh")
+    if not os.path.exists(helper):
+        return False
+    import subprocess
+    try:
+        r = subprocess.run([helper, "start", "--auto-stop-idle", "600"],
+                           timeout=45, capture_output=True, text=True)
+        if r.returncode != 0:
+            return False
+    except (subprocess.TimeoutExpired, OSError):
+        return False
+    deadline = wait_s
+    for _ in range(deadline):
+        if _health_ok():
+            return True
+        time.sleep(1)
+    return False
