@@ -400,8 +400,8 @@ def _corpus_token_embs(idx_dir):
     if not tokens:
         return [], None
     try:
-        from bge_embedding import BGEEmbeddingService
-        te = BGEEmbeddingService()
+        from virt import get_embedder
+        te = get_embedder("text")
         embs = te.embed_texts(tokens).astype(np.float32, copy=False)
     except Exception as ex:
         log.warning("corpus tokens embed fail: %r", ex)
@@ -450,8 +450,8 @@ def _expand_query_via_corpus(query, tokens, embs,
     if not q_lower or not tokens or embs is None:
         return [q_lower] if q_lower else []
     try:
-        from bge_embedding import BGEEmbeddingService
-        te = BGEEmbeddingService()
+        from virt import get_embedder
+        te = get_embedder("text")
         qv = te.embed_query(query)
         qv = qv / np.linalg.norm(qv) if np.linalg.norm(qv) > 0 else qv
     except Exception:
@@ -1228,8 +1228,8 @@ def _filter_unified(
         )
         q_vec = None
         try:
-            from bge_embedding import BGEEmbeddingService
-            te = BGEEmbeddingService()
+            from virt import get_embedder
+            te = get_embedder("text")
             qv = te.embed_texts([query_text])
             if qv.ndim == 2 and qv.shape[0] == 1:
                 q_vec = _l2_normalize(qv[0])

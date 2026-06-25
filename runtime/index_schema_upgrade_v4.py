@@ -43,6 +43,16 @@ from index_schema import (
 log = logging.getLogger(__name__)
 
 
+def _virt_vlm_model() -> str:
+    """Nome del modello VLM dalla config virtualizzata (vlm_tiers.toml), per
+    etichettare i metadati dell'indice senza hardcodare il modello."""
+    try:
+        from virt import get_vlm
+        return get_vlm().get("model", "qwen3vl-2b")
+    except Exception:
+        return "qwen3vl-2b"
+
+
 def _index_image_root() -> Path:
     import config as _C  # §7.11
     v = os.environ.get("METNOS_INDEX_ROOT")
@@ -357,7 +367,7 @@ def migrate_one(corpus_dir: Path, *,
         "n_faces": len(new_emb_face_list),
         "model_text": "bge-m3" if new_emb_text_list else "none",
         "dim_text": dim_text,
-        "model_vlm": "qwen2-vl-7b" if vlm_caller else "none",
+        "model_vlm": (_virt_vlm_model() if vlm_caller else "none"),
         "model_face": "buffalo_l",
         "last_refresh_at": time.time(),
         "migrated_from_v3_at": time.time(),
@@ -423,8 +433,8 @@ def migrate_existing_indices_at_boot(
             }
 
     try:
-        from bge_embedding import BGEEmbeddingService
-        text_embedder = BGEEmbeddingService()
+        from virt import get_embedder
+        text_embedder = get_embedder("text")
     except Exception as e:
         log.warning("BGE embedder init fallito: %r", e)
 

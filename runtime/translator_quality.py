@@ -64,8 +64,8 @@ def _get_clip():
         if _clip_engine is not None:
             return _clip_engine
         try:
-            from clip_embedding import get_clip_engine  # type: ignore
-            engine = get_clip_engine()
+            from virt import get_embedder  # type: ignore
+            engine = get_embedder("image")
             if not engine.available:
                 log.info("translator_quality: SigLIP non disponibile, "
                           "fallback char-trigram Jaccard")

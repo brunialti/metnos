@@ -81,16 +81,26 @@ def _resolve_vlm_url(env_val: str | None) -> str:
     return val.rstrip("/") + "/v1/chat/completions"
 
 
-_VLM_URL = _resolve_vlm_url(os.environ.get("METNOS_VLM_URL"))
-_VLM_MODEL = os.environ.get("METNOS_VLM_MODEL", "qwen2-vl-7b")
-_VLM_TIMEOUT_S = int(os.environ.get("METNOS_VLM_TIMEOUT_S", "60"))
-# Leve di accuratezza testuale settabili (default = comportamento storico).
-# Risoluzione: long-edge piu' alto = piu' dettaglio (scene fini, testo-in-foto)
-# a costo di piu' vision-token/latenza. max_tokens: descrizioni piu' ricche.
-_VLM_MAX_EDGE = int(os.environ.get("METNOS_VLM_MAX_EDGE", "1024"))
-# 512 (era 192): il prompt chiede descrizione ~50 parole + 8-15 keyword +
-# 2 hint; 192 troncava il JSON a meta'. A 1024 il contesto/slot abbonda.
-_VLM_MAX_TOKENS = int(os.environ.get("METNOS_VLM_MAX_TOKENS", "512"))
+# Config VLM virtualizzata: i default vengono da `virt.get_vlm()` (cioè da
+# `~/.config/metnos/vlm_tiers.toml`), così cambiare modello/endpoint = editare il
+# TOML, non il codice. L'env (METNOS_VLM_*) resta override esplicito a precedenza
+# massima (back-compat). Vedi virt/__init__.py::get_vlm.
+def _vlm_cfg() -> dict:
+    try:
+        from virt import get_vlm
+        return get_vlm()
+    except Exception:
+        return {}
+
+_VLM = _vlm_cfg()
+_VLM_URL = _resolve_vlm_url(os.environ.get("METNOS_VLM_URL") or _VLM.get("endpoint"))
+_VLM_MODEL = os.environ.get("METNOS_VLM_MODEL") or _VLM.get("model", "qwen3vl-2b")
+_VLM_TIMEOUT_S = int(os.environ.get("METNOS_VLM_TIMEOUT_S") or _VLM.get("timeout_s", 60))
+# Leve di accuratezza testuale (default dal TOML). Long-edge piu' alto = piu'
+# dettaglio (scene fini, testo-in-foto) a costo di piu' vision-token/latenza;
+# max_tokens: descrizioni piu' ricche.
+_VLM_MAX_EDGE = int(os.environ.get("METNOS_VLM_MAX_EDGE") or _VLM.get("max_edge", 1024))
+_VLM_MAX_TOKENS = int(os.environ.get("METNOS_VLM_MAX_TOKENS") or _VLM.get("max_tokens", 512))
 
 
 def _index_image_root() -> Path:
@@ -756,7 +766,7 @@ def _build_unified(
     # Lazy imports
     from face_embedding import get_face_engine
     try:
-        from bge_embedding import BGEEmbeddingService
+        from virt import get_embedder
         text_engine: object | None = None  # init alla prima call
         text_dim = 1024
         text_model_name = "bge-m3"
@@ -767,8 +777,8 @@ def _build_unified(
 
     # §7.3: SigLIP image embedding (image-to-image visual similarity)
     try:
-        from clip_embedding import get_clip_engine
-        clip_engine_obj = get_clip_engine()
+        from virt import get_embedder
+        clip_engine_obj = get_embedder("image")
         if clip_engine_obj.available:
             image_dim = int(clip_engine_obj.dimension)
             image_model_name = "clip_siglip"
@@ -962,7 +972,7 @@ def _build_unified(
                 if _emb_input and text_model_name != "none":
                     if text_engine is None:
                         try:
-                            text_engine = BGEEmbeddingService()
+                            text_engine = get_embedder("text")
                         except FileNotFoundError as ex:
                             log.warning("BGE non disponibile: %r — embedding_text omesso", ex)
                             text_engine = False
@@ -1008,7 +1018,7 @@ def _build_unified(
             if _emb_input and text_model_name != "none":
                 if text_engine is None:
                     try:
-                        text_engine = BGEEmbeddingService()
+                        text_engine = get_embedder("text")
                     except FileNotFoundError as ex:
                         log.warning("BGE non disponibile: %r — embedding_text omesso", ex)
                         text_engine = False

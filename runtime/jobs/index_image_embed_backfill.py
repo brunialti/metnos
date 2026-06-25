@@ -25,7 +25,7 @@ import numpy as np
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import config as _C  # noqa: E402
-from clip_embedding import get_clip_engine  # noqa: E402
+from virt import get_embedder  # noqa: E402
 
 CHECKPOINT_EVERY = 200
 BATCH = 8
@@ -80,7 +80,7 @@ def _process_index(unified_dir: Path) -> None:
     if n_total == 0:
         return
 
-    engine = get_clip_engine()
+    engine = get_embedder("image")
     if not engine.available:
         print(f"  SKIP: ClipEngine not available ({engine.health()})")
         return

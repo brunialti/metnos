@@ -106,8 +106,8 @@ def main():
         except Exception:
             _call_vlm = None
         try:
-            from bge_embedding import BGEEmbeddingService
-            text_embedder = BGEEmbeddingService()
+            from virt import get_embedder
+            text_embedder = get_embedder("text")
         except Exception as e:
             _emit_progress("warn", note=f"BGE init fallito: {e!r}")
             text_embedder = None

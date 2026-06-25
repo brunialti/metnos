@@ -67,8 +67,8 @@ def _get_embedder():
         if _EMB is not None:
             return _EMB
         try:
-            from bge_embedding import BGEEmbeddingService
-            _EMB = BGEEmbeddingService()
+            from virt import get_embedder
+            _EMB = get_embedder("text")
         except Exception as e:
             _LOG.info("affinity_semantic: BGE non disponibile (%r); fallback disattivo", e)
             _EMB = False  # sentinel: gia' tentato e fallito

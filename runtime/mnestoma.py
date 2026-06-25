@@ -528,8 +528,8 @@ class Mnestoma:
         ids_to_delete: list[int] = []
         try:
             import numpy as np
-            from bge_embedding import BGEEmbeddingService
-            emb = BGEEmbeddingService()
+            from virt import get_embedder
+            emb = get_embedder("text")
         except Exception:
             emb = None
             np = None

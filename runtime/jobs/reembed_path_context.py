@@ -26,7 +26,7 @@ sys.path.insert(0, str(_ROOT / "runtime"))
 sys.path.insert(0, str(_ROOT / "executors" / "create_images_indices"))
 
 import create_images_indices as C  # noqa: E402
-from bge_embedding import BGEEmbeddingService  # noqa: E402
+from virt import get_embedder  # noqa: E402
 
 _BATCH = 256
 
@@ -108,7 +108,7 @@ def reembed(idx_dir: Path, lang: str, dry: bool) -> None:
         return
 
     # 3) embedding BGE-M3 in batch.
-    te = BGEEmbeddingService()
+    te = get_embedder("text")
     vecs = np.zeros((len(inputs), 1024), dtype=np.float32)
     t0 = time.time()
     for s in range(0, len(inputs), _BATCH):
