@@ -125,10 +125,11 @@ while IFS= read -r -d '' f; do
     -e 's/[Ii]acopo[_ ][Bb]runialti/guest_user/g' \
     -e 's/[Rr]oberto [Bb]runialti/the owner/g' \
     -e 's/CLAUDE\.md/the design guide/g' \
-    -e 's/\bmetnos_roberto\b/metnos_secondary/g' \
-    -e 's/\bmykleos\b/account_personal/g' \
-    -e 's/\bknowcastle\b/account_work/g' \
-    -e 's/\btiscali\b/account_isp/g' \
+    -e 's/[Ii]acopo/guest_user/g' \
+    -e 's/metnos_roberto/metnos_secondary/gI' \
+    -e 's/mykleos/account_personal/gI' \
+    -e 's/knowcastle/account_work/gI' \
+    -e 's/tiscali/account_isp/gI' \
     -e 's/\bimap\.register\.it\b/imap.example.com/g' \
     -e 's/\bauthsmtp\.securemail\.pro\b/smtp.example.com/g' \
     -e 's/\bregister\.it\b/example.com/g' \
@@ -194,17 +195,20 @@ PII_EMAIL='roberto\.brunialti@|mykleos@|@knowcastle\.com|@migadu\.com'
 # path personali (no trailing-slash) + nomi propri di TERZI (famiglia).
 # Leciti (NON in gate): 'github.com/brunialti/metnos' (URL repo) e
 # 'author = "Roberto Brunialti"' (attribuzione del proprietario nel suo repo).
-PII_PERSON='/home/roberto|\b[Ii]acopo\b|\b[Ss]ilvia\b|\b[Mm]atteo\b'
+# NB: niente `\b` sui nomi/account — un nome DENTRO un identificatore snake_case
+# (es. `guest_iacopo`, `MYKLEOS_MAIL_USER`) non ha boundary e sfuggiva al gate;
+# il grep è case-insensitive (`-i`) per prendere anche le forme MAIUSCOLE.
+PII_PERSON='/home/roberto|iacopo|silvia|matteo'
 PII_NET='192\.168\.[0-9]+\.[0-9]+|fd[0-9a-f]{2}:|\bnas\.local\b|\benp197s0\b'
 # Topologia account di posta reale (nomi-account + host personali): rivela
 # datore/ISP/provider del proprietario. Lo scrub sopra li sostituisce; questo
 # gate aborta se qualcosa sopravvive (es. un manifest firmato non sterilizzato).
-PII_MAIL='\bmetnos_roberto\b|\bmykleos\b|\bknowcastle\b|\btiscali\b|register\.it|securemail\.pro'
+PII_MAIL='metnos_roberto|mykleos|knowcastle|tiscali|register\.it|securemail\.pro'
 fail=0
-hits_email=$(grep -rlE "$PII_EMAIL" "$DEST" 2>/dev/null || true)
-hits_person=$(grep -rlE "$PII_PERSON" "$DEST" 2>/dev/null || true)
-hits_net=$(grep -rlE "$PII_NET" "$DEST" 2>/dev/null || true)
-hits_mail=$(grep -rlE "$PII_MAIL" "$DEST" 2>/dev/null || true)
+hits_email=$(grep -rliE "$PII_EMAIL" "$DEST" 2>/dev/null || true)
+hits_person=$(grep -rliE "$PII_PERSON" "$DEST" 2>/dev/null || true)
+hits_net=$(grep -rliE "$PII_NET" "$DEST" 2>/dev/null || true)
+hits_mail=$(grep -rliE "$PII_MAIL" "$DEST" 2>/dev/null || true)
 if [ -n "$hits_email" ];  then echo "!! PII email nel subset:";  echo "$hits_email";  fail=1; fi
 if [ -n "$hits_person" ]; then echo "!! PII persona/path nel subset:"; echo "$hits_person"; fail=1; fi
 if [ -n "$hits_net" ];    then echo "!! rete/host interni nel subset:"; echo "$hits_net"; fail=1; fi

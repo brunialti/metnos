@@ -74,7 +74,7 @@ class Pairing:
     last_seen: str | None = None
     revoked_at: str | None = None
     # Multi-user (1/5/2026): identificatore logico utente. Diverso da sender_id
-    # (id Telegram) e da channel. Esempio: "host" (Roberto), "guest_iacopo".
+    # (id Telegram) e da channel. Esempio: "host" (Roberto), "guest_anna".
     # Tutti i record runtime per-actor (locations.jsonl, undo.jsonl, mnestoma
     # events, ...) usano questo nome. Fallback se NULL: vedi actor_resolver.
     actor: str | None = None

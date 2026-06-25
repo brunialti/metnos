@@ -20,7 +20,7 @@ Auto-assignment policy (MVP):
    Coerente col MVP single-user dove tutto e' host.
 
 Override esplicito (futuro): comando /setname <actor> per cambiare l'actor
-di un pairing (es. da auto "guest_xxxxx" a leggibile "guest_iacopo").
+di un pairing (es. da auto "guest_xxxxx" a leggibile "guest_anna").
 """
 from __future__ import annotations
 
