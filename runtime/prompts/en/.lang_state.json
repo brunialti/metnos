@@ -173,5 +173,15 @@
     "source_hash": "sha256:2e715735633c8045ec3c29cddfb0d24785ccf3177855e6bc6c14357c04633814",
     "source_lang": "it",
     "version_hash": "sha256:c165131d0849e85e7e8239418a0a09b4a9e6849d4887692e567671c0c77cd31f"
+  },
+  "intent_extractor_v4": {
+    "source_hash": "sha256:182616b20dc0af208081e3e3165e9ed2bfa9c60cd73cc2eb58ba102beccf4c43",
+    "source_lang": "it",
+    "version_hash": "sha256:084885cf23dd2d040cb7832b5ee440141ff0343fc924a85cc5d5270c9be66528"
+  },
+  "intent_extractor_scaffold": {
+    "source_hash": "sha256:60f76e1134327f2b14f6a93d97acdbd48b6eb04bfa5acf65d2656bab001ed43b",
+    "source_lang": "it",
+    "version_hash": "sha256:994ff53b670b2e004fd0a45ad8f1fe73b0e9ca210fff139412b893478cf6c21c"
   }
 }
