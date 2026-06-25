@@ -103,6 +103,39 @@ def _flatten_str_values(obj) -> list[str]:
     return out
 
 
+# Chiavi-arg che trasportano CONTENUTO/dati, non un path d'ACCESSO: le `entries`
+# prodotte a monte da un produttore GIA' verificato (il suo path-arg e' gia'
+# passato dalla guardia), il testo/corpo da scrivere o riassumere. Un
+# forbidden-path che vi compare e' una STRINGA nel dato, non un accesso: «riassumi
+# un doc che cita ~/.config/x/credentials.env» NON deve essere bloccato (bug live
+# turn dbc5a605). Lo scan resta su OGNI altro arg (path, src, dst, ids, value…):
+# la security non cala — i path d'accesso sono ancora tutti scansionati.
+_CONTENT_ARG_KEYS = frozenset({
+    "content", "contents", "text", "texts", "body", "message", "messages",
+    "summary", "snippet", "comment", "draft", "draft_reply", "accepted_reply",
+    "reply", "html", "markdown", "raw_text",
+})
+
+
+def _flatten_path_candidate_values(obj, _key=None) -> list[str]:
+    """Come `_flatten_str_values` ma SALTA i valori sotto una chiave di contenuto
+    (`_CONTENT_ARG_KEYS`): quelle stringhe sono dato, non target d'accesso. Usata
+    dagli scan path-pattern (forbidden path, traversal '..')."""
+    out: list[str] = []
+    if isinstance(obj, str):
+        if _key not in _CONTENT_ARG_KEYS:
+            out.append(obj)
+    elif isinstance(obj, dict):
+        for k, v in obj.items():
+            if k in _CONTENT_ARG_KEYS:
+                continue
+            out.extend(_flatten_path_candidate_values(v, k))
+    elif isinstance(obj, list):
+        for v in obj:
+            out.extend(_flatten_path_candidate_values(v, _key))
+    return out
+
+
 def _expand_user(s: str) -> str:
     return os.path.expanduser(s) if isinstance(s, str) and s.startswith("~") else s
 
@@ -110,7 +143,7 @@ def _expand_user(s: str) -> str:
 def guard_check(executor_name: str, args: dict, context: dict | None = None) -> tuple[bool, str | None]:
     """Ritorna (ok, reason_se_blocca). True = passa; False = bloccata."""
     args = args or {}
-    strs = _flatten_str_values(args)
+    strs = _flatten_path_candidate_values(args)
     expanded = [_expand_user(s) for s in strs]
 
     # Forbidden paths
@@ -153,8 +186,8 @@ def judge_score(intent: str, executor_name: str, args: dict, context: dict | Non
                 notes.append(f"intent menziona '{token}'")
                 break
 
-    # Penalita': path traversal sospetto
-    for s in _flatten_str_values(args or {}):
+    # Penalita': path traversal sospetto (solo su path-arg, non sul contenuto)
+    for s in _flatten_path_candidate_values(args or {}):
         if isinstance(s, str) and ".." in s and "/" in s:
             score -= 0.2
             notes.append("possibile path traversal ('..' in path)")

@@ -1154,6 +1154,77 @@ def _enforce_missing_objects(framework: Framework, intent, query: str,
         return framework
 
 
+# ── Cap di conteggio allucinato dal proposer (§2.1: "cap superiore = parametro
+# ESPLICITO") ────────────────────────────────────────────────────────────────
+# L'LLM proposer tende a iniettare un cap piccolo ("top 10") anche quando l'utente
+# NON ha indicato una quantità: «riassumi i file .md» vuole TUTTI i file, non i
+# primi 10. Senza una quantità nella clausola quel cap è rumore → va tolto, così
+# l'executor applica il suo default (deliberato, di norma più generoso). Generale
+# su ogni executor con cap, deterministico (§7.9). Bug live turn 4648c5c3.
+_COUNT_CAP_ARGS = frozenset({"top_k", "max_results", "max_total", "top", "limit"})
+
+# Lessico CHIUSO IT+EN — numeri-parola e nomi-conteggio/tempo. Elenco finito (come
+# vocab.QUALIFIERS / args_extractor._LANG_EXT_MAP), NON un dizionario di sinonimi.
+_NUMWORD = (r"uno|una|due|tre|quattro|cinque|sei|sette|otto|nove|dieci|undici|"
+            r"dodici|venti|trenta|quaranta|cinquanta|cento|mille|"
+            r"one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|"
+            r"twenty|thirty|forty|fifty|hundred|thousand")
+# Cosa si conta: un numero che li precede è una quantità-RISULTATO.
+_COUNT_NOUN = (r"file|files|mail|email|messaggi?|foto|immagini?|righe|line[ae]|"
+               r"lines?|risultati?|results?|elementi?|element|items?|entr(?:y|ies)|"
+               r"record|records?|documenti?|docs?|pdf|url|urls|link|links|"
+               r"pagin[ae]|pages?|foglio|fogli|sheet|sheets")
+# Nomi-TEMPO: un numero che li precede è una finestra temporale, NON un cap di
+# conteggio (de-conflazione, cfr. «12 mesi»→time_window, non max_results=12).
+_TIME_NOUN = (r"giorni?|or[ae]|settiman[ae]|mes[ei]|ann[oi]|minut[oi]|second[oi]|"
+              r"days?|hours?|weeks?|months?|years?|minutes?|seconds?")
+# Selettore di testa che, seguito da un numero (e NON da un nome-tempo), esprime
+# un limite di risultati: «primi 10», «solo 5», «top 3», «first 5», «at most 20».
+_SELECTOR = (r"prim[ie]|ultim[ie]|sol[ie]|soltanto|appena|massimo|almeno|top|"
+             r"first|last|only|just|at\s+most|up\s+to")
+_QTY_FRAME_RE = re.compile(
+    r"(?:\b(?:" + _SELECTOR + r")\s+(?:\d+|" + _NUMWORD + r")\b"
+    r"(?!\s*(?:" + _TIME_NOUN + r")\b))"
+    r"|(?:\b(?:\d+|" + _NUMWORD + r")\s+(?:" + _COUNT_NOUN + r")\b)",
+    re.IGNORECASE)
+
+
+def _clause_requests_count(text: str) -> bool:
+    """True se la clausola esprime una QUANTITÀ di risultati (numero in un frame
+    di conteggio: «primi 10», «10 file», «top 5», numeri-parola inclusi). Esclude
+    le finestre temporali («ultimi 7 giorni»). Deterministico, no LLM."""
+    return bool(text) and _QTY_FRAME_RE.search(text) is not None
+
+
+def _demote_overtight_caps(args: dict, schema: dict, clause: str) -> None:
+    """Toglie da `args` un cap di conteggio messo dal proposer quando (a) la
+    clausola NON chiede una quantità e (b) il default dell'executor è PIÙ
+    inclusivo (intero maggiore, o 0=illimitato). Così senza una quantità esplicita
+    dell'utente il planner non può rendere il risultato meno inclusivo del default
+    deliberato dell'executor (§2.1/§2.7). Muta `args` sul posto. No-op se la
+    clausola chiede una quantità o il default non è un intero dichiarato."""
+    if not isinstance(args, dict) or not isinstance(schema, dict):
+        return
+    if _clause_requests_count(clause or ""):
+        return
+    props = schema.get("properties") if isinstance(
+        schema.get("properties"), dict) else schema
+    for name in _COUNT_CAP_ARGS:
+        if name not in args:
+            continue
+        val = args.get(name)
+        # 0/negativo = già illimitato/assente; bool non è un cap numerico.
+        if not isinstance(val, int) or isinstance(val, bool) or val <= 0:
+            continue
+        default = (props.get(name) or {}).get("default") \
+            if isinstance(props.get(name), dict) else None
+        more_inclusive = default == 0 or (
+            isinstance(default, int) and not isinstance(default, bool)
+            and default > val)
+        if more_inclusive:
+            del args[name]
+
+
 def _fill_clause_args(framework: Framework, intent, query: str,
                       catalog: Optional[list]) -> Framework:
     """§7.9 v3 (fase ARGS): riempie gli args DEDUCIBILI di ogni step dal testo
@@ -1174,10 +1245,49 @@ def _fill_clause_args(framework: Framework, intent, query: str,
         import naming_grammar as _ng
         steps = [s for s in (getattr(framework, "steps", None) or [])
                  if (s.tool or "") != "final_answer"]
-        if len(steps) < 2:
+        if not steps:
+            return framework
+        cat_by_name0 = {getattr(e, "name", None): e for e in (catalog or [])}
+        # Mono-step: nessuna ambiguità di clausola → estrai dalla query INTERA
+        # i campi deducibili e ANCORA assenti (il proposer LLM spesso omette il
+        # `pattern` o mette '*'). Es. «quanti file python» → pattern=*.py +
+        # count_only. Deterministico, riempie solo i buchi (§7.3, generale).
+        if len(steps) == 1:
+            st = steps[0]
+            e = cat_by_name0.get(st.tool)
+            schema = getattr(e, "args_schema", None) if e else None
+            if isinstance(schema, dict):
+                try:
+                    extracted = _ax.regex_extract(query, schema)
+                except Exception:
+                    extracted = {}
+                if extracted:
+                    cur = dict(st.args or {})
+                    for k, v in extracted.items():
+                        # riempi i buchi E corregge il glob-universale del
+                        # proposer: un `pattern='*'` non porta informazione,
+                        # l'estrattore conosce il tipo-file richiesto.
+                        if (k not in cur or cur[k] in (None, "", [], {})
+                                or (k in ("pattern", "patterns", "glob")
+                                    and cur.get(k) in ("*", "*.*"))):
+                            cur[k] = v
+                    st.args = cur
+                # Cap allucinato: la query mono-clausola è la clausola intera.
+                if isinstance(st.args, dict):
+                    _demote_overtight_caps(st.args, schema, query)
             return framework
         chunks = split_query_chunks(query)
         if len(chunks) < 2:
+            # Una sola clausola ma PIÙ step (es. find→read→describe da una
+            # richiesta unica «riassumi i file .md»): nessun chunk da mappare,
+            # ma il cap allucinato del produttore va tolto comunque — la
+            # clausola è la query intera. Senza questo, il caso del bug
+            # (mono-clausola, multi-step) sfuggiva a entrambi i rami.
+            for st in steps:
+                e = cat_by_name0.get(st.tool)
+                schema = getattr(e, "args_schema", None) if e else None
+                if isinstance(schema, dict) and isinstance(st.args, dict):
+                    _demote_overtight_caps(st.args, schema, query)
             return framework
         cat_by_name = {getattr(e, "name", None): e for e in (catalog or [])}
         # Allinea step↔chunk per OGGETTO (il reorder + gli helper SOFT + le
@@ -1234,6 +1344,10 @@ def _fill_clause_args(framework: Framework, intent, query: str,
             chunk = step_chunk.get(pos)
             if not chunk:
                 continue
+            # Cap allucinato per-clausola: usa il chunk dello step (non la query
+            # intera: un numero di un'ALTRA clausola non deve salvare questo cap).
+            if isinstance(st.args, dict):
+                _demote_overtight_caps(st.args, schema, chunk)
             try:
                 extracted = _ax.regex_extract(chunk, schema)
             except Exception:
