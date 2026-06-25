@@ -303,3 +303,36 @@ trap. One provider = one substrate.
   `runtime/vocab.py` (`issues`, `pulls`, `_OBJECT_TO_SECTIONS`,
   `_OBJECT_PRIMARY_TOOLS`, `OBJECT_DEFAULT_MUTATING_VERB`,
   synonyms IT+EN)
+
+## Update 2026-06-25 — §(G) superseded: repo-file subcommands promoted to planner executors
+
+Section **(G)** declared `repos_read_file` / `repos_list_dir` / `code_search`
+as *backend-only* tools, exposed exclusively to the frontier LLM during a
+`consult_frontier` mode-B session and **"not wired as executors visible to the
+planner"**. That boundary was codified in `vocab.QUALIFIER_OBJECT_COMPAT` as
+`"github": {issues, pulls, messages, tasks}` (comment "NON files/dirs").
+
+Origin turn `6ec02267` — *"quanti file ci sono su github nel repo
+brunialti/metnos"* — failed honestly (§2.8): the planner had no tool to count
+repo files and fell back to local `find_files`. Roberto's decision (25/6) is to
+make repo files reachable by the **planner/user directly**, not only by the
+frontier auto-reply flow. §(G) is therefore superseded for the three
+file-oriented subcommands:
+
+- **Vocabulary**: `QUALIFIER_OBJECT_COMPAT["github"]` widened to include
+  `files` and `dirs` (a repo *is* files and folders). The `_github` qualifier
+  is now §2.2-valid on those objects.
+- **New executors** (user-data, signed, `~/.local/share/metnos/executors/skills/github/`):
+  `find_files_github` (count/search across the whole recursive tree),
+  `read_files_github` (file content by path, vectorial over `paths`),
+  `list_dirs_github` (one-level folder listing, vectorial, default root).
+- **New skill subcommand** `scripts/github_api.py::cmd_repos_tree` —
+  `git/trees/{ref}?recursive=1` with per-subtree descent fallback when GitHub
+  truncates the single recursive call (100k server cap → our 300k ceiling),
+  `truncated` propagated honestly (§2.7/§2.11).
+
+Unchanged: the subcommands still exist for the frontier mode-B path (addition,
+not removal); routing stays gated by `_PROVIDER_SUFFIX_MARKERS["_github"]`
+(verified: local file/dir queries keep routing to local `find_files`/`list_dirs`,
+routing subset gate 29/29). `code_search` is NOT promoted (deferred — content
+search, distinct from tree enumeration).

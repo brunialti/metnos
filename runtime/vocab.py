@@ -296,8 +296,13 @@ QUALIFIER_OBJECT_COMPAT = {
     "promotion": frozenset({"signatures"}),
     "candidates": frozenset({"signatures", "proposals"}),
     # Provider GitHub (ADR 0141): issues/pulls + messages (commenti/review) +
-    # tasks (workflow runs). NON files/dirs/ecc.
-    "github": frozenset({"issues", "pulls", "messages", "tasks"}),
+    # tasks (workflow runs). +files/dirs (25/6/2026, supersede della riga
+    # «NON files/dirs» di ADR 0141): un repo È file e cartelle; gli executor
+    # repo-tree/contents (find_files_github=git/trees ricorsivo,
+    # read_files_github=contents, list_dirs_github=contents single-dir) li
+    # espongono. Coerente con l'asse provider §2.2 (backend non-default nel
+    # qualifier). Origine: turn 6ec02267 «quanti file su github nel repo».
+    "github": frozenset({"issues", "pulls", "messages", "tasks", "files", "dirs"}),
     # Granularita' testo
     "lines": frozenset({"texts", "messages"}),
     "paragraphs": frozenset({"texts", "messages"}),
