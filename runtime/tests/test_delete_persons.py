@@ -229,7 +229,7 @@ def test_delete_persons_exact(isolated_db):
 
 def test_delete_persons_unknown(isolated_db):
     _enroll("Anna", seed=1, n=1)
-    out = dp.invoke({"name": "Iacopo"})
+    out = dp.invoke({"name": "Bruno"})
     assert out["ok"] is False
     assert out["error"] == "unknown_name"
     assert "final_message_hint" in out

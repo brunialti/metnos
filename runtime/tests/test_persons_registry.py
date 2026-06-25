@@ -429,8 +429,8 @@ def test_resolve_ambiguous_returns_multiple(reg):
 
 
 def test_resolve_unknown_returns_empty(reg):
-    _enroll_minimal(reg, "Matteo", seed=1)
-    assert reg.resolve_name("Iacopo") == []
+    _enroll_minimal(reg, "Anna", seed=1)
+    assert reg.resolve_name("Bruno") == []
 
 
 def test_resolve_case_insensitive(reg):

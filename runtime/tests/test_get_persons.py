@@ -107,7 +107,7 @@ def test_get_persons_unknown_name(isolated_db):
         _enroll(reg, "Anna", 1)
     finally:
         reg.close()
-    out = gp.invoke({"name": "Iacopo"})
+    out = gp.invoke({"name": "Bruno"})
     assert out["ok"] is True
     assert out["entries"] == []
     assert out["status"] == "unknown_name"
