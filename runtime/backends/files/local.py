@@ -710,9 +710,22 @@ def find(args: dict) -> dict:
     if not base.exists():
         # Suggerisci cartelle home esistenti: il planner puo' chiedere
         # all'utente quale intendeva, evitando loop_break generico.
-        return {"ok": False, "error_code": "ERR_PATH_NOT_FOUND",
-                "error": _msg("ERR_PATH_NOT_FOUND", path=str(base)),
-                "suggested_paths": _home_dir_suggestions(base.name)}
+        _sugg = _home_dir_suggestions(base.name)
+        out = {"ok": False, "error_code": "ERR_PATH_NOT_FOUND",
+               "error": _msg("ERR_PATH_NOT_FOUND", path=str(base)),
+               "suggested_paths": _sugg}
+        # §2.11 errore-runtime→form: il path non esiste MA ci sono candidati
+        # plausibili → emetti il segnale `disambiguation` (l'executor conosce il
+        # dominio: i path home esistenti). Il dispatch lo traduce in form
+        # get_inputs; alla scelta ri-esegue la query con base_path=<scelto>.
+        if _sugg:
+            out["disambiguation"] = {
+                "prompt": f"Il percorso «{base}» non esiste. Quale intendevi?",
+                "var": "base_path",
+                "options": [{"value": p, "label": p} for p in _sugg],
+                "rerun": True,
+            }
+        return out
     if not base.is_dir():
         return {"ok": False, "error_code": "ERR_PATH_WRONG_TYPE",
                 "error": _msg("ERR_PATH_WRONG_TYPE", expected="directory", actual="file", path=str(base))}

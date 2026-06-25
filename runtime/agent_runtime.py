@@ -5254,6 +5254,10 @@ def _try_engine_v2(
     steps_out = []
     needs_inputs_obs = None
     gate_obs = None
+    # §2.11 errore-runtime→form: il form viene dal RECOVERY (non da uno step) →
+    # propagalo dal DispatchResult diretto (vedi _error_disambiguation_form).
+    if getattr(result, "needs_inputs_obs", None):
+        needs_inputs_obs = result.needs_inputs_obs
     if result.run:
         for s in result.run.steps:
             sl = StepLog(step_num=s.step_idx)

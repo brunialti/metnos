@@ -872,12 +872,35 @@ def _process_rerun_query_disambiguated(
     Pattern callback `rerun_query_disambiguated`:
       payload = {"type": "rerun_query_disambiguated", "query": str,
                  "conversation_id": str?}
-    `values["object"]` = l'oggetto scelto (value dell'opzione choice)."""
+    `values["object"]` = l'oggetto scelto (value dell'opzione choice).
+
+    §2.11 errore-runtime→form (25/6): se on_complete porta `inject_arg`, la scelta
+    NON è un oggetto-routing ma un ARG concreto (es. base_path) che l'executor
+    aveva chiesto. Si ri-esegue iniettando `forced_args={inject_arg: scelta}` —
+    generale per qualsiasi arg, no hardcoding del caso path."""
     query = (on_complete or {}).get("query") or ""
+    inject_arg = (on_complete or {}).get("inject_arg")
+    conversation_id = on_complete.get("conversation_id") or ""
+    if inject_arg:
+        chosen = (values or {}).get(inject_arg) or (values or {}).get("choice") or ""
+        if not isinstance(query, str) or not query.strip() or not chosen:
+            return _msg("MSG_ORCH_DISAMB_EMPTY_CHOICE")
+        try:
+            import agent_runtime
+            new_log = agent_runtime.run_turn(
+                query.strip(), actor=actor or "host", channel=channel or "",
+                conversation_id=conversation_id,
+                forced_args={inject_arg: str(chosen)})
+        except (RuntimeError, TypeError, ImportError) as ex:
+            log.exception("orchestration: rerun inject_arg fallito")
+            return _msg("MSG_ORCH_CONTINUATION_FAILED",
+                        detail=f"{type(ex).__name__}: {ex}")
+        if new_log is None:
+            return _msg("MSG_ORCH_CONTINUATION_EMPTY")
+        return getattr(new_log, "final_message", "") or ""
     chosen_obj = (values or {}).get("object") or ""
     if not isinstance(query, str) or not query.strip() or not chosen_obj:
         return _msg("MSG_ORCH_DISAMB_EMPTY_CHOICE")
-    conversation_id = on_complete.get("conversation_id") or ""
     try:
         import agent_runtime
         new_log = agent_runtime.run_turn(

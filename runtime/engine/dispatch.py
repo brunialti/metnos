@@ -45,6 +45,74 @@ class DispatchResult:
     run: Optional[RunResult] = None
     framework: Optional[Framework] = None
     error_class: str = ""
+    # §2.11 errore-runtime→form: osservazione needs_inputs (form get_inputs) che
+    # il runtime a valle presenta all'utente invece dell'errore secco. Popolato
+    # SOLO quando final_kind == "needs_inputs". Vedi _error_disambiguation_form.
+    needs_inputs_obs: Optional[dict] = None
+
+
+def _error_disambiguation_form(run, query: str) -> Optional[dict]:
+    """§2.11 ERRORE-RUNTIME → FORM (25/6). Traduttore GENERALE: se l'ultimo step
+    fallito porta nel result un segnale `disambiguation` strutturato, costruisce
+    l'osservazione `needs_inputs` (form get_inputs) — l'utente sceglie invece di
+    ricevere l'errore secco.
+
+    Contratto (l'EXECUTOR emette, il recovery NON conosce i casi — §7.9):
+      result["disambiguation"] = {
+        "prompt": "<domanda>",                       # cosa chiedere
+        "options": [{"value": v, "label": l}, ...],  # >=2 scelte
+        "var": "<arg-name>",                         # opz, default "choice"
+        "rerun": true|false,                         # opz, default true:
+            # true  → on_complete ri-esegue la QUERY con l'arg scelto iniettato
+            # (route_disambiguation pattern); l'arg-name finisce nel forced_*.
+      }
+    Ritorna None se: gate off, nessuno step, nessun segnale, <2 opzioni
+    (niente da chiedere). Gate METNOS_ERROR_FORM — default OFF: il pilota è
+    incompleto (il rerun-con-scelta `forced_args` è deferito a Fable, vedi
+    project_error_to_form_pilot.md). Con default ON un path-not-found reale
+    mostrerebbe un form che non si chiude. ON solo per test/quando Fable completa.
+    """
+    import os as _os
+    if _os.environ.get("METNOS_ERROR_FORM", "0").lower() not in ("1", "true", "yes"):
+        return None
+    if not run or not getattr(run, "steps", None):
+        return None
+    last = run.steps[-1]
+    r = last.result if isinstance(last.result, dict) else {}
+    dis = r.get("disambiguation")
+    if not isinstance(dis, dict):
+        return None
+    opts = dis.get("options")
+    if not isinstance(opts, list) or len(opts) < 2:
+        return None  # niente di decidibile → lascia il path errore normale
+    # normalizza le opzioni a {value,label}
+    norm = []
+    for o in opts:
+        if isinstance(o, dict) and "value" in o:
+            norm.append({"value": o["value"], "label": o.get("label", str(o["value"]))})
+        else:
+            norm.append({"value": o, "label": str(o)})
+    var = dis.get("var") or "choice"
+    prompt = dis.get("prompt") or "Quale opzione intendi?"
+    on_complete = ({"type": "rerun_query_disambiguated", "query": query,
+                    "inject_arg": var}
+                   if dis.get("rerun", True)
+                   else {"type": "collect", "var": var})
+    return {
+        "decision": "needs_inputs",
+        "needs_inputs": {
+            "title": dis.get("title") or "Serve una tua scelta",
+            "dialog": [{
+                "var": var,
+                "prompt": prompt,
+                "schema": {"kind": "choice", "choices": norm},
+                "optional": False,
+            }],
+            "fmt": "auto",
+            "on_complete": on_complete,
+            "timeout_s": 3600,
+        },
+    }
 
 
 def _canonical_framework_for_record(query: str, framework: Framework,
@@ -1945,6 +2013,21 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
 
     # On error → Recovery
     if run.final_kind == "error":
+        # §2.11 ERRORE-RUNTIME → FORM (interazione onesta, 25/6): un executor che
+        # fallisce in modo DECIDIBILE-DALL'UTENTE emette nel result un segnale
+        # strutturato `disambiguation` {prompt, options:[{value,label}], var?}.
+        # Invece dell'errore secco (terminator) chiediamo con un form get_inputs.
+        # Generale §7.9: il recovery NON conosce i casi — l'executor dichiara la
+        # scelta, qui c'è UN solo traduttore. Gate METNOS_ERROR_FORM (default ON).
+        _form = _error_disambiguation_form(run, query)
+        if _form is not None:
+            return DispatchResult(
+                final_text="", final_kind="needs_inputs",
+                match_source="error_disambiguation",
+                framework_hash=run.framework_hash,
+                elapsed_ms=int((time.time() - t_start) * 1000),
+                run=run, framework=framework, error_class="missing_input",
+                needs_inputs_obs=_form)
         err_class = classify_error(run)
         if err_class in ("wrong_tool", "wrong_args", "missing_input"):
             if verbose:
