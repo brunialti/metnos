@@ -564,6 +564,26 @@ class TestTemporalCacheability(_FastpathDbCase):
             "read_messages": {"time_window": "today"}}).to_dict())
         self.assertTrue(is_query_specific(fj))
 
+    def test_concrete_glob_is_query_specific(self):
+        # turn 73476663: pattern="*.py" deriva da «python» nella query → 0a-only.
+        # Servirlo via cosine a «quanti file ci sono» dava 448 invece di 980.
+        from engine.executor import is_query_specific
+        import json as _json
+        for pat in ("*.py", "*.md", "*.js"):
+            fj = _json.dumps(_fw("find_files_github", args_map={
+                "find_files_github": {"repo": "a/b", "pattern": pat,
+                                       "count_only": True}}).to_dict())
+            self.assertTrue(is_query_specific(fj), pat)
+
+    def test_universal_glob_is_not_query_specific(self):
+        # pattern="*" = «tutti i file»: nessuna informazione di query → cosine OK.
+        from engine.executor import is_query_specific
+        import json as _json
+        for pat in ("*", "*.*"):
+            fj = _json.dumps(_fw("find_files_github", args_map={
+                "find_files_github": {"repo": "a/b", "pattern": pat}}).to_dict())
+            self.assertFalse(is_query_specific(fj), pat)
+
     def test_time_window_plan_not_served_by_cosine(self):
         va = _pack([1.0, 0.0])
         vb = _pack([0.98, 0.198997487])  # cosine ≈ 0.98 (pivot oggi/ieri)

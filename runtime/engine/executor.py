@@ -569,6 +569,19 @@ def _resolve_stepref_with_fallback(result: dict, path: str):
         mv = _resolve_dotted_with_synonyms(meta, path)
         if mv is not None:
             return mv
+    # Sinonimi di CONTEGGIO: il proposer nomina il conteggio in molti modi
+    # (`total_count`, `count`, `n_files`, `total`, `num_files`), ma l'executor
+    # lo espone come `count`/`available_total`/`ok_count`. Qualunque placeholder
+    # che CHIEDA un conteggio cade sulla stessa cascata di `@count` (§7.3: una
+    # regola, non un mapping per-nome). Caso live «quanti file python»:
+    # ${step1.total_count} non risolveva → final_message degenere → synth LLM
+    # che tergiversa invece del numero esatto.
+    _lp = path.lower()
+    if "." not in path and ("count" in _lp or _lp in ("total", "totale", "n", "num")):
+        for k in ("count", "available_total", "ok_count", "used"):
+            v = result.get(k)
+            if isinstance(v, int):
+                return v
     # Fallback: prova entries.*.path (es. step1.urls → step1.entries.*.url)
     if "." not in path:
         # path è singolo field; prova singular form
@@ -960,6 +973,15 @@ CONTENT_ARG_KEYS = frozenset({
     "paths", "path",
 })
 
+# Arg `pattern`/glob: content-bearing SOLO se NON universale (25/6, turn
+# 73476663). `pattern="*.py"` deriva dalla parola «python» della query → 0a-only
+# (servirlo via cosine a «quanti file ci sono» dava 448 invece di 980). Ma
+# `pattern="*"`/`"*.*"` = «tutti i file», nessuna informazione di query →
+# resta NON query-specific (riusabile per cosine). Gestito a parte da
+# is_query_specific perche' il valore-universale e' un'eccezione al literal.
+_GLOB_ARG_KEYS = frozenset({"pattern", "patterns", "glob"})
+_UNIVERSAL_GLOBS = frozenset({"*", "*.*", "**", ""})
+
 
 def resolve_query_canonical_args(tool: str, args: dict, query: str,
                                  args_schema: Optional[dict] = None) -> dict:
@@ -1035,6 +1057,14 @@ def is_query_specific(framework_json: str) -> bool:
             v = args.get(k)
             for item in (v if isinstance(v, list) else [v]):
                 if isinstance(item, str) and item.strip() and "${" not in item:
+                    return True
+        # Glob CONCRETO (non universale): query-specific. `*.py`/`*.md` derivano
+        # dal tipo-file nominato nella query → 0a-only. `*`/`*.*` no.
+        for k in _GLOB_ARG_KEYS:
+            v = args.get(k)
+            for item in (v if isinstance(v, list) else [v]):
+                if (isinstance(item, str) and "${" not in item
+                        and item.strip().lower() not in _UNIVERSAL_GLOBS):
                     return True
     return False
 
@@ -1215,6 +1245,14 @@ def _turn_is_zero_entries(steps) -> bool:
         ic = r.get("item_count")
         if isinstance(ic, int):
             return ic == 0
+        # Conteggio esplicito (es. count_only: entries=[] MA available_total/count
+        # > 0). §2.8: «quanti file» con entries materializzate vuote NON è zero
+        # risultati — il numero È il risultato. Va consultato prima della lista,
+        # altrimenti un conteggio legittimo viene reso «Nessun risultato».
+        for ck in ("available_total", "count", "ok_count"):
+            cv = r.get(ck)
+            if isinstance(cv, int):
+                return cv == 0
         for k in ("entries", "results", "lines", "matches"):
             v = r.get(k)
             if isinstance(v, list):

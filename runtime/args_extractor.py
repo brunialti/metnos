@@ -85,6 +85,41 @@ _TIME_WINDOW_KEYWORDS = {
 # Pattern file con extension (*.ext, .ext)
 _FILE_EXT_RE = re.compile(r"\*?\.(?P<ext>[a-zA-Z0-9]{1,5})\b")
 
+# Nome-linguaggio/formato → estensione glob. L'utente dice «file python», non
+# «file .py»: il nome del linguaggio (6+ lettere, fuori dal range estensione)
+# va tradotto nell'estensione canonica. Mappa GENERALE (§7.3), non per-query.
+# Chiave = parola intera in minuscolo; valore = estensione senza punto.
+_LANG_EXT_MAP = {
+    "python": "py", "javascript": "js", "typescript": "ts", "markdown": "md",
+    "golang": "go", "rust": "rs", "ruby": "rb", "java": "java", "kotlin": "kt",
+    "swift": "swift", "shell": "sh", "bash": "sh", "powershell": "ps1",
+    "yaml": "yaml", "json": "json", "toml": "toml", "html": "html", "css": "css",
+    "csharp": "cs", "cpp": "cpp", "header": "h", "perl": "pl", "php": "php",
+    "scala": "scala", "elixir": "ex", "haskell": "hs", "lua": "lua", "sql": "sql",
+    "text": "txt", "csv": "csv", "xml": "xml", "image": "png",
+}
+# Ordinato per lunghezza decrescente: «javascript» prima di «java» (evita che
+# «file javascript» matchi «java»). Confine di parola su entrambi i lati.
+_LANG_EXT_RE = re.compile(
+    r"\b(" + "|".join(sorted(_LANG_EXT_MAP, key=len, reverse=True)) + r")\b",
+    re.IGNORECASE,
+)
+
+# Estensioni/formati riconosciuti dopo «file …» (whitelist, NON blacklist: cosi'
+# «file ci sono» non genera *.ci). Include i target di _LANG_EXT_MAP + i formati
+# di documento/dato/media comuni. Tutto minuscolo, senza punto.
+_KNOWN_EXTENSIONS = set(_LANG_EXT_MAP.values()) | {
+    "pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "odt", "ods", "rtf",
+    "txt", "md", "csv", "tsv", "json", "yaml", "yml", "toml", "xml", "ini",
+    "log", "conf", "cfg", "env", "lock",
+    "png", "jpg", "jpeg", "gif", "svg", "webp", "bmp", "tiff", "ico",
+    "mp3", "wav", "flac", "ogg", "mp4", "mov", "avi", "mkv", "webm",
+    "zip", "tar", "gz", "tgz", "bz2", "xz", "7z", "rar",
+    "py", "js", "ts", "tsx", "jsx", "go", "rs", "rb", "java", "kt", "c", "h",
+    "cpp", "hpp", "cs", "php", "pl", "lua", "sh", "bash", "ps1", "sql", "r",
+    "html", "htm", "css", "scss", "vue", "swift", "scala", "ex", "exs", "hs",
+}
+
 # Home keyword IT/EN. "home" non e' un path: e' un'abbreviazione per ~/.
 # Detection: "home" come parola standalone o "home/" prefisso.
 _HOME_KEYWORDS_RE = re.compile(
@@ -167,18 +202,31 @@ def _extract_file_ext_glob(query: str) -> Optional[str]:
     V1.5 19/5 v5: supporta esplicitamente "file PDF" / "files PDF" /
     "file di tipo PDF" senza punto. Caso live: il PLANNER spesso vede
     l'utente scrivere "file PDF" o "documenti PDF" senza glob.
+    v6 25/6: nome-linguaggio ("file python" → *.py) via _LANG_EXT_MAP, perche'
+    «python»/«javascript» eccedono il range estensione e darebbero *.python.
     """
     m = _FILE_EXT_RE.search(query)
     if m:
         return f"*.{m.group('ext').lower()}"
-    # "file PDF" / "files PDF" / "file di tipo PDF" / "documenti PDF"
+    # Nome di linguaggio/formato esteso ("python", "javascript", ...) → estensione
+    # canonica. Precede il fallback generico "{2,5} lettere" perche' quei nomi
+    # sono piu' lunghi e non finirebbero mai per essere catturati come estensione.
+    ml = _LANG_EXT_RE.search(query)
+    if ml:
+        return f"*.{_LANG_EXT_MAP[ml.group(1).lower()]}"
+    # "file PDF" / "files PDF" / "file di tipo PDF" / "documenti PDF".
+    # WHITELIST di estensioni note (non blacklist di stopword): «file ci sono»
+    # NON deve dare *.ci. Una parola dopo «file» diventa pattern SOLO se e' una
+    # estensione/formato riconosciuto. Generale §7.3: copre i formati comuni +
+    # le estensioni gia' censite in _LANG_EXT_MAP.
     for kw in ("file", "files", "documento", "documenti", "document",
                "documents"):
-        m = re.search(rf"\b{kw}\s+(?:di\s+tipo\s+|of\s+type\s+)?([A-Za-z]{{2,5}})\b",
+        m = re.search(rf"\b{kw}\s+(?:di\s+tipo\s+|of\s+type\s+)?([A-Za-z0-9]{{2,5}})\b",
                        query, re.IGNORECASE)
-        if m and m.group(1).lower() not in ("di", "of", "tipo", "type",
-                                              "the", "a", "una", "un"):
-            return f"*.{m.group(1).lower()}"
+        if m:
+            cand = m.group(1).lower()
+            if cand in _KNOWN_EXTENSIONS:
+                return f"*.{cand}"
     return None
 
 
