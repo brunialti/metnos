@@ -155,14 +155,17 @@ def _verb_ortho(verb: str) -> str:
     if verb not in _PRODUCER_ORTHO_VERBS:
         return ""
     try:
-        from vocab import ACTION_MAPPING
+        from vocab import ACTION_MAPPING, _boundary_text
     except Exception:
         return ("get=id noti o snapshot grezzo; read=id->contenuto estratto; "
                 "find=pattern/query (discovery); list=enum container senza contenuto; "
                 "filter=lista preesistente+predicato")
     out = []
     for v in _PRODUCER_ORTHO_VERBS:
-        b = (ACTION_MAPPING.get(v) or {}).get("boundary", "")
+        # `boundary` è str (18 verbi) o {it,en} (5 produttori, schema misto
+        # transitorio): SEMPRE via _boundary_text, mai accesso diretto — è un
+        # SoT con più consumatori (synt stage-1, intent v4, qui-importer).
+        b = _boundary_text(ACTION_MAPPING.get(v) or {}, "it")
         first = _first_sentence(b)
         if first:
             out.append(f"{v}: {first}")

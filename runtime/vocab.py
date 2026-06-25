@@ -487,9 +487,14 @@ SYSTEM_VERBS = frozenset({"admin", "undo", "synthesize", "consult"})
 # lo USA INTERAMENTE per la disambiguazione cross-language.
 ACTION_MAPPING = {
     "read": {
-        "it": ["leggi", "apri", "visualizza", "mostra-il-contenuto", "conta-occorrenze-in"],
-        "en": ["read", "open", "view", "show-contents", "count-occurrences-in"],
-        "boundary": "Sola lettura: ritorna contenuto/dati. Nessun side-effect.",
+        "it": ["leggi", "apri", "visualizza", "mostra-il-contenuto", "conta-occorrenze-in",
+                "scarica-contenuto", "richiedi-da-url"],
+        "en": ["read", "open", "view", "show-contents", "count-occurrences-in",
+                "download-content", "fetch-from-url"],
+        "boundary": {
+            "it": "Materializza il CONTENUTO/corpo GREZZO di un oggetto identificato per id/path/URL: byte, testo, JSON, forma decodificata. Input = id/path/URL NOTO (oggetto `urls` SOLO se la query contiene un url/endpoint esplicito http(s); altrimenti l'oggetto è quello di dominio: files/messages/numbers/…). side_effect=fetch_content, illimitato, tipizzato per formato (read_*_csv/_pdf/_ocr). NON describe (riassumi/sintetizza/aggrega = describe: read consegna il grezzo, non lo riassume) · NON get (snapshot/metadata, senza corpo) · NON list (solo nomi) · NON find (non sai ancora quali).",
+            "en": "Materialize the RAW CONTENT/body of an object identified by id/path/URL: bytes, text, JSON, decoded form. Input = KNOWN id/path/URL (object `urls` ONLY if the query contains an explicit http(s) url/endpoint; otherwise the object is the domain one: files/messages/numbers/…). side_effect=fetch_content, unbounded, format-typed (read_*_csv/_pdf/_ocr). NOT describe (summarize/aggregate = describe: read delivers the raw, doesn't summarize) · NOT get (snapshot/metadata, no body) · NOT list (names only) · NOT find (you don't know which yet).",
+        },
     },
     "write": {
         "it": ["scrivi", "salva", "sostituisci-il-contenuto", "sovrascrivi"],
@@ -520,19 +525,28 @@ ACTION_MAPPING = {
         "en": ["find", "locate", "search", "search-by-name", "search-pattern",
                 "glob", "lookup-by-pattern", "semantic-search", "find-similar-photos",
                 "search-faces"],
-        "boundary": "DISCOVERY: cerca su una sorgente di verita' per PATTERN o QUERY testuale. Input primario = pattern/criterio (`patterns`, `query`, `name`). L'utente NON sa in anticipo cosa trovera' e lo scopre. Output: lista degli elementi che matchano (possibilmente vuota → assenza). NON usare `find` quando l'utente passa identificatori specifici (paths, urls): in quel caso `get`. Sussume anche «verifica esistenza» (find lista vuota = non presente). ECCEZIONE SEMANTICA controllata (ADR 0086, rinominato 5/5/2026) per il pattern `find_<dom>_indices`: il modificatore di modalita' `indices` segnala che il mezzo di ricerca e' un indice persistente, ma l'output ritorna entries del dominio principale (es. `find_images_indices` ritorna foto). Pattern accettato perche' `indices` e' qualifier di modalita' (mezzo), il dominio principale resta l'oggetto.",
+        "boundary": {
+            "it": "DISCOVERY: cerca su una sorgente di verità per PATTERN/QUERY (`patterns`, `query`, `name`). Non sai in anticipo cosa esiste; lo scopri. Output = lista che matcha (vuota = assente; sussume la verifica-esistenza E il conteggio «quanti/conta X»: enumeri gli ELEMENTI per contarli → find_<dom>, oggetto = l'elemento). NON get (get prende id NOTI, non un pattern di ricerca; «quanti file in DIR» = find_files, non get) · NON filter (filter resta in memoria su una lista già in mano; find va alla sorgente). Eccezione controllata `find_<dom>_indices` (ADR 0086): `_indices` = il MEZZO di ricerca è un indice persistente, l'output resta entries del dominio (find_images_indices → foto).",
+            "en": "DISCOVERY: search a source of truth by PATTERN/QUERY (`patterns`, `query`, `name`). You don't know in advance what exists; you discover it. Output = matching list (empty = absent; subsumes existence-check AND counting «how-many/count X»: you enumerate the ELEMENTS to count them → find_<dom>, object = the element). NOT get (get takes KNOWN ids, not a search pattern; «how many files in DIR» = find_files, not get) · NOT filter (filter stays in-memory on a list already held; find hits the source). Controlled exception `find_<dom>_indices` (ADR 0086): `_indices` = the search MEDIUM is a persistent index, output stays domain entries (find_images_indices → photos).",
+        },
     },
     "list": {
         "it": ["elenca", "lista", "mostra-il-contenuto-di", "dammi-l'elenco-di"],
         "en": ["list", "enumerate", "show-contents-of", "ls"],
-        "boundary": "Enumera elementi di un container senza fetch del contenuto (es. nomi file in dir, folder IMAP).",
+        "boundary": {
+            "it": "ENUMERA i membri di un container SENZA scaricarne il contenuto (nomi file in una dir, folder IMAP). NON read (read scarica il contenuto dei membri) · NON find (find prende un pattern; list prende il container).",
+            "en": "ENUMERATE the members of a container WITHOUT fetching content (file names in a dir, IMAP folders). NOT read (read pulls the members' content) · NOT find (find takes a pattern; list takes the container).",
+        },
     },
     "filter": {
         "it": ["filtra", "tieni", "scarta", "seleziona", "subset",
                 "estrai-righe", "estrai-da-testo"],
         "en": ["filter", "keep", "discard", "select", "subset",
                 "extract-lines", "extract-from-text"],
-        "boundary": "RIDUCE una lista PREESISTENTE di entries (ricevuta via `from_step:N` o argomento `entries`) a un sottoinsieme che soddisfa un predicato (regex, range, soglia). Pure compute, niente I/O verso sorgenti di sistema. NON va a prendere dati nuovi: se non hai gia' la lista, usa prima `get` o `find` per produrla. Si usa anche per «estrarre» righe da un testo (filter_texts_lines): la selezione di un sottoinsieme di righe e' `filter`, non `extract` (extract resta riservato a decompressione archivi).",
+        "boundary": {
+            "it": "RIDUCE una lista PREESISTENTE di entries (via `from_step:N` o argomento `entries`) al sottoinsieme che soddisfa un predicato (regex, range, soglia). Pure compute, niente I/O verso sorgenti di sistema. NON get/find (quelli prendono dati NUOVI; filter ha già la lista in mano). Copre anche selezionare un sottoinsieme di righe da un testo (filter_texts_lines): è `filter`, non `extract`.",
+            "en": "REDUCE a PRE-EXISTING list of entries (via `from_step:N` or the `entries` arg) to the subset matching a predicate (regex, range, threshold). Pure compute, no I/O to system sources. NOT get/find (those fetch NEW data; filter already holds the list). Also covers selecting a subset of text lines (filter_texts_lines): that is `filter`, not `extract`.",
+        },
     },
     "sort": {
         "it": ["ordina", "classifica", "top", "primi", "ultimi"],
@@ -551,17 +565,28 @@ ACTION_MAPPING = {
     },
     "get": {
         "it": ["ottieni", "dimmi", "dammi", "che-ora-e", "dove-sono", "metadati-di",
-                "scarica", "richiedi-da-url", "GET-http", "leggi-stato", "elenca-processi",
-                "snapshot", "leggi-questi-paths"],
+                "leggi-stato", "elenca-processi", "snapshot"],
         "en": ["get", "obtain", "tell-me", "give-me", "what-time", "where-am-i",
-                "metadata-of", "fetch", "download", "request-from-url", "http-get",
-                "read-state", "list-processes", "snapshot", "read-these-paths"],
-        "boundary": "LOOKUP / SNAPSHOT: ottiene dati FRESCHI da una sorgente di verita' per IDENTIFICATORI gia' noti (paths, urls, signatures, lat/lon) OPPURE per snapshot completo del dominio (con filtri opzionali di restringimento accessori, es. `user`, `pid`, `top=N`). Input primario = identificatori o assenza di argomenti (= tutto); NON pattern/query testuale di ricerca (quello e' `find`). NON riceve `entries` da step precedente con criterio di filtro: se hai gia' una lista in mano e vuoi ridurla per predicato, usa `filter`. Discrimine pratico vs `find`: «pattern/query come input primario» → find; «id noti o snapshot» → get.",
+                "metadata-of", "read-state", "list-processes", "snapshot"],
+        # DISGIUNZIONE (24/6): rimossi `scarica/download/fetch/richiedi-da-url/
+        # GET-http/leggi-questi-paths` → l'asse ratificato li assegna a `read`
+        # (fetch del CONTENUTO/body). Restavano qui per la vecchia doctrine
+        # "HTTP GET=get_urls", ora superata. Token sotto UN solo verbo (no
+        # contaminazione lessicale, no priming d'ordine nei prompt).
+        "boundary": {
+            "it": "Ottiene uno SNAPSHOT per IDENTIFICATORI NOTI (paths, signatures, lat/lon, pid) OPPURE snapshot completo del dominio (filtri accessori `user`/`pid`/`top=N`): metadata/attributi/scalare freschi, SENZA il corpo/contenuto. side_effect=fetch_metadata|none, economico, agnostico al formato. Input = identificatori o nulla (=tutto), MAI un pattern di ricerca. NON read (read scarica il CORPO/contenuto: il JSON di una URL, il testo di un file → read) · NON find (find prende un pattern; get prende id o nulla) · NON filter (filter riduce una lista già in mano).",
+            "en": "Retrieve a SNAPSHOT for KNOWN identifiers (paths, signatures, lat/lon, pid) OR a whole-domain snapshot (accessory filters `user`/`pid`/`top=N`): fresh metadata/attributes/scalar, WITHOUT the content body. side_effect=fetch_metadata|none, cheap, format-agnostic. Input = identifiers or nothing (=all), NEVER a search pattern. NOT read (read pulls the BODY/content: a URL's JSON, a file's text → read) · NOT find (find takes a pattern; get takes ids or nothing) · NOT filter (filter reduces a list already held).",
+        },
     },
     "set": {
-        "it": ["imposta", "configura", "set", "modifica-il-valore"],
-        "en": ["set", "configure", "update-value"],
-        "boundary": "Modifica un valore di configurazione locale. Reversibile via diff.",
+        "it": ["imposta", "configura", "set", "modifica-il-valore",
+               "chiudi", "riapri", "assegna", "etichetta", "cambia-stato"],
+        "en": ["set", "configure", "update-value",
+               "close", "reopen", "assign", "label", "change-state"],
+        "boundary": {
+            "it": "Upsert idempotente di STATO/labels/assignee/metadata di un'entità ESISTENTE (config locale O entità remota), per IDENTIFICATORE noto: il record resta, cambia un suo campo di stato. Es. «chiudi/riapri la issue» (state=closed/open), «assegna», «etichetta», impostare una config. side_effect=state_update, reversibile via diff/stato-precedente. NON delete (delete DISTRUGGE il record; set lo lascia vivo e modificabile — «chiudi»≠«cancella») · NON change (change trasforma FORMA/contenuto: resize/convert/merge; set tocca STATO/labels, non i pixel/il corpo) · NON create (create fa un'entità NUOVA; set modifica una esistente).",
+            "en": "Idempotent upsert of STATE/labels/assignee/metadata of an EXISTING entity (local config OR remote entity), by KNOWN identifier: the record stays, a status field changes. E.g. «close/reopen the issue» (state=closed/open), «assign», «label», set a config. side_effect=state_update, reversible via diff/prior-state. NOT delete (delete DESTROYS the record; set keeps it alive and editable — «close»≠«delete») · NOT change (change transforms FORM/content: resize/convert/merge; set touches STATE/labels, not pixels/body) · NOT create (create makes a NEW entity; set modifies an existing one).",
+        },
     },
     "send": {
         "it": ["invia", "manda", "mandami", "spedisci", "inoltra", "publica",
@@ -607,7 +632,10 @@ ACTION_MAPPING = {
                 "converti", "ruota", "ritaglia", "normalizza", "rinomina-formato"],
         "en": ["change", "modify", "resize", "transform", "convert", "rotate",
                 "crop", "normalize", "reformat"],
-        "boundary": "Modifica forma/parametri di un dato senza cambio di natura (resize, convert format, rotate, crop). Distinta da compress (archivia in container) e da render (format di OUTPUT). L'oggetto resta dello stesso tipo (un'immagine resta un'immagine, cambiano dimensione/formato pixel).",
+        "boundary": {
+            "it": "Modifica FORMA/parametri/contenuto di un dato senza cambio di natura (resize, convert format, rotate, crop, merge di una PR). L'oggetto resta dello stesso tipo (un'immagine resta immagine: cambiano dimensione/pixel). NON set (set tocca STATO/labels/metadata, non la forma: «chiudi la issue»=set, non change) · NON compress (compress archivia in container) · NON render (render = format di OUTPUT).",
+            "en": "Modify the FORM/parameters/content of a datum without changing its nature (resize, convert format, rotate, crop, merge a PR). The object stays the same type (an image stays an image: size/pixels change). NOT set (set touches STATE/labels/metadata, not form: «close the issue»=set, not change) · NOT compress (compress archives into a container) · NOT render (render = OUTPUT format).",
+        },
     },
     "order": {
         "it": ["indicizza", "costruisci-indice", "rebuilda-indice", "materializza-ordinamento",
@@ -1213,6 +1241,21 @@ def render_action_categories_block() -> str:
     return "\n".join(lines)
 
 
+def _boundary_text(m: dict, lang: str = "it") -> str:
+    """Normalizza il campo `boundary` (str legacy o {it,en}) → stringa lang.
+
+    Schema transitorio (pilota 5 verbi-produttori ratificato 24/6): i verbi
+    confondibili (read/get/find/list/filter) hanno boundary `{it,en}`
+    contrastiva (canonico EN); gli altri 18 restano `str` IT finché il pilota
+    non è validato dal simulatore (poi conversione + drop di questo ramo str).
+    Un SOLO punto gestisce le due forme: niente shape-handling sparso.
+    """
+    b = m.get("boundary", "")
+    if isinstance(b, dict):
+        return b.get(lang) or b.get("en") or b.get("it") or ""
+    return b
+
+
 def render_action_mapping_block() -> str:
     """Blocco multilinea con il MAPPING bilingue completo per stage 1."""
     lines = []
@@ -1222,9 +1265,30 @@ def render_action_mapping_block() -> str:
             continue
         lines.append(f"  {verb:10s} IT: {', '.join(m['it'])}")
         lines.append(f"             EN: {', '.join(m['en'])}")
-        lines.append(f"             {m['boundary']}")
+        lines.append(f"             {_boundary_text(m, 'it')}")
         lines.append("")
     return "\n".join(lines).rstrip()
+
+
+def render_boundaries(lang: str = "it", verbs=None) -> str:
+    """Confini-verbo per il prompt di filtraggio (intent extractor v4).
+
+    SoT-driven: il prompt È la descrizione dei vocaboli (no parafrasi, no
+    drift). Default = TUTTI i verbi (lo spazio completo, come richiesto:
+    «il filtraggio dovrebbe avere come prompt tutta la descrizione dei
+    vocaboli»). I 5 produttori portano la boundary `{it,en}` contrastiva;
+    gli altri la loro definizione esistente via `_boundary_text`.
+    """
+    sel = verbs if verbs is not None else ACTIONS
+    lines = []
+    for v in sel:
+        m = ACTION_MAPPING.get(v)
+        if not m:
+            continue
+        txt = _boundary_text(m, lang)
+        if txt:
+            lines.append(f"- {v}: {txt}")
+    return "\n".join(lines)
 
 
 if __name__ == "__main__":

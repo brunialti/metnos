@@ -24,6 +24,7 @@ Failure mode:
 from __future__ import annotations
 
 import json
+import os
 import re
 from typing import Optional
 
@@ -32,6 +33,7 @@ from vocab import (
     OBJECTS as VOCAB_OBJECTS,
     render_actions_inline as _vocab_verbs_inline,
     render_objects_inline as _vocab_objects_inline,
+    render_boundaries as _vocab_boundaries,
 )
 from logging_setup import get_logger
 log = get_logger(__name__)
@@ -67,12 +69,66 @@ def extract_intent(query: str, llm_call) -> Optional[dict]:
         return None
     if _dl.match("undo.intent_bypass", query):
         return None  # signal "no canonical verb" → caller usa fallback
-    prompt = prompt_loader.get(
-        "intent_extractor",
-        DEFAULT_LANG,
-        verbs_inline=_vocab_verbs_inline(),
-        objects_inline=_vocab_objects_inline(),
-    )
+    # Gate REVERSIBILE (24/6, pilota ratificato): METNOS_INTENT_BOUNDARIES=1 →
+    # template v4 col blocco CONFINI-VERBO iniettato verbatim dal SoT
+    # (vocab.render_boundaries). Default 0 = prod invariato (template attuale,
+    # comportamento byte-identico). In regressione: unset env → ritorno immediato.
+    #
+    # METNOS_INTENT_SCAFFOLD=1 (24/6, hybrid anaphora-aware, richiede BOUNDARIES=1):
+    # segmentazione DETERMINISTICA (split_query_chunks) → segmenti numerati nel
+    # prompt → l'LLM emette {n,ref,verb,object} risolvendo l'ANAFORA (clitici
+    # -lo/-le, oggetti elisi) sulla query INTERA → consumer riconcilia il count vs
+    # i chunk e riempie i buchi col detector lessicale. §7.9: codice possiede
+    # segmentazione+count, LLM possiede anafora+boundary. Solo su compound (>=2
+    # segmenti); mono → path v4 invariato.
+    _scaffold = (os.getenv("METNOS_INTENT_SCAFFOLD", "0") == "1"
+                 and os.getenv("METNOS_INTENT_BOUNDARIES", "0") == "1")
+    _segments: list[str] = []
+    if _scaffold:
+        try:
+            from compound_decomposer import split_query_chunks
+            _segments = split_query_chunks(query)
+        except Exception:
+            _segments = []
+    # Falso-compound: lo split può spezzare su una «e» che coordina AVVERBI/
+    # frammenti senza azione («che ora E adesso», «qui E ora») → 2 segmenti ma
+    # UNA sola query. Lo scaffold richiede ≥2 segmenti che portino DAVVERO
+    # un'azione (verbo canonico rilevabile). Sotto 2 → path mono (v4), dove le
+    # iniezioni text-driven a query-intera (get_now, EXIF) restano intatte.
+    # §7.9 deterministico, language-agnostic (usa il detector verbi del vocab).
+    if _scaffold and len(_segments) >= 2:
+        try:
+            from prefilter import tokenize as _tk, detect_canonical_verbs_all as _vb
+            _action_segs = sum(1 for s in _segments if _vb(_tk(s)))
+        except Exception:
+            _action_segs = len(_segments)
+        if _action_segs < 2:
+            _segments = []  # non è un vero compound → ricadi su mono
+    if _scaffold and len(_segments) >= 2:
+        segments_block = "\n".join(f"{i}. {s}" for i, s in enumerate(_segments, 1))
+        prompt = prompt_loader.get(
+            "intent_extractor_scaffold",
+            DEFAULT_LANG,
+            verbs_inline=_vocab_verbs_inline(),
+            objects_inline=_vocab_objects_inline(),
+            boundaries_block=_vocab_boundaries(DEFAULT_LANG),
+            segments_block=segments_block,
+        )
+    elif os.getenv("METNOS_INTENT_BOUNDARIES", "0") == "1":
+        prompt = prompt_loader.get(
+            "intent_extractor_v4",
+            DEFAULT_LANG,
+            verbs_inline=_vocab_verbs_inline(),
+            objects_inline=_vocab_objects_inline(),
+            boundaries_block=_vocab_boundaries(DEFAULT_LANG),
+        )
+    else:
+        prompt = prompt_loader.get(
+            "intent_extractor",
+            DEFAULT_LANG,
+            verbs_inline=_vocab_verbs_inline(),
+            objects_inline=_vocab_objects_inline(),
+        )
     try:
         res = llm_call(prompt, query, max_tokens=_INTENT_MAX_TOKENS, think=False)
     except TypeError:
@@ -94,6 +150,15 @@ def extract_intent(query: str, llm_call) -> Optional[dict]:
     parsed = _parse_json(text)
     if not parsed:
         return None
+    # Scaffold hybrid: l'LLM ritorna {"clauses":[{n,ref,verb,object}, ...]}.
+    # Riduciamo a LISTA ordinata di {verb,object} (ref/n droppati: ref forza la
+    # risoluzione anafora in GENERAZIONE, n è l'ancora di conteggio). Da qui il
+    # flusso `actions` resta identico (back-compat consumer).
+    if isinstance(parsed, dict) and isinstance(parsed.get("clauses"), list):
+        parsed = [
+            {"verb": c.get("verb"), "object": c.get("object")}
+            for c in parsed["clauses"] if isinstance(c, dict)
+        ]
     # Compound: per una query multi-azione l'LLM ritorna una LISTA ordinata di
     # sotto-intenti (un dict {verb,object} per clausola). Normalizziamo OGNI
     # clausola al vocabolario chiuso e la conserviamo in `actions`: dispatch
@@ -101,7 +166,7 @@ def extract_intent(query: str, llm_call) -> Optional[dict]:
     # (es. "trova i processi"→object=processes), non un unico object globale.
     # Fix routing compound SENZA dizionari di sinonimi (multilingue via LLM).
     # Il PRIMO valido resta l'intent PRIMARIO per back-compat del ranking.
-    def _norm_action(d):
+    def _norm_action(d, ctx_text=None):
         if not isinstance(d, dict):
             return None
         v = (d.get("verb") or "").strip().lower()
@@ -110,27 +175,73 @@ def extract_intent(query: str, llm_call) -> Optional[dict]:
             v = None
         if o not in VOCAB_OBJECTS:
             o = None
+        # Routability §7.9 (24/6): se `verb_obj` non ha executor reale, rimappa
+        # l'object — carrier §2.2 (images/texts→files) o oggetto reale dal TESTO
+        # del segmento (pdf→files, cartella→dirs). Verità = presenza on-disk, non
+        # lista. Chiude le combo morte (compress_images, get_numbers, send_images).
+        # ctx_text = `ref` del clause scaffold o il segmento (context-aware).
+        # NB (24/6, analisi routing): l'intent è un livello SEMANTICO, NON una
+        # chiave di match-esatto-su-disco. Il dispatch (build_routing_pool →
+        # rank_with_intent, routing_pool.py) risolve (verb,object) contro il
+        # catalogo reale: object-family completion + _OBJECT_PRIMARY_TOOLS +
+        # precursori → (compress,images) routa a compress_files, ecc. Quindi NON
+        # forziamo qui il livello-executor (era un errore: rompeva list/files vs
+        # find/files, livelli semantici distinti). L'unico fix legittimo a monte
+        # è correggere le §2.2-VIOLAZIONI vere (find_processes→get, ecc.), che
+        # vivono nel prompt/boundary, non in un rimappatore meccanico.
         if not v and not o:
             return None
         return {"verb": v, "object": o}
 
     actions: list[dict] = []
     if isinstance(parsed, list):
-        for _d in parsed:
-            _a = _norm_action(_d)
+        for _i, _d in enumerate(parsed):
+            # ctx_text: `ref` (anafora risolta) del clause, o il segmento i-esimo
+            _ctx = (_d.get("ref") if isinstance(_d, dict) else None)
+            if not _ctx and _scaffold and _i < len(_segments):
+                _ctx = _segments[_i]
+            _a = _norm_action(_d, _ctx)
             if _a is not None:
                 actions.append(_a)
         parsed = next((p for p in parsed if isinstance(p, dict)), None) or {}
     else:
-        _a = _norm_action(parsed)
+        _a = _norm_action(parsed, query)
         if _a is not None:
             actions.append(_a)
+    # Riconciliazione count (scaffold §7.9): se l'LLM ha emesso MENO clausole dei
+    # segmenti deterministici, riempi i buchi col detector lessicale per-chunk
+    # (detect_chunk_action) — garantisce che nessuna clausola sia silenziosamente
+    # persa (fallimento FASE-3 publish 18/6). Se ne ha emesse di PIÙ, tronca ai
+    # segmenti. Allineamento posizionale (l'ordine segmenti = ordine esecuzione).
+    if _scaffold and len(_segments) >= 2 and len(actions) != len(_segments):
+        try:
+            from compound_decomposer import detect_chunk_action
+            fixed: list[dict] = []
+            for i, seg in enumerate(_segments):
+                if i < len(actions):
+                    fixed.append(actions[i])
+                else:
+                    det = detect_chunk_action(seg)
+                    if det:
+                        _a = _norm_action({"verb": det[0], "object": det[1]})
+                        if _a:
+                            fixed.append(_a)
+            if fixed:
+                actions = fixed
+        except Exception:
+            pass
+
     verb = (parsed.get("verb") or "").strip().lower()
     obj = (parsed.get("object") or "").strip().lower()
     if verb not in VOCAB_VERBS:
         verb = None
     if obj not in VOCAB_OBJECTS:
         obj = None
+    # Scaffold: l'intent PRIMARIO (verb/obj) viene dalla 1ª clausola riconciliata
+    # (parsed potrebbe essere {clauses:...} senza verb/object top-level).
+    if _scaffold and actions and not verb and not obj:
+        verb = actions[0].get("verb")
+        obj = actions[0].get("object")
     # L'estrattore LLM grammar-based (objects_inline + GBNF) e' l'UNICO
     # classificatore d'object (17/6/2026): rimosso l'override Qwen3-Emb FT
     # (intent_classifier package) — anchors per-lingua hardcoded = anti-pattern

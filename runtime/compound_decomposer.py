@@ -32,12 +32,26 @@ import detection_lexicon as _dl  # lessici NL traducibili (gemello i18n input)
 # split e' ricostruito deterministicamente dalle forme della lingua corrente.
 
 
+# Apostrofi (tutte le forme Unicode: ASCII, typographic, modifier-letter, grave).
+# LANGUAGE-AGNOSTIC: l'apostrofo LEGA i caratteri (elisione/contrazione) in ogni
+# lingua — IT «e'»/«cos'»/«l'», FR «j'»/«qu'», EN «it's»/«don't». Un connettore
+# adiacente a un apostrofo è parte di una parola elisa, NON un separatore.
+_APOSTROPHES = "".join(chr(c) for c in (0x27, 0x2019, 0x02BC, 0x60))  # ' ’ ʼ `
+
+
 @functools.lru_cache(maxsize=8)
 def _connector_pattern(_lang: str) -> "re.Pattern":
     words = _dl.forms("compound.connector_word")
     alt = "|".join(words) if words else "e|and"
+    # Boundary del connettore: NON deve essere adiacente a un apostrofo su NESSUN
+    # lato (lookbehind + lookahead). Generale §7.9, nessuna parola/lingua cablata:
+    # è la definizione «apostrofo = word-char» applicata al confine, non un caso
+    # speciale dell'italiano. Chiude il bug «quando e' stato modificato» (e'=è)
+    # senza toccare i connettori veri («leggi le mail e salvale»).
+    ap = _APOSTROPHES
     return re.compile(
-        r"\s*(?:,|;|\&\&?|\b(?:" + alt + r")\b)\s*", re.IGNORECASE)
+        r"\s*(?:,|;|\&\&?|(?<![" + ap + r"])\b(?:" + alt + r")\b(?![" + ap + r"]))\s*",
+        re.IGNORECASE)
 
 # Verb categories from §2.2 vocab (canonical):
 # - Producer (read_family): find/read/get/list — produce entries
