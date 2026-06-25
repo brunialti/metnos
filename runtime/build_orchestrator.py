@@ -54,13 +54,17 @@ def _is_dry_run() -> bool:
 _PROGRESS_DIR = _C.PATH_USER_STATE / "build_progress"
 _VALID_IDX = ("scene", "persons", "gps")
 
-# Interprete del subprocess di build (deps torch/embedder). §7.11: overridabile
-# via env, default all'istruzione operativa storica (venv di esercizio).
-_VENV_PYTHON = os.environ.get(
-    "METNOS_BUILD_PYTHON", "/opt/suprastructure/.venv/bin/python")
-# Sorgenti extra sul PYTHONPATH del build (§7.11: overridabile via env).
-_BUILD_EXTRA_PYTHONPATH = os.environ.get(
-    "METNOS_BUILD_PYTHONPATH", "/opt/suprastructure/src")
+# Interprete del subprocess di build (deps torch/embedder). §7.11 rename/install-
+# resilient: default = `sys.executable`, lo STESSO python che esegue il runtime
+# (ha già torch/onnx per l'embedding in-process post-cutover). Su prod coincide
+# col venv del servizio (nessun cambio); su un checkout fresco è il venv proprio
+# dell'install (autonomo, non più `/opt/suprastructure`). Overridabile via env.
+_VENV_PYTHON = os.environ.get("METNOS_BUILD_PYTHON", sys.executable)
+# Sorgenti extra sul PYTHONPATH del build (§7.11: overridabile via env). Default
+# vuoto: post-cutover il build importa solo da runtime/+executor (i job non
+# referenziano più `suprastructure`). Una dir inesistente sarebbe comunque
+# ignorata da Python, ma il default vuoto evita di puntare a un path assente.
+_BUILD_EXTRA_PYTHONPATH = os.environ.get("METNOS_BUILD_PYTHONPATH", "")
 
 
 def _digest_of(base_path: Path) -> str:
@@ -158,10 +162,11 @@ def start_async_build(base_path: Path | str, idx: str, *,
     # + executor.
     _rt_dir = Path(__file__).resolve().parent
     _install_root = _rt_dir.parent
+    _extra = f":{_BUILD_EXTRA_PYTHONPATH}" if _BUILD_EXTRA_PYTHONPATH else ""
     pythonpath = (
         f"{_rt_dir}:"
         f"{_install_root / 'executors' / 'create_images_indices'}:"
-        f"/usr/lib/python3/dist-packages:{_BUILD_EXTRA_PYTHONPATH}"
+        f"/usr/lib/python3/dist-packages{_extra}"
     )
     # systemctl start non supporta --property: serve systemd-run.
     # Usiamo systemd-run --user per properties + --unit (transient).
