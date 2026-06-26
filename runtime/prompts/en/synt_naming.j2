@@ -3,10 +3,10 @@ role: synt_naming
 tier: middle
 lang: en
 style: definitional
-version: 1
+version: 2
 owner: roberto
-updated: 2026-05-11
-sha_prev: a89b3231
+updated: 2026-06-26
+sha_prev: 68b47a53
 --- #}
 YOU ARE phase 1 (NAMING + CLASSIFICATION) of synt-multistage.
 
@@ -33,12 +33,13 @@ Optional QUALIFIER (only for real parsing/format variants):
 
 PROVIDER (ORTHOGONAL axis, not a format-qualifier): a provider suffix (github,
 google_workspace) = SAME intent on a different BACKEND, not different parsing.
-`find_files_github` EXTENDS `find_files` (same «find files», on GitHub); a
-modality-qualifier does NOT (`read_files_ocr` ≠ `read_files`, different intent).
-YOU MUST: use a provider qualifier ONLY when the backend is a named external
-service (github/google). YOU MUST NOT: treat a format (ocr/csv) as a provider.
-OK: read_files_github, read_events_google_workspace. ERROR: read_files_pdf_github
-(2 qualifiers). The default provider `_metnos` is OMITTED from the name.
+`find_files_github` EXTENDS `find_files` (same «find files», on GitHub), whereas
+a modality-qualifier changes the intent (`read_files_ocr` ≠ `read_files`).
+A provider is a qualifier ONLY for a named external service
+(github/google_workspace); a format (ocr/csv) is not a provider. A name carries
+at most one qualifier: `read_files_github` and `read_events_google_workspace` are
+valid, `read_files_pdf_github` is not (two qualifiers). The default provider
+`_metnos` is OMITTED from the name.
 
 CLASSIFICATION:
 - revertible (bool):
@@ -48,7 +49,7 @@ CLASSIFICATION:
                        the intent mentions snapshot/backup/blob (reverse_pattern=
                        restore_blob_backup); otherwise false (safely irreversible).
                      - send → ALWAYS false (remote side-effect, cannot be undone).
-                     - read/find/list/get/describe/filter/fetch/compute → false
+                     - read/find/list/get/describe/filter/compute → false
                        (read-only or pure compute, nothing to revert).
 - critical (bool):   true if it modifies filesystem / network / external state.
                      false if pure compute or read-only.
@@ -74,8 +75,8 @@ Output: {"name": "compare_files", "action": "compare", "object": "files",
          "qualifier": null, "revertible": false, "critical": false,
          "target_kind": "path_glob"}
 
-User: "estrai testo da /tmp/page.html togliendo i tag"
-Output: {"name": "extract_files_html", "action": "extract", "object": "files",
+User: "extract the raw text from /tmp/page.html" (strip tags = raw read, not extract)
+Output: {"name": "read_files_html", "action": "read", "object": "files",
          "qualifier": "html", "revertible": false, "critical": false,
          "target_kind": "path_glob"}
 
@@ -100,7 +101,7 @@ Output: {"name": null, "reason_no_name": "The action 'resize' is not in the clos
 QUALIFIER `_empty` (ADR 0127, cross-domain — modality-operation family):
 When the user request identifies domain entities in EMPTY/UNDER-THRESHOLD/
 AVAILABLE state (calendar free slots, small files, empty directories,
-short messages, etc.), MUST use the `_empty` qualifier. Canonical arg:
+short messages, etc.), the canonical qualifier is `_empty`. Canonical arg:
 `size` (unit-aware str: "1hour"/"10KB"/"100chars"/...). One single
 cross-domain semantics, no forced analogies between domains.
 

@@ -3,9 +3,10 @@ role: engine_proposer_metis
 tier: wise
 lang: it
 style: definitional
-version: 1
+version: 2
 owner: roberto
-updated: 2026-06-09
+updated: 2026-06-26
+sha_prev: 75037575
 --- #}
 Sei il PROPOSER β (Mētis multi-strategia) di Metnos. Genera {{ n_candidates }} framework ALTERNATIVI per la stessa richiesta. Ogni alternativa deve essere strutturalmente DIVERSA (non solo args).
 
@@ -39,12 +40,12 @@ STRATEGIE DI DIVERSITÀ (scegli almeno 2 fra):
   - direct: producer single-step + final_answer (se applicabile)
   - aggregator: producer + finalizer (describe/compute) + final_answer
   - filter: producer + filter_entries + finalizer + final_answer
-  - composite: 2 producer paralleli + merge + final_answer
+  - composite: 2 producer + aggregatore (group_entries/compute_entries) + final_answer
 
 DATA PIPING
 - Liste: `from_step: N` (int 1-based).
 - Scalari: `${stepN.field}` (dot-path).
-- Projection: `${step1.entries.0.examples.*.image_path}` → list.
+- Projection: `${stepN.entries.*.campo}` → list (un campo da ogni entry; `*` itera la lista).
 
 PLACEHOLDER
 - `${FILLER:name}`: valore da raccogliere via dialog.

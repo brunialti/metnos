@@ -3,10 +3,10 @@ role: synt_naming
 tier: middle
 lang: it
 style: definitional
-version: 1
+version: 2
 owner: roberto
-updated: 2026-05-11
-sha_prev: 3343adb0
+updated: 2026-06-26
+sha_prev: cc6c209e
 --- #}
 SEI la fase 1 (NAMING + CLASSIFICATION) di synt-multistage.
 
@@ -35,12 +35,13 @@ QUALIFIER opzionale (solo per varianti reali di parsing/format):
 
 PROVIDER (asse ORTOGONALE, non un qualifier-formato): un suffisso provider
 (github, google_workspace) = STESSO intento su un BACKEND diverso, non un parsing
-diverso. `find_files_github` ESTENDE `find_files` (stesso «trova file», su GitHub);
-un qualifier-modalita' NO (`read_files_ocr` ≠ `read_files`, intento diverso).
-DEVI: usare il provider come qualifier SOLO se il backend e' un servizio esterno
-named (github/google). NON DEVI: trattare un formato (ocr/csv) come provider.
-OK: read_files_github, read_events_google_workspace. ERRORE: read_files_pdf_github
-(2 qualifier). Il provider default `_metnos` si OMETTE dal nome.
+diverso. `find_files_github` ESTENDE `find_files` (stesso «trova file», su GitHub),
+mentre un qualifier-modalita' cambia l'intento (`read_files_ocr` ≠ `read_files`).
+Il provider e' un qualifier SOLO per un servizio esterno con nome proprio
+(github/google_workspace); un formato (ocr/csv) non e' un provider. Un nome porta
+al massimo un qualifier: `read_files_github` e `read_events_google_workspace` sono
+validi, `read_files_pdf_github` no (due qualifier). Il provider default `_metnos`
+si OMETTE dal nome.
 
 CLASSIFICAZIONE:
 - revertible (bool):
@@ -51,7 +52,7 @@ CLASSIFICAZIONE:
                        restore_blob_backup); altrimenti false (irreversibili
                        sicuri).
                      - send → SEMPRE false (side-effect remoto, non annullabile).
-                     - read/find/list/get/describe/filter/fetch/compute → false
+                     - read/find/list/get/describe/filter/compute → false
                        (read-only o pure compute, niente da ribaltare).
 - critical (bool):   true se modifica filesystem / rete / stato esterno.
                      false se pure compute o sola lettura.
@@ -77,8 +78,8 @@ Output: {"name": "compare_files", "action": "compare", "object": "files",
          "qualifier": null, "revertible": false, "critical": false,
          "target_kind": "path_glob"}
 
-User: "estrai testo da /tmp/page.html togliendo i tag"
-Output: {"name": "extract_files_html", "action": "extract", "object": "files",
+User: "estrai il testo grezzo da /tmp/page.html" (strip tag = lettura grezza, non extract)
+Output: {"name": "read_files_html", "action": "read", "object": "files",
          "qualifier": "html", "revertible": false, "critical": false,
          "target_kind": "path_glob"}
 
@@ -103,7 +104,7 @@ Output: {"name": null, "reason_no_name": "L'azione 'resize' non e' nel vocabolar
 QUALIFIER `_empty` (ADR 0127, cross-domain — famiglia modalita'-operazione):
 Quando la richiesta utente identifica entita' del dominio in stato VUOTO/
 SOTTO-SOGLIA/DISPONIBILE (slot liberi del calendario, file piccoli, cartelle
-vuote, messaggi corti, ecc.), DEVI usare il qualifier `_empty`. Arg canonical:
+vuote, messaggi corti, ecc.), il qualifier canonico e' `_empty`. Arg canonical:
 `size` (str unit-aware: "1hour"/"10KB"/"100chars"/...). Una sola semantica
 cross-domain, niente analogie forzate fra dominii.
 
