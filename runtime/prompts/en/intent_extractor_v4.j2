@@ -3,10 +3,10 @@ role: intent_extractor
 tier: middle
 lang: en
 style: definitional
-version: 5
+version: 6
 owner: roberto
 updated: 2026-06-26
-sha_prev: d41afe7b
+sha_prev: f0065137
 --- #}
 {# v4 (pilota, gate METNOS_INTENT_BOUNDARIES): i CONFINI DEI VERBI arrivano
    verbatim da vocab.ACTION_MAPPING.boundary (SoT) via {{ boundaries_block }}.
@@ -94,23 +94,23 @@ Examples:
 "propose 3 morning times next week and book one" → {"verb": "find", "object": "events"}
 "suggest a free slot tomorrow and confirm" → {"verb": "find", "object": "events"}
 "who am I" → {"verb": "read", "object": "persons"}
-"who am I" → {"verb": "read", "object": "persons"}
-"who am I" → {"verb": "read", "object": "persons"}
+"tell me who I am" → {"verb": "read", "object": "persons"}
+"show my own profile" → {"verb": "read", "object": "persons"}
 "my profile" → {"verb": "read", "object": "persons"}
-"tell me everything about Lucia" → {"verb": "read", "object": "persons"}
+"tell me everything about a guest" → {"verb": "read", "object": "persons"}
 "list guest paired" → {"verb": "read", "object": "persons"}
 "who is registered" → {"verb": "get", "object": "persons"}
 "list people" → {"verb": "get", "object": "persons"}
-"how many photos of Carol" → {"verb": "get", "object": "persons"}
+"how many photos of a guest" → {"verb": "get", "object": "persons"}
 "who is enrolled" → {"verb": "get", "object": "persons"}
 "identify people in the photo" → {"verb": "get", "object": "persons"}
 "who is in this image" → {"verb": "get", "object": "persons"}
 "recognize faces in the photo" → {"verb": "get", "object": "persons"}
-"delete Carol's enrollment" → {"verb": "delete", "object": "persons"}
-"delete Marco's biometric registration" → {"verb": "delete", "object": "persons"}
-"remove Lucia from face registry" → {"verb": "delete", "object": "persons"}
-"enroll Lucia / add her to face registry" → {"verb": "set", "object": "persons"}
-MAPPING: enrollment / biometric registration / face registry = domain "persons" (NOT entries/signatures); enrolling = set, deleting enrollment = delete. Also the IMPLICIT form, without the word "enroll", when presenting a FACE/PERSON to register = enrollment = set/persons: «this is marco's face», «here are lucia's photos, register her», «this is giovanni» (with photo) → {set, persons}, NOT {classify, images} (you are not labeling photos, you are registering a person).
+"delete a guest's enrollment" → {"verb": "delete", "object": "persons"}
+"delete an invited family member's biometric registration" → {"verb": "delete", "object": "persons"}
+"remove a guest from face registry" → {"verb": "delete", "object": "persons"}
+"enroll a guest / add them to face registry" → {"verb": "set", "object": "persons"}
+MAPPING: enrollment / biometric registration / face registry = domain "persons" (NOT entries/signatures); enrolling = set, deleting enrollment = delete. Also the IMPLICIT form, without the word "enroll", when presenting a FACE/PERSON to register = enrollment = set/persons: «this is a guest's face», «here are the invited member's photos, register them», «this is a guest» (with photo) → {set, persons}, NOT {classify, images} (you are not labeling photos, you are registering a person).
 SEMANTIC PRINCIPLE (universal, apply to ALL objects, not just events):
 - Verb CREATE/SET/WRITE/DELETE an entity (destructive/mutating action)
   → map to operational verb (create/set/write/delete/move/send/share).

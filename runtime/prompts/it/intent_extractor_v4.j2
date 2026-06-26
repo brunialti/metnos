@@ -3,10 +3,10 @@ role: intent_extractor
 tier: middle
 lang: it
 style: definitional
-version: 5
+version: 6
 owner: roberto
 updated: 2026-06-26
-sha_prev: 7ef0b143
+sha_prev: 34c18789
 --- #}
 {# v4 (pilota, gate METNOS_INTENT_BOUNDARIES): i CONFINI DEI VERBI arrivano
    verbatim da vocab.ACTION_MAPPING.boundary (SoT) via {{ boundaries_block }}.
@@ -101,20 +101,20 @@ Esempi:
 "io chi sono" → {"verb": "read", "object": "persons"}
 "who am I" → {"verb": "read", "object": "persons"}
 "mio profilo" → {"verb": "read", "object": "persons"}
-"dimmi tutto su Lucia" → {"verb": "read", "object": "persons"}
+"dimmi tutto su un ospite" → {"verb": "read", "object": "persons"}
 "lista guest paired" → {"verb": "read", "object": "persons"}
 "chi e' registrato" → {"verb": "get", "object": "persons"}
 "elenca persone" → {"verb": "get", "object": "persons"}
-"quante foto di Carol" → {"verb": "get", "object": "persons"}
+"quante foto di un ospite" → {"verb": "get", "object": "persons"}
 "chi e' enrollato" → {"verb": "get", "object": "persons"}
 "identifica le persone nella foto" → {"verb": "get", "object": "persons"}
 "chi c'e' in questa immagine" → {"verb": "get", "object": "persons"}
 "riconosci i volti nella foto" → {"verb": "get", "object": "persons"}
-"cancella l'enrollment di Carol" → {"verb": "delete", "object": "persons"}
-"elimina l'iscrizione biometrica di Marco" → {"verb": "delete", "object": "persons"}
-"rimuovi Lucia dal registro volti" → {"verb": "delete", "object": "persons"}
-"enrolla Lucia / aggiungila al registro volti" → {"verb": "set", "object": "persons"}
-MAPPING: enrollment / iscrizione / registrazione biometrica / registro volti = dominio "persons" (NON entries/signatures); enrollare = set, cancellare l'enrollment = delete. Anche la forma IMPLICITA, senza la parola "enroll", quando presenti un VOLTO/una PERSONA da registrare = enrollment = set/persons: «questa è la faccia di marco», «ecco le foto di lucia, registrala», «questo è giovanni» (con foto) → {set, persons}, NON {classify, images} (non stai etichettando foto, stai registrando una persona).
+"cancella l'enrollment di un ospite" → {"verb": "delete", "object": "persons"}
+"elimina l'iscrizione biometrica di un familiare invitato" → {"verb": "delete", "object": "persons"}
+"rimuovi un ospite dal registro volti" → {"verb": "delete", "object": "persons"}
+"enrolla un ospite / aggiungilo al registro volti" → {"verb": "set", "object": "persons"}
+MAPPING: enrollment / iscrizione / registrazione biometrica / registro volti = dominio "persons" (NON entries/signatures); enrollare = set, cancellare l'enrollment = delete. Anche la forma IMPLICITA, senza la parola "enroll", quando presenti un VOLTO/una PERSONA da registrare = enrollment = set/persons: «questa è la faccia di un ospite», «ecco le foto del familiare invitato, registralo», «questo è un ospite» (con foto) → {set, persons}, NON {classify, images} (non stai etichettando foto, stai registrando una persona).
 PRINCIPIO SEMANTICO (universale, applica a TUTTI gli object, non solo events):
 - Verbo CREA/IMPOSTA/SCRIVE/CANCELLA un'entita' (azione destructive/mutating)
   → mappa al verb operativo (create/set/write/delete/move/send/share).
