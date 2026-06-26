@@ -6,7 +6,7 @@
 
 [![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](LICENSE)
 ![Status](https://img.shields.io/badge/status-pre--1.0%20(0.1.0)-orange)
-![Python](https://img.shields.io/badge/python-%E2%89%A53.11-green)
+![Python](https://img.shields.io/badge/python-%E2%89%A53.12-green)
 ![Self-hosted](https://img.shields.io/badge/cloud-not%20required-success)
 [![Docs](https://img.shields.io/badge/docs-metnos.com-1A477A.svg)](https://metnos.com)
 

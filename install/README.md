@@ -20,7 +20,7 @@ bash install/bootstrap.sh          # interactive
 bash install/bootstrap.sh --help   # see all options
 ```
 
-`bootstrap.sh` finds a Python ≥ 3.11, creates the virtualenv, installs
+`bootstrap.sh` finds a Python ≥ 3.12, creates the virtualenv, installs
 dependencies, and hands off to the orchestrator (`python -m install`). From a
 clone whose venv is already populated you can call the orchestrator directly:
 
@@ -53,13 +53,13 @@ them up; you choose how they are served:
 
 ```
   metnos  ──▶  AI backend shim  ──▶  your engines
-                (tiers + embeddings)   • llama-server (Gemma, Qwen, …) on :8080
-                                       • local ONNX embeddings (BGE-M3)
+                (tiers + embeddings)   • llama-server (any OpenAI-compat GGUF) on :8080
+                                       • local ONNX embeddings (BGE-M3, in-process)
                                        • frontier APIs (opt-in fallback)
 ```
 
-- **Embeddings** are selected by `METNOS_AI_BACKEND` (`auto` | `local` | `suprastructure`). Public installs use `local` = standalone ONNX BGE-M3 — no external hub required.
-- **Chat tiers** point at any OpenAI-compatible `llama-server` endpoint (local or remote). `middle`/`wise` default to a ~26B GGUF on `:8080`; `frontier` is opt-in (Anthropic/OpenAI keys from phase 4).
+- **Embeddings** run **in-process**: standalone ONNX BGE-M3, no external hub required. The model/endpoint is config-driven (`embedding_tiers.toml`); Metnos is autonomous for embedding out of the box.
+- **Chat tiers** point at any OpenAI-compatible `llama-server` endpoint (local or remote). `fast`/`middle`/`wise` default to a ~35B MoE GGUF on `:8080`; `frontier` is opt-in (Anthropic/OpenAI keys from phase 4).
 
 Without a local `middle`/`wise` tier the planner falls back to frontier for every
 turn (higher latency and cost) — the installer warns you about this rather than

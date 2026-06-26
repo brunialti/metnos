@@ -41,6 +41,7 @@ _PHASES = [
 
 @dataclass
 class Args:
+    check: bool
     resume: bool
     force: bool
     force_phase: int | None
@@ -55,6 +56,8 @@ def _parse() -> Args:
         prog="metnos-installer",
         description="Install Metnos on this machine. Idempotent — safe to re-run.",
     )
+    p.add_argument("--check", action="store_true",
+                   help="Pre-flight only: run system checks and exit, writing nothing.")
     p.add_argument("--resume", action="store_true",
                    help="Skip phases whose sentinel exists (default behaviour).")
     p.add_argument("--force", action="store_true",
@@ -71,6 +74,7 @@ def _parse() -> Args:
                    help="Force an optional component off (e.g. --skip photon).")
     ns = p.parse_args()
     return Args(
+        check=ns.check,
         resume=ns.resume,
         force=ns.force,
         force_phase=ns.force_phase,
@@ -149,6 +153,18 @@ def _run_phase(num: int, mod_name: str, human_name: str, args: Args) -> bool:
 
 def main() -> int:
     args = _parse()
+
+    # --check: pre-flight only. Runs the resource checks and exits WITHOUT
+    # writing anything (no disclaimer sentinel, no state dirs, no models) — runs
+    # before _welcome()/the disclaimer gate exactly so it stays read-only.
+    if args.check:
+        from . import preflight
+        ui.banner("Metnos installer · pre-flight", "system checks only — nothing is written")
+        ok = preflight.run_all(min_disk_gb=8)
+        ui.ok("Pre-flight passed — system looks ready.") if ok else \
+            ui.warn("Pre-flight found issues (see above). Nothing was written.")
+        return 0 if ok else 1
+
     _welcome()
 
     # Disclaimer + language must be accepted before anything else.

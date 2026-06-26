@@ -1,75 +1,57 @@
 # Metnos public install — overview
 
-Pipeline di installazione per utenti pubblici (GitHub clone).
+Public install path for a Metnos instance cloned from GitHub.
 
-## Architettura a 3 layer
+> **There is one supported installer: `install/bootstrap.sh`.** It is the
+> friendly, idempotent, six-phase flow documented in
+> [`../README.md`](../README.md). This directory only holds a few low-level
+> helper scripts it can call; you normally never run them by hand.
 
-```
-┌──────────────────────────────────────┐
-│  metnos (questo repo)                │  ← assistente AI personale
-│   - runtime, executors, chat HTTP    │
-│   - suprashim.py (adapter)           │
-└────────────────┬─────────────────────┘
-                 │ chiama
-                 ▼
-┌──────────────────────────────────────┐
-│  suprastructure (dipendenza)         │  ← hub servizi AI
-│   - registry: routing logico tier    │
-│   - clients: llamacpp/ollama/anthropic│
-└────────────────┬─────────────────────┘
-                 │ chiama
-                 ▼
-┌──────────────────────────────────────┐
-│  backend LLM (scelta utente)         │  ← motori inference
-│   - llama-server (Gemma, Qwen, ...)  │
-│   - ollama, vllm, Anthropic API, ... │
-└──────────────────────────────────────┘
+## Quick start
+
+```bash
+git clone https://github.com/brunialti/metnos.git
+cd metnos
+bash install/bootstrap.sh --check   # pre-flight only, writes nothing
+bash install/bootstrap.sh           # interactive, six-phase setup
 ```
 
-Metnos NON sa quale modello concreto risponde alle sue richieste. Vede solo
-**tier logici** (`tiny`/`fast`/`middle`/`wise`/`frontier`). La mappatura
-tier→backend vive in suprastructure.
+`bootstrap.sh` finds a Python ≥ 3.12, creates the virtualenv, installs the
+dependencies, then hands off to the orchestrator (`python -m install`). It
+provisions everything a working instance needs — embedder, LLM serving, support
+services, signed executors — and finishes by exercising a **real turn** against
+the fresh instance.
 
-## Script di installazione
+## Architecture — Metnos is self-contained
 
-| Script | Cosa fa | Quando |
-|---|---|---|
-| `00_prepare_env.sh` | Verifica OS, GPU, RAM; scrive `.env` con paths | Una volta, primo install |
-| `01_install_supra.sh` | Clona+installa suprastructure venv | Una volta |
-| `02_install_llm_<model>.sh` | Scarica modello + lancia llama-server systemd unit | Per ogni modello scelto |
-| `03_install_metnos.sh` | Clone+venv+systemd+config Metnos | Una volta |
-| `04_wire_supra.sh` | Registra backend installati nei tier supra | Dopo ogni cambio modello |
+```
+┌──────────────────────────────────────────┐
+│  metnos (this repo)                      │  ← personal AI assistant
+│   - runtime, executors, chat HTTP        │
+│   - in-process embedder (BGE-M3 ONNX)    │  ← autonomous, no external hub
+│   - virt/ model facade (config-driven)   │
+└────────────────┬─────────────────────────┘
+                 │ tiers point at
+                 ▼
+┌──────────────────────────────────────────┐
+│  LLM backend (your choice)               │  ← inference engine
+│   - llama-server (any OpenAI-compat GGUF)│
+│   - or a remote endpoint, or frontier API│
+└──────────────────────────────────────────┘
+```
 
-**Script intelligente `metnos-installer`**: wrapper interattivo che chiede
-all'utente cosa ha (RAM, GPU, OS, internet) e cosa vuole (uso quotidiano,
-sviluppo, sola lettura...), poi orchestra `00`-`04` con le scelte migliori
-per il profilo. **Setup standard sempre caldamente raccomandato** (Gemma 4
-26B + Qwen 9B come tier `wise`+`fast`).
+Metnos never names a concrete model: it sees logical **tiers**
+(`fast` / `middle` / `wise` / `frontier`). The three local tiers point at one
+`llama-server` (a ~35B MoE GGUF by default); `frontier` is an opt-in cloud
+fallback. The tier→model binding lives in `~/.config/metnos/llm_tiers.toml` —
+changing a model is editing the TOML, not the code. **Embeddings run in-process**
+(BGE-M3 ONNX); there is no `suprastructure` dependency.
 
-## Suprashim integration
+## Changing the LLM after install
 
-`runtime/suprashim.py` espone:
-- `get_llm(tier="fast")` → client da supra registry
-- `chat(system, user, tier=..., ...)` → wrapper sync legacy
-- `is_available()` → True se supra installato + wired
-- `get_tier_info()` → introspect per admin dashboard
-- `SupraNotConfigured` exception
+Edit `~/.config/metnos/llm_tiers.toml` to point a tier at a different
+`llama-server` endpoint or model, then restart the serving unit. No re-install,
+no code change — the binding is config, the planner never sees it.
 
-Tutto `llm_router` / `llm_helpers` chiama `suprashim.chat(...)` invece di
-URL diretti. Fallback: se `is_available() == False`, usa
-`llm_tiers.toml::provider=llamacpp` storico (dev/test mode).
-
-## Manuali utente
-
-- `tier_swap.md` — come cambiare il modello dietro un tier (es. upgrade Gemma 4 26B → Gemma 5 33B)
-- `model_tuning.md` — parametri llama-server consigliati per OS/GPU comuni (Strix Halo, RTX 30/40/50, Apple M-series, CPU-only)
-- `troubleshooting.md` — errori comuni: tier non disponibile, supra disconnesso, OOM, ecc.
-
-## Per chi deve **modificare il backend dopo install**
-
-1. Stop systemd unit del modello vecchio: `systemctl --user stop llamacpp-<old>.service`
-2. Install nuovo modello: `./02_install_llm_<new>.sh`
-3. Re-wiring: `./04_wire_supra.sh --tier=fast --replace`
-4. Metnos prosegue zero downtime (supra reroute live)
-
-Vedi `tier_swap.md` per dettagli.
+See [`../README.md`](../README.md) for the full project overview and
+[`../INSTALL_NOTES.md`](../INSTALL_NOTES.md) for the install contract.
