@@ -163,6 +163,15 @@ class TestFindImagesValidation(unittest.TestCase):
 class TestFindImagesUnified(unittest.TestCase):
 
     def setUp(self):
+        # §8.5 isolamento: `virt._cache` cacha l'embedder come SINGLETON di
+        # modulo (`get_embedder("text")` → BGEEmbeddingService, una volta sola).
+        # Se un test precedente lo riscalda, il nostro `mock.patch` su
+        # `bge_embedding.BGEEmbeddingService` viene BYPASSATO (istanza già in
+        # cache) → embedding reali → ranking diverso → flakiness order-dipendente.
+        # Svuotiamo la cache PRIMA (no contaminazione in ingresso) e DOPO (no
+        # leak dello stub ai test successivi).
+        import virt
+        virt._cache.clear()
         self.tmp = Path(tempfile.mkdtemp(prefix="metnos_find_unified_test_"))
         self._old = os.environ.get("METNOS_INDEX_ROOT")
         os.environ["METNOS_INDEX_ROOT"] = str(self.tmp / "index")
@@ -174,6 +183,8 @@ class TestFindImagesUnified(unittest.TestCase):
         self.idx_dir = fii._index_dir(self.corpus)
 
     def tearDown(self):
+        import virt
+        virt._cache.clear()  # non lasciare lo stub embedder in cache (vedi setUp)
         if self._old is None:
             os.environ.pop("METNOS_INDEX_ROOT", None)
         else:
