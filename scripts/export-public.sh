@@ -115,9 +115,11 @@ while IFS= read -r -d '' f; do
     *.sqlite) continue ;;                           # binario: sed lo corromperebbe (sanific. SQL piu' sotto)
   esac
   sed -i -E \
+    -e 's,192\.168\.0\.0/([0-9]+),@@PRIV_RFC1918_\1@@,g' \
     -e 's/192\.168\.1\.33/192.0.2.10/g' \
     -e 's/192\.168\.1\.20/192.0.2.20/g' \
     -e 's/192\.168\.[0-9]+\.[0-9]+/192.0.2.0/g' \
+    -e 's,@@PRIV_RFC1918_([0-9]+)@@,192.168.0.0/\1,g' \
     -e 's/fd[0-9a-f]{2}:[0-9a-f:]+/2001:db8::1/g' \
     -e 's/\bnas\.local\b/host.local/g' \
     -e 's/\benp197s0\b/eth0/g' \
@@ -148,9 +150,14 @@ def scrub(s):
     if not isinstance(s, str):
         return s
     s = s.replace('/home/roberto', '/home/user')
+    # Protegge la rete RFC1918 generica `192.168.0.0/N` (NON è PII: range privato
+    # standard) dallo scrub host: altrimenti `192.168.0.0/16`→`192.0.2.0/16` =
+    # CIDR INVALIDO (host bits set) → boot crash. Stessa difesa del sed sopra.
+    s = re.sub(r'192\.168\.0\.0/([0-9]+)', r'@@PRIV_RFC1918_\1@@', s)
     s = re.sub(r'192\.168\.1\.33', '192.0.2.10', s)
     s = re.sub(r'192\.168\.1\.20', '192.0.2.20', s)
     s = re.sub(r'192\.168\.[0-9]+\.[0-9]+', '192.0.2.0', s)
+    s = re.sub(r'@@PRIV_RFC1918_([0-9]+)@@', r'192.168.0.0/\1', s)
     s = re.sub(r'fd[0-9a-f]{2}:[0-9a-f:]+', '2001:db8::1', s)
     s = re.sub(r'\bnas\.local\b', 'host.local', s)
     s = re.sub(r'\benp197s0\b', 'eth0', s)
@@ -199,7 +206,10 @@ PII_EMAIL='roberto\.brunialti@|mykleos@|@knowcastle\.com|@migadu\.com'
 # (es. `guest_iacopo`, `MYKLEOS_MAIL_USER`) non ha boundary e sfuggiva al gate;
 # il grep è case-insensitive (`-i`) per prendere anche le forme MAIUSCOLE.
 PII_PERSON='/home/roberto|iacopo|silvia|matteo'
-PII_NET='192\.168\.[0-9]+\.[0-9]+|fd[0-9a-f]{2}:|\bnas\.local\b|\benp197s0\b'
+# 192.168.X.Y solo se è un HOST specifico (3°/4° ottetto ≠ 0): la rete RFC1918
+# generica `192.168.0.0`/`192.168.0.0/16` è un costante standard (NON PII), tenuta
+# apposta (trusted-LAN) → esente dal gate.
+PII_NET='192\.168\.[0-9]+\.[1-9][0-9]*|192\.168\.[1-9][0-9]*\.[0-9]+|fd[0-9a-f]{2}:|\bnas\.local\b|\benp197s0\b'
 # Topologia account di posta reale (nomi-account + host personali): rivela
 # datore/ISP/provider del proprietario. Lo scrub sopra li sostituisce; questo
 # gate aborta se qualcosa sopravvive (es. un manifest firmato non sterilizzato).
