@@ -3,10 +3,10 @@ role: intent_extractor
 tier: middle
 lang: en
 style: definitional
-version: 4
+version: 5
 owner: roberto
-updated: 2026-06-24
-sha_prev: 8e858375
+updated: 2026-06-26
+sha_prev: d41afe7b
 --- #}
 {# v4 (pilota, gate METNOS_INTENT_BOUNDARIES): i CONFINI DEI VERBI arrivano
    verbatim da vocab.ACTION_MAPPING.boundary (SoT) via {{ boundaries_block }}.
@@ -55,9 +55,9 @@ OBJECT DISAMBIGUATIONS (the object, not the verb):
 Examples:
 "move spam emails to spam" → {"verb": "move", "object": "messages"}
 "read today's emails" → {"verb": "read", "object": "messages"}
-"show emails from sender X" → {"verb": "render", "object": "messages"}
-"show me today's emails" → {"verb": "render", "object": "messages"}
-"show me last 10 emails" → {"verb": "render", "object": "messages"}
+"show emails from sender X" → {"verb": "read", "object": "messages"}
+"show me today's emails" → {"verb": "read", "object": "messages"}
+"show me last 10 emails" → {"verb": "read", "object": "messages"}
 "what's in the mail box" → {"verb": "list", "object": "messages"}
 "find photos in Documents" → {"verb": "find", "object": "files"}
 "find emails with subject invoice" → {"verb": "find", "object": "messages"}
