@@ -95,30 +95,56 @@ def _is_provider_suffix(suf):
     return suf in vocab.PROVIDER_SUFFIXES or head in vocab.PROVIDER_SUFFIXES
 
 
+def test_focusing_rule_classification_synthetic():
+    """REGOLA DI FOCUSING (test autoritativo, DETERMINISTICO): su un catalog
+    SINTETICO con pair noti, il drop-generico classifica come provider SOLO i
+    containment-pair il cui suffisso è un provider; i pair qualifier-modalità
+    (read_files ⊂ read_files_ocr) NON sono toccati. Indipendente dal catalog
+    live (sotto la HOME-sandbox dei test gli executor user-data — github — sono
+    assenti: vedi conftest e [[project-i18n-lexicon-debt]] per il pattern). Così
+    la regola è verificata SEMPRE, non solo quando esistono executor provider."""
+    names = [
+        "find_files", "find_files_github",                # provider-pair
+        "read_files", "read_files_github",                # provider-pair
+        "read_events", "read_events_google_workspace",    # provider multi-token
+        "read_files_ocr",                                 # qualifier: read_files ⊂ read_files_ocr
+        "filter_entries", "list_dirs",
+    ]
+    pairs = _containment_pairs(names)
+    provider_pairs = [(a, b) for a, b, s in pairs if _is_provider_suffix(s)]
+    qualifier_pairs = [(a, b, s) for a, b, s in pairs
+                       if not _is_provider_suffix(s)]
+    # i provider-pair attesi (incl. multi-token) sono riconosciuti...
+    assert ("find_files", "find_files_github") in provider_pairs
+    assert ("read_events", "read_events_google_workspace") in provider_pairs
+    # ...e il qualifier-modalità NON è classificato provider (mai droppato).
+    assert ("read_files", "read_files_ocr", "ocr") in qualifier_pairs
+    for a, b, s in qualifier_pairs:
+        assert not _is_provider_suffix(s)
+
+
 def test_focusing_rule_touches_only_provider_pairs():
-    """Enumera il catalog reale: la regola di focusing (drop generico) deve
-    valere SOLO sui containment-pair il cui suffisso è un PROVIDER. I pair
-    qualifier-modalità (read_files ⊂ read_files_ocr) NON devono essere toccati
-    (intento diverso). Auto-verificante: difende il confine della regola."""
+    """Audit BEST-EFFORT sul catalog REALE: SE ci sono provider-pair, il loro
+    suffisso DEVE essere un provider, e nessun qualifier-pair dev'essere
+    classificato provider per errore. NON richiede che esistano executor provider
+    (sono user-data, assenti sotto la HOME-sandbox dei test → conftest): la regola
+    in sé è coperta da `test_focusing_rule_classification_synthetic`. Questo guard
+    intercetta un nuovo executor REALE mal-categorizzato, senza essere
+    order-dipendente dallo stato user-data del catalog."""
     import loader
     cat = loader.load_catalog(verify=True)
     names = sorted({getattr(e, "name", None)
                     for e in (cat.values() if hasattr(cat, "values") else cat)
                     if getattr(e, "name", None)})
     pairs = _containment_pairs(names)
-    provider_pairs = [(a, b) for a, b, s in pairs if _is_provider_suffix(s)]
     qualifier_pairs = [(a, b, s) for a, b, s in pairs
                        if not _is_provider_suffix(s)]
-    # tutti i provider-pair: il suffisso DEVE essere in PROVIDER_SUFFIXES.
-    for a, b in provider_pairs:
-        suf = b[len(a) + 1:]
-        assert _is_provider_suffix(suf)
-    # i qualifier-pair: il suffisso NON deve essere un provider (mai droppati).
+    for a, b, s in _containment_pairs(names):
+        if _is_provider_suffix(s):
+            assert _is_provider_suffix(b[len(a) + 1:])
     for a, b, s in qualifier_pairs:
         assert not _is_provider_suffix(s), (
             f"{a} ⊂ {b}: suffix {s} classificato provider per errore")
-    # almeno i 6 provider-pair github noti esistono (sanity).
-    assert len(provider_pairs) >= 1
 
 
 def test_early_warning_unclassified_containment():

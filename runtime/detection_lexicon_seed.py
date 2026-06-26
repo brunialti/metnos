@@ -28,6 +28,13 @@ from vocab import PROVIDER_SUFFIXES  # identità provider = vocabolario (SoT uni
 # + qui i suoi marker; le due liste devono coprire lo stesso set (guard:
 # `test_provider_markers_cover_suffixes`). Le altre lingue le sintetizza il
 # daemon dal word-list tradotto (it={} → fallback en).
+#
+# DEBITO i18n (NON sanare finché lo scope è IT+EN, §1 — YAGNI): questo `{it,en}`
+# è un dict a 2 LOCALI FISSI, non i18n vero. Conseguenza: «aggiungi una lingua =
+# lascia cadere un file» NON funziona — il 3° locale richiede PRIMA il refactor
+# verso il DB i18n locale-driven (chiavi semantiche + fallback xx→en, come
+# `messages.get`/METNOS_LANG §11) + `validate_invariant` su set-locali APERTO
+# (oggi esige parità IT/EN incondizionata). Vedi memoria project-i18n-lexicon-debt.
 _PROVIDER_MARKERS_EN = {
     "github": ["github", "pr", "issue", "issues", "repo", "repository",
                "commit", "branch", "workflow", "gist", "fork", "merge"],
