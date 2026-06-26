@@ -19,30 +19,40 @@
     "source_lang": "en",
     "version_hash": "sha256:cc4c4b287714b8b30473546c9806d7bef94760d2b8c1589331e0be1362f8504b"
   },
+  "describe_map_salience": {
+    "source_hash": "sha256:c357b3df3c8955da84b50b3f541712cbaec6160004209f5153d8914d331c4bed",
+    "source_lang": "en",
+    "version_hash": "sha256:13e6ef419f18c65b50107312609d1ab8b2ef53d9645fbb0175fbea8399ca7212"
+  },
   "e2e_judge": {
     "source_hash": "sha256:63dab73c38ee9a7732d9c777e6093f9815f62bd2605290b93cfdba9d638aef8c",
     "source_lang": "en",
     "version_hash": "sha256:296f5d9fc8eaa0dd93cd25d96fbb5fc801bb49bc53d3f2e030bebc20e05a1025"
   },
   "engine_proposer": {
-    "source_hash": "sha256:7916bcb303ff805854a1cf0aaa2c7ccd89ee947e0b8f9543e2eb861cc655dd85",
+    "source_hash": "sha256:88a944b887cd706048aaa1607f221b061f05870206e5fbf1bb9bd9777de5353d",
     "source_lang": "en",
-    "version_hash": "sha256:d71ab1dce5f2126e16e26666a41228467969b71764e30310852d515b22952e5f"
+    "version_hash": "sha256:2359102276bb11d2a3dad5e933ef185597208895ac62c8fefa22f8f3119d79b8"
   },
   "engine_proposer_metis": {
-    "source_hash": "sha256:b0ce56f6fd80cd82175b8d22fe984b4c4e3ea4627fb9ef0fc5d93f16db0ddc13",
+    "source_hash": "sha256:6722244489950256b4ac39ecb58fdde62b9ae9576047541ab95aaa4402d9fe55",
     "source_lang": "en",
-    "version_hash": "sha256:8456beadf2b327f99bc783489188f6db8eb1201ca6cae5ac8a2dfb1b17f3d7d0"
+    "version_hash": "sha256:0a81612bc434c802e65c9684252a47285722543aab7670a286d557c4973008e7"
   },
   "final_assembler": {
     "source_hash": null,
     "source_lang": null,
     "version_hash": "sha256:86f57856ab222506a26419760b948e295cb2b353fa8f17d7489e23191fbc7bec"
   },
-  "intent_extractor": {
-    "source_hash": "sha256:d6ba6528d72e6704a33aa5f0a258b32fd942c8467bf9d3a54bc8b05337b5b844",
+  "intent_extractor_scaffold": {
+    "source_hash": "sha256:994ff53b670b2e004fd0a45ad8f1fe73b0e9ca210fff139412b893478cf6c21c",
     "source_lang": "en",
-    "version_hash": "sha256:f09a163ff6b64042e561d825500b865c45b6a7d298181b8f8ca08ad30cd2b4b5"
+    "version_hash": "sha256:60f76e1134327f2b14f6a93d97acdbd48b6eb04bfa5acf65d2656bab001ed43b"
+  },
+  "intent_extractor_v4": {
+    "source_hash": "sha256:084885cf23dd2d040cb7832b5ee440141ff0343fc924a85cc5d5270c9be66528",
+    "source_lang": "en",
+    "version_hash": "sha256:182616b20dc0af208081e3e3165e9ed2bfa9c60cd73cc2eb58ba102beccf4c43"
   },
   "planner": {
     "source_hash": "sha256:e1c7da82ff17b8c5e92f21e9b2cc98f69749bab3e82b3df78419aa772c7a78ad",

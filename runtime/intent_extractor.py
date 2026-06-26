@@ -49,7 +49,8 @@ from config import DEFAULT_LANG
 # molto prima). §7.3 generale, non patch per-query.
 _INTENT_MAX_TOKENS = 320
 
-# Prompt persistito in `runtime/prompts/<lang>/intent_extractor.j2` (ADR 0092 Phase 2).
+# Prompt persistito in `runtime/prompts/<lang>/intent_extractor_v4.j2` (ADR 0092
+# Phase 2; v3 `intent_extractor.j2` ritirato 26/6, §7.1 — v4 unico template mono).
 # Renderizzato lazy a ogni `extract_intent` call (cache MiniJinja built-in).
 
 
@@ -69,20 +70,19 @@ def extract_intent(query: str, llm_call) -> Optional[dict]:
         return None
     if _dl.match("undo.intent_bypass", query):
         return None  # signal "no canonical verb" → caller usa fallback
-    # Gate REVERSIBILE (24/6, pilota ratificato): METNOS_INTENT_BOUNDARIES=1 →
-    # template v4 col blocco CONFINI-VERBO iniettato verbatim dal SoT
-    # (vocab.render_boundaries). Default 0 = prod invariato (template attuale,
-    # comportamento byte-identico). In regressione: unset env → ritorno immediato.
+    # v4 è il template UNICO del path mono (v3 ritirato 26/6, §7.1): i CONFINI-VERBO
+    # arrivano verbatim dal SoT (vocab.render_boundaries) → coerenza def↔prompt per
+    # costruzione, niente twin scritto a mano che driftava (v3 citava `fetch`, verbo
+    # rimosso §2.2). Pilota ratificato (mono 83.5%→98.8%, gate routing 29/29).
     #
-    # METNOS_INTENT_SCAFFOLD=1 (24/6, hybrid anaphora-aware, richiede BOUNDARIES=1):
+    # METNOS_INTENT_SCAFFOLD=1 (24/6, hybrid anaphora-aware, pilota compound, default 0):
     # segmentazione DETERMINISTICA (split_query_chunks) → segmenti numerati nel
     # prompt → l'LLM emette {n,ref,verb,object} risolvendo l'ANAFORA (clitici
     # -lo/-le, oggetti elisi) sulla query INTERA → consumer riconcilia il count vs
     # i chunk e riempie i buchi col detector lessicale. §7.9: codice possiede
     # segmentazione+count, LLM possiede anafora+boundary. Solo su compound (>=2
     # segmenti); mono → path v4 invariato.
-    _scaffold = (os.getenv("METNOS_INTENT_SCAFFOLD", "0") == "1"
-                 and os.getenv("METNOS_INTENT_BOUNDARIES", "0") == "1")
+    _scaffold = os.getenv("METNOS_INTENT_SCAFFOLD", "0") == "1"
     _segments: list[str] = []
     if _scaffold:
         try:
@@ -114,20 +114,13 @@ def extract_intent(query: str, llm_call) -> Optional[dict]:
             boundaries_block=_vocab_boundaries(DEFAULT_LANG),
             segments_block=segments_block,
         )
-    elif os.getenv("METNOS_INTENT_BOUNDARIES", "0") == "1":
+    else:
         prompt = prompt_loader.get(
             "intent_extractor_v4",
             DEFAULT_LANG,
             verbs_inline=_vocab_verbs_inline(),
             objects_inline=_vocab_objects_inline(),
             boundaries_block=_vocab_boundaries(DEFAULT_LANG),
-        )
-    else:
-        prompt = prompt_loader.get(
-            "intent_extractor",
-            DEFAULT_LANG,
-            verbs_inline=_vocab_verbs_inline(),
-            objects_inline=_vocab_objects_inline(),
         )
     try:
         res = llm_call(prompt, query, max_tokens=_INTENT_MAX_TOKENS, think=False)

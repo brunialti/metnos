@@ -94,12 +94,12 @@ class TestGetSplit(unittest.TestCase):
 
     def test_split_template_without_marker_degrades_to_get(self):
         import prompt_loader
-        # intent_extractor non dichiara static_first: render completo + "".
-        head, tail = prompt_loader.get_split("intent_extractor", "it",
+        # intent_extractor_v4 non dichiara static_first: render completo + "".
+        head, tail = prompt_loader.get_split("intent_extractor_v4", "it",
                                               query="che ore sono")
         self.assertEqual(tail, "")
         self.assertEqual(head,
-                         prompt_loader.get("intent_extractor", "it",
+                         prompt_loader.get("intent_extractor_v4", "it",
                                             query="che ore sono"))
 
     def test_split_missing_template_raises(self):
@@ -257,8 +257,8 @@ class TestRootResolution(unittest.TestCase):
         sollevava RuntimeError; ora deve restituire il render EN."""
         import prompt_loader as pl
         pl._envs.pop("xx_nonexistent_xx", None)
-        out = pl.get("intent_extractor", "xx_nonexistent_xx")
-        en = pl.get("intent_extractor", "en")
+        out = pl.get("intent_extractor_v4", "xx_nonexistent_xx")
+        en = pl.get("intent_extractor_v4", "en")
         self.assertEqual(out, en)
 
     def test_raises_only_if_even_en_missing(self):
@@ -335,11 +335,11 @@ class TestKFallbackAndAutoPromote(unittest.TestCase):
         import prompt_loader as pl
         xx = pl._BASE / "xx_k"
         (xx / "_pending").mkdir(parents=True, exist_ok=True)
-        (xx / "_pending" / "intent_extractor.j2.candidate").write_text(
+        (xx / "_pending" / "intent_extractor_v4.j2.candidate").write_text(
             "CAND_{{ lang }}", encoding="utf-8")
         pl._envs.pop("xx_k", None)
         try:
-            out = pl.get("intent_extractor", "xx_k")
+            out = pl.get("intent_extractor_v4", "xx_k")
             self.assertEqual(out.strip(), "CAND_xx_k")
         finally:
             shutil.rmtree(xx, ignore_errors=True)
@@ -349,7 +349,7 @@ class TestKFallbackAndAutoPromote(unittest.TestCase):
         """Per IT/EN il live esiste sempre → vince sul candidato (i `_pending`
         di IT/EN restano ignorati): comportamento invariato."""
         import prompt_loader as pl
-        live = pl.get("intent_extractor", "it")
+        live = pl.get("intent_extractor_v4", "it")
         self.assertNotIn("CAND_", live)
         self.assertGreater(len(live), 100)
 

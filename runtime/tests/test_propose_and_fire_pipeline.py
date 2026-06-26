@@ -214,8 +214,8 @@ def test_propose_only_does_not_require_get_inputs(free_and_gi):
 
 def test_intent_examples_present_in_prompts():
     root = Path(__file__).resolve().parents[2]
-    p_it = (root / "runtime/prompts/it/intent_extractor.j2").read_text(encoding="utf-8")
-    p_en = (root / "runtime/prompts/en/intent_extractor.j2").read_text(encoding="utf-8")
+    p_it = (root / "runtime/prompts/it/intent_extractor_v4.j2").read_text(encoding="utf-8")
+    p_en = (root / "runtime/prompts/en/intent_extractor_v4.j2").read_text(encoding="utf-8")
     # Almeno una variante propose+continuazione mutating mappa a verb=find.
     assert "prenotami quella che scelgo" in p_it
     assert "fissa il primo libero" in p_it
