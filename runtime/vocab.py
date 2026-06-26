@@ -256,12 +256,32 @@ QUALIFIERS = (
     # Candidati a promozione graylist→whitelist
     # (find_signatures_promotion_candidates → qualifier "promotion").
     "promotion", "candidates",
-    # Famiglia 4 — Provider (ADR 0136): backend non-default come 4° qualifier.
+    # Famiglia 4 — Provider (ADR 0136): backend non-default come qualifier.
     # `_metnos` (default) e' omesso; i provider espliciti sono token vocab.
-    # `github` (ADR 0141): issues/pulls/messages/tasks su GitHub REST v3.
-    # (`google_workspace` resta gestito a livello skill importer.)
+    # `github` (ADR 0141): issues/pulls/messages/tasks/files/dirs su GitHub REST.
+    # `google_workspace` (ADR 0123): gmail/calendar/drive. Erano gestiti solo a
+    # livello skill importer → `validate_name(read_events_google_workspace)`
+    # FALLIVA (bug latente scoperto 26/6: i vendorizzati firmati bypassano la
+    # validazione, ma un provider SINTETIZZATO sarebbe rifiutato). Ora membri
+    # espliciti della famiglia provider (vedi PROVIDER_SUFFIXES sotto).
     "github",
+    "google_workspace",
 )
+
+# ── Famiglia PROVIDER (asse ortogonale §2.2) ─────────────────────────────
+# Sottoinsieme dei QUALIFIERS che identificano un BACKEND non-default (stesso
+# intento, provider diverso) — distinti dai qualifier-MODALITA' (ocr/csv/...)
+# che cambiano l'intento. È l'asse su cui vale la regola di FOCUSING: un nome
+# `verbo_oggetto_<provider>` ESTENDE (contiene) il generico `verbo_oggetto` →
+# col marker provider presente, il generico è escluso (provider_gate_names).
+# Un qualifier-modalita' NON ha questa relazione (read_files_ocr ≠ read_files).
+#
+# FONTE UNICA dell'IDENTITÀ provider: l'identità (quali provider esistono) è
+# vocabolario chiuso e vive QUI. `detection_lexicon_seed` DERIVA da qui le chiavi
+# di `provider.markers` e vi aggiunge solo i marker NL i18n (i valori). Zero
+# duplicazione: vocab è puro (0 import, radice); il seed importa vocab (direzione
+# sicura, mai il contrario). `_metnos` (default) è OMESSO dal nome → non qui.
+PROVIDER_SUFFIXES = frozenset({"github", "google_workspace"})
 
 # ── Qualifier → Object compatibility map (Naming Authority R4) ────────
 #
@@ -303,6 +323,11 @@ QUALIFIER_OBJECT_COMPAT = {
     # espongono. Coerente con l'asse provider §2.2 (backend non-default nel
     # qualifier). Origine: turn 6ec02267 «quanti file su github nel repo».
     "github": frozenset({"issues", "pulls", "messages", "tasks", "files", "dirs"}),
+    # Provider Google Workspace (ADR 0123): gmail (messages), calendar (events,
+    # calendars), drive (files), contacts (contacts, persons). Asse provider §2.2,
+    # gemello di github. Object ammessi = i domini coperti dalla skill.
+    "google_workspace": frozenset({"messages", "events", "calendars", "files",
+                                   "contacts", "persons"}),
     # Granularita' testo
     "lines": frozenset({"texts", "messages"}),
     "paragraphs": frozenset({"texts", "messages"}),

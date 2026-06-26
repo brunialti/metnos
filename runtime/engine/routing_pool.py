@@ -32,6 +32,193 @@ _POOL_COMPANIONS = {
 }
 
 
+def _provider_recruit_and_gate(names: list[str], query: str, intent,
+                               catalog: list) -> list[str]:
+    """Recruit + gate PROVIDER simmetrico sul pool (§7.9; modello ADR 0165: il
+    provider è CONFIGURAZIONE, non intent). SoT = `detection_lexicon
+    provider.markers` via `active_provider_suffixes`; ZERO liste di sinonimi.
+
+    Chiude il GAP «pool provider-cieco sul path MONO»: «su github» non reclutava
+    `find_files_github` → il proposer ripiegava su `find_urls`(web) o
+    `find_files`(locale). Bug live turn 582b4824/22f32adb (26/6).
+
+    (1) RECRUIT: per ogni suffix provider ATTIVO nella query, porta nel pool i
+        tool `*_<suffix>` del catalog (non-dormant) il cui OBJECT canonico
+        (vocab.OBJECTS) è fra gli object delle clausole/intent. Specchio MONO del
+        completamento famiglia-object che il ramo compound fa già.
+    (2) GATE: `provider_gate_names` — col marker presente cade il canonico
+        non-suffissato se la sua variante provider è in pool (UN provider per
+        clausola). Engine-agnostico + coperto dal bench (prima solo proposer_v3).
+    (3) SCOPE-RESTRICTION GUARD (ADR 0179): un modificatore-RESTRIZIONE (provider)
+        confligge con un modificatore-ESTENSIONE (quantificatore «tutti») che fa
+        scivolare l'OGGETTO a un'accezione più ampia (`files`→`urls`). La
+        restrizione vince: se un produttore provider-nativo dell'accezione-stretta
+        è nel pool, sopprimi i generici dell'accezione-ampia (url-generics).
+        Preserva: web genuino (no provider), URL esplicito, mixed-compound.
+
+    Tool-existence-safe, idempotente, mai pool vuoto (§2.8)."""
+    try:
+        from tool_grammar import active_provider_suffixes, provider_gate_names
+        suffixes = active_provider_suffixes(query)
+        from vocab import OBJECTS as _VOBJ_SET, PRODUCER_VERBS as _PROD_SET
+    except Exception as ex:  # noqa: BLE001 — §2.8: pool resta valido
+        log.debug("routing_pool: provider step skip (%r)", ex)
+        return names
+    _VOBJ, _PROD = set(_VOBJ_SET), set(_PROD_SET)
+
+    # Marker provider ASSENTE: niente recruit/web-steal (riguardano un provider
+    # ATTIVO), ma il GATE va applicato comunque — col marker assente esclude le
+    # varianti `*_<provider>` dal pool (context-binding: un tool github non entra
+    # senza «github» nella query). Senza questo, l'LLM sceglie find_files_github
+    # per «trova pagine web su rust» (il prefilter lo porta per il verbo «find»).
+    # Bug live: query web pura → find_files_github. Simmetrico al recruit.
+    if not suffixes:
+        try:
+            kept, excluded = provider_gate_names(names, query)
+            if kept:
+                names = kept
+                if excluded:
+                    log.debug("routing_pool: provider gate (no-marker) "
+                              "escluso %s", excluded)
+        except Exception as ex:  # noqa: BLE001
+            log.debug("routing_pool: provider gate (no-marker) fallito (%r)", ex)
+        return names
+
+    # Object delle clausole (compound) o dell'intent (mono).
+    clause_objs: set = set()
+    for a in (getattr(intent, "actions", None) or []):
+        o = a.get("object") if isinstance(a, dict) else None
+        if o:
+            clause_objs.add(o)
+    if getattr(intent, "object", None):
+        clause_objs.add(intent.object)
+
+    def _tool_object(nm: str) -> str:
+        for tok in (nm or "").split("_")[1:]:
+            if tok in _VOBJ:
+                return tok
+        return ""
+
+    def _nm(e):
+        return (e.get("name") if isinstance(e, dict)
+                else getattr(e, "name", None))
+
+    def _dormant(e):
+        return (e.get("dormant") if isinstance(e, dict)
+                else getattr(e, "dormant", False))
+
+    # Object VUOTO ma PROVIDER ATTIVO: l'intent LLM non ha classificato l'object
+    # (succede proprio sullo scivolamento «tutti i file su github» — l'ambiguità
+    # che lo manda a urls/vuoto). Ma `active_provider_suffixes` SA che è github:
+    # l'object vuoto NON deve disattivare il provider. Deriva gli object-target
+    # dai produttori-provider GIÀ nel pool (il prefilter li ha portati): «su
+    # github» + find_files_github nel pool → object {files} reclutabile. Senza
+    # provider attivo (return a monte) questo ramo non si raggiunge → intent
+    # incompleto generico resta full-catalog invariato.
+    if not clause_objs:
+        clause_objs = {
+            _tool_object(n) for n in names
+            if any(n.endswith(sx) for sx in suffixes)
+            and _tool_object(n) and _tool_object(n) != "urls"}
+        if not clause_objs:
+            return names
+
+    present = set(names)
+    # (1) RECRUIT: variante provider con object fra le clausole. recruited_objs
+    # = gli object NON-urls per cui un PRODUTTORE nativo è entrato → l'unico
+    # innesco del web-steal (3).
+    recruited_objs: set = set()
+    for e in catalog:
+        nm = _nm(e)
+        if not nm or _dormant(e):                 # rispetta la dormancy (no creds)
+            continue
+        if not any(nm.endswith(sx) for sx in suffixes):
+            continue
+        tobj = _tool_object(nm)
+        if tobj not in clause_objs:
+            continue
+        if nm not in present:                     # idempotente
+            names = names + [nm]
+            present.add(nm)
+        if nm.split("_", 1)[0] in _PROD and tobj != "urls":
+            recruited_objs.add(tobj)
+
+    # (3) SCOPE-RESTRICTION GUARD — principio generale (ADR 0179). Un modificatore
+    # che RESTRINGE lo scope (qui: il provider «su github») confligge con uno che
+    # lo ESTENDE (quantificatore universale «tutti/ogni»). Quando l'estensione
+    # sposta l'OGGETTO verso un'accezione più AMPIA (`files` → `urls`: un URL È un
+    # file remoto), l'intent LLM scivola a object=urls e i produttori generici di
+    # quell'accezione-ampia (url-generics) rubano il routing al provider nativo —
+    # contaminazione, cammino INVERSO del focusing, peggiore se «tutti» viene prima
+    # (priming d'ordine). Ma la RESTRIZIONE vince: «su github» VINCOLA «i file» a
+    # github, non al web. Se un produttore provider-nativo dell'accezione-stretta
+    # è DISPONIBILE nel pool, sopprimi i generici dell'accezione-ampia.
+    #
+    # Condizione STRUTTURALE (perché il bug esista): due object in relazione
+    # generale/specifico (`urls` ⊃ `files`), entrambi con producer generico, parola
+    # ambigua («file» = sia files sia url-come-file). Sul vocab attuale SOLO
+    # files/urls la soddisfa — verificato (gli assi ARGOMENTO come tempo/formato
+    # NON scivolano: «sempre»/«tutti» cambia un arg, non l'object → executor
+    # invariato). Per questo l'accezione-ampia è `urls`: deriva dall'essere
+    # l'object dei produttori-web generici, non una scelta hardcoded per-web.
+    #
+    # NON scatta (casi legittimi preservati — T3 + i 2 flaw dei giudici):
+    #  - nessun provider attivo (`suffixes` vuoto → return a monte): «cerca
+    #    articoli sul web su rust» → l'accezione-ampia è LEGITTIMA, web intatto.
+    #  - URL esplicito: «leggi github.com/o/r/blob/F» → single-URL read.
+    #  - mixed-compound GENUINO: ≥2 clausole-azione con object distinti, una urls
+    #    → la clausola dell'accezione-ampia è una richiesta reale, non scivolamento.
+    native_narrow_producer = any(
+        n for n in names
+        if any(n.endswith(sx) for sx in suffixes)
+        and n.split("_", 1)[0] in _PROD
+        and _tool_object(n) not in ("urls", ""))
+    if native_narrow_producer:
+        try:
+            from args_extractor import _URL_RE
+            has_explicit_url = bool(_URL_RE.search(query or ""))
+        except Exception:  # noqa: BLE001
+            has_explicit_url = ("http://" in (query or "")
+                                or "https://" in (query or ""))
+        # MIXED-COMPOUND GENUINO vs SCIVOLAMENTO: l'intent LLM può classificare una
+        # clausola (read/find, urls) per DUE motivi opposti — una richiesta web
+        # reale, o lo scivolamento di «tutti i file» (il file collassa in urls). Le
+        # `actions` dell'intent NON distinguono i due (lo scivolamento produce
+        # actions {urls,...} identiche a un compound). Il segnale AUTOREVOLE è il
+        # TESTO: `detect_canonical_object` (SoT `_OBJECT_HINTS`) dà l'object che le
+        # PAROLE nominano, immune allo scivolamento dell'intent. Se il testo nomina
+        # l'accezione-STRETTA (files/dirs) — «i FILE readme», «leggimi i FILE» — la
+        # clausola urls è scivolamento → web-steal scatta. Se il testo NON nomina
+        # files (`None`/web — «cerca articoli sul web», «leggi i readme E cerca sul
+        # web») → la urls è genuina → preserva. Deterministico §7.9, zero liste.
+        try:
+            from prefilter import detect_canonical_object, tokenize as _tok
+            text_obj = detect_canonical_object(_tok(query), query)
+        except Exception:  # noqa: BLE001
+            text_obj = None
+        text_names_narrow = text_obj in ("files", "dirs")
+        if not has_explicit_url and text_names_narrow:
+            # generici dell'accezione-AMPIA (object=urls), non-provider.
+            broad_generics = {n for n in names
+                              if _tool_object(n) == "urls"
+                              and not any(n.endswith(sx) for sx in suffixes)}
+            stripped = [n for n in names if n not in broad_generics]
+            if stripped:                          # mai pool vuoto (§2.8)
+                names = stripped
+
+    # (2) GATE per-nome: col marker presente cade il canonico non-suffissato se
+    # la sua variante provider è in pool. Engine-agnostico + bench-covered.
+    try:
+        kept, excluded = provider_gate_names(names, query)
+        if kept:
+            names = kept
+            if excluded:
+                log.debug("routing_pool: provider gate escluso %s", excluded)
+    except Exception as ex:  # noqa: BLE001
+        log.debug("routing_pool: provider gate fallito (%r)", ex)
+    return names
+
+
 def build_routing_pool(query: str, intent, catalog: list, *,
                         k: int | None = None) -> list[str]:
     """Da (query, intent, catalog) → lista NOMI tool per il Proposer.
@@ -212,8 +399,24 @@ def build_routing_pool(query: str, intent, catalog: list, *,
         pool_for_propose = catalog
     names = [getattr(e, "name", None) for e in pool_for_propose
              if getattr(e, "name", None)]
+    names = _provider_recruit_and_gate(names, query, intent, catalog)
     names = _gate_approval_tool(names, intent)
-    return _gate_store_skill(names)
+    names = _gate_store_skill(names)
+    # OSSERVABILITÀ (§2.8): un pool TROPPO grande è un segnale di PERICOLO — il
+    # filtro non ha discriminato, il prompt LLM è gonfio, il routing diventa una
+    # scelta vaga (non deterministica). Non dev'essere scoperto per caso: warning
+    # esplicito quando il pool finale eccede di molto il target `pool_size`. Soglia
+    # = 2× il target (e ≥ pool_size+8) per non rumoreggiare sui pool legittimi con
+    # helpers/companions. Non altera il pool (solo segnala). Il full-catalog
+    # fallback (intent incompleto/prefilter rotto) è atteso → escluso dal warning.
+    _oversized = max(2 * pool_size, pool_size + 8)
+    if pool_for_propose is not catalog and len(names) > _oversized:
+        log.warning("routing_pool: pool OVERSIZED %d candidati (target %d) per "
+                    "intent(verb=%r,object=%r) q=%r — filtro poco discriminante, "
+                    "routing impreciso", len(names), pool_size,
+                    getattr(intent, "verb", None), getattr(intent, "object", None),
+                    (query or "")[:60])
+    return names
 
 
 def _gate_approval_tool(names: list[str], intent) -> list[str]:

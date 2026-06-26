@@ -33,6 +33,15 @@ OGGETTI AMMESSI ({{ n_objects }}, plurale, scegli UNO):
 QUALIFIER opzionale (solo per varianti reali di parsing/format):
   {{ qualifiers_inline }}
 
+PROVIDER (asse ORTOGONALE, non un qualifier-formato): un suffisso provider
+(github, google_workspace) = STESSO intento su un BACKEND diverso, non un parsing
+diverso. `find_files_github` ESTENDE `find_files` (stesso «trova file», su GitHub);
+un qualifier-modalita' NO (`read_files_ocr` ≠ `read_files`, intento diverso).
+DEVI: usare il provider come qualifier SOLO se il backend e' un servizio esterno
+named (github/google). NON DEVI: trattare un formato (ocr/csv) come provider.
+OK: read_files_github, read_events_google_workspace. ERRORE: read_files_pdf_github
+(2 qualifier). Il provider default `_metnos` si OMETTE dal nome.
+
 CLASSIFICAZIONE:
 - revertible (bool):
                      - move, create → true (di default ribaltabili: swap_src_dst /

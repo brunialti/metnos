@@ -1581,6 +1581,78 @@ def _route_mail_delete_to_trash(framework: Framework,
         return framework
 
 
+# Marcatori di pluralità: la query chiede PIÙ file con quel nome, non un path
+# univoco. «i/tutti i/ogni/gli file X» → X è un PATTERN da cercare, non UN path.
+_PLURAL_FILE_MARKERS = (
+    "tutti i", "tutti gli", "i file", "gli file", "ogni file", "i files",
+    "all the", "all ", "every ", "the files", "each ",
+)
+
+
+def _route_filename_pattern_to_find(framework: Framework, query: str,
+                                    catalog: Optional[list]) -> Framework:
+    """§4.3 deterministico — «no path INVENTATO: FIND prima di READ». Un
+    `read_<obj>[_provider]` con `paths=[X]` dove X è un NOME-FILE (basename) che
+    l'utente ha citato come PLURALE («i/tutti i file readme.md») non è UN path
+    noto: è un PATTERN da cercare. Il proposer copia X dal PATTERN del manifest
+    (es. read_files_github PATTERN mostra `paths=["README.md"]`, §2.5 magnetico)
+    → legge UN solo file. Qui si INSERISCE prima il FIND gemello
+    (`find_<obj>[_provider](pattern=X)`) e si ricuce il read alle sue entries
+    (`from_step`) → catena find→read→describe su TUTTI i file.
+
+    GENERALE (non per-github): vale per ogni coppia read/find dello stesso object
+    e provider (read_files↔find_files, read_files_github↔find_files_github). Il
+    find gemello si deriva dal nome (read→find, stesso suffisso). Tool-existence-
+    safe (solo se il find gemello è nel catalog) + idempotente (read già
+    `from_step` non rimatcha). No LLM. Bug live 22f32adb/582b4824 (26/6)."""
+    try:
+        names = {getattr(e, "name", None) if not isinstance(e, dict)
+                 else e.get("name") for e in (catalog or [])}
+        q = (query or "").lower()
+        if not any(m in q for m in _PLURAL_FILE_MARKERS):
+            return framework
+        steps = framework.steps
+        for i, s in enumerate(steps):
+            tool = s.tool or ""
+            # read_<obj>... con object files/dirs (i soli con un FIND-per-pattern).
+            if not tool.startswith("read_"):
+                continue
+            rest = tool[len("read_"):]
+            if not (rest.startswith("files") or rest.startswith("dirs")):
+                continue
+            find_twin = "find_" + rest          # stesso object + provider
+            if find_twin not in names:
+                continue
+            if isinstance(s.args.get("from_step"), int):  # già instradato
+                continue
+            paths = s.args.get("paths")
+            if isinstance(paths, str):
+                paths = [paths]
+            if not (isinstance(paths, list) and len(paths) == 1):
+                continue
+            name = str(paths[0]).strip()
+            # NOME-FILE basename: no '/', no glob universale, e citato in query.
+            if (not name or "/" in name or name in ("*", "*.*")
+                    or name.lower() not in q):
+                continue
+            # find gemello: pattern=X, propaga repo/base_path dal read.
+            find_args = {"pattern": name}
+            for k in ("repo", "base_path", "path_prefix", "ref"):
+                if k in s.args:
+                    find_args[k] = s.args[k]
+            s.args = {k: v for k, v in s.args.items() if k != "paths"}
+            s.args["from_step"] = i + 1          # find inserito a i → step i+1
+            steps.insert(i, StepSpec(tool=find_twin, args=find_args))
+            framework.steps = steps
+            log.info("[filename_pattern §4.3] %s(paths=[%r]) -> %s(pattern=%r)"
+                     " + read(from_step)", tool, name, find_twin, name)
+            break  # un solo aggancio per turno
+        return framework
+    except Exception as ex:  # noqa: BLE001 — best-effort, non blocca il turno
+        log.warning("route_filename_pattern_to_find noop (best-effort): %r", ex)
+        return framework
+
+
 def _apply_deterministic_structure_guards(framework: Framework, intent,
                                           query: str,
                                           catalog: Optional[list]) -> Framework:
@@ -1612,6 +1684,10 @@ def _apply_deterministic_structure_guards(framework: Framework, intent,
     # delete_entries(store=messages) del proposer. Dopo enforce (gia' visto
     # il delete come clausola soddisfatta) e fuori dal gate v3 (vale sempre).
     framework = _route_mail_delete_to_trash(framework, catalog)
+    # §4.3: «i/tutti i file <nome>» → find_<obj>(pattern)+read, non un read di UN
+    # path INVENTATO (no path inventato: FIND prima). Generale read/find di ogni
+    # object+provider. Fuori dal gate v3 (vale sempre); dopo i guard di struttura.
+    framework = _route_filename_pattern_to_find(framework, query, catalog)
     return framework
 
 

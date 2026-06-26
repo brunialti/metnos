@@ -47,7 +47,8 @@ import re
 from dataclasses import dataclass
 from typing import Optional
 
-from vocab import ACTIONS, OBJECTS, QUALIFIERS, qualifier_compatible, qualifiers_for_object
+from vocab import (ACTIONS, OBJECTS, PROVIDER_SUFFIXES, QUALIFIERS,
+                   qualifier_compatible, qualifiers_for_object)
 
 # ── Separatori e regex ─────────────────────────────────────────────────
 #
@@ -124,9 +125,27 @@ def parse_name(name: str) -> Optional[NameComponents]:
     (puo' contenere `-` ma non `_`). Parte 3 (qualifier) e' single token
     senza separatori.
 
+    ECCEZIONE provider MULTI-TOKEN: un suffisso provider (`PROVIDER_SUFFIXES`,
+    SoT) puo' contenere `_` (es. `google_workspace`). E' un'UNICA unita'
+    qualifier-provider, non qualifier+descriptor. Se il nome termina con un
+    provider noto, lo si stacca come qualifier prima dello split posizionale —
+    cosi' `read_events_google_workspace` → (read, events, google_workspace, None)
+    invece di (read, events, google, workspace). Fix bug latente naming 26/6.
+
     Ritorna None se la sintassi e' invalida (split count fuori 2-4)."""
     if not name or not isinstance(name, str):
         return None
+    # Provider multi-token: stacca il suffisso provider PRIMA dello split, cosi'
+    # le sue `_` interne non vengono lette come livelli posizionali.
+    for prov in PROVIDER_SUFFIXES:
+        if "_" in prov and name.endswith("_" + prov):
+            head = name[: -(len(prov) + 1)]      # rimuove `_<prov>`
+            hp = head.split("_")
+            if len(hp) == 2:                      # verb_object_<provider>
+                return NameComponents(verb=hp[0], obj=hp[1],
+                                      qualifier=prov, descriptor=None)
+            # head non e' verb_object pulito → cade al parsing standard sotto
+            break
     parts = name.split("_")
     n = len(parts)
     if n < 2 or n > 4:

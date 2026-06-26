@@ -19,6 +19,21 @@ la sintesi per lingue nuove la fa il daemon dal word-list tradotto.
 from __future__ import annotations
 
 import detection_lexicon as _dl
+from vocab import PROVIDER_SUFFIXES  # identità provider = vocabolario (SoT unica)
+
+
+# Marker NL (linguistici, i18n) per ogni provider — SOLO i VALORI. Le CHIAVI
+# (l'identità dei provider) NON si ripetono qui: derivano da
+# `vocab.PROVIDER_SUFFIXES` (SoT unica). Un nuovo provider si aggiunge in vocab
+# + qui i suoi marker; le due liste devono coprire lo stesso set (guard:
+# `test_provider_markers_cover_suffixes`). Le altre lingue le sintetizza il
+# daemon dal word-list tradotto (it={} → fallback en).
+_PROVIDER_MARKERS_EN = {
+    "github": ["github", "pr", "issue", "issues", "repo", "repository",
+               "commit", "branch", "workflow", "gist", "fork", "merge"],
+    "google_workspace": ["google", "drive", "gmail", "gdrive", "workspace",
+                         "calendar google", "g suite"],
+}
 
 
 def register_all() -> None:
@@ -149,13 +164,11 @@ def register_all() -> None:
     # ── PROVIDER (tool_grammar._PROVIDER_SUFFIX_MARKERS) ────────────────
     # Brand/nomi propri en-canonici; le altre lingue aggiungono nomi comuni
     # localizzati via daemon. mapping suffix -> markers (match word).
+    # CHIAVI derivate da vocab.PROVIDER_SUFFIXES (SoT unica dell'identità
+    # provider, zero duplicazione); VALORI = i marker NL i18n qui sopra.
     R("provider.markers", "mapping", match_mode="word",
       it={},
-      en={"_google_workspace": ["google", "drive", "gmail", "gdrive",
-                                "workspace", "calendar google", "g suite"],
-          "_github": ["github", "pr", "issue", "issues", "repo",
-                      "repository", "commit", "branch", "workflow", "gist",
-                      "fork", "merge"]})
+      en={f"_{p}": _PROVIDER_MARKERS_EN[p] for p in PROVIDER_SUFFIXES})
 
     # ── PLANNER MARKERS (agent_runtime) ────────────────────────────────
     # _LLM_REFUSAL_MARKERS (substring) — testo di rifiuto LLM in un arg

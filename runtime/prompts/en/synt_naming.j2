@@ -31,6 +31,15 @@ ALLOWED OBJECTS ({{ n_objects }}, plural, choose ONE):
 Optional QUALIFIER (only for real parsing/format variants):
   {{ qualifiers_inline }}
 
+PROVIDER (ORTHOGONAL axis, not a format-qualifier): a provider suffix (github,
+google_workspace) = SAME intent on a different BACKEND, not different parsing.
+`find_files_github` EXTENDS `find_files` (same «find files», on GitHub); a
+modality-qualifier does NOT (`read_files_ocr` ≠ `read_files`, different intent).
+YOU MUST: use a provider qualifier ONLY when the backend is a named external
+service (github/google). YOU MUST NOT: treat a format (ocr/csv) as a provider.
+OK: read_files_github, read_events_google_workspace. ERROR: read_files_pdf_github
+(2 qualifiers). The default provider `_metnos` is OMITTED from the name.
+
 CLASSIFICATION:
 - revertible (bool):
                      - move, create → true (by default reversible: swap_src_dst /
