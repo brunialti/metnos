@@ -297,44 +297,15 @@ def _sha256_file(p: Path) -> str:
 
 def _download(url: str, dest: Path, *, attempts: int = 5,
               expected_sha256: str | None = None) -> bool:
-    """Scarica url→dest con retry + VERIFICA INTEGRITÀ (C1, fail-closed).
-
-    Solo HTTPS. Se `expected_sha256` è dato e NON combacia → scarta il file e
-    fallisce (mai eseguire/estrarre un artefatto non verificato). Se l'hash
-    atteso è None lo scarica ma AVVISA che l'integrità non è verificata.
-    """
-    if not url.lower().startswith("https://"):
-        print(f"    RIFIUTO download non-HTTPS: {url[:60]}")
-        return False
-    dest.parent.mkdir(parents=True, exist_ok=True)
-    last = ""
-    for i in range(1, attempts + 1):
-        try:
-            req = _ur.Request(url, headers={"User-Agent": "metnos-llm-manager"})
-            with _ur.urlopen(req, timeout=120) as r, open(dest, "wb") as f:
-                shutil.copyfileobj(r, f, length=1024 * 256)
-        except (_ue.URLError, OSError, Exception) as e:  # noqa: BLE001
-            last = str(e)
-            print(f"    download tentativo {i}/{attempts} fallito: {last[:80]}")
-            if dest.exists():
-                dest.unlink()
-            continue
-        # Verifica integrità DOPO il download, PRIMA di usarlo.
-        if expected_sha256:
-            got = _sha256_file(dest)
-            if got.lower() != expected_sha256.lower():
-                print(f"    ✗ SHA256 MISMATCH: atteso {expected_sha256[:16]}…, "
-                      f"ottenuto {got[:16]}… → scarto (possibile manomissione)")
-                dest.unlink(missing_ok=True)
-                last = "sha256 mismatch"
-                continue
-            print(f"    ✓ SHA256 verificato ({got[:16]}…)")
-        else:
-            print("    ! integrità NON verificata (nessun SHA256 atteso): "
-                  "pin l'hash prima del rilascio pubblico.")
-        return True
-    print(f"    download FALLITO dopo {attempts}: {last[:120]}")
-    return False
+    """Scarica url→dest + VERIFICA INTEGRITÀ (C1, fail-closed), resiliente ai
+    reset per-flusso (alcune reti/ISP/middlebox resettano una singola TCP lunga
+    dopo poche decine di MB). Delega a `downloads.robust_fetch`, che scarica un
+    GGUF grande a CHUNK PARALLELI con resume per-chunk: nessuna connessione deve
+    reggere i 19 GB in un colpo solo. Solo HTTPS; su mismatch sha → scarta. La
+    rete singola-connessione qui falliva (il modello non scaricava su CGNAT)."""
+    from . import downloads
+    return downloads.robust_fetch(url, dest, sha256=expected_sha256,
+                                  label=dest.name)
 
 
 def _http_post_json(url: str, payload: dict):
