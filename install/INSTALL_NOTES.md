@@ -135,7 +135,41 @@ production-tested engine env:
 - **Lazy** — the **Playwright JS-render sidecar** only: install it on first use
   of the web-search capability, NOT during the base install. Do not wire
   `install/playwright_sidecar.py` into the 6 phases.
-- **Optional** (user choice, off by default): VLM / Photon / SearXNG scaffolds.
+- **Optional** (user choice, off by default): the self-hosted sidecars in
+  `install/sidecar.py` (SearXNG real; Photon / VLM coming). phase2
+  `_offer_optionals` calls `sidecar.install(<name>)` for real (no more
+  "deferred" stubs); the same module runs standalone post-install as
+  `python -m install.sidecar <name>`. The optional list is the SoT in
+  `sidecar.SIDECARS` (phase2 iterates it). Honest §2.8 outcome verbatim
+  (`running` / `started_unhealthy` / `*_failed`); a not-yet-shipped sidecar
+  reports `not_implemented`, never a fake success.
+
+## Optional sidecars (install/sidecar.py — user-level units, no sudo)
+- Model: same as `playwright_sidecar.py` — clone/deps, render a
+  `units/metnos-<name>.service.tmpl` into `~/.config/systemd/user`,
+  `daemon-reload` + `enable --now`, health-probe, honest outcome dict.
+- **SearXNG** (`install_searxng`): clones SearXNG into
+  `$METNOS_USER_DATA/sidecars/searxng`, builds a **dedicated** venv (its pins
+  clash with the runtime venv — keep separate, like the prod box), writes a
+  single-user `settings.yml` under `$METNOS_USER_CONFIG/searxng/`. Two
+  non-defaults are load-bearing: `search.formats` MUST include **json** (the
+  runtime queries `/search?format=json`, executors/find_urls; upstream defaults
+  html-only) and `limiter: false` (drops the redis/valkey dep one user doesn't
+  need). Runs on `:8888` = the runtime default `METNOS_SEARXNG_URL`, so it is
+  zero-config; a non-default `METNOS_SEARXNG_PORT` needs `METNOS_SEARXNG_URL` on
+  the metnos-http unit (the installer says so).
+  - **GOTCHA (validated 27/6)**: SearXNG derives its sqlite cache path from
+    `tempfile.gettempdir()` → a **fixed** `/tmp/sxng_cache_*.db`. Two instances
+    (or two users) on one box collide → `sqlite3.OperationalError: attempt to
+    write a readonly database` at boot. Fix: the unit sets
+    `Environment=TMPDIR=$METNOS_USER_DATA/sidecars/searxng/cache` (private,
+    per-instance). Do NOT drop this.
+- **i18n-translator** is NOT a sidecar — it is a base user unit installed by
+  phase5 (`metnos-i18n-translator.service` oneshot + `.timer` every 5min,
+  guarded on `runtime.admin.i18n_cli` importability). It lazily fills i18n
+  rows the runtime adds at runtime. The old hardcoded
+  `units/metnos-i18n-translator.{service,timer}` (User=roberto, /opt/metnos)
+  were replaced by `*.tmpl`.
 
 ## Hard rules
 - i18n: the **installer UI is English-only** (decision, 9/6). The IT/EN choice

@@ -91,20 +91,26 @@ Il modello text-embedding **MiniLM-L12-v2** e' condiviso con
 
 ### 5. Avviare i servizi
 
-```bash
-sudo cp install/units/metnos-http.service /etc/systemd/system/
-sudo cp install/units/metnos-i18n-translator.service /etc/systemd/system/
-sudo cp install/units/metnos-i18n-translator.timer /etc/systemd/system/
-sudo systemctl daemon-reload
-sudo systemctl enable --now metnos-http
-sudo systemctl enable --now metnos-i18n-translator.timer
+I servizi sono **user unit** (nessun `sudo`): `python -m install` (fase 5) li
+genera dai template in `install/units/*.tmpl`, sostituendo i percorsi, e li
+abilita. Le unit installate: `metnos-http.service`, `metnos-telegram-daemon.service`
+(se pairato) e `metnos-i18n-translator.timer` (riempimento traduzioni i18n a
+ciclo). Per rifarle a mano:
 
-# User unit Telegram (se pairato)
-mkdir -p ~/.config/systemd/user
-cp /opt/metnos/systemd/metnos-telegram-daemon.service ~/.config/systemd/user/
-systemctl --user daemon-reload
-systemctl --user enable --now metnos-telegram-daemon
+```bash
+python -m install --force-phase 5      # rigenera + abilita tutte le user unit
+
+# Stato / log
+systemctl --user status metnos-http
+systemctl --user list-timers metnos-i18n-translator.timer
+journalctl --user -u metnos-http -f
+
+# Per sopravvivere al logout
+sudo loginctl enable-linger $USER
 ```
+
+I sidecar opzionali (ricerca web SearXNG, ecc.) si aggiungono dopo con
+`python -m install.sidecar <nome>` (vedi `install/README.md`).
 
 ### 6. Indicizzazione foto (ADR 0117)
 

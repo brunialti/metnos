@@ -85,6 +85,31 @@ python3 runtime/cli/skills_cli.py disable github
 ```
 > *"which skills do I have?"* · *"enable photos"* · *"disable the web"*
 
+## Optional sidecars
+
+A few capabilities lean on **self-hosted companion services** too heavy to force
+on every install. They are off by default; phase 2 offers them, and you can add
+one any time afterwards. Each is a **user-level systemd unit** (no `sudo`) that
+survives logout once `loginctl enable-linger` is set.
+
+```bash
+python -m install.sidecar --list       # what's available
+python -m install.sidecar searxng      # add self-hosted web search (real install)
+```
+
+| Sidecar | Backs | Cost | Status |
+|---------|-------|------|--------|
+| **SearXNG** | web search (`find_urls`) | ~200 MB | available |
+| **Photon** | offline geocoding (`get_location`, places) | ~3 GB | coming soon |
+| **VLM** | image captions (`find_images_indices`) | ~3 GB | coming soon |
+
+`searxng` clones SearXNG into `~/.local/share/metnos/sidecars/searxng`, builds a
+dedicated venv, writes a single-user (redis-less) `settings.yml` under
+`~/.config/metnos/searxng/`, and starts `metnos-searxng.service` on `:8888` — the
+runtime's default `METNOS_SEARXNG_URL`, so it works with zero further config. A
+sidecar you don't install simply leaves its skill **dormant** (the runtime
+degrades honestly), never broken.
+
 ## Options
 
 ```
@@ -107,6 +132,8 @@ install/
 ├── bootstrap.sh        # shell entry: find python, create venv, hand off
 ├── manifest.toml       # declarative single source of truth
 ├── __main__.py         # `python -m install` orchestrator
+├── sidecar.py          # optional self-hosted sidecars (searxng/photon/vlm)
+├── playwright_sidecar.py  # lazy JS-render sidecar (first web-search use)
 ├── preflight.py        # disk / python / network / libstdc++ checks
 ├── state.py            # sentinel management (idempotency)
 ├── ui.py               # terminal UI + progress (rich)
