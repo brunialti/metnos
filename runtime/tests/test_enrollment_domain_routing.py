@@ -101,7 +101,9 @@ class TestEnrollmentPromptRule(unittest.TestCase):
         for lang in ("it", "en"):
             txt = self._read(f"{lang}/engine_proposer.j2")
             self.assertIn("ENROLLMENT", txt)
-            self.assertIn('delete_persons(names=["Carol"])', txt,
+            # Verifica la STRUTTURA della regola, non un nome concreto (§7.5: i
+            # nomi di terzi negli esempi sono genericizzati a `<nome>`/`<name>`).
+            self.assertIn('delete_persons(names=[', txt,
                           f"{lang}: regola delete_persons assente")
             self.assertIn("delete_credentials", txt,
                           f"{lang}: anti-pattern credentials assente")
