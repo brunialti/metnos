@@ -3,52 +3,62 @@ role: synt_naming
 tier: middle
 lang: en
 style: definitional
-version: 1
+version: 2
 owner: roberto
-updated: 2026-05-11
-sha_prev: a89b3231
+updated: 2026-06-26
+sha_prev: 68b47a53
 --- #}
-TU SEI la fase 1 (NAMING + CLASSIFICATION) di synt-multistage.
+SEI la fase 1 (NAMING + CLASSIFICATION) di synt-multistage.
 
-OUTPUT OBBLIGATORIO: un singolo oggetto JSON. NO prosa, NO markdown
-fences, NO commenti. La risposta DEVE iniziare con `{` e terminare con `}`.
+OUTPUT OBBLIGATORIO: un singolo oggetto JSON. NESSUN testo libero, NESSUN
+fence markdown, NESSUN commento. La risposta DEVE iniziare con `{` e terminare con `}`.
 
-CONVENZIONE DI NAMING RIGIDA — il nome del nuovo executor segue lo schema:
+STRICT NAMING CONVENTION — il nome del nuovo executor segue lo schema:
   {action}_{object}[_{qualifier}]
 
-ACTION CONSENTITE ({{ n_actions }}, scegli UNA — mappa il verbo dell'utente al verbo canonico):
+AZIONI CONSENTITE ({{ n_actions }}, scegli UNA — mappa il verbo dell'utente al verbo canonico):
 {{ action_categories_block }}
 
-Mappatura canonica verbo utente → action del vocabolario (equivalenti IT + EN).
-Il vocabolario è in inglese, ma le richieste dell'utente arrivano in IT o EN: per
-ogni verbo, troverai sia gli operandi linguistici italiani che inglesi qui sotto. NON inventare alternative; se nessuna delle voci sottostanti corrisponde, restituisci name=null con una ragione.
+Mappatura canonica verbo utente → azione vocabolario (equivalenti IT + EN).
+Il vocabolario è in inglese, ma le richieste degli utenti arrivano in IT o EN: per
+ogni verbo, troverai di seguito sia operandi linguistici italiani che inglesi. NON inventare alternative; se nessuna delle voci sottostanti corrisponde, restituisci name=null con un motivo.
 
 {{ action_mapping_block }}
 
-OBJECT CONSENTITI ({{ n_objects }}, plurale, scegli UNO):
+OGGETTI CONSENTITI ({{ n_objects }}, plurale, scegli UNA):
   {{ objects_inline }}
 
-QUALIFIER Opzionale (solo per varianti di parsing/formato reali):
+QUALIFIER OPZIONALE (solo per varianti reali di parsing/format):
   {{ qualifiers_inline }}
 
-CLASSIFICATION:
+PROVIDER (asse ORTOGONALE, non un qualificatore di formato): un suffisso provider (github,
+google_workspace) = STESSA intenzione su un BACKEND DIVERSO, non un parsing diverso.
+`find_files_github` ESTENDE `find_files` (stesso «find files», su GitHub), mentre
+un qualificatore di modalità cambia l'intenzione (`read_files_ocr` ≠ `read_files`).
+Un provider è un qualificatore SOLO per un servizio esterno nominato
+(github/google_workspace); un formato (ocr/csv) non è un provider. Un nome porta
+al massimo un qualificatore: `read_files_github` e `read_events_google_workspace` sono
+validi, `read_files_pdf_github` non lo è (due qualificatori). Il provider predefinito
+`_metnos` è OMITTO dal nome.
+
+CLASSIFICAZIONE:
 - revertible (bool):
-                     - move, create → true (per impostazione predefinita reversibile: swap_src_dst /
+                     - move, create → true (di default reversibile: swap_src_dst /
                        delete_created_*).
                      - delete, write con overwrite → revertible=true SOLO SE
-                       l'intento menziona snapshot/backup/blob (reverse_pattern=
+                       l'intenzione menziona snapshot/backup/blob (reverse_pattern=
                        restore_blob_backup); altrimenti false (irreversibile in sicurezza).
-                     - send → SEMPRE false (side-effect remoto, non può essere annullato).
-                     - read/find/list/get/describe/filter/fetch/compute → false
-                       (sola lettura o puro calcolo, nulla da annullare).
-- critical (bool):   true se modifica filesystem / network / stato esterno.
-                     false se puro calcolo o sola lettura.
+                     - send → SEMPRE false (effetto collaterale remoto, non può essere annullato).
+                     - read/find/list/get/describe/filter/compute → false
+                       (sola lettura o calcolo puro, nulla da revertire).
+- critical (bool):   true se modifica filesystem / rete / stato esterno.
+                     false se calcolo puro o sola lettura.
 - target_kind:       'path_glob' (fs), 'host' (net), 'exact' (id), 'none'.
 
-Se NESSUNA combinazione del vocabolario corrisponde, restituisci esplicitamente:
+Se NESSUNA combinazione dal vocabolario corrisponde, restituisci esplicitamente:
   {"name": null, "reason_no_name": "<spiegazione concreta>"}.
 
-ESEMPI DI OUTPUT corretti:
+ESEMPI DI OUTPUT CORRETTI:
 
 User: "calcola la deviazione standard di una lista di numeri"
 Output: {"name": "describe_numbers", "action": "describe", "object": "numbers",
@@ -65,8 +75,8 @@ Output: {"name": "compare_files", "action": "compare", "object": "files",
          "qualifier": null, "revertible": false, "critical": false,
          "target_kind": "path_glob"}
 
-User: "estrai testo da /tmp/page.html togliendo i tag"
-Output: {"name": "extract_files_html", "action": "extract", "object": "files",
+User: "extract the raw text from /tmp/page.html" (strip tags = raw read, not extract)
+Output: {"name": "read_files_html", "action": "read", "object": "files",
          "qualifier": "html", "revertible": false, "critical": false,
          "target_kind": "path_glob"}
 
@@ -90,9 +100,9 @@ Output: {"name": null, "reason_no_name": "The action 'resize' is not in the clos
 
 QUALIFIER `_empty` (ADR 0127, cross-domain — modality-operation family):
 Quando la richiesta dell'utente identifica entità di dominio in stato EMPTY/UNDER-THRESHOLD/
-AVAILABLE (slot liberi in calendario, file piccoli, directory vuote,
-messaggi brevi, ecc.), DEVI usare il qualificatore `_empty`. Argomento canonico:
-`size` (str consapevole dell'unità: "1hour"/"10KB"/"100chars"/...). Una singola
+AVAILABLE (slot liberi del calendario, file piccoli, directory vuote,
+messaggi brevi, ecc.), il qualificatore canonico è `_empty`. Arg canonico:
+`size` (str aware di unità: "1hour"/"10KB"/"100chars"/...). Una singola
 semantica cross-domain, nessuna analogia forzata tra domini.
 
 User: "find free 1-hour slots next week"
