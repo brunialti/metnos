@@ -4,9 +4,10 @@
 Writes user-level systemd units from the templates in
 ``install/units/*.service.tmpl``, runs ``systemctl --user
 daemon-reload``, enables and starts ``metnos-http.service``, probes
-its health endpoint, and conditionally enables
+its health endpoint, conditionally enables
 ``metnos-telegram-daemon.service`` if phase 4 collected a Telegram
-token.
+token, and enables the ``metnos-i18n-translator.timer`` (lazy
+translation of newly-added i18n keys).
 
 User-level units (vs system-level) means **no sudo is required**.
 The service runs as the invoking user, dies when the session ends
@@ -219,7 +220,29 @@ def run(args: Any) -> dict[str, Any]:
             ui.ok("telegram daemon running")
             notes["telegram_started"] = True
 
-    # 7. Linger advisory
+    # 7. i18n translator timer (lazy fill of the i18n DB). Oneshot service +
+    #    5-min timer. Harmless on a complete seed (translate-pending exits in
+    #    <1s when nothing is pending); it earns its keep when the runtime adds
+    #    new MSG_*/ERR_* keys that need translating into the other locale.
+    if _runtime_module_importable("runtime.admin.i18n_cli"):
+        ui.step("Installing metnos-i18n-translator (service + 5-min timer)")
+        _install_unit(tmpl_dir / "metnos-i18n-translator.service.tmpl",
+                      "metnos-i18n-translator.service", port, lang)
+        _install_unit(tmpl_dir / "metnos-i18n-translator.timer.tmpl",
+                      "metnos-i18n-translator.timer", port, lang)
+        _systemctl_user("daemon-reload")
+        r = _systemctl_user("enable", "--now", "metnos-i18n-translator.timer")
+        if r.returncode != 0:
+            ui.warn(f"i18n translator timer failed to enable: {r.stderr.strip()}")
+            notes["i18n_translator_enabled"] = False
+        else:
+            ui.ok("i18n translator timer enabled")
+            notes["i18n_translator_enabled"] = True
+    else:
+        ui.warn("runtime.admin.i18n_cli not importable — skipping i18n translator timer.")
+        notes["i18n_translator_enabled"] = False
+
+    # 8. Linger advisory
     ui.console().print()
     ui.console().print("  [bold]Tip:[/bold] to keep Metnos running across reboots even when "
                        "you don't log in, run [cyan]sudo loginctl enable-linger $USER[/cyan].")
