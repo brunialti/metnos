@@ -590,7 +590,7 @@ redone. There is no Metnos cloud and no “sign up”: data and logic stay home.
 <p>What happens on every request, in one drawing:</p>
 
 <figure>
-<svg class="flow" viewBox="0 0 760 560" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="One turn, end to end: intent, Praxis fast path, deterministic routing, ReAct planner, vaglio, sandboxed executor, synthesizer">
+<svg class="flow" viewBox="0 0 760 560" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="One turn, end to end: intent, fastpath, deterministic routing, ReAct planner, vaglio, sandboxed executor, synthesizer">
   <defs>
     <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
       <path d="M0,0 L10,5 L0,10 Z" fill="#8a8378"/>
@@ -600,7 +600,7 @@ redone. There is no Metnos cloud and no “sign up”: data and logic stay home.
     </marker>
   </defs>
 
-  <!-- row 1: you → intent → praxis -->
+  <!-- row 1: you → intent → fastpath -->
   <rect x="16" y="22" width="130" height="52" rx="5" class="bx"/>
   <text x="30" y="44" class="tb">You</text>
   <text x="30" y="60" class="m">browser · Telegram</text>
@@ -614,17 +614,17 @@ redone. There is no Metnos cloud and no “sign up”: data and logic stay home.
   <line x1="368" y1="48" x2="408" y2="48" class="ln" marker-end="url(#ar)"/>
 
   <rect x="410" y="22" width="170" height="52" rx="5" class="b"/>
-  <text x="424" y="44" class="tb">Praxis</text>
+  <text x="424" y="44" class="tb">fastpath</text>
   <text x="424" y="60" class="m">shape solved before?</text>
 
-  <!-- praxis yes → answer -->
+  <!-- fastpath yes → answer -->
   <line x1="580" y1="48" x2="620" y2="48" class="ln" marker-end="url(#ar)"/>
   <text x="584" y="38" class="m">yes</text>
   <rect x="622" y="22" width="122" height="52" rx="5" class="bg"/>
   <text x="636" y="44" class="tb sage">Answer</text>
   <text x="636" y="60" class="m">0 LLM calls</text>
 
-  <!-- praxis no → routing -->
+  <!-- fastpath no → routing -->
   <line x1="495" y1="74" x2="495" y2="106" class="ln" marker-end="url(#ar)"/>
   <text x="503" y="94" class="m">no: plan it</text>
 
@@ -637,7 +637,7 @@ redone. There is no Metnos cloud and no “sign up”: data and logic stay home.
   <!-- planner -->
   <rect x="330" y="198" width="330" height="62" rx="5" class="b"/>
   <text x="344" y="221" class="tb">ReAct planner · local LLM</text>
-  <text x="344" y="238" class="m">composes executors from the closed vocabulary (23 verbs × 22 objects)</text>
+  <text x="344" y="238" class="m">composes executors from the closed vocabulary (23 verbs × 23 objects)</text>
   <text x="344" y="252" class="m">lists in → lists out, data passed by reference</text>
 
   <!-- synt branch -->
@@ -686,9 +686,9 @@ redone. There is no Metnos cloud and no “sign up”: data and logic stay home.
   <text x="344" y="519" class="m">real counts, declared truncations, undo available where promised</text>
   <path d="M495 440 L495 478" class="ln" marker-end="url(#ar)"/>
 
-  <text x="40" y="520" class="m">successful chains feed Praxis: next time, the same request = direct replay</text>
+  <text x="40" y="520" class="m">successful chains feed the fastpath: next time, the same request = direct replay</text>
 </svg>
-<figcaption><b>Fig. 1</b> — One turn, end to end. Two uncommon properties: routing is <b>deterministic</b> (same request → same plan, on every run) and already-solved shapes come back through <b>Praxis</b> without waking any LLM.</figcaption>
+<figcaption><b>Fig. 1</b> — One turn, end to end. Two uncommon properties: routing is <b>deterministic</b> (same request → same plan, on every run) and already-solved shapes come back through the <b>fastpath</b> without waking any LLM.</figcaption>
 </figure>
 
 <p>The four properties that set it apart from a generic agent:</p>
@@ -768,7 +768,7 @@ opposite bet: a <em>local</em> planner over a <em>closed</em> vocabulary can be 
 reproducible — the generation seed is pinned, and when two sibling tools tie, a
 curated affinity signal decides, not chance. Measurably: the internal routing bench
 repeats every request five times and demands the same plan, five out of five. And it
-compounds: a request shape solved once is replayed by Praxis <strong>with no LLM call
+compounds: a request shape solved once is replayed by the fastpath <strong>with no LLM call
 at all</strong> — lower latency, zero cost, identical outcome. Flexibility (the
 frontier model) stays available, but it's the reserve, not the engine.
 </p>
@@ -799,7 +799,7 @@ a limit, it is written next to the merit.
 <h3>“Summarize today's mail”</h3>
 <p class="q">Give me a summary of today's important mail.</p>
 <div class="pipe">
-  find_messages <span class="a">→</span> describe_entries <span class="a">→</span> answer
+  read_messages <span class="a">→</span> classify_entries <span class="a">→</span> filter_entries <span class="a">→</span> describe_entries <span class="a">→</span> answer
 </div>
 <div class="reply">
 3 emails today: the lawyer asks for the document by Friday; the bank confirms
@@ -935,7 +935,7 @@ Category, Amount, Notes, Paid. — Fill it from the last 30 days of mail contain
 “invoice”. — Make me a per-category recap in a Google Doc. — Share everything with
 my family member. — Update me every morning at 8.</p>
 <div class="pipe">
-  create_files_spreadsheet <span class="a">→</span> write_files_spreadsheet <span class="a">→</span> find_messages <span class="a">→</span> classify_entries <span class="a">→</span> read_files_ocr <span class="note">(scans only)</span> <span class="a">→</span> compute_entries <span class="a">→</span> create_files_doc + write_files_doc <span class="a">→</span> find_contacts <span class="a">→</span> share_files <span class="note">(with card)</span> <span class="a">→</span> create_tasks(daily@08:00)
+  create_files_spreadsheet <span class="a">→</span> write_files_spreadsheet <span class="a">→</span> read_messages <span class="a">→</span> classify_entries <span class="a">→</span> read_files_ocr <span class="note">(scans only)</span> <span class="a">→</span> compute_entries <span class="a">→</span> create_files_doc + write_files_doc <span class="a">→</span> find_contacts <span class="a">→</span> share_files <span class="note">(with card)</span> <span class="a">→</span> create_tasks(daily@08:00)
 </div>
 <div class="reply">
 3 bills extracted: energy €213.47 · waste €281.67 · telecom €165.25 —
@@ -980,7 +980,7 @@ three minutes; every reuse is instant. […] Done:
   <b>reuse</b> from the next time on, &lt;100 ms: a plain function call
 </div>
 <p class="small">This is how the catalog reached
-77 executors: one capability at a time, motivated by a real request, never in
+75 executors: one capability at a time, motivated by a real request, never in
 advance. The full mechanism is in chapter 7.</p>
 </div>
 
@@ -1264,7 +1264,7 @@ built for that future, not to inflate the present.
   <li>Files: finds, filters, moves, compresses, extracts — with declared undo</li>
   <li>Photos: indexes at home (scene, faces, EXIF) and searches by meaning</li>
   <li>Google Workspace with one OAuth: Gmail, Calendar, Drive, Docs, Sheets</li>
-  <li>GitHub: issues and pull requests as first-class objects</li>
+  <li>GitHub: issues, pull requests and repo files as first-class objects</li>
   <li>Web: search and reading via self-hosted services (search, geocoding)</li>
   <li>Recurring tasks in natural language (“every morning at 7…”)</li>
   <li>Multi-user on the same bot, with separate autonomies and audit</li>
@@ -1358,9 +1358,10 @@ non-negotiable binary guard + graded judge against the telos.</dd>
 <dt>Telos</dt>
 <dd>Your aims, written in <code>TELOS.md</code> as soft tendencies. The judge
 measures proposed actions against them.</dd>
-<dt>Praxis</dt>
+<dt>fastpath</dt>
 <dd>The learned fast path: a request shape solved once is replayed with no LLM
-calls. Same outcome, minimal latency and cost.</dd>
+calls. Same outcome, minimal latency and cost. When a shape recurs across a whole
+group of similar requests, the generalized plan becomes an <em>autopath</em>.</dd>
 <dt>Mnestome</dt>
 <dd>The memory the system keeps about itself: successful co-activations (mnests) and
 attempts left halfway (proto-mnests). The substrate of growth proposals.</dd>
@@ -1393,7 +1394,7 @@ recurrence; it can grant revocable territories.</dd>
       <a class="t" href="architecture/">Micro-design index</a>
       <span class="d">One page per subsystem, IT+EN, diagram-rich: planner, synt, vaglio, sandbox, skills, fast path, and the rest.</span>
     </div>
-    <span class="time">21 documents</span>
+    <span class="time">23 documents</span>
   </div>
   <div class="toc-item">
     <div>

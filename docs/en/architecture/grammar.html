@@ -3,9 +3,9 @@
 <head>
  <meta charset="UTF-8">
  <meta name="viewport" content="width=device-width, initial-scale=1.0">
- <title>Metnos &mdash; grammar (for dummies)</title>
- <meta name="description" content="How Metnos forces the LLM to call exactly one tool, correctly: constrained generation via GBNF, discriminated union name+args, recursive schema, pool filter. Plain talk.">
- <meta name="keywords" content="grammar, GBNF, llama.cpp, constrained generation, tool_call, PLANNER, Qwen, anti-thinking-loop, metnos, Metnos">
+ <title>Metnos &mdash; grammar, in plain terms</title>
+ <meta name="description" content="How Metnos makes the model call exactly one tool, correctly: constrained generation via GBNF, discriminated name+args union, recursive schema, pool filter. Plain talk.">
+ <meta name="keywords" content="grammar, GBNF, llama.cpp, constrained generation, tool_call, planner, anti thinking-loop, metnos, Metnos">
  <meta name="author" content="Roberto Brunialti">
  <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large">
  <link rel="canonical" href="https://metnos.com/en/architecture/grammar">
@@ -95,12 +95,13 @@ li { margin-bottom: 4px; }.lead { font-size: 12pt; color: var(--navy); border-le
 
 <h1 id="cap1">1. The problem: the LLM &ldquo;thinks about it&rdquo; and gets lost</h1>
 
-<p class="lead">The Metnos PLANNER picks which executor to call at each step.
-It&rsquo;s a local LLM (Qwen 3.6 35B-A3B). When the query is complex &mdash; like &ldquo;propose
-3 morning slots next week for a one-hour appointment with a family member, after I pick one, email
-me the choice&rdquo; &mdash; the LLM <strong>sometimes</strong> enters a reasoning loop and ends
-up emitting prose instead of a structured <code>tool_call</code>. The system
-doesn&rsquo;t know what to run. Game over.</p>
+<p class="lead">The Metnos <em>planner</em> picks which executor to call at each step.
+It is a local language model. When the request gets complex &mdash; say
+&ldquo;propose three morning slots next week for a one-hour appointment with a
+family member; once I pick one, email me the choice&rdquo; &mdash; the model
+<strong>sometimes</strong> spirals into a reasoning loop and ends up writing
+prose instead of a structured <code>tool_call</code>. The system no longer knows
+what to run. End of the road.</p>
 
 <figure>
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 150" width="100%" preserveAspectRatio="xMidYMid meet" style="font-family:'Segoe UI',Calibri,sans-serif;font-size:11px;">
@@ -114,7 +115,7 @@ doesn&rsquo;t know what to run. Game over.</p>
 <text x="275" y="119" text-anchor="middle" fill="#44403C" font-size="9.5">from the filtered pool</text>
 <rect x="390" y="70" width="160" height="56" rx="8" fill="#1A477A" stroke="#0f2d4a"/>
 <text x="470" y="94" text-anchor="middle" fill="#fff" font-weight="700">constrained decode</text>
-<text x="470" y="112" text-anchor="middle" fill="#fff" font-size="9.5">llama.cpp + Qwen</text>
+<text x="470" y="112" text-anchor="middle" fill="#fff" font-size="9.5">llama.cpp + model</text>
 <rect x="590" y="70" width="150" height="56" rx="8" fill="#DCFCE7" stroke="#3F6212"/>
 <text x="665" y="94" text-anchor="middle" fill="#14532D" font-weight="700">valid tool_call</text>
 <text x="665" y="112" text-anchor="middle" fill="#1F2937" font-size="9.5">name + coherent args</text>
@@ -149,7 +150,7 @@ Unacceptable for a personal assistant.</p>
 
 <h1 id="cap2">2. The idea: grammar as a guardrail</h1>
 
-<p>llama.cpp (the engine that runs Qwen) supports a feature called
+<p>llama.cpp (the engine that runs the local model) offers a feature called
 <strong>GBNF</strong> (Grammar Backus-Naur Form). It&rsquo;s a language for writing
 formal grammars, like:</p>
 
@@ -307,7 +308,7 @@ primitives actually referenced. Test: <code>test_primitives_only_referenced_emit
 <strong>3. <code>grammar</code> + <code>tools</code> together &mdash; HTTP 400.</strong>
 llama-server rejects payloads with both fields. Workaround: in grammar-mode we
 bypass <code>tools</code> and directly generate the JSON
-<code>{"name":..., "arguments":...}</code>. Qwen&rsquo;s chat-template that emits
+<code>{"name":..., "arguments":...}</code>. The model&rsquo;s chat template that emits
 <code>&lt;|tool_call&gt;</code> markers is also bypassed.
 </div>
 
@@ -426,7 +427,7 @@ follow schema tightly, but no formal guarantee.</td>
 <td>Soft (model-trained)</td>
 <td>JSON Schema</td>
 <td>Superior robustness vs local baseline, but same non-locality and
-cost concerns. Sonnet 4.6 ~$0.30/turn vs local Qwen ~$0.001.</td>
+cost concerns. Sonnet 4.6 ~$0.30/turn vs the local model ~$0.001.</td>
 </tr>
 <tr>
 <td><strong>LangChain / LlamaIndex</strong></td>
@@ -510,7 +511,7 @@ instead of delegating to a fine-tuned model. Advantages:</p>
 <thead><tr><th>Trigger</th><th>Direction</th></tr></thead>
 <tbody>
 <tr><td>llama.cpp introduces native xgrammar</td><td>Switch to xgrammar (same semantics, better perf)</td></tr>
-<tr><td>Multi-model cross-provider (e.g. switch Qwen &harr; Sonnet)</td><td>Add Outlines adapter for non-llama.cpp providers</td></tr>
+<tr><td>Multiple models across providers (e.g. switching the local model &harr; a frontier one)</td><td>Add an Outlines adapter for non-llama.cpp providers</td></tr>
 <tr><td>Query corpus convergence drops below 95%</td><td>Investigate if it&rsquo;s the model or filter; possibly local fine-tune</td></tr>
 <tr><td>Unsolvable llama-server bugs</td><td>Fork generator to 2 dialects (GBNF + JSON Schema FSM)</td></tr>
 </tbody>

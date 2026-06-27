@@ -65,8 +65,8 @@ li { margin-bottom: 4px; }.lead { font-size: 12pt; color: var(--navy); border-le
 <div class="status-banner">
 
 <strong>Microprogettazione &mdash; allineata al codice.</strong>
-La componente <code>channels</code> e' realizzata e testata a livello di modulo. Supporta multi-user: comando <code>/start &lt;token&gt;</code> per pairing dei guest, <code>send_to(chat_id, OutboundMessage)</code> e fallback multi-user su pairing senza riga in <code>pairings.db</code>.
-Da affiancare ad <a href="http_api.html" style="color:#14532d;text-decoration:underline;"><code>http_api</code></a>: <strong>Telegram resta il canale primario per il dialogo</strong>; HTTP (porta 8770) e' il canale alternativo per dashboard host, automazioni curl/script e client Rust remoto.
+La componente <code>channels</code> e' realizzata e testata a livello di modulo. Supporta multi-user: comando <code>/start &lt;token&gt;</code> per pairing dei guest, <code>send_to(chat_id, OutboundMessage)</code> e ripiego multi-utente sul pairing senza riga in <code>pairings.db</code>.
+Da affiancare ad <a href="http_api.html" style="color:#14532d;text-decoration:underline;"><code>http_api</code></a>: <strong>Telegram resta il canale primario per il dialogo</strong>; HTTP (porta 8770) e' il canale alternativo per cruscotto host, automazioni curl/script e client Rust remoto.
 Riferimento di implementazione: <code>/opt/metnos/runtime/channels/</code>.
 </div>
 
@@ -100,8 +100,8 @@ Riferimento di implementazione: <code>/opt/metnos/runtime/channels/</code>.
  <li><a href="#cap2">Il <code>Protocol</code> e i tipi</a></li>
  <li><a href="#cap3">Telegram come prima implementazione</a></li>
  <li><a href="#cap4">Long-poll e persistenza dell'offset</a></li>
- <li><a href="#cap5">Daemon: il loop poll &rarr; run_turn &rarr; send</a></li>
- <li><a href="#cap6">Bottoni inline e approval rendering</a></li>
+ <li><a href="#cap5">Daemon: il ciclo poll &rarr; run_turn &rarr; send</a></li>
+ <li><a href="#cap6">Bottoni inline e carte di approvazione</a></li>
  <li><a href="#cap7">Rapporto col <code>pairing</code></a></li>
  <li><a href="#cap8">Distribuzione: systemd user unit</a></li>
  <li><a href="#cap9">HTTP come canale alternativo</a></li>
@@ -188,7 +188,7 @@ class Channel(Protocol):
 </table>
 
 <p>
-La <em>frozenness</em> evita che il dispatcher modifichi un messaggio in
+L'<em>immutabilit&agrave;</em> (oggetto <em>frozen</em>) evita che il dispatcher modifichi un messaggio in
 arrivo: chi vuole arricchire crea un nuovo oggetto. &Egrave; una scelta
 deliberata: un messaggio arrivato &egrave; un fatto storico, non un
 blocco di appunti.
@@ -230,15 +230,15 @@ dispatcher dedicato (vedi cap.&nbsp;6 e 9).</li>
 <p>
 <code>getUpdates</code> &egrave; chiamato in modalita' long-poll: il
 server Telegram tiene aperta la connessione fino a 25&nbsp;secondi se non
-ci sono updates. Niente busy-loop, niente carico inutile, latenza minima
+ci sono updates. Niente ciclo a vuoto, niente carico inutile, latenza minima
 quando un messaggio arriva.
 </p>
 
 <p>
 L'offset (l'<code>update_id</code> dell'ultimo update visto) e'
 mantenuto in memoria. Per resistere ai riavvii (systemd restart, crash,
-deploy nuovo codice) viene anche scritto su disco in
-<code>~/.local/state/metnos/telegram_offset</code>. Round-trip
+rilascio di nuovo codice) viene anche scritto su disco in
+<code>~/.local/state/metnos/telegram_offset</code>. Ciclo completo
 verificato in test (<code>telegram_offset_persistito_round_trip</code>);
 file corrotto torna a "offset = none" senza crash
 (<code>telegram_offset_state_corrotto_torna_none</code>).
@@ -250,10 +250,10 @@ disabilita (utile in test). Senza persistenza, dopo un riavvio il bot
 rivede gli ultimi messaggi pendenti su Telegram e rischia la doppia
 risposta. Con persistenza, il primo poll dopo il riavvio parte da
 <code>offset = ultimo_visto + 1</code> e Telegram non riconsegna i
-messaggi gia' acknowledged.
+messaggi gia' confermati.
 </p>
 
-<h1 id="cap5">5. Daemon: il loop poll &rarr; run_turn &rarr; send</h1>
+<h1 id="cap5">5. Daemon: il ciclo poll &rarr; run_turn &rarr; send</h1>
 
 <p>
 <code>runtime/channels/daemon.py</code> contiene <code>ChannelDaemon</code>:
@@ -275,7 +275,7 @@ daemon parte con un'istanza diversa.
 <li><strong>Eccezione di <code>poll</code></strong>: log + sleep 5&nbsp;s
 + riprova al tick successivo. Niente crash.</li>
 <li><strong>Eccezione di <code>run_turn</code></strong>: cattura,
-risposta al sender con <em>(errore interno:...)</em>, daemon prosegue.</li>
+risposta al mittente con <em>(errore interno:...)</em>, daemon prosegue.</li>
 <li><strong>Eccezione di <code>send</code></strong>: catturata da
 <code>TelegramChannel._call</code>, ritorna dict <code>{ok: False, error}</code>.
 Il turno e' gia' chiuso lato runtime, l'utente deve riprovare.</li>
@@ -292,7 +292,7 @@ multi-utente, dove anche Roberto si pair esplicitamente con un codice.</li>
 <li><code>-v</code>: log a livello DEBUG.</li>
 </ul>
 
-<h1 id="cap6">6. Bottoni inline e approval rendering</h1>
+<h1 id="cap6">6. Bottoni inline e carte di approvazione</h1>
 
 <p>
 <code>OutboundMessage.buttons</code> e' una matrice <code>list[list[dict]]</code>.
@@ -301,7 +301,7 @@ finisce nel <code>callback_data</code> del bottone Telegram.
 </p>
 
 <p>
-La componente che produce le carte di approval e' in
+La componente che produce le carte di approvazione e' in
 <code>runtime/channels/approval.py</code>:
 <code>render_approval_card(ApprovalRequest)</code> restituisce un
 <code>OutboundMessage</code> con la &laquo;carta a 3 righe&raquo; del
@@ -320,7 +320,7 @@ compatta da bottone.</li>
 
 <p>
 Il <em>dispatching</em> dei callback
-(cliccare "Approva" risolve il <code>token</code> in una pending request
+(cliccare "Approva" risolve il <code>token</code> in una richiesta in attesa
 e applica la decisione) e' gestito dal daemon tramite
 <code>approval_registry.resolve</code> (vedi <a href="approval_ux.html">approval_ux</a>).
 </p>
@@ -361,7 +361,7 @@ per audit e per rilevare account dormienti da revocare.
 Il daemon gira come <em>user unit</em>, non come servizio di sistema:
 nessun root, nessun privilegio. Il file template e' in
 <code>/opt/metnos/systemd/metnos-telegram-daemon.service</code>.
-Hardening esplicito:
+Misure di sicurezza esplicite:
 </p>
 
 <ul>
@@ -400,8 +400,8 @@ deliberato:
 </p>
 
 <ul>
-<li><strong>Telegram</strong> &mdash; canale primario di dialogo. Long-poll, mobile-first, UX consolidata.</li>
-<li><strong>HTTP</strong> &mdash; canale alternativo per <em>(a)</em> dashboard host nel browser, <em>(b)</em> client Rust su PC pairato, <em>(c)</em> automazioni curl/script. <code>run_turn</code> riceve <code>channel="http"</code> e passa per gli stessi gate (<a href="vaglio.html">vaglio</a>, <a href="policy.html">policy</a>) di Telegram.</li>
+<li><strong>Telegram</strong> &mdash; canale primario di dialogo. Long-poll, orientato al mobile, esperienza d'uso consolidata.</li>
+<li><strong>HTTP</strong> &mdash; canale alternativo per <em>(a)</em> cruscotto host nel browser, <em>(b)</em> client Rust su PC pairato, <em>(c)</em> automazioni curl/script. <code>run_turn</code> riceve <code>channel="http"</code> e passa per gli stessi gate (<a href="vaglio.html">vaglio</a>, <a href="policy.html">policy</a>) di Telegram.</li>
 <li><strong>Niente HTTPChannel formale</strong>: il modello poll-based dei <code>channels</code> e' incompatibile con request/response. <code>POST /agent/turn</code> chiama <code>run_turn</code> direttamente.</li>
 </ul>
 
@@ -424,24 +424,24 @@ ricca arriva quando ci saranno tre o piu' canali attivi.</li>
 
 <li><strong>Callback dispatcher attivo</strong>: i bottoni inline si
 renderizzano (cap.&nbsp;6) e il dispatcher nel daemon risolve
-i click tramite <code>approval_registry.resolve</code> (vedi
+i clic tramite <code>approval_registry.resolve</code> (vedi
 <a href="approval_ux.html">approval_ux</a>).</li>
 
-<li><strong>No file/voice/photo</strong>: solo testo. <code>poll</code>
+<li><strong>Niente file, voce o foto</strong>: solo testo. <code>poll</code>
 filtra esplicitamente i messaggi che non hanno <code>text</code>. Le
 foto saranno trattate scaricando l'allegato in
 <code>workspace/inbox/</code> e passando il path al runtime; le note
 vocali con <code>whisper.cpp</code> locale (cap.&nbsp;4 Architettura,
 principio open-source first).</li>
 
-<li><strong>No webhook</strong>: solo long-poll. I webhook richiederebbero
+<li><strong>Niente webhook</strong>: solo long-poll. I webhook richiederebbero
 un IP pubblico o un proxy &mdash; e Metnos sceglie di non averli.</li>
 
-<li><strong>Throttling</strong>: nessuno. Telegram limita i bot a
+<li><strong>Limitazione di frequenza</strong>: nessuna. Telegram limita i bot a
 ~30&nbsp;msg/s sul piano gratuito; per ora siamo largamente sotto. Se
-servisse, basta un token bucket a livello <code>send</code>.</li>
+servisse, basta un secchiello a gettoni (token bucket) a livello <code>send</code>.</li>
 
-<li><strong>No rate-limit per sender</strong>: un sender pairato puo'
+<li><strong>Nessun limite di frequenza per mittente</strong>: un mittente pairato puo'
 inondare il daemon. Con il vaglio attivo questo
 diventa rilevante; per ora la cardinalita' di pairing &egrave; bassa
 (uno o pochi familiari).</li>

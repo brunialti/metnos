@@ -161,7 +161,7 @@ calling the model, the runtime consults its
 and replays its sequence in a few milliseconds, and the <em>autopath</em>
 (L1), which recognises a request of the same kind as earlier ones and reuses
 their generalised plan. Only when both levels miss does the planner &mdash;
-the local Qwen&nbsp;3.6&nbsp;35B-A3B model &mdash; enter the turn. The
+the local model in the <em>wise</em> tier &mdash; enter the turn. The
 structure described below applies in full to that case; the fast path is
 covered in its dedicated page.
 </div>
@@ -310,15 +310,15 @@ they require configuring an online provider and the routing rules in
 <h1 id="cap4">4. The LLM tiers: <em>fast</em>, <em>middle</em>, <em>wise</em> (local) + <em>frontier</em></h1>
 
 <p>
-Independently of the mode (which says <em>where</em> the LLM runs), the runtime exposes four <em>tiers</em>. The three local tiers all point to the <em>same</em> model (Qwen&nbsp;3.6&nbsp;35B&#8209;A3B on <code>llama-server:8080</code>, with MTP self-speculative): the difference is not the model but the <em>per-call parameters</em> (reasoning on or off, token budget). The fourth tier, <em>frontier</em>, is a cloud model, opt-in.
+Independently of the mode (which says <em>where</em> the LLM runs), the runtime exposes four <em>tiers</em>. The three local tiers all point to the <em>same</em> local model (on <code>llama-server:8080</code>, with MTP self-speculative): the difference is not the model but the <em>per-call parameters</em> (reasoning on or off, token budget). The fourth tier, <em>frontier</em>, is a cloud model, opt-in.
 </p>
 
 <table>
 <tr><th>Tier</th><th>Characteristic</th><th>Model</th></tr>
-<tr><td><strong>fast</strong></td><td>Direct answers, reasoning off, low token budget.</td><td>local Qwen&nbsp;3.6&nbsp;35B&#8209;A3B, <code>think=false</code></td></tr>
-<tr><td><strong>middle</strong></td><td>Intermediate reasoning. The tier of the intent extractor and the vaglio.</td><td>local Qwen&nbsp;3.6&nbsp;35B&#8209;A3B</td></tr>
-<tr><td><strong>wise</strong></td><td>Maximum local reflection, reasoning on, high token budget. The tier that proposes the plans.</td><td>local Qwen&nbsp;3.6&nbsp;35B&#8209;A3B, <code>think=true</code></td></tr>
-<tr><td><strong>frontier</strong></td><td>Cloud model, opt-in, for the cases that warrant it. Accepts latency and cost.</td><td>Anthropic Opus 4.7 (online)</td></tr>
+<tr><td><strong>fast</strong></td><td>Direct answers, reasoning off, low token budget.</td><td>local model, <code>think=false</code></td></tr>
+<tr><td><strong>middle</strong></td><td>Intermediate reasoning. The tier of the intent extractor and the vaglio.</td><td>local model</td></tr>
+<tr><td><strong>wise</strong></td><td>Maximum local reflection, reasoning on, high token budget. The tier that proposes the plans.</td><td>local model, <code>think=true</code></td></tr>
+<tr><td><strong>frontier</strong></td><td>Cloud model, opt-in, for the cases that warrant it. Accepts latency and cost.</td><td>Anthropic Opus 4.8 (online)</td></tr>
 </table>
 
 <p>
@@ -331,7 +331,7 @@ The engine's proposer uses <em>wise</em>. The intent extractor and the vaglio us
 <text class="tt h" x="380" y="22">The tiers, the same runtime</text>
 <rect class="box fast" x="40" y="50" width="220" height="180"/>
 <text class="tt h" x="150" y="76">fast &amp; furious</text>
-<text class="tt s" x="150" y="96">Qwen 3.6 35B-A3B · think=false</text>
+<text class="tt s" x="150" y="96">local model · think=false</text>
 <text class="tt b" x="150" y="125">~700ms/call</text>
 <text class="tt s" x="150" y="145">always LOCAL</text>
 <text class="tt s" x="150" y="160">always available</text>
@@ -339,7 +339,7 @@ The engine's proposer uses <em>wise</em>. The intent extractor and the vaglio us
 <text class="tt s" x="150" y="212">scratchpad summariser</text>
 <rect class="box mid" x="280" y="50" width="220" height="180"/>
 <text class="tt h" x="390" y="76">middle &amp; trustable</text>
-<text class="tt s" x="390" y="96">Qwen 3.6 35B-A3B (local)</text>
+<text class="tt s" x="390" y="96">local model</text>
 <text class="tt b" x="390" y="125">~2-5s/call</text>
 <text class="tt s" x="390" y="145">local or online</text>
 <text class="tt s" x="390" y="160">intermediate reasoning</text>
@@ -347,7 +347,7 @@ The engine's proposer uses <em>wise</em>. The intent extractor and the vaglio us
 <text class="tt s" x="390" y="212">synt.compose</text>
 <rect class="box wise" x="520" y="50" width="220" height="180"/>
 <text class="tt h" x="630" y="76">slow &amp; wise</text>
-<text class="tt s" x="630" y="96">Qwen 3.6 35B-A3B · think=true</text>
+<text class="tt s" x="630" y="96">local model · think=true</text>
 <text class="tt b" x="630" y="125">5-30s/call</text>
 <text class="tt s" x="630" y="145">accepts latency/$</text>
 <text class="tt s" x="630" y="160">deep reflection</text>
@@ -359,7 +359,7 @@ The engine's proposer uses <em>wise</em>. The intent extractor and the vaglio us
 </figure>
 
 <div class="callout tip">
-<strong>Specialisation with a single model.</strong> By design the three local tiers point to the same model (Qwen&nbsp;3.6&nbsp;35B&#8209;A3B). What changes are the <em>per-call parameters</em>: <em>fast</em> asks for direct action with no reasoning, <em>middle</em> an intermediate reasoning, <em>wise</em> activates <code>think=true</code> with a high token budget. Same model, different roles, different outputs. The user obtains several points of view from a single brain.
+<strong>Specialisation with a single model.</strong> By design the three local tiers point to the same local model. What changes are the <em>per-call parameters</em>: <em>fast</em> asks for direct action with no reasoning, <em>middle</em> an intermediate reasoning, <em>wise</em> activates <code>think=true</code> with a high token budget. Same model, different roles, different outputs. The user obtains several points of view from a single brain.
 </div>
 
 <p>
@@ -614,7 +614,7 @@ The solution: <em>scratchpad</em>. When an observation exceeds the threshold (4 
 }</pre>
 
 <p>
-The summary is a <em>smart truncation</em>: the first 500 characters + a placeholder with the number of characters omitted + the last 500. This way the LLM sees the start and end of the content.
+The summary is a <em>smart truncation</em>: the first 500 characters, a placeholder with the number of characters omitted, then the last 500. This way the LLM sees the start and end of the content.
 </p>
 
 <p>
@@ -981,18 +981,18 @@ the local tables in <code>runtime/messages.py</code> (which remains for
 internal non-user-facing templates).
 </p>
 
-<h2 id="cap11_2_7">11.2.7 Multilingual support (three layers + latest-wins)</h2>
+<h2 id="cap11_2_7">11.2.7 Multilingual support (three layers, latest wins)</h2>
 
 <p>
 The multilingual subsystem of Metnos lives across <strong>three
 layers</strong>: (1) LLM prompts in
-<code>runtime/prompts/&lt;lang&gt;/&lt;role&gt;.j2</code> (MiniJinja, 26 roles,
-); (2) executor descriptions in TOML manifests
+<code>runtime/prompts/&lt;lang&gt;/&lt;role&gt;.j2</code> (MiniJinja, 26 roles);
+(2) executor descriptions in TOML manifests
 (<code>[description].&lt;lang&gt;</code> table + companion
 <code>manifest.lang_state.json</code>); (3) user-facing messages in
 <code>i18n.sqlite</code> (118 standard keys + 79 migrated descriptions).
-The alignment discipline is <em>latest-wins</em>: no language is canonical
-by construction, the latest editor wins (<code>version_hash</code> +
+The alignment rule is simple: the latest edit wins. No language is canonical
+by construction; whichever was edited most recently prevails (<code>version_hash</code> +
 <code>source_hash</code> per resource). The nightly daemon
 <code>i18n_translator.run_loop</code> regenerates candidates in
 <code>_pending/</code>; <code>metnos-prompts review</code> shows the diff,
@@ -1056,7 +1056,7 @@ This document describes what the planner does <em>today</em>, validated by tests
 </p>
 
 <div style="margin:22px 0;padding:20px;background:#fff;border:1px solid var(--border);border-radius:8px;overflow-x:auto;">
-  <svg viewBox="0 0 860 300" role="img" aria-label="Engine v2 cascade diagram: the four layers of run_turn">
+  <svg viewBox="0 0 860 300" role="img" aria-label="Engine cascade diagram: the four layers of run_turn">
   <defs>
   <marker id="aren" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
   <path d="M0,0 L10,5 L0,10 z" fill="#64748B"/>

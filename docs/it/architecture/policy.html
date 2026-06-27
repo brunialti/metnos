@@ -71,8 +71,8 @@ table.policy-table td:first-child { text-align: left; font-weight: 600; }
 <div class="status-banner">
 
 <strong>Microprogettazione &mdash; allineata al codice.</strong>
-Cluster <code>policy</code> 10/10 verde. Aggiunte: due capability nuove, <code>auth.password_storage</code> per <code>login_session</code> e <code>crawl.recursive</code> per <code>find_urls(mode='research'/'archive')</code>, con tier-policy a tre livelli (default / trusted / owned) governata da <code>~/.config/metnos/owned_domains.json</code> e <code>~/.config/metnos/trusted_origins.json</code>. Riferimento: <code>runtime/policy.py</code>.
-<div class="seq">Stato nella sequenza dei microdesign: <em>under approval</em> &rarr; <em>approved</em> &rarr; <strong>tested</strong> &rarr; <em>implemented</em>.</div>
+Cluster <code>policy</code> 10/10 verde. Il registro espone <strong>13 capability canoniche</strong> (da <code>fs:read</code> a <code>calendar:read</code>); la tabella autonomia &times; capability (ReadOnly / Supervised / Full) e i grant <em>per_target</em> persistenti sono allineati al codice. Riferimento: <code>runtime/policy.py</code>.
+<div class="seq">Stato nella sequenza dei microdesign: <em>in valutazione</em> &rarr; <em>approvato</em> &rarr; <strong>testato</strong> &rarr; <em>implementato</em>.</div>
 </div>
 
 <nav aria-label="Language" style="position:fixed;top:16px;right:20px;z-index:9999;font-family:'Segoe UI',Calibri,sans-serif;font-size:10pt;letter-spacing:2px;background:#FAFBFC;border:1px solid #d0d7de;border-radius:14px;padding:4px 10px;box-shadow:0 1px 4px rgba(0,0,0,0.04);">
@@ -103,8 +103,8 @@ Cluster <code>policy</code> 10/10 verde. Aggiunte: due capability nuove, <code>a
 <h2>Indice</h2>
 <ol>
  <li><a href="#cap1">Cos'&egrave; policy</a></li>
- <li><a href="#cap2">Capability Registry</a></li>
- <li><a href="#cap3">Tabella autonomy &times; capability</a></li>
+ <li><a href="#cap2">Registro delle capability</a></li>
+ <li><a href="#cap3">Tabella autonomia &times; capability</a></li>
  <li><a href="#cap4">Grants per_target persistenti</a></li>
  <li><a href="#cap5">Esito combinato (<code>effective_outcome</code>)</a></li>
  <li><a href="#cap6">Integrazione runtime</a></li>
@@ -127,7 +127,7 @@ La policy &egrave; il filtro di legalit&agrave; di Metnos: lo strato 2 dell'arch
 <text x="99" y="94" text-anchor="middle" fill="#1A477A" font-weight="700">capability richiesta</text>
 <text x="99" y="112" text-anchor="middle" fill="#475569" font-size="9.5">dall'executor</text>
 <rect x="206" y="70" width="178" height="56" rx="8" fill="#FEF3C7" stroke="#B7791F"/>
-<text x="295" y="94" text-anchor="middle" fill="#1A477A" font-weight="700">livello autonomy</text>
+<text x="295" y="94" text-anchor="middle" fill="#1A477A" font-weight="700">livello autonomia</text>
 <text x="295" y="112" text-anchor="middle" fill="#475569" font-size="9.5">ReadOnly/Supervised/Full</text>
 <rect x="402" y="70" width="178" height="56" rx="8" fill="#EDE4F7" stroke="#6B21A8"/>
 <text x="491" y="94" text-anchor="middle" fill="#1A477A" font-weight="700">grant per_target</text>
@@ -140,7 +140,7 @@ La policy &egrave; il filtro di legalit&agrave; di Metnos: lo strato 2 dell'arch
 <line x1="580" y1="98" x2="596" y2="98" stroke="#1A477A" stroke-width="2" marker-end="url(#m-po)"/>
 
 </svg>
-<figcaption>Figura 1 &mdash; Il registro delle capability: la capability richiesta incrocia il livello di autonomy e gli eventuali grant per-bersaglio, producendo l'esito effettivo.</figcaption>
+<figcaption>Figura 1 &mdash; Il registro delle capability: la capability richiesta incrocia il livello di autonomia e gli eventuali grant per-bersaglio, producendo l'esito effettivo.</figcaption>
 </figure>
 
 
@@ -151,18 +151,18 @@ La policy convive con altri due strati che decidono cose diverse, e questa &egra
 <ul>
 <li>la <strong>policy</strong> decide il <em>diritto</em> &mdash; questo livello ha titolo a fare questa cosa su questo bersaglio?</li>
 <li>il <a href="vaglio.html">vaglio</a> decide il <em>senso</em> &mdash; ha senso farlo, dato il contesto della richiesta?</li>
-<li>la <a href="sandbox.html">sandbox</a> confina l'<em>esecuzione</em> &mdash; quando si decide di fare, lo si fa dentro un guscio kernel-level che limita i danni.</li>
+<li>la <a href="sandbox.html">sandbox</a> confina l'<em>esecuzione</em> &mdash; quando si decide di fare, lo si fa dentro un guscio a livello kernel che limita i danni.</li>
 </ul>
 
 <p>
-I tre filtri sono in serie: la policy gira per prima (&egrave; quella pi&ugrave; economica, una lookup in tabella + un'eventuale query SQLite); se passa, il vaglio applica giudizio LLM contestuale; se anche il vaglio passa, la sandbox wrappa l'invocazione. Il modulo <code>runtime/policy.py</code> &egrave; ~360 righe, niente daemon, niente stato globale a parte la cache della tabella e il file SQLite dei grants.
+I tre filtri sono in serie: la policy gira per prima (&egrave; quella pi&ugrave; economica, una ricerca in tabella + un'eventuale query SQLite); se passa, il vaglio applica giudizio LLM contestuale; se anche il vaglio passa, la sandbox avvolge l'invocazione. Il modulo <code>runtime/policy.py</code> &egrave; ~360 righe, niente daemon, niente stato globale a parte la cache della tabella e il file SQLite dei grants.
 </p>
 
 <div class="callout note">
 <strong>Nessuna decisione politica nel codice degli executor.</strong> Un executor non sa nulla del livello di autonomia corrente n&eacute; dei grants attivi. Si limita a dichiarare le proprie capability nel manifest. La policy &egrave; il modulo dove tutte le regole vivono, leggibili in un punto solo, modificabili senza toccare un solo executor.
 </div>
 
-<h1 id="cap2">2. Capability Registry</h1>
+<h1 id="cap2">2. Registro delle capability</h1>
 
 <p>
 Il registro &egrave; il dizionario chiuso delle azioni che Metnos riconosce. Tredici voci canoniche, definite in <code>runtime/policy.py:CAPABILITY_REGISTRY</code> (<code>runtime/policy.py:46-121</code>). Ogni voce &egrave; un <code>CapabilitySpec</code> con quattro attributi:
@@ -171,7 +171,7 @@ Il registro &egrave; il dizionario chiuso delle azioni che Metnos riconosce. Tre
 <ul>
 <li><code>name</code> &mdash; il nome canonico (formato <code>famiglia:modo</code>, es. <code>fs:read</code>);</li>
 <li><code>critical</code> &mdash; <code>True</code> se l'azione &egrave; irreversibile o ad alta posta in gioco (write, send, exec);</li>
-<li><code>default_approval</code> &mdash; modalit&agrave; di approvazione di default: <code>none</code> (mai), <code>per_target</code> (una volta per ogni nuovo bersaglio), <code>always</code> (ogni volta, anche per bersagli gi&agrave; visti);</li>
+<li><code>default_approval</code> &mdash; modalit&agrave; di approvazione predefinita: <code>none</code> (mai), <code>per_target</code> (una volta per ogni nuovo bersaglio), <code>always</code> (ogni volta, anche per bersagli gi&agrave; visti);</li>
 <li><code>target_kind</code> &mdash; tipologia del bersaglio: <code>path_glob</code>, <code>host</code>, <code>exact</code>, <code>none</code>.</li>
 </ul>
 
@@ -179,7 +179,7 @@ Il registro &egrave; il dizionario chiuso delle azioni che Metnos riconosce. Tre
 <tr><th>name</th><th>critical</th><th>default_approval</th><th>target_kind</th><th>descrizione</th></tr>
 <tr><td><code>fs:read</code></td><td>no</td><td><code>per_target</code></td><td><code>path_glob</code></td><td>lettura file dal filesystem locale entro path_glob dichiarati</td></tr>
 <tr><td><code>fs:write</code></td><td><strong>s&iacute;</strong></td><td><code>per_target</code></td><td><code>path_glob</code></td><td>scrittura/modifica file entro path_glob (critica)</td></tr>
-<tr><td><code>code:exec</code></td><td><strong>s&iacute;</strong></td><td><code>always</code></td><td><code>exact</code></td><td>esecuzione di un comando shell di una whitelist (es. pkg manager)</td></tr>
+<tr><td><code>code:exec</code></td><td><strong>s&iacute;</strong></td><td><code>always</code></td><td><code>exact</code></td><td>esecuzione di un comando shell di una lista bianca (es. gestore di pacchetti)</td></tr>
 <tr><td><code>network:http</code></td><td>no</td><td><code>per_target</code></td><td><code>host</code></td><td>HTTP/HTTPS GET/POST verso host autorizzati</td></tr>
 <tr><td><code>llm:local</code></td><td>no</td><td><code>none</code></td><td><code>none</code></td><td>chiamata LLM locale (llama-server, llama.cpp), costo zero</td></tr>
 <tr><td><code>llm:online</code></td><td>no</td><td><code>per_target</code></td><td><code>none</code></td><td>chiamata LLM online (Anthropic, OpenAI,...), costo &gt; 0</td></tr>
@@ -193,7 +193,7 @@ Il registro &egrave; il dizionario chiuso delle azioni che Metnos riconosce. Tre
 </table>
 
 <p>
-Il registro &egrave; chiuso: <code>record_grant</code> rifiuta una capability che non vi appartiene (<code>runtime/policy.py:243-244</code>). Aggiungere una capability significa modificare il registro nel codice e far girare i test &mdash; non c'&egrave; iscrizione a runtime. &Egrave; una scelta deliberata: il vocabolario delle azioni &egrave; un asset di sicurezza, non una superficie di estensione liberamente aperta.
+Il registro &egrave; chiuso: <code>record_grant</code> rifiuta una capability che non vi appartiene (<code>runtime/policy.py:243-244</code>). Aggiungere una capability significa modificare il registro nel codice e far girare i test &mdash; non c'&egrave; iscrizione a runtime. &Egrave; una scelta deliberata: il vocabolario delle azioni &egrave; una risorsa di sicurezza, non una superficie di estensione liberamente aperta.
 </p>
 
 <h2>2.1 Lettura del registro</h2>
@@ -206,7 +206,7 @@ Tre famiglie sono <strong>critical</strong>: <code>fs:write</code>, <code>code:e
 Quattro capability hanno <code>default_approval = none</code>: <code>llm:local</code>, <code>channel:in</code>, <code>time:read</code>, <code>parse:local</code>. Sono azioni a costo zero, reversibili, senza effetti laterali sul mondo esterno (ascoltare un canale, leggere un'ora, fare il parse di un PDF dentro la sandbox). Restano fuori dal flusso di approvazione anche al livello pi&ugrave; conservativo.
 </p>
 
-<h1 id="cap3">3. Tabella autonomy &times; capability</h1>
+<h1 id="cap3">3. Tabella autonomia &times; capability</h1>
 
 <p>
 La tabella &egrave; il prodotto cartesiano dei tre livelli di autonomia (ReadOnly, Supervised, Full) per le 13 capability. Per ogni cella un esito: <span class="v-allow">allowed</span>, <span class="v-approve">approval_required</span>, <span class="v-deny">denied</span>. Generata in <code>runtime/policy.py:_TABLE</code> e <code>_init_table</code> (<code>runtime/policy.py:140-171</code>) secondo regole canoniche, non scritte a mano.
@@ -277,7 +277,7 @@ Per questo il gate di approvazione non avvolge tutto ci&ograve; che modifica lo 
 <h1 id="cap4">4. Grants per_target persistenti</h1>
 
 <p>
-La tabella sola non basta. Quando Roberto approva una richiesta &mdash; "s&iacute;, scrivi pure in <code>~/Documents/fatture-2026/*</code> per i prossimi due mesi" &mdash; vogliamo che il sistema ricordi quella concessione e non chieda di nuovo per ogni file salvato. La memoria di queste concessioni vive in una tabella SQLite single-file: i <em>grants</em>.
+La tabella sola non basta. Quando Roberto approva una richiesta &mdash; "s&iacute;, scrivi pure in <code>~/Documents/fatture-2026/*</code> per i prossimi due mesi" &mdash; vogliamo che il sistema ricordi quella concessione e non chieda di nuovo per ogni file salvato. La memoria di queste concessioni vive in una tabella SQLite a file singolo: i <em>grants</em>.
 </p>
 
 <h2>4.1 Schema SQLite</h2>
@@ -299,7 +299,7 @@ Definito in <code>runtime/policy.py:SCHEMA</code> (<code>runtime/policy.py:186-2
 );</pre>
 
 <p>
-Una concessione &egrave; identificata dalla quaterna (<code>channel</code>, <code>sender_id</code>, <code>capability</code>, <code>target</code>): chi ha approvato (es. Telegram + utente Roberto), per quale azione, su quale bersaglio. Le date <code>granted_at</code>/<code>expires_at</code>/<code>revoked_at</code> sono ISO 8601 UTC. Due indici accelerano le due query tipiche: lookup esatto e scansione dei grants attivi.
+Una concessione &egrave; identificata dalla quaterna (<code>channel</code>, <code>sender_id</code>, <code>capability</code>, <code>target</code>): chi ha approvato (es. Telegram + utente Roberto), per quale azione, su quale bersaglio. Le date <code>granted_at</code>/<code>expires_at</code>/<code>revoked_at</code> sono ISO 8601 UTC. Due indici accelerano le due query tipiche: ricerca esatta e scansione dei grants attivi.
 </p>
 
 <p>
@@ -333,13 +333,13 @@ Path del file: <code>~/.local/state/metnos/grants.db</code>, override possibile 
 </table>
 
 <p>
-Tutte e quattro le funzioni aprono e chiudono la connessione per chiamata: nessuno stato in memoria. Il throughput non &egrave; il punto &mdash; siamo nel dominio di poche query al secondo &mdash; e l'isolamento per chiamata semplifica il ragionamento sui test.
+Tutte e quattro le funzioni aprono e chiudono la connessione per chiamata: nessuno stato in memoria. La portata non &egrave; il punto &mdash; siamo nel dominio di poche query al secondo &mdash; e l'isolamento per chiamata semplifica il ragionamento sui test.
 </p>
 
 <h2>4.3 Quando si scrivono i grants</h2>
 
 <p>
-Il modulo <code>policy</code> &egrave; <em>read-only</em> dal pianificatore: quest'ultimo legge la tabella e i grants, ma non li crea mai. La creazione avviene nel dispatcher di approval (vedi <a href="approval_ux.html">approval_ux</a>): quando una pending request risolve come <em>approved</em> con scope <em>this and similar</em>, il dispatcher chiama <code>record_grant</code> e da quel momento la concessione &egrave; persistente.
+Il modulo <code>policy</code> &egrave; <em>read-only</em> dal pianificatore: quest'ultimo legge la tabella e i grants, ma non li crea mai. La creazione avviene nel dispatcher di approvazione (vedi <a href="approval_ux.html">approval_ux</a>): quando una richiesta in attesa si risolve come <em>approvata</em> con ambito <em>&laquo;questo e simili&raquo;</em>, il dispatcher chiama <code>record_grant</code> e da quel momento la concessione &egrave; persistente.
 </p>
 
 <h1 id="cap5">5. Esito combinato (<code>effective_outcome</code>)</h1>
@@ -419,7 +419,7 @@ Tre rinvii a moduli esistenti:
 <ul>
 <li><code>approval_registry.create_pending</code> mette in coda la richiesta e restituisce un id;</li>
 <li><code>channels.approval.render_approval_card</code> compone la carta a tre righe e la spedisce sul canale d'origine (vedi <a href="approval_ux.html">approval_ux</a>);</li>
-<li><code>invoke_executor</code> &egrave; lo stesso punto in cui la <a href="sandbox.html">sandbox</a> wrappa il comando; il parametro <code>autonomy</code> &egrave; gi&agrave; pass-through (cap. 6 di <code>sandbox.html</code>).</li>
+<li><code>invoke_executor</code> &egrave; lo stesso punto in cui la <a href="sandbox.html">sandbox</a> avvolge il comando; il parametro <code>autonomy</code> &egrave; gi&agrave; trasmesso tale e quale (cap. 6 di <code>sandbox.html</code>).</li>
 </ul>
 
 <p>
@@ -429,7 +429,7 @@ Il pianificatore non legge mai direttamente la tabella o i grants: fa una sola c
 <h1 id="cap7">7. CLI</h1>
 
 <p>
-Il modulo &egrave; eseguibile come script (<code>runtime/policy.py:360-423</code>): utile per ispezione manuale e per costruire dashboard in poche righe. Quattro sottocomandi.
+Il modulo &egrave; eseguibile come script (<code>runtime/policy.py:360-423</code>): utile per ispezione manuale e per costruire cruscotti in poche righe. Quattro sottocomandi.
 </p>
 
 <table>
@@ -448,7 +448,7 @@ L'output JSON-line agevola la pipe verso <code>jq</code>: ad esempio <code>pytho
 <h1 id="cap8">8. Test</h1>
 
 <p>
-Cluster <code>policy</code> nel framework di test del runtime: 10/10 verde alla data. I casi coprono il registro, le tre regole della tabella, il round-trip dei grants e l'invariante di sicurezza che separa <code>denied</code> da grants alzabili.
+Cluster <code>policy</code> nel framework di test del runtime: 10/10 verde alla data. I casi coprono il registro, le tre regole della tabella, il ciclo completo dei grants (scrittura e rilettura) e l'invariante di sicurezza che separa <code>denied</code> da grants alzabili.
 </p>
 
 <table>
@@ -474,27 +474,27 @@ I tre casi marcati [security] sono gli invarianti che vincolano l'evoluzione fut
 <table>
 <tr><th>limite</th><th>quando si toglie</th></tr>
 <tr>
- <td><strong>Niente rate-limit nel codice.</strong> La tabella autonomy &times; capability non distingue ancora "una chiamata vs dieci chiamate al minuto". Una capability concessa &egrave; concessa senza tetto; gli abusi accidentali (loop fuori controllo, executor che chiama HTTP cento volte) non vengono frenati a livello di policy.</td>
- <td>Con un token bucket per_capability salvato nello stesso DB dei grants. Il token bucket richiede di scegliere bene i parametri (capacit&agrave;, ritmo di ricarica) per ogni capability; serve telemetria d'uso reale prima di fissarli.</td>
+ <td><strong>Niente limite di frequenza nel codice.</strong> La tabella autonomia &times; capability non distingue ancora "una chiamata vs dieci chiamate al minuto". Una capability concessa &egrave; concessa senza tetto; gli abusi accidentali (cicli fuori controllo, executor che chiama HTTP cento volte) non vengono frenati a livello di policy.</td>
+ <td>Con un secchiello a gettoni (token bucket) per_capability salvato nello stesso DB dei grants. Il meccanismo richiede di scegliere bene i parametri (capacit&agrave;, ritmo di ricarica) per ogni capability; serve telemetria d'uso reale prima di fissarli.</td>
 </tr>
 <tr>
- <td><strong>Niente fasce di costo.</strong> <code>llm:online</code> richiede un <code>approval_required</code> generico: non distingue una chiamata economica da una di fascia alta (un modello frontier opt-in pu&ograve; costare un ordine di grandezza in pi&ugrave;). Roberto vede tutte le chiamate online allo stesso modo.</td>
+ <td><strong>Niente fasce di costo.</strong> <code>llm:online</code> richiede un <code>approval_required</code> generico: non distingue una chiamata economica da una di fascia alta (un modello di frontiera, facoltativo, pu&ograve; costare un ordine di grandezza in pi&ugrave;). Roberto vede tutte le chiamate online allo stesso modo.</td>
  <td>Quando il giudice LLM avr&agrave; misurato il fattore costo nella valutazione del vaglio. La policy potr&agrave; allora esporre soglie esplicite (es. "fino a $0.05 allowed in Full, oltre approval_required").</td>
 </tr>
 <tr>
- <td><strong>Niente policy custom per profilo utente.</strong> La tabella &egrave; compilata in codice. Un override per profilo utente (es. Roberto vs un familiare con livelli diversi sulle stesse capability) richiede un layer di config che non esiste ancora.</td>
- <td>Quando il pairing supporter&agrave; profili multipli con sender_id distinti che mappano a tabelle diverse. Si introdurr&agrave; un layer TOML letto al boot (tipo <code>policy_overrides.toml</code>) ma con vincoli di integrit&agrave; verso il registro.</td>
+ <td><strong>Niente policy personalizzata per profilo utente.</strong> La tabella &egrave; compilata in codice. Una sovrascrittura per profilo utente (es. Roberto vs un familiare con livelli diversi sulle stesse capability) richiede uno strato di configurazione che non esiste ancora.</td>
+ <td>Quando il pairing supporter&agrave; profili multipli con sender_id distinti che mappano a tabelle diverse. Si introdurr&agrave; uno strato TOML letto all'avvio (tipo <code>policy_overrides.toml</code>) ma con vincoli di integrit&agrave; verso il registro.</td>
 </tr>
 <tr>
- <td><strong>Niente revoke automatico.</strong> I grants scadono solo via <code>expires_at</code> esplicito. Una "scadenza per inattivit&agrave;" (es. 90 giorni di non uso) non esiste; i grants restano nel DB anche per anni.</td>
- <td>Quando il pool di grants attivi diventer&agrave; abbastanza grande da rendere utile la pulizia. Implementazione semplice: un cron interno che, al boot, cerca grants senza accessi (servirebbe una colonna <code>last_used</code>) o con <code>granted_at</code> molto vecchio e li revoca con motivazione "stale".</td>
+ <td><strong>Niente revoca automatica.</strong> I grants scadono solo via <code>expires_at</code> esplicito. Una "scadenza per inattivit&agrave;" (es. 90 giorni di non uso) non esiste; i grants restano nel DB anche per anni.</td>
+ <td>Quando l'insieme di grants attivi diventer&agrave; abbastanza grande da rendere utile la pulizia. Implementazione semplice: un processo interno che, all'avvio, cerca grants senza accessi (servirebbe una colonna <code>last_used</code>) o con <code>granted_at</code> molto vecchio e li revoca con motivazione "stale".</td>
 </tr>
 </table>
 
 <h2>Note finali</h2>
 
 <p>
-La policy &egrave; un modulo piccolo per scelta: tutta la complessit&agrave; del filtro di legalit&agrave; vive in due strutture leggibili al colpo d'occhio (un dizionario di 13 voci, una tabella 3&times;13) pi&ugrave; un round-trip SQLite per i grants. Niente DSL, niente regole espresse in linguaggio naturale, niente runtime configuration che si pu&ograve; rompere caricando un file mal formato.
+La policy &egrave; un modulo piccolo per scelta: tutta la complessit&agrave; del filtro di legalit&agrave; vive in due strutture leggibili al colpo d'occhio (un dizionario di 13 voci, una tabella 3&times;13) pi&ugrave; una lettura/scrittura SQLite per i grants. Niente DSL, niente regole espresse in linguaggio naturale, niente configurazione a runtime che si pu&ograve; rompere caricando un file mal formato.
 </p>
 
 <p>

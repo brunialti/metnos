@@ -69,7 +69,7 @@ li { margin-bottom: 4px; }.lead { font-size: 12pt; color: var(--navy); border-le
 <div class="status-banner">
 
 <strong>&#10003; Microdesign &mdash; aligned with the code.</strong>
-The <code>observability</code> component is built and tested at module level (cluster <code>observability</code> 6/6 green), and today lives mostly in the <code>/admin</code> dashboard of <a href="http_api.html" style="color:#14532d;text-decoration:underline;"><code>http_api</code></a> (htmx + Jinja2 + uPlot): <code>/admin/proposals</code>, <code>/admin/executors</code>, <code>/admin/executors/stats</code>, <code>/admin/runs</code>, <code>/admin/safety</code>, <code>/admin/turns</code>, <code>/admin/users</code>. The detailed StepLog telemetry collects five partial timings (<code>intent_ms</code>, <code>prefilter_ms</code>, <code>vaglio_ms</code>, <code>exec_ms</code>, <code>rerank_ms</code>), readable with <code>bench_latency_breakdown.py</code>. The original static HTML generator remains as an offline fallback.
+The <code>observability</code> component is built and tested at module level (cluster <code>observability</code> 6/6 green), and today lives mostly in the <code>/admin</code> dashboard of <a href="http_api.html" style="color:#14532d;text-decoration:underline;"><code>http_api</code></a> (htmx + Jinja2 + uPlot): <code>/admin/changes</code>, <code>/admin/executors</code>, <code>/admin/executors/stats</code>, <code>/admin/runs</code>, <code>/admin/safety</code>, <code>/admin/turns</code>, <code>/admin/users</code>. The detailed StepLog telemetry collects five partial timings (<code>intent_ms</code>, <code>prefilter_ms</code>, <code>vaglio_ms</code>, <code>exec_ms</code>, <code>rerank_ms</code>), readable with <code>bench_latency_breakdown.py</code>. The original static HTML generator remains as an offline fallback.
 Implementation reference: <code>/opt/metnos/runtime/observability.py</code>, <code>/opt/metnos/runtime/http_routes_admin.py</code>.
 <div class="seq">Status in the microdesign sequence: <em>under approval</em> &rarr; <em>approved</em> &rarr; <strong>tested</strong> &rarr; <em>implemented</em>.</div>
 </div>
@@ -180,7 +180,7 @@ in a local browser.
 <tr>
 <td><strong>Scheduler</strong></td>
 <td>Builtin runtime tasks (<code>apply_ager</code>, <code>synt_suggest</code>, &hellip;), schedule, last execution, outcome.</td>
-<td><code>~/.local/share/metnos/scheduler/state.sqlite</code></td>
+<td><code>~/.local/state/metnos/scheduler_v2.sqlite</code></td>
 </tr>
 <tr>
 <td><strong>Test framework</strong></td>

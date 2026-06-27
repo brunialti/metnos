@@ -4,7 +4,7 @@
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
 <title>Microprogettazione — Metnos</title>
-<meta name="description" content="Guida alla microprogettazione di Metnos: cosa sono executor, mnest, mnestoma, agent runtime, http_api; come si parlano fra loro; i ventidue documenti canonici allineati al codice.">
+<meta name="description" content="Guida alla microprogettazione di Metnos: cosa sono executor, mnest, mnestoma, agent runtime, http_api; come si parlano fra loro; i ventitr&eacute; documenti canonici allineati al codice.">
 <meta name="keywords" content="Metnos, metnos, microprogettazione, architettura, executor, mnest, mnestoma, agent runtime, vaglio, synt, telos, http_api, multi-user, web crawler">
 <meta name="author" content="Roberto Brunialti">
 <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large">
@@ -15,13 +15,13 @@
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://metnos.com/it/architecture/">
 <meta property="og:title" content="Microprogettazione — Metnos">
-<meta property="og:description" content="Guida didattica alla microprogettazione di Metnos: termini, mappa dei componenti, ventidue documenti canonici allineati al codice.">
+<meta property="og:description" content="Guida didattica alla microprogettazione di Metnos: termini, mappa dei componenti, ventitr&eacute; documenti canonici allineati al codice.">
 <meta property="og:locale" content="it_IT">
 <meta property="og:locale:alternate" content="en_US">
 <meta property="og:site_name" content="Metnos">
 <meta name="twitter:card" content="summary">
 <meta name="twitter:title" content="Microprogettazione — Metnos">
-<meta name="twitter:description" content="Ventidue componenti, una mappa, un glossario propedeutico.">
+<meta name="twitter:description" content="Ventitr&eacute; componenti, una mappa, un glossario propedeutico.">
 <style>:root {
  --navy: #1A477A;
  --navy-light: #2B6CB0;
@@ -213,7 +213,7 @@ fissando i termini prima di usarli.
  <li><a href="#parole">Le quattro parole da conoscere prima</a></li>
  <li><a href="#mappa">La mappa dei componenti</a></li>
  <li><a href="#flusso">Come scorre una richiesta dell&rsquo;utente</a></li>
- <li><a href="#canonici">I ventidue documenti canonici</a></li>
+ <li><a href="#canonici">I ventitr&eacute; documenti canonici</a></li>
  <li><a href="#stato">Vocabolario e primitive</a></li>
  <li><a href="#convenzioni">Convenzioni di scrittura</a></li>
  </ol>
@@ -264,9 +264,9 @@ mezz&rsquo;ora di confusione fra trenta righe.
  tradurre un OCR, scoprire URL nuovi su un sito). Ogni executor accetta liste
  in ingresso e produce liste in uscita; ha un manifest che lo descrive, una
  firma Ed25519 che lo autentica e un profilo di sandbox che lo confina. Il
- pool corrente conta <strong>79 executor</strong> fra scritti a
- mano in <code>/opt/metnos/executors/</code> e sintetizzati al volo in
- <code>~/.local/share/metnos/executors/</code>, pi&ugrave; quelli importati da
+ pool di base conta <strong>75 executor</strong> scritti a
+ mano in <code>/opt/metnos/executors/</code>, affiancati da quelli sintetizzati al volo in
+ <code>~/.local/share/metnos/executors/</code> e da quelli importati da
  skill esterne.</dd>
 
  <dt>mnest</dt>
@@ -286,7 +286,7 @@ mezz&rsquo;ora di confusione fra trenta righe.
  <dd>Il <em>motore</em> che orchestra il tutto: riceve la richiesta
  dell&rsquo;utente, la spezza in passi, sceglie gli executor, li lancia in
  sandbox, raccoglie le osservazioni, decide il passo dopo. Implementa il
- loop ReAct con tool-use nativo (LLM locale Qwen 3.6 35B-A3B) e si appoggia agli
+ loop ReAct con tool-use nativo (LLM locale, tier wise) e si appoggia agli
  altri componenti per le decisioni difficili (Vaglio per la sicurezza,
  Synt per le capacit&agrave; mancanti, Telos per i fini).</dd>
 </dl>
@@ -304,7 +304,7 @@ proseguire.
 <h2 id="mappa">3. La mappa dei componenti</h2>
 
 <p>
-Sono <strong>ventidue</strong> componenti documentati. Lo schema sotto
+Sono <strong>ventitr&eacute;</strong> componenti documentati. Lo schema sotto
 li raggruppa per ruolo: il bordo nero spesso &egrave; il motore centrale,
 le forme verdi i &laquo;servizi&raquo; che il motore consulta, le forme
 azzurre i &laquo;tessuti&raquo; che memorizzano lo stato, le forme color
@@ -358,7 +358,7 @@ Le frecce indicano chi <em>chiama</em> chi.
  <!-- Executor pool sotto il runtime -->
  <rect class="box service" x="320" y="290" width="240" height="50"/>
  <text x="440" y="312" class="lbl">executor (pool)</text>
- <text x="440" y="328" class="lbl-sm">79 fra scritti a mano e sintetizzati</text>
+ <text x="440" y="328" class="lbl-sm">75 scritti a mano + sintetizzati</text>
 
  <!-- Scratchpad e mnestoma sotto -->
  <rect class="box memory" x="200" y="380" width="160" height="50"/>
@@ -499,10 +499,10 @@ che le due capacit&agrave; sono andate a braccetto? Se le risposte sono
 la mappa &egrave; vostra.
 </div>
 
-<h2 id="canonici">5. I ventidue documenti canonici</h2>
+<h2 id="canonici">5. I ventitr&eacute; documenti canonici</h2>
 
 <p>
-Sotto, i ventidue documenti raggruppati per ruolo. Tutti hanno la
+Sotto, i ventitr&eacute; documenti raggruppati per ruolo. Tutti hanno la
 controparte inglese in
 <a href="../../en/architecture/"><code>/en/architecture/</code></a>.
 </p>
@@ -535,6 +535,10 @@ controparte inglese in
  <td><a href="lifecycle.html"><code>lifecycle</code></a></td>
  <td>Lifecycle unificato dei cambiamenti al sistema: un solo oggetto <code>change_intent</code>, una sola macchina a stati (<em>proposed&rarr;accepted&rarr;applied&rarr;observed&rarr;finalized</em>, pi&ugrave; <em>staged</em>/<em>rejected</em>/<em>failed</em>/<em>rolled_back</em>), una sola UI <code>/admin/changes</code>. Convoglia le sorgenti di proposta (telos, introvertiva, synt, fast-path, feedback) in un&rsquo;unica coda. Pipeline notturna: materializzazione (dedup fra sorgenti via fingerprint), applicazione per tipo, osservazione con periodo di grazia e rollback fisico.</td>
 </tr>
+<tr>
+ <td><a href="virtualization.html"><code>virtualizzazione dei modelli</code></a></td>
+ <td>Come Metnos sceglie e sostituisce i suoi modelli: tre facciate (<code>get_llm</code>, <code>get_embedder</code>, <code>get_vlm</code>) che chiedono un <em>ruolo</em>, non un modello, e traducono il ruolo leggendo i file <code>{llm,embedding,vlm}_tiers.toml</code>. Cambiare modello = editare un TOML, mai il codice. Segregazione (nessun consumatore importa pi&ugrave; l&rsquo;embedder concreto), autonomia dell&rsquo;embedding (BGE-M3 e SigLIP girano ONNX in-process), endpoint remoto via <code>provider="http"</code>. Sottoinsieme leggero del pattern supranet: Protocol + factory, niente registry/DI.</td>
+</tr>
 </tbody>
 </table>
 
@@ -544,7 +548,7 @@ controparte inglese in
 <tbody>
 <tr>
  <td><a href="executor.html"><code>executor</code></a></td>
- <td>Introduzione didattica: cos'&egrave; un executor, anatomia in cinque file, manifesto firmato, recinto di esecuzione, ciclo di vita, tre origini (a mano / generato / di sistema). Tre esempi concreti. Per chi vuole capire, non per chi deve implementare. Pool corrente: 79 executor.</td>
+ <td>Introduzione didattica: cos'&egrave; un executor, anatomia in cinque file, manifesto firmato, recinto di esecuzione, ciclo di vita, tre origini (a mano / generato / di sistema). Tre esempi concreti. Per chi vuole capire, non per chi deve implementare. Pool corrente: 75 executor scritti a mano.</td>
 </tr>
 <tr>
  <td><a href="synt.html"><code>synt</code></a></td>
@@ -650,10 +654,10 @@ controparte inglese in
 Il vocabolario chiuso conta <strong>23 azioni</strong>
 (<code>read, write, move, delete, create, find, list, filter, sort,
 group, classify, get, set, send, describe, render, extract, compress,
-compute, compare, change, order, share</code>) e <strong>22 oggetti</strong>
+compute, compare, change, order, share</code>) e <strong>23 oggetti</strong>
 (<code>files, dirs, packages, messages, events, calendars, contacts, places,
 processes, urls, numbers, images, signatures, texts, proposals, inputs,
-credentials, entries, persons, tasks, issues, pulls</code>). I qualifier sono divisi in
+credentials, approval, entries, persons, tasks, issues, pulls</code>). I qualifier sono divisi in
 quattro famiglie: formato (codifica del dato), modalit&agrave; (come
 agisce l&rsquo;executor), criterio di sicurezza, provider (per indicare
 un backend diverso da quello predefinito, ad esempio

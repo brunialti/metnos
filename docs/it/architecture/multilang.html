@@ -4,8 +4,8 @@
  <meta charset="UTF-8">
  <meta name="viewport" content="width=device-width, initial-scale=1.0">
  <title>Metnos &mdash; multilang (tested)</title>
- <meta name="description" content="Microprogettazione del multilinguismo di Metnos: tre layer (prompt LLM, manifest description, messaggi user-facing), source-of-truth latest-wins, workflow add-language, METNOS_LANG di processo.">
- <meta name="keywords" content="multilang, multilingue, i18n, prompts, manifest, latest-wins, add-language, METNOS_LANG, metnos, Metnos">
+ <meta name="description" content="Microprogettazione del multilinguismo di Metnos: tre strati (prompt LLM, manifest description, messaggi rivolto all'utente), fonte di verit&agrave; vince l'ultimo, flusso add-language, METNOS_LANG di processo.">
+ <meta name="keywords" content="multilang, multilingue, i18n, prompts, manifest, vince l'ultimo, add-language, METNOS_LANG, metnos, Metnos">
  <meta name="author" content="Roberto Brunialti">
  <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large">
  <link rel="canonical" href="https://metnos.com/it/architecture/multilang">
@@ -15,7 +15,7 @@
  <meta property="og:type" content="article">
  <meta property="og:url" content="https://metnos.com/it/architecture/multilang">
  <meta property="og:title" content="Metnos &mdash; multilang ">
- <meta property="og:description" content="Tre layer multilingua, source-of-truth latest-wins, workflow add-language, METNOS_LANG di processo.">
+ <meta property="og:description" content="Tre strati multilingua, fonte di verit&agrave; vince l'ultimo, flusso add-language, METNOS_LANG di processo.">
  <meta property="og:locale" content="it_IT">
  <meta property="og:site_name" content="Metnos">
  <meta name="twitter:card" content="summary">
@@ -25,7 +25,7 @@
  "@context": "https://schema.org",
  "@type": "TechArticle",
  "headline": "Metnos — multilang ",
- "description": "Microprogettazione canonica del multilinguismo di Metnos: tre layer + source-of-truth latest-wins + workflow add-language.",
+ "description": "Microprogettazione canonica del multilinguismo di Metnos: tre strati + fonte di verit&agrave; vince l'ultimo + flusso add-language.",
  "url": "https://metnos.com/it/architecture/multilang.html",
  "inLanguage": "it",
  "isPartOf": {"@type": "WebSite", "name": "Metnos", "url": "https://metnos.com/"},
@@ -69,8 +69,8 @@ li { margin-bottom: 4px; }.lead { font-size: 12pt; color: var(--navy); border-le
 <span style="display: inline-block; background: #14532d; color: #fff; padding: 2px 10px; border-radius: 12px; font-size: 9.5pt; letter-spacing: 1px; font-weight: 700; margin-right: 6px;">TESTED</span>
 <strong>Microprogettazione &mdash; allineata al codice.</strong> Documento canonico del
 sottosistema multilingua di Metnos. Copre il pattern
-prompt-as-data + auto-allineamento bilingue e i tre layer vivi nel codice:
-<code>runtime/prompts/&lt;lang&gt;/&lt;role&gt;.j2</code> (MiniJinja, 32 ruoli),
+prompt-as-data + auto-allineamento bilingue e i tre strati vivi nel codice:
+<code>runtime/prompts/&lt;lang&gt;/&lt;role&gt;.j2</code> (MiniJinja, 35 ruoli),
 il database dei messaggi <code>i18n.sqlite</code> e i manifest TOML degli executor con tabella
 <code>[description].&lt;lang&gt;</code> + file companion <code>manifest.lang_state.json</code>.
 </div>
@@ -90,7 +90,7 @@ il database dei messaggi <code>i18n.sqlite</code> e i manifest TOML degli execut
 
 <div class="title-page">
  <h1>Metnos</h1>
- <div class="subtitle"><code>multilang</code> &mdash; tre layer, source-of-truth latest-wins, add-language</div>
+ <div class="subtitle"><code>multilang</code> &mdash; tre strati, fonte di verit&agrave; vince l'ultimo, add-language</div>
  <div class="meta">
  Microprogettazione &mdash; allineata al codice.<br>
  Copre il pattern prompt-as-data e i moduli<br>
@@ -106,10 +106,10 @@ il database dei messaggi <code>i18n.sqlite</code> e i manifest TOML degli execut
 <h2>Indice</h2>
 <ol>
  <li><a href="#cap1">Scopo e confini</a></li>
- <li><a href="#cap2">I tre layer multilingua</a></li>
- <li><a href="#cap3">Source-of-truth: latest-wins</a></li>
+ <li><a href="#cap2">I tre strati multilingua</a></li>
+ <li><a href="#cap3">Fonte di verit&agrave;: vince l'ultimo</a></li>
  <li><a href="#cap4">Workflow add-language</a></li>
- <li><a href="#cap5">METNOS_LANG di processo vs source-of-truth dinamico</a></li>
+ <li><a href="#cap5">METNOS_LANG di processo vs fonte di verit&agrave; dinamico</a></li>
  <li><a href="#cap6">Edge case: retro-translate manuale</a></li>
  <li><a href="#cap7">Estensioni future</a></li>
  <li><a href="#cap8">CLI di riferimento</a></li>
@@ -143,60 +143,60 @@ toccare il codice.
 <line x1="558" y1="98" x2="574" y2="98" stroke="#1A477A" stroke-width="2" marker-end="url(#m-ml)"/>
 
 </svg>
-<figcaption>Figura 1 &mdash; I tre strati multilingua: prompt del LLM, descrizioni degli executor e messaggi user-facing; nessuna lingua canonica, vince l'ultimo editato.</figcaption>
+<figcaption>Figura 1 &mdash; I tre strati multilingua: prompt del LLM, descrizioni degli executor e messaggi rivolto all'utente; nessuna lingua canonica, vince l'ultimo editato.</figcaption>
 </figure>
 
 
 <p>Il documento copre:</p>
 <ul>
-<li>i tre layer di stringhe (prompt LLM, manifest description executor, messaggi user-facing);</li>
-<li>la disciplina <em>latest-wins</em>: nessuna lingua &egrave; canonica per
+<li>i tre strati di stringhe (prompt LLM, manifest description executor, messaggi rivolto all'utente);</li>
+<li>la disciplina <em>vince l'ultimo</em>: nessuna lingua &egrave; canonica per
 costruzione, vince chi viene editato per ultimo;</li>
 <li>il comando admin <code>metnos-prompts add-language &lt;code&gt;</code> e i suoi effetti;</li>
-<li>la differenza fra <code>METNOS_LANG</code> di processo (boot resolve) e source-of-truth (latest-wins, dinamico);</li>
-<li>l'edge case di una traduzione che torna indietro (retro-translate).</li>
+<li>la differenza fra <code>METNOS_LANG</code> di processo (risoluzione all'avvio) e fonte di verit&agrave; (vince l'ultimo, dinamico);</li>
+<li>il caso limite di una traduzione che torna indietro (retro-translate).</li>
 </ul>
 
 <p>Non copre, e demanda altrove:</p>
 <ul>
-<li>la pipeline di traduzione frontier opt-in (prompt provider-specifici): vedi <a href="synt.html#cap4">synt &sect;4.2.3</a> per il pattern repertoire;</li>
+<li>la pipeline di traduzione di frontiera facoltativa (prompt provider-specifici): vedi <a href="synt.html#cap4">synt &sect;4.2.3</a> per il pattern repertoire;</li>
 <li>la rotazione del DB i18n (vacuum, retention): vedi <code>runtime/i18n.py</code>;</li>
 <li>il rendering dei template HTML di canale (Telegram + HTTP): vedi <a href="channel.html">channel</a>.</li>
 </ul>
 
-<h1 id="cap2">2. I tre layer multilingua</h1>
+<h1 id="cap2">2. I tre strati multilingua</h1>
 
 <p>
 Ogni stringa che Metnos pronuncia, o che un LLM legge come parte di una sua
-istruzione, vive in <strong>uno e un solo</strong> dei tre layer seguenti.
+istruzione, vive in <strong>uno e un solo</strong> dei tre strati seguenti.
 La separazione &egrave; per <em>natura della stringa</em>, non per comodit&agrave;:
-nessuna stringa abita due layer.
+nessuna stringa abita due strati.
 </p>
 
 <table>
 <thead>
 <tr>
-<th style="width:18%">Layer</th>
+<th style="width:18%">Strato</th>
 <th>Cosa contiene</th>
-<th style="width:24%">Storage</th>
+<th style="width:24%">Archiviazione</th>
 <th style="width:18%">Volume</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td><strong>Layer 1 &mdash; prompt LLM</strong></td>
+<td><strong>Strato 1 &mdash; prompt LLM</strong></td>
 <td>Il testo che istruisce il pianificatore, il vaglio, il describe, il classify, il synt 5-stage. Template MiniJinja con variabili (<code>{{ tools }}</code>, <code>{{ history }}</code>).</td>
 <td><code>runtime/prompts/&lt;lang&gt;/&lt;role&gt;.j2</code></td>
-<td>32 ruoli &times; N lingue</td>
+<td>35 ruoli &times; N lingue</td>
 </tr>
 <tr>
-<td><strong>Layer 2 &mdash; manifest description</strong></td>
+<td><strong>Strato 2 &mdash; manifest description</strong></td>
 <td>Description e affinity keywords degli executor. Sono il <em>prompt del tool</em> per il pianificatore (CLAUDE.md &sect;2.5).</td>
-<td>Tabella <code>[description].&lt;lang&gt;</code> dentro al manifest TOML; companion file <code>manifest.lang_state.json</code> per version_hash + source_hash per lingua.</td>
-<td>~79 executor &times; N lingue</td>
+<td>Tabella <code>[description].&lt;lang&gt;</code> dentro al manifest TOML; file companion <code>manifest.lang_state.json</code> per version_hash + source_hash per lingua.</td>
+<td>~75 executor &times; N lingue</td>
 </tr>
 <tr>
-<td><strong>Layer 3 &mdash; messaggi user-facing</strong></td>
+<td><strong>Strato 3 &mdash; messaggi rivolto all'utente</strong></td>
 <td>ERR_*, WARN_*, MSG_*, LOG_* (errori, warning, conferme, notifiche al canale). Description executor migrate qui in lettura runtime.</td>
 <td>SQLite <code>~/.local/share/metnos/i18n.sqlite</code>; tabella <code>i18n(key, lang, text, needs_translation, source_lang, version_hash)</code>.</td>
 <td>chiavi standard + description migrate &times; N lingue</td>
@@ -204,7 +204,7 @@ nessuna stringa abita due layer.
 </tbody>
 </table>
 
-<h2>Layer 1 &mdash; prompt LLM</h2>
+<h2>Strato 1 &mdash; prompt LLM</h2>
 
 <p>
 La directory <code>runtime/prompts/</code> ha un sotto-albero per lingua.
@@ -239,12 +239,12 @@ presente, altrimenti ricade su <strong>EN</strong> (default nel frattempo) &mdas
 mai crash. Nessuna promozione manuale necessaria.
 </p>
 
-<h2>Layer 2 &mdash; manifest description executor</h2>
+<h2>Strato 2 &mdash; manifest description executor</h2>
 
 <p>
 Il manifest TOML di un executor (<code>executors/&lt;name&gt;/manifest.toml</code>)
 ha la sezione <code>[description]</code> a tabella per lingua, e un companion
-JSON <code>manifest.lang_state.json</code> nel medesimo folder per tenere
+JSON <code>manifest.lang_state.json</code> nella medesima cartella per tenere
 traccia di chi e' source e quando.
 </p>
 
@@ -263,7 +263,7 @@ Find files on the filesystem by pattern and time window.
 it = ["cerca", "trova", "file", "ricerca", "&hellip;"]
 en = ["find", "search", "files", "lookup", "&hellip;"]</pre>
 
-<pre>// manifest.lang_state.json (companion file)
+<pre>// manifest.lang_state.json (file companion)
 {
  "lang_state": {
  "it": {
@@ -290,7 +290,7 @@ lingua manca, ripiego a <strong>EN</strong> esplicito (&sect;K, ADR 0173),
 altrimenti prima lingua disponibile.
 </p>
 
-<h2>Layer 3 &mdash; messaggi user-facing in i18n.sqlite</h2>
+<h2>Strato 3 &mdash; messaggi rivolto all'utente in i18n.sqlite</h2>
 
 <p>
 Il modulo <code>runtime/i18n.py</code> espone <code>i18n.get(key, lang=None, **vars)</code>
@@ -307,7 +307,7 @@ il loader del manifest le legge dal DB invece che dal TOML. Il TOML resta
 <em>autoritativo per i nuovi executor</em>; il DB le importa al primo load.
 </p>
 
-<h1 id="cap3">3. Source-of-truth: latest-wins</h1>
+<h1 id="cap3">3. Fonte di verit&agrave;: vince l'ultimo</h1>
 
 <p class="lead">
 Nessuna lingua e' canonica per costruzione. Chi e' stato editato per ultimo
@@ -360,7 +360,7 @@ genera un nuovo candidato in <code>_pending/</code>.
 </table>
 
 <div class="callout note">
-<strong>Perche' latest-wins e non IT-canonical?</strong> Per disciplina:
+<strong>Perche' vince l'ultimo e non IT-canonical?</strong> Per disciplina:
 in italiano si scrive il primo getto perche' Metnos e' nato in IT, ma
 la <em>qualita' editoriale</em> di una stringa pu&ograve; venire da
 qualunque lingua. Non vogliamo che un piccolo refactor in EN venga
@@ -389,7 +389,7 @@ Lingua 'fr' bootstrap completato.
  - i18n.sqlite: fr bootstrap rows pending
  - Manifest description: il daemon scansionera' al prossimo cycle
 
-Per triggerare manualmente la traduzione subito:
+Per innescare manualmente la traduzione subito:
  /opt/metnos/deploy/run_prompts_translator.sh
 
 Per attivare la lingua: METNOS_LANG=fr nei systemd unit + restart</pre>
@@ -397,14 +397,14 @@ Per attivare la lingua: METNOS_LANG=fr nei systemd unit + restart</pre>
 <p>Quattro effetti, tutti idempotenti:</p>
 
 <ol>
-<li><strong>Layer 1</strong>: crea <code>runtime/prompts/fr/</code> vuota. Il daemon notturno la riempir&agrave; con candidati a partire dalla lingua sorgente (default <code>it</code>; specificabile con <code>--source-lang en</code> se EN e' diventata la lingua piu' aggiornata).</li>
-<li><strong>Layer 2</strong>: nessuna azione immediata. Il daemon a ogni cycle scansiona i manifest TOML con tabella <code>[description].fr</code> mancante e genera candidati nel <code>manifest.lang_state.json</code> (campo <code>fr</code>) marcato <code>needs_review=true</code>.</li>
-<li><strong>Layer 3</strong>: <code>i18n_cli.add-lang fr</code> popola la tabella <code>i18n</code> con un placeholder per ogni chiave esistente, <code>needs_translation=1</code>, <code>source_lang=it</code>. Il daemon traduce a batch.</li>
+<li><strong>Strato 1</strong>: crea <code>runtime/prompts/fr/</code> vuota. Il daemon notturno la riempir&agrave; con candidati a partire dalla lingua sorgente (default <code>it</code>; specificabile con <code>--source-lang en</code> se EN e' diventata la lingua piu' aggiornata).</li>
+<li><strong>Strato 2</strong>: nessuna azione immediata. Il daemon a ogni ciclo scansiona i manifest TOML con tabella <code>[description].fr</code> mancante e genera candidati nel <code>manifest.lang_state.json</code> (campo <code>fr</code>) marcato <code>needs_review=true</code>.</li>
+<li><strong>Strato 3</strong>: <code>i18n_cli.add-lang fr</code> popola la tabella <code>i18n</code> con un placeholder per ogni chiave esistente, <code>needs_translation=1</code>, <code>source_lang=it</code>. Il daemon traduce in lotti.</li>
 <li><strong>Audit</strong>: scrive una entry in <code>~/.local/share/metnos/multilang/audit.jsonl</code> con timestamp, codice ISO, source_lang scelta.</li>
 </ol>
 
 <p>
-La lingua resta <em>inattiva</em> finch&eacute; non si setta
+La lingua resta <em>inattiva</em> finch&eacute; non si imposta
 <code>METNOS_LANG=fr</code> nei systemd unit del runtime e si riavvia il
 daemon. Finch&eacute; una stringa non &egrave; tradotta, il runtime ricade su
 <strong>EN</strong> (default nel frattempo), mai su frammenti rotti.
@@ -414,7 +414,7 @@ daemon. Finch&eacute; una stringa non &egrave; tradotta, il runtime ricade su
 <strong>Niente gate di approvazione (&sect;K, ADR 0173).</strong> Il daemon
 notturno scrive <em>candidati</em> in <code>_pending/</code> e il loader li usa
 <strong>in-vivo</strong>: nessuno revisiona a mano centinaia di stringhe. La
-revisione resta <em>opt-in</em> &mdash;
+revisione resta <em>facoltativa</em> &mdash;
 <code>metnos-prompts review &lt;role&gt; --lang=fr</code> mostra il diff,
 <code>metnos-prompts mark-synced &lt;role&gt; --lang=fr</code> <em>canonicalizza</em>
 il candidato a <code>&lt;role&gt;.j2</code> (riattivando il linter prescrittivo
@@ -422,32 +422,32 @@ il candidato a <code>&lt;role&gt;.j2</code> (riattivando il linter prescrittivo
 abbia effetto.
 </div>
 
-<h1 id="cap5">5. <code>METNOS_LANG</code> di processo vs source-of-truth dinamico</h1>
+<h1 id="cap5">5. <code>METNOS_LANG</code> di processo vs fonte di verit&agrave; dinamico</h1>
 
 <p>
 <code>METNOS_LANG</code> e' la lingua <em>di lettura del processo</em>:
 quale lingua il pianificatore vede come prompt, quale lingua compare nei
-messaggi all'utente. E' una variabile statica, risolta al boot dei systemd
+messaggi all'utente. E' una variabile statica, risolta all'avvio dei systemd
 unit, costante per tutta la vita del processo.
 </p>
 
 <p>
-Il source-of-truth (latest-wins di &sect;3) e' un attributo
+Il fonte di verit&agrave; (vince l'ultimo di &sect;3) e' un attributo
 <em>dinamico per risorsa</em>: per la risorsa A pu&ograve; essere IT, per la B
 EN, per la C FR &mdash; dipende da chi ha editato per ultimo. Il daemon
-translator usa il source-of-truth per decidere da-cosa-tradurre-cosa,
+translator usa il fonte di verit&agrave; per decidere da-cosa-tradurre-cosa,
 indipendentemente da <code>METNOS_LANG</code>.
 </p>
 
 <table>
 <thead>
-<tr><th style="width:30%">Aspetto</th><th><code>METNOS_LANG</code></th><th>Source-of-truth latest-wins</th></tr>
+<tr><th style="width:30%">Aspetto</th><th><code>METNOS_LANG</code></th><th>Fonte di verit&agrave; vince l'ultimo</th></tr>
 </thead>
 <tbody>
 <tr><td>Granularit&agrave;</td><td>Globale al processo</td><td>Per risorsa (prompt / description / chiave)</td></tr>
-<tr><td>Quando si risolve</td><td>Al boot del systemd unit</td><td>A ogni edit, a ogni cycle del daemon</td></tr>
+<tr><td>Quando si risolve</td><td>All'avvio del systemd unit</td><td>A ogni edit, a ogni ciclo del daemon</td></tr>
 <tr><td>Effetto</td><td>Lingua mostrata all'utente / data al LLM</td><td>Lingua da cui rigenerare i candidati</td></tr>
-<tr><td>Modifica</td><td>Edit unit + restart</td><td>Automatica, ogni edit triggera ricalcolo hash</td></tr>
+<tr><td>Modifica</td><td>Edit unit + restart</td><td>Automatica, ogni modifica innesca ricalcolo hash</td></tr>
 </tbody>
 </table>
 
@@ -456,7 +456,7 @@ indipendentemente da <code>METNOS_LANG</code>.
 <p>
 Capita che un editor preferisca scrivere una nuova versione di un prompt
 direttamente nella lingua secondaria (es. EN), per poi voler riportare la
-modifica in IT. Il latest-wins lo fa automaticamente: quando l'edit EN va
+modifica in IT. Il vince l'ultimo lo fa automaticamente: quando l'edit EN va
 in commit, il <code>version_hash(en)</code> diventa nuovo, EN diventa
 <em>source corrente</em>, e la notte successiva il candidato IT viene
 rigenerato in <code>prompts/it/_pending/&lt;role&gt;.j2.candidate</code>.
@@ -471,7 +471,7 @@ del comando.
 </p>
 
 <div class="callout note">
-<strong>Retro-translate &egrave; opt-in nel senso che richiede un edit
+<strong>Retro-translate &egrave; facoltativo nel senso che richiede un edit
 diretto del file della lingua secondaria.</strong> Non c'e' un comando
 <code>retro-translate</code> separato: la simmetria del meccanismo lo rende
 implicito. Il vincolo &egrave; <em>non editare entrambe le lingue contemporaneamente</em>
@@ -481,27 +481,27 @@ con cambi divergenti: l'ultima ad essere salvata vince e l'altra perde
 
 <h1 id="cap7">7. Estensioni future</h1>
 
-<h2>Layer 4 &mdash; HTML templates di rendering chat</h2>
+<h2>Strato 4 &mdash; HTML templates di rendering chat</h2>
 
 <p>
 Oggi i template Jinja2 di <code>channels/templates/</code> (carta di
-approval, dialog form, summary di turno) sono solo IT. Il layer 4 sar&agrave;
-la replica della disciplina layer 1 con sotto-albero
+approval, dialog form, summary di turno) sono solo IT. Il strato 4 sar&agrave;
+la replica della disciplina strato 1 con sotto-albero
 <code>channels/templates/&lt;lang&gt;/</code> e identica meccanica
-<em>latest-wins</em>. Stima: 8-10 template, 2-3 ore di porting una volta che
+<em>vince l'ultimo</em>. Stima: 8-10 template, 2-3 ore di adattamento una volta che
 arriva la terza lingua.
 </p>
 
-<h2>Traduzione frontier opt-in</h2>
+<h2>Traduzione di frontiera facoltativa</h2>
 
 <p>
 Il flag <code>--quality {wise,frontier}</code> di
 <code>metnos-prompts translate</code> e <code>translate-all</code> permette
-di scegliere il tier LLM. <code>wise</code> e' il default (Qwen 3.6 35B-A3B
-locale, gratuito); <code>frontier</code> usa Anthropic Opus 4.7 con costo
+di scegliere il tier LLM. <code>wise</code> e' il default (modello
+locale, gratuito); <code>frontier</code> usa Anthropic Opus 4.8 con costo
 ~$0.015/call. La differenza emerge sui prompt lunghi e sui ruoli (es.
 <code>vaglio_judge</code>) dove la sfumatura semantica e' alta. Documentato
-nel man del CLI come <em>opt-in cosciente</em>: niente uso silente di un
+nel man del CLI come <em>scelta cosciente</em>: niente uso silente di un
 provider esterno.
 </p>
 
@@ -509,8 +509,8 @@ provider esterno.
 
 <p>
 Arabo, ebraico e persiano richiedono RTL nel rendering HTML dei canali
-(layer 4 quando arriver&agrave;) e attenzione al markup
-<code>dir="rtl"</code> nei template Jinja2. Layer 1-3 sono RTL-agnostici:
+(strato 4 quando arriver&agrave;) e attenzione al markup
+<code>dir="rtl"</code> nei template Jinja2. Strato 1-3 sono RTL-agnostici:
 le stringhe sono solo testo, il canale e' responsabile del rendering.
 </p>
 
@@ -530,7 +530,7 @@ le stringhe sono solo testo, il canale e' responsabile del rendering.
 <tr><td><code>metnos-prompts review &lt;role&gt; [--lang=en]</code></td><td>Mostra diff + validation di un candidato. Non promuove.</td></tr>
 <tr><td><code>metnos-prompts mark-synced &lt;role&gt; [--lang=en]</code></td><td>Promuove <code>_pending</code> a runtime se validation OK.</td></tr>
 <tr><td><code>metnos-prompts validate-cross-lang</code></td><td>Verifica placeholder + sintassi + len ratio cross-lang.</td></tr>
-<tr><td><code>metnos-prompts add-language &lt;code&gt; [--source-lang=it]</code></td><td>Bootstrap nuova lingua (layer 1+3, layer 2 al cycle successivo).</td></tr>
+<tr><td><code>metnos-prompts add-language &lt;code&gt; [--source-lang=it]</code></td><td>Bootstrap nuova lingua (strato 1+3, strato 2 al ciclo successivo).</td></tr>
 </tbody>
 </table>
 
@@ -547,8 +547,8 @@ non modifica i systemd unit n&eacute; il manifest, solo
 <li>Pattern <code>indices_image</code>: stesso schema di oggetto-strumento + qualifier dominio si applica a <code>indices_text</code> per ricerca semantica multilingua (futuro).</li>
 <li><code>get_inputs</code>: i dialoghi richiedono prompt LLM in lingua del processo per il <em>final_message_hint</em>.</li>
 <li>Strato 2 credentials via <code>get_inputs</code> + on_complete: stesso prompt loader, stesse lingue.</li>
-<li>Prompt-as-data: motivazione e schema completo del layer 1.</li>
-<li>Build asincrona indici: i progress message escono dal layer 3 (i18n.sqlite), naturalmente localizzati.</li>
+<li>Prompt-as-data: motivazione e schema completo del strato 1.</li>
+<li>Build asincrona indici: i progress message escono dallo strato 3 (i18n.sqlite), naturalmente localizzati.</li>
 <li>Codice: <code>runtime/prompt_loader.py</code>, <code>runtime/i18n.py</code>, <code>runtime/i18n_translator.py</code>, <code>runtime/admin/prompts_cli.py</code>, <code>runtime/admin/i18n_cli.py</code>.</li>
 </ul>
 

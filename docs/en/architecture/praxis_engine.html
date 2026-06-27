@@ -327,7 +327,7 @@ already resolved.
 | +----------------+ |
 | | L3 Proposer | wise-tier LLM, 1-shot |
 | | propose | --> plan JSON {steps, fillers, |
-| | (Qwen 35B-A3B) | final_message} |
+| | (wise tier)   | final_message} |
 | +----------------+ |
 | | |
 | v |
@@ -770,7 +770,7 @@ local single-proposal engine:
  <td>Local engine (single proposal + memory)</td>
  <td class="bench-win">equivalent</td>
  <td class="bench-win">~12 s cold, &lt;1 s from memory</td>
- <td class="bench-win">local Qwen 3.6 35B-A3B</td>
+ <td class="bench-win">local model (wise)</td>
  <td class="bench-win">0</td>
 </tr>
 </tbody>

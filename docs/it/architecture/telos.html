@@ -4,7 +4,7 @@
  <meta charset="UTF-8">
  <meta name="viewport" content="width=device-width, initial-scale=1.0">
  <title>Metnos &mdash; telos (tested)</title>
- <meta name="description" content="Microprogettazione di telos: i fini ultimi dell'utente, la funzione di allineamento, il bother budget con quote di routine, la clausola di stop.">
+ <meta name="description" content="Microprogettazione di telos: i fini ultimi dell'utente, la funzione di allineamento, il budget di disturbo con quote di routine, la clausola di stop.">
  <meta name="keywords" content="telos, fini ultimi, allineamento, bother budget, non-rinuncia, anti-paternalismo, microprogettazione, metnos, Metnos">
  <meta name="author" content="Roberto Brunialti">
  <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large">
@@ -93,7 +93,7 @@ Documento canonico, verificato dopo l'implementazione: <code>TELOS.md</code> &eg
  Microprogettazione &mdash; <br>
  Allineata con Architettura (cap. 11), executor/mnest/mnestoma e <a href="synt.html"><code>synt</code></a>.<br>
  <br>
- Pubblico: chi implementer&agrave; <code>TELOS.md</code>, la funzione di allineamento,<br>il bother budget e la clausola di stop.<br>
+ Pubblico: chi implementer&agrave; <code>TELOS.md</code>, la funzione di allineamento,<br>il budget di disturbo e la clausola di stop.<br>
  Lettura: 22 minuti.
  </div>
 </div>
@@ -106,7 +106,7 @@ Documento canonico, verificato dopo l'implementazione: <code>TELOS.md</code> &eg
  <li><a href="#cap3">TELOS.md &mdash; il file</a></li>
  <li><a href="#cap4">La funzione di allineamento</a></li>
  <li><a href="#cap5">Il telos di non-rinuncia</a></li>
- <li><a href="#cap6">Bother budget e invocazioni programmate</a></li>
+ <li><a href="#cap6">Budget di disturbo e invocazioni programmate</a></li>
  <li><a href="#cap7">Apprendimento dai silenzi</a></li>
  <li><a href="#cap8">Anti-paternalismo e clausola di stop</a></li>
  <li><a href="#cap9">Contratto Python</a></li>
@@ -121,15 +121,15 @@ Documento canonico, verificato dopo l'implementazione: <code>TELOS.md</code> &eg
 <h1 id="cap1">1. Scopo e confini</h1>
 
 <div style="background:#fef3c7;border-left:4px solid #b45309;padding:14px 22px;margin:14px 0;border-radius:0 6px 6px 0;">
-<strong>Stato dell'implementazione:</strong> 11 lenti
-implementate e testate, di cui le 10 migliori in produzione.
+<strong>Stato dell'implementazione:</strong> 10 lenti
+implementate, testate e in produzione.
 Framework comune in <code>runtime/telos_lenses/_base.py</code> con
 SHARED_PREAMBLE / SHARED_NAMING_SCHEMA / SHARED_OUTPUT_FORMAT in stile
 &sect;6 prescrittivo (DEVI / NON DEVI / OK / ERRORE). Naming Authority
 (<code>runtime/naming_grammar.py</code>) impone 5 regole R0..R4 a
 prove di GBNF + validator deterministico. Esecuzione via CLI
 <code>python3 -m runtime.telos_introspect</code> e scheduler v2
-<code>daily@03:30</code>. Toggle individuale per lente:
+(task <code>telos_introspect_nightly</code>, ogni 72h, opt-in <code>METNOS_TELOS_NIGHTLY=1</code>, default OFF). Interruttore individuale per lente:
 <code>METNOS_TELOS_LENS_&lt;NAME&gt;=1</code>. Telemetria persistente:
 <code>~/.local/share/metnos/telos_proposals.jsonl</code>.
 </div>
@@ -149,7 +149,7 @@ richiesta diretta: una zona finora non coperta.
 <ul>
  <li>Un <strong>file</strong> nel workspace (<code>TELOS.md</code>) con i fini ultimi dell'utente.</li>
  <li>Una <strong>funzione di allineamento</strong> che proietta una <code>ActionProposal</code> sui telos e ritorna uno scalare (<code>expected_alignment</code>).</li>
- <li>Un <strong>bother budget</strong> con quote separate fra proposte ad-hoc e azioni di routine concordate.</li>
+ <li>Un <strong>budget di disturbo</strong> (<em>bother budget</em>) con quote separate fra proposte spontanee e azioni di routine concordate.</li>
  <li>Una <strong>clausola di stop</strong> che disinnesca il telos di non-rinuncia quando l'utente lo richiede esplicitamente.</li>
  <li>Un <strong>meccanismo di apprendimento</strong> dai silenzi che aggiorna i pesi effettivi senza alterare i pesi dichiarati.</li>
 </ul>
@@ -318,13 +318,13 @@ expected_alignment = (&alpha; &middot; top + &gamma; &middot; rest) &middot; urg
 </ul>
 
 <p>
-La formula corrente (<code>2 &middot; top + 0.5 &middot; rest</code>) garantisce che uno specialista perfetto su un telos pesante batta un tuttofare medio. Il Giudice teleologico (LLM Qwen 3.6 35B-A3B locale) discrimina per-telos con distribuzione bimodale; il <code>&alpha;</code> boost espande la dinamica del termine dominante e <code>&gamma;</code> valorizza le proposte multi-telos.
+La formula corrente (<code>2 &middot; top + 0.5 &middot; rest</code>) garantisce che uno specialista perfetto su un telos pesante batta un tuttofare medio. Il Giudice teleologico (LLM locale, tier wise) discrimina per-telos con distribuzione bimodale; l'incremento <code>&alpha;</code> espande la dinamica del termine dominante e <code>&gamma;</code> valorizza le proposte multi-telos.
 </p>
 
 <h2>Come si stimano i <code>fit</code><sub>i</sub></h2>
 
 <p>
-<strong>Non da contatori hardcoded.</strong> Vengono stimati da un LLM con
+<strong>Non da contatori cablati nel codice.</strong> Vengono stimati da un LLM con
 spiegazione testuale. La stima &egrave; <em>delegata al Vaglio
 &mdash; fase 2 (Giudice teleologico)</em>, per una ragione strutturale:
 un LLM tende a valutare in modo conforme i propri output (self-enhancement
@@ -347,12 +347,13 @@ sono due metriche distinte:
 Una proposta passa entrambi i filtri: synt produce qualcosa di buono (<code>R &ge; soglia</code>), il Vaglio teleologico decide se vale la pena consegnarlo (<code>expected_alignment &ge; &theta;</code>). Sono ortogonali: un'ottima proposta in un momento sbagliato resta muta.
 </div>
 
-<h2>Threshold di pubblicazione e dashboard di triage</h2>
+<h2>Soglia di pubblicazione e cruscotto di smistamento</h2>
 
 <p>
 Le proposte vengono ordinate per <code>expected_alignment</code> e
-sottoposte all'utente via <strong>dashboard
-<code>/admin/proposals/telos</code></strong> (wired). Per ogni proposta la UI mostra:
+sottoposte all'utente nel <strong>cruscotto
+<code>/admin/changes</code></strong> (collegato), dove i telos sono una
+<em>famiglia</em> del registro unico delle modifiche. Per ogni proposta l'interfaccia mostra:
 </p>
 
 <ul>
@@ -389,10 +390,10 @@ non &egrave; accept/reject. Le proposte scartate <em>silenziosamente</em>
  "at": "2026-04-25T19:42:00Z"}</code></pre>
 
 <p>
-Default <code>&theta;</code> per la dashboard: <code>0.30</code>
+Default <code>&theta;</code> per il cruscotto: <code>0.30</code>
 (quartile basso, override via query param <code>min_alignment</code>).
 Cutoff empirici su 481 proposte: <code>&gt; 0.50</code> = 3 proposte
-top (0.6%); <code>&gt; 0.45</code> = 23 (5%, soglia review); <code>&gt;
+top (0.6%); <code>&gt; 0.45</code> = 23 (5%, soglia di revisione); <code>&gt;
 0.40</code> = 88 (18%, top decile).
 </p>
 
@@ -446,7 +447,7 @@ telos di non-rinuncia <em>non chiede di superarle</em>: chiede di non
 fermarsi prima.
 </p>
 
-<h1 id="cap6">6. Bother budget e invocazioni programmate</h1>
+<h1 id="cap6">6. Budget di disturbo e invocazioni programmate</h1>
 
 <p class="lead">
 L'utente ha una capacit&agrave; finita di valutare proposte. Pi&ugrave; ne
@@ -477,13 +478,13 @@ Quando una proposta viene accettata <em>insieme a un ritmo</em> (per esempio
 &laquo;ok, fammi questo riassunto ogni mattina alle 8&raquo;), il consenso
 copre l'intero ritmo, non solo la prima esecuzione. Da quel momento in poi
 le invocazioni successive non sono nuove proposte spontanee:
-sono firing dello <a href="executor.html#scheduler-builtin"><code>scheduler</code></a>
-builtin, gi&agrave; pre-approvati. Il bother budget delle ad-hoc non si
+sono scatti dello <a href="executor.html#scheduler-builtin"><code>scheduler</code></a>
+builtin, gi&agrave; pre-approvati. Il budget di disturbo delle proposte spontanee non si
 applica.
 </p>
 
 <table>
-<thead><tr><th style="width:24%">Tipo di pubblicazione</th><th>Conta sul bother budget?</th><th>Modulazione</th></tr></thead>
+<thead><tr><th style="width:24%">Tipo di pubblicazione</th><th>Conta sul budget di disturbo?</th><th>Modulazione</th></tr></thead>
 <tbody>
 <tr>
  <td><strong>Proposta ad-hoc spontanea</strong></td>
@@ -493,17 +494,17 @@ applica.
 <tr>
  <td><strong>Invocazione di scheduler nel ritmo concordato</strong></td>
  <td>No, quota separata</td>
- <td>Una sola spesa di attenzione per firing programmato. Se il firing cade in finestra protetta, si rinvia al prossimo slot non-protetto.</td>
+ <td>Una sola spesa di attenzione per scatto programmato. Se lo scatto cade in finestra protetta, si rinvia al prossimo slot non protetto.</td>
 </tr>
 <tr>
  <td><strong>Invocazione di scheduler fuori dal ritmo concordato</strong></td>
  <td>S&igrave;, parziale (50%)</td>
- <td>Se la schedule fa firing in un momento atipico (es. modifica recente del ritmo, evento eccezionale), pesa met&agrave; di una proposta ad-hoc.</td>
+ <td>Se la pianificazione scatta in un momento atipico (es. modifica recente del ritmo, evento eccezionale), pesa met&agrave; di una proposta ad-hoc.</td>
 </tr>
 <tr>
  <td><strong>Risposta a richiesta esplicita</strong></td>
  <td>No</td>
- <td>L'utente sta gi&agrave; aspettando. Nessun bother.</td>
+ <td>L'utente sta gi&agrave; aspettando. Nessun disturbo.</td>
 </tr>
 </tbody>
 </table>
@@ -515,7 +516,7 @@ applica.
 <tbody>
 <tr><td><strong>Digest serale</strong></td><td>fino a 10 proposte raggruppate</td><td>incluso (1 digest, illimitato)</td></tr>
 <tr><td><strong>Telegram (immediato)</strong></td><td>max 3/giorno, max 1/ora</td><td>schedule attive &le; 2/giorno per canale</td></tr>
-<tr><td><strong>CLI interattiva</strong></td><td>max 2/sessione</td><td>scheduling on-demand</td></tr>
+<tr><td><strong>CLI interattiva</strong></td><td>max 2/sessione</td><td>pianificazione su richiesta</td></tr>
 <tr><td><strong>Finestre protette</strong></td><td>0</td><td>0 (rinvio al prossimo slot non-protetto)</td></tr>
 </tbody>
 </table>
@@ -598,7 +599,7 @@ attiva la clausola di stop.
 <p>Si applica a:</p>
 <ul>
  <li><code>ActionProposal</code> spontanee generate da reflection, ager, mnestoma.</li>
- <li>Scelte interne di Metnos (tier LLM, parallelismo, retry) dove il telos guida il trade-off.</li>
+ <li>Scelte interne di Metnos (tier LLM, parallelismo, nuovi tentativi) dove il telos guida il compromesso.</li>
  <li>Comportamento di synt nella cascata, finch&eacute; il telos di non-rinuncia &egrave; attivo.</li>
 </ul>
 
@@ -746,7 +747,7 @@ Leggi.
 <tr>
  <td><strong>Nessun TELOS esplicito, solo feedback implicito</strong></td>
  <td>scartata</td>
- <td>Cold start impossibile: senza telos dichiarati, le prime 50 proposte sono casuali. L'utente le rifiuta tutte, l'EMA collassa, il sistema entra in silenzio.</td>
+ <td>Avvio a freddo impossibile: senza telos dichiarati, le prime 50 proposte sono casuali. L'utente le rifiuta tutte, l'EMA collassa, il sistema entra in silenzio.</td>
 </tr>
 <tr>
  <td><strong>Telos di non-rinuncia come Legge 4 della Costituzione</strong></td>
@@ -796,8 +797,8 @@ Leggi.
 <tr><td>Richiesta che il pool non sa fare</td><td>synt entra in cascata. Il telos di non-rinuncia &egrave; attivo. Se la cascata fallisce, l'esito &egrave; <code>abandoned</code> motivato (non <code>cancelled</code>).</td></tr>
 <tr><td>Utente attiva clausola di stop a met&agrave; cascata</td><td>Stato passa a <code>cancelled_by_user</code>. EMA dei telos coinvolti scende di 0.7. Il pattern non si ritenta entro 24 h.</td></tr>
 <tr><td>Stop ambiguo (&laquo;hmm vediamo&raquo;)</td><td>Metnos chiede conferma: &laquo;vuoi che mi fermi su X?&raquo;. Non interrompe d'iniziativa.</td></tr>
-<tr><td>Firing di scheduler in finestra protetta</td><td>Differito al prossimo slot non-protetto. Non pubblicato immediatamente, non scartato.</td></tr>
-<tr><td>Firing di scheduler fuori dal ritmo concordato</td><td>Pesa 50% del bother di una proposta ad-hoc.</td></tr>
+<tr><td>Scatto di scheduler in finestra protetta</td><td>Differito al prossimo slot non protetto. Non pubblicato immediatamente, non scartato.</td></tr>
+<tr><td>Scatto di scheduler fuori dal ritmo concordato</td><td>Pesa 50% del disturbo di una proposta ad-hoc.</td></tr>
 <tr><td>Revisione di TELOS.md con un telos rimosso</td><td>Il nuovo file valido, il vecchio in <code>.audit/telos/</code>. EMA del telos rimosso scartata. Audit record con diff.</td></tr>
 <tr><td>10 proposte ad-hoc in 1 ora via Telegram</td><td>Bother_cost cresce esponenzialmente; dalla 4&deg; in poi reject (defer_to_digest) anche con expected_alignment alto.</td></tr>
 <tr><td>Disambiguazione R vs expected_alignment</td><td>Una proposta synt con <code>R = 0.85</code> ma <code>expected_alignment = 0.10</code> non viene pubblicata: la qualit&agrave; non basta, il momento &egrave; sbagliato.</td></tr>
@@ -820,9 +821,9 @@ generatori creativi che producono proposte introspettive per servire
 i telos. Architettura modulare (<a href="#cap9">cap.&nbsp;9</a>):
 ogni lente &egrave; un modulo Python con 3 elementi (<code>NAME</code>,
 <code>OPERATORS</code> tupla, funzione <code>build_prompt(ctx,
-operator)</code>) e si registra in <code>__init__.py</code>. Il loop
-LLM + parse JSON + paternalism guard + GBNF wiring &egrave; centralizzato
-in <code>_base.run_lens</code>. Toggle individuale per lente:
+operator)</code>) e si registra in <code>__init__.py</code>. Il ciclo
+LLM + lettura del JSON + guardia anti-paternalismo + collegamento GBNF &egrave; centralizzato
+in <code>_base.run_lens</code>. Interruttore individuale per lente:
 <code>METNOS_TELOS_LENS_&lt;NAME&gt;=1</code>.</p>
 
 <p>Stato attuale: 10 lenti in produzione.
@@ -831,7 +832,7 @@ Le 2 nuove dell'iterazione corrente (<code>counterfactual</code>,
 La lens <code>compression</code> (Schmidhuber 2010) e' stata implementata
 ma scartata dopo il bench di convergenza: anche con il prompt
 pi&ugrave; restrittivo il modello locale non riusciva a proporre super-verbi conformi al vocabolario
-(violava l'eccezione &sect;2.2 su <code>entries</code>). Bench convergenza con Qwen 3.6 35B-A3B + GBNF: 10/10
+(violava l'eccezione &sect;2.2 su <code>entries</code>). Bench convergenza con il modello locale + GBNF: 10/10
 lenti accettate convergono al primo tentativo, 0 paternalismo, 0 invalid
 naming, 0 qualifier-object mismatch.</p>
 
@@ -844,21 +845,21 @@ naming, 0 qualifier-object mismatch.</p>
 </tr>
 </thead>
 <tbody>
-<tr style="border-bottom:1px solid #f1f5f9;"><td style="padding:7px 12px;"><code>scamper</code></td><td style="padding:7px 12px;">7 operatori brainstorming (Substitute / Combine / Adapt / Modify / Put&nbsp;to&nbsp;other&nbsp;use / Eliminate / Reverse) sui top-N executor del catalog.</td><td style="padding:7px 12px;">Eberle 1971; Osborn 1953 (Applied Imagination)</td></tr>
+<tr style="border-bottom:1px solid #f1f5f9;"><td style="padding:7px 12px;"><code>scamper</code></td><td style="padding:7px 12px;">7 operatori brainstorming (Substitute / Combine / Adapt / Modify / Put&nbsp;to&nbsp;other&nbsp;use / Eliminate / Reverse) sui primi N executor del catalogo.</td><td style="padding:7px 12px;">Eberle 1971; Osborn 1953 (Applied Imagination)</td></tr>
 <tr style="border-bottom:1px solid #f1f5f9;"><td style="padding:7px 12px;"><code>oulipo</code></td><td style="padding:7px 12px;">Vincoli temporanei deliberati che Metnos auto-impone (no API frontier, no executor X per N giorni) per esplorare path alternativi locali.</td><td style="padding:7px 12px;">Queneau &amp; Le Lionnais 1960 (Ouvroir de Litt&eacute;rature Potentielle)</td></tr>
 <tr style="border-bottom:1px solid #f1f5f9;"><td style="padding:7px 12px;"><code>inverse_rl</code></td><td style="padding:7px 12px;">Infera telos NON dichiarati osservando cluster di turni soddisfatti (proposed_action inizia con <code>PROPOSED_TELOS:</code>).</td><td style="padding:7px 12px;">Russell 1998 (Learning agents for uncertain environments, IRL)</td></tr>
 <tr style="border-bottom:1px solid #f1f5f9;"><td style="padding:7px 12px;"><code>endgame_book</code></td><td style="padding:7px 12px;">Precompute pattern di scadenze noti (fatture, scadenze, certificati) come cascate scheduler v2 deterministiche.</td><td style="padding:7px 12px;">Thompson 1986 (chess endgame tablebases, KQKR)</td></tr>
 <tr style="border-bottom:1px solid #f1f5f9;"><td style="padding:7px 12px;"><code>analogy_transfer</code></td><td style="padding:7px 12px;">Trasferisce una strategia di successo da un dominio Metnos (credentials Fernet, signatures hash) a un dominio strutturalmente simile.</td><td style="padding:7px 12px;">Hofstadter 1979 (GEB); Mitchell 2001 (Analogy-making as Perception)</td></tr>
 <tr style="border-bottom:1px solid #f1f5f9;"><td style="padding:7px 12px;"><code>boden_transformational</code></td><td style="padding:7px 12px;">Trasforma il contratto (signature args / schema / ritorno) di un executor invece dei suoi default. Cambia lo spazio di possibilit&agrave;.</td><td style="padding:7px 12px;">Boden 1990 (The Creative Mind: Myths &amp; Mechanisms)</td></tr>
 <tr style="border-bottom:1px solid #f1f5f9;"><td style="padding:7px 12px;"><code>pattern_language</code></td><td style="padding:7px 12px;">Estrae micro-pattern componibili dal mnestoma (es. ispeziona-poi-agisci, verify-after-mutate) come ricette astratte con placeholder.</td><td style="padding:7px 12px;">Alexander 1977 (A Pattern Language); Gamma et al. 1994 (Design Patterns)</td></tr>
-<tr style="border-bottom:1px solid #f1f5f9;"><td style="padding:7px 12px;"><code>generative_design</code></td><td style="padding:7px 12px;">Per un brief composto (es. design scheduler notturno), genera 2&minus;3 candidati Pareto-ottimali con trade-off espliciti su pi&ugrave; telos.</td><td style="padding:7px 12px;">Bentley 1999 (Evolutionary Design); Krish 2011 (Generative Design Method)</td></tr>
-<tr style="border-bottom:1px solid #f1f5f9;"><td style="padding:7px 12px;"><code>counterfactual</code></td><td style="padding:7px 12px;">Speculare di <code>inverse_rl</code>: estrae proposte da turni INSODDISFATTI (lunghi, retry, error). Propone l'executor mancante che avrebbe risolto in 1&minus;2 step.</td><td style="padding:7px 12px;">Shinn et al. 2023 (Reflexion: Language Agents with Verbal&nbsp;RL, NeurIPS)</td></tr>
-<tr style="border-bottom:1px solid #f1f5f9;"><td style="padding:7px 12px;"><code>constitutional</code></td><td style="padding:7px 12px;">Per ogni executor sensibile (filesystem mutante, outbound, credenziali) identifica modi di fallimento non ovvi e propone DEFENSE (layer di sicurezza, default conservativo).</td><td style="padding:7px 12px;">Bai et al. 2022 (Constitutional AI: Harmlessness from AI Feedback, Anthropic)</td></tr>
+<tr style="border-bottom:1px solid #f1f5f9;"><td style="padding:7px 12px;"><code>generative_design</code></td><td style="padding:7px 12px;">Per un brief composto (es. design scheduler notturno), genera 2&minus;3 candidati Pareto-ottimali con compromessi espliciti su pi&ugrave; telos.</td><td style="padding:7px 12px;">Bentley 1999 (Evolutionary Design); Krish 2011 (Generative Design Method)</td></tr>
+<tr style="border-bottom:1px solid #f1f5f9;"><td style="padding:7px 12px;"><code>counterfactual</code></td><td style="padding:7px 12px;">Speculare di <code>inverse_rl</code>: estrae proposte da turni INSODDISFATTI (lunghi, con nuovi tentativi, in errore). Propone l'executor mancante che avrebbe risolto in 1&minus;2 step.</td><td style="padding:7px 12px;">Shinn et al. 2023 (Reflexion: Language Agents with Verbal&nbsp;RL, NeurIPS)</td></tr>
+<tr style="border-bottom:1px solid #f1f5f9;"><td style="padding:7px 12px;"><code>constitutional</code></td><td style="padding:7px 12px;">Per ogni executor sensibile (filesystem mutante, traffico in uscita, credenziali) identifica modi di fallimento non ovvi e propone una DIFESA (strato di sicurezza, default conservativo).</td><td style="padding:7px 12px;">Bai et al. 2022 (Constitutional AI: Harmlessness from AI Feedback, Anthropic)</td></tr>
 </tbody>
 </table>
 
-<p>Le 11 lenti sono tutte LLM-driven al loro core (creativit&agrave;
-richiesta) ma il GATING delle proposte e' deterministico (&sect;7.9):
+<p>Le 10 lenti sono tutte guidate dall'LLM nel loro nucleo (creativit&agrave;
+richiesta) ma il filtro delle proposte e' deterministico (&sect;7.9):
 anti-paternalismo via regex, naming compliance via Naming Authority
 (<a href="#cap9">cap.&nbsp;9</a>), qualifier-object compatibility
 (R4) via mappa in <code>vocab.py</code>. Una proposta che viola un
@@ -867,8 +868,8 @@ la blocca a tempo di generazione.</p>
 
 <h2>Catalogo &amp; routine notturna</h2>
 
-<p>Tutte le lenti partecipano al loop notturno (scheduler v2
-<code>daily@03:30</code>, integrazione pending) e producono proposte che
+<p>Tutte le lenti partecipano al ciclo notturno (scheduler v2, task
+<code>telos_introspect_nightly</code> ogni 72h, opt-in <code>METNOS_TELOS_NIGHTLY=1</code> default OFF) e producono proposte che
 vanno al Vaglio. Lenti che propongono CONCETTI (telos, vincoli, pattern
 astratti) hanno <code>new_op_name=null</code>: oulipo, inverse_rl,
 pattern_language. Lenti naming-aware (le restanti 8) possono proporre

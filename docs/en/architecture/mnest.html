@@ -221,7 +221,7 @@ A mnest, in serialised form, contains these mandatory fields:
 </p>
 
 <pre><code>{
- "id": "mnest_01HW...", // ULID
+ "id": "mn_a1b2c3d4e5f6...", // mn_ + hex token
  "src_executor": "read_files", // canonical name of the caller
  "src_version": "1.0.0",
  "dst_executor": "read_files_pdf", // canonical name of the callee
@@ -346,7 +346,7 @@ structure is almost identical to a normal mnest, with two differences:
 </ul>
 
 <pre><code>{
- "id": "mnest_01HW...",
+ "id": "mn_a1b2c3d4e5f6...",
  "src_executor": "read_files",
  "src_version": "1.0.0",
  "dst_executor": "extract_invoice_number", // does not exist

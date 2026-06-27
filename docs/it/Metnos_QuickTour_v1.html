@@ -590,7 +590,7 @@ Non c'è un cloud di Metnos, non c'è un «registrati»: i dati e la logica rest
 <p>Quello che succede a ogni richiesta, in un disegno:</p>
 
 <figure>
-<svg class="flow" viewBox="0 0 760 560" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Il giro di un turno: intent, fast path Praxis, routing deterministico, planner ReAct, vaglio, executor in sandbox, sintetizzatore">
+<svg class="flow" viewBox="0 0 760 560" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Il giro di un turno: intent, fastpath, routing deterministico, pianificatore ReAct, vaglio, executor in sandbox, sintetizzatore">
   <defs>
     <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
       <path d="M0,0 L10,5 L0,10 Z" fill="#8a8378"/>
@@ -600,7 +600,7 @@ Non c'è un cloud di Metnos, non c'è un «registrati»: i dati e la logica rest
     </marker>
   </defs>
 
-  <!-- riga 1: tu → intent → praxis -->
+  <!-- riga 1: tu → intent → fastpath -->
   <rect x="16" y="22" width="130" height="52" rx="5" class="bx"/>
   <text x="30" y="44" class="tb">Tu</text>
   <text x="30" y="60" class="m">browser · Telegram</text>
@@ -614,30 +614,30 @@ Non c'è un cloud di Metnos, non c'è un «registrati»: i dati e la logica rest
   <line x1="368" y1="48" x2="408" y2="48" class="ln" marker-end="url(#ar)"/>
 
   <rect x="410" y="22" width="170" height="52" rx="5" class="b"/>
-  <text x="424" y="44" class="tb">Praxis</text>
+  <text x="424" y="44" class="tb">fastpath</text>
   <text x="424" y="60" class="m">forma già risolta?</text>
 
-  <!-- praxis sì → risposta -->
+  <!-- fastpath sì → risposta -->
   <line x1="580" y1="48" x2="620" y2="48" class="ln" marker-end="url(#ar)"/>
   <text x="584" y="38" class="m">sì</text>
   <rect x="622" y="22" width="122" height="52" rx="5" class="bg"/>
   <text x="636" y="44" class="tb sage">Risposta</text>
   <text x="636" y="60" class="m">0 chiamate LLM</text>
 
-  <!-- praxis no → routing -->
+  <!-- fastpath no → routing -->
   <line x1="495" y1="74" x2="495" y2="106" class="ln" marker-end="url(#ar)"/>
   <text x="503" y="94" class="m">no: si pianifica</text>
 
   <rect x="330" y="108" width="330" height="56" rx="5" class="b"/>
   <text x="344" y="130" class="tb">Routing deterministico</text>
-  <text x="344" y="147" class="m">prefiltro per affinità + seme LLM fisso → stesso piano a ogni run</text>
+  <text x="344" y="147" class="m">prefiltro per affinità + seme LLM fisso → stesso piano a ogni esecuzione</text>
 
   <line x1="495" y1="164" x2="495" y2="196" class="ln" marker-end="url(#ar)"/>
 
-  <!-- planner -->
+  <!-- pianificatore -->
   <rect x="330" y="198" width="330" height="62" rx="5" class="b"/>
   <text x="344" y="221" class="tb">Planner ReAct · LLM locale</text>
-  <text x="344" y="238" class="m">compone executor dal vocabolario chiuso (23 verbi × 22 oggetti)</text>
+  <text x="344" y="238" class="m">compone executor dal vocabolario chiuso (23 verbi × 23 oggetti)</text>
   <text x="344" y="252" class="m">liste in → liste out, i dati passano per riferimento</text>
 
   <!-- synt branch -->
@@ -686,9 +686,9 @@ Non c'è un cloud di Metnos, non c'è un «registrati»: i dati e la logica rest
   <text x="344" y="519" class="m">conteggi reali, troncamenti dichiarati, undo disponibile dove promesso</text>
   <path d="M495 440 L495 478" class="ln" marker-end="url(#ar)"/>
 
-  <text x="40" y="520" class="m">le catene riuscite alimentano Praxis: la prossima volta, stessa richiesta = replay diretto</text>
+  <text x="40" y="520" class="m">le catene riuscite alimentano il fastpath: la prossima volta, stessa richiesta = replay diretto</text>
 </svg>
-<figcaption><b>Fig. 1</b> — Il giro di un turno. Due proprietà non comuni: il routing è <b>deterministico</b> (stessa richiesta → stesso piano, a ogni esecuzione) e le forme già risolte rientrano da <b>Praxis</b> senza scomodare alcun LLM.</figcaption>
+<figcaption><b>Fig. 1</b> — Il giro di un turno. Due proprietà non comuni: il routing è <b>deterministico</b> (stessa richiesta → stesso piano, a ogni esecuzione) e le forme già risolte rientrano dal <b>fastpath</b> senza scomodare alcun LLM.</figcaption>
 </figure>
 
 <p>Le quattro proprietà che lo distinguono da un agente generico:</p>
@@ -701,7 +701,7 @@ righe e due bottoni. Vedi <a href="architecture/vaglio.html">vaglio</a>.</li>
 scritto a mano: quando manca un executor, il <em>sintetizzatore</em> ne genera uno in
 pochi minuti — nome dal vocabolario chiuso, test di nascita, firma — con la vostra
 approvazione. Vedi <a href="architecture/synt.html">synt</a> e la scena 6.</li>
-<li><strong>È riproducibile come il software, non come un prompt.</strong> Il planner
+<li><strong>È riproducibile come il software, non come un prompt.</strong> Il pianificatore
 locale è vincolato a un vocabolario chiuso, il seme di generazione è fisso, i pareggi
 fra strumenti simili si rompono con affinità curate — non a moneta. Si può testare,
 verificare le regressioni, fidarsi.</li>
@@ -718,7 +718,7 @@ annullabile lo è per costruzione (catalogo chiuso di pattern di reverse).</li>
 <p class="lead">
 Di agenti self-hosted ce ne sono già — quelli da terminale (OpenClaw e simili) e
 l'ecosistema delle «skill» importabili. Metnos fa scelte opposte su quattro assi,
-e le fa per una ragione precisa: <strong>un planner locale non è un modello di
+e le fa per una ragione precisa: <strong>un pianificatore locale non è un modello di
 frontiera</strong>, e va messo nelle condizioni di non sbagliare.
 </p>
 
@@ -730,7 +730,7 @@ frontiera</strong>, e va messo nelle condizioni di non sbagliare.
 <td>Sintetizzati anche a runtime, ma da un <strong>vocabolario chiuso e verificato</strong>: firmati, testati alla nascita, invecchiati, ammessi solo dopo un cancello a 7 strati.</td></tr>
 <tr><td><strong>Instradamento</strong></td>
 <td>Il modello sceglie uno strumento a ogni turno: chiedete due volte, ottenete due piani.</td>
-<td><strong>Deterministico per costruzione</strong>: seme fisso, pareggi rotti da affinità curate. Stessa richiesta, stesso piano, a ogni run.</td></tr>
+<td><strong>Deterministico per costruzione</strong>: seme fisso, pareggi rotti da affinità curate. Stessa richiesta, stesso piano, a ogni esecuzione.</td></tr>
 <tr><td><strong>Output</strong></td>
 <td>Forma libera, per strumento.</td>
 <td>Uniforme: <strong>liste in ingresso, liste in uscita</strong>, componibili fra passi senza colla.</td></tr>
@@ -765,12 +765,12 @@ eseguito crudo.
 <h3>Il determinismo è una scelta, non un caso</h3>
 <p>
 La maggior parte degli agenti tratta l'LLM come un oracolo da rilanciare a ogni turno.
-Metnos fa la scommessa opposta: un planner <em>locale</em> su vocabolario <em>chiuso</em>
+Metnos fa la scommessa opposta: un pianificatore <em>locale</em> su vocabolario <em>chiuso</em>
 si può rendere riproducibile — il seme di generazione è fissato, e quando due strumenti
 fratelli pareggiano decide un segnale di affinità curato, non il caso. Risultato
 misurabile: il banco di prova interno ripete ogni richiesta cinque volte e pretende
 lo stesso piano, cinque su cinque. E si compone: una forma di richiesta risolta una
-volta viene rigiocata da Praxis <strong>senza alcuna chiamata LLM</strong> — latenza
+volta viene rigiocata dal fastpath <strong>senza alcuna chiamata LLM</strong> — latenza
 più bassa, costo zero, esito identico. La flessibilità (il modello di frontiera) resta
 disponibile, ma è la riserva, non il motore.
 </p>
@@ -801,7 +801,7 @@ vivo. Dove c'è un limite, è scritto accanto al merito.
 <h3>«Riassumi le mail di oggi»</h3>
 <p class="q">Dammi il riassunto delle mail importanti di oggi.</p>
 <div class="pipe">
-  find_messages <span class="a">→</span> describe_entries <span class="a">→</span> risposta
+  read_messages <span class="a">→</span> classify_entries <span class="a">→</span> filter_entries <span class="a">→</span> describe_entries <span class="a">→</span> risposta
 </div>
 <div class="reply">
 3 mail oggi: l'avvocato chiede il documento entro venerdì; la banca conferma il
@@ -854,7 +854,7 @@ due righe, poi a una. Vedi <a href="architecture/approval_ux.html">approval_ux</
 <h3>«Ordina queste foto per anno e luogo» — e poi «annulla»</h3>
 <p class="q">Ordina tutti i file immagine in ~/images creando sottocartelle per anno,
 premettendo al nome data e luogo di scatto. Se il luogo non c'è, metti «unknown».</p>
-<p>Non esiste uno strumento «ordina foto»: il planner ne compone quattro della
+<p>Non esiste uno strumento «ordina foto»: il pianificatore ne compone quattro della
 libreria, collegando l'uscita di ognuno all'ingresso del successivo. I dati non
 transitano dal modello: passano per riferimento (<code>from_step</code>).</p>
 
@@ -868,7 +868,7 @@ transitano dal modello: passano per riferimento (<code>from_step</code>).</p>
 <li><code>move_files(from_step=3, dst_template="~/images/{anno}/{data}_{luogo}_{nome}")</code>
 <span class="res">→ 98 spostati, 0 errori · ogni coppia sorgente→destinazione registrata nel registro di undo</span></li>
 </ol>
-<p class="fig-note">Quattro executor che non si conoscono fra loro, scelti e collegati dal planner. Run reale del 28/04/2026, 98 foto.</p>
+<p class="fig-note">Quattro executor che non si conoscono fra loro, scelti e collegati dal pianificatore. Esecuzione reale del 28/04/2026, 98 foto.</p>
 
 <p>Il giorno dopo, cambio di idea:</p>
 <p class="q">Annulla l'ultima operazione.</p>
@@ -916,8 +916,8 @@ alla figlia su Telegram.</p>
 <div class="meta">
   <b>credenziali</b> cifrate in locale, mai nel codice né nei log ·
   <b>cookie</b> riusato ~14 giorni; alla scadenza re-login automatico ·
-  <b>LLM</b> 1 sola chiamata per run (il riassunto) — l'HTML si estrae in modo deterministico ·
-  <b>latenza</b> ~25–40 s/run
+  <b>LLM</b> 1 sola chiamata per esecuzione (il riassunto) — l'HTML si estrae in modo deterministico ·
+  <b>latenza</b> ~25–40 s a esecuzione
 </div>
 <div class="truth">
 Se anche il re-login fallisce (password cambiata sul portale), il task si mette in
@@ -936,7 +936,7 @@ Categoria, Importo, Note, Pagato. — Popolalo con le mail degli ultimi 30 giorn
 contengono «fattura». — Fammi un riassunto per categoria in un Google Doc. —
 Condividi tutto con il familiare. — Aggiornami ogni mattina alle 8.</p>
 <div class="pipe">
-  create_files_spreadsheet <span class="a">→</span> write_files_spreadsheet <span class="a">→</span> find_messages <span class="a">→</span> classify_entries <span class="a">→</span> read_files_ocr <span class="note">(solo per le scansioni)</span> <span class="a">→</span> compute_entries <span class="a">→</span> create_files_doc + write_files_doc <span class="a">→</span> find_contacts <span class="a">→</span> share_files <span class="note">(con carta)</span> <span class="a">→</span> create_tasks(daily@08:00)
+  create_files_spreadsheet <span class="a">→</span> write_files_spreadsheet <span class="a">→</span> read_messages <span class="a">→</span> classify_entries <span class="a">→</span> read_files_ocr <span class="note">(solo per le scansioni)</span> <span class="a">→</span> compute_entries <span class="a">→</span> create_files_doc + write_files_doc <span class="a">→</span> find_contacts <span class="a">→</span> share_files <span class="note">(con carta)</span> <span class="a">→</span> create_tasks(daily@08:00)
 </div>
 <div class="reply">
 3 bollette estratte: energia €213,47 · rifiuti €281,67 · telefono €165,25 —
@@ -945,7 +945,7 @@ ricostruisco il foglio con le mail nuove.
 </div>
 <div class="meta">
   <b>provider</b> Google Workspace (OAuth vostro) + IMAP cifrato + scheduler locale ·
-  <b>privacy</b> il planner gira in casa; in rete escono solo le chiamate API ai VOSTRI documenti ·
+  <b>privacy</b> il pianificatore gira in casa; in rete escono solo le chiamate API ai VOSTRI documenti ·
   <b>conferme</b> solo la condivisione (capability in uscita) ·
   <b>tempo totale</b> 2–3 minuti di conversazione
 </div>
@@ -964,7 +964,7 @@ un campo può mancare, e va detto.
 <div class="group-title">Scena 6 · synt al volo — verificata 28/04/2026</div>
 <h3>«Comprimi questo file» — e lo strumento non esiste ancora</h3>
 <p class="q">Comprimi /tmp/cfg.json in gzip.</p>
-<p>Il planner ispeziona il catalogo: nessun executor adatto, e nessuna catena di
+<p>Il pianificatore ispeziona il catalogo: nessun executor adatto, e nessuna catena di
 esistenti chiude il vuoto. Parte la sintesi — cinque stadi piccoli invece di un
 prompt mostro, ogni stadio vede solo la fetta di contesto che gli serve:</p>
 <div class="pipe">
@@ -981,7 +981,7 @@ richiede due o tre minuti; ogni riuso è immediato. […] Fatto:
   <b>riuso</b> dalla volta dopo, &lt;100 ms: è una normale chiamata di funzione
 </div>
 <p class="small">È così che il catalogo è arrivato
-a 77 executor: una capacità alla volta, motivata da una richiesta vera, mai in
+a 75 executor: una capacità alla volta, motivata da una richiesta vera, mai in
 anticipo. Il meccanismo completo è nel capitolo 7.</p>
 </div>
 
@@ -1001,7 +1001,7 @@ finito. Da quel momento:</p>
   find_persons_indices <span class="note">(volti: dopo un'etichettatura una-tantum «chi è chi»)</span> <span class="a">→</span> galleria
 </div>
 <div class="meta">
-  <b>modelli</b> embedding di scena + riconoscimento volti + EXIF — tutto in-process, sul vostro server ·
+  <b>modelli</b> embedding di scena + riconoscimento volti + EXIF — tutto nel processo, sul vostro server ·
   <b>privacy</b> nessuna foto lascia casa; l'indice è un file SQLite ispezionabile ·
   <b>interfaccia</b> anteprime in chat, galleria completa nel browser
 </div>
@@ -1018,7 +1018,7 @@ funzionano. È il cantiere aperto in cima alla lista.
 <h3>Manutenzione GitHub senza demone: due comandi schedulati</h3>
 <p>Il supporto del progetto stesso è gestito così — niente servizio dedicato, niente
 codice ad hoc: due richieste in linguaggio naturale, registrate come task ricorrenti,
-che il planner trasforma nelle solite catene di executor.</p>
+che il pianificatore trasforma nelle solite catene di executor.</p>
 <p class="q">Ogni 30 minuti: trova le issue nuove del repo, scarta quelle già nel
 db locale, cerca per ciascuna le issue simili già risolte, classificala e analizzala
 col tier frontier, salva la bozza di risposta con stato «prepared», e avvisami.</p>
@@ -1056,7 +1056,7 @@ la mente, la memoria e l'audit vivono su una macchina sola.
 <h3>Due superfici, una mente</h3>
 <p><strong>Il browser</strong>: una chat servita dal server stesso (porta 8770), con
 le anteprime delle foto, la galleria, e i cruscotti di amministrazione (proposte del
-synt, executor, run, turni). <strong>Telegram</strong>: lo stesso cervello in tasca,
+synt, executor, esecuzioni, turni). <strong>Telegram</strong>: lo stesso cervello in tasca,
 con le carte di conferma come bottoni in linea. Per chi automatizza, l'API HTTP
 (<code>/agent/turn</code>, anche in streaming) è la stessa porta che usa la chat.</p>
 <p>La chat web mostra anche i badge di feedback ✓/✗ per ogni risposta: il gradimento
@@ -1202,10 +1202,10 @@ credenziale non compaiono. Si gestiscono da riga di comando o chiedendolo in cha
 («quali skill ho?», «disattiva il web»).</p>
 <p>Il <strong>backend</strong> è l'altro asse: <em>come</em> un'azione raggiunge un
 servizio concreto. Il provider si sceglie da configurazione, deterministicamente —
-il planner non vede mai «Google»: vede <code>create_events</code>, e il resolver
+il pianificatore non vede mai «Google»: vede <code>create_events</code>, e il resolver
 instrada. Aggiungere un secondo provider (es. GitLab accanto a GitHub) è
 <em>+1 file di backend, zero executor nuovi</em>: niente strumenti fotocopia per
-provider, niente bias di scelta nel modello locale. Vedi
+provider, niente pregiudizio di scelta nel modello locale. Vedi
 <a href="architecture/skills_backends.html">skills_backends</a>.</p>
 
 <div class="callout">
@@ -1229,7 +1229,7 @@ e zero o più <strong>ospiti</strong>, ognuno col suo livello.
 <table>
 <thead><tr><th style="width:18%">Livello</th><th>Per chi</th><th>Cosa può</th></tr></thead>
 <tbody>
-<tr><td><strong>ReadOnly</strong></td><td>Un ospite, un canale delicato</td><td>Solo executor di lettura; ogni scrittura viene rifiutata con garbo prima ancora di arrivare al planner.</td></tr>
+<tr><td><strong>ReadOnly</strong></td><td>Un ospite, un canale delicato</td><td>Solo executor di lettura; ogni scrittura viene rifiutata con garbo prima ancora di arrivare al pianificatore.</td></tr>
 <tr><td><strong>Supervised</strong></td><td>L'uso quotidiano</td><td>Tutto il turno; le azioni delicate alzano la carta di conferma sul canale stesso.</td></tr>
 <tr><td><strong>Full</strong></td><td>L'host</td><td>Il perimetro più ampio che la policy ammette. I percorsi vietati restano vietati anche qui.</td></tr>
 </tbody>
@@ -1267,7 +1267,7 @@ futuro, non per gonfiare il presente.
   <li>File: cerca, filtra, sposta, comprime, estrae — con undo dichiarato</li>
   <li>Foto: indicizza in casa (scena, volti, EXIF) e cerca per significato</li>
   <li>Google Workspace con un solo OAuth: Gmail, Calendar, Drive, Docs, Sheets</li>
-  <li>GitHub: issue e pull request come oggetti di prima classe</li>
+  <li>GitHub: issue, pull request e file del repo come oggetti di prima classe</li>
   <li>Web: ricerca e lettura via servizi self-hosted (ricerca, geocoding)</li>
   <li>Compiti ricorrenti in linguaggio naturale («ogni mattina alle 7…»)</li>
   <li>Multi-utente sullo stesso bot, con autonomie e audit separati</li>
@@ -1314,7 +1314,7 @@ homelab e architetture di agenti possa leggerlo, farlo girare, costruirci sopra.
 <table>
 <thead><tr><th style="width:30%">Pezzo</th><th>Stato a giugno 2026</th></tr></thead>
 <tbody>
-<tr><td><strong>Uso quotidiano</strong></td><td>Sì: l'istanza di riferimento è in servizio attivo (mail, foto, scheduler, manutenzione del proprio repo). 77 executor firmati, 2 660 test automatici, 21 documenti canonici bilingui allineati al codice.</td></tr>
+<tr><td><strong>Uso quotidiano</strong></td><td>Sì: l'istanza di riferimento è in servizio attivo (mail, foto, scheduler, manutenzione del proprio repo). 75 executor firmati, 2 660 test automatici, 23 documenti canonici bilingui allineati al codice.</td></tr>
 <tr><td><strong>Installer</strong></td><td>Incluso. Il percorso <em>managed</em> (consigliato) replica un ambiente completo da un checkout pulito — modello, servizi di contorno, dati i18n, executor firmati — profila l'hardware per scegliere un modello adatto e chiude con <em>un turno reale</em>, non un ping. Il percorso <em>custom</em> (dichiarate il vostro LLM) esiste ed è sconsigliato a voce alta.</td></tr>
 <tr><td><strong>Repo pubblico</strong></td><td>Un sotto-insieme deterministico dell'istanza viva — la fetta essenziale per l'esercizio. Può restare indietro fra una pubblicazione e l'altra: è previsto, non trascuratezza.</td></tr>
 <tr><td><strong>Maturità</strong></td><td>pre-1.0: API e default cambiano senza strati di compatibilità quando emerge un disegno migliore. Capacità esistenti ma poco esercitate fuori dall'istanza di riferimento (l'i18n non-italiana su tutte). Se qualcosa si rompe: issue, e un filo di pazienza.</td></tr>
@@ -1362,9 +1362,11 @@ binaria non negoziabile + giudice graduato sui telos.</dd>
 <dt>Telos</dt>
 <dd>I vostri fini, scritti in <code>TELOS.md</code> come tendenze morbide. Il giudice
 misura le azioni proposte contro di essi.</dd>
-<dt>Praxis</dt>
-<dd>Il sentiero veloce appreso: una forma di richiesta già risolta viene rigiocata
-senza chiamate LLM. Stesso esito, latenza e costo minimi.</dd>
+<dt>fastpath</dt>
+<dd>Il sentiero veloce appreso: una richiesta già risolta viene rigiocata
+senza chiamate LLM. Stesso esito, latenza e costo minimi. Quando una forma si
+ripete per un intero gruppo di richieste simili, il piano generalizzato diventa
+un <em>autopath</em>.</dd>
 <dt>Mnestoma</dt>
 <dd>La memoria che il sistema tiene su di sé: co-attivazioni riuscite (mnest) e
 tentativi rimasti a metà (proto-mnest). Il substrato delle proposte di crescita.</dd>
@@ -1395,9 +1397,9 @@ la ricorrenza; può concedere territori revocabili.</dd>
   <div class="toc-item">
     <div>
       <a class="t" href="architecture/">Indice della microprogettazione</a>
-      <span class="d">Una pagina per sottosistema, IT+EN, ricche di diagrammi: planner, synt, vaglio, sandbox, skill, fast path, e il resto.</span>
+      <span class="d">Una pagina per sottosistema, IT+EN, ricche di diagrammi: pianificatore, synt, vaglio, sandbox, skill, fast path, e il resto.</span>
     </div>
-    <span class="time">21 documenti</span>
+    <span class="time">23 documenti</span>
   </div>
   <div class="toc-item">
     <div>

@@ -123,14 +123,14 @@ Canonical doc tested after implementation: <code>TELOS.md</code> populated in <c
 <h1 id="cap1">1. Scope and boundaries</h1>
 
 <div style="background:#fef3c7;border-left:4px solid #b45309;padding:14px 22px;margin:14px 0;border-radius:0 6px 6px 0;">
-<strong>Implementation status:</strong> 11 lenses
-implemented and tested, the 10 best in production.
+<strong>Implementation status:</strong> 10 lenses
+implemented, tested and in production.
 Common framework in <code>runtime/telos_lenses/_base.py</code> with
 SHARED_PREAMBLE / SHARED_NAMING_SCHEMA / SHARED_OUTPUT_FORMAT.
 Naming Authority (<code>runtime/naming_grammar.py</code>) enforces 5
 rules R0..R4 via GBNF + deterministic validator. Execution via CLI
 <code>python3 -m runtime.telos_introspect</code> and scheduler v2
-<code>daily@03:30</code>. Per-lens toggle:
+(task <code>telos_introspect_nightly</code>, every 72h, opt-in <code>METNOS_TELOS_NIGHTLY=1</code>, default OFF). Per-lens toggle:
 <code>METNOS_TELOS_LENS_&lt;NAME&gt;=1</code>. Persistent telemetry:
 <code>~/.local/share/metnos/telos_proposals.jsonl</code>.
 </div>
@@ -312,7 +312,7 @@ expected_alignment = (&alpha; &middot; top + &gamma; &middot; rest) &middot; urg
 </ul>
 
 <p>
-The current formula (<code>2 &middot; top + 0.5 &middot; rest</code>) guarantees that a perfect specialist on a heavy telos beats a mediocre generalist. The teleological Judge (LLM Qwen 3.6 35B-A3B local) discriminates per-telos with a bimodal distribution; the <code>&alpha;</code> boost expands the dynamic range of the dominant term and <code>&gamma;</code> credits multi-telos proposals.
+The current formula (<code>2 &middot; top + 0.5 &middot; rest</code>) guarantees that a perfect specialist on a heavy telos beats a mediocre generalist. The teleological Judge (local LLM, wise tier) discriminates per-telos with a bimodal distribution; the <code>&alpha;</code> boost expands the dynamic range of the dominant term and <code>&gamma;</code> credits multi-telos proposals.
 </p>
 
 <h2>How <code>fit</code><sub>i</sub> values are estimated</h2>
@@ -346,8 +346,9 @@ A proposal must clear both filters: synt produces something good (<code>R &ge; t
 
 <p>
 Proposals are ranked by <code>expected_alignment</code> and surfaced to
-the user via the <strong><code>/admin/proposals/telos</code>
-dashboard</strong> (wired). For each proposal
+the user in the <strong><code>/admin/changes</code>
+dashboard</strong> (wired), where telos proposals are a <em>family</em>
+facet of the unified change registry. For each proposal
 the UI shows:
 </p>
 
@@ -816,7 +817,7 @@ draw from 2022&ndash;2023 references. The <code>compression</code> lens
 to convergence failure: even with the strictest prompt, the local model
 could not reliably produce vocab-compliant super-verbs (violating the
 &sect;2.2 <code>entries</code> exception).
-Convergence bench with Qwen&nbsp;3.6&nbsp;35B&#8209;A3B + GBNF: 10/10
+Convergence bench with the local model + GBNF: 10/10
 accepted lenses converge on first attempt, 0 paternalism, 0 invalid
 naming, 0 qualifier-object mismatch.</p>
 
@@ -842,7 +843,7 @@ naming, 0 qualifier-object mismatch.</p>
 </tbody>
 </table>
 
-<p>All 11 lenses are LLM-driven at their core (creativity required) but
+<p>All 10 lenses are LLM-driven at their core (creativity required) but
 the GATING of proposals is deterministic (&sect;7.9): anti-paternalism
 via regex, naming compliance via the Naming Authority
 (<a href="#cap9">ch.&nbsp;9</a>), qualifier-object compatibility (R4)

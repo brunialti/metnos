@@ -4,8 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Metnos — Architettura: introduzione v2</title>
-    <meta name="description" content="L'architettura reale di Metnos: executor vettoriali sintetizzati al volo da un vocabolario chiuso, motore Mētis con planner LLM locale, routing deterministico (seed fisso, affinity, GBNF), quattro tier LLM, pipeline immagini in-process, canali Telegram e web. Con l'anatomia completa di un turno multitool.">
-    <meta name="keywords" content="Metnos, architettura, executor, vocabolario chiuso, synt, sintesi executor, vaglio, sandbox, GBNF, grammar, routing deterministico, tier LLM, ReAct, planner locale, Mētis, mnestoma, fast-path, SigLIP, ArcFace, EXIF, Telegram, self-hosted, assistente AI personale">
+    <meta name="description" content="L'architettura reale di Metnos: executor vettoriali sintetizzati al volo da un vocabolario chiuso, motore Mētis con pianificatore LLM locale, routing deterministico (seed fisso, affinity, GBNF), quattro tier LLM, pipeline immagini nel processo, canali Telegram e web. Con l'anatomia completa di un turno multitool.">
+    <meta name="keywords" content="Metnos, architettura, executor, vocabolario chiuso, synt, sintesi executor, vaglio, sandbox, GBNF, grammar, routing deterministico, tier LLM, ReAct, pianificatore locale, Mētis, mnestoma, fast-path, SigLIP, ArcFace, EXIF, Telegram, self-hosted, assistente AI personale">
     <meta name="author" content="Roberto Brunialti">
     <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large">
     <link rel="canonical" href="https://metnos.com/it/Metnos_Architettura_Intro_v1">
@@ -15,13 +15,13 @@
     <meta property="og:type" content="article">
     <meta property="og:url" content="https://metnos.com/it/Metnos_Architettura_Intro_v1">
     <meta property="og:title" content="Metnos — Architettura: Introduzione v2">
-    <meta property="og:description" content="Un assistente self-hosted che sintetizza i propri strumenti: vocabolario chiuso, planner LLM locale, routing deterministico, undo onesto. L'anatomia di un turno multitool, spiegata con i diagrammi.">
+    <meta property="og:description" content="Un assistente self-hosted che sintetizza i propri strumenti: vocabolario chiuso, pianificatore LLM locale, routing deterministico, undo onesto. L'anatomia di un turno multitool, spiegata con i diagrammi.">
     <meta property="og:locale" content="it_IT">
     <meta property="og:locale:alternate" content="en_US">
     <meta property="og:site_name" content="Metnos">
     <meta name="twitter:card" content="summary">
     <meta name="twitter:title" content="Metnos — Architettura: Introduzione v2">
-    <meta name="twitter:description" content="L'architettura di Metnos spiegata con i diagrammi: executor sintetizzati al volo, planner locale, routing deterministico, sicurezza per costruzione.">
+    <meta name="twitter:description" content="L'architettura di Metnos spiegata con i diagrammi: executor sintetizzati al volo, pianificatore locale, routing deterministico, sicurezza per costruzione.">
     <style>
 :root {
     --navy: #1A477A;
@@ -330,7 +330,7 @@ calendario, web e GitHub: <em>solo</em> ci&ograve; che attivi, una skill alla vo
 
 <rect x="28" y="280" width="180" height="78" rx="10" fill="#E9EFDB" stroke="#548235" stroke-width="1.6" filter="url(#f1-sh)"/>
 <text x="118" y="308" text-anchor="middle" fill="#3F6212" font-size="12" font-weight="700">Browser</text>
-<text x="118" y="326" text-anchor="middle" fill="#1F2937" font-size="10">chat + dashboard admin</text>
+<text x="118" y="326" text-anchor="middle" fill="#1F2937" font-size="10">chat + cruscotto admin</text>
 <text x="118" y="342" text-anchor="middle" fill="#1F2937" font-size="10">HTTP :8770</text>
 
 <path d="M 208 159 Q 240 159 266 180" fill="none" stroke="#A0522D" stroke-width="2" marker-end="url(#f1-arrB)"/>
@@ -392,14 +392,14 @@ calendario, web e GitHub: <em>solo</em> ci&ograve; che attivi, una skill alla vo
 
 <!-- frontier outside -->
 <rect x="616" y="476" width="298" height="56" rx="10" fill="white" stroke="#64748B" stroke-width="1.4" stroke-dasharray="5 4"/>
-<text x="765" y="498" text-anchor="middle" fill="#475569" font-size="11" font-weight="700">tier frontier (cloud, opt-in)</text>
+<text x="765" y="498" text-anchor="middle" fill="#475569" font-size="11" font-weight="700">tier frontier (cloud, facoltativo)</text>
 <text x="765" y="516" text-anchor="middle" fill="#64748B" font-size="9.5">un consulto quando richiesto &mdash; mai il motore</text>
 <path d="M 540 270 Q 600 460 612 496" fill="none" stroke="#64748B" stroke-width="1.6" stroke-dasharray="4 3" marker-end="url(#f1-arrM)"/>
 
 <text x="392" y="520" text-anchor="middle" fill="#475569" font-size="10" font-style="italic">self-hosted: nessuna dipendenza obbligata da servizi di terzi;</text>
 <text x="392" y="538" text-anchor="middle" fill="#475569" font-size="10" font-style="italic">il cloud &egrave; una porta che apri tu, non una stanza in cui abiti.</text>
 </svg>
-<figcaption>Figura 1 &mdash; Metnos in un colpo d'occhio. Il processo vive su una macchina tua: i canali ricevono, la mente pianifica con l'LLM locale, le guardie filtrano, gli executor agiscono sui backend che hai attivato. Il tier frontier &egrave; l'unica cosa fuori dal recinto &mdash; ed &egrave; opt-in.</figcaption>
+<figcaption>Figura 1 &mdash; Metnos in un colpo d'occhio. Il processo vive su una macchina tua: i canali ricevono, la mente pianifica con l'LLM locale, le guardie filtrano, gli executor agiscono sui backend che hai attivato. Il tier frontier &egrave; l'unica cosa fuori dal recinto &mdash; ed &egrave; facoltativo.</figcaption>
 </figure>
 
 <h2>La carta d'identit&agrave;</h2>
@@ -409,9 +409,9 @@ calendario, web e GitHub: <em>solo</em> ci&ograve; che attivi, una skill alla vo
 <tbody>
 <tr><td><strong>Forma</strong></td><td>Processo Python &ge; 3.11, microarchitettura a executor; runtime ReAct con pianificazione one-shot (motore M&emacr;tis, cap. 5).</td></tr>
 <tr><td><strong>Strumenti</strong></td><td>Circa 80 executor firmati nel repo, pi&ugrave; quelli <em>sintetizzati al volo</em> dall'istanza (cap. 7) e quelli importati dietro gate (cap. 7). Tutti vettoriali: lista dentro, lista fuori.</td></tr>
-<tr><td><strong>Cervello</strong></td><td>LLM locale servito da <code>llama-server</code>; quattro tier astratti <code>fast / middle / wise / frontier</code> (cap. 8). Frontier = cloud opt-in.</td></tr>
-<tr><td><strong>Canali</strong></td><td>Telegram (long-poll in uscita, niente porte aperte) + web su porta 8770 (chat e dashboard admin), cap. 11.</td></tr>
-<tr><td><strong>Sensi</strong></td><td>Pipeline immagini in-process: semantica + volti + EXIF in un indice unificato (cap. 10).</td></tr>
+<tr><td><strong>Cervello</strong></td><td>LLM locale servito da <code>llama-server</code>; quattro tier astratti <code>fast / middle / wise / frontier</code> (cap. 8). Frontier = cloud facoltativo.</td></tr>
+<tr><td><strong>Canali</strong></td><td>Telegram (long-poll in uscita, niente porte aperte) + web su porta 8770 (chat e cruscotto admin), cap. 11.</td></tr>
+<tr><td><strong>Sensi</strong></td><td>Pipeline immagini nel processo: semantica + volti + EXIF in un indice unificato (cap. 10).</td></tr>
 <tr><td><strong>Lingua</strong></td><td>i18n per costruzione: ogni stringa e prompt &egrave; dato per-lingua. IT + EN validate; altre lingue = pacchetto di traduzione drop-in (non ancora testate).</td></tr>
 <tr><td><strong>Licenza / stato</strong></td><td>AGPL-3.0; pre-1.0. Repo pubblico: <a href="https://github.com/brunialti/metnos">github.com/brunialti/metnos</a> &mdash; subset deterministico dell'istanza in esercizio.</td></tr>
 </tbody>
@@ -484,7 +484,7 @@ agentici.
 <line x1="480" y1="250" x2="480" y2="274" stroke="#64748B" stroke-width="1.4"/>
 <text x="480" y="300" text-anchor="middle" fill="#1A477A" font-size="11.5" font-weight="700">insieme: un agente riproducibile, verificabile, tuo</text>
 </svg>
-<figcaption>Figura 2 &mdash; Le tre scommesse. Ognuna rovescia un'abitudine dei framework agentici: skill importate a fiducia, cloud-first, LLM come oracolo da rilanciare a ogni turno.</figcaption>
+<figcaption>Figura 2 &mdash; Le tre scommesse. Ognuna rovescia un'abitudine dei framework agentici: skill importate a fiducia, prima il cloud, LLM come oracolo da rilanciare a ogni turno.</figcaption>
 </figure>
 
 <h2>Il confronto, senza sconti</h2>
@@ -494,7 +494,7 @@ agentici.
 <tbody>
 <tr><td><strong>Strumenti</strong></td><td>Scritti a mano, importati o generati free-form, poi eseguiti cos&igrave; come sono, con i privilegi dell'assistente</td><td>Sintetizzati anch'essi a runtime &mdash; ma da un <strong>vocabolario chiuso e auditato</strong>: firmati, invecchiati, smoke-testati e vagliati prima di poter girare</td></tr>
 <tr><td><strong>Sicurezza</strong></td><td>Ci si fida dell'autore del pacchetto</td><td><em>Non</em> ci si fida del pacchetto: il pacchetto deve superare i controlli (gate a 7 livelli, cap. 7)</td></tr>
-<tr><td><strong>LLM</strong></td><td>Spesso cloud-first</td><td>Locale prima; frontier opt-in</td></tr>
+<tr><td><strong>LLM</strong></td><td>Spesso prima il cloud</td><td>Locale prima; frontier facoltativo</td></tr>
 <tr><td><strong>Routing</strong></td><td>Il modello sceglie un tool a ogni turno &mdash; non riproducibile</td><td><strong>Deterministico per costruzione</strong>: inferenza locale a seed fissato, pareggi rotti da affinity curata (cap. 8)</td></tr>
 <tr><td><strong>Output</strong></td><td>Libero, diverso per ogni tool</td><td>Uniforme: lista dentro / lista fuori, componibile fra step (cap. 6)</td></tr>
 <tr><td><strong>Undo</strong></td><td>Raro o best-effort</td><td>Di prima classe: catalogo chiuso di pattern inversi, move = COPY-poi-DELETE, <code>ok_count</code> onesto (cap. 12)</td></tr>
@@ -616,7 +616,7 @@ dalla grammatica).
   <text x="214" y="184" fill="#64748B" font-size="9" font-style="italic">get, list, filter, send, &hellip;</text>
 
   <text x="323" y="142" fill="#548235" font-size="11" font-weight="700">oggetto</text>
-  <text x="323" y="158" fill="#475569" font-size="9.5">22 oggetti canonici</text>
+  <text x="323" y="158" fill="#475569" font-size="9.5">23 oggetti canonici</text>
   <text x="323" y="172" fill="#64748B" font-size="9" font-style="italic">files, messages, events,</text>
   <text x="323" y="184" fill="#64748B" font-size="9" font-style="italic">images, urls, entries, &hellip;</text>
 
@@ -1157,7 +1157,7 @@ esiste nessun <code>*_batch</code>: la versione batch <em>&egrave;</em> l'execut
 <rect x="324" y="118" width="300" height="90" rx="12" fill="url(#f7-navy)" stroke="#0F2A47" stroke-width="2" filter="url(#f7-sh)"/>
 <text x="474" y="146" text-anchor="middle" fill="white" font-size="13" font-weight="700" font-family="Consolas,monospace">move_files</text>
 <text x="474" y="166" text-anchor="middle" fill="#E3ECF5" font-size="9.5">iterazione, paginazione e finestre temporali</text>
-<text x="474" y="182" text-anchor="middle" fill="#E3ECF5" font-size="9.5">vivono DENTRO; il branching torna al planner</text>
+<text x="474" y="182" text-anchor="middle" fill="#E3ECF5" font-size="9.5">vivono DENTRO; la diramazione torna al pianificatore</text>
 <text x="474" y="198" text-anchor="middle" fill="#B6E1FB" font-size="9" font-style="italic">cap espliciti: max_total, max_results, max_bytes</text>
 
 <line x1="624" y1="163" x2="700" y2="163" stroke="#1A477A" stroke-width="2.4" marker-end="url(#f7-arr)"/>
@@ -1182,7 +1182,7 @@ esiste nessun <code>*_batch</code>: la versione batch <em>&egrave;</em> l'execut
 
 <ul>
   <li><strong><code>entries</code> vs <code>results</code></strong> &mdash; chi <em>arricchisce o legge</em> una lista ritorna <code>entries</code> (lo schema dei record si conserva, la pipeline pu&ograve; continuare); chi <em>trasforma</em> (move, write, delete) ritorna <code>results</code> (lo schema cambia: esiti, non record).</li>
-  <li><strong>Robustezza al confine col linguaggio naturale</strong> &mdash; <code>0</code> come placeholder vale &laquo;nessun limite&raquo;; i confronti sono case-insensitive di default; sui domini testuali aperti i valori con <code>*</code>/<code>?</code> sono glob, sui domini chiusi (id, slug, scope) il match &egrave; esatto e stretto. Cos&igrave; i bias dell'LLM non diventano fallimenti silenziosi.</li>
+  <li><strong>Robustezza al confine col linguaggio naturale</strong> &mdash; <code>0</code> come placeholder vale &laquo;nessun limite&raquo;; i confronti sono case-insensitive di default; sui domini testuali aperti i valori con <code>*</code>/<code>?</code> sono glob, sui domini chiusi (id, slug, scope) il match &egrave; esatto e stretto. Cos&igrave; le inclinazioni dell'LLM non diventano fallimenti silenziosi.</li>
   <li><strong>Onest&agrave; dei conteggi</strong> &mdash; <code>ok_count</code> conta gli elementi <em>realmente</em> processati. Mai dichiarare un esito che non corrisponde alla realt&agrave;.</li>
 </ul>
 
@@ -1471,7 +1471,7 @@ importate da fuori: nessun pacchetto si esegue sulla fiducia.
 <p class="lead">
 I tier sono <strong>ruoli astratti</strong>, non modelli inchiodati:
 <code>fast / middle / wise</code> sono incarichi che leghi a qualunque endpoint
-tu abbia, <code>frontier</code> &egrave; l'unico opt-in cloud. Nell'istanza di
+tu abbia, <code>frontier</code> &egrave; l'unico cloud facoltativo. Nell'istanza di
 riferimento i tre tier locali puntano <em>tutti alla stessa istanza</em> di
 <code>llama-server</code>: a cambiare sono solo i parametri per chiamata.
 </p>
@@ -1482,13 +1482,13 @@ riferimento i tre tier locali puntano <em>tutti alla stessa istanza</em> di
 <tr><td><code>fast</code></td><td>Estrazioni brevi e strutturate: intent, filler, classificazioni. Ragionamento spento.</td><td><code>llama-server :8080</code> &mdash; MoE ~35B quantizzato, <code>think=False</code>, risposta corta. Obbligatorio (rete di salvataggio).</td></tr>
 <tr><td><code>middle</code></td><td>Lavoro procedurale: stadi 1-4 della sintesi, descrizioni, giudizi.</td><td>Stessa istanza, parametri di default.</td></tr>
 <tr><td><code>wise</code></td><td>Il pianificatore: propone il piano intero; scrive il codice dello stadio 5.</td><td>Stessa istanza. Obbligatorio: <em>non degrada mai</em> a fast.</td></tr>
-<tr><td><code>frontier</code></td><td>Un consulto esterno quando richiesto esplicitamente (es. analisi di un issue).</td><td>API cloud, opt-in, con fallback gestito se la chiave non c'&egrave;.</td></tr>
+<tr><td><code>frontier</code></td><td>Un consulto esterno quando richiesto esplicitamente (es. analisi di un issue).</td><td>API cloud, facoltativo, con ripiego gestito se la chiave non c'&egrave;.</td></tr>
 </tbody>
 </table>
 
 <div class="callout tip">
 <strong>Tier &ne; modello.</strong> Nessuna GPU o NPU &egrave; richiesta per
-costruzione: un endpoint su CPU, un modello che gi&agrave; servi, o il fallback
+costruzione: un endpoint su CPU, un modello che gi&agrave; servi, o il ripiego
 frontier sono percorsi di prima classe. Un modello locale pi&ugrave; debole
 significa pianificazione pi&ugrave; debole, non un'installazione rotta.
 </div>
@@ -1546,7 +1546,7 @@ serrature, una per ogni fonte di rumore:
 
 <rect x="40" y="270" width="180" height="54" rx="9" fill="white" stroke="#64748B" stroke-width="1.4" stroke-dasharray="5 3"/>
 <text x="130" y="292" text-anchor="middle" fill="#475569" font-size="11" font-weight="700" font-family="Consolas,monospace">frontier</text>
-<text x="130" y="310" text-anchor="middle" fill="#64748B" font-size="9">consulto cloud, opt-in</text>
+<text x="130" y="310" text-anchor="middle" fill="#64748B" font-size="9">consulto cloud, facoltativo</text>
 <path d="M 220 297 Q 300 297 330 240" fill="none" stroke="#64748B" stroke-width="1.6" stroke-dasharray="4 3" marker-end="url(#f11-arr)"/>
 <text x="290" y="318" fill="#64748B" font-size="8.5" font-style="italic">solo se richiesto, mai il motore</text>
 
@@ -1675,7 +1675,7 @@ cancellare. L'effetto pratico: pi&ugrave; lo usi, meno chiama il modello.
 
 <p class="lead">
 Per cercare nelle foto, Metnos non spedisce nulla a nessuno: tre estrattori
-<strong>in-process</strong> trasformano ogni immagine in tre segnali &mdash;
+<strong>nel processo</strong> trasformano ogni immagine in tre segnali &mdash;
 cosa si vede, chi c'&egrave;, dove e quando &mdash; fusi in un indice unificato
 interrogabile dal vocabolario normale.
 </p>
@@ -1742,7 +1742,7 @@ interrogabile dal vocabolario normale.
 <text x="790" y="300" fill="#3F6212" font-size="9" font-family="Consolas,monospace" text-anchor="middle">find_images_indices</text>
 <text x="790" y="316" fill="#64748B" font-size="8.5" font-style="italic" text-anchor="middle">stesso vocabolario di tutto il resto</text>
 
-<text x="480" y="398" text-anchor="middle" fill="#475569" font-size="10" font-weight="700">tutto in-process, sulla tua macchina: l'archivio fotografico non lascia mai casa</text>
+<text x="480" y="398" text-anchor="middle" fill="#475569" font-size="10" font-weight="700">tutto nel processo, sulla tua macchina: l'archivio fotografico non lascia mai casa</text>
 </svg>
 <figcaption>Figura 13 &mdash; La pipeline immagini: SigLIP per la scena, RetinaFace+ArcFace per le identit&agrave;, EXIF per luogo e tempo. I tre segnali confluiscono in un indice unificato che si interroga con un executor normale del vocabolario.</figcaption>
 </figure>
@@ -1790,7 +1790,7 @@ altri non tocca il nucleo.
 <text x="480" y="148" text-anchor="middle" fill="white" font-size="13" font-weight="700">la macchina di Metnos</text>
 <rect x="350" y="162" width="260" height="56" rx="8" fill="#FAFBFC" stroke="#d0d7de"/>
 <text x="480" y="184" text-anchor="middle" fill="#1A477A" font-size="10.5" font-weight="700">server web &mdash; porta 8770</text>
-<text x="480" y="202" text-anchor="middle" fill="#475569" font-size="9">chat (streaming SSE) + dashboard admin</text>
+<text x="480" y="202" text-anchor="middle" fill="#475569" font-size="9">chat (streaming SSE) + cruscotto admin</text>
 <rect x="350" y="228" width="260" height="56" rx="8" fill="#FAFBFC" stroke="#d0d7de"/>
 <text x="480" y="250" text-anchor="middle" fill="#1A477A" font-size="10.5" font-weight="700">daemon Telegram</text>
 <text x="480" y="268" text-anchor="middle" fill="#475569" font-size="9">long-poll IN USCITA verso l'API del bot</text>
@@ -1800,7 +1800,7 @@ altri non tocca il nucleo.
 <text x="150" y="178" text-anchor="middle" fill="#3F6212" font-size="12" font-weight="700">browser</text>
 <text x="150" y="198" text-anchor="middle" fill="#1F2937" font-size="9.5">in LAN (o via overlay VPN tuo)</text>
 <text x="150" y="216" text-anchor="middle" fill="#1F2937" font-size="9.5">chiave admin al primo accesso</text>
-<text x="150" y="236" text-anchor="middle" fill="#475569" font-size="9" font-style="italic">proposte &middot; executor &middot; run</text>
+<text x="150" y="236" text-anchor="middle" fill="#475569" font-size="9" font-style="italic">proposte &middot; executor &middot; esecuzioni</text>
 <text x="150" y="252" text-anchor="middle" fill="#475569" font-size="9" font-style="italic">safety &middot; turni &middot; grafici</text>
 <line x1="250" y1="200" x2="326" y2="200" stroke="#548235" stroke-width="2.2" marker-end="url(#f14-arrS)"/>
 <text x="288" y="190" text-anchor="middle" fill="#3F6212" font-size="9" font-style="italic">HTTP :8770</text>
@@ -1827,13 +1827,13 @@ altri non tocca il nucleo.
 <text x="480" y="380" text-anchor="middle" fill="#7C2D12" font-size="10.5" font-weight="700">chi pu&ograve; parlare? solo chi &egrave; accoppiato: codici firmati Ed25519 con scadenza, livello di autorizzazione per persona</text>
 <text x="480" y="398" text-anchor="middle" fill="#7C2D12" font-size="9.5" font-style="italic">un mittente sconosciuto viene scartato senza eco; le conferme del vaglio e le scelte (get_inputs) arrivano come bottoni sul canale</text>
 </svg>
-<figcaption>Figura 14 &mdash; I due canali. Il browser parla direttamente col server sulla 8770 (chat con streaming + dashboard); Telegram funziona per long-poll in uscita, quindi nessuna porta aperta n&eacute; IP pubblico. In basso, il pairing che decide chi pu&ograve; parlare.</figcaption>
+<figcaption>Figura 14 &mdash; I due canali. Il browser parla direttamente col server sulla 8770 (chat con streaming + cruscotto); Telegram funziona per long-poll in uscita, quindi nessuna porta aperta n&eacute; IP pubblico. In basso, il pairing che decide chi pu&ograve; parlare.</figcaption>
 </figure>
 
 <table>
 <thead><tr><th style="width:22%">Canale</th><th>Cosa offre</th></tr></thead>
 <tbody>
-<tr><td><strong>Web :8770</strong></td><td>Chat nel browser con risposta in streaming (SSE), anteprime immagini, badge di feedback; dashboard admin per proposte, executor, run, safety e turni. La stessa API risponde JSON o HTML a seconda dell'<code>Accept</code>. Chiave admin auto-creata al primo avvio, file con permessi 0600.</td></tr>
+<tr><td><strong>Web :8770</strong></td><td>Chat nel browser con risposta in streaming (SSE), anteprime immagini, badge di feedback; cruscotto admin per proposte, executor, esecuzioni, safety e turni. La stessa API risponde JSON o HTML a seconda dell'<code>Accept</code>. Chiave admin auto-creata al primo avvio, file con permessi 0600.</td></tr>
 <tr><td><strong>Telegram</strong></td><td>Il tuo bot personale: messaggi, foto, bottoni inline per le conferme del vaglio e per le scelte a opzioni. Accoppiamento col comando <code>/pair</code> e un codice firmato con scadenza.</td></tr>
 </tbody>
 </table>
@@ -1988,7 +1988,7 @@ sufficiente a scriverne il codice senza inventare nulla.
   <a href="Metnos_QuickTour_v1.html" style="display:block; padding:14px 16px; border:1px solid var(--border); border-radius:8px; background:white; color:inherit; text-decoration:none;">
     <span style="display:inline-block; padding:2px 9px; border-radius:10px; font-size:9pt; background:var(--code-bg); color:var(--muted); font-weight:500;">tour &middot; 10 min</span>
     <div style="color:var(--navy); font-size:11.5pt; font-weight:700; margin:8px 0 6px 0;">Quick Tour</div>
-    <div style="margin:0; color:var(--muted); font-size:10pt; line-height:1.5;">Il giro veloce con gli screenshot: cosa si prova a usarlo, prima di studiarlo.</div>
+    <div style="margin:0; color:var(--muted); font-size:10pt; line-height:1.5;">Il giro veloce con le schermate: cosa si prova a usarlo, prima di studiarlo.</div>
   </a>
   <a href="Metnos_Glossario_v1.html" style="display:block; padding:14px 16px; border:1px solid var(--border); border-radius:8px; background:white; color:inherit; text-decoration:none;">
     <span style="display:inline-block; padding:2px 9px; border-radius:10px; font-size:9pt; background:var(--code-bg); color:var(--muted); font-weight:500;">riferimento</span>

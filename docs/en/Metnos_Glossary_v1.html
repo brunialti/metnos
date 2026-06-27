@@ -302,7 +302,7 @@ notifications.</p>
 
 <div class="entry" id="cascade">
 <h3>cascade (synthesis cascade) <span class="tag concept">process</span></h3>
-<p>The sequence of strategies through which the <a href="#synt">synt</a> answers an operational need, ordered by increasing cost. Reactive (in the user turn): <em>compose</em> (a chain of existing executors, zero frontier-LLM cost) and <em>generate</em> (a five-stage multistage LLM pipeline &mdash; naming, signature, tests, description, code &mdash; runnable entirely in-house on Qwen 3.6 35B-A3B, &euro;0). Introspective (nightly homeostasis): <em>merge</em>, <em>generalise</em>, <em>specialise</em>. It honours the non-retreat <a href="#telos">telos</a>: synt exhausts the cascade before answering &laquo;I cannot&raquo;.</p>
+<p>The sequence of strategies through which the <a href="#synt">synt</a> answers an operational need, ordered by increasing cost. Reactive (in the user turn): <em>compose</em> (a chain of existing executors, zero frontier-LLM cost) and <em>generate</em> (a five-stage multistage LLM pipeline &mdash; naming, signature, tests, description, code &mdash; runnable entirely in-house on the local tier, &euro;0). Introspective (nightly homeostasis): <em>merge</em>, <em>generalise</em>, <em>specialise</em>. It honours the non-retreat <a href="#telos">telos</a>: synt exhausts the cascade before answering &laquo;I cannot&raquo;.</p>
 <p class="xref"><strong>Canonical:</strong> <a href="/en/architecture/synt.html#cap3">synt &sect;3</a> and <a href="/en/architecture/executor.html#cap7-cascade">executor &sect;7.1</a></p>
 </div>
 
@@ -631,6 +631,18 @@ Telegram): the user receives a signed code out-of-band, presents it to
 Metnos, and the sender↔identity binding is recorded. Revocable at any
 time.</p>
 <p class="xref"><strong>Canonical:</strong> <a href="/it/architecture/pairing.html">pairing.html</a> <span class="it-note">(in Italian)</span></p>
+</div>
+
+<div class="entry" id="path">
+<h3>path <span class="tag concept">concept</span></h3>
+<p>An internal Metnos term: a <strong>set of executors that, starting from a
+user request (query), produce an output or an action</strong> &mdash; the route
+from the question to the result, run as a sequence of the right tools. It comes
+in two stored forms, so the assistant need not rebuild them every time: the
+<a href="#fastpath">fastpath</a> (L0), the path for the same request already
+solved, and the <a href="#autopath">autopath</a> (L1), the path generalised to
+a group of related requests.</p>
+<p class="xref"><strong>Canonical:</strong> <a href="architecture/fast_path.html">fast_path.html</a></p>
 </div>
 
 <div class="entry" id="planned-action">

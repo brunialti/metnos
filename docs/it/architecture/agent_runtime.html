@@ -157,7 +157,7 @@ vista e ne riesegue la sequenza in pochi millisecondi, e l'<em>autopath</em>
 (L1), che riconosce una richiesta dello stesso genere di altre passate e
 ne riusa il piano generalizzato. Solo quando entrambi i livelli non
 trovano corrispondenza il pianificatore &mdash; il modello locale
-Qwen&nbsp;3.6&nbsp;35B-A3B &mdash; entra nel turno. La struttura descritta
+nel tier <em>wise</em> &mdash; entra nel turno. La struttura descritta
 qui sotto si applica per intero a quel caso; la via veloce &egrave;
 trattata nella pagina dedicata.
 </div>
@@ -307,15 +307,15 @@ in <code>[runtime.hybrid]</code>.
 <h1 id="cap4">4. I tier di LLM: <em>fast</em>, <em>middle</em>, <em>wise</em> (locali) + <em>frontier</em></h1>
 
 <p>
-Indipendentemente dal mode (che dice <em>dove</em> gira l'LLM), il runtime espone quattro <em>tier</em>. I tre tier locali puntano tutti allo <em>stesso</em> modello (Qwen&nbsp;3.6&nbsp;35B&#8209;A3B su <code>llama-server:8080</code>, con MTP self-speculative): la differenza non &egrave; il modello ma i <em>parametri per chiamata</em> (ragionamento attivo o no, budget di token). Il quarto tier, <em>frontier</em>, &egrave; un modello del cloud, opt-in.
+Indipendentemente dal mode (che dice <em>dove</em> gira l'LLM), il runtime espone quattro <em>tier</em>. I tre tier locali puntano tutti allo <em>stesso</em> modello locale (su <code>llama-server:8080</code>, con MTP self-speculative): la differenza non &egrave; il modello ma i <em>parametri per chiamata</em> (ragionamento attivo o no, budget di token). Il quarto tier, <em>frontier</em>, &egrave; un modello del cloud, opt-in.
 </p>
 
 <table>
 <tr><th>Tier</th><th>Caratteristica</th><th>Modello</th></tr>
-<tr><td><strong>fast</strong></td><td>Risposte dirette, ragionamento disattivato, budget di token basso.</td><td>Qwen&nbsp;3.6&nbsp;35B&#8209;A3B locale, <code>think=false</code></td></tr>
-<tr><td><strong>middle</strong></td><td>Ragionamento intermedio. &Egrave; il tier dell'intent extractor e del vaglio.</td><td>Qwen&nbsp;3.6&nbsp;35B&#8209;A3B locale</td></tr>
-<tr><td><strong>wise</strong></td><td>Massima riflessione locale, ragionamento attivo, budget di token alto. &Egrave; il tier che propone i piani.</td><td>Qwen&nbsp;3.6&nbsp;35B&#8209;A3B locale, <code>think=true</code></td></tr>
-<tr><td><strong>frontier</strong></td><td>Modello del cloud, opt-in, per i casi che lo valgono. Accetta latenza e costo.</td><td>Anthropic Opus 4.7 (online)</td></tr>
+<tr><td><strong>fast</strong></td><td>Risposte dirette, ragionamento disattivato, budget di token basso.</td><td>modello locale, <code>think=false</code></td></tr>
+<tr><td><strong>middle</strong></td><td>Ragionamento intermedio. &Egrave; il tier dell'intent extractor e del vaglio.</td><td>modello locale</td></tr>
+<tr><td><strong>wise</strong></td><td>Massima riflessione locale, ragionamento attivo, budget di token alto. &Egrave; il tier che propone i piani.</td><td>modello locale, <code>think=true</code></td></tr>
+<tr><td><strong>frontier</strong></td><td>Modello del cloud, opt-in, per i casi che lo valgono. Accetta latenza e costo.</td><td>Anthropic Opus 4.8 (online)</td></tr>
 </table>
 
 <p>
@@ -328,7 +328,7 @@ Il proposer del motore usa <em>wise</em>. L'intent extractor e il vaglio usano <
 <text class="tt h" x="380" y="22">I tier, lo stesso runtime</text>
 <rect class="box fast" x="40" y="50" width="220" height="180"/>
 <text class="tt h" x="150" y="76">fast &amp; furious</text>
-<text class="tt s" x="150" y="96">Qwen 3.6 35B-A3B · think=false</text>
+<text class="tt s" x="150" y="96">modello locale · think=false</text>
 <text class="tt b" x="150" y="125">~700ms/chiamata</text>
 <text class="tt s" x="150" y="145">sempre LOCALE</text>
 <text class="tt s" x="150" y="160">sempre disponibile</text>
@@ -336,7 +336,7 @@ Il proposer del motore usa <em>wise</em>. L'intent extractor e il vaglio usano <
 <text class="tt s" x="150" y="212">summarizer scratchpad</text>
 <rect class="box mid" x="280" y="50" width="220" height="180"/>
 <text class="tt h" x="390" y="76">middle &amp; trustable</text>
-<text class="tt s" x="390" y="96">Qwen 3.6 35B-A3B (locale)</text>
+<text class="tt s" x="390" y="96">modello locale</text>
 <text class="tt b" x="390" y="125">~2-5s/chiamata</text>
 <text class="tt s" x="390" y="145">locale o online</text>
 <text class="tt s" x="390" y="160">ragionamento intermedio</text>
@@ -344,7 +344,7 @@ Il proposer del motore usa <em>wise</em>. L'intent extractor e il vaglio usano <
 <text class="tt s" x="390" y="212">synt.compose</text>
 <rect class="box wise" x="520" y="50" width="220" height="180"/>
 <text class="tt h" x="630" y="76">slow &amp; wise</text>
-<text class="tt s" x="630" y="96">Qwen 3.6 35B-A3B · think=true</text>
+<text class="tt s" x="630" y="96">modello locale · think=true</text>
 <text class="tt b" x="630" y="125">5-30s/chiamata</text>
 <text class="tt s" x="630" y="145">accetta latenza/$</text>
 <text class="tt s" x="630" y="160">riflessione profonda</text>
@@ -356,7 +356,7 @@ Il proposer del motore usa <em>wise</em>. L'intent extractor e il vaglio usano <
 </figure>
 
 <div class="callout tip">
-<strong>Specializzazione con un solo modello.</strong> I tre tier locali puntano per progetto allo stesso modello (Qwen&nbsp;3.6&nbsp;35B&#8209;A3B). A cambiare sono i <em>parametri per chiamata</em>: <em>fast</em> chiede azione diretta senza ragionamento, <em>middle</em> un ragionamento intermedio, <em>wise</em> attiva <code>think=true</code> con budget di token alto. Stesso modello, ruoli diversi, output diversi. L'utente ottiene pi&ugrave; punti di vista da un solo cervello.
+<strong>Specializzazione con un solo modello.</strong> I tre tier locali puntano per progetto allo stesso modello locale. A cambiare sono i <em>parametri per chiamata</em>: <em>fast</em> chiede azione diretta senza ragionamento, <em>middle</em> un ragionamento intermedio, <em>wise</em> attiva <code>think=true</code> con budget di token alto. Stesso modello, ruoli diversi, output diversi. L'utente ottiene pi&ugrave; punti di vista da un solo cervello.
 </div>
 
 <p>
@@ -611,7 +611,7 @@ La soluzione: lo <em>scratchpad</em>. Quando un'observation supera la soglia (4 
 }</pre>
 
 <p>
-Il summary &egrave; uno <em>smart truncation</em>: i primi 500 caratteri + un placeholder con il numero di caratteri omessi + gli ultimi 500. Cos&iacute; l'LLM vede inizio e fine del contenuto.
+Il riassunto &egrave; un <em>troncamento intelligente</em>: i primi 500 caratteri, un segnaposto con il numero di caratteri omessi, gli ultimi 500. Cos&iacute; l'LLM vede inizio e fine del contenuto.
 </p>
 
 <p>
@@ -980,17 +980,17 @@ le tabelle locali in <code>runtime/messages.py</code> (che resta per i
 template interni non user-facing).
 </p>
 
-<h2 id="cap11_2_7">11.2.7 Multilinguismo (tre layer + latest-wins)</h2>
+<h2 id="cap11_2_7">11.2.7 Multilinguismo (tre livelli, vince l'ultimo)</h2>
 
 <p>
-Il sottosistema multilingua di Metnos vive su <strong>tre layer</strong>
+Il sottosistema multilingua di Metnos vive su <strong>tre livelli</strong>
 distinti: (1) prompt LLM in <code>runtime/prompts/&lt;lang&gt;/&lt;role&gt;.j2</code>
-(MiniJinja, 26 ruoli, ); (2) description executor nei manifest
+(MiniJinja, 26 ruoli); (2) description executor nei manifest
 TOML (tabella <code>[description].&lt;lang&gt;</code> + companion
-<code>manifest.lang_state.json</code>); (3) messaggi user-facing in
+<code>manifest.lang_state.json</code>); (3) messaggi rivolti all'utente in
 <code>i18n.sqlite</code> (118 chiavi standard + 79 description migrate).
-La disciplina di allineamento e' <em>latest-wins</em>: nessuna lingua
-&egrave; canonica per costruzione, vince chi viene editato per ultimo
+La regola di allineamento &egrave; semplice: vince l'ultimo. Nessuna lingua
+&egrave; canonica per costruzione, prevale quella modificata pi&ugrave; di recente
 (<code>version_hash</code> + <code>source_hash</code> per risorsa). Il
 daemon notturno <code>i18n_translator.run_loop</code> rigenera candidati
 in <code>_pending/</code>; <code>metnos-prompts review</code> mostra il
@@ -1054,7 +1054,7 @@ Questo documento descrive cosa il pianificatore fa <em>oggi</em>, validato da te
 </p>
 
 <div style="margin:22px 0;padding:20px;background:#fff;border:1px solid var(--border);border-radius:8px;overflow-x:auto;">
- <svg viewBox="0 0 860 300" role="img" aria-label="Diagramma cascata Engine v2: i quattro strati di run_turn">
+ <svg viewBox="0 0 860 300" role="img" aria-label="Diagramma a cascata del motore: i quattro strati di run_turn">
  <defs>
  <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
  <path d="M0,0 L10,5 L0,10 z" fill="#64748B"/>
@@ -1104,8 +1104,8 @@ sul turno corrente):
 </p>
 
 <ol>
-<li><strong>L0 &mdash; fast-path</strong>: match esatto su hash (&lt; 5 ms) pi&ugrave; una ricerca per coseno BGE-M3. Approvato dalla chat col bottone &laquo;approva fast-path&raquo;; vince sull'autopath.</li>
-<li><strong>L1 &mdash; autopath</strong>: match semantico di cluster (BGE-M3) indicizzato sull'hash dell'intento, con punteggio champion/challenger e TTL di 30 giorni sugli anti-autopath (i piani che hanno fallito, tenuti a memoria per non riproporli).</li>
+<li><strong>L0 &mdash; fast-path</strong>: corrispondenza esatta su hash (&lt; 5 ms) pi&ugrave; una ricerca per coseno BGE-M3. Approvato dalla chat col bottone &laquo;approva fast-path&raquo;; vince sull'autopath.</li>
+<li><strong>L1 &mdash; autopath</strong>: corrispondenza semantica di cluster (BGE-M3) indicizzata sull'hash dell'intento, con punteggio campione/sfidante e TTL di 30 giorni sugli anti-autopath (i piani che hanno fallito, tenuti a memoria per non riproporli).</li>
 <li><strong>L2 &mdash; validator</strong>: una guardia che puo' ri-proporre una volta prima che giri l'engine (attiva di default).</li>
 <li><strong>L3 &mdash; engine</strong>: il loop ReAct completo &mdash; proposer, executor, recovery, terminator. Il selettore <code>METNOS_ENGINE</code> sceglie <code>simple|metis|frontier</code>.</li>
 </ol>

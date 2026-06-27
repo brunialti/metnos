@@ -141,7 +141,7 @@ permette di aggiungere un provider senza toccare il pianificatore.
 <p>
 I due assi si <strong>toccano</strong> solo quando una skill ha un solo
 provider: in quel caso <code>github</code>, <code>geo</code>, <code>mail</code>
-sono di fatto il nome user-facing del backend di quel provider.
+sono di fatto il nome rivolto all'utente del backend di quel provider.
 <strong>Divergono</strong> appena la skill ha pi&ugrave; backend (il calendario
 si serve su <em>ICS locale</em>, <em>Google</em> o <em>CalDAV</em>) o non ha
 alcun provider esterno (le foto, il nucleo). La mappa &egrave;
@@ -218,7 +218,7 @@ sotto un modello solo. Vive in <code>skills_catalog.py</code> (funzione
 <tr><th>Tier</th><th>Cos'&egrave;</th><th>Fiducia</th><th>Dove vive</th><th>Attivazione</th></tr>
 <tr><td><strong>1 &mdash; core</strong></td><td>planner ed engine, file locali, cartelle, processi, tempo, scheduler locale, persone, credenziali, firme, proposte, gli helper dello scratchpad (filtra / ordina / raggruppa / calcola / descrivi / estrai)</td><td>massima</td><td>repository, firmato, multilingua</td><td>sempre attiva</td></tr>
 <tr><td><strong>2 &mdash; first&#95;party</strong></td><td>capacit&agrave; spedite con Metnos allo stesso standard del nucleo, ma <strong>dormienti</strong> finch&eacute; manca la dipendenza: github, foto, posta, web, geo, calendario, archivio dati generico (<code>sqldatabase</code>), frontier, Google Workspace</td><td>massima</td><td>repository (pacchetto versionato + executor firmati)</td><td>automatica, dormiente se non configurata</td></tr>
-<tr><td><strong>3 &mdash; imported</strong></td><td>codice di terzi non auditato n&eacute; vendorizzato (da agentskills.io e simili)</td><td>bassa</td><td>dati utente, con provenienza tracciata</td><td>opt-in, <strong>recinto + rete a 7 strati</strong></td></tr>
+<tr><td><strong>3 &mdash; imported</strong></td><td>codice di terzi non auditato n&eacute; vendorizzato (da agentskills.io e simili)</td><td>bassa</td><td>dati utente, con provenienza tracciata</td><td>facoltativa, <strong>recinto + rete a 7 strati</strong></td></tr>
 </table>
 
 <div class="callout tip">
@@ -342,8 +342,9 @@ finch&eacute; nessuno store &egrave; registrato.
 </figure>
 
 <div class="callout warning">
-<strong>Debito noto.</strong> Oggi GitHub &egrave; &laquo;cotto&raquo;: i tredici
-executor <code>*_github</code> portano il provider nel nome. Funziona
+<strong>Debito noto.</strong> Oggi GitHub &egrave; &laquo;cotto&raquo;: i sedici
+executor <code>*_github</code> (issue, PR, task, commenti e &mdash; da 25/6 &mdash;
+file del repo: <code>find/read/list</code>) portano il provider nel nome. Funziona
 finch&eacute; il provider resta unico; appena ne arriva un secondo va astratto.
 Regola generale: un provider che plausibilmente avr&agrave; fratelli
 (github&rarr;gitlab/gitea, posta IMAP, calendario) va astratto da subito; uno che
@@ -377,7 +378,7 @@ dormiente.
 </div>
 
 <p>
-Oggi il gating &egrave; <strong>per pattern sul nome dell'executor</strong>
+Oggi il filtro &egrave; <strong>per pattern sul nome dell'executor</strong>
 (<code>skills_catalog</code>): funziona solo finch&eacute; il provider &egrave;
 unico. Il pezzo nuovo da costruire &egrave; una <strong>mappa
 skill&rarr;backend</strong> pi&ugrave; la regola &laquo;executor dormiente = AND su
@@ -399,7 +400,7 @@ in automatico del codice generato da un frontier romperebbe la fiducia.
 <table>
 <tr><th>Fase</th><th>Chi</th><th>Cosa</th></tr>
 <tr><td><strong>QUANDO</strong> (trigger)</td><td>deterministico</td><td>all'arrivo del 2&deg; provider &mdash; tipicamente l'<em>import</em> di una skill che mappa su un oggetto gi&agrave; coperto solo da executor provider-suffissati (<code>*_github</code>, riconosciuti dall'autorit&agrave; di naming). Sovrapposizione di oggetto + provider diverso &rarr; &laquo;candidato a promozione&raquo;. Nessun LLM per accorgersene.</td></tr>
-<tr><td><strong>DOVE</strong> (seam)</td><td>infrastruttura riusata</td><td>rilevamento nel layer di ammissione dell'importer; refactoring tramite l'escalation a un modello frontier in modo agentico; atterraggio nella pagina admin delle modifiche come modifica di tipo <code>promote_provider</code>, <strong>niente auto-apply</strong>; applicazione che scrive i file, <strong>ri-firma</strong> (&sect;7.10), registra skill&harr;backend e gating per-backend (&sect;4).</td></tr>
+<tr><td><strong>DOVE</strong> (seam)</td><td>infrastruttura riusata</td><td>rilevamento nello strato di ammissione dell'importer; refactoring tramite l'escalation a un modello frontier in modo agentico; atterraggio nella pagina admin delle modifiche come modifica di tipo <code>promote_provider</code>, <strong>niente applicazione automatica</strong>; applicazione che scrive i file, <strong>ri-firma</strong> (&sect;7.10), registra skill&harr;backend e filtro per-backend (&sect;4).</td></tr>
 <tr><td><strong>COME</strong> (pipeline)</td><td>frontier solo in mezzo</td><td>rileva (det.) &rarr; il frontier genera {executor canonico + <code>backends/&lt;obj&gt;/{p1,p2}.py</code> + mappa skill&rarr;backend} &rarr; la modifica viene proposta &rarr; <strong>vaglio umano</strong> &rarr; applica + firma + verifica con i 7 strati di ammissione + smoke.</td></tr>
 </table>
 
@@ -408,7 +409,7 @@ in automatico del codice generato da un frontier romperebbe la fiducia.
 mezzo: produce la bozza del refactoring. I bordi &mdash; accorgersi che serve,
 e applicare firmando &mdash; sono codice deterministico e mani umane. Tre pezzi
 nuovi, indipendenti e incrementali: (1) un rilevatore di candidati alla
-promozione; (2) il prompt di promozione per l'escalation al modello frontier; (3) il gating
+promozione; (2) il prompt di promozione per l'escalation al modello frontier; (3) il filtro
 per-backend del &sect;4 &mdash; che serve comunque, ed &egrave; il candidato da
 fare per primo.
 </div>
@@ -422,7 +423,7 @@ li fondono, conviene guardare chi sta al centro a scegliere il provider.
 
 <table>
 <tr><th>&nbsp;</th><th>Hermes / skill drop-in</th><th>Claude-Code + famiglia MCP</th><th>Metnos</th></tr>
-<tr><td><strong>chi sceglie il provider</strong></td><td>frontier (legge SKILL.md, disambigua)</td><td>frontier (legge le descrizioni dei tool)</td><td>modello locale medio (Qwen): ha un <strong>pregiudizio</strong> sul provider</td></tr>
+<tr><td><strong>chi sceglie il provider</strong></td><td>frontier (legge SKILL.md, disambigua)</td><td>frontier (legge le descrizioni dei tool)</td><td>modello locale, tier middle: ha un <strong>pregiudizio</strong> sul provider</td></tr>
 <tr><td><strong>skill vs backend</strong></td><td><strong>fusi</strong> (skill = cartella di script = provider)</td><td><strong>fusi</strong> (tool / server MCP = provider)</td><td><strong>separati</strong> (backend = esecuzione, skill = attivazione)</td></tr>
 <tr><td><strong>multi-provider</strong></td><td>skill parallele per provider, l'agente sceglie</td><td>tool / server paralleli, il modello sceglie</td><td><strong>un executor canonico + un backend per provider</strong> (resolver)</td></tr>
 <tr><td><strong>credenziale / dormienza</strong></td><td><code>required_credential_files</code> + setup</td><td>implicita (server connesso o no)</td><td><strong>dormienza formalizzata</strong></td></tr>
@@ -448,6 +449,7 @@ sicurezza per costruzione.
 <tr><td>il recinto a strati in cui gli executor importati eseguono</td><td><a href="sandbox.html">sandbox</a></td></tr>
 <tr><td>i controlli prima di ogni azione rischiosa</td><td><a href="vaglio.html">vaglio</a></td></tr>
 <tr><td>cos'&egrave; un executor e com'&egrave; fatto</td><td><a href="executor.html">executor</a></td></tr>
+<tr><td>l'altro asse di sostituibilit&agrave;: come si sceglie e si cambia il <em>modello</em> (LLM, embedding, VLM) dietro le capacit&agrave;, editando un TOML invece del codice</td><td><a href="virtualization.html">virtualizzazione dei modelli</a></td></tr>
 </table>
 
 <h1 id="cap8">8. E per te, in pratica?</h1>

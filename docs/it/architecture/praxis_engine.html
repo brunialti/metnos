@@ -334,7 +334,7 @@ se quello sopra non ha gi&agrave; risolto.
 | +----------------+ |
 | | L3 Proposer | LLM wise 1-shot |
 | | propose | --> piano JSON {steps, fillers, |
-| | (Qwen 35B-A3B) | final_message} |
+| | (tier wise)   | final_message} |
 | +----------------+ |
 | | |
 | v |
@@ -785,7 +785,7 @@ sul cloud con il motore locale a singola proposta:
  <td>Motore locale (singola proposta + memoria)</td>
  <td class="bench-win">equivalente</td>
  <td class="bench-win">~12 s a freddo, &lt;1 s da memoria</td>
- <td class="bench-win">Qwen 3.6 35B-A3B locale</td>
+ <td class="bench-win">modello locale (wise)</td>
  <td class="bench-win">0</td>
 </tr>
 </tbody>

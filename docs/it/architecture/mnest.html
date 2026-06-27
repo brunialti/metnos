@@ -4,7 +4,7 @@
  <meta charset="UTF-8">
  <meta name="viewport" content="width=device-width, initial-scale=1.0">
  <title>Metnos &mdash; mnest (under approval)</title>
- <meta name="description" content="Microprogettazione del mnest: la traccia di co-attivazione fra due executor. Anatomia, anatomia del proto-mnest, lifecycle, decadimento.">
+ <meta name="description" content="Microprogettazione del mnest: la traccia di co-attivazione fra due executor. Anatomia, anatomia del proto-mnest, ciclo di vita, decadimento.">
  <meta name="keywords" content="mnest, proto-mnest, co-attivazione, executor, decadimento, ager, mnestoma, sinapsi, microprogettazione, metnos">
  <meta name="author" content="Roberto Brunialti">
  <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large">
@@ -15,7 +15,7 @@
  <meta property="og:type" content="article">
  <meta property="og:url" content="https://metnos.com/it/architecture/mnest">
  <meta property="og:title" content="Metnos &mdash; mnest (under approval)">
- <meta property="og:description" content="La traccia di co-attivazione fra due executor: anatomia, lifecycle, decadimento, persistenza.">
+ <meta property="og:description" content="La traccia di co-attivazione fra due executor: anatomia, ciclo di vita, decadimento, persistenza.">
  <meta property="og:locale" content="it_IT">
  <meta property="og:locale:alternate" content="en_US">
  <meta property="og:site_name" content="Metnos">
@@ -26,7 +26,7 @@
  "@context": "https://schema.org",
  "@type": "TechArticle",
  "headline": "Metnos — mnest ",
- "description": "Microprogettazione canonica del mnest: anatomia, lifecycle, decadimento, persistenza.",
+ "description": "Microprogettazione canonica del mnest: anatomia, ciclo di vita, decadimento, persistenza.",
  "url": "https://metnos.com/it/architecture/mnest.html",
  "inLanguage": "it",
  "isPartOf": {"@type": "WebSite", "name": "Metnos", "url": "https://metnos.com/"},
@@ -188,7 +188,7 @@ con successo.&raquo;
 Il mnest &egrave; quindi una traccia di <strong>co-attivazione
 osservata</strong>: non un'inferenza statistica a posteriori, non una
 dichiarazione di intenti, ma una constatazione di un evento davvero
-accaduto, registrato dal gateway al termine del turno.
+accaduto, registrato dal runtime al termine del turno.
 </p>
 
 <p>
@@ -197,7 +197,7 @@ Da qui derivano tutte le sue propriet&agrave; importanti:
 <ul>
 <li>&Egrave; <em>diretto</em>: <em>A &rarr; B</em> non &egrave; lo stesso di <em>B &rarr; A</em>.</li>
 <li>&Egrave; <em>pesato</em>: pi&ugrave; volte si ripete, pi&ugrave; il peso cresce; col disuso, decade.</li>
-<li>&Egrave; <em>ancorato al tempo</em>: porta il timestamp del primo e dell'ultimo uso.</li>
+<li>&Egrave; <em>ancorato al tempo</em>: porta la marca temporale del primo e dell'ultimo uso.</li>
 <li>&Egrave; <em>distinto per coppia di versioni</em>: <em>read_files &rarr; read_files_pdf v2.0</em> &egrave; un mnest, <em>read_files &rarr; read_files_pdf v3.0</em> &egrave; un altro.</li>
 </ul>
 
@@ -205,7 +205,7 @@ Da qui derivano tutte le sue propriet&agrave; importanti:
 
 <p>
 Il mnest registra un passaggio di dati (&laquo;l'output di A &egrave;
-stato l'input di B&raquo;), generato in modo deterministico dal gateway
+stato l'input di B&raquo;), generato in modo deterministico dal runtime
 alla chiusura del turno: o c'&egrave; stato il passaggio o non c'&egrave;
 stato. Un mnest forte verso un executor che non esiste (proto-mnest,
 cap. 8) &egrave; un buco operativo concreto, non un'analogia.
@@ -223,7 +223,7 @@ Un mnest, in forma serializzata, contiene questi campi obbligatori:
 </p>
 
 <pre><code>{
- "id": "mnest_01HW...", // ULID
+ "id": "mn_a1b2c3d4e5f6...", // mn_ + token esadecimale
  "src_executor": "read_files", // nome canonico del chiamante
  "src_version": "1.0.0",
  "dst_executor": "read_files_pdf", // nome canonico del chiamato
@@ -262,7 +262,7 @@ ribattere o cancellare in fase di rilettura.
 
 <p>
 Un mnest non si dichiara, si <em>osserva</em>. La regola operativa,
-applicata dal gateway alla chiusura di ogni turno:
+applicata dal runtime alla chiusura di ogni turno:
 </p>
 
 <ol>
@@ -349,7 +349,7 @@ mnest normale, con due differenze:
 </ul>
 
 <pre><code>{
- "id": "mnest_01HW...",
+ "id": "mn_a1b2c3d4e5f6...",
  "src_executor": "read_files",
  "src_version": "1.0.0",
  "dst_executor": "extract_invoice_number", // non esiste
@@ -367,10 +367,10 @@ mnest normale, con due differenze:
 </code></pre>
 
 <p>
-La differenza con &laquo;una richiesta di feature&raquo; nel senso
+La differenza con &laquo;una richiesta di funzionalit&agrave;&raquo; nel senso
 classico &egrave; importante: il proto-mnest non &egrave; chiesto
-dall'utente, &egrave; constatato dal gateway. Roberto non ha
-formulato il bisogno: il bisogno &egrave; emerso dal fatto che
+dall'utente, &egrave; constatato dal runtime. Roberto non ha
+formulato il bisogno: &egrave; emerso dal fatto che
 l'avrebbe voluto pi&ugrave; volte. Il proto-mnest, quando ricorre, &egrave;
 l'innesco della sintesi (vedi <a href="executor.html#cap7">executor.html
 cap. 7</a>).
@@ -381,7 +381,7 @@ cap. 7</a>).
 <table>
 <thead><tr><th style="width:24%">Componente</th><th>Cosa cerca</th></tr></thead>
 <tbody>
-<tr><td><strong>Gateway (planner)</strong></td><td>Dato un input, propone all'LLM una lista di executor candidati ordinata per peso dei mnest che li raggiungono dal contesto attuale.</td></tr>
+<tr><td><strong>Runtime (pianificatore)</strong></td><td>Dato un input, propone all'LLM una lista di executor candidati ordinata per peso dei mnest che li raggiungono dal contesto attuale.</td></tr>
 <tr><td><strong>Vaglio</strong></td><td>Per giudicare una proposta spontanea: un mnest forte verso un'azione gi&agrave; svolta in passato &egrave; un indizio di allineamento al telos.</td></tr>
 <tr><td><strong>Synt</strong></td><td>Cerca proto-mnest che hanno superato una soglia di ricorrenza per innescare la pipeline di sintesi.</td></tr>
 <tr><td><strong>Ager</strong></td><td>Scorre periodicamente il grafo per applicare il decadimento, segnalare i decaying, proporre archiviazione dei superseded.</td></tr>
@@ -404,7 +404,7 @@ I mnest vivono in <code>workspace/.mnestoma/mnest.sqlite</code>:
 <p>
 Il sistema fa uno <strong>snapshot mensile</strong> del file SQLite in
 <code>workspace/.mnestoma/snapshots/YYYY-MM.sqlite</code>. Lo snapshot
-serve a tre cose: rollback in caso di danneggiamento del file vivo,
+serve a tre cose: ripristino in caso di danneggiamento del file vivo,
 analisi storica del grafo, traccia per chi vuole capire come si
 &egrave; mosso Metnos nel tempo. Gli snapshot pi&ugrave; vecchi di 12
 mesi sono compressi in <code>.zst</code> ma non eliminati.
@@ -446,8 +446,8 @@ volta approvato e firmato, il proto-mnest passer&agrave; ad
 <h1 id="cap12">12. Domande aperte</h1>
 
 <ol>
-<li><strong>Garbage collection del file SQLite.</strong> Quando si ricicla lo spazio dei mnest archiviati nel file vivo? Mai (storico completo) o periodicamente (per dimensioni)? Aperta.</li>
-<li><strong>Tag suggeriti dall'LLM.</strong> Il gateway pu&ograve; far suggerire tag dall'LLM in fase di chiusura turno. Quanto fidarsi di questi tag? L'utente li deve ratificare? Aperta.</li>
+<li><strong>Riciclo dello spazio nel file SQLite.</strong> Quando si recupera lo spazio dei mnest archiviati nel file vivo? Mai (storico completo) o periodicamente (per dimensioni)? Aperta.</li>
+<li><strong>Tag suggeriti dall'LLM.</strong> Il runtime pu&ograve; far suggerire tag dall'LLM in fase di chiusura turno. Quanto fidarsi di questi tag? L'utente li deve ratificare? Aperta.</li>
 <li><strong>Mnest cross-utente.</strong> Quando in futuro Metnos avr&agrave; pi&ugrave; sender pairati (ospiti), i mnest sono per-sender o globali? Probabilmente globali con tag di provenienza, ma da decidere.</li>
 <li><strong>Decadimento differenziato per categoria.</strong> Conviene avere <code>&lambda;</code> diverso per executor side-effect-free vs side-effect-pieni? Aperta.</li>
 </ol>

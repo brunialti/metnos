@@ -73,8 +73,8 @@ li { margin-bottom: 4px; }.lead { font-size: 12pt; color: var(--navy); border-le
 <body>
 <div style="margin: 18px 0; border-left: 5px solid #16a34a; background: #dcfce7; color: #14532d; padding: 14px 20px; border-radius: 0 8px 8px 0; font-size: 11pt; font-family: 'Segoe UI', Calibri, -apple-system, sans-serif; line-height: 1.55;">
 <strong>Aligned with the code.</strong>
-The pool currently holds <strong>79 executors</strong>, split between handcrafted ones in
-<code>/opt/metnos/executors/</code> and ones generated on the fly by Synt in
+The base pool holds <strong>75 handcrafted executors</strong> in
+<code>/opt/metnos/executors/</code>, alongside ones generated on the fly by Synt in
 <code>~/.local/share/metnos/executors/</code> (kept apart by design).
 Manifest signed with Ed25519, runtime fence built on the manifest itself, life cycle managed by the loader.
 See also <a href="agent_runtime.html" style="color: #14532d; text-decoration: underline;">agent_runtime</a>
@@ -639,6 +639,7 @@ a time.
 <tr><td>how the user sees and approves actions</td><td><a href="approval_ux.html">approval_ux</a></td></tr>
 <tr><td>the memory that executions leave behind</td><td><a href="mnest.html">mnest</a> and <a href="mnestome.html">mnestome</a></td></tr>
 <tr><td>the dialogue with the world (Telegram, web, voice)</td><td><a href="channel.html">channel</a></td></tr>
+<tr><td>which <em>models</em> (LLM, embedding, VLM) power the executors and how to change them from a TOML</td><td><a href="virtualization.html">model virtualization</a></td></tr>
 <tr><td>observability (what happened, why, when)</td><td><a href="observability.html">observability</a></td></tr>
 </table>
 

@@ -220,9 +220,9 @@ Each path requires at least the role indicated (see ch.&nbsp;3).
 <tbody>
 <tr><td>GET</td><td><code>/admin</code></td><td>Dashboard home.</td></tr>
 <tr><td>GET/POST</td><td><code>/admin/login</code> &middot; POST <code>/admin/logout</code></td><td>Admin access.</td></tr>
-<tr><td>GET</td><td><code>/admin/changes</code> + POST <code>/{id}/{accept|reject|stage|rollback|retry}</code></td><td>Unified change lifecycle (<code>change_intent</code>).</td></tr>
-<tr><td>GET</td><td><code>/admin/proposals</code> (+ <code>/introvertiva</code>, <code>/telos</code> + actions)</td><td>Proposal triage (introspective and telos).</td></tr>
-<tr><td>GET</td><td><code>/admin/promotions</code> &middot; <code>/promotions/review</code> + POST rollback</td><td>Executor promotions + review.</td></tr>
+<tr><td>GET</td><td><code>/admin/changes</code> + POST <code>/{id}/{accept|reject|stage|rollback|retry}</code></td><td>Unified change lifecycle (<code>change_intent</code>). Single view: introspective proposals, telos and promotions are now <em>family</em> facets of this registry.</td></tr>
+<tr><td>GET/POST</td><td><code>/admin/synth-proposals/{id}/evaluate</code></td><td>Evaluate a single synthesis proposal.</td></tr>
+<tr><td>GET</td><td><code>/admin/praxis</code> + POST <code>/praxis/config</code>, <code>/praxis/fastpaths/{id}/delete</code></td><td>Praxis: engine configuration and fastpath management.</td></tr>
 <tr><td>GET</td><td><code>/admin/executors</code> &middot; <code>/admin/executors/stats</code></td><td>Catalog with lifecycle + counts/events for the uPlot charts.</td></tr>
 <tr><td>GET</td><td><code>/admin/timers</code> + POST <code>/{name}/{enable|disable|fire}</code></td><td>All system timers: view, enable, disable, run now.</td></tr>
 <tr><td>GET</td><td><code>/admin/runs</code> &middot; <code>/admin/builds</code> &middot; <code>/admin/safety</code> &middot; <code>/admin/turns</code></td><td>Scheduler runs, builds, safety signatures, recent turns.</td></tr>
@@ -346,8 +346,8 @@ with the rest of the canonical docs (navy / sage / bronze).
 <ul>
 <li><code>dashboard.html</code> &mdash; summary: catalog count, last 5 turns, last 5 paired users, safety signature count, average latency of the last 20 turns.</li>
 <li><code>executors.html</code> &mdash; catalog table with columns <em>name</em>, <em>kind</em> (handcrafted/synth), <em>lifecycle</em>, <em>uses_30d</em>, <em>last_used</em>.</li>
-<li><code>executor_stats.html</code> &mdash; uPlot chart with daily execution counts per executor.</li>
-<li><code>proposals.html</code> &mdash; introspective proposal table with <em>approve / reject / postpone</em> buttons.</li>
+<li><code>executors_stats.html</code> &mdash; uPlot chart with daily execution counts per executor.</li>
+<li><code>changes.html</code> &mdash; unified change lifecycle with <em>accept / reject / stage / rollback / retry</em> buttons.</li>
 <li><code>runs.html</code> &mdash; latest scheduler runs (cron + recurring user tasks).</li>
 <li><code>safety.html</code> &mdash; safety signatures.</li>
 <li><code>turns.html</code> &mdash; the last N turns from the jsonl, with credential scrubbing already applied.</li>

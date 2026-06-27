@@ -188,7 +188,7 @@ deterministico: stesso ingresso, stessa uscita.
 
 <div class="callout note">
 <strong>Il vocabolario chiuso, una bussola.</strong> Metnos accetta 23
-azioni (read, find, set, send, delete, share, &hellip;) e 22 oggetti
+azioni (read, find, set, send, delete, share, &hellip;) e 23 oggetti
 (files, messages, events, persons, tasks, &hellip;). Una skill che
 parla di <em>append rows to spreadsheet</em> non genera <code>append_rows</code>: diventa
 <code>change_files_xlsx</code>. Una che parla di <em>label messages</em>
@@ -373,8 +373,8 @@ minuti per ventuno strumenti nuovi.
 <h1 id="cap8">8. Sette strati di rete di sicurezza</h1>
 
 <p>
-Importare codice scritto da altri (third-party) richiede strati di
-controllo che il codice <em>handcrafted</em> non ha. Una skill importata
+Importare codice scritto da altri (di terze parti) richiede strati di
+controllo che il codice <em>scritto a mano</em> non ha. Una skill importata
 potrebbe essere stata manomessa, dichiarare cose diverse da quello che
 fa, imitare uno strumento esistente per dirottare la chat, o esfiltrare
 credenziali senza lasciare traccia. I sette strati riducono ognuno un
@@ -394,8 +394,8 @@ strato.
 </table>
 
 <p>
-Gli executor handcrafted (scritti dal team Metnos) non hanno L2, L6 e
-audit: il codice &egrave; trusted per costruzione, il manifest e il
+Gli executor scritti a mano (dal team Metnos) non hanno L2, L6 e
+audit: il codice &egrave; fidato per costruzione, il manifest e il
 comportamento sono allineati per definizione, e l'audit di chi ha fatto
 cosa &egrave; in <code>git blame</code>.
 </p>

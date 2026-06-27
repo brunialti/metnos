@@ -392,9 +392,9 @@ aesthetic: it is real saving.
 <div class="callout note">
 <strong>The &laquo;wise&raquo; role and code quality.</strong> The
 <em>code</em> stage (stage 5 of the multistage pipeline in
-&sect;<a href="#cap4">4.2.3</a>) is the most demanding: our reference local
-model is <strong>Qwen 3.6 35B-A3B</strong>; smaller models produce more fragile
-code and break conventions more often. The procedural stages (1-4: naming,
+&sect;<a href="#cap4">4.2.3</a>) is the most demanding, and runs on the most
+capable tier, <strong>wise</strong>; a smaller model produces more fragile
+code and breaks conventions more often. The procedural stages (1-4: naming,
 signature, tests, description) use the <em>middle</em> tier, which is enough for
 closed-vocabulary lookup and fixed formats. The tiers are <em>abstract
 roles</em>: the <em>tier resolver</em> (<code>runtime/llm_router.py</code>) no
@@ -408,7 +408,7 @@ stops at boot rather than silently degrading.
 <h3>4.2.1 Real measurements on the POC </h3>
 
 <p>
-End-to-end synthesis via wise tier = local Qwen 3.6 35B-A3B (Q4_K_M
+End-to-end synthesis on the wise tier (local model, Q4_K_M
 on llama-server). Case: <code>format_json</code> (formats a JSON string with
 readable indentation).
 </p>
@@ -502,11 +502,11 @@ ONLY the slice it needs &mdash; no cumulative blob.
 <table>
 <thead><tr><th style="width:18%">Stage</th><th style="width:14%">Type</th><th style="width:18%">LLM Tier</th><th>Output</th></tr></thead>
 <tbody>
-<tr><td><strong>1. Naming + classification</strong></td><td>procedural</td><td>middle (Qwen 3.6 35B-A3B think=true)</td><td>name <code>{action}_{object}[_qualifier]</code> from the closed vocabulary (23 actions, 22 objects) + revertible/critical/target_kind. If no combination fits: explicit rejection with reason.</td></tr>
+<tr><td><strong>1. Naming + classification</strong></td><td>procedural</td><td>middle (think=true)</td><td>name <code>{action}_{object}[_qualifier]</code> from the closed vocabulary (23 actions, 23 objects) + revertible/critical/target_kind. If no combination fits: explicit rejection with reason.</td></tr>
 <tr><td><strong>2. Signature</strong></td><td>procedural</td><td>middle</td><td>args_schema (JSON Schema), capabilities (closed set), reverse_pattern from the deterministic catalogue (<code>runtime/reverse_patterns.py</code>).</td></tr>
 <tr><td><strong>3. Birth tests</strong></td><td>procedural</td><td>middle</td><td>4-6 tests in fixed format (setup/input/expect/teardown), at minimum: happy path, empty list, invalid args, domain edge.</td></tr>
 <tr><td><strong>4. Description + affinity</strong></td><td>creative</td><td>middle</td><td>LLM-readable description structured in four chapters (<code>SCOPO: / PATTERN: / NON: / OUT:</code>). The proposer shows the planner only the head (up to <code>OUT:</code>, excluded). + 6-10 affinity keywords for the composer.</td></tr>
-<tr><td><strong>5. Code</strong></td><td>creative + procedural</td><td>wise (Qwen 3.6 35B-A3B think=true)</td><td><code>&lt;name&gt;.py</code> Python file with <code>def invoke</code>, runtime conventions (<code>runtime/messages.py</code>, <code>runtime/platform_policy.py</code>, helpers).</td></tr>
+<tr><td><strong>5. Code</strong></td><td>creative + procedural</td><td>wise (think=true)</td><td><code>&lt;name&gt;.py</code> Python file with <code>def invoke</code>, runtime conventions (<code>runtime/messages.py</code>, <code>runtime/platform_policy.py</code>, helpers).</td></tr>
 </tbody>
 </table>
 
@@ -531,7 +531,7 @@ extending if those patterns recur in real cases
 <div class="callout note">
 <strong>Synthesis time.</strong> An end-to-end multistage synthesis
 costs <strong>between 140 and 160 seconds</strong> wall-clock with the
-local Qwen 3.6 35B-A3B provider (zero network cost). Average per-stage
+the local model (zero network cost). Average per-stage
 breakdown observed: stage 1 ~13&thinsp;s, stage 2 ~25&thinsp;s, stage 3
 ~35&thinsp;s, stage 4 ~25&thinsp;s, stage 5 ~45&thinsp;s. The 5 stages
 run sequentially because each one depends on the skeleton enriched by
@@ -825,7 +825,7 @@ composition:
  "ts": "2026-04-25T22:14:33Z",
  "request_id": "01HX...",
  "mode": "reactive",
- "proto_mnest": "mnest_01HW...",
+ "proto_mnest": "mn_3f9a8c2b1e7d...",
  "strategy": "compose",
  "state": "composed",
  "chain": ["read_files", "read_files_pdf", "classify_entries", "move_files"],

@@ -67,9 +67,10 @@ li { margin-bottom: 4px; }.lead { font-size: 12pt; color: var(--navy); border-le
 Il <em>vaglio</em> e' il valutatore costituzionale: gira fra la proposta di un
 <code>tool_call</code> e la sua esecuzione, in due fasi distinte &mdash; una
 guardia binaria deterministica e un giudice graduato allineato ai telos.
-Include hook dedicati come <code>check_cross_user_send</code> (host gatekeeper,
-self-send permesso, guest&rarr;altri richiede vaglio) e lo short-circuit sui
-verbi sola-lettura. Riferimento di implementazione: <code>runtime/vaglio.py</code>.
+Include controlli dedicati come <code>check_cross_user_send</code> (il padrone
+di casa fa da guardiano: l'invio a se' stessi e' permesso, da ospite verso
+altri richiede vaglio) e la scorciatoia sui verbi di sola lettura. Riferimento
+di implementazione: <code>runtime/vaglio.py</code>.
 </div>
 
 <nav aria-label="Language" style="position:fixed;top:16px;right:20px;z-index:9999;font-family:'Segoe UI',Calibri,sans-serif;font-size:10pt;letter-spacing:2px;background:#FAFBFC;border:1px solid #d0d7de;border-radius:14px;padding:4px 10px;box-shadow:0 1px 4px rgba(0,0,0,0.04);">
@@ -102,8 +103,8 @@ verbi sola-lettura. Riferimento di implementazione: <code>runtime/vaglio.py</cod
  <li><a href="#cap2">Anatomia: il <code>Verdict</code></a></li>
  <li><a href="#cap3">Guardia binaria</a></li>
  <li><a href="#cap4">Giudice graduato</a></li>
- <li><a href="#cap5">Giudice LLM (opt-in)</a></li>
- <li><a href="#cap6">Logging JSONL</a></li>
+ <li><a href="#cap5">Giudice LLM (facoltativo)</a></li>
+ <li><a href="#cap6">Registrazione JSONL</a></li>
  <li><a href="#cap7">Integrazione runtime</a></li>
  <li><a href="#cap8">Test</a></li>
  <li><a href="#cap9">Limiti noti</a></li>
@@ -114,7 +115,7 @@ verbi sola-lettura. Riferimento di implementazione: <code>runtime/vaglio.py</cod
 <h1 id="cap1">1. Cos'e' il vaglio</h1>
 
 <div style="margin:22px 0;padding:20px;background:#fff;border:1px solid var(--border);border-radius:8px;overflow-x:auto;">
-  <svg viewBox="0 0 880 280" role="img" aria-label="Flusso del vaglio: tool_call, guardia binaria, short-circuit verbi sola-lettura, giudice graduato, esito approvato o bloccato">
+  <svg viewBox="0 0 880 280" role="img" aria-label="Flusso del vaglio: tool_call, guardia binaria, scorciatoia verbi sola-lettura, giudice graduato, esito approvato o bloccato">
     <defs>
       <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
         <path d="M0,0 L10,5 L0,10 z" fill="#64748B"/>
@@ -128,23 +129,23 @@ verbi sola-lettura. Riferimento di implementazione: <code>runtime/vaglio.py</cod
 
       <rect x="185" y="52" width="150" height="58" rx="8" fill="#dcfce7" stroke="#16a34a" stroke-width="1.5"/>
       <text x="260" y="74" text-anchor="middle" fill="#14532d" font-weight="700">Fase 1 &mdash; guardia</text>
-      <text x="260" y="90" text-anchor="middle" fill="#475569" font-size="10">forbidden path</text>
+      <text x="260" y="90" text-anchor="middle" fill="#475569" font-size="10">percorso proibito</text>
       <text x="260" y="103" text-anchor="middle" fill="#475569" font-size="10">+ shell pericoloso</text>
 
       <rect x="380" y="52" width="150" height="58" rx="8" fill="#ede9fe" stroke="#7c3aed" stroke-width="1.5"/>
-      <text x="455" y="74" text-anchor="middle" fill="#4c1d95" font-weight="700">short-circuit</text>
+      <text x="455" y="74" text-anchor="middle" fill="#4c1d95" font-weight="700">scorciatoia</text>
       <text x="455" y="90" text-anchor="middle" fill="#475569" font-size="10">verbo &isin; SAFE_VERBS</text>
       <text x="455" y="103" text-anchor="middle" fill="#475569" font-size="10">(sola-lettura)</text>
 
       <rect x="575" y="52" width="150" height="58" rx="8" fill="#fef3c7" stroke="#f59e0b" stroke-width="1.5"/>
       <text x="650" y="74" text-anchor="middle" fill="#713f12" font-weight="700">Fase 2 &mdash; giudice</text>
-      <text x="650" y="90" text-anchor="middle" fill="#475569" font-size="10">rule-based / LLM</text>
-      <text x="650" y="103" text-anchor="middle" fill="#475569" font-size="10">score vs soglia 0.30</text>
+      <text x="650" y="90" text-anchor="middle" fill="#475569" font-size="10">a regole / LLM</text>
+      <text x="650" y="103" text-anchor="middle" fill="#475569" font-size="10">punteggio vs soglia 0.30</text>
 
       <rect x="762" y="44" width="100" height="34" rx="8" fill="#dcfce7" stroke="#16a34a" stroke-width="1.5"/>
-      <text x="812" y="65" text-anchor="middle" fill="#14532d" font-weight="700">APPROVED</text>
+      <text x="812" y="65" text-anchor="middle" fill="#14532d" font-weight="700">APPROVATO</text>
       <rect x="762" y="96" width="100" height="34" rx="8" fill="#fee2e2" stroke="#dc2626" stroke-width="1.5"/>
-      <text x="812" y="117" text-anchor="middle" fill="#991b1b" font-weight="700">BLOCKED</text>
+      <text x="812" y="117" text-anchor="middle" fill="#991b1b" font-weight="700">BLOCCATO</text>
 
       <line x1="140" y1="81" x2="183" y2="81" stroke="#64748B" stroke-width="1.5" marker-end="url(#ar)"/>
       <line x1="335" y1="81" x2="378" y2="81" stroke="#64748B" stroke-width="1.5" marker-end="url(#ar)"/>
@@ -154,11 +155,11 @@ verbi sola-lettura. Riferimento di implementazione: <code>runtime/vaglio.py</cod
     </g>
     <g font-family="Segoe UI,sans-serif" font-size="10.5" fill="#475569">
       <line x1="260" y1="110" x2="260" y2="150" stroke="#dc2626" stroke-width="1.5" marker-end="url(#ar)"/>
-      <text x="270" y="138" fill="#991b1b">viola &rarr; BLOCKED (blocked_by=guard)</text>
+      <text x="270" y="138" fill="#991b1b">viola &rarr; BLOCCATO (blocked_by=guard)</text>
       <line x1="455" y1="110" x2="455" y2="190" stroke="#16a34a" stroke-width="1.5" marker-end="url(#ar)"/>
-      <text x="465" y="178" fill="#14532d">match &rarr; APPROVED (judge_kind=safe-verb-shortcut)</text>
+      <text x="465" y="178" fill="#14532d">match &rarr; APPROVATO (judge_kind=safe-verb-shortcut)</text>
       <line x1="650" y1="110" x2="650" y2="230" stroke="#dc2626" stroke-width="1.5" marker-end="url(#ar)"/>
-      <text x="455" y="220" fill="#991b1b">score &lt; soglia &rarr; BLOCKED (blocked_by=judge)</text>
+      <text x="455" y="220" fill="#991b1b">punteggio &lt; soglia &rarr; BLOCCATO (blocked_by=judge)</text>
     </g>
     <text x="440" y="262" text-anchor="middle" font-family="Segoe UI,sans-serif" font-size="10.5" fill="#64748B">La guardia precede sempre tutto; il giudice gira solo se la guardia passa e il verbo non &egrave; sola-lettura.</text>
   </svg>
@@ -177,7 +178,7 @@ Perche' due fasi separate? Perche' altrimenti accade un fenomeno specifico, desc
 </p>
 
 <p>
-La separazione e' anche una promessa di stabilita' architettonica: la guardia e' una lista di regex codificate; quando il giudice gira come chiamata LLM (modo opt-in, cap.&nbsp;5), la guardia resta la stessa. Il nucleo non negoziabile non passa attraverso un modello.
+La separazione e' anche una promessa di stabilita' architettonica: la guardia e' una lista di regex codificate; quando il giudice gira come chiamata LLM (modalita' facoltativa, cap.&nbsp;5), la guardia resta la stessa. Il nucleo non negoziabile non passa attraverso un modello.
 </p>
 
 <div class="callout note">
@@ -203,14 +204,14 @@ class Verdict:
 <tr><th>Campo</th><th>Tipo</th><th>Significato</th></tr>
 <tr><td><code>approved</code></td><td>bool</td><td>Esito finale: <code>True</code> se l'azione puo' procedere, <code>False</code> altrimenti.</td></tr>
 <tr><td><code>reason</code></td><td>str</td><td>Spiegazione leggibile. Per il blocco da guardia: <code>"guard: forbidden path violato:..."</code>. Per il blocco da giudice: <code>"judge: score 0.20 &lt; soglia 0.30 (...)"</code>.</td></tr>
-<tr><td><code>ts</code></td><td>float</td><td>Timestamp Unix della decisione.</td></tr>
-<tr><td><code>judge_kind</code></td><td>str</td><td>Famiglia del giudice usato. <code>"rule-based-v1"</code> (default), <code>"llm-v1"</code> (opt-in via env <code>METNOS_JUDGE_KIND=llm-v1</code>) oppure <code>"safe-verb-shortcut"</code> per i verbi sola-lettura approvati senza giudice.</td></tr>
+<tr><td><code>ts</code></td><td>float</td><td>Marca temporale Unix della decisione.</td></tr>
+<tr><td><code>judge_kind</code></td><td>str</td><td>Famiglia del giudice usato. <code>"rule-based-v1"</code> (default), <code>"llm-v1"</code> (facoltativo via env <code>METNOS_JUDGE_KIND=llm-v1</code>) oppure <code>"safe-verb-shortcut"</code> per i verbi sola-lettura approvati senza giudice.</td></tr>
 <tr><td><code>score</code></td><td>float</td><td>Punteggio di allineamento in <code>[0,&nbsp;1]</code>. Significativo solo se la guardia ha lasciato passare. Per blocchi di guardia, vale <code>0.0</code>.</td></tr>
 <tr><td><code>blocked_by</code></td><td>str|None</td><td>Quale fase ha negato: <code>"guard"</code>, <code>"judge"</code>, oppure <code>None</code> se approvato.</td></tr>
 </table>
 
 <p>
-L'orchestratore <code>judge(intent, executor_name, args, context)</code> (<code>runtime/vaglio.py:186-214</code>) e' la sola firma pubblica. Riceve l'<em>intent</em> dell'utente (la query iniziale del turno), il nome dell'<em>executor</em> proposto, gli <em>args</em> validati, e un <em>context</em> dizionario opzionale (mode, capability, step number). Restituisce un singolo <code>Verdict</code>.
+L'orchestratore <code>judge(intent, executor_name, args, context)</code> (<code>runtime/vaglio.py:186-214</code>) e' la sola firma pubblica. Riceve l'<em>intent</em> dell'utente (la richiesta iniziale del turno), il nome dell'<em>executor</em> proposto, gli <em>args</em> validati, e un <em>context</em> opzionale a dizionario (modalita', capability, numero di passo). Restituisce un singolo <code>Verdict</code>.
 </p>
 
 <h1 id="cap3">3. Guardia binaria</h1>
@@ -219,7 +220,7 @@ L'orchestratore <code>judge(intent, executor_name, args, context)</code> (<code>
 La guardia non ha sfumature. Compie due controlli in sequenza, e ferma alla prima violazione (<code>runtime/vaglio.py:104-126</code>).
 </p>
 
-<h2>Controllo 1: forbidden paths</h2>
+<h2>Controllo 1: percorsi proibiti</h2>
 
 <p>
 La guardia estrae <em>tutti</em> i valori stringa dagli <code>args</code>, anche annidati (<code>_flatten_str_values</code>, <code>runtime/vaglio.py:86-97</code>), espande la tilde con il path utente (<code>_expand_user</code>, <code>runtime/vaglio.py:100-101</code>), e li confronta con una lista di pattern regex codificate (<code>runtime/vaglio.py:45-58</code>):
@@ -244,7 +245,7 @@ Il punto sottile: la guardia non distingue fra &laquo;sto leggendo <code>~/.ssh/
 </p>
 
 <div class="callout warning">
-<strong>La lista non si rilassa per livello di autonomia.</strong> Il <code>config</code> permette di giocare su molte cose (timeout, soglie, modalita'). Sui forbidden path, niente: e' il &laquo;nucleo non negoziabile&raquo; del cap.&nbsp;5 dell'Architettura. Modificarli richiede edit del codice e nuovo deploy. Deliberato.
+<strong>La lista non si rilassa per livello di autonomia.</strong> Il <code>config</code> permette di giocare su molte cose (timeout, soglie, modalita'). Sui percorsi proibiti, niente: e' il &laquo;nucleo non negoziabile&raquo; del cap.&nbsp;5 dell'Architettura. Modificarli richiede modifica del codice e un nuovo rilascio. Deliberato.
 </div>
 
 <h2>Controllo 2: comandi shell quasi-irrecuperabili</h2>
@@ -263,61 +264,61 @@ Si applica solo se <code>executor_name == "shell_exec"</code> oppure se il <code
 ]</pre>
 
 <p>
-La motivazione e' la <strong>Legge 1 della constitution</strong>: &laquo;niente stato irrecuperabile&raquo;. Una <code>rm&nbsp;-rf&nbsp;/</code> non si annulla con un undo; un <code>mkfs</code> sull'unita' di sistema neppure; una fork bomb satura il processo. Sono patologie distinte da una qualunque cancellazione di file: tolgono il sistema da uno stato in cui il sistema stesso possa ancora rispondere.
+La motivazione e' la <strong>Legge 1 della costituzione</strong>: &laquo;niente stato irrecuperabile&raquo;. Una <code>rm&nbsp;-rf&nbsp;/</code> non si annulla con un undo; un <code>mkfs</code> sull'unita' di sistema neppure; una fork bomb satura il processo. Sono patologie distinte da una qualunque cancellazione di file: tolgono il sistema da uno stato in cui il sistema stesso possa ancora rispondere.
 </p>
 
 <p>
-Anche qui, il match e' testuale. La guardia non emula la shell: cerca pattern letterali nel comando. Significa che varianti astutamente con caratteri di escape possono passare; la difesa di profondita' e' lo <a href="sandbox.html">sandbox</a> con namespacing dei file system per <code>shell_exec</code>, di cui la guardia e' solo il primo strato.
+Anche qui, il match e' testuale. La guardia non emula la shell: cerca pattern letterali nel comando. Significa che varianti astutamente con caratteri di escape possono passare; la difesa di profondita' e' la <a href="sandbox.html">sandbox</a> con namespace dei file system per <code>shell_exec</code>, di cui la guardia e' solo il primo strato.
 </p>
 
 <h1 id="cap4">4. Giudice graduato</h1>
 
 <p>
-Se la guardia lascia passare, parte il giudice. Per default il giudice e' <strong>rule-based</strong>: nessuna chiamata LLM, microsecondi di latenza, costo zero. La funzione e' <code>judge_score(intent, executor_name, args, context)</code> e restituisce <code>(score, rationale)</code>.
+Se la guardia lascia passare, parte il giudice. Per default il giudice e' <strong>a regole</strong>: nessuna chiamata LLM, microsecondi di latenza, costo zero. La funzione e' <code>judge_score(intent, executor_name, args, context)</code> e restituisce <code>(score, rationale)</code>.
 </p>
 
-<h2>Heuristiche</h2>
+<h2>Euristiche</h2>
 
 <p>
-Si parte da uno <strong>score base di 0.7</strong>: il regime rule-based e' benevolente per costruzione (vedi cap.&nbsp;9). Da li' il giudice somma o sottrae piccoli aggiustamenti, e poi clampa in <code>[0,&nbsp;1]</code>.
+Si parte da un <strong>punteggio base di 0.7</strong>: il regime a regole e' benevolente per costruzione (vedi cap.&nbsp;9). Da li' il giudice somma o sottrae piccoli aggiustamenti, e poi clampa in <code>[0,&nbsp;1]</code>.
 </p>
 
 <table>
-<tr><th>Segnale</th><th>Effetto su score</th><th>Razionale</th></tr>
+<tr><th>Segnale</th><th>Effetto sul punteggio</th><th>Razionale</th></tr>
 <tr><td>L'<em>intent</em> dell'utente menziona il nome dell'executor (anche solo un token di esso, lunghezza &ge; 3).</td><td>+0.10</td><td>Segno di intento esplicito. Se l'utente ha scritto &laquo;read the file&raquo; e l'executor e' <code>read_files</code>, il match su <code>read</code> e' un debole ma reale segnale che l'azione corrisponde alla richiesta.</td></tr>
-<tr><td>Uno qualunque dei valori stringa in <code>args</code> contiene <code>..</code> e <code>/</code> (possibile path traversal).</td><td>&minus;0.20</td><td>Heuristica grossa ma efficace: molti attacchi su filesystem usano <code>..</code> per uscire dalla cartella attesa. La penalita' e' la piu' grande perche' indica <em>tentativo di scavalcare un confine</em>.</td></tr>
+<tr><td>Uno qualunque dei valori stringa in <code>args</code> contiene <code>..</code> e <code>/</code> (possibile path traversal).</td><td>&minus;0.20</td><td>Euristica grossolana ma efficace: molti attacchi su filesystem usano <code>..</code> per uscire dalla cartella attesa. La penalita' e' la piu' grande perche' indica <em>tentativo di scavalcare un confine</em>.</td></tr>
 <tr><td>Una chiave di <code>args</code> non rispetta l'identifier Python (caratteri non alfanumerici / underscore).</td><td>&minus;0.10</td><td>Anomalia di forma. Un executor sano dichiara args con chiavi normali; una chiave strana suggerisce o injection o errore di pianificazione.</td></tr>
 <tr><td>Il <code>context</code> dichiara <code>critical: false</code> (executor non-critico, sola lettura).</td><td>+0.05</td><td>Bonus modesto: gli executor a sola lettura non possono produrre stato irrecuperabile, quindi la barriera puo' essere leggermente piu' bassa.</td></tr>
 </table>
 
 <p>
-Lo score e' clampato in <code>[0,&nbsp;1]</code> e confrontato con <code>JUDGE_THRESHOLD</code> (<code>runtime/vaglio.py:40</code>). Default: <code>0.30</code>, configurabile via env <code>METNOS_JUDGE_THRESHOLD</code>.
+Il punteggio e' clampato in <code>[0,&nbsp;1]</code> e confrontato con <code>JUDGE_THRESHOLD</code> (<code>runtime/vaglio.py:40</code>). Default: <code>0.30</code>, configurabile via env <code>METNOS_JUDGE_THRESHOLD</code>.
 </p>
 
 <div class="example">
 <div class="ex-label">Esempio: path innocuo, intent generico</div>
 <p>Intent: <code>"leggi le mie note in /tmp/n.txt"</code>. Executor: <code>read_files</code>. Args: <code>{"paths": ["/tmp/n.txt"]}</code>.</p>
-<p>Score di partenza: <code>0.7</code>. Il giudice spezza <code>read_files</code> sui separatori, ottiene i token <code>read</code> e <code>files</code>; in italiano nessuno dei due compare nell'intent. Nessun bonus di intent. Path innocuo. Chiavi pulite.</p>
-<p>Score finale: <code>0.7</code>. Sopra soglia. <code>approved=True</code>, <code>reason="approved: score 0.70 (score base)"</code>.</p>
+<p>Punteggio di partenza: <code>0.7</code>. Il giudice spezza <code>read_files</code> sui separatori, ottiene i token <code>read</code> e <code>files</code>; in italiano nessuno dei due compare nell'intent. Nessun bonus di intent. Path innocuo. Chiavi pulite.</p>
+<p>Punteggio finale: <code>0.7</code>. Sopra soglia. <code>approved=True</code>, <code>reason="approved: score 0.70 (score base)"</code>.</p>
 </div>
 
 <div class="example">
 <div class="ex-label">Esempio: path traversal sospetto</div>
 <p>Args: <code>{"path": "/tmp/../etc/foo"}</code>. Path traversal sospetto: <code>..</code> e <code>/</code> presenti.</p>
-<p>Score: <code>0.7&nbsp;&minus;&nbsp;0.2&nbsp;=&nbsp;0.5</code>. Ancora sopra <code>0.30</code>: <strong>approvato lo stesso</strong>, ma con la nota <code>"possibile path traversal ('..' in path)"</code> nel <code>reason</code> e nel log.</p>
-<p>Per bloccare effettivamente l'azione, il giudice richiederebbe altri segnali negativi cumulativi, oppure una soglia configurata piu' alta. Il giudice rule-based <em>marca</em>; non <em>blocca</em> da solo se non in casi limite.</p>
+<p>Punteggio: <code>0.7&nbsp;&minus;&nbsp;0.2&nbsp;=&nbsp;0.5</code>. Ancora sopra <code>0.30</code>: <strong>approvato lo stesso</strong>, ma con la nota <code>"possibile path traversal ('..' in path)"</code> nel <code>reason</code> e nel log.</p>
+<p>Per bloccare effettivamente l'azione, il giudice richiederebbe altri segnali negativi cumulativi, oppure una soglia configurata piu' alta. Il giudice a regole <em>marca</em>; non <em>blocca</em> da solo se non in casi limite.</p>
 </div>
 
 <div class="callout note">
-<strong>Perche' il giudice rule-based e' cosi' benevolente?</strong> Perche' il vero filtro e' la guardia. Il giudice rule-based e' un primo strato di osservabilita' (cosa lascia odore strano?) piu' che un cancello. Lo score finisce nel log JSONL e diventa segnale per analisi successive; gli outlier emergono. Con il giudice LLM (opt-in) la soglia ha senso piu' stringente, perche' la valutazione puo' davvero pesare alternative e contesto.
+<strong>Perche' il giudice a regole e' cosi' benevolente?</strong> Perche' il vero filtro e' la guardia. Il giudice a regole e' un primo strato di osservabilita' (cosa lascia odore strano?) piu' che un cancello. Il punteggio finisce nel log JSONL e diventa segnale per analisi successive; i casi anomali emergono. Con il giudice LLM (facoltativo) la soglia ha senso piu' stringente, perche' la valutazione puo' davvero pesare alternative e contesto.
 </div>
 
-<h1 id="cap5">5. Giudice LLM (opt-in)</h1>
+<h1 id="cap5">5. Giudice LLM (facoltativo)</h1>
 
 <p>
 Il vaglio puo' usare un giudice basato su LLM al posto di quello
-rule-based. Si attiva via env <code>METNOS_JUDGE_KIND=llm-v1</code>
-(default <code>rule-based-v1</code>): e' opt-in perche' costa &mdash; ogni
+a regole. Si attiva via env <code>METNOS_JUDGE_KIND=llm-v1</code>
+(default <code>rule-based-v1</code>): e' facoltativo perche' costa &mdash; ogni
 decisione del giudice paga una chiamata al tier middle. Implementazione in
 <code>runtime/vaglio.py:_judge_score_llm</code>.
 </p>
@@ -335,10 +336,10 @@ decisione del giudice paga una chiamata al tier middle. Implementazione in
  condivisa con il proponente. Difesa esplicita contro l'<em>auto-conferma
  del modello</em>: se il proponente potesse ascoltare le proprie
  giustificazioni come input del giudice, le ottimizzerebbe a
- ritroso. Sessioni separate spezzano il loop.</li>
+ ritroso. Sessioni separate spezzano il ciclo.</li>
  <li><strong>Prompt sulle 4 Leggi e i sette telos</strong>. Il prompt del
  giudice elenca esplicitamente le 4 Leggi della
- constitution e i sette telos canonici
+ costituzione e i sette telos canonici
  (peso, vedi <a href="telos.html">telos</a>). Il giudice li applica, non
  li inventa.</li>
  <li><strong>Privacy: solo le chiavi</strong>. Il prompt user contiene
@@ -348,17 +349,17 @@ decisione del giudice paga una chiamata al tier middle. Implementazione in
  raggiunge.</li>
  <li><strong>Output strutturato</strong>. Contratto: JSON
  <code>{"score": float [0,1], "reason": "max 25 parole"}</code>.
- Parser robusto regex-based: se il LLM produce JSON non valido,
- fallback a 0.5 con motivazione <em>"llm-judge fallback (parse
+ Parser robusto a regex: se il LLM produce JSON non valido,
+ ripiego a 0.5 con motivazione <em>"llm-judge fallback (parse
  fail)"</em>.</li>
- <li><strong>Fallback graceful</strong>. Se l'<code>LLMRouter</code> non
+ <li><strong>Ripiego controllato</strong>. Se l'<code>LLMRouter</code> non
  e' configurato o il tier middle non risponde, il giudice ritorna
- score 0.5 con motivazione esplicita <em>"llm-judge fallback (router
+ punteggio 0.5 con motivazione esplicita <em>"llm-judge fallback (router
  missing|chat failed)"</em>. La sequenza non si blocca; il log
  rivela che l'analisi e' stata degradata.</li>
  <li><strong>La guardia precede sempre il giudice</strong>. Anche con
  <code>JUDGE_KIND=llm-v1</code> attivo, la guardia binaria viene
- eseguita per prima: forbidden path o shell pericoloso bloccano
+ eseguita per prima: percorso proibito o shell pericoloso bloccano
  senza neppure consultare il LLM. Garanzia: nessuna chiamata LLM
  spesa per casi gia' decidibili da regole locali (test
  <code>judge_llm_guardia_blocca_prima_di_chiamare_llm</code>).</li>
@@ -367,38 +368,38 @@ decisione del giudice paga una chiamata al tier middle. Implementazione in
 <h2>5.2 Quando attivarlo</h2>
 
 <p>
-Il rule-based e' il default e basta nella maggior parte dei turni: la guardia
-filtra il pericolo, il giudice rule-based segnala outlier. Il giudice LLM
+Il giudice a regole e' il default e basta nella maggior parte dei turni: la guardia
+filtra il pericolo, il giudice a regole segnala casi anomali. Il giudice LLM
 serve quando si vuole una valutazione piu' fine dell'allineamento ai telos
-(es. azioni proattive con bother budget, scelta tra opzioni equivalenti).
+(es. azioni proattive con budget di disturbo, scelta tra opzioni equivalenti).
 Si attiva con:
 </p>
 
 <pre>METNOS_JUDGE_KIND=llm-v1 python3 -m channels.daemon</pre>
 
 <p>
-Tradeoff: ogni chiamata al giudice paga una latenza dell'ordine dei secondi
-(Qwen&nbsp;3.6&nbsp;35B&#8209;A3B locale, tier middle) o inferiore con il tier frontier
-(Anthropic Opus 4.7, opt-in).
-Per un turno di 3 step, sono 3 chiamate al vaglio. Una <em>policy di
-costo</em> futura potra' degradare automaticamente al rule-based sopra
+Compromesso: ogni chiamata al giudice paga una latenza dell'ordine dei secondi
+(modello locale, tier middle) o inferiore con il tier frontier
+(facoltativo).
+Per un turno di 3 step, sono 3 chiamate al vaglio. Una <em>politica di
+costo</em> futura potra' degradare automaticamente al giudice a regole sopra
 una soglia di chiamate/giorno.
 </p>
 
 <h2>5.3 Sviluppi successivi</h2>
 
 <ul>
- <li>Esempi few-shot nel prompt per stabilizzare la distribuzione degli score.</li>
+ <li>Esempi few-shot nel prompt per stabilizzare la distribuzione dei punteggi.</li>
  <li>Lettura del mnestoma come contesto: oggi il giudice non sa "cos'e' successo prima" se non dal contesto del turno corrente.</li>
  <li>Calibrazione delle soglie: <code>METNOS_JUDGE_THRESHOLD</code>
- e' calibrato per il rule-based (default 0.30); il LLM tendera' a
- produrre score in distribuzione diversa, e dovra' avere la sua
+ e' calibrato per il giudice a regole (default 0.30); il LLM tendera' a
+ produrre punteggi in distribuzione diversa, e dovra' avere la sua
  soglia separata.</li>
  <li>Telemetria: chi sta usando llm-v1, quanto costa, percentuale di
- decisioni che concordano col rule-based.</li>
+ decisioni che concordano col giudice a regole.</li>
 </ul>
 
-<h1 id="cap6">6. Logging JSONL</h1>
+<h1 id="cap6">6. Registrazione JSONL</h1>
 
 <p>
 Ogni chiamata al vaglio scrive una riga JSONL in <code>~/.local/share/metnos/vaglio/YYYY-MM.jsonl</code> (file mensile, vedi <code>runtime/vaglio.py:33</code> e <code>176-183</code>). La scrittura e' fail-safe: se il filesystem nega, il vaglio non blocca la decisione &mdash; semplicemente non scrive il log.
@@ -420,11 +421,11 @@ Ogni chiamata al vaglio scrive una riga JSONL in <code>~/.local/share/metnos/vag
 }</pre>
 
 <div class="callout warning">
-<strong>Solo le chiavi di <code>args</code>, non i valori.</strong> Questo e' esplicito (<code>runtime/vaglio.py:197</code> e <code>212</code>): nel log finiscono i nomi delle chiavi (<code>"path"</code>, <code>"command"</code>,...) ma non i valori (il path effettivo, il comando effettivo). Motivo: la privacy. I valori spesso contengono dati sensibili (path utente, contenuti di file, payload), e un log che li riportasse diventerebbe esso stesso un asset da proteggere. Le chiavi bastano per analisi statistica (quali executor vengono bloccati piu' spesso?); il valore vivo si trova negli <a href="agent_runtime.html#cap11">eventi del turno</a> dell'agent_runtime con regole diverse di retention.
+<strong>Solo le chiavi di <code>args</code>, non i valori.</strong> Questo e' esplicito (<code>runtime/vaglio.py:197</code> e <code>212</code>): nel log finiscono i nomi delle chiavi (<code>"path"</code>, <code>"command"</code>,...) ma non i valori (il path effettivo, il comando effettivo). Motivo: la privacy. I valori spesso contengono dati sensibili (path utente, contenuti di file, dati), e un log che li riportasse diventerebbe esso stesso un asset da proteggere. Le chiavi bastano per analisi statistica (quali executor vengono bloccati piu' spesso?); il valore vivo si trova negli <a href="agent_runtime.html#cap11">eventi del turno</a> dell'agent_runtime con regole diverse di conservazione.
 </div>
 
 <p>
-La rotazione e' mensile per file. Niente compressione, niente cifratura: i log restano sotto <code>~/.local</code> dell'utente. Se serve archiviazione di lungo periodo, e' compito di processi esterni (rsync, backup, ecc.).
+La rotazione e' mensile per file. Niente compressione, niente cifratura: i log restano sotto <code>~/.local</code> dell'utente. Se serve archiviazione di lungo periodo, e' compito di processi esterni (rsync, copie di sicurezza, ecc.).
 </p>
 
 <h1 id="cap7">7. Integrazione runtime</h1>
@@ -456,17 +457,17 @@ else:
 <p>L'ordine non e' casuale:</p>
 <ol>
  <li><strong>Validazione args</strong> contro lo schema dell'executor (tipi e required). Se fallisce, niente vaglio: l'errore e' di forma, non di lecito.</li>
- <li><strong>Check capabilities</strong> (<code>check_hints</code>): l'executor sta uscendo dal suo perimetro dichiarato? (Esempio: un executor di sola lettura che scrive.)</li>
+ <li><strong>Verifica delle capability</strong> (<code>check_hints</code>): l'executor sta uscendo dal suo perimetro dichiarato? (Esempio: un executor di sola lettura che scrive.)</li>
  <li><strong>Vaglio</strong> (<code>judge(...)</code>): solo se i due controlli precedenti passano. Riceve l'<em>intent</em> originale dell'utente (<code>user_query</code>), il nome dell'executor scelto, gli args validati, e un context con <code>mode</code> e <code>step_num</code>.</li>
  <li><strong>Invoke executor</strong>: solo se il vaglio approva.</li>
 </ol>
 
 <p>
-Per <strong>piani multistep</strong>, il vaglio gira <em>fra</em> uno step e l'altro: ogni tool_call proposto dal LLM viene vagliato prima dell'esecuzione, in modo che un piano in 5 passi produca 5 verdetti distinti. Per <strong>single-shot</strong> (un piano interamente proposto in un colpo, senza step intermedi), il vaglio gira post-hoc: il piano e' gia' formulato, ma il vaglio puo' ancora bloccare l'esecuzione di ciascun tool_call.
+Per <strong>piani multistep</strong>, il vaglio gira <em>fra</em> uno step e l'altro: ogni tool_call proposto dal LLM viene vagliato prima dell'esecuzione, in modo che un piano in 5 passi produca 5 verdetti distinti. Per <strong>piani in un colpo solo</strong> (un piano interamente proposto in un colpo, senza step intermedi), il vaglio gira a posteriori: il piano e' gia' formulato, ma il vaglio puo' ancora bloccare l'esecuzione di ciascun tool_call.
 </p>
 
 <p>
-Il flag <code>step.vaglio_approved</code> finisce nel log del turno (<a href="agent_runtime.html#cap11">agent_runtime cap.&nbsp;11</a>), e quindi nello <a href="observability.html">spettatore</a>: l'utente puo' vedere a posteriori quali step sono stati vagliati e con quale esito.
+Il flag <code>step.vaglio_approved</code> finisce nel log del turno (<a href="agent_runtime.html#cap11">agent_runtime cap.&nbsp;11</a>), e quindi nel <a href="observability.html">cruscotto di osservabilita'</a>: l'utente puo' vedere a posteriori quali step sono stati vagliati e con quale esito.
 </p>
 
 <h1 id="cap8">8. Test</h1>
@@ -484,7 +485,7 @@ Il cluster <code>vaglio</code> e' verde. I casi sono dichiarati in <code>runtime
 <tr><td><code>guard_blocca_rm_rf_root</code></td><td>security</td><td><code>shell_exec</code> con <code>rm&nbsp;-rf&nbsp;/</code> bloccato come irrecuperabile.</td></tr>
 <tr><td><code>guard_blocca_fork_bomb</code></td><td>security</td><td><code>shell_exec</code> con <code>:{&nbsp;:|:&amp;&nbsp;};:</code> bloccato.</td></tr>
 <tr><td><code>guard_lascia_passare_shell_innocua</code></td><td>happy</td><td><code>shell_exec</code> con <code>ls&nbsp;-la&nbsp;/tmp</code> passa la guardia.</td></tr>
-<tr><td><code>judge_intent_menziona_executor_alza_score</code></td><td>happy</td><td>Score con intent che cita l'executor &gt; score con intent generico.</td></tr>
+<tr><td><code>judge_intent_menziona_executor_alza_score</code></td><td>happy</td><td>Punteggio con intent che cita l'executor &gt; punteggio con intent generico.</td></tr>
 <tr><td><code>judge_path_traversal_abbassa_score</code></td><td>edge</td><td>Path con <code>..</code> riceve score piu' basso del path innocuo.</td></tr>
 <tr><td><code>judge_sotto_soglia_blocca</code></td><td>failure</td><td>Con <code>METNOS_JUDGE_THRESHOLD=0.99</code>, qualunque azione viene negata con <code>blocked_by="judge"</code>.</td></tr>
 <tr><td><code>log_jsonl_viene_scritto</code></td><td>happy</td><td>Dopo <code>judge(...)</code>, il file <code>YYYY-MM.jsonl</code> esiste e contiene il marker dell'intent.</td></tr>
@@ -499,11 +500,11 @@ A questi si aggiunge l'integrazione nel cluster <code>agent_runtime</code>, che 
 
 <table>
 <tr><th>Limite</th><th>Spiegazione</th><th>Quando si toglie</th></tr>
-<tr><td>Il vaglio non legge il <a href="mnestoma.html">mnestoma</a>.</td><td>Separazione di concerns: il vaglio valuta solo l'intento dichiarato + executor + args, non guarda lo storico. Non pu&ograve; vedere &laquo;questa stessa azione e' stata negata 5 minuti fa&raquo; o &laquo;l'utente di solito non opera in questo modo&raquo;.</td><td>Evoluzione: il giudice LLM ricevera' contesto dal mnestoma (rilevanza simile, esiti precedenti) per pesare meglio.</td></tr>
+<tr><td>Il vaglio non legge il <a href="mnestoma.html">mnestoma</a>.</td><td>Separazione delle competenze: il vaglio valuta solo l'intento dichiarato + executor + args, non guarda lo storico. Non pu&ograve; vedere &laquo;questa stessa azione e' stata negata 5 minuti fa&raquo; o &laquo;l'utente di solito non opera in questo modo&raquo;.</td><td>Evoluzione: il giudice LLM ricevera' contesto dal mnestoma (rilevanza simile, esiti precedenti) per pesare meglio.</td></tr>
 <tr><td>Il dispatcher dei callback dell'<a href="approval_ux.html">approval_ux</a> non rinietta nel turno vivo.</td><td>La carta che l'utente vede nei canali (Telegram, Slack, ecc.) si genera via <code>runtime/channels/approval.py</code>. Se l'utente preme &laquo;Concedo per stavolta&raquo;, il callback non rientra nel piano vivo.</td><td>Evoluzione: dispatcher di callback con re-injection nel turno corrente.</td></tr>
-<tr><td>Il giudice rule-based e' molto benevolente.</td><td>Soglia di default <code>0.30</code> e score base <code>0.7</code>: anche con piu' penalita' moderate, il punteggio resta sopra. Conscio: il vero filtro e' la guardia, il giudice marca solo gli outlier nel log.</td><td>Con il giudice LLM: la soglia avra' significato piu' forte e la distribuzione degli score sara' piu' larga.</td></tr>
-<tr><td>Niente <em>spiegazione strutturata</em> del rifiuto all'utente.</td><td>Quando il vaglio nega, il pianificatore mostra la <code>reason</code> testuale ma non costruisce una carta &laquo;perche' ho detto no e cosa puoi fare&raquo;. La UX di rifiuto e' minima.</td><td>Evoluzione: integrazione con approval_ux per rifiuti dialogici.</td></tr>
-<tr><td>Niente <em>vaglio interattivo</em>.</td><td>Il vaglio e' una funzione pura: input args, output Verdict. Non puo' chiedere &laquo;sei sicuro?&raquo; o richiedere conferma.</td><td>Evoluzione: integrazione con il dialog manager per richieste di autorizzazione (vedi <a href="approval_ux.html">approval_ux</a>).</td></tr>
+<tr><td>Il giudice a regole e' molto benevolente.</td><td>Soglia di default <code>0.30</code> e punteggio base <code>0.7</code>: anche con piu' penalita' moderate, il punteggio resta sopra. Conscio: il vero filtro e' la guardia, il giudice marca solo i casi anomali nel log.</td><td>Con il giudice LLM: la soglia avra' significato piu' forte e la distribuzione dei punteggi sara' piu' larga.</td></tr>
+<tr><td>Niente <em>spiegazione strutturata</em> del rifiuto all'utente.</td><td>Quando il vaglio nega, il pianificatore mostra la <code>reason</code> testuale ma non costruisce una carta &laquo;perche' ho detto no e cosa puoi fare&raquo;. L'esperienza d'uso del rifiuto e' minima.</td><td>Evoluzione: integrazione con approval_ux per rifiuti dialogici.</td></tr>
+<tr><td>Niente <em>vaglio interattivo</em>.</td><td>Il vaglio e' una funzione pura: input args, output Verdict. Non puo' chiedere &laquo;sei sicuro?&raquo; o richiedere conferma.</td><td>Evoluzione: integrazione con il gestore del dialogo per richieste di autorizzazione (vedi <a href="approval_ux.html">approval_ux</a>).</td></tr>
 </table>
 
 <h1 id="cap10">10. Configurabili</h1>
@@ -515,8 +516,8 @@ La configurazione del vaglio e' minimale, e questa minimalita' e' deliberata.
 <table>
 <tr><th>Cosa</th><th>Dove</th><th>Default</th><th>Note</th></tr>
 <tr><td><code>METNOS_JUDGE_THRESHOLD</code></td><td>Variabile d'ambiente.</td><td><code>0.30</code></td><td>Sotto questa, il giudice nega. Letta a import time del modulo (<code>runtime/vaglio.py:40</code>): per cambiarla a runtime serve <code>importlib.reload(vaglio)</code>.</td></tr>
-<tr><td><code>VAGLIO_LOG_DIR</code></td><td>Costante modulo (non env).</td><td><code>~/.local/share/metnos/vaglio/</code></td><td>Per cambiare destinazione log servirebbe edit del codice. Volutamente non e' un parametro: il log e' un'invariante del sistema, non una preferenza utente.</td></tr>
-<tr><td><code>_FORBIDDEN_PATH_PATTERNS</code></td><td>Costante modulo, codificata.</td><td>11 regex (vedi cap.&nbsp;3).</td><td><strong>Non configurabili</strong>. Modificarle richiede edit codice e nuovo deploy. E' deliberato: cap.&nbsp;5 dell'Architettura, &laquo;nucleo non negoziabile&raquo;.</td></tr>
+<tr><td><code>VAGLIO_LOG_DIR</code></td><td>Costante modulo (non env).</td><td><code>~/.local/share/metnos/vaglio/</code></td><td>Per cambiare destinazione log servirebbe una modifica del codice. Volutamente non e' un parametro: il log e' un'invariante del sistema, non una preferenza utente.</td></tr>
+<tr><td><code>_FORBIDDEN_PATH_PATTERNS</code></td><td>Costante modulo, codificata.</td><td>11 regex (vedi cap.&nbsp;3).</td><td><strong>Non configurabili</strong>. Modificarle richiede modifica del codice e un nuovo rilascio. E' deliberato: cap.&nbsp;5 dell'Architettura, &laquo;nucleo non negoziabile&raquo;.</td></tr>
 <tr><td><code>_DANGEROUS_SHELL_PATTERNS</code></td><td>Costante modulo, codificata.</td><td>6 regex (vedi cap.&nbsp;3).</td><td><strong>Non configurabili</strong>. Stesso ragionamento: la lista dei comandi shell quasi-irrecuperabili non si rilassa.</td></tr>
 </table>
 

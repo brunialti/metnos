@@ -193,12 +193,12 @@ domotica: riceve testo, restituisce testo, usa tool.</p>
 <p>La tendenza a trattare un sistema tecnico come se avesse intenzioni,
 emozioni o coscienza. Il progetto usa termini evocativi (<em>neurone</em>,
 <em>sinapsi</em>, <em>memoria</em>, <em>personalità</em>) per brevità
-espositiva, ma mantiene in più punti un framing linguistico esplicito per
+espositiva, ma mantiene in più punti un inquadramento linguistico esplicito per
 evitare che si scivoli nell'illusione: Metnos non "sente", non "vuole", non
-"pensa". Esegue loop, chiama tool, registra trace. La scelta del nome
+"pensa". Esegue cicli, chiama tool, registra tracce. La scelta del nome
 <a href="#vaglio">Vaglio</a> (invece di "Arbitro" o "Super-io") rientra
 in questa stessa cautela.</p>
-<p class="xref"><strong>Framing canonico:</strong> <a href="architecture/constitution.html">constitution</a> (sezione linguistica)</p>
+<p class="xref"><strong>Inquadramento canonico:</strong> <a href="architecture/constitution.html">constitution</a> (sezione linguistica)</p>
 </div>
 
 <div class="entry" id="approval-request">
@@ -288,7 +288,7 @@ rinviata al riassunto serale o rigettata. Evita l'assedio di notifiche.</p>
 
 <div class="entry" id="builtin">
 <h3>builtin (executor builtin) <span class="tag concept">componente</span></h3>
-<p>Terza categoria di <a href="#executor">executor</a>, introdotta in v1.1 (25/4/2026): vive nei sorgenti di Metnos invece che nel workspace, &egrave; firmato come parte della release del progetto, non passa per la pipeline di sintesi (il <a href="#synt">synt</a> non pu&ograve; mai generarne uno). Implementa servizi che hanno bisogno del clock di sistema, del loop async del gateway o di stato persistente trasversale. Lifecycle ridotto a due stati: <em>attivo</em> e <em>disabilitato in config</em>. Esempio: <a href="#scheduler">scheduler</a>.</p>
+<p>Terza categoria di <a href="#executor">executor</a>, introdotta in v1.1 (25/4/2026): vive nei sorgenti di Metnos invece che nel workspace, &egrave; firmato come parte della release del progetto, non passa per la pipeline di sintesi (il <a href="#synt">synt</a> non pu&ograve; mai generarne uno). Implementa servizi che hanno bisogno del clock di sistema, del ciclo async del servizio web o di stato persistente trasversale. Lifecycle ridotto a due stati: <em>attivo</em> e <em>disabilitato in config</em>. Esempio: <a href="#scheduler">scheduler</a>.</p>
 <p class="xref"><strong>Canonico:</strong> <a href="architecture/executor.html#cap2">executor &sect;2</a> e <a href="architecture/executor.html#cap10">&sect;10</a></p>
 </div>
 
@@ -297,7 +297,7 @@ rinviata al riassunto serale o rigettata. Evita l'assedio di notifiche.</p>
 
 <div class="entry" id="cascata">
 <h3>cascata (di sintesi) <span class="tag concept">processo</span></h3>
-<p>La sequenza di strategie con cui il <a href="#synt">synt</a> risponde a un bisogno operativo, ordinate per costo crescente. Reattive (turno utente): <em>comporre</em> (catena di executor esistenti, zero LLM frontier) e <em>generare</em> (pipeline multistage a cinque stadi LLM &mdash; naming, signature, test, description, code &mdash; eseguibile interamente in locale con Qwen 3.6 35B-A3B, &euro;0). Introvertive (omeostasi notturna): <em>fondere</em>, <em>generalizzare</em>, <em>specializzare</em>. Onora il <a href="#telos">telos</a> di non-rinuncia: synt esaurisce la cascata prima di rispondere &laquo;non posso&raquo;.</p>
+<p>La sequenza di strategie con cui il <a href="#synt">synt</a> risponde a un bisogno operativo, ordinate per costo crescente. Reattive (turno utente): <em>comporre</em> (catena di executor esistenti, zero LLM frontier) e <em>generare</em> (pipeline multistage a cinque stadi LLM &mdash; naming, signature, test, description, code &mdash; eseguibile interamente sul tier locale, &euro;0). Introvertive (omeostasi notturna): <em>fondere</em>, <em>generalizzare</em>, <em>specializzare</em>. Onora il <a href="#telos">telos</a> di non-rinuncia: synt esaurisce la cascata prima di rispondere &laquo;non posso&raquo;.</p>
 <p class="xref"><strong>Canonico:</strong> <a href="architecture/synt.html#cap3">synt &sect;3</a> e <a href="architecture/executor.html#cap7-cascata">executor &sect;7.1</a></p>
 </div>
 
@@ -374,7 +374,7 @@ umana.</p>
 <div class="entry" id="execution-trace">
 <h3>ExecutionTrace <span class="tag type">tipo</span></h3>
 <p>Oggetto immutabile che raccoglie <em>tutto</em> ciò che è successo
-durante una richiesta: step di ragionamento, tool call, risultati, costi,
+durante una richiesta: passi di ragionamento, chiamate ai tool, risultati, costi,
 timing, esito finale. Non è un log accessorio: è la fonte primaria di
 verità. Audit, replay, eval, fitness dei neuroni, memoria episodic: tutti
 consumano ExecutionTrace. Append-only durante, immutabile dopo la chiusura.</p>
@@ -500,7 +500,7 @@ configurazione, senza toccare il codice di myclaw.</li>
 <li><strong>Longevità</strong>: i provider cambiano nome, prezzo,
 condizioni. Il codice di Metnos non dovrebbe invecchiare con loro.</li>
 <li><strong>Controllo del costo</strong>: la scelta del <em>tier</em> per
-ogni chiamata (modello locale per gate veloci, frontier per ragionamenti
+ogni chiamata (modello locale per controlli veloci, frontier per ragionamenti
 gravi) è una decisione esplicita, non uno sport.</li>
 </ul>
 <p>Il contratto è definito con <code>typing.Protocol</code>: ogni servizio
@@ -626,6 +626,19 @@ possibile in ogni momento.</p>
 <p class="xref"><strong>Canonico:</strong> <a href="architecture/pairing.html">pairing.html</a></p>
 </div>
 
+<div class="entry" id="path">
+<h3>path <span class="tag concept">concetto</span></h3>
+<p>Termine interno di Metnos: un <strong>insieme di executor che, a partire da
+una richiesta (query) dell'utente, producono un output o un'azione</strong>
+&mdash; il percorso che porta dalla domanda al risultato eseguendo, in sequenza,
+gli strumenti giusti. Si declina in due forme memorizzate, cos&igrave;
+l'assistente non deve ricostruirle ogni volta: il <a href="#fastpath">fastpath</a>
+(L0), il path della stessa richiesta gi&agrave; risolta, e
+l'<a href="#autopath">autopath</a> (L1), il path generalizzato a un gruppo di
+richieste affini.</p>
+<p class="xref"><strong>Canonico:</strong> <a href="architecture/fast_path.html">fast_path.html</a></p>
+</div>
+
 <div class="entry" id="planned-action">
 <h3>PlannedAction <span class="tag type">tipo</span></h3>
 <p>Un'azione che Metnos sta per eseguire su richiesta <em>esplicita</em>
@@ -742,7 +755,7 @@ piano appreso, questa è una dotazione di strumenti.</p>
 
 <div class="entry" id="synt">
 <h3>synt <span class="tag concept">processo</span></h3>
-<p>Il processo che fa nascere e maturare il pool degli <a href="#executor">executor</a> di Metnos. Non un agente, non un oggetto: una cascata di strategie ordinate per costo crescente (vedi <a href="#cascata">cascata</a>). Sostituisce il termine v1.0 <em>synthesizer</em>: pi&ugrave; corto, pi&ugrave; aderente al ruolo. Trigger reattivo (proto-mnest dentro il turno utente) o introvertivo (analisi notturna del <a href="#mnestoma">mnestoma</a>). Ogni proposta passa per il gate umano.</p>
+<p>Il processo che fa nascere e maturare il pool degli <a href="#executor">executor</a> di Metnos. Non un agente, non un oggetto: una cascata di strategie ordinate per costo crescente (vedi <a href="#cascata">cascata</a>). Sostituisce il termine v1.0 <em>synthesizer</em>: pi&ugrave; corto, pi&ugrave; aderente al ruolo. Innesco reattivo (proto-mnest dentro il turno utente) o introvertivo (analisi notturna del <a href="#mnestoma">mnestoma</a>). Ogni proposta passa per il varco umano.</p>
 <p class="xref"><strong>Canonico:</strong> <a href="architecture/synt.html">synt.html</a> <em>(v1.1)</em>. <strong>Storico:</strong> <a href="architecture/synthesizer.html">synthesizer.html</a> (deprecato)</p>
 </div>
 
@@ -754,7 +767,7 @@ LLM</a> e le altre astrazioni di servizio AI (STT, TTS, embedding, speaker
 ID, model registry). Vive in <code>/opt/suprastructure/</code>. Ogni
 servizio è un'interfaccia <code>typing.Protocol</code> con backend
 intercambiabili via YAML (Claude, OpenAI, llama.cpp, Piper, faster-whisper,
-&hellip;). Cambiare backend = una riga. Nessun consumer se ne accorge. È
+&hellip;). Cambiare backend = una riga. Nessun consumatore se ne accorge. È
 condiviso con l'<a href="#assistente-domotico">assistente domotico</a> e
 altri <a href="#sibling-agents">sibling agents</a>.</p>
 <p><strong>In un ambiente diverso</strong> il ruolo di suprastructure può
@@ -791,7 +804,7 @@ la teleologia sì.</strong></p>
 
 <div class="entry" id="tool">
 <h3>tool <span class="tag concept">componente</span></h3>
-<p>Una funzione che Metnos può chiamare durante il suo loop di ragionamento:
+<p>Una funzione che Metnos può chiamare durante il suo ciclo di ragionamento:
 <code>fs_read</code>, <code>fs_write</code>, <code>shell_exec</code>,
 <code>web_fetch</code>, &hellip;. Protocol Python con schema validato,
 contratto di errore, rate limit. I neuroni sono tool auto-sintetizzati; i

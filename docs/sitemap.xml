@@ -282,6 +282,24 @@
     <xhtml:link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/lifecycle"/>
   </url>
 
+  <!-- virtualization: tre facciate get_llm/get_embedder/get_vlm, modello via TOML -->
+  <url>
+    <loc>https://metnos.com/en/architecture/virtualization</loc>
+    <lastmod>2026-06-25</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/virtualization"/>
+    <xhtml:link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/virtualization"/>
+  </url>
+  <url>
+    <loc>https://metnos.com/it/architecture/virtualization</loc>
+    <lastmod>2026-06-25</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/virtualization"/>
+    <xhtml:link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/virtualization"/>
+  </url>
+
   <!-- Microdesign: agent_runtime, scratchpad, grammar -->
   <url>
     <loc>https://metnos.com/en/architecture/agent_runtime</loc>

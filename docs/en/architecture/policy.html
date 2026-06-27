@@ -71,7 +71,7 @@ table.policy-table td:first-child { text-align: left; font-weight: 600; }
 <div class="status-banner">
 
 <strong>&#10003; Microdesign &mdash; aligned with the code.</strong>
-Cluster <code>policy</code> 10/10 green. Additions on: two new capabilities, <code>auth.password_storage</code> for <code>login_session</code> and <code>crawl.recursive</code> for <code>find_urls(mode='research'/'archive')</code>, with three-tier policy (default / trusted / owned) governed by <code>~/.config/metnos/owned_domains.json</code> and <code>~/.config/metnos/trusted_origins.json</code>. Reference: <code>runtime/policy.py</code>.
+Cluster <code>policy</code> 10/10 green. The registry exposes <strong>13 canonical capabilities</strong> (from <code>fs:read</code> to <code>calendar:read</code>); the autonomy &times; capability table (ReadOnly / Supervised / Full) and the persistent <em>per_target</em> grants are aligned with the code. Reference: <code>runtime/policy.py</code>.
 <div class="seq">Status sequence: <em>under approval</em> &rarr; <em>approved</em> &rarr; <strong>tested</strong> &rarr; <em>implemented</em>.</div>
 </div>
 

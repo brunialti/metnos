@@ -4,7 +4,7 @@
  <meta charset="UTF-8">
  <meta name="viewport" content="width=device-width, initial-scale=1.0">
  <title>Metnos &mdash; observability (tested)</title>
- <meta name="description" content="Microprogettazione dell'osservabilita' di Metnos: una dashboard HTML statica generata on-demand che aggrega mnestoma, pairings, turni, decisioni del vaglio, scheduler e test framework in un singolo file leggibile in browser.">
+ <meta name="description" content="Microprogettazione dell'osservabilita' di Metnos: un cruscotto HTML statico generato su richiesta che aggrega mnestoma, pairings, turni, decisioni del vaglio, scheduler e test framework in un singolo file leggibile in browser.">
  <meta name="keywords" content="observability, dashboard, mnestoma, pairings, vaglio, scheduler, test, metnos, microprogettazione">
  <meta name="author" content="Roberto Brunialti">
  <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large">
@@ -15,7 +15,7 @@
  <meta property="og:type" content="article">
  <meta property="og:url" content="https://metnos.com/it/architecture/observability">
  <meta property="og:title" content="Metnos &mdash; observability (tested)">
- <meta property="og:description" content="Dashboard statica HTML che aggrega tutte le sorgenti dati di Metnos in un singolo file. Niente server live, niente WebSocket: si rigenera on demand.">
+ <meta property="og:description" content="Cruscotto statico HTML che aggrega tutte le sorgenti dati di Metnos in un singolo file. Niente server in tempo reale, niente WebSocket: si rigenera su richiesta.">
  <meta property="og:locale" content="it_IT">
  <meta property="og:site_name" content="Metnos">
  <script type="application/ld+json">
@@ -23,7 +23,7 @@
  "@context": "https://schema.org",
  "@type": "TechArticle",
  "headline": "Metnos — observability ",
- "description": "Microprogettazione dell'osservabilita': dashboard HTML statica generata on-demand. Aggrega mnestoma, pairings, turni, decisioni del vaglio, scheduler, test. Stato: tested.",
+ "description": "Microprogettazione dell'osservabilita': cruscotto HTML statico generato su richiesta. Aggrega mnestoma, pairings, turni, decisioni del vaglio, scheduler, test. Stato: tested.",
  "url": "https://metnos.com/it/architecture/observability.html",
  "inLanguage": "it",
  "isPartOf": {"@type": "WebSite", "name": "Metnos", "url": "https://metnos.com/"},
@@ -65,9 +65,9 @@ li { margin-bottom: 4px; }.lead { font-size: 12pt; color: var(--navy); border-le
 <div class="status-banner">
 
 <strong>Microprogettazione &mdash; allineata al codice.</strong>
-La componente <code>observability</code> &egrave; realizzata e testata a livello di modulo (cluster <code>observability</code> 6/6 verde), e oggi vive soprattutto nella dashboard <code>/admin</code> dell'<a href="http_api.html" style="color:#14532d;text-decoration:underline;"><code>http_api</code></a> (htmx + Jinja2 + uPlot): <code>/admin/proposals</code>, <code>/admin/executors</code>, <code>/admin/executors/stats</code>, <code>/admin/runs</code>, <code>/admin/safety</code>, <code>/admin/turns</code>, <code>/admin/users</code>. La telemetria di dettaglio dello StepLog raccoglie cinque tempi parziali (<code>intent_ms</code>, <code>prefilter_ms</code>, <code>vaglio_ms</code>, <code>exec_ms</code>, <code>rerank_ms</code>), leggibili con <code>bench_latency_breakdown.py</code>. Il generatore HTML statico originale resta come ripiego per la consultazione offline.
+La componente <code>observability</code> &egrave; realizzata e testata a livello di modulo (cluster <code>observability</code> 6/6 verde), e oggi vive soprattutto nel cruscotto <code>/admin</code> dell'<a href="http_api.html" style="color:#14532d;text-decoration:underline;"><code>http_api</code></a> (htmx + Jinja2 + uPlot): <code>/admin/changes</code>, <code>/admin/executors</code>, <code>/admin/executors/stats</code>, <code>/admin/runs</code>, <code>/admin/safety</code>, <code>/admin/turns</code>, <code>/admin/users</code>. La telemetria di dettaglio dello StepLog raccoglie cinque tempi parziali (<code>intent_ms</code>, <code>prefilter_ms</code>, <code>vaglio_ms</code>, <code>exec_ms</code>, <code>rerank_ms</code>), leggibili con <code>bench_latency_breakdown.py</code>. Il generatore HTML statico originale resta come ripiego per la consultazione offline.
 Riferimento di implementazione: <code>/opt/metnos/runtime/observability.py</code>, <code>/opt/metnos/runtime/http_routes_admin.py</code>.
-<div class="seq">Stato nella sequenza dei microdesign: <em>under approval</em> &rarr; <em>approved</em> &rarr; <strong>tested</strong> &rarr; <em>implemented</em>.</div>
+<div class="seq">Stato nella sequenza dei microdesign: <em>in valutazione</em> &rarr; <em>approvato</em> &rarr; <strong>testato</strong> &rarr; <em>implementato</em>.</div>
 </div>
 
 <nav aria-label="Language" style="position:fixed;top:16px;right:20px;z-index:9999;font-family:'Segoe UI',Calibri,sans-serif;font-size:10pt;letter-spacing:2px;background:#FAFBFC;border:1px solid #d0d7de;border-radius:14px;padding:4px 10px;box-shadow:0 1px 4px rgba(0,0,0,0.04);">
@@ -97,7 +97,7 @@ Riferimento di implementazione: <code>/opt/metnos/runtime/observability.py</code
 <div class="toc">
 <h2>Indice</h2>
 <ol>
- <li><a href="#cap1">Cosa fa: dashboard statica</a></li>
+ <li><a href="#cap1">Cosa fa: cruscotto statico</a></li>
  <li><a href="#cap2">Le sei sorgenti dati</a></li>
  <li><a href="#cap3">Generazione: <code>render_dashboard</code></a></li>
  <li><a href="#cap4">Sezioni del file prodotto</a></li>
@@ -108,13 +108,13 @@ Riferimento di implementazione: <code>/opt/metnos/runtime/observability.py</code
 </ol>
 </div>
 
-<h1 id="cap1">1. Cosa fa: dashboard statica</h1>
+<h1 id="cap1">1. Cosa fa: cruscotto statico</h1>
 
 <p class="lead">
 Un sistema che si comporta come Metnos &mdash; pianificatore ReAct,
 synt che genera executor, mnestoma che cresce, vaglio che giudica,
-pairing che riconosce sender &mdash; produce parecchio stato. La
-dashboard di osservabilita' e' il modo per vedere quello stato senza
+pairing che riconosce mittenti &mdash; produce parecchio stato. Il
+cruscotto di osservabilita' e' il modo per vedere quello stato senza
 aprire terminali, senza ispezionare SQLite a mano, senza grep sui log
 JSONL. Un singolo file HTML, una pagina che riassume tutto cio' che
 serve a un proprietario per capire dove e' arrivato il sistema.
@@ -130,20 +130,20 @@ serve a un proprietario per capire dove e' arrivato il sistema.
 <text x="438" y="94" text-anchor="middle" fill="#1A477A" font-weight="700">aggregatore</text>
 <text x="438" y="112" text-anchor="middle" fill="#475569" font-size="9.5">sola lettura</text>
 <rect x="576" y="70" width="240" height="56" rx="8" fill="#DCFCE7" stroke="#3F6212"/>
-<text x="696" y="94" text-anchor="middle" fill="#1A477A" font-weight="700">dashboard HTML</text>
+<text x="696" y="94" text-anchor="middle" fill="#1A477A" font-weight="700">cruscotto HTML</text>
 <text x="696" y="112" text-anchor="middle" fill="#475569" font-size="9.5">statica, no JS</text>
 <line x1="300" y1="98" x2="316" y2="98" stroke="#1A477A" stroke-width="2" marker-end="url(#m-ob)"/>
 <line x1="558" y1="98" x2="574" y2="98" stroke="#1A477A" stroke-width="2" marker-end="url(#m-ob)"/>
 
 </svg>
-<figcaption>Figura 1 &mdash; La dashboard di osservabilit&agrave;: aggrega in sola lettura le sorgenti dati e genera HTML statico su richiesta, senza server vivo.</figcaption>
+<figcaption>Figura 1 &mdash; Il cruscotto di osservabilit&agrave;: aggrega in sola lettura le sorgenti dati e genera HTML statico su richiesta, senza server vivo.</figcaption>
 </figure>
 
 
 <p>
-La scelta architetturale e' deliberatamente <em>non-live</em>: niente
-server, niente WebSocket, niente JavaScript. Il file e' generato on
-demand da uno script Python che legge le stesse sorgenti dati
+La scelta architetturale e' deliberatamente <em>non in tempo reale</em>: niente
+server, niente WebSocket, niente JavaScript. Il file e' generato su
+richiesta da uno script Python che legge le stesse sorgenti dati
 autoritative del runtime, le trascrive in HTML, e si ferma. Aprire
 con browser locale.
 </p>
@@ -155,7 +155,7 @@ con browser locale.
 <tbody>
 <tr>
 <td><strong>Mnestoma</strong></td>
-<td>Stats globali (totale mnest, active, proto, decaying, eventi), top-N attivi per peso, top-N proto-mnest in attesa di sintesi, ultimi 20 event cronologici.</td>
+<td>Statistiche globali (totale mnest, active, proto, decaying, eventi), primi N attivi per peso, primi N proto-mnest in attesa di sintesi, ultimi 20 eventi cronologici.</td>
 <td><code>${METNOS_INSTALL_ROOT}/workspace/.mnestoma/mnest.sqlite</code> (override <code>MNESTOMA_DB_PATH</code>)</td>
 </tr>
 <tr>
@@ -176,7 +176,7 @@ con browser locale.
 <tr>
 <td><strong>Scheduler</strong></td>
 <td>Task builtin del runtime (<code>apply_ager</code>, <code>synt_suggest</code>, &hellip;), schedule, ultima esecuzione, esito.</td>
-<td><code>~/.local/share/metnos/scheduler/state.sqlite</code></td>
+<td><code>~/.local/state/metnos/scheduler_v2.sqlite</code></td>
 </tr>
 <tr>
 <td><strong>Test framework</strong></td>
@@ -187,9 +187,9 @@ con browser locale.
 </table>
 
 <p>
-Nessuna di queste sorgenti &egrave; stata creata per la dashboard: tutte
+Nessuna di queste sorgenti &egrave; stata creata per il cruscotto: tutte
 preesistevano come <em>fonte di verit&agrave;</em> di un componente del
-runtime. La dashboard &egrave; un consumatore in pi&ugrave;, non scrive nulla.
+runtime. Il cruscotto &egrave; un consumatore in pi&ugrave;, non scrive nulla.
 </p>
 
 <h1 id="cap3">3. Generazione: <code>render_dashboard</code></h1>
@@ -202,15 +202,15 @@ Per ciascuna sorgente c'e' un piccolo helper privato
 sola lettura, raccoglie un <em>dict</em> serializzabile, e lo restituisce.
 Se una sorgente e' assente o solleva (es. SQLite non esiste perche'
 non hai mai avviato lo scheduler), l'helper ritorna un dict vuoto o un
-dizionario con la chiave <code>error</code>: la dashboard renderizza
+dizionario con la chiave <code>error</code>: il cruscotto mostra
 una nota informativa ma non si interrompe.
 </p>
 
 <p>
-La <em>render</em> e' un singolo passo: nessun template engine, nessuna
+La <em>render</em> e' un singolo passo: nessun motore di template, nessuna
 dipendenza esterna. Solo helper Python che concatenano stringhe HTML.
 Stesso CSS in linea dei doc canonici (per coerenza visiva con
-metnos.com), tabelle e card statiche, niente JavaScript.
+metnos.com), tabelle e schede statiche, niente JavaScript.
 </p>
 
 <h1 id="cap4">4. Sezioni del file prodotto</h1>
@@ -218,9 +218,9 @@ metnos.com), tabelle e card statiche, niente JavaScript.
 <p>Il file HTML prodotto contiene, in ordine:</p>
 
 <ol>
-<li><strong>Test framework</strong>: card metriche (moduli, cases, status) + top moduli per cardinalita'. Risponde alla domanda &laquo;la rete dei test e' verde?&raquo;.</li>
+<li><strong>Test framework</strong>: schede di metriche (moduli, cases, status) + primi moduli per cardinalita'. Risponde alla domanda &laquo;la rete dei test e' verde?&raquo;.</li>
 
-<li><strong>Mnestoma</strong>: card metriche (totale, active, proto, decaying, eventi) + tabella top mnest attivi (con barra di peso visiva) + tabella proto-mnest in attesa di sintesi + tabella eventi recenti. Risponde alla domanda &laquo;cosa Metnos pensa di sapere fare?&raquo;.</li>
+<li><strong>Mnestoma</strong>: schede di metriche (totale, active, proto, decaying, eventi) + tabella dei primi mnest attivi (con barra di peso visiva) + tabella proto-mnest in attesa di sintesi + tabella eventi recenti. Risponde alla domanda &laquo;cosa Metnos pensa di sapere fare?&raquo;.</li>
 
 <li><strong>Pairings</strong>: tabella pairing attivi con livello, channel, sender_id, paired_at, last_seen. Risponde alla domanda &laquo;chi puo' parlare a Metnos in questo momento?&raquo;.</li>
 
@@ -238,18 +238,18 @@ Tutto cio' che esce da una sorgente passa per <code>html.escape</code>
 prima di essere inserito nel DOM. Il caso garantito dal test
 <code>render_html_escape_sicuro</code>: anche se un sender_id contiene
 <code>&lt;script&gt;</code>, il file prodotto mostra
-<code>&amp;lt;script&amp;gt;</code> &mdash; mai un tag attivo. Una
-dashboard di osservabilita' non e' superficie di attacco, ma e'
-disciplina mantenerla tale.
+<code>&amp;lt;script&amp;gt;</code> &mdash; mai un tag attivo. Un
+cruscotto di osservabilita' non e' superficie di attacco, ma e'
+disciplina mantenerlo tale.
 </p>
 
 <div class="callout note">
-<strong>Cosa NON appare nella dashboard.</strong> I valori sensibili che
+<strong>Cosa NON appare nel cruscotto.</strong> I valori sensibili che
 le sorgenti gia' filtrano restano filtrati: il <a href="vaglio.html">vaglio</a>
-logga solo <code>args_keys</code> (non i valori), il <a href="pairing.html">pairing</a>
-non logga il payload del codice ma solo il suo <code>code_id</code>, gli
-allegati delle mail non vengono mai materializzati nel turn log. La
-dashboard eredita queste scelte: se non e' nella sorgente, non e' nel
+registra solo <code>args_keys</code> (non i valori), il <a href="pairing.html">pairing</a>
+non registra il contenuto del codice ma solo il suo <code>code_id</code>, gli
+allegati delle mail non vengono mai materializzati nel turn log. Il
+cruscotto eredita queste scelte: se non e' nella sorgente, non e' nel
 file prodotto.
 </div>
 
@@ -257,7 +257,7 @@ file prodotto.
 
 <p>
 Il file di default e' <code>workspace/dashboard/index.html</code>, che
-vive sotto il <code>METNOS_INSTALL_ROOT</code> e <em>non</em> e' deployato su
+vive sotto il <code>METNOS_INSTALL_ROOT</code> e <em>non</em> viene pubblicato su
 metnos.com (e' uno strumento operativo locale). Per consultarlo:
 <code>file:///opt/metnos/workspace/dashboard/index.html</code> nel
 browser, oppure scp dal server alla macchina di Roberto se si vuole
@@ -281,32 +281,32 @@ python3 -m observability render --out path.html # path custom
 
 <p>
 Non ci sono sotto-comandi diversi da <code>render</code>. Il
-generatore non offre dump o esportazioni JSON: chi vuole i dati grezzi va
+generatore non offre estrazioni o esportazioni JSON: chi vuole i dati grezzi va
 direttamente alle sorgenti (SQLite + JSONL).
 </p>
 
 <h1 id="cap8">8. Limiti e sviluppi futuri</h1>
 
 <ul>
-<li><strong>No live update</strong>: la pagina non si auto-aggiorna. Per
-vedere lo stato corrente serve rigenerare. La dashboard live &egrave; servita dal server aiohttp (porta 8770) sotto <code>/admin</code>.</li>
+<li><strong>Nessun aggiornamento in tempo reale</strong>: la pagina non si auto-aggiorna. Per
+vedere lo stato corrente serve rigenerare. Il cruscotto in tempo reale &egrave; servito dal server aiohttp (porta 8770) sotto <code>/admin</code>.</li>
 
-<li><strong>No autenticazione web</strong>: il file e' una pagina statica
-sul filesystem locale. Niente login, niente cookie, niente sessione. Va
+<li><strong>Nessuna autenticazione web</strong>: il file e' una pagina statica
+sul filesystem locale. Niente accesso, niente cookie, niente sessione. Va
 bene perche' vive solo sul <code>metnos-server</code> di Roberto.</li>
 
-<li><strong>No tendenze temporali</strong>: la dashboard mostra
-<em>l'istante</em>. Niente grafici a linee, niente trend di costo o
+<li><strong>Nessun andamento temporale</strong>: il cruscotto mostra
+<em>l'istante</em>. Niente grafici a linee, niente andamenti di costo o
 latenza nel tempo. Quando servira' la storia, si aggiungera' una
 sezione che legge i turn-log aggregati.</li>
 
-<li><strong>No grafo del mnestoma</strong>: oggi le top-N tabelle.
-Visualizzazione del grafo (force-directed o cluster) richiede
-JavaScript: rinviata a quando ci sara' un gateway che serve la
+<li><strong>Nessun grafo del mnestoma</strong>: oggi le tabelle dei primi N.
+La visualizzazione del grafo (force-directed o a gruppi) richiede
+JavaScript: rinviata a quando ci sara' un servizio web che serve la
 pagina.</li>
 
-<li><strong>No filtri interattivi</strong>: per cercare un executor
-specifico nei turn log si va su SQLite. La dashboard e'
+<li><strong>Nessun filtro interattivo</strong>: per cercare un executor
+specifico nei turn log si va su SQLite. Il cruscotto e'
 &laquo;cosa-c'e-ora&raquo;, non &laquo;cerca-cosa-c-era&raquo;.</li>
 
 <li><strong>Rigenerazione manuale</strong>: un task dello

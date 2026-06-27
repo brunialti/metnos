@@ -73,12 +73,12 @@ li { margin-bottom: 4px; }.lead { font-size: 12pt; color: var(--navy); border-le
 <body>
 <div style="margin: 18px 0; border-left: 5px solid #16a34a; background: #dcfce7; color: #14532d; padding: 14px 20px; border-radius: 0 8px 8px 0; font-size: 11pt; font-family: 'Segoe UI', Calibri, -apple-system, sans-serif; line-height: 1.55;">
 <strong>Allineata al codice.</strong>
-Il pool conta <strong>79 executor</strong> fra scritti a mano in
-<code>/opt/metnos/executors/</code> e generati al volo dal Synt in
+Il pool di base conta <strong>75 executor</strong> scritti a mano in
+<code>/opt/metnos/executors/</code>, affiancati da quelli generati al volo dal Synt in
 <code>~/.local/share/metnos/executors/</code> (separati per costruzione).
 Manifesto firmato Ed25519, recinto di esecuzione costruito sul manifesto stesso, ciclo di vita gestito dal loader.
 Vedi anche <a href="agent_runtime.html" style="color: #14532d; text-decoration: underline;">agent_runtime</a>
-(loop pianificatore), <a href="sandbox.html" style="color: #14532d; text-decoration: underline;">sandbox</a>
+(ciclo pianificatore), <a href="sandbox.html" style="color: #14532d; text-decoration: underline;">sandbox</a>
 (recinto) e <a href="synt.html" style="color: #14532d; text-decoration: underline;">synt</a>
 (generazione automatica).
 </div>
@@ -707,6 +707,7 @@ i documenti seguenti vanno letti uno alla volta.
 <tr><td>come l'utente vede e approva le azioni</td><td><a href="approval_ux.html">approval_ux</a></td></tr>
 <tr><td>la memoria che le esecuzioni lasciano dietro di s&eacute;</td><td><a href="mnest.html">mnest</a> e <a href="mnestoma.html">mnestoma</a></td></tr>
 <tr><td>il dialogo con il mondo (Telegram, web, voce)</td><td><a href="channel.html">channel</a></td></tr>
+<tr><td>quali <em>modelli</em> (LLM, embedding, VLM) muovono gli executor e come si cambiano da un TOML</td><td><a href="virtualization.html">virtualizzazione dei modelli</a></td></tr>
 <tr><td>l'osservabilit&agrave; (cosa &egrave; successo, perch&eacute;, quando)</td><td><a href="observability.html">observability</a></td></tr>
 </table>
 

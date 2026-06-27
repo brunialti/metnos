@@ -342,8 +342,9 @@ registered.
 </figure>
 
 <div class="callout warning">
-<strong>Known debt.</strong> Today GitHub is &laquo;baked-in&raquo;: the thirteen
-<code>*_github</code> executors carry the provider in the name. It
+<strong>Known debt.</strong> Today GitHub is &laquo;baked-in&raquo;: the sixteen
+<code>*_github</code> executors (issues, PRs, tasks, comments and &mdash; since
+25/6 &mdash; repo files: <code>find/read/list</code>) carry the provider in the name. It
 works while the provider stays unique; the moment a second one arrives it must
 be abstracted. General rule: a provider that plausibly will have siblings
 (github&rarr;gitlab/gitea, IMAP mail, calendar) should be abstracted from the
@@ -421,7 +422,7 @@ them, look at who sits at the center choosing the provider.
 
 <table>
 <tr><th>&nbsp;</th><th>Hermes / drop-in skills</th><th>Claude-Code + MCP family</th><th>Metnos</th></tr>
-<tr><td><strong>who picks the provider</strong></td><td>frontier (reads SKILL.md, disambiguates)</td><td>frontier (reads tool descriptions)</td><td>medium local model (Qwen): has a <strong>bias</strong> on the provider</td></tr>
+<tr><td><strong>who picks the provider</strong></td><td>frontier (reads SKILL.md, disambiguates)</td><td>frontier (reads tool descriptions)</td><td>local model, middle tier: has a <strong>bias</strong> on the provider</td></tr>
 <tr><td><strong>skill vs backend</strong></td><td><strong>fused</strong> (skill = folder of scripts = provider)</td><td><strong>fused</strong> (tool / MCP server = provider)</td><td><strong>separate</strong> (backend = execution, skill = activation)</td></tr>
 <tr><td><strong>multi-provider</strong></td><td>parallel skills per provider, the agent chooses</td><td>parallel tools / servers, the model chooses</td><td><strong>one canonical executor + one backend per provider</strong> (resolver)</td></tr>
 <tr><td><strong>credential / dormancy</strong></td><td><code>required_credential_files</code> + setup</td><td>implicit (server connected or not)</td><td><strong>formalized dormancy</strong></td></tr>
@@ -446,6 +447,7 @@ local planner and the security-by-construction model.
 <tr><td>the layered sandbox imported executors run in</td><td><a href="sandbox.html">sandbox</a></td></tr>
 <tr><td>the checks before every risky action</td><td><a href="vaglio.html">vaglio</a></td></tr>
 <tr><td>what an executor is and how it is built</td><td><a href="executor.html">executor</a></td></tr>
+<tr><td>the other axis of swappability: how the <em>model</em> (LLM, embedding, VLM) behind the capabilities is chosen and changed, by editing a TOML instead of the code</td><td><a href="virtualization.html">model virtualization</a></td></tr>
 </table>
 
 <h1 id="cap8">8. What this means for you, in practice</h1>
