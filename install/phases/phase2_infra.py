@@ -250,18 +250,18 @@ def _configure_frontier(args: Any) -> dict[str, Any]:
     return {"frontier_provider": "none"}
 
 
-# ─── Optional components (deferred) ───────────────────────────────
-
-_OPTIONAL_SCAFFOLDS = (
-    ("vlm",     "VLM Qwen3-VL-2B",       "~3 GB",   "Image enrichment — captions for find_images_indices."),
-    ("photon",  "Photon offline geocoder", "~3 GB",  "Offline place lookup (per-country dataset)."),
-    ("searxng", "SearXNG search aggregator", "~200 MB", "Self-hosted web search."),
-)
+# ─── Optional components (real, self-hosted sidecars) ─────────────
+# The optional list + each installer live in ``install/sidecar.py`` (single
+# source of truth, also runnable post-install as `python -m install.sidecar`).
+# A ready sidecar installs for real here; one not yet shipped reports honestly
+# (§2.8) instead of pretending.
 
 
 def _offer_optionals(args: Any) -> dict[str, Any]:
+    from .. import sidecar  # local import: keep phase import light
     out: dict[str, Any] = {}
-    for key, label, size, desc in _OPTIONAL_SCAFFOLDS:
+    for key, entry in sidecar.SIDECARS.items():
+        label, size, desc = entry["label"], entry["size"], entry["desc"]
         if key in getattr(args, "skip", []):
             ui.info(f"{label}: skipping (--skip {key})")
             out[key] = "skipped"
@@ -269,13 +269,21 @@ def _offer_optionals(args: Any) -> dict[str, Any]:
         if args.yes and key not in getattr(args, "enable", []):
             out[key] = "skipped"
             continue
-        ui.console().print(f"\n  [bold]{label}[/bold] · {size}")
+        soon = "" if entry["ready"] else "  [yellow](coming soon)[/yellow]"
+        ui.console().print(f"\n  [bold]{label}[/bold] · {size}{soon}")
         ui.console().print(f"  [dim]{desc}[/dim]")
-        if ui.confirm(f"Install {label}?", default=False):
-            ui.warn(f"{label}: scaffold only — full setup in a follow-up release.")
-            out[key] = "deferred"
-        else:
+        if not ui.confirm(f"Install {label}?", default=False):
             out[key] = "skipped"
+            continue
+        if not entry["ready"]:
+            ui.warn(f"{label}: real installer not shipped yet — add it later with "
+                    f"`python -m install.sidecar {key}`.")
+            out[key] = "not_implemented"
+            continue
+        # Real install. Honest outcome (§2.8): the installer reports running /
+        # started_unhealthy / *_failed; we surface it verbatim, never "done".
+        notes = sidecar.install(key, yes=args.yes)
+        out.update(notes)
     return out
 
 

@@ -83,7 +83,19 @@ def _write_summary(rows: list[dict]) -> Path:
         "systemctl --user restart metnos-http",
         "journalctl --user -u metnos-http -f",
         "python -m install --force-phase 4   # re-run secrets dialog",
+        "python -m install.sidecar --list    # optional self-hosted sidecars",
+        "python -m install.sidecar searxng   # add self-hosted web search",
         "```",
+        "",
+        "## Optional sidecars",
+        "",
+        "Self-hosted companion services you can add any time (each is a "
+        "user-level systemd unit, no sudo):",
+        "",
+        "- **SearXNG** — self-hosted web search backing `find_urls`. "
+        "`python -m install.sidecar searxng`",
+        "- **Photon** / **VLM** — offline geocoding / image captions "
+        "(installers coming soon).",
         "",
         "## How to connect",
         "",
