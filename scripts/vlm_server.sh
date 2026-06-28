@@ -17,9 +17,11 @@
 set -euo pipefail
 
 PORT=8081
-MODEL="$HOME/models/Qwen3VL-2B-Instruct-Q4_K_M.gguf"
-MMPROJ="$HOME/models/mmproj-Qwen3VL-2B-Instruct-F16.gguf"
-LLAMA_BIN="$HOME/llama.cpp/build/bin/llama-server"
+# Path config-driven (§7.11): l'installer punta questi all'install layout via
+# env; senza env i default restano i path storici di esercizio (prod invariata).
+MODEL="${METNOS_VLM_MODEL:-$HOME/models/Qwen3VL-2B-Instruct-Q4_K_M.gguf}"
+MMPROJ="${METNOS_VLM_MMPROJ:-$HOME/models/mmproj-Qwen3VL-2B-Instruct-F16.gguf}"
+LLAMA_BIN="${METNOS_VLM_LLAMA_BIN:-$HOME/llama.cpp/build/bin/llama-server}"
 # Contesto totale e slot paralleli settabili. Ctx/slot = CTX/NPAR deve
 # coprire i vision-token dell'immagine (a long-edge 1536 ~1950 tok) + il
 # budget di output. Default 16384/4 = 4096/slot (room per 1536 + caption
