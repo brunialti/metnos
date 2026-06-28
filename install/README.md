@@ -101,7 +101,7 @@ python -m install.sidecar searxng      # add self-hosted web search (real instal
 |---------|-------|------|--------|
 | **SearXNG** | web search (`find_urls`) | ~200 MB | available |
 | **VLM** | image captions (`find_images_indices`) | ~1.9 GB | available |
-| **Photon** | offline geocoding (`get_location`, places) | ~3 GB | coming soon |
+| **Photon** | offline geocoding (`get_location`, places) | ~3 GB index | available |
 
 `searxng` clones SearXNG into `~/.local/share/metnos/sidecars/searxng`, builds a
 dedicated venv, writes a single-user (redis-less) `settings.yml` under

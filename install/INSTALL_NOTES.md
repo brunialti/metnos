@@ -176,6 +176,26 @@ production-tested engine env:
   overrides; defaults preserve the historical prod `$HOME/...` paths, so prod is
   unchanged). The base install's llama-server is reused; absent (wired to an
   external LLM endpoint, no local binary) → honest `models_ready_no_llama`.
+- **Photon** (`install_photon`): offline geocoder on :2322, reached via
+  `METNOS_PHOTON_URL` (places, get_location; Nominatim is the fallback when
+  absent). Replicates the production recipe as a user-level unit: komoot
+  `photon-1.1.0.jar` (pinned sha256) + an official per-country dump hosted by
+  GraphHopper (`download1.graphhopper.com/public/.../photon-dump-<c>-1.0-latest
+  .jsonl.zst`) → `unzstd` → `java -jar photon.jar import` into a local index,
+  then `serve`. Country = `METNOS_PHOTON_COUNTRY` (default `it`); the
+  code→dump-URL catalog mirrors the prod `photon-switch-country` table.
+  - **Layout**: jar + `dumps/` + `data/<country>/photon_data/` under
+    `$METNOS_USER_DATA/sidecars/photon`; `data/current` symlinks to the
+    **country dir** (`<country>`), and the unit's `-data-dir` points at that
+    parent (NOT at `photon_data/` — that is how the prod node finds the index).
+  - **Heavy**: the per-country dump is multi-GB, the decompressed jsonl is
+    ~14 GB transient (deleted after import), the index is multi-GB, and the Java
+    import takes 15-30 min. Needs a JRE (openjdk-21). A drop-in
+    (`metnos-http.service.d/photon.conf`) sets `METNOS_PHOTON_URL=
+    http://localhost:<port>` (the runtime default is a prod IP).
+  - **GOTCHA**: a running photon holds an OpenSearch **node lock** on its index
+    dir — you cannot `serve` two nodes off the same `data-dir` (validate a second
+    instance against a COPY of the index, not the live one).
 - **i18n-translator** is NOT a sidecar — it is a base user unit installed by
   phase5 (`metnos-i18n-translator.service` oneshot + `.timer` every 5min,
   guarded on `runtime.admin.i18n_cli` importability). It lazily fills i18n
