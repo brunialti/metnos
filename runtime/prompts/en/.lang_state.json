@@ -32,12 +32,12 @@
   "engine_proposer": {
     "source_hash": "sha256:64ebb87c71421f27f88fbf3c74440a4c33bb36e7f3b07a7a5c95561b3db08da1",
     "source_lang": "it",
-    "version_hash": "sha256:7b3c6ebd89f8fc5c909cedca6fdd2681732a4c12f7f74513eb31f5acd755adf0"
+    "version_hash": "sha256:92995e1bfec1687db15a2e7383de0498e790a89669f842bf1d8a0ba81974dc52"
   },
   "engine_proposer_metis": {
     "source_hash": "sha256:8456beadf2b327f99bc783489188f6db8eb1201ca6cae5ac8a2dfb1b17f3d7d0",
     "source_lang": "it",
-    "version_hash": "sha256:c22802570d634401cfecad16e04894ab83557f03518c9656d7e03d719faf12b0"
+    "version_hash": "sha256:2699ef5a4b34ebe4d2fa38e4e5269fbe5760f492b299a224b6d70e8aac4de2d3"
   },
   "final_assembler": {
     "source_hash": "sha256:86f57856ab222506a26419760b948e295cb2b353fa8f17d7489e23191fbc7bec",
