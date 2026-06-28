@@ -93,6 +93,27 @@ def _systemctl_user(*args: str) -> subprocess.CompletedProcess:
                           capture_output=True, text=True, timeout=30)
 
 
+def _sha256(path: Path, chunk: int = 1024 * 1024) -> str:
+    import hashlib
+    h = hashlib.sha256()
+    with path.open("rb") as f:
+        for b in iter(lambda: f.read(chunk), b""):
+            h.update(b)
+    return h.hexdigest()
+
+
+def _retry(label: str, thunk, attempts: int = 3) -> bool:
+    """Run a download thunk up to `attempts` times. The download helpers verify
+    sha256 and delete a corrupt transfer (e.g. one mangled by a TLS-intercepting
+    middlebox), returning False — so a flaky link usually assembles cleanly on a
+    later attempt. Never keeps bad bytes (§2.8)."""
+    for i in range(1, attempts + 1):
+        if thunk():
+            return True
+        ui.warn(f"{label}: attempt {i}/{attempts} failed integrity check, retrying")
+    return False
+
+
 def _render_and_install_unit(tmpl_name: str, unit_name: str,
                              repl: dict[str, str]) -> bool:
     """Render ``install/units/<tmpl_name>`` into the user systemd dir,
@@ -319,18 +340,8 @@ def install_vlm(*, yes: bool = False) -> dict:
     model, mmproj = dest / _VLM_MODEL, dest / _VLM_MMPROJ
     for f in (_VLM_MODEL, _VLM_MMPROJ):
         ui.step(f"Downloading {f}")
-        # download_model verifies the HF sha256 and deletes a corrupt result
-        # (e.g. a transfer mangled by a TLS-intercepting middlebox), returning
-        # False. Retry the whole file a few times: on a flaky link the next
-        # attempt usually assembles cleanly. (§2.8: it never keeps bad bytes.)
-        ok = False
-        for attempt in range(1, 4):
-            if llm_manager.download_model(_VLM_REPO, f, dest / f):
-                ok = True
-                break
-            ui.warn(f"{f}: attempt {attempt}/3 failed integrity check, retrying")
-        if not ok:
-            ui.warn(f"{f}: download failed after 3 attempts (network or upstream)")
+        if not _retry(f, lambda f=f: llm_manager.download_model(_VLM_REPO, f, dest / f)):
+            ui.warn(f"{f}: download failed (network or upstream)")
             return {"vlm": "download_failed"}
     ui.ok(f"VLM model + mmproj present in {dest}")
 
@@ -352,12 +363,161 @@ def install_vlm(*, yes: bool = False) -> dict:
     return {"vlm": "models_ready" if llama else "models_ready_no_llama"}
 
 
-# ─── Photon (offline geocoder) — not yet shipped (honest, §2.8) ──────
+# ─── Photon (offline geocoder) ───────────────────────────────────────
+# Self-hosted offline geocoder serving /api on :2322. The runtime reaches it via
+# $METNOS_PHOTON_URL (places, get_location) and falls back to Nominatim when it
+# is absent. Replicates the production recipe: komoot photon-1.1.0.jar + an
+# official per-country dump hosted by GraphHopper (jsonl.zst) imported into a
+# local index. User-level unit, no sudo. Heavy (multi-GB dump + ~14 GB transient
+# jsonl + a multi-GB index + a 15-30 min Java import) — one country at a time.
 
-def install_photon(*, yes: bool = False) -> dict:
-    ui.warn("photon: real installer not shipped yet (coming in a follow-up). "
-            "Nothing was installed.")
-    return {"photon": "not_implemented"}
+_PHOTON_VERSION = "1.1.0"
+_PHOTON_JAR_URL = ("https://github.com/komoot/photon/releases/download/"
+                   f"{_PHOTON_VERSION}/photon-{_PHOTON_VERSION}.jar")
+_PHOTON_JAR_SHA256 = "592e304500bf77f46d4307c43748a0d86c20c24df1dd4771c5ad64803906d989"
+_KOMOOT_BASE = "https://download1.graphhopper.com/public"
+
+# country code → GraphHopper-hosted komoot dump (replicates the production
+# photon-switch-country catalog; a closed catalog like the runtime vocab).
+_PHOTON_COUNTRY_PATH = {
+    "it": "europe/italy/photon-dump-italy",
+    "uk": "europe/british-islands/photon-dump-british-islands",
+    "fr": "europe/france-monacco/photon-dump-france-monacco",
+    "de": "europe/germany/photon-dump-germany",
+    "es": "europe/spain/photon-dump-spain",
+    "ch": "europe/switzerland/photon-dump-switzerland",
+    "at": "europe/austria/photon-dump-austria",
+    "nl": "europe/netherlands/photon-dump-netherlands",
+    "be": "europe/belgium/photon-dump-belgium",
+    "pt": "europe/portugal/photon-dump-portugal",
+    "gr": "europe/greece/photon-dump-greece",
+    "ie": "europe/ireland/photon-dump-ireland",
+    "us": "north-america/us/photon-dump-us",
+    "ca": "north-america/canada/photon-dump-canada",
+    "mx": "north-america/mexico/photon-dump-mexico",
+    "br": "south-america/brazil/photon-dump-brazil",
+    "au": "australia-oceania/australia/photon-dump-australia",
+    "nz": "australia-oceania/new-zealand/photon-dump-new-zealand",
+    "jp": "asia/japan/photon-dump-japan",
+    "in": "asia/india/photon-dump-india",
+    "planet": "photon-dump-planet",
+}
+
+
+def _photon_dump_url(country: str) -> str:
+    path = _PHOTON_COUNTRY_PATH.get(country)
+    if not path:  # fallback: try as a European country code (as prod does)
+        path = f"europe/{country}/photon-dump-{country}"
+    return f"{_KOMOOT_BASE}/{path}-1.0-latest.jsonl.zst"
+
+
+def install_photon(*, yes: bool = False, country: str | None = None,
+                   port: int | None = None) -> dict:
+    """Real Photon install: komoot jar + per-country dump + import + user unit."""
+    from . import downloads  # shared robust_fetch (parallel chunks + sha gate)
+
+    country = (country or os.environ.get("METNOS_PHOTON_COUNTRY", "it")).lower()
+    port = port or int(os.environ.get("METNOS_PHOTON_PORT", "2322"))
+    if not shutil.which("java"):
+        ui.warn("java not found — Photon needs a JRE (e.g. openjdk-21). "
+                "Install Java and re-run.")
+        return {"photon": "no_java"}
+
+    root = _user_data() / "sidecars" / "photon"
+    dumps, data = root / "dumps", root / "data"
+    jar = root / f"photon-{_PHOTON_VERSION}.jar"
+    country_dir = data / country
+    index_dir = country_dir / "photon_data"
+    for d in (root, dumps, data):
+        d.mkdir(parents=True, exist_ok=True)
+
+    # 1. photon.jar (pinned sha256 — immutable GitHub release)
+    if jar.exists() and _sha256(jar) == _PHOTON_JAR_SHA256:
+        ui.ok(f"photon.jar present ({_PHOTON_VERSION})")
+    else:
+        ui.step(f"Downloading photon-{_PHOTON_VERSION}.jar")
+        if not _retry(jar.name, lambda: downloads.robust_fetch(
+                _PHOTON_JAR_URL, jar, sha256=_PHOTON_JAR_SHA256, label=jar.name)):
+            ui.warn("photon.jar download failed")
+            return {"photon": "jar_failed"}
+        ui.ok("photon.jar downloaded (sha verified)")
+
+    # 2. per-country index (download dump → decompress → java import)
+    if index_dir.is_dir():
+        ui.ok(f"Photon index present for '{country}'")
+    else:
+        url = _photon_dump_url(country)
+        dump = dumps / f"photon-dump-{country}.jsonl.zst"
+        jsonl = dumps / f"photon-dump-{country}.jsonl"
+        if not jsonl.exists():
+            ui.step(f"Downloading komoot dump '{country}' (large)")
+            ui.info(url)
+            # mobile "latest" dump → no published sha (honest, like a main-ref GGUF)
+            if not _retry(dump.name,
+                          lambda: downloads.robust_fetch(url, dump, label=dump.name)):
+                ui.warn("dump download failed")
+                return {"photon": "dump_failed"}
+            ui.step("Decompressing dump (zstd; ~14 GB for a large country)")
+            r = _run(["unzstd", "-f", str(dump), "-o", str(jsonl)], timeout=3600)
+            if r.returncode != 0 or not jsonl.exists():
+                ui.warn(f"unzstd failed: {r.stderr.strip()[-200:]}")
+                return {"photon": "decompress_failed"}
+        ui.step("Importing into the Photon index (java, 15-30 min)")
+        country_dir.mkdir(parents=True, exist_ok=True)
+        r = _run(["java", "-Xmx4G", "-jar", str(jar), "import",
+                  "-import-file", str(jsonl), "-data-dir", str(country_dir),
+                  "-j", "4"], timeout=7200)
+        if not index_dir.is_dir():
+            ui.warn(f"import failed: {r.stderr.strip()[-300:]}")
+            return {"photon": "import_failed"}
+        jsonl.unlink(missing_ok=True)  # reclaim the ~14 GB transient
+        ui.ok(f"index built for '{country}'")
+
+    # 3. symlink data/current → <country> (the dir CONTAINING photon_data/;
+    #    photon's -data-dir is that parent, as the production instance runs it)
+    current = data / "current"
+    if current.is_symlink() or current.exists():
+        current.unlink()
+    current.symlink_to(country)
+
+    # 4. user unit
+    enabled = _render_and_install_unit(
+        "metnos-photon.service.tmpl", "metnos-photon.service",
+        {"@JAVA@": shutil.which("java") or "java",
+         "@PHOTON_XMX@": os.environ.get("METNOS_PHOTON_XMX", "4G"),
+         "@PHOTON_JAR@": str(jar),
+         "@PHOTON_DATA@": str(current),
+         "@PHOTON_ROOT@": str(root),
+         "@PHOTON_PORT@": str(port)},
+    )
+    if not enabled:
+        return {"photon": "installed_no_unit"}
+
+    # 5. point the runtime at the local instance (drop-in; default is a prod IP)
+    _photon_dropin(port)
+
+    # 6. health probe
+    ui.step(f"Probing http://127.0.0.1:{port}/status (up to 40s)")
+    healthy = _wait_http(f"http://127.0.0.1:{port}/status", timeout_s=40)
+    ui.ok(f"Photon running on :{port} ('{country}')") if healthy else ui.warn(
+        "Photon did not answer /status yet — check "
+        "`systemctl --user status metnos-photon`")
+    return {"photon": "running" if healthy else "started_unhealthy",
+            "photon_country": country, "photon_port": port}
+
+
+def _photon_dropin(port: int) -> None:
+    """Point the runtime at the local Photon (the default endpoint is a prod IP)."""
+    if not shutil.which("systemctl"):
+        return
+    d = Path.home() / ".config" / "systemd" / "user" / "metnos-http.service.d"
+    d.mkdir(parents=True, exist_ok=True)
+    (d / "photon.conf").write_text(
+        "[Service]\n"
+        f"Environment=METNOS_PHOTON_URL=http://localhost:{port}\n")
+    _systemctl_user("daemon-reload")
+    if _systemctl_user("is-active", "metnos-http.service").stdout.strip() == "active":
+        _systemctl_user("restart", "metnos-http.service")
 
 
 # ─── registry (single source of truth for the optional list) ─────────
@@ -372,10 +532,10 @@ SIDECARS: dict[str, dict] = {
     },
     "photon": {
         "label": "Photon offline geocoder",
-        "size": "~3 GB",
-        "desc": "Offline place lookup (per-country dataset).",
+        "size": "~3 GB index (default country: it)",
+        "desc": "Offline place lookup (get_location, places) — per-country komoot dump.",
         "install": install_photon,
-        "ready": False,
+        "ready": True,
     },
     "vlm": {
         "label": "VLM Qwen3-VL-2B",

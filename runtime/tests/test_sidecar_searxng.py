@@ -56,20 +56,41 @@ class TestSearxngSettings(unittest.TestCase):
 class TestSidecarRegistry(unittest.TestCase):
     def test_registry_is_source_of_truth(self):
         self.assertEqual(set(sidecar.SIDECARS), {"searxng", "photon", "vlm"})
-        self.assertTrue(sidecar.SIDECARS["searxng"]["ready"])
-        self.assertTrue(sidecar.SIDECARS["vlm"]["ready"])
-        # photon non ancora spedito: onesto
-        self.assertFalse(sidecar.SIDECARS["photon"]["ready"])
+        # tutti e tre spediti
+        for name in ("searxng", "vlm", "photon"):
+            self.assertTrue(sidecar.SIDECARS[name]["ready"], name)
         for e in sidecar.SIDECARS.values():
             for k in ("label", "size", "desc", "install", "ready"):
                 self.assertIn(k, e)
 
-    def test_install_not_ready_is_honest(self):
-        # §2.8: un sidecar non implementato NON finge — ritorna not_implemented
-        self.assertEqual(sidecar.install("photon"), {"photon": "not_implemented"})
-
     def test_install_unknown_name(self):
         self.assertEqual(sidecar.install("nope"), {"nope": "unknown"})
+
+
+class TestPhoton(unittest.TestCase):
+    def test_country_url_matches_prod_catalog(self):
+        # default it = lo stesso URL del photon-switch-country di produzione
+        self.assertEqual(
+            sidecar._photon_dump_url("it"),
+            "https://download1.graphhopper.com/public/europe/italy/"
+            "photon-dump-italy-1.0-latest.jsonl.zst")
+        # fallback europeo per un codice non in catalogo (come prod)
+        self.assertIn("europe/xx/photon-dump-xx", sidecar._photon_dump_url("xx"))
+
+    def test_jar_is_pinned(self):
+        self.assertEqual(sidecar._PHOTON_VERSION, "1.1.0")
+        self.assertEqual(len(sidecar._PHOTON_JAR_SHA256), 64)
+        self.assertIn("komoot/photon/releases", sidecar._PHOTON_JAR_URL)
+
+    def test_photon_template_placeholders_all_substituted(self):
+        tmpl = (_REPO / "install" / "units" / "metnos-photon.service.tmpl").read_text()
+        for k, v in {"@JAVA@": "/usr/bin/java", "@PHOTON_XMX@": "4G",
+                     "@PHOTON_JAR@": "/d/photon.jar", "@PHOTON_DATA@": "/d/current",
+                     "@PHOTON_ROOT@": "/d", "@PHOTON_PORT@": "2322"}.items():
+            tmpl = tmpl.replace(k, v)
+        self.assertNotIn("@", tmpl)
+        self.assertIn("-jar /d/photon.jar serve", tmpl)
+        self.assertIn("-listen-port 2322", tmpl)
 
 
 class TestVlm(unittest.TestCase):
