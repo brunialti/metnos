@@ -57,9 +57,9 @@ class TestSidecarRegistry(unittest.TestCase):
     def test_registry_is_source_of_truth(self):
         self.assertEqual(set(sidecar.SIDECARS), {"searxng", "photon", "vlm"})
         self.assertTrue(sidecar.SIDECARS["searxng"]["ready"])
-        # photon/vlm non ancora spediti: onesti
+        self.assertTrue(sidecar.SIDECARS["vlm"]["ready"])
+        # photon non ancora spedito: onesto
         self.assertFalse(sidecar.SIDECARS["photon"]["ready"])
-        self.assertFalse(sidecar.SIDECARS["vlm"]["ready"])
         for e in sidecar.SIDECARS.values():
             for k in ("label", "size", "desc", "install", "ready"):
                 self.assertIn(k, e)
@@ -67,10 +67,35 @@ class TestSidecarRegistry(unittest.TestCase):
     def test_install_not_ready_is_honest(self):
         # §2.8: un sidecar non implementato NON finge — ritorna not_implemented
         self.assertEqual(sidecar.install("photon"), {"photon": "not_implemented"})
-        self.assertEqual(sidecar.install("vlm"), {"vlm": "not_implemented"})
 
     def test_install_unknown_name(self):
         self.assertEqual(sidecar.install("nope"), {"nope": "unknown"})
+
+
+class TestVlm(unittest.TestCase):
+    def test_vlm_models_dir_follows_install_root(self):
+        import os
+        old = os.environ.get("METNOS_MODELS_DIR")
+        try:
+            os.environ["METNOS_MODELS_DIR"] = "/data/models"
+            self.assertEqual(str(sidecar._vlm_models_dir()), "/data/models/vlm")
+        finally:
+            if old is None:
+                os.environ.pop("METNOS_MODELS_DIR", None)
+            else:
+                os.environ["METNOS_MODELS_DIR"] = old
+
+    def test_vlm_server_paths_are_env_driven(self):
+        # §7.11: vlm_server.sh deve onorare gli override env (default = prod)
+        sh = (_REPO / "scripts" / "vlm_server.sh").read_text()
+        self.assertIn("${METNOS_VLM_MODEL:-", sh)
+        self.assertIn("${METNOS_VLM_MMPROJ:-", sh)
+        self.assertIn("${METNOS_VLM_LLAMA_BIN:-", sh)
+
+    def test_vlm_hf_source_is_official_qwen(self):
+        self.assertEqual(sidecar._VLM_REPO, "Qwen/Qwen3-VL-2B-Instruct-GGUF")
+        self.assertTrue(sidecar._VLM_MODEL.endswith(".gguf"))
+        self.assertTrue(sidecar._VLM_MMPROJ.startswith("mmproj-"))
 
 
 class TestUnitTemplate(unittest.TestCase):

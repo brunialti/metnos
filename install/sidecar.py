@@ -271,22 +271,93 @@ def install_searxng(*, yes: bool = False, port: int | None = None) -> dict:
             "searxng_port": port}
 
 
-# ─── not-yet-implemented sidecars (honest placeholders, §2.8) ────────
-# Photon and VLM are next in line (one at a time). Until their real installer
-# lands they MUST NOT pretend to install — they report honestly.
+# ─── VLM (image captions) ────────────────────────────────────────────
+# Qwen3-VL-2B serves captions for find_images_indices on :8081. Unlike the
+# other sidecars it has NO systemd unit by design: it is lazy-launched on demand
+# by runtime/virt.ensure_vlm_up → scripts/vlm_server.sh and auto-stops after
+# 10min idle (rare, one-off indexing). So the "installer" only fetches the two
+# GGUFs (model + mmproj) and points the launcher at them via a metnos-http
+# drop-in; the base install's llama-server binary is reused.
 
-def _not_implemented(name: str) -> dict:
-    ui.warn(f"{name}: real installer not shipped yet (coming in a follow-up). "
-            f"Nothing was installed.")
-    return {name: "not_implemented"}
+_VLM_REPO = "Qwen/Qwen3-VL-2B-Instruct-GGUF"   # official Qwen GGUFs
+_VLM_MODEL = "Qwen3VL-2B-Instruct-Q4_K_M.gguf"
+_VLM_MMPROJ = "mmproj-Qwen3VL-2B-Instruct-F16.gguf"
 
 
-def install_photon(*, yes: bool = False) -> dict:
-    return _not_implemented("photon")
+def _vlm_models_dir() -> Path:
+    base = os.environ.get("METNOS_MODELS_DIR") or (str(_repo_dir()) + "/models")
+    return Path(base) / "vlm"
+
+
+def _write_vlm_dropin(model: Path, mmproj: Path, llama: Path | None) -> bool:
+    """Point vlm_server.sh (spawned by metnos-http) at the install layout via a
+    systemd drop-in, so ensure_vlm_up finds the GGUFs + binary without editing
+    the unit template. daemon-reload; restart metnos-http if it is running."""
+    if not shutil.which("systemctl"):
+        ui.warn("systemctl absent — cannot write the VLM env drop-in")
+        return False
+    d = Path.home() / ".config" / "systemd" / "user" / "metnos-http.service.d"
+    d.mkdir(parents=True, exist_ok=True)
+    lines = ["[Service]",
+             f"Environment=METNOS_VLM_MODEL={model}",
+             f"Environment=METNOS_VLM_MMPROJ={mmproj}"]
+    if llama:
+        lines.append(f"Environment=METNOS_VLM_LLAMA_BIN={llama}")
+    (d / "vlm.conf").write_text("\n".join(lines) + "\n")
+    _systemctl_user("daemon-reload")
+    if _systemctl_user("is-active", "metnos-http.service").stdout.strip() == "active":
+        ui.step("restarting metnos-http to pick up the VLM env")
+        _systemctl_user("restart", "metnos-http.service")
+    return True
 
 
 def install_vlm(*, yes: bool = False) -> dict:
-    return _not_implemented("vlm")
+    """Fetch the VLM model + mmproj and wire the lazy launcher (no service)."""
+    from . import llm_manager
+    dest = _vlm_models_dir()
+    dest.mkdir(parents=True, exist_ok=True)
+    model, mmproj = dest / _VLM_MODEL, dest / _VLM_MMPROJ
+    for f in (_VLM_MODEL, _VLM_MMPROJ):
+        ui.step(f"Downloading {f}")
+        # download_model verifies the HF sha256 and deletes a corrupt result
+        # (e.g. a transfer mangled by a TLS-intercepting middlebox), returning
+        # False. Retry the whole file a few times: on a flaky link the next
+        # attempt usually assembles cleanly. (§2.8: it never keeps bad bytes.)
+        ok = False
+        for attempt in range(1, 4):
+            if llm_manager.download_model(_VLM_REPO, f, dest / f):
+                ok = True
+                break
+            ui.warn(f"{f}: attempt {attempt}/3 failed integrity check, retrying")
+        if not ok:
+            ui.warn(f"{f}: download failed after 3 attempts (network or upstream)")
+            return {"vlm": "download_failed"}
+    ui.ok(f"VLM model + mmproj present in {dest}")
+
+    # Reuse the base install's llama-server (the VLM runs a local llama-server
+    # on :8081). Absent → wired to an external LLM endpoint with no local
+    # binary: be honest, the models are useless without it.
+    try:
+        llama = llm_manager._find_llama_bin(llm_manager._llama_dir(), "llama-server")
+    except Exception:
+        llama = None
+    if not llama:
+        ui.warn("no managed llama-server found — VLM captions need a LOCAL "
+                "llama-server. Models are downloaded; install/run the local LLM "
+                "tier (base provisioning) and re-run.")
+
+    _write_vlm_dropin(model, mmproj, llama)
+    ui.info("VLM is lazy: the first image-index run starts it on :8081 "
+            "(auto-stops after 10min idle).")
+    return {"vlm": "models_ready" if llama else "models_ready_no_llama"}
+
+
+# ─── Photon (offline geocoder) — not yet shipped (honest, §2.8) ──────
+
+def install_photon(*, yes: bool = False) -> dict:
+    ui.warn("photon: real installer not shipped yet (coming in a follow-up). "
+            "Nothing was installed.")
+    return {"photon": "not_implemented"}
 
 
 # ─── registry (single source of truth for the optional list) ─────────
@@ -308,10 +379,10 @@ SIDECARS: dict[str, dict] = {
     },
     "vlm": {
         "label": "VLM Qwen3-VL-2B",
-        "size": "~3 GB",
-        "desc": "Image enrichment — captions for find_images_indices.",
+        "size": "~1.9 GB",
+        "desc": "Image enrichment — captions for find_images_indices (lazy :8081, no service).",
         "install": install_vlm,
-        "ready": False,
+        "ready": True,
     },
 }
 
@@ -346,7 +417,8 @@ def main(argv: list[str] | None = None) -> int:
     notes = install(name, yes=yes)
     status = notes.get(name, "")
     print(notes)
-    return 0 if status in ("running", "installed", "started_unhealthy") else 1
+    return 0 if status in ("running", "installed", "started_unhealthy",
+                           "models_ready", "models_ready_no_llama") else 1
 
 
 if __name__ == "__main__":
