@@ -100,14 +100,19 @@ python -m install.sidecar searxng      # add self-hosted web search (real instal
 | Sidecar | Backs | Cost | Status |
 |---------|-------|------|--------|
 | **SearXNG** | web search (`find_urls`) | ~200 MB | available |
+| **VLM** | image captions (`find_images_indices`) | ~1.9 GB | available |
 | **Photon** | offline geocoding (`get_location`, places) | ~3 GB | coming soon |
-| **VLM** | image captions (`find_images_indices`) | ~3 GB | coming soon |
 
 `searxng` clones SearXNG into `~/.local/share/metnos/sidecars/searxng`, builds a
 dedicated venv, writes a single-user (redis-less) `settings.yml` under
 `~/.config/metnos/searxng/`, and starts `metnos-searxng.service` on `:8888` — the
-runtime's default `METNOS_SEARXNG_URL`, so it works with zero further config. A
-sidecar you don't install simply leaves its skill **dormant** (the runtime
+runtime's default `METNOS_SEARXNG_URL`, so it works with zero further config.
+
+`vlm` fetches the Qwen3-VL-2B model + projector (official Qwen GGUFs) into
+`<install>/models/vlm`. It has **no service**: image indexing is rare, so the
+VLM is lazy-launched on `:8081` on first use and auto-stops after 10 min idle.
+
+A sidecar you don't install simply leaves its skill **dormant** (the runtime
 degrades honestly), never broken.
 
 ## Options

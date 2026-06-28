@@ -164,6 +164,18 @@ production-tested engine env:
     write a readonly database` at boot. Fix: the unit sets
     `Environment=TMPDIR=$METNOS_USER_DATA/sidecars/searxng/cache` (private,
     per-instance). Do NOT drop this.
+- **VLM** (`install_vlm`): download-only, **NO systemd unit** by design. Image
+  indexing is rare/one-off, so the VLM (Qwen3-VL-2B on :8081) is lazy-launched
+  by `runtime/virt.ensure_vlm_up` → `scripts/vlm_server.sh` and auto-stops after
+  10min idle (manifest changelog 2026-05-10). The installer only fetches the two
+  official-Qwen GGUFs (`Qwen/Qwen3-VL-2B-Instruct-GGUF`: the Q4_K_M model + the
+  F16 mmproj projector) into `<install>/models/vlm` and writes a metnos-http
+  **drop-in** (`metnos-http.service.d/vlm.conf`) with `METNOS_VLM_MODEL` /
+  `METNOS_VLM_MMPROJ` / `METNOS_VLM_LLAMA_BIN`, which the launcher subprocess
+  inherits. `scripts/vlm_server.sh` was made §7.11 (those three paths are env
+  overrides; defaults preserve the historical prod `$HOME/...` paths, so prod is
+  unchanged). The base install's llama-server is reused; absent (wired to an
+  external LLM endpoint, no local binary) → honest `models_ready_no_llama`.
 - **i18n-translator** is NOT a sidecar — it is a base user unit installed by
   phase5 (`metnos-i18n-translator.service` oneshot + `.timer` every 5min,
   guarded on `runtime.admin.i18n_cli` importability). It lazily fills i18n
