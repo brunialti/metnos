@@ -1299,15 +1299,9 @@ class Synt:
             "affinity": frozenset((getattr(ex, "affinity", None) or [])),
         }
 
-    @staticmethod
-    def _jaccard(a: frozenset, b: frozenset) -> float:
-        if not a and not b:
-            return 0.0
-        u = a | b
-        return len(a & b) / len(u) if u else 0.0
-
     def _propose_merge(self, catalog: list, *, min_jaccard: float) -> list[SynthProposal]:
         """Coppie con stesso target_kind + capability + Jaccard affinity alta."""
+        from loader import jaccard_affinity  # SoT unica per il Jaccard affinity
         attrs = [self._executor_attrs(e) for e in catalog]
         out: list[SynthProposal] = []
         seen: set[tuple[str, str]] = set()
@@ -1322,7 +1316,7 @@ class Synt:
                 key = tuple(sorted((a["name"], b["name"])))
                 if key in seen:
                     continue
-                jac = self._jaccard(a["affinity"], b["affinity"])
+                jac = jaccard_affinity(a["affinity"], b["affinity"])
                 if jac < min_jaccard:
                     continue
                 seen.add(key)

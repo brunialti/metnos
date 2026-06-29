@@ -353,7 +353,7 @@ def _restore_blob_backup(plan, results):
                         from mail_client import open_imap
                         imap_conns[account] = open_imap(account)
                     M = imap_conns[account]
-                    fname = _q_imap(folder) if " " in folder or any(ord(c) > 127 for c in folder) else folder
+                    fname = _q_imap(folder)  # _q_imap fa già il check spazi/non-ASCII
                     typ, _ = M.append(fname, None, None, raw)
                     if typ != "OK":
                         failed.append({"index": i, "error": f"IMAP append failed: {typ}",
