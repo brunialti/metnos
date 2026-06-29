@@ -29,6 +29,7 @@ from . import (
     is_fastpath_enabled, is_autopath_enabled, is_validator_enabled,
     is_output_policy_enabled,
 )
+from executor_helpers import catalog_names
 
 log = logging.getLogger(__name__)
 
@@ -321,7 +322,7 @@ def _apply_ordering_clause(framework: Framework, query: str,
     Idempotente, no-op senza clausola. Best-effort: mai blocca il turno."""
     try:
         from ordering_clause import apply_to_framework
-        names = {getattr(e, "name", None) for e in (catalog or [])}
+        names = catalog_names(catalog)
         names.discard(None)
         normalized = apply_to_framework(framework, query,
                                         catalog_names=names or None)
@@ -352,8 +353,7 @@ def _enforce_missing_clauses(framework: Framework, intent, query: str,
         steps = list(getattr(framework, "steps", None) or [])
         if not steps:
             return framework
-        names = {getattr(e, "name", None) if not isinstance(e, dict)
-                 else e.get("name") for e in (catalog or [])}
+        names = catalog_names(catalog)
         names.discard(None)
         from compound_decomposer import derive_tool_name
         import re as _re
@@ -528,8 +528,7 @@ def _align_framework_objects(framework: Framework, intent,
                     by_verb[v].append(o)
         if not by_verb:
             return framework
-        names = {getattr(e, "name", None) if not isinstance(e, dict)
-                 else e.get("name") for e in (catalog or [])}
+        names = catalog_names(catalog)
         names.discard(None)
         import naming_grammar as _ng
         changed = False
@@ -697,8 +696,7 @@ def _normalize_store_clauses(intent, query: str, catalog: Optional[list]) -> Non
         import detection_lexicon as _dl
         if not _dl.match("object.store_sink", query or ""):
             return
-        names = {getattr(e, "name", None) if not isinstance(e, dict)
-                 else e.get("name") for e in (catalog or [])}
+        names = catalog_names(catalog)
         names.discard(None)
         from compound_decomposer import derive_tool_name
         # Verbi store-capaci: le tre operazioni dello store generico
@@ -810,8 +808,7 @@ def _fix_unroutable_verbs(intent, query: str, catalog: Optional[list]) -> None:
             return
         from compound_decomposer import split_query_chunks, derive_tool_name
         from prefilter import tokenize, detect_canonical_verbs_all
-        names = {getattr(e, "name", None) if not isinstance(e, dict)
-                 else e.get("name") for e in (catalog or [])}
+        names = catalog_names(catalog)
         names.discard(None)
         chunks = split_query_chunks(query)
         if len(chunks) != len(actions):
@@ -1097,8 +1094,7 @@ def _enforce_missing_objects(framework: Framework, intent, query: str,
         from compound_decomposer import (derive_tool_name, PRODUCER_VERBS,
                                          TRANSFORM_VERBS)
         import naming_grammar as _ng
-        names = {getattr(e, "name", None) if not isinstance(e, dict)
-                 else e.get("name") for e in (catalog or [])}
+        names = catalog_names(catalog)
         names.discard(None)
         steps = list(getattr(framework, "steps", None) or [])
         produced = set()
@@ -1540,8 +1536,7 @@ def _route_mail_delete_to_trash(framework: Framework,
     Gira DOPO `_enforce_missing_clauses` (che ha gia' visto il delete_entries
     come clausola-delete soddisfatta → non la ri-aggiunge)."""
     try:
-        names = {getattr(e, "name", None) if not isinstance(e, dict)
-                 else e.get("name") for e in (catalog or [])}
+        names = catalog_names(catalog)
         if "move_messages" not in names:
             return framework
 
@@ -1606,8 +1601,7 @@ def _route_filename_pattern_to_find(framework: Framework, query: str,
     safe (solo se il find gemello è nel catalog) + idempotente (read già
     `from_step` non rimatcha). No LLM. Bug live 22f32adb/582b4824 (26/6)."""
     try:
-        names = {getattr(e, "name", None) if not isinstance(e, dict)
-                 else e.get("name") for e in (catalog or [])}
+        names = catalog_names(catalog)
         q = (query or "").lower()
         if not any(m in q for m in _PLURAL_FILE_MARKERS):
             return framework
@@ -1870,7 +1864,7 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
     # il loro input reale (`reference_images`) è iniettato a valle dal
     # seed-wiring di Executor.run. Deterministico §7.9, no-op senza seed.
     if seed_state:
-        _cat_names = {getattr(e, "name", None) for e in catalog}
+        _cat_names = catalog_names(catalog)
         for _img_tool in ("find_images_indices", "find_persons_indices"):
             if _img_tool in _cat_names and _img_tool not in pool_names:
                 pool_names.append(_img_tool)
@@ -1895,7 +1889,7 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
     try:
         from fast_path import _undo_prefix_match, _normalize
         if (_undo_prefix_match(_normalize(query))
-                and "undo_last_turn" in {getattr(e, "name", None) for e in catalog}):
+                and "undo_last_turn" in catalog_names(catalog)):
             from .types import Framework as _Fw, StepSpec as _St
             _undo_fw = _Fw(steps=[_St(tool="undo_last_turn", args={}),
                                   _St(tool="final_answer", args={})])
@@ -1922,7 +1916,7 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
             # eseguito (fallirebbe wrong_tool) né tenuto: delete +
             # fall-through a L1/L3, che ripianificano col catalog corrente;
             # il successo ri-crea il fastpath col piano nuovo (self-healing).
-            _cat_names = {getattr(e, "name", None) for e in catalog}
+            _cat_names = catalog_names(catalog)
             _missing = [s.tool for s in fp_hit.framework.steps
                         if s.tool and s.tool != "final_answer"
                         and s.tool not in _cat_names]

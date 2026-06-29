@@ -20,7 +20,7 @@ en = "SCOPO: filter text lines by pattern. PATTERN: filter_texts_lines(content=\
 
 [code]
 files  = ["filter_texts_lines.py"]
-digest = "sha256:137a4b4cc19878331ed33cb0c05035d802acf096334913f38cadf65e91dc1360"
+digest = "sha256:2378950ec9eaa3d30d260ba3730b41e3af56817a599b5af540b2ac5043a088a0"
 
 [args]
 type     = "object"

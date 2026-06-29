@@ -24,6 +24,7 @@ sys.path.insert(0, os.environ.get("METNOS_RUNTIME") or next(
     str(p / "runtime") for p in Path(__file__).resolve().parents
     if (p / "runtime" / "config.py").is_file()))
 from messages import get as msg  # noqa: E402
+from executor_helpers import coerce_cap  # noqa: E402
 _msg = msg  # alias: alcuni rami di validazione usano _msg (unifica i nomi)
 # Geo provider unico via wrapper (1/5/2026 v0.6.0): chain configurabile via
 # env METNOS_GEO_PROVIDERS. Niente conoscenza del backend specifico qui.
@@ -32,7 +33,7 @@ from geo_provider import forward_search as _geo_forward  # noqa: E402
 
 def invoke(args):
     queries = args.get("queries")
-    max_results = int(args.get("max_results", 5))
+    max_results = coerce_cap(args, "max_results", 5, maximum=50)
     # §2.4 robustezza NL→determinismo: l'LLM passa spesso un singolo string per
     # un arg-lista (queries="ospedali" invece di ["ospedali"]). Coalesce a lista
     # (caso degenere N=1, §2.1). Senza questo "trova gli ospedali" falliva con
@@ -41,8 +42,6 @@ def invoke(args):
         queries = [queries]
     if not isinstance(queries, list):
         return {"ok": False, "error": _msg("ERR_ARG_NOT_LIST_OF", arg="queries", of="strings")}
-    if max_results <= 0 or max_results > 50:
-        return {"ok": False, "error": _msg("ERR_ARG_RANGE", arg="max_results", min=1, max=50)}
 
     # Normalizza `near`: accetta dict {lat, lon}, lista/tupla [lat, lon],
     # oppure il record completo di get_location {location: {lat, lon, ...}}.

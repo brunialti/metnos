@@ -23,6 +23,7 @@ sys.path.insert(0, os.environ.get("METNOS_RUNTIME") or next(
     str(p / "runtime") for p in Path(__file__).resolve().parents
     if (p / "runtime" / "config.py").is_file()))
 from messages import get as _msg  # noqa: E402
+from executor_helpers import coerce_cap  # noqa: E402
 
 
 def _read_one(path_arg, delimiter, encoding, has_header, max_rows):
@@ -89,12 +90,10 @@ def invoke(args):
     delimiter = args.get("delimiter")
     encoding = args.get("encoding") or "utf-8"
     has_header = bool(args.get("has_header", True))
-    max_rows = int(args.get("max_rows", 10000))
+    max_rows = coerce_cap(args, "max_rows", 10000, maximum=1000000)
 
     if not isinstance(paths, list):
         return {"ok": False, "error": _msg("ERR_ARG_NOT_LIST", arg="paths")}
-    if max_rows <= 0 or max_rows > 1000000:
-        return {"ok": False, "error": _msg("ERR_ARG_RANGE", arg="max_rows", min=1, max=1000000)}
 
     entries, failed = [], []
     aggregate_truncated = False

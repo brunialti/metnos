@@ -25,7 +25,7 @@ en = "SCOPO: find real-world places by text query or coordinates. PATTERN: find_
 
 [code]
 files  = ["find_places.py"]
-digest = "sha256:af49750783e23145b6bf6a0968e21fe697a72708cd8a42810eb5432ed8f32758"
+digest = "sha256:fdff84cd9e7c36bd6eb38a22e24c3ee57ecce80dc15a6399e53041f62453c860"
 
 [args]
 type     = "object"

@@ -24,6 +24,42 @@ from __future__ import annotations
 from typing import Any
 
 
+def coerce_cap(args: dict, key: str, default: int, *,
+               maximum: int | None = None) -> int:
+    """Coercizione tollerante di un cap numerico dal PLANNER (§2.4). Ritorna un
+    int valido, MAI solleva (il planner emette a volte null / stringhe / 0).
+
+      - assente / None / non numerico → `default`
+      - 0 = placeholder «nessun limite del chiamante» (§2.4) → `maximum` se dato,
+        altrimenti `default`
+      - clamp finale a [1, maximum]
+
+    `default`/`maximum` sono parametri di dominio dell'executor (come i
+    QUALIFIERS di vocab): non sono hardcoding, sono il contratto del tool."""
+    raw = args.get(key, default)
+    try:
+        n = int(raw)
+    except (TypeError, ValueError):
+        n = int(default)
+    if n <= 0:
+        n = maximum if maximum is not None else int(default)
+    if maximum is not None:
+        n = min(n, maximum)
+    return max(1, n)
+
+
+def catalog_names(catalog: Any) -> set:
+    """Set dei nomi executor da un catalog le cui voci possono essere dict O
+    oggetti (l'idioma era copiato ~11× in dispatch; 4 copie usavano solo
+    getattr → `{None}` su voci dict). Scarta i None. Deterministico §7.9."""
+    out: set = set()
+    for e in (catalog or []):
+        n = e.get("name") if isinstance(e, dict) else getattr(e, "name", None)
+        if n:
+            out.add(n)
+    return out
+
+
 def _is_http_url(s: Any) -> bool:
     return isinstance(s, str) and (
         s.startswith("http://") or s.startswith("https://")

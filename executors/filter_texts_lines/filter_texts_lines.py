@@ -24,6 +24,7 @@ sys.path.insert(0, os.environ.get("METNOS_RUNTIME") or next(
     str(p / "runtime") for p in Path(__file__).resolve().parents
     if (p / "runtime" / "config.py").is_file()))
 from messages import get as _msg  # noqa: E402
+from executor_helpers import coerce_cap  # noqa: E402
 
 
 def invoke(args):
@@ -31,7 +32,7 @@ def invoke(args):
     regex = args.get("regex")
     substring = args.get("substring")
     case_insensitive = bool(args.get("case_insensitive", True))
-    max_results = int(args.get("max_results", 1000))
+    max_results = coerce_cap(args, "max_results", 1000, maximum=100000)
     with_line_numbers = bool(args.get("with_line_numbers", False))
 
     if content is None:
@@ -47,8 +48,6 @@ def invoke(args):
         return {"ok": False, "error": _msg("ERR_ARG_INVALID", arg="content", reason=type(content).__name__)}
     if regex is None and substring is None:
         return {"ok": False, "error": _msg("ERR_ARG_MISSING_ONE_OF", options="regex, substring")}
-    if max_results <= 0 or max_results > 100000:
-        return {"ok": False, "error": _msg("ERR_ARG_RANGE", arg="max_results", min=1, max=100000)}
 
     flags = re.IGNORECASE if case_insensitive else 0
     matcher = None
