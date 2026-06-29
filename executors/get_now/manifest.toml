@@ -16,7 +16,7 @@ en = "SCOPO: gets the current time. PATTERN: get_now(timezone=\"UTC\"). NON: sea
 
 [code]
 files  = ["get_now.py"]
-digest = "sha256:7a372cd164595a27407a284fdf862d01f3e829d305d1d83a3b523336750548c5"
+digest = "sha256:9f0fe7a338a3bda2a56f66d88a80610cfc0a439697a844ffd258574d8b7ad0c3"
 
 [args]
 type = "object"

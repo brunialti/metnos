@@ -14,6 +14,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "runtime"))
 
 from messages import get as _msg  # noqa: E402
+from executor_helpers import run_stdio  # noqa: E402
 from safety.canonicalize import Signature
 from safety.storage import SafetyStore
 
@@ -110,8 +111,9 @@ def invoke(args: dict, ctx: dict | None = None) -> dict:
 
 
 
-if __name__ == "__main__":  # pragma: no cover
-    import json, sys
-    raw = sys.stdin.read() or "{}"
-    args = json.loads(raw)
-    print(json.dumps(invoke(args), default=str, ensure_ascii=False))
+def main():
+    run_stdio(invoke, default=str, allow_empty=True)
+
+
+if __name__ == "__main__":
+    main()

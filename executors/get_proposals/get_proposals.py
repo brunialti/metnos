@@ -22,6 +22,7 @@ sys.path.insert(0, os.environ.get("METNOS_RUNTIME") or next(
     str(p / "runtime") for p in Path(__file__).resolve().parents
     if (p / "runtime" / "config.py").is_file()))
 from messages import get as _msg  # noqa: E402
+from executor_helpers import run_stdio  # noqa: E402
 from config import PATH_EXECUTORS as _PATH_EXECUTORS  # noqa: E402
 
 AUDIT_DIR = Path.home() / ".local" / "share" / "metnos" / "introvertiva"
@@ -521,8 +522,9 @@ def _render_detail(entries: list[dict], kind: str, *, max_lines: int) -> str:
 
 
 
-if __name__ == "__main__":  # pragma: no cover
-    import json, sys
-    raw = sys.stdin.read() or "{}"
-    args = json.loads(raw)
-    print(json.dumps(invoke(args), default=str, ensure_ascii=False))
+def main():
+    run_stdio(invoke, default=str, allow_empty=True)
+
+
+if __name__ == "__main__":
+    main()

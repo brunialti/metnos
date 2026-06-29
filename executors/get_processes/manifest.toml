@@ -22,7 +22,7 @@ en = "SCOPO: gets processes snapshot and system health. PATTERN: get_processes(t
 
 [code]
 files  = ["get_processes.py"]
-digest = "sha256:40e648e667f1313a412ca278d507c2eda42cb2f4b208147934f49afff234bacd"
+digest = "sha256:781f64f5c425df904342d823709f939598f460b1598de4fd0b38dc71bb589538"
 
 [args]
 type     = "object"

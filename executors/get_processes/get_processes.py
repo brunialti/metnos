@@ -42,6 +42,7 @@ _RUNTIME = os.environ.get("METNOS_RUNTIME") or next(
 if _RUNTIME not in sys.path:
     sys.path.insert(0, _RUNTIME)
 from messages import get as _msg  # noqa: E402
+from executor_helpers import run_stdio  # noqa: E402
 
 
 _VALID_ATTRS = {
@@ -720,7 +721,9 @@ def invoke(args: dict, ctx: dict | None = None) -> dict:
     return result
 
 
-if __name__ == "__main__":  # pragma: no cover
-    raw = sys.stdin.read() or "{}"
-    args = json.loads(raw)
-    print(json.dumps(invoke(args), default=str, ensure_ascii=False))
+def main():
+    run_stdio(invoke, default=str, allow_empty=True)
+
+
+if __name__ == "__main__":
+    main()

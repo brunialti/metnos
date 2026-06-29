@@ -57,6 +57,7 @@ _VAR_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent / "runtime"))
 
 from messages import get as _msg  # noqa: E402
+from executor_helpers import run_stdio  # noqa: E402
 
 
 def _safe_sender(actor: str, channel: str | None) -> str:
@@ -638,14 +639,7 @@ def invoke(args: dict) -> dict:
 
 
 def main():
-    raw = sys.stdin.read()
-    try:
-        args = json.loads(raw) if raw.strip() else {}
-    except json.JSONDecodeError as e:
-        sys.stdout.write(json.dumps({"ok": False, "error": _msg("ERR_JSON_INVALID")}))
-        return
-    result = invoke(args)
-    sys.stdout.write(json.dumps(result, ensure_ascii=False))
+    run_stdio(invoke, allow_empty=True)
 
 
 if __name__ == "__main__":

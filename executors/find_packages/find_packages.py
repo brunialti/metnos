@@ -13,6 +13,7 @@ sys.path.insert(0, os.environ.get("METNOS_RUNTIME") or next(
     str(p / "runtime") for p in Path(__file__).resolve().parents
     if (p / "runtime" / "config.py").is_file()))
 from messages import get as _msg  # noqa: E402
+from executor_helpers import run_stdio  # noqa: E402
 
 
 def invoke(args: dict) -> dict:
@@ -67,18 +68,7 @@ def invoke(args: dict) -> dict:
     }
 
 def main():
-    import sys, json
-    try:
-        input_data = sys.stdin.read()
-        if not input_data:
-            args = {}
-        else:
-            args = json.loads(input_data)
-    except json.JSONDecodeError:
-        args = {}
-
-    out = invoke(args)
-    print(json.dumps(out, ensure_ascii=False))
+    run_stdio(invoke, allow_empty=True)
 
 if __name__ == "__main__":
     main()

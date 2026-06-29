@@ -13,7 +13,7 @@ en = "SCOPO: compute and transform signatures. PATTERN: compute_signatures(op='c
 
 [code]
 files  = ["compute_signatures.py"]
-digest = "sha256:9fc2a9e9975817b7363e3990dd766b390e540123e3873ddd4aaa15e67f1d6673"
+digest = "sha256:f07c058248c5a195d1be8643d61fdb608b4e76d497edf471ea9f9c17f01890f4"
 
 [args]
 type     = "object"

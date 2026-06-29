@@ -26,6 +26,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent / "runtime"))
 
 from messages import get as _msg  # noqa: E402
+from executor_helpers import run_stdio  # noqa: E402
 
 MAX_PROMPT_LEN = 200
 MAX_TIMEOUT_S = 3600
@@ -202,13 +203,7 @@ def invoke(args: dict) -> dict:
 
 
 def main():
-    raw = sys.stdin.read()
-    try:
-        args = json.loads(raw) if raw.strip() else {}
-    except json.JSONDecodeError:
-        sys.stdout.write(json.dumps({"ok": False, "error": _msg("ERR_JSON_INVALID")}))
-        return
-    sys.stdout.write(json.dumps(invoke(args), ensure_ascii=False))
+    run_stdio(invoke, allow_empty=True)
 
 
 if __name__ == "__main__":

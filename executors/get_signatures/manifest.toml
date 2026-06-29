@@ -16,7 +16,7 @@ en = "SCOPO: gets signatures from security lists (whitelist/blacklist/graylist/f
 
 [code]
 files  = ["get_signatures.py"]
-digest = "sha256:b61c2c8e66b35743fdf234b2329d5084c1ce2a4aa2c62a54fa0461a923e67390"
+digest = "sha256:f35386a293a40a7ea2726bac55b026fac23e0e83b8866ee77f2191c117d2eb9e"
 
 [args]
 type     = "object"
