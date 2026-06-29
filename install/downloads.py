@@ -102,52 +102,79 @@ def _probe(url: str, timeout: float) -> tuple[int | None, bool]:
         return None, False
 
 
-def _fetch_chunk(url: str, tmp: Path, start: int, end: int,
-                 timeout: float) -> bool:
-    """Scarica il range [start,end] in `tmp` all'offset giusto, con RESUME
-    interno: ogni tentativo riprende da quanto già scritto (`got`). Così anche
-    un chunk che viene resettato a metà completa in pochi tentativi."""
+def _one_fetch(url: str, start: int, end: int, timeout: float) -> bytes | None:
+    """Un singolo fetch COMPLETO del range [start,end] → bytes validati, o None
+    (reset, troppo corto/lungo, status≠206, range sbagliato). Niente resume: un
+    reset a metà fa ri-scaricare tutto il chunk (8 MB = trasferimento breve)."""
     want = end - start + 1
-    got = 0
+    try:
+        with httpx.stream("GET", url, headers={**_UA, "Range": f"bytes={start}-{end}"},
+                          timeout=timeout, follow_redirects=True) as r:
+            # A ranged request MUST get 206; a 200 = Range ignored (whole file).
+            if r.status_code != 206:
+                return None
+            # The proxy must serve EXACTLY the range asked for; a caching middlebox
+            # can answer a stale/shifted range under the same 206.
+            if not r.headers.get("content-range", "").startswith(f"bytes {start}-{end}/"):
+                return None
+            buf = bytearray()
+            for b in r.iter_bytes(chunk_size=256 * 1024):
+                buf += b
+                if len(buf) > want:        # over-read → reject
+                    return None
+            return bytes(buf) if len(buf) == want else None
+    except (httpx.RequestError, OSError):
+        return None
+
+
+def _fetch_chunk(url: str, fd: int, start: int, end: int, timeout: float,
+                 *, consensus: bool) -> bool:
+    """Scarica [start,end] e lo scrive con un unico `os.pwrite` posizionato
+    (atomico, sicuro fra thread su regioni adiacenti).
+
+    `consensus`: accetta il chunk solo quando DUE fetch indipendenti coincidono
+    (sha256). Una corruzione NON deterministica del proxy/ISP (contenuto sbagliato
+    sotto TLS valido, diverso a ogni passata) non si ripete identica → non passa
+    il consenso. Senza `consensus` basta un fetch (rete pulita: 1× banda)."""
     for _ in range(_CHUNK_ATTEMPTS):
-        if got >= want:
-            return True
-        try:
-            hdr = {**_UA, "Range": f"bytes={start + got}-{end}"}
-            with httpx.stream("GET", url, headers=hdr, timeout=timeout,
-                              follow_redirects=True) as r:
-                if r.status_code not in (206, 200):
-                    continue
-                with open(tmp, "r+b") as f:
-                    f.seek(start + got)
-                    for b in r.iter_bytes(chunk_size=256 * 1024):
-                        f.write(b)
-                        got += len(b)
-        except (httpx.RequestError, OSError):
-            pass
-        if got < want:
+        a = _one_fetch(url, start, end, timeout)
+        if a is None:
             time.sleep(0.3)
-    return got >= want
+            continue
+        if not consensus:
+            os.pwrite(fd, a, start)
+            return True
+        b = _one_fetch(url, start, end, timeout)
+        if b is not None and hashlib.sha256(a).digest() == hashlib.sha256(b).digest():
+            os.pwrite(fd, a, start)
+            return True
+        time.sleep(0.3)
+    return False
 
 
 def _download_parallel(url: str, tmp: Path, total: int, *, label: str,
-                       timeout: float) -> bool:
+                       timeout: float, consensus: bool = False) -> bool:
     """Scarica `url`→`tmp` (preallocato a `total`) con chunk paralleli. Robusto
-    ai reset per-flusso: nessuna singola connessione deve reggere tutto."""
-    with open(tmp, "wb") as f:
-        f.truncate(total)
-    ranges: list[tuple[int, int]] = []
-    s = 0
-    while s < total:
-        e = min(s + _CHUNK_BYTES - 1, total - 1)
-        ranges.append((s, e))
-        s = e + 1
-    ok_all = True
-    with ui.progress() as p:
-        task = p.add_task(label, total=total)
-        with ThreadPoolExecutor(max_workers=_WORKERS) as ex:
-            futs = {ex.submit(_fetch_chunk, url, tmp, a, b, timeout): (a, b)
-                    for a, b in ranges}
+    ai reset per-flusso: nessuna singola connessione deve reggere tutto. I worker
+    condividono UN fd e scrivono con `os.pwrite` (regioni adiacenti non
+    block-aligned: i file object bufferizzati con seek+write si pestavano sul
+    blocco di confine). `consensus` → doppio-fetch concorde per chunk."""
+    fd = os.open(tmp, os.O_RDWR | os.O_CREAT, 0o644)
+    try:
+        os.ftruncate(fd, total)
+        ranges: list[tuple[int, int]] = []
+        s = 0
+        while s < total:
+            e = min(s + _CHUNK_BYTES - 1, total - 1)
+            ranges.append((s, e))
+            s = e + 1
+        ok_all = True
+        with ui.progress() as p:
+            task = p.add_task(label, total=total)
+            with ThreadPoolExecutor(max_workers=_WORKERS) as ex:
+                futs = {ex.submit(_fetch_chunk, url, fd, a, b, timeout,
+                                  consensus=consensus): (a, b)
+                        for a, b in ranges}
             for fut in as_completed(futs):
                 a, b = futs[fut]
                 try:
@@ -158,7 +185,9 @@ def _download_parallel(url: str, tmp: Path, total: int, *, label: str,
                     p.update(task, advance=(b - a + 1))
                 else:
                     ok_all = False
-    return ok_all and tmp.exists() and tmp.stat().st_size == total
+        return ok_all and tmp.exists() and tmp.stat().st_size == total
+    finally:
+        os.close(fd)
 
 
 def _download_stream(url: str, tmp: Path, total: int | None, *, label: str,
@@ -196,10 +225,11 @@ def _download_stream(url: str, tmp: Path, total: int | None, *, label: str,
 def robust_fetch(url: str, dest: Path, *, sha256: str | None = None,
                  label: str | None = None, size: int | None = None,
                  timeout: float = 60.0) -> bool:
-    """Scarica `url`→`dest` resiliente ai reset per-flusso (chunk paralleli con
-    resume per-chunk; stream singolo come fallback). Verifica sha256 se dato.
-    Ritorna True/False; su mismatch sha il parziale è cancellato. È il core
-    condiviso da `fetch` (embedder, asset) e da `llm_manager` (GGUF)."""
+    """Scarica `url`→`dest` resiliente ai reset per-flusso (chunk paralleli;
+    stream singolo come fallback) E alla corruzione non deterministica del
+    proxy/ISP (escalation a doppio-fetch concorde se lo sha finale non torna).
+    Verifica sha256 se dato; su mismatch dopo consenso il parziale è cancellato.
+    Core condiviso da `fetch` (embedder, asset) e `llm_manager` (GGUF)."""
     label = label or dest.name
     if not _require_https(url, label):
         return False
@@ -211,21 +241,39 @@ def robust_fetch(url: str, dest: Path, *, sha256: str | None = None,
     total, ranges_ok = _probe(url, timeout)
     if total is None:
         total = size
+    parallel = bool(ranges_ok and total and total > _PARALLEL_THRESHOLD)
 
-    if ranges_ok and total and total > _PARALLEL_THRESHOLD:
-        ok = _download_parallel(url, tmp, total, label=label, timeout=timeout)
-    else:
-        ok = _download_stream(url, tmp, total, label=label, timeout=timeout)
-    if not ok:
-        return False
-
-    if sha256:
+    # Adaptive integrity: try the cheap single-fetch parallel path first (clean
+    # networks pay 1× bandwidth). If the end-to-end sha then mismatches, a proxy/
+    # ISP is mangling content non-deterministically under TLS (full-size file,
+    # wrong bytes — see INSTALL_NOTES). Retry with per-chunk CONSENSUS (two
+    # agreeing fetches), which random corruption cannot survive. 2 passes max.
+    for attempt in range(2):
+        consensus = attempt == 1
+        if parallel:
+            ok = _download_parallel(url, tmp, total, label=label,
+                                    timeout=timeout, consensus=consensus)
+        else:
+            ok = _download_stream(url, tmp, total, label=label, timeout=timeout)
+        if not ok:
+            # incomplete (chunks never finished): a consensus retry can still
+            # finish them on a flaky link; otherwise give up.
+            if parallel and not consensus:
+                ui.warn(f"{label}: transfer incomplete — retrying with consensus")
+                continue
+            return False
+        if not sha256:
+            break  # nothing to verify against — accept (already warned)
         digest = _sha256_file(tmp)
-        if digest != sha256.lower():
-            ui.warn(f"{label}: sha256 mismatch (got {digest[:16]}…, "
+        if digest == sha256.lower():
+            break  # verified
+        if consensus:
+            ui.warn(f"{label}: sha256 mismatch AFTER consensus (got {digest[:16]}…, "
                     f"expected {sha256[:16]}…) — deleting")
             tmp.unlink(missing_ok=True)
             return False
+        ui.warn(f"{label}: sha256 mismatch (got {digest[:16]}…) — network is "
+                f"mangling content; retrying with per-chunk consensus")
 
     os.replace(tmp, dest)
     ui.ok(f"{label}: {dest.stat().st_size:,} bytes → {dest}")

@@ -221,6 +221,24 @@ production-tested engine env:
 - No silent half-install: a mandatory step that fails ABORTS (BGE-M3).
 - Idempotent re-runs: trust an existing file VERIFIED by sha256 (HF API), not by
   size; a same-size corrupt file is re-downloaded.
+- **Downloader integrity — parallel chunks + adaptive CONSENSUS** (`install/
+  downloads.py::robust_fetch`, fix 29/6). Big files download as many small
+  parallel range-chunks (8 MB) so no single TCP carries the whole transfer — the
+  defense against ISPs that throttle/reset *long, high-rate* flows. Each chunk:
+  one whole-file-validated `_one_fetch` (status 206, exact `Content-Range`, exact
+  length), written with `os.pwrite` (atomic positioned write — adjacent
+  non-block-aligned chunks must NOT use buffered `seek`+`write`, which races on
+  the shared boundary block). **Some ISPs/proxies ALSO corrupt content
+  non-deterministically under concurrency** (full-size file, wrong bytes, valid
+  TLS — verified on the .33 box 29/6: ~14% of chunks, different each run). A
+  single sha-gate at the end can't recover, so `robust_fetch` is **adaptive**:
+  fast single-fetch first (clean networks pay 1× bandwidth); if the end sha
+  mismatches → retry in **consensus** mode (each chunk fetched twice, accepted
+  only when the two copies hash-agree — random corruption can't repeat
+  identically). Validated: single-fetch failed the sha repeatedly, consensus
+  converged to the correct sha. (Same idea as `playwright_sidecar._robust_fetch`,
+  now in the shared core.) Do NOT add intra-chunk resume — it re-wrote a few
+  wrong bytes at the seam (full-size, corrupt, only the final sha caught it).
 - **Pinning (reproducibility — affects describe determinism §11; fix 14/6)**:
   - **llama.cpp**: `llm_manager._LLAMA_TAG_DEFAULT` pins the prebuilt release
     (E2E-validated tag). Override `METNOS_LLAMA_TAG=<bNNNN>`; explicit opt-out
