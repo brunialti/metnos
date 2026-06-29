@@ -24,6 +24,34 @@ from __future__ import annotations
 from typing import Any
 
 
+def run_stdio(invoke) -> None:
+    """main() standard di un executor (I/O contract subprocess, §2.1/§2.8): legge
+    UN oggetto JSON da stdin, chiama `invoke(args)`, scrive UN oggetto JSON su
+    stdout. Gestisce in modo UNIFORME stdin vuoto (ERR_EMPTY_INPUT) e JSON
+    invalido (ERR_JSON_INVALID) — mai crash con stdout vuoto. Single source of
+    truth del boilerplate `main()` copiato in ~70 executor.
+
+    Uso nel file executor:
+        from executor_helpers import run_stdio
+        def main():
+            run_stdio(invoke)
+        if __name__ == "__main__":
+            main()
+    """
+    import json
+    import sys
+    from messages import get as _msg
+    raw = sys.stdin.read()
+    if not raw.strip():
+        result = {"ok": False, "error": _msg("ERR_EMPTY_INPUT")}
+    else:
+        try:
+            result = invoke(json.loads(raw))
+        except json.JSONDecodeError:
+            result = {"ok": False, "error": _msg("ERR_JSON_INVALID")}
+    sys.stdout.write(json.dumps(result, ensure_ascii=False))
+
+
 def coerce_cap(args: dict, key: str, default: int, *,
                maximum: int | None = None) -> int:
     """Coercizione tollerante di un cap numerico dal PLANNER (§2.4). Ritorna un

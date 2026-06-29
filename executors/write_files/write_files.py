@@ -27,6 +27,7 @@ sys.path.insert(0, os.environ.get("METNOS_RUNTIME") or next(
     str(p / "runtime") for p in Path(__file__).resolve().parents
     if (p / "runtime" / "config.py").is_file()))
 from messages import get as _msg  # noqa: E402
+from executor_helpers import run_stdio  # noqa: E402
 from backends.files import local, google_workspace  # noqa: E402
 
 _HANDLERS = {
@@ -45,16 +46,7 @@ def invoke(args):
 
 
 def main():
-    raw = sys.stdin.read()
-    if not raw.strip():
-        result = {"ok": False, "error": _msg("ERR_EMPTY_INPUT")}
-    else:
-        try:
-            args = json.loads(raw)
-            result = invoke(args)
-        except json.JSONDecodeError as e:
-            result = {"ok": False, "error": _msg("ERR_JSON_INVALID")}
-    sys.stdout.write(json.dumps(result, ensure_ascii=False))
+    run_stdio(invoke)
 
 
 if __name__ == "__main__":

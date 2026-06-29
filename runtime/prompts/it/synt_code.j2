@@ -147,13 +147,14 @@ CHIAVI i18n DISPONIBILI (riusale invece di inventarne):
 I/O CONTRACT (OBBLIGATORIO — il runtime invoca via subprocess):
 - args arriva via STDIN come UN UNICO oggetto JSON. NON usare sys.argv.
 - output va su STDOUT come UN UNICO oggetto JSON.
-- Pattern fisso di `main()`, copiare letteralmente:
+- Pattern fisso di `main()`, copiare letteralmente — usa l'helper condiviso
+  `run_stdio` (legge stdin, chiama invoke, scrive stdout, e gestisce stdin
+  vuoto + JSON invalido in modo uniforme §2.8):
+
+    from executor_helpers import run_stdio
 
     def main():
-        import sys, json
-        args = json.loads(sys.stdin.read())
-        out = invoke(args)
-        print(json.dumps(out, ensure_ascii=False))
+        run_stdio(invoke)
 
     if __name__ == "__main__":
         main()
