@@ -18,7 +18,7 @@ en = "SCOPO: lists configured accounts and services (mail, api, cloud): metadata
 
 [code]
 files  = ["find_credentials.py"]
-digest = "sha256:723200802f10085d0b8314f0f55ee95b578098d22318730133979335fd7dd761"
+digest = "sha256:7f08a54f784b919ce47e810166c18821c25a23b2eaae22f64fa1bfaa0f2170bf"
 
 [args]
 type     = "object"

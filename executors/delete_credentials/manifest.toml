@@ -19,7 +19,7 @@ en = "SCOPO: delete credentials from storage (purge or bindings). PATTERN: delet
 
 [code]
 files  = ["delete_credentials.py"]
-digest = "sha256:5bdf721d83a6a9373e63161c11847c4d8d141de14f87d58d6d03c18a5b01e3df"
+digest = "sha256:b40a942c0786dc563f87875bcc4206403e39484069f2c54bbfb0b01a5f062701"
 
 [args]
 type     = "object"

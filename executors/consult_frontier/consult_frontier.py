@@ -36,6 +36,7 @@ _RUNTIME = Path(__file__).resolve().parent.parent.parent / "runtime"
 if str(_RUNTIME) not in sys.path:
     sys.path.insert(0, str(_RUNTIME))
 from messages import get as _msg  # noqa: E402
+from executor_helpers import run_stdio  # noqa: E402
 
 # ---- Tools whitelist (read-only by hard constraint) ----------------------
 
@@ -909,16 +910,7 @@ def invoke(args: dict) -> dict:
 
 
 def main():
-    try:
-        args = json.load(sys.stdin)
-    except json.JSONDecodeError:
-        sys.stdout.write(json.dumps(
-            {"ok": False, "error": _msg("ERR_JSON_INVALID"),
-              "error_class": "invalid_args"},
-        ))
-        return
-    result = invoke(args)
-    sys.stdout.write(json.dumps(result, ensure_ascii=False, default=str))
+    run_stdio(invoke, default=str, error_extra={"error_class": "invalid_args"})
 
 
 if __name__ == "__main__":

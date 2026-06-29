@@ -22,7 +22,7 @@ en = "SCOPO: creates a new Google Doc. PATTERN: create_files_doc(title='Title', 
 
 [code]
 files  = ["create_files_doc.py"]
-digest = "sha256:866135aca55547a06b4ba37384e7b03cb2350972fc16302ca0d32d0df53a084c"
+digest = "sha256:4eb6f23abdf0934863e0db36e3db804b011a6efe1fa899c038a060e4c3318702"
 
 [args]
 type     = "object"

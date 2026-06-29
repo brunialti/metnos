@@ -21,7 +21,7 @@ en = "SCOPO: reads text from Google Doc. PATTERN: read_files_doc(document_id='1a
 
 [code]
 files  = ["read_files_doc.py"]
-digest = "sha256:eab7163ac97d7992427c13bf2d1839504f05528d8042da62cc0419c0c8193df5"
+digest = "sha256:f39981c5c1e367b187c26771cb72822c11c878cc53c6c15e7d5c2b077b8ceb9b"
 
 [args]
 type     = "object"

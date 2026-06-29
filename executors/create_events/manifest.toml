@@ -22,7 +22,7 @@ en = "SCOPO: create calendar appointments. PATTERN: create_events(summary=\"Stan
 
 [code]
 files  = ["create_events.py"]
-digest = "sha256:8a384203dcc22a1b9867c1bd3448923479153446e922822ecaa1e93de7b1b81a"
+digest = "sha256:99af53e0294ad11bb164c7a305fa4d14a253bd0af044cf3216726c2ac58617e4"
 
 [args]
 type     = "object"

@@ -17,7 +17,7 @@ en = "SCOPO: full identity profile. PATTERN: read_persons(name=\"X\", role=\"gue
 
 [code]
 files  = ["read_persons.py"]
-digest = "sha256:07b5b2c2debdef98cd8435318d2a0f6608cf65311d4216f7a8d170192bea63ea"
+digest = "sha256:5c3bf9fe4f1c3a2b660d4b914fe6c0b2ed300da1772c4de38b2db4f0a802e2ae"
 
 [args]
 type     = "object"

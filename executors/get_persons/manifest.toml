@@ -17,7 +17,7 @@ en = "SCOPO: gets data from the persons registry (who is enrolled, enrollment li
 
 [code]
 files  = ["get_persons.py"]
-digest = "sha256:48c5ac8ff34ec30a7b48c949b44b28cd08ab9c2afcfe608e7b8e452b71dde4d2"
+digest = "sha256:3d53b2ac6c2a32bdff9da4c9a3face6c14feaa6c3b28685cdfc6d01072fc28da"
 
 [args]
 type     = "object"

@@ -35,6 +35,7 @@ _RUNTIME = Path(__file__).resolve().parent.parent.parent / "runtime"
 sys.path.insert(0, str(_RUNTIME))
 
 from messages import get as _msg  # noqa: E402
+from executor_helpers import run_stdio  # noqa: E402
 
 import credentials as _cred  # noqa: E402
 
@@ -264,13 +265,7 @@ def invoke(args):
 
 
 def main():
-    try:
-        args = json.load(sys.stdin)
-    except json.JSONDecodeError as e:
-        sys.stdout.write(json.dumps({"ok": False, "error": _msg("ERR_JSON_INVALID")}))
-        return
-    result = invoke(args)
-    sys.stdout.write(json.dumps(result, ensure_ascii=False, default=str))
+    run_stdio(invoke, default=str)
 
 
 if __name__ == "__main__":

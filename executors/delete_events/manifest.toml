@@ -23,7 +23,7 @@ en = "SCOPO: delete calendar events, by ids or time window. PATTERN: delete_even
 
 [code]
 files  = ["delete_events.py"]
-digest = "sha256:d0156bbe8b034899016173fb62e8238aa34b5c006daea1d321a71ac15f3c2405"
+digest = "sha256:ff23df949bdde777e95e963a20ab2389e50b9541052c8998409d7792b8ca7c94"
 
 [args]
 type     = "object"

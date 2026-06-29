@@ -19,7 +19,7 @@ en = "SCOPO: store encrypted credentials in storage. PATTERN: set_credentials(bi
 
 [code]
 files  = ["set_credentials.py"]
-digest = "sha256:e26dcb831f99713092b1fb195f0073399073f5719bd4744da6458d1834c958f3"
+digest = "sha256:78b861a785c0ae2ef87fbec21bc926a036fb62c7c99ac9425fd1965b969bc0c2"
 
 [args]
 type     = "object"

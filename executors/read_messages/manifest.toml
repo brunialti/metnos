@@ -18,7 +18,7 @@ en = "SCOPO: reads IMAP messages combining time and text filters. PATTERN: read_
 
 [code]
 files  = ["read_messages.py"]
-digest = "sha256:87f11424db0b76acb6cb34ccd1ad8011f28e0613b4a1af659aa9153a405271e4"
+digest = "sha256:2cae0144c86469701a1c74c7838858a56b91412c02bb6890a82b32fa940f00df"
 
 [args]
 type     = "object"

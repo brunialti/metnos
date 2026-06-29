@@ -21,7 +21,7 @@ en = "SCOPO: create a NEW Google calendar container (not an event). PATTERN: cre
 
 [code]
 files  = ["create_calendars.py"]
-digest = "sha256:2eb66fc7c3d54012c91d61d6469c867e602ee66627e790143b24726348bb8acc"
+digest = "sha256:626e2c10d3211adec640c89561fca346272a9e5f105a2db222e88e0a57804f2c"
 
 [args]
 type     = "object"

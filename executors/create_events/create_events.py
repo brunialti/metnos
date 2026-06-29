@@ -34,6 +34,7 @@ from datetime import datetime, time as _dtime, timedelta  # noqa: E402
 from zoneinfo import ZoneInfo  # noqa: E402
 
 from messages import get as _msg  # noqa: E402
+from executor_helpers import run_stdio  # noqa: E402
 from backends.events import local_ics, google_workspace  # noqa: E402
 
 _HANDLERS = {
@@ -210,14 +211,7 @@ def invoke(args):
 
 
 def main():
-    try:
-        args = json.load(sys.stdin)
-    except json.JSONDecodeError as e:
-        sys.stdout.write(json.dumps({"ok": False, "error": _msg("ERR_JSON_INVALID"),
-                                      "error_class": "invalid_args",
-                                      "results": [], "used": 0, "n_created": 0}))
-        return
-    sys.stdout.write(json.dumps(invoke(args), ensure_ascii=False))
+    run_stdio(invoke, error_extra={"error_class": "invalid_args", "results": [], "used": 0, "n_created": 0})
 
 
 if __name__ == "__main__":
