@@ -93,15 +93,6 @@ def _systemctl_user(*args: str) -> subprocess.CompletedProcess:
                           capture_output=True, text=True, timeout=30)
 
 
-def _sha256(path: Path, chunk: int = 1024 * 1024) -> str:
-    import hashlib
-    h = hashlib.sha256()
-    with path.open("rb") as f:
-        for b in iter(lambda: f.read(chunk), b""):
-            h.update(b)
-    return h.hexdigest()
-
-
 def _retry(label: str, thunk, attempts: int = 3) -> bool:
     """Run a download thunk up to `attempts` times. The download helpers verify
     sha256 and delete a corrupt transfer (e.g. one mangled by a TLS-intercepting
@@ -136,6 +127,27 @@ def _render_and_install_unit(tmpl_name: str, unit_name: str,
     if r.returncode != 0:
         ui.warn(f"systemctl enable {unit_name} failed: {r.stderr.strip()[-200:]}")
         return False
+    return True
+
+
+def _write_http_dropin(conf_name: str, env: dict[str, str]) -> bool:
+    """Scrive un drop-in `metnos-http.service.d/<conf_name>` con righe Environment
+    e fa daemon-reload. NON riavvia metnos-http: un `python -m install.sidecar`
+    post-install può capitare DURANTE un turno attivo (§8.6 no daemon restart
+    during a turn) → se il servizio è attivo, avvisa di riavviare a mano. Unico
+    helper per i drop-in VLM/Photon (prima duplicato + duplicava il bug)."""
+    if not shutil.which("systemctl"):
+        ui.warn(f"systemctl absent — cannot write {conf_name}")
+        return False
+    d = Path.home() / ".config" / "systemd" / "user" / "metnos-http.service.d"
+    d.mkdir(parents=True, exist_ok=True)
+    body = "[Service]\n" + "".join(f"Environment={k}={v}\n" for k, v in env.items())
+    (d / conf_name).write_text(body)
+    _systemctl_user("daemon-reload")
+    if _systemctl_user("is-active", "metnos-http.service").stdout.strip() == "active":
+        ui.info("metnos-http is running — restart to apply the new env: "
+                "`systemctl --user restart metnos-http` (not done automatically "
+                "to avoid interrupting an in-flight turn).")
     return True
 
 
@@ -312,24 +324,12 @@ def _vlm_models_dir() -> Path:
 
 def _write_vlm_dropin(model: Path, mmproj: Path, llama: Path | None) -> bool:
     """Point vlm_server.sh (spawned by metnos-http) at the install layout via a
-    systemd drop-in, so ensure_vlm_up finds the GGUFs + binary without editing
-    the unit template. daemon-reload; restart metnos-http if it is running."""
-    if not shutil.which("systemctl"):
-        ui.warn("systemctl absent — cannot write the VLM env drop-in")
-        return False
-    d = Path.home() / ".config" / "systemd" / "user" / "metnos-http.service.d"
-    d.mkdir(parents=True, exist_ok=True)
-    lines = ["[Service]",
-             f"Environment=METNOS_VLM_MODEL={model}",
-             f"Environment=METNOS_VLM_MMPROJ={mmproj}"]
+    metnos-http drop-in, so ensure_vlm_up finds the GGUFs + binary without editing
+    the unit template."""
+    env = {"METNOS_VLM_MODEL": str(model), "METNOS_VLM_MMPROJ": str(mmproj)}
     if llama:
-        lines.append(f"Environment=METNOS_VLM_LLAMA_BIN={llama}")
-    (d / "vlm.conf").write_text("\n".join(lines) + "\n")
-    _systemctl_user("daemon-reload")
-    if _systemctl_user("is-active", "metnos-http.service").stdout.strip() == "active":
-        ui.step("restarting metnos-http to pick up the VLM env")
-        _systemctl_user("restart", "metnos-http.service")
-    return True
+        env["METNOS_VLM_LLAMA_BIN"] = str(llama)
+    return _write_http_dropin("vlm.conf", env)
 
 
 def install_vlm(*, yes: bool = False) -> dict:
@@ -432,7 +432,7 @@ def install_photon(*, yes: bool = False, country: str | None = None,
         d.mkdir(parents=True, exist_ok=True)
 
     # 1. photon.jar (pinned sha256 — immutable GitHub release)
-    if jar.exists() and _sha256(jar) == _PHOTON_JAR_SHA256:
+    if jar.exists() and downloads._sha256_file(jar) == _PHOTON_JAR_SHA256:
         ui.ok(f"photon.jar present ({_PHOTON_VERSION})")
     else:
         ui.step(f"Downloading photon-{_PHOTON_VERSION}.jar")
@@ -508,16 +508,8 @@ def install_photon(*, yes: bool = False, country: str | None = None,
 
 def _photon_dropin(port: int) -> None:
     """Point the runtime at the local Photon (the default endpoint is a prod IP)."""
-    if not shutil.which("systemctl"):
-        return
-    d = Path.home() / ".config" / "systemd" / "user" / "metnos-http.service.d"
-    d.mkdir(parents=True, exist_ok=True)
-    (d / "photon.conf").write_text(
-        "[Service]\n"
-        f"Environment=METNOS_PHOTON_URL=http://localhost:{port}\n")
-    _systemctl_user("daemon-reload")
-    if _systemctl_user("is-active", "metnos-http.service").stdout.strip() == "active":
-        _systemctl_user("restart", "metnos-http.service")
+    _write_http_dropin("photon.conf",
+                       {"METNOS_PHOTON_URL": f"http://localhost:{port}"})
 
 
 # ─── registry (single source of truth for the optional list) ─────────
@@ -547,13 +539,19 @@ SIDECARS: dict[str, dict] = {
 }
 
 
-def install(name: str, *, yes: bool = False) -> dict:
-    """Dispatch to the named sidecar's real installer."""
+def install(name: str, *, yes: bool = False, **opts) -> dict:
+    """Dispatch to the named sidecar's real installer. Extra `opts` (port,
+    country, …) are passed through ONLY to installers that declare them — so the
+    CLI can set Photon's country without install_vlm choking on it."""
+    import inspect
     entry = SIDECARS.get(name)
     if not entry:
         ui.warn(f"unknown sidecar '{name}' (known: {', '.join(SIDECARS)})")
         return {name: "unknown"}
-    return entry["install"](yes=yes)
+    fn = entry["install"]
+    accepted = set(inspect.signature(fn).parameters)
+    kw = {k: v for k, v in opts.items() if k in accepted and v is not None}
+    return fn(yes=yes, **kw)
 
 
 # ─── CLI ─────────────────────────────────────────────────────────────
@@ -567,17 +565,30 @@ def _print_list() -> None:
 
 
 def main(argv: list[str] | None = None) -> int:
-    argv = list(sys.argv[1:] if argv is None else argv)
-    yes = "--yes" in argv or "-y" in argv
-    argv = [a for a in argv if a not in ("--yes", "-y")]
-    if not argv or argv[0] in ("--list", "-l", "list"):
+    raw = list(sys.argv[1:] if argv is None else argv)
+    yes = "--yes" in raw or "-y" in raw
+    opts: dict = {}
+    rest: list[str] = []
+    it = iter(a for a in raw if a not in ("--yes", "-y"))
+    for a in it:
+        if a == "--port":
+            opts["port"] = int(next(it, "0") or 0) or None
+        elif a == "--country":
+            opts["country"] = next(it, None)
+        elif a.startswith("--port="):
+            opts["port"] = int(a.split("=", 1)[1] or 0) or None
+        elif a.startswith("--country="):
+            opts["country"] = a.split("=", 1)[1] or None
+        else:
+            rest.append(a)
+    if not rest or rest[0] in ("--list", "-l", "list"):
         _print_list()
         return 0
-    name = argv[0]
-    notes = install(name, yes=yes)
+    name = rest[0]
+    notes = install(name, yes=yes, **opts)
     status = notes.get(name, "")
     print(notes)
-    return 0 if status in ("running", "installed", "started_unhealthy",
+    return 0 if status in ("running", "started_unhealthy",
                            "models_ready", "models_ready_no_llama") else 1
 
 

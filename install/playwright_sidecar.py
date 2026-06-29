@@ -250,10 +250,30 @@ def _install_unit() -> bool:
     dest_dir.mkdir(parents=True, exist_ok=True)
     (dest_dir / "metnos-playwright.service").write_text(body)
     subprocess.run(["systemctl", "--user", "daemon-reload"])
-    subprocess.run(["systemctl", "--user", "enable", "--now",
-                    "metnos-playwright.service"])
-    ui.ok("metnos-playwright.service installato e avviato (:8771)")
+    r = subprocess.run(["systemctl", "--user", "enable", "--now",
+                        "metnos-playwright.service"], capture_output=True, text=True)
+    if r.returncode != 0:
+        ui.warn(f"enable metnos-playwright fallito: {(r.stderr or '').strip()[-200:]}")
+        return False
+    ui.ok("metnos-playwright.service abilitato (:8771)")
     return True
+
+
+def _health_8771(timeout_s: int = 20) -> bool:
+    """Probe onesto del sidecar (§2.8): 200 su /health entro timeout."""
+    import time as _t
+    import urllib.request
+    deadline = _t.time() + timeout_s
+    while _t.time() < deadline:
+        try:
+            with urllib.request.urlopen("http://127.0.0.1:8771/health",
+                                        timeout=2) as resp:
+                if resp.status == 200:
+                    return True
+        except Exception:
+            pass
+        _t.sleep(1)
+    return False
 
 
 # ─── orchestrazione ──────────────────────────────────────────────
@@ -265,8 +285,16 @@ def install(*, yes: bool = False) -> dict:
         return {"playwright": "pip_failed"}
     if not _install_browsers(py):
         return {"playwright": "chromium_failed"}
-    unit = _install_unit()
-    return {"playwright": "installed" if unit else "installed_no_unit"}
+    if not _install_unit():
+        return {"playwright": "installed_no_unit"}
+    # §2.8: non dichiarare "avviato" senza verificare. Probe /health.
+    healthy = _health_8771()
+    if healthy:
+        ui.ok("metnos-playwright in salute su :8771")
+    else:
+        ui.warn("metnos-playwright non risponde a /health entro 20s — "
+                "controlla `systemctl --user status metnos-playwright`")
+    return {"playwright": "running" if healthy else "started_unhealthy"}
 
 
 def main() -> int:
@@ -274,7 +302,7 @@ def main() -> int:
     ui.step("JS-render sidecar (locale, nessun provider esterno)")
     notes = install(yes=yes)
     print(notes)
-    return 0 if notes.get("playwright", "").startswith("installed") else 1
+    return 0 if notes.get("playwright", "") in ("running", "started_unhealthy") else 1
 
 
 if __name__ == "__main__":

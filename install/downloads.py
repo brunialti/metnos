@@ -175,16 +175,19 @@ def _download_parallel(url: str, tmp: Path, total: int, *, label: str,
                 futs = {ex.submit(_fetch_chunk, url, fd, a, b, timeout,
                                   consensus=consensus): (a, b)
                         for a, b in ranges}
-            for fut in as_completed(futs):
-                a, b = futs[fut]
-                try:
-                    ok = fut.result()
-                except Exception:  # noqa: BLE001 — un chunk morto non uccide il resto
-                    ok = False
-                if ok:
-                    p.update(task, advance=(b - a + 1))
-                else:
-                    ok_all = False
+                # DENTRO il `with`: avanza la barra man mano che i chunk
+                # completano (fuori, l'executor.__exit__ aspetta tutto → barra
+                # ferma a 0% poi salto a 100% su GGUF multi-GB).
+                for fut in as_completed(futs):
+                    a, b = futs[fut]
+                    try:
+                        ok = fut.result()
+                    except Exception:  # noqa: BLE001 — un chunk morto non uccide il resto
+                        ok = False
+                    if ok:
+                        p.update(task, advance=(b - a + 1))
+                    else:
+                        ok_all = False
         return ok_all and tmp.exists() and tmp.stat().st_size == total
     finally:
         os.close(fd)
@@ -290,15 +293,3 @@ def fetch(asset: Asset, *, timeout: float = 60.0) -> bool:
         return True
     return robust_fetch(asset.url, asset.dest, sha256=asset.sha256,
                         label=asset.name, size=asset.size, timeout=timeout)
-
-
-def fetch_all(assets: list[Asset]) -> tuple[int, int]:
-    """Download every asset. Returns (successful, failed)."""
-    ok_count = 0
-    fail_count = 0
-    for a in assets:
-        if fetch(a):
-            ok_count += 1
-        else:
-            fail_count += 1
-    return ok_count, fail_count
