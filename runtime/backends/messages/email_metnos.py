@@ -806,7 +806,6 @@ def delete(args: dict) -> dict:
         conn = open_imap(account)
     except Exception as e:
         return {"ok": False, "error_code": "ERR_EXT_SVC_UNAVAILABLE",
-                "error_code": "ERR_EXT_SVC_UNAVAILABLE",
                 "error": _msg("ERR_EXT_SVC_UNAVAILABLE"), "detail": f"IMAP connect failed: {e}"}
     results, failed = [], []
     try:
@@ -935,7 +934,6 @@ def move(args: dict) -> dict:
         conn = open_imap(account)
     except Exception as e:
         return {"ok": False, "error_code": "ERR_EXT_SVC_UNAVAILABLE",
-                "error_code": "ERR_EXT_SVC_UNAVAILABLE",
                 "error": _msg("ERR_EXT_SVC_UNAVAILABLE"), "detail": f"IMAP connect failed: {e}"}
     results, failed = [], []
     try:

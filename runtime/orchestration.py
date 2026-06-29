@@ -59,6 +59,22 @@ from messages import get as _msg
 log = get_logger(__name__)
 
 
+def _shape_result_for_chat(res) -> str:
+    """Backstop universale no-raw-leak (§output formatter): MAI `json.dumps`
+    grezzo in chat (l'utente vedrebbe «{...}», bypassando l'i18n). Testo pulito
+    da final_message_hint/summary → `✗ <err>` → MSG_ACTION_DONE. Single source
+    per tutti i result-shaper di orchestration."""
+    if isinstance(res, dict):
+        msg = res.get("final_message_hint") or res.get("summary")
+        if msg:
+            return msg
+        if res.get("ok") is False:
+            err = res.get("error") or res.get("error_class") or ""
+            return f"✗ {err}" if err else _msg("ERR_GENERIC")
+        return _msg("MSG_ACTION_DONE")
+    return str(res)
+
+
 # ── Helper: sender_id stabile per lo storage ──────────────────────────
 
 def _safe_sender(actor: str, channel: Optional[str]) -> str:
@@ -440,10 +456,7 @@ def _process_save_credentials_and_resume(on_complete: dict, values: dict,
         log.exception("orchestration: resume_call fallito")
         return _msg("MSG_ORCH_CREDS_SAVED_RESUME_FAILED", resume_call=resume_call, detail=f"{type(ex).__name__}: {ex}")
 
-    if isinstance(res, dict):
-        return (res.get("summary")
-                or json.dumps(res, ensure_ascii=False)[:600])
-    return str(res)
+    return _shape_result_for_chat(res)
 
 
 def _process_expand_cap_and_resume(on_complete: dict, values: dict,
@@ -538,9 +551,8 @@ def _process_expand_cap_and_resume(on_complete: dict, values: dict,
         body_blocks.append(_fmt_entries_block(entries, cap_preview))
 
     if not body_blocks:
-        # Output non-list-shaped (es. summary stringa).
-        return head + "\n\n" + (res.get("summary") or
-                                  json.dumps(res, ensure_ascii=False)[:600])
+        # Output non-list-shaped (es. summary stringa). No raw-leak: shaper unico.
+        return head + "\n\n" + _shape_result_for_chat(res)
 
     return head + "\n\n" + "\n\n".join(body_blocks)
 
@@ -695,18 +707,7 @@ def _process_resume_executor_with_values(on_complete: dict, values: dict,
         except Exception:
             pass
 
-    if isinstance(res, dict):
-        msg = res.get("final_message_hint") or res.get("summary")
-        if msg:
-            return msg
-        # Backstop universale (§ output formatter, no-raw-leak): MAI json.dumps
-        # grezzo in chat (l'utente vedeva «{...}»). Sintesi pulita e i18n da
-        # ok/error: l'executor che vuole testo ricco espone `summary`.
-        if res.get("ok") is False:
-            err = res.get("error") or res.get("error_class") or ""
-            return f"✗ {err}" if err else _msg("ERR_GENERIC")
-        return _msg("MSG_ACTION_DONE")
-    return str(res)
+    return _shape_result_for_chat(res)
 
 
 def _process_strato3_choice_dispatch(

@@ -32,6 +32,7 @@ import logging
 import re
 import sqlite3
 import time
+from contextlib import closing
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
@@ -191,7 +192,12 @@ def lookup(query: str) -> Optional[FastpathHit]:
                                     framework=fw, match_kind="hash",
                                     similarity=1.0)
             except Exception as ex:
-                log.warning("fastpath: parse framework_json failed: %r", ex)
+                # §2.8: un match esatto 0a corrotto è un MISS PULITO, non si cade
+                # nel coseno 0b (servirebbe il piano di una query VICINA come hit
+                # di QUESTA query). Niente fallthrough.
+                log.warning("fastpath: 0a exact-match framework_json corrupt "
+                            "→ clean miss: %r", ex)
+                return None
     except Exception as ex:
         log.warning("fastpath: 0a lookup failed: %r", ex)
         return None
@@ -300,17 +306,19 @@ def record_success(query: str, framework: Framework, *,
 
 
 def _touch(fp_id: int) -> None:
-    """Aggiorna n_uses + last_used."""
+    """Aggiorna n_uses + last_used. È l'UNICO writer di last_used: se fallisce in
+    silenzio, last_used resta NULL e `prune` (regola never-reused) cancella
+    fastpath ATTIVAMENTE colpiti → logga, non swallow."""
     try:
-        c = _conn()
-        c.execute(
-            "UPDATE fastpaths SET n_uses = n_uses + 1, last_used = ? "
-            "WHERE id = ?",
-            (_now_iso(), fp_id))
-        c.commit()
-        c.close()
-    except Exception:
-        pass
+        with closing(_conn()) as c:
+            c.execute(
+                "UPDATE fastpaths SET n_uses = n_uses + 1, last_used = ? "
+                "WHERE id = ?",
+                (_now_iso(), fp_id))
+            c.commit()
+    except Exception as ex:
+        log.warning("fastpath._touch failed (last_used not bumped, id=%s): %r",
+                    fp_id, ex)
 
 
 def list_all(limit: int = 100) -> list[dict]:

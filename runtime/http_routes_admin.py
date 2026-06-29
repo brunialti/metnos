@@ -1272,7 +1272,11 @@ async def admin_timer_action(request: web.Request) -> web.Response:
                         pl = _json.loads(pl)
                     except Exception:
                         pl = {}
-                res = info.fn(pl if isinstance(pl, dict) else {})
+                _pl = pl if isinstance(pl, dict) else {}
+                # await i callback async (es. nightly_maintenance): chiamarli senza
+                # await ritorna una coroutine mai eseguita (§2.8 falso "eseguito").
+                # Specchia il ramo corretto di admin_job_fire.
+                res = await info.fn(_pl) if info.is_async else info.fn(_pl)
                 msg = f"'{name}' eseguito → {str(res)[:160]}"
         except Exception as ex:
             msg = f"'{name}' errore: {type(ex).__name__}: {ex}"

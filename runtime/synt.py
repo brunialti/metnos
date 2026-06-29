@@ -1243,7 +1243,10 @@ class Synt:
                 "manifest_path": str(manifest_path),
                 "code_path": str(code_path),
             },
-            reward=RewardBreakdown(1.0, 0.0, 0.0, 0.0, 1.0),
+            reward=RewardBreakdown(
+                det_pass_rate=1.0, judge_score=0.0, judge_reasoning="",
+                cost_ratio=0.0, similarity_penalty=0.0, coverage_bonus=0.0,
+                strategy_cost_bonus=0.0, total=1.0),
             rationale=f"specialize {parent_name} → {target_name} (cabled {arg_name}={dominant_value!r})",
         )
 

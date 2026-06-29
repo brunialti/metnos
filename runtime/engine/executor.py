@@ -699,20 +699,22 @@ def _resolve_fillers(args: dict, fillers: dict,
                       llm_call: Optional[Callable], query: str) -> dict:
     """Sostituisce ${FILLER:name} con valore risolto via LLM fast +
     default. Niente cache complessa (può essere aggiunta in autopath)."""
+    def _sub_one(m) -> str:
+        """Risolvi OGNI ${FILLER:name} per sé (group del match), non il primo
+        su tutti: un body con due filler distinti deve avere due valori, non il
+        primo duplicato. Spec assente → lascia il placeholder letterale."""
+        name = m.group(1)
+        spec = fillers.get(name)
+        if spec is None:
+            return m.group(0)
+        return _resolve_one_filler(name, spec, llm_call, query)
+
     out: dict = {}
     for k, v in args.items():
-        if isinstance(v, str):
-            m = _FILLER_RE.search(v)
-            if m:
-                name = m.group(1)
-                spec = fillers.get(name)
-                if spec is None:
-                    out[k] = v  # placeholder non risolto, lascia letterale
-                    continue
-                resolved = _resolve_one_filler(name, spec, llm_call, query)
-                out[k] = _FILLER_RE.sub(resolved, v)
-                continue
-        out[k] = v
+        if isinstance(v, str) and _FILLER_RE.search(v):
+            out[k] = _FILLER_RE.sub(_sub_one, v)
+        else:
+            out[k] = v
     return out
 
 

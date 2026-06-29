@@ -812,8 +812,6 @@ def affinity_phrase_recall(query, catalog, *, exclude_names=frozenset(), cap=3):
 
 
 def rank_with_intent(query, catalog, intent, *, k=3):
-    # Skip dormant: come rank_adaptive, vedi _filter_dormant.
-    catalog = _filter_dormant(catalog)
     """Ranking quando un intent_extractor ha gia' identificato verb+object.
 
     Filtra il catalog per `name.startswith(verb_)`; fra i match preferisce
@@ -830,6 +828,8 @@ def rank_with_intent(query, catalog, intent, *, k=3):
     "riassumi le mail importanti": verb=describe non era destructive,
     nessun precursor → describe_entries con history vuota).
     """
+    # Skip dormant: come rank_adaptive, vedi _filter_dormant.
+    catalog = _filter_dormant(catalog)
     verb = (intent or {}).get("verb")
     obj = (intent or {}).get("object")
     if not verb:

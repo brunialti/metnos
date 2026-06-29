@@ -27,6 +27,7 @@ import logging
 import os
 import sqlite3
 import time
+from contextlib import closing
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
@@ -319,14 +320,13 @@ def record_observation(*, turn_id: str, intent: Intent, framework: Framework,
         cid = _assign_cluster(eb)
     ts = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
     try:
-        c = _conn()
-        c.execute(
-            "INSERT INTO observations(turn_id, intent_hash, intent_sig, "
-            "framework_json, framework_hash, cluster_id, embedding, "
-            "latency_ms, ts) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            (turn_id, ihash, sig, fjson, fhash, cid, eb, latency_ms, ts))
-        c.commit()
-        c.close()
+        with closing(_conn()) as c:
+            c.execute(
+                "INSERT INTO observations(turn_id, intent_hash, intent_sig, "
+                "framework_json, framework_hash, cluster_id, embedding, "
+                "latency_ms, ts) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (turn_id, ihash, sig, fjson, fhash, cid, eb, latency_ms, ts))
+            c.commit()
     except Exception as ex:
         log.warning("autopath.record_observation: %r", ex)
     return fhash
@@ -373,6 +373,7 @@ def record_feedback(turn_id: str, verdict: str) -> dict:
     """
     if verdict not in ("ok", "fail", "repeat"):
         return {"ok": False, "reason": "bad_verdict"}
+    c = None
     try:
         c = _conn()
         row = c.execute(
@@ -380,7 +381,6 @@ def record_feedback(turn_id: str, verdict: str) -> dict:
             "cluster_id, latency_ms FROM observations WHERE turn_id = ? "
             "ORDER BY id DESC LIMIT 1", (turn_id,)).fetchone()
         if not row:
-            c.close()
             return {"ok": False, "reason": "no_observation"}
         ihash, sig, fjson, fhash, cid, lat = row
         ts = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
@@ -457,11 +457,13 @@ def record_feedback(turn_id: str, verdict: str) -> dict:
                 (ihash, fhash, 1, ttl, "feedback_repeat", ts))
             out["anti_autopath_repeat"] = True
         c.commit()
-        c.close()
         return out
     except Exception as ex:
         log.warning("autopath.record_feedback: %r", ex)
         return {"ok": False, "reason": str(ex)}
+    finally:
+        if c is not None:
+            c.close()
 
 
 def _promote_autopath(c, ihash: str, sig: str, fhash: str, fjson: str,

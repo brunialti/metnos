@@ -328,10 +328,11 @@ class LLMRouter:
         if tier not in {"fast", "middle", "wise", "frontier"}:
             raise ValueError(f"unknown tier: {tier!r}")
         if tier == "frontier" and tier not in self.tiers:
+            _fm = DEFAULT_TIERS["frontier"]  # SoT model id, mai hardcoded altrove
             raise TierConfigError(
                 "tier 'frontier' richiesto ma non configurato. Aggiungi a "
                 "~/.config/metnos/llm_tiers.toml: [tiers.frontier] "
-                "provider='anthropic' model='claude-opus-4-7'."
+                f"provider='{_fm.get('provider', 'anthropic')}' model='{_fm['model']}'."
             )
         if tier in self._provider_cache:
             return self._provider_cache[tier]

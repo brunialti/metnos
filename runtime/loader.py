@@ -552,13 +552,6 @@ def _catalog_cache_signature(dirs: list) -> tuple:
 
 
 def load_catalog(executors_dir=DEFAULT_EXECUTORS_DIR, verify=True, *, include_synth=True, include_verb_unique=True) -> Catalog:
-    # Test/dev override: env `METNOS_LOADER_VERIFY=0` disabilita la verify
-    # della firma. Use case: server tmp E2E che importa skill al volo via
-    # CLI con `--no-sign`. Senza questo override, gli executor importati
-    # vengono silenziosamente scartati (digest mismatch) e il PLANNER non
-    # li vede mai. NIENTE in produzione.
-    if verify and os.environ.get("METNOS_LOADER_VERIFY", "1") == "0":
-        verify = False
     """Scansiona executors_dir + (opzionale) SYNTHESIZED_EXECUTORS_DIR.
 
     `include_synth=True` (default): carica anche gli executor sintetizzati
@@ -581,6 +574,13 @@ def load_catalog(executors_dir=DEFAULT_EXECUTORS_DIR, verify=True, *, include_sy
     Cache miss: full load + store. La firma copre handcrafted + synth +
     .sig: qualunque modifica invalida la cache.
     """
+    # Test/dev override: env `METNOS_LOADER_VERIFY=0` disabilita la verify
+    # della firma. Use case: server tmp E2E che importa skill al volo via
+    # CLI con `--no-sign`. Senza questo override, gli executor importati
+    # vengono silenziosamente scartati (digest mismatch) e il PLANNER non
+    # li vede mai. NIENTE in produzione.
+    if verify and os.environ.get("METNOS_LOADER_VERIFY", "1") == "0":
+        verify = False
     # Cache key include lang corrente: descrizioni multilingua risolte al
     # load (ADR 0092) usano `config.DEFAULT_LANG` (modulo, non env). Lo
     # leggiamo qui per ogni call → cache hit corretto sui cambi di lingua
