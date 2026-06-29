@@ -168,18 +168,39 @@ def _normalize_tiers_dict(cfg: dict) -> dict:
     return out
 
 
+_TIERS_FILE_CACHE: dict = {"key": None, "tiers": None}
+
+
+def _tiers_from_config() -> dict:
+    """tiers da llm_tiers.toml, con cache invalidata su (path, mtime): il file
+    viene RI-LETTO solo se cambia (prima si ri-parsava il TOML a OGNI call_llm,
+    hot path). Mantiene la semantica «config reload prende effetto» §2.8."""
+    import os
+    path = _default_config_path()
+    try:
+        mtime = os.path.getmtime(path)
+    except OSError:
+        mtime = None
+    key = (str(path), mtime)
+    if _TIERS_FILE_CACHE["key"] != key:
+        try:
+            tiers = _normalize_tiers_dict(_load_config_file(path))
+        except Exception:
+            tiers = {}
+        _TIERS_FILE_CACHE["key"] = key
+        _TIERS_FILE_CACHE["tiers"] = tiers
+    return _TIERS_FILE_CACHE["tiers"] or {}
+
+
 def tier_endpoint(tier: str = "middle") -> str:
     """Endpoint HTTP del tier VIRTUALE — SoT unica per i consumer fuori
     dal router (llm_helpers.call_llm, path deterministico /props +
     /apply-template). Risoluzione: llm_tiers.toml (env
     METNOS_LLM_TIERS_CONFIG > ~/.config/metnos > legacy workspace,
-    ri-letta a ogni chiamata) -> DEFAULT_TIERS; `LOCAL_DEFAULT_ENDPOINT`
+    cache invalidata su mtime) -> DEFAULT_TIERS; `LOCAL_DEFAULT_ENDPOINT`
     solo come ultimo default se nulla e' configurato (tier pure-abstract,
     §7.11). `endpoint`/`base_url` sono alias come nel router."""
-    try:
-        tiers = _normalize_tiers_dict(_load_config_file(_default_config_path()))
-    except Exception:
-        tiers = {}
+    tiers = _tiers_from_config()
     if not tiers:
         tiers = DEFAULT_TIERS
     # Alias come LLMRouter.__init__: middle assente -> wise; poi fast.
