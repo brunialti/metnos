@@ -8,6 +8,8 @@ Run: python3 -m pytest runtime/tests/test_executor_helpers.py -v
 """
 from __future__ import annotations
 
+import io
+import json
 import sys
 import unittest
 from pathlib import Path
@@ -15,6 +17,26 @@ from pathlib import Path
 _RUNTIME = Path(__file__).resolve().parent.parent
 if str(_RUNTIME) not in sys.path:
     sys.path.insert(0, str(_RUNTIME))
+
+from messages import get as _msg  # noqa: E402
+
+
+def _run_stdio(invoke, stdin_text, **kw):
+    """Esegue run_stdio con stdin/stdout finti; ritorna l'output deserializzato.
+
+    Mirror del path subprocess reale: la stringa entra da stdin, l'oggetto JSON
+    esce da stdout (run_stdio fa `import sys` interno → punta a questo modulo
+    `sys` globale, quindi il patch di sys.stdin/sys.stdout funziona)."""
+    from executor_helpers import run_stdio
+    old_in, old_out = sys.stdin, sys.stdout
+    sys.stdin = io.StringIO(stdin_text)
+    sys.stdout = io.StringIO()
+    try:
+        run_stdio(invoke, **kw)
+        raw = sys.stdout.getvalue()
+    finally:
+        sys.stdin, sys.stdout = old_in, old_out
+    return raw
 
 
 class TestNormalizePathsUrls(unittest.TestCase):
@@ -92,6 +114,100 @@ class TestNormalizePathsUrls(unittest.TestCase):
         _ = normalize_paths_urls(args)
         # input non mutato
         self.assertEqual(args, {"urls": ["/local.jpg"]})
+
+
+class TestRunStdio(unittest.TestCase):
+    """run_stdio = single source of truth del main() I/O (§2.1/§2.8). Copre il
+    contratto base + i 3 keyword (default/error_extra/allow_empty) che
+    riproducono fedelmente le varianti del main() copiato negli executor."""
+
+    def test_valid_input_calls_invoke(self):
+        seen = {}
+
+        def invoke(args):
+            seen.update(args)
+            return {"ok": True, "echo": args.get("x")}
+
+        out = json.loads(_run_stdio(invoke, '{"x": 42}'))
+        self.assertEqual(seen, {"x": 42})
+        self.assertEqual(out, {"ok": True, "echo": 42})
+
+    def test_empty_stdin_is_err_empty_input(self):
+        out = json.loads(_run_stdio(lambda a: {"ok": True}, ""))
+        self.assertFalse(out["ok"])
+        self.assertEqual(out["error"], _msg("ERR_EMPTY_INPUT"))
+
+    def test_whitespace_stdin_is_empty(self):
+        out = json.loads(_run_stdio(lambda a: {"ok": True}, "   \n  "))
+        self.assertEqual(out["error"], _msg("ERR_EMPTY_INPUT"))
+
+    def test_invalid_json_is_err_json_invalid(self):
+        out = json.loads(_run_stdio(lambda a: {"ok": True}, "x{not json"))
+        self.assertFalse(out["ok"])
+        self.assertEqual(out["error"], _msg("ERR_JSON_INVALID"))
+
+    def test_invoke_error_propagates_not_masked(self):
+        # invoke() e' fuori dal try sul JSONDecodeError: un suo errore NON
+        # viene mascherato come «JSON non valido».
+        def invoke(args):
+            raise json.JSONDecodeError("boom", "doc", 0)
+
+        with self.assertRaises(json.JSONDecodeError):
+            _run_stdio(invoke, '{"x": 1}')
+
+    def test_allow_empty_calls_invoke_with_empty_dict(self):
+        seen = {}
+
+        def invoke(args):
+            seen["called"] = True
+            seen["args"] = args
+            return {"ok": True, "n": len(args)}
+
+        out = json.loads(_run_stdio(invoke, "", allow_empty=True))
+        self.assertTrue(seen["called"])
+        self.assertEqual(seen["args"], {})
+        self.assertEqual(out, {"ok": True, "n": 0})
+
+    def test_allow_empty_still_errors_on_invalid_json(self):
+        # allow_empty tollera lo stdin VUOTO, non il JSON malformato.
+        out = json.loads(_run_stdio(lambda a: {"ok": True}, "x{",
+                                    allow_empty=True))
+        self.assertEqual(out["error"], _msg("ERR_JSON_INVALID"))
+
+    def test_error_extra_merged_on_invalid(self):
+        extra = {"error_class": "invalid_args", "results": [], "n_created": 0}
+        out = json.loads(_run_stdio(lambda a: {"ok": True}, "{bad",
+                                    error_extra=extra))
+        self.assertFalse(out["ok"])
+        self.assertEqual(out["error"], _msg("ERR_JSON_INVALID"))
+        self.assertEqual(out["error_class"], "invalid_args")
+        self.assertEqual(out["results"], [])
+        self.assertEqual(out["n_created"], 0)
+
+    def test_error_extra_merged_on_empty(self):
+        extra = {"error_class": "invalid_args", "entries": [], "used": 0}
+        out = json.loads(_run_stdio(lambda a: {"ok": True}, "",
+                                    error_extra=extra))
+        self.assertEqual(out["error"], _msg("ERR_EMPTY_INPUT"))
+        self.assertEqual(out["entries"], [])
+        self.assertEqual(out["used"], 0)
+
+    def test_default_serializer_for_non_json_values(self):
+        # senza default=str questo solleverebbe TypeError (crash, §2.8);
+        # con default=str il valore non-serializzabile diventa stringa.
+        class Weird:
+            def __str__(self):
+                return "WEIRD"
+
+        out = json.loads(_run_stdio(lambda a: {"ok": True, "v": Weird()},
+                                    '{"x":1}', default=str))
+        self.assertEqual(out["v"], "WEIRD")
+
+    def test_non_ascii_preserved(self):
+        raw = _run_stdio(lambda a: {"ok": True, "msg": "città però"},
+                         '{"x":1}')
+        # ensure_ascii=False: i caratteri accentati NON sono \uXXXX
+        self.assertIn("città però", raw)
 
 
 if __name__ == "__main__":

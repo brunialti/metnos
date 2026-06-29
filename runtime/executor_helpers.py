@@ -24,32 +24,58 @@ from __future__ import annotations
 from typing import Any
 
 
-def run_stdio(invoke) -> None:
+def run_stdio(invoke, *, default=None, error_extra=None,
+              allow_empty=False) -> None:
     """main() standard di un executor (I/O contract subprocess, §2.1/§2.8): legge
     UN oggetto JSON da stdin, chiama `invoke(args)`, scrive UN oggetto JSON su
     stdout. Gestisce in modo UNIFORME stdin vuoto (ERR_EMPTY_INPUT) e JSON
     invalido (ERR_JSON_INVALID) — mai crash con stdout vuoto. Single source of
     truth del boilerplate `main()` copiato in ~70 executor.
 
+    `invoke` e' chiamato SOLO dopo un parse riuscito (fuori dal try sul
+    JSONDecodeError): un eventuale errore interno di `invoke` propaga come
+    prima (niente mascheramento «JSON non valido» di bug applicativi).
+
+    Parametri keyword-only per riprodurre fedelmente le varianti del main()
+    copiato negli executor esistenti (zero cambi di comportamento §2.8):
+      - `default`: callable passato a `json.dumps(default=...)` per serializzare
+        valori non-JSON nel risultato (es. datetime/Decimal/embedding → `str`).
+        Negli executor che lo usavano: `run_stdio(invoke, default=str)`.
+      - `error_extra`: dict fuso nell'envelope di errore (empty/invalid) per
+        preservare la shape trasformativa/lista §2.6 di quegli executor
+        (es. `{"error_class": "invalid_args", "results": [], "n_created": 0}`).
+      - `allow_empty`: se True, stdin vuoto → `invoke({})` invece di
+        ERR_EMPTY_INPUT (executor genuinamente no-arg: get_now, get_inputs,
+        get_approval, *_signatures, ...).
+
     Uso nel file executor:
         from executor_helpers import run_stdio
         def main():
-            run_stdio(invoke)
+            run_stdio(invoke)            # o (invoke, default=str), ...
         if __name__ == "__main__":
             main()
     """
     import json
     import sys
     from messages import get as _msg
+
+    def _err(code: str) -> dict:
+        out = {"ok": False, "error": _msg(code)}
+        if error_extra:
+            out.update(error_extra)
+        return out
+
     raw = sys.stdin.read()
     if not raw.strip():
-        result = {"ok": False, "error": _msg("ERR_EMPTY_INPUT")}
+        result = invoke({}) if allow_empty else _err("ERR_EMPTY_INPUT")
     else:
         try:
-            result = invoke(json.loads(raw))
+            args = json.loads(raw)
         except json.JSONDecodeError:
-            result = {"ok": False, "error": _msg("ERR_JSON_INVALID")}
-    sys.stdout.write(json.dumps(result, ensure_ascii=False))
+            result = _err("ERR_JSON_INVALID")
+        else:
+            result = invoke(args)
+    sys.stdout.write(json.dumps(result, ensure_ascii=False, default=default))
 
 
 def coerce_cap(args: dict, key: str, default: int, *,
