@@ -21,7 +21,7 @@ en = "SCOPO: delete files (not directories). PATTERN: delete_files(paths=[\"/tmp
 
 [code]
 files  = ["delete_files.py"]
-digest = "sha256:44ecfb481ff08b7b28c60ea4330fa9a8400f43c30e17ea6f94dc0e70f8e1bb99"
+digest = "sha256:aeb18f60f150d4370a98e19964b054980ea40bc8fd6f4d1b3e4eb71d289e76cb"
 
 [args]
 type     = "object"

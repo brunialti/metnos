@@ -20,7 +20,7 @@ en = "SCOPO: move or rename files in batch. PATTERN: move_files(from_step=1, dst
 
 [code]
 files  = ["move_files.py"]
-digest = "sha256:01d1671b5e09e4e85a775d93f9d496f3d237f495856309a33e2ab2a783ac78a2"
+digest = "sha256:16ee86f0977570a2f6e2eed12169d7d839dd83b2940d4a4515656ad2ad9486b8"
 
 [args]
 type     = "object"

@@ -46,7 +46,6 @@ def invoke(args):
     client = args.get("client") or "local"
     backend = _HANDLERS.get(client)
     if backend is None:
-        avail = sorted(_HANDLERS.keys())
         return {"ok": False,
                 "error": _msg("ERR_NOT_APPLICABLE", what=f"client '{client}'")}
     # Per google_workspace: se richiesto `dst_path`/`dst_dir` → download

@@ -45,7 +45,6 @@ def _backend_for(args):
 def invoke(args):
     backend, client = _backend_for(args)
     if backend is None:
-        avail = sorted(_HANDLERS.keys())
         return {"ok": False,
                 "error": _msg("ERR_NOT_APPLICABLE", what=f"client '{client}'")}
     return backend.create_dirs(args)

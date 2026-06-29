@@ -26,7 +26,7 @@ en = "SCOPO: writes a LOCAL sheet (creates it if missing); «save/export data in
 
 [code]
 files  = ["write_files_spreadsheet.py"]
-digest = "sha256:2be6961fdb213479d544493c4edfec27d7ef2e9aa3e8a540b33a7f754084ec7c"
+digest = "sha256:57f6eef376d157a550fed436b46d75ca61f72240559a4539905f1a6c395e8619"
 
 [args]
 type     = "object"

@@ -23,7 +23,7 @@ en = "SCOPO: creates and POPULATES a NEW local .xlsx sheet («save data to sprea
 
 [code]
 files  = ["create_files_spreadsheet.py"]
-digest = "sha256:d53fbe97198ccff69ea9d091d2921d05a10f2b6840ce66191d665099b2aeb21c"
+digest = "sha256:d9ceb5ea8748636b38dd80449f578b5da45864410f40c3f5d81f26a24b51f4e9"
 
 [args]
 type     = "object"

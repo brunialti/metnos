@@ -20,7 +20,7 @@ en = "SCOPO: search contacts in external address book by name/email/phone. PATTE
 
 [code]
 files  = ["find_contacts.py"]
-digest = "sha256:5c8eeb3ef559e87dbabe71b04a8fc7da66c96ff799fad04152fcfa2e33cea305"
+digest = "sha256:96943391714cf5a86ba07b57905b5dc7ec5c1318a14b45cd6641b36e04c1840a"
 
 [args]
 type     = "object"

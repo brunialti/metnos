@@ -24,7 +24,7 @@ en = "SCOPO: grants access permissions to Drive files without duplicating them. 
 
 [code]
 files  = ["share_files.py"]
-digest = "sha256:07af8c144e3cc7ffd2b0c4ae4cc363bc2b1ece0d14af96fc0171b02442b6567e"
+digest = "sha256:306862d60042e11361e2d56b2b92db84a6033f92ec74bf9c3677845564e2038b"
 
 [args]
 type = "object"

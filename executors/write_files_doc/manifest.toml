@@ -23,7 +23,7 @@ en = "SCOPO: append text to an existing Google Doc (.doc). PATTERN: write_files_
 
 [code]
 files  = ["write_files_doc.py"]
-digest = "sha256:81efb3ed739bc4061f10515e5d7cb47c9e92568d9a2757519b96ce221f0684e0"
+digest = "sha256:11509c337d93afb12bcebd4bb466a3ed06da205b10ff774abbf0b73f72881033"
 
 [args]
 type     = "object"

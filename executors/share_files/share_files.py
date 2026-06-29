@@ -53,7 +53,6 @@ def invoke(args):
     client = args.get("client") or _DEFAULT_CLIENT
     backend = _HANDLERS.get(client)
     if backend is None:
-        avail = sorted(_HANDLERS.keys())
         return {"ok": False,
                 "error": _msg("ERR_NOT_APPLICABLE", what=f"client '{client}'")}
     return backend.share(args)

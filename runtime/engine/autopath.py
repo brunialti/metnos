@@ -32,6 +32,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
+from timefmt import now_iso_z
+
 from .types import Intent, Framework
 from . import cluster as _cluster
 from .executor import compute_framework_hash, is_query_specific as _is_query_specific
@@ -318,7 +320,7 @@ def record_observation(*, turn_id: str, intent: Intent, framework: Framework,
     cid = None
     if eb:
         cid = _assign_cluster(eb)
-    ts = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    ts = now_iso_z()
     try:
         with closing(_conn()) as c:
             c.execute(
@@ -383,7 +385,7 @@ def record_feedback(turn_id: str, verdict: str) -> dict:
         if not row:
             return {"ok": False, "reason": "no_observation"}
         ihash, sig, fjson, fhash, cid, lat = row
-        ts = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+        ts = now_iso_z()
         c.execute("UPDATE observations SET verdict = ?, verdict_ts = ? "
                   "WHERE turn_id = ?", (verdict, ts, turn_id))
         out: dict = {"ok": True, "verdict": verdict,
@@ -492,7 +494,7 @@ def _promote_autopath(c, ihash: str, sig: str, fhash: str, fjson: str,
 def excluded_framework_hashes(intent: Intent) -> set[str]:
     """Anti-autopaths attivi (TTL non scaduto) per intent."""
     _, ihash = _compute_intent_sig(intent)
-    ts = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    ts = now_iso_z()
     try:
         c = _conn()
         rows = c.execute(
@@ -523,7 +525,7 @@ _ANTI_COLS = ("intent_hash", "framework_hash", "fail_count",
 
 def stats() -> dict:
     """Aggregati per la dashboard admin."""
-    now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    now = now_iso_z()
     c = _conn()
     try:
         by_status = dict(c.execute(
@@ -567,7 +569,7 @@ def recent_observations(limit: int = 30) -> list[dict]:
 
 def active_anti_autopaths(limit: int = 20) -> list[dict]:
     """Anti-autopath con TTL non scaduto, fail piu' recenti prima."""
-    now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    now = now_iso_z()
     c = _conn()
     try:
         rows = c.execute(

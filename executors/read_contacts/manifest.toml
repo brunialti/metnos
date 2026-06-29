@@ -19,7 +19,7 @@ en = "SCOPO: read one contact from external address book. PATTERN: read_contacts
 
 [code]
 files  = ["read_contacts.py"]
-digest = "sha256:df87bf64a23ffb53d466c6a331f4c7a625201257b009cad9fefa873aac5447af"
+digest = "sha256:e3f00c7e4558a4398c661e6000a7a65956b559b11a7b75dd705859d2a221af8d"
 
 [args]
 type     = "object"

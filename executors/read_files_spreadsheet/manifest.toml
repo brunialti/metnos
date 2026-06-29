@@ -21,7 +21,7 @@ en = "SCOPO: reads all rows from a LOCAL spreadsheet (.xlsx/.csv). PATTERN: read
 
 [code]
 files  = ["read_files_spreadsheet.py"]
-digest = "sha256:d3a1c766128ba9699861c602b7711f08567fd92ccbf6726df11ac825f713a503"
+digest = "sha256:1d9a5997787dce9100eb700b51a233dda97adbaee731ec265f25a05d3c7aaeac"
 
 [args]
 type     = "object"

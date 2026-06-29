@@ -23,7 +23,7 @@ en = "SCOPO: find free slots in the calendar. PATTERN: find_events_empty(time_wi
 
 [code]
 files  = ["find_events_empty.py"]
-digest = "sha256:cd458dbd1f2f28037e6f6ed69459f206ab11484edfa520674aaeeddb4dd82827"
+digest = "sha256:cad2350d15d5e79039b33c7fa8667c7b0c612cca24c1995d260a93029d10ba40"
 
 [args]
 type     = "object"
