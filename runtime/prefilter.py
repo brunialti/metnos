@@ -577,10 +577,6 @@ from vocab import (
     PRODUCER_VERBS as _PRODUCER_VERBS,
 )
 # Tool di manipolazione dati: utili come step intermedi in QUASI tutti i pipeline.
-# Vengono sempre inclusi nei candidati se nel catalog, non aumentano il rumore
-# perche' sono semanticamente neutri (filter, classify_entries era gia' synth-injected).
-_PIPELINE_HELPERS = ("filter_entries",)
-
 # Cross-tool dependencies query-driven: alcuni tool hanno una semantica che
 # richiede UN ALTRO tool come precursor SOLO se la query ha un certo marker.
 # Esempio: find_places funziona stand-alone per query con luogo esplicito

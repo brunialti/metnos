@@ -1059,28 +1059,6 @@ class StubProvider:
         )
 
 
-def make_provider_from_config(mode, runtime_config):
-    """Deprecated post-ADR 0146: use make_provider_from_spec via LLMRouter."""
-    if mode == "local":
-        cfg = runtime_config.get("local", {})
-        # Default flipped to llamacpp+modello locale per ADR 0146. Pass `provider="ollama"`
-        # in cfg to opt back into Ollama (requires `model=` explicit).
-        if cfg.get("provider") == "ollama":
-            return OllamaProvider(
-                model=cfg.get("model"),     # required, no default
-                endpoint=cfg.get("endpoint", "http://localhost:11434"),
-                think=cfg.get("think", False),
-            )
-        return LlamaCppProvider(
-            model=cfg.get("model", "local"),
-            endpoint=cfg.get("endpoint", "http://127.0.0.1:8080"),
-        )
-    elif mode == "online":
-        cfg = runtime_config.get("online", {})
-        return AnthropicProvider(model=cfg.get("model", "claude-haiku-4-5"))
-    raise ValueError(f"unknown mode: {mode}")
-
-
 def make_provider_from_spec(spec):
     """Costruisce un provider da una spec dict {provider, model, ...}.
 

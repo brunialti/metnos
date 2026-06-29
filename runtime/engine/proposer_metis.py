@@ -32,7 +32,7 @@ from typing import Optional, Callable, Sequence
 from .types import Intent, Framework
 from .proposer import (SimpleProposer, _iter_balanced_json_objects,
                        _render_excluded_signal, _render_tool_pool,
-                       _render_prior_steps, _strip_think)
+                       _strip_think)
 
 log = logging.getLogger(__name__)
 
