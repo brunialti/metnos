@@ -23,7 +23,7 @@ en = "SCOPO: find similar images on the web. PATTERN: find_images_web(paths=[\"/
 
 [code]
 files  = ["find_images_web.py"]
-digest = "sha256:38bbcff4c18773c6e67041bdd3f3d193873eaa58e237775cdf8c3cc21870ea2a"
+digest = "sha256:16df0b2e3cea553635ac2ccde7b750af01cbaaaf9c08eba8a6c2d8bc28a55408"
 
 [args]
 type = "object"

@@ -17,7 +17,7 @@ en = "SCOPO: search photos of registered person. PATTERN: find_persons_indices(n
 
 [code]
 files  = ["find_persons_indices.py"]
-digest = "sha256:fcc1d4b5e02416e3e9f5d7ace8a46f088d6f3403385173441e1f023c37078653"
+digest = "sha256:c458b626418a1e3ff6ee814d6d466c64fee57104cea29ef77385f6586645ba88"
 
 [args]
 type     = "object"

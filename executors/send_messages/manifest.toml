@@ -18,7 +18,7 @@ en = "SCOPO: send mail or Telegram messages (vectorial). PATTERN: send_messages(
 
 [code]
 files  = ["send_messages.py"]
-digest = "sha256:0e61bdc4762b878a591b8833dbbd9cbccdf6cede89cd199b2f77ddb254ef7832"
+digest = "sha256:400059d1f141bd5b63afc93c5d5f8660fa3f730b67f8cccbf4e844fd53f5cb31"
 
 [args]
 type     = "object"

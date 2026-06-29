@@ -14,7 +14,7 @@ en = "SCOPO: merges and deduplicates entries from multiple lists. PATTERN: group
 
 [code]
 files  = ["group_entries.py"]
-digest = "sha256:1a6b78b046750fec42a694819d6526d34ccaabc79dfab4fc9ec7384105c6558b"
+digest = "sha256:46a735465b89e80fcba88da43057a5b6fba4b41a3ef2136a8235bb9b072f8234"
 
 [args]
 type     = "object"

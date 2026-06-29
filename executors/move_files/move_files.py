@@ -31,6 +31,7 @@ sys.path.insert(0, os.environ.get("METNOS_RUNTIME") or next(
     str(p / "runtime") for p in Path(__file__).resolve().parents
     if (p / "runtime" / "config.py").is_file()))
 from messages import get as _msg  # noqa: E402
+from executor_helpers import run_stdio  # noqa: E402
 from backends.files import local  # noqa: E402
 
 _HANDLERS = {
@@ -66,12 +67,7 @@ def reverse(plan, results):
 
 
 def main():
-    try:
-        args = json.load(sys.stdin)
-    except json.JSONDecodeError as e:
-        sys.stdout.write(json.dumps({"ok": False, "error": _msg("ERR_JSON_INVALID")}))
-        return
-    sys.stdout.write(json.dumps(invoke(args), ensure_ascii=False))
+    run_stdio(invoke)
 
 
 if __name__ == "__main__":

@@ -17,7 +17,7 @@ en = "SCOPO: ops between TWO lists (A=from_step, B=with_step) on on_keys; delta 
 
 [code]
 files  = ["filter_lists.py"]
-digest = "sha256:94030e7ee235fa4e4dfbf7834cdc71862c5e2d410f191fee78a9381ac492bc35"
+digest = "sha256:cf9be63ae28a5fad2faff2192e49223521f2456f87ce11da16492f00a1167aec"
 
 [args]
 type     = "object"

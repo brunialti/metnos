@@ -23,7 +23,7 @@ en = "SCOPO: find and discover URLs and documents on the web. PATTERN: find_urls
 
 [code]
 files  = ["find_urls.py"]
-digest = "sha256:e37f0fab2b92decd309ccd35fbeb4b67d9a722da2cd6988ccf77f30e8276320f"
+digest = "sha256:9ddc1974f28718fb9eaa61a147e33a48b81a790767a86fcd99e6ea9f67abd1db"
 
 [args]
 type     = "object"

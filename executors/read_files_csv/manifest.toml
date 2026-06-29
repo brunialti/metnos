@@ -16,7 +16,7 @@ en = "SCOPO: reads local CSV files (vectorial §2.1). PATTERN: read_files_csv(pa
 
 [code]
 files  = ["read_files_csv.py"]
-digest = "sha256:bb6dd9b5454941a8c103d906160c895da9f1c523806c49a452188592474d3e69"
+digest = "sha256:1e9e78095d16dc2290ed7cbb716fcb3190811bec28a467b3bdef7c11c6702130"
 
 [args]
 type     = "object"

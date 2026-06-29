@@ -30,7 +30,7 @@ en = "SCOPO: converts files between formats (JPG/PNG/WEBP/GIF, MP4/WEBM, audio).
 
 [code]
 files  = ["change_files_format.py"]
-digest = "sha256:fedba85f752c0edf4fe1c8f3e521285bd2f7823a2647f0abe82fb2c1e8e0449e"
+digest = "sha256:43722cb38468dfb843b8ce0b4438f16639a19cae154e02c01860b54081046310"
 
 [args]
 type     = "object"

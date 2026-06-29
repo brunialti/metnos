@@ -22,7 +22,7 @@ en = "SCOPO: add or remove labels on Gmail messages. PATTERN: set_messages(messa
 
 [code]
 files  = ["set_messages.py"]
-digest = "sha256:95f7ea220bf15c78d9ceed76ae90162ad3817c4cd8ad7159b350a8bb30cb7d3e"
+digest = "sha256:44aed429ae154a638fe26e26de4747ce61ac1fa5485cc747a1274e3c4c591afe"
 
 [args]
 type = "object"

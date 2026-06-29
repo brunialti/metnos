@@ -12,6 +12,7 @@ if str(_RUNTIME) not in sys.path:
     sys.path.insert(0, str(_RUNTIME))
 
 from messages import get as _msg  # noqa: E402
+from executor_helpers import run_stdio  # noqa: E402
 from backends.images.google_vision import find_images_web as _backend  # noqa: E402
 
 
@@ -20,13 +21,7 @@ def invoke(args: dict) -> dict:
 
 
 def main():
-    try:
-        args = json.load(sys.stdin)
-    except json.JSONDecodeError as e:
-        sys.stdout.write(json.dumps({"ok": False,
-                                      "error": _msg("ERR_JSON_INVALID")}))
-        return
-    sys.stdout.write(json.dumps(invoke(args), ensure_ascii=False))
+    run_stdio(invoke)
 
 
 if __name__ == "__main__":

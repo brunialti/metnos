@@ -17,7 +17,7 @@ en = "SCOPO: gets the user's current GPS location. PATTERN: get_location(actor=\
 
 [code]
 files  = ["get_location.py"]
-digest = "sha256:5b270340315e6a0fe330a935baa26f1c42cd8867f93a0b05aaf2f6bc58db00c6"
+digest = "sha256:a57ec1bd286cea708dc3d2aa614ac731c9000a23cd11d31a12368d2d5cf5059a"
 
 [args]
 type     = "object"

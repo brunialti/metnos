@@ -21,7 +21,7 @@ en = "SCOPO: compress a list of files into ONE archive (zip/tar/gz; format from 
 
 [code]
 files  = ["compress_files.py"]
-digest = "sha256:e24bf7940c59df52a8fe33cbd11a69538a6cf0bba3147494379437180da96a8c"
+digest = "sha256:7187f09530784f9fe11780ea38b2ef404b7aa4284f58cae21e7c4cb2417014cb"
 
 [args]
 type     = "object"

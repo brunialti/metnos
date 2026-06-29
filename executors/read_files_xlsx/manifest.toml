@@ -15,7 +15,7 @@ en = "SCOPO: reads local Excel files (.xlsx) (vectorial §2.1). PATTERN: read_fi
 
 [code]
 files  = ["read_files_xlsx.py"]
-digest = "sha256:82574dcccf51b18a23cf09c50ebe0a187a396e8e94451468de0767f6c23ba3b8"
+digest = "sha256:50f32e5bd48f2799e766cc8e2eb8ff9c57a34adec0623b9e83dc17c81a6046a0"
 
 [args]
 type     = "object"

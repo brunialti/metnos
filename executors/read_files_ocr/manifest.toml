@@ -16,7 +16,7 @@ en = "SCOPO: extracts text from images or scanned PDFs (vectorial §2.1). PATTER
 
 [code]
 files  = ["read_files_ocr.py"]
-digest = "sha256:a08eb1b801848ccfeaf73723aa596079d3a85afe1a3a07a7780496f0271407ae"
+digest = "sha256:d3c1cb8b839ed9e6acea944a1f65fd9a7ebb883ac142493b6132b512cfc61e15"
 
 [args]
 type     = "object"

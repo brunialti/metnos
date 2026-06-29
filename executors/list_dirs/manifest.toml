@@ -18,7 +18,7 @@ en = "SCOPO: list directories and files. PATTERN: list_dirs(path=\"/tmp\", recur
 
 [code]
 files  = ["list_dirs.py"]
-digest = "sha256:3db65261bbdd9b559f69ed0a516adffbaf2836db232a502f34fd80dea1a64397"
+digest = "sha256:41c7ecc5f0f0ff4c0082fd0c6c8e32c74990eaa54e6c134a85c329c734610a32"
 
 [args]
 type     = "object"

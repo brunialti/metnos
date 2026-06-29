@@ -16,7 +16,7 @@ en = "SCOPO: calculates descriptive statistics on numbers. PATTERN: describe_num
 
 [code]
 files  = ["describe_numbers.py"]
-digest = "sha256:b871de49c972e002cf3344a99e99465733f47c53d9cb9c6f91cbd485c9ad3e54"
+digest = "sha256:79b5b0173705567a2c784720274973cc24d5e93f9b0e4c14ff9a33d8fa1d2d1e"
 
 [args]
 type     = "object"

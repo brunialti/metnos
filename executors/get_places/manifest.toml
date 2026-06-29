@@ -16,7 +16,7 @@ en = "SCOPO: gets place name from GPS coordinates. PATTERN: get_places(coords=[{
 
 [code]
 files  = ["get_places.py"]
-digest = "sha256:0874ccaef4297ebaf4fee06f8719b92d0d0a74577cbe45007c41e9d1296715df"
+digest = "sha256:0f0e5142c98c495738d568dcb7a5fbdf40ae0c400c0bfbcad817560a01c786ba"
 
 [args]
 type     = "object"

@@ -24,7 +24,7 @@ en = "SCOPO: move messages between folders or labels (vectorial). PATTERN: move_
 
 [code]
 files  = ["move_messages.py"]
-digest = "sha256:6f661e635cd6b6eee4c3e0638495e3172d1d29e3ab8c33fe160cbff0b0f3719b"
+digest = "sha256:182ed03ecda846012e7c33219f342d2661078185b35006cf3873959ebd80ec78"
 
 [args]
 type = "object"

@@ -19,7 +19,7 @@ en = "SCOPO: delete directories (empty or forced). PATTERN: delete_dirs(paths=[\
 
 [code]
 files  = ["delete_dirs.py"]
-digest = "sha256:f10da39e5d010d75f1e716adc8bb7114a6379d535a1046d41688381fb13991f9"
+digest = "sha256:54c9bac6f14de8abab3421d6bf5416838b965afe962a7bd01033346eef2115a3"
 
 [args]
 type     = "object"

@@ -15,7 +15,7 @@ en = "SCOPO: performs web login saving the session cookie. PATTERN: login_sessio
 
 [code]
 files  = ["login_session.py"]
-digest = "sha256:edb156f21a8caa3f3cbb58c70dbc7a7706c57a8bccafaf6b5469d4b70642c8b9"
+digest = "sha256:485c2cd594e692f8f519809f3508d7e210e67c81e14f4848f8bbcdbeb10bdc89"
 
 [args]
 type     = "object"

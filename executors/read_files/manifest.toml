@@ -20,7 +20,7 @@ en = "SCOPO: read local file content (vectorial §2.1). PATTERN: read_files(path
 
 [code]
 files  = ["read_files.py"]
-digest = "sha256:d5be53f55d6a730f3d1a5a54fe922289fe5eadddb13c78f6b3a82aee0e34cbd9"  # sostituito al momento della firma
+digest = "sha256:c799eaa1b643e201a1e4aa79d6c43d9b32e14a0191684e6a6a1d70de42eb476c"  # sostituito al momento della firma
 
 # --- Argomenti accettati (JSON Schema, sottoinsieme v1.1) -------------------
 [args]

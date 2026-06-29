@@ -16,7 +16,7 @@ en = "SCOPO: search files by pattern in directory. PATTERN: find_files(base_path
 
 [code]
 files  = ["find_files.py"]
-digest = "sha256:1b4c4063dcf68370b5e21c77e551162344bf848cf57194e203249e95979ab27a"
+digest = "sha256:3dd52e4b17ae7f201775a92428f37b05fc7f21cc5d92df57e787d7be49407044"
 
 [args]
 type     = "object"
