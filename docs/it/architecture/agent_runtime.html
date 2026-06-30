@@ -846,7 +846,7 @@ auto-installati al primo boot del daemon HTTP via
 <tr><td><code>introvertiva_apply</code></td><td><code>daily@05:30</code></td><td>Auto-apply specialize ad altissima confidenza (dominanza &ge; 0,9, uses &ge; 30, finestra &le; 14g).</td></tr>
 <tr><td><code>proposals_cleanup</code></td><td><code>daily@06:00</code></td><td>Manutenzione lifecycle backlog: archive aged synt_proposals, dedupe candidates, auto-decay legacy_orphan. <strong>NIENTE delete</strong>: solo move + UPDATE.</td></tr>
 <tr><td><code>lifecycle_summary</code></td><td><code>daily@06:30</code></td><td>Aggregatore READ-ONLY dei 4 ager: produce un sunto giornaliero del lifecycle del mnestoma.</td></tr>
-<tr><td><code>skill_sandbox_watchdog</code></td><td><code>daily@06:35</code></td><td>Controlla soglia trigger per sandbox per-skill (&ge; 5 skill third-party OR &ge; 1 guest paired); notifica admin via Telegram.</td></tr>
+<tr><td><code>skill_sandbox_watchdog</code></td><td><code>daily@06:35</code></td><td>Controlla soglia di attivazione per sandbox per-skill (&ge; 5 skill third-party OR &ge; 1 guest paired); notifica admin via Telegram.</td></tr>
 <tr><td><code>promoter_digest</code></td><td><code>daily@07:00</code></td><td>Digest Telegram delle proposte in <em>promoted_grace</em> non ancora approvate dall'utente.</td></tr>
 <tr><td><em>manutenzione GitHub</em></td><td><code>run_user_query</code></td><td>La manutenzione GitHub gira tramite gli executor canonici (<code>find/read/write_issues</code>) guidati da comandi utente schedulati; non c'&egrave; un watcher sempre-attivo.</td></tr>
 </tbody>
