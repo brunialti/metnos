@@ -226,6 +226,51 @@ class EngineUploadDefaultTests(unittest.TestCase):
         self.assertEqual(res.match_source, "upload_default")
         self.assertIn("find_images_indices", seen)
 
+    def test_no_face_falls_back_to_describe_then_content_search(self):
+        # Foto SENZA volto: find_images_indices (volto) fallisce → fallback
+        # describe_images (VLM ricco) → find_images_indices(query_text=scene).
+        # Risolve in `answer` (Roberto 30/6: «serve per una ricerca»).
+        from engine import dispatch
+        from engine.types import Intent
+        calls = []
+
+        def invoke(tool, args):
+            calls.append((tool, dict(args)))
+            if tool == "find_images_indices" and "query_text" not in args:
+                return {"ok": False, "error": "nessun volto",
+                        "error_class": "invalid_args", "entries": []}
+            if tool == "describe_images":
+                return {"ok": True, "query_text": "uno screenshot di un grafico blu",
+                        "entries": [{"path": "/u/a.jpg",
+                                     "description": "uno screenshot di un grafico blu"}]}
+            if tool == "find_images_indices":  # scene search via query_text
+                return {"ok": True, "entries": [{"path": "/sim/x.jpg", "score": 0.8}]}
+            return {"ok": True, "entries": []}
+
+        def llm_wise(*a, **k):
+            raise AssertionError("proposer LLM must NOT be called")
+
+        cat = [_StubExec("find_images_indices", _FIMI_SCHEMA),
+               _StubExec("describe_images", {
+                   "type": "object",
+                   "properties": {
+                       "reference_images": {"type": "array",
+                                             "items": {"type": "string"}},
+                       "query_text": {"type": "string"}}})]
+        res = dispatch.run_turn(
+            query="", intent=Intent(), catalog=cat,
+            invoke_executor_cb=invoke, llm_call_wise=llm_wise,
+            seed_state=self._seed())
+        tools = [t for t, _ in calls]
+        self.assertEqual(res.match_source, "upload_default")
+        self.assertIn("describe_images", tools)            # fallback fired
+        self.assertEqual(tools.count("find_images_indices"), 2)  # volto + scena
+        self.assertEqual(res.final_kind, "answer")
+        # la ricerca per-scena ha ricevuto il query_text dalla describe (piping)
+        scene = next(a for t, a in calls
+                     if t == "find_images_indices" and "query_text" in a)
+        self.assertIn("screenshot", scene["query_text"])
+
     def test_no_seed_no_shortcircuit(self):
         # Senza seed @uploaded lo short-circuit NON scatta (query vuota → flusso
         # normale, qui il proposer-raise NON deve nemmeno essere raggiunto perché

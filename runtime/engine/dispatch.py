@@ -1912,30 +1912,53 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
     # Foto allegate (seed `@uploaded`) con query VUOTA/None: il proposer LLM non
     # ha istruzione da pianificare → ritorna None/solleva → il caller cadeva nel
     # PLANNER legacy (sonda `upload_fallthrough`, unico ingresso 25/6 query=None).
-    # L'azione canonica di un upload è «trova simili» → find_images_indices sul
-    # seed; il seed-wiring di Executor.run auto-inietta `reference_images` via
-    # from_step=1 (parità col path legacy ADR 0092). UNIVERSALE (N foto),
-    # DETERMINISTICO (nessun LLM nel routing). No-op se c'è testo o nessun seed.
+    # Risoluzione a DUE livelli, DETERMINISTICA (nessun LLM nel routing):
+    #   1) similarità VOLTO (ArcFace) — find_images_indices sul seed @uploaded
+    #      (seed-wiring auto-inietta reference_images via from_step=1). Risolve le
+    #      foto di persone (il caso reale di un upload).
+    #   2) se il volto NON risolve (foto senza volto: l'indice locale è solo-volto)
+    #      e c'è describe_images → descrivi il CONTENUTO col VLM (descrizione
+    #      RICCA) e cercala come testo: describe_images → find_images_indices(
+    #      query_text=${step1.query_text}, idx="scene"). Ricerca per contenuto
+    #      contro l'indice VLM → foto simili (o «niente di simile», sempre answer,
+    #      mai un errore §2.8). UNIVERSALE (N foto). No-op se c'è testo o no seed.
     if seed_state and not (query or "").strip():
         try:
-            _up_consumer = next(
-                (t for t in ("find_images_indices", "find_persons_indices")
-                 if t in catalog_names(catalog)), None)
+            _cat = catalog_names(catalog)
             _seed_is_upload = any(getattr(s, "tool", "") == "@uploaded"
                                   for s in seed_state)
-            if _up_consumer and _seed_is_upload:
+            _face = next((t for t in ("find_images_indices",
+                                      "find_persons_indices") if t in _cat), None)
+            if _seed_is_upload and _face:
                 from .types import Framework as _Fw, StepSpec as _St
-                _up_fw = _Fw(steps=[_St(tool=_up_consumer, args={}),
-                                    _St(tool="final_answer", args={})])
-                run = executor.run(_up_fw, query=query, runtime_ctx=runtime_ctx,
+                _fw = _Fw(steps=[_St(tool=_face, args={}),
+                                 _St(tool="final_answer", args={})])
+                run = executor.run(_fw, query=query, runtime_ctx=runtime_ctx,
                                    remediate_args_cb=remediate_args_cb,
                                    progress=progress)
+                # Volto non risolto → descrivi + cerca per contenuto.
+                if (run.final_kind != "answer"
+                        and "describe_images" in _cat
+                        and "find_images_indices" in _cat):
+                    # NB: il seed @uploaded occupa step1 (riferito da from_step=1);
+                    # describe_images è quindi step2 → query_text=${step2.query_text}.
+                    _fw2 = _Fw(steps=[
+                        _St(tool="describe_images", args={}),
+                        _St(tool="find_images_indices",
+                            args={"query_text": "${step2.query_text}",
+                                  "idx": "scene"}),
+                        _St(tool="final_answer", args={})])
+                    run2 = executor.run(_fw2, query=query, runtime_ctx=runtime_ctx,
+                                        remediate_args_cb=remediate_args_cb,
+                                        progress=progress)
+                    if run2.final_kind == "answer":
+                        run, _fw = run2, _fw2
                 return DispatchResult(
                     final_text=run.final_text, final_kind=run.final_kind,
                     match_source="upload_default",
                     framework_hash=run.framework_hash,
                     elapsed_ms=int((time.time() - t_start) * 1000),
-                    run=run, framework=_up_fw)
+                    run=run, framework=_fw)
         except Exception as ex:  # noqa: BLE001 — best-effort, non blocca il turno
             log.warning("upload-default short-circuit noop (best-effort): %r", ex)
 

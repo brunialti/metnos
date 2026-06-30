@@ -308,6 +308,7 @@ _INPROC_TOOL_MODULE_PATHS: tuple[str, ...] = (
     "skill_admin",      # list_skills / set_skills (admin skill da chat, asse 2)
     "store_entries",    # find/write/delete_entries — skill store generico (16/6)
     "compare_entries",  # compare_entries — distanza semantica universale (17/6)
+    "describe_images",  # describe_images — VLM content-describe (upload, 30/6)
 )
 
 
