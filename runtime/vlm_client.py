@@ -135,12 +135,15 @@ def _lazy_start_vlm() -> bool:
 
 
 def describe_image(img_path, *, lang: str | None = None,
+                   prompt: str | None = None,
                    url: str | None = None, model: str | None = None,
                    timeout_s: int | None = None,
                    max_tokens: int | None = None) -> dict:
     """Descrive il CONTENUTO di un'immagine col VLM. Ritorna dict
     {description, keywords, location_hint, activity_hint} (+`_vlm_error` su
     fallimento, mai solleva — fail-safe §2.8). `lang` default da config.
+    `prompt` override del prompt VLM (default = `_describe_prompt(lang)`,
+    ad-hoc per ricerca; create_images_indices passa il suo prompt index-build).
     `max_tokens` default 1024 (descrizione RICCA per ricerca, vs 512 caption)."""
     import base64
     from io import BytesIO
@@ -181,7 +184,7 @@ def describe_image(img_path, *, lang: str | None = None,
         "messages": [{"role": "user", "content": [
             {"type": "image_url",
              "image_url": {"url": f"data:image/jpeg;base64,{b64}"}},
-            {"type": "text", "text": _describe_prompt(lang)},
+            {"type": "text", "text": prompt or _describe_prompt(lang)},
         ]}],
         # temp 0.2 (come il batch-index): tunato per output JSON stabile su
         # qwen3vl. temp=0/seed danno output degenere NON-JSON (no_json_found su

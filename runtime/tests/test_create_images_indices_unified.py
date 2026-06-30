@@ -252,11 +252,13 @@ class TestCreateUnifiedBuilder(unittest.TestCase):
 
 
 class TestParseVlmText(unittest.TestCase):
+    # _parse_vlm_text spostato in runtime/vlm_client.py (SoT VLM, §7.2 dedup
+    # 1/7/2026): create_images_indices._call_vlm vi delega. Test seguono la fn.
 
     def test_parse_clean_json(self):
-        import create_images_indices as cii
+        import vlm_client
         text = '{"description": "x", "keywords": ["a"], "location_hint": "y", "activity_hint": "z"}'
-        out = cii._parse_vlm_text(text)
+        out = vlm_client._parse_vlm_text(text)
         self.assertEqual(out["description"], "x")
         self.assertEqual(out["keywords"], ["a"])
         self.assertEqual(out["location_hint"], "y")
@@ -264,14 +266,14 @@ class TestParseVlmText(unittest.TestCase):
         self.assertNotIn("_vlm_error", out)
 
     def test_parse_code_fenced_json(self):
-        import create_images_indices as cii
+        import vlm_client
         text = '```json\n{"description": "x", "keywords": []}\n```'
-        out = cii._parse_vlm_text(text)
+        out = vlm_client._parse_vlm_text(text)
         self.assertEqual(out["description"], "x")
 
     def test_parse_invalid_returns_error(self):
-        import create_images_indices as cii
-        out = cii._parse_vlm_text("not json")
+        import vlm_client
+        out = vlm_client._parse_vlm_text("not json")
         self.assertIn("_vlm_error", out)
         self.assertEqual(out["description"], "")
 

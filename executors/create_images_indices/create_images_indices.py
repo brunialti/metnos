@@ -46,8 +46,6 @@ import os
 import re
 import sys
 import time
-import urllib.error
-import urllib.request
 from pathlib import Path
 
 # Permetti import dei moduli runtime/. Universal pattern (rename/depth-agnostic):
@@ -422,184 +420,22 @@ def folder_path_context(parent_dir: str, lang: str) -> str:
     return _assemble_path_context(cat, place, label, lang)
 
 
-def _looks_like_connection_refused(err) -> bool:
-    """True se l'eccezione URLError ha causa Connection Refused (server giu').
-    Distingue da timeout/dns-fail/etc che non beneficerebbero di lazy start."""
-    s = str(getattr(err, "reason", err)).lower()
-    return ("refused" in s or "errno 111" in s
-            or "connection refused" in s)
-
-
 def _call_vlm(img_path: Path, *, url: str = _VLM_URL,
               model: str = _VLM_MODEL,
               timeout_s: int = _VLM_TIMEOUT_S) -> dict:
-    """Chiama il VLM su una foto. Ritorna dict con description/keywords/etc.
-
-    Se la call fallisce o il JSON e' invalido, ritorna dict con default
-    vuoti + key `_vlm_error` (deterministic fail-safe; il chiamante decide
-    se contare come fail).
-    """
-    import base64
-    # Downsample lato client a long-edge max 1024 (Qwen2-VL res nativa
-    # ~256 vision token vs ~4000 a piena risoluzione). Mantiene la
-    # qualita' descrittiva su foto naturali e taglia 10x la latenza.
-    try:
-        from io import BytesIO
-        from PIL import Image
-        with Image.open(img_path) as _src:
-            _src.load()
-            _img = _src
-            if _img.mode not in ("RGB", "L"):
-                _img = _img.convert("RGB")
-            elif _img.mode == "L":
-                _img = _img.convert("RGB")
-            _le = max(_img.size)
-            _MAX = _VLM_MAX_EDGE
-            if _le > _MAX:
-                _scale = _MAX / float(_le)
-                _new_size = (
-                    max(1, int(_img.size[0] * _scale)),
-                    max(1, int(_img.size[1] * _scale)),
-                )
-                _img = _img.resize(_new_size, Image.LANCZOS)
-            _buf = BytesIO()
-            _img.save(_buf, format="JPEG", quality=85, optimize=False)
-            b64 = base64.b64encode(_buf.getvalue()).decode("ascii")
-    except OSError as e:
-        return _vlm_fail(f"read_failed: {e!r}")
-    except Exception as e:
-        return _vlm_fail(f"resize_failed: {e!r}")
-
-    data_url = f"data:image/jpeg;base64,{b64}"
-
-    # Lingua corrente da config (DEFAULT_LANG); fallback IT.
+    """Chiama il VLM su una foto (index-build). Plumbing HTTP/parse condivisa
+    in `runtime/vlm_client.py` (SoT, §7.2 dedup 1/7/2026); qui resta solo il
+    prompt index-build (hint cartella/filename). Ritorna {description,
+    keywords, location_hint, activity_hint} (+_vlm_error su fallimento).
+    Test-patchabile via mock.patch.object(cii, "_call_vlm")."""
+    from vlm_client import describe_image as _describe
     try:
         from config import DEFAULT_LANG as _lang  # type: ignore
     except Exception:
         _lang = "it"
-    prompt_text = _vlm_prompt(_lang, img_path.name, img_path.parent.name)
-
-    payload = {
-        "model": model,
-        "messages": [
-            {
-                "role": "user",
-                "content": [
-                    {"type": "image_url", "image_url": {"url": data_url}},
-                    {"type": "text", "text": prompt_text},
-                ],
-            }
-        ],
-        # Params ottimizzati Qwen3-VL Instruct batch (10/5/2026):
-        # temp 0.2 = output stabile ma vario, top_p 0.8 + top_k 20 = Qwen
-        # default. max_tokens 192 = decode rapido (description Metnos
-        # ~80-150 char + keywords ~10 = ~120 tok). presence_penalty 0.0
-        # per caption brevi.
-        "temperature": 0.2,
-        "max_tokens": _VLM_MAX_TOKENS,
-        "top_p": 0.8,
-        "top_k": 20,
-        "presence_penalty": 0.0,
-        "repeat_penalty": 1.0,
-    }
-    # ADR 0121: sanitize surrogates pre-serialization. Filename foto con
-    # encoding storico rotto possono iniettare U+D800..U+DFFF nel prompt.
-    try:
-        # runtime/ già su sys.path dal bootstrap a riga 55 (METNOS_RUNTIME-aware).
-        from utf8_safe import safe_json_dumps as _safe_dumps  # type: ignore
-        body = _safe_dumps(payload).encode("utf-8")
-    except Exception:
-        body = json.dumps(payload).encode("utf-8")
-    req = urllib.request.Request(
-        url,
-        data=body,
-        headers={"Content-Type": "application/json"},
-        method="POST",
-    )
-    # Lazy auto-start: se il VLM server e' giu', Metnos lo accende. La lifecycle
-    # (start + health, una volta per processo) e' CENTRALIZZATA in
-    # `virt.ensure_vlm_up` — l'owner dell'up del VLM e' Metnos (virt), non un
-    # effetto collaterale di questo executor: ogni consumatore la condivide. Se
-    # `virt` non e' importabile (install rotta) si degrada onesto a False.
-    def _lazy_start_vlm() -> bool:
-        try:
-            from virt import ensure_vlm_up
-        except ImportError:
-            return False
-        return ensure_vlm_up()
-    try:
-        with urllib.request.urlopen(req, timeout=timeout_s) as resp:
-            raw = resp.read().decode("utf-8")
-    except urllib.error.URLError as e:
-        if _looks_like_connection_refused(e) and _lazy_start_vlm():
-            try:
-                with urllib.request.urlopen(req, timeout=timeout_s) as resp:
-                    raw = resp.read().decode("utf-8")
-            except (urllib.error.URLError, urllib.error.HTTPError,
-                    TimeoutError, OSError) as e2:
-                return _vlm_fail(f"http_failed_after_lazy_start: {e2!r}")
-        else:
-            return _vlm_fail(f"http_failed: {e!r}")
-    except (urllib.error.HTTPError, TimeoutError, OSError) as e:
-        return _vlm_fail(f"http_failed: {e!r}")
-
-    try:
-        out = json.loads(raw)
-    except json.JSONDecodeError as e:
-        return _vlm_fail(f"resp_not_json: {e!r}")
-
-    try:
-        text = out["choices"][0]["message"]["content"]
-    except (KeyError, IndexError, TypeError):
-        return _vlm_fail("resp_no_message_content")
-
-    return _parse_vlm_text(text)
-
-
-def _parse_vlm_text(text: str) -> dict:
-    """Estrai JSON dall'output VLM. Robusto a wrapping ```json ...```."""
-    s = text.strip()
-    # strip code fences
-    if s.startswith("```"):
-        # rimuovi prima riga e ultima riga ```
-        lines = s.split("\n")
-        if len(lines) >= 2:
-            s = "\n".join(lines[1:-1] if lines[-1].strip().startswith("```") else lines[1:])
-    # tenta parse diretto
-    try:
-        d = json.loads(s)
-    except json.JSONDecodeError:
-        # fallback: cerca prima graffa { e ultima }
-        i = s.find("{")
-        j = s.rfind("}")
-        if i >= 0 and j > i:
-            try:
-                d = json.loads(s[i:j + 1])
-            except json.JSONDecodeError:
-                return _vlm_fail("invalid_json_text")
-        else:
-            return _vlm_fail("no_json_found")
-
-    if not isinstance(d, dict):
-        return _vlm_fail("not_dict")
-
-    # Normalizza shape
-    return {
-        "description": str(d.get("description", "")).strip(),
-        "keywords": [str(k).strip() for k in d.get("keywords", []) if isinstance(k, (str, int, float))],
-        "location_hint": str(d.get("location_hint", "")).strip(),
-        "activity_hint": str(d.get("activity_hint", "")).strip(),
-    }
-
-
-def _vlm_fail(reason: str) -> dict:
-    return {
-        "description": "",
-        "keywords": [],
-        "location_hint": "",
-        "activity_hint": "",
-        "_vlm_error": reason,
-    }
+    prompt = _vlm_prompt(_lang, img_path.name, img_path.parent.name)
+    return _describe(img_path, prompt=prompt, url=url, model=model,
+                     timeout_s=timeout_s, max_tokens=_VLM_MAX_TOKENS)
 
 
 # ── Existing storage I/O ────────────────────────────────────────────────
