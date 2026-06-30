@@ -169,6 +169,12 @@ K. ENROLLMENT / REGISTRO PERSONE («enroll», «enrollment», «enrollement», �
 - OK: "cancella l'enrollment di <nome>" → [delete_persons(names=["<nome>"]), final_answer].
 - ERRORE: "cancella l'enrollment di <nome>" → delete_credentials(bindings=["<nome>"]) (dominio sbagliato: nessuna credenziale esiste).
 
+L. ORA CORRENTE («che ore sono», «che ora è», «orario», «adesso»)
+- DEVI: ora corrente → [get_now(), final_answer], final_message "Sono le ${step1.time}." (l'orario locale, SOLO quello).
+- NON DEVI: aggiungere il fuso all'ora corrente — NIENTE «(UTC)» né «(${step1.timezone})»: rumore, l'utente vuole l'ora.
+- OK: «che ore sono adesso» → final "Sono le ${step1.time}."
+- ERRORE: «che ore sono» → final "Sono le ${step1.time} (${step1.timezone})." (E' UN ERRORE: il fuso è rumore).
+
 FORMATO USCITA (JSON RIGOROSO, nient'altro)
 
 {

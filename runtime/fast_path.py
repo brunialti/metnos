@@ -165,8 +165,8 @@ _FAST_PATTERNS: list[FastPattern] = [
         patterns=_TIME_PATTERNS,
         executor="get_now",
         args={},  # timezone arriva da config.DEFAULT_TIMEZONE in try_fast_path
-        template_it="Sono le {hhmm} ({tz}).",
-        template_en="It's {hhmm} ({tz}).",
+        template_it="Sono le {hhmm}.",
+        template_en="It's {hhmm}.",
     ),
     FastPattern(
         patterns=_DATE_PATTERNS,

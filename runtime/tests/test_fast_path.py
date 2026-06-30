@@ -157,7 +157,8 @@ def test_render_time_template_it():
     assert hit is not None
     msg = hit["render"](_MOCK_OBS)
     assert "14:35" in msg
-    assert "Europe/Rome" in msg
+    # La risposta time NON mostra il fuso (richiesta Roberto 30/6: «togli (UTC)»).
+    assert "Europe/Rome" not in msg
     assert msg.startswith("Sono le")
 
 
@@ -166,7 +167,7 @@ def test_render_time_template_en():
     assert hit is not None
     msg = hit["render"](_MOCK_OBS)
     assert "14:35" in msg
-    assert "Europe/Rome" in msg
+    assert "Europe/Rome" not in msg
     assert msg.startswith("It's")
 
 

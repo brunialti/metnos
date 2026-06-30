@@ -154,6 +154,12 @@ K. ENROLLMENT / PERSONS REGISTRY ("enroll", "enrollment", "enrollement", "enroll
 - OK: "delete <name>'s enrollment" → [delete_persons(names=["<name>"]), final_answer].
 - ERRORE: "delete <name>'s enrollment" → delete_credentials(bindings=["<name>"]) (wrong domain: no credential exists).
 
+L. CURRENT TIME ("what time is it", "what's the time", "now")
+- DEVI: current time → [get_now(), final_answer], final_message "It's ${step1.time}." (the local time, ONLY that).
+- NON DEVI: append the timezone to the current time — NO "(UTC)" nor "(${step1.timezone})": noise, the user wants the time.
+- OK: "what time is it now" → final "It's ${step1.time}."
+- ERRORE: "what time is it" → final "It's ${step1.time} (${step1.timezone})." (THIS IS AN ERROR: the tz is noise).
+
 OUTPUT FORMAT (STRICT JSON, nothing else)
 
 {

@@ -34,15 +34,30 @@ def invoke(args):
         return {"ok": False, "error": _msg("ERR_ARG_INVALID", arg="timezone", reason=str(tz_name))}
 
     now = datetime.now(tz)
+    hhmm = now.strftime("%H:%M")
+    ymd = now.strftime("%Y-%m-%d")
+    # Campi human-utili LIFTATI a top-level (§2.4 al confine OUTPUT): il
+    # PLANNER/engine costruisce final_message con placeholder `${step1.<campo>}`
+    # e indovina nomi naturali (`now`, `time`, `date`). Se il campo vive solo
+    # dentro `metadata`, il placeholder NON risolve e renderizza BLANK in
+    # silenzio (bug live «Sono le  (UTC).», turn 35fddbcc + fastpath appreso
+    # id=203). Esporli a top-level rende risolvibili le forme che l'LLM produce.
+    # `timezone`/`iso` restano SOLO in `metadata` di proposito: esporre il fuso
+    # in cima lo rende prominente e il proposer lo appiccica alla risposta
+    # («(UTC)»), rumore indesiderato sull'ora corrente. `metadata` resta per i
+    # consumer che il fuso lo vogliono davvero (retro-compat).
     return {
         "ok": True,
         "content": now.isoformat(),
+        "now": hhmm,
+        "time": hhmm,
+        "date": ymd,
         "metadata": {
             "timezone": tz_name,
             "iso8601": now.isoformat(),
             "epoch": now.timestamp(),
-            "time": now.strftime("%H:%M"),
-            "date": now.strftime("%Y-%m-%d"),
+            "time": hhmm,
+            "date": ymd,
         },
     }
 
