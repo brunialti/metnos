@@ -78,7 +78,7 @@ CRITICAL PRESERVATION RULES (DO NOT VIOLATE):
 
 1. PLACEHOLDERS — preserve EXACTLY: {{name}}, {{step}}, {{path}}, __VOCAB_ACTIONS__, __VOCAB_OBJECTS__, __VOCAB_QUALIFIERS__, etc. Never translate or alter placeholder names.
 
-2. CANONICAL IDENTIFIERS — keep as-is in both languages (vocabulary closed, EN-only): tool names (find_places, get_location, request_new_executor, request_location_from_user, scratchpad_read, classify_entries, describe_entries, sort_entries, filter_entries, compute_entries, get_now, get_places, find_files, find_dirs, find_packages, list_processes, read_messages, send_messages, move_messages, read_files, write_files, delete_files, move_files, create_dirs, delete_dirs, get_files, get_urls, filter_texts_lines, undo_last_turn, change_images, compress_dirs_gz, compress_files_gz, compute_files, describe_dirs, extract_files_zip, list_dirs, find_files, ...), arg names (from_step, near, radius_km, bounded, queries, max_results, entries, paths, content, dst_template, ...), action verbs (read/write/move/delete/create/find/list/filter/sort/group/classify/get/set/fetch/send/describe/render/extract/compress/compute/compare/change/order), object nouns (files/dirs/packages/messages/events/contacts/places/processes/urls/lines/numbers/images), modifiers (csv/xlsx/ocr/zip/pdf/xml/html/json/text/gz/tar/video/audio/image/hash/size/format/similar).
+2. CANONICAL IDENTIFIERS — keep as-is in both languages (vocabulary closed, EN-only): tool names (find_places, get_location, request_new_executor, request_location_from_user, scratchpad_read, classify_entries, describe_entries, sort_entries, filter_entries, compute_entries, get_now, get_places, find_files, find_dirs, find_packages, list_processes, read_messages, send_messages, move_messages, read_files, write_files, delete_files, move_files, create_dirs, delete_dirs, get_files, get_urls, filter_texts_lines, undo_last_turn, change_images, compress_dirs_gz, compress_files_gz, compute_files, describe_dirs, extract_files_zip, list_dirs, find_files, ...), arg names (from_step, near, radius_km, bounded, queries, max_results, entries, paths, content, dst_template, ...), action verbs (read/write/move/delete/create/find/list/filter/sort/group/classify/get/set/fetch/send/describe/render/extract/compress/compute/compare/change/order), object nouns (files/dirs/packages/messages/events/contacts/places/processes/urls/lines/numbers/images), modifiers (csv/xlsx/ocr/zip/pdf/xml/html/json/text/gz/tar/video/audio/image/hash/size/format/similar). Metnos DOMAIN NOUNS — keep in ENGLISH in ALL target languages, do NOT translate them (e.g. NOT "esecutore"/"manifesto"): executor, executors, manifest, manifests, runtime, planner, synt, fastpath, autopath, scratchpad.
 
 3. STRUCTURAL FORMATTING — preserve LITERALLY: section headers (═══ separators, ## headings), numbered rules (1., 2., 2-bis, 2-ter, 2-quater), DEVI/NON DEVI/OK/ERRORE pattern (translate to YOU MUST/YOU MUST NOT/CORRECT/WRONG keeping uppercase emphasis), bullet lists, indentation, code blocks, JSON examples (translate text fields BUT keep keys/identifiers/values that are technical literally).
 
@@ -296,6 +296,28 @@ PRESCRIPTIVE_MAP_IT_EN: dict[str, str] = {
     "OK:": "OK:",
 }
 
+# Mappa INVERSA EN→IT: canonicalizza i marker §6 quando il TARGET è l'italiano.
+# Senza questa, `_apply_prescriptive_map` applicava la mappa IT→EN ANCHE alle
+# traduzioni EN→IT, RI-INGLESIZZANDO i marker (l'LLM produce «DEVI:» e la mappa
+# lo ributtava a «MUST:» dentro il prompt italiano — bug live candidato
+# synt_code.j2.candidate con «MUST:»/«THIS IS AN ERROR» in IT, 30/6). Ordine:
+# chiavi più lunghe prima (MUST NOT: prima di MUST:).
+PRESCRIPTIVE_MAP_EN_IT: dict[str, str] = {
+    "THIS IS AN ERROR": "E' UN ERRORE",
+    "MUST NOT:": "NON DEVI:",
+    "MUST:": "DEVI:",
+    "ERROR:": "ERRORE:",
+    "OK:": "OK:",
+}
+
+# Selettore per-target: il marker canonico §6 è definito solo per IT↔EN. Per
+# altre lingue (fr/de/es) nessuna mappa fissa → la traduzione LLM dei marker
+# resta com'è (niente ri-canonicalizzazione forzata).
+_PRESCRIPTIVE_MAP_BY_TARGET: dict[str, dict[str, str]] = {
+    "en": PRESCRIPTIVE_MAP_IT_EN,
+    "it": PRESCRIPTIVE_MAP_EN_IT,
+}
+
 # Pattern regex per "preservare letteralmente": il translator NON deve
 # tradurre questi span. Marcati con sentinel UUID prima della call e
 # ripristinati dopo.
@@ -356,14 +378,17 @@ def _restore_invariant_spans(translated: str, mapping: dict[str, str]) -> str:
     return out
 
 
-def _apply_prescriptive_map(text: str) -> str:
-    """Applica la mappa fissa DEVI→MUST etc. dopo la traduzione LLM.
-
-    Word-boundary su `:` finale per evitare false-match dentro parole.
-    Forza l'imperativo prescrittivo che il LLM tende a parafrasare.
-    """
+def _apply_prescriptive_map(text: str, target_lang: str = "en") -> str:
+    """Canonicalizza i marker §6 (DEVI/NON DEVI/OK/ERRORE) nella forma della
+    lingua TARGET, dopo la traduzione LLM. DIREZIONE-AWARE: target=en usa la
+    mappa IT→EN, target=it la mappa EN→IT, altre lingue nessuna mappa (il
+    marker resta come tradotto dall'LLM). Forza l'imperativo prescrittivo che
+    l'LLM tende a parafrasare/lasciare nella lingua sorgente."""
+    mapping = _PRESCRIPTIVE_MAP_BY_TARGET.get(target_lang)
+    if not mapping:
+        return text
     out = text
-    for src, dst in PRESCRIPTIVE_MAP_IT_EN.items():
+    for src, dst in mapping.items():
         out = out.replace(src, dst)
     return out
 
@@ -439,7 +464,7 @@ CRITICAL PRESERVATION RULES:
    - Do NOT drop a sentinel from your output. If you see N sentinels in the source, you MUST emit AT LEAST N sentinels in the output (one for each).
    - Sentinels are idempotent: surrounding text can be translated freely, but the sentinel itself is opaque.
 
-2. CANONICAL IDENTIFIERS — keep as-is in both languages (vocabulary closed, EN-only): tool/executor names (find_files, read_messages, get_now, request_new_executor, classify_entries, describe_entries, sort_entries, filter_entries, compute_entries, compute_files, get_files, get_urls, get_location, get_places, find_packages, list_processes, find_processes, list_dirs, find_dirs, find_urls, login_session, group_entries, send_messages, move_messages, read_files, write_files, delete_files, move_files, create_dirs, delete_dirs, undo_last_turn, change_images, compress_dirs_gz, compress_files_gz, describe_dirs, extract_files_zip, filter_texts_lines, get_inputs, admin, sudoer, scratchpad_read, request_location_from_user, ...), arg names (from_step, near, radius_km, bounded, queries, max_results, entries, paths, content, dst_template, time_window, account, subject_contains, ...), action verbs (read/write/move/delete/create/find/list/filter/sort/group/classify/get/set/send/describe/render/extract/compress/compute/compare/change/order), object nouns (files/dirs/packages/messages/events/contacts/places/processes/urls/numbers/images/signatures/texts/proposals/indices/inputs), modifiers (csv/xlsx/ocr/zip/pdf/xml/html/json/text/gz/tar/video/audio/image/hash/size/format/similar/loc/lines/paragraphs/sentences/pages/segments/scene/persons/gps).
+2. CANONICAL IDENTIFIERS — keep as-is in both languages (vocabulary closed, EN-only): tool/executor names (find_files, read_messages, get_now, request_new_executor, classify_entries, describe_entries, sort_entries, filter_entries, compute_entries, compute_files, get_files, get_urls, get_location, get_places, find_packages, list_processes, find_processes, list_dirs, find_dirs, find_urls, login_session, group_entries, send_messages, move_messages, read_files, write_files, delete_files, move_files, create_dirs, delete_dirs, undo_last_turn, change_images, compress_dirs_gz, compress_files_gz, describe_dirs, extract_files_zip, filter_texts_lines, get_inputs, admin, sudoer, scratchpad_read, request_location_from_user, ...), arg names (from_step, near, radius_km, bounded, queries, max_results, entries, paths, content, dst_template, time_window, account, subject_contains, ...), action verbs (read/write/move/delete/create/find/list/filter/sort/group/classify/get/set/send/describe/render/extract/compress/compute/compare/change/order), object nouns (files/dirs/packages/messages/events/contacts/places/processes/urls/numbers/images/signatures/texts/proposals/indices/inputs), modifiers (csv/xlsx/ocr/zip/pdf/xml/html/json/text/gz/tar/video/audio/image/hash/size/format/similar/loc/lines/paragraphs/sentences/pages/segments/scene/persons/gps). Metnos DOMAIN NOUNS — keep in ENGLISH in ALL target languages, do NOT translate them (e.g. NOT "esecutore"/"manifesto"): executor, executors, manifest, manifests, runtime, planner, synt, fastpath, autopath, scratchpad.
 
 3. STRUCTURAL FORMATTING — preserve LITERALLY: section headers (═══ separators, ## headings), numbered rules (1., 2., 2-bis, 2-ter, 2-quater), bullet lists, indentation, JSON examples (translate human-readable text fields BUT keep keys/identifiers/values that are technical literally).
 
@@ -577,7 +602,7 @@ def translate_prompt_file(role: str, target_lang: str = "en",
             log.warning("role=%s attempt=%d: scrubbed %d hallucinated sentinels",
                           role, attempt + 1, n_scrubbed)
         restored = _restore_invariant_spans(scrubbed, mapping)
-        final = _apply_prescriptive_map(restored)
+        final = _apply_prescriptive_map(restored, target_lang)
 
         ok, errors = _validate_translation(src_text, final)
         last_errors = errors
@@ -701,7 +726,7 @@ def _translate_short_text(source_text: str, *, source_lang: str,
         # string. Collassiamo qualsiasi newline residuo a spazio.
         scrubbed, n_scrubbed = _scrub_unknown_sentinels(cleaned, set(mapping.keys()))
         restored = _restore_invariant_spans(scrubbed, mapping)
-        final = _apply_prescriptive_map(restored)
+        final = _apply_prescriptive_map(restored, target_lang)
         # Collassa newline (description e' single-line in TOML).
         final = _re.sub(r"[ \t]*\n[ \t]*", " ", final).strip()
 

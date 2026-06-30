@@ -125,6 +125,28 @@ class TestPrescriptiveMap(unittest.TestCase):
         out = itx._apply_prescriptive_map(text)
         self.assertIn("THIS IS AN ERROR", out)
 
+    def test_direction_en_to_it_canonicalizes_to_italian(self):
+        # Bug 30/6: traduzione EN→IT RI-INGLESIZZAVA i marker (la mappa IT→EN
+        # girava su ogni traduzione). target='it' DEVE produrre marker ITALIANI.
+        text = "MUST: fare X.\nMUST NOT: fare Y.\nThis is wrong. THIS IS AN ERROR."
+        out = itx._apply_prescriptive_map(text, "it")
+        self.assertIn("DEVI: fare X.", out)
+        self.assertIn("NON DEVI: fare Y.", out)
+        self.assertIn("E' UN ERRORE", out)
+        self.assertNotIn("MUST:", out)
+        self.assertNotIn("MUST NOT:", out)
+        self.assertNotIn("THIS IS AN ERROR", out)
+
+    def test_direction_unknown_lang_is_noop(self):
+        # fr/de/es: nessuna mappa fissa → testo invariato (no ri-canonicalizzazione).
+        text = "DEVI: x. MUST: y."
+        self.assertEqual(itx._apply_prescriptive_map(text, "fr"), text)
+
+    def test_default_target_is_en_backcompat(self):
+        # Default target='en' → comportamento storico IT→EN preservato.
+        self.assertIn("MUST:", itx._apply_prescriptive_map("DEVI: x.", "en"))
+        self.assertIn("MUST:", itx._apply_prescriptive_map("DEVI: x."))
+
 
 class TestExtractPlaceholders(unittest.TestCase):
     def test_extract_simple(self):

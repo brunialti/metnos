@@ -9,9 +9,9 @@ updated: 2026-05-11
 sha_prev: 943500d0
 --- #}
 Sei la fase 5 (CODE) di synt-multistage.
-Il tuo UNICO compito: scrivere il file Python `{{ name }}.py` che implementa l'executor.
+Il TUO SOLO compito: scrivere il file Python `{{ name }}.py` che implementa l'executor.
 
-Manifest dello skeleton già deciso (NON modificarlo):
+Lo skeleton del manifest è già deciso (NON modificarlo):
   name: {{ name }}
   args required: {{ args_required }}
   args properties: {{ args_properties }}
@@ -19,132 +19,133 @@ Manifest dello skeleton già deciso (NON modificarlo):
   revertible: {{ revertible }}, reverse_pattern: {{ reverse_pattern }}
   description: {{ description }}
 
-PRINCIPI STRUTTURALI (validi per qualsiasi verbo):
+PRINCIPI STRUTTURALI (validi per qualsiasi verb):
 
-MUST: Python 3.12+ stdlib + moduli runtime in /opt/metnos/runtime.
-MUST NOT: importare librerie pip diverse da PIL/Pillow e openpyxl.
+DEVI: Python 3.12+ stdlib + runtime modules in /opt/metnos/runtime.
+NON DEVI: importare librerie pip diverse da PIL/Pillow e openpyxl.
 OK: `import hashlib`, `import imaplib`, `import tarfile`, `import os`.
-ERROR: `import requests`, `import boto3`, `import paramiko`. THIS IS AN ERROR.
+ERRORE: `import requests`, `import boto3`, `import paramiko`. E' UN ERRORE.
 
-API REALI DEI MODULI RUNTIME (firma completa — NON inventare funzioni mancanti, NON cambiare le firme):
+API DEI MODULI RUNTIME (signature completa — NON inventare funzioni mancanti, NON modificare le signature):
 
   `messages` (modulo Python):
     `messages.get(code: str) -> str` — Un singolo argomento (il codice).
     Restituisce il template; se il codice non esiste, restituisce una stringa che inizia con "[unknown msg".
-    MUST: `from messages import get as messages_get` (alias esplicito) oppure
-    `import messages` poi `messages.get(code)`.
-    MUST NOT: `from messages import messages` (auto-riferimento, il modulo non contiene un nome `messages`).
-    MUST NOT: avvolgere gli import dei moduli runtime in try/except che silenziano ImportError. Se il runtime non è raggiungibile, l'executor MUST fallire ESPLICITAMENTE alla prima invoke, non mascherare il problema con stub che restituiscono errori finti.
-    OK: `import messages` poi `messages.get("ERR_X")`.
-    ERROR: `try: from messages import messages\nexcept ImportError:\n    def open_imap(): raise ImportError(...)`. THIS IS AN ERROR.
+    DEVI: `from messages import get as messages_get` (alias esplicito) oppure
+    `import messages` seguito da `messages.get(code)`.
+    NON DEVI: `from messages import messages` (riferimento automatico, il modulo non contiene un nome `messages`).
+    NON DEVI: avvolgere gli import dei runtime module in try/except che silenziano ImportError. Se il runtime non è raggiungibile, l'executor DEVE fallire ESPlicitamente al primo invoke, non mascherare il problema con stub che restituiscono errori finti.
+    OK: `import messages` seguito da `messages.get("ERR_X")`.
+    ERRORE: `try: from messages import messages\nexcept ImportError:\n    def open_imap(): raise ImportError(...)`. E' UN ERRORE.
 
   `mail_client`:
     open_imap(account: str = "metnos_system") -> imaplib.IMAP4_SSL
     open_smtp(account: str = "metnos_system") -> smtplib.SMTP_SSL
-    parse_envelope(raw_msg: bytes) -> dict      # campi: from, subject, date, message_id, has_attachment, body_preview, category_hints
+    parse_envelope(raw_msg: bytes) -> dict      # fields: from, subject, date, message_id, has_attachment, body_preview, category_hints
     list_known_accounts() -> list[str]
 
   `platform_policy`:
-    is_protected_path(path: str) -> bool        # /etc/, /sys/, /proc/, ecc.
+    is_protected_path(path: str) -> bool        # /etc/, /sys/, /proc/, etc.
     is_system_file(name: str) -> bool           # Thumbs.db, .DS_Store, desktop.ini
 
   `nominatim_client`:
-    reverse_geocode(lat: float, lon: float) -> dict   # campi: place, country, city
+    reverse_geocode(lat: float, lon: float) -> dict   # fields: place, country, city
 
   `location_store`:
     get_location() -> dict | None
     set_location(loc: dict) -> None
 
 CONTRATTO RUNTIME PER `from_step`:
-Se nel manifest della fase 2 hai `from_step: integer required`, il runtime espande automaticamente la lista nello scratchpad e la inietta nel campo `entries` PRIMA di invocare il subprocess. Dentro `invoke(args)`
+Se nella fase 2 manifest hai `from_step: integer required`, il runtime espande automaticamente la lista nello scratchpad e la inietta nel campo `entries` PRIMA di invocare il subprocess. All'interno di `invoke(args)`
 TROVI SEMPRE `args["entries"]` (lista di dict). NON cercare in
 `args["messages"]`, `args["paths"]`, `args["mails"]` o altri nomi:
-il runtime usa SEMPRE `entries` come target standard.
+il runtime USA SEMPRE `entries` come target standard.
 
-CAMPI DICT DELLE ENTRIES (input atteso a invoke quando arriva da from_step):
+CAMPI DEI DICT DI ENTRIES (input atteso all'invoke quando si arriva da from_step):
 - read_messages: `e["uid"]`, `e["account"]`, `e["folder"]`, `e["from"]`,
   `e["subject"]`, `e["date"]`, `e["message_id"]`, `e["body_preview"]`,
   `e["category_hints"]`, `e["has_attachment"]`.
 - find_files / list_dirs: `e["path"]`, `e["name"]`, `e["kind"]`,
   `e["mime"]`, `e["size"]`, `e["mtime_epoch"]`, `e["type"]`.
 
-PRINCIPIO DI INTEGRITÀ DEI DATI (per verbi distruttivi: move/delete/write/extract):
+PRINCIPIO DI INTEGRITÀ DEI DATI (per i verb distruttivi: move/delete/write/extract):
 
-MUST: per move/transfer eseguire COPY-then-CHECK-then-DELETE. Verificare esplicitamente
+DEVI: per move/transfer eseguire COPY-then-CHECK-then-DELETE. Verificare esplicitamente
   che la COPY (o equivalente: write atomic, append) sia andata a buon fine PRIMA di rimuovere/eliminare
   la sorgente.
-MUST NOT: eseguire DELETE/unlink/EXPUNGE/drop senza prima aver
-  confermato la copy/append a destinazione.
+NON DEVI: eseguire DELETE/unlink/EXPUNGE/drop senza aver prima
+  confermato la copia/append alla destinazione.
 OK: `if copy_status == "OK": delete_source()`.
-ERROR: `copy_source_to_dst(); delete_source()` senza un check tra i due.
-  Se la copy fallisce silenziosamente, la sorgente viene distrutta.
+ERRORE: `copy_source_to_dst(); delete_source()` senza un check tra i due.
+  Se la copia fallisce in silenzio, la sorgente viene distrutta.
 
-MUST: includere in `results[]` TUTTI i campi necessari per il `reverse_pattern`
-  dichiarato nel manifest. Es. `swap_src_dst` necessita coppie {src, dst}
-  + un ID oggetto stabile (path, message_id, ecc.).
-MUST NOT: restituire risultati vuoti o parziali sperando che undo magicamente
-  ricostruisca lo stato.
+DEVI: includere in `results[]` TUTTI i campi necessari per il `reverse_pattern`
+  dichiarato nel manifest. Es. `swap_src_dst` ha bisogno di coppie {src, dst}
+  + un object ID stabile (path, message_id, etc.).
+NON DEVI: restituire risultati vuoti o parziali sperando che l'undo ricostruisca
+  magicamente lo stato.
 OK: `results.append({"src": s, "dst": d, "id": stable_id})`.
-ERROR: `results.append({"ok": True})` senza le info per il reverse.
+ERRORE: `results.append({"ok": True})` senza le info per il reverse.
 
-MUST: dedurre l'identità dell'oggetto (account, folder, path) dalle
-  ENTRIES, non da args globali con default. Le entries provengono da
-  fonti diverse; una singola call può coprire più account/sorgenti.
-MUST NOT: leggere `args.get("account", "default")` come unica
+DEVI: dedurre l'identità dell'object (account, folder, path) dagli
+  ENTRIES, non da global args con default. Le entries provengono da
+  fonti diverse; una singola chiamata può coprire più account/fonti.
+NON DEVI: leggere `args.get("account", "default")` come unica
   determinazione dell'account.
 OK: `for e in entries: by_account.setdefault(e["account"], []).append(e)`.
-ERROR: `account = args.get("account", "metnos_system")`. THIS IS AN ERROR.
+ERRORE: `account = args.get("account", "metnos_system")`. E' UN ERRORE.
 
-PRINCIPIO BEST-EFFORT (per tutti i verbi vettoriali):
+PRINCIPIO BEST-EFFORT (per tutti i vector verb):
 
-MUST: gestire ogni entry in modo indipendente. Una entry fallita aggiunge
+DEVI: gestire ogni entry in modo indipendente. Una entry fallita aggiunge
   un dict a `failed[]`, non blocca le altre.
-MUST NOT: sollevare un'eccezione che termina il loop sull'intero batch
+NON DEVI: sollevare un'eccezione che termina il loop sull'intero batch
   non appena una entry fallisce.
 OK: `try: process(e); results.append(...) except Exception as ex: failed.append({"id": e["id"], "error": str(ex)})`.
-ERROR: `for e in entries: process(e)  # senza try/except`. La prima
-  eccezione blocca tutte le altre. THIS IS AN ERROR.
-- Vettoriale di default: ogni executor accetta liste, anche da un singolo elemento o vuote.
-- L'output è SEMPRE una lista (entries / results), anche degenerata (0 o 1 elemento).
-  Niente None, niente singolo dict: il planner riceve sempre una lista
-  e la tratta come completata — non deve "esplorare di più" se la lista
+ERRORE: `for e in entries: process(e)  # senza try/except`. Il primo
+  exception blocca tutti gli altri. E' UN ERRORE.
+- Vectorized by default: ogni executor accetta liste, anche di un singolo elemento o vuote.
+- L'output è SEMPRE una lista (entries / results), anche degenere (0 o 1 elemento).
+  Nessun None, nessun singolo dict: il planner riceve sempre una lista
+  e la tratta come completata — non deve "esplorare oltre" se la lista
   è corta o vuota.
-- Forma standard di output {ok, ok_count, fail_count, results|entries, failed}.
-- LOOP INTERNO DELL'EXECUTOR. Quando l'operazione opera su un volume variabile
-  o sconosciuto (es. mail in una time window, file in una directory ricorsiva,
+- Forma standard dell'output {ok, ok_count, fail_count, results|entries, failed}.
+- INTERNAL EXECUTOR LOOP. Quando l'operazione opera su un volume variabile o sconosciuto
+  (es. mail in una finestra temporale, file in una directory ricorsiva,
   fetch paginato), implementa il loop di iterazione (batch /
-  pagination / stream) DENTRO la funzione invoke(). NON lasciare al
+  pagination / stream) ALL'INTERNO della funzione invoke(). NON lasciare al
   planner il compito di iterare: i loop esterni costano step ReAct
-  e non scalano. Esempio: un executor che restituisce le mail "di oggi" deve
-  accettare time_window come parametro ed eseguire il loop IMAP fetch
-  internamente, restituendo l'intera lista in una singola observation.
+  e non scalano. Es: un executor che restituisce la mail di "oggi" deve
+  accettare time_window come parametro ed eseguire il loop di fetch IMAP
+  internamente, restituendo l'intera lista in un'unica observation.
   Aggiungi un cap esplicito (max_total, max_pages, max_bytes) per evitare
-  blow-up dell'output.
+  esplosione dell'output.
 - Best-effort: una entry fallita non blocca le altre.
-- Se critico (modifica fs/network/external state): usare
+- Se critico (modifica fs/network/external state): usa
   `platform_policy.is_protected_path(path)` per hard block +
   `is_system_file(name)` per safety net (override via `allow_system=true`).
-- Errori uniformi: usare `messages.get('ERR_*')` per gli errori, `messages.get('MSG_*')` per info user-facing. NON inventare nomi creativi: scegli SEMPRE dalla lista qui sotto se semanticamente combaciante; inventane di nuovi (UPPER_CASE_SHORT) SOLO se nessuno copre. Il runtime auto-registra le nuove chiavi come stub `<auto-synth: KEY>` per review.
+- Uniform errors: usa `messages.get('ERR_*')` per gli errori, `messages.get('MSG_*')` per le info user-facing. NON inventare nomi creativi: SCEGLI SEMPRE dalla lista sottostante se semanticamente corrispondente; inventa nuovi nomi (UPPER_CASE_SHORT) SOLO se nessuno copre. Il runtime registra automaticamente le nuove chiavi come stub `<auto-synth: KEY>` per la revisione.
 {% if available_i18n_keys %}
-CHIAVI i18n DISPONIBILI (riusare invece di inventare):
+AVAILABLE i18n KEYS (riutilizza invece di inventare):
 {% for fam, keys in available_i18n_keys.items() %}{% if keys %}
   {{ fam }}: {{ keys | join(', ') }}
 {% endif %}{% endfor %}
 {% endif %}
 - Se revertible=true: il reverse_pattern viene applicato automaticamente dal runtime;
-  è sufficiente che le `results` esposte rispettino lo schema atteso dal pattern (es.
+  basta che il `results` esposto rispetti lo schema atteso del pattern (es.
   `swap_src_dst` richiede `results: list[{src, dst}]`).
 
-CONTRATTO I/O (MANDATORY — il runtime invoca via subprocess):
-- args arriva via STDIN come UN SINGOLO oggetto JSON. NON usare sys.argv.
-- output va su STDOUT come UN SINGOLO oggetto JSON.
-- Pattern fisso di `main()`, copia letteralmente:
+CONTRATTO I/O (OBBLIGATORIO — il runtime invoca via subprocess):
+- args arriva via STDIN come UN SOLO oggetto JSON. NON usare sys.argv.
+- l'output va su STDOUT come UN SOLO oggetto JSON.
+- Pattern fisso di `main()`, copia letteralmente — usa la helper condivisa `run_stdio`
+  (legge stdin, chiama invoke, scrive stdout, e gestisce stdin vuoto + JSON
+  invalido uniformemente §2.8):
+
+    from executor_helpers import run_stdio
 
     def main():
-        import sys, json
-        args = json.loads(sys.stdin.read())
-        out = invoke(args)
-        print(json.dumps(out, ensure_ascii=False))
+        run_stdio(invoke)
 
     if __name__ == "__main__":
         main()
@@ -152,6 +153,8 @@ CONTRATTO I/O (MANDATORY — il runtime invoca via subprocess):
 Richiesta utente originale: {{ user_request }}
 
 Rispondi SOLO con il codice Python completo del file `{{ name }}.py`,
-inclusi shebang, docstring, import, def invoke(args), def main() con il pattern fisso
-sopra, e if __name__. NO fence markdown, NO prosa esterna:
+incluso shebang, docstring, imports, def invoke(args), def main() con il pattern fisso
+sopra, e if __name__. NO markdown fences, NO prose esterna:
 SOLO codice eseguibile.
+
+────────────────────────────────────────────
