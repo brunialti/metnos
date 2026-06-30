@@ -5105,7 +5105,15 @@ def _try_engine_v2(
     # Intent extraction
     intent_raw = extract_intent(query, _llm_call_fast)
     if not intent_raw:
-        return None
+        # Upload SENZA testo (foto senza caption): extract_intent(None/"")→None,
+        # ma c'è un INPUT da gestire. NON cadere nel PLANNER legacy (era qui la
+        # causa della sonda upload_fallthrough 25/6): prosegui all'engine con
+        # intent VUOTO → lo short-circuit upload-default di dispatch.run_turn
+        # instrada find_images_indices sul seed @uploaded (deterministico §7.9).
+        # Senza upload, query vuota = niente da fare → None (flusso invariato).
+        if not reference_images:
+            return None
+        intent_raw = {}
     intent = Intent(
         verb=(intent_raw.get("verb") or "").lower(),
         object=(intent_raw.get("object") or "").lower(),

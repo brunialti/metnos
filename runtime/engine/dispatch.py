@@ -1821,6 +1821,11 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
       DispatchResult con final_text/kind + match_source per debug/telemetry.
     """
     t_start = time.time()
+    # Difesa §2.8/§7.9: un turno foto-upload SENZA testo arriva con query=None
+    # (caso reale 25/6 sonda upload_fallthrough). Coerci a "" SUBITO così i
+    # pre-stadi (decontaminazione/pool) non sollevano su None e lo short-circuit
+    # upload-default sotto può fidarsi che `query` sia una stringa.
+    query = query or ""
     # De-contaminazione oggetti-clausola (v3, 19/6): a 7-8 clausole l'LLM ancora
     # una clausola all'oggetto di una vicina (foto→files dopo «file»). Corregge
     # via _OBJECT_HINTS (funzione canonica) PRIMA di tutto. Gated is_v3().
@@ -1902,6 +1907,37 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
                 run=run, framework=_undo_fw)
     except Exception as ex:  # noqa: BLE001 — best-effort, non blocca il turno
         log.warning("undo short-circuit noop (best-effort): %r", ex)
+
+    # ── Upload SENZA testo → default DETERMINISTICO (§7.9, ADR 0177 M1) ───
+    # Foto allegate (seed `@uploaded`) con query VUOTA/None: il proposer LLM non
+    # ha istruzione da pianificare → ritorna None/solleva → il caller cadeva nel
+    # PLANNER legacy (sonda `upload_fallthrough`, unico ingresso 25/6 query=None).
+    # L'azione canonica di un upload è «trova simili» → find_images_indices sul
+    # seed; il seed-wiring di Executor.run auto-inietta `reference_images` via
+    # from_step=1 (parità col path legacy ADR 0092). UNIVERSALE (N foto),
+    # DETERMINISTICO (nessun LLM nel routing). No-op se c'è testo o nessun seed.
+    if seed_state and not (query or "").strip():
+        try:
+            _up_consumer = next(
+                (t for t in ("find_images_indices", "find_persons_indices")
+                 if t in catalog_names(catalog)), None)
+            _seed_is_upload = any(getattr(s, "tool", "") == "@uploaded"
+                                  for s in seed_state)
+            if _up_consumer and _seed_is_upload:
+                from .types import Framework as _Fw, StepSpec as _St
+                _up_fw = _Fw(steps=[_St(tool=_up_consumer, args={}),
+                                    _St(tool="final_answer", args={})])
+                run = executor.run(_up_fw, query=query, runtime_ctx=runtime_ctx,
+                                   remediate_args_cb=remediate_args_cb,
+                                   progress=progress)
+                return DispatchResult(
+                    final_text=run.final_text, final_kind=run.final_kind,
+                    match_source="upload_default",
+                    framework_hash=run.framework_hash,
+                    elapsed_ms=int((time.time() - t_start) * 1000),
+                    run=run, framework=_up_fw)
+        except Exception as ex:  # noqa: BLE001 — best-effort, non blocca il turno
+            log.warning("upload-default short-circuit noop (best-effort): %r", ex)
 
     # ── Layer 0: Fastpath ────────────────────────────────────────────────
     # Seed-state (ADR 0177 M1): con seed (foto allegate) salta L0/L1 — un turno

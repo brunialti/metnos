@@ -175,6 +175,77 @@ class EngineSeedUploadsTests(unittest.TestCase):
         self.assertNotIn("reference_images", seen.get("get_now", {}))
 
 
+class EngineUploadDefaultTests(unittest.TestCase):
+    """Upload SENZA testo → default DETERMINISTICO find_images_indices nel
+    dispatch.run_turn (ADR 0177 M1, chiude il gate legacy upload_fallthrough).
+    Il proposer LLM NON deve essere chiamato (routing deterministico §7.9)."""
+
+    def _seed(self):
+        obs = {"ok": True, "entries": [
+            {"path": "/u/a.jpg", "reference_image": "/u/a.jpg",
+             "source": "upload"}],
+            "_virtual": True, "_kind": "uploaded_reference_images", "n": 1}
+        return [StepRun(step_idx=0, tool="@uploaded",
+                        args={"source": "upload", "n": 1},
+                        result=obs, ok=True, latency_ms=0, kind="input")]
+
+    def _run(self, query):
+        from engine import dispatch
+        from engine.types import Intent
+        seen = {}
+
+        def invoke(tool, args):
+            seen[tool] = dict(args)
+            return {"ok": True, "entries": [{"path": "/r/x.jpg", "score": 0.9}]}
+
+        def llm_wise(*a, **k):
+            raise AssertionError("proposer LLM must NOT be called (deterministic)")
+
+        cat = [_StubExec("find_images_indices", _FIMI_SCHEMA)]
+        res = dispatch.run_turn(
+            query=query, intent=Intent(), catalog=cat,
+            invoke_executor_cb=invoke, llm_call_wise=llm_wise,
+            seed_state=self._seed())
+        return res, seen
+
+    def test_empty_query_routes_find_images_no_proposer(self):
+        res, seen = self._run("")
+        self.assertEqual(res.match_source, "upload_default")
+        self.assertIn("find_images_indices", seen)
+        self.assertEqual(seen["find_images_indices"].get("reference_images"),
+                         ["/u/a.jpg"])
+
+    def test_none_query_coerced_same_route(self):
+        # query=None: il caso REALE 25/6 (upload senza testo). Non crasha.
+        res, seen = self._run(None)
+        self.assertEqual(res.match_source, "upload_default")
+        self.assertIn("find_images_indices", seen)
+
+    def test_whitespace_query_is_blank(self):
+        res, seen = self._run("   \n ")
+        self.assertEqual(res.match_source, "upload_default")
+        self.assertIn("find_images_indices", seen)
+
+    def test_no_seed_no_shortcircuit(self):
+        # Senza seed @uploaded lo short-circuit NON scatta (query vuota → flusso
+        # normale, qui il proposer-raise NON deve nemmeno essere raggiunto perché
+        # non c'è seed: verifichiamo che NON sia upload_default).
+        from engine import dispatch
+        from engine.types import Intent
+
+        def invoke(tool, args):
+            return {"ok": True, "entries": []}
+
+        def llm_wise(*a, **k):
+            return None  # proposer "vuoto" → terminator (non upload_default)
+
+        cat = [_StubExec("find_images_indices", _FIMI_SCHEMA)]
+        res = dispatch.run_turn(
+            query="", intent=Intent(), catalog=cat,
+            invoke_executor_cb=invoke, llm_call_wise=llm_wise, seed_state=None)
+        self.assertNotEqual(res.match_source, "upload_default")
+
+
 class EngineSeedDoneDedupTests(unittest.TestCase):
     """Guardia dedup «semina» kind="done" (ADR 0177 M1): continuazione dialogo.
     Uno step seminato come GIÀ ESEGUITO non va ri-eseguito se il proposer lo
