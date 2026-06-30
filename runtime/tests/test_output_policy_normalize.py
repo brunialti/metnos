@@ -27,13 +27,13 @@ def _fw(steps, final=""):
 
 class TestNormalizeGallery(unittest.TestCase):
     def test_foto_senza_verbo_drop_describe_e_header(self):
-        # «foto di silvia al mare» → ENUMERATE×images → G
-        fw = _fw([("find_images_indices", {"query": "silvia mare"}),
+        # «foto di ospite al mare» → ENUMERATE×images → G
+        fw = _fw([("find_images_indices", {"query": "ospite mare"}),
                   ("describe_entries", {"from_step": 1}),
                   ("final_answer", {})],
                  final="${step2.summary}")
         out, info = normalize_terminal(
-            fw, Intent(verb="find", object="images"), "foto di silvia al mare")
+            fw, Intent(verb="find", object="images"), "foto di ospite al mare")
         self.assertEqual(info["mode"], G)
         self.assertEqual(info["action"], "drop_describe+final")
         tools = [s.tool for s in out.steps]
@@ -81,11 +81,11 @@ class TestNormalizeGallery(unittest.TestCase):
 
 class TestNormalizeScalar(unittest.TestCase):
     def test_count_marker_totale(self):
-        fw = _fw([("find_images_indices", {"query": "silvia"}),
+        fw = _fw([("find_images_indices", {"query": "ospite"}),
                   ("describe_entries", {"from_step": 1}),
                   ("final_answer", {})])
         out, info = normalize_terminal(
-            fw, Intent(verb="find", object="images"), "quante foto di silvia")
+            fw, Intent(verb="find", object="images"), "quante foto di ospite")
         self.assertEqual(info["mode"], S)
         self.assertNotIn("describe_entries", [s.tool for s in out.steps])
         self.assertIn("${step1.@count}", out.final_message)

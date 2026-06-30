@@ -97,7 +97,7 @@ def test_delete_persons_entries_from_step(isolated_db):
 def test_delete_persons_all_purges_registry(isolated_db):
     _enroll("Matteo", seed=1, n=2)
     _enroll("Anna", seed=10, n=1)
-    _enroll("Silvia Buffa", seed=20, n=3)
+    _enroll("Ospite Alfa", seed=20, n=3)
     out = dp.invoke({"all": True})
     assert out["ok"] is True
     assert out["n_removed"] == 3
@@ -152,34 +152,34 @@ def test_delete_persons_entries_no_usable_names(isolated_db):
 
 
 def test_delete_persons_chosen_slugs_batch(isolated_db):
-    _enroll("Silvia Buffa", seed=1, n=2)
-    _enroll("Silvia Rossi", seed=10, n=1)
-    out = dp.invoke({"chosen_slugs": ["silvia_buffa", "silvia_rossi"]})
+    _enroll("Ospite Alfa", seed=1, n=2)
+    _enroll("Ospite Beta", seed=10, n=1)
+    out = dp.invoke({"chosen_slugs": ["ospite_alfa", "ospite_beta"]})
     assert out["ok"] is True
     assert out["n_removed"] == 2
     assert out["removed_examples_total"] == 3
 
 
 def test_delete_persons_resume_multistep_vars(isolated_db):
-    _enroll("Silvia Buffa", seed=1, n=2)
+    _enroll("Ospite Alfa", seed=1, n=2)
     _enroll("Anna Bianchi", seed=10, n=1)
     out = dp.invoke({
-        "chosen_slug__Silvia": "silvia_buffa",
+        "chosen_slug__Ospite": "ospite_alfa",
         "chosen_slug__Anna": "anna_bianchi",
     })
     assert out["ok"] is True
     assert out["n_removed"] == 2
     slugs = sorted(r["slug"] for r in out["results"])
-    assert slugs == ["anna_bianchi", "silvia_buffa"]
+    assert slugs == ["anna_bianchi", "ospite_alfa"]
 
 
 def test_delete_persons_ambiguous_in_batch_returns_dialog(isolated_db):
     _enroll("Matteo", seed=1, n=1)
-    _enroll("Silvia Buffa", seed=10, n=1)
-    _enroll("Silvia Rossi", seed=20, n=1)
-    out = dp.invoke({"names": ["Matteo", "Silvia"]})
+    _enroll("Ospite Alfa", seed=10, n=1)
+    _enroll("Ospite Beta", seed=20, n=1)
+    out = dp.invoke({"names": ["Matteo", "Ospite"]})
     # Matteo non ambiguo → cancellato.
-    # Silvia ambiguo → dialog.
+    # Ospite ambiguo → dialog.
     assert out["ok"] is True
     assert out["decision"] == "needs_inputs"
     assert out["n_removed"] == 1  # solo matteo
@@ -188,8 +188,8 @@ def test_delete_persons_ambiguous_in_batch_returns_dialog(isolated_db):
     reg = persons_registry.PersonsRegistry()
     try:
         assert reg.get("matteo") is None
-        assert reg.get("silvia_buffa") is not None
-        assert reg.get("silvia_rossi") is not None
+        assert reg.get("ospite_alfa") is not None
+        assert reg.get("ospite_beta") is not None
     finally:
         reg.close()
 
@@ -242,17 +242,17 @@ def test_delete_persons_unknown(isolated_db):
 
 
 def test_delete_persons_token_match(isolated_db):
-    _enroll("Silvia Buffa", seed=1, n=2)
-    out = dp.invoke({"name": "Silvia"})
+    _enroll("Ospite Alfa", seed=1, n=2)
+    out = dp.invoke({"name": "Ospite"})
     assert out["ok"] is True
-    assert out["results"][0]["slug"] == "silvia_buffa"
+    assert out["results"][0]["slug"] == "ospite_alfa"
     assert out["results"][0]["removed_examples"] == 2
 
 
 def test_delete_persons_ambiguous_returns_needs_inputs(isolated_db):
-    _enroll("Silvia Buffa", seed=1, n=1)
-    _enroll("Silvia Rossi", seed=10, n=1)
-    out = dp.invoke({"name": "Silvia"})
+    _enroll("Ospite Alfa", seed=1, n=1)
+    _enroll("Ospite Beta", seed=10, n=1)
+    out = dp.invoke({"name": "Ospite"})
     assert out["ok"] is True
     assert out["decision"] == "needs_inputs"
     assert out["ambiguous"] is True
@@ -267,42 +267,42 @@ def test_delete_persons_ambiguous_returns_needs_inputs(isolated_db):
     # Niente delete avvenuto
     reg = persons_registry.PersonsRegistry()
     try:
-        assert reg.get("silvia_buffa") is not None
-        assert reg.get("silvia_rossi") is not None
+        assert reg.get("ospite_alfa") is not None
+        assert reg.get("ospite_beta") is not None
     finally:
         reg.close()
 
 
 def test_delete_persons_chosen_slug_bypass(isolated_db):
-    _enroll("Silvia Buffa", seed=1, n=2)
-    _enroll("Silvia Rossi", seed=10, n=1)
-    out = dp.invoke({"name": "Silvia", "chosen_slug": "silvia_buffa"})
+    _enroll("Ospite Alfa", seed=1, n=2)
+    _enroll("Ospite Beta", seed=10, n=1)
+    out = dp.invoke({"name": "Ospite", "chosen_slug": "ospite_alfa"})
     assert out["ok"] is True
-    assert out["results"][0]["slug"] == "silvia_buffa"
+    assert out["results"][0]["slug"] == "ospite_alfa"
     assert out["results"][0]["removed_examples"] == 2
     # Rossi intatto
     reg = persons_registry.PersonsRegistry()
     try:
-        assert reg.get("silvia_buffa") is None
-        assert reg.get("silvia_rossi") is not None
+        assert reg.get("ospite_alfa") is None
+        assert reg.get("ospite_beta") is not None
     finally:
         reg.close()
 
 
 def test_delete_persons_chosen_slug_unknown(isolated_db):
-    _enroll("Silvia Buffa", seed=1, n=1)
+    _enroll("Ospite Alfa", seed=1, n=1)
     out = dp.invoke({"name": "anything", "chosen_slug": "ghost_slug"})
     assert out["ok"] is False
     assert "non trovato" in out["error"]
 
 
 def test_delete_persons_dialog_options_listed(isolated_db):
-    _enroll("Silvia Buffa", seed=1, n=2)
-    _enroll("Silvia Rossi", seed=10, n=1)
-    out = dp.invoke({"name": "Silvia"})
+    _enroll("Ospite Alfa", seed=1, n=2)
+    _enroll("Ospite Beta", seed=10, n=1)
+    out = dp.invoke({"name": "Ospite"})
     options = out["needs_inputs"]["dialog"][0]["schema"]["options"]
     slugs = sorted(o["value"] for o in options)
-    assert slugs == ["silvia_buffa", "silvia_rossi"]
+    assert slugs == ["ospite_alfa", "ospite_beta"]
 
 
 def test_delete_with_backup_purges_crops_and_reverse_restores(tmp_path, monkeypatch):

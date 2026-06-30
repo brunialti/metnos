@@ -53,16 +53,16 @@ def safe_path(tmp_path, monkeypatch):
 def test_choice_with_preview_schema_valid(gi, safe_path):
     """Payload completo (2 option con value+label+preview) → input_required."""
     r = gi.invoke({
-        "title": "Quale Silvia?",
+        "title": "Quale Ospite?",
         "dialog": [{
             "var": "chosen_slug",
-            "prompt": "Pick the right Silvia",
+            "prompt": "Pick the right Ospite",
             "schema": {
                 "kind": "choice_with_preview",
                 "options": [
-                    {"value": "silvia_buffa", "label": "Silvia Buffa",
+                    {"value": "ospite_alfa", "label": "Ospite Alfa",
                      "preview_image_path": f"{safe_path}#bbox=10,10,40,40"},
-                    {"value": "silvia_rossi", "label": "Silvia Rossi",
+                    {"value": "ospite_beta", "label": "Ospite Beta",
                      "preview_image_path": str(safe_path)},
                 ],
             },

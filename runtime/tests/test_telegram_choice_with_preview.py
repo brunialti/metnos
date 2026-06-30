@@ -115,18 +115,18 @@ def test_telegram_keyboard_choice_with_preview_label_only(fake_daemon):
         "schema": {
             "kind": "choice_with_preview",
             "options": [
-                {"value": "silvia_buffa", "label": "Silvia Buffa",
+                {"value": "ospite_alfa", "label": "Ospite Alfa",
                  "preview_image_path": "/x"},
-                {"value": "silvia_rossi", "label": "Silvia Rossi",
+                {"value": "ospite_beta", "label": "Ospite Beta",
                  "preview_image_path": "/y"},
             ],
         },
     }
     rows = fake_daemon._build_dialog_keyboard("abcd1234", 0, step)
     assert len(rows) == 3  # 2 option + cancel
-    assert rows[0][0]["text"] == "Silvia Buffa"
+    assert rows[0][0]["text"] == "Ospite Alfa"
     assert rows[0][0]["data"] == "dlg:abcd1234:0:c0"
-    assert rows[1][0]["text"] == "Silvia Rossi"
+    assert rows[1][0]["text"] == "Ospite Beta"
     assert rows[1][0]["data"] == "dlg:abcd1234:0:c1"
     assert rows[2][0]["data"] == "dlg:abcd1234:cancel"
 
@@ -148,9 +148,9 @@ def test_telegram_callback_decode_choice_with_preview(safe_image, monkeypatch):
             "schema": {
                 "kind": "choice_with_preview",
                 "options": [
-                    {"value": "silvia_buffa", "label": "A",
+                    {"value": "ospite_alfa", "label": "A",
                      "preview_image_path": str(safe_image)},
-                    {"value": "silvia_rossi", "label": "B",
+                    {"value": "ospite_beta", "label": "B",
                      "preview_image_path": str(safe_image)},
                 ],
             },
@@ -183,6 +183,6 @@ def test_telegram_callback_decode_choice_with_preview(safe_image, monkeypatch):
     res = d._handle_dialog_callback(msg, "dlg:dlg00:0:c1")
     assert res["ok"] is True
     assert res["callback"] == "dlg_completed"
-    # Verifica che il value salvato sia "silvia_rossi" (non "B").
+    # Verifica che il value salvato sia "ospite_beta" (non "B").
     final = _dp.load_pending("telegram:42", "dlg00")
-    assert final["values_collected"]["chosen_slug"] == "silvia_rossi"
+    assert final["values_collected"]["chosen_slug"] == "ospite_beta"

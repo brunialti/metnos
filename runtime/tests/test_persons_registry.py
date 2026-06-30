@@ -403,18 +403,18 @@ def _enroll_minimal(reg, name, seed=1):
 
 
 def test_resolve_exact_full_name(reg):
-    _enroll_minimal(reg, "Silvia Buffa", seed=1)
-    assert reg.resolve_name("Silvia Buffa") == ["silvia_buffa"]
+    _enroll_minimal(reg, "Ospite Alfa", seed=1)
+    assert reg.resolve_name("Ospite Alfa") == ["ospite_alfa"]
 
 
 def test_resolve_first_token(reg):
-    _enroll_minimal(reg, "Silvia Buffa", seed=1)
-    assert reg.resolve_name("Silvia") == ["silvia_buffa"]
+    _enroll_minimal(reg, "Ospite Alfa", seed=1)
+    assert reg.resolve_name("Ospite") == ["ospite_alfa"]
 
 
 def test_resolve_last_token(reg):
-    _enroll_minimal(reg, "Buffa Silvia", seed=1)
-    assert reg.resolve_name("Silvia") == ["buffa_silvia"]
+    _enroll_minimal(reg, "Buffa Ospite", seed=1)
+    assert reg.resolve_name("Ospite") == ["buffa_ospite"]
 
 
 def test_resolve_middle_token(reg):
@@ -423,9 +423,9 @@ def test_resolve_middle_token(reg):
 
 
 def test_resolve_ambiguous_returns_multiple(reg):
-    _enroll_minimal(reg, "Silvia Buffa", seed=1)
-    _enroll_minimal(reg, "Silvia Rossi", seed=2)
-    assert reg.resolve_name("Silvia") == ["silvia_buffa", "silvia_rossi"]
+    _enroll_minimal(reg, "Ospite Alfa", seed=1)
+    _enroll_minimal(reg, "Ospite Beta", seed=2)
+    assert reg.resolve_name("Ospite") == ["ospite_alfa", "ospite_beta"]
 
 
 def test_resolve_unknown_returns_empty(reg):
@@ -434,9 +434,9 @@ def test_resolve_unknown_returns_empty(reg):
 
 
 def test_resolve_case_insensitive(reg):
-    _enroll_minimal(reg, "Silvia Buffa", seed=1)
-    assert reg.resolve_name("SILVIA") == ["silvia_buffa"]
-    assert reg.resolve_name("silvia") == ["silvia_buffa"]
+    _enroll_minimal(reg, "Ospite Alfa", seed=1)
+    assert reg.resolve_name("OSPITE") == ["ospite_alfa"]
+    assert reg.resolve_name("ospite") == ["ospite_alfa"]
 
 
 def test_resolve_empty_input_returns_empty(reg):
@@ -449,10 +449,10 @@ def test_resolve_empty_input_returns_empty(reg):
 def test_resolve_no_partial_substring(reg):
     """Token-anywhere richiede match di token intero, non substring.
 
-    Garantisce: query "Sil" NON deve matchare "Silvia" (eviterebbe
+    Garantisce: query "Sil" NON deve matchare "Ospite" (eviterebbe
     falsi positivi tipo "Lia"→"Lialaki"). Solo tokens completi.
     """
-    _enroll_minimal(reg, "Silvia Buffa", seed=1)
+    _enroll_minimal(reg, "Ospite Alfa", seed=1)
     assert reg.resolve_name("Sil") == []
 
 

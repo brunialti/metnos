@@ -92,13 +92,13 @@ def test_get_persons_exact_match(isolated_db):
 def test_get_persons_token_match(isolated_db):
     reg = persons_registry.PersonsRegistry()
     try:
-        _enroll(reg, "Silvia Buffa", 1)
+        _enroll(reg, "Ospite Alfa", 1)
     finally:
         reg.close()
-    out = gp.invoke({"name": "Silvia"})
+    out = gp.invoke({"name": "Ospite"})
     assert out["ok"] is True
     assert out["n_entries"] == 1
-    assert out["entries"][0]["slug"] == "silvia_buffa"
+    assert out["entries"][0]["slug"] == "ospite_alfa"
 
 
 def test_get_persons_unknown_name(isolated_db):
@@ -117,16 +117,16 @@ def test_get_persons_unknown_name(isolated_db):
 def test_get_persons_ambiguous(isolated_db):
     reg = persons_registry.PersonsRegistry()
     try:
-        _enroll(reg, "Silvia Buffa", 1)
-        _enroll(reg, "Silvia Rossi", 2)
+        _enroll(reg, "Ospite Alfa", 1)
+        _enroll(reg, "Ospite Beta", 2)
     finally:
         reg.close()
-    out = gp.invoke({"name": "Silvia"})
+    out = gp.invoke({"name": "Ospite"})
     assert out["ok"] is True
     assert out["ambiguous"] is True
     assert out["n_entries"] == 2
     slugs = sorted([e["slug"] for e in out["entries"]])
-    assert slugs == ["silvia_buffa", "silvia_rossi"]
+    assert slugs == ["ospite_alfa", "ospite_beta"]
 
 
 def test_get_persons_empty_string_lists_all(isolated_db):

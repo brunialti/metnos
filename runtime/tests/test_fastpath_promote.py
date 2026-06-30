@@ -93,7 +93,7 @@ class TestProvenanceDeath(_FastpathDbCase):
         # name-C2 immune per costruzione. La provenienza chiude il buco.
         intent = Intent(verb="find", object="images")
         fp_id, chash = self._seed(
-            "foto di silvia al mare",
+            "foto di ospite al mare",
             _fw("find_persons", "find_images"), intent=intent)
         n = eng_fastpath.record_promotion(
             "find_images_similar", [(fp_id, chash)], tier=2)
@@ -108,7 +108,7 @@ class TestProvenanceDeath(_FastpathDbCase):
     def test_promotion_inert_until_executor_in_catalog(self):
         intent = Intent(verb="find", object="images")
         fp_id, chash = self._seed(
-            "foto di silvia al mare",
+            "foto di ospite al mare",
             _fw("find_persons", "find_images"), intent=intent)
         eng_fastpath.record_promotion("find_images_similar",
                                       [(fp_id, chash)])
@@ -122,7 +122,7 @@ class TestProvenanceDeath(_FastpathDbCase):
         # (si ri-creerebbe in loop): immunità se il piano lo contiene.
         intent = Intent(verb="find", object="images")
         fp_id, chash = self._seed(
-            "foto di silvia al mare", _fw("find_images_similar"),
+            "foto di ospite al mare", _fw("find_images_similar"),
             intent=intent)
         eng_fastpath.record_promotion("find_images_similar",
                                       [(fp_id, chash)])
@@ -136,13 +136,13 @@ class TestProvenanceDeath(_FastpathDbCase):
         # stessa query → stesso canonical_hash → provenienza ancora valida.
         intent = Intent(verb="find", object="images")
         fp_id, chash = self._seed(
-            "foto di silvia al mare",
+            "foto di ospite al mare",
             _fw("find_persons", "find_images"), intent=intent)
         eng_fastpath.record_promotion("find_images_similar",
                                       [(fp_id, chash)])
         eng_fastpath.delete(fp_id)
         fp_id2, chash2 = self._seed(
-            "foto di silvia al mare",
+            "foto di ospite al mare",
             _fw("find_persons", "find_images"), intent=intent)
         self.assertNotEqual(fp_id, fp_id2)
         self.assertEqual(chash, chash2)
@@ -157,7 +157,7 @@ class TestProvenanceDeath(_FastpathDbCase):
         # stesso shape ma fuori dalla provenienza (e intent diverso).
         intent = Intent(verb="find", object="images")
         member_id, member_hash = self._seed(
-            "foto di silvia al mare",
+            "foto di ospite al mare",
             _fw("find_persons", "find_images"), intent=intent)
         outsider_id, _ = self._seed(
             "cerca documenti di marco",
@@ -174,7 +174,7 @@ class TestProvenanceDeath(_FastpathDbCase):
     def test_record_promotion_idempotent(self):
         intent = Intent(verb="find", object="images")
         fp_id, chash = self._seed(
-            "foto di silvia", _fw("find_persons", "find_images"),
+            "foto di ospite", _fw("find_persons", "find_images"),
             intent=intent)
         eng_fastpath.record_promotion("find_images_similar",
                                       [(fp_id, chash)], tier=1)
@@ -188,7 +188,7 @@ class TestProvenanceDeath(_FastpathDbCase):
         # catalog_names=None → nessuna morte, nemmeno per provenienza (§2.8).
         intent = Intent(verb="find", object="images")
         fp_id, chash = self._seed(
-            "foto di silvia", _fw("find_persons", "find_images"),
+            "foto di ospite", _fw("find_persons", "find_images"),
             intent=intent)
         eng_fastpath.record_promotion("find_images_similar",
                                       [(fp_id, chash)])

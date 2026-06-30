@@ -284,16 +284,16 @@ class TestPertinence(_FastpathDbCase):
     def test_query_specific_not_served_by_cosine(self):
         va = _pack([1.0, 0.0])
         vb = _pack([0.95, 0.312249899])  # cosine(va, vb) = 0.95 ≥ soglia 0.92
-        table = {"cerca le foto di silvia": va,
+        table = {"cerca le foto di ospite": va,
                  "cerca le foto di marco": vb}
         fw = _fw("find_persons",
-                 args_map={"find_persons": {"name": "silvia"}})
+                 args_map={"find_persons": {"name": "ospite"}})
         with mock.patch("engine.cluster.embed", new=self._fake_embed(table)):
-            eng_fastpath.record_success("cerca le foto di silvia", fw)
+            eng_fastpath.record_success("cerca le foto di ospite", fw)
             # Query SIMILE ma semanticamente diversa: NO hit (0b filtrato)
             self.assertIsNone(eng_fastpath.lookup("cerca le foto di marco"))
             # Query IDENTICA: hit via hash 0a (args giusti per costruzione)
-            hit = eng_fastpath.lookup("cerca le foto di silvia")
+            hit = eng_fastpath.lookup("cerca le foto di ospite")
             self.assertIsNotNone(hit)
             self.assertEqual(hit.match_kind, "hash")
 

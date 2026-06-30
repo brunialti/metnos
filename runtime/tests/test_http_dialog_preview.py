@@ -52,7 +52,7 @@ class HttpDialogPreviewTests(AioHTTPTestCase):
         cls._td = td
         cls._img_dir = td / ".local" / "share" / "metnos" / "Immagini"
         cls._img_dir.mkdir(parents=True, exist_ok=True)
-        cls._img_path = cls._img_dir / "silvia.jpg"
+        cls._img_path = cls._img_dir / "ospite.jpg"
         from PIL import Image
         Image.new("RGB", (200, 200), "blue").save(cls._img_path, "JPEG")
 
@@ -135,9 +135,9 @@ class HttpDialogPreviewTests(AioHTTPTestCase):
     async def test_preview_endpoint_returns_image(self):
         """GET /preview/0 → 200 image/jpeg per option valida."""
         did = self._seed_dialog(options=[
-            {"value": "silvia_buffa", "label": "Silvia Buffa",
+            {"value": "ospite_alfa", "label": "Ospite Alfa",
              "preview_image_path": str(self._img_path)},
-            {"value": "silvia_rossi", "label": "Silvia Rossi",
+            {"value": "ospite_beta", "label": "Ospite Beta",
              "preview_image_path": str(self._img_path)},
         ])
         r = await self.client.get(

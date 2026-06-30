@@ -34,27 +34,27 @@ def isolated_db(tmp_path, monkeypatch):
     yield db
 
 
-def test_delete_persons_two_silvia_emits_choice_with_preview(isolated_db):
-    """2 silvia diverse → kind=choice_with_preview con thumbnail per
+def test_delete_persons_two_ospite_emits_choice_with_preview(isolated_db):
+    """2 ospite diverse → kind=choice_with_preview con thumbnail per
     ciascun slug."""
     reg = persons_registry.PersonsRegistry()
     try:
         reg.enroll(
-            name="Silvia Buffa",
-            image_path="/photos/silvia_buffa_001.jpg",
+            name="Ospite Alfa",
+            image_path="/photos/ospite_alfa_001.jpg",
             face_box=(100, 200, 150, 150),
             embedding=_emb(1), sha256="1" * 64,
         )
         reg.enroll(
-            name="Silvia Rossi",
-            image_path="/photos/silvia_rossi_001.jpg",
+            name="Ospite Beta",
+            image_path="/photos/ospite_beta_001.jpg",
             face_box=(50, 80, 200, 200),
             embedding=_emb(2), sha256="2" * 64,
         )
     finally:
         reg.close()
 
-    out = dp.invoke({"name": "Silvia"})
+    out = dp.invoke({"name": "Ospite"})
     assert out["ok"] is True
     assert out["decision"] == "needs_inputs"
     assert out["ambiguous"] is True
@@ -66,16 +66,16 @@ def test_delete_persons_two_silvia_emits_choice_with_preview(isolated_db):
     assert len(options) == 2
 
     by_value = {o["value"]: o for o in options}
-    assert "silvia_buffa" in by_value
-    assert "silvia_rossi" in by_value
+    assert "ospite_alfa" in by_value
+    assert "ospite_beta" in by_value
 
-    o1 = by_value["silvia_buffa"]
+    o1 = by_value["ospite_alfa"]
     # §7.3: preview = <PERSISTENT_EXAMPLES_DIR>/<slug>/<sha256>.jpg#bbox=...
     assert o1["preview_image_path"].endswith("1" * 64 + ".jpg#bbox=100,200,150,150")
-    assert "Silvia Buffa" in o1["label"]
+    assert "Ospite Alfa" in o1["label"]
     assert "1 esempi" in o1["label"] or "(1 " in o1["label"]
 
-    o2 = by_value["silvia_rossi"]
+    o2 = by_value["ospite_beta"]
     assert o2["preview_image_path"].endswith("2" * 64 + ".jpg#bbox=50,80,200,200")
 
 
