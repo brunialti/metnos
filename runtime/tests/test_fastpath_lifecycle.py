@@ -621,6 +621,115 @@ class TestL0ErrorSelfHealing(_FastpathDbCase):
             self.assertEqual(fake.calls, 0)
 
 
+# ── 1sexies-bis². Anti-doppia-esecuzione sul fall-through (2/7/2026) ────────
+
+class TestNoFallthroughAfterCommittedMutation(_FastpathDbCase):
+    """Review Fable 2/7/2026 (CRITICO 1): il self-healing su ERRORE (1/7)
+    faceva fall-through a L3 anche quando il leg fallito aveva GIÀ committato
+    un side-effect (send ok → move fallisce) — L3 ri-pianifica e ri-esegue
+    TUTTO il framework → mail/evento DUPLICATO (§2.8/§2.9). Il test 1/7 usava
+    read_messages (read-only) e non copriva questo mutante. Ora: side-effect
+    committato nel leg fallito → errore ONESTO, niente re-plan; il piano
+    read-only o il mutante a vuoto (n_sent=0) continuano il fall-through."""
+
+    def _catalog(self, *names):
+        return [SimpleNamespace(
+            name=n, args_schema={"type": "object", "properties": {}})
+            for n in names]
+
+    @staticmethod
+    def _invoke_send_ok_delete_ko(invoked, n_sent=1):
+        def invoke(name, args):
+            invoked.append(name)
+            if name.startswith("send_"):
+                return {"ok": True, "n_sent": n_sent}
+            return {"ok": False, "error": "boom"}
+        return invoke
+
+    def test_l0_hit_error_after_committed_send_no_fallthrough(self):
+        q = "manda il riepilogo e cancella il temporaneo"
+        # delete_files senza args = mutante STANDALONE (non consuma
+        # liste → il guard _mutating_input_is_empty non lo salta).
+        fw = _fw("send_messages", "delete_files")
+        eng_fastpath.record_success(q, fw)
+        fake = _FakeProposer(fw)  # se interpellato, il send verrebbe DUPLICATO
+        invoked = []
+        env = {"METNOS_ENGINE": "simple", "METNOS_FASTPATH": "1"}
+        with mock.patch.dict(os.environ, env), \
+             mock.patch("engine.proposer.get_proposer", return_value=fake), \
+             mock.patch("engine.cluster.embed", new=lambda q: None):
+            r = eng_dispatch.run_turn(
+                query=q, intent=Intent(),
+                catalog=self._catalog("send_messages", "delete_files"),
+                invoke_executor_cb=self._invoke_send_ok_delete_ko(invoked),
+                turn_id="t1")
+        self.assertEqual(r.match_source, "fastpath")   # errore ONESTO da L0
+        self.assertEqual(r.final_kind, "error")
+        self.assertEqual(fake.calls, 0)                # L3 MAI interpellato
+        self.assertEqual(invoked.count("send_messages"), 1)  # UN solo send
+        self.assertEqual(eng_fastpath.list_all(), [])  # riga comunque morta
+
+    def test_l0_hit_error_send_a_vuoto_still_falls_through(self):
+        # Confine: send con n_sent=0 = nessun side-effect committato → il
+        # self-healing (fall-through a L3) resta legittimo.
+        q = "manda il riepilogo e cancella il temporaneo"
+        # delete_files senza args = mutante STANDALONE (non consuma
+        # liste → il guard _mutating_input_is_empty non lo salta).
+        fw = _fw("send_messages", "delete_files")
+        eng_fastpath.record_success(q, fw)
+        fake = _FakeProposer(None)  # L3: propose fallisce → terminator
+        fake_terminator = SimpleNamespace(
+            explain=lambda **kw: SimpleNamespace(final_text="ko"))
+        invoked = []
+        env = {"METNOS_ENGINE": "simple", "METNOS_FASTPATH": "1"}
+        with mock.patch.dict(os.environ, env), \
+             mock.patch("engine.proposer.get_proposer", return_value=fake), \
+             mock.patch("engine.terminator.get_terminator",
+                        return_value=fake_terminator), \
+             mock.patch("engine.cluster.embed", new=lambda q: None):
+            r = eng_dispatch.run_turn(
+                query=q, intent=Intent(),
+                catalog=self._catalog("send_messages", "delete_files"),
+                invoke_executor_cb=self._invoke_send_ok_delete_ko(
+                    invoked, n_sent=0),
+                turn_id="t1")
+        self.assertNotEqual(r.match_source, "fastpath")  # fall-through
+        self.assertEqual(fake.calls, 1)                  # L3 interpellato
+
+    def test_l1_hit_error_after_committed_send_no_fallthrough(self):
+        from engine.autopath import AutopathHit
+        # delete_files senza args = mutante STANDALONE (non consuma
+        # liste → il guard _mutating_input_is_empty non lo salta).
+        fw = _fw("send_messages", "delete_files")
+        intent = Intent(verb="send", object="messages")
+        hit = AutopathHit(autopath_id="ap_send", framework=fw,
+                          cluster_id="c", uses=1)
+        fake = _FakeProposer(fw)
+        invoked = []
+        obs_calls = []
+        env = {"METNOS_ENGINE": "simple", "METNOS_FASTPATH": "1",
+               "METNOS_AUTOPATH": "1"}
+        with mock.patch.dict(os.environ, env), \
+             mock.patch.object(eng_dispatch._ap, "lookup",
+                               new=lambda q, i: hit), \
+             mock.patch.object(eng_dispatch._ap, "record_observation",
+                               side_effect=lambda **kw: obs_calls.append(kw)), \
+             mock.patch.object(eng_dispatch._ap, "excluded_framework_hashes",
+                               return_value=set()), \
+             mock.patch("engine.proposer.get_proposer", return_value=fake), \
+             mock.patch("engine.cluster.embed", new=lambda q: None):
+            r = eng_dispatch.run_turn(
+                query="manda il riepilogo e cancella il temporaneo", intent=intent,
+                catalog=self._catalog("send_messages", "delete_files"),
+                invoke_executor_cb=self._invoke_send_ok_delete_ko(invoked),
+                turn_id="t1")
+        self.assertEqual(r.match_source, "autopath")   # errore ONESTO da L1
+        self.assertEqual(r.final_kind, "error")
+        self.assertEqual(fake.calls, 0)                # L3 MAI interpellato
+        self.assertEqual(invoked.count("send_messages"), 1)  # UN solo send
+        self.assertEqual(obs_calls, [])  # niente observation dal fallito
+
+
 # ── 1sexies-ter. Igiene _should_cache_plan (1/7/2026) ───────────────────────
 
 class TestShouldCachePlan(unittest.TestCase):

@@ -187,6 +187,23 @@ def _should_cache_plan(framework, query) -> bool:
     return True
 
 
+def _leg_committed_mutations(run) -> list[str]:
+    """Tool mutanti già COMMITTATI nel leg fallito (anti-doppia-esecuzione,
+    2/7/2026). Delega a pipeline_effects.committed_mutations (SoT §7.9);
+    fallback conservativo: ogni mutante con ok=True conta come committato."""
+    steps = getattr(run, "steps", None) or []
+    try:
+        from pipeline_effects import committed_mutations
+        return committed_mutations(steps)
+    except Exception:
+        prefixes = ("delete_", "move_", "send_", "write_",
+                    "set_", "create_", "change_", "share_", "render_")
+        return [s.tool for s in steps
+                if getattr(s, "ok", False)
+                and getattr(s, "kind", "live") == "live"
+                and any((s.tool or "").startswith(p) for p in prefixes)]
+
+
 def _mutating_args_grounded(framework, query) -> bool:
     """INVARIANTE serve-time L0/L1 (GARANZIA, Roberto 15/6). Un piano servito da
     cache (L0) o generalizzato (L1) che contiene uno step MUTANTE è eseguibile
@@ -2119,9 +2136,26 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
             # piano pieno). Delete (economia: si ricrea al prossimo successo) +
             # fall-through a L1/L3, che ripianificano con recovery.
             if run.final_kind == "error":
+                _fp.delete(fp_hit.fp_id)
+                # Anti-doppia-esecuzione (2/7/2026, §2.8/§2.9): se il leg
+                # fallito ha GIÀ committato ≥1 side-effect (send ok, poi move
+                # fallisce), il fall-through L3 ri-eseguirebbe TUTTO il
+                # framework → mail/evento DUPLICATO. Errore onesto; la delete
+                # sopra resta (al prossimo turno si ri-pianifica da zero).
+                _committed = _leg_committed_mutations(run)
+                if _committed:
+                    log.warning("[L0 fastpath] fp_id=%d in ERRORE ma side-effect"
+                                " già committati %s → NIENTE fall-through "
+                                "(errore onesto, anti-doppia-esecuzione)",
+                                fp_hit.fp_id, _committed)
+                    return DispatchResult(
+                        final_text=run.final_text, final_kind=run.final_kind,
+                        match_source="fastpath",
+                        framework_hash=run.framework_hash,
+                        elapsed_ms=int((time.time() - t_start) * 1000),
+                        run=run, framework=fp_hit.framework)
                 log.info("[L0 fastpath] fp_id=%d esegue in ERRORE → morte + "
                          "fall-through a L1/L3 (re-plan)", fp_hit.fp_id)
-                _fp.delete(fp_hit.fp_id)
             else:
                 _inject_gate_resume_if_paused(run, query, runtime_ctx)
                 # Promozione 0b→0a (classe 12/6/2026): il piano è arrivato via
@@ -2176,6 +2210,21 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
             # resta governato dal feedback (anti_autopath, 3+ fail). Niente
             # observation dell'esecuzione fallita: la registra il leg L3.
             if run.final_kind == "error":
+                # Anti-doppia-esecuzione (2/7/2026): stessa guardia di L0 —
+                # side-effect già committati nel leg fallito → errore onesto,
+                # NIENTE re-plan (L3 duplicherebbe il side-effect).
+                _committed = _leg_committed_mutations(run)
+                if _committed:
+                    log.warning("[L1 autopath] champion %s in ERRORE ma "
+                                "side-effect già committati %s → NIENTE "
+                                "fall-through (errore onesto)",
+                                ap_hit.autopath_id, _committed)
+                    return DispatchResult(
+                        final_text=run.final_text, final_kind=run.final_kind,
+                        match_source="autopath",
+                        framework_hash=run.framework_hash,
+                        elapsed_ms=int((time.time() - t_start) * 1000),
+                        run=run, framework=ap_hit.framework)
                 log.info("[L1 autopath] champion %s esegue in ERRORE → "
                          "fall-through a L3 (re-plan)", ap_hit.autopath_id)
             else:

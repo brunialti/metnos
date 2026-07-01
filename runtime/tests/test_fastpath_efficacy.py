@@ -30,7 +30,8 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from engine.types import Intent, Framework, StepSpec, RunResult, StepRun
 from engine import fastpath as eng_fastpath
 from engine import dispatch as eng_dispatch
-from pipeline_effects import ineffective_mutations, pipeline_effect_counts
+from pipeline_effects import (committed_mutations, ineffective_mutations,
+                              pipeline_effect_counts)
 
 
 def _fw(*tools, args_map=None, final="fatto"):
@@ -208,6 +209,61 @@ class TestIneffectiveMutations(unittest.TestCase):
         self.assertEqual(c["items"], 2)
         self.assertEqual(c["mutations"], 2)
         self.assertTrue(c["mutating_attempted"])
+
+
+class TestCommittedMutations(unittest.TestCase):
+    """committed_mutations (2/7/2026, review Fable): predicato del guard
+    anti-doppia-esecuzione sul fall-through L0/L1→L3. Conservativo INVERSO
+    a ineffective_mutations: senza output contabile si ASSUME committato."""
+
+    def test_send_with_effect_is_committed(self):
+        steps = [StepRun(step_idx=1, tool="send_messages", args={},
+                         result={"ok": True, "n_sent": 1}, ok=True,
+                         latency_ms=1),
+                 StepRun(step_idx=2, tool="move_files", args={},
+                         result={"ok": False, "error": "boom"}, ok=False,
+                         latency_ms=1)]
+        self.assertEqual(committed_mutations(steps), ["send_messages"])
+
+    def test_send_a_vuoto_not_committed(self):
+        steps = [StepRun(step_idx=1, tool="send_messages", args={},
+                         result={"ok": True, "n_sent": 0}, ok=True,
+                         latency_ms=1)]
+        self.assertEqual(committed_mutations(steps), [])
+
+    def test_failed_mutant_not_committed(self):
+        steps = [StepRun(step_idx=1, tool="delete_files", args={},
+                         result={"ok": False, "error": "ko"}, ok=False,
+                         latency_ms=1)]
+        self.assertEqual(committed_mutations(steps), [])
+
+    def test_reader_not_committed(self):
+        steps = [StepRun(step_idx=1, tool="read_messages", args={},
+                         result={"ok": True, "entries": [1]}, ok=True,
+                         latency_ms=1)]
+        self.assertEqual(committed_mutations(steps), [])
+
+    def test_uncountable_mutant_assumed_committed(self):
+        # Confine conservativo: mutante ok senza counter/results → assunto
+        # committato (mai ri-eseguire senza evidenza di non-effetto).
+        steps = [StepRun(step_idx=1, tool="create_events", args={},
+                         result={"ok": True}, ok=True, latency_ms=1)]
+        self.assertEqual(committed_mutations(steps), ["create_events"])
+
+    def test_empty_entries_consumer_not_committed(self):
+        steps = [StepRun(step_idx=1, tool="send_messages",
+                         args={"entries": []},
+                         result={"ok": True, "n_sent": 1}, ok=True,
+                         latency_ms=1)]
+        self.assertEqual(committed_mutations(steps), [])
+
+    def test_seed_done_step_not_committed(self):
+        # I seed «done» (eseguiti in un turno PRECEDENTE) sono protetti dalla
+        # guardia dedup del proposer: non bloccano il fall-through.
+        steps = [StepRun(step_idx=1, tool="send_messages", args={},
+                         result={"ok": True, "n_sent": 1}, ok=True,
+                         latency_ms=1, kind="done")]
+        self.assertEqual(committed_mutations(steps), [])
 
 
 if __name__ == "__main__":

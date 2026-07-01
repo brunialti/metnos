@@ -176,6 +176,49 @@ def ineffective_mutations(steps) -> list[str]:
     return bad
 
 
+def committed_mutations(steps) -> list[str]:
+    """Tool dei passi MUTANTI già COMMITTATI in questo leg (guard
+    anti-doppia-esecuzione, 2/7/2026 — il fall-through self-healing L0/L1→L3
+    ri-pianifica ed esegue TUTTO il framework: se il leg fallito ha già
+    committato un side-effect, la ri-esecuzione lo DUPLICA §2.8/§2.9).
+
+    Confine conservativo INVERSO a ineffective_mutations: qui il costo di un
+    falso negativo è una mail/evento duplicato, quindi un mutante ok=True
+    senza output contabile si ASSUME committato (mai ri-eseguire senza
+    evidenza di non-effetto). Committato = ok=True, non _duplicate, non
+    consumatore di entries=[] e counter assente-o->0. Solo step kind="live"
+    (i seed "done" sono protetti dalla guardia dedup del proposer).
+    """
+    out: list[str] = []
+    for s in steps or []:
+        kind = getattr(s, "kind", None)
+        if kind is None and isinstance(s, dict):
+            kind = s.get("kind")
+        if (kind or "live") != "live":
+            continue
+        tool = _step_tool(s)
+        if not tool or tool == "final_answer" or tool.startswith("@"):
+            continue
+        if not any(tool.startswith(p) for p in MUTATING_TOOL_PREFIXES):
+            continue
+        if getattr(s, "ok", None) is False:   # StepRun fallito = non committato
+            continue
+        res = _step_result(s)
+        if res is not None and (res.get("_duplicate") is True
+                                or res.get("ok") is False):
+            continue
+        _a = _step_args(s)
+        if isinstance(_a.get("entries"), list) and len(_a["entries"]) == 0:
+            continue
+        if res is None:
+            out.append(tool)      # non giudicabile → assumi committato
+            continue
+        n = _mutation_count(res)
+        if n is None or n > 0:
+            out.append(tool)
+    return out
+
+
 def counts_indicate_noop(counts) -> bool:
     """True se i conteggi-effetti indicano una pipeline «a vuoto» (0 effetto
     REALE). Predicato condiviso (§7.9, SoT) fra:
