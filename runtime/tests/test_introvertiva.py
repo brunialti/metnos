@@ -217,6 +217,30 @@ def test_pii_like_predicate():
     assert not _pii_like(12)
 
 
+def test_window_filters_float_ts_start(tmp_corpus):
+    """Integration del fix 2ccda51: i turni REALI portano ts_start come float
+    epoch (11563/11668 in prod) — il confine after_iso deve filtrare su epoch
+    per entrambi i formati, escludendo i ts_start non validi."""
+    from datetime import datetime, timezone
+    turns_dir = tmp_corpus / "turns"
+    cutoff_iso = "2026-06-01T00:00:00Z"
+    old_ep = datetime(2026, 5, 1, tzinfo=timezone.utc).timestamp()
+    new_ep = datetime(2026, 6, 15, tzinfo=timezone.utc).timestamp()
+    rows = [
+        {"ts_start": old_ep, "user_query": "vecchio float", "channel": "telegram", "steps": []},
+        {"ts_start": new_ep, "user_query": "nuovo float", "channel": "telegram", "steps": []},
+        {"ts_start": "2026-06-20T10:00:00Z", "user_query": "nuovo iso", "channel": "telegram", "steps": []},
+        {"ts_start": "non-una-data", "user_query": "rotto", "channel": "telegram", "steps": []},
+    ]
+    with (turns_dir / "2026-06-15.jsonl").open("w") as f:
+        for t in rows:
+            f.write(json.dumps(t) + "\n")
+    from introvertiva import _load_turns
+    got = {t["user_query"] for t in _load_turns(after_iso=cutoff_iso)}
+    assert "nuovo float" in got and "nuovo iso" in got
+    assert "vecchio float" not in got and "rotto" not in got
+
+
 def test_prune_old_keeps_rejected(tmp_corpus, monkeypatch):
     """Review Fable 2/7: il reject umano mappa su state='dormant' — la
     potatura lo cancellava e il generatore notturno ri-emetteva la proposta
