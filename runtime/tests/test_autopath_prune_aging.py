@@ -66,3 +66,60 @@ def test_prune_aging_disabled_by_env(tmp_path, monkeypatch):
     report = AP.prune(keep_observations=5000)
     assert report["autopaths_demoted_removed"] == 0
     assert report["autopaths_stale_removed"] == 0
+
+
+def _seed_obs(rows):
+    """observations fittizie: (turn_id, verdict) — ihash/fhash fissi."""
+    c = AP._conn()
+    for turn_id, verdict in rows:
+        c.execute(
+            "INSERT INTO observations (turn_id, intent_hash, intent_sig, "
+            " framework_json, framework_hash, verdict, ts) "
+            "VALUES (?, 'h', 'read|messages', '{}', 'f', ?, ?)",
+            (turn_id, verdict, _iso_z(0)))
+    c.commit()
+    c.close()
+
+
+def test_prune_obs_window_keeps_verdict_rows(tmp_path, monkeypatch):
+    """Review Fable 2/7: la finestra observations pota SOLO verdict=NULL —
+    le righe votate (memoria di promote/demote) non vengono mai espulse,
+    anche se piu' vecchie dell'intera finestra."""
+    monkeypatch.setattr(AP, "_db_path", lambda: Path(tmp_path) / "autopath.sqlite")
+    _seed_obs([("t_ok", "ok")] + [(f"t{i}", None) for i in range(10)])
+    AP.prune(keep_observations=3)
+    c = AP._conn()
+    left = [r[0] for r in c.execute(
+        "SELECT turn_id FROM observations ORDER BY rowid")]
+    c.close()
+    # la 'ok' (riga PIU' VECCHIA) sopravvive + le 3 NULL piu' recenti
+    assert "t_ok" in left
+    assert len(left) == 4
+
+
+def test_lookup_touches_ts_last_used(tmp_path, monkeypatch):
+    """Review Fable 2/7: il serve dalla cache rinfresca ts_last_used —
+    prima era scritto SOLO su ✓-repromote e l'aging (stale <90gg) potava
+    champion serviti attivamente ma mai ri-votati."""
+    from engine.types import Intent
+    intent = Intent(verb="read", object="messages")
+    _, ihash = AP._compute_intent_sig(intent)
+    old = _iso_z(80)
+    monkeypatch.setattr(AP, "_db_path", lambda: Path(tmp_path) / "autopath.sqlite")
+    c = AP._conn()
+    c.execute(
+        "INSERT INTO autopaths (id, intent_sig, intent_hash, cluster_id, "
+        " framework_json, framework_hash, status, champion, ts_created, "
+        " ts_last_used) "
+        "VALUES ('ap1', 'read|messages|', ?, 'c', '{}', 'f', 'active', 1, ?, ?)",
+        (ihash, old, old))
+    c.commit()
+    c.close()
+    monkeypatch.setattr(AP._cluster, "embed", lambda q: None)
+    hit = AP.lookup("leggi le mail", intent)
+    assert hit is not None and hit.autopath_id == "ap1"
+    c = AP._conn()
+    ts = c.execute("SELECT ts_last_used FROM autopaths WHERE id='ap1'"
+                   ).fetchone()[0]
+    c.close()
+    assert ts > old  # rinfrescato (ISO-Z lessicografico)

@@ -175,8 +175,14 @@ def prune(*, keep_observations: int | None = None) -> dict:
         anti = c.execute(
             "DELETE FROM anti_autopaths WHERE ttl_expires_at < ?", (now_iso,)
         ).rowcount
+        # La finestra pota SOLO le righe senza verdict (2/7/2026, review
+        # Fable): le observations votate (✓/✗ umano) sono la memoria di
+        # promote/demote — poche e preziose; una finestra piena di
+        # verdict=NULL espelleva l'unica `ok` rendendo il re-promote
+        # impossibile.
         obs = c.execute(
-            "DELETE FROM observations WHERE rowid NOT IN "
+            "DELETE FROM observations WHERE verdict IS NULL "
+            "AND rowid NOT IN "
             "(SELECT rowid FROM observations ORDER BY rowid DESC LIMIT ?)",
             (int(keep_observations),),
         ).rowcount
@@ -264,6 +270,20 @@ def _max_cosine_to_cluster(c, eb: bytes, cluster_id: str, limit: int = 50) -> fl
     return best
 
 
+def _touch_served(c, autopath_id: str) -> None:
+    """Rinfresca ts_last_used quando il champion viene SERVITO dalla cache
+    (2/7/2026, review Fable): l'aging del prune (`stale <90gg`) legge
+    ts_last_used, che prima veniva scritto SOLO su ✓-repromote — un champion
+    servito attivamente ma mai ri-votato veniva potato come zombie.
+    Best-effort: il fallimento non blocca il serve."""
+    try:
+        c.execute("UPDATE autopaths SET ts_last_used = ? WHERE id = ?",
+                  (now_iso_z(), autopath_id))
+        c.commit()
+    except sqlite3.Error as ex:
+        log.debug("autopath._touch_served noop: %r", ex)
+
+
 def lookup(query: str, intent: Intent) -> Optional[AutopathHit]:
     """Tenta match autopath cached. Cluster semantic-first poi intent_hash fallback.
 
@@ -311,6 +331,7 @@ def lookup(query: str, intent: Intent) -> Optional[AutopathHit]:
                 if (row and not _is_query_specific(row[1])
                         and _sig_object(row[4]) == _qobj):
                     fw = Framework.from_dict(json.loads(row[1]))
+                    _touch_served(c, row[0])
                     return AutopathHit(autopath_id=row[0], framework=fw,
                                         cluster_id=best_cid, uses=row[2],
                                         composite_score=row[3] or 0.5)
@@ -338,6 +359,7 @@ def lookup(query: str, intent: Intent) -> Optional[AutopathHit]:
                 if _max_cosine_to_cluster(c, eb, ap_cluster) < COSINE_FLOOR_INTENT:
                     return None
             fw = Framework.from_dict(json.loads(row[1]))
+            _touch_served(c, row[0])
             return AutopathHit(autopath_id=row[0], framework=fw,
                                 cluster_id=ap_cluster or "", uses=row[3],
                                 composite_score=row[4] or 0.5)
@@ -472,11 +494,14 @@ def record_feedback(turn_id: str, verdict: str) -> dict:
                     "ttl_expires_at = excluded.ttl_expires_at, "
                     "ts_last_fail = excluded.ts_last_fail",
                     (ihash, fhash, n_fail, ttl, f"feedback_fail:{n_fail}", ts))
-                # Demote autopath
+                # Demote autopath. ts_last_used = ora (2/7/2026): la finestra
+                # `demoted <30gg` del prune decorre da ts_last_used — senza
+                # questo touch decorreva dall'ULTIMO promote (riattivazione
+                # LWW a ridosso del demote ~impossibile).
                 c.execute(
-                    "UPDATE autopaths SET status = 'demoted' "
+                    "UPDATE autopaths SET status = 'demoted', ts_last_used = ? "
                     "WHERE intent_hash = ? AND framework_hash = ?",
-                    (ihash, fhash))
+                    (ts, ihash, fhash))
                 out["anti_autopath_added"] = True
         elif verdict == "repeat":
             # Soft anti-autopath TTL breve (1h): il framework è stato ri-proposto
@@ -526,12 +551,19 @@ def _promote_autopath(c, ihash: str, sig: str, fhash: str, fjson: str,
         c.execute("UPDATE autopaths SET uses = uses + 1, ok_count = ok_count + 1, "
                   "ts_last_used = ? WHERE id = ?", (ts, existing[0]))
         return existing[0]
-    c.execute(
+    cur = c.execute(
         "INSERT OR IGNORE INTO autopaths(id, intent_sig, intent_hash, cluster_id, "
         "framework_json, framework_hash, status, uses, ok_count, "
         "ts_created, ts_last_used) "
         "VALUES (?, ?, ?, ?, ?, ?, 'active', 1, 1, ?, ?)",
         (autopath_id, sig, ihash, cid, fjson, fhash, ts, ts))
+    if cur.rowcount == 0:
+        # Collisione id residua (2⁻⁴⁸: stesso prefisso ihash+fhash di un'ALTRA
+        # coppia): l'IGNORE ha scartato l'insert — §2.8, non dichiarare una
+        # promozione mai avvenuta.
+        log.warning("autopath._promote_autopath: collisione id %r, insert "
+                    "scartato", autopath_id)
+        return None
     return autopath_id
 
 
