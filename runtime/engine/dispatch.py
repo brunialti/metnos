@@ -1860,7 +1860,9 @@ def _recompose_faceless_upload(run: RunResult) -> None:
     fres = find_step.result
     entries = fres.get("entries") or []
     scores = [e.get("score") for e in entries if isinstance(e, dict)]
-    if _faceless_scores_are_flat(scores):
+    # Nessun match (ricerca vuota) O banda piatta (rumore) → «nessuna simile»:
+    # in entrambi i casi testo E gallery non mostrano foto non-pertinenti.
+    if not entries or _faceless_scores_are_flat(scores):
         fres["entries"] = []
         fres["attachments"] = []
         fres["n_above_threshold"] = 0

@@ -99,6 +99,16 @@ class TestRecompose(unittest.TestCase):
         self.assertIn("Venezia", run.final_text)
         self.assertIn("Foto simili nell'archivio: 3", run.final_text)
 
+    def test_empty_search_says_no_similar(self):
+        # La ricerca scena non trova nulla (0 entries) → «nessuna simile»,
+        # NON «Foto simili: 0» (edge-case len<2 non è «piatto»).
+        find_res = {"entries": [], "attachments": [], "n_above_threshold": 0}
+        run = _run_faceless(find_res, desc="un logo astratto")
+        D._recompose_faceless_upload(run)
+        self.assertIn("Nella foto:", run.final_text)
+        self.assertIn("Non ho trovato foto simili", run.final_text)
+        self.assertNotIn("Foto simili nell'archivio: 0", run.final_text)
+
     def test_noop_without_describe_step(self):
         # Path a-volto: nessun describe_images → no-op (testo/entries intatti).
         run = RunResult(steps=[
