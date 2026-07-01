@@ -26,6 +26,14 @@ _REQUIRED_KEYS = (
     "MSG_DIALOG_STEP_REPROMPT",
 )
 
+# Chiavi user-facing del path upload-default faceless (1/7): la risposta parte
+# dalla descrizione VLM + esito ricerca foto-simili (separazione, dispatch.py).
+_REQUIRED_UPLOAD_KEYS = (
+    "MSG_UPLOAD_PHOTO_DESC",
+    "MSG_UPLOAD_NO_SIMILAR",
+    "MSG_UPLOAD_SIMILAR_COUNT",
+)
+
 
 class TestSeedHasGateKeys(unittest.TestCase):
     def test_seed_file_exists(self):
@@ -40,6 +48,24 @@ class TestSeedHasGateKeys(unittest.TestCase):
         finally:
             conn.close()
         for key in _REQUIRED_KEYS:
+            for lang in ("it", "en"):
+                with self.subTest(key=key, lang=lang):
+                    txt = rows.get((key, lang))
+                    self.assertTrue(
+                        txt and "<missing" not in txt,
+                        f"seed manca {key}[{lang}] (rigenera install/data/"
+                        f"i18n_seed.sqlite dalla i18n.sqlite di esercizio)")
+
+    def test_upload_faceless_keys_present_it_en(self):
+        conn = sqlite3.connect(str(_SEED_DB))
+        try:
+            rows = {(k, lang): text for k, lang, text in conn.execute(
+                "SELECT key, lang, text FROM i18n WHERE key IN ({})".format(
+                    ",".join("?" * len(_REQUIRED_UPLOAD_KEYS))),
+                _REQUIRED_UPLOAD_KEYS)}
+        finally:
+            conn.close()
+        for key in _REQUIRED_UPLOAD_KEYS:
             for lang in ("it", "en"):
                 with self.subTest(key=key, lang=lang):
                     txt = rows.get((key, lang))

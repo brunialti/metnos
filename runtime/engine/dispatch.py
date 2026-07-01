@@ -1802,6 +1802,75 @@ def _inject_gate_resume_if_paused(run, query: str, runtime_ctx) -> None:
         log.warning("[gate_resume] inject failed: %r", ex)
 
 
+# ── Upload-default faceless: separazione + descrizione VLM (§7.9, 1/7/2026) ──
+# Lo score composito di find_images_indices (coseno BGE-M3 + 0.2·BM25) NON ha
+# scala assoluta interpretabile — il BM25 può superare 1.0, quindi lo screenshot
+# fuori-indice segna ~1.76 > la foto-scena Venezia self=1.0 (Roberto 1/7). La
+# decisione «mostra foto simili?» usa perciò la SEPARAZIONE RELATIVA dei
+# punteggi restituiti, non una soglia assoluta: spread=(max-min)/max. Sotto
+# soglia = banda piatta = il vicino più prossimo è rumore (nessuna somiglianza
+# genuina). Margini sui casi reali: screenshot spread≈0.0017 (piatto, ~30x sotto
+# soglia); Venezia self=1.0 + coda spread≈0.7 (separato, ~14x sopra). Un cluster
+# di quasi-duplicati identici (spread≈0) è dichiarato piatto per costruzione: la
+# descrizione VLM resta comunque la risposta utile.
+_FACELESS_FLAT_SPREAD = 0.05
+_FACELESS_DESC_CAP = 600  # cap testo lead (descrizione VLM «ricca» per ricerca)
+
+
+def _faceless_scores_are_flat(scores: list,
+                              threshold: float = _FACELESS_FLAT_SPREAD) -> bool:
+    """True se i punteggi non hanno separazione (banda piatta → nessun match
+    genuino). len<2 → False: un singolo risultato non è una banda piatta."""
+    xs = [float(s) for s in scores if isinstance(s, (int, float))]
+    if len(xs) < 2:
+        return False
+    top = max(xs)
+    if top <= 0:
+        return True
+    return (top - min(xs)) / top < threshold
+
+
+def _recompose_faceless_upload(run: RunResult) -> None:
+    """Post-processo DETERMINISTICO del path upload-default faceless (§7.9).
+
+    (1) La risposta PARTE dalla descrizione VLM (sempre utile, anche a 0 match).
+    (2) Le «foto simili» si mostrano SOLO se c'è separazione netta nei punteggi;
+        banda piatta = rumore → entries/attachments/n_above_threshold azzerati
+        (testo E gallery non mostrano foto casuali). Muta in-place lo step
+        find_images_indices e `run.final_text`. No-op se manca describe_images o
+        find_images_indices (il path a-volto non ha describe → non entra qui)."""
+    from messages import get as _msg
+    desc_step = next((s for s in run.steps
+                      if getattr(s, "tool", "") == "describe_images"
+                      and isinstance(s.result, dict)), None)
+    find_step = next((s for s in run.steps
+                      if getattr(s, "tool", "") == "find_images_indices"
+                      and isinstance(s.result, dict)), None)
+    if desc_step is None or find_step is None:
+        return
+    # Descrizione VLM (lead): query_text unito, o la prima description non vuota.
+    desc = (desc_step.result.get("query_text") or "").strip()
+    if not desc:
+        for e in (desc_step.result.get("entries") or []):
+            if isinstance(e, dict) and (e.get("description") or "").strip():
+                desc = e["description"].strip()
+                break
+    if len(desc) > _FACELESS_DESC_CAP:
+        desc = desc[:_FACELESS_DESC_CAP].rstrip() + "…"
+    fres = find_step.result
+    entries = fres.get("entries") or []
+    scores = [e.get("score") for e in entries if isinstance(e, dict)]
+    if _faceless_scores_are_flat(scores):
+        fres["entries"] = []
+        fres["attachments"] = []
+        fres["n_above_threshold"] = 0
+        tail = _msg("MSG_UPLOAD_NO_SIMILAR")
+    else:
+        tail = _msg("MSG_UPLOAD_SIMILAR_COUNT", n=len(entries))
+    lead = _msg("MSG_UPLOAD_PHOTO_DESC", desc=desc) if desc else ""
+    run.final_text = ((lead + "\n\n" + tail).strip() if lead else tail)
+
+
 def run_turn(*, query: str, intent: Intent, catalog: list,
               invoke_executor_cb: Callable,
               llm_call_wise: Optional[Callable] = None,
@@ -1952,6 +2021,9 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
                                         remediate_args_cb=remediate_args_cb,
                                         progress=progress)
                     if run2.final_kind == "answer":
+                        # Descrizione VLM in testa + foto simili solo se
+                        # separazione netta (banda piatta = rumore, §7.9).
+                        _recompose_faceless_upload(run2)
                         run, _fw = run2, _fw2
                 return DispatchResult(
                     final_text=run.final_text, final_kind=run.final_kind,
