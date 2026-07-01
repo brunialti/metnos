@@ -2,8 +2,8 @@
 
 Espone:
 - /agent/health, /.well-known/metnos.json, /agent/turn, /agent/devices/me
-- /admin (dashboard), /admin/proposals (+actions), /admin/executors (+stats),
-  /admin/runs, /admin/safety, /admin/turns
+- /admin (dashboard), /admin/changes (+actions, ADR 0158), /admin/executors
+  (+stats), /admin/runs, /admin/safety, /admin/turns
 
 Stile uniforme col `runtime.agent_server` (porta 8765 pairing): aiohttp
 bare, niente decorator-routing, helper `_error`, ROUTES come tuple list,
