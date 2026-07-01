@@ -6,13 +6,14 @@ Differenza vs Fastpath (Layer 0):
   - Fastpath: cache della STESSA query (hash/cosine) auto-prodotta a ogni
     turno-successo del piano pieno; ammette piani query-specific (solo 0a).
   - Autopath: generalizzazione a cluster/intent col consenso del feedback ✓
-    (2+ stesso framework_hash + cluster); rifiuta piani query-specific.
+    UMANO esplicito (MIN_OBS_PROMOTE obs stesso framework_hash + cluster,
+    default 1 — v2); rifiuta piani query-specific.
 
 Storage: ~/.local/share/metnos/autopath.sqlite (rename da praxis.sqlite).
 
 Sostituisce la logica Praxis cache mantenendo:
   - intent_hash + cluster_id (BGE-M3) lookup
-  - auto-promote dopo 2 ok (configurable)
+  - auto-promote dopo MIN_OBS_PROMOTE ok (default 1, configurable)
   - demote/anti-autopath su 3+ fail (TTL 30gg)
   - champion/challenger composite score
   - LWW simmetrico (✓ rimuove anti-autopath matching)
@@ -152,12 +153,23 @@ def prune(*, keep_observations: int | None = None) -> dict:
     - observations: tiene solo le piu' recenti N (la lookup legge una finestra
       breve via LIMIT, lo storico illimitato e' solo crescita disco: una riga
       ~4KB di embedding per turno engine).
+    - autopaths (aging, 1/7/2026 — prima NESSUNA valvola: zombie eterni):
+      demoted piu' vecchie di METNOS_AUTOPATH_DEMOTED_TTL_DAYS (30gg,
+      allineato a TTL_ANTIAUTOPATH: oltre, anche la memoria del fallimento
+      e' scaduta e la riga serviva solo alla riattivazione LWW a ridosso
+      del demote); active con ts_last_used piu' vecchio di
+      METNOS_AUTOPATH_STALE_DAYS (90gg = 3x L0 stale: il piano e'
+      generalizzato e la ri-promozione costa un feedback ✓ reale, quindi
+      orizzonte piu' conservativo). Un ✓ successivo ri-promuove da zero.
     Idempotente. Ritorna un report dei conteggi rimossi.
     """
-    from datetime import datetime, timezone
+    from datetime import datetime, timedelta, timezone
     if keep_observations is None:
         keep_observations = int(os.environ.get("METNOS_AUTOPATH_KEEP_OBS", "5000"))
-    now_iso = datetime.now(timezone.utc).isoformat()
+    stale_days = int(os.environ.get("METNOS_AUTOPATH_STALE_DAYS", "90"))
+    demoted_ttl_days = int(os.environ.get("METNOS_AUTOPATH_DEMOTED_TTL_DAYS", "30"))
+    now = datetime.now(timezone.utc)
+    now_iso = now.isoformat()
     c = _conn()
     try:
         anti = c.execute(
@@ -168,6 +180,24 @@ def prune(*, keep_observations: int | None = None) -> dict:
             "(SELECT rowid FROM observations ORDER BY rowid DESC LIMIT ?)",
             (int(keep_observations),),
         ).rowcount
+        # Cutoff in formato Z, lo stesso di ts_created/ts_last_used
+        # (timefmt.now_iso_z): il confronto lessicografico resta corretto.
+        demoted = 0
+        if demoted_ttl_days > 0:
+            cut = (now - timedelta(days=demoted_ttl_days)).strftime(
+                "%Y-%m-%dT%H:%M:%SZ")
+            demoted = c.execute(
+                "DELETE FROM autopaths WHERE status = 'demoted' "
+                "AND COALESCE(ts_last_used, ts_created) < ?", (cut,)
+            ).rowcount
+        stale = 0
+        if stale_days > 0:
+            cut = (now - timedelta(days=stale_days)).strftime(
+                "%Y-%m-%dT%H:%M:%SZ")
+            stale = c.execute(
+                "DELETE FROM autopaths WHERE status = 'active' "
+                "AND COALESCE(ts_last_used, ts_created) < ?", (cut,)
+            ).rowcount
         c.commit()
         try:
             c.execute("VACUUM")
@@ -175,7 +205,9 @@ def prune(*, keep_observations: int | None = None) -> dict:
             pass
         return {"anti_autopaths_removed": max(0, anti),
                 "observations_removed": max(0, obs),
-                "kept_observations": int(keep_observations)}
+                "kept_observations": int(keep_observations),
+                "autopaths_demoted_removed": max(0, demoted),
+                "autopaths_stale_removed": max(0, stale)}
     finally:
         c.close()
 
